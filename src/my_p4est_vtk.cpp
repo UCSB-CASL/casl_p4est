@@ -87,8 +87,8 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_geometry_t * geom,
   int            vtk_type;
   va_list             ap;
 
-  P4EST_ASSERT (num_cell_scalars >= 0  && num_cell_vectors >= 0 &&
-                num_point_scalars >= 0 && num_point_vectors >= 0);
+  P4EST_ASSERT (num_cell_scalars >= 0  && /* num_cell_vectors >= 0 && */
+                num_point_scalars >= 0 /* && num_point_vectors >= 0 */ );
 
   /* Allocate memory for the data and their names */
   cell_values  = P4EST_ALLOC(const double * , num_cell_scalars);
@@ -200,7 +200,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
   SC_CHECK_ABORT (p4est->connectivity->num_vertices > 0,
                   "Must provide connectivity with vertex information");
 
-  P4EST_ASSERT (0. <= scale && scale <= 1. && wrap_rank >= 0);
+  P4EST_ASSERT (0. <= scale && scale <= 1. /* && wrap_rank >= 0 */);
   P4EST_ASSERT (v != NULL && tree_to_vertex != NULL);
 
   if (scale < 1.) {
