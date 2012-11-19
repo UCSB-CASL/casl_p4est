@@ -27,9 +27,16 @@ on nested non-conforming hexahedral meshes.
 \section{The semi-Lagrangian method}
 
 \begin{algorithm}
-  \caption{Basic semi-Lagrangian procedure}
+  \caption{Basic semi-Lagrangian time step}
   \begin{algorithmic}
-    \STATE Do something.
+    \FOR{$e$ in local cells}
+      \FOR{$n$ in nodes on $e$ that have not yet been processed}
+        \STATE Extrapolate location of $n$ backward in time as $x_n$
+	\IF{$x_n$ is located on a different processor $p_n$}
+	\STATE Append $x_n$ to send buffer for $p_n$
+	\ENDIF
+      \ENDFOR
+    \ENDFOR
   \end{algorithmic}
 \end{algorithm}
 
