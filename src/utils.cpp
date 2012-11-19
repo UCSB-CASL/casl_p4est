@@ -1,0 +1,86 @@
+#include "utils.h"
+
+void c2p_coordinate_transform(p4est_t *p4est, p4est_topidx_t tree_id, double *x, double *y, double *z){
+    // We first need to determine the refference point (i.e lower left corner of the current tree)
+    p4est_topidx_t *v_ref = p4est->connectivity->tree_to_vertex + tree_id*P4EST_CHILDREN;
+
+
+    // Now get the xyz coordinates of the four corners of the tree
+    double ref_xyz[P4EST_CHILDREN][3];
+    for (int i=0; i<P4EST_CHILDREN; i++){
+        for (int j=0; j<3; j++){
+            ref_xyz[i][j] = p4est->connectivity->vertices[3*v_ref[i]+j];
+        }
+    }
+
+#ifdef CASL_THROWS
+    if(x == NULL)
+        throw std::invalid_argument("[CASL_ERROR]: In computational domain, x-ccordinate cannot be NULL");
+    if(y == NULL)
+        throw std::invalid_argument("[CASL_ERROR]: In computational domain, y-ccordinate cannot be NULL");
+#endif
+    double eta_x = *x, eta_y = *y;
+
+#ifdef CASL_THROWS
+    if (eta_x<0 || eta_x>1.0)
+        throw std::invalid_argument("[CASL_ERROR]: In computational domain, x-coordinates should run in [0,1]. ");
+    if (eta_y<0 || eta_y>1.0)
+        throw std::invalid_argument("[CASL_ERROR]: In computational domain, y-coordinates should run in [0,1]. ");
+#endif
+
+
+    *x = (1.0-eta_x)*(1.0-eta_y)*ref_xyz[0][0] +
+            (1.0-eta_x)*(    eta_y)*ref_xyz[2][0] +
+            (    eta_x)*(1.0-eta_y)*ref_xyz[1][0] +
+            (    eta_x)*(    eta_y)*ref_xyz[3][0];
+
+    *y = (1.0-eta_x)*(1.0-eta_y)*ref_xyz[0][1] +
+            (1.0-eta_x)*(    eta_y)*ref_xyz[2][1] +
+            (    eta_x)*(1.0-eta_y)*ref_xyz[1][1] +
+            (    eta_x)*(    eta_y)*ref_xyz[3][1];
+
+    if (NULL != z){
+        *z = (1.0-eta_x)*(1.0-eta_y)*ref_xyz[0][2] +
+                (1.0-eta_x)*(    eta_y)*ref_xyz[2][2] +
+                (    eta_x)*(1.0-eta_y)*ref_xyz[1][2] +
+                (    eta_x)*(    eta_y)*ref_xyz[3][2];
+    }
+
+}
+
+void dx_dy_dz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* quad, double *dx, double *dy, double *dz){
+    double *v = p4est->connectivity->vertices;
+    p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+    p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
+
+    if (dx != NULL){
+        double dx_tree = v[3*t2v[tree_id*P4EST_CHILDREN+1]] - v[3*t2v[tree_id*P4EST_CHILDREN]];
+        *dx = dx_tree * static_cast<double>(qh)/static_cast<double>(P4EST_ROOT_LEN);
+    }
+
+    if (dy != NULL){
+        double dy_tree = v[3*t2v[tree_id*P4EST_CHILDREN+2] + 1] - v[3*t2v[tree_id*P4EST_CHILDREN] + 1];
+        *dy = dy_tree * static_cast<double>(qh)/static_cast<double>(P4EST_ROOT_LEN);
+    }
+
+    if (dz != NULL){
+        double dz_tree = v[3*t2v[tree_id*P4EST_CHILDREN+4] + 2] - v[3*t2v[tree_id*P4EST_CHILDREN] + 2];
+        *dz = dz_tree * static_cast<double>(qh)/static_cast<double>(P4EST_ROOT_LEN);
+    }
+}
+
+void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* quad, double *x, double *y, double *z){
+    p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
+
+    if (x != NULL){
+        *x = static_cast<double>(quad->x + 0.5 * qh)/static_cast<double>(P4EST_ROOT_LEN);
+    }
+
+    if (y != NULL){
+        *y = static_cast<double>(quad->y + 0.5 * qh)/static_cast<double>(P4EST_ROOT_LEN);
+    }
+
+    c2p_coordinate_transform(p4est, tree_id, x, y, z);
+
+}
+
