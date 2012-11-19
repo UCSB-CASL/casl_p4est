@@ -55,13 +55,13 @@ ifeq ($(CASL_HAVE_PETSC), YES)
 	CXX_DEFINES  += -DCASL_USE_PETSC
 	CASL_HAVE_MPI = YES 
 
-	PETSC_DIR = $(PETSC_HOME_DIR)
+	# PETSC_DIR = $(PETSC_HOME_DIR)
 
-	ifeq ($(BUILD_TYPE), debug)
-		PETSC_ARCH = $(PETSC_ARCH_DEBUG)
-	else
-		PETSC_ARCH = $(PETSC_ARCH_OPT)
-	endif
+	# ifeq ($(BUILD_TYPE), debug)
+	# 	PETSC_ARCH = $(PETSC_ARCH_DEBUG)
+	# else
+	# 	PETSC_ARCH = $(PETSC_ARCH_OPT)
+	# endif
 
 	include $(PETSC_HOME_DIR)/conf/variables
 	include $(PETSC_HOME_DIR)/conf/rules

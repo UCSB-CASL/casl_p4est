@@ -9,7 +9,6 @@
 #include <string>
 #include <lib/algebra/PolyRoots.h>
 #include <stdint.h>
-#include "OMP_Macros.h"
 #include <map>
 #include <stdexcept>
 

@@ -33,7 +33,7 @@ CUDA_EXTRA_FLAGS =
 
 # Verbose control
 PRINT_WARNINGS    = NO
-PRINT_MAKE_OUTPUT = NO
+PRINT_MAKE_OUTPUT = YES
 
 # Where to put all temporary objets?
 TEMP_OBJS_DIR      = objs
