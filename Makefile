@@ -1,5 +1,5 @@
 # Define the location for the CASL library 
-HEAD_DIR = ../../
+# HEAD_DIR = ../../
 
 # Project info
 vpath %.cpp $(HEAD_DIR)/src
@@ -97,9 +97,9 @@ $(BIN_NAME): $(OBJS)
 	@echo " linking $(@F) ..."
 	$(CXX) $(LINK_FLAGS) $^ $(LINK_LIBS) -o $(BIN_FOLDER)/$(BIN_NAME)
 
-.PHONY: clean
-clean::
-	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
+# .PHONY: clean
+# clean::
+# 	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
 
 .PHONY: cleanall
 cleanall::

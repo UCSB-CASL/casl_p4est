@@ -1,5 +1,5 @@
 # prepare sources that need to be compiled
-INCLUDE_FLAGS += -I$(CASL_DIR)
+#INCLUDE_FLAGS += -I$(CASL_DIR)
 
 ifeq ($(BUILD_UTILITIES), YES)
 	vpath %.cpp $(CASL_DIR)/lib/utilities
@@ -67,7 +67,8 @@ ifeq ($(CASL_HAVE_PETSC), YES)
 	include $(PETSC_HOME_DIR)/conf/rules
 
 	LINK_LIBS += $(PETSC_LIB)
-	INCLUDE_FLAGS += -I$(PETSC_HOME_DIR)/include -I$(PETSC_HOME_DIR)/$(PETSC_ARCH)/include
+	INCLUDE_FLAGS += $(PETSC_INCLUDE)
+#	INCLUDE_FLAGS += -I$(PETSC_HOME_DIR)/include -I$(PETSC_HOME_DIR)/$(PETSC_ARCH)/include
 endif
 
 ifeq ($(CASL_HAVE_P4EST), YES)
@@ -79,8 +80,8 @@ ifeq ($(CASL_HAVE_P4EST), YES)
 		P4EST_ARCH  = release
 	endif
 
-	INCLUDE_FLAGS += -I$(P4EST_HOME_DIR)/$(P4EST_ARCH)/include
-	P4EST_LIBS = -L$(P4EST_HOME_DIR)/$(P4EST_ARCH)/lib -lp4est -lsc
+	INCLUDE_FLAGS += -I$(P4EST_DIR)/include
+	P4EST_LIBS = -L$(P4EST_DIR)/lib -lp4est -lsc
 	LINK_LIBS += $(P4EST_LIBS)
 endif
 
