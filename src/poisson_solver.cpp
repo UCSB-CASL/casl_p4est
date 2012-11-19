@@ -1,4 +1,10 @@
+
 #include "poisson_solver.h"
+
+#if (PETSC_VERSION_MINOR <= 1)
+#undef CHKERRXX
+#define CHKERRXX
+#endif
 
 PoissonSolver::PoissonSolver(p4est_t *p4est_, const CF_2& uex_, const CF_2 &f_)
   : p4est(p4est_), uex(&uex_), f(&f_)
@@ -21,7 +27,7 @@ PoissonSolver::PoissonSolver(p4est_t *p4est_, const CF_2& uex_, const CF_2 &f_)
 
   // Now vectors
   ierr = VecCreate(p4est->mpicomm, &x); CHKERRXX(ierr);
-  ierr = VecSetType(x, VECSTANDARD); CHKERRXX(ierr);
+  ierr = VecSetType(x, VECMPI); CHKERRXX(ierr);
   ierr = VecSetSizes(x, p4est->local_num_quadrants, PETSC_DECIDE); CHKERRXX(ierr);
   ierr = VecSetFromOptions(x); CHKERRXX(ierr);
   ierr = VecSet(x, 0); CHKERRXX(ierr);
@@ -397,6 +403,7 @@ void PoissonSolver::save(const string &filename){
 
 }
 
+#if 0
 void PoissonSolver::load(const string &filename){
 
   PetscViewer viewer;
@@ -418,6 +425,7 @@ void PoissonSolver::load(const string &filename){
   ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
   #endif
 }
+#endif
 
 
 void PoissonSolver::solve(Vec& sol, Vec& sol_ex){

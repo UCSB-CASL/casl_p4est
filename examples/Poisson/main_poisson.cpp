@@ -23,6 +23,11 @@
 #define P4EST_FALSE 0
 typedef int p4est_bool_t;
 
+#if (PETSC_VERSION_MINOR <= 1)
+#undef CHKERRXX
+#define CHKERRXX
+#endif
+
 typedef struct
 {
     MPI_Comm            mpicomm;
