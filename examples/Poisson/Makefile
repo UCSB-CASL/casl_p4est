@@ -4,7 +4,7 @@ HEAD_DIR = ../../
 # Project info
 vpath %.cpp    $(HEAD_DIR)/src 
 INCLUDE_FLAGS += -I$(HEAD_DIR)
-SRCS           = main_poisson.cpp utils.cpp poisson_solver.cpp neighbors.cpp p4est_vtk.cpp
+SRCS           = main_poisson.cpp utils.cpp poisson_solver.cpp neighbors.cpp my_p4est_vtk.cpp
 BIN_NAME       = poisson
 BIN_FOLDER     = .
 
