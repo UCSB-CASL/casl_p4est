@@ -37,6 +37,12 @@ on nested non-conforming hexahedral meshes.
 	\ENDIF
       \ENDFOR
     \ENDFOR
+    \STATE Reverse communication pattern so the receivers know the senders
+    \STATE Send the non-local points $x_n$ to the target processors
+    \STATE Loop over local points $x_n$ and interpolate new values at $n$
+    \STATE Receive points $x_n$, interpolate, add to send buffer
+    \STATE Send back the interpolated values
+    \STATE Receive values for non-local points and update node values
   \end{algorithmic}
 \end{algorithm}
 
