@@ -5,7 +5,7 @@
 #include <p4est_bits.h>
 #include <p4est_mesh.h>
 #include "ArrayV.h"
-#include "utilities.h
+#include "utilities.h"
 
 #include <petsc.h>
 
