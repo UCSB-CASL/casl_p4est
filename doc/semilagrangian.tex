@@ -1,9 +1,12 @@
 
 \documentclass[11pt]{article}
 
-\usepackage{algorithmic}
+\usepackage{algorithm,algorithmic}
 \usepackage{amsmath}
 \usepackage[margin=1in]{geometry}
+\usepackage{xspace}
+
+\newcommand{\pforest}{\texttt{p4est}\xspace}
 
 \setlength{\emergencystretch}{20pt}
 
@@ -15,8 +18,19 @@
 \maketitle
 
 \begin{abstract}
-We present a semi-Lagrangian method for solving advection equations
-on nesten non-conforming hexahedral meshes.
+We present a semi-Lagrangian method for solving the advection equation
+on nested non-conforming hexahedral meshes.
 \end{abstract}
+
+\section{Introduction}
+
+\section{The semi-Lagrangian method}
+
+\begin{algorithm}
+  \caption{Basic semi-Lagrangian procedure}
+  \begin{algorithmic}
+    \STATE Do something.
+  \end{algorithmic}
+\end{algorithm}
 
 \end{document}
