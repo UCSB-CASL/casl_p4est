@@ -381,11 +381,20 @@ void PoissonSolver::save(const string &filename){
 
   ierr = PetscViewerBinaryOpen(p4est->mpicomm, (filename + "_mat").c_str(), FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
   ierr = MatView(a, viewer); CHKERRXX(ierr);
+  #if (PETSC_VERSION_MINOR > 1)
   ierr = PetscViewerDestroy(&viewer); CHKERRXX(ierr);
+  #else
+  ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
+  #endif
 
   ierr = PetscViewerBinaryOpen(p4est->mpicomm, (filename + "_vec").c_str(), FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
   ierr = VecView(b, viewer); CHKERRXX(ierr);
+  #if (PETSC_VERSION_MINOR > 1)
   ierr = PetscViewerDestroy(&viewer); CHKERRXX(ierr);
+  #else
+  ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
+  #endif
+
 }
 
 void PoissonSolver::load(const string &filename){
@@ -394,11 +403,20 @@ void PoissonSolver::load(const string &filename){
 
   ierr = PetscViewerBinaryOpen(p4est->mpicomm, (filename + "_mat").c_str(), FILE_MODE_READ, &viewer); CHKERRXX(ierr);
   ierr = MatLoad(a, viewer); CHKERRXX(ierr);
+  #if (PETSC_VERSION_MINOR > 1)
   ierr = PetscViewerDestroy(&viewer); CHKERRXX(ierr);
+  #else
+  ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
+  #endif
+
 
   ierr = PetscViewerBinaryOpen(p4est->mpicomm, (filename + "_vec").c_str(), FILE_MODE_READ, &viewer); CHKERRXX(ierr);
   ierr = VecLoad(b, viewer); CHKERRXX(ierr);
+  #if (PETSC_VERSION_MINOR > 1)
   ierr = PetscViewerDestroy(&viewer); CHKERRXX(ierr);
+  #else
+  ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
+  #endif
 }
 
 
@@ -433,11 +451,20 @@ PoissonSolver::~PoissonSolver(){
   delete cell_ngbds;
 
   // Destroy PETSc objects
+  #if (PETSC_VERSION_MINOR > 1)
   ierr = MatDestroy(&a); CHKERRXX(ierr);
   ierr = VecDestroy(&x); CHKERRXX(ierr);
   ierr = VecDestroy(&b); CHKERRXX(ierr);
   ierr = VecDestroy(&xex); CHKERRXX(ierr);
   ierr = KSPDestroy(&ksp); CHKERRXX(ierr);
+  #else
+  ierr = MatDestroy(a); CHKERRXX(ierr);
+  ierr = VecDestroy(x); CHKERRXX(ierr);
+  ierr = VecDestroy(b); CHKERRXX(ierr);
+  ierr = VecDestroy(xex); CHKERRXX(ierr);
+  ierr = KSPDestroy(ksp); CHKERRXX(ierr);
+#endif
+
 }
 
 
