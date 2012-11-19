@@ -3,8 +3,10 @@
 
 # Project info
 vpath %.cpp    $(HEAD_DIR)/src 
+vpath %.c      $(HEAD_DIR)/src 
 INCLUDE_FLAGS += -I$(HEAD_DIR)
 SRCS           = main_poisson.cpp utils.cpp poisson_solver.cpp neighbors.cpp my_p4est_vtk.cpp
+CSRCS          = my_p4est_tools.c
 BIN_NAME       = poisson
 BIN_FOLDER     = .
 
@@ -52,8 +54,12 @@ CASL_HAVE_CUSP     = NO
 
 include $(HEAD_DIR)/common.mk
 
-OBJS := $(patsubst %.cpp, $(TEMP_OBJS_DIR)/%.o,$(SRCS))
-DEPS := $(patsubst %.cpp, $(TEMP_OBJS_DIR)/.%.d,$(SRCS))
+OBJS := \
+	$(patsubst %.cpp, $(TEMP_OBJS_DIR)/%.o,$(SRCS)) \
+	$(patsubst %.c, $(TEMP_OBJS_DIR)/%.o,$(CSRCS))
+DEPS := \
+	$(patsubst %.cpp, $(TEMP_OBJS_DIR)/.%.d,$(SRCS)) \
+	$(patsubst %.c, $(TEMP_OBJS_DIR)/.%.d,$(CSRCS))
 
 .PHONY: all
 .DEFAULT_GOAL:=all
@@ -89,6 +95,11 @@ endif
 -include $(DEPS)
 
 $(TEMP_OBJS_DIR)/%.o: %.cpp
+	@echo " building $(@F) ..."
+	$(CXX) -c $(CXX_FLAGS) $(INCLUDE_FLAGS) -MMD $< -o $@
+	@mv $(TEMP_OBJS_DIR)/$*.d $(TEMP_OBJS_DIR)/.$*.d
+
+$(TEMP_OBJS_DIR)/%.o: %.c
 	@echo " building $(@F) ..."
 	$(CXX) -c $(CXX_FLAGS) $(INCLUDE_FLAGS) -MMD $< -o $@
 	@mv $(TEMP_OBJS_DIR)/$*.d $(TEMP_OBJS_DIR)/.$*.d
