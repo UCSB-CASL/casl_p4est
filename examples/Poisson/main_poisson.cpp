@@ -4,8 +4,10 @@
 #include <p4est_nodes.h>
 
 // My files for this project
+
 #include "src/my_p4est_vtk.h"
 #include "src/poisson_solver.h"
+#include <src/utils.h>
 
 // System
 #include <stdexcept>

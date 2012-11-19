@@ -100,7 +100,6 @@ $(BIN_NAME): $(OBJS)
 .PHONY: clean
 clean::
 	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
-	.PHONY: cleanall
 
 .PHONY: cleanall
 cleanall::

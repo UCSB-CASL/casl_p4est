@@ -2,6 +2,7 @@
 # The P4EST_DIR environment variable must point to a p4est installation
 
 include $(P4EST_DIR)/etc/Makefile.p4est.mk
+P4EST_CXX = mpicxx
 
 TARGETS = dummy
 OBJECTS = dummymain.o dummytest.o

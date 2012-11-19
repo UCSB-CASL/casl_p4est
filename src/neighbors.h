@@ -4,7 +4,7 @@
 #include <p4est_mesh.h>
 #include <p4est_nodes.h>
 
-#include <lib/array/ArrayV.h>
+#include <src/ArrayV.h>
 #include <sstream>
 #include <map>
 

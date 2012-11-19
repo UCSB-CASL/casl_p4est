@@ -4,13 +4,11 @@
 #include <p4est.h>
 #include <p4est_bits.h>
 #include <p4est_mesh.h>
-#include <lib/array/ArrayV.h>
-#include <parlib/utilities/utilities.h>
+#include "ArrayV.h"
+#include "utilities.h
 
 #include <petsc.h>
-#include <lib/utilities/Macros.h>
 
-#include "macros.h"
 #include "utils.h"
 #include "neighbors.h"
 
