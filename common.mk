@@ -57,18 +57,20 @@ ifeq ($(CASL_HAVE_PETSC), YES)
 
 	PETSC_DIR = $(PETSC_HOME_DIR)
 
-	# ifeq ($(BUILD_TYPE), debug)
-	# 	PETSC_ARCH = $(PETSC_ARCH_DEBUG)
-	# else
-	# 	PETSC_ARCH = $(PETSC_ARCH_OPT)
-	# endif
+	 ifeq ($(BUILD_TYPE), debug)
+	 	PETSC_ARCH = $(PETSC_ARCH_DEBUG)
+	 else
+	 	PETSC_ARCH = $(PETSC_ARCH_OPT)
+	 endif
 
 	include $(PETSC_HOME_DIR)/conf/variables
 	include $(PETSC_HOME_DIR)/conf/rules
+ifeq ($(PETSC_INCLUDE),)
+	PETSC_INCLUDE = -I$(PETSC_HOME_DIR)/include -I$(PETSC_HOME_DIR)/$(PETSC_ARCH)/include 
+endif
 
 	LINK_LIBS += $(PETSC_LIB)
 	INCLUDE_FLAGS += $(PETSC_INCLUDE)
-#	INCLUDE_FLAGS += -I$(PETSC_INC_DIR)/include -I$(PETSC_INC_DIR)/$(PETSC_ARCH)/include
 endif
 
 ifeq ($(CASL_HAVE_P4EST), YES)
