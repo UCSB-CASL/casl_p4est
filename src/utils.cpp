@@ -84,7 +84,7 @@ void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* qua
 
 }
 
-double bilinear_interpolation(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_id, double *F, double x_global, double y_global)
+double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quadrant_t *quad, double *F, double x_global, double y_global)
 {
   p4est_topidx_t lower_left_vertex  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t upper_right_vertex = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 3];
@@ -97,6 +97,15 @@ double bilinear_interpolation(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topi
 
   double x = (x_global - tree_xmin)/(tree_xmax - tree_xmin);
   double y = (y_global - tree_ymin)/(tree_ymax - tree_ymin);
+
+#ifdef CASL_THROWS
+  if (x<0 || x>1 || y<0 || y>1)
+  {
+    std::ostringstream oss;
+    oss << "[CASL_ERROR]: Point (" << x_global << ", " << y_global << ") is not located inside given tree (= " << tree_id << ")" << std::endl;
+    throw std::invalid_argument(oss.str());
+  }
+#endif
 
   double qh   = (double)P4EST_QUADRANT_LEN(quad->level) / (double)(P4EST_ROOT_LEN);
   double xmin = (double)quad->x / (double)(P4EST_ROOT_LEN);

@@ -12,8 +12,8 @@
 #define LVLSET_TAG 1
 #define SIZE_TAG 2
 
-typedef int (*p4est_point_process_lookup_t)(double, double) ;
-typedef p4est_quadrant_t* (*p4est_point_quadrant_lookup_t)(double, double, p4est_topidx_t*);
+typedef int  (*p4est_point_process_lookup_t)(double, double) ;
+typedef void (*p4est_point_quadrant_lookup_t)(double, double, p4est_topidx_t*, p4est_quadrant_t**);
 
 struct point{
   double x, y;
@@ -33,12 +33,12 @@ class semi_lagrangian
   PetscErrorCode ierr;
 
   ArrayV<ArrayV<double> > departure_point;
-  ArrayV<ArrayV<p4est_locidx_t> > departing_node;
+  ArrayV<ArrayV<p4est_gloidx_t> > departing_node;
 
 public:
   semi_lagrangian(const p4est_t *p4est_, p4est_point_process_lookup_t process_lookup_, p4est_point_quadrant_lookup_t quadrant_lookup_);
 
-  void advance(Vec velx, Vec vely, double dt, Vec phi);
+  void advance(Vec velx, Vec vely, double dt, Vec &phi);
 };
 
 #endif // SEMI_LAGRANGIAN_H

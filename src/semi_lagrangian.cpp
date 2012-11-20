@@ -13,10 +13,14 @@ semi_lagrangian::semi_lagrangian(const p4est_t *p4est_,
 
 }
 
-void semi_lagrangian::advance(Vec velx, Vec vely, double dt, Vec phi)
+void semi_lagrangian::advance(Vec velx, Vec vely, double dt, Vec& phi)
 {
   Vec phi_np1;
   ierr = VecDuplicate(phi, &phi_np1); CHKERRXX(ierr);
+
+  ArrayV<p4est_locidx_t> quad_locidx_list(p4est->local_num_quadrants);
+  for(int i=0; i<quad_locidx_list.size(); ++i)
+    quad_locidx_list(i) = i;
 
   // Loop over all local trees
   for (p4est_topidx_t tr_it = p4est->first_local_tree; tr_it <= p4est->last_local_tree; ++tr_it)
@@ -28,6 +32,7 @@ void semi_lagrangian::advance(Vec velx, Vec vely, double dt, Vec phi)
     {
       p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, qu_it);
       p4est_locidx_t quad_locidx = qu_it + tree->quadrants_offset;
+      quad->p.user_data = (void*)(&quad_locidx_list(quad_locidx));
 
       double qh = (double) P4EST_QUADRANT_LEN(quad->level);
 
@@ -51,7 +56,7 @@ void semi_lagrangian::advance(Vec velx, Vec vely, double dt, Vec phi)
             yd -= dt*vely_corner[2*cj + ci];
 
             int departure_point_rank = process_lookup(xd, yd);
-            departing_node(departure_point_rank).push(node_locidx);
+            departing_node(departure_point_rank).push(node_gloidx);
             departure_point(departure_point_rank).push(xd);
             departure_point(departure_point_rank).push(yd);
 
@@ -96,18 +101,20 @@ void semi_lagrangian::advance(Vec velx, Vec vely, double dt, Vec phi)
     double *buffer = (double*)received_departure_points;
     MPI_Recv(buffer, buffer_size, MPI_DOUBLE, sender[r], POINT_TAG, p4est->mpicomm, &st);
 
-    ArrayV<double> phi_interpolated(buffer_size/2); phi_interpolated = 0;
+    ArrayV<double> phi_interpolated(buffer_size/2);
     for (int i = 0; i<buffer_size/2; ++i)
     {
       p4est_topidx_t tree_id;
       double &xd_recv = received_departure_points(2*i);
       double &yd_recv = received_departure_points(2*i+1);
-      p4est_quadrant_t *departure_quadrant = quadrant_lookup(xd_recv, yd_recv, &tree_id);
+      p4est_quadrant_t *departure_quadrant;
+      quadrant_lookup(xd_recv, yd_recv, &tree_id, &departure_quadrant);
 
       // TODO: We need to get this thing form PETSc but that requires global numbers of the
       // 4 corners of the current cell.
-      double phi_buffer[4] = {0, 0, 0, 0};
-      phi_interpolated(i) = bilinear_interpolation(p4est, departure_quadrant, tree_id, phi_buffer, xd_recv, yd_recv);
+      double phi_buffer[4];
+      ierr = VecGetValues(phi, 4, e2n + P4EST_CHILDREN*(*(p4est_locidx_t*)departure_quadrant->p.user_data), phi_buffer); CHKERRXX(ierr);
+      phi_interpolated(i) = bilinear_interpolation(p4est, tree_id, departure_quadrant, phi_buffer, xd_recv, yd_recv);
     }
 
     double *phi_interpolated_buffer = (double*)phi_interpolated;
@@ -118,10 +125,36 @@ void semi_lagrangian::advance(Vec velx, Vec vely, double dt, Vec phi)
   {
     ArrayV<double> phi_interpolated_received(departing_node.size());
     double *phi_buffer = (double*)phi_interpolated_received;
-    MPI_Recv(phi_buffer, phi_interpolated_received.size(), MPI_DOUBLE, receivers[r], LVLSET_TAG, p4est->mpicomm, &st);
+    MPI_Recv(phi_buffer, phi_interpolated_received.size(), MPI_DOUBLE, receivers(r), LVLSET_TAG, p4est->mpicomm, &st);
 
-    ierr = VecSetValues(phi_np1, phi_interpolated_received.size(), (p4est_locidx_t*)departing_node(r), phi_buffer, INSERT_VALUES); CHKERRXX(ierr);
+    ierr = VecSetValues(phi_np1, phi_interpolated_received.size(), (p4est_gloidx_t*)departing_node(r), phi_buffer, INSERT_VALUES); CHKERRXX(ierr);
   }
 
   // TODO: Now we need to update our local values at the departing nodes of the level-set function based on the local departure points
+  ArrayV<double> phi_interpolated(departing_node(p4est->mpirank).size());
+  for (p4est_locidx_t n = 0; n<departing_node(p4est->mpirank).size(); ++n)
+  {
+    p4est_topidx_t tree_id;
+    double &xd_recv = departure_point(2*n);
+    double &yd_recv = departure_point(2*n+1);
+    p4est_quadrant_t *departure_quadrant;
+    quadrant_lookup(xd_recv, yd_recv, &tree_id, &departure_quadrant);
+
+    // TODO: We need to get this thing form PETSc but that requires global numbers of the
+    // 4 corners of the current cell.
+    double phi_buffer[4];
+    ierr = VecGetValues(phi, 4, e2n + P4EST_CHILDREN*(*(p4est_locidx_t*)departure_quadrant->p.user_data), phi_buffer); CHKERRXX(ierr);
+    phi_interpolated(i) = bilinear_interpolation(p4est, tree_id, departure_quadrant, phi_buffer, xd_recv, yd_recv);
+  }
+
+  double *phi_buffer = (double*)phi_interpolated;
+  ierr =  VecSetValues(phi_np1, phi_interpolated.size(), (p4est_gloidx_t*)departing_node(p4est->mpirank), phi_buffer, INSERT_VALUES); CHKERRXX(ierr);
+
+  // Assemble the vector
+  ierr = VecAssemblyBegin(phi_np1); CHKERRXX(ierr);
+  ierr = VecAssemblyEnd(phi_np1); CHKERRXX(ierr);
+
+  ierr = VecDestroy(&phi); CHKERRXX(ierr);
+  phi  = phi_np1;
+
 }
