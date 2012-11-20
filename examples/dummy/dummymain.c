@@ -1,5 +1,6 @@
 
 #include <p4est.h>
+#include <p4est_vtk.h>
 
 static int
 simple_refine (p4est_t * p4est, p4est_topidx_t which_tree,
