@@ -2,7 +2,7 @@
 #include <p4est.h>
 #include <p4est_ghost.h>
 #include <p4est_vtk.h>
-#include "../../src/my_p4est_tools.h"
+#include "../../src/my_p4est_nodes.h"
 
 static int
 simple_refine (p4est_t * p4est, p4est_topidx_t which_tree,

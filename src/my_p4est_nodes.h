@@ -21,106 +21,21 @@
   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
-#ifndef P4EST_NODES_H
-#define P4EST_NODES_H
+#ifndef MY_P4EST_NODES_H
+#define MY_P4EST_NODES_H
 
-#include <p4est.h>
-#include <p4est_ghost.h>
+#include <p4est_nodes.h>
 
 SC_EXTERN_C_BEGIN;
 
-/** Store an independent node.
- * Keep this in sync with the p4est_t data structure.
- */
-typedef struct p4est_indep
-{
-  p4est_qcoord_t      x, y;
-  int8_t              level, pad8;
-  int16_t             pad16;
-  union p4est_indep_data
-  {
-    void               *unused;
-    p4est_topidx_t      which_tree;
-    struct
-    {
-      p4est_topidx_t      which_tree;
-      int                 owner_rank;
-    }
-    piggy1;
-    struct
-    {
-      p4est_topidx_t      which_tree;
-      p4est_topidx_t      from_tree;
-    }
-    piggy_unused2;
-    struct
-    {
-      p4est_topidx_t      which_tree;
-      p4est_locidx_t      local_num;
-    }
-    piggy3;
-  }
-  p;
-}
-p4est_indep_t;
-
-/** Store a hanging node that depends on two independent nodes.
- * Keep this in sync with the p4est_t data structure.
- */
-typedef struct p4est_hang2
-{
-  p4est_qcoord_t      x, y;
-  int8_t              level, pad8;
-  int16_t             pad16;
-  union p4est_hang2_data
-  {
-    void               *unused;
-    p4est_topidx_t      which_tree;
-    struct
-    {
-      p4est_topidx_t      which_tree;
-      int                 owner_rank;
-    }
-    piggy_unused1;
-    struct
-    {
-      p4est_topidx_t      which_tree;
-      p4est_topidx_t      from_tree;
-    }
-    piggy_unused2;
-    struct
-    {
-      p4est_topidx_t      which_tree;
-      p4est_locidx_t      local_num;
-    }
-    piggy_unused3;
-    struct
-    {
-      p4est_topidx_t      which_tree;
-      p4est_locidx_t      depends[2];
-    }
-    piggy;
-  }
-  p;
-}
-p4est_hang2_t;
-
 /** This structure holds complete parallel node information.
  *
- * Nodes are unique and either independent or face hanging.
+ * Nodes are unique and considered independent.
  * Independent nodes store their owner's tree id in piggy3.which_tree.
  * The index in their owner's ordering is stored in piggy3.local_num.
- * Hanging nodes store their owner's tree id in piggy.which_tree.
- * The numbers of their associated independent nodes are in piggy.depends[].
  *
  * The local_nodes table is of dimension 4 * num_local_quadrants
- * and encodes the node indexes for all corners of all quadrants.  Let
- * ni := indep_nodes.elem_count,
- * fi := face_hangings.elem_count,
- * If for l := local_nodes[k]
- * l >= 0 && l < ni: l indexes into indep_nodes.
- * l >= ni && l < ni + fi: l - ni indexes into face_hangings.
- * No other values for l are permitted.
+ * and encodes the node indexes for all corners of all quadrants.
  *
  * The array shared_indeps holds lists of node sharers (not including rank).
  * The entry shared_indeps[i] is of type sc_recycle_array_t
@@ -137,7 +52,7 @@ p4est_hang2_t;
  * The table nonlocal_ranks contains the ranks of all stored non-owned nodes.
  * The table global_owned_indeps holds the number of owned nodes for each rank.
  */
-typedef struct p4est_nodes
+typedef struct my_p4est_nodes
 {
   p4est_locidx_t      num_local_quadrants;
   p4est_locidx_t      num_owned_indeps, num_owned_shared;
@@ -150,7 +65,7 @@ typedef struct p4est_nodes
   int                *nonlocal_ranks;
   p4est_locidx_t     *global_owned_indeps;
 }
-p4est_nodes_t;
+my_p4est_nodes_t;
 
 /** Create node information.
  * \param [in] ghost    Ghost layer.  If this is NULL, then only
@@ -161,15 +76,15 @@ p4est_nodes_t;
  *                      this also works for a corner-unbalanced forest,
  *                      but nodes may not be numbered uniquely in this case.
  */
-p4est_nodes_t      *p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost);
+my_p4est_nodes_t   *my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost);
 
 /** Destroy node information. */
-void                p4est_nodes_destroy (p4est_nodes_t * nodes);
+void                my_p4est_nodes_destroy (my_p4est_nodes_t * nodes);
 
 /** Check node information for internal consistency. */
-int                 p4est_nodes_is_valid (p4est_t * p4est,
-                                          p4est_nodes_t * nodes);
+int                 my_p4est_nodes_is_valid (p4est_t * p4est,
+                                             my_p4est_nodes_t * nodes);
 
 SC_EXTERN_C_END;
 
-#endif /* !P4EST_NODES_H */
+#endif /* !MY_P4EST_NODES_H */

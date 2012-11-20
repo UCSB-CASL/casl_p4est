@@ -25,12 +25,12 @@
 #include <p4est_algorithms.h>
 #include <p4est_bits.h>
 #include <p4est_communication.h>
-#include <p4est_nodes.h>
+#include "my_p4est_nodes.h"
 #else
 #include <p8est_algorithms.h>
 #include <p8est_bits.h>
 #include <p8est_communication.h>
-#include <p8est_nodes.h>
+#include "my_p8est_nodes.h"
 #endif
 #include <sc_ranges.h>
 
@@ -51,207 +51,6 @@ typedef struct
 p4est_node_peer_t;
 
 #endif
-
-/** Generate a neighbor of a quadrant for a given quadrant corner.
- * \param [in]  q             quadrant whose possible corner neighbor is built.
- * \param [in]  corner        the corner of the quadrant \a q whose possible
- *                            corner neighbor list will be indexed.
- * \param [in]  nnum          neighbor number around the specified corner.
- *                            This is also the number of the neighbor's corner
- *                            that is shared with \a q.
- *                            The case nnum==corner is forbidden.
- * \param [in]  neighor_rlev  the relative level of the neighbor compared to
- *                            the level of \a q, in -1..1.
- * \param [out] neighbor      the neighbor that will be filled.
- */
-static void
-p4est_possible_corner_neighbor (const p4est_quadrant_t * q, int corner,
-                                int nnum, int neighbor_rlev,
-                                p4est_quadrant_t * n)
-{
-  const int           nlevel = (int) q->level + neighbor_rlev;
-  const p4est_qcoord_t qh = P4EST_QUADRANT_LEN (q->level);
-  const p4est_qcoord_t nh = P4EST_QUADRANT_LEN (nlevel);
-#ifdef P4EST_DEBUG
-  int                 qcid;
-#endif
-
-  P4EST_ASSERT (p4est_quadrant_is_valid (q));
-  P4EST_ASSERT (-1 <= neighbor_rlev && neighbor_rlev <= 1);
-  P4EST_ASSERT (0 <= nlevel && nlevel <= P4EST_QMAXLEVEL);
-  P4EST_ASSERT (corner != nnum);
-
-#ifdef P4EST_DEBUG
-  /* Check to see if it is possible to construct the neighbor */
-  qcid = p4est_quadrant_child_id (q);
-  P4EST_ASSERT (neighbor_rlev >= 0 || qcid == corner);
-#endif
-
-  P4EST_QUADRANT_INIT (n);
-  n->x = q->x + (corner & 0x01) * qh - (nnum & 0x01) * nh;
-  n->y = q->y + ((corner & 0x02) >> 1) * qh - ((nnum & 0x02) >> 1) * nh;
-#ifdef P4_TO_P8
-  n->z = q->z + ((corner & 0x04) >> 2) * qh - ((nnum & 0x04) >> 2) * nh;
-#endif
-  n->level = (int8_t) nlevel;
-
-  P4EST_ASSERT (p4est_quadrant_is_extended (n));
-}
-
-static p4est_nodes_t *
-p4est_nodes_new_local (p4est_t * p4est)
-{
-  const int           rank = p4est->mpirank;
-  int                 qcid;
-  int                 corner, nnum, rlev;
-  int                 neighbor_proc;
-#ifdef P4EST_DEBUG
-  int                 is_balanced;
-#endif
-  p4est_topidx_t      first_local_tree = p4est->first_local_tree;
-  p4est_topidx_t      last_local_tree = p4est->last_local_tree;
-  p4est_topidx_t      jt;
-  p4est_locidx_t      il, Ncells = p4est->local_num_quadrants;
-  p4est_locidx_t      vertex_num;
-  p4est_locidx_t      lqid;
-  p4est_locidx_t      tree_offset;
-  p4est_locidx_t     *ln;
-  size_t              zz, numz_quadrants;
-  ssize_t             lnid;
-  p4est_tree_t       *tree;
-  sc_array_t         *quadrants;
-  p4est_quadrant_t    neighbor;
-  p4est_quadrant_t   *q;
-  p4est_indep_t      *in;
-  p4est_nodes_t      *nodes;
-
-  P4EST_GLOBAL_PRODUCTION ("Into " P4EST_STRING "_nodes_new_local\n");
-  P4EST_ASSERT (p4est_is_valid (p4est));
-#ifdef P4EST_DEBUG
-  is_balanced = p4est_is_balanced (p4est, P4EST_CONNECT_FULL);
-#endif
-
-  P4EST_QUADRANT_INIT (&neighbor);
-
-  nodes = P4EST_ALLOC (p4est_nodes_t, 1);
-  nodes->num_local_quadrants = Ncells;
-  nodes->num_owned_indeps = -1;
-  nodes->num_owned_shared = 0;
-  nodes->offset_owned_indeps = 0;
-  sc_array_init (&nodes->indep_nodes, sizeof (p4est_indep_t));
-#ifndef P4_TO_P8
-  sc_array_init (&nodes->face_hangings, sizeof (p4est_hang2_t));
-#else
-  sc_array_init (&nodes->face_hangings, sizeof (p8est_hang4_t));
-  sc_array_init (&nodes->edge_hangings, sizeof (p8est_hang2_t));
-#endif
-  nodes->local_nodes = P4EST_ALLOC (p4est_locidx_t, P4EST_CHILDREN * Ncells);
-  sc_array_init (&nodes->shared_indeps, sizeof (sc_recycle_array_t));
-  nodes->shared_offsets = NULL;
-  nodes->nonlocal_ranks = NULL;
-  nodes->global_owned_indeps = NULL;
-
-  /* Initialize vertex list to all -1.  Legitimate values are >= 0.  */
-  ln = nodes->local_nodes;
-  for (il = 0; il < P4EST_CHILDREN * Ncells; ++il) {
-    ln[il] = -1;
-  }
-
-  /* Loop over all local trees to generate the connectivity list */
-  ln = nodes->local_nodes;
-  for (jt = first_local_tree, vertex_num = 0, lqid = 0, tree_offset = 0;
-       jt <= last_local_tree; ++jt) {
-    tree = p4est_tree_array_index (p4est->trees, jt);
-    quadrants = &tree->quadrants;
-    numz_quadrants = quadrants->elem_count;
-
-    /* Find the neighbors of each quadrant */
-    for (zz = 0; zz < numz_quadrants; ++zz, ++lqid) {
-      q = p4est_quadrant_array_index (quadrants, zz);
-
-      /* loop over the corners of the quadrant */
-      for (corner = 0; corner < P4EST_CHILDREN; ++corner) {
-
-        /* Check to see if we have a new vertex */
-        if (ln[lqid * P4EST_CHILDREN + corner] == -1) {
-          ln[lqid * P4EST_CHILDREN + corner] = vertex_num;
-          in = (p4est_indep_t *) sc_array_push (&nodes->indep_nodes);
-          p4est_quadrant_corner_node (q, corner, (p4est_quadrant_t *) in);
-          in->pad8 = 0;
-          in->pad16 = 0;
-          in->p.piggy3.which_tree = jt;
-          in->p.piggy3.local_num = vertex_num;
-
-          /* loop over the possible corner neighbors to match new vertex */
-          for (nnum = 0; nnum < P4EST_CHILDREN; ++nnum) {
-            /* Don't search for the quadrant q itself */
-            if (nnum == corner)
-              continue;
-
-            qcid = p4est_quadrant_child_id (q);
-
-            /* loop over possible neighbor sizes */
-            for (rlev = -1; rlev < 2; ++rlev) {
-              /* can't check for quadrants larger than the root */
-              if (q->level == 0 && rlev < 0)
-                continue;
-              /* can't check for quadrants larger unless child id
-               * and corner line up
-               */
-              if (qcid != corner && rlev < 0)
-                continue;
-
-              /* get possible neighbor */
-              p4est_possible_corner_neighbor (q, corner, nnum, rlev,
-                                              &neighbor);
-
-              if (p4est_quadrant_is_inside_root (&neighbor)) {
-                /* neighbor is in the same tree */
-
-                neighbor_proc = p4est_comm_find_owner (p4est, jt, &neighbor,
-                                                       rank);
-
-                /* Neighbor is remote so we don't number its node */
-                if (neighbor_proc != rank)
-                  continue;
-
-                lnid = sc_array_bsearch (quadrants, &neighbor,
-                                         p4est_quadrant_compare);
-                if (lnid != -1) {
-                  lnid += tree_offset;
-                  /* We have found a neighbor in the same tree */
-                  if (ln[lnid * P4EST_CHILDREN + nnum] == -1) {
-                    /* This branch an invariant for corner-balanced forest */
-                    ln[lnid * P4EST_CHILDREN + nnum] = vertex_num;
-                  }
-                  else {
-                    /* This can only happen if not corner-balanced */
-                    P4EST_ASSERT (!is_balanced);
-                  }
-                  /* No need to check for more quadrants for this neighbor */
-                  break;
-                }
-              }
-            }
-          }
-          ++vertex_num;
-        }
-      }
-    }
-    tree_offset += (p4est_locidx_t) numz_quadrants;
-  }
-
-  nodes->num_owned_indeps = vertex_num;
-
-  P4EST_ASSERT (tree_offset == Ncells);
-  P4EST_ASSERT (lqid == Ncells);
-  P4EST_ASSERT ((size_t) vertex_num == nodes->indep_nodes.elem_count);
-  P4EST_ASSERT (p4est_nodes_is_valid (p4est, nodes));
-
-  P4EST_GLOBAL_PRODUCTION ("Done " P4EST_STRING "_nodes_new_local\n");
-
-  return nodes;
-}
 
 /** Determine the owning tree for a node and clamp it inside the domain.
  *
@@ -479,8 +278,8 @@ p4est_shared_offsets (sc_array_t * inda)
 
 #endif
 
-p4est_nodes_t      *
-p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
+my_p4est_nodes_t      *
+my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
 {
   const int           num_procs = p4est->mpisize;
   const int           rank = p4est->mpirank;
@@ -530,7 +329,7 @@ p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   p4est_locidx_t     *local_nodes, *quad_nodes, *shared_offsets;
   p4est_locidx_t     *new_node_number;
   p4est_tree_t       *tree;
-  p4est_nodes_t      *nodes;
+  my_p4est_nodes_t      *nodes;
   p4est_quadrant_t    c, n, p;
   p4est_quadrant_t   *q, *qpp[3], *r;
   p4est_indep_t      *in;
@@ -555,8 +354,9 @@ p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   sc_hash_array_t    *edge_hangings;
 #endif
 
-  if (ghost == NULL)
-    return p4est_nodes_new_local (p4est);
+  if (ghost == NULL) {
+    /* this is legal */
+  }
 
   P4EST_GLOBAL_PRODUCTION ("Into " P4EST_STRING "_nodes_new\n");
   P4EST_ASSERT (p4est_is_valid (p4est));
@@ -568,7 +368,7 @@ p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   qpp[1] = qpp[2] = &p;
 
   /* allocate and initialize the node structure to return */
-  nodes = P4EST_ALLOC (p4est_nodes_t, 1);
+  nodes = P4EST_ALLOC (my_p4est_nodes_t, 1);
   memset (nodes, -1, sizeof (*nodes));
   faha = &nodes->face_hangings;
 #ifdef P4_TO_P8
@@ -1296,14 +1096,14 @@ p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
                   (unsigned long long) shared_indeps->elem_count);
 #endif
 
-  P4EST_ASSERT (p4est_nodes_is_valid (p4est, nodes));
+  P4EST_ASSERT (my_p4est_nodes_is_valid (p4est, nodes));
   P4EST_GLOBAL_PRODUCTION ("Done " P4EST_STRING "_nodes_new\n");
 
   return nodes;
 }
 
 void
-p4est_nodes_destroy (p4est_nodes_t * nodes)
+my_p4est_nodes_destroy (my_p4est_nodes_t * nodes)
 {
   size_t              zz;
   sc_recycle_array_t *rarr;
@@ -1328,7 +1128,7 @@ p4est_nodes_destroy (p4est_nodes_t * nodes)
 }
 
 int
-p4est_nodes_is_valid (p4est_t * p4est, p4est_nodes_t * nodes)
+my_p4est_nodes_is_valid (p4est_t * p4est, my_p4est_nodes_t * nodes)
 {
   const int           num_procs = p4est->mpisize;
   const int           rank = p4est->mpirank;
