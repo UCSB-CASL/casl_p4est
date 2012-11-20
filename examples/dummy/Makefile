@@ -5,11 +5,14 @@ include $(P4EST_DIR)/etc/Makefile.p4est.mk
 P4EST_CXX = mpicxx
 
 TARGETS = dummy
-OBJECTS = dummymain.o dummytest.o my_p4est_tools.o
+OBJECTS = dummymain.o dummytest.o my_p4est_tools.o my_p4est_nodes.o
 
 default: $(TARGETS)
 
 my_p4est_tools.o: ../../src/my_p4est_tools.c
+	$(P4EST_CC) $(P4EST_CFLAGS) $(P4EST_CPPFLAGS) -c $< -o $@
+
+my_p4est_nodes.o: ../../src/my_p4est_nodes.c
 	$(P4EST_CC) $(P4EST_CFLAGS) $(P4EST_CPPFLAGS) -c $< -o $@
 
 .c.o:
