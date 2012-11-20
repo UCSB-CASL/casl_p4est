@@ -274,7 +274,7 @@ p4est_shared_offsets (sc_array_t * inda)
 #endif
 
 my_p4est_nodes_t      *
-my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
+my_p4est_nodes_new (p4est_t * p4est)
 {
   const int           num_procs = p4est->mpisize;
   const int           rank = p4est->mpirank;

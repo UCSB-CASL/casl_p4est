@@ -68,13 +68,9 @@ my_p8est_nodes_t;
 
 /** Create node information.
  * \param [in] p4est    The forest.  Does not need to be balanced.
- * \param [in] ghost    Ghost layer.  If this is NULL, then only
- *                      processor-local nodes will be matched and
- *                      nodes->global_owned_indeps will be NULL.
  * \return              A fully populated my_p8est_nodes structure.
  */
-my_p8est_nodes_t      *my_p8est_nodes_new (p8est_t * p8est,
-                                           p8est_ghost_t * ghost);
+my_p8est_nodes_t      *my_p8est_nodes_new (p8est_t * p8est);
 
 /** Destroy node information. */
 void                my_p8est_nodes_destroy (my_p8est_nodes_t * nodes);

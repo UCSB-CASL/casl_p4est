@@ -1,6 +1,4 @@
 
-#include <p4est.h>
-#include <p4est_ghost.h>
 #include <p4est_vtk.h>
 #include "../../src/my_p4est_nodes.h"
 
@@ -20,7 +18,6 @@ main (int argc, char ** argv)
 	MPI_Comm mpicomm;
 	p4est_connectivity_t * conn;
 	p4est_t * p4est;
-        p4est_ghost_t * ghost;
         my_p4est_nodes_t * nodes;
 
 	mpiret = MPI_Init (&argc, &argv);
@@ -48,13 +45,11 @@ main (int argc, char ** argv)
         p4est_partition (p4est, NULL);
         p4est_vtk_write_file (p4est, NULL, "twobrick");
 
-        /* create ghost and node information */
-        ghost = p4est_ghost_new (p4est, P4EST_CONNECT_FULL);
-        nodes = my_p4est_nodes_new (p4est, ghost);
+        /* create node information */
+        nodes = my_p4est_nodes_new (p4est);
 
         /* clean up */
         my_p4est_nodes_destroy (nodes);
-        p4est_ghost_destroy (ghost);
 	p4est_destroy (p4est);
 	p4est_connectivity_destroy (conn);
 
