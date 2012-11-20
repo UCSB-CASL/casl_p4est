@@ -58,7 +58,6 @@ typedef struct my_p4est_nodes
   p4est_locidx_t      num_owned_indeps, num_owned_shared;
   p4est_locidx_t      offset_owned_indeps;
   sc_array_t          indep_nodes;
-  sc_array_t          face_hangings;
   p4est_locidx_t     *local_nodes;
   sc_array_t          shared_indeps;
   p4est_locidx_t     *shared_offsets;
@@ -68,15 +67,14 @@ typedef struct my_p4est_nodes
 my_p4est_nodes_t;
 
 /** Create node information.
+ * \param [in] p4est    The forest.  Does not need to be balanced.
  * \param [in] ghost    Ghost layer.  If this is NULL, then only
- *                      tree- and processor-local nodes will be matched
- *                      and all others duplicated, all nodes will be
- *                      counted as independent with no sharers, and
- *                      nodes->global_owned_indeps will be NULL;
- *                      this also works for a corner-unbalanced forest,
- *                      but nodes may not be numbered uniquely in this case.
+ *                      processor-local nodes will be matched and
+ *                      nodes->global_owned_indeps will be NULL.
+ * \return              A fully allocated my_p4est_nodes structure.
  */
-my_p4est_nodes_t   *my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost);
+my_p4est_nodes_t   *my_p4est_nodes_new (p4est_t * p4est,
+                                        p4est_ghost_t * ghost);
 
 /** Destroy node information. */
 void                my_p4est_nodes_destroy (my_p4est_nodes_t * nodes);
