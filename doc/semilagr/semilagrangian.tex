@@ -30,7 +30,7 @@ on nested non-conforming hexahedral meshes.
   \caption{Basic semi-Lagrangian time step}
   \begin{algorithmic}
     \FOR{$e$ in local cells}
-      \FOR{$n$ in nodes on $e$ that have not yet been processed}
+      \FOR{$n$ in local nodes on $e$ that have not yet been processed}
         \STATE Extrapolate location of $n$ backward in time as $x_n$
 	\IF{$x_n$ is located on a different processor $p_n$}
 	\STATE Append $x_n$ to send buffer for $p_n$
@@ -43,6 +43,7 @@ on nested non-conforming hexahedral meshes.
     \STATE Receive points $x_n$, interpolate, add to send buffer
     \STATE Send back the interpolated values
     \STATE Receive values for non-local points and update node values
+    \STATE Communicate new values for shared nodes
   \end{algorithmic}
 \end{algorithm}
 
