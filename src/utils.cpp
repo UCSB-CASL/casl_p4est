@@ -84,3 +84,30 @@ void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* qua
 
 }
 
+double bilinear_interpolation(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_id, double *F, double x_global, double y_global)
+{
+  p4est_topidx_t lower_left_vertex  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+  p4est_topidx_t upper_right_vertex = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 3];
+
+  double tree_xmin = p4est->connectivity->vertices[3*lower_left_vertex + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*lower_left_vertex + 1];
+
+  double tree_xmax = p4est->connectivity->vertices[3*upper_right_vertex + 0];
+  double tree_ymax = p4est->connectivity->vertices[3*upper_right_vertex + 1];
+
+  double x = (x_global - tree_xmin)/(tree_xmax - tree_xmin);
+  double y = (y_global - tree_ymin)/(tree_ymax - tree_ymin);
+
+  double qh   = (double)P4EST_QUADRANT_LEN(quad->level) / (double)(P4EST_ROOT_LEN);
+  double xmin = (double)quad->x / (double)(P4EST_ROOT_LEN);
+  double ymin = (double)quad->y / (double)(P4EST_ROOT_LEN);
+
+  double d_m0 = x - xmin;
+  double d_p0 = qh - d_m0;
+  double d_0m = y - ymin;
+  double d_0p = qh - d_0m;
+
+  return ( (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) );
+}
+
+
