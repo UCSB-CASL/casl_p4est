@@ -281,10 +281,9 @@ my_p4est_nodes_new (p4est_t * p4est)
 #ifdef P4EST_MPI
   int                 mpiret;
   int                 owner, prev;
-  int                 num_send_queries, num_send_nonzero, num_recv_queries;
+  int                 num_send_queries, num_recv_queries;
   int                 byte_count, elem_count;
   int                 local_send_count, local_recv_count;
-  int                *procs;
   int                *old_sharers, *new_sharers;
   char               *this_base;
   int                 found;
@@ -432,7 +431,6 @@ my_p4est_nodes_new (p4est_t * p4est)
   /* Fill send buffers and number owned nodes. */
   first_size = P4EST_DIM * sizeof (p4est_qcoord_t) + sizeof (p4est_topidx_t);
   first_size = SC_MAX (first_size, sizeof (p4est_locidx_t));
-  procs = P4EST_ALLOC_ZERO (int, num_procs);
   peers = P4EST_ALLOC (p4est_node_peer_t, num_procs);
   sc_array_init (&send_requests, sizeof (MPI_Request));
   for (k = 0; k < num_procs; ++k) {
@@ -460,7 +458,7 @@ my_p4est_nodes_new (p4est_t * p4est)
       ttt = (p4est_topidx_t *) (&xyz[P4EST_DIM]);
       *ttt = in->p.which_tree;
       in->p.piggy1.owner_rank = owner;
-      ++procs[owner];
+      peer->expect_reply = 1;
     }
     else {
       if (offset_owned_indeps == -1) {
@@ -471,6 +469,7 @@ my_p4est_nodes_new (p4est_t * p4est)
     P4EST_ASSERT (prev <= owner);
     prev = owner;
   }
+  peer = NULL;
   if (offset_owned_indeps == -1) {
     P4EST_ASSERT (num_owned_indeps == 0);
     offset_owned_indeps = 0;
@@ -480,7 +479,7 @@ my_p4est_nodes_new (p4est_t * p4est)
   /* Distribute global information about who is sending to who. */
   sc_array_init (&receiver_ranks, sizeof (int));
   for (owner = 0; owner < num_procs; ++owner) {
-    if (procs[owner] > 0) {
+    if (peers[owner].expect_reply) {
       P4EST_ASSERT (owner != rank);
       *(int *) sc_array_push (&receiver_ranks) = owner;
     }
@@ -493,22 +492,21 @@ my_p4est_nodes_new (p4est_t * p4est)
                         num_receivers, num_senders);
 
   /* Send queries to the owners of the independent nodes that I share. */
-  num_send_queries = num_send_nonzero = local_send_count = 0;
+  num_send_queries = local_send_count = 0;
   for (l = 0; l < num_receivers; ++l) {
     k = *(int *) sc_array_index_int (&receiver_ranks, l);
     P4EST_ASSERT (k >= 0 && k < num_procs && k != rank);
     peer = peers + k;
+    P4EST_ASSERT (peer->expect_reply == 1);
     send_request = (MPI_Request *) sc_array_push (&send_requests);
     this_size = peer->send_first.elem_count * first_size;
+    P4EST_ASSERT (this_size > 0);
     mpiret = MPI_Isend (peer->send_first.array, (int) this_size,
                         MPI_BYTE, k, P4EST_COMM_NODES_QUERY,
                         p4est->mpicomm, send_request);
     SC_CHECK_MPI (mpiret);
     local_send_count += (int) peer->send_first.elem_count;
     ++num_send_queries;
-    P4EST_ASSERT (this_size > 0);
-    ++num_send_nonzero;
-    peer->expect_reply = 1;
   }
   sc_array_reset (&receiver_ranks);
 
@@ -521,8 +519,8 @@ my_p4est_nodes_new (p4est_t * p4est)
     ++num_recv_queries;
   }
   P4EST_FREE (sender_ranks);
-  P4EST_VERBOSEF ("Node queries send %d nonz %d recv %d\n",
-                  num_send_queries, num_send_nonzero, num_recv_queries);
+  P4EST_VERBOSEF ("Node queries send %d recv %d\n",
+                  num_send_queries, num_recv_queries);
 
   /* Receive queries and look up the reply information */
   P4EST_QUADRANT_INIT (&inkey);
@@ -675,7 +673,7 @@ my_p4est_nodes_new (p4est_t * p4est)
 
 #ifdef P4EST_MPI
   /* Receive the replies. */
-  for (l = 0; l < num_send_nonzero; ++l) {
+  for (l = 0; l < num_send_queries; ++l) {
     mpiret = MPI_Probe (MPI_ANY_SOURCE, P4EST_COMM_NODES_REPLY,
                         p4est->mpicomm, &probe_status);
     SC_CHECK_MPI (mpiret);
@@ -778,7 +776,6 @@ my_p4est_nodes_new (p4est_t * p4est)
     sc_array_reset (&peer->recv_second);
   }
   P4EST_FREE (peers);
-  P4EST_FREE (procs);
 
   mpiret = MPI_Allgather (&num_owned_indeps, 1, P4EST_MPI_LOCIDX,
                           nodes->global_owned_indeps, 1, P4EST_MPI_LOCIDX,
