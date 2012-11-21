@@ -6,8 +6,8 @@ vpath %.cpp    $(HEAD_DIR)/src
 vpath %.c      $(HEAD_DIR)/src 
 INCLUDE_FLAGS += -I$(HEAD_DIR)
 SRCS           = main_semi_lagrangian.cpp utils.cpp my_p4est_vtk.cpp
-#CSRCS          = my_p4est_tools.c
-BIN_NAME       = poisson
+CSRCS          = my_p4est_tools.c my_p4est_nodes.c
+BIN_NAME       = levelset
 BIN_FOLDER     = .
 
 # What build type to use? __MUST__ either be 'debug' or 'release'
@@ -35,7 +35,7 @@ CUDA_EXTRA_FLAGS =
 
 # Verbose control
 PRINT_WARNINGS    = NO
-PRINT_MAKE_OUTPUT = YES
+PRINT_MAKE_OUTPUT = NO
 
 # Where to put all temporary objets?
 TEMP_OBJS_DIR      = objs
@@ -108,9 +108,9 @@ $(BIN_NAME): $(OBJS)
 	@echo " linking $(@F) ..."
 	$(CXX) $(LINK_FLAGS) $^ $(LINK_LIBS) -o $(BIN_FOLDER)/$(BIN_NAME)
 
-# .PHONY: clean
-# clean::
-# 	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
+.PHONY: clean
+clean::
+	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
 
 .PHONY: cleanall
 cleanall::

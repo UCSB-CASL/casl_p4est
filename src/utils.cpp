@@ -119,4 +119,41 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quad
   return ( (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) );
 }
 
+PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, my_p4est_nodes_t *nodes, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = nodes->num_owned_indeps;
 
+  ArrayV<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local); ghost_nodes.name = "ghost_nodes";
+  ArrayV<p4est_topidx_t> global_offset_sum(p4est->mpisize + 1); global_offset_sum = 0; global_offset_sum.name = "global_offset_sum";
+
+  // Calculate the global number of points
+  for (int r = 0; r<p4est->mpisize; ++r)
+  {
+    global_offset_sum(r + 1) = global_offset_sum(r) + nodes->global_owned_indeps[r];
+  }
+
+  p4est_gloidx_t num_global = global_offset_sum(p4est->mpisize);
+
+  // Find the global index of all ghost nodes
+
+  // 1 - nodes before local nodes
+  for (p4est_locidx_t i = 0; i<nodes->offset_owned_indeps; ++i)
+  {
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    ghost_nodes(i) = node->p.piggy3.local_num + global_offset_sum(nodes->nonlocal_ranks[i]);
+  }
+
+
+  // 2 - nodes after the local nodes
+  for (p4est_locidx_t i = nodes->offset_owned_indeps+num_local; i<nodes->indep_nodes.elem_count; ++i)
+  {
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    ghost_nodes(i-num_local) = node->p.piggy3.local_num + global_offset_sum(nodes->nonlocal_ranks[i-num_local]);
+  }
+
+  ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global, ghost_nodes.size(), (const PetscInt*)ghost_nodes, v); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(*v); CHKERRXX(ierr);
+
+  return ierr;
+}

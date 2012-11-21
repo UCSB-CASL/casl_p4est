@@ -5,20 +5,21 @@
 
 // My files for this project
 
-#include "src/my_p4est_vtk.h"
-#include "src/poisson_solver.h"
-#include <src/utils.h>
-
 // System
 #include <stdexcept>
 #include <iostream>
 #include <sys/stat.h>
 
-// CASL
+// casl_p4est
 #include <src/utilities.h>
+#include <src/my_p4est_vtk.h>
+#include <src/poisson_solver.h>
+#include <src/utils.h>
+#include <src/my_p4est_nodes.h>
+#include <src/semi_lagrangian.h>
 
 #define SQR(x) (x)*(x)
-#define PHI(x,y,r) (r) - sqrt(x*x + y*y)
+#define PHI(x,y) 0.2 - sqrt(SQR(x-0.5) + SQR(y-0.5))
 #define P4EST_TRUE  1
 #define P4EST_FALSE 0
 typedef int p4est_bool_t;
@@ -74,7 +75,7 @@ static int refine_circle (p4est_t * p4est, p4est_topidx_t which_tree,
     double d2  = sqrt(SQR(x_ver[1]-x_ver[2]) + SQR(y_ver[1]-y_ver[2]));
     double d = 0.5 * (d1+d2);
 
-    double phi = PHI(x_c, y_c, 0.5);
+    double phi = PHI(x_c, y_c);
 
     // refinement rule
     if (quadrant->level <data->min_lvl)
@@ -85,75 +86,6 @@ static int refine_circle (p4est_t * p4est, p4est_topidx_t which_tree,
         return P4EST_TRUE;
 
     return P4EST_FALSE;
-}
-
-static int refine_fn_2(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quadrant){
-
-    refine_user_data_t *data = (refine_user_data_t*)p4est->user_pointer;
-    bool condition = true;
-
-    if (quadrant->level < data->min_lvl)
-        return P4EST_TRUE;
-    else if (quadrant->level >= data->max_lvl)
-        return P4EST_FALSE;
-    else
-        if (condition)
-            return P4EST_TRUE;
-
-    return P4EST_FALSE;
-}
-
-p4est_connectivity_t* my_connectivity(void){
-    // Number of vertices in the macro-mesh
-    const p4est_topidx_t num_vertices = 9;
-
-    // Number of trees in the macro-mesh
-    const p4est_topidx_t num_trees = 4;
-
-    // TODO: What is this for?
-    const p4est_topidx_t num_ctt = 0;
-
-    // Coordinates for the vertices of the macro-mesh; could be in any order
-    const double vertices[] = {
-        -1, -1,  0,
-         0, -1,  0,
-         1, -1,  0,
-        -1,  0,  0,
-         0,  0,  0,
-         1,  0,  0,
-        -1,  1,  0,
-         0,  1,  0,
-         1,  1,  0
-    };
-
-    // What are 4 corners of the trees? This should be z-ordered
-    const p4est_topidx_t tree_to_vertex[] = {
-        0, 1, 3, 4,
-        1, 2, 4, 5,
-        3, 4, 6, 7,
-        4, 5, 7, 8
-    };
-
-    // What are the neibors of this tree?
-    const p4est_topidx_t tree_to_tree[] = {
-        0, 1, 0, 2,
-        0, 1, 1, 3,
-        2, 3, 0, 2,
-        2, 3, 1, 3
-    };
-
-    // What are the corresponding faces that this tree is connected to?
-    const int8_t tree_to_face[] = {
-        0, 0, 2, 2,
-        1, 1, 2, 2,
-        0, 0, 3, 3,
-        1, 1, 3, 3
-    };
-
-    return p4est_connectivity_new_copy (num_vertices, num_trees, 0,
-                                        vertices, tree_to_vertex,
-                                        tree_to_tree, tree_to_face,
-                                        NULL, &num_ctt, NULL, NULL);
 }
 
 class Session{
@@ -185,7 +117,7 @@ int main (int argc, char* argv[]){
     p4est_connectivity_t *connectivity;
     PetscErrorCode ierr;    
 
-    refine_user_data_t data = {8, 4, 1.2};
+    refine_user_data_t data = {6, 3, 1.2};
 
 
     Session session(argc, argv);
@@ -200,7 +132,7 @@ int main (int argc, char* argv[]){
 
     // First we need to create a connectivity object that describes the macro-mesh
     w2.start("connectivity");
-    connectivity = my_connectivity();
+    connectivity = p4est_connectivity_new_unitsquare();
     w2.stop(); w2.read_duration();
 
     // Now create the forest
@@ -225,11 +157,96 @@ int main (int argc, char* argv[]){
     p4est_partition(p4est, NULL);
     w2.stop(); w2.read_duration();
 
+    my_p4est_nodes *nodes = my_p4est_nodes_new(p4est);
 
+    Vec phi_ghosted, phi_local;
+    Vec vx_ghosted, vx_local;
+    Vec vy_ghosted, vy_local;
+
+    ierr = VecGhostCreate_p4est(p4est, nodes, &phi_ghosted); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_ghosted, &vx_ghosted); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_ghosted, &vy_ghosted); CHKERRXX(ierr);
+
+    ierr = VecGhostGetLocalForm(phi_ghosted, &phi_local); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(vx_ghosted, &vx_local); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(vy_ghosted, &vy_local); CHKERRXX(ierr);
+
+    // Initialize level-set function
+    double *phi_val, *vx_val, *vy_val;
+    ierr = VecGetArray(phi_local, &phi_val); CHKERRXX(ierr);
+    ierr = VecGetArray(vx_local , &vx_val ); CHKERRXX(ierr);
+    ierr = VecGetArray(vy_local , &vy_val ); CHKERRXX(ierr);
+
+    for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; ++i)
+    {
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
+      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+      p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+      p4est_topidx_t v_pp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 3];
+
+      double tree_xmin = connectivity->vertices[3*v_mm + 0];
+      double tree_xmax = connectivity->vertices[3*v_pp + 0];
+      double tree_ymin = connectivity->vertices[3*v_mm + 1];
+      double tree_ymax = connectivity->vertices[3*v_pp + 1];
+
+
+      double x = (double)node->x / (double)P4EST_ROOT_LEN; x = x*(tree_xmax-tree_xmin) + tree_xmin;
+      double y = (double)node->y / (double)P4EST_ROOT_LEN; y = y*(tree_ymax-tree_ymin) + tree_ymin;
+
+      phi_val[i] = PHI(x,y);
+
+      double vx   = x - 0.5;
+      double vy   = y - 0.5;
+
+      vx_val[i]  = vx;
+      vy_val[i]  = vy;
+    }
+
+    ierr = VecGhostUpdateBegin(phi_ghosted, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(phi_ghosted, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecGhostUpdateBegin(vx_ghosted, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(vx_ghosted, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecGhostUpdateBegin(vy_ghosted, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(vy_ghosted, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecView(phi_ghosted, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+
+    my_p4est_vtk_write_all(p4est, NULL, 1.0,
+                           3, 0, "levelset",
+                           VTK_POINT_DATA, "phi", phi_val,
+                           VTK_POINT_DATA, "vx", vx_val,
+                           VTK_POINT_DATA, "vy", vy_val);
+
+    // Restore temporary objects
+    ierr = VecRestoreArray(phi_local, &phi_val); CHKERRXX(ierr);
+    ierr = VecRestoreArray(vx_local,  &vx_val ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(vy_local,  &vy_val ); CHKERRXX(ierr);
+
+    ierr = VecGhostRestoreLocalForm(phi_ghosted, &phi_local); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(vx_ghosted,  &vx_local ); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(vy_ghosted,  &vy_local ); CHKERRXX(ierr);
+
+
+//    semi_lagrangian SL(p4est, a, b);
+
+//    double tf = 1.0;
+//    double dt = 0.1;
+//    for (double t = 0; t<tf; t += dt)
+//      SL.advance(vx, vy, dt, phi_ghosted);
+
+
+    // Destroy PETSc objects
+    ierr = VecDestroy(&phi_ghosted); CHKERRXX(ierr);
+    ierr = VecDestroy(&vx_ghosted ); CHKERRXX(ierr);
+    ierr = VecDestroy(&vy_ghosted ); CHKERRXX(ierr);
 
     // destroy the p4est and its connectivity structure
     p4est_destroy (p4est);
     p4est_connectivity_destroy (connectivity);
+    my_p4est_nodes_destroy(nodes);
 
     w1.stop(); w1.read_duration();
 

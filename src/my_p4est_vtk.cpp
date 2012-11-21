@@ -192,7 +192,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
   sc_array_t         *quadrants, *indeps;
   p4est_tree_t       *tree;
   p4est_quadrant_t   *quad;
-  p4est_nodes_t      *nodes;
+  my_p4est_nodes_t   *nodes;
   p4est_indep_t      *in;
   char                vtufilename[BUFSIZ];
   FILE               *vtufile;
@@ -211,10 +211,10 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
   }
   else {
     /* when scale == 1. we can reuse shared quadrant corners */
-    nodes = p4est_nodes_new (p4est, NULL);
+    nodes = my_p4est_nodes_new (p4est);
     indeps = &nodes->indep_nodes;
-    Ntotal = nodes->num_owned_indeps;
-    P4EST_ASSERT ((size_t) Ntotal == indeps->elem_count);
+    Ntotal = indeps->elem_count;//nodes->num_local_quadrants*P4EST_CHILDREN;
+//    P4EST_ASSERT ((size_t) Ntotal == indeps->elem_count);
   }
 
   /* Have each proc write to its own file */
@@ -501,7 +501,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
   P4EST_FREE (locidx_data);
 #endif
   if (nodes != NULL) {
-    p4est_nodes_destroy (nodes);
+    my_p4est_nodes_destroy (nodes);
   }
 
   if (ferror (vtufile)) {
@@ -567,6 +567,7 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_geometry_t * geom,
   const int           mpirank = p4est->mpirank;
   const p4est_locidx_t Ncells = p4est->local_num_quadrants;
   const p4est_locidx_t Ncorners = P4EST_CHILDREN * Ncells;      /* type ok */
+//  const p4est_locidx_t Ntotal =
   int                 retval;
   p4est_locidx_t      il;
 #ifndef P4EST_VTK_ASCII
