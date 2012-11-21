@@ -8,6 +8,8 @@ INCLUDE_FLAGS += -I$(HEAD_DIR)
 SRCS           = main_semi_lagrangian.cpp utils.cpp my_p4est_vtk.cpp
 CSRCS          = my_p4est_tools.c my_p4est_nodes.c
 BIN_NAME       = levelset
+CSRCS          = my_p4est_nodes.c my_p4est_tools.c
+BIN_NAME       = poisson
 BIN_FOLDER     = .
 
 # What build type to use? __MUST__ either be 'debug' or 'release'

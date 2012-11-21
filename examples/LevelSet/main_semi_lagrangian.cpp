@@ -1,7 +1,7 @@
 // p4est Library
-#include <p4est_extended.h>
 #include <p4est_bits.h>
-#include <p4est_nodes.h>
+#include <p4est_extended.h>
+#include <p4est_vtk.h>
 
 // My files for this project
 
@@ -113,8 +113,11 @@ int main (int argc, char* argv[]){
 
     mpi_context_t       mpi_context, *mpi = &mpi_context;
     mpi->mpicomm = MPI_COMM_WORLD;
-    p4est_t            *p4est;
     p4est_connectivity_t *connectivity;
+    p4est_t            *p4est;
+    my_p4est_nodes_t   *nodes;
+    p4est_gloidx_t     *cumulative_owned_nodes, N;
+    int i;
     PetscErrorCode ierr;    
 
     refine_user_data_t data = {6, 3, 1.2};
@@ -130,15 +133,16 @@ int main (int argc, char* argv[]){
     MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
 
-    // First we need to create a connectivity object that describes the macro-mesh
+    // First we need to create a connectivity object
+    // that describes the macro-mesh
     w2.start("connectivity");
-    connectivity = p4est_connectivity_new_unitsquare();
+    connectivity = p4est_connectivity_new_brick (2, 2, 0, 0);
     w2.stop(); w2.read_duration();
 
     // Now create the forest
     w2.start("p4est generation");
-    p4est = p4est_new_ext (mpi->mpicomm, connectivity, 0, data.min_lvl, P4EST_FALSE,
-                           0, NULL, NULL);
+    p4est = p4est_new_ext (mpi->mpicomm, connectivity, 0, data.min_lvl,
+                           P4EST_TRUE, 0, NULL, NULL);
     w2.stop(); w2.read_duration();
 
     // Now refine the tree
@@ -147,17 +151,12 @@ int main (int argc, char* argv[]){
     p4est_refine(p4est, P4EST_TRUE, refine_circle, NULL);
     w2.stop(); w2.read_duration();
 
-    // Now balence
-    w2.start("balance");
-    p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
-    w2.stop(); w2.read_duration();
-
     // Finally re-partition
     w2.start("partition");
     p4est_partition(p4est, NULL);
     w2.stop(); w2.read_duration();
 
-    my_p4est_nodes *nodes = my_p4est_nodes_new(p4est);
+    nodes = my_p4est_nodes_new(p4est);
 
     Vec phi_ghosted, phi_local;
     Vec vx_ghosted, vx_local;
@@ -237,6 +236,7 @@ int main (int argc, char* argv[]){
 //    for (double t = 0; t<tf; t += dt)
 //      SL.advance(vx, vy, dt, phi_ghosted);
 
+    p4est_vtk_write_file (p4est, NULL, "partitioned");
 
     // Destroy PETSc objects
     ierr = VecDestroy(&phi_ghosted); CHKERRXX(ierr);
@@ -244,6 +244,8 @@ int main (int argc, char* argv[]){
     ierr = VecDestroy(&vy_ghosted ); CHKERRXX(ierr);
 
     // destroy the p4est and its connectivity structure
+    P4EST_FREE (cumulative_owned_nodes);
+    my_p4est_nodes_destroy (nodes);
     p4est_destroy (p4est);
     p4est_connectivity_destroy (connectivity);
     my_p4est_nodes_destroy(nodes);

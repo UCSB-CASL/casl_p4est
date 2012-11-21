@@ -1,6 +1,7 @@
 
 #include <p4est_vtk.h>
 #include "../../src/my_p4est_nodes.h"
+#include "../../src/my_p4est_tools.h"
 
 static int
 simple_refine (p4est_t * p4est, p4est_topidx_t which_tree,
@@ -15,7 +16,10 @@ main (int argc, char ** argv)
 	int mpiret;
 	int mpirank;
 	int lp;
+        int owner;
+        double xy[2];
 	MPI_Comm mpicomm;
+        p4est_topidx_t which_tree;
 	p4est_connectivity_t * conn;
 	p4est_t * p4est;
         my_p4est_nodes_t * nodes;
@@ -47,6 +51,14 @@ main (int argc, char ** argv)
 
         /* create node information */
         nodes = my_p4est_nodes_new (p4est);
+
+        /* look up a point */
+        xy[0] = .5;
+        xy[1] = .5;
+        which_tree = conn->num_trees - 1;
+        owner = my_p4est_brick_point_lookup (p4est, xy, &which_tree,
+                                             NULL, NULL);
+        P4EST_INFOF ("Owner of point %g %g is %d\n", xy[0], xy[1], owner);
 
         /* clean up */
         my_p4est_nodes_destroy (nodes);

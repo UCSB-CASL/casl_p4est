@@ -488,8 +488,8 @@ my_p4est_nodes_new (p4est_t * p4est)
   sender_ranks = P4EST_ALLOC (int, num_procs);
   sc_notify ((int *) receiver_ranks.array, num_receivers,
              sender_ranks, &num_senders, p4est->mpicomm);
-  P4EST_GLOBAL_LDEBUGF ("Num receivers %d senders %d\n",
-                        num_receivers, num_senders);
+  P4EST_LDEBUGF ("Num receivers %d senders %d\n",
+                 num_receivers, num_senders);
 
   /* Send queries to the owners of the independent nodes that I share. */
   num_send_queries = local_send_count = 0;
