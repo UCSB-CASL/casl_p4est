@@ -136,7 +136,7 @@ int main (int argc, char* argv[]){
     int i;
     PetscErrorCode ierr;    
 
-    refine_user_data_t data = {8, 4, 1.2};
+    refine_user_data_t data = {4, 1, 1.2};
 
 
     Session session(argc, argv);
@@ -152,7 +152,7 @@ int main (int argc, char* argv[]){
     // First we need to create a connectivity object
     // that describes the macro-mesh
     w2.start("connectivity");
-    connectivity = p4est_connectivity_new_brick (2, 2, 0, 0);
+    connectivity = p4est_connectivity_new_brick (1, 1, 0, 0);
     w2.stop(); w2.read_duration();
 
     // Now create the forest

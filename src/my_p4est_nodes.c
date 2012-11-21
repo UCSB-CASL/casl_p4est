@@ -281,9 +281,8 @@ my_p4est_nodes_new (p4est_t * p4est)
 #ifdef P4EST_MPI
   int                 mpiret;
   int                 owner, prev;
-  int                 num_send_queries, num_recv_queries;
   int                 byte_count, elem_count;
-  int                 local_send_count, local_recv_count;
+  int                 num_added_nodes;
   int                *old_sharers, *new_sharers;
   char               *this_base;
   int                 found;
@@ -391,6 +390,129 @@ my_p4est_nodes_new (p4est_t * p4est)
   inda = &indep_nodes->a;
   P4EST_ASSERT (num_indep_nodes == (p4est_locidx_t) inda->elem_count);
 
+#ifdef P4EST_MPI
+  /* Fill send buffers for non-owned nodes. */
+  first_size = P4EST_DIM * sizeof (p4est_qcoord_t) + sizeof (p4est_topidx_t);
+  first_size = SC_MAX (first_size, sizeof (p4est_locidx_t));
+  peers = P4EST_ALLOC (p4est_node_peer_t, num_procs);
+  sc_array_init (&send_requests, sizeof (MPI_Request));
+  for (k = 0; k < num_procs; ++k) {
+    peer = peers + k;
+    peer->expect_query = peer->expect_reply = 0;
+    peer->recv_offset = 0;
+    sc_array_init (&peer->send_first, first_size);
+    sc_array_init (&peer->recv_first, first_size);
+    sc_array_init (&peer->send_second, 1);
+    sc_array_init (&peer->recv_second, 1);
+  }
+  for (il = 0; il < num_indep_nodes; ++il) {
+    in = (p4est_indep_t *) sc_array_index (inda, (size_t) il);
+    owner = p4est_comm_find_owner (p4est, in->p.which_tree,
+                                   (p4est_quadrant_t *) in, rank);
+    if (owner != rank) {
+      peer = peers + owner;
+      xyz = (p4est_qcoord_t *) sc_array_push (&peer->send_first);
+      xyz[0] = in->x;
+      xyz[1] = in->y;
+#ifdef P4_TO_P8
+      xyz[2] = in->z;
+#endif
+      ttt = (p4est_topidx_t *) (&xyz[P4EST_DIM]);
+      *ttt = in->p.which_tree;
+      peer->expect_reply = 1;
+    }
+    in->p.piggy1.owner_rank = owner;
+  }
+  peer = NULL;
+
+  /* Distribute global information about who is sending to who. */
+  sc_array_init (&receiver_ranks, sizeof (int));
+  for (owner = 0; owner < num_procs; ++owner) {
+    if (peers[owner].expect_reply) {
+      P4EST_ASSERT (owner != rank);
+      *(int *) sc_array_push (&receiver_ranks) = owner;
+    }
+  }
+  num_receivers = (int) receiver_ranks.elem_count;
+  sender_ranks = P4EST_ALLOC (int, num_procs);
+  sc_notify ((int *) receiver_ranks.array, num_receivers,
+             sender_ranks, &num_senders, p4est->mpicomm);
+  P4EST_LDEBUGF ("Num receivers %d senders %d\n",
+                 num_receivers, num_senders);
+
+  /* Send queries to the owners of the independent nodes that I share. */
+  for (l = 0; l < num_receivers; ++l) {
+    k = *(int *) sc_array_index_int (&receiver_ranks, l);
+    P4EST_ASSERT (k >= 0 && k < num_procs && k != rank);
+    peer = peers + k;
+    P4EST_ASSERT (peer->expect_reply == 1);
+    send_request = (MPI_Request *) sc_array_push (&send_requests);
+    this_size = peer->send_first.elem_count * first_size;
+    P4EST_ASSERT (this_size > 0);
+    mpiret = MPI_Isend (peer->send_first.array, (int) this_size,
+                        MPI_BYTE, k, P4EST_COMM_NODES_QUERY,
+                        p4est->mpicomm, send_request);
+    SC_CHECK_MPI (mpiret);
+  }
+  sc_array_reset (&receiver_ranks);
+
+  /* Prepare to receive queries */
+  for (l = 0; l < num_senders; ++l) {
+    k = sender_ranks[l];
+    P4EST_ASSERT (k >= 0 && k < num_procs && k != rank);
+    peers[k].expect_query = 1;
+  }
+  P4EST_FREE (sender_ranks);
+  P4EST_VERBOSEF ("Node queries send %d recv %d\n",
+                  num_receivers, num_senders);
+  
+  /* Receive queries and add nodes as necessary. */
+  P4EST_QUADRANT_INIT (&inkey);
+  inkey.level = P4EST_MAXLEVEL;
+  num_added_nodes = 0;
+  for (l = 0; l < num_senders; ++l) {
+    mpiret = MPI_Probe (MPI_ANY_SOURCE, P4EST_COMM_NODES_QUERY,
+                        p4est->mpicomm, &probe_status);
+    SC_CHECK_MPI (mpiret);
+    k = probe_status.MPI_SOURCE;
+    peer = peers + k;
+    P4EST_ASSERT (k != rank && peer->expect_query);
+    mpiret = MPI_Get_count (&probe_status, MPI_BYTE, &byte_count);
+    SC_CHECK_MPI (mpiret);
+    P4EST_ASSERT (byte_count % first_size == 0);
+    elem_count = byte_count / (int) first_size;
+    sc_array_resize (&peer->recv_first, (size_t) elem_count);
+    mpiret = MPI_Recv (peer->recv_first.array, byte_count, MPI_BYTE,
+                       k, P4EST_COMM_NODES_QUERY,
+                       p4est->mpicomm, &recv_status);
+    SC_CHECK_MPI (mpiret);
+    peer->expect_query = 0;
+    for (zz = 0; zz < peer->recv_first.elem_count; ++zz) {
+      xyz = (p4est_qcoord_t *) sc_array_index (&peer->recv_first, zz);
+      inkey.x = xyz[0];
+      inkey.y = xyz[1];
+#ifdef P4_TO_P8
+      inkey.z = xyz[2];
+#endif
+      ttt = (p4est_topidx_t *) (&xyz[P4EST_DIM]);
+      inkey.p.which_tree = *ttt;
+      r =
+        (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
+                                                          &inkey, &position);
+      if (r != NULL) {
+        *r = *(p4est_quadrant_t *) &inkey;
+        P4EST_ASSERT ((p4est_locidx_t) position ==
+                      num_indep_nodes + num_added_nodes);
+        ++num_added_nodes;
+      }
+      else {
+        P4EST_ASSERT ((p4est_locidx_t) position < num_indep_nodes);
+      }
+    }
+  }
+  num_indep_nodes += num_added_nodes;
+#endif /* P4EST_MPI */
+
   /* Reorder independent nodes by their global treeid and z-order index. */
   new_node_number = P4EST_ALLOC (p4est_locidx_t, num_indep_nodes);
   for (il = 0; il < num_indep_nodes; ++il) {
@@ -426,6 +548,14 @@ my_p4est_nodes_new (p4est_t * p4est)
 #endif
   num_owned_shared = 0;
   P4EST_FREE (new_node_number);
+
+
+
+
+
+
+
+
 
 #ifdef P4EST_MPI
   /* Fill send buffers and number owned nodes. */
@@ -492,7 +622,6 @@ my_p4est_nodes_new (p4est_t * p4est)
                  num_receivers, num_senders);
 
   /* Send queries to the owners of the independent nodes that I share. */
-  num_send_queries = local_send_count = 0;
   for (l = 0; l < num_receivers; ++l) {
     k = *(int *) sc_array_index_int (&receiver_ranks, l);
     P4EST_ASSERT (k >= 0 && k < num_procs && k != rank);
@@ -505,27 +634,23 @@ my_p4est_nodes_new (p4est_t * p4est)
                         MPI_BYTE, k, P4EST_COMM_NODES_QUERY,
                         p4est->mpicomm, send_request);
     SC_CHECK_MPI (mpiret);
-    local_send_count += (int) peer->send_first.elem_count;
-    ++num_send_queries;
   }
   sc_array_reset (&receiver_ranks);
 
   /* Prepare to receive queries */
-  num_recv_queries = local_recv_count = 0;
   for (l = 0; l < num_senders; ++l) {
     k = sender_ranks[l];
     P4EST_ASSERT (k >= 0 && k < num_procs && k != rank);
     peers[k].expect_query = 1;
-    ++num_recv_queries;
   }
   P4EST_FREE (sender_ranks);
   P4EST_VERBOSEF ("Node queries send %d recv %d\n",
-                  num_send_queries, num_recv_queries);
+                  num_receivers, num_senders);
 
   /* Receive queries and look up the reply information */
   P4EST_QUADRANT_INIT (&inkey);
   inkey.level = P4EST_MAXLEVEL;
-  for (l = 0; l < num_recv_queries; ++l) {
+  for (l = 0; l < num_senders; ++l) {
     mpiret = MPI_Probe (MPI_ANY_SOURCE, P4EST_COMM_NODES_QUERY,
                         p4est->mpicomm, &probe_status);
     SC_CHECK_MPI (mpiret);
@@ -536,7 +661,6 @@ my_p4est_nodes_new (p4est_t * p4est)
     SC_CHECK_MPI (mpiret);
     P4EST_ASSERT (byte_count % first_size == 0);
     elem_count = byte_count / (int) first_size;
-    local_recv_count += elem_count;
     sc_array_resize (&peer->recv_first, (size_t) elem_count);
     mpiret = MPI_Recv (peer->recv_first.array, byte_count, MPI_BYTE,
                        k, P4EST_COMM_NODES_QUERY,
@@ -553,6 +677,10 @@ my_p4est_nodes_new (p4est_t * p4est)
       ttt = (p4est_topidx_t *) (&xyz[P4EST_DIM]);
       inkey.p.which_tree = *ttt;
       found = sc_hash_array_lookup (indep_nodes, &inkey, &position);
+      if (!found) {
+        P4EST_LDEBUGF ("Not found %lld at %x %x %d\n", (long long) zz,
+                       inkey.x, inkey.y, inkey.level);
+      }
       P4EST_ASSERT (found);
       P4EST_ASSERT ((p4est_locidx_t) position >= offset_owned_indeps &&
                     (p4est_locidx_t) position < end_owned_indeps);
@@ -673,7 +801,7 @@ my_p4est_nodes_new (p4est_t * p4est)
 
 #ifdef P4EST_MPI
   /* Receive the replies. */
-  for (l = 0; l < num_send_queries; ++l) {
+  for (l = 0; l < num_receivers; ++l) {
     mpiret = MPI_Probe (MPI_ANY_SOURCE, P4EST_COMM_NODES_REPLY,
                         p4est->mpicomm, &probe_status);
     SC_CHECK_MPI (mpiret);
