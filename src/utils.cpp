@@ -157,3 +157,37 @@ PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, my_p4est_nodes_t *nodes, Vec
 
   return ierr;
 }
+
+p4est_locidx_t p4est2petsc_local_numbering(my_p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx)
+{
+#ifdef CASL_THROWS
+  if (p4est_node_locidx < 0 || p4est_node_locidx >= nodes->indep_nodes.elem_count)
+  {
+    std::stringstream oss; oss << "[CASL_ERROR]: node index " << p4est_node_locidx << " is out of bound" << endl;
+    throw std::invalid_argument(oss.str());
+  }
+#endif
+  p4est_locidx_t petsc_node_locidx;
+
+  if (p4est_node_locidx < nodes->offset_owned_indeps)
+    petsc_node_locidx = p4est_node_locidx + nodes->num_owned_indeps;
+  else if (p4est_node_locidx >= nodes->offset_owned_indeps && p4est_node_locidx < nodes->offset_owned_indeps + nodes->num_owned_indeps)
+    petsc_node_locidx = p4est_node_locidx - nodes->offset_owned_indeps;
+  else
+    petsc_node_locidx = p4est_node_locidx;
+
+  return petsc_node_locidx;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

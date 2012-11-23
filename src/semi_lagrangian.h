@@ -7,13 +7,11 @@
 #include <map>
 #include <sc_notify.h>
 #include <src/utils.h>
+#include <src/my_p4est_tools.h>
 
 #define POINT_TAG 0
 #define LVLSET_TAG 1
 #define SIZE_TAG 2
-
-typedef int  (*p4est_point_process_lookup_t)(double, double) ;
-typedef void (*p4est_point_quadrant_lookup_t)(double, double, p4est_topidx_t*, p4est_quadrant_t**);
 
 struct point{
   double x, y;
@@ -21,24 +19,27 @@ struct point{
 
 class semi_lagrangian
 {
-  const p4est_t *p4est;
+  p4est_t *p4est;
+  my_p4est_nodes *nodes;
   ArrayV<bool> is_processed;
-  p4est_locidx_t local_num_nodes;
-  p4est_locidx_t ghost_num_nodes;
 
-  p4est_gloidx_t *e2n;
+  p4est_locidx_t *e2n;
 
-  p4est_point_process_lookup_t process_lookup;
-  p4est_point_quadrant_lookup_t quadrant_lookup;
   PetscErrorCode ierr;
 
   ArrayV<ArrayV<double> > departure_point;
-  ArrayV<ArrayV<p4est_gloidx_t> > departing_node;
+  ArrayV<ArrayV<p4est_locidx_t> > departing_node;
+
+  MPI_Status st;
+
+  // Disable copy constructor and assigment
+  semi_lagrangian(const semi_lagrangian& other);
+  semi_lagrangian& operator=(const semi_lagrangian& other);
 
 public:
-  semi_lagrangian(const p4est_t *p4est_, p4est_point_process_lookup_t process_lookup_, p4est_point_quadrant_lookup_t quadrant_lookup_);
+  semi_lagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_);
 
-  void advance(Vec velx, Vec vely, double dt, Vec &phi);
+  void advect(Vec velx, Vec vely, double dt, Vec &phi);
 };
 
 #endif // SEMI_LAGRANGIAN_H

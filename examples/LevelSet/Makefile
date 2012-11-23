@@ -5,11 +5,11 @@
 vpath %.cpp    $(HEAD_DIR)/src 
 vpath %.c      $(HEAD_DIR)/src 
 INCLUDE_FLAGS += -I$(HEAD_DIR)
-SRCS           = main_semi_lagrangian.cpp utils.cpp my_p4est_vtk.cpp
+SRCS           = main_semi_lagrangian.cpp utils.cpp my_p4est_vtk.cpp semi_lagrangian.cpp
 CSRCS          = my_p4est_tools.c my_p4est_nodes.c
 BIN_NAME       = levelset
 CSRCS          = my_p4est_nodes.c my_p4est_tools.c
-BIN_NAME       = poisson
+BIN_NAME       = levelset
 BIN_FOLDER     = .
 
 # What build type to use? __MUST__ either be 'debug' or 'release'
@@ -116,4 +116,4 @@ clean::
 
 .PHONY: cleanall
 cleanall::
-	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME) $(BIN_FOLDER)/*.vtu $(BIN_FOLDER)/*.xmf $(BIN_FOLDER)/*.hvy $(BIN_FOLDER)/*.pvtu $(BIN_FOLDER)/*.vtk $(BIN_FOLDER)/*.bin $(BIN_FODLER)/*.visit
+	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME) $(BIN_FOLDER)/*.vtu $(BIN_FOLDER)/*.xmf $(BIN_FOLDER)/*.hvy $(BIN_FOLDER)/*.pvtu $(BIN_FOLDER)/*.vtk $(BIN_FOLDER)/*.bin $(BIN_FOLDER)/*.visit

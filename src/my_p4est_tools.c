@@ -24,11 +24,12 @@ int my_p4est_brick_point_lookup (p4est_t * p4est, const double * xy,
   P4EST_ASSERT (vv != NULL);
   P4EST_ASSERT (0 <= tt && tt < num_trees);
 
+
   /* Assuming a brick connectivity with no coordinate transformation */
-  if ((xy[0] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0] + 0] &&
-       xy[0] < vv[3 * ttv[P4EST_CHILDREN * tt + last] + 0]) &&
-      (xy[1] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0] + 1] &&
-       xy[1] < vv[3 * ttv[P4EST_CHILDREN * tt + last] + 1])) {
+  if ((xy[0] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0   ] + 0]  &&
+       xy[0] <  vv[3 * ttv[P4EST_CHILDREN * tt + last] + 0]) &&
+      (xy[1] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0   ] + 1]  &&
+       xy[1] <  vv[3 * ttv[P4EST_CHILDREN * tt + last] + 1])) {
     /* we have found the tree unchanged */
   }
   else {
@@ -38,10 +39,10 @@ int my_p4est_brick_point_lookup (p4est_t * p4est, const double * xy,
       if (tt == *which_tree) {
         continue;
       }
-      if ((xy[0] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0] + 0] &&
-           xy[0] < vv[3 * ttv[P4EST_CHILDREN * tt + last] + 0]) &&
-          (xy[1] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0] + 1] &&
-           xy[1] < vv[3 * ttv[P4EST_CHILDREN * tt + last] + 1])) {
+      if ((xy[0] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0   ] + 0]  &&
+           xy[0] <  vv[3 * ttv[P4EST_CHILDREN * tt + last] + 0]) &&
+          (xy[1] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0   ] + 1]  &&
+           xy[1] <  vv[3 * ttv[P4EST_CHILDREN * tt + last] + 1])) {
         *which_tree = tt;
         break;
       }
@@ -63,7 +64,7 @@ int my_p4est_brick_point_lookup (p4est_t * p4est, const double * xy,
     /* this point is processor local */
     tree = p4est_tree_array_index (p4est->trees, tt);
     position = sc_bsearch_range (&qq, tree->quadrants.array,
-                                 tree->quadrants.elem_count,
+                                 tree->quadrants.elem_count - 1,
                                  sizeof (p4est_quadrant_t),
                                  p4est_quadrant_compare);
     P4EST_ASSERT (position < tree->quadrants.elem_count);
