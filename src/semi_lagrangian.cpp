@@ -28,10 +28,13 @@ void semi_lagrangian::advect(Vec velx, Vec vely, double dt, Vec& phi)
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
   double         *v2q = p4est->connectivity->vertices;
 
-  double domain_xmin = v2q[t2v[0] + 0];
-  double domain_ymin = v2q[t2v[0] + 1];
-  double domain_xmax = v2q[t2v[(p4est->connectivity->num_trees+1)*P4EST_CHILDREN - 1] + 0];
-  double domain_ymax = v2q[t2v[(p4est->connectivity->num_trees+1)*P4EST_CHILDREN - 1] + 1];
+  p4est_topidx_t p4est_mm = t2v[0];
+  p4est_topidx_t p4est_pp = t2v[p4est->connectivity->num_trees * P4EST_CHILDREN - 1];
+
+  double domain_xmin = v2q[3*p4est_mm + 0];
+  double domain_ymin = v2q[3*p4est_mm + 1];
+  double domain_xmax = v2q[3*p4est_pp + 0];
+  double domain_ymax = v2q[3*p4est_pp + 1];
 
   // Loop over all local trees
   for (p4est_topidx_t tr_it = p4est->first_local_tree; tr_it <= p4est->last_local_tree; ++tr_it)
@@ -78,9 +81,9 @@ void semi_lagrangian::advect(Vec velx, Vec vely, double dt, Vec& phi)
             xy[1] -= dt*vely_val[petsc_node_locidx];
 
             // clamp on the walls
-            if (xy[0] < domain_xmin - EPS) xy[0] = domain_xmin - EPS;
-            if (xy[0] > domian_xmax - EPS) xy[0] = domain_xmax - EPS;
-            if (xy[1] < domain_ymin - EPS) xy[1] = domain_ymin - EPS;
+            if (xy[0] < domain_xmin + EPS) xy[0] = domain_xmin + EPS;
+            if (xy[0] > domain_xmax - EPS) xy[0] = domain_xmax - EPS;
+            if (xy[1] < domain_ymin + EPS) xy[1] = domain_ymin + EPS;
             if (xy[1] > domain_ymax - EPS) xy[1] = domain_ymax - EPS;
 
             p4est_topidx_t which_tree = tr_it;

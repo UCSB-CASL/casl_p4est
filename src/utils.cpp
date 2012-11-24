@@ -55,12 +55,12 @@ void dx_dy_dz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t
 
     if (dx != NULL){
         double dx_tree = v[3*t2v[tree_id*P4EST_CHILDREN+1]] - v[3*t2v[tree_id*P4EST_CHILDREN]];
-        *dx = dx_tree * static_cast<double>(qh)/static_cast<double>(P4EST_ROOT_LEN);
+        *dx = dx_tree * (double)(qh)/(double)(P4EST_ROOT_LEN);
     }
 
     if (dy != NULL){
         double dy_tree = v[3*t2v[tree_id*P4EST_CHILDREN+2] + 1] - v[3*t2v[tree_id*P4EST_CHILDREN] + 1];
-        *dy = dy_tree * static_cast<double>(qh)/static_cast<double>(P4EST_ROOT_LEN);
+        *dy = dy_tree * (double)(qh)/(double)(P4EST_ROOT_LEN);
     }
 
     if (dz != NULL){
@@ -73,11 +73,11 @@ void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* qua
     p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
 
     if (x != NULL){
-        *x = static_cast<double>(quad->x + 0.5 * qh)/static_cast<double>(P4EST_ROOT_LEN);
+        *x = (double)(quad->x + 0.5 * qh)/(double)(P4EST_ROOT_LEN);
     }
 
     if (y != NULL){
-        *y = static_cast<double>(quad->y + 0.5 * qh)/static_cast<double>(P4EST_ROOT_LEN);
+        *y = (double)(quad->y + 0.5 * qh)/(double)(P4EST_ROOT_LEN);
     }
 
     c2p_coordinate_transform(p4est, tree_id, x, y, z);

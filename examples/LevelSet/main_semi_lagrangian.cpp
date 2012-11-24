@@ -20,7 +20,6 @@
 #include <src/my_p4est_tools.h>
 
 #define SQR(x) (x)*(x)
-#define PHI(x,y) 0.5 - sqrt(SQR(x) + SQR(y))
 #define P4EST_TRUE  1
 #define P4EST_FALSE 0
 typedef int p4est_bool_t;
@@ -39,65 +38,6 @@ typedef struct
 mpi_context_t;
 
 using namespace std;
-
-
-typedef struct {
-  double phi[4];
-  int max_lvl, min_lvl;
-  double lip;
-} refine_user_data_t;
-
-
-static int refine_circle (p4est_t * p4est, p4est_topidx_t which_tree,
-                          p4est_quadrant_t * quadrant)
-{
-    refine_user_data_t *data = (refine_user_data_t*)p4est->user_pointer;
-
-    const p4est_qcoord_t qh = P4EST_QUADRANT_LEN (quadrant->level);
-
-    double dx_smallest = 1.0/P4EST_ROOT_LEN;
-    double dy_smallest = 1.0/P4EST_ROOT_LEN;
-
-    double x_c, y_c;
-    x_c = (quadrant->x + 0.5*qh)*dx_smallest;
-    y_c = (quadrant->y + 0.5*qh)*dy_smallest;
-
-    c2p_coordinate_transform(p4est, which_tree, &x_c, &y_c, NULL);
-
-    double x_ver[P4EST_CHILDREN], y_ver[P4EST_CHILDREN];
-    x_ver[0] = x_ver[2] = quadrant->x * dx_smallest;
-    x_ver[1] = x_ver[3] = x_ver[0] + qh*dx_smallest;
-    y_ver[0] = y_ver[1] = quadrant->y * dy_smallest;
-    y_ver[2] = y_ver[3] = y_ver[0] + qh*dy_smallest;
-
-    for (int i=0; i<P4EST_CHILDREN; i++)
-        c2p_coordinate_transform(p4est, which_tree, &x_ver[i], &y_ver[i], NULL);
-
-    double d1  = sqrt(SQR(x_ver[0]-x_ver[3]) + SQR(y_ver[0]-y_ver[3]));
-    double d2  = sqrt(SQR(x_ver[1]-x_ver[2]) + SQR(y_ver[1]-y_ver[2]));
-    double d = 0.5 * (d1+d2);
-
-    double phi = PHI(x_c-1.0, y_c-1.0);
-
-    // refinement rule
-    if (quadrant->level <data->min_lvl)
-        return P4EST_TRUE;
-    if (quadrant->level>=data->max_lvl)
-        return P4EST_FALSE;
-    if (fabs(phi)<d*data->lip)
-        return P4EST_TRUE;
-
-    return P4EST_FALSE;
-}
-
-static int refine_dummy (p4est_t * p4est, p4est_topidx_t which_tree,
-                         p4est_quadrant_t * quadrant)
-{
-  if (quadrant->level < 1 && quadrant->x == 0 && quadrant->y == 0 && (which_tree == 0 || which_tree == 3) )
-    return P4EST_TRUE;
-  else
-    return P4EST_FALSE;
-}
 
 class Session{
     int argc;
@@ -119,6 +59,140 @@ public:
         p4est_init (NULL, SC_LP_DEFAULT);
     }
 };
+typedef struct {
+  double phi[4];
+  int max_lvl, min_lvl;
+  double lip;
+} grid_discrete_data_t;
+
+typedef struct {
+  CF_2 *phi;
+  int max_lvl, min_lvl;
+  double lip;
+} grid_continous_data_t;
+
+
+static int
+refine_levelset_continous (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  grid_continous_data_t *data = (grid_continous_data_t*)p4est->user_pointer;
+
+  if (quad->level < data->min_lvl)
+    return P4EST_TRUE;
+  else if (quad->level >= data->max_lvl)
+    return P4EST_FALSE;
+  else
+  {
+    double dx, dy;
+    dx_dy_dz_quadrant(p4est, which_tree, quad, &dx, &dy, NULL);
+    double d = sqrt(dx*dx + dy*dy);
+
+    double x = (double)quad->x/(double)P4EST_ROOT_LEN;
+    double y = (double)quad->y/(double)P4EST_ROOT_LEN;
+
+    c2p_coordinate_transform(p4est, which_tree, &x, &y, NULL);
+
+    CF_2&  phi = *(data->phi);
+    double lip = 0.5 * data->lip;
+
+    if (fabs(phi(x   , y   )) < lip * d ||
+        fabs(phi(x+dx, y   )) < lip * d ||
+        fabs(phi(x   , y+dy)) < lip * d ||
+        fabs(phi(x+dx, y+dy)) < lip * d  )
+      return P4EST_TRUE;
+
+    return P4EST_FALSE;
+  }
+}
+
+static int
+coarsen_levelset_continous (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  grid_continous_data_t *data = (grid_continous_data_t*)p4est->user_pointer;
+
+  if (quad->level <= data->min_lvl)
+    return P4EST_FALSE;
+  else if (quad->level > data->max_lvl)
+    return P4EST_TRUE;
+  else
+  {
+    double dx, dy;
+    dx_dy_dz_quadrant(p4est, which_tree, quad, &dx, &dy, NULL);
+    double d = sqrt(dx*dx + dy*dy);
+
+    double x = (double)quad->x/(double)P4EST_ROOT_LEN;
+    double y = (double)quad->y/(double)P4EST_ROOT_LEN;
+
+    c2p_coordinate_transform(p4est, which_tree, &x, &y, NULL);
+
+    CF_2  &phi = *(data->phi);
+    double lip = 0.5 * data->lip;
+
+    if (fabs(phi(x   , y   )) > lip * d &&
+        fabs(phi(x+dx, y   )) > lip * d &&
+        fabs(phi(x   , y+dy)) > lip * d &&
+        fabs(phi(x+dx, y+dy)) > lip * d  )
+      return P4EST_TRUE;
+
+    return P4EST_FALSE;
+  }
+}
+
+static p4est_bool_t
+refine_levelset_discrete(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  grid_discrete_data_t *data = (grid_discrete_data_t*)p4est->user_pointer;
+
+  if (quad->level < data->min_lvl)
+    return P4EST_TRUE;
+  else if (quad->level >= data->max_lvl)
+    return P4EST_FALSE;
+  else
+  {
+    double dx, dy;
+    dx_dy_dz_quadrant(p4est, which_tree, quad, &dx, &dy, NULL);
+    double d = sqrt(dx*dx + dy*dy);
+
+    double *phi = data->phi;
+    double lip  = 0.5 * data->lip;
+
+    if (fabs(phi[0]) < lip * d ||
+        fabs(phi[1]) < lip * d ||
+        fabs(phi[2]) < lip * d ||
+        fabs(phi[3]) < lip * d  )
+      return P4EST_TRUE;
+
+    return P4EST_FALSE;
+  }
+}
+
+static p4est_bool_t
+coarsen_levelset_discrete(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  grid_discrete_data_t *data = (grid_discrete_data_t*)p4est->user_pointer;
+
+  if (quad->level <= data->min_lvl)
+    return P4EST_FALSE;
+  else if (quad->level > data->max_lvl)
+    return P4EST_TRUE;
+  else
+  {
+    double dx, dy;
+    dx_dy_dz_quadrant(p4est, which_tree, quad, &dx, &dy, NULL);
+    double d = sqrt(dx*dx + dy*dy);
+
+    double *phi = data->phi;
+    double lip  = 0.5 * data->lip;
+
+    if (fabs(phi[0]) > lip * d &&
+        fabs(phi[1]) > lip * d &&
+        fabs(phi[2]) > lip * d &&
+        fabs(phi[3]) > lip * d  )
+      return P4EST_TRUE;
+
+    return P4EST_FALSE;
+  }
+}
 
 int main (int argc, char* argv[]){
 
@@ -131,8 +205,13 @@ int main (int argc, char* argv[]){
 
     PetscErrorCode ierr;    
 
-    refine_user_data_t data = {6, 0, 1.0};
+    struct:CF_2{
+      double operator()(double x, double y) const {
+        return 0.5 - sqrt(SQR(x-1.0) + SQR(y-1.0));
+      }
+    } circle;
 
+    grid_continous_data_t data = {&circle, 6, 0, 1.0};
 
     Session session(argc, argv);
     session.init(mpi->mpicomm);
@@ -159,7 +238,7 @@ int main (int argc, char* argv[]){
     // Now refine the tree
     w2.start("refine");
     p4est->user_pointer = (void*)(&data);
-    p4est_refine(p4est, P4EST_TRUE, refine_circle, NULL);
+    p4est_refine(p4est, P4EST_TRUE, refine_levelset_continous, NULL);
     w2.stop(); w2.read_duration();
 
     // Finally re-partition
@@ -198,7 +277,7 @@ int main (int argc, char* argv[]){
       double x = (double)node->x / (double)P4EST_ROOT_LEN; x = x*(tree_xmax-tree_xmin) + tree_xmin;
       double y = (double)node->y / (double)P4EST_ROOT_LEN; y = y*(tree_ymax-tree_ymin) + tree_ymin;
 
-      phi_val[i] = PHI(x-1.0,y-1.0);
+      phi_val[i] = circle(x,y);
 
       double vx   = 0.25 * (x - 1.0);
       double vy   = 0.25 * (y - 1.0);
