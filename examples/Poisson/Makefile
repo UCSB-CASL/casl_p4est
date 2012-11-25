@@ -6,7 +6,7 @@ vpath %.cpp    $(HEAD_DIR)/src
 vpath %.c      $(HEAD_DIR)/src 
 INCLUDE_FLAGS += -I$(HEAD_DIR)
 SRCS           = main_poisson.cpp utils.cpp poisson_solver.cpp neighbors.cpp my_p4est_vtk.cpp
-CSRCS          = my_p4est_tools.c
+CSRCS          = my_p4est_tools.c my_p4est_nodes.c
 BIN_NAME       = poisson
 BIN_FOLDER     = .
 

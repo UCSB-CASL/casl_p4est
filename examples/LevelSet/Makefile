@@ -110,9 +110,9 @@ $(BIN_NAME): $(OBJS)
 	@echo " linking $(@F) ..."
 	$(CXX) $(LINK_FLAGS) $^ $(LINK_LIBS) -o $(BIN_FOLDER)/$(BIN_NAME)
 
-.PHONY: clean
-clean::
-	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
+# .PHONY: clean
+# clean::
+# 	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
 
 .PHONY: cleanall
 cleanall::
