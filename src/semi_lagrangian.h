@@ -39,7 +39,8 @@ class semi_lagrangian
 public:
   semi_lagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_);
 
-  void advect(Vec velx, Vec vely, double dt, Vec &phi);
+  void update(p4est_t *p4est_, my_p4est_nodes_t *nodes_);
+  void advect(CF_2& velx, CF_2& vely, double dt, Vec &phi);
 };
 
 #endif // SEMI_LAGRANGIAN_H

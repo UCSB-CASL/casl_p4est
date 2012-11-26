@@ -1,28 +1,30 @@
 #include "semi_lagrangian.h"
 
 semi_lagrangian::semi_lagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
-  : p4est(p4est_), nodes(nodes_)
 {
+  update(p4est_, nodes_);
+}
+
+void semi_lagrangian::update(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
+{
+  p4est = p4est_;
+  nodes = nodes_;
+
   is_processed.reallocate(nodes->num_owned_indeps);
   is_processed = false;
 
   departure_point.reallocate(p4est->mpisize);
   departing_node.reallocate(p4est->mpisize);
 
-  // TODO: e2n returns the local index of vertices of a cell.
   e2n = nodes->local_nodes;
-
 }
 
-void semi_lagrangian::advect(Vec velx, Vec vely, double dt, Vec& phi)
+void semi_lagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
 {
   Vec phi_np1;
   ierr = VecDuplicate(phi, &phi_np1); CHKERRXX(ierr);
 
-  double *velx_val, *vely_val, *phi_val;
-
-  ierr = VecGetArray(velx, &velx_val); CHKERRXX(ierr);
-  ierr = VecGetArray(vely, &vely_val); CHKERRXX(ierr);
+  double *phi_val;
   ierr = VecGetArray(phi,  &phi_val);  CHKERRXX(ierr);
 
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -71,14 +73,13 @@ void semi_lagrangian::advect(Vec velx, Vec vely, double dt, Vec& phi)
           if (!is_processed(petsc_node_locidx))
           {
             p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, p4est_node_locidx);
-            double xy [] =
-            {
-              ((double)(node->x) / (double)P4EST_ROOT_LEN) * tr_lx + tr_xmin,
-              ((double)(node->y) / (double)P4EST_ROOT_LEN) * tr_ly + tr_ymin
-            };
 
-            xy[0] -= dt*velx_val[petsc_node_locidx];
-            xy[1] -= dt*vely_val[petsc_node_locidx];
+            double x = ((double)(node->x) / (double)P4EST_ROOT_LEN) * tr_lx + tr_xmin;
+            double y = ((double)(node->y) / (double)P4EST_ROOT_LEN) * tr_ly + tr_ymin;
+            double xy[2];
+
+            xy[0] = x - dt*velx(x, y);
+            xy[1] = y - dt*vely(x, y);
 
             // clamp on the walls
             if (xy[0] < domain_xmin + EPS) xy[0] = domain_xmin + EPS;
@@ -223,8 +224,6 @@ void semi_lagrangian::advect(Vec velx, Vec vely, double dt, Vec& phi)
   ierr = VecAssemblyBegin(phi_np1); CHKERRXX(ierr);
   ierr = VecAssemblyEnd(phi_np1); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(velx, &velx_val); CHKERRXX(ierr);
-  ierr = VecRestoreArray(vely, &vely_val); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi,  &phi_val);  CHKERRXX(ierr);
 
   ierr = VecDestroy(&phi); CHKERRXX(ierr);

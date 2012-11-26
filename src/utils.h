@@ -15,7 +15,16 @@
 #include <stdexcept>
 #include <sstream>
 
+// Some Macros
 #define EPS 1e-12
+#define P4EST_TRUE  1
+#define P4EST_FALSE 0
+
+#if (PETSC_VERSION_MINOR <= 1)
+#undef CHKERRXX
+#define CHKERRXX
+#endif
+
 
 /*!
  * \brief c2p_coordinate_transform Converts local (within tree [0,1]) coordinates into global coordinates
@@ -77,5 +86,36 @@ PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, my_p4est_nodes_t *nodes, Vec
  */
 p4est_locidx_t p4est2petsc_local_numbering(my_p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx);
 
+/*!
+ * \brief The Session class
+ */
+class Session{
+  int argc;
+  char** argv;
+  PetscErrorCode ierr;
+
+public:
+  Session(int argc_, char* argv_[])
+    : argc(argc_), argv(argv_)
+  {}
+  ~Session(){
+    sc_finalize ();
+    ierr = PetscFinalize(); CHKERRXX(ierr);
+  }
+
+  void init(MPI_Comm mpicomm){
+    ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
+    sc_init (mpicomm, 1, 1, NULL, SC_LP_DEFAULT);
+    p4est_init (NULL, SC_LP_DEFAULT);
+  }
+};
+
+typedef struct
+{
+  MPI_Comm            mpicomm;
+  int                 mpisize;
+  int                 mpirank;
+}
+mpi_context_t;
 
 #endif // UTILS_H

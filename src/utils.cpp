@@ -1,4 +1,5 @@
 #include "utils.h"
+#include "my_p4est_tools.h"
 
 void c2p_coordinate_transform(p4est_t *p4est, p4est_topidx_t tree_id, double *x, double *y, double *z){
     // We first need to determine the refference point (i.e lower left corner of the current tree)
@@ -178,10 +179,6 @@ p4est_locidx_t p4est2petsc_local_numbering(my_p4est_nodes_t *nodes, p4est_locidx
 
   return petsc_node_locidx;
 }
-
-
-
-
 
 
 

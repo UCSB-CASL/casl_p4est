@@ -5,7 +5,9 @@
 vpath %.cpp    $(HEAD_DIR)/src 
 vpath %.c      $(HEAD_DIR)/src 
 INCLUDE_FLAGS += -I$(HEAD_DIR)
-SRCS           = main_semi_lagrangian.cpp utils.cpp my_p4est_vtk.cpp semi_lagrangian.cpp
+SRCS           = utils.cpp my_p4est_vtk.cpp semi_lagrangian.cpp interpolating_function.cpp refine_coarsen.cpp
+SRCS          += main_semi_lagrangian.cpp
+#SRCS          += main_refine_coarsen.cpp
 CSRCS          = my_p4est_tools.c my_p4est_nodes.c
 BIN_NAME       = levelset
 CSRCS          = my_p4est_nodes.c my_p4est_tools.c
@@ -110,9 +112,9 @@ $(BIN_NAME): $(OBJS)
 	@echo " linking $(@F) ..."
 	$(CXX) $(LINK_FLAGS) $^ $(LINK_LIBS) -o $(BIN_FOLDER)/$(BIN_NAME)
 
-.PHONY: clean
-clean::
-	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
+#.PHONY: clean
+#clean::
+#	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
 
 .PHONY: cleanall
 cleanall::
