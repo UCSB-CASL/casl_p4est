@@ -31,25 +31,30 @@ int main (int argc, char* argv[]){
 
   PetscErrorCode ierr;
 
-  struct:CF_2{
+  struct circle:CF_2{
+    circle(double r_): r(r_) {}
+    void update (double r_) {r = r_; }
     double operator()(double x, double y) const {
-      return 0.25 - sqrt(SQR(x-1.0) + SQR(y-1.0));
+      return r - sqrt(SQR(x-0.5) + SQR(y-0.5));
     }
-  } circle;
+  private:
+    double r;
+  };
 
   struct:CF_2{
     double operator()(double x, double y) const {
-      return 0.25 * (x - 1.0);
+      return 0.5;
     }
   } vx;
 
   struct:CF_2{
     double operator()(double x, double y) const {
-      return 0.25 * (y - 1.0);
+      return 0.5;//y - 0.5;
     }
   } vy;
 
-  grid_continous_data_t data = {&circle, 6, 0, 1.0};
+  circle circ(0.25);
+  grid_continous_data_t data = {&circ, 6, 0, 1.3};
 
   Session session(argc, argv);
   session.init(mpi->mpicomm);
@@ -63,7 +68,7 @@ int main (int argc, char* argv[]){
 
   // Create the connectivity object
   w2.start("connectivity");
-  connectivity = p4est_connectivity_new_brick (2, 2, 0, 0);
+  connectivity = p4est_connectivity_new_brick (2, 2, P4EST_FALSE, P4EST_FALSE);
   w2.stop(); w2.read_duration();
 
   // Now create the forest
@@ -108,8 +113,12 @@ int main (int argc, char* argv[]){
     double x = (double)node->x / (double)P4EST_ROOT_LEN; x = x*(tree_xmax-tree_xmin) + tree_xmin;
     double y = (double)node->y / (double)P4EST_ROOT_LEN; y = y*(tree_ymax-tree_ymin) + tree_ymin;
 
-    phi_val[i] = circle(x,y);
+    phi_val[i] = circ(x,y);
   }
+
+  my_p4est_vtk_write_all(p4est, NULL, 1.0,
+                         1, 0, "init",
+                         VTK_POINT_DATA, "phi", phi_val);
 
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -119,14 +128,15 @@ int main (int argc, char* argv[]){
 
   SemiLagrangian SL(p4est, nodes);
 
-  double tf  = 8.0;
+  double tf  = 4;
   double dt  = 0.05;
   int tc     = 0;
+  int save   = 1;
   for (double t = 0; t<=tf; t += dt, ++tc)
   {
-    if (tc % 4 == 0){
+    if (tc % 1 == 0){
       // Save stuff
-      std::ostringstream oss; oss << "levelset." << tc/4;
+      std::ostringstream oss; oss << "levelset." << tc/save;
 
       ierr = VecGetArray(phi, &phi_val); CHKERRXX(ierr);
       my_p4est_vtk_write_all(p4est, NULL, 1.0,

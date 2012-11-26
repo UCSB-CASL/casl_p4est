@@ -101,23 +101,12 @@ refine_levelset_discrete(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadra
     old_tree = p4est_tree_array_index(old_p4est->trees, which_tree);
     old_quad_locidx += old_tree->quadrants_offset;
 
-    p4est_locidx_t nodes_locidx [] =
-    {
-      e2n[old_quad_locidx*P4EST_CHILDREN + 0],
-      e2n[old_quad_locidx*P4EST_CHILDREN + 1],
-      e2n[old_quad_locidx*P4EST_CHILDREN + 2],
-      e2n[old_quad_locidx*P4EST_CHILDREN + 3]
-    };
-
-    for (int i=0; i<4; ++i)
-      nodes_locidx[i] = p4est2petsc_local_numbering(old_nodes, nodes_locidx[i]);
-
     double *phi = data->phi;
     double lip  = data->lip;
 
-    double F[4];
-    for (unsigned short i = 0; i<4; ++i)
-      F[i] = phi[nodes_locidx[i]];
+    double F[P4EST_CHILDREN];
+    for (unsigned short i = 0; i<P4EST_CHILDREN; ++i)
+      F[i] = phi[p4est2petsc_local_numbering(old_nodes, e2n[old_quad_locidx*P4EST_CHILDREN + i])];
 
     double phi_c = bilinear_interpolation(old_p4est, which_tree, old_quad, F, xy[0], xy[1]);
 
@@ -169,23 +158,12 @@ coarsen_levelset_discrete(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadr
     p4est_tree_t *old_tree = p4est_tree_array_index(old_p4est->trees, which_tree);
     old_quad_locidx += old_tree->quadrants_offset;
 
-    p4est_locidx_t nodes_locidx [] =
-    {
-      e2n[old_quad_locidx*P4EST_CHILDREN + 0],
-      e2n[old_quad_locidx*P4EST_CHILDREN + 1],
-      e2n[old_quad_locidx*P4EST_CHILDREN + 2],
-      e2n[old_quad_locidx*P4EST_CHILDREN + 3]
-    };
-
-    for (int i=0; i<4; ++i)
-      nodes_locidx[i] = p4est2petsc_local_numbering(old_nodes, nodes_locidx[i]);
-
     double lip  = data->lip;
     double *phi = data->phi;
 
-    double F[4];
-    for (unsigned short i = 0; i<4; ++i)
-      F[i] = phi[nodes_locidx[i]];
+    double F[P4EST_CHILDREN];
+    for (unsigned short i = 0; i<P4EST_CHILDREN; ++i)
+      F[i] = phi[p4est2petsc_local_numbering(old_nodes, e2n[old_quad_locidx*P4EST_CHILDREN + i])];
 
     double phi_c = bilinear_interpolation(old_p4est, which_tree, old_quad, F, xy[0], xy[1]);
 

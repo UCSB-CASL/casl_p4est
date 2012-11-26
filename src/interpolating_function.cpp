@@ -94,6 +94,9 @@ void BilinearInterpolatingFunction::interpolateValuesToNewForest(p4est_t *p4est_
         p4est_locidx_t p4est_node_locidx = e2n_new[qu_locidx*P4EST_CHILDREN + i];
         p4est_locidx_t petsc_node_locidx = p4est2petsc_local_numbering(nodes_new, p4est_node_locidx);
 
+        if (petsc_node_locidx >= nodes_new->num_owned_indeps)
+          continue;
+
         if (!is_processed(petsc_node_locidx))
         {
           // Get the coordinates of this node

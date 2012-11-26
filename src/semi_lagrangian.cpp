@@ -218,7 +218,7 @@ void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
   }
 
   double *phi_buffer = (double*)phi_interpolated;
-  ierr =  VecSetValues(phi_np1, phi_interpolated.size(), (p4est_locidx_t*)departing_node(p4est->mpirank), phi_buffer, INSERT_VALUES); CHKERRXX(ierr);
+  ierr =  VecSetValues(phi_np1, phi_interpolated.size(), (p4est_locidx_t*)(departing_node(p4est->mpirank)), phi_buffer, INSERT_VALUES); CHKERRXX(ierr);
 
   // Assemble the vector
   ierr = VecAssemblyBegin(phi_np1); CHKERRXX(ierr);
@@ -228,5 +228,9 @@ void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
 
   ierr = VecDestroy(&phi); CHKERRXX(ierr);
   phi  = phi_np1;
+
+  // Update the ghost values
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
 }
