@@ -35,7 +35,7 @@ int main (int argc, char* argv[]){
 
   struct:CF_2{
     double operator()(double x, double y) const {
-      return 0.5 - sqrt(SQR(x-1.0) + SQR(y-1.0));
+      return 0.25 - sqrt(SQR(x-1.0) + SQR(y-1.0));
     }
   } circle;
 
@@ -121,19 +121,21 @@ int main (int argc, char* argv[]){
 
   semi_lagrangian SL(p4est, nodes);
 
-  double tf  = 2.0;
+  double tf  = 8.0;
   double dt  = 0.05;
   int tc     = 0;
   for (double t = 0; t<=tf; t += dt, ++tc)
   {
-    // Save stuff
-    std::ostringstream oss; oss << "levelset." << tc;
+    if (tc % 4 == 0){
+      // Save stuff
+      std::ostringstream oss; oss << "levelset." << tc/4;
 
-    ierr = VecGetArray(phi, &phi_val); CHKERRXX(ierr);
-    my_p4est_vtk_write_all(p4est, NULL, 1.0,
-                           1, 0, oss.str().c_str(),
-                           VTK_POINT_DATA, "phi", phi_val);
-    ierr = VecRestoreArray(phi, &phi_val); CHKERRXX(ierr);
+      ierr = VecGetArray(phi, &phi_val); CHKERRXX(ierr);
+      my_p4est_vtk_write_all(p4est, NULL, 1.0,
+                             1, 0, oss.str().c_str(),
+                             VTK_POINT_DATA, "phi", phi_val);
+      ierr = VecRestoreArray(phi, &phi_val); CHKERRXX(ierr);
+    }
 
     // Advect the level-set using SL method
     SL.advect(vx, vy, dt, phi);
