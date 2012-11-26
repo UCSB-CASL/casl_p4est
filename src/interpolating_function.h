@@ -6,6 +6,7 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/utils.h>
+#include <src/petsc_compatibility.h>
 
 class BilinearInterpolatingFunction: public CF_2{
   Vec F;

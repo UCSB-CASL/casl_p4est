@@ -2,12 +2,13 @@
 #define SEMI_LAGRANGIAN_H
 
 #include <p4est.h>
-#include <src/ArrayV.h>
 #include <petsc.h>
 #include <map>
 #include <sc_notify.h>
+#include <src/ArrayV.h>
 #include <src/utils.h>
 #include <src/my_p4est_tools.h>
+#include <src/petsc_compatibility.h>
 
 #define POINT_TAG 0
 #define LVLSET_TAG 1

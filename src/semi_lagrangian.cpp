@@ -226,7 +226,7 @@ void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
 
   ierr = VecRestoreArray(phi,  &phi_val);  CHKERRXX(ierr);
 
-  ierr = VecDestroy(&phi); CHKERRXX(ierr);
+  ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi  = phi_np1;
 
   // Update the ghost values

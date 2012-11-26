@@ -18,6 +18,8 @@
 #include <src/interpolating_function.h>
 #include <src/refine_coarsen.h>
 
+#include <src/petsc_compatibility.h>
+
 using namespace std;
 
 int main (int argc, char* argv[]){
@@ -134,7 +136,7 @@ int main (int argc, char* argv[]){
   int save   = 1;
   for (double t = 0; t<=tf; t += dt, ++tc)
   {
-    if (tc % 1 == 0){
+    if (tc % save == 0){
       // Save stuff
       std::ostringstream oss; oss << "levelset." << tc/save;
 
@@ -176,14 +178,14 @@ int main (int argc, char* argv[]){
     // Now get rid of previous step objects and reassign referrences for next step
     p4est_destroy(p4est);                    p4est = p4est_np1;
     my_p4est_nodes_destroy(nodes);           nodes = nodes_np1;
-    ierr = VecDestroy(&phi); CHKERRXX(ierr); phi   = phi_np1;
+    ierr = VecDestroy(phi); CHKERRXX(ierr); phi   = phi_np1;
 
     // update the SL internal variables for the next time step
     SL.update(p4est, nodes);
   }
 
   // Destroy PETSc objects
-  ierr = VecDestroy(&phi); CHKERRXX(ierr);
+  ierr = VecDestroy(phi); CHKERRXX(ierr);
 
   // destroy the p4est and its connectivity structure
   my_p4est_nodes_destroy (nodes);
