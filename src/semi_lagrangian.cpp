@@ -1,11 +1,11 @@
 #include "semi_lagrangian.h"
 
-semi_lagrangian::semi_lagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
+SemiLagrangian::SemiLagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
 {
   update(p4est_, nodes_);
 }
 
-void semi_lagrangian::update(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
+void SemiLagrangian::update(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
 {
   p4est = p4est_;
   nodes = nodes_;
@@ -19,7 +19,7 @@ void semi_lagrangian::update(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
   e2n = nodes->local_nodes;
 }
 
-void semi_lagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
+void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
 {
   Vec phi_np1;
   ierr = VecDuplicate(phi, &phi_np1); CHKERRXX(ierr);

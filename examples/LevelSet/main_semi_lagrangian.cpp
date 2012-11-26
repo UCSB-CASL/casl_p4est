@@ -3,8 +3,6 @@
 #include <p4est_extended.h>
 #include <p4est_vtk.h>
 
-// My files for this project
-
 // System
 #include <stdexcept>
 #include <iostream>
@@ -119,7 +117,7 @@ int main (int argc, char* argv[]){
   // Restore temporary objects
   ierr = VecRestoreArray(phi, &phi_val); CHKERRXX(ierr);
 
-  semi_lagrangian SL(p4est, nodes);
+  SemiLagrangian SL(p4est, nodes);
 
   double tf  = 8.0;
   double dt  = 0.05;
@@ -153,7 +151,7 @@ int main (int argc, char* argv[]){
     p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_discrete, NULL);
 
     // Partition the new forest
-    p4est_partition(p4est, NULL);
+    p4est_partition(p4est_np1, NULL);
 
     // restore the refference to the level-set value
     ierr = VecRestoreArray(phi, &phi_val); CHKERRXX(ierr);

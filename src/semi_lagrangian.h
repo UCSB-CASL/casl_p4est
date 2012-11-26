@@ -17,7 +17,7 @@ struct point{
   double x, y;
 };
 
-class semi_lagrangian
+class SemiLagrangian
 {
   p4est_t *p4est;
   my_p4est_nodes *nodes;
@@ -33,11 +33,11 @@ class semi_lagrangian
   MPI_Status st;
 
   // Disable copy constructor and assigment
-  semi_lagrangian(const semi_lagrangian& other);
-  semi_lagrangian& operator=(const semi_lagrangian& other);
+  SemiLagrangian(const SemiLagrangian& other);
+  SemiLagrangian& operator=(const SemiLagrangian& other);
 
 public:
-  semi_lagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_);
+  SemiLagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_);
 
   void update(p4est_t *p4est_, my_p4est_nodes_t *nodes_);
   void advect(CF_2& velx, CF_2& vely, double dt, Vec &phi);
