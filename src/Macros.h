@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string>
-#include <lib/algebra/PolyRoots.h>
 #include <stdint.h>
 #include <map>
 #include <stdexcept>
