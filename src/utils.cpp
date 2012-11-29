@@ -5,7 +5,6 @@ void c2p_coordinate_transform(p4est_t *p4est, p4est_topidx_t tree_id, double *x,
     // We first need to determine the refference point (i.e lower left corner of the current tree)
     p4est_topidx_t *v_ref = p4est->connectivity->tree_to_vertex + tree_id*P4EST_CHILDREN;
 
-
     // Now get the xyz coordinates of the four corners of the tree
     double ref_xyz[P4EST_CHILDREN][3];
     for (int i=0; i<P4EST_CHILDREN; i++){

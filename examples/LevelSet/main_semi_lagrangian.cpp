@@ -22,6 +22,22 @@
 
 using namespace std;
 
+class: public CF_2
+{
+public:
+    double operator()(double x, double y) const {
+        return -sin(M_PI*x)*sin(M_PI*x)*sin(2*M_PI*y);
+    }
+} vx_vortex;
+
+class: public CF_2
+{
+public:
+    double operator()(double x, double y) const {
+        return  sin(M_PI*y)*sin(M_PI*y)*sin(2*M_PI*x);
+    }
+} vy_vortex;
+
 int main (int argc, char* argv[]){
 
   mpi_context_t mpi_context, *mpi = &mpi_context;
@@ -34,29 +50,32 @@ int main (int argc, char* argv[]){
   PetscErrorCode ierr;
 
   struct circle:CF_2{
-    circle(double r_): r(r_) {}
-    void update (double r_) {r = r_; }
+    circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
+    void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
     double operator()(double x, double y) const {
-      return r - sqrt(SQR(x-0.5) + SQR(y-0.5));
+      return r - sqrt(SQR(x-x0) + SQR(y-y0));
     }
   private:
-    double r;
+    double r, x0, y0;
   };
+
+  const static double vx_max = 0.15;
+  const static double vy_max = 0.15;
 
   struct:CF_2{
     double operator()(double x, double y) const {
-      return 0.5;
+      return vx_max;
     }
   } vx;
 
   struct:CF_2{
     double operator()(double x, double y) const {
-      return 0.5;//y - 0.5;
+      return vy_max;
     }
   } vy;
 
-  circle circ(0.25);
-  grid_continous_data_t data = {&circ, 6, 0, 1.3};
+  circle circ(0.25, 0.25, .15);
+  refine_coarsen_data_t data = {&circ, 6, 0, 1.0};
 
   Session session(argc, argv);
   session.init(mpi->mpicomm);
@@ -81,7 +100,7 @@ int main (int argc, char* argv[]){
   // Now refine the tree
   w2.start("refine");
   p4est->user_pointer = (void*)(&data);
-  p4est_refine(p4est, P4EST_TRUE, refine_levelset_continous, NULL);
+  p4est_refine(p4est, P4EST_TRUE, refine_levelset, NULL);
   w2.stop(); w2.read_duration();
 
   // Finally re-partition
@@ -130,15 +149,30 @@ int main (int argc, char* argv[]){
 
   SemiLagrangian SL(p4est, nodes);
 
-  double tf  = 4;
-  double dt  = 0.05;
+  // calculate d_min in all trees
+  double dx_min = 1000, dy_min = 1000;
+  for (p4est_topidx_t tr_it = 0; tr_it<connectivity->num_trees; ++tr_it)
+  {
+    p4est_topidx_t vmm = connectivity->tree_to_vertex[tr_it*P4EST_CHILDREN];
+    p4est_topidx_t vpp = connectivity->tree_to_vertex[(tr_it+1)*P4EST_CHILDREN - 1];
+
+    double dx = connectivity->vertices[3*vpp + 0] - connectivity->vertices[3*vmm + 0]; dx /= (double)(1 << data.max_lvl);
+    double dy = connectivity->vertices[3*vpp + 1] - connectivity->vertices[3*vmm + 1]; dy /= (double)(1 << data.max_lvl);
+
+    dx_min = MIN(dx_min, dx);
+    dy_min = MIN(dy_min, dy);
+  }
+
+  double tf  = 10;
+  double dt_min = 0.1;
+  double dt = MIN(dt_min, MIN(dx_min/vx_max, dy_min/vy_max));
   int tc     = 0;
   int save   = 1;
   for (double t = 0; t<=tf; t += dt, ++tc)
   {
     if (tc % save == 0){
       // Save stuff
-      std::ostringstream oss; oss << "levelset." << tc/save;
+      std::ostringstream oss; oss << "translate." << tc/save;
 
       ierr = VecGetArray(phi, &phi_val); CHKERRXX(ierr);
       my_p4est_vtk_write_all(p4est, NULL, 1.0,
@@ -150,27 +184,22 @@ int main (int argc, char* argv[]){
     // Advect the level-set using SL method
     SL.advect(vx, vy, dt, phi);
 
-    // Get a referrence to the level-set function
-    ierr = VecGetArray(phi, &phi_val); CHKERRXX(ierr);
+    // Define an interpolating function
+    BilinearInterpolatingFunction BIF(p4est, nodes, phi);
 
     // Create a new forest based on the level-set
     p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
-    grid_discrete_data_t data_np1 = {p4est, nodes, phi_val, data.max_lvl, data.min_lvl, data.lip};
-    p4est_np1->user_pointer = (void*)&data_np1;
+    data.phi = &BIF;
+    p4est_np1->user_pointer = (void*)&data;
 
     // coarsen and refine the grid based on the discrete level-set function
-    p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset_discrete, NULL);
-    p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_discrete, NULL);
+    p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset, NULL);
+    p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset, NULL);
 
     // Partition the new forest
     p4est_partition(p4est_np1, NULL);
 
-    // restore the refference to the level-set value
-    ierr = VecRestoreArray(phi, &phi_val); CHKERRXX(ierr);
-
     // interpolate new values of the level-set from the old grid
-    BilinearInterpolatingFunction BIF(p4est, nodes, phi);
-
     my_p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
     Vec phi_np1;
     BIF.interpolateValuesToNewForest(p4est_np1, nodes_np1, &phi_np1);
@@ -178,7 +207,7 @@ int main (int argc, char* argv[]){
     // Now get rid of previous step objects and reassign referrences for next step
     p4est_destroy(p4est);                    p4est = p4est_np1;
     my_p4est_nodes_destroy(nodes);           nodes = nodes_np1;
-    ierr = VecDestroy(phi); CHKERRXX(ierr); phi   = phi_np1;
+    ierr = VecDestroy(phi); CHKERRXX(ierr);  phi   = phi_np1;
 
     // update the SL internal variables for the next time step
     SL.update(p4est, nodes);

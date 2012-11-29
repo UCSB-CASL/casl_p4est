@@ -28,6 +28,20 @@ int my_p4est_brick_point_lookup (p4est_t * p4est, const double * xy,
                                  p4est_locidx_t *which_quad,
                                  p4est_quadrant_t **quad);
 
+/*!
+ * \brief my_p4est_brick_point_lookup_smallest same as above except returns the smallest possible cell
+ * \param p4est
+ * \param xy
+ * \param which_tree
+ * \param which_quad
+ * \param quad
+ * \return
+ */
+int my_p4est_brick_point_lookup_smallest (p4est_t * p4est, const double * xy,
+                                          p4est_topidx_t *which_tree,
+                                          p4est_locidx_t *which_quad,
+                                          p4est_quadrant_t **quad);
+
 #ifdef __cplusplus
 #if 0
 {

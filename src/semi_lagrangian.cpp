@@ -3,6 +3,7 @@
 SemiLagrangian::SemiLagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
 {
   update(p4est_, nodes_);
+  tc = 0;
 }
 
 void SemiLagrangian::update(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
@@ -37,6 +38,9 @@ void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
   double domain_ymin = v2q[3*p4est_mm + 1];
   double domain_xmax = v2q[3*p4est_pp + 0];
   double domain_ymax = v2q[3*p4est_pp + 1];
+
+  ostringstream oss; oss << "xy." << tc; tc++;
+  FILE *xy_file = fopen(oss.str().c_str(), "w");
 
   // Loop over all local trees
   for (p4est_topidx_t tr_it = p4est->first_local_tree; tr_it <= p4est->last_local_tree; ++tr_it)
@@ -82,13 +86,15 @@ void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
             xy[1] = y - dt*vely(x, y);
 
             // clamp on the walls
-            if (xy[0] < domain_xmin + EPS) xy[0] = domain_xmin + EPS;
-            if (xy[0] > domain_xmax - EPS) xy[0] = domain_xmax - EPS;
-            if (xy[1] < domain_ymin + EPS) xy[1] = domain_ymin + EPS;
-            if (xy[1] > domain_ymax - EPS) xy[1] = domain_ymax - EPS;
+            if (xy[0] <= domain_xmin) xy[0] = domain_xmin;
+            if (xy[0] >= domain_xmax) xy[0] = domain_xmax;
+            if (xy[1] <= domain_ymin) xy[1] = domain_ymin;
+            if (xy[1] >= domain_ymax) xy[1] = domain_ymax;
+
+            fprintf(xy_file, "%.15lf \t %.15lf\n",xy[0], xy[1]);
 
             p4est_topidx_t which_tree = tr_it;
-            int departure_point_rank = my_p4est_brick_point_lookup(p4est, xy, &which_tree, NULL, NULL);
+            int departure_point_rank = my_p4est_brick_point_lookup_smallest(p4est, xy, &which_tree, NULL, NULL);
 
             departing_node(departure_point_rank).push(petsc_node_locidx);
             departure_point(departure_point_rank).push(xy[0]);
@@ -100,6 +106,8 @@ void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
       }
     }
   }
+
+  fclose(xy_file);
 
   ArrayV<int> receivers;
   for (int r = 0; r<p4est->mpisize; ++r)
@@ -144,7 +152,7 @@ void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
       double xy [] = {received_departure_points(2*i), received_departure_points(2*i+1)};
       p4est_quadrant_t *departure_quadrant;
       p4est_locidx_t departure_quadrant_locidx;
-      my_p4est_brick_point_lookup(p4est, xy, &tree_id, &departure_quadrant_locidx, &departure_quadrant);
+      my_p4est_brick_point_lookup_smallest(p4est, xy, &tree_id, &departure_quadrant_locidx, &departure_quadrant);
 
       p4est_locidx_t nodes_locidx [] =
       {
@@ -190,7 +198,7 @@ void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
     p4est_quadrant_t *departure_quadrant;
     p4est_locidx_t departure_quadrant_locidx;
 
-    my_p4est_brick_point_lookup(p4est, xy, &tree_id, &departure_quadrant_locidx, &departure_quadrant);
+    my_p4est_brick_point_lookup_smallest(p4est, xy, &tree_id, &departure_quadrant_locidx, &departure_quadrant);
     p4est_tree_t *departure_tree = p4est_tree_array_index(p4est->trees, tree_id);
     departure_quadrant_locidx += departure_tree->quadrants_offset;
 

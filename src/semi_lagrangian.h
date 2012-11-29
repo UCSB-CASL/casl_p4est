@@ -37,6 +37,8 @@ class SemiLagrangian
   SemiLagrangian(const SemiLagrangian& other);
   SemiLagrangian& operator=(const SemiLagrangian& other);
 
+  int tc;
+
 public:
   SemiLagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_);
 

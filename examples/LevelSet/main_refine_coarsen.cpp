@@ -46,7 +46,7 @@ int main (int argc, char* argv[]){
 
   double rmin = 0.0, rmax = 1.5;
   phi circle(rmin);
-  grid_continous_data_t data = {&circle, 6, 0, 1.0};
+  refine_coarsen_data_t data = {&circle, 6, 0, 1.0};
 
   Session session(argc, argv);
   session.init(mpi->mpicomm);
@@ -78,8 +78,8 @@ int main (int argc, char* argv[]){
     oss << "grid refining/coarrsening step-" << tc;
 
     w2.start(oss.str());
-    p4est_refine (p4est, P4EST_TRUE, refine_levelset_continous , NULL);
-    p4est_coarsen(p4est, P4EST_TRUE, coarsen_levelset_continous, NULL);
+    p4est_refine (p4est, P4EST_TRUE, refine_levelset , NULL);
+    p4est_coarsen(p4est, P4EST_TRUE, coarsen_levelset, NULL);
     w2.stop(); w2.read_duration();
 
     oss.str(""); oss << "grid partitioning step-" << tc;
