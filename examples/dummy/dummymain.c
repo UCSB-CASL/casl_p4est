@@ -17,6 +17,7 @@ main (int argc, char ** argv)
 	int mpirank;
 	int lp;
         int owner;
+	int i, j;
         double xy[2];
 	MPI_Comm mpicomm;
         p4est_topidx_t which_tree;
@@ -56,13 +57,18 @@ main (int argc, char ** argv)
         nodes = my_p4est_nodes_new (p4est);
 
         /* look up a point */
-        xy[0] = .5;
-        xy[1] = .5;
-        which_tree = conn->num_trees - 1;
-        owner = my_p4est_brick_point_lookup (p4est, ghost, brick,
-                                             xy, &which_tree,
-                                             NULL, NULL);
-        P4EST_INFOF ("Owner of point %g %g is %d\n", xy[0], xy[1], owner);
+	for (j = 0; j <= 2 * brick->nxytrees[1]; ++j) {
+            for (i = 0; i <= 2 * brick->nxytrees[0]; ++i) {
+                xy[0] = i * .5;
+        	xy[1] = j * .5;
+	        which_tree = conn->num_trees - 1;
+        	owner = my_p4est_brick_point_lookup (p4est, ghost, brick,
+                	                             xy, &which_tree,
+                        	                     NULL, NULL);
+	        P4EST_INFOF ("Owner of point %g %g is %d\n",
+			     xy[0], xy[1], owner);
+	    }
+	}
 
         /* clean up */
         my_p4est_nodes_destroy (nodes);
