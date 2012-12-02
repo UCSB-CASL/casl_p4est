@@ -12,6 +12,28 @@ extern "C" {
 #endif
 #endif
 
+typedef struct {
+    int nxtrees, nytrees;
+    p4est_topidx_t *nxy_to_treeid;
+}
+my_p4est_brick_t;
+
+/** Create a brick connectivity and tree lookup structure.
+ * \param [in] nxtrees  Number of trees in x dimension.
+ * \param [in] nytrees  Number of trees in y dimension.
+ * \param [in,out] myb  Additional brick information will be populated.
+ * \return              The brick connectivity structure.
+ */
+p4est_connectivity_t *my_p4est_brick_new (int nxtrees, int nytrees,
+                                          my_p4est_brick_t *myb);
+
+/** Free a brick connectivity and tree lookup structure.
+ * \param [in] conn     The connectivity will be destroyed.
+ * \param [in,out] myb  The dynamically allocated members will be freed.
+ */
+void my_p4est_brick_destroy (p4est_connectivity_t *conn,
+                             my_p4est_brick_t * myb);
+
 /** Find the owner processor for a point in a brick domain.
  * For remote points, only the owner's rank is returned.
  * \param [in] p4est    The forest to be searched.

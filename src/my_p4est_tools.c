@@ -5,6 +5,57 @@
 #include "my_p4est_tools.h"
 #include "utils.h"
 
+p4est_connectivity_t *
+my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t *myb)
+{
+  int i, j;
+  int nxytrees;
+  double dii, djj;
+  const double *vv;
+  p4est_topidx_t tt, vindex;
+  p4est_connectivity_t *conn;
+
+  P4EST_ASSERT (0 < nxtrees && 0 < nytrees);
+  conn = p4est_connectivity_new_brick (nxtrees, nytrees, 0, 0);
+  vv = conn->vertices;
+  P4EST_ASSERT (vv != NULL);
+
+  myb->nxtrees = nxtrees;
+  myb->nytrees = nytrees;
+  nxytrees = nxtrees * nytrees;
+  myb->nxy_to_treeid = P4EST_ALLOC (p4est_topidx_t, nxytrees);
+#ifdef P4EST_DEBUG
+  memset (myb->nxy_to_treeid, -1, sizeof (p4est_topidx_t) * nxytrees);
+#endif
+  for (tt = 0; tt < conn->num_trees; ++tt) {
+    /* build lookup structure from tree corner coordinates to treeid */
+    vindex = conn->tree_to_vertex[P4EST_CHILDREN * tt + 0];
+    P4EST_ASSERT (0 <= vindex && vindex < conn->num_vertices);
+    dii = vv[3 * vindex + 0];
+    P4EST_ASSERT (dii == fabs (dii));
+    i = (int) dii;
+    P4EST_ASSERT (i >= 0 && i < nxtrees);
+    djj = vv[3 * vindex + 1];
+    P4EST_ASSERT (djj == fabs (djj));
+    j = (int) djj;
+    P4EST_ASSERT (j >= 0 && j < nytrees);
+    P4EST_ASSERT (vv[3 * vindex + 2] == 0.);
+    P4EST_ASSERT (myb->nxy_to_treeid[nxtrees * j + i] == -1);
+    myb->nxy_to_treeid[myb->nxtrees * j + i] = tt;
+  }
+
+  return conn;
+}
+
+void
+my_p4est_brick_destroy (p4est_connectivity_t *conn, my_p4est_brick_t * myb)
+{
+  P4EST_ASSERT (myb->nxy_to_treeid != NULL);
+  P4EST_FREE (myb->nxy_to_treeid);
+  myb->nxy_to_treeid = NULL;
+  p4est_connectivity_destroy (conn);
+}
+
 int my_p4est_brick_point_lookup (p4est_t * p4est, const double * xy,
                                  p4est_topidx_t *which_tree,
                                  p4est_locidx_t *which_quad,
