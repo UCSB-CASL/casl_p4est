@@ -56,7 +56,8 @@ main (int argc, char ** argv)
         xy[0] = .5;
         xy[1] = .5;
         which_tree = conn->num_trees - 1;
-        owner = my_p4est_brick_point_lookup (p4est, xy, &which_tree,
+        owner = my_p4est_brick_point_lookup (p4est, NULL, NULL,
+                                             xy, &which_tree,
                                              NULL, NULL);
         P4EST_INFOF ("Owner of point %g %g is %d\n", xy[0], xy[1], owner);
 
