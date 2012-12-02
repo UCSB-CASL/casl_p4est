@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 typedef struct {
-    int nxtrees, nytrees;
+    int nxytrees[2];
     p4est_topidx_t *nxy_to_treeid;
 }
 my_p4est_brick_t;

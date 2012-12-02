@@ -4,6 +4,14 @@
 #include <p4est_communication.h>
 #include "my_p4est_tools.h"
 
+static int
+my_p4est_brick_point_lookup_real (p4est_t * p4est, p4est_ghost_t * ghost,
+                                  const my_p4est_brick_t * myb,
+                                  const double * xy,
+                                  p4est_topidx_t *which_tree,
+                                  p4est_locidx_t *which_quad,
+                                  p4est_quadrant_t **quad);
+
 p4est_connectivity_t *
 my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t *myb)
 {
@@ -19,8 +27,8 @@ my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t *myb)
   vv = conn->vertices;
   P4EST_ASSERT (vv != NULL);
 
-  myb->nxtrees = nxtrees;
-  myb->nytrees = nytrees;
+  myb->nxytrees[0] = nxtrees;
+  myb->nxytrees[1] = nytrees;
   nxytrees = nxtrees * nytrees;
   myb->nxy_to_treeid = P4EST_ALLOC (p4est_topidx_t, nxytrees);
 #ifdef P4EST_DEBUG
@@ -31,16 +39,16 @@ my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t *myb)
     vindex = conn->tree_to_vertex[P4EST_CHILDREN * tt + 0];
     P4EST_ASSERT (0 <= vindex && vindex < conn->num_vertices);
     dii = vv[3 * vindex + 0];
-    P4EST_ASSERT (dii == fabs (dii));
+    P4EST_ASSERT (dii == floor (dii));
     i = (int) dii;
     P4EST_ASSERT (i >= 0 && i < nxtrees);
     djj = vv[3 * vindex + 1];
-    P4EST_ASSERT (djj == fabs (djj));
+    P4EST_ASSERT (djj == floor (djj));
     j = (int) djj;
     P4EST_ASSERT (j >= 0 && j < nytrees);
     P4EST_ASSERT (vv[3 * vindex + 2] == 0.);
     P4EST_ASSERT (myb->nxy_to_treeid[nxtrees * j + i] == -1);
-    myb->nxy_to_treeid[myb->nxtrees * j + i] = tt;
+    myb->nxy_to_treeid[nxtrees * j + i] = tt;
   }
 
   return conn;
@@ -61,6 +69,61 @@ int my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
                                  p4est_topidx_t *which_tree,
                                  p4est_locidx_t *which_quad,
                                  p4est_quadrant_t **quad)
+{
+  /* identify all possible quadrant queries */
+  int i;
+  int hit;
+  int istreeboundary[P4EST_DIM];                /**< bool in each dimension */
+  int maybequadboundary[P4EST_DIM];
+  int integerstep[P4EST_DIM][2];
+  p4est_qcoord_t qq, searchq[P4EST_DIM][2];
+  /* p4est_topidx_t treeid[P4EST_CHILDREN]; */
+
+  for (i = 0; i < P4EST_DIM; ++i) {
+    hit = (int) floor (xy[i]);
+    P4EST_ASSERT (0 <= hit && hit <= myb->nxytrees[i]);
+    
+    /* check if the xy coordinates are on a tree boundary */
+    if ((double) hit == xy[i]) {
+      istreeboundary[i] = 1;
+      maybequadboundary[i] = 1;
+      integerstep[i][0] = hit - 1;      /* can be -1 which will be ignored */
+      integerstep[i][1] = hit == myb->nxytrees[i] ? -1 : hit;   /* ditto */
+      searchq[i][0] = P4EST_LAST_OFFSET (P4EST_QMAXLEVEL);
+      searchq[i][1] = 0;
+    }
+    else {
+      istreeboundary[i] = 0;
+      integerstep[i][0] = integerstep[i][1] = hit;
+      searchq[i][1] = qq = (int) floor ((xy[i] - hit) * P4EST_ROOT_LEN);
+      P4EST_ASSERT (0 <= qq && qq < P4EST_ROOT_LEN);
+
+      /* check if the xy coordinates are on a possible quadrant boundary */
+      if ((double) qq == (xy[i] - hit) * P4EST_ROOT_LEN) {
+        maybequadboundary[i] = 1;
+        searchq[i][0] = qq - P4EST_QUADRANT_LEN (P4EST_QMAXLEVEL);
+        P4EST_ASSERT (searchq[i][0] >= 0);
+      }
+      else {
+        maybequadboundary[i] = 0;
+        searchq[i][0] = -1;
+      }
+    }
+
+
+  }
+
+
+  return my_p4est_brick_point_lookup_real (p4est, ghost, myb, xy,
+                                           which_tree, which_quad, quad);
+}
+
+int my_p4est_brick_point_lookup_real (p4est_t * p4est, p4est_ghost_t * ghost,
+                                      const my_p4est_brick_t * myb,
+                                      const double * xy,
+                                      p4est_topidx_t *which_tree,
+                                      p4est_locidx_t *which_quad,
+                                      p4est_quadrant_t **quad)
 {
   const p4est_connectivity_t * conn = p4est->connectivity;
   const p4est_topidx_t num_trees = conn->num_trees;
