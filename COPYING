@@ -1,0 +1,3 @@
+The files src/my_p4est_* fall under the same license as p4est (i.e., GPL >= 2).
+Anybody who edits these files please place a line here as follows:
+ * The code by <name> in src/my_p4est_* is in the public domain.
