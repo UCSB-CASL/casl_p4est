@@ -3,7 +3,6 @@
 #include <p4est_bits.h>
 #include <p4est_communication.h>
 #include "my_p4est_tools.h"
-#include "utils.h"
 
 p4est_connectivity_t *
 my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t *myb)
@@ -158,12 +157,14 @@ int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, const double * xy,
   p4est_topidx_t tr = 0, tr_tmp = 0;
   p4est_locidx_t qu, qu_tmp;
   p4est_quadrant_t* q, *q_tmp;
+  const double halfqw = .5 / P4EST_ROOT_LEN;
 
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
   double         *v2q = p4est->connectivity->vertices;
 
   p4est_topidx_t p4est_mm = t2v[0];
-  p4est_topidx_t p4est_pp = t2v[p4est->connectivity->num_trees * P4EST_CHILDREN - 1];
+  p4est_topidx_t p4est_pp = t2v[p4est->connectivity->num_trees *
+                                P4EST_CHILDREN - 1];
 
   double domain_xmin = v2q[3*p4est_mm + 0];
   double domain_ymin = v2q[3*p4est_mm + 1];
@@ -173,7 +174,7 @@ int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, const double * xy,
   double xy_p[2];
 
   // + +
-  xy_p[0] = xy[0] + EPS; xy_p[1] = xy[1] + EPS;
+  xy_p[0] = xy[0] + halfqw; xy_p[1] = xy[1] + halfqw;
 
   if (xy_p[0]<=domain_xmin) xy_p[0] = domain_xmin;
   if (xy_p[0]>=domain_xmax) xy_p[0] = domain_xmax;
@@ -183,7 +184,7 @@ int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, const double * xy,
   rank = my_p4est_brick_point_lookup(p4est, xy_p, &tr, &qu, &q);
 
   // + -
-  xy_p[0] = xy[0] + EPS; xy_p[1] = xy[1] - EPS;
+  xy_p[0] = xy[0] + halfqw; xy_p[1] = xy[1] - halfqw;
 
   if (xy_p[0]<=domain_xmin) xy_p[0] = domain_xmin;
   if (xy_p[0]>=domain_xmax) xy_p[0] = domain_xmax;
@@ -200,7 +201,7 @@ int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, const double * xy,
   }
 
   // - +
-  xy_p[0] = xy[0] - EPS; xy_p[1] = xy[1] + EPS;
+  xy_p[0] = xy[0] - halfqw; xy_p[1] = xy[1] + halfqw;
 
   if (xy_p[0]<=domain_xmin) xy_p[0] = domain_xmin;
   if (xy_p[0]>=domain_xmax) xy_p[0] = domain_xmax;
@@ -217,7 +218,7 @@ int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, const double * xy,
   }
 
   // - -
-  xy_p[0] = xy[0] - EPS; xy_p[1] = xy[1] - EPS;
+  xy_p[0] = xy[0] - halfqw; xy_p[1] = xy[1] - halfqw;
 
   if (xy_p[0]<=domain_xmin) xy_p[0] = domain_xmin;
   if (xy_p[0]>=domain_xmax) xy_p[0] = domain_xmax;

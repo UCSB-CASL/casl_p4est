@@ -2,8 +2,8 @@
 #define UTILS_H
 
 // casl_p4est
-#include <src/my_p4est_nodes.h>
-#include <src/ArrayV.h>
+#include "my_p4est_nodes.h"
+#include "ArrayV.h"
 
 // p4est
 #include <p4est.h>
