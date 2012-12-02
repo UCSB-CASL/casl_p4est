@@ -94,13 +94,21 @@ int my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
 {
   /* identify all possible quadrant queries */
   int i, ix, iy;
+  int pp, found_owner, smallest_owner;
   int hit;
+  int alllocal, allghost;
   int istreeboundary[P4EST_DIM];                /**< bool in each dimension */
   int maybequadboundary[P4EST_DIM];
   int integerstep[P4EST_DIM][2];
+  int8_t smallest_level;
+  size_t position;
+  ssize_t sgpos;
   const p4est_qcoord_t qlen = P4EST_QUADRANT_LEN (P4EST_QMAXLEVEL);
   p4est_qcoord_t qq, searchq[P4EST_DIM][2];
-  /* p4est_topidx_t treeid[P4EST_CHILDREN]; */
+  p4est_topidx_t tt, treeid[P4EST_CHILDREN];
+  p4est_locidx_t found_pos;
+  p4est_quadrant_t sq, *qp, *found_quad;
+  p4est_tree_t *tree;
 
   P4EST_LDEBUGF ("Looking up point %g %g\n", xy[0], xy[1]);
 
@@ -122,9 +130,9 @@ int my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
     else {
       istreeboundary[i] = 0;
       integerstep[i][0] = integerstep[i][1] = hit;
-      searchq[i][1] = qq = (int) floor ((xy[i] - hit) * P4EST_ROOT_LEN);
+      qq = (int) floor ((xy[i] - hit) * P4EST_ROOT_LEN);
       P4EST_ASSERT (0 <= qq && qq < P4EST_ROOT_LEN);
-      qq &= ~(qlen - 1);                /* force qq to a quadrant multiple */
+      searchq[i][1] = qq &= ~(qlen - 1);        /* force quadrant multiple */
 
       /* check if the xy[i] coordinate is on a possible quadrant boundary */
       if ((double) qq == (xy[i] - hit) * P4EST_ROOT_LEN) {
@@ -143,11 +151,64 @@ int my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   }
 
   /* go through all P4EST_CHILDREN possible quadrant searches */
-  for (iy = 0; iy < 2; ++iy) {
-    for (ix = 0; ix < 2; ++ix) {
+  memset (treeid, -1, sizeof (p4est_topidx_t) * P4EST_CHILDREN);
+  alllocal = allghost = 1;
+  smallest_level = -1;
+  smallest_owner = p4est->mpisize;
+  found_owner = -1;
+  found_quad = NULL;
+  found_pos = -1;
+  for (iy = 1; iy >= 0; --iy) {
+    if (integerstep[1][iy] == -1) {
+      continue;
+    }
+    for (ix = 1; ix >= 0; --ix) {
+      if (integerstep[0][ix] == -1) {
+        continue;
+      }
+      tt = treeid[2 * iy + ix] =
+        myb->nxy_to_treeid[myb->nxytrees[0] * integerstep[1][iy] +
+                           integerstep[0][ix]];
+      P4EST_LDEBUGF ("Testing %d %d for tree %d\n", ix, iy, (int) tt);
+      sq.x = searchq[0][ix];
+      sq.y = searchq[1][iy];
+      sq.level = P4EST_QMAXLEVEL;
+      P4EST_ASSERT (p4est_quadrant_is_valid (&sq));
+      pp = p4est_comm_find_owner (p4est, tt, &sq, p4est->mpirank);
+      if (pp == p4est->mpirank) {
+        /* this quadrant match is processor local */
+        allghost = 0;
+        tree = p4est_tree_array_index (p4est->trees, tt);
+        position = sc_bsearch_range (&sq, tree->quadrants.array,
+                                     tree->quadrants.elem_count - 1,
+                                     sizeof (p4est_quadrant_t),
+                                     p4est_quadrant_compare);
+        qp = p4est_quadrant_array_index (&tree->quadrants, position);
+        P4EST_LDEBUGF ("Found local level %d\n", qp->level);
+        if (qp->level > smallest_level) {
+          smallest_level = qp->level;
+          found_owner = pp;
+          found_quad = qp;
+          found_pos = (p4est_locidx_t) position;
+        }
+      }
+      else {
+        /* this quadrant match is in the ghost layer */
+        alllocal = 0;
+        sq.p.which_tree = tt;
+        /* will need to add another function to p4est */
+        sgpos = p4est_ghost_tree_bsearch (ghost, pp, tt, &sq);
+      }
+
+      
     }
   }
 
+  /* If multiple smallest matches exist, find smallest owner */
+#if 0
+    if (which_quad != NULL) *which_quad = found_pos;
+    if (quad != NULL) *quad = found_quad;
+#endif
 
   return my_p4est_brick_point_lookup_real (p4est, ghost, myb, xy,
                                            which_tree, which_quad, quad);
