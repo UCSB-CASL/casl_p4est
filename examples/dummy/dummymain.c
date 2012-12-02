@@ -22,6 +22,8 @@ main (int argc, char ** argv)
         p4est_topidx_t which_tree;
 	p4est_connectivity_t * conn;
 	p4est_t * p4est;
+        p4est_ghost_t * ghost;
+        my_p4est_brick_t thebrick, *brick = &thebrick;
         my_p4est_nodes_t * nodes;
 
 	mpiret = MPI_Init (&argc, &argv);
@@ -43,28 +45,30 @@ main (int argc, char ** argv)
 	p4est_init (NULL, lp);
 
         /* create some p4est refinement */
-	conn = p4est_connectivity_new_brick (1, 2, 0, 0);
+        conn = my_p4est_brick_new (1, 2, brick);
 	p4est = p4est_new (mpicomm, conn, 0, NULL, NULL);
         p4est_refine (p4est, 2, simple_refine, NULL);
         p4est_partition (p4est, NULL);
         p4est_vtk_write_file (p4est, NULL, "twobrick");
 
-        /* create node information */
+        /* create ghost and node information */
+        ghost = p4est_ghost_new (p4est, P4EST_CONNECT_FULL);
         nodes = my_p4est_nodes_new (p4est);
 
         /* look up a point */
         xy[0] = .5;
         xy[1] = .5;
         which_tree = conn->num_trees - 1;
-        owner = my_p4est_brick_point_lookup (p4est, NULL, NULL,
+        owner = my_p4est_brick_point_lookup (p4est, ghost, brick,
                                              xy, &which_tree,
                                              NULL, NULL);
         P4EST_INFOF ("Owner of point %g %g is %d\n", xy[0], xy[1], owner);
 
         /* clean up */
         my_p4est_nodes_destroy (nodes);
+        p4est_ghost_destroy (ghost);
 	p4est_destroy (p4est);
-	p4est_connectivity_destroy (conn);
+	my_p4est_brick_destroy (conn, brick);
 
 	/* make sure internally used memory has been freed */
 	sc_finalize ();
