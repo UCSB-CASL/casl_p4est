@@ -308,7 +308,8 @@ int my_p4est_brick_point_lookup_real (p4est_t * p4est, p4est_ghost_t * ghost,
   return pp;
 }
 
-int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, const double * xy,
+int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, p4est_ghost_t *ghost, const my_p4est_brick_t *myb,
+                                         const double * xy,
                                          p4est_topidx_t *which_tree,
                                          p4est_locidx_t *which_quad,
                                          p4est_quadrant_t **quad)
@@ -342,7 +343,7 @@ int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, const double * xy,
   if (xy_p[1]<=domain_ymin) xy_p[1] = domain_ymin;
   if (xy_p[1]>=domain_ymax) xy_p[1] = domain_ymax;
 
-  rank = my_p4est_brick_point_lookup(p4est, NULL, NULL, xy_p, &tr, &qu, &q);
+  rank = my_p4est_brick_point_lookup_real(p4est, ghost, myb, xy_p, &tr, &qu, &q);
 
   // + -
   xy_p[0] = xy[0] + halfqw; xy_p[1] = xy[1] - halfqw;
@@ -353,7 +354,7 @@ int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, const double * xy,
   if (xy_p[1]>=domain_ymax) xy_p[1] = domain_ymax;
 
   tr_tmp = tr;
-  rank_tmp = my_p4est_brick_point_lookup(p4est, NULL, NULL,
+  rank_tmp = my_p4est_brick_point_lookup_real(p4est, ghost, myb,
                                          xy_p, &tr_tmp, &qu_tmp, &q_tmp);
   if (q_tmp->level > q->level){
     rank = rank_tmp;
@@ -371,7 +372,7 @@ int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, const double * xy,
   if (xy_p[1]>=domain_ymax) xy_p[1] = domain_ymax;
 
   tr_tmp = tr;
-  rank_tmp = my_p4est_brick_point_lookup(p4est, NULL, NULL,
+  rank_tmp = my_p4est_brick_point_lookup_real(p4est, ghost, myb,
                                          xy_p, &tr_tmp, &qu_tmp, &q_tmp);
   if (q_tmp->level > q->level){
     rank = rank_tmp;
@@ -389,7 +390,7 @@ int my_p4est_brick_point_lookup_smallest(p4est_t * p4est, const double * xy,
   if (xy_p[1]>=domain_ymax) xy_p[1] = domain_ymax;
 
   tr_tmp = tr;
-  rank_tmp = my_p4est_brick_point_lookup(p4est, NULL, NULL,
+  rank_tmp = my_p4est_brick_point_lookup_real(p4est, ghost, myb,
                                          xy_p, &tr_tmp, &qu_tmp, &q_tmp);
   if (q_tmp->level > q->level){
     rank = rank_tmp;

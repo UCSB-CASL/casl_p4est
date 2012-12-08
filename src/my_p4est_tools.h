@@ -88,7 +88,10 @@ int my_p4est_brick_point_lookup (p4est_t * p4est,
  * \param quad
  * \return
  */
-int my_p4est_brick_point_lookup_smallest (p4est_t * p4est, const double * xy,
+int my_p4est_brick_point_lookup_smallest (p4est_t * p4est,
+                                          p4est_ghost_t * ghost,
+                                          const my_p4est_brick_t * myb,
+                                          const double * xy,
                                           p4est_topidx_t *which_tree,
                                           p4est_locidx_t *which_quad,
                                           p4est_quadrant_t **quad);
