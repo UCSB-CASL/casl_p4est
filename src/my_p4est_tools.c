@@ -197,7 +197,7 @@ int my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
         alllocal = 0;
         sq.p.which_tree = tt;
         /* will need to add another function to p4est */
-        sgpos = p4est_ghost_tree_bsearch (ghost, pp, tt, &sq);
+        sgpos = p4est_ghost_bsearch (ghost, pp, tt, &sq);
       }
 
       
