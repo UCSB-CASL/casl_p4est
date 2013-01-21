@@ -575,37 +575,16 @@ my_p4est_nodes_new (p4est_t * p4est)
   }
   P4EST_FREE (new_node_number);
 
-
-
-
-
-
-  
-
-
-
 #ifdef P4EST_MPI
-  /* Receive queries and look up the reply information */
+  /* Look up the reply information */
   num_owned_shared = 0;
   P4EST_QUADRANT_INIT (&inkey);
   inkey.level = P4EST_MAXLEVEL;
   for (l = 0; l < num_senders; ++l) {
-    mpiret = MPI_Probe (MPI_ANY_SOURCE, P4EST_COMM_NODES_QUERY,
-                        p4est->mpicomm, &probe_status);
-    SC_CHECK_MPI (mpiret);
-    k = probe_status.MPI_SOURCE;
+    k = sender_ranks[l];
+    P4EST_ASSERT (k >= 0 && k < num_procs && k != rank);
     peer = peers + k;
-    P4EST_ASSERT (k != rank && peer->expect_query);
-    mpiret = MPI_Get_count (&probe_status, MPI_BYTE, &byte_count);
-    SC_CHECK_MPI (mpiret);
-    P4EST_ASSERT (byte_count % first_size == 0);
-    elem_count = byte_count / (int) first_size;
-    sc_array_resize (&peer->recv_first, (size_t) elem_count);
-    mpiret = MPI_Recv (peer->recv_first.array, byte_count, MPI_BYTE,
-                       k, P4EST_COMM_NODES_QUERY,
-                       p4est->mpicomm, &recv_status);
-    SC_CHECK_MPI (mpiret);
-    peer->expect_query = 0;
+    P4EST_ASSERT (!peers[k].expect_query && peer->recv_first.elem_count > 0);
     for (zz = 0; zz < peer->recv_first.elem_count; ++zz) {
       xyz = (p4est_qcoord_t *) sc_array_index (&peer->recv_first, zz);
       inkey.x = xyz[0];
@@ -676,17 +655,23 @@ my_p4est_nodes_new (p4est_t * p4est)
     }
   }
 
+
+
+
+
+
+
   /* Assemble and send reply information.  This is variable size.
    * (p4est_locidx_t)      Node number in this processor's ordering
    * (int8_t)              Number of sharers (not including this processor)
    * num_sharers * (int)   The ranks of all sharers.
    */
   second_size = sizeof (p4est_locidx_t) + sizeof (int8_t);
-  for (k = 0; k < num_procs; ++k) {
+  for (l = 0; l < num_senders; ++l) {
+    k = sender_ranks[l];
+    P4EST_ASSERT (k >= 0 && k < num_procs && k != rank);
     peer = peers + k;
-    if (peer->recv_first.elem_count == 0) {
-      continue;
-    }
+    P4EST_ASSERT (!peers[k].expect_query && peer->recv_first.elem_count > 0);
     for (zz = 0; zz < peer->recv_first.elem_count; ++zz) {
       node_number = (p4est_locidx_t *) sc_array_index (&peer->recv_first, zz);
       position = (size_t) (*node_number + offset_owned_indeps);
