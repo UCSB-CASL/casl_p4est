@@ -30,9 +30,11 @@ SC_EXTERN_C_BEGIN;
 
 /** This structure holds complete parallel node information.
  *
- * Nodes are unique and considered independent.
+ * All nodes, including hanging nodes, are considered unique and independent.
  * Independent nodes store their owner's tree id in piggy3.which_tree.
  * The index in their owner's ordering is stored in piggy3.local_num.
+ * The global number of a node can be computed by adding the offset in
+ * global_owned_indeps[owner] to the index in the owner's ordering.
  *
  * The local_nodes table is of dimension 4 * num_local_quadrants
  * and encodes the node indexes for all corners of all quadrants.
