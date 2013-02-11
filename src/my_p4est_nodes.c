@@ -279,8 +279,13 @@ my_p4est_nodes_new (p4est_t * p4est)
   const int           num_procs = p4est->mpisize;
   const int           rank = p4est->mpirank;
 #ifdef P4EST_MPI
+  int                 l;
+#ifdef P4EST_DEBUG
+  int                 prev;
+#endif
   int                 mpiret;
-  int                 owner, prev;
+  int                 owner;
+  int                *sender_ranks, num_senders, num_receivers;
   int                 byte_count, elem_count;
   int                *old_sharers, *new_sharers;
   int                *node_rank;
@@ -290,30 +295,26 @@ my_p4est_nodes_new (p4est_t * p4est)
   size_t              num_sharers, old_position, new_position;
   p4est_qcoord_t     *xyz;
   p4est_topidx_t     *ttt;
-  p4est_locidx_t      num_added_nodes, end_owned_indeps;
   p4est_locidx_t     *node_number;
   p4est_node_peer_t  *peers, *peer;
   p4est_indep_t       inkey;
   sc_array_t          send_requests;
+  sc_array_t          receiver_ranks;
   sc_recycle_array_t *orarr, *nrarr;
   MPI_Request        *send_request;
   MPI_Status          probe_status, recv_status;
 #endif
-#if defined (P4EST_MPI) || defined (P4_TO_P8)
-  int                 l;
-#endif
   int                 k;
   int                *nonlocal_ranks;
   int                 clamped = 1;
-  int                *sender_ranks, num_senders, num_receivers;
   void               *save_user_data;
   size_t              zz, position;
   p4est_topidx_t      jt;
   p4est_locidx_t      il;
-  p4est_locidx_t      num_local_nodes;
+  p4est_locidx_t      num_local_nodes, num_added_nodes;
   p4est_locidx_t      num_owned_nodes, num_offproc_nodes;
   p4est_locidx_t      num_owned_shared;
-  p4est_locidx_t      offset_owned_indeps;
+  p4est_locidx_t      offset_owned_indeps, end_owned_indeps;
   p4est_locidx_t      num_indep_nodes, dup_indep_nodes;
   p4est_locidx_t     *local_nodes, *quad_nodes, *shared_offsets;
   p4est_locidx_t     *new_node_number;
@@ -322,7 +323,6 @@ my_p4est_nodes_new (p4est_t * p4est)
   p4est_quadrant_t    c, n, p;
   p4est_quadrant_t   *q, *r;
   p4est_indep_t      *in;
-  sc_array_t         receiver_ranks;
   sc_array_t         *quadrants;
   sc_array_t         *inda;
   sc_array_t         *shared_indeps;
@@ -357,8 +357,8 @@ my_p4est_nodes_new (p4est_t * p4est)
                                    p4est_node_equal_piggy_fn, &clamped);
 
   /* This loop will collect independent nodes relevant for the elements. */
-  num_owned_nodes = num_offproc_nodes = 0;
-  num_indep_nodes = dup_indep_nodes = 0;
+  num_owned_nodes = num_offproc_nodes = num_owned_shared = 0;
+  num_indep_nodes = dup_indep_nodes = num_added_nodes = 0;
   quad_nodes = local_nodes;
   for (jt = p4est->first_local_tree; jt <= p4est->last_local_tree; ++jt) {
     tree = p4est_tree_array_index (p4est->trees, jt);
@@ -469,12 +469,10 @@ my_p4est_nodes_new (p4est_t * p4est)
     P4EST_ASSERT (k >= 0 && k < num_procs && k != rank);
     peers[k].expect_query = 1;
   }
-  P4EST_FREE (sender_ranks);
   
   /* Receive queries and add nodes that I didn't know about. */
   P4EST_QUADRANT_INIT (&inkey);
   inkey.level = P4EST_MAXLEVEL;
-  num_added_nodes = 0;
   for (l = 0; l < num_senders; ++l) {
     mpiret = MPI_Probe (MPI_ANY_SOURCE, P4EST_COMM_NODES_QUERY,
                         p4est->mpicomm, &probe_status);
@@ -521,7 +519,9 @@ my_p4est_nodes_new (p4est_t * p4est)
 
   /* Reorder independent nodes by their global treeid and z-order index. */
   node_rank = P4EST_ALLOC (int, num_indep_nodes);
+#ifdef P4EST_DEBUG
   prev = -1;
+#endif
 #endif /* P4EST_MPI */
 
   offset_owned_indeps = 0;
@@ -547,13 +547,19 @@ my_p4est_nodes_new (p4est_t * p4est)
     if (owner < rank) {
       nonlocal_ranks[offset_owned_indeps++] = owner;
     }
-    else if (rank < owner) {
+    else if (rank == owner) {
+      in->p.piggy3.local_num = il - offset_owned_indeps;
+    }
+    else {
+      P4EST_ASSERT (rank < owner);
       P4EST_ASSERT (offset_owned_indeps + num_owned_nodes <= il);
       nonlocal_ranks[il - num_owned_nodes] = owner;
     }
+#ifdef P4EST_DEBUG
     if (prev < owner) {
       prev = owner;
     }
+#endif
 #else /* !P4EST_MPI */
     in->p.piggy3.local_num = il;
 #endif /* !P4EST_MPI */
@@ -562,10 +568,6 @@ my_p4est_nodes_new (p4est_t * p4est)
 #ifdef P4EST_MPI
   P4EST_FREE (node_rank);
 #endif /* P4EST_MPI */
-
-
-  /* TODO: when is piggy3.local_num filled with MPI? */
-
 
   /* Re-synchronize hash array and local nodes */
   save_user_data = indep_nodes->internal_data.user_data;
@@ -581,7 +583,6 @@ my_p4est_nodes_new (p4est_t * p4est)
 
 #ifdef P4EST_MPI
   /* Look up the reply information */
-  num_owned_shared = 0;
   P4EST_QUADRANT_INIT (&inkey);
   inkey.level = P4EST_MAXLEVEL;
   for (l = 0; l < num_senders; ++l) {
@@ -714,6 +715,7 @@ my_p4est_nodes_new (p4est_t * p4est)
     SC_CHECK_MPI (mpiret);
     sc_array_reset (&peer->recv_first);
   }
+  P4EST_FREE (sender_ranks);
 #endif /* P4EST_MPI */
 
   /* Allocate remaining output data structures */
@@ -721,8 +723,6 @@ my_p4est_nodes_new (p4est_t * p4est)
   nodes->num_owned_shared = num_owned_shared;
   nodes->offset_owned_indeps = offset_owned_indeps;
   sc_hash_array_rip (indep_nodes, inda = &nodes->indep_nodes);
-  nonlocal_ranks = nodes->nonlocal_ranks =
-    P4EST_ALLOC (int, num_indep_nodes - num_owned_nodes);
   nodes->global_owned_indeps = P4EST_ALLOC (p4est_locidx_t, num_procs);
   nodes->global_owned_indeps[rank] = num_owned_nodes;
   indep_nodes = NULL;
@@ -758,7 +758,6 @@ my_p4est_nodes_new (p4est_t * p4est)
     k = in->p.piggy1.owner_rank;
     P4EST_ASSERT ((k < rank && il < offset_owned_indeps) ||
                   (k > rank && il >= end_owned_indeps));
-    *nonlocal_ranks++ = k;
     peer = peers + k;
     P4EST_ASSERT (peer->recv_offset + second_size <=
                   peer->recv_second.elem_count);
