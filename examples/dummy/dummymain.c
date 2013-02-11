@@ -22,7 +22,7 @@ main (int argc, char ** argv)
         p4est_topidx_t which_tree;
 	p4est_connectivity_t * conn;
 	p4est_t * p4est;
-        my_p4est_nodes_t * nodes;
+        p4est_nodes_t * nodes;
 
 	mpiret = MPI_Init (&argc, &argv);
 	SC_CHECK_MPI (mpiret);
@@ -61,7 +61,7 @@ main (int argc, char ** argv)
         P4EST_INFOF ("Owner of point %g %g is %d\n", xy[0], xy[1], owner);
 
         /* clean up */
-        my_p4est_nodes_destroy (nodes);
+        p4est_nodes_destroy (nodes);
 	p4est_destroy (p4est);
 	p4est_connectivity_destroy (conn);
 
