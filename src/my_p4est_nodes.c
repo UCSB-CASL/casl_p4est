@@ -376,6 +376,7 @@ my_p4est_nodes_new (p4est_t * p4est)
           (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes, &c,
                                                             &position);
         if (r != NULL) {
+          /* found a new node */
           *r = c;
           P4EST_ASSERT (num_indep_nodes == (p4est_locidx_t) position);
           ++num_indep_nodes;
@@ -469,7 +470,7 @@ my_p4est_nodes_new (p4est_t * p4est)
     P4EST_ASSERT (k >= 0 && k < num_procs && k != rank);
     peers[k].expect_query = 1;
   }
-  
+
   /* Receive queries and add nodes that I didn't know about. */
   P4EST_QUADRANT_INIT (&inkey);
   inkey.level = P4EST_MAXLEVEL;
@@ -503,6 +504,7 @@ my_p4est_nodes_new (p4est_t * p4est)
         (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
                                                           &inkey, &position);
       if (r != NULL) {
+        /* learned about a new node that rank owns but doesn't reference */
         *r = *(p4est_quadrant_t *) &inkey;
         r->p.piggy1.owner_rank = rank;
         P4EST_ASSERT ((p4est_locidx_t) position ==
@@ -514,6 +516,9 @@ my_p4est_nodes_new (p4est_t * p4est)
       }
     }
   }
+  P4EST_LDEBUGF ("Indeps %lld owned(pre) %lld off %lld added %lld\n",
+                 (long long) num_indep_nodes, (long long) num_owned_nodes,
+                 (long long) num_offproc_nodes, (long long) num_added_nodes);
   num_indep_nodes += num_added_nodes;
   num_owned_nodes += num_added_nodes;
 
@@ -610,6 +615,7 @@ my_p4est_nodes_new (p4est_t * p4est)
       node_number = (p4est_locidx_t *) xyz;
       *node_number = (p4est_locidx_t) position - offset_owned_indeps;
       in = (p4est_indep_t *) sc_array_index (inda, position);
+      P4EST_ASSERT (*node_number == in->p.piggy3.local_num);
       P4EST_ASSERT (p4est_node_equal_piggy_fn (&inkey, in, &clamped));
       P4EST_ASSERT (in->pad8 >= 0);
       num_sharers = (size_t) in->pad8;
