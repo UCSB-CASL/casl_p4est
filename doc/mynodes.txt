@@ -1,0 +1,15 @@
+
+num_local_nodes         P4EST_CHILDREN * local_num_quadrants
+num_owned_nodes         number of unique local nodes owned by rank
+num_offproc_nodes       number of unique local nodes owned by other processors
+num_indep_nodes         number of unique local nodes in hash array
+dup_indep_nodes         number of repeated occurrences of local nodes
+num_added_nodes         number of unique local nodes added due to query
+
+offset_owned_indeps     offset of first owned unique local node
+end_owned_indeps        offset of first non-owned uln after the owned ones
+num_owned_shared        number of unique local owned nodes that have sharers
+
+hash array first phase  piggy1.which_tree, piggy1.owner_rank
+        second phase    piggy3.which_tree, piggy3.local_num (pre-sort)
+        third phase     piggy3.which_tree, piggy3.local_num (post-sort)
