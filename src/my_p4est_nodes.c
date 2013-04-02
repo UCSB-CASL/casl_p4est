@@ -529,6 +529,7 @@ my_p4est_nodes_new (p4est_t * p4est)
 #endif
 #endif /* P4EST_MPI */
 
+  P4EST_ASSERT (num_indep_nodes == num_owned_nodes + num_offproc_nodes);
   offset_owned_indeps = 0;
   new_node_number = P4EST_ALLOC (p4est_locidx_t, num_indep_nodes);
   nonlocal_ranks = nodes->nonlocal_ranks =
@@ -588,6 +589,8 @@ my_p4est_nodes_new (p4est_t * p4est)
 
 #ifdef P4EST_MPI
   /* Look up the reply information */
+  /* This could be merged into the receive loop above 
+     but then it would need a reassignment after the node sorting */
   P4EST_QUADRANT_INIT (&inkey);
   inkey.level = P4EST_MAXLEVEL;
   for (l = 0; l < num_senders; ++l) {
@@ -665,12 +668,6 @@ my_p4est_nodes_new (p4est_t * p4est)
       }
     }
   }
-
-
-
-
-
-
 
   /* Assemble and send reply information.  This is variable size.
    * (p4est_locidx_t)      Node number in this processor's ordering
@@ -758,10 +755,16 @@ my_p4est_nodes_new (p4est_t * p4est)
     in = (p4est_indep_t *) sc_array_index (inda, (size_t) il);
     p4est_node_unclamp ((p4est_quadrant_t *) in);
 #ifdef P4EST_MPI
-    if (il >= offset_owned_indeps && il < end_owned_indeps) {
+    if (il < offset_owned_indeps) {
+      k = nonlocal_ranks[il];
+    }
+    else if (il < end_owned_indeps) {
+      /* owned nodes don't need work */
       continue;
     }
-    k = in->p.piggy1.owner_rank;
+    else {
+      k = nonlocal_ranks[il - num_owned_nodes];
+    }
     P4EST_ASSERT ((k < rank && il < offset_owned_indeps) ||
                   (k > rank && il >= end_owned_indeps));
     peer = peers + k;
