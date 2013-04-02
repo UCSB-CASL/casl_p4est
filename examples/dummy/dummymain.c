@@ -25,7 +25,7 @@ main (int argc, char ** argv)
 	p4est_t * p4est;
         p4est_ghost_t * ghost;
         my_p4est_brick_t thebrick, *brick = &thebrick;
-        my_p4est_nodes_t * nodes;
+        p4est_nodes_t * nodes;
 
 	mpiret = MPI_Init (&argc, &argv);
 	SC_CHECK_MPI (mpiret);
@@ -48,7 +48,7 @@ main (int argc, char ** argv)
         /* create some p4est refinement */
         conn = my_p4est_brick_new (1, 2, brick);
 	p4est = p4est_new (mpicomm, conn, 0, NULL, NULL);
-        p4est_refine (p4est, 1, simple_refine, NULL);
+        p4est_refine (p4est, 2, simple_refine, NULL);
         p4est_partition (p4est, NULL);
         p4est_vtk_write_file (p4est, NULL, "twobrick");
 
@@ -71,7 +71,7 @@ main (int argc, char ** argv)
 	}
 
         /* clean up */
-        my_p4est_nodes_destroy (nodes);
+        p4est_nodes_destroy (nodes);
         p4est_ghost_destroy (ghost);
 	p4est_destroy (p4est);
 	my_p4est_brick_destroy (conn, brick);

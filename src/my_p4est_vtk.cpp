@@ -192,7 +192,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
   sc_array_t         *quadrants, *indeps;
   p4est_tree_t       *tree;
   p4est_quadrant_t   *quad;
-  my_p4est_nodes_t   *nodes;
+  p4est_nodes_t      *nodes;
   p4est_indep_t      *in;
   char                vtufilename[BUFSIZ];
   FILE               *vtufile;
@@ -501,7 +501,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
   P4EST_FREE (locidx_data);
 #endif
   if (nodes != NULL) {
-    my_p4est_nodes_destroy (nodes);
+    p4est_nodes_destroy (nodes);
   }
 
   if (ferror (vtufile)) {

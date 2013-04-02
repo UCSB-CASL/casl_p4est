@@ -1,12 +1,12 @@
 #include "semi_lagrangian.h"
 
-SemiLagrangian::SemiLagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
+SemiLagrangian::SemiLagrangian(p4est_t *p4est_, p4est_nodes_t *nodes_)
 {
   update(p4est_, nodes_);
   tc = 0;
 }
 
-void SemiLagrangian::update(p4est_t *p4est_, my_p4est_nodes_t *nodes_)
+void SemiLagrangian::update(p4est_t *p4est_, p4est_nodes_t *nodes_)
 {
   p4est = p4est_;
   nodes = nodes_;

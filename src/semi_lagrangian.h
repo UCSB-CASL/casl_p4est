@@ -21,7 +21,7 @@ struct point{
 class SemiLagrangian
 {
   p4est_t *p4est;
-  my_p4est_nodes *nodes;
+  p4est_nodes *nodes;
   ArrayV<bool> is_processed;
 
   p4est_locidx_t *e2n;
@@ -40,9 +40,9 @@ class SemiLagrangian
   int tc;
 
 public:
-  SemiLagrangian(p4est_t *p4est_, my_p4est_nodes_t *nodes_);
+  SemiLagrangian(p4est_t *p4est_, p4est_nodes_t *nodes_);
 
-  void update(p4est_t *p4est_, my_p4est_nodes_t *nodes_);
+  void update(p4est_t *p4est_, p4est_nodes_t *nodes_);
   void advect(CF_2& velx, CF_2& vely, double dt, Vec &phi);
 };
 

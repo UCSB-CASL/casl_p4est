@@ -119,7 +119,7 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quad
   return ( (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) );
 }
 
-PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, my_p4est_nodes_t *nodes, Vec* v)
+PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
 {
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = nodes->num_owned_indeps;
@@ -158,7 +158,7 @@ PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, my_p4est_nodes_t *nodes, Vec
   return ierr;
 }
 
-p4est_locidx_t p4est2petsc_local_numbering(my_p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx)
+p4est_locidx_t p4est2petsc_local_numbering(p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx)
 {
 #ifdef CASL_THROWS
   if (p4est_node_locidx < 0 || p4est_node_locidx >= nodes->indep_nodes.elem_count)

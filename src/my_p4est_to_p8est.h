@@ -27,9 +27,6 @@
 #include <p4est_to_p8est.h>
 
 #define my_p4est_nodes_t                my_p8est_nodes_t
-
 #define my_p4est_nodes_new              my_p8est_nodes_new
-#define my_p4est_nodes_destroy          my_p8est_nodes_destroy
-#define my_p4est_nodes_is_valid         my_p8est_nodes_is_valid
 
 #endif /* !MY_P4EST_TO_P8EST_H */

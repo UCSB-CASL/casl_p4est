@@ -76,7 +76,7 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quad
  * \param nodes the nodes numbering data structure
  * \param v PETSc vector type
  */
-PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, my_p4est_nodes_t *nodes, Vec* v);
+PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
 
 /*!
  * \brief p4est2petsc_local_numbering converts p4est local node numbering convention to petsc local numbering convention
@@ -84,7 +84,7 @@ PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, my_p4est_nodes_t *nodes, Vec
  * \param p4est_node_locidx local numbering in p4est convention
  * \return local numbering in petsc convention
  */
-p4est_locidx_t p4est2petsc_local_numbering(my_p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx);
+p4est_locidx_t p4est2petsc_local_numbering(p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx);
 
 /*!
  * \brief The Session class

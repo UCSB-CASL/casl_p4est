@@ -28,56 +28,15 @@
 
 SC_EXTERN_C_BEGIN;
 
-/** This structure holds complete parallel node information.
- *
- * Nodes are unique and considered independent.
- * Independent nodes store their owner's tree id in piggy3.which_tree.
- * The index in their owner's ordering is stored in piggy3.local_num.
- *
- * The local_nodes table is of dimension 4 * num_local_quadrants
- * and encodes the node indexes for all corners of all quadrants.
- *
- * The array shared_indeps holds lists of node sharers (not including rank).
- * The entry shared_indeps[i] is of type sc_recycle_array_t
- * and holds the list of nodes with i + 1 sharers.
- * For each independent node, its member pad8 holds the number of sharers
- * and its member pad16 holds the position in the assigned recycle array
- * if this number fits into an int16_t.  If this limit is exceeded, the
- * array shared_offsets is filled with these positions as one p4est_locidx_t
- * per independent node, and all pad16 members are set to -1.  To recognize
- * the latter situation you can check for shared_offsets != NULL.
- *
- * Each processor owns num_owned_indeps of the stored independent nodes.
- * The first independent owned node is at index offset_owned_indeps.
- * The table nonlocal_ranks contains the ranks of all stored non-owned nodes.
- * The table global_owned_indeps holds the number of owned nodes for each rank.
- */
-typedef struct my_p4est_nodes
-{
-  p4est_locidx_t      num_local_quadrants;
-  p4est_locidx_t      num_owned_indeps, num_owned_shared;
-  p4est_locidx_t      offset_owned_indeps;
-  sc_array_t          indep_nodes;
-  p4est_locidx_t     *local_nodes;
-  sc_array_t          shared_indeps;
-  p4est_locidx_t     *shared_offsets;
-  int                *nonlocal_ranks;
-  p4est_locidx_t     *global_owned_indeps;
-}
-my_p4est_nodes_t;
-
 /** Create node information.
+ * All nodes, including hanging nodes, are considered unique and independent.
+ * Function is compatible with p4est_nodes_is_valid and p4est_nodes_destroy.
  * \param [in] p4est    The forest.  Does not need to be balanced.
- * \return              A fully allocated my_p4est_nodes structure.
+ * \return              A fully allocated and valid p4est_nodes_t structure.
+ *                      It does not consider any node as hanging.
+ *                      See p4est_nodes.h for details.
  */
-my_p4est_nodes_t   *my_p4est_nodes_new (p4est_t * p4est);
-
-/** Destroy node information. */
-void                my_p4est_nodes_destroy (my_p4est_nodes_t * nodes);
-
-/** Check node information for internal consistency. */
-int                 my_p4est_nodes_is_valid (p4est_t * p4est,
-                                             my_p4est_nodes_t * nodes);
+p4est_nodes_t      *my_p4est_nodes_new (p4est_t * p4est);
 
 SC_EXTERN_C_END;
 
