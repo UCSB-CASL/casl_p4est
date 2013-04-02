@@ -48,7 +48,7 @@ main (int argc, char ** argv)
         /* create some p4est refinement */
         conn = my_p4est_brick_new (1, 2, brick);
 	p4est = p4est_new (mpicomm, conn, 0, NULL, NULL);
-        p4est_refine (p4est, 2, simple_refine, NULL);
+        p4est_refine (p4est, 1, simple_refine, NULL);
         p4est_partition (p4est, NULL);
         p4est_vtk_write_file (p4est, NULL, "twobrick");
 
