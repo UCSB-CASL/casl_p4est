@@ -26,7 +26,13 @@
 
 #include <p4est_nodes.h>
 
-SC_EXTERN_C_BEGIN;
+#ifdef __cplusplus
+extern              "C"
+{
+#if 0
+}
+#endif
+#endif
 
 /** Create node information.
  * All nodes, including hanging nodes, are considered unique and independent.
@@ -38,6 +44,11 @@ SC_EXTERN_C_BEGIN;
  */
 p4est_nodes_t      *my_p4est_nodes_new (p4est_t * p4est);
 
-SC_EXTERN_C_END;
+#ifdef __cplusplus
+#if 0
+{
+#endif
+}
+#endif
 
 #endif /* !MY_P4EST_NODES_H */
