@@ -36,7 +36,7 @@ SC_EXTERN_C_BEGIN;
  *                      It does not consider any node as hanging.
  *                      See p8est_nodes.h for details.
  */
-p8est_nodes_t         *my_p8est_nodes_new (p8est_t * p8est);
+p8est_nodes_t      *my_p8est_nodes_new (p8est_t * p8est);
 
 SC_EXTERN_C_END;
 
