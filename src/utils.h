@@ -20,12 +20,6 @@
 #define P4EST_TRUE  1
 #define P4EST_FALSE 0
 
-#if (PETSC_VERSION_MINOR <= 1)
-#undef CHKERRXX
-#define CHKERRXX
-#endif
-
-
 /*!
  * \brief c2p_coordinate_transform Converts local (within tree [0,1]) coordinates into global coordinates
  * \param p4est the forest

@@ -1,10 +1,10 @@
 #include "interpolating_function.h"
 
-BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est_, my_p4est_nodes_t *nodes_, Vec F_)
+BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est_, p4est_nodes_t *nodes_, Vec F_)
   : p4est(p4est_), nodes(nodes_), F(F_)
 {}
 
-void BilinearInterpolatingFunction::update(p4est_t *p4est_, my_p4est_nodes_t *nodes_, Vec F_)
+void BilinearInterpolatingFunction::update(p4est_t *p4est_, p4est_nodes_t *nodes_, Vec F_)
 {
   p4est = p4est_;
   nodes = nodes_;
@@ -74,7 +74,7 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const
   return val;
 }
 
-void BilinearInterpolatingFunction::interpolateValuesToNewForest(p4est_t *p4est_new, my_p4est_nodes_t *nodes_new, Vec *F_new)
+void BilinearInterpolatingFunction::interpolateValuesToNewForest(p4est_t *p4est_new, p4est_nodes_t *nodes_new, Vec *F_new)
 {
   // First create a fector long enough to hold new values
   PetscErrorCode ierr;

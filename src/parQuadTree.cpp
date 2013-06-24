@@ -20,7 +20,7 @@ void parQuadTree::copyFromP4est()
     double         *v   = p4est->connectivity->vertices;
     p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
     tr.set_grid(v[3*t2v[tr_id*P4EST_CHILDREN + 0] + 0], v[3*t2v[tr_id*P4EST_CHILDREN + 1] + 0],
-                v[3*t2v[tr_id*P4EST_CHILDREN + 0] + 1], v[3*t2v[tr_id*P4EST_CHILDREN + 2] + 1]);
+        v[3*t2v[tr_id*P4EST_CHILDREN + 0] + 1], v[3*t2v[tr_id*P4EST_CHILDREN + 2] + 1]);
 
     p4est_tree_t *tree    = p4est_tree_array_index(p4est->trees, tr_id);
     sc_array_t *quadrants = &tree->quadrants;

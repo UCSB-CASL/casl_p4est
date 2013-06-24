@@ -38,6 +38,7 @@ SC_EXTERN_C_BEGIN;
  */
 p4est_nodes_t      *my_p4est_nodes_new (p4est_t * p4est);
 
+
 SC_EXTERN_C_END;
 
 #endif /* !MY_P4EST_NODES_H */

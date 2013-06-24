@@ -61,8 +61,8 @@ coarsen_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **
 
     for (unsigned short cj = 0; cj<2; ++cj)
       for (unsigned short ci = 0; ci <2; ++ci)
-          if(fabs(phi(x+ci*dx, y+cj*dy)) <= 0.5*lip*d)
-            return P4EST_FALSE;
+        if(fabs(phi(x+ci*dx, y+cj*dy)) <= 0.5*lip*d)
+          return P4EST_FALSE;
 
     return P4EST_TRUE;
   }

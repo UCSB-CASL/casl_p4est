@@ -1,56 +1,4 @@
 # prepare sources that need to be compiled
-#INCLUDE_FLAGS += -I$(CASL_DIR)
-
-ifeq ($(BUILD_UTILITIES), YES)
-	vpath %.cpp $(CASL_DIR)/lib/utilities
-	SRCS += Macros.cpp
-endif
-
-ifeq ($(BUILD_ALGEBRA), YES)
-	vpath %.cpp $(CASL_DIR)/lib/algebra
-	SRCS += Matrix.cpp MatrixFull.cpp 
-	ifeq ($(CASL_HAVE_PETSC), YES)
-		SRCS += petscLinearSolver.cpp
-	endif
-endif
-
-ifeq ($(BUILD_QUADTREE), YES)
-	vpath Q%.cpp $(CASL_DIR)/lib/amr
-	vpath Q%.cpp $(CASL_DIR)/lib/fastmarching
-	SRCS += QuadTree.cpp QuadTree_FDM.cpp QuadTree_FVM.cpp Quad_Ngbd_Nodes_of_Node.cpp QuadTree_extension.cpp QuadTree_FastMarching.cpp
-endif
-
-ifeq ($(BUILD_OCTREE), YES)
-	vpath O%.cpp $(CASL_DIR)/lib/amr
-	vpath O%.cpp $(CASL_DIR)/lib/fastmarching
-	SRCS += OcTree.cpp Oct_Ngbd_Nodes_of_Node.cpp Octree_FDM.cpp Octree_IP.cpp OcTree_extension.cpp OcTree_FastMarching.cpp  
-endif
-
-ifeq ($(BUILD_ARRAYS), YES)
-	vpath %.cpp $(CASL_DIR)/lib/array
-	SRCS += ArrayV_2D.cpp ArrayV_3D.cpp 
-endif
-
-ifeq ($(BUILD_IO), YES)
-	vpath %.cpp $(CASL_DIR)/lib/io
-	SRCS += vtuWriter.cpp xdmfWriter.cpp Parser.cpp
-endif
-
-ifeq ($(BUILD_EK), YES)
-	vpath %.cpp $(CASL_DIR)/lib/ek
-	SRCS += pbSolver_2d_FVM.cpp pnpSolver_2d_FVM.cpp
-endif
-
-ifeq ($(BUILD_GEOMETRY), YES)
-	vpath %.cpp $(CASL_DIR)/lib/geometry
-	SRCS += Point2.cpp Point2_new.cpp Point3.cpp
-endif
-
-ifeq ($(BUILD_RAYTRACING), YES)
-	vpath %.cpp $(CASL_DIR)/lib/raytracing
-	SRCS += Vector3.cpp
-endif
-
 ifeq ($(CASL_HAVE_PETSC), YES)
 	CXX_DEFINES  += -DCASL_USE_PETSC
 	CASL_HAVE_MPI = YES 
@@ -65,6 +13,7 @@ ifeq ($(CASL_HAVE_PETSC), YES)
 
 	include $(PETSC_HOME_DIR)/conf/variables
 	include $(PETSC_HOME_DIR)/conf/rules
+
 ifeq ($(PETSC_INCLUDE),)
 	PETSC_INCLUDE = -I$(PETSC_HOME_DIR)/include -I$(PETSC_HOME_DIR)/$(PETSC_ARCH)/include 
 endif

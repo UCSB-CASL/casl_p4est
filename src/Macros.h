@@ -11,36 +11,6 @@
 #include <map>
 #include <stdexcept>
 
-
-//---------------------------------------------------------------------
-// some constants
-//---------------------------------------------------------------------
-static const char BC_DIRICHLET = 0;
-static const char BC_NEUMANN   = 1;
-static const char SOLVE_FOR    = 2;
-static const char BC_PERIODIC  = 3;
-static const char BC_ONE_SIDED = 4;
-static const char BC_JUMP      = 5;
-static const char BC_OUTSIDE   = 6;
-
-static const char X_DIRECTION  = 7;
-static const char Y_DIRECTION  = 8;
-static const char Z_DIRECTION  = 9;
-
-static const char  INSIDE_FLUID = 1;
-static const char OUTSIDE_FLUID = 0;
-
-static const char MID_POINT_RULE_EXPLICIT = 0;
-static const char MID_POINT_RULE_IMPLICIT = 1;
-
-static const char LIP_MAX_INEQ_ESTIMATE = 0;
-static const char LIP_MIN_INEQ_ESTIMATE = 1;
-
-static const char METHOD_TVD = 0;
-static const char METHOD_FMM = 1;
-
-static const double eps_double_precision = 1e-13;
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif

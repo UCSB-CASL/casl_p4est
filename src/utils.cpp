@@ -153,7 +153,7 @@ PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v
   }
 
   ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global, ghost_nodes.size(), (const PetscInt*)ghost_nodes, v); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v); CHKERRXX(ierr);
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
 
   return ierr;
 }

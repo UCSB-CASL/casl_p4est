@@ -1,0 +1,23 @@
+# What files to ignore?
+*.creator
+*.config
+*.files
+*.includes
+*.o
+*.out
+*.bin
+*.exe
+*.pro
+*.pro.user
+*.creator.user
+*~
+*.vt[uks]
+*.pvt[uks]
+*.visit
+
+# What directories to ignore
+[Dd]ebug/
+[Rr]elease/
+[Oo]bjs/
+
+
