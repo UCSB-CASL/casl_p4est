@@ -44,7 +44,7 @@ int main (int argc, char* argv[]){
   mpi->mpicomm  = MPI_COMM_WORLD;
   p4est_connectivity_t *connectivity;
   p4est_t            *p4est;
-  my_p4est_nodes_t   *nodes;
+  p4est_nodes_t   *nodes;
   p4est_locidx_t     *e2n;
 
   PetscErrorCode ierr;
@@ -200,13 +200,13 @@ int main (int argc, char* argv[]){
     p4est_partition(p4est_np1, NULL);
 
     // interpolate new values of the level-set from the old grid
-    my_p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
+    p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
     Vec phi_np1;
     BIF.interpolateValuesToNewForest(p4est_np1, nodes_np1, &phi_np1);
 
     // Now get rid of previous step objects and reassign referrences for next step
     p4est_destroy(p4est);                    p4est = p4est_np1;
-    my_p4est_nodes_destroy(nodes);           nodes = nodes_np1;
+    p4est_nodes_destroy(nodes);           nodes = nodes_np1;
     ierr = VecDestroy(phi); CHKERRXX(ierr);  phi   = phi_np1;
 
     // update the SL internal variables for the next time step
@@ -217,7 +217,7 @@ int main (int argc, char* argv[]){
   ierr = VecDestroy(phi); CHKERRXX(ierr);
 
   // destroy the p4est and its connectivity structure
-  my_p4est_nodes_destroy (nodes);
+  p4est_nodes_destroy (nodes);
   p4est_destroy (p4est);
   p4est_connectivity_destroy (connectivity);
 
