@@ -26,6 +26,92 @@
 #include <p4est_communication.h>
 #include "my_p4est_tools.h"
 
+static int
+my_p4est_brick_point_lookup_real (p4est_t * p4est, p4est_ghost_t * ghost,
+                                  const my_p4est_brick_t * myb,
+                                  const double *xy,
+                                  p4est_topidx_t * which_tree,
+                                  p4est_locidx_t * which_quad,
+                                  p4est_quadrant_t ** quad)
+{
+  const p4est_connectivity_t *conn = p4est->connectivity;
+  const p4est_topidx_t *t2v = conn->tree_to_vertex;
+  const double       *v2q = conn->vertices;
+  const p4est_qcoord_t qlen = P4EST_QUADRANT_LEN (P4EST_QMAXLEVEL);
+  int                 pp;
+  size_t              position;
+  double              xyoffset[P4EST_DIM];
+  p4est_topidx_t      tt = *which_tree;
+  p4est_tree_t       *tree;
+  p4est_quadrant_t    qq;
+
+  P4EST_ASSERT (vv != NULL);
+  P4EST_ASSERT (0 <= tt && tt < num_trees);
+
+  p4est_locidx_t v_mm = t2v[P4EST_CHILDREN * tt + 0];
+  p4est_locidx_t v_pp = t2v[P4EST_CHILDREN * tt + 3];
+  const double tr_xmin = v2q[3 * v_mm + 0];
+  const double tr_ymin = v2q[3 * v_mm + 1];
+  const double tr_xmax = v2q[3 * v_pp + 0];
+  const double tr_ymax = v2q[3 * v_pp + 1];
+
+  xyoffset[0] = (xy[0] - tr_xmin)/(tr_xmax - tr_xmin);
+  xyoffset[1] = (xy[1] - tr_ymin)/(tr_ymax - tr_ymin);
+
+  P4EST_ASSERT(xyoffset[0]>=0 && xyoffset[0]<=1.0);
+  P4EST_ASSERT(xyoffset[1]>=0 && xyoffset[1]<=1.0);
+
+  /* construct the smallest quadrant containing xy */
+  qq.x = (p4est_qcoord_t) (xyoffset[0] * P4EST_ROOT_LEN);
+  qq.x &= ~(qlen - 1);
+  qq.y = (p4est_qcoord_t) (xyoffset[1] * P4EST_ROOT_LEN);
+  qq.y &= ~(qlen - 1);
+  qq.level = P4EST_QMAXLEVEL;
+  P4EST_ASSERT (p4est_quadrant_is_valid (&qq));
+  pp = p4est_comm_find_owner (p4est, tt, &qq, p4est->mpirank);
+  if (pp == p4est->mpirank) {
+    /* this point is processor local */
+    tree = p4est_tree_array_index (p4est->trees, tt);
+    position = sc_bsearch_range (&qq, tree->quadrants.array,
+                                 tree->quadrants.elem_count - 1,
+                                 sizeof (p4est_quadrant_t),
+                                 p4est_quadrant_compare);
+    P4EST_ASSERT (position < tree->quadrants.elem_count);
+
+    if (which_quad != NULL)
+      *which_quad = (p4est_locidx_t) position;
+    if (quad != NULL)
+      *quad = p4est_quadrant_array_index (&tree->quadrants, position);
+  }
+
+  return pp;
+}
+
+static p4est_topidx_t
+my_p4est_brick_point_lookup_tree (p4est_t *p4est, const double *xy)
+{
+  const p4est_connectivity_t *conn       = p4est->connectivity;
+  const p4est_topidx_t        num_trees  = conn->num_trees;
+  const p4est_topidx_t       *t2v        = conn->tree_to_vertex;
+  const double               *v2q        = conn->vertices;
+  const int                   last       = P4EST_CHILDREN - 1;
+
+  /* we need to search through all trees */
+  /* this could be optimized for the brick */
+  p4est_topidx_t tidx;
+  for (tidx = 0; tidx < num_trees; ++tidx) {
+    if (xy[0] >= v2q[3 * t2v[P4EST_CHILDREN * tidx + 0   ] + 0] &&
+        xy[0] <= v2q[3 * t2v[P4EST_CHILDREN * tidx + last] + 0] &&
+        xy[1] >= v2q[3 * t2v[P4EST_CHILDREN * tidx + 0   ] + 1] &&
+        xy[1] <= v2q[3 * t2v[P4EST_CHILDREN * tidx + last] + 1]  )
+      break;
+  }
+
+  P4EST_ASSERT (tidx < num_trees);
+  return tidx;
+}
+
+
 p4est_connectivity_t *
 my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t * myb)
 {
@@ -91,7 +177,7 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   int                 alllocal, allghost;
   int                 istreeboundary[P4EST_DIM];/**< bool in each dimension */
   int                 maybequadboundary[P4EST_DIM];
-                                                /**< bool in each dimension */
+  /**< bool in each dimension */
   int                 integerstep[P4EST_DIM][2];/**< tree multiple ied. */
   int8_t              highest_level;
   size_t              position, smallest_pos;
@@ -174,8 +260,8 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
         continue;
       }
       tt = treeid[2 * iy + ix] =
-        myb->nxy_to_treeid[myb->nxytrees[0] * integerstep[1][iy] +
-                           integerstep[0][ix]];
+          myb->nxy_to_treeid[myb->nxytrees[0] * integerstep[1][iy] +
+           integerstep[0][ix]];
       P4EST_LDEBUGF ("Testing %d %d for tree %d\n", ix, iy, (int) tt);
       sq.x = searchq[0][ix];
       sq.y = searchq[1][iy];
@@ -262,106 +348,6 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
 }
 
 int
-my_p4est_brick_point_lookup_real (p4est_t * p4est, p4est_ghost_t * ghost,
-                                  const my_p4est_brick_t * myb,
-                                  const double *xy,
-                                  p4est_topidx_t * which_tree,
-                                  p4est_locidx_t * which_quad,
-                                  p4est_quadrant_t ** quad)
-{
-  const p4est_connectivity_t *conn = p4est->connectivity;
-  const p4est_topidx_t num_trees = conn->num_trees;
-  const p4est_topidx_t *ttv = conn->tree_to_vertex;
-  const double       *vv = conn->vertices;
-  const int           last = P4EST_CHILDREN - 1;
-  const p4est_qcoord_t qlen = P4EST_QUADRANT_LEN (P4EST_QMAXLEVEL);
-  const double        halfqw = .5 / qlen;
-  int                 pp;
-  size_t              position;
-  double              xyoffset[P4EST_DIM];
-  p4est_topidx_t      tt = *which_tree;
-  p4est_tree_t       *tree;
-  p4est_quadrant_t    qq;
-
-  const p4est_topidx_t p4est_mm = ttv[0];
-  const p4est_topidx_t p4est_pp = ttv[num_trees * P4EST_CHILDREN - 1];
-
-  const double        d_xmin = vv[3 * p4est_mm + 0];
-  const double        d_ymin = vv[3 * p4est_mm + 1];
-  const double        d_xmax = vv[3 * p4est_pp + 0];
-  const double        d_ymax = vv[3 * p4est_pp + 1];
-
-  double              xy_tmp[] = { xy[0], xy[1] };
-
-  P4EST_ASSERT (vv != NULL);
-  P4EST_ASSERT (0 <= tt && tt < num_trees);
-
-  if (xy_tmp[0] < d_xmin)
-    xy_tmp[0] = d_xmin;
-  if (xy_tmp[0] >= d_xmax)
-    xy_tmp[0] = d_xmax - halfqw;
-  if (xy_tmp[1] < d_ymin)
-    xy_tmp[1] = d_ymin;
-  if (xy_tmp[1] >= d_ymax)
-    xy_tmp[1] = d_ymax - halfqw;
-
-  /* Assuming a brick connectivity with no coordinate transformation */
-  if ((xy_tmp[0] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0] + 0] &&
-       xy_tmp[0] < vv[3 * ttv[P4EST_CHILDREN * tt + last] + 0]) &&
-      (xy_tmp[1] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0] + 1] &&
-       xy_tmp[1] < vv[3 * ttv[P4EST_CHILDREN * tt + last] + 1])) {
-    /* we have found the tree unchanged */
-  }
-  else {
-    /* we need to search through all trees */
-    /* this could be optimized for the brick */
-    for (tt = 0; tt < num_trees; ++tt) {
-      if (tt == *which_tree) {
-        continue;
-      }
-      if ((xy_tmp[0] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0] + 0] &&
-           xy_tmp[0] < vv[3 * ttv[P4EST_CHILDREN * tt + last] + 0]) &&
-          (xy_tmp[1] >= vv[3 * ttv[P4EST_CHILDREN * tt + 0] + 1] &&
-           xy_tmp[1] < vv[3 * ttv[P4EST_CHILDREN * tt + last] + 1])) {
-        *which_tree = tt;
-        break;
-      }
-    }
-    P4EST_ASSERT (tt < num_trees);
-  }
-
-  xyoffset[0] = xy_tmp[0] - vv[3 * ttv[P4EST_CHILDREN * tt + 0] + 0];
-  P4EST_ASSERT (xyoffset[0] >= 0. && xyoffset[0] < 1.);
-  xyoffset[1] = xy_tmp[1] - vv[3 * ttv[P4EST_CHILDREN * tt + 0] + 1];
-  P4EST_ASSERT (xyoffset[1] >= 0. && xyoffset[1] < 1.);
-
-  /* construct the smallest quadrant containing xy */
-  qq.x = (p4est_qcoord_t) (xyoffset[0] * P4EST_ROOT_LEN);
-  qq.x &= ~(qlen - 1);
-  qq.y = (p4est_qcoord_t) (xyoffset[1] * P4EST_ROOT_LEN);
-  qq.y &= ~(qlen - 1);
-  qq.level = P4EST_QMAXLEVEL;
-  P4EST_ASSERT (p4est_quadrant_is_valid (&qq));
-  pp = p4est_comm_find_owner (p4est, tt, &qq, p4est->mpirank);
-  if (pp == p4est->mpirank) {
-    /* this point is processor local */
-    tree = p4est_tree_array_index (p4est->trees, tt);
-    position = sc_bsearch_range (&qq, tree->quadrants.array,
-                                 tree->quadrants.elem_count - 1,
-                                 sizeof (p4est_quadrant_t),
-                                 p4est_quadrant_compare);
-    P4EST_ASSERT (position < tree->quadrants.elem_count);
-
-    if (which_quad != NULL)
-      *which_quad = (p4est_locidx_t) position;
-    if (quad != NULL)
-      *quad = p4est_quadrant_array_index (&tree->quadrants, position);
-  }
-
-  return pp;
-}
-
-int
 my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
                                       const my_p4est_brick_t * myb,
                                       const double *xy,
@@ -369,55 +355,71 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
                                       p4est_locidx_t * which_quad,
                                       p4est_quadrant_t ** quad)
 {
-  int                 rank, rank_tmp;
-  p4est_topidx_t      tr = 0, tr_tmp = 0;
-  p4est_locidx_t      qu, qu_tmp;
-  p4est_quadrant_t   *q, *q_tmp;
-  const p4est_qcoord_t qlen = P4EST_QUADRANT_LEN (P4EST_QMAXLEVEL);
-  const double        halfqw = .5 / qlen;
+  int                  rank, rank_tmp;
+  p4est_topidx_t       tr = 0, tr_tmp = 0;
+  p4est_locidx_t       qu, qu_tmp;
+  p4est_quadrant_t    *q, *q_tmp;
+  const int            last    = P4EST_CHILDREN - 1;
+  const p4est_qcoord_t qlen   = P4EST_QUADRANT_LEN (P4EST_QMAXLEVEL);
+  const double         halfqw = 0.5 * (double)qlen/(double)P4EST_ROOT_LEN;
 
-  p4est_topidx_t     *t2v = p4est->connectivity->tree_to_vertex;
-  double             *v2q = p4est->connectivity->vertices;
+  p4est_connectivity_t *conn = p4est->connectivity;
+  const p4est_topidx_t num_trees = conn->num_trees;
+  p4est_topidx_t *t2v = conn->tree_to_vertex;
+  double *v2q = conn->vertices;
 
-  p4est_topidx_t      p4est_mm = t2v[0];
-  p4est_topidx_t      p4est_pp = t2v[p4est->connectivity->num_trees *
-                                     P4EST_CHILDREN - 1];
+  const p4est_topidx_t p4est_mm = t2v[0];
+  const p4est_topidx_t p4est_pp = t2v[num_trees * P4EST_CHILDREN - 1];
+  const double d_xmin = v2q[3 * p4est_mm + 0];
+  const double d_ymin = v2q[3 * p4est_mm + 1];
+  const double d_xmax = v2q[3 * p4est_pp + 0];
+  const double d_ymax = v2q[3 * p4est_pp + 1];
 
-  double              domain_xmin = v2q[3 * p4est_mm + 0];
-  double              domain_ymin = v2q[3 * p4est_mm + 1];
-  double              domain_xmax = v2q[3 * p4est_pp + 0];
-  double              domain_ymax = v2q[3 * p4est_pp + 1];
+  P4EST_ASSERT (xy[0] >= d_xmin && xy[0] <= d_xmax && xy[1] >= d_ymin && xy[1] <= d_ymax);
 
-  double              xy_p[2];
+  if (which_tree != NULL) tr = *which_tree;
+
+  /* Assuming a brick connectivity with no coordinate transformation */
+  if (!(xy[0] >= v2q[3 * t2v[P4EST_CHILDREN*tr + 0   ] + 0] &&
+        xy[0] <= v2q[3 * t2v[P4EST_CHILDREN*tr + last] + 0] &&
+        xy[1] >= v2q[3 * t2v[P4EST_CHILDREN*tr + 0   ] + 1] &&
+        xy[1] <= v2q[3 * t2v[P4EST_CHILDREN*tr + last] + 1]  ))
+      tr = my_p4est_brick_point_lookup_tree(p4est, xy);
+
+  double tr_dx = v2q[3*t2v[P4EST_CHILDREN*tr + last] + 0] - v2q[3*t2v[P4EST_CHILDREN*tr + 0] + 0]; // xmax - xmin
+  double tr_dy = v2q[3*t2v[P4EST_CHILDREN*tr + last] + 1] - v2q[3*t2v[P4EST_CHILDREN*tr + 0] + 1]; // ymax - ymin
+
+  const double halfqx = halfqw*tr_dx;
+  const double halfqy = halfqw*tr_dy;
+  double xy_p[2];
 
   // + +
-  xy_p[0] = xy[0] + halfqw;
-  xy_p[1] = xy[1] + halfqw;
+  xy_p[0] = xy[0] + halfqx;
+  xy_p[1] = xy[1] + halfqy;
 
-  if (xy_p[0] <= domain_xmin)
-    xy_p[0] = domain_xmin;
-  if (xy_p[0] >= domain_xmax)
-    xy_p[0] = domain_xmax;
-  if (xy_p[1] <= domain_ymin)
-    xy_p[1] = domain_ymin;
-  if (xy_p[1] >= domain_ymax)
-    xy_p[1] = domain_ymax;
+  if (xy_p[0] <= d_xmin)
+    xy_p[0] = d_xmin;
+  if (xy_p[0] >= d_xmax)
+    xy_p[0] = d_xmax;
+  if (xy_p[1] <= d_ymin)
+    xy_p[1] = d_ymin;
+  if (xy_p[1] >= d_ymax)
+    xy_p[1] = d_ymax;
 
-  rank =
-    my_p4est_brick_point_lookup_real (p4est, ghost, myb, xy_p, &tr, &qu, &q);
+  rank = my_p4est_brick_point_lookup_real (p4est, ghost, myb, xy_p, &tr, &qu, &q);
 
   // + -
-  xy_p[0] = xy[0] + halfqw;
-  xy_p[1] = xy[1] - halfqw;
+  xy_p[0] = xy[0] + halfqx;
+  xy_p[1] = xy[1] - halfqy;
 
-  if (xy_p[0] <= domain_xmin)
-    xy_p[0] = domain_xmin;
-  if (xy_p[0] >= domain_xmax)
-    xy_p[0] = domain_xmax;
-  if (xy_p[1] <= domain_ymin)
-    xy_p[1] = domain_ymin;
-  if (xy_p[1] >= domain_ymax)
-    xy_p[1] = domain_ymax;
+  if (xy_p[0] <= d_xmin)
+    xy_p[0] = d_xmin;
+  if (xy_p[0] >= d_xmax)
+    xy_p[0] = d_xmax;
+  if (xy_p[1] <= d_ymin)
+    xy_p[1] = d_ymin;
+  if (xy_p[1] >= d_ymax)
+    xy_p[1] = d_ymax;
 
   tr_tmp = tr;
   rank_tmp = my_p4est_brick_point_lookup_real (p4est, ghost, myb,
@@ -431,17 +433,17 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   }
 
   // - +
-  xy_p[0] = xy[0] - halfqw;
-  xy_p[1] = xy[1] + halfqw;
+  xy_p[0] = xy[0] - halfqx;
+  xy_p[1] = xy[1] + halfqy;
 
-  if (xy_p[0] <= domain_xmin)
-    xy_p[0] = domain_xmin;
-  if (xy_p[0] >= domain_xmax)
-    xy_p[0] = domain_xmax;
-  if (xy_p[1] <= domain_ymin)
-    xy_p[1] = domain_ymin;
-  if (xy_p[1] >= domain_ymax)
-    xy_p[1] = domain_ymax;
+  if (xy_p[0] <= d_xmin)
+    xy_p[0] = d_xmin;
+  if (xy_p[0] >= d_xmax)
+    xy_p[0] = d_xmax;
+  if (xy_p[1] <= d_ymin)
+    xy_p[1] = d_ymin;
+  if (xy_p[1] >= d_ymax)
+    xy_p[1] = d_ymax;
 
   tr_tmp = tr;
   rank_tmp = my_p4est_brick_point_lookup_real (p4est, ghost, myb,
@@ -455,17 +457,17 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   }
 
   // - -
-  xy_p[0] = xy[0] - halfqw;
-  xy_p[1] = xy[1] - halfqw;
+  xy_p[0] = xy[0] - halfqx;
+  xy_p[1] = xy[1] - halfqy;
 
-  if (xy_p[0] <= domain_xmin)
-    xy_p[0] = domain_xmin;
-  if (xy_p[0] >= domain_xmax)
-    xy_p[0] = domain_xmax;
-  if (xy_p[1] <= domain_ymin)
-    xy_p[1] = domain_ymin;
-  if (xy_p[1] >= domain_ymax)
-    xy_p[1] = domain_ymax;
+  if (xy_p[0] <= d_xmin)
+    xy_p[0] = d_xmin;
+  if (xy_p[0] >= d_xmax)
+    xy_p[0] = d_xmax;
+  if (xy_p[1] <= d_ymin)
+    xy_p[1] = d_ymin;
+  if (xy_p[1] >= d_ymax)
+    xy_p[1] = d_ymax;
 
   tr_tmp = tr;
   rank_tmp = my_p4est_brick_point_lookup_real (p4est, ghost, myb,
