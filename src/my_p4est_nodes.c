@@ -273,7 +273,7 @@ p4est_shared_offsets (sc_array_t * inda)
 
 #endif
 
-p4est_nodes_t         *
+p4est_nodes_t      *
 my_p4est_nodes_new (p4est_t * p4est)
 {
   const int           num_procs = p4est->mpisize;
@@ -373,8 +373,8 @@ my_p4est_nodes_new (p4est_t * p4est)
         p4est_quadrant_corner_node (q, k, &n);
         p4est_node_canonicalize (p4est, jt, &n, &c);
         r =
-          (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes, &c,
-                                                            &position);
+          (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
+                                                            &c, &position);
         if (r != NULL) {
           /* found a new node */
           *r = c;
@@ -505,7 +505,9 @@ my_p4est_nodes_new (p4est_t * p4est)
                                                           &inkey, &position);
       if (r != NULL) {
         /* learned about a new node that rank owns but doesn't reference */
+        /* *INDENT-OFF* HORRIBLE indent bug */
         *r = *(p4est_quadrant_t *) &inkey;
+        /* *INDENT-ON* */
         r->p.piggy1.owner_rank = rank;
         P4EST_ASSERT ((p4est_locidx_t) position ==
                       num_indep_nodes + num_added_nodes);

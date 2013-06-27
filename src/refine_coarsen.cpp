@@ -2,10 +2,10 @@
 #include <sc_search.h>
 #include <p4est_bits.h>
 
-int
+p4est_bool_t
 refine_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
-  refine_coarsen_data_t *data = (refine_coarsen_data_t*)p4est->user_pointer;
+  cf_grid_data_t *data = (cf_grid_data_t*)p4est->user_pointer;
 
   if (quad->level < data->min_lvl)
     return P4EST_TRUE;
@@ -34,10 +34,10 @@ refine_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *qu
   }
 }
 
-int
+p4est_bool_t
 coarsen_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
 {
-  refine_coarsen_data_t *data = (refine_coarsen_data_t*)p4est->user_pointer;
+  cf_grid_data_t *data = (cf_grid_data_t*)p4est->user_pointer;
 
   if (quad[0]->level <= data->min_lvl)
     return P4EST_FALSE;
@@ -66,4 +66,51 @@ coarsen_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **
 
     return P4EST_TRUE;
   }
+}
+
+p4est_bool_t
+refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  rand_grid_data_t *data = (rand_grid_data_t*) p4est->user_pointer;
+
+  p4est_bool_t refine;
+  if (p4est->global_num_quadrants + data->counter >= data->max_quads)
+    refine = P4EST_FALSE;
+  else if (quad->level < data->min_lvl)
+    refine = P4EST_TRUE;
+  else if (quad->level >= data->max_lvl)
+    refine = P4EST_FALSE;
+  else
+  {
+    if (rand()%2)
+      refine = P4EST_TRUE;
+    else
+      refine = P4EST_FALSE;
+  }
+
+  if (refine) data->counter += 3;
+  return refine;
+}
+
+p4est_bool_t
+coarsen_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
+{
+  rand_grid_data_t *data = (rand_grid_data_t*) p4est->user_pointer;
+
+  p4est_bool_t coarsen;
+  if (p4est->global_num_quadrants - data->counter<= data->min_quads)
+    coarsen = P4EST_FALSE;
+  else if (quad[0]->level <= data->min_lvl)
+    coarsen = P4EST_FALSE;
+  else if (quad[0]->level >  data->max_lvl)
+    coarsen = P4EST_TRUE;
+  else
+  {
+    if (rand()%2)
+      coarsen = P4EST_TRUE;
+    else
+      coarsen = P4EST_FALSE;
+  }
+
+  if (coarsen) data->counter += 3;
 }

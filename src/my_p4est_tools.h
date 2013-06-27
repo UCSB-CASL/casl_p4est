@@ -28,15 +28,17 @@
 #include <p4est_ghost.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern              "C"
+{
 #if 0
 }
 #endif
 #endif
 
-typedef struct {
-    int nxytrees[2];
-    p4est_topidx_t *nxy_to_treeid;
+typedef struct
+{
+  int                 nxytrees[2];
+  p4est_topidx_t     *nxy_to_treeid;
 }
 my_p4est_brick_t;
 
@@ -47,37 +49,40 @@ my_p4est_brick_t;
  * \return              The brick connectivity structure.
  */
 p4est_connectivity_t *my_p4est_brick_new (int nxtrees, int nytrees,
-                                          my_p4est_brick_t *myb);
+                                          my_p4est_brick_t * myb);
 
 /** Free a brick connectivity and tree lookup structure.
  * \param [in] conn     The connectivity will be destroyed.
  * \param [in,out] myb  The dynamically allocated members will be freed.
  */
-void my_p4est_brick_destroy (p4est_connectivity_t *conn,
-                             my_p4est_brick_t * myb);
+void                my_p4est_brick_destroy (p4est_connectivity_t * conn,
+                                            my_p4est_brick_t * myb);
 
-/** Find the owner processor for a point in a brick domain.
- * For multiple matches return the lowest z-index out of smallest quadrants.
- * For remote points, only the owner's rank is returned.
+/** Find the owner processor and quadrant for a point in a brick domain.
+ * A point may lie on a quadrant boundary so multiple matches are possible.
+ * Identify the local or ghost quadrant with the smallest size as best match.
+ * If there are multiple matches choose the smallest owner/tree/quadrant index.
+ * Create a list of all possible remote matches outside of the ghost layer.
+ * If this list is not empty, the decision about the best match is not final.
  * \param [in] p4est    The forest to be searched.
  * \param [in] ghost    A valid ghost layer.
  * \param [in] myb      Additional brick information.
  * \param [in] xy       The x and y coordinates of a point in the brick.
  *                      May lie on the brick boundary in any direction.
- * \param [in,out] which_tree   On input, a guess for the tree.
- *                      For a local point, on output its tree id.
- * \param [out] which_quad      For a local point, the quadrant index
- *                      relative to its tree if !NULL.
- * \param [out] quad    For a local point, the containing quadrant if !NULL.
- * \return              The processor number that owns the point xy.
+ * \param [in,out] best_match On output will contain quadrant and piggy3 data.
+ *                      The local_num is relative to local tree or ghost array.
+ * \param [in,out] remote_matches On input, empty quadrant array.  Remote matches
+ *                      will be appended as needed including their piggy1 data.
+ * \return              The processor number that owns the best match, or -1
+ *                      if all possible matches are remote.
  */
-int my_p4est_brick_point_lookup (p4est_t * p4est,
-                                 p4est_ghost_t * ghost,
-                                 const my_p4est_brick_t * myb,
-                                 const double * xy,
-                                 p4est_topidx_t *which_tree,
-                                 p4est_locidx_t *which_quad,
-                                 p4est_quadrant_t **quad);
+int                 my_p4est_brick_point_lookup (p4est_t * p4est,
+                                                 p4est_ghost_t * ghost,
+                                                 const my_p4est_brick_t * myb,
+                                                 const double *xy,
+                                                 p4est_quadrant_t *
+                                                 best_match,
+                                                 sc_array_t * remote_matches);
 
 /*!
  * \brief my_p4est_brick_point_lookup_smallest same as above except returns the smallest possible cell
@@ -88,13 +93,19 @@ int my_p4est_brick_point_lookup (p4est_t * p4est,
  * \param quad
  * \return
  */
-int my_p4est_brick_point_lookup_smallest (p4est_t * p4est,
-                                          p4est_ghost_t * ghost,
-                                          const my_p4est_brick_t * myb,
-                                          const double * xy,
-                                          p4est_topidx_t *which_tree,
-                                          p4est_locidx_t *which_quad,
-                                          p4est_quadrant_t **quad);
+int                 my_p4est_brick_point_lookup_smallest (p4est_t * p4est,
+                                                          p4est_ghost_t *
+                                                          ghost,
+                                                          const
+                                                          my_p4est_brick_t *
+                                                          myb,
+                                                          const double *xy,
+                                                          p4est_topidx_t *
+                                                          which_tree,
+                                                          p4est_locidx_t *
+                                                          which_quad,
+                                                          p4est_quadrant_t **
+                                                          quad);
 
 #ifdef __cplusplus
 #if 0

@@ -19,6 +19,7 @@
 #define EPS 1e-12
 #define P4EST_TRUE  1
 #define P4EST_FALSE 0
+typedef int p4est_bool_t;
 
 /*!
  * \brief c2p_coordinate_transform Converts local (within tree [0,1]) coordinates into global coordinates
@@ -80,25 +81,28 @@ PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v
  */
 p4est_locidx_t p4est2petsc_local_numbering(p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx);
 
-/*!
- * \brief The Session class
- */
-class Session{
-  int argc;
-  char** argv;
-  PetscErrorCode ierr;
+inline double int2double_coordinate_transform(p4est_qcoord_t a){
+  return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
+}
 
+template<typename T>
+T ranged_rand(T a, T b, int seed = 0){
+  if (seed) srand(seed);
+  return static_cast<T>(static_cast<double>(rand())/static_cast<double>(RAND_MAX) * (b-a) + a);
+}
+
+/*!
+ * \brief prepares MPI, PETSc, p4est, and sc libraries
+ */
+class Session{   
 public:
-  Session(int argc_, char* argv_[])
-    : argc(argc_), argv(argv_)
-  {}
   ~Session(){
     sc_finalize ();
-    ierr = PetscFinalize(); CHKERRXX(ierr);
+    PetscErrorCode ierr = PetscFinalize(); CHKERRXX(ierr);
   }
 
-  void init(MPI_Comm mpicomm){
-    ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
+  static void init(int argc, char **argv, MPI_Comm mpicomm = MPI_COMM_WORLD){
+    PetscErrorCode ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
     sc_init (mpicomm, 1, 1, NULL, SC_LP_DEFAULT);
     p4est_init (NULL, SC_LP_DEFAULT);
   }

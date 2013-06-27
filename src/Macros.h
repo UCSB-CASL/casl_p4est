@@ -246,12 +246,6 @@ enum FLUID_BOUNDARY_CONDITION
     FLUID_BC_INSIDE   // inside the domain
 };
 
-
-
-#ifndef EPS
-#define EPS 0.00000001
-#endif
-
 #ifndef MAX_IT
 #define MAX_IT 10000
 #endif

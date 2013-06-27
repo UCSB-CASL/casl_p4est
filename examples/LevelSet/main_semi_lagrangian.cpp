@@ -75,7 +75,7 @@ int main (int argc, char* argv[]){
   } vy;
 
   circle circ(0.25, 0.25, .15);
-  refine_coarsen_data_t data = {&circ, 6, 0, 1.0};
+  cf_grid_data_t data = {&circ, 6, 0, 1.0};
 
   Session session(argc, argv);
   session.init(mpi->mpicomm);

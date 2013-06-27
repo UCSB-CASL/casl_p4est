@@ -48,7 +48,7 @@ main (int argc, char ** argv)
         /* create some p4est refinement */
         conn = my_p4est_brick_new (1, 2, brick);
 	p4est = p4est_new (mpicomm, conn, 0, NULL, NULL);
-        p4est_refine (p4est, 2, simple_refine, NULL);
+        p4est_refine (p4est, 1, simple_refine, NULL);
         p4est_partition (p4est, NULL);
         p4est_vtk_write_file (p4est, NULL, "twobrick");
 
@@ -62,7 +62,7 @@ main (int argc, char ** argv)
                 xy[0] = i * .5;
         	xy[1] = j * .5;
 	        which_tree = conn->num_trees - 1;
-        	owner = my_p4est_brick_point_lookup (p4est, ghost, brick,
+        	owner = my_p4est_brick_point_lookup_smallest (p4est, ghost, brick,
                 	                             xy, &which_tree,
                         	                     NULL, NULL);
 	        P4EST_INFOF ("Owner of point %g %g is %d\n",
