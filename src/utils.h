@@ -94,7 +94,7 @@ inline double int2double_coordinate_transform(p4est_qcoord_t a){
 template<typename T>
 T ranged_rand(T a, T b, int seed = 0){
   if (seed) srand(seed);
-  return (static_cast<T>(rand())/static_cast<T>(RAND_MAX) * (b-a) + a);
+  return static_cast<T>(static_cast<double>(rand())/static_cast<double>(RAND_MAX) * (b-a) + a);
 }
 
 /*!
