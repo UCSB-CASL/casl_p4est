@@ -14,6 +14,8 @@
 *.vt[uks]
 *.pvt[uks]
 *.visit
+*.cproject
+*.project
 
 # What directories to ignore
 [Dd]ebug/

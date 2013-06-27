@@ -290,7 +290,7 @@ void run_test_3(p4est_t *p4est, const my_p4est_brick_t* brick)
       for (ushort i=0; i<P4EST_CHILDREN; i++){
         p4est_locidx_t ni = q2n[qu_locidx*P4EST_CHILDREN+i] - nodes->offset_owned_indeps;
 
-        list<Cell> &cells = smallest_cells[ni];
+        list<Cell> &cells = smallest_cells.at(ni);
         Cell c; c.quad = quad; c.idx = qu_locidx;
         if (cells.empty() || cells.back().quad->level == c.quad->level){
           cells.push_back(c);
