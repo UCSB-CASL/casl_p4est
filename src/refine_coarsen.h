@@ -14,6 +14,8 @@ typedef struct {
   double lip;
 } refine_coarsen_data_t;
 
+
+
 /*!
  * \brief refine_levelset_continous
  * \param p4est
