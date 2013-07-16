@@ -25,24 +25,37 @@ using namespace std;
 class: public CF_2
 {
 public:
-    double operator()(double x, double y) const {
-        return -sin(M_PI*x)*sin(M_PI*x)*sin(2*M_PI*y);
-    }
+  double operator()(double x, double y) const {
+    return -sin(M_PI*x)*sin(M_PI*x)*sin(2*M_PI*y);
+  }
 } vx_vortex;
 
 class: public CF_2
 {
 public:
-    double operator()(double x, double y) const {
-        return  sin(M_PI*y)*sin(M_PI*y)*sin(2*M_PI*x);
-    }
+  double operator()(double x, double y) const {
+    return  sin(M_PI*y)*sin(M_PI*y)*sin(2*M_PI*x);
+  }
 } vy_vortex;
+
+struct:CF_2{
+  double operator()(double x, double y) const {
+    return vx_max;
+  }
+  const static double vx_max = 0.15;
+} vx_translate;
+
+struct:CF_2{
+  double operator()(double x, double y) const {
+    return vy_max;
+  }
+  const static double vy_max = 0.15;
+} vy_translate;
 
 int main (int argc, char* argv[]){
 
   mpi_context_t mpi_context, *mpi = &mpi_context;
   mpi->mpicomm  = MPI_COMM_WORLD;
-  p4est_connectivity_t *connectivity;
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   p4est_locidx_t     *e2n;
@@ -59,21 +72,6 @@ int main (int argc, char* argv[]){
     double r, x0, y0;
   };
 
-  const static double vx_max = 0.15;
-  const static double vy_max = 0.15;
-
-  struct:CF_2{
-    double operator()(double x, double y) const {
-      return vx_max;
-    }
-  } vx;
-
-  struct:CF_2{
-    double operator()(double x, double y) const {
-      return vy_max;
-    }
-  } vy;
-
   circle circ(0.25, 0.25, .15);
   cf_grid_data_t data = {&circ, 6, 0, 1.0};
 
@@ -85,10 +83,11 @@ int main (int argc, char* argv[]){
   MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
   MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
-
   // Create the connectivity object
   w2.start("connectivity");
-  connectivity = p4est_connectivity_new_brick (2, 2, P4EST_FALSE, P4EST_FALSE);
+  p4est_connectivity_t *connectivity;
+  my_p4est_brick_t brick;
+  connectivity = my_p4est_brick_new(1, 1, &brick);
   w2.stop(); w2.read_duration();
 
   // Now create the forest
@@ -164,7 +163,7 @@ int main (int argc, char* argv[]){
 
   double tf  = 10;
   double dt_min = 0.1;
-  double dt = MIN(dt_min, MIN(dx_min/vx_max, dy_min/vy_max));
+  double dt = MIN(dt_min, MIN(dx_min/vx_translate.vx_max, dy_min/vy_translate.vy_max));
   int tc     = 0;
   int save   = 1;
   for (double t = 0; t<=tf; t += dt, ++tc)
@@ -181,7 +180,7 @@ int main (int argc, char* argv[]){
     }
 
     // Advect the level-set using SL method
-    SL.advect(vx, vy, dt, phi);
+    SL.advect(vx_translate, vy_translate, dt, phi);
 
     // Define an interpolating function
     BilinearInterpolatingFunction BIF(p4est, nodes, phi);
