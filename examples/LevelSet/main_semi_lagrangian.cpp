@@ -77,8 +77,7 @@ int main (int argc, char* argv[]){
   circle circ(0.25, 0.25, .15);
   cf_grid_data_t data = {&circ, 6, 0, 1.0};
 
-  Session session(argc, argv);
-  session.init(mpi->mpicomm);
+  Session::init(argc, argv, mpi->mpicomm);
 
   parStopWatch w1, w2;
   w1.start("total time");
