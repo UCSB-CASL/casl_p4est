@@ -1,6 +1,7 @@
 // p4est Library
 #include <p4est_bits.h>
 #include <p4est_extended.h>
+#include <p4est_vtk.h>
 
 // My files for this project
 
@@ -8,6 +9,8 @@
 #include <stdexcept>
 #include <iostream>
 #include <sys/stat.h>
+#include <vector>
+#include <list>
 
 // casl_p4est
 #include <src/utilities.h>
@@ -15,6 +18,7 @@
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
+#include <src/semi_lagrangian.h>
 #include <src/refine_coarsen.h>
 
 using namespace std;
@@ -40,22 +44,12 @@ int main (int argc, char* argv[]){
     */
 
     double operator()(double x, double y) const{
-        /*double c1 = -1 - sqrt(SQR(x-0.5) + SQR(y-0.5));
+        double c1 = -1 - sqrt(SQR(x-0.5) + SQR(y-0.5));
         double c2 = .5 - sqrt(SQR(x-1.5) + SQR(y-0.5));
         double c3 = 1.5 - sqrt(SQR(x-0.5) + SQR(y-1.5));
         double c4 = 1 - sqrt(SQR(x-1.5) + SQR(y-1.5));
 
         return max(max(max(c1, c2), c3), c4);
-        */
-    /*
-        double a = r - (y - 2);
-        double b = r - (y - 0.5);
-
-        return min (a, b);
-    */
-
-        double e1 =  (SQR(x)/2 + SQR(y)/2);
-        return e1;
     }
 
     private:
@@ -64,7 +58,6 @@ int main (int argc, char* argv[]){
 
   double rmin = 0, rmax = 3.5;
   phi circle(rmin);
-  //delta square(xMin, yMin);
   refine_coarsen_data_t data = {&circle, 6, 0, 1.0};
 
   Session session(argc, argv);  //Used to initialize mpi
@@ -126,6 +119,8 @@ int main (int argc, char* argv[]){
   p4est_connectivity_destroy (connectivity);
 
   w1.stop(); w1.read_duration();
+
+  cout << "Hello World!@?" << endl;
   return 0;
 }
 

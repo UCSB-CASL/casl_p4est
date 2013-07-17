@@ -19,6 +19,11 @@ typedef struct {
   p4est_gloidx_t max_quads, min_quads, counter;
 } rand_grid_data_t;
 
+typedef struct {
+  CF_2 *shape;
+  int max_lvl, min_lvl;
+  double lip;
+} refine_coarsen_data_t;
 
 
 /*!

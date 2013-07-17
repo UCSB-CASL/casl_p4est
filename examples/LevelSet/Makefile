@@ -7,8 +7,9 @@ vpath %.c      $(HEAD_DIR)/src
 INCLUDE_FLAGS += -I$(HEAD_DIR)
 SRCS           = utils.cpp my_p4est_vtk.cpp semi_lagrangian.cpp interpolating_function.cpp refine_coarsen.cpp
 #MAIN_SRC      = main_test.cpp
-#MAIN_SRC       = main_semi_lagrangian.cpp
-MAIN_SRC      = main_refine_coarsen.cpp
+#MAIN_SRC      = main_semi_lagrangian.cpp
+#MAIN_SRC      = main_refine_coarsen.cpp
+MAIN_SRC       = main_create_loop_output.cpp
 SRCS += $(MAIN_SRC)
 CSRCS          = my_p4est_tools.c my_p4est_nodes.c
 BIN_NAME       = $(patsubst %.cpp,%,$(MAIN_SRC))
