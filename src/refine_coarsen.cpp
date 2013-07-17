@@ -25,10 +25,16 @@ refine_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *qu
     CF_2&  phi = *(data->phi);
     double lip = data->lip;
 
+    double f[4];
     for (unsigned short cj = 0; cj<2; ++cj)
-      for (unsigned short ci = 0; ci <2; ++ci)
-        if (fabs(phi(x+ci*dx, y+cj*dy)) <= 0.5*lip*d)
-          return P4EST_TRUE;
+      for (unsigned short ci = 0; ci <2; ++ci){
+        f[2*cj+ci] = phi(x+ci*dx, y+cj*dy);
+        if (fabs(f[2*cj+ci]) <= 0.5*lip*d)
+          return P4EST_TRUE;        
+      }
+
+    if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
+      return P4EST_TRUE;
 
     return P4EST_FALSE;
   }
@@ -59,10 +65,16 @@ coarsen_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **
     CF_2  &phi = *(data->phi);
     double lip = data->lip;
 
+    double f[4];
     for (unsigned short cj = 0; cj<2; ++cj)
-      for (unsigned short ci = 0; ci <2; ++ci)
-        if(fabs(phi(x+ci*dx, y+cj*dy)) <= 0.5*lip*d)
+      for (unsigned short ci = 0; ci <2; ++ci){
+        f[2*cj+ci] = phi(x+ci*dx, y+cj*dy);
+        if (fabs(f[2*cj+ci]) <= 0.5*lip*d)
           return P4EST_FALSE;
+      }
+
+    if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
+      return P4EST_FALSE;
 
     return P4EST_TRUE;
   }

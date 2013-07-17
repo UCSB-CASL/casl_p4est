@@ -47,7 +47,6 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, std::vector<double
       xy[1] - dt*vy(xy[0], xy[1])
     };
 
-
     // make the domain periodic
     if (xy_departure[0] > xmax)
       xy_departure[0] -= xmax - xmin;
@@ -67,8 +66,6 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, std::vector<double
 //      xy_departure[1] = ymax;
 //    else if (xy_departure[1] < ymin)
 //      xy_departure[1] = ymin;
-
-
 
     // compute the new value of the level-set function via interpolation
     phi_np1[ni] = linear_interpolation(phi, xy_departure, tree_idx);

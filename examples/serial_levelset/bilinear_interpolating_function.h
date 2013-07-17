@@ -22,6 +22,9 @@ class BilinearInterpolatingFunction: public CF_2
     my_p4est_brick_point_lookup_smallest(p4est_, NULL, NULL,
                                          xy, &tree_idx, &quad_idx, &quad);
 
+    p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
+    quad_idx += tree->quadrants_offset;
+
     double f [] =
     {
       F[q2n[P4EST_CHILDREN*quad_idx + 0]],

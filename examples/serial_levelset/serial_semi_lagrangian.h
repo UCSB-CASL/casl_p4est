@@ -32,10 +32,10 @@ class SemiLagrangian
         p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, qu_it);
 
         double dx = int2double_coordinate_transform(P4EST_QUADRANT_LEN(quad->level));
-        double x  = int2double_coordinate_transform(quad->x) + tr_xmin;
-        double y  = int2double_coordinate_transform(quad->y) + tr_ymin;
-
-        dt = MIN(dt, dx/MAX(vx(x,y), vy(x,y)));
+        double x  = int2double_coordinate_transform(quad->x) + 0.5*dx + tr_xmin;
+        double y  = int2double_coordinate_transform(quad->y) + 0.5*dx + tr_ymin;
+        double vn = SQRT(SQR(vx(x,y)) + SQR(vy(x,y)));
+        dt = MIN(dt, dx/vn);
       }
     }
 
@@ -48,8 +48,10 @@ class SemiLagrangian
     p4est_quadrant_t *quad;
 
     my_p4est_brick_point_lookup_smallest(p4est_, NULL, NULL,
-                                         xy, &tree_idx, &quad_idx, &quad);
-
+                                         xy,
+                                         &tree_idx, &quad_idx, &quad);
+    p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
+    quad_idx += tree->quadrants_offset;
     double f [] =
     {
       F[q2n[P4EST_CHILDREN*quad_idx + 0]],
