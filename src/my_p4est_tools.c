@@ -25,6 +25,7 @@
 #include <p4est_bits.h>
 #include <p4est_communication.h>
 #include "my_p4est_tools.h"
+#include <assert.h>
 
 static p4est_topidx_t
 my_p4est_brick_point_lookup_tree (p4est_t *p4est, const double *xy)
@@ -385,7 +386,7 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   const double d_xmax = v2q[3 * p4est_pp + 0];
   const double d_ymax = v2q[3 * p4est_pp + 1];
 
-  P4EST_ASSERT (xy[0] >= d_xmin && xy[0] <= d_xmax && xy[1] >= d_ymin && xy[1] <= d_ymax);
+  assert (xy[0] >= d_xmin && xy[0] <= d_xmax && xy[1] >= d_ymin && xy[1] <= d_ymax);
 
   if (which_tree != NULL) tr = *which_tree;
 

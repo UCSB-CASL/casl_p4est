@@ -1,12 +1,12 @@
-#ifndef BILINEAR_INTERPOLATING_FUNCTION_H
-#define BILINEAR_INTERPOLATING_FUNCTION_H
+#ifndef BILINEAR_INTERPOLATING_FUNCTION_P_H
+#define BILINEAR_INTERPOLATING_FUNCTION_P_H
 
 #include <vector>
 #include <src/utils.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 
-namespace serial{
+namespace parallel{
 class BilinearInterpolatingFunction: public CF_2
 {
   const std::vector<double>& F_;
@@ -41,5 +41,6 @@ public:
 
   double operator()(double x, double y) const;
 };
-} // namepace serial
-#endif // BILINEAR_INTERPOLATING_FUNCTION_H
+} // namepace parallel
+
+#endif // BILINEAR_INTERPOLATING_FUNCTION_P_H
