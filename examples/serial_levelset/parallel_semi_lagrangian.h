@@ -8,8 +8,6 @@
 #include <src/my_p4est_tools.h>
 #include <iostream>
 
-//const int DIMMENSION = 2;       //2 = only X & Y. Used as offset for iterating through points
-
 namespace parallel{
 
 struct quad_information{       //Used to hold info of quadrants for parallelization
@@ -62,6 +60,8 @@ struct non_local_point_buffer{      //Sending buffer used to hold xy_departure a
         ni.push_back(ni_);
     }
 };
+
+
 
 class SemiLagrangian
 {
