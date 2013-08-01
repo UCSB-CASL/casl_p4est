@@ -40,6 +40,7 @@
 #endif /* !P4_TO_P8 */
 
 #include <sc_io.h>
+#include <stdio.h>
 
 static const double p4est_vtk_scale = 1.0;
 static const int    p4est_vtk_write_tree = 1;
@@ -60,6 +61,8 @@ static const int    p4est_vtk_wrap_rank = 0;
 #else
 #define P4EST_VTK_FORMAT_STRING "binary"
 
+#undef P4EST_VTK_COMPRESSION
+
 static int
 my_p4est_vtk_write_binary (FILE * vtkfile, char *numeric_data,
                            size_t byte_length)
@@ -67,14 +70,15 @@ my_p4est_vtk_write_binary (FILE * vtkfile, char *numeric_data,
 #ifndef P4EST_VTK_COMPRESSION
   return sc_vtk_write_binary (vtkfile, numeric_data, byte_length);
 #else
-  return sc_vtk_write_compressed (vtkfile, numeric_data, byte_length);
+  return sc_vtk_write_compressed(vtkfile, numeric_data, byte_length);
 #endif /* P4EST_VTK_COMPRESSION */
 }
 
 #endif /* P4EST_VTK_BINARY */
 
 void
-my_p4est_vtk_write_all (p4est_t * p4est, p4est_geometry_t * geom,
+my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes,
+                        int write_rank, int write_tree,
                         double scale, int num_point_scalars, int num_cell_scalars,
                         const char *filename, ...)
 {
@@ -107,7 +111,7 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_geometry_t * geom,
     if (vtk_type == VTK_POINT_DATA){
       point_name = point_names[all_p] = va_arg(ap, const char*);
       retval = snprintf (point_scalars + point_scalar_strlen, BUFSIZ - point_scalar_strlen,
-                         "%s%s", i == 0 ? "" : ",", point_name);
+                         "%s%s", all_p == 0 ? "" : ",", point_name);
       SC_CHECK_ABORT (retval > 0,
                       P4EST_STRING "_vtk: Error collecting point scalars");
       point_scalar_strlen += retval;
@@ -119,7 +123,7 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_geometry_t * geom,
     } else if (vtk_type == VTK_CELL_DATA){
       cell_name = cell_names[all_c] = va_arg(ap, const char*);
       retval = snprintf (cell_scalars + cell_scalar_strlen, BUFSIZ - cell_scalar_strlen,
-                         "%s%s", i == 0 ? "" : ",", cell_name);
+                         "%s%s", all_c == 0 ? "" : ",", cell_name);
       SC_CHECK_ABORT (retval > 0,
                       P4EST_STRING "_vtk: Error collecting point scalars");
       cell_scalar_strlen += retval;
@@ -132,19 +136,22 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_geometry_t * geom,
 
   va_end (ap);
 
-  retval = my_p4est_vtk_write_header (p4est, geom, scale, filename);
+
+  retval = my_p4est_vtk_write_header (p4est, nodes, scale, filename);
   SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing header");
 
   /* now write the actual data */
-  retval = my_p4est_vtk_write_point_scalar (p4est, geom, filename,
+
+  retval = my_p4est_vtk_write_point_scalar (p4est, nodes, scale, filename,
                                             num_point_scalars, point_scalars, point_names, point_values);
   SC_CHECK_ABORT (!retval,
                   P4EST_STRING "_vtk: Error writing point scalars");
 
-  retval = my_p4est_vtk_write_cell_scalar (p4est, geom, filename,
+  retval = my_p4est_vtk_write_cell_scalar (p4est, write_rank, write_tree, filename,
                                            num_cell_scalars, cell_scalars, cell_names, cell_values);
   SC_CHECK_ABORT (!retval,
                   P4EST_STRING "_vtk: Error writing cell scalars");
+
 
   retval = my_p4est_vtk_write_footer (p4est, filename);
   SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing footer");
@@ -156,7 +163,7 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_geometry_t * geom,
 }
 
 int
-my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scale, const char *filename)
+my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, double scale, const char *filename)
 {
   p4est_connectivity_t *connectivity = p4est->connectivity;
   sc_array_t         *trees = p4est->trees;
@@ -192,7 +199,6 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
   sc_array_t         *quadrants, *indeps;
   p4est_tree_t       *tree;
   p4est_quadrant_t   *quad;
-  p4est_nodes_t      *nodes;
   p4est_indep_t      *in;
   char                vtufilename[BUFSIZ];
   FILE               *vtufile;
@@ -211,10 +217,9 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
   }
   else {
     /* when scale == 1. we can reuse shared quadrant corners */
-    nodes = my_p4est_nodes_new (p4est);
     indeps = &nodes->indep_nodes;
     Ntotal = indeps->elem_count;//nodes->num_local_quadrants*P4EST_CHILDREN;
-//    P4EST_ASSERT ((size_t) Ntotal == indeps->elem_count);
+    //    P4EST_ASSERT ((size_t) Ntotal == indeps->elem_count);
   }
 
   /* Have each proc write to its own file */
@@ -282,34 +287,22 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
                 /* *INDENT-OFF* */
                 xyz[j] =
                     ((1. - eta_z) * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[0] + j] +
-                                                     eta_x  * v[3 * vt[1] + j]) +
-                                     eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
-                                               eta_x  * v[3 * vt[3] + j]))
-     #ifdef P4_TO_P8
-                     +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
-                                                     eta_x  * v[3 * vt[5] + j]) +
-                                     eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
-                                               eta_x  * v[3 * vt[7] + j]))
-     #endif
-                     );
+                     eta_x  * v[3 * vt[1] + j]) +
+                    eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
+                    eta_x  * v[3 * vt[3] + j]))
+    #ifdef P4_TO_P8
+                    +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
+                    eta_x  * v[3 * vt[5] + j]) +
+                    eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
+                    eta_x  * v[3 * vt[7] + j]))
+    #endif
+                    );
                 /* *INDENT-ON* */
               }
-              if (geom != NULL) {
-#ifdef P4_TO_P8
-                geom->X (geom, jt, xyz, XYZ);
-                for (j = 0; j < 3; ++j) {
-                  float_data[3 * (P4EST_CHILDREN * quad_count + k) +
-                      j] = (P4EST_VTK_FLOAT_TYPE) XYZ[j];
-                }
-#else
-                SC_ABORT ("Geometry in 2D not implemented");
-#endif
-              }
-              else {
-                for (j = 0; j < 3; ++j) {
-                  float_data[3 * (P4EST_CHILDREN * quad_count + k) +
-                      j] = (P4EST_VTK_FLOAT_TYPE) xyz[j];
-                }
+
+              for (j = 0; j < 3; ++j) {
+                float_data[3 * (P4EST_CHILDREN * quad_count + k) +
+                    j] = (P4EST_VTK_FLOAT_TYPE) xyz[j];
               }
               ++k;
             }
@@ -341,32 +334,20 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
         /* *INDENT-OFF* */
         xyz[j] =
             ((1. - eta_z) * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[0] + j] +
-                                             eta_x  * v[3 * vt[1] + j]) +
-                             eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
-                                       eta_x  * v[3 * vt[3] + j]))
-     #ifdef P4_TO_P8
-             +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
-                                             eta_x  * v[3 * vt[5] + j]) +
-                             eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
-                                       eta_x  * v[3 * vt[7] + j]))
-     #endif
-             );
+             eta_x  * v[3 * vt[1] + j]) +
+            eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
+            eta_x  * v[3 * vt[3] + j]))
+    #ifdef P4_TO_P8
+            +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
+            eta_x  * v[3 * vt[5] + j]) +
+            eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
+            eta_x  * v[3 * vt[7] + j]))
+    #endif
+            );
         /* *INDENT-ON* */
       }
-      if (geom != NULL) {
-#ifdef P4_TO_P8
-        geom->X (geom, jt, xyz, XYZ);
-        for (j = 0; j < 3; ++j) {
-          float_data[3 * zz + j] = (P4EST_VTK_FLOAT_TYPE) XYZ[j];
-        }
-#else
-        SC_ABORT ("Geometry in 2D not implemented");
-#endif
-      }
-      else {
-        for (j = 0; j < 3; ++j) {
-          float_data[3 * zz + j] = (P4EST_VTK_FLOAT_TYPE) xyz[j];
-        }
+      for (j = 0; j < 3; ++j) {
+        float_data[3 * zz + j] = (P4EST_VTK_FLOAT_TYPE) xyz[j];
       }
     }
   }
@@ -500,9 +481,6 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
 #ifndef P4EST_VTK_ASCII
   P4EST_FREE (locidx_data);
 #endif
-  if (nodes != NULL) {
-    p4est_nodes_destroy (nodes);
-  }
 
   if (ferror (vtufile)) {
     P4EST_LERROR (P4EST_STRING "_vtk: Error writing header\n");
@@ -545,6 +523,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
              " NumberOfComponents=\"3\" format=\"%s\"/>\n",
              P4EST_VTK_FLOAT_NAME, P4EST_VTK_FORMAT_STRING);
     fprintf (pvtufile, "    </PPoints>\n");
+
     if (ferror (pvtufile)) {
       P4EST_LERROR (P4EST_STRING "_vtk: Error writing parallel header\n");
       fclose (pvtufile);
@@ -560,14 +539,14 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_geometry_t * geom, double scal
 }
 
 int
-my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_geometry_t * geom,
+my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, double scale,
                                  const char *filename,
                                  const int num, const char* list_name, const char **scalar_names, const double **values)
 {
   const int           mpirank = p4est->mpirank;
   const p4est_locidx_t Ncells = p4est->local_num_quadrants;
   const p4est_locidx_t Ncorners = P4EST_CHILDREN * Ncells;      /* type ok */
-//  const p4est_locidx_t Ntotal =
+  //  const p4est_locidx_t Ntotal =
   int                 retval;
   p4est_locidx_t      il;
 #ifndef P4EST_VTK_ASCII
@@ -576,16 +555,29 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_geometry_t * geom,
   char                vtufilename[BUFSIZ];
   FILE               *vtufile;
 
+  p4est_locidx_t Ntotal;
+  if (scale < 1.) {
+    /* when we scale the quadrants we need each corner separately */
+    Ntotal = Ncorners;
+  }
+  else {
+    /* when scale == 1. we can reuse shared quadrant corners */
+    Ntotal = nodes->indep_nodes.elem_count;
+  }
+
+
   /* Have each proc write to its own file */
   snprintf (vtufilename, BUFSIZ, "%s_%04d.vtu", filename, mpirank);
   /* To be able to fseek in a file you cannot open in append mode.
    * so you need to open with "r+" and fseek to SEEK_END.
    */
+
   vtufile = fopen (vtufilename, "rb+");
   if (vtufile == NULL) {
     P4EST_LERRORF ("Could not open %s for output\n", vtufilename);
     return -1;
   }
+
   retval = fseek (vtufile, 0L, SEEK_END);
   if (retval) {
     P4EST_LERRORF ("Could not fseek %s for output\n", vtufilename);
@@ -600,7 +592,7 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_geometry_t * geom,
   fprintf (vtufile, ">\n");
 
   int i;
-  float_data = P4EST_ALLOC (P4EST_VTK_FLOAT_TYPE, Ncorners);
+  float_data = P4EST_ALLOC (P4EST_VTK_FLOAT_TYPE, Ntotal);
   for (i=0; i<num; ++i){
     /* write point position data */
     fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"%s\""
@@ -608,7 +600,7 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_geometry_t * geom,
              P4EST_VTK_FLOAT_NAME, scalar_names[i], P4EST_VTK_FORMAT_STRING);
 
 #ifdef P4EST_VTK_ASCII
-    for (il = 0; il < Ncorners; ++il) {
+    for (il = 0; il < Ntotal; ++il) {
 #ifdef P4EST_VTK_DOUBLES
       fprintf (vtufile, "     %24.16e\n", values[il]);
 #else
@@ -617,24 +609,37 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_geometry_t * geom,
     }
 #else
 
-    for (il = 0; il < Ncorners; ++il) {
-      float_data[il] = (P4EST_VTK_FLOAT_TYPE) values[i][il];
+    if (scale < 1.){
+      for (il = 0; il < Ncorners; ++il)
+        float_data[il] = (P4EST_VTK_FLOAT_TYPE) values[i][il];
+    } else {
+      for (il = 0; il <nodes->offset_owned_indeps; ++il)
+        float_data[il] = (P4EST_VTK_FLOAT_TYPE) values[i][nodes->num_owned_indeps + il];
+      for (il = 0; il<nodes->num_owned_indeps; ++il)
+        float_data[il + nodes->offset_owned_indeps] = (P4EST_VTK_FLOAT_TYPE) values[i][il];
+      for (il = nodes->num_owned_indeps+nodes->offset_owned_indeps; il<Ntotal; ++il)
+        float_data[il] = (P4EST_VTK_FLOAT_TYPE) values[i][il];
     }
     fprintf (vtufile, "          ");
     /* TODO: Don't allocate the full size of the array, only allocate
      * the chunk that will be passed to zlib and do this a chunk
      * at a time.
      */
+
     retval = my_p4est_vtk_write_binary (vtufile, (char *) float_data,
-                                        sizeof (*float_data) * Ncorners);
+                                        sizeof (*float_data) * Ntotal);
     fprintf (vtufile, "\n");
+
+
     if (retval) {
       P4EST_LERROR (P4EST_STRING "_vtk: Error encoding points\n");
       fclose (vtufile);
       return -1;
     }
 
+
 #endif
+
     fprintf (vtufile, "        </DataArray>\n");
 
     if (ferror (vtufile)) {
@@ -643,6 +648,7 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_geometry_t * geom,
       return -1;
     }
   }
+
 
   fprintf (vtufile, "      </PointData>\n");
   if (fclose (vtufile)) {
@@ -693,17 +699,17 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_geometry_t * geom,
 }
 
 int
-my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_geometry_t * geom,
+my_p4est_vtk_write_cell_scalar (p4est_t * p4est, int write_rank, int write_tree,
                                 const char *filename,
                                 const int num, const char* list_name, const char **scalar_names, const double **values)
 {
   const int           mpirank = p4est->mpirank;
   const p4est_locidx_t Ncells = p4est->local_num_quadrants;
-  const p4est_locidx_t Ncorners = P4EST_CHILDREN * Ncells;      /* type ok */
   int                 retval;
-  p4est_locidx_t      il;
+  p4est_locidx_t      il, jt, zz;
 #ifndef P4EST_VTK_ASCII
   P4EST_VTK_FLOAT_TYPE *float_data;
+  p4est_locidx_t     *locidx_data;
 #endif
   char                vtufilename[BUFSIZ];
   FILE               *vtufile;
@@ -725,14 +731,100 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_geometry_t * geom,
     return -1;
   }
 
+  char rank_tree_name[BUFSIZ]; rank_tree_name[0]='\0';
+  if (write_rank && write_tree)
+    sprintf(rank_tree_name, "proc_rank, tree_idx");
+  else if (write_rank)
+    sprintf(rank_tree_name, "proc_rank, ");
+  else if (write_tree)
+    sprintf(rank_tree_name, "tree_idx, ");
+
   /* Cell Data */
   fprintf (vtufile, "      <CellData");
   if (values != NULL)
-    fprintf (vtufile, " Scalars=\"%s\"", list_name);
+    fprintf (vtufile, " Scalars=\"%s%s\"", rank_tree_name, list_name);
   fprintf (vtufile, ">\n");
 
+#ifndef P4EST_VTK_ASCII
+  if (write_rank || write_tree)
+    locidx_data = P4EST_ALLOC (p4est_locidx_t, Ncells);
+  else
+    locidx_data = NULL;
+#endif
+
+  if (write_rank) {
+
+      fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"proc_rank\""
+               " format=\"%s\">\n", P4EST_VTK_LOCIDX, P4EST_VTK_FORMAT_STRING);
+  #ifdef P4EST_VTK_ASCII
+      fprintf (vtufile, "         ");
+      for (il = 0, sk = 1; il < Ncells; ++il, ++sk) {
+        fprintf (vtufile, " %d", mpirank);
+        if (!(sk % 20) && il != (Ncells - 1))
+          fprintf (vtufile, "\n         ");
+      }
+      fprintf (vtufile, "\n");
+  #else
+      for (il = 0; il < Ncells; ++il)
+        locidx_data[il] = (p4est_locidx_t) mpirank;
+
+      fprintf (vtufile, "          ");
+      retval = my_p4est_vtk_write_binary (vtufile, (char *) locidx_data,
+                                       sizeof (*locidx_data) * Ncells);
+      fprintf (vtufile, "\n");
+      if (retval) {
+        P4EST_LERROR (P4EST_STRING "_vtk: Error encoding types\n");
+        fclose (vtufile);
+        return -1;
+      }
+  #endif
+      fprintf (vtufile, "        </DataArray>\n");
+    }
+    if (write_tree) {
+      fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"tree_idx\""
+               " format=\"%s\">\n", P4EST_VTK_LOCIDX, P4EST_VTK_FORMAT_STRING);
+  #ifdef P4EST_VTK_ASCII
+      fprintf (vtufile, "         ");
+      for (il = 0, sk = 1, jt = first_local_tree; jt <= last_local_tree; ++jt) {
+        tree = p4est_tree_array_index (trees, jt);
+        num_quads = tree->quadrants.elem_count;
+        for (zz = 0; zz < num_quads; ++zz, ++sk, ++il) {
+          fprintf (vtufile, " %lld", (long long) jt);
+          if (!(sk % 20) && il != (Ncells - 1))
+            fprintf (vtufile, "\n         ");
+        }
+      }
+      fprintf (vtufile, "\n");
+  #else
+      for (il = 0, jt = p4est->first_local_tree; jt <= p4est->last_local_tree; ++jt) {
+        p4est_tree_t *tree = p4est_tree_array_index (p4est->trees, jt);
+        p4est_locidx_t num_quads = tree->quadrants.elem_count;
+        for (zz = 0; zz < num_quads; ++zz, ++il) {
+          locidx_data[il] = (p4est_locidx_t) jt;
+        }
+      }
+      fprintf (vtufile, "          ");
+      retval = my_p4est_vtk_write_binary (vtufile, (char *) locidx_data,
+                                       sizeof (*locidx_data) * Ncells);
+      fprintf (vtufile, "\n");
+      if (retval) {
+        P4EST_LERROR (P4EST_STRING "_vtk: Error encoding types\n");
+        fclose (vtufile);
+        return -1;
+      }
+  #endif
+      fprintf (vtufile, "        </DataArray>\n");
+      P4EST_ASSERT (il == Ncells);
+    }
+
+#ifndef P4EST_VTK_ASCII
+  if (locidx_data != NULL) P4EST_FREE (locidx_data);
+#endif
+
   int i;
-  float_data = P4EST_ALLOC (P4EST_VTK_FLOAT_TYPE, Ncells);
+#ifndef P4EST_VTK_ASCII
+  float_data = num >0 ? P4EST_ALLOC (P4EST_VTK_FLOAT_TYPE, Ncells):NULL;
+#endif
   for (i=0; i<num; ++i){
     /* write cell-center position data */
     fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"%s\""
@@ -782,8 +874,9 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_geometry_t * geom,
     return -1;
   }
   vtufile = NULL;
-  P4EST_FREE (float_data);
-
+#ifndef P4EST_VTK_ASCII
+  if (float_data != NULL) P4EST_FREE (float_data);
+#endif
 
   /* Only have the root write to the parallel vtk file */
   if (mpirank == 0) {
@@ -797,7 +890,7 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_geometry_t * geom,
       return -1;
     }
 
-    fprintf (pvtufile, "    <PCellData Scalars=\"%s\">\n",list_name);
+    fprintf (pvtufile, "    <PCellData Scalars=\"%s%s\">\n",rank_tree_name, list_name);
 
     int i;
     for (i=0; i<num; ++i){
@@ -813,6 +906,16 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_geometry_t * geom,
       }
     }
 
+    if (write_rank) {
+      fprintf (pvtufile, "      "
+               "<PDataArray type=\"%s\" Name=\"proc_rank\" format=\"%s\"/>\n",
+               P4EST_VTK_LOCIDX, P4EST_VTK_FORMAT_STRING);
+    }
+    if (write_tree) {
+      fprintf (pvtufile, "      "
+               "<PDataArray type=\"%s\" Name=\"tree_idx\" format=\"%s\"/>\n",
+               P4EST_VTK_LOCIDX, P4EST_VTK_FORMAT_STRING);
+    }
     fprintf (pvtufile, "    </PCellData>\n");
 
     if (fclose (pvtufile)) {
@@ -833,6 +936,8 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
   int                 procRank = p4est->mpirank;
   int                 numProcs = p4est->mpisize;
   FILE               *vtufile;
+
+
 
   /* Have each proc write to its own file */
   snprintf (vtufilename, BUFSIZ, "%s_%04d.vtu", filename, procRank);
@@ -859,9 +964,10 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
 
 
 
-
   /* Only have the root write to the parallel vtk file */
   if (procRank == 0) {
+
+
     char                visitfilename[BUFSIZ];
     char                pvtufilename[BUFSIZ];
     FILE               *pvtufile, *visitfile;
@@ -870,9 +976,13 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
     snprintf (pvtufilename, BUFSIZ, "%s.pvtu", filename);
     pvtufile = fopen (pvtufilename, "ab");
     if (!pvtufile) {
+
       P4EST_LERRORF ("Could not open %s for output!\n", vtufilename);
+
       return -1;
     }
+
+
 
     /* Create a master file for visualization in Visit */
     snprintf (visitfilename, BUFSIZ, "%s.visit", filename);
@@ -882,6 +992,8 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
       fclose (pvtufile);
       return -1;
     }
+
+
     fprintf (visitfile, "!NBLOCKS %d\n", numProcs);
 
     /* Write data about the parallel pieces into both files */
@@ -900,11 +1012,14 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
       fclose (pvtufile);
       return -1;
     }
+
+
     if (fclose (pvtufile)) {
       fclose (visitfile);
       P4EST_LERROR ("p4est_vtk: Error closing parallel footer\n");
       return -1;
     }
+
 
     /* Close visit master file */
     if (ferror (visitfile)) {
