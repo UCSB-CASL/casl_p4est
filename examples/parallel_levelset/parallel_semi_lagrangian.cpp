@@ -1,5 +1,5 @@
 #include "parallel_semi_lagrangian.h"
-#include "bilinear_interpolating_function_p.h"
+#include "bilinear_interpolating_function.h"
 #include <src/refine_coarsen.h>
 #include <mpi/mpi.h>
 #include <sc_notify.h>
@@ -226,8 +226,7 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, std::vector<double
   }
 
   //AT THIS POINT
-  // We now have two vectors<double> of phi: phi_np1
-  // phi_np1 has all the computed local phi values
+  // phi_np1 has all the computed local phi values. Just need to copy these values over old phi.
 
   std::copy(phi_np1.begin(), phi_np1.end(), phi.begin());   //Copy new phi values to old phi values.
 
