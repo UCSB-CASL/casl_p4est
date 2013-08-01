@@ -78,7 +78,7 @@ void BilinearInterpolatingFunction::interpolateValuesToNewForest(p4est_t *p4est_
 {
   // First create a fector long enough to hold new values
   PetscErrorCode ierr;
-  ierr = VecGhostCreate_p4est(p4est_new, nodes_new, F_new); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est_new, nodes_new, F_new); CHKERRXX(ierr);
 
   p4est_locidx_t *e2n_new = nodes_new->local_nodes;
   p4est_locidx_t *e2n_old = nodes->local_nodes;

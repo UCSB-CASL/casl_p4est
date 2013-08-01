@@ -71,7 +71,7 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quad
  * \param nodes the nodes numbering data structure
  * \param v PETSc vector type
  */
-PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
+PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
 
 /*!
  * \brief p4est2petsc_local_numbering converts p4est local node numbering convention to petsc local numbering convention

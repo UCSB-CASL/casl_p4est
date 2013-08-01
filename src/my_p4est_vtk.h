@@ -57,7 +57,7 @@ static const int VTK_CELL_DATA  = 1;
  * where the scalars come first, then the vectors.
  */
 void                my_p4est_vtk_write_all (p4est_t * p4est,
-                                            p4est_geometry_t * geom,
+                                            p4est_nodes_t *nodes,
                                             double scale,
                                             int num_point_scalars, int num_cell_scalars,
                                             const char *filename, ...);
@@ -85,8 +85,7 @@ void                my_p4est_vtk_write_all (p4est_t * p4est,
  *
  * \return          This returns 0 if no error and -1 if there is an error.
  */
-int                 my_p4est_vtk_write_header (p4est_t * p4est,
-                                               p4est_geometry_t * geom,
+int                 my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes,
                                                double scale,
                                                const char *filename);
 
@@ -110,8 +109,7 @@ int                 my_p4est_vtk_write_header (p4est_t * p4est,
  * \return          This returns 0 if no error and -1 if there is an error.
  */
 
-int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est,
-                                                     p4est_geometry_t * geom,
+int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, double scale,
                                                      const char *filename,
                                                      const int num, const char *list_name, const char **scalar_names,
                                                      const double **values);
@@ -135,7 +133,6 @@ int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est,
  * \return          This returns 0 if no error and -1 if there is an error.
  */
 int                 my_p4est_vtk_write_cell_scalar (p4est_t * p4est,
-                                                    p4est_geometry_t * geom,
                                                     const char *filename, const int num,
                                                     const char *list_name, const char **scalar_names,
                                                     const double **values);
