@@ -1,7 +1,7 @@
 #include "interpolating_function.h"
 
 BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est_, p4est_nodes_t *nodes_, Vec F_)
-  : p4est(p4est_), nodes(nodes_), F(F_)
+  : F(F_), p4est(p4est_), nodes(nodes_)
 {}
 
 void BilinearInterpolatingFunction::update(p4est_t *p4est_, p4est_nodes_t *nodes_, Vec F_)
@@ -103,7 +103,7 @@ void BilinearInterpolatingFunction::interpolateValuesToNewForest(p4est_t *p4est_
   for (p4est_topidx_t tr_it = p4est_new->first_local_tree; tr_it <= p4est_new->last_local_tree; ++tr_it)
   {
     p4est_tree_t *tree = p4est_tree_array_index(p4est_new->trees, tr_it);
-    for (p4est_locidx_t qu = 0; qu < tree->quadrants.elem_count; ++qu)
+    for (p4est_locidx_t qu = 0; qu < (p4est_locidx_t)tree->quadrants.elem_count; ++qu)
     {
       p4est_locidx_t qu_locidx = qu + tree->quadrants_offset;
       for (unsigned short i = 0; i<P4EST_CHILDREN; ++i)
