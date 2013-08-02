@@ -139,8 +139,7 @@ int main (int argc, char* argv[]){
    * to teach you how to do the update when you will need it later on.
    *
    * To do this we first create a duplicate of the old Vec. Note that this does
-   * NOT copy data in the old Vec. Next, we need to get a local version of the
-   * global vector that only lives on the current processor.
+   * NOT copy data in the old Vec.
    */
 
   // first create a copy of vector
@@ -149,9 +148,7 @@ int main (int argc, char* argv[]){
 
   // get access to the local's pointer
   double *phi_copy;
-  Vec phi_local;
-  ierr = VecGhostGetLocalForm(phi_global, &phi_local); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_local, &phi_copy); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_global, &phi_copy); CHKERRXX(ierr);
 
   // do the loop. Note how we only loop over LOCAL nodes
   for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; ++i)
@@ -208,8 +205,7 @@ int main (int argc, char* argv[]){
    * throw errors which will be helpful in debugging
    */
   ierr = VecRestoreArray(phi_global, &phi); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_local, &phi_copy); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(phi_global, &phi_local); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_global, &phi_copy); CHKERRXX(ierr);
 
   // finally, delete PETSc Vecs by calling 'VecDestroy' function
   ierr = VecDestroy(phi_global); CHKERRXX(ierr);
