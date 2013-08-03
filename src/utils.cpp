@@ -85,7 +85,7 @@ void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* qua
 
 }
 
-double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quadrant_t *quad, double *F, double x_global, double y_global)
+double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quadrant_t *quad, double *F, const double *xy_global)
 {
   p4est_topidx_t lower_left_vertex  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t upper_right_vertex = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 3];
@@ -96,14 +96,14 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quad
   double tree_xmax = p4est->connectivity->vertices[3*upper_right_vertex + 0];
   double tree_ymax = p4est->connectivity->vertices[3*upper_right_vertex + 1];
 
-  double x = (x_global - tree_xmin)/(tree_xmax - tree_xmin);
-  double y = (y_global - tree_ymin)/(tree_ymax - tree_ymin);
+  double x = (xy_global[0] - tree_xmin)/(tree_xmax - tree_xmin);
+  double y = (xy_global[1] - tree_ymin)/(tree_ymax - tree_ymin);
 
 #ifdef CASL_THROWS
   if (x<0 || x>1 || y<0 || y>1)
   {
     std::ostringstream oss;
-    oss << "[CASL_ERROR]: Point (" << x_global << ", " << y_global << ") is not located inside given tree (= " << tree_id << ")" << std::endl;
+    oss << "[CASL_ERROR]: Point (" << xy_global[0] << ", " << xy_global[1] << ") is not located inside given tree (= " << tree_id << ")" << std::endl;
     throw std::invalid_argument(oss.str());
   }
 #endif

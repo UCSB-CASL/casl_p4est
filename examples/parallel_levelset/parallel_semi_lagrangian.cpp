@@ -1,6 +1,7 @@
 #include "parallel_semi_lagrangian.h"
 #include "bilinear_interpolating_function.h"
 #include <src/refine_coarsen.h>
+#include <src/petsc_compatibility.h>
 #include <mpi/mpi.h>
 #include <sc_notify.h>
 
@@ -29,7 +30,7 @@ SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes)
   ymax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 1];
 }
 
-double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, std::vector<double>& phi){
+double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
   std::map <int, non_local_point_buffer> send_buffer_map;      //Use a map to associate each rank to their respective struct of values to be sent using MPI SEND/RECV
   typedef std::map <int, non_local_point_buffer>::iterator send_it;
 
@@ -48,13 +49,24 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, std::vector<double
   // Hold quadrant information for MPI_SEND/MPI_RECV. Changed to a struct of vectors instead of a vector of structs
   quad_information local_dep_points_info;
 
-  // loop over all nodes
-  std::vector<double> phi_np1(phi.size());
+  // Create new Vec
+  Vec phi_np1;
+  ierr = VecDuplicate(phi, &phi_np1); CHKERRXX(ierr);
+
+  // get access to the pointer
+  double *phi_np1_ptr;
+  ierr = VecGetArray(phi_np1, &phi_np1_ptr); CHKERRXX(ierr);
+
+  double *phi_ptr;
+  ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
 
   // Loop through all nodes of local processor and separate nodes into local and non-local vectors
   // Local vectors will be used normally (serial).
   // Non-local vectors will need sent to non-local processors in order to compute data
-  for (p4est_locidx_t ni = 0; ni < nodes_->num_owned_indeps; ++ni){ //Loop through all nodes of a single processor
+  p4est_locidx_t ni_begin = nodes_->offset_owned_indeps;
+  p4est_locidx_t ni_end   = nodes_->offset_owned_indeps + nodes_->num_owned_indeps;
+
+  for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
     p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, ni);
     p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
     p4est_quadrant_t *quad;
@@ -161,7 +173,7 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, std::vector<double
       local_dep_points_info.xy[(i * 2) + 0],
       local_dep_points_info.xy[(i * 2) + 1]
     };
-    phi_np1[local_dep_points_info.ni[i]] = linear_interpolation(phi, xy, local_dep_points_info.tree_idx[i]);  //Interpolate
+    phi_np1_ptr[local_dep_points_info.ni[i]] = linear_interpolation(phi_ptr, xy, local_dep_points_info.tree_idx[i]);  //Interpolate
   }
 
   //Loop over received points and interpolate them.
@@ -184,15 +196,12 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, std::vector<double
                                                         xy_departure,
                                                         &tree_idx,
                                                         &quad_idx,
-                                                        &quad);
-      //Catch if rank_found is in current processor
-      if (rank_found != rank_current){
-        int abc;
-        std::cout << "ERROR, SENT DATA TO WRONG PROCESSOR" << endl;
-        std::cin >> abc;
-      }
-      else
-        phi_temp[vec_it] = linear_interpolation(phi, xy_departure, tree_idx);  //Interpolate, and put into temp phi vector
+                                                        &quad);            
+#ifdef CASL_THROWS
+      if (rank_found != rank_current)
+        throw std::runtime_error("Data has been sent to the wrong processor");
+#endif
+        phi_temp[vec_it] = linear_interpolation(phi_ptr, xy_departure, tree_idx);  //Interpolate, and put into temp phi vector
     }
     phi_send[rank_it->first] = phi_temp;       //Copy values to phi_send map which will be used to send data back to other processors
   }
@@ -221,23 +230,33 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, std::vector<double
 
     //Insert received calculated phi values back into new level set (phi_np1)
     for (int it = 0; it < phi_temp_buf.size(); ++it){
-      phi_np1[send_buffer_map[receivers[it]].ni[it]] = phi_temp_buf[it];
+      phi_np1_ptr[send_buffer_map[receivers[it]].ni[it]] = phi_temp_buf[it];
     }
   }
 
   //AT THIS POINT
   // phi_np1 has all the computed local phi values. Just need to copy these values over old phi.
 
-  std::copy(phi_np1.begin(), phi_np1.end(), phi.begin());   //Copy new phi values to old phi values.
+  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_np1, &phi_np1_ptr); CHKERRXX(ierr);
+
+  // Delete the old Vec and swap the pointers
+  ierr = VecDestroy(phi); CHKERRXX(ierr);
+  phi  = phi_np1;
+
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // update the p4est
   update_p4est(phi);
   return dt;
 }
 
-void SemiLagrangian::update_p4est(std::vector<double>& phi){
+void SemiLagrangian::update_p4est(Vec &phi){
   // define an interpolating function
-  BilinearInterpolatingFunction bif(phi, p4est_, nodes_);
+  double *phi_ptr;
+  ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
+  BilinearInterpolatingFunction bif(phi_ptr, p4est_, nodes_);
 
   // make a new copy of p4est object -- we are going to modify p4est but we
   // still need the old one ...
@@ -255,9 +274,16 @@ void SemiLagrangian::update_p4est(std::vector<double>& phi){
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
 
   // update the values at the new time-step
-  vector<double> phi_np1(nodes_np1->num_owned_indeps);
+  Vec phi_np1;
+  ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
-  for (p4est_locidx_t ni = 0; ni<nodes_np1->num_owned_indeps; ++ni){
+  double *phi_np1_ptr;
+  ierr = VecGetArray(phi_np1, &phi_np1_ptr); CHKERRXX(ierr);
+
+  p4est_locidx_t ni_begin = nodes_np1->offset_owned_indeps;
+  p4est_locidx_t ni_end   = nodes_np1->offset_owned_indeps + nodes_np1->num_owned_indeps;
+
+  for (p4est_locidx_t ni = ni_begin; ni<ni_end; ++ni){
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni);
     p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
@@ -269,14 +295,53 @@ void SemiLagrangian::update_p4est(std::vector<double>& phi){
     double x = int2double_coordinate_transform(node->x) + tree_xmin;
     double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-    phi_np1[ni] = bif(x,y);
+    phi_np1_ptr[ni - nodes_np1->offset_owned_indeps] = bif(x,y);
   }
 
   // now that everything is updated, get rid of old stuff and swap them with
   // new ones
+  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_np1, &phi_np1_ptr); CHKERRXX(ierr);
+
+  // Update ghost values
+  ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
   p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
-  phi.resize(phi_np1.size()); copy(phi_np1.begin(), phi_np1.end(), phi.begin());
+  ierr = VecDestroy(phi); CHKERRXX(ierr);
+  phi = phi_np1;
+
+}
+
+double SemiLagrangian::linear_interpolation(const double *F, const double xy[], p4est_topidx_t tree_idx)
+{
+  p4est_locidx_t quad_idx;
+  p4est_locidx_t *q2n = nodes_->local_nodes;
+  p4est_quadrant_t *quad;
+
+  int found_rank = my_p4est_brick_point_lookup_smallest(p4est_, NULL, NULL,
+                                                        xy, &tree_idx, &quad_idx, &quad);
+
+#ifdef CASL_THROWS
+if (p4est_->mpirank != found_rank){
+  std::ostringstream oss; oss << "point (" << xy[0] << "," << xy[1] << ")"
+                                 "does not belog to processor " << p4est_->mpirank;
+  throw std::invalid_argument(oss.str());
+}
+#endif
+
+  p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
+  quad_idx += tree->quadrants_offset;
+  double f [] =
+  {
+    F[p4est2petsc_local_numbering(nodes_, q2n[P4EST_CHILDREN*quad_idx + 0])],
+    F[p4est2petsc_local_numbering(nodes_, q2n[P4EST_CHILDREN*quad_idx + 1])],
+    F[p4est2petsc_local_numbering(nodes_, q2n[P4EST_CHILDREN*quad_idx + 2])],
+    F[p4est2petsc_local_numbering(nodes_, q2n[P4EST_CHILDREN*quad_idx + 3])]
+  };
+
+  return bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
 }
 
 }

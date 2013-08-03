@@ -59,7 +59,7 @@ struct circle:CF_2{
     return r - sqrt(SQR(x-x0) + SQR(y-y0));
   }
 private:
-  double r, x0, y0;
+  double  x0, y0, r;
 };
 
 int main (int argc, char* argv[]){
@@ -68,6 +68,7 @@ int main (int argc, char* argv[]){
   mpi->mpicomm  = MPI_COMM_WORLD;
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
+  PetscErrorCode ierr;
 
   circle circ(0.5, 0.5, .3);
   cf_grid_data_t data = {&circ, 7, 0, 1.0};
@@ -107,9 +108,13 @@ int main (int argc, char* argv[]){
   nodes = my_p4est_nodes_new(p4est);
 
   // Initialize the level-set function
-  vector<double> phi(nodes->num_owned_indeps);
-  vector<double> vx, vy;
-  for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; ++i)
+  Vec phi;
+  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+
+  double *phi_ptr;
+  ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
+
+  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
   {
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
     p4est_topidx_t tree_id = node->p.piggy3.which_tree;
@@ -122,32 +127,36 @@ int main (int argc, char* argv[]){
     double x = int2double_coordinate_transform(node->x) + tree_xmin;
     double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-    phi[i] = circ(x,y);
+    phi_ptr[i] = circ(x,y);
   }
 
   // write the intial data to disk
-  my_p4est_vtk_write_all(p4est, NULL, 1.0,
+  my_p4est_vtk_write_all(p4est, nodes, 1.0,
+                         P4EST_TRUE, P4EST_TRUE,
                          1, 0, "init",
-                         VTK_POINT_DATA, "phi", &phi[0]);
+                         VTK_POINT_DATA, "phi", phi_ptr);
+
+  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
 
   // SemiLagrangian object
-  //serial::SemiLagrangian sl(&p4est, &nodes);
   parallel::SemiLagrangian sl(&p4est, &nodes);
 
   // loop over time
   double tf = 10;
   int tc = 0;
   int save = 1;
+  vector<double> vx, vy;
   for (double t=0, dt=0; t<tf; t+=dt, tc++){
     if (tc % save == 0){
       // Save stuff
-      std::ostringstream oss; oss << brick.nxytrees[0] << "x"
+      std::ostringstream oss; oss << "p_" << p4est->mpisize << "_"
+                                  << brick.nxytrees[0] << "x"
                                   << brick.nxytrees[1] << "." << tc/save;
 
-      vx.resize(phi.size());
-      vy.resize(phi.size());
+      vx.resize(nodes->indep_nodes.elem_count);
+      vy.resize(nodes->indep_nodes.elem_count);
 
-      for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; ++i)
+      for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
       {
         p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
         p4est_topidx_t tree_id = node->p.piggy3.which_tree;
@@ -164,16 +173,23 @@ int main (int argc, char* argv[]){
         vy[i] = vy_vortex(x,y);
       }
 
-      my_p4est_vtk_write_all(p4est, NULL, 1.0,
+      ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
+      my_p4est_vtk_write_all(p4est, nodes, 1.0,
+                             P4EST_TRUE, P4EST_TRUE,
                              3, 0, oss.str().c_str(),
-                             VTK_POINT_DATA, "phi", &phi[0],
+                             VTK_POINT_DATA, "phi", phi_ptr,
                              VTK_POINT_DATA, "vx", &vx[0],
                              VTK_POINT_DATA, "vy", &vy[0]);
+      ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
     }
 
     // advect the function in time and get the computed time-step
     dt = sl.advect(vx_vortex, vy_vortex, phi);
   }
+
+  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
+  ierr = VecDestroy(phi); CHKERRXX(ierr);
+
   // destroy the p4est and its connectivity structure
   p4est_nodes_destroy (nodes);
   p4est_destroy (p4est);

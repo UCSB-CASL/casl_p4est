@@ -68,7 +68,7 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const
     F_val[nodes_locidx[3]]
   };
 
-  double val = bilinear_interpolation(p4est, quad_tree, quad, F_inter, xy[0], xy[1]);
+  double val = bilinear_interpolation(p4est, quad_tree, quad, F_inter, xy);
   ierr = VecRestoreArray(F, &F_val); CHKERRXX(ierr);
 
   return val;
@@ -149,7 +149,7 @@ void BilinearInterpolatingFunction::interpolateValuesToNewForest(p4est_t *p4est_
             F_nodes_old[j] = F_val_old[nodes_locidx_old[j]];
           }
 
-          F_val_new[petsc_node_locidx] = bilinear_interpolation(p4est, tr_it_old, quad_old, F_nodes_old, xy[0], xy[1]);
+          F_val_new[petsc_node_locidx] = bilinear_interpolation(p4est, tr_it_old, quad_old, F_nodes_old, xy);
           is_processed(petsc_node_locidx) = true;
         }
       }

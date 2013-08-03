@@ -126,7 +126,8 @@ int main (int argc, char* argv[]){
   }
 
   // write the intial data to disk
-  my_p4est_vtk_write_all(p4est, NULL, 1.0,
+  my_p4est_vtk_write_all(p4est, nodes, 1.0,
+                         P4EST_TRUE, P4EST_TRUE,
                          1, 0, "init",
                          VTK_POINT_DATA, "phi", &phi[0]);
 
@@ -164,7 +165,8 @@ int main (int argc, char* argv[]){
         vy[i] = vy_vortex(x,y);
       }
 
-      my_p4est_vtk_write_all(p4est, NULL, 1.0,
+      my_p4est_vtk_write_all(p4est, nodes, 1.0,
+                             P4EST_TRUE, P4EST_TRUE,
                              3, 0, oss.str().c_str(),
                              VTK_POINT_DATA, "phi", &phi[0],
                              VTK_POINT_DATA, "vx", &vx[0],
