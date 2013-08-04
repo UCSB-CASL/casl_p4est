@@ -77,7 +77,7 @@ my_p4est_brick_point_lookup_real (p4est_t * p4est, p4est_ghost_t * ghost,
         xy[0] <= v2q[3 * t2v[P4EST_CHILDREN*tr + last] + 0] &&
         xy[1] >= v2q[3 * t2v[P4EST_CHILDREN*tr + 0   ] + 1] &&
         xy[1] <= v2q[3 * t2v[P4EST_CHILDREN*tr + last] + 1]  ))
-      tr = my_p4est_brick_point_lookup_tree(p4est, xy);
+    tr = my_p4est_brick_point_lookup_tree(p4est, xy);
 
   P4EST_ASSERT (v2q != NULL);
   P4EST_ASSERT (0 <= tr && tr < num_trees);
@@ -395,7 +395,7 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
         xy[0] <= v2q[3 * t2v[P4EST_CHILDREN*tr + last] + 0] &&
         xy[1] >= v2q[3 * t2v[P4EST_CHILDREN*tr + 0   ] + 1] &&
         xy[1] <= v2q[3 * t2v[P4EST_CHILDREN*tr + last] + 1]  ))
-      tr = my_p4est_brick_point_lookup_tree(p4est, xy);
+    tr = my_p4est_brick_point_lookup_tree(p4est, xy);
 
   double tr_dx = v2q[3*t2v[P4EST_CHILDREN*tr + last] + 0] - v2q[3*t2v[P4EST_CHILDREN*tr + 0] + 0]; // xmax - xmin
   double tr_dy = v2q[3*t2v[P4EST_CHILDREN*tr + last] + 1] - v2q[3*t2v[P4EST_CHILDREN*tr + 0] + 1]; // ymax - ymin
@@ -436,12 +436,13 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   rank_tmp = my_p4est_brick_point_lookup_real (p4est, ghost, myb,
                                                xy_p, &tr_tmp, &qu_tmp,
                                                &q_tmp);
-  if (q_tmp->level > q->level) {
-    rank = rank_tmp;
-    tr = tr_tmp;
-    qu = qu_tmp;
-    q = q_tmp;
-  }
+  if (qu_tmp != NULL && q != NULL)
+    if (q_tmp->level > q->level) {
+      rank = rank_tmp;
+      tr = tr_tmp;
+      qu = qu_tmp;
+      q = q_tmp;
+    }
 
   // - +
   xy_p[0] = xy[0] - halfqx;
@@ -460,12 +461,13 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   rank_tmp = my_p4est_brick_point_lookup_real (p4est, ghost, myb,
                                                xy_p, &tr_tmp, &qu_tmp,
                                                &q_tmp);
-  if (q_tmp->level > q->level) {
-    rank = rank_tmp;
-    tr = tr_tmp;
-    qu = qu_tmp;
-    q = q_tmp;
-  }
+  if (qu_tmp != NULL && q != NULL)
+    if (q_tmp->level > q->level) {
+      rank = rank_tmp;
+      tr = tr_tmp;
+      qu = qu_tmp;
+      q = q_tmp;
+    }
 
   // - -
   xy_p[0] = xy[0] - halfqx;
@@ -484,12 +486,13 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   rank_tmp = my_p4est_brick_point_lookup_real (p4est, ghost, myb,
                                                xy_p, &tr_tmp, &qu_tmp,
                                                &q_tmp);
-  if (q_tmp->level > q->level) {
-    rank = rank_tmp;
-    tr = tr_tmp;
-    qu = qu_tmp;
-    q = q_tmp;
-  }
+  if (qu_tmp != NULL && q != NULL)
+    if (q_tmp->level > q->level) {
+      rank = rank_tmp;
+      tr = tr_tmp;
+      qu = qu_tmp;
+      q = q_tmp;
+    }
 
   if (which_tree != NULL)
     *which_tree = tr;
