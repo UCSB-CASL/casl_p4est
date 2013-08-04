@@ -16,9 +16,10 @@
 
 namespace parallel{
 
-SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes)
+SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, my_p4est_brick_t *myb)
   : p_p4est_(p4est), p4est_(*p4est),
-    p_nodes_(nodes), nodes_(*nodes)
+    p_nodes_(nodes), nodes_(*nodes),
+    myb_(myb)
 {
   // compute domain sizes
   double *v2c = p4est_->connectivity->vertices;
@@ -32,6 +33,8 @@ SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes)
 }
 
 double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
+  p4est_ghost_t *ghost = p4est_ghost_new(p4est_, P4EST_CONNECT_DEFAULT);
+
   std::map <int, non_local_point_buffer> send_buffer_map;      //Use a map to associate each rank to their respective struct of values to be sent using MPI SEND/RECV
   typedef std::map <int, non_local_point_buffer>::iterator send_it;
 
@@ -72,6 +75,7 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
     p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
     p4est_quadrant_t *quad;
     p4est_locidx_t quad_idx;
+    sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
 
     p4est_topidx_t tr_mm = t2v[P4EST_CHILDREN*tree_idx + 0];  //mm vertex of tree
     double tr_xmin = t2c[3 * tr_mm + 0];
@@ -103,24 +107,50 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
 
     //Find quadrant of xy_departure point
     //Returns: quadrant, quadrant index, tree index, and processor rank of the backtraced xy coordinates
-    rank_found = my_p4est_brick_point_lookup_smallest(p4est_, NULL, NULL,
-                                                      xy_departure,
-                                                      &tree_idx,
-                                                      &quad_idx,
-                                                      &quad);
+//    rank_found = my_p4est_brick_point_lookup_smallest(p4est_, NULL, NULL,
+//                                                      xy_departure,
+//                                                      &tree_idx,
+//                                                      &quad_idx,
+//                                                      &quad);
+
+    /*
+     * We are using this function since the other one does not work in parallel
+     * There are multiple cases that can happen. If the return is equal to the
+     * current rank, we own the quadrant in our local list. If the return does
+     * not match the current rank, then the quadrant is in the ghost layer.
+     * finally if the return rank is -1, then not only we do not own the quad,
+     * but its also not even in the ghost layer; its somewhere far away! In this
+     * case, remote_matches array should be checked for the actual quadrant
+     */
+    rank_found = my_p4est_brick_point_lookup(p4est_, ghost, myb_,
+                                             xy_departure, &quad, remote_matches);
+
+    quad_idx = quad->p.piggy3.local_num;
+    tree_idx = quad->p.piggy3.which_tree;
 
     // Check if ranks match (if backtraced point is within the current processor)
-    if (rank_current == rank_found){     //Point is local to current processor
-      local_dep_points_info.push(xy_departure, tree_idx, quad_idx, quad, ni-nodes_->offset_owned_indeps);   //Push_back values for interpolation
-    }
-    else{                                 //Else, backtraced point is not in current processor.
+    if (rank_current == rank_found){
+      local_dep_points_info.push(xy_departure, tree_idx, quad_idx/*quad->p.piggy3.local_num*/, quad, ni-nodes_->offset_owned_indeps);   //Push_back values for interpolation
+    } else if (rank_found >= 0){ // in the ghost layer
       if (send_buffer_map.find(rank_found) == send_buffer_map.end()){  //Check if map has associated the found rank yet, if not, make it.
         send_buffer_map[rank_found] = non_local_point_buffer();    //Init new buffer
         send_buffer_map[rank_found].push(xy_departure, ni-nodes_->offset_owned_indeps);    //Init values
       }
       else  //If we found a point in a pair we already made, add it to that pair.
         send_buffer_map[rank_found].push(xy_departure, ni-nodes_->offset_owned_indeps);     //Need to send xy_departure to correct processor and recalculate tree_idx, quad_idx, and *quad.
+    } else {
+/*      cout << __LINE__ << endl;
+      p4est_quadrant_t *remote_quad = (p4est_quadrant_t*)sc_array_index(remote_matches, 0);
+      int remote_rank = remote_quad->p.piggy1.owner_rank;
+      if (send_buffer_map.find(remote_rank) == send_buffer_map.end()){  //Check if map has associated the found rank yet, if not, make it.
+        send_buffer_map[remote_rank] = non_local_point_buffer();    //Init new buffer
+        send_buffer_map[remote_rank].push(xy_departure, ni-nodes_->offset_owned_indeps);    //Init values
+      }
+      else  //If we found a point in a pair we already made, add it to that pair.
+        send_buffer_map[remote_rank].push(xy_departure, ni-nodes_->offset_owned_indeps);  */   //Need to send xy_departure to correct processor and recalculate tree_idx, quad_idx, and *quad.
     }
+
+    sc_array_destroy(remote_matches);
   }
 
   //AT THIS POINT, WE NOW HAVE TWO VARIABLES: local_dep_points_info & send_buffer_map.
@@ -140,7 +170,6 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
   //Populate senders and num_senders from the number of receivers.
   sc_notify(&receivers[0], receivers.size(), &senders[0], &num_senders, p4est_->mpicomm);
   senders.resize(num_senders);
-
 
   //MPI_SEND to send data out to other processors from us.
   for (int it = 0; it < receivers.size(); ++it){
@@ -227,7 +256,7 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
     MPI_Recv(&phi_buf_size, 1, MPI_INT, receivers[it], SIZE_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);   //Receive the buffer size
 
     std::vector<double> phi_temp_buf(phi_buf_size);      //Init a temp buffer that we will put received data in.
-    MPI_Recv(&phi_temp_buf, phi_buf_size, MPI_DOUBLE, receivers[it], PHI_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);  //Receive the data from processors
+    MPI_Recv(&phi_temp_buf[0], phi_buf_size, MPI_DOUBLE, receivers[it], PHI_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);  //Receive the data from processors
 
     //Insert received calculated phi values back into new level set (phi_np1)
     for (int i = 0; i < phi_temp_buf.size(); ++i){
@@ -241,19 +270,20 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_np1, &phi_np1_ptr); CHKERRXX(ierr);
 
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   // Delete the old Vec and swap the pointers
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi  = phi_np1;
 
-  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
   // update the p4est
-  update_p4est(phi);
+//  update_p4est(phi, ghost);
+  p4est_ghost_destroy(ghost);
   return dt;
 }
 
-void SemiLagrangian::update_p4est(Vec &phi){
+void SemiLagrangian::update_p4est(Vec &phi, p4est_ghost_t *ghost){
   std::map <int, non_local_point_buffer> send_buffer_map;      //Use a map to associate each rank to their respective struct of values to be sent using MPI SEND/RECV
   typedef std::map <int, non_local_point_buffer>::iterator send_it;
 
@@ -280,6 +310,7 @@ void SemiLagrangian::update_p4est(Vec &phi){
   // level-set function since it has moved
   cf_grid_data_t *data = (cf_grid_data_t*)(p4est_->user_pointer);
   data->phi = &bif;
+  p4est_np1->user_pointer = p4est_->user_pointer;
   p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset, NULL);
   p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset, NULL);
   p4est_partition(p4est_np1, NULL);
@@ -305,7 +336,8 @@ void SemiLagrangian::update_p4est(Vec &phi){
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni);
     p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
     p4est_quadrant_t *quad;
-    p4est_locidx_t quad_idx;
+    //    p4est_locidx_t quad_idx;
+    sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
 
     p4est_topidx_t v_mm = p4est_np1->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
 
@@ -321,24 +353,31 @@ void SemiLagrangian::update_p4est(Vec &phi){
     /* find the processor that can do the interpolation. Note that we will look
      * for the correct processoron the OLD grid
      */
-    int rank_found = my_p4est_brick_point_lookup_smallest(p4est_, NULL, NULL,
-                                                          xy_node,
-                                                          &tree_idx,
-                                                          &quad_idx,
-                                                          &quad);
+    int rank_found = my_p4est_brick_point_lookup(p4est_, ghost, myb_,
+                                             xy_node, &quad, remote_matches);
 
     // Check if ranks match (if backtraced point is within the current processor)
-    if (rank_current == rank_found){     //Point is local to current processor
-      local_dep_points_info.push(xy_node, tree_idx, quad_idx, quad, ni-nodes_np1->offset_owned_indeps);   //Push_back values for interpolation
-    }
-    else{                                 //Else, backtraced point is not in current processor.
+    if (rank_current == rank_found){
+      local_dep_points_info.push(xy_node, tree_idx, quad->p.piggy3.local_num, quad, ni-nodes_->offset_owned_indeps);   //Push_back values for interpolation
+    } else if (rank_found >= 0){ // in the ghost layer
       if (send_buffer_map.find(rank_found) == send_buffer_map.end()){  //Check if map has associated the found rank yet, if not, make it.
         send_buffer_map[rank_found] = non_local_point_buffer();    //Init new buffer
-        send_buffer_map[rank_found].push(xy_node, ni-nodes_np1->offset_owned_indeps);    //Init values
+        send_buffer_map[rank_found].push(xy_node, ni-nodes_->offset_owned_indeps);    //Init values
       }
       else  //If we found a point in a pair we already made, add it to that pair.
-        send_buffer_map[rank_found].push(xy_node, ni-nodes_np1->offset_owned_indeps);     //Need to send xy_departure to correct processor and recalculate tree_idx, quad_idx, and *quad.
+        send_buffer_map[rank_found].push(xy_node, ni-nodes_->offset_owned_indeps);     //Need to send xy_departure to correct processor and recalculate tree_idx, quad_idx, and *quad.
+    } else {
+      p4est_quadrant_t *remote_quad = (p4est_quadrant_t*)sc_array_index(remote_matches, 0);
+      int remote_rank = remote_quad->p.piggy1.owner_rank;
+      if (send_buffer_map.find(remote_rank) == send_buffer_map.end()){  //Check if map has associated the found rank yet, if not, make it.
+        send_buffer_map[remote_rank] = non_local_point_buffer();    //Init new buffer
+        send_buffer_map[remote_rank].push(xy_node, ni-nodes_->offset_owned_indeps);    //Init values
+      }
+      else  //If we found a point in a pair we already made, add it to that pair.
+        send_buffer_map[remote_rank].push(xy_node, ni-nodes_->offset_owned_indeps);     //Need to send xy_departure to correct processor and recalculate tree_idx, quad_idx, and *quad.
     }
+
+    sc_array_destroy(remote_matches);
   }
 
   // Find the correct set of processors to send and receive information
@@ -406,7 +445,7 @@ void SemiLagrangian::update_p4est(Vec &phi){
     MPI_Recv(&phi_buf_size, 1, MPI_INT, receivers[it], SIZE_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);   //Receive the buffer size
 
     std::vector<double> phi_temp_buf(phi_buf_size);      //Init a temp buffer that we will put received data in.
-    MPI_Recv(&phi_temp_buf, phi_buf_size, MPI_DOUBLE, receivers[it], PHI_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);  //Receive the data from processors
+    MPI_Recv(&phi_temp_buf[0], phi_buf_size, MPI_DOUBLE, receivers[it], PHI_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);  //Receive the data from processors
 
     //Insert received calculated phi values back into new level set (phi_np1)
     for (int i = 0; i < phi_temp_buf.size(); ++i){
@@ -441,7 +480,7 @@ double SemiLagrangian::linear_interpolation(const double *F, const double xy[], 
 
 #ifdef CASL_THROWS
   if (p4est_->mpirank != found_rank){
-    std::ostringstream oss; oss << "point (" << xy[0] << "," << xy[1] << ")"
+    std::ostringstream oss; oss << "point (" << xy[0] << "," << xy[1] << ") "
                                    "does not belog to processor " << p4est_->mpirank;
     throw std::invalid_argument(oss.str());
   }

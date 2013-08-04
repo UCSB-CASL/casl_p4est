@@ -103,8 +103,8 @@ public:
 
   static void init(int argc, char **argv, MPI_Comm mpicomm = MPI_COMM_WORLD){
     PetscErrorCode ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
-    sc_init (mpicomm, 1, 1, NULL, SC_LP_DEFAULT);
-    p4est_init (NULL, SC_LP_DEFAULT);
+    sc_init (mpicomm, 1, 1, NULL, SC_LP_SILENT);
+    p4est_init (NULL, SC_LP_SILENT);
   }
 };
 

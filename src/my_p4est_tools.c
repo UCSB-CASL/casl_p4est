@@ -178,7 +178,7 @@ int
 my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
                              const my_p4est_brick_t * myb,
                              const double *xy,
-                             p4est_quadrant_t * best_match,
+                             p4est_quadrant_t **best_match,
                              sc_array_t * remote_matches)
 {
   /* identify all possible quadrant queries */
@@ -349,9 +349,9 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   if (smallest_owner < p4est->mpisize) {
     P4EST_ASSERT (found_quad != NULL);
     P4EST_ASSERT (found_quad->level == highest_level);
-    *best_match = *found_quad;
-    best_match->p.piggy3.which_tree = smallest_tree;
-    best_match->p.piggy3.local_num = (p4est_locidx_t) smallest_pos;
+    *best_match = found_quad;
+    (*best_match)->p.piggy3.which_tree = smallest_tree;
+    (*best_match)->p.piggy3.local_num = (p4est_locidx_t) smallest_pos;
     return smallest_owner;
   }
 
@@ -369,7 +369,7 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   int                  rank, rank_tmp;
   p4est_topidx_t       tr = 0, tr_tmp = 0;
   p4est_locidx_t       qu, qu_tmp;
-  p4est_quadrant_t    *q, *q_tmp;
+  p4est_quadrant_t    *q, *q_tmp; q = q_tmp = NULL;
   const int            last    = P4EST_CHILDREN - 1;
   const p4est_qcoord_t qlen   = P4EST_QUADRANT_LEN (P4EST_QMAXLEVEL);
   const double         halfqw = 0.5 * (double)qlen/(double)P4EST_ROOT_LEN;
@@ -417,7 +417,14 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   if (xy_p[1] >= d_ymax)
     xy_p[1] = d_ymax - halfqy;
 
-  rank = my_p4est_brick_point_lookup_real (p4est, ghost, myb, xy_p, &tr, &qu, &q);
+  tr_tmp = tr;
+  rank_tmp = my_p4est_brick_point_lookup_real (p4est, ghost, myb, xy_p, &tr_tmp, &qu_tmp, &q_tmp);
+  if (rank_tmp == p4est->mpirank){
+    rank = rank_tmp;
+    tr = tr_tmp;
+    qu = qu_tmp;
+    q = q_tmp;
+  }
 
   // + -
   xy_p[0] = xy[0] + halfqx;
@@ -436,13 +443,19 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   rank_tmp = my_p4est_brick_point_lookup_real (p4est, ghost, myb,
                                                xy_p, &tr_tmp, &qu_tmp,
                                                &q_tmp);
-  if (qu_tmp != NULL && q != NULL)
-    if (q_tmp->level > q->level) {
+  if (rank_tmp == p4est->mpirank){
+    if (q == NULL){
+      rank = rank_tmp;
+      tr = tr_tmp;
+      qu = qu_tmp;
+      q = q_tmp;
+    } else if (q_tmp->level > q->level) {
       rank = rank_tmp;
       tr = tr_tmp;
       qu = qu_tmp;
       q = q_tmp;
     }
+  }
 
   // - +
   xy_p[0] = xy[0] - halfqx;
@@ -461,13 +474,19 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   rank_tmp = my_p4est_brick_point_lookup_real (p4est, ghost, myb,
                                                xy_p, &tr_tmp, &qu_tmp,
                                                &q_tmp);
-  if (qu_tmp != NULL && q != NULL)
-    if (q_tmp->level > q->level) {
+  if (rank_tmp == p4est->mpirank){
+    if (q == NULL){
+      rank = rank_tmp;
+      tr = tr_tmp;
+      qu = qu_tmp;
+      q = q_tmp;
+    } else if (q_tmp->level > q->level) {
       rank = rank_tmp;
       tr = tr_tmp;
       qu = qu_tmp;
       q = q_tmp;
     }
+  }
 
   // - -
   xy_p[0] = xy[0] - halfqx;
@@ -486,13 +505,19 @@ my_p4est_brick_point_lookup_smallest (p4est_t * p4est, p4est_ghost_t * ghost,
   rank_tmp = my_p4est_brick_point_lookup_real (p4est, ghost, myb,
                                                xy_p, &tr_tmp, &qu_tmp,
                                                &q_tmp);
-  if (qu_tmp != NULL && q != NULL)
-    if (q_tmp->level > q->level) {
+  if (rank_tmp == p4est->mpirank){
+    if (q == NULL){
+      rank = rank_tmp;
+      tr = tr_tmp;
+      qu = qu_tmp;
+      q = q_tmp;
+    } else if (q_tmp->level > q->level) {
       rank = rank_tmp;
       tr = tr_tmp;
       qu = qu_tmp;
       q = q_tmp;
     }
+  }
 
   if (which_tree != NULL)
     *which_tree = tr;

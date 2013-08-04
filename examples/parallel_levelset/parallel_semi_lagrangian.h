@@ -65,6 +65,7 @@ class SemiLagrangian
 {
   p4est_t **p_p4est_, *p4est_;
   p4est_nodes_t **p_nodes_, *nodes_;
+  my_p4est_brick_t *myb_;
 
   double xmin, xmax, ymin, ymax;
 
@@ -102,10 +103,10 @@ class SemiLagrangian
   }
 
   double linear_interpolation(const double *F, const double xy[], p4est_topidx_t tree_idx = 0);
-  void update_p4est(Vec& phi);
+  void update_p4est(Vec& phi, p4est_ghost_t *ghost);
 
 public:
-  SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes);
+  SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, my_p4est_brick_t *myb);
 
   double advect(const CF_2& vx, const CF_2& vy, Vec &phi);
 };
