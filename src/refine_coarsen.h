@@ -8,22 +8,17 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_nodes.h>
 
-typedef struct {
+struct cf_grid_data_t {
   CF_2 *phi;
   int max_lvl, min_lvl;
   double lip;
-} cf_grid_data_t;
+};
 
-typedef struct {
+struct rand_grid_data_t {
   int max_lvl, min_lvl;
-  p4est_gloidx_t max_quads, min_quads, counter;
-} rand_grid_data_t;
-
-typedef struct {
-  CF_2 *shape;
-  int max_lvl, min_lvl;
-  double lip;
-} refine_coarsen_data_t;
+  p4est_locidx_t max_quads, min_quads;
+  static p4est_locidx_t counter;
+};
 
 
 /*!
