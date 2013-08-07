@@ -13,10 +13,15 @@ class BilinearInterpolatingFunction: public CF_2
   p4est_nodes_t *nodes_;
   p4est_ghost_t *ghost_;
   my_p4est_brick_t *myb_;
+  std::vector<int> p4est2petsc;
+  Vec Fi_;
 
   struct local_point_buffer{
     std::vector<double> xy;
     std::vector<p4est_quadrant_t*> quad;
+    std::vector<p4est_locidx_t> node_locidx;
+
+    size_t size() { return node_locidx.size(); }
   };
 
   struct ghost_point_info{
@@ -24,11 +29,15 @@ class BilinearInterpolatingFunction: public CF_2
     p4est_topidx_t tree_idx;
     p4est_locidx_t quad_locidx;
   };
-  typedef std::map<int , std::vector<ghost_point_info> > ghost_transfer_map;
-  ghost_transfer_map ghost_point_send_buffer, ghost_point_recv_buffer;
 
-  typedef std::map<int, std::vector<double> > simple_transfer_map;
-  simple_transfer_map remote_xy_send, remote_xy_recv, F_send, F_recv;
+  typedef std::map<int , std::vector<ghost_point_info> > ghost_transfer_map;
+  ghost_transfer_map ghost_send_buffer, ghost_recv_buffer;
+
+  typedef std::map<int, std::vector<double> > remote_transfer_map;
+  remote_transfer_map remote_send_buffer, remote_recv_buffer;
+
+  typedef std::map<int, std::vector<p4est_locidx_t> > nonlocal_node_map;
+  nonlocal_node_map ghost_node_index, remote_node_index;
 
   std::vector<int> ghost_recievers, ghost_senders, remote_recievers, remote_senders;
   bool is_buffer_prepared;
@@ -42,16 +51,17 @@ class BilinearInterpolatingFunction: public CF_2
   };
 
   // methods
-  double linear_interpolation(const double xy[]) const;
   void prepare_buffer();
+  void clear_buffer();
 
 public:
   BilinearInterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb);
 
-  void add_point_to_buffer(double x, double y);
-  void clear_buffer();
+  void add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y);
+  void update_vector(Vec& Fi);
+  void update_grid(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost);
 
-  void interpolate(Vec& F, const std::vector<p4est_locidx_t> node_locidx);
+  void interpolate(Vec& Fo);
   double operator()(double x, double y) const;
 };
 } // namepace parallel
