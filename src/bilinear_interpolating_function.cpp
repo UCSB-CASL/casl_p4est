@@ -1,5 +1,6 @@
 #include "bilinear_interpolating_function.h"
 #include <sc_notify.h>
+#include <fstream>
 
 namespace parallel{
 BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est,
@@ -75,7 +76,7 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
     local_point_buffer.quad.push_back(best_match);
     local_point_buffer.node_locidx.push_back(node_locidx);
 
-  } else if (rank_found != -1) { // point is found in the ghost layer
+  } else if (remote_matches->elem_count == 0) { // point is found in the ghost layer
     // retrive the correct quadrant from the ghost array
     p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(&ghost_->ghosts, best_match->p.piggy3.local_num);
 
@@ -131,32 +132,32 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
      */
 
 #ifdef CASL_THROWS
-    {
-      vector<int> r(remote_matches->elem_count);
-      for (int i=0; i<r.size(); i++){
-        p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(remote_matches, i);
-        r[i] = q->p.piggy1.owner_rank;
-      }
+//    {
+//      vector<int> r(remote_matches->elem_count);
+//      for (int i=0; i<r.size(); i++){
+//        p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(remote_matches, i);
+//        r[i] = q->p.piggy1.owner_rank;
+//      }
 
-      for (int i=0; i<r.size()-1; i++){
-        if (r[i] != r[i+1]){
-          ostringstream oss;
-          oss << "[ERROR]:"
-              << " Was expecting all remote quadrants belong to the same processors, but they dont. "
-              << " This probably means you should not be doing the interpolation for the point (" << x << "," << y << ")."
-                 " Please consult the documentation in file " << __FILE__ << ". This error is generated from line " << __LINE__ << endl;
-          throw invalid_argument(oss.str());
-        }
-      }
-    }
+//      for (int i=0; i<r.size()-1; i++){
+//        if (r[i] != r[i+1]){
+//          ostringstream oss;
+//          oss << "[ERROR]:"
+//              << " Was expecting all remote quadrants belong to the same processors, but they dont. "
+//              << " This probably means you should not be doing the interpolation for the point (" << x << "," << y << ")."
+//                 " Please consult the documentation in file " << __FILE__ << ". This error is generated from line " << __LINE__ << endl;
+//          throw invalid_argument(oss.str());
+//        }
+//      }
+//    }
 #endif
 
     p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(remote_matches, 0);
+    int remote_rank = q->p.piggy1.owner_rank;
 
-    remote_send_buffer[q->p.piggy1.owner_rank].push_back(x);
-    remote_send_buffer[q->p.piggy1.owner_rank].push_back(y);
-    remote_node_index[q->p.piggy1.owner_rank].push_back(node_locidx);
-
+    remote_send_buffer[remote_rank].push_back(x);
+    remote_send_buffer[remote_rank].push_back(y);
+    remote_node_index[remote_rank].push_back(node_locidx);
   }
 
   // set the flag to false so the prepare buffer method will be called
@@ -223,8 +224,30 @@ void BilinearInterpolatingFunction::prepare_buffer()
 
     // Now that we know all sender/receiver pairs lets do MPI. We do blocking
     for (it = remote_send_buffer.begin(); it != end; ++it){
+
       std::vector<double>& buff = it->second;
       int msg_size = buff.size();
+
+      cout << "[" << p4est_->mpirank << "] remote_rank = " << it->first << endl;
+      cout << "points = ";
+
+      ostringstream oss;
+      oss << "points_dbg_" << p4est_->mpirank << ".py";
+      ofstream py(oss.str().c_str());
+      py << "try: paraview.simple" << endl;
+      py << "except: from paraview.simple import * " << endl;
+      py << "paraview.simple._DisableFirstRenderCameraReset() " << endl;
+      py << "RenderView1 = CreateRenderView()" << endl;
+      for (int i=0; i<buff.size()/2; i++){
+        cout << "(" << buff[2*i] << "," << buff[2*i+1] << "), ";
+
+        py << "PointSource" << i << " = PointSource(guiName=\"PointSource" << i << "\", Radius = 0.0, Center=[" << buff[2*i] << "," << buff[2*i+1] << ",0]"
+               ", NumberOfPoints = 1)" << endl;
+        py << "SetActiveSource(PointSource" << i << ")" << endl;
+        py << "DataRepresentation" << i << " = Show()" << endl;
+      }
+      py.close();
+      cout << endl;
 
       MPI_Send(&msg_size, 1, MPI_INT, it->first, size_tag, p4est_->mpicomm);
       MPI_Send(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm);
@@ -278,7 +301,7 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
     for (short j=0; j<P4EST_CHILDREN; ++j)
       f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
 
-    Fo_ptr[p4est2petsc[node_idx]] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
+    Fo_ptr[node_idx] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
   }
 
   // Do interpolation for ghost points and the send the results
@@ -313,12 +336,13 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
   {
     for (size_t i = 0; i < ghost_recievers.size(); ++i)
     {
-      std::vector<double> f_recv(ghost_recv_buffer.size());
-      std::vector<p4est_locidx_t>& node_idx = ghost_node_index[ghost_recievers[i]];
-      MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, ghost_recievers[i], ghost_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
+      int recv_rank = ghost_recievers[i];
+      std::vector<double> f_recv(ghost_recv_buffer[recv_rank].size());
+      std::vector<p4est_locidx_t>& node_idx = ghost_node_index[recv_rank];
+      MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, ghost_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
 
       for (size_t j=0; j<f_recv.size(); j++)
-        Fo_ptr[p4est2petsc[node_idx[j]]] = f_recv[j];
+        Fo_ptr[node_idx[j]] = f_recv[j];
     }
   }
 
@@ -357,7 +381,7 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
         p4est_locidx_t qu_locidx = best_match->p.piggy3.local_num + tree->quadrants_offset;
 
         for (short j=0; j<P4EST_CHILDREN; j++)
-          f[j] = q2n[p4est2petsc[q2n[qu_locidx*P4EST_CHILDREN+j]]];
+          f[j] = Fi_ptr[p4est2petsc[q2n[qu_locidx*P4EST_CHILDREN+j]]];
 
         f_send[i] = bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
       }
@@ -369,12 +393,13 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
     // Receive the stuff and put them in the correct position.
     for (size_t i=0; i<remote_recievers.size(); ++i)
     {
-      std::vector<double> f_recv(remote_send_buffer.size()/2);
-      std::vector<p4est_locidx_t>& node_idx = remote_node_index[remote_recievers[i]];
-      MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, remote_recievers[i], remote_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
+      int recv_rank = remote_recievers[i];
+      std::vector<double> f_recv(remote_send_buffer[recv_rank].size()/2);
+      std::vector<p4est_locidx_t>& node_idx = remote_node_index[recv_rank];
+      MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, remote_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
 
       for (size_t j=0; j<f_recv.size(); j++)
-        Fo_ptr[p4est2petsc[node_idx[j]]] = f_recv[j];
+        Fo_ptr[node_idx[j]] = f_recv[j];
     }
   }
 

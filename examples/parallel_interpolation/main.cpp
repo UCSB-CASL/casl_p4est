@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <vector>
 #include <algorithm>
+#include <fstream>
 
 // p4est Library
 #include <p4est_bits.h>
@@ -89,9 +90,11 @@ int main (int argc, char* argv[]){
     w2.start("computing phi");
     Vec phi;
     ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+    Vec phi_l;
+    ierr = VecGhostGetLocalForm(phi, &phi_l); CHKERRXX(ierr);
 
     double *phi_p;
-    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_l, &phi_p); CHKERRXX(ierr);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
     {
       p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
@@ -107,7 +110,7 @@ int main (int argc, char* argv[]){
 
       phi_p[p4est2petsc_local_numbering(nodes,i)] = circ(x,y);
     }
-    ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_l, &phi_p); CHKERRXX(ierr);
     w2.stop(); w2.read_duration();
 
     std::ostringstream oss; oss << "phi_" << mpi->mpisize;
@@ -138,9 +141,17 @@ int main (int argc, char* argv[]){
     parallel::BilinearInterpolatingFunction bif(p4est, nodes, ghost, &brick);
 
     // interpolate the data on the new grid from the old one
-    for (int i=0; i<nodes_np1->indep_nodes.elem_count; ++i)
+    oss.str("");
+    oss << "all_points_dbg_" << p4est->mpirank << ".py";
+    ofstream py(oss.str().c_str());
+    py << "try: paraview.simple" << endl;
+    py << "except: from paraview.simple import * " << endl;
+    py << "paraview.simple._DisableFirstRenderCameraReset() " << endl;
+    py << "RenderView1 = CreateRenderView()" << endl;
+
+    for (int i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i);
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i+nodes_np1->offset_owned_indeps);
       p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
       p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
@@ -151,29 +162,46 @@ int main (int argc, char* argv[]){
       double x = int2double_coordinate_transform(node->x) + tree_xmin;
       double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
+
+      py << "PointSource" << i << " = PointSource(guiName=\"PointSource" << i << "\", Radius = 0.0, Center=[" << x << "," << y << ",0]"
+            ", NumberOfPoints = 1)" << endl;
+      py << "SetActiveSource(PointSource" << i << ")" << endl;
+      py << "DataRepresentation" << i << " = Show()" << endl;
+
       // buffer the point
       bif.add_point_to_buffer(i, x, y);
     }
+    py.close();
 
     // set the vector we want to interpolate from
-    bif.update_vector(phi);
+    bif.update_vector(phi_l);
 
     // interpolate on to the new vector
     Vec phi_np1;
     ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
-    bif.interpolate(phi_np1);
+    Vec phi_np1_l;
+    ierr = VecGhostGetLocalForm(phi_np1, &phi_np1_l); CHKERRXX(ierr);
+
+    bif.interpolate(phi_np1_l);
+
+    ierr = VecGhostRestoreLocalForm(phi_np1, &phi_np1_l); CHKERRXX(ierr);
+
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     oss.str("");
     oss << "phi_np1_" << mpi->mpisize;
     double *phi_np1_p;
-    ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(phi_np1, &phi_np1_l); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_np1_l, &phi_np1_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est_np1, nodes_np1, 1.0,
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_np1_p);
-    ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_np1_l, &phi_np1_p); CHKERRXX(ierr);
+
+    ierr = VecGhostRestoreLocalForm(phi, &phi_l); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(phi_np1, &phi_np1_l); CHKERRXX(ierr);
 
     // finally, delete PETSc Vecs by calling 'VecDestroy' function
     ierr = VecDestroy(phi);     CHKERRXX(ierr);
