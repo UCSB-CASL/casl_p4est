@@ -87,6 +87,14 @@ int main (int argc, char* argv[]){
     p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
     w2.stop(); w2.read_duration();
 
+//    cout << "[" << p4est->mpirank << "]: ghost->ghosts.elem_count = " << ghost->ghosts.elem_count << endl;
+//    cout << "[" << p4est->mpirank << "]: ghost->num_trees = " << ghost->num_trees << endl;
+//    cout << "[" << p4est->mpirank << "]: ghost->mpisize = " << ghost->mpisize << endl;
+//    for (int i=0; i<ghost->num_trees+1; i++)
+//      cout << "[" << p4est->mpirank << "]: ghost->tree_offsets[" << i << "] = " << ghost->tree_offsets[i] << endl;
+//    for (int i=0; i<ghost->mpisize+1; i++)
+//      cout << "[" << p4est->mpirank << "]: ghost->proc_offsets[" << i << "] = " << ghost->proc_offsets[i] << endl;
+
     w2.start("computing phi");
     Vec phi;
     ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
@@ -141,13 +149,10 @@ int main (int argc, char* argv[]){
     parallel::BilinearInterpolatingFunction bif(p4est, nodes, ghost, &brick);
 
     // interpolate the data on the new grid from the old one
-    oss.str("");
-    oss << "all_points_dbg_" << p4est->mpirank << ".py";
-    ofstream py(oss.str().c_str());
-    py << "try: paraview.simple" << endl;
-    py << "except: from paraview.simple import * " << endl;
-    py << "paraview.simple._DisableFirstRenderCameraReset() " << endl;
-    py << "RenderView1 = CreateRenderView()" << endl;
+    ostringstream filename;
+    filename << "xy_all_" << p4est->mpirank << ".csv";
+    ofstream xy_all(filename.str().c_str());
+    xy_all << "\"x\", \"y\", \"z\"" << endl;
 
     for (int i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
@@ -163,15 +168,12 @@ int main (int argc, char* argv[]){
       double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
 
-      py << "PointSource" << i << " = PointSource(guiName=\"PointSource" << i << "\", Radius = 0.0, Center=[" << x << "," << y << ",0]"
-            ", NumberOfPoints = 1)" << endl;
-      py << "SetActiveSource(PointSource" << i << ")" << endl;
-      py << "DataRepresentation" << i << " = Show()" << endl;
+      xy_all << x << "," << y << ", 0" << endl;
 
       // buffer the point
       bif.add_point_to_buffer(i, x, y);
     }
-    py.close();
+    xy_all.close();
 
     // set the vector we want to interpolate from
     bif.update_vector(phi_l);
