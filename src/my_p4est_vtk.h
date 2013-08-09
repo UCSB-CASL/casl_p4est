@@ -165,6 +165,8 @@ int                 my_p4est_vtk_write_cell_scalar (p4est_t * p4est, int write_r
 int                 my_p4est_vtk_write_footer (p4est_t * p4est,
                                                const char *filename);
 
+void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost);
+
 SC_EXTERN_C_END;
 
 #endif /* !MY_P4EST_VTK_H */

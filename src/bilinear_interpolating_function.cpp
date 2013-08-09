@@ -1,6 +1,7 @@
 #include "bilinear_interpolating_function.h"
 #include <sc_notify.h>
 #include <fstream>
+#include <src/my_p4est_vtk.h>
 
 namespace parallel{
 BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est,
@@ -32,7 +33,7 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx = 0;
   p4est_locidx_t *q2n = nodes_->local_nodes;
-  p4est_quadrant_t *best_match;
+  p4est_quadrant_t best_match;
   sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
 
   int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_,
@@ -46,8 +47,8 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const {
   }
 #endif
 
-  p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, best_match->p.piggy3.which_tree);
-  quad_idx = best_match->p.piggy3.local_num + tree->quadrants_offset;
+  p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, best_match.p.piggy3.which_tree);
+  quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
 
   double f [P4EST_CHILDREN];
   for (short j=0; j<P4EST_CHILDREN; ++j)
@@ -62,7 +63,7 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
 {
   // initialize data
   double xy [] = {x, y};
-  p4est_quadrant_t *best_match;
+  p4est_quadrant_t best_match;
   sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
 
   // find the quadrant
@@ -77,10 +78,17 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
     local_point_buffer.node_locidx.push_back(node_locidx);
 
   } else if (remote_matches->elem_count == 0) { // point is found in the ghost layer
+    size_t pos = (size_t)(best_match.p.piggy3.local_num);
+    p4est_quadrant *q = (p4est_quadrant_t*)sc_array_index(&ghost_->ghosts, pos);
+
+    if (p4est_->mpirank == 0){
+      cout << q->p.piggy3.local_num << ", ";
+    }
+
     ghost_point_info tmp;
     tmp.xy[0] = x; tmp.xy[1] = y;
-    tmp.quad_locidx = best_match->p.piggy3.local_num;
-    tmp.tree_idx    = best_match->p.piggy3.which_tree;
+    tmp.quad_locidx = q->p.piggy3.local_num;
+    tmp.tree_idx    = q->p.piggy3.which_tree;
 
     ghost_send_buffer[rank_found].push_back(tmp);
     ghost_node_index[rank_found].push_back(node_locidx);
@@ -162,7 +170,18 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
 }
 
 void BilinearInterpolatingFunction::prepare_buffer()
-{
+{  
+  if (p4est_->mpirank == 0)
+  {
+    cout << endl;
+
+    ghost_transfer_map::iterator it = ghost_send_buffer.begin(), end = ghost_send_buffer.end();
+    vector<ghost_point_info> & buff = it->second;
+    for (int i=0; i<buff.size(); i++)
+      cout << buff[i].quad_locidx << ", ";
+    cout << endl;
+  }
+
   {
     ostringstream filename;
     filename << "xy_ghost_" << p4est_->mpirank << ".csv";
@@ -298,10 +317,10 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
   for (size_t i=0; i<local_point_buffer.size(); ++i)
   {
     double *xy = &local_point_buffer.xy[2*i];
-    p4est_quadrant_t *quad = local_point_buffer.quad[i];
-    p4est_topidx_t tree_idx = quad->p.piggy3.which_tree;
+    p4est_quadrant_t &quad = local_point_buffer.quad[i];
+    p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
     p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
-    p4est_locidx_t quad_idx = quad->p.piggy3.local_num + tree->quadrants_offset;
+    p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
     p4est_locidx_t node_idx = local_point_buffer.node_locidx[i];
 
     for (short j=0; j<P4EST_CHILDREN; ++j)
@@ -325,7 +344,7 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
         double *xy = &recv_info[i].xy[0];
         p4est_topidx_t tree_idx = recv_info[i].tree_idx;
         p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
-        p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, recv_info[i].quad_locidx);
+        p4est_quadrant_t &quad = *(p4est_quadrant_t*)sc_array_index(&tree->quadrants, recv_info[i].quad_locidx);
         p4est_locidx_t quad_idx = recv_info[i].quad_locidx + tree->quadrants_offset;
 
         for (short j=0; j<P4EST_CHILDREN; ++j)
@@ -367,7 +386,7 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
         double *xy = &xy_recv[2*i];
 
         // first find the quadrant for the remote points
-        p4est_quadrant_t *best_match;
+        p4est_quadrant_t best_match;
         sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
         int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_,
                                                      xy, &best_match, remote_matches);
@@ -382,9 +401,9 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
         sc_array_destroy(remote_matches);
 
         // get the local index
-        p4est_topidx_t tree_idx  = best_match->p.piggy3.which_tree;
+        p4est_topidx_t tree_idx  = best_match.p.piggy3.which_tree;
         p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
-        p4est_locidx_t qu_locidx = best_match->p.piggy3.local_num + tree->quadrants_offset;
+        p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
 
         for (short j=0; j<P4EST_CHILDREN; j++)
           f[j] = Fi_ptr[p4est2petsc[q2n[qu_locidx*P4EST_CHILDREN+j]]];

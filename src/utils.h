@@ -63,7 +63,7 @@ void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* qua
  * \param y_global global y-coordinate of the point
  * \return interpolated value
  */
-double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quadrant_t *quad, double *F, const double *xy_global);
+double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, double *F, const double *xy_global);
 
 /*!
  * \brief p4est_VecCreate Creates a normal PETSc parallel vector based on p4est node ordering

@@ -85,7 +85,7 @@ void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* qua
 
 }
 
-double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quadrant_t *quad, double *F, const double *xy_global)
+double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, double *F, const double *xy_global)
 {
   p4est_topidx_t lower_left_vertex  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t upper_right_vertex = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 3];
@@ -108,9 +108,9 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quad
   }
 #endif
 
-  double qh   = (double)P4EST_QUADRANT_LEN(quad->level) / (double)(P4EST_ROOT_LEN);
-  double xmin = (double)quad->x / (double)(P4EST_ROOT_LEN);
-  double ymin = (double)quad->y / (double)(P4EST_ROOT_LEN);
+  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+  double xmin = (double)quad.x / (double)(P4EST_ROOT_LEN);
+  double ymin = (double)quad.y / (double)(P4EST_ROOT_LEN);
 
   double d_m0 = x - xmin;
   double d_p0 = qh - d_m0;
@@ -136,7 +136,7 @@ PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
 
   for (p4est_locidx_t i = 0; i<nodes->offset_owned_indeps; ++i)
   {
-    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    p4est_indep_t *ni  = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
     ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
   }
   for (size_t i = nodes->offset_owned_indeps+num_local; i<nodes->indep_nodes.elem_count; ++i)

@@ -39,7 +39,7 @@ int main (int argc, char* argv[]){
   p4est_nodes_t      *nodes;
   PetscErrorCode      ierr;
 
-  circle circ(0.5, 0.5, .3);
+  circle circ(1, 1, .3);
   cf_grid_data_t data = {&circ, 8, 3, 1.0};
 
   Session::init(argc, argv, mpi->mpicomm);
@@ -143,6 +143,7 @@ int main (int argc, char* argv[]){
    */
 
   // first create a copy of vector
+  circ.update(1.234, 1.4,.34);
   Vec phi_global_copy;
   ierr = VecDuplicate(phi_global, &phi_global_copy); CHKERRXX(ierr);
 

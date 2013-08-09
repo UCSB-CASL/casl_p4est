@@ -178,7 +178,7 @@ int
 my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
                              const my_p4est_brick_t * myb,
                              const double *xy,
-                             p4est_quadrant_t **best_match,
+                             p4est_quadrant_t *best_match,
                              sc_array_t * remote_matches)
 {
   /* identify all possible quadrant queries */
@@ -349,9 +349,9 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   if (smallest_owner < p4est->mpisize) {
     P4EST_ASSERT (found_quad != NULL);
     P4EST_ASSERT (found_quad->level == highest_level);
-    *best_match = found_quad;
-    (*best_match)->p.piggy3.which_tree = smallest_tree;
-    (*best_match)->p.piggy3.local_num = (p4est_locidx_t) smallest_pos;
+    *best_match = *found_quad;
+    best_match->p.piggy3.which_tree = smallest_tree;
+    best_match->p.piggy3.local_num = (p4est_locidx_t) smallest_pos;
     return smallest_owner;
   }
 

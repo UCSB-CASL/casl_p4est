@@ -18,7 +18,7 @@ class BilinearInterpolatingFunction: public CF_2
 
   struct{
     std::vector<double> xy;
-    std::vector<p4est_quadrant_t*> quad;
+    std::vector<p4est_quadrant_t> quad;
     std::vector<p4est_locidx_t> node_locidx;
 
     size_t size() { return node_locidx.size(); }
