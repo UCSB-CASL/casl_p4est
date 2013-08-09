@@ -1,7 +1,7 @@
 #include "interpolating_function.h"
 
 BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est_, p4est_nodes_t *nodes_, Vec F_)
-  : p4est(p4est_), nodes(nodes_), F(F_)
+  : F(F_), p4est(p4est_), nodes(nodes_)
 {}
 
 void BilinearInterpolatingFunction::update(p4est_t *p4est_, p4est_nodes_t *nodes_, Vec F_)
@@ -68,7 +68,7 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const
     F_val[nodes_locidx[3]]
   };
 
-  double val = bilinear_interpolation(p4est, quad_tree, quad, F_inter, xy[0], xy[1]);
+  double val = bilinear_interpolation(p4est, quad_tree, quad, F_inter, xy);
   ierr = VecRestoreArray(F, &F_val); CHKERRXX(ierr);
 
   return val;
@@ -78,7 +78,7 @@ void BilinearInterpolatingFunction::interpolateValuesToNewForest(p4est_t *p4est_
 {
   // First create a fector long enough to hold new values
   PetscErrorCode ierr;
-  ierr = VecGhostCreate_p4est(p4est_new, nodes_new, F_new); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est_new, nodes_new, F_new); CHKERRXX(ierr);
 
   p4est_locidx_t *e2n_new = nodes_new->local_nodes;
   p4est_locidx_t *e2n_old = nodes->local_nodes;
@@ -103,7 +103,7 @@ void BilinearInterpolatingFunction::interpolateValuesToNewForest(p4est_t *p4est_
   for (p4est_topidx_t tr_it = p4est_new->first_local_tree; tr_it <= p4est_new->last_local_tree; ++tr_it)
   {
     p4est_tree_t *tree = p4est_tree_array_index(p4est_new->trees, tr_it);
-    for (p4est_locidx_t qu = 0; qu < tree->quadrants.elem_count; ++qu)
+    for (p4est_locidx_t qu = 0; qu < (p4est_locidx_t)tree->quadrants.elem_count; ++qu)
     {
       p4est_locidx_t qu_locidx = qu + tree->quadrants_offset;
       for (unsigned short i = 0; i<P4EST_CHILDREN; ++i)
@@ -149,7 +149,7 @@ void BilinearInterpolatingFunction::interpolateValuesToNewForest(p4est_t *p4est_
             F_nodes_old[j] = F_val_old[nodes_locidx_old[j]];
           }
 
-          F_val_new[petsc_node_locidx] = bilinear_interpolation(p4est, tr_it_old, quad_old, F_nodes_old, xy[0], xy[1]);
+          F_val_new[petsc_node_locidx] = bilinear_interpolation(p4est, tr_it_old, quad_old, F_nodes_old, xy);
           is_processed(petsc_node_locidx) = true;
         }
       }

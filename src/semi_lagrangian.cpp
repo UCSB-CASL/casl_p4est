@@ -59,7 +59,7 @@ void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
     double tr_ly   = tr_ymax - tr_ymin;
 
     // Loop over local quadrants
-    for (p4est_locidx_t qu_it = 0; qu_it < tree->quadrants.elem_count; ++qu_it)
+    for (p4est_locidx_t qu_it = 0; qu_it < (p4est_locidx_t)tree->quadrants.elem_count; ++qu_it)
     {
       p4est_locidx_t quad_locidx = qu_it + tree->quadrants_offset;
 

@@ -1,18 +1,18 @@
-# Define the location for the CASL library 
-# HEAD_DIR = ../../
+# Define the HEAD_DIR to point to the top level directory of the project
+# HEAD_DIR=???
 
 # Project info
 vpath %.cpp    $(HEAD_DIR)/src 
 vpath %.c      $(HEAD_DIR)/src 
 INCLUDE_FLAGS += -I$(HEAD_DIR)
 SRCS           = utils.cpp my_p4est_vtk.cpp semi_lagrangian.cpp interpolating_function.cpp refine_coarsen.cpp
-SRCS          += main_test.cpp
-#SRCS          += main_semi_lagrangian.cpp
-#SRCS          += main_refine_coarsen.cpp
+#MAIN_SRC      = main_test.cpp
+#MAIN_SRC      = main_semi_lagrangian.cpp
+#MAIN_SRC      = main_refine_coarsen.cpp
+MAIN_SRC       = main_create_loop_output.cpp
+SRCS += $(MAIN_SRC)
 CSRCS          = my_p4est_tools.c my_p4est_nodes.c
-BIN_NAME       = levelset
-CSRCS          = my_p4est_nodes.c my_p4est_tools.c
-BIN_NAME       = test
+BIN_NAME       = $(patsubst %.cpp,%,$(MAIN_SRC))
 BIN_FOLDER     = .
 
 # What build type to use? __MUST__ either be 'debug' or 'release'
@@ -25,19 +25,6 @@ CXX_COMPILER_TYPE    = GNU
 CXX_DEFINES          = -DCASL_THROWS
 CXX_EXTRA_FLAGS      = 
 
-# What libraries to build?
-BUILD_ALGEBRA    = NO
-BUILD_QUADTREE   = NO
-BUILD_OCTREE     = NO
-BUILD_EK         = NO
-BUILD_IO         = NO
-BUILD_GEOMETRY   = NO
-BUILD_RAYTRACING = NO
-BUILD_UTILITIES  = NO
-
-# CUDA compiler options
-CUDA_EXTRA_FLAGS = 
-
 # Verbose control
 PRINT_WARNINGS    = NO
 PRINT_MAKE_OUTPUT = NO
@@ -48,14 +35,8 @@ TEMP_OBJS_DIR      = objs
 # Use any external libraries?
 CASL_HAVE_OPENMP   = NO
 CASL_HAVE_MPI      = YES
-CASL_HAVE_BOOST    = NO
-CASL_HAVE_THRUST   = NO
 CASL_HAVE_PETSC    = YES
 CASL_HAVE_P4EST    = YES
-CASL_HAVE_VIENNACL = NO
-CASL_HAVE_HDF5     = NO
-CASL_HAVE_VTK      = NO
-CASL_HAVE_CUSP     = NO
 
 include $(HEAD_DIR)/common.mk
 
