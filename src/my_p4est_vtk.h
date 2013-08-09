@@ -41,6 +41,12 @@ SC_EXTERN_C_BEGIN;
 static const int VTK_POINT_DATA = 0;
 static const int VTK_CELL_DATA  = 1;
 
+#ifdef P4_TO_P8
+#define P4EST_VTK_CELL_TYPE     11      /* VTK_VOXEL */
+#else
+#define P4EST_VTK_CELL_TYPE     8       /* VTK_PIXEL */
+#endif
+
 /** This writes out the p4est and any number of point fields in VTK format.
  *
  * This is a convenience function that will abort if there is a file error.

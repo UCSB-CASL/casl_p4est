@@ -32,11 +32,9 @@
 #ifdef P4_TO_P8
 #include <p8est_vtk.h>
 #include <p8est_nodes.h>
-#define P4EST_VTK_CELL_TYPE     11      /* VTK_VOXEL */
 #else
 #include "my_p4est_vtk.h"
 #include <p4est_nodes.h>
-#define P4EST_VTK_CELL_TYPE      8      /* VTK_PIXEL */
 #endif /* !P4_TO_P8 */
 
 #include <sc_io.h>
