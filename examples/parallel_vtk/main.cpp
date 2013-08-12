@@ -40,7 +40,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   circle circ(1, 1, .3);
-  cf_grid_data_t data = {&circ, 8, 3, 1.0};
+  cf_grid_data_t data = {&circ, 8, 0, 1.0};
 
   Session::init(argc, argv, mpi->mpicomm);
 
@@ -116,6 +116,7 @@ int main (int argc, char* argv[]){
    * nodes and ask PETSc to do the communication for you to find the values of
    * ghost points. This is done for the second method shown below.
    */
+  circ.update(1.234, 1.4,.34);
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
   {
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
@@ -143,13 +144,12 @@ int main (int argc, char* argv[]){
    */
 
   // first create a copy of vector
-  circ.update(1.234, 1.4,.34);
   Vec phi_global_copy;
   ierr = VecDuplicate(phi_global, &phi_global_copy); CHKERRXX(ierr);
 
   // get access to the local's pointer
   double *phi_copy;
-  ierr = VecGetArray(phi_global, &phi_copy); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_global_copy, &phi_copy); CHKERRXX(ierr);
 
   // do the loop. Note how we only loop over LOCAL nodes
   for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; ++i)
@@ -194,7 +194,7 @@ int main (int argc, char* argv[]){
 
   // done. lets write both levelset. they MUST be identical when you open them.
   std::ostringstream oss; oss << "partition_" << p4est->mpisize;
-  my_p4est_vtk_write_all(p4est, nodes, 1.0,
+  my_p4est_vtk_write_all(p4est, nodes, 1,
                          P4EST_TRUE, P4EST_TRUE,
                          2, 0, oss.str().c_str(),
                          VTK_POINT_DATA, "phi", phi,
@@ -206,7 +206,7 @@ int main (int argc, char* argv[]){
    * throw errors which will be helpful in debugging
    */
   ierr = VecRestoreArray(phi_global, &phi); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_global, &phi_copy); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_global_copy, &phi_copy); CHKERRXX(ierr);
 
   // finally, delete PETSc Vecs by calling 'VecDestroy' function
   ierr = VecDestroy(phi_global); CHKERRXX(ierr);
