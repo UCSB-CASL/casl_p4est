@@ -14,11 +14,14 @@ BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est,
     remote_senders(p4est->mpisize, -1),
     is_buffer_prepared(false)
 {
-  for (int i=0; i<p4est2petsc.size(); ++i)
+  const size_t loc_begin = static_cast<size_t>(nodes_->offset_owned_indeps);
+  const size_t loc_end   = static_cast<size_t>(nodes_->num_owned_indeps+nodes_->offset_owned_indeps);
+
+  for (size_t i=0; i<p4est2petsc.size(); ++i)
   {
-    if (i<nodes_->offset_owned_indeps)
+    if (i<loc_begin)
       p4est2petsc[i] = i + nodes_->num_owned_indeps;
-    else if (i<nodes_->num_owned_indeps+nodes_->offset_owned_indeps)
+    else if (i<loc_end)
       p4est2petsc[i] = i - nodes_->offset_owned_indeps;
     else
       p4est2petsc[i] = i;
@@ -42,7 +45,8 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const {
   if (rank_found != p4est_->mpirank){
     ostringstream oss;
     oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") does not belong to "
-           "processor " << p4est_->mpirank << ". Found rank = " << rank_found << " and remote_macthes.size = " << remote_matches->elem_count << endl;
+           "processor " << p4est_->mpirank << ". Found rank = " << rank_found <<
+           " and remote_macthes.size = " << remote_matches->elem_count << endl;
     throw invalid_argument(oss.str());
   }
 #endif
@@ -77,13 +81,25 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
     local_point_buffer.quad.push_back(best_match);
     local_point_buffer.node_locidx.push_back(node_locidx);
 
-  } else if (remote_matches->elem_count == 0) { // point is found in the ghost layer
+  } else if (remote_matches->elem_count == 0) { /* point is found in the ghost
+                                                 * layer
+                                                 */
     size_t pos = (size_t)(best_match.p.piggy3.local_num);
     p4est_quadrant *q = (p4est_quadrant_t*)sc_array_index(&ghost_->ghosts, pos);
 
-    if (p4est_->mpirank == 0){
-      cout << q->p.piggy3.local_num << ", ";
-    }
+    /*
+     * FIXME: This is (I think) a bug in p4est. In the documentation, it is said
+     * that for ghost quadrants " ... piggy3 data member is filled with their
+     * owner's tree and local number." (cf. p4est_ghost.h, line 34). This
+     * implies that the numbering, i.e. p.piggy3.local_num field, stores the
+     * local index w.r.t the tree it is located in, i.e. p.piggy3.which_tree.
+     *
+     * Looking at the implementation, however, it seems that the local numbering
+     * is stored w.r.t all of quadrants, i.e. local_num + tree->quadrant_offsets
+     * which counter-intutive and inconssitent with the rest of p4est code. We
+     * take this into account anyway when trying to access the quadrant on the
+     * remote processor. (cf. interpolate function below)
+     */
 
     ghost_point_info tmp;
     tmp.xy[0] = x; tmp.xy[1] = y;
@@ -93,8 +109,12 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
     ghost_send_buffer[rank_found].push_back(tmp);
     ghost_node_index[rank_found].push_back(node_locidx);
 
-  } else { // quadrant belongs to a processor that is not included in the ghost list
+  } else { /* quadrant belongs to a processor that is not included in the ghost
+            * layer
+            */
     /*
+     * TODO: What is the best way to fix this problem?
+     *
      * OK. This makes things complicated and nasty. In general you should
      * consider the worst case scenario which is a point that matches to 4
      * remote quadrant. This would correspond to an actual node that is on the
@@ -133,30 +153,11 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
      * Sooooo, what do we do here? Well only consider the case that there will
      * be just one remote match at most since this is the most relavant case. If
      * this condition is not satisfied, for the moment at least, we simply throw
-     * an exception and ask the user to read this long explanation!
+     * an exception and ask the user to read this long explanation! This
+     * exception is actually thrown when the processor recieves the remote info
+     * and calculates the quadrant. If the quadrant is not local, it will throw
+     * an exception.
      */
-
-#ifdef CASL_THROWS
-    //    {
-    //      vector<int> r(remote_matches->elem_count);
-    //      for (int i=0; i<r.size(); i++){
-    //        p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(remote_matches, i);
-    //        r[i] = q->p.piggy1.owner_rank;
-    //      }
-
-    //      for (int i=0; i<r.size()-1; i++){
-    //        if (r[i] != r[i+1]){
-    //          ostringstream oss;
-    //          oss << "[ERROR]:"
-    //              << " Was expecting all remote quadrants belong to the same processors, but they dont. "
-    //              << " This probably means you should not be doing the interpolation for the point (" << x << "," << y << ")."
-    //                 " Please consult the documentation in file " << __FILE__ << ". This error is generated from line " << __LINE__ << endl;
-    //          throw invalid_argument(oss.str());
-    //        }
-    //      }
-    //    }
-#endif
-
     p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(remote_matches, 0);
     int remote_rank = q->p.piggy1.owner_rank;
 
@@ -171,47 +172,6 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
 
 void BilinearInterpolatingFunction::prepare_buffer()
 {  
-  if (p4est_->mpirank == 0)
-  {
-    cout << endl;
-
-    ghost_transfer_map::iterator it = ghost_send_buffer.begin(), end = ghost_send_buffer.end();
-    vector<ghost_point_info> & buff = it->second;
-    for (int i=0; i<buff.size(); i++)
-      cout << buff[i].quad_locidx << ", ";
-    cout << endl;
-  }
-
-  {
-    ostringstream filename;
-    filename << "xy_ghost_" << p4est_->mpirank << ".csv";
-    ofstream xy_ghost(filename.str().c_str());
-    xy_ghost <<  "\"x\", \"y\", \"z\", \"r\"" << endl;
-
-    ghost_transfer_map::iterator it = ghost_send_buffer.begin(), end = ghost_send_buffer.end();
-    for (; it != end; ++it){
-      vector<ghost_point_info>& buff = it->second;
-      for(int i=0; i<buff.size(); ++i){
-        xy_ghost << buff[i].xy[0] << "," << buff[i].xy[1] << ", 0, " << it->first << endl;
-      }
-    }
-  }
-
-  {
-    ostringstream filename;
-    filename << "xy_remote_" << p4est_->mpirank << ".csv";
-    ofstream xy_ghost(filename.str().c_str());
-    xy_ghost <<  "\"x\", \"y\", \"z\", \"r\"" << endl;
-
-    remote_transfer_map::iterator it = remote_send_buffer.begin(), end = remote_send_buffer.end();
-    for (; it != end; ++it){
-      vector<double>& buff = it->second;
-      for(int i=0; i<buff.size()/2; ++i){
-        xy_ghost << buff[2*i] << "," << buff[2*i+1] << ", 0, " << it->first << endl;
-      }
-    }
-  }
-
   /*
    * We will do this is two steps:
    * 1) Send/Recv the ghost buffers
@@ -344,14 +304,15 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
         double *xy = &recv_info[i].xy[0];
         p4est_topidx_t tree_idx = recv_info[i].tree_idx;
         p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
-        p4est_quadrant_t &quad = *(p4est_quadrant_t*)sc_array_index(&tree->quadrants, recv_info[i].quad_locidx);
-        p4est_locidx_t quad_idx = recv_info[i].quad_locidx + tree->quadrants_offset;
+        p4est_quadrant_t &quad = *(p4est_quadrant_t*)sc_array_index(&tree->quadrants, recv_info[i].quad_locidx-tree->quadrants_offset);
+        p4est_locidx_t quad_idx = recv_info[i].quad_locidx;// + tree->quadrants_offset;
 
         for (short j=0; j<P4EST_CHILDREN; ++j)
           f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
 
+
         f_send[i] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
-      }
+      }      
 
       MPI_Send(&f_send[0], f_send.size(), MPI_DOUBLE, it->first, ghost_data_tag, p4est_->mpicomm);
     }
@@ -471,11 +432,14 @@ void BilinearInterpolatingFunction::update_grid(p4est_t *p4est, p4est_nodes_t *n
   remote_senders.resize(p4est_->mpisize, -1);
 
   p4est2petsc.resize(nodes_->indep_nodes.elem_count);
-  for (int i=0; i<p4est2petsc.size(); ++i)
+  const size_t loc_begin = static_cast<size_t>(nodes_->offset_owned_indeps);
+  const size_t loc_end   = static_cast<size_t>(nodes_->num_owned_indeps+nodes_->offset_owned_indeps);
+
+  for (size_t i=0; i<p4est2petsc.size(); ++i)
   {
-    if (i<nodes_->offset_owned_indeps)
+    if (i<loc_begin)
       p4est2petsc[i] = i + nodes_->num_owned_indeps;
-    else if (i<nodes_->num_owned_indeps+nodes_->offset_owned_indeps)
+    else if (i<loc_end)
       p4est2petsc[i] = i - nodes_->offset_owned_indeps;
     else
       p4est2petsc[i] = i;

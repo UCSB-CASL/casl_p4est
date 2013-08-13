@@ -43,7 +43,6 @@ int main (int argc, char* argv[]){
     PetscErrorCode      ierr;
 
     circle circ(1, 1, .3);
-    //  rand_grid_data_t rand_data = {8, 4, 100, 20};
     cf_grid_data_t   cf_data   = {&circ, 8, 0, 1};
 
     Session::init(argc, argv, mpi->mpicomm);
@@ -135,70 +134,33 @@ int main (int argc, char* argv[]){
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
     w2.stop(); w2.read_duration();
 
-//    // Create an interpolating function
-//    parallel::BilinearInterpolatingFunction bif(p4est, nodes, ghost, &brick);
+    // Create an interpolating function
+    parallel::BilinearInterpolatingFunction bif(p4est, nodes, ghost, &brick);
 
-//    // interpolate the data on the new grid from the old one
-//    ostringstream filename;
-//    filename << "xy_all_" << p4est->mpirank << ".csv";
-//    ofstream xy_all(filename.str().c_str());
-//    xy_all << "\"x\", \"y\", \"z\"" << endl;
+    for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
+    {
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i+nodes_np1->offset_owned_indeps);
+      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-//    for (int i=0; i<nodes_np1->num_owned_indeps; ++i)
-//    {
-//      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i+nodes_np1->offset_owned_indeps);
-//      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+      p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
 
-//      p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+      double tree_xmin = connectivity->vertices[3*v_mm + 0];
+      double tree_ymin = connectivity->vertices[3*v_mm + 1];
 
-//      double tree_xmin = connectivity->vertices[3*v_mm + 0];
-//      double tree_ymin = connectivity->vertices[3*v_mm + 1];
+      double x = int2double_coordinate_transform(node->x) + tree_xmin;
+      double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-//      double x = int2double_coordinate_transform(node->x) + tree_xmin;
-//      double y = int2double_coordinate_transform(node->y) + tree_ymin;
-
-
-//      xy_all << x << "," << y << ", 0" << endl;
-
-//      // buffer the point
-//      bif.add_point_to_buffer(i, x, y);
-//    }
-//    xy_all.close();
-
-//    my_p4est_vtk_write_ghost_layer(p4est, ghost);
-
+      // buffer the point
+      bif.add_point_to_buffer(i, x, y);
+    }
     // set the vector we want to interpolate from
-//    bif.update_vector(phi);
+    bif.update_vector(phi);
 
     // interpolate on to the new vector
     Vec phi_np1;
     ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
-//    bif.interpolate(phi_np1);
-
-    double *phi_tmp;
-    ierr = VecGetArray(phi_np1, &phi_tmp); CHKERRXX(ierr);
-    circ.update(1, 1, .3);
-    for (int i=0; i<nodes_np1->num_owned_indeps; ++i)
-    {
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i+nodes_np1->offset_owned_indeps);
-      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-      p4est_topidx_t v_mm = p4est_np1->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-      double tree_xmin = p4est_np1->connectivity->vertices[3*v_mm + 0];
-      double tree_ymin = p4est_np1->connectivity->vertices[3*v_mm + 1];
-
-      double x = int2double_coordinate_transform(node->x) + tree_xmin;
-      double y = int2double_coordinate_transform(node->y) + tree_ymin;
-
-
-//      xy_all << x << "," << y << ", 0" << endl;
-
-      // buffer the point
-      phi_tmp[i] = circ(x,y);
-    }
-    ierr = VecRestoreArray(phi_np1, &phi_tmp); CHKERRXX(ierr);
+    bif.interpolate(phi_np1);
 
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

@@ -720,14 +720,16 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, int write_rank, int write_tree,
                                 const int num, const char* list_name, const char **scalar_names, const double **values)
 {
   const int           mpirank = p4est->mpirank;
-  const p4est_locidx_t Ncells = p4est->local_num_quadrants;
-  const p4est_locidx_t Ncorners = P4EST_CHILDREN * Ncells;      /* type ok */
+  const p4est_locidx_t Ncells = p4est->local_num_quadrants;  
 
   int                 retval;
-  p4est_locidx_t      il, jt, zz, sk;
+  p4est_locidx_t      il, jt, zz;
 #ifndef P4EST_VTK_ASCII
   P4EST_VTK_FLOAT_TYPE *float_data;
   p4est_locidx_t     *locidx_data;
+#else
+  const p4est_locidx_t Ncorners = P4EST_CHILDREN * Ncells;      /* type ok */
+  p4est_locidx_t sk;
 #endif
   char                vtufilename[BUFSIZ];
   FILE               *vtufile;

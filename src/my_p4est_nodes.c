@@ -34,8 +34,6 @@
 #endif
 #include <sc_notify.h>
 
-#include <petsc.h>
-
 #ifdef P4EST_MPI
 
 typedef struct
@@ -522,7 +520,7 @@ my_p4est_nodes_new (p4est_t * p4est)
         ++num_added_nodes;
       }
       else {
-        P4EST_ASSERT ((p4est_locidx_t) position < num_indep_nodes);
+        P4EST_ASSERT ((p4est_locidx_t) position < num_indep_nodes + num_added_nodes);
       }
     }
   }
