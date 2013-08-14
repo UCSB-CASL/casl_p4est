@@ -80,13 +80,15 @@ coarsen_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **
   }
 }
 
+p4est_locidx_t rand_grid_data_t::counter = 0;
+
 p4est_bool_t
 refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
   rand_grid_data_t *data = (rand_grid_data_t*) p4est->user_pointer;
 
   p4est_bool_t refine;
-  if (p4est->global_num_quadrants + data->counter >= data->max_quads)
+  if (p4est->global_num_quadrants + rand_grid_data_t::counter >= data->max_quads)
     refine = P4EST_FALSE;
   else if (quad->level < data->min_lvl)
     refine = P4EST_TRUE;
@@ -100,7 +102,7 @@ refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
       refine = P4EST_FALSE;
   }
 
-  if (refine) data->counter += 3;
+  if (refine) rand_grid_data_t::counter += 3;
   return refine;
 }
 
@@ -110,7 +112,7 @@ coarsen_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **qua
   rand_grid_data_t *data = (rand_grid_data_t*) p4est->user_pointer;
 
   p4est_bool_t coarsen;
-  if (p4est->global_num_quadrants - data->counter<= data->min_quads)
+  if (p4est->global_num_quadrants - rand_grid_data_t::counter<= data->min_quads)
     coarsen = P4EST_FALSE;
   else if (quad[0]->level <= data->min_lvl)
     coarsen = P4EST_FALSE;
@@ -124,5 +126,6 @@ coarsen_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **qua
       coarsen = P4EST_FALSE;
   }
 
-  if (coarsen) data->counter += 3;
+  if (coarsen) rand_grid_data_t::counter += 3;
+  return coarsen;
 }

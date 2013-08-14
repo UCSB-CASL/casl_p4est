@@ -59,8 +59,10 @@ struct circle:CF_2{
     return r - sqrt(SQR(x-x0) + SQR(y-y0));
   }
 private:
-  double r, x0, y0;
+  double  x0, y0, r;
 };
+
+double fake_advect(p4est_t **p4est, p4est_nodes_t **nodes, Vec& phi, double t);
 
 int main (int argc, char* argv[]){
 
@@ -68,6 +70,7 @@ int main (int argc, char* argv[]){
   mpi->mpicomm  = MPI_COMM_WORLD;
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
+  PetscErrorCode ierr;
 
   circle circ(0.5, 0.5, .3);
   cf_grid_data_t data = {&circ, 7, 0, 1.0};
@@ -107,9 +110,13 @@ int main (int argc, char* argv[]){
   nodes = my_p4est_nodes_new(p4est);
 
   // Initialize the level-set function
-  vector<double> phi(nodes->num_owned_indeps);
-  vector<double> vx, vy;
-  for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; ++i)
+  Vec phi;
+  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+
+  double *phi_ptr;
+  ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
+
+  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
   {
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
     p4est_topidx_t tree_id = node->p.piggy3.which_tree;
@@ -122,33 +129,36 @@ int main (int argc, char* argv[]){
     double x = int2double_coordinate_transform(node->x) + tree_xmin;
     double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-    phi[i] = circ(x,y);
+    phi_ptr[p4est2petsc_local_numbering(nodes, i)] = circ(x,y);
   }
 
   // write the intial data to disk
   my_p4est_vtk_write_all(p4est, nodes, 1.0,
                          P4EST_TRUE, P4EST_TRUE,
                          1, 0, "init",
-                         VTK_POINT_DATA, "phi", &phi[0]);
+                         VTK_POINT_DATA, "phi", phi_ptr);
+
+  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
 
   // SemiLagrangian object
-  //serial::SemiLagrangian sl(&p4est, &nodes);
-  parallel::SemiLagrangian sl(&p4est, &nodes);
+  parallel::SemiLagrangian sl(&p4est, &nodes, &brick);
 
   // loop over time
-  double tf = 10;
+  double tf = 5;
   int tc = 0;
   int save = 1;
+  vector<double> vx, vy;
   for (double t=0, dt=0; t<tf; t+=dt, tc++){
     if (tc % save == 0){
       // Save stuff
-      std::ostringstream oss; oss << brick.nxytrees[0] << "x"
+      std::ostringstream oss; oss << "p_" << p4est->mpisize << "_"
+                                  << brick.nxytrees[0] << "x"
                                   << brick.nxytrees[1] << "." << tc/save;
 
-      vx.resize(phi.size());
-      vy.resize(phi.size());
+      vx.resize(nodes->indep_nodes.elem_count);
+      vy.resize(nodes->indep_nodes.elem_count);
 
-      for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; ++i)
+      for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
       {
         p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
         p4est_topidx_t tree_id = node->p.piggy3.which_tree;
@@ -161,21 +171,31 @@ int main (int argc, char* argv[]){
         double x = int2double_coordinate_transform(node->x) + tree_xmin;
         double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-        vx[i] = vx_vortex(x,y);
-        vy[i] = vy_vortex(x,y);
+        vx[p4est2petsc_local_numbering(nodes,i)] = vx_vortex(x,y);
+        vy[p4est2petsc_local_numbering(nodes,i)] = vy_vortex(x,y);
       }
 
+      ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
       my_p4est_vtk_write_all(p4est, nodes, 1.0,
                              P4EST_TRUE, P4EST_TRUE,
                              3, 0, oss.str().c_str(),
-                             VTK_POINT_DATA, "phi", &phi[0],
+                             VTK_POINT_DATA, "phi", phi_ptr,
                              VTK_POINT_DATA, "vx", &vx[0],
                              VTK_POINT_DATA, "vy", &vy[0]);
+
+      ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
     }
 
     // advect the function in time and get the computed time-step
+    w2.start("advecting");
     dt = sl.advect(vx_vortex, vy_vortex, phi);
+    //dt = fake_advect(&p4est, &nodes, phi, t);
+    w2.stop(); w2.read_duration();
   }
+
+  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
+  ierr = VecDestroy(phi); CHKERRXX(ierr);
+
   // destroy the p4est and its connectivity structure
   p4est_nodes_destroy (nodes);
   p4est_destroy (p4est);
@@ -184,4 +204,47 @@ int main (int argc, char* argv[]){
   w1.stop(); w1.read_duration();
 
   return 0;
+}
+
+double fake_advect(p4est_t **p4est, p4est_nodes_t **nodes, Vec &phi, double t)
+{
+  const double dt = 0.1;
+  circle& cf = dynamic_cast<circle&>(*((cf_grid_data_t*)(*p4est)->user_pointer)->phi);
+  cf.update(0.5, 0.5, 0.3+.25*t);
+
+  p4est_t *p4est_np1 = p4est_copy(*p4est, P4EST_FALSE);
+  p4est_np1->user_pointer = (*p4est)->user_pointer;
+  p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset, NULL);
+  p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset, NULL);
+  p4est_partition(p4est_np1, NULL);
+
+  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
+  Vec phi_np1;
+  VecCreateGhost(p4est_np1, nodes_np1, &phi_np1);
+
+  double *phi_np1_ptr;
+  VecGetArray(phi_np1, &phi_np1_ptr);
+
+  for (size_t i = 0; i<nodes_np1->indep_nodes.elem_count; ++i)
+  {
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i);
+    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+    p4est_topidx_t v_mm = p4est_np1->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+
+    double tree_xmin = p4est_np1->connectivity->vertices[3*v_mm + 0];
+    double tree_ymin = p4est_np1->connectivity->vertices[3*v_mm + 1];
+
+    double x = int2double_coordinate_transform(node->x) + tree_xmin;
+    double y = int2double_coordinate_transform(node->y) + tree_ymin;
+
+    phi_np1_ptr[p4est2petsc_local_numbering(nodes_np1, i)] = cf(x,y);
+  }
+  VecRestoreArray(phi_np1, &phi_np1_ptr);
+
+  p4est_destroy(*p4est); *p4est = p4est_np1;
+  p4est_nodes_destroy(*nodes); *nodes = nodes_np1;
+  VecDestroy(phi); phi = phi_np1;
+
+  return dt;
 }

@@ -63,7 +63,7 @@ void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* qua
  * \param y_global global y-coordinate of the point
  * \return interpolated value
  */
-double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quadrant_t *quad, double *F, double x_global, double y_global);
+double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, double *F, const double *xy_global);
 
 /*!
  * \brief p4est_VecCreate Creates a normal PETSc parallel vector based on p4est node ordering
@@ -71,7 +71,7 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, p4est_quad
  * \param nodes the nodes numbering data structure
  * \param v PETSc vector type
  */
-PetscErrorCode VecGhostCreate_p4est(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
+PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
 
 /*!
  * \brief p4est2petsc_local_numbering converts p4est local node numbering convention to petsc local numbering convention
@@ -103,8 +103,8 @@ public:
 
   static void init(int argc, char **argv, MPI_Comm mpicomm = MPI_COMM_WORLD){
     PetscErrorCode ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
-    sc_init (mpicomm, 1, 1, NULL, SC_LP_DEFAULT);
-    p4est_init (NULL, SC_LP_DEFAULT);
+    sc_init (mpicomm, 1, 1, NULL, SC_LP_SILENT);
+    p4est_init (NULL, SC_LP_SILENT);
   }
 };
 

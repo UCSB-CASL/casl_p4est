@@ -61,17 +61,16 @@ struct non_local_point_buffer{      //Sending buffer used to hold xy_departure a
     }
 };
 
-
-
 class SemiLagrangian
 {
   p4est_t **p_p4est_, *p4est_;
   p4est_nodes_t **p_nodes_, *nodes_;
+  my_p4est_brick_t *myb_;
 
   double xmin, xmax, ymin, ymax;
 
   std::vector<double> local_xy_departure_dep, non_local_xy_departure_dep;   //Buffers to hold local and non-local departure points
-
+  PetscErrorCode ierr;
 
   inline double compute_dt(const CF_2& vx, const CF_2& vy){
     double dt = 1000;
@@ -86,7 +85,7 @@ class SemiLagrangian
       double tr_ymin = v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 1];
 
       // loop over quadrants
-      for (p4est_locidx_t qu_it=0; qu_it<tree->quadrants.elem_count; ++qu_it){
+      for (size_t qu_it=0; qu_it<tree->quadrants.elem_count; ++qu_it){
         p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, qu_it);
 
         double dx = int2double_coordinate_transform(P4EST_QUADRANT_LEN(quad->level));
@@ -97,37 +96,19 @@ class SemiLagrangian
       }
     }
 
-    return dt;
+    double dt_min;
+    MPI_Allreduce(&dt, &dt_min, 1, MPI_DOUBLE, MPI_MIN, p4est_->mpicomm);
+
+    return dt_min;
   }
 
-  inline double linear_interpolation(const std::vector<double>& F, const double xy[], p4est_topidx_t tree_idx = 0){
-    p4est_locidx_t quad_idx;
-    p4est_locidx_t *q2n = nodes_->local_nodes;
-    p4est_quadrant_t *quad;
-
-    my_p4est_brick_point_lookup_smallest(p4est_, NULL, NULL,
-                                         xy,
-                                         &tree_idx, &quad_idx, &quad);
-
-    p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
-    quad_idx += tree->quadrants_offset;
-    double f [] =
-    {
-      F[q2n[P4EST_CHILDREN*quad_idx + 0]],
-      F[q2n[P4EST_CHILDREN*quad_idx + 1]],
-      F[q2n[P4EST_CHILDREN*quad_idx + 2]],
-      F[q2n[P4EST_CHILDREN*quad_idx + 3]]
-    };
-
-    return bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
-  }
-
-  void update_p4est(std::vector<double>& phi);
+  double linear_interpolation(const double *F, const double xy[], p4est_topidx_t tree_idx = 0);
+  void update_p4est(Vec& phi, p4est_ghost_t *ghost);
 
 public:
-  SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes);
+  SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, my_p4est_brick_t *myb);
 
-  double advect(const CF_2& vx, const CF_2& vy, std::vector<double> &phi);
+  double advect(const CF_2& vx, const CF_2& vy, Vec &phi);
 };
 } // namespace parallel
 

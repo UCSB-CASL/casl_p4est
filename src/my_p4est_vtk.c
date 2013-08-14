@@ -287,16 +287,16 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, double scale, 
                 /* *INDENT-OFF* */
                 xyz[j] =
                     ((1. - eta_z) * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[0] + j] +
-                     eta_x  * v[3 * vt[1] + j]) +
-                    eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
-                    eta_x  * v[3 * vt[3] + j]))
-    #ifdef P4_TO_P8
-                    +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
-                    eta_x  * v[3 * vt[5] + j]) +
-                    eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
-                    eta_x  * v[3 * vt[7] + j]))
-    #endif
-                    );
+                                                     eta_x  * v[3 * vt[1] + j]) +
+                                     eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
+                                               eta_x  * v[3 * vt[3] + j]))
+     #ifdef P4_TO_P8
+                     +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
+                                                     eta_x  * v[3 * vt[5] + j]) +
+                                     eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
+                                               eta_x  * v[3 * vt[7] + j]))
+     #endif
+                     );
                 /* *INDENT-ON* */
               }
 
@@ -334,16 +334,16 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, double scale, 
         /* *INDENT-OFF* */
         xyz[j] =
             ((1. - eta_z) * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[0] + j] +
-             eta_x  * v[3 * vt[1] + j]) +
-            eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
-            eta_x  * v[3 * vt[3] + j]))
-    #ifdef P4_TO_P8
-            +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
-            eta_x  * v[3 * vt[5] + j]) +
-            eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
-            eta_x  * v[3 * vt[7] + j]))
-    #endif
-            );
+                                             eta_x  * v[3 * vt[1] + j]) +
+                             eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
+                                       eta_x  * v[3 * vt[3] + j]))
+     #ifdef P4_TO_P8
+             +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
+                                             eta_x  * v[3 * vt[5] + j]) +
+                             eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
+                                       eta_x  * v[3 * vt[7] + j]))
+     #endif
+             );
         /* *INDENT-ON* */
       }
       for (j = 0; j < 3; ++j) {
@@ -592,7 +592,9 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, double s
   fprintf (vtufile, ">\n");
 
   int i;
+#ifndef P4EST_VTK_ASCII
   float_data = P4EST_ALLOC (P4EST_VTK_FLOAT_TYPE, Ntotal);
+#endif
   for (i=0; i<num; ++i){
     /* write point position data */
     fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"%s\""
@@ -601,10 +603,22 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, double s
 
 #ifdef P4EST_VTK_ASCII
     for (il = 0; il < Ntotal; ++il) {
+      int petsc_idx;
+      if (scale < 1.){
+        petsc_idx = il;
+      } else {
+        if (il<nodes->offset_owned_indeps)
+          petsc_idx = il + nodes->num_owned_indeps;
+        else if (il >= nodes->offset_owned_indeps && il <nodes->num_owned_indeps+nodes->offset_owned_indeps)
+          petsc_idx = il - nodes->offset_owned_indeps;
+        else
+          petsc_idx = il;
+      }
+
 #ifdef P4EST_VTK_DOUBLES
-      fprintf (vtufile, "     %24.16e\n", values[il]);
+      fprintf (vtufile, "     %24.16e\n", values[i][petsc_idx]);
 #else
-      fprintf (vtufile, "          %16.8e\n", values[il]);
+      fprintf (vtufile, "          %16.8e\n", values[i][petsc_idx]);
 #endif
     }
 #else
@@ -656,7 +670,9 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, double s
     return -1;
   }
   vtufile = NULL;
+#ifndef P4EST_VTK_ASCII
   P4EST_FREE (float_data);
+#endif
 
   /* Only have the root write to the parallel vtk file */
   if (mpirank == 0) {
@@ -704,12 +720,16 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, int write_rank, int write_tree,
                                 const int num, const char* list_name, const char **scalar_names, const double **values)
 {
   const int           mpirank = p4est->mpirank;
-  const p4est_locidx_t Ncells = p4est->local_num_quadrants;
+  const p4est_locidx_t Ncells = p4est->local_num_quadrants;  
+
   int                 retval;
   p4est_locidx_t      il, jt, zz;
 #ifndef P4EST_VTK_ASCII
   P4EST_VTK_FLOAT_TYPE *float_data;
   p4est_locidx_t     *locidx_data;
+#else
+  const p4est_locidx_t Ncorners = P4EST_CHILDREN * Ncells;      /* type ok */
+  p4est_locidx_t sk;
 #endif
   char                vtufilename[BUFSIZ];
   FILE               *vtufile;
@@ -754,68 +774,68 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, int write_rank, int write_tree,
 
   if (write_rank) {
 
-      fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"proc_rank\""
-               " format=\"%s\">\n", P4EST_VTK_LOCIDX, P4EST_VTK_FORMAT_STRING);
-  #ifdef P4EST_VTK_ASCII
-      fprintf (vtufile, "         ");
-      for (il = 0, sk = 1; il < Ncells; ++il, ++sk) {
-        fprintf (vtufile, " %d", mpirank);
+    fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"proc_rank\""
+             " format=\"%s\">\n", P4EST_VTK_LOCIDX, P4EST_VTK_FORMAT_STRING);
+#ifdef P4EST_VTK_ASCII
+    fprintf (vtufile, "         ");
+    for (il = 0, sk = 1; il < Ncells; ++il, ++sk) {
+      fprintf (vtufile, " %d", mpirank);
+      if (!(sk % 20) && il != (Ncells - 1))
+        fprintf (vtufile, "\n         ");
+    }
+    fprintf (vtufile, "\n");
+#else
+    for (il = 0; il < Ncells; ++il)
+      locidx_data[il] = (p4est_locidx_t) mpirank;
+
+    fprintf (vtufile, "          ");
+    retval = my_p4est_vtk_write_binary (vtufile, (char *) locidx_data,
+                                        sizeof (*locidx_data) * Ncells);
+    fprintf (vtufile, "\n");
+    if (retval) {
+      P4EST_LERROR (P4EST_STRING "_vtk: Error encoding types\n");
+      fclose (vtufile);
+      return -1;
+    }
+#endif
+    fprintf (vtufile, "        </DataArray>\n");
+  }
+  if (write_tree) {
+    fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"tree_idx\""
+             " format=\"%s\">\n", P4EST_VTK_LOCIDX, P4EST_VTK_FORMAT_STRING);
+#ifdef P4EST_VTK_ASCII
+    fprintf (vtufile, "         ");
+    for (il = 0, sk = 1, jt = p4est->first_local_tree; jt <= p4est->last_local_tree; ++jt) {
+      p4est_tree_t *tree = p4est_tree_array_index (p4est->trees, jt);
+      int num_quads = tree->quadrants.elem_count;
+      for (zz = 0; zz < num_quads; ++zz, ++sk, ++il) {
+        fprintf (vtufile, " %lld", (long long) jt);
         if (!(sk % 20) && il != (Ncells - 1))
           fprintf (vtufile, "\n         ");
       }
-      fprintf (vtufile, "\n");
-  #else
-      for (il = 0; il < Ncells; ++il)
-        locidx_data[il] = (p4est_locidx_t) mpirank;
-
-      fprintf (vtufile, "          ");
-      retval = my_p4est_vtk_write_binary (vtufile, (char *) locidx_data,
-                                       sizeof (*locidx_data) * Ncells);
-      fprintf (vtufile, "\n");
-      if (retval) {
-        P4EST_LERROR (P4EST_STRING "_vtk: Error encoding types\n");
-        fclose (vtufile);
-        return -1;
-      }
-  #endif
-      fprintf (vtufile, "        </DataArray>\n");
     }
-    if (write_tree) {
-      fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"tree_idx\""
-               " format=\"%s\">\n", P4EST_VTK_LOCIDX, P4EST_VTK_FORMAT_STRING);
-  #ifdef P4EST_VTK_ASCII
-      fprintf (vtufile, "         ");
-      for (il = 0, sk = 1, jt = first_local_tree; jt <= last_local_tree; ++jt) {
-        tree = p4est_tree_array_index (trees, jt);
-        num_quads = tree->quadrants.elem_count;
-        for (zz = 0; zz < num_quads; ++zz, ++sk, ++il) {
-          fprintf (vtufile, " %lld", (long long) jt);
-          if (!(sk % 20) && il != (Ncells - 1))
-            fprintf (vtufile, "\n         ");
-        }
+    fprintf (vtufile, "\n");
+#else
+    for (il = 0, jt = p4est->first_local_tree; jt <= p4est->last_local_tree; ++jt) {
+      p4est_tree_t *tree = p4est_tree_array_index (p4est->trees, jt);
+      p4est_locidx_t num_quads = tree->quadrants.elem_count;
+      for (zz = 0; zz < num_quads; ++zz, ++il) {
+        locidx_data[il] = (p4est_locidx_t) jt;
       }
-      fprintf (vtufile, "\n");
-  #else
-      for (il = 0, jt = p4est->first_local_tree; jt <= p4est->last_local_tree; ++jt) {
-        p4est_tree_t *tree = p4est_tree_array_index (p4est->trees, jt);
-        p4est_locidx_t num_quads = tree->quadrants.elem_count;
-        for (zz = 0; zz < num_quads; ++zz, ++il) {
-          locidx_data[il] = (p4est_locidx_t) jt;
-        }
-      }
-      fprintf (vtufile, "          ");
-      retval = my_p4est_vtk_write_binary (vtufile, (char *) locidx_data,
-                                       sizeof (*locidx_data) * Ncells);
-      fprintf (vtufile, "\n");
-      if (retval) {
-        P4EST_LERROR (P4EST_STRING "_vtk: Error encoding types\n");
-        fclose (vtufile);
-        return -1;
-      }
-  #endif
-      fprintf (vtufile, "        </DataArray>\n");
-      P4EST_ASSERT (il == Ncells);
     }
+    fprintf (vtufile, "          ");
+    retval = my_p4est_vtk_write_binary (vtufile, (char *) locidx_data,
+                                        sizeof (*locidx_data) * Ncells);
+    fprintf (vtufile, "\n");
+    if (retval) {
+      P4EST_LERROR (P4EST_STRING "_vtk: Error encoding types\n");
+      fclose (vtufile);
+      return -1;
+    }
+#endif
+    fprintf (vtufile, "        </DataArray>\n");
+    P4EST_ASSERT (il == Ncells);
+  }
 
 #ifndef P4EST_VTK_ASCII
   if (locidx_data != NULL) P4EST_FREE (locidx_data);
@@ -964,6 +984,7 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
 
 
 
+
   /* Only have the root write to the parallel vtk file */
   if (procRank == 0) {
 
@@ -1035,4 +1056,72 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
 
 
   return 0;
+}
+
+void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost)
+{
+  char csvname[1024], vtkname[1024];
+  sprintf(csvname, "ghost_layer_%04d.csv", p4est->mpirank);
+  sprintf(vtkname, "ghost_layer_%04d.vtk", p4est->mpirank);
+
+  FILE *csv = fopen(csvname, "w");
+  FILE *vtk = fopen(vtkname, "w");
+
+  double *x, *y;
+  int num_quad = ghost->ghosts.elem_count;
+  int xysize = P4EST_CHILDREN*num_quad;
+  x = malloc(xysize*sizeof(*x));
+  y = malloc(xysize*sizeof(*y));
+
+  int i;
+  short j, xj, yj;
+  for (i=0; i<num_quad; i++)
+  {
+    p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, i);
+    fprintf(csv, "%d,",q->p.piggy3.local_num);
+
+    p4est_topidx_t tree_id = q->p.piggy3.which_tree;
+    p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+
+    double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+
+    double xq = (double)(q->x)/(double)(P4EST_ROOT_LEN) + tree_xmin;
+    double yq = (double)(q->y)/(double)(P4EST_ROOT_LEN) + tree_ymin;
+    double hq = (double)(P4EST_QUADRANT_LEN(q->level))/(double)(P4EST_ROOT_LEN);
+
+    for (xj=0; xj<2; ++xj)
+      for (yj=0; yj<2; ++yj){
+        x[P4EST_CHILDREN*i+2*yj+xj] = xq + hq*xj;
+        y[P4EST_CHILDREN*i+2*yj+xj] = yq + hq*yj;
+      }
+  }
+  fclose(csv);
+
+  fprintf(vtk, "# vtk DataFile Version 2.0 \n");
+  fprintf(vtk, "Quadtree Mesh \n");
+  fprintf(vtk, "ASCII \n");
+  fprintf(vtk, "DATASET UNSTRUCTURED_GRID \n");
+  fprintf(vtk, "POINTS %d double \n", xysize);
+  for (i=0; i<xysize; i++)
+    fprintf(vtk, "%lf %lf 0.0\n", x[i], y[i]);
+  fflush(vtk);
+
+  fprintf(vtk, "CELLS %d %d \n", num_quad, (1+P4EST_CHILDREN)*num_quad);
+  for (i=0; i<num_quad; ++i)
+  {
+    fprintf(vtk, "%d ", P4EST_CHILDREN);
+    for (j=0; j<P4EST_CHILDREN; ++j)
+      fprintf(vtk, "%d ", P4EST_CHILDREN*i+j);
+    fprintf(vtk,"\n");
+  }
+  fflush(vtk);
+
+  fprintf(vtk, "CELL_TYPES %d\n", num_quad);
+  for (i=0; i<num_quad; ++i)
+    fprintf(vtk, "%d\n",P4EST_VTK_CELL_TYPE);
+  fclose(vtk);
+
+  free(x);
+  free(y);
 }

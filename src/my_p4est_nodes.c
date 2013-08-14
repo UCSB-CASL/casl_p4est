@@ -41,6 +41,7 @@ typedef struct
   int                 expect_query, expect_reply;
   size_t              recv_offset;
   sc_array_t          send_first, send_second;
+  sc_array_t          send_first_oldidx;
   sc_array_t          recv_first, recv_second;
 }
 p4est_node_peer_t;
@@ -198,9 +199,9 @@ p4est_node_canonicalize (p4est_t * p4est, p4est_topidx_t treeid,
   for (corner = 0; corner < P4EST_CHILDREN; ++corner) {
     if (!(quad_contact[p4est_corner_faces[corner][0]] &&
           quad_contact[p4est_corner_faces[corner][1]] &&
-#ifdef P4_TO_P8
+      #ifdef P4_TO_P8
           quad_contact[p4est_corner_faces[corner][2]] &&
-#endif
+      #endif
           1)) {
       continue;
     }
@@ -241,9 +242,9 @@ static int
 p4est_nodes_foreach (void **item, const void *u)
 {
   const sc_hash_array_data_t *internal_data =
-    (const sc_hash_array_data_t *) u;
+      (const sc_hash_array_data_t *) u;
   const p4est_locidx_t *new_node_number =
-    (const p4est_locidx_t *) internal_data->user_data;
+      (const p4est_locidx_t *) internal_data->user_data;
 
   *item = (void *) (long) new_node_number[(long) *item];
 
@@ -345,11 +346,11 @@ my_p4est_nodes_new (p4est_t * p4est)
   /* Compute number of local quadrant corners. */
   nodes->num_local_quadrants = p4est->local_num_quadrants;
   num_local_nodes =             /* same type */
-    P4EST_CHILDREN * nodes->num_local_quadrants;
+                                P4EST_CHILDREN * nodes->num_local_quadrants;
 
   /* Store the local node index for each corner of the elements. */
   nodes->local_nodes = local_nodes =
-    P4EST_ALLOC (p4est_locidx_t, num_local_nodes);
+      P4EST_ALLOC (p4est_locidx_t, num_local_nodes);
   memset (local_nodes, -1, num_local_nodes * sizeof (*local_nodes));
 
   indep_nodes = sc_hash_array_new (sizeof (p4est_indep_t),
@@ -373,8 +374,8 @@ my_p4est_nodes_new (p4est_t * p4est)
         p4est_quadrant_corner_node (q, k, &n);
         p4est_node_canonicalize (p4est, jt, &n, &c);
         r =
-          (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
-                                                            &c, &position);
+            (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
+                                                              &c, &position);
         if (r != NULL) {
           /* found a new node */
           *r = c;
@@ -398,6 +399,7 @@ my_p4est_nodes_new (p4est_t * p4est)
   first_size = P4EST_DIM * sizeof (p4est_qcoord_t) + sizeof (p4est_topidx_t);
   first_size = SC_MAX (first_size, sizeof (p4est_locidx_t));
   peers = P4EST_ALLOC (p4est_node_peer_t, num_procs);
+
   sc_array_init (&send_requests, sizeof (MPI_Request));
   for (k = 0; k < num_procs; ++k) {
     peer = peers + k;
@@ -407,13 +409,17 @@ my_p4est_nodes_new (p4est_t * p4est)
     sc_array_init (&peer->recv_first, first_size);
     sc_array_init (&peer->send_second, 1);
     sc_array_init (&peer->recv_second, 1);
+    sc_array_init (&peer->send_first_oldidx, sizeof(p4est_locidx_t));
   }
+
   for (il = 0; il < num_indep_nodes; ++il) {
     in = (p4est_indep_t *) sc_array_index (inda, (size_t) il);
     owner = p4est_comm_find_owner (p4est, in->p.which_tree,
                                    (p4est_quadrant_t *) in, rank);
     if (owner != rank) {
       peer = peers + owner;
+      p4est_locidx_t *send_idx = (p4est_locidx_t*)sc_array_push(&peer->send_first_oldidx);
+      *send_idx = il;
       xyz = (p4est_qcoord_t *) sc_array_push (&peer->send_first);
       xyz[0] = in->x;
       xyz[1] = in->y;
@@ -501,8 +507,8 @@ my_p4est_nodes_new (p4est_t * p4est)
       ttt = (p4est_topidx_t *) (&xyz[P4EST_DIM]);
       inkey.p.which_tree = *ttt;
       r =
-        (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
-                                                          &inkey, &position);
+          (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
+                                                            &inkey, &position);
       if (r != NULL) {
         /* learned about a new node that rank owns but doesn't reference */
         /* *INDENT-OFF* HORRIBLE indent bug */
@@ -514,7 +520,7 @@ my_p4est_nodes_new (p4est_t * p4est)
         ++num_added_nodes;
       }
       else {
-        P4EST_ASSERT ((p4est_locidx_t) position < num_indep_nodes);
+        P4EST_ASSERT ((p4est_locidx_t) position < num_indep_nodes + num_added_nodes);
       }
     }
   }
@@ -535,7 +541,7 @@ my_p4est_nodes_new (p4est_t * p4est)
   offset_owned_indeps = 0;
   new_node_number = P4EST_ALLOC (p4est_locidx_t, num_indep_nodes);
   nonlocal_ranks = nodes->nonlocal_ranks =
-    P4EST_ALLOC (int, num_offproc_nodes);
+      P4EST_ALLOC (int, num_offproc_nodes);
   for (il = 0; il < num_indep_nodes; ++il) {
     in = (p4est_indep_t *) sc_array_index (inda, (size_t) il);
     in->pad8 = 0;               /* shared by 0 other processors so far */
@@ -587,11 +593,10 @@ my_p4est_nodes_new (p4est_t * p4est)
                   local_nodes[il] < num_indep_nodes - num_added_nodes);
     local_nodes[il] = new_node_number[local_nodes[il]];
   }
-  P4EST_FREE (new_node_number);
 
 #ifdef P4EST_MPI
   /* Look up the reply information */
-  /* This could be merged into the receive loop above 
+  /* This could be merged into the receive loop above
      but then it would need a reassignment after the node sorting */
   P4EST_QUADRANT_INIT (&inkey);
   inkey.level = P4EST_MAXLEVEL;
@@ -633,7 +638,7 @@ my_p4est_nodes_new (p4est_t * p4est)
       }
       else {
         nrarr =
-          (sc_recycle_array_t *) sc_array_index (shared_indeps, num_sharers);
+            (sc_recycle_array_t *) sc_array_index (shared_indeps, num_sharers);
       }
       new_sharers = (int *) sc_recycle_array_insert (nrarr, &new_position);
       if (num_sharers > 0) {
@@ -646,8 +651,8 @@ my_p4est_nodes_new (p4est_t * p4est)
           old_position = (size_t) shared_offsets[position];
         }
         orarr =
-          (sc_recycle_array_t *) sc_array_index (shared_indeps,
-                                                 num_sharers - 1);
+            (sc_recycle_array_t *) sc_array_index (shared_indeps,
+                                                   num_sharers - 1);
         old_sharers = (int *) sc_recycle_array_remove (orarr, old_position);
         memcpy (new_sharers, old_sharers, num_sharers * sizeof (int));
       }
@@ -692,7 +697,7 @@ my_p4est_nodes_new (p4est_t * p4est)
       P4EST_ASSERT (num_sharers <= shared_indeps->elem_count);
       this_size = second_size + num_sharers * sizeof (int);
       this_base =
-        (char *) sc_array_push_count (&peer->send_second, this_size);
+          (char *) sc_array_push_count (&peer->send_second, this_size);
       *(p4est_locidx_t *) this_base = *node_number;
       *(int8_t *) (this_base + sizeof (p4est_locidx_t)) = in->pad8;
       if (num_sharers > 0) {
@@ -705,8 +710,8 @@ my_p4est_nodes_new (p4est_t * p4est)
           new_position = (size_t) shared_offsets[position];
         }
         nrarr =
-          (sc_recycle_array_t *) sc_array_index (shared_indeps,
-                                                 num_sharers - 1);
+            (sc_recycle_array_t *) sc_array_index (shared_indeps,
+                                                   num_sharers - 1);
         new_sharers = (int *) sc_array_index (&nrarr->a, new_position);
         memcpy (this_base + second_size, new_sharers,
                 num_sharers * sizeof (int));
@@ -714,7 +719,7 @@ my_p4est_nodes_new (p4est_t * p4est)
     }
     send_request = (MPI_Request *) sc_array_push (&send_requests);
     mpiret = MPI_Isend (peer->send_second.array,
-                        (int) peer->send_second.elem_count,
+                        (int) peer->send_second.elem_count, // OK since peer->send_second is array of char
                         MPI_BYTE, k, P4EST_COMM_NODES_REPLY,
                         p4est->mpicomm, send_request);
     SC_CHECK_MPI (mpiret);
@@ -752,74 +757,67 @@ my_p4est_nodes_new (p4est_t * p4est)
   }
 #endif /* P4EST_MPI */
 
-  /* Convert receive buffers into the output data structures and unclamp. */
-  for (il = 0; il < num_indep_nodes; ++il) {
-    in = (p4est_indep_t *) sc_array_index (inda, (size_t) il);
-    p4est_node_unclamp ((p4est_quadrant_t *) in);
-#ifdef P4EST_MPI
-    if (il < offset_owned_indeps) {
-      k = nonlocal_ranks[il];
-    }
-    else if (il < end_owned_indeps) {
-      /* owned nodes don't need work */
-      continue;
-    }
-    else {
-      k = nonlocal_ranks[il - num_owned_nodes];
-    }
-    P4EST_ASSERT ((k < rank && il < offset_owned_indeps) ||
-                  (k > rank && il >= end_owned_indeps));
-    peer = peers + k;
-    P4EST_ASSERT (peer->recv_offset + second_size <=
-                  peer->recv_second.elem_count);
-    this_base =
-      (char *) sc_array_index (&peer->recv_second, peer->recv_offset);
-    in->p.piggy3.local_num = *(p4est_locidx_t *) this_base;
-    num_sharers =
-      (size_t) (*(int8_t *) (this_base + sizeof (p4est_locidx_t)));
-    P4EST_ASSERT (num_sharers > 0);
-    this_size = second_size + num_sharers * sizeof (int);
-    P4EST_ASSERT (peer->recv_offset + this_size <=
-                  peer->recv_second.elem_count);
-    if (shared_indeps->elem_count < num_sharers) {
-      nrarr = NULL;
-      old_position = shared_indeps->elem_count;
-      sc_array_resize (shared_indeps, num_sharers);
-      for (zz = old_position; zz < num_sharers; ++zz) {
-        nrarr = (sc_recycle_array_t *) sc_array_index (shared_indeps, zz);
-        sc_recycle_array_init (nrarr, (zz + 1) * sizeof (int));
-      }
-    }
-    else {
-      nrarr =
-        (sc_recycle_array_t *) sc_array_index (shared_indeps,
-                                               num_sharers - 1);
-    }
-    new_sharers = (int *) sc_recycle_array_insert (nrarr, &new_position);
-    memcpy (new_sharers, this_base + second_size, num_sharers * sizeof (int));
-    for (zz = 0; zz < num_sharers; ++zz) {
-      if (new_sharers[zz] == rank) {
-        new_sharers[zz] = k;
-        break;
-      }
-    }
-    P4EST_ASSERT (zz < num_sharers);
-    in->pad8 = (int8_t) num_sharers;
-    if (shared_offsets == NULL) {
-      if (new_position > (size_t) INT16_MAX) {
-        shared_offsets = p4est_shared_offsets (inda);
-        shared_offsets[il] = (p4est_locidx_t) new_position;
+  /* use the recieved info to construct the local_num for shared nodes */
+  for (k = 0; k<num_procs; ++k){
+    peer = peers+k;
+    char *begin = (char*) peer->recv_second.array;
+    char *end   = begin + peer->recv_second.elem_count;
+    char *it    = begin;
+
+    int sendc = 0;
+    while(it != end){
+      p4est_locidx_t old_pos = *(p4est_locidx_t*)sc_array_index(&peer->send_first_oldidx, sendc++);
+      size_t pos = (size_t) new_node_number[old_pos];
+      in = (p4est_indep_t*)sc_array_index(inda, pos);
+      in->p.piggy3.local_num = *(p4est_locidx_t*)it;
+
+      num_sharers =
+          (size_t) (*(int8_t *) (it + sizeof (p4est_locidx_t)));
+      P4EST_ASSERT (num_sharers > 0);
+      this_size = second_size + num_sharers * sizeof (int);
+
+      if (shared_indeps->elem_count < num_sharers) {
+        nrarr = NULL;
+        old_position = shared_indeps->elem_count;
+        sc_array_resize (shared_indeps, num_sharers);
+        for (zz = old_position; zz < num_sharers; ++zz) {
+          nrarr = (sc_recycle_array_t *) sc_array_index (shared_indeps, zz);
+          sc_recycle_array_init (nrarr, (zz + 1) * sizeof (int));
+        }
       }
       else {
-        in->pad16 = (int16_t) new_position;
+        nrarr =
+            (sc_recycle_array_t *) sc_array_index (shared_indeps,
+                                                   num_sharers - 1);
       }
+      new_sharers = (int *) sc_recycle_array_insert (nrarr, &new_position);
+      memcpy (new_sharers, it + second_size, num_sharers * sizeof (int));
+      for (zz = 0; zz < num_sharers; ++zz) {
+        if (new_sharers[zz] == rank) {
+          new_sharers[zz] = k;
+          break;
+        }
+      }
+      P4EST_ASSERT (zz < num_sharers);
+      in->pad8 = (int8_t) num_sharers;
+      if (shared_offsets == NULL) {
+        if (new_position > (size_t) INT16_MAX) {
+          shared_offsets = p4est_shared_offsets (inda);
+          shared_offsets[il] = (p4est_locidx_t) new_position;
+        }
+        else {
+          in->pad16 = (int16_t) new_position;
+        }
+      }
+      else {
+        shared_offsets[il] = (p4est_locidx_t) new_position;
+      }
+
+      it += this_size;
+      peer->recv_offset += this_size;
     }
-    else {
-      shared_offsets[il] = (p4est_locidx_t) new_position;
-    }
-    peer->recv_offset += this_size;
-#endif /* P4EST_MPI */
   }
+  P4EST_FREE (new_node_number);
 
   /* Complete information in nodes. */
 #ifndef P4_TO_P8
@@ -845,6 +843,7 @@ my_p4est_nodes_new (p4est_t * p4est)
     peer = peers + k;
     P4EST_ASSERT (peer->recv_offset == peer->recv_second.elem_count);
     sc_array_reset (&peer->send_first);
+    sc_array_reset (&peer->send_first_oldidx);
     /* peer->recv_first has been reset above */
     sc_array_reset (&peer->send_second);
     sc_array_reset (&peer->recv_second);
@@ -868,7 +867,7 @@ my_p4est_nodes_new (p4est_t * p4est)
                   (unsigned long long) shared_indeps->elem_count);
 #endif
 
-  P4EST_ASSERT (p4est_nodes_is_valid (p4est, nodes));
+//  P4EST_ASSERT (p4est_nodes_is_valid (p4est, nodes));
   P4EST_GLOBAL_PRODUCTION ("Done " P4EST_STRING "_nodes_new\n");
 
   return nodes;

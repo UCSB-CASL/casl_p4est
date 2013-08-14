@@ -21,8 +21,7 @@
   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
-#include <stdexcept>
-#include "utils.h"
+#include "my_p4est_nodes.h"
 
 #ifndef MY_P4EST_VTK_H
 #define MY_P4EST_VTK_H
@@ -42,6 +41,12 @@ SC_EXTERN_C_BEGIN;
 static const int VTK_POINT_DATA = 0;
 static const int VTK_CELL_DATA  = 1;
 
+#ifdef P4_TO_P8
+#define P4EST_VTK_CELL_TYPE     11      /* VTK_VOXEL */
+#else
+#define P4EST_VTK_CELL_TYPE     8       /* VTK_PIXEL */
+#endif
+
 /** This writes out the p4est and any number of point fields in VTK format.
  *
  * This is a convenience function that will abort if there is a file error.
@@ -57,7 +62,7 @@ static const int VTK_CELL_DATA  = 1;
  * where the scalars come first, then the vectors.
  */
 void                my_p4est_vtk_write_all (p4est_t * p4est,
-                                            p4est_geometry_t * geom,
+                                            p4est_nodes_t *nodes, int write_rank, int write_tree,
                                             double scale,
                                             int num_point_scalars, int num_cell_scalars,
                                             const char *filename, ...);
@@ -85,8 +90,7 @@ void                my_p4est_vtk_write_all (p4est_t * p4est,
  *
  * \return          This returns 0 if no error and -1 if there is an error.
  */
-int                 my_p4est_vtk_write_header (p4est_t * p4est,
-                                               p4est_geometry_t * geom,
+int                 my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes,
                                                double scale,
                                                const char *filename);
 
@@ -110,8 +114,7 @@ int                 my_p4est_vtk_write_header (p4est_t * p4est,
  * \return          This returns 0 if no error and -1 if there is an error.
  */
 
-int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est,
-                                                     p4est_geometry_t * geom,
+int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, double scale,
                                                      const char *filename,
                                                      const int num, const char *list_name, const char **scalar_names,
                                                      const double **values);
@@ -134,8 +137,7 @@ int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est,
  *
  * \return          This returns 0 if no error and -1 if there is an error.
  */
-int                 my_p4est_vtk_write_cell_scalar (p4est_t * p4est,
-                                                    p4est_geometry_t * geom,
+int                 my_p4est_vtk_write_cell_scalar (p4est_t * p4est, int write_rank, int write_tree,
                                                     const char *filename, const int num,
                                                     const char *list_name, const char **scalar_names,
                                                     const double **values);
@@ -162,6 +164,8 @@ int                 my_p4est_vtk_write_cell_scalar (p4est_t * p4est,
  */
 int                 my_p4est_vtk_write_footer (p4est_t * p4est,
                                                const char *filename);
+
+void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost);
 
 SC_EXTERN_C_END;
 

@@ -33,7 +33,7 @@ class BilinearInterpolatingFunction: public CF_2
       F[q2n[P4EST_CHILDREN*quad_idx + 3]]
     };
 
-    return bilinear_interpolation(p4est_, tree_idx, quad, f, xy[0], xy[1]);
+    return bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
   }
 
 public:
