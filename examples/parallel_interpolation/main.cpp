@@ -43,7 +43,7 @@ int main (int argc, char* argv[]){
     PetscErrorCode      ierr;
 
     circle circ(1, 1, .3);
-    cf_grid_data_t   cf_data   = {&circ, 8, 0, 1};
+    cf_grid_data_t   cf_data   = {&circ, 15, 0, 1};
 
     Session::init(argc, argv, mpi->mpicomm);
 
@@ -119,7 +119,7 @@ int main (int argc, char* argv[]){
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
     // move the circle to create another grid
-    cf_data.max_lvl = 6;
+    cf_data.max_lvl -= 3;
     circ.update(.75, 1.15, .2);
 
     // Create a new grid

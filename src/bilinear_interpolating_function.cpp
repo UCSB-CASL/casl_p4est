@@ -1,7 +1,9 @@
 #include "bilinear_interpolating_function.h"
 #include <sc_notify.h>
-#include <fstream>
 #include <src/my_p4est_vtk.h>
+
+#include <fstream>
+#include <set>
 
 namespace parallel{
 BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est,
@@ -88,9 +90,9 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
     p4est_quadrant *q = (p4est_quadrant_t*)sc_array_index(&ghost_->ghosts, pos);
 
     /*
-     * FIXME: This is (I think) a bug in p4est. In the documentation, it is said
-     * that for ghost quadrants " ... piggy3 data member is filled with their
-     * owner's tree and local number." (cf. p4est_ghost.h, line 34). This
+     * WARNING: This is (I think) a bug in p4est. In the documentation, it is
+     * said that for ghost quadrants " ... piggy3 data member is filled with
+     * their owner's tree and local number." (cf. p4est_ghost.h, line 34). This
      * implies that the numbering, i.e. p.piggy3.local_num field, stores the
      * local index w.r.t the tree it is located in, i.e. p.piggy3.which_tree.
      *
@@ -113,57 +115,43 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
             * layer
             */
     /*
-     * TODO: What is the best way to fix this problem?
+     * HACK: This is a hack to take care of multiple remote matches! The real and
+     * correct way of doing it is to ask each remote processor a status flag which
+     * will determine if they can actually compute the correct value.
      *
-     * OK. This makes things complicated and nasty. In general you should
-     * consider the worst case scenario which is a point that matches to 4
-     * remote quadrant. This would correspond to an actual node that is on the
-     * boundary between 4 processors!
+     * The way this hack works is each of the possible remote processors will
+     * try to look up a point. If they own the point, they will perform the
+     * interpolation as intended.
      *
-     * This is a nasty case to consider since you have to send the information
-     * to all 4 processors. Then, since they share the point, depending on the
-     * size of quadrants (either all 4 the same size or all 4 different)
-     * different number of processors will be eligible to do the interpolation.
-     * Problem is, the current processor wont know which one is responsible to
-     * do the interpolation so it sends the message to all 4. From here two
-     * approaches are possible:
+     * If they do not own the point, but the point ends up in the ghost layer,
+     * this is a valid request that they cannot interpolate. To make things easier
+     * they will return 0 which then will be added to the exiting value and thus
+     * wont change the correct result.
      *
-     * 1) All 4 will respond back to the processor. In this case, 1, 2, 3, or 4
-     * values will be correct depending on the how many processors could do the
-     * interpolation and the rest will be junk. To differentiate, we could ask
-     * processors that cannot do the interpolation to return 'nan' or 'inf' and
-     * then sort things out on the root (processor who asked for the info in the
-     * first place). Problem is, what if there is something else wrong in the
-     * data? What if when get 'inf' or 'nan' due to some other invalid operation
-     * on the responsible processor?
+     * Finally, if they do not own the point and it is determind to be remote,
+     * this would correspond to an invalid request that should not have been made
+     * in the first place! Most probably this would be a bug!
      *
-     * 2) Second approach is to only ask the processor that does the correct
-     * interpolation to respond to the message. In this case the number of bytes
-     * that root will recieve will be different than the number we sent. So the
-     * root has to create a mapping to handle cases from information is sent but
-     * nothing is recieved so that it knows what indecies the recieved info will
-     * belong to!
-     *
-     * Both cases are equally ugly with the first one being dangerous and the
-     * second one being hard to implement and probably inefficient. Plus such a
-     * case will most probably happen if the user is dumb enough to ask for the
-     * interpolated at the boundary of 4 processors because otherwise the odds
-     * of something like this happening is really really really small!
-     *
-     * Sooooo, what do we do here? Well only consider the case that there will
-     * be just one remote match at most since this is the most relavant case. If
-     * this condition is not satisfied, for the moment at least, we simply throw
-     * an exception and ask the user to read this long explanation! This
-     * exception is actually thrown when the processor recieves the remote info
-     * and calculates the quadrant. If the quadrant is not local, it will throw
-     * an exception.
+     * So, we will set the output vector to zero first for all remote matches. We
+     * can do the same for essentially all querries (local, ghost, and remote) but
+     * in the case of local and ghost this is not really needed since there will
+     * always be a single valid value.
      */
-    p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(remote_matches, 0);
-    int remote_rank = q->p.piggy1.owner_rank;
+    // make sure remote ranks are unique
+    std::set<int> remote_ranks;
+    for (size_t i=0; i<remote_matches->elem_count; i++){
+      p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(remote_matches, i);
+      remote_ranks.insert(q->p.piggy1.owner_rank);
+    }
 
-    remote_send_buffer[remote_rank].push_back(x);
-    remote_send_buffer[remote_rank].push_back(y);
-    remote_node_index[remote_rank].push_back(node_locidx);
+    std::set<int>::const_iterator it = remote_ranks.begin(),
+        end = remote_ranks.end();
+    for(; it != end; ++it){
+      int r = *it;
+      remote_send_buffer[r].push_back(x);
+      remote_send_buffer[r].push_back(y);
+      remote_node_index[r].push_back(node_locidx);
+    }
   }
 
   // set the flag to false so the prepare buffer method will be called
@@ -262,12 +250,24 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
   if (!is_buffer_prepared)
     prepare_buffer();
 
-  PetscErrorCode ierr;
+  PetscErrorCode ierr;  
 
   // Get a pointer to the data
   double *Fi_ptr, *Fo_ptr;
   ierr = VecGetArray(Fi_, &Fi_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(Fo,  &Fo_ptr); CHKERRXX(ierr);
+
+  // initialize the value for remote matches to zero
+  {
+    nonlocal_node_map::iterator it = remote_node_index.begin(),
+        end = remote_node_index.end();
+
+    for(; it != end; ++it){
+      std::vector<p4est_locidx_t>& locidx = it->second;
+      for (size_t i=0; i<locidx.size(); ++i)
+        Fo_ptr[locidx[i]] = 0;
+    }
+  }
 
   // Get access to the node numbering of all quadrants
   p4est_locidx_t *q2n = nodes_->local_nodes;
@@ -309,7 +309,6 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
 
         for (short j=0; j<P4EST_CHILDREN; ++j)
           f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
-
 
         f_send[i] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
       }      
@@ -353,23 +352,34 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
                                                      xy, &best_match, remote_matches);
 
         // make sure that the point belongs to us
-        if (rank_found != p4est_->mpirank){
+        if (rank_found == p4est_->mpirank){ // if we own the point, interpolate
+          // get the local index
+          p4est_topidx_t tree_idx  = best_match.p.piggy3.which_tree;
+          p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
+          p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
+
+          for (short j=0; j<P4EST_CHILDREN; j++)
+            f[j] = Fi_ptr[p4est2petsc[q2n[qu_locidx*P4EST_CHILDREN+j]]];
+
+          f_send[i] = bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+
+        } else if (remote_matches->elem_count == 0){
+          // if we don't own the point but its in the ghost layer return 0.
+          f_send[i] = 0;
+        } else { /* if we dont the own teh point, and its not in the ghost layer
+                  * this MUST be a bug or mistake so simply throw.
+                  */
           ostringstream oss;
-          oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") does not belong to "
-                 "processor " << p4est_->mpirank << ". Found rank = " << rank_found << " and remote_macthes.size = " << remote_matches->elem_count << endl;
+          oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") was flagged"
+                 " as a remote point to either belong to processor "
+              <<  p4est_->mpirank << " or be in its ghost layer, both of which"
+                 " have failed. Found rank is = " << rank_found
+              << " and remote_macthes->elem_count = "
+              << remote_matches->elem_count << ". This is most certainly a bug."
+              << endl;
           throw runtime_error(oss.str());
         }
         sc_array_destroy(remote_matches);
-
-        // get the local index
-        p4est_topidx_t tree_idx  = best_match.p.piggy3.which_tree;
-        p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
-        p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
-
-        for (short j=0; j<P4EST_CHILDREN; j++)
-          f[j] = Fi_ptr[p4est2petsc[q2n[qu_locidx*P4EST_CHILDREN+j]]];
-
-        f_send[i] = bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
       }
 
       // send the buffer
@@ -380,12 +390,13 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
     for (size_t i=0; i<remote_recievers.size(); ++i)
     {
       int recv_rank = remote_recievers[i];
-      std::vector<double> f_recv(remote_send_buffer[recv_rank].size()/2);
       std::vector<p4est_locidx_t>& node_idx = remote_node_index[recv_rank];
+      std::vector<double> f_recv(node_idx.size());
       MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, remote_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
 
-      for (size_t j=0; j<f_recv.size(); j++)
-        Fo_ptr[node_idx[j]] = f_recv[j];
+      for (size_t j=0; j<f_recv.size(); j++){
+        Fo_ptr[node_idx[j]] += f_recv[j];
+      }
     }
   }
 
