@@ -188,8 +188,8 @@ int main (int argc, char* argv[]){
 
     // advect the function in time and get the computed time-step
     w2.start("advecting");
-//    dt = sl.advect(vx_vortex, vy_vortex, phi);
-    dt = fake_advect(&p4est, &nodes, phi, t);
+    dt = sl.advect(vx_vortex, vy_vortex, phi);
+    //dt = fake_advect(&p4est, &nodes, phi, t);
     w2.stop(); w2.read_duration();
   }
 
