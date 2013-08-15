@@ -191,6 +191,9 @@ int main (int argc, char* argv[]){
     dt = sl.advect(vx_vortex, vy_vortex, phi);
     //dt = fake_advect(&p4est, &nodes, phi, t);
     w2.stop(); w2.read_duration();
+
+//    ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
