@@ -73,7 +73,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode ierr;
 
   circle circ(0.5, 0.5, .3);
-  cf_grid_data_t data = {&circ, 7, 0, 1.0};
+  splitting_criteria_cf_t data = {&circ, 9, 2, 1.0};
 
   Session::init(argc, argv, mpi->mpicomm);
 
@@ -98,7 +98,7 @@ int main (int argc, char* argv[]){
   // Now refine the tree
   w2.start("refine");
   p4est->user_pointer = (void*)(&data);
-  p4est_refine(p4est, P4EST_TRUE, refine_levelset, NULL);
+  p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
   w2.stop(); w2.read_duration();
 
   // Finally re-partition
@@ -212,13 +212,13 @@ int main (int argc, char* argv[]){
 double fake_advect(p4est_t **p4est, p4est_nodes_t **nodes, Vec &phi, double t)
 {
   const double dt = 0.1;
-  circle& cf = dynamic_cast<circle&>(*((cf_grid_data_t*)(*p4est)->user_pointer)->phi);
+  circle& cf = dynamic_cast<circle&>(*((splitting_criteria_cf_t*)(*p4est)->user_pointer)->phi);
   cf.update(0.5, 0.5, 0.3+.25*t);
 
   p4est_t *p4est_np1 = p4est_copy(*p4est, P4EST_FALSE);
   p4est_np1->user_pointer = (*p4est)->user_pointer;
-  p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset, NULL);
-  p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset, NULL);
+  p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset_cf, NULL);
+  p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
   p4est_partition(p4est_np1, NULL);
 
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);

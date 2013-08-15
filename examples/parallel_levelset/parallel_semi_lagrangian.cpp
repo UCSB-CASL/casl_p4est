@@ -27,7 +27,7 @@ SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, my_p4est_
   // compute domain sizes
   double *v2c = p4est_->connectivity->vertices;
   p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
-  p4est_topidx_t first_tree = 0, last_tree = p4est_->last_local_tree;
+  p4est_topidx_t first_tree = 0, last_tree = p4est_->trees->elem_count-1;
 
   xmin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 0];
   ymin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 1];
@@ -54,7 +54,6 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
 
   p4est_locidx_t ni_begin = 0;
   p4est_locidx_t ni_end   = nodes_->num_owned_indeps;
-
 
   for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
     p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, ni+nodes_->offset_owned_indeps);
@@ -100,7 +99,11 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
 
   // update the p4est
   ierr = VecDestroy(phi); CHKERRXX(ierr); phi = phi_np1;
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   update_p4est(phi, ghost);
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   p4est_ghost_destroy(ghost);
 
@@ -114,7 +117,8 @@ void SemiLagrangian::update_p4est(Vec &phi,    p4est_ghost_t *ghost){
   std::cout << " Make copy of p4est " << endl;
   // make a new copy of p4est object -- we are going to modify p4est but we
   // still need the old one ...
-  p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
+  p4est_connectivity_t *conn = p4est_->connectivity;
+  p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);//p4est_new(p4est_->mpicomm, conn, 0, NULL, NULL);
 
   // define an interpolating function
   parallel::BilinearInterpolatingFunction bif(p4est_, nodes_, ghost, myb_);
@@ -122,12 +126,12 @@ void SemiLagrangian::update_p4est(Vec &phi,    p4est_ghost_t *ghost){
 
   // now refine/coarsen the new copy of p4est -- note that we need to swap
   // level-set function since it has moved
-//  cf_grid_data_t *data = (cf_grid_data_t*)(p4est_->user_pointer);
-//  data->phi = &bif;
-//  p4est_np1->user_pointer = p4est_->user_pointer;
-//  p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset, NULL);
-//  p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset, NULL);
-  //p4est_partition(p4est_np1, NULL);
+  splitting_criteria_cf_t *data = (splitting_criteria_cf_t*)(p4est_->user_pointer);
+  data->phi = &bif;
+  p4est_np1->user_pointer = data;
+  p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_grid_transfer, NULL);
+  p4est_refine(p4est_np1, P4EST_TRUE, refine_grid_transfer, NULL);
+  p4est_partition(p4est_np1, NULL);
 
   // now compute a new node data structure
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
@@ -148,10 +152,10 @@ void SemiLagrangian::update_p4est(Vec &phi,    p4est_ghost_t *ghost){
     p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
 
 
-    p4est_topidx_t v_mm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+    p4est_topidx_t v_mm = conn->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
 
-    double tree_xmin = p4est_->connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = p4est_->connectivity->vertices[3*v_mm + 1];
+    double tree_xmin = conn->vertices[3*v_mm + 0];
+    double tree_ymin = conn->vertices[3*v_mm + 1];
 
     double xy_node [] =
     {
@@ -165,15 +169,14 @@ void SemiLagrangian::update_p4est(Vec &phi,    p4est_ghost_t *ghost){
   //Interpolate into our output vector
   bif.interpolate(phi_np1);
 
-  ierr = VecCopy(phi, phi_np1); CHKERRXX(ierr);
   // Update ghost values
-  ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // now that everything is updated, get rid of old stuff and swap them with
   // new ones
-  //p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
-  //p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
+  p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
+  p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
 }

@@ -36,7 +36,7 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const {
   PetscErrorCode ierr = VecGetArray(Fi_, &Fi_ptr); CHKERRXX(ierr);
 
   p4est_locidx_t quad_idx;
-  p4est_topidx_t tree_idx = 0;
+  p4est_topidx_t tree_idx;
   p4est_locidx_t *q2n = nodes_->local_nodes;
   p4est_quadrant_t best_match;
   sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
@@ -53,7 +53,8 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const {
   }
 #endif
 
-  p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, best_match.p.piggy3.which_tree);
+  tree_idx = best_match.p.piggy3.which_tree;
+  p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
   quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
 
   double f [P4EST_CHILDREN];
