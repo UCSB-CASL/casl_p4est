@@ -8,18 +8,17 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_nodes.h>
 
-struct cf_grid_data_t {
+struct splitting_criteria_cf_t {
   CF_2 *phi;
   int max_lvl, min_lvl;
   double lip;
 };
 
-struct rand_grid_data_t {
+struct splitting_criteria_random_t {
   int max_lvl, min_lvl;
   p4est_locidx_t max_quads, min_quads;
   static p4est_locidx_t counter;
 };
-
 
 /*!
  * \brief refine_levelset
@@ -29,7 +28,7 @@ struct rand_grid_data_t {
  * \return
  */
 p4est_bool_t
-refine_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
 /*!
  * \brief coarsen_levelset
@@ -39,7 +38,28 @@ refine_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *qu
  * \return
  */
 p4est_bool_t
-coarsen_levelset (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+/*!
+ * \brief refine_levelset_discrete
+ * \param p4est
+ * \param which_tree
+ * \param quad
+ * \return
+ */
+p4est_bool_t
+refine_grid_transfer(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+/*!
+ * \brief coarsen_levelset_discrete
+ * \param p4est
+ * \param which_tree
+ * \param quad
+ * \return
+ */
+p4est_bool_t
+coarsen_grid_transfer(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
 
 /*!
  * \brief refine_random a random refinement method
@@ -60,6 +80,5 @@ refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
  */
 p4est_bool_t
 coarsen_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
-
 
 #endif // REFINE_COARSEN_H

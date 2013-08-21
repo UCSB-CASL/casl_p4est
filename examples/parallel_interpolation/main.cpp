@@ -43,9 +43,10 @@ int main (int argc, char* argv[]){
     PetscErrorCode      ierr;
 
     circle circ(1, 1, .3);
-    cf_grid_data_t   cf_data   = {&circ, 15, 0, 1};
+    splitting_criteria_cf_t cf_data   = {&circ, 15, 0, 1};
 
-    Session::init(argc, argv, mpi->mpicomm);
+    Session mpi_session;
+    mpi_session.init(argc, argv, mpi->mpicomm);
 
     parStopWatch w1, w2;
     w1.start("total time");
@@ -68,7 +69,7 @@ int main (int argc, char* argv[]){
     // Now refine the tree
     w2.start("refine");
     p4est->user_pointer = (void*)(&cf_data);
-    p4est_refine(p4est, P4EST_TRUE, refine_levelset, NULL);
+    p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
     w2.stop(); w2.read_duration();
 
     // Finally re-partition
@@ -126,7 +127,7 @@ int main (int argc, char* argv[]){
     w2.start("creating/refining/partitioning new p4est");
     p4est_t *p4est_np1 = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
     p4est_np1->user_pointer = (void*)&cf_data;
-    p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset, NULL);
+    p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
     p4est_partition(p4est_np1, NULL);
     w2.stop(); w2.read_duration();
 
@@ -187,9 +188,10 @@ int main (int argc, char* argv[]){
 
     p4est_nodes_destroy (nodes_np1);
     p4est_destroy (p4est_np1);
-    p4est_connectivity_destroy (connectivity);
+    my_p4est_brick_destroy(connectivity, &brick);
 
     w1.stop(); w1.read_duration();
+
   } catch (const std::exception& e) {
     cerr << e.what() << endl;
   }

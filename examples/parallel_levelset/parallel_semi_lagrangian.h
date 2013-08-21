@@ -9,58 +9,6 @@
 #include <iostream>
 
 namespace parallel{
-
-struct quad_information{       //Used to hold info of quadrants for parallelization
-    std::vector<double>              xy;//XY Departure points [0] = X, [1] = Y
-    std::vector<p4est_topidx_t>      tree_idx;    //Index of Tree
-    std::vector<p4est_locidx_t>      quad_idx;    //Index of Quadrant
-    std::vector<p4est_quadrant_t*>   quad;        //Quadrant pointers
-    std::vector<p4est_locidx_t>      ni;          //Node index
-
-    void push (double *xy_dep, p4est_topidx_t t_idx, p4est_locidx_t q_idx, p4est_quadrant_t *q, p4est_locidx_t ni_){
-        xy.push_back(xy_dep[0]);  //Pushback x_dep points
-        xy.push_back(xy_dep[1]);  //Pushback y_dep points
-        tree_idx.push_back(t_idx);
-        quad_idx.push_back(q_idx);
-        quad.push_back(q);
-        ni.push_back(ni_);
-    }
-
-    void print (){
-        std::cout << "Printing xy_dep vector" << endl;
-        for (int it = 0; it < xy.size(); ++it){
-            std::cout << "[" << xy[it] << "] ";
-        }
-        std::cout << "\nPrinting tree_idx vector" << endl;
-        for (int it = 0; it < tree_idx.size(); ++it){
-            std::cout << "[" << tree_idx[it] << "] ";
-        }
-        std::cout << "\nPrinting quad_idx vector" << endl;
-        for (int it = 0; it < quad_idx.size(); ++it){
-            std::cout << "[" << quad_idx[it] << "] ";
-        }
-        std::cout << "\nPrinting quad vector" << endl;
-        for (int it = 0; it < quad.size(); ++it){
-            std::cout << "[" << quad[it] << "] ";
-        }
-        std::cout << "\nPrinting node index vector" << endl;
-        for (int it = 0; it < ni.size(); ++it){
-            std::cout << "[" << ni[it] << "] ";
-        }
-    }
-};
-
-struct non_local_point_buffer{      //Sending buffer used to hold xy_departure and node index.
-    std::vector<double>     xy;     //XY Departure points [0] = X, [1] = Y
-    std::vector<p4est_locidx_t> ni; //Node Index
-
-    void push (double *xy_,p4est_locidx_t ni_){
-        xy.push_back(xy_[0]);
-        xy.push_back(xy_[1]);
-        ni.push_back(ni_);
-    }
-};
-
 class SemiLagrangian
 {
   p4est_t **p_p4est_, *p4est_;

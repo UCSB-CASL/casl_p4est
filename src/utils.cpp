@@ -132,9 +132,6 @@ PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
   for (int r = 0; r<p4est->mpisize; ++r)
     global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
 
-//  for (int i=0; i<global_offset_sum.size(); i++)
-//    cout << global_offset_sum[i] << endl;
-
   PetscInt num_global = global_offset_sum[p4est->mpisize];
 
   for (p4est_locidx_t i = 0; i<nodes->offset_owned_indeps; ++i)
@@ -147,9 +144,6 @@ PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
     p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
     ghost_nodes[i-num_local] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i-num_local]];
   }
-
-//  for (int i=0; i<ghost_nodes.size(); i++)
-//    cout << "[" << p4est->mpirank << "]: ghost_nodes[" << i << "] = " << ghost_nodes[i] << endl;
 
   ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global, ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);

@@ -185,9 +185,6 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   int                 i, ix, iy;
   int                 pp, smallest_owner;
   int                 hit;
-  int                 alllocal, allghost;
-  int                 istreeboundary[P4EST_DIM];/**< bool in each dimension */
-  int                 maybequadboundary[P4EST_DIM];
   /**< bool in each dimension */
   int                 integerstep[P4EST_DIM][2];/**< tree multiple ied. */
   int8_t              highest_level;
@@ -220,8 +217,6 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
 
     /* check if the xy[i] coordinate is on a tree boundary */
     if ((double) hit == xy[i]) {
-      istreeboundary[i] = 1;
-      maybequadboundary[i] = 1;
       integerstep[i][0] = hit - 1;      /* can be -1 which will be ignored */
       integerstep[i][1] = hit == myb->nxytrees[i] ? -1 : hit;   /* ditto */
       searchq[i][0] = P4EST_LAST_OFFSET (P4EST_QMAXLEVEL);
@@ -230,7 +225,6 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
                      integerstep[i][0], integerstep[i][1]);
     }
     else {
-      istreeboundary[i] = 0;
       integerstep[i][0] = integerstep[i][1] = hit;
       qq = (p4est_qcoord_t) floor ((xy[i] - hit) * P4EST_ROOT_LEN);
       P4EST_ASSERT (0 <= qq && qq < P4EST_ROOT_LEN);
@@ -238,12 +232,10 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
 
       /* check if the xy[i] coordinate is on a possible quadrant boundary */
       if ((double) qq == (xy[i] - hit) * P4EST_ROOT_LEN) {
-        maybequadboundary[i] = 1;
         searchq[i][0] = qq - qlen;
         P4EST_ASSERT (searchq[i][0] >= 0);
       }
       else {
-        maybequadboundary[i] = 0;
         integerstep[i][0] = -1;
         searchq[i][0] = -1;
       }
@@ -256,7 +248,6 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   P4EST_QUADRANT_INIT (&sq);
   sq.level = P4EST_QMAXLEVEL;
   memset (treeid, -1, sizeof (p4est_topidx_t) * P4EST_CHILDREN);
-  alllocal = allghost = 1;
   highest_level = -1;
   smallest_owner = p4est->mpisize;
   smallest_tree = p4est->connectivity->num_trees;
@@ -280,7 +271,6 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
       pp = p4est_comm_find_owner (p4est, tt, &sq, p4est->mpirank);
       if (pp == p4est->mpirank) {
         /* this quadrant match is processor-local */
-        allghost = 0;
         P4EST_ASSERT (p4est->first_local_tree <= tt &&
                       tt <= p4est->last_local_tree);
         tree = p4est_tree_array_index (p4est->trees, tt);
@@ -310,7 +300,6 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
         /* else no need to update our match */
       }
       else {
-        alllocal = 0;
         sgpos = p4est_ghost_contains (ghost, pp, tt, &sq);
         if (sgpos >= 0) {
           /* this quadrant match is in the ghost layer */
