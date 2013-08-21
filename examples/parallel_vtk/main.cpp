@@ -40,9 +40,10 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   circle circ(1, 1, .3);
-  cf_grid_data_t data = {&circ, 8, 0, 1.0};
+  splitting_criteria_cf_t data = {&circ, 8, 0, 1.0};
 
-  Session::init(argc, argv, mpi->mpicomm);
+  Session mpi_session;
+  mpi_session.init(argc, argv, mpi->mpicomm);
 
   parStopWatch w1, w2;
   w1.start("total time");
@@ -65,7 +66,7 @@ int main (int argc, char* argv[]){
   // Now refine the tree
   w2.start("refine");
   p4est->user_pointer = (void*)(&data);
-  p4est_refine(p4est, P4EST_TRUE, refine_levelset, NULL);
+  p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
   w2.stop(); w2.read_duration();
 
   // Finally re-partition
@@ -74,7 +75,9 @@ int main (int argc, char* argv[]){
   w2.stop(); w2.read_duration();
 
   // generate the node data structure
+  w2.start("creating nodes data structure");
   nodes = my_p4est_nodes_new(p4est);
+  w2.stop(); w2.read_duration();
 
   /* Parallel vector:
    * To save the levelset function, we need a parallel vector. We do this by
@@ -83,8 +86,10 @@ int main (int argc, char* argv[]){
    * vec object ar arguments. Here we call our vector 'phi_global' to emphasize
    * that it lives across multiple processors.
    */
+  w2.start("creating Ghosted vector");
   Vec phi_global;
   ierr = VecCreateGhost(p4est, nodes, &phi_global); CHKERRXX(ierr);
+  w2.stop(); w2.read_duration();
 
   /* Computing parallel levelset
    * As the first example, we need to compute the levelset function on the
@@ -116,6 +121,7 @@ int main (int argc, char* argv[]){
    * nodes and ask PETSc to do the communication for you to find the values of
    * ghost points. This is done for the second method shown below.
    */
+  w2.start("setting phi values");
   circ.update(1.234, 1.4,.34);
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
   {
@@ -132,6 +138,7 @@ int main (int argc, char* argv[]){
 
     phi[p4est2petsc_local_numbering(nodes,i)] = circ(x,y);
   }
+  w2.stop(); w2.read_duration();
 
   /* Second method:
    * In the second method, we only compute the levelset on local points and then
@@ -215,7 +222,7 @@ int main (int argc, char* argv[]){
   // destroy the p4est and its connectivity structure
   p4est_nodes_destroy (nodes);
   p4est_destroy (p4est);
-  p4est_connectivity_destroy (connectivity);
+  my_p4est_brick_destroy(connectivity, &brick);
 
   w1.stop(); w1.read_duration();
 

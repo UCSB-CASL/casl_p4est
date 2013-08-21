@@ -97,11 +97,10 @@ T ranged_rand(T a, T b, int seed = 0){
 class Session{   
 public:
   ~Session(){
-    sc_finalize ();
     PetscErrorCode ierr = PetscFinalize(); CHKERRXX(ierr);
   }
 
-  static void init(int argc, char **argv, MPI_Comm mpicomm = MPI_COMM_WORLD){
+  void init(int argc, char **argv, MPI_Comm mpicomm = MPI_COMM_WORLD){
     PetscErrorCode ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
     sc_init (mpicomm, 1, 1, NULL, SC_LP_SILENT);
     p4est_init (NULL, SC_LP_SILENT);

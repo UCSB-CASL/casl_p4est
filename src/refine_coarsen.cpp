@@ -185,7 +185,6 @@ coarsen_grid_transfer (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant
 
 
 p4est_locidx_t splitting_criteria_random_t::counter = 0;
-
 p4est_bool_t
 refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {

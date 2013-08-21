@@ -53,15 +53,13 @@ static const int    p4est_vtk_wrap_rank = 0;
 #define P4EST_VTK_FLOAT_TYPE double
 #endif
 
-//#undef P4EST_VTK_BINARY
-
 #ifndef P4EST_VTK_BINARY
 #define P4EST_VTK_ASCII 1
 #define P4EST_VTK_FORMAT_STRING "ascii"
 #else
 #define P4EST_VTK_FORMAT_STRING "binary"
 
-#undef P4EST_VTK_COMPRESSION
+//#undef P4EST_VTK_COMPRESSION
 
 static int
 my_p4est_vtk_write_binary (FILE * vtkfile, char *numeric_data,

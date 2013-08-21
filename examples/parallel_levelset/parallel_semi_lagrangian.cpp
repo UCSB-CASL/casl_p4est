@@ -112,9 +112,6 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
 
 void SemiLagrangian::update_p4est(Vec &phi,    p4est_ghost_t *ghost){
 
-  std::cout << "In Update p4est" << endl;
-
-  std::cout << " Make copy of p4est " << endl;
   // make a new copy of p4est object -- we are going to modify p4est but we
   // still need the old one ...
   p4est_connectivity_t *conn = p4est_->connectivity;
@@ -170,8 +167,6 @@ void SemiLagrangian::update_p4est(Vec &phi,    p4est_ghost_t *ghost){
   bif.interpolate(phi_np1);
 
   // Update ghost values
-//  ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//  ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // now that everything is updated, get rid of old stuff and swap them with
   // new ones
@@ -180,40 +175,5 @@ void SemiLagrangian::update_p4est(Vec &phi,    p4est_ghost_t *ghost){
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
 }
-
-/*
-
-double SemiLagrangian::linear_interpolation(const double *F, const double xy[], p4est_topidx_t tree_idx)
-{
-  p4est_locidx_t quad_idx;
-  p4est_locidx_t *q2n = nodes_->local_nodes;
-  p4est_quadrant_t *quad;
-
-  int found_rank = my_p4est_brick_point_lookup_smallest(p4est_, NULL, NULL,
-                                                        xy, &tree_idx, &quad_idx, &quad);
-
-#ifdef CASL_THROWS
-  if (p4est_->mpirank != found_rank){
-    std::ostringstream oss; oss << "point (" << xy[0] << "," << xy[1] << ") "
-                                   "does not belog to processor " << p4est_->mpirank;
-    throw std::invalid_argument(oss.str());
-  }
-#endif
-
-  p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
-  quad_idx += tree->quadrants_offset;
-  double f [] =
-  {
-    F[p4est2petsc_local_numbering(nodes_, q2n[P4EST_CHILDREN*quad_idx + 0])],
-    F[p4est2petsc_local_numbering(nodes_, q2n[P4EST_CHILDREN*quad_idx + 1])],
-    F[p4est2petsc_local_numbering(nodes_, q2n[P4EST_CHILDREN*quad_idx + 2])],
-    F[p4est2petsc_local_numbering(nodes_, q2n[P4EST_CHILDREN*quad_idx + 3])]
-  };
-
-  return bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
-}
-
-*/
-
 }
 

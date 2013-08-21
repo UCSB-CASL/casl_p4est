@@ -24,7 +24,7 @@
 
 using namespace std;
 
-class: public CF_2
+static class: public CF_2
 {
 public:
   double operator()(double x, double y) const {
@@ -32,7 +32,7 @@ public:
   }
 } vx_vortex;
 
-class: public CF_2
+static class: public CF_2
 {
 public:
   double operator()(double x, double y) const {
@@ -40,13 +40,13 @@ public:
   }
 } vy_vortex;
 
-struct:CF_2{
+static struct:CF_2{
   double operator()(double x, double y) const {
     return 0.3;
   }
 } vx_translate;
 
-struct:CF_2{
+static struct:CF_2{
   double operator()(double x, double y) const {
     return 0.3;
   }
@@ -73,9 +73,10 @@ int main (int argc, char* argv[]){
   PetscErrorCode ierr;
 
   circle circ(0.5, 0.5, .3);
-  splitting_criteria_cf_t data = {&circ, 9, 2, 1.0};
+  splitting_criteria_cf_t data = {&circ, 8, 0, 1.3};
 
-  Session::init(argc, argv, mpi->mpicomm);
+  Session mpi_session;
+  mpi_session.init(argc, argv, mpi->mpicomm);
 
   parStopWatch w1, w2;
   w1.start("total time");
@@ -144,9 +145,9 @@ int main (int argc, char* argv[]){
   parallel::SemiLagrangian sl(&p4est, &nodes, &brick);
 
   // loop over time
-  double tf = 5;
+  double tf = 15;
   int tc = 0;
-  int save = 1;
+  int save = 10;
   vector<double> vx, vy;
   for (double t=0, dt=0; t<tf; t+=dt, tc++){
     if (tc % save == 0){
@@ -189,11 +190,7 @@ int main (int argc, char* argv[]){
     // advect the function in time and get the computed time-step
     w2.start("advecting");
     dt = sl.advect(vx_vortex, vy_vortex, phi);
-    //dt = fake_advect(&p4est, &nodes, phi, t);
     w2.stop(); w2.read_duration();
-
-//    ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
@@ -202,7 +199,7 @@ int main (int argc, char* argv[]){
   // destroy the p4est and its connectivity structure
   p4est_nodes_destroy (nodes);
   p4est_destroy (p4est);
-  p4est_connectivity_destroy (connectivity);
+  my_p4est_brick_destroy(connectivity, &brick);
 
   w1.stop(); w1.read_duration();
 
