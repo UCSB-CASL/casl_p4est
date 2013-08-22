@@ -61,7 +61,7 @@ static const int    p4est_vtk_wrap_rank = 0;
 #else
 #define P4EST_VTK_FORMAT_STRING "binary"
 
-//#undef P4EST_VTK_COMPRESSION
+#undef P4EST_VTK_COMPRESSION
 
 static int
 my_p4est_vtk_write_binary (FILE * vtkfile, char *numeric_data,

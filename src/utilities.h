@@ -29,17 +29,25 @@ public:
 };
 
 class parStopWatch{
+public:
+  typedef enum{
+    root_timings,
+    all_timings
+  } stopwatch_timing;
+
 private:
     double ts, tf;
     MPI_Comm comm_;
-    int mpisize;
+    int mpirank;
     std::string msg_;
+    stopwatch_timing timing_;
 
-public:
-    parStopWatch(MPI_Comm comm = PETSC_COMM_WORLD)
-        : comm_(comm)
+public:   
+
+    parStopWatch(stopwatch_timing timing = root_timings, MPI_Comm comm = MPI_COMM_WORLD)
+      : comm_(comm), timing_(timing)
     {
-      MPI_Comm_size(comm_, &mpisize);
+      MPI_Comm_rank(comm_, &mpirank);
     }
 
     void start(const std::string& msg){
@@ -54,13 +62,16 @@ public:
 
     double read_duration(){
       double elap = tf - ts;
-      double max, min, sum;
-      MPI_Reduce(&elap, &sum, 1, MPI_DOUBLE, MPI_SUM, 0, comm_);
-      MPI_Reduce(&elap, &max, 1, MPI_DOUBLE, MPI_MAX, 0, comm_);
-      MPI_Reduce(&elap, &min, 1, MPI_DOUBLE, MPI_MIN, 0, comm_);
 
-      PetscPrintf(comm_, "%s ... done in [avg = %.2lf (s), min = %.2lf (s), max/min = %.2lf] on %2d processes\n",msg_.c_str(), sum/mpisize, min, max/min, mpisize);
-      return tf-ts;
+      PetscPrintf(comm_, "%s ... done in ", msg_.c_str());
+      if (timing_ == all_timings){
+        PetscSynchronizedPrintf(comm_, "\n   %.4lf secs. on process %2d",elap, mpirank);
+        PetscSynchronizedFlush(comm_);
+        PetscPrintf(comm_, "\n");
+      } else {
+        PetscPrintf(comm_, " %.4lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
+      }
+      return elap;
     }
 };
 

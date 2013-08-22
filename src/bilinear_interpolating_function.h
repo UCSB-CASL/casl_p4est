@@ -5,6 +5,7 @@
 #include <src/utils.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
+#include <mpi.h>
 
 namespace parallel{
 class BilinearInterpolatingFunction: public CF_2
@@ -42,8 +43,9 @@ class BilinearInterpolatingFunction: public CF_2
   std::vector<int> ghost_recievers, ghost_senders, remote_recievers, remote_senders;
   bool is_buffer_prepared;
 
+  std::vector<MPI_Request> ghost_send_req, ghost_recv_req, remote_send_req, remote_recv_req;
+
   enum {
-    size_tag,
     ghost_point_tag,
     ghost_data_tag,
     remote_point_tag,
@@ -51,7 +53,8 @@ class BilinearInterpolatingFunction: public CF_2
   };
 
   // methods
-  void prepare_buffer();
+  void send_node_buffers();
+  void recv_node_buffers();
   void clear_buffer();
 
 public:
