@@ -1,49 +1,61 @@
-#ifndef SEMI_LAGRANGIAN_H
-#define SEMI_LAGRANGIAN_H
+#ifndef PARALLEL_SEMI_LAGRANGIAN_H
+#define PARALLEL_SEMI_LAGRANGIAN_H
 
-#include <p4est.h>
-#include <petsc.h>
-#include <map>
-#include <sc_notify.h>
-#include <src/ArrayV.h>
+#include <vector>
+#include <algorithm>
 #include <src/utils.h>
+#include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
-#include <src/petsc_compatibility.h>
-
-#define POINT_TAG 0
-#define LVLSET_TAG 1
-#define SIZE_TAG 2
-
-struct point{
-  double x, y;
-};
+#include <iostream>
 
 class SemiLagrangian
 {
-  p4est_t *p4est;
-  p4est_nodes *nodes;
-  ArrayV<bool> is_processed;
+  p4est_t **p_p4est_, *p4est_;
+  p4est_nodes_t **p_nodes_, *nodes_;
+  my_p4est_brick_t *myb_;
 
-  p4est_locidx_t *e2n;
+  double xmin, xmax, ymin, ymax;
 
+  std::vector<double> local_xy_departure_dep, non_local_xy_departure_dep;   //Buffers to hold local and non-local departure points
   PetscErrorCode ierr;
 
-  ArrayV<ArrayV<double> > departure_point;
-  ArrayV<ArrayV<p4est_locidx_t> > departing_node;
+  inline double compute_dt(const CF_2& vx, const CF_2& vy){
+    double dt = 1000;
 
-  MPI_Status st;
+    // loop over trees
+    for (p4est_topidx_t tr_it = p4est_->first_local_tree; tr_it <=p4est_->last_local_tree; ++tr_it){
+      p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tr_it);
+      p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
+      double *v2c = p4est_->connectivity->vertices;
 
-  // Disable copy constructor and assigment
-  SemiLagrangian(const SemiLagrangian& other);
-  SemiLagrangian& operator=(const SemiLagrangian& other);
+      double tr_xmin = v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 0];
+      double tr_ymin = v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 1];
 
-  int tc;
+      // loop over quadrants
+      for (size_t qu_it=0; qu_it<tree->quadrants.elem_count; ++qu_it){
+        p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, qu_it);
+
+        double dx = int2double_coordinate_transform(P4EST_QUADRANT_LEN(quad->level));
+        double x  = int2double_coordinate_transform(quad->x) + 0.5*dx + tr_xmin;
+        double y  = int2double_coordinate_transform(quad->y) + 0.5*dx + tr_ymin;
+        double vn = sqrt(SQR(vx(x,y)) + SQR(vy(x,y)));
+        dt = MIN(dt, dx/vn);
+      }
+    }
+
+    double dt_min;
+    MPI_Allreduce(&dt, &dt_min, 1, MPI_DOUBLE, MPI_MIN, p4est_->mpicomm);
+
+    return dt_min;
+  }
+
+  double linear_interpolation(const double *F, const double xy[], p4est_topidx_t tree_idx = 0);
+  void update_p4est(Vec& phi, p4est_ghost_t *ghost);
 
 public:
-  SemiLagrangian(p4est_t *p4est_, p4est_nodes_t *nodes_);
+  SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, my_p4est_brick_t *myb);
 
-  void update(p4est_t *p4est_, p4est_nodes_t *nodes_);
-  void advect(CF_2& velx, CF_2& vely, double dt, Vec &phi);
+  double advect(const CF_2& vx, const CF_2& vy, Vec &phi);
 };
 
-#endif // SEMI_LAGRANGIAN_H
+#endif // PARALLEL_SEMI_LAGRANGIAN_H

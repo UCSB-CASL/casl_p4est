@@ -12,7 +12,6 @@
 #include <p4est_vtk.h>
 
 // casl_p4est
-#include <src/utilities.h>
 #include <src/utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
@@ -136,7 +135,7 @@ int main (int argc, char* argv[]){
     w2.stop(); w2.read_duration();
 
     // Create an interpolating function
-    parallel::BilinearInterpolatingFunction bif(p4est, nodes, ghost, &brick);
+    BilinearInterpolatingFunction bif(p4est, nodes, ghost, &brick);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {

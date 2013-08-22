@@ -11,7 +11,6 @@
 #include <p4est_vtk.h>
 
 // casl_p4est
-#include <src/utilities.h>
 #include <src/utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
@@ -19,8 +18,7 @@
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
 
-//#include "serial_semi_lagrangian.h"
-#include "parallel_semi_lagrangian.h"
+#include <src/semi_lagrangian.h>
 
 using namespace std;
 
@@ -42,12 +40,16 @@ public:
 
 static struct:CF_2{
   double operator()(double x, double y) const {
+    (void) x;
+    (void) y;
     return 0.3;
   }
 } vx_translate;
 
 static struct:CF_2{
   double operator()(double x, double y) const {
+    (void) x;
+    (void) y;
     return 0.3;
   }
 } vy_translate;
@@ -142,10 +144,10 @@ int main (int argc, char* argv[]){
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
 
   // SemiLagrangian object
-  parallel::SemiLagrangian sl(&p4est, &nodes, &brick);
+  SemiLagrangian sl(&p4est, &nodes, &brick);
 
   // loop over time
-  double tf = 15;
+  double tf = 5;
   int tc = 0;
   int save = 10;
   vector<double> vx, vy;

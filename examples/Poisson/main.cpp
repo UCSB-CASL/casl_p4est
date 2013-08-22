@@ -13,7 +13,6 @@
 #include <src/poisson_solver.h>
 #include <src/refine_coarsen.h>
 #include <src/utils.h>
-#include <src/utilities.h>
 #include <src/petsc_compatibility.h>
 
 using namespace std;

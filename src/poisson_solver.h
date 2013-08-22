@@ -3,17 +3,16 @@
 
 #include <p4est.h>
 #include <p4est_bits.h>
-#include <p4est_mesh.h>
-#include "ArrayV.h"
-#include "utilities.h"
+#include <vector>
 
+#include <p4est_mesh.h>
 #include <petsc.h>
 
 #include "utils.h"
 #include "neighbors.h"
 
-using std::cout;
-using std::endl;
+using std::cout; using std::endl;
+using std::vector;
 
 class PoissonSolver
 {

@@ -11,7 +11,6 @@
 #include <p4est_vtk.h>
 
 // casl_p4est
-#include <src/utilities.h>
 #include <src/utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>

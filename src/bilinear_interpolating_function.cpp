@@ -5,7 +5,6 @@
 #include <fstream>
 #include <set>
 
-namespace parallel{
 BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est,
                                                              p4est_nodes_t *nodes,
                                                              p4est_ghost_t *ghost,
@@ -45,11 +44,11 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const {
                                                xy, &best_match, remote_matches);
 #ifdef CASL_THROWS
   if (rank_found != p4est_->mpirank){
-    ostringstream oss;
+    std::ostringstream oss;
     oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") does not belong to "
            "processor " << p4est_->mpirank << ". Found rank = " << rank_found <<
-           " and remote_macthes.size = " << remote_matches->elem_count << endl;
-    throw invalid_argument(oss.str());
+           " and remote_macthes.size = " << remote_matches->elem_count << std::endl;
+    throw std::invalid_argument(oss.str());
   }
 #endif
 
@@ -406,15 +405,15 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
         } else { /* if we dont the own teh point, and its not in the ghost layer
                   * this MUST be a bug or mistake so simply throw.
                   */
-          ostringstream oss;
+          std::ostringstream oss;
           oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") was flagged"
                  " as a remote point to either belong to processor "
               <<  p4est_->mpirank << " or be in its ghost layer, both of which"
                   " have failed. Found rank is = " << rank_found
                << " and remote_macthes->elem_count = "
                << remote_matches->elem_count << ". This is most certainly a bug."
-               << endl;
-          throw runtime_error(oss.str());
+               << std::endl;
+          throw std::runtime_error(oss.str());
         }
         sc_array_destroy(remote_matches);
       }
@@ -511,5 +510,4 @@ void BilinearInterpolatingFunction::update_grid(p4est_t *p4est, p4est_nodes_t *n
     else
       p4est2petsc[i] = i;
   }
-}
 }
