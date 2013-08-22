@@ -159,7 +159,7 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
   is_buffer_prepared = false;
 }
 
-void BilinearInterpolatingFunction::send_node_buffers()
+void BilinearInterpolatingFunction::send_point_buffers()
 {  
   /*
    * We will do this is two steps:
@@ -173,22 +173,21 @@ void BilinearInterpolatingFunction::send_node_buffers()
 
     ghost_transfer_map::iterator it = ghost_send_buffer.begin(), end = ghost_send_buffer.end();
     for (;it != end; ++it)
-      ghost_recievers.push_back(it->first);
+      ghost_receivers.push_back(it->first);
 
     // notify the other processors
     int num_senders;
-    sc_notify(&ghost_recievers[0], ghost_recievers.size(), &ghost_senders[0], &num_senders, p4est_->mpicomm);
+    sc_notify(&ghost_receivers[0], ghost_receivers.size(), &ghost_senders[0], &num_senders, p4est_->mpicomm);
     ghost_senders.resize(num_senders);
 
     // Allocate enough requests slots
-    ghost_send_req.resize(ghost_recievers.size());
+    ghost_send_req.resize(ghost_receivers.size());
 
     // Now that we know all sender/receiver pairs lets do MPI. We do blocking
     for (it = ghost_send_buffer.begin(); it != end; ++it, ++req_counter){
       std::vector<ghost_point_info>& buff = it->second;
 
       int msg_size = buff.size()*sizeof(ghost_point_info);
-      //      MPI_Send(&msg_size, 1, MPI_INT, it->first , size_tag, p4est_->mpicomm);
       MPI_Isend(reinterpret_cast<char*>(&buff[0]), msg_size, MPI_BYTE, it->first, ghost_point_tag, p4est_->mpicomm, &ghost_send_req[req_counter]);
     }
   }
@@ -199,15 +198,15 @@ void BilinearInterpolatingFunction::send_node_buffers()
 
     remote_transfer_map::iterator it = remote_send_buffer.begin(), end = remote_send_buffer.end();
     for (;it != end; ++it)
-      remote_recievers.push_back(it->first);
+      remote_receivers.push_back(it->first);
 
     // notify the other processors
     int num_senders;
-    sc_notify(&remote_recievers[0], remote_recievers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);
+    sc_notify(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);
     remote_senders.resize(num_senders);
 
     // Allocate enough requests slots
-    remote_send_req.resize(remote_recievers.size());
+    remote_send_req.resize(remote_receivers.size());
 
     // Now that we know all sender/receiver pairs lets do MPI. We do blocking
     for (it = remote_send_buffer.begin(); it != end; ++it, ++req_counter){
@@ -215,13 +214,12 @@ void BilinearInterpolatingFunction::send_node_buffers()
       std::vector<double>& buff = it->second;
       int msg_size = buff.size();
 
-      //      MPI_Send(&msg_size, 1, MPI_INT, it->first, size_tag, p4est_->mpicomm);
       MPI_Isend(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm, &remote_send_req[req_counter]);
     }
   }
 }
 
-void BilinearInterpolatingFunction::recv_node_buffers()
+void BilinearInterpolatingFunction::recv_point_buffers()
 {
   /*
    * We will do this is two steps:
@@ -287,7 +285,7 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
 {
   // send point buffers
   if (!is_buffer_prepared)
-    send_node_buffers();
+    send_point_buffers();
 
   PetscErrorCode ierr;
 
@@ -330,7 +328,7 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
 
   // recieve point buffers
   if (!is_buffer_prepared)
-    recv_node_buffers();
+    recv_point_buffers();
 
   // Do interpolation for ghost points and the send the results
   typedef std::map<int, std::vector<double> > data_transfer_map;
@@ -428,9 +426,9 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
 
   // Receive the interpolated ghost data and put it in the correct location
   {
-    for (size_t i = 0; i < ghost_recievers.size(); ++i)
+    for (size_t i = 0; i < ghost_receivers.size(); ++i)
     {
-      int recv_rank = ghost_recievers[i];
+      int recv_rank = ghost_receivers[i];
       std::vector<double> f_recv(ghost_send_buffer[recv_rank].size());
       std::vector<p4est_locidx_t>& node_idx = ghost_node_index[recv_rank];
       MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, ghost_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
@@ -442,9 +440,9 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
 
   // Receive the interpolated remote data and put them in the correct position.
   {
-    for (size_t i=0; i<remote_recievers.size(); ++i)
+    for (size_t i=0; i<remote_receivers.size(); ++i)
     {
-      int recv_rank = remote_recievers[i];
+      int recv_rank = remote_receivers[i];
       std::vector<p4est_locidx_t>& node_idx = remote_node_index[recv_rank];
       std::vector<double> f_recv(node_idx.size());
       MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, remote_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
@@ -477,12 +475,12 @@ void BilinearInterpolatingFunction::clear_buffer()
   ghost_send_buffer.clear();
   ghost_recv_buffer.clear();
   ghost_node_index.clear();
-  ghost_recievers.clear();
+  ghost_receivers.clear();
 
   remote_send_buffer.clear();
   remote_recv_buffer.clear();
   remote_node_index.clear();
-  remote_recievers.clear();
+  remote_receivers.clear();
 
   p4est2petsc.clear();
 

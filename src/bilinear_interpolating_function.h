@@ -40,7 +40,7 @@ class BilinearInterpolatingFunction: public CF_2
   typedef std::map<int, std::vector<p4est_locidx_t> > nonlocal_node_map;
   nonlocal_node_map ghost_node_index, remote_node_index;
 
-  std::vector<int> ghost_recievers, ghost_senders, remote_recievers, remote_senders;
+  std::vector<int> ghost_receivers, ghost_senders, remote_receivers, remote_senders;
   bool is_buffer_prepared;
 
   std::vector<MPI_Request> ghost_send_req, ghost_recv_req, remote_send_req, remote_recv_req;
@@ -53,8 +53,8 @@ class BilinearInterpolatingFunction: public CF_2
   };
 
   // methods
-  void send_node_buffers();
-  void recv_node_buffers();
+  void send_point_buffers();
+  void recv_point_buffers();
   void clear_buffer();
 
 public:
