@@ -1,244 +1,176 @@
 #include "semi_lagrangian.h"
+#include <src/bilinear_interpolating_function.h>
+#include <src/refine_coarsen.h>
+#include <src/petsc_compatibility.h>
+#include <mpi/mpi.h>
+#include <sc_notify.h>
 
-SemiLagrangian::SemiLagrangian(p4est_t *p4est_, p4est_nodes_t *nodes_)
+#include <p4est_vtk.h>
+#include <src/my_p4est_vtk.h>
+
+#include <iostream>
+#include <map>
+#include <vector>
+#include <algorithm>
+
+#define XY_TAG 0
+#define PHI_TAG 1
+#define SIZE_TAG 2
+
+SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, my_p4est_brick_t *myb)
+  : p_p4est_(p4est), p4est_(*p4est),
+    p_nodes_(nodes), nodes_(*nodes),
+    myb_(myb)
 {
-  update(p4est_, nodes_);
-  tc = 0;
+  // compute domain sizes
+  double *v2c = p4est_->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
+  p4est_topidx_t first_tree = 0, last_tree = p4est_->trees->elem_count-1;
+
+  xmin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 0];
+  ymin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 1];
+  xmax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 0];
+  ymax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 1];
 }
 
-void SemiLagrangian::update(p4est_t *p4est_, p4est_nodes_t *nodes_)
-{
-  p4est = p4est_;
-  nodes = nodes_;
+double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
+  p4est_ghost_t *ghost = p4est_ghost_new(p4est_, P4EST_CONNECT_DEFAULT);
 
-  is_processed.reallocate(nodes->num_owned_indeps);
-  is_processed = false;
+  BilinearInterpolatingFunction bif(p4est_, nodes_, ghost, myb_);
 
-  departure_point.reallocate(p4est->mpisize);
-  departing_node.reallocate(p4est->mpisize);
+  double dt = compute_dt(vx, vy);
+  p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex; // tree to vertex list
+  double *t2c = p4est_->connectivity->vertices; // coordinates of the vertices of a tree
 
-  e2n = nodes->local_nodes;
-}
-
-void SemiLagrangian::advect(CF_2 &velx, CF_2 &vely, double dt, Vec& phi)
-{
+  // Create new Vec
   Vec phi_np1;
   ierr = VecDuplicate(phi, &phi_np1); CHKERRXX(ierr);
 
-  double *phi_val;
-  ierr = VecGetArray(phi,  &phi_val);  CHKERRXX(ierr);
+  // Loop through all nodes of local processor and separate nodes into local and non-local vectors
+  // Local vectors will be used normally (serial).
+  // Non-local vectors will need sent to non-local processors in order to compute data
 
-  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  double         *v2q = p4est->connectivity->vertices;
+  p4est_locidx_t ni_begin = 0;
+  p4est_locidx_t ni_end   = nodes_->num_owned_indeps;
 
-  p4est_topidx_t p4est_mm = t2v[0];
-  p4est_topidx_t p4est_pp = t2v[p4est->connectivity->num_trees * P4EST_CHILDREN - 1];
+  for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
+    p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, ni+nodes_->offset_owned_indeps);
+    p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
 
-  double domain_xmin = v2q[3*p4est_mm + 0];
-  double domain_ymin = v2q[3*p4est_mm + 1];
-  double domain_xmax = v2q[3*p4est_pp + 0];
-  double domain_ymax = v2q[3*p4est_pp + 1];
+    p4est_topidx_t tr_mm = t2v[P4EST_CHILDREN*tree_idx + 0];  //mm vertex of tree
+    double tr_xmin = t2c[3 * tr_mm + 0];
+    double tr_ymin = t2c[3 * tr_mm + 1];
 
-  ostringstream oss; oss << "xy." << tc; tc++;
-  FILE *xy_file = fopen(oss.str().c_str(), "w");
-
-  // Loop over all local trees
-  for (p4est_topidx_t tr_it = p4est->first_local_tree; tr_it <= p4est->last_local_tree; ++tr_it)
-  {
-    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tr_it);
-
-    p4est_topidx_t v_mm = t2v[ tr_it   *P4EST_CHILDREN + 0];
-    p4est_topidx_t v_pp = t2v[(tr_it+1)*P4EST_CHILDREN - 1];
-
-    double tr_xmin = v2q[3*v_mm + 0];
-    double tr_ymin = v2q[3*v_mm + 1];
-    double tr_xmax = v2q[3*v_pp + 0];
-    double tr_ymax = v2q[3*v_pp + 1];
-
-    double tr_lx   = tr_xmax - tr_xmin;
-    double tr_ly   = tr_ymax - tr_ymin;
-
-    // Loop over local quadrants
-    for (p4est_locidx_t qu_it = 0; qu_it < (p4est_locidx_t)tree->quadrants.elem_count; ++qu_it)
+    //Find initial xy points
+    double xy[] =
     {
-      p4est_locidx_t quad_locidx = qu_it + tree->quadrants_offset;
-
-      // Loop over 4 corners
-      for (unsigned short cj = 0; cj<2; ++cj)
-      {
-        for (unsigned short ci = 0; ci<2; ++ci)
-        {
-          p4est_locidx_t p4est_node_locidx = e2n[quad_locidx*P4EST_CHILDREN + 2*cj + ci];
-          p4est_locidx_t petsc_node_locidx = p4est2petsc_local_numbering(nodes, p4est_node_locidx);
-
-          if (petsc_node_locidx >= nodes->num_owned_indeps)
-            continue;
-
-          if (!is_processed(petsc_node_locidx))
-          {
-            p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, p4est_node_locidx);
-
-            double x = ((double)(node->x) / (double)P4EST_ROOT_LEN) * tr_lx + tr_xmin;
-            double y = ((double)(node->y) / (double)P4EST_ROOT_LEN) * tr_ly + tr_ymin;
-            double xy[2];
-
-            xy[0] = x - dt*velx(x, y);
-            xy[1] = y - dt*vely(x, y);
-
-            // clamp on the walls
-            if (xy[0] <= domain_xmin) xy[0] = domain_xmin;
-            if (xy[0] >= domain_xmax) xy[0] = domain_xmax;
-            if (xy[1] <= domain_ymin) xy[1] = domain_ymin;
-            if (xy[1] >= domain_ymax) xy[1] = domain_ymax;
-
-            fprintf(xy_file, "%.15lf \t %.15lf\n",xy[0], xy[1]);
-
-            p4est_topidx_t which_tree = tr_it;
-            int departure_point_rank = my_p4est_brick_point_lookup_smallest(p4est, NULL, NULL, xy, &which_tree, NULL, NULL);
-
-            departing_node(departure_point_rank).push(petsc_node_locidx);
-            departure_point(departure_point_rank).push(xy[0]);
-            departure_point(departure_point_rank).push(xy[1]);
-
-            is_processed(petsc_node_locidx) = true;
-          }
-        }
-      }
-    }
-  }
-
-  fclose(xy_file);
-
-  ArrayV<int> receivers;
-  for (int r = 0; r<p4est->mpisize; ++r)
-  {
-    if (departing_node(r).size()!=0 && r != p4est->mpirank)
-    {
-      receivers.push(r);
-    }
-  }
-
-  ArrayV<int> senders(p4est->mpisize);
-  int *sender_buffer   = (int*) senders;
-  int *receiver_buffer = (int*) receivers;
-  int num_senders;
-  sc_notify(receiver_buffer, receivers.size(), sender_buffer, &num_senders, p4est->mpicomm);
-
-  // Send relavanty information to corresponding processors
-  for (int r = 0; r<receivers.size(); ++r)
-  {
-      double *send_buffer = (double*)departure_point(r);
-      int buffer_size = departure_point.size();
-
-      MPI_Send((void*)&buffer_size, 1, MPI_INT, receivers(r), SIZE_TAG, p4est->mpicomm);
-      MPI_Send((void*)send_buffer, departure_point(r).size(), MPI_DOUBLE, receivers(r), POINT_TAG, p4est->mpicomm);
-  }
-
-  for (int r = 0; r<num_senders; ++r)
-  {
-    ArrayV<double> received_departure_points;
-    int buffer_size;
-    MPI_Status st;
-    MPI_Recv(&buffer_size, 1, MPI_INT, senders(r), SIZE_TAG, p4est->mpicomm, &st);
-
-    received_departure_points.reallocate(buffer_size);
-    double *buffer = (double*)received_departure_points;
-    MPI_Recv(buffer, buffer_size, MPI_DOUBLE, senders(r), POINT_TAG, p4est->mpicomm, &st);
-
-    ArrayV<double> phi_interpolated(buffer_size/2);
-    for (int i = 0; i<buffer_size/2; ++i)
-    {
-      p4est_topidx_t tree_id = 0;
-      double xy [] = {received_departure_points(2*i), received_departure_points(2*i+1)};
-      p4est_quadrant_t *departure_quadrant;
-      p4est_locidx_t departure_quadrant_locidx;
-      my_p4est_brick_point_lookup_smallest(p4est, NULL, NULL, xy, &tree_id, &departure_quadrant_locidx, &departure_quadrant);
-
-      p4est_locidx_t nodes_locidx [] =
-      {
-        e2n[departure_quadrant_locidx*P4EST_CHILDREN + 0],
-        e2n[departure_quadrant_locidx*P4EST_CHILDREN + 1],
-        e2n[departure_quadrant_locidx*P4EST_CHILDREN + 2],
-        e2n[departure_quadrant_locidx*P4EST_CHILDREN + 3]
-      };
-
-      for (int i = 0 ; i<4; ++i)
-        nodes_locidx[i] = p4est2petsc_local_numbering(nodes, nodes_locidx[i]);
-
-      double phi_buffer [] =
-      {
-        phi_val[nodes_locidx[0]],
-        phi_val[nodes_locidx[1]],
-        phi_val[nodes_locidx[2]],
-        phi_val[nodes_locidx[3]]
-      };
-
-      phi_interpolated(i) = bilinear_interpolation(p4est, tree_id, departure_quadrant, phi_buffer, xy[0], xy[1]);
-    }
-
-    double *phi_interpolated_buffer = (double*)phi_interpolated;
-    MPI_Send(phi_interpolated_buffer, phi_interpolated.size(), MPI_DOUBLE, senders(r), LVLSET_TAG, p4est->mpicomm);
-  }
-
-  for (int r = 0; r<receivers.size(); ++r)
-  {
-    ArrayV<double> phi_interpolated_received(departing_node.size());
-    double *phi_buffer = (double*)phi_interpolated_received;
-    MPI_Recv(phi_buffer, phi_interpolated_received.size(), MPI_DOUBLE, receivers(r), LVLSET_TAG, p4est->mpicomm, &st);
-
-    ierr = VecSetValues(phi_np1, phi_interpolated_received.size(), (p4est_locidx_t*)departing_node(r), phi_buffer, INSERT_VALUES); CHKERRXX(ierr);
-  }
-
-  // TODO: Now we need to update our local values at the departing nodes of the level-set function based on the local departure points
-  ArrayV<double> phi_interpolated(departing_node(p4est->mpirank).size());
-  for (p4est_locidx_t n = 0; n<departing_node(p4est->mpirank).size(); ++n)
-  {
-    p4est_topidx_t tree_id = 0;
-    double xy [] = {departure_point(p4est->mpirank)(2*n), departure_point(p4est->mpirank)(2*n+1)};
-    p4est_quadrant_t *departure_quadrant;
-    p4est_locidx_t departure_quadrant_locidx;
-
-    my_p4est_brick_point_lookup_smallest(p4est, NULL, NULL, xy, &tree_id, &departure_quadrant_locidx, &departure_quadrant);
-    p4est_tree_t *departure_tree = p4est_tree_array_index(p4est->trees, tree_id);
-    departure_quadrant_locidx += departure_tree->quadrants_offset;
-
-    p4est_locidx_t nodes_locidx [] =
-    {
-      e2n[departure_quadrant_locidx*P4EST_CHILDREN + 0],
-      e2n[departure_quadrant_locidx*P4EST_CHILDREN + 1],
-      e2n[departure_quadrant_locidx*P4EST_CHILDREN + 2],
-      e2n[departure_quadrant_locidx*P4EST_CHILDREN + 3]
+      int2double_coordinate_transform(indep_node->x) + tr_xmin,
+      int2double_coordinate_transform(indep_node->y) + tr_ymin
     };
 
-    for (int i = 0 ; i<4; ++i)
-      nodes_locidx[i] = p4est2petsc_local_numbering(nodes, nodes_locidx[i]);
-
-    double phi_buffer [] =
+    // find the departure node via backtracing
+    double xy_departure[] =
     {
-      phi_val[nodes_locidx[0]],
-      phi_val[nodes_locidx[1]],
-      phi_val[nodes_locidx[2]],
-      phi_val[nodes_locidx[3]]
+      xy[0] - dt*vx(xy[0], xy[1]),
+      xy[1] - dt*vy(xy[0], xy[1])
     };
 
-    phi_interpolated(n) = bilinear_interpolation(p4est, tree_id, departure_quadrant, phi_buffer, xy[0], xy[1]);
+    // make the domain periodic
+    if (xy_departure[0] > xmax)
+      xy_departure[0] -= xmax - xmin;
+    else if (xy_departure[0] < xmin)
+      xy_departure[0] += xmax - xmin;
+    if (xy_departure[1] > ymax)
+      xy_departure[1] -= ymax - ymin;
+    else if (xy_departure[1] < ymin)
+      xy_departure[1] += ymax - ymin;
 
+    //Buffer the point for interpolation
+    bif.add_point_to_buffer(ni, xy_departure[0], xy_departure[1]);
   }
 
-  double *phi_buffer = (double*)phi_interpolated;
-  ierr =  VecSetValues(phi_np1, phi_interpolated.size(), (p4est_locidx_t*)(departing_node(p4est->mpirank)), phi_buffer, INSERT_VALUES); CHKERRXX(ierr);
+  //Set the vector we want to interpolate from. Our input vector
+  bif.update_vector(phi);
 
-  // Assemble the vector
-  ierr = VecAssemblyBegin(phi_np1); CHKERRXX(ierr);
-  ierr = VecAssemblyEnd(phi_np1); CHKERRXX(ierr);
+  //Interpolate into our output vector
+  bif.interpolate(phi_np1);
 
-  ierr = VecRestoreArray(phi,  &phi_val);  CHKERRXX(ierr);
-
-  ierr = VecDestroy(phi); CHKERRXX(ierr);
-  phi  = phi_np1;
-
-  // Update the ghost values
+  // update the p4est
+  ierr = VecDestroy(phi); CHKERRXX(ierr); phi = phi_np1;
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  update_p4est(phi, ghost);
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
+  p4est_ghost_destroy(ghost);
+
+  return dt;
 }
+
+void SemiLagrangian::update_p4est(Vec &phi,    p4est_ghost_t *ghost){
+
+  // make a new copy of p4est object -- we are going to modify p4est but we
+  // still need the old one ...
+  p4est_connectivity_t *conn = p4est_->connectivity;
+  p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);//p4est_new(p4est_->mpicomm, conn, 0, NULL, NULL);
+
+  // define an interpolating function
+  BilinearInterpolatingFunction bif(p4est_, nodes_, ghost, myb_);
+  bif.update_vector(phi);
+
+  // now refine/coarsen the new copy of p4est -- note that we need to swap
+  // level-set function since it has moved
+  splitting_criteria_cf_t *data = (splitting_criteria_cf_t*)(p4est_->user_pointer);
+  data->phi = &bif;
+  p4est_np1->user_pointer = data;
+  p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_grid_transfer, NULL);
+  p4est_refine(p4est_np1, P4EST_TRUE, refine_grid_transfer, NULL);
+  p4est_partition(p4est_np1, NULL);
+
+  // now compute a new node data structure
+  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
+  //p4est_nodes_t *nodes_np1 = nodes_;
+
+  // update the values at the new time-step
+  Vec phi_np1;
+  ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+
+   // * Now we need to transfer data from the old grid to the new grid. Since this
+   //* will generally involve interpolating from other processors, we need to put
+   //* things in groups just as we did before
+
+  p4est_locidx_t ni_begin = 0;
+  p4est_locidx_t ni_end   = nodes_np1->num_owned_indeps;
+  for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
+    p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni+nodes_np1->offset_owned_indeps);
+    p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
+
+
+    p4est_topidx_t v_mm = conn->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+
+    double tree_xmin = conn->vertices[3*v_mm + 0];
+    double tree_ymin = conn->vertices[3*v_mm + 1];
+
+    double xy_node [] =
+    {
+      int2double_coordinate_transform(indep_node->x) + tree_xmin,
+      int2double_coordinate_transform(indep_node->y) + tree_ymin
+    };
+
+    bif.add_point_to_buffer(ni, xy_node[0], xy_node[1]);
+  }
+
+  //Interpolate into our output vector
+  bif.interpolate(phi_np1);
+
+  // Update ghost values
+
+  // now that everything is updated, get rid of old stuff and swap them with
+  // new ones
+  p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
+  p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
+  ierr = VecDestroy(phi); CHKERRXX(ierr);
+  phi = phi_np1;
+}
+

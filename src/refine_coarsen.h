@@ -3,7 +3,6 @@
 
 #include <p4est.h>
 
-#include <src/utilities.h>
 #include <src/utils.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_nodes.h>

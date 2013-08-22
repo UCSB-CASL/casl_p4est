@@ -59,6 +59,9 @@ my_p4est_brick_point_lookup_real (p4est_t * p4est, p4est_ghost_t * ghost,
                                   p4est_locidx_t * which_quad,
                                   p4est_quadrant_t ** quad)
 {
+  (void) ghost;
+  (void) myb;
+
   const p4est_connectivity_t *conn = p4est->connectivity;
   const p4est_topidx_t *t2v = conn->tree_to_vertex;
   const int            last    = P4EST_CHILDREN - 1;

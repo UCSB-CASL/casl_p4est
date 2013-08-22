@@ -156,7 +156,7 @@ p4est_locidx_t p4est2petsc_local_numbering(p4est_nodes_t *nodes, p4est_locidx_t 
 #ifdef CASL_THROWS
   if (p4est_node_locidx < 0 || p4est_node_locidx >= (p4est_locidx_t)nodes->indep_nodes.elem_count)
   {
-    std::stringstream oss; oss << "[CASL_ERROR]: node index " << p4est_node_locidx << " is out of bound" << endl;
+    std::stringstream oss; oss << "[CASL_ERROR]: node index " << p4est_node_locidx << " is out of bound" << std::endl;
     throw std::invalid_argument(oss.str());
   }
 #endif

@@ -7,7 +7,6 @@
 #include <src/my_p4est_tools.h>
 #include <mpi.h>
 
-namespace parallel{
 class BilinearInterpolatingFunction: public CF_2
 {
   p4est_t *p4est_;
@@ -67,6 +66,5 @@ public:
   void interpolate(Vec& Fo);
   double operator()(double x, double y) const;
 };
-} // namepace parallel
 
 #endif // BILINEAR_INTERPOLATING_FUNCTION_H
