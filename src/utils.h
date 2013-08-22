@@ -2,8 +2,7 @@
 #define UTILS_H
 
 // casl_p4est
-#include "my_p4est_nodes.h"
-#include "ArrayV.h"
+#include <p4est_nodes.h>
 
 // p4est
 #include <p4est.h>
@@ -15,11 +14,126 @@
 #include <stdexcept>
 #include <sstream>
 
-// Some Macros
-#define EPS 1e-12
+class CF_1
+{
+public:
+  double lip;
+  virtual double operator()(double x) const=0 ;
+  virtual ~CF_1() {}
+};
+
+
+class CF_2
+{
+public:
+  double lip;
+  virtual double operator()(double x, double y) const=0 ;
+  virtual ~CF_2() {}
+};
+
+class CF_3
+{
+public:
+  double lip;
+  virtual double operator()(double x, double y,double z) const=0 ;
+  virtual ~CF_3() {}
+};
+
+// p4est boolean type
+typedef int p4est_bool_t;
 #define P4EST_TRUE  1
 #define P4EST_FALSE 0
-typedef int p4est_bool_t;
+
+// Some Macros
+#define EPS 1e-12
+#ifndef ABS
+#define ABS(a) ((a)>0 ? (a) : -(a))
+#endif
+
+#ifndef MIN
+#define MIN(a,b) ((a)>(b)?(b):(a))
+#endif
+
+#ifndef MAX
+#define MAX(a,b) ((a)<(b)?(b):(a))
+#endif
+
+#ifndef SQR
+#define SQR(a) (a)*(a)
+#endif
+
+inline double DELTA( double x, double h )
+{
+  if( x > h ) return 0;
+  if( x <-h ) return 0;
+  else      return (1+cos(M_PI*x/h))*0.5/h;
+}
+
+inline double HVY( double x, double h )
+{
+  if( x > h ) return 1;
+  if( x <-h ) return 0;
+  else      return (1+x/h+sin(M_PI*x/h)/M_PI)*0.5;
+}
+
+inline double HVY( double x, double x0, double h )
+{
+  if( x - x0 > h ) return 1;
+  if( x - x0 <-h ) return 0;
+  else      return (1+(x-x0)/h+sin(M_PI*(x-x0)/h)/M_PI)*0.5;
+}
+
+inline double SGN( double x, double h )
+{
+  if( x > h ) return  1;
+  if( x <-h ) return -1;
+  else      return x/h+sin(M_PI*x/h)/M_PI;
+}
+
+inline double MINMOD( double a, double b )
+{
+  if(a*b<=0) return 0;
+  else
+  {
+    if((ABS(a))<(ABS(b))) return a;
+    else                  return b;
+  }
+}
+
+inline double HARMOD( double a, double b )
+{
+  if(a*b<=0) return 0;
+  else
+  {
+    if(a<0) a=-a;
+    if(b<0) b=-b;
+
+    return 2*a*b/(a+b);
+  }
+}
+
+inline double ENO2( double a, double b )
+{
+  if(a*b<=0) return 0;
+  else
+  {
+    if((ABS(a))<(ABS(b))) return a;
+    else                  return b;
+  }
+}
+
+inline double SUPERBEE( double a, double b )
+{
+  if(a*b<=0) return 0;
+  else
+  {
+    double theta = b/a;
+    if(theta<0.5) return 2*b;
+    if(theta<1.0) return a;
+    if(theta<2.0) return b;
+    else          return 2*a;
+  }
+}
 
 /*!
  * \brief c2p_coordinate_transform Converts local (within tree [0,1]) coordinates into global coordinates
@@ -106,6 +220,54 @@ public:
     p4est_init (NULL, SC_LP_SILENT);
   }
 };
+
+class parStopWatch{
+public:
+  typedef enum{
+    root_timings,
+    all_timings
+  } stopwatch_timing;
+
+private:
+  double ts, tf;
+  MPI_Comm comm_;
+  int mpirank;
+  std::string msg_;
+  stopwatch_timing timing_;
+
+public:   
+
+  parStopWatch(stopwatch_timing timing = root_timings, MPI_Comm comm = MPI_COMM_WORLD)
+    : comm_(comm), timing_(timing)
+  {
+    MPI_Comm_rank(comm_, &mpirank);
+  }
+
+  void start(const std::string& msg){
+    msg_ = msg;
+    PetscPrintf(comm_, "%s ... \n", msg.c_str());
+    ts = MPI_Wtime();
+  }
+
+  void stop(){
+    tf = MPI_Wtime();
+  }
+
+  double read_duration(){
+    double elap = tf - ts;
+
+    PetscPrintf(comm_, "%s ... done in ", msg_.c_str());
+    if (timing_ == all_timings){
+      PetscSynchronizedPrintf(comm_, "\n   %.4lf secs. on process %2d",elap, mpirank);
+      PetscSynchronizedFlush(comm_);
+      PetscPrintf(comm_, "\n");
+    } else {
+      PetscPrintf(comm_, " %.4lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
+    }
+    return elap;
+  }
+};
+
 
 typedef struct
 {

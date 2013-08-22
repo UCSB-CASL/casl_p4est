@@ -2,17 +2,19 @@
 #define NEIGHBORS_H
 
 #include <p4est_mesh.h>
-#include <p4est_nodes.h>
+#include <src/my_p4est_nodes.h>
 
-#include <src/ArrayV.h>
+#include <vector>
+#include <stdexcept>
 #include <sstream>
 #include <map>
 
-using std::map; using std::cout; using std::endl;
+using std::map; using std::cout; using std::endl; using std::vector;
+using std::invalid_argument; using std::runtime_error;
 
 class CellNeighbors{
 public:
-  typedef ArrayV<p4est_quadrant_t*> quad_array;
+  typedef vector<p4est_quadrant_t*> quad_array;
 private:
 
   p4est_ghost_t *ghost;
@@ -29,7 +31,7 @@ private:
   p4est_locidx_t n_local,n_ghost;
   p4est_gloidx_t *global_proc_offset;
 
-  ArrayV<quad_array> ngbd [4];
+  vector<quad_array> ngbd [4];
   std::map<p4est_gloidx_t, p4est_locidx_t> global2local_map;
 
   bool initialized;
@@ -53,7 +55,7 @@ public:
     n_ghost = mesh->ghost_num_quadrants;
 
     for (short i=0; i<P4EST_FACES; ++i)
-      ngbd[i].reallocate(n_local);
+      ngbd[i].resize(n_local);
 
     initialized = false;
 
@@ -102,7 +104,7 @@ public:
     }
   }
 
-  inline const ArrayV<quad_array>&
+  inline const vector<quad_array>&
   get_face_neighbors(const short& face_id) {
 #ifdef CASL_THROWS
     if (!initialized)
@@ -113,7 +115,7 @@ public:
     return ngbd[face_id];
   }
 
-  inline const ArrayV<quad_array>&
+  inline const vector<quad_array>&
   get_m0_neighbors() {
 #ifdef CASL_THROWS
     if (!initialized)
@@ -122,7 +124,7 @@ public:
     return ngbd[0];
   }
 
-  inline const ArrayV<quad_array>&
+  inline const vector<quad_array>&
   get_p0_neighbors() {
 #ifdef CASL_THROWS
     if (!initialized)
@@ -131,7 +133,7 @@ public:
     return ngbd[1];
   }
 
-  inline const ArrayV<quad_array>&
+  inline const vector<quad_array>&
   get_0m_neighbors() {
 #ifdef CASL_THROWS
     if (!initialized)
@@ -140,7 +142,7 @@ public:
     return ngbd[2];
   }
 
-  inline const ArrayV<quad_array>&
+  inline const vector<quad_array>&
   get_0p_neighbors() {
 #ifdef CASL_THROWS
     if (!initialized)
@@ -154,7 +156,7 @@ public:
 
 class NodeNeighbors{
 public:
-    typedef ArrayV<p4est_indep_t*> node_array;
+    typedef vector<p4est_indep_t*> node_array;
 
 private:
 

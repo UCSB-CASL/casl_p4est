@@ -5,7 +5,6 @@
 #include <fstream>
 #include <set>
 
-namespace parallel{
 BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est,
                                                              p4est_nodes_t *nodes,
                                                              p4est_ghost_t *ghost,
@@ -45,11 +44,11 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const {
                                                xy, &best_match, remote_matches);
 #ifdef CASL_THROWS
   if (rank_found != p4est_->mpirank){
-    ostringstream oss;
+    std::ostringstream oss;
     oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") does not belong to "
            "processor " << p4est_->mpirank << ". Found rank = " << rank_found <<
-           " and remote_macthes.size = " << remote_matches->elem_count << endl;
-    throw invalid_argument(oss.str());
+           " and remote_macthes.size = " << remote_matches->elem_count << std::endl;
+    throw std::invalid_argument(oss.str());
   }
 #endif
 
@@ -159,99 +158,135 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
   is_buffer_prepared = false;
 }
 
-void BilinearInterpolatingFunction::prepare_buffer()
+void BilinearInterpolatingFunction::send_point_buffers()
 {  
   /*
    * We will do this is two steps:
-   * 1) Send/Recv the ghost buffers
-   * 2) Send/Recv the remote buffers
+   * 1) Send the ghost buffers
+   * 2) Send the remote buffers
    */
 
   // 1) Ghost buffers
   {
+    int req_counter = 0;
+
     ghost_transfer_map::iterator it = ghost_send_buffer.begin(), end = ghost_send_buffer.end();
     for (;it != end; ++it)
-      ghost_recievers.push_back(it->first);
+      ghost_receivers.push_back(it->first);
 
     // notify the other processors
     int num_senders;
-    sc_notify(&ghost_recievers[0], ghost_recievers.size(), &ghost_senders[0], &num_senders, p4est_->mpicomm);
+    sc_notify(&ghost_receivers[0], ghost_receivers.size(), &ghost_senders[0], &num_senders, p4est_->mpicomm);
     ghost_senders.resize(num_senders);
 
+    // Allocate enough requests slots
+    ghost_send_req.resize(ghost_receivers.size());
+
     // Now that we know all sender/receiver pairs lets do MPI. We do blocking
-    for (it = ghost_send_buffer.begin(); it != end; ++it){
+    for (it = ghost_send_buffer.begin(); it != end; ++it, ++req_counter){
       std::vector<ghost_point_info>& buff = it->second;
 
       int msg_size = buff.size()*sizeof(ghost_point_info);
-      MPI_Send(&msg_size, 1, MPI_INT, it->first , size_tag, p4est_->mpicomm);
-      MPI_Send(reinterpret_cast<char*>(&buff[0]), msg_size, MPI_BYTE, it->first, ghost_point_tag, p4est_->mpicomm);
-    }
-
-    // Now lets receive the stuff
-    for (int i=0; i<num_senders; ++i){
-      std::vector<ghost_point_info>& buff = ghost_recv_buffer[ghost_senders[i]];
-
-      // Get the size
-      int msg_size;
-      MPI_Recv(&msg_size, 1, MPI_INT, ghost_senders[i], size_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
-
-      /*
-       * resize the buffer -- remember to rescale it with the size of
-       * ghost_point_info since the data arrives in serialized
-       */
-      buff.resize(msg_size/sizeof(ghost_point_info));
-
-      // Receive the data
-      MPI_Recv(reinterpret_cast<char*>(&buff[0]), msg_size, MPI_BYTE, ghost_senders[i], ghost_point_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
+      MPI_Isend(reinterpret_cast<char*>(&buff[0]), msg_size, MPI_BYTE, it->first, ghost_point_tag, p4est_->mpicomm, &ghost_send_req[req_counter]);
     }
   }
 
   // 2) Remote buffers
   {
+    int req_counter = 0;
+
     remote_transfer_map::iterator it = remote_send_buffer.begin(), end = remote_send_buffer.end();
     for (;it != end; ++it)
-      remote_recievers.push_back(it->first);
+      remote_receivers.push_back(it->first);
 
     // notify the other processors
     int num_senders;
-    sc_notify(&remote_recievers[0], remote_recievers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);
+    sc_notify(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);
     remote_senders.resize(num_senders);
 
+    // Allocate enough requests slots
+    remote_send_req.resize(remote_receivers.size());
+
     // Now that we know all sender/receiver pairs lets do MPI. We do blocking
-    for (it = remote_send_buffer.begin(); it != end; ++it){
+    for (it = remote_send_buffer.begin(); it != end; ++it, ++req_counter){
 
       std::vector<double>& buff = it->second;
       int msg_size = buff.size();
 
-      MPI_Send(&msg_size, 1, MPI_INT, it->first, size_tag, p4est_->mpicomm);
-      MPI_Send(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm);
+      MPI_Isend(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm, &remote_send_req[req_counter]);
     }
+  }
+}
+
+void BilinearInterpolatingFunction::recv_point_buffers()
+{
+  /*
+   * We will do this is two steps:
+   * 1) Recv the ghost buffers
+   * 2) Recv the remote buffers
+   */
+
+  // 1) Ghost buffers
+  {
+    // Allocate enough requests slots
+    ghost_recv_req.resize(ghost_senders.size());
 
     // Now lets receive the stuff
-    for (int i=0; i<num_senders; ++i){
+    for (size_t i=0; i<ghost_senders.size(); ++i){
+      std::vector<ghost_point_info>& buff = ghost_recv_buffer[ghost_senders[i]];
+
+      /* Get the message size and resize the recv buffer
+       * Note: We are receiving data as MPI_BYTE and thus we require to devide
+       * by sizeof(ghost_point_info) to get the number of elements
+       */
+      int msg_size;
+      MPI_Status st;
+      MPI_Probe(ghost_senders[i], ghost_point_tag, p4est_->mpicomm, &st);
+      MPI_Get_count(&st, MPI_BYTE, &msg_size);
+      buff.resize(msg_size/sizeof(ghost_point_info));
+
+      // Receive the data -- nonblocking
+      MPI_Irecv(reinterpret_cast<char*>(&buff[0]), msg_size, MPI_BYTE, ghost_senders[i], ghost_point_tag, p4est_->mpicomm, &ghost_recv_req[i]);
+    }
+  }
+
+  // 2) Remote buffers
+  {
+    // Allocate enough requests slots
+    remote_recv_req.resize(remote_senders.size());
+
+    // Now lets receive the stuff
+    for (size_t i=0; i<remote_senders.size(); ++i){
       std::vector<double>& buff = remote_recv_buffer[remote_senders[i]];
 
-      // Get the size
+      // Get the size and resize the recv buffer
       int msg_size;
-      MPI_Recv(&msg_size, 1, MPI_INT, remote_senders[i], size_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
-
-      // resize the buffer
+      MPI_Status st;
+      MPI_Probe(remote_senders[i], remote_point_tag, p4est_->mpicomm, &st);
+      MPI_Get_count(&st, MPI_DOUBLE, &msg_size);
       buff.resize(msg_size);
 
       // Receive the data
-      MPI_Recv(&buff[0], msg_size, MPI_DOUBLE, remote_senders[i], remote_point_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
+      MPI_Irecv(&buff[0], msg_size, MPI_DOUBLE, remote_senders[i], remote_point_tag, p4est_->mpicomm, &remote_recv_req[i]);
     }
   }
+
+  // Wait for all non-blocing recv to finish
+  MPI_Waitall(ghost_send_req.size() , &ghost_send_req[0] , MPI_STATUS_IGNORE);
+  MPI_Waitall(remote_send_req.size(), &remote_send_req[0], MPI_STATUS_IGNORE);
+  MPI_Waitall(ghost_recv_req.size() , &ghost_recv_req[0] , MPI_STATUS_IGNORE);
+  MPI_Waitall(remote_recv_req.size(), &remote_recv_req[0], MPI_STATUS_IGNORE);
 
   is_buffer_prepared = true;
 }
 
 void BilinearInterpolatingFunction::interpolate(Vec& Fo)
 {
+  // send point buffers
   if (!is_buffer_prepared)
-    prepare_buffer();
+    send_point_buffers();
 
-  PetscErrorCode ierr;  
+  PetscErrorCode ierr;
 
   // Get a pointer to the data
   double *Fi_ptr, *Fo_ptr;
@@ -290,45 +325,41 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
     Fo_ptr[node_idx] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
   }
 
+  // recieve point buffers
+  if (!is_buffer_prepared)
+    recv_point_buffers();
+
   // Do interpolation for ghost points and the send the results
+  typedef std::map<int, std::vector<double> > data_transfer_map;
+  data_transfer_map f_ghost_send, f_remote_send;
   {
     ghost_transfer_map::iterator it = ghost_recv_buffer.begin(),
         end = ghost_recv_buffer.end();
 
-    for (; it != end; ++it)
+    ghost_send_req.resize(ghost_senders.size());
+    int req_counter = 0;
+    for (; it != end; ++it, ++req_counter)
     {
+      int send_rank = it->first;
       std::vector<ghost_point_info>& recv_info = it->second;
-      std::vector<double> f_send;
 
+      std::vector<double>& f_send = f_ghost_send[send_rank];
       f_send.resize(recv_info.size());
+
       for (size_t i=0; i<recv_info.size(); ++i){
         double *xy = &recv_info[i].xy[0];
         p4est_topidx_t tree_idx = recv_info[i].tree_idx;
         p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
         p4est_quadrant_t &quad = *(p4est_quadrant_t*)sc_array_index(&tree->quadrants, recv_info[i].quad_locidx-tree->quadrants_offset);
-        p4est_locidx_t quad_idx = recv_info[i].quad_locidx;// + tree->quadrants_offset;
+        p4est_locidx_t quad_idx = recv_info[i].quad_locidx;
 
         for (short j=0; j<P4EST_CHILDREN; ++j)
           f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
 
         f_send[i] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
-      }      
+      }
 
-      MPI_Send(&f_send[0], f_send.size(), MPI_DOUBLE, it->first, ghost_data_tag, p4est_->mpicomm);
-    }
-  }
-
-  // Receive the interpolated ghost data and put it in the correct location
-  {
-    for (size_t i = 0; i < ghost_recievers.size(); ++i)
-    {
-      int recv_rank = ghost_recievers[i];
-      std::vector<double> f_recv(ghost_send_buffer[recv_rank].size());
-      std::vector<p4est_locidx_t>& node_idx = ghost_node_index[recv_rank];
-      MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, ghost_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
-
-      for (size_t j=0; j<f_recv.size(); j++)
-        Fo_ptr[node_idx[j]] = f_recv[j];
+      MPI_Isend(&f_send[0], f_send.size(), MPI_DOUBLE, send_rank, ghost_data_tag, p4est_->mpicomm, &ghost_send_req[req_counter]);
     }
   }
 
@@ -336,11 +367,15 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
   {
     remote_transfer_map::iterator it = remote_recv_buffer.begin(),
         end = remote_recv_buffer.end();
-
-    for (; it != end; ++it )
+    remote_send_req.resize(remote_senders.size());
+    int req_counter = 0;
+    for (; it != end; ++it, ++req_counter)
     {
+      int send_rank = it->first;
       std::vector<double>& xy_recv = it->second;
-      std::vector<double> f_send(xy_recv.size()/2);
+
+      std::vector<double>& f_send = f_remote_send[send_rank];
+      f_send.resize(xy_recv.size()/2);
 
       for (size_t i=0; i<xy_recv.size()/2; i++)
       {
@@ -370,27 +405,43 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
         } else { /* if we dont the own teh point, and its not in the ghost layer
                   * this MUST be a bug or mistake so simply throw.
                   */
-          ostringstream oss;
+          std::ostringstream oss;
           oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") was flagged"
                  " as a remote point to either belong to processor "
               <<  p4est_->mpirank << " or be in its ghost layer, both of which"
-                 " have failed. Found rank is = " << rank_found
-              << " and remote_macthes->elem_count = "
-              << remote_matches->elem_count << ". This is most certainly a bug."
-              << endl;
-          throw runtime_error(oss.str());
+                  " have failed. Found rank is = " << rank_found
+               << " and remote_macthes->elem_count = "
+               << remote_matches->elem_count << ". This is most certainly a bug."
+               << std::endl;
+          throw std::runtime_error(oss.str());
         }
         sc_array_destroy(remote_matches);
       }
 
       // send the buffer
-      MPI_Send(&f_send[0], f_send.size(), MPI_DOUBLE, it->first, remote_data_tag, p4est_->mpicomm);
+      MPI_Isend(&f_send[0], f_send.size(), MPI_DOUBLE, send_rank, remote_data_tag, p4est_->mpicomm, &remote_send_req[req_counter]);
     }
+  }
 
-    // Receive the stuff and put them in the correct position.
-    for (size_t i=0; i<remote_recievers.size(); ++i)
+  // Receive the interpolated ghost data and put it in the correct location
+  {
+    for (size_t i = 0; i < ghost_receivers.size(); ++i)
     {
-      int recv_rank = remote_recievers[i];
+      int recv_rank = ghost_receivers[i];
+      std::vector<double> f_recv(ghost_send_buffer[recv_rank].size());
+      std::vector<p4est_locidx_t>& node_idx = ghost_node_index[recv_rank];
+      MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, ghost_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
+
+      for (size_t j=0; j<f_recv.size(); j++)
+        Fo_ptr[node_idx[j]] = f_recv[j];
+    }
+  }
+
+  // Receive the interpolated remote data and put them in the correct position.
+  {
+    for (size_t i=0; i<remote_receivers.size(); ++i)
+    {
+      int recv_rank = remote_receivers[i];
       std::vector<p4est_locidx_t>& node_idx = remote_node_index[recv_rank];
       std::vector<double> f_recv(node_idx.size());
       MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, remote_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
@@ -400,6 +451,9 @@ void BilinearInterpolatingFunction::interpolate(Vec& Fo)
       }
     }
   }
+
+  MPI_Waitall(ghost_send_req.size() , &ghost_send_req[0] , MPI_STATUS_IGNORE);
+  MPI_Waitall(remote_send_req.size(), &remote_send_req[0], MPI_STATUS_IGNORE);
 
   // Restore the pointer
   ierr = VecRestoreArray(Fi_, &Fi_ptr); CHKERRXX(ierr);
@@ -420,12 +474,12 @@ void BilinearInterpolatingFunction::clear_buffer()
   ghost_send_buffer.clear();
   ghost_recv_buffer.clear();
   ghost_node_index.clear();
-  ghost_recievers.clear();
+  ghost_receivers.clear();
 
   remote_send_buffer.clear();
   remote_recv_buffer.clear();
   remote_node_index.clear();
-  remote_recievers.clear();
+  remote_receivers.clear();
 
   p4est2petsc.clear();
 
@@ -456,5 +510,4 @@ void BilinearInterpolatingFunction::update_grid(p4est_t *p4est, p4est_nodes_t *n
     else
       p4est2petsc[i] = i;
   }
-}
 }

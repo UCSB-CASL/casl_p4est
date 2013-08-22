@@ -11,7 +11,6 @@
 #include <p4est_vtk.h>
 
 // casl_p4est
-#include <src/utilities.h>
 #include <src/utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
@@ -40,7 +39,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   circle circ(1, 1, .3);
-  splitting_criteria_cf_t data = {&circ, 8, 0, 1.0};
+  splitting_criteria_cf_t data = {&circ, 15, 0, 1.0};
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);

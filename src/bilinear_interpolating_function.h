@@ -5,8 +5,8 @@
 #include <src/utils.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
+#include <mpi.h>
 
-namespace parallel{
 class BilinearInterpolatingFunction: public CF_2
 {
   p4est_t *p4est_;
@@ -39,11 +39,12 @@ class BilinearInterpolatingFunction: public CF_2
   typedef std::map<int, std::vector<p4est_locidx_t> > nonlocal_node_map;
   nonlocal_node_map ghost_node_index, remote_node_index;
 
-  std::vector<int> ghost_recievers, ghost_senders, remote_recievers, remote_senders;
+  std::vector<int> ghost_receivers, ghost_senders, remote_receivers, remote_senders;
   bool is_buffer_prepared;
 
+  std::vector<MPI_Request> ghost_send_req, ghost_recv_req, remote_send_req, remote_recv_req;
+
   enum {
-    size_tag,
     ghost_point_tag,
     ghost_data_tag,
     remote_point_tag,
@@ -51,7 +52,8 @@ class BilinearInterpolatingFunction: public CF_2
   };
 
   // methods
-  void prepare_buffer();
+  void send_point_buffers();
+  void recv_point_buffers();
   void clear_buffer();
 
 public:
@@ -64,6 +66,5 @@ public:
   void interpolate(Vec& Fo);
   double operator()(double x, double y) const;
 };
-} // namepace parallel
 
 #endif // BILINEAR_INTERPOLATING_FUNCTION_H
