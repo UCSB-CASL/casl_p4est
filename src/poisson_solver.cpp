@@ -1,10 +1,5 @@
-
 #include "poisson_solver.h"
-
-#if (PETSC_VERSION_MINOR <= 1)
-#undef CHKERRXX
-#define CHKERRXX
-#endif
+#include "petsc_compatibility.h"
 
 PoissonSolver::PoissonSolver(p4est_t *p4est_, const CF_2& uex_, const CF_2 &f_)
   : p4est(p4est_), uex(&uex_), f(&f_)
@@ -73,7 +68,7 @@ void PoissonSolver::setUpNegativeLaplaceMatrix(){
     p4est_locidx_t qu_tree_offset = tree->quadrants_offset;
 
     // For a given tree, loop over all local cells
-    for (p4est_topidx_t qu = 0; qu<tree->quadrants.elem_count; ++qu){
+    for (size_t qu = 0; qu<tree->quadrants.elem_count; ++qu){
       p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, qu);
 
       p4est_gloidx_t qu_gloidx = qu_proc_offset + qu_tree_offset + qu;
@@ -346,8 +341,8 @@ void PoissonSolver::setUpNegativeLaplaceRhsVec(){
     p4est_locidx_t qu_tree_offset = tree->quadrants_offset;
 
     // For a given tree, loop over all local cells
-    for (p4est_topidx_t qu = 0; qu<tree->quadrants.elem_count; ++qu){
-      p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, qu); quad->p.which_tree = tr;
+    for (size_t qu = 0; qu<tree->quadrants.elem_count; ++qu){
+      p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, qu);
       p4est_gloidx_t qu_gloidx = qu_proc_offset + qu_tree_offset + qu;
 
       // xmWall
@@ -360,10 +355,11 @@ void PoissonSolver::setUpNegativeLaplaceRhsVec(){
       double x_c, y_c;
       xyz_quadrant(p4est, tr, quad, &x_c, &y_c, NULL);
 
-      ierr = VecSetValue(xex, qu_gloidx, (*uex)(x_c, y_c), INSERT_VALUES); CHKERRXX(ierr);
+      double val = (*uex)(x_c, y_c);
+      ierr = VecSetValue(xex, qu_gloidx, val, INSERT_VALUES); CHKERRXX(ierr);
 
       if(quad_is_boundary){
-        ierr = VecSetValue(b, qu_gloidx, (*uex)(x_c, y_c), INSERT_VALUES); CHKERRXX(ierr);
+        ierr = VecSetValue(b, qu_gloidx, val, INSERT_VALUES); CHKERRXX(ierr);
         continue;
       }
 
@@ -375,8 +371,10 @@ void PoissonSolver::setUpNegativeLaplaceRhsVec(){
   }
 
   ierr = VecAssemblyBegin(b); CHKERRXX(ierr);
-  ierr = VecAssemblyEnd(b); CHKERRXX(ierr);
+  ierr = VecAssemblyBegin(xex); CHKERRXX(ierr);
 
+  ierr = VecAssemblyEnd(b); CHKERRXX(ierr);
+  ierr = VecAssemblyEnd(xex); CHKERRXX(ierr);
   w.stop(); w.read_duration();
 
 }
@@ -387,46 +385,26 @@ void PoissonSolver::save(const string &filename){
 
   ierr = PetscViewerBinaryOpen(p4est->mpicomm, (filename + "_mat").c_str(), FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
   ierr = MatView(a, viewer); CHKERRXX(ierr);
-  #if (PETSC_VERSION_MINOR > 1)
-  ierr = PetscViewerDestroy(&viewer); CHKERRXX(ierr);
-  #else
   ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
-  #endif
 
   ierr = PetscViewerBinaryOpen(p4est->mpicomm, (filename + "_vec").c_str(), FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
   ierr = VecView(b, viewer); CHKERRXX(ierr);
-  #if (PETSC_VERSION_MINOR > 1)
-  ierr = PetscViewerDestroy(&viewer); CHKERRXX(ierr);
-  #else
   ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
-  #endif
 
 }
 
-#if 0
 void PoissonSolver::load(const string &filename){
 
   PetscViewer viewer;
 
   ierr = PetscViewerBinaryOpen(p4est->mpicomm, (filename + "_mat").c_str(), FILE_MODE_READ, &viewer); CHKERRXX(ierr);
   ierr = MatLoad(a, viewer); CHKERRXX(ierr);
-  #if (PETSC_VERSION_MINOR > 1)
-  ierr = PetscViewerDestroy(&viewer); CHKERRXX(ierr);
-  #else
   ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
-  #endif
-
 
   ierr = PetscViewerBinaryOpen(p4est->mpicomm, (filename + "_vec").c_str(), FILE_MODE_READ, &viewer); CHKERRXX(ierr);
   ierr = VecLoad(b, viewer); CHKERRXX(ierr);
-  #if (PETSC_VERSION_MINOR > 1)
-  ierr = PetscViewerDestroy(&viewer); CHKERRXX(ierr);
-  #else
   ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
-  #endif
 }
-#endif
-
 
 void PoissonSolver::solve(Vec& sol, Vec& sol_ex){
 
@@ -459,20 +437,11 @@ PoissonSolver::~PoissonSolver(){
   delete cell_ngbds;
 
   // Destroy PETSc objects
-  #if (PETSC_VERSION_MINOR > 1)
-  ierr = MatDestroy(&a); CHKERRXX(ierr);
-  ierr = VecDestroy(&x); CHKERRXX(ierr);
-  ierr = VecDestroy(&b); CHKERRXX(ierr);
-  ierr = VecDestroy(&xex); CHKERRXX(ierr);
-  ierr = KSPDestroy(&ksp); CHKERRXX(ierr);
-  #else
   ierr = MatDestroy(a); CHKERRXX(ierr);
   ierr = VecDestroy(x); CHKERRXX(ierr);
   ierr = VecDestroy(b); CHKERRXX(ierr);
   ierr = VecDestroy(xex); CHKERRXX(ierr);
   ierr = KSPDestroy(ksp); CHKERRXX(ierr);
-#endif
-
 }
 
 

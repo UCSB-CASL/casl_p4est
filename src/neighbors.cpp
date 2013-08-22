@@ -14,7 +14,7 @@ void CellNeighbors::Init(){
       p4est_locidx_t tree_offset = tree->quadrants_offset;
 
       // loop over all local quadrants
-      for (p4est_locidx_t qu = 0; qu<tree->quadrants.elem_count; ++qu){
+      for (size_t qu = 0; qu<tree->quadrants.elem_count; ++qu){
         p4est_locidx_t qu_locidx = qu + tree_offset;
 
         // Get a referrence to neighbors for this current quadrant
@@ -95,7 +95,6 @@ void NodeNeighbors::Init(){
 
   p4est_t *p4est = cell_ngbds->p4est;
   double rl = static_cast<double>(P4EST_ROOT_LEN);
-  string node_name [] = {"node_mm", "node_pm", "node_mp", "node_pp"};
 
   p4est_gloidx_t cum_sum = 0;
   for (int r=0; r<p4est->mpirank; ++r)
@@ -103,12 +102,12 @@ void NodeNeighbors::Init(){
 
   cout << "offset =  " << cum_sum << endl;
   cout << "nodes->shared_offsets = " << nodes->shared_offsets << endl;
-  for (int i=0; i<nodes->shared_indeps.elem_count; ++i){
+  for (size_t i=0; i<nodes->shared_indeps.elem_count; ++i){
     sc_recycle_array_t *shared_nodes = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, i);
     cout << "shared_nodes->elem_count = " << shared_nodes->elem_count << endl;
     cout << "shared_nodes->f.elem_count = " << shared_nodes->a.elem_count << endl;
 
-    for (int j=0; j<shared_nodes->elem_count; ++j){
+    for (size_t j=0; j<shared_nodes->elem_count; ++j){
       p4est_indep_t *shared_node = (p4est_indep_t*)sc_array_index(&shared_nodes->a, j);
       cout << "shared_node->x = " << (double)shared_node->y/rl << " ";
     }
