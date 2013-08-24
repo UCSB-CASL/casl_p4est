@@ -190,7 +190,7 @@ int main (int argc, char* argv[]){
     }
 
     // advect the function in time and get the computed time-step
-    w2.start("advecting");
+    w2.start("SL step");
     dt = sl.advect(vx_vortex, vy_vortex, phi);
     w2.stop(); w2.read_duration();
   }

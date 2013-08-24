@@ -136,6 +136,7 @@ int main (int argc, char* argv[]){
 
     // Create an interpolating function
     BilinearInterpolatingFunction bif(p4est, nodes, ghost, &brick);
+    bif.set_input_vector(phi);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
@@ -153,13 +154,10 @@ int main (int argc, char* argv[]){
       // buffer the point
       bif.add_point_to_buffer(i, x, y);
     }
-    // set the vector we want to interpolate from
-    bif.update_vector(phi);
 
-    // interpolate on to the new vector
+    // interpolate from old vec on to the new vector
     Vec phi_np1;
     ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
-
     bif.interpolate(phi_np1);
 
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

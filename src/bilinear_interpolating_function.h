@@ -14,7 +14,7 @@ class BilinearInterpolatingFunction: public CF_2
   p4est_ghost_t *ghost_;
   my_p4est_brick_t *myb_;
   std::vector<int> p4est2petsc;
-  Vec Fi_;
+  Vec input_vec_;
 
   struct{
     std::vector<double> xy;
@@ -52,18 +52,18 @@ class BilinearInterpolatingFunction: public CF_2
   };
 
   // methods
-  void send_point_buffers();
-  void recv_point_buffers();
+  void send_point_buffers_begin();
+  void recv_point_buffers_begin();
   void clear_buffer();
 
 public:
   BilinearInterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb);
 
   void add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y);
-  void update_vector(Vec& Fi);
+  void set_input_vector(Vec& input_vec);
   void update_grid(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost);
 
-  void interpolate(Vec& Fo);
+  void interpolate(Vec& output_vec);
   double operator()(double x, double y) const;
 };
 
