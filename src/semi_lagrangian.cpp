@@ -2,7 +2,7 @@
 #include <src/bilinear_interpolating_function.h>
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
-#include <mpi/mpi.h>
+#include <mpi.h>
 #include <sc_notify.h>
 
 #include <p4est_vtk.h>
@@ -108,7 +108,7 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
   return dt;
 }
 
-void SemiLagrangian::update_p4est(Vec &phi,    p4est_ghost_t *ghost){
+void SemiLagrangian::update_p4est(Vec &phi, p4est_ghost_t *ghost){
 
   // make a new copy of p4est object -- we are going to modify p4est but we
   // still need the old one ...
@@ -129,7 +129,7 @@ void SemiLagrangian::update_p4est(Vec &phi,    p4est_ghost_t *ghost){
   p4est_partition(p4est_np1, NULL);
 
   // now compute a new node data structure
-  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
+  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
   //p4est_nodes_t *nodes_np1 = nodes_;
 
   // update the values at the new time-step

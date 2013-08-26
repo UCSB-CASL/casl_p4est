@@ -39,7 +39,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   circle circ(1, 1, .3);
-  splitting_criteria_cf_t data = {&circ, 8, 0, 1.0};
+  splitting_criteria_cf_t data = {&circ, 10, 0, 1};
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -82,11 +82,6 @@ int main (int argc, char* argv[]){
   w2.start("creating nodes data structure");
   nodes = my_p4est_nodes_new(p4est, ghost);
   w2.stop(); w2.read_duration();
-
-  PetscSynchronizedPrintf(p4est->mpicomm, "[%d] local size = %d \t ghost size = %d\n",
-                          p4est->mpirank, nodes->num_owned_indeps,
-                          nodes->indep_nodes.elem_count - nodes->num_owned_indeps);
-  PetscSynchronizedFlush(p4est->mpicomm);
 
   /* Parallel vector:
    * To save the levelset function, we need a parallel vector. We do this by

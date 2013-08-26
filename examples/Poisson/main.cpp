@@ -74,7 +74,7 @@ int main (int argc, char* argv[]){
 
   // generate the node data structure
   w2.start("creating node structure");
-  nodes = my_p4est_nodes_new(p4est);
+  nodes = my_p4est_nodes_new(p4est, NULL);
   w2.stop(); w2.read_duration();
 
   // Now lets solve a poisson equation
@@ -106,7 +106,7 @@ int main (int argc, char* argv[]){
   w2.start("vtk");
   ostringstream oss;
   oss << "poisson_" << p4est->mpisize;
-  my_p4est_vtk_write_all(p4est, nodes, 1.0,
+  my_p4est_vtk_write_all(p4est, nodes, NULL,
                          P4EST_TRUE, P4EST_TRUE,
                          0, 2, oss.str().c_str(),
                          VTK_CELL_DATA, "sol", sol_ptr,
