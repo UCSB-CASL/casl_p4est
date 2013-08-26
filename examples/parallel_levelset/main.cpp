@@ -24,7 +24,7 @@ using namespace std;
 
 static class: public CF_2
 {
-public:
+  public:
   double operator()(double x, double y) const {
     return -0.15*sin(M_PI*x/2)*sin(M_PI*x/2)*sin(2*M_PI*y/2);
   }
@@ -32,7 +32,7 @@ public:
 
 static class: public CF_2
 {
-public:
+  public:
   double operator()(double x, double y) const {
     return  0.15*sin(M_PI*y/2)*sin(M_PI*y/2)*sin(2*M_PI*x/2);
   }
@@ -110,7 +110,7 @@ int main (int argc, char* argv[]){
   w2.stop(); w2.read_duration();
 
   // generate the node data structure
-  nodes = my_p4est_nodes_new(p4est);
+  nodes = my_p4est_nodes_new(p4est, NULL);
 
   // Initialize the level-set function
   Vec phi;
@@ -136,7 +136,7 @@ int main (int argc, char* argv[]){
   }
 
   // write the intial data to disk
-  my_p4est_vtk_write_all(p4est, nodes, 1.0,
+  my_p4est_vtk_write_all(p4est, nodes, NULL,
                          P4EST_TRUE, P4EST_TRUE,
                          1, 0, "init",
                          VTK_POINT_DATA, "phi", phi_ptr);
@@ -179,7 +179,7 @@ int main (int argc, char* argv[]){
       }
 
       ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-      my_p4est_vtk_write_all(p4est, nodes, 1.0,
+      my_p4est_vtk_write_all(p4est, nodes, NULL,
                              P4EST_TRUE, P4EST_TRUE,
                              3, 0, oss.str().c_str(),
                              VTK_POINT_DATA, "phi", phi_ptr,
@@ -220,7 +220,7 @@ double fake_advect(p4est_t **p4est, p4est_nodes_t **nodes, Vec &phi, double t)
   p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
   p4est_partition(p4est_np1, NULL);
 
-  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
+  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
   Vec phi_np1;
   VecCreateGhost(p4est_np1, nodes_np1, &phi_np1);
 

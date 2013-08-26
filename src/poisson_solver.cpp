@@ -443,30 +443,3 @@ PoissonSolver::~PoissonSolver(){
   ierr = VecDestroy(xex); CHKERRXX(ierr);
   ierr = KSPDestroy(ksp); CHKERRXX(ierr);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

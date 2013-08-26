@@ -72,9 +72,14 @@ int main (int argc, char* argv[]){
   p4est_partition(p4est, NULL);
   w2.stop(); w2.read_duration();
 
+  // create the ghost structure
+  w2.start("ghost");
+  p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+  w2.stop(); w2.read_duration();
+
   // generate the node data structure
   w2.start("creating node structure");
-  nodes = my_p4est_nodes_new(p4est);
+  nodes = my_p4est_nodes_new(p4est, ghost);
   w2.stop(); w2.read_duration();
 
   // Now lets solve a poisson equation
@@ -106,7 +111,8 @@ int main (int argc, char* argv[]){
   w2.start("vtk");
   ostringstream oss;
   oss << "poisson_" << p4est->mpisize;
-  my_p4est_vtk_write_all(p4est, nodes, 1.0,
+  // TODO: Change the poisson solver such that solution vectors store ghost layers
+  my_p4est_vtk_write_all(p4est, nodes, NULL,
                          P4EST_TRUE, P4EST_TRUE,
                          0, 2, oss.str().c_str(),
                          VTK_CELL_DATA, "sol", sol_ptr,
@@ -125,6 +131,7 @@ int main (int argc, char* argv[]){
 
   // destroy the p4est and its connectivity structure
   p4est_nodes_destroy(nodes);
+  p4est_ghost_destroy(ghost);
   p4est_destroy (p4est);
   my_p4est_brick_destroy(connectivity, &brick);
 

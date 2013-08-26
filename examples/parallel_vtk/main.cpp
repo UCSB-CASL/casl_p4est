@@ -39,7 +39,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   circle circ(1, 1, .3);
-  splitting_criteria_cf_t data = {&circ, 15, 0, 1.0};
+  splitting_criteria_cf_t data = {&circ, 10, 0, 1};
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -73,9 +73,14 @@ int main (int argc, char* argv[]){
   p4est_partition(p4est, NULL);
   w2.stop(); w2.read_duration();
 
+  // generate the ghost data-structure
+  w2.start("generating ghost data structure");
+  p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+  w2.stop(); w2.read_duration();
+
   // generate the node data structure
   w2.start("creating nodes data structure");
-  nodes = my_p4est_nodes_new(p4est);
+  nodes = my_p4est_nodes_new(p4est, ghost);
   w2.stop(); w2.read_duration();
 
   /* Parallel vector:
@@ -200,7 +205,7 @@ int main (int argc, char* argv[]){
 
   // done. lets write both levelset. they MUST be identical when you open them.
   std::ostringstream oss; oss << "partition_" << p4est->mpisize;
-  my_p4est_vtk_write_all(p4est, nodes, 1,
+  my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
                          2, 0, oss.str().c_str(),
                          VTK_POINT_DATA, "phi", phi,
@@ -220,6 +225,7 @@ int main (int argc, char* argv[]){
 
   // destroy the p4est and its connectivity structure
   p4est_nodes_destroy (nodes);
+  p4est_ghost_destroy (ghost);
   p4est_destroy (p4est);
   my_p4est_brick_destroy(connectivity, &brick);
 
