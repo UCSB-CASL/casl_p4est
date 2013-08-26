@@ -295,9 +295,9 @@ void BilinearInterpolatingFunction::interpolate(Vec& output_vec)
                  " as a remote point to either belong to processor "
               <<  p4est_->mpirank << " or be in its ghost layer, both of which"
                   " have failed. Found rank is = " << rank_found
-               << " and remote_macthes->elem_count = "
-               << remote_matches->elem_count << ". This is most certainly a bug."
-               << std::endl;
+              << " and remote_macthes->elem_count = "
+              << remote_matches->elem_count << ". This is most certainly a bug."
+              << std::endl;
           throw std::runtime_error(oss.str());
         }
         sc_array_destroy(remote_matches);

@@ -76,15 +76,15 @@ int main (int argc, char* argv[]){
     p4est_partition(p4est, NULL);
     w2.stop(); w2.read_duration();
 
-    // generate the node data structure
-    w2.start("creating node structure");
-    nodes = my_p4est_nodes_new(p4est);
-    w2.stop(); w2.read_duration();
-
     // Create the ghost structure
     w2.start("ghost");
     p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
-    w2.stop(); w2.read_duration();    
+    w2.stop(); w2.read_duration();
+
+    // generate the node data structure
+    w2.start("creating node structure");
+    nodes = my_p4est_nodes_new(p4est, ghost);
+    w2.stop(); w2.read_duration();
 
     w2.start("computing phi");
     Vec phi;
@@ -112,7 +112,7 @@ int main (int argc, char* argv[]){
 
     std::ostringstream oss; oss << "phi_" << mpi->mpisize;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-    my_p4est_vtk_write_all(p4est, nodes, 1.0,
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_p);
@@ -130,8 +130,16 @@ int main (int argc, char* argv[]){
     p4est_partition(p4est_np1, NULL);
     w2.stop(); w2.read_duration();
 
+    /*
+     * Here we create a new nodes structure. Note that in general if what you
+     * want is the same procedure as before. This means if the previous grid
+     * included ghost cells in the ghost node struture, usually the new one
+     * should also include a NEW ghost structure.
+     * Here, however, we do not care about this and simply pass NULL to for the
+     * new node structure
+     */
     w2.start("creating new node data structure");
-    p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1);
+    p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
     w2.stop(); w2.read_duration();
 
     // Create an interpolating function
@@ -154,10 +162,13 @@ int main (int argc, char* argv[]){
       // buffer the point
       bif.add_point_to_buffer(i, x, y);
     }
+    // set the vector we want to interpolate from
+    bif.set_input_vector(phi);
 
-    // interpolate from old vec on to the new vector
+    // interpolate on to the new vector
     Vec phi_np1;
     ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+
     bif.interpolate(phi_np1);
 
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -168,7 +179,7 @@ int main (int argc, char* argv[]){
 
     double *phi_np1_p;
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-    my_p4est_vtk_write_all(p4est_np1, nodes_np1, 1.0,
+    my_p4est_vtk_write_all(p4est_np1, nodes_np1, NULL,
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_np1_p);

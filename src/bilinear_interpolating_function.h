@@ -5,7 +5,6 @@
 #include <src/utils.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
-#include <mpi.h>
 
 class BilinearInterpolatingFunction: public CF_2
 {

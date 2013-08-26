@@ -275,7 +275,7 @@ p4est_shared_offsets (sc_array_t * inda)
 #endif
 
 p4est_nodes_t      *
-my_p4est_nodes_new (p4est_t * p4est)
+my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
 {
   const int           num_procs = p4est->mpisize;
   const int           rank = p4est->mpirank;
@@ -347,6 +347,8 @@ my_p4est_nodes_new (p4est_t * p4est)
   nodes->num_local_quadrants = p4est->local_num_quadrants;
   num_local_nodes =             /* same type */
                                 P4EST_CHILDREN * nodes->num_local_quadrants;
+  if (ghost != NULL)
+    num_local_nodes += P4EST_CHILDREN*ghost->ghosts.elem_count;
 
   /* Store the local node index for each corner of the elements. */
   nodes->local_nodes = local_nodes =
@@ -390,6 +392,33 @@ my_p4est_nodes_new (p4est_t * p4est)
       }
     }
   }
+  // loop for nodes of ghost cells
+  if (ghost != NULL){
+    for (zz = 0; zz < ghost->ghosts.elem_count;
+         quad_nodes += P4EST_CHILDREN, ++zz){
+      q = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, zz);
+
+      for (k=0; k<P4EST_CHILDREN; ++k){
+        p4est_quadrant_corner_node (q, k, &n);
+        p4est_node_canonicalize (p4est, q->p.piggy3.which_tree, &n, &c);
+        r =
+            (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
+                                                              &c, &position);
+        if (r != NULL) {
+          /* found a new node */
+          *r = c;
+          P4EST_ASSERT (num_indep_nodes == (p4est_locidx_t) position);
+          ++num_indep_nodes;
+        }
+        else {
+          ++dup_indep_nodes;
+        }
+        P4EST_ASSERT ((p4est_locidx_t) position < num_indep_nodes);
+        quad_nodes[k] = (p4est_locidx_t) position;
+      }
+    }
+  }
+
   P4EST_ASSERT (num_indep_nodes + dup_indep_nodes == num_local_nodes);
   inda = &indep_nodes->a;
   P4EST_ASSERT (num_indep_nodes == (p4est_locidx_t) inda->elem_count);
@@ -867,7 +896,7 @@ my_p4est_nodes_new (p4est_t * p4est)
                   (unsigned long long) shared_indeps->elem_count);
 #endif
 
-//  P4EST_ASSERT (p4est_nodes_is_valid (p4est, nodes));
+  //  P4EST_ASSERT (p4est_nodes_is_valid (p4est, nodes));
   P4EST_GLOBAL_PRODUCTION ("Done " P4EST_STRING "_nodes_new\n");
 
   return nodes;

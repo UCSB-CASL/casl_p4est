@@ -61,9 +61,8 @@ static const int VTK_CELL_DATA  = 1;
  * The variable arguments need to be pairs of (fieldname, fieldvalues)
  * where the scalars come first, then the vectors.
  */
-void                my_p4est_vtk_write_all (p4est_t * p4est,
-                                            p4est_nodes_t *nodes, int write_rank, int write_tree,
-                                            double scale,
+void                my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+                                            int write_rank, int write_tree,
                                             int num_point_scalars, int num_cell_scalars,
                                             const char *filename, ...);
 
@@ -90,8 +89,7 @@ void                my_p4est_vtk_write_all (p4est_t * p4est,
  *
  * \return          This returns 0 if no error and -1 if there is an error.
  */
-int                 my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes,
-                                               double scale,
+int                 my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
                                                const char *filename);
 
 /** This will write a scalar field to the vtu file.
@@ -114,7 +112,7 @@ int                 my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *n
  * \return          This returns 0 if no error and -1 if there is an error.
  */
 
-int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, double scale,
+int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes,
                                                      const char *filename,
                                                      const int num, const char *list_name, const char **scalar_names,
                                                      const double **values);
@@ -137,7 +135,8 @@ int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_node
  *
  * \return          This returns 0 if no error and -1 if there is an error.
  */
-int                 my_p4est_vtk_write_cell_scalar (p4est_t * p4est, int write_rank, int write_tree,
+int                 my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_ghost_t *ghost,
+                                                    int write_rank, int write_tree,
                                                     const char *filename, const int num,
                                                     const char *list_name, const char **scalar_names,
                                                     const double **values);
