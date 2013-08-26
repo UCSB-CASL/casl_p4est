@@ -39,7 +39,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   circle circ(1, 1, .3);
-  splitting_criteria_cf_t data = {&circ, 15, 0, 1.0};
+  splitting_criteria_cf_t data = {&circ, 3, 0, 1.0};
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -73,10 +73,20 @@ int main (int argc, char* argv[]){
   p4est_partition(p4est, NULL);
   w2.stop(); w2.read_duration();
 
+  // generate the ghost data-structure
+  w2.start("generating ghost data structure");
+  p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+  w2.stop(); w2.read_duration();
+
   // generate the node data structure
   w2.start("creating nodes data structure");
-  nodes = my_p4est_nodes_new(p4est);
+  nodes = my_p4est_nodes_new(p4est, ghost);
   w2.stop(); w2.read_duration();
+
+  PetscSynchronizedPrintf(p4est->mpicomm, "[%d] local size = %d \t ghost size = %d\n",
+                          p4est->mpirank, nodes->num_owned_indeps,
+                          nodes->indep_nodes.elem_count - nodes->num_owned_indeps);
+  PetscSynchronizedFlush(p4est->mpicomm);
 
   /* Parallel vector:
    * To save the levelset function, we need a parallel vector. We do this by
@@ -220,6 +230,7 @@ int main (int argc, char* argv[]){
 
   // destroy the p4est and its connectivity structure
   p4est_nodes_destroy (nodes);
+  p4est_ghost_destroy (ghost);
   p4est_destroy (p4est);
   my_p4est_brick_destroy(connectivity, &brick);
 
