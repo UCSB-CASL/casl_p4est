@@ -39,7 +39,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   circle circ(1, 1, .3);
-  splitting_criteria_cf_t data = {&circ, 3, 0, 1.0};
+  splitting_criteria_cf_t data = {&circ, 8, 0, 1.0};
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -210,7 +210,7 @@ int main (int argc, char* argv[]){
 
   // done. lets write both levelset. they MUST be identical when you open them.
   std::ostringstream oss; oss << "partition_" << p4est->mpisize;
-  my_p4est_vtk_write_all(p4est, nodes, 1,
+  my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
                          2, 0, oss.str().c_str(),
                          VTK_POINT_DATA, "phi", phi,
