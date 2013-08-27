@@ -180,7 +180,7 @@ my_p4est_brick_destroy (p4est_connectivity_t * conn, my_p4est_brick_t * myb)
 int
 my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
                              const my_p4est_brick_t * myb,
-                             const double *xy,
+                             const double *xy_orig,
                              p4est_quadrant_t *best_match,
                              sc_array_t * remote_matches)
 {
@@ -203,7 +203,7 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   P4EST_ASSERT (remote_matches->elem_size == sizeof (p4est_quadrant_t) &&
                 remote_matches->elem_count == 0);
 
-  P4EST_LDEBUGF ("Looking up point %g %g\n", xy[0], xy[1]);
+  P4EST_LDEBUGF ("Looking up point %g %g\n", xy_orig[0], xy_orig[1]);
 
   /* We are looking for the smallest size quadrant that contains the point xy.
    * If there are multiple possibilities we choose the one on the lowest rank.
@@ -214,6 +214,14 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
    * ghost layer, then we return the candidates for further examination. */
 
   /* gather information to construct search quadrants for all possibilities */
+
+  /* to account for numerical rounding errors, we check if the coordinates given
+   * are withing epsilon (chosen arbitrarily here .... to be improved) of an
+   * integer. If so, round the coordinates. In general, using '==' on double is BAD! */
+  double xy[2] = {xy_orig[0], xy_orig[1]};
+  if( fabs(round(xy_orig[0])-xy_orig[0]) < 1e-9 ) xy[0] = round(xy_orig[0]);
+  if( fabs(round(xy_orig[1])-xy_orig[1]) < 1e-9 ) xy[1] = round(xy_orig[1]);
+
   for (i = 0; i < P4EST_DIM; ++i) {
     hit = (int) floor (xy[i]);
     P4EST_ASSERT (0 <= hit && hit <= myb->nxytrees[i]);
