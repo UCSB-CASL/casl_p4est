@@ -124,7 +124,6 @@ void SemiLagrangian::update_p4est(Vec &phi){
 
   // now compute a new node data structure
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-  //p4est_nodes_t *nodes_np1 = nodes_;
 
   // update the values at the new time-step
   Vec phi_np1;
@@ -158,13 +157,12 @@ void SemiLagrangian::update_p4est(Vec &phi){
   // interpolate from old vector into our output vector
   bif.interpolate(phi_np1);
 
-  // Update ghost values
-
   // now that everything is updated, get rid of old stuff and swap them with
   // new ones
   p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
   p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
   p4est_ghost_destroy(ghost_); ghost_ = *p_ghost_ = ghost_np1;
+
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
 }

@@ -15,13 +15,15 @@ class BilinearInterpolatingFunction: public CF_2
   std::vector<int> p4est2petsc;
   Vec input_vec_;
 
-  struct{
+  struct point_buffer{
     std::vector<double> xy;
     std::vector<p4est_quadrant_t> quad;
     std::vector<p4est_locidx_t> node_locidx;
 
     size_t size() { return node_locidx.size(); }
-  } local_point_buffer;
+  };
+
+  point_buffer local_point_buffer, ghost_point_buffer;
 
   struct ghost_point_info{
     double xy[2];
@@ -29,23 +31,25 @@ class BilinearInterpolatingFunction: public CF_2
     p4est_locidx_t quad_locidx;
   };
 
-  typedef std::map<int , std::vector<ghost_point_info> > ghost_transfer_map;
-  ghost_transfer_map ghost_send_buffer, ghost_recv_buffer;
+//  typedef std::map<int , std::vector<ghost_point_info> > ghost_transfer_map;
+//  ghost_transfer_map ghost_send_buffer, ghost_recv_buffer;
 
   typedef std::map<int, std::vector<double> > remote_transfer_map;
   remote_transfer_map remote_send_buffer, remote_recv_buffer;
 
   typedef std::map<int, std::vector<p4est_locidx_t> > nonlocal_node_map;
-  nonlocal_node_map ghost_node_index, remote_node_index;
+  nonlocal_node_map /* ghost_node_index, */ remote_node_index;
 
-  std::vector<int> ghost_receivers, ghost_senders, remote_receivers, remote_senders;
+  std::vector<int> /* ghost_receivers, ghost_senders, */ remote_receivers, remote_senders;
   bool is_buffer_prepared;
 
-  std::vector<MPI_Request> ghost_send_req, ghost_recv_req, remote_send_req, remote_recv_req;
+  std::vector<MPI_Request> /* ghost_send_req, ghost_recv_req, */remote_send_req, remote_recv_req;
 
   enum {
+    /*
     ghost_point_tag,
     ghost_data_tag,
+    */
     remote_point_tag,
     remote_data_tag
   };

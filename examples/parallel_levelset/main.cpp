@@ -64,6 +64,8 @@ private:
   double  x0, y0, r;
 };
 
+double fake_advect(p4est_t **p4est, p4est_nodes_t **nodes, Vec& phi, double t);
+
 int main (int argc, char* argv[]){
 
   mpi_context_t mpi_context, *mpi = &mpi_context;
