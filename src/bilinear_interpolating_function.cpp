@@ -37,14 +37,14 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
   p4est_quadrant_t best_match;
   sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
 
-  // find the quadrant
+  // find the quadrant -- Note point may become slightly purturbed after this call
   int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_,
                                                xy, &best_match, remote_matches);
 
   // check who is going to own the quadrant
   if (rank_found == p4est_->mpirank){ // local quadrant
-    local_point_buffer.xy.push_back(x);
-    local_point_buffer.xy.push_back(y);
+    local_point_buffer.xy.push_back(xy[0]);
+    local_point_buffer.xy.push_back(xy[1]);
     local_point_buffer.quad.push_back(best_match);
     local_point_buffer.node_locidx.push_back(node_locidx);
 
@@ -69,7 +69,7 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
      */
 
     ghost_point_info tmp;
-    tmp.xy[0] = x; tmp.xy[1] = y;
+    tmp.xy[0] = xy[0]; tmp.xy[1] = xy[1];
     tmp.quad_locidx = q->p.piggy3.local_num;
     tmp.tree_idx    = q->p.piggy3.which_tree;
 
@@ -113,8 +113,8 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
         end = remote_ranks.end();
     for(; it != end; ++it){
       int r = *it;
-      remote_send_buffer[r].push_back(x);
-      remote_send_buffer[r].push_back(y);
+      remote_send_buffer[r].push_back(xy[0]);
+      remote_send_buffer[r].push_back(xy[1]);
       remote_node_index[r].push_back(node_locidx);
     }
   }
@@ -370,27 +370,41 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const {
 
   int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_,
                                                xy, &best_match, remote_matches);
-#ifdef CASL_THROWS
-  if (rank_found != p4est_->mpirank){
+
+  if (rank_found == p4est_->mpirank) { // local quadrant
+    tree_idx = best_match.p.piggy3.which_tree;
+    p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
+    quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
+
+    double f [P4EST_CHILDREN];
+    for (short j=0; j<P4EST_CHILDREN; ++j)
+      f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+
+    ierr = VecRestoreArray(input_vec_, &Fi_ptr); CHKERRXX(ierr);
+
+    return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+
+  } else if (remote_matches->elem_count == 0) { // ghost quadrant
+    tree_idx = best_match.p.piggy3.which_tree;
+    quad_idx = best_match.p.piggy3.local_num + p4est_->local_num_quadrants;
+
+    double f [P4EST_CHILDREN];
+    for (short j=0; j<P4EST_CHILDREN; ++j)
+      f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+
+    ierr = VecRestoreArray(input_vec_, &Fi_ptr); CHKERRXX(ierr);
+
+    return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+
+  } else {
+    ierr = VecRestoreArray(input_vec_, &Fi_ptr); CHKERRXX(ierr);
+
     std::ostringstream oss;
     oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") does not belong to "
            "processor " << p4est_->mpirank << ". Found rank = " << rank_found <<
            " and remote_macthes.size = " << remote_matches->elem_count << std::endl;
     throw std::invalid_argument(oss.str());
   }
-#endif
-
-  tree_idx = best_match.p.piggy3.which_tree;
-  p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
-  quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
-
-  double f [P4EST_CHILDREN];
-  for (short j=0; j<P4EST_CHILDREN; ++j)
-    f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
-
-  ierr = VecRestoreArray(input_vec_, &Fi_ptr); CHKERRXX(ierr);
-
-  return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
 }
 
 void BilinearInterpolatingFunction::send_point_buffers_begin()
