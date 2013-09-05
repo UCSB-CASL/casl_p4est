@@ -7,6 +7,7 @@
 #include <vector>
 #include <stdexcept>
 #include <sstream>
+#include <iostream>
 #include <map>
 
 using std::map; using std::cout; using std::endl; using std::vector;
