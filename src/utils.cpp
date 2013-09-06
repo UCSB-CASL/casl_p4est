@@ -1,5 +1,6 @@
 #include "utils.h"
 #include "my_p4est_tools.h"
+#include "my_p4est_node_neighbors.h"
 #include <vector>
 
 void c2p_coordinate_transform(p4est_t *p4est, p4est_topidx_t tree_id, double *x, double *y, double *z){
@@ -117,6 +118,88 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4es
     double d_0p = qh - d_0m;
 
     return ( (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) );
+}
+
+double non_oscilatory_quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global)
+{
+    p4est_topidx_t lower_left_vertex  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+    p4est_topidx_t upper_right_vertex = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 3];
+
+    double tree_xmin = p4est->connectivity->vertices[3*lower_left_vertex + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*lower_left_vertex + 1];
+
+    double tree_xmax = p4est->connectivity->vertices[3*upper_right_vertex + 0];
+    double tree_ymax = p4est->connectivity->vertices[3*upper_right_vertex + 1];
+
+    double x = (xy_global[0] - tree_xmin)/(tree_xmax - tree_xmin);
+    double y = (xy_global[1] - tree_ymin)/(tree_ymax - tree_ymin);
+
+#ifdef CASL_THROWS
+    if (x<0 || x>1 || y<0 || y>1)
+    {
+        std::ostringstream oss;
+        oss << "[CASL_ERROR]: Point (" << xy_global[0] << ", " << xy_global[1] << ") is not located inside given tree (= " << tree_id << ")" << std::endl;
+        throw std::invalid_argument(oss.str());
+    }
+#endif
+
+    double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+    double xmin = (double)quad.x / (double)(P4EST_ROOT_LEN);
+    double ymin = (double)quad.y / (double)(P4EST_ROOT_LEN);
+
+    double d_m0 = x - xmin;
+    double d_p0 = qh - d_m0;
+    double d_0m = y - ymin;
+    double d_0p = qh - d_0m;
+
+    double fxx_minmod = Fxx[0];
+    double fyy_minmod = Fyy[0];
+
+    for (short i=1; i<P4EST_CHILDREN; i++)
+    {
+      fxx_minmod = MINMOD(fxx_minmod, Fxx[i]);
+      fyy_minmod = MINMOD(fyy_minmod, Fyy[i]);
+    }
+
+    return ( (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) - 0.5*d_m0*d_p0*fxx_minmod - 0.5*d_0m*d_0p*fyy_minmod);
+}
+
+double quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global)
+{
+    p4est_topidx_t lower_left_vertex  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+    p4est_topidx_t upper_right_vertex = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 3];
+
+    double tree_xmin = p4est->connectivity->vertices[3*lower_left_vertex + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*lower_left_vertex + 1];
+
+    double tree_xmax = p4est->connectivity->vertices[3*upper_right_vertex + 0];
+    double tree_ymax = p4est->connectivity->vertices[3*upper_right_vertex + 1];
+
+    double x = (xy_global[0] - tree_xmin)/(tree_xmax - tree_xmin);
+    double y = (xy_global[1] - tree_ymin)/(tree_ymax - tree_ymin);
+
+#ifdef CASL_THROWS
+    if (x<0 || x>1 || y<0 || y>1)
+    {
+        std::ostringstream oss;
+        oss << "[CASL_ERROR]: Point (" << xy_global[0] << ", " << xy_global[1] << ") is not located inside given tree (= " << tree_id << ")" << std::endl;
+        throw std::invalid_argument(oss.str());
+    }
+#endif
+
+    double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+    double xmin = (double)quad.x / (double)(P4EST_ROOT_LEN);
+    double ymin = (double)quad.y / (double)(P4EST_ROOT_LEN);
+
+    double d_m0 = x - xmin;
+    double d_p0 = qh - d_m0;
+    double d_0m = y - ymin;
+    double d_0p = qh - d_0m;
+
+    double fxx = (Fxx[0]*(d_0p*d_p0) + Fxx[1]*(d_m0*d_0p) + Fxx[2]*(d_p0*d_0m) + Fxx[3]*(d_m0*d_0m))/(qh*qh);
+    double fyy = (Fyy[0]*(d_0p*d_p0) + Fyy[1]*(d_m0*d_0p) + Fyy[2]*(d_p0*d_0m) + Fyy[3]*(d_m0*d_0m))/(qh*qh);
+
+    return ( (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) - 0.5*d_m0*d_p0*fxx - 0.5*d_0m*d_0p*fyy);
 }
 
 PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)

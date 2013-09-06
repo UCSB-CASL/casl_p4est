@@ -76,13 +76,6 @@ inline double HVY( double x, double h )
   else      return (1+x/h+sin(M_PI*x/h)/M_PI)*0.5;
 }
 
-inline double HVY( double x, double x0, double h )
-{
-  if( x - x0 > h ) return 1;
-  if( x - x0 <-h ) return 0;
-  else      return (1+(x-x0)/h+sin(M_PI*(x-x0)/h)/M_PI)*0.5;
-}
-
 inline double SGN( double x, double h )
 {
   if( x > h ) return  1;
@@ -178,6 +171,34 @@ void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* qua
  * \return interpolated value
  */
 double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, double *F, const double *xy_global);
+
+/*!
+ * \brief non_oscilatory_quadratic_interpolation performs non-oscilatory quadratic interpolation for a point
+ * \param p4est the forest
+ * \param tree_id the current tree that owns the quadrant
+ * \param quad the current quarant
+ * \param F a simple C-style array of size 4, containing the values of the function at the vertices of the quadrant. __MUST__ be z-ordered
+ * \param Fxx a simple C-style array of size 4, containing the values of the xx derivative of function at the vertices of the quadrant. does not need to be z-ordered
+ * \param Fyy a simple C-style array of size 4, containing the values of the yy derivative of function at the vertices of the quadrant. does not need to be z-ordered
+ * \param x_global global x-coordinate of the point
+ * \param y_global global y-coordinate of the point
+ * \return interpolated value
+ */
+double non_oscilatory_quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global);
+
+/*!
+ * \brief quadratic_interpolation performs quadratic interpolation for a point
+ * \param p4est the forest
+ * \param tree_id the current tree that owns the quadrant
+ * \param quad the current quarant
+ * \param F a simple C-style array of size 4, containing the values of the function at the vertices of the quadrant. __MUST__ be z-ordered
+ * \param Fxx a simple C-style array of size 4, containing the values of the xx derivative of function at the vertices of the quadrant. does not need to be z-ordered
+ * \param Fyy a simple C-style array of size 4, containing the values of the yy derivative of function at the vertices of the quadrant. does not need to be z-ordered
+ * \param x_global global x-coordinate of the point
+ * \param y_global global y-coordinate of the point
+ * \return interpolated value
+ */
+double quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global);
 
 /*!
  * \brief p4est_VecCreate Creates a normal PETSc parallel vector based on p4est node ordering

@@ -24,9 +24,6 @@
 struct quad_neighbor_nodes_of_node_t {
     p4est_nodes_t *nodes;
 
-    /* store the local index for the neighbor nodes
-     * if a node is local, then its index is between offset_owned_indeps  and  offset_owned_indeps + num_owned_indeps.
-     */
     p4est_locidx_t node_00;
     p4est_locidx_t node_m0_m; p4est_locidx_t node_m0_p;
     p4est_locidx_t node_p0_m; p4est_locidx_t node_p0_p;
@@ -64,6 +61,10 @@ struct quad_neighbor_nodes_of_node_t {
     double dx_backward_linear( const double *f ) const;
     double dy_forward_linear ( const double *f ) const;
     double dy_backward_linear( const double *f ) const;
+    
+    /* second-order derivatives */
+    double dxx_central( const double *f ) const;
+    double dyy_central( const double *f ) const;
 
     void blah(p4est_nodes_t *nodes) const
     {

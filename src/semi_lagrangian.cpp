@@ -1,21 +1,20 @@
 #include "semi_lagrangian.h"
-#include <src/bilinear_interpolating_function.h>
+#include <src/interpolating_function.h>
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
+#include <src/my_p4est_node_neighbors.h>
 #include <mpi.h>
 #include <sc_notify.h>
-
-#include <p4est_vtk.h>
-#include <src/my_p4est_vtk.h>
 
 #include <iostream>
 #include <map>
 #include <vector>
 #include <algorithm>
 
-SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, my_p4est_brick_t *myb)
+SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, p4est_ghost_t **ghost, my_p4est_brick_t *myb)
   : p_p4est_(p4est), p4est_(*p4est),
     p_nodes_(nodes), nodes_(*nodes),
+    p_ghost_(ghost), ghost_(*ghost),
     myb_(myb)
 {
   // compute domain sizes
@@ -30,9 +29,14 @@ SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, my_p4est_
 }
 
 double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
-  p4est_ghost_t *ghost = p4est_ghost_new(p4est_, P4EST_CONNECT_DEFAULT);
 
-  BilinearInterpolatingFunction bif(p4est_, nodes_, ghost, myb_);
+  // create hierarchy structure if you want to do quadratic interpolation 
+  my_p4est_hierarchy_t hierarchy(p4est_, ghost_);
+  my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
+
+  InterpolatingFunction bif(p4est_, nodes_, ghost_, myb_, qnnn);
+  bif.set_interpolation_method(non_oscilatory_quadratic);
+  bif.set_input_vector(phi);
 
   double dt = compute_dt(vx, vy);
   p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex; // tree to vertex list
@@ -72,7 +76,6 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
     };
 
     // make the domain periodic
-    // TODO: the domain in not necessarily periodic ! idea : clip the coordinates to find the smallest cell and do interpolation on the original coordinates ... do that inside the interpolation procedure
     if (xy_departure[0] > xmax)
       xy_departure[0] -= xmax - xmin;
     else if (xy_departure[0] < xmin)
@@ -86,48 +89,45 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
     bif.add_point_to_buffer(ni, xy_departure[0], xy_departure[1]);
   }
 
-  //Set the vector we want to interpolate from. Our input vector
-  bif.update_vector(phi);
-
-  //Interpolate into our output vector
+  //interpolate from old vector into our output vector
   bif.interpolate(phi_np1);
 
   // update the p4est
   ierr = VecDestroy(phi); CHKERRXX(ierr); phi = phi_np1;
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  update_p4est(phi, ghost);
+  update_p4est(phi);
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  p4est_ghost_destroy(ghost);
 
   return dt;
 }
 
-void SemiLagrangian::update_p4est(Vec &phi, p4est_ghost_t *ghost){
+void SemiLagrangian::update_p4est(Vec &phi){
 
   // make a new copy of p4est object -- we are going to modify p4est but we
   // still need the old one ...
   p4est_connectivity_t *conn = p4est_->connectivity;
-  p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);//p4est_new(p4est_->mpicomm, conn, 0, NULL, NULL);
+  p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
 
   // define an interpolating function
-  BilinearInterpolatingFunction bif(p4est_, nodes_, ghost, myb_);
-  bif.update_vector(phi);
+  InterpolatingFunction bif(p4est_, nodes_, ghost_, myb_);
+  bif.set_input_vector(phi);
 
   // now refine/coarsen the new copy of p4est -- note that we need to swap
   // level-set function since it has moved
   splitting_criteria_cf_t *data = (splitting_criteria_cf_t*)(p4est_->user_pointer);
   data->phi = &bif;
   p4est_np1->user_pointer = data;
-  p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_grid_transfer, NULL);
-  p4est_refine(p4est_np1, P4EST_TRUE, refine_grid_transfer, NULL);
+  p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset_cf, NULL);
+  p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
   p4est_partition(p4est_np1, NULL);
 
+  // compute new ghost layer
+  p4est_ghost_t *ghost_np1 = p4est_ghost_new(p4est_np1, P4EST_CONNECT_DEFAULT);
+
   // now compute a new node data structure
-  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
-  //p4est_nodes_t *nodes_np1 = nodes_;
+  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   // update the values at the new time-step
   Vec phi_np1;
@@ -158,15 +158,15 @@ void SemiLagrangian::update_p4est(Vec &phi, p4est_ghost_t *ghost){
     bif.add_point_to_buffer(ni, xy_node[0], xy_node[1]);
   }
 
-  //Interpolate into our output vector
+  // interpolate from old vector into our output vector
   bif.interpolate(phi_np1);
-
-  // Update ghost values
 
   // now that everything is updated, get rid of old stuff and swap them with
   // new ones
   p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
   p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
+  p4est_ghost_destroy(ghost_); ghost_ = *p_ghost_ = ghost_np1;
+
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
 }

@@ -217,7 +217,10 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
 
   /* to account for numerical rounding errors, we check if the coordinates given
    * are withing epsilon (chosen arbitrarily here .... to be improved) of an
-   * integer. If so, round the coordinates. In general, using '==' on double is BAD! */
+   * integer. If so, round the coordinates. In general, using '==' on double is BAD!
+   *
+   * BUG: SL code seems sensitive to this number .., what should we do here?
+   */
   if( fabs(round(xy[0])-xy[0]) < 1e-9 ) xy[0] = round(xy[0]);
   if( fabs(round(xy[1])-xy[1]) < 1e-9 ) xy[1] = round(xy[1]);
 

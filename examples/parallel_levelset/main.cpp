@@ -72,6 +72,7 @@ int main (int argc, char* argv[]){
   mpi->mpicomm  = MPI_COMM_WORLD;
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
+  p4est_ghost_t      *ghost;
   PetscErrorCode ierr;
 
   circle circ(0.5, 0.5, .3);
@@ -109,8 +110,11 @@ int main (int argc, char* argv[]){
   p4est_partition(p4est, NULL);
   w2.stop(); w2.read_duration();
 
+  // create the ghost layer
+  ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+
   // generate the node data structure
-  nodes = my_p4est_nodes_new(p4est, NULL);
+  nodes = my_p4est_nodes_new(p4est, ghost);
 
   // Initialize the level-set function
   Vec phi;
@@ -136,7 +140,7 @@ int main (int argc, char* argv[]){
   }
 
   // write the intial data to disk
-  my_p4est_vtk_write_all(p4est, nodes, NULL,
+  my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
                          1, 0, "init",
                          VTK_POINT_DATA, "phi", phi_ptr);
@@ -144,7 +148,7 @@ int main (int argc, char* argv[]){
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
 
   // SemiLagrangian object
-  SemiLagrangian sl(&p4est, &nodes, &brick);
+  SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
   // loop over time
   double tf = 5;
@@ -199,54 +203,12 @@ int main (int argc, char* argv[]){
   ierr = VecDestroy(phi); CHKERRXX(ierr);
 
   // destroy the p4est and its connectivity structure
-  p4est_nodes_destroy (nodes);
-  p4est_destroy (p4est);
+  p4est_ghost_destroy(ghost);
+  p4est_nodes_destroy(nodes);
+  p4est_destroy(p4est);
   my_p4est_brick_destroy(connectivity, &brick);
 
   w1.stop(); w1.read_duration();
 
   return 0;
-}
-
-double fake_advect(p4est_t **p4est, p4est_nodes_t **nodes, Vec &phi, double t)
-{
-  const double dt = 0.1;
-  circle& cf = dynamic_cast<circle&>(*((splitting_criteria_cf_t*)(*p4est)->user_pointer)->phi);
-  cf.update(0.5, 0.5, 0.3+.25*t);
-
-  p4est_t *p4est_np1 = p4est_copy(*p4est, P4EST_FALSE);
-  p4est_np1->user_pointer = (*p4est)->user_pointer;
-  p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset_cf, NULL);
-  p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
-  p4est_partition(p4est_np1, NULL);
-
-  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
-  Vec phi_np1;
-  VecCreateGhost(p4est_np1, nodes_np1, &phi_np1);
-
-  double *phi_np1_ptr;
-  VecGetArray(phi_np1, &phi_np1_ptr);
-
-  for (size_t i = 0; i<nodes_np1->indep_nodes.elem_count; ++i)
-  {
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i);
-    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-    p4est_topidx_t v_mm = p4est_np1->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-    double tree_xmin = p4est_np1->connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = p4est_np1->connectivity->vertices[3*v_mm + 1];
-
-    double x = int2double_coordinate_transform(node->x) + tree_xmin;
-    double y = int2double_coordinate_transform(node->y) + tree_ymin;
-
-    phi_np1_ptr[p4est2petsc_local_numbering(nodes_np1, i)] = cf(x,y);
-  }
-  VecRestoreArray(phi_np1, &phi_np1_ptr);
-
-  p4est_destroy(*p4est); *p4est = p4est_np1;
-  p4est_nodes_destroy(*nodes); *nodes = nodes_np1;
-  VecDestroy(phi); phi = phi_np1;
-
-  return dt;
 }

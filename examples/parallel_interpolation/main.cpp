@@ -18,7 +18,7 @@
 #include <src/my_p4est_tools.h>
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
-#include <src/bilinear_interpolating_function.h>
+#include <src/interpolating_function.h>
 
 using namespace std;
 
@@ -42,7 +42,7 @@ int main (int argc, char* argv[]){
     PetscErrorCode      ierr;
 
     circle circ(1, 1, .3);
-    splitting_criteria_cf_t cf_data   = {&circ, 15, 0, 1};
+    splitting_criteria_cf_t cf_data   = {&circ, 8, 0, 1};
 
     Session mpi_session;
     mpi_session.init(argc, argv, mpi->mpicomm);
@@ -56,8 +56,8 @@ int main (int argc, char* argv[]){
     // Create the connectivity object
     w2.start("connectivity");
     p4est_connectivity_t *connectivity;
-    my_p4est_brick_t brick;
-    connectivity = my_p4est_brick_new(2, 2, &brick);
+    my_p4est_brick_t my_brick, *brick = &my_brick;
+    connectivity = my_p4est_brick_new(2, 2, brick);
     w2.stop(); w2.read_duration();
 
     // Now create the forest
@@ -118,8 +118,13 @@ int main (int argc, char* argv[]){
                            VTK_POINT_DATA, "phi", phi_p);
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
+    // set up the qnnn neighbors
+    my_p4est_hierarchy_t hierarchy(p4est, ghost);
+    my_p4est_node_neighbors_t qnnn(&hierarchy, nodes);
+
     // move the circle to create another grid
-    cf_data.max_lvl -= 3;
+    cf_data.max_lvl -= 2;
+    cf_data.min_lvl += 1;
     circ.update(.75, 1.15, .2);
 
     // Create a new grid
@@ -142,8 +147,10 @@ int main (int argc, char* argv[]){
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
     w2.stop(); w2.read_duration();
 
-    // Create an interpolating function
-    BilinearInterpolatingFunction bif(p4est, nodes, ghost, &brick);
+    // Create an interpolating function    
+    InterpolatingFunction phi_func(p4est, nodes, ghost, brick, qnnn);
+    phi_func.set_interpolation_method(non_oscilatory_quadratic);
+    phi_func.set_input_vector(phi);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
@@ -159,34 +166,34 @@ int main (int argc, char* argv[]){
       double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
       // buffer the point
-      bif.add_point_to_buffer(i, x, y);
+      phi_func.add_point_to_buffer(i, x, y);
     }
-    // set the vector we want to interpolate from
-    bif.update_vector(phi);
 
     // interpolate on to the new vector
     Vec phi_np1;
     ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
-    bif.interpolate(phi_np1);
+    // interpolate
+    phi_func.interpolate(phi_np1);
 
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    oss.str("");
-    oss << "phi_np1_" << mpi->mpisize;
+    oss.str(""); oss << "phi_np1_" << mpi->mpisize;
 
     double *phi_np1_p;
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    
     my_p4est_vtk_write_all(p4est_np1, nodes_np1, NULL,
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, oss.str().c_str(),
-                           VTK_POINT_DATA, "phi", phi_np1_p);
-    ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+                           VTK_POINT_DATA, "phi_np1", phi_np1_p);
+
+    ierr = VecRestoreArray(phi_np1,  &phi_np1_p); CHKERRXX(ierr);
 
     // finally, delete PETSc Vecs by calling 'VecDestroy' function
-    ierr = VecDestroy(phi);     CHKERRXX(ierr);
-    ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+    ierr = VecDestroy(phi);          CHKERRXX(ierr);
+    ierr = VecDestroy(phi_np1);  CHKERRXX(ierr);
 
     // destroy the p4est and its connectivity structure
     p4est_nodes_destroy (nodes);
@@ -195,7 +202,7 @@ int main (int argc, char* argv[]){
 
     p4est_nodes_destroy (nodes_np1);
     p4est_destroy (p4est_np1);
-    my_p4est_brick_destroy(connectivity, &brick);
+    my_p4est_brick_destroy(connectivity, brick);
 
     w1.stop(); w1.read_duration();
 
