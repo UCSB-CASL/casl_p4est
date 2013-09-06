@@ -11,7 +11,7 @@
 #include <src/my_p4est_hierarchy.h>
 
 #include <vector>
-
+#include <sstream>
 
 class my_p4est_node_neighbors_t {
 
@@ -48,7 +48,19 @@ public:
         init_neighbors();
     }
 
-    inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const { return neighbors[n]; }
+    inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
+#ifdef CASL_THROWS
+      if (n<0 || n>=nodes->num_owned_indeps){
+        std::ostringstream oss;
+        oss << "[ERROR]: Trying to access neighboring nodes of element " << n
+            << " in the QNNN structure which is out of bound [0, " << nodes->num_owned_indeps
+            << "). This probably means you are trying to acess neighboring nodes"
+               " of a ghost nod. This is not supported." << std::endl;
+        throw std::invalid_argument(oss.str());
+      }
+#endif
+      return neighbors[n];
+    }
 };
 
 #endif /* !MY_P4EST_NODE_NEIGHBORS_H */

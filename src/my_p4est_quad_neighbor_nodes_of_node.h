@@ -61,6 +61,10 @@ struct quad_neighbor_nodes_of_node_t {
     double dx_backward_linear( const double *f ) const;
     double dy_forward_linear ( const double *f ) const;
     double dy_backward_linear( const double *f ) const;
+    
+    /* second-order derivatives */
+    double dxx_central( const double *f ) const;
+    double dyy_central( const double *f ) const;
 
     void blah(p4est_nodes_t *nodes) const
     {

@@ -19,6 +19,7 @@
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
 #include <src/bilinear_interpolating_function.h>
+#include <src/quadratic_interpolating_function.h>
 
 using namespace std;
 
@@ -42,7 +43,7 @@ int main (int argc, char* argv[]){
     PetscErrorCode      ierr;
 
     circle circ(1, 1, .3);
-    splitting_criteria_cf_t cf_data   = {&circ, 15, 0, 1};
+    splitting_criteria_cf_t cf_data   = {&circ, 8, 0, 1};
 
     Session mpi_session;
     mpi_session.init(argc, argv, mpi->mpicomm);
@@ -118,8 +119,13 @@ int main (int argc, char* argv[]){
                            VTK_POINT_DATA, "phi", phi_p);
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
+    // set up the qnnn neighbors
+    my_p4est_hierarchy_t hierarchy(p4est, ghost);
+    my_p4est_node_neighbors_t qnnn(&hierarchy, nodes);
+
     // move the circle to create another grid
-    cf_data.max_lvl -= 3;
+    cf_data.max_lvl -= 2;
+    cf_data.min_lvl += 1;
     circ.update(.75, 1.15, .2);
 
     // Create a new grid
@@ -142,9 +148,23 @@ int main (int argc, char* argv[]){
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
     w2.stop(); w2.read_duration();
 
+
+
     // Create an interpolating function
-    BilinearInterpolatingFunction bif(p4est, nodes, ghost, &brick);
+    QuadraticInterpolatingFunction qif(p4est, nodes, ghost, &qnnn, &brick);
+    BilinearInterpolatingFunction  bif(p4est, nodes, ghost, &brick);
+    qif.set_input_vector(phi);
     bif.set_input_vector(phi);
+
+    /*
+     * define the type of quadratic interpolation. If you choose regular, value
+     * of second-order derivative is interpolated at the point first and that
+     * value is used.
+     * If you choose nonoscliatory, a minmod limiter is applied to choose the
+     * smoothest value. This is the default behavior if you do not specify
+     * anything.
+     */
+    qif.set_interpolation_type(regular_interpolation);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
@@ -160,34 +180,41 @@ int main (int argc, char* argv[]){
       double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
       // buffer the point
+      qif.add_point_to_buffer(i, x, y);
       bif.add_point_to_buffer(i, x, y);
     }
-    // set the vector we want to interpolate from
-    bif.set_input_vector(phi);
 
     // interpolate on to the new vector
-    Vec phi_np1;
-    ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+    Vec phi_np1_lin, phi_np1_quad;
+    ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1_lin); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_np1_lin, &phi_np1_quad); CHKERRXX(ierr);
 
-    bif.interpolate(phi_np1);
+    qif.interpolate(phi_np1_quad);
+    bif.interpolate(phi_np1_lin);
 
-    ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(phi_np1_quad, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(phi_np1_quad, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    oss.str("");
-    oss << "phi_np1_" << mpi->mpisize;
+    ierr = VecGhostUpdateBegin(phi_np1_lin, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(phi_np1_lin, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    double *phi_np1_p;
-    ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    oss.str(""); oss << "phi_np1" << mpi->mpisize;
+
+    double *phi_np1_lin_p, *phi_np1_quad_p;
+    ierr = VecGetArray(phi_np1_lin, &phi_np1_lin_p); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_np1_quad, &phi_np1_quad_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est_np1, nodes_np1, NULL,
                            P4EST_TRUE, P4EST_TRUE,
-                           1, 0, oss.str().c_str(),
-                           VTK_POINT_DATA, "phi", phi_np1_p);
-    ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+                           2, 0, oss.str().c_str(),
+                           VTK_POINT_DATA, "phi_np1_lin", phi_np1_lin_p,
+                           VTK_POINT_DATA, "phi_np1_quad", phi_np1_quad_p);
+    ierr = VecRestoreArray(phi_np1_lin,  &phi_np1_lin_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_np1_quad, &phi_np1_quad_p); CHKERRXX(ierr);
 
     // finally, delete PETSc Vecs by calling 'VecDestroy' function
-    ierr = VecDestroy(phi);     CHKERRXX(ierr);
-    ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+    ierr = VecDestroy(phi);          CHKERRXX(ierr);
+    ierr = VecDestroy(phi_np1_lin);  CHKERRXX(ierr);
+    ierr = VecDestroy(phi_np1_quad); CHKERRXX(ierr);
 
     // destroy the p4est and its connectivity structure
     p4est_nodes_destroy (nodes);
