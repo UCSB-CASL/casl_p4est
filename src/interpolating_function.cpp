@@ -549,9 +549,6 @@ double InterpolatingFunction::operator ()(double x, double y) const {
     else
       return non_oscilatory_quadratic_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
 
-    sc_array_destroy(remote_matches);
-    return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
-
   } else {
     ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
 
