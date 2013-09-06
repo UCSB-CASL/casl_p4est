@@ -19,7 +19,7 @@
 #include <src/my_p4est_tools.h>
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
-#include <src/bilinear_interpolating_function.h>
+#include <src/interpolating_function.h>
 
 #include <src/neighbors.h>
 

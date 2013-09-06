@@ -24,19 +24,6 @@ private:
     std::vector< quad_neighbor_nodes_of_node_t > neighbors;
 
     /**
-     * This function is finds the neighboring cell of a node in the given (i,j) direction. The direction must be diagonal
-     * for the function to work ! (e.g. (-1,1) ... no cartesian direction!).
-     * \param [in] node          a pointer to the node whose neighboring cells are looked for
-     * \param [in] i             the x search direction, -1 or 1
-     * \param [in] j             the y search direction, -1 or 1
-     * \param [out] quad         the index of the found quadrant, in mpirank numbering. To fetch this quadrant from its corresponding tree
-     *                           you need to substract the tree quadrant offset. If no quadrant was found, this is set to -1 (e.g. edge of domain)
-     * \param [out] nb_tree_idx  the index of the tree in which the quadrant was found
-     *
-     */
-    void find_neighbor_cell_of_node( p4est_indep_t *node, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx );
-
-    /**
      * Initialize the QuadNeighborNodeOfNode information
      */
     void init_neighbors();
@@ -61,6 +48,19 @@ public:
 #endif
       return neighbors[n];
     }
+
+    /**
+     * This function is finds the neighboring cell of a node in the given (i,j) direction. The direction must be diagonal
+     * for the function to work ! (e.g. (-1,1) ... no cartesian direction!).
+     * \param [in] node          a pointer to the node whose neighboring cells are looked for
+     * \param [in] i             the x search direction, -1 or 1
+     * \param [in] j             the y search direction, -1 or 1
+     * \param [out] quad         the index of the found quadrant, in mpirank numbering. To fetch this quadrant from its corresponding tree
+     *                           you need to substract the tree quadrant offset. If no quadrant was found, this is set to -1 (e.g. edge of domain)
+     * \param [out] nb_tree_idx  the index of the tree in which the quadrant was found
+     *
+     */
+    void find_neighbor_cell_of_node( p4est_indep_t *node, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx );
 };
 
 #endif /* !MY_P4EST_NODE_NEIGHBORS_H */

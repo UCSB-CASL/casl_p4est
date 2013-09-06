@@ -267,7 +267,7 @@ void my_p4est_level_set::reinitialize_One_Iteration( std::vector<p4est_locidx_t>
 }
 
 
-void my_p4est_level_set::reinitialize( Vec &phi_petsc, int number_of_iteration, double limit )
+void my_p4est_level_set::reinitialize_1st_order( Vec &phi_petsc, int number_of_iteration, double limit )
 {
     PetscErrorCode ierr;
     double *phi;
@@ -326,7 +326,7 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec &phi_petsc, int number_of_i
     for(int i=0; i<number_of_iteration; i++)
     {
         ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-        for(size_t n=0; n<nodes->num_owned_indeps; ++n)
+        for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
             p1[n] = phi[n];
 
         /* process the local nodes */
