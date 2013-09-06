@@ -1,4 +1,5 @@
-#include "bilinear_interpolating_function.h"
+#include "interpolating_function.h"
+#include "petsc_compatibility.h"
 #include <sc_notify.h>
 #include <src/my_p4est_vtk.h>
 #include <mpi.h>
@@ -6,11 +7,12 @@
 #include <fstream>
 #include <set>
 
-BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est,
-                                                             p4est_nodes_t *nodes,
-                                                             p4est_ghost_t *ghost,
-                                                             my_p4est_brick_t *myb)
-  : p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb),
+InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
+                                             p4est_nodes_t *nodes,
+                                             p4est_ghost_t *ghost,
+                                             my_p4est_brick_t *myb)
+  : method_(linear),
+    p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), qnnn_(NULL),
     p4est2petsc(nodes->indep_nodes.elem_count),
     remote_senders(p4est->mpisize, -1),
     is_buffer_prepared(false)
@@ -29,7 +31,36 @@ BilinearInterpolatingFunction::BilinearInterpolatingFunction(p4est_t *p4est,
   }
 }
 
-void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y)
+InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
+                                             p4est_nodes_t *nodes,
+                                             p4est_ghost_t *ghost,
+                                             my_p4est_brick_t *myb,
+                                             my_p4est_node_neighbors_t &qnnn)
+  : method_(non_oscilatory_quadratic),
+    p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), qnnn_(&qnnn),
+    p4est2petsc(nodes->indep_nodes.elem_count),
+    remote_senders(p4est->mpisize, -1),
+    is_buffer_prepared(false)
+{
+  const size_t loc_begin = static_cast<size_t>(nodes_->offset_owned_indeps);
+  const size_t loc_end   = static_cast<size_t>(nodes_->num_owned_indeps+nodes_->offset_owned_indeps);
+
+  for (size_t i=0; i<p4est2petsc.size(); ++i)
+  {
+    if (i<loc_begin)
+      p4est2petsc[i] = i + nodes_->num_owned_indeps;
+    else if (i<loc_end)
+      p4est2petsc[i] = i - nodes_->offset_owned_indeps;
+    else
+      p4est2petsc[i] = i;
+  }
+
+  // Allocate memory for second derivaties
+  ierr = VecCreateGhost(p4est_, nodes_, &Fxx); CHKERRXX(ierr);
+  ierr = VecDuplicate(Fxx, &Fyy); CHKERRXX(ierr);
+}
+
+void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y)
 {
   // initialize data
   double xy [] = {x, y};
@@ -117,7 +148,7 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
   is_buffer_prepared = false;
 }
 
-void BilinearInterpolatingFunction::update_grid(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost)
+void InterpolatingFunction::update_grid(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost)
 {
   clear_buffer();
 
@@ -142,12 +173,54 @@ void BilinearInterpolatingFunction::update_grid(p4est_t *p4est, p4est_nodes_t *n
   }
 }
 
-void BilinearInterpolatingFunction::set_input_vector(Vec &input_vec)
+
+void InterpolatingFunction::update_grid(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_node_neighbors_t &qnnn)
 {
-  input_vec_ = input_vec;
+  clear_buffer();
+
+  p4est_ = p4est;
+  nodes_ = nodes;
+  ghost_ = ghost;
+  qnnn_  = &qnnn;
+
+  ierr = VecCreateGhost(p4est_, nodes_, &Fxx); CHKERRXX(ierr);
+  ierr = VecDuplicate(Fxx, &Fyy); CHKERRXX(ierr);
+
+  remote_senders.resize(p4est_->mpisize, -1);
+
+  p4est2petsc.resize(nodes_->indep_nodes.elem_count);
+  const size_t loc_begin = static_cast<size_t>(nodes_->offset_owned_indeps);
+  const size_t loc_end   = static_cast<size_t>(nodes_->num_owned_indeps+nodes_->offset_owned_indeps);
+
+  for (size_t i=0; i<p4est2petsc.size(); ++i)
+  {
+    if (i<loc_begin)
+      p4est2petsc[i] = i + nodes_->num_owned_indeps;
+    else if (i<loc_end)
+      p4est2petsc[i] = i - nodes_->offset_owned_indeps;
+    else
+      p4est2petsc[i] = i;
+  }
 }
 
-void BilinearInterpolatingFunction::interpolate(Vec& output_vec)
+void InterpolatingFunction::set_input_vector(Vec &input_vec)
+{
+  input_vec_ = input_vec;
+
+  // compute the second derivates if necessary
+  if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+    compute_second_derivatives();
+}
+
+void InterpolatingFunction::set_interpolation_method(interpolation_method method)
+{
+  if (qnnn_ == NULL && method != linear)
+    throw std::invalid_argument("[ERROR]: a quadratic method requires a valid QNNN object but none was given");
+
+  method_ = method;
+}
+
+void InterpolatingFunction::interpolate(Vec& output_vec)
 {
   // begin sending point buffers
   if (!is_buffer_prepared)
@@ -156,9 +229,18 @@ void BilinearInterpolatingFunction::interpolate(Vec& output_vec)
   PetscErrorCode ierr;
 
   // Get a pointer to the data
-  double *Fi_ptr, *Fo_ptr;
-  ierr = VecGetArray(input_vec_, &Fi_ptr); CHKERRXX(ierr);
-  ierr = VecGetArray(output_vec, &Fo_ptr); CHKERRXX(ierr);
+  double *Fi_p,  *Fo_p;
+  double *Fxx_p, *Fyy_p;
+  ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(output_vec, &Fo_p); CHKERRXX(ierr);  
+  
+  if (method_ == linear)
+    Fxx_p = Fyy_p = NULL;
+  else 
+  {
+    ierr = VecGetArray(Fxx, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecGetArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+  }
 
   // initialize the value for remote matches to zero
   {
@@ -168,13 +250,15 @@ void BilinearInterpolatingFunction::interpolate(Vec& output_vec)
     for(; it != end; ++it){
       std::vector<p4est_locidx_t>& locidx = it->second;
       for (size_t i=0; i<locidx.size(); ++i)
-        Fo_ptr[locidx[i]] = 0;
+        Fo_p[locidx[i]] = 0;
     }
   }
 
   // Get access to the node numbering of all quadrants
   p4est_locidx_t *q2n = nodes_->local_nodes;
-  double f[P4EST_CHILDREN];
+  double f  [P4EST_CHILDREN];
+  double fxx[P4EST_CHILDREN];
+  double fyy[P4EST_CHILDREN];
 
   // Do the interpolation for local points
   for (size_t i=0; i<local_point_buffer.size(); ++i)
@@ -187,9 +271,25 @@ void BilinearInterpolatingFunction::interpolate(Vec& output_vec)
     p4est_locidx_t node_idx = local_point_buffer.node_locidx[i];
     
     for (short j=0; j<P4EST_CHILDREN; ++j)
-      f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+      f[j] = Fi_p[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+
+    // get access to second derivatives only if needed
+    if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+    {
+      for (short j=0; j<P4EST_CHILDREN; ++j)
+      {
+        p4est_locidx_t node_locidx = p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]];
+        fxx[j] = Fxx_p[node_locidx];
+        fyy[j] = Fyy_p[node_locidx];
+      }
+    }
     
-    Fo_ptr[node_idx] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
+    if (method_ == linear)
+      Fo_p[node_idx] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
+    else if (method_ == quadratic)
+      Fo_p[node_idx] = quadratic_interpolation(p4est_, tree_idx, quad, f, fxx, fyy, xy);
+    else 
+      Fo_p[node_idx] = non_oscilatory_quadratic_interpolation(p4est_, tree_idx, quad, f, fxx, fyy, xy);
   }
 
   // Do the interpolation for ghost points
@@ -202,9 +302,25 @@ void BilinearInterpolatingFunction::interpolate(Vec& output_vec)
     p4est_locidx_t node_idx = ghost_point_buffer.node_locidx[i];
 
     for (short j=0; j<P4EST_CHILDREN; ++j)
-      f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+      f[j] = Fi_p[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
 
-    Fo_ptr[node_idx] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
+        // get access to second derivatives only if needed
+    if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+    {
+      for (short j=0; j<P4EST_CHILDREN; ++j)
+      {
+        p4est_locidx_t node_locidx = p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]];
+        fxx[j] = Fxx_p[node_locidx];
+        fyy[j] = Fyy_p[node_locidx];
+      }
+    }
+    
+    if (method_ == linear)
+      Fo_p[node_idx] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
+    else if (method_ == quadratic)
+      Fo_p[node_idx] = quadratic_interpolation(p4est_, tree_idx, quad, f, fxx, fyy, xy);
+    else 
+      Fo_p[node_idx] = non_oscilatory_quadratic_interpolation(p4est_, tree_idx, quad, f, fxx, fyy, xy);
   }
 
   // begin recieving point buffers
@@ -252,9 +368,25 @@ void BilinearInterpolatingFunction::interpolate(Vec& output_vec)
           p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
 
           for (short j=0; j<P4EST_CHILDREN; j++)
-            f[j] = Fi_ptr[p4est2petsc[q2n[qu_locidx*P4EST_CHILDREN+j]]];
+            f[j] = Fi_p[p4est2petsc[q2n[qu_locidx*P4EST_CHILDREN+j]]];
 
-          f_send[i] = bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+          // get access to second derivatives only if needed
+          if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+          {
+            for (short j=0; j<P4EST_CHILDREN; ++j)
+            {
+              p4est_locidx_t node_locidx = p4est2petsc[q2n[qu_locidx*P4EST_CHILDREN+j]];
+              fxx[j] = Fxx_p[node_locidx];
+              fyy[j] = Fyy_p[node_locidx];
+            }
+          }
+          
+          if (method_ == linear)
+            f_send[i] = bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+          else if (method_ == quadratic)
+            f_send[i] = quadratic_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
+          else 
+            f_send[i] = non_oscilatory_quadratic_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
 
         } else if (remote_matches->elem_count == 0){
           // if we don't own the point but its in the ghost layer return 0.
@@ -290,7 +422,7 @@ void BilinearInterpolatingFunction::interpolate(Vec& output_vec)
       MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, remote_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
 
       for (size_t j=0; j<f_recv.size(); j++){
-        Fo_ptr[node_idx[j]] += f_recv[j];
+        Fo_p[node_idx[j]] += f_recv[j];
       }
     }
   }
@@ -309,14 +441,33 @@ void BilinearInterpolatingFunction::interpolate(Vec& output_vec)
   MPI_Waitall(remote_data_send_req.size(), &remote_data_send_req[0], MPI_STATUSES_IGNORE);
 
   // Restore the pointer
-  ierr = VecRestoreArray(input_vec_, &Fi_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(output_vec, &Fo_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(output_vec, &Fo_p); CHKERRXX(ierr);
+
+  if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+  {
+    ierr = VecRestoreArray(Fxx, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(Fyy, &Fyy_p); CHKERRXX(ierr);    
+  }
 }
 
-double BilinearInterpolatingFunction::operator ()(double x, double y) const {
+double InterpolatingFunction::operator ()(double x, double y) const {
   double xy[] = {x, y};
-  double *Fi_ptr;
-  PetscErrorCode ierr = VecGetArray(input_vec_, &Fi_ptr); CHKERRXX(ierr);
+  
+  double *Fi_p, *Fxx_p, *Fyy_p;
+
+  PetscErrorCode ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+  if (method_ == linear)
+    Fxx_p = Fyy_p = NULL;
+  else
+  {
+    ierr = VecGetArray(Fxx, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecGetArray(Fyy, &Fyy_p); CHKERRXX(ierr);    
+  }
+
+  static double f  [P4EST_CHILDREN];
+  static double fxx[P4EST_CHILDREN];
+  static double fyy[P4EST_CHILDREN];
 
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -332,28 +483,87 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const {
     p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
     quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
 
-    double f [P4EST_CHILDREN];
     for (short j=0; j<P4EST_CHILDREN; ++j)
-      f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+      f[j] = Fi_p[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
 
-    ierr = VecRestoreArray(input_vec_, &Fi_ptr); CHKERRXX(ierr);
+     // get access to second derivatives only if needed
+    if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+    {
+      for (short j=0; j<P4EST_CHILDREN; ++j)
+      {
+        p4est_locidx_t node_locidx = p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]];
+        fxx[j] = Fxx_p[node_locidx];
+        fyy[j] = Fyy_p[node_locidx];
+      }
+    }
 
-    return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+    // restore arrays and release remote_maches
+    ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+    if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+    {
+      ierr = VecRestoreArray(Fxx, &Fxx_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(Fyy, &Fyy_p); CHKERRXX(ierr);    
+    }
+
+    sc_array_destroy(remote_matches);
+
+    if (method_ == linear)
+      return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+    else if (method_ == quadratic)
+      return quadratic_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
+    else
+      return non_oscilatory_quadratic_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
 
   } else if (remote_matches->elem_count == 0) { // ghost quadrant
     tree_idx = best_match.p.piggy3.which_tree;
     quad_idx = best_match.p.piggy3.local_num + p4est_->local_num_quadrants;
 
-    double f [P4EST_CHILDREN];
     for (short j=0; j<P4EST_CHILDREN; ++j)
-      f[j] = Fi_ptr[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+      f[j] = Fi_p[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
 
-    ierr = VecRestoreArray(input_vec_, &Fi_ptr); CHKERRXX(ierr);
+    // get access to second derivatives only if needed
+    if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+    {
+      for (short j=0; j<P4EST_CHILDREN; ++j)
+      {
+        p4est_locidx_t node_locidx = p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]];
+        fxx[j] = Fxx_p[node_locidx];
+        fyy[j] = Fyy_p[node_locidx];
+      }
+    }
 
+    // restore arrays and release remote_maches
+    ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+    if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+    {
+      ierr = VecRestoreArray(Fxx, &Fxx_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(Fyy, &Fyy_p); CHKERRXX(ierr);    
+    }
+
+    sc_array_destroy(remote_matches);
+
+    if (method_ == linear)
+      return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+    else if (method_ == quadratic)
+      return quadratic_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
+    else
+      return non_oscilatory_quadratic_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
+
+    sc_array_destroy(remote_matches);
     return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
 
   } else {
-    ierr = VecRestoreArray(input_vec_, &Fi_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+
+    // restore arrays and release remote_maches
+    ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+    if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+    {
+      ierr = VecRestoreArray(Fxx, &Fxx_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(Fyy, &Fyy_p); CHKERRXX(ierr);    
+    }
+
+    sc_array_destroy(remote_matches);
 
     std::ostringstream oss;
     oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") does not belong to "
@@ -363,7 +573,7 @@ double BilinearInterpolatingFunction::operator ()(double x, double y) const {
   }
 }
 
-void BilinearInterpolatingFunction::send_point_buffers_begin()
+void InterpolatingFunction::send_point_buffers_begin()
 {
     int req_counter = 0;
 
@@ -389,7 +599,7 @@ void BilinearInterpolatingFunction::send_point_buffers_begin()
     }
 }
 
-void BilinearInterpolatingFunction::recv_point_buffers_begin()
+void InterpolatingFunction::recv_point_buffers_begin()
 {
     // Allocate enough requests slots
     remote_recv_req.resize(remote_senders.size());
@@ -410,11 +620,15 @@ void BilinearInterpolatingFunction::recv_point_buffers_begin()
     }
 }
 
-void BilinearInterpolatingFunction::clear_buffer()
+void InterpolatingFunction::clear_buffer()
 {
   local_point_buffer.xy.clear();
   local_point_buffer.quad.clear();
   local_point_buffer.node_locidx.clear();
+
+  ghost_point_buffer.xy.clear();
+  ghost_point_buffer.quad.clear();
+  ghost_point_buffer.node_locidx.clear();
 
   remote_send_buffer.clear();
   remote_recv_buffer.clear();
@@ -423,5 +637,45 @@ void BilinearInterpolatingFunction::clear_buffer()
 
   p4est2petsc.clear();
 
+  if (method_ == quadratic || method_ == non_oscilatory_quadratic)
+  {
+    ierr = VecDestroy(Fxx); CHKERRXX(ierr);
+    ierr = VecDestroy(Fyy); CHKERRXX(ierr);
+  }
+  
   is_buffer_prepared = false;
+}
+
+void InterpolatingFunction::compute_second_derivatives()
+{
+  // Access internal data
+  double *Fi_p, *Fxx_p, *Fyy_p;
+  ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(Fxx, &Fxx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+
+  // Compute Fxx on local nodes
+  for (p4est_locidx_t n=0; n<nodes_->num_owned_indeps; ++n)
+    Fxx_p[n] = (*qnnn_)[n].dxx_central(Fi_p);
+
+  // Send ghost values for Fxx
+  ierr = VecGhostUpdateBegin(Fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  // Compute Fyy on local nodes
+  for (p4est_locidx_t n=0; n<nodes_->num_owned_indeps; ++n)
+    Fyy_p[n] = (*qnnn_)[n].dyy_central(Fi_p);
+
+  // receive the ghost values for Fxx
+  ierr = VecGhostUpdateEnd(Fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Fxx, &Fxx_p); CHKERRXX(ierr);
+
+  // Send ghost values for Fyy and receive them
+  ierr = VecGhostUpdateBegin(Fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);  
+  ierr = VecGhostUpdateEnd(Fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  // restore Fyy array
+  ierr = VecRestoreArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+
+  // restore input_vec_ array
+  ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
 }

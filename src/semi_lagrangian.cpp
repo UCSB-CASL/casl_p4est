@@ -1,7 +1,8 @@
 #include "semi_lagrangian.h"
-#include <src/bilinear_interpolating_function.h>
+#include <src/interpolating_function.h>
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
+#include <src/my_p4est_node_neighbors.h>
 #include <mpi.h>
 #include <sc_notify.h>
 
@@ -29,7 +30,12 @@ SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, p4est_gho
 
 double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
 
-  BilinearInterpolatingFunction bif(p4est_, nodes_, ghost_, myb_);
+  // create hierarchy structure if you want to do quadratic interpolation 
+  my_p4est_hierarchy_t hierarchy(p4est_, ghost_);
+  my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
+
+  InterpolatingFunction bif(p4est_, nodes_, ghost_, myb_, qnnn);
+  bif.set_interpolation_method(non_oscilatory_quadratic);
   bif.set_input_vector(phi);
 
   double dt = compute_dt(vx, vy);
@@ -105,7 +111,7 @@ void SemiLagrangian::update_p4est(Vec &phi){
   p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
 
   // define an interpolating function
-  BilinearInterpolatingFunction bif(p4est_, nodes_, ghost_, myb_);
+  InterpolatingFunction bif(p4est_, nodes_, ghost_, myb_);
   bif.set_input_vector(phi);
 
   // now refine/coarsen the new copy of p4est -- note that we need to swap
@@ -115,8 +121,6 @@ void SemiLagrangian::update_p4est(Vec &phi){
   p4est_np1->user_pointer = data;
   p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset_cf, NULL);
   p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
-//  p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_grid_transfer, NULL);
-//  p4est_refine(p4est_np1, P4EST_TRUE, refine_grid_transfer, NULL);
   p4est_partition(p4est_np1, NULL);
 
   // compute new ghost layer

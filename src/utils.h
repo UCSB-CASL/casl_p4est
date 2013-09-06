@@ -173,7 +173,7 @@ void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* qua
 double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, double *F, const double *xy_global);
 
 /*!
- * \brief quadratic_interpolation_nonoscilatory performs nonscilatory quadratic interpolation for a point
+ * \brief non_oscilatory_quadratic_interpolation performs non-oscilatory quadratic interpolation for a point
  * \param p4est the forest
  * \param tree_id the current tree that owns the quadrant
  * \param quad the current quarant
@@ -184,7 +184,7 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4es
  * \param y_global global y-coordinate of the point
  * \return interpolated value
  */
-double quadratic_interpolation_nonoscilatory(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global);
+double non_oscilatory_quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global);
 
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
