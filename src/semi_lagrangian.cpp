@@ -72,6 +72,7 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
     };
 
     // make the domain periodic
+    // TODO: the domain in not necessarily periodic ! idea : clip the coordinates to find the smallest cell and do interpolation on the original coordinates ... do that inside the interpolation procedure
     if (xy_departure[0] > xmax)
       xy_departure[0] -= xmax - xmin;
     else if (xy_departure[0] < xmin)

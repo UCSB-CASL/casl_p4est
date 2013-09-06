@@ -20,7 +20,7 @@ class SemiLagrangian
   PetscErrorCode ierr;
 
   inline double compute_dt(const CF_2& vx, const CF_2& vy){
-    double dt = 1000;
+    double dt = DBL_MAX;
 
     // loop over trees
     for (p4est_topidx_t tr_it = p4est_->first_local_tree; tr_it <=p4est_->last_local_tree; ++tr_it){

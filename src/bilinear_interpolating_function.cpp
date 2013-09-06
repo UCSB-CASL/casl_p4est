@@ -78,8 +78,8 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
 
   // check who is going to own the quadrant
   if (rank_found == p4est_->mpirank){ // local quadrant
-    local_point_buffer.xy.push_back(x);
-    local_point_buffer.xy.push_back(y);
+      local_point_buffer.xy.push_back(xy[0]);
+      local_point_buffer.xy.push_back(xy[1]);
     local_point_buffer.quad.push_back(best_match);
     local_point_buffer.node_locidx.push_back(node_locidx);
 
@@ -104,7 +104,7 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
      */
 
     ghost_point_info tmp;
-    tmp.xy[0] = x; tmp.xy[1] = y;
+    tmp.xy[0] = xy[0]; tmp.xy[1] = xy[1];
     tmp.quad_locidx = q->p.piggy3.local_num;
     tmp.tree_idx    = q->p.piggy3.which_tree;
 
@@ -148,8 +148,8 @@ void BilinearInterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_loci
         end = remote_ranks.end();
     for(; it != end; ++it){
       int r = *it;
-      remote_send_buffer[r].push_back(x);
-      remote_send_buffer[r].push_back(y);
+      remote_send_buffer[r].push_back(xy[0]);
+      remote_send_buffer[r].push_back(xy[1]);
       remote_node_index[r].push_back(node_locidx);
     }
   }
