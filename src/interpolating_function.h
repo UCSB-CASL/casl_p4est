@@ -23,6 +23,8 @@ class InterpolatingFunction: public CF_2
   my_p4est_brick_t *myb_;
   my_p4est_node_neighbors_t *qnnn_;
 
+  double xmin, xmax, ymin, ymax;
+
   PetscErrorCode ierr;
   Vec Fxx, Fyy;
 

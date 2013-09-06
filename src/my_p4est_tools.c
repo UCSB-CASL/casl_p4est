@@ -221,8 +221,8 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
    *
    * BUG: SL code seems sensitive to this number .., what should we do here?
    */
-  if( fabs(round(xy[0])-xy[0]) < 1e-9 ) xy[0] = round(xy[0]);
-  if( fabs(round(xy[1])-xy[1]) < 1e-9 ) xy[1] = round(xy[1]);
+//  if( fabs(round(xy[0])-xy[0]) < 1e-9 ) xy[0] = round(xy[0]);
+//  if( fabs(round(xy[1])-xy[1]) < 1e-9 ) xy[1] = round(xy[1]);
 
   for (i = 0; i < P4EST_DIM; ++i) {
     hit = (int) floor (xy[i]);

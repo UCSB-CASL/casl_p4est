@@ -109,11 +109,8 @@ double fraction_Interval_Covered_By_Irregular_Domain( double phi0, double phi1, 
  * \param phi1xx the 2nd order derivative of the level-set at the second point
  * \return the fraction of the interval covered by the irregular domain
  */
-
-
 double fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives( double phi0, double phi1, double phi0xx, double phi1xx, double dx);
 
-// NOTE: Do we need all these interface location functions and if so, should we keep them here? -Miles
 
 /*!
  * \brief Get interface location on the interval [a,b] given one point on either side of the interface

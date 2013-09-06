@@ -75,16 +75,6 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
       xy[1] - dt*vy(xy[0], xy[1])
     };
 
-    // make the domain periodic
-    if (xy_departure[0] > xmax)
-      xy_departure[0] -= xmax - xmin;
-    else if (xy_departure[0] < xmin)
-      xy_departure[0] += xmax - xmin;
-    if (xy_departure[1] > ymax)
-      xy_departure[1] -= ymax - ymin;
-    else if (xy_departure[1] < ymin)
-      xy_departure[1] += ymax - ymin;
-
     //Buffer the point for interpolation
     bif.add_point_to_buffer(ni, xy_departure[0], xy_departure[1]);
   }

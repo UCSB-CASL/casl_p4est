@@ -273,6 +273,7 @@ void my_p4est_level_set::reinitialize_1st_order( Vec &phi_petsc, int number_of_i
     double *phi;
 
     double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
+    double *p1 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
 
     ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
@@ -283,16 +284,19 @@ void my_p4est_level_set::reinitialize_1st_order( Vec &phi_petsc, int number_of_i
     {
         /* process the local nodes */
         ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-        reinitialize_One_Iteration( local_nodes, p0, phi, phi, limit);
+        reinitialize_One_Iteration( local_nodes, p0, phi, p1, limit);
         ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 
         /* finish receiving the ghost layer */
-        if(i!=0) ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        if(i!=0) { ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 
         /* processes the layer nodes */
         ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-        reinitialize_One_Iteration( layer_nodes, p0, phi, phi, limit);
+        reinitialize_One_Iteration( layer_nodes, p0, phi, p1, limit);
+        for(size_t n=0; n<nodes->num_owned_indeps; ++n)
+            phi[n] = p1[n];
         ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
+
 
         /* initiate the communication for the ghost layer */
         ierr = VecGhostUpdateBegin(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -302,6 +306,7 @@ void my_p4est_level_set::reinitialize_1st_order( Vec &phi_petsc, int number_of_i
     ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     free(p0);
+    free(p1);
 }
 
 
@@ -311,6 +316,11 @@ void my_p4est_level_set::reinitialize_1st_order( Vec &phi_petsc, int number_of_i
 
 void my_p4est_level_set::reinitialize_2nd_order( Vec &phi_petsc, int number_of_iteration, double limit )
 {
+    /* let's call
+     * Ln the local nodes at time n
+     * Bnp1 the boundary nodes at time np1
+     * Gnm1 the ghost nodes at time nm1
+     */
     PetscErrorCode ierr;
     double *phi;
 
@@ -325,21 +335,26 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec &phi_petsc, int number_of_i
 
     for(int i=0; i<number_of_iteration; i++)
     {
+        /* p1(Ln, Gn, Gnm1) */
         ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
         for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
             p1[n] = phi[n];
 
         /* process the local nodes */
+        /* phi(Lnp1, Bn, Gnm1) */
         reinitialize_One_Iteration( local_nodes, p0, p1, phi, limit);
         ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 
         /* finish receiving the ghost layer */
-        if(i!=0) ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        /* phi(Lnp1, Bn, Gn) */
+        if(i!=0) { ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 
         /* processes the layer nodes */
+        /* p1(Ln, Bn, Gn) */
         ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
         for(size_t n=nodes->num_owned_indeps; n<nodes->indep_nodes.elem_count; ++n)
             p1[n] = phi[n];
+        /* phi(Lnp1, Bnp1, Gn) */
         reinitialize_One_Iteration( layer_nodes, p0, p1, phi, limit);
         ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 
@@ -350,15 +365,18 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec &phi_petsc, int number_of_i
 
 
         /* process the local nodes */
+        /* p2(Lnp2, Bnp1, Gn) */
         ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
         reinitialize_One_Iteration( local_nodes, p0, phi, p2, limit);
         ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 
         /* finish receiving the ghost layer */
+        /* phi(Lnp1, Bnp1, Gnp1) */
         ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
         /* process the layer nodes */
         ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+        /* p2(Lnp2, Bnp2, Gn) */
         reinitialize_One_Iteration( layer_nodes, p0, phi, p2, limit);
 
         /* update phi */
@@ -371,7 +389,7 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec &phi_petsc, int number_of_i
     }
 
     /* synchronize */
-    ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    if(number_of_iteration>0) { ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 
     free(p0);
     free(p1);
