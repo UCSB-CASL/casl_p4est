@@ -37,15 +37,15 @@ class InterpolatingFunction: public CF_2
     std::vector<p4est_locidx_t> node_locidx;
 
     size_t size() { return node_locidx.size(); }
+    void clear()
+    {
+      xy.clear();
+      quad.clear();
+      node_locidx.clear();
+    }
   };
 
   point_buffer local_point_buffer, ghost_point_buffer;
-
-  struct ghost_point_info{
-    double xy[2];
-    p4est_topidx_t tree_idx;
-    p4est_locidx_t quad_locidx;
-  };
 
   typedef std::map<int, std::vector<double> > remote_transfer_map;
   remote_transfer_map remote_send_buffer, remote_recv_buffer;
@@ -66,19 +66,22 @@ class InterpolatingFunction: public CF_2
   // methods
   void send_point_buffers_begin();
   void recv_point_buffers_begin();
-  void clear_buffer();
   void compute_second_derivatives();
+
+  // rule of three -- disable copy ctr and assignment if not useful
+  InterpolatingFunction(const InterpolatingFunction& other);
+  InterpolatingFunction& operator=(const InterpolatingFunction& other);
 
 public:
   InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb);
   InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_node_neighbors_t &qnnn);
+  ~InterpolatingFunction();
 
   void add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y);
   void set_input_vector(Vec& input_vec);
   void set_interpolation_method(interpolation_method method);
-  void update_grid(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost);
-  void update_grid(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_node_neighbors_t &qnnn);
 
+  // interpolation methods
   void interpolate(Vec& output_vec);
   double operator()(double x, double y) const;
 };
