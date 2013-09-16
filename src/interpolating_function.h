@@ -10,7 +10,7 @@
 enum interpolation_method{
   linear,
   quadratic,
-  non_oscilatory_quadratic
+  quadratic_non_oscillatory
 };
 
 class InterpolatingFunction: public CF_2
@@ -35,6 +35,9 @@ class InterpolatingFunction: public CF_2
     std::vector<double> xy;
     std::vector<p4est_quadrant_t> quad;
     std::vector<p4est_locidx_t> node_locidx;
+
+    double xmin, xmax;
+    double ymin, ymax;
 
     size_t size() { return node_locidx.size(); }
     void clear()
@@ -78,11 +81,11 @@ public:
   ~InterpolatingFunction();
 
   void add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y);
-  void set_input_vector(Vec& input_vec);
-  void set_interpolation_method(interpolation_method method);
+  void set_input_parameters(Vec& input_vec, interpolation_method method);
 
   // interpolation methods
   void interpolate(Vec& output_vec);
+  void interpolate(double *output_vec);
   double operator()(double x, double y) const;
 };
 

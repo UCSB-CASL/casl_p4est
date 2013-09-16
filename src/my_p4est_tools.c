@@ -215,14 +215,14 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
 
   /* gather information to construct search quadrants for all possibilities */
 
-  /* to account for numerical rounding errors, we check if the coordinates given
+  /* BUG: to account for numerical rounding errors, we check if the coordinates given
    * are withing epsilon (chosen arbitrarily here .... to be improved) of an
    * integer. If so, round the coordinates. In general, using '==' on double is BAD!
    *
    * BUG: SL code seems sensitive to this number .., what should we do here?
    */
-//  if( fabs(round(xy[0])-xy[0]) < 1e-9 ) xy[0] = round(xy[0]);
-//  if( fabs(round(xy[1])-xy[1]) < 1e-9 ) xy[1] = round(xy[1]);
+  if( fabs(round(xy[0])-xy[0]) < 1e-9 ) xy[0] = round(xy[0]);
+  if( fabs(round(xy[1])-xy[1]) < 1e-9 ) xy[1] = round(xy[1]);
 
   for (i = 0; i < P4EST_DIM; ++i) {
     hit = (int) floor (xy[i]);
@@ -276,7 +276,7 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
       }
       tt = treeid[2 * iy + ix] =
           myb->nxy_to_treeid[myb->nxytrees[0] * integerstep[1][iy] +
-           integerstep[0][ix]];
+          integerstep[0][ix]];
       P4EST_LDEBUGF ("Testing %d %d for tree %d\n", ix, iy, (int) tt);
       sq.x = searchq[0][ix];
       sq.y = searchq[1][iy];

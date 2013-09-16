@@ -293,7 +293,7 @@ void my_p4est_level_set::reinitialize_1st_order( Vec &phi_petsc, int number_of_i
         /* processes the layer nodes */
         ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
         reinitialize_One_Iteration( layer_nodes, p0, phi, p1, limit);
-        for(size_t n=0; n<nodes->num_owned_indeps; ++n)
+        for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
             phi[n] = p1[n];
         ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 

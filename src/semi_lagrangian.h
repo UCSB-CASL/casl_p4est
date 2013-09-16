@@ -8,6 +8,10 @@
 #include <src/my_p4est_tools.h>
 #include <iostream>
 
+#include <p4est.h>
+#include <src/refine_coarsen.h>
+#include <src/my_p4est_node_neighbors.h>
+
 class SemiLagrangian
 {
   p4est_t **p_p4est_, *p4est_;
@@ -15,48 +19,169 @@ class SemiLagrangian
   p4est_ghost_t **p_ghost_, *ghost_;
   my_p4est_brick_t *myb_;
 
+  struct splitting_criteria_update_t : splitting_criteria_t
+  {
+    double lip;
+    my_p4est_brick_t *myb;
+    p4est_t *p4est_tmp;
+    p4est_nodes_t *nodes_tmp;
+    Vec *phi_tmp;
+    splitting_criteria_update_t( double lip, int min_lvl, int max_lvl,
+                                 Vec *phi,  my_p4est_brick_t *myb,
+                                 p4est_t *p4est, p4est_nodes_t *nodes )
+    {
+      this->lip = lip;
+      this->min_lvl = min_lvl;
+      this->max_lvl = max_lvl;
+      this->myb = myb;
+      this->p4est_tmp = p4est;
+      this->nodes_tmp = nodes;
+      this->phi_tmp = phi;
+    }
+    double operator()(const p4est_quadrant_t &quad, const double *f, const double *xy) const
+    {
+      return bilinear_interpolation(p4est_tmp, quad.p.piggy3.which_tree, quad, f, xy);
+    }
+  };
+
   double xmin, xmax, ymin, ymax;
 
   std::vector<double> local_xy_departure_dep, non_local_xy_departure_dep;   //Buffers to hold local and non-local departure points
   PetscErrorCode ierr;
 
-  inline double compute_dt(const CF_2& vx, const CF_2& vy){
-    double dt = DBL_MAX;
+  double compute_dt(const CF_2& vx, const CF_2& vy);
 
-    // loop over trees
-    for (p4est_topidx_t tr_it = p4est_->first_local_tree; tr_it <=p4est_->last_local_tree; ++tr_it){
-      p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tr_it);
-      p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
-      double *v2c = p4est_->connectivity->vertices;
+  void update_p4est(Vec& phi, my_p4est_node_neighbors_t& qnnn);
 
-      double tr_xmin = v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 0];
-      double tr_ymin = v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 1];
+  void advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double dt, Vec &phi_n, Vec &phi_np1,
+                            p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, my_p4est_node_neighbors_t &qnnn);
 
-      // loop over quadrants
-      for (size_t qu_it=0; qu_it<tree->quadrants.elem_count; ++qu_it){
-        p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, qu_it);
+  static p4est_bool_t refine_criteria_sl(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+  {
+    splitting_criteria_update_t *data = (splitting_criteria_update_t*) p4est->user_pointer;
 
-        double dx = int2double_coordinate_transform(P4EST_QUADRANT_LEN(quad->level));
-        double x  = int2double_coordinate_transform(quad->x) + 0.5*dx + tr_xmin;
-        double y  = int2double_coordinate_transform(quad->y) + 0.5*dx + tr_ymin;
-        double vn = sqrt(SQR(vx(x,y)) + SQR(vy(x,y)));
-        dt = MIN(dt, dx/vn);
+    if (quad->level < data->min_lvl)
+      return P4EST_TRUE;
+    else if (quad->level >= data->max_lvl)
+      return P4EST_FALSE;
+    else
+    {
+      double dx, dy;
+      dx_dy_dz_quadrant(p4est, which_tree, quad, &dx, &dy, NULL);
+      double d = sqrt(dx*dx + dy*dy);
+      double lip = data->lip;
+
+      /* find the quadrant in p4est_tmp */
+      double xy [] = { (double)quad->x/(double)P4EST_ROOT_LEN,
+                       (double)quad->y/(double)P4EST_ROOT_LEN };
+
+      c2p_coordinate_transform(p4est, which_tree, &xy[0], &xy[1], NULL);
+      xy[0] += dx/2;
+      xy[1] += dy/2;
+
+      p4est_quadrant_t quad_tmp;
+      my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy, &quad_tmp, NULL);
+
+      p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
+      p4est_tree_t *tree_tmp = p4est_tree_array_index(data->p4est_tmp->trees, quad_tmp.p.piggy3.which_tree);
+      p4est_locidx_t quad_tmp_idx = quad_tmp.p.piggy3.local_num + tree_tmp->quadrants_offset;
+
+      double *phi_tmp;
+      PetscErrorCode ierr;
+      ierr = VecGetArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
+
+      double f[4];
+      for(short j=0; j<P4EST_CHILDREN; ++j)
+      {
+        f[j] = phi_tmp[ p4est2petsc_local_numbering(data->nodes_tmp, q2n[ quad_tmp_idx*P4EST_CHILDREN + j ]) ];
+        if (fabs(f[j]) <= 0.5*lip*d)
+        {
+          ierr = VecRestoreArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
+          return P4EST_TRUE;
+        }
       }
+      ierr = VecRestoreArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
+
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
+        return P4EST_TRUE;
+
+      return P4EST_FALSE;
     }
-
-    double dt_min;
-    MPI_Allreduce(&dt, &dt_min, 1, MPI_DOUBLE, MPI_MIN, p4est_->mpicomm);
-
-    return dt_min;
   }
 
-  double linear_interpolation(const double *F, const double xy[], p4est_topidx_t tree_idx = 0);
-  void update_p4est(Vec& phi);
+  static p4est_bool_t coarsen_criteria_sl(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
+  {
+    splitting_criteria_update_t *data = (splitting_criteria_update_t*)p4est->user_pointer;
+
+    if (quad[0]->level <= data->min_lvl)
+      return P4EST_FALSE;
+    else if (quad[0]->level > data->max_lvl)
+      return P4EST_TRUE;
+    else
+    {
+      double dx, dy;
+      dx_dy_dz_quadrant(p4est, which_tree, quad[0], &dx, &dy, NULL);
+      double d = 2*sqrt(dx*dx + dy*dy);
+      double lip = data->lip;
+
+      double xy [] = { (double)quad[0]->x/(double)P4EST_ROOT_LEN,
+                       (double)quad[0]->y/(double)P4EST_ROOT_LEN };
+      c2p_coordinate_transform(p4est, which_tree, &xy[0], &xy[1], NULL);
+      xy[0] += dx/2;
+      xy[1] += dy/2;
+
+      p4est_quadrant_t quad_tmp[P4EST_CHILDREN];
+      p4est_tree_t *tree_tmp[P4EST_CHILDREN];
+      p4est_locidx_t quad_tmp_idx[P4EST_CHILDREN];
+
+      for(short j=0; j<2; ++j)
+        for(short i=0; i<2; ++i)
+        {
+          short n = 2*j+i;
+          double xy_tmp [] = { xy[0] + i*dx, xy[1] + j*dy };
+          my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy_tmp, &quad_tmp[n], NULL);
+          tree_tmp[n] = p4est_tree_array_index(data->p4est_tmp->trees, quad_tmp[n].p.piggy3.which_tree);
+          quad_tmp_idx[n] = quad_tmp[n].p.piggy3.local_num + tree_tmp[n]->quadrants_offset;
+        }
+
+      double *phi_tmp;
+      PetscErrorCode ierr;
+      ierr = VecGetArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
+
+      double f[4];
+      p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
+      for(short j=0; j<2; ++j)
+        for(short i=0; i<2; ++i)
+        {
+          short n = 2*j+i;
+          f[n] = phi_tmp[ p4est2petsc_local_numbering(data->nodes_tmp,
+                                                      q2n[ quad_tmp_idx[n]*P4EST_CHILDREN + 2*j + i ] ) ];
+          if (fabs(f[n]) <= 0.5*lip*d)
+          {
+            ierr = VecRestoreArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
+            return P4EST_FALSE;
+          }
+      }
+      ierr = VecRestoreArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
+
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
+        return P4EST_FALSE;
+
+      return P4EST_TRUE;
+    }
+  }
+
+
+
+
+
 
 public:
   SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, p4est_ghost_t **ghost, my_p4est_brick_t *myb);
 
   double advect(const CF_2& vx, const CF_2& vy, Vec &phi);
+
+  double update_p4est_new(const CF_2& vx, const CF_2& vy, Vec& phi);
 };
 
 #endif // PARALLEL_SEMI_LAGRANGIAN_H

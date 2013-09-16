@@ -56,7 +56,7 @@ public:
         }
     }
 
-    void reinitialize_1st_order( Vec &phi_petsc, int number_of_iteration=50, double limit=DBL_MAX );
+    void reinitialize_1st_order( Vec &phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
 
-    void reinitialize_2nd_order( Vec &phi_petsc, int number_of_iteration=50, double limit=DBL_MAX );
+    void reinitialize_2nd_order( Vec &phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
 };

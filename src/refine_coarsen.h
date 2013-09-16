@@ -7,16 +7,32 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_nodes.h>
 
-struct splitting_criteria_cf_t {
-  CF_2 *phi;
+struct splitting_criteria_t {
   int max_lvl, min_lvl;
-  double lip;
 };
 
-struct splitting_criteria_random_t {
-  int max_lvl, min_lvl;
+struct splitting_criteria_cf_t : splitting_criteria_t {
+  CF_2 *phi;
+  double lip;
+  splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_2 *phi, double lip)
+  {
+    this->min_lvl = min_lvl;
+    this->max_lvl = max_lvl;
+    this->phi = phi;
+    this->lip = lip;
+  }
+};
+
+struct splitting_criteria_random_t : splitting_criteria_t {
   p4est_locidx_t max_quads, min_quads;
   static p4est_locidx_t counter;
+  splitting_criteria_random_t(int min_lvl, int max_lvl, p4est_locidx_t min_quads, p4est_locidx_t max_quads)
+  {
+    this->min_lvl = min_lvl;
+    this->max_lvl = max_lvl;
+    this->min_quads = min_quads;
+    this->max_quads = max_quads;
+  }
 };
 
 /*!
