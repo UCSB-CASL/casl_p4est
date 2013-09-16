@@ -25,7 +25,6 @@ class SemiLagrangian
     my_p4est_brick_t *myb;
     p4est_t *p4est_tmp;
     p4est_nodes_t *nodes_tmp;
-//    Vec *phi_tmp;
     std::vector<double> *phi_tmp;
     splitting_criteria_update_t( double lip, int min_lvl, int max_lvl,
                                  std::vector<double> *phi,  my_p4est_brick_t *myb,
@@ -89,21 +88,14 @@ class SemiLagrangian
 
       double *phi_tmp;
       phi_tmp = data->phi_tmp->data();
-//      PetscErrorCode ierr;
-//      ierr = VecGetArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
 
       double f[4];
       for(short j=0; j<P4EST_CHILDREN; ++j)
       {
-//        f[j] = phi_tmp[ p4est2petsc_local_numbering(data->nodes_tmp, q2n[ quad_tmp_idx*P4EST_CHILDREN + j ]) ];
         f[j] = phi_tmp[ data->nodes_tmp, q2n[ quad_tmp_idx*P4EST_CHILDREN + j ] ];
         if (fabs(f[j]) <= 0.5*lip*d)
-        {
-//          ierr = VecRestoreArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
           return P4EST_TRUE;
-        }
       }
-//      ierr = VecRestoreArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
 
       if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
         return P4EST_TRUE;
