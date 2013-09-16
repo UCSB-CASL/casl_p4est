@@ -126,7 +126,7 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
 
 
 
-void SemiLagrangian::advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double dt, Vec &phi_n, Vec &phi_np1,
+void SemiLagrangian::advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double dt, Vec &phi_n, std::vector<double> &phi_np1,
                                           p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, my_p4est_node_neighbors_t &qnnn)
 {
   InterpolatingFunction interp(p4est_, nodes_, ghost_, myb_, qnnn);
@@ -140,10 +140,12 @@ void SemiLagrangian::advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double
   // Non-local vectors will need sent to non-local processors in order to compute data
 
   p4est_locidx_t ni_begin = 0;
-  p4est_locidx_t ni_end   = nodes_np1->num_owned_indeps;
+//  p4est_locidx_t ni_end   = nodes_np1->num_owned_indeps;
+  p4est_locidx_t ni_end   = nodes_np1->indep_nodes.elem_count;
 
   for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
-    p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni+nodes_np1->offset_owned_indeps);
+//    p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni+nodes_np1->offset_owned_indeps);
+    p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni);
     p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
 
     p4est_topidx_t tr_mm = t2v[P4EST_CHILDREN*tree_idx + 0];  //mm vertex of tree
@@ -169,11 +171,11 @@ void SemiLagrangian::advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double
   }
 
   //interpolate from old vector into our output vector
-  interp.interpolate(phi_np1);
+  interp.interpolate(phi_np1.data());
 
-  PetscErrorCode ierr;
-  ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  PetscErrorCode ierr;
+//  ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd  (phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }
 
 
@@ -186,6 +188,7 @@ double SemiLagrangian::update_p4est_new(const CF_2& vx, const CF_2& vy, Vec &phi
   /* create hierarchy structure on p4est_n if you want to do quadratic interpolation */
   my_p4est_hierarchy_t hierarchy(p4est_, ghost_);
   my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
+  std::vector<double> phi_tmp;
 
 //  double dt = 100*compute_dt(vx, vy);
   double dt = 1;
@@ -198,8 +201,10 @@ double SemiLagrangian::update_p4est_new(const CF_2& vx, const CF_2& vy, Vec &phi
     p4est_nodes_t *nodes_tmp = my_p4est_nodes_new(p4est_tmp,NULL);
 
     /* compute phi_np1 on intermediate grid */
-    Vec phi_tmp;
-    ierr = VecCreateGhost(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);
+//    Vec phi_tmp;
+//    ierr = VecCreateGhost(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);
+//    std::vector<double> phi_tmp(nodes_tmp->indep_nodes.elem_count);
+    phi_tmp.resize(nodes_tmp->indep_nodes.elem_count);
     advect_from_n_to_np1(vx, vy, dt, phi, phi_tmp, p4est_tmp, nodes_tmp, qnnn);
 
     /* refine / coarsen p4est_np1 */
@@ -211,7 +216,7 @@ double SemiLagrangian::update_p4est_new(const CF_2& vx, const CF_2& vy, Vec &phi
 
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
-    ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
+//    ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
   }
 
   p4est_partition(p4est_np1, NULL);
@@ -226,14 +231,26 @@ double SemiLagrangian::update_p4est_new(const CF_2& vx, const CF_2& vy, Vec &phi
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   /* update the values of phi at the new time-step */
-  Vec phi_np1;
-  ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
-  advect_from_n_to_np1(vx, vy, dt, phi, phi_np1, p4est_np1, nodes_np1, qnnn);
+//  Vec phi_np1;
+//  ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+//  std::vector<double> phi_np1_(nodes_np1->indep_nodes.elem_count);
+  phi_tmp.resize(nodes_np1->indep_nodes.elem_count);
+  advect_from_n_to_np1(vx, vy, dt, phi, phi_tmp, p4est_np1, nodes_np1, qnnn);
 
   /* now that everything is updated, get rid of old stuff and swap them with new ones */
   p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
   p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
   p4est_ghost_destroy(ghost_); ghost_ = *p_ghost_ = ghost_np1;
+
+
+  Vec phi_np1;
+  ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+  double *f;
+  ierr = VecGetArray(phi_np1, &f); CHKERRXX(ierr);
+  for(p4est_locidx_t n=0; n<nodes_np1->num_owned_indeps; ++n)
+    f[n] = phi_tmp[n+nodes_np1->offset_owned_indeps];
+  ierr = VecRestoreArray(phi_np1, &f); CHKERRXX(ierr);
+
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
