@@ -154,10 +154,14 @@ void SemiLagrangian::advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double
     };
 
     /* find the departure node via backtracing */
+
+    double x_star = xy[0] - .5*dt*vx(xy[0], xy[1]);
+    double y_star = xy[1] - .5*dt*vy(xy[0], xy[1]);
+
     double xy_departure[] =
     {
-      xy[0] - dt*vx(xy[0], xy[1]),
-      xy[1] - dt*vy(xy[0], xy[1])
+      xy[0] - dt*vx(x_star, y_star),
+      xy[1] - dt*vy(x_star, y_star)
     };
 
     /* Buffer the point for interpolation */
@@ -169,7 +173,7 @@ void SemiLagrangian::advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double
 }
 
 
-double SemiLagrangian::update_p4est_new(const CF_2& vx, const CF_2& vy, Vec &phi)
+double SemiLagrangian::update_p4est_intermediate_trees_no_ghost(const CF_2& vx, const CF_2& vy, Vec &phi)
 {
   PetscErrorCode ierr;
   p4est *p4est_np1 = p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
@@ -193,11 +197,85 @@ double SemiLagrangian::update_p4est_new(const CF_2& vx, const CF_2& vy, Vec &phi
     phi_tmp.resize(nodes_tmp->indep_nodes.elem_count);
     advect_from_n_to_np1(vx, vy, dt, phi, phi_tmp, p4est_tmp, nodes_tmp, qnnn);
 
-    /* refine / coarsen p4est_np1 */
-    splitting_criteria_cf_t *data = (splitting_criteria_cf_t*) p4est_->user_pointer;
-    splitting_criteria_update_t data_np1(1.2, data->min_lvl, data->max_lvl, &phi_tmp, myb_, p4est_tmp, nodes_tmp);
+    /* refine p4est_np1 */
+    splitting_criteria_t *data = (splitting_criteria_t*) p4est_->user_pointer;
+    splitting_criteria_update_t data_np1(1.2, data->min_lvl, data->max_lvl, &phi_tmp, myb_, p4est_tmp, NULL, nodes_tmp);
     p4est_np1->user_pointer = (void*) &data_np1;
     p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_sl , NULL);
+
+    p4est_nodes_destroy(nodes_tmp);
+    p4est_destroy(p4est_tmp);
+  }
+
+  p4est_partition(p4est_np1, NULL);
+
+  /* restore the user pointer in the p4est */
+  p4est_np1->user_pointer = p4est_->user_pointer;
+
+  /* compute new ghost layer */
+  p4est_ghost_t *ghost_np1 = p4est_ghost_new(p4est_np1, P4EST_CONNECT_DEFAULT);
+
+  /* compute the nodes structure */
+  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+  /* update the values of phi at the new time-step */
+  phi_tmp.resize(nodes_np1->indep_nodes.elem_count);
+  advect_from_n_to_np1(vx, vy, dt, phi, phi_tmp, p4est_np1, nodes_np1, qnnn);
+
+  /* now that everything is updated, get rid of old stuff and swap them with new ones */
+  p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
+  p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
+  p4est_ghost_destroy(ghost_); ghost_ = *p_ghost_ = ghost_np1;
+
+  Vec phi_np1;
+  ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+  double *f;
+  ierr = VecGetArray(phi_np1, &f); CHKERRXX(ierr);
+  for(p4est_locidx_t n=0; n<nodes_np1->num_owned_indeps; ++n)
+    f[n] = phi_tmp[n+nodes_np1->offset_owned_indeps];
+  ierr = VecRestoreArray(phi_np1, &f); CHKERRXX(ierr);
+
+  ierr = VecDestroy(phi); CHKERRXX(ierr);
+  phi = phi_np1;
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  return dt;
+}
+
+
+
+double SemiLagrangian::update_p4est_intermediate_trees_with_ghost(const CF_2& vx, const CF_2& vy, Vec &phi)
+{
+  PetscErrorCode ierr;
+  p4est *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
+
+  /* create hierarchy structure on p4est_n if you want to do quadratic interpolation */
+  my_p4est_hierarchy_t hierarchy(p4est_, ghost_);
+  my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
+  std::vector<double> phi_tmp;
+
+  double dt = 1;
+
+  int nb_iter = ((splitting_criteria_t*) (p4est_->user_pointer))->max_lvl - ((splitting_criteria_t*) (p4est_->user_pointer))->min_lvl;
+
+  for( int iter = 0; iter < nb_iter; ++iter )
+  {
+    p4est_t       *p4est_tmp = p4est_copy(p4est_np1, P4EST_FALSE);
+    p4est_ghost_t *ghost_tmp = p4est_ghost_new(p4est_tmp, P4EST_CONNECT_DEFAULT);
+    p4est_nodes_t *nodes_tmp = my_p4est_nodes_new(p4est_tmp, ghost_tmp);
+
+    /* compute phi_np1 on intermediate grid */
+    phi_tmp.resize(nodes_tmp->indep_nodes.elem_count);
+    advect_from_n_to_np1(vx, vy, dt, phi, phi_tmp, p4est_tmp, nodes_tmp, qnnn);
+
+    /* refine / coarsen p4est_np1 */
+    splitting_criteria_t *data = (splitting_criteria_t*) p4est_->user_pointer;
+    splitting_criteria_update_t data_np1(1.2, data->min_lvl, data->max_lvl, &phi_tmp, myb_, p4est_tmp, ghost_tmp, nodes_tmp);
+    p4est_np1->user_pointer = (void*) &data_np1;
+
+    p4est_coarsen(p4est_np1, P4EST_FALSE, coarsen_criteria_with_ghost_sl, NULL);
+    throw std::invalid_argument("");
+    p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_with_ghost_sl , NULL);
 
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);

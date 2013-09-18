@@ -24,17 +24,19 @@ class SemiLagrangian
     double lip;
     my_p4est_brick_t *myb;
     p4est_t *p4est_tmp;
+    p4est_ghost_t *ghost_tmp;
     p4est_nodes_t *nodes_tmp;
     std::vector<double> *phi_tmp;
     splitting_criteria_update_t( double lip, int min_lvl, int max_lvl,
                                  std::vector<double> *phi,  my_p4est_brick_t *myb,
-                                 p4est_t *p4est, p4est_nodes_t *nodes )
+                                 p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes )
     {
       this->lip = lip;
       this->min_lvl = min_lvl;
       this->max_lvl = max_lvl;
       this->myb = myb;
       this->p4est_tmp = p4est;
+      this->ghost_tmp = ghost;
       this->nodes_tmp = nodes;
       this->phi_tmp = phi;
     }
@@ -92,7 +94,7 @@ class SemiLagrangian
       double f[4];
       for(short j=0; j<P4EST_CHILDREN; ++j)
       {
-        f[j] = phi_tmp[ data->nodes_tmp, q2n[ quad_tmp_idx*P4EST_CHILDREN + j ] ];
+        f[j] = phi_tmp[ q2n[ quad_tmp_idx*P4EST_CHILDREN + j ] ];
         if (fabs(f[j]) <= 0.5*lip*d)
           return P4EST_TRUE;
       }
@@ -104,66 +106,135 @@ class SemiLagrangian
     }
   }
 
-  static p4est_bool_t coarsen_criteria_sl(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
+
+  static p4est_bool_t refine_criteria_with_ghost_sl(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
   {
-//    splitting_criteria_update_t *data = (splitting_criteria_update_t*)p4est->user_pointer;
+    splitting_criteria_update_t *data = (splitting_criteria_update_t*) p4est->user_pointer;
 
-//    if (quad[0]->level <= data->min_lvl)
-//      return P4EST_FALSE;
-//    else if (quad[0]->level > data->max_lvl)
-//      return P4EST_TRUE;
-//    else
-//    {
-//      double dx, dy;
-//      dx_dy_dz_quadrant(p4est, which_tree, quad[0], &dx, &dy, NULL);
-//      double d = 2*sqrt(dx*dx + dy*dy);
-//      double lip = data->lip;
+    if (quad->level < data->min_lvl)
+      return P4EST_TRUE;
+    else if (quad->level >= data->max_lvl)
+      return P4EST_FALSE;
+    else
+    {
+      double dx, dy;
+      dx_dy_dz_quadrant(p4est, which_tree, quad, &dx, &dy, NULL);
+      double d = sqrt(dx*dx + dy*dy);
+      double lip = data->lip;
 
-//      double xy [] = { (double)quad[0]->x/(double)P4EST_ROOT_LEN,
-//                       (double)quad[0]->y/(double)P4EST_ROOT_LEN };
-//      c2p_coordinate_transform(p4est, which_tree, &xy[0], &xy[1], NULL);
-//      xy[0] += dx/2;
-//      xy[1] += dy/2;
+      /* find the quadrant in p4est_tmp */
+      double xy [] = { (double)quad->x/(double)P4EST_ROOT_LEN,
+                       (double)quad->y/(double)P4EST_ROOT_LEN };
 
-//      p4est_quadrant_t quad_tmp[P4EST_CHILDREN];
-//      p4est_tree_t *tree_tmp[P4EST_CHILDREN];
-//      p4est_locidx_t quad_tmp_idx[P4EST_CHILDREN];
+      c2p_coordinate_transform(p4est, which_tree, &xy[0], &xy[1], NULL);
+      xy[0] += dx/2;
+      xy[1] += dy/2;
 
-//      for(short j=0; j<2; ++j)
-//        for(short i=0; i<2; ++i)
-//        {
-//          short n = 2*j+i;
-//          double xy_tmp [] = { xy[0] + i*dx, xy[1] + j*dy };
-//          my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy_tmp, &quad_tmp[n], NULL);
-//          tree_tmp[n] = p4est_tree_array_index(data->p4est_tmp->trees, quad_tmp[n].p.piggy3.which_tree);
-//          quad_tmp_idx[n] = quad_tmp[n].p.piggy3.local_num + tree_tmp[n]->quadrants_offset;
-//        }
+      p4est_quadrant_t quad_tmp;
+      int rank_found = my_p4est_brick_point_lookup(data->p4est_tmp, data->ghost_tmp, data->myb, xy, &quad_tmp, NULL);
 
-//      double *phi_tmp;
-//      PetscErrorCode ierr;
-//      ierr = VecGetArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
+      p4est_locidx_t quad_tmp_idx;
+      if(rank_found == p4est->mpirank)
+      {
+        p4est_tree_t *tree_tmp = p4est_tree_array_index(data->p4est_tmp->trees, quad_tmp.p.piggy3.which_tree);
+        quad_tmp_idx = quad_tmp.p.piggy3.local_num + tree_tmp->quadrants_offset;
+      }
+      else if(rank_found != -1)
+      {
+        quad_tmp_idx = quad_tmp.p.piggy3.local_num + data->p4est_tmp->local_num_quadrants;
+      }
+      else
+      {
+        throw std::runtime_error("semi_lagrangian: this quadrant is not local ...");
+      }
 
-//      double f[4];
-//      p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
-//      for(short j=0; j<2; ++j)
-//        for(short i=0; i<2; ++i)
-//        {
-//          short n = 2*j+i;
-//          f[n] = phi_tmp[ p4est2petsc_local_numbering(data->nodes_tmp,
-//                                                      q2n[ quad_tmp_idx[n]*P4EST_CHILDREN + 2*j + i ] ) ];
-//          if (fabs(f[n]) <= 0.5*lip*d)
-//          {
-//            ierr = VecRestoreArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
-//            return P4EST_FALSE;
-//          }
-//      }
-//      ierr = VecRestoreArray(*data->phi_tmp, &phi_tmp); CHKERRXX(ierr);
+      double *phi_tmp;
+      phi_tmp = data->phi_tmp->data();
 
-//      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
-//        return P4EST_FALSE;
+      double f[4];
+      p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
+      for(short j=0; j<P4EST_CHILDREN; ++j)
+      {
+        f[j] = phi_tmp[ q2n[ quad_tmp_idx*P4EST_CHILDREN + j ] ];
+        if (fabs(f[j]) <= 0.5*lip*d)
+          return P4EST_TRUE;
+      }
 
-//    return P4EST_TRUE;
-//  }
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
+        return P4EST_TRUE;
+
+      return P4EST_FALSE;
+    }
+  }
+
+
+
+  static p4est_bool_t coarsen_criteria_with_ghost_sl(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
+  {
+    splitting_criteria_update_t *data = (splitting_criteria_update_t*)p4est->user_pointer;
+
+    if (quad[0]->level <= data->min_lvl)
+      return P4EST_FALSE;
+    else if (quad[0]->level > data->max_lvl)
+      return P4EST_TRUE;
+    else
+    {
+      double dx, dy;
+      dx_dy_dz_quadrant(p4est, which_tree, quad[0], &dx, &dy, NULL);
+      double d = 2*sqrt(dx*dx + dy*dy);
+      double lip = data->lip;
+
+      double xy [] = { (double)quad[0]->x/(double)P4EST_ROOT_LEN,
+                       (double)quad[0]->y/(double)P4EST_ROOT_LEN };
+      c2p_coordinate_transform(p4est, which_tree, &xy[0], &xy[1], NULL);
+
+      p4est_locidx_t quad_tmp_idx[P4EST_CHILDREN];
+
+      xy[0] += dx/2;
+      xy[1] += dy/2;
+
+      for(short j=0; j<2; ++j)
+        for(short i=0; i<2; ++i)
+        {
+          short n = 2*j+i;
+          double xy_tmp [] = { xy[0] + i*dx, xy[1] + j*dy };
+
+          p4est_quadrant_t quad_tmp;
+          int rank_found = my_p4est_brick_point_lookup(data->p4est_tmp, data->ghost_tmp, data->myb, xy_tmp, &quad_tmp, NULL);
+
+          if(rank_found == data->p4est_tmp->mpirank)
+          {
+            p4est_tree_t *tree_tmp = p4est_tree_array_index(data->p4est_tmp->trees, quad_tmp.p.piggy3.which_tree);
+            quad_tmp_idx[n] = quad_tmp.p.piggy3.local_num + tree_tmp->quadrants_offset;
+          }
+          else if(rank_found != -1)
+          {
+            quad_tmp_idx[n] = quad_tmp.p.piggy3.local_num + data->p4est_tmp->local_num_quadrants;
+          }
+          else
+          {
+            throw std::runtime_error("semi_lagrangian: this quadrant is not local ...");
+          }
+        }
+
+      double *phi_tmp = data->phi_tmp->data();
+
+      double f[4];
+      p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
+      for(short j=0; j<2; ++j)
+        for(short i=0; i<2; ++i)
+        {
+          short n = 2*j+i;
+          f[n] = phi_tmp[ q2n[ quad_tmp_idx[n]*P4EST_CHILDREN + 2*j + i ] ];
+          if (fabs(f[n]) <= 0.5*lip*d)
+            return P4EST_FALSE;
+        }
+
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
+        return P4EST_FALSE;
+
+      return P4EST_TRUE;
+    }
   }
 
 
@@ -176,7 +247,11 @@ public:
 
   double advect(const CF_2& vx, const CF_2& vy, Vec &phi);
 
-  double update_p4est_new(const CF_2& vx, const CF_2& vy, Vec& phi);
+  /* start from a root tree and successively refine intermediate trees until tree n+1 is built */
+  double update_p4est_intermediate_trees_no_ghost(const CF_2& vx, const CF_2& vy, Vec& phi);
+
+  /* compute the ghost layer for the intermediate trees, so that the refine operation can be applied */
+  double update_p4est_intermediate_trees_with_ghost(const CF_2& vx, const CF_2& vy, Vec& phi);
 };
 
 #endif // PARALLEL_SEMI_LAGRANGIAN_H
