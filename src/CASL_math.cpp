@@ -63,7 +63,7 @@ double interface_Location_With_First_Order_Derivative(	double   a, double   b,
 
 int solve_Linear( double c[2], double s[1] )
 {
-    if(is_Zero(c[1]))                     return 0;
+    if(is_Zero(c[1]))                    return 0;
     else            { s[0] = -c[0]/c[1]; return 1; }
 }
 

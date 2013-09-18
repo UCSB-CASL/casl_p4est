@@ -16,40 +16,40 @@
 class my_p4est_node_neighbors_t {
 
 private:
-    my_p4est_hierarchy_t *hierarchy;
-    p4est_t *p4est;
-    p4est_ghost_t *ghost;
-    p4est_nodes_t *nodes;
+  my_p4est_hierarchy_t *hierarchy;
+  p4est_t *p4est;
+  p4est_ghost_t *ghost;
+  p4est_nodes_t *nodes;
 
-    std::vector< quad_neighbor_nodes_of_node_t > neighbors;
+  std::vector< quad_neighbor_nodes_of_node_t > neighbors;
 
-    /**
+  /**
      * Initialize the QuadNeighborNodeOfNode information
      */
-    void init_neighbors();
+  void init_neighbors();
 public:
 
-    my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
-        : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), neighbors(nodes->num_owned_indeps)
-    {
-        init_neighbors();
-    }
+  my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
+    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), neighbors(nodes->num_owned_indeps)
+  {
+    init_neighbors();
+  }
 
-    inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
+  inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
 #ifdef CASL_THROWS
-      if (n<0 || n>=nodes->num_owned_indeps){
-        std::ostringstream oss;
-        oss << "[ERROR]: Trying to access neighboring nodes of element " << n
-            << " in the QNNN structure which is out of bound [0, " << nodes->num_owned_indeps
-            << "). This probably means you are trying to acess neighboring nodes"
-               " of a ghost nod. This is not supported." << std::endl;
-        throw std::invalid_argument(oss.str());
-      }
-#endif
-      return neighbors[n];
+    if (n<0 || n>=nodes->num_owned_indeps){
+      std::ostringstream oss;
+      oss << "[ERROR]: Trying to access neighboring nodes of element " << n
+          << " in the QNNN structure which is out of bound [0, " << nodes->num_owned_indeps
+          << "). This probably means you are trying to acess neighboring nodes"
+             " of a ghost nod. This is not supported." << std::endl;
+      throw std::invalid_argument(oss.str());
     }
+#endif
+    return neighbors[n];
+  }
 
-    /**
+  /**
      * This function is finds the neighboring cell of a node in the given (i,j) direction. The direction must be diagonal
      * for the function to work ! (e.g. (-1,1) ... no cartesian direction!).
      * \param [in] node          a pointer to the node whose neighboring cells are looked for
@@ -60,7 +60,7 @@ public:
      * \param [out] nb_tree_idx  the index of the tree in which the quadrant was found
      *
      */
-    void find_neighbor_cell_of_node( p4est_indep_t *node, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx );
+  void find_neighbor_cell_of_node( p4est_indep_t *node, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx );
 };
 
 #endif /* !MY_P4EST_NODE_NEIGHBORS_H */

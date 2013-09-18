@@ -173,7 +173,7 @@ void SemiLagrangian::advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double
 }
 
 
-double SemiLagrangian::update_p4est_intermediate_trees_no_ghost(const CF_2& vx, const CF_2& vy, Vec &phi)
+double SemiLagrangian::update_p4est_intermediate_trees_no_ghost(const CF_2& vx, const CF_2& vy, Vec &phi, double dt)
 {
   PetscErrorCode ierr;
   p4est *p4est_np1 = p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
@@ -184,7 +184,7 @@ double SemiLagrangian::update_p4est_intermediate_trees_no_ghost(const CF_2& vx, 
   std::vector<double> phi_tmp;
 
 //  double dt = 100*compute_dt(vx, vy);
-  double dt = 1;
+//  double dt = 1;
 
   int nb_iter = ((splitting_criteria_t*) (p4est_->user_pointer))->max_lvl - ((splitting_criteria_t*) (p4est_->user_pointer))->min_lvl;
 
