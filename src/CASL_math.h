@@ -182,6 +182,20 @@ double interface_Location_With_First_Order_Derivative(	double   a, double   b,
                                                         double  fa, double  fb,
                                                         double fxa, double fxb );
 
+/*!
+ * \brief Get interface location on the interval [a,b] given one point on either side and the second derivative at a and b
+ * \param a: location of first point
+ * \param b: location of second point
+ * \param fa: value of the level set at first point
+ * \param fb: value of the level set at the second point
+ * \param fxxa: value of the second derivative of the level set at first point
+ * \param fxxb: value of the second derivative of the level set at the second point
+ * \return interface location
+ */
+double interface_Location_With_Second_Order_Derivative(double    a, double    b,
+                                                       double   fa, double   fb,
+                                                       double fxxa, double fxxb );
+
 
 /*!
  * \brief Get interface location on the interval [a,b] given one point on either side and the second derivative at a and b

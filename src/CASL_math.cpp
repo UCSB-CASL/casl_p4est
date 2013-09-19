@@ -27,10 +27,43 @@ double CBRT(const T& x){
                              ((x) < 0.0 ? -pow((double)-(x), 1.0/3.0) : 0.0));
 }
 
+double interface_Location_With_Second_Order_Derivative(double    a, double    b,
+                                                       double   fa, double   fb,
+                                                       double fxxa, double fxxb )
+{
+    if(fabs(fa)<EPSILON) return a+EPSILON;
+    if(fabs(fb)<EPSILON) return b-EPSILON;
+
+#ifdef CASL_THROWS
+    if(fa*fb >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
+#endif
+
+//     double fxx = 0.5*(fxxa+fxxb);
+    double fxx = MINMOD(fxxa,fxxb); // take nonocillating fxx
+    double h   = b-a;
+
+    double c2 = 0.5*fxx;                // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e
+    double c1 =     (fb-fa)/h;          //  the expansion of f at the center of (a,b)
+    double c0 = 0.5*(fb+fa)-h*h/8*fxx;
+
+    double x;
+
+    if(fabs(c2)<EPSILON) x = -c0/c1;
+    else
+    {
+        if(fb<0) x = (-2*c0)/(c1 - sqrt(c1*c1-4*c2*c0));
+        else     x = (-2*c0)/(c1 + sqrt(c1*c1-4*c2*c0));
+    }
+
+    return x + 0.5*(a+b);
+}
+
+// BUG: this function does not work ... to be fixed if we want to keep it
 double interface_Location_With_First_Order_Derivative(	double   a, double   b,
                                                         double  fa, double  fb,
                                                         double fxa, double fxb )
 {
+  throw std::invalid_argument("[ERROR]: interface_location_with_first_order_derivative, do NOT use this function, it does not work.");
 #ifdef CASL_THROWS
     if(fa*fb >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
 #endif
