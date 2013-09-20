@@ -568,7 +568,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec &phi_petsc, Vec &q_petsc, Bo
 
   /* now compute the extrapolated values */
   double *q;
-  ierr = VecGetArray(q_petsc, &q);
+  ierr = VecGetArray(q_petsc, &q); CHKERRXX(ierr);
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
     Point2 grad_phi;
@@ -635,4 +635,71 @@ void my_p4est_level_set::extend_Over_Interface( Vec &phi_petsc, Vec &q_petsc, Bo
   ierr = VecGhostUpdateEnd  (q_petsc, INSERT_VALUES, SCATTER_FORWARD);
 
   ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
+}
+
+
+void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec &phi_petsc, Vec &q_petsc, Vec &q_extended_petsc, int band_to_extend) const
+{
+  PetscErrorCode ierr;
+
+  double *phi;
+  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+
+  /* find dx and dy smallest */
+  p4est_topidx_t tm = p4est->connectivity->tree_to_vertex[0];
+  p4est_topidx_t tp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + 3];
+
+  double xmin = p4est->connectivity->vertices[3*tm + 0];
+  double ymin = p4est->connectivity->vertices[3*tm + 1];
+  double xmax = p4est->connectivity->vertices[3*tp + 0];
+  double ymax = p4est->connectivity->vertices[3*tp + 1];
+
+  splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
+  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
+  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+  double diag = sqrt(dx*dx + dy*dy);
+  InterpolatingFunction interp(p4est, nodes, ghost, myb, ngbd);
+
+  double *q_extended;
+  double *q;
+  ierr = VecGetArray(q_extended_petsc, &q_extended); CHKERRXX(ierr);
+  ierr = VecGetArray(q_petsc, &q); CHKERRXX(ierr);
+
+  /* now buffer the interpolation points */
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    Point2 grad_phi;
+    grad_phi.x = (*ngbd)[n].dx_central(phi);
+    grad_phi.y = (*ngbd)[n].dy_central(phi);
+
+    if(phi[n]<=0)
+      q_extended[n] = q[n];
+    else if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
+    {
+      grad_phi /= grad_phi.norm_L2();
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n+nodes->offset_owned_indeps);
+      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+      p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+
+      double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
+      double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+
+      double y = int2double_coordinate_transform(node->x) + tree_xmin;
+      double x = int2double_coordinate_transform(node->y) + tree_ymin;
+
+      interp.add_point_to_buffer(n, x - grad_phi.x*phi[n], y - grad_phi.y*phi[n]);
+    }
+    else
+      q_extended[n] = 0;
+  }
+  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
+  ierr = VecRestoreArray(q_petsc, &q); CHKERRXX(ierr);
+  ierr = VecRestoreArray(q_extended_petsc, &q_extended); CHKERRXX(ierr);
+
+  interp.set_input_parameters(q_petsc, quadratic);
+  interp.interpolate(q_extended_petsc);
+
+  ierr = VecGhostUpdateBegin(q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD);
+  ierr = VecGhostUpdateEnd  (q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD);
 }
