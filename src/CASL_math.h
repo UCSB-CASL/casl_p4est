@@ -4,7 +4,6 @@
 #include <math.h>
 #include <stdexcept>
 #include <limits>
-#define EPSILON 1e-13
 
 #ifndef PI
 #define PI 3.1415926535897932384626433832795
@@ -61,12 +60,6 @@ inline bool ISINF(T x)
 {
     return !ISNAN(x) && ISNAN(x - x);
 }
-
-double MINMOD(double a, double b);
-
-double HARMOD( double a, double b );
-
-double SIGN(double a);
 
 /*!
 * \brief returns the SGNMAX of the two parameters

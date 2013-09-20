@@ -3,41 +3,12 @@
 
 #include "point2.h"
 #include "simplex2.h"
+#include "casl_types.h"
 
 /*!
  * \file Cube2.h
  * \brief A two dimensional cube (i.e. rectangle) and the basic functions associated
  */
-
-struct QuadValue {
-  double val00;
-  double val01;
-  double val10;
-  double val11;
-
-  QuadValue()
-  {
-    val00 = val10 = val01 = val11 = 0;
-  }
-
-  QuadValue(double v00, double v01, double v10, double v11)
-  {
-    val00 = v00;
-    val10 = v10;
-    val01 = v01;
-    val11 = v11;
-  }
-
-  /*!
-     * \brief overload the << operator for QuadValue
-     */
-  friend std::ostream& operator<<(std::ostream& os, const QuadValue& q)
-  {
-    os << "val01 : " << q.val01 << ",\t" << "val11 : " << q.val11 << std::endl;
-    os << "val00 : " << q.val00 << ",\t" << "val10 : " << q.val10 << std::endl;
-    return os;
-  }
-};
 
 
 /*!

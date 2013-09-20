@@ -1,20 +1,5 @@
 #include "CASL_math.h"
-
-double MINMOD(double a, double b)
-{
-    if(a*b<=0) return 0;
-    else
-    {
-        if((fabs(a))<(fabs(b))) return a;
-        else                  return b;
-    }
-}
-
-
-double SIGN(double a)
-{
-    return (a>0) ? 1:-1;
-}
+#include "utils.h"
 
 double interface_Location( double   a, double   b, double  fa, double  fb )
 {
@@ -31,8 +16,8 @@ double interface_Location_With_Second_Order_Derivative(double    a, double    b,
                                                        double   fa, double   fb,
                                                        double fxxa, double fxxb )
 {
-    if(fabs(fa)<EPSILON) return a+EPSILON;
-    if(fabs(fb)<EPSILON) return b-EPSILON;
+    if(fabs(fa)<EPS) return a+EPS;
+    if(fabs(fb)<EPS) return b-EPS;
 
 #ifdef CASL_THROWS
     if(fa*fb >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
@@ -48,7 +33,7 @@ double interface_Location_With_Second_Order_Derivative(double    a, double    b,
 
     double x;
 
-    if(fabs(c2)<EPSILON) x = -c0/c1;
+    if(fabs(c2)<EPS) x = -c0/c1;
     else
     {
         if(fb<0) x = (-2*c0)/(c1 - sqrt(c1*c1-4*c2*c0));
@@ -195,5 +180,5 @@ int solve_Cubic(double c[ 4 ], double s[ 3 ])
 
 int is_Zero(double x)
 {
-    return x > - EPSILON && x < EPSILON;
+    return x > - EPS && x < EPS;
 }

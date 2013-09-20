@@ -45,9 +45,9 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
                                              p4est_nodes_t *nodes,
                                              p4est_ghost_t *ghost,
                                              my_p4est_brick_t *myb,
-                                             my_p4est_node_neighbors_t &qnnn)
+                                             my_p4est_node_neighbors_t *qnnn)
   : method_(quadratic_non_oscillatory),
-    p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), qnnn_(&qnnn),
+    p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), qnnn_(qnnn),
     p4est2petsc(nodes->indep_nodes.elem_count),
     remote_senders(p4est->mpisize, -1),
     is_buffer_prepared(false)

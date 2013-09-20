@@ -1,5 +1,6 @@
 #include "point2.h"
 #include "math.h"
+#include "utils.h"
 
 Point2::Point2 ()
 {
@@ -26,8 +27,7 @@ void Point2::operator=(Point2 pt)
 
 bool Point2::operator ==(const Point2& pt)const
 {
-  // NOTE: this should be a global epsilon
-  return (fabs(pt.x-x)<1E-15 && fabs(pt.y-y)<1E-15);
+  return (fabs(pt.x-x)<EPS && fabs(pt.y-y)<1E-15);
 }
 
 Point2 Point2::operator-() const

@@ -66,7 +66,7 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
   my_p4est_hierarchy_t hierarchy(p4est_, ghost_);
   my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
 
-  InterpolatingFunction bif(p4est_, nodes_, ghost_, myb_, qnnn);
+  InterpolatingFunction bif(p4est_, nodes_, ghost_, myb_, &qnnn);
   bif.set_input_parameters(phi, quadratic_non_oscillatory);
 
   double dt = 5.*compute_dt(vx, vy);
@@ -129,7 +129,7 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec& phi){
 void SemiLagrangian::advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double dt, Vec &phi_n, std::vector<double> &phi_np1,
                                           p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, my_p4est_node_neighbors_t &qnnn)
 {
-  InterpolatingFunction interp(p4est_, nodes_, ghost_, myb_, qnnn);
+  InterpolatingFunction interp(p4est_, nodes_, ghost_, myb_, &qnnn);
   interp.set_input_parameters(phi_n, quadratic_non_oscillatory);
 
   p4est_topidx_t *t2v = p4est_np1->connectivity->tree_to_vertex; // tree to vertex list
@@ -328,7 +328,7 @@ void SemiLagrangian::update_p4est(Vec &phi, my_p4est_node_neighbors_t& qnnn){
   p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
 
   // define an interpolating function
-  InterpolatingFunction bif(p4est_, nodes_, ghost_, myb_, qnnn);
+  InterpolatingFunction bif(p4est_, nodes_, ghost_, myb_, &qnnn);
   bif.set_input_parameters(phi, quadratic_non_oscillatory);
 
   // now refine/coarsen the new copy of p4est -- note that we need to swap

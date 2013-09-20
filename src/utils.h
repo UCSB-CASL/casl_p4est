@@ -45,7 +45,7 @@ typedef int p4est_bool_t;
 #define P4EST_FALSE 0
 
 // Some Macros
-#define EPS 1e-12
+#define EPS 1e-13
 #ifndef ABS
 #define ABS(a) ((a)>0 ? (a) : -(a))
 #endif
@@ -76,11 +76,9 @@ inline double HVY( double x, double h )
   else      return (1+x/h+sin(M_PI*x/h)/M_PI)*0.5;
 }
 
-inline double SGN( double x, double h )
+inline double SIGN(double a)
 {
-  if( x > h ) return  1;
-  if( x <-h ) return -1;
-  else      return x/h+sin(M_PI*x/h)/M_PI;
+    return (a>0) ? 1:-1;
 }
 
 inline double MINMOD( double a, double b )
@@ -88,8 +86,8 @@ inline double MINMOD( double a, double b )
   if(a*b<=0) return 0;
   else
   {
-    if((ABS(a))<(ABS(b))) return a;
-    else                  return b;
+    if((fabs(a))<(fabs(b))) return a;
+    else                    return b;
   }
 }
 

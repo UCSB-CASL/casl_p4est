@@ -1,5 +1,6 @@
 #include "simplex2.h"
 #include "math.h"
+#include "utils.h"
 
 double Simplex2::area( double x0, double y0,
                        double x1, double y1,
@@ -35,10 +36,9 @@ double Simplex2::area() const
 double Simplex2::integral( double f0, double f1, double f2,
                            double p0, double p1, double p2)
 {
-  // NOTE: this should be a global epsilon ... but where do we put it ?
-  if(fabs(p0)<1e-13) p0=1e-13;
-  if(fabs(p1)<1e-13) p1=1e-13;
-  if(fabs(p2)<1e-13) p2=1e-13;
+  if(fabs(p0)<EPS) p0=1e-13;
+  if(fabs(p1)<EPS) p1=1e-13;
+  if(fabs(p2)<EPS) p2=1e-13;
 
   //---------------------------------------------------------------------
   // perturbation
