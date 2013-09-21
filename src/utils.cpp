@@ -346,7 +346,6 @@ double area_in_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *no
   return cube.area_In_Negative_Domain(phi_values);
 }
 
-
 double area_in_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi)
 {
   double sum = 0;
@@ -367,8 +366,6 @@ double area_in_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi)
   MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm);
   return sum_global;
 }
-
-
 
 double integrate_over_interface_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec &phi, Vec &f)
 {
@@ -407,8 +404,6 @@ double integrate_over_interface_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *n
   return cube.integrate_Over_Interface(f_values,phi_values);
 }
 
-
-
 double integrate_over_interface(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi, Vec &f)
 {
   double sum = 0;
@@ -430,3 +425,157 @@ double integrate_over_interface(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi, 
   return sum_global;
 }
 
+bool is_node_xmWall(const p4est_t *p4est, const p4est_indep_t *ni)
+{
+  const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
+  p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
+
+  if (t2t[P4EST_CHILDREN*tr_it + 0] != tr_it)
+    return false;
+  else if (ni->x == 0)
+    return true;
+  else
+    return false;
+}
+
+bool is_node_xpWall(const p4est_t *p4est, const p4est_indep_t *ni)
+{
+  const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
+  p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
+
+  if (t2t[P4EST_CHILDREN*tr_it + 1] != tr_it)
+    return false;
+  else if (ni->x == P4EST_ROOT_LEN - 1 || ni->x == P4EST_ROOT_LEN) // nodes may be unclamped
+    return true;
+  else
+    return false;
+}
+
+bool is_node_ymWall(const p4est_t *p4est, const p4est_indep_t *ni)
+{
+  const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
+  p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
+
+  if (t2t[P4EST_CHILDREN*tr_it + 2] != tr_it)
+    return false;
+  else if (ni->y == 0)
+    return true;
+  else
+    return false;
+}
+
+bool is_node_ypWall(const p4est_t *p4est, const p4est_indep_t *ni)
+{
+  const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
+  p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
+
+  if (t2t[P4EST_CHILDREN*tr_it + 3] != tr_it)
+    return false;
+  else if (ni->y == P4EST_ROOT_LEN - 1 || ni->y == P4EST_ROOT_LEN) // nodes may be unclamped
+    return true;
+  else
+    return false;
+}
+
+bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni)
+{
+  return ( is_node_xmWall(p4est, ni) || is_node_xpWall(p4est, ni) ||
+           is_node_ymWall(p4est, ni) || is_node_ypWall(p4est, ni) );
+}
+
+void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f)
+{
+  double *f_p;
+  PetscErrorCode ierr;
+
+  /*
+   * FIXME: Find a way to ask PETSc for the local+ghost size of a ghosted vector
+   */
+#ifdef CASL_THROWS
+  {
+    Vec local_form;
+    ierr = VecGhostGetLocalForm(f, &local_form); CHKERRXX(ierr);
+    PetscInt size;
+    ierr = VecGetSize(local_form, &size); CHKERRXX(ierr);
+    if (size != (PetscInt) nodes->indep_nodes.elem_count){
+      std::ostringstream oss;
+      oss << "[ERROR]: size of the input vector must be equal to the total number of points."
+             "nodes->indep_nodes.elem_count = " << nodes->indep_nodes.elem_count
+          << " VecSize = " << size << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+    ierr = VecGhostRestoreLocalForm(f, &local_form); CHKERRXX(ierr);
+  }
+#endif
+
+  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
+
+  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+  double *v2q = p4est->connectivity->vertices;
+
+  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
+  {
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+    p4est_topidx_t v_mm = t2v[P4EST_CHILDREN*tree_id + 0];
+
+    double tree_xmin = v2q[3*v_mm + 0];
+    double tree_ymin = v2q[3*v_mm + 1];
+
+    double x = int2double_coordinate_transform(node->x) + tree_xmin;
+    double y = int2double_coordinate_transform(node->y) + tree_ymin;
+
+    f_p[p4est2petsc_local_numbering(nodes,i)] = cf(x,y);
+  }
+
+  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+}
+
+std::ostream& operator<< (std::ostream& os, BoundaryConditionType type)
+{
+  switch(type){
+  case DIRICHLET:
+    os << "Dirichlet";
+    break;
+
+  case NEUMANN:
+    os << "Neumann";
+    break;
+
+  case NOINTERFACE:
+    os << "No-Interface";
+    break;
+
+  case MIXED:
+    os << "Mixed";
+    break;
+
+  default:
+    os << "UNKNOWN";
+    break;
+  }
+
+  return os;
+}
+
+
+std::istream& operator>> (std::istream& is, BoundaryConditionType& type)
+{
+  std::string str;
+  is >> str;
+
+  if (str == "DIRICHLET" || str == "Dirichlet" || str == "dirichlet")
+    type = DIRICHLET;
+  else if (str == "NEUMANN" || str == "Neumann" || str == "neumann")
+    type = NEUMANN;
+  else if (str == "NOINTERFACE" || str == "Nointerface" || str == "No-Interface" || str == "nointerface" || str == "no-interface")
+    type = NOINTERFACE;
+  else if (str == "MIXED" || str == "Mixed" || str == "mixed")
+    type = MIXED;
+  else
+    throw std::invalid_argument("[ERROR]: Unknown BoundaryConditionType entered");
+
+  return is;
+}

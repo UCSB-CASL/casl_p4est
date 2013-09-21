@@ -6,6 +6,9 @@
 #include <limits>
 #define EPSILON 1e-13
 
+#undef MIN
+#undef MAX
+
 #ifndef PI
 #define PI 3.1415926535897932384626433832795
 #endif

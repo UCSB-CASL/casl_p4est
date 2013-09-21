@@ -13,6 +13,7 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
                                              my_p4est_brick_t *myb)
   : method_(linear),
     p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), qnnn_(NULL),
+    Fxx_(NULL), Fyy_(NULL), local_derivatives(false),
     p4est2petsc(nodes->indep_nodes.elem_count),
     remote_senders(p4est->mpisize, -1),
     is_buffer_prepared(false)
@@ -45,9 +46,10 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
                                              p4est_nodes_t *nodes,
                                              p4est_ghost_t *ghost,
                                              my_p4est_brick_t *myb,
-                                             my_p4est_node_neighbors_t &qnnn)
+                                             const my_p4est_node_neighbors_t &qnnn)
   : method_(quadratic_non_oscillatory),
     p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), qnnn_(&qnnn),
+    Fxx_(NULL), Fyy_(NULL), local_derivatives(false),
     p4est2petsc(nodes->indep_nodes.elem_count),
     remote_senders(p4est->mpisize, -1),
     is_buffer_prepared(false)
@@ -74,18 +76,14 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
   ymin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 1];
   xmax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 0];
   ymax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 1];
-
-  // Allocate memory for second derivaties
-  ierr = VecCreateGhost(p4est_, nodes_, &Fxx); CHKERRXX(ierr);
-  ierr = VecDuplicate(Fxx, &Fyy); CHKERRXX(ierr);
 }
 
 InterpolatingFunction::~InterpolatingFunction()
 {
-  if (method_ == quadratic || method_ == quadratic_non_oscillatory)
+  if ((method_ == quadratic || method_ == quadratic_non_oscillatory) && local_derivatives)
   {
-    ierr = VecDestroy(Fxx); CHKERRXX(ierr);
-    ierr = VecDestroy(Fyy); CHKERRXX(ierr);
+    ierr = VecDestroy(Fxx_); CHKERRXX(ierr);
+    ierr = VecDestroy(Fyy_); CHKERRXX(ierr);
   }
 }
 
@@ -185,7 +183,7 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
   is_buffer_prepared = false;
 }
 
-void InterpolatingFunction::set_input_parameters(Vec &input_vec, interpolation_method method)
+void InterpolatingFunction::set_input_parameters(Vec &input_vec, interpolation_method method, Vec Fxx, Vec Fyy)
 {
   method_ = method;
 
@@ -194,8 +192,15 @@ void InterpolatingFunction::set_input_parameters(Vec &input_vec, interpolation_m
   input_vec_ = input_vec;
 
   // compute the second derivates if necessary
-  if (method_ == quadratic || method_ == quadratic_non_oscillatory)
-    compute_second_derivatives();
+  if (method_ == quadratic || method_ == quadratic_non_oscillatory){
+    if (Fxx != NULL && Fyy != NULL){
+       Fxx_ = Fxx;
+       Fyy_ = Fyy;
+       local_derivatives = false;
+    } else {
+      compute_second_derivatives();
+    }
+  }
 }
 
 void InterpolatingFunction::interpolate(Vec &output_vec)
@@ -223,8 +228,8 @@ void InterpolatingFunction::interpolate( double *output_vec )
     Fxx_p = Fyy_p = NULL;
   else
   {
-    ierr = VecGetArray(Fxx, &Fxx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+    ierr = VecGetArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecGetArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
   }
 
   // initialize the value for remote matches to zero
@@ -438,8 +443,8 @@ void InterpolatingFunction::interpolate( double *output_vec )
 
   if (method_ == quadratic || method_ == quadratic_non_oscillatory)
   {
-    ierr = VecRestoreArray(Fxx, &Fxx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
   }
 }
 
@@ -453,8 +458,8 @@ double InterpolatingFunction::operator ()(double x, double y) const {
     Fxx_p = Fyy_p = NULL;
   else
   {
-    ierr = VecGetArray(Fxx, &Fxx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+    ierr = VecGetArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecGetArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
   }
 
   static double f  [P4EST_CHILDREN];
@@ -500,8 +505,8 @@ double InterpolatingFunction::operator ()(double x, double y) const {
     ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
     if (method_ == quadratic || method_ == quadratic_non_oscillatory)
     {
-      ierr = VecRestoreArray(Fxx, &Fxx_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
     }
 
     sc_array_destroy(remote_matches);
@@ -535,8 +540,8 @@ double InterpolatingFunction::operator ()(double x, double y) const {
     ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
     if (method_ == quadratic || method_ == quadratic_non_oscillatory)
     {
-      ierr = VecRestoreArray(Fxx, &Fxx_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
     }
 
     sc_array_destroy(remote_matches);
@@ -555,8 +560,8 @@ double InterpolatingFunction::operator ()(double x, double y) const {
     ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
     if (method_ == quadratic || method_ == quadratic_non_oscillatory)
     {
-      ierr = VecRestoreArray(Fxx, &Fxx_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
     }
 
     sc_array_destroy(remote_matches);
@@ -618,34 +623,41 @@ void InterpolatingFunction::recv_point_buffers_begin()
 
 void InterpolatingFunction::compute_second_derivatives()
 {
+  // Allocate memory for second derivaties
+  if (Fxx_ == NULL && Fyy_ == NULL){
+    ierr = VecCreateGhost(p4est_, nodes_, &Fxx_); CHKERRXX(ierr);
+    ierr = VecDuplicate(Fxx_, &Fyy_); CHKERRXX(ierr);
+    local_derivatives = true;
+  }
+
   // Access internal data
   double *Fi_p, *Fxx_p, *Fyy_p;
   ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(Fxx, &Fxx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+  ierr = VecGetArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
 
   // Compute Fxx on local nodes
   for (p4est_locidx_t n=0; n<nodes_->num_owned_indeps; ++n)
     Fxx_p[n] = (*qnnn_)[n].dxx_central(Fi_p);
 
   // Send ghost values for Fxx
-  ierr = VecGhostUpdateBegin(Fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(Fxx_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // Compute Fyy on local nodes
   for (p4est_locidx_t n=0; n<nodes_->num_owned_indeps; ++n)
     Fyy_p[n] = (*qnnn_)[n].dyy_central(Fi_p);
 
   // receive the ghost values for Fxx
-  ierr = VecGhostUpdateEnd(Fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecRestoreArray(Fxx, &Fxx_p); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(Fxx_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
 
   // Send ghost values for Fyy and receive them
-  ierr = VecGhostUpdateBegin(Fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(Fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(Fyy_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(Fyy_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // restore Fyy array
-  ierr = VecRestoreArray(Fyy, &Fyy_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
 
   // restore input_vec_ array
-  ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);  
 }

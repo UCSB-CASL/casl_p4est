@@ -21,12 +21,13 @@ class InterpolatingFunction: public CF_2
   p4est_nodes_t *nodes_;
   p4est_ghost_t *ghost_;
   my_p4est_brick_t *myb_;
-  my_p4est_node_neighbors_t *qnnn_;
+  const my_p4est_node_neighbors_t *qnnn_;
 
   double xmin, xmax, ymin, ymax;
 
   PetscErrorCode ierr;
-  Vec Fxx, Fyy;
+  Vec Fxx_, Fyy_;
+  bool local_derivatives;
 
   std::vector<int> p4est2petsc;
   Vec input_vec_;
@@ -77,11 +78,11 @@ class InterpolatingFunction: public CF_2
 
 public:
   InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb);
-  InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_node_neighbors_t &qnnn);
+  InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, const my_p4est_node_neighbors_t &qnnn);
   ~InterpolatingFunction();
 
   void add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y);
-  void set_input_parameters(Vec& input_vec, interpolation_method method);
+  void set_input_parameters(Vec& input_vec, interpolation_method method, Vec Fxx = NULL, Vec Fyy = NULL);
 
   // interpolation methods
   void interpolate(Vec& output_vec);

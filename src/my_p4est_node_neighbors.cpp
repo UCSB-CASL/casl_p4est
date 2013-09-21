@@ -345,7 +345,7 @@ void my_p4est_node_neighbors_t::init_neighbors()
 }
 
 
-void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_, char i, char j, p4est_locidx_t& quad, p4est_topidx_t& nb_tree_idx )
+void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_, char i, char j, p4est_locidx_t& quad, p4est_topidx_t& nb_tree_idx ) const
 {
     p4est_indep_t node_struct = *node_;
     p4est_indep_t *node = &node_struct;

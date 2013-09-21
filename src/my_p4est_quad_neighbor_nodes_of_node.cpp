@@ -129,14 +129,12 @@ double quad_neighbor_nodes_of_node_t::dxx_central( const double *f ) const
 {
     double f_m0,f_00,f_p0; x_ngbd_with_quadratic_interpolation(f,f_m0,f_00,f_p0);
 
-    return ((f_p0-f_00)/d_p0+
-            (f_m0-f_00)/d_m0)*2./(d_m0+d_p0);
+    return ((f_p0-f_00)/d_p0+(f_m0-f_00)/d_m0)*2./(d_m0+d_p0);
 }
 
 double quad_neighbor_nodes_of_node_t::dyy_central( const double *f ) const
 {
     double f_0m,f_00,f_0p; y_ngbd_with_quadratic_interpolation(f,f_0m,f_00,f_0p);
 
-    return ((f_0p-f_00)/d_0p+
-            (f_0m-f_00)/d_0m)*2./(d_0m+d_0p);
+    return ((f_0p-f_00)/d_0p+(f_0m-f_00)/d_0m)*2./(d_0m+d_0p);
 }
