@@ -77,13 +77,13 @@ void PoissonSolverNodeBase::init()
   splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
 
   // compute grid parameters
-  p4est_topidx_t tm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t tp = p4est->connectivity->tree_to_vertex[0 + 3];
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + 3];
 
-  double xmin = p4est->connectivity->vertices[3*tm + 0];
-  double ymin = p4est->connectivity->vertices[3*tm + 1];
-  double xmax = p4est->connectivity->vertices[3*tp + 0];
-  double ymax = p4est->connectivity->vertices[3*tp + 1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
 
   dx_min = (xmax-xmin) / pow(2.,(double) data->max_lvl);
   dy_min = (ymax-ymin) / pow(2.,(double) data->max_lvl);

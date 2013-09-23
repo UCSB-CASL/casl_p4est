@@ -18,7 +18,7 @@
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
 
-#define MAX_LEVEL 11
+#define MAX_LEVEL 8
 
 int band = 10;
 int order = 2;
@@ -160,8 +160,18 @@ int main (int argc, char* argv[]){
   ierr = VecGetArray(f  , &f_ptr); CHKERRXX(ierr);
 
   /* check the error */
-  double dx = 2. / pow(2.,(double) data.max_lvl);
-  double dy = 2. / pow(2.,(double) data.max_lvl);
+
+  /* find dx and dy smallest */
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + 3];
+//  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + 3];
+
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  double dx = (xmax-xmin) / pow(2.,(double) data.max_lvl);
+  double dy = (ymax-ymin) / pow(2.,(double) data.max_lvl);
   double diag = sqrt(dx*dx + dy*dy);
 
   double err_max = 0;

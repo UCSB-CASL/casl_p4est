@@ -501,19 +501,21 @@ void my_p4est_level_set::extend_Over_Interface( Vec &phi_petsc, Vec &q_petsc, Bo
   InterpolatingFunction interp2(p4est, nodes, ghost, myb, ngbd);
 
   /* find dx and dy smallest */
-  p4est_topidx_t tm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t tp = p4est->connectivity->tree_to_vertex[0 + 3];
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + 3];
+//  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + 3];
 
-  double xmin = p4est->connectivity->vertices[3*tm + 0];
-  double ymin = p4est->connectivity->vertices[3*tm + 1];
-  double xmax = p4est->connectivity->vertices[3*tp + 0];
-  double ymax = p4est->connectivity->vertices[3*tp + 1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
 
 
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
   double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
   double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
-  double diag = sqrt(dx*dx + dy*dy);
+  /* NOTE: I don't understand why the 1.6 coefficient is needed ... 1 should work, but it doesn't */
+  double diag = 1.6*sqrt(dx*dx + dy*dy);
 
   std::vector<double> q0;
   std::vector<double> q1;
@@ -650,13 +652,14 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec &phi_petsc, 
   ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
 
   /* find dx and dy smallest */
-  p4est_topidx_t tm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t tp = p4est->connectivity->tree_to_vertex[0 + 3];
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + 3];
+//  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + 3];
 
-  double xmin = p4est->connectivity->vertices[3*tm + 0];
-  double ymin = p4est->connectivity->vertices[3*tm + 1];
-  double xmax = p4est->connectivity->vertices[3*tp + 0];
-  double ymax = p4est->connectivity->vertices[3*tp + 1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
 
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
   double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
