@@ -78,7 +78,7 @@ class InterpolatingFunction: public CF_2
 
 public:
   InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb);
-  InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, const my_p4est_node_neighbors_t &qnnn);
+  InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, const my_p4est_node_neighbors_t *qnnn);
   ~InterpolatingFunction();
 
   void add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y);

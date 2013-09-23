@@ -2,12 +2,6 @@
 #include <stdio.h>
 #include <src/utils.h>
 
-
-double SIGN(double a)
-{
-  return (a>0) ? 1:-1;
-}
-
 double interface_Location( double   a, double   b, double  fa, double  fb )
 {
   return 0.5*(a+b+(a-b)*(fa+fb)/(fb-fa));
@@ -23,8 +17,8 @@ double interface_Location_With_Second_Order_Derivative(double    a, double    b,
                                                        double   fa, double   fb,
                                                        double fxxa, double fxxb )
 {
-  if(fabs(fa)<EPSILON) return a+EPSILON;
-  if(fabs(fb)<EPSILON) return b-EPSILON;
+  if(fabs(fa)<EPS) return a+EPS;
+  if(fabs(fb)<EPS) return b-EPS;
 
 #ifdef CASL_THROWS
   if(fa*fb >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
@@ -40,7 +34,7 @@ double interface_Location_With_Second_Order_Derivative(double    a, double    b,
 
   double x;
 
-  if(fabs(c2)<EPSILON) x = -c0/c1;
+  if(fabs(c2)<EPS) x = -c0/c1;
   else
   {
     if(fb<0) x = (-2*c0)/(c1 - sqrt(c1*c1-4*c2*c0));
@@ -187,13 +181,13 @@ int solve_Cubic(double c[ 4 ], double s[ 3 ])
 
 int is_Zero(double x)
 {
-  return x > - EPSILON && x < EPSILON;
+  return x > - EPS && x < EPS;
 }
 
 double fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives( double phi0, double phi1, double phi0xx, double phi1xx, double dx){
   // perturbation
-  if(ABS(phi0)<EPSILON) phi0 = 0;
-  if(ABS(phi1)<EPSILON) phi1 = 0;
+  if(ABS(phi0)<EPS) phi0 = 0;
+  if(ABS(phi1)<EPS) phi1 = 0;
 
   // there are 9 cases.
   double l;
@@ -214,7 +208,7 @@ double fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives
 #endif
   //    if (ABS(l-fraction_Interval_Covered_By_Irregular_Domain(phi0,phi1,dx,dx))>1E-1)
   //        printf("error in length frac %f phis:  %f  and  %f   derivatives %f     and    %f     \n",l-fraction_Interval_Covered_By_Irregular_Domain(phi0,phi1,dx,dx),phi0,phi1,phi0xx,phi1xx);
-  double eps = MIN(EPSILON,dx/100.);
+  double eps = MIN(EPS,dx/100.);
   if(l*l<eps) return 0;
   else        return l;
 

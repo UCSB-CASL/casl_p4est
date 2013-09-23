@@ -20,6 +20,8 @@
 
 #define MAX_LEVEL 11
 
+int band = 10;
+int order = 2;
 
 #undef MIN
 #undef MAX
@@ -43,7 +45,8 @@ class BCInterfaceDirichlet : public CF_2 {
 public:
   double operator() (double x, double y) const
   {
-    return x*x + y*y;
+    return exp(SQR(x-1) + SQR(y-1));
+//    return x*x + y*y;
 //    return x+y;
 //    return 1.;
   }
@@ -60,7 +63,8 @@ public:
         nx /= norm;
         ny /= norm;
 
-        return 2*x*nx + 2*y*ny;
+        return exp(x+y) * (nx+ny);
+//        return 2*x*nx + 2*y*ny;
 //        return nx + ny;
 //        return 0;
     }
@@ -149,9 +153,8 @@ int main (int argc, char* argv[]){
   bc.setInterfaceValue(bc_interface_dirichlet);
 //  bc.setInterfaceType(NEUMANN);
 //  bc.setInterfaceValue(bc_interface_neumann);
-  int band = 10;
 
-  ls.extend_Over_Interface(phi, f, bc, 2, band);
+  ls.extend_Over_Interface(phi, f, bc, order, band);
 
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(f  , &f_ptr); CHKERRXX(ierr);

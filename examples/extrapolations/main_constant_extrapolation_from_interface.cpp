@@ -43,8 +43,8 @@ class BCInterfaceDirichlet : public CF_2 {
 public:
   double operator() (double x, double y) const
   {
-    return x*x + y*y;
-//    return x+y;
+//    return x*x + y*y;
+    return x+y;
 //    return 1.;
   }
 } bc_interface_dirichlet;

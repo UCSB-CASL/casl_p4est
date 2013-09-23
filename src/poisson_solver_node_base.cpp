@@ -12,9 +12,9 @@
 
 #define bc_strength 1.0
 
-PoissonSolverNodeBase::PoissonSolverNodeBase(const my_p4est_node_neighbors_t &node_neighbors, my_p4est_brick_t* myb)
+PoissonSolverNodeBase::PoissonSolverNodeBase(const my_p4est_node_neighbors_t *node_neighbors, my_p4est_brick_t* myb)
   : node_neighbors_(node_neighbors),
-    p4est(node_neighbors.p4est), nodes(node_neighbors.nodes), ghost(node_neighbors.ghost), myb_(myb),
+    p4est(node_neighbors->p4est), nodes(node_neighbors->nodes), ghost(node_neighbors->ghost), myb_(myb),
     phi_interp(p4est, nodes, ghost, myb, node_neighbors),
     mu_(1.), diag_add_(0.),
     is_matrix_ready(false), matrix_has_nullspace(false),
@@ -74,24 +74,22 @@ void PoissonSolverNodeBase::init()
   // set up the KSP solver
   ierr = KSPCreate(p4est->mpicomm, &ksp); CHKERRXX(ierr);
 
-  // compute local max level
-//  int level = 0, max_level;
-//  for (p4est_topidx_t tr_it = p4est->first_local_tree; tr_it <=p4est->last_local_tree; ++tr_it)
-//  {
-//    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr_it);
-//    level = MAX(tree->maxlevel, level);
-//  }
-
-//  // find max level across all processors
-//  MPI_Allreduce(&level, max_level, 1, MPI_INT, MPI_MAX, p4est->mpicomm);
-
   splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
-  int max_level = data->max_lvl;
 
   // compute grid parameters
-  d_min = dx_min = dy_min = (double)P4EST_QUADRANT_LEN(max_level)/(double)P4EST_ROOT_LEN;
-  diag_min = sqrt(dx_min*dx_min + dy_min*dy_min);
+  p4est_topidx_t tm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t tp = p4est->connectivity->tree_to_vertex[0 + 3];
 
+  double xmin = p4est->connectivity->vertices[3*tm + 0];
+  double ymin = p4est->connectivity->vertices[3*tm + 1];
+  double xmax = p4est->connectivity->vertices[3*tp + 0];
+  double ymax = p4est->connectivity->vertices[3*tp + 1];
+
+  dx_min = (xmax-xmin) / pow(2.,(double) data->max_lvl);
+  dy_min = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+  d_min = MIN(dx_min, dy_min);
+
+  diag_min = sqrt(dx_min*dx_min + dy_min*dy_min);
 }
 
 void PoissonSolverNodeBase::preallocate_matrix()
@@ -232,7 +230,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
     double x_C  = int2double_coordinate_transform(ni->x) + tree_xmin;
     double y_C  = int2double_coordinate_transform(ni->y) + tree_ymin;
 
-    const quad_neighbor_nodes_of_node_t& qnnn = node_neighbors_[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = (*node_neighbors_)[n];
 
     double dL = qnnn.d_m0;double dR = qnnn.d_p0;double dB = qnnn.d_0m;double dT = qnnn.d_0p;
 
@@ -334,10 +332,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
         continue;
       }
 
-      double Pmhph = phi_interp(x_C-dx_min/2,y_C+dy_min/2);
-      double Pmhmh = phi_interp(x_C-dx_min/2,y_C-dy_min/2);
-      double Pphmh = phi_interp(x_C+dx_min/2,y_C-dy_min/2);
-      double Pphph = phi_interp(x_C+dx_min/2,y_C+dy_min/2);
+      double Pmhmh = phi_interp(x_C-dx_min/2.,y_C-dy_min/2.);
+      double Pmhph = phi_interp(x_C-dx_min/2.,y_C+dy_min/2.);
+      double Pphmh = phi_interp(x_C+dx_min/2.,y_C-dy_min/2.);
+      double Pphph = phi_interp(x_C+dx_min/2.,y_C+dy_min/2.);
 
       bool is_ngbd_crossed_neumann = ( Pmhmh*Pmhph<0 || Pmhph*Pphph<0 || Pphph*Pphmh<0 || Pphmh*Pmhmh<0 );
 
@@ -470,10 +468,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
       if (is_ngbd_crossed_neumann && bc_->interfaceType() == NEUMANN)
       {
         Cube2 cube;
-        cube.x0 = x_C-dx_min/2;
-        cube.x1 = x_C+dx_min/2;
-        cube.y0 = y_C-dy_min/2;
-        cube.y1 = y_C+dy_min/2;
+        cube.x0 = x_C-dx_min/2.;
+        cube.x1 = x_C+dx_min/2.;
+        cube.y0 = y_C-dy_min/2.;
+        cube.y1 = y_C+dy_min/2.;
         QuadValue phi_cube(Pmhmh, Pmhph, Pphmh, Pphph);
         double area_cut_cell = cube.area_In_Negative_Domain(phi_cube);
 
@@ -482,8 +480,8 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           p4est_locidx_t quad_mm_idx, quad_pp_idx;
           p4est_topidx_t tree_mm_idx, tree_pp_idx;
 
-          node_neighbors_.find_neighbor_cell_of_node(ni, -1, -1, quad_mm_idx, tree_mm_idx);
-          node_neighbors_.find_neighbor_cell_of_node(ni,  1,  1, quad_pp_idx, tree_pp_idx);
+          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, quad_mm_idx, tree_mm_idx);
+          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1, quad_pp_idx, tree_pp_idx);
 
           /*
            * z-ordering
@@ -502,10 +500,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           fxx = phi_xx_p[n];
           fyy = phi_yy_p[n];
 
-          double lB = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhmh, Pphmh, fyy, fyy, dy_min);
-          double lT = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhph, Pphph, fyy, fyy, dy_min);
-          double lL = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhmh, Pmhph, fxx, fxx, dx_min);
-          double lR = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pphmh, Pphph, fxx, fxx, dx_min);
+          double lB = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhmh, Pphmh, fxx, fxx, dx_min);
+          double lT = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhph, Pphph, fxx, fxx, dx_min);
+          double lL = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhmh, Pmhph, fyy, fyy, dy_min);
+          double lR = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pphmh, Pphph, fyy, fyy, dy_min);
 
           double UL = -lL/dx_min;
           double UR = -lR/dx_min;
@@ -596,7 +594,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
     double x_C  = int2double_coordinate_transform(ni->x) + tree_xmin;
     double y_C  = int2double_coordinate_transform(ni->y) + tree_ymin;
 
-    const quad_neighbor_nodes_of_node_t& qnnn = node_neighbors_[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = (*node_neighbors_)[n];
 
     double dL = qnnn.d_m0;double dR = qnnn.d_p0;double dB = qnnn.d_0m;double dT = qnnn.d_0p;
 
@@ -652,7 +650,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
 
     // far away from the interface
     if (phi_C>eps  && (!is_ngbd_crossed_neumann || bc_->interfaceType() == DIRICHLET )){
-      rhs_p[n] = bc_strength*bc_->interfaceValue(x_C,y_C);
+      if(bc_->interfaceType()==DIRICHLET)
+        rhs_p[n] = bc_strength*bc_->interfaceValue(x_C,y_C);
+      else
+        rhs_p[n] = 0;
       continue;
     }
 
@@ -756,10 +757,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
     if (is_ngbd_crossed_neumann && bc_->interfaceType()==NEUMANN)
     {
       Cube2 cube;
-      cube.x0 = x_C-dx_min/2;
-      cube.x1 = x_C+dx_min/2;
-      cube.y0 = y_C-dy_min/2;
-      cube.y1 = y_C+dy_min/2;
+      cube.x0 = x_C-dx_min/2.;
+      cube.x1 = x_C+dx_min/2.;
+      cube.y0 = y_C-dy_min/2.;
+      cube.y1 = y_C+dy_min/2.;
       QuadValue phi_cube(Pmhmh,Pmhph,Pphmh,Pphph);
       double area_cut_cell = cube.area_In_Negative_Domain(phi_cube);
 
@@ -769,10 +770,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
         fxx = phi_xx_p[n];
         fyy = phi_yy_p[n];
 
-        double lB = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhmh, Pphmh, fyy, fyy, dy_min);
-        double lT = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhph, Pphph, fyy, fyy, dy_min);
-        double lL = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhmh, Pmhph, fxx, fxx, dx_min);
-        double lR = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pphmh, Pphph, fxx, fxx, dx_min);
+        double lB = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhmh, Pphmh, fxx, fxx, dx_min);
+        double lT = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhph, Pphph, fxx, fxx, dx_min);
+        double lL = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pmhmh, Pmhph, fyy, fyy, dy_min);
+        double lR = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(Pphmh, Pphph, fyy, fyy, dy_min);
 
         double UL =-lL/dx_min;
         double UR =-lR/dx_min;
@@ -784,11 +785,12 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
         UT *= mu_;
         UB *= mu_;
 
-        double U=add_p[n]*area_cut_cell-UR-UL-UB-UT;
-        QuadValue bc_value(     bc_->interfaceValue(x_C-dx_min/2,y_C-dy_min/2),
-                                bc_->interfaceValue(x_C-dx_min/2,y_C+dy_min/2),
-                                bc_->interfaceValue(x_C+dx_min/2,y_C-dy_min/2),
-                                bc_->interfaceValue(x_C+dx_min/2,y_C+dy_min/2));
+        double U = add_p[n]*area_cut_cell-UR-UL-UB-UT;
+
+        QuadValue bc_value(     bc_->interfaceValue(cube.x0,cube.y0),
+                                bc_->interfaceValue(cube.x0,cube.y1),
+                                bc_->interfaceValue(cube.x1,cube.y0),
+                                bc_->interfaceValue(cube.x1,cube.y1) );
 
         double integral_bc = cube.integrate_Over_Interface(bc_value,phi_cube);
         rhs_p[n] *= area_cut_cell;
@@ -830,14 +832,14 @@ void PoissonSolverNodeBase::set_phi(Vec phi)
 
   // Compute phi_xx on local nodes
   for (p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    phi_xx_p[n] = node_neighbors_[n].dxx_central(phi_p);
+    phi_xx_p[n] = (*node_neighbors_)[n].dxx_central(phi_p);
 
   // Send ghost values for phi_xx
   ierr = VecGhostUpdateBegin(phi_xx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // Compute phi_yy on local nodes
   for (p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    phi_yy_p[n] = node_neighbors_[n].dyy_central(phi_p);
+    phi_yy_p[n] = (*node_neighbors_)[n].dyy_central(phi_p);
 
   // receive the ghost values for phi_xx
   ierr = VecGhostUpdateEnd(phi_xx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

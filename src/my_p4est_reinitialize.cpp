@@ -373,19 +373,23 @@ void my_p4est_level_set::compute_derivatives( Vec &phi_petsc, Vec &dxx_petsc, Ve
   double *phi;
   ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-  {
     dxx[n] = (*ngbd)[n].dxx_central(phi);
+
+  ierr = VecGhostUpdateBegin(dxx_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     dyy[n] = (*ngbd)[n].dyy_central(phi);
-  }
+
+  ierr = VecGhostUpdateEnd  (dxx_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(dyy_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (dyy_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
   ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
 
-  ierr = VecGhostUpdateBegin(dxx_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (dxx_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateBegin(dyy_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (dyy_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }
 
 
@@ -497,8 +501,8 @@ void my_p4est_level_set::extend_Over_Interface( Vec &phi_petsc, Vec &q_petsc, Bo
   InterpolatingFunction interp2(p4est, nodes, ghost, myb, ngbd);
 
   /* find dx and dy smallest */
-  p4est_topidx_t tm = p4est->connectivity->tree_to_vertex[0];
-  p4est_topidx_t tp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + 3];
+  p4est_topidx_t tm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t tp = p4est->connectivity->tree_to_vertex[0 + 3];
 
   double xmin = p4est->connectivity->vertices[3*tm + 0];
   double ymin = p4est->connectivity->vertices[3*tm + 1];
@@ -646,8 +650,8 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec &phi_petsc, 
   ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
 
   /* find dx and dy smallest */
-  p4est_topidx_t tm = p4est->connectivity->tree_to_vertex[0];
-  p4est_topidx_t tp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + 3];
+  p4est_topidx_t tm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t tp = p4est->connectivity->tree_to_vertex[0 + 3];
 
   double xmin = p4est->connectivity->vertices[3*tm + 0];
   double ymin = p4est->connectivity->vertices[3*tm + 1];
