@@ -39,6 +39,163 @@ public:
   virtual ~CF_3() {}
 };
 
+typedef enum {
+  DIRICHLET,
+  NEUMANN,
+  NOINTERFACE,
+  MIXED
+} BoundaryConditionType;
+
+std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
+std::istream& operator >> (std::istream& is, BoundaryConditionType& type);
+
+class WallBC
+{
+public:
+  virtual BoundaryConditionType operator()( double x, double y ) const=0 ;
+};
+
+class WallBC3D
+{
+public:
+  virtual BoundaryConditionType operator()( double x, double y, double z ) const=0 ;
+};
+
+
+class BoundaryConditions2D
+{
+private:
+  const WallBC* WallType_;
+  BoundaryConditionType InterfaceType_;
+
+  const CF_2 *p_WallValue;
+  const CF_2 *p_InterfaceValue;
+
+public:
+  BoundaryConditions2D()
+  {
+    WallType_ = NULL;
+    p_WallValue = NULL;
+    InterfaceType_ = NOINTERFACE;
+    p_InterfaceValue = NULL;
+  }
+
+  inline void setWallTypes( const WallBC& w )
+  {
+    WallType_ = &w;
+  }
+
+  inline const WallBC& getWallType() const
+  {
+    return *WallType_;
+  }
+
+  inline void setWallValues( const CF_2& v ){
+    p_WallValue = &v;
+  }
+
+  inline void setInterfaceType(BoundaryConditionType bc){
+    InterfaceType_ = bc;
+  }
+
+  inline void setInterfaceValue(const CF_2& in){
+    p_InterfaceValue = &in;
+  }
+
+  inline BoundaryConditionType wallType( double x, double y ) const
+  {
+#ifdef CASL_THROWS
+    if(WallType_ == NULL) throw std::invalid_argument("[CASL_ERROR]: The type of boundary conditions has not been set on the walls.");
+#endif
+    return (*WallType_)(x,y);
+  }
+
+  inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
+
+  inline double wallValue(double x, double y) const
+  {
+#ifdef CASL_THROWS
+    if(p_WallValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the walls.");
+#endif
+    return p_WallValue->operator ()(x,y);
+  }
+
+  inline double interfaceValue(double x, double y) const
+  {
+#ifdef CASL_THROWS
+    if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
+#endif
+    return p_InterfaceValue->operator ()(x,y);
+  }
+};
+
+class BoundaryConditions3D
+{
+private:
+  const WallBC3D* WallType_;
+  BoundaryConditionType InterfaceType_;
+
+  const CF_3 *p_WallValue;
+  const CF_3 *p_InterfaceValue;
+
+public:
+  BoundaryConditions3D()
+  {
+    WallType_ = NULL;
+    p_WallValue = NULL;
+    InterfaceType_ = NOINTERFACE;
+    p_InterfaceValue = NULL;
+  }
+
+  inline void setWallTypes( const WallBC3D& w )
+  {
+    WallType_ = &w;
+  }
+
+  inline const WallBC3D& getWallType() const
+  {
+    return *WallType_;
+  }
+
+  inline void setWallValues( const CF_3& v ){
+    p_WallValue = &v;
+  }
+
+  inline void setInterfaceType(BoundaryConditionType bc){
+    InterfaceType_ = bc;
+  }
+
+  inline void setInterfaceValue(const CF_3& in){
+    p_InterfaceValue = &in;
+  }
+
+  inline BoundaryConditionType wallType( double x, double y, double z ) const
+  {
+#ifdef CASL_THROWS
+    if(WallType_ == NULL) throw std::invalid_argument("[CASL_ERROR]: The type of boundary conditions has not been set on the walls.");
+#endif
+    return (*WallType_)(x,y,z);
+  }
+
+  inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
+
+  inline double wallValue(double x, double y, double z) const
+  {
+#ifdef CASL_THROWS
+    if(p_WallValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the walls.");
+#endif
+    return p_WallValue->operator ()(x,y,z);
+  }
+
+  inline double interfaceValue(double x, double y, double z) const
+  {
+#ifdef CASL_THROWS
+    if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
+#endif
+    return p_InterfaceValue->operator ()(x,y,z);
+  }
+};
+
 // p4est boolean type
 typedef int p4est_bool_t;
 #define P4EST_TRUE  1
@@ -178,7 +335,7 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4es
  * \param F a simple C-style array of size 4, containing the values of the function at the vertices of the quadrant. __MUST__ be z-ordered
  * \param Fxx a simple C-style array of size 4, containing the values of the xx derivative of function at the vertices of the quadrant. does not need to be z-ordered
  * \param Fyy a simple C-style array of size 4, containing the values of the yy derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param x_global global x-coordinate of the point
+ * \param x_global global x-coordinate ointerface_location_with_second_order_derivativef the point
  * \param y_global global y-coordinate of the point
  * \return interpolated value
  */
@@ -196,7 +353,7 @@ double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tr
  * \param y_global global y-coordinate of the point
  * \return interpolated value
  */
-double quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global);
+double quadratic_interpolation(p4est_t *interface_location_with_second_order_derivativep4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global);
 
 /*!
  * \brief p4est_VecCreate Creates a normal PETSc parallel vector based on p4est node ordering
@@ -265,6 +422,55 @@ double integrate_over_interface_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *n
  */
 double integrate_over_interface(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi, Vec &f);
 
+/*!
+ * \brief is_node_xmWall checks if a node is on x^- domain boundary
+ * \param p4est [in] p4est
+ * \param ni    [in] pointer to the node structure
+ * \return true if the point is on the left domain boundary and p4est is _NOT_ periodic
+ */
+bool is_node_xmWall(const p4est_t *p4est, const p4est_indep_t *ni);
+
+/*!
+ * \brief is_node_xpWall checks if a node is on x^+ domain boundary
+ * \param p4est [in] p4est
+ * \param ni    [in] pointer to the node structure
+ * \return true if the point is on the right domain boundary and p4est is _NOT_ periodic
+ */
+bool is_node_xpWall(const p4est_t *p4est, const p4est_indep_t *ni);
+
+/*!
+ * \brief is_node_ymWall checks if a node is on y^- domain boundary
+ * \param p4est [in] p4est
+ * \param ni    [in] pointer to the node structure
+ * \return true if the point is on the domain bottom boundary and p4est is _NOT_ periodic
+ */
+bool is_node_ymWall(const p4est_t *p4est, const p4est_indep_t *ni);
+
+/*!
+ * \brief is_node_ymWall checks if a node is on y^+ domain boundary
+ * \param p4est [in] p4est
+ * \param ni    [in] pointer to the node structure
+ * \return true if the point is on the domain top boundary and p4est is _NOT_ periodic
+ */
+bool is_node_ypWall(const p4est_t *p4est, const p4est_indep_t *ni);
+
+/*!
+ * \brief is_node_Wall checks if a node is on any of domain boundaries
+ * \param p4est [in] p4est
+ * \param ni    [in] pointer to the node structure
+ * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
+ */
+bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
+
+/*!
+ * \brief sample_cf_on_nodes samples a cf function on the nodes. both local and ghost poinst are considered
+ * \param p4est [in] the p4est object
+ * \param nodes [in] the nodes data structure
+ * \param cf    [in] the cf function. It is assumed that the function can be evaluated at _ANY_ point, whether local or remote
+ * \param f     [in, out] a PETSc Vec object to store the result. It is assumed that the vector is allocated. A check
+ * is performed to ensure enough memory is available in the Vec object.
+ */
+void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f);
 
 template<typename T>
 T ranged_rand(T a, T b, int seed = 0){
@@ -334,7 +540,6 @@ public:
     return elap;
   }
 };
-
 
 typedef struct
 {

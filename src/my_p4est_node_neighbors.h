@@ -14,6 +14,7 @@
 #include <sstream>
 
 class my_p4est_node_neighbors_t {
+  friend class PoissonSolverNodeBase;
 
 private:
   my_p4est_hierarchy_t *hierarchy;
@@ -60,7 +61,7 @@ public:
      * \param [out] nb_tree_idx  the index of the tree in which the quadrant was found
      *
      */
-  void find_neighbor_cell_of_node( p4est_indep_t *node, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx );
+  void find_neighbor_cell_of_node( p4est_indep_t *node, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
 };
 
 #endif /* !MY_P4EST_NODE_NEIGHBORS_H */
