@@ -17,10 +17,10 @@ template <typename T>
 inline T mod(const T& a, const T& b)
 {
 #ifdef CASL_THROWS
-    if(b==0) throw std::invalid_argument("[CASL_ERROR]: mod: cannot take the modulus with zero.");
+  if(b==0) throw std::invalid_argument("[CASL_ERROR]: mod: cannot take the modulus with zero.");
 #endif
-    T c=a%b;
-    return (c<0)? c+b:c;
+  T c=a%b;
+  return (c<0)? c+b:c;
 }
 
 double mod(double a, double b);
@@ -28,37 +28,37 @@ double mod(double a, double b);
 template <typename T>
 inline const T& MIN(const T& val1, const T& val2)
 {
-    return  val1 < val2 ? val1 : val2;
+  return  val1 < val2 ? val1 : val2;
 }
 
 template <typename T>
 inline const T& MIN(const T& val1, const T& val2, const T& val3)
 {
-    return  val1 < val2 ? MIN(val1,val3) : MIN(val2,val3);
+  return  val1 < val2 ? MIN(val1,val3) : MIN(val2,val3);
 }
 
 template <typename T>
 inline const T& MAX(const T& val1, const T& val2)
 {
-    return  val2 < val1 ? val1 : val2;
+  return  val2 < val1 ? val1 : val2;
 }
 
 template <typename T>
 inline const T& MAX(const T& val1, const T& val2, const T& val3)
 {
-    return  val2 < val1 ? MAX(val1,val3) : MAX(val2,val3);
+  return  val2 < val1 ? MAX(val1,val3) : MAX(val2,val3);
 }
 
 template <typename T>
 inline bool ISNAN(T x)
 {
-    return x != x;
+  return x != x;
 }
 
 template <typename T>
 inline bool ISINF(T x)
 {
-    return !ISNAN(x) && ISNAN(x - x);
+  return !ISNAN(x) && ISNAN(x - x);
 }
 
 /*!
@@ -68,11 +68,11 @@ inline bool ISINF(T x)
 template <typename T>
 inline const T SGNMAX(T x, T y)
 {
-    T zero=0, xp=MAX(x,zero), ym=-MIN(y,zero);
-    if(MAX(xp,ym)==xp)
-        return xp;
-    else
-        return -ym;
+  T zero=0, xp=MAX(x,zero), ym=-MIN(y,zero);
+  if(MAX(xp,ym)==xp)
+    return xp;
+  else
+    return -ym;
 }
 
 

@@ -183,8 +183,8 @@ double SemiLagrangian::update_p4est_intermediate_trees_no_ghost(const CF_2& vx, 
   my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
   std::vector<double> phi_tmp;
 
-//  double dt = 100*compute_dt(vx, vy);
-//  double dt = 1;
+  //  double dt = 100*compute_dt(vx, vy);
+  //  double dt = 1;
 
   int nb_iter = ((splitting_criteria_t*) (p4est_->user_pointer))->max_lvl - ((splitting_criteria_t*) (p4est_->user_pointer))->min_lvl;
 

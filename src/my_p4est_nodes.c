@@ -346,7 +346,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   /* Compute number of local quadrant corners. */
   nodes->num_local_quadrants = p4est->local_num_quadrants;
   num_local_nodes =             /* same type */
-                                P4EST_CHILDREN * nodes->num_local_quadrants;
+      P4EST_CHILDREN * nodes->num_local_quadrants;
   if (ghost != NULL)
     num_local_nodes += P4EST_CHILDREN*ghost->ghosts.elem_count;
 

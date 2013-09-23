@@ -283,16 +283,16 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
                 /* *INDENT-OFF* */
                 xyz[j] =
                     ((1. - eta_z) * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[0] + j] +
-                                                     eta_x  * v[3 * vt[1] + j]) +
-                                     eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
-                                               eta_x  * v[3 * vt[3] + j]))
-     #ifdef P4_TO_P8
-                     +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
-                                                     eta_x  * v[3 * vt[5] + j]) +
-                                     eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
-                                               eta_x  * v[3 * vt[7] + j]))
-     #endif
-                     );
+                     eta_x  * v[3 * vt[1] + j]) +
+                    eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
+                    eta_x  * v[3 * vt[3] + j]))
+    #ifdef P4_TO_P8
+                    +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
+                    eta_x  * v[3 * vt[5] + j]) +
+                    eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
+                    eta_x  * v[3 * vt[7] + j]))
+    #endif
+                    );
                 /* *INDENT-ON* */
               }
 
@@ -330,16 +330,16 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
         /* *INDENT-OFF* */
         xyz[j] =
             ((1. - eta_z) * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[0] + j] +
-                                             eta_x  * v[3 * vt[1] + j]) +
-                             eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
-                                       eta_x  * v[3 * vt[3] + j]))
-     #ifdef P4_TO_P8
-             +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
-                                             eta_x  * v[3 * vt[5] + j]) +
-                             eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
-                                       eta_x  * v[3 * vt[7] + j]))
-     #endif
-             );
+             eta_x  * v[3 * vt[1] + j]) +
+            eta_y  * ((1. - eta_x) * v[3 * vt[2] + j] +
+            eta_x  * v[3 * vt[3] + j]))
+    #ifdef P4_TO_P8
+            +     eta_z  * ((1. - eta_y) * ((1. - eta_x) * v[3 * vt[4] + j] +
+            eta_x  * v[3 * vt[5] + j]) +
+            eta_y  * ((1. - eta_x) * v[3 * vt[6] + j] +
+            eta_x  * v[3 * vt[7] + j]))
+    #endif
+            );
         /* *INDENT-ON* */
       }
       for (j = 0; j < 3; ++j) {

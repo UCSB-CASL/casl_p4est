@@ -157,7 +157,7 @@ public:
 
 class NodeNeighbors{
 public:
-    typedef vector<p4est_indep_t*> node_array;
+  typedef vector<p4est_indep_t*> node_array;
 
 private:
 

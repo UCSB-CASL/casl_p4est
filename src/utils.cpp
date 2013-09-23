@@ -357,8 +357,8 @@ double area_in_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi)
     {
       p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
       sum += area_in_negative_domain_in_one_quadrant(p4est, nodes, quad,
-                                                            quad_idx + tree->quadrants_offset,
-                                                            phi);
+                                                     quad_idx + tree->quadrants_offset,
+                                                     phi);
     }
   }
 

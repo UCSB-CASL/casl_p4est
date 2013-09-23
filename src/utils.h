@@ -78,7 +78,7 @@ inline double HVY( double x, double h )
 
 inline double SIGN(double a)
 {
-    return (a>0) ? 1:-1;
+  return (a>0) ? 1:-1;
 }
 
 inline double MINMOD( double a, double b )
