@@ -1087,8 +1087,8 @@ void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost)
   double *x, *y;
   int num_quad = ghost->ghosts.elem_count;
   int xysize = P4EST_CHILDREN*num_quad;
-  x = malloc(xysize*sizeof(*x));
-  y = malloc(xysize*sizeof(*y));
+  x = P4EST_ALLOC(double, xysize);
+  y = P4EST_ALLOC(double, xysize);
 
   int i;
   short j, xj, yj;
@@ -1139,6 +1139,6 @@ void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost)
     fprintf(vtk, "%d\n",P4EST_VTK_CELL_TYPE);
   fclose(vtk);
 
-  free(x);
-  free(y);
+  P4EST_FREE(x);
+  P4EST_FREE(y);
 }

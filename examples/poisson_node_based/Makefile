@@ -24,7 +24,7 @@
 # Date: 09-26-2013
 
 # This will become the name of the executable
-EXAMPLE_NAME = proper_example_name
+EXAMPLE_NAME = poisson_node_base
 
 # Define the location for the CASL library 
 CASL_P4EST = ../..
@@ -66,7 +66,7 @@ CXX_EXTRA_FLAGS      =
 
 # Verbose control
 PRINT_WARNINGS    = YES
-PRINT_MAKE_OUTPUT = YES
+PRINT_MAKE_OUTPUT = NO
 
 # Where to put all temporary objets?
 TEMP_OBJS_DIR      = objs

@@ -8,7 +8,6 @@
 // p4est Library
 #include <p4est_bits.h>
 #include <p4est_extended.h>
-#include <p4est_vtk.h>
 
 // casl_p4est
 #include <src/utils.h>
@@ -49,21 +48,21 @@ static struct:CF_2{
 } f_ex;
 
 // Boundary condition. Impose Dirichlet on the interface and the walls
-static struct:WallBC{
+static struct:WallBC2D{
     BoundaryConditionType operator()(double x, double y) const {
         (void)x, (void)y;
         return NEUMANN;
     }
 } bc_wall_neumann_type;
 
-static struct:WallBC{
+static struct:WallBC2D{
     BoundaryConditionType operator()(double x, double y) const {
         (void)x, (void)y;
         return DIRICHLET;
     }
 } bc_wall_dirichlet_type;
 
-static struct:WallBC{
+static struct:WallBC2D{
   const static double eps = 1e-1;
     BoundaryConditionType operator()(double x, double y) const {
       if (x<eps && y>=0 && y<=1)
@@ -166,7 +165,7 @@ int main (int argc, char* argv[]){
   max_level         = cmd.get<int>                  ("max_level"        , 10);
 
   CF_2 *bc_wall_value, *bc_interface_value;
-  WallBC *wall_bc;
+  WallBC2D *wall_bc;
 
   switch(bc_interface_type){
   case DIRICHLET:
