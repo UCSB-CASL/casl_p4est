@@ -28,12 +28,13 @@
 #include <src/poisson_solver_node_base.h>
 
 #define MIN_LEVEL 6
-#define MAX_LEVEL 10
+#define MAX_LEVEL 8
 
 double D = 1;
 double tf = 1;
 double Tmax = 1;
 double Tmin = 0.7;
+double epsilon_c = .1;
 int save_every_n_iteration = 1;
 
 using namespace std;
@@ -64,17 +65,31 @@ struct BCWALLVALUE : CF_2 {
   }
 } bc_wall_value;
 
-struct BCINTERFACEVALUE : CF_2 {
+struct BCInterfaceValue : CF_2 {
+private:
+  my_p4est_brick_t *brick;
+  my_p4est_node_neighbors_t *ngbd;
+  InterpolatingFunction interp;
+public:
+  BCInterfaceValue( my_p4est_brick_t *brick_, p4est_t *p4est_,
+                    p4est_nodes_t *nodes_, p4est_ghost_t *ghost_,
+                    my_p4est_node_neighbors_t *ngbd_, Vec kappa_)
+    : brick(brick_), ngbd(ngbd_), interp(p4est_, nodes_, ghost_, brick_, ngbd_)
+  {
+    interp.set_input_parameters(kappa_, quadratic);
+  }
+
   double operator() (double x, double y) const
   {
     (void) x; (void) y;
     return Tmax;
+//    return Tmax - epsilon_c * interp(x,y);
     /* T = -eps_c kappa - eps_v V */
   }
-} bc_interface_value;
+};
 
 void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec phi, Vec T,
-              Vec vx, Vec vy, Vec vx_ext, Vec vy_ext, int compt)
+              Vec vx, Vec vy, Vec vx_ext, Vec vy_ext, Vec kappa, int compt)
 {
   std::ostringstream oss; oss << "stefan_" << p4est->mpisize << "_"
                               << brick->nxytrees[0] << "x"
@@ -82,23 +97,25 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
 
   PetscErrorCode ierr;
 
-  double *phi_ptr, *T_ptr, *vx_ptr, *vy_ptr, *vx_ext_ptr, *vy_ext_ptr;
+  double *phi_ptr, *T_ptr, *vx_ptr, *vy_ptr, *vx_ext_ptr, *vy_ext_ptr, *kappa_ptr;
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(T, &T_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(vx, &vx_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(vy, &vy_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(vx_ext, &vx_ext_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(vy_ext, &vy_ext_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(kappa , &kappa_ptr ); CHKERRXX(ierr);
 
   my_p4est_vtk_write_all(  p4est, nodes, NULL,
                            P4EST_TRUE, P4EST_TRUE,
-                           6, 0, oss.str().c_str(),
+                           7, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_ptr,
                            VTK_POINT_DATA, "temp", T_ptr,
                            VTK_POINT_DATA, "vx", vx_ptr,
                            VTK_POINT_DATA, "vy", vy_ptr,
                            VTK_POINT_DATA, "vx_ext", vx_ext_ptr,
-                           VTK_POINT_DATA, "vy_ext", vy_ext_ptr);
+                           VTK_POINT_DATA, "vy_ext", vy_ext_ptr,
+                           VTK_POINT_DATA, "kappa", kappa_ptr);
 
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(T, &T_ptr); CHKERRXX(ierr);
@@ -106,7 +123,49 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
   ierr = VecRestoreArray(vy, &vy_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(vx_ext, &vx_ext_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(vy_ext, &vy_ext_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(kappa , &kappa_ptr ); CHKERRXX(ierr);
 }
+
+
+void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Vec phi, Vec kappa)
+{
+  PetscErrorCode ierr;
+  Vec dx;
+  ierr = VecDuplicate(phi, &dx); CHKERRXX(ierr);
+  double *phi_ptr, *kappa_ptr, *dx_ptr;
+  ierr = VecGetArray(phi  , &phi_ptr  ); CHKERRXX(ierr);
+  ierr = VecGetArray(dx   , &dx_ptr   ); CHKERRXX(ierr);
+
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    dx_ptr[n] = (*ngbd)[n].dx_central (phi_ptr);
+
+  ierr = VecRestoreArray(dx, &dx_ptr); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(dx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (dx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecGetArray(dx   , &dx_ptr   ); CHKERRXX(ierr);
+  ierr = VecGetArray(kappa, &kappa_ptr); CHKERRXX(ierr);
+
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    double dy  = (*ngbd)[n].dy_central (phi_ptr);
+    double dx  = dx_ptr[n];
+    double dxx = (*ngbd)[n].dxx_central(phi_ptr);
+    double dyy = (*ngbd)[n].dyy_central(phi_ptr);
+    double dxy = (*ngbd)[n].dy_central (dx_ptr);
+    if(sqrt(dx*dx + dy*dy) < 1e-1) kappa_ptr[n] = 0;
+    else kappa_ptr[n] = ( dy*dy*dxx - 2*dx*dy*dxy + dx*dx*dyy) / ((dx*dx + dy*dy) * sqrt(dx*dx + dy*dy));
+  }
+
+  ierr = VecRestoreArray(phi  , &phi_ptr  ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(kappa, &kappa_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(dx, &dx_ptr); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+}
+
 
 int main (int argc, char* argv[])
 {
@@ -116,7 +175,7 @@ int main (int argc, char* argv[])
   p4est_nodes_t      *nodes;
   PetscErrorCode ierr;
 
-  circle circ(1., 1, .4);
+  circle circ(1., 1, .2);
   splitting_criteria_cf_t data(MIN_LEVEL, MAX_LEVEL, &circ, 1.2);
 
   Session mpi_session;
@@ -181,12 +240,6 @@ int main (int argc, char* argv[])
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(Tn, &Tn_ptr); CHKERRXX(ierr);
 
-  BoundaryConditions2D bc;
-  bc.setInterfaceType(DIRICHLET);
-  bc.setInterfaceValue(bc_interface_value);
-  bc.setWallTypes(bc_wall_type);
-  bc.setWallValues(bc_wall_value);
-
   // loop over time
   int tc = 0;
   double t=0;
@@ -204,6 +257,19 @@ int main (int argc, char* argv[])
 //    ls.reinitialize_1st_order( phi, 100 );
     ls.reinitialize_2nd_order( phi, 100 );
 
+    /* compute the curvature for boundary conditions */
+    Vec kappa;
+    ierr = VecDuplicate(phi, &kappa); CHKERRXX(ierr);
+    compute_curvature(nodes, &ngbd, phi, kappa);
+
+    /* solve for the temperature */
+    BoundaryConditions2D bc;
+    bc.setInterfaceType(DIRICHLET);
+    BCInterfaceValue bc_interface_value(&brick, p4est, nodes, ghost, &ngbd, kappa);
+    bc.setInterfaceValue(bc_interface_value);
+    bc.setWallTypes(bc_wall_type);
+    bc.setWallValues(bc_wall_value);
+
     PoissonSolverNodeBase solver(&ngbd, &brick);
     solver.set_phi(phi);
     solver.set_mu(D*dt_n);
@@ -211,13 +277,7 @@ int main (int argc, char* argv[])
     solver.set_bc(bc);
     solver.set_rhs(Tn);
 
-//    Vec Tn_tmp;
-//    ierr = VecDuplicate(Tn, &Tn_tmp); CHKERRXX(ierr);
-//    ierr = VecSet(Tn_tmp, 0); CHKERRXX(ierr);
-//    solver.solve(Tn_tmp);
     solver.solve(Tn);
-//    ierr = VecDestroy(Tn); CHKERRXX(ierr);
-//    Tn = Tn_tmp;
 
     ierr = VecGhostUpdateBegin(Tn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (Tn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -247,9 +307,6 @@ int main (int argc, char* argv[])
 
       vx_ptr[n] = (px>0 ? -1 : 1) * px * ngbd[n].dx_central(Tn_ptr);
       vy_ptr[n] = (py>0 ? -1 : 1) * py * ngbd[n].dy_central(Tn_ptr);
-
-//      vx_ptr[n] = -fabs(ngbd[n].dx_central(Tn_ptr)) * ngbd[n].dx_central(phi_ptr);
-//      vy_ptr[n] = -fabs(ngbd[n].dy_central(Tn_ptr)) * ngbd[n].dy_central(phi_ptr);
     }
 
     ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
@@ -270,7 +327,7 @@ int main (int argc, char* argv[])
     ls.extend_from_interface_to_whole_domain(phi, vy, vy_extended, 10);
 
     if (tc % save_every_n_iteration == 0)
-      save_VTK(p4est, nodes, &brick, phi, Tn, vx, vy, vx_extended, vy_extended, tc/save_every_n_iteration);
+      save_VTK(p4est, nodes, &brick, phi, Tn, vx, vy, vx_extended, vy_extended, kappa, tc/save_every_n_iteration);
 
     ierr = VecDestroy(vx); CHKERRXX(ierr);
     ierr = VecDestroy(vy); CHKERRXX(ierr);
@@ -320,10 +377,8 @@ int main (int argc, char* argv[])
 
     p4est_topidx_t *t2v = p4est_np1->connectivity->tree_to_vertex; // tree to vertex list
     double *t2c = p4est_np1->connectivity->vertices; // coordinates of the vertices of a tree
-//    for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
     for(p4est_locidx_t n=0; n<nodes_np1->num_owned_indeps; ++n)
     {
-//      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, n);
       p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, n + nodes_np1->offset_owned_indeps);
       p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
 
@@ -348,6 +403,8 @@ int main (int argc, char* argv[])
     p4est_destroy(p4est);       p4est = p4est_np1;
     p4est_ghost_destroy(ghost); ghost = ghost_np1;
     p4est_nodes_destroy(nodes); nodes = nodes_np1;
+
+    ierr = VecDestroy(kappa); CHKERRXX(ierr);
 
     ierr = VecGhostUpdateEnd  (Tn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
