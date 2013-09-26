@@ -183,7 +183,7 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
   is_buffer_prepared = false;
 }
 
-void InterpolatingFunction::set_input_parameters(Vec &input_vec, interpolation_method method, Vec Fxx, Vec Fyy)
+void InterpolatingFunction::set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx, Vec Fyy)
 {
   method_ = method;
 
@@ -203,7 +203,7 @@ void InterpolatingFunction::set_input_parameters(Vec &input_vec, interpolation_m
   }
 }
 
-void InterpolatingFunction::interpolate(Vec &output_vec)
+void InterpolatingFunction::interpolate(Vec output_vec)
 {
   double *Fo_p;
   ierr = VecGetArray(output_vec, &Fo_p); CHKERRXX(ierr);

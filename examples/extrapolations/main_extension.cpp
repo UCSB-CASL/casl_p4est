@@ -20,7 +20,7 @@
 
 #define MAX_LEVEL 8
 
-int band = 10;
+int band = 30;
 int order = 2;
 
 #undef MIN
@@ -63,7 +63,8 @@ public:
         nx /= norm;
         ny /= norm;
 
-        return exp(x+y) * (nx+ny);
+//        return exp(x+y) * (nx+ny);
+        return (2*(x-1) *nx + 2*(y-1) *ny) * exp(SQR(x-1) + SQR(y-1));
 //        return 2*x*nx + 2*y*ny;
 //        return nx + ny;
 //        return 0;
@@ -217,7 +218,7 @@ int main (int argc, char* argv[]){
       double x = int2double_coordinate_transform(node->x) + tree_xmin;
       double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-      err[n_petsc] = max(err_max, fabs(f_ptr[n_petsc] - bc_interface_dirichlet(x,y)));
+      err[n_petsc] = fabs(f_ptr[n_petsc] - bc_interface_dirichlet(x,y));
     }
     else
       err[n_petsc] = 0;

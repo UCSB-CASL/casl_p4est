@@ -19,7 +19,7 @@ private:
   std::vector<p4est_locidx_t> layer_nodes;
   std::vector<p4est_locidx_t> local_nodes;
 
-  void compute_derivatives( Vec &phi_petsc, Vec &dxx_petsc, Vec &dyy_petsc) const;
+  void compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc) const;
 
   void reinitialize_One_Iteration_First_Order( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double limit );
 
@@ -45,18 +45,18 @@ public:
   }
 
   /* 1st order in time, 1st order in space */
-  void reinitialize_1st_order( Vec &phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
+  void reinitialize_1st_order( Vec phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
 
   /* 2nd order in time, 1st order in space */
-  void reinitialize_2nd_order_time_1st_order_space( Vec &phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
+  void reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
 
   /* 2nd order in time, 2nd order in space */
   /* this has not be thoroughly tested ... use with caution. It's also disastrous in terms of MPI communications */
-  void reinitialize_2nd_order( Vec &phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
+  void reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
 
   /* extrapolate using geometrical extrapolation */
-  void extend_Over_Interface( Vec &phi_petsc, Vec &q_petsc, BoundaryConditions2D &bc, int order=2, int band_to_extend=INT_MAX ) const;
+  void extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditions2D &bc, int order=2, int band_to_extend=INT_MAX ) const;
 
   /* extend a quantity from the interface */
-  void extend_from_interface_to_whole_domain( Vec &phi_petsc, Vec &q_petsc, Vec &q_extended_petsc, int band_to_extend) const;
+  void extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend=INT_MAX) const;
 };

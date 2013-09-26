@@ -1,4 +1,4 @@
-#include "my_p4est_reinitialize.h"
+#include "my_p4est_levelset.h"
 #include "petsc_compatibility.h"
 #include "point2.h"
 #include "interpolating_function.h"
@@ -233,7 +233,7 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
 
 
 
-void my_p4est_level_set::reinitialize_1st_order( Vec &phi_petsc, int number_of_iteration, double limit )
+void my_p4est_level_set::reinitialize_1st_order( Vec phi_petsc, int number_of_iteration, double limit )
 {
   PetscErrorCode ierr;
   double *phi;
@@ -280,7 +280,7 @@ void my_p4est_level_set::reinitialize_1st_order( Vec &phi_petsc, int number_of_i
 
 
 
-void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec &phi_petsc, int number_of_iteration, double limit )
+void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration, double limit )
 {
   /* let's call
      * Ln the local nodes at time n
@@ -362,7 +362,7 @@ void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec &phi_p
 
 
 
-void my_p4est_level_set::compute_derivatives( Vec &phi_petsc, Vec &dxx_petsc, Vec &dyy_petsc) const
+void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc) const
 {
   /* first compute dx and dy */
   double *dxx, *dyy;
@@ -394,7 +394,7 @@ void my_p4est_level_set::compute_derivatives( Vec &phi_petsc, Vec &dxx_petsc, Ve
 
 
 
-void my_p4est_level_set::reinitialize_2nd_order( Vec &phi_petsc, int number_of_iteration, double limit )
+void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration, double limit )
 {
   /* let's call
      * Ln the local nodes at time n
@@ -476,7 +476,7 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec &phi_petsc, int number_of_i
   free(p2);
 }
 
-void my_p4est_level_set::extend_Over_Interface( Vec &phi_petsc, Vec &q_petsc, BoundaryConditions2D &bc, int order, int band_to_extend ) const
+void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditions2D &bc, int order, int band_to_extend ) const
 {
 #ifdef CASL_THROWS
   if(bc.interfaceType()==NOINTERFACE) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: no interface defined in the boundary condition ... needs to be dirichlet or neumann.");
@@ -503,7 +503,6 @@ void my_p4est_level_set::extend_Over_Interface( Vec &phi_petsc, Vec &q_petsc, Bo
   /* find dx and dy smallest */
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + 3];
-//  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + 3];
 
   double xmin = p4est->connectivity->vertices[3*vm + 0];
   double ymin = p4est->connectivity->vertices[3*vm + 1];
@@ -515,7 +514,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec &phi_petsc, Vec &q_petsc, Bo
   double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
   double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
   /* NOTE: I don't understand why the 1.6 coefficient is needed ... 1 should work, but it doesn't */
-  double diag = 1.6*sqrt(dx*dx + dy*dy);
+  double diag = 1.5*sqrt(dx*dx + dy*dy);
 
   std::vector<double> q0;
   std::vector<double> q1;
@@ -635,26 +634,21 @@ void my_p4est_level_set::extend_Over_Interface( Vec &phi_petsc, Vec &q_petsc, Bo
       }
     }
   }
-  ierr = VecRestoreArray(q_petsc, &q);
-
-  ierr = VecGhostUpdateBegin(q_petsc, INSERT_VALUES, SCATTER_FORWARD);
-  ierr = VecGhostUpdateEnd  (q_petsc, INSERT_VALUES, SCATTER_FORWARD);
-
+  ierr = VecRestoreArray(q_petsc, &q); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }
 
 
-void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec &phi_petsc, Vec &q_petsc, Vec &q_extended_petsc, int band_to_extend) const
+void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend) const
 {
   PetscErrorCode ierr;
-
-  double *phi;
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
 
   /* find dx and dy smallest */
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + 3];
-//  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + 3];
 
   double xmin = p4est->connectivity->vertices[3*vm + 0];
   double ymin = p4est->connectivity->vertices[3*vm + 1];
@@ -668,9 +662,10 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec &phi_petsc, 
   InterpolatingFunction interp(p4est, nodes, ghost, myb, ngbd);
 
   double *q_extended;
-  double *q;
   ierr = VecGetArray(q_extended_petsc, &q_extended); CHKERRXX(ierr);
-  ierr = VecGetArray(q_petsc, &q); CHKERRXX(ierr);
+
+  double *phi;
+  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
 
   /* now buffer the interpolation points */
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
@@ -679,9 +674,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec &phi_petsc, 
     grad_phi.x = (*ngbd)[n].dx_central(phi);
     grad_phi.y = (*ngbd)[n].dy_central(phi);
 
-    if(phi[n]<=0)
-      q_extended[n] = q[n];
-    else if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
+    if(fabs(phi[n])<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
       p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n+nodes->offset_owned_indeps);
@@ -692,21 +685,21 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec &phi_petsc, 
       double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
       double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
 
-      double y = int2double_coordinate_transform(node->x) + tree_xmin;
-      double x = int2double_coordinate_transform(node->y) + tree_ymin;
+      double x = int2double_coordinate_transform(node->x) + tree_xmin;
+      double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
       interp.add_point_to_buffer(n, x - grad_phi.x*phi[n], y - grad_phi.y*phi[n]);
     }
     else
       q_extended[n] = 0;
   }
+
   ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-  ierr = VecRestoreArray(q_petsc, &q); CHKERRXX(ierr);
   ierr = VecRestoreArray(q_extended_petsc, &q_extended); CHKERRXX(ierr);
 
   interp.set_input_parameters(q_petsc, quadratic);
   interp.interpolate(q_extended_petsc);
 
-  ierr = VecGhostUpdateBegin(q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD);
-  ierr = VecGhostUpdateEnd  (q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD);
+  ierr = VecGhostUpdateBegin(q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }

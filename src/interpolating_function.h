@@ -82,10 +82,10 @@ public:
   ~InterpolatingFunction();
 
   void add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y);
-  void set_input_parameters(Vec& input_vec, interpolation_method method, Vec Fxx = NULL, Vec Fyy = NULL);
+  void set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx = NULL, Vec Fyy = NULL);
 
   // interpolation methods
-  void interpolate(Vec& output_vec);
+  void interpolate(Vec output_vec);
   void interpolate(double *output_vec);
   double operator()(double x, double y) const;
 };

@@ -257,7 +257,7 @@ p4est_locidx_t p4est2petsc_local_numbering(p4est_nodes_t *nodes, p4est_locidx_t 
 }
 
 
-double integrate_over_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec &phi, Vec &f)
+double integrate_over_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)
 {
   QuadValue phi_values;
   QuadValue f_values;
@@ -295,7 +295,7 @@ double integrate_over_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_node
 }
 
 
-double integrate_over_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi, Vec &f)
+double integrate_over_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec f)
 {
   double sum = 0;
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
@@ -312,12 +312,13 @@ double integrate_over_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec 
 
   /* compute global sum */
   double sum_global;
-  MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm);
+  PetscErrorCode ierr;
+  ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum_global;
 }
 
 
-double area_in_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec &phi)
+double area_in_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi)
 {
   QuadValue phi_values;
 
@@ -346,7 +347,7 @@ double area_in_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *no
   return cube.area_In_Negative_Domain(phi_values);
 }
 
-double area_in_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi)
+double area_in_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi)
 {
   double sum = 0;
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
@@ -363,11 +364,12 @@ double area_in_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi)
 
   /* compute global sum */
   double sum_global;
-  MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm);
+  PetscErrorCode ierr;
+  ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum_global;
 }
 
-double integrate_over_interface_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec &phi, Vec &f)
+double integrate_over_interface_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)
 {
   QuadValue phi_values;
   QuadValue f_values;
@@ -404,7 +406,7 @@ double integrate_over_interface_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *n
   return cube.integrate_Over_Interface(f_values,phi_values);
 }
 
-double integrate_over_interface(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi, Vec &f)
+double integrate_over_interface(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec f)
 {
   double sum = 0;
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
@@ -421,7 +423,8 @@ double integrate_over_interface(p4est_t *p4est, p4est_nodes_t *nodes, Vec &phi, 
 
   /* compute global sum */
   double sum_global;
-  MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm);
+  PetscErrorCode ierr;
+  ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum_global;
 }
 

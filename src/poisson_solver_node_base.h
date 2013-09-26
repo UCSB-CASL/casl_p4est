@@ -68,6 +68,7 @@ public:
   ~PoissonSolverNodeBase();
 
   // inlines setters
+  /* FIXME: shouldn't those be references instead of copies ? I guess Vec is just a pointer ... but still ? */
   void set_phi(Vec phi);
   inline void set_rhs(Vec rhs)                 {rhs_      = rhs;}
   inline void set_diagonal(double add)         {diag_add_ = add; is_matrix_ready = false;}

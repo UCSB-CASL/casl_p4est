@@ -465,6 +465,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
       // then use finite volume method
       // only work if the mesh is uniform close to the interface
 
+      // FIXME: the neumann BC on the interface works only if the interface doesn't touch the edge of the domain
       if (is_ngbd_crossed_neumann && bc_->interfaceType() == NEUMANN)
       {
         Cube2 cube;
