@@ -3,12 +3,7 @@
 #include <src/refine_coarsen.h>
 #include <src/CASL_math.h>
 #include <src/cube2.h>
-
-#ifdef P4_TO_P8
-#define MAX_NUM_ELEMENTS_PER_ROW 12 // 3D
-#else
-#define MAX_NUM_ELEMENTS_PER_ROW 9  // 2D
-#endif
+#include <set>
 
 #define bc_strength 1.0
 
@@ -95,6 +90,8 @@ void PoissonSolverNodeBase::init()
 void PoissonSolverNodeBase::preallocate_matrix()
 {
   PetscInt num_owned_global = global_node_offset[p4est->mpisize];
+  PetscInt num_owned_local  = (PetscInt)(nodes->num_owned_indeps);
+  PetscInt num_owned_offset = (PetscInt)(nodes->offset_owned_indeps);
 
   if (A != NULL)
     ierr = MatDestroy(A); CHKERRXX(ierr);
@@ -102,16 +99,74 @@ void PoissonSolverNodeBase::preallocate_matrix()
   // set up the matrix
   ierr = MatCreate(p4est->mpicomm, &A); CHKERRXX(ierr);
   ierr = MatSetType(A, MATMPIAIJ); CHKERRXX(ierr);
-  ierr = MatSetSizes(A,
-                     nodes->num_owned_indeps, nodes->num_owned_indeps,
-                     num_owned_global, num_owned_global); CHKERRXX(ierr);
+  ierr = MatSetSizes(A, num_owned_local , num_owned_local,
+                        num_owned_global, num_owned_global); CHKERRXX(ierr);
   ierr = MatSetFromOptions(A); CHKERRXX(ierr);
 
-  // preallocate space for matrix
-  ierr = MatSeqAIJSetPreallocation(A, MAX_NUM_ELEMENTS_PER_ROW, NULL);
-  ierr = MatMPIAIJSetPreallocation(A,
-                                   MAX_NUM_ELEMENTS_PER_ROW, NULL,
-                                   MAX_NUM_ELEMENTS_PER_ROW, NULL); CHKERRXX(ierr);
+  /* preallocate space for matrix
+   * This is done by computing the exact number of neighbors that will be used
+   * to discretize Poisson equation which means it will adapt to T-junction
+   * whenever necessary so it should have a fairly good estimate of non-zeros
+   *
+   * Note that this method overpredicts the actual number of non-zeros since
+   * it assumes the PDE is discretized at boundary points and also points in
+   * \Omega^+ that are within diag_min distance away from interface. For a
+   * simple test (circle) this resulted in memory allocation for about 15%
+   * extra points. Note that this does not mean there are actually 15% more
+   * nonzeros, but simply that many more bytes are allocated and thus wasted.
+   * This number will be smaller if there are small cells not only near the
+   * interface but also inside the domain. (Note that use of worst-case estimate
+   *, i.e d_nz = o_nz = 9 in 2D, in this case resulted in about 450% extra
+   * memory consumption. So, getting 15% here with a simple change is a good
+   * compromise here!)
+   *
+   * If this is still too much memory consumption, the ultimate choice is save
+   * results in intermediate arrays and only allocate as much space as needed.
+   * This is left for future optimizations if necessary.
+   */
+  std::vector<PetscInt> d_nnz(num_owned_local, 1), o_nnz(num_owned_local, 0);
+  double *phi_p;
+  ierr = VecGetArray(phi_, &phi_p); CHKERRXX(ierr);
+
+  for (p4est_locidx_t n=0; n<num_owned_local; n++)
+  {
+    const quad_neighbor_nodes_of_node_t& qnnn = (*node_neighbors_)[n];
+
+    /*
+     * Check for neighboring nodes:
+     * 1) If they exist and are local nodes, increment d_nnz[n]
+     * 2) If they exist but are not local nodes, increment o_nnz[n]
+     * 3) If they do not exist, simply skip
+     */
+
+    if (phi_p[n] > diag_min)
+      continue;
+
+    if (qnnn.d_m0_p != 0) // node_m0_m will enter discretization
+      qnnn.node_m0_m >= num_owned_offset && qnnn.node_m0_m < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+    if (qnnn.d_m0_m != 0) // node_m0_p will enter discretization
+      qnnn.node_m0_p >= num_owned_offset && qnnn.node_m0_p < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+
+    if (qnnn.d_p0_p != 0) // node_p0_m will enter discretization
+      qnnn.node_p0_m >= num_owned_offset && qnnn.node_p0_m < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+    if (qnnn.d_p0_m != 0) // node_p0_p will enter discretization
+      qnnn.node_p0_p >= num_owned_offset && qnnn.node_p0_p < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+
+    if (qnnn.d_0m_p != 0) // node_0m_m will enter discretization
+      qnnn.node_0m_m >= num_owned_offset && qnnn.node_0m_m < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+    if (qnnn.d_0m_m != 0) // node_0m_p will enter discretization
+      qnnn.node_0m_p >= num_owned_offset && qnnn.node_0m_p < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+
+    if (qnnn.d_0p_p != 0) // node_0p_m will enter discretization
+      qnnn.node_0p_m >= num_owned_offset && qnnn.node_0p_m < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+    if (qnnn.d_0p_m != 0) // node_0p_p will enter discretization
+      qnnn.node_0p_p >= num_owned_offset && qnnn.node_0p_p < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+  }
+
+  ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
+
+  ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
+  ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
@@ -350,7 +405,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
       // then finite difference method
       if ( (bc_->interfaceType() == DIRICHLET && phi_C<0.) ||
            (bc_->interfaceType() == NEUMANN   && !is_ngbd_crossed_neumann ) ||
-            bc_->interfaceType() == NOINTERFACE)
+           bc_->interfaceType() == NOINTERFACE)
       {
         double phixx_C = phi_xx_p[n];
         double phiyy_C = phi_yy_p[n];
@@ -431,29 +486,29 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           PetscInt node_LT_g = petsc_node_gloidx(node_LT);
           PetscInt node_LB_g = petsc_node_gloidx(node_LB);
 
-          ierr = MatSetValue(A, node_C_g, node_LT_g, coeff_L*dLB/(dLB+dLT), ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, node_C_g, node_LB_g, coeff_L*dLT/(dLB+dLT), ADD_VALUES); CHKERRXX(ierr);
+          if (dLB != 0) ierr = MatSetValue(A, node_C_g, node_LT_g, coeff_L*dLB/(dLB+dLT), ADD_VALUES); CHKERRXX(ierr);
+          if (dLT != 0) ierr = MatSetValue(A, node_C_g, node_LB_g, coeff_L*dLT/(dLB+dLT), ADD_VALUES); CHKERRXX(ierr);
         }
         if(!is_interface_R) {
           PetscInt node_RT_g = petsc_node_gloidx(node_RT);
           PetscInt node_RB_g = petsc_node_gloidx(node_RB);
 
-          ierr = MatSetValue(A, node_C_g, node_RT_g, coeff_R*dRB/(dRB+dRT), ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, node_C_g, node_RB_g, coeff_R*dRT/(dRB+dRT), ADD_VALUES); CHKERRXX(ierr);
+          if (dRB != 0) ierr = MatSetValue(A, node_C_g, node_RT_g, coeff_R*dRB/(dRB+dRT), ADD_VALUES); CHKERRXX(ierr);
+          if (dRT != 0) ierr = MatSetValue(A, node_C_g, node_RB_g, coeff_R*dRT/(dRB+dRT), ADD_VALUES); CHKERRXX(ierr);
         }
         if(!is_interface_B) {
           PetscInt node_BR_g = petsc_node_gloidx(node_BR);
           PetscInt node_BL_g = petsc_node_gloidx(node_BL);
 
-          ierr = MatSetValue(A, node_C_g, node_BR_g, coeff_B*dBL/(dBL+dBR), ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, node_C_g, node_BL_g, coeff_B*dBR/(dBL+dBR), ADD_VALUES); CHKERRXX(ierr);
+          if (dBL != 0) ierr = MatSetValue(A, node_C_g, node_BR_g, coeff_B*dBL/(dBL+dBR), ADD_VALUES); CHKERRXX(ierr);
+          if (dBR != 0) ierr = MatSetValue(A, node_C_g, node_BL_g, coeff_B*dBR/(dBL+dBR), ADD_VALUES); CHKERRXX(ierr);
         }
         if(!is_interface_T) {
           PetscInt node_TR_g = petsc_node_gloidx(node_TR);
           PetscInt node_TL_g = petsc_node_gloidx(node_TL);
 
-          ierr = MatSetValue(A, node_C_g, node_TR_g, coeff_T*dTL/(dTL+dTR), ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, node_C_g, node_TL_g, coeff_T*dTR/(dTL+dTR), ADD_VALUES); CHKERRXX(ierr);
+          if (dTL != 0) ierr = MatSetValue(A, node_C_g, node_TR_g, coeff_T*dTL/(dTL+dTR), ADD_VALUES); CHKERRXX(ierr);
+          if (dTR != 0) ierr = MatSetValue(A, node_C_g, node_TL_g, coeff_T*dTR/(dTL+dTR), ADD_VALUES); CHKERRXX(ierr);
         }
 
         if(add_p[n] > 0) matrix_has_nullspace = false;
@@ -529,10 +584,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           PetscInt node_B_g = petsc_node_gloidx(node_B);
 
           ierr = MatSetValue(A, node_C_g, node_C_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, node_C_g, node_R_g, UR,  ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, node_C_g, node_L_g, UL,  ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, node_C_g, node_B_g, UB,  ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, node_C_g, node_T_g, UT,  ADD_VALUES); CHKERRXX(ierr);
+          if (ABS(UR) > EPS) ierr = MatSetValue(A, node_C_g, node_R_g, UR,  ADD_VALUES); CHKERRXX(ierr);
+          if (ABS(UL) > EPS) ierr = MatSetValue(A, node_C_g, node_L_g, UL,  ADD_VALUES); CHKERRXX(ierr);
+          if (ABS(UB) > EPS) ierr = MatSetValue(A, node_C_g, node_B_g, UB,  ADD_VALUES); CHKERRXX(ierr);
+          if (ABS(UT) > EPS) ierr = MatSetValue(A, node_C_g, node_T_g, UT,  ADD_VALUES); CHKERRXX(ierr);
 
           if(add_p[n] > 0) matrix_has_nullspace = false;
         }
@@ -663,7 +718,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
     //        if (phi_C<-eps && (!is_ngbd_crossed || bc_->interfaceType()==DIRICHLET ))
     if ( (bc_->interfaceType()  == DIRICHLET && phi_C<0.) ||
          (bc_->interfaceType()  == NEUMANN   && !is_ngbd_crossed_neumann ) ||
-          bc_->interfaceType()  == NOINTERFACE)
+         bc_->interfaceType()  == NOINTERFACE)
     {
       double phixx_C = phi_xx_p[n];
       double phiyy_C = phi_yy_p[n];
