@@ -143,9 +143,9 @@ void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Ve
   PetscErrorCode ierr;  
   Vec dx;
 
+  ierr = VecDuplicate(phi, &dx); CHKERRXX(ierr);
   ierr = PetscLogEventBegin(log_compute_curvature, phi, kappa, dx, 0); CHKERRXX(ierr);
 
-  ierr = VecDuplicate(phi, &dx); CHKERRXX(ierr);
   double *phi_ptr, *kappa_ptr, *dx_ptr;
   ierr = VecGetArray(phi  , &phi_ptr  ); CHKERRXX(ierr);
   ierr = VecGetArray(dx   , &dx_ptr   ); CHKERRXX(ierr);
