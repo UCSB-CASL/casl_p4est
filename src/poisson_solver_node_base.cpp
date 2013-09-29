@@ -3,8 +3,20 @@
 #include <src/refine_coarsen.h>
 #include <src/CASL_math.h>
 #include <src/cube2.h>
-#include <set>
 
+// logging variables -- defined in src/petsc_logging.cpp
+extern PetscLogEvent log_PoissonSolverNodeBase_matrix_preallocation;
+extern PetscLogEvent log_PoissonSolverNodeBase_matrix_setup;
+extern PetscLogEvent log_PoissonSolverNodeBase_rhsvec_setup;
+extern PetscLogEvent log_PoissonSolverNodeBase_solve;
+
+#ifndef CASL_LOG_EVENTS
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#endif
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
 #define bc_strength 1.0
 
 PoissonSolverNodeBase::PoissonSolverNodeBase(const my_p4est_node_neighbors_t *node_neighbors, my_p4est_brick_t* myb)
@@ -88,7 +100,10 @@ void PoissonSolverNodeBase::init()
 }
 
 void PoissonSolverNodeBase::preallocate_matrix()
-{
+{  
+  // enable logging for the preallocation
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+
   PetscInt num_owned_global = global_node_offset[p4est->mpisize];
   PetscInt num_owned_local  = (PetscInt)(nodes->num_owned_indeps);
   PetscInt num_owned_offset = (PetscInt)(nodes->offset_owned_indeps);
@@ -167,10 +182,14 @@ void PoissonSolverNodeBase::preallocate_matrix()
 
   ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
   ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
+
 #ifdef CASL_THROWS
   if(bc_ == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
 
@@ -253,11 +272,16 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
     ierr = VecDestroy(phi_); CHKERRXX(ierr);
     phi_ = NULL;
   }
+
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 {
   preallocate_matrix();
+
+  // register for logging purpose
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -338,6 +362,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 
           ierr = MatSetValue(A, node_C_g, node_L_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_C_g, node_C_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+
           continue;
         }
 
@@ -617,10 +642,13 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
   }
+
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
 {
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
 
   double eps=1E-6*d_min*d_min;
 
@@ -870,6 +898,8 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
 
   if (matrix_has_nullspace)
     ierr = MatNullSpaceRemove(A_null_space, rhs_, NULL); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBase::set_phi(Vec phi)

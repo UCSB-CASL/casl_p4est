@@ -4,6 +4,12 @@
 #include "cube2.h"
 #include "mpi.h"
 #include <vector>
+#include <petsclog.h>
+
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
+
 
 void c2p_coordinate_transform(p4est_t *p4est, p4est_topidx_t tree_id, double *x, double *y, double *z){
   // We first need to determine the refference point (i.e lower left corner of the current tree)
@@ -88,7 +94,9 @@ void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* qua
 }
 
 double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xy_global)
-{
+{  
+  PetscErrorCode ierr;
+
   p4est_topidx_t lower_left_vertex  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t upper_right_vertex = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 3];
 
@@ -100,15 +108,6 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4es
 
   double x = (xy_global[0] - tree_xmin)/(tree_xmax - tree_xmin);
   double y = (xy_global[1] - tree_ymin)/(tree_ymax - tree_ymin);
-
-  //#ifdef CASL_THROWS
-  //    if (x<0 || x>1 || y<0 || y>1)
-  //    {
-  //        std::ostringstream oss;
-  //        oss << "[CASL_ERROR]: Point (" << xy_global[0] << ", " << xy_global[1] << ") is not located inside given tree (= " << tree_id << ")" << std::endl;
-  //        throw std::invalid_argument(oss.str());
-  //    }
-  //#endif
 
   double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
   double xmin = (double)quad.x / (double)(P4EST_ROOT_LEN);
@@ -119,11 +118,17 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4es
   double d_0m = y - ymin;
   double d_0p = qh - d_0m;
 
-  return ( (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) );
+  double value = (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh);
+
+  ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
+
+  return value;
 }
 
 double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global)
 {
+  PetscErrorCode ierr;
+
   p4est_topidx_t lower_left_vertex  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t upper_right_vertex = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 3];
 
@@ -135,15 +140,6 @@ double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tr
 
   double x = (xy_global[0] - tree_xmin)/(tree_xmax - tree_xmin);
   double y = (xy_global[1] - tree_ymin)/(tree_ymax - tree_ymin);
-
-  //#ifdef CASL_THROWS
-  //    if (x<0 || x>1 || y<0 || y>1)
-  //    {
-  //        std::ostringstream oss;
-  //        oss << "[CASL_ERROR]: Point (" << xy_global[0] << ", " << xy_global[1] << ") is not located inside given tree (= " << tree_id << ")" << std::endl;
-  //        throw std::invalid_argument(oss.str());
-  //    }
-  //#endif
 
   double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
   double xmin = (double)quad.x / (double)(P4EST_ROOT_LEN);
@@ -163,11 +159,16 @@ double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tr
     fyy_minmod = MINMOD(fyy_minmod, Fyy[i]);
   }
 
-  return ( (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) - 0.5*d_m0*d_p0*fxx_minmod - 0.5*d_0m*d_0p*fyy_minmod);
+  double value = (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) - 0.5*d_m0*d_p0*fxx_minmod - 0.5*d_0m*d_0p*fyy_minmod;
+
+  ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
+  return value;
 }
 
 double quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global)
 {
+  PetscErrorCode ierr;
+
   p4est_topidx_t lower_left_vertex  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t upper_right_vertex = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 3];
 
@@ -179,15 +180,6 @@ double quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4e
 
   double x = (xy_global[0] - tree_xmin)/(tree_xmax - tree_xmin);
   double y = (xy_global[1] - tree_ymin)/(tree_ymax - tree_ymin);
-
-  //#ifdef CASL_THROWS
-  //    if (x<0 || x>1 || y<0 || y>1)
-  //    {
-  //        std::ostringstream oss;
-  //        oss << "[CASL_ERROR]: Point (" << xy_global[0] << ", " << xy_global[1] << ") is not located inside given tree (= " << tree_id << ")" << std::endl;
-  //        throw std::invalid_argument(oss.str());
-  //    }
-  //#endif
 
   double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
   double xmin = (double)quad.x / (double)(P4EST_ROOT_LEN);
@@ -201,7 +193,10 @@ double quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4e
   double fxx = (Fxx[0]*(d_0p*d_p0) + Fxx[1]*(d_m0*d_0p) + Fxx[2]*(d_p0*d_0m) + Fxx[3]*(d_m0*d_0m))/(qh*qh);
   double fyy = (Fyy[0]*(d_0p*d_p0) + Fyy[1]*(d_m0*d_0p) + Fyy[2]*(d_p0*d_0m) + Fyy[3]*(d_m0*d_0m))/(qh*qh);
 
-  return ( (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) - 0.5*d_m0*d_p0*fxx - 0.5*d_0m*d_0p*fyy);
+  double value = (F[0]*(d_0p*d_p0) + F[1]*(d_m0*d_0p) + F[2]*(d_p0*d_0m) + F[3]*(d_m0*d_0m))/(qh*qh) - 0.5*d_m0*d_p0*fxx - 0.5*d_0m*d_0p*fyy;
+
+  ierr = PetscLogFlops(73); CHKERRXX(ierr); // number of flops in this event
+  return value;
 }
 
 PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)

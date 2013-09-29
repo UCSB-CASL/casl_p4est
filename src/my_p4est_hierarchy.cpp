@@ -1,4 +1,16 @@
 #include "my_p4est_hierarchy.h"
+#include <petsclog.h>
+
+// logging variable -- defined in src/petsc_logging.cpp
+extern PetscLogEvent log_my_p4est_hierarchy_t;
+
+#ifndef CASL_LOG_EVENTS
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#endif
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
 
 void my_p4est_hierarchy_t::split( int tree_idx, int ind )
 {
@@ -37,6 +49,10 @@ int my_p4est_hierarchy_t::update_tree( int tree_idx, p4est_quadrant_t *quad )
 
 void my_p4est_hierarchy_t::construct_tree() {
 
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_hierarchy_t, 0, 0, 0, 0); CHKERRXX(ierr);
+
+
   /* loop on the quadrants */
   for( p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
@@ -61,6 +77,9 @@ void my_p4est_hierarchy_t::construct_tree() {
     /* the cell corresponding to the quadrant has been found, associate it to the quadrant */
     trees[quad->p.piggy3.which_tree][ind].quad = p4est->local_num_quadrants + g;
   }
+
+  ierr = PetscLogEventEnd(log_my_p4est_hierarchy_t, 0, 0, 0, 0); CHKERRXX(ierr);
+
 }
 
 void my_p4est_hierarchy_t::write_vtk(const char* filename) const

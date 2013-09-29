@@ -10,6 +10,19 @@
 #include <vector>
 #include <algorithm>
 
+// logging variables -- defined in src/petsc_logging.cpp
+extern PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_Vec;
+extern PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CF2;
+extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_Vec;
+
+#ifndef CASL_LOG_EVENTS
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#endif
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
+
 SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, p4est_ghost_t **ghost, my_p4est_brick_t *myb)
   : p_p4est_(p4est), p4est_(*p4est),
     p_nodes_(nodes), nodes_(*nodes),
@@ -26,7 +39,6 @@ SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, p4est_gho
   xmax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 0];
   ymax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 1];
 }
-
 
 double SemiLagrangian::compute_dt(const CF_2 &vx, const CF_2 &vy)
 {
@@ -62,7 +74,6 @@ double SemiLagrangian::compute_dt(const CF_2 &vx, const CF_2 &vy)
 
 
 double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec &phi){
-
   // create hierarchy structure if you want to do quadratic interpolation
   my_p4est_hierarchy_t hierarchy(p4est_, ghost_);
   my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
@@ -130,6 +141,8 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec &phi){
 void SemiLagrangian::advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double dt, Vec phi_n, double *phi_np1,
                                           p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, my_p4est_node_neighbors_t &qnnn)
 {
+  ierr = PetscLogEventBegin(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
+
   InterpolatingFunction interp(p4est_, nodes_, ghost_, myb_, &qnnn);
   interp.set_input_parameters(phi_n, quadratic_non_oscillatory);
 
@@ -171,14 +184,16 @@ void SemiLagrangian::advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double
 
   /* interpolate from old vector into our output vector */
   interp.interpolate(phi_np1);
+
+  ierr = PetscLogFlops(20); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
 }
-
-
-
 
 void SemiLagrangian::advect_from_n_to_np1(Vec vx, Vec vy, double dt, Vec phi_n, double *phi_np1,
                                           p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, my_p4est_node_neighbors_t &qnnn)
 {
+  ierr = PetscLogEventBegin(log_Semilagrangian_advect_from_n_to_np1_Vec, vx, vy, phi_n, 0); CHKERRXX(ierr);
+
   p4est_topidx_t *t2v = p4est_np1->connectivity->tree_to_vertex; // tree to vertex list
   double *t2c = p4est_np1->connectivity->vertices; // coordinates of the vertices of a tree
 
@@ -269,12 +284,15 @@ void SemiLagrangian::advect_from_n_to_np1(Vec vx, Vec vy, double dt, Vec phi_n, 
 
   /* interpolate from old vector into our output vector */
   interp.interpolate(phi_np1);
+
+  ierr = PetscLogFlops(40); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_Semilagrangian_advect_from_n_to_np1_Vec, vx, vy, phi_n, 0); CHKERRXX(ierr);
 }
-
-
 
 void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, Vec &phi, double dt)
 {
+  ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_Vec, vx, vy, phi, 0); CHKERRXX(ierr);
+
   PetscErrorCode ierr;
   p4est *p4est_np1 = p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
 
@@ -337,12 +355,9 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, Vec &phi, double 
   phi = phi_np1;
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_Semilagrangian_update_p4est_second_order_Vec, vx, vy, phi, 0); CHKERRXX(ierr);
 }
-
-
-
-
-
 
 void SemiLagrangian::update_p4est_intermediate_trees_no_ghost(const CF_2& vx, const CF_2& vy, Vec &phi, double dt)
 {
@@ -408,7 +423,6 @@ void SemiLagrangian::update_p4est_intermediate_trees_no_ghost(const CF_2& vx, co
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }
-
 
 double SemiLagrangian::update_p4est_intermediate_trees_with_ghost(const CF_2& vx, const CF_2& vy, Vec &phi)
 {
@@ -482,10 +496,6 @@ double SemiLagrangian::update_p4est_intermediate_trees_with_ghost(const CF_2& vx
   ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   return dt;
 }
-
-
-
-
 
 void SemiLagrangian::update_p4est(Vec &phi, my_p4est_node_neighbors_t& qnnn){
 

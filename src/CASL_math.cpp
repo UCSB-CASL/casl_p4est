@@ -2,8 +2,15 @@
 #include <stdio.h>
 #include <src/utils.h>
 
+#include <petsclog.h>
+
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
+
 double interface_Location( double   a, double   b, double  fa, double  fb )
 {
+  PetscErrorCode ierr = PetscLogFlops(8); CHKERRXX(ierr);
   return 0.5*(a+b+(a-b)*(fa+fb)/(fb-fa));
 }
 
@@ -41,6 +48,8 @@ double interface_Location_With_Second_Order_Derivative(double    a, double    b,
     else     x = (-2*c0)/(c1 + sqrt(c1*c1-4*c2*c0));
   }
 
+  PetscErrorCode ierr = PetscLogFlops(21); CHKERRXX(ierr);
+
   return x + 0.5*(a+b);
 }
 
@@ -71,6 +80,8 @@ double interface_Location_With_First_Order_Derivative(	double   a, double   b,
   {
     if(s[i]>=0 && s[i]<=h){ s_valid[number_of_valid_solution++]=s[i]; }
   }
+
+  PetscErrorCode ierr = PetscLogFlops(20); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
   if(number_of_valid_solution < 1) { printf("ouiiiiiii %f %f %f %f %f %f %d\n",a, b, fa, fb, fxa, fxb, b>0); throw std::invalid_argument("[CASL_ERROR]: Wrong arguments."); }

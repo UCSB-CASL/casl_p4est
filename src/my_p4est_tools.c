@@ -29,7 +29,7 @@
 
 static p4est_topidx_t
 my_p4est_brick_point_lookup_tree (p4est_t *p4est, const double *xy)
-{
+{   
   const p4est_connectivity_t *conn       = p4est->connectivity;
   const p4est_topidx_t        num_trees  = conn->num_trees;
   const p4est_topidx_t       *t2v        = conn->tree_to_vertex;

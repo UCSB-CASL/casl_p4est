@@ -1,4 +1,9 @@
 #include "cube2.h"
+#include <petsclog.h>
+
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
 
 Cube2::Cube2()
 {
@@ -29,6 +34,7 @@ double Cube2::area_In_Negative_Domain( QuadValue& level_set_values) const
 
 double Cube2::integral( QuadValue f ) const
 {
+  PetscErrorCode ierr = PetscLogFlops(8); CHKERRXX(ierr);
   return (f.val00+f.val10+f.val01+f.val11)/4.*(x1-x0)*(y1-y0);
 }
 
@@ -103,6 +109,8 @@ double Cube2::integrate_Over_Interface( const QuadValue& f, const QuadValue& lev
     double length_of_line_segment = (p_btw_02 - p_btw_01).norm_L2();
 
     sum += length_of_line_segment * (f_btw_02 + f_btw_01)/2.;
+
+    PetscErrorCode ierr = PetscLogFlops(30); CHKERRXX(ierr);
   }
 
   return sum;

@@ -33,6 +33,19 @@
 #include "my_p8est_nodes.h"
 #endif
 #include <sc_notify.h>
+#include <petsclog.h>
+
+// logging variable -- defined in src/petsc_logging.cpp
+extern PetscLogEvent log_my_p4est_nodes_new;
+
+#ifndef CASL_LOG_EVENTS
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#endif
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
+
 
 #ifdef P4EST_MPI
 
@@ -277,6 +290,9 @@ p4est_shared_offsets (sc_array_t * inda)
 p4est_nodes_t      *
 my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
 {
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_nodes_new, 0, 0, 0, 0); CHKERRXX(ierr);
+
   const int           num_procs = p4est->mpisize;
   const int           rank = p4est->mpirank;
 #ifdef P4EST_MPI
@@ -898,6 +914,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
 
   //  P4EST_ASSERT (p4est_nodes_is_valid (p4est, nodes));
   P4EST_GLOBAL_PRODUCTION ("Done " P4EST_STRING "_nodes_new\n");
+
+  ierr = PetscLogEventEnd(log_my_p4est_nodes_new, 0, 0, 0, 0); CHKERRXX(ierr);
 
   return nodes;
 }

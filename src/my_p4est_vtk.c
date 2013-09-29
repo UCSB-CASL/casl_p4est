@@ -41,6 +41,7 @@
 
 #include <sc_io.h>
 #include <stdio.h>
+#include <petsclog.h>
 
 static const double p4est_vtk_scale = 1.0;
 static const int    p4est_vtk_write_tree = 1;
@@ -76,12 +77,24 @@ my_p4est_vtk_write_binary (FILE * vtkfile, char *numeric_data,
 
 #endif /* P4EST_VTK_BINARY */
 
+// logging variable -- defined in src/petsc_logging.cpp
+extern PetscLogEvent log_my_p4est_vtk_write_all;
+
+#ifndef CASL_LOG_EVENTS
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#endif
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
+
 void
 my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
                         int write_rank, int write_tree,
                         int num_point_scalars, int num_cell_scalars,
                         const char *filename, ...)
 {
+  PetscErrorCode ierr;
   int                 retval;
   int                 i, all_p, all_c;
   int                 cell_scalar_strlen, point_scalar_strlen;
@@ -92,6 +105,9 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *gh
   va_list             ap;
 
   P4EST_ASSERT (num_cell_scalars >= 0  && num_point_scalars >= 0 );
+
+  // logging
+  ierr = PetscLogEventBegin(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
 
   /* Allocate memory for the data and their names */
   cell_values  = P4EST_ALLOC(const double * , num_cell_scalars);
@@ -159,6 +175,8 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *gh
   P4EST_FREE (point_values);
   P4EST_FREE (cell_names);
   P4EST_FREE (point_names);
+
+  ierr = PetscLogEventEnd(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
 }
 
 int

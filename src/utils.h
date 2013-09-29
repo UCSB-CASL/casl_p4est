@@ -3,6 +3,7 @@
 
 // casl_p4est
 #include <p4est_nodes.h>
+#include <src/petsc_logging.h>
 
 // p4est
 #include <p4est.h>
@@ -481,17 +482,23 @@ T ranged_rand(T a, T b, int seed = 0){
 /*!
  * \brief prepares MPI, PETSc, p4est, and sc libraries
  */
-class Session{   
+class Session{
+  PetscLogStage stage;
+  PetscErrorCode ierr;
 public:
   ~Session(){
-    PetscErrorCode ierr = PetscFinalize(); CHKERRXX(ierr);
+    ierr = PetscFinalize(); CHKERRXX(ierr);
   }
 
-  void init(int argc, char **argv, MPI_Comm mpicomm = MPI_COMM_WORLD){
-    PetscErrorCode ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
+  void init(int argc, char **argv, MPI_Comm mpicomm){
+    ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
     sc_init (mpicomm, 1, 1, NULL, SC_LP_SILENT);
     p4est_init (NULL, SC_LP_SILENT);
+#ifdef CASL_LOG_EVENTS
+    register_petsc_logs();
+#endif
   }
+
 };
 
 class parStopWatch{

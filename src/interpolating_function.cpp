@@ -7,6 +7,17 @@
 #include <fstream>
 #include <set>
 
+// Logging variables -- defined in src/petsc_logging.cpp
+extern PetscLogEvent log_InterpolatingFunction_interpolate;
+
+#ifndef CASL_LOG_EVENTS
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#endif
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
+
 InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
                                              p4est_nodes_t *nodes,
                                              p4est_ghost_t *ghost,
@@ -181,6 +192,7 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
   sc_array_destroy(remote_matches);
   // set the flag to false so the prepare buffer method will be called
   is_buffer_prepared = false;
+
 }
 
 void InterpolatingFunction::set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx, Vec Fyy)
@@ -213,6 +225,9 @@ void InterpolatingFunction::interpolate(Vec output_vec)
 
 void InterpolatingFunction::interpolate( double *output_vec )
 {
+
+  ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
+
   // begin sending point buffers
   if (!is_buffer_prepared)
     send_point_buffers_begin();
@@ -446,14 +461,19 @@ void InterpolatingFunction::interpolate( double *output_vec )
     ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
   }
+
+  ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
+
 }
 
 double InterpolatingFunction::operator ()(double x, double y) const {
-  double xy[] = {x, y};
 
+  PetscErrorCode ierr;
+
+  double xy[] = {x, y};
   double *Fi_p, *Fxx_p, *Fyy_p;
 
-  PetscErrorCode ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
   if (method_ == linear)
     Fxx_p = Fyy_p = NULL;
   else

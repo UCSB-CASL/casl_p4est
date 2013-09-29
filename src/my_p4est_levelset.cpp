@@ -3,10 +3,26 @@
 #include "point2.h"
 #include "interpolating_function.h"
 #include "refine_coarsen.h"
+#include <petsclog.h>
 
+// logging variables -- defined in src/petsc_logging.cpp
+extern PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
+extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_order;
+extern PetscLogEvent log_my_p4est_level_set_extend_over_interface;
+extern PetscLogEvent log_my_p4est_level_set_extend_from_interface;
+
+#ifndef CASL_LOG_EVENTS
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#endif
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
 
 void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double limit )
 {
+  PetscErrorCode ierr;
+
   for( size_t n_map=0; n_map<map.size(); ++n_map)
   {
     p4est_locidx_t n = map[n_map];
@@ -95,6 +111,8 @@ void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4e
 
       pnp1[n] = p_00 - dt*sgn*(sqrt( MAX(px_p0*px_p0 , px_m0*px_m0) + MAX( py_0p*py_0p , py_0m*py_0m ) ) - 1.);
       if(p0_00*pnp1[n]<0) pnp1[n] *= -1;
+
+      ierr = PetscLogFlops(17); CHKERRXX(ierr);
     }
     /* else : far away from the interface and not in the band ... nothing to do */
     else
@@ -105,6 +123,7 @@ void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4e
 
 void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map, const double *dxx0, const double *dyy0, const double *dxx, const double *dyy, double *p0, double *pn, double *pnp1, double limit )
 {
+  PetscErrorCode ierr;
   for( size_t n_map=0; n_map<map.size(); ++n_map)
   {
     p4est_locidx_t n = map[n_map];
@@ -147,11 +166,6 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
         if(p0_00*p0_p0<0) { s_p0 = interface_Location_With_Second_Order_Derivative(    0,s_p0,p0_00,p0_p0,p0xx_00,p0xx_p0); p_p0=0; }
         if(p0_00*p0_0m<0) { s_0m =-interface_Location_With_Second_Order_Derivative(-s_0m,   0,p0_0m,p0_00,p0yy_0m,p0yy_00); p_0m=0; }
         if(p0_00*p0_0p<0) { s_0p = interface_Location_With_Second_Order_Derivative(    0,s_0p,p0_00,p0_0p,p0yy_00,p0yy_0p); p_0p=0; }
-
-        //        if(p0_00*p0_m0<0) { s_m0 = -interface_Location_With_First_Order_Derivative(-s_m0, 0   , p0_m0, p0_00, p0x_m0, p0x_00); p_m0 = 0; }
-        //        if(p0_00*p0_p0<0) { s_p0 =  interface_Location_With_First_Order_Derivative(    0, s_p0, p0_00, p0_p0, p0x_00, p0x_p0); p_p0 = 0; }
-        //        if(p0_00*p0_0m<0) { s_0m = -interface_Location_With_First_Order_Derivative(-s_0m, 0   , p0_0m, p0_00, p0y_0m, p0y_00); p_0m = 0; }
-        //        if(p0_00*p0_0p<0) { s_0p =  interface_Location_With_First_Order_Derivative(    0, s_0p, p0_00, p0_0p, p0y_00, p0y_0p); p_0p = 0; }
 
         s_m0 = MAX(s_m0,EPS);
         s_p0 = MAX(s_p0,EPS);
@@ -224,6 +238,8 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
 
       pnp1[n] = p_00 - dt*sgn*(sqrt( MAX(px_p0*px_p0 , px_m0*px_m0) + MAX( py_0p*py_0p , py_0m*py_0m ) ) - 1.);
       if(p0_00*pnp1[n]<0) pnp1[n] *= -1;
+
+      ierr = PetscLogFlops(30); CHKERRXX(ierr);
     }
     /* else : far away from the interface and not in the band ... nothing to do */
     else
@@ -236,6 +252,8 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
 void my_p4est_level_set::reinitialize_1st_order( Vec phi_petsc, int number_of_iteration, double limit )
 {
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+
   double *phi;
 
   double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
@@ -273,12 +291,9 @@ void my_p4est_level_set::reinitialize_1st_order( Vec phi_petsc, int number_of_it
 
   free(p0);
   free(p1);
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
-
-
-
-
-
 
 void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration, double limit )
 {
@@ -392,8 +407,6 @@ void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec 
 
 }
 
-
-
 void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration, double limit )
 {
   /* let's call
@@ -402,6 +415,7 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
      * Gnm1 the ghost nodes at time nm1
      */
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
   double *phi;
 
   double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
@@ -459,6 +473,9 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
     /* update phi */
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
       phi[n] = .5 * (p1[n] + p2[n]);
+
+    ierr = PetscLogFlops(nodes->num_owned_indeps * 2); CHKERRXX(ierr);
+
     ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 
     /* initiate the communication for the ghost layer */
@@ -474,6 +491,8 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
   free(p0);
   free(p1);
   free(p2);
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditions2D &bc, int order, int band_to_extend ) const
@@ -483,6 +502,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
   if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: invalid order. Choose 0, 1 or 2");
 #endif
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
 
   double *phi;
   ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
@@ -562,6 +582,8 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
         double y = p_C.y + grad_phi.y * (2*diag + phi[n]);
         interp2.add_point_to_buffer(n, x, y);
       }
+
+      ierr = PetscLogFlops(26); CHKERRXX(ierr);
     }
   }
 
@@ -632,6 +654,8 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
           q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
         }
       }
+
+      ierr = PetscLogFlops(48); CHKERRXX(ierr);
     }
   }
   ierr = VecRestoreArray(q_petsc, &q); CHKERRXX(ierr);
@@ -639,12 +663,15 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 
   ierr = VecGhostUpdateBegin(q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
 }
 
 
 void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend) const
 {
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface, phi_petsc, q_petsc, q_extended_petsc, 0); CHKERRXX(ierr);
 
   /* find dx and dy smallest */
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
@@ -689,6 +716,8 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
       double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
       interp.add_point_to_buffer(n, x - grad_phi.x*phi[n], y - grad_phi.y*phi[n]);
+
+      ierr = PetscLogFlops(14); CHKERRXX(ierr);
     }
     else
       q_extended[n] = 0;
@@ -702,4 +731,6 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
 
   ierr = VecGhostUpdateBegin(q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface, phi_petsc, q_petsc, q_extended_petsc, 0); CHKERRXX(ierr);
 }

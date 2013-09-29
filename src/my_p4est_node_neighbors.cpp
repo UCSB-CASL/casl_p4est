@@ -1,9 +1,22 @@
 #include "my_p4est_node_neighbors.h"
 
+// logging variable -- defined in src/petsc_logging.cpp
+extern PetscLogEvent log_my_p4est_node_neighbors_t;
 
+#ifndef CASL_LOG_EVENTS
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#endif
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
 
 void my_p4est_node_neighbors_t::init_neighbors()
 {
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t, 0, 0, 0, 0); CHKERRXX(ierr);
+
+
   for( p4est_locidx_t n=0; n < nodes->num_owned_indeps; ++n)
   {
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,nodes->offset_owned_indeps+n);
@@ -346,8 +359,9 @@ void my_p4est_node_neighbors_t::init_neighbors()
     }
   }
 
-}
+  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
+}
 
 void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_, char i, char j, p4est_locidx_t& quad, p4est_topidx_t& nb_tree_idx ) const
 {

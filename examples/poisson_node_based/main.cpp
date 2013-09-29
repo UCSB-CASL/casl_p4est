@@ -158,11 +158,11 @@ int main (int argc, char* argv[]){
   // decide on the type and value of the boundary conditions
   BoundaryConditionType bc_wall_type, bc_interface_type;
   int nb_splits, min_level, max_level;
-  bc_wall_type      = cmd.get<BoundaryConditionType>("bc_wall_type"     , DIRICHLET);
-  bc_interface_type = cmd.get<BoundaryConditionType>("bc_interface_type", DIRICHLET);
-  nb_splits         = cmd.get<int>                  ("nb_splits"        , 0);
-  min_level         = cmd.get<int>                  ("min_level"        , 5);
-  max_level         = cmd.get<int>                  ("max_level"        , 10);
+  bc_wall_type      = cmd.get("bc_wall_type"     , DIRICHLET);
+  bc_interface_type = cmd.get("bc_interface_type", DIRICHLET);
+  nb_splits         = cmd.get("nb_splits"        , 0);
+  min_level         = cmd.get("min_level"        , 5);
+  max_level         = cmd.get("max_level"        , 10);
 
   CF_2 *bc_wall_value, *bc_interface_value;
   WallBC2D *wall_bc;
@@ -305,6 +305,7 @@ int main (int argc, char* argv[]){
   bc.setWallTypes(*wall_bc);
   bc.setWallValues(*bc_wall_value);
 
+  for (int i=0; i<5; i++){
   PoissonSolverNodeBase solver(&node_neighbors, &brick);
   solver.set_phi(phi);
   solver.set_rhs(rhs);
@@ -318,6 +319,7 @@ int main (int argc, char* argv[]){
   ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
   w2.stop(); w2.read_duration();
+  }
 
   // done. lets write levelset and solutions
   double *sol_p, *phi_p, *uex_p;

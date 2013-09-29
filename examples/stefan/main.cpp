@@ -27,15 +27,26 @@
 #include <src/my_p4est_levelset.h>
 #include <src/poisson_solver_node_base.h>
 
-#define MIN_LEVEL 6
-#define MAX_LEVEL 8
+#define MIN_LEVEL 4
+#define MAX_LEVEL 10
+
+// logging variables
+PetscLogEvent log_compute_curvature;
+#ifndef CASL_LOG_EVENTS
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#endif
+#ifndef CASL_LOG_FLOPS
+#define PetscLogFlops(n) 0
+#endif
 
 double D = 1;
-double tf = 1;
-double Tmax = 1;
-double Tmin = 0.7;
+double tf = 0.1;
+double Tmax = 5;
+double Tmin = 0.5;
 double epsilon_c = .1;
 int save_every_n_iteration = 1;
+int iter_max = 5;
 
 using namespace std;
 
@@ -129,8 +140,11 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
 
 void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Vec phi, Vec kappa)
 {
-  PetscErrorCode ierr;
+  PetscErrorCode ierr;  
   Vec dx;
+
+  ierr = PetscLogEventBegin(log_compute_curvature, phi, kappa, dx, 0); CHKERRXX(ierr);
+
   ierr = VecDuplicate(phi, &dx); CHKERRXX(ierr);
   double *phi_ptr, *kappa_ptr, *dx_ptr;
   ierr = VecGetArray(phi  , &phi_ptr  ); CHKERRXX(ierr);
@@ -164,6 +178,8 @@ void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Ve
 
   ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_compute_curvature, phi, kappa, dx, 0); CHKERRXX(ierr);
 }
 
 
@@ -180,6 +196,9 @@ int main (int argc, char* argv[])
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
+#ifdef CASL_LOGS
+  ierr = PetscLogEventRegister("compute_curvature                              " , 0, &log_compute_curvature); CHKERRXX(ierr);
+#endif
 
   parStopWatch w1, w2;
   w1.start("total time");
@@ -246,7 +265,7 @@ int main (int argc, char* argv[])
   double dt_n = 1. / pow(2.,(double) MAX_LEVEL);
   double dt_np1;
 
-  for (t=0; t<tf; tc++)
+  for (t=0; t<tf && tc < iter_max; tc++)
   {
     if(p4est->mpirank==0) printf("Iteration %d, time %e\n",tc,t);
 
