@@ -16,22 +16,20 @@
 class my_p4est_node_neighbors_t {
   friend class PoissonSolverNodeBase;
 
-private:
-  my_p4est_hierarchy_t *hierarchy;
-  p4est_t *p4est;
-  p4est_ghost_t *ghost;
-  p4est_nodes_t *nodes;
-
-  std::vector< quad_neighbor_nodes_of_node_t > neighbors;
-
   /**
      * Initialize the QuadNeighborNodeOfNode information
      */
   void init_neighbors();
+
 public:
+  my_p4est_hierarchy_t *hierarchy;
+  p4est_t *p4est;
+  p4est_ghost_t *ghost;
+  p4est_nodes_t *nodes;
+  std::vector< quad_neighbor_nodes_of_node_t > neighbors;
 
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
-    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), neighbors(nodes->num_owned_indeps)
+    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), neighbors(nodes_->num_owned_indeps)
   {
     init_neighbors();
   }

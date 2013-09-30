@@ -27,8 +27,8 @@
 #include <src/my_p4est_levelset.h>
 #include <src/poisson_solver_node_base.h>
 
-#define MIN_LEVEL 4
-#define MAX_LEVEL 10
+#define MIN_LEVEL 3
+#define MAX_LEVEL 5
 
 // logging variables
 PetscLogEvent log_compute_curvature;

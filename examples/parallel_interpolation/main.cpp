@@ -42,7 +42,7 @@ int main (int argc, char* argv[]){
     PetscErrorCode      ierr;
 
     circle circ(1, 1, .3);
-    splitting_criteria_cf_t cf_data   = {&circ, 8, 0, 1};
+    splitting_criteria_cf_t cf_data(0, 10, &circ, 1);
 
     Session mpi_session;
     mpi_session.init(argc, argv, mpi->mpicomm);
@@ -76,7 +76,7 @@ int main (int argc, char* argv[]){
     p4est_partition(p4est, NULL);
     w2.stop(); w2.read_duration();
 
-    // Create the ghost structure
+   // Create the ghost structure
     w2.start("ghost");
     p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
     w2.stop(); w2.read_duration();
@@ -112,6 +112,9 @@ int main (int argc, char* argv[]){
 
     std::ostringstream oss; oss << "phi_" << mpi->mpisize;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+    my_p4est_vtk_write_all(p4est, nodes, NULL,
+                           P4EST_TRUE, P4EST_TRUE,
+                           0, 0, "grid");
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, oss.str().c_str(),
@@ -119,7 +122,8 @@ int main (int argc, char* argv[]){
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
     // set up the qnnn neighbors
-    my_p4est_hierarchy_t hierarchy(p4est, ghost);
+    my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
+    hierarchy.write_vtk("hierarchy");
     my_p4est_node_neighbors_t qnnn(&hierarchy, nodes);
 
     // move the circle to create another grid
@@ -148,9 +152,8 @@ int main (int argc, char* argv[]){
     w2.stop(); w2.read_duration();
 
     // Create an interpolating function    
-    InterpolatingFunction phi_func(p4est, nodes, ghost, brick, qnnn);
-    phi_func.set_interpolation_method(non_oscilatory_quadratic);
-    phi_func.set_input_vector(phi);
+    InterpolatingFunction phi_func(p4est, nodes, ghost, brick, &qnnn);
+    phi_func.set_input_parameters(phi, quadratic);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
@@ -168,6 +171,7 @@ int main (int argc, char* argv[]){
       // buffer the point
       phi_func.add_point_to_buffer(i, x, y);
     }
+    PetscSynchronizedFlush(p4est->mpicomm);
 
     // interpolate on to the new vector
     Vec phi_np1;
@@ -179,7 +183,11 @@ int main (int argc, char* argv[]){
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    oss.str(""); oss << "phi_np1_" << mpi->mpisize;
+#ifdef P4EST_POINT_LOOKUP
+    oss.str(""); oss << "p_phi_np1_" << mpi->mpisize;
+#else
+    oss.str(""); oss << "h_phi_np1_" << mpi->mpisize;
+#endif
 
     double *phi_np1_p;
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);

@@ -39,7 +39,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   circle circ(1, 1, .3);
-  splitting_criteria_cf_t data = {&circ, 10, 0, 1};
+  splitting_criteria_cf_t data(0, 3, &circ, 1);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -54,8 +54,16 @@ int main (int argc, char* argv[]){
   w2.start("connectivity");
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-  connectivity = my_p4est_brick_new(2, 2, &brick);
+  connectivity = my_p4est_brick_new(5, 3, &brick);
   w2.stop(); w2.read_duration();
+
+  for (int i=0; i<brick.nxytrees[1]; i++){
+    for (int j=0; j<brick.nxytrees[0]; j++)
+      cout << brick.nxy_to_treeid[i*brick.nxytrees[0]+j] << " ";
+    cout << endl;
+  }
+
+  return 0;
 
   // Now create the forest
   w2.start("p4est generation");

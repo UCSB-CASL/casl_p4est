@@ -1,4 +1,4 @@
-#include "bilinear_interpolating_function.h"
+#include "interpolating_function.h"
 #include <sc_notify.h>
 #include <src/my_p4est_vtk.h>
 

@@ -78,13 +78,16 @@ my_p4est_vtk_write_binary (FILE * vtkfile, char *numeric_data,
 #endif /* P4EST_VTK_BINARY */
 
 // logging variable -- defined in src/petsc_logging.cpp
-extern PetscLogEvent log_my_p4est_vtk_write_all;
-
 #ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin(e, o1, o2, o3, o4)
+#undef PetscLogEventEnd(e, o1, o2, o3, o4)
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_vtk_write_all;
 #endif
 #ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops(n)
 #define PetscLogFlops(n) 0
 #endif
 

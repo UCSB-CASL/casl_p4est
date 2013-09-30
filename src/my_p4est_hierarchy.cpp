@@ -1,14 +1,19 @@
 #include "my_p4est_hierarchy.h"
+#include <p4est_communication.h>
+#include <stdexcept>
 #include <petsclog.h>
 
 // logging variable -- defined in src/petsc_logging.cpp
-extern PetscLogEvent log_my_p4est_hierarchy_t;
-
 #ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin(e, o1, o2, o3, o4)
+#undef PetscLogEventEnd(e, o1, o2, o3, o4)
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_hierarchy_t;
 #endif
 #ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops(n)
 #define PetscLogFlops(n) 0
 #endif
 
@@ -27,7 +32,6 @@ void my_p4est_hierarchy_t::split( int tree_idx, int ind )
     }
   }
 }
-
 
 int my_p4est_hierarchy_t::update_tree( int tree_idx, p4est_quadrant_t *quad )
 {
@@ -142,4 +146,121 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
   for (size_t i=0; i<num_quads; ++i)
     fprintf(vtk, "%d\n",P4EST_VTK_CELL_TYPE);
   fclose(vtk);
+}
+
+int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches)
+{
+#ifdef CASL_THROWS
+  if (xy[0] < 0 || xy[0] > myb->nxytrees[0] || xy[1] < 0 || xy[1] > myb->nxytrees[1])
+  {
+    std::ostringstream oss;
+    oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") is outside computational domain" << std::endl;
+    throw std::invalid_argument(oss.str());
+  }
+#endif
+
+  int found_rank, rank;
+  p4est_quadrant_t sq;
+  P4EST_QUADRANT_INIT(&sq);
+  sq.level = P4EST_QMAXLEVEL;
+
+  P4EST_QUADRANT_INIT(&best_match);
+
+  // a quadrant length at most will be P4EST_QMAXLEVEL = P4EST_MAXLEVEL - 1
+  const static double qeps = (double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL)  / (double)P4EST_ROOT_LEN;
+  const static p4est_qcoord_t qh = P4EST_QUADRANT_LEN(P4EST_QMAXLEVEL);
+
+  // perturb in 4 directions
+  for (short i = -1; i<2; i += 2)
+    for (short j = -1; j<2; j += 2)
+    {
+      // perturb the point
+      double xy_perturb [] = {xy[0] + i*qeps, xy[1] + j*qeps};
+
+      /* clip to the boundary
+       * TODO: this wont work with periodic. Need to add something in myb
+       * to indicate if the p4est is periodic
+       */
+      if      (xy_perturb[0] < qeps)                    xy_perturb[0] = qeps;
+      else if (xy_perturb[0] > myb->nxytrees[0] - qeps) xy_perturb[0] = myb->nxytrees[0] - qeps;
+      if      (xy_perturb[1] < qeps)                    xy_perturb[1] = qeps;
+      else if (xy_perturb[1] > myb->nxytrees[1] - qeps) xy_perturb[1] = myb->nxytrees[1] - qeps;
+
+      // first locate the correct tree
+      int tr_xy [] = {(int)floor(xy_perturb[0]), (int)floor(xy_perturb[1])};
+      p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
+      p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
+      const std::vector<HierarchyCell>& h_tr = trees[tt];
+
+      // check who is the owner
+      p4est_qcoord_t sqx = (p4est_qcoord_t)((xy_perturb[0] - tr_xy[0]) * P4EST_ROOT_LEN);
+      p4est_qcoord_t sqy = (p4est_qcoord_t)((xy_perturb[1] - tr_xy[1]) * P4EST_ROOT_LEN);
+
+      // ensure that quadrant is a multiple of qh, otherwise p4est function will freak out!
+      sq.x = sqx & ~(qh - 1);
+      sq.y = sqy & ~(qh - 1);
+
+      found_rank = p4est_comm_find_owner(p4est, tt, &sq, p4est->mpirank);
+
+      // return to original value otherwise a point could be placed on the boundary of childs
+      // and we get biased results
+      sq.x = sqx;
+      sq.y = sqy;
+
+      const HierarchyCell *it, *begin; begin = it = &h_tr[0];
+      while(CELL_LEAF != it->child){
+        p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
+        short cj = (it->jmin + half_h < sq.y);
+        short ci = (it->imin + half_h < sq.x);
+
+        it = begin + it->child + 2*cj + ci;
+      }
+
+      if (found_rank == p4est->mpirank) {
+        if (it->quad >= 0 && it->quad < p4est->local_num_quadrants) { // local quadrant
+          p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
+          p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&p4est_tr->quadrants, pos);
+          if (tmp->level > best_match.level) {
+            best_match = *tmp;
+            best_match.p.piggy3.which_tree = tt;
+            best_match.p.piggy3.local_num  = pos;
+            rank = found_rank;
+          }
+        } else {
+#ifdef CASL_THROWS
+          std::ostringstream oss;
+          oss << "[ERROR]: point = (" << xy[0] << "," << xy[1] << "). found_rank = " << found_rank << " quad = " << it->quad << std::endl <<
+                 " p4est suggests point should be owned locally but it's not found in the local part of hierarchy" << std::endl;
+          throw std::runtime_error(oss.str());
+#endif
+        }
+      } else {
+        if (it->quad >= p4est->local_num_quadrants && it->quad < p4est->local_num_quadrants + (p4est_locidx_t)ghost->ghosts.elem_count) { // ghost quadrant
+          p4est_locidx_t pos = it->quad - p4est->local_num_quadrants;
+          p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, pos);
+          if (tmp->level > best_match.level) {
+            best_match = *tmp;
+            best_match.p.piggy3.which_tree = tt;
+            best_match.p.piggy3.local_num  = pos;
+            rank = found_rank;
+          }
+        } else if (NOT_A_P4EST_QUADRANT == it->quad) { // remote quadrant
+          sq.p.piggy1.which_tree = tt;
+          sq.p.piggy1.owner_rank = found_rank;
+
+          remote_matches.push_back(sq);
+          rank = -1;
+        } else {
+          std::cout << "here" << std::endl;
+#ifdef CASL_THROWS
+          std::ostringstream oss;
+          oss << "[ERROR]: point = (" << xy[0] << "," << xy[1] << "). found_rank = " << found_rank << " quad = " << it->quad << std::endl <<
+                 " Could not find any point in the hierarchy for given point. This is a bug!" << std::endl;
+          throw std::runtime_error(oss.str());
+#endif
+        }
+      }
+    }
+
+  return rank;
 }

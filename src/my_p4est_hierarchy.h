@@ -3,6 +3,7 @@
 
 #include <p4est.h>
 #include <p4est_ghost.h>
+#include <src/my_p4est_tools.h>
 
 #include <vector>
 
@@ -43,6 +44,7 @@ struct HierarchyCell {
 
   /* the level of the cell */
   p4est_qcoord_t level;
+
 };
 
 
@@ -53,6 +55,7 @@ class my_p4est_hierarchy_t {
 private:
   p4est_t       *p4est;
   p4est_ghost_t *ghost;
+  my_p4est_brick_t *myb;
   std::vector< std::vector<HierarchyCell> > trees;
 
   void split(int tree_idx, int ind );
@@ -60,8 +63,8 @@ private:
   void construct_tree();
 
 public:
-  my_p4est_hierarchy_t( p4est_t *p4est_, p4est_ghost_t *ghost_)
-    : p4est(p4est_), ghost(ghost_), trees(p4est->connectivity->num_trees)
+  my_p4est_hierarchy_t( p4est_t *p4est_, p4est_ghost_t *ghost_, my_p4est_brick_t *myb_)
+    : p4est(p4est_), ghost(ghost_), myb(myb_), trees(p4est->connectivity->num_trees)
   {
     for( size_t tr=0; tr<trees.size(); tr++)
     {
@@ -71,6 +74,7 @@ public:
     construct_tree();
   }
 
+  int find_smallest_quadrant_containing_point(const double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches);
   void write_vtk(const char* filename) const;
 };
 

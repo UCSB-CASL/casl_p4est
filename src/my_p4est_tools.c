@@ -200,10 +200,10 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   p4est_quadrant_t    sq, *qp, *found_quad;
   p4est_tree_t       *tree;
 
+  P4EST_LDEBUGF ("Looking up point %g %g\n", xy[0], xy[1]);
+
   P4EST_ASSERT (remote_matches->elem_size == sizeof (p4est_quadrant_t) &&
                 remote_matches->elem_count == 0);
-
-  P4EST_LDEBUGF ("Looking up point %g %g\n", xy[0], xy[1]);
 
   /* We are looking for the smallest size quadrant that contains the point xy.
    * If there are multiple possibilities we choose the one on the lowest rank.

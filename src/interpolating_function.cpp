@@ -11,10 +11,13 @@
 extern PetscLogEvent log_InterpolatingFunction_interpolate;
 
 #ifndef CASL_LOG_EVENTS
+#undef  PetscLogEventBegin(e, o1, o2, o3, o4)
+#undef  PetscLogEventEnd(e, o1, o2, o3, o4)
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #endif
 #ifndef CASL_LOG_FLOPS
+#undef  PetscLogFlops(n)
 #define PetscLogFlops(n) 0
 #endif
 
@@ -103,7 +106,6 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
   // initialize data
   double xy [] = {x, y};
   p4est_quadrant_t best_match;
-  sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
 
   /* first clip the coordinates */
   double xy_clip [] = {x, y};
@@ -114,11 +116,17 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
   if(y<ymin) xy_clip[1] = ymin;
 
   // find the quadrant -- Note point may become slightly purturbed after this call
-  int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_,
-                                               xy_clip, &best_match, remote_matches);
+#ifdef P4EST_POINT_LOOKUP
+  sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
+  int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
+#else
+  std::vector<p4est_quadrant_t> remote_matches;
+  int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xy_clip, best_match, remote_matches);
+#endif
 
   // check who is going to own the quadrant
   if (rank_found == p4est_->mpirank) { // local quadrant
+
     local_point_buffer.xy.push_back(xy[0]);
     local_point_buffer.xy.push_back(xy[1]);
     local_point_buffer.quad.push_back(best_match);
@@ -144,7 +152,11 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
     ghost_point_buffer.quad.push_back(best_match);
     ghost_point_buffer.node_locidx.push_back(node_locidx);
 
+#ifdef P4EST_POINT_LOOKUP
   } else if ( remote_matches->elem_count != 0 ) { /* quadrant belongs to a processor that is not included in the ghost layer */
+#else
+  } else if ( remote_matches.size() != 0) { /* quadrant belongs to a processor that is not included in the ghost layer */
+#endif
     /*
      * HACK: This is a hack to take care of multiple remote matches! The real and
      * correct way of doing it is to ask each remote processor a status flag which
@@ -170,10 +182,16 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
      */
     // make sure remote ranks are unique
     std::set<int> remote_ranks;
+
+#ifdef P4EST_POINT_LOOKUP
     for (size_t i=0; i<remote_matches->elem_count; i++){
       p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(remote_matches, i);
       remote_ranks.insert(q->p.piggy1.owner_rank);
     }
+#else
+    for (size_t i=0; i<remote_matches.size(); i++)
+      remote_ranks.insert(remote_matches[i].p.piggy1.owner_rank);
+#endif
 
     std::set<int>::const_iterator it = remote_ranks.begin(),
         end = remote_ranks.end();
@@ -185,14 +203,17 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
     }
   }
   else {
+#ifdef P4EST_POINT_LOOKUP
     sc_array_destroy(remote_matches);
+#endif
     throw std::runtime_error("[ERROR_YOU_ARE_DOOMED]: InterpolatingFunction::add_point_to_buffer: no quadrant found ... auto-destruct initialized ....\n");
   }
 
-  sc_array_destroy(remote_matches);
+#ifdef P4EST_POINT_LOOKUP
+    sc_array_destroy(remote_matches);
+#endif
   // set the flag to false so the prepare buffer method will be called
   is_buffer_prepared = false;
-
 }
 
 void InterpolatingFunction::set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx, Vec Fyy)
@@ -225,7 +246,6 @@ void InterpolatingFunction::interpolate(Vec output_vec)
 
 void InterpolatingFunction::interpolate( double *output_vec )
 {
-
   ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
   // begin sending point buffers
@@ -369,10 +389,13 @@ void InterpolatingFunction::interpolate( double *output_vec )
 
         // first find the quadrant for the remote points
         p4est_quadrant_t best_match;
+#ifdef P4EST_POINT_LOOKUP
         sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
-        int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_,
-                                                     xy_clip, &best_match, remote_matches);
-
+        int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
+#else
+        std::vector<p4est_quadrant_t> remote_matches;
+        int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xy_clip, best_match, remote_matches);
+#endif
         // make sure that the point belongs to us
         if (rank_found == p4est_->mpirank){ // if we own the point, interpolate
           // get the local index
@@ -413,11 +436,17 @@ void InterpolatingFunction::interpolate( double *output_vec )
               <<  p4est_->mpirank << " or be in its ghost layer, both of which"
                   " have failed. Found rank is = " << rank_found
                << " and remote_macthes->elem_count = "
+#ifdef P4EST_POINT_LOOKUP
                << remote_matches->elem_count << ". This is most certainly a bug."
+#else
+               << remote_matches.size() << ". This is most certainly a bug."
+#endif
                << std::endl;
           throw std::runtime_error(oss.str());
         }
+#ifdef P4EST_POINT_LOOKUP
         sc_array_destroy(remote_matches);
+#endif
       }
 
       // send the buffer
@@ -490,7 +519,6 @@ double InterpolatingFunction::operator ()(double x, double y) const {
   p4est_topidx_t tree_idx;
   p4est_locidx_t *q2n = nodes_->local_nodes;
   p4est_quadrant_t best_match;
-  sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
 
   /* first clip the coordinates */
   double xy_clip [] = {x, y};
@@ -499,8 +527,13 @@ double InterpolatingFunction::operator ()(double x, double y) const {
   if(y>ymax) xy_clip[1] = ymax;
   if(y<ymin) xy_clip[1] = ymin;
 
-  int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_,
-                                               xy_clip, &best_match, remote_matches);
+#ifdef P4EST_POINT_LOOKUP
+  sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
+  int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
+#else
+  std::vector<p4est_quadrant_t> remote_matches;
+  int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xy_clip, best_match, remote_matches);
+#endif
 
   if (rank_found == p4est_->mpirank) { // local quadrant
     tree_idx = best_match.p.piggy3.which_tree;
@@ -528,9 +561,9 @@ double InterpolatingFunction::operator ()(double x, double y) const {
       ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
     }
-
+#ifdef P4EST_POINT_LOOKUP
     sc_array_destroy(remote_matches);
-
+#endif
     if (method_ == linear)
       return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
     else if (method_ == quadratic)
@@ -564,7 +597,9 @@ double InterpolatingFunction::operator ()(double x, double y) const {
       ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
     }
 
+#ifdef P4EST_POINT_LOOKUP
     sc_array_destroy(remote_matches);
+#endif
 
     if (method_ == linear)
       return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
@@ -584,12 +619,18 @@ double InterpolatingFunction::operator ()(double x, double y) const {
       ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
     }
 
+#ifdef P4EST_POINT_LOOKUP
     sc_array_destroy(remote_matches);
+#endif
 
     std::ostringstream oss;
     oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") does not belong to "
            "processor " << p4est_->mpirank << ". Found rank = " << rank_found <<
+#ifdef P4EST_POINT_LOOKUP
            " and remote_macthes.size = " << remote_matches->elem_count << std::endl;
+#else
+           " and remote_macthes.size = " << remote_matches.size() << std::endl;
+#endif
     throw std::invalid_argument(oss.str());
   }
 }
