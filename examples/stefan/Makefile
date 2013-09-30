@@ -24,7 +24,7 @@
 # Date: 09-26-2013
 
 # This will become the name of the executable
-EXAMPLE_NAME = poisson_node_base
+EXAMPLE_NAME = stefan
 
 # Define the location for the CASL library 
 CASL_P4EST = ../..
@@ -44,7 +44,10 @@ SRCS += main.cpp \
 	simplex2.cpp \
 	point2.cpp \
 	CASL_math.cpp \
-	Parser.cpp
+	Parser.cpp \
+	petsc_logging.cpp \
+	my_p4est_levelset.cpp \
+	semi_lagrangian.cpp
 
 vpath %.c $(CASL_P4EST)/src
 CSRCS += my_p4est_vtk.c \
@@ -61,10 +64,10 @@ BUILD_TYPE = release
 # CXX_COMPILER_TYPE: This variable is used to set correct flags for the compiler; it can be GNU (for g++) or INTEL (for icpc)
 # CXX_USE_MPI_COMPILER: This variable is used to determine whether MPI should be used
 CXX_COMPILER_TYPE    = INTEL
-CXX_DEFINES          = -DCASL_THROWS
+CXX_DEFINES          = -DCASL_THROWS -DCASL_LOG_EVENTS -DCASL_LOG_FLOPS
 CXX_EXTRA_FLAGS      = 
 WITH_OPENMP          = NO
-WITH_DEBUG_SYMBOLS   = NO
+WITH_DEBUG_SYMBOLS   = YES
 
 # Verbose control
 PRINT_WARNINGS    = YES
@@ -128,7 +131,6 @@ clean::
 	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
 
 .PHONY: cleandata
-cleandata::
 	@$(RM) $(BIN_FOLDER)/*.vtu $(BIN_FOLDER)/*.pvtu $(BIN_FOLDER)/*.vtk $(BIN_FOLDER)/*.dat $(BIN_FOLDER)/*.bin $(BIN_FOLDER)/*.xmf $(BIN_FOLDER)/*.visit
 
 .PHONY: cleanall

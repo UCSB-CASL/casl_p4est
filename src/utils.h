@@ -492,7 +492,7 @@ public:
 
   void init(int argc, char **argv, MPI_Comm mpicomm){
     ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
-    sc_init (mpicomm, 0, 0, NULL, SC_LP_SILENT);
+    sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_SILENT);
     p4est_init (NULL, SC_LP_SILENT);
 #ifdef CASL_LOG_EVENTS
     register_petsc_logs();

@@ -42,6 +42,10 @@ else
 	endif
 endif
 
+ifeq ($(WITH_DEBUG_SYMBOLS), YES)
+	CXX_FLAGS += -g
+endif
+
 ifeq ($(WITH_OPENMP), YES)
 	ifeq ($(CXX_COMPILER_TYPE), GNU)
 		CXX_FLAGS += -fopenmp

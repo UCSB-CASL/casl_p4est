@@ -85,7 +85,9 @@ class SemiLagrangian
       xy[1] += dy/2;
 
       p4est_quadrant_t quad_tmp;
-      my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy, &quad_tmp, NULL);
+      sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
+      my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy, &quad_tmp, remote_matches);
+      sc_array_destroy(remote_matches);
 
       p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
       p4est_tree_t *tree_tmp = p4est_tree_array_index(data->p4est_tmp->trees, quad_tmp.p.piggy3.which_tree);
