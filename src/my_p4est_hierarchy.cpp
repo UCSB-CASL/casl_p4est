@@ -165,7 +165,7 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
   fclose(vtk);
 }
 
-int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches)
+int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
 {
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr;
@@ -192,13 +192,14 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
    * TODO: this wont work with periodic. Need to add something in myb
    * to indicate if the p4est is periodic
    */
-  if      (xy[0] < qeps)                    xy[0] = qeps;
-  else if (xy[0] > myb->nxytrees[0] - qeps) xy[0] = myb->nxytrees[0] - qeps;
-  if      (xy[1] < qeps)                    xy[1] = qeps;
-  else if (xy[1] > myb->nxytrees[1] - qeps) xy[1] = myb->nxytrees[1] - qeps;
+  double xy_clipped [] = {xy[0], xy[1]};
+  if      (xy_clipped[0] < qeps)                    xy_clipped[0] = qeps;
+  else if (xy_clipped[0] > myb->nxytrees[0] - qeps) xy_clipped[0] = myb->nxytrees[0] - qeps;
+  if      (xy_clipped[1] < qeps)                    xy_clipped[1] = qeps;
+  else if (xy_clipped[1] > myb->nxytrees[1] - qeps) xy_clipped[1] = myb->nxytrees[1] - qeps;
 
-  double ii = (xy[0] - floor(xy[0])) * P4EST_ROOT_LEN;
-  double jj = (xy[1] - floor(xy[1])) * P4EST_ROOT_LEN;
+  double ii = (xy_clipped[0] - floor(xy_clipped[0])) * P4EST_ROOT_LEN;
+  double jj = (xy_clipped[1] - floor(xy_clipped[1])) * P4EST_ROOT_LEN;
 
   bool is_on_face_x = (fabs(ii-floor(ii))<1e-3 || fabs(ceil(ii)-ii)<1e-3);
   bool is_on_face_y = (fabs(jj-floor(jj))<1e-3 || fabs(ceil(jj)-jj)<1e-3);
@@ -218,8 +219,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
          */
         int tr_xy [] =
         {
-          (int)floor(xy[0]) + (int)floor(sqx/(double)P4EST_ROOT_LEN),
-          (int)floor(xy[1]) + (int)floor(sqy/(double)P4EST_ROOT_LEN)
+          (int)floor(xy_clipped[0]) + (int)floor(sqx/(double)P4EST_ROOT_LEN),
+          (int)floor(xy_clipped[1]) + (int)floor(sqy/(double)P4EST_ROOT_LEN)
         };
         p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
         p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
@@ -287,8 +288,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
          */
       int tr_xy [] =
       {
-        (int)floor(xy[0]) + (int)floor(sqx/(double)P4EST_ROOT_LEN),
-        (int)floor(xy[1])
+        (int)floor(xy_clipped[0]) + (int)floor(sqx/(double)P4EST_ROOT_LEN),
+        (int)floor(xy_clipped[1])
       };
       p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
       p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
@@ -357,8 +358,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
          */
       int tr_xy [] =
       {
-        (int)floor(xy[0]),
-        (int)floor(xy[1]) + (int)floor(sqy/(double)P4EST_ROOT_LEN)
+        (int)floor(xy_clipped[0]),
+        (int)floor(xy_clipped[1]) + (int)floor(sqy/(double)P4EST_ROOT_LEN)
       };
       p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
       p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
@@ -424,8 +425,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
          */
     int tr_xy [] =
     {
-      (int)floor(xy[0]),
-      (int)floor(xy[1])
+      (int)floor(xy_clipped[0]),
+      (int)floor(xy_clipped[1])
     };
     p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
     p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);

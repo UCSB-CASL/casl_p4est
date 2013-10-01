@@ -77,7 +77,7 @@ public:
     construct_tree();
   }
 
-  int find_smallest_quadrant_containing_point(double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches);
+  int find_smallest_quadrant_containing_point(const double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
   void write_vtk(const char* filename) const;
 };
 
