@@ -5,16 +5,19 @@
 #include <src/cube2.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
 extern PetscLogEvent log_PoissonSolverNodeBase_matrix_preallocation;
 extern PetscLogEvent log_PoissonSolverNodeBase_matrix_setup;
 extern PetscLogEvent log_PoissonSolverNodeBase_rhsvec_setup;
 extern PetscLogEvent log_PoissonSolverNodeBase_solve;
-
-#ifndef CASL_LOG_EVENTS
-#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
-#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #endif
 #ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 #define bc_strength 1.0

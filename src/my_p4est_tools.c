@@ -200,7 +200,7 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   p4est_quadrant_t    sq, *qp, *found_quad;
   p4est_tree_t       *tree;
 
-  P4EST_LDEBUGF ("Looking up point %g %g\n", xy[0], xy[1]);
+  // P4EST_LDEBUGF ("Looking up point %g %g\n", xy[0], xy[1]);
 
   P4EST_ASSERT (remote_matches->elem_size == sizeof (p4est_quadrant_t) &&
                 remote_matches->elem_count == 0);
@@ -232,8 +232,8 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
       integerstep[i][1] = hit == myb->nxytrees[i] ? -1 : hit;   /* ditto */
       searchq[i][0] = P4EST_LAST_OFFSET (P4EST_QMAXLEVEL);
       searchq[i][1] = 0;
-      P4EST_LDEBUGF ("Dimension %d hit tree %d %d\n", i,
-                     integerstep[i][0], integerstep[i][1]);
+      // P4EST_LDEBUGF ("Dimension %d hit tree %d %d\n", i,
+      //               integerstep[i][0], integerstep[i][1]);
     }
     else {
       integerstep[i][0] = integerstep[i][1] = hit;
@@ -250,8 +250,8 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
         integerstep[i][0] = -1;
         searchq[i][0] = -1;
       }
-      P4EST_LDEBUGF ("Dimension %d non tree %d %d\n", i,
-                     integerstep[i][0], integerstep[i][1]);
+      // P4EST_LDEBUGF ("Dimension %d non tree %d %d\n", i,
+      //               integerstep[i][0], integerstep[i][1]);
     }
   }
 
@@ -275,7 +275,7 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
       tt = treeid[2 * iy + ix] =
           myb->nxy_to_treeid[myb->nxytrees[0] * integerstep[1][iy] +
           integerstep[0][ix]];
-      P4EST_LDEBUGF ("Testing %d %d for tree %d\n", ix, iy, (int) tt);
+      // P4EST_LDEBUGF ("Testing %d %d for tree %d\n", ix, iy, (int) tt);
       sq.x = searchq[0][ix];
       sq.y = searchq[1][iy];
       P4EST_ASSERT (p4est_quadrant_is_valid (&sq));
@@ -293,7 +293,7 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
         qp = p4est_quadrant_array_index (&tree->quadrants, position);
         P4EST_ASSERT (p4est_quadrant_is_equal (qp, &sq) ||
                       p4est_quadrant_is_ancestor (qp, &sq));
-        P4EST_LDEBUGF ("Found local level %d\n", qp->level);
+        // P4EST_LDEBUGF ("Found local level %d\n", qp->level);
         if (qp->level > highest_level ||
             (qp->level == highest_level &&
              (pp < smallest_owner ||
@@ -305,8 +305,8 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
           smallest_tree = tt;
           smallest_pos = position;
           found_quad = qp;
-          P4EST_LDEBUGF ("Current best guess at %lld %lld\n",
-                         (long long) smallest_tree, (long long) smallest_pos);
+          // P4EST_LDEBUGF ("Current best guess at %lld %lld\n",
+          //               (long long) smallest_tree, (long long) smallest_pos);
         }
         /* else no need to update our match */
       }
@@ -316,7 +316,7 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
           /* this quadrant match is in the ghost layer */
           position = (size_t) sgpos;
           qp = p4est_quadrant_array_index (&ghost->ghosts, position);
-          P4EST_LDEBUGF ("Found ghost %d level %d\n", pp, qp->level);
+          // P4EST_LDEBUGF ("Found ghost %d level %d\n", pp, qp->level);
           if (qp->level > highest_level ||
               (qp->level == highest_level &&
                (pp < smallest_owner ||
@@ -329,9 +329,9 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
             smallest_pos = position;    /* we're indexing ghosts so this is
                                            partially redundant with tt */
             found_quad = qp;
-            P4EST_LDEBUGF ("Current best guess at %lld %lld\n",
-                           (long long) smallest_tree,
-                           (long long) smallest_pos);
+            // P4EST_LDEBUGF ("Current best guess at %lld %lld\n",
+            //               (long long) smallest_tree,
+            //               (long long) smallest_pos);
           }
           /* else no need to update our match */
         }

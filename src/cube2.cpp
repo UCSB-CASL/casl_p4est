@@ -2,6 +2,7 @@
 #include <petsclog.h>
 
 #ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 

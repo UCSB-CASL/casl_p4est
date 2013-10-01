@@ -46,7 +46,7 @@ double Tmax = 1;
 double Tmin = 0.7;
 double epsilon_c = .1;
 int save_every_n_iteration = 1;
-int iter_max = 1;
+int iter_max = 10;
 
 using namespace std;
 
@@ -176,8 +176,6 @@ void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Ve
   ierr = VecRestoreArray(kappa, &kappa_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(dx, &dx_ptr); CHKERRXX(ierr);
 
-  ierr = VecDestroy(dx); CHKERRXX(ierr);
-
   ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
@@ -187,13 +185,14 @@ void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Ve
 
 int main (int argc, char* argv[])
 {
+
   mpi_context_t mpi_context, *mpi = &mpi_context;
   mpi->mpicomm  = MPI_COMM_WORLD;
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   PetscErrorCode ierr;
 
-  circle circ(1., 1, .2);
+  circle circ(1.003, 1.003, .203);
   splitting_criteria_cf_t data(MIN_LEVEL, MAX_LEVEL, &circ, 1.2);
 
   Session mpi_session;
@@ -225,6 +224,11 @@ int main (int argc, char* argv[])
 
   /* Create the ghost structure */
   p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+
+  for (int i=0; i<p4est->mpisize+1; i++)
+    PetscSynchronizedPrintf(p4est->mpicomm, "%d ", ghost->proc_offsets[i]);
+  PetscSynchronizedPrintf(p4est->mpicomm, "\n %d\n", ghost->ghosts.elem_count);
+  PetscSynchronizedFlush(p4est->mpicomm);
 
   // generate the node data structure
   nodes = my_p4est_nodes_new(p4est, ghost);
@@ -271,7 +275,7 @@ int main (int argc, char* argv[])
   {
     if(p4est->mpirank==0) printf("Iteration %d, time %e\n",tc,t);
 
-    my_p4est_hierarchy_t hierarchy(p4est,ghost,&brick);
+    my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
     my_p4est_node_neighbors_t ngbd(&hierarchy,nodes);
 
     my_p4est_level_set ls(&brick, p4est, nodes, ghost, &ngbd);

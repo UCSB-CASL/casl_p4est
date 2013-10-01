@@ -11,15 +11,18 @@
 #include <algorithm>
 
 // logging variables -- defined in src/petsc_logging.cpp
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
 extern PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_Vec;
 extern PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CF2;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_Vec;
-
-#ifndef CASL_LOG_EVENTS
-#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
-#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #endif
 #ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 

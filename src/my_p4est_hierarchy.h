@@ -9,6 +9,7 @@
 
 #define CELL_LEAF   -1
 #define NOT_A_P4EST_QUADRANT -1
+#define REMOTE_OWNER -1
 
 #ifndef P4EST_VTK_CELL_TYPE
 #define P4EST_VTK_CELL_TYPE 8 /* VTK_PIXEL */
@@ -45,6 +46,8 @@ struct HierarchyCell {
   /* the level of the cell */
   p4est_qcoord_t level;
 
+  int owner_rank;
+
 };
 
 
@@ -68,13 +71,13 @@ public:
   {
     for( size_t tr=0; tr<trees.size(); tr++)
     {
-      struct HierarchyCell root = { CELL_LEAF, NOT_A_P4EST_QUADRANT, 0, 0, 0 };
+      struct HierarchyCell root = { CELL_LEAF, NOT_A_P4EST_QUADRANT, 0, 0, 0, REMOTE_OWNER};
       trees[tr].push_back(root);
     }
     construct_tree();
   }
 
-  int find_smallest_quadrant_containing_point(const double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches);
+  int find_smallest_quadrant_containing_point(const double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
   void write_vtk(const char* filename) const;
 };
 

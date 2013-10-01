@@ -38,15 +38,15 @@
 // logging variable -- defined in src/petsc_logging.cpp
 
 #ifndef CASL_LOG_EVENTS
-#undef PetscLogEventBegin //(e, o1, o2, o3, o4)
-#undef PetscLogEventEnd //(e, o1, o2, o3, o4)
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
 extern PetscLogEvent log_my_p4est_nodes_new;
 #endif
 #ifndef CASL_LOG_FLOPS
-#undef  PetscLogFlops //(n)
+#undef  PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 
