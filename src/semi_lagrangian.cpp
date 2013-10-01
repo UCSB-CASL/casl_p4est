@@ -11,15 +11,18 @@
 #include <algorithm>
 
 // logging variables -- defined in src/petsc_logging.cpp
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
 extern PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_Vec;
 extern PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CF2;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_Vec;
-
-#ifndef CASL_LOG_EVENTS
-#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
-#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #endif
 #ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 
@@ -75,7 +78,7 @@ double SemiLagrangian::compute_dt(const CF_2 &vx, const CF_2 &vy)
 
 double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec &phi){
   // create hierarchy structure if you want to do quadratic interpolation
-  my_p4est_hierarchy_t hierarchy(p4est_, ghost_);
+  my_p4est_hierarchy_t hierarchy(p4est_, ghost_, myb_);
   my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
 
   InterpolatingFunction bif(p4est_, nodes_, ghost_, myb_, &qnnn);
@@ -297,7 +300,7 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, Vec &phi, double 
   p4est *p4est_np1 = p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
 
   /* create hierarchy structure on p4est_n if you want to do quadratic interpolation */
-  my_p4est_hierarchy_t hierarchy(p4est_, ghost_);
+  my_p4est_hierarchy_t hierarchy(p4est_, ghost_, myb_);
   my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
   std::vector<double> phi_tmp;
 
@@ -365,7 +368,7 @@ void SemiLagrangian::update_p4est_intermediate_trees_no_ghost(const CF_2& vx, co
   p4est *p4est_np1 = p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
 
   /* create hierarchy structure on p4est_n if you want to do quadratic interpolation */
-  my_p4est_hierarchy_t hierarchy(p4est_, ghost_);
+  my_p4est_hierarchy_t hierarchy(p4est_, ghost_, myb_);
   my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
   std::vector<double> phi_tmp;
 
@@ -431,7 +434,7 @@ double SemiLagrangian::update_p4est_intermediate_trees_with_ghost(const CF_2& vx
   throw std::invalid_argument("update_p4est_intermediate_trees_with_ghost : This function cannot work as long as a p4est bug has not been fixed, the coarsen case with quadrants accross processors.");
 
   /* create hierarchy structure on p4est_n if you want to do quadratic interpolation */
-  my_p4est_hierarchy_t hierarchy(p4est_, ghost_);
+  my_p4est_hierarchy_t hierarchy(p4est_, ghost_, myb_);
   my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
   std::vector<double> phi_tmp;
 

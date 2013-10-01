@@ -6,22 +6,29 @@
 #include <petsclog.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
 extern PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
 extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_order;
 extern PetscLogEvent log_my_p4est_level_set_extend_over_interface;
 extern PetscLogEvent log_my_p4est_level_set_extend_from_interface;
-
-#ifndef CASL_LOG_EVENTS
-#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
-#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+extern PetscLogEvent log_my_p4est_level_set_compute_derivatives;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1it_1st_order;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1it_2nd_order;
 #endif
 #ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 
 void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double limit )
 {
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1it_1st_order, 0, 0, 0, 0);
 
   for( size_t n_map=0; n_map<map.size(); ++n_map)
   {
@@ -118,12 +125,15 @@ void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4e
     else
       pnp1[n] = p0[n];
   }
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1it_1st_order, 0, 0, 0, 0);
 }
 
 
 void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map, const double *dxx0, const double *dyy0, const double *dxx, const double *dyy, double *p0, double *pn, double *pnp1, double limit )
 {
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1it_2nd_order, 0, 0, 0, 0);
+
   for( size_t n_map=0; n_map<map.size(); ++n_map)
   {
     p4est_locidx_t n = map[n_map];
@@ -245,9 +255,8 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
     else
       pnp1[n] = p0[n];
   }
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1it_2nd_order, 0, 0, 0, 0);
 }
-
-
 
 void my_p4est_level_set::reinitialize_1st_order( Vec phi_petsc, int number_of_iteration, double limit )
 {
@@ -379,9 +388,11 @@ void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_pe
 
 void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc) const
 {
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_compute_derivatives, phi_petsc, dxx_petsc, dyy_petsc, 0); CHKERRXX(ierr);
+
   /* first compute dx and dy */
   double *dxx, *dyy;
-  PetscErrorCode ierr;
   ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
   ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
 
@@ -405,6 +416,7 @@ void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec 
   ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
   ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
 
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives, phi_petsc, dxx_petsc, dyy_petsc, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration, double limit )

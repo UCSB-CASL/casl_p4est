@@ -1,16 +1,16 @@
 #include "my_p4est_node_neighbors.h"
 
 // logging variable -- defined in src/petsc_logging.cpp
-extern PetscLogEvent log_my_p4est_node_neighbors_t;
-
 #ifndef CASL_LOG_EVENTS
-#undef PetscLogEventBegin(e, o1, o2, o3, o4)
-#undef PetscLogEventEnd(e, o1, o2, o3, o4)
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_node_neighbors_t;
 #endif
 #ifndef CASL_LOG_FLOPS
-#undef PetscLogFlops(n)
+#undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 
@@ -18,7 +18,6 @@ void my_p4est_node_neighbors_t::init_neighbors()
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t, 0, 0, 0, 0); CHKERRXX(ierr);
-
 
   for( p4est_locidx_t n=0; n < nodes->num_owned_indeps; ++n)
   {

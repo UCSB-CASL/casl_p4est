@@ -6,10 +6,20 @@
 #include <vector>
 #include <petsclog.h>
 
+// logging variables -- defined in src/petsc_logging.cpp
+#ifndef CASL_LOG_TINY_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+#warning "Use of 'CASL_LOG_TINY_EVENTS' macro is discouraged but supported. Logging tiny sections of the code may produce unreliable results due to overhead."
+extern PetscLogEvent log_p4est2petsc_local_numbering;
+#endif
 #ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
-
 
 void c2p_coordinate_transform(p4est_t *p4est, p4est_topidx_t tree_id, double *x, double *y, double *z){
   // We first need to determine the refference point (i.e lower left corner of the current tree)
@@ -232,6 +242,8 @@ PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
 
 p4est_locidx_t p4est2petsc_local_numbering(p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx)
 {
+    PetscErrorCode ierr;
+    ierr = PetscLogEventBegin(log_p4est2petsc_local_numbering, 0, 0, 0, 0); CHKERRXX(ierr);
 #ifdef CASL_THROWS
   if (p4est_node_locidx < 0 || p4est_node_locidx >= (p4est_locidx_t)nodes->indep_nodes.elem_count)
   {
@@ -247,6 +259,8 @@ p4est_locidx_t p4est2petsc_local_numbering(p4est_nodes_t *nodes, p4est_locidx_t 
     petsc_node_locidx = p4est_node_locidx - nodes->offset_owned_indeps;
   else
     petsc_node_locidx = p4est_node_locidx;
+
+  ierr = PetscLogEventEnd(log_p4est2petsc_local_numbering, 0, 0, 0, 0); CHKERRXX(ierr);
 
   return petsc_node_locidx;
 }

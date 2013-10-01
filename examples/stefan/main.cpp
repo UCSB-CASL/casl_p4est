@@ -28,7 +28,7 @@
 #include <src/poisson_solver_node_base.h>
 
 #define MIN_LEVEL 3
-#define MAX_LEVEL 5
+#define MAX_LEVEL 9
 
 // logging variables
 PetscLogEvent log_compute_curvature;
@@ -41,12 +41,12 @@ PetscLogEvent log_compute_curvature;
 #endif
 
 double D = 1;
-double tf = 0.1;
-double Tmax = 5;
-double Tmin = 0.5;
+double tf = 1;
+double Tmax = 1;
+double Tmin = 0.7;
 double epsilon_c = .1;
 int save_every_n_iteration = 1;
-int iter_max = 5;
+int iter_max = 1000;
 
 using namespace std;
 
@@ -224,6 +224,11 @@ int main (int argc, char* argv[])
   /* Create the ghost structure */
   p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
 
+  for (int i=0; i<p4est->mpisize+1; i++)
+    PetscSynchronizedPrintf(p4est->mpicomm, "%d ", ghost->proc_offsets[i]);
+  PetscSynchronizedPrintf(p4est->mpicomm, "\n %d\n", ghost->ghosts.elem_count);
+  PetscSynchronizedFlush(p4est->mpicomm);
+
   // generate the node data structure
   nodes = my_p4est_nodes_new(p4est, ghost);
 
@@ -269,7 +274,7 @@ int main (int argc, char* argv[])
   {
     if(p4est->mpirank==0) printf("Iteration %d, time %e\n",tc,t);
 
-    my_p4est_hierarchy_t hierarchy(p4est,ghost);
+    my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
     my_p4est_node_neighbors_t ngbd(&hierarchy,nodes);
 
     my_p4est_level_set ls(&brick, p4est, nodes, ghost, &ngbd);
