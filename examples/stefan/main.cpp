@@ -46,7 +46,7 @@ double Tmax = 1;
 double Tmin = 0.7;
 double epsilon_c = .1;
 int save_every_n_iteration = 1;
-int iter_max = 1000;
+int iter_max = 10;
 
 using namespace std;
 
@@ -185,13 +185,14 @@ void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Ve
 
 int main (int argc, char* argv[])
 {
+
   mpi_context_t mpi_context, *mpi = &mpi_context;
   mpi->mpicomm  = MPI_COMM_WORLD;
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   PetscErrorCode ierr;
 
-  circle circ(1., 1, .2);
+  circle circ(1.003, 1.003, .203);
   splitting_criteria_cf_t data(MIN_LEVEL, MAX_LEVEL, &circ, 1.2);
 
   Session mpi_session;
