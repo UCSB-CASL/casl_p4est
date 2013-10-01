@@ -22,8 +22,8 @@
 
 int band = 3;
 int order = 2;
-//BoundaryConditionType bc_interface_type = DIRICHLET;
-BoundaryConditionType bc_interface_type = NEUMANN;
+BoundaryConditionType bc_interface_type = DIRICHLET;
+//BoundaryConditionType bc_interface_type = NEUMANN;
 
 #undef MIN
 #undef MAX
@@ -177,7 +177,6 @@ int main (int argc, char* argv[]){
   /* find dx and dy smallest */
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + 3];
-//  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + 3];
 
   double xmin = p4est->connectivity->vertices[3*vm + 0];
   double ymin = p4est->connectivity->vertices[3*vm + 1];

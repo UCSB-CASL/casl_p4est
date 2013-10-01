@@ -46,7 +46,7 @@ double Tmax = 1;
 double Tmin = 0.7;
 double epsilon_c = .1;
 int save_every_n_iteration = 1;
-int iter_max = 10;
+int iter_max = 1;
 
 using namespace std;
 
@@ -175,6 +175,8 @@ void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Ve
   ierr = VecRestoreArray(phi  , &phi_ptr  ); CHKERRXX(ierr);
   ierr = VecRestoreArray(kappa, &kappa_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(dx, &dx_ptr); CHKERRXX(ierr);
+
+  ierr = VecDestroy(dx); CHKERRXX(ierr);
 
   ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
