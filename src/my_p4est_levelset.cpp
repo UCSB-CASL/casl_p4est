@@ -455,7 +455,10 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
 
     reinitialize_One_Iteration_Second_Order( local_nodes, dxx0, dyy0, dxx, dyy, p0, p1, phi, limit);
     reinitialize_One_Iteration_Second_Order( layer_nodes, dxx0, dyy0, dxx, dyy, p0, p1, phi, limit);
+
     ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
+    ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
+    ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
 
     /* initiate the communication for the ghost layer */
     ierr = VecGhostUpdateBegin(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -463,12 +466,16 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
 
     /* now phi(Lnp1, Bnp1, Gnp1) */
     compute_derivatives(phi_petsc, dxx_petsc, dyy_petsc);
+
     ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
     ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-
     ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+
     reinitialize_One_Iteration_Second_Order( local_nodes, dxx0, dyy0, dxx, dyy, p0, phi, p2, limit);
     reinitialize_One_Iteration_Second_Order( layer_nodes, dxx0, dyy0, dxx, dyy, p0, phi, p2, limit);
+
+    ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
+    ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
 
     /* update phi */
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
@@ -487,6 +494,9 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
   ierr = VecRestoreArray(dyy0_petsc, &dyy0); CHKERRXX(ierr);
   ierr = VecDestroy(dxx0_petsc); CHKERRXX(ierr);
   ierr = VecDestroy(dyy0_petsc); CHKERRXX(ierr);
+
+  ierr = VecDestroy(dxx_petsc); CHKERRXX(ierr);
+  ierr = VecDestroy(dyy_petsc); CHKERRXX(ierr);
 
   free(p0);
   free(p1);
@@ -534,7 +544,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
   double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
   double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
   /* NOTE: I don't understand why the 1.6 coefficient is needed ... 1 should work, but it doesn't */
-  double diag = 1.5*sqrt(dx*dx + dy*dy);
+  double diag = 1.6*sqrt(dx*dx + dy*dy);
 
   std::vector<double> q0;
   std::vector<double> q1;
@@ -651,6 +661,171 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
         {
           double dif01 = (q2[n] - q1[n])/(diag);
           double dif012 = (dif01 + bc.interfaceValue(x - grad_phi.x*phi[n], y - grad_phi.y*phi[n])) / (2*diag);
+          q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
+        }
+      }
+
+      ierr = PetscLogFlops(48); CHKERRXX(ierr);
+    }
+  }
+  ierr = VecRestoreArray(q_petsc, &q); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditionType bc_type, Vec bc_vec, int order, int band_to_extend ) const
+{
+#ifdef CASL_THROWS
+  if(bc_type==NOINTERFACE) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: no interface defined in the boundary condition ... needs to be dirichlet or neumann.");
+  if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: invalid order. Choose 0, 1 or 2");
+#endif
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
+
+  double *phi;
+  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+
+  /* first compute the phi derivatives */
+  std::vector<double> phi_x(nodes->num_owned_indeps);
+  std::vector<double> phi_y(nodes->num_owned_indeps);
+
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    phi_x[n] = (*ngbd)[n].dx_central(phi);
+    phi_y[n] = (*ngbd)[n].dy_central(phi);
+  }
+
+  InterpolatingFunction interp1(p4est, nodes, ghost, myb, ngbd);
+  InterpolatingFunction interp2(p4est, nodes, ghost, myb, ngbd);
+
+  /* find dx and dy smallest */
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + 3];
+
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+
+
+  splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
+  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
+  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+  /* NOTE: I don't understand why the 1.6 coefficient is needed ... 1 should work, but it doesn't */
+  double diag = 1.6*sqrt(dx*dx + dy*dy);
+
+  std::vector<double> q0;
+  std::vector<double> q1;
+  std::vector<double> q2;
+
+  if(order > 0 || bc_type==DIRICHLET)              q0.resize(nodes->num_owned_indeps);
+  if(order >= 1 || (order==0 && bc_type==NEUMANN)) q1.resize(nodes->num_owned_indeps);
+  if(order >= 2)                                   q2.resize(nodes->num_owned_indeps);
+
+  /* first get the boundary conditions in q0 */
+  InterpolatingFunction interp0(p4est, nodes, ghost, myb, ngbd);
+
+  /* now buffer the interpolation points */
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    Point2 grad_phi;
+    grad_phi.x = -phi_x[n];
+    grad_phi.y = -phi_y[n];
+
+    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
+    {
+      grad_phi /= grad_phi.norm_L2();
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n+nodes->offset_owned_indeps);
+      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+      p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+
+      double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
+      double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+
+      Point2 p_C;
+      p_C.x = int2double_coordinate_transform(node->x) + tree_xmin;
+      p_C.y = int2double_coordinate_transform(node->y) + tree_ymin;
+
+      if(order>0 || bc_type==DIRICHLET)
+        interp0.add_point_to_buffer(n, p_C.x + grad_phi.x*phi[n], p_C.y + grad_phi.y*phi[n]);
+
+      if(order >= 1 || (order==0 && bc_type==NEUMANN))
+      {
+        double x = p_C.x + grad_phi.x * (diag + phi[n]);
+        double y = p_C.y + grad_phi.y * (diag + phi[n]);
+        interp1.add_point_to_buffer(n, x, y);
+      }
+
+      if(order >= 2)
+      {
+        double x = p_C.x + grad_phi.x * (2*diag + phi[n]);
+        double y = p_C.y + grad_phi.y * (2*diag + phi[n]);
+        interp2.add_point_to_buffer(n, x, y);
+      }
+
+      ierr = PetscLogFlops(26); CHKERRXX(ierr);
+    }
+  }
+
+  interp0.set_input_parameters(bc_vec , quadratic);
+  interp1.set_input_parameters(q_petsc, quadratic);
+  interp2.set_input_parameters(q_petsc, quadratic);
+
+  interp0.interpolate(q0.data());
+  interp1.interpolate(q1.data());
+  interp2.interpolate(q2.data());
+
+  /* now compute the extrapolated values */
+  double *q;
+  ierr = VecGetArray(q_petsc, &q); CHKERRXX(ierr);
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    Point2 grad_phi;
+    grad_phi.x = phi_x[n];
+    grad_phi.y = phi_y[n];
+
+    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
+    {
+      if(order==0)
+      {
+        if(bc_type==DIRICHLET)
+          q[n] = q0[n];
+        else /* interface neumann */
+          q[n] = q1[n];
+      }
+
+      else if(order==1)
+      {
+        if(bc_type==DIRICHLET)
+        {
+          double dif01 = (q1[n] - q0[n])/(diag - 0);
+          q[n] = q0[n] + (-phi[n] - 0) * dif01;
+        }
+        else /* interface Neumann */
+        {
+          double dif01 = -q0[n];
+          q[n] = q1[n] + (-phi[n] - diag) * dif01;
+        }
+      }
+
+      else if(order==2)
+      {
+        if(bc_type==DIRICHLET)
+        {
+          double dif01  = (q1[n] - q0[n]) / (diag);
+          double dif12  = (q2[n] - q1[n]) / (diag);
+          double dif012 = (dif12 - dif01) / (2*diag);
+          q[n] = q0[n] + (-phi[n] - 0) * dif01 + (-phi[n] - 0)*(-phi[n] - diag) * dif012;
+        }
+        else /* interface Neumann */
+        {
+          double dif01 = (q2[n] - q1[n])/(diag);
+          double dif012 = (dif01 + q0[n]) / (2*diag);
           q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
         }
       }

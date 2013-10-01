@@ -4,13 +4,13 @@
 extern PetscLogEvent log_my_p4est_node_neighbors_t;
 
 #ifndef CASL_LOG_EVENTS
-#undef PetscLogEventBegin(e, o1, o2, o3, o4)
-#undef PetscLogEventEnd(e, o1, o2, o3, o4)
+#undef PetscLogEventBegin //(e, o1, o2, o3, o4)
+#undef PetscLogEventEnd //(e, o1, o2, o3, o4)
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #endif
 #ifndef CASL_LOG_FLOPS
-#undef PetscLogFlops(n)
+#undef PetscLogFlops //(n)
 #define PetscLogFlops(n) 0
 #endif
 

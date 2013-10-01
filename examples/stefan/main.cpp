@@ -28,7 +28,7 @@
 #include <src/poisson_solver_node_base.h>
 
 #define MIN_LEVEL 3
-#define MAX_LEVEL 5
+#define MAX_LEVEL 9
 
 // logging variables
 PetscLogEvent log_compute_curvature;
@@ -41,12 +41,12 @@ PetscLogEvent log_compute_curvature;
 #endif
 
 double D = 1;
-double tf = 0.1;
-double Tmax = 5;
-double Tmin = 0.5;
+double tf = 1;
+double Tmax = 1;
+double Tmin = 0.7;
 double epsilon_c = .1;
 int save_every_n_iteration = 1;
-int iter_max = 5;
+int iter_max = 1;
 
 using namespace std;
 
@@ -176,6 +176,8 @@ void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Ve
   ierr = VecRestoreArray(kappa, &kappa_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(dx, &dx_ptr); CHKERRXX(ierr);
 
+  ierr = VecDestroy(dx); CHKERRXX(ierr);
+
   ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
@@ -269,7 +271,7 @@ int main (int argc, char* argv[])
   {
     if(p4est->mpirank==0) printf("Iteration %d, time %e\n",tc,t);
 
-    my_p4est_hierarchy_t hierarchy(p4est,ghost);
+    my_p4est_hierarchy_t hierarchy(p4est,ghost,&brick);
     my_p4est_node_neighbors_t ngbd(&hierarchy,nodes);
 
     my_p4est_level_set ls(&brick, p4est, nodes, ghost, &ngbd);

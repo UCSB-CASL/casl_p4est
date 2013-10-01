@@ -20,13 +20,15 @@
 
 #define MAX_LEVEL 8
 
-int band = 30;
+int band = 3;
 int order = 2;
+//BoundaryConditionType bc_interface_type = DIRICHLET;
+BoundaryConditionType bc_interface_type = NEUMANN;
 
 #undef MIN
 #undef MAX
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_reinitialize.h>
+#include <src/my_p4est_levelset.h>
 
 using namespace std;
 
@@ -45,8 +47,8 @@ class BCInterfaceDirichlet : public CF_2 {
 public:
   double operator() (double x, double y) const
   {
-    return exp(SQR(x-1) + SQR(y-1));
-//    return x*x + y*y;
+//    return exp(SQR(x-1) + SQR(y-1));
+    return x*x + y*y;
 //    return x+y;
 //    return 1.;
   }
@@ -63,9 +65,8 @@ public:
         nx /= norm;
         ny /= norm;
 
-//        return exp(x+y) * (nx+ny);
-        return (2*(x-1) *nx + 2*(y-1) *ny) * exp(SQR(x-1) + SQR(y-1));
-//        return 2*x*nx + 2*y*ny;
+//        return (2*(x-1) *nx + 2*(y-1) *ny) * exp(SQR(x-1) + SQR(y-1));
+        return 2*x*nx + 2*y*ny;
 //        return nx + ny;
 //        return 0;
     }
@@ -116,11 +117,15 @@ int main (int argc, char* argv[]){
   // Initialize the level-set function
   Vec phi, f;
   ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est, nodes, &f); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &f); CHKERRXX(ierr);
 
-  double *phi_ptr, *f_ptr;
-  ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-  ierr = VecGetArray(f  , &f_ptr); CHKERRXX(ierr);
+  Vec bc_vec;
+  ierr = VecDuplicate(phi, &bc_vec); CHKERRXX(ierr);
+
+  double *phi_ptr, *f_ptr, *bc_vec_ptr;
+  ierr = VecGetArray(phi   , &phi_ptr   ); CHKERRXX(ierr);
+  ierr = VecGetArray(f     , &f_ptr     ); CHKERRXX(ierr);
+  ierr = VecGetArray(bc_vec, &bc_vec_ptr); CHKERRXX(ierr);
 
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
   {
@@ -135,27 +140,34 @@ int main (int argc, char* argv[]){
     double x = int2double_coordinate_transform(node->x) + tree_xmin;
     double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-    phi_ptr[p4est2petsc_local_numbering(nodes, i)] = circ(x,y);
+    p4est_locidx_t n_petsc = p4est2petsc_local_numbering(nodes, i);
+
+    phi_ptr[n_petsc] = circ(x,y);
+    bc_vec_ptr[n_petsc] = bc_interface_type==DIRICHLET ? bc_interface_dirichlet(x,y) : bc_interface_neumann(x,y) ;
+
     if(circ(x,y)<0)
-      f_ptr[p4est2petsc_local_numbering(nodes, i)] = bc_interface_dirichlet(x,y);
+      f_ptr[n_petsc] = bc_interface_dirichlet(x,y);
     else
-      f_ptr[p4est2petsc_local_numbering(nodes, i)] = 0;
+      f_ptr[n_petsc] = 0;
   }
 
-  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(f  , &f_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi   , &phi_ptr   ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(f     , &f_ptr     ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(bc_vec, &bc_vec_ptr); CHKERRXX(ierr);
 
-  my_p4est_hierarchy_t hierarchy(p4est, ghost);
+  my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
   my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
   my_p4est_level_set ls(&brick, p4est, nodes, ghost, &ngbd);
 
   BoundaryConditions2D bc;
-  bc.setInterfaceType(DIRICHLET);
-  bc.setInterfaceValue(bc_interface_dirichlet);
-//  bc.setInterfaceType(NEUMANN);
-//  bc.setInterfaceValue(bc_interface_neumann);
+  bc.setInterfaceType(bc_interface_type);
+  if(bc_interface_type==DIRICHLET)
+    bc.setInterfaceValue(bc_interface_dirichlet);
+  else
+    bc.setInterfaceValue(bc_interface_neumann);
 
-  ls.extend_Over_Interface(phi, f, bc, order, band);
+//  ls.extend_Over_Interface(phi, f, bc, order, band);
+  ls.extend_Over_Interface(phi, f, bc_interface_type, bc_vec, order, band);
 
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(f  , &f_ptr); CHKERRXX(ierr);
@@ -235,8 +247,9 @@ int main (int argc, char* argv[]){
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(f  , &f_ptr); CHKERRXX(ierr);
 
-  ierr = VecDestroy(phi); CHKERRXX(ierr);
-  ierr = VecDestroy(f  ); CHKERRXX(ierr);
+  ierr = VecDestroy(phi   ); CHKERRXX(ierr);
+  ierr = VecDestroy(f     ); CHKERRXX(ierr);
+  ierr = VecDestroy(bc_vec); CHKERRXX(ierr);
 
   // destroy the p4est and its connectivity structure
   p4est_nodes_destroy (nodes);

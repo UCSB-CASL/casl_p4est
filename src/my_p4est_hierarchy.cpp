@@ -2,18 +2,19 @@
 #include <p4est_communication.h>
 #include <stdexcept>
 #include <petsclog.h>
+#include <sstream>
 
 // logging variable -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
-#undef PetscLogEventBegin(e, o1, o2, o3, o4)
-#undef PetscLogEventEnd(e, o1, o2, o3, o4)
+#undef PetscLogEventBegin //(e, o1, o2, o3, o4)
+#undef PetscLogEventEnd //(e, o1, o2, o3, o4)
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
 extern PetscLogEvent log_my_p4est_hierarchy_t;
 #endif
 #ifndef CASL_LOG_FLOPS
-#undef PetscLogFlops(n)
+#undef PetscLogFlops //(n)
 #define PetscLogFlops(n) 0
 #endif
 
@@ -159,7 +160,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   }
 #endif
 
-  int found_rank, rank;
+  int found_rank, rank=-1;
   p4est_quadrant_t sq;
   P4EST_QUADRANT_INIT(&sq);
   sq.level = P4EST_QMAXLEVEL;
@@ -251,7 +252,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
           remote_matches.push_back(sq);
           rank = -1;
         } else {
-          std::cout << "here" << std::endl;
 #ifdef CASL_THROWS
           std::ostringstream oss;
           oss << "[ERROR]: point = (" << xy[0] << "," << xy[1] << "). found_rank = " << found_rank << " quad = " << it->quad << std::endl <<
