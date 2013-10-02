@@ -30,7 +30,6 @@ class InterpolatingFunction: public CF_2
   Vec Fxx_, Fyy_;
   bool local_derivatives;
 
-  std::vector<int> p4est2petsc;
   Vec input_vec_;
 
   struct point_buffer{
