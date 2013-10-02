@@ -357,12 +357,22 @@ double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tr
 double quadratic_interpolation(p4est_t *interface_location_with_second_order_derivativep4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global);
 
 /*!
- * \brief p4est_VecCreate Creates a normal PETSc parallel vector based on p4est node ordering
- * \param p4est the forest
- * \param nodes the nodes numbering data structure
- * \param v PETSc vector type
+ * \brief VecCreateGhost Creates a ghosted PETSc parallel vector based on p4est node ordering
+ * \param p4est [in]  the forest
+ * \param nodes [in]  the nodes numbering data structure
+ * \param v     [out] PETSc vector type
  */
 PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
+
+/*!
+ * \brief VecCreateGhostBlock Creates a ghosted block PETSc parallel vector
+ * \param p4est      [in]  p4est object
+ * \param nodes      [in]  the nodes object
+ * \param block_size [in]  block size of the vector
+ * \param v          [out] PETSc vector
+ * \return
+ */
+PetscErrorCode VecCreateGhostBlock(p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
 
 /*!
  * \brief p4est2petsc_local_numbering converts p4est local node numbering convention to petsc local numbering convention

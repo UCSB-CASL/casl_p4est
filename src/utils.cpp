@@ -240,6 +240,37 @@ PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
   return ierr;
 }
 
+PetscErrorCode VecCreateGhostBlock(p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = nodes->num_owned_indeps;
+
+  std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
+  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
+
+  // Calculate the global number of points
+  for (int r = 0; r<p4est->mpisize; ++r)
+    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
+
+  PetscInt num_global = global_offset_sum[p4est->mpisize];
+
+  for (p4est_locidx_t i = 0; i<nodes->offset_owned_indeps; ++i)
+  {
+    p4est_indep_t *ni  = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
+  }
+  for (size_t i = nodes->offset_owned_indeps+num_local; i<nodes->indep_nodes.elem_count; ++i)
+  {
+    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    ghost_nodes[i-num_local] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i-num_local]];
+  }
+
+  ierr = VecCreateGhostBlock(p4est->mpicomm, block_size, num_local*block_size, num_global*block_size, ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
 p4est_locidx_t p4est2petsc_local_numbering(p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx)
 {
     PetscErrorCode ierr;
