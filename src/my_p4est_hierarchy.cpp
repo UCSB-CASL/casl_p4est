@@ -1,6 +1,7 @@
 #include "my_p4est_hierarchy.h"
 #include <p4est_communication.h>
 #include <stdexcept>
+#include <sstream>
 #include <petsclog.h>
 
 // logging variable -- defined in src/petsc_logging.cpp

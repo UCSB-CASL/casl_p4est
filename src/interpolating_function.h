@@ -2,6 +2,7 @@
 #define INTERPOLATING_FUNCTION_H
 
 #include <vector>
+#include <map>
 #include <src/utils.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
