@@ -711,6 +711,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
     phi_y[n] = (*ngbd)[n].dy_central(phi);
   }
 
+  InterpolatingFunction interp0(p4est, nodes, ghost, myb, ngbd);
   InterpolatingFunction interp1(p4est, nodes, ghost, myb, ngbd);
   InterpolatingFunction interp2(p4est, nodes, ghost, myb, ngbd);
 
@@ -737,9 +738,6 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
   if(order > 0 || bc_type==DIRICHLET)              q0.resize(nodes->num_owned_indeps);
   if(order >= 1 || (order==0 && bc_type==NEUMANN)) q1.resize(nodes->num_owned_indeps);
   if(order >= 2)                                   q2.resize(nodes->num_owned_indeps);
-
-  /* first get the boundary conditions in q0 */
-  InterpolatingFunction interp0(p4est, nodes, ghost, myb, ngbd);
 
   /* now buffer the interpolation points */
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
