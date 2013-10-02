@@ -60,6 +60,30 @@ public:
      *
      */
   void find_neighbor_cell_of_node( p4est_indep_t *node, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
+
+  /*!
+   * \brief dxx_central compute dxx_central on all nodes and update the ghosts
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size
+   */
+  void dxx_central(const Vec f, Vec fxx) const;
+
+  /*!
+   * \brief dyy_central compute dyy_central on all nodes and update the ghosts
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size
+   */
+  void dyy_central(const Vec f, Vec fyy) const;
+
+  /*!
+   * \brief dxx_and_dyy_central computes both dxx_central and dyy_central at all
+   * points. Theoretically this should have a better chance at hiding communications
+   * than above calls combined.
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fdd PETSc _BLOCK_ vector to store dxx adn dyy results in.
+   * A check is done to ensure it has the same size as f and block size = 2
+   */
+  void dxx_and_dyy_central(const Vec f, Vec fdd) const;
 };
 
 #endif /* !MY_P4EST_NODE_NEIGHBORS_H */
