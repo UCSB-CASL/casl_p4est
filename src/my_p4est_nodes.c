@@ -50,10 +50,6 @@ extern PetscLogEvent log_my_p4est_nodes_new;
 #define PetscLogFlops(n) 0
 #endif
 
-#include <assert.h>
-#undef P4EST_ASSERT
-#define P4EST_ASSERT(a) assert(a)
-
 
 #ifdef P4EST_MPI
 

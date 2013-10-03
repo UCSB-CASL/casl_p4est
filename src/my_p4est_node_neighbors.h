@@ -84,6 +84,20 @@ public:
    * A check is done to ensure it has the same size as f and block size = 2
    */
   void dxx_and_dyy_central(const Vec f, Vec fdd) const;
+
+  /*!
+   * \brief dxx_and_dyy_central computes both dxx_central and dyy_central at all
+   * points. Similar to the function above except it use two regular vector in
+   * place of a single blocked vector. Easier to use but more expensive in terms
+   * of MPI. Also note that fxx and fyy cannot be obtained via VecDuplicate as
+   * this would share the same VecScatter object and avoid simaltanous update.
+   *
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size as f
+   * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size as f
+   */
+  void dxx_and_dyy_central(const Vec f, Vec fxx, Vec fyy) const;
+
 };
 
 #endif /* !MY_P4EST_NODE_NEIGHBORS_H */

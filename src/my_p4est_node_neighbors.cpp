@@ -101,7 +101,7 @@ void my_p4est_node_neighbors_t::init_neighbors()
     }
 
     neighbors[n].nodes = nodes;
-    neighbors[n].node_00 = n + nodes->offset_owned_indeps;
+    neighbors[n].node_00 = n;
 
     /* m0 */
     if(quad_mm!=&root || quad_mp!=&root)
@@ -665,4 +665,91 @@ void my_p4est_node_neighbors_t::dxx_and_dyy_central(const Vec f, Vec fdd) const
 
   // finish the ghost update process to ensure all values are updated
   ierr = VecGhostUpdateEnd(fdd, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+}
+
+void my_p4est_node_neighbors_t::dxx_and_dyy_central(const Vec f, Vec fxx, Vec fyy) const
+{
+  PetscErrorCode ierr;
+
+#ifdef CASL_THROWS
+  {
+    Vec f_l, fxx_l, fyy_l;
+    PetscInt f_size, fxx_size, fyy_size;
+
+    // Get local form
+    ierr = VecGhostGetLocalForm(f,   &f_l  ); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(fxx, &fxx_l); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(fyy, &fyy_l); CHKERRXX(ierr);
+
+    // Get sizes
+    ierr = VecGetSize(f_l,   &f_size);   CHKERRXX(ierr);
+    ierr = VecGetSize(fxx_l, &fxx_size); CHKERRXX(ierr);
+    ierr = VecGetSize(fyy_l, &fyy_size); CHKERRXX(ierr);
+
+    if (f_size != fxx_size){
+      std::ostringstream oss;
+      oss << "[ERROR]: Vectors must be of same size whe computing derivatives"
+          << " f_size = " << f_size << " fxx_size = " << fxx_size << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+
+    if (f_size != fyy_size){
+      std::ostringstream oss;
+      oss << "[ERROR]: Vectors must be of same size whe computing derivatives"
+          << " f_size = " << f_size << " fyy_size = " << fyy_size << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+
+
+    // Restore local form
+    ierr = VecGhostRestoreLocalForm(f,   &f_l  ); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(fxx, &fxx_l); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(fyy, &fyy_l); CHKERRXX(ierr);
+  }
+#endif
+
+  // get access to the iternal data
+  double *f_p, *fxx_p, *fyy_p;
+  ierr = VecGetArray(f,   &f_p  ); CHKERRXX(ierr);
+  ierr = VecGetArray(fxx, &fxx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(fyy, &fyy_p); CHKERRXX(ierr);
+
+  /* obtain the nodes that are ghost points for other processors (i.e. we are
+   * looking for 'boundary' nodes)
+   */
+  std::vector<p4est_locidx_t> boundary_nodes, local_nodes;
+  boundary_nodes.reserve(nodes->num_owned_shared);
+  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
+
+  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; i++){
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
+    ni->pad8 == 0 ? local_nodes.push_back(i) : boundary_nodes.push_back(i);
+  }
+
+  // compute the derivatives on the boundary nodes
+  for (size_t i=0; i<boundary_nodes.size(); i++){
+    fxx_p[boundary_nodes[i]] = neighbors[boundary_nodes[i]].dxx_central(f_p);
+    fyy_p[boundary_nodes[i]] = neighbors[boundary_nodes[i]].dyy_central(f_p);
+  }
+
+  // start updating the ghost values
+  ierr = VecGhostUpdateBegin(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  // compute the derivaties for all internal nodes
+  for (size_t i=0; i<local_nodes.size(); i++){
+    fxx_p[local_nodes[i]] = neighbors[local_nodes[i]].dxx_central(f_p);
+    fyy_p[local_nodes[i]] = neighbors[local_nodes[i]].dyy_central(f_p);
+  }
+
+  // restore internal data
+  ierr = VecRestoreArray(f,   &f_p  ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(fxx, &fxx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(fyy, &fyy_p); CHKERRXX(ierr);
+
+  // finish the ghost update process to ensure all values are updated
+  ierr = VecGhostUpdateEnd(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }

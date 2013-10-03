@@ -30,14 +30,14 @@ public:
   {
     for( p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n )
     {
-      if(  (*ngbd)[n].node_m0_m < nodes->offset_owned_indeps || (*ngbd)[n].node_m0_m >= nodes->offset_owned_indeps+nodes->num_owned_indeps ||
-           (*ngbd)[n].node_m0_p < nodes->offset_owned_indeps || (*ngbd)[n].node_m0_p >= nodes->offset_owned_indeps+nodes->num_owned_indeps ||
-           (*ngbd)[n].node_p0_m < nodes->offset_owned_indeps || (*ngbd)[n].node_p0_m >= nodes->offset_owned_indeps+nodes->num_owned_indeps ||
-           (*ngbd)[n].node_p0_p < nodes->offset_owned_indeps || (*ngbd)[n].node_p0_p >= nodes->offset_owned_indeps+nodes->num_owned_indeps ||
-           (*ngbd)[n].node_0m_m < nodes->offset_owned_indeps || (*ngbd)[n].node_0m_m >= nodes->offset_owned_indeps+nodes->num_owned_indeps ||
-           (*ngbd)[n].node_0m_p < nodes->offset_owned_indeps || (*ngbd)[n].node_0m_p >= nodes->offset_owned_indeps+nodes->num_owned_indeps ||
-           (*ngbd)[n].node_0p_m < nodes->offset_owned_indeps || (*ngbd)[n].node_0p_m >= nodes->offset_owned_indeps+nodes->num_owned_indeps ||
-           (*ngbd)[n].node_0p_p < nodes->offset_owned_indeps || (*ngbd)[n].node_0p_p >= nodes->offset_owned_indeps+nodes->num_owned_indeps )
+      if(  (*ngbd)[n].node_m0_m >= nodes->num_owned_indeps ||
+           (*ngbd)[n].node_m0_p >= nodes->num_owned_indeps ||
+           (*ngbd)[n].node_p0_m >= nodes->num_owned_indeps ||
+           (*ngbd)[n].node_p0_p >= nodes->num_owned_indeps ||
+           (*ngbd)[n].node_0m_m >= nodes->num_owned_indeps ||
+           (*ngbd)[n].node_0m_p >= nodes->num_owned_indeps ||
+           (*ngbd)[n].node_0p_m >= nodes->num_owned_indeps ||
+           (*ngbd)[n].node_0p_p >= nodes->num_owned_indeps )
         layer_nodes.push_back(n);
       else
         local_nodes.push_back(n);

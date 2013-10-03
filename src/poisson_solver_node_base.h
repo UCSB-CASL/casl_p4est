@@ -25,39 +25,19 @@ class PoissonSolverNodeBase
   double dx_min, dy_min, d_min, diag_min;
   BoundaryConditions2D *bc_;
   std::vector<PetscInt> global_node_offset;
+  std::vector<PetscInt> petsc_gloidx;
 
   // PETSc objects
   Mat A;
   MatNullSpace A_null_space;
-  Vec rhs_, phi_, add_, phi_xx, phi_yy;
+  Vec rhs_, phi_, add_, phi_xx_, phi_yy_;
+  bool is_phi_dd_owned;
   KSP ksp;
   PetscErrorCode ierr;
 
-  void init();
   void preallocate_matrix();
   void setup_negative_laplace_matrix();
-  void setup_negative_laplace_rhsvec();
-  inline PetscInt petsc_node_gloidx(p4est_locidx_t p4est_node_locidx)
-  {
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, p4est_node_locidx);
-    int r, petsc_node_locidx;
-
-    if (p4est_node_locidx < nodes->offset_owned_indeps){
-      petsc_node_locidx = ni->p.piggy3.local_num;
-      r = nodes->nonlocal_ranks[p4est_node_locidx];
-
-    } else if (p4est_node_locidx >= nodes->offset_owned_indeps &&
-               p4est_node_locidx <  nodes->offset_owned_indeps + nodes->num_owned_indeps) {
-      petsc_node_locidx = p4est_node_locidx - nodes->offset_owned_indeps;
-      r = p4est->mpirank;
-
-    } else {
-      petsc_node_locidx = ni->p.piggy3.local_num;
-      r = nodes->nonlocal_ranks[p4est_node_locidx - nodes->num_owned_indeps];
-    }
-
-    return (PetscInt)(global_node_offset[r] + petsc_node_locidx);
-  }
+  void setup_negative_laplace_rhsvec();  
 
   // disallow copy ctr and copy assignment
   PoissonSolverNodeBase(const PoissonSolverNodeBase& other);
@@ -69,7 +49,7 @@ public:
 
   // inlines setters
   /* FIXME: shouldn't those be references instead of copies ? I guess Vec is just a pointer ... but still ? */
-  void set_phi(Vec phi);
+  void set_phi(Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
   inline void set_rhs(Vec rhs)                 {rhs_      = rhs;}
   inline void set_diagonal(double add)         {diag_add_ = add; is_matrix_ready = false;}
   inline void set_diagonal(Vec add)            {add_      = add; is_matrix_ready = false;}

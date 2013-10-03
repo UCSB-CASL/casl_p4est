@@ -30,21 +30,7 @@ PoissonSolverNodeBase::PoissonSolverNodeBase(const my_p4est_node_neighbors_t *no
     is_matrix_ready(false), matrix_has_nullspace(false),
     bc_(NULL),
     A(NULL), A_null_space(NULL),
-    rhs_(NULL), phi_(NULL), add_(NULL), phi_xx(NULL), phi_yy(NULL)
-{
-  init();
-}
-
-PoissonSolverNodeBase::~PoissonSolverNodeBase()
-{
-  if (A            != NULL) ierr = MatDestroy(A);                      CHKERRXX(ierr);
-  if (A_null_space != NULL) ierr = MatNullSpaceDestroy (A_null_space); CHKERRXX(ierr);
-  if (ksp          != NULL) ierr = KSPDestroy(ksp);                    CHKERRXX(ierr);
-  if (phi_xx       != NULL) ierr = VecDestroy(phi_xx);                 CHKERRXX(ierr);
-  if (phi_yy       != NULL) ierr = VecDestroy(phi_yy);                 CHKERRXX(ierr);
-}
-
-void PoissonSolverNodeBase::init()
+    rhs_(NULL), phi_(NULL), add_(NULL), phi_xx_(NULL), phi_yy_(NULL)
 {
   /*
    * TODO: We can compute the exact number of enteries in the matrix and just
@@ -100,6 +86,31 @@ void PoissonSolverNodeBase::init()
   d_min = MIN(dx_min, dy_min);
 
   diag_min = sqrt(dx_min*dx_min + dy_min*dy_min);
+
+  // construct petsc global indices
+  petsc_gloidx.resize(nodes->indep_nodes.elem_count);
+
+  // local nodes
+  for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; i++)
+    petsc_gloidx[i] = global_node_offset[p4est->mpirank] + i;
+
+  // ghost nodes
+  p4est_locidx_t ghost_size = nodes->indep_nodes.elem_count - nodes->num_owned_indeps;
+  for (p4est_locidx_t i = 0; i<ghost_size; i++){
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->num_owned_indeps);
+    petsc_gloidx[i+nodes->num_owned_indeps] = global_node_offset[nodes->nonlocal_ranks[i]] + ni->p.piggy3.local_num;
+  }
+}
+
+PoissonSolverNodeBase::~PoissonSolverNodeBase()
+{
+  if (A             != NULL) ierr = MatDestroy(A);                      CHKERRXX(ierr);
+  if (A_null_space  != NULL) ierr = MatNullSpaceDestroy (A_null_space); CHKERRXX(ierr);
+  if (ksp           != NULL) ierr = KSPDestroy(ksp);                    CHKERRXX(ierr);
+  if (is_phi_dd_owned){
+    if (phi_xx_     != NULL) ierr = VecDestroy(phi_xx_);                CHKERRXX(ierr);
+    if (phi_yy_     != NULL) ierr = VecDestroy(phi_yy_);                CHKERRXX(ierr);
+  }
 }
 
 void PoissonSolverNodeBase::preallocate_matrix()
@@ -109,7 +120,6 @@ void PoissonSolverNodeBase::preallocate_matrix()
 
   PetscInt num_owned_global = global_node_offset[p4est->mpisize];
   PetscInt num_owned_local  = (PetscInt)(nodes->num_owned_indeps);
-  PetscInt num_owned_offset = (PetscInt)(nodes->offset_owned_indeps);
 
   if (A != NULL)
     ierr = MatDestroy(A); CHKERRXX(ierr);
@@ -118,7 +128,7 @@ void PoissonSolverNodeBase::preallocate_matrix()
   ierr = MatCreate(p4est->mpicomm, &A); CHKERRXX(ierr);
   ierr = MatSetType(A, MATMPIAIJ); CHKERRXX(ierr);
   ierr = MatSetSizes(A, num_owned_local , num_owned_local,
-                        num_owned_global, num_owned_global); CHKERRXX(ierr);
+                     num_owned_global, num_owned_global); CHKERRXX(ierr);
   ierr = MatSetFromOptions(A); CHKERRXX(ierr);
 
   /* preallocate space for matrix
@@ -161,24 +171,24 @@ void PoissonSolverNodeBase::preallocate_matrix()
       continue;
 
     if (qnnn.d_m0_p != 0) // node_m0_m will enter discretization
-      qnnn.node_m0_m >= num_owned_offset && qnnn.node_m0_m < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+      qnnn.node_m0_m < num_owned_local ? d_nnz[n]++ : o_nnz[n]++;
     if (qnnn.d_m0_m != 0) // node_m0_p will enter discretization
-      qnnn.node_m0_p >= num_owned_offset && qnnn.node_m0_p < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+      qnnn.node_m0_p < num_owned_local ? d_nnz[n]++ : o_nnz[n]++;
 
     if (qnnn.d_p0_p != 0) // node_p0_m will enter discretization
-      qnnn.node_p0_m >= num_owned_offset && qnnn.node_p0_m < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+      qnnn.node_p0_m < num_owned_local ? d_nnz[n]++ : o_nnz[n]++;
     if (qnnn.d_p0_m != 0) // node_p0_p will enter discretization
-      qnnn.node_p0_p >= num_owned_offset && qnnn.node_p0_p < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+      qnnn.node_p0_p < num_owned_local ? d_nnz[n]++ : o_nnz[n]++;
 
     if (qnnn.d_0m_p != 0) // node_0m_m will enter discretization
-      qnnn.node_0m_m >= num_owned_offset && qnnn.node_0m_m < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+      qnnn.node_0m_m < num_owned_local ? d_nnz[n]++ : o_nnz[n]++;
     if (qnnn.d_0m_m != 0) // node_0m_p will enter discretization
-      qnnn.node_0m_p >= num_owned_offset && qnnn.node_0m_p < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+      qnnn.node_0m_p < num_owned_local ? d_nnz[n]++ : o_nnz[n]++;
 
     if (qnnn.d_0p_p != 0) // node_0p_m will enter discretization
-      qnnn.node_0p_m >= num_owned_offset && qnnn.node_0p_m < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+      qnnn.node_0p_m < num_owned_local ? d_nnz[n]++ : o_nnz[n]++;
     if (qnnn.d_0p_m != 0) // node_0p_p will enter discretization
-      qnnn.node_0p_p >= num_owned_offset && qnnn.node_0p_p < num_owned_local + num_owned_offset ? d_nnz[n]++ : o_nnz[n]++;
+      qnnn.node_0p_p < num_owned_local ? d_nnz[n]++ : o_nnz[n]++;
   }
 
   ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
@@ -291,15 +301,15 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
   double *v2q = p4est->connectivity->vertices;
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p;
-  ierr = VecGetArray(phi_,   &phi_p   ); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_xx, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy, &phi_yy_p); CHKERRXX(ierr);
-  ierr = VecGetArray(add_,   &add_p   ); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
+  ierr = VecGetArray(add_,    &add_p   ); CHKERRXX(ierr);
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
   {
     // tree information
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n+nodes->offset_owned_indeps);
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     p4est_topidx_t tree_it = ni->p.piggy3.which_tree;
 
     double tree_xmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 0];
@@ -316,6 +326,9 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 
     double dL = qnnn.d_m0;double dR = qnnn.d_p0;double dB = qnnn.d_0m;double dT = qnnn.d_0p;
 
+    /*
+     * NOTE: All nodes are in PETSc' local numbering
+     */
     double dLB=qnnn.d_m0_m; double dLT=qnnn.d_m0_p; p4est_locidx_t node_LB=qnnn.node_m0_m; p4est_locidx_t node_LT=qnnn.node_m0_p;
     double dRB=qnnn.d_p0_m; double dRT=qnnn.d_p0_p; p4est_locidx_t node_RB=qnnn.node_p0_m; p4est_locidx_t node_RT=qnnn.node_p0_p;
     double dBL=qnnn.d_0m_m; double dBR=qnnn.d_0m_p; p4est_locidx_t node_BL=qnnn.node_0m_m; p4est_locidx_t node_BR=qnnn.node_0m_p;
@@ -347,7 +360,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
      * much better performance ... to be tested!
      */
 
-    PetscInt node_C_g = petsc_node_gloidx(qnnn.node_00);
+    PetscInt node_C_g = petsc_gloidx[qnnn.node_00];
 
     if(is_node_Wall(p4est, ni))
     {
@@ -361,7 +374,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
       {
         if (is_node_xpWall(p4est, ni)){
           p4est_locidx_t n_L = (dLB == 0) ? node_LB:node_LT;
-          PetscInt node_L_g  = petsc_node_gloidx(n_L);
+          PetscInt node_L_g  = petsc_gloidx[n_L];
 
           ierr = MatSetValue(A, node_C_g, node_L_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_C_g, node_C_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
@@ -371,7 +384,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 
         if (is_node_xmWall(p4est, ni)){
           p4est_locidx_t n_R = (dRB == 0) ? node_RB:node_RT;
-          PetscInt node_R_g  = petsc_node_gloidx(n_R);
+          PetscInt node_R_g  = petsc_gloidx[n_R];
 
           ierr = MatSetValue(A, node_C_g, node_R_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_C_g, node_C_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
@@ -381,7 +394,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 
         if (is_node_ypWall(p4est, ni)){
           p4est_locidx_t n_B = (dBR == 0) ? node_BR:node_BL;
-          PetscInt node_B_g  = petsc_node_gloidx(n_B);
+          PetscInt node_B_g  = petsc_gloidx[n_B];
 
           ierr = MatSetValue(A, node_C_g, node_B_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_C_g, node_C_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
@@ -390,7 +403,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
         }
         if (is_node_ymWall(p4est, ni)){
           p4est_locidx_t n_T = (dTR == 0) ? node_TR:node_TL;
-          PetscInt node_T_g  = petsc_node_gloidx(n_T);
+          PetscInt node_T_g  = petsc_gloidx[n_T];
 
           ierr = MatSetValue(A, node_C_g, node_T_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_C_g, node_C_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
@@ -415,6 +428,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
         continue;
       }
 
+      // TODO: This needs optimization
       double Pmhmh = phi_interp(x_C-dx_min/2.,y_C-dy_min/2.);
       double Pmhph = phi_interp(x_C-dx_min/2.,y_C+dy_min/2.);
       double Pphmh = phi_interp(x_C+dx_min/2.,y_C-dy_min/2.);
@@ -433,7 +447,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
       // then finite difference method
       if ( (bc_->interfaceType() == DIRICHLET && phi_C<0.) ||
            (bc_->interfaceType() == NEUMANN   && !is_ngbd_crossed_neumann ) ||
-           bc_->interfaceType() == NOINTERFACE)
+            bc_->interfaceType() == NOINTERFACE)
       {
         double phixx_C = phi_xx_p[n];
         double phiyy_C = phi_yy_p[n];
@@ -511,29 +525,29 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
         //---------------------------------------------------------------------
         ierr = MatSetValue(A, node_C_g, node_C_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
         if(!is_interface_L) {
-          PetscInt node_LT_g = petsc_node_gloidx(node_LT);
-          PetscInt node_LB_g = petsc_node_gloidx(node_LB);
+          PetscInt node_LT_g = petsc_gloidx[node_LT];
+          PetscInt node_LB_g = petsc_gloidx[node_LB];
 
           if (dLB != 0) ierr = MatSetValue(A, node_C_g, node_LT_g, coeff_L*dLB/(dLB+dLT), ADD_VALUES); CHKERRXX(ierr);
           if (dLT != 0) ierr = MatSetValue(A, node_C_g, node_LB_g, coeff_L*dLT/(dLB+dLT), ADD_VALUES); CHKERRXX(ierr);
         }
         if(!is_interface_R) {
-          PetscInt node_RT_g = petsc_node_gloidx(node_RT);
-          PetscInt node_RB_g = petsc_node_gloidx(node_RB);
+          PetscInt node_RT_g = petsc_gloidx[node_RT];
+          PetscInt node_RB_g = petsc_gloidx[node_RB];
 
           if (dRB != 0) ierr = MatSetValue(A, node_C_g, node_RT_g, coeff_R*dRB/(dRB+dRT), ADD_VALUES); CHKERRXX(ierr);
           if (dRT != 0) ierr = MatSetValue(A, node_C_g, node_RB_g, coeff_R*dRT/(dRB+dRT), ADD_VALUES); CHKERRXX(ierr);
         }
         if(!is_interface_B) {
-          PetscInt node_BR_g = petsc_node_gloidx(node_BR);
-          PetscInt node_BL_g = petsc_node_gloidx(node_BL);
+          PetscInt node_BR_g = petsc_gloidx[node_BR];
+          PetscInt node_BL_g = petsc_gloidx[node_BL];
 
           if (dBL != 0) ierr = MatSetValue(A, node_C_g, node_BR_g, coeff_B*dBL/(dBL+dBR), ADD_VALUES); CHKERRXX(ierr);
           if (dBR != 0) ierr = MatSetValue(A, node_C_g, node_BL_g, coeff_B*dBR/(dBL+dBR), ADD_VALUES); CHKERRXX(ierr);
         }
         if(!is_interface_T) {
-          PetscInt node_TR_g = petsc_node_gloidx(node_TR);
-          PetscInt node_TL_g = petsc_node_gloidx(node_TL);
+          PetscInt node_TR_g = petsc_gloidx[node_TR];
+          PetscInt node_TL_g = petsc_gloidx[node_TL];
 
           if (dTL != 0) ierr = MatSetValue(A, node_C_g, node_TR_g, coeff_T*dTL/(dTL+dTR), ADD_VALUES); CHKERRXX(ierr);
           if (dTR != 0) ierr = MatSetValue(A, node_C_g, node_TL_g, coeff_T*dTR/(dTL+dTR), ADD_VALUES); CHKERRXX(ierr);
@@ -575,10 +589,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
            * 3 -> node_pp
            */
 
-          p4est_locidx_t node_L = nodes->local_nodes[P4EST_CHILDREN*quad_mm_idx + 2];
-          p4est_locidx_t node_B = nodes->local_nodes[P4EST_CHILDREN*quad_mm_idx + 1];
-          p4est_locidx_t node_R = nodes->local_nodes[P4EST_CHILDREN*quad_pp_idx + 1];
-          p4est_locidx_t node_T = nodes->local_nodes[P4EST_CHILDREN*quad_pp_idx + 2];
+          p4est_locidx_t node_L = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mm_idx + 2]];
+          p4est_locidx_t node_B = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mm_idx + 1]];
+          p4est_locidx_t node_R = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_pp_idx + 1]];
+          p4est_locidx_t node_T = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_pp_idx + 2]];
 
           double fxx,fyy;
           fxx = phi_xx_p[n];
@@ -606,10 +620,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           UB/=U;
           UT/=U;
 
-          PetscInt node_R_g = petsc_node_gloidx(node_R);
-          PetscInt node_L_g = petsc_node_gloidx(node_L);
-          PetscInt node_T_g = petsc_node_gloidx(node_T);
-          PetscInt node_B_g = petsc_node_gloidx(node_B);
+          PetscInt node_R_g = petsc_gloidx[node_R];
+          PetscInt node_L_g = petsc_gloidx[node_L];
+          PetscInt node_T_g = petsc_gloidx[node_T];
+          PetscInt node_B_g = petsc_gloidx[node_B];
 
           ierr = MatSetValue(A, node_C_g, node_C_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
           if (ABS(UR) > EPS) ierr = MatSetValue(A, node_C_g, node_R_g, UR,  ADD_VALUES); CHKERRXX(ierr);
@@ -632,10 +646,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
   ierr = MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
 
   // restore pointers
-  ierr = VecRestoreArray(phi_,   &phi_p   ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_xx, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_yy, &phi_yy_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(add_,   &add_p   ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(add_,    &add_p   ); CHKERRXX(ierr);
 
   // check for null space
   if (matrix_has_nullspace)
@@ -659,16 +673,16 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
   double *v2q = p4est->connectivity->vertices;
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *rhs_p, *add_p;
-  ierr = VecGetArray(phi_,   &phi_p   ); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_xx, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy, &phi_yy_p); CHKERRXX(ierr);
-  ierr = VecGetArray(rhs_,   &rhs_p   ); CHKERRXX(ierr);
-  ierr = VecGetArray(add_,   &add_p   ); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
+  ierr = VecGetArray(rhs_,    &rhs_p   ); CHKERRXX(ierr);
+  ierr = VecGetArray(add_,    &add_p   ); CHKERRXX(ierr);
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
   {
     // tree information
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n+nodes->offset_owned_indeps);
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     p4est_topidx_t tree_it = ni->p.piggy3.which_tree;
 
     double tree_xmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 0];
@@ -893,11 +907,11 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
   }
 
   // restore the pointers
-  ierr = VecRestoreArray(phi_,   &phi_p   ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_xx, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_yy, &phi_yy_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(add_,   &add_p   ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(rhs_,   &phi_p   ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(add_,    &add_p   ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(rhs_,    &phi_p   ); CHKERRXX(ierr);
 
   if (matrix_has_nullspace)
     ierr = MatNullSpaceRemove(A_null_space, rhs_, NULL); CHKERRXX(ierr);
@@ -905,44 +919,39 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void PoissonSolverNodeBase::set_phi(Vec phi)
+void PoissonSolverNodeBase::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
 {
   phi_ = phi;
 
-  // Allocate memory for second derivaties
-  ierr = VecCreateGhost(p4est, nodes, &phi_xx); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi_xx, &phi_yy); CHKERRXX(ierr);
+  if (phi_xx != NULL && phi_yy != NULL){
+    phi_xx_ = phi_xx;
+    phi_yy_ = phi_yy;
 
-  // Access internal data
-  double *phi_p, *phi_xx_p, *phi_yy_p;
-  ierr = VecGetArray(phi_,   &phi_p   ); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_xx, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy, &phi_yy_p); CHKERRXX(ierr);
+    is_phi_dd_owned = false;
+  } else {
 
-  // Compute phi_xx on local nodes
-  for (p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    phi_xx_p[n] = (*node_neighbors_)[n].dxx_central(phi_p);
+    /*
+     * We have two options here:
+     * 1) Either compute phi_xx and phi_yy using the function that treats them
+     * as two regular functions
+     * or,
+     * 2) Use the function that uses one block vector and then copy stuff into
+     * these two vectors
+     *
+     * Case 1 requires less communications but case two inccuures additional copies
+     * Which one is faster? I don't know!
+     *
+     * TODO: Going with case 1 for the moment -- to be tested
+     */
 
-  // Send ghost values for phi_xx
-  ierr = VecGhostUpdateBegin(phi_xx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    // Allocate memory for second derivaties
+    ierr = VecCreateGhost(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
+    ierr = VecCreateGhost(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
 
-  // Compute phi_yy on local nodes
-  for (p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    phi_yy_p[n] = (*node_neighbors_)[n].dyy_central(phi_p);
+    node_neighbors_->dxx_and_dyy_central(phi_, phi_xx_, phi_yy_);
+    is_phi_dd_owned = true;
+  }
 
-  // receive the ghost values for phi_xx
-  ierr = VecGhostUpdateEnd(phi_xx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_xx, &phi_xx_p); CHKERRXX(ierr);
-
-  // Send ghost values for Fyy and receive them
-  ierr = VecGhostUpdateBegin(phi_yy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(phi_yy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // restore Fyy array
-  ierr = VecRestoreArray(phi_yy, &phi_yy_p); CHKERRXX(ierr);
-
-  // restore input_vec_ array
-  ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
-
-  phi_interp.set_input_parameters(phi_, quadratic_non_oscillatory, phi_xx, phi_yy);
+  // set the interpolating function parameters
+  phi_interp.set_input_parameters(phi_, quadratic_non_oscillatory, phi_xx_, phi_yy_);
 }

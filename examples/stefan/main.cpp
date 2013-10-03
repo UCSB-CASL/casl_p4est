@@ -46,7 +46,7 @@ double Tmax = 1;
 double Tmin = 0.7;
 double epsilon_c = .1;
 int save_every_n_iteration = 1;
-int iter_max = 1;
+int iter_max = 300;
 
 using namespace std;
 
@@ -258,10 +258,8 @@ int main (int argc, char* argv[])
     double x = int2double_coordinate_transform(node->x) + tree_xmin;
     double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-    int n_petsc = p4est2petsc_local_numbering(nodes, i);
-
-    phi_ptr[ n_petsc ] = circ(x,y);
-    Tn_ptr [ n_petsc ] = Tmax;
+    phi_ptr[i] = circ(x,y);
+    Tn_ptr [i] = Tmax;
   }
 
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
