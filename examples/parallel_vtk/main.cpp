@@ -30,6 +30,60 @@ private:
   double x0, y0, r;
 };
 
+PetscErrorCode VecCreateGhostP4estNumbering(p4est_t *p4est, p4est_nodes_t *nodes, Vec *v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = nodes->num_owned_indeps;
+
+  std::vector<PetscInt> indices(nodes->indep_nodes.elem_count, 0);
+  std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
+  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
+
+  // Calculate the global number of points
+  for (int r = 0; r<p4est->mpisize; ++r)
+    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
+
+  PetscInt num_global = global_offset_sum[p4est->mpisize];
+
+  /* compute the global index of all nodes */
+  // First patch of ghost nodes
+  for (p4est_locidx_t i = 0; i<nodes->offset_owned_indeps; ++i)
+  {
+    p4est_indep_t *ni  = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    indices[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
+    ghost_nodes[i] = indices[i];
+  }
+  // local nodes
+  for (p4est_locidx_t i = nodes->offset_owned_indeps; i<nodes->offset_owned_indeps+num_local; ++i)
+  {
+    p4est_indep_t *ni  = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    indices[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[p4est->mpirank];
+  }
+  // second patch of ghost nodes
+  for (size_t i = nodes->offset_owned_indeps+num_local; i<nodes->indep_nodes.elem_count; ++i)
+  {
+    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    indices[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i-num_local]];
+    ghost_nodes[i - num_local] = indices[i];
+  }
+
+  // Create the mapping object
+  ISLocalToGlobalMapping mapping;
+  ISLocalToGlobalMappingCreate(p4est->mpicomm, indices.size(), (const PetscInt*)&indices[0], PETSC_COPY_VALUES, &mapping); CHKERRQ(ierr);
+
+  // create the ghosted object
+  ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global, ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
+
+  // Set the vector local2global mapping
+  ierr = VecSetLocalToGlobalMapping(*v, mapping); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  // delete the mapping
+  ierr = ISLocalToGlobalMappingDestroy(mapping); CHKERRQ(ierr);
+
+  return ierr;
+}
+
 int main (int argc, char* argv[]){
 
   mpi_context_t mpi_context, *mpi = &mpi_context;
@@ -39,7 +93,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   circle circ(1, 1, .3);
-  splitting_criteria_cf_t data(0, 3, &circ, 1);
+  splitting_criteria_cf_t data(0, 10, &circ, 1);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -54,16 +108,8 @@ int main (int argc, char* argv[]){
   w2.start("connectivity");
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-  connectivity = my_p4est_brick_new(5, 3, &brick);
+  connectivity = my_p4est_brick_new(2, 2, &brick);
   w2.stop(); w2.read_duration();
-
-  for (int i=0; i<brick.nxytrees[1]; i++){
-    for (int j=0; j<brick.nxytrees[0]; j++)
-      cout << brick.nxy_to_treeid[i*brick.nxytrees[0]+j] << " ";
-    cout << endl;
-  }
-
-  return 0;
 
   // Now create the forest
   w2.start("p4est generation");
@@ -101,6 +147,7 @@ int main (int argc, char* argv[]){
   w2.start("creating Ghosted vector");
   Vec phi_global;
   ierr = VecCreateGhost(p4est, nodes, &phi_global); CHKERRXX(ierr);
+
   w2.stop(); w2.read_duration();
 
   /* Computing parallel levelset
@@ -134,7 +181,6 @@ int main (int argc, char* argv[]){
    * ghost points. This is done for the second method shown below.
    */
   w2.start("setting phi values");
-  circ.update(1.234, 1.4,.34);
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
   {
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
@@ -148,7 +194,7 @@ int main (int argc, char* argv[]){
     double x = int2double_coordinate_transform(node->x) + tree_xmin;
     double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-    phi[p4est2petsc_local_numbering(nodes,i)] = circ(x,y);
+    phi[i] = circ(x,y);
   }
   w2.stop(); w2.read_duration();
 
@@ -213,7 +259,7 @@ int main (int argc, char* argv[]){
 
   // done. lets write both levelset. they MUST be identical when you open them.
   std::ostringstream oss; oss << "partition_" << p4est->mpisize;
-  my_p4est_vtk_write_all(p4est, nodes, ghost,
+  my_p4est_vtk_write_all(p4est, nodes, ghost    ,
                          P4EST_TRUE, P4EST_TRUE,
                          2, 0, oss.str().c_str(),
                          VTK_POINT_DATA, "phi", phi,

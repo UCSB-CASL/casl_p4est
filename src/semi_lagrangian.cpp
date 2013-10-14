@@ -96,11 +96,8 @@ double SemiLagrangian::advect(const CF_2 &vx, const CF_2 &vy, Vec &phi){
   // Local vectors will be used normally (serial).
   // Non-local vectors will need sent to non-local processors in order to compute data
 
-  p4est_locidx_t ni_begin = 0;
-  p4est_locidx_t ni_end   = nodes_->num_owned_indeps;
-
-  for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
-    p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, ni+nodes_->offset_owned_indeps);
+  for (p4est_locidx_t ni = 0; ni < nodes_->num_owned_indeps; ++ni){ //Loop through all nodes of a single processor
+    p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, ni);
     p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
 
     p4est_topidx_t tr_mm = t2v[P4EST_CHILDREN*tree_idx + 0];  //mm vertex of tree
@@ -351,7 +348,7 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, Vec &phi, double 
   double *f;
   ierr = VecGetArray(phi_np1, &f); CHKERRXX(ierr);
   for(p4est_locidx_t n=0; n<nodes_np1->num_owned_indeps; ++n)
-    f[n] = phi_tmp[n+nodes_np1->offset_owned_indeps];
+    f[n] = phi_tmp[n];
   ierr = VecRestoreArray(phi_np1, &f); CHKERRXX(ierr);
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
@@ -418,7 +415,7 @@ void SemiLagrangian::update_p4est_intermediate_trees_no_ghost(const CF_2& vx, co
   double *f;
   ierr = VecGetArray(phi_np1, &f); CHKERRXX(ierr);
   for(p4est_locidx_t n=0; n<nodes_np1->num_owned_indeps; ++n)
-    f[n] = phi_tmp[n+nodes_np1->offset_owned_indeps];
+    f[n] = phi_tmp[n];
   ierr = VecRestoreArray(phi_np1, &f); CHKERRXX(ierr);
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
@@ -490,7 +487,7 @@ double SemiLagrangian::update_p4est_intermediate_trees_with_ghost(const CF_2& vx
   double *f;
   ierr = VecGetArray(phi_np1, &f); CHKERRXX(ierr);
   for(p4est_locidx_t n=0; n<nodes_np1->num_owned_indeps; ++n)
-    f[n] = phi_tmp[n+nodes_np1->offset_owned_indeps];
+    f[n] = phi_tmp[n];
   ierr = VecRestoreArray(phi_np1, &f); CHKERRXX(ierr);
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
@@ -537,7 +534,7 @@ void SemiLagrangian::update_p4est(Vec &phi, my_p4est_node_neighbors_t& qnnn){
   p4est_locidx_t ni_begin = 0;
   p4est_locidx_t ni_end   = nodes_np1->num_owned_indeps;
   for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
-    p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni+nodes_np1->offset_owned_indeps);
+    p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni);
     p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
 
 

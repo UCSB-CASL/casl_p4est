@@ -65,7 +65,7 @@ void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4e
       // Neumann boundary condition on the walls
       //---------------------------------------------------------------------
       /* first unclamp the node */
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n+nodes->offset_owned_indeps);
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
       p4est_indep_t unclamped_node = *node;
       p4est_node_unclamp((p4est_quadrant_t*)&unclamped_node);
 
@@ -187,7 +187,7 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
       // Neumann boundary condition on the walls
       //---------------------------------------------------------------------
       /* first unclamp the node */
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n+nodes->offset_owned_indeps);
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
       p4est_indep_t unclamped_node = *node;
       p4est_node_unclamp((p4est_quadrant_t*)&unclamped_node);
 
@@ -384,37 +384,12 @@ void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_pe
   free(p2);
 }
 
-
-
 void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_compute_derivatives, phi_petsc, dxx_petsc, dyy_petsc, 0); CHKERRXX(ierr);
 
-  /* first compute dx and dy */
-  double *dxx, *dyy;
-  ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
-  ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-
-  double *phi;
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    dxx[n] = (*ngbd)[n].dxx_central(phi);
-
-  ierr = VecGhostUpdateBegin(dxx_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    dyy[n] = (*ngbd)[n].dyy_central(phi);
-
-  ierr = VecGhostUpdateEnd  (dxx_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = VecGhostUpdateBegin(dyy_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (dyy_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
-  ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
+  ngbd->dxx_and_dyy_central(phi_petsc, dxx_petsc, dyy_petsc);
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives, phi_petsc, dxx_petsc, dyy_petsc, 0); CHKERRXX(ierr);
 }
@@ -441,13 +416,13 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
 
   Vec dxx0_petsc, dyy0_petsc;
   double *dxx0, *dyy0;
-  ierr = VecDuplicate( phi_petsc, &dxx0_petsc); CHKERRXX(ierr);
-  ierr = VecDuplicate( phi_petsc, &dyy0_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est, nodes, &dxx0_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est, nodes, &dyy0_petsc); CHKERRXX(ierr);
 
   Vec dxx_petsc, dyy_petsc;
   double *dxx, *dyy;
-  ierr = VecDuplicate( phi_petsc, &dxx_petsc); CHKERRXX(ierr);
-  ierr = VecDuplicate( phi_petsc, &dyy_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est, nodes, &dxx_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est, nodes, &dyy_petsc); CHKERRXX(ierr);
 
   compute_derivatives(phi_petsc, dxx0_petsc, dyy0_petsc);
 
@@ -576,7 +551,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
     if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n+nodes->offset_owned_indeps);
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
       p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
       p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
@@ -627,7 +602,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
     if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n+nodes->offset_owned_indeps);
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
       p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
       p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
@@ -749,7 +724,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
     if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n+nodes->offset_owned_indeps);
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
       p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
       p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
@@ -889,7 +864,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
     if(fabs(phi[n])<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n+nodes->offset_owned_indeps);
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
       p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
       p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];

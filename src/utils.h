@@ -374,14 +374,6 @@ PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
  */
 PetscErrorCode VecCreateGhostBlock(p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
 
-/*!
- * \brief p4est2petsc_local_numbering converts p4est local node numbering convention to petsc local numbering convention
- * \param nodes the nodes numbering structure
- * \param p4est_node_locidx local numbering in p4est convention
- * \return local numbering in petsc convention
- */
-p4est_locidx_t p4est2petsc_local_numbering(p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx);
-
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
 }

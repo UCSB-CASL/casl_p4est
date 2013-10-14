@@ -610,27 +610,15 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes,
 
 #ifdef P4EST_VTK_ASCII
     for (il = 0; il < Ntotal; ++il) {
-      int petsc_idx;
-      if (il<nodes->offset_owned_indeps)
-        petsc_idx = il + nodes->num_owned_indeps;
-      else if (il >= nodes->offset_owned_indeps && il <nodes->num_owned_indeps+nodes->offset_owned_indeps)
-        petsc_idx = il - nodes->offset_owned_indeps;
-      else
-        petsc_idx = il;
-
 #ifdef P4EST_VTK_DOUBLES
-      fprintf (vtufile, "     %24.16e\n", values[i][petsc_idx]);
+      fprintf (vtufile, "     %24.16e\n", values[i][il]);
 #else
-      fprintf (vtufile, "          %16.8e\n", values[i][petsc_idx]);
+      fprintf (vtufile, "          %16.8e\n", values[i][il]);
 #endif
     }
 #else
 
-    for (il = 0; il <nodes->offset_owned_indeps; ++il)
-      float_data[il] = (P4EST_VTK_FLOAT_TYPE) values[i][nodes->num_owned_indeps + il];
-    for (il = 0; il<nodes->num_owned_indeps; ++il)
-      float_data[il + nodes->offset_owned_indeps] = (P4EST_VTK_FLOAT_TYPE) values[i][il];
-    for (il = nodes->num_owned_indeps+nodes->offset_owned_indeps; il<Ntotal; ++il)
+    for (il = 0; il<nodes->indep_nodes.elem_count; ++il)
       float_data[il] = (P4EST_VTK_FLOAT_TYPE) values[i][il];
 
     fprintf (vtufile, "          ");

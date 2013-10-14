@@ -76,7 +76,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode ierr;
 
   circle circ(0.5, 0.5, .3);
-  splitting_criteria_cf_t data = {&circ, 8, 0, 1.3};
+  splitting_criteria_cf_t data(0, 8, &circ, 1.3);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -118,26 +118,11 @@ int main (int argc, char* argv[]){
 
   // Initialize the level-set function
   Vec phi;
-  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);  
+  sample_cf_on_nodes(p4est, nodes, circ, phi);
 
   double *phi_ptr;
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-
-  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
-  {
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-    p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-    double tree_xmin = connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = connectivity->vertices[3*v_mm + 1];
-
-    double x = int2double_coordinate_transform(node->x) + tree_xmin;
-    double y = int2double_coordinate_transform(node->y) + tree_ymin;
-
-    phi_ptr[p4est2petsc_local_numbering(nodes, i)] = circ(x,y);
-  }
 
   // write the intial data to disk
   my_p4est_vtk_write_all(p4est, nodes, ghost,
@@ -151,11 +136,12 @@ int main (int argc, char* argv[]){
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
   // loop over time
-  double tf = 5;
+  double tf = 10;
   int tc = 0;
-  int save = 10;
+  int save = 1;
   vector<double> vx, vy;
-  for (double t=0, dt=0; t<tf; t+=dt, tc++){
+  double dt = 0.1;
+  for (double t=0; t<tf; t+=dt, tc++){
     if (tc % save == 0){
       // Save stuff
       std::ostringstream oss; oss << "p_" << p4est->mpisize << "_"
@@ -178,8 +164,8 @@ int main (int argc, char* argv[]){
         double x = int2double_coordinate_transform(node->x) + tree_xmin;
         double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-        vx[p4est2petsc_local_numbering(nodes,i)] = vx_vortex(x,y);
-        vy[p4est2petsc_local_numbering(nodes,i)] = vy_vortex(x,y);
+        vx[i] = vx_vortex(x,y);
+        vy[i] = vy_vortex(x,y);
       }
 
       ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
@@ -195,7 +181,7 @@ int main (int argc, char* argv[]){
 
     // advect the function in time and get the computed time-step
     w2.start("advecting");
-    dt = sl.advect(vx_vortex, vy_vortex, phi);
+    sl.update_p4est_intermediate_trees_no_ghost(vx_vortex, vy_vortex, phi, dt);
     w2.stop(); w2.read_duration();
   }
 

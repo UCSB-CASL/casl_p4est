@@ -42,7 +42,7 @@ extern              "C"
  *                      It does not consider any node as hanging.
  *                      See p4est_nodes.h for details.
  */
-p4est_nodes_t      *my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost);
+p4est_nodes_t* my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost);
 
 #ifdef __cplusplus
 #if 0

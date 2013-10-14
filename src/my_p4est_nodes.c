@@ -291,7 +291,7 @@ p4est_shared_offsets (sc_array_t * inda)
 
 #endif
 
-p4est_nodes_t      *
+p4est_nodes_t*
 my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
 {
   PetscErrorCode ierr;
@@ -366,7 +366,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   /* Compute number of local quadrant corners. */
   nodes->num_local_quadrants = p4est->local_num_quadrants;
   num_local_nodes =             /* same type */
-      P4EST_CHILDREN * nodes->num_local_quadrants;
+                                P4EST_CHILDREN * nodes->num_local_quadrants;
   if (ghost != NULL)
     num_local_nodes += P4EST_CHILDREN*ghost->ghosts.elem_count;
 
@@ -500,8 +500,9 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   sender_ranks = P4EST_ALLOC (int, num_procs);
   sc_notify ((int *) receiver_ranks.array, num_receivers,
              sender_ranks, &num_senders, p4est->mpicomm);
-  P4EST_LDEBUGF ("Node query receivers %d senders %d\n",
-                 num_receivers, num_senders);
+
+  //  P4EST_LDEBUGF ("Node query receivers %d senders %d\n",
+  //                 num_receivers, num_senders);
 
   /* Send queries to the owners of the independent nodes that I share. */
   for (l = 0; l < num_receivers; ++l) {
@@ -573,9 +574,11 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
       }
     }
   }
-  P4EST_LDEBUGF ("Indeps %lld owned(pre) %lld off %lld added %lld\n",
-                 (long long) num_indep_nodes, (long long) num_owned_nodes,
-                 (long long) num_offproc_nodes, (long long) num_added_nodes);
+
+  //  P4EST_LDEBUGF ("Indeps %lld owned(pre) %lld off %lld added %lld\n",
+  //                 (long long) num_indep_nodes, (long long) num_owned_nodes,
+  //                 (long long) num_offproc_nodes, (long long) num_added_nodes);
+
   num_indep_nodes += num_added_nodes;
   num_owned_nodes += num_added_nodes;
 
@@ -646,7 +649,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
 #ifdef P4EST_MPI
   /* Look up the reply information */
   /* This could be merged into the receive loop above
-     but then it would need a reassignment after the node sorting */
+       but then it would need a reassignment after the node sorting */
   P4EST_QUADRANT_INIT (&inkey);
   inkey.level = P4EST_MAXLEVEL;
   for (l = 0; l < num_senders; ++l) {
@@ -665,8 +668,9 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
       inkey.p.which_tree = *ttt;
       found = sc_hash_array_lookup (indep_nodes, &inkey, &position);
       if (!found) {
-        P4EST_LDEBUGF ("Not found %lld at %x %x %d\n", (long long) zz,
-                       inkey.x, inkey.y, inkey.level);
+
+        //        P4EST_LDEBUGF ("Not found %lld at %x %x %d\n", (long long) zz,
+        //                       inkey.x, inkey.y, inkey.level);
       }
       P4EST_ASSERT (found);
       P4EST_ASSERT ((p4est_locidx_t) position >= offset_owned_indeps &&
@@ -726,10 +730,10 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   }
 
   /* Assemble and send reply information.  This is variable size.
-   * (p4est_locidx_t)      Node number in this processor's ordering
-   * (int8_t)              Number of sharers (not including this processor)
-   * num_sharers * (int)   The ranks of all sharers.
-   */
+     * (p4est_locidx_t)      Node number in this processor's ordering
+     * (int8_t)              Number of sharers (not including this processor)
+     * num_sharers * (int)   The ranks of all sharers.
+     */
   second_size = sizeof (p4est_locidx_t) + sizeof (int8_t);
   for (l = 0; l < num_senders; ++l) {
     k = sender_ranks[l];
@@ -918,6 +922,39 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
 
   //  P4EST_ASSERT (p4est_nodes_is_valid (p4est, nodes));
   P4EST_GLOBAL_PRODUCTION ("Done " P4EST_STRING "_nodes_new\n");
+
+  /* copy all first patch of the ghost nodes to the end of array */
+  offset_owned_indeps = nodes->offset_owned_indeps;
+  num_owned_nodes = nodes->num_owned_indeps;
+
+  char *begin_g = nodes->indep_nodes.array; size_t size_g = (size_t)offset_owned_indeps*sizeof(p4est_indep_t);
+  char *begin_l = begin_g + size_g;         size_t size_l = (size_t)num_owned_nodes*sizeof(p4est_indep_t);
+
+  // first copy the first piece into a buffer
+  char *buffer = (char*)malloc(size_g);
+  memcpy((void*)buffer, (void*)begin_g, size_g);
+
+  // move the local part to the begining
+  memmove((void*)begin_g, (void*)begin_l, size_l);
+
+  // copy back the first patch to just after local nodes
+  memcpy((void*)(begin_g + size_l), (void*)buffer, size_g);
+
+  free(buffer);
+
+  // reset the local_nodes table
+  p4est_locidx_t *q2n = nodes->local_nodes;
+
+  for (p4est_locidx_t q = 0; q<num_local_nodes; q++)
+  {
+    if (q2n[q] < offset_owned_indeps)
+      q2n[q] += num_owned_nodes;
+    else if (q2n[q]>=offset_owned_indeps && q2n[q] < num_owned_nodes+offset_owned_indeps)
+      q2n[q] -= offset_owned_indeps;
+  }
+
+  // reset the offset variable
+  nodes->offset_owned_indeps = 0;
 
   ierr = PetscLogEventEnd(log_my_p4est_nodes_new, 0, 0, 0, 0); CHKERRXX(ierr);
 

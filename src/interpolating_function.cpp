@@ -28,23 +28,9 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
   : method_(linear),
     p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), qnnn_(NULL),
     Fxx_(NULL), Fyy_(NULL), local_derivatives(false),
-    p4est2petsc(nodes->indep_nodes.elem_count),
     remote_senders(p4est->mpisize, -1),
     is_buffer_prepared(false)
 {
-  const size_t loc_begin = static_cast<size_t>(nodes_->offset_owned_indeps);
-  const size_t loc_end   = static_cast<size_t>(nodes_->num_owned_indeps+nodes_->offset_owned_indeps);
-
-  for (size_t i=0; i<p4est2petsc.size(); ++i)
-  {
-    if (i<loc_begin)
-      p4est2petsc[i] = i + nodes_->num_owned_indeps;
-    else if (i<loc_end)
-      p4est2petsc[i] = i - nodes_->offset_owned_indeps;
-    else
-      p4est2petsc[i] = i;
-  }
-
   // compute domain sizes
   double *v2c = p4est_->connectivity->vertices;
   p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
@@ -64,23 +50,9 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
   : method_(quadratic_non_oscillatory),
     p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), qnnn_(qnnn),
     Fxx_(NULL), Fyy_(NULL), local_derivatives(false),
-    p4est2petsc(nodes->indep_nodes.elem_count),
     remote_senders(p4est->mpisize, -1),
     is_buffer_prepared(false)
 {
-  const size_t loc_begin = static_cast<size_t>(nodes_->offset_owned_indeps);
-  const size_t loc_end   = static_cast<size_t>(nodes_->num_owned_indeps+nodes_->offset_owned_indeps);
-
-  for (size_t i=0; i<p4est2petsc.size(); ++i)
-  {
-    if (i<loc_begin)
-      p4est2petsc[i] = i + nodes_->num_owned_indeps;
-    else if (i<loc_end)
-      p4est2petsc[i] = i - nodes_->offset_owned_indeps;
-    else
-      p4est2petsc[i] = i;
-  }
-
   // compute domain sizes
   double *v2c = p4est_->connectivity->vertices;
   p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
@@ -89,7 +61,7 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
   xmin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 0];
   ymin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 1];
   xmax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 0];
-  ymax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 1];
+  ymax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 1];  
 }
 
 InterpolatingFunction::~InterpolatingFunction()
@@ -296,14 +268,14 @@ void InterpolatingFunction::interpolate( double *output_vec )
     p4est_locidx_t node_idx = local_point_buffer.node_locidx[i];
 
     for (short j=0; j<P4EST_CHILDREN; ++j)
-      f[j] = Fi_p[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+      f[j] = Fi_p[q2n[quad_idx*P4EST_CHILDREN+j]];
 
     // get access to second derivatives only if needed
     if (method_ == quadratic || method_ == quadratic_non_oscillatory)
     {
       for (short j=0; j<P4EST_CHILDREN; ++j)
       {
-        p4est_locidx_t node_locidx = p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]];
+        p4est_locidx_t node_locidx = q2n[quad_idx*P4EST_CHILDREN+j];
         fxx[j] = Fxx_p[node_locidx];
         fyy[j] = Fyy_p[node_locidx];
       }
@@ -327,14 +299,14 @@ void InterpolatingFunction::interpolate( double *output_vec )
     p4est_locidx_t node_idx = ghost_point_buffer.node_locidx[i];
 
     for (short j=0; j<P4EST_CHILDREN; ++j)
-      f[j] = Fi_p[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+      f[j] = Fi_p[q2n[quad_idx*P4EST_CHILDREN+j]];
 
     // get access to second derivatives only if needed
     if (method_ == quadratic || method_ == quadratic_non_oscillatory)
     {
       for (short j=0; j<P4EST_CHILDREN; ++j)
       {
-        p4est_locidx_t node_locidx = p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]];
+        p4est_locidx_t node_locidx = q2n[quad_idx*P4EST_CHILDREN+j];
         fxx[j] = Fxx_p[node_locidx];
         fyy[j] = Fyy_p[node_locidx];
       }
@@ -404,14 +376,14 @@ void InterpolatingFunction::interpolate( double *output_vec )
           p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
 
           for (short j=0; j<P4EST_CHILDREN; j++)
-            f[j] = Fi_p[p4est2petsc[q2n[qu_locidx*P4EST_CHILDREN+j]]];
+            f[j] = Fi_p[q2n[qu_locidx*P4EST_CHILDREN+j]];
 
           // get access to second derivatives only if needed
           if (method_ == quadratic || method_ == quadratic_non_oscillatory)
           {
             for (short j=0; j<P4EST_CHILDREN; ++j)
             {
-              p4est_locidx_t node_locidx = p4est2petsc[q2n[qu_locidx*P4EST_CHILDREN+j]];
+              p4est_locidx_t node_locidx = q2n[qu_locidx*P4EST_CHILDREN+j];
               fxx[j] = Fxx_p[node_locidx];
               fyy[j] = Fyy_p[node_locidx];
             }
@@ -541,14 +513,14 @@ double InterpolatingFunction::operator ()(double x, double y) const {
     quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
 
     for (short j=0; j<P4EST_CHILDREN; ++j)
-      f[j] = Fi_p[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+      f[j] = Fi_p[q2n[quad_idx*P4EST_CHILDREN+j]];
 
     // get access to second derivatives only if needed
     if (method_ == quadratic || method_ == quadratic_non_oscillatory)
     {
       for (short j=0; j<P4EST_CHILDREN; ++j)
       {
-        p4est_locidx_t node_locidx = p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]];
+        p4est_locidx_t node_locidx = q2n[quad_idx*P4EST_CHILDREN+j];
         fxx[j] = Fxx_p[node_locidx];
         fyy[j] = Fyy_p[node_locidx];
       }
@@ -576,14 +548,14 @@ double InterpolatingFunction::operator ()(double x, double y) const {
     quad_idx = best_match.p.piggy3.local_num + p4est_->local_num_quadrants;
 
     for (short j=0; j<P4EST_CHILDREN; ++j)
-      f[j] = Fi_p[p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]]];
+      f[j] = Fi_p[q2n[quad_idx*P4EST_CHILDREN+j]];
 
     // get access to second derivatives only if needed
     if (method_ == quadratic || method_ == quadratic_non_oscillatory)
     {
       for (short j=0; j<P4EST_CHILDREN; ++j)
       {
-        p4est_locidx_t node_locidx = p4est2petsc[q2n[quad_idx*P4EST_CHILDREN+j]];
+        p4est_locidx_t node_locidx = q2n[quad_idx*P4EST_CHILDREN+j];
         fxx[j] = Fxx_p[node_locidx];
         fyy[j] = Fyy_p[node_locidx];
       }

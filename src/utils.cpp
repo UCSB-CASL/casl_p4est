@@ -223,15 +223,10 @@ PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
 
   PetscInt num_global = global_offset_sum[p4est->mpisize];
 
-  for (p4est_locidx_t i = 0; i<nodes->offset_owned_indeps; ++i)
+  for (size_t i = 0; i<ghost_nodes.size(); ++i)
   {
-    p4est_indep_t *ni  = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+num_local);
     ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
-  }
-  for (size_t i = nodes->offset_owned_indeps+num_local; i<nodes->indep_nodes.elem_count; ++i)
-  {
-    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-    ghost_nodes[i-num_local] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i-num_local]];
   }
 
   ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global, ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
@@ -254,15 +249,10 @@ PetscErrorCode VecCreateGhostBlock(p4est_t *p4est, p4est_nodes_t *nodes, PetscIn
 
   PetscInt num_global = global_offset_sum[p4est->mpisize];
 
-  for (p4est_locidx_t i = 0; i<nodes->offset_owned_indeps; ++i)
+  for (size_t i = 0; i<ghost_nodes.size(); ++i)
   {
-    p4est_indep_t *ni  = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+num_local);
     ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
-  }
-  for (size_t i = nodes->offset_owned_indeps+num_local; i<nodes->indep_nodes.elem_count; ++i)
-  {
-    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-    ghost_nodes[i-num_local] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i-num_local]];
   }
 
   ierr = VecCreateGhostBlock(p4est->mpicomm, block_size, num_local*block_size, num_global*block_size, ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
@@ -270,32 +260,6 @@ PetscErrorCode VecCreateGhostBlock(p4est_t *p4est, p4est_nodes_t *nodes, PetscIn
 
   return ierr;
 }
-
-p4est_locidx_t p4est2petsc_local_numbering(p4est_nodes_t *nodes, p4est_locidx_t p4est_node_locidx)
-{
-    PetscErrorCode ierr;
-    ierr = PetscLogEventBegin(log_p4est2petsc_local_numbering, 0, 0, 0, 0); CHKERRXX(ierr);
-#ifdef CASL_THROWS
-  if (p4est_node_locidx < 0 || p4est_node_locidx >= (p4est_locidx_t)nodes->indep_nodes.elem_count)
-  {
-    std::stringstream oss; oss << "[CASL_ERROR]: node index " << p4est_node_locidx << " is out of bound" << std::endl;
-    throw std::invalid_argument(oss.str());
-  }
-#endif
-  p4est_locidx_t petsc_node_locidx;
-
-  if (p4est_node_locidx < nodes->offset_owned_indeps)
-    petsc_node_locidx = p4est_node_locidx + nodes->num_owned_indeps;
-  else if (p4est_node_locidx >= nodes->offset_owned_indeps && p4est_node_locidx < nodes->offset_owned_indeps + nodes->num_owned_indeps)
-    petsc_node_locidx = p4est_node_locidx - nodes->offset_owned_indeps;
-  else
-    petsc_node_locidx = p4est_node_locidx;
-
-  ierr = PetscLogEventEnd(log_p4est2petsc_local_numbering, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  return petsc_node_locidx;
-}
-
 
 double integrate_over_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)
 {
@@ -308,15 +272,15 @@ double integrate_over_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_node
   ierr = VecGetArray(f  , &F); CHKERRXX(ierr);
 
   p4est_locidx_t *q2n = nodes->local_nodes;
-  phi_values.val00 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 0 ]) ];
-  phi_values.val10 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 1 ]) ];
-  phi_values.val01 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 2 ]) ];
-  phi_values.val11 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 3 ]) ];
+  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 
-  f_values.val00   = F[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 0 ]) ];
-  f_values.val10   = F[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 1 ]) ];
-  f_values.val01   = F[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 2 ]) ];
-  f_values.val11   = F[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 3 ]) ];
+  f_values.val00   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val10   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val01   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val11   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
   ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
@@ -367,10 +331,10 @@ double area_in_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *no
   ierr = VecGetArray(phi, &P); CHKERRXX(ierr);
 
   p4est_locidx_t *q2n = nodes->local_nodes;
-  phi_values.val00 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 0 ]) ];
-  phi_values.val10 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 1 ]) ];
-  phi_values.val01 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 2 ]) ];
-  phi_values.val11 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 3 ]) ];
+  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
 
@@ -420,15 +384,15 @@ double integrate_over_interface_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *n
   ierr = VecGetArray(f  , &F); CHKERRXX(ierr);
 
   p4est_locidx_t *q2n = nodes->local_nodes;
-  phi_values.val00 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 0 ]) ];
-  phi_values.val10 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 1 ]) ];
-  phi_values.val01 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 2 ]) ];
-  phi_values.val11 = P[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 3 ]) ];
+  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 
-  f_values.val00   = F[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 0 ]) ];
-  f_values.val10   = F[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 1 ]) ];
-  f_values.val01   = F[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 2 ]) ];
-  f_values.val11   = F[ p4est2petsc_local_numbering(nodes, q2n[ quad_idx*P4EST_CHILDREN + 3 ]) ];
+  f_values.val00   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val10   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val01   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val11   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
   ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
@@ -531,9 +495,6 @@ void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Ve
   double *f_p;
   PetscErrorCode ierr;
 
-  /*
-   * FIXME: Find a way to ask PETSc for the local+ghost size of a ghosted vector
-   */
 #ifdef CASL_THROWS
   {
     Vec local_form;
@@ -567,10 +528,13 @@ void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Ve
     double tree_xmin = v2q[3*v_mm + 0];
     double tree_ymin = v2q[3*v_mm + 1];
 
-    double x = int2double_coordinate_transform(node->x) + tree_xmin;
-    double y = int2double_coordinate_transform(node->y) + tree_ymin;
+    double x = node->x != P4EST_ROOT_LEN - 1 ? (double)node->x/(double)P4EST_ROOT_LEN : 1.0;
+    double y = node->y != P4EST_ROOT_LEN - 1 ? (double)node->y/(double)P4EST_ROOT_LEN : 1.0;
 
-    f_p[p4est2petsc_local_numbering(nodes,i)] = cf(x,y);
+    x += tree_xmin;
+    y += tree_ymin;
+
+    f_p[i] = cf(x,y);
   }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
