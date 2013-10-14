@@ -17,8 +17,8 @@
 #include <src/my_p4est_tools.h>
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
-
 #include <src/semi_lagrangian.h>
+#include <src/my_p4est_levelset.h>
 
 using namespace std;
 
@@ -76,7 +76,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode ierr;
 
   circle circ(0.5, 0.5, .3);
-  splitting_criteria_cf_t data(0, 8, &circ, 1.3);
+  splitting_criteria_cf_t data(0, 6, &circ, 1.3);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -136,9 +136,9 @@ int main (int argc, char* argv[]){
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
   // loop over time
-  double tf = 10;
+  double tf = 1;
   int tc = 0;
-  int save = 1;
+  int save = 10;
   vector<double> vx, vy;
   double dt = 0.1;
   for (double t=0; t<tf; t+=dt, tc++){
@@ -169,7 +169,7 @@ int main (int argc, char* argv[]){
       }
 
       ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-      my_p4est_vtk_write_all(p4est, nodes, NULL,
+      my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
                              3, 0, oss.str().c_str(),
                              VTK_POINT_DATA, "phi", phi_ptr,
@@ -181,7 +181,14 @@ int main (int argc, char* argv[]){
 
     // advect the function in time and get the computed time-step
     w2.start("advecting");
-    sl.update_p4est_intermediate_trees_no_ghost(vx_vortex, vy_vortex, phi, dt);
+    sl.update_p4est_second_order(vx_vortex, vy_vortex, phi, dt);
+
+    // reinitialize
+    my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
+    my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
+    my_p4est_level_set level_set(&brick, p4est, nodes, ghost, &node_neighbors);
+    level_set.reinitialize_2nd_order(phi);
+
     w2.stop(); w2.read_duration();
   }
 

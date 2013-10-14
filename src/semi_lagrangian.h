@@ -53,8 +53,6 @@ class SemiLagrangian
 
   double compute_dt(const CF_2& vx, const CF_2& vy);
 
-  void update_p4est(Vec &phi, my_p4est_node_neighbors_t& qnnn);
-
   void advect_from_n_to_np1(const CF_2& vx, const CF_2& vy, double dt, Vec phi_n, double *phi_np1,
                             p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, my_p4est_node_neighbors_t &qnnn);
 
@@ -246,12 +244,10 @@ class SemiLagrangian
 public:
   SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, p4est_ghost_t **ghost, my_p4est_brick_t *myb);
 
-  double advect(const CF_2& vx, const CF_2& vy, Vec &phi);
-
   void update_p4est_second_order(Vec vx, Vec vy, Vec &phi, double dt);
 
   /* start from a root tree and successively refine intermediate trees until tree n+1 is built */
-  void update_p4est_intermediate_trees_no_ghost(const CF_2& vx, const CF_2& vy, Vec &phi, double dt);
+  void update_p4est_second_order(const CF_2& vx, const CF_2& vy, Vec &phi, double dt);
 
   /* compute the ghost layer for the intermediate trees, so that the refine operation can be applied */
   /* this does not work due to a bug in p4est ! cf. the coarsen with 4 quadrants owned by different mpiranks */
