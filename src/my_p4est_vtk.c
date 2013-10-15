@@ -618,7 +618,7 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes,
     }
 #else
 
-    for (il = 0; il<nodes->indep_nodes.elem_count; ++il)
+    for (il = 0; il<(p4est_locidx_t)nodes->indep_nodes.elem_count; ++il)
       float_data[il] = (P4EST_VTK_FLOAT_TYPE) values[i][il];
 
     fprintf (vtufile, "          ");

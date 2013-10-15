@@ -22,10 +22,10 @@ extern PetscLogEvent log_PoissonSolverNodeBase_solve;
 #endif
 #define bc_strength 1.0
 
-PoissonSolverNodeBase::PoissonSolverNodeBase(const my_p4est_node_neighbors_t *node_neighbors, my_p4est_brick_t* myb)
+PoissonSolverNodeBase::PoissonSolverNodeBase(const my_p4est_node_neighbors_t *node_neighbors)
   : node_neighbors_(node_neighbors),
-    p4est(node_neighbors->p4est), nodes(node_neighbors->nodes), ghost(node_neighbors->ghost), myb_(myb),
-    phi_interp(p4est, nodes, ghost, myb, node_neighbors),
+    p4est(node_neighbors->p4est), nodes(node_neighbors->nodes), ghost(node_neighbors->ghost), myb_(node_neighbors->myb),
+    phi_interp(p4est, nodes, ghost, myb_, node_neighbors),
     mu_(1.), diag_add_(0.),
     is_matrix_ready(false), matrix_has_nullspace(false),
     bc_(NULL),

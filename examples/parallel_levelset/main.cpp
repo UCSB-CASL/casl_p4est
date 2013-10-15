@@ -76,7 +76,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode ierr;
 
   circle circ(0.5, 0.5, .3);
-  splitting_criteria_cf_t data(0, 6, &circ, 1.3);
+  splitting_criteria_cf_t data(0, 8, &circ, 1.3);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -136,7 +136,7 @@ int main (int argc, char* argv[]){
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
   // loop over time
-  double tf = 1;
+  double tf = 100;
   int tc = 0;
   int save = 10;
   vector<double> vx, vy;
@@ -181,13 +181,13 @@ int main (int argc, char* argv[]){
 
     // advect the function in time and get the computed time-step
     w2.start("advecting");
-    sl.update_p4est_second_order(vx_vortex, vy_vortex, phi, dt);
+    sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
 
     // reinitialize
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
-    my_p4est_level_set level_set(&brick, p4est, nodes, ghost, &node_neighbors);
-    level_set.reinitialize_2nd_order(phi);
+    my_p4est_level_set level_set(&node_neighbors);
+    level_set.reinitialize_2nd_order(phi,1);
 
     w2.stop(); w2.read_duration();
   }

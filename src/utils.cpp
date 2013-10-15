@@ -14,7 +14,6 @@
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
 #warning "Use of 'CASL_LOG_TINY_EVENTS' macro is discouraged but supported. Logging tiny sections of the code may produce unreliable results due to overhead."
-extern PetscLogEvent log_p4est2petsc_local_numbering;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops

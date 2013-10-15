@@ -273,7 +273,7 @@ int main (int argc, char* argv[])
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
     my_p4est_node_neighbors_t ngbd(&hierarchy,nodes);
 
-    my_p4est_level_set ls(&brick, p4est, nodes, ghost, &ngbd);
+    my_p4est_level_set ls(&ngbd);
 //    ls.reinitialize_1st_order( phi, 100 );
     ls.reinitialize_2nd_order( phi, 100 );
 
@@ -290,7 +290,7 @@ int main (int argc, char* argv[])
     bc.setWallTypes(bc_wall_type);
     bc.setWallValues(bc_wall_value);
 
-    PoissonSolverNodeBase solver(&ngbd, &brick);
+    PoissonSolverNodeBase solver(&ngbd);
     solver.set_phi(phi);
     solver.set_mu(D*dt_n);
     solver.set_diagonal(1.);
@@ -385,7 +385,7 @@ int main (int argc, char* argv[])
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
     SemiLagrangian sl(&p4est_np1, &nodes_np1, &ghost_np1, &brick);
-    sl.update_p4est_second_order(vx_extended, vy_extended, phi,dt_n);
+    sl.update_p4est_second_order(vx_extended, vy_extended, dt_n, phi);
 
     ierr = VecDestroy(vx_extended); CHKERRXX(ierr);
     ierr = VecDestroy(vy_extended); CHKERRXX(ierr);

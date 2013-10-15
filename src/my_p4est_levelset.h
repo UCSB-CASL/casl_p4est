@@ -8,7 +8,6 @@
 
 class my_p4est_level_set {
 
-private:
   my_p4est_brick_t *myb;
   p4est_t *p4est;
   p4est_nodes_t *nodes;
@@ -25,8 +24,8 @@ private:
 
   void reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map, const double *dxx0, const double *dyy0, const double *dxx, const double *dyy, double *p0, double *pn, double *pnp1, double limit );
 public:
-  my_p4est_level_set( my_p4est_brick_t *myb_, p4est_t *p4est_, p4est_nodes_t *nodes_, p4est_ghost_t *ghost_, my_p4est_node_neighbors_t *ngbd_ )
-    : myb(myb_), p4est(p4est_), nodes(nodes_), ghost(ghost_), ngbd(ngbd_)
+  my_p4est_level_set(my_p4est_node_neighbors_t *ngbd_ )
+    : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_)
   {
     for( p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n )
     {

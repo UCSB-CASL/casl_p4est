@@ -8,6 +8,10 @@
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
 extern PetscLogEvent log_my_p4est_node_neighbors_t;
+extern PetscLogEvent log_my_p4est_node_neighbors_t_dxx_central;
+extern PetscLogEvent log_my_p4est_node_neighbors_t_dyy_central;
+extern PetscLogEvent log_my_p4est_node_neighbors_t_dxx_and_dyy_central;
+extern PetscLogEvent log_my_p4est_node_neighbors_t_dxx_and_dyy_block_central;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -457,7 +461,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
 void my_p4est_node_neighbors_t::dxx_central(const Vec f, Vec fxx) const
 {
   PetscErrorCode ierr;
-
+  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_dxx_central, f, fxx, 0, 0); CHKERRXX(ierr);
 #ifdef CASL_THROWS
   {
     Vec f_l, fxx_l;
@@ -511,20 +515,22 @@ void my_p4est_node_neighbors_t::dxx_central(const Vec f, Vec fxx) const
 
   // compute the derivaties for all internal nodes
   for (size_t i=0; i<local_nodes.size(); i++)
-    fxx_p[local_nodes[i]] = neighbors[local_nodes[i]].dxx_central(f_p);
-
-  // finish the ghost update process to ensure all values are updated
-  ierr = VecGhostUpdateEnd(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    fxx_p[local_nodes[i]] = neighbors[local_nodes[i]].dxx_central(f_p);  
 
   // restore internal data
   ierr = VecRestoreArray(f,   &f_p  ); CHKERRXX(ierr);
   ierr = VecRestoreArray(fxx, &fxx_p); CHKERRXX(ierr);
+
+  // finish the ghost update process to ensure all values are updated
+  ierr = VecGhostUpdateEnd(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_dxx_central, f, fxx, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_node_neighbors_t::dyy_central(const Vec f, Vec fyy) const
 {
   PetscErrorCode ierr;
-
+  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_dyy_central, f, fyy, 0, 0); CHKERRXX(ierr);
 #ifdef CASL_THROWS
   {
     Vec f_l, fyy_l;
@@ -586,11 +592,15 @@ void my_p4est_node_neighbors_t::dyy_central(const Vec f, Vec fyy) const
 
   // finish the ghost update process to ensure all values are updated
   ierr = VecGhostUpdateEnd(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_dyy_central, f, fyy, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_node_neighbors_t::dxx_and_dyy_central(const Vec f, Vec fdd) const
 {
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_dxx_and_dyy_block_central, f, fdd, 0, 0); CHKERRXX(ierr);
+
 #ifdef CASL_THROWS
   {
     Vec f_l, fdd_l;
@@ -665,11 +675,14 @@ void my_p4est_node_neighbors_t::dxx_and_dyy_central(const Vec f, Vec fdd) const
 
   // finish the ghost update process to ensure all values are updated
   ierr = VecGhostUpdateEnd(fdd, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_dxx_and_dyy_block_central, f, fdd, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_node_neighbors_t::dxx_and_dyy_central(const Vec f, Vec fxx, Vec fyy) const
 {
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_dxx_and_dyy_central, f, fxx, fyy, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
   {
@@ -752,4 +765,6 @@ void my_p4est_node_neighbors_t::dxx_and_dyy_central(const Vec f, Vec fxx, Vec fy
   // finish the ghost update process to ensure all values are updated
   ierr = VecGhostUpdateEnd(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_dxx_and_dyy_central, f, fxx, fyy, 0); CHKERRXX(ierr);
 }

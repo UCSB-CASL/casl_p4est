@@ -55,7 +55,6 @@ class my_p4est_hierarchy_t {
   friend class my_p4est_cell_neighbors_t;
   friend class my_p4est_node_neighbors_t;
 
-private:
   p4est_t       *p4est;
   p4est_ghost_t *ghost;
   my_p4est_brick_t *myb;

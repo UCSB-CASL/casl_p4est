@@ -44,7 +44,7 @@ class PoissonSolverNodeBase
   PoissonSolverNodeBase& operator=(const PoissonSolverNodeBase& other);
 
 public:
-  PoissonSolverNodeBase(const my_p4est_node_neighbors_t *node_neighbors, my_p4est_brick_t *myb);
+  PoissonSolverNodeBase(const my_p4est_node_neighbors_t *node_neighbors);
   ~PoissonSolverNodeBase();
 
   // inlines setters

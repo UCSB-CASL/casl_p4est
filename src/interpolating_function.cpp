@@ -659,38 +659,9 @@ void InterpolatingFunction::compute_second_derivatives()
   // Allocate memory for second derivaties
   if (Fxx_ == NULL && Fyy_ == NULL){
     ierr = VecCreateGhost(p4est_, nodes_, &Fxx_); CHKERRXX(ierr);
-    ierr = VecDuplicate(Fxx_, &Fyy_); CHKERRXX(ierr);
+    ierr = VecCreateGhost(p4est_, nodes_, &Fyy_); CHKERRXX(ierr);
     local_derivatives = true;
   }
 
-  // Access internal data
-  double *Fi_p, *Fxx_p, *Fyy_p;
-  ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
-
-  // Compute Fxx on local nodes
-  for (p4est_locidx_t n=0; n<nodes_->num_owned_indeps; ++n)
-    Fxx_p[n] = (*qnnn_)[n].dxx_central(Fi_p);
-
-  // Send ghost values for Fxx
-  ierr = VecGhostUpdateBegin(Fxx_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // Compute Fyy on local nodes
-  for (p4est_locidx_t n=0; n<nodes_->num_owned_indeps; ++n)
-    Fyy_p[n] = (*qnnn_)[n].dyy_central(Fi_p);
-
-  // receive the ghost values for Fxx
-  ierr = VecGhostUpdateEnd(Fxx_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
-
-  // Send ghost values for Fyy and receive them
-  ierr = VecGhostUpdateBegin(Fyy_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(Fyy_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // restore Fyy array
-  ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
-
-  // restore input_vec_ array
-  ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);  
+  qnnn_->dxx_and_dyy_central(input_vec_, Fxx_, Fyy_);
 }
