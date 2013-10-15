@@ -2,6 +2,7 @@
 #include <src/interpolating_function.h>
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
+#include <src/my_p4est_log_wrappers.h>
 #include <mpi.h>
 #include <sc_notify.h>
 
@@ -236,7 +237,7 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
   ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_Vec, vx, vy, phi, 0); CHKERRXX(ierr);
 
   PetscErrorCode ierr;
-  p4est *p4est_np1 = p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
+  p4est *p4est_np1 = my_p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
 
   /* create hierarchy structure on p4est_n if you want to do quadratic interpolation */
   // TODO: We should think about a smart way to move this outside class
@@ -284,8 +285,8 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
     splitting_criteria_t *data = (splitting_criteria_t*) p4est_->user_pointer;
     splitting_criteria_update_t data_np1(1.2, data->min_lvl, data->max_lvl, &phi_tmp, myb_, p4est_tmp, NULL, nodes_tmp);
     p4est_np1->user_pointer = (void*) &data_np1;
-    p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_sl , NULL);
-    p4est_partition(p4est_np1, NULL);
+    my_p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_sl , NULL);
+    my_p4est_partition(p4est_np1, NULL);
 
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
@@ -295,7 +296,7 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
   p4est_np1->user_pointer = p4est_->user_pointer;
 
   /* compute new ghost layer */
-  p4est_ghost_t *ghost_np1 = p4est_ghost_new(p4est_np1, P4EST_CONNECT_DEFAULT);
+  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_DEFAULT);
 
   /* compute the nodes structure */
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
@@ -330,7 +331,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
 {  
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_CF2, phi, 0, 0, 0); CHKERRXX(ierr);
-  p4est *p4est_np1 = p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
+  p4est *p4est_np1 = my_p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
 
   /* create hierarchy structure on p4est_n if you want to do quadratic interpolation */
   my_p4est_hierarchy_t hierarchy(p4est_, ghost_, myb_);
@@ -363,8 +364,8 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
     splitting_criteria_t *data = (splitting_criteria_t*) p4est_->user_pointer;
     splitting_criteria_update_t data_np1(1.2, data->min_lvl, data->max_lvl, &phi_tmp, myb_, p4est_tmp, NULL, nodes_tmp);
     p4est_np1->user_pointer = (void*) &data_np1;
-    p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_sl , NULL);
-    p4est_partition(p4est_np1, NULL);
+    my_p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_sl , NULL);
+    my_p4est_partition(p4est_np1, NULL);
 
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
@@ -374,7 +375,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   p4est_np1->user_pointer = p4est_->user_pointer;
 
   /* compute new ghost layer */
-  p4est_ghost_t *ghost_np1 = p4est_ghost_new(p4est_np1, P4EST_CONNECT_DEFAULT);
+  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_DEFAULT);
 
   /* compute the nodes structure */
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);

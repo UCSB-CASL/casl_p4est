@@ -17,9 +17,8 @@
 #include <src/my_p4est_tools.h>
 #include <src/refine_coarsen.h>
 #include <src/petsc_compatibility.h>
-
 #include <src/semi_lagrangian.h>
-
+#include <src/my_p4est_log_wrappers.h>
 
 #undef MIN
 #undef MAX
@@ -215,17 +214,17 @@ int main (int argc, char* argv[])
   connectivity = my_p4est_brick_new(2, 2, &brick);
 
   // Now create the forest
-  p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
 
   // Now refine the tree
   p4est->user_pointer = (void*)(&data);
-  p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
   // Finally re-partition
-  p4est_partition(p4est, NULL);
+  my_p4est_partition(p4est, NULL);
 
   /* Create the ghost structure */
-  p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+  p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
 
   // generate the node data structure
   nodes = my_p4est_nodes_new(p4est, ghost);
@@ -381,7 +380,7 @@ int main (int argc, char* argv[])
 
     /* advect the function in time */
     p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
-    p4est_ghost_t *ghost_np1 = p4est_ghost_new(p4est_np1, P4EST_CONNECT_DEFAULT);
+    p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_DEFAULT);
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
     SemiLagrangian sl(&p4est_np1, &nodes_np1, &ghost_np1, &brick);

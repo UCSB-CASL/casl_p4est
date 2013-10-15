@@ -8,7 +8,6 @@
 // p4est Library
 #include <p4est_bits.h>
 #include <p4est_extended.h>
-#include <p4est_vtk.h>
 
 // casl_p4est
 #include <src/utils.h>
@@ -19,6 +18,7 @@
 #include <src/petsc_compatibility.h>
 #include <src/semi_lagrangian.h>
 #include <src/my_p4est_levelset.h>
+#include <src/my_p4est_log_wrappers.h>
 
 using namespace std;
 
@@ -76,7 +76,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode ierr;
 
   circle circ(0.5, 0.5, .3);
-  splitting_criteria_cf_t data(0, 8, &circ, 1.3);
+  splitting_criteria_cf_t data(0, 10, &circ, 1.3);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -96,22 +96,22 @@ int main (int argc, char* argv[]){
 
   // Now create the forest
   w2.start("p4est generation");
-  p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
   w2.stop(); w2.read_duration();
 
   // Now refine the tree
   w2.start("refine");
   p4est->user_pointer = (void*)(&data);
-  p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
   w2.stop(); w2.read_duration();
 
   // Finally re-partition
   w2.start("partition");
-  p4est_partition(p4est, NULL);
+  my_p4est_partition(p4est, NULL);
   w2.stop(); w2.read_duration();
 
   // create the ghost layer
-  ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
 
   // generate the node data structure
   nodes = my_p4est_nodes_new(p4est, ghost);
@@ -136,7 +136,7 @@ int main (int argc, char* argv[]){
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
   // loop over time
-  double tf = 100;
+  double tf = 10;
   int tc = 0;
   int save = 10;
   vector<double> vx, vy;
@@ -187,7 +187,7 @@ int main (int argc, char* argv[]){
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
     my_p4est_level_set level_set(&node_neighbors);
-    level_set.reinitialize_2nd_order(phi,1);
+    level_set.reinitialize_2nd_order(phi, 6);
 
     w2.stop(); w2.read_duration();
   }

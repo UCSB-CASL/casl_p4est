@@ -1,0 +1,66 @@
+#include <src/my_p4est_log_wrappers.h>
+#include <petsclog.h>
+
+// logging variables -- defined in src/petsc_logging.cpp
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_new;
+extern PetscLogEvent log_my_p4est_ghost_new;
+extern PetscLogEvent log_my_p4est_refine;
+extern PetscLogEvent log_my_p4est_coarsen;
+extern PetscLogEvent log_my_p4est_partition;
+#endif
+
+
+p4est_t*
+my_p4est_new(MPI_Comm mpicomm, p4est_connectivity_t *connectivity, size_t data_size, p4est_init_t init_fn, void *user_pointer)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_new, 0, 0, 0, 0); CHKERRXX(ierr);
+  p4est_t *p4est = p4est_new(mpicomm, connectivity, data_size, init_fn, user_pointer);
+  ierr = PetscLogEventEnd(log_my_p4est_new, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return p4est;
+}
+
+p4est_ghost_t*
+my_p4est_ghost_new(p4est_t *p4est, p4est_connect_type_t btype)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_ghost_new, 0, 0, 0, 0); CHKERRXX(ierr);
+  p4est_ghost_t *ghost = p4est_ghost_new(p4est, btype); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_ghost_new, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return ghost;
+}
+
+void
+my_p4est_refine(p4est_t *p4est, int refine_recursive, p4est_refine_t refine_fn, p4est_init_t init_fn)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_refine, 0, 0, 0, 0); CHKERRXX(ierr);
+  p4est_refine(p4est, refine_recursive, refine_fn, init_fn);
+  ierr = PetscLogEventEnd(log_my_p4est_refine, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void
+my_p4est_coarsen(p4est_t *p4est, int coarsen_recursive, p4est_coarsen_t coarsen_fn, p4est_init_t init_fn)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_coarsen, 0, 0, 0, 0); CHKERRXX(ierr);
+  p4est_coarsen(p4est, coarsen_recursive, coarsen_fn, init_fn);
+  ierr = PetscLogEventEnd(log_my_p4est_coarsen, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void
+my_p4est_partition(p4est_t *p4est, p4est_weight_t weight_fn)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
+  p4est_partition(p4est, weight_fn);
+  ierr = PetscLogEventEnd(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
+}

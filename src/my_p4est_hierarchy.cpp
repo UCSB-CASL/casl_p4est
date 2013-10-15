@@ -84,21 +84,22 @@ void my_p4est_hierarchy_t::construct_tree() {
    * We do this by looping over ghosts from each processor separately
    */
 
-  for (int r = 0; r<p4est->mpisize; r++)
-  {
-    /* for each processor loop over the portion that is ghosted on this processor */
-    for( p4est_locidx_t g=ghost->proc_offsets[r]; g<ghost->proc_offsets[r+1]; ++g)
+  if (ghost != NULL)
+    for (int r = 0; r<p4est->mpisize; r++)
     {
-      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, g);
-      int ind = update_tree(quad->p.piggy3.which_tree, quad);
+      /* for each processor loop over the portion that is ghosted on this processor */
+      for( p4est_locidx_t g=ghost->proc_offsets[r]; g<ghost->proc_offsets[r+1]; ++g)
+      {
+        p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, g);
+        int ind = update_tree(quad->p.piggy3.which_tree, quad);
 
-      /* the cell corresponding to the quadrant has been found, associate it to the quadrant */
-      trees[quad->p.piggy3.which_tree][ind].quad = p4est->local_num_quadrants + g;
+        /* the cell corresponding to the quadrant has been found, associate it to the quadrant */
+        trees[quad->p.piggy3.which_tree][ind].quad = p4est->local_num_quadrants + g;
 
-      /* set the owner rank */
-      trees[quad->p.piggy3.which_tree][ind].owner_rank = r;
+        /* set the owner rank */
+        trees[quad->p.piggy3.which_tree][ind].owner_rank = r;
+      }
     }
-  }
 
   ierr = PetscLogEventEnd(log_my_p4est_hierarchy_t, 0, 0, 0, 0); CHKERRXX(ierr);
 

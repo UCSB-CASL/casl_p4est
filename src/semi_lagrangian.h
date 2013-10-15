@@ -27,9 +27,13 @@ class SemiLagrangian
     p4est_ghost_t *ghost_tmp;
     p4est_nodes_t *nodes_tmp;
     std::vector<double> *phi_tmp;
+    my_p4est_hierarchy_t hierarchy;
     splitting_criteria_update_t( double lip, int min_lvl, int max_lvl,
                                  std::vector<double> *phi,  my_p4est_brick_t *myb,
-                                 p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes )
+                                 p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes)
+#ifndef P4EST_POINT_LOOKUP
+      : hierarchy(p4est, ghost, myb)
+#endif
     {
       this->lip = lip;
       this->min_lvl = min_lvl;
@@ -88,9 +92,14 @@ class SemiLagrangian
       xy[1] += dy/2;
 
       p4est_quadrant_t quad_tmp;
+#ifdef P4EST_POINT_LOOKUP
       sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
       my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy, &quad_tmp, remote_matches);
       sc_array_destroy(remote_matches);
+#else
+     std::vector<p4est_quadrant_t> remote_matches;
+     data->hierarchy.find_smallest_quadrant_containing_point(xy, quad_tmp, remote_matches);
+#endif
 
       p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
       p4est_tree_t *tree_tmp = p4est_tree_array_index(data->p4est_tmp->trees, quad_tmp.p.piggy3.which_tree);
@@ -139,7 +148,14 @@ class SemiLagrangian
       xy[1] += dy/2;
 
       p4est_quadrant_t quad_tmp;
-      int rank_found = my_p4est_brick_point_lookup(data->p4est_tmp, data->ghost_tmp, data->myb, xy, &quad_tmp, NULL);
+#ifdef P4EST_POINT_LOOKUP
+      sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
+      int rank_found = my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy, &quad_tmp, remote_matches);
+      sc_array_destroy(remote_matches);
+#else
+     std::vector<p4est_quadrant_t> remote_matches;
+     int rank_found = data->hierarchy.find_smallest_quadrant_containing_point(xy, quad_tmp, remote_matches);
+#endif
 
       p4est_locidx_t quad_tmp_idx;
       if(rank_found == p4est->mpirank)
@@ -175,8 +191,6 @@ class SemiLagrangian
     }
   }
 
-
-
   static p4est_bool_t coarsen_criteria_with_ghost_sl(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
   {
     splitting_criteria_update_t *data = (splitting_criteria_update_t*)p4est->user_pointer;
@@ -208,7 +222,14 @@ class SemiLagrangian
           double xy_tmp [] = { xy[0] + i*dx, xy[1] + j*dy };
 
           p4est_quadrant_t quad_tmp;
-          int rank_found = my_p4est_brick_point_lookup(data->p4est_tmp, data->ghost_tmp, data->myb, xy_tmp, &quad_tmp, NULL);
+    #ifdef P4EST_POINT_LOOKUP
+          sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
+          int rank_found = my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy_tmp, &quad_tmp, remote_matches);
+          sc_array_destroy(remote_matches);
+    #else
+         std::vector<p4est_quadrant_t> remote_matches;
+         int rank_found = data->hierarchy.find_smallest_quadrant_containing_point(xy_tmp, quad_tmp, remote_matches);
+    #endif
 
           if(rank_found == data->p4est_tmp->mpirank)
           {

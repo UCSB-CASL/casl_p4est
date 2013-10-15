@@ -55,6 +55,9 @@ PetscLogEvent log_my_p4est_vtk_write_all;
 PetscLogEvent log_my_p4est_nodes_new;
 PetscLogEvent log_my_p4est_new;
 PetscLogEvent log_my_p4est_ghost_new;
+PetscLogEvent log_my_p4est_refine;
+PetscLogEvent log_my_p4est_coarsen;
+PetscLogEvent log_my_p4est_partition;
 
 void register_petsc_logs()
 {
@@ -108,4 +111,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_nodes_new                                      ", 0, &log_my_p4est_nodes_new); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_new                                            ", 0, &log_my_p4est_new); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_ghost_new                                      ", 0, &log_my_p4est_ghost_new); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_refine                                         ", 0, &log_my_p4est_refine); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_coarsen                                        ", 0, &log_my_p4est_coarsen); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_partition                                      ", 0, &log_my_p4est_partition); CHKERRXX(ierr);
 }
