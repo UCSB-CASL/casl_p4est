@@ -23,6 +23,8 @@ class my_p4est_level_set {
   void reinitialize_One_Iteration_First_Order( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double limit );
 
   void reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map, const double *dxx0, const double *dyy0, const double *dxx, const double *dyy, double *p0, double *pn, double *pnp1, double limit );
+
+  void advect_in_normal_direction_one_iteration(std::vector<p4est_locidx_t>& map, const double *vn, double dt, const double *dxx, const double *dyy, const double *pn, double *pnp1);
 public:
   my_p4est_level_set(my_p4est_node_neighbors_t *ngbd_ )
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_)
@@ -52,6 +54,26 @@ public:
   /* 2nd order in time, 2nd order in space */
   /* this has not be thoroughly tested ... use with caution. It's also disastrous in terms of MPI communications */
   void reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
+
+  /*!
+   * \brief advect_in_normal_direction advects the level-set function in the normal direction using Godunov's scheme
+   * \param vn     [in]      velocity in the normal direction (CF2)
+   * \param phi    [in, out] level-set function
+   * \param phi_xx [in]      dxx derivative of level-set function. will be computed if set to NULL
+   * \param phi_yy [in]      dyy derivative of level-set function. will be computed if set to NULL
+   * \return dt
+   */
+  double advect_in_normal_direction(const CF_2& vn, Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
+
+  /*!
+   * \brief advect_in_normal_direction advects the level-set function in the normal direction using Godunov's scheme
+   * \param vn     [in]      velocity in the normal direction (Vec)
+   * \param phi    [in, out] level-set function
+   * \param phi_xx [in]      dxx derivative of level-set function. will be computed if set to NULL
+   * \param phi_yy [in]      dyy derivative of level-set function. will be computed if set to NULL
+   * \return dt
+   */
+  double advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
 
   /* extrapolate using geometrical extrapolation */
   void extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditions2D &bc, int order=2, int band_to_extend=INT_MAX ) const;

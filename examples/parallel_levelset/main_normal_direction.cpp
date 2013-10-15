@@ -19,6 +19,7 @@
 #include <src/semi_lagrangian.h>
 #include <src/my_p4est_levelset.h>
 #include <src/my_p4est_log_wrappers.h>
+#include <src/interpolating_function.h>
 
 using namespace std;
 
@@ -58,7 +59,7 @@ static struct:CF_2{
   double operator()(double x, double y) const {
     (void) x;
     (void) y;
-    return 1;
+    return sqrt(x*x+y*y);
   }
 } vn;
 
@@ -76,7 +77,7 @@ struct square:CF_2{
   square(double x0_, double y0_, double h_): x0(x0_), y0(y0_), h(h_) {}
   void update (double x0_, double y0_, double h_) {x0 = x0_; y0 = y0_; h = h_; }
   double operator()(double x, double y) const {
-    return h - MIN(ABS(x-x0) , ABS(y-y0));
+    return MIN(h - ABS(x-x0), h - ABS(y-y0));
   }
 private:
   double  x0, y0, h;
@@ -91,8 +92,8 @@ int main (int argc, char* argv[]){
   p4est_ghost_t      *ghost;
   PetscErrorCode ierr;
 
-  circle circ(0.5, 0.5, .3);
-  splitting_criteria_cf_t data(0, 10, &circ, 1.3);
+  square sq(1, 1, .8);
+  splitting_criteria_cf_t data(0, 8, &sq, 1.3);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -134,8 +135,8 @@ int main (int argc, char* argv[]){
 
   // Initialize the level-set function
   Vec phi;
-  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);  
-  sample_cf_on_nodes(p4est, nodes, circ, phi);
+  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, sq, phi);
 
   double *phi_ptr;
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
@@ -148,15 +149,12 @@ int main (int argc, char* argv[]){
 
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
 
-  // SemiLagrangian object
-  SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
-
   // loop over time
-  double tf = 10;
+  double tf = 0.5;
   int tc = 0;
-  int save = 10;
+  int save = 1;
+  double dt = 0;
   vector<double> vx, vy;
-  double dt = 0.1;
   for (double t=0; t<tf; t+=dt, tc++){
     if (tc % save == 0){
       // Save stuff
@@ -197,13 +195,64 @@ int main (int argc, char* argv[]){
 
     // advect the function in time and get the computed time-step
     w2.start("advecting");
-    sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
 
     // reinitialize
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
     my_p4est_level_set level_set(&node_neighbors);
+
+    dt = level_set.advect_in_normal_direction(vn, phi);
     level_set.reinitialize_2nd_order(phi, 6);
+
+    /* reconstruct the grid */
+    p4est_t *p4est_np1 = p4est_copy(p4est, NULL);
+    p4est_np1->user_pointer = p4est->user_pointer;
+
+    // define interpolating function on the old stuff
+    InterpolatingFunction phi_interp(p4est, nodes, ghost, &brick, &node_neighbors);
+    phi_interp.set_input_parameters(phi, linear);
+    data.phi = &phi_interp;
+
+    // refine and coarsen new p4est
+    my_p4est_coarsen(p4est_np1, P4EST_TRUE, coarsen_levelset_cf, NULL);
+    my_p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
+
+    // partition
+    my_p4est_partition(p4est_np1, NULL);
+
+    // recompute ghost and nodes
+    p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_DEFAULT);
+    p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+    // transfer solution to the new grid
+    Vec phi_np1;
+    ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+
+    for (size_t n=0; n<nodes_np1->indep_nodes.elem_count; n++)
+    {
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, n);
+      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+      p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+
+      double tree_xmin = connectivity->vertices[3*v_mm + 0];
+      double tree_ymin = connectivity->vertices[3*v_mm + 1];
+
+      double x = node->x != P4EST_ROOT_LEN - 1 ? (double)node->x/(double)P4EST_ROOT_LEN : 1.0;
+      double y = node->y != P4EST_ROOT_LEN - 1 ? (double)node->y/(double)P4EST_ROOT_LEN : 1.0;
+
+      x += tree_xmin;
+      y += tree_ymin;
+
+      phi_interp.add_point_to_buffer(n, x, y);
+    }
+    phi_interp.interpolate(phi_np1);
+
+    // get rid of old stuff and replace them with new
+    ierr = VecDestroy(phi); CHKERRXX(ierr); phi = phi_np1;
+    p4est_destroy(p4est); p4est = p4est_np1;
+    p4est_nodes_destroy(nodes); nodes = nodes_np1;
+    p4est_ghost_destroy(ghost); ghost = ghost_np1;
 
     w2.stop(); w2.read_duration();
   }
@@ -221,3 +270,4 @@ int main (int argc, char* argv[]){
 
   return 0;
 }
+

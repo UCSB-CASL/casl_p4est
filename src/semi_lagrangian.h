@@ -27,13 +27,10 @@ class SemiLagrangian
     p4est_ghost_t *ghost_tmp;
     p4est_nodes_t *nodes_tmp;
     std::vector<double> *phi_tmp;
-    my_p4est_hierarchy_t hierarchy;
+    my_p4est_hierarchy_t *hierarchy;
     splitting_criteria_update_t( double lip, int min_lvl, int max_lvl,
                                  std::vector<double> *phi,  my_p4est_brick_t *myb,
                                  p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes)
-#ifndef P4EST_POINT_LOOKUP
-      : hierarchy(p4est, ghost, myb)
-#endif
     {
       this->lip = lip;
       this->min_lvl = min_lvl;
@@ -43,7 +40,17 @@ class SemiLagrangian
       this->ghost_tmp = ghost;
       this->nodes_tmp = nodes;
       this->phi_tmp = phi;
+#ifndef P4EST_POINT_LOOKUP
+      hierarchy = new my_p4est_hierarchy_t(p4est, ghost, myb);
+#endif
     }
+    ~splitting_criteria_update_t()
+    {
+#ifndef P4EST_POINT_LOOKUP
+        delete hierarchy;
+#endif
+    }
+
     double operator()(const p4est_quadrant_t &quad, const double *f, const double *xy) const
     {
       return bilinear_interpolation(p4est_tmp, quad.p.piggy3.which_tree, quad, f, xy);
@@ -98,7 +105,7 @@ class SemiLagrangian
       sc_array_destroy(remote_matches);
 #else
      std::vector<p4est_quadrant_t> remote_matches;
-     data->hierarchy.find_smallest_quadrant_containing_point(xy, quad_tmp, remote_matches);
+     data->hierarchy->find_smallest_quadrant_containing_point(xy, quad_tmp, remote_matches);
 #endif
 
       p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
@@ -154,7 +161,7 @@ class SemiLagrangian
       sc_array_destroy(remote_matches);
 #else
      std::vector<p4est_quadrant_t> remote_matches;
-     int rank_found = data->hierarchy.find_smallest_quadrant_containing_point(xy, quad_tmp, remote_matches);
+     int rank_found = data->hierarchy->find_smallest_quadrant_containing_point(xy, quad_tmp, remote_matches);
 #endif
 
       p4est_locidx_t quad_tmp_idx;
@@ -228,7 +235,7 @@ class SemiLagrangian
           sc_array_destroy(remote_matches);
     #else
          std::vector<p4est_quadrant_t> remote_matches;
-         int rank_found = data->hierarchy.find_smallest_quadrant_containing_point(xy_tmp, quad_tmp, remote_matches);
+         int rank_found = data->hierarchy->find_smallest_quadrant_containing_point(xy_tmp, quad_tmp, remote_matches);
     #endif
 
           if(rank_found == data->p4est_tmp->mpirank)

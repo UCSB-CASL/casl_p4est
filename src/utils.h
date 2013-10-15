@@ -14,6 +14,7 @@
 // System
 #include <stdexcept>
 #include <sstream>
+#include <vector>
 
 class CF_1
 {
@@ -474,6 +475,8 @@ bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
  * is performed to ensure enough memory is available in the Vec object.
  */
 void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f);
+
+void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
 
 template<typename T>
 T ranged_rand(T a, T b, int seed = 0){
