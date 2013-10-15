@@ -3,7 +3,6 @@
 #include <stdexcept>
 #include <sstream>
 #include <petsclog.h>
-#include <assert.h>
 
 // logging variable -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -212,12 +211,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
   double ii = (xy[0] - tr_xy_orig[0]) * P4EST_ROOT_LEN;
   double jj = (xy[1] - tr_xy_orig[1]) * P4EST_ROOT_LEN;
 
-  assert(ii >=0 && ii <= (double)P4EST_ROOT_LEN);
-  assert(jj >=0 && jj <= (double)P4EST_ROOT_LEN);
-
   bool is_on_face_x = (fabs(ii-floor(ii))<1e-3 || fabs(ceil(ii)-ii)<1e-3);
   bool is_on_face_y = (fabs(jj-floor(jj))<1e-3 || fabs(ceil(jj)-jj)<1e-3);
-
 
   if (is_on_face_x && is_on_face_y){
     // perturb in 4 directions
@@ -239,9 +234,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
         else if (sqx > (double)P4EST_ROOT_LEN) { sqx -= (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] + 1; }
         if      (sqy < 0)                      { sqy += (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] - 1; }
         else if (sqy > (double)P4EST_ROOT_LEN) { sqy -= (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] + 1; }
-
-        assert(sqx >=0 && sqx <= (double)P4EST_ROOT_LEN);
-        assert(sqy >=0 && sqy <= (double)P4EST_ROOT_LEN);
 
         p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
         p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
@@ -312,9 +304,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
       int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
       if      (sqx < 0)                      { sqx += (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] - 1; }
       else if (sqx > (double)P4EST_ROOT_LEN) { sqx -= (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] + 1; }
-
-      assert(sqx >=0 && sqx <= (double)P4EST_ROOT_LEN);
-      assert(sqy >=0 && sqy <= (double)P4EST_ROOT_LEN);
 
       p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
       p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
@@ -387,9 +376,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
       if      (sqy < 0)                      { sqy += (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] - 1; }
       else if (sqy > (double)P4EST_ROOT_LEN) { sqy -= (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] + 1; }
 
-      assert(sqx >=0 && sqx <= (double)P4EST_ROOT_LEN);
-      assert(sqy >=0 && sqy <= (double)P4EST_ROOT_LEN);
-
       p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
       p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
       const std::vector<HierarchyCell>& h_tr = trees[tt];
@@ -449,9 +435,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
     double sqy = jj;
 
     int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
-
-    assert(sqx >=0 && sqx <= (double)P4EST_ROOT_LEN);
-    assert(sqy >=0 && sqy <= (double)P4EST_ROOT_LEN);
 
     p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
     p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
