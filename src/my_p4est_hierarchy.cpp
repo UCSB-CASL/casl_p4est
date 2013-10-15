@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <petsclog.h>
+#include <assert.h>
 
 // logging variable -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -167,7 +168,7 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
   fclose(vtk);
 }
 
-int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
+int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
 {
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr;
@@ -190,21 +191,33 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   const static double  eps = 0.5*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL);
   const static p4est_qcoord_t qh = P4EST_QUADRANT_LEN(P4EST_QMAXLEVEL);
 
+  /* same trick as in p4est poin tlookup */
+  if( fabs(round(xy[0])-xy[0]) < 1e-9 ) xy[0] = round(xy[0]);
+  if( fabs(round(xy[1])-xy[1]) < 1e-9 ) xy[1] = round(xy[1]);
+
   /* clip inside computational domain
    * TODO: this wont work with periodic. Need to add something in myb
    * to indicate if the p4est is periodic
    */
-  double xy_clipped [] = {xy[0], xy[1]};
-  if      (xy_clipped[0] < qeps)                    xy_clipped[0] = qeps;
-  else if (xy_clipped[0] > myb->nxytrees[0] - qeps) xy_clipped[0] = myb->nxytrees[0] - qeps;
-  if      (xy_clipped[1] < qeps)                    xy_clipped[1] = qeps;
-  else if (xy_clipped[1] > myb->nxytrees[1] - qeps) xy_clipped[1] = myb->nxytrees[1] - qeps;
+  if      (xy[0] < qeps)                    xy[0] = qeps;
+  else if (xy[0] > myb->nxytrees[0] - qeps) xy[0] = myb->nxytrees[0] - qeps;
+  if      (xy[1] < qeps)                    xy[1] = qeps;
+  else if (xy[1] > myb->nxytrees[1] - qeps) xy[1] = myb->nxytrees[1] - qeps;
 
-  double ii = (xy_clipped[0] - floor(xy_clipped[0])) * P4EST_ROOT_LEN;
-  double jj = (xy_clipped[1] - floor(xy_clipped[1])) * P4EST_ROOT_LEN;
+  int tr_xy_orig [] =
+  {
+    (int)floor(xy[0]),
+    (int)floor(xy[1])
+  };
+  double ii = (xy[0] - tr_xy_orig[0]) * P4EST_ROOT_LEN;
+  double jj = (xy[1] - tr_xy_orig[1]) * P4EST_ROOT_LEN;
+
+  assert(ii >=0 && ii <= (double)P4EST_ROOT_LEN);
+  assert(jj >=0 && jj <= (double)P4EST_ROOT_LEN);
 
   bool is_on_face_x = (fabs(ii-floor(ii))<1e-3 || fabs(ceil(ii)-ii)<1e-3);
   bool is_on_face_y = (fabs(jj-floor(jj))<1e-3 || fabs(ceil(jj)-jj)<1e-3);
+
 
   if (is_on_face_x && is_on_face_y){
     // perturb in 4 directions
@@ -215,15 +228,21 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
         double sqx = ii + i*eps;
         double sqy = jj + j*eps;
 
-        // first locate the correct tree
-        /* TODO: we should scale the coordinate by the tree size in general to get
+        /* first locate the correct tree. We need to check if the perturbation
+         * puts us in a different tree
+         * TODO: we should scale the coordinate by the tree size in general to get
          * the correct tree coordinate *
          */
-        int tr_xy [] =
-        {
-          (int)floor(xy_clipped[0]) + (int)floor(sqx/(double)P4EST_ROOT_LEN),
-          (int)floor(xy_clipped[1]) + (int)floor(sqy/(double)P4EST_ROOT_LEN)
-        };
+
+        int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
+        if      (sqx < 0)                      { sqx += (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] - 1; }
+        else if (sqx > (double)P4EST_ROOT_LEN) { sqx -= (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] + 1; }
+        if      (sqy < 0)                      { sqy += (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] - 1; }
+        else if (sqy > (double)P4EST_ROOT_LEN) { sqy -= (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] + 1; }
+
+        assert(sqx >=0 && sqx <= (double)P4EST_ROOT_LEN);
+        assert(sqy >=0 && sqy <= (double)P4EST_ROOT_LEN);
+
         p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
         p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
         const std::vector<HierarchyCell>& h_tr = trees[tt];
@@ -231,8 +250,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
         const HierarchyCell *it, *begin; begin = it = &h_tr[0];
         while(CELL_LEAF != it->child){
           p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
-          short cj = (it->jmin + half_h <= sqy);
-          short ci = (it->imin + half_h <= sqx);
+          short cj = ((double)(it->jmin + half_h)) <= sqy;
+          short ci = ((double)(it->imin + half_h)) <= sqx;
 
           it = begin + it->child + 2*cj + ci;
         }
@@ -284,15 +303,19 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
       double sqx = ii + i*eps;
       double sqy = jj;
 
-      // first locate the correct tree
-      /* TODO: we should scale the coordinate by the tree size in general to get
-         * the correct tree coordinate *
-         */
-      int tr_xy [] =
-      {
-        (int)floor(xy_clipped[0]) + (int)floor(sqx/(double)P4EST_ROOT_LEN),
-        (int)floor(xy_clipped[1])
-      };
+      /* first locate the correct tree. We need to check if the perturbation
+       * puts us in a different tree
+       * TODO: we should scale the coordinate by the tree size in general to get
+       * the correct tree coordinate *
+       */
+
+      int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
+      if      (sqx < 0)                      { sqx += (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] - 1; }
+      else if (sqx > (double)P4EST_ROOT_LEN) { sqx -= (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] + 1; }
+
+      assert(sqx >=0 && sqx <= (double)P4EST_ROOT_LEN);
+      assert(sqy >=0 && sqy <= (double)P4EST_ROOT_LEN);
+
       p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
       p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
       const std::vector<HierarchyCell>& h_tr = trees[tt];
@@ -300,8 +323,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
       const HierarchyCell *it, *begin; begin = it = &h_tr[0];
       while(CELL_LEAF != it->child){
         p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
-        short cj = (it->jmin + half_h <= sqy);
-        short ci = (it->imin + half_h <= sqx);
+        short cj = ((double)(it->jmin + half_h)) <= sqy;
+        short ci = ((double)(it->imin + half_h)) <= sqx;
 
         it = begin + it->child + 2*cj + ci;
       }
@@ -354,15 +377,19 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
       double sqx = ii;
       double sqy = jj + j*eps;
 
-      // first locate the correct tree
-      /* TODO: we should scale the coordinate by the tree size in general to get
-         * the correct tree coordinate *
-         */
-      int tr_xy [] =
-      {
-        (int)floor(xy_clipped[0]),
-        (int)floor(xy_clipped[1]) + (int)floor(sqy/(double)P4EST_ROOT_LEN)
-      };
+      /* first locate the correct tree. We need to check if the perturbation
+       * puts us in a different tree
+       * TODO: we should scale the coordinate by the tree size in general to get
+       * the correct tree coordinate *
+       */
+
+      int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
+      if      (sqy < 0)                      { sqy += (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] - 1; }
+      else if (sqy > (double)P4EST_ROOT_LEN) { sqy -= (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] + 1; }
+
+      assert(sqx >=0 && sqx <= (double)P4EST_ROOT_LEN);
+      assert(sqy >=0 && sqy <= (double)P4EST_ROOT_LEN);
+
       p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
       p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
       const std::vector<HierarchyCell>& h_tr = trees[tt];
@@ -370,8 +397,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
       const HierarchyCell *it, *begin; begin = it = &h_tr[0];
       while(CELL_LEAF != it->child){
         p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
-        short cj = (it->jmin + half_h <= sqy);
-        short ci = (it->imin + half_h <= sqx);
+        short cj = ((double)(it->jmin + half_h)) <= sqy;
+        short ci = ((double)(it->imin + half_h)) <= sqx;
 
         it = begin + it->child + 2*cj + ci;
       }
@@ -421,15 +448,11 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
     double sqx = ii;
     double sqy = jj;
 
-    // first locate the correct tree
-    /* TODO: we should scale the coordinate by the tree size in general to get
-         * the correct tree coordinate *
-         */
-    int tr_xy [] =
-    {
-      (int)floor(xy_clipped[0]),
-      (int)floor(xy_clipped[1])
-    };
+    int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
+
+    assert(sqx >=0 && sqx <= (double)P4EST_ROOT_LEN);
+    assert(sqy >=0 && sqy <= (double)P4EST_ROOT_LEN);
+
     p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
     p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
     const std::vector<HierarchyCell>& h_tr = trees[tt];
@@ -437,8 +460,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
     const HierarchyCell *it, *begin; begin = it = &h_tr[0];
     while(CELL_LEAF != it->child){
       p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
-      short cj = (it->jmin + half_h <= sqy);
-      short ci = (it->imin + half_h <= sqx);
+      short cj = ((double)(it->jmin + half_h)) <= sqy;
+      short ci = ((double)(it->imin + half_h)) <= sqx;
 
       it = begin + it->child + 2*cj + ci;
     }

@@ -632,36 +632,37 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
   }
   MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
-  std::vector<double> p1(nodes->indep_nodes.elem_count), p2(nodes->indep_nodes.elem_count);
-  /* p1(Ln, Gn, Gn) */
-  std::copy(phi_p, phi_p + nodes->indep_nodes.elem_count, p1.begin());
+  Vec p1, p2;
+  double *p1_p, *p2_p;
+  ierr = VecDuplicate(phi_xx_, &p1); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_yy_, &p2); CHKERRXX(ierr);
 
-  advect_in_normal_direction_one_iteration(layer_nodes, vn_p, dt, phi_xx_p, phi_yy_p, &p1[0], phi_p);
+  ierr = VecGetArray(p1, &p1_p); CHKERRXX(ierr);
+  ierr = VecGetArray(p2, &p2_p); CHKERRXX(ierr);
+
+  /* p1(Ln, Gn, Gn) */
+  memcpy(p1_p, phi_p, sizeof(double) * nodes->indep_nodes.elem_count);
+
+  advect_in_normal_direction_one_iteration(layer_nodes, vn_p, dt, phi_xx_p, phi_yy_p, p1_p, phi_p);
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  advect_in_normal_direction_one_iteration(local_nodes, vn_p, dt, phi_xx_p, phi_yy_p, &p1[0], phi_p);
+  advect_in_normal_direction_one_iteration(local_nodes, vn_p, dt, phi_xx_p, phi_yy_p, p1_p, phi_p);
   ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   /* now phi(Lnp1, Bnp1, Gnp1) */
   compute_derivatives(phi, phi_xx_, phi_yy_);
 
-  /* first the layer nodes */
-  advect_in_normal_direction_one_iteration(layer_nodes, vn_p, dt, phi_xx_p, phi_yy_p, phi_p, &p2[0]);
-  for(size_t n=0; n<layer_nodes.size(); ++n)
-    phi_p[layer_nodes[n]] = 0.5 * (p1[layer_nodes[n]] + p2[layer_nodes[n]]);
+  advect_in_normal_direction_one_iteration(layer_nodes, vn_p, dt, phi_xx_p, phi_yy_p, phi_p, p2_p);
+  ierr = VecGhostUpdateBegin(p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  advect_in_normal_direction_one_iteration(local_nodes, vn_p, dt, phi_xx_p, phi_yy_p, phi_p, p2_p);
+  ierr = VecGhostUpdateEnd  (p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  /* begin ghost update */
-  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  /* now local nodes */
-  advect_in_normal_direction_one_iteration(local_nodes, vn_p, dt, phi_xx_p, phi_yy_p, phi_p, &p2[0]);
-  for(size_t n=0; n<local_nodes.size(); ++n)
-    phi_p[local_nodes[n]] = 0.5 * (p1[local_nodes[n]] + p2[local_nodes[n]]);
-
-  /* finish ghost update */
-  ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    phi_p[n] = 0.5 * (p1_p[n] + p2_p[n]);
 
   /* restore arrays */
   ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
+  ierr = VecRestoreArray(p1,      &p1_p);     CHKERRXX(ierr);
+  ierr = VecRestoreArray(p2,      &p2_p);     CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
 
@@ -671,6 +672,9 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
     ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
     ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
   }
+
+  ierr = VecDestroy(p1); CHKERRXX(ierr);
+  ierr = VecDestroy(p2); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_advect_in_normal_direction_CF2, 0, 0, 0, 0);
 
@@ -712,37 +716,38 @@ double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec
   }
   MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
-  std::vector<double> p1(nodes->indep_nodes.elem_count), p2(nodes->indep_nodes.elem_count);
-  /* p1(Ln, Gn, Gn) */
-  std::copy(phi_p, phi_p + nodes->indep_nodes.elem_count, p1.begin());
+  Vec p1, p2;
+  double *p1_p, *p2_p;
+  ierr = VecDuplicate(phi_xx_, &p1); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_yy_, &p2); CHKERRXX(ierr);
 
-  advect_in_normal_direction_one_iteration(layer_nodes, vn_p, dt, phi_xx_p, phi_yy_p, &p1[0], phi_p);
+  ierr = VecGetArray(p1, &p1_p); CHKERRXX(ierr);
+  ierr = VecGetArray(p2, &p2_p); CHKERRXX(ierr);
+
+  /* p1(Ln, Gn, Gn) */
+  memcpy(p1_p, phi_p, sizeof(double) * nodes->indep_nodes.elem_count);
+
+  advect_in_normal_direction_one_iteration(layer_nodes, vn_p, dt, phi_xx_p, phi_yy_p, p1_p, phi_p);
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  advect_in_normal_direction_one_iteration(local_nodes, vn_p, dt, phi_xx_p, phi_yy_p, &p1[0], phi_p);
+  advect_in_normal_direction_one_iteration(local_nodes, vn_p, dt, phi_xx_p, phi_yy_p, p1_p, phi_p);
   ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   /* now phi(Lnp1, Bnp1, Gnp1) */
   compute_derivatives(phi, phi_xx_, phi_yy_);
 
-  /* first the layer nodes */
-  advect_in_normal_direction_one_iteration(layer_nodes, vn_p, dt, phi_xx_p, phi_yy_p, phi_p, &p2[0]);
-  for(size_t n=0; n<layer_nodes.size(); ++n)
-    phi_p[layer_nodes[n]] = 0.5 * (p1[layer_nodes[n]] + p2[layer_nodes[n]]);
+  advect_in_normal_direction_one_iteration(layer_nodes, vn_p, dt, phi_xx_p, phi_yy_p, phi_p, p2_p);
+  ierr = VecGhostUpdateBegin(p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  advect_in_normal_direction_one_iteration(local_nodes, vn_p, dt, phi_xx_p, phi_yy_p, phi_p, p2_p);
+  ierr = VecGhostUpdateEnd  (p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  /* begin ghost update */
-  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  /* now local nodes */
-  advect_in_normal_direction_one_iteration(local_nodes, vn_p, dt, phi_xx_p, phi_yy_p, phi_p, &p2[0]);
-  for(size_t n=0; n<local_nodes.size(); ++n)
-    phi_p[local_nodes[n]] = 0.5 * (p1[local_nodes[n]] + p2[local_nodes[n]]);
-
-  /* finish ghost update */
-  ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    phi_p[n] = 0.5 * (p1_p[n] + p2_p[n]);
 
   /* restore arrays */
   ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
   ierr = VecRestoreArray(vn,      &vn_p);     CHKERRXX(ierr);
+  ierr = VecRestoreArray(p1,      &p1_p);     CHKERRXX(ierr);
+  ierr = VecRestoreArray(p2,      &p2_p);     CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
 
@@ -752,6 +757,9 @@ double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec
     ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
     ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
   }
+
+  ierr = VecDestroy(p1); CHKERRXX(ierr);
+  ierr = VecDestroy(p2); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_advect_in_normal_direction_Vec, 0, 0, 0, 0);
 

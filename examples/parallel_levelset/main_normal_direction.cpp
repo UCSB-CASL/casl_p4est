@@ -93,7 +93,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode ierr;
 
   square sq(1, 1, .8);
-  splitting_criteria_cf_t data(0, 8, &sq, 1.3);
+  splitting_criteria_cf_t data(0, 7, &sq, 1.3);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -158,9 +158,15 @@ int main (int argc, char* argv[]){
   for (double t=0; t<tf; t+=dt, tc++){
     if (tc % save == 0){
       // Save stuff
+#ifdef P4EST_POINT_LOOKUP
+      std::ostringstream oss; oss << "p4est_p_" << p4est->mpisize << "_"
+                                  << brick.nxytrees[0] << "x"
+                                  << brick.nxytrees[1] << "." << tc/save;
+#else
       std::ostringstream oss; oss << "p_" << p4est->mpisize << "_"
                                   << brick.nxytrees[0] << "x"
                                   << brick.nxytrees[1] << "." << tc/save;
+#endif
 
       vx.resize(nodes->indep_nodes.elem_count);
       vy.resize(nodes->indep_nodes.elem_count);
