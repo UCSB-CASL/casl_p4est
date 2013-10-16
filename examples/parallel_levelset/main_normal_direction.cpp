@@ -93,7 +93,7 @@ int main (int argc, char* argv[]){
   PetscErrorCode ierr;
 
   square sq(1, 1, .8);
-  splitting_criteria_cf_t data(0, 7, &sq, 1.3);
+  splitting_criteria_cf_t data(0, 8, &sq, 1.3);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -152,7 +152,7 @@ int main (int argc, char* argv[]){
   // loop over time
   double tf = 0.5;
   int tc = 0;
-  int save = 1;
+  int save = 10;
   double dt = 0;
   vector<double> vx, vy;
   for (double t=0; t<tf; t+=dt, tc++){
@@ -208,10 +208,10 @@ int main (int argc, char* argv[]){
     my_p4est_level_set level_set(&node_neighbors);
 
     dt = level_set.advect_in_normal_direction(vn, phi);
-    level_set.reinitialize_2nd_order(phi, 6);
+    level_set.reinitialize_1st_order_time_2nd_order_space(phi, 6);
 
     /* reconstruct the grid */
-    p4est_t *p4est_np1 = p4est_copy(p4est, NULL);
+    p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
     p4est_np1->user_pointer = p4est->user_pointer;
 
     // define interpolating function on the old stuff

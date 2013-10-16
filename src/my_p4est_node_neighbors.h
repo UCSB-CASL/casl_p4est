@@ -29,6 +29,8 @@ class my_p4est_node_neighbors_t {
   p4est_nodes_t *nodes;
   my_p4est_brick_t *myb;
   std::vector< quad_neighbor_nodes_of_node_t > neighbors;
+  std::vector<p4est_locidx_t> layer_nodes;
+  std::vector<p4est_locidx_t> local_nodes;
 
 public:
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
@@ -36,6 +38,32 @@ public:
       neighbors(nodes_->num_owned_indeps)
   {
     init_neighbors();
+
+    /* compute the layer and local nodes.
+     * layer_nodes: This is a list of indices for nodes in the local range on this
+     * processor (i.e. 0<= i < nodes->num_owned_indeps) that are taged as ghost
+     * on at least another processor
+     * local_nodes: This is a list of indices for nodes in the local range on this
+     * processor that are not included in the layer_nodes
+     *
+     * With this subdivision, ANY computation on the local nodes should be decomposed
+     * into four stages:
+     * 1) do computation on the layer nodes
+     * 2) call VecGhostUpdateBegin so that each processor begins sending messages
+     * 3) do computation on the local nodes
+     * 4) call VecGhostUpdateEnd to finish the update process
+     *
+     * This will effectively hide the communication steps 2,4 with the computation
+     * step 3
+     */
+
+    layer_nodes.reserve(nodes->num_owned_shared);
+    local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
+
+    for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i){
+      p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
+      ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
+    }
   }
 
   inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
@@ -100,8 +128,10 @@ public:
    * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size as f
    * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size as f
    */
-  void dxx_and_dyy_central(const Vec f, Vec fxx, Vec fyy) const;
+  void dxx_and_dyy_central(const Vec f, Vec fxx, Vec fyy) const;  
 
+private:
+  void dxx_and_dyy_central_using_block(const Vec f, Vec fxx, Vec fyy) const;
 };
 
 #endif /* !MY_P4EST_NODE_NEIGHBORS_H */

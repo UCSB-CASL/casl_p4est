@@ -14,11 +14,13 @@
 #else
 extern PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
 extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_order;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1st_time_2nd_space;
+extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_time_1st_space;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_1st_order;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_2nd_order;
 extern PetscLogEvent log_my_p4est_level_set_extend_over_interface;
 extern PetscLogEvent log_my_p4est_level_set_extend_from_interface;
 extern PetscLogEvent log_my_p4est_level_set_compute_derivatives;
-extern PetscLogEvent log_my_p4est_level_set_reinit_1it_1st_order;
-extern PetscLogEvent log_my_p4est_level_set_reinit_1it_2nd_order;
 extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_1_iter;
 extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_Vec;
 extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_CF2;
@@ -31,7 +33,7 @@ extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_CF2;
 void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double limit )
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1it_1st_order, 0, 0, 0, 0);
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_1st_order, 0, 0, 0, 0);
 
   for( size_t n_map=0; n_map<map.size(); ++n_map)
   {
@@ -128,14 +130,14 @@ void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4e
     else
       pnp1[n] = p0[n];
   }
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1it_1st_order, 0, 0, 0, 0);
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_1st_order, 0, 0, 0, 0);
 }
 
 
 void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map, const double *dxx0, const double *dyy0, const double *dxx, const double *dyy, double *p0, double *pn, double *pnp1, double limit )
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1it_2nd_order, 0, 0, 0, 0);
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_2nd_order, 0, 0, 0, 0);
 
   for( size_t n_map=0; n_map<map.size(); ++n_map)
   {
@@ -258,7 +260,7 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
     else
       pnp1[n] = p0[n];
   }
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1it_2nd_order, 0, 0, 0, 0);
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_2nd_order, 0, 0, 0, 0);
 }
 
 void my_p4est_level_set::advect_in_normal_direction_one_iteration(std::vector<p4est_locidx_t> &map, const double* vn, double dt,
@@ -354,156 +356,64 @@ void my_p4est_level_set::reinitialize_1st_order( Vec phi_petsc, int number_of_it
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 
-  double *phi;
-
   double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-  double *p1 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
 
+  Vec p1_petsc;
+  double *p1, *phi;
+  ierr = VecDuplicate(phi_petsc, &p1_petsc); CHKERRXX(ierr);
+  ierr = VecGetArray(p1_petsc, &p1); CHKERRXX(ierr);
   ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     p0[n] = phi[n];
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 
   for(int i=0; i<number_of_iteration; i++)
   {
-    /* process the local nodes */
-    ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-    reinitialize_One_Iteration_First_Order( local_nodes, p0, phi, p1, limit);
-    ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 
-    /* finish receiving the ghost layer */
-    if(i!=0) { ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
-
-    /* processes the layer nodes */
+    /* 1) processes the layer nodes */
     ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
     reinitialize_One_Iteration_First_Order( layer_nodes, p0, phi, p1, limit);
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-      phi[n] = p1[n];
-    ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 
+    /* 2) initiate the communication for the ghost layer */
+    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    /* initiate the communication for the ghost layer */
-    ierr = VecGhostUpdateBegin(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    /* 3) process the local nodes */
+    reinitialize_One_Iteration_First_Order( local_nodes, p0, phi, p1, limit);
+
+    /* 4) finish receiving the ghost layer */
+    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 5) Copy data into phi */
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      phi[n] = p1[n];   
   }
 
-  /* synchronize */
-  ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  /* restore arrays and destroy uneeded petsc objects */
+  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
+  ierr = VecRestoreArray(p1_petsc, &p1); CHKERRXX(ierr);
+  ierr = VecDestroy(p1_petsc); CHKERRXX(ierr);
 
   free(p0);
-  free(p1);
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration, double limit )
-{
-  /* let's call
-     * Ln the local nodes at time n
-     * Bnp1 the boundary nodes at time np1
-     * Gnm1 the ghost nodes at time nm1
-     */
-  PetscErrorCode ierr;
-  double *phi;
-
-  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-  double *p1 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-  double *p2 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    p0[n] = phi[n];
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  for(int i=0; i<number_of_iteration; i++)
-  {
-    /* p1(Ln, Gn, Gnm1) */
-    ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-      p1[n] = phi[n];
-
-    /* process the local nodes */
-    /* phi(Lnp1, Bn, Gnm1) */
-    reinitialize_One_Iteration_First_Order( local_nodes, p0, p1, phi, limit);
-    ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-    /* finish receiving the ghost layer */
-    /* phi(Lnp1, Bn, Gn) */
-    if(i!=0) { ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
-
-    /* processes the layer nodes */
-    /* p1(Ln, Bn, Gn) */
-    ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-    for(size_t n=nodes->num_owned_indeps; n<nodes->indep_nodes.elem_count; ++n)
-      p1[n] = phi[n];
-    /* phi(Lnp1, Bnp1, Gn) */
-    reinitialize_One_Iteration_First_Order( layer_nodes, p0, p1, phi, limit);
-    ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-    /* initiate the communication for the ghost layer */
-    ierr = VecGhostUpdateBegin(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-
-    /* process the local nodes */
-    /* p2(Lnp2, Bnp1, Gn) */
-    ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-    reinitialize_One_Iteration_First_Order( local_nodes, p0, phi, p2, limit);
-    ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-    /* finish receiving the ghost layer */
-    /* phi(Lnp1, Bnp1, Gnp1) */
-    ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* process the layer nodes */
-    ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-    /* p2(Lnp2, Bnp2, Gn) */
-    reinitialize_One_Iteration_First_Order( layer_nodes, p0, phi, p2, limit);
-
-    /* update phi */
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-      phi[n] = .5 * (p1[n] + p2[n]);
-    ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-    /* initiate the communication for the ghost layer */
-    ierr = VecGhostUpdateBegin(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
-
-  /* synchronize */
-  if(number_of_iteration>0) { ierr = VecGhostUpdateEnd(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
-
-  free(p0);
-  free(p1);
-  free(p2);
-}
-
-void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_compute_derivatives, phi_petsc, dxx_petsc, dyy_petsc, 0); CHKERRXX(ierr);
-
-  ngbd->dxx_and_dyy_central(phi_petsc, dxx_petsc, dyy_petsc);
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives, phi_petsc, dxx_petsc, dyy_petsc, 0); CHKERRXX(ierr);
-}
 
 void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration, double limit )
 {
-  /* let's call
-     * Ln the local nodes at time n
-     * Bnp1 the boundary nodes at time np1
-     * Gnm1 the ghost nodes at time nm1
-     */
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-  double *phi;
+  Vec p1_petsc, p2_petsc;
+  double *p1, *p2, *phi;
+  ierr = VecCreateGhost(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est, nodes, &p2_petsc); CHKERRXX(ierr);
+  ierr = VecGetArray(p1_petsc,  &p1);  CHKERRXX(ierr);
+  ierr = VecGetArray(p2_petsc,  &p2);  CHKERRXX(ierr);
+  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
 
   double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-  double *p1 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-  double *p2 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     p0[n] = phi[n];
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
 
   Vec dxx0_petsc, dyy0_petsc;
   double *dxx0, *dyy0;
@@ -522,66 +432,224 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
 
   for(int i=0; i<number_of_iteration; i++)
   {
-    /* p1(Ln, Gn, Gn) */
-    ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-      p1[n] = phi[n];
 
+    /***** Step 1 of RK2: phi -> p1 *****/
+    /* compute derivatives */
     compute_derivatives(phi_petsc, dxx_petsc, dyy_petsc);
+
     ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
     ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
 
-    reinitialize_One_Iteration_Second_Order( local_nodes, dxx0, dyy0, dxx, dyy, p0, p1, phi, limit);
-    reinitialize_One_Iteration_Second_Order( layer_nodes, dxx0, dyy0, dxx, dyy, p0, p1, phi, limit);
+    /* 1) Preocess layer nodes */
+    reinitialize_One_Iteration_Second_Order( layer_nodes, dxx0, dyy0, dxx, dyy, p0, phi, p1, limit);
 
-    ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
+    /* 2) Begin update process for p1 */
+    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 3) Preocess local nodes */
+    reinitialize_One_Iteration_Second_Order( local_nodes, dxx0, dyy0, dxx, dyy, p0, phi, p1, limit);
+
+    /* 4) End update process for p1 */
+    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
     ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
     ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
 
-    /* initiate the communication for the ghost layer */
-    ierr = VecGhostUpdateBegin(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* now phi(Lnp1, Bnp1, Gnp1) */
-    compute_derivatives(phi_petsc, dxx_petsc, dyy_petsc);
+    /* recompute derivatives */
+    compute_derivatives(p1_petsc, dxx_petsc, dyy_petsc);
 
     ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
     ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-    ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
 
-    reinitialize_One_Iteration_Second_Order( local_nodes, dxx0, dyy0, dxx, dyy, p0, phi, p2, limit);
-    reinitialize_One_Iteration_Second_Order( layer_nodes, dxx0, dyy0, dxx, dyy, p0, phi, p2, limit);
+    /***** Step 2 of RK2: p1 -> p2 *****/
+
+    /* 1) Preocess layer nodes */
+    reinitialize_One_Iteration_Second_Order( layer_nodes, dxx0, dyy0, dxx, dyy, p0, p1, p2, limit);
+
+    /* 2) Begin update process for p2 */
+    ierr = VecGhostUpdateBegin(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 3) Preocess local nodes */
+    reinitialize_One_Iteration_Second_Order( local_nodes, dxx0, dyy0, dxx, dyy, p0, p1, p2, limit);
+
+    /* 4) End update process for p2 */
+    ierr = VecGhostUpdateEnd(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
     ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
 
     /* update phi */
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       phi[n] = .5 * (p1[n] + p2[n]);
-
-    ierr = PetscLogFlops(nodes->num_owned_indeps * 2); CHKERRXX(ierr);
-
-    ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-    /* initiate the communication for the ghost layer */
-    ierr = VecGhostUpdateBegin(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
+  /* restore arrays and destroy uneeded petsc objects */
   ierr = VecRestoreArray(dxx0_petsc, &dxx0); CHKERRXX(ierr);
   ierr = VecRestoreArray(dyy0_petsc, &dyy0); CHKERRXX(ierr);
+  ierr = VecRestoreArray(p1_petsc,   &p1);   CHKERRXX(ierr);
+  ierr = VecRestoreArray(p2_petsc,   &p2);   CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_petsc,  &phi);  CHKERRXX(ierr);
+
   ierr = VecDestroy(dxx0_petsc); CHKERRXX(ierr);
   ierr = VecDestroy(dyy0_petsc); CHKERRXX(ierr);
-
-  ierr = VecDestroy(dxx_petsc); CHKERRXX(ierr);
-  ierr = VecDestroy(dyy_petsc); CHKERRXX(ierr);
+  ierr = VecDestroy(dxx_petsc);  CHKERRXX(ierr);
+  ierr = VecDestroy(dyy_petsc);  CHKERRXX(ierr);
+  ierr = VecDestroy(p1_petsc);   CHKERRXX(ierr);
+  ierr = VecDestroy(p2_petsc);   CHKERRXX(ierr);
 
   free(p0);
-  free(p1);
-  free(p2);
-
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
+
+void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration, double limit )
+{
+  PetscErrorCode ierr;  
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_time_1st_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+
+  Vec p1_petsc, p2_petsc;
+  double *p1, *p2, *phi;
+  ierr = VecCreateGhost(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est, nodes, &p2_petsc); CHKERRXX(ierr);
+  ierr = VecGetArray(p1_petsc,  &p1);  CHKERRXX(ierr);
+  ierr = VecGetArray(p2_petsc,  &p2);  CHKERRXX(ierr);
+  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+
+  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    p0[n] = phi[n];
+
+  for(int i=0; i<number_of_iteration; i++)
+  {
+    /***** Step 1 of RK2: phi -> p1 *****/
+
+    /* 1) Preocess layer nodes */
+    reinitialize_One_Iteration_First_Order( layer_nodes, p0, phi, p1, limit);
+
+    /* 2) Begin update process for p1 */
+    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 3) Preocess local nodes */
+    reinitialize_One_Iteration_First_Order( local_nodes, p0, phi, p1, limit);
+
+    /* 4) End update process for p1 */
+    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /***** Step 2 of RK2: p1 -> p2 *****/
+
+    /* 1) Preocess layer nodes */
+    reinitialize_One_Iteration_First_Order( layer_nodes, p0, p1, p2, limit);
+
+    /* 2) Begin update process for p2 */
+    ierr = VecGhostUpdateBegin(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 3) Preocess local nodes */
+    reinitialize_One_Iteration_First_Order( local_nodes, p0, p1, p2, limit);
+
+    /* 4) End update process for p2 */
+    ierr = VecGhostUpdateEnd(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* update phi */
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      phi[n] = .5 * (p1[n] + p2[n]);
+  }
+
+  /* restore arrays and destroy uneeded petsc objects */
+
+  ierr = VecRestoreArray(p1_petsc,  &p1);  CHKERRXX(ierr);
+  ierr = VecRestoreArray(p2_petsc,  &p2);  CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
+  ierr = VecDestroy(p1_petsc); CHKERRXX(ierr);
+  ierr = VecDestroy(p2_petsc); CHKERRXX(ierr);
+
+  free(p0);
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_time_1st_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_petsc, int number_of_iteration, double limit )
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+  
+  Vec p1_petsc;
+  double *p1, *phi;
+  ierr = VecCreateGhost(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
+  ierr = VecGetArray(p1_petsc,  &p1);  CHKERRXX(ierr);
+  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+
+  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    p0[n] = phi[n];
+
+  Vec dxx0_petsc, dyy0_petsc;
+  double *dxx0, *dyy0;
+  ierr = VecCreateGhost(p4est, nodes, &dxx0_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est, nodes, &dyy0_petsc); CHKERRXX(ierr);
+
+  Vec dxx_petsc, dyy_petsc;
+  double *dxx, *dyy;
+  ierr = VecCreateGhost(p4est, nodes, &dxx_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhost(p4est, nodes, &dyy_petsc); CHKERRXX(ierr);
+
+  compute_derivatives(phi_petsc, dxx0_petsc, dyy0_petsc);
+
+  ierr = VecGetArray(dxx0_petsc, &dxx0); CHKERRXX(ierr);
+  ierr = VecGetArray(dyy0_petsc, &dyy0); CHKERRXX(ierr);
+
+  for(int i=0; i<number_of_iteration; i++)
+  {
+    /* compute derivatives */
+    compute_derivatives(phi_petsc, dxx_petsc, dyy_petsc);
+
+    ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
+    ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
+
+    /* 1) Preocess layer nodes */
+    reinitialize_One_Iteration_Second_Order( layer_nodes, dxx0, dyy0, dxx, dyy, p0, phi, p1, limit);
+
+    /* 2) Begin update process for p1 */
+    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 3) Preocess local nodes */
+    reinitialize_One_Iteration_Second_Order( local_nodes, dxx0, dyy0, dxx, dyy, p0, phi, p1, limit);
+
+    /* 4) End update process for p1 */
+    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
+    ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
+
+    /* update phi */
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      phi[n] = p1[n];
+  }
+
+  /* restore arrays and destroy uneeded petsc objects */
+  ierr = VecRestoreArray(dxx0_petsc, &dxx0); CHKERRXX(ierr);
+  ierr = VecRestoreArray(dyy0_petsc, &dyy0); CHKERRXX(ierr);
+  ierr = VecRestoreArray(p1_petsc,   &p1);   CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_petsc,  &phi);  CHKERRXX(ierr);
+
+  ierr = VecDestroy(dxx0_petsc); CHKERRXX(ierr);
+  ierr = VecDestroy(dyy0_petsc); CHKERRXX(ierr);
+  ierr = VecDestroy(dxx_petsc);  CHKERRXX(ierr);
+  ierr = VecDestroy(dyy_petsc);  CHKERRXX(ierr);
+  ierr = VecDestroy(p1_petsc);   CHKERRXX(ierr);
+
+  free(p0);
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_compute_derivatives, phi_petsc, dxx_petsc, dyy_petsc, 0); CHKERRXX(ierr);
+
+  ngbd->dxx_and_dyy_central(phi_petsc, dxx_petsc, dyy_petsc);
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives, phi_petsc, dxx_petsc, dyy_petsc, 0); CHKERRXX(ierr);
+}
+
 double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, Vec phi_xx, Vec phi_yy)
 {
   /* TODO: do not allocate memory for vn */

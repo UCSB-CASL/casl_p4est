@@ -1,4 +1,5 @@
 #include "my_p4est_node_neighbors.h"
+#include <src/petsc_compatibility.h>
 
 // logging variable -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -494,21 +495,9 @@ void my_p4est_node_neighbors_t::dxx_central(const Vec f, Vec fxx) const
   ierr = VecGetArray(f,   &f_p  ); CHKERRXX(ierr);
   ierr = VecGetArray(fxx, &fxx_p); CHKERRXX(ierr);
 
-  /* obtain the nodes that are ghost points for other processors (i.e. we are
-   * looking for 'boundary' nodes)
-   */
-  std::vector<p4est_locidx_t> boundary_nodes, local_nodes;
-  boundary_nodes.reserve(nodes->num_owned_shared);
-  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
-
-  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; i++){
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
-    ni->pad8 == 0 ? local_nodes.push_back(i) : boundary_nodes.push_back(i);
-  }
-
   // compute the derivatives on the boundary nodes
-  for (size_t i=0; i<boundary_nodes.size(); i++)
-    fxx_p[boundary_nodes[i]] = neighbors[boundary_nodes[i]].dxx_central(f_p);
+  for (size_t i=0; i<layer_nodes.size(); i++)
+    fxx_p[layer_nodes[i]] = neighbors[layer_nodes[i]].dxx_central(f_p);
 
   // start updating the ghost values
   ierr = VecGhostUpdateBegin(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -563,21 +552,9 @@ void my_p4est_node_neighbors_t::dyy_central(const Vec f, Vec fyy) const
   ierr = VecGetArray(f,   &f_p  ); CHKERRXX(ierr);
   ierr = VecGetArray(fyy, &fyy_p); CHKERRXX(ierr);
 
-  /* obtain the nodes that are ghost points for other processors (i.e. we are
-   * looking for 'boundary' nodes)
-   */
-  std::vector<p4est_locidx_t> boundary_nodes, local_nodes;
-  boundary_nodes.reserve(nodes->num_owned_shared);
-  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
-
-  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; i++){
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
-    ni->pad8 == 0 ? local_nodes.push_back(i) : boundary_nodes.push_back(i);
-  }
-
   // compute the derivatives on the boundary nodes
-  for (size_t i=0; i<boundary_nodes.size(); i++)
-    fyy_p[boundary_nodes[i]] = neighbors[boundary_nodes[i]].dyy_central(f_p);
+  for (size_t i=0; i<layer_nodes.size(); i++)
+    fyy_p[layer_nodes[i]] = neighbors[layer_nodes[i]].dyy_central(f_p);
 
   // start updating the ghost values
   ierr = VecGhostUpdateBegin(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -642,22 +619,10 @@ void my_p4est_node_neighbors_t::dxx_and_dyy_central(const Vec f, Vec fdd) const
   ierr = VecGetArray(f,   &f_p  ); CHKERRXX(ierr);
   ierr = VecGetArray(fdd, &fdd_p); CHKERRXX(ierr);
 
-  /* obtain the nodes that are ghost points for other processors (i.e. we are
-   * looking for 'boundary' nodes)
-   */
-  std::vector<p4est_locidx_t> boundary_nodes, local_nodes;
-  boundary_nodes.reserve(nodes->num_owned_shared);
-  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
-
-  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; i++){
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
-    ni->pad8 == 0 ? local_nodes.push_back(i) : boundary_nodes.push_back(i);
-  }
-
   // compute the derivatives on the boundary nodes
-  for (size_t i=0; i<boundary_nodes.size(); i++){
-    fdd_p[P4EST_DIM*boundary_nodes[i] + 0] = neighbors[boundary_nodes[i]].dxx_central(f_p); // fxx
-    fdd_p[P4EST_DIM*boundary_nodes[i] + 1] = neighbors[boundary_nodes[i]].dyy_central(f_p); // fyy
+  for (size_t i=0; i<layer_nodes.size(); i++){
+    fdd_p[P4EST_DIM*layer_nodes[i] + 0] = neighbors[layer_nodes[i]].dxx_central(f_p); // fxx
+    fdd_p[P4EST_DIM*layer_nodes[i] + 1] = neighbors[layer_nodes[i]].dyy_central(f_p); // fyy
   }
 
   // start updating the ghost values
@@ -723,28 +688,19 @@ void my_p4est_node_neighbors_t::dxx_and_dyy_central(const Vec f, Vec fxx, Vec fy
   }
 #endif
 
+#ifdef DXX_USE_BLOCKS
+  dxx_and_dyy_central_using_block(f, fxx, fyy);
+#else
   // get access to the iternal data
   double *f_p, *fxx_p, *fyy_p;
   ierr = VecGetArray(f,   &f_p  ); CHKERRXX(ierr);
   ierr = VecGetArray(fxx, &fxx_p); CHKERRXX(ierr);
   ierr = VecGetArray(fyy, &fyy_p); CHKERRXX(ierr);
 
-  /* obtain the nodes that are ghost points for other processors (i.e. we are
-   * looking for 'boundary' nodes)
-   */
-  std::vector<p4est_locidx_t> boundary_nodes, local_nodes;
-  boundary_nodes.reserve(nodes->num_owned_shared);
-  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
-
-  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; i++){
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
-    ni->pad8 == 0 ? local_nodes.push_back(i) : boundary_nodes.push_back(i);
-  }
-
   // compute the derivatives on the boundary nodes
-  for (size_t i=0; i<boundary_nodes.size(); i++){
-    fxx_p[boundary_nodes[i]] = neighbors[boundary_nodes[i]].dxx_central(f_p);
-    fyy_p[boundary_nodes[i]] = neighbors[boundary_nodes[i]].dyy_central(f_p);
+  for (size_t i=0; i<layer_nodes.size(); i++){
+    fxx_p[layer_nodes[i]] = neighbors[layer_nodes[i]].dxx_central(f_p);
+    fyy_p[layer_nodes[i]] = neighbors[layer_nodes[i]].dyy_central(f_p);
   }
 
   // start updating the ghost values
@@ -765,6 +721,37 @@ void my_p4est_node_neighbors_t::dxx_and_dyy_central(const Vec f, Vec fxx, Vec fy
   // finish the ghost update process to ensure all values are updated
   ierr = VecGhostUpdateEnd(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
+#endif
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_dxx_and_dyy_central, f, fxx, fyy, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_node_neighbors_t::dxx_and_dyy_central_using_block(const Vec f, Vec fxx, Vec fyy) const
+{
+  // create temporary block vector
+  PetscErrorCode ierr;
+  Vec fdd;
+  ierr = VecCreateGhostBlock(p4est, nodes, P4EST_DIM, &fdd); CHKERRXX(ierr);
+
+  // compute derivatives using block vector
+  dxx_and_dyy_central(f, fdd);
+
+  // copy data back into original vectors
+  double *fdd_p, *fxx_p, *fyy_p;
+  ierr = VecGetArray(fdd, &fdd_p); CHKERRXX(ierr);
+  ierr = VecGetArray(fxx, &fxx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(fyy, &fyy_p); CHKERRXX(ierr);
+
+  // compute the derivatives on the boundary nodes
+  for (size_t i=0; i<nodes->indep_nodes.elem_count; i++){
+    fxx_p[i] = fdd_p[P4EST_DIM*i + 0];
+    fyy_p[i] = fdd_p[P4EST_DIM*i + 1];
+  }
+
+  // restore internal data
+  ierr = VecRestoreArray(fdd, &fdd_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(fxx, &fxx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(fyy, &fyy_p); CHKERRXX(ierr);
+
+  // destroy temporary variable
+  ierr = VecDestroy(fdd); CHKERRXX(ierr);
 }
