@@ -236,7 +236,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
         else if (sqy > (double)P4EST_ROOT_LEN) { sqy -= (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] + 1; }
 
         p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
-        p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
         const std::vector<HierarchyCell>& h_tr = trees[tt];
 
         const HierarchyCell *it, *begin; begin = it = &h_tr[0];
@@ -249,6 +248,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
         }
 
         if (it->owner_rank == p4est->mpirank) { // local quadrant
+          p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
           p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
           p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&p4est_tr->quadrants, pos);
           if (tmp->level > best_match.level) {
@@ -306,7 +306,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
       else if (sqx > (double)P4EST_ROOT_LEN) { sqx -= (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] + 1; }
 
       p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
-      p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
       const std::vector<HierarchyCell>& h_tr = trees[tt];
 
       const HierarchyCell *it, *begin; begin = it = &h_tr[0];
@@ -319,6 +318,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
       }
 
       if (it->owner_rank == p4est->mpirank) { // local quadrant
+        p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
         p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
         p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&p4est_tr->quadrants, pos);
         if (tmp->level > best_match.level) {
@@ -377,7 +377,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
       else if (sqy > (double)P4EST_ROOT_LEN) { sqy -= (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] + 1; }
 
       p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
-      p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
       const std::vector<HierarchyCell>& h_tr = trees[tt];
 
       const HierarchyCell *it, *begin; begin = it = &h_tr[0];
@@ -390,6 +389,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
       }
 
       if (it->owner_rank == p4est->mpirank) { // local quadrant
+        p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
         p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
         p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&p4est_tr->quadrants, pos);
         if (tmp->level > best_match.level) {
@@ -437,7 +437,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
     int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
 
     p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
-    p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
     const std::vector<HierarchyCell>& h_tr = trees[tt];
 
     const HierarchyCell *it, *begin; begin = it = &h_tr[0];
@@ -450,6 +449,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
     }
 
     if (it->owner_rank == p4est->mpirank) { // local quadrant
+      p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
       p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
       p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&p4est_tr->quadrants, pos);
       if (tmp->level > best_match.level) {
