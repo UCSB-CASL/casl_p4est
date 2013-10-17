@@ -152,7 +152,7 @@ int main (int argc, char* argv[]){
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
   // loop over time
-  double tf = 10;
+  double tf = 1;
   int tc = 0;
   int save = 10;
   vector<double> vx, vy;
@@ -203,7 +203,7 @@ int main (int argc, char* argv[]){
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
     my_p4est_level_set level_set(&node_neighbors);
-    level_set.reinitialize_2nd_order(phi, 6);
+    level_set.reinitialize_1st_order_time_2nd_order_space(phi, 6);
 
     w2.stop(); w2.read_duration();
   }

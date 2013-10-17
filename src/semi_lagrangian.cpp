@@ -259,10 +259,12 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
 
   // now for phi_xx and phi_yy
   Vec phi_xx_ = phi_xx, phi_yy_ = phi_yy;
+  bool local_derivatives = false;
   if (phi_xx_ == NULL && phi_yy_ == NULL){
     ierr = VecDuplicate(vx_xx, &phi_xx_); CHKERRXX(ierr);
     ierr = VecDuplicate(vx_yy, &phi_yy_); CHKERRXX(ierr);
     qnnn.dxx_and_dyy_central(phi, phi_xx_, phi_yy_);
+    local_derivatives = true;
   }
 
   int nb_iter = ((splitting_criteria_t*) (p4est_->user_pointer))->max_lvl;
@@ -324,6 +326,16 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
 
+  ierr = VecDestroy(vx_xx); CHKERRXX(ierr);
+  ierr = VecDestroy(vx_yy); CHKERRXX(ierr);
+  ierr = VecDestroy(vy_xx); CHKERRXX(ierr);
+  ierr = VecDestroy(vy_yy); CHKERRXX(ierr);
+  if (local_derivatives)
+  {
+    ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
+    ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
+  }
+
   ierr = PetscLogEventEnd(log_Semilagrangian_update_p4est_second_order_Vec, vx, vy, phi, 0); CHKERRXX(ierr);
 }
 
@@ -340,10 +352,13 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
 
   // compute phi_xx and phi_yy
   Vec phi_xx_ = phi_xx, phi_yy_ = phi_yy;
+  bool local_derivatives = false;
   if (phi_xx_ == NULL && phi_yy_ == NULL){
     ierr = VecCreateGhost(p4est_, nodes_, &phi_xx_); CHKERRXX(ierr);
     ierr = VecCreateGhost(p4est_, nodes_, &phi_yy_); CHKERRXX(ierr);
     qnnn.dxx_and_dyy_central(phi, phi_xx_, phi_yy_);
+
+    local_derivatives = true;
   }
 
   int nb_iter = ((splitting_criteria_t*) (p4est_->user_pointer))->max_lvl;
@@ -401,6 +416,12 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
+
+  if (local_derivatives)
+  {
+    ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
+    ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
+  }
 
   ierr = PetscLogEventEnd(log_Semilagrangian_update_p4est_second_order_CF2, phi, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -478,5 +499,6 @@ double SemiLagrangian::update_p4est_intermediate_trees_with_ghost(const CF_2& vx
 //  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 //  return dt;
 
-  return DBL_MAX;
+  throw std::invalid_argument("[ERROR]: This method is not implemented");
+  return 0;
 }
