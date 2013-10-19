@@ -1,12 +1,19 @@
 # Configure PETSc
-PETSC_DIR = $(TACC_PETSC_DIR)
-
-include $(PETSC_DIR)conf/variables
-include $(PETSC_DIR)conf/rules
-
-ifeq ($(PETSC_INCLUDE),)
-	PETSC_INCLUDE = -I$(PETSC_DIR)include -I$(PETSC_DIR)$(PETSC_ARCH)/include 
+ifeq ($(TACC_CLUSTER), YES)
+	PETSC_DIR = $(TACC_PETSC_DIR)
+	include $(PETSC_DIR)conf/variables
+	include $(PETSC_DIR)conf/rules
+	ifeq ($(PETSC_INCLUDE),)
+		PETSC_INCLUDE = -I$(PETSC_DIR)include -I$(PETSC_DIR)$(PETSC_ARCH)/include 
+	endif
+else
+	include $(PETSC_DIR)/conf/variables
+	include $(PETSC_DIR)/conf/rules
+	ifeq ($(PETSC_INCLUDE),)
+		PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/$(PETSC_ARCH)/include 
+	endif
 endif
+
 
 LINK_LIBS += $(PETSC_LIB)
 INCLUDE_FLAGS += $(PETSC_INCLUDE)
@@ -19,8 +26,8 @@ LINK_LIBS += $(P4EST_LIBS)
 # Flags
 CXX_ARCH_FLAGS      = -m64
 CXX_FLAGS_debug     = -O0 -g
-CXX_FLAGS_OPT_GNU   = -O2 -march=native
-CXX_FLAGS_OPT_INTEL = -O2 -xHOST -ip
+CXX_FLAGS_OPT_GNU   = -O3 -march=native
+CXX_FLAGS_OPT_INTEL = -O3 -xHOST -ip
 CXX_WARN_FLAGS_ON   = -W -Wall -Wextra 
 CXX_WARN_FLAGS_OFF  = -w
 

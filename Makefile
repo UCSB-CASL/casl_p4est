@@ -23,27 +23,34 @@
 # Author: Mohammad Mirzadeh
 # Date: 09-26-2013
 
-# This will become the name of the executable
-EXAMPLE_NAME = proper_example_name
+# Set the name of executable and its folder
+BIN_NAME   = BINARY_NAME_GOES_HERE
+BIN_FOLDER = .
 
 # Define the location for the CASL library 
 CASL_P4EST = ../..
 INCLUDE_FLAGS += -I$(CASL_P4EST)
 
 # Project info
+vpath %.cpp $(CASL_P4EST)/examples/parallel_levelset
+SRCS += main.cpp
+
 vpath %.cpp $(CASL_P4EST)/src
-SRCS += main.cpp \
-	utils.cpp \
+SRCS += utils.cpp \
 	refine_coarsen.cpp \
 	my_p4est_quad_neighbor_nodes_of_node.cpp \
 	my_p4est_hierarchy.cpp \
 	my_p4est_node_neighbors.cpp \
 	interpolating_function.cpp \
-	poisson_solver_node_base.cpp \
+	petsc_logging.cpp \
+	interpolating_function.cpp \
 	cube2.cpp \
 	simplex2.cpp \
 	point2.cpp \
 	CASL_math.cpp \
+	semi_lagrangian.cpp \
+	my_p4est_log_wrappers.cpp \
+	my_p4est_levelset.cpp \
 	Parser.cpp
 
 vpath %.c $(CASL_P4EST)/src
@@ -51,8 +58,8 @@ CSRCS += my_p4est_vtk.c \
 	my_p4est_tools.c \
 	my_p4est_nodes.c 
 
-BIN_NAME   = $(EXAMPLE_NAME)
-BIN_FOLDER = .
+# Cluster setting
+TACC_CLUSTER = NO
 
 # What build type to use? __MUST__ either be 'debug' or 'release'
 BUILD_TYPE = release
@@ -60,13 +67,13 @@ BUILD_TYPE = release
 # compiler options:
 # CXX_COMPILER_TYPE: This variable is used to set correct flags for the compiler; it can be GNU (for g++) or INTEL (for icpc)
 # CXX_USE_MPI_COMPILER: This variable is used to determine whether MPI should be used
-CXX_COMPILER_TYPE    = INTEL
-CXX_DEFINES          = -DCASL_THROWS
+CXX_COMPILER_TYPE    = GNU
+CXX_DEFINES          = -DCASL_THROWS -DCASL_LOG_EVENTS
 CXX_EXTRA_FLAGS      = 
 
 # Verbose control
-PRINT_WARNINGS    = YES
-PRINT_MAKE_OUTPUT = YES
+PRINT_WARNINGS    = NO
+PRINT_MAKE_OUTPUT = NO
 
 # Where to put all temporary objets?
 TEMP_OBJS_DIR      = objs
@@ -129,6 +136,7 @@ clean::
 	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
 
 .PHONY: cleandata
+cleandata::
 	@$(RM) $(BIN_FOLDER)/*.vtu $(BIN_FOLDER)/*.pvtu $(BIN_FOLDER)/*.vtk $(BIN_FOLDER)/*.dat $(BIN_FOLDER)/*.bin $(BIN_FOLDER)/*.xmf $(BIN_FOLDER)/*.visit
 
 .PHONY: cleanall

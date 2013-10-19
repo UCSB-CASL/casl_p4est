@@ -27,117 +27,117 @@
 using namespace std;
 
 static struct:CF_2{
-  void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
-  double operator()(double x, double y) const {
-    return r - sqrt(SQR(x-x0) + SQR(y-y0));
-  }
-  double x0, y0, r;
+                void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
+                double operator()(double x, double y) const {
+                return r - sqrt(SQR(x-x0) + SQR(y-y0));
+                }
+                double x0, y0, r;
 } circle;
 
 // Exact solution
 static struct:CF_2{
-    double operator()(double x, double y) const {
-        return cos(2*M_PI*x)*cos(2*M_PI*y);
-    }
-} u_ex;
+                double operator()(double x, double y) const {
+                return cos(2*M_PI*x)*cos(2*M_PI*y);
+                }
+                } u_ex;
 
 static struct:CF_2{
-    double operator()(double x, double y) const {
-        return 8*M_PI*M_PI*cos(2*M_PI*x)*cos(2*M_PI*y);
-    }
-} f_ex;
+                double operator()(double x, double y) const {
+                return 8*M_PI*M_PI*cos(2*M_PI*x)*cos(2*M_PI*y);
+                }
+                } f_ex;
 
 // Boundary condition. Impose Dirichlet on the interface and the walls
 static struct:WallBC2D{
-    BoundaryConditionType operator()(double x, double y) const {
-        (void)x, (void)y;
-        return NEUMANN;
-    }
-} bc_wall_neumann_type;
+                BoundaryConditionType operator()(double x, double y) const {
+                (void)x, (void)y;
+                return NEUMANN;
+                }
+                } bc_wall_neumann_type;
 
 static struct:WallBC2D{
-    BoundaryConditionType operator()(double x, double y) const {
-        (void)x, (void)y;
-        return DIRICHLET;
-    }
-} bc_wall_dirichlet_type;
+                BoundaryConditionType operator()(double x, double y) const {
+                (void)x, (void)y;
+                return DIRICHLET;
+                }
+                } bc_wall_dirichlet_type;
 
 static struct:WallBC2D{
-  const static double eps = 1e-1;
-    BoundaryConditionType operator()(double x, double y) const {
-      if (x<eps && y>=0 && y<=1)
-        return DIRICHLET;
-      else if (x<eps   && y>1  && y<=2)
-        return NEUMANN;
-      else if (y<eps   && x>=0 && x<=1)
-        return NEUMANN;
-      else if (y<eps   && x>1  && x<=2)
-        return DIRICHLET;
-      else if (x>2-eps && y>=0 && y<=1)
-        return NEUMANN;
-      else if (x>2-eps && y>1  && y<=2)
-        return DIRICHLET;
-      else if (y>2-eps && x>=0 && x<=1)
-        return DIRICHLET;
-      else if (y>2-eps && x>1  && x<=2)
-        return NEUMANN;
-      else // in the domain, so it does not matter
-        return DIRICHLET;
-    }
+                const static double eps = 1e-1;
+BoundaryConditionType operator()(double x, double y) const {
+  if (x<eps && y>=0 && y<=1)
+    return DIRICHLET;
+  else if (x<eps   && y>1  && y<=2)
+    return NEUMANN;
+  else if (y<eps   && x>=0 && x<=1)
+    return NEUMANN;
+  else if (y<eps   && x>1  && x<=2)
+    return DIRICHLET;
+  else if (x>2-eps && y>=0 && y<=1)
+    return NEUMANN;
+  else if (x>2-eps && y>1  && y<=2)
+    return DIRICHLET;
+  else if (y>2-eps && x>=0 && x<=1)
+    return DIRICHLET;
+  else if (y>2-eps && x>1  && x<=2)
+    return NEUMANN;
+  else // in the domain, so it does not matter
+    return DIRICHLET;
+}
 } bc_wall_mixed_type;
 
 static struct:CF_2{
-    double operator()(double x, double y) const {
-        (void) x; (void) y;
-        return 0;
-    }
-} bc_wall_neumann_value;
+                double operator()(double x, double y) const {
+                (void) x; (void) y;
+                return 0;
+                }
+                } bc_wall_neumann_value;
 
 static struct:CF_2{
-    double operator()(double x, double y) const {
-      return u_ex(x,y);
-    }
-} bc_wall_dirichlet_value;
+                double operator()(double x, double y) const {
+                return u_ex(x,y);
+                }
+                } bc_wall_dirichlet_value;
 
 static struct:CF_2{
-  const static double eps = 1e-1;
-    double operator()(double x, double y) const {
-      if (x<eps && y>=0 && y<=1)
-        return bc_wall_dirichlet_value(x,y);
-      else if (x<eps   && y>1  && y<=2)
-        return bc_wall_neumann_value(x,y);
-      else if (y<eps   && x>=0 && x<=1)
-        return bc_wall_neumann_value(x,y);
-      else if (y<eps   && x>1  && x<=2)
-        return bc_wall_dirichlet_value(x,y);
-      else if (x>2-eps && y>=0 && y<=1)
-        return bc_wall_neumann_value(x,y);
-      else if (x>2-eps && y>1  && y<=2)
-        return bc_wall_dirichlet_value(x,y);
-      else if (y>2-eps && x>=0 && x<=1)
-        return bc_wall_dirichlet_value(x,y);
-      else if (y>2-eps && x>1  && x<=2)
-        return bc_wall_neumann_value(x,y);
-      else // in the domain, so it does not matter
-        return bc_wall_dirichlet_value(x,y);
-    }
+                const static double eps = 1e-1;
+double operator()(double x, double y) const {
+  if (x<eps && y>=0 && y<=1)
+    return bc_wall_dirichlet_value(x,y);
+  else if (x<eps   && y>1  && y<=2)
+    return bc_wall_neumann_value(x,y);
+  else if (y<eps   && x>=0 && x<=1)
+    return bc_wall_neumann_value(x,y);
+  else if (y<eps   && x>1  && x<=2)
+    return bc_wall_dirichlet_value(x,y);
+  else if (x>2-eps && y>=0 && y<=1)
+    return bc_wall_neumann_value(x,y);
+  else if (x>2-eps && y>1  && y<=2)
+    return bc_wall_dirichlet_value(x,y);
+  else if (y>2-eps && x>=0 && x<=1)
+    return bc_wall_dirichlet_value(x,y);
+  else if (y>2-eps && x>1  && x<=2)
+    return bc_wall_neumann_value(x,y);
+  else // in the domain, so it does not matter
+    return bc_wall_dirichlet_value(x,y);
+}
 } bc_wall_mixed_value;
 
 static struct:CF_2{
-    double operator()(double x, double y) const {
-      return u_ex(x,y);
-    }
-} bc_interface_dirichlet_value;
+                double operator()(double x, double y) const {
+                return u_ex(x,y);
+                }
+                } bc_interface_dirichlet_value;
 
 static struct:CF_2{
-    double operator()(double x, double y) const {
-      double nx = (x-circle.x0) / sqrt( SQR(x-circle.x0) + SQR(y-circle.y0) );//circle.r;
-      double ny = (y-circle.y0) / sqrt( SQR(x-circle.x0) + SQR(y-circle.y0) );//circle.r;
-      double norm = sqrt( nx*nx + ny*ny);
-      nx /= norm; ny /= norm;
-      return 2*M_PI*sin(2*M_PI*x)*cos(2*M_PI*y) * nx + 2*M_PI*cos(2*M_PI*x)*sin(2*M_PI*y) * ny;
-    }
-} bc_interface_neumann_value;
+                double operator()(double x, double y) const {
+                double nx = (x-circle.x0) / sqrt( SQR(x-circle.x0) + SQR(y-circle.y0) );//circle.r;
+                double ny = (y-circle.y0) / sqrt( SQR(x-circle.x0) + SQR(y-circle.y0) );//circle.r;
+                double norm = sqrt( nx*nx + ny*ny);
+                nx /= norm; ny /= norm;
+                return 2*M_PI*sin(2*M_PI*x)*cos(2*M_PI*y) * nx + 2*M_PI*cos(2*M_PI*x)*sin(2*M_PI*y) * ny;
+                }
+                } bc_interface_neumann_value;
 
 int main (int argc, char* argv[]){
 
@@ -161,7 +161,7 @@ int main (int argc, char* argv[]){
   bc_wall_type      = cmd.get("bc_wall_type"     , DIRICHLET);
   bc_interface_type = cmd.get("bc_interface_type", DIRICHLET);
   nb_splits         = cmd.get("nb_splits"        , 0);
-  min_level         = cmd.get("min_level"        , 5);
+  min_level         = cmd.get("min_level"        , 0);
   max_level         = cmd.get("max_level"        , 10);
 
   CF_2 *bc_wall_value, *bc_interface_value;
@@ -283,7 +283,7 @@ int main (int argc, char* argv[]){
 #ifdef DEBUG_TIMINGS
   w2.start("constructing p4est hierarchy");
 #endif
-  my_p4est_hierarchy_t hierarchy(p4est, ghost);
+  my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
 #ifdef DEBUG_TIMINGS
   w2.stop(); w2.read_duration();
 #endif
@@ -299,14 +299,27 @@ int main (int argc, char* argv[]){
 #ifdef DEBUG_TIMINGS
   w2.start("building PoissonSolver");
 #endif
+  Vec interface_value_Vec, wall_value_Vec;
+  ierr = VecDuplicate(phi, &interface_value_Vec); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &wall_value_Vec); CHKERRXX(ierr);
+
+  sample_cf_on_nodes(p4est, nodes, *bc_interface_value, interface_value_Vec);
+  sample_cf_on_nodes(p4est, nodes, *bc_wall_value, wall_value_Vec);
+
+  InterpolatingFunction interface_interp(p4est, nodes, ghost, &brick, &node_neighbors), wall_interp(p4est, nodes, ghost, &brick, &node_neighbors);
+  interface_interp.set_input_parameters(interface_value_Vec, linear);
+  wall_interp.set_input_parameters(wall_value_Vec, linear);
+
+  bc_interface_value = &interface_interp;
+  bc_wall_value = &wall_interp;
+
   BoundaryConditions2D bc;
   bc.setInterfaceType(bc_interface_type);
   bc.setInterfaceValue(*bc_interface_value);
   bc.setWallTypes(*wall_bc);
   bc.setWallValues(*bc_wall_value);
 
-  for (int i=0; i<5; i++){
-  PoissonSolverNodeBase solver(&node_neighbors, &brick);
+  PoissonSolverNodeBase solver(&node_neighbors);
   solver.set_phi(phi);
   solver.set_rhs(rhs);
   solver.set_bc(bc);
@@ -319,7 +332,6 @@ int main (int argc, char* argv[]){
   ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
   w2.stop(); w2.read_duration();
-  }
 
   // done. lets write levelset and solutions
   double *sol_p, *phi_p, *uex_p;
@@ -364,6 +376,8 @@ int main (int argc, char* argv[]){
   ierr = VecDestroy(uex); CHKERRXX(ierr);
   ierr = VecDestroy(sol); CHKERRXX(ierr);
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
+  ierr = VecDestroy(wall_value_Vec); CHKERRXX(ierr);
+  ierr = VecDestroy(interface_value_Vec); CHKERRXX(ierr);
 
   // destroy the p4est and its connectivity structure
   p4est_nodes_destroy (nodes);
