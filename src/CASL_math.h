@@ -242,10 +242,5 @@ int solve_Quartic(double c[ 5 ], double s[ 4 ]);
 */
 int is_Zero(double x);
 
-namespace constants{
-const static double epsilon = std::numeric_limits<double>::epsilon();
-const static double pi      = M_PI;
-}
-
 
 #endif // __CASL_MATH_H__

@@ -64,7 +64,7 @@ struct square:CF_2{
   square(double x0_, double y0_, double h_): x0(x0_), y0(y0_), h(h_) {}
   void update (double x0_, double y0_, double h_) {x0 = x0_; y0 = y0_; h = h_; }
   double operator()(double x, double y) const {
-    return h - MIN(ABS(x-x0) , ABS(y-y0));
+    return -h + MAX(ABS(x-x0) , ABS(y-y0));
   }
 private:
   double  x0, y0, h;
@@ -210,6 +210,9 @@ int main (int argc, char* argv[]){
       ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
+      bc.setInterfaceValue(interface_bc_value);
+      level_set.extend_Over_Interface(phi, sol, DIRICHLET, sol, 2, 4);
+
       // Save stuff
       std::ostringstream oss; oss << "p_" << p4est->mpisize << "_"
                                   << brick.nxytrees[0] << "x"
@@ -226,6 +229,10 @@ int main (int argc, char* argv[]){
 
       ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(sol, &sol_ptr); CHKERRXX(ierr);
+
+      ierr = VecDestroy(interface_vec); CHKERRXX(ierr);
+      ierr = VecDestroy(rhs); CHKERRXX(ierr);
+      ierr = VecDestroy(sol); CHKERRXX(ierr);
     }
   }
 
