@@ -21,6 +21,13 @@ extern PetscLogEvent log_InterpolatingFunction_interpolate;
 #define PetscLogFlops(n) 0
 #endif
 
+#ifdef P4EST_POINT_LOOKUP
+#ifdef P4_TO_P8
+  #error "p4est point lookup is not available in 3D"
+#endif
+#endif
+
+
 InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
                                              p4est_nodes_t *nodes,
                                              p4est_ghost_t *ghost,
@@ -35,11 +42,12 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
   double *v2c = p4est_->connectivity->vertices;
   p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
   p4est_topidx_t first_tree = 0, last_tree = p4est_->trees->elem_count-1;
+  p4est_topidx_t first_vertex = 0, last_vertex = P4EST_CHILDREN - 1;
 
-  xmin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 0];
-  ymin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 1];
-  xmax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 0];
-  ymax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 1];
+  for (short i=0; i<3; i++)
+    xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
+  for (short i=0; i<3; i++)
+    xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
 }
 
 InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
@@ -56,12 +64,12 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
   // compute domain sizes
   double *v2c = p4est_->connectivity->vertices;
   p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
-  p4est_topidx_t first_tree = 0, last_tree = p4est_->trees->elem_count-1;
+  p4est_topidx_t first_vertex = 0, last_vertex = P4EST_CHILDREN - 1;
 
-  xmin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 0];
-  ymin = v2c[3*t2v[P4EST_CHILDREN*first_tree + 0] + 1];
-  xmax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 0];
-  ymax = v2c[3*t2v[P4EST_CHILDREN*last_tree  + 3] + 1];  
+  for (short i=0; i<3; i++)
+    xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
+  for (short i=0; i<3; i++)
+    xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
 }
 
 InterpolatingFunction::~InterpolatingFunction()
@@ -70,22 +78,30 @@ InterpolatingFunction::~InterpolatingFunction()
   {
     ierr = VecDestroy(Fxx_); CHKERRXX(ierr);
     ierr = VecDestroy(Fyy_); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecDestroy(Fzz_); CHKERRXX(ierr);
+#endif
   }
 }
 
-void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y)
+void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, const double *xyz)
 {
-  // initialize data
-  double xy [] = {x, y};
-  p4est_quadrant_t best_match;
-
   /* first clip the coordinates */
-  double xy_clip [] = {x, y};
-  // bousouf
-  if(x>xmax) xy_clip[0] = xmax;
-  if(x<xmin) xy_clip[0] = xmin;
-  if(y>ymax) xy_clip[1] = ymax;
-  if(y<ymin) xy_clip[1] = ymin;
+  double xyz_clip [] = 
+  {
+    xyz[0], xyz[1]
+#ifdef P4_TO_P8
+    , xyz[2]
+#endif
+  };
+
+  // clip to bounding box
+  for (short i=0; i<P4EST_DIM; i++){
+    if (xyz_clip[i] > xyz_max[i]) xy_clip[i] = xyz_max[i];
+    if (xyz_clip[i] < xyz_min[i]) xy_clip[i] = xyz_min[i];
+  }
+
+  p4est_quadrant_t best_match;
 
   // find the quadrant -- Note point may become slightly purturbed after this call
 #ifdef P4EST_POINT_LOOKUP
@@ -93,14 +109,15 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
   int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
 #else
   std::vector<p4est_quadrant_t> remote_matches;
-  int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xy_clip, best_match, remote_matches);
+  int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
 #endif
 
   // check who is going to own the quadrant
   if (rank_found == p4est_->mpirank) { // local quadrant
 
-    local_point_buffer.xy.push_back(xy[0]);
-    local_point_buffer.xy.push_back(xy[1]);
+    for (short i = 0; i<P4EST_DIM; i++)
+      local_point_buffer.xyz.push_back(xyz[i]);
+
     local_point_buffer.quad.push_back(best_match);
     local_point_buffer.node_locidx.push_back(node_locidx);
 
@@ -119,8 +136,9 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
      * remote processor. (cf. interpolate function below)
      */
 
-    ghost_point_buffer.xy.push_back(xy[0]);
-    ghost_point_buffer.xy.push_back(xy[1]);
+    for (short i = 0; i<P4EST_DIM; i++)
+      ghost_point_buffer.xyz.push_back(xyz[i]);
+
     ghost_point_buffer.quad.push_back(best_match);
     ghost_point_buffer.node_locidx.push_back(node_locidx);
 
@@ -169,8 +187,10 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
         end = remote_ranks.end();
     for(; it != end; ++it){
       int r = *it;
-      remote_send_buffer[r].push_back(xy[0]);
-      remote_send_buffer[r].push_back(xy[1]);
+
+      for (short i = 0; i<P4EST_DIM; i++)
+        remote_send_buffer[r].push_back(xyz[i]);
+
       remote_node_index[r].push_back(node_locidx);
     }
   }
@@ -188,7 +208,11 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, doub
   is_buffer_prepared = false;
 }
 
-void InterpolatingFunction::set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx, Vec Fyy)
+void InterpolatingFunction::set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx, Vec Fyy
+#ifdef P4_TO_P8
+                                                 , Vec Fzz
+#endif
+                                                 )
 {
   method_ = method;
 
@@ -198,9 +222,17 @@ void InterpolatingFunction::set_input_parameters(Vec input_vec, interpolation_me
 
   // compute the second derivates if necessary
   if (method_ == quadratic || method_ == quadratic_non_oscillatory){
-    if (Fxx != NULL && Fyy != NULL){
+    if (Fxx != NULL && Fyy != NULL
+#ifdef P4_TO_P8
+     && Fzz != NULL
+#endif
+       )
+    {
        Fxx_ = Fxx;
        Fyy_ = Fyy;
+#ifdef P4_TO_P8
+       Fzz_ = Fzz;
+#endif
        local_derivatives = false;
     } else {
       compute_second_derivatives();
@@ -229,14 +261,22 @@ void InterpolatingFunction::interpolate( double *output_vec )
   // Get a pointer to the data
   double *Fi_p, *Fo_p = output_vec;
   double *Fxx_p, *Fyy_p;
+#ifdef P4_TO_P8
+  double *Fzz_p;
+#endif
   ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
 
-  if (method_ == linear)
+  if (method_ == linear){
     Fxx_p = Fyy_p = NULL;
-  else
-  {
+#ifdef P4_TO_P8
+    Fzz_p = NULL;
+#endif
+  } else {
     ierr = VecGetArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
     ierr = VecGetArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(Fzz_, &Fzz_p); CHKERRXX(ierr);
+#endif
   }
 
   // initialize the value for remote matches to zero
@@ -254,13 +294,12 @@ void InterpolatingFunction::interpolate( double *output_vec )
   // Get access to the node numbering of all quadrants
   p4est_locidx_t *q2n = nodes_->local_nodes;
   double f  [P4EST_CHILDREN];
-  double fxx[P4EST_CHILDREN];
-  double fyy[P4EST_CHILDREN];
+  double fdd[P4EST_DIM*P4EST_CHILDREN]; // fxx[0] = fdd[0], fyy[0] = fdd[1], fzz[0] = fdd[2], fxx[1] = fdd[3], ... 
 
   // Do the interpolation for local points
   for (size_t i=0; i<local_point_buffer.size(); ++i)
   {
-    double *xy = &local_point_buffer.xy[2*i];
+    double *xyz = &local_point_buffer.xyz[P4EST_DIM*i];
     p4est_quadrant_t &quad = local_point_buffer.quad[i];
     p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
     p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
@@ -276,23 +315,26 @@ void InterpolatingFunction::interpolate( double *output_vec )
       for (short j=0; j<P4EST_CHILDREN; ++j)
       {
         p4est_locidx_t node_locidx = q2n[quad_idx*P4EST_CHILDREN+j];
-        fxx[j] = Fxx_p[node_locidx];
-        fyy[j] = Fyy_p[node_locidx];
+        fdd[P4EST_DIM * j + 0] = Fxx_p[node_locidx];
+        fdd[P4EST_DIM * j + 1] = Fyy_p[node_locidx];
+#ifdef P4_TO_P8
+        fdd[P4EST_DIM * j + 2] = Fzz_p[node_locidx];
+#endif
       }
     }
 
     if (method_ == linear)
-      Fo_p[node_idx] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
+      Fo_p[node_idx] = linear_interpolation(p4est_, tree_idx, quad, f, xyz);
     else if (method_ == quadratic)
-      Fo_p[node_idx] = quadratic_interpolation(p4est_, tree_idx, quad, f, fxx, fyy, xy);
+      Fo_p[node_idx] = quadratic_interpolation(p4est_, tree_idx, quad, f, fdd, xyz);
     else
-      Fo_p[node_idx] = quadratic_non_oscillatory_interpolation(p4est_, tree_idx, quad, f, fxx, fyy, xy);
+      Fo_p[node_idx] = quadratic_non_oscillatory_interpolation(p4est_, tree_idx, quad, f, fdd, xyz);
   }
 
   // Do the interpolation for ghost points
   for (size_t i=0; i<ghost_point_buffer.size(); ++i)
   {
-    double *xy = &ghost_point_buffer.xy[2*i];
+    double *xyz = &ghost_point_buffer.xyz[P4EST_DIM*i];
     p4est_quadrant_t &quad = ghost_point_buffer.quad[i];
     p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
     p4est_locidx_t quad_idx = quad.p.piggy3.local_num + p4est_->local_num_quadrants;
@@ -307,17 +349,20 @@ void InterpolatingFunction::interpolate( double *output_vec )
       for (short j=0; j<P4EST_CHILDREN; ++j)
       {
         p4est_locidx_t node_locidx = q2n[quad_idx*P4EST_CHILDREN+j];
-        fxx[j] = Fxx_p[node_locidx];
-        fyy[j] = Fyy_p[node_locidx];
+        fdd[P4EST_DIM * j + 0] = Fxx_p[node_locidx];
+        fdd[P4EST_DIM * j + 1] = Fyy_p[node_locidx];
+#ifdef P4_TO_P8
+        fdd[P4EST_DIM * j + 2] = Fzz_p[node_locidx];
+#endif
       }
     }
 
     if (method_ == linear)
-      Fo_p[node_idx] = bilinear_interpolation(p4est_, tree_idx, quad, f, xy);
+      Fo_p[node_idx] = bilinear_interpolation(p4est_, tree_idx, quad, f, xyz);
     else if (method_ == quadratic)
-      Fo_p[node_idx] = quadratic_interpolation(p4est_, tree_idx, quad, f, fxx, fyy, xy);
+      Fo_p[node_idx] = quadratic_interpolation(p4est_, tree_idx, quad, f, fdd, xyz);
     else
-      Fo_p[node_idx] = quadratic_non_oscillatory_interpolation(p4est_, tree_idx, quad, f, fxx, fyy, xy);
+      Fo_p[node_idx] = quadratic_non_oscillatory_interpolation(p4est_, tree_idx, quad, f, fdd, xyz);
   }
 
   // begin recieving point buffers
@@ -343,21 +388,28 @@ void InterpolatingFunction::interpolate( double *output_vec )
       if(!is_buffer_prepared)
         MPI_Wait(&remote_recv_req[req_counter], MPI_STATUS_IGNORE);
 
-      std::vector<double>& xy_recv = it->second;
+      std::vector<double>& xyz_recv = it->second;
       std::vector<double>& f_send = f_remote_send[send_rank];
-      f_send.resize(xy_recv.size()/2);
+      f_send.resize(xyz_recv.size()/P4EST_DIM);
 
-      for (size_t i=0; i<xy_recv.size()/2; i++)
+      for (size_t i=0; i<xyz_recv.size()/P4EST_DIM; i++)
       {
-        double *xy = &xy_recv[2*i];
+        double *xyz = &xyz_recv[P4EST_DIM*i];
 
         /* first clip the coordinates */
-        double xy_clip [] = {xy[0], xy[1]};
-        // bousouf
-        if(xy[0]>xmax) xy_clip[0] = xmax;
-        if(xy[0]<xmin) xy_clip[0] = xmin;
-        if(xy[1]>ymax) xy_clip[1] = ymax;
-        if(xy[1]<ymin) xy_clip[1] = ymin;
+        double xyz_clip [] = 
+        {
+          xyz[0], xyz[1]
+        #ifdef P4_TO_P8
+          , xyz[2]
+        #endif
+        };
+
+        // clip to bounding box
+        for (short j=0; j<P4EST_DIM; j++){
+          if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];
+          if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
+        }
 
         // first find the quadrant for the remote points
         p4est_quadrant_t best_match;
@@ -366,7 +418,7 @@ void InterpolatingFunction::interpolate( double *output_vec )
         int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
 #else
         std::vector<p4est_quadrant_t> remote_matches;
-        int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xy_clip, best_match, remote_matches);
+        int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
 #endif
         // make sure that the point belongs to us
         if (rank_found == p4est_->mpirank){ // if we own the point, interpolate
@@ -384,17 +436,20 @@ void InterpolatingFunction::interpolate( double *output_vec )
             for (short j=0; j<P4EST_CHILDREN; ++j)
             {
               p4est_locidx_t node_locidx = q2n[qu_locidx*P4EST_CHILDREN+j];
-              fxx[j] = Fxx_p[node_locidx];
-              fyy[j] = Fyy_p[node_locidx];
+              fdd[P4EST_DIM * j + 0] = Fxx_p[node_locidx];
+              fdd[P4EST_DIM * j + 1] = Fyy_p[node_locidx];
+#ifdef P4_TO_P8
+              fdd[P4EST_DIM * j + 2] = Fzz_p[node_locidx];
+#endif
             }
           }
 
           if (method_ == linear)
-            f_send[i] = bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+            f_send[i] = linear_interpolation(p4est_, tree_idx, best_match, f, xyz);
           else if (method_ == quadratic)
-            f_send[i] = quadratic_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
+            f_send[i] = quadratic_interpolation(p4est_, tree_idx, best_match, f, fdd, xyz);
           else
-            f_send[i] = quadratic_non_oscillatory_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
+            f_send[i] = quadratic_non_oscillatory_interpolation(p4est_, tree_idx, best_match, f, fdd, xyz);
 
         } else if ( rank_found != -1 ) {
           // if we don't own the point but its in the ghost layer return 0.
@@ -403,17 +458,20 @@ void InterpolatingFunction::interpolate( double *output_vec )
                   * this MUST be a bug or mistake so simply throw.
                   */
           std::ostringstream oss;
-          oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") was flagged"
-                 " as a remote point to either belong to processor "
-              <<  p4est_->mpirank << " or be in its ghost layer, both of which"
-                  " have failed. Found rank is = " << rank_found
-               << " and remote_macthes->elem_count = "
-#ifdef P4EST_POINT_LOOKUP
-               << remote_matches->elem_count << ". This is most certainly a bug."
-#else
-               << remote_matches.size() << ". This is most certainly a bug."
+          oss << "[ERROR]: Point (" << xyz[0] << "," << xyz[1] << 
+#ifdef P4_TO_P8
+            xyz[2] <<
 #endif
-               << std::endl;
+              ") was flagged as a remote point to either belong to processor "
+              << p4est_->mpirank << " or be in its ghost layer, both of which"
+                 " have failed. Found rank is = " << rank_found
+              << " and remote_macthes->elem_count = "
+#ifdef P4EST_POINT_LOOKUP
+              << remote_matches->elem_count << ". This is most certainly a bug."
+#else
+              << remote_matches.size() << ". This is most certainly a bug."
+#endif
+              << std::endl;
           throw std::runtime_error(oss.str());
         }
 #ifdef P4EST_POINT_LOOKUP
@@ -461,6 +519,9 @@ void InterpolatingFunction::interpolate( double *output_vec )
   {
     ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(Fzz_, &Fzz_p); CHKERRXX(ierr);
+#endif
   }
 
   ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -471,40 +532,54 @@ double InterpolatingFunction::operator ()(double x, double y) const {
 
   PetscErrorCode ierr;
 
-  double xy[] = {x, y};
+  /* first clip the coordinates */
+  double xyz_clip [] = 
+  {
+    xyz[0], xyz[1]
+  #ifdef P4_TO_P8
+    , xyz[2]
+  #endif
+  };
+
+  // clip to bounding box
+  for (short j=0; j<P4EST_DIM; j++){
+    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];
+    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
+  }
+
   double *Fi_p, *Fxx_p, *Fyy_p;
+#ifdef P4_TO_P8
+  double *Fzz_p;
+#endif  
 
   ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
-  if (method_ == linear)
+  if (method_ == linear){
     Fxx_p = Fyy_p = NULL;
-  else
-  {
+#ifdef P4_TO_P8
+    Fzz_p = NULL;
+#endif
+  } else {
     ierr = VecGetArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
     ierr = VecGetArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(Fzz_, &Fzz_p); CHKERRXX(ierr);
+#endif
   }
 
   static double f  [P4EST_CHILDREN];
-  static double fxx[P4EST_CHILDREN];
-  static double fyy[P4EST_CHILDREN];
+  static double fdd[P4EST_DIM*P4EST_CHILDREN];
 
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
   p4est_locidx_t *q2n = nodes_->local_nodes;
   p4est_quadrant_t best_match;
 
-  /* first clip the coordinates */
-  double xy_clip [] = {x, y};
-  if(x>xmax) xy_clip[0] = xmax;
-  if(x<xmin) xy_clip[0] = xmin;
-  if(y>ymax) xy_clip[1] = ymax;
-  if(y<ymin) xy_clip[1] = ymin;
-
 #ifdef P4EST_POINT_LOOKUP
   sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
   int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
 #else
   std::vector<p4est_quadrant_t> remote_matches;
-  int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xy_clip, best_match, remote_matches);
+  int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
 #endif
 
   if (rank_found == p4est_->mpirank) { // local quadrant
@@ -521,8 +596,11 @@ double InterpolatingFunction::operator ()(double x, double y) const {
       for (short j=0; j<P4EST_CHILDREN; ++j)
       {
         p4est_locidx_t node_locidx = q2n[quad_idx*P4EST_CHILDREN+j];
-        fxx[j] = Fxx_p[node_locidx];
-        fyy[j] = Fyy_p[node_locidx];
+        fdd[P4EST_DIM * j + 0] = Fxx_p[node_locidx];
+        fdd[P4EST_DIM * j + 1] = Fyy_p[node_locidx];
+#ifdef P4_TO_P8
+        fdd[P4EST_DIM * j + 2] = Fzz_p[node_locidx];
+#endif
       }
     }
 
@@ -532,16 +610,19 @@ double InterpolatingFunction::operator ()(double x, double y) const {
     {
       ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecRestoreArray(Fzz_, &Fzz_p); CHKERRXX(ierr);
+#endif
     }
 #ifdef P4EST_POINT_LOOKUP
     sc_array_destroy(remote_matches);
 #endif
     if (method_ == linear)
-      return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+      return linear_interpolation(p4est_, tree_idx, best_match, f, xyz);
     else if (method_ == quadratic)
-      return quadratic_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
+      return quadratic_interpolation(p4est_, tree_idx, best_match, f, fdd, xyz);
     else
-      return quadratic_non_oscillatory_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
+      return quadratic_non_oscillatory_interpolation(p4est_, tree_idx, best_match, f, fdd, xyz);
 
   } else if ( rank_found != -1 ) { // ghost quadrant
     tree_idx = best_match.p.piggy3.which_tree;
@@ -556,8 +637,11 @@ double InterpolatingFunction::operator ()(double x, double y) const {
       for (short j=0; j<P4EST_CHILDREN; ++j)
       {
         p4est_locidx_t node_locidx = q2n[quad_idx*P4EST_CHILDREN+j];
-        fxx[j] = Fxx_p[node_locidx];
-        fyy[j] = Fyy_p[node_locidx];
+        fdd[P4EST_DIM * j + 0] = Fxx_p[node_locidx];
+        fdd[P4EST_DIM * j + 1] = Fyy_p[node_locidx];
+#ifdef P4_TO_P8
+        fdd[P4EST_DIM * j + 2] = Fzz_p[node_locidx];
+#endif
       }
     }
 
@@ -567,6 +651,10 @@ double InterpolatingFunction::operator ()(double x, double y) const {
     {
       ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecRestoreArray(Fzz_, &Fzz_p); CHKERRXX(ierr);
+#endif
+
     }
 
 #ifdef P4EST_POINT_LOOKUP
@@ -574,11 +662,11 @@ double InterpolatingFunction::operator ()(double x, double y) const {
 #endif
 
     if (method_ == linear)
-      return bilinear_interpolation(p4est_, tree_idx, best_match, f, xy);
+      return linear_interpolation(p4est_, tree_idx, best_match, f, xyz);
     else if (method_ == quadratic)
-      return quadratic_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
+      return quadratic_interpolation(p4est_, tree_idx, best_match, f, fdd, xyz);
     else
-      return quadratic_non_oscillatory_interpolation(p4est_, tree_idx, best_match, f, fxx, fyy, xy);
+      return quadratic_non_oscillatory_interpolation(p4est_, tree_idx, best_match, f, fdd, xyz);
 
   } else {
     ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
@@ -589,6 +677,10 @@ double InterpolatingFunction::operator ()(double x, double y) const {
     {
       ierr = VecRestoreArray(Fxx_, &Fxx_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(Fyy_, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecRestoreArray(Fzz_, &Fzz_p); CHKERRXX(ierr);
+#endif
+
     }
 
 #ifdef P4EST_POINT_LOOKUP
@@ -657,11 +749,21 @@ void InterpolatingFunction::recv_point_buffers_begin()
 void InterpolatingFunction::compute_second_derivatives()
 {
   // Allocate memory for second derivaties
-  if (Fxx_ == NULL && Fyy_ == NULL){
+  if (Fxx_ == NULL && Fyy_ == NULL
+#ifdef P4_TO_P8 
+   && Fzz_ == NULL
+     )
+  {
     ierr = VecCreateGhost(p4est_, nodes_, &Fxx_); CHKERRXX(ierr);
     ierr = VecCreateGhost(p4est_, nodes_, &Fyy_); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecCreateGhost(p4est_, nodes_, &Fzz_); CHKERRXX(ierr);
+#endif
     local_derivatives = true;
   }
-
+#ifdef P4_TO_P8
+  qnnn_->dxx_and_dyy_and_dzz_central(input_vec_, Fxx_, Fyy_, Fzz_);
+#else
   qnnn_->dxx_and_dyy_central(input_vec_, Fxx_, Fyy_);
+#endif
 }

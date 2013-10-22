@@ -14,7 +14,11 @@ enum interpolation_method{
   quadratic_non_oscillatory
 };
 
+#ifdef P4_TO_P8
+class InterpolatingFunction: public CF_3
+#else
 class InterpolatingFunction: public CF_2
+#endif
 {
   interpolation_method method_;
 
@@ -24,26 +28,26 @@ class InterpolatingFunction: public CF_2
   my_p4est_brick_t *myb_;
   const my_p4est_node_neighbors_t *qnnn_;
 
-  double xmin, xmax, ymin, ymax;
+  double xyz_min[3], xyz_max[3];
 
   PetscErrorCode ierr;
   Vec Fxx_, Fyy_;
+#ifdef P4_TO_P8
+  Vec Fzz_;
+#endif
   bool local_derivatives;
 
   Vec input_vec_;
 
   struct point_buffer{
-    std::vector<double> xy;
+    std::vector<double> xyz;
     std::vector<p4est_quadrant_t> quad;
     std::vector<p4est_locidx_t> node_locidx;
-
-    double xmin, xmax;
-    double ymin, ymax;
 
     size_t size() { return node_locidx.size(); }
     void clear()
     {
-      xy.clear();
+      xyz.clear();
       quad.clear();
       node_locidx.clear();
     }
@@ -81,13 +85,21 @@ public:
   InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, const my_p4est_node_neighbors_t *qnnn);
   ~InterpolatingFunction();
 
-  void add_point_to_buffer(p4est_locidx_t node_locidx, double x, double y);
-  void set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx = NULL, Vec Fyy = NULL);
+  void add_point_to_buffer(p4est_locidx_t node_locidx, const double *xyz);
+  void set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx = NULL, Vec Fyy = NULL
+#ifdef P4_TO_P8
+    , Vec Fzz = NULL
+#endif
+    );
 
   // interpolation methods
   void interpolate(Vec output_vec);
   void interpolate(double *output_vec);
-  double operator()(double x, double y) const;
+  double operator()(double x, double y
+#ifdef P4_TO_P8
+    , double z
+#endif
+    ) const;
 };
 
 #endif // INTERPOLATING_FUNCTION_H
