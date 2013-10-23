@@ -1,8 +1,13 @@
 #ifndef MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H
 #define MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H
 
-#include <src/utils.h>
+#ifdef P4_TO_P8
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_nodes.h>
+#else
+#include <src/my_p4est_utils.h>
 #include <src/my_p4est_nodes.h>
+#endif
 #include <petscvec.h>
 
 //---------------------------------------------------------------------

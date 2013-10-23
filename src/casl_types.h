@@ -4,7 +4,11 @@
 #include <stdlib.h>
 #include <ostream>
 
-#include "utils.h"
+#ifdef P4_TO_P8
+#include "my_p8est_utils.h"
+#else
+#include "my_p4est_utils.h"
+#endif
 
 #ifdef _WIN32
 #include <stdint.h>

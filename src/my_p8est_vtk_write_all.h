@@ -1,0 +1,4 @@
+#ifndef MY_P8EST_VTK_WRITE_ALL_H
+#define MY_P8EST_VTK_WRITE_ALL_H
+
+#endif // MY_P8EST_VTK_WRITE_ALL_H

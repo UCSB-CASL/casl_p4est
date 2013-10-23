@@ -24,9 +24,13 @@
 #ifndef MY_P4EST_TOOLS_H
 #define MY_P4EST_TOOLS_H
 
+#ifdef P4_TO_P8
+#include <p8est.h>
+#include <p8est_ghost.h>
+#else
 #include <p4est.h>
 #include <p4est_ghost.h>
-
+#endif
 #ifdef __cplusplus
 extern              "C"
 {
@@ -37,8 +41,8 @@ extern              "C"
 
 typedef struct
 {
-  int                 nxytrees[2];
-  p4est_topidx_t     *nxy_to_treeid;
+  int                 nxyztrees[3];
+  p4est_topidx_t     *nxyz_to_treeid;
 }
 my_p4est_brick_t;
 
@@ -48,8 +52,13 @@ my_p4est_brick_t;
  * \param [in,out] myb  Additional brick information will be populated.
  * \return              The brick connectivity structure.
  */
+#ifdef P4_TO_P8
+p4est_connectivity_t *my_p4est_brick_new (int nxtrees, int nytrees, int nztrees,
+                                          my_p4est_brick_t * myb);
+#else
 p4est_connectivity_t *my_p4est_brick_new (int nxtrees, int nytrees,
                                           my_p4est_brick_t * myb);
+#endif
 
 /** Free a brick connectivity and tree lookup structure.
  * \param [in] conn     The connectivity will be destroyed.
@@ -83,28 +92,6 @@ int                 my_p4est_brick_point_lookup (p4est_t * p4est,
                                                  p4est_quadrant_t *best_match,
                                                  sc_array_t * remote_matches);
 
-/*!
- * \brief my_p4est_brick_point_lookup_smallest same as above except returns the smallest possible cell
- * \param p4est
- * \param xy
- * \param which_tree
- * \param which_quad
- * \param quad
- * \return
- */
-int                 my_p4est_brick_point_lookup_smallest (p4est_t * p4est,
-                                                          p4est_ghost_t *
-                                                          ghost,
-                                                          const
-                                                          my_p4est_brick_t *
-                                                          myb,
-                                                          const double *xy,
-                                                          p4est_topidx_t *
-                                                          which_tree,
-                                                          p4est_locidx_t *
-                                                          which_quad,
-                                                          p4est_quadrant_t **
-                                                          quad);
 
 #ifdef __cplusplus
 #if 0

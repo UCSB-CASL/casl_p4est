@@ -21,7 +21,11 @@
   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
+#ifdef P4_TO_P8
+#include "my_p8est_nodes.h"
+#else
 #include "my_p4est_nodes.h"
+#endif
 
 #ifndef MY_P4EST_VTK_H
 #define MY_P4EST_VTK_H
@@ -33,8 +37,6 @@
  * Please do NOT use this interface for newly written code.         *
  * It will be replaced with a generic transfinite blending scheme.  *
  ********************************************************************/
-
-#include <p4est_geometry.h>
 
 SC_EXTERN_C_BEGIN;
 

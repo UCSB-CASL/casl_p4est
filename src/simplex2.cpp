@@ -1,7 +1,11 @@
-#include "simplex2.h"
 #include "math.h"
-#include "utils.h"
-
+#ifdef P4_TO_P8
+#include "simplex3.h"
+#include "my_p8est_utils.h"
+#else
+#include "simplex2.h"
+#include "my_p4est_utils.h"
+#endif
 #include <petsclog.h>
 
 #ifndef CASL_LOG_FLOPS

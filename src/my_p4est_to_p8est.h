@@ -26,7 +26,17 @@
 
 #include <p4est_to_p8est.h>
 
+/* BUG: Due to a bug in p4est, we need to rename the following variable
+ * Note: I have no idea if p4est_ghost_contains would worl with p8est objects
+ * but then again its only needed in the point lookup so who cares ...
+ */
+#undef p4est_ghost_contains
+#define p4est_ghost_contains p4est_ghost_contains
+
+// Our variables
 #define my_p4est_nodes_t                my_p8est_nodes_t
 #define my_p4est_nodes_new              my_p8est_nodes_new
+#define my_p4est_brick_new              my_p8est_brick_new
+#define my_p4est_brick_destroy          my_p8est_brick_destroy
 
 #endif /* !MY_P4EST_TO_P8EST_H */

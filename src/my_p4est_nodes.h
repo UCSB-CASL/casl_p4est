@@ -24,7 +24,11 @@
 #ifndef MY_P4EST_NODES_H
 #define MY_P4EST_NODES_H
 
+#ifdef P4_TO_P8
+#include <p8est_nodes.h>
+#else
 #include <p4est_nodes.h>
+#endif
 
 #ifdef __cplusplus
 extern              "C"

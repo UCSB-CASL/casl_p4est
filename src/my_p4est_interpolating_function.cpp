@@ -1,7 +1,13 @@
-#include "interpolating_function.h"
+#ifdef P4_TO_P8
+#include "my_p8est_interpolating_function.h"
+#include <src/my_p8est_vtk.h>
+#else
+#include "my_p4est_interpolating_function.h"
+#include <src/my_p4est_vtk.h>
+#endif
+
 #include "petsc_compatibility.h"
 #include <sc_notify.h>
-#include <src/my_p4est_vtk.h>
 #include <mpi.h>
 
 #include <fstream>

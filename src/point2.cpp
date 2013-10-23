@@ -1,6 +1,11 @@
-#include "point2.h"
 #include "math.h"
-#include "utils.h"
+#include "point2.h"
+
+#ifdef P4_TO_P8
+#include "my_p8est_utils.h"
+#else
+#include "my_p4est_utils.h"
+#endif
 
 Point2::Point2 ()
 {

@@ -21,10 +21,10 @@
   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
-#ifndef MY_P8EST_NODES_H
-#define MY_P8EST_NODES_H
+#ifndef MY_P8EST_TOOLS_H
+#define MY_P8EST_TOOLS_H
 
 #include <src/my_p4est_to_p8est.h>
-#include "my_p4est_nodes.h"
+#include "my_p4est_tools.h"
 
-#endif /* !MY_P8EST_NODES_H */
+#endif // MY_P8EST_TOOLS_H

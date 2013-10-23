@@ -1,17 +1,16 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-// casl_p4est
+#ifdef P4_TO_P8
+#include <p8est.h>
+#include <p8est_nodes.h>
+#else
+#include <p4est.h>
 #include <p4est_nodes.h>
+#endif
 #include <src/petsc_logging.h>
 
-// p4est
-#include <p4est.h>
-
-// PETSc
 #include <petsc.h>
-
-// System
 #include <stdexcept>
 #include <sstream>
 #include <vector>
@@ -285,49 +284,7 @@ inline double SUPERBEE( double a, double b )
   }
 }
 
-/*!
- * \brief c2p_coordinate_transform Converts local (within tree [0,1]) coordinates into global coordinates
- * \param p4est the forest
- * \param tree_id the current tree in which the point is located
- * \param x will be ignored if set to NULL
- * \param y will be ignored if set to NULL
- * \param z will be ignored if set to NULL
- */
-void c2p_coordinate_transform(p4est_t *p4est, p4est_topidx_t tree_id, double *x, double *y, double *z);
-
-/*!
- * \brief dx_dy_dz_quadrant finds the actual dx_dy_dz of a quadrant
- * \param p4est the forest
- * \param tree_id the current tree in which quadrant is located
- * \param quad the current quadrant
- * \param dx will be ignored if set to NULL
- * \param dy will be ignored if set to NULL
- * \param dz will be ignored if set to NULL
- */
-void dx_dy_dz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* quad, double *dx, double *dy, double *dz);
-
-/*!
- * \brief xyz_quadrant finds the global x_y_z of a quadrant
- * \param p4est the forest
- * \param tree_id the current tree that owns the quadrant
- * \param quad the current quadrant
- * \param x will be ignored if set to NULL
- * \param y will be ignored if set to NULL
- * \param z will be ignored if set to NULL
- */
-void xyz_quadrant(p4est_t *p4est, p4est_topidx_t& tree_id, p4est_quadrant_t* quad, double *x, double *y, double *z);
-
-/*!
- * \brief bilinear_interpolation performs bilinear interpolation for a point
- * \param p4est the forest
- * \param tree_id the current tree that owns the quadrant
- * \param quad the current quarant
- * \param F a simple C-style array of size 4, containing the values of the function at the vertices of the quadrant. __MUST__ be z-ordered
- * \param x_global global x-coordinate of the point
- * \param y_global global y-coordinate of the point
- * \return interpolated value
- */
-double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xy_global);
+double linear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
 
 /*!
  * \brief non_oscilatory_quadratic_interpolation performs non-oscilatory quadratic interpolation for a point
@@ -341,7 +298,7 @@ double bilinear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4es
  * \param y_global global y-coordinate of the point
  * \return interpolated value
  */
-double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global);
+double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
@@ -355,7 +312,7 @@ double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tr
  * \param y_global global y-coordinate of the point
  * \return interpolated value
  */
-double quadratic_interpolation(p4est_t *interface_location_with_second_order_derivativep4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fxx, const double *Fyy, const double *xy_global);
+double quadratic_interpolation(p4est_t *interface_location_with_second_order_derivativep4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
  * \brief VecCreateGhost Creates a ghosted PETSc parallel vector based on p4est node ordering
@@ -458,6 +415,24 @@ bool is_node_ymWall(const p4est_t *p4est, const p4est_indep_t *ni);
  */
 bool is_node_ypWall(const p4est_t *p4est, const p4est_indep_t *ni);
 
+#ifdef P4_TO_P8
+/*!
+ * \brief is_node_zmWall checks if a node is on z^- domain boundary
+ * \param p4est [in] p4est
+ * \param ni    [in] pointer to the node structure
+ * \return true if the point is on the domain back boundary and p4est is _NOT_ periodic
+ */
+bool is_node_zmWall(const p4est_t *p4est, const p4est_indep_t *ni);
+
+/*!
+ * \brief is_node_zpWall checks if a node is on z^+ domain boundary
+ * \param p4est [in] p4est
+ * \param ni    [in] pointer to the node structure
+ * \return true if the point is on the domain front boundary and p4est is _NOT_ periodic
+ */
+bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni);
+#endif
+
 /*!
  * \brief is_node_Wall checks if a node is on any of domain boundaries
  * \param p4est [in] p4est
@@ -474,9 +449,13 @@ bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
  * \param f     [in, out] a PETSc Vec object to store the result. It is assumed that the vector is allocated. A check
  * is performed to ensure enough memory is available in the Vec object.
  */
+#ifdef P4_TO_P8
+void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, Vec f);
+void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f);
+#else
 void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f);
-
 void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
+#endif
 
 template<typename T>
 T ranged_rand(T a, T b, int seed = 0){

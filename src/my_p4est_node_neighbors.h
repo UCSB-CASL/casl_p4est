@@ -1,15 +1,23 @@
 #ifndef MY_P4EST_NODE_NEIGHBORS_H
 #define MY_P4EST_NODE_NEIGHBORS_H
 
+#ifdef P4_TO_P8
+#include <p8est.h>
+#include <p8est_ghost.h>
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_quad_neighbor_nodes_of_node.h>
+#include <src/my_p8est_hierarchy.h>
+#include <p8est_bits.h>
+#else
 #include <p4est.h>
 #include <p4est_ghost.h>
-
-#include <src/utils.h>
+#include <src/my_p4est_utils.h>
 #include <src/my_p4est_nodes.h>
-#include <p4est_bits.h>
 #include <src/my_p4est_quad_neighbor_nodes_of_node.h>
 #include <src/my_p4est_hierarchy.h>
-
+#include <p4est_bits.h>
+#endif
 #include <vector>
 #include <sstream>
 

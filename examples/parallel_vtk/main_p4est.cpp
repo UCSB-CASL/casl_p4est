@@ -5,84 +5,47 @@
 #include <vector>
 #include <algorithm>
 
-// p4est Library
+#ifdef P4_TO_P8
+#include <p8est_bits.h>
+#include <p8est_extended.h>
+#include <src/my_p8est_vtk.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_utils.h>
+#else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
-#include <p4est_vtk.h>
-
-// casl_p4est
-#include <src/utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
-#include <src/refine_coarsen.h>
+#include <src/my_p4est_refine_coarsen.h>
+#endif
 #include <src/petsc_compatibility.h>
 
 using namespace std;
 
+#ifdef P4_TO_P8
+struct circle:CF_3{
+  circle(double x0_, double y0_, double z0_, double r_)
+    : x0(x0_), y0(y0_), z0(z0_), r(r_)
+  {}
+  double operator()(double x, double y, double z) const {
+    return r - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
+  }
+private:
+  double x0, y0, z0, r;
+};
+#else
 struct circle:CF_2{
   circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
-  void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
   double operator()(double x, double y) const {
     return r - sqrt(SQR(x-x0) + SQR(y-y0));
   }
 private:
   double x0, y0, r;
 };
-
-PetscErrorCode VecCreateGhostP4estNumbering(p4est_t *p4est, p4est_nodes_t *nodes, Vec *v)
-{
-  PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = nodes->num_owned_indeps;
-
-  std::vector<PetscInt> indices(nodes->indep_nodes.elem_count, 0);
-  std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
-  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
-
-  // Calculate the global number of points
-  for (int r = 0; r<p4est->mpisize; ++r)
-    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
-
-  PetscInt num_global = global_offset_sum[p4est->mpisize];
-
-  /* compute the global index of all nodes */
-  // First patch of ghost nodes
-  for (p4est_locidx_t i = 0; i<nodes->offset_owned_indeps; ++i)
-  {
-    p4est_indep_t *ni  = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-    indices[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
-    ghost_nodes[i] = indices[i];
-  }
-  // local nodes
-  for (p4est_locidx_t i = nodes->offset_owned_indeps; i<nodes->offset_owned_indeps+num_local; ++i)
-  {
-    p4est_indep_t *ni  = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-    indices[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[p4est->mpirank];
-  }
-  // second patch of ghost nodes
-  for (size_t i = nodes->offset_owned_indeps+num_local; i<nodes->indep_nodes.elem_count; ++i)
-  {
-    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-    indices[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i-num_local]];
-    ghost_nodes[i - num_local] = indices[i];
-  }
-
-  // Create the mapping object
-  ISLocalToGlobalMapping mapping;
-  ISLocalToGlobalMappingCreate(p4est->mpicomm, indices.size(), (const PetscInt*)&indices[0], PETSC_COPY_VALUES, &mapping); CHKERRQ(ierr);
-
-  // create the ghosted object
-  ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global, ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
-
-  // Set the vector local2global mapping
-  ierr = VecSetLocalToGlobalMapping(*v, mapping); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
-
-  // delete the mapping
-  ierr = ISLocalToGlobalMappingDestroy(mapping); CHKERRQ(ierr);
-
-  return ierr;
-}
+#endif
 
 int main (int argc, char* argv[]){
 
@@ -92,8 +55,12 @@ int main (int argc, char* argv[]){
   p4est_nodes_t      *nodes;
   PetscErrorCode      ierr;
 
+#ifdef P4_TO_P8
+  circle circ(1, 1, 1, .3);
+#else
   circle circ(1, 1, .3);
-  splitting_criteria_cf_t data(0, 10, &circ, 1);
+#endif
+  splitting_criteria_cf_t data(0, 8, &circ, 1);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -108,7 +75,12 @@ int main (int argc, char* argv[]){
   w2.start("connectivity");
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
+
+#ifdef P4_TO_P8
+  connectivity = my_p4est_brick_new(2, 2, 2, &brick);
+#else
   connectivity = my_p4est_brick_new(2, 2, &brick);
+#endif
   w2.stop(); w2.read_duration();
 
   // Now create the forest
@@ -190,11 +162,21 @@ int main (int argc, char* argv[]){
 
     double tree_xmin = connectivity->vertices[3*v_mm + 0];
     double tree_ymin = connectivity->vertices[3*v_mm + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mm + 2];
+#endif
 
     double x = int2double_coordinate_transform(node->x) + tree_xmin;
     double y = int2double_coordinate_transform(node->y) + tree_ymin;
+#ifdef P4_TO_P8
+    double z = int2double_coordinate_transform(node->z) + tree_zmin;
+#endif
 
+#ifdef P4_TO_P8
+    phi[i] = circ(x,y,z);
+#else
     phi[i] = circ(x,y);
+#endif
   }
   w2.stop(); w2.read_duration();
 
@@ -230,12 +212,21 @@ int main (int argc, char* argv[]){
 
     double tree_xmin = connectivity->vertices[3*v_mm + 0];
     double tree_ymin = connectivity->vertices[3*v_mm + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mm + 2];
+#endif
 
     double x = int2double_coordinate_transform(node->x) + tree_xmin;
     double y = int2double_coordinate_transform(node->y) + tree_ymin;
+#ifdef P4_TO_P8
+    double z = int2double_coordinate_transform(node->z) + tree_zmin;
+#endif
 
-    // since this is local, we do not need the mapping
+#ifdef P4_TO_P8
+    phi_copy[i] = circ(x,y,z);
+#else
     phi_copy[i] = circ(x,y);
+#endif
   }
 
   /* Update ghost points from local:
@@ -258,7 +249,7 @@ int main (int argc, char* argv[]){
   ierr = VecGhostUpdateEnd(phi_global_copy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // done. lets write both levelset. they MUST be identical when you open them.
-  std::ostringstream oss; oss << "partition_" << p4est->mpisize;
+  std::ostringstream oss; oss << P4EST_DIM << "d_partition_" << p4est->mpisize;
   my_p4est_vtk_write_all(p4est, nodes, ghost    ,
                          P4EST_TRUE, P4EST_TRUE,
                          2, 0, oss.str().c_str(),

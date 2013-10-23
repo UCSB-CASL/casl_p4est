@@ -22,48 +22,87 @@
 */
 
 #include <sc_search.h>
+#ifdef P4_TO_P8
+#include <p8est_bits.h>
+#include <p8est_communication.h>
+#include "my_p8est_tools.h"
+#else
 #include <p4est_bits.h>
 #include <p4est_communication.h>
 #include "my_p4est_tools.h"
+#endif
 #include <assert.h>
 
 p4est_connectivity_t *
+#ifdef P4_TO_P8
+my_p4est_brick_new (int nxtrees, int nytrees, int nztrees, my_p4est_brick_t * myb)
+#else
 my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t * myb)
+#endif
 {
   int                 i, j;
-  int                 nxytrees;
+  int                 nxyztrees;
   double              dii, djj;
+#ifdef P4_TO_P8
+  int k;
+  double dkk;
+#endif
   const double       *vv;
   p4est_topidx_t      tt, vindex;
   p4est_connectivity_t *conn;
 
   P4EST_ASSERT (0 < nxtrees && 0 < nytrees);
+#ifdef P4_TO_P8
+  P4EST_ASSERT (0 < nztrees);
+#endif
+#ifdef P4_TO_P8
+  conn = p4est_connectivity_new_brick (nxtrees, nytrees, nztrees, 0, 0, 0);
+#else
   conn = p4est_connectivity_new_brick (nxtrees, nytrees, 0, 0);
+#endif
   vv = conn->vertices;
   P4EST_ASSERT (vv != NULL);
 
-  myb->nxytrees[0] = nxtrees;
-  myb->nxytrees[1] = nytrees;
-  nxytrees = nxtrees * nytrees;
-  myb->nxy_to_treeid = P4EST_ALLOC (p4est_topidx_t, nxytrees);
-#ifdef P4EST_DEBUG
-  memset (myb->nxy_to_treeid, -1, sizeof (p4est_topidx_t) * nxytrees);
+#ifdef P4_TO_P8
+  myb->nxyztrees[0] = nxtrees;
+  myb->nxyztrees[1] = nytrees;
+  myb->nxyztrees[2] = nztrees;
+#else
+  myb->nxyztrees[0] = nxtrees;
+  myb->nxyztrees[1] = nytrees;
+  myb->nxyztrees[2] = 1;
 #endif
+
+  nxyztrees = myb->nxyztrees[0] * myb->nxyztrees[1] * myb->nxyztrees[2];
+  myb->nxyz_to_treeid = P4EST_ALLOC (p4est_topidx_t, nxyztrees);
+
   for (tt = 0; tt < conn->num_trees; ++tt) {
     /* build lookup structure from tree corner coordinates to treeid */
     vindex = conn->tree_to_vertex[P4EST_CHILDREN * tt + 0];
     P4EST_ASSERT (0 <= vindex && vindex < conn->num_vertices);
+
     dii = vv[3 * vindex + 0];
     P4EST_ASSERT (dii == floor (dii));
     i = (int) dii;
     P4EST_ASSERT (i >= 0 && i < nxtrees);
+
     djj = vv[3 * vindex + 1];
     P4EST_ASSERT (djj == floor (djj));
     j = (int) djj;
     P4EST_ASSERT (j >= 0 && j < nytrees);
-    P4EST_ASSERT (vv[3 * vindex + 2] == 0.);
-    P4EST_ASSERT (myb->nxy_to_treeid[nxtrees * j + i] == -1);
-    myb->nxy_to_treeid[nxtrees * j + i] = tt;
+
+#ifdef P4_TO_P8
+    dkk = vv[3 * vindex + 2];
+    P4EST_ASSERT (dkk == floor (dkk));
+    k = (int) dkk;
+    P4EST_ASSERT (k >= 0 && k < nztrees);
+#endif
+
+#ifdef P4_TO_P8
+    myb->nxyz_to_treeid[nxtrees*nytrees*k + nxtrees*j + i] = tt;
+#else
+    myb->nxyz_to_treeid[nxtrees*j + i] = tt;
+#endif
   }
 
   return conn;
@@ -72,12 +111,13 @@ my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t * myb)
 void
 my_p4est_brick_destroy (p4est_connectivity_t * conn, my_p4est_brick_t * myb)
 {
-  P4EST_ASSERT (myb->nxy_to_treeid != NULL);
-  P4EST_FREE (myb->nxy_to_treeid);
-  myb->nxy_to_treeid = NULL;
+  P4EST_ASSERT (myb->nxyz_to_treeid != NULL);
+  P4EST_FREE (myb->nxyz_to_treeid);
+  myb->nxyz_to_treeid = NULL;
   p4est_connectivity_destroy (conn);
 }
 
+#ifndef P4_TO_P8
 int
 my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
                              const my_p4est_brick_t * myb,
@@ -125,12 +165,12 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
 
   for (i = 0; i < P4EST_DIM; ++i) {
     hit = (int) floor (xy[i]);
-    P4EST_ASSERT (0 <= hit && hit <= myb->nxytrees[i]);
+    P4EST_ASSERT (0 <= hit && hit <= myb->nxyztrees[i]);
 
     /* check if the xy[i] coordinate is on a tree boundary */
     if ((double) hit == xy[i]) {
       integerstep[i][0] = hit - 1;      /* can be -1 which will be ignored */
-      integerstep[i][1] = hit == myb->nxytrees[i] ? -1 : hit;   /* ditto */
+      integerstep[i][1] = hit == myb->nxyztrees[i] ? -1 : hit;   /* ditto */
       searchq[i][0] = P4EST_LAST_OFFSET (P4EST_QMAXLEVEL);
       searchq[i][1] = 0;
       // P4EST_LDEBUGF ("Dimension %d hit tree %d %d\n", i,
@@ -174,7 +214,7 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
         continue;
       }
       tt = treeid[2 * iy + ix] =
-          myb->nxy_to_treeid[myb->nxytrees[0] * integerstep[1][iy] +
+          myb->nxyz_to_treeid[myb->nxyztrees[0] * integerstep[1][iy] +
           integerstep[0][ix]];
       // P4EST_LDEBUGF ("Testing %d %d for tree %d\n", ix, iy, (int) tt);
       sq.x = searchq[0][ix];
@@ -258,3 +298,4 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
 
   return -1;
 }
+#endif
