@@ -1,5 +1,13 @@
+#ifdef P4_TO_P8
+#include "my_p8est_hierarchy.h"
+#include <p8est_communication.h>
+#include <src/point3.h>
+#else
 #include "my_p4est_hierarchy.h"
 #include <p4est_communication.h>
+#include <src/point2.h>
+#endif
+
 #include <stdexcept>
 #include <sstream>
 #include <petsclog.h>
@@ -27,16 +35,24 @@ void my_p4est_hierarchy_t::split( int tree_idx, int ind )
   trees[tree_idx][ind].child = trees[tree_idx].size();
 
   p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
-  for(int j=0; j<2; ++j) {
-    for(int i=0; i<2; ++i) {
-      struct HierarchyCell child = { CELL_LEAF, NOT_A_P4EST_QUADRANT,
-            trees[tree_idx][ind].imin + i*size,
-            trees[tree_idx][ind].jmin + j*size,
-            trees[tree_idx][ind].level+1,
-            REMOTE_OWNER};
-      trees[tree_idx].push_back(child);
-    }
-  }
+#ifdef P4_TO_P8
+  for (int k=0; k<2; ++k)
+#endif
+    for (int j=0; j<2; ++j)
+      for (int i=0; i<2; ++i) {
+        struct HierarchyCell child =
+        {
+          CELL_LEAF, NOT_A_P4EST_QUADRANT,
+              trees[tree_idx][ind].imin + i*size,
+              trees[tree_idx][ind].jmin + j*size,
+#ifdef P4_TO_P8
+              trees[tree_idx][ind].kmin + k*size,
+#endif
+              trees[tree_idx][ind].level+1,
+              REMOTE_OWNER
+        };
+        trees[tree_idx].push_back(child);
+      }
 }
 
 int my_p4est_hierarchy_t::update_tree( int tree_idx, p4est_quadrant_t *quad )
@@ -51,8 +67,14 @@ int my_p4est_hierarchy_t::update_tree( int tree_idx, p4est_quadrant_t *quad )
     p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
     bool i = ( quad->x >= trees[tree_idx][ind].imin + size );
     bool j = ( quad->y >= trees[tree_idx][ind].jmin + size );
-
+#ifdef P4_TO_P8
+    bool k = ( quad->z >= trees[tree_idx][ind].kmin + size );
+#endif
+#ifdef P4_TO_P8
+    ind = trees[tree_idx][ind].child + 4*k + 2*j + i;
+#else
     ind = trees[tree_idx][ind].child + 2*j + i;
+#endif
   }
   return ind;
 }
@@ -131,23 +153,34 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
   fprintf(vtk, "POINTS %ld double \n", P4EST_CHILDREN*num_quads);
 
   for (size_t i=0; i<trees.size(); ++i){
-    p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*i + 0];
+    p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*i + 0];
 
     double tree_xmin = connectivity->vertices[3*v_mm + 0];
     double tree_ymin = connectivity->vertices[3*v_mm + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mm + 2];
+#endif
 
     for (size_t j=0; j<trees[i].size(); j++){
       const HierarchyCell& cell = trees[i][j];
       if (cell.child == CELL_LEAF){
         double h = (double) P4EST_QUADRANT_LEN(cell.level) / P4EST_ROOT_LEN;
-
-        for (short xj=0; xj<2; xj++)
-          for (short xi=0; xi<2; xi++){
-            double x = (double) cell.imin / P4EST_ROOT_LEN + xi*h + tree_xmin;
-            double y = (double) cell.jmin / P4EST_ROOT_LEN + xj*h + tree_ymin;
-
-            fprintf(vtk, "%lf %lf 0.0\n", x, y);
-          }
+#ifdef P4_TO_P8
+        for (short xk=0; xk<2; xk++)
+#endif
+          for (short xj=0; xj<2; xj++)
+            for (short xi=0; xi<2; xi++){
+              double x = (double) cell.imin / P4EST_ROOT_LEN + xi*h + tree_xmin;
+              double y = (double) cell.jmin / P4EST_ROOT_LEN + xj*h + tree_ymin;
+#ifdef P4_TO_P8
+              double z = (double) cell.kmin / P4EST_ROOT_LEN + xk*h + tree_zmin;
+#endif
+#ifdef P4_TO_P8
+              fprintf(vtk, "%lf %lf %lf\n", x, y, z);
+#else
+              fprintf(vtk, "%lf %lf 0.0\n", x, y);
+#endif
+            }
       }
     }
   }
@@ -167,17 +200,28 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
   fclose(vtk);
 }
 
-int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
+int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
 {
 #ifdef CASL_LOG_TINY_EVENTS
-    PetscErrorCode ierr;
-    ierr = PetscLogEventBegin(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
 #endif
 #ifdef CASL_THROWS
-  if (xy[0] < 0 || xy[0] > myb->nxytrees[0] || xy[1] < 0 || xy[1] > myb->nxytrees[1])
+#ifdef P4_TO_P8
+  if (xyz[0] < 0 || xyz[0] > myb->nxyztrees[0] ||
+      xyz[1] < 0 || xyz[1] > myb->nxyztrees[1] ||
+      xyz[2] < 0 || xyz[2] > myb->nxyztrees[2])
+#else
+  if (xyz[0] < 0 || xyz[0] > myb->nxyztrees[0] ||
+      xyz[1] < 0 || xyz[1] > myb->nxyztrees[1])
+#endif
   {
     std::ostringstream oss;
-    oss << "[ERROR]: Point (" << xy[0] << "," << xy[1] << ") is outside computational domain" << std::endl;
+    oss << "[ERROR]: Point (" << xyz[0] << "," << xyz[1] <<
+       #ifdef P4_TO_P8
+           xyz[2] <<
+       #endif
+           ") is outside computational domain" << std::endl;
     throw std::invalid_argument(oss.str());
   }
 #endif
@@ -188,305 +232,133 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
   // a quadrant length at most will be P4EST_QMAXLEVEL = P4EST_MAXLEVEL - 1
   const static double qeps = (double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL) / (double) P4EST_ROOT_LEN;
   const static double  eps = 0.5*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL);
-  const static p4est_qcoord_t qh = P4EST_QUADRANT_LEN(P4EST_QMAXLEVEL);
 
   /* same trick as in p4est poin tlookup */
-  if( fabs(round(xy[0])-xy[0]) < 1e-9 ) xy[0] = round(xy[0]);
-  if( fabs(round(xy[1])-xy[1]) < 1e-9 ) xy[1] = round(xy[1]);
+  if( fabs(round(xyz[0])-xyz[0]) < 1e-9 ) xyz[0] = round(xyz[0]);
+  if( fabs(round(xyz[1])-xyz[1]) < 1e-9 ) xyz[1] = round(xyz[1]);
+#ifdef P4_TO_P8
+  if( fabs(round(xyz[2])-xyz[2]) < 1e-9 ) xyz[2] = round(xyz[2]);
+#endif
 
   /* clip inside computational domain
    * TODO: this wont work with periodic. Need to add something in myb
    * to indicate if the p4est is periodic
    */
-  if      (xy[0] < qeps)                    xy[0] = qeps;
-  else if (xy[0] > myb->nxytrees[0] - qeps) xy[0] = myb->nxytrees[0] - qeps;
-  if      (xy[1] < qeps)                    xy[1] = qeps;
-  else if (xy[1] > myb->nxytrees[1] - qeps) xy[1] = myb->nxytrees[1] - qeps;
+  if      (xyz[0] < qeps)                     xyz[0] = qeps;
+  else if (xyz[0] > myb->nxyztrees[0] - qeps) xyz[0] = myb->nxyztrees[0] - qeps;
+  if      (xyz[1] < qeps)                     xyz[1] = qeps;
+  else if (xyz[1] > myb->nxyztrees[1] - qeps) xyz[1] = myb->nxyztrees[1] - qeps;
+#ifdef P4_TO_P8
+  if      (xyz[2] < qeps)                     xyz[2] = qeps;
+  else if (xyz[2] > myb->nxyztrees[2] - qeps) xyz[2] = myb->nxyztrees[2] - qeps;
+#endif
 
-  int tr_xy_orig [] =
+  int tr_xyz_orig [] =
   {
-    (int)floor(xy[0]),
-    (int)floor(xy[1])
+     (int)floor(xyz[0]),
+     (int)floor(xyz[1])
+  #ifdef P4_TO_P8
+    ,(int)floor(xyz[2])
+  #endif
   };
-  double ii = (xy[0] - tr_xy_orig[0]) * P4EST_ROOT_LEN;
-  double jj = (xy[1] - tr_xy_orig[1]) * P4EST_ROOT_LEN;
+  double ii = (xyz[0] - tr_xyz_orig[0]) * P4EST_ROOT_LEN;
+  double jj = (xyz[1] - tr_xyz_orig[1]) * P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+  double kk = (xyz[2] - tr_xyz_orig[2]) * P4EST_ROOT_LEN;
+#endif
 
   bool is_on_face_x = (fabs(ii-floor(ii))<1e-3 || fabs(ceil(ii)-ii)<1e-3);
   bool is_on_face_y = (fabs(jj-floor(jj))<1e-3 || fabs(ceil(jj)-jj)<1e-3);
+#ifdef P4_TO_P8
+  bool is_on_face_z = (fabs(kk-floor(kk))<1e-3 || fabs(ceil(kk)-kk)<1e-3);
+#endif
 
-  if (is_on_face_x && is_on_face_y){
-    // perturb in 4 directions
+#ifdef P4_TO_P8
+  if (is_on_face_x && is_on_face_y && is_on_face_z)
+#else
+  if (is_on_face_x && is_on_face_y)
+#endif
+  {
+    // perturb in all directions
+    for (short i = -1; i<2; i += 2)
+      for (short j = -1; j<2; j += 2)
+#ifdef P4_TO_P8
+        for (short k = -1; k<2; k += 2)
+#endif
+        {
+          // perturb the point
+#ifdef P4_TO_P8
+          Point3 s(ii + i*eps, jj + j*eps, kk + k*eps);
+#else
+          Point2 s(ii + i*eps, jj + j*eps);
+#endif
+          find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
+        }
+#ifdef P4_TO_P8
+  } else if (is_on_face_x && is_on_face_y) {
     for (short i = -1; i<2; i += 2)
       for (short j = -1; j<2; j += 2)
       {
         // perturb the point
-        double sqx = ii + i*eps;
-        double sqy = jj + j*eps;
-
-        /* first locate the correct tree. We need to check if the perturbation
-         * puts us in a different tree
-         * TODO: we should scale the coordinate by the tree size in general to get
-         * the correct tree coordinate *
-         */
-
-        int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
-        if      (sqx < 0)                      { sqx += (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] - 1; }
-        else if (sqx > (double)P4EST_ROOT_LEN) { sqx -= (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] + 1; }
-        if      (sqy < 0)                      { sqy += (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] - 1; }
-        else if (sqy > (double)P4EST_ROOT_LEN) { sqy -= (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] + 1; }
-
-        p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
-        const std::vector<HierarchyCell>& h_tr = trees[tt];
-
-        const HierarchyCell *it, *begin; begin = it = &h_tr[0];
-        while(CELL_LEAF != it->child){
-          p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
-          short cj = ((double)(it->jmin + half_h)) <= sqy;
-          short ci = ((double)(it->imin + half_h)) <= sqx;
-
-          it = begin + it->child + 2*cj + ci;
-        }
-
-        if (it->owner_rank == p4est->mpirank) { // local quadrant
-          p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
-          p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
-          p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&p4est_tr->quadrants, pos);
-          if (tmp->level > best_match.level) {
-            best_match = *tmp;
-            best_match.p.piggy3.which_tree = tt;
-            best_match.p.piggy3.local_num  = pos;
-            rank = it->owner_rank;
-          }
-        } else if (it->owner_rank != REMOTE_OWNER) { // ghost quadrant
-          p4est_locidx_t pos = it->quad - p4est->local_num_quadrants;
-          p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, pos);
-          if (tmp->level > best_match.level) {
-            best_match = *tmp;
-            best_match.p.piggy3.which_tree = tt;
-            best_match.p.piggy3.local_num  = pos;
-            rank = it->owner_rank;
-          }
-        } else { // remote quadrant
-#ifdef CASL_THROWS
-          if (it->quad != NOT_A_P4EST_QUADRANT)
-            throw std::runtime_error("[ERROR]: A quadrant was both marked remote and not remote!");
-#endif
-          p4est_quadrant_t sq;
-          P4EST_QUADRANT_INIT(&sq);
-          sq.level = P4EST_QMAXLEVEL;
-
-          sq.p.piggy1.which_tree = tt;
-
-          /* need to find the owner
-             * ensure that quadrant is a multiple of qh, otherwise p4est function will freak out!
-             */
-          sq.x = (p4est_qcoord_t)(sqx) & ~(qh - 1);
-          sq.y = (p4est_qcoord_t)(sqy) & ~(qh - 1);
-          sq.p.piggy1.owner_rank = p4est_comm_find_owner(p4est, tt, &sq, p4est->mpirank);
-
-          remote_matches.push_back(sq);
-        }
+        Point3 s(ii + i*eps, jj + j*eps, kk);
+        find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
       }
+  } else if (is_on_face_x && is_on_face_z) {
+    for (short i = -1; i<2; i += 2)
+      for (short k = -1; k<2; k += 2)
+      {
+        // perturb the point
+        Point3 s(ii + i*eps, jj, kk + k*eps);
+        find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
+      }
+  } else if (is_on_face_y && is_on_face_z) {
+    for (short j = -1; j<2; j += 2)
+      for (short k = -1; k<2; k += 2)
+      {
+        // perturb the point
+        Point3 s(ii, jj + j*eps, kk + k*eps);
+        find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
+      }
+#endif
   } else if (is_on_face_x) {
-    // perturb only in x-direction
     for (short i = -1; i<2; i += 2)
     {
       // perturb the point
-      double sqx = ii + i*eps;
-      double sqy = jj;
-
-      /* first locate the correct tree. We need to check if the perturbation
-       * puts us in a different tree
-       * TODO: we should scale the coordinate by the tree size in general to get
-       * the correct tree coordinate *
-       */
-
-      int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
-      if      (sqx < 0)                      { sqx += (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] - 1; }
-      else if (sqx > (double)P4EST_ROOT_LEN) { sqx -= (double)P4EST_ROOT_LEN; tr_xy[0] = tr_xy_orig[0] + 1; }
-
-      p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
-      const std::vector<HierarchyCell>& h_tr = trees[tt];
-
-      const HierarchyCell *it, *begin; begin = it = &h_tr[0];
-      while(CELL_LEAF != it->child){
-        p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
-        short cj = ((double)(it->jmin + half_h)) <= sqy;
-        short ci = ((double)(it->imin + half_h)) <= sqx;
-
-        it = begin + it->child + 2*cj + ci;
-      }
-
-      if (it->owner_rank == p4est->mpirank) { // local quadrant
-        p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
-        p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
-        p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&p4est_tr->quadrants, pos);
-        if (tmp->level > best_match.level) {
-          best_match = *tmp;
-          best_match.p.piggy3.which_tree = tt;
-          best_match.p.piggy3.local_num  = pos;
-          rank = it->owner_rank;
-        }
-      } else if (it->owner_rank != REMOTE_OWNER) { // ghost quadrant
-        p4est_locidx_t pos = it->quad - p4est->local_num_quadrants;
-        p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, pos);
-        if (tmp->level > best_match.level) {
-          best_match = *tmp;
-          best_match.p.piggy3.which_tree = tt;
-          best_match.p.piggy3.local_num  = pos;
-          rank = it->owner_rank;
-        }
-      } else { // remote quadrant
-#ifdef CASL_THROWS
-        if (it->quad != NOT_A_P4EST_QUADRANT)
-          throw std::runtime_error("[ERROR]: A quadrant was both marked remote and not remote!");
+#ifdef P4_TO_P8
+      Point3 s(ii + i*eps, jj, kk);
+#else
+      Point2 s(ii + i*eps, jj);
 #endif
-        p4est_quadrant_t sq;
-        P4EST_QUADRANT_INIT(&sq);
-        sq.level = P4EST_QMAXLEVEL;
-
-        sq.p.piggy1.which_tree = tt;
-
-        /* need to find the owner
-             * ensure that quadrant is a multiple of qh, otherwise p4est function will freak out!
-             */
-        sq.x = (p4est_qcoord_t)(sqx) & ~(qh - 1);
-        sq.y = (p4est_qcoord_t)(sqy) & ~(qh - 1);
-        sq.p.piggy1.owner_rank = p4est_comm_find_owner(p4est, tt, &sq, p4est->mpirank);
-
-        remote_matches.push_back(sq);
-      }
+      find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
     }
-
   } else if (is_on_face_y) {
-    // perturb only in y-direction
     for (short j = -1; j<2; j += 2)
     {
       // perturb the point
-      double sqx = ii;
-      double sqy = jj + j*eps;
-
-      /* first locate the correct tree. We need to check if the perturbation
-       * puts us in a different tree
-       * TODO: we should scale the coordinate by the tree size in general to get
-       * the correct tree coordinate *
-       */
-
-      int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
-      if      (sqy < 0)                      { sqy += (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] - 1; }
-      else if (sqy > (double)P4EST_ROOT_LEN) { sqy -= (double)P4EST_ROOT_LEN; tr_xy[1] = tr_xy_orig[1] + 1; }
-
-      p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
-      const std::vector<HierarchyCell>& h_tr = trees[tt];
-
-      const HierarchyCell *it, *begin; begin = it = &h_tr[0];
-      while(CELL_LEAF != it->child){
-        p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
-        short cj = ((double)(it->jmin + half_h)) <= sqy;
-        short ci = ((double)(it->imin + half_h)) <= sqx;
-
-        it = begin + it->child + 2*cj + ci;
-      }
-
-      if (it->owner_rank == p4est->mpirank) { // local quadrant
-        p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
-        p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
-        p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&p4est_tr->quadrants, pos);
-        if (tmp->level > best_match.level) {
-          best_match = *tmp;
-          best_match.p.piggy3.which_tree = tt;
-          best_match.p.piggy3.local_num  = pos;
-          rank = it->owner_rank;
-        }
-      } else if (it->owner_rank != REMOTE_OWNER) { // ghost quadrant
-        p4est_locidx_t pos = it->quad - p4est->local_num_quadrants;
-        p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, pos);
-        if (tmp->level > best_match.level) {
-          best_match = *tmp;
-          best_match.p.piggy3.which_tree = tt;
-          best_match.p.piggy3.local_num  = pos;
-          rank = it->owner_rank;
-        }
-      } else { // remote quadrant
-#ifdef CASL_THROWS
-        if (it->quad != NOT_A_P4EST_QUADRANT)
-          throw std::runtime_error("[ERROR]: A quadrant was both marked remote and not remote!");
+#ifdef P4_TO_P8
+      Point3 s(ii, jj + j*eps, kk);
+#else
+      Point2 s(ii, jj + j*eps);
 #endif
-        p4est_quadrant_t sq;
-        P4EST_QUADRANT_INIT(&sq);
-        sq.level = P4EST_QMAXLEVEL;
-
-        sq.p.piggy1.which_tree = tt;
-
-        /* need to find the owner
-             * ensure that quadrant is a multiple of qh, otherwise p4est function will freak out!
-             */
-        sq.x = (p4est_qcoord_t)(sqx) & ~(qh - 1);
-        sq.y = (p4est_qcoord_t)(sqy) & ~(qh - 1);
-        sq.p.piggy1.owner_rank = p4est_comm_find_owner(p4est, tt, &sq, p4est->mpirank);
-
-        remote_matches.push_back(sq);
-      }
+      find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
     }
-
+#ifdef P4_TO_P8
+  } else if (is_on_face_z) {
+    for (short k = -1; k<2; k += 2)
+    {
+      // perturb the point
+      Point3 s(ii, jj, kk + k*eps);
+      find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
+    }
+#endif
   } else {
     // no perturbation is necessary
-    double sqx = ii;
-    double sqy = jj;
-
-    int tr_xy[] = { tr_xy_orig[0], tr_xy_orig[1]};
-
-    p4est_topidx_t tt = myb->nxy_to_treeid[tr_xy[0] + tr_xy[1]*myb->nxytrees[0]];
-    const std::vector<HierarchyCell>& h_tr = trees[tt];
-
-    const HierarchyCell *it, *begin; begin = it = &h_tr[0];
-    while(CELL_LEAF != it->child){
-      p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
-      short cj = ((double)(it->jmin + half_h)) <= sqy;
-      short ci = ((double)(it->imin + half_h)) <= sqx;
-
-      it = begin + it->child + 2*cj + ci;
-    }
-
-    if (it->owner_rank == p4est->mpirank) { // local quadrant
-      p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
-      p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
-      p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&p4est_tr->quadrants, pos);
-      if (tmp->level > best_match.level) {
-        best_match = *tmp;
-        best_match.p.piggy3.which_tree = tt;
-        best_match.p.piggy3.local_num  = pos;
-        rank = it->owner_rank;
-      }
-    } else if (it->owner_rank != REMOTE_OWNER) { // ghost quadrant
-      p4est_locidx_t pos = it->quad - p4est->local_num_quadrants;
-      p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, pos);
-      if (tmp->level > best_match.level) {
-        best_match = *tmp;
-        best_match.p.piggy3.which_tree = tt;
-        best_match.p.piggy3.local_num  = pos;
-        rank = it->owner_rank;
-      }
-    } else { // remote quadrant
-#ifdef CASL_THROWS
-      if (it->quad != NOT_A_P4EST_QUADRANT)
-        throw std::runtime_error("[ERROR]: A quadrant was both marked remote and not remote!");
+#ifdef P4_TO_P8
+    Point3 s(ii, jj, kk);
+#else
+    Point2 s(ii, jj);
 #endif
-      p4est_quadrant_t sq;
-      P4EST_QUADRANT_INIT(&sq);
-      sq.level = P4EST_QMAXLEVEL;
-
-      sq.p.piggy1.which_tree = tt;
-
-      /* need to find the owner
-             * ensure that quadrant is a multiple of qh, otherwise p4est function will freak out!
-             */
-      sq.x = (p4est_qcoord_t)(sqx) & ~(qh - 1);
-      sq.y = (p4est_qcoord_t)(sqy) & ~(qh - 1);
-      sq.p.piggy1.owner_rank = p4est_comm_find_owner(p4est, tt, &sq, p4est->mpirank);
-
-      remote_matches.push_back(sq);
-    }
+    find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
   }
 
 #ifdef CASL_LOG_TINY_EVENTS
@@ -494,4 +366,90 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xy, p4
 #endif
 
   return rank;
+}
+
+#ifdef P4_TO_P8
+void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig, Point3& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
+#else
+void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig, Point2& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
+#endif
+{
+  const static p4est_qcoord_t qh = P4EST_QUADRANT_LEN(P4EST_QMAXLEVEL);
+
+#ifdef P4_TO_P8
+  int tr_xyz[] = { tr_xyz_orig[0], tr_xyz_orig[1], tr_xyz_orig[2]};
+  p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]
+      + tr_xyz[2]*myb->nxyztrees[0]*myb->nxyztrees[1]];
+#else
+  int tr_xyz[] = { tr_xyz_orig[0], tr_xyz_orig[1]};
+  p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]];
+#endif
+
+  if      (s.x < 0)                      { s.x += (double)P4EST_ROOT_LEN; tr_xyz[0] = tr_xyz_orig[0] - 1; }
+  else if (s.x > (double)P4EST_ROOT_LEN) { s.x -= (double)P4EST_ROOT_LEN; tr_xyz[0] = tr_xyz_orig[0] + 1; }
+  if      (s.y < 0)                      { s.y += (double)P4EST_ROOT_LEN; tr_xyz[1] = tr_xyz_orig[1] - 1; }
+  else if (s.y > (double)P4EST_ROOT_LEN) { s.y -= (double)P4EST_ROOT_LEN; tr_xyz[1] = tr_xyz_orig[1] + 1; }
+#ifdef P4_TO_P8
+  if      (s.z < 0)                      { s.z += (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] - 1; }
+  else if (s.z > (double)P4EST_ROOT_LEN) { s.z -= (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] + 1; }
+#endif
+
+  const std::vector<HierarchyCell>& h_tr = trees[tt];
+  const HierarchyCell *it, *begin; begin = it = &h_tr[0];
+  while(CELL_LEAF != it->child){
+    p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
+    short cj = ((double)(it->jmin + half_h)) <= s.y;
+    short ci = ((double)(it->imin + half_h)) <= s.x;
+#ifdef P4_TO_P8
+    short ck = ((double)(it->kmin + half_h)) <= s.z;
+#endif
+#ifdef P4_TO_P8
+    it = begin + it->child + 4*ck + 2*cj + ci;
+#else
+    it = begin + it->child + 2*cj + ci;
+#endif
+  }
+
+  if (it->owner_rank == p4est->mpirank) { // local quadrant
+    p4est_tree_t *p4est_tr = (p4est_tree_t*)sc_array_index(p4est->trees, tt);
+    p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
+    p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&p4est_tr->quadrants, pos);
+    if (tmp->level > best_match.level) {
+      best_match = *tmp;
+      best_match.p.piggy3.which_tree = tt;
+      best_match.p.piggy3.local_num  = pos;
+      rank = it->owner_rank;
+    }
+  } else if (it->owner_rank != REMOTE_OWNER) { // ghost quadrant
+    p4est_locidx_t pos = it->quad - p4est->local_num_quadrants;
+    p4est_quadrant_t *tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, pos);
+    if (tmp->level > best_match.level) {
+      best_match = *tmp;
+      best_match.p.piggy3.which_tree = tt;
+      best_match.p.piggy3.local_num  = pos;
+      rank = it->owner_rank;
+    }
+  } else { // remote quadrant
+#ifdef CASL_THROWS
+    if (it->quad != NOT_A_P4EST_QUADRANT)
+      throw std::runtime_error("[ERROR]: A quadrant was both marked remote and not remote!");
+#endif
+    p4est_quadrant_t sq;
+    P4EST_QUADRANT_INIT(&sq);
+    sq.level = P4EST_QMAXLEVEL;
+
+    sq.p.piggy1.which_tree = tt;
+
+    /* need to find the owner
+         * ensure that quadrant is a multiple of qh, otherwise p4est function will freak out!
+         */
+    sq.x = (p4est_qcoord_t)(s.x) & ~(qh - 1);
+    sq.y = (p4est_qcoord_t)(s.y) & ~(qh - 1);
+#ifdef P4_TO_P8
+    sq.z = (p4est_qcoord_t)(s.z) & ~(qh - 1);
+#endif
+    sq.p.piggy1.owner_rank = p4est_comm_find_owner(p4est, tt, &sq, p4est->mpirank);
+
+    remote_matches.push_back(sq);
+  }
 }

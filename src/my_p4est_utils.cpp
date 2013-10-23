@@ -34,7 +34,7 @@ double linear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_
   double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
   double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
 #ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 1];
+  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
 #endif
 
   double x = (xyz_global[0] - tree_xmin);

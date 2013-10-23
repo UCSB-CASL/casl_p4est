@@ -336,6 +336,10 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
     for (zz = 0; zz < indeps->elem_count; ++zz) {
       in = (p4est_indep_t *) sc_array_index (indeps, zz);
 
+      p4est_indep_t in_unclamped = *in;
+      p4est_node_unclamp((p4est_quadrant_t*)&in_unclamped);
+      in = &in_unclamped;
+
       /* retrieve corners of the tree */
       jt = in->p.which_tree;
       for (k = 0; k < P4EST_CHILDREN; ++k)

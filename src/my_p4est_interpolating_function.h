@@ -3,10 +3,17 @@
 
 #include <vector>
 #include <map>
-#include <src/utils.h>
+#ifdef P4_TO_P8
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_node_neighbors.h>
+#else
+#include <src/my_p4est_utils.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_node_neighbors.h>
+#endif
 
 enum interpolation_method{
   linear,

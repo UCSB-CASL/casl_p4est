@@ -23,8 +23,10 @@
 
 #ifdef P4_TO_P8
 #include "my_p8est_nodes.h"
+#include <p8est_bits.h>
 #else
 #include "my_p4est_nodes.h"
+#include <p4est_bits.h>
 #endif
 
 #ifndef MY_P4EST_VTK_H
