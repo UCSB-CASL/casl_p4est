@@ -60,11 +60,37 @@ double linear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_
 #endif
 
 #ifdef P4_TO_P8
-  double value = (F[0]*(d_p00*d_0p0*d_00p) + F[1]*(d_m00*d_0p0*d_00p) + F[2]*(d_p00*d_0m0*d_00p) + F[3]*(d_m00*d_0m0*d_00p) +
-                  F[4]*(d_p00*d_0p0*d_00m) + F[5]*(d_m00*d_0p0*d_00m) + F[6]*(d_p00*d_0m0*d_00m) + F[7]*(d_m00*d_0m0*d_00m) ) /(qh*qh*qh);
+  double w_xyz[] =
+  {
+    d_p00*d_0p0*d_00p,
+    d_m00*d_0p0*d_00p,
+    d_p00*d_0m0*d_00p,
+    d_m00*d_0m0*d_00p,
+    d_p00*d_0p0*d_00m,
+    d_m00*d_0p0*d_00m,
+    d_p00*d_0m0*d_00m,
+    d_m00*d_0m0*d_00m
+  };
 #else
-  double value = (F[0]*(d_p00*d_0p0) + F[1]*(d_m00*d_0p0) + F[2]*(d_p00*d_0m0) + F[3]*(d_m00*d_0m0))/(qh*qh);
+  double w_xyz[] =
+  {
+    d_p00*d_0p0,
+    d_m00*d_0p0,
+    d_p00*d_0m0,
+    d_m00*d_0m0
+  };
 #endif
+
+  double value = 0;
+  for (short j = 0; j<P4EST_CHILDREN; j++)
+    value += F[j]*w_xyz[j];
+
+#ifdef P4_TO_P8
+  value /= qh*qh*qh;
+#else
+  value /= qh*qh;
+#endif
+
   ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
 
   return value;
@@ -78,7 +104,7 @@ double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tr
   double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
   double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
 #ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 1];
+  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
 #endif
 
   double x = (xyz_global[0] - tree_xmin);
@@ -157,7 +183,7 @@ double quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4e
   double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
   double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
 #ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 1];
+  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
 #endif
 
   double x = (xyz_global[0] - tree_xmin);

@@ -34,27 +34,6 @@ void* my_sc_array_index(sc_array_t* a, size_t n){
   return ((void *) (a->array + (a->elem_size * n)));
 }
 
-namespace dir {
-enum {
-  v_mmm = 0,
-  v_pmm,
-  v_mpm,
-  v_ppm,
-  v_mmp,
-  v_pmp,
-  v_mpp,
-  v_ppp
-};
-enum {
-  f_m00 = 0,
-  f_p00,
-  f_0m0,
-  f_0p0,
-  f_00m,
-  f_00p
-};
-}
-
 void my_p4est_node_neighbors_t::init_neighbors()
 {
   PetscErrorCode ierr;
@@ -888,10 +867,10 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   p4est_qcoord_t y_perturb = node->y+j;
   p4est_qcoord_t z_perturb = node->z+k;
 
-  /* There are 26 special cases in 3D. There are:
-   * 8  corners of the tree
-   * 12 edges of the tree
-   * 6  faces of the tree
+  /* There are 26 special cases for a tree in 3D. These are:
+   * 8  corners
+   * 12 edges
+   * 6  faces
    */
 
   /* corners: we could have done this in a smarter way but to keep things similar

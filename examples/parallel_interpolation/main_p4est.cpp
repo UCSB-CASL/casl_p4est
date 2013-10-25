@@ -165,8 +165,9 @@ int main (int argc, char* argv[]){
     hierarchy.write_vtk(hierarchy_name.str().c_str());
     my_p4est_node_neighbors_t qnnn(&hierarchy, nodes);
 
-    FILE *qFile = fopen((grid_name.str() + "_qnnn").c_str(), "w");
-    for (size_t n=0; n<nodes->indep_nodes.elem_count; n++)
+    grid_name.str(""); grid_name << P4EST_DIM << "d_grid_qnnn_" << p4est->mpirank << "_" << p4est->mpisize;
+    FILE *qFile = fopen(grid_name.str().c_str(), "w");
+    for (size_t n=0; n<nodes->num_owned_indeps; n++)
       qnnn[n].print_debug(qFile);
     fclose(qFile);
 
@@ -262,7 +263,6 @@ int main (int argc, char* argv[]){
 
     // Create an interpolating function
     InterpolatingFunction phi_func(p4est, nodes, ghost, brick, &qnnn);
-    phi_func.set_input_parameters(phi, quadratic);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
@@ -295,6 +295,7 @@ int main (int argc, char* argv[]){
     ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
     // interpolate
+    phi_func.set_input_parameters(phi, linear);
     phi_func.interpolate(phi_np1);
 
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

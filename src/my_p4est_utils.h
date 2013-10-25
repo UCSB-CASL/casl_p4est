@@ -15,6 +15,27 @@
 #include <sstream>
 #include <vector>
 
+namespace dir {
+enum {
+  v_mmm = 0,
+  v_pmm,
+  v_mpm,
+  v_ppm,
+  v_mmp,
+  v_pmp,
+  v_mpp,
+  v_ppp
+};
+enum {
+  f_m00 = 0,
+  f_p00,
+  f_0m0,
+  f_0p0,
+  f_00m,
+  f_00p
+};
+}
+
 class CF_1
 {
 public:

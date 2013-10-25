@@ -459,7 +459,6 @@ void InterpolatingFunction::interpolate( double *output_vec )
             }
           }
 
-          std::cout << "[" << p4est_->mpirank << "]: " << xyz << " : " << xyz[0] << " " << xyz[1] << " " << xyz[2] << std::endl;
           if (method_ == linear)
             f_send[i] = linear_interpolation(p4est_, tree_idx, best_match, f, xyz);
           else if (method_ == quadratic)
