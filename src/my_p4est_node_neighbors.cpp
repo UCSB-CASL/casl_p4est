@@ -1684,7 +1684,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fxx,
   // start updating the ghost values
   ierr = VecGhostUpdateBegin(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-#ifdef P4_TO_p8
+#ifdef P4_TO_P8
   // compute the derivatives on the boundary nodes -- fzz
   for (size_t i=0; i<layer_nodes.size(); i++)
     fzz_p[layer_nodes[i]] = neighbors[layer_nodes[i]].dzz_central(f_p);
@@ -1716,6 +1716,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fxx,
   ierr = VecGhostUpdateEnd(fzz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 #endif
 #endif // !DXX_USE_BLOCKS
+
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 

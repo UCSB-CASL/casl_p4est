@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <map>
 #include <stdexcept>
-#include <src/utils.h>
 
 class cmdParser{
     std::map <std::string, std::string> options;

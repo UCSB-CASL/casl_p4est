@@ -33,7 +33,6 @@ extern PetscLogEvent log_InterpolatingFunction_interpolate;
 #endif
 #endif
 
-
 InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
                                              p4est_nodes_t *nodes,
                                              p4est_ghost_t *ghost,
@@ -422,8 +421,8 @@ void InterpolatingFunction::interpolate( double *output_vec )
 
         // clip to bounding box
         for (short j=0; j<P4EST_DIM; j++){
-          if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];
-          if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
+          if (xyz_clip[j] > xyz_max[j]) xyz_clip[j] = xyz_max[j];
+          if (xyz_clip[j] < xyz_min[j]) xyz_clip[j] = xyz_min[j];
         }
 
         // first find the quadrant for the remote points

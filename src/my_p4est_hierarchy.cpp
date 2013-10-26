@@ -378,11 +378,8 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 
 #ifdef P4_TO_P8
   int tr_xyz[] = { tr_xyz_orig[0], tr_xyz_orig[1], tr_xyz_orig[2]};
-  p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]
-      + tr_xyz[2]*myb->nxyztrees[0]*myb->nxyztrees[1]];
 #else
-  int tr_xyz[] = { tr_xyz_orig[0], tr_xyz_orig[1]};
-  p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]];
+  int tr_xyz[] = { tr_xyz_orig[0], tr_xyz_orig[1]}; 
 #endif
 
   if      (s.x < 0)                      { s.x += (double)P4EST_ROOT_LEN; tr_xyz[0] = tr_xyz_orig[0] - 1; }
@@ -392,6 +389,13 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 #ifdef P4_TO_P8
   if      (s.z < 0)                      { s.z += (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] - 1; }
   else if (s.z > (double)P4EST_ROOT_LEN) { s.z -= (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] + 1; }
+#endif
+
+#ifdef P4_TO_P8
+  p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]
+      + tr_xyz[2]*myb->nxyztrees[0]*myb->nxyztrees[1]];
+#else
+   p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]];
 #endif
 
   const std::vector<HierarchyCell>& h_tr = trees[tt];

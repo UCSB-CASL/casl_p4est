@@ -27,6 +27,7 @@
 #endif
 
 #include <src/petsc_compatibility.h>
+#include <src/Parser.h>
 
 using namespace std;
 
@@ -90,12 +91,19 @@ int main (int argc, char* argv[]){
     p4est_nodes_t      *nodes;
     PetscErrorCode      ierr;
 
+    cmdParser cmd;
+    cmd.add_option("lmin", "min level of the tree");
+    cmd.add_option("lmax", "max level of the tree");
+    cmd.add_option("mode", "interpolation mode 0 = linear, 1 = quadratic, 2 = non-oscilatory quadratic");
+    cmd.parse(argc, argv);
+
+
 #ifdef P4_TO_P8
     circle circ(1, 1, 1, .3);
 #else
     circle circ(1, 1, .3);
 #endif
-    splitting_criteria_cf_t cf_data(0, 5, &circ, 1);
+    splitting_criteria_cf_t cf_data(cmd.get("lmin", 0), cmd.get("lmax",5), &circ, 1);
 
     Session mpi_session;
     mpi_session.init(argc, argv, mpi->mpicomm);
@@ -185,7 +193,7 @@ int main (int argc, char* argv[]){
     double u_yy_min, u_yy_max;
 #ifdef P4_TO_P8
     double u_zz_min, u_zz_max;
-    qnnn.second_derivatives_central(u, u_xx, u_yy, u_zz);
+//    qnnn.second_derivatives_central(u, u_xx, u_yy, u_zz);
     ierr = VecGetArray(u_zz, &u_zz_p); CHKERRXX(ierr);
 #else
     qnnn.second_derivatives_central(u, u_xx, u_yy);
@@ -276,15 +284,16 @@ int main (int argc, char* argv[]){
 #ifdef P4_TO_P8
       double tree_zmin = connectivity->vertices[3*v_mm + 2];
 #endif
-      double xyz [] =
+      double xyz [P4EST_DIM] =
       {
-        int2double_coordinate_transform(node->x) + tree_xmin,
-        int2double_coordinate_transform(node->y) + tree_ymin
-  #ifdef P4_TO_P8
+        node->x == P4EST_ROOT_LEN-1 ? 1.0 + tree_xmin:(double)node->x/(double)P4EST_ROOT_LEN + tree_xmin,
+        node->y == P4EST_ROOT_LEN-1 ? 1.0 + tree_ymin:(double)node->y/(double)P4EST_ROOT_LEN + tree_ymin
+#ifdef P4_TO_P8
         ,
-        int2double_coordinate_transform(node->z) + tree_zmin
-  #endif
+        node->z == P4EST_ROOT_LEN-1 ? 1.0 + tree_zmin:(double)node->z/(double)P4EST_ROOT_LEN + tree_zmin
+#endif
       };
+
       // buffer the point
       phi_func.add_point_to_buffer(i, xyz);
     }
@@ -295,7 +304,19 @@ int main (int argc, char* argv[]){
     ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
     // interpolate
-    phi_func.set_input_parameters(phi, linear);
+    switch (cmd.get("mode",0)){
+    case 0:
+      phi_func.set_input_parameters(phi, linear);
+      break;
+    case 1:
+      phi_func.set_input_parameters(phi, quadratic);
+      break;
+    case 2:
+      phi_func.set_input_parameters(phi, quadratic_non_oscillatory);
+      break;
+    default:
+      throw std::invalid_argument("[Error]: Interpolation mode can only be 0, 1, or 2");
+    }
     phi_func.interpolate(phi_np1);
 
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

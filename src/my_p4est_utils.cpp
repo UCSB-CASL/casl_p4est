@@ -234,9 +234,16 @@ double quadratic_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4e
   for (short i = 0; i<P4EST_DIM; i++)
     fdd[i] = 0;
 
-  for (short i = 0; i<P4EST_DIM; i++)
-    for (short j=0; j<P4EST_CHILDREN; j++)
+  for (short j=0; j<P4EST_CHILDREN; j++)
+    for (short i = 0; i<P4EST_DIM; i++)
       fdd[i] += Fdd[j*P4EST_DIM + i] * w_xyz[j];
+
+  for (short i=0; i<P4EST_DIM; i++)
+#ifdef P4_TO_P8
+    fdd[i] /= qh*qh*qh;
+#else
+    fdd[i] /= qh*qh;
+#endif
 
   double value = 0;
   for (short j = 0; j<P4EST_CHILDREN; j++)
