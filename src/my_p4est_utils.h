@@ -223,87 +223,7 @@ typedef int p4est_bool_t;
 #define P4EST_TRUE  1
 #define P4EST_FALSE 0
 
-// Some Macros
-#define EPS 1e-13
-#ifndef ABS
-#define ABS(a) ((a)>0 ? (a) : -(a))
-#endif
 
-#ifndef MIN
-#define MIN(a,b) ((a)>(b)?(b):(a))
-#endif
-
-#ifndef MAX
-#define MAX(a,b) ((a)<(b)?(b):(a))
-#endif
-
-#ifndef SQR
-#define SQR(a) (a)*(a)
-#endif
-
-inline double DELTA( double x, double h )
-{
-  if( x > h ) return 0;
-  if( x <-h ) return 0;
-  else      return (1+cos(M_PI*x/h))*0.5/h;
-}
-
-inline double HVY( double x, double h )
-{
-  if( x > h ) return 1;
-  if( x <-h ) return 0;
-  else      return (1+x/h+sin(M_PI*x/h)/M_PI)*0.5;
-}
-
-inline double SIGN(double a)
-{
-  return (a>0) ? 1:-1;
-}
-
-inline double MINMOD( double a, double b )
-{
-  if(a*b<=0) return 0;
-  else
-  {
-    if((fabs(a))<(fabs(b))) return a;
-    else                    return b;
-  }
-}
-
-inline double HARMOD( double a, double b )
-{
-  if(a*b<=0) return 0;
-  else
-  {
-    if(a<0) a=-a;
-    if(b<0) b=-b;
-
-    return 2*a*b/(a+b);
-  }
-}
-
-inline double ENO2( double a, double b )
-{
-  if(a*b<=0) return 0;
-  else
-  {
-    if((ABS(a))<(ABS(b))) return a;
-    else                  return b;
-  }
-}
-
-inline double SUPERBEE( double a, double b )
-{
-  if(a*b<=0) return 0;
-  else
-  {
-    double theta = b/a;
-    if(theta<0.5) return 2*b;
-    if(theta<1.0) return a;
-    if(theta<2.0) return b;
-    else          return 2*a;
-  }
-}
 
 double linear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
 
@@ -356,6 +276,32 @@ PetscErrorCode VecCreateGhostBlock(p4est_t *p4est, p4est_nodes_t *nodes, PetscIn
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
 }
+
+inline double node_x_fr_i(const p4est_indep_t *ni){
+  return ni->x == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->x)/static_cast<double>(P4EST_ROOT_LEN);
+}
+
+inline double node_y_fr_j(const p4est_indep_t *ni){
+  return ni->y == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->y)/static_cast<double>(P4EST_ROOT_LEN);
+}
+
+inline double quad_x_fr_i(const p4est_quadrant_t *qi){
+  return static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
+}
+
+inline double quad_y_fr_j(const p4est_quadrant_t *qi){
+  return static_cast<double>(qi->y)/static_cast<double>(P4EST_ROOT_LEN);
+}
+
+#ifdef P4_TO_P8
+inline double node_z_fr_k(const p4est_indep_t *ni){
+  return ni->z == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->z)/static_cast<double>(P4EST_ROOT_LEN);
+}
+inline double quad_z_fr_k(const p4est_quadrant_t *qi){
+  return static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
+}
+#endif
+
 
 /*!
  * \brief integrate_over_negative_domain_in_one_quadrant

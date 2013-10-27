@@ -11,6 +11,7 @@
 #include "mpi.h"
 #include <vector>
 #include <petsclog.h>
+#include <src/CASL_math.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_TINY_EVENTS

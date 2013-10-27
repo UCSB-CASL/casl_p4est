@@ -477,12 +477,33 @@ void my_p4est_node_neighbors_t::init_neighbors()
       p4est_topidx_t tree_tmp_idx;
       short ci = 1, cj = -1, ck = -1;
 
-      p4est_quadrant_t *quad_min     = quad_pmm;
-      p4est_locidx_t    quad_min_idx = quad_pmm_idx;
-      if (quad_min->level < quad_ppm->level) { quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; cj =  1; ck = -1; }
+      /* NOTE: First we find the smallest cell in the p00 direction that is neighbor
+       * to this node. However, since we later need to fetch the second neighbors
+       * of that quadrant (i.e. quad_min below) we have to require that quad_min
+       * be local to the processor otherwise the second neighbor might not exist.
+       * This can happen, for instance, if quad_min happens to be a ghost quadrant.
+       * Unfortunately there is no way around this unless p4est provides us with
+       * second layer of ghost cells. However, since this correction is only applied
+       * at the walls when imposing neumann bc, the effects should really be minimal
+       *
+       */
+
+      p4est_quadrant_t *quad_min     = &root;
+      p4est_locidx_t    quad_min_idx = -1;
+      if (quad_min->level < quad_pmm->level && quad_pmm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; cj = -1; ck = -1; }
+      if (quad_min->level < quad_ppm->level && quad_ppm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; cj =  1; ck = -1; }
 #ifdef P4_TO_P8
-      if (quad_min->level < quad_pmp->level) { quad_min = quad_pmp; quad_min_idx = quad_pmp_idx; cj = -1; ck =  1; }
-      if (quad_min->level < quad_ppp->level) { quad_min = quad_ppp; quad_min_idx = quad_ppp_idx; cj =  1; ck =  1; }
+      if (quad_min->level < quad_pmp->level && quad_pmp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_pmp; quad_min_idx = quad_pmp_idx; cj = -1; ck =  1; }
+      if (quad_min->level < quad_ppp->level && quad_ppp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_ppp; quad_min_idx = quad_ppp_idx; cj =  1; ck =  1; }
+#endif
+#ifdef CASL_THROWS
+      if (quad_min_idx == -1)
+          throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in m00."
+                                   "This is most probably a bug in my_p4est_hierarchy_t construction");
 #endif
       const bool di = 1;
       const bool dj = cj != 1;
@@ -497,6 +518,12 @@ void my_p4est_node_neighbors_t::init_neighbors()
       find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
 #else
       find_neighbor_cell_of_node( node_tmp, ci, cj, quad_tmp_idx, tree_tmp_idx );
+#endif
+
+#ifdef CASL_THROWS
+      if (quad_tmp_idx == -1)
+      throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in m00."
+                               "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
 #endif
 
       p4est_quadrant_t *quad_tmp;
@@ -546,14 +573,24 @@ void my_p4est_node_neighbors_t::init_neighbors()
       p4est_topidx_t tree_tmp_idx;
       short ci = -1, cj = -1, ck = -1;
 
-      p4est_quadrant_t *quad_min     = quad_mmm;
-      p4est_locidx_t    quad_min_idx = quad_mmm_idx;
-      if (quad_min->level < quad_mpm->level) { quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; cj =  1; ck = -1; }
-#ifdef P4_TO_P8
-      if (quad_min->level < quad_mmp->level) { quad_min = quad_mmp; quad_min_idx = quad_mmp_idx; cj = -1; ck =  1; }
-      if (quad_min->level < quad_mpp->level) { quad_min = quad_mpp; quad_min_idx = quad_mpp_idx; cj =  1; ck =  1; }
-#endif
+      p4est_quadrant_t *quad_min     = &root;
+      p4est_locidx_t    quad_min_idx = -1;
 
+      if (quad_min->level < quad_mmm->level && quad_mmm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mmm; quad_min_idx = quad_mmm_idx; cj = -1; ck = -1; }
+      if (quad_min->level < quad_mpm->level && quad_mpm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; cj =  1; ck = -1; }
+#ifdef P4_TO_P8
+      if (quad_min->level < quad_mmp->level && quad_mmp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mmp; quad_min_idx = quad_mmp_idx; cj = -1; ck =  1; }
+      if (quad_min->level < quad_mpp->level && quad_mpp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mpp; quad_min_idx = quad_mpp_idx; cj =  1; ck =  1; }
+#endif
+#ifdef CASL_THROWS
+      if (quad_min_idx == -1)
+          throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in p00."
+                                   "This is most probably a bug in my_p4est_hierarchy_t construction");
+#endif
       const bool di = 0;
       const bool dj = cj != 1;
 #ifdef P4_TO_P8
@@ -562,12 +599,17 @@ void my_p4est_node_neighbors_t::init_neighbors()
       const bool dk = 0;
 #endif
 
-
       node_tmp = (p4est_indep_t*)sc_array_index( &nodes->indep_nodes, nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di] );
 #ifdef P4_TO_P8
       find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
 #else
       find_neighbor_cell_of_node( node_tmp, ci, cj, quad_tmp_idx, tree_tmp_idx );
+#endif
+
+#ifdef CASL_THROWS
+      if (quad_tmp_idx == -1)
+      throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in p00."
+                               "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
 #endif
 
       p4est_quadrant_t *quad_tmp;
@@ -617,12 +659,24 @@ void my_p4est_node_neighbors_t::init_neighbors()
       p4est_topidx_t tree_tmp_idx;
       short ci = -1, cj = 1, ck = -1;
 
-      p4est_quadrant_t *quad_min     = quad_mpm;
-      p4est_locidx_t    quad_min_idx = quad_mpm_idx;
-      if (quad_min->level < quad_ppm->level) { quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; ci =  1; ck = -1; }
+      p4est_quadrant_t *quad_min     = &root;
+      p4est_locidx_t    quad_min_idx = -1;
+
+      if (quad_min->level < quad_mpm->level && quad_mpm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; ci = -1; ck = -1; }
+      if (quad_min->level < quad_ppm->level && quad_ppm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; ci =  1; ck = -1; }
 #ifdef P4_TO_P8
-      if (quad_min->level < quad_mpp->level) { quad_min = quad_mpp; quad_min_idx = quad_mpp_idx; ci = -1; ck =  1; }
-      if (quad_min->level < quad_ppp->level) { quad_min = quad_ppp; quad_min_idx = quad_ppp_idx; ci =  1; ck =  1; }
+      if (quad_min->level < quad_mpp->level && quad_mpp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mpp; quad_min_idx = quad_mpp_idx; ci = -1; ck =  1; }
+      if (quad_min->level < quad_ppp->level && quad_ppp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_ppp; quad_min_idx = quad_ppp_idx; ci =  1; ck =  1; }
+#endif
+
+#ifdef CASL_THROWS
+      if (quad_min_idx == -1)
+          throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in 0m0."
+                                   "This is most probably a bug in my_p4est_hierarchy_t construction");
 #endif
 
       const bool di = ci != 1;
@@ -638,6 +692,12 @@ void my_p4est_node_neighbors_t::init_neighbors()
       find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
 #else
       find_neighbor_cell_of_node( node_tmp, ci, cj, quad_tmp_idx, tree_tmp_idx );
+#endif
+
+#ifdef CASL_THROWS
+      if (quad_tmp_idx == -1)
+      throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in 0m0."
+                               "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
 #endif
 
       p4est_quadrant_t *quad_tmp;
@@ -687,12 +747,24 @@ void my_p4est_node_neighbors_t::init_neighbors()
       p4est_topidx_t tree_tmp_idx;
       short ci = -1, cj = -1, ck = -1;
 
-      p4est_quadrant_t *quad_min     = quad_mmm;
-      p4est_locidx_t    quad_min_idx = quad_mmm_idx;
-      if (quad_min->level < quad_pmm->level) { quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; ci =  1; ck = -1; }
+      p4est_quadrant_t *quad_min     = &root;
+      p4est_locidx_t    quad_min_idx = -1;
+
+      if (quad_min->level < quad_mmm->level && quad_mmm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mmm; quad_min_idx = quad_mmm_idx; ci = -1; ck = -1; }
+      if (quad_min->level < quad_pmm->level && quad_pmm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; ci =  1; ck = -1; }
 #ifdef P4_TO_P8
-      if (quad_min->level < quad_mmp->level) { quad_min = quad_mmp; quad_min_idx = quad_mmp_idx; ci = -1; ck =  1; }
-      if (quad_min->level < quad_pmp->level) { quad_min = quad_pmp; quad_min_idx = quad_pmp_idx; ci =  1; ck =  1; }
+      if (quad_min->level < quad_mmp->level && quad_mmp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mmp; quad_min_idx = quad_mmp_idx; ci = -1; ck =  1; }
+      if (quad_min->level < quad_pmp->level && quad_pmp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_pmp; quad_min_idx = quad_pmp_idx; ci =  1; ck =  1; }
+#endif
+
+#ifdef CASL_THROWS
+      if (quad_min_idx == -1)
+          throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in 0p0."
+                                   "This is most probably a bug in my_p4est_hierarchy_t construction");
 #endif
 
       const bool di = ci != 1;
@@ -708,6 +780,12 @@ void my_p4est_node_neighbors_t::init_neighbors()
       find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
 #else
       find_neighbor_cell_of_node( node_tmp, ci, cj, quad_tmp_idx, tree_tmp_idx );
+#endif
+
+#ifdef CASL_THROWS
+      if (quad_tmp_idx == -1)
+      throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in 0p0."
+                               "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
 #endif
 
       p4est_quadrant_t *quad_tmp;
@@ -754,11 +832,23 @@ void my_p4est_node_neighbors_t::init_neighbors()
       p4est_topidx_t tree_tmp_idx;
       short ci = -1, cj = -1, ck = 1;
 
-      p4est_quadrant_t *quad_min     = quad_mmp;
-      p4est_locidx_t    quad_min_idx = quad_mmp_idx;
-      if (quad_min->level < quad_pmp->level) { quad_min = quad_pmp; quad_min_idx = quad_pmp_idx; ci =  1; cj = -1; }
-      if (quad_min->level < quad_mpp->level) { quad_min = quad_mpp; quad_min_idx = quad_mpp_idx; ci = -1; cj =  1; }
-      if (quad_min->level < quad_ppp->level) { quad_min = quad_ppp; quad_min_idx = quad_ppp_idx; ci =  1; cj =  1; }
+      p4est_quadrant_t *quad_min     = &root;
+      p4est_locidx_t    quad_min_idx = -1;
+
+      if (quad_min->level < quad_mmp->level && quad_mmp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mmp; quad_min_idx = quad_mmp_idx; ci = -1; cj = -1; }
+      if (quad_min->level < quad_pmp->level && quad_pmp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_pmp; quad_min_idx = quad_pmp_idx; ci =  1; cj = -1; }
+      if (quad_min->level < quad_mpp->level && quad_mpp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mpp; quad_min_idx = quad_mpp_idx; ci = -1; cj =  1; }
+      if (quad_min->level < quad_ppp->level && quad_ppp_idx < p4est->local_num_quadrants)
+      { quad_min = quad_ppp; quad_min_idx = quad_ppp_idx; ci =  1; cj =  1; }
+
+#ifdef CASL_THROWS
+      if (quad_min_idx == -1)
+          throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in 00m."
+                                   "This is most probably a bug in my_p4est_hierarchy_t construction");
+#endif
 
       const bool di = ci != 1;
       const bool dj = cj != 1;
@@ -766,6 +856,12 @@ void my_p4est_node_neighbors_t::init_neighbors()
 
       node_tmp = (p4est_indep_t*)sc_array_index( &nodes->indep_nodes, nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di] );
       find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+
+#ifdef CASL_THROWS
+      if (quad_tmp_idx == -1)
+      throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in 00m."
+                               "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
+#endif
 
       p4est_quadrant_t *quad_tmp;
       if(quad_tmp_idx < p4est->local_num_quadrants)
@@ -804,11 +900,23 @@ void my_p4est_node_neighbors_t::init_neighbors()
       p4est_topidx_t tree_tmp_idx;
       short ci = -1, cj = -1, ck = -1;
 
-      p4est_quadrant_t *quad_min     = quad_mmm;
-      p4est_locidx_t    quad_min_idx = quad_mmm_idx;
-      if (quad_min->level < quad_pmm->level) { quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; ci =  1; cj = -1; }
-      if (quad_min->level < quad_mpm->level) { quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; ci = -1; cj =  1; }
-      if (quad_min->level < quad_ppm->level) { quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; ci =  1; cj =  1; }
+      p4est_quadrant_t *quad_min     = &root;
+      p4est_locidx_t    quad_min_idx = -1;
+
+      if (quad_min->level < quad_mmm->level && quad_mmm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mmm; quad_min_idx = quad_mmm_idx; ci = -1; cj = -1; }
+      if (quad_min->level < quad_pmm->level && quad_pmm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; ci =  1; cj = -1; }
+      if (quad_min->level < quad_mpm->level && quad_mpm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; ci = -1; cj =  1; }
+      if (quad_min->level < quad_ppm->level && quad_ppm_idx < p4est->local_num_quadrants)
+      { quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; ci =  1; cj =  1; }
+
+#ifdef CASL_THROWS
+      if (quad_min_idx == -1)
+          throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in 00p."
+                                   "This is most probably a bug in my_p4est_hierarchy_t construction");
+#endif
 
       const bool di = ci != 1;
       const bool dj = cj != 1;
@@ -816,6 +924,12 @@ void my_p4est_node_neighbors_t::init_neighbors()
 
       node_tmp = (p4est_indep_t*)sc_array_index( &nodes->indep_nodes, nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di] );
       find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+
+#ifdef CASL_THROWS
+      if (quad_tmp_idx == -1)
+      throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in 00p."
+                               "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
+#endif
 
       p4est_quadrant_t *quad_tmp;
       if(quad_tmp_idx < p4est->local_num_quadrants)

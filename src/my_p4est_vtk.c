@@ -209,7 +209,6 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   int                 xi, yi, j, k;
 #ifdef P4_TO_P8
   int                 zi;
-  double              XYZ[3];   /* 3 not P4EST_DIM */
 #endif
   double              h2, eta_x, eta_y, eta_z = 0.;
   double              xyz[3];   /* 3 not P4EST_DIM */

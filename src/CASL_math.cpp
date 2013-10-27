@@ -1,7 +1,5 @@
 #include "CASL_math.h"
 #include <stdio.h>
-#include <src/utils.h>
-
 #include <petsclog.h>
 
 #ifndef CASL_LOG_FLOPS

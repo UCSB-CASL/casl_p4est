@@ -1,8 +1,13 @@
 #ifndef MY_P4EST_LOG_WRAPPERS_H
 #define MY_P4EST_LOG_WRAPPERS_H
 
+#ifdef P4_TO_P8
+#include <p8est.h>
+#include <p8est_ghost.h>
+#else
 #include <p4est.h>
 #include <p4est_ghost.h>
+#endif
 
 p4est_t*
 my_p4est_new (MPI_Comm mpicomm, p4est_connectivity_t * connectivity,

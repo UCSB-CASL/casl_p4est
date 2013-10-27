@@ -3,14 +3,23 @@
 
 #include <vector>
 #include <algorithm>
-#include <src/utils.h>
-#include <src/my_p4est_nodes.h>
-#include <src/my_p4est_tools.h>
 #include <iostream>
 
+#ifdef P4_TO_P8
+#include <p8est.h>
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_node_neighbors.h>
+#else
 #include <p4est.h>
-#include <src/refine_coarsen.h>
+#include <src/my_p4est_utils.h>
+#include <src/my_p4est_nodes.h>
+#include <src/my_p4est_tools.h>
+#include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_node_neighbors.h>
+#endif
 
 class SemiLagrangian
 {
@@ -51,28 +60,44 @@ class SemiLagrangian
 #endif
     }
 
-    double operator()(const p4est_quadrant_t &quad, const double *f, const double *xy) const
+    double operator()(const p4est_quadrant_t &quad, const double *f, const double *xyz) const
     {
-      return bilinear_interpolation(p4est_tmp, quad.p.piggy3.which_tree, quad, f, xy);
+      return linear_interpolation(p4est_tmp, quad.p.piggy3.which_tree, quad, f, xyz);
     }
   };
 
-  double xmin, xmax, ymin, ymax;
+  double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
 
-  std::vector<double> local_xy_departure_dep, non_local_xy_departure_dep;   //Buffers to hold local and non-local departure points
+  std::vector<double> local_xyz_departure_dep, non_local_xyz_departure_dep;   //Buffers to hold local and non-local departure points
   PetscErrorCode ierr;
 
+#ifdef P4_TO_P8
+  double compute_dt(const CF_3& vx, const CF_3& vy, const CF_3& vz);
+#else
   double compute_dt(const CF_2& vx, const CF_2& vy);
+#endif
 
   void advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, double dt,
+                          #ifdef P4_TO_P8
+                            const CF_3& vx, const CF_3& vy, const CF_3& vz,
+                            Vec phi_n, Vec phi_xx_n, Vec phi_yy_n, Vec phi_zz_n,
+                          #else
                             const CF_2& vx, const CF_2& vy,
                             Vec phi_n, Vec phi_xx_n, Vec phi_yy_n,
+                          #endif
                             double *phi_np1,p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
 
   void advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, double dt,
-                            Vec vx,    Vec vx_xx,    Vec vx_yy,
-                            Vec vy,    Vec vy_xx,    Vec vy_yy,
+                          #ifdef P4_TO_P8
+                            Vec vx, Vec vx_xx, Vec vx_yy, Vec vx_zz,
+                            Vec vy, Vec vy_xx, Vec vy_yy, Vec vy_zz,
+                            Vec vz, Vec vz_xx, Vec vz_yy, Vec vz_zz,
+                            Vec phi_n, Vec phi_xx_n, Vec phi_yy_n, Vec phi_zz_n,
+                          #else
+                            Vec vx, Vec vx_xx, Vec vx_yy,
+                            Vec vy, Vec vy_xx, Vec vy_yy,
                             Vec phi_n, Vec phi_xx_n, Vec phi_yy_n,
+                          #endif
                             double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
 
   static p4est_bool_t refine_criteria_sl(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
@@ -84,28 +109,38 @@ class SemiLagrangian
     else if (quad->level >= data->max_lvl)
       return P4EST_FALSE;
     else
-    {
-      double dx, dy;
-      dx_dy_dz_quadrant(p4est, which_tree, quad, &dx, &dy, NULL);
-      double d = sqrt(dx*dx + dy*dy);
+    {      
+      double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // dx = dy = dz
+      double d = sqrt(P4EST_DIM)*dx;
       double lip = data->lip;
 
       /* find the quadrant in p4est_tmp */
-      double xy [] = { (double)quad->x/(double)P4EST_ROOT_LEN,
-                       (double)quad->y/(double)P4EST_ROOT_LEN };
+      p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[which_tree*P4EST_CHILDREN + 0];
 
-      c2p_coordinate_transform(p4est, which_tree, &xy[0], &xy[1], NULL);
-      xy[0] += dx/2;
-      xy[1] += dy/2;
+      double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+      double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+    #ifdef P4_TO_P8
+      double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
+    #endif
+
+      double xyz [] =
+      {
+        quad_x_fr_i(quad) + tree_xmin + dx/2.0,
+        quad_y_fr_j(quad) + tree_ymin + dx/2.0
+  #ifdef P4_TO_P8
+        ,
+        quad_z_fr_k(quad) + tree_zmin + dx/2.0
+  #endif
+      };
 
       p4est_quadrant_t quad_tmp;
 #ifdef P4EST_POINT_LOOKUP
       sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
-      my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy, &quad_tmp, remote_matches);
+      my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xyz, &quad_tmp, remote_matches);
       sc_array_destroy(remote_matches);
 #else
      std::vector<p4est_quadrant_t> remote_matches;
-     data->hierarchy->find_smallest_quadrant_containing_point(xy, quad_tmp, remote_matches);
+     data->hierarchy->find_smallest_quadrant_containing_point(xyz, quad_tmp, remote_matches);
 #endif
 
       p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
@@ -115,15 +150,19 @@ class SemiLagrangian
       double *phi_tmp;
       phi_tmp = data->phi_tmp->data();
 
-      double f[4];
+      double f[P4EST_CHILDREN];
       for(short j=0; j<P4EST_CHILDREN; ++j)
       {
         f[j] = phi_tmp[ q2n[ quad_tmp_idx*P4EST_CHILDREN + j ] ];
         if (fabs(f[j]) <= 0.5*lip*d)
           return P4EST_TRUE;
       }
-
-      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
+#ifdef P4_TO_P8
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
+          f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0 )
+#else
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 )
+#endif
         return P4EST_TRUE;
 
       return P4EST_FALSE;
@@ -141,27 +180,36 @@ class SemiLagrangian
       return P4EST_FALSE;
     else
     {
-      double dx, dy;
-      dx_dy_dz_quadrant(p4est, which_tree, quad, &dx, &dy, NULL);
-      double d = sqrt(dx*dx + dy*dy);
+      double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // dx = dy = dz
+      double d = sqrt(P4EST_DIM)*dx;
       double lip = data->lip;
 
       /* find the quadrant in p4est_tmp */
-      double xy [] = { (double)quad->x/(double)P4EST_ROOT_LEN,
-                       (double)quad->y/(double)P4EST_ROOT_LEN };
+      p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[which_tree*P4EST_CHILDREN + 0];
 
-      c2p_coordinate_transform(p4est, which_tree, &xy[0], &xy[1], NULL);
-      xy[0] += dx/2;
-      xy[1] += dy/2;
+      double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+      double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+    #ifdef P4_TO_P8
+      double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
+    #endif
 
+      double xyz [] =
+      {
+        quad_x_fr_i(quad) + tree_xmin + dx/2.0,
+        quad_y_fr_j(quad) + tree_ymin + dx/2.0
+  #ifdef P4_TO_P8
+        ,
+        quad_z_fr_k(quad) + tree_zmin + dx/2.0
+  #endif
+      };
       p4est_quadrant_t quad_tmp;
 #ifdef P4EST_POINT_LOOKUP
       sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
-      int rank_found = my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy, &quad_tmp, remote_matches);
+      int rank_found = my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xyz, &quad_tmp, remote_matches);
       sc_array_destroy(remote_matches);
 #else
      std::vector<p4est_quadrant_t> remote_matches;
-     int rank_found = data->hierarchy->find_smallest_quadrant_containing_point(xy, quad_tmp, remote_matches);
+     int rank_found = data->hierarchy->find_smallest_quadrant_containing_point(xyz, quad_tmp, remote_matches);
 #endif
 
       p4est_locidx_t quad_tmp_idx;
@@ -176,13 +224,13 @@ class SemiLagrangian
       }
       else
       {
-        throw std::runtime_error("semi_lagrangian: this quadrant is not local ...");
+        throw std::runtime_error("[ERROR]: semi_lagrangian: this quadrant is not local ...");
       }
 
       double *phi_tmp;
       phi_tmp = data->phi_tmp->data();
 
-      double f[4];
+      double f[P4EST_CHILDREN];
       p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
       for(short j=0; j<P4EST_CHILDREN; ++j)
       {
@@ -191,7 +239,12 @@ class SemiLagrangian
           return P4EST_TRUE;
       }
 
-      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
+#ifdef P4_TO_P8
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
+          f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0 )
+#else
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 )
+#endif
         return P4EST_TRUE;
 
       return P4EST_FALSE;
@@ -208,34 +261,52 @@ class SemiLagrangian
       return P4EST_TRUE;
     else
     {
-      double dx, dy;
-      dx_dy_dz_quadrant(p4est, which_tree, quad[0], &dx, &dy, NULL);
-      double d = 2*sqrt(dx*dx + dy*dy);
-      double lip = data->lip;
-
-      double xy [] = { (double)quad[0]->x/(double)P4EST_ROOT_LEN,
-                       (double)quad[0]->y/(double)P4EST_ROOT_LEN };
-      c2p_coordinate_transform(p4est, which_tree, &xy[0], &xy[1], NULL);
-
       p4est_locidx_t quad_tmp_idx[P4EST_CHILDREN];
 
-      xy[0] += dx/2;
-      xy[1] += dy/2;
+      double dx = (double)P4EST_QUADRANT_LEN(quad[0]->level)/(double)P4EST_ROOT_LEN; // dx = dy = dz
+      double d = sqrt(P4EST_DIM)*dx;
+      double lip = data->lip;
 
+      /* find the quadrant in p4est_tmp */
+      p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[which_tree*P4EST_CHILDREN + 0];
+
+      double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+      double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+    #ifdef P4_TO_P8
+      double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
+    #endif
+
+      double xyz [] =
+      {
+        quad_x_fr_i(quad[0]) + tree_xmin + dx/2.0,
+        quad_y_fr_j(quad[0]) + tree_ymin + dx/2.0
+  #ifdef P4_TO_P8
+        ,
+        quad_z_fr_k(quad[0]) + tree_zmin + dx/2.0
+  #endif
+      };
+#ifdef P4_TO_P8
+      for(short k=0; k<2; ++k)
+#endif
       for(short j=0; j<2; ++j)
         for(short i=0; i<2; ++i)
         {
+#ifdef P4_TO_P8
+          short n = 4*k+2*j+i;
+          double xyz_tmp [] = { xyz[0] + i*dx, xyz[1] + j*dx, xyz[2] + k*dx };
+#else
           short n = 2*j+i;
-          double xy_tmp [] = { xy[0] + i*dx, xy[1] + j*dy };
+          double xyz_tmp [] = { xyz[0] + i*dx, xyz[1] + j*dx };
+#endif
 
           p4est_quadrant_t quad_tmp;
     #ifdef P4EST_POINT_LOOKUP
           sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
-          int rank_found = my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xy_tmp, &quad_tmp, remote_matches);
+          int rank_found = my_p4est_brick_point_lookup(data->p4est_tmp, NULL, data->myb, xyz_tmp, &quad_tmp, remote_matches);
           sc_array_destroy(remote_matches);
     #else
          std::vector<p4est_quadrant_t> remote_matches;
-         int rank_found = data->hierarchy->find_smallest_quadrant_containing_point(xy_tmp, quad_tmp, remote_matches);
+         int rank_found = data->hierarchy->find_smallest_quadrant_containing_point(xyz_tmp, quad_tmp, remote_matches);
     #endif
 
           if(rank_found == data->p4est_tmp->mpirank)
@@ -249,24 +320,36 @@ class SemiLagrangian
           }
           else
           {
-            throw std::runtime_error("semi_lagrangian: this quadrant is not local ...");
+            throw std::runtime_error("[ERROR]: semi_lagrangian: this quadrant is not local ...");
           }
         }
 
       double *phi_tmp = data->phi_tmp->data();
 
-      double f[4];
+      double f[P4EST_CHILDREN];
       p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
+#ifdef P4_TO_P8
+      for(short k=0; k<2; ++k)
+#endif
       for(short j=0; j<2; ++j)
         for(short i=0; i<2; ++i)
         {
+#ifdef P4_TO_P8
+          short n = 4*k+2*j+i;
+#else
           short n = 2*j+i;
-          f[n] = phi_tmp[ q2n[ quad_tmp_idx[n]*P4EST_CHILDREN + 2*j + i ] ];
+#endif
+          f[n] = phi_tmp[ q2n[ quad_tmp_idx[n]*P4EST_CHILDREN + n ] ];
           if (fabs(f[n]) <= 0.5*lip*d)
             return P4EST_FALSE;
         }
 
-      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
+#ifdef P4_TO_P8
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
+          f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0 )
+#else
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 )
+#endif
         return P4EST_FALSE;
 
       return P4EST_TRUE;
@@ -282,8 +365,13 @@ public:
   SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, p4est_ghost_t **ghost, my_p4est_brick_t *myb);
 
   /* start from a root tree and successively refine intermediate trees until tree n+1 is built */
+#ifdef P4_TO_P8
+  void update_p4est_second_order(Vec vx, Vec vy, Vec vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
+  void update_p4est_second_order(const CF_3& vx, const CF_3& vy, const CF_3& vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
+#else
   void update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
   void update_p4est_second_order(const CF_2& vx, const CF_2& vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
+#endif
 };
 
 #endif // PARALLEL_SEMI_LAGRANGIAN_H

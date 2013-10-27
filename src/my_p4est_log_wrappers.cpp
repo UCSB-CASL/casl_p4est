@@ -1,4 +1,9 @@
+#ifdef P4_TO_P8
+#include <src/my_p8est_log_wrappers.h>
+#else
 #include <src/my_p4est_log_wrappers.h>
+#endif
+
 #include <petsclog.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
