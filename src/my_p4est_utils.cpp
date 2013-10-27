@@ -1,10 +1,12 @@
 #ifdef P4_TO_P8
 #include "my_p8est_utils.h"
 #include "my_p8est_tools.h"
+#include <p8est_connectivity.h>
 #include "cube3.h"
 #else
 #include "my_p4est_utils.h"
 #include "my_p4est_tools.h"
+#include <p4est_connectivity.h>
 #include "cube2.h"
 #endif
 
@@ -565,7 +567,7 @@ bool is_node_xmWall(const p4est_t *p4est, const p4est_indep_t *ni)
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
-  if (t2t[P4EST_CHILDREN*tr_it + 0] != tr_it)
+  if (t2t[P4EST_FACES*tr_it + dir::f_m00] != tr_it)
     return false;
   else if (ni->x == 0)
     return true;
@@ -578,7 +580,7 @@ bool is_node_xpWall(const p4est_t *p4est, const p4est_indep_t *ni)
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
-  if (t2t[P4EST_CHILDREN*tr_it + 1] != tr_it)
+  if (t2t[P4EST_FACES*tr_it + dir::f_p00] != tr_it)
     return false;
   else if (ni->x == P4EST_ROOT_LEN - 1 || ni->x == P4EST_ROOT_LEN) // nodes may be unclamped
     return true;
@@ -591,7 +593,7 @@ bool is_node_ymWall(const p4est_t *p4est, const p4est_indep_t *ni)
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
-  if (t2t[P4EST_CHILDREN*tr_it + 2] != tr_it)
+  if (t2t[P4EST_FACES*tr_it + dir::f_0m0] != tr_it)
     return false;
   else if (ni->y == 0)
     return true;
@@ -604,7 +606,7 @@ bool is_node_ypWall(const p4est_t *p4est, const p4est_indep_t *ni)
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
-  if (t2t[P4EST_CHILDREN*tr_it + 3] != tr_it)
+  if (t2t[P4EST_FACES*tr_it + dir::f_0p0] != tr_it)
     return false;
   else if (ni->y == P4EST_ROOT_LEN - 1 || ni->y == P4EST_ROOT_LEN) // nodes may be unclamped
     return true;
@@ -618,7 +620,7 @@ bool is_node_zmWall(const p4est_t *p4est, const p4est_indep_t *ni)
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
-  if (t2t[P4EST_CHILDREN*tr_it + 4] != tr_it)
+  if (t2t[P4EST_FACES*tr_it + dir::f_00m] != tr_it)
     return false;
   else if (ni->z == 0)
     return true;
@@ -631,7 +633,7 @@ bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni)
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
-  if (t2t[P4EST_CHILDREN*tr_it + 5] != tr_it)
+  if (t2t[P4EST_FACES*tr_it + dir::f_00p] != tr_it)
     return false;
   else if (ni->z == P4EST_ROOT_LEN - 1 || ni->z == P4EST_ROOT_LEN) // nodes may be unclamped
     return true;

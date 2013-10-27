@@ -190,20 +190,13 @@ int main (int argc, char* argv[]){
     if (tc % save == 0){
       PetscPrintf(p4est->mpicomm, "printing %d\n", tc);
       // Save stuff
-#ifdef P4EST_POINT_LOOKUP
-      std::ostringstream oss; oss << "p4est_p_" << p4est->mpisize << "_"
-                                  << brick.nxyztrees[0] << "x"
-                                  << brick.nxyztrees[1] << "." << tc/save;
-#else
-      std::ostringstream oss; oss << "p_" << p4est->mpisize << "_"
+      std::ostringstream oss; oss << "normal_direction_" << p4est->mpisize << "_"
                                   << brick.nxyztrees[0] << "x"
                                   << brick.nxyztrees[1]
                                #ifdef P4_TO_P8
-                                  << "x"
-                                  << brick.nxyztrees[2]
+                                  << "x" << brick.nxyztrees[2]
                                #endif
                                   << "." << tc/save;
-#endif
 
       ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
       my_p4est_vtk_write_all(p4est, nodes, ghost,

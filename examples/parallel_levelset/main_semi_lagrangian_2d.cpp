@@ -5,28 +5,90 @@
 #include <vector>
 #include <algorithm>
 
-// p4est Library
+#ifdef P4_TO_P8
+#include <p8est_bits.h>
+#include <p8est_extended.h>
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_vtk.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_semi_lagrangian.h>
+#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_log_wrappers.h>
+#else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
-
-// casl_p4est
-#include <src/utils.h>
+#include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
-#include <src/refine_coarsen.h>
-#include <src/petsc_compatibility.h>
-#include <src/semi_lagrangian.h>
+#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_levelset.h>
 #include <src/my_p4est_log_wrappers.h>
+#endif
+
+#include <src/petsc_compatibility.h>
+#include <src/Parser.h>
 
 using namespace std;
 
+#ifdef P4_TO_P8
+static class: public CF_3
+{
+  public:
+  double operator()(double x, double y, double z) const {
+    return 2.0*SQR(sin(M_PI*x/2))*sin(2*M_PI*y/2)*sin(2*M_PI*z/2);
+  }
+} vx_vortex;
+
+static class: public CF_3
+{
+  public:
+  double operator()(double x, double y, double z) const {
+    return  -SQR(sin(M_PI*y/2))*sin(2*M_PI*x/2)*sin(2*M_PI*z/2);
+  }
+} vy_vortex;
+
+static class: public CF_3
+{
+  public:
+  double operator()(double x, double y, double z) const {
+    return  -SQR(sin(M_PI*z/2))*sin(2*M_PI*x/2)*sin(2*M_PI*y/2);
+  }
+} vz_vortex;
+
+struct circle:CF_3{
+  circle(double x0_, double y0_, double z0_, double r_)
+    : x0(x0_), y0(y0_), z0(z0_), r(r_)
+  {}
+  void update (double x0_, double y0_, double z0_, double r_) {x0 = x0_; y0 = y0_; z0 = z0_; r = r_; }
+  double operator()(double x, double y, double z) const {
+    return r - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
+  }
+private:
+  double  x0, y0, z0, r;
+};
+
+struct square:CF_3{
+  square(double x0_, double y0_, double z0_, double h_)
+    : x0(x0_), y0(y0_), z0(z0_), h(h_)
+  {}
+  void update (double x0_, double y0_, double z0_, double h_) {x0 = x0_; y0 = y0_; z0 = z0_; h = h_; }
+  double operator()(double x, double y, double z) const {
+    return h - MIN(ABS(x-x0) , ABS(y-y0), ABS(z-z0));
+  }
+private:
+  double  x0, y0, z0, h;
+};
+
+#else
 static class: public CF_2
 {
   public:
   double operator()(double x, double y) const {
-    return -0.15*sin(M_PI*x/2)*sin(M_PI*x/2)*sin(2*M_PI*y/2);
+    return -SQR(sin(M_PI*x/2))*sin(2*M_PI*y/2);
   }
 } vx_vortex;
 
@@ -34,33 +96,9 @@ static class: public CF_2
 {
   public:
   double operator()(double x, double y) const {
-    return  0.15*sin(M_PI*y/2)*sin(M_PI*y/2)*sin(2*M_PI*x/2);
+    return  SQR(sin(M_PI*y/2))*sin(2*M_PI*x/2);
   }
 } vy_vortex;
-
-static struct:CF_2{
-  double operator()(double x, double y) const {
-    (void) x;
-    (void) y;
-    return 0.3;
-  }
-} vx_translate;
-
-static struct:CF_2{
-  double operator()(double x, double y) const {
-    (void) x;
-    (void) y;
-    return 0.3;
-  }
-} vy_translate;
-
-static struct:CF_2{
-  double operator()(double x, double y) const {
-    (void) x;
-    (void) y;
-    return 1;
-  }
-} vn;
 
 struct circle:CF_2{
   circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
@@ -81,6 +119,7 @@ struct square:CF_2{
 private:
   double  x0, y0, h;
 };
+#endif
 
 int main (int argc, char* argv[]){
 
@@ -90,9 +129,17 @@ int main (int argc, char* argv[]){
   p4est_nodes_t      *nodes;
   p4est_ghost_t      *ghost;
   PetscErrorCode ierr;
+  cmdParser cmd;
+  cmd.add_option("lmin", "min level");
+  cmd.add_option("lmax", "max level");
+  cmd.parse(argc, argv);
 
+#ifdef P4_TO_P8
+  circle circ(0.5, 0.5, 0.5, .3);
+#else
   circle circ(0.5, 0.5, .3);
-  splitting_criteria_cf_t data(0, 10, &circ, 1.3);
+#endif
+  splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 7), &circ, 1.3);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -107,7 +154,11 @@ int main (int argc, char* argv[]){
   w2.start("connectivity");
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
+#ifdef P4_TO_P8
+  connectivity = my_p4est_brick_new(2, 2, 2, &brick);
+#else
   connectivity = my_p4est_brick_new(2, 2, &brick);
+#endif
   w2.stop(); w2.read_duration();
 
   // Now create the forest
@@ -154,56 +205,41 @@ int main (int argc, char* argv[]){
   // loop over time
   double tf = 1;
   int tc = 0;
-  int save = 10;
-  vector<double> vx, vy;
-  double dt = 0.1;
+  int save = 1;
+  double dt = 0.05;
   for (double t=0; t<tf; t+=dt, tc++){
     if (tc % save == 0){
       // Save stuff
-      std::ostringstream oss; oss << "p_" << p4est->mpisize << "_"
-                                  << brick.nxytrees[0] << "x"
-                                  << brick.nxytrees[1] << "." << tc/save;
-
-      vx.resize(nodes->indep_nodes.elem_count);
-      vy.resize(nodes->indep_nodes.elem_count);
-
-      for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
-      {
-        p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-        p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-        p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-        double tree_xmin = connectivity->vertices[3*v_mm + 0];
-        double tree_ymin = connectivity->vertices[3*v_mm + 1];
-
-        double x = int2double_coordinate_transform(node->x) + tree_xmin;
-        double y = int2double_coordinate_transform(node->y) + tree_ymin;
-
-        vx[i] = vx_vortex(x,y);
-        vy[i] = vy_vortex(x,y);
-      }
+      std::ostringstream oss; oss << "semi_lagrangian_" << p4est->mpisize << "_"
+                                  << brick.nxyztrees[0] << "x"
+                                  << brick.nxyztrees[1]
+                               #ifdef P4_TO_P8
+                                  << "x" << brick.nxyztrees[2]
+                               #endif
+                                  << "." << tc/save;
 
       ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
-                             3, 0, oss.str().c_str(),
-                             VTK_POINT_DATA, "phi", phi_ptr,
-                             VTK_POINT_DATA, "vx", &vx[0],
-                             VTK_POINT_DATA, "vy", &vy[0]);
+                             1, 0, oss.str().c_str(),
+                             VTK_POINT_DATA, "phi", phi_ptr);
 
       ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
     }
 
     // advect the function in time and get the computed time-step
     w2.start("advecting");
+#ifdef P4_TO_P8
+    sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
+#else
     sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
+#endif
 
     // reinitialize
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
     my_p4est_level_set level_set(&node_neighbors);
-    level_set.reinitialize_1st_order_time_2nd_order_space(phi, 6);
+    level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
 
     w2.stop(); w2.read_duration();
   }
