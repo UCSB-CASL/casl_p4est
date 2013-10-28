@@ -670,7 +670,6 @@ double InterpolatingFunction::operator ()(double x, double y) const
 #endif
       }
     }
-
     // restore arrays and release remote_maches
     ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
     if (method_ == quadratic || method_ == quadratic_non_oscillatory)
@@ -680,7 +679,6 @@ double InterpolatingFunction::operator ()(double x, double y) const
 #ifdef P4_TO_P8
       ierr = VecRestoreArray(Fzz_, &Fzz_p); CHKERRXX(ierr);
 #endif
-
     }
 
 #ifdef P4EST_POINT_LOOKUP
@@ -716,7 +714,7 @@ double InterpolatingFunction::operator ()(double x, double y) const
     std::ostringstream oss;
     oss << "[ERROR]: Point (" << x << "," << y <<
 #ifdef P4_TO_P8
-           z <<
+           "," << z <<
 #endif
            ") does not belong to "
            "processor " << p4est_->mpirank << ". Found rank = " << rank_found <<

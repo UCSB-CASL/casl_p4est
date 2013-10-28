@@ -25,6 +25,11 @@ class PoissonSolverNodeBase
   p4est_ghost_t *ghost;
   my_p4est_brick_t *myb_;
   InterpolatingFunction phi_interp;
+#ifdef P4_TO_P8
+  const CF_3* phi_cf;
+#else
+  const CF_2* phi_cf;
+#endif
 
   double mu_, diag_add_;
   bool is_matrix_ready;

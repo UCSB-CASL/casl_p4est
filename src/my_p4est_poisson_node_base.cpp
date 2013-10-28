@@ -34,6 +34,7 @@ PoissonSolverNodeBase::PoissonSolverNodeBase(const my_p4est_node_neighbors_t *no
   : node_neighbors_(node_neighbors),
     p4est(node_neighbors->p4est), nodes(node_neighbors->nodes), ghost(node_neighbors->ghost), myb_(node_neighbors->myb),
     phi_interp(p4est, nodes, ghost, myb_, node_neighbors),
+    phi_cf(NULL),
     mu_(1.), diag_add_(0.),
     is_matrix_ready(false), matrix_has_nullspace(false),
     bc_(NULL),
@@ -583,9 +584,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
         }
 #endif
       }
-    }
-
-    else{
+    } else {
       double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
 #ifdef P4_TO_P8
       double phi_00m, phi_00p;
@@ -765,7 +764,6 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
         double w_0p0 = -mu_ * wj * 2./d_0p0/(d_0m0+d_0p0);
         double w_00m = -mu_ * wk * 2./d_00m/(d_00m+d_00p);
         double w_00p = -mu_ * wk * 2./d_00p/(d_00m+d_00p);
-
 
         //---------------------------------------------------------------------
         // diag scaling
@@ -1387,7 +1385,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
           if (theta_00m<eps) theta_00m = eps; if (theta_00m>d_00m) theta_00m = d_00m;
           d_00m_m0 = d_00m_p0 = d_00m_0m = d_00m_0p = 0;
           d_00m = theta_00m;
-          val_interface_00m = bc_->interfaceValue(x_C, y_C , z_C + theta_00m);
+          val_interface_00m = bc_->interfaceValue(x_C, y_C , z_C - theta_00m);
         }
         if( is_interface_00p){
           double phizz_00p = qnnn.f_00p_linear(phi_zz_p);
@@ -1529,12 +1527,6 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
         if (volume_cut_cell>eps*eps)
         {
 #ifdef P4_TO_P8
-          p4est_locidx_t quad_mmm_idx, quad_ppp_idx;
-          p4est_topidx_t tree_mmm_idx, tree_ppp_idx;
-
-          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
-
           Cube2 c2;
           QuadValue qv;
 
@@ -1592,12 +1584,6 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
           rhs_p[n] += mu_*integral_bc;
           rhs_p[n] /= w_000;
 #else
-          p4est_locidx_t quad_mmm_idx, quad_ppm_idx;
-          p4est_topidx_t tree_mmm_idx, tree_ppm_idx;
-
-          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1, quad_ppm_idx, tree_ppm_idx);
-
           double fxx,fyy;
           fxx = phi_xx_p[n];
           fyy = phi_yy_p[n];
