@@ -101,7 +101,7 @@ int main (int argc, char* argv[]){
 
   // generate the ghost data-structure
   w2.start("generating ghost data structure");
-  p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+  p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
   w2.stop(); w2.read_duration();
 
   // generate the node data structure

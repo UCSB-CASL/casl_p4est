@@ -178,7 +178,7 @@ int main (int argc, char* argv[]){
   w2.stop(); w2.read_duration();
 
   // create the ghost layer
-  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
 
   // generate the node data structure
   nodes = my_p4est_nodes_new(p4est, ghost);

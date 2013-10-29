@@ -394,9 +394,11 @@ int main (int argc, char* argv[]){
     p4est_ghost_destroy (ghost);
     p4est_destroy (p4est);
     my_p4est_brick_destroy(connectivity, &brick);
+
     w1.stop(); w1.read_duration();
+
   } catch (const std::exception& e) {
-    std::cerr << "[" << mpi->mpirank << " -- ERROR]: " << e.what() << std::endl;
+    std::cout << "[" << mpi->mpirank << " -- ERROR]: " << e.what() << std::endl;
   }
 
   return 0;

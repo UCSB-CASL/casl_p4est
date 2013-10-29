@@ -6,49 +6,105 @@
 #include <algorithm>
 #include <cassert>
 
-// p4est Library
+#ifdef P4_TO_P8
+#include <p8est_bits.h>
+#include <p8est_extended.h>
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_vtk.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_semi_lagrangian.h>
+#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_log_wrappers.h>
+#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_log_wrappers.h>
+#else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
-
-// casl_p4est
-#include <src/utils.h>
+#include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
-#include <src/refine_coarsen.h>
-#include <src/petsc_compatibility.h>
-#include <src/semi_lagrangian.h>
+#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_levelset.h>
 #include <src/my_p4est_log_wrappers.h>
-#include <src/interpolating_function.h>
-#include <src/poisson_solver_node_base.h>
+#include <src/my_p4est_interpolating_function.h>
+#include <src/my_p4est_poisson_node_base.h>
 #include <src/my_p4est_log_wrappers.h>
+#endif
+
+#include <src/petsc_compatibility.h>
+#include <src/Parser.h>
 
 using namespace std;
 
+#ifdef P4_TO_P8
+static class: public CF_3
+{
+  public:
+  double operator()(double x, double y, double z) const {
+    return 2.0*SQR(sin(M_PI*x/2))*sin(2*M_PI*y/2)*sin(2*M_PI*z/2);
+  }
+} vx_vortex;
+
+static class: public CF_3
+{
+  public:
+  double operator()(double x, double y, double z) const {
+    return  -SQR(sin(M_PI*y/2))*sin(2*M_PI*x/2)*sin(2*M_PI*z/2);
+  }
+} vy_vortex;
+
+static class: public CF_3
+{
+  public:
+  double operator()(double x, double y, double z) const {
+    return  -SQR(sin(M_PI*z/2))*sin(2*M_PI*x/2)*sin(2*M_PI*y/2);
+  }
+} vz_vortex;
+
+struct circle:CF_3{
+  circle(double x0_, double y0_, double z0_, double r_)
+    : x0(x0_), y0(y0_), z0(z0_), r(r_)
+  {}
+  void update (double x0_, double y0_, double z0_, double r_) {x0 = x0_; y0 = y0_; z0 = z0_; r = r_; }
+  double operator()(double x, double y, double z) const {
+    return r - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
+  }
+private:
+  double  x0, y0, z0, r;
+};
+
+struct square:CF_3{
+  square(double x0_, double y0_, double z0_, double h_)
+    : x0(x0_), y0(y0_), z0(z0_), h(h_)
+  {}
+  void update (double x0_, double y0_, double z0_, double h_) {x0 = x0_; y0 = y0_; z0 = z0_; h = h_; }
+  double operator()(double x, double y, double z) const {
+    return h - MIN(ABS(x-x0) , ABS(y-y0), ABS(z-z0));
+  }
+private:
+  double  x0, y0, z0, h;
+};
+#else
 static class: public CF_2
 {
-public:
+  public:
   double operator()(double x, double y) const {
-    return -0.15*sin(M_PI*x/2)*sin(M_PI*x/2)*sin(2*M_PI*y/2);
+    return -SQR(sin(M_PI*x/2))*sin(2*M_PI*y/2);
   }
 } vx_vortex;
 
 static class: public CF_2
 {
-public:
+  public:
   double operator()(double x, double y) const {
-    return  0.15*sin(M_PI*y/2)*sin(M_PI*y/2)*sin(2*M_PI*x/2);
+    return  SQR(sin(M_PI*y/2))*sin(2*M_PI*x/2);
   }
 } vy_vortex;
-
-static struct:CF_2{
-  double operator()(double x, double y) const {
-    (void) x;
-    (void) y;
-    return 0.3;
-}
-} vx_translate;
 
 struct circle:CF_2{
   circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
@@ -64,23 +120,34 @@ struct square:CF_2{
   square(double x0_, double y0_, double h_): x0(x0_), y0(y0_), h(h_) {}
   void update (double x0_, double y0_, double h_) {x0 = x0_; y0 = y0_; h = h_; }
   double operator()(double x, double y) const {
-    return -h + MAX(ABS(x-x0) , ABS(y-y0));
+    return h - MIN(ABS(x-x0) , ABS(y-y0));
   }
 private:
   double  x0, y0, h;
 };
+#endif
 
 int main (int argc, char* argv[]){
 
   mpi_context_t mpi_context, *mpi = &mpi_context;
   mpi->mpicomm  = MPI_COMM_WORLD;
+
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   p4est_ghost_t      *ghost;
   PetscErrorCode ierr;
 
-  square circ(0.5, 0.5, .3);
-  splitting_criteria_cf_t data(0, 10, &circ, 1.3);
+  cmdParser cmd;
+  cmd.add_option("lmin", "min level in the tree");
+  cmd.add_option("lmax", "max level in the tree");
+  cmd.parse(argc, argv);
+
+#ifdef P4_TO_P8
+  circle phi_cf(0.5, 0.5, 0.5, .3);
+#else
+  circle phi_cf(0.5, 0.5, .3);
+#endif
+  splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 5), &phi_cf, 1.3);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -95,7 +162,11 @@ int main (int argc, char* argv[]){
   w2.start("connectivity");
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
+#ifdef P4_TO_P8
+  connectivity = my_p4est_brick_new(2, 2, 2, &brick);
+#else
   connectivity = my_p4est_brick_new(2, 2, &brick);
+#endif
   w2.stop(); w2.read_duration();
 
   // Now create the forest
@@ -115,7 +186,7 @@ int main (int argc, char* argv[]){
   w2.stop(); w2.read_duration();
 
   // create the ghost layer
-  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
 
   // generate the node data structure
   nodes = my_p4est_nodes_new(p4est, ghost);
@@ -123,7 +194,7 @@ int main (int argc, char* argv[]){
   // Initialize the level-set function
   Vec phi;
   ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
-  sample_cf_on_nodes(p4est, nodes, circ, phi);
+  sample_cf_on_nodes(p4est, nodes, phi_cf, phi);
 
   double *phi_ptr;
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
@@ -145,6 +216,31 @@ int main (int argc, char* argv[]){
   int save = 10;
   double dt = 0.1;
 
+#ifdef P4_TO_P8
+  struct:CF_3{
+    double operator()(double x, double y, double z) const {
+      (void) x;
+      (void) y;
+      (void) z;
+      return 1.0;
+    }
+  } wall_bc_value;
+
+  struct:WallBC3D{
+    BoundaryConditionType operator()(double x, double y, double z) const {
+      (void) x;
+      (void) y;
+      (void) z;
+      return DIRICHLET;
+    }
+  } bc_wall_dirichlet_type;
+
+  struct:CF_3{
+    double operator()(double x, double y, double z) const {
+      return cos(2*M_PI*x)*cos(2*M_PI*y)*cos(2*M_PI*z);
+    }
+  } interface_bc_value;
+#else
   struct:CF_2{
     double operator()(double x, double y) const {
       (void) x;
@@ -165,11 +261,15 @@ int main (int argc, char* argv[]){
       return cos(2*M_PI*x)*cos(2*M_PI*y);
     }
   } interface_bc_value;
-
+#endif
   for (double t=0; t<tf; t+=dt, tc++){
     // advect the function in time and get the computed time-step
     w2.start("advecting");
+#ifdef P4_TO_P8
+    sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
+#else
     sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
+#endif
 
     // reinitialize
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
@@ -190,7 +290,11 @@ int main (int argc, char* argv[]){
       InterpolatingFunction interface_interp(p4est, nodes, ghost, &brick, &node_neighbors);
       interface_interp.set_input_parameters(interface_vec, linear);
 
+#ifdef P4_TO_P8
+      BoundaryConditions3D bc;
+#else
       BoundaryConditions2D bc;
+#endif
       bc.setInterfaceType(DIRICHLET);
       bc.setInterfaceValue(interface_interp);
       bc.setWallTypes(bc_wall_dirichlet_type);
@@ -201,11 +305,13 @@ int main (int argc, char* argv[]){
       ierr = VecSet(rhs, 0); CHKERRXX(ierr);
       ierr = VecDuplicate(phi, &sol); CHKERRXX(ierr);
 
+      w2.start("Solving a poisson equation");
       PoissonSolverNodeBase solver(&node_neighbors);
       solver.set_phi(phi);
       solver.set_rhs(rhs);
       solver.set_bc(bc);
       solver.solve(sol);
+      w2.stop(); w2.read_duration();
 
       ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -215,8 +321,13 @@ int main (int argc, char* argv[]){
 
       // Save stuff
       std::ostringstream oss; oss << "p_" << p4est->mpisize << "_"
-                                  << brick.nxytrees[0] << "x"
-                                  << brick.nxytrees[1] << "." << tc/save;
+                                  << brick.nxyztrees[0] << "x"
+                                  << brick.nxyztrees[1]
+                               #ifdef P4_TO_P8
+                                  << "x"
+                                  << brick.nxyztrees[2]
+                               #endif
+                                  << "." << tc/save;
 
       double *sol_ptr;
       ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);

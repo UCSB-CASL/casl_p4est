@@ -224,7 +224,7 @@ int main (int argc, char* argv[])
   my_p4est_partition(p4est, NULL);
 
   /* Create the ghost structure */
-  p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+  p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
 
   // generate the node data structure
   nodes = my_p4est_nodes_new(p4est, ghost);
@@ -380,7 +380,7 @@ int main (int argc, char* argv[])
 
     /* advect the function in time */
     p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
-    p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_DEFAULT);
+    p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
     SemiLagrangian sl(&p4est_np1, &nodes_np1, &ghost_np1, &brick);

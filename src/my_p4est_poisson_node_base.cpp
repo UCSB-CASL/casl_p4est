@@ -346,7 +346,7 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
   }
 
   // setup rhs
-  setup_negative_laplace_rhsvec();
+  setup_negative_laplace_rhsvec();  
 
   // set the null-space if necessary
   if (matrix_has_nullspace)

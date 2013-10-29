@@ -122,7 +122,7 @@ int main (int argc, char* argv[]){
 #ifdef DEBUG_TIMINGS
   w2.start("generating ghost data structure");
 #endif
-  p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_DEFAULT);
+  p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
 #ifdef DEBUG_TIMINGS
   w2.stop(); w2.read_duration();
 #endif
