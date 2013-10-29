@@ -6,28 +6,42 @@
 #include <algorithm>
 
 // p4est Library
+#ifdef P4_TO_P8
+#include <p8est_bits.h>
+#include <p8est_extended.h>
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_vtk.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_semi_lagrangian.h>
+#include <src/my_p8est_log_wrappers.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_poisson_node_base.h>
+#else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
-#include <p4est_vtk.h>
-
-// casl_p4est
-#include <src/utils.h>
+#include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
-#include <src/refine_coarsen.h>
-#include <src/petsc_compatibility.h>
-#include <src/semi_lagrangian.h>
+#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_log_wrappers.h>
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_poisson_node_base.h>
+#endif
+
+#include <src/petsc_compatibility.h>
+#include <src/Parser.h>
 
 #undef MIN
 #undef MAX
-#include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_levelset.h>
-#include <src/poisson_solver_node_base.h>
 
-#define MIN_LEVEL 3
-#define MAX_LEVEL 9
+#define MIN_LEVEL 2
+#define MAX_LEVEL 5
 
 // logging variables
 PetscLogEvent log_compute_curvature;
@@ -49,6 +63,58 @@ int iter_max = 300;
 
 using namespace std;
 
+#ifdef P4_TO_P8
+struct circle:CF_3{
+  circle(double x0_, double y0_, double z0_, double r_)
+    : x0(x0_), y0(y0_), z0(z0_), r(r_)
+  {}
+  void update (double x0_, double y0_, double z0_, double r_) {x0 = x0_; y0 = y0_; z0 = z0_; r = r_; }
+  double operator()(double x, double y, double z) const {
+    return r - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
+  }
+private:
+  double  x0, y0, z0, r;
+};
+
+struct BCWALLTYPE : WallBC3D{
+  BoundaryConditionType operator()( double x, double y, double z ) const
+  {
+    (void) x; (void) y; (void) z;
+    return DIRICHLET;
+  }
+} bc_wall_type;
+
+struct BCWALLVALUE : CF_3 {
+  double operator() (double x, double y, double z) const
+  {
+    (void) x; (void) y; (void) z;
+    return Tmin;
+  }
+} bc_wall_value;
+
+struct BCInterfaceValue : CF_3 {
+private:
+  my_p4est_brick_t *brick;
+  my_p4est_node_neighbors_t *ngbd;
+  InterpolatingFunction interp;
+public:
+  BCInterfaceValue( my_p4est_brick_t *brick_, p4est_t *p4est_,
+                    p4est_nodes_t *nodes_, p4est_ghost_t *ghost_,
+                    my_p4est_node_neighbors_t *ngbd_, Vec kappa_)
+    : brick(brick_), ngbd(ngbd_), interp(p4est_, nodes_, ghost_, brick_, ngbd_)
+  {
+    interp.set_input_parameters(kappa_, quadratic);
+  }
+
+  double operator() (double x, double y, double z) const
+  {
+    (void) x; (void) y; (void) z;
+    return Tmax;
+//    return Tmax - epsilon_c * interp(x,y);
+    /* T = -eps_c kappa - eps_v V */
+  }
+};
+#else
 struct circle:CF_2{
   circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
   void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
@@ -97,34 +163,65 @@ public:
     /* T = -eps_c kappa - eps_v V */
   }
 };
+#endif
 
 void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec phi, Vec T,
-              Vec vx, Vec vy, Vec vx_ext, Vec vy_ext, Vec kappa, int compt)
+              Vec vx, Vec vy,
+              #ifdef P4_TO_P8
+              Vec vz,
+              #endif
+              Vec vx_ext, Vec vy_ext,
+              #ifdef P4_TO_P8
+              Vec vz_ext,
+              #endif
+              Vec kappa, int compt)
 {
   std::ostringstream oss; oss << "stefan_" << p4est->mpisize << "_"
-                              << brick->nxytrees[0] << "x"
-                              << brick->nxytrees[1] << "." << compt;
+                              << brick->nxyztrees[0] << "x"
+                              << brick->nxyztrees[1] <<
+                               #ifdef P4_TO_P8
+                                 "x" << brick->nxyztrees[2] <<
+                               #endif
+                                 "." << compt;
 
   PetscErrorCode ierr;
 
   double *phi_ptr, *T_ptr, *vx_ptr, *vy_ptr, *vx_ext_ptr, *vy_ext_ptr, *kappa_ptr;
+#ifdef P4_TO_P8
+  double *vz_ptr, *vz_ext_ptr;
+#endif
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(T, &T_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(vx, &vx_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(vy, &vy_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(vx_ext, &vx_ext_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(vy_ext, &vy_ext_ptr); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecGetArray(vz, &vz_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(vz_ext, &vz_ext_ptr); CHKERRXX(ierr);
+#endif
   ierr = VecGetArray(kappa , &kappa_ptr ); CHKERRXX(ierr);
 
   my_p4est_vtk_write_all(  p4est, nodes, NULL,
                            P4EST_TRUE, P4EST_TRUE,
-                           7, 0, oss.str().c_str(),
+                         #ifdef P4_TO_P8
+                           9,
+                         #else
+                           7,
+                         #endif
+                           0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_ptr,
                            VTK_POINT_DATA, "temp", T_ptr,
                            VTK_POINT_DATA, "vx", vx_ptr,
                            VTK_POINT_DATA, "vy", vy_ptr,
+                         #ifdef P4_TO_P8
+                           VTK_POINT_DATA, "vz", vz_ptr,
+                         #endif
                            VTK_POINT_DATA, "vx_ext", vx_ext_ptr,
                            VTK_POINT_DATA, "vy_ext", vy_ext_ptr,
+                         #ifdef P4_TO_P8
+                           VTK_POINT_DATA, "vz_ext", vz_ext_ptr,
+                         #endif
                            VTK_POINT_DATA, "kappa", kappa_ptr);
 
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
@@ -134,9 +231,13 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
   ierr = VecRestoreArray(vx_ext, &vx_ext_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(vy_ext, &vy_ext_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(kappa , &kappa_ptr ); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecRestoreArray(vz, &vz_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(vz_ext, &vz_ext_ptr); CHKERRXX(ierr);
+#endif
 }
 
-
+#ifndef P4_TO_P8
 void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Vec phi, Vec kappa)
 {
   PetscErrorCode ierr;  
@@ -182,7 +283,7 @@ void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Ve
 
   ierr = PetscLogEventEnd(log_compute_curvature, phi, kappa, dx, 0); CHKERRXX(ierr);
 }
-
+#endif
 
 int main (int argc, char* argv[])
 {
@@ -192,9 +293,17 @@ int main (int argc, char* argv[])
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   PetscErrorCode ierr;
+  cmdParser cmd;
+  cmd.add_option("lmin", "min level of the tree");
+  cmd.add_option("lmax", "max level of the tree");
+  cmd.parse(argc, argv);
 
+#ifdef P4_TO_P8
+  circle circ(1.0, 1.0, 1.0, 0.2);
+#else
   circle circ(1.0, 1.0, 0.2);
-  splitting_criteria_cf_t data(MIN_LEVEL, MAX_LEVEL, &circ, 1.2);
+#endif
+  splitting_criteria_cf_t data(cmd.get("lmin", MIN_LEVEL), cmd.get("lmax", MAX_LEVEL), &circ, 1.2);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -211,7 +320,11 @@ int main (int argc, char* argv[])
   // Create the connectivity object
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
+#ifdef P4_TO_P8
+  connectivity = my_p4est_brick_new(2, 2, 2, &brick);
+#else
   connectivity = my_p4est_brick_new(2, 2, &brick);
+#endif
 
   // Now create the forest
   p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
@@ -236,28 +349,8 @@ int main (int argc, char* argv[])
   ierr = VecDuplicate(phi,&Tn); CHKERRXX(ierr);
 
   double *phi_ptr, *Tn_ptr;
-  ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-  ierr = VecGetArray(Tn, &Tn_ptr); CHKERRXX(ierr);
-
-  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
-  {
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-    p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-    double tree_xmin = connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = connectivity->vertices[3*v_mm + 1];
-
-    double x = int2double_coordinate_transform(node->x) + tree_xmin;
-    double y = int2double_coordinate_transform(node->y) + tree_ymin;
-
-    phi_ptr[i] = circ(x,y);
-    Tn_ptr [i] = Tmax;
-  }
-
-  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(Tn, &Tn_ptr); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, circ, phi);
+  ierr = VecSet(Tn, Tmax); CHKERRXX(ierr);
 
   // loop over time
   int tc = 0;
@@ -274,15 +367,19 @@ int main (int argc, char* argv[])
 
     my_p4est_level_set ls(&ngbd);
 //    ls.reinitialize_1st_order( phi, 100 );
-    ls.reinitialize_2nd_order( phi, 100 );
+    ls.reinitialize_2nd_order( phi, 20 );
 
     /* compute the curvature for boundary conditions */
     Vec kappa;
     ierr = VecDuplicate(phi, &kappa); CHKERRXX(ierr);
-    compute_curvature(nodes, &ngbd, phi, kappa);
+//    compute_curvature(nodes, &ngbd, phi, kappa);
 
     /* solve for the temperature */
+#ifdef P4_TO_P8
+    BoundaryConditions3D bc;
+#else
     BoundaryConditions2D bc;
+#endif
     bc.setInterfaceType(DIRICHLET);
     BCInterfaceValue bc_interface_value(&brick, p4est, nodes, ghost, &ngbd, kappa);
     bc.setInterfaceValue(bc_interface_value);
@@ -315,68 +412,125 @@ int main (int argc, char* argv[])
     ierr = VecGetArray(vx , &vx_ptr ); CHKERRXX(ierr);
     ierr = VecGetArray(vy , &vy_ptr ); CHKERRXX(ierr);
 
+#ifdef P4_TO_P8
+    Vec vz;
+    double *vz_ptr;
+    ierr = VecDuplicate(phi, &vz); CHKERRXX(ierr);
+    ierr = VecGetArray(vz , &vz_ptr ); CHKERRXX(ierr);
+#endif
+
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
       double px = ngbd[n].dx_central(phi_ptr);
       double py = ngbd[n].dy_central(phi_ptr);
-
+#ifdef P4_TO_P8
+      double pz = ngbd[n].dz_central(phi_ptr);
+      double norm = sqrt(px*px + py*py + pz*pz);
+      if(norm > EPS) { px /= norm; py /= norm; pz /= norm;}
+      else           { px = 0; py = 0; pz = 0;}
+#else
       double norm = sqrt(px*px + py*py);
       if(norm > EPS) { px /= norm; py /= norm; }
       else           { px = 0; py = 0; }
+#endif
 
       vx_ptr[n] = (px>0 ? -1 : 1) * px * ngbd[n].dx_central(Tn_ptr);
       vy_ptr[n] = (py>0 ? -1 : 1) * py * ngbd[n].dy_central(Tn_ptr);
+#ifdef P4_TO_P8
+      vz_ptr[n] = (pz>0 ? -1 : 1) * pz * ngbd[n].dz_central(Tn_ptr);
+#endif
     }
 
     ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(Tn , &Tn_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(vx , &vx_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(vy , &vy_ptr); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(vz , &vz_ptr); CHKERRXX(ierr);
+#endif
 
     ierr = VecGhostUpdateBegin(vx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (vx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(vy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (vy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGhostUpdateBegin(vz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (vz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#endif
 
     Vec vx_extended, vy_extended;
+#ifdef P4_TO_P8
+    Vec vz_extended;
+#endif
     ierr = VecDuplicate(phi,&vx_extended); CHKERRXX(ierr);
     ierr = VecDuplicate(phi,&vy_extended); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecDuplicate(phi,&vz_extended); CHKERRXX(ierr);
+#endif
 
     ls.extend_from_interface_to_whole_domain(phi, vx, vx_extended, 10);
     ls.extend_from_interface_to_whole_domain(phi, vy, vy_extended, 10);
+#ifdef P4_TO_P8
+    ls.extend_from_interface_to_whole_domain(phi, vz, vz_extended, 10);
+#endif
 
     if (tc % save_every_n_iteration == 0)
+#ifdef P4_TO_P8
+      save_VTK(p4est, nodes, &brick, phi, Tn, vx, vy, vz, vx_extended, vy_extended, vz_extended, kappa, tc/save_every_n_iteration);
+#else
       save_VTK(p4est, nodes, &brick, phi, Tn, vx, vy, vx_extended, vy_extended, kappa, tc/save_every_n_iteration);
+#endif
 
     ierr = VecDestroy(vx); CHKERRXX(ierr);
     ierr = VecDestroy(vy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecDestroy(vz); CHKERRXX(ierr);
+#endif
 
     /* compute the time step for the next iteration */
     ierr = VecGetArray(vx_extended, &vx_ptr ); CHKERRXX(ierr);
     ierr = VecGetArray(vy_extended, &vy_ptr ); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(vz_extended, &vz_ptr ); CHKERRXX(ierr);
+#endif
 
     double max_norm_u_loc = 0;
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+#ifdef P4_TO_P8
+      max_norm_u_loc = max(max_norm_u_loc, sqrt( vx_ptr[n]*vx_ptr[n] + vy_ptr[n]*vy_ptr[n] + vz_ptr[n]*vz_ptr[n] ) );
+#else
       max_norm_u_loc = max(max_norm_u_loc, sqrt( vx_ptr[n]*vx_ptr[n] + vy_ptr[n]*vy_ptr[n] ) );
+#endif
 
     ierr = VecRestoreArray(vx_extended, &vx_ptr ); CHKERRXX(ierr);
     ierr = VecRestoreArray(vy_extended, &vy_ptr ); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(vz_extended, &vz_ptr ); CHKERRXX(ierr);
+#endif
     double max_norm_u;
     ierr = MPI_Allreduce(&max_norm_u_loc, &max_norm_u, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm); CHKERRXX(ierr);
 
-    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + 3];
+    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0];
+    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN - 1];
 
-    double xmin = p4est->connectivity->vertices[3*vm + 0];
-    double ymin = p4est->connectivity->vertices[3*vm + 1];
-    double xmax = p4est->connectivity->vertices[3*vp + 0];
-    double ymax = p4est->connectivity->vertices[3*vp + 1];
+    double xyz_min [] =
+    {
+      p4est->connectivity->vertices[3*vm + 0],
+      p4est->connectivity->vertices[3*vm + 1],
+      p4est->connectivity->vertices[3*vm + 2]
+    };
+
+    double xyz_max [] =
+    {
+      p4est->connectivity->vertices[3*vp + 0],
+      p4est->connectivity->vertices[3*vp + 1],
+      p4est->connectivity->vertices[3*vp + 2]
+    };
 
     splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-    double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-    double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+    double dx = 1.0 / pow(2.,(double) data->max_lvl);
 
-    dt_np1 = min(1.,1./max_norm_u) * 1. * min(dx, dy);
+    dt_np1 = min(1.,1./max_norm_u) * 1. * MIN(dx, dx, dx);
 
     /* advect the function in time */
     p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
@@ -384,10 +538,17 @@ int main (int argc, char* argv[])
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
     SemiLagrangian sl(&p4est_np1, &nodes_np1, &ghost_np1, &brick);
+#ifdef P4_TO_P8
+    sl.update_p4est_second_order(vx_extended, vy_extended, vz_extended, dt_n, phi);
+#else
     sl.update_p4est_second_order(vx_extended, vy_extended, dt_n, phi);
+#endif
 
     ierr = VecDestroy(vx_extended); CHKERRXX(ierr);
     ierr = VecDestroy(vy_extended); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecDestroy(vz_extended); CHKERRXX(ierr);
+#endif
 
     /* interpolate Tn on the new grid */
     Vec Tnp1;
@@ -404,11 +565,21 @@ int main (int argc, char* argv[])
       p4est_topidx_t tr_mm = t2v[P4EST_CHILDREN*tree_idx + 0];  //mm vertex of tree
       double tr_xmin = t2c[3 * tr_mm + 0];
       double tr_ymin = t2c[3 * tr_mm + 1];
+#ifdef P4_TO_P8
+      double tr_zmin = t2c[3 * tr_mm + 2];
+#endif
 
-      double x = int2double_coordinate_transform(node->x) + tr_xmin;
-      double y = int2double_coordinate_transform(node->y) + tr_ymin;
+      double xyz [] =
+      {
+        node_x_fr_i(node) + tr_xmin,
+        node_y_fr_j(node) + tr_ymin
+  #ifdef P4_TO_P8
+        ,
+        node_z_fr_k(node) + tr_zmin
+  #endif
+      };
 
-      interp.add_point_to_buffer(n, x, y);
+      interp.add_point_to_buffer(n, xyz);
     }
 
     interp.set_input_parameters(Tn, quadratic);
