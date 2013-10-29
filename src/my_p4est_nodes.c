@@ -819,7 +819,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
 
     int sendc = 0;
     while(it != end){
-      p4est_locidx_t old_pos = *(p4est_locidx_t*)sc_array_index(&peer->send_first_oldidx, sendc++);
+      p4est_locidx_t old_pos = *(p4est_locidx_t*)sc_array_index(&peer->send_first_oldidx, sendc); sendc++;
       size_t pos = (size_t) new_node_number[old_pos];
       in = (p4est_indep_t*)sc_array_index(inda, pos);
       in->p.piggy3.local_num = *(p4est_locidx_t*)it;
@@ -856,14 +856,12 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
       if (shared_offsets == NULL) {
         if (new_position > (size_t) INT16_MAX) {
           shared_offsets = p4est_shared_offsets (inda);
-          shared_offsets[il] = (p4est_locidx_t) new_position;
-        }
-        else {
+          shared_offsets[pos] = (p4est_locidx_t) new_position;
+        } else {
           in->pad16 = (int16_t) new_position;
         }
-      }
-      else {
-        shared_offsets[il] = (p4est_locidx_t) new_position;
+      } else {
+        shared_offsets[pos] = (p4est_locidx_t) new_position;
       }
 
       it += this_size;
@@ -955,6 +953,9 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
 
   // reset the offset variable
   nodes->offset_owned_indeps = 0;
+
+  // check to make sure that p4est is not corrupted
+  P4EST_ASSERT(p4est_is_valid(p4est));
 
   ierr = PetscLogEventEnd(log_my_p4est_nodes_new, 0, 0, 0, 0); CHKERRXX(ierr);
 

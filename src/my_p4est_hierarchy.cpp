@@ -40,22 +40,22 @@ void my_p4est_hierarchy_t::split( int tree_idx, int ind )
 #endif
     for (int j=0; j<2; ++j)
       for (int i=0; i<2; ++i) {
-        struct HierarchyCell child =
+        HierarchyCell child =
         {
-          CELL_LEAF, NOT_A_P4EST_QUADRANT,
-              trees[tree_idx][ind].imin + i*size,
-              trees[tree_idx][ind].jmin + j*size,
-#ifdef P4_TO_P8
-              trees[tree_idx][ind].kmin + k*size,
-#endif
-              trees[tree_idx][ind].level+1,
-              REMOTE_OWNER
+          CELL_LEAF, NOT_A_P4EST_QUADRANT,    /* child, quad */
+          trees[tree_idx][ind].imin + i*size, /* imin */
+          trees[tree_idx][ind].jmin + j*size, /* jmin */
+  #ifdef P4_TO_P8
+          trees[tree_idx][ind].kmin + k*size, /* kmin (3D) only */
+  #endif
+          trees[tree_idx][ind].level+1,       /* level */
+          REMOTE_OWNER                        /* owner's rank */
         };
         trees[tree_idx].push_back(child);
       }
 }
 
-int my_p4est_hierarchy_t::update_tree( int tree_idx, p4est_quadrant_t *quad )
+int my_p4est_hierarchy_t::update_tree( int tree_idx, const p4est_quadrant_t *quad )
 {
   int ind = 0;
   while( trees[tree_idx][ind].level != quad->level )
@@ -91,7 +91,7 @@ void my_p4est_hierarchy_t::construct_tree() {
 
     for( size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
-      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
       int ind = update_tree(tree_idx, quad);
 
       /* the cell corresponding to the quadrant has been found, associate it to the quadrant */
@@ -164,16 +164,16 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
     for (size_t j=0; j<trees[i].size(); j++){
       const HierarchyCell& cell = trees[i][j];
       if (cell.child == CELL_LEAF){
-        double h = (double) P4EST_QUADRANT_LEN(cell.level) / P4EST_ROOT_LEN;
+        double h = (double) P4EST_QUADRANT_LEN(cell.level) / (double)P4EST_ROOT_LEN;
 #ifdef P4_TO_P8
         for (short xk=0; xk<2; xk++)
 #endif
           for (short xj=0; xj<2; xj++)
             for (short xi=0; xi<2; xi++){
-              double x = (double) cell.imin / P4EST_ROOT_LEN + xi*h + tree_xmin;
-              double y = (double) cell.jmin / P4EST_ROOT_LEN + xj*h + tree_ymin;
+              double x = (double) cell.imin / (double)P4EST_ROOT_LEN + xi*h + tree_xmin;
+              double y = (double) cell.jmin / (double)P4EST_ROOT_LEN + xj*h + tree_ymin;
 #ifdef P4_TO_P8
-              double z = (double) cell.kmin / P4EST_ROOT_LEN + xk*h + tree_zmin;
+              double z = (double) cell.kmin / (double)P4EST_ROOT_LEN + xk*h + tree_zmin;
 #endif
 #ifdef P4_TO_P8
               fprintf(vtk, "%lf %lf %lf\n", x, y, z);

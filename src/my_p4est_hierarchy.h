@@ -64,8 +64,9 @@ struct HierarchyCell {
 #endif
 
   /* the level of the cell */
-  p4est_qcoord_t level;
+  int8_t level;
 
+  /* proc owner of the cell */
   int owner_rank;
 };
 
@@ -80,7 +81,7 @@ class my_p4est_hierarchy_t {
   std::vector< std::vector<HierarchyCell> > trees;
 
   void split(int tree_idx, int ind );
-  int update_tree( int tree_idx, p4est_quadrant_t *quad );
+  int update_tree( int tree_idx, const p4est_quadrant_t *quad );
   void construct_tree();
 #ifdef P4_TO_P8
   void find_quadrant_containing_point(const int* tr_xyz_orig, Point3& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
@@ -94,11 +95,16 @@ public:
   {
     for( size_t tr=0; tr<trees.size(); tr++)
     {
-      struct HierarchyCell root = { CELL_LEAF, NOT_A_P4EST_QUADRANT, 0, 0,
-    #ifdef P4_TO_P8
-            0,
-    #endif
-            0, REMOTE_OWNER};
+      HierarchyCell root =
+      {
+        CELL_LEAF, NOT_A_P4EST_QUADRANT, /* child, quad */
+        0, 0,                            /* imin, jmin  */
+  #ifdef P4_TO_P8
+        0,                               /* kmin (3D only) */
+  #endif
+        0,                               /* level */
+        REMOTE_OWNER                     /* owner's rank */
+      };
       trees[tr].push_back(root);
     }
     construct_tree();

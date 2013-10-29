@@ -188,7 +188,7 @@ int main (int argc, char* argv[]){
 
   mpi_context_t mpi_context, *mpi = &mpi_context;
   mpi->mpicomm  = MPI_COMM_WORLD;
-//  try{
+  try{
     p4est_t            *p4est;
     p4est_nodes_t      *nodes;
     PetscErrorCode      ierr;
@@ -336,12 +336,12 @@ int main (int argc, char* argv[]){
     solver.set_phi(phi);
     solver.set_rhs(rhs);
     solver.set_bc(bc);
-    w2.stop(); w2.read_duration();
 
     /* solve the system */
     solver.solve(sol);
     ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
+    w2.stop(); w2.read_duration();
 
     /* prepare for output */
     double *sol_p, *phi_p, *uex_p;
@@ -395,9 +395,9 @@ int main (int argc, char* argv[]){
     p4est_destroy (p4est);
     my_p4est_brick_destroy(connectivity, &brick);
     w1.stop(); w1.read_duration();
-//  } catch (const std::exception& e) {
-//    std::cerr << "[" << mpi->mpirank << " -- ERROR]: " << e.what() << std::endl;
-//  }
+  } catch (const std::exception& e) {
+    std::cerr << "[" << mpi->mpirank << " -- ERROR]: " << e.what() << std::endl;
+  }
 
   return 0;
 }

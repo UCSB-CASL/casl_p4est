@@ -225,7 +225,7 @@ typedef int p4est_bool_t;
 
 
 
-double linear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
+double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
 
 /*!
  * \brief non_oscilatory_quadratic_interpolation performs non-oscilatory quadratic interpolation for a point
@@ -239,7 +239,7 @@ double linear_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_
  * \param y_global global y-coordinate of the point
  * \return interpolated value
  */
-double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
@@ -253,7 +253,7 @@ double quadratic_non_oscillatory_interpolation(p4est_t *p4est, p4est_topidx_t tr
  * \param y_global global y-coordinate of the point
  * \return interpolated value
  */
-double quadratic_interpolation(p4est_t *interface_location_with_second_order_derivativep4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
  * \brief VecCreateGhost Creates a ghosted PETSc parallel vector based on p4est node ordering
@@ -261,7 +261,7 @@ double quadratic_interpolation(p4est_t *interface_location_with_second_order_der
  * \param nodes [in]  the nodes numbering data structure
  * \param v     [out] PETSc vector type
  */
-PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
+PetscErrorCode VecCreateGhost(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
 
 /*!
  * \brief VecCreateGhostBlock Creates a ghosted block PETSc parallel vector
@@ -271,7 +271,7 @@ PetscErrorCode VecCreateGhost(p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
  * \param v          [out] PETSc vector
  * \return
  */
-PetscErrorCode VecCreateGhostBlock(p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
+PetscErrorCode VecCreateGhostBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
@@ -306,7 +306,7 @@ inline double quad_z_fr_k(const p4est_quadrant_t *qi){
 /*!
  * \brief integrate_over_negative_domain_in_one_quadrant
  */
-double integrate_over_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+double integrate_over_negative_domain_in_one_quadrant(const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_negative_domain integrate a quantity f over the negative domain defined by phi
@@ -317,12 +317,12 @@ double integrate_over_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_node
  * \param f the scalar to integrate
  * \return the integral of f over the phi<0 domain, \int_{\phi<0} f
  */
-double integrate_over_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec f);
+double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief area_in_negative_domain_in_one_quadrant
  */
-double area_in_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
+double area_in_negative_domain_in_one_quadrant(p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
 
 /*!
  * \brief area_in_negative_domain compute the area of the negative domain defined by phi
@@ -332,12 +332,12 @@ double area_in_negative_domain_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *no
  * \param phi the level-set function
  * \return the area in the negative phi domain, i.e. \int_{phi<0} 1
  */
-double area_in_negative_domain(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi);
+double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi);
 
 /*!
  * \brief integrate_over_interface_in_one_quadrant
  */
-double integrate_over_interface_in_one_quadrant(p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+double integrate_over_interface_in_one_quadrant(p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.
@@ -417,11 +417,11 @@ bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
  * is performed to ensure enough memory is available in the Vec object.
  */
 #ifdef P4_TO_P8
-void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, Vec f);
-void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f);
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, Vec f);
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f);
 #else
-void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f);
-void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f);
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
 #endif
 
 template<typename T>

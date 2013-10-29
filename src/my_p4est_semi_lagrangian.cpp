@@ -643,8 +643,8 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   ierr = PetscLogEventEnd(log_Semilagrangian_update_p4est_second_order_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-double SemiLagrangian::update_p4est_intermediate_trees_with_ghost(const CF_2& vx, const CF_2& vy, Vec &phi)
-{
+//double SemiLagrangian::update_p4est_intermediate_trees_with_ghost(const CF_2& vx, const CF_2& vy, Vec &phi)
+//{
 
 //  PetscErrorCode ierr;
 //  p4est *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
@@ -716,6 +716,6 @@ double SemiLagrangian::update_p4est_intermediate_trees_with_ghost(const CF_2& vx
 //  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 //  return dt;
 
-  throw std::invalid_argument("[ERROR]: This method is not implemented");
-  return 0;
-}
+//  throw std::invalid_argument("[ERROR]: This method is not implemented");
+//  return 0;
+//}
