@@ -1482,7 +1482,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
           xyz[2] + grad_phi.z * (2.0*diag + phi[n])
   #endif
         };
-        interp1.add_point_to_buffer(n, xyz_);
+        interp2.add_point_to_buffer(n, xyz_);
       }
 
       ierr = PetscLogFlops(26); CHKERRXX(ierr);
@@ -1716,7 +1716,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
           xyz[2] + grad_phi.z * (2.0*diag + phi[n])
   #endif
         };
-        interp1.add_point_to_buffer(n, xyz_);
+        interp2.add_point_to_buffer(n, xyz_);
       }
 
       ierr = PetscLogFlops(26); CHKERRXX(ierr);

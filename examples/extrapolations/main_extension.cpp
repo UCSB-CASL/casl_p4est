@@ -11,11 +11,11 @@
 #include <p4est_vtk.h>
 
 // casl_p4est
-#include <src/utils.h>
+#include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
-#include <src/refine_coarsen.h>
+#include <src/my_p4est_refine_coarsen.h>
 #include <src/petsc_compatibility.h>
 
 #define MAX_LEVEL 8
@@ -140,7 +140,7 @@ int main (int argc, char* argv[]){
     double x = int2double_coordinate_transform(node->x) + tree_xmin;
     double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-    p4est_locidx_t n_petsc = p4est2petsc_local_numbering(nodes, i);
+    p4est_locidx_t n_petsc = i;
 
     phi_ptr[n_petsc] = circ(x,y);
     bc_vec_ptr[n_petsc] = bc_interface_type==DIRICHLET ? bc_interface_dirichlet(x,y) : bc_interface_neumann(x,y) ;
@@ -157,7 +157,7 @@ int main (int argc, char* argv[]){
 
   my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
   my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
-  my_p4est_level_set ls(&brick, p4est, nodes, ghost, &ngbd);
+  my_p4est_level_set ls(&ngbd);
 
   BoundaryConditions2D bc;
   bc.setInterfaceType(bc_interface_type);
@@ -215,7 +215,7 @@ int main (int argc, char* argv[]){
   double err[nodes->indep_nodes.elem_count];
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
-    p4est_locidx_t n_petsc = p4est2petsc_local_numbering(nodes,n);
+    p4est_locidx_t n_petsc = n;
     if(phi_ptr[n_petsc]>0 && phi_ptr[n_petsc]<diag*band)
     {
       p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);

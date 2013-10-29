@@ -510,23 +510,6 @@ int main (int argc, char* argv[])
     double max_norm_u;
     ierr = MPI_Allreduce(&max_norm_u_loc, &max_norm_u, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm); CHKERRXX(ierr);
 
-    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0];
-    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN - 1];
-
-    double xyz_min [] =
-    {
-      p4est->connectivity->vertices[3*vm + 0],
-      p4est->connectivity->vertices[3*vm + 1],
-      p4est->connectivity->vertices[3*vm + 2]
-    };
-
-    double xyz_max [] =
-    {
-      p4est->connectivity->vertices[3*vp + 0],
-      p4est->connectivity->vertices[3*vp + 1],
-      p4est->connectivity->vertices[3*vp + 2]
-    };
-
     splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
     double dx = 1.0 / pow(2.,(double) data->max_lvl);
 

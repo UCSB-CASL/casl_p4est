@@ -942,13 +942,16 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
 
   // reset the local_nodes table
   p4est_locidx_t *q2n = nodes->local_nodes;
-
-  for (p4est_locidx_t q = 0; q<num_local_nodes; q++)
   {
-    if (q2n[q] < offset_owned_indeps)
-      q2n[q] += num_owned_nodes;
-    else if (q2n[q]>=offset_owned_indeps && q2n[q] < num_owned_nodes+offset_owned_indeps)
-      q2n[q] -= offset_owned_indeps;
+    p4est_locidx_t q;
+
+    for (q = 0; q<num_local_nodes; q++)
+    {
+      if (q2n[q] < offset_owned_indeps)
+        q2n[q] += num_owned_nodes;
+      else if (q2n[q]>=offset_owned_indeps && q2n[q] < num_owned_nodes+offset_owned_indeps)
+        q2n[q] -= offset_owned_indeps;
+    }
   }
 
   // reset the offset variable
