@@ -51,8 +51,9 @@ PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central;
 PetscLogEvent log_my_p4est_node_neighbors_t;
 PetscLogEvent log_my_p4est_node_neighbors_t_dxx_central;
 PetscLogEvent log_my_p4est_node_neighbors_t_dyy_central;
-PetscLogEvent log_my_p4est_node_neighbors_t_dxx_and_dyy_central;
-PetscLogEvent log_my_p4est_node_neighbors_t_dxx_and_dyy_block_central;
+PetscLogEvent log_my_p4est_node_neighbors_t_dzz_central;
+PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central;
+PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central_block;
 
 // functions
 PetscLogEvent log_my_p4est_vtk_write_all;
@@ -112,8 +113,9 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::init                         ", 0, &log_my_p4est_node_neighbors_t); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::dxx_central                  ", 0, &log_my_p4est_node_neighbors_t_dxx_central); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::dyy_central                  ", 0, &log_my_p4est_node_neighbors_t_dyy_central); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::dxx_and_dyy_central          ", 0, &log_my_p4est_node_neighbors_t_dxx_and_dyy_central); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::dxx_and_dyy_block_central    ", 0, &log_my_p4est_node_neighbors_t_dxx_and_dyy_block_central); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::dzz_central                  ", 0, &log_my_p4est_node_neighbors_t_dzz_central); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::2nd_derivatives_cent         ", 0, &log_my_p4est_node_neighbors_t_2nd_derivatives_central); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::2nd_derivatives_cent_block   ", 0, &log_my_p4est_node_neighbors_t_2nd_derivatives_central_block); CHKERRXX(ierr);
 
   // functions
   ierr = PetscLogEventRegister("my_p4est_vtk_write_all                                  ", 0, &log_my_p4est_vtk_write_all); CHKERRXX(ierr);

@@ -203,9 +203,9 @@ int main (int argc, char* argv[]){
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
   // loop over time
-  double tf = 1;
+  double tf = 10;
   int tc = 0;
-  int save = 1;
+  int save = 5;
   double dt = 0.05;
   for (double t=0; t<tf; t+=dt, tc++){
     if (tc % save == 0){
