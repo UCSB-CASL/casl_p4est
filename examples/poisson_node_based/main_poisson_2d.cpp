@@ -286,7 +286,7 @@ int main (int argc, char* argv[]){
 
     /* initialize the vectors */
     Vec phi, rhs, uex, sol;
-    ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &rhs); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &uex); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &sol); CHKERRXX(ierr);
@@ -313,7 +313,7 @@ int main (int argc, char* argv[]){
     sample_cf_on_nodes(p4est, nodes, *bc_interface_value, interface_value_Vec);
     sample_cf_on_nodes(p4est, nodes, *bc_wall_value, wall_value_Vec);
 
-    InterpolatingFunction interface_interp(p4est, nodes, ghost, &brick, &node_neighbors), wall_interp(p4est, nodes, ghost, &brick, &node_neighbors);
+    InterpolatingFunctionNodeBase interface_interp(p4est, nodes, ghost, &brick, &node_neighbors), wall_interp(p4est, nodes, ghost, &brick, &node_neighbors);
     interface_interp.set_input_parameters(interface_value_Vec, linear);
     wall_interp.set_input_parameters(wall_value_Vec, linear);
 

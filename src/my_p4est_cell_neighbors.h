@@ -16,15 +16,23 @@
 #include <vector>
 
 class my_p4est_cell_neighbors_t {
+  friend class PoissonSolverCellBase;
+  friend class InterpolatingFunctionCellBase;
 
   my_p4est_hierarchy_t *hierarchy;
   p4est_t *p4est;
   p4est_ghost_t *ghost;
+  my_p4est_brick_t *myb;
 
   /* local quadrants from 0 .. local_number_of_quadrants - 1
    * ghosts from local_number_of_quadrants .. local_number_of_quadrants + num_ghosts
    */
-  std::vector<p4est_locidx_t> neighbor_cells;
+  struct quad_info_t{
+    int8_t level;
+    p4est_locidx_t locidx;
+    p4est_gloidx_t gloidx;
+  };
+  std::vector<quad_info_t> neighbor_cells;
   std::vector<p4est_locidx_t> offsets;
   p4est_locidx_t n_quads;
 
@@ -45,7 +53,7 @@ class my_p4est_cell_neighbors_t {
 
 public:
   my_p4est_cell_neighbors_t( my_p4est_hierarchy_t *hierarchy_ )
-    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost),
+    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), myb(hierarchy_->myb),
       n_quads(p4est->local_num_quadrants + ghost->ghosts.elem_count)
   {
     neighbor_cells.reserve(P4EST_FACES * n_quads);
@@ -54,7 +62,7 @@ public:
     initialize_neighbors();
   }
 
-  inline const p4est_locidx_t* begin(p4est_locidx_t q, int dir_f) const {
+  inline const quad_info_t* begin(p4est_locidx_t q, int dir_f) const {
 #ifdef CASL_THROWS
     if (dir_f < 0 || dir_f >= P4EST_FACES)
       throw std::invalid_argument("invalid face direction index.");
@@ -64,7 +72,7 @@ public:
     return &neighbor_cells[offsets[q*P4EST_FACES + dir_f]];
   }
 
-  inline const p4est_locidx_t* end(p4est_locidx_t q, int dir_f) const {
+  inline const quad_info_t* end(p4est_locidx_t q, int dir_f) const {
 #ifdef CASL_THROWS
     if (dir_f < 0 || dir_f >= P4EST_FACES)
       throw std::invalid_argument("invalid face direction index.");
@@ -73,6 +81,8 @@ public:
 #endif
     return &neighbor_cells[offsets[q*P4EST_FACES + dir_f + 1]];
   }
+
+  void __attribute__((used)) print_debug(p4est_locidx_t q, FILE* stream = stdout);
 
 };
 

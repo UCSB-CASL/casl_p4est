@@ -12,6 +12,12 @@
 #endif
 
 struct splitting_criteria_t {
+  splitting_criteria_t(int min_lvl = 0, int max_lvl = 0)
+  {
+    this->max_lvl = max_lvl;
+    this->min_lvl = min_lvl;
+  }
+
   int max_lvl, min_lvl;
 };
 

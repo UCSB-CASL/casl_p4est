@@ -1843,7 +1843,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central_using_block(const Vec
   // create temporary block vector
   PetscErrorCode ierr;
   Vec fdd;
-  ierr = VecCreateGhostBlock(p4est, nodes, P4EST_DIM, &fdd); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est, nodes, P4EST_DIM, &fdd); CHKERRXX(ierr);
 
   // compute derivatives using block vector
   second_derivatives_central(f, fdd);

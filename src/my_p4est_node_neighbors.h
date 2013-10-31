@@ -23,7 +23,8 @@
 
 class my_p4est_node_neighbors_t {
   friend class PoissonSolverNodeBase;
-  friend class InterpolatingFunction;
+  friend class PoissonSolverCellBase;
+  friend class InterpolatingFunctionNodeBase;
   friend class my_p4est_level_set;
 
   /**

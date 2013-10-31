@@ -139,7 +139,7 @@ int main (int argc, char* argv[]){
   w2.start("creating ghosted vectors");
 #endif
   Vec phi, f, fxx_ex, fyy_ex, fdd;
-  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &f     ); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &fxx_ex); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &fyy_ex); CHKERRXX(ierr);
@@ -178,7 +178,7 @@ int main (int argc, char* argv[]){
   w2.start("Computing derivatives the new way");
 #endif
   // compute the derivatives new way
-  ierr = VecCreateGhostBlock(p4est, nodes, 2, &fdd); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est, nodes, 2, &fdd); CHKERRXX(ierr);
   node_neighbors.dxx_and_dyy_central(f, fdd);
 #ifdef DEBUG_TIMINGS
   w2.stop(); w2.read_duration();

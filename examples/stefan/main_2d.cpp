@@ -96,7 +96,7 @@ struct BCInterfaceValue : CF_3 {
 private:
   my_p4est_brick_t *brick;
   my_p4est_node_neighbors_t *ngbd;
-  InterpolatingFunction interp;
+  InterpolatingFunctionNodeBase interp;
 public:
   BCInterfaceValue( my_p4est_brick_t *brick_, p4est_t *p4est_,
                     p4est_nodes_t *nodes_, p4est_ghost_t *ghost_,
@@ -345,7 +345,7 @@ int main (int argc, char* argv[])
   // Initialize the level-set function
   Vec phi;
   Vec Tn;
-  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   ierr = VecDuplicate(phi,&Tn); CHKERRXX(ierr);
 
   double *phi_ptr, *Tn_ptr;
@@ -536,7 +536,7 @@ int main (int argc, char* argv[])
     /* interpolate Tn on the new grid */
     Vec Tnp1;
     ierr = VecDuplicate(phi, &Tnp1); CHKERRXX(ierr);
-    InterpolatingFunction interp(p4est, nodes, ghost, &brick, &ngbd);
+    InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, &brick, &ngbd);
 
     p4est_topidx_t *t2v = p4est_np1->connectivity->tree_to_vertex; // tree to vertex list
     double *t2c = p4est_np1->connectivity->vertices; // coordinates of the vertices of a tree

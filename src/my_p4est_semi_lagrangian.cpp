@@ -114,7 +114,7 @@ void SemiLagrangian::advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, doubl
 {
   ierr = PetscLogEventBegin(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
 
-  InterpolatingFunction interp(p4est_, nodes_, ghost_, myb_, &qnnn);
+  InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, &qnnn);
 #ifdef P4_TO_P8
   interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n, phi_zz_n);
 #else
@@ -205,7 +205,7 @@ void SemiLagrangian::advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, doubl
   p4est_locidx_t ni_end   = nodes_np1->indep_nodes.elem_count;
 
   /* first find the velocities at the nodes */
-  InterpolatingFunction interp_vel(p4est_, nodes_, ghost_, myb_, &qnnn);
+  InterpolatingFunctionNodeBase interp_vel(p4est_, nodes_, ghost_, myb_, &qnnn);
 
   std::vector<double> vx_tmp(nodes_np1->indep_nodes.elem_count);
   std::vector<double> vy_tmp(nodes_np1->indep_nodes.elem_count);
@@ -258,7 +258,7 @@ void SemiLagrangian::advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, doubl
 #endif
 
   /* now find v_star */
-  InterpolatingFunction interp_vel_star(p4est_, nodes_, ghost_, myb_, &qnnn);
+  InterpolatingFunctionNodeBase interp_vel_star(p4est_, nodes_, ghost_, myb_, &qnnn);
 
   for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
     p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni);
@@ -305,7 +305,7 @@ void SemiLagrangian::advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, doubl
 #endif
 
   /* finally, find the backtracing value */
-  InterpolatingFunction interp(p4est_, nodes_, ghost_, myb_, &qnnn);
+  InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, &qnnn);
 
   /* find the departure node via backtracing */
   for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
@@ -366,11 +366,11 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
 
   // compute vx_xx, vx_yy
   Vec vx_xx, vx_yy;  
-  ierr = VecCreateGhost(p4est_, nodes_, &vx_xx); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est_, nodes_, &vx_yy); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est_, nodes_, &vx_xx); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est_, nodes_, &vx_yy); CHKERRXX(ierr);
 #ifdef P4_TO_P8
   Vec vx_zz;
-  ierr = VecCreateGhost(p4est_, nodes_, &vx_zz); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est_, nodes_, &vx_zz); CHKERRXX(ierr);
 #endif
 #ifdef P4_TO_P8
   qnnn.second_derivatives_central(vx, vx_xx, vx_yy, vx_zz);
@@ -477,7 +477,7 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
 
   Vec phi_np1;
   double *phi_np1_p;
-  ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
   ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
   advect_from_n_to_np1(qnnn, dt,
@@ -553,10 +553,10 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   if (phi_xx_ == NULL && phi_yy_ == NULL)
 #endif
   {
-    ierr = VecCreateGhost(p4est_, nodes_, &phi_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhost(p4est_, nodes_, &phi_yy_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_xx_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_yy_); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-    ierr = VecCreateGhost(p4est_, nodes_, &phi_zz_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_zz_); CHKERRXX(ierr);
 #endif
 
 #ifdef P4_TO_P8
@@ -612,7 +612,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
 
   Vec phi_np1;
   double *phi_np1_p;
-  ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
   ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
   advect_from_n_to_np1(qnnn, dt,
@@ -703,7 +703,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
 //  p4est_ghost_destroy(ghost_); ghost_ = *p_ghost_ = ghost_np1;
 
 //  Vec phi_np1;
-//  ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+//  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 //  double *f;
 //  ierr = VecGetArray(phi_np1, &f); CHKERRXX(ierr);
 //  for(p4est_locidx_t n=0; n<nodes_np1->num_owned_indeps; ++n)

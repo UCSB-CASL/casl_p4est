@@ -33,7 +33,7 @@ extern PetscLogEvent log_InterpolatingFunction_interpolate;
 #endif
 #endif
 
-InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
+InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
                                              p4est_nodes_t *nodes,
                                              p4est_ghost_t *ghost,
                                              my_p4est_brick_t *myb)
@@ -59,7 +59,7 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
     xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
 }
 
-InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
+InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
                                              p4est_nodes_t *nodes,
                                              p4est_ghost_t *ghost,
                                              my_p4est_brick_t *myb,
@@ -86,7 +86,7 @@ InterpolatingFunction::InterpolatingFunction(p4est_t *p4est,
     xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
 }
 
-InterpolatingFunction::~InterpolatingFunction()
+InterpolatingFunctionNodeBase::~InterpolatingFunctionNodeBase()
 {
   if ((method_ == quadratic || method_ == quadratic_non_oscillatory) && local_derivatives)
   {
@@ -98,7 +98,7 @@ InterpolatingFunction::~InterpolatingFunction()
   }
 }
 
-void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, const double *xyz)
+void InterpolatingFunctionNodeBase::add_point_to_buffer(p4est_locidx_t node_locidx, const double *xyz)
 {
   /* first clip the coordinates */
   double xyz_clip [] = 
@@ -222,7 +222,7 @@ void InterpolatingFunction::add_point_to_buffer(p4est_locidx_t node_locidx, cons
   is_buffer_prepared = false;
 }
 
-void InterpolatingFunction::set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx, Vec Fyy
+void InterpolatingFunctionNodeBase::set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx, Vec Fyy
 #ifdef P4_TO_P8
                                                  , Vec Fzz
 #endif
@@ -254,7 +254,7 @@ void InterpolatingFunction::set_input_parameters(Vec input_vec, interpolation_me
   }
 }
 
-void InterpolatingFunction::interpolate(Vec output_vec)
+void InterpolatingFunctionNodeBase::interpolate(Vec output_vec)
 {
   double *Fo_p;
   ierr = VecGetArray(output_vec, &Fo_p); CHKERRXX(ierr);
@@ -262,7 +262,7 @@ void InterpolatingFunction::interpolate(Vec output_vec)
   ierr = VecRestoreArray(output_vec, &Fo_p); CHKERRXX(ierr);
 }
 
-void InterpolatingFunction::interpolate( double *output_vec )
+void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
 {
   ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -543,9 +543,9 @@ void InterpolatingFunction::interpolate( double *output_vec )
 }
 
 #ifdef P4_TO_P8
-double InterpolatingFunction::operator ()(double x, double y, double z) const
+double InterpolatingFunctionNodeBase::operator ()(double x, double y, double z) const
 #else
-double InterpolatingFunction::operator ()(double x, double y) const
+double InterpolatingFunctionNodeBase::operator ()(double x, double y) const
 #endif
 {
   PetscErrorCode ierr;
@@ -727,7 +727,7 @@ double InterpolatingFunction::operator ()(double x, double y) const
   }
 }
 
-void InterpolatingFunction::send_point_buffers_begin()
+void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 {
   int req_counter = 0;
 
@@ -753,7 +753,7 @@ void InterpolatingFunction::send_point_buffers_begin()
   }
 }
 
-void InterpolatingFunction::recv_point_buffers_begin()
+void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
 {
   // Allocate enough requests slots
   remote_recv_req.resize(remote_senders.size());
@@ -774,7 +774,7 @@ void InterpolatingFunction::recv_point_buffers_begin()
   }
 }
 
-void InterpolatingFunction::compute_second_derivatives()
+void InterpolatingFunctionNodeBase::compute_second_derivatives()
 {
   // Allocate memory for second derivaties
 #ifdef P4_TO_P8
@@ -783,10 +783,10 @@ void InterpolatingFunction::compute_second_derivatives()
   if (Fxx_ == NULL && Fyy_ == NULL)
 #endif
   {
-    ierr = VecCreateGhost(p4est_, nodes_, &Fxx_); CHKERRXX(ierr);
-    ierr = VecCreateGhost(p4est_, nodes_, &Fyy_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &Fxx_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &Fyy_); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-    ierr = VecCreateGhost(p4est_, nodes_, &Fzz_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &Fzz_); CHKERRXX(ierr);
 #endif
     local_derivatives = true;
   }

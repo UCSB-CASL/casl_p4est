@@ -46,6 +46,24 @@ refine_simple(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t* quad)
     return P4EST_FALSE;
 }
 
+#ifdef P4_TO_P8
+static struct:CF_3{
+  void update (double x0_, double y0_, double z0_, double r_) {x0 = x0_; y0 = y0_; z0 = z0_; r = r_; }
+  double operator()(double x, double y, double z) const {
+    return r - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
+  }
+  double  x0, y0, z0, r;
+} circle ;
+#else
+static struct:CF_2{
+  void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
+  double operator()(double x, double y) const {
+    return r - sqrt(SQR(x-x0) + SQR(y-y0));
+  }
+  double  x0, y0, r;
+} circle;
+#endif
+
 using namespace std;
 int main (int argc, char* argv[]){
 
@@ -53,13 +71,22 @@ int main (int argc, char* argv[]){
   mpi->mpicomm  = MPI_COMM_WORLD;
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
+  PetscErrorCode ierr;
 
   cmdParser cmd;
   cmd.add_option("lmin", "the min level of the tree");
   cmd.add_option("lmax", "the max level of the tree");
   cmd.parse(argc, argv);
 
-  splitting_criteria_t data = {cmd.get("lmax", 3), cmd.get("lmin", 0)};
+#ifdef P4_TO_P8
+  circle.update(1, 1, 1, .2);
+  CF_3& cf = circle;
+#else
+  circle.update(1, 1, .2);
+  CF_2& cf = circle;
+#endif
+
+  splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 5), &cf, 1.2);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -84,7 +111,7 @@ int main (int argc, char* argv[]){
   /* create the p4est */
   p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
   p4est->user_pointer = (void*)(&data);
-  p4est_refine(p4est, P4EST_TRUE, refine_simple, NULL);
+  p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
   /* partition the p4est */
   p4est_partition(p4est, NULL);
@@ -105,27 +132,34 @@ int main (int argc, char* argv[]){
   w2.start("construct the cell neighborhood information");
   my_p4est_cell_neighbors_t cell_neighbors(&hierarchy);
 
-  for (size_t q = 0; q < p4est->local_num_quadrants + ghost->ghosts.elem_count; ++q){
-    PetscSynchronizedPrintf(p4est->mpicomm, " ---------- %2d ---------- \n", q);
-    for (short i = 0; i<P4EST_FACES; i++){
-      const p4est_locidx_t *begin = cell_neighbors.begin(q, i);
-      const p4est_locidx_t *end   = cell_neighbors.end(q, i);
-
-      PetscSynchronizedPrintf(p4est->mpicomm, " dir = %d: ", i);
-      for (const p4est_locidx_t *it = begin; it != end; ++it)
-        PetscSynchronizedPrintf(p4est->mpicomm, " %2d, ", *it);
-      PetscSynchronizedPrintf(p4est->mpicomm, "\n");
-    }
-  }
-  PetscSynchronizedFlush(p4est->mpicomm);
+  FILE *pFile;
+  ostringstream oss; oss << "cell_ngbd_" << p4est->mpirank << "_" << p4est->mpisize << ".dat";
+  pFile = fopen(oss.str().c_str(), "w");
+  for (size_t q = 0; q < p4est->local_num_quadrants + ghost->ghosts.elem_count; ++q)
+    cell_neighbors.print_debug(q, pFile);
+  fclose(pFile);
 
   w2.stop(); w2.read_duration();
 
+  /* compute a function on the cells and save it as vtk */
+  Vec phi;
+  ierr = VecCreateGhostCells(p4est, ghost, &phi); CHKERRXX(ierr);
+  sample_cf_on_cells(p4est, ghost, cf, phi);
+
+  double *phi_p;
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
   /* save the vtk file */
-  std::ostringstream oss; oss << P4EST_DIM << "d_solution_" << p4est->mpisize;
+  oss.str(""); oss << P4EST_DIM << "d_solution_" << p4est->mpisize;
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
-                         0, 0, oss.str().c_str());
+                         0, 1, oss.str().c_str(),
+                         VTK_CELL_DATA, "phi", phi_p);
+
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+  /* destroy PETSc vecs */
+  ierr = VecDestroy(phi); CHKERRXX(ierr);
 
   /* destroy p4est objects */
   p4est_nodes_destroy (nodes);

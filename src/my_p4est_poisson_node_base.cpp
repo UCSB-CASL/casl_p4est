@@ -1673,10 +1673,10 @@ void PoissonSolverNodeBase::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
      */
 
     // Allocate memory for second derivaties
-    ierr = VecCreateGhost(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhost(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-    ierr = VecCreateGhost(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
 #endif
 
 #ifdef P4_TO_P8

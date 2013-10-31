@@ -185,7 +185,7 @@ int main (int argc, char* argv[]){
 
   // Initialize the level-set function
   Vec phi;
-  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);  
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   sample_cf_on_nodes(p4est, nodes, circ, phi);
 
   double *phi_ptr;

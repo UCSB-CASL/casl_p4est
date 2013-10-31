@@ -107,7 +107,22 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive(p4est_topi
   if (hierarchy->trees[tr][ind].child == CELL_LEAF)
   {
     if (hierarchy->trees[tr][ind].quad == NOT_A_P4EST_QUADRANT) return;
-    neighbor_cells.push_back( hierarchy->trees[tr][ind].quad );
+
+    quad_info_t qinfo;
+    qinfo.locidx = hierarchy->trees[tr][ind].quad;
+
+    if (qinfo.locidx < p4est->local_num_quadrants) {// local quadrant
+      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, qinfo.locidx - tree->quadrants_offset);
+      qinfo.level = quad->level;
+      qinfo.gloidx = p4est->global_first_quadrant[p4est->mpirank] + qinfo.locidx;
+    } else {
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, qinfo.locidx - p4est->local_num_quadrants);
+      qinfo.gloidx = p4est->global_first_quadrant[hierarchy->trees[tr][ind].owner_rank] + quad->p.piggy3.local_num;
+      qinfo.level = quad->level;
+    }
+
+    neighbor_cells.push_back(qinfo);
     return;
   }
 
@@ -160,4 +175,40 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive(p4est_topi
     break;
 #endif
   }
+}
+
+void my_p4est_cell_neighbors_t::print_debug(p4est_locidx_t q, FILE *stream)
+{
+  fprintf(stream, " ---------- quad = %d ---------- \n", q);
+  fprintf(stream, " x-: ");
+  for (p4est_locidx_t qi = offsets[q*P4EST_FACES + 0]; qi < offsets[q*P4EST_FACES + 1]; ++qi)
+    fprintf(stream, "%d ", neighbor_cells[qi].locidx);
+  fprintf(stream, "\n");
+
+  fprintf(stream, " x+: ");
+  for (p4est_locidx_t qi = offsets[q*P4EST_FACES + 1]; qi < offsets[q*P4EST_FACES + 2]; ++qi)
+    fprintf(stream, "%d ", neighbor_cells[qi].locidx);
+  fprintf(stream, "\n");
+
+  fprintf(stream, " y-: ");
+  for (p4est_locidx_t qi = offsets[q*P4EST_FACES + 2]; qi < offsets[q*P4EST_FACES + 3]; ++qi)
+    fprintf(stream, "%d ", neighbor_cells[qi].locidx);
+  fprintf(stream, "\n");
+
+  fprintf(stream, " y+: ");
+  for (p4est_locidx_t qi = offsets[q*P4EST_FACES + 3]; qi < offsets[q*P4EST_FACES + 4]; ++qi)
+    fprintf(stream, "%d ", neighbor_cells[qi].locidx);
+  fprintf(stream, "\n");
+
+#ifdef P4_TO_P8
+  fprintf(stream, " z-: ");
+  for (p4est_locidx_t qi = offsets[q*P4EST_FACES + 4]; qi < offsets[q*P4EST_FACES + 5]; ++qi)
+    fprintf(stream, "%d ", neighbor_cells[qi].locidx);
+  fprintf(stream, "\n");
+
+  fprintf(stream, " z+: ");
+  for (p4est_locidx_t qi = offsets[q*P4EST_FACES + 5]; qi < offsets[q*P4EST_FACES + 6]; ++qi)
+    fprintf(stream, "%d ", neighbor_cells[qi].locidx);
+  fprintf(stream, "\n");
+#endif
 }

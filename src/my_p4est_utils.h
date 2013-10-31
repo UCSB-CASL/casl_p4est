@@ -256,22 +256,41 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
 double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
- * \brief VecCreateGhost Creates a ghosted PETSc parallel vector based on p4est node ordering
+ * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the nodes based on p4est node ordering
  * \param p4est [in]  the forest
  * \param nodes [in]  the nodes numbering data structure
  * \param v     [out] PETSc vector type
  */
-PetscErrorCode VecCreateGhost(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
+PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
 
 /*!
- * \brief VecCreateGhostBlock Creates a ghosted block PETSc parallel vector
+ * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes
  * \param p4est      [in]  p4est object
  * \param nodes      [in]  the nodes object
  * \param block_size [in]  block size of the vector
  * \param v          [out] PETSc vector
  * \return
  */
-PetscErrorCode VecCreateGhostBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
+PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
+
+/*!
+ * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the cells
+ * \param p4est [in]  the forest
+ * \param ghost [in]  the ghost cells
+ * \param v     [out] PETSc vector type
+ */
+PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v);
+
+/*!
+ * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector
+ * \param p4est      [in]  p4est object
+ * \param ghost      [in]  the ghost cells
+ * \param block_size [in]  block size of the vector
+ * \param v          [out] PETSc vector
+ * \return
+ */
+PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v);
+
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
@@ -355,6 +374,7 @@ double integrate_over_interface(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, V
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the left domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_node_xmWall(const p4est_t *p4est, const p4est_indep_t *ni);
 
@@ -363,6 +383,7 @@ bool is_node_xmWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the right domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_node_xpWall(const p4est_t *p4est, const p4est_indep_t *ni);
 
@@ -371,6 +392,7 @@ bool is_node_xpWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the domain bottom boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_node_ymWall(const p4est_t *p4est, const p4est_indep_t *ni);
 
@@ -379,6 +401,7 @@ bool is_node_ymWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the domain top boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_node_ypWall(const p4est_t *p4est, const p4est_indep_t *ni);
 
@@ -388,6 +411,7 @@ bool is_node_ypWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the domain back boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_node_zmWall(const p4est_t *p4est, const p4est_indep_t *ni);
 
@@ -396,6 +420,7 @@ bool is_node_zmWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the domain front boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni);
 #endif
@@ -405,8 +430,72 @@ bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
+
+/*!
+ * \brief is_quad_xmWall checks if a quad is on x^- domain boundary
+ * \param p4est [in] p4est
+ * \param qi    [in] pointer to the quadrant
+ * \return true if the quad is on the left domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
+ */
+bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
+
+/*!
+ * \brief is_quad_xpWall checks if a quad is on x^+ domain boundary
+ * \param p4est [in] p4est
+ * \param qi    [in] pointer to the quadrant
+ * \return true if the quad is on the right domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
+ */
+bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
+
+/*!
+ * \brief is_quad_ymWall checks if a quad is on y^- domain boundary
+ * \param p4est [in] p4est
+ * \param qi    [in] pointer to the quadrant
+ * \return true if the quad is on the bottom domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
+ */
+bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
+
+/*!
+ * \brief is_quad_ypWall checks if a quad is on y^+ domain boundary
+ * \param p4est [in] p4est
+ * \param qi    [in] pointer to the quadrant
+ * \return true if the quad is on the top domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
+ */
+bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
+
+/*!
+ * \brief is_quad_zmWall checks if a quad is on z^- domain boundary
+ * \param p4est [in] p4est
+ * \param qi    [in] pointer to the quadrant
+ * \return true if the quad is on the back domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
+ */
+bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
+
+/*!
+ * \brief is_quad_zpWall checks if a quad is on z^+ domain boundary
+ * \param p4est [in] p4est
+ * \param qi    [in] pointer to the quadrant
+ * \return true if the quad is on the front domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
+ */
+bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
+
+/*!
+ * \brief is_quad_Wall checks if a quad is on any of domain boundaries
+ * \param p4est [in] p4est
+ * \param qi    [in] pointer to the quadrant
+ * \return true if the quad is on the domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
+ */
+bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
 /*!
  * \brief sample_cf_on_nodes samples a cf function on the nodes. both local and ghost poinst are considered
@@ -418,9 +507,11 @@ bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
  */
 #ifdef P4_TO_P8
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, Vec f);
+void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_3& cf, Vec f);
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f);
 #else
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f);
+void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& cf, Vec f);
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
 #endif
 

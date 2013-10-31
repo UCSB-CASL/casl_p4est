@@ -1,28 +1,35 @@
-#ifndef POISSON_SOLVER_NODE_BASE_H
-#define POISSON_SOLVER_NODE_BASE_H
+#ifndef MY_P4EST_POISSON_CELL_BASE_H
+#define MY_P4EST_POISSON_CELL_BASE_H
 
 #include <petsc.h>
 
 #ifdef P4_TO_P8
+#include <src/my_p8est_cell_neighbors.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_interpolating_function.h>
 #include <src/my_p8est_utils.h>
+#include <p8est_nodes.h>
 #else
+#include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_interpolating_function.h>
 #include <src/my_p4est_utils.h>
+#include <p4est_nodes.h>
 #endif
 
-class PoissonSolverNodeBase
+class PoissonSolverCellBase
 {
+  const my_p4est_cell_neighbors_t *cell_neighbors_;
   const my_p4est_node_neighbors_t *node_neighbors_;
+  typedef my_p4est_cell_neighbors_t::quad_info_t quad_info_t;
 
   // p4est objects
-  p4est_t *p4est;
-  p4est_nodes_t *nodes;
-  p4est_ghost_t *ghost;
+  p4est_t *p4est_;
+  p4est_nodes_t *nodes_;
+  p4est_ghost_t *ghost_;
+
   my_p4est_brick_t *myb_;
   InterpolatingFunctionNodeBase phi_interp;
 #ifdef P4_TO_P8
@@ -43,8 +50,6 @@ class PoissonSolverNodeBase
 #else
   BoundaryConditions2D *bc_;
 #endif
-  std::vector<PetscInt> global_node_offset;
-  std::vector<PetscInt> petsc_gloidx;
 
   // PETSc objects
   Mat A;
@@ -59,24 +64,23 @@ class PoissonSolverNodeBase
 
   void preallocate_matrix();
   void setup_negative_laplace_matrix();
-  void setup_negative_laplace_rhsvec();  
+  void setup_negative_laplace_rhsvec();
+
+  inline double phi_cell(p4est_locidx_t q, double *phi_ptr) const {
+    double p_c = 0;
+    for (short i = 0; i<P4EST_CHILDREN; i++)
+      p_c += phi_ptr[nodes_->local_nodes[q*P4EST_CHILDREN + i]];
+    return (p_c/(double)P4EST_CHILDREN);
+  }
 
   // disallow copy ctr and copy assignment
-  PoissonSolverNodeBase(const PoissonSolverNodeBase& other);
-  PoissonSolverNodeBase& operator=(const PoissonSolverNodeBase& other);
+  PoissonSolverCellBase(const PoissonSolverCellBase& other);
+  PoissonSolverCellBase& operator=(const PoissonSolverCellBase& other);
 
 public:
-  PoissonSolverNodeBase(const my_p4est_node_neighbors_t *node_neighbors);
-  ~PoissonSolverNodeBase();
+  PoissonSolverCellBase(const my_p4est_cell_neighbors_t *cell_neighbors, const my_p4est_node_neighbors_t* node_neighbors);
+  ~PoissonSolverCellBase();
 
-  // inlines setters
-  /* FIXME: shouldn't those be references instead of copies ? I guess Vec is just a pointer ... but still ?
-   * Mohammad: Vec is just a typedef to _p_Vec* so its merely a pointer under the hood.
-   * If you are only passing the vector to access its data its fine to pass it as 'Vec v'
-   * However, if 'v' is supposed to change itself, i.e. the the whole Vec object and not just its data
-   * then it should either be passed via reference, Vec& v, or pointer, Vec* v, just like
-   * any other object
-   */
 #ifdef P4_TO_P8
   void set_phi(Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
 #else
@@ -94,5 +98,4 @@ public:
 
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 };
-
-#endif // POISSON_SOLVER_NODE_BASE_H
+#endif // MY_P4EST_POISSON_CELL_BASE_H

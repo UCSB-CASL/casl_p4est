@@ -135,7 +135,7 @@ int main (int argc, char* argv[]){
     my_p4est_node_neighbors_t node_nb(&hierarchy,nodes);
 
     Vec phi;
-    ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
 
     double *phi_p;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
