@@ -245,7 +245,7 @@ int main (int argc, char* argv[]){
 #ifdef P4_TO_P8
   circle.update(1, 1, 1, .3);
 #else
-  circle.update(1, 1, .3);
+  circle.update(.5, .5, .15);
 #endif
   splitting_criteria_cf_t data(min_level+nb_splits, max_level+nb_splits, &circle, 1);
 
@@ -266,7 +266,7 @@ int main (int argc, char* argv[]){
 #ifdef P4_TO_P8
   connectivity = my_p4est_brick_new(2, 2, 2, &brick);
 #else
-  connectivity = my_p4est_brick_new(2, 2, &brick);
+  connectivity = my_p4est_brick_new(1, 1, &brick);
 #endif
 
   /* create the p4est */
@@ -297,6 +297,7 @@ int main (int argc, char* argv[]){
   ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);
 
   sample_cf_on_nodes(p4est, nodes, circle, phi);
+//  VecSet(phi , -1);
   sample_cf_on_cells(p4est, ghost, u_ex, uex);
   sample_cf_on_cells(p4est, ghost, f_ex, rhs);
 
@@ -309,6 +310,14 @@ int main (int argc, char* argv[]){
   w2.start("construct the neighborhood information");
   my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
   my_p4est_cell_neighbors_t cell_neighbors(&hierarchy);
+
+  FILE *pFile;
+  ostringstream osss; osss << "cell_ngbd_" << p4est->mpirank << "_" << p4est->mpisize << ".dat";
+  pFile = fopen(osss.str().c_str(), "w");
+  for (size_t q = 0; q < p4est->local_num_quadrants + ghost->ghosts.elem_count; ++q)
+    cell_neighbors.print_debug(q, pFile);
+  fclose(pFile);
+
   w2.stop(); w2.read_duration();
 
   /* initalize the bc information */
@@ -343,9 +352,15 @@ int main (int argc, char* argv[]){
 
   /* compute the error */
   double err_max = 0;
-  for(p4est_locidx_t q=0; q<p4est->local_num_quadrants; ++q)
-    if(phi_p[q]<0)
+  for(p4est_locidx_t q=0; q<p4est->local_num_quadrants; ++q){
+    double pc = 0;
+    for (short i = 0; i<P4EST_CHILDREN; ++i)
+      pc += phi_p[nodes->local_nodes[q*P4EST_CHILDREN + i]];
+    pc /= (double)P4EST_CHILDREN;
+
+    if(pc<0)
       err_max = max(err_max, fabs(sol_p[q] - uex_p[q]));
+  }
 
   double glob_err_max;
   MPI_Allreduce(&err_max, &glob_err_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);

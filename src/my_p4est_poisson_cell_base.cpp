@@ -383,7 +383,6 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
   double d_eps = 1.0 * EPS;
   const p4est_gloidx_t *gloidx = p4est_->global_first_quadrant;
   const p4est_locidx_t *q2n    = nodes_->local_nodes;
-  const quad_neighbor_nodes_of_node_t* qnnn;
   const quad_info_t *cells[P4EST_FACES + 1];
 
   // Main loop over all local trees
@@ -501,10 +500,8 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         {
         case DIRICHLET:
           matrix_has_nullspace = false;
-          qnnn = &(*node_neighbors_)[n_mmm];
-
           fxxa = phi_yy_p[n_mmm];
-          fxxb = qnnn->f_0p0_linear(phi_yy_p);
+          fxxb = phi_yy_p[n_mpm];
           theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val00,phi_buffer.val01,fxxa,fxxb,dy_min);
 
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * theta*dy_C/dx_C, ADD_VALUES); CHKERRXX(ierr);
@@ -536,10 +533,8 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         // Crossing the interface neumann
         else if( bc_->interfaceType()==NEUMANN && phi_buffer.val00*phi_buffer.val01 <= 0. )
         {
-          qnnn = &(*node_neighbors_)[n_mmm];
-
           fxxa = phi_yy_p[n_mmm];
-          fxxb = qnnn->f_0p0_linear(phi_yy_p);
+          fxxb = phi_yy_p[n_mpm];
           dy_m00 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val00,phi_buffer.val01,fxxa,fxxb,dy_min);
 
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*dy_m00/dx_C, ADD_VALUES); CHKERRXX(ierr);
@@ -611,10 +606,8 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         {
         case DIRICHLET:
           matrix_has_nullspace = false;
-          qnnn = &(*node_neighbors_)[n_pmm];
-
           fxxa = phi_yy_p[n_pmm];
-          fxxb = qnnn->f_0p0_linear(phi_yy_p);
+          fxxb = phi_yy_p[n_ppm];
           theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val10,phi_buffer.val11,fxxa,fxxb,dy_min);
 
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * theta*dy_C/dx_C, ADD_VALUES); CHKERRXX(ierr);
@@ -646,10 +639,8 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         // Crossing the interface neumann
         else if( bc_->interfaceType()==NEUMANN && phi_buffer.val10*phi_buffer.val11 <= 0. )
         {
-          qnnn = &(*node_neighbors_)[n_pmm];
-
           fxxa = phi_yy_p[n_pmm];
-          fxxb = qnnn->f_0p0_linear(phi_yy_p);
+          fxxb = phi_yy_p[n_ppm];
           dy_p00 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val10,phi_buffer.val11,fxxa,fxxb,dy_min);
 
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*dy_p00/dx_C, ADD_VALUES); CHKERRXX(ierr);
@@ -720,10 +711,8 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         {
         case DIRICHLET:
           matrix_has_nullspace = false;
-          qnnn = &(*node_neighbors_)[n_mmm];
-
           fxxa = phi_xx_p[n_mmm];
-          fxxb = qnnn->f_p00_linear(phi_xx_p);
+          fxxb = phi_xx_p[n_pmm];
 
           theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val00,phi_buffer.val10,fxxa,fxxb,dx_min);
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * theta*dx_C/dy_C, ADD_VALUES); CHKERRXX(ierr);
@@ -755,10 +744,8 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         // Crossing the interface neumann
         else if( bc_->interfaceType()==NEUMANN && phi_buffer.val00*phi_buffer.val10 <= 0. )
         {
-          qnnn = &(*node_neighbors_)[n_mmm];
-
           fxxa = phi_xx_p[n_mmm];
-          fxxb = qnnn->f_p00_linear(phi_xx_p);
+          fxxb = phi_xx_p[n_pmm];
           dx_0m0 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val00,phi_buffer.val10,fxxa,fxxb,dx_min);
 
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*dx_0m0/dy_C, ADD_VALUES); CHKERRXX(ierr);
@@ -827,10 +814,8 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         {
         case DIRICHLET:
           matrix_has_nullspace = false;
-          qnnn = &(*node_neighbors_)[n_mpm];
-
           fxxa = phi_xx_p[n_mpm];
-          fxxb = qnnn->f_p00_linear(phi_xx_p);
+          fxxb = phi_xx_p[n_ppm];
 
           theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val01,phi_buffer.val11,fxxa,fxxb,dx_min);
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * theta*dx_C/dy_C, ADD_VALUES); CHKERRXX(ierr);
@@ -862,10 +847,8 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         // Crossing the interface neumann
         else if( bc_->interfaceType()==NEUMANN && phi_buffer.val01*phi_buffer.val11 <= 0. )
         {
-          qnnn = &(*node_neighbors_)[n_mpm];
-
           fxxa = phi_xx_p[n_mpm];
-          fxxb = qnnn->f_p00_linear(phi_xx_p);
+          fxxb = phi_xx_p[n_ppm];
           dx_0p0 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val01,phi_buffer.val11,fxxa,fxxb,dx_min);
 
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*dx_0p0/dy_C, ADD_VALUES); CHKERRXX(ierr);
@@ -971,8 +954,7 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
   Cube2 cube;
 #endif
 
-  const p4est_locidx_t *q2n    = nodes_->local_nodes;
-  const quad_neighbor_nodes_of_node_t* qnnn;
+  const p4est_locidx_t *q2n = nodes_->local_nodes;
 
   // Main loop over all local quadrant
   for(p4est_topidx_t tr_id = p4est_->first_local_tree; tr_id <= p4est_->last_local_tree; ++tr_id){
@@ -1152,9 +1134,8 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
       /* m00 */
       if (is_quad_xmWall(p4est_, tr_id, quad)){
         double val_wall = bc_->wallValue(x_C - 0.5*dx_C,y_C);
-        qnnn = &(*node_neighbors_)[n_mmm];
         fxxa = phi_yy_p[n_mmm];
-        fxxb = qnnn->f_0p0_linear(phi_yy_p);
+        fxxb = phi_yy_p[n_mpm];
         double theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[n_mmm], phi_p[n_mpm], fxxa, fxxb, dy_min);
         switch(bc_->wallType(x_C - 0.5*dx_C,y_C))
         {
@@ -1172,9 +1153,8 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
       /* p00 */
       if (is_quad_xpWall(p4est_, tr_id, quad)){
         double val_wall = bc_->wallValue(x_C + 0.5*dx_C,y_C);
-        qnnn = &(*node_neighbors_)[n_pmm];
         fxxa = phi_yy_p[n_pmm];
-        fxxb = qnnn->f_0p0_linear(phi_yy_p);
+        fxxb = phi_yy_p[n_ppm];
         double theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[n_pmm], phi_p[n_ppm], fxxa, fxxb, dy_min);
         switch(bc_->wallType(x_C + 0.5*dx_C,y_C))
         {
@@ -1192,9 +1172,8 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
       /* 0m0 */
       if (is_quad_ymWall(p4est_, tr_id, quad)) {
         double val_wall = bc_->wallValue(x_C, y_C - 0.5*dy_C);
-        qnnn = &(*node_neighbors_)[n_mmm];
         fxxa = phi_xx_p[n_mmm];
-        fxxb = qnnn->f_p00_linear(phi_xx_p);
+        fxxb = phi_xx_p[n_pmm];
         double theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[n_mmm], phi_p[n_pmm],fxxa,fxxb,dx_min);
         switch(bc_->wallType(x_C, y_C - 0.5*dy_C))
         {
@@ -1212,9 +1191,8 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
       /* 0p0 */
       if (is_quad_ypWall(p4est_, tr_id, quad)) {
         double val_wall = bc_->wallValue(x_C, y_C + 0.5*dy_C);
-        qnnn = &(*node_neighbors_)[n_mpm];
         fxxa = phi_xx_p[n_mpm];
-        fxxb = qnnn->f_p00_linear(phi_xx_p);
+        fxxb = phi_xx_p[n_ppm];
         double theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[n_mpm], phi_p[n_ppm],fxxa,fxxb,dx_min);
         switch(bc_->wallType(x_C, y_C + 0.5*dy_C))
         {
