@@ -766,7 +766,7 @@ bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
     return false;
 }
 
-bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
+bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_qcoord_t qh = P4EST_QUADRANT_LEN(qi->level);

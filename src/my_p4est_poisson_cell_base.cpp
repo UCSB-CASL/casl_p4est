@@ -448,20 +448,20 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
       cube.y1 = y_C + 0.5*dy_C;
 
 #ifdef P4_TO_P8
-      OctValue  phi_buffer(phi_p[n_mmm], phi_p[n_mmp],
-                           phi_p[n_mpm], phi_p[n_mpp],
-                           phi_p[n_pmm], phi_p[n_pmp],
-                           phi_p[n_ppm], phi_p[n_ppp]);
+      OctValue  p(phi_p[n_mmm], phi_p[n_mmp],
+                  phi_p[n_mpm], phi_p[n_mpp],
+                  phi_p[n_pmm], phi_p[n_pmp],
+                  phi_p[n_ppm], phi_p[n_ppp]);
 
       cube.z0 = z_C - 0.5*dz_C;
       cube.z1 = z_C + 0.5*dz_C;
-      double volume_cut_cell = cube.volume_In_Negative_Domain(phi_buffer);
+      double volume_cut_cell = cube.volume_In_Negative_Domain(p);
 #else
-      QuadValue phi_buffer(phi_p[n_mmm],
-                           phi_p[n_mpm],
-                           phi_p[n_pmm],
-                           phi_p[n_ppm]);
-      double volume_cut_cell = cube.area_In_Negative_Domain(phi_buffer);
+      QuadValue p(phi_p[n_mmm],
+                  phi_p[n_mpm],
+                  phi_p[n_pmm],
+                  phi_p[n_ppm]);
+      double volume_cut_cell = cube.area_In_Negative_Domain(p);
 #endif
 
 
@@ -481,10 +481,20 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
        * 3) There are multiple cells to the left: This is the easy case
        */
 
-      /* 1 - m00 */
+      double s_m00, s_p00, s_0m0, s_0p0;
+#ifdef P4_TO_P8
+      double s_00m, s_00p;
+#endif
+
+#ifdef P4_TO_P8
+      Cube2 c2;
+      QuadValue qval;
+#else
       double fxxa, fxxb;
       double theta;
+#endif
 
+      /* 1 - m00 */
 #ifdef CASL_THROWS
       if (cells[dir::f_m00] == cells[dir::f_m00 + 1] && !is_quad_xmWall(p4est_, tr_id, quad))
         throw std::logic_error("[CASL_ERROR]: no ngbd cells were found for a non-boundary cell");
@@ -500,11 +510,20 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         {
         case DIRICHLET:
           matrix_has_nullspace = false;
+#ifdef P4_TO_P8
+          c2.x0 = cube.y0; c2.x1 = cube.y1;
+          c2.y0 = cube.z0; c2.y1 = cube.z1;
+          qval.val00 = p.val000; qval.val01 = p.val001;
+          qval.val10 = p.val010; qval.val11 = p.val011;
+          s_m00 = c2.area_In_Negative_Domain(qval);
+#else
           fxxa = phi_yy_p[n_mmm];
           fxxb = phi_yy_p[n_mpm];
-          theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val00,phi_buffer.val01,fxxa,fxxb,dy_min);
+          theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(p.val00, p.val01, fxxa, fxxb, dy_min);
+          s_m00 = theta*dy_C;
+#endif
 
-          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * theta*dy_C/dx_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * s_m00/dx_C, ADD_VALUES); CHKERRXX(ierr);
           break;
 
         case NEUMANN:
@@ -518,8 +537,12 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         const quad_info_t* it_m00 = cells[dir::f_m00];
 
         double p_m00  = phi_cell(it_m00->locidx, phi_p);
-        double dy_m00 = (double)P4EST_QUADRANT_LEN(it_m00->level)/(double)P4EST_ROOT_LEN;
-
+#ifdef P4_TO_P8
+        s_m00 = (double)P4EST_QUADRANT_LEN(it_m00->level)/(double)P4EST_ROOT_LEN *
+                (double)P4EST_QUADRANT_LEN(it_m00->level)/(double)P4EST_ROOT_LEN;
+#else
+        s_m00 = (double)P4EST_QUADRANT_LEN(it_m00->level)/(double)P4EST_ROOT_LEN;
+#endif
         // Crossing the interface dirichlet
         if( bc_->interfaceType()==DIRICHLET && ABS(p_C)<=diag_min && p_C<=0. && p_m00*p_C < 0. )
         {
@@ -528,42 +551,76 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
           if (theta_m00<d_eps) theta_m00 = d_eps;
           if (theta_m00>1.0)   theta_m00 = 1.0;
 
+#ifdef P4_TO_P8
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*1.0/theta_m00 * dy_C*dz_C/dx_C, ADD_VALUES); CHKERRXX(ierr);
+#else
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*1.0/theta_m00 * dy_C/dx_C, ADD_VALUES); CHKERRXX(ierr);
+#endif
         }
         // Crossing the interface neumann
-        else if( bc_->interfaceType()==NEUMANN && phi_buffer.val00*phi_buffer.val01 <= 0. )
+#ifdef P4_TO_P8
+        else if( bc_->interfaceType()==NEUMANN && (p.val000*p.val001 <= 0. || p.val001*p.val011 <= 0. ||
+                                                  p.val011*p.val010 <= 0. || p.val010*p.val000 <= 0.) )
+#else
+        else if( bc_->interfaceType()==NEUMANN && p.val00*p.val01 <= 0. )
+#endif
         {
+#ifdef P4_TO_P8
+          Cube2 c2;
+          c2.x0 = cube.y0; c2.x1 = cube.y1;
+          c2.y0 = cube.z0; c2.y1 = cube.z1;
+          QuadValue qval(p.val000,p.val001,p.val010,p.val011);
+          s_m00 = c2.area_In_Negative_Domain(qval);
+#else
           fxxa = phi_yy_p[n_mmm];
           fxxb = phi_yy_p[n_mpm];
-          dy_m00 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val00,phi_buffer.val01,fxxa,fxxb,dy_min);
+          s_m00 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(p.val00,p.val01,fxxa,fxxb,dy_min);
+#endif
 
-          ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*dy_m00/dx_C, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, qu_gloidx, it_m00->gloidx, -mu_*dy_m00/dx_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*s_m00/dx_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, it_m00->gloidx, -mu_*s_m00/dx_C, ADD_VALUES); CHKERRXX(ierr);
         }
-        else if(phi_buffer.val00<0 || phi_buffer.val01<0)
+#ifdef P4_TO_P8
+        else if(p.val000 < 0. || p.val001 < 0. || p.val010 < 0. || p.val011 < 0.)
+#else
+        else if(p.val00  < 0  || p.val01  < 0 )
+#endif
         {
           // get the ngbd cells on the right side of the left cell
           const quad_info_t* begin = cell_neighbors_->begin(it_m00->locidx, dir::f_p00);
           const quad_info_t* end   = cell_neighbors_->end(it_m00->locidx, dir::f_p00);
           const quad_info_t* it    = begin;
 
-          std::vector<double> dy_ng (end - begin);
+          std::vector<double> s_ng (end - begin);
           for (int i = 0; i<end - begin; ++i, ++it)
-            dy_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+            s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                      (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+#else
+            s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#endif
 
           // First let's compute the average dx
           double dx = 0.0;
           it = begin;
           for (int i = 0; i<end - begin; ++i, ++it)
-            dx += dy_ng[i]/dy_m00 * 0.5 *  (double)(P4EST_QUADRANT_LEN(it_m00->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+            dx += s_ng[i]/s_m00 * 0.5 *  (double)(P4EST_QUADRANT_LEN(it_m00->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
 
           // Now add the contribution from all the cells on the right side of left cell
           it = begin;
           for (int i = 0; i<end - begin; ++i, ++it)
-            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dy_C * dy_ng[i]/dy_m00/dx, ADD_VALUES); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dy_C*dz_C * s_ng[i]/s_m00/dx, ADD_VALUES); CHKERRXX(ierr);
+#else
+            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dy_C * s_ng[i]/s_m00/dx, ADD_VALUES); CHKERRXX(ierr);
+#endif
 
           // Add the contribution from the left cell itself
+#ifdef P4_TO_P8
+          ierr = MatSetValue(A, qu_gloidx, it_m00->gloidx, -mu_*dy_C*dz_C/dx, ADD_VALUES); CHKERRXX(ierr);
+#else
           ierr = MatSetValue(A, qu_gloidx, it_m00->gloidx, -mu_*dy_C/dx, ADD_VALUES); CHKERRXX(ierr);
+#endif
         }
       }
       else { // Case 3
@@ -571,23 +628,36 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         const quad_info_t *end   = cells[dir::f_m00 + 1];
         const quad_info_t *it    = begin;
 
-        std::vector<double> dy_ng (end - begin);
+        std::vector<double> s_ng (end - begin);
         for (int i = 0; i<end - begin; ++i, ++it)
-          dy_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+          s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                    (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+#else
+          s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#endif
 
         // First let's compute the average dx
         double dx = 0.0;
         it = begin;
         for (int i = 0; i<end - begin; ++i, ++it)
-          dx += dy_ng[i]/dy_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+          dx += s_ng[i]/dy_C/dz_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#else
+          dx += s_ng[i]/dy_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#endif
 
         // Add contribution from all the cells to the left
         it = begin;
         for (int i = 0; i<end - begin; ++i, ++it)
-          ierr = MatSetValue(A, qu_gloidx, it->gloidx, -mu_*dy_ng[i]/dx, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, it->gloidx, -mu_*s_ng[i]/dx, ADD_VALUES); CHKERRXX(ierr);
 
         // Add contribution from the big cell (which is simply l itself)
+#ifdef P4_TO_P8
+        ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*dy_C*dz_C/dx, ADD_VALUES); CHKERRXX(ierr);
+#else
         ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*dy_C/dx, ADD_VALUES); CHKERRXX(ierr);
+#endif
       }
 
       /* 2 - p00 */
@@ -606,11 +676,20 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         {
         case DIRICHLET:
           matrix_has_nullspace = false;
+#ifdef P4_TO_P8
+          c2.x0 = cube.y0; c2.x1 = cube.y1;
+          c2.y0 = cube.z0; c2.y1 = cube.z1;
+          qval.val00 = p.val100; qval.val01 = p.val101;
+          qval.val10 = p.val110; qval.val11 = p.val111;
+          s_p00 = c2.area_In_Negative_Domain(qval);
+#else
           fxxa = phi_yy_p[n_pmm];
           fxxb = phi_yy_p[n_ppm];
-          theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val10,phi_buffer.val11,fxxa,fxxb,dy_min);
+          theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(p.val10,p.val11,fxxa,fxxb,dy_min);
+          s_p00 = theta*dy_C;
+#endif
 
-          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * theta*dy_C/dx_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * s_p00/dx_C, ADD_VALUES); CHKERRXX(ierr);
           break;
 
         case NEUMANN:
@@ -624,7 +703,12 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         const quad_info_t* it_p00 = cells[dir::f_p00];
 
         double p_p00  = phi_cell(it_p00->locidx, phi_p);
-        double dy_p00 = (double)P4EST_QUADRANT_LEN(it_p00->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+        s_p00 = (double)P4EST_QUADRANT_LEN(it_p00->level)/(double)P4EST_ROOT_LEN *
+                (double)P4EST_QUADRANT_LEN(it_p00->level)/(double)P4EST_ROOT_LEN ;
+#else
+        s_p00 = (double)P4EST_QUADRANT_LEN(it_p00->level)/(double)P4EST_ROOT_LEN;
+#endif
 
         // Crossing the interface dirichlet
         if( bc_->interfaceType()==DIRICHLET && ABS(p_C)<=diag_min && p_C<=0. && p_p00*p_C < 0. )
@@ -634,42 +718,76 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
           if (theta_p00<d_eps) theta_p00 = d_eps;
           if (theta_p00>1.0)   theta_p00 = 1.0;
 
+#ifdef P4_TO_P8
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*1.0/theta_p00 * dy_C*dz_C/dx_C, ADD_VALUES); CHKERRXX(ierr);
+#else
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*1.0/theta_p00 * dy_C/dx_C, ADD_VALUES); CHKERRXX(ierr);
+#endif
         }
         // Crossing the interface neumann
-        else if( bc_->interfaceType()==NEUMANN && phi_buffer.val10*phi_buffer.val11 <= 0. )
+#ifdef P4_TO_P8
+        else if( bc_->interfaceType()==NEUMANN && (p.val100*p.val101 <= 0. || p.val101*p.val111 <= 0. ||
+                                                  p.val111*p.val110 <= 0. || p.val110*p.val100 <= 0.) )
+#else
+        else if( bc_->interfaceType()==NEUMANN && p.val10*p.val11 <= 0. )
+#endif
         {
+#ifdef P4_TO_P8
+          Cube2 c2;
+          c2.x0 = cube.y0; c2.x1 = cube.y1;
+          c2.y0 = cube.z0; c2.y1 = cube.z1;
+          QuadValue qval(p.val100,p.val101,p.val110,p.val111);
+          s_p00 = c2.area_In_Negative_Domain(qval);
+#else
           fxxa = phi_yy_p[n_pmm];
           fxxb = phi_yy_p[n_ppm];
-          dy_p00 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val10,phi_buffer.val11,fxxa,fxxb,dy_min);
+          s_p00 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(p.val10,p.val11,fxxa,fxxb,dy_min);
+#endif
 
-          ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*dy_p00/dx_C, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, qu_gloidx, it_p00->gloidx, -mu_*dy_p00/dx_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*s_p00/dx_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, it_p00->gloidx, -mu_*s_p00/dx_C, ADD_VALUES); CHKERRXX(ierr);
         }
-        else if(phi_buffer.val10<0 || phi_buffer.val11<0)
+#ifdef P4_TO_P8
+        else if(p.val100 < 0. || p.val101 < 0. || p.val110 < 0. || p.val111 < 0.)
+#else
+        else if(p.val10  < 0  || p.val11  < 0)
+#endif
         {
           // get the ngbd cells on the right side of the left cell
           const quad_info_t* begin = cell_neighbors_->begin(it_p00->locidx, dir::f_m00);
           const quad_info_t* end   = cell_neighbors_->end(it_p00->locidx, dir::f_m00);
           const quad_info_t* it    = begin;
 
-          std::vector<double> dy_ng (end - begin);
+          std::vector<double> s_ng (end - begin);
           for (int i = 0; i<end - begin; ++i, ++it)
-            dy_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+            s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                      (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+#else
+            s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#endif
 
           // First let's compute the average dx
           double dx = 0.0;
           it = begin;
           for (int i = 0; i<end - begin; ++i, ++it)
-            dx += dy_ng[i]/dy_p00 * 0.5 *  (double)(P4EST_QUADRANT_LEN(it_p00->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+            dx += s_ng[i]/s_p00 * 0.5 *  (double)(P4EST_QUADRANT_LEN(it_p00->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
 
           // Now add the contribution from all the cells on the right side of left cell
           it = begin;
           for (int i = 0; i<end - begin; ++i, ++it)
-            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dy_C * dy_ng[i]/dy_p00/dx, ADD_VALUES); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dy_C*dz_C * s_ng[i]/s_p00/dx, ADD_VALUES); CHKERRXX(ierr);
+#else
+            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dy_C * s_ng[i]/s_p00/dx, ADD_VALUES); CHKERRXX(ierr);
+#endif
 
           // Add the contribution from the left cell itself
+#ifdef P4_TO_P8
+          ierr = MatSetValue(A, qu_gloidx, it_p00->gloidx, -mu_*dy_C*dz_C/dx, ADD_VALUES); CHKERRXX(ierr);
+#else
           ierr = MatSetValue(A, qu_gloidx, it_p00->gloidx, -mu_*dy_C/dx, ADD_VALUES); CHKERRXX(ierr);
+#endif
         }
       }
       else { // Case 3
@@ -677,23 +795,36 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         const quad_info_t *end   = cells[dir::f_p00 + 1];
         const quad_info_t *it    = begin;
 
-        std::vector<double> dy_ng (end - begin);
+        std::vector<double> s_ng (end - begin);
         for (int i = 0; i<end - begin; ++i, ++it)
-          dy_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+          s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                    (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+#else
+          s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#endif
 
         // First let's compute the average dx
         double dx = 0.0;
         it = begin;
         for (int i = 0; i<end - begin; ++i, ++it)
-          dx += dy_ng[i]/dy_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+          dx += s_ng[i]/dy_C/dz_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#else
+          dx += s_ng[i]/dy_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#endif
 
         // Add contribution from all the cells to the left
         it = begin;
         for (int i = 0; i<end - begin; ++i, ++it)
-          ierr = MatSetValue(A, qu_gloidx, it->gloidx, -mu_*dy_ng[i]/dx, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, it->gloidx, -mu_*s_ng[i]/dx, ADD_VALUES); CHKERRXX(ierr);
 
         // Add contribution from the big cell (which is simply l itself)
+#ifdef P4_TO_P8
+        ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*dy_C*dz_C/dx, ADD_VALUES); CHKERRXX(ierr);
+#else
         ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*dy_C/dx, ADD_VALUES); CHKERRXX(ierr);
+#endif
       }
 
       /* 3 - 0m0 */
@@ -711,11 +842,19 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         {
         case DIRICHLET:
           matrix_has_nullspace = false;
+#ifdef P4_TO_P8
+          c2.x0 = cube.x0; c2.x1 = cube.x1;
+          c2.y0 = cube.z0; c2.y1 = cube.z1;
+          qval.val00 = p.val000; qval.val01 = p.val001;
+          qval.val10 = p.val100; qval.val11 = p.val101;
+          s_0m0 = c2.area_In_Negative_Domain(qval);
+#else
           fxxa = phi_xx_p[n_mmm];
           fxxb = phi_xx_p[n_pmm];
-
-          theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val00,phi_buffer.val10,fxxa,fxxb,dx_min);
-          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * theta*dx_C/dy_C, ADD_VALUES); CHKERRXX(ierr);
+          theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(p.val00,p.val10,fxxa,fxxb,dx_min);
+          s_0m0 = dx_C * theta;
+#endif
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * s_0m0/dy_C, ADD_VALUES); CHKERRXX(ierr);
 
           break;
         case NEUMANN:
@@ -729,7 +868,12 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         const quad_info_t* it_0m0 = cells[dir::f_0m0];
 
         double p_0m0  = phi_cell(it_0m0->locidx, phi_p);
-        double dx_0m0 = (double)P4EST_QUADRANT_LEN(it_0m0->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+        s_0m0 = (double)P4EST_QUADRANT_LEN(it_0m0->level)/(double)P4EST_ROOT_LEN *
+                (double)P4EST_QUADRANT_LEN(it_0m0->level)/(double)P4EST_ROOT_LEN ;
+#else
+        s_0m0 = (double)P4EST_QUADRANT_LEN(it_0m0->level)/(double)P4EST_ROOT_LEN;
+#endif
 
         // Crossing the interface dirichlet
         if( bc_->interfaceType()==DIRICHLET && ABS(p_C)<=diag_min && p_C<=0. && p_0m0*p_C < 0. )
@@ -739,64 +883,111 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
           if (theta_0m0<d_eps) theta_0m0 = d_eps;
           if (theta_0m0>1.0)   theta_0m0 = 1.0;
 
+#ifdef P4_TO_P8
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*1.0/theta_0m0 * dx_C*dz_C/dy_C, ADD_VALUES); CHKERRXX(ierr);
+#else
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*1.0/theta_0m0 * dx_C/dy_C, ADD_VALUES); CHKERRXX(ierr);
+#endif
         }
         // Crossing the interface neumann
-        else if( bc_->interfaceType()==NEUMANN && phi_buffer.val00*phi_buffer.val10 <= 0. )
+#ifdef P4_TO_P8
+        else if( bc_->interfaceType()==NEUMANN && (p.val000*p.val001 <= 0. || p.val001*p.val101 <= 0. ||
+                                                  p.val101*p.val100 <= 0. || p.val100*p.val000 <= 0.) )
+#else
+        else if( bc_->interfaceType()==NEUMANN && p.val00*p.val10 <= 0. )
+#endif
         {
+#ifdef P4_TO_P8
+          Cube2 c2;
+          c2.x0 = cube.x0; c2.x1 = cube.x1;
+          c2.y0 = cube.z0; c2.y1 = cube.z1;
+          QuadValue qval(p.val000,p.val001,p.val100,p.val101);
+          s_0m0 = c2.area_In_Negative_Domain(qval);
+#else
           fxxa = phi_xx_p[n_mmm];
           fxxb = phi_xx_p[n_pmm];
-          dx_0m0 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val00,phi_buffer.val10,fxxa,fxxb,dx_min);
+          s_0m0 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(p.val00,p.val10,fxxa,fxxb,dx_min);
+#endif
 
-          ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*dx_0m0/dy_C, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, qu_gloidx, it_0m0->gloidx, -mu_*dx_0m0/dy_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*s_0m0/dy_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, it_0m0->gloidx, -mu_*s_0m0/dy_C, ADD_VALUES); CHKERRXX(ierr);
         }
-        else if(phi_buffer.val00<0 || phi_buffer.val10<0)
+#ifdef P4_TO_P8
+        else if(p.val000 < 0. || p.val001 < 0. || p.val100 < 0. || p.val101 < 0.)
+#else
+        else if(p.val00<0 || p.val10<0)
+#endif
         {
           // get the ngbd cells on the 0p0 side of the 0m0 cell
           const quad_info_t* begin = cell_neighbors_->begin(it_0m0->locidx, dir::f_0p0);
           const quad_info_t* end   = cell_neighbors_->end(it_0m0->locidx, dir::f_0p0);
           const quad_info_t* it    = begin;
 
-          std::vector<double> dx_ng (end - begin);
+          std::vector<double> s_ng (end - begin);
           for (int i = 0; i<end - begin; ++i, ++it)
-            dx_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+            s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                      (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+#else
+            s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#endif
 
           // First let's compute the average dy
           double dy = 0.0;
           it = begin;
           for (int i = 0; i<end - begin; ++i, ++it)
-            dy += dx_ng[i]/dx_0m0 * 0.5 * (double)(P4EST_QUADRANT_LEN(it_0m0->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+            dy += s_ng[i]/s_0m0 * 0.5 * (double)(P4EST_QUADRANT_LEN(it_0m0->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
 
           // Now add the contribution from all the cells on the top side of bottom cell
           it = begin;
           for (int i = 0; i<end - begin; ++i, ++it)
-            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dx_C * dx_ng[i]/dx_0m0/dy, ADD_VALUES); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dx_C*dz_C * s_ng[i]/s_0m0/dy, ADD_VALUES); CHKERRXX(ierr);
+#else
+            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dx_C * s_ng[i]/s_0m0/dy, ADD_VALUES); CHKERRXX(ierr);
+#endif
 
+#ifdef P4_TO_P8
+          ierr = MatSetValue(A, qu_gloidx, it_0m0->gloidx, -mu_*dx_C*dz_C/dy, ADD_VALUES); CHKERRXX(ierr);
+#else
           ierr = MatSetValue(A, qu_gloidx, it_0m0->gloidx, -mu_*dx_C/dy, ADD_VALUES); CHKERRXX(ierr);
+#endif
         }
       } else { // Case 3
         const quad_info_t *begin = cells[dir::f_0m0];
         const quad_info_t *end   = cells[dir::f_0m0 + 1];
         const quad_info_t *it    = begin;
 
-        std::vector<double> dx_ng (end - begin);
+        std::vector<double> s_ng (end - begin);
         for (int i = 0; i<end - begin; ++i, ++it)
-          dx_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+          s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                    (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+#else
+          s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#endif
 
         // First let's compute the average dx
         double dy = 0.0;
         it = begin;
         for (int i = 0; i<end - begin; ++i, ++it)
-          dy += dx_ng[i]/dx_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+          dy += s_ng[i]/dx_C/dz_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#else
+          dy += s_ng[i]/dx_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#endif
 
         // Add contribution from all the cells to the bottom
         it = begin;
         for (int i = 0; i<end - begin; ++i, ++it)
-          ierr = MatSetValue(A, qu_gloidx, it->gloidx, -mu_*dx_ng[i]/dy, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, it->gloidx, -mu_*s_ng[i]/dy, ADD_VALUES); CHKERRXX(ierr);
 
         // Add contribution from the big cell (which is simply l itself)
+#ifdef P4_TO_P8
+        ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*dx_C*dz_C/dy, ADD_VALUES); CHKERRXX(ierr);
+#else
         ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*dx_C/dy, ADD_VALUES); CHKERRXX(ierr);
+#endif
       }
 
       /* 4 - 0p0 */
@@ -814,11 +1005,19 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         {
         case DIRICHLET:
           matrix_has_nullspace = false;
+#ifdef P4_TO_P8
+          c2.x0 = cube.x0; c2.x1 = cube.x1;
+          c2.y0 = cube.z0; c2.y1 = cube.z1;
+          qval.val00 = p.val010; qval.val01 = p.val011;
+          qval.val10 = p.val110; qval.val11 = p.val111;
+          s_0p0 = c2.area_In_Negative_Domain(qval);
+#else
           fxxa = phi_xx_p[n_mpm];
           fxxb = phi_xx_p[n_ppm];
-
-          theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val01,phi_buffer.val11,fxxa,fxxb,dx_min);
-          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * theta*dx_C/dy_C, ADD_VALUES); CHKERRXX(ierr);
+          theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(p.val01,p.val11,fxxa,fxxb,dx_min);
+          s_0p0 = theta*dx_C;
+#endif
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * s_0p0/dy_C, ADD_VALUES); CHKERRXX(ierr);
 
           break;
         case NEUMANN:
@@ -832,7 +1031,12 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
         const quad_info_t* it_0p0 = cells[dir::f_0p0];
 
         double p_0p0  = phi_cell(it_0p0->locidx, phi_p);
-        double dx_0p0 = (double)P4EST_QUADRANT_LEN(it_0p0->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+        s_0p0 = (double)P4EST_QUADRANT_LEN(it_0p0->level)/(double)P4EST_ROOT_LEN *
+                (double)P4EST_QUADRANT_LEN(it_0p0->level)/(double)P4EST_ROOT_LEN ;
+#else
+        s_0p0 = (double)P4EST_QUADRANT_LEN(it_0p0->level)/(double)P4EST_ROOT_LEN;
+#endif
 
         // Crossing the interface dirichlet
         if( bc_->interfaceType()==DIRICHLET && ABS(p_C)<=diag_min && p_C<=0. && p_0p0*p_C < 0. )
@@ -842,65 +1046,323 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
           if (theta_0p0<d_eps) theta_0p0 = d_eps;
           if (theta_0p0>1.0)   theta_0p0 = 1.0;
 
+#ifdef P4_TO_P8
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*1.0/theta_0p0 * dx_C*dz_C/dy_C, ADD_VALUES); CHKERRXX(ierr);
+#else
           ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*1.0/theta_0p0 * dx_C/dy_C, ADD_VALUES); CHKERRXX(ierr);
+#endif
         }
         // Crossing the interface neumann
-        else if( bc_->interfaceType()==NEUMANN && phi_buffer.val01*phi_buffer.val11 <= 0. )
+#ifdef P4_TO_P8
+        else if( bc_->interfaceType()==NEUMANN && (p.val010*p.val011 <= 0. || p.val011*p.val111 <= 0. ||
+                                                  p.val111*p.val110 <= 0. || p.val110*p.val010 <= 0.) )
+#else
+        else if( bc_->interfaceType()==NEUMANN && p.val01*p.val11 <= 0. )
+#endif
         {
+#ifdef P4_TO_P8
+          Cube2 c2;
+          c2.x0 = cube.x0; c2.x1 = cube.x1;
+          c2.y0 = cube.z0; c2.y1 = cube.z1;
+          QuadValue qval(p.val010,p.val011,p.val110,p.val111);
+          s_0p0 = c2.area_In_Negative_Domain(qval);
+#else
           fxxa = phi_xx_p[n_mpm];
           fxxb = phi_xx_p[n_ppm];
-          dx_0p0 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_buffer.val01,phi_buffer.val11,fxxa,fxxb,dx_min);
+          s_0p0 *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(p.val01,p.val11,fxxa,fxxb,dx_min);
+#endif
 
-          ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*dx_0p0/dy_C, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, qu_gloidx, it_0p0->gloidx, -mu_*dx_0p0/dy_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*s_0p0/dy_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, it_0p0->gloidx, -mu_*s_0p0/dy_C, ADD_VALUES); CHKERRXX(ierr);
         }
-        else if(phi_buffer.val01<0 || phi_buffer.val11<0)
+#ifdef P4_TO_P8
+        else if(p.val010 < 0. || p.val011 < 0. || p.val110 < 0. || p.val111 < 0.)
+#else
+        else if(p.val01<0 || p.val11<0)
+#endif
         {
           // get the ngbd cells on the 0m0 side of the 0p0 cell
           const quad_info_t* begin = cell_neighbors_->begin(it_0p0->locidx, dir::f_0m0);
           const quad_info_t* end   = cell_neighbors_->end(it_0p0->locidx, dir::f_0m0);
           const quad_info_t* it    = begin;
 
-          std::vector<double> dx_ng (end - begin);
+          std::vector<double> s_ng (end - begin);
           for (int i = 0; i<end - begin; ++i, ++it)
-            dx_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+            s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                      (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+#else
+            s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#endif
 
           // First let's compute the average dy
           double dy = 0.0;
           it = begin;
           for (int i = 0; i<end - begin; ++i, ++it)
-            dy += dx_ng[i]/dx_0p0 * 0.5 * (double)(P4EST_QUADRANT_LEN(it_0p0->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+            dy += s_ng[i]/s_0p0 * 0.5 * (double)(P4EST_QUADRANT_LEN(it_0p0->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
 
           // Now add the contribution from all the cells on the top side of bottom cell
           it = begin;
           for (int i = 0; i<end - begin; ++i, ++it)
-            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dx_C * dx_ng[i]/dx_0p0/dy, ADD_VALUES); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dx_C*dz_C * s_ng[i]/s_0p0/dy, ADD_VALUES); CHKERRXX(ierr);
+#else
+            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dx_C * s_ng[i]/s_0p0/dy, ADD_VALUES); CHKERRXX(ierr);
+#endif
 
+#ifdef P4_TO_P8
+          ierr = MatSetValue(A, qu_gloidx, it_0p0->gloidx, -mu_*dx_C*dz_C/dy, ADD_VALUES); CHKERRXX(ierr);
+#else
           ierr = MatSetValue(A, qu_gloidx, it_0p0->gloidx, -mu_*dx_C/dy, ADD_VALUES); CHKERRXX(ierr);
+#endif
         }
       } else { // Case 3
         const quad_info_t *begin = cells[dir::f_0p0];
         const quad_info_t *end   = cells[dir::f_0p0 + 1];
         const quad_info_t *it    = begin;
 
-        std::vector<double> dx_ng (end - begin);
+        std::vector<double> s_ng (end - begin);
         for (int i = 0; i<end - begin; ++i, ++it)
-          dx_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+          s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                    (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+#else
+          s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+#endif
 
         // First let's compute the average dx
         double dy = 0.0;
         it = begin;
         for (int i = 0; i<end - begin; ++i, ++it)
-          dy += dx_ng[i]/dx_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+          dy += s_ng[i]/dx_C/dz_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#else
+          dy += s_ng[i]/dx_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+#endif
 
         // Add contribution from all the cells to the bottom
         it = begin;
         for (int i = 0; i<end - begin; ++i, ++it)
-          ierr = MatSetValue(A, qu_gloidx, it->gloidx, -mu_*dx_ng[i]/dy, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, it->gloidx, -mu_*s_ng[i]/dy, ADD_VALUES); CHKERRXX(ierr);
 
         // Add contribution from the big cell (which is simply l itself)
+#ifdef P4_TO_P8
+        ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*dx_C*dz_C/dy, ADD_VALUES); CHKERRXX(ierr);
+#else
         ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*dx_C/dy, ADD_VALUES); CHKERRXX(ierr);
+#endif
       }
+#ifdef P4_TO_P8
+      // 00m cells
+#ifdef CASL_THROWS
+      if (cells[dir::f_00m] == cells[dir::f_00m + 1] && !is_quad_zmWall(p4est_, tr_id, quad))
+        throw std::logic_error("[CASL_ERROR]: no ngbd cells were found for a non-boundary cell");
+#endif
+
+      if (cells[dir::f_00m] == cells[dir::f_00m + 1]){ // no cell found -- must be boundary cell
+        switch(bc_->wallType(x_C, y_C, z_C - 0.5*dz_C))
+        {
+        case DIRICHLET:
+          c2.x0 = cube.x0; c2.x1 = cube.x1;
+          c2.y0 = cube.y0; c2.y1 = cube.y1;
+          qval.val00 = p.val000; qval.val01 = p.val010;
+          qval.val10 = p.val100; qval.val11 = p.val110;
+          s_00m = c2.area_In_Negative_Domain(qval);
+
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * s_00m/dz_C, ADD_VALUES); CHKERRXX(ierr);
+          break;
+        case NEUMANN:
+          /* Nothing to be done here */
+          break;
+        default:
+          throw std::invalid_argument("[CASL_ERROR]: unknown boundary condition.");
+        }
+      }
+      else if (cells[dir::f_00m] + 1 == cells[dir::f_00m +1]){ // one cell in 00m -- cases 1,2
+        const quad_info_t* it_00m = cells[dir::f_00m];
+
+        double p_00m  = phi_cell(it_00m->locidx, phi_p);
+        s_00m = (double)P4EST_QUADRANT_LEN(it_00m->level)/(double)P4EST_ROOT_LEN *
+                (double)P4EST_QUADRANT_LEN(it_00m->level)/(double)P4EST_ROOT_LEN ;
+
+        // Crossing the interface dirichlet
+        if( bc_->interfaceType()==DIRICHLET && ABS(p_C)<=diag_min && p_C<=0. && p_00m*p_C < 0. )
+        {
+          double theta_00m = interface_Location(0., dz_C, p_C, p_00m)/dz_C;
+          if (theta_00m < d_eps) theta_00m = d_eps;
+          if (theta_00m > 1.0)   theta_00m = 1.0;
+
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*1.0/theta_00m * dx_C*dy_C/dz_C, ADD_VALUES); CHKERRXX(ierr);
+        }
+        // Crossing the interface neumann
+        else if( bc_->interfaceType()==NEUMANN && (p.val000*p.val010 <= 0. || p.val010*p.val110 <= 0. ||
+                                                  p.val110*p.val100 <= 0. || p.val100*p.val000 <= 0.) )
+        {
+          Cube2 c2;
+          c2.x0 = cube.x0; c2.x1 = cube.x1;
+          c2.y0 = cube.y0; c2.y1 = cube.y1;
+          QuadValue qval(p.val000,p.val010,p.val100,p.val110);
+          s_00m = c2.area_In_Negative_Domain(qval);
+
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*s_00m/dz_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, it_00m->gloidx, -mu_*s_00m/dz_C, ADD_VALUES); CHKERRXX(ierr);
+        }
+        else if(p.val000 < 0. || p.val010 < 0. || p.val100 < 0. || p.val110 < 0.)
+        {
+          // get the ngbd cells on the top side of the bottom cell
+          const quad_info_t* begin = cell_neighbors_->begin(it_00m->locidx, dir::f_00p);
+          const quad_info_t* end   = cell_neighbors_->end(it_00m->locidx, dir::f_00p);
+          const quad_info_t* it    = begin;
+
+          std::vector<double> s_ng (end - begin);
+          for (int i = 0; i<end - begin; ++i, ++it)
+            s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                      (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+
+          // First let's compute the average dz
+          double dz = 0.0;
+          it = begin;
+          for (int i = 0; i<end - begin; ++i, ++it)
+            dz += s_ng[i]/s_00m * 0.5 * (double)(P4EST_QUADRANT_LEN(it_00m->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+
+          // Now add the contribution from all the cells on the top side of bottom cell
+          it = begin;
+          for (int i = 0; i<end - begin; ++i, ++it)
+            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dx_C*dy_C * s_ng[i]/s_00m/dz, ADD_VALUES); CHKERRXX(ierr);
+
+          // Add the contribution from the bottom cell itself
+          ierr = MatSetValue(A, qu_gloidx, it_00m->gloidx, -mu_*dx_C*dy_C/dz, ADD_VALUES); CHKERRXX(ierr);
+        }
+      } else { // Case 3
+        const quad_info_t *begin = cells[dir::f_00m];
+        const quad_info_t *end   = cells[dir::f_00m + 1];
+        const quad_info_t *it    = begin;
+
+        std::vector<double> s_ng (end - begin);
+        for (int i = 0; i<end - begin; ++i, ++it)
+          s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                    (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+
+        // First let's compute the average dx
+        double dz = 0.0;
+        it = begin;
+        for (int i = 0; i<end - begin; ++i, ++it)
+          dz += s_ng[i]/dx_C/dy_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+
+        // Add contribution from all the cells to the bottom
+        it = begin;
+        for (int i = 0; i<end - begin; ++i, ++it)
+          ierr = MatSetValue(A, qu_gloidx, it->gloidx, -mu_*s_ng[i]/dz, ADD_VALUES); CHKERRXX(ierr);
+
+        // Add contribution from the big cell (which is simply l itself)
+        ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*dx_C*dy_C/dz, ADD_VALUES); CHKERRXX(ierr);
+      }
+
+      // 00p cells
+#ifdef CASL_THROWS
+      if (cells[dir::f_00p] == cells[dir::f_00p + 1] && !is_quad_zpWall(p4est_, tr_id, quad))
+        throw std::logic_error("[CASL_ERROR]: no ngbd cells were found for a non-boundary cell");
+#endif
+
+      if (cells[dir::f_00p] == cells[dir::f_00p + 1]){ // no cell found -- must be boundary cell
+        switch(bc_->wallType(x_C, y_C, z_C + 0.5*dz_C))
+        {
+        case DIRICHLET:
+          c2.x0 = cube.x0; c2.x1 = cube.x1;
+          c2.y0 = cube.y0; c2.y1 = cube.y1;
+          qval.val00 = p.val001; qval.val01 = p.val011;
+          qval.val10 = p.val101; qval.val11 = p.val111;
+          s_00p = c2.area_In_Negative_Domain(qval);
+
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*2.0 * s_00p/dz_C, ADD_VALUES); CHKERRXX(ierr);
+          break;
+        case NEUMANN:
+          /* Nothing to be done here */
+          break;
+        default:
+          throw std::invalid_argument("[CASL_ERROR]: unknown boundary condition.");
+        }
+      }
+      else if (cells[dir::f_00p] + 1 == cells[dir::f_00p +1]){ // one cell in 00m -- cases 1,2
+        const quad_info_t* it_00p = cells[dir::f_00p];
+
+        double p_00p  = phi_cell(it_00p->locidx, phi_p);
+        s_00p = (double)P4EST_QUADRANT_LEN(it_00p->level)/(double)P4EST_ROOT_LEN *
+                (double)P4EST_QUADRANT_LEN(it_00p->level)/(double)P4EST_ROOT_LEN ;
+
+        // Crossing the interface dirichlet
+        if( bc_->interfaceType()==DIRICHLET && ABS(p_C)<=diag_min && p_C<=0. && p_00p*p_C < 0. )
+        {
+          double theta_00p = interface_Location(0., dz_C, p_C, p_00p)/dz_C;
+          if (theta_00p < d_eps) theta_00p = d_eps;
+          if (theta_00p > 1.0)   theta_00p = 1.0;
+
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*1.0/theta_00p * dx_C*dy_C/dz_C, ADD_VALUES); CHKERRXX(ierr);
+        }
+        // Crossing the interface neumann
+        else if( bc_->interfaceType()==NEUMANN && (p.val001*p.val011 <= 0. || p.val011*p.val111 <= 0. ||
+                                                  p.val111*p.val101 <= 0. || p.val101*p.val001 <= 0.) )
+        {
+          Cube2 c2;
+          c2.x0 = cube.x0; c2.x1 = cube.x1;
+          c2.y0 = cube.y0; c2.y1 = cube.y1;
+          QuadValue qval(p.val001,p.val011,p.val101,p.val111);
+          s_00p = c2.area_In_Negative_Domain(qval);
+
+          ierr = MatSetValue(A, qu_gloidx, qu_gloidx,       mu_*s_00p/dz_C, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, qu_gloidx, it_00p->gloidx, -mu_*s_00p/dz_C, ADD_VALUES); CHKERRXX(ierr);
+        }
+        else if(p.val001 < 0. || p.val011 < 0. || p.val101 < 0. || p.val111 < 0.)
+        {
+          // get the ngbd cells on the top side of the bottom cell
+          const quad_info_t* begin = cell_neighbors_->begin(it_00p->locidx, dir::f_00m);
+          const quad_info_t* end   = cell_neighbors_->end(it_00p->locidx, dir::f_00m);
+          const quad_info_t* it    = begin;
+
+          std::vector<double> s_ng (end - begin);
+          for (int i = 0; i<end - begin; ++i, ++it)
+            s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                      (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+
+          // First let's compute the average dz
+          double dz = 0.0;
+          it = begin;
+          for (int i = 0; i<end - begin; ++i, ++it)
+            dz += s_ng[i]/s_00p * 0.5 * (double)(P4EST_QUADRANT_LEN(it_00p->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+
+          // Now add the contribution from all the cells on the top side of bottom cell
+          it = begin;
+          for (int i = 0; i<end - begin; ++i, ++it)
+            ierr = MatSetValue(A, qu_gloidx, it->gloidx, mu_*dx_C*dy_C * s_ng[i]/s_00p/dz, ADD_VALUES); CHKERRXX(ierr);
+
+          // Add the contribution from the bottom cell itself
+          ierr = MatSetValue(A, qu_gloidx, it_00p->gloidx, -mu_*dx_C*dy_C/dz, ADD_VALUES); CHKERRXX(ierr);
+        }
+      } else { // Case 3
+        const quad_info_t *begin = cells[dir::f_00p];
+        const quad_info_t *end   = cells[dir::f_00p + 1];
+        const quad_info_t *it    = begin;
+
+        std::vector<double> s_ng (end - begin);
+        for (int i = 0; i<end - begin; ++i, ++it)
+          s_ng[i] = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN *
+                    (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN ;
+
+        // First let's compute the average dx
+        double dz = 0.0;
+        it = begin;
+        for (int i = 0; i<end - begin; ++i, ++it)
+          dz += s_ng[i]/dx_C/dy_C * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+
+        // Add contribution from all the cells to the bottom
+        it = begin;
+        for (int i = 0; i<end - begin; ++i, ++it)
+          ierr = MatSetValue(A, qu_gloidx, it->gloidx, -mu_*s_ng[i]/dz, ADD_VALUES); CHKERRXX(ierr);
+
+        // Add contribution from the big cell (which is simply l itself)
+        ierr = MatSetValue(A, qu_gloidx, qu_gloidx, mu_*dx_C*dy_C/dz, ADD_VALUES); CHKERRXX(ierr);
+      }
+#endif
     }
   }
 
@@ -1021,20 +1483,20 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
       cube.y1 = y_C + 0.5*dy_C;
 
 #ifdef P4_TO_P8
-      OctValue  phi_buffer(phi_p[n_mmm], phi_p[n_mmp],
-                           phi_p[n_mpm], phi_p[n_mpp],
-                           phi_p[n_pmm], phi_p[n_pmp],
-                           phi_p[n_ppm], phi_p[n_ppp]);
+      OctValue  p(phi_p[n_mmm], phi_p[n_mmp],
+                  phi_p[n_mpm], phi_p[n_mpp],
+                  phi_p[n_pmm], phi_p[n_pmp],
+                  phi_p[n_ppm], phi_p[n_ppp]);
 
       cube.z0 = z_C - 0.5*dz_C;
       cube.z1 = z_C + 0.5*dz_C;
-      double volume_cut_cell = cube.volume_In_Negative_Domain(phi_buffer);
+      double volume_cut_cell = cube.volume_In_Negative_Domain(p);
 #else
-      QuadValue phi_buffer(phi_p[n_mmm],
-                           phi_p[n_mpm],
-                           phi_p[n_pmm],
-                           phi_p[n_ppm]);
-      double volume_cut_cell = cube.area_In_Negative_Domain(phi_buffer);
+      QuadValue p(phi_p[n_mmm],
+                  phi_p[n_mpm],
+                  phi_p[n_pmm],
+                  phi_p[n_ppm]);
+      double volume_cut_cell = cube.area_In_Negative_Domain(p);
 #endif
       rhs_p[qu_locidx] *= volume_cut_cell;
 
@@ -1060,7 +1522,7 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
         interface_values.val11 = bc_->interfaceValue(x_C + 0.5*dx_C, y_C + 0.5*dy_C);
 #endif
 
-        double val_interface = cube.integrate_Over_Interface(interface_values,phi_buffer);
+        double val_interface = cube.integrate_Over_Interface(interface_values,p);
         rhs_p[qu_locidx] += mu_*val_interface;
       }
 
@@ -1076,8 +1538,13 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
           if (theta_m00 > 1.0  ) theta_m00 = 1.0;
 
           if (p_m00*p_C <= 0.) {
+#ifdef P4_TO_P8
+            double val_interface_m00 = bc_->interfaceValue(x_C - theta_m00 * dx_C, y_C, z_C);
+            rhs_p[qu_locidx] += mu_*dy_C*dz_C/dx_C * val_interface_m00/theta_m00;
+#else
             double val_interface_m00 = bc_->interfaceValue(x_C - theta_m00 * dx_C, y_C);
             rhs_p[qu_locidx] += mu_*dy_C/dx_C * val_interface_m00/theta_m00;
+#endif
           }
         }
 
@@ -1091,8 +1558,13 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
           if (theta_p00 > 1.0  ) theta_p00 = 1.0;
 
           if (p_p00*p_C <= 0.) {
+#ifdef P4_TO_P8
+            double val_interface_p00 = bc_->interfaceValue(x_C + theta_p00 * dx_C, y_C, z_C);
+            rhs_p[qu_locidx] += mu_*dy_C*dz_C/dx_C * val_interface_p00/theta_p00;
+#else
             double val_interface_p00 = bc_->interfaceValue(x_C + theta_p00 * dx_C, y_C);
             rhs_p[qu_locidx] += mu_*dy_C/dx_C * val_interface_p00/theta_p00;
+#endif
           }
         }
 
@@ -1106,8 +1578,13 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
           if (theta_0m0 > 1.0  ) theta_0m0 = 1.0;
 
           if (p_0m0*p_C <= 0.) {
+#ifdef P4_TO_P8
+            double val_interface_0m0 = bc_->interfaceValue(x_C, y_C - theta_0m0 * dy_C, z_C);
+            rhs_p[qu_locidx] += mu_*dx_C*dz_C/dy_C * val_interface_0m0/theta_0m0;
+#else
             double val_interface_0m0 = bc_->interfaceValue(x_C, y_C - theta_0m0 * dy_C);
             rhs_p[qu_locidx] += mu_*dx_C/dy_C * val_interface_0m0/theta_0m0;
+#endif
           }
         }
 
@@ -1121,29 +1598,88 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
           if (theta_0p0 > 1.0  ) theta_0p0 = 1.0;
 
           if (p_0p0*p_C <= 0.) {
+#ifdef P4_TO_P8
+            double val_interface_0p0 = bc_->interfaceValue(x_C, y_C + theta_0p0 * dy_C, z_C);
+            rhs_p[qu_locidx] += mu_*dx_C*dz_C/dy_C * val_interface_0p0/theta_0p0;
+#else
             double val_interface_0p0 = bc_->interfaceValue(x_C, y_C + theta_0p0 * dy_C);
             rhs_p[qu_locidx] += mu_*dx_C/dy_C * val_interface_0p0/theta_0p0;
+#endif
           }
         }
+#ifdef P4_TO_P8
+        if(!is_quad_zmWall(p4est_, tr_id, quad))
+        {
+          const quad_info_t * it_00m = cell_neighbors_->begin(qu_locidx, dir::f_00m);
+          double p_00m = phi_cell(it_00m->locidx, phi_p);
+
+          double theta_00m = interface_Location(0., dy_C, p_C, p_00m)/dy_C;
+          if (theta_00m < d_eps) theta_00m = d_eps;
+          if (theta_00m > 1.0  ) theta_00m = 1.0;
+
+          if (p_00m*p_C <= 0.) {
+            double val_interface_00m = bc_->interfaceValue(x_C, y_C, z_C - theta_00m * dz_C);
+            rhs_p[qu_locidx] += mu_*dx_C*dy_C/dz_C * val_interface_00m/theta_00m;
+          }
+        }
+
+        if(!is_quad_zpWall(p4est_, tr_id, quad))
+        {
+          const quad_info_t * it_00p = cell_neighbors_->begin(qu_locidx, dir::f_00p);
+          double p_00p = phi_cell(it_00p->locidx, phi_p);
+
+          double theta_00p = interface_Location(0., dy_C, p_C, p_00p)/dy_C;
+          if (theta_00p < d_eps) theta_00p = d_eps;
+          if (theta_00p > 1.0  ) theta_00p = 1.0;
+
+          if (p_00p*p_C <= 0.) {
+            double val_interface_00p = bc_->interfaceValue(x_C, y_C, z_C + theta_00p * dz_C);
+            rhs_p[qu_locidx] += mu_*dx_C*dy_C/dz_C * val_interface_00p/theta_00p;
+          }
+        }
+#endif
       }
 
+#ifdef P4_TO_P8
+      Cube2 c2;
+      QuadValue qval;
+#else
       double fxxa, fxxb;
+#endif
 
       /* accounting for the contributions from the wall */
 
       /* m00 */
       if (is_quad_xmWall(p4est_, tr_id, quad)){
-        double val_wall = bc_->wallValue(x_C - 0.5*dx_C,y_C);
+#ifdef P4_TO_P8
+        double val_wall = bc_->wallValue(x_C - 0.5*dx_C, y_C, z_C);
+#else
+        double val_wall = bc_->wallValue(x_C - 0.5*dx_C, y_C);
+#endif
+        double s_m00;
+#ifdef P4_TO_P8
+        c2.x0 = cube.y0; c2.x1 = cube.y1;
+        c2.y0 = cube.z0; c2.y1 = cube.z1;
+        qval.val00 = p.val000; qval.val01 = p.val001;
+        qval.val10 = p.val010; qval.val11 = p.val011;
+        s_m00 = c2.area_In_Negative_Domain(qval);
+#else
         fxxa = phi_yy_p[n_mmm];
         fxxb = phi_yy_p[n_mpm];
         double theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[n_mmm], phi_p[n_mpm], fxxa, fxxb, dy_min);
+        s_m00 = theta*dy_C;
+#endif
+#ifdef P4_TO_P8
+        switch(bc_->wallType(x_C - 0.5*dx_C,y_C, z_C))
+#else
         switch(bc_->wallType(x_C - 0.5*dx_C,y_C))
+#endif
         {
         case DIRICHLET:
-          rhs_p[qu_locidx] += mu_*2.0*val_wall/dx_C * dy_C * theta;
+          rhs_p[qu_locidx] += mu_*2.0*val_wall/dx_C * s_m00;
           break;
         case NEUMANN:
-          rhs_p[qu_locidx] += mu_*val_wall * dy_C * theta;
+          rhs_p[qu_locidx] += mu_*val_wall * s_m00;
           break;
         default:
           throw std::invalid_argument("[CASL_ERROR]: unknown boundary condition.");
@@ -1152,17 +1688,35 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
 
       /* p00 */
       if (is_quad_xpWall(p4est_, tr_id, quad)){
-        double val_wall = bc_->wallValue(x_C + 0.5*dx_C,y_C);
+#ifdef P4_TO_P8
+        double val_wall = bc_->wallValue(x_C + 0.5*dx_C, y_C, z_C);
+#else
+        double val_wall = bc_->wallValue(x_C + 0.5*dx_C, y_C);
+#endif
+        double s_p00;
+#ifdef P4_TO_P8
+        c2.x0 = cube.y0; c2.x1 = cube.y1;
+        c2.y0 = cube.z0; c2.y1 = cube.z1;
+        qval.val00 = p.val100; qval.val01 = p.val101;
+        qval.val10 = p.val110; qval.val11 = p.val111;
+        s_p00 = c2.area_In_Negative_Domain(qval);
+#else
         fxxa = phi_yy_p[n_pmm];
         fxxb = phi_yy_p[n_ppm];
         double theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[n_pmm], phi_p[n_ppm], fxxa, fxxb, dy_min);
+        s_p00 = theta*dy_C;
+#endif
+#ifdef P4_TO_P8
+        switch(bc_->wallType(x_C + 0.5*dx_C,y_C, z_C))
+#else
         switch(bc_->wallType(x_C + 0.5*dx_C,y_C))
+#endif
         {
         case DIRICHLET:
-          rhs_p[qu_locidx] += mu_*2.0*val_wall/dx_C * dy_C * theta;
+          rhs_p[qu_locidx] += mu_*2.0*val_wall/dx_C * s_p00;
           break;
         case NEUMANN:
-          rhs_p[qu_locidx] += mu_*val_wall * dy_C * theta;
+          rhs_p[qu_locidx] += mu_*val_wall * s_p00;
           break;
         default:
           throw std::invalid_argument("[CASL_ERROR]: unknown boundary condition.");
@@ -1171,17 +1725,35 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
 
       /* 0m0 */
       if (is_quad_ymWall(p4est_, tr_id, quad)) {
+#ifdef P4_TO_P8
+        double val_wall = bc_->wallValue(x_C, y_C - 0.5*dy_C, z_C);
+#else
         double val_wall = bc_->wallValue(x_C, y_C - 0.5*dy_C);
+#endif
+        double s_0m0;
+#ifdef P4_TO_P8
+        c2.x0 = cube.x0; c2.x1 = cube.x1;
+        c2.y0 = cube.z0; c2.y1 = cube.z1;
+        qval.val00 = p.val000; qval.val01 = p.val001;
+        qval.val10 = p.val100; qval.val11 = p.val101;
+        s_0m0 = c2.area_In_Negative_Domain(qval);
+#else
         fxxa = phi_xx_p[n_mmm];
         fxxb = phi_xx_p[n_pmm];
         double theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[n_mmm], phi_p[n_pmm],fxxa,fxxb,dx_min);
+        s_0m0 = theta*dx_C;
+#endif
+#ifdef P4_TO_P8
+        switch(bc_->wallType(x_C, y_C - 0.5*dy_C, z_C))
+#else
         switch(bc_->wallType(x_C, y_C - 0.5*dy_C))
+#endif
         {
         case DIRICHLET:
-          rhs_p[qu_locidx] += mu_*2.0*val_wall/dy_C * dx_C * theta;
+          rhs_p[qu_locidx] += mu_*2.0*val_wall/dy_C * s_0m0;
           break;
         case NEUMANN:
-          rhs_p[qu_locidx] += mu_*val_wall * dx_C * theta;
+          rhs_p[qu_locidx] += mu_*val_wall * s_0m0;
           break;
         default:
           throw std::invalid_argument("[CASL_ERROR]: unknown boundary condition.");
@@ -1190,22 +1762,85 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
 
       /* 0p0 */
       if (is_quad_ypWall(p4est_, tr_id, quad)) {
+#ifdef P4_TO_P8
+        double val_wall = bc_->wallValue(x_C, y_C + 0.5*dy_C, z_C);
+#else
         double val_wall = bc_->wallValue(x_C, y_C + 0.5*dy_C);
+#endif
+        double s_0p0;
+#ifdef P4_TO_P8
+        c2.x0 = cube.x0; c2.x1 = cube.x1;
+        c2.y0 = cube.z0; c2.y1 = cube.z1;
+        qval.val00 = p.val010; qval.val01 = p.val011;
+        qval.val10 = p.val110; qval.val11 = p.val111;
+        s_0p0 = c2.area_In_Negative_Domain(qval);
+#else
         fxxa = phi_xx_p[n_mpm];
         fxxb = phi_xx_p[n_ppm];
         double theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[n_mpm], phi_p[n_ppm],fxxa,fxxb,dx_min);
+        s_0p0 = theta * dx_C;
+#endif
+#ifdef P4_TO_P8
+        switch(bc_->wallType(x_C, y_C + 0.5*dy_C, z_C))
+#else
         switch(bc_->wallType(x_C, y_C + 0.5*dy_C))
+#endif
         {
         case DIRICHLET:
-          rhs_p[qu_locidx] += mu_*2.0*val_wall/dy_C * dx_C * theta;
+          rhs_p[qu_locidx] += mu_*2.0*val_wall/dy_C * s_0p0;
           break;
         case NEUMANN:
-          rhs_p[qu_locidx] += mu_*val_wall * dx_C * theta;
+          rhs_p[qu_locidx] += mu_*val_wall * s_0p0;
           break;
         default:
           throw std::invalid_argument("[CASL_ERROR]: unknown boundary condition.");
         }
       }
+#ifdef P4_TO_P8
+      /* 00m */
+      if (is_quad_zmWall(p4est_, tr_id, quad)) {
+        double val_wall = bc_->wallValue(x_C, y_C, z_C - 0.5*dz_C);
+        c2.x0 = cube.x0; c2.x1 = cube.x1;
+        c2.y0 = cube.y0; c2.y1 = cube.y1;
+        qval.val00 = p.val000; qval.val01 = p.val010;
+        qval.val10 = p.val100; qval.val11 = p.val110;
+        double s_00m = c2.area_In_Negative_Domain(qval);
+
+        switch(bc_->wallType(x_C, y_C, z_C - 0.5*dz_C))
+        {
+        case DIRICHLET:
+          rhs_p[qu_locidx] += mu_*2.0*val_wall/dz_C * s_00m;
+          break;
+        case NEUMANN:
+          rhs_p[qu_locidx] += mu_*val_wall * s_00m;
+          break;
+        default:
+          throw std::invalid_argument("[CASL_ERROR]: unknown boundary condition.");
+        }
+      }
+
+      /* 00p */
+      if (is_quad_zpWall(p4est_, tr_id, quad)) {
+        double val_wall = bc_->wallValue(x_C, y_C, z_C + 0.5*dz_C);
+        c2.x0 = cube.x0; c2.x1 = cube.x1;
+        c2.y0 = cube.y0; c2.y1 = cube.y1;
+        qval.val00 = p.val001; qval.val01 = p.val011;
+        qval.val10 = p.val101; qval.val11 = p.val111;
+        double s_00p = c2.area_In_Negative_Domain(qval);
+
+        switch(bc_->wallType(x_C, y_C, z_C + 0.5*dz_C))
+        {
+        case DIRICHLET:
+          rhs_p[qu_locidx] += mu_*2.0*val_wall/dz_C * s_00p;
+          break;
+        case NEUMANN:
+          rhs_p[qu_locidx] += mu_*val_wall * s_00p;
+          break;
+        default:
+          throw std::invalid_argument("[CASL_ERROR]: unknown boundary condition.");
+        }
+      }
+#endif
     }
   }
 
