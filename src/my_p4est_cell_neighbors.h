@@ -31,6 +31,8 @@ class my_p4est_cell_neighbors_t {
     int8_t level;
     p4est_locidx_t locidx;
     p4est_gloidx_t gloidx;
+    const p4est_quadrant_t* quad;
+    p4est_topidx_t tree_idx;
   };
   std::vector<quad_info_t> neighbor_cells;
   std::vector<p4est_locidx_t> offsets;

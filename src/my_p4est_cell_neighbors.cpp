@@ -110,16 +110,17 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive(p4est_topi
 
     quad_info_t qinfo;
     qinfo.locidx = hierarchy->trees[tr][ind].quad;
+    qinfo.tree_idx = tr;
 
     if (qinfo.locidx < p4est->local_num_quadrants) {// local quadrant
       p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
-      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, qinfo.locidx - tree->quadrants_offset);
-      qinfo.level = quad->level;
+      qinfo.quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, qinfo.locidx - tree->quadrants_offset);
+      qinfo.level = qinfo.quad->level;
       qinfo.gloidx = p4est->global_first_quadrant[p4est->mpirank] + qinfo.locidx;
     } else {
-      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, qinfo.locidx - p4est->local_num_quadrants);
-      qinfo.gloidx = p4est->global_first_quadrant[hierarchy->trees[tr][ind].owner_rank] + quad->p.piggy3.local_num;
-      qinfo.level = quad->level;
+      qinfo.quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, qinfo.locidx - p4est->local_num_quadrants);
+      qinfo.gloidx = p4est->global_first_quadrant[hierarchy->trees[tr][ind].owner_rank] + qinfo.quad->p.piggy3.local_num;
+      qinfo.level = qinfo.quad->level;
     }
 
     neighbor_cells.push_back(qinfo);

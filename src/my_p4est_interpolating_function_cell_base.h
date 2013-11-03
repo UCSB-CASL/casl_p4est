@@ -1,5 +1,5 @@
-#ifndef MY_P4EST_INTERPOLATING_FUNCTION_NODE_BASE_H
-#define MY_P4EST_INTERPOLATING_FUNCTION_NODE_BASE_H
+#ifndef MY_P4EST_INTERPOLATING_FUNCTION_CELL_BASE_H
+#define MY_P4EST_INTERPOLATING_FUNCTION_CELL_BASE_H
 
 #include <vector>
 #include <map>
@@ -7,56 +7,50 @@
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
-#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_cell_neighbors.h>
 #else
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
-#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_cell_neighbors.h>
 #endif
 
 enum interpolation_method{
   linear,
-  quadratic,
-  quadratic_non_oscillatory
+  IDW,
+  LSQR
 };
 
 #ifdef P4_TO_P8
-class InterpolatingFunctionNodeBase: public CF_3
+class InterpolatingFunctionCellBase: public CF_3
 #else
-class InterpolatingFunctionNodeBase: public CF_2
+class InterpolatingFunctionCellBase: public CF_2
 #endif
 {
-  interpolation_method method_;
-
   p4est_t *p4est_;
-  p4est_nodes_t *nodes_;
   p4est_ghost_t *ghost_;
   my_p4est_brick_t *myb_;
-  const my_p4est_node_neighbors_t *qnnn_;
+  const my_p4est_cell_neighbors_t *cnnn_;
+  interpolation_method method_;
+  
+  typedef my_p4est_cell_neighbors_t::quad_info_t quad_info_t;
 
   double xyz_min[3], xyz_max[3];
 
   PetscErrorCode ierr;
-  Vec Fxx_, Fyy_;
-#ifdef P4_TO_P8
-  Vec Fzz_;
-#endif
-  bool local_derivatives;
-
   Vec input_vec_;
 
   struct point_buffer{
     std::vector<double> xyz;
     std::vector<p4est_quadrant_t> quad;
-    std::vector<p4est_locidx_t> node_locidx;
+    std::vector<p4est_locidx_t> output_idx;
 
-    size_t size() { return node_locidx.size(); }
+    size_t size() { return output_idx.size(); }
     void clear()
     {
       xyz.clear();
       quad.clear();
-      node_locidx.clear();
+      output_idx.clear();
     }
   };
 
@@ -81,22 +75,20 @@ class InterpolatingFunctionNodeBase: public CF_2
   // methods
   void send_point_buffers_begin();
   void recv_point_buffers_begin();
-  void compute_second_derivatives();
+  double cell_based_linear_interpolation(const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
+  double cell_based_IDW_interpolation   (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
+  double cell_based_LSQR_interpolation  (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
 
   // rule of three -- disable copy ctr and assignment if not useful
-  InterpolatingFunctionNodeBase(const InterpolatingFunctionNodeBase& other);
-  InterpolatingFunctionNodeBase& operator=(const InterpolatingFunctionNodeBase& other);
+  InterpolatingFunctionCellBase(const InterpolatingFunctionCellBase& other);
+  InterpolatingFunctionCellBase& operator=(const InterpolatingFunctionCellBase& other);
 
 public:
-  InterpolatingFunctionNodeBase(const my_p4est_node_neighbors_t *qnnn);
-  ~InterpolatingFunctionNodeBase();
+  InterpolatingFunctionCellBase(const my_p4est_cell_neighbors_t *cnnn);
+  ~InterpolatingFunctionCellBase();
 
   void add_point_to_buffer(p4est_locidx_t node_locidx, const double *xyz);
-#ifdef P4_TO_P8
-  void set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx = NULL, Vec Fyy = NULL, Vec Fzz = NULL);
-#else
-  void set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx = NULL, Vec Fyy = NULL);
-#endif
+  void set_input_parameters(Vec input_vec, interpolation_method method);
 
   // interpolation methods
   void interpolate(Vec output_vec);
@@ -106,6 +98,7 @@ public:
 #else
   double operator()(double x, double y) const;
 #endif
+
 };
 
-#endif // MY_P4EST_INTERPOLATING_FUNCTION_NODE_BASE_H
+#endif // MY_P4EST_INTERPOLATING_FUNCTION_CELL_BASE_H
