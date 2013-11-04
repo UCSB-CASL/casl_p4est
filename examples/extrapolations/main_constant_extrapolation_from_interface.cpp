@@ -11,11 +11,11 @@
 #include <p4est_vtk.h>
 
 // casl_p4est
-#include <src/utils.h>
+#include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
-#include <src/refine_coarsen.h>
+#include <src/my_p4est_refine_coarsen.h>
 #include <src/petsc_compatibility.h>
 
 #define MAX_LEVEL 10
@@ -24,7 +24,7 @@
 #undef MIN
 #undef MAX
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_reinitialize.h>
+#include <src/my_p4est_levelset.h>
 
 using namespace std;
 
@@ -44,8 +44,8 @@ public:
   double operator() (double x, double y) const
   {
 //    return x*x + y*y;
-    return x+y;
-//    return 1.;
+//    return x+y;
+    return 1.;
   }
 } bc_interface_dirichlet;
 
@@ -113,16 +113,16 @@ int main (int argc, char* argv[]){
     double x = int2double_coordinate_transform(node->x) + tree_xmin;
     double y = int2double_coordinate_transform(node->y) + tree_ymin;
 
-    phi_ptr[p4est2petsc_local_numbering(nodes, i)] = circ(x,y);
-    f_ptr[p4est2petsc_local_numbering(nodes, i)] = bc_interface_dirichlet(x,y);
+    phi_ptr[i] = circ(x,y);
+    f_ptr[i] = bc_interface_dirichlet(x,y);
   }
 
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(f  , &f_ptr); CHKERRXX(ierr);
 
-  my_p4est_hierarchy_t hierarchy(p4est, ghost);
+  my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
   my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
-  my_p4est_level_set ls(&brick, p4est, nodes, ghost, &ngbd);
+  my_p4est_level_set ls(&ngbd);
 
   int band = 10;
 
@@ -134,8 +134,8 @@ int main (int argc, char* argv[]){
   ierr = VecGetArray(f_ext, &f_ptr); CHKERRXX(ierr);
 
   /* check the error */
-  double dx = 2. / pow(2.,(double) data.max_lvl);
-  double dy = 2. / pow(2.,(double) data.max_lvl);
+  double dx = 1. / pow(2.,(double) data.max_lvl);
+  double dy = 1. / pow(2.,(double) data.max_lvl);
   double diag = sqrt(dx*dx + dy*dy);
 
   double err_max = 0;
@@ -167,7 +167,7 @@ int main (int argc, char* argv[]){
   double err[nodes->indep_nodes.elem_count];
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
-    p4est_locidx_t n_petsc = p4est2petsc_local_numbering(nodes,n);
+    p4est_locidx_t n_petsc = n;
     if(phi_ptr[n_petsc]>0 && phi_ptr[n_petsc]<diag*band)
     {
       p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);

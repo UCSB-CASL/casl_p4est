@@ -175,6 +175,7 @@ void PoissonSolverNodeBase::preallocate_matrix()
   for (p4est_locidx_t n=0; n<num_owned_local; n++)
   {
     const quad_neighbor_nodes_of_node_t& qnnn = (*node_neighbors_)[n];
+    const p4est_indep_t *ni = (const p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
 
     /*
      * Check for neighboring nodes:
@@ -392,7 +393,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
   ierr = VecGetArray(add_,    &add_p   ); CHKERRXX(ierr);
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
-  {
+  {    
     // tree information
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     p4est_topidx_t tree_it = ni->p.piggy3.which_tree;
@@ -511,8 +512,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 #endif
           PetscInt node_m00_g  = petsc_gloidx[n_m00];
 
-          ierr = MatSetValue(A, node_000_g, node_m00_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+
+          if (phi_p[n] < diag_min)
+            ierr = MatSetValue(A, node_000_g, node_m00_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
         }
@@ -526,8 +529,9 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 #endif
           PetscInt node_p00_g  = petsc_gloidx[n_p00];
 
-          ierr = MatSetValue(A, node_000_g, node_p00_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+          if (phi_p[n] < diag_min)
+            ierr = MatSetValue(A, node_000_g, node_p00_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
         }
@@ -541,8 +545,9 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 #endif
           PetscInt node_0m0_g  = petsc_gloidx[n_0m0];
 
-          ierr = MatSetValue(A, node_000_g, node_0m0_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+          if (phi_p[n] < diag_min)
+            ierr = MatSetValue(A, node_000_g, node_0m0_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
         }
@@ -555,8 +560,9 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 #endif
           PetscInt node_0p0_g  = petsc_gloidx[n_0p0];
 
-          ierr = MatSetValue(A, node_000_g, node_0p0_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+          if (phi_p[n] < diag_min)
+            ierr = MatSetValue(A, node_000_g, node_0p0_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
         }
@@ -566,8 +572,9 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
                                                : ( d_00m_m0 == 0 ? node_00m_mp : node_00m_pp );
           PetscInt node_00m_g  = petsc_gloidx[n_00m];
 
-          ierr = MatSetValue(A, node_000_g, node_00m_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+          if (phi_p[n] < diag_min)
+            ierr = MatSetValue(A, node_000_g, node_00m_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
         }
@@ -577,8 +584,9 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
                                                : ( d_00p_m0 == 0 ? node_00p_mp : node_00p_pp );
           PetscInt node_00p_g  = petsc_gloidx[n_00p];
 
-          ierr = MatSetValue(A, node_000_g, node_00p_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+          if (phi_p[n] < diag_min)
+            ierr = MatSetValue(A, node_000_g, node_00p_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
         }
