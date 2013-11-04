@@ -93,8 +93,8 @@ int main (int argc, char* argv[]){
 
   // Initialize the level-set function
   Vec phi, f;
-  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est, nodes, &f); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &f); CHKERRXX(ierr);
 
   double *phi_ptr, *f_ptr;
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);

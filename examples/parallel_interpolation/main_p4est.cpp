@@ -153,7 +153,7 @@ int main (int argc, char* argv[]){
 
     w2.start("computing phi");
     Vec phi;
-    ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
     Vec u;
     ierr = VecDuplicate(phi, &u); CHKERRXX(ierr);
 
@@ -181,12 +181,12 @@ int main (int argc, char* argv[]){
 
     Vec u_xx, u_yy;
     double *u_xx_p, *u_yy_p;
-    ierr = VecCreateGhost(p4est, nodes, &u_xx); CHKERRXX(ierr);
-    ierr = VecCreateGhost(p4est, nodes, &u_yy); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &u_xx); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &u_yy); CHKERRXX(ierr);
 #ifdef P4_TO_P8
     Vec u_zz;
     double *u_zz_p;
-    ierr = VecCreateGhost(p4est, nodes, &u_zz); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &u_zz); CHKERRXX(ierr);
 #endif
 
     double u_xx_min, u_xx_max;
@@ -270,7 +270,7 @@ int main (int argc, char* argv[]){
     w2.stop(); w2.read_duration();
 
     // Create an interpolating function
-    InterpolatingFunction phi_func(p4est, nodes, ghost, brick, &qnnn);
+    InterpolatingFunctionNodeBase phi_func(p4est, nodes, ghost, brick, &qnnn);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
@@ -301,7 +301,7 @@ int main (int argc, char* argv[]){
 
     // interpolate on to the new vector
     Vec phi_np1;
-    ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
     // interpolate
     switch (cmd.get("mode",0)){

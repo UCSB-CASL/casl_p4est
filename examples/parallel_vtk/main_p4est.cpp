@@ -112,13 +112,13 @@ int main (int argc, char* argv[]){
   /* Parallel vector:
    * To save the levelset function, we need a parallel vector. We do this by
    * using PETSc. Here, we just need PETSc's Vec object which is parallel vector
-   * To create it, just call 'VecCreateGhost' and pass in p4est, nodes, and the
+   * To create it, just call 'VecCreateGhostNodes' and pass in p4est, nodes, and the
    * vec object ar arguments. Here we call our vector 'phi_global' to emphasize
    * that it lives across multiple processors.
    */
   w2.start("creating Ghosted vector");
   Vec phi_global;
-  ierr = VecCreateGhost(p4est, nodes, &phi_global); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_global); CHKERRXX(ierr);
 
   w2.stop(); w2.read_duration();
 

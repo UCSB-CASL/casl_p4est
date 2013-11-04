@@ -264,7 +264,7 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
   return value;
 }
 
-PetscErrorCode VecCreateGhost(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
+PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
 {
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = nodes->num_owned_indeps;
@@ -284,13 +284,14 @@ PetscErrorCode VecCreateGhost(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v
     ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
   }
 
-  ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global, ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
+  ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
+                        ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
 
   return ierr;
 }
 
-PetscErrorCode VecCreateGhostBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v)
+PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v)
 {
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = nodes->num_owned_indeps;
@@ -310,7 +311,55 @@ PetscErrorCode VecCreateGhostBlock(const p4est_t *p4est, p4est_nodes_t *nodes, P
     ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
   }
 
-  ierr = VecCreateGhostBlock(p4est->mpicomm, block_size, num_local*block_size, num_global*block_size, ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
+  ierr = VecCreateGhostBlock(p4est->mpicomm,
+                             block_size, num_local*block_size, num_global*block_size,
+                             ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = p4est->local_num_quadrants;
+
+  std::vector<PetscInt> ghost_cells(ghost->ghosts.elem_count, 0);
+  PetscInt num_global = p4est->global_num_quadrants;
+
+  for (int r = 0; r<p4est->mpisize; ++r)
+    for (p4est_locidx_t q = ghost->proc_offsets[r]; q < ghost->proc_offsets[r+1]; ++q)
+    {
+      const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+      ghost_cells[q] = (PetscInt)quad->p.piggy3.local_num + (PetscInt)p4est->global_first_quadrant[r];
+    }
+
+  ierr = VecCreateGhost(p4est->mpicomm,
+                        num_local, num_global,
+                        ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = p4est->local_num_quadrants;
+
+  std::vector<PetscInt> ghost_cells(ghost->ghosts.elem_count, 0);
+  PetscInt num_global = p4est->global_num_quadrants;
+
+  for (int r = 0; r<p4est->mpisize; ++r)
+    for (p4est_locidx_t q = ghost->proc_offsets[r]; q < ghost->proc_offsets[r+1]; ++q)
+    {
+      const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+      ghost_cells[q] = (PetscInt)quad->p.piggy3.local_num + (PetscInt)p4est->global_first_quadrant[r];
+    }
+
+  ierr = VecCreateGhostBlock(p4est->mpicomm,
+                             block_size, num_local*block_size, num_global*block_size,
+                             ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
 
   return ierr;
@@ -654,67 +703,93 @@ bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni)
 #endif
 }
 
-#ifdef P4_TO_P8
-void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, Vec f)
-#else
-void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f)
-#endif
+bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
-  double *f_p;
-  PetscErrorCode ierr;
+  const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
 
-#ifdef CASL_THROWS
-  {
-    PetscInt size;
-    ierr = VecGetLocalSize(f, &size); CHKERRXX(ierr);
-    if (size != (PetscInt) nodes->num_owned_indeps){
-      std::ostringstream oss;
-      oss << "[ERROR]: size of the input vector must be equal to the total number of points."
-             "nodes->indep_nodes.elem_count = " << nodes->num_owned_indeps << ", " << nodes->indep_nodes.elem_count << ", "
-          << " VecSize = " << size << std::endl;
+  if (t2t[P4EST_FACES*tr_it + dir::f_m00] != tr_it)
+    return false;
+  else if (qi->x == 0)
+    return true;
+  else
+    return false;
+}
 
-      throw std::invalid_argument(oss.str());
-    }
-  }
+bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
+{
+  const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
+  p4est_qcoord_t qh = P4EST_QUADRANT_LEN(qi->level);
+
+  if (t2t[P4EST_FACES*tr_it + dir::f_p00] != tr_it)
+    return false;
+  else if (qi->x == P4EST_ROOT_LEN - qh)
+    return true;
+  else
+    return false;
+}
+
+bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
+{
+  const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
+
+  if (t2t[P4EST_FACES*tr_it + dir::f_0m0] != tr_it)
+    return false;
+  else if (qi->y == 0)
+    return true;
+  else
+    return false;
+}
+
+bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
+{
+  const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
+  p4est_qcoord_t qh = P4EST_QUADRANT_LEN(qi->level);
+
+  if (t2t[P4EST_FACES*tr_it + dir::f_0p0] != tr_it)
+    return false;
+  else if (qi->y == P4EST_ROOT_LEN - qh)
+    return true;
+  else
+    return false;
+}
+
+#ifdef P4_TO_P8
+bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
+{
+  const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
+
+  if (t2t[P4EST_FACES*tr_it + dir::f_00m] != tr_it)
+    return false;
+  else if (qi->z == 0)
+    return true;
+  else
+    return false;
+}
+
+bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
+{
+  const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
+  p4est_qcoord_t qh = P4EST_QUADRANT_LEN(qi->level);
+
+  if (t2t[P4EST_FACES*tr_it + dir::f_00p] != tr_it)
+    return false;
+  else if (qi->z == P4EST_ROOT_LEN - qh)
+    return true;
+  else
+    return false;
+}
 #endif
 
-  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
-
-  const p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  const double *v2q = p4est->connectivity->vertices;
-
-  for (size_t i = 0; i<nodes->num_owned_indeps; ++i)
-  {
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-    p4est_topidx_t v_mm = t2v[P4EST_CHILDREN*tree_id + 0];
-
-    double tree_xmin = v2q[3*v_mm + 0];
-    double tree_ymin = v2q[3*v_mm + 1];
+bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
+{
 #ifdef P4_TO_P8
-    double tree_zmin = v2q[3*v_mm + 2];
-#endif
-
-    double x = node->x != P4EST_ROOT_LEN - 1 ? (double)node->x/(double)P4EST_ROOT_LEN : 1.0;
-    double y = node->y != P4EST_ROOT_LEN - 1 ? (double)node->y/(double)P4EST_ROOT_LEN : 1.0;
-#ifdef P4_TO_P8
-    double z = node->z != P4EST_ROOT_LEN - 1 ? (double)node->z/(double)P4EST_ROOT_LEN : 1.0;
-#endif
-
-    x += tree_xmin;
-    y += tree_ymin;
-#ifdef P4_TO_P8
-    z += tree_zmin;
-#endif
-#ifdef P4_TO_P8
-    f_p[i] = cf(x,y,z);
+  return ( is_quad_xmWall(p4est, tr_it, qi) || is_quad_xpWall(p4est, tr_it, qi) ||
+           is_quad_ymWall(p4est, tr_it, qi) || is_quad_ypWall(p4est, tr_it, qi) ||
+           is_quad_zmWall(p4est, tr_it, qi) || is_quad_zpWall(p4est, tr_it, qi) );
 #else
-    f_p[i] = cf(x,y);
+  return ( is_quad_xmWall(p4est, tr_it, qi) || is_quad_xpWall(p4est, tr_it, qi) ||
+           is_quad_ymWall(p4est, tr_it, qi) || is_quad_ypWall(p4est, tr_it, qi) );
 #endif
-  }
-
-  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }
 
 #ifdef P4_TO_P8
@@ -779,6 +854,102 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
     f_p[i] = cf(x,y);
 #endif
   }
+
+  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+}
+
+#ifdef P4_TO_P8
+void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_3& cf, Vec f)
+#else
+void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& cf, Vec f)
+#endif
+{
+  double *f_p;
+  PetscErrorCode ierr;
+
+#ifdef CASL_THROWS
+  {
+    Vec local_form;
+    ierr = VecGhostGetLocalForm(f, &local_form); CHKERRXX(ierr);
+    PetscInt size;
+    ierr = VecGetSize(local_form, &size); CHKERRXX(ierr);
+    PetscInt num_local = (PetscInt)(p4est->local_num_quadrants + ghost->ghosts.elem_count);
+
+    if (size != num_local){
+      std::ostringstream oss;
+      oss << "[ERROR]: size of the input vector must be equal to the total number of points."
+             " p4est->local_num_quadrants + ghost->ghosts.elem_count = " << num_local
+          << " VecSize = " << size << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+    ierr = VecGhostRestoreLocalForm(f, &local_form); CHKERRXX(ierr);
+  }
+#endif
+
+  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
+
+  const p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+  const double *v2q = p4est->connectivity->vertices;
+
+  // sample on local quadrants
+  for (p4est_topidx_t tree_id = p4est->first_local_tree; tree_id <= p4est->last_local_tree; ++tree_id)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_id);
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q)
+    {
+      const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+
+      p4est_topidx_t v_mm = t2v[P4EST_CHILDREN*tree_id + 0];
+
+      double tree_xmin = v2q[3*v_mm + 0];
+      double tree_ymin = v2q[3*v_mm + 1];
+  #ifdef P4_TO_P8
+      double tree_zmin = v2q[3*v_mm + 2];
+  #endif
+      double half_qh   = 0.5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+
+      double x = (double)quad->x/(double)P4EST_ROOT_LEN + half_qh + tree_xmin;
+      double y = (double)quad->y/(double)P4EST_ROOT_LEN + half_qh + tree_ymin;
+#ifdef P4_TO_P8
+      double z = (double)quad->z/(double)P4EST_ROOT_LEN + half_qh + tree_zmin;
+#endif
+#ifdef P4_TO_P8
+    f_p[quad_idx] = cf(x,y,z);
+#else
+    f_p[quad_idx] = cf(x,y);
+#endif
+    }
+  }
+
+  // sample on ghost quadrants
+  for (size_t q = 0; q < ghost->ghosts.elem_count; ++q)
+    {
+      const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+      p4est_topidx_t tree_id  = quad->p.piggy3.which_tree;
+      p4est_locidx_t quad_idx = q + p4est->local_num_quadrants;
+
+      p4est_topidx_t v_mm = t2v[P4EST_CHILDREN*tree_id + 0];
+
+      double tree_xmin = v2q[3*v_mm + 0];
+      double tree_ymin = v2q[3*v_mm + 1];
+  #ifdef P4_TO_P8
+      double tree_zmin = v2q[3*v_mm + 2];
+  #endif
+      double half_qh   = 0.5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+
+      double x = (double)quad->x/(double)P4EST_ROOT_LEN + half_qh + tree_xmin;
+      double y = (double)quad->y/(double)P4EST_ROOT_LEN + half_qh + tree_ymin;
+#ifdef P4_TO_P8
+      double z = (double)quad->z/(double)P4EST_ROOT_LEN + half_qh + tree_zmin;
+#endif
+#ifdef P4_TO_P8
+    f_p[quad_idx] = cf(x,y,z);
+#else
+    f_p[quad_idx] = cf(x,y);
+#endif
+    }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }

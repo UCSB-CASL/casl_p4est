@@ -116,7 +116,7 @@ int main (int argc, char* argv[]){
 
   // Initialize the level-set function
   Vec phi, f;
-  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &f); CHKERRXX(ierr);
 
   Vec bc_vec;

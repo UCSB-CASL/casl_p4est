@@ -167,7 +167,7 @@ int main (int argc, char* argv[]){
 
   // Initialize the level-set function
   Vec phi;
-  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   sample_cf_on_nodes(p4est, nodes, sq, phi);
 
   double *phi_ptr;
@@ -223,7 +223,7 @@ int main (int argc, char* argv[]){
     p4est_np1->user_pointer = p4est->user_pointer;
 
     // define interpolating function on the old stuff
-    InterpolatingFunction phi_interp(p4est, nodes, ghost, &brick, &node_neighbors);
+    InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, &brick, &node_neighbors);
     phi_interp.set_input_parameters(phi, linear);
     data.phi = &phi_interp;
 
@@ -240,7 +240,7 @@ int main (int argc, char* argv[]){
 
     // transfer solution to the new grid
     Vec phi_np1;
-    ierr = VecCreateGhost(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
     for (size_t n=0; n<nodes_np1->indep_nodes.elem_count; n++)
     {

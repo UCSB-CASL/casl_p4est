@@ -43,9 +43,6 @@
 #define MIN_LEVEL 2
 #define MAX_LEVEL 5
 
-#define PLAN
-//#define SEED
-
 // logging variables
 PetscLogEvent log_compute_curvature;
 #ifndef CASL_LOG_EVENTS
@@ -56,17 +53,13 @@ PetscLogEvent log_compute_curvature;
 #define PetscLogFlops(n) 0
 #endif
 
-double D = 100;
-double tf = 100;
-double Tmax = 1.;
+double D = 1;
+double tf = 1;
+double Tmax = 1;
 double Tmin = 0.7;
-//double Tmin = -50;
-double epsilon_c = -2e-6;//-2e-6;
-double epsilon_anisotropy = .37546;
-double N_anisotropy = 4;
-double theta_0 = 0;//M_PI/4;
-int save_every_n_iteration = 10;
-int iter_max = 30000;
+double epsilon_c = .1;
+int save_every_n_iteration = 1;
+int iter_max = 300;
 
 using namespace std;
 
@@ -83,20 +76,11 @@ private:
   double  x0, y0, z0, r;
 };
 
-struct plan:CF_3{
-  double operator()(double x, double y, double z) const {
-    (void) x; (void) y;
-    return -z + .2;
-  }
-};
-
-#ifdef SEED
 struct BCWALLTYPE : WallBC3D{
   BoundaryConditionType operator()( double x, double y, double z ) const
   {
     (void) x; (void) y; (void) z;
-//    return DIRICHLET;
-    return NEUMANN;
+    return DIRICHLET;
   }
 } bc_wall_type;
 
@@ -104,76 +88,33 @@ struct BCWALLVALUE : CF_3 {
   double operator() (double x, double y, double z) const
   {
     (void) x; (void) y; (void) z;
-//    return Tmin;
-    return -.1;
+    return Tmin;
   }
 } bc_wall_value;
-#endif
-
-#ifdef PLAN
-struct BCWALLTYPE : WallBC3D{
-  BoundaryConditionType operator()( double x, double y, double z ) const
-  {
-    (void) x; (void) y; (void) z;
-    return NEUMANN;
-  }
-} bc_wall_type;
-
-struct BCWALLVALUE : CF_3 {
-  double operator() (double x, double y, double z) const
-  {
-    (void) x; (void) y; (void) z;
-//    return Tmin;
-    if(ABS(z-2)<EPS)
-      return -100;
-
-//    if(ABS(x-0)<EPS || ABS(x-2)<EPS || ABS(y-0)<EPS || ABS(y-2)<EPS)
-    return 0;
-  }
-} bc_wall_value;
-#endif
 
 struct BCInterfaceValue : CF_3 {
 private:
   my_p4est_brick_t *brick;
   my_p4est_node_neighbors_t *ngbd;
-  InterpolatingFunction interp;
-  InterpolatingFunction interp_phi_x;
-  InterpolatingFunction interp_phi_y;
-  InterpolatingFunction interp_phi_z;
+  InterpolatingFunctionNodeBase interp;
 public:
   BCInterfaceValue( my_p4est_brick_t *brick_, p4est_t *p4est_,
                     p4est_nodes_t *nodes_, p4est_ghost_t *ghost_,
-                    my_p4est_node_neighbors_t *ngbd_,
-                    Vec phi_x_, Vec phi_y_, Vec phi_z_, Vec kappa_)
-    : brick(brick_), ngbd(ngbd_),
-      interp(p4est_, nodes_, ghost_, brick_, ngbd_),
-      interp_phi_x(p4est_, nodes_, ghost_, brick_, ngbd_),
-      interp_phi_y(p4est_, nodes_, ghost_, brick_, ngbd_),
-      interp_phi_z(p4est_, nodes_, ghost_, brick_, ngbd_)
+                    my_p4est_node_neighbors_t *ngbd_, Vec kappa_)
+    : brick(brick_), ngbd(ngbd_), interp(p4est_, nodes_, ghost_, brick_, ngbd_)
   {
     interp.set_input_parameters(kappa_, quadratic);
-    interp_phi_x.set_input_parameters(phi_x_, quadratic);
-    interp_phi_y.set_input_parameters(phi_y_, quadratic);
-    interp_phi_z.set_input_parameters(phi_z_, quadratic);
   }
 
   double operator() (double x, double y, double z) const
   {
-//    return Tmax;
-    double theta_xy = atan2( interp_phi_y(x,y,z) , interp_phi_x(x,y,z) );
-    double theta_xz = atan2( interp_phi_z(x,y,z) , interp_phi_x(x,y,z) );
-    double theta_yz = atan2( interp_phi_z(x,y,z) , interp_phi_y(x,y,z) );
-    return Tmax - epsilon_c * interp(x,y,z) *
-//        (1. - epsilon_anisotropy * cos(N_anisotropy*(theta_xy + theta_0))) *
-//        (1. - epsilon_anisotropy * cos(N_anisotropy*(theta_xz + theta_0))) *
-        (1. - epsilon_anisotropy * cos(N_anisotropy*(theta_yz + theta_0)));
+    (void) x; (void) y; (void) z;
+    return Tmax;
+//    return Tmax - epsilon_c * interp(x,y);
     /* T = -eps_c kappa - eps_v V */
   }
 };
-
 #else
-
 struct circle:CF_2{
   circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
   void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
@@ -184,14 +125,6 @@ private:
   double  x0, y0, r;
 };
 
-struct plan:CF_2{
-  double operator()(double x, double y) const {
-    (void) x;
-    return -y + .2;
-  }
-};
-
-#ifdef SEED
 struct BCWALLTYPE : WallBC2D{
   BoundaryConditionType operator()( double x, double y ) const
   {
@@ -207,62 +140,26 @@ struct BCWALLVALUE : CF_2 {
     return Tmin;
   }
 } bc_wall_value;
-#endif
-
-#ifdef PLAN
-struct BCWALLTYPE : WallBC2D{
-  BoundaryConditionType operator()( double x, double y ) const
-  {
-    (void) x; (void) y;
-//    if(ABS(y-2)<EPS)
-//      return DIRICHLET;
-    return NEUMANN;
-  }
-} bc_wall_type;
-
-struct BCWALLVALUE : CF_2 {
-  double operator() (double x, double y) const
-  {
-    (void) x; (void) y;
-//    return Tmin;
-    if(ABS(y-2)<EPS)
-      return -100;
-//      return Tmin;
-
-//    if(ABS(x-0)<EPS || ABS(x<2)<EPS || ABS(y-0)<EPS)
-      return 0.;
-  }
-} bc_wall_value;
-#endif
 
 struct BCInterfaceValue : CF_2 {
 private:
   my_p4est_brick_t *brick;
   my_p4est_node_neighbors_t *ngbd;
   InterpolatingFunction interp;
-  InterpolatingFunction interp_phi_x;
-  InterpolatingFunction interp_phi_y;
 public:
   BCInterfaceValue( my_p4est_brick_t *brick_, p4est_t *p4est_,
                     p4est_nodes_t *nodes_, p4est_ghost_t *ghost_,
-                    my_p4est_node_neighbors_t *ngbd_,
-                    Vec phi_x_, Vec phi_y_, Vec kappa_)
-    : brick(brick_), ngbd(ngbd_),
-      interp(p4est_, nodes_, ghost_, brick_, ngbd_),
-      interp_phi_x(p4est_, nodes_, ghost_, brick_, ngbd_),
-      interp_phi_y(p4est_, nodes_, ghost_, brick_, ngbd_)
+                    my_p4est_node_neighbors_t *ngbd_, Vec kappa_)
+    : brick(brick_), ngbd(ngbd_), interp(p4est_, nodes_, ghost_, brick_, ngbd_)
   {
     interp.set_input_parameters(kappa_, quadratic);
-    interp_phi_x.set_input_parameters(phi_x_, quadratic);
-    interp_phi_y.set_input_parameters(phi_y_, quadratic);
   }
 
   double operator() (double x, double y) const
   {
     (void) x; (void) y;
-//    return Tmax;
-    double theta = atan2( interp_phi_y(x,y) , interp_phi_x(x,y) );
-    return Tmax - epsilon_c * (1. - epsilon_anisotropy * cos(N_anisotropy*(theta + theta_0))) * interp(x,y);
+    return Tmax;
+//    return Tmax - epsilon_c * interp(x,y);
     /* T = -eps_c kappa - eps_v V */
   }
 };
@@ -338,61 +235,55 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
   ierr = VecRestoreArray(vz, &vz_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(vz_ext, &vz_ext_ptr); CHKERRXX(ierr);
 #endif
-  if(p4est->mpirank==0)
-    cout << "Saved in ... " << oss.str() << endl;
 }
 
-#ifdef P4_TO_P8
-void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Vec phi, Vec phi_x, Vec phi_y, Vec phi_z, Vec kappa)
-#else
-void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Vec phi, Vec phi_x, Vec phi_y, Vec kappa)
-#endif
+#ifndef P4_TO_P8
+void compute_curvature(p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Vec phi, Vec kappa)
 {
-  PetscErrorCode ierr;
+  PetscErrorCode ierr;  
+  Vec dx;
+
+  ierr = VecDuplicate(phi, &dx); CHKERRXX(ierr);
   ierr = PetscLogEventBegin(log_compute_curvature, phi, kappa, dx, 0); CHKERRXX(ierr);
 
-  double *phi_ptr, *kappa_ptr, *dx_ptr, *dy_ptr;
+  double *phi_ptr, *kappa_ptr, *dx_ptr;
   ierr = VecGetArray(phi  , &phi_ptr  ); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_x, &dx_ptr   ); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_y, &dy_ptr   ); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  double *dz_ptr;
-  ierr = VecGetArray(phi_z, &dz_ptr   ); CHKERRXX(ierr);
-#endif
+  ierr = VecGetArray(dx   , &dx_ptr   ); CHKERRXX(ierr);
+
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    dx_ptr[n] = (*ngbd)[n].dx_central (phi_ptr);
+
+  ierr = VecRestoreArray(dx, &dx_ptr); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(dx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (dx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecGetArray(dx   , &dx_ptr   ); CHKERRXX(ierr);
   ierr = VecGetArray(kappa, &kappa_ptr); CHKERRXX(ierr);
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    kappa_ptr[n] = (*ngbd)[n].dx_central(dx_ptr) + (*ngbd)[n].dy_central(dy_ptr)
-    #ifdef P4_TO_P8
-        + (*ngbd)[n].dz_central(dz_ptr)
-    #endif
-    ;
-
-//    double dy  = dy_ptr[n];
-//    double dx  = dx_ptr[n];
-//    double dxx = (*ngbd)[n].dxx_central(phi_ptr);
-//    double dyy = (*ngbd)[n].dyy_central(phi_ptr);
-//    double dxy = 0;//.5 * ((*ngbd)[n].dx_central (dy_ptr) + (*ngbd)[n].dy_central (dx_ptr));
-
-//    if(sqrt(dx*dx + dy*dy) < 1e-1) kappa_ptr[n] = 0;
-//    else kappa_ptr[n] = ( dy*dy*dxx - 2*dx*dy*dxy + dx*dx*dyy) / pow(dx*dx + dy*dy, 1.5);
-    // 3D : (dyy+dzz)*dx*dx + (dxx+dzz)*dy*dy + (dxx+dyy)*dz*dz - 2*dx*dy*dxy - 2*dy*dz*dyz - 2*dx*dz*dxz / pow(dx*dx+dy*dy+dz*dz,1.5)
+    double dy  = (*ngbd)[n].dy_central (phi_ptr);
+    double dx  = dx_ptr[n];
+    double dxx = (*ngbd)[n].dxx_central(phi_ptr);
+    double dyy = (*ngbd)[n].dyy_central(phi_ptr);
+    double dxy = (*ngbd)[n].dy_central (dx_ptr);
+    if(sqrt(dx*dx + dy*dy) < 1e-1) kappa_ptr[n] = 0;
+    else kappa_ptr[n] = ( dy*dy*dxx - 2*dx*dy*dxy + dx*dx*dyy) / ((dx*dx + dy*dy) * sqrt(dx*dx + dy*dy));
   }
 
   ierr = VecRestoreArray(phi  , &phi_ptr  ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_x, &dx_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_y, &dy_ptr); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(phi_z, &dz_ptr   ); CHKERRXX(ierr);
-#endif
   ierr = VecRestoreArray(kappa, &kappa_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(dx, &dx_ptr); CHKERRXX(ierr);
+
+  ierr = VecDestroy(dx); CHKERRXX(ierr);
 
   ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_compute_curvature, phi, kappa, dx, 0); CHKERRXX(ierr);
 }
+#endif
 
 int main (int argc, char* argv[])
 {
@@ -408,21 +299,11 @@ int main (int argc, char* argv[])
   cmd.parse(argc, argv);
 
 #ifdef P4_TO_P8
-#ifdef SEED
-  circle level_set_func(1.0, 1.0, 1.0, 0.1);
-#endif
-#ifdef PLAN
-  plan level_set_func;
-#endif
+  circle circ(1.0, 1.0, 1.0, 0.2);
 #else
-#ifdef SEED
-  circle level_set_func(1.0, 1.0, 0.1);
+  circle circ(1.0, 1.0, 0.2);
 #endif
-#ifdef PLAN
-  plan level_set_func;
-#endif
-#endif
-  splitting_criteria_cf_t data(cmd.get("lmin", MIN_LEVEL), cmd.get("lmax", MAX_LEVEL), &level_set_func, 1.2);
+  splitting_criteria_cf_t data(cmd.get("lmin", MIN_LEVEL), cmd.get("lmax", MAX_LEVEL), &circ, 1.2);
 
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
@@ -464,17 +345,17 @@ int main (int argc, char* argv[])
   // Initialize the level-set function
   Vec phi;
   Vec Tn;
-  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   ierr = VecDuplicate(phi,&Tn); CHKERRXX(ierr);
 
   double *phi_ptr, *Tn_ptr;
-  sample_cf_on_nodes(p4est, nodes, level_set_func, phi);
+  sample_cf_on_nodes(p4est, nodes, circ, phi);
   ierr = VecSet(Tn, Tmax); CHKERRXX(ierr);
 
   // loop over time
   int tc = 0;
   double t=0;
-  double dt_n = SQR(1. / pow(2.,(double) MAX_LEVEL));
+  double dt_n = 1. / pow(2.,(double) MAX_LEVEL);
   double dt_np1;
 
   for (t=0; t<tf && tc < iter_max; tc++)
@@ -486,80 +367,12 @@ int main (int argc, char* argv[])
 
     my_p4est_level_set ls(&ngbd);
 //    ls.reinitialize_1st_order( phi, 100 );
-//    ls.reinitialize_2nd_order( phi, 20 );
-    ls.reinitialize_1st_order_time_2nd_order_space(phi, 20);
+    ls.reinitialize_2nd_order( phi, 20 );
 
     /* compute the curvature for boundary conditions */
-    Vec phi_x, phi_y;
-    ierr = VecDuplicate(phi, &phi_x); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &phi_y); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    Vec phi_z;
-    ierr = VecDuplicate(phi, &phi_z); CHKERRXX(ierr);
-#endif
-
-    double *dx_ptr, *dy_ptr;
-    ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(phi_x, &dx_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(phi_y, &dy_ptr); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    double *dz_ptr;
-    ierr = VecGetArray(phi_z, &dz_ptr); CHKERRXX(ierr);
-#endif
-
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    {
-      dx_ptr[n] = ngbd[n].dx_central (phi_ptr);
-      dy_ptr[n] = ngbd[n].dy_central (phi_ptr);
-#ifdef P4_TO_P8
-      dz_ptr[n] = ngbd[n].dz_central (phi_ptr);
-#endif
-      double norm = sqrt(dx_ptr[n]*dx_ptr[n] + dy_ptr[n]*dy_ptr[n]
-    #ifdef P4_TO_P8
-                         + dz_ptr[n]*dz_ptr[n]
-    #endif
-          );
-      if(norm>EPS)
-      {
-        dx_ptr[n] /= norm;
-        dy_ptr[n] /= norm;
-#ifdef P4_TO_P8
-        dz_ptr[n] /= norm;
-#endif
-      }
-      else
-      {
-        dx_ptr[n] = 0;
-        dy_ptr[n] = 0;
-#ifdef P4_TO_P8
-        dz_ptr[n] = 0;
-#endif
-      }
-    }
-
-    ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_x, &dx_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_y, &dy_ptr); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(phi_z, &dz_ptr); CHKERRXX(ierr);
-#endif
-
-    ierr = VecGhostUpdateBegin(phi_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (phi_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(phi_y, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (phi_y, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGhostUpdateBegin(phi_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (phi_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
-
     Vec kappa;
     ierr = VecDuplicate(phi, &kappa); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    compute_curvature(nodes, &ngbd, phi, phi_x, phi_y, phi_z, kappa);
-#else
-    compute_curvature(nodes, &ngbd, phi, phi_x, phi_y, kappa);
-#endif
+//    compute_curvature(nodes, &ngbd, phi, kappa);
 
     /* solve for the temperature */
 #ifdef P4_TO_P8
@@ -568,11 +381,7 @@ int main (int argc, char* argv[])
     BoundaryConditions2D bc;
 #endif
     bc.setInterfaceType(DIRICHLET);
-#ifdef P4_TO_P8
-    BCInterfaceValue bc_interface_value(&brick, p4est, nodes, ghost, &ngbd, phi_x, phi_y, phi_z, kappa);
-#else
-    BCInterfaceValue bc_interface_value(&brick, p4est, nodes, ghost, &ngbd, phi_x, phi_y, kappa);
-#endif
+    BCInterfaceValue bc_interface_value(&brick, p4est, nodes, ghost, &ngbd, kappa);
     bc.setInterfaceValue(bc_interface_value);
     bc.setWallTypes(bc_wall_type);
     bc.setWallValues(bc_wall_value);
@@ -590,22 +399,7 @@ int main (int argc, char* argv[])
     ierr = VecGhostUpdateEnd  (Tn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     /* compute the velocity field */
-//    ls.extend_Over_Interface(phi, Tn, bc, 2, 10);
-
-    /* extend the temperature */
-    Vec bc_vec;
-    ierr = VecDuplicate(phi, &bc_vec); CHKERRXX(ierr);
-    sample_cf_on_local_nodes(p4est, nodes, bc_interface_value, bc_vec);
-    ierr = VecGhostUpdateBegin(bc_vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (bc_vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    ls.extend_Over_Interface(phi, Tn, DIRICHLET, bc_vec, 2, 10);
-    ierr = VecDestroy(bc_vec); CHKERRXX(ierr);
-    ierr = VecDestroy(phi_x); CHKERRXX(ierr);
-    ierr = VecDestroy(phi_y); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecDestroy(phi_z); CHKERRXX(ierr);
-#endif
+    ls.extend_Over_Interface(phi, Tn, bc, 2, 10);
 
     /* compute grad(T) dot n */
     Vec vx, vy;
@@ -714,13 +508,12 @@ int main (int argc, char* argv[])
     ierr = VecRestoreArray(vz_extended, &vz_ptr ); CHKERRXX(ierr);
 #endif
     double max_norm_u;
-    ierr = MPI_Allreduce(&max_norm_u_loc, &max_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
+    ierr = MPI_Allreduce(&max_norm_u_loc, &max_norm_u, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm); CHKERRXX(ierr);
 
     splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
     double dx = 1.0 / pow(2.,(double) data->max_lvl);
 
-    dt_np1 = min(1.,1./max_norm_u) * .5 * MIN(dx, dx, dx);
-//    cout << dt_np1 << endl;
+    dt_np1 = min(1.,1./max_norm_u) * 1. * MIN(dx, dx, dx);
 
     /* advect the function in time */
     p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
@@ -743,7 +536,7 @@ int main (int argc, char* argv[])
     /* interpolate Tn on the new grid */
     Vec Tnp1;
     ierr = VecDuplicate(phi, &Tnp1); CHKERRXX(ierr);
-    InterpolatingFunction interp(p4est, nodes, ghost, &brick, &ngbd);
+    InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, &brick, &ngbd);
 
     p4est_topidx_t *t2v = p4est_np1->connectivity->tree_to_vertex; // tree to vertex list
     double *t2c = p4est_np1->connectivity->vertices; // coordinates of the vertices of a tree

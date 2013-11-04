@@ -193,7 +193,7 @@ int main (int argc, char* argv[]){
 
   // Initialize the level-set function
   Vec phi;
-  ierr = VecCreateGhost(p4est, nodes, &phi); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   sample_cf_on_nodes(p4est, nodes, phi_cf, phi);
 
   double *phi_ptr;
@@ -287,7 +287,7 @@ int main (int argc, char* argv[]){
       ierr = VecDuplicate(phi, &interface_vec); CHKERRXX(ierr);
       sample_cf_on_nodes(p4est, nodes, interface_bc_value, interface_vec);
 
-      InterpolatingFunction interface_interp(p4est, nodes, ghost, &brick, &node_neighbors);
+      InterpolatingFunctionNodeBase interface_interp(p4est, nodes, ghost, &brick, &node_neighbors);
       interface_interp.set_input_parameters(interface_vec, linear);
 
 #ifdef P4_TO_P8

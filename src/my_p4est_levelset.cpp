@@ -652,8 +652,8 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
   Vec p1_petsc, p2_petsc;
   double *p1, *p2, *phi;
-  ierr = VecCreateGhost(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est, nodes, &p2_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &p2_petsc); CHKERRXX(ierr);
   ierr = VecGetArray(p1_petsc,  &p1);  CHKERRXX(ierr);
   ierr = VecGetArray(p2_petsc,  &p2);  CHKERRXX(ierr);
   ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
@@ -664,19 +664,19 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
 
   Vec dxx0_petsc, dyy0_petsc;
   double *dxx0, *dyy0;
-  ierr = VecCreateGhost(p4est, nodes, &dxx0_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est, nodes, &dyy0_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dxx0_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dyy0_petsc); CHKERRXX(ierr);
 
   Vec dxx_petsc, dyy_petsc;
   double *dxx, *dyy;
-  ierr = VecCreateGhost(p4est, nodes, &dxx_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est, nodes, &dyy_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dxx_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dyy_petsc); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
   Vec dzz_petsc, dzz0_petsc;
   double *dzz, *dzz0;
-  ierr = VecCreateGhost(p4est, nodes, &dzz_petsc ); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est, nodes, &dzz0_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dzz_petsc ); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dzz0_petsc); CHKERRXX(ierr);
 #endif
 
 #ifdef P4_TO_P8
@@ -828,8 +828,8 @@ void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_pe
 
   Vec p1_petsc, p2_petsc;
   double *p1, *p2, *phi;
-  ierr = VecCreateGhost(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est, nodes, &p2_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &p2_petsc); CHKERRXX(ierr);
   ierr = VecGetArray(p1_petsc,  &p1);  CHKERRXX(ierr);
   ierr = VecGetArray(p2_petsc,  &p2);  CHKERRXX(ierr);
   ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
@@ -893,7 +893,7 @@ void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_pe
   
   Vec p1_petsc;
   double *p1, *phi;
-  ierr = VecCreateGhost(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
   ierr = VecGetArray(p1_petsc,  &p1);  CHKERRXX(ierr);
   ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
 
@@ -903,19 +903,19 @@ void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_pe
 
   Vec dxx0_petsc, dyy0_petsc;
   double *dxx0, *dyy0;
-  ierr = VecCreateGhost(p4est, nodes, &dxx0_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est, nodes, &dyy0_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dxx0_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dyy0_petsc); CHKERRXX(ierr);
 
   Vec dxx_petsc, dyy_petsc;
   double *dxx, *dyy;
-  ierr = VecCreateGhost(p4est, nodes, &dxx_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est, nodes, &dyy_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dxx_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dyy_petsc); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
   Vec dzz_petsc, dzz0_petsc;
   double *dzz, *dzz0;
-  ierr = VecCreateGhost(p4est, nodes, &dzz0_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhost(p4est, nodes, &dzz_petsc ); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dzz0_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dzz_petsc ); CHKERRXX(ierr);
 #endif
 
 #ifdef P4_TO_P8
@@ -1046,10 +1046,10 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
   if (phi_xx_ == NULL && phi_yy_ == NULL)
 #endif
   {
-    ierr = VecCreateGhost(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhost(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-    ierr = VecCreateGhost(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
 #endif
 #ifdef P4_TO_P8
     compute_derivatives(phi, phi_xx_, phi_yy_, phi_zz_);
@@ -1225,17 +1225,17 @@ double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec
 #ifdef P4_TO_P8
   if (phi_xx_ == NULL && phi_yy_ == NULL && phi_zz_ == NULL)
   {
-    ierr = VecCreateGhost(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhost(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
-    ierr = VecCreateGhost(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
     compute_derivatives(phi, phi_xx_, phi_yy_, phi_zz_);
     local_derivatives = true;
   }
 #else
   if (phi_xx_ == NULL && phi_yy_ == NULL)
   {
-    ierr = VecCreateGhost(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhost(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
     compute_derivatives(phi, phi_xx_, phi_yy_);
     local_derivatives = true;
   }
@@ -1391,8 +1391,8 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 #endif
   }
 
-  InterpolatingFunction interp1(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunction interp2(p4est, nodes, ghost, myb, ngbd);
+  InterpolatingFunctionNodeBase interp1(p4est, nodes, ghost, myb, ngbd);
+  InterpolatingFunctionNodeBase interp2(p4est, nodes, ghost, myb, ngbd);
 
   /* find dx and dy smallest */
   // NOTE: this, like all other places, assumes all trees are of the same size [0,1]^d
@@ -1617,9 +1617,9 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 #endif
   }
 
-  InterpolatingFunction interp0(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunction interp1(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunction interp2(p4est, nodes, ghost, myb, ngbd);
+  InterpolatingFunctionNodeBase interp0(p4est, nodes, ghost, myb, ngbd);
+  InterpolatingFunctionNodeBase interp1(p4est, nodes, ghost, myb, ngbd);
+  InterpolatingFunctionNodeBase interp2(p4est, nodes, ghost, myb, ngbd);
 
   /* find dx and dy smallest */
   // NOTE: Assuming all trees are of the same size [0, 1]^d
@@ -1814,7 +1814,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
 #else
   double diag = sqrt(dx*dx + dy*dy);
 #endif
-  InterpolatingFunction interp(p4est, nodes, ghost, myb, ngbd);
+  InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, myb, ngbd);
 
   double *q_extended;
   ierr = VecGetArray(q_extended_petsc, &q_extended); CHKERRXX(ierr);

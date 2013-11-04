@@ -22,9 +22,9 @@ enum interpolation_method{
 };
 
 #ifdef P4_TO_P8
-class InterpolatingFunction: public CF_3
+class InterpolatingFunctionNodeBase: public CF_3
 #else
-class InterpolatingFunction: public CF_2
+class InterpolatingFunctionNodeBase: public CF_2
 #endif
 {
   interpolation_method method_;
@@ -84,13 +84,13 @@ class InterpolatingFunction: public CF_2
   void compute_second_derivatives();
 
   // rule of three -- disable copy ctr and assignment if not useful
-  InterpolatingFunction(const InterpolatingFunction& other);
-  InterpolatingFunction& operator=(const InterpolatingFunction& other);
+  InterpolatingFunctionNodeBase(const InterpolatingFunctionNodeBase& other);
+  InterpolatingFunctionNodeBase& operator=(const InterpolatingFunctionNodeBase& other);
 
 public:
-  InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb);
-  InterpolatingFunction(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, const my_p4est_node_neighbors_t *qnnn);
-  ~InterpolatingFunction();
+  InterpolatingFunctionNodeBase(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb);
+  InterpolatingFunctionNodeBase(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, const my_p4est_node_neighbors_t *qnnn);
+  ~InterpolatingFunctionNodeBase();
 
   void add_point_to_buffer(p4est_locidx_t node_locidx, const double *xyz);
   void set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx = NULL, Vec Fyy = NULL
