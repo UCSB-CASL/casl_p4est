@@ -347,7 +347,7 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
   }
 
   // setup rhs
-  setup_negative_laplace_rhsvec();  
+  setup_negative_laplace_rhsvec();
 
   // set the null-space if necessary
   if (matrix_has_nullspace)
@@ -1085,6 +1085,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
   ierr = VecRestoreArray(add_,    &add_p   ); CHKERRXX(ierr);
 
   // check for null space
+  ierr = MPI_Allreduce(&matrix_has_nullspace, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm); CHKERRXX(ierr);
   if (matrix_has_nullspace)
   {
     if (A_null_space == NULL) // pun not intended!

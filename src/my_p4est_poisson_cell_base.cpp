@@ -1380,6 +1380,7 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
   ierr = VecRestoreArray(add_,    &add_p   ); CHKERRXX(ierr);
 
   // check for null space
+  ierr = MPI_Allreduce(&matrix_has_nullspace, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est_->mpicomm); CHKERRXX(ierr);
   if (matrix_has_nullspace)
   {
     if (A_null_space == NULL) // pun not intended!
