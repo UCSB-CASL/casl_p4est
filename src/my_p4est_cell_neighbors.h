@@ -84,8 +84,10 @@ public:
     return &neighbor_cells[offsets[q*P4EST_FACES + dir_f + 1]];
   }
 
-  void __attribute__((used)) print_debug(p4est_locidx_t q, FILE* stream = stdout);
-
+  void print_debug(p4est_locidx_t q, FILE* stream = stdout);
+#ifndef P4_TO_P8
+  void write_triangulation(const char* filename);
+#endif
 };
 
 #endif /* !MY_P4EST_CELL_NEIGHBORS_H */

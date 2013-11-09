@@ -216,7 +216,6 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
       else
         Fo_p[out_idx] = cell_based_LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
     } catch (const std::exception& e) {
-      (void) e;
       /* if the interpolation failed locally, send it to the remote
        * Note that if this also fails on the remote processors, then
        * the exception is actually an error in which case the remote
@@ -227,6 +226,7 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
        * if one decides to interpolate multiple values using the same set
        * of points.
        */
+      (void) e;
       if (!is_buffer_prepared){
         int rank = ghost_point_buffer.rank[i];
         for (short i = 0; i<P4EST_DIM; i++)

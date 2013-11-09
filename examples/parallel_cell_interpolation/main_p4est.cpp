@@ -166,6 +166,9 @@ int main (int argc, char* argv[]){
     // set up the qnnn neighbors
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     my_p4est_cell_neighbors_t cnnn(&hierarchy);
+#ifndef P4_TO_P8
+    cnnn.write_triangulation("triangulation");
+#endif
 
     std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi->mpisize;
     double *phi_p;

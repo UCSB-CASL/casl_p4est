@@ -4,6 +4,13 @@
 #include "my_p4est_cell_neighbors.h"
 #endif
 
+#ifdef P4_TO_P8
+#define VTK_CELL_TYPE 10 /* VTL_TETRA */
+#else
+#define VTK_CELL_TYPE 5  /* VTL_TRIANGLE */
+#endif
+
+
 void my_p4est_cell_neighbors_t::initialize_neighbors()
 {
   // find neighboring quadrants of local quadrants
@@ -213,3 +220,130 @@ void my_p4est_cell_neighbors_t::print_debug(p4est_locidx_t q, FILE *stream)
   fprintf(stream, "\n");
 #endif
 }
+
+#ifdef P4_TO_P8
+struct triangle{
+  p4est_locidx_t p0, p1, p2;
+  bool operator  =(const triangle& other) { return (p0 == other.p0 && p1 == other.p1 && p2 == other.p2); }
+};
+
+void my_p4est_cell_neighbors_t::write_triangulation(const char *filename)
+{
+  p4est_connectivity_t *conn = p4est->connectivity;
+
+  char vtkname[1024];
+  sprintf(vtkname, "%s_%04d.vtk", filename, p4est->mpirank);
+
+  FILE *vtk = fopen(vtkname, "w");
+
+  fprintf(vtk, "# vtk DataFile Version 2.0 \n");
+  fprintf(vtk, "Triangulation \n");
+  fprintf(vtk, "ASCII \n");
+  fprintf(vtk, "DATASET UNSTRUCTURED_GRID \n");
+  fprintf(vtk, "POINTS %ld double \n", p4est->local_num_quadrants + ghost->ghosts.elem_count);
+
+  /* create triangulations */
+  std::vector<p4est_locidx_t> elements;
+  elements.reserve(3*p4est->local_num_quadrants/2); // estimate
+
+  for (p4est_topidx_t tr_id = p4est->first_local_tree; tr_id <= p4est->last_local_tree; ++tr_id){
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr_id);
+
+    p4est_topidx_t v_mm = conn->tree_to_vertex[P4EST_CHILDREN*tr_id];
+    double tree_xmin = conn->vertices[3*v_mm + 0];
+    double tree_ymin = conn->vertices[3*v_mm + 1];
+
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q){
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      p4est_locidx_t q_locidx = q + tree->quadrants_offset;
+
+      /* compute the coordinates for the vertices */
+      double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double x  = quad_x_fr_i(quad) + 0.5*qh + tree_xmin;
+      double y  = quad_y_fr_j(quad) + 0.5*qh + tree_ymin;
+      fprintf(vtk, "%lf %lf 0.0\n", x, y);
+
+      /* construct the elemets */
+      /* all the cells in the p0 direction */
+      if (!is_quad_xpWall(p4est, tr_id, quad)){
+        const quad_info_t *begin = this->begin(q_locidx, dir::f_p00);
+        const quad_info_t *end   = this->end(q_locidx, dir::f_p00);
+
+        for (const quad_info_t* it = begin; it != end - 1; ++it){
+          elements.push_back(q_locidx);
+          elements.push_back(it->locidx);
+          elements.push_back((it+1)->locidx);
+        }
+      }
+
+      /* all the cells in the 0p direction */
+      if (!is_quad_ypWall(p4est, tr_id, quad)){
+        const quad_info_t *begin = this->begin(q_locidx, dir::f_0p0);
+        const quad_info_t *end   = this->end(q_locidx, dir::f_0p0);
+
+        for (const quad_info_t* it = begin; it != end - 1; ++it){
+          elements.push_back(q_locidx);
+          elements.push_back(it->locidx);
+          elements.push_back((it+1)->locidx);
+        }
+      }
+
+      /* corner in the pp direction */
+      if (!is_quad_xpWall(p4est, tr_id, quad) && !is_quad_ypWall(p4est, tr_id, quad)){
+        const quad_info_t *it_p0  = this->begin(q_locidx, dir::f_0m0) - 1;
+        const quad_info_t *it_0p  = this->end(q_locidx, dir::f_0p0) - 1;
+        const quad_info_t *it_pp;
+        if (it_p0->level > it_0p->level)
+          it_pp = this->begin(it_p0->locidx, dir::f_0p0);
+        else
+          it_pp = this->begin(it_0p->locidx, dir::f_p00);
+
+        if (it_pp != it_p0){
+          elements.push_back(q_locidx);
+          elements.push_back(it_p0->locidx);
+          elements.push_back(it_pp->locidx);
+        }
+
+        if (it_pp != it_0p){
+          elements.push_back(q_locidx);
+          elements.push_back(it_0p->locidx);
+          elements.push_back(it_pp->locidx);
+        }
+      }
+    }
+  }
+
+  /* write the point information for the ghost cells */
+  for (size_t g = 0; g < ghost->ghosts.elem_count; ++g){
+    const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, g);
+
+    p4est_topidx_t v_mm = conn->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
+    double tree_xmin = conn->vertices[3*v_mm + 0];
+    double tree_ymin = conn->vertices[3*v_mm + 1];
+
+    /* compute the coordinates for the vertices */
+    double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    double x  = quad_x_fr_i(quad) + 0.5*qh + tree_xmin;
+    double y  = quad_y_fr_j(quad) + 0.5*qh + tree_ymin;
+    fprintf(vtk, "%lf %lf 0.0\n", x, y);
+  }
+
+  /* write the connectivity information (a.k.a. elements */
+  size_t num_elements = elements.size()/3;
+  fprintf(vtk, "CELLS %ld %ld \n", num_elements, (1+3)*num_elements);
+
+  for (size_t i=0; i<num_elements; ++i)
+  {
+    fprintf(vtk, "%d ", 3);
+    fprintf(vtk, "%d ", elements[3*i + 0]);
+    fprintf(vtk, "%d ", elements[3*i + 1]);
+    fprintf(vtk, "%d ", elements[3*i + 2]);
+    fprintf(vtk, "\n");
+  }
+
+  fprintf(vtk, "CELL_TYPES %ld\n", num_elements);
+  for (size_t i=0; i<num_elements; ++i)
+    fprintf(vtk, "%d\n",VTK_CELL_TYPE);
+  fclose(vtk);
+}
+#endif
