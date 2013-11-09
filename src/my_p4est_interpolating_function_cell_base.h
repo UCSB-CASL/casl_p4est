@@ -40,7 +40,7 @@ class InterpolatingFunctionCellBase: public CF_2
   PetscErrorCode ierr;
   Vec input_vec_;
 
-  struct point_buffer{
+  struct local_point_buffer_t{
     std::vector<double> xyz;
     std::vector<p4est_quadrant_t> quad;
     std::vector<p4est_locidx_t> output_idx;
@@ -54,7 +54,24 @@ class InterpolatingFunctionCellBase: public CF_2
     }
   };
 
-  point_buffer local_point_buffer, ghost_point_buffer;
+  struct ghost_point_buffer_t{
+    std::vector<double> xyz;
+    std::vector<p4est_quadrant_t> quad;
+    std::vector<p4est_locidx_t> output_idx;
+    std::vector<int> rank;
+
+    size_t size() { return output_idx.size(); }
+    void clear()
+    {
+      xyz.clear();
+      quad.clear();
+      output_idx.clear();
+    }
+  };
+
+
+  local_point_buffer_t local_point_buffer;
+  ghost_point_buffer_t ghost_point_buffer;
 
   typedef std::map<int, std::vector<double> > remote_transfer_map;
   remote_transfer_map remote_send_buffer, remote_recv_buffer;

@@ -1,9 +1,11 @@
 #ifdef P4_TO_P8
 #include "my_p8est_interpolating_function_cell_base.h"
 #include <src/my_p8est_vtk.h>
+#include <src/point3.h>
 #else
 #include "my_p4est_interpolating_function_cell_base.h"
 #include <src/my_p4est_vtk.h>
+#include <src/point2.h>
 #endif
 
 #include "petsc_compatibility.h"
@@ -95,23 +97,18 @@ void InterpolatingFunctionCellBase::add_point_to_buffer(p4est_locidx_t node_loci
 
   } else if ( rank_found != -1 ) { /* point is found in the ghost layer */
     /*
-     * WARNING: This is (I think) a bug in p4est. In the documentation, it is
-     * said that for ghost quadrants " ... piggy3 data member is filled with
-     * their owner's tree and local number." (cf. p4est_ghost.h, line 34). This
-     * implies that the numbering, i.e. p.piggy3.local_num field, stores the
-     * local index w.r.t the tree it is located in, i.e. p.piggy3.which_tree.
-     *
-     * Looking at the implementation, however, it seems that the local numbering
-     * is stored w.r.t all of quadrants, i.e. local_num + tree->quadrant_offsets
-     * which counter-intutive and inconssitent with the rest of p4est code. We
-     * take this into account anyway when trying to access the quadrant on the
-     * remote processor. (cf. interpolate function below)
+     * unlike the case for node interpolation, there is no guarantee that
+     * we can perform the interpolation for points that end up here. Here we
+     * add the points to the list in the hope that interpolation will succeed.
+     * Later, if the interpolation was not successful, we will throw an exception
+     * and add the point to the remote list
      */
 
     for (short i = 0; i<P4EST_DIM; i++)
       ghost_point_buffer.xyz.push_back(xyz[i]);
 
     ghost_point_buffer.quad.push_back(best_match);
+    ghost_point_buffer.rank.push_back(rank_found);
     ghost_point_buffer.output_idx.push_back(node_locidx);
 
 #ifdef P4EST_POINT_LOOKUP
@@ -196,17 +193,52 @@ void InterpolatingFunctionCellBase::interpolate(Vec output_vec)
 
 void InterpolatingFunctionCellBase::interpolate( double *output_vec )
 {
-  ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  // begin sending point buffers
-  if (!is_buffer_prepared)
-    send_point_buffers_begin();
-
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
   // Get a pointer to the data
   double *Fi_p, *Fo_p = output_vec;
   ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
+
+  // first try interpolating on the ghost cells
+  for (size_t i=0; i<ghost_point_buffer.size(); ++i)
+  {
+    double *xyz = &ghost_point_buffer.xyz[P4EST_DIM*i];
+    p4est_quadrant_t &quad = ghost_point_buffer.quad[i];
+    p4est_locidx_t quad_idx = quad.p.piggy3.local_num + p4est_->local_num_quadrants;
+    p4est_locidx_t out_idx = ghost_point_buffer.output_idx[i];
+
+    try{
+      if (method_ == linear)
+        Fo_p[out_idx] = cell_based_linear_interpolation(quad, quad_idx, Fi_p, xyz);
+      else if (method_ == IDW)
+        Fo_p[out_idx] = cell_based_IDW_interpolation(quad, quad_idx, Fi_p, xyz);
+      else
+        Fo_p[out_idx] = cell_based_LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
+    } catch (const std::exception& e) {
+      (void) e;
+      /* if the interpolation failed locally, send it to the remote
+       * Note that if this also fails on the remote processors, then
+       * the exception is actually an error in which case the remote
+       * processor will throw.
+       *
+       * Also note that we only add to the list if the buffer is still
+       * not been sent otherwise we could duplicate points. This happens
+       * if one decides to interpolate multiple values using the same set
+       * of points.
+       */
+      if (!is_buffer_prepared){
+        int rank = ghost_point_buffer.rank[i];
+        for (short i = 0; i<P4EST_DIM; i++)
+          remote_send_buffer[rank].push_back(xyz[i]);
+        remote_node_index[rank].push_back(out_idx);
+      }
+    }
+  }
+
+  // begin sending point buffers
+  if (!is_buffer_prepared)
+    send_point_buffers_begin();
 
   // initialize the value for remote matches to zero
   {
@@ -236,29 +268,13 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
       Fo_p[out_idx] = cell_based_IDW_interpolation(quad, quad_idx, Fi_p, xyz);
     else
       Fo_p[out_idx] = cell_based_LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
-  }
-
-  // Do the interpolation for ghost points
-  for (size_t i=0; i<ghost_point_buffer.size(); ++i)
-  {
-    double *xyz = &ghost_point_buffer.xyz[P4EST_DIM*i];
-    p4est_quadrant_t &quad = ghost_point_buffer.quad[i];
-    p4est_locidx_t quad_idx = quad.p.piggy3.local_num + p4est_->local_num_quadrants;
-    p4est_locidx_t out_idx = ghost_point_buffer.output_idx[i];
-
-    if (method_ == linear)
-      Fo_p[out_idx] = cell_based_linear_interpolation(quad, quad_idx, Fi_p, xyz);
-    else if (method_ == IDW)
-      Fo_p[out_idx] = cell_based_IDW_interpolation(quad, quad_idx, Fi_p, xyz);
-    else
-      Fo_p[out_idx] = cell_based_LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
-  }
+  }  
 
   // begin recieving point buffers
   if (!is_buffer_prepared)
     recv_point_buffers_begin();
 
-  // begin data send/recv for ghost and remote
+  // begin data send/recv for remote
   typedef std::map<int, std::vector<double> > data_transfer_map;
   data_transfer_map f_remote_send;
   std::vector<MPI_Request> remote_data_send_req(remote_senders.size());
@@ -539,8 +555,155 @@ void InterpolatingFunctionCellBase::recv_point_buffers_begin()
 
 double InterpolatingFunctionCellBase::cell_based_linear_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
 {
-  throw std::runtime_error("[ERROR]: Not implemented!");
-  return 0;
+  p4est_topidx_t tr_id = quad.p.piggy3.which_tree;
+  p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*tr_id];
+  double tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
+  double tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
+#ifdef P4_TO_P8
+  double tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
+#endif
+
+  double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+  double xyz_C [] =
+  {
+    quad_x_fr_i(&quad) + 0.5*qh + tr_xmin,
+    quad_y_fr_j(&quad) + 0.5*qh + tr_ymin
+  #ifdef P4_TO_P8
+    ,
+    quad_z_fr_k(&quad) + 0.5*qh + tr_zmin
+  #endif
+  };
+
+  double xyz_search [] =
+  {
+    xyz[0],
+    xyz[1]
+  #ifdef P4_TO_P8
+    ,
+    xyz[2]
+  #endif
+  };
+
+  // correct for the search location if on the wall
+  if (is_quad_xmWall(p4est_, tr_id, &quad) && xyz[0] < xyz_C[0])
+    xyz_search[0] = xyz_C[0] + 0.5*qh;
+  if (is_quad_xpWall(p4est_, tr_id, &quad) && xyz[0] > xyz_C[0])
+    xyz_search[0] = xyz_C[0] - 0.5*qh;
+  if (is_quad_ymWall(p4est_, tr_id, &quad) && xyz[1] < xyz_C[1])
+    xyz_search[1] = xyz_C[1] + 0.5*qh;
+  if (is_quad_ypWall(p4est_, tr_id, &quad) && xyz[1] > xyz_C[1])
+    xyz_search[1] = xyz_C[1] - 0.5*qh;
+#ifdef P4_TO_P8
+  if (is_quad_zmWall(p4est_, tr_id, &quad) && xyz[2] < xyz_C[2])
+    xyz_search[2] = xyz_C[2] + 0.5*qh;
+  if (is_quad_zpWall(p4est_, tr_id, &quad) && xyz[2] > xyz_C[2])
+    xyz_search[2] = xyz_C[2] - 0.5*qh;
+#endif
+
+  // check if the point is close to the center cell
+#ifdef P4_TO_P8
+  Point3 r_search(xyz_search[0] - xyz_C[0], xyz_search[1] - xyz_C[1], xyz_search[2] - xyz_C[2]);
+  Point2 r(xyz[0] - xyz_C[0], xyz[1] - xyz_C[1], xyz[2] - xyz_C[2]);
+#else
+  Point2 r_search(xyz_search[0] - xyz_C[0], xyz_search[1] - xyz_C[1]);
+  Point2 r(xyz[0] - xyz_C[0], xyz[1] - xyz_C[1]);
+#endif
+
+  if (r_search.norm_L2()/qh < EPS)
+    return Fi_p[quad_idx];
+
+  // decide where to look for the triangle based on the relative coordinate
+  const quad_info_t *cells[P4EST_FACES + 1];
+  for (short i = 0; i<P4EST_FACES; i++)
+    cells[i] = cnnn_->begin(quad_idx, i);
+  cells[P4EST_FACES] = cnnn_->end(quad_idx, P4EST_FACES - 1);
+
+  size_t num_ngbd_cells[P4EST_FACES];
+  for (short i = 0; i<P4EST_FACES; i++)
+    num_ngbd_cells[i] = cells[i+1] - cells[i];
+
+  std::vector<const quad_info_t*> points;
+  points.reserve(P4EST_DIM*(cells[P4EST_FACES] - cells[0])); // estimate
+
+#ifdef P4_TO_P8
+  throw std::runtime_error("[ERROR]: Not implemented");
+#else
+  /* add points to the list for testing. There are 8 cases in 2D:
+   * 4 face directions.
+   * 4 corners
+   */
+
+  // 0 - 3 first trying face directions
+  for (short i = 0; i<P4EST_FACES; i++)
+    for (const quad_info_t* it = cells[i]; it < cells[i+1] - 1; ++it){
+      points.push_back(it);
+      points.push_back(it+1);
+    }
+
+  /* corners */
+  // 4 - mm corner
+  if(num_ngbd_cells[dir::f_m00] != 0 && num_ngbd_cells[dir::f_0m0] != 0){
+    points.push_back(cells[dir::f_m00]);
+    points.push_back(cells[dir::f_0m0]);
+  }
+
+  // 5 - pm corner
+  if(num_ngbd_cells[dir::f_p00] != 0 && num_ngbd_cells[dir::f_0m0] != 0){
+    points.push_back(cells[dir::f_p00]);
+    points.push_back(cells[dir::f_0p0] - 1);
+  }
+
+  // 6 - mp corner
+  if(num_ngbd_cells[dir::f_m00] != 0 && num_ngbd_cells[dir::f_0p0] != 0){
+    points.push_back(cells[dir::f_p00] - 1);
+    points.push_back(cells[dir::f_0p0]);
+  }
+
+  // 7 - pp corner
+  if(num_ngbd_cells[dir::f_p00] != 0 && num_ngbd_cells[dir::f_0p0] != 0){
+    points.push_back(cells[dir::f_0m0] - 1);
+    points.push_back(cells[P4EST_FACES] - 1);
+  }
+
+  // loop over cells and check if they contain our point
+  for (size_t i = 0; i<points.size(); i += P4EST_DIM){
+    const quad_info_t *it1 = points[i];
+    const quad_info_t *it2 = points[i+1];
+
+    // p1
+    v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*it1->tree_idx];
+    tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
+    tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
+    qh = (double)P4EST_QUADRANT_LEN(it1->level)/(double)P4EST_ROOT_LEN;
+
+    Point2 r1;
+    r1.x = quad_x_fr_i(it1->quad) + 0.5*qh + tr_xmin - xyz_C[0];
+    r1.y = quad_y_fr_j(it1->quad) + 0.5*qh + tr_ymin - xyz_C[1];
+
+    // p2
+    v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*it2->tree_idx];
+    tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
+    tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
+    qh = (double)P4EST_QUADRANT_LEN(it2->level)/(double)P4EST_ROOT_LEN;
+
+    Point2 r2;
+    r2.x = quad_x_fr_i(it2->quad) + 0.5*qh + tr_xmin - xyz_C[0];
+    r2.y = quad_y_fr_j(it2->quad) + 0.5*qh + tr_ymin - xyz_C[1];
+
+    // check if we have found the point
+    double det = r1.cross(r2);
+    double u1  =  r_search.cross(r2) / det;
+    double u2  = -r_search.cross(r1) / det;
+
+    if (u1 >= 0.0 && u2 >= 0.0 && u1+u2 <= 1.0){
+      // use the actual point for interpolation
+      u1  =  r.cross(r2) / det;
+      u2  = -r.cross(r1) / det;
+      return (Fi_p[quad_idx]*(1 - u1 - u2) + Fi_p[it1->locidx]*u1 + Fi_p[it2->locidx]*u2);
+    }
+  }
+#endif
+  throw std::runtime_error("[ERROR]: Could not find a suitable triangulation");
 }
 
 double InterpolatingFunctionCellBase::cell_based_IDW_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
@@ -607,6 +770,5 @@ double InterpolatingFunctionCellBase::cell_based_IDW_interpolation(const p4est_q
 double InterpolatingFunctionCellBase::cell_based_LSQR_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
 {
   throw std::runtime_error("[ERROR]: Not implemented!");
-  return 0;
 }
 

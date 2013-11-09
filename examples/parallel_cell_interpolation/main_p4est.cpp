@@ -153,20 +153,47 @@ int main (int argc, char* argv[]){
     w2.stop(); w2.read_duration();
 
     w2.start("computing phi");
-    Vec phi_node, phi_cell;
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_node); CHKERRXX(ierr);
-    ierr = VecCreateGhostCells(p4est, ghost, &phi_cell); CHKERRXX(ierr);
-    Vec phi_c2n;
-    ierr = VecDuplicate(phi_node, &phi_c2n); CHKERRXX(ierr);
-
-    sample_cf_on_nodes(p4est, nodes, circ, phi_node);
-    sample_cf_on_cells(p4est, ghost, circ, phi_cell);
+    Vec phi;
+    ierr = VecCreateGhostCells(p4est, ghost, &phi); CHKERRXX(ierr);
+    sample_cf_on_cells(p4est, ghost, circ, phi);
     w2.stop(); w2.read_duration();
+
+    std::ostringstream grid_name; grid_name << P4EST_DIM << "d_grid";
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE,
+                           0, 0, grid_name.str().c_str());
 
     // set up the qnnn neighbors
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     my_p4est_cell_neighbors_t cnnn(&hierarchy);
-    InterpolatingFunctionCellBase interp(&cnnn);
+
+    std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi->mpisize;
+    double *phi_p;
+    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE,
+                           0, 1, oss.str().c_str(),
+                           VTK_CELL_DATA, "phi", phi_p);
+    ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+    // move the circle to create another grid
+    cf_data.max_lvl -= 2;
+    cf_data.min_lvl += 1;
+
+    circle circ_old(circ);
+#ifdef P4_TO_P8
+    circ.update(.75, 1.15, .57, .2);
+#else
+    circ.update(.75, 1.15, .2);
+#endif
+
+    // Create a new grid
+    w2.start("creating/refining/partitioning new p4est");
+    p4est_t *p4est_np1 = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    p4est_np1->user_pointer = (void*)&cf_data;
+    p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
+    p4est_partition(p4est_np1, NULL);
+    w2.stop(); w2.read_duration();
 
     /*
      * Here we create a new nodes structure. Note that in general if what you
@@ -176,10 +203,16 @@ int main (int argc, char* argv[]){
      * Here, however, we do not care about this and simply pass NULL to for the
      * new node structure
      */
+    w2.start("creating new node data structure");
+    p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
+    w2.stop(); w2.read_duration();
 
-    for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i)
+    // Create an interpolating function
+    InterpolatingFunctionCellBase phi_func(&cnnn);
+
+    for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+nodes->offset_owned_indeps);
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i+nodes_np1->offset_owned_indeps);
       p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
       p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
@@ -200,55 +233,62 @@ int main (int argc, char* argv[]){
       };
 
       // buffer the point
-      interp.add_point_to_buffer(i, xyz);
+      phi_func.add_point_to_buffer(i, xyz);
     }
 
+    // interpolate on to the new vector
+    Vec phi_np1, phi_nodes;
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_nodes); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_nodes, &phi_np1); CHKERRXX(ierr);
+
     // interpolate
-    switch (cmd.get("mode",1)){
+    switch (cmd.get("mode",0)){
     case 0:
-      interp.set_input_parameters(phi_cell, linear);
+      phi_func.set_input_parameters(phi, linear);
       break;
     case 1:
-      interp.set_input_parameters(phi_cell, IDW);
+      phi_func.set_input_parameters(phi, IDW);
       break;
     case 2:
-      interp.set_input_parameters(phi_cell, LSQR);
+      phi_func.set_input_parameters(phi, LSQR);
       break;
     default:
       throw std::invalid_argument("[Error]: Interpolation mode can only be 0, 1, or 2");
     }
-    interp.interpolate(phi_c2n);
+    phi_func.interpolate(phi_np1);
 
-    ierr = VecGhostUpdateBegin(phi_c2n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(phi_c2n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est_np1, nodes_np1, circ_old, phi_nodes);
+    ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    std::ostringstream oss; oss << P4EST_DIM << "d_simple_" << mpi->mpisize;
+    oss.str(""); oss << P4EST_DIM << "d_phi_np1_" << mpi->mpisize;
 
-    double *phi_np, *phi_cp, *phi_c2np;
-    ierr = VecGetArray(phi_node, &phi_np);  CHKERRXX(ierr);
-    ierr = VecGetArray(phi_cell, &phi_cp);  CHKERRXX(ierr);
-    ierr = VecGetArray(phi_c2n, &phi_c2np); CHKERRXX(ierr);
-
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
+    double *phi_np1_p, *phi_nodes_p;
+    ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_nodes, &phi_nodes_p); CHKERRXX(ierr);
+    
+    my_p4est_vtk_write_all(p4est_np1, nodes_np1, NULL,
                            P4EST_TRUE, P4EST_TRUE,
-                           2, 1, oss.str().c_str(),
-                           VTK_POINT_DATA, "phi_node", phi_np,
-                           VTK_POINT_DATA, "phi_c2n",  phi_c2np,
-                           VTK_CELL_DATA,  "phi_cell", phi_cp);
+                           2, 0, oss.str().c_str(),
+                           VTK_POINT_DATA, "phi_np1", phi_np1_p,
+                           VTK_POINT_DATA, "phi_nodes", phi_nodes_p);
 
-    ierr = VecRestoreArray(phi_node, &phi_np);   CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_cell, &phi_cp);   CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_c2n, &phi_c2np); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_np1,  &phi_np1_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_nodes,  &phi_nodes_p); CHKERRXX(ierr);
 
     // finally, delete PETSc Vecs by calling 'VecDestroy' function
-    ierr = VecDestroy(phi_node); CHKERRXX(ierr);
-    ierr = VecDestroy(phi_cell); CHKERRXX(ierr);
-    ierr = VecDestroy(phi_c2n); CHKERRXX(ierr);
+    ierr = VecDestroy(phi);          CHKERRXX(ierr);
+    ierr = VecDestroy(phi_np1);  CHKERRXX(ierr);
+    ierr = VecDestroy(phi_nodes);  CHKERRXX(ierr);
 
     // destroy the p4est and its connectivity structure
     p4est_nodes_destroy (nodes);
     p4est_ghost_destroy(ghost);
     p4est_destroy (p4est);
+
+    p4est_nodes_destroy (nodes_np1);
+    p4est_destroy (p4est_np1);
+    my_p4est_brick_destroy(connectivity, brick);
 
     w1.stop(); w1.read_duration();
 
