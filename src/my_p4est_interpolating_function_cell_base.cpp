@@ -603,7 +603,7 @@ double InterpolatingFunctionCellBase::cell_based_linear_interpolation(const p4es
   // check if the point is close to the center cell
 #ifdef P4_TO_P8
   Point3 r_search(xyz_search[0] - xyz_C[0], xyz_search[1] - xyz_C[1], xyz_search[2] - xyz_C[2]);
-  Point2 r(xyz[0] - xyz_C[0], xyz[1] - xyz_C[1], xyz[2] - xyz_C[2]);
+  Point3 r(xyz[0] - xyz_C[0], xyz[1] - xyz_C[1], xyz[2] - xyz_C[2]);
 #else
   Point2 r_search(xyz_search[0] - xyz_C[0], xyz_search[1] - xyz_C[1]);
   Point2 r(xyz[0] - xyz_C[0], xyz[1] - xyz_C[1]);

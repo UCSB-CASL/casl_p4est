@@ -221,7 +221,104 @@ void my_p4est_cell_neighbors_t::print_debug(p4est_locidx_t q, FILE *stream)
 #endif
 }
 
+void my_p4est_cell_neighbors_t::write_cell_neighbors_vtk(p4est_locidx_t qu, p4est_topidx_t tr, const char *filename)
+{
+  p4est_connectivity_t *conn = p4est->connectivity;
+  p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+  p4est_locidx_t q = qu + tree->quadrants_offset;
+
+  char vtkname[1024];
+  sprintf(vtkname, "%s_%04d.%d.vtk", filename, p4est->mpirank, q);
+
+  FILE *vtk = fopen(vtkname, "w");
+
+  fprintf(vtk, "# vtk DataFile Version 2.0 \n");
+  fprintf(vtk, "Triangulation \n");
+  fprintf(vtk, "ASCII \n");
+  fprintf(vtk, "DATASET UNSTRUCTURED_GRID \n");
+
+  /* get neighboring cells */
+  const quad_info_t *begin = this->begin(q, 0);
+  const quad_info_t *end   = this->end(q, P4EST_FACES - 1);
+
+  /* total number of nodes */
+  fprintf(vtk, "POINTS %ld double \n", P4EST_CHILDREN*(end - begin + 1));
+
+  /* central cell */
+  {
+    const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, qu);
+    p4est_topidx_t v_mm = conn->tree_to_vertex[P4EST_CHILDREN*tr];
+    double tree_xmin = conn->vertices[3*v_mm + 0];
+    double tree_ymin = conn->vertices[3*v_mm + 1];
 #ifdef P4_TO_P8
+    double tree_zmin = conn->vertices[3*v_mm + 2];
+#endif
+
+    double qh   = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    double xmin = quad_x_fr_i(quad) + tree_xmin;
+    double ymin = quad_y_fr_j(quad) + tree_ymin;
+#ifdef P4_TO_P8
+    double zmin = quad_z_fr_k(quad) + tree_zmin;
+#endif
+
+#ifdef P4_TO_P8
+    for (short ck = 0; ck<2; ck++)
+#endif
+      for (short cj = 0; cj<2; cj++)
+        for (short ci = 0; ci<2; ci++)
+#ifdef P4_TO_P8
+          fprintf(vtk, "%lf %lf %lf\n", xmin + ci*qh, ymin + cj*qh, zmin + ck*qh);
+#else
+          fprintf(vtk, "%lf %lf 0\n", xmin + ci*qh, ymin + cj*qh);
+#endif
+  }
+
+  /* neighboring cells */
+  for (const quad_info_t *it = begin; it != end; ++it){
+    p4est_topidx_t v_mm = conn->tree_to_vertex[P4EST_CHILDREN*it->tree_idx];
+    double tree_xmin = conn->vertices[3*v_mm + 0];
+    double tree_ymin = conn->vertices[3*v_mm + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = conn->vertices[3*v_mm + 2];
+#endif
+
+    double qh   = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+    double xmin = quad_x_fr_i(it->quad) + tree_xmin;
+    double ymin = quad_y_fr_j(it->quad) + tree_ymin;
+#ifdef P4_TO_P8
+    double zmin = quad_z_fr_k(it->quad) + tree_zmin;
+#endif
+
+#ifdef P4_TO_P8
+    for (short ck = 0; ck<2; ck++)
+#endif
+      for (short cj = 0; cj<2; cj++)
+        for (short ci = 0; ci<2; ci++)
+#ifdef P4_TO_P8
+          fprintf(vtk, "%lf %lf %lf\n", xmin + ci*qh, ymin + cj*qh, zmin + ck*qh);
+#else
+          fprintf(vtk, "%lf %lf 0\n", xmin + ci*qh, ymin + cj*qh);
+#endif
+  }
+
+  /* write the connectivity information (a.k.a. elements */
+  fprintf(vtk, "CELLS %ld %ld \n", end - begin + 1, (1+P4EST_CHILDREN)*(end - begin + 1));
+
+  for (int i=0; i<end - begin + 1; ++i)
+  {
+    fprintf(vtk, "%d ", P4EST_CHILDREN);
+    for (short j = 0; j<P4EST_CHILDREN; j++)
+      fprintf(vtk, "%d ", i*P4EST_CHILDREN + j);
+    fprintf(vtk, "\n");
+  }
+
+  fprintf(vtk, "CELL_TYPES %ld\n", end - begin + 1);
+  for (int i=0; i<end - begin + 1; ++i)
+    fprintf(vtk, "%d\n", P4EST_VTK_CELL_TYPE);
+  fclose(vtk);
+}
+
+#ifndef P4_TO_P8
 struct triangle{
   p4est_locidx_t p0, p1, p2;
   bool operator  =(const triangle& other) { return (p0 == other.p0 && p1 == other.p1 && p2 == other.p2); }

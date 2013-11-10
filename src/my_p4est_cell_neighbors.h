@@ -6,11 +6,13 @@
 #include <p8est_ghost.h>
 #include <src/my_p8est_hierarchy.h>
 #include <src/my_p8est_utils.h>
+#include <src/my_p8est_node_neighbors.h>
 #else
 #include <p4est.h>
 #include <p4est_ghost.h>
 #include <src/my_p4est_hierarchy.h>
 #include <src/my_p4est_utils.h>
+#include <src/my_p4est_node_neighbors.h>
 #endif
 
 #include <vector>
@@ -85,6 +87,8 @@ public:
   }
 
   void print_debug(p4est_locidx_t q, FILE* stream = stdout);
+  void write_cell_neighbors_vtk(p4est_locidx_t qu, p4est_topidx_t tr, const char* filename);
+  void write_triangulation(const my_p4est_node_neighbors_t& qnnn, const char* filename);
 #ifndef P4_TO_P8
   void write_triangulation(const char* filename);
 #endif
