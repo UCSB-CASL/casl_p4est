@@ -71,7 +71,7 @@ public:
     if (dir_f < 0 || dir_f >= P4EST_FACES)
       throw std::invalid_argument("invalid face direction index.");
     if (q < 0 || q >= n_quads)
-      throw std::invalid_argument("given quadrant index does is neigher local nor ghost.");
+      throw std::invalid_argument("given quadrant index is neigher local nor ghost.");
 #endif
     return &neighbor_cells[offsets[q*P4EST_FACES + dir_f]];
   }
@@ -89,6 +89,7 @@ public:
   void print_debug(p4est_locidx_t q, FILE* stream = stdout);
   void write_cell_neighbors_vtk(p4est_locidx_t qu, p4est_topidx_t tr, const char* filename);
   void write_triangulation(const my_p4est_node_neighbors_t& qnnn, const char* filename);
+  void write_cell_triangulation_vtk(p4est_locidx_t qu, p4est_topidx_t tr, const char *filename);
 #ifndef P4_TO_P8
   void write_triangulation(const char* filename);
 #endif

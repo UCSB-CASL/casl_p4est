@@ -86,7 +86,7 @@ static struct:CF_2{
 p4est_bool_t
 refine_test(p4est_t *p4est, p4est_topidx_t tr, p4est_quadrant_t *quad)
 {
-  if (quad->x == 0 && quad->level<2)
+  if (quad->z == 0 && quad->level<3)
     return P4EST_TRUE;
   else
     return P4EST_FALSE;
@@ -177,8 +177,10 @@ int main (int argc, char* argv[]){
     my_p4est_cell_neighbors_t cnnn(&hierarchy);
     for (p4est_topidx_t tr = p4est->first_local_tree; tr<=p4est->last_local_tree; tr++){
       p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
-      for (size_t q=0; q<tree->quadrants.elem_count; q++)
-        cnnn.write_cell_neighbors_vtk(q, tr, "cnnn");
+      for (size_t q=0; q<tree->quadrants.elem_count; q++){
+        cnnn.write_cell_neighbors_vtk(q, tr, "cells");
+        cnnn.write_cell_triangulation_vtk(q, tr, "triangles");
+      }
     }
 #ifndef P4_TO_P8
     cnnn.write_triangulation("triangulation");
