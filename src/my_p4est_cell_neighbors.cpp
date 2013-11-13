@@ -420,7 +420,7 @@ void my_p4est_cell_neighbors_t::write_cell_triangulation_vtk(p4est_locidx_t qu, 
         }
     }
 
-    /* p00 */
+    /* 0p0 */
     if (!is_0p0_boundary)
     {
       const quad_info_t *begin_ = this->begin(it->locidx, dir::f_0p0);
@@ -466,233 +466,234 @@ void my_p4est_cell_neighbors_t::write_cell_triangulation_vtk(p4est_locidx_t qu, 
 
   /* now we do stiching! */
   /* 1 - across m00 direction */
-  {
-    /* first locate top cells along the edge */
-    std::vector<p4est_locidx_t> ng1;
-    ng1.reserve(end_00p - begin_00p);
-    for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-      if (it->quad->x == quad->x){
-        ng1.push_back(it->locidx);
-      }
-
-    std::vector<p4est_locidx_t> ng2;
-    ng2.reserve(end_m00 - begin_m00);
-    for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-      if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
-        ng2.push_back(it->locidx);
-      }
-
-    /* now construct the triangulation */
-    if (ng1.size() != 0 && ng2.size() != 0){
-      if (ng1.size() > ng2.size())
-        std::swap(ng1, ng2);
-
-      // forward
-      int s = ng2.size()/ng1.size() + 1;
-      if (ng2.size() > 1)
-        for (size_t i=0; i<ng2.size()-1; i++){
-          elements.push_back(q);
-          elements.push_back(ng1[i/s]);
-          elements.push_back(ng2[i]);
-          elements.push_back(ng2[i+1]);
+  if (n_00p != 0) {
+    {
+      /* first locate top cells along the edge */
+      std::vector<p4est_locidx_t> ng1;
+      ng1.reserve(end_00p - begin_00p);
+      for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
+        if (it->quad->x == quad->x){
+          ng1.push_back(it->locidx);
         }
-      //backward
-      if (ng1.size() > 1)
-        for (size_t i=0; i<ng1.size() - 1; i++){
-          elements.push_back(q);
-          elements.push_back(ng1[i]);
-          elements.push_back(ng1[i+1]);
-          elements.push_back(ng2[i*s]);
+
+      std::vector<p4est_locidx_t> ng2;
+      ng2.reserve(end_m00 - begin_m00);
+      for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
+          ng2.push_back(it->locidx);
+        }
+
+      /* now construct the triangulation */
+      if (ng1.size() != 0 && ng2.size() != 0){
+        if (ng1.size() > ng2.size())
+          std::swap(ng1, ng2);
+
+        // forward
+        int s = ng2.size()/ng1.size() + 1;
+        if (ng2.size() > 1)
+          for (size_t i=0; i<ng2.size()-1; i++){
+            elements.push_back(q);
+            elements.push_back(ng1[i/s]);
+            elements.push_back(ng2[i]);
+            elements.push_back(ng2[i+1]);
+          }
+        //backward
+        if (ng1.size() > 1)
+          for (size_t i=0; i<ng1.size() - 1; i++){
+            elements.push_back(q);
+            elements.push_back(ng1[i]);
+            elements.push_back(ng1[i+1]);
+            elements.push_back(ng2[i*s]);
+          }
+      }
+    }
+    /* 2 - across p00 direction */
+    {
+      /* first locate top cells along the edge */
+      std::vector<p4est_locidx_t> ng1;
+      ng1.reserve(end_00p - begin_00p);
+      for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) == quad->x + P4EST_QUADRANT_LEN(quad->level)){
+          ng1.push_back(it->locidx);
+        }
+
+      std::vector<p4est_locidx_t> ng2;
+      ng2.reserve(end_p00 - begin_p00);
+      for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
+          ng2.push_back(it->locidx);
+        }
+
+      /* now construct the triangulation */
+      if (ng1.size() != 0 && ng2.size() != 0){
+        if (ng1.size() > ng2.size())
+          std::swap(ng1, ng2);
+
+        // forward
+        int s = ng2.size()/ng1.size() + 1;
+        if (ng2.size() > 1)
+          for (size_t i=0; i<ng2.size()-1; i++){
+            elements.push_back(q);
+            elements.push_back(ng1[i/s]);
+            elements.push_back(ng2[i]);
+            elements.push_back(ng2[i+1]);
+          }
+        //backward
+        if (ng1.size() > 1)
+          for (size_t i=0; i<ng1.size() - 1; i++){
+            elements.push_back(q);
+            elements.push_back(ng1[i]);
+            elements.push_back(ng1[i+1]);
+            elements.push_back(ng2[i*s]);
+          }
+      }
+    }
+    /* 3 - across 0m0 direction */
+    {
+      /* first locate top cells along the edge */
+      std::vector<p4est_locidx_t> ng1;
+      ng1.reserve(end_00p - begin_00p);
+      for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
+        if (it->quad->y == quad->y){
+          ng1.push_back(it->locidx);
+        }
+
+      std::vector<p4est_locidx_t> ng2;
+      ng2.reserve(end_0m0 - begin_0m0);
+      for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
+          ng2.push_back(it->locidx);
+        }
+
+      /* now construct the triangulation */
+      if (ng1.size() != 0 && ng2.size() != 0){
+        if (ng1.size() > ng2.size())
+          std::swap(ng1, ng2);
+
+        // forward
+        int s = ng2.size()/ng1.size() + 1;
+        if (ng2.size() > 1)
+          for (size_t i=0; i<ng2.size()-1; i++){
+            elements.push_back(q);
+            elements.push_back(ng1[i/s]);
+            elements.push_back(ng2[i]);
+            elements.push_back(ng2[i+1]);
+          }
+        //backward
+        if (ng1.size() > 1)
+          for (size_t i=0; i<ng1.size() - 1; i++){
+            elements.push_back(q);
+            elements.push_back(ng1[i]);
+            elements.push_back(ng1[i+1]);
+            elements.push_back(ng2[i*s]);
+          }
+      }
+    }
+    /* 4 - across 0p0 direction */
+    {
+      /* first locate top cells along the edge */
+      std::vector<p4est_locidx_t> ng1;
+      ng1.reserve(end_00p - begin_00p);
+      for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) == quad->y + P4EST_QUADRANT_LEN(quad->level)){
+          ng1.push_back(it->locidx);
+        }
+
+      std::vector<p4est_locidx_t> ng2;
+      ng2.reserve(end_0p0 - begin_0p0);
+      for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
+          ng2.push_back(it->locidx);
+        }
+
+      /* now construct the triangulation */
+      if (ng1.size() != 0 && ng2.size() != 0){
+        if (ng1.size() > ng2.size())
+          std::swap(ng1, ng2);
+
+        // forward
+        int s = ng2.size()/ng1.size() + 1;
+        if (ng2.size() > 1)
+          for (size_t i=0; i<ng2.size()-1; i++){
+            elements.push_back(q);
+            elements.push_back(ng1[i/s]);
+            elements.push_back(ng2[i]);
+            elements.push_back(ng2[i+1]);
+          }
+        //backward
+        if (ng1.size() > 1)
+          for (size_t i=0; i<ng1.size() - 1; i++){
+            elements.push_back(q);
+            elements.push_back(ng1[i]);
+            elements.push_back(ng1[i+1]);
+            elements.push_back(ng2[i*s]);
+          }
+      }
+    }
+    /* 5 - across mm0 */
+    if (n_m00 != 0 && n_0m0 != 0)
+    {
+      elements.push_back(q);
+      elements.push_back(begin_00p->locidx);
+
+      for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+          elements.push_back(it->locidx);
+          break;
+        }
+
+      for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+          elements.push_back(it->locidx);
+          break;
         }
     }
-  }
-  /* 2 - across p00 direction */
-  {
-    /* first locate top cells along the edge */
-    std::vector<p4est_locidx_t> ng1;
-    ng1.reserve(end_00p - begin_00p);
-    for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-      if (it->quad->x + P4EST_QUADRANT_LEN(it->level) == quad->x + P4EST_QUADRANT_LEN(quad->level)){
-        ng1.push_back(it->locidx);
-      }
 
-    std::vector<p4est_locidx_t> ng2;
-    ng2.reserve(end_p00 - begin_p00);
-    for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-      if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
-        ng2.push_back(it->locidx);
-      }
-
-    /* now construct the triangulation */
-    if (ng1.size() != 0 && ng2.size() != 0){
-      if (ng1.size() > ng2.size())
-        std::swap(ng1, ng2);
-
-      // forward
-      int s = ng2.size()/ng1.size() + 1;
-      if (ng2.size() > 1)
-        for (size_t i=0; i<ng2.size()-1; i++){
-          elements.push_back(q);
-          elements.push_back(ng1[i/s]);
-          elements.push_back(ng2[i]);
-          elements.push_back(ng2[i+1]);
+    /* 6 - across pm0 */
+    if (n_p00 != 0 && n_0m0 != 0)
+    {
+      elements.push_back(q);
+      for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+          elements.push_back(it->locidx);
+          break;
         }
-      //backward
-      if (ng1.size() > 1)
-        for (size_t i=0; i<ng1.size() - 1; i++){
-          elements.push_back(q);
-          elements.push_back(ng1[i]);
-          elements.push_back(ng1[i+1]);
-          elements.push_back(ng2[i*s]);
+
+      for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+          elements.push_back(it->locidx);
+          break;
+        }
+
+      elements.push_back((end_0m0-1)->locidx);
+    }
+    /* 7 - across mp0 */
+    if (n_m00 != 0 && n_0p0 != 0)
+    {
+      elements.push_back(q);
+      for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+          elements.push_back(it->locidx);
+          break;
+        }
+
+      elements.push_back((end_m00-1)->locidx);
+
+      for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+          elements.push_back(it->locidx);
+          break;
         }
     }
-  }
-  /* 3 - across 0m0 direction */
-  {
-    /* first locate top cells along the edge */
-    std::vector<p4est_locidx_t> ng1;
-    ng1.reserve(end_00p - begin_00p);
-    for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-      if (it->quad->y == quad->y){
-        ng1.push_back(it->locidx);
-      }
-
-    std::vector<p4est_locidx_t> ng2;
-    ng2.reserve(end_0m0 - begin_0m0);
-    for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-      if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
-        ng2.push_back(it->locidx);
-      }
-
-    /* now construct the triangulation */
-    if (ng1.size() != 0 && ng2.size() != 0){
-      if (ng1.size() > ng2.size())
-        std::swap(ng1, ng2);
-
-      // forward
-      int s = ng2.size()/ng1.size() + 1;
-      if (ng2.size() > 1)
-        for (size_t i=0; i<ng2.size()-1; i++){
-          elements.push_back(q);
-          elements.push_back(ng1[i/s]);
-          elements.push_back(ng2[i]);
-          elements.push_back(ng2[i+1]);
-        }
-      //backward
-      if (ng1.size() > 1)
-        for (size_t i=0; i<ng1.size() - 1; i++){
-          elements.push_back(q);
-          elements.push_back(ng1[i]);
-          elements.push_back(ng1[i+1]);
-          elements.push_back(ng2[i*s]);
-        }
+    /* 8 - across pp0 */
+    if (n_p00 != 0 && n_0p0 != 0)
+    {
+      elements.push_back(q);
+      elements.push_back((end_00p-1)->locidx);
+      elements.push_back((end_p00-1)->locidx);
+      elements.push_back((end_0p0-1)->locidx);
     }
   }
-  /* 4 - across 0p0 direction */
-  {
-    /* first locate top cells along the edge */
-    std::vector<p4est_locidx_t> ng1;
-    ng1.reserve(end_00p - begin_00p);
-    for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-      if (it->quad->y + P4EST_QUADRANT_LEN(it->level) == quad->y + P4EST_QUADRANT_LEN(quad->level)){
-        ng1.push_back(it->locidx);
-      }
-
-    std::vector<p4est_locidx_t> ng2;
-    ng2.reserve(end_0p0 - begin_0p0);
-    for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-      if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
-        ng2.push_back(it->locidx);
-      }
-
-    /* now construct the triangulation */
-    if (ng1.size() != 0 && ng2.size() != 0){
-      if (ng1.size() > ng2.size())
-        std::swap(ng1, ng2);
-
-      // forward
-      int s = ng2.size()/ng1.size() + 1;
-      if (ng2.size() > 1)
-        for (size_t i=0; i<ng2.size()-1; i++){
-          elements.push_back(q);
-          elements.push_back(ng1[i/s]);
-          elements.push_back(ng2[i]);
-          elements.push_back(ng2[i+1]);
-        }
-      //backward
-      if (ng1.size() > 1)
-        for (size_t i=0; i<ng1.size() - 1; i++){
-          elements.push_back(q);
-          elements.push_back(ng1[i]);
-          elements.push_back(ng1[i+1]);
-          elements.push_back(ng2[i*s]);
-        }
-    }
-  }
-  /* 5 - across mm0 */
-  if (n_m00 != 0 && n_0m0 != 0)
-  {
-    elements.push_back(q);
-    elements.push_back(begin_00p->locidx);
-
-    for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-      if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
-        elements.push_back(it->locidx);
-        break;
-      }
-
-    for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-      if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
-        elements.push_back(it->locidx);
-        break;
-      }
-  }
-
-  /* 6 - across pm0 */
-  if (n_p00 != 0 && n_0m0 != 0)
-  {
-    elements.push_back(q);
-    for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-      if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
-        elements.push_back(it->locidx);
-        break;
-      }
-
-    for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-      if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
-        elements.push_back(it->locidx);
-        break;
-      }
-
-    elements.push_back((end_0m0-1)->locidx);
-  }
-  /* 7 - across mp0 */
-  if (n_m00 != 0 && n_0p0 != 0)
-  {
-    elements.push_back(q);
-    for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-      if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
-        elements.push_back(it->locidx);
-        break;
-      }
-
-    elements.push_back((end_m00-1)->locidx);
-
-    for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-      if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
-        elements.push_back(it->locidx);
-        break;
-      }
-  }
-  /* 8 - across pp0 */
-  if (n_p00 != 0 && n_0p0 != 0)
-  {
-    elements.push_back(q);
-    elements.push_back((end_00p-1)->locidx);
-    elements.push_back((end_p00-1)->locidx);
-    elements.push_back((end_0p0-1)->locidx);
-  }
-
   /* write the connectivity information (a.k.a. elements) */
   size_t num_elements = elements.size()/4;
   fprintf(vtk, "CELLS %ld %ld \n", num_elements, (1+4)*num_elements);
