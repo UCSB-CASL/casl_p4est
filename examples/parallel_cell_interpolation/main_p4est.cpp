@@ -86,7 +86,7 @@ static struct:CF_2{
 p4est_bool_t
 refine_test(p4est_t *p4est, p4est_topidx_t tr, p4est_quadrant_t *quad)
 {
-  if (quad->z == 0 && quad->level<3)
+  if (tr != 7 && quad->level<3)
     return P4EST_TRUE;
   else
     return P4EST_FALSE;
@@ -129,7 +129,7 @@ int main (int argc, char* argv[]){
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t my_brick, *brick = &my_brick;
 #ifdef P4_TO_P8
-    connectivity = my_p4est_brick_new(2, 2, 2, brick);
+    connectivity = my_p4est_brick_new(3, 3, 3, brick);
 #else
     connectivity = my_p4est_brick_new(2, 2, brick);
 #endif
@@ -179,7 +179,12 @@ int main (int argc, char* argv[]){
       p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
       for (size_t q=0; q<tree->quadrants.elem_count; q++){
         cnnn.write_cell_neighbors_vtk(q, tr, "cells");
-        cnnn.write_cell_triangulation_vtk(q, tr, "triangles");
+        cnnn.write_cell_triangulation_vtk_m00(q, tr, "triangles_m00");
+        cnnn.write_cell_triangulation_vtk_p00(q, tr, "triangles_p00");
+        cnnn.write_cell_triangulation_vtk_0m0(q, tr, "triangles_0m0");
+        cnnn.write_cell_triangulation_vtk_0p0(q, tr, "triangles_0p0");
+        cnnn.write_cell_triangulation_vtk_00m(q, tr, "triangles_00m");
+        cnnn.write_cell_triangulation_vtk_00p(q, tr, "triangles_00p");
       }
     }
 #ifndef P4_TO_P8

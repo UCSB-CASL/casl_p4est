@@ -89,7 +89,12 @@ public:
   void print_debug(p4est_locidx_t q, FILE* stream = stdout);
   void write_cell_neighbors_vtk(p4est_locidx_t qu, p4est_topidx_t tr, const char* filename);
   void write_triangulation(const my_p4est_node_neighbors_t& qnnn, const char* filename);
-  void write_cell_triangulation_vtk(p4est_locidx_t qu, p4est_topidx_t tr, const char *filename);
+  void write_cell_triangulation_vtk_m00(p4est_locidx_t qu, p4est_topidx_t tr, const char *filename);
+  void write_cell_triangulation_vtk_p00(p4est_locidx_t qu, p4est_topidx_t tr, const char *filename);
+  void write_cell_triangulation_vtk_0m0(p4est_locidx_t qu, p4est_topidx_t tr, const char *filename);
+  void write_cell_triangulation_vtk_0p0(p4est_locidx_t qu, p4est_topidx_t tr, const char *filename);
+  void write_cell_triangulation_vtk_00m(p4est_locidx_t qu, p4est_topidx_t tr, const char *filename);
+  void write_cell_triangulation_vtk_00p(p4est_locidx_t qu, p4est_topidx_t tr, const char *filename);
 #ifndef P4_TO_P8
   void write_triangulation(const char* filename);
 #endif
