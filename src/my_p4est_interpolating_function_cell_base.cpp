@@ -13,6 +13,7 @@
 #include <mpi.h>
 #include <src/CASL_math.h>
 
+#include <sstream>
 #include <fstream>
 #include <set>
 
@@ -210,11 +211,11 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
 
     try{
       if (method_ == linear)
-        Fo_p[out_idx] = cell_based_linear_interpolation(quad, quad_idx, Fi_p, xyz);
+        Fo_p[out_idx] = linear_interpolation(quad, quad_idx, Fi_p, xyz);
       else if (method_ == IDW)
-        Fo_p[out_idx] = cell_based_IDW_interpolation(quad, quad_idx, Fi_p, xyz);
+        Fo_p[out_idx] = IDW_interpolation(quad, quad_idx, Fi_p, xyz);
       else
-        Fo_p[out_idx] = cell_based_LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
+        Fo_p[out_idx] = LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
     } catch (const std::exception& e) {
       /* if the interpolation failed locally, send it to the remote
        * Note that if this also fails on the remote processors, then
@@ -263,11 +264,11 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
     p4est_locidx_t out_idx = local_point_buffer.output_idx[i];
 
     if (method_ == linear)
-      Fo_p[out_idx] = cell_based_linear_interpolation(quad, quad_idx, Fi_p, xyz);
+      Fo_p[out_idx] = linear_interpolation(quad, quad_idx, Fi_p, xyz);
     else if (method_ == IDW)
-      Fo_p[out_idx] = cell_based_IDW_interpolation(quad, quad_idx, Fi_p, xyz);
+      Fo_p[out_idx] = IDW_interpolation(quad, quad_idx, Fi_p, xyz);
     else
-      Fo_p[out_idx] = cell_based_LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
+      Fo_p[out_idx] = LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
   }  
 
   // begin recieving point buffers
@@ -333,11 +334,11 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
           p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
 
           if (method_ == linear)
-            f_send[i] = cell_based_linear_interpolation(best_match, qu_locidx, Fi_p, xyz);
+            f_send[i] = linear_interpolation(best_match, qu_locidx, Fi_p, xyz);
           else if (method_ == IDW)
-            f_send[i] = cell_based_IDW_interpolation(best_match, qu_locidx, Fi_p, xyz);
+            f_send[i] = IDW_interpolation(best_match, qu_locidx, Fi_p, xyz);
           else
-            f_send[i] = cell_based_LSQR_interpolation(best_match, qu_locidx, Fi_p, xyz);
+            f_send[i] = LSQR_interpolation(best_match, qu_locidx, Fi_p, xyz);
 
         } else if ( rank_found != -1 ) {
           // if we don't own the point but its in the ghost layer return 0.
@@ -462,11 +463,11 @@ double InterpolatingFunctionCellBase::operator ()(double x, double y) const
 #endif
 
     if (method_ == linear)
-      return cell_based_linear_interpolation(best_match, quad_idx, Fi_p, xyz);
+      return linear_interpolation(best_match, quad_idx, Fi_p, xyz);
     else if (method_ == IDW)
-      return cell_based_IDW_interpolation(best_match, quad_idx, Fi_p, xyz);
+      return IDW_interpolation(best_match, quad_idx, Fi_p, xyz);
     else
-      return cell_based_LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
+      return LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
 
   } else if ( rank_found != -1 ) { // ghost quadrant
     tree_idx = best_match.p.piggy3.which_tree;
@@ -477,11 +478,11 @@ double InterpolatingFunctionCellBase::operator ()(double x, double y) const
 #endif
 
     if (method_ == linear)
-      return cell_based_linear_interpolation(best_match, quad_idx, Fi_p, xyz);
+      return linear_interpolation(best_match, quad_idx, Fi_p, xyz);
     else if (method_ == IDW)
-      return cell_based_IDW_interpolation(best_match, quad_idx, Fi_p, xyz);
+      return IDW_interpolation(best_match, quad_idx, Fi_p, xyz);
     else
-      return cell_based_LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
+      return LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
 
   } else {
     ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
@@ -553,7 +554,7 @@ void InterpolatingFunctionCellBase::recv_point_buffers_begin()
   }
 }
 
-double InterpolatingFunctionCellBase::cell_based_linear_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
+double InterpolatingFunctionCellBase::linear_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
 {
   p4est_topidx_t tr_id = quad.p.piggy3.which_tree;
   p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*tr_id];
@@ -585,19 +586,14 @@ double InterpolatingFunctionCellBase::cell_based_linear_interpolation(const p4es
   };
 
   // correct for the search location if on the wall
-  if (is_quad_xmWall(p4est_, tr_id, &quad) && xyz[0] < xyz_C[0])
-    xyz_search[0] = xyz_C[0] + 0.5*qh;
-  if (is_quad_xpWall(p4est_, tr_id, &quad) && xyz[0] > xyz_C[0])
-    xyz_search[0] = xyz_C[0] - 0.5*qh;
-  if (is_quad_ymWall(p4est_, tr_id, &quad) && xyz[1] < xyz_C[1])
-    xyz_search[1] = xyz_C[1] + 0.5*qh;
-  if (is_quad_ypWall(p4est_, tr_id, &quad) && xyz[1] > xyz_C[1])
-    xyz_search[1] = xyz_C[1] - 0.5*qh;
+  bool is_point_inside = true;
+  if (is_quad_xmWall(p4est_, tr_id, &quad) && xyz[0] < xyz_C[0]) { xyz_search[0] = xyz_C[0] + 0.5*qh; is_point_inside = false; }
+  if (is_quad_xpWall(p4est_, tr_id, &quad) && xyz[0] > xyz_C[0]) { xyz_search[0] = xyz_C[0] - 0.5*qh; is_point_inside = false; }
+  if (is_quad_ymWall(p4est_, tr_id, &quad) && xyz[1] < xyz_C[1]) { xyz_search[1] = xyz_C[1] + 0.5*qh; is_point_inside = false; }
+  if (is_quad_ypWall(p4est_, tr_id, &quad) && xyz[1] > xyz_C[1]) { xyz_search[1] = xyz_C[1] - 0.5*qh; is_point_inside = false; }
 #ifdef P4_TO_P8
-  if (is_quad_zmWall(p4est_, tr_id, &quad) && xyz[2] < xyz_C[2])
-    xyz_search[2] = xyz_C[2] + 0.5*qh;
-  if (is_quad_zpWall(p4est_, tr_id, &quad) && xyz[2] > xyz_C[2])
-    xyz_search[2] = xyz_C[2] - 0.5*qh;
+  if (is_quad_zmWall(p4est_, tr_id, &quad) && xyz[2] < xyz_C[2]) { xyz_search[2] = xyz_C[2] + 0.5*qh; is_point_inside = false; }
+  if (is_quad_zpWall(p4est_, tr_id, &quad) && xyz[2] > xyz_C[2]) { xyz_search[2] = xyz_C[2] - 0.5*qh; is_point_inside = false; }
 #endif
 
   // check if the point is close to the center cell
@@ -618,15 +614,133 @@ double InterpolatingFunctionCellBase::cell_based_linear_interpolation(const p4es
     cells[i] = cnnn_->begin(quad_idx, i);
   cells[P4EST_FACES] = cnnn_->end(quad_idx, P4EST_FACES - 1);
 
-  size_t num_ngbd_cells[P4EST_FACES];
-  for (short i = 0; i<P4EST_FACES; i++)
-    num_ngbd_cells[i] = cells[i+1] - cells[i];
-
   std::vector<const quad_info_t*> points;
   points.reserve(P4EST_DIM*(cells[P4EST_FACES] - cells[0])); // estimate
 
 #ifdef P4_TO_P8
-  throw std::runtime_error("[ERROR]: Not implemented");
+  /* find the tetrahedron that contains the point:
+   * This is a very costly operation in 3D which has its own specialized functions.
+   * To further reduce the cost, we check in a particular direction only if needed.
+   * If one of the checks passes, we have found the tetrahedron with the required
+   * barycentric coordinates. If they all fail, this is probably a bug and we simply
+   * throw.
+   */
+  p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_->trees, tr_id);
+  double u123[3]; // barycentric coordinates
+  const quad_info_t *qu123[3]; // local index of cell centers
+
+  /* x direction */
+  if (r_search.x >= 0){
+    if (find_tetrahedron_containing_point_p00(quad_idx - tree->quadrants_offset, tr_id, r_search, u123, qu123)) {
+      // check for wall
+      if (!is_point_inside){
+        Point3 p1, p2, p3;
+        quad_center(p4est_, qu123[0], p1); p1.x -= xyz_C[0]; p1.y -= xyz_C[1]; p1.z -= xyz_C[2];
+        quad_center(p4est_, qu123[1], p2); p2.x -= xyz_C[0]; p2.y -= xyz_C[1]; p2.z -= xyz_C[2];
+        quad_center(p4est_, qu123[2], p3); p3.x -= xyz_C[0]; p3.y -= xyz_C[1]; p3.z -= xyz_C[2];
+        compute_barycentric_coordinates(p1, p2, p3, r, u123);
+      }
+      // perform interpolation
+      return (Fi_p[quad_idx]*(1-u123[0]-u123[1]-u123[2]) +
+          Fi_p[qu123[0]->locidx]*u123[0] +
+          Fi_p[qu123[1]->locidx]*u123[1] +
+          Fi_p[qu123[2]->locidx]*u123[2] );
+    }
+  } else {
+    if (find_tetrahedron_containing_point_m00(quad_idx - tree->quadrants_offset, tr_id, r_search, u123, qu123)) {
+      // check for wall
+      if (!is_point_inside){
+        Point3 p1, p2, p3;
+        quad_center(p4est_, qu123[0], p1); p1.x -= xyz_C[0]; p1.y -= xyz_C[1]; p1.z -= xyz_C[2];
+        quad_center(p4est_, qu123[1], p2); p2.x -= xyz_C[0]; p2.y -= xyz_C[1]; p2.z -= xyz_C[2];
+        quad_center(p4est_, qu123[2], p3); p3.x -= xyz_C[0]; p3.y -= xyz_C[1]; p3.z -= xyz_C[2];
+        compute_barycentric_coordinates(p1, p2, p3, r, u123);
+      }
+      // perform interpolation
+      return (Fi_p[quad_idx]*(1-u123[0]-u123[1]-u123[2]) +
+          Fi_p[qu123[0]->locidx]*u123[0] +
+          Fi_p[qu123[1]->locidx]*u123[1] +
+          Fi_p[qu123[2]->locidx]*u123[2] );
+    }
+  }
+
+  /* y direction */
+  if (r_search.y >= 0){
+    if (find_tetrahedron_containing_point_0p0(quad_idx - tree->quadrants_offset, tr_id, r_search, u123, qu123)) {
+      // check for wall
+      if (!is_point_inside){
+        Point3 p1, p2, p3;
+        quad_center(p4est_, qu123[0], p1); p1.x -= xyz_C[0]; p1.y -= xyz_C[1]; p1.z -= xyz_C[2];
+        quad_center(p4est_, qu123[1], p2); p2.x -= xyz_C[0]; p2.y -= xyz_C[1]; p2.z -= xyz_C[2];
+        quad_center(p4est_, qu123[2], p3); p3.x -= xyz_C[0]; p3.y -= xyz_C[1]; p3.z -= xyz_C[2];
+        compute_barycentric_coordinates(p1, p2, p3, r, u123);
+      }
+      // perform interpolation
+      return (Fi_p[quad_idx]*(1-u123[0]-u123[1]-u123[2]) +
+          Fi_p[qu123[0]->locidx]*u123[0] +
+          Fi_p[qu123[1]->locidx]*u123[1] +
+          Fi_p[qu123[2]->locidx]*u123[2] );
+    }
+  } else {
+    if (find_tetrahedron_containing_point_0m0(quad_idx - tree->quadrants_offset, tr_id, r_search, u123, qu123)) {
+      // check for wall
+      if (!is_point_inside){
+        Point3 p1, p2, p3;
+        quad_center(p4est_, qu123[0], p1); p1.x -= xyz_C[0]; p1.y -= xyz_C[1]; p1.z -= xyz_C[2];
+        quad_center(p4est_, qu123[1], p2); p2.x -= xyz_C[0]; p2.y -= xyz_C[1]; p2.z -= xyz_C[2];
+        quad_center(p4est_, qu123[2], p3); p3.x -= xyz_C[0]; p3.y -= xyz_C[1]; p3.z -= xyz_C[2];
+        compute_barycentric_coordinates(p1, p2, p3, r, u123);
+      }
+      // perform interpolation
+      return (Fi_p[quad_idx]*(1-u123[0]-u123[1]-u123[2]) +
+          Fi_p[qu123[0]->locidx]*u123[0] +
+          Fi_p[qu123[1]->locidx]*u123[1] +
+          Fi_p[qu123[2]->locidx]*u123[2] );
+    }
+  }
+
+  /* z direction */
+  if (r_search.z >= 0){
+    if (find_tetrahedron_containing_point_00p(quad_idx - tree->quadrants_offset, tr_id, r_search, u123, qu123)) {
+      // check for wall
+      if (!is_point_inside){
+        Point3 p1, p2, p3;
+        quad_center(p4est_, qu123[0], p1); p1.x -= xyz_C[0]; p1.y -= xyz_C[1]; p1.z -= xyz_C[2];
+        quad_center(p4est_, qu123[1], p2); p2.x -= xyz_C[0]; p2.y -= xyz_C[1]; p2.z -= xyz_C[2];
+        quad_center(p4est_, qu123[2], p3); p3.x -= xyz_C[0]; p3.y -= xyz_C[1]; p3.z -= xyz_C[2];
+        compute_barycentric_coordinates(p1, p2, p3, r, u123);
+      }
+      // perform interpolation
+      return (Fi_p[quad_idx]*(1-u123[0]-u123[1]-u123[2]) +
+          Fi_p[qu123[0]->locidx]*u123[0] +
+          Fi_p[qu123[1]->locidx]*u123[1] +
+          Fi_p[qu123[2]->locidx]*u123[2] );
+    }
+  } else {
+    if (find_tetrahedron_containing_point_00m(quad_idx - tree->quadrants_offset, tr_id, r_search, u123, qu123)) {
+      // check for wall
+      if (!is_point_inside){
+        Point3 p1, p2, p3;
+        quad_center(p4est_, qu123[0], p1); p1.x -= xyz_C[0]; p1.y -= xyz_C[1]; p1.z -= xyz_C[2];
+        quad_center(p4est_, qu123[1], p2); p2.x -= xyz_C[0]; p2.y -= xyz_C[1]; p2.z -= xyz_C[2];
+        quad_center(p4est_, qu123[2], p3); p3.x -= xyz_C[0]; p3.y -= xyz_C[1]; p3.z -= xyz_C[2];
+        compute_barycentric_coordinates(p1, p2, p3, r, u123);
+      }
+      // perform interpolation
+      return (Fi_p[quad_idx]*(1-u123[0]-u123[1]-u123[2]) +
+          Fi_p[qu123[0]->locidx]*u123[0] +
+          Fi_p[qu123[1]->locidx]*u123[1] +
+          Fi_p[qu123[2]->locidx]*u123[2] );
+    }
+  }
+
+  /* if we reach here, it means we have not been able to find the correct triangle -- this is a bug */
+  std::ostringstream oss;
+  oss << "[ERROR]: Could not find a suitable triangle for point (" << xyz[0] << "," << xyz[1] << "," << xyz[2]
+      << ") using search point (" << xyz_search[0] << "," << xyz_search[1] << "," << xyz_search[2] << ")"
+         ". Found quadrant index = " << quad_idx << ", tree_idx = " << tr_id << ". Processor performing interpolation has rank = " << p4est_->mpirank << std::endl;
+
+  throw std::runtime_error(oss.str());
 #else
   /* add points to the list for testing. There are 8 cases in 2D:
    * 4 face directions.
@@ -696,9 +810,11 @@ double InterpolatingFunctionCellBase::cell_based_linear_interpolation(const p4es
     double u2  = -r_search.cross(r1) / det;
 
     if (u1 >= 0.0 && u2 >= 0.0 && u1+u2 <= 1.0){
-      // use the actual point for interpolation
-      u1  =  r.cross(r2) / det;
-      u2  = -r.cross(r1) / det;
+      // use the actual point for interpolation if necessary
+      if (!is_point_inside){
+        u1  =  r.cross(r2) / det;
+        u2  = -r.cross(r1) / det;
+      }
       return (Fi_p[quad_idx]*(1 - u1 - u2) + Fi_p[it1->locidx]*u1 + Fi_p[it2->locidx]*u2);
     }
   }
@@ -706,7 +822,7 @@ double InterpolatingFunctionCellBase::cell_based_linear_interpolation(const p4es
   throw std::runtime_error("[ERROR]: Could not find a suitable triangulation");
 }
 
-double InterpolatingFunctionCellBase::cell_based_IDW_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
+double InterpolatingFunctionCellBase::IDW_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
 {
   p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*quad.p.piggy3.which_tree];
   double tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
@@ -767,8 +883,13 @@ double InterpolatingFunctionCellBase::cell_based_IDW_interpolation(const p4est_q
   return res/sum;
 }
 
-double InterpolatingFunctionCellBase::cell_based_LSQR_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
+double InterpolatingFunctionCellBase::LSQR_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
 {
+  (void) quad;
+  (void) quad_idx;
+  (void) Fi_p;
+  (void) xyz;
+
   throw std::runtime_error("[ERROR]: Not implemented!");
 }
 

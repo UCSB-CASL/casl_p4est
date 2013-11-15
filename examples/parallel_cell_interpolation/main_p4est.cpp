@@ -86,6 +86,7 @@ static struct:CF_2{
 p4est_bool_t
 refine_test(p4est_t *p4est, p4est_topidx_t tr, p4est_quadrant_t *quad)
 {
+  (void) p4est;
   if (tr != 7 && quad->level<3)
     return P4EST_TRUE;
   else
@@ -175,6 +176,7 @@ int main (int argc, char* argv[]){
     // set up the qnnn neighbors
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     my_p4est_cell_neighbors_t cnnn(&hierarchy);
+
     for (p4est_topidx_t tr = p4est->first_local_tree; tr<=p4est->last_local_tree; tr++){
       p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
       for (size_t q=0; q<tree->quadrants.elem_count; q++){
@@ -187,8 +189,9 @@ int main (int argc, char* argv[]){
         cnnn.write_cell_triangulation_vtk_00p(q, tr, "triangles_00p");
       }
     }
+
 #ifndef P4_TO_P8
-    cnnn.write_triangulation("triangulation");
+//    cnnn.write_triangulation("triangulation");
 #endif
 
     std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi->mpisize;

@@ -348,8 +348,6 @@ void my_p4est_cell_neighbors_t::write_cell_triangulation_vtk_00p(p4est_locidx_t 
   const quad_info_t *end_0m0   = cells[dir::f_0m0+1]; size_t n_0m0 = end_0m0 - begin_0m0;
   const quad_info_t *begin_0p0 = cells[dir::f_0p0  ];
   const quad_info_t *end_0p0   = cells[dir::f_0p0+1]; size_t n_0p0 = end_0p0 - begin_0p0;
-  const quad_info_t *begin_00m = cells[dir::f_00m  ];
-  const quad_info_t *end_00m   = cells[dir::f_00m+1]; size_t n_00m = end_00m - begin_00m;
   const quad_info_t *begin_00p = cells[dir::f_00p  ];
   const quad_info_t *end_00p   = cells[dir::f_00p+1]; size_t n_00p = end_00p - begin_00p;
 
@@ -815,8 +813,6 @@ void my_p4est_cell_neighbors_t::write_cell_triangulation_vtk_00m(p4est_locidx_t 
   const quad_info_t *end_0p0   = cells[dir::f_0p0+1]; size_t n_0p0 = end_0p0 - begin_0p0;
   const quad_info_t *begin_00m = cells[dir::f_00m  ];
   const quad_info_t *end_00m   = cells[dir::f_00m+1]; size_t n_00m = end_00m - begin_00m;
-  const quad_info_t *begin_00p = cells[dir::f_00p  ];
-  const quad_info_t *end_00p   = cells[dir::f_00p+1]; size_t n_00p = end_00p - begin_00p;
 
   size_t num_points = cells[P4EST_FACES]-cells[0] + 1;
   fprintf(vtk, "POINTS %ld double\n", num_points);
@@ -1746,8 +1742,6 @@ void my_p4est_cell_neighbors_t::write_cell_triangulation_vtk_p00(p4est_locidx_t 
     cells[i] = this->begin(q, i);
   cells[P4EST_FACES] = this->end(q, P4EST_FACES - 1);
 
-  const quad_info_t *begin_m00 = cells[dir::f_m00  ];
-  const quad_info_t *end_m00   = cells[dir::f_m00+1]; size_t n_m00 = end_m00 - begin_m00;
   const quad_info_t *begin_p00 = cells[dir::f_p00  ];
   const quad_info_t *end_p00   = cells[dir::f_p00+1]; size_t n_p00 = end_p00 - begin_p00;
   const quad_info_t *begin_0m0 = cells[dir::f_0m0  ];
@@ -2678,8 +2672,6 @@ void my_p4est_cell_neighbors_t::write_cell_triangulation_vtk_0p0(p4est_locidx_t 
   const quad_info_t *end_m00   = cells[dir::f_m00+1]; size_t n_m00 = end_m00 - begin_m00;
   const quad_info_t *begin_p00 = cells[dir::f_p00  ];
   const quad_info_t *end_p00   = cells[dir::f_p00+1]; size_t n_p00 = end_p00 - begin_p00;
-  const quad_info_t *begin_0m0 = cells[dir::f_0m0  ];
-  const quad_info_t *end_0m0   = cells[dir::f_0m0+1]; size_t n_0m0 = end_0m0 - begin_0m0;
   const quad_info_t *begin_0p0 = cells[dir::f_0p0  ];
   const quad_info_t *end_0p0   = cells[dir::f_0p0+1]; size_t n_0p0 = end_0p0 - begin_0p0;
   const quad_info_t *begin_00m = cells[dir::f_00m  ];
