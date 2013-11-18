@@ -883,6 +883,68 @@ double InterpolatingFunctionCellBase::IDW_interpolation(const p4est_quadrant_t &
   return res/sum;
 }
 
+double InterpolatingFunctionCellBase::RBF_MQ_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
+{
+  p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*quad.p.piggy3.which_tree];
+  double tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
+  double tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
+#ifdef P4_TO_P8
+  double tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
+#endif
+
+  double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+  double xyz_C [] =
+  {
+    quad_x_fr_i(&quad) + 0.5*qh + tr_xmin,
+    quad_y_fr_j(&quad) + 0.5*qh + tr_ymin
+  #ifdef P4_TO_P8
+    ,
+    quad_z_fr_k(&quad) + 0.5*qh + tr_zmin
+  #endif
+  };
+
+  /* loop over all quadrants and compute weights */
+  const quad_info_t *begin = cnnn_->begin(quad_idx, 0);
+  const quad_info_t *end   = cnnn_->end(quad_idx, P4EST_FACES - 1);
+
+#ifdef P4_TO_P8
+  double w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]) + SQR(xyz_C[2]-xyz[2]));
+#else
+  double w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]));
+#endif
+  double sum = w;
+  double res = w*Fi_p[quad_idx];
+
+  for (const quad_info_t *it = begin; it != end; ++it)
+  {
+    v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*it->tree_idx];
+
+    tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
+    tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
+  #ifdef P4_TO_P8
+    tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
+  #endif
+
+    qh = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+    xyz_C[0] = quad_x_fr_i(it->quad) + 0.5*qh + tr_xmin;
+    xyz_C[1] = quad_y_fr_j(it->quad) + 0.5*qh + tr_ymin;
+#ifdef P4_TO_P8
+    xyz_C[2] = quad_z_fr_k(it->quad) + 0.5*qh + tr_zmin;
+#endif
+
+#ifdef P4_TO_P8
+    w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]) + SQR(xyz_C[2]-xyz[2]));
+#else
+    w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]));
+#endif
+    sum += w;
+    res += w*Fi_p[it->locidx];
+  }
+
+  return res/sum;
+}
+
+
 double InterpolatingFunctionCellBase::LSQR_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
 {
   (void) quad;
