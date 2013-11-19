@@ -610,9 +610,13 @@ double InterpolatingFunctionCellBase::linear_interpolation(const p4est_quadrant_
 
   // decide where to look for the triangle based on the relative coordinate
   const quad_info_t *cells[P4EST_FACES + 1];
+  size_t num_ngbd_cells[P4EST_FACES];
   for (short i = 0; i<P4EST_FACES; i++)
-    cells[i] = cnnn_->begin(quad_idx, i);
-  cells[P4EST_FACES] = cnnn_->end(quad_idx, P4EST_FACES - 1);
+    cells[i] = cnnn_->face_begin(quad_idx, i);
+  cells[P4EST_FACES] = cnnn_->face_end(quad_idx, P4EST_FACES - 1);
+
+  for (short i = 0; i<P4EST_FACES; i++)
+    num_ngbd_cells[i] = cells[i+1] - cells[i];
 
   std::vector<const quad_info_t*> points;
   points.reserve(P4EST_DIM*(cells[P4EST_FACES] - cells[0])); // estimate
@@ -788,7 +792,7 @@ double InterpolatingFunctionCellBase::linear_interpolation(const p4est_quadrant_
     v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*it1->tree_idx];
     tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
     tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
-    qh = (double)P4EST_QUADRANT_LEN(it1->level)/(double)P4EST_ROOT_LEN;
+    qh = (double)P4EST_QUADRANT_LEN(it1->quad->level)/(double)P4EST_ROOT_LEN;
 
     Point2 r1;
     r1.x = quad_x_fr_i(it1->quad) + 0.5*qh + tr_xmin - xyz_C[0];
@@ -798,7 +802,7 @@ double InterpolatingFunctionCellBase::linear_interpolation(const p4est_quadrant_
     v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*it2->tree_idx];
     tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
     tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
-    qh = (double)P4EST_QUADRANT_LEN(it2->level)/(double)P4EST_ROOT_LEN;
+    qh = (double)P4EST_QUADRANT_LEN(it2->quad->level)/(double)P4EST_ROOT_LEN;
 
     Point2 r2;
     r2.x = quad_x_fr_i(it2->quad) + 0.5*qh + tr_xmin - xyz_C[0];
@@ -843,8 +847,8 @@ double InterpolatingFunctionCellBase::IDW_interpolation(const p4est_quadrant_t &
   };
 
   /* loop over all quadrants and compute weights */
-  const quad_info_t *begin = cnnn_->begin(quad_idx, 0);
-  const quad_info_t *end   = cnnn_->end(quad_idx, P4EST_FACES - 1);
+  const quad_info_t *begin = cnnn_->face_begin(quad_idx, 0);
+  const quad_info_t *end   = cnnn_->face_end(quad_idx, P4EST_FACES - 1);
 
 #ifdef P4_TO_P8
   double w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]) + SQR(xyz_C[2]-xyz[2]));
@@ -864,7 +868,7 @@ double InterpolatingFunctionCellBase::IDW_interpolation(const p4est_quadrant_t &
     tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
   #endif
 
-    qh = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+    qh = (double)P4EST_QUADRANT_LEN(it->quad->level)/(double)P4EST_ROOT_LEN;
     xyz_C[0] = quad_x_fr_i(it->quad) + 0.5*qh + tr_xmin;
     xyz_C[1] = quad_y_fr_j(it->quad) + 0.5*qh + tr_ymin;
 #ifdef P4_TO_P8
@@ -904,8 +908,8 @@ double InterpolatingFunctionCellBase::RBF_MQ_interpolation(const p4est_quadrant_
   };
 
   /* loop over all quadrants and compute weights */
-  const quad_info_t *begin = cnnn_->begin(quad_idx, 0);
-  const quad_info_t *end   = cnnn_->end(quad_idx, P4EST_FACES - 1);
+  const quad_info_t *begin = cnnn_->face_begin(quad_idx, 0);
+  const quad_info_t *end   = cnnn_->face_end(quad_idx, P4EST_FACES - 1);
 
 #ifdef P4_TO_P8
   double w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]) + SQR(xyz_C[2]-xyz[2]));
@@ -925,7 +929,7 @@ double InterpolatingFunctionCellBase::RBF_MQ_interpolation(const p4est_quadrant_
     tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
   #endif
 
-    qh = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+    qh = (double)P4EST_QUADRANT_LEN(it->quad->level)/(double)P4EST_ROOT_LEN;
     xyz_C[0] = quad_x_fr_i(it->quad) + 0.5*qh + tr_xmin;
     xyz_C[1] = quad_y_fr_j(it->quad) + 0.5*qh + tr_ymin;
 #ifdef P4_TO_P8

@@ -130,11 +130,36 @@ int main (int argc, char* argv[]){
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t my_brick, *brick = &my_brick;
 #ifdef P4_TO_P8
-    connectivity = my_p4est_brick_new(3, 3, 3, brick);
+    connectivity = my_p4est_brick_new(2, 2, 2, brick);
 #else
-    connectivity = my_p4est_brick_new(2, 2, brick);
+    connectivity = my_p4est_brick_new(3, 3, brick);
 #endif
     w2.stop(); w2.read_duration();
+
+//    for (p4est_topidx_t tr = 0; tr < connectivity->num_trees; ++tr){
+//      // print face neighbors
+//      std::cout << "face neighbors of tr " << tr << std::endl;
+//      for (int i=0; i<P4EST_FACES; i++)
+//        std::cout << connectivity->tree_to_tree[tr*P4EST_FACES + i] << " ";
+//      std::cout << std::endl;
+
+//#ifdef P4_TO_P8
+//      // print edge neighbors
+//      std::cout << "edge neighbors of tr " << tr << std::endl;
+//      for (int i=0; i<P8EST_EDGES; i++)
+//        std::cout << connectivity->edge_to_tree[tr*P8EST_EDGES + i] << " ";
+//      std::cout << std::endl;
+//#endif
+
+//      // print corner neighbors
+//      std::cout << "corner neighbors of tr " << tr << std::endl;
+//      for (int i=0; i<P4EST_CHILDREN; i++)
+//        std::cout << connectivity->corner_to_tree[tr*P4EST_CHILDREN + i] << " ";
+//      std::cout << std::endl;
+//    }
+
+//    return 0;
+
 
     // Now create the forest
     w2.start("p4est generation");
@@ -144,7 +169,7 @@ int main (int argc, char* argv[]){
     // Now refine the tree
     w2.start("refine");
     p4est->user_pointer = (void*)(&cf_data);
-    p4est_refine(p4est, P4EST_TRUE, refine_test, NULL);
+    p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
     w2.stop(); w2.read_duration();
 
     // Finally re-partition
@@ -181,12 +206,12 @@ int main (int argc, char* argv[]){
       p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
       for (size_t q=0; q<tree->quadrants.elem_count; q++){
         cnnn.write_cell_neighbors_vtk(q, tr, "cells");
-        cnnn.write_cell_triangulation_vtk_m00(q, tr, "triangles_m00");
-        cnnn.write_cell_triangulation_vtk_p00(q, tr, "triangles_p00");
-        cnnn.write_cell_triangulation_vtk_0m0(q, tr, "triangles_0m0");
-        cnnn.write_cell_triangulation_vtk_0p0(q, tr, "triangles_0p0");
-        cnnn.write_cell_triangulation_vtk_00m(q, tr, "triangles_00m");
-        cnnn.write_cell_triangulation_vtk_00p(q, tr, "triangles_00p");
+//        cnnn.write_cell_triangulation_vtk_m00(q, tr, "triangles_m00");
+//        cnnn.write_cell_triangulation_vtk_p00(q, tr, "triangles_p00");
+//        cnnn.write_cell_triangulation_vtk_0m0(q, tr, "triangles_0m0");
+//        cnnn.write_cell_triangulation_vtk_0p0(q, tr, "triangles_0p0");
+//        cnnn.write_cell_triangulation_vtk_00m(q, tr, "triangles_00m");
+//        cnnn.write_cell_triangulation_vtk_00p(q, tr, "triangles_00p");
       }
     }
 

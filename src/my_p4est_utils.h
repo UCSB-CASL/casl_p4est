@@ -15,25 +15,48 @@
 #include <sstream>
 #include <vector>
 
+/* direction indices; follows z-order */
 namespace dir {
 enum {
   v_mmm = 0,
   v_pmm,
   v_mpm,
-  v_ppm,
+  v_ppm
+#ifdef P4_TO_P8
+  ,
   v_mmp,
   v_pmp,
   v_mpp,
   v_ppp
+#endif
 };
 enum {
   f_m00 = 0,
   f_p00,
   f_0m0,
-  f_0p0,
+  f_0p0
+#ifdef P4_TO_P8
+  ,
   f_00m,
   f_00p
+#endif
 };
+#ifdef P4_TO_P8
+enum {
+  e_m0m = 0,
+  e_p0m,
+  e_0mm,
+  e_0pm,
+  e_mm0,
+  e_pm0,
+  e_mp0,
+  e_pp0,
+  e_m0p,
+  e_p0p,
+  e_0mp,
+  e_0pp
+};
+#endif
 }
 
 class CF_1

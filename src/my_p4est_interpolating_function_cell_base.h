@@ -133,6 +133,7 @@ public:
 
 };
 
+#ifdef P4_TO_P8
 namespace {
 inline double compute_det(const Point3& p1, const Point3& p2, const Point3& p3)
 {
@@ -142,7 +143,7 @@ inline double compute_det(const Point3& p1, const Point3& p2, const Point3& p3)
 
 inline void quad_center(const p4est_t *p4est_, const InterpolatingFunctionCellBase::quad_info_t *it, Point3& p)
 {
-  static double qh = (double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN;
+  static double qh = (double)P4EST_QUADRANT_LEN(it->quad->level)/(double)P4EST_ROOT_LEN;
 
   static const p4est_connectivity_t *conn = p4est_->connectivity;
   static p4est_topidx_t v_mm = conn->tree_to_vertex[P4EST_CHILDREN*it->tree_idx];
@@ -163,5 +164,6 @@ inline void compute_barycentric_coordinates(const Point3 p1, const Point3& p2, c
   uvw[2] = compute_det(p1, p2, px)/det;
 }
 }
+#endif
 
 #endif // MY_P4EST_INTERPOLATING_FUNCTION_CELL_BASE_H

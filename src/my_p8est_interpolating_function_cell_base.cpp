@@ -93,8 +93,8 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_m00(p4est_
 
   const quad_info_t *cells[P4EST_FACES + 1];
   for (short i = 0; i<P4EST_FACES; i++)
-    cells[i] = cnnn_->begin(q, i);
-  cells[P4EST_FACES] = cnnn_->end(q, P4EST_FACES - 1);
+    cells[i] = cnnn_->face_begin(q, i);
+  cells[P4EST_FACES] = cnnn_->face_end(q, P4EST_FACES - 1);
 
   const quad_info_t *begin_m00 = cells[dir::f_m00  ];
   const quad_info_t *end_m00   = cells[dir::f_m00+1]; size_t n_m00 = end_m00 - begin_m00;
@@ -133,32 +133,32 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_m00(p4est_
     std::vector<const quad_info_t*> ng_00p;
     int8_t l_0p0, l_00p;
 
-    bool is_boundary_0p0 = it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level);
-    bool is_boundary_00p = it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level);
+    bool is_boundary_0p0 = it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level);
+    bool is_boundary_00p = it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level);
 
     /* p00 */
     if (!is_boundary_0p0)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_0p0);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_0p0);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_0p0);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_0p0);
       ng_0p0.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
-        if (it_->quad->x + P4EST_QUADRANT_LEN(it_->level) == it->quad->x + P4EST_QUADRANT_LEN(it->level) ){
+        if (it_->quad->x + P4EST_QUADRANT_LEN(it_->quad->level) == it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) ){
           ng_0p0.push_back(it_);
-          l_0p0 = it_->level;
+          l_0p0 = it_->quad->level;
         }
     }
 
     /* 0p0 */
     if (!is_boundary_00p)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_00p);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_00p);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_00p);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_00p);
       ng_00p.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
-        if (it_->quad->x + P4EST_QUADRANT_LEN(it_->level) == it->quad->x + P4EST_QUADRANT_LEN(it->level)){
+        if (it_->quad->x + P4EST_QUADRANT_LEN(it_->quad->level) == it->quad->x + P4EST_QUADRANT_LEN(it->quad->level)){
           ng_00p.push_back(it_);
-          l_00p = it_->level;
+          l_00p = it_->quad->level;
         }
     }
 
@@ -167,9 +167,9 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_m00(p4est_
     {
       const quad_info_t *it_;
       if (l_0p0 > l_00p)
-        it_ = cnnn_->begin(ng_0p0[ng_0p0.size() - 1]->locidx, dir::f_00p);
+        it_ = cnnn_->face_begin(ng_0p0[ng_0p0.size() - 1]->locidx, dir::f_00p);
       else
-        it_ = cnnn_->begin(ng_00p[ng_00p.size() - 1]->locidx, dir::f_0p0);
+        it_ = cnnn_->face_begin(ng_00p[ng_00p.size() - 1]->locidx, dir::f_0p0);
 
       ng_0p0.push_back(it_);
       ng_00p.push_back(it_);
@@ -230,7 +230,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_m00(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_m00 - begin_m00);
       for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
@@ -271,7 +271,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_m00(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_m00 - begin_m00);
       for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
@@ -305,7 +305,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_m00(p4est_
     if (n_0p0 != 0 && n_00m != 0)
     {
       for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
@@ -313,7 +313,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_m00(p4est_
       quad_center(p4est_,begin_0p0, p2); p2 -= p0; qu123[1] = begin_0p0;
 
       for (const quad_info_t *it = begin_00m; it != end_00m; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -325,13 +325,13 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_m00(p4est_
     if (n_0m0 != 0 && n_00p != 0)
     {
       for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
 
       for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
@@ -346,12 +346,12 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_m00(p4est_
       quad_center(p4est_,end_m00-1, p1); p1 -= p0; qu123[0] = end_m00-1;
 
       for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
       for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -373,8 +373,8 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
 
   const quad_info_t *cells[P4EST_FACES + 1];
   for (short i = 0; i<P4EST_FACES; i++)
-    cells[i] = cnnn_->begin(q, i);
-  cells[P4EST_FACES] = cnnn_->end(q, P4EST_FACES - 1);
+    cells[i] = cnnn_->face_begin(q, i);
+  cells[P4EST_FACES] = cnnn_->face_end(q, P4EST_FACES - 1);
 
   const quad_info_t *begin_p00 = cells[dir::f_p00  ];
   const quad_info_t *end_p00   = cells[dir::f_p00+1]; size_t n_p00 = end_p00 - begin_p00;
@@ -411,32 +411,32 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
     std::vector<const quad_info_t*> ng_00p;
     int8_t l_0p0, l_00p;
 
-    bool is_boundary_0p0 = it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level);
-    bool is_boundary_00p = it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level);
+    bool is_boundary_0p0 = it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level);
+    bool is_boundary_00p = it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level);
 
     /* p00 */
     if (!is_boundary_0p0)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_0p0);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_0p0);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_0p0);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_0p0);
       ng_0p0.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
         if (it_->quad->x == it->quad->x){
           ng_0p0.push_back(it_);
-          l_0p0 = it_->level;
+          l_0p0 = it_->quad->level;
         }
     }
 
     /* 0p0 */
     if (!is_boundary_00p)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_00p);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_00p);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_00p);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_00p);
       ng_00p.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
         if (it_->quad->x == it->quad->x){
           ng_00p.push_back(it_);
-          l_00p = it_->level;
+          l_00p = it_->quad->level;
         }
     }
 
@@ -445,9 +445,9 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
     {
       const quad_info_t *it_;
       if (l_0p0 > l_00p)
-        it_ = cnnn_->begin(ng_0p0[ng_0p0.size() - 1]->locidx, dir::f_00p);
+        it_ = cnnn_->face_begin(ng_0p0[ng_0p0.size() - 1]->locidx, dir::f_00p);
       else
-        it_ = cnnn_->begin(ng_00p[ng_00p.size() - 1]->locidx, dir::f_0p0);
+        it_ = cnnn_->face_begin(ng_00p[ng_00p.size() - 1]->locidx, dir::f_0p0);
 
       ng_0p0.push_back(it_);
       ng_00p.push_back(it_);
@@ -494,7 +494,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_0m0 - begin_0m0);
       for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -507,14 +507,14 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_p00 - begin_p00);
       for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_0p0 - begin_0p0);
       for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -534,7 +534,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_00m- begin_00m);
       for (const quad_info_t *it = begin_00m; it != end_00m; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -547,14 +547,14 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_p00 - begin_p00);
       for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_00p - begin_00p);
       for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -567,13 +567,13 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
       quad_center(p4est_, begin_p00, p1); p1 -= p0; qu123[0] = begin_p00;
 
       for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
 
       for (const quad_info_t *it = begin_00m; it != end_00m; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -586,13 +586,13 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
     if (n_0p0 != 0 && n_00m != 0)
     {
       for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
 
       for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
@@ -608,7 +608,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
     {
 
       for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
@@ -616,7 +616,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_p00(p4est_
       quad_center(p4est_,end_0m0-1, p2); p2 -= p0; qu123[1] = end_0m0-1;
 
       for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -648,8 +648,8 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0m0(p4est_
 
   const quad_info_t *cells[P4EST_FACES + 1];
   for (short i = 0; i<P4EST_FACES; i++)
-    cells[i] = cnnn_->begin(q, i);
-  cells[P4EST_FACES] = cnnn_->end(q, P4EST_FACES - 1);
+    cells[i] = cnnn_->face_begin(q, i);
+  cells[P4EST_FACES] = cnnn_->face_end(q, P4EST_FACES - 1);
 
   const quad_info_t *begin_m00 = cells[dir::f_m00  ];
   const quad_info_t *end_m00   = cells[dir::f_m00+1]; size_t n_m00 = end_m00 - begin_m00;
@@ -688,32 +688,32 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0m0(p4est_
     std::vector<const quad_info_t*> ng_00p;
     int8_t l_p00, l_00p;
 
-    bool is_boundary_p00 = it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level);
-    bool is_boundary_00p = it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level);
+    bool is_boundary_p00 = it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level);
+    bool is_boundary_00p = it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level);
 
     /* p00 */
     if (!is_boundary_p00)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_p00);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_p00);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_p00);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_p00);
       ng_p00.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
-        if (it_->quad->y + P4EST_QUADRANT_LEN(it_->level) == it->quad->y + P4EST_QUADRANT_LEN(it->level) ){
+        if (it_->quad->y + P4EST_QUADRANT_LEN(it_->quad->level) == it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) ){
           ng_p00.push_back(it_);
-          l_p00 = it_->level;
+          l_p00 = it_->quad->level;
         }
     }
 
     /* 0p0 */
     if (!is_boundary_00p)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_00p);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_00p);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_00p);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_00p);
       ng_00p.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
-        if (it_->quad->y + P4EST_QUADRANT_LEN(it_->level) == it->quad->y + P4EST_QUADRANT_LEN(it->level)){
+        if (it_->quad->y + P4EST_QUADRANT_LEN(it_->quad->level) == it->quad->y + P4EST_QUADRANT_LEN(it->quad->level)){
           ng_00p.push_back(it_);
-          l_00p = it_->level;
+          l_00p = it_->quad->level;
         }
     }
 
@@ -722,9 +722,9 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0m0(p4est_
     {
       const quad_info_t *it_;
       if (l_p00 > l_00p)
-        it_ = cnnn_->begin(ng_p00[ng_p00.size() - 1]->locidx, dir::f_00p);
+        it_ = cnnn_->face_begin(ng_p00[ng_p00.size() - 1]->locidx, dir::f_00p);
       else
-        it_ = cnnn_->begin(ng_00p[ng_00p.size() - 1]->locidx, dir::f_p00);
+        it_ = cnnn_->face_begin(ng_00p[ng_00p.size() - 1]->locidx, dir::f_p00);
 
       ng_p00.push_back(it_);
       ng_00p.push_back(it_);
@@ -784,7 +784,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0m0(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_0m0 - begin_0m0);
       for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
@@ -824,7 +824,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0m0(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_0m0 - begin_0m0);
       for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
@@ -854,7 +854,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0m0(p4est_
     if (n_p00 != 0 && n_00m != 0)
     {
       for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
@@ -862,7 +862,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0m0(p4est_
       quad_center(p4est_,begin_p00, p2); p2 -= p0; qu123[1] = begin_p00;
 
       for (const quad_info_t *it = begin_00m; it != end_00m; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -875,13 +875,13 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0m0(p4est_
     if (n_m00 != 0 && n_00p != 0)
     {
       for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
 
       for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
@@ -896,12 +896,12 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0m0(p4est_
     {
       quad_center(p4est_,end_0m0 - 1, p1); p1 -= p0; qu123[0] = end_0m0-1;
       for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
       for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -923,8 +923,8 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
 
   const quad_info_t *cells[P4EST_FACES + 1];
   for (short i = 0; i<P4EST_FACES; i++)
-    cells[i] = cnnn_->begin(q, i);
-  cells[P4EST_FACES] = cnnn_->end(q, P4EST_FACES - 1);
+    cells[i] = cnnn_->face_begin(q, i);
+  cells[P4EST_FACES] = cnnn_->face_end(q, P4EST_FACES - 1);
 
   const quad_info_t *begin_m00 = cells[dir::f_m00  ];
   const quad_info_t *end_m00   = cells[dir::f_m00+1]; size_t n_m00 = end_m00 - begin_m00;
@@ -961,32 +961,32 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
     std::vector<const quad_info_t*> ng_00p;
     int8_t l_p00, l_00p;
 
-    bool is_boundary_p00 = it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level);
-    bool is_boundary_00p = it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level);
+    bool is_boundary_p00 = it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level);
+    bool is_boundary_00p = it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level);
 
     /* p00 */
     if (!is_boundary_p00)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_p00);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_p00);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_p00);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_p00);
       ng_p00.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
         if (it_->quad->y == it->quad->y ){
           ng_p00.push_back(it_);
-          l_p00 = it_->level;
+          l_p00 = it_->quad->level;
         }
     }
 
     /* 0p0 */
     if (!is_boundary_00p)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_00p);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_00p);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_00p);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_00p);
       ng_00p.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
         if (it_->quad->y == it->quad->y){
           ng_00p.push_back(it_);
-          l_00p = it_->level;
+          l_00p = it_->quad->level;
         }
     }
 
@@ -995,9 +995,9 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
     {
       const quad_info_t *it_;
       if (l_p00 > l_00p)
-        it_ = cnnn_->begin(ng_p00[ng_p00.size() - 1]->locidx, dir::f_00p);
+        it_ = cnnn_->face_begin(ng_p00[ng_p00.size() - 1]->locidx, dir::f_00p);
       else
-        it_ = cnnn_->begin(ng_00p[ng_00p.size() - 1]->locidx, dir::f_p00);
+        it_ = cnnn_->face_begin(ng_00p[ng_00p.size() - 1]->locidx, dir::f_p00);
 
       ng_p00.push_back(it_);
       ng_00p.push_back(it_);
@@ -1044,7 +1044,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_m00 - begin_m00);
       for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -1057,14 +1057,14 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_0p0 - begin_0p0);
       for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_p00 - begin_p00);
       for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -1084,7 +1084,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_00m- begin_00m);
       for (const quad_info_t *it = begin_00m; it != end_00m; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -1097,14 +1097,14 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_0p0 - begin_0p0);
       for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_00p - begin_00p);
       for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -1116,7 +1116,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
     if (n_m00 != 0 && n_00m != 0)
     {
       for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
@@ -1124,7 +1124,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
       quad_center(p4est_,begin_0p0, p2); p2 -= p0; qu123[1] = begin_0p0;
 
       for (const quad_info_t *it = begin_00m; it != end_00m; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -1137,13 +1137,13 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
     if (n_p00 != 0 && n_00m != 0)
     {
       for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
 
       for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
@@ -1158,13 +1158,13 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_0p0(p4est_
       quad_center(p4est_,end_m00-1, p1); p1 -= p0; qu123[0] = end_m00-1;
 
       for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
 
       for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -1196,8 +1196,8 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00m(p4est_
 
   const quad_info_t *cells[P4EST_FACES + 1];
   for (short i = 0; i<P4EST_FACES; i++)
-    cells[i] = cnnn_->begin(q, i);
-  cells[P4EST_FACES] = cnnn_->end(q, P4EST_FACES - 1);
+    cells[i] = cnnn_->face_begin(q, i);
+  cells[P4EST_FACES] = cnnn_->face_end(q, P4EST_FACES - 1);
 
   const quad_info_t *begin_m00 = cells[dir::f_m00  ];
   const quad_info_t *end_m00   = cells[dir::f_m00+1]; size_t n_m00 = end_m00 - begin_m00;
@@ -1234,32 +1234,32 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00m(p4est_
     std::vector<const quad_info_t*> ng_0p0;
     int8_t l_p0, l_0p;
 
-    bool is_p00_boundary = it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level);
-    bool is_0p0_boundary = it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level);
+    bool is_p00_boundary = it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level);
+    bool is_0p0_boundary = it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level);
 
     /* p00 */
     if (!is_p00_boundary)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_p00);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_p00);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_p00);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_p00);
       ng_p00.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
-        if (it_->quad->z + P4EST_QUADRANT_LEN(it_->level) == it->quad->z + P4EST_QUADRANT_LEN(it->level) ){
+        if (it_->quad->z + P4EST_QUADRANT_LEN(it_->quad->level) == it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) ){
           ng_p00.push_back(it_);
-          l_p0 = it_->level;
+          l_p0 = it_->quad->level;
         }
     }
 
     /* 0p0 */
     if (!is_0p0_boundary)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_0p0);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_0p0);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_0p0);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_0p0);
       ng_0p0.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
-        if (it_->quad->z + P4EST_QUADRANT_LEN(it_->level) == it->quad->z + P4EST_QUADRANT_LEN(it->level)){
+        if (it_->quad->z + P4EST_QUADRANT_LEN(it_->quad->level) == it->quad->z + P4EST_QUADRANT_LEN(it->quad->level)){
           ng_0p0.push_back(it_);
-          l_0p = it_->level;
+          l_0p = it_->quad->level;
         }
     }
 
@@ -1268,9 +1268,9 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00m(p4est_
     {
       const quad_info_t *it_;
       if (l_p0 > l_0p)
-        it_ = cnnn_->begin(ng_p00[ng_p00.size() - 1]->locidx, dir::f_0p0);
+        it_ = cnnn_->face_begin(ng_p00[ng_p00.size() - 1]->locidx, dir::f_0p0);
       else
-        it_ = cnnn_->begin(ng_0p0[ng_0p0.size() - 1]->locidx, dir::f_p00);
+        it_ = cnnn_->face_begin(ng_0p0[ng_0p0.size() - 1]->locidx, dir::f_p00);
 
       ng_p00.push_back(it_);
       ng_0p0.push_back(it_);
@@ -1331,7 +1331,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00m(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_00m - begin_00m);
       for (const quad_info_t *it = begin_00m; it != end_00m; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) == quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) == quad->x + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
@@ -1372,7 +1372,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00m(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_00m - begin_00m);
       for (const quad_info_t *it = begin_00m; it != end_00m; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) == quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) == quad->y + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
@@ -1412,7 +1412,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00m(p4est_
     if (n_p00 != 0 && n_0m0 != 0)
     {
       for (const quad_info_t *it = begin_00m; it != end_00m; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
@@ -1420,7 +1420,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00m(p4est_
       quad_center(p4est_,begin_p00, p2); p2 -= p0; qu123[1] = begin_p00;
 
       for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -1433,13 +1433,13 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00m(p4est_
     if (n_m00 != 0 && n_0p0 != 0)
     {
       for (const quad_info_t *it = begin_00m; it != end_00m; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
 
       for (const quad_info_t* it = begin_m00; it != end_m00; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
@@ -1460,12 +1460,12 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00m(p4est_
       quad_center(p4est_,end_00m-1, p1); p1 -= p0; qu123[0] = end_00m-1;
 
       for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
       for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -1487,8 +1487,8 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
 
   const quad_info_t *cells[P4EST_FACES + 1];
   for (short i = 0; i<P4EST_FACES; i++)
-    cells[i] = cnnn_->begin(q, i);
-  cells[P4EST_FACES] = cnnn_->end(q, P4EST_FACES - 1);
+    cells[i] = cnnn_->face_begin(q, i);
+  cells[P4EST_FACES] = cnnn_->face_end(q, P4EST_FACES - 1);
 
   const quad_info_t *begin_m00 = cells[dir::f_m00  ];
   const quad_info_t *end_m00   = cells[dir::f_m00+1]; size_t n_m00 = end_m00 - begin_m00;
@@ -1525,32 +1525,32 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
     std::vector<const quad_info_t*> ng_0p0;
     int8_t l_p0, l_0p;
 
-    bool is_p00_boundary = it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level);
-    bool is_0p0_boundary = it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level);
+    bool is_p00_boundary = it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level);
+    bool is_0p0_boundary = it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level);
 
     /* p00 */
     if (!is_p00_boundary)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_p00);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_p00);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_p00);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_p00);
       ng_p00.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
         if (it_->quad->z == it->quad->z){
           ng_p00.push_back(it_);
-          l_p0 = it_->level;
+          l_p0 = it_->quad->level;
         }
     }
 
     /* 0p0 */
     if (!is_0p0_boundary)
     {
-      const quad_info_t *begin_ = cnnn_->begin(it->locidx, dir::f_0p0);
-      const quad_info_t *end_   = cnnn_->end(it->locidx, dir::f_0p0);
+      const quad_info_t *begin_ = cnnn_->face_begin(it->locidx, dir::f_0p0);
+      const quad_info_t *end_   = cnnn_->face_end(it->locidx, dir::f_0p0);
       ng_0p0.reserve(end_ - begin_);
       for (const quad_info_t *it_ = begin_; it_ != end_; ++it_)
         if (it_->quad->z == it->quad->z){
           ng_0p0.push_back(it_);
-          l_0p = it_->level;
+          l_0p = it_->quad->level;
         }
     }
 
@@ -1559,9 +1559,9 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
     {
       const quad_info_t *it_;
       if (l_p0 > l_0p)
-        it_ = cnnn_->begin(ng_p00[ng_p00.size() - 1]->locidx, dir::f_0p0);
+        it_ = cnnn_->face_begin(ng_p00[ng_p00.size() - 1]->locidx, dir::f_0p0);
       else
-        it_ = cnnn_->begin(ng_0p0[ng_0p0.size() - 1]->locidx, dir::f_p00);
+        it_ = cnnn_->face_begin(ng_0p0[ng_0p0.size() - 1]->locidx, dir::f_p00);
 
       ng_p00.push_back(it_);
       ng_0p0.push_back(it_);
@@ -1608,7 +1608,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_m00 - begin_m00);
       for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -1621,14 +1621,14 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_00p - begin_00p);
       for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) == quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) == quad->x + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_p00 - begin_p00);
       for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -1650,7 +1650,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_0m0 - begin_0m0);
       for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -1664,14 +1664,14 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
       std::vector<const quad_info_t*> ng1;
       ng1.reserve(end_00p - begin_00p);
       for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) == quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) == quad->y + P4EST_QUADRANT_LEN(quad->level)){
           ng1.push_back(it);
         }
 
       std::vector<const quad_info_t*> ng2;
       ng2.reserve(end_0p0 - begin_0p0);
       for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) == quad->z + P4EST_QUADRANT_LEN(quad->level)){
           ng2.push_back(it);
         }
 
@@ -1685,13 +1685,13 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
       quad_center(p4est_,begin_00p, p1); p1 -= p0; qu123[0] = begin_00p;
 
       for (const quad_info_t *it = begin_m00; it != end_m00; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
 
       for (const quad_info_t *it = begin_0m0; it != end_0m0; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
@@ -1704,13 +1704,13 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
     if (n_p00 != 0 && n_0m0 != 0)
     {
       for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-        if (it->quad->x + P4EST_QUADRANT_LEN(it->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->x + P4EST_QUADRANT_LEN(it->quad->level) >= quad->x + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
 
       for (const quad_info_t *it = begin_p00; it != end_p00; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p2); p2 -= p0; qu123[1] = it;
           break;
         }
@@ -1724,7 +1724,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
     if (n_m00 != 0 && n_0p0 != 0)
     {
       for (const quad_info_t *it = begin_00p; it != end_00p; ++it)
-        if (it->quad->y + P4EST_QUADRANT_LEN(it->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->y + P4EST_QUADRANT_LEN(it->quad->level) >= quad->y + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p1); p1 -= p0; qu123[0] = it;
           break;
         }
@@ -1732,7 +1732,7 @@ bool InterpolatingFunctionCellBase::find_tetrahedron_containing_point_00p(p4est_
       quad_center(p4est_,end_m00-1, p2); p2 -= p0; qu123[1] = end_m00-1;
 
       for (const quad_info_t *it = begin_0p0; it != end_0p0; ++it)
-        if (it->quad->z + P4EST_QUADRANT_LEN(it->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
+        if (it->quad->z + P4EST_QUADRANT_LEN(it->quad->level) >= quad->z + P4EST_QUADRANT_LEN(quad->level)){
           quad_center(p4est_,it, p3); p3 -= p0; qu123[2] = it;
           break;
         }
