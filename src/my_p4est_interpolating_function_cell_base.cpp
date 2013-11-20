@@ -40,7 +40,7 @@ extern PetscLogEvent log_InterpolatingFunction_interpolate;
 #endif
 
 namespace RBF {
-const static double eps = 1;
+const static double eps = 0.2;
 inline double MQ(double r){
   return sqrt(1 + SQR(eps*r));
 }
@@ -51,11 +51,6 @@ inline double IQ(double r){
 
 inline double GA(double r){
   return exp(-SQR(eps*r));
-}
-
-template<int n>
-inline double poly(double r){
-  return std::pow(r, 2*n-1);
 }
 }
 
@@ -241,6 +236,10 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
         Fo_p[out_idx] = LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
       else if (method_ == RBF_MQ)
         Fo_p[out_idx] = RBF_MQ_interpolation(quad, quad_idx, Fi_p, xyz);
+      else if (method_ == RBF_IQ)
+        Fo_p[out_idx] = RBF_IQ_interpolation(quad, quad_idx, Fi_p, xyz);
+      else if (method_ == RBF_GA)
+        Fo_p[out_idx] = RBF_GA_interpolation(quad, quad_idx, Fi_p, xyz);
       else
         throw std::invalid_argument("[ERROR] unknown interpolation method");
 
@@ -299,6 +298,10 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
       Fo_p[out_idx] = LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
     else if (method_ == RBF_MQ)
       Fo_p[out_idx] = RBF_MQ_interpolation(quad, quad_idx, Fi_p, xyz);
+    else if (method_ == RBF_IQ)
+      Fo_p[out_idx] = RBF_IQ_interpolation(quad, quad_idx, Fi_p, xyz);
+    else if (method_ == RBF_GA)
+      Fo_p[out_idx] = RBF_GA_interpolation(quad, quad_idx, Fi_p, xyz);
     else
       throw std::invalid_argument("[ERROR] unknown interpolation method");
   }  
@@ -373,6 +376,10 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
             f_send[i] = LSQR_interpolation(best_match, qu_locidx, Fi_p, xyz);
           else if (method_ == RBF_MQ)
             f_send[i] = RBF_MQ_interpolation(best_match, qu_locidx, Fi_p, xyz);
+          else if (method_ == RBF_IQ)
+            f_send[i] = RBF_IQ_interpolation(best_match, qu_locidx, Fi_p, xyz);
+          else if (method_ == RBF_GA)
+            f_send[i] = RBF_GA_interpolation(best_match, qu_locidx, Fi_p, xyz);
           else
             throw std::invalid_argument("[ERROR]: unknown interpolation method");
 
@@ -506,6 +513,10 @@ double InterpolatingFunctionCellBase::operator ()(double x, double y) const
       return LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
     else if (method_ == RBF_MQ)
       return RBF_MQ_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else if (method_ == RBF_IQ)
+      return RBF_IQ_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else if (method_ == RBF_GA)
+      return RBF_GA_interpolation(best_match, quad_idx, Fi_p, xyz);
     else
       throw std::invalid_argument("[ERROR]: unknown interpolation method");
 
@@ -1039,8 +1050,6 @@ double InterpolatingFunctionCellBase::RBF_MQ_interpolation(const p4est_quadrant_
     }
   }
 
-  // add central cell
-
   const size_t size = cells.size();
   MatrixFull A(size, size);
   std::vector<double> y(size);
@@ -1049,7 +1058,7 @@ double InterpolatingFunctionCellBase::RBF_MQ_interpolation(const p4est_quadrant_
   double rmax = 0;
   for (size_t i=0; i<size; i++){
     y[i] = Fi_p[cells[i]->locidx];
-    for (size_t j = 0; j<i; j++){
+    for (size_t j = 0; j<=i; j++){
       double r = centers[i].distance(centers[j]);
       rmax = MAX(r, rmax);
       A.set_Value(i, j, r);
@@ -1058,8 +1067,7 @@ double InterpolatingFunctionCellBase::RBF_MQ_interpolation(const p4est_quadrant_
 
   // compute the coefficients
   for (size_t i=0; i<size; i++){
-    A.set_Value(i, i, 1.0);
-    for (size_t j = 0; j<i; j++){
+    for (size_t j = 0; j<=i; j++){
       double r = A.get_Value(i,j);
       double a = RBF::MQ(r/rmax);
 
@@ -1069,23 +1077,262 @@ double InterpolatingFunctionCellBase::RBF_MQ_interpolation(const p4est_quadrant_
     }
   }
 
-  A.print();
-
   // compute the weight coefficients
   Cholesky ch;
   std::vector<double> w(size);
   if(!ch.solve(A, y, w))
-    throw std::runtime_error("[ERROR]: RBF_MQ matrix is singular");
+    throw std::runtime_error("[ERROR]: Could not invert RBF::MQ matrix");
 
   // compute the interpolation
   double res = 0;
-  for (size_t i=0; size; i++){
-    res += w[i] * RBF::MQ(centers[i].distance(px) / rmax);
+  for (size_t i=0; i<size; i++){
+    res += w[i] * RBF::MQ(centers[i].distance(px)/rmax);
   }
 
   return res;
 }
 
+double InterpolatingFunctionCellBase::RBF_IQ_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
+{
+  p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*quad.p.piggy3.which_tree];
+  double tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
+  double tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
+#ifdef P4_TO_P8
+  double tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
+#endif
+
+#ifdef P4_TO_P8
+  Point3 px (xyz[0], xyz[1], xyz[2]);
+#else
+  Point2 px (xyz[0], xyz[1]);
+#endif
+
+  // center cell
+  quad_info_t qcenter;
+  qcenter.locidx = quad_idx;
+  qcenter.tree_idx = quad.p.piggy3.which_tree;
+  qcenter.quad = &quad;
+
+  const quad_info_t *f_begin = cnnn_->face_begin(quad_idx, 0);
+  const quad_info_t *f_end   = cnnn_->face_end(quad_idx, P4EST_FACES - 1);
+
+#ifdef P4_TO_P8
+  // edges (3D only)
+  const quad_info_t *e_begin = cnnn_->edge_begin(quad_idx, 0);
+  const quad_info_t *e_end   = cnnn_->edge_end(quad_idx, P8EST_EDGES - 1);
+#endif
+
+  const quad_info_t *c_begin = cnnn_->corner_begin(quad_idx, 0);
+  const quad_info_t *c_end   = cnnn_->corner_end(quad_idx, P4EST_CHILDREN - 1);
+
+  // collect a unique set of cells
+  std::vector<const quad_info_t*> cells;
+#ifdef P4_TO_P8
+  std::vector<Point3> centers;
+#else
+  std::vector<Point2> centers;
+#endif
+  {
+    std::map<p4est_locidx_t, const quad_info_t*> cell_map;
+    cell_map.insert(std::make_pair(quad_idx, &qcenter));
+
+    for (const quad_info_t *it = f_begin; it != f_end; ++it)
+      cell_map.insert(std::make_pair(it->locidx, it));
+
+#ifdef P4_TO_P8
+    for (const quad_info_t *it = e_begin; it != e_end; ++it)
+      cell_map.insert(std::make_pair(it->locidx, it));
+#endif
+    for (const quad_info_t *it = c_begin; it != c_end; ++it)
+      cell_map.insert(std::make_pair(it->locidx, it));
+
+    cells.resize(cell_map.size());
+    centers.resize(cells.size());
+
+    int count = 0;
+    for (std::map<p4est_locidx_t, const quad_info_t*>::const_iterator iter = cell_map.begin(); iter != cell_map.end(); ++iter, ++count){
+      const quad_info_t *it = iter->second;
+
+      cells[count] = it;
+      v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*it->tree_idx];
+
+      tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
+      tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
+    #ifdef P4_TO_P8
+      tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
+    #endif
+
+      double qh = (double)P4EST_QUADRANT_LEN(it->quad->level)/(double)P4EST_ROOT_LEN;
+      centers[count].x = quad_x_fr_i(it->quad) + 0.5*qh + tr_xmin;
+      centers[count].y = quad_y_fr_j(it->quad) + 0.5*qh + tr_ymin;
+  #ifdef P4_TO_P8
+      centers[count].z = quad_z_fr_k(it->quad) + 0.5*qh + tr_zmin;
+  #endif
+    }
+  }
+
+  const size_t size = cells.size();
+  MatrixFull A(size, size);
+  std::vector<double> y(size);
+
+  // first add the distances -- to be normalized later
+  double rmax = 0;
+  for (size_t i=0; i<size; i++){
+    y[i] = Fi_p[cells[i]->locidx];
+    for (size_t j = 0; j<=i; j++){
+      double r = centers[i].distance(centers[j]);
+      rmax = MAX(r, rmax);
+      A.set_Value(i, j, r);
+    }
+  }
+
+  // compute the coefficients
+  for (size_t i=0; i<size; i++){
+    for (size_t j = 0; j<=i; j++){
+      double r = A.get_Value(i,j);
+      double a = RBF::IQ(r/rmax);
+
+      // FIXME: bad memory access for A_ji element (A is row-major)
+      A.set_Value(i, j, a);
+      A.set_Value(j, i, a);
+    }
+  }
+
+  // compute the weight coefficients
+  Cholesky ch;
+  std::vector<double> w(size);
+  if(!ch.solve(A, y, w))
+    throw std::runtime_error("[ERROR]: Could not invert RBF::IQ matrix");
+
+  // compute the interpolation
+  double res = 0;
+  for (size_t i=0; i<size; i++){
+    res += w[i] * RBF::IQ(centers[i].distance(px)/rmax);
+  }
+
+  return res;
+}
+
+double InterpolatingFunctionCellBase::RBF_GA_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
+{
+  p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*quad.p.piggy3.which_tree];
+  double tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
+  double tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
+#ifdef P4_TO_P8
+  double tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
+#endif
+
+#ifdef P4_TO_P8
+  Point3 px (xyz[0], xyz[1], xyz[2]);
+#else
+  Point2 px (xyz[0], xyz[1]);
+#endif
+
+  // center cell
+  quad_info_t qcenter;
+  qcenter.locidx = quad_idx;
+  qcenter.tree_idx = quad.p.piggy3.which_tree;
+  qcenter.quad = &quad;
+
+  const quad_info_t *f_begin = cnnn_->face_begin(quad_idx, 0);
+  const quad_info_t *f_end   = cnnn_->face_end(quad_idx, P4EST_FACES - 1);
+
+#ifdef P4_TO_P8
+  // edges (3D only)
+  const quad_info_t *e_begin = cnnn_->edge_begin(quad_idx, 0);
+  const quad_info_t *e_end   = cnnn_->edge_end(quad_idx, P8EST_EDGES - 1);
+#endif
+
+  const quad_info_t *c_begin = cnnn_->corner_begin(quad_idx, 0);
+  const quad_info_t *c_end   = cnnn_->corner_end(quad_idx, P4EST_CHILDREN - 1);
+
+  // collect a unique set of cells
+  std::vector<const quad_info_t*> cells;
+#ifdef P4_TO_P8
+  std::vector<Point3> centers;
+#else
+  std::vector<Point2> centers;
+#endif
+  {
+    std::map<p4est_locidx_t, const quad_info_t*> cell_map;
+    cell_map.insert(std::make_pair(quad_idx, &qcenter));
+
+    for (const quad_info_t *it = f_begin; it != f_end; ++it)
+      cell_map.insert(std::make_pair(it->locidx, it));
+
+#ifdef P4_TO_P8
+    for (const quad_info_t *it = e_begin; it != e_end; ++it)
+      cell_map.insert(std::make_pair(it->locidx, it));
+#endif
+    for (const quad_info_t *it = c_begin; it != c_end; ++it)
+      cell_map.insert(std::make_pair(it->locidx, it));
+
+    cells.resize(cell_map.size());
+    centers.resize(cells.size());
+
+    int count = 0;
+    for (std::map<p4est_locidx_t, const quad_info_t*>::const_iterator iter = cell_map.begin(); iter != cell_map.end(); ++iter, ++count){
+      const quad_info_t *it = iter->second;
+
+      cells[count] = it;
+      v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*it->tree_idx];
+
+      tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
+      tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
+    #ifdef P4_TO_P8
+      tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
+    #endif
+
+      double qh = (double)P4EST_QUADRANT_LEN(it->quad->level)/(double)P4EST_ROOT_LEN;
+      centers[count].x = quad_x_fr_i(it->quad) + 0.5*qh + tr_xmin;
+      centers[count].y = quad_y_fr_j(it->quad) + 0.5*qh + tr_ymin;
+  #ifdef P4_TO_P8
+      centers[count].z = quad_z_fr_k(it->quad) + 0.5*qh + tr_zmin;
+  #endif
+    }
+  }
+
+  const size_t size = cells.size();
+  MatrixFull A(size, size);
+  std::vector<double> y(size);
+
+  // first add the distances -- to be normalized later
+  double rmax = 0;
+  for (size_t i=0; i<size; i++){
+    y[i] = Fi_p[cells[i]->locidx];
+    for (size_t j = 0; j<=i; j++){
+      double r = centers[i].distance(centers[j]);
+      rmax = MAX(r, rmax);
+      A.set_Value(i, j, r);
+    }
+  }
+
+  // compute the coefficients
+  for (size_t i=0; i<size; i++){
+    for (size_t j = 0; j<=i; j++){
+      double r = A.get_Value(i,j);
+      double a = RBF::GA(r/rmax);
+
+      // FIXME: bad memory access for A_ji element (A is row-major)
+      A.set_Value(i, j, a);
+      A.set_Value(j, i, a);
+    }
+  }
+
+  // compute the weight coefficients
+  Cholesky ch;
+  std::vector<double> w(size);
+  if(!ch.solve(A, y, w))
+    throw std::runtime_error("[ERROR]: Could not invert RBF::GA matrix");
+
+  // compute the interpolation
+  double res = 0;
+  for (size_t i=0; i<size; i++){
+    res += w[i] * RBF::GA(centers[i].distance(px)/rmax);
+  }
+
+  return res;
+}
 
 double InterpolatingFunctionCellBase::LSQR_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
 {

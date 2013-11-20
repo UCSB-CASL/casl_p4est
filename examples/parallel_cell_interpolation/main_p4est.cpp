@@ -94,6 +94,13 @@ refine_test(p4est_t *p4est, p4est_topidx_t tr, p4est_quadrant_t *quad)
     return P4EST_FALSE;
 }
 
+p4est_bool_t
+refine_all(p4est_t *p4est, p4est_topidx_t tr, p4est_quadrant_t *quad)
+{
+  (void) p4est; (void) tr; (void) quad;
+  return P4EST_TRUE;
+}
+
 int main (int argc, char* argv[]){
 
   try{
@@ -106,6 +113,7 @@ int main (int argc, char* argv[]){
     cmdParser cmd;
     cmd.add_option("lmin", "min level of the tree");
     cmd.add_option("lmax", "max level of the tree");
+    cmd.add_option("splits", "number of uniform splits");
     cmd.add_option("mode", "interpolation mode 0 = linear, 1 = IDW, 2 = LSQR");
     cmd.parse(argc, argv);
 
@@ -137,26 +145,6 @@ int main (int argc, char* argv[]){
 #endif
     w2.stop(); w2.read_duration();
 
-
-//    MatrixFull a(5,5);
-//    std::vector<double> b(5);
-//    for (int i=0; i<5; i++)
-//      for (int j=0; j<i; j++)
-//        a.set_Value(i,j, i+j + 2);
-//    for (int i=0; i<5; i++){
-//      b[i] = i;
-//      a.set_Value(i,i,2*i+5);
-//    }
-
-//    a.print();
-//    Cholesky ch;
-//    std::vector<double> x(5,0);
-//    ch.solve(a, b, x);
-//    for (int i=0; i<5; i++)
-//      std::cout << x[i] << " " << std::endl;
-//    return 0;
-
-
     // Now create the forest
     w2.start("p4est generation");
     p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
@@ -166,6 +154,8 @@ int main (int argc, char* argv[]){
     w2.start("refine");
     p4est->user_pointer = (void*)(&cf_data);
     p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+    for (int i=0; i<cmd.get("splits",0); i++)
+      p4est_refine(p4est, P4EST_FALSE, refine_all, NULL);
     w2.stop(); w2.read_duration();
 
     // Finally re-partition
@@ -240,6 +230,8 @@ int main (int argc, char* argv[]){
     p4est_t *p4est_np1 = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
     p4est_np1->user_pointer = (void*)&cf_data;
     p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
+    for (int i=0; i<cmd.get("splits",0); i++)
+      p4est_refine(p4est_np1, P4EST_FALSE, refine_all, NULL);
     p4est_partition(p4est_np1, NULL);
     w2.stop(); w2.read_duration();
 
@@ -303,7 +295,16 @@ int main (int argc, char* argv[]){
       phi_func.set_input_parameters(phi, IDW);
       break;
     case 2:
+      phi_func.set_input_parameters(phi, LSQR);
+      break;
+    case 3:
       phi_func.set_input_parameters(phi, RBF_MQ);
+      break;
+    case 4:
+      phi_func.set_input_parameters(phi, RBF_IQ);
+      break;
+    case 5:
+      phi_func.set_input_parameters(phi, RBF_GA);
       break;
     default:
       throw std::invalid_argument("[Error]: Interpolation mode can only be 0, 1, or 2");
@@ -328,6 +329,12 @@ int main (int argc, char* argv[]){
 
     ierr = VecRestoreArray(phi_np1,  &phi_np1_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(phi_nodes,  &phi_nodes_p); CHKERRXX(ierr);
+
+    // compute error
+    VecAXPY(phi_nodes, -1, phi_np1);
+    double err;
+    VecNorm(phi_nodes, NORM_INFINITY, &err);
+    printf("err = %e\n",err);
 
     // finally, delete PETSc Vecs by calling 'VecDestroy' function
     ierr = VecDestroy(phi);          CHKERRXX(ierr);
