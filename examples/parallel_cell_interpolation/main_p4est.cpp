@@ -29,6 +29,7 @@
 #include <src/CASL_math.h>
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
+#include <src/Cholesky.h>
 
 using namespace std;
 
@@ -136,28 +137,23 @@ int main (int argc, char* argv[]){
 #endif
     w2.stop(); w2.read_duration();
 
-//    for (p4est_topidx_t tr = 0; tr < connectivity->num_trees; ++tr){
-//      // print face neighbors
-//      std::cout << "face neighbors of tr " << tr << std::endl;
-//      for (int i=0; i<P4EST_FACES; i++)
-//        std::cout << connectivity->tree_to_tree[tr*P4EST_FACES + i] << " ";
-//      std::cout << std::endl;
 
-//#ifdef P4_TO_P8
-//      // print edge neighbors
-//      std::cout << "edge neighbors of tr " << tr << std::endl;
-//      for (int i=0; i<P8EST_EDGES; i++)
-//        std::cout << connectivity->edge_to_tree[tr*P8EST_EDGES + i] << " ";
-//      std::cout << std::endl;
-//#endif
-
-//      // print corner neighbors
-//      std::cout << "corner neighbors of tr " << tr << std::endl;
-//      for (int i=0; i<P4EST_CHILDREN; i++)
-//        std::cout << connectivity->corner_to_tree[tr*P4EST_CHILDREN + i] << " ";
-//      std::cout << std::endl;
+//    MatrixFull a(5,5);
+//    std::vector<double> b(5);
+//    for (int i=0; i<5; i++)
+//      for (int j=0; j<i; j++)
+//        a.set_Value(i,j, i+j + 2);
+//    for (int i=0; i<5; i++){
+//      b[i] = i;
+//      a.set_Value(i,i,2*i+5);
 //    }
 
+//    a.print();
+//    Cholesky ch;
+//    std::vector<double> x(5,0);
+//    ch.solve(a, b, x);
+//    for (int i=0; i<5; i++)
+//      std::cout << x[i] << " " << std::endl;
 //    return 0;
 
 
@@ -205,7 +201,7 @@ int main (int argc, char* argv[]){
     for (p4est_topidx_t tr = p4est->first_local_tree; tr<=p4est->last_local_tree; tr++){
       p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
       for (size_t q=0; q<tree->quadrants.elem_count; q++){
-        cnnn.write_cell_neighbors_vtk(q, tr, "cells");
+//        cnnn.write_cell_neighbors_vtk(q, tr, "cells");
 //        cnnn.write_cell_triangulation_vtk_m00(q, tr, "triangles_m00");
 //        cnnn.write_cell_triangulation_vtk_p00(q, tr, "triangles_p00");
 //        cnnn.write_cell_triangulation_vtk_0m0(q, tr, "triangles_0m0");
@@ -229,14 +225,14 @@ int main (int argc, char* argv[]){
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
     // move the circle to create another grid
-    cf_data.max_lvl -= 2;
-    cf_data.min_lvl += 1;
+    cf_data.max_lvl += 1;
+    cf_data.min_lvl -= 1;
 
     circle circ_old(circ);
 #ifdef P4_TO_P8
-    circ.update(.75, 1.15, .57, .2);
+//    circ.update(.75, 1.15,  1, .2);
 #else
-    circ.update(.75, 1.15, .2);
+//    circ.update(.75, 1.15, .2);
 #endif
 
     // Create a new grid
@@ -259,12 +255,17 @@ int main (int argc, char* argv[]){
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
     w2.stop(); w2.read_duration();
 
+    grid_name.str(""); grid_name << P4EST_DIM << "d_grid_np1";
+    my_p4est_vtk_write_all(p4est_np1, nodes_np1, NULL,
+                           P4EST_TRUE, P4EST_TRUE,
+                           0, 0, grid_name.str().c_str());
+
     // Create an interpolating function
     InterpolatingFunctionCellBase phi_func(&cnnn);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i+nodes_np1->offset_owned_indeps);
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i);
       p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
       p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
@@ -302,7 +303,7 @@ int main (int argc, char* argv[]){
       phi_func.set_input_parameters(phi, IDW);
       break;
     case 2:
-      phi_func.set_input_parameters(phi, LSQR);
+      phi_func.set_input_parameters(phi, RBF_MQ);
       break;
     default:
       throw std::invalid_argument("[Error]: Interpolation mode can only be 0, 1, or 2");

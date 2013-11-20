@@ -21,7 +21,9 @@ enum interpolation_method{
   linear,
   IDW,
   LSQR,
-  RBF_MQ
+  RBF_MQ,
+  RBF_IQ,
+  RBF_GA
 };
 
 #ifdef P4_TO_P8

@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <src/CASL_math.h>
 
 /*!
  * \file Point2.h
@@ -169,6 +170,13 @@ public:
      * \return the area enclosed by the three Point2
      */
   static double area(const Point2& P1, const Point2& P2, const Point2& P3);
+
+  /*!
+   * \brief distance compute the Euclidean distance to another point
+   * \param [in] p the point to compute the distance to
+   * \return the Euclidean distance
+   */
+  inline double distance(const Point2& p) const { return sqrt(SQR(x-p.x) + SQR(y-p.y)); }
 
   /*!
      * \brief overload the << operator for ArrayV

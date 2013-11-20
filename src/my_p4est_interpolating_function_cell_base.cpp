@@ -12,10 +12,12 @@
 #include <sc_notify.h>
 #include <mpi.h>
 #include <src/CASL_math.h>
+#include <src/Cholesky.h>
 
 #include <sstream>
 #include <fstream>
 #include <set>
+#include <cmath>
 
 // Logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -36,6 +38,26 @@ extern PetscLogEvent log_InterpolatingFunction_interpolate;
   #error "p4est point lookup is not available in 3D"
 #endif
 #endif
+
+namespace RBF {
+const static double eps = 1;
+inline double MQ(double r){
+  return sqrt(1 + SQR(eps*r));
+}
+
+inline double IQ(double r){
+  return 1.0/sqrt(1 + SQR(eps*r));
+}
+
+inline double GA(double r){
+  return exp(-SQR(eps*r));
+}
+
+template<int n>
+inline double poly(double r){
+  return std::pow(r, 2*n-1);
+}
+}
 
 InterpolatingFunctionCellBase::InterpolatingFunctionCellBase(const my_p4est_cell_neighbors_t *cnnn)
   : p4est_(cnnn->p4est), ghost_(cnnn->ghost), myb_(cnnn->myb), cnnn_(cnnn),
@@ -198,7 +220,8 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
   ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
   // Get a pointer to the data
-  double *Fi_p, *Fo_p = output_vec;
+  double *Fi_p;
+  double *Fo_p = output_vec;
   ierr = VecGetArray(input_vec_, &Fi_p); CHKERRXX(ierr);
 
   // first try interpolating on the ghost cells
@@ -214,9 +237,14 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
         Fo_p[out_idx] = linear_interpolation(quad, quad_idx, Fi_p, xyz);
       else if (method_ == IDW)
         Fo_p[out_idx] = IDW_interpolation(quad, quad_idx, Fi_p, xyz);
-      else
+      else if (method_ == LSQR)
         Fo_p[out_idx] = LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
-    } catch (const std::exception& e) {
+      else if (method_ == RBF_MQ)
+        Fo_p[out_idx] = RBF_MQ_interpolation(quad, quad_idx, Fi_p, xyz);
+      else
+        throw std::invalid_argument("[ERROR] unknown interpolation method");
+
+    } catch (const std::runtime_error& e) {
       /* if the interpolation failed locally, send it to the remote
        * Note that if this also fails on the remote processors, then
        * the exception is actually an error in which case the remote
@@ -267,8 +295,12 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
       Fo_p[out_idx] = linear_interpolation(quad, quad_idx, Fi_p, xyz);
     else if (method_ == IDW)
       Fo_p[out_idx] = IDW_interpolation(quad, quad_idx, Fi_p, xyz);
-    else
+    else if (method_ == LSQR)
       Fo_p[out_idx] = LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
+    else if (method_ == RBF_MQ)
+      Fo_p[out_idx] = RBF_MQ_interpolation(quad, quad_idx, Fi_p, xyz);
+    else
+      throw std::invalid_argument("[ERROR] unknown interpolation method");
   }  
 
   // begin recieving point buffers
@@ -337,8 +369,12 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
             f_send[i] = linear_interpolation(best_match, qu_locidx, Fi_p, xyz);
           else if (method_ == IDW)
             f_send[i] = IDW_interpolation(best_match, qu_locidx, Fi_p, xyz);
-          else
+          else if (method_ == LSQR)
             f_send[i] = LSQR_interpolation(best_match, qu_locidx, Fi_p, xyz);
+          else if (method_ == RBF_MQ)
+            f_send[i] = RBF_MQ_interpolation(best_match, qu_locidx, Fi_p, xyz);
+          else
+            throw std::invalid_argument("[ERROR]: unknown interpolation method");
 
         } else if ( rank_found != -1 ) {
           // if we don't own the point but its in the ghost layer return 0.
@@ -466,8 +502,12 @@ double InterpolatingFunctionCellBase::operator ()(double x, double y) const
       return linear_interpolation(best_match, quad_idx, Fi_p, xyz);
     else if (method_ == IDW)
       return IDW_interpolation(best_match, quad_idx, Fi_p, xyz);
-    else
+    else if (method_ == LSQR)
       return LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else if (method_ == RBF_MQ)
+      return RBF_MQ_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else
+      throw std::invalid_argument("[ERROR]: unknown interpolation method");
 
   } else if ( rank_found != -1 ) { // ghost quadrant
     tree_idx = best_match.p.piggy3.which_tree;
@@ -610,13 +650,16 @@ double InterpolatingFunctionCellBase::linear_interpolation(const p4est_quadrant_
 
   // decide where to look for the triangle based on the relative coordinate
   const quad_info_t *cells[P4EST_FACES + 1];
-  size_t num_ngbd_cells[P4EST_FACES];
   for (short i = 0; i<P4EST_FACES; i++)
     cells[i] = cnnn_->face_begin(quad_idx, i);
   cells[P4EST_FACES] = cnnn_->face_end(quad_idx, P4EST_FACES - 1);
 
+#ifndef P4_TO_P8
+  size_t num_ngbd_cells[P4EST_FACES];
   for (short i = 0; i<P4EST_FACES; i++)
     num_ngbd_cells[i] = cells[i+1] - cells[i];
+#endif
+
 
   std::vector<const quad_info_t*> points;
   points.reserve(P4EST_DIM*(cells[P4EST_FACES] - cells[0])); // estimate
@@ -847,19 +890,48 @@ double InterpolatingFunctionCellBase::IDW_interpolation(const p4est_quadrant_t &
   };
 
   /* loop over all quadrants and compute weights */
-  const quad_info_t *begin = cnnn_->face_begin(quad_idx, 0);
-  const quad_info_t *end   = cnnn_->face_end(quad_idx, P4EST_FACES - 1);
+  // faces
+  const quad_info_t *f_begin = cnnn_->face_begin(quad_idx, 0);
+  const quad_info_t *f_end   = cnnn_->face_end(quad_idx, P4EST_FACES - 1);
 
 #ifdef P4_TO_P8
-  double w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]) + SQR(xyz_C[2]-xyz[2]));
-#else
-  double w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]));
+  // edges (3D only)
+  const quad_info_t *e_begin = cnnn_->edge_begin(quad_idx, 0);
+  const quad_info_t *e_end   = cnnn_->edge_end(quad_idx, P8EST_EDGES - 1);
 #endif
+
+  const quad_info_t *c_begin = cnnn_->corner_begin(quad_idx, 0);
+  const quad_info_t *c_end   = cnnn_->corner_end(quad_idx, P4EST_CHILDREN - 1);
+
+#ifdef P4_TO_P8
+  double rsqr = SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]) + SQR(xyz_C[2]-xyz[2]);
+#else
+  double rsqr = SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]);
+#endif
+
+  // check if we are too close to the center
+  if (sqrt(rsqr)/qh < EPS)
+    return  Fi_p[quad_idx];
+
+  double w = 1/rsqr;
   double sum = w;
   double res = w*Fi_p[quad_idx];
 
-  for (const quad_info_t *it = begin; it != end; ++it)
+  // collect a unique set of cells
+  std::map<p4est_locidx_t, const quad_info_t*> cell_map;
+  for (const quad_info_t *it = f_begin; it != f_end; ++it)
+    cell_map.insert(std::make_pair(it->locidx, it));
+
+#ifdef P4_TO_P8
+  for (const quad_info_t *it = e_begin; it != e_end; ++it)
+    cell_map.insert(std::make_pair(it->locidx, it));
+#endif
+  for (const quad_info_t *it = c_begin; it != c_end; ++it)
+    cell_map.insert(std::make_pair(it->locidx, it));
+
+  for (std::map<p4est_locidx_t, const quad_info_t*>::const_iterator iter = cell_map.begin(); iter != cell_map.end(); ++iter)
   {
+    const quad_info_t* it = iter->second;
     v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*it->tree_idx];
 
     tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
@@ -880,6 +952,7 @@ double InterpolatingFunctionCellBase::IDW_interpolation(const p4est_quadrant_t &
 #else
     w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]));
 #endif
+
     sum += w;
     res += w*Fi_p[it->locidx];
   }
@@ -896,56 +969,121 @@ double InterpolatingFunctionCellBase::RBF_MQ_interpolation(const p4est_quadrant_
   double tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
 #endif
 
-  double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
-  double xyz_C [] =
-  {
-    quad_x_fr_i(&quad) + 0.5*qh + tr_xmin,
-    quad_y_fr_j(&quad) + 0.5*qh + tr_ymin
-  #ifdef P4_TO_P8
-    ,
-    quad_z_fr_k(&quad) + 0.5*qh + tr_zmin
-  #endif
-  };
-
-  /* loop over all quadrants and compute weights */
-  const quad_info_t *begin = cnnn_->face_begin(quad_idx, 0);
-  const quad_info_t *end   = cnnn_->face_end(quad_idx, P4EST_FACES - 1);
-
 #ifdef P4_TO_P8
-  double w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]) + SQR(xyz_C[2]-xyz[2]));
+  Point3 px (xyz[0], xyz[1], xyz[2]);
 #else
-  double w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]));
-#endif
-  double sum = w;
-  double res = w*Fi_p[quad_idx];
-
-  for (const quad_info_t *it = begin; it != end; ++it)
-  {
-    v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*it->tree_idx];
-
-    tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
-    tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
-  #ifdef P4_TO_P8
-    tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
-  #endif
-
-    qh = (double)P4EST_QUADRANT_LEN(it->quad->level)/(double)P4EST_ROOT_LEN;
-    xyz_C[0] = quad_x_fr_i(it->quad) + 0.5*qh + tr_xmin;
-    xyz_C[1] = quad_y_fr_j(it->quad) + 0.5*qh + tr_ymin;
-#ifdef P4_TO_P8
-    xyz_C[2] = quad_z_fr_k(it->quad) + 0.5*qh + tr_zmin;
+  Point2 px (xyz[0], xyz[1]);
 #endif
 
+  // center cell
+  quad_info_t qcenter;
+  qcenter.locidx = quad_idx;
+  qcenter.tree_idx = quad.p.piggy3.which_tree;
+  qcenter.quad = &quad;
+
+  const quad_info_t *f_begin = cnnn_->face_begin(quad_idx, 0);
+  const quad_info_t *f_end   = cnnn_->face_end(quad_idx, P4EST_FACES - 1);
+
 #ifdef P4_TO_P8
-    w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]) + SQR(xyz_C[2]-xyz[2]));
+  // edges (3D only)
+  const quad_info_t *e_begin = cnnn_->edge_begin(quad_idx, 0);
+  const quad_info_t *e_end   = cnnn_->edge_end(quad_idx, P8EST_EDGES - 1);
+#endif
+
+  const quad_info_t *c_begin = cnnn_->corner_begin(quad_idx, 0);
+  const quad_info_t *c_end   = cnnn_->corner_end(quad_idx, P4EST_CHILDREN - 1);
+
+  // collect a unique set of cells
+  std::vector<const quad_info_t*> cells;
+#ifdef P4_TO_P8
+  std::vector<Point3> centers;
 #else
-    w = 1.0/(SQR(xyz_C[0] - xyz[0]) + SQR(xyz_C[1] - xyz[1]));
+  std::vector<Point2> centers;
 #endif
-    sum += w;
-    res += w*Fi_p[it->locidx];
+  {
+    std::map<p4est_locidx_t, const quad_info_t*> cell_map;
+    cell_map.insert(std::make_pair(quad_idx, &qcenter));
+
+    for (const quad_info_t *it = f_begin; it != f_end; ++it)
+      cell_map.insert(std::make_pair(it->locidx, it));
+
+#ifdef P4_TO_P8
+    for (const quad_info_t *it = e_begin; it != e_end; ++it)
+      cell_map.insert(std::make_pair(it->locidx, it));
+#endif
+    for (const quad_info_t *it = c_begin; it != c_end; ++it)
+      cell_map.insert(std::make_pair(it->locidx, it));
+
+    cells.resize(cell_map.size());
+    centers.resize(cells.size());
+
+    int count = 0;
+    for (std::map<p4est_locidx_t, const quad_info_t*>::const_iterator iter = cell_map.begin(); iter != cell_map.end(); ++iter, ++count){
+      const quad_info_t *it = iter->second;
+
+      cells[count] = it;
+      v_mmm = p4est_->connectivity->tree_to_vertex[P4EST_CHILDREN*it->tree_idx];
+
+      tr_xmin = p4est_->connectivity->vertices[3*v_mmm + 0];
+      tr_ymin = p4est_->connectivity->vertices[3*v_mmm + 1];
+    #ifdef P4_TO_P8
+      tr_zmin = p4est_->connectivity->vertices[3*v_mmm + 2];
+    #endif
+
+      double qh = (double)P4EST_QUADRANT_LEN(it->quad->level)/(double)P4EST_ROOT_LEN;
+      centers[count].x = quad_x_fr_i(it->quad) + 0.5*qh + tr_xmin;
+      centers[count].y = quad_y_fr_j(it->quad) + 0.5*qh + tr_ymin;
+  #ifdef P4_TO_P8
+      centers[count].z = quad_z_fr_k(it->quad) + 0.5*qh + tr_zmin;
+  #endif
+    }
   }
 
-  return res/sum;
+  // add central cell
+
+  const size_t size = cells.size();
+  MatrixFull A(size, size);
+  std::vector<double> y(size);
+
+  // first add the distances -- to be normalized later
+  double rmax = 0;
+  for (size_t i=0; i<size; i++){
+    y[i] = Fi_p[cells[i]->locidx];
+    for (size_t j = 0; j<i; j++){
+      double r = centers[i].distance(centers[j]);
+      rmax = MAX(r, rmax);
+      A.set_Value(i, j, r);
+    }
+  }
+
+  // compute the coefficients
+  for (size_t i=0; i<size; i++){
+    A.set_Value(i, i, 1.0);
+    for (size_t j = 0; j<i; j++){
+      double r = A.get_Value(i,j);
+      double a = RBF::MQ(r/rmax);
+
+      // FIXME: bad memory access for A_ji element (A is row-major)
+      A.set_Value(i, j, a);
+      A.set_Value(j, i, a);
+    }
+  }
+
+  A.print();
+
+  // compute the weight coefficients
+  Cholesky ch;
+  std::vector<double> w(size);
+  if(!ch.solve(A, y, w))
+    throw std::runtime_error("[ERROR]: RBF_MQ matrix is singular");
+
+  // compute the interpolation
+  double res = 0;
+  for (size_t i=0; size; i++){
+    res += w[i] * RBF::MQ(centers[i].distance(px) / rmax);
+  }
+
+  return res;
 }
 
 

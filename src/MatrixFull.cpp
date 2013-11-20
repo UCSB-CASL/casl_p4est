@@ -142,6 +142,7 @@ void MatrixFull::print()
   for( size_t i=0; i<m_M; i++ ){ printf("\n");
     for( size_t j=0; j<m_N; j++ ){
       printf( "% e ", this->get_Value(i,j) ); }} printf("\n\n");
+  fflush(stdout);
 }
 
 void MatrixFull::sub( size_t im, size_t jm, size_t iM, size_t jM, MatrixFull& M )
@@ -200,22 +201,16 @@ void MatrixFull::operator-=(MatrixFull& V )
 void MatrixFull::operator*=(             double s )
 {
   for(size_t i=0; i<values.size(); i++)
-  {
-    this->set_Value(0,i,this->get_Value(0,i)*s);
-  }
+    values[i] *= s;
 }
 void MatrixFull::operator/=(             double s )
 {
   for(size_t i=0; i<values.size(); i++)
-  {
-    this->set_Value(0,i,this->get_Value(0,i)/s);
-  }
+    values[i] /= s;
 }
 void MatrixFull::operator =(             double s )
 {
   for(size_t i=0; i<values.size(); i++)
-  {
     values[i] = s;
-  }
 }
 
