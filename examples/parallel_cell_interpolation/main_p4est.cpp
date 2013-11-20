@@ -1,3 +1,6 @@
+#undef MIN
+#undef MAX
+
 // System
 #include <stdexcept>
 #include <iostream>
@@ -5,6 +8,7 @@
 #include <vector>
 #include <algorithm>
 #include <fstream>
+#include <cmath>
 
 #ifdef P4_TO_P8
 #include <p8est_bits.h>
@@ -15,6 +19,7 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_interpolating_function_cell_base.h>
+#include <src/my_p8est_rbf_interpolating_funciton.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -24,12 +29,28 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_interpolating_function_cell_base.h>
+#include <src/my_p4est_rbf_interpolating_funciton.h>
 #endif
 
 #include <src/CASL_math.h>
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <src/Cholesky.h>
+
+  static struct:CF_1{
+    const static double eps = 1;
+    double operator()(double r) const { return sqrt(1.0+SQR(eps*r)); }
+  } MQ;
+
+   static struct:CF_1{
+    const static double eps = 1;
+    double operator()(double r) const { return 1.0/sqrt(1.0+SQR(eps*r)); }
+  } IQ;
+
+   static struct:CF_1{
+    const static double eps = 3;
+  double operator()(double r) const { return exp(-SQR(eps*r)); }
+  } GA;
 
 using namespace std;
 
@@ -329,6 +350,65 @@ int main (int argc, char* argv[]){
 
     ierr = VecRestoreArray(phi_np1,  &phi_np1_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(phi_nodes,  &phi_nodes_p); CHKERRXX(ierr);
+
+    // finally lets try the RBF interpolating function in the whole domain
+    {
+      ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
+      const int max_points = 40;
+      std::vector<double> f; f.reserve(max_points);
+#ifdef P4_TO_P8
+      std::vector<Point3> p; p.reserve(max_points);
+      Point3 pq;
+#else
+      std::vector<Point2> p; p.reserve(max_points);
+      Point2 pq;
+#endif
+
+      // gather random quadrants 
+      for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++){
+        p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+
+        p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tr*P4EST_CHILDREN + 0];
+        double tr_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+        double tr_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+#ifdef P4_TO_P8
+        double tr_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
+#endif
+
+        int nr = 100;//floor(max_points * (double)tree->quadrants.elem_count / (double)p4est->local_num_quadrants);
+        for (int n = 0; n<nr; n++){
+          p4est_locidx_t q = (p4est_locidx_t)tree->quadrants.elem_count / nr * n;
+          const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+
+          double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+          pq.x = quad_x_fr_i(quad) + 0.5*qh + tr_xmin;
+          pq.y = quad_y_fr_j(quad) + 0.5*qh + tr_ymin;
+#ifdef P4_TO_P8
+          pq.z = quad_z_fr_k(quad) + 0.5*qh + tr_zmin;
+#endif    
+
+          p.push_back(pq);
+          f.push_back(phi_p[q + tree->quadrants_offset]);  
+        }
+      }      
+
+      RBFInterpolatingFunciton rbf(p, f, GA);
+      sample_cf_on_nodes(p4est_np1, nodes_np1, rbf, phi_np1);
+
+      // save 
+      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+      ierr = VecGetArray(phi_nodes, &phi_nodes_p); CHKERRXX(ierr);
+      my_p4est_vtk_write_all(p4est_np1, nodes_np1, NULL,
+                             P4EST_TRUE, P4EST_TRUE,
+                             2, 0, "rbf_np1",
+                             VTK_POINT_DATA, "phi_np1", phi_np1_p,
+                             VTK_POINT_DATA, "phi_nodes", phi_nodes_p);
+
+      ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_nodes, &phi_nodes_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    }
 
     // compute error
     VecAXPY(phi_nodes, -1, phi_np1);

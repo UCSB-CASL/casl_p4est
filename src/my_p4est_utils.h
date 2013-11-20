@@ -544,6 +544,12 @@ T ranged_rand(T a, T b, int seed = 0){
   return static_cast<T>(static_cast<double>(rand())/static_cast<double>(RAND_MAX) * (b-a) + a);
 }
 
+template<int a, int b, int s>
+int ranged_rand(){
+  if (s) srand(s);
+  return static_cast<int>(static_cast<double>(rand())/static_cast<double>(RAND_MAX) * (b-a) + a);
+}
+
 /*!
  * \brief prepares MPI, PETSc, p4est, and sc libraries
  */
