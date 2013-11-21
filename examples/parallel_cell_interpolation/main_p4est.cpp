@@ -19,7 +19,7 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_interpolating_function_cell_base.h>
-#include <src/my_p8est_rbf_interpolating_funciton.h>
+#include <src/my_p8est_lsqr_interpolating_function.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -29,28 +29,13 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_interpolating_function_cell_base.h>
-#include <src/my_p4est_rbf_interpolating_funciton.h>
+#include <src/my_p4est_lsqr_interpolating_function.h>
 #endif
 
 #include <src/CASL_math.h>
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <src/Cholesky.h>
-
-  static struct:CF_1{
-    const static double eps = 1;
-    double operator()(double r) const { return sqrt(1.0+SQR(eps*r)); }
-  } MQ;
-
-   static struct:CF_1{
-    const static double eps = 1;
-    double operator()(double r) const { return 1.0/sqrt(1.0+SQR(eps*r)); }
-  } IQ;
-
-   static struct:CF_1{
-    const static double eps = 3;
-  double operator()(double r) const { return exp(-SQR(eps*r)); }
-  } GA;
 
 using namespace std;
 
@@ -74,6 +59,12 @@ private:
   double x0, y0, z0, r;
 };
 
+struct:CF_3{
+  double operator ()(double x, double y, double z) const {
+    return sin(2*M_PI*x)*sin(2*M_PI*y)*sin(2*M_PI*z);
+  }
+} fsin;
+
 static struct:CF_3{
   double operator()(double x, double y, double z) const {
     return x*x + y*y + z*z;
@@ -96,6 +87,13 @@ struct circle:CF_2{
 private:
   double x0, y0, r;
 };
+
+struct:CF_2{
+  double operator ()(double x, double y) const {
+    return sin(2*M_PI*x)*sin(2*M_PI*y);
+  }
+} fsin;
+
 
 static struct:CF_2{
   double operator()(double x, double y) const {
@@ -135,19 +133,20 @@ int main (int argc, char* argv[]){
     cmd.add_option("lmin", "min level of the tree");
     cmd.add_option("lmax", "max level of the tree");
     cmd.add_option("splits", "number of uniform splits");
-    cmd.add_option("mode", "interpolation mode 0 = linear, 1 = IDW, 2 = LSQR");
+    cmd.add_option("mode", "interpolation mode");
     cmd.parse(argc, argv);
 
-
 #ifdef P4_TO_P8
-    circle circ(1, 1, 1, .3);
+    circle circ(0.863, 1.368, 1.643, .3);
 #else
-    circle circ(1, 1, .3);
+    circle circ(0.863, 1.368, .3);
 #endif
     splitting_criteria_cf_t cf_data(cmd.get("lmin", 0), cmd.get("lmax",5), &circ, 1);
 
     Session mpi_session;
     mpi_session.init(argc, argv, mpi->mpicomm);
+
+    int splits = cmd.get("splits",0);
 
     parStopWatch w1, w2;
     w1.start("total time");
@@ -175,7 +174,7 @@ int main (int argc, char* argv[]){
     w2.start("refine");
     p4est->user_pointer = (void*)(&cf_data);
     p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-    for (int i=0; i<cmd.get("splits",0); i++)
+    for (int i=0; i<splits; i++)
       p4est_refine(p4est, P4EST_FALSE, refine_all, NULL);
     w2.stop(); w2.read_duration();
 
@@ -197,7 +196,7 @@ int main (int argc, char* argv[]){
     w2.start("computing phi");
     Vec phi;
     ierr = VecCreateGhostCells(p4est, ghost, &phi); CHKERRXX(ierr);
-    sample_cf_on_cells(p4est, ghost, circ, phi);
+    sample_cf_on_cells(p4est, ghost, fsin, phi);
     w2.stop(); w2.read_duration();
 
     std::ostringstream grid_name; grid_name << P4EST_DIM << "d_grid";
@@ -213,12 +212,6 @@ int main (int argc, char* argv[]){
       p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
       for (size_t q=0; q<tree->quadrants.elem_count; q++){
 //        cnnn.write_cell_neighbors_vtk(q, tr, "cells");
-//        cnnn.write_cell_triangulation_vtk_m00(q, tr, "triangles_m00");
-//        cnnn.write_cell_triangulation_vtk_p00(q, tr, "triangles_p00");
-//        cnnn.write_cell_triangulation_vtk_0m0(q, tr, "triangles_0m0");
-//        cnnn.write_cell_triangulation_vtk_0p0(q, tr, "triangles_0p0");
-//        cnnn.write_cell_triangulation_vtk_00m(q, tr, "triangles_00m");
-//        cnnn.write_cell_triangulation_vtk_00p(q, tr, "triangles_00p");
       }
     }
 
@@ -226,7 +219,7 @@ int main (int argc, char* argv[]){
 //    cnnn.write_triangulation("triangulation");
 #endif
 
-    std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi->mpisize;
+    std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi->mpisize << "_" << splits;
     double *phi_p;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
@@ -241,9 +234,9 @@ int main (int argc, char* argv[]){
 
     circle circ_old(circ);
 #ifdef P4_TO_P8
-//    circ.update(.75, 1.15,  1, .2);
+    circ.update(.75, 1.15,  1, .2);
 #else
-//    circ.update(.75, 1.15, .2);
+    circ.update(.75, 1.15, .2);
 #endif
 
     // Create a new grid
@@ -251,7 +244,7 @@ int main (int argc, char* argv[]){
     p4est_t *p4est_np1 = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
     p4est_np1->user_pointer = (void*)&cf_data;
     p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
-    for (int i=0; i<cmd.get("splits",0); i++)
+    for (int i=0; i<splits; i++)
       p4est_refine(p4est_np1, P4EST_FALSE, refine_all, NULL);
     p4est_partition(p4est_np1, NULL);
     w2.stop(); w2.read_duration();
@@ -333,10 +326,10 @@ int main (int argc, char* argv[]){
     phi_func.interpolate(phi_np1);
 
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est_np1, nodes_np1, circ_old, phi_nodes);
+    sample_cf_on_nodes(p4est_np1, nodes_np1, fsin, phi_nodes);
     ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    oss.str(""); oss << P4EST_DIM << "d_phi_np1_" << mpi->mpisize;
+    oss.str(""); oss << P4EST_DIM << "d_phi_np1_" << mpi->mpisize << "_" << splits;
 
     double *phi_np1_p, *phi_nodes_p;
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
@@ -349,66 +342,7 @@ int main (int argc, char* argv[]){
                            VTK_POINT_DATA, "phi_nodes", phi_nodes_p);
 
     ierr = VecRestoreArray(phi_np1,  &phi_np1_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_nodes,  &phi_nodes_p); CHKERRXX(ierr);
-
-    // finally lets try the RBF interpolating function in the whole domain
-    {
-      ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-
-      const int max_points = 40;
-      std::vector<double> f; f.reserve(max_points);
-#ifdef P4_TO_P8
-      std::vector<Point3> p; p.reserve(max_points);
-      Point3 pq;
-#else
-      std::vector<Point2> p; p.reserve(max_points);
-      Point2 pq;
-#endif
-
-      // gather random quadrants 
-      for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++){
-        p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
-
-        p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tr*P4EST_CHILDREN + 0];
-        double tr_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-        double tr_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-#ifdef P4_TO_P8
-        double tr_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
-#endif
-
-        int nr = 100;//floor(max_points * (double)tree->quadrants.elem_count / (double)p4est->local_num_quadrants);
-        for (int n = 0; n<nr; n++){
-          p4est_locidx_t q = (p4est_locidx_t)tree->quadrants.elem_count / nr * n;
-          const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-
-          double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-          pq.x = quad_x_fr_i(quad) + 0.5*qh + tr_xmin;
-          pq.y = quad_y_fr_j(quad) + 0.5*qh + tr_ymin;
-#ifdef P4_TO_P8
-          pq.z = quad_z_fr_k(quad) + 0.5*qh + tr_zmin;
-#endif    
-
-          p.push_back(pq);
-          f.push_back(phi_p[q + tree->quadrants_offset]);  
-        }
-      }      
-
-      RBFInterpolatingFunciton rbf(p, f, GA);
-      sample_cf_on_nodes(p4est_np1, nodes_np1, rbf, phi_np1);
-
-      // save 
-      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-      ierr = VecGetArray(phi_nodes, &phi_nodes_p); CHKERRXX(ierr);
-      my_p4est_vtk_write_all(p4est_np1, nodes_np1, NULL,
-                             P4EST_TRUE, P4EST_TRUE,
-                             2, 0, "rbf_np1",
-                             VTK_POINT_DATA, "phi_np1", phi_np1_p,
-                             VTK_POINT_DATA, "phi_nodes", phi_nodes_p);
-
-      ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(phi_nodes, &phi_nodes_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-    }
+    ierr = VecRestoreArray(phi_nodes,  &phi_nodes_p); CHKERRXX(ierr);    
 
     // compute error
     VecAXPY(phi_nodes, -1, phi_np1);

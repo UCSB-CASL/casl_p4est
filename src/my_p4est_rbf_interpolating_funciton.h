@@ -27,7 +27,7 @@ class RBFInterpolatingFunciton: public CF_2
   const CF_1& phi_;
 
   Cholesky chol;
-  MatrixFull A;
+  DenseMatrix A;
   std::vector<double> w;
 
 public:

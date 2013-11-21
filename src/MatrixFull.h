@@ -1,10 +1,10 @@
-#ifndef MATRIX_FULL
-#define MATRIX_FULL
+#ifndef DENSE_MATRIX_H
+#define DENSE_MATRIX_H
 
 #include <vector>
 #include <cstddef>
 
-class MatrixFull
+class DenseMatrix
 {
   size_t m_M, m_N;
   std::vector<double> values;
@@ -13,7 +13,7 @@ class MatrixFull
 
 public:
 
-  MatrixFull( size_t M = 1, size_t N = 1 )
+  DenseMatrix( size_t M = 1, size_t N = 1 )
   {
     values.resize(M*N);
     m_M = M; m_N = N;
@@ -21,7 +21,7 @@ public:
 
   void resize(size_t M, size_t N);
 
-  void operator=( const MatrixFull& M );
+  void operator=( const DenseMatrix& M );
 
   inline size_t num_Rows() const {return m_M;}
 
@@ -44,30 +44,30 @@ public:
 
   void tranpose_MatVec( const std::vector<double>& X, std::vector<double>& B );
 
-  void matrix_Product(  MatrixFull& B, MatrixFull& C );
+  void matrix_Product(  DenseMatrix& B, DenseMatrix& C );
 
   void scale_by_MaxAbs(std::vector<double>& X);
 
-  void MtM_Product(MatrixFull& M );
+  void MtM_Product(DenseMatrix& M );
 
 
   /*!
      * \brief compute the transpose of the matrix
      * \return the transpose of the matrix
      */
-  MatrixFull tr();
+  DenseMatrix tr();
 
   void print();
-  void sub( size_t im, size_t jm, size_t iM, size_t jM, MatrixFull& M );
-  void truncate_Matrix( size_t M, size_t N, MatrixFull& Mat);
-  void create_As_Transpose(  MatrixFull& M );
+  void sub( size_t im, size_t jm, size_t iM, size_t jM, DenseMatrix& M );
+  void truncate_Matrix( size_t M, size_t N, DenseMatrix& Mat);
+  void create_As_Transpose(  DenseMatrix& M );
 
-  void operator+=(MatrixFull& V );
-  void operator-=(MatrixFull& V );
+  void operator+=(DenseMatrix& V );
+  void operator-=(DenseMatrix& V );
   void operator*=(double s );
   void operator/=(double s );
   void operator =(double s );
 };
 
-#endif
+#endif // DENSE_MATRIX_H
 

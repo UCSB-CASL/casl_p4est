@@ -1,7 +1,7 @@
 #include "Cholesky.h"
 #include <src/CASL_math.h>
 
-bool Cholesky::compute_Cholesky_Decomposition(const MatrixFull &A )
+bool Cholesky::compute_Cholesky_Decomposition(const DenseMatrix &A )
 {
   Lf.resize(A.num_Rows(),A.num_Cols());
 
@@ -46,7 +46,7 @@ bool Cholesky::compute_Cholesky_Decomposition(const MatrixFull &A )
 
 
 
-bool Cholesky::solve(  MatrixFull& A, const std::vector<double>& b, std::vector<double>& x )
+bool Cholesky::solve(  DenseMatrix& A, const std::vector<double>& b, std::vector<double>& x )
 {
 #ifdef CASL_THROWS
   if(A.num_Cols()!=A.num_Rows() || A.num_Rows() != b.size()) throw std::invalid_argument("[CASL_ERROR]: Cholesky->solve_MatrixFull: A and b have different sizes !");

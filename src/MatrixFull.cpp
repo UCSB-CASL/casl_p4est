@@ -5,20 +5,20 @@
 
 using std::printf;
 
-void MatrixFull::resize(size_t M, size_t N)
+void DenseMatrix::resize(size_t M, size_t N)
 {
   m_M = M; m_N = N;
   values.resize(M*N);
 }
 
-void MatrixFull::operator=( const MatrixFull& M )
+void DenseMatrix::operator=( const DenseMatrix& M )
 {
   values = M.values;
   this->m_M = M.m_M;
   this->m_N = M.m_N;
 }
 
-void MatrixFull::set_Value(size_t i,size_t j,double value2Set)
+void DenseMatrix::set_Value(size_t i,size_t j,double value2Set)
 {
   if (i<m_M && j<m_N) values[i*m_N+j]=value2Set;
   else
@@ -33,7 +33,7 @@ void MatrixFull::set_Value(size_t i,size_t j,double value2Set)
 #endif
 }
 
-bool MatrixFull::is_Symmetric() const
+bool DenseMatrix::is_Symmetric() const
 {
 #ifdef CASL_THROWS
   if(m_M != m_N) throw std::runtime_error("[ERROR]: MatrixFull->is_Symmetric: the matrix is not square");
@@ -46,7 +46,7 @@ bool MatrixFull::is_Symmetric() const
 }
 
 
-void MatrixFull::matVec( const std::vector<double>& X, std::vector<double>& B )
+void DenseMatrix::matVec( const std::vector<double>& X, std::vector<double>& B )
 {
 #ifdef CASL_THROWS
   if(m_N != X.size()) throw std::invalid_argument("[ERROR]: MatrixFull->MatVec: the matrix and X must have compatible sizes");
@@ -61,7 +61,7 @@ void MatrixFull::matVec( const std::vector<double>& X, std::vector<double>& B )
   }
 }
 
-void MatrixFull::tranpose_MatVec( const std::vector<double>& X, std::vector<double>& B )
+void DenseMatrix::tranpose_MatVec( const std::vector<double>& X, std::vector<double>& B )
 {
 #ifdef CASL_THROWS
   if(m_M != X.size()) throw std::invalid_argument("[ERROR]: MatrixFull->transpose_MatVec: the matrix and X must have compatible sizes");
@@ -76,7 +76,7 @@ void MatrixFull::tranpose_MatVec( const std::vector<double>& X, std::vector<doub
   }
 }
 
-void MatrixFull::matrix_Product(  MatrixFull& B, MatrixFull& C )
+void DenseMatrix::matrix_Product(  DenseMatrix& B, DenseMatrix& C )
 {
 #ifdef CASL_THROWS
   if( m_N != B.m_M ) throw std::invalid_argument("[ERROR]: MatrixFull->matrix_Product: the matrix sizes don't match");
@@ -95,7 +95,7 @@ void MatrixFull::matrix_Product(  MatrixFull& B, MatrixFull& C )
     }
 }
 
-void MatrixFull::MtM_Product(MatrixFull& M )
+void DenseMatrix::MtM_Product(DenseMatrix& M )
 {
   M.resize(num_Cols(),num_Cols());
 #ifdef CASL_OPENMP
@@ -111,7 +111,7 @@ void MatrixFull::MtM_Product(MatrixFull& M )
     }
 }
 
-void MatrixFull::scale_by_MaxAbs(std::vector<double>& X)
+void DenseMatrix::scale_by_MaxAbs(std::vector<double>& X)
 {
 #ifdef CASL_THROWS
   if( m_M != X.size() ) throw std::invalid_argument("[ERROR]: MatrixFull->scale_by_MaxAbs: the matrix and the right hand side don't have the same size");
@@ -128,16 +128,16 @@ void MatrixFull::scale_by_MaxAbs(std::vector<double>& X)
   }
 }
 
-MatrixFull MatrixFull::tr()
+DenseMatrix DenseMatrix::tr()
 {
-  MatrixFull out(m_N,m_M);
+  DenseMatrix out(m_N,m_M);
   for(size_t i=0;i<m_M;i++)
     for(size_t j=0;j<m_N;j++)
       out.set_Value(j,i,this->get_Value(i,j));
   return out;
 }
 
-void MatrixFull::print()
+void DenseMatrix::print()
 {
   for( size_t i=0; i<m_M; i++ ){ printf("\n");
     for( size_t j=0; j<m_N; j++ ){
@@ -145,7 +145,7 @@ void MatrixFull::print()
   fflush(stdout);
 }
 
-void MatrixFull::sub( size_t im, size_t jm, size_t iM, size_t jM, MatrixFull& M )
+void DenseMatrix::sub( size_t im, size_t jm, size_t iM, size_t jM, DenseMatrix& M )
 {
 #ifdef CASL_THROWS
   if( im>iM || iM>=m_M || jm>jM || jM>=m_N ) throw std::invalid_argument("[ERROR]: MatrixFull->sub: invalid subsize");
@@ -156,7 +156,7 @@ void MatrixFull::sub( size_t im, size_t jm, size_t iM, size_t jM, MatrixFull& M 
       M.set_Value(i-im, j-jm,this->get_Value(i,j));
 }
 
-void MatrixFull::truncate_Matrix( size_t M, size_t N,  MatrixFull& Mat )
+void DenseMatrix::truncate_Matrix( size_t M, size_t N,  DenseMatrix& Mat )
 {
 #ifdef CASL_THROWS
   if(M>Mat.m_M || N>Mat.m_N) throw std::invalid_argument("[CASL_ERRO]: MatrixFull->truncate_Matrix: invalid truncation size");
@@ -169,7 +169,7 @@ void MatrixFull::truncate_Matrix( size_t M, size_t N,  MatrixFull& Mat )
 
 
 
-void MatrixFull::create_As_Transpose( MatrixFull& M )
+void DenseMatrix::create_As_Transpose( DenseMatrix& M )
 {
   resize(M.num_Cols(),M.num_Rows());
   for( size_t i=0; i<M.num_Rows(); i++ )
@@ -178,7 +178,7 @@ void MatrixFull::create_As_Transpose( MatrixFull& M )
 }
 
 
-void MatrixFull::operator+=(MatrixFull& V )
+void DenseMatrix::operator+=(DenseMatrix& V )
 {
 #ifdef CASL_THROWS
   if(m_M!=V.m_M || m_N!=V.m_N) throw std::invalid_argument("[CASL_ERRO]: MatrixFull->+=: the matrices have different sizes");
@@ -187,7 +187,7 @@ void MatrixFull::operator+=(MatrixFull& V )
     this->set_Value(0,i,this->get_Value(0,i)+V.get_Value(0,i));
 }
 
-void MatrixFull::operator-=(MatrixFull& V )
+void DenseMatrix::operator-=(DenseMatrix& V )
 {
 #ifdef CASL_THROWS
   if(m_M!=V.m_M || m_N!=V.m_N) throw std::invalid_argument("[CASL_ERRO]: MatrixFull->-=: the matrices have different sizes");
@@ -198,17 +198,17 @@ void MatrixFull::operator-=(MatrixFull& V )
   }
 }
 
-void MatrixFull::operator*=(             double s )
+void DenseMatrix::operator*=(             double s )
 {
   for(size_t i=0; i<values.size(); i++)
     values[i] *= s;
 }
-void MatrixFull::operator/=(             double s )
+void DenseMatrix::operator/=(             double s )
 {
   for(size_t i=0; i<values.size(); i++)
     values[i] /= s;
 }
-void MatrixFull::operator =(             double s )
+void DenseMatrix::operator =(             double s )
 {
   for(size_t i=0; i<values.size(); i++)
     values[i] = s;

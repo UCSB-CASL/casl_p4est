@@ -1051,7 +1051,7 @@ double InterpolatingFunctionCellBase::RBF_MQ_interpolation(const p4est_quadrant_
   }
 
   const size_t size = cells.size();
-  MatrixFull A(size, size);
+  DenseMatrix A(size, size);
   std::vector<double> y(size);
 
   // first add the distances -- to be normalized later
@@ -1172,7 +1172,7 @@ double InterpolatingFunctionCellBase::RBF_IQ_interpolation(const p4est_quadrant_
   }
 
   const size_t size = cells.size();
-  MatrixFull A(size, size);
+  DenseMatrix A(size, size);
   std::vector<double> y(size);
 
   // first add the distances -- to be normalized later
@@ -1293,7 +1293,7 @@ double InterpolatingFunctionCellBase::RBF_GA_interpolation(const p4est_quadrant_
   }
 
   const size_t size = cells.size();
-  MatrixFull A(size, size);
+  DenseMatrix A(size, size);
   std::vector<double> y(size);
 
   // first add the distances -- to be normalized later
@@ -1335,12 +1335,133 @@ double InterpolatingFunctionCellBase::RBF_GA_interpolation(const p4est_quadrant_
 }
 
 double InterpolatingFunctionCellBase::LSQR_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
-{
-  (void) quad;
-  (void) quad_idx;
-  (void) Fi_p;
-  (void) xyz;
+{  
+  // collect all neighboring cells
+  const quad_info_t *f_begin = cnnn_->face_begin(quad_idx, 0);
+  const quad_info_t *f_end = cnnn_->face_end(quad_idx, P4EST_FACES - 1); size_t f_size = f_end - f_begin;
+#ifdef P4_TO_P8
+  const quad_info_t *e_begin = cnnn_->edge_begin(quad_idx, 0);
+  const quad_info_t *e_end = cnnn_->edge_end(quad_idx, P8EST_EDGES - 1); size_t e_size = e_end - e_begin;
+#endif
+  const quad_info_t *c_begin = cnnn_->corner_begin(quad_idx, 0);
+  const quad_info_t *c_end = cnnn_->corner_end(quad_idx, P4EST_CHILDREN - 1); size_t c_size = c_end - c_begin;
 
-  throw std::runtime_error("[ERROR]: Not implemented!");
+  // construct the sample points and values at the cell centers
+#ifdef P4_TO_P8
+  size_t size = f_size + e_size + c_size;
+  typedef Point3 point_t;
+#else
+  size_t size = f_size + c_size;
+  typedef Point2 point_t;
+#endif
+  std::vector<point_t> points; points.reserve(1 + size);
+  std::vector<double>  values; values.reserve(1 + size);
+
+  // center cell
+  double h_C;
+  {
+    p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[quad.p.piggy3.which_tree * P4EST_CHILDREN];
+    point_t p;
+    p.x = p4est_->connectivity->vertices[3*v_mmm + 0];
+    p.y = p4est_->connectivity->vertices[3*v_mmm + 1];
+#ifdef P4_TO_P8
+    p.z = p4est_->connectivity->vertices[3*v_mmm + 2];
+#endif
+    double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+    h_C = qh;
+
+    p.x += quad_x_fr_i(&quad) + 0.5*qh;
+    p.y += quad_y_fr_j(&quad) + 0.5*qh;
+#ifdef P4_TO_P8
+    p.z += quad_z_fr_k(&quad) + 0.5*qh;
+#endif
+
+    points.push_back(p);
+    values.push_back(Fi_p[quad_idx]);
+  }
+
+  // faces
+  for (const quad_info_t* it = f_begin; it != f_end; ++it)
+  {
+    p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[it->tree_idx * P4EST_CHILDREN];
+    point_t p;
+    p.x = p4est_->connectivity->vertices[3*v_mmm + 0];
+    p.y = p4est_->connectivity->vertices[3*v_mmm + 1];
+#ifdef P4_TO_P8
+    p.z = p4est_->connectivity->vertices[3*v_mmm + 2];
+#endif
+    double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+
+    p.x += quad_x_fr_i(it->quad) + 0.5*qh;
+    p.y += quad_y_fr_j(it->quad) + 0.5*qh;
+#ifdef P4_TO_P8
+    p.z += quad_z_fr_k(it->quad) + 0.5*qh;
+#endif
+
+    points.push_back(p);
+    values.push_back(Fi_p[it->locidx]);
+  }
+#ifdef P4_TO_P8
+  // edges
+  for (const quad_info_t* it = e_begin; it != e_end; ++it)
+  {
+    p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[it->tree_idx * P4EST_CHILDREN];
+    point_t p;
+    p.x = p4est_->connectivity->vertices[3*v_mmm + 0];
+    p.y = p4est_->connectivity->vertices[3*v_mmm + 1];
+    p.z = p4est_->connectivity->vertices[3*v_mmm + 2];
+    double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+
+    p.x += quad_x_fr_i(it->quad) + 0.5*qh;
+    p.y += quad_y_fr_j(it->quad) + 0.5*qh;
+    p.z += quad_z_fr_k(it->quad) + 0.5*qh;
+
+    points.push_back(p);
+    values.push_back(Fi_p[it->locidx]);
+  }
+#endif
+  // corner
+  for (const quad_info_t* it = c_begin; it != c_end; ++it)
+  {
+    p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[it->tree_idx * P4EST_CHILDREN];
+    point_t p;
+    p.x = p4est_->connectivity->vertices[3*v_mmm + 0];
+    p.y = p4est_->connectivity->vertices[3*v_mmm + 1];
+#ifdef P4_TO_P8
+    p.z = p4est_->connectivity->vertices[3*v_mmm + 2];
+#endif
+    double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+
+    p.x += quad_x_fr_i(it->quad) + 0.5*qh;
+    p.y += quad_y_fr_j(it->quad) + 0.5*qh;
+#ifdef P4_TO_P8
+    p.z += quad_z_fr_k(it->quad) + 0.5*qh;
+#endif
+
+    points.push_back(p);
+    values.push_back(Fi_p[it->locidx]);
+  }
+
+  // we compute the weights w.r.t to the central point
+  for (size_t i=0; i<points.size(); i++){
+    points[i] -= points[0];
+    // rescale to prevent error build-up if points are very close
+//    points[i] /= h_C;
+  }
+
+  LSQR_method method;
+  if (is_quad_Wall(p4est_, quad.p.piggy3.which_tree, &quad))
+    method = linear_LSQR;
+  else
+    method = quadrantic_LSQR;
+
+  LSQRInterpolatingFunction lsqr(points, values, method);
+
+  // since points are relative to xyz, we simply need the first coefficient
+#ifdef P4_TO_P8
+  return lsqr(xyz[0] - points[0].x, xyz[1] - points[0].y, xyz[2] - points[0].z);
+#else
+  return lsqr(xyz[0] - points[0].x, xyz[1] - points[0].y);
+#endif
 }
 

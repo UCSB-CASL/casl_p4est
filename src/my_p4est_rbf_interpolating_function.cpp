@@ -10,10 +10,6 @@ RBFInterpolatingFunciton::RBFInterpolatingFunciton(const std::vector<point_t> &p
     for (size_t j = 0; j<p.size(); j++)
       A.set_Value(i, j, phi(p[i].distance(p[j])));
 
-  for (size_t i = 0; i<w.size(); i++)
-    std::cout << p_[i];
-  std::cout << std::endl;
-
   // solve RBF system
   if (!chol.solve(A, f, w))
     throw std::runtime_error("[Error] could not invert the linear system for RBF interpolation");
@@ -30,12 +26,6 @@ double RBFInterpolatingFunciton::operator ()(double x, double y) const
 #ifdef P4_TO_P8
   px.z = z;
 #endif
-
-
-
-//  for (size_t i = 0; i<w.size(); i++)
-//    std::cout << w[i] << " " ;
-//  std::cout << std::endl;
 
   double res = 0;
   for (size_t i = 0; i<w.size(); i++)

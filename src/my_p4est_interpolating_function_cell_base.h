@@ -8,12 +8,14 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_cell_neighbors.h>
+#include <src/my_p8est_lsqr_interpolating_function.h>
 #include <src/point3.h>
 #else
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_cell_neighbors.h>
+#include <src/my_p4est_lsqr_interpolating_function.h>
 #include <src/point2.h>
 #endif
 
