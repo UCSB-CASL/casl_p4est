@@ -11,10 +11,20 @@
 #include <src/point2.h>
 #endif
 
-enum LSQR_method{
-  linear_LSQR,
-  quadrantic_LSQR
+#ifdef P4_TO_P8
+#define LSQR_NUM_WEIGHTS_LINEAR 4
+#define LSQR_NUM_WEIGHTS_QUADRATIC 10
+#else
+#define LSQR_NUM_WEIGHTS_LINEAR 3
+#define LSQR_NUM_WEIGHTS_QUADRATIC 6
+#endif
+
+namespace LSQR{
+enum method{
+  linear,
+  quadrantic
 };
+}
 
 #ifdef P4_TO_P8
 class LSQRInterpolatingFunction: public CF_3
@@ -27,11 +37,11 @@ class LSQRInterpolatingFunction: public CF_2
 #else
   typedef Point2 point_t;
 #endif
-  LSQR_method method_;
+  LSQR::method method_;
 
   std::vector<double> w;
 public:
-  LSQRInterpolatingFunction(const std::vector<point_t>& p, const std::vector<double>& f, LSQR_method method = linear_LSQR);
+  LSQRInterpolatingFunction(const std::vector<point_t>& p, const std::vector<double>& f, LSQR::method method = LSQR::linear);
 
   inline const std::vector<double>& get_weights() const {return w;}
   inline size_t get_size() const {return w.size();}

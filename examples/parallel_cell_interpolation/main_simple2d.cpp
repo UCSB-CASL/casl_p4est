@@ -52,9 +52,9 @@ private:
   double x0, y0, z0, r;
 };
 
-static struct:CF_3{
-  double operator()(double x, double y, double z) const {
-    return x*x + y*y + z*z;
+struct:CF_3{
+  double operator ()(double x, double y, double z) const {
+    return sin(2*M_PI*x)*sin(2*M_PI*y)*sin(2*M_PI*z);
   }
 } uex;
 
@@ -75,11 +75,12 @@ private:
   double x0, y0, r;
 };
 
-static struct:CF_2{
-  double operator()(double x, double y) const {
-    return x*x + y*y;
+struct:CF_2{
+  double operator ()(double x, double y) const {
+    return sin(2*M_PI*x)*sin(2*M_PI*y);
   }
 } uex;
+
 
 #endif
 
@@ -95,6 +96,7 @@ int main (int argc, char* argv[]){
     cmdParser cmd;
     cmd.add_option("lmin", "min level of the tree");
     cmd.add_option("lmax", "max level of the tree");
+    cmd.add_option("splits", "number of splits");
     cmd.add_option("mode", "interpolation mode 0 = linear, 1 = IDW, 2 = LSQR");
     cmd.parse(argc, argv);
 
@@ -105,6 +107,8 @@ int main (int argc, char* argv[]){
     circle circ(1, 1, .3);
 #endif
     splitting_criteria_cf_t cf_data(cmd.get("lmin", 0), cmd.get("lmax",5), &circ, 1);
+
+    int nb_splits = cmd.get("splits", 0);
 
     Session mpi_session;
     mpi_session.init(argc, argv, mpi->mpicomm);
@@ -135,6 +139,8 @@ int main (int argc, char* argv[]){
     w2.start("refine");
     p4est->user_pointer = (void*)(&cf_data);
     p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+    for (int i=0; i<nb_splits; i++)
+      p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
     w2.stop(); w2.read_duration();
 
     // Finally re-partition
@@ -159,8 +165,8 @@ int main (int argc, char* argv[]){
     Vec phi_c2n;
     ierr = VecDuplicate(phi_node, &phi_c2n); CHKERRXX(ierr);
 
-    sample_cf_on_nodes(p4est, nodes, circ, phi_node);
-    sample_cf_on_cells(p4est, ghost, circ, phi_cell);
+    sample_cf_on_nodes(p4est, nodes, uex, phi_node);
+    sample_cf_on_cells(p4est, ghost, uex, phi_cell);
     w2.stop(); w2.read_duration();
 
     // set up the qnnn neighbors
@@ -177,6 +183,7 @@ int main (int argc, char* argv[]){
      * new node structure
      */
 
+    w2.start("interpolation");
     for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i)
     {
       p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+nodes->offset_owned_indeps);
@@ -212,12 +219,16 @@ int main (int argc, char* argv[]){
       interp.set_input_parameters(phi_cell, IDW);
       break;
     case 2:
-      interp.set_input_parameters(phi_cell, LSQR);
+      interp.set_input_parameters(phi_cell, linear_LSQR);
+      break;
+    case 3:
+      interp.set_input_parameters(phi_cell, quadrantic_LSQR);
       break;
     default:
       throw std::invalid_argument("[Error]: Interpolation mode can only be 0, 1, or 2");
     }
     interp.interpolate(phi_c2n);
+    w2.stop(); w2.read_duration();
 
     ierr = VecGhostUpdateBegin(phi_c2n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(phi_c2n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -229,21 +240,41 @@ int main (int argc, char* argv[]){
     ierr = VecGetArray(phi_cell, &phi_cp);  CHKERRXX(ierr);
     ierr = VecGetArray(phi_c2n, &phi_c2np); CHKERRXX(ierr);
 
+    Vec err;
+    ierr = VecDuplicate(phi_node, &err); CHKERRXX(ierr);
+    double *err_p;
+    ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
+
+    double err_max = 0;
+    for (size_t n = 0; n<nodes->indep_nodes.elem_count; ++n){
+      err_p[n] = ABS(phi_np[n] - phi_c2np[n]);
+      err_max = MAX(err_max, err_p[n]);
+    }
+
+    double err_max_g;
+    MPI_Reduce(&err_max, &err_max_g, 1, MPI_DOUBLE, MPI_MAX, 0, p4est->mpicomm);
+    if (p4est->mpirank == 0)
+      printf("err_max = %e\n", err_max_g);
+
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
-                           2, 1, oss.str().c_str(),
+                           3, 1, oss.str().c_str(),
                            VTK_POINT_DATA, "phi_node", phi_np,
                            VTK_POINT_DATA, "phi_c2n",  phi_c2np,
+                           VTK_POINT_DATA, "phi_err",  err_p,
                            VTK_CELL_DATA,  "phi_cell", phi_cp);
+
 
     ierr = VecRestoreArray(phi_node, &phi_np);   CHKERRXX(ierr);
     ierr = VecRestoreArray(phi_cell, &phi_cp);   CHKERRXX(ierr);
+    ierr = VecRestoreArray(err, &err_p);   CHKERRXX(ierr);
     ierr = VecRestoreArray(phi_c2n, &phi_c2np); CHKERRXX(ierr);
 
     // finally, delete PETSc Vecs by calling 'VecDestroy' function
     ierr = VecDestroy(phi_node); CHKERRXX(ierr);
     ierr = VecDestroy(phi_cell); CHKERRXX(ierr);
     ierr = VecDestroy(phi_c2n); CHKERRXX(ierr);
+    ierr = VecDestroy(err); CHKERRXX(ierr);
 
     // destroy the p4est and its connectivity structure
     p4est_nodes_destroy (nodes);

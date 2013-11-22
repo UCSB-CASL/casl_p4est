@@ -100,4 +100,11 @@ refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 p4est_bool_t
 coarsen_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
+p4est_bool_t
+refine_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+p4est_bool_t
+coarsen_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+
 #endif // REFINE_COARSEN_H

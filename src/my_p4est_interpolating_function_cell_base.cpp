@@ -232,8 +232,10 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
         Fo_p[out_idx] = linear_interpolation(quad, quad_idx, Fi_p, xyz);
       else if (method_ == IDW)
         Fo_p[out_idx] = IDW_interpolation(quad, quad_idx, Fi_p, xyz);
-      else if (method_ == LSQR)
-        Fo_p[out_idx] = LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
+      else if (method_ == linear_LSQR)
+        Fo_p[out_idx] = linear_LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
+      else if (method_ == quadrantic_LSQR)
+        Fo_p[out_idx] = quadratic_LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
       else if (method_ == RBF_MQ)
         Fo_p[out_idx] = RBF_MQ_interpolation(quad, quad_idx, Fi_p, xyz);
       else if (method_ == RBF_IQ)
@@ -294,8 +296,10 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
       Fo_p[out_idx] = linear_interpolation(quad, quad_idx, Fi_p, xyz);
     else if (method_ == IDW)
       Fo_p[out_idx] = IDW_interpolation(quad, quad_idx, Fi_p, xyz);
-    else if (method_ == LSQR)
-      Fo_p[out_idx] = LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
+    else if (method_ == linear_LSQR)
+      Fo_p[out_idx] = linear_LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
+    else if (method_ == quadrantic_LSQR)
+      Fo_p[out_idx] = quadratic_LSQR_interpolation(quad, quad_idx, Fi_p, xyz);
     else if (method_ == RBF_MQ)
       Fo_p[out_idx] = RBF_MQ_interpolation(quad, quad_idx, Fi_p, xyz);
     else if (method_ == RBF_IQ)
@@ -372,8 +376,10 @@ void InterpolatingFunctionCellBase::interpolate( double *output_vec )
             f_send[i] = linear_interpolation(best_match, qu_locidx, Fi_p, xyz);
           else if (method_ == IDW)
             f_send[i] = IDW_interpolation(best_match, qu_locidx, Fi_p, xyz);
-          else if (method_ == LSQR)
-            f_send[i] = LSQR_interpolation(best_match, qu_locidx, Fi_p, xyz);
+          else if (method_ == linear_LSQR)
+            f_send[i] = linear_LSQR_interpolation(best_match, qu_locidx, Fi_p, xyz);
+          else if (method_ == quadrantic_LSQR)
+            f_send[i] = quadratic_LSQR_interpolation(best_match, qu_locidx, Fi_p, xyz);
           else if (method_ == RBF_MQ)
             f_send[i] = RBF_MQ_interpolation(best_match, qu_locidx, Fi_p, xyz);
           else if (method_ == RBF_IQ)
@@ -509,8 +515,10 @@ double InterpolatingFunctionCellBase::operator ()(double x, double y) const
       return linear_interpolation(best_match, quad_idx, Fi_p, xyz);
     else if (method_ == IDW)
       return IDW_interpolation(best_match, quad_idx, Fi_p, xyz);
-    else if (method_ == LSQR)
-      return LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else if (method_ == linear_LSQR)
+      return linear_LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else if (method_ == quadrantic_LSQR)
+      return quadratic_LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
     else if (method_ == RBF_MQ)
       return RBF_MQ_interpolation(best_match, quad_idx, Fi_p, xyz);
     else if (method_ == RBF_IQ)
@@ -532,8 +540,18 @@ double InterpolatingFunctionCellBase::operator ()(double x, double y) const
       return linear_interpolation(best_match, quad_idx, Fi_p, xyz);
     else if (method_ == IDW)
       return IDW_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else if (method_ == linear_LSQR)
+      return linear_LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else if (method_ == quadrantic_LSQR)
+      return quadratic_LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else if (method_ == RBF_MQ)
+      return RBF_MQ_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else if (method_ == RBF_IQ)
+      return RBF_IQ_interpolation(best_match, quad_idx, Fi_p, xyz);
+    else if (method_ == RBF_GA)
+      return RBF_GA_interpolation(best_match, quad_idx, Fi_p, xyz);
     else
-      return LSQR_interpolation(best_match, quad_idx, Fi_p, xyz);
+      throw std::invalid_argument("[ERROR]: unknown interpolation method");
 
   } else {
     ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
@@ -1334,8 +1352,10 @@ double InterpolatingFunctionCellBase::RBF_GA_interpolation(const p4est_quadrant_
   return res;
 }
 
-double InterpolatingFunctionCellBase::LSQR_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
+double InterpolatingFunctionCellBase::linear_LSQR_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
 {  
+  p4est_quadrant_t quad_copy = quad;
+
   // collect all neighboring cells
   const quad_info_t *f_begin = cnnn_->face_begin(quad_idx, 0);
   const quad_info_t *f_end = cnnn_->face_end(quad_idx, P4EST_FACES - 1); size_t f_size = f_end - f_begin;
@@ -1345,6 +1365,54 @@ double InterpolatingFunctionCellBase::LSQR_interpolation(const p4est_quadrant_t 
 #endif
   const quad_info_t *c_begin = cnnn_->corner_begin(quad_idx, 0);
   const quad_info_t *c_end = cnnn_->corner_end(quad_idx, P4EST_CHILDREN - 1); size_t c_size = c_end - c_begin;
+
+  /* check if this is a ghost cell.
+   * if the central cell is ghost, it might not have enough neighboring cells. To ensure this
+   * never causes problems we find the smallest neighboring cell of the central cell and
+   * assign it to be the central cell
+   */
+  if (quad_idx >= p4est_->local_num_quadrants) { // cell is ghost cell
+    quad_info_t root; const_cast<p4est_quadrant_t*>(root.quad)->level = 0; // to get around const -ness
+    const quad_info_t *it_smallest = &root;
+
+    // check faces
+    for (const quad_info_t *it = f_begin; it != f_end; ++it)
+      if (it->quad->level > it_smallest->quad->level && it->locidx < p4est_->local_num_quadrants)
+        it_smallest = it;
+
+    // check edges
+#ifdef P4_TO_P8
+    for (const quad_info_t *it = e_begin; it != e_end; ++it)
+      if (it->quad->level > it_smallest->quad->level && it->locidx < p4est_->local_num_quadrants)
+        it_smallest = it;
+#endif
+
+    // check corners
+    for (const quad_info_t *it = c_begin; it != c_end; ++it)
+      if (it->quad->level > it_smallest->quad->level && it->locidx < p4est_->local_num_quadrants)
+        it_smallest = it;
+
+#ifdef CASL_THROWS
+    // sanity check!
+    if (it_smallest == &root)
+      throw std::runtime_error("[ERROR]: could not replace the ghost cell with an appropriate local cell when performing linear LSQR interpolation. This is most probably a bug!");
+#endif
+
+    // replace "central" cell
+    quad_copy = *(it_smallest->quad);
+    quad_copy.p.piggy3.which_tree = it_smallest->tree_idx;
+    quad_idx = it_smallest->locidx;
+
+    f_begin = cnnn_->face_begin(quad_idx, 0);
+    f_end = cnnn_->face_end(quad_idx, P4EST_FACES - 1); f_size = f_end - f_begin;
+  #ifdef P4_TO_P8
+    e_begin = cnnn_->edge_begin(quad_idx, 0);
+    e_end = cnnn_->edge_end(quad_idx, P8EST_EDGES - 1); e_size = e_end - e_begin;
+  #endif
+    c_begin = cnnn_->corner_begin(quad_idx, 0);
+    c_end = cnnn_->corner_end(quad_idx, P4EST_CHILDREN - 1); c_size = c_end - c_begin;
+  }
+  const p4est_quadrant_t *quad_C = &quad_copy;
 
   // construct the sample points and values at the cell centers
 #ifdef P4_TO_P8
@@ -1359,30 +1427,43 @@ double InterpolatingFunctionCellBase::LSQR_interpolation(const p4est_quadrant_t 
 
   // center cell
   double h_C;
+  point_t p_C;
   {
-    p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[quad.p.piggy3.which_tree * P4EST_CHILDREN];
-    point_t p;
-    p.x = p4est_->connectivity->vertices[3*v_mmm + 0];
-    p.y = p4est_->connectivity->vertices[3*v_mmm + 1];
+    p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[quad_C->p.piggy3.which_tree * P4EST_CHILDREN];
+    p_C.x = p4est_->connectivity->vertices[3*v_mmm + 0];
+    p_C.y = p4est_->connectivity->vertices[3*v_mmm + 1];
 #ifdef P4_TO_P8
-    p.z = p4est_->connectivity->vertices[3*v_mmm + 2];
+    p_C.z = p4est_->connectivity->vertices[3*v_mmm + 2];
 #endif
-    double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+    double qh = (double)P4EST_QUADRANT_LEN(quad_C->level)/(double)P4EST_ROOT_LEN;
     h_C = qh;
 
-    p.x += quad_x_fr_i(&quad) + 0.5*qh;
-    p.y += quad_y_fr_j(&quad) + 0.5*qh;
+    p_C.x += quad_x_fr_i(quad_C) + 0.5*qh;
+    p_C.y += quad_y_fr_j(quad_C) + 0.5*qh;
 #ifdef P4_TO_P8
-    p.z += quad_z_fr_k(&quad) + 0.5*qh;
+    p_C.z += quad_z_fr_k(quad_C) + 0.5*qh;
 #endif
 
-    points.push_back(p);
+    points.push_back(p_C);
     values.push_back(Fi_p[quad_idx]);
   }
+  points[0] -= p_C;
 
-  // faces
-  for (const quad_info_t* it = f_begin; it != f_end; ++it)
+  // collect a unique set of cells
+  typedef std::map<p4est_locidx_t, const quad_info_t*> cell_map_t;
+  cell_map_t cell_map;
+  for (const quad_info_t *it = f_begin; it != f_end; ++it)
+    cell_map.insert(std::make_pair(it->locidx, it));
+#ifdef P4_TO_P8
+  for (const quad_info_t *it = e_begin; it != e_end; ++it)
+    cell_map.insert(std::make_pair(it->locidx, it));
+#endif
+  for (const quad_info_t *it = c_begin; it != c_end; ++it)
+    cell_map.insert(std::make_pair(it->locidx, it));
+
+  for (cell_map_t::const_iterator iter = cell_map.begin(); iter != cell_map.end(); ++iter)
   {
+    const quad_info_t *it = iter->second;
     p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[it->tree_idx * P4EST_CHILDREN];
     point_t p;
     p.x = p4est_->connectivity->vertices[3*v_mmm + 0];
@@ -1390,7 +1471,7 @@ double InterpolatingFunctionCellBase::LSQR_interpolation(const p4est_quadrant_t 
 #ifdef P4_TO_P8
     p.z = p4est_->connectivity->vertices[3*v_mmm + 2];
 #endif
-    double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+    double qh = (double)P4EST_QUADRANT_LEN(it->quad->level)/(double)P4EST_ROOT_LEN;
 
     p.x += quad_x_fr_i(it->quad) + 0.5*qh;
     p.y += quad_y_fr_j(it->quad) + 0.5*qh;
@@ -1398,70 +1479,203 @@ double InterpolatingFunctionCellBase::LSQR_interpolation(const p4est_quadrant_t 
     p.z += quad_z_fr_k(it->quad) + 0.5*qh;
 #endif
 
-    points.push_back(p);
-    values.push_back(Fi_p[it->locidx]);
-  }
-#ifdef P4_TO_P8
-  // edges
-  for (const quad_info_t* it = e_begin; it != e_end; ++it)
-  {
-    p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[it->tree_idx * P4EST_CHILDREN];
-    point_t p;
-    p.x = p4est_->connectivity->vertices[3*v_mmm + 0];
-    p.y = p4est_->connectivity->vertices[3*v_mmm + 1];
-    p.z = p4est_->connectivity->vertices[3*v_mmm + 2];
-    double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
-
-    p.x += quad_x_fr_i(it->quad) + 0.5*qh;
-    p.y += quad_y_fr_j(it->quad) + 0.5*qh;
-    p.z += quad_z_fr_k(it->quad) + 0.5*qh;
-
-    points.push_back(p);
-    values.push_back(Fi_p[it->locidx]);
-  }
-#endif
-  // corner
-  for (const quad_info_t* it = c_begin; it != c_end; ++it)
-  {
-    p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[it->tree_idx * P4EST_CHILDREN];
-    point_t p;
-    p.x = p4est_->connectivity->vertices[3*v_mmm + 0];
-    p.y = p4est_->connectivity->vertices[3*v_mmm + 1];
-#ifdef P4_TO_P8
-    p.z = p4est_->connectivity->vertices[3*v_mmm + 2];
-#endif
-    double qh = (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
-
-    p.x += quad_x_fr_i(it->quad) + 0.5*qh;
-    p.y += quad_y_fr_j(it->quad) + 0.5*qh;
-#ifdef P4_TO_P8
-    p.z += quad_z_fr_k(it->quad) + 0.5*qh;
-#endif
+    p -= p_C; p /= h_C;
 
     points.push_back(p);
     values.push_back(Fi_p[it->locidx]);
   }
 
-  // we compute the weights w.r.t to the central point
-  for (size_t i=0; i<points.size(); i++){
-    points[i] -= points[0];
-    // rescale to prevent error build-up if points are very close
-//    points[i] /= h_C;
-  }
-
-  LSQR_method method;
-  if (is_quad_Wall(p4est_, quad.p.piggy3.which_tree, &quad))
-    method = linear_LSQR;
-  else
-    method = quadrantic_LSQR;
-
-  LSQRInterpolatingFunction lsqr(points, values, method);
+  LSQRInterpolatingFunction lsqr(points, values, LSQR::linear);
 
   // since points are relative to xyz, we simply need the first coefficient
 #ifdef P4_TO_P8
-  return lsqr(xyz[0] - points[0].x, xyz[1] - points[0].y, xyz[2] - points[0].z);
+  return lsqr((xyz[0] - p_C.x)/h_C, (xyz[1] - p_C.y)/h_C, (xyz[2] - p_C.z)/h_C);
 #else
-  return lsqr(xyz[0] - points[0].x, xyz[1] - points[0].y);
+  return lsqr((xyz[0] - p_C.x)/h_C, (xyz[1] - p_C.y)/h_C);
 #endif
 }
 
+
+double InterpolatingFunctionCellBase::quadratic_LSQR_interpolation(const p4est_quadrant_t &quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const
+{
+  p4est_quadrant_t quad_copy = quad;
+
+  // collect all neighboring cells
+  const quad_info_t *f_begin = cnnn_->face_begin(quad_idx, 0);
+  const quad_info_t *f_end = cnnn_->face_end(quad_idx, P4EST_FACES - 1); size_t f_size = f_end - f_begin;
+#ifdef P4_TO_P8
+  const quad_info_t *e_begin = cnnn_->edge_begin(quad_idx, 0);
+  const quad_info_t *e_end = cnnn_->edge_end(quad_idx, P8EST_EDGES - 1); size_t e_size = e_end - e_begin;
+#endif
+  const quad_info_t *c_begin = cnnn_->corner_begin(quad_idx, 0);
+  const quad_info_t *c_end = cnnn_->corner_end(quad_idx, P4EST_CHILDREN - 1); size_t c_size = c_end - c_begin;
+
+  /* check if this is a ghost cell.
+   * if the central cell is ghost, it might not have enough neighboring cells. To ensure this
+   * never causes problems we find the smallest neighboring cell of the central cell and
+   * assign it to be the central cell
+   */
+  if (quad_idx >= p4est_->local_num_quadrants) { // cell is ghost cell
+    quad_info_t root; const_cast<p4est_quadrant_t*>(root.quad)->level = 0;
+    const quad_info_t *it_smallest = &root;
+
+    // check faces
+    for (const quad_info_t *it = f_begin; it != f_end; ++it)
+      if (it->quad->level > it_smallest->quad->level && it->locidx < p4est_->local_num_quadrants)
+        it_smallest = it;
+
+    // check edges
+#ifdef P4_TO_P8
+    for (const quad_info_t *it = e_begin; it != e_end; ++it)
+      if (it->quad->level > it_smallest->quad->level && it->locidx < p4est_->local_num_quadrants)
+        it_smallest = it;
+#endif
+
+    // check corners
+    for (const quad_info_t *it = c_begin; it != c_end; ++it)
+      if (it->quad->level > it_smallest->quad->level && it->locidx < p4est_->local_num_quadrants)
+        it_smallest = it;
+
+#ifdef CASL_THROWS
+    // sanity check!
+    if (it_smallest == &root)
+      throw std::runtime_error("[ERROR]: could not replace the ghost cell with an appropriate local cell when performing linear LSQR interpolation. This is most probably a bug!");
+#endif
+
+    // replace "central" cell
+    quad_copy = *(it_smallest->quad);
+    quad_copy.p.piggy3.which_tree = it_smallest->tree_idx;
+    quad_idx = it_smallest->locidx;
+
+    f_begin = cnnn_->face_begin(quad_idx, 0);
+    f_end = cnnn_->face_end(quad_idx, P4EST_FACES - 1); f_size = f_end - f_begin;
+  #ifdef P4_TO_P8
+    e_begin = cnnn_->edge_begin(quad_idx, 0);
+    e_end = cnnn_->edge_end(quad_idx, P8EST_EDGES - 1); e_size = e_end - e_begin;
+  #endif
+    c_begin = cnnn_->corner_begin(quad_idx, 0);
+    c_end = cnnn_->corner_end(quad_idx, P4EST_CHILDREN - 1); c_size = c_end - c_begin;
+  }
+  const p4est_quadrant_t *quad_C = &quad_copy;
+
+
+  // construct the sample points and values at the cell centers
+#ifdef P4_TO_P8
+  size_t size = f_size + e_size + c_size;
+  typedef Point3 point_t;
+#else
+  size_t size = f_size + c_size;
+  typedef Point2 point_t;
+#endif
+  std::vector<point_t> points; points.reserve(1 + size);
+  std::vector<double>  values; values.reserve(1 + size);
+
+  // center cell
+  double h_C;
+  point_t p_C;
+  {
+    p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[quad_C->p.piggy3.which_tree * P4EST_CHILDREN];
+    p_C.x = p4est_->connectivity->vertices[3*v_mmm + 0];
+    p_C.y = p4est_->connectivity->vertices[3*v_mmm + 1];
+#ifdef P4_TO_P8
+    p_C.z = p4est_->connectivity->vertices[3*v_mmm + 2];
+#endif
+    double qh = (double)P4EST_QUADRANT_LEN(quad_C->level)/(double)P4EST_ROOT_LEN;
+    h_C = qh;
+
+    p_C.x += quad_x_fr_i(quad_C) + 0.5*qh;
+    p_C.y += quad_y_fr_j(quad_C) + 0.5*qh;
+#ifdef P4_TO_P8
+    p_C.z += quad_z_fr_k(quad_C) + 0.5*qh;
+#endif
+
+    points.push_back(p_C);
+    values.push_back(Fi_p[quad_idx]);
+  }
+  points[0] -= p_C;
+
+  // collect a unique set of cells
+  typedef std::map<p4est_locidx_t, const quad_info_t*> cell_map_t;
+  cell_map_t cell_map;
+  for (const quad_info_t *it = f_begin; it != f_end; ++it)
+    cell_map.insert(std::make_pair(it->locidx, it));
+#ifdef P4_TO_P8
+  for (const quad_info_t *it = e_begin; it != e_end; ++it)
+    cell_map.insert(std::make_pair(it->locidx, it));
+#endif
+  for (const quad_info_t *it = c_begin; it != c_end; ++it)
+    cell_map.insert(std::make_pair(it->locidx, it));
+
+  /* check if we are on the boundary in which case we need to shift "center" cell
+   * this is only required for quadratic lsqr method. To do this we can either do:
+   * 1) fetch neighboring cells of the current cell or
+   * 2) first find the smallest neighboring cell in the oposite direction and use that
+   * cell as if it was "central"
+   *
+   * We do the first approach as it requires less points.
+   */
+  if (is_quad_Wall(p4est_, quad_C->p.piggy3.which_tree, quad_C) && cell_map.size() < LSQR_NUM_WEIGHTS_QUADRATIC){
+    cell_map_t extended_map;
+    for (cell_map_t::const_iterator iter = cell_map.begin(); iter != cell_map.end(); ++iter)
+    {
+      const quad_info_t *it0 = iter->second;
+
+      const quad_info_t *f_ext_begin = cnnn_->face_begin(it0->locidx, 0);
+      const quad_info_t *f_ext_end = cnnn_->face_end(it0->locidx, P4EST_FACES - 1);
+    #ifdef P4_TO_P8
+      const quad_info_t *e_ext_begin = cnnn_->edge_begin(it0->locidx, 0);
+      const quad_info_t *e_ext_end = cnnn_->edge_end(it0->locidx, P8EST_EDGES - 1);
+    #endif
+      const quad_info_t *c_ext_begin = cnnn_->corner_begin(it0->locidx, 0);
+      const quad_info_t *c_ext_end = cnnn_->corner_end(it0->locidx, P4EST_CHILDREN - 1);
+
+      for (const quad_info_t *it = f_ext_begin; it != f_ext_end; ++it)
+        extended_map.insert(std::make_pair(it->locidx, it));
+    #ifdef P4_TO_P8
+      for (const quad_info_t *it = e_ext_begin; it != e_ext_end; ++it)
+        extended_map.insert(std::make_pair(it->locidx, it));
+    #endif
+      for (const quad_info_t *it = c_ext_begin; it != c_ext_end; ++it)
+        extended_map.insert(std::make_pair(it->locidx, it));
+    }
+
+    for (cell_map_t::const_iterator iter = extended_map.begin(); iter != extended_map.end(); ++iter)
+    {
+      const quad_info_t *it = iter->second;
+      cell_map.insert(std::make_pair(it->locidx, it));
+    }
+  }
+
+  for (cell_map_t::const_iterator iter = cell_map.begin(); iter != cell_map.end(); ++iter)
+  {
+    const quad_info_t *it = iter->second;
+    p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[it->tree_idx * P4EST_CHILDREN];
+    point_t p;
+    p.x = p4est_->connectivity->vertices[3*v_mmm + 0];
+    p.y = p4est_->connectivity->vertices[3*v_mmm + 1];
+#ifdef P4_TO_P8
+    p.z = p4est_->connectivity->vertices[3*v_mmm + 2];
+#endif
+    double qh = (double)P4EST_QUADRANT_LEN(it->quad->level)/(double)P4EST_ROOT_LEN;
+
+    p.x += quad_x_fr_i(it->quad) + 0.5*qh;
+    p.y += quad_y_fr_j(it->quad) + 0.5*qh;
+#ifdef P4_TO_P8
+    p.z += quad_z_fr_k(it->quad) + 0.5*qh;
+#endif
+
+    p -= p_C; p /= h_C;
+
+    points.push_back(p);
+    values.push_back(Fi_p[it->locidx]);
+  }
+
+  LSQRInterpolatingFunction lsqr(points, values, LSQR::quadrantic);
+
+  // since points are relative to xyz, we simply need the first coefficient
+#ifdef P4_TO_P8
+  return lsqr((xyz[0] - p_C.x)/h_C, (xyz[1] - p_C.y)/h_C, (xyz[2] - p_C.z)/h_C);
+#else
+  return lsqr((xyz[0] - p_C.x)/h_C, (xyz[1] - p_C.y)/h_C);
+#endif
+}

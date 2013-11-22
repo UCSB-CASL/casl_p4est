@@ -161,7 +161,7 @@ int main (int argc, char* argv[]){
 #ifdef P4_TO_P8
     connectivity = my_p4est_brick_new(2, 2, 2, brick);
 #else
-    connectivity = my_p4est_brick_new(3, 3, brick);
+    connectivity = my_p4est_brick_new(1, 1, brick);
 #endif
     w2.stop(); w2.read_duration();
 
@@ -335,25 +335,38 @@ int main (int argc, char* argv[]){
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
     ierr = VecGetArray(phi_nodes, &phi_nodes_p); CHKERRXX(ierr);
     
+    // compute error
+    Vec phi_err;
+    VecDuplicate(phi_nodes, &phi_err);
+    double *phi_err_p;
+    VecGetArray(phi_err, &phi_err_p);
+    double err;
+    for (p4est_locidx_t n = 0; n<nodes_np1->indep_nodes.elem_count; n++){
+      p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, n);
+      if(is_node_Wall(p4est_np1, ni))
+        phi_err_p[n] = 0;
+      else
+        phi_err_p[n] = ABS(phi_nodes_p[n] - phi_np1_p[n]);
+    }
+    VecNorm(phi_err, NORM_INFINITY, &err);
+    printf("err = %e\n",err);
+
     my_p4est_vtk_write_all(p4est_np1, nodes_np1, NULL,
                            P4EST_TRUE, P4EST_TRUE,
-                           2, 0, oss.str().c_str(),
+                           3, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi_np1", phi_np1_p,
-                           VTK_POINT_DATA, "phi_nodes", phi_nodes_p);
+                           VTK_POINT_DATA, "phi_nodes", phi_nodes_p,
+                           VTK_POINT_DATA, "phi_err", phi_err_p);
 
+    VecRestoreArray(phi_err, &phi_err_p);
+    ierr = VecRestoreArray(phi_nodes,  &phi_nodes_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(phi_np1,  &phi_np1_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_nodes,  &phi_nodes_p); CHKERRXX(ierr);    
-
-    // compute error
-    VecAXPY(phi_nodes, -1, phi_np1);
-    double err;
-    VecNorm(phi_nodes, NORM_INFINITY, &err);
-    printf("err = %e\n",err);
 
     // finally, delete PETSc Vecs by calling 'VecDestroy' function
     ierr = VecDestroy(phi);          CHKERRXX(ierr);
     ierr = VecDestroy(phi_np1);  CHKERRXX(ierr);
     ierr = VecDestroy(phi_nodes);  CHKERRXX(ierr);
+    ierr = VecDestroy(phi_err);  CHKERRXX(ierr);
 
     // destroy the p4est and its connectivity structure
     p4est_nodes_destroy (nodes);

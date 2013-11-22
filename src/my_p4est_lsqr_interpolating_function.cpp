@@ -1,14 +1,6 @@
 #include "my_p4est_lsqr_interpolating_function.h"
 
-#ifdef P4_TO_P8
-#define LSQR_NUM_WEIGHTS_LINEAR 4
-#define LSQR_QUADRATIC_NUM_WEIGHTS 10
-#else
-#define LSQR_NUM_WEIGHTS_LINEAR 3
-#define LSQR_NUM_WEIGHTS_QUADRATIC 6
-#endif
-
-LSQRInterpolatingFunction::LSQRInterpolatingFunction(const std::vector<point_t> &p, const std::vector<double> &f, LSQR_method method)
+LSQRInterpolatingFunction::LSQRInterpolatingFunction(const std::vector<point_t> &p, const std::vector<double> &f, LSQR::method method)
   : method_(method)
 {
 #ifdef CASL_THROWS
@@ -16,14 +8,14 @@ LSQRInterpolatingFunction::LSQRInterpolatingFunction(const std::vector<point_t> 
     throw std::invalid_argument ("[ERROR]: points and values should have the same size");
   if (p.size() < LSQR_NUM_WEIGHTS_LINEAR)
     throw std::invalid_argument ("[ERROR] not enough points for linear LSQR interpolation");
-  if (p.size() < LSQR_NUM_WEIGHTS_QUADRATIC && method_ == quadrantic_LSQR)
+  if (p.size() < LSQR_NUM_WEIGHTS_QUADRATIC && method_ == LSQR::quadrantic)
     throw std::invalid_argument ("[ERROR] not enough points for quadratic LSQR interpolation");
 #endif
 
   DenseMatrix X;
   std::vector<double> b;
 
-  if (method == linear_LSQR){
+  if (method == LSQR::linear){
     b.resize(LSQR_NUM_WEIGHTS_LINEAR, 0);
     X.resize(f.size(), LSQR_NUM_WEIGHTS_LINEAR);
     for (size_t i = 0; i<f.size(); i++){
@@ -37,7 +29,7 @@ LSQRInterpolatingFunction::LSQRInterpolatingFunction(const std::vector<point_t> 
         X.set_Value(i, j, xyz[j]);
       }
     }
-  } else if (method == quadrantic_LSQR) {
+  } else if (method == LSQR::quadrantic) {
     b.resize(LSQR_NUM_WEIGHTS_QUADRATIC, 0);
     X.resize(f.size(), LSQR_NUM_WEIGHTS_QUADRATIC);
     for (size_t i = 0; i<f.size(); i++){
@@ -63,8 +55,22 @@ LSQRInterpolatingFunction::LSQRInterpolatingFunction(const std::vector<point_t> 
 
   Cholesky chol;
   w.resize(b.size());
-  if (!chol.solve(A, b, w))
-    throw std::runtime_error("[CASL_ERROR]: Could not invert the LSQR matrix");
+  if (!chol.solve(A, b, w)){
+    std::cout << "[WARNING] Quadratic LSQR failed -- falling back to linear method." << std::endl;
+    // try linear LSQR if original method was quadratic
+    if (method == LSQR::quadrantic){
+      DenseMatrix Alin;
+      Alin.truncate_Matrix(LSQR_NUM_WEIGHTS_LINEAR, LSQR_NUM_WEIGHTS_LINEAR, A);
+      std::vector<double> blin(b.begin(), b.begin() + LSQR_NUM_WEIGHTS_LINEAR);
+      w.resize(LSQR_NUM_WEIGHTS_LINEAR);
+
+      if (!chol.solve(Alin, blin, w))
+        throw std::runtime_error("[CASL_ERROR]: Could not invert the LSQR matrix");
+      method_ = LSQR::linear;
+    } else {
+      throw std::runtime_error("[CASL_ERROR]: Could not invert the LSQR matrix");
+    }
+  }
 }
 
 #ifdef P4_TO_P8
@@ -75,7 +81,7 @@ double LSQRInterpolatingFunction::operator ()(double x, double y) const
 {
   double res = 0;
 
-  if (method_ == linear_LSQR) {
+  if (method_ == LSQR::linear) {
 #ifdef P4_TO_P8
       double xyz [] = {1.0, x, y, z};
 #else

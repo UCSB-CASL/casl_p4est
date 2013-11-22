@@ -22,7 +22,8 @@
 enum interpolation_method{
   linear,
   IDW,
-  LSQR,
+  linear_LSQR,
+  quadrantic_LSQR,
   RBF_MQ,
   RBF_IQ,
   RBF_GA
@@ -101,12 +102,13 @@ private:
   // methods
   void send_point_buffers_begin();
   void recv_point_buffers_begin();
-  double linear_interpolation(const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
-  double IDW_interpolation   (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
-  double LSQR_interpolation  (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
-  double RBF_MQ_interpolation(const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
-  double RBF_IQ_interpolation(const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
-  double RBF_GA_interpolation(const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
+  double linear_interpolation         (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
+  double IDW_interpolation            (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
+  double linear_LSQR_interpolation    (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
+  double quadratic_LSQR_interpolation (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
+  double RBF_MQ_interpolation         (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
+  double RBF_IQ_interpolation         (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
+  double RBF_GA_interpolation         (const p4est_quadrant_t& quad, p4est_locidx_t quad_idx, const double *Fi_p, const double *xyz) const;
 #ifdef P4_TO_P8
   bool find_tetrahedron_containing_point_m00(p4est_locidx_t qu, p4est_topidx_t tr, Point3 &px, double *uvw, const quad_info_t **qu123) const;
   bool find_tetrahedron_containing_point_p00(p4est_locidx_t qu, p4est_topidx_t tr, Point3 &px, double *uvw, const quad_info_t **qu123) const;
