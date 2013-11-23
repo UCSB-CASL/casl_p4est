@@ -1372,7 +1372,8 @@ double InterpolatingFunctionCellBase::linear_LSQR_interpolation(const p4est_quad
    * assign it to be the central cell
    */
   if (quad_idx >= p4est_->local_num_quadrants) { // cell is ghost cell
-    quad_info_t root; const_cast<p4est_quadrant_t*>(root.quad)->level = 0; // to get around const -ness
+    p4est_quadrant_t root_quad; root_quad.level = 0;
+    quad_info_t root; root.quad = &root_quad;
     const quad_info_t *it_smallest = &root;
 
     // check faces
@@ -1516,7 +1517,8 @@ double InterpolatingFunctionCellBase::quadratic_LSQR_interpolation(const p4est_q
    * assign it to be the central cell
    */
   if (quad_idx >= p4est_->local_num_quadrants) { // cell is ghost cell
-    quad_info_t root; const_cast<p4est_quadrant_t*>(root.quad)->level = 0;
+    p4est_quadrant_t root_quad; root_quad.level = 0;
+    quad_info_t root; root.quad = &root_quad;
     const quad_info_t *it_smallest = &root;
 
     // check faces
