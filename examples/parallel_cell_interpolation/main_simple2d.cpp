@@ -247,7 +247,11 @@ int main (int argc, char* argv[]){
 
     double err_max = 0;
     for (size_t n = 0; n<nodes->indep_nodes.elem_count; ++n){
-      err_p[n] = ABS(phi_np[n] - phi_c2np[n]);
+//      const p4est_indep_t *ni = (const p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+//      if (is_node_Wall(p4est, ni))
+//        err_p[n] = 0;
+//      else
+        err_p[n] = ABS(phi_np[n] - phi_c2np[n]);
       err_max = MAX(err_max, err_p[n]);
     }
 

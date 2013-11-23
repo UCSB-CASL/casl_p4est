@@ -1614,7 +1614,7 @@ double InterpolatingFunctionCellBase::quadratic_LSQR_interpolation(const p4est_q
    *
    * We do the first approach as it requires less points.
    */
-  if (is_quad_Wall(p4est_, quad_C->p.piggy3.which_tree, quad_C) && cell_map.size() < LSQR_NUM_WEIGHTS_QUADRATIC){
+  if (is_quad_Wall(p4est_, quad_C->p.piggy3.which_tree, quad_C)){
     cell_map_t extended_map;
     for (cell_map_t::const_iterator iter = cell_map.begin(); iter != cell_map.end(); ++iter)
     {

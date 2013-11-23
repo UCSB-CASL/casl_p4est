@@ -430,14 +430,14 @@ void my_p4est_cell_neighbors_t::find_corner_neighbor_cells_of_cell(const p4est_q
     i_nb = P4EST_ROOT_LEN - size;
     k_nb = P4EST_ROOT_LEN - size;
   }
-  // 1) pm0
+  // 1) p0m
   else if (quad->x == P4EST_ROOT_LEN - size && ci[dir_c] ==  1 &&
            quad->z == 0                     && ck[dir_c] == -1)
   {
     p4est_topidx_t tmp_tree_idx[P4EST_DIM - 1];
     nb_tree_idx = tmp_tree_idx[0] = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
     if(tmp_tree_idx[0] == tree_idx)        return;
-    nb_tree_idx = tmp_tree_idx[1] = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
+    nb_tree_idx = tmp_tree_idx[1] = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00m]; // 00m
     if(tmp_tree_idx[1] == tmp_tree_idx[0]) return;
 
     i_nb = 0;
@@ -518,8 +518,8 @@ void my_p4est_cell_neighbors_t::find_corner_neighbor_cells_of_cell(const p4est_q
     nb_tree_idx = tmp_tree_idx[1] = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
     if(tmp_tree_idx[1] == tmp_tree_idx[0]) return;
 
-    i_nb = P4EST_ROOT_LEN - size;
-    j_nb = P4EST_ROOT_LEN - size;
+    i_nb = 0;
+    j_nb = 0;
   }
   // 8) m0p
   else if (quad->x == 0                     && ci[dir_c] == -1 &&
@@ -754,14 +754,14 @@ void my_p4est_cell_neighbors_t::find_edge_neighbor_cells_of_cell(const p4est_qua
     i_nb = P4EST_ROOT_LEN - size;
     k_nb = P4EST_ROOT_LEN - size;
   }
-  // 1) pm0
+  // 1) p0m
   else if (quad->x == P4EST_ROOT_LEN - size && ci[dir_e] ==  1 &&
            quad->z == 0                     && ck[dir_e] == -1)
   {
     p4est_topidx_t tmp_tree_idx[P4EST_DIM - 1];
     nb_tree_idx = tmp_tree_idx[0] = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
     if(tmp_tree_idx[0] == tree_idx)        return;
-    nb_tree_idx = tmp_tree_idx[1] = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
+    nb_tree_idx = tmp_tree_idx[1] = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00m]; // 00m
     if(tmp_tree_idx[1] == tmp_tree_idx[0]) return;
 
     i_nb = 0;
@@ -842,8 +842,8 @@ void my_p4est_cell_neighbors_t::find_edge_neighbor_cells_of_cell(const p4est_qua
     nb_tree_idx = tmp_tree_idx[1] = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
     if(tmp_tree_idx[1] == tmp_tree_idx[0]) return;
 
-    i_nb = P4EST_ROOT_LEN - size;
-    j_nb = P4EST_ROOT_LEN - size;
+    i_nb = 0;
+    j_nb = 0;
   }
   // 8) m0p
   else if (quad->x == 0                     && ci[dir_e] == -1 &&

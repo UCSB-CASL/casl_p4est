@@ -1,4 +1,9 @@
+#ifdef P4_TO_P8
+#include "my_p8est_lsqr_interpolating_function.h"
+#else
 #include "my_p4est_lsqr_interpolating_function.h"
+#endif
+
 
 LSQRInterpolatingFunction::LSQRInterpolatingFunction(const std::vector<point_t> &p, const std::vector<double> &f, LSQR::method method)
   : method_(method)
@@ -36,7 +41,7 @@ LSQRInterpolatingFunction::LSQRInterpolatingFunction(const std::vector<point_t> 
 #ifdef P4_TO_P8
       double xyz [] = {1.0, p[i].x, p[i].y, p[i].z,
                        p[i].x*p[i].y, p[i].y*p[i].z, p[i].z*p[i].x,
-                       p[i].x*p[i].x, p[i].y*p[i].y, p[i].z*p[i].z };
+                       p[i].x*p[i].x, p[i].y*p[i].y, p[i].z*p[i].z };      
 #else
       double xyz [] = {1.0, p[i].x, p[i].y,
                        p[i].x*p[i].y, p[i].x*p[i].x, p[i].y*p[i].y};
@@ -58,7 +63,7 @@ LSQRInterpolatingFunction::LSQRInterpolatingFunction(const std::vector<point_t> 
   if (!chol.solve(A, b, w)){
     std::cout << "[WARNING] Quadratic LSQR failed -- falling back to linear method." << std::endl;
     // try linear LSQR if original method was quadratic
-    if (method == LSQR::quadrantic){
+    if (method_ == LSQR::quadrantic){
       DenseMatrix Alin;
       Alin.truncate_Matrix(LSQR_NUM_WEIGHTS_LINEAR, LSQR_NUM_WEIGHTS_LINEAR, A);
       std::vector<double> blin(b.begin(), b.begin() + LSQR_NUM_WEIGHTS_LINEAR);
