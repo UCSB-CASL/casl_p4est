@@ -517,10 +517,19 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& 
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
 #endif
 
-template<typename T>
-T ranged_rand(T a, T b, int seed = 0){
+inline double ranged_rand(double a, double b, int seed = 0){
   if (seed) srand(seed);
-  return static_cast<T>(static_cast<double>(rand())/static_cast<double>(RAND_MAX) * (b-a) + a);
+  return (static_cast<double>(rand())/static_cast<double>(RAND_MAX) * (b-a) + a);
+}
+
+inline int ranged_rand(int a, int b, int seed = 0){
+  if (seed) srand(seed);
+  return (rand()%(b-a) + a);
+}
+
+inline int ranged_rand_inclusive(int a, int b, int seed = 0){
+  if (seed) srand(seed);
+  return (rand()%(b-a+1) + a);
 }
 
 /*!
@@ -558,18 +567,19 @@ private:
   int mpirank;
   std::string msg_;
   stopwatch_timing timing_;
+  FILE *f_;
 
 public:   
 
-  parStopWatch(stopwatch_timing timing = root_timings, MPI_Comm comm = MPI_COMM_WORLD)
-    : comm_(comm), timing_(timing)
+  parStopWatch(FILE *f = stdout, stopwatch_timing timing = root_timings, MPI_Comm comm = MPI_COMM_WORLD)
+    : comm_(comm), timing_(timing), f_(f)
   {
     MPI_Comm_rank(comm_, &mpirank);
   }
 
   void start(const std::string& msg){
     msg_ = msg;
-    PetscPrintf(comm_, "%s ... \n", msg.c_str());
+    PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
     ts = MPI_Wtime();
   }
 
@@ -582,11 +592,11 @@ public:
 
     PetscPrintf(comm_, "%s ... done in ", msg_.c_str());
     if (timing_ == all_timings){
-      PetscSynchronizedPrintf(comm_, "\n   %.4lf secs. on process %2d",elap, mpirank);
+      PetscSynchronizedFPrintf(comm_, f_, "\n   %.4lf secs. on process %2d",elap, mpirank);
       PetscSynchronizedFlush(comm_);
-      PetscPrintf(comm_, "\n");
+      PetscFPrintf(comm_, f_, "\n");
     } else {
-      PetscPrintf(comm_, " %.4lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
+      PetscFPrintf(comm_, f_, " %.4lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
     }
     return elap;
   }

@@ -155,30 +155,25 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
   }
 }
 
-p4est_locidx_t splitting_criteria_random_t::counter = 0;
 p4est_bool_t
 refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
   (void) which_tree;
   splitting_criteria_random_t *data = (splitting_criteria_random_t*) p4est->user_pointer;
 
-  p4est_bool_t refine;
-  if (p4est->global_num_quadrants + splitting_criteria_random_t::counter >= data->max_quads)
-    refine = P4EST_FALSE;
+  if (data->num_quads >= (p4est_gloidx_t) ((double)data->max_quads/(double)p4est->mpisize))
+    return P4EST_FALSE;
   else if (quad->level < data->min_lvl)
-    refine = P4EST_TRUE;
+  { data->num_quads += P4EST_CHILDREN - 1; return P4EST_TRUE; }
   else if (quad->level >= data->max_lvl)
-    refine = P4EST_FALSE;
+    return P4EST_FALSE;
   else
   {
     if (rand()%2)
-      refine = P4EST_TRUE;
+    { data->num_quads += P4EST_CHILDREN - 1; return P4EST_TRUE;}
     else
-      refine = P4EST_FALSE;
+      return P4EST_FALSE;
   }
-
-  if (refine) splitting_criteria_random_t::counter += P4EST_CHILDREN -1;
-  return refine;
 }
 
 p4est_bool_t
@@ -187,21 +182,37 @@ coarsen_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **qua
   (void) which_tree;
   splitting_criteria_random_t *data = (splitting_criteria_random_t*) p4est->user_pointer;
 
-  p4est_bool_t coarsen;
-  if (p4est->global_num_quadrants - splitting_criteria_random_t::counter<= data->min_quads)
-    coarsen = P4EST_FALSE;
+  if (data->num_quads <= (p4est_gloidx_t) ((double)data->min_quads/(double)p4est->mpisize))
+    return P4EST_FALSE;
   else if (quad[0]->level <= data->min_lvl)
-    coarsen = P4EST_FALSE;
+    return P4EST_FALSE;
   else if (quad[0]->level >  data->max_lvl)
-    coarsen = P4EST_TRUE;
+  { data->num_quads -= P4EST_CHILDREN - 1; return P4EST_TRUE; }
   else
   {
     if (rand()%2)
-      coarsen = P4EST_TRUE;
+    { data->num_quads -= P4EST_CHILDREN - 1; return P4EST_TRUE; }
     else
-      coarsen = P4EST_FALSE;
+      return P4EST_FALSE;
   }
+}
 
-  if (coarsen) splitting_criteria_random_t::counter += P4EST_CHILDREN - 1;
-  return coarsen;
+p4est_bool_t
+refine_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  (void) p4est;
+  (void) which_tree;
+  (void) quad;
+
+  return P4EST_TRUE;
+}
+
+p4est_bool_t
+coarsen_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
+{
+  (void) p4est;
+  (void) which_tree;
+  (void) quad;
+
+  return P4EST_TRUE;
 }
