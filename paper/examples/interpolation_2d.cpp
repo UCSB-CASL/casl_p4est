@@ -288,7 +288,8 @@ int main (int argc, char* argv[]){
 #endif
       interp.add_point_to_buffer(i, xyz);
     }
-    w2.stop(); w2.read_duration();    
+    w2.stop(); w2.read_duration();
+        
 
     w2.start("interpolating");
     interp.interpolate(&f[0]);
