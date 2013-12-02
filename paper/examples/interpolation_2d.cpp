@@ -261,7 +261,7 @@ int main (int argc, char* argv[]){
     ierr = VecCreateGhostNodes(p4est, nodes, &u); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, uex, u);
 
-    w2.start("interpolation");
+    w2.start("constructing intepolation");
     InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, brick, &node_neighbors);
     switch (mode){
     case 0:
@@ -276,7 +276,9 @@ int main (int argc, char* argv[]){
     default:
       throw std::runtime_error("[ERROR]: invalid interpolation method");
     }
+    w2.stop(); w2.read_duration();
 
+    w2.start("adding points");
     std::vector<double> f(points.size());
     for (size_t i=0; i<points.size(); i++){
 #ifdef P4_TO_P8
@@ -286,6 +288,9 @@ int main (int argc, char* argv[]){
 #endif
       interp.add_point_to_buffer(i, xyz);
     }
+    w2.stop(); w2.read_duration();    
+
+    w2.start("interpolating");
     interp.interpolate(&f[0]);
     w2.stop(); w2.read_duration();
 
