@@ -128,6 +128,7 @@ int main (int argc, char* argv[]){
     cmd.add_option("splits", "number of splits");
     cmd.add_option("alpha", "fraction of total points to be remote (must be in [0,1]). Ignored if -scaled is given");
     cmd.add_option("scaled", "choose a number of remote points that is proportional to number of ghost cells");
+    cmd.add_option("write-vtk", "if this flag is set, vtk files will be written to the disk");
     cmd.parse(argc, argv);
 
     const int lmin = cmd.get("lmin", 2);
@@ -142,6 +143,7 @@ int main (int argc, char* argv[]){
     const int mode   = cmd.get("mode", 2);
     const double alpha = cmd.get("alpha", 0.005);
     const bool scaled = cmd.contains("scaled");
+    const bool write_vtk = cmd.contains("write_vtk");
 
     splitting_criteria_random_t data(lmin, lmax, qmin, qmax);
 
@@ -232,12 +234,12 @@ int main (int argc, char* argv[]){
     }
     w2.stop(); w2.read_duration();
 
-#ifdef WRITE_VTK_FILES
-    std::ostringstream grid_name; grid_name << P4EST_DIM << "d_grid_np_" << p4est->mpisize << "_sp_" << splits;
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_TRUE, P4EST_TRUE,
-                           0, 0, grid_name.str().c_str());
-#endif
+    if (write_vtk){
+      std::ostringstream grid_name; grid_name << P4EST_DIM << "d_grid_np_" << p4est->mpisize << "_sp_" << splits;
+      my_p4est_vtk_write_all(p4est, nodes, ghost,
+                             P4EST_TRUE, P4EST_TRUE,
+                             0, 0, grid_name.str().c_str());  
+    }    
 
     // generate the hierarch yand node_neighbors
     w2.start("hierarchy and node neighbors");
@@ -289,7 +291,7 @@ int main (int argc, char* argv[]){
       interp.add_point_to_buffer(i, xyz);
     }
     w2.stop(); w2.read_duration();
-        
+
 
     w2.start("interpolating");
     interp.interpolate(&f[0]);
