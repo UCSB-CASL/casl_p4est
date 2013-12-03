@@ -266,7 +266,22 @@ int main (int argc, char* argv[]){
     ierr = VecCreateGhostNodes(p4est, nodes, &u); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, uex, u);
 
-    w2.start("constructing intepolation");
+    // PETSc logging variables
+    PetscLogEvent log_interpolation_all;
+    PetscLogEvent log_interpolation_construction;
+    PetscLogEvent log_interpolation_add_points;
+#ifdef CASL_LOG_EVENTS
+    ierr = PetscLogEventRegister("log_interpolation_all                                   ", 0, &log_interpolation_all); CHKERRXX(ierr);
+    ierr = PetscLogEventRegister("log_interpolation_construction                          ", 0, &log_interpolation_construction); CHKERRXX(ierr);
+    ierr = PetscLogEventRegister("log_interpolation_add_points                            ", 0, &log_interpolation_add_points); CHKERRXX(ierr);    
+#endif
+
+    ierr = PetscLogEventBegin(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
+    ierr = PetscLogEventBegin(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);
+    parStopWatch w3;
+
+    w3.start("interpolation all");
+    w2.start("constructing interpolation");
     InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, brick, &node_neighbors);
     switch (mode){
     case 0:
@@ -282,8 +297,10 @@ int main (int argc, char* argv[]){
       throw std::runtime_error("[ERROR]: invalid interpolation method");
     }
     w2.stop(); w2.read_duration();
+    ierr = PetscLogEventEnd(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);
 
     w2.start("adding points");
+    ierr = PetscLogEventBegin(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
     std::vector<double> f(points.size());
     for (size_t i=0; i<points.size(); i++){
 #ifdef P4_TO_P8
@@ -294,11 +311,14 @@ int main (int argc, char* argv[]){
       interp.add_point_to_buffer(i, xyz);
     }
     w2.stop(); w2.read_duration();
+    ierr = PetscLogEventEnd(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
 
 
     w2.start("interpolating");
     interp.interpolate(&f[0]);
     w2.stop(); w2.read_duration();
+    w3.stop(); w3.read_duration();
+    ierr = PetscLogEventEnd(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
 
     // destroy the p4est and its connectivity structure
     ierr = VecDestroy(u); CHKERRXX(ierr);
