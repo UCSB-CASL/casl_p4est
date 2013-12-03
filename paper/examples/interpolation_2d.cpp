@@ -144,7 +144,7 @@ int main (int argc, char* argv[]){
     const int mode   = cmd.get("mode", 2);
     const double alpha = cmd.get("alpha", 0.005);
     const bool scaled = cmd.contains("scaled");
-    const bool write_vtk = cmd.contains("write_vtk");
+    const bool write_vtk = cmd.contains("write-vtk");
     const std::string output_dir = cmd.get<std::string>("output-dir");
 
     splitting_criteria_random_t data(lmin, lmax, qmin, qmax);
