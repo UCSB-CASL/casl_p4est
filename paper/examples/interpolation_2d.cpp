@@ -189,7 +189,7 @@ int main (int argc, char* argv[]){
     p4est->user_pointer = (void*)(&data);
     w2.start("refine");
     int num_quads = 1;
-    while (num_quads < data->qmax){
+    while (num_quads < data.qmax){
       srand(p4est->mpirank);
       my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
 
