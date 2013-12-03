@@ -188,12 +188,10 @@ int main (int argc, char* argv[]){
     // Now refine the tree
     p4est->user_pointer = (void*)(&data);
     w2.start("refine");
-    int num_quads = 1;
-    while (num_quads < data.max_quads){
-      srand(p4est->mpirank);
+    srand(p4est->mpirank);
+    while (p4est->local_num_quadrants < data.max_quads){      
       my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
-
-      num_quads += P4EST_CHILDREN - 1;
+      my_p4est_partition(p4est, NULL);
     }
     for (int n=0; n<splits; n++)
       my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
