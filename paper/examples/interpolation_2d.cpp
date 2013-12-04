@@ -107,6 +107,7 @@ struct stat_info_t{
 #endif
 
 void generate_random_points(const p4est_t* p4est, const my_p4est_hierarchy_t& hierarchy, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t>& points);
+void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points);
 void gather_remote_cells(const p4est_t *p4est, const my_p4est_hierarchy_t& hierarchy, std::vector<const HierarchyCell *> &remotes, std::vector<p4est_topidx_t> &r_trs, p4est_topidx_t tr, p4est_locidx_t q = 0);
 
 int main (int argc, char* argv[]){
@@ -253,12 +254,21 @@ int main (int argc, char* argv[]){
     // generate a bunch of random points
     w2.start("computing random points");
     std::vector<point_t> points;
+#ifdef GHOST_REMOTE_INTERPOLATION
+    if (p4est->mpisize == 1)
+      generate_random_points(p4est, ghost, 10*p4est->local_num_quadrants, 0, points);
+    else if (scaled)
+      generate_random_points(p4est, ghost, 10*p4est->local_num_quadrants, 10*ghost->ghosts.elem_count, points);
+    else
+      generate_random_points(p4est, ghost, 10*(1-alpha)*p4est->local_num_quadrants, 10*alpha*p4est->local_num_quadrants, points);
+#else
     if (p4est->mpisize == 1)
       generate_random_points(p4est, hierarchy, 10*p4est->local_num_quadrants, 0, points);
     else if (scaled)
       generate_random_points(p4est, hierarchy, 10*p4est->local_num_quadrants, 10*ghost->ghosts.elem_count, points);
     else
       generate_random_points(p4est, hierarchy, 10*(1-alpha)*p4est->local_num_quadrants, 10*alpha*p4est->local_num_quadrants, points);
+#endif    
     w2.stop(); w2.read_duration();
 
     // construct the interpolating function
@@ -398,7 +408,61 @@ void generate_random_points(const p4est_t *p4est, const my_p4est_hierarchy_t &hi
 #endif
   }
 
-#ifdef WRITE_VTK_FILES
+#ifdef WRITE_POINTS
+  std::ostringstream oss; oss << P4EST_DIM << "d_points_" << p4est->mpirank << ".csv";
+  FILE *pf = fopen(oss.str().c_str(), "w");
+  fprintf(pf, "x, y, z\n");
+  for (size_t i=0; i<points.size(); i++){
+#ifdef P4_TO_P8
+    fprintf(pf, "%lf, %lf, %lf\n", points[i].x, points[i].y, points[i].z);
+#else
+    fprintf(pf, "%lf, %lf, 0\n", points[i].x, points[i].y);
+#endif
+  }
+  fclose(pf);
+#endif
+}
+
+void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points)
+{
+  points.resize(num_local + num_remote);
+
+  /* first generate local points: */
+  for (p4est_locidx_t i = 0; i<num_local; i++){
+    // randomly select a local tree
+    p4est_topidx_t tr = ranged_rand_inclusive(p4est->first_local_tree, p4est->last_local_tree);
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+
+    // randomly select a quadrant
+    p4est_locidx_t q = ranged_rand(0, tree->quadrants.elem_count);
+    const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+    double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+
+    p4est_topidx_t v = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr];
+    points[i].x = p4est->connectivity->vertices[3*v + 0] + ranged_rand(0.01, 0.99)*qh + quad_x_fr_i(quad);
+    points[i].y = p4est->connectivity->vertices[3*v + 1] + ranged_rand(0.01, 0.99)*qh + quad_y_fr_j(quad);
+#ifdef P4_TO_P8
+    points[i].z = p4est->connectivity->vertices[3*v + 2] + ranged_rand(0.01, 0.99)*qh + quad_z_fr_k(quad);
+#endif
+  }
+
+  /* now generate remote points: */
+  for (p4est_locidx_t i = 0; i<num_remote; i++){
+    // randomly select a ghost quadrant
+    p4est_topidx_t q = ranged_rand(0, ghost->ghosts.elem_count);
+    const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+    double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+
+    p4est_topidx_t tr = quad->p.piggy3.which_tree;
+    p4est_topidx_t v = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr];
+    points[i].x = p4est->connectivity->vertices[3*v + 0] + ranged_rand(0.01, 0.99)*qh + quad_x_fr_i(quad);
+    points[i].y = p4est->connectivity->vertices[3*v + 1] + ranged_rand(0.01, 0.99)*qh + quad_y_fr_j(quad);
+#ifdef P4_TO_P8
+    points[i].z = p4est->connectivity->vertices[3*v + 2] + ranged_rand(0.01, 0.99)*qh + quad_z_fr_k(quad);
+#endif
+  }
+
+#ifdef WRITE_POINTS
   std::ostringstream oss; oss << P4EST_DIM << "d_points_" << p4est->mpirank << ".csv";
   FILE *pf = fopen(oss.str().c_str(), "w");
   fprintf(pf, "x, y, z\n");

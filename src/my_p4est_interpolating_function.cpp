@@ -150,11 +150,18 @@ void InterpolatingFunctionNodeBase::add_point_to_buffer(p4est_locidx_t node_loci
      * remote processor. (cf. interpolate function below)
      */
 
+#ifdef GHOST_REMOTE_INTERPOLATION
+    for (short i = 0; i<P4EST_DIM; i++)
+      remote_send_buffer[rank_found].push_back(xyz[i]);
+
+    remote_node_index[rank_found].push_back(node_locidx);
+#else
     for (short i = 0; i<P4EST_DIM; i++)
       ghost_point_buffer.xyz.push_back(xyz[i]);
 
     ghost_point_buffer.quad.push_back(best_match);
     ghost_point_buffer.node_locidx.push_back(node_locidx);
+#endif
 
 #ifdef P4EST_POINT_LOOKUP
   } else if ( remote_matches->elem_count != 0 ) { /* quadrant belongs to a processor that is not included in the ghost layer */
