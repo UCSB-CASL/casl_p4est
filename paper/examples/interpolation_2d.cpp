@@ -447,7 +447,7 @@ void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_lo
   }
 
   /* now generate remote points: */
-  for (p4est_locidx_t i = 0; i<num_remote; i++){
+  for (p4est_locidx_t i = num_local; i<num_local+num_remote; i++){
     // randomly select a ghost quadrant
     p4est_topidx_t q = ranged_rand(0, ghost->ghosts.elem_count);
     const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
