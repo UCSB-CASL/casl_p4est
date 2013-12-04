@@ -565,8 +565,10 @@ private:
   double ts, tf;
   MPI_Comm comm_;
   int mpirank;
+  int mpisize;
   std::string msg_;
   stopwatch_timing timing_;
+  std::vector<double> t;
   FILE *f_;
 
 public:   
@@ -575,6 +577,8 @@ public:
     : comm_(comm), timing_(timing), f_(f)
   {
     MPI_Comm_rank(comm_, &mpirank);
+    MPI_Comm_size(comm_, &mpisize);
+    if (timing == all_timings) t.resize(mpisize);
   }
 
   void start(const std::string& msg){
@@ -591,13 +595,28 @@ public:
     double elap = tf - ts;
 
     PetscPrintf(comm_, "%s ... done in ", msg_.c_str());
-    if (timing_ == all_timings){
-      PetscSynchronizedFPrintf(comm_, f_, "\n   %.4lf secs. on process %2d",elap, mpirank);
-      PetscSynchronizedFlush(comm_);
-      PetscFPrintf(comm_, f_, "\n");
-    } else {
-      PetscFPrintf(comm_, f_, " %.4lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
-    }
+    if (mpirank == 0)
+      if (timing_ == all_timings){
+        MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], mpisize, MPI_DOUBLE, 0, comm_);
+        double tmax, tmin, tavg, tdev;
+        tmax = tmin = elap;
+        tavg = 0;
+        for (int i=0; i<mpisize; i++){
+          tavg += t[i];
+          tmax = MAX(tmax, t[i]);
+          tmin = MIN(tmin, t[i]);
+        }
+        tavg /= mpisize;
+
+        for (int i=0; i<mpisize; i++){
+          tdev = (t[i]-tavg)*(t[i]-tavg);
+        }
+        tdev = sqrt(tdev/mpisize);
+
+        PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_min = %.5lf (s), ratio = %.2lf, t_avg = %.5lf (s), t_dev = %.5lf (s)\n", tmax, tmin, tmax/tmin, tavg, tdev);
+      } else {
+        PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
+      }
     return elap;
   }
 };
