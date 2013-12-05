@@ -131,12 +131,12 @@ int main (int argc, char* argv[]){
     cmd.add_option("scaled", "choose a number of remote points that is proportional to number of ghost cells");
     cmd.add_option("write-vtk", "if this flag is set, vtk files will be written to the disk");
     cmd.add_option("output-dir", "address of the output directory for all I/O");
-    cmd.add_option("prefactor", "use this number times number of local/ghost quadrants random points");
+    cmd.add_option("prefactor", "generate this number times number of local/ghost quadrants random points");
     cmd.parse(argc, argv);
 
     const int lmin = cmd.get("lmin", 2);
-    const int lmax = cmd.get("lmax", prefactor);
-    const int qmin = cmd.get("qmin", prefactor0);
+    const int lmax = cmd.get("lmax", 10);
+    const int qmin = cmd.get("qmin", 100);
 #ifdef P4_TO_P8
     const int qmax = cmd.get<int>("qmax");
 #else
@@ -258,18 +258,18 @@ int main (int argc, char* argv[]){
     std::vector<point_t> points;    
 #ifdef GHOST_REMOTE_INTERPOLATION
     if (p4est->mpisize == 1)
-      generate_random_points(p4est, ghost, prefactor*p4est->local_num_quadrants, 0, points);
+      generate_random_points(p4est, ghost, prefactor*nodes->num_owned_indeps, 0, points);
     else if (scaled)
-      generate_random_points(p4est, ghost, prefactor*p4est->local_num_quadrants, prefactor*ghost->ghosts.elem_count, points);
+      generate_random_points(p4est, ghost, prefactor*nodes->num_owned_indeps, prefactor*(nodes->indep_nodes.elem_count - nodes->num_owned_indeps), points);
     else
-      generate_random_points(p4est, ghost, prefactor*(1-alpha)*p4est->local_num_quadrants, prefactor*alpha*p4est->local_num_quadrants, points);
+      generate_random_points(p4est, ghost, prefactor*(1-alpha)*nodes->num_owned_indeps, prefactor*alpha*nodes->num_owned_indeps, points);
 #else
     if (p4est->mpisize == 1)
-      generate_random_points(p4est, hierarchy, prefactor*p4est->local_num_quadrants, 0, points);
+      generate_random_points(p4est, hierarchy, prefactor*nodes->num_owned_indeps, 0, points);
     else if (scaled)
-      generate_random_points(p4est, hierarchy, prefactor*p4est->local_num_quadrants, prefactor*ghost->ghosts.elem_count, points);
+      generate_random_points(p4est, hierarchy, prefactor*nodes->num_owned_indeps, prefactor*(nodes->indep_nodes.elem_count - nodes->num_owned_indeps), points);
     else
-      generate_random_points(p4est, hierarchy, prefactor*(1-alpha)*p4est->local_num_quadrants, prefactor*alpha*p4est->local_num_quadrants, points);
+      generate_random_points(p4est, hierarchy, prefactor*(1-alpha)*nodes->num_owned_indeps, prefactor*alpha*nodes->num_owned_indeps, points);
 #endif    
     w2.stop(); w2.read_duration();
 
