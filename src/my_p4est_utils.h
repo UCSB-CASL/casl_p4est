@@ -614,7 +614,7 @@ public:
         tdev = sqrt(tdev/mpisize);
       }
 
-      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_min = %.5lf (s), ratio = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %.5lf (s)\n", tmax, tmin, tmax/tmin, tavg, tdev/tavg);
+      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_min = %.5lf (s), ratio = %.2lf, t_avg = %.5lf (s), t_dev/(t_max-t_min) = %% %2.1lf\n", tmax, tmin, tmax/tmin, tavg, tdev/(tmax-tmin)*100);
     } else {
       PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
     }
