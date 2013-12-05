@@ -290,7 +290,8 @@ int main (int argc, char* argv[]){
     ierr = PetscLogEventRegister("log_interpolation_add_points                            ", 0, &log_interpolation_add_points); CHKERRXX(ierr);    
 #endif
     parStopWatch w3(parStopWatch::all_timings);
-
+    parStopWatch w4(parStopWatch::all_timings);
+    w4.start("interpolation test");
     for (int i=0; i<repeat; i++){
       w3.start("interpolation all");
       w2.start("constructing interpolation");
@@ -333,6 +334,7 @@ int main (int argc, char* argv[]){
       w2.stop(); w2.read_duration();
       w3.stop(); w3.read_duration();      
     }
+    w4.stop(); w4.read_duration();
 
     // destroy the p4est and its connectivity structure
     ierr = VecDestroy(u); CHKERRXX(ierr);
