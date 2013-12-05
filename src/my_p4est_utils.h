@@ -578,7 +578,7 @@ public:
   {
     MPI_Comm_rank(comm_, &mpirank);
     MPI_Comm_size(comm_, &mpisize);
-    if (timing == all_timings) t.resize(mpisize);
+    t.resize(mpisize);
   }
 
   void start(const std::string& msg){
@@ -595,28 +595,27 @@ public:
     double elap = tf - ts;
 
     PetscPrintf(comm_, "%s ... done in ", msg_.c_str());
-    if (mpirank == 0)
-      if (timing_ == all_timings){
-        MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], mpisize, MPI_DOUBLE, 0, comm_);
-        double tmax, tmin, tavg, tdev;
-        tmax = tmin = elap;
-        tavg = 0;
-        for (int i=0; i<mpisize; i++){
-          tavg += t[i];
-          tmax = MAX(tmax, t[i]);
-          tmin = MIN(tmin, t[i]);
-        }
-        tavg /= mpisize;
-
-        for (int i=0; i<mpisize; i++){
-          tdev = (t[i]-tavg)*(t[i]-tavg);
-        }
-        tdev = sqrt(tdev/mpisize);
-
-        PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_min = %.5lf (s), ratio = %.2lf, t_avg = %.5lf (s), t_dev = %.5lf (s)\n", tmax, tmin, tmax/tmin, tavg, tdev);
-      } else {
-        PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
+    if (timing_ == all_timings){
+      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], mpisize, MPI_DOUBLE, 0, comm_);
+      double tmax, tmin, tavg, tdev;
+      tmax = tmin = elap;
+      tavg = 0;
+      for (size_t i=0; i<t.size(); i++){
+        tavg += t[i];
+        tmax = MAX(tmax, t[i]);
+        tmin = MIN(tmin, t[i]);
       }
+      tavg /= mpisize;
+
+      for (size_t i=0; i<t.size(); i++){
+        tdev = (t[i]-tavg)*(t[i]-tavg);
+      }
+      tdev = sqrt(tdev/mpisize);
+
+      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_min = %.5lf (s), ratio = %.2lf, t_avg = %.5lf (s), t_dev = %.5lf (s)\n", tmax, tmin, tmax/tmin, tavg, tdev);
+    } else {
+      PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
+    }
     return elap;
   }
 };
