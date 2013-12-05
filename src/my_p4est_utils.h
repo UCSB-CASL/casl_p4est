@@ -594,13 +594,18 @@ public:
   double read_duration(){
     double elap = tf - ts;
 
-    PetscPrintf(comm_, "%s ... done in ", msg_.c_str());
+    PetscPrintf(comm_, "%s ... done in \n", msg_.c_str());
     if (timing_ == all_timings){
       MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
       double tmax, tmin, tavg, tdev;
       tmax = tmin = elap;
       tavg = tdev = 0;
       if (mpirank == 0){
+        PetscFPrintf(comm_, f_, "t = [");
+        for (size_t i=0; i<t.size()-1; i++)
+          PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
+        PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
+
         for (size_t i=0; i<t.size(); i++){
           tavg += t[i];
           tmax = MAX(tmax, t[i]);
@@ -614,9 +619,9 @@ public:
         tdev = sqrt(tdev/mpisize);
       }
 
-      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_max/t_min = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %% %2.1lf, t_dev/(t_max-t_min) = %% %2.1lf\n", tmax, tmax/tmin, tavg, tdev/tavg*100, tdev/(tmax-tmin)*100);
+      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_max/t_min = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %% %2.1lf, t_dev/(t_max-t_min) = %% %2.1lf\n\n", tmax, tmax/tmin, tavg, tdev/tavg*100, tdev/(tmax-tmin)*100);
     } else {
-      PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
+      PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank);
     }
     return elap;
   }
