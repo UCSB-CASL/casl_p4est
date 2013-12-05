@@ -571,14 +571,14 @@ private:
   std::vector<double> t;
   FILE *f_;
 
-public:   
+public:
 
   parStopWatch(stopwatch_timing timing = root_timings, FILE *f = stdout, MPI_Comm comm = MPI_COMM_WORLD)
     : comm_(comm), timing_(timing), f_(f)
   {
     MPI_Comm_rank(comm_, &mpirank);
     MPI_Comm_size(comm_, &mpisize);
-    t.resize(mpisize);
+    t.resize(mpisize,0);
   }
 
   void start(const std::string& msg){
@@ -596,21 +596,23 @@ public:
 
     PetscPrintf(comm_, "%s ... done in ", msg_.c_str());
     if (timing_ == all_timings){
-      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], mpisize, MPI_DOUBLE, 0, comm_);
+      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
       double tmax, tmin, tavg, tdev;
       tmax = tmin = elap;
-      tavg = 0;
-      for (size_t i=0; i<t.size(); i++){
-        tavg += t[i];
-        tmax = MAX(tmax, t[i]);
-        tmin = MIN(tmin, t[i]);
-      }
-      tavg /= mpisize;
+      tavg = tdev = 0;
+      if (mpirank == 0){
+        for (size_t i=0; i<t.size(); i++){
+          tavg += t[i];
+          tmax = MAX(tmax, t[i]);
+          tmin = MIN(tmin, t[i]);
+        }
+        tavg /= mpisize;
 
-      for (size_t i=0; i<t.size(); i++){
-        tdev = (t[i]-tavg)*(t[i]-tavg);
+        for (size_t i=0; i<t.size(); i++){
+          tdev += (t[i]-tavg)*(t[i]-tavg);
+        }
+        tdev = sqrt(tdev/mpisize);
       }
-      tdev = sqrt(tdev/mpisize);
 
       PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_min = %.5lf (s), ratio = %.2lf, t_avg = %.5lf (s), t_dev = %.5lf (s)\n", tmax, tmin, tmax/tmin, tavg, tdev);
     } else {
