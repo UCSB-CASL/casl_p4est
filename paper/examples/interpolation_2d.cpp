@@ -157,7 +157,8 @@ int main (int argc, char* argv[]){
 
     splitting_criteria_random_t data(lmin, lmax, qmin, qmax);
 
-    parStopWatch w1(parStopWatch::all_timings), w2(parStopWatch::all_timings);
+    parStopWatch w1;//(parStopWatch::all_timings);
+    parStopWatch w2;//(parStopWatch::all_timings);
     w1.start("total time");
 
     MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
@@ -289,8 +290,8 @@ int main (int argc, char* argv[]){
     ierr = PetscLogEventRegister("log_interpolation_construction                          ", 0, &log_interpolation_construction); CHKERRXX(ierr);
     ierr = PetscLogEventRegister("log_interpolation_add_points                            ", 0, &log_interpolation_add_points); CHKERRXX(ierr);    
 #endif
-    parStopWatch w3(parStopWatch::all_timings);
-    parStopWatch w4(parStopWatch::all_timings);
+    parStopWatch w3;//(parStopWatch::all_timings);
+    parStopWatch w4;//(parStopWatch::all_timings);
     w4.start("interpolation test");
     for (int i=0; i<repeat; i++){
       w3.start("interpolation all");
