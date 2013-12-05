@@ -573,7 +573,7 @@ private:
 
 public:   
 
-  parStopWatch(FILE *f = stdout, stopwatch_timing timing = root_timings, MPI_Comm comm = MPI_COMM_WORLD)
+  parStopWatch(stopwatch_timing timing = root_timings, FILE *f = stdout, MPI_Comm comm = MPI_COMM_WORLD)
     : comm_(comm), timing_(timing), f_(f)
   {
     MPI_Comm_rank(comm_, &mpirank);
