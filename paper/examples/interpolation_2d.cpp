@@ -226,22 +226,11 @@ int main (int argc, char* argv[]){
       for (int r =0; r<p4est->mpisize; r++)
         num_nodes += nodes->global_owned_indeps[r];
 
-      std::vector<stat_info_t> stats(p4est->mpisize);
-
-      // make sure all variables are of the size MPI_INT
-      stat_info_t my_stat =
-      {
-        nodes->num_owned_indeps,
-        p4est->local_num_quadrants,
-        nodes->indep_nodes.elem_count - nodes->num_owned_indeps,
-        ghost->ghosts.elem_count
-      };
-      MPI_Gather(&my_stat, sizeof(stat_info_t), MPI_BYTE, &stats[p4est->mpirank], sizeof(stat_info_t), MPI_BYTE, 0, p4est->mpicomm);
-
       PetscPrintf(p4est->mpicomm, "%% global_quads = %ld \t global_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
       PetscPrintf(p4est->mpicomm, "%% mpi_rank local_node_size local_quad_size ghost_node_size ghost_quad_size\n");
-      for (int r=0; r<p4est->mpisize; r++)
-        PetscPrintf(p4est->mpicomm, "%4d, %7d, %7d, %5d, %5d\n", r, stats[r].local_node_size, stats[r].local_quad_size, stats[r].ghost_node_size, stats[r].ghost_quad_size);
+      PetscSynchronizedPrintf(p4est->mpicomm, "%4d, %7d, %7d, %5d, %5d\n", 
+        p4est->mpirank, nodes->num_owned_indeps, p4est->local_num_quadrants, nodes->indep_nodes.elem_count-nodes->num_owned_indeps, ghost->ghosts.elem_count);
+      PetscSynchronizedFlush(p4est->mpicomm);
     }
     w2.stop(); w2.read_duration();
 
