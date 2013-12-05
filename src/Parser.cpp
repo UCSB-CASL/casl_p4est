@@ -32,7 +32,7 @@ void cmdParser::parse(int argc, char* argv[])
 
     if (key != "help" && options.find(key) == options.end())
     {
-      std::cout << "[WARNING]: option '" << key << "' does not exists in the database -- ignoring." << std::endl;
+      PetscPrintf(MPI_COMM_WORLD, "[WARNING]: option '%s' does not exists in the database -- ignoring.\n", key.c_str());
       continue;
     }
 
