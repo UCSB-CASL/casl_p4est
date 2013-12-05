@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <map>
+#include <stdio.h>
 #include <stdexcept>
 
 class cmdParser{
@@ -80,6 +81,12 @@ public:
             return tmp;
         }
     }
+
+    /*!
+     * \brief print: prints the options database into the stream 'f'
+     * \param [in] f file stream (default value is stdout)
+     */
+    void cmdParser::print(FILE *f = stdout);
 };
 
 #endif // PARSER_H

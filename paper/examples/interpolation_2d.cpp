@@ -133,7 +133,9 @@ int main (int argc, char* argv[]){
     cmd.add_option("write-vtk", "if this flag is set, vtk files will be written to the disk");
     cmd.add_option("output-dir", "address of the output directory for all I/O");
     cmd.add_option("prefactor", "generate this number times number of local/ghost quadrants random points");
+    cmd.add_option("repeat", "repeat the experiment this many times");
     cmd.parse(argc, argv);
+    cmd.print();
 
     const int lmin = cmd.get("lmin", 2);
     const int lmax = cmd.get("lmax", 10);
@@ -150,6 +152,7 @@ int main (int argc, char* argv[]){
     const bool scale_with_nodes = cmd.contains("scale-with-nodes");
     const bool write_vtk = cmd.contains("write-vtk");
     const int prefactor = cmd.get("prefactor", 50);
+    const int repeat = cmd.get("repeat",1);
     const std::string output_dir = cmd.get<std::string>("output-dir");
 
     splitting_criteria_random_t data(lmin, lmax, qmin, qmax);
@@ -297,50 +300,50 @@ int main (int argc, char* argv[]){
     ierr = PetscLogEventRegister("log_interpolation_construction                          ", 0, &log_interpolation_construction); CHKERRXX(ierr);
     ierr = PetscLogEventRegister("log_interpolation_add_points                            ", 0, &log_interpolation_add_points); CHKERRXX(ierr);    
 #endif
-
-    ierr = PetscLogEventBegin(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
-    ierr = PetscLogEventBegin(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);
     parStopWatch w3(parStopWatch::all_timings);
 
-    w3.start("interpolation all");
-    w2.start("constructing interpolation");
-    InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, brick, &node_neighbors);
-    switch (mode){
-    case 0:
-      interp.set_input_parameters(u, linear);
-      break;
-    case 1:
-      interp.set_input_parameters(u, quadratic);
-      break;
-    case 2:
-      interp.set_input_parameters(u, quadratic_non_oscillatory);
-      break;
-    default:
-      throw std::runtime_error("[ERROR]: invalid interpolation method");
+    for (int i=0; i<repeat; i++){
+      w3.start("interpolation all");
+      w2.start("constructing interpolation");
+      ierr = PetscLogEventBegin(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
+      ierr = PetscLogEventBegin(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);
+      InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, brick, &node_neighbors);
+      switch (mode){
+      case 0:
+        interp.set_input_parameters(u, linear);
+        break;
+      case 1:
+        interp.set_input_parameters(u, quadratic);
+        break;
+      case 2:
+        interp.set_input_parameters(u, quadratic_non_oscillatory);
+        break;
+      default:
+        throw std::runtime_error("[ERROR]: invalid interpolation method");
+      }      
+      ierr = PetscLogEventEnd(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);
+      w2.stop(); w2.read_duration();
+
+      w2.start("adding points");
+      ierr = PetscLogEventBegin(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
+      std::vector<double> f(points.size());
+      for (size_t i=0; i<points.size(); i++){
+  #ifdef P4_TO_P8
+        double xyz [] = {points[i].x, points[i].y, points[i].z};
+  #else
+        double xyz [] = {points[i].x, points[i].y};
+  #endif
+        interp.add_point_to_buffer(i, xyz);
+      }
+      ierr = PetscLogEventEnd(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
+      w2.stop(); w2.read_duration();      
+
+      w2.start("interpolating");
+      interp.interpolate(&f[0]);
+      ierr = PetscLogEventEnd(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
+      w2.stop(); w2.read_duration();
+      w3.stop(); w3.read_duration();      
     }
-    w2.stop(); w2.read_duration();
-    ierr = PetscLogEventEnd(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);
-
-    w2.start("adding points");
-    ierr = PetscLogEventBegin(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
-    std::vector<double> f(points.size());
-    for (size_t i=0; i<points.size(); i++){
-#ifdef P4_TO_P8
-      double xyz [] = {points[i].x, points[i].y, points[i].z};
-#else
-      double xyz [] = {points[i].x, points[i].y};
-#endif
-      interp.add_point_to_buffer(i, xyz);
-    }
-    w2.stop(); w2.read_duration();
-    ierr = PetscLogEventEnd(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
-
-
-    w2.start("interpolating");
-    interp.interpolate(&f[0]);
-    w2.stop(); w2.read_duration();
-    w3.stop(); w3.read_duration();
-    ierr = PetscLogEventEnd(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
 
     // destroy the p4est and its connectivity structure
     ierr = VecDestroy(u); CHKERRXX(ierr);
