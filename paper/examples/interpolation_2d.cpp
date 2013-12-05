@@ -129,13 +129,14 @@ int main (int argc, char* argv[]){
     cmd.add_option("splits", "number of splits");
     cmd.add_option("alpha", "fraction of total points to be remote (must be in [0,1]). Ignored if -scaled is given");
     cmd.add_option("scaled", "choose a number of remote points that is proportional to number of ghost cells");
-    cmd.add_option("write-vtk", "if this flag is set, vtk files will be written to the disk");\
+    cmd.add_option("write-vtk", "if this flag is set, vtk files will be written to the disk");
     cmd.add_option("output-dir", "address of the output directory for all I/O");
+    cmd.add_option("prefactor", "use this number times number of local/ghost quadrants random points");
     cmd.parse(argc, argv);
 
     const int lmin = cmd.get("lmin", 2);
-    const int lmax = cmd.get("lmax", 10);
-    const int qmin = cmd.get("qmin", 100);
+    const int lmax = cmd.get("lmax", prefactor);
+    const int qmin = cmd.get("qmin", prefactor0);
 #ifdef P4_TO_P8
     const int qmax = cmd.get<int>("qmax");
 #else
@@ -146,6 +147,7 @@ int main (int argc, char* argv[]){
     const double alpha = cmd.get("alpha", 0.005);
     const bool scaled = cmd.contains("scaled");
     const bool write_vtk = cmd.contains("write-vtk");
+    const int prefactor = cmd.get("prefactor", 50);
     const std::string output_dir = cmd.get<std::string>("output-dir");
 
     splitting_criteria_random_t data(lmin, lmax, qmin, qmax);
@@ -253,21 +255,21 @@ int main (int argc, char* argv[]){
 
     // generate a bunch of random points
     w2.start("computing random points");
-    std::vector<point_t> points;
+    std::vector<point_t> points;    
 #ifdef GHOST_REMOTE_INTERPOLATION
     if (p4est->mpisize == 1)
-      generate_random_points(p4est, ghost, 10*p4est->local_num_quadrants, 0, points);
+      generate_random_points(p4est, ghost, prefactor*p4est->local_num_quadrants, 0, points);
     else if (scaled)
-      generate_random_points(p4est, ghost, 10*p4est->local_num_quadrants, 10*ghost->ghosts.elem_count, points);
+      generate_random_points(p4est, ghost, prefactor*p4est->local_num_quadrants, prefactor*ghost->ghosts.elem_count, points);
     else
-      generate_random_points(p4est, ghost, 10*(1-alpha)*p4est->local_num_quadrants, 10*alpha*p4est->local_num_quadrants, points);
+      generate_random_points(p4est, ghost, prefactor*(1-alpha)*p4est->local_num_quadrants, prefactor*alpha*p4est->local_num_quadrants, points);
 #else
     if (p4est->mpisize == 1)
-      generate_random_points(p4est, hierarchy, 10*p4est->local_num_quadrants, 0, points);
+      generate_random_points(p4est, hierarchy, prefactor*p4est->local_num_quadrants, 0, points);
     else if (scaled)
-      generate_random_points(p4est, hierarchy, 10*p4est->local_num_quadrants, 10*ghost->ghosts.elem_count, points);
+      generate_random_points(p4est, hierarchy, prefactor*p4est->local_num_quadrants, prefactor*ghost->ghosts.elem_count, points);
     else
-      generate_random_points(p4est, hierarchy, 10*(1-alpha)*p4est->local_num_quadrants, 10*alpha*p4est->local_num_quadrants, points);
+      generate_random_points(p4est, hierarchy, prefactor*(1-alpha)*p4est->local_num_quadrants, prefactor*alpha*p4est->local_num_quadrants, points);
 #endif    
     w2.stop(); w2.read_duration();
 
