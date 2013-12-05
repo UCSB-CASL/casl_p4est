@@ -86,7 +86,7 @@ public:
      * \brief print: prints the options database into the stream 'f'
      * \param [in] f file stream (default value is stdout)
      */
-    void cmdParser::print(FILE *f = stdout);
+    void print(FILE *f = stdout);
 };
 
 #endif // PARSER_H
