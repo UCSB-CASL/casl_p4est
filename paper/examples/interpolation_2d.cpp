@@ -106,9 +106,11 @@ struct stat_info_t{
     typedef Point2 point_t;
 #endif
 
-void generate_random_points(const p4est_t* p4est, const my_p4est_hierarchy_t& hierarchy, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t>& points);
-void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points);
+void generate_random_points(const p4est_t* p4est, const my_p4est_hierarchy_t& hierarchy, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t>& points, bool write_points);
+void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points, bool write_points);
 void gather_remote_cells(const p4est_t *p4est, const my_p4est_hierarchy_t& hierarchy, std::vector<const HierarchyCell *> &remotes, std::vector<p4est_topidx_t> &r_trs, p4est_topidx_t tr, p4est_locidx_t q = 0);
+
+std::string output_dir;
 
 int main (int argc, char* argv[]){
 
@@ -134,26 +136,25 @@ int main (int argc, char* argv[]){
     cmd.add_option("output-dir", "address of the output directory for all I/O");
     cmd.add_option("prefactor", "generate this number times number of local/ghost quadrants random points");
     cmd.add_option("repeat", "repeat the experiment this many times");
+    cmd.add_option("write-points", "write csv information for the random points");
     cmd.parse(argc, argv);
     cmd.print();
 
-    const int lmin = cmd.get("lmin", 2);
-    const int lmax = cmd.get("lmax", 10);
-    const int qmin = cmd.get("qmin", 100);
-#ifdef P4_TO_P8
-    const int qmax = cmd.get<int>("qmax");
-#else
-    const int qmax = cmd.get<int>("qmax");
-#endif
-    const int splits = cmd.get("splits", 0);
-    const int mode   = cmd.get("mode", 2);
-    const double alpha = cmd.get("alpha", 0.005);
-    const bool scaled = cmd.contains("scaled");
+    output_dir                  = cmd.get<std::string>("output-dir");
+    const int lmin              = cmd.get("lmin", 2);
+    const int lmax              = cmd.get("lmax", 10);
+    const int qmin              = cmd.get("qmin", 100);
+    const int qmax              = cmd.get<int>("qmax");
+    const int qmax              = cmd.get<int>("qmax");
+    const int splits            = cmd.get("splits", 0);
+    const int mode              = cmd.get("mode", 2);    
+    const int prefactor         = cmd.get("prefactor", 50);
+    const int repeat            = cmd.get("repeat",1);
+    const double alpha          = cmd.get("alpha", 0.005);
+    const bool scaled           = cmd.contains("scaled");
     const bool scale_with_nodes = cmd.contains("scale-with-nodes");
-    const bool write_vtk = cmd.contains("write-vtk");
-    const int prefactor = cmd.get("prefactor", 50);
-    const int repeat = cmd.get("repeat",1);
-    const std::string output_dir = cmd.get<std::string>("output-dir");
+    const bool write_vtk        = cmd.contains("write-vtk");    
+    const bool write_points     = cmd.contains("write-points");    
 
     splitting_criteria_random_t data(lmin, lmax, qmin, qmax);
 
@@ -261,18 +262,18 @@ int main (int argc, char* argv[]){
     }
 #ifdef GHOST_REMOTE_INTERPOLATION
     if (p4est->mpisize == 1)
-      generate_random_points(p4est, ghost, prefactor*num_local, 0, points);
+      generate_random_points(p4est, ghost, prefactor*num_local, 0, points, write_points);
     else if (scaled)
-      generate_random_points(p4est, ghost, prefactor*num_local, prefactor*num_remote, points);
+      generate_random_points(p4est, ghost, prefactor*num_local, prefactor*num_remote, points, write_points);
     else
-      generate_random_points(p4est, ghost, prefactor*(1-alpha)*num_local, prefactor*alpha*num_local, points);
+      generate_random_points(p4est, ghost, prefactor*(1-alpha)*num_local, prefactor*alpha*num_local, points, write_points);
 #else
     if (p4est->mpisize == 1)
-      generate_random_points(p4est, hierarchy, prefactor*num_local, 0, points);
+      generate_random_points(p4est, hierarchy, prefactor*num_local, 0, points, write_points);
     else if (scaled)
-      generate_random_points(p4est, hierarchy, prefactor*num_local, prefactor*num_remote, points);
+      generate_random_points(p4est, hierarchy, prefactor*num_local, prefactor*num_remote, points, write_points);
     else
-      generate_random_points(p4est, hierarchy, prefactor*(1-alpha)*num_local, prefactor*alpha*num_local, points);
+      generate_random_points(p4est, hierarchy, prefactor*(1-alpha)*num_local, prefactor*alpha*num_local, points, write_points);
 #endif    
     w2.stop(); w2.read_duration();
 
@@ -369,7 +370,7 @@ void gather_remote_cells(const p4est_t *p4est, const my_p4est_hierarchy_t& hiera
   }
 }
 
-void generate_random_points(const p4est_t *p4est, const my_p4est_hierarchy_t &hierarchy, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points)
+void generate_random_points(const p4est_t *p4est, const my_p4est_hierarchy_t &hierarchy, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points, write_points)
 {
   points.resize(num_local + num_remote);
 
@@ -415,22 +416,22 @@ void generate_random_points(const p4est_t *p4est, const my_p4est_hierarchy_t &hi
 #endif
   }
 
-#ifdef WRITE_POINTS
-  std::ostringstream oss; oss << P4EST_DIM << "d_points_" << p4est->mpirank << ".csv";
-  FILE *pf = fopen(oss.str().c_str(), "w");
-  fprintf(pf, "x, y, z\n");
-  for (size_t i=0; i<points.size(); i++){
-#ifdef P4_TO_P8
-    fprintf(pf, "%lf, %lf, %lf\n", points[i].x, points[i].y, points[i].z);
-#else
-    fprintf(pf, "%lf, %lf, 0\n", points[i].x, points[i].y);
-#endif
+  if (write_points){
+    std::ostringstream oss; oss << output_dir << "/" << P4EST_DIM << "d_points_" << p4est->mpirank << ".csv";
+    FILE *pf = fopen(oss.str().c_str(), "w");
+    fprintf(pf, "x, y, z\n");
+    for (size_t i=0; i<points.size(); i++){
+  #ifdef P4_TO_P8
+      fprintf(pf, "%lf, %lf, %lf\n", points[i].x, points[i].y, points[i].z);
+  #else
+      fprintf(pf, "%lf, %lf, 0\n", points[i].x, points[i].y);
+  #endif
+    }
+    fclose(pf);
   }
-  fclose(pf);
-#endif
 }
 
-void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points)
+void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points, write_points)
 {
   points.resize(num_local + num_remote);
 
@@ -469,17 +470,17 @@ void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_lo
 #endif
   }
 
-#ifdef WRITE_POINTS
-  std::ostringstream oss; oss << P4EST_DIM << "d_points_" << p4est->mpirank << ".csv";
-  FILE *pf = fopen(oss.str().c_str(), "w");
-  fprintf(pf, "x, y, z\n");
-  for (size_t i=0; i<points.size(); i++){
-#ifdef P4_TO_P8
-    fprintf(pf, "%lf, %lf, %lf\n", points[i].x, points[i].y, points[i].z);
-#else
-    fprintf(pf, "%lf, %lf, 0\n", points[i].x, points[i].y);
-#endif
+  if (write_points){
+    std::ostringstream oss; oss << output_dir << "/" << P4EST_DIM << "d_points_" << p4est->mpirank << ".csv";
+    FILE *pf = fopen(oss.str().c_str(), "w");
+    fprintf(pf, "x, y, z\n");
+    for (size_t i=0; i<points.size(); i++){
+  #ifdef P4_TO_P8
+      fprintf(pf, "%lf, %lf, %lf\n", points[i].x, points[i].y, points[i].z);
+  #else
+      fprintf(pf, "%lf, %lf, 0\n", points[i].x, points[i].y);
+  #endif
+    }
+    fclose(pf);
   }
-  fclose(pf);
-#endif
 }
