@@ -106,8 +106,8 @@ struct stat_info_t{
     typedef Point2 point_t;
 #endif
 
-void generate_random_points(const p4est_t* p4est, const my_p4est_hierarchy_t& hierarchy, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t>& points, bool write_points);
-void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points, bool write_points);
+void generate_random_points(const p4est_t* p4est, const my_p4est_hierarchy_t& hierarchy, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t>& points, bool write_points = false);
+void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points, bool write_points = false);
 void gather_remote_cells(const p4est_t *p4est, const my_p4est_hierarchy_t& hierarchy, std::vector<const HierarchyCell *> &remotes, std::vector<p4est_topidx_t> &r_trs, p4est_topidx_t tr, p4est_locidx_t q = 0);
 
 std::string output_dir;
@@ -144,7 +144,6 @@ int main (int argc, char* argv[]){
     const int lmin              = cmd.get("lmin", 2);
     const int lmax              = cmd.get("lmax", 10);
     const int qmin              = cmd.get("qmin", 100);
-    const int qmax              = cmd.get<int>("qmax");
     const int qmax              = cmd.get<int>("qmax");
     const int splits            = cmd.get("splits", 0);
     const int mode              = cmd.get("mode", 2);    
@@ -370,7 +369,7 @@ void gather_remote_cells(const p4est_t *p4est, const my_p4est_hierarchy_t& hiera
   }
 }
 
-void generate_random_points(const p4est_t *p4est, const my_p4est_hierarchy_t &hierarchy, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points, write_points)
+void generate_random_points(const p4est_t *p4est, const my_p4est_hierarchy_t &hierarchy, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points, bool write_points)
 {
   points.resize(num_local + num_remote);
 
@@ -431,7 +430,7 @@ void generate_random_points(const p4est_t *p4est, const my_p4est_hierarchy_t &hi
   }
 }
 
-void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points, write_points)
+void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points, bool write_points)
 {
   points.resize(num_local + num_remote);
 
