@@ -30,7 +30,6 @@ class my_p4est_node_neighbors_t {
   /**
      * Initialize the QuadNeighborNodeOfNode information
      */
-  void init_neighbors();
 
   my_p4est_hierarchy_t *hierarchy;
   p4est_t *p4est;
@@ -38,15 +37,16 @@ class my_p4est_node_neighbors_t {
   p4est_nodes_t *nodes;
   my_p4est_brick_t *myb;
   std::vector< quad_neighbor_nodes_of_node_t > neighbors;
+  quad_neighbor_nodes_of_node_t qnnn;
   std::vector<p4est_locidx_t> layer_nodes;
   std::vector<p4est_locidx_t> local_nodes;
+  bool is_initialized;
 
 public:
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
-    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb),
-      neighbors(nodes_->num_owned_indeps)
+    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb)
   {
-    init_neighbors();
+    is_initialized = false;
 
     /* compute the layer and local nodes.
      * layer_nodes: This is a list of indices for nodes in the local range on this
@@ -75,6 +75,8 @@ public:
     }
   }
 
+  void init_neighbors();
+  
   inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
 #ifdef CASL_THROWS
     if (n<0 || n>=nodes->num_owned_indeps){
@@ -85,9 +87,13 @@ public:
              " of a ghost nod. This is not supported." << std::endl;
       throw std::invalid_argument(oss.str());
     }
+    if (!is_initialized)
+      throw std::runtime_error("[ERROR]: operator[] only works if all neighbors are explicitly initialized. Consider calling init_neighbors() first.");
 #endif
     return neighbors[n];
   }
+
+  void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
 
   /**
      * This function is finds the neighboring cell of a node in the given (i,j) direction. The direction must be diagonal

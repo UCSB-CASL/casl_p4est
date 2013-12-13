@@ -5,11 +5,15 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_utils.h>
+#include <p8est.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_utils.h>
+#include <p4est.h>
 #endif
+
+#include <set>
 
 struct splitting_criteria_t {
   splitting_criteria_t(int min_lvl = 0, int max_lvl = 0)
@@ -51,6 +55,18 @@ struct splitting_criteria_random_t : splitting_criteria_t {
     this->max_quads = max_quads;
     num_quads = 0;
   }
+};
+
+class splitting_criteria_marker_t: public splitting_criteria_t {
+  std::set<const p4est_quadrant_t*> marker;
+public:
+  splitting_criteria_marker_t(int min_lvl, int max_lvl)
+  {
+    this->min_lvl = min_lvl;
+    this->max_lvl = max_lvl;
+  }
+  void mark(const p4est_quadrant_t* quad) {marker.insert(quad);}
+  inline int contains(const p4est_quadrant_t* quad) const {return marker.find(quad) != marker.end();}
 };
 
 /*!
@@ -112,6 +128,15 @@ refine_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *q
  */
 p4est_bool_t
 coarsen_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+p4est_bool_t
+refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+p4est_bool_t
+coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+void
+my_p4est_refine_quadrant(p4est_t *p4est, p4est_topidx_t which_tree, p4est_locidx_t which_quad);
 
 
 #endif // REFINE_COARSEN_H

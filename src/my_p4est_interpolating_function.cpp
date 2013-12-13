@@ -38,7 +38,7 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
                                              p4est_ghost_t *ghost,
                                              my_p4est_brick_t *myb)
   : method_(linear),
-    p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), qnnn_(NULL),
+    p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), neighbors_(NULL),
     Fxx_(NULL), Fyy_(NULL),
 #ifdef P4_TO_P8
     Fzz_(NULL),
@@ -63,9 +63,9 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
                                              p4est_nodes_t *nodes,
                                              p4est_ghost_t *ghost,
                                              my_p4est_brick_t *myb,
-                                             const my_p4est_node_neighbors_t *qnnn)
+                                             const my_p4est_node_neighbors_t *neighbors)
   : method_(quadratic_non_oscillatory),
-    p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), qnnn_(qnnn),
+    p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), neighbors_(neighbors),
     Fxx_(NULL), Fyy_(NULL),
 #ifdef P4_TO_P8
         Fzz_(NULL),
@@ -123,7 +123,7 @@ void InterpolatingFunctionNodeBase::add_point_to_buffer(p4est_locidx_t node_loci
   int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
 #else
   std::vector<p4est_quadrant_t> remote_matches;
-  int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
+  int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
 #endif
 
   // check who is going to own the quadrant
@@ -237,7 +237,7 @@ void InterpolatingFunctionNodeBase::set_input_parameters(Vec input_vec, interpol
 {
   method_ = method;
 
-  if (qnnn_ == NULL && method != linear)
+  if (neighbors_ == NULL && method != linear)
     throw std::invalid_argument("[ERROR]: a quadratic method requires a valid QNNN object but none was given");
   input_vec_ = input_vec;
 
@@ -439,7 +439,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
         int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
 #else
         std::vector<p4est_quadrant_t> remote_matches;
-        int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
+        int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
 #endif
         // make sure that the point belongs to us
         if (rank_found == p4est_->mpirank){ // if we own the point, interpolate
@@ -612,7 +612,7 @@ double InterpolatingFunctionNodeBase::operator ()(double x, double y) const
   int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
 #else
   std::vector<p4est_quadrant_t> remote_matches;
-  int rank_found = qnnn_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
+  int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
 #endif
 
   if (rank_found == p4est_->mpirank) { // local quadrant
@@ -798,8 +798,8 @@ void InterpolatingFunctionNodeBase::compute_second_derivatives()
     local_derivatives = true;
   }
 #ifdef P4_TO_P8
-  qnnn_->second_derivatives_central(input_vec_, Fxx_, Fyy_, Fzz_);
+  neighbors_->second_derivatives_central(input_vec_, Fxx_, Fyy_, Fzz_);
 #else
-  qnnn_->second_derivatives_central(input_vec_, Fxx_, Fyy_);
+  neighbors_->second_derivatives_central(input_vec_, Fxx_, Fyy_);
 #endif
 }

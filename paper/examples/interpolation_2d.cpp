@@ -9,6 +9,7 @@
 #ifdef P4_TO_P8
 #include <p8est_bits.h>
 #include <p8est_extended.h>
+#include <p8est_communication.h>
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_nodes.h>
@@ -20,6 +21,7 @@
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
+#include <p4est_communication.h>
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
@@ -88,6 +90,28 @@ static struct:CF_2{
 
 #endif
 
+struct RandomCircles:CF_2{
+  RandomCircles(int n_): n(n_), x0(n), y0(n), r(n)
+  {
+    for (int i=0; i<n; i++){
+      x0[i] = ranged_rand(0.0, 2.0);
+      y0[i] = ranged_rand(0.0, 2.0);
+      r[i]  = ranged_rand(0.1, 0.3);
+    }
+  }
+
+  double operator ()(double x, double y) const {
+    double f = -DBL_MAX;
+    for (int i=0; i<n; i++)
+      f = MAX(r[i] - sqrt(SQR(x-x0[i]) + SQR(y-y0[i])), f);
+    return f;
+  }
+
+private:
+  int n;
+  std::vector<double> x0, y0, r;
+};
+
 #ifndef GIT_COMMIT_HASH_SHORT
 #define GIT_COMMIT_HASH_SHORT "unknown"
 #endif
@@ -127,6 +151,7 @@ int main (int argc, char* argv[]){
     cmd.add_option("lmax", "max level of the tree");
     cmd.add_option("qmin", "min number of quadrants");
     cmd.add_option("qmax", "max number of quadrants");
+    cmd.add_option("itmax", "maximum number of iterations when creating random tree for strong scaling");
     cmd.add_option("mode", "interpolation mode 0 = linear, 1 = quadratic, 2 = non-oscilatory quadratic");
     cmd.add_option("splits", "number of splits");
     cmd.add_option("scale-with-nodes", "scale number of random points with nodes rather than quadrants");
@@ -137,25 +162,25 @@ int main (int argc, char* argv[]){
     cmd.add_option("prefactor", "generate this number times number of local/ghost quadrants random points");
     cmd.add_option("repeat", "repeat the experiment this many times");
     cmd.add_option("write-points", "write csv information for the random points");
+    cmd.add_option("test", "type of test (weak = 0 and strong = 1)");
+    cmd.add_option("nc", "number of randomly placed circles");
     cmd.parse(argc, argv);
     cmd.print();
 
     output_dir                  = cmd.get<std::string>("output-dir");
     const int lmin              = cmd.get("lmin", 2);
     const int lmax              = cmd.get("lmax", 10);
-    const int qmin              = cmd.get("qmin", 100);
-    const int qmax              = cmd.get<int>("qmax");
+    const int qmin              = cmd.get("qmin", 100);    
     const int splits            = cmd.get("splits", 0);
     const int mode              = cmd.get("mode", 2);    
     const int prefactor         = cmd.get("prefactor", 50);
     const int repeat            = cmd.get("repeat",1);
+    const int test              = cmd.get<int>("test");
     const double alpha          = cmd.get("alpha", 0.005);
     const bool scaled           = cmd.contains("scaled");
     const bool scale_with_nodes = cmd.contains("scale-with-nodes");
     const bool write_vtk        = cmd.contains("write-vtk");    
     const bool write_points     = cmd.contains("write-points");    
-
-    splitting_criteria_random_t data(lmin, lmax, qmin, qmax);
 
     parStopWatch w1;//(parStopWatch::all_timings);
     parStopWatch w2;//(parStopWatch::all_timings);
@@ -168,9 +193,7 @@ int main (int argc, char* argv[]){
     PetscPrintf(mpi->mpicomm, "git commit hash value = %s (%s)\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG);
 
     // print basic information
-    PetscPrintf(mpi->mpicomm, "mpisize = %d\n"
-                "lmin = %d lmax = %d qmin = %d qmax = %d splits = %d mode = %d alpha = %f scaled = %d\n",
-                mpi->mpisize, lmin, lmax, qmin, qmax, splits, mode, alpha, scaled);
+    PetscPrintf(mpi->mpicomm, "mpisize = %d\n", mpi->mpisize);
 
     // Create the connectivity object
     w2.start("connectivity");
@@ -195,16 +218,59 @@ int main (int argc, char* argv[]){
     w2.stop(); w2.read_duration();
 
     // Now refine the tree
-    p4est->user_pointer = (void*)(&data);
     w2.start("refine");
-    srand(p4est->mpirank);
-    while (p4est->local_num_quadrants < data.max_quads){      
-      my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
-      my_p4est_partition(p4est, NULL);
+    if (test == 0){
+      const int qmax              = cmd.get<int>("qmax");
+      splitting_criteria_random_t random_data(lmin, lmax, qmin, qmax);
+
+      p4est->user_pointer = (void*)(&random_data);
+      srand(p4est->mpirank);
+      while (p4est->local_num_quadrants < random_data.max_quads){
+
+        my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
+        my_p4est_partition(p4est, NULL);
+      }
+    } else {
+      srand(0);
+      double p_sum = 0;
+      for (int i=lmin; i<lmax; i++)
+        p_sum += 1.0/(i*i+1);
+
+      int itermax = cmd.get<int>("itmax");
+      for (int iter = 0; iter<itermax; iter++){
+        splitting_criteria_marker_t quad_markers(lmin, lmax);
+        p4est->user_pointer = &quad_markers;
+
+//        for (p4est_gloidx_t q = 0; q<p4est->global_num_quadrants; q++){
+//          if (rand()%10) continue;
+
+          p4est_gloidx_t qglo = ranged_rand_inclusive(0, p4est->global_num_quadrants-1);
+          double p = ranged_rand(0.0, 1.0);
+
+          if (qglo >= p4est->global_first_quadrant[p4est->mpirank] && qglo < p4est->global_first_quadrant[p4est->mpirank + 1]) { // belongs to us
+            p4est_locidx_t qloc  = qglo - p4est->global_first_quadrant[p4est->mpirank];
+            p4est_tree_t *tree = NULL;
+            for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++) {
+              tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+              if (tree->quadrants_offset > qloc){
+                tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr - 1);
+                break;
+              }
+            }
+            const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, qloc - tree->quadrants_offset);
+            if (/*quad->level < lmin || */ p < 1.0/(quad->level*quad->level+1) / p_sum)
+              quad_markers.mark(quad);
+          }
+//        }
+
+        my_p4est_refine(p4est, P4EST_FALSE, refine_marked_quadrants, NULL);
+        my_p4est_partition(p4est, NULL);
+      }
     }
     for (int n=0; n<splits; n++)
       my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
     w2.stop(); w2.read_duration();
+
 
     // Finally re-partition
     w2.start("partition");
@@ -220,6 +286,10 @@ int main (int argc, char* argv[]){
     w2.start("creating node structure");
     p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
     w2.stop(); w2.read_duration();
+
+    char name[1024];
+    sprintf(name, "test_%d", p4est->mpisize);
+    my_p4est_vtk_write_all(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 0, 0, name);
 
     w2.start("gather statistics");
     {
@@ -246,6 +316,7 @@ int main (int argc, char* argv[]){
     w2.start("hierarchy and node neighbors");
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
+    node_neighbors.init_neighbors();
     w2.stop(); w2.read_duration();
 
     // generate a bunch of random points

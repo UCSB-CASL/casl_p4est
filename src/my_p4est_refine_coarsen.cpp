@@ -1,11 +1,14 @@
 #ifdef P4_TO_P8
 #include "my_p8est_refine_coarsen.h"
 #include <p8est_bits.h>
+#include <p8est_algorithms.h>
 #else
 #include "my_p4est_refine_coarsen.h"
 #include <p4est_bits.h>
+#include <p4est_algorithms.h>
 #endif
 #include <sc_search.h>
+#include <iostream>
 
 p4est_bool_t
 refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
@@ -217,4 +220,73 @@ coarsen_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *
   (void) quad;
 
   return P4EST_TRUE;
+}
+
+p4est_bool_t
+refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  (void) which_tree;
+  const splitting_criteria_marker_t& marker = *(splitting_criteria_marker_t*)(p4est->user_pointer);
+  if (quad->level < marker.min_lvl)
+    return P4EST_TRUE;
+  else if (quad->level >= marker.max_lvl)
+    return P4EST_FALSE;
+  else
+    return marker.contains(quad);
+}
+
+p4est_bool_t
+coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
+{
+  (void) which_tree;
+  const splitting_criteria_marker_t& marker = *(splitting_criteria_marker_t*)(p4est->user_pointer);
+  if (quad[0]->level < marker.min_lvl)
+    return P4EST_FALSE;
+  else if (quad[0]->level >= marker.max_lvl)
+    return P4EST_TRUE;
+  else
+    for (short i=0; i<P4EST_CHILDREN; i++)
+      if (marker.contains(quad[i])) return P4EST_TRUE;
+
+  return P4EST_FALSE;
+}
+
+
+void
+my_p4est_refine_quadrant(p4est_t *p4est, p4est_topidx_t which_tree, p4est_locidx_t which_quad)
+{
+  p4est_quadrant_t *childs[P4EST_CHILDREN];
+
+  p4est_tree_t *tree  = (p4est_tree_t*)sc_array_index(p4est->trees, which_tree);
+  p4est_quadrant_t *q = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, which_quad);
+
+  childs[0] = p4est_quadrant_mempool_alloc(p4est->quadrant_pool);
+  *childs[0] = *q;
+
+  sc_array_resize(&tree->quadrants, tree->quadrants.elem_count + P4EST_CHILDREN - 1);
+
+  for (short i=1; i<P4EST_CHILDREN; i++)
+    childs[i] = p4est_quadrant_mempool_alloc(p4est->quadrant_pool);
+
+  for (short i=1; i<P4EST_CHILDREN; i++)
+
+  p4est_quadrant_childrenpv (q, childs);
+
+  for (short i=0; i<P4EST_CHILDREN; i++)
+    childs[i]->pad8 = 1;
+
+  for (short i=0; i<P4EST_CHILDREN; i++)
+    std::cout << (double)childs[i]->x/(double)P4EST_ROOT_LEN << std::endl;
+
+  if (tree->maxlevel == q->level)
+    tree->maxlevel++;
+  tree->quadrants_per_level[q->level  ] -= 1;
+  tree->quadrants_per_level[q->level+1] += P4EST_CHILDREN;
+
+  p4est->local_num_quadrants += P4EST_CHILDREN - 1;
+
+  for (p4est_topidx_t tr = which_tree + 1; tr < p4est->connectivity->num_trees; tr++){
+    tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+    tree->quadrants_offset += P4EST_CHILDREN - 1;
+  }
 }

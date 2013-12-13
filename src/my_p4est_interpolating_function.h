@@ -33,7 +33,7 @@ class InterpolatingFunctionNodeBase: public CF_2
   p4est_nodes_t *nodes_;
   p4est_ghost_t *ghost_;
   my_p4est_brick_t *myb_;
-  const my_p4est_node_neighbors_t *qnnn_;
+  const my_p4est_node_neighbors_t *neighbors_;
 
   double xyz_min[3], xyz_max[3];
 
@@ -89,7 +89,7 @@ class InterpolatingFunctionNodeBase: public CF_2
 
 public:
   InterpolatingFunctionNodeBase(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb);
-  InterpolatingFunctionNodeBase(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, const my_p4est_node_neighbors_t *qnnn);
+  InterpolatingFunctionNodeBase(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, const my_p4est_node_neighbors_t *neighbors);
   ~InterpolatingFunctionNodeBase();
 
   void add_point_to_buffer(p4est_locidx_t node_locidx, const double *xyz);
