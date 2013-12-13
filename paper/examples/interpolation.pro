@@ -3,11 +3,11 @@ CONFIG += console
 CONFIG -= app_bundle
 CONFIG -= qt qui
 
-P4EST_DIR  = /usr/local/p4est
-CASL_P4EST = $$(HOME)/casl_p4est
+P4EST_DIR  = $$(WORK)/soft/intel/p4est
+CASL_P4EST = $$(WORK)/casl_p4est
 
 # ----------------------------- Set configs parameters  ----------------------------- #
-CONFIG += gcc log 2d
+CONFIG += intel log
 
 # --------------------------------- Define configs  --------------------------------- #
 CONFIG(debug, debug|release): {
@@ -17,7 +17,7 @@ CONFIG(debug, debug|release): {
 }
 
 CONFIG(release, debug|release): {
-    INCLUDEPATH += $$P4EST_DIR/release/include
+    INCLUDEPATH += $$P4EST_DIR/release/include $$PETSC_DIRrelease/include $$(TACC_PETSC_LIB)/../include
     LIBS += -L$$P4EST_DIR/release/lib -lp4est -lsc    
 }
 
