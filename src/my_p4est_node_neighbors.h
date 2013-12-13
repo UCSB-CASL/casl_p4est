@@ -165,7 +165,7 @@ public:
 
 private:
 #ifdef P4_TO_P8
-  void dxx_and_dyy_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;
+  void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;
 #else
   void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy) const;
 #endif

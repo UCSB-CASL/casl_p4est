@@ -65,7 +65,95 @@ static struct:CF_3{
   }
 } uex;
 
+struct RandomCircles:CF_3{
+  RandomCircles(int n_): n(n_), x0(n), y0(n), z0(n), r(n)
+  {
+    for (int i=0; i<n; i++){
+      x0[i] = ranged_rand(0.0, 2.0);
+      y0[i] = ranged_rand(0.0, 2.0);
+      z0[i] = ranged_rand(0.0, 2.0);
+      r[i]  = ranged_rand(0.1, 0.3);
+    }
+  }
+
+  double operator ()(double x, double y, double z) const {
+    double f = -DBL_MAX;
+    for (int i=0; i<n; i++)
+      f = MAX(r[i] - sqrt(SQR(x-x0[i]) + SQR(y-y0[i]) + SQR(z-z0[i])), f);
+    return f;
+  }
+
+private:
+  int n;
+  std::vector<double> x0, y0, z0, r;
+};
+
+struct RandomPoints:CF_3{
+  RandomPoints(int n_): n(n_), x0(n), y0(n), z0(n)
+  {
+    for (int i=0; i<n; i++){
+      x0[i] = ranged_rand(0.0, 2.0);
+      y0[i] = ranged_rand(0.0, 2.0);
+      z0[i] = ranged_rand(0.0, 2.0);
+    }
+  }
+
+  double operator ()(double x, double y, double z) const {
+    double f = -DBL_MAX;
+    for (int i=0; i<n; i++)
+      f = MAX(-sqrt(SQR(x-x0[i]) + SQR(y-y0[i]) + SQR(z-z0[i])), f);
+    return f;
+  }
+
+private:
+  int n;
+  std::vector<double> x0, y0, z0;
+};
+
 #else
+struct RandomCircles:CF_2{
+  RandomCircles(int n_): n(n_), x0(n), y0(n), r(n)
+  {
+    for (int i=0; i<n; i++){
+      x0[i] = ranged_rand(0.0, 2.0);
+      y0[i] = ranged_rand(0.0, 2.0);
+      r[i]  = ranged_rand(0.1, 0.3);
+    }
+  }
+
+  double operator ()(double x, double y) const {
+    double f = -DBL_MAX;
+    for (int i=0; i<n; i++)
+      f = MAX(r[i] - sqrt(SQR(x-x0[i]) + SQR(y-y0[i])), f);
+    return f;
+  }
+
+private:
+  int n;
+  std::vector<double> x0, y0, r;
+};
+
+struct RandomPoints:CF_2{
+  RandomPoints(int n_): n(n_), x0(n), y0(n)
+  {
+    for (int i=0; i<n; i++){
+      x0[i] = ranged_rand(0.0, 2.0);
+      y0[i] = ranged_rand(0.0, 2.0);
+    }
+  }
+
+  double operator ()(double x, double y) const {
+    double f = -DBL_MAX;
+    for (int i=0; i<n; i++)
+      f = MAX(-sqrt(SQR(x-x0[i]) + SQR(y-y0[i])), f);
+    return f;
+  }
+
+private:
+  int n;
+  std::vector<double> x0, y0;
+};
+
 struct circle:CF_2{
   circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
   void update(double x0_, double y0_, double r_)
@@ -89,28 +177,6 @@ static struct:CF_2{
 } uex;
 
 #endif
-
-struct RandomCircles:CF_2{
-  RandomCircles(int n_): n(n_), x0(n), y0(n), r(n)
-  {
-    for (int i=0; i<n; i++){
-      x0[i] = ranged_rand(0.0, 2.0);
-      y0[i] = ranged_rand(0.0, 2.0);
-      r[i]  = ranged_rand(0.1, 0.3);
-    }
-  }
-
-  double operator ()(double x, double y) const {
-    double f = -DBL_MAX;
-    for (int i=0; i<n; i++)
-      f = MAX(r[i] - sqrt(SQR(x-x0[i]) + SQR(y-y0[i])), f);
-    return f;
-  }
-
-private:
-  int n;
-  std::vector<double> x0, y0, r;
-};
 
 #ifndef GIT_COMMIT_HASH_SHORT
 #define GIT_COMMIT_HASH_SHORT "unknown"
@@ -230,20 +296,17 @@ int main (int argc, char* argv[]){
         my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
         my_p4est_partition(p4est, NULL);
       }
-    } else {
+    } else if (test == 1){
       srand(0);
       double p_sum = 0;
       for (int i=lmin; i<lmax; i++)
-        p_sum += 1.0/(i*i+1);
+        p_sum += 1.0/(i+1);
 
       int itermax = cmd.get<int>("itmax");
       for (int iter = 0; iter<itermax; iter++){
-        splitting_criteria_marker_t quad_markers(lmin, lmax);
-        p4est->user_pointer = &quad_markers;
-
-//        for (p4est_gloidx_t q = 0; q<p4est->global_num_quadrants; q++){
-//          if (rand()%10) continue;
-
+      for (int i=0; i<10; i++){
+          splitting_criteria_marker_t quad_markers(lmin, lmax);
+          p4est->user_pointer = &quad_markers;
           p4est_gloidx_t qglo = ranged_rand_inclusive(0, p4est->global_num_quadrants-1);
           double p = ranged_rand(0.0, 1.0);
 
@@ -258,12 +321,20 @@ int main (int argc, char* argv[]){
               }
             }
             const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, qloc - tree->quadrants_offset);
-            if (/*quad->level < lmin || */ p < 1.0/(quad->level*quad->level+1) / p_sum)
+            if (p < 1.0/(quad->level+1) / p_sum)
               quad_markers.mark(quad);
           }
-//        }
 
-        my_p4est_refine(p4est, P4EST_FALSE, refine_marked_quadrants, NULL);
+          my_p4est_refine(p4est, P4EST_FALSE, refine_marked_quadrants, NULL);
+          my_p4est_partition(p4est, NULL);
+        }
+      }
+    } else {
+      for (int it = 0; it <cmd.get<int>("itmax"); it++){
+        RandomPoints p(1);
+        splitting_criteria_cf_t cf_data(lmin, lmax, &p, 1.2);
+        p4est->user_pointer = &cf_data;
+        my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
         my_p4est_partition(p4est, NULL);
       }
     }
@@ -287,9 +358,28 @@ int main (int argc, char* argv[]){
     p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
     w2.stop(); w2.read_duration();
 
-    char name[1024];
-    sprintf(name, "test_%d", p4est->mpisize);
-    my_p4est_vtk_write_all(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 0, 0, name);
+//    char name[1024];
+//    sprintf(name, "test_%d", p4est->mpisize);
+//    std::vector<double> levels(p4est->local_num_quadrants + ghost->ghosts.elem_count);
+
+//    p4est_locidx_t count = 0;
+//    for (p4est_topidx_t tr_it = p4est->first_local_tree; tr_it <= p4est->last_local_tree; tr_it++)
+//    {
+//      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr_it);
+//      for(size_t q = 0; q<tree->quadrants.elem_count; q++){
+//        const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+//        levels[count++] = quad->level;
+//      }
+//    }
+//    for (size_t q = 0 ; q<ghost->ghosts.elem_count; q++){
+//      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+//      levels[count++] = quad->level;
+//    }
+
+//    my_p4est_vtk_write_all(p4est, nodes, ghost,
+//                           P4EST_TRUE, P4EST_TRUE,
+//                           0, 1, name,
+//                           VTK_CELL_DATA, "level", &levels[0]);
 
     w2.start("gather statistics");
     {
@@ -316,7 +406,7 @@ int main (int argc, char* argv[]){
     w2.start("hierarchy and node neighbors");
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
-    node_neighbors.init_neighbors();
+//    node_neighbors.init_neighbors();
     w2.stop(); w2.read_duration();
 
     // generate a bunch of random points
