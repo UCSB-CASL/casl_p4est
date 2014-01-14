@@ -16,8 +16,9 @@
 *.visit
 *.cproject
 *.project
-.DS_Store
-._.DS_Store
+*.DS_Store
+*._.DS_Store
+*.sw[op]
 
 # What directories to ignore
 [Dd]ebug/

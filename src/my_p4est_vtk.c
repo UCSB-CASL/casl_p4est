@@ -989,8 +989,7 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
   int                 numProcs = p4est->mpisize;
   FILE               *vtufile;
 
-
-
+	
   /* Have each proc write to its own file */
   snprintf (vtufilename, BUFSIZ, "%s_%04d.vtu", filename, procRank);
   vtufile = fopen (vtufilename, "ab");
@@ -1022,6 +1021,18 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
     char                pvtufilename[BUFSIZ];
     FILE               *pvtufile, *visitfile;
 
+		/* Paraview does not like absolute path in its .pvtu file (I have no idea why not!)
+	 	* so we need to extract just the filename without any directories */
+
+		char vtu_sourcename[BUFSIZ];
+		/* scan the filename in reverse to get the first '/' char */
+		size_t pv_end = strlen(filename)+1;
+		size_t pv_beg = pv_end;
+		while(pv_beg>0 && filename[pv_beg-1] != '/')
+			--pv_beg;
+	
+		memcpy(&vtu_sourcename[0], &filename[pv_beg], pv_end-pv_beg + 1)
+
     /* Reopen paraview master file for writing bottom half */
     snprintf (pvtufilename, BUFSIZ, "%s.pvtu", filename);
     pvtufile = fopen (pvtufilename, "ab");
@@ -1049,7 +1060,7 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
     /* Write data about the parallel pieces into both files */
     for (p = 0; p < numProcs; ++p) {
       fprintf (pvtufile,
-               "    <Piece Source=\"%s_%04d.vtu\"/>\n", filename, p);
+               "    <Piece Source=\"%s_%04d.vtu\"/>\n", vtu_sourcename, p);
       fprintf (visitfile, "%s_%04d.vtu\n", filename, p);
     }
     fprintf (pvtufile, "  </PUnstructuredGrid>\n");

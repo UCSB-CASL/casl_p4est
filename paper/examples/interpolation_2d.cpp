@@ -228,7 +228,7 @@ int main (int argc, char* argv[]){
     cmd.add_option("prefactor", "generate this number times number of local/ghost quadrants random points");
     cmd.add_option("repeat", "repeat the experiment this many times");
     cmd.add_option("write-points", "write csv information for the random points");
-    cmd.add_option("test", "type of test (weak = 0 and strong = 1)");
+    cmd.add_option("test", "type of test (weak = 0 and strong = 1, 2)");
     cmd.add_option("nc", "number of randomly placed circles");
     cmd.parse(argc, argv);
     cmd.print();
@@ -285,7 +285,7 @@ int main (int argc, char* argv[]){
 
     // Now refine the tree
     w2.start("refine");
-    if (test == 0){
+    if (test == 0){ // weak scaling test
       const int qmax              = cmd.get<int>("qmax");
       splitting_criteria_random_t random_data(lmin, lmax, qmin, qmax);
 
@@ -296,7 +296,7 @@ int main (int argc, char* argv[]){
         my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
         my_p4est_partition(p4est, NULL);
       }
-    } else if (test == 1){
+    } else if (test == 1){ // strong scaling test
       srand(0);
       double p_sum = 0;
       for (int i=lmin; i<lmax; i++)
@@ -329,7 +329,7 @@ int main (int argc, char* argv[]){
           my_p4est_partition(p4est, NULL);
         }
       }
-    } else {
+    } else { // strong scaling mode 2
       for (int it = 0; it <cmd.get<int>("itmax"); it++){
         RandomPoints p(1);
         splitting_criteria_cf_t cf_data(lmin, lmax, &p, 1.2);
@@ -406,7 +406,7 @@ int main (int argc, char* argv[]){
     w2.start("hierarchy and node neighbors");
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
-//    node_neighbors.init_neighbors();
+//    node_neighbors.init_neighbors(); /* decide if you want to initialize and cache the neighborhood information */
     w2.stop(); w2.read_duration();
 
     // generate a bunch of random points
