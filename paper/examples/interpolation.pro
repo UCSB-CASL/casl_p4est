@@ -1,24 +1,62 @@
-TEMPLATE = app
-CONFIG += console
+CONFIG -= console
 CONFIG -= app_bundle
 CONFIG -= qt qui
 
-P4EST_DIR  = $$(WORK)/soft/intel/p4est
-CASL_P4EST = $$(WORK)/casl_p4est
-
 # ----------------------------- Set configs parameters  ----------------------------- #
-CONFIG += intel log
+CONFIG += 3d office log
+
+CONFIG(stampede, stampede|office): {
+    CONFIG += intel
+    CASL_P4EST = $$(WORK)/casl_p4est
+
+    # p4est
+    P4EST_INCLUDES_DEBUG = $$(WORK)/soft/intel/p4est/debug/include
+    P4EST_INCLUDES_RELEASE = $$(WORK)/soft/intel/p4est/release/include
+    P4EST_LIBS_DEBUG = -L$$(WORK)/soft/intel/p4est/debug/lib -lp4est -lsc
+    P4EST_LIBS_RELEASE = -L$$(WORK)/soft/intel/p4est/release/lib -lp4est -lsc
+
+    # petsc -- WARNING, this is hardcoded, you might want to change to TACC macros?
+    TACC_PETSC_HOME = /opt/apps/intel13/mvapich2_1_9/petsc/3.4
+    TACC_PETSC_ARCH_RELEASE = sandybridge-cxx
+    TACC_PETSC_ARCH_DEBUG = sandybridge-cxxdebug
+    TACC_PETSC_LIB_RELEASE = $$TACC_PETSC_HOME/$$TACC_PETSC_ARC_RELEASE/lib
+    TACC_PETSC_LIB_DEBUG = $$TACC_PETSC_HOME/$$TACC_PETSC_ARC_DEBUG/lib
+
+    PETSC_INCLUDES_DEBUG = $$TACC_PETSC_HOME/include $$TACC_PETSC_HOME/$$TACC_PETSC_ARCH_DEBUG/include
+    PETSC_INCLUDES_RELEASE = $$TACC_PETSC_HOME/include $$TACC_PETSC_HOME/$$TACC_PETSC_ARCH_RELEASE/include
+    PETSC_LIBS_DEBUG = -Wl,-rpath,$$TACC_PETSC_LIB_DEBUG -L$$TACC_PETSC_LIB_DEBUG -lpetsc
+    PETSC_LIBS_RELEASE = -Wl,-rpath,$$TACC_PETSC_LIB_RELEASE -L$$TACC_PETSC_LIB_RELEASE -lpetsc
+}
+
+CONFIG(office, stampede|office): {
+    CONFIG += gcc
+    CASL_P4EST = /home/mohammad/casl_p4est
+
+    # p4est
+    P4EST_INCLUDES_DEBUG = /usr/local/p4est/debug/include
+    P4EST_INCLUDES_RELEASE = /usr/local/p4est/release/include
+    P4EST_LIBS_DEBUG = -L/usr/local/p4est/debug/lib -lp4est -lsc
+    P4EST_LIBS_RELEASE = -L/usr/local/p4est/release/lib -lp4est -lsc
+
+    # petsc -- WARNING, this is hardcoded, you might want to change to TACC macros?
+    PETSC_INCLUDES_DEBUG = /usr/local/petsc/debug/include
+    PETSC_INCLUDES_RELEASE = /usr/local/petsc/release/include
+    PETSC_LIBS_DEBUG = -L/usr/local/petsc/debug/lib -Wl,-rpath,/usr/local/petsc/debug/lib -lpetsc
+    PETSC_LIBS_RELEASE = -L/usr/local/petsc/release/lib -Wl,-rpath,/usr/local/petsc/release/lib -lpetsc
+
+    INCLUDEPATH += /usr/include/mpich2
+}
 
 # --------------------------------- Define configs  --------------------------------- #
 CONFIG(debug, debug|release): {
-    INCLUDEPATH += $$P4EST_DIR/debug/include 
-    LIBS += -L$$P4EST_DIR/debug/lib -lp4est -lsc
+    INCLUDEPATH += $$P4EST_INCLUDES_DEBUG $$PETSC_INCLUDES_DEBUG
+    LIBS += $$P4EST_LIBS_DEBUG $$PETSC_LIBS_DEBUG
     DEFINES += DEBUG CASL_THROWS P4EST_DEBUG
 }
 
 CONFIG(release, debug|release): {
-    INCLUDEPATH += $$P4EST_DIR/release/include $$PETSC_DIRrelease/include $$(TACC_PETSC_LIB)/../include
-    LIBS += -L$$P4EST_DIR/release/lib -lp4est -lsc    
+    INCLUDEPATH += $$P4EST_INCLUDES_RELEASE $$PETSC_INCLUDES_RELEASE
+    LIBS += $$P4EST_LIBS_RELEASE $$PETSC_LIBS_RELEASE
 }
 
 log{
@@ -27,10 +65,9 @@ log{
 
 DEFINES += GHOST_REMOTE_INTERPOLATION
 
-2d{
+CONFIG(2d, 2d|3d): {
 TARGET = interpolation_2d
-SOURCES +=\
-    interpolation_2d.cpp\
+SOURCES += interpolation_2d.cpp\
     $$CASL_P4EST/src/my_p4est_utils.cpp\
     $$CASL_P4EST/src/my_p4est_refine_coarsen.cpp\
     $$CASL_P4EST/src/my_p4est_vtk.c \
@@ -48,10 +85,9 @@ SOURCES +=\
     $$CASL_P4EST/src/Parser.cpp
 }
 
-3d{
+CONFIG(3d, 2d|3d): {
 TARGET = interpolation_3d
-SOURCES +=\
-    interpolation_3d.cpp\
+SOURCES += interpolation_3d.cpp\
     $$CASL_P4EST/src/my_p8est_utils.cpp\
     $$CASL_P4EST/src/my_p8est_refine_coarsen.cpp\
     $$CASL_P4EST/src/my_p8est_vtk.c \
@@ -69,11 +105,6 @@ SOURCES +=\
     $$CASL_P4EST/src/Parser.cpp
 }
 
-# -------------------------------- PETSc Options  -------------------------------- #
-# PETSc
-INCLUDEPATH += $$(TACC_PETSC_LIB)/../../include $$(TACC_PETSC_LIB)/../include
-LIBS += -Wl,-rpath,$$(TACC_PETSC_LIB) -L$$(TACC_PETSC_LIB) -lpetsc
-
 # ------------------------------- Compiler Options ------------------------------- #
 QMAKE_CC = mpicc
 QMAKE_CXX = mpicxx
@@ -82,11 +113,13 @@ QMAKE_LINK = mpicxx
 CONFIG(intel, intel|gcc):{
     QMAKE_CFLAGS_RELEASE += -fast -vec-report
     QMAKE_CXXFLAGS_RELEASE += -fast -vec-report
+    QMAKE_LFLAGS_RELEASE += -fast -vec-report
 }
 
 CONFIG(gcc, intel|gcc):{
     QMAKE_CFLAGS_RELEASE += -O3 -march="native"
     QMAKE_CXXFLAGS_RELEASE += -O3 -march="native"
+    QMAKE_LFLAGS_RELEASE += -O3 -march="native"
 }
 
 INCLUDEPATH += $$CASL_P4EST
