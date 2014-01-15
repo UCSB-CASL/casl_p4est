@@ -1031,7 +1031,7 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
 		while(pv_beg>0 && filename[pv_beg-1] != '/')
 			--pv_beg;
 	
-		memcpy(&vtu_sourcename[0], &filename[pv_beg], pv_end-pv_beg + 1)
+    memcpy(&vtu_sourcename[0], &filename[pv_beg], pv_end-pv_beg + 1);
 
     /* Reopen paraview master file for writing bottom half */
     snprintf (pvtufilename, BUFSIZ, "%s.pvtu", filename);
@@ -1042,8 +1042,6 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
 
       return -1;
     }
-
-
 
     /* Create a master file for visualization in Visit */
     snprintf (visitfilename, BUFSIZ, "%s.visit", filename);

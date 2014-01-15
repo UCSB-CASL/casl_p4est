@@ -200,6 +200,41 @@ void generate_random_points(const p4est_t* p4est, const my_p4est_hierarchy_t& hi
 void generate_random_points(const p4est_t *p4est, p4est_ghost_t *ghost, p4est_locidx_t num_local, p4est_locidx_t num_remote, std::vector<point_t> &points, bool write_points = false);
 void gather_remote_cells(const p4est_t *p4est, const my_p4est_hierarchy_t& hierarchy, std::vector<const HierarchyCell *> &remotes, std::vector<p4est_topidx_t> &r_trs, p4est_topidx_t tr, p4est_locidx_t q = 0);
 
+void mark_random_quadrants(p4est_t *p4est, splitting_criteria_marker_t& markers){
+
+  int lmax = markers.max_lvl;
+  int lmin = markers.min_lvl;
+
+  std::vector<double> s(lmax - lmin + 1);
+  double sum = 0;
+  for (int l=0; l<lmax-lmin+1; l++) {
+    s[l] = 1.0/sqrt(l+1.0);
+    sum += s[l];
+  }
+
+  for (int l=0; l<lmax-lmin+1; l++)
+    s[l] /= sum;
+
+  /* using 'volatile' keyword will prevent compiler to optimize the loop, ensuring that all processors
+   * will generate the same sequence of random numbers, thus ensuring that the final random forrest is
+   * independent of the number of processors
+   */
+  volatile p4est_bool_t refine;
+  for (p4est_gloidx_t i = 0; i<p4est->global_first_quadrant[p4est->mpirank]; i++)
+    refine = ranged_rand(0.,1.) < 0.5;
+  for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++){
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+    for (size_t qu = 0; qu < tree->quadrants.elem_count; qu++){
+      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, qu);
+      p4est_locidx_t q = qu + tree->quadrants_offset;
+
+      markers[q] = ranged_rand(0.,1.) < s[quad->level - lmin];
+    }
+  }
+  for (p4est_gloidx_t i = p4est->global_first_quadrant[p4est->mpirank+1]; i<p4est->global_num_quadrants; i++)
+    refine = ranged_rand(0.,1.) < 0.5;
+}
+
 std::string output_dir;
 
 int main (int argc, char* argv[]){
@@ -228,7 +263,7 @@ int main (int argc, char* argv[]){
     cmd.add_option("prefactor", "generate this number times number of local/ghost quadrants random points");
     cmd.add_option("repeat", "repeat the experiment this many times");
     cmd.add_option("write-points", "write csv information for the random points");
-    cmd.add_option("test", "type of test (weak = 0 and strong = 1, 2)");
+    cmd.add_option("test", "type of test (weak = 0 and strong = 1)");
     cmd.add_option("nc", "number of randomly placed circles");
     cmd.parse(argc, argv);
     cmd.print();
@@ -236,7 +271,7 @@ int main (int argc, char* argv[]){
     output_dir                  = cmd.get<std::string>("output-dir");
     const int lmin              = cmd.get("lmin", 2);
     const int lmax              = cmd.get("lmax", 10);
-    const int qmin              = cmd.get("qmin", 100);    
+    const int qmin              = cmd.get<int>("qmin");
     const int splits            = cmd.get("splits", 0);
     const int mode              = cmd.get("mode", 2);    
     const int prefactor         = cmd.get("prefactor", 50);
@@ -296,45 +331,14 @@ int main (int argc, char* argv[]){
         my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
         my_p4est_partition(p4est, NULL);
       }
-    } else if (test == 1){ // strong scaling test
-      srand(0);
-      double p_sum = 0;
-      for (int i=lmin; i<lmax; i++)
-        p_sum += 1.0/(i+1);
+    } else if (test == 1) { // strong scaling
+      while(p4est->global_num_quadrants < qmin){
+        // define a globally unique random refinement
+        splitting_criteria_marker_t markers(p4est, lmin, lmax);
+        mark_random_quadrants(p4est, markers);
 
-      int itermax = cmd.get<int>("itmax");
-      for (int iter = 0; iter<itermax; iter++){
-      for (int i=0; i<10; i++){
-          splitting_criteria_marker_t quad_markers(lmin, lmax);
-          p4est->user_pointer = &quad_markers;
-          p4est_gloidx_t qglo = ranged_rand_inclusive(0, p4est->global_num_quadrants-1);
-          double p = ranged_rand(0.0, 1.0);
-
-          if (qglo >= p4est->global_first_quadrant[p4est->mpirank] && qglo < p4est->global_first_quadrant[p4est->mpirank + 1]) { // belongs to us
-            p4est_locidx_t qloc  = qglo - p4est->global_first_quadrant[p4est->mpirank];
-            p4est_tree_t *tree = NULL;
-            for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++) {
-              tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
-              if (tree->quadrants_offset > qloc){
-                tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr - 1);
-                break;
-              }
-            }
-            const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, qloc - tree->quadrants_offset);
-            if (p < 1.0/(quad->level+1) / p_sum)
-              quad_markers.mark(quad);
-          }
-
-          my_p4est_refine(p4est, P4EST_FALSE, refine_marked_quadrants, NULL);
-          my_p4est_partition(p4est, NULL);
-        }
-      }
-    } else { // strong scaling mode 2
-      for (int it = 0; it <cmd.get<int>("itmax"); it++){
-        RandomPoints p(1);
-        splitting_criteria_cf_t cf_data(lmin, lmax, &p, 1.2);
-        p4est->user_pointer = &cf_data;
-        my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+        p4est->user_pointer = &markers;
+        my_p4est_refine(p4est, P4EST_FALSE, refine_marked_quadrants, NULL);
         my_p4est_partition(p4est, NULL);
       }
     }
