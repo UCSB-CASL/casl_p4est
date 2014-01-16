@@ -19,6 +19,7 @@
 *.DS_Store
 *._.DS_Store
 *.sw[op]
+*script*
 
 # What directories to ignore
 [Dd]ebug/

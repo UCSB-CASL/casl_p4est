@@ -3,7 +3,7 @@ CONFIG -= app_bundle
 CONFIG -= qt qui
 
 # ----------------------------- Set configs parameters  ----------------------------- #
-CONFIG += 3d office log
+CONFIG += log
 
 CONFIG(stampede, stampede|office): {
     CONFIG += intel
@@ -19,8 +19,8 @@ CONFIG(stampede, stampede|office): {
     TACC_PETSC_HOME = /opt/apps/intel13/mvapich2_1_9/petsc/3.4
     TACC_PETSC_ARCH_RELEASE = sandybridge-cxx
     TACC_PETSC_ARCH_DEBUG = sandybridge-cxxdebug
-    TACC_PETSC_LIB_RELEASE = $$TACC_PETSC_HOME/$$TACC_PETSC_ARC_RELEASE/lib
-    TACC_PETSC_LIB_DEBUG = $$TACC_PETSC_HOME/$$TACC_PETSC_ARC_DEBUG/lib
+    TACC_PETSC_LIB_RELEASE = $$TACC_PETSC_HOME/$$TACC_PETSC_ARCH_RELEASE/lib
+    TACC_PETSC_LIB_DEBUG = $$TACC_PETSC_HOME/$$TACC_PETSC_ARCH_DEBUG/lib
 
     PETSC_INCLUDES_DEBUG = $$TACC_PETSC_HOME/include $$TACC_PETSC_HOME/$$TACC_PETSC_ARCH_DEBUG/include
     PETSC_INCLUDES_RELEASE = $$TACC_PETSC_HOME/include $$TACC_PETSC_HOME/$$TACC_PETSC_ARCH_RELEASE/include
@@ -63,8 +63,6 @@ log{
     DEFINES += CASL_LOG_EVENTS
 }
 
-DEFINES += GHOST_REMOTE_INTERPOLATION
-
 CONFIG(2d, 2d|3d): {
 TARGET = interpolation_2d
 SOURCES += interpolation_2d.cpp\
@@ -105,15 +103,22 @@ SOURCES += interpolation_3d.cpp\
     $$CASL_P4EST/src/Parser.cpp
 }
 
+ghost{
+	DEFINES+=GHOST_REMOTE_INTERPOLATION
+	CONFIG(2d, 2d|3d): TARGET = interpolation_2d_ghost_remote
+	CONFIG(3d, 2d|3d): TARGET = interpolation_3d_ghost_remote
+}
 # ------------------------------- Compiler Options ------------------------------- #
 QMAKE_CC = mpicc
 QMAKE_CXX = mpicxx
 QMAKE_LINK = mpicxx
 
 CONFIG(intel, intel|gcc):{
-    QMAKE_CFLAGS_RELEASE += -fast -vec-report
-    QMAKE_CXXFLAGS_RELEASE += -fast -vec-report
-    QMAKE_LFLAGS_RELEASE += -fast -vec-report
+    QMAKE_CFLAGS_RELEASE += -fast -vec-report0
+    QMAKE_CXXFLAGS_RELEASE += -fast -vec-report0
+		# for whatever reason intel compiler does not like it when -fast is passed to the linker
+		# and cannot find the petsc lib! "-fast" is for the most part equal to "-O3 -xHost -ipo"
+    QMAKE_LFLAGS_RELEASE += -vec-report0 -O3 -xHost -ipo 
 }
 
 CONFIG(gcc, intel|gcc):{
@@ -139,3 +144,6 @@ commit.commands = git co run/stampede; \
      git ci -a -m \"Automatic commit\"; 
 
 QMAKE_EXTRA_TARGETS += commit
+
+# -------------------------------- Print CONFIG -------------------------------- #
+message("Config options set by qmake:" $$CONFIG)
