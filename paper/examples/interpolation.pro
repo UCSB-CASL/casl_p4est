@@ -64,7 +64,11 @@ log{
 }
 
 CONFIG(2d, 2d|3d): {
-TARGET = interpolation_2d
+CONFIG(profile): {
+	TARGET = interpolation_2d.prof
+} else {
+	TARGET = interpolation_2d
+}
 SOURCES += interpolation_2d.cpp\
     $$CASL_P4EST/src/my_p4est_utils.cpp\
     $$CASL_P4EST/src/my_p4est_refine_coarsen.cpp\
@@ -84,7 +88,11 @@ SOURCES += interpolation_2d.cpp\
 }
 
 CONFIG(3d, 2d|3d): {
-TARGET = interpolation_3d
+CONFIG(profile):{
+	TARGET = interpolation_3d.prof
+} else {
+	TARGET = interpolation_3d
+}
 SOURCES += interpolation_3d.cpp\
     $$CASL_P4EST/src/my_p8est_utils.cpp\
     $$CASL_P4EST/src/my_p8est_refine_coarsen.cpp\
@@ -105,10 +113,21 @@ SOURCES += interpolation_3d.cpp\
 
 ghost{
 	DEFINES+=GHOST_REMOTE_INTERPOLATION
-	CONFIG(2d, 2d|3d): TARGET = interpolation_2d_ghost_remote
-	CONFIG(3d, 2d|3d): TARGET = interpolation_3d_ghost_remote
+	CONFIG(profile): {
+		CONFIG(2d, 2d|3d): TARGET = interpolation_2d_ghost_remote.prof
+		CONFIG(3d, 2d|3d): TARGET = interpolation_3d_ghost_remote.prof
+	} else {
+ 		CONFIG(2d, 2d|3d): TARGET = interpolation_2d_ghost_remote
+		CONFIG(3d, 2d|3d): TARGET = interpolation_3d_ghost_remote
+	}
 }
 # ------------------------------- Compiler Options ------------------------------- #
+CONFIG(profile):{
+	QMAKE_LFLAGS += -g
+	QMAKE_CFLAGS += -g
+	QMAKE_CXXFLAGS += -g
+} 
+
 QMAKE_CC = mpicc
 QMAKE_CXX = mpicxx
 QMAKE_LINK = mpicxx
