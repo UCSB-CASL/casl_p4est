@@ -32,6 +32,7 @@
 #include <src/point2.h>
 #endif
 
+#include <src/ipm_logging.h>
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <src/CASL_math.h>
@@ -329,7 +330,9 @@ int main (int argc, char* argv[]){
       while (p4est->local_num_quadrants < random_data.max_quads){
 
         my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
+        
         my_p4est_partition(p4est, NULL);
+        
       }
     } else if (test == 1) { // strong scaling
       while(p4est->global_num_quadrants < qmin){
@@ -339,7 +342,9 @@ int main (int argc, char* argv[]){
 
         p4est->user_pointer = &markers;
         my_p4est_refine(p4est, P4EST_FALSE, refine_marked_quadrants, NULL);
+        
         my_p4est_partition(p4est, NULL);
+        
       }
     }
     for (int n=0; n<splits; n++)
@@ -349,17 +354,23 @@ int main (int argc, char* argv[]){
 
     // Finally re-partition
     w2.start("partition");
+    
     my_p4est_partition(p4est, NULL);
+    
     w2.stop(); w2.read_duration();
 
     // Create the ghost structure
     w2.start("ghost");
+    
     p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+    
     w2.stop(); w2.read_duration();
 
     // generate the node data structure
     w2.start("creating node structure");
+    
     p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
+    
     w2.stop(); w2.read_duration();
 
 //    char name[1024];
@@ -424,6 +435,8 @@ int main (int argc, char* argv[]){
       num_local = p4est->local_num_quadrants;
       num_remote = ghost->ghosts.elem_count;
     }
+
+    
 #ifdef GHOST_REMOTE_INTERPOLATION
     if (p4est->mpisize == 1)
       generate_random_points(p4est, ghost, prefactor*num_local, 0, points, write_points);
@@ -439,6 +452,7 @@ int main (int argc, char* argv[]){
     else
       generate_random_points(p4est, hierarchy, prefactor*(1-alpha)*num_local, prefactor*alpha*num_local, points, write_points);
 #endif    
+    
     w2.stop(); w2.read_duration();
 
     // construct the interpolating function
@@ -462,8 +476,10 @@ int main (int argc, char* argv[]){
       w3.start("interpolation all");
       w2.start("constructing interpolation");
       ierr = PetscLogEventBegin(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
-      ierr = PetscLogEventBegin(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);
-      InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, brick, &node_neighbors);
+      ierr = PetscLogEventBegin(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);      
+      
+      InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, brick, &node_neighbors);      
+
       switch (mode){
       case 0:
         interp.set_input_parameters(u, linear);
@@ -478,9 +494,11 @@ int main (int argc, char* argv[]){
         throw std::runtime_error("[ERROR]: invalid interpolation method");
       }      
       ierr = PetscLogEventEnd(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);
+      
       w2.stop(); w2.read_duration();
 
       w2.start("adding points");
+      
       ierr = PetscLogEventBegin(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
       std::vector<double> f(points.size());
       for (size_t i=0; i<points.size(); i++){
@@ -492,10 +510,14 @@ int main (int argc, char* argv[]){
         interp.add_point_to_buffer(i, xyz);
       }
       ierr = PetscLogEventEnd(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
+
       w2.stop(); w2.read_duration();      
 
       w2.start("interpolating");
+      
       interp.interpolate(&f[0]);
+      
+
       ierr = PetscLogEventEnd(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
       w2.stop(); w2.read_duration();
       w3.stop(); w3.read_duration();      

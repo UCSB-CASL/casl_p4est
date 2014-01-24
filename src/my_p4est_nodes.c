@@ -298,7 +298,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_nodes_new, 0, 0, 0, 0); CHKERRXX(ierr);
-	IPMLogEventBegin("p4est_nodes_new");
+  IPMLogRegionBegin("p4est_nodes_new");
 
   const int           num_procs = p4est->mpisize;
   const int           rank = p4est->mpirank;
@@ -501,7 +501,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   }
   num_receivers = (int) receiver_ranks.elem_count;
   sender_ranks = P4EST_ALLOC (int, num_procs);
-  my_sc_notify ((int *) receiver_ranks.array, num_receivers,
+
+  sc_notify ((int *) receiver_ranks.array, num_receivers,
                 sender_ranks, &num_senders, p4est->mpicomm);
 
   //  P4EST_LDEBUGF ("Node query receivers %d senders %d\n",
@@ -964,7 +965,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   P4EST_ASSERT(p4est_is_valid(p4est));
 
   ierr = PetscLogEventEnd(log_my_p4est_nodes_new, 0, 0, 0, 0); CHKERRXX(ierr);
-	IPMLogEventEnd("p4est_nodes_new");
+  IPMLogRegionEnd("p4est_nodes_new");
 
   return nodes;
 }

@@ -30,9 +30,9 @@ my_p4est_new(MPI_Comm mpicomm, p4est_connectivity_t *connectivity, size_t data_s
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_new, 0, 0, 0, 0); CHKERRXX(ierr);
-	IPMLogEventBegin("p4est_new");
+	IPMLogRegionBegin("p4est_new");
   p4est_t *p4est = p4est_new(mpicomm, connectivity, data_size, init_fn, user_pointer);
-	IPMLogEventEnd("p4est_new");
+	IPMLogRegionEnd("p4est_new");
   ierr = PetscLogEventEnd(log_my_p4est_new, 0, 0, 0, 0); CHKERRXX(ierr);
 
   return p4est;
@@ -43,10 +43,11 @@ my_p4est_ghost_new(p4est_t *p4est, p4est_connect_type_t btype)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_ghost_new, 0, 0, 0, 0); CHKERRXX(ierr);
-	IPMLogEventBegin("p4est_ghost_new");
+	IPMLogRegionBegin("p4est_ghost_new");
   p4est_ghost_t *ghost = p4est_ghost_new(p4est, btype); CHKERRXX(ierr);
-	IPMLogEventEnd("p4est_ghost_new");
+	IPMLogRegionEnd("p4est_ghost_new");
   ierr = PetscLogEventEnd(log_my_p4est_ghost_new, 0, 0, 0, 0); CHKERRXX(ierr);
+  
 
   return ghost;
 }
@@ -56,9 +57,9 @@ my_p4est_refine(p4est_t *p4est, int refine_recursive, p4est_refine_t refine_fn, 
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_refine, 0, 0, 0, 0); CHKERRXX(ierr);
-	IPMLogEventBegin("p4est_refine");
+	IPMLogRegionBegin("p4est_refine");
   p4est_refine(p4est, refine_recursive, refine_fn, init_fn);
-	IPMLogEventEnd("p4est_refine");
+	IPMLogRegionEnd("p4est_refine");
   ierr = PetscLogEventEnd(log_my_p4est_refine, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -67,9 +68,9 @@ my_p4est_coarsen(p4est_t *p4est, int coarsen_recursive, p4est_coarsen_t coarsen_
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_coarsen, 0, 0, 0, 0); CHKERRXX(ierr);
-	IPMLogEventBegin("p4est_coarsen");
+	IPMLogRegionBegin("p4est_coarsen");
   p4est_coarsen(p4est, coarsen_recursive, coarsen_fn, init_fn);
-	IPMLogEventEnd("p4est_coarsen");
+	IPMLogRegionEnd("p4est_coarsen");
   ierr = PetscLogEventEnd(log_my_p4est_coarsen, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -78,9 +79,9 @@ my_p4est_partition(p4est_t *p4est, p4est_weight_t weight_fn)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
-	IPMLogEventBegin("p4est_partition");  
+	IPMLogRegionBegin("p4est_partition");  
   p4est_partition(p4est, weight_fn);
-	IPMLogEventEnd("p4est_partition");
+	IPMLogRegionEnd("p4est_partition");
   ierr = PetscLogEventEnd(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -89,9 +90,9 @@ my_sc_notify(int *receivers, int num_receivers, int *senders, int *num_senders, 
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_sc_notify, 0, 0, 0, 0); CHKERRXX(ierr);
-  IPMLogEventBegin("sc_notify");
+  IPMLogRegionBegin("sc_notify");
   sc_notify(receivers, num_receivers, senders, num_senders, mpicomm);
-  IPMLogEventEnd("sc_notify");
+  IPMLogRegionEnd("sc_notify");
   ierr = PetscLogEventEnd(log_my_sc_notify, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -100,8 +101,8 @@ my_sc_notify_allgather(int *receivers, int num_receivers, int *senders, int *num
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_sc_notify_allgather, 0, 0, 0, 0); CHKERRXX(ierr);
-  IPMLogEventBegin("sc_notify_allgather");
+  IPMLogRegionBegin("sc_notify_allgather");
   sc_notify_allgather(receivers, num_receivers, senders, num_senders, mpicomm);
-  IPMLogEventEnd("sc_notify_allgather");
+  IPMLogRegionEnd("sc_notify_allgather");
   ierr = PetscLogEventEnd(log_my_sc_notify_allgather, 0, 0, 0, 0); CHKERRXX(ierr);
 }

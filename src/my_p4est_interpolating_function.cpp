@@ -7,6 +7,7 @@
 #endif
 
 #include "petsc_compatibility.h"
+#include <sc_notify.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
 #include <mpi.h>
@@ -275,12 +276,13 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
 {	
   PetscErrorCode ierr;
 
-  ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
-  IPMLogEventBegin("interpolate");
-  
+  ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);  
+
   // begin sending point buffers
   if (!is_buffer_prepared)
-    send_point_buffers_begin();  
+    send_point_buffers_begin();
+
+  IPMLogRegionBegin("interpolate");
 
   // Get a pointer to the data
   double *Fi_p, *Fo_p = output_vec;
@@ -389,9 +391,13 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
       Fo_p[node_idx] = quadratic_non_oscillatory_interpolation(p4est_, tree_idx, quad, f, fdd, xyz);
   }
 
+  IPMLogRegionEnd("interpolate");
+  
   // begin recieving point buffers
   if (!is_buffer_prepared)
     recv_point_buffers_begin();
+
+  IPMLogRegionBegin("interpolate");
 
   // begin data send/recv for ghost and remote
   typedef std::map<int, std::vector<double> > data_transfer_map;
@@ -548,9 +554,8 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
 #endif
   }
 
-  ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
-
-	IPMLogEventEnd("interpolate");
+  IPMLogRegionEnd("interpolate");
+  ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);	
 }
 
 #ifdef P4_TO_P8
@@ -741,7 +746,7 @@ double InterpolatingFunctionNodeBase::operator ()(double x, double y) const
 void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 {
   ierr = PetscLogEventBegin(log_InterpolatingFunction_send_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
-  IPMLogEventBegin("send_buffer");	
+  IPMLogRegionBegin("send_point_buffer");
   int req_counter = 0;
 
   remote_transfer_map::iterator it = remote_send_buffer.begin(), end = remote_send_buffer.end();
@@ -750,7 +755,9 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 
   // notify the other processors
   int num_senders;
-  my_sc_notify_allgather(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);	
+  IPMLogRegionEnd("send_point_buffer");
+  my_sc_notify(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);	
+  IPMLogRegionBegin("send_point_buffer");
   remote_senders.resize(num_senders);
 	
   // Allocate enough requests slots
@@ -764,15 +771,15 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 
     MPI_Isend(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm, &remote_send_req[req_counter]);
   }
-				
-	IPMLogEventEnd("send_buffer");
+	
+  IPMLogRegionEnd("send_point_buffer");
   ierr = PetscLogEventEnd(log_InterpolatingFunction_send_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
 {
   ierr = PetscLogEventBegin(log_InterpolatingFunction_recv_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
-	IPMLogEventBegin("recv_buffer");
+  IPMLogRegionBegin("recv_point_buffer");
 
   // Allocate enough requests slots
   remote_recv_req.resize(remote_senders.size());
@@ -792,12 +799,13 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
     MPI_Irecv(&buff[0], msg_size, MPI_DOUBLE, remote_senders[i], remote_point_tag, p4est_->mpicomm, &remote_recv_req[i]);
   }
 
-	IPMLogEventEnd("recv_buffer");	
+  IPMLogRegionEnd("recv_point_buffer");
   ierr = PetscLogEventEnd(log_InterpolatingFunction_recv_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void InterpolatingFunctionNodeBase::compute_second_derivatives()
 {
+  IPMLogRegionBegin("compute_2nd_derv");
   // Allocate memory for second derivaties
 #ifdef P4_TO_P8
   if (Fxx_ == NULL && Fyy_ == NULL && Fzz_ == NULL)
@@ -817,4 +825,5 @@ void InterpolatingFunctionNodeBase::compute_second_derivatives()
 #else
   neighbors_->second_derivatives_central(input_vec_, Fxx_, Fyy_);
 #endif
+  IPMLogRegionEnd("compute_2nd_derv");
 }
