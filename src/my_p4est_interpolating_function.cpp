@@ -7,9 +7,9 @@
 #endif
 
 #include "petsc_compatibility.h"
-#include <sc_notify.h>
+#include <src/my_p4est_log_wrappers.h>
+#include <src/ipm_logging.h>
 #include <mpi.h>
-
 #include <fstream>
 #include <set>
 
@@ -270,14 +270,15 @@ void InterpolatingFunctionNodeBase::interpolate(Vec output_vec)
 }
 
 void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
-{
-  ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
+{	
+  PetscErrorCode ierr;
 
+  ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogEventBegin("interpolate");
+  
   // begin sending point buffers
   if (!is_buffer_prepared)
-    send_point_buffers_begin();
-
-  PetscErrorCode ierr;
+    send_point_buffers_begin();  
 
   // Get a pointer to the data
   double *Fi_p, *Fo_p = output_vec;
@@ -547,6 +548,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
 
   ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
+	IPMLogEventEnd("interpolate");
 }
 
 #ifdef P4_TO_P8
@@ -736,6 +738,7 @@ double InterpolatingFunctionNodeBase::operator ()(double x, double y) const
 
 void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 {
+  IPMLogEventBegin("send_buffer");	
   int req_counter = 0;
 
   remote_transfer_map::iterator it = remote_send_buffer.begin(), end = remote_send_buffer.end();
@@ -744,9 +747,9 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 
   // notify the other processors
   int num_senders;
-  sc_notify(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);
+  my_sc_notify(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);	
   remote_senders.resize(num_senders);
-
+	
   // Allocate enough requests slots
   remote_send_req.resize(remote_receivers.size());
 
@@ -758,10 +761,14 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 
     MPI_Isend(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm, &remote_send_req[req_counter]);
   }
+				
+	IPMLogEventEnd("send_buffer");
 }
 
 void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
 {
+	IPMLogEventBegin("recv_buffer");
+
   // Allocate enough requests slots
   remote_recv_req.resize(remote_senders.size());
 
@@ -779,6 +786,8 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
     // Receive the data
     MPI_Irecv(&buff[0], msg_size, MPI_DOUBLE, remote_senders[i], remote_point_tag, p4est_->mpicomm, &remote_recv_req[i]);
   }
+
+	IPMLogEventEnd("recv_buffer");	
 }
 
 void InterpolatingFunctionNodeBase::compute_second_derivatives()

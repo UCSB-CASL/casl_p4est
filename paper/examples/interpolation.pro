@@ -63,6 +63,10 @@ log{
     DEFINES += CASL_LOG_EVENTS
 }
 
+CONFIG(profile): {
+	DEFINES += IPM_LOG_EVENTS
+}
+
 CONFIG(2d, 2d|3d): {
 CONFIG(profile): {
 	TARGET = interpolation_2d.prof
@@ -82,7 +86,7 @@ SOURCES += interpolation_2d.cpp\
     $$CASL_P4EST/src/my_p4est_hierarchy.cpp \
     $$CASL_P4EST/src/my_p4est_node_neighbors.cpp \
     $$CASL_P4EST/src/my_p4est_quad_neighbor_nodes_of_node.cpp \
-    $$CASL_P4EST/src/my_p4est_log_wrappers.cpp \
+    $$CASL_P4EST/src/my_p4est_log_wrappers.c \
     $$CASL_P4EST/src/petsc_logging.cpp \
     $$CASL_P4EST/src/Parser.cpp
 }
@@ -106,7 +110,7 @@ SOURCES += interpolation_3d.cpp\
     $$CASL_P4EST/src/my_p8est_hierarchy.cpp \
     $$CASL_P4EST/src/my_p8est_node_neighbors.cpp \
     $$CASL_P4EST/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
-    $$CASL_P4EST/src/my_p8est_log_wrappers.cpp \
+    $$CASL_P4EST/src/my_p8est_log_wrappers.c \
     $$CASL_P4EST/src/petsc_logging.cpp \
     $$CASL_P4EST/src/Parser.cpp
 }
