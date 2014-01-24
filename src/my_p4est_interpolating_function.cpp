@@ -21,6 +21,8 @@
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
 extern PetscLogEvent log_InterpolatingFunction_interpolate;
+extern PetscLogEvent log_InterpolatingFunction_send_buffer;
+extern PetscLogEvent log_InterpolatingFunction_recv_buffer;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef  PetscLogFlops
@@ -738,6 +740,7 @@ double InterpolatingFunctionNodeBase::operator ()(double x, double y) const
 
 void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 {
+  ierr = PetscLogEventBegin(log_InterpolatingFunction_send_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
   IPMLogEventBegin("send_buffer");	
   int req_counter = 0;
 
@@ -747,7 +750,7 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 
   // notify the other processors
   int num_senders;
-  my_sc_notify(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);	
+  my_sc_notify_allgather(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);	
   remote_senders.resize(num_senders);
 	
   // Allocate enough requests slots
@@ -763,10 +766,12 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
   }
 				
 	IPMLogEventEnd("send_buffer");
+  ierr = PetscLogEventEnd(log_InterpolatingFunction_send_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
 {
+  ierr = PetscLogEventBegin(log_InterpolatingFunction_recv_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 	IPMLogEventBegin("recv_buffer");
 
   // Allocate enough requests slots
@@ -788,6 +793,7 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
   }
 
 	IPMLogEventEnd("recv_buffer");	
+  ierr = PetscLogEventEnd(log_InterpolatingFunction_recv_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void InterpolatingFunctionNodeBase::compute_second_derivatives()
