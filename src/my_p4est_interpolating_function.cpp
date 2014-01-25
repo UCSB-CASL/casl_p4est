@@ -47,11 +47,11 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
     Fzz_(NULL),
 #endif
     local_derivatives(false),
-    remote_senders(p4est->mpisize, -1),
     is_buffer_prepared(false),
     notify_send_req(p4est->mpisize),
     notify_recv_req(p4est->mpisize),
-    notify_send_buf(p4est_->mpisize)
+    notify_send_buf(p4est->mpisize),
+    notify_recv_buf(p4est->mpisize)
 {
   // compute domain sizes
   double *v2c = p4est_->connectivity->vertices;
@@ -77,11 +77,11 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
         Fzz_(NULL),
 #endif
     local_derivatives(false),
-    remote_senders(p4est->mpisize, -1),
     is_buffer_prepared(false),
     notify_send_req(p4est->mpisize),
     notify_recv_req(p4est->mpisize),
-    notify_send_buf(p4est->mpisize)
+    notify_send_buf(p4est->mpisize),
+    notify_recv_buf(p4est->mpisize)
 {
   // compute domain sizes
   double *v2c = p4est_->connectivity->vertices;
@@ -762,18 +762,27 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
   IPMLogRegionEnd("send_point_buffer");
   
   // notify the other processors
-  IPMLogRegionBegin("notifyig others");
+  IPMLogRegionBegin("notifyig_others");
   for (int r = 0; r<p4est_->mpisize; ++r)
     notify_send_buf[r] = P4EST_FALSE;
 
   for (size_t i=0; i<remote_receivers.size(); ++i)
     notify_send_buf[remote_receivers[i]] = P4EST_TRUE;
 
+  // PetscSynchronizedPrintf(p4est_->mpicomm, "[%d]",p4est_->mpirank);
+  // for (int r = 0; r<p4est_->mpisize; ++r)
+  //   PetscSynchronizedPrintf(p4est_->mpicomm, "%d ",(int)notify_send_buf[r]);
+  // PetscSynchronizedPrintf(p4est_->mpicomm, "\n",p4est_->mpirank);
+  // PetscSynchronizedFlush(p4est_->mpicomm);
+
   for (int r = 0; r<p4est_->mpisize; ++r){
     MPI_Isend(&notify_send_buf[r], 1, MPI_CHAR, r, remote_notify_tag, p4est_->mpicomm, &notify_send_req[r]);
     MPI_Irecv(&notify_recv_buf[r], 1, MPI_CHAR, r, remote_notify_tag, p4est_->mpicomm, &notify_recv_req[r]);
   }
-  IPMLogRegionEnd("notifyig others");  
+  IPMLogRegionEnd("notifyig_others");  
+
+  // PetscSynchronizedPrintf(p4est_->mpicomm, "[%d] send_done\n",p4est_->mpirank);
+  // PetscSynchronizedFlush(p4est_->mpicomm);
 
   // int num_senders;  
   // my_sc_notify(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);	
@@ -801,7 +810,7 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
   ierr = PetscLogEventBegin(log_InterpolatingFunction_recv_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 
   // make sure we have been properly notified!
-  IPMLogRegionBegin("notifyig others");
+  IPMLogRegionBegin("notifyig_others");
   MPI_Waitall(p4est_->mpisize, &notify_send_req[0], MPI_STATUSES_IGNORE);
   MPI_Waitall(p4est_->mpisize, &notify_recv_req[0], MPI_STATUSES_IGNORE);
 
@@ -809,9 +818,11 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
   for (int r = 0; r<p4est_->mpisize; ++r)
     if (P4EST_TRUE == notify_recv_buf[r])
       remote_senders.push_back(r);
-  IPMLogRegionEnd("notifyig others");
 
+  // PetscSynchronizedPrintf(p4est_->mpicomm, "[%d] recv_done\n", p4est_->mpirank);
+  // PetscSynchronizedFlush(p4est_->mpicomm);  
 
+  IPMLogRegionEnd("notifyig_others");
   IPMLogRegionBegin("recv_point_buffer");
 
   // Allocate enough requests slots
