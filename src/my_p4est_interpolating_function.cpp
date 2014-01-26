@@ -403,6 +403,14 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   if (!is_buffer_prepared)
     recv_point_buffers_begin();
 
+/*
+	PetscSynchronizedPrintf(p4est_->mpicomm, "[%2d] %2d pairs (rank, elem): ", p4est_->mpirank, remote_senders.size());
+	for (size_t i = 0; i<remote_senders.size(); i++)
+		PetscSynchronizedPrintf(p4est_->mpicomm, "(%2d, %5d) ", remote_senders[i], remote_recv_buffer[remote_senders[i]].size());
+	PetscSynchronizedPrintf(p4est_->mpicomm, "\n");
+	PetscSynchronizedFlush(p4est_->mpicomm);
+*/
+	
   IPMLogRegionBegin("interpolate");
 
   // begin data send/recv for ghost and remote
@@ -496,7 +504,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
           std::ostringstream oss;
           oss << "[ERROR]: Point (" << xyz[0] << "," << xyz[1] << 
 #ifdef P4_TO_P8
-            xyz[2] <<
+            "," << xyz[2] <<
 #endif
               ") was flagged as a remote point to either belong to processor "
               << p4est_->mpirank << " or be in its ghost layer, both of which"
@@ -759,6 +767,7 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
   for (;it != end; ++it)
     remote_receivers.push_back(it->first);
 
+/*
   IPMLogRegionEnd("send_point_buffer");
   
   // notify the other processors
@@ -780,14 +789,15 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
     MPI_Irecv(&notify_recv_buf[r], 1, MPI_CHAR, r, remote_notify_tag, p4est_->mpicomm, &notify_recv_req[r]);
   }
   IPMLogRegionEnd("notifyig_others");  
-
+*/
   // PetscSynchronizedPrintf(p4est_->mpicomm, "[%d] send_done\n",p4est_->mpirank);
   // PetscSynchronizedFlush(p4est_->mpicomm);
-
-  // int num_senders;  
-  // my_sc_notify(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);	
-  // remote_senders.resize(num_senders);
-	
+///*
+  int num_senders; 
+	remote_senders.resize(p4est_->mpisize); 
+  my_sc_notify(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);	
+  remote_senders.resize(num_senders);
+//*/	
   IPMLogRegionBegin("send_point_buffer");
   // Allocate enough requests slots
   remote_send_req.resize(remote_receivers.size());
@@ -800,6 +810,9 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 
     MPI_Isend(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm, &remote_send_req[req_counter]);
   }
+
+	// Ensure everyone has called MPI_Isend
+	MPI_Barrier(p4est_->mpicomm);
 	
   IPMLogRegionEnd("send_point_buffer");
   ierr = PetscLogEventEnd(log_InterpolatingFunction_send_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -809,6 +822,7 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
 {
   ierr = PetscLogEventBegin(log_InterpolatingFunction_recv_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 
+/*
   // make sure we have been properly notified!
   IPMLogRegionBegin("notifyig_others");
   MPI_Waitall(p4est_->mpisize, &notify_send_req[0], MPI_STATUSES_IGNORE);
@@ -823,8 +837,33 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
   // PetscSynchronizedFlush(p4est_->mpicomm);  
 
   IPMLogRegionEnd("notifyig_others");
+*/
   IPMLogRegionBegin("recv_point_buffer");
+/*
+	int is_msg_pending;
+	MPI_Status st;
+	MPI_Request req;
+	MPI_Iprobe(MPI_ANY_SOURCE, remote_point_tag, p4est_->mpicomm, &is_msg_pending, &st);
+	while(is_msg_pending){
+		int sender = st.MPI_SOURCE;
+    std::vector<double>& buff = remote_recv_buffer[sender];
+		remote_senders.push_back(sender);
 
+		// get the msg size
+		int msg_size;
+		MPI_Get_count(&st, MPI_DOUBLE, &msg_size);
+    buff.resize(msg_size);
+
+    // Receive the data
+    MPI_Irecv(&buff[0], msg_size, MPI_DOUBLE, sender, remote_point_tag, p4est_->mpicomm, &req);
+ 		remote_recv_req.push_back(req);
+
+		// probe for the next msg
+		MPI_Iprobe(MPI_ANY_SOURCE, remote_point_tag, p4est_->mpicomm, &is_msg_pending, &st);
+	}
+
+*/
+///*
   // Allocate enough requests slots
   remote_recv_req.resize(remote_senders.size());
 
@@ -842,7 +881,7 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
     // Receive the data
     MPI_Irecv(&buff[0], msg_size, MPI_DOUBLE, remote_senders[i], remote_point_tag, p4est_->mpicomm, &remote_recv_req[i]);
   }
-
+//*/
   IPMLogRegionEnd("recv_point_buffer");
   ierr = PetscLogEventEnd(log_InterpolatingFunction_recv_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 }
