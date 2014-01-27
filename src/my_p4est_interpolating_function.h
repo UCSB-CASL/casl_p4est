@@ -71,11 +71,13 @@ class InterpolatingFunctionNodeBase: public CF_2
   std::vector<int> remote_receivers, remote_senders;
   bool is_buffer_prepared;
 
-  std::vector<MPI_Request> remote_send_req, remote_recv_req;
+  std::vector<MPI_Request> remote_send_req, remote_recv_req, notify_send_req, notify_recv_req;
+  std::vector<char> notify_send_buf, notify_recv_buf;
 
   enum {
     remote_point_tag,
-    remote_data_tag
+    remote_data_tag,
+    remote_notify_tag
   };
 
   // methods
