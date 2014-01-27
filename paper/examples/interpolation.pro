@@ -30,7 +30,7 @@ CONFIG(stampede, stampede|office): {
 
 CONFIG(office, stampede|office): {
     CONFIG += gcc
-    CASL_P4EST = /home/mohammad/casl_p4est
+    CASL_P4EST = $(HOME)/casl_p4est
 
     # p4est
     P4EST_INCLUDES_DEBUG = /usr/local/p4est/debug/include
@@ -52,6 +52,7 @@ CONFIG(debug, debug|release): {
     INCLUDEPATH += $$P4EST_INCLUDES_DEBUG $$PETSC_INCLUDES_DEBUG
     LIBS += $$P4EST_LIBS_DEBUG $$PETSC_LIBS_DEBUG
     DEFINES += DEBUG CASL_THROWS P4EST_DEBUG
+
 }
 
 CONFIG(release, debug|release): {
@@ -125,6 +126,7 @@ ghost{
 		CONFIG(3d, 2d|3d): TARGET = interpolation_3d_ghost_remote
 	}
 }
+
 # ------------------------------- Compiler Options ------------------------------- #
 CONFIG(profile):{
 	QMAKE_LFLAGS += -g

@@ -125,6 +125,9 @@ int main (int argc, char* argv[]){
 
   mpi_context_t mpi_context, *mpi = &mpi_context;
   mpi->mpicomm  = MPI_COMM_WORLD;
+  Session mpi_session;
+  mpi_session.init(argc, argv, mpi->mpicomm);
+
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   p4est_ghost_t      *ghost;
@@ -140,9 +143,6 @@ int main (int argc, char* argv[]){
   circle circ(0.5, 0.5, .3);
 #endif
   splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 7), &circ, 1.3);
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
 
   parStopWatch w1, w2;
   w1.start("total time");
@@ -203,7 +203,7 @@ int main (int argc, char* argv[]){
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
   // loop over time
-  double tf = 10;
+  double tf = 1;
   int tc = 0;
   int save = 5;
   double dt = 0.05;
@@ -238,6 +238,7 @@ int main (int argc, char* argv[]){
     // reinitialize
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
+    node_neighbors.init_neighbors();
     my_p4est_level_set level_set(&node_neighbors);
     level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
 

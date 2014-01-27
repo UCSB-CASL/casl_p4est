@@ -32,20 +32,20 @@ extern PetscLogEvent log_InterpolatingFunction_recv_buffer;
 
 #ifdef P4EST_POINT_LOOKUP
 #ifdef P4_TO_P8
-  #error "p4est point lookup is not available in 3D"
+#error "p4est point lookup is not available in 3D"
 #endif
 #endif
 
 InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
-                                             p4est_nodes_t *nodes,
-                                             p4est_ghost_t *ghost,
-                                             my_p4est_brick_t *myb)
+                                                             p4est_nodes_t *nodes,
+                                                             p4est_ghost_t *ghost,
+                                                             my_p4est_brick_t *myb)
   : method_(linear),
     p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), neighbors_(NULL),
     Fxx_(NULL), Fyy_(NULL),
-#ifdef P4_TO_P8
+    #ifdef P4_TO_P8
     Fzz_(NULL),
-#endif
+    #endif
     local_derivatives(false),
     is_buffer_prepared(false),
     notify_send_req(p4est->mpisize),
@@ -66,16 +66,16 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
 }
 
 InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
-                                             p4est_nodes_t *nodes,
-                                             p4est_ghost_t *ghost,
-                                             my_p4est_brick_t *myb,
-                                             const my_p4est_node_neighbors_t *neighbors)
+                                                             p4est_nodes_t *nodes,
+                                                             p4est_ghost_t *ghost,
+                                                             my_p4est_brick_t *myb,
+                                                             const my_p4est_node_neighbors_t *neighbors)
   : method_(quadratic_non_oscillatory),
     p4est_(p4est), nodes_(nodes), ghost_(ghost), myb_(myb), neighbors_(neighbors),
     Fxx_(NULL), Fyy_(NULL),
-#ifdef P4_TO_P8
-        Fzz_(NULL),
-#endif
+    #ifdef P4_TO_P8
+    Fzz_(NULL),
+    #endif
     local_derivatives(false),
     is_buffer_prepared(false),
     notify_send_req(p4est->mpisize),
@@ -110,12 +110,12 @@ InterpolatingFunctionNodeBase::~InterpolatingFunctionNodeBase()
 void InterpolatingFunctionNodeBase::add_point_to_buffer(p4est_locidx_t node_locidx, const double *xyz)
 {
   /* first clip the coordinates */
-  double xyz_clip [] = 
+  double xyz_clip [] =
   {
     xyz[0], xyz[1]
-#ifdef P4_TO_P8
+  #ifdef P4_TO_P8
     , xyz[2]
-#endif
+  #endif
   };
 
   // clip to bounding box
@@ -232,17 +232,17 @@ void InterpolatingFunctionNodeBase::add_point_to_buffer(p4est_locidx_t node_loci
   }
 
 #ifdef P4EST_POINT_LOOKUP
-    sc_array_destroy(remote_matches);
+  sc_array_destroy(remote_matches);
 #endif
   // set the flag to false so the prepare buffer method will be called
   is_buffer_prepared = false;
 }
 
 void InterpolatingFunctionNodeBase::set_input_parameters(Vec input_vec, interpolation_method method, Vec Fxx, Vec Fyy
-#ifdef P4_TO_P8
-                                                 , Vec Fzz
-#endif
-                                                 )
+                                                         #ifdef P4_TO_P8
+                                                         , Vec Fzz
+                                                         #endif
+                                                         )
 {
   method_ = method;
 
@@ -253,17 +253,17 @@ void InterpolatingFunctionNodeBase::set_input_parameters(Vec input_vec, interpol
   // compute the second derivates if necessary
   if (method_ == quadratic || method_ == quadratic_non_oscillatory){
     if (Fxx != NULL && Fyy != NULL
-#ifdef P4_TO_P8
-     && Fzz != NULL
-#endif
-       )
+    #ifdef P4_TO_P8
+        && Fzz != NULL
+    #endif
+        )
     {
-       Fxx_ = Fxx;
-       Fyy_ = Fyy;
+      Fxx_ = Fxx;
+      Fyy_ = Fyy;
 #ifdef P4_TO_P8
-       Fzz_ = Fzz;
+      Fzz_ = Fzz;
 #endif
-       local_derivatives = false;
+      local_derivatives = false;
     } else {
       compute_second_derivatives();
     }
@@ -282,7 +282,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
 {	
   PetscErrorCode ierr;
 
-  ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);  
+  ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
   // begin sending point buffers
   if (!is_buffer_prepared)
@@ -326,7 +326,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   // Get access to the node numbering of all quadrants
   p4est_locidx_t *q2n = nodes_->local_nodes;
   double f  [P4EST_CHILDREN];
-  double fdd[P4EST_DIM*P4EST_CHILDREN]; // fxx[0] = fdd[0], fyy[0] = fdd[1], fzz[0] = fdd[2], fxx[1] = fdd[3], ... 
+  double fdd[P4EST_DIM*P4EST_CHILDREN]; // fxx[0] = fdd[0], fyy[0] = fdd[1], fzz[0] = fdd[2], fxx[1] = fdd[3], ...
 
   // Do the interpolation for local points
   for (size_t i=0; i<local_point_buffer.size(); ++i)
@@ -403,14 +403,6 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   if (!is_buffer_prepared)
     recv_point_buffers_begin();
 
-/*
-	PetscSynchronizedPrintf(p4est_->mpicomm, "[%2d] %2d pairs (rank, elem): ", p4est_->mpirank, remote_senders.size());
-	for (size_t i = 0; i<remote_senders.size(); i++)
-		PetscSynchronizedPrintf(p4est_->mpicomm, "(%2d, %5d) ", remote_senders[i], remote_recv_buffer[remote_senders[i]].size());
-	PetscSynchronizedPrintf(p4est_->mpicomm, "\n");
-	PetscSynchronizedFlush(p4est_->mpicomm);
-*/
-	
   IPMLogRegionBegin("interpolate");
 
   // begin data send/recv for ghost and remote
@@ -441,12 +433,12 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
         double *xyz = &xyz_recv[P4EST_DIM*i];
 
         /* first clip the coordinates */
-        double xyz_clip [] = 
+        double xyz_clip [] =
         {
           xyz[0], xyz[1]
-#ifdef P4_TO_P8
+  #ifdef P4_TO_P8
           , xyz[2]
-#endif
+  #endif
         };
 
         // clip to bounding box
@@ -502,19 +494,19 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
                   * this MUST be a bug or mistake so simply throw.
                   */
           std::ostringstream oss;
-          oss << "[ERROR]: Point (" << xyz[0] << "," << xyz[1] << 
-#ifdef P4_TO_P8
-            "," << xyz[2] <<
-#endif
-              ") was flagged as a remote point to either belong to processor "
+          oss << "[ERROR]: Point (" << xyz[0] << "," << xyz[1] <<
+       #ifdef P4_TO_P8
+                 xyz[2] <<
+       #endif
+                 ") was flagged as a remote point to either belong to processor "
               << p4est_->mpirank << " or be in its ghost layer, both of which"
                  " have failed. Found rank is = " << rank_found
               << " and remote_macthes->elem_count = "
-#ifdef P4EST_POINT_LOOKUP
+       #ifdef P4EST_POINT_LOOKUP
               << remote_matches->elem_count << ". This is most certainly a bug."
-#else
+       #else
               << remote_matches.size() << ". This is most certainly a bug."
-#endif
+       #endif
               << std::endl;
           throw std::runtime_error(oss.str());
         }
@@ -569,7 +561,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   }
 
   IPMLogRegionEnd("interpolate");
-  ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);	
+  ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 #ifdef P4_TO_P8
@@ -583,18 +575,18 @@ double InterpolatingFunctionNodeBase::operator ()(double x, double y) const
   double xyz[] =
   {
     x, y
-#ifdef P4_TO_P8
+  #ifdef P4_TO_P8
     , z
-#endif
+  #endif
   };
 
   /* first clip the coordinates */
-  double xyz_clip [] = 
+  double xyz_clip [] =
   {
     x, y
-#ifdef P4_TO_P8
+  #ifdef P4_TO_P8
     , z
-#endif
+  #endif
   };
 
   // clip to bounding box
@@ -743,12 +735,12 @@ double InterpolatingFunctionNodeBase::operator ()(double x, double y) const
 
     std::ostringstream oss;
     oss << "[ERROR]: Point (" << x << "," << y <<
-#ifdef P4_TO_P8
+       #ifdef P4_TO_P8
            "," << z <<
-#endif
+       #endif
            ") does not belong to "
            "processor " << p4est_->mpirank << ". Found rank = " << rank_found <<
-#ifdef P4EST_POINT_LOOKUP
+       #ifdef P4EST_POINT_LOOKUP
            " and remote_macthes.size = " << remote_matches->elem_count << std::endl;
 #else
            " and remote_macthes.size = " << remote_matches.size() << std::endl;
@@ -767,38 +759,6 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
   for (;it != end; ++it)
     remote_receivers.push_back(it->first);
 
-/*
-  IPMLogRegionEnd("send_point_buffer");
-  
-  // notify the other processors
-  IPMLogRegionBegin("notifyig_others");
-  for (int r = 0; r<p4est_->mpisize; ++r)
-    notify_send_buf[r] = P4EST_FALSE;
-
-  for (size_t i=0; i<remote_receivers.size(); ++i)
-    notify_send_buf[remote_receivers[i]] = P4EST_TRUE;
-
-  // PetscSynchronizedPrintf(p4est_->mpicomm, "[%d]",p4est_->mpirank);
-  // for (int r = 0; r<p4est_->mpisize; ++r)
-  //   PetscSynchronizedPrintf(p4est_->mpicomm, "%d ",(int)notify_send_buf[r]);
-  // PetscSynchronizedPrintf(p4est_->mpicomm, "\n",p4est_->mpirank);
-  // PetscSynchronizedFlush(p4est_->mpicomm);
-
-  for (int r = 0; r<p4est_->mpisize; ++r){
-    MPI_Isend(&notify_send_buf[r], 1, MPI_CHAR, r, remote_notify_tag, p4est_->mpicomm, &notify_send_req[r]);
-    MPI_Irecv(&notify_recv_buf[r], 1, MPI_CHAR, r, remote_notify_tag, p4est_->mpicomm, &notify_recv_req[r]);
-  }
-  IPMLogRegionEnd("notifyig_others");  
-*/
-  // PetscSynchronizedPrintf(p4est_->mpicomm, "[%d] send_done\n",p4est_->mpirank);
-  // PetscSynchronizedFlush(p4est_->mpicomm);
-///*
-  int num_senders; 
-	remote_senders.resize(p4est_->mpisize); 
-  my_sc_notify(&remote_receivers[0], remote_receivers.size(), &remote_senders[0], &num_senders, p4est_->mpicomm);	
-  remote_senders.resize(num_senders);
-//*/	
-  IPMLogRegionBegin("send_point_buffer");
   // Allocate enough requests slots
   remote_send_req.resize(remote_receivers.size());
 
@@ -811,9 +771,9 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
     MPI_Isend(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm, &remote_send_req[req_counter]);
   }
 
-	// Ensure everyone has called MPI_Isend
-	MPI_Barrier(p4est_->mpicomm);
-	
+  // to ensure that all processes have finished calling MPI_Isend
+  MPI_Barrier(p4est_->mpicomm);
+
   IPMLogRegionEnd("send_point_buffer");
   ierr = PetscLogEventEnd(log_InterpolatingFunction_send_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -822,66 +782,28 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
 {
   ierr = PetscLogEventBegin(log_InterpolatingFunction_recv_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 
-/*
-  // make sure we have been properly notified!
-  IPMLogRegionBegin("notifyig_others");
-  MPI_Waitall(p4est_->mpisize, &notify_send_req[0], MPI_STATUSES_IGNORE);
-  MPI_Waitall(p4est_->mpisize, &notify_recv_req[0], MPI_STATUSES_IGNORE);
-
-  // figure out who to expect a message from
-  for (int r = 0; r<p4est_->mpisize; ++r)
-    if (P4EST_TRUE == notify_recv_buf[r])
-      remote_senders.push_back(r);
-
-  // PetscSynchronizedPrintf(p4est_->mpicomm, "[%d] recv_done\n", p4est_->mpirank);
-  // PetscSynchronizedFlush(p4est_->mpicomm);  
-
-  IPMLogRegionEnd("notifyig_others");
-*/
-  IPMLogRegionBegin("recv_point_buffer");
-/*
-	int is_msg_pending;
-	MPI_Status st;
-	MPI_Request req;
-	MPI_Iprobe(MPI_ANY_SOURCE, remote_point_tag, p4est_->mpicomm, &is_msg_pending, &st);
-	while(is_msg_pending){
-		int sender = st.MPI_SOURCE;
+  int is_msg_pending;
+  MPI_Status st;
+  MPI_Request req;
+  MPI_Iprobe(MPI_ANY_SOURCE, remote_point_tag, p4est_->mpicomm, &is_msg_pending, &st);
+  while(is_msg_pending){
+    int sender = st.MPI_SOURCE;
     std::vector<double>& buff = remote_recv_buffer[sender];
-		remote_senders.push_back(sender);
+    remote_senders.push_back(sender);
 
-		// get the msg size
-		int msg_size;
-		MPI_Get_count(&st, MPI_DOUBLE, &msg_size);
-    buff.resize(msg_size);
-
-    // Receive the data
-    MPI_Irecv(&buff[0], msg_size, MPI_DOUBLE, sender, remote_point_tag, p4est_->mpicomm, &req);
- 		remote_recv_req.push_back(req);
-
-		// probe for the next msg
-		MPI_Iprobe(MPI_ANY_SOURCE, remote_point_tag, p4est_->mpicomm, &is_msg_pending, &st);
-	}
-
-*/
-///*
-  // Allocate enough requests slots
-  remote_recv_req.resize(remote_senders.size());
-
-  // Now lets receive the stuff
-  for (size_t i=0; i<remote_senders.size(); ++i){
-    std::vector<double>& buff = remote_recv_buffer[remote_senders[i]];
-
-    // Get the size and resize the recv buffer
+    // get the msg size
     int msg_size;
-    MPI_Status st;
-    MPI_Probe(remote_senders[i], remote_point_tag, p4est_->mpicomm, &st);
     MPI_Get_count(&st, MPI_DOUBLE, &msg_size);
     buff.resize(msg_size);
 
     // Receive the data
-    MPI_Irecv(&buff[0], msg_size, MPI_DOUBLE, remote_senders[i], remote_point_tag, p4est_->mpicomm, &remote_recv_req[i]);
+    MPI_Irecv(&buff[0], msg_size, MPI_DOUBLE, sender, remote_point_tag, p4est_->mpicomm, &req);
+    remote_recv_req.push_back(req);
+
+    // probe for the next msg
+    MPI_Iprobe(MPI_ANY_SOURCE, remote_point_tag, p4est_->mpicomm, &is_msg_pending, &st);
   }
-//*/
+
   IPMLogRegionEnd("recv_point_buffer");
   ierr = PetscLogEventEnd(log_InterpolatingFunction_recv_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
 }

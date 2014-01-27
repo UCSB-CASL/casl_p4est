@@ -45,6 +45,8 @@ void my_p4est_node_neighbors_t::init_neighbors()
   for( p4est_locidx_t n=0; n < nodes->num_owned_indeps; ++n)
     get_neighbors(n, neighbors[n]);
 
+  is_initialized = true;
+
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
