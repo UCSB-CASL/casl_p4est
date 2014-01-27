@@ -403,9 +403,9 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   std::vector<MPI_Request> remote_data_send_req(remote_senders.size());
 
   // Do interpolation for remote points
-  for (size_t i = 0; i<remote_senders.size(); ++i)
+  for (size_t r = 0; r<remote_senders.size(); ++r)
   {
-    int send_rank = remote_senders[i];
+    int send_rank = remote_senders[r];
     remote_transfer_map::iterator it = remote_recv_buffer.find(send_rank);
 #ifdef CASL_THROWS
     // ensure that remote_senders and remote_recv_buffer are consistent
@@ -415,7 +415,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
 
     // make sure we received the buffers for this process before accesing data
     if(!is_buffer_prepared)
-      MPI_Wait(&remote_recv_req[i], MPI_STATUS_IGNORE);
+      MPI_Wait(&remote_recv_req[r], MPI_STATUS_IGNORE);
 
     std::vector<double>& xyz_recv = it->second;
     std::vector<double>& f_send = f_remote_send[send_rank];
@@ -509,7 +509,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
     }
 
     // send the buffer
-    MPI_Isend(&f_send[0], f_send.size(), MPI_DOUBLE, send_rank, remote_data_tag, p4est_->mpicomm, &remote_data_send_req[i]);
+    MPI_Isend(&f_send[0], f_send.size(), MPI_DOUBLE, send_rank, remote_data_tag, p4est_->mpicomm, &remote_data_send_req[r]);
   }
 
 
