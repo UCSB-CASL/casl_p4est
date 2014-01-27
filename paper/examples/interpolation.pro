@@ -38,7 +38,7 @@ CONFIG(office, stampede|office): {
     P4EST_LIBS_DEBUG = -L/usr/local/p4est/debug/lib -lp4est -lsc
     P4EST_LIBS_RELEASE = -L/usr/local/p4est/release/lib -lp4est -lsc
 
-    # petsc -- WARNING, this is hardcoded, you might want to change to TACC macros?
+    # petsc
     PETSC_INCLUDES_DEBUG = /usr/local/petsc/debug/include
     PETSC_INCLUDES_RELEASE = /usr/local/petsc/release/include
     PETSC_LIBS_DEBUG = -L/usr/local/petsc/debug/lib -Wl,-rpath,/usr/local/petsc/debug/lib -lpetsc

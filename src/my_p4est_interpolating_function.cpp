@@ -47,11 +47,7 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
     Fzz_(NULL),
     #endif
     local_derivatives(false),
-    is_buffer_prepared(false),
-    notify_send_req(p4est->mpisize),
-    notify_recv_req(p4est->mpisize),
-    notify_send_buf(p4est->mpisize),
-    notify_recv_buf(p4est->mpisize)
+    is_buffer_prepared(false)
 {
   // compute domain sizes
   double *v2c = p4est_->connectivity->vertices;
@@ -77,11 +73,7 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
     Fzz_(NULL),
     #endif
     local_derivatives(false),
-    is_buffer_prepared(false),
-    notify_send_req(p4est->mpisize),
-    notify_recv_req(p4est->mpisize),
-    notify_send_buf(p4est->mpisize),
-    notify_recv_buf(p4est->mpisize)
+    is_buffer_prepared(false)
 {
   // compute domain sizes
   double *v2c = p4est_->connectivity->vertices;
@@ -411,129 +403,130 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   std::vector<MPI_Request> remote_data_send_req(remote_senders.size());
 
   // Do interpolation for remote points
+  for (size_t i = 0; i<remote_senders.size(); ++i)
   {
-    remote_transfer_map::iterator it = remote_recv_buffer.begin(),
-        end = remote_recv_buffer.end();
+    int send_rank = remote_senders[i];
+    remote_transfer_map::iterator it = remote_recv_buffer.find(send_rank);
+#ifdef CASL_THROWS
+    // ensure that remote_senders and remote_recv_buffer are consistent
+    if (it == remote_recv_buffer.end())
+      throw std::runtime_error("remote_senders and remote_recv_buffer are inconsistent!");
+#endif
 
-    int req_counter = 0;
-    for (; it != end; ++it, ++req_counter)
+    // make sure we received the buffers for this process before accesing data
+    if(!is_buffer_prepared)
+      MPI_Wait(&remote_recv_req[i], MPI_STATUS_IGNORE);
+
+    std::vector<double>& xyz_recv = it->second;
+    std::vector<double>& f_send = f_remote_send[send_rank];
+    f_send.resize(xyz_recv.size()/P4EST_DIM);
+
+    for (size_t i=0; i<xyz_recv.size()/P4EST_DIM; i++)
     {
-      int send_rank = it->first;
+      double *xyz = &xyz_recv[P4EST_DIM*i];
 
-      // make sure we received the buffers for this process before accesing data
-      if(!is_buffer_prepared)
-        MPI_Wait(&remote_recv_req[req_counter], MPI_STATUS_IGNORE);
-
-      std::vector<double>& xyz_recv = it->second;
-      std::vector<double>& f_send = f_remote_send[send_rank];
-      f_send.resize(xyz_recv.size()/P4EST_DIM);
-
-      for (size_t i=0; i<xyz_recv.size()/P4EST_DIM; i++)
+      /* first clip the coordinates */
+      double xyz_clip [] =
       {
-        double *xyz = &xyz_recv[P4EST_DIM*i];
-
-        /* first clip the coordinates */
-        double xyz_clip [] =
-        {
-          xyz[0], xyz[1]
+        xyz[0], xyz[1]
   #ifdef P4_TO_P8
-          , xyz[2]
+        , xyz[2]
   #endif
-        };
+      };
 
-        // clip to bounding box
-        for (short j=0; j<P4EST_DIM; j++){
-          if (xyz_clip[j] > xyz_max[j]) xyz_clip[j] = xyz_max[j];
-          if (xyz_clip[j] < xyz_min[j]) xyz_clip[j] = xyz_min[j];
+      // clip to bounding box
+      for (short j=0; j<P4EST_DIM; j++){
+        if (xyz_clip[j] > xyz_max[j]) xyz_clip[j] = xyz_max[j];
+        if (xyz_clip[j] < xyz_min[j]) xyz_clip[j] = xyz_min[j];
+      }
+
+      // first find the quadrant for the remote points
+      p4est_quadrant_t best_match;
+#ifdef P4EST_POINT_LOOKUP
+      sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
+      int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
+#else
+      std::vector<p4est_quadrant_t> remote_matches;
+      int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
+#endif
+      // make sure that the point belongs to us
+      if (rank_found == p4est_->mpirank){ // if we own the point, interpolate
+        // get the local index
+        p4est_topidx_t tree_idx  = best_match.p.piggy3.which_tree;
+        p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
+        p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
+
+        for (short j=0; j<P4EST_CHILDREN; j++)
+          f[j] = Fi_p[q2n[qu_locidx*P4EST_CHILDREN+j]];
+
+        // get access to second derivatives only if needed
+        if (method_ == quadratic || method_ == quadratic_non_oscillatory)
+        {
+          for (short j=0; j<P4EST_CHILDREN; ++j)
+          {
+            p4est_locidx_t node_locidx = q2n[qu_locidx*P4EST_CHILDREN+j];
+            fdd[P4EST_DIM * j + 0] = Fxx_p[node_locidx];
+            fdd[P4EST_DIM * j + 1] = Fyy_p[node_locidx];
+#ifdef P4_TO_P8
+            fdd[P4EST_DIM * j + 2] = Fzz_p[node_locidx];
+#endif
+          }
         }
 
-        // first find the quadrant for the remote points
-        p4est_quadrant_t best_match;
-#ifdef P4EST_POINT_LOOKUP
-        sc_array_t *remote_matches = sc_array_new(sizeof(p4est_quadrant_t));
-        int rank_found = my_p4est_brick_point_lookup(p4est_, ghost_, myb_, xy_clip, &best_match, remote_matches);
-#else
-        std::vector<p4est_quadrant_t> remote_matches;
-        int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
-#endif
-        // make sure that the point belongs to us
-        if (rank_found == p4est_->mpirank){ // if we own the point, interpolate
-          // get the local index
-          p4est_topidx_t tree_idx  = best_match.p.piggy3.which_tree;
-          p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, tree_idx);
-          p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
+        if (method_ == linear)
+          f_send[i] = linear_interpolation(p4est_, tree_idx, best_match, f, xyz);
+        else if (method_ == quadratic)
+          f_send[i] = quadratic_interpolation(p4est_, tree_idx, best_match, f, fdd, xyz);
+        else
+          f_send[i] = quadratic_non_oscillatory_interpolation(p4est_, tree_idx, best_match, f, fdd, xyz);
 
-          for (short j=0; j<P4EST_CHILDREN; j++)
-            f[j] = Fi_p[q2n[qu_locidx*P4EST_CHILDREN+j]];
-
-          // get access to second derivatives only if needed
-          if (method_ == quadratic || method_ == quadratic_non_oscillatory)
-          {
-            for (short j=0; j<P4EST_CHILDREN; ++j)
-            {
-              p4est_locidx_t node_locidx = q2n[qu_locidx*P4EST_CHILDREN+j];
-              fdd[P4EST_DIM * j + 0] = Fxx_p[node_locidx];
-              fdd[P4EST_DIM * j + 1] = Fyy_p[node_locidx];
-#ifdef P4_TO_P8
-              fdd[P4EST_DIM * j + 2] = Fzz_p[node_locidx];
-#endif
-            }
-          }
-
-          if (method_ == linear)
-            f_send[i] = linear_interpolation(p4est_, tree_idx, best_match, f, xyz);
-          else if (method_ == quadratic)
-            f_send[i] = quadratic_interpolation(p4est_, tree_idx, best_match, f, fdd, xyz);
-          else
-            f_send[i] = quadratic_non_oscillatory_interpolation(p4est_, tree_idx, best_match, f, fdd, xyz);
-
-        } else if ( rank_found != -1 ) {
-          // if we don't own the point but its in the ghost layer return 0.
-          f_send[i] = 0;
-        } else { /* if we dont the own the point, and its not in the ghost layer
+      } else if ( rank_found != -1 ) {
+        // if we don't own the point but its in the ghost layer return 0.
+        f_send[i] = 0;
+      } else { /* if we dont the own the point, and its not in the ghost layer
                   * this MUST be a bug or mistake so simply throw.
                   */
-          std::ostringstream oss;
-          oss << "[ERROR]: Point (" << xyz[0] << "," << xyz[1] <<
+        std::ostringstream oss;
+        oss << "[ERROR]: Point (" << xyz[0] << "," << xyz[1] <<
        #ifdef P4_TO_P8
-                 xyz[2] <<
+               xyz[2] <<
        #endif
-                 ") was flagged as a remote point to either belong to processor "
-              << p4est_->mpirank << " or be in its ghost layer, both of which"
-                 " have failed. Found rank is = " << rank_found
-              << " and remote_macthes->elem_count = "
+               ") was flagged as a remote point to either belong to processor "
+            << p4est_->mpirank << " or be in its ghost layer, both of which"
+               " have failed. Found rank is = " << rank_found
+            << " and remote_macthes->elem_count = "
        #ifdef P4EST_POINT_LOOKUP
-              << remote_matches->elem_count << ". This is most certainly a bug."
+            << remote_matches->elem_count << ". This is most certainly a bug."
        #else
-              << remote_matches.size() << ". This is most certainly a bug."
+            << remote_matches.size() << ". This is most certainly a bug."
        #endif
-              << std::endl;
-          throw std::runtime_error(oss.str());
-        }
-#ifdef P4EST_POINT_LOOKUP
-        sc_array_destroy(remote_matches);
-#endif
+            << std::endl;
+        throw std::runtime_error(oss.str());
       }
-
-      // send the buffer
-      MPI_Isend(&f_send[0], f_send.size(), MPI_DOUBLE, send_rank, remote_data_tag, p4est_->mpicomm, &remote_data_send_req[req_counter]);
+#ifdef P4EST_POINT_LOOKUP
+      sc_array_destroy(remote_matches);
+#endif
     }
+
+    // send the buffer
+    MPI_Isend(&f_send[0], f_send.size(), MPI_DOUBLE, send_rank, remote_data_tag, p4est_->mpicomm, &remote_data_send_req[i]);
   }
+
 
   // Receive the interpolated remote data and put them in the correct position.
-  {
-    for (size_t i=0; i<remote_receivers.size(); ++i)
-    {
-      int recv_rank = remote_receivers[i];
-      std::vector<p4est_locidx_t>& node_idx = remote_node_index[recv_rank];
-      std::vector<double> f_recv(node_idx.size());
-      MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, remote_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
 
-      for (size_t j=0; j<f_recv.size(); j++){
-        Fo_p[node_idx[j]] += f_recv[j];
-      }
+  for (size_t i=0; i<remote_receivers.size(); ++i)
+  {
+    int recv_rank = remote_receivers[i];
+    std::vector<p4est_locidx_t>& node_idx = remote_node_index[recv_rank];
+    std::vector<double> f_recv(node_idx.size());
+    MPI_Recv(&f_recv[0], f_recv.size(), MPI_DOUBLE, recv_rank, remote_data_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
+
+    for (size_t j=0; j<f_recv.size(); j++){
+      Fo_p[node_idx[j]] += f_recv[j];
     }
   }
+
 
   // wait for all buffer sends to finish
   if (!is_buffer_prepared){
@@ -562,6 +555,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
 
   IPMLogRegionEnd("interpolate");
   ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
+//  MPI_Barrier(p4est_->mpicomm);
 }
 
 #ifdef P4_TO_P8

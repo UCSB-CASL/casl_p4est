@@ -28,6 +28,7 @@
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
+#include <src/CASL_math.h>
 
 using namespace std;
 
@@ -172,6 +173,7 @@ int main (int argc, char* argv[]){
     std::ostringstream hierarchy_name; hierarchy_name << P4EST_DIM << "d_hierrchy";
     hierarchy.write_vtk(hierarchy_name.str().c_str());
     my_p4est_node_neighbors_t qnnn(&hierarchy, nodes);
+    qnnn.init_neighbors();
 
     grid_name.str(""); grid_name << P4EST_DIM << "d_grid_qnnn_" << p4est->mpirank << "_" << p4est->mpisize;
     FILE *qFile = fopen(grid_name.str().c_str(), "w");
