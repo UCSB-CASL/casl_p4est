@@ -762,11 +762,11 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
     std::vector<double>& buff = it->second;
     int msg_size = buff.size();
 
-    MPI_Isend(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm, &remote_send_req[req_counter]);
+    MPI_Issend(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm, &remote_send_req[req_counter]);
   }
 
   // to ensure that all processes have finished calling MPI_Isend
-  MPI_Barrier(p4est_->mpicomm);
+  // MPI_Barrier(p4est_->mpicomm);
 
   IPMLogRegionEnd("send_point_buffer");
   ierr = PetscLogEventEnd(log_InterpolatingFunction_send_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -775,7 +775,7 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
 {
   ierr = PetscLogEventBegin(log_InterpolatingFunction_recv_buffer, 0, 0, 0, 0); CHKERRXX(ierr);
-
+/*
   int is_msg_pending;
   MPI_Status st;
   MPI_Request req;
@@ -796,6 +796,37 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
 
     // probe for the next msg
     MPI_Iprobe(MPI_ANY_SOURCE, remote_point_tag, p4est_->mpicomm, &is_msg_pending, &st);
+  }
+*/
+
+	int done = 0;
+  int all_sent = 0;
+  int msg_found = 0;
+  MPI_Status st;
+  MPI_Request rreq, breq;
+
+  while(!done){
+    MPI_Iprobe(MPI_ANY_SOURCE, remote_point_tag, p4est_->mpicomm, &msg_found, &st);
+    if (msg_found) {
+      int sender = st.MPI_SOURCE;
+      remote_senders.push_back(sender);
+      std::vector<double>& buff = remote_recv_buffer[sender];
+      
+      int msg_size;
+      MPI_Get_count(&st, MPI_DOUBLE, &msg_size);
+      buff.resize(msg_size);
+      
+      MPI_Irecv(&buff[0], msg_size, MPI_DOUBLE, sender, remote_point_tag, p4est_->mpicomm, &rreq);
+      remote_recv_req.push_back(rreq);
+    }
+
+    if (all_sent) {
+      MPI_Test(&breq, &done, MPI_STATUS_IGNORE);
+    } else {
+      MPI_Testall(remote_send_req.size(), &remote_send_req[0], &all_sent, MPI_STATUSES_IGNORE);
+      if (all_sent)
+        MPIX_Ibarrier(p4est_->mpicomm, &breq);
+    }
   }
 
   IPMLogRegionEnd("recv_point_buffer");
