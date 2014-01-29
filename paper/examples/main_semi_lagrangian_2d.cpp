@@ -208,7 +208,7 @@ int main (int argc, char* argv[]){
   char filename[1024];
   sprintf(filename, "gridsize_%dd_%dp_%dx%d", P4EST_DIM, p4est->mpisize, brick.nxyztrees[0], brick.nxyztrees[1]);
 #ifdef P4_TO_P8
-  sprintf(filename, "%x%d", brick.nxyztrees[2]);
+  sprintf(filename, "x%d", brick.nxyztrees[2]);
 #endif
 
   if (p4est->mpirank == 0){

@@ -1963,7 +1963,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fxx,
 #endif
 #endif // !DXX_USE_BLOCKS
 
-  IPMLogRegion("2nd_derivatives");
+  IPMLogRegionEnd("2nd_derivatives");
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
