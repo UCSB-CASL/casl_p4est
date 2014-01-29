@@ -39,7 +39,7 @@ static class: public CF_3
 {
   public:
   double operator()(double x, double y, double z) const {
-    return 2.0*SQR(sin(M_PI*x/2))*sin(2*M_PI*y/2)*sin(2*M_PI*z/2);
+    return 2.0*SQR(sin(M_PI*x))*sin(2*M_PI*y)*sin(2*M_PI*z);
   }
 } vx_vortex;
 
@@ -47,7 +47,7 @@ static class: public CF_3
 {
   public:
   double operator()(double x, double y, double z) const {
-    return  -SQR(sin(M_PI*y/2))*sin(2*M_PI*x/2)*sin(2*M_PI*z/2);
+    return  -SQR(sin(M_PI*y))*sin(2*M_PI*x)*sin(2*M_PI*z);
   }
 } vy_vortex;
 
@@ -55,7 +55,7 @@ static class: public CF_3
 {
   public:
   double operator()(double x, double y, double z) const {
-    return  -SQR(sin(M_PI*z/2))*sin(2*M_PI*x/2)*sin(2*M_PI*y/2);
+    return  -SQR(sin(M_PI*z))*sin(2*M_PI*x)*sin(2*M_PI*y);
   }
 } vz_vortex;
 
@@ -88,7 +88,7 @@ static class: public CF_2
 {
   public:
   double operator()(double x, double y) const {
-    return -SQR(sin(M_PI*x/2))*sin(2*M_PI*y/2);
+    return -SQR(sin(M_PI*x))*sin(2*M_PI*y);
   }
 } vx_vortex;
 
@@ -96,7 +96,7 @@ static class: public CF_2
 {
   public:
   double operator()(double x, double y) const {
-    return  SQR(sin(M_PI*y/2))*sin(2*M_PI*x/2);
+    return  SQR(sin(M_PI*y))*sin(2*M_PI*x);
   }
 } vy_vortex;
 

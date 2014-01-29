@@ -638,7 +638,10 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   {
     ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
     ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
-  }
+#ifdef P4_TO_P8
+		ierr = VecDestroy(phi_zz_); CHKERRXX(ierr);
+#endif  
+	}
 
   ierr = PetscLogEventEnd(log_Semilagrangian_update_p4est_second_order_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
 }

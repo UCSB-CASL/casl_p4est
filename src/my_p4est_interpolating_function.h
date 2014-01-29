@@ -71,7 +71,7 @@ class InterpolatingFunctionNodeBase: public CF_2
   std::vector<int> remote_receivers, remote_senders;
   bool is_buffer_prepared;
 
-  std::vector<MPI_Request> remote_send_req, remote_recv_req;
+  std::vector<MPI_Request> remote_send_req;
 
   enum {
     remote_point_tag,
@@ -80,8 +80,7 @@ class InterpolatingFunctionNodeBase: public CF_2
   };
 
   // methods
-  void send_point_buffers_begin();
-  void recv_point_buffers_begin();
+  void process_remote_data(std::vector<double>& xyz_recv, std::vector<double>& f_send);
   void compute_second_derivatives();
 
   // rule of three -- disable copy ctr and assignment if not useful
