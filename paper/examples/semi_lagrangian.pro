@@ -26,6 +26,8 @@ CONFIG(stampede, stampede|office): {
     PETSC_INCLUDES_RELEASE = $$TACC_PETSC_HOME/include $$TACC_PETSC_HOME/$$TACC_PETSC_ARCH_RELEASE/include
     PETSC_LIBS_DEBUG = -Wl,-rpath,$$TACC_PETSC_LIB_DEBUG -L$$TACC_PETSC_LIB_DEBUG -lpetsc
     PETSC_LIBS_RELEASE = -Wl,-rpath,$$TACC_PETSC_LIB_RELEASE -L$$TACC_PETSC_LIB_RELEASE -lpetsc
+
+    DEFINES += STAMPEDE
 }
 
 CONFIG(office, stampede|office): {
@@ -44,7 +46,9 @@ CONFIG(office, stampede|office): {
     PETSC_LIBS_DEBUG = -L/usr/local/petsc/debug/lib -Wl,-rpath,/usr/local/petsc/debug/lib -lpetsc
     PETSC_LIBS_RELEASE = -L/usr/local/petsc/release/lib -Wl,-rpath,/usr/local/petsc/release/lib -lpetsc
 
-    INCLUDEPATH += /usr/include/mpich2
+    INCLUDEPATH += /usr/local/mpich3/include
+
+    DEFINES += OFFICE
 }
 
 # --------------------------------- Define configs  --------------------------------- #
@@ -91,7 +95,10 @@ SOURCES += \
     $$CASL_P4EST/src/my_p4est_node_neighbors.cpp \
     $$CASL_P4EST/src/my_p4est_quad_neighbor_nodes_of_node.cpp \
     $$CASL_P4EST/src/my_p4est_log_wrappers.c \
-    $$CASL_P4EST/src/petsc_logging.cpp 
+    $$CASL_P4EST/src/petsc_logging.cpp \
+    $$CASL_P4EST/src/Parser.cpp \
+    $$CASL_P4EST/src/CASL_math.cpp
+
 }
 
 CONFIG(3d, 2d|3d): {
@@ -118,6 +125,8 @@ SOURCES += \
     $$CASL_P4EST/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
     $$CASL_P4EST/src/my_p8est_log_wrappers.c \
     $$CASL_P4EST/src/petsc_logging.cpp \
+    $$CASL_P4EST/src/Parser.cpp \
+    $$CASL_P4EST/src/CASL_math.cpp
 }
 
 # ------------------------------- Compiler Options ------------------------------- #

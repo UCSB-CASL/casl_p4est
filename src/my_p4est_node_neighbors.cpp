@@ -5,6 +5,7 @@
 #endif
 
 #include <src/petsc_compatibility.h>
+#include <src/ipm_logging.h>
 
 // logging variable -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -1804,6 +1805,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fxx,
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionBegin("2nd_derivatives");
 
 #ifdef CASL_THROWS
   {
@@ -1961,6 +1963,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fxx,
 #endif
 #endif // !DXX_USE_BLOCKS
 
+  IPMLogRegion("2nd_derivatives");
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 

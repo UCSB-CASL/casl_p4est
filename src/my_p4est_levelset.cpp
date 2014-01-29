@@ -890,6 +890,7 @@ void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_pe
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionBegin("reinit");
   
   Vec p1_petsc;
   double *p1, *phi;
@@ -1004,6 +1005,7 @@ void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_pe
   ierr = VecDestroy(p1_petsc);   CHKERRXX(ierr);
 
   free(p0);
+  IPMLogRegionEnd("reinit");
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
 

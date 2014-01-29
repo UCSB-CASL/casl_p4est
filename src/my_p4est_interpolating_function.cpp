@@ -455,7 +455,11 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
       } else {
         MPI_Testall(remote_send_req.size(), &remote_send_req[0], &all_sent, MPI_STATUSES_IGNORE);
         if (all_sent)
+#ifdef STAMPEDE
           MPIX_Ibarrier(p4est_->mpicomm, &breq);
+#else
+          MPI_Ibarrier(p4est_->mpicomm, &breq);
+#endif
       }
     }
 

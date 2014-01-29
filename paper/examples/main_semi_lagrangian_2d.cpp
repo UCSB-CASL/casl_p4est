@@ -29,6 +29,7 @@
 #include <src/my_p4est_log_wrappers.h>
 #endif
 
+
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 
@@ -37,27 +38,27 @@ using namespace std;
 #ifdef P4_TO_P8
 static class: public CF_3
 {
-  public:
-  double operator()(double x, double y, double z) const {
-    return 2.0*SQR(sin(M_PI*x))*sin(2*M_PI*y)*sin(2*M_PI*z);
-  }
-} vx_vortex;
+                       public:
+                       double operator()(double x, double y, double z) const {
+                       return 2.0*SQR(sin(M_PI*x))*sin(2*M_PI*y)*sin(2*M_PI*z);
+                       }
+                       } vx_vortex;
 
 static class: public CF_3
 {
-  public:
-  double operator()(double x, double y, double z) const {
-    return  -SQR(sin(M_PI*y))*sin(2*M_PI*x)*sin(2*M_PI*z);
-  }
-} vy_vortex;
+                       public:
+                       double operator()(double x, double y, double z) const {
+                       return  -SQR(sin(M_PI*y))*sin(2*M_PI*x)*sin(2*M_PI*z);
+                       }
+                       } vy_vortex;
 
 static class: public CF_3
 {
-  public:
-  double operator()(double x, double y, double z) const {
-    return  -SQR(sin(M_PI*z))*sin(2*M_PI*x)*sin(2*M_PI*y);
-  }
-} vz_vortex;
+                       public:
+                       double operator()(double x, double y, double z) const {
+                       return  -SQR(sin(M_PI*z))*sin(2*M_PI*x)*sin(2*M_PI*y);
+                       }
+                       } vz_vortex;
 
 struct circle:CF_3{
   circle(double x0_, double y0_, double z0_, double r_)
@@ -86,19 +87,19 @@ private:
 #else
 static class: public CF_2
 {
-  public:
-  double operator()(double x, double y) const {
-    return -SQR(sin(M_PI*x))*sin(2*M_PI*y);
-  }
-} vx_vortex;
+                       public:
+                       double operator()(double x, double y) const {
+                       return -SQR(sin(M_PI*x))*sin(2*M_PI*y);
+                       }
+                       } vx_vortex;
 
 static class: public CF_2
 {
-  public:
-  double operator()(double x, double y) const {
-    return  SQR(sin(M_PI*y))*sin(2*M_PI*x);
-  }
-} vy_vortex;
+                       public:
+                       double operator()(double x, double y) const {
+                       return  SQR(sin(M_PI*y))*sin(2*M_PI*x);
+                       }
+                       } vy_vortex;
 
 struct circle:CF_2{
   circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
@@ -143,18 +144,18 @@ int main (int argc, char* argv[]){
   cmdParser cmd;
   cmd.add_option("lmin", "min level");
   cmd.add_option("lmax", "max level");
-	cmd.add_option("tf", "t final");
+  cmd.add_option("tf", "t final");
   cmd.parse(argc, argv);
-	cmd.print();
+  cmd.print();
 
   PetscPrintf(mpi->mpicomm, "git commit hash value = %s (%s)\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG);
 
 #ifdef P4_TO_P8
-  circle circ(0.5, 0.5, 0.5, .3);
+  circle circ(0.35, 0.35, 0.35, .15);
 #else
-  circle circ(0.5, 0.5, .3);
+  circle circ(0.35, 0.35, .15);
 #endif
-  splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 7), &circ, 1.3);
+  splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 7), &circ, 1.2);
 
   parStopWatch w1, w2;
   w1.start("total time");
@@ -167,9 +168,9 @@ int main (int argc, char* argv[]){
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(2, 2, 2, &brick);
+  connectivity = my_p4est_brick_new(1, 1, 1, &brick);
 #else
-  connectivity = my_p4est_brick_new(2, 2, &brick);
+  connectivity = my_p4est_brick_new(1, 1, &brick);
 #endif
   w2.stop(); w2.read_duration();
 
@@ -201,27 +202,29 @@ int main (int argc, char* argv[]){
   sample_cf_on_nodes(p4est, nodes, circ, phi);
 
   double *phi_ptr;
-  ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-
-  // write the intial data to disk
-  /*
- 		my_p4est_vtk_write_all(p4est, nodes, ghost,
-                         P4EST_TRUE, P4EST_TRUE,
-                         1, 0, "init",
-                         VTK_POINT_DATA, "phi", phi_ptr);
-	*/
-  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
-
   // SemiLagrangian object
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
+
+  char filename[1024];
+  sprintf(filename, "gridsize_%dd_%dp_%dx%d", P4EST_DIM, p4est->mpisize, brick.nxyztrees[0], brick.nxyztrees[1]);
+#ifdef P4_TO_P8
+  sprintf(filename, "%x%d", brick.nxyztrees[2]);
+#endif
+
+  if (p4est->mpirank == 0){
+    FILE *file = fopen(filename, "w");
+    fprintf(file, "%% global_quads \t global_nodes \n");
+    fclose(file);
+  }
 
   // loop over time
   double tf = cmd.get<double>("tf");
   int tc = 0;
-  int save = 50000;
+  int save = 5;
   double dt = 0.05;
   for (double t=0; t<tf; t+=dt, tc++){
-    if (false && tc % save == 0){
+#ifndef STAMPEDE
+    if (tc % save == 0){
       // Save stuff
       std::ostringstream oss; oss << "semi_lagrangian_" << p4est->mpisize << "_"
                                   << brick.nxyztrees[0] << "x"
@@ -239,10 +242,10 @@ int main (int argc, char* argv[]){
 
       ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
     }
-
+#endif
     // advect the function in time and get the computed time-step
     w2.start("advecting");
-		PetscPrintf(p4est->mpicomm, "t = %lf, tc = %d\n", t, tc);
+    PetscPrintf(p4est->mpicomm, "t = %lf, tc = %d\n", t, tc);
 #ifdef P4_TO_P8
     sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
 #else
@@ -256,12 +259,15 @@ int main (int argc, char* argv[]){
     my_p4est_level_set level_set(&node_neighbors);
     level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
     
+    p4est_gloidx_t num_nodes = 0;
+    for (int r =0; r<p4est->mpisize; r++)
+      num_nodes += nodes->global_owned_indeps[r];
 
-		p4est_gloidx_t num_nodes = 0;
-      for (int r =0; r<p4est->mpisize; r++)
-        num_nodes += nodes->global_owned_indeps[r];
-
-    PetscPrintf(p4est->mpicomm, "global_quads = %ld \t global_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
+    if (p4est->mpirank == 0){
+      FILE *file = fopen(filename, "a");
+      fprintf(file, "%9ld %9ld\n", p4est->global_num_quadrants, num_nodes);
+      fclose(file);
+    }
     w2.stop(); w2.read_duration();
   }
 

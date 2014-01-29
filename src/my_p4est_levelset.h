@@ -11,6 +11,7 @@
 #include <src/casl_types.h>
 
 #include <vector>
+#include <src/ipm_logging.h>
 
 class my_p4est_level_set {
 

@@ -14,6 +14,7 @@
 #include <src/CASL_math.h>
 #include <sc_notify.h>
 #include <mpi.h>
+#include <src/ipm_logging.h>
 
 // system
 #include <iostream>
@@ -570,6 +571,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
 
   int nb_iter = ((splitting_criteria_t*) (p4est_->user_pointer))->max_lvl;
 
+  IPMLogRegionBegin("grid_update");
   for( int iter = 0; iter < nb_iter; ++iter )
   {
     p4est_t       *p4est_tmp = p4est_copy(p4est_np1, P4EST_FALSE);
@@ -597,6 +599,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
   }
+  IPMLogRegionEnd("grid_update");
 
   /* restore the user pointer in the p4est */
   p4est_np1->user_pointer = p4est_->user_pointer;
@@ -615,6 +618,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
   ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+  IPMLogRegionBegin("advect_final");
   advect_from_n_to_np1(qnnn, dt,
                      #ifdef P4_TO_P8
                          vx, vy, vz,
@@ -624,6 +628,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
                          phi, phi_xx_, phi_yy_,
                      #endif
                        phi_np1_p, p4est_np1, nodes_np1);
+  IPMLogRegionEnd("advect_final");
   ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
   /* now that everything is updated, get rid of old stuff and swap them with new ones */
