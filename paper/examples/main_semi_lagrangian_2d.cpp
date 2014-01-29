@@ -210,9 +210,9 @@ int main (int argc, char* argv[]){
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
   char filename[4096];
-  sprintf(filename, "%s/gridsize_%dd_%dp_%dx%d", foldername.c_str(), P4EST_DIM, p4est->mpisize, brick.nxyztrees[0], brick.nxyztrees[1]);
+  int ns = sprintf(filename, "%s/gridsize_%dd_%dp_%dx%d", foldername.c_str(), P4EST_DIM, p4est->mpisize, brick.nxyztrees[0], brick.nxyztrees[1]);
 #ifdef P4_TO_P8
-  sprintf(filename, "x%d", brick.nxyztrees[2]);
+  sprintf(filename+ns, "x%d", brick.nxyztrees[2]);
 #endif
 
   if (p4est->mpirank == 0){
