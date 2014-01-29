@@ -269,6 +269,7 @@ int main (int argc, char* argv[]){
 
     if (p4est->mpirank == 0){
       FILE *file = fopen(filename, "a");
+			printf("num_quads = %ld \t num_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
       fprintf(file, "%9ld %9ld\n", p4est->global_num_quadrants, num_nodes);
       fclose(file);
     }
