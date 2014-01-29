@@ -145,9 +145,13 @@ int main (int argc, char* argv[]){
   cmd.add_option("lmin", "min level");
   cmd.add_option("lmax", "max level");
   cmd.add_option("tf", "t final");
-  cmd.parse(argc, argv);
+  cmd.add_option("output-dir", "parent folder to save everythiong in");
+	cmd.parse(argc, argv);
   cmd.print();
 
+	const std::string foldername = cmd.get<std::string>("output-dir");
+	mkdir(foldername.c_str(), 0777);
+	
   PetscPrintf(mpi->mpicomm, "git commit hash value = %s (%s)\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG);
 
 #ifdef P4_TO_P8
@@ -205,8 +209,8 @@ int main (int argc, char* argv[]){
   // SemiLagrangian object
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
-  char filename[1024];
-  sprintf(filename, "gridsize_%dd_%dp_%dx%d", P4EST_DIM, p4est->mpisize, brick.nxyztrees[0], brick.nxyztrees[1]);
+  char filename[4096];
+  sprintf(filename, "%s/gridsize_%dd_%dp_%dx%d", foldername.c_str(), P4EST_DIM, p4est->mpisize, brick.nxyztrees[0], brick.nxyztrees[1]);
 #ifdef P4_TO_P8
   sprintf(filename, "x%d", brick.nxyztrees[2]);
 #endif
@@ -226,7 +230,7 @@ int main (int argc, char* argv[]){
 #ifndef STAMPEDE
     if (tc % save == 0){
       // Save stuff
-      std::ostringstream oss; oss << "semi_lagrangian_" << p4est->mpisize << "_"
+      std::ostringstream oss; oss << foldername << "/semi_lagrangian_" << p4est->mpisize << "_"
                                   << brick.nxyztrees[0] << "x"
                                   << brick.nxyztrees[1]
                                #ifdef P4_TO_P8
