@@ -145,6 +145,7 @@ int main (int argc, char* argv[]){
 	cmd.add_option("lmin", "min level");
 	cmd.add_option("lmax", "max level");
 	cmd.add_option("tf", "t final");
+  cmd.add_option("write-vtk", "pass this flag if interested in the vtk files");
 	cmd.add_option("output-dir", "parent folder to save everythiong in");
 	cmd.parse(argc, argv);
 	cmd.print();
@@ -152,6 +153,7 @@ int main (int argc, char* argv[]){
 	const std::string foldername = cmd.get<std::string>("output-dir");
 	const int lmin = cmd.get("lmin", 0);
 	const int lmax = cmd.get("lmax", 7);
+  const bool write_vtk = cmd.contains("write-vtk");
 	mkdir(foldername.c_str(), 0777);
 
 	PetscPrintf(mpi->mpicomm, "git commit hash value = %s (%s)\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG);
@@ -235,8 +237,8 @@ int main (int argc, char* argv[]){
 	int save = 5;
 	double dt = 0.05;
 	for (double t=0; t<tf; t+=dt, tc++){
-#ifndef STAMPEDE
-		if (tc % save == 0){
+		if (write_vtk && tc % save == 0){
+      w2.start("saving vtk file");
 			// Save stuff
 			std::ostringstream oss; oss << foldername << "/semi_lagrangian_" << p4est->mpisize << "_"
 				<< brick.nxyztrees[0] << "x"
@@ -253,8 +255,8 @@ int main (int argc, char* argv[]){
 					VTK_POINT_DATA, "phi", phi_ptr);
 
 			ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
+      w2.stop(); w2.read_duration();
 		}
-#endif
 		// advect the function in time and get the computed time-step
 		w2.start("advecting");
 		PetscPrintf(p4est->mpicomm, "t = %lf, tc = %d\n", t, tc);
