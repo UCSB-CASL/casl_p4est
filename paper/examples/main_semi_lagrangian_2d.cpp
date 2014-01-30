@@ -237,7 +237,7 @@ int main (int argc, char* argv[]){
 	int save = cmd.get<int>("write-vtk", 5);
 	double dt = 0.05;
 	for (double t=0; t<tf; t+=dt, tc++){
-		if (write_vtk && tc % save == 0){
+		if (write_vtk && (tc % save == 0)){
       w2.start("saving vtk file");
 			// Save stuff
 			std::ostringstream oss; oss << foldername << "/semi_lagrangian_" << p4est->mpisize << "_"
