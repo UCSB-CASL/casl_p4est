@@ -231,7 +231,6 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
   {
     p4est_locidx_t n = map[n_map];
 
-    if(n!=n) printf("asadfsdf\n");
     if(fabs(p0[n]) <= EPS)
       pnp1[n] = 0;
     else if(fabs(p0[n]) <= limit)
@@ -614,6 +613,7 @@ void my_p4est_level_set::reinitialize_1st_order( Vec phi_petsc, int number_of_it
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     p0[n] = phi[n];
 
+  IPMLogRegionBegin("reinit_1st_1st");
   for(int i=0; i<number_of_iteration; i++)
   {
 
@@ -634,6 +634,7 @@ void my_p4est_level_set::reinitialize_1st_order( Vec phi_petsc, int number_of_it
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       phi[n] = p1[n];   
   }
+  IPMLogRegionEnd("reinit_1st_1st");
 
   /* restore arrays and destroy uneeded petsc objects */
   ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
@@ -708,6 +709,7 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
     ierr = VecGetArray(dzz_petsc, &dzz); CHKERRXX(ierr);
 #endif
 
+    IPMLogRegionBegin("reinit_2nd_2nd");
     /* 1) Preocess layer nodes */
     reinitialize_One_Iteration_Second_Order( layer_nodes,
                                          #ifdef P4_TO_P8
@@ -735,6 +737,7 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
 
     /* 4) End update process for p1 */
     ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    IPMLogRegionEnd("reinit_2nd_2nd");
 
     ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
     ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
@@ -757,6 +760,7 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
 
     /***** Step 2 of RK2: p1 -> p2 *****/
 
+    IPMLogRegionBegin("reinit_2nd_2nd");
     /* 1) Preocess layer nodes */
     reinitialize_One_Iteration_Second_Order( layer_nodes,
                                          #ifdef P4_TO_P8
@@ -784,6 +788,7 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
 
     /* 4) End update process for p2 */
     ierr = VecGhostUpdateEnd(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    IPMLogRegionEnd("reinit_2nd_2nd");
 
     ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
     ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
@@ -838,6 +843,7 @@ void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_pe
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     p0[n] = phi[n];
 
+  IPMLogRegionBegin("reinit_2nd_1st");
   for(int i=0; i<number_of_iteration; i++)
   {
     /***** Step 1 of RK2: phi -> p1 *****/
@@ -872,6 +878,7 @@ void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_pe
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       phi[n] = .5 * (p1[n] + p2[n]);
   }
+  IPMLogRegionEnd("reinit_2nd_1st");
 
   /* restore arrays and destroy uneeded petsc objects */
 
@@ -890,7 +897,6 @@ void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_pe
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-  IPMLogRegionBegin("reinit");
   
   Vec p1_petsc;
   double *p1, *phi;
@@ -946,6 +952,7 @@ void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_pe
     ierr = VecGetArray(dzz_petsc, &dzz); CHKERRXX(ierr);
 #endif
 
+    IPMLogRegionBegin("reinit_1st_2nd");
     /* 1) Preocess layer nodes */
     reinitialize_One_Iteration_Second_Order( layer_nodes,
                                          #ifdef P4_TO_P8
@@ -973,6 +980,7 @@ void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_pe
 
     /* 4) End update process for p1 */
     ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    IPMLogRegionEnd("reinit_1st_2nd");
 
     ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
     ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
@@ -1005,7 +1013,6 @@ void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_pe
   ierr = VecDestroy(p1_petsc);   CHKERRXX(ierr);
 
   free(p0);
-  IPMLogRegionEnd("reinit");
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
 
