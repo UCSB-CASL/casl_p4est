@@ -234,7 +234,7 @@ int main (int argc, char* argv[]){
 	// loop over time
 	double tf = cmd.get<double>("tf");
 	int tc = 0;
-	int save = 5;
+	int save = cmd.get<int>("write-vtk", 5);
 	double dt = 0.05;
 	for (double t=0; t<tf; t+=dt, tc++){
 		if (write_vtk && tc % save == 0){
