@@ -54,6 +54,8 @@ void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4e
       pnp1[n] = 0;
     else if(fabs(p0[n]) <= limit)
     {
+      const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
+
       double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
       double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
 #ifdef P4_TO_P8
@@ -61,16 +63,16 @@ void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4e
       double p_00m,  p_00p ;
 #endif
 #ifdef P4_TO_P8
-      (*ngbd)[n].ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0, p0_00m, p0_00p);
-      (*ngbd)[n].ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 , p_00m , p_00p );
+      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0, p0_00m, p0_00p);
+      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 , p_00m , p_00p );
 #else
-      (*ngbd)[n].ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0);
-      (*ngbd)[n].ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 );
+      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0);
+      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 );
 #endif
-      double s_p00 = (*ngbd)[n].d_p00; double s_m00 = (*ngbd)[n].d_m00;
-      double s_0p0 = (*ngbd)[n].d_0p0; double s_0m0 = (*ngbd)[n].d_0m0;
+      double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
+      double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
 #ifdef P4_TO_P8
-      double s_00p = (*ngbd)[n].d_00p; double s_00m = (*ngbd)[n].d_00m;
+      double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
 #endif
 
       //---------------------------------------------------------------------
@@ -235,6 +237,8 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
       pnp1[n] = 0;
     else if(fabs(p0[n]) <= limit)
     {
+      const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
+
       double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
       double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
 #ifdef P4_TO_P8
@@ -242,17 +246,17 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
       double p_00m,  p_00p ;
 #endif
 #ifdef P4_TO_P8
-      (*ngbd)[n].ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0, p0_00m, p0_00p);
-      (*ngbd)[n].ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 , p_00m , p_00p );
+      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0, p0_00m, p0_00p);
+      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 , p_00m , p_00p );
 #else
-      (*ngbd)[n].ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0);
-      (*ngbd)[n].ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 );
+      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0);
+      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 );
 #endif
 
-      double s_p00 = (*ngbd)[n].d_p00; double s_m00 = (*ngbd)[n].d_m00;
-      double s_0p0 = (*ngbd)[n].d_0p0; double s_0m0 = (*ngbd)[n].d_0m0;
+      double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
+      double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
 #ifdef P4_TO_P8
-      double s_00p = (*ngbd)[n].d_00p; double s_00m = (*ngbd)[n].d_00m;
+      double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
 #endif
 
       //---------------------------------------------------------------------
@@ -263,13 +267,13 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
 #ifdef P4_TO_P8
       double pzz_000 = dzz[n];
 #endif
-      double pxx_m00 = (*ngbd)[n].f_m00_linear(dxx);
-      double pxx_p00 = (*ngbd)[n].f_p00_linear(dxx);
-      double pyy_0m0 = (*ngbd)[n].f_0m0_linear(dyy);
-      double pyy_0p0 = (*ngbd)[n].f_0p0_linear(dyy);
+      double pxx_m00 = qnnn.f_m00_linear(dxx);
+      double pxx_p00 = qnnn.f_p00_linear(dxx);
+      double pyy_0m0 = qnnn.f_0m0_linear(dyy);
+      double pyy_0p0 = qnnn.f_0p0_linear(dyy);
 #ifdef P4_TO_P8
-      double pzz_00m = (*ngbd)[n].f_00m_linear(dzz);
-      double pzz_00p = (*ngbd)[n].f_00p_linear(dzz);
+      double pzz_00m = qnnn.f_00m_linear(dzz);
+      double pzz_00p = qnnn.f_00p_linear(dzz);
 #endif
 
       //---------------------------------------------------------------------
@@ -287,13 +291,13 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
 #ifdef P4_TO_P8
         double p0zz_000 = dzz0[n];
 #endif
-        double p0xx_m00 = (*ngbd)[n].f_m00_linear(dxx0);
-        double p0xx_p00 = (*ngbd)[n].f_p00_linear(dxx0);
-        double p0yy_0m0 = (*ngbd)[n].f_0m0_linear(dyy0);
-        double p0yy_0p0 = (*ngbd)[n].f_0p0_linear(dyy0);
+        double p0xx_m00 = qnnn.f_m00_linear(dxx0);
+        double p0xx_p00 = qnnn.f_p00_linear(dxx0);
+        double p0yy_0m0 = qnnn.f_0m0_linear(dyy0);
+        double p0yy_0p0 = qnnn.f_0p0_linear(dyy0);
 #ifdef P4_TO_P8
-        double p0zz_00m = (*ngbd)[n].f_00m_linear(dzz0);
-        double p0zz_00p = (*ngbd)[n].f_00p_linear(dzz0);
+        double p0zz_00m = qnnn.f_00m_linear(dzz0);
+        double p0zz_00p = qnnn.f_00p_linear(dzz0);
 #endif
 
         if(p0_000*p0_m00<0) { s_m00 =-interface_Location_With_Second_Order_Derivative(-s_m00,   0,p0_m00,p0_000,p0xx_m00,p0xx_000); p_m00=0; }
@@ -454,6 +458,7 @@ void my_p4est_level_set::advect_in_normal_direction_one_iteration(std::vector<p4
   for( size_t n_map=0; n_map<map.size(); ++n_map)
   {
     p4est_locidx_t n    = map[n_map];
+    const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
 
     double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0;
 #ifdef P4_TO_P8
@@ -461,14 +466,14 @@ void my_p4est_level_set::advect_in_normal_direction_one_iteration(std::vector<p4
 #endif
 
 #ifdef P4_TO_P8
-    (*ngbd)[n].ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0, p_00m, p_00p);
+    qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0, p_00m, p_00p);
 #else
-    (*ngbd)[n].ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0);
+    qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0);
 #endif
-    double s_p00 = (*ngbd)[n].d_p00; double s_m00 = (*ngbd)[n].d_m00;
-    double s_0p0 = (*ngbd)[n].d_0p0; double s_0m0 = (*ngbd)[n].d_0m0;
+    double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
+    double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
 #ifdef P4_TO_P8
-    double s_00p = (*ngbd)[n].d_00p; double s_00m = (*ngbd)[n].d_00m;
+    double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
 #endif
 
     //---------------------------------------------------------------------
@@ -479,13 +484,13 @@ void my_p4est_level_set::advect_in_normal_direction_one_iteration(std::vector<p4
 #ifdef P4_TO_P8
     double pzz_000 = dzz[n];
 #endif
-    double pxx_m00 = (*ngbd)[n].f_m00_linear(dxx);
-    double pxx_p00 = (*ngbd)[n].f_p00_linear(dxx);
-    double pyy_0m0 = (*ngbd)[n].f_0m0_linear(dyy);
-    double pyy_0p0 = (*ngbd)[n].f_0p0_linear(dyy);
+    double pxx_m00 = qnnn.f_m00_linear(dxx);
+    double pxx_p00 = qnnn.f_p00_linear(dxx);
+    double pyy_0m0 = qnnn.f_0m0_linear(dyy);
+    double pyy_0p0 = qnnn.f_0p0_linear(dyy);
 #ifdef P4_TO_P8
-    double pzz_00m = (*ngbd)[n].f_00m_linear(dzz);
-    double pzz_00p = (*ngbd)[n].f_00p_linear(dzz);
+    double pzz_00m = qnnn.f_00m_linear(dzz);
+    double pzz_00p = qnnn.f_00p_linear(dzz);
 #endif
 
     //---------------------------------------------------------------------
@@ -1083,6 +1088,7 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
   std::vector<double> vn_vec(nodes->indep_nodes.elem_count);
   double *vn_p = &vn_vec[0];
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
+    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
@@ -1106,10 +1112,10 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
     zn += tree_zmin;
 #endif
 
-    double s_p00 = ABS((*ngbd)[n].d_p00); double s_m00 = ABS((*ngbd)[n].d_m00);
-    double s_0p0 = ABS((*ngbd)[n].d_0p0); double s_0m0 = ABS((*ngbd)[n].d_0m0);
+    double s_p00 = ABS(qnnn.d_p00); double s_m00 = ABS(qnnn.d_m00);
+    double s_0p0 = ABS(qnnn.d_0p0); double s_0m0 = ABS(qnnn.d_0m0);
 #ifdef P4_TO_P8
-    double s_00p = ABS((*ngbd)[n].d_00p); double s_00m = ABS((*ngbd)[n].d_00m);
+    double s_00p = ABS(qnnn.d_00p); double s_00m = ABS(qnnn.d_00m);
 #endif
 #ifdef P4_TO_P8
     double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0), MIN(s_00p, s_00m));
@@ -1263,10 +1269,12 @@ double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec
   double dt_local = DBL_MAX;
   double dt;
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
-    double s_p00 = ABS((*ngbd)[n].d_p00); double s_m00 = ABS((*ngbd)[n].d_m00);
-    double s_0p0 = ABS((*ngbd)[n].d_0p0); double s_0m0 = ABS((*ngbd)[n].d_0m0);
+    const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
+
+    double s_p00 = ABS(qnnn.d_p00); double s_m00 = ABS(qnnn.d_m00);
+    double s_0p0 = ABS(qnnn.d_0p0); double s_0m0 = ABS(qnnn.d_0m0);
 #ifdef P4_TO_P8
-    double s_00p = ABS((*ngbd)[n].d_00p); double s_00m = ABS((*ngbd)[n].d_00m);
+    double s_00p = ABS(qnnn.d_00p); double s_00m = ABS(qnnn.d_00m);
 #endif
 #ifdef P4_TO_P8
     double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0), MIN(s_00p, s_00m));
@@ -1393,10 +1401,12 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    phi_x[n] = (*ngbd)[n].dx_central(phi);
-    phi_y[n] = (*ngbd)[n].dy_central(phi);
+    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+
+    phi_x[n] = qnnn.dx_central(phi);
+    phi_y[n] = qnnn.dy_central(phi);
 #ifdef P4_TO_P8
-    phi_z[n] = (*ngbd)[n].dz_central(phi);
+    phi_z[n] = qnnn.dz_central(phi);
 #endif
   }
 
@@ -1619,10 +1629,12 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    phi_x[n] = (*ngbd)[n].dx_central(phi);
-    phi_y[n] = (*ngbd)[n].dy_central(phi);
+    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+
+    phi_x[n] = qnnn.dx_central(phi);
+    phi_y[n] = qnnn.dy_central(phi);
 #ifdef P4_TO_P8
-    phi_z[n] = (*ngbd)[n].dz_central(phi);
+    phi_z[n] = qnnn.dz_central(phi);
 #endif
   }
 
@@ -1834,15 +1846,17 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
   /* now buffer the interpolation points */
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
+    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+
 #ifdef P4_TO_P8
     Point3 grad_phi;
 #else
     Point2 grad_phi;
 #endif
-    grad_phi.x = (*ngbd)[n].dx_central(phi);
-    grad_phi.y = (*ngbd)[n].dy_central(phi);
+    grad_phi.x = qnnn.dx_central(phi);
+    grad_phi.y = qnnn.dy_central(phi);
 #ifdef P4_TO_P8
-    grad_phi.z = (*ngbd)[n].dz_central(phi);
+    grad_phi.z = qnnn.dz_central(phi);
 #endif
 
     if(fabs(phi[n])<band_to_extend*diag && grad_phi.norm_L2()>EPS)

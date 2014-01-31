@@ -37,7 +37,7 @@ class my_p4est_node_neighbors_t {
   p4est_nodes_t *nodes;
   my_p4est_brick_t *myb;
   std::vector< quad_neighbor_nodes_of_node_t > neighbors;
-  quad_neighbor_nodes_of_node_t qnnn;
+  quad_neighbor_nodes_of_node_t qnnn_;
   std::vector<p4est_locidx_t> layer_nodes;
   std::vector<p4est_locidx_t> local_nodes;
   bool is_initialized;
@@ -77,7 +77,7 @@ public:
 
   void init_neighbors();
   
-  inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
+  inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) {
 #ifdef CASL_THROWS
     if (n<0 || n>=nodes->num_owned_indeps){
       std::ostringstream oss;
@@ -86,11 +86,14 @@ public:
           << "). This probably means you are trying to acess neighboring nodes"
              " of a ghost nod. This is not supported." << std::endl;
       throw std::invalid_argument(oss.str());
-    }
-    if (!is_initialized)
-      throw std::runtime_error("[ERROR]: operator[] only works if all neighbors are explicitly initialized. Consider calling init_neighbors() first.");
+    }    
 #endif
-    return neighbors[n];
+    if (is_initialized)
+      return neighbors[n];
+    else {
+      get_neighbors(n, qnnn_);
+      return qnnn_;
+    }
   }
 
   void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;

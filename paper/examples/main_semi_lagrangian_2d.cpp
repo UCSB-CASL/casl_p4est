@@ -147,7 +147,7 @@ int main (int argc, char* argv[]){
 	cmd.add_option("tf", "t final");
   cmd.add_option("write-vtk", "pass this flag if interested in the vtk files");
 	cmd.add_option("output-dir", "parent folder to save everythiong in");
-  cmd.add_option("lip", "lip constant for refinement")
+  cmd.add_option("lip", "lip constant for refinement");
 	cmd.parse(argc, argv);
 	cmd.print();
 
@@ -271,7 +271,7 @@ int main (int argc, char* argv[]){
 		// reinitialize
 		my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
 		my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
-		node_neighbors.init_neighbors();
+		// node_neighbors.init_neighbors();
 		my_p4est_level_set level_set(&node_neighbors);
 		level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
 
