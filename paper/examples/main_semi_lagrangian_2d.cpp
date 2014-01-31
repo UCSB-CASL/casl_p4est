@@ -147,12 +147,14 @@ int main (int argc, char* argv[]){
 	cmd.add_option("tf", "t final");
   cmd.add_option("write-vtk", "pass this flag if interested in the vtk files");
 	cmd.add_option("output-dir", "parent folder to save everythiong in");
+  cmd.add_option("lip", "lip constant for refinement")
 	cmd.parse(argc, argv);
 	cmd.print();
 
 	const std::string foldername = cmd.get<std::string>("output-dir");
 	const int lmin = cmd.get("lmin", 0);
 	const int lmax = cmd.get("lmax", 7);
+  const double lip = cmd.get("lip", 1.2);
   const bool write_vtk = cmd.contains("write-vtk");
 	mkdir(foldername.c_str(), 0777);
 
@@ -163,7 +165,7 @@ int main (int argc, char* argv[]){
 #else
 	circle circ(0.35, 0.35, .15);
 #endif
-	splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 7), &circ, 1.2);
+	splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 7), &circ, lip);
 
 	parStopWatch w1, w2;
 	w1.start("total time");
