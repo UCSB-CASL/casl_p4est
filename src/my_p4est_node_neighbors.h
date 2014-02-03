@@ -26,6 +26,7 @@ class my_p4est_node_neighbors_t {
   friend class PoissonSolverCellBase;
   friend class InterpolatingFunctionNodeBase;
   friend class my_p4est_level_set;
+  friend class SemiLagrangian;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information
@@ -37,7 +38,6 @@ class my_p4est_node_neighbors_t {
   p4est_nodes_t *nodes;
   my_p4est_brick_t *myb;
   std::vector< quad_neighbor_nodes_of_node_t > neighbors;
-  quad_neighbor_nodes_of_node_t qnnn_;
   std::vector<p4est_locidx_t> layer_nodes;
   std::vector<p4est_locidx_t> local_nodes;
   bool is_initialized;
@@ -76,8 +76,10 @@ public:
   }
 
   void init_neighbors();
+  void clear_neighbors();
+  void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_);
   
-  inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) {
+  inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
 #ifdef CASL_THROWS
     if (n<0 || n>=nodes->num_owned_indeps){
       std::ostringstream oss;
@@ -87,16 +89,25 @@ public:
              " of a ghost nod. This is not supported." << std::endl;
       throw std::invalid_argument(oss.str());
     }    
+
+    if (!is_initialized)
+      throw std::runtime_error("[ERROR]: operator[] can only be used if nodes are buffered. Either initialize the buffer by calling"
+                               "'init_neighbors()' or consider calling 'get_neighbors()' to compute the neighbors on the fly.");
 #endif
-    if (is_initialized)
       return neighbors[n];
-    else {
-      get_neighbors(n, qnnn_);
-      return qnnn_;
-    }
   }
 
   void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
+
+  inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n) const {
+    if (is_initialized)
+      return neighbors[n];
+    else {
+      quad_neighbor_nodes_of_node_t qnnn;
+      get_neighbors(n, qnnn);
+      return qnnn;
+    }
+  }
 
   /**
      * This function is finds the neighboring cell of a node in the given (i,j) direction. The direction must be diagonal

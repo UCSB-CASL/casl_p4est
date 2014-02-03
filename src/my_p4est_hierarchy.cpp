@@ -127,6 +127,31 @@ void my_p4est_hierarchy_t::construct_tree() {
 
 }
 
+void my_p4est_hierarchy_t::update(p4est_t *p4est_, p4est_ghost_t *ghost_)
+{
+  p4est = p4est_;
+  ghost = ghost_;
+
+  trees.clear();
+  trees.resize(p4est->connectivity->num_trees);
+
+  for( size_t tr=0; tr<trees.size(); tr++)
+  {
+    HierarchyCell root =
+    {
+      CELL_LEAF, NOT_A_P4EST_QUADRANT, /* child, quad */
+      0, 0,                            /* imin, jmin  */
+#ifdef P4_TO_P8
+      0,                               /* kmin (3D only) */
+#endif
+      0,                               /* level */
+      REMOTE_OWNER                     /* owner's rank */
+    };
+    trees[tr].push_back(root);
+  }
+  construct_tree();
+}
+
 void my_p4est_hierarchy_t::write_vtk(const char* filename) const
 {
   p4est_connectivity_t* connectivity = p4est->connectivity;

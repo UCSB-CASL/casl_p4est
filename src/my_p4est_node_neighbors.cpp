@@ -51,6 +51,33 @@ void my_p4est_node_neighbors_t::init_neighbors()
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
+void my_p4est_node_neighbors_t::clear_neighbors()
+{
+  neighbors.clear();
+  is_initialized = false;
+}
+
+void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
+{
+  hierarchy = hierarchy_;
+  p4est = hierarchy_->p4est;
+  ghost = hierarchy_->ghost;
+  nodes = nodes_;
+
+  is_initialized = false;
+
+  layer_nodes.clear();
+  local_nodes.clear();
+
+  layer_nodes.reserve(nodes->num_owned_shared);
+  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
+
+  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i){
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
+    ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
+  }
+}
+
 void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
 {
   p4est_connectivity_t *connectivity = p4est->connectivity;

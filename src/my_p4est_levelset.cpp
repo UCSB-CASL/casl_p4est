@@ -54,7 +54,8 @@ void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4e
       pnp1[n] = 0;
     else if(fabs(p0[n]) <= limit)
     {
-      const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
+      
+      const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
       double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
       double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
@@ -236,8 +237,8 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
     if(fabs(p0[n]) <= EPS)
       pnp1[n] = 0;
     else if(fabs(p0[n]) <= limit)
-    {
-      const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
+    {      
+      const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
       double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
       double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
@@ -458,7 +459,8 @@ void my_p4est_level_set::advect_in_normal_direction_one_iteration(std::vector<p4
   for( size_t n_map=0; n_map<map.size(); ++n_map)
   {
     p4est_locidx_t n    = map[n_map];
-    const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
+    
+    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
     double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0;
 #ifdef P4_TO_P8
@@ -1088,7 +1090,8 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
   std::vector<double> vn_vec(nodes->indep_nodes.elem_count);
   double *vn_p = &vn_vec[0];
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
+
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
@@ -1269,7 +1272,8 @@ double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec
   double dt_local = DBL_MAX;
   double dt;
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
-    const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
+    
+    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
     double s_p00 = ABS(qnnn.d_p00); double s_m00 = ABS(qnnn.d_m00);
     double s_0p0 = ABS(qnnn.d_0p0); double s_0m0 = ABS(qnnn.d_0m0);
@@ -1401,7 +1405,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
     phi_x[n] = qnnn.dx_central(phi);
     phi_y[n] = qnnn.dy_central(phi);
@@ -1629,7 +1633,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
     phi_x[n] = qnnn.dx_central(phi);
     phi_y[n] = qnnn.dy_central(phi);
@@ -1846,7 +1850,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
   /* now buffer the interpolation points */
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
 #ifdef P4_TO_P8
     Point3 grad_phi;

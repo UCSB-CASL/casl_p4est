@@ -39,11 +39,13 @@ extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
 #define PetscLogFlops(n) 0
 #endif
 
-SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, p4est_ghost_t **ghost, my_p4est_brick_t *myb)
+SemiLagrangian::SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, p4est_ghost_t **ghost, my_p4est_brick_t *myb, my_p4est_node_neighbors_t *ngbd)
   : p_p4est_(p4est), p4est_(*p4est),
     p_nodes_(nodes), nodes_(*nodes),
     p_ghost_(ghost), ghost_(*ghost),
-    myb_(myb)
+    myb_(myb),
+    ngbd_(ngbd),
+    hierarchy_(ngbd->hierarchy)
 {
   // compute domain sizes
   double *v2c = p4est_->connectivity->vertices;
@@ -103,19 +105,19 @@ double SemiLagrangian::compute_dt(const CF_2 &vx, const CF_2 &vy)
   return dt_min;
 }
 
-void SemiLagrangian::advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, double dt,
-                                          #ifdef P4_TO_P8
+void SemiLagrangian::advect_from_n_to_np1(double dt,
+                                        #ifdef P4_TO_P8
                                           const CF_3& vx, const CF_3& vy, const CF_3& vz,
                                           Vec phi_n, Vec phi_xx_n, Vec phi_yy_n, Vec phi_zz_n,
-                                          #else
+                                        #else
                                           const CF_2& vx, const CF_2& vy,
                                           Vec phi_n, Vec phi_xx_n, Vec phi_yy_n,
-                                          #endif
+                                        #endif
                                           double *phi_np1,p4est_t *p4est_np1, p4est_nodes_t *nodes_np1)
 {
   ierr = PetscLogEventBegin(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
 
-  InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, &qnnn);
+  InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, ngbd_);
 #ifdef P4_TO_P8
   interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n, phi_zz_n);
 #else
@@ -184,7 +186,7 @@ void SemiLagrangian::advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, doubl
   ierr = PetscLogEventEnd(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void SemiLagrangian::advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, double dt,
+void SemiLagrangian::advect_from_n_to_np1(double dt,
                                           #ifdef P4_TO_P8
                                           Vec vx, Vec vx_xx, Vec vx_yy, Vec vx_zz,
                                           Vec vy, Vec vy_xx, Vec vy_yy, Vec vy_zz,
@@ -206,7 +208,9 @@ void SemiLagrangian::advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, doubl
   p4est_locidx_t ni_end   = nodes_np1->indep_nodes.elem_count;
 
   /* first find the velocities at the nodes */
-  InterpolatingFunctionNodeBase interp_vel(p4est_, nodes_, ghost_, myb_, &qnnn);
+  // NOTE: We need to get rid of intermediate interpolating function since they \
+  // consume considerable amount of memory ...
+  InterpolatingFunctionNodeBase interp_vel(p4est_, nodes_, ghost_, myb_, ngbd_);
 
   std::vector<double> vx_tmp(nodes_np1->indep_nodes.elem_count);
   std::vector<double> vy_tmp(nodes_np1->indep_nodes.elem_count);
@@ -259,7 +263,7 @@ void SemiLagrangian::advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, doubl
 #endif
 
   /* now find v_star */
-  InterpolatingFunctionNodeBase interp_vel_star(p4est_, nodes_, ghost_, myb_, &qnnn);
+  InterpolatingFunctionNodeBase interp_vel_star(p4est_, nodes_, ghost_, myb_, ngbd_);
 
   for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
     p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni);
@@ -306,7 +310,7 @@ void SemiLagrangian::advect_from_n_to_np1(my_p4est_node_neighbors_t &qnnn, doubl
 #endif
 
   /* finally, find the backtracing value */
-  InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, &qnnn);
+  InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, ngbd_);
 
   /* find the departure node via backtracing */
   for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
@@ -358,11 +362,6 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
 
   PetscErrorCode ierr;
   p4est_t *p4est_np1 = my_p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
-
-  /* create hierarchy structure on p4est_n if you want to do quadratic interpolation */
-  // TODO: We should think about a smart way to move this outside class
-  my_p4est_hierarchy_t hierarchy(p4est_, ghost_, myb_);
-  my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
   std::vector<double> phi_tmp;
 
   // compute vx_xx, vx_yy
@@ -374,9 +373,9 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
   ierr = VecCreateGhostNodes(p4est_, nodes_, &vx_zz); CHKERRXX(ierr);
 #endif
 #ifdef P4_TO_P8
-  qnnn.second_derivatives_central(vx, vx_xx, vx_yy, vx_zz);
+  ngbd_->second_derivatives_central(vx, vx_xx, vx_yy, vx_zz);
 #else
-  qnnn.second_derivatives_central(vx, vx_xx, vx_yy);
+  ngbd_->second_derivatives_central(vx, vx_xx, vx_yy);
 #endif
 
   // note that vy_xx and vy_yy must duplicate from separate vectors otherwise PETSc throws
@@ -388,9 +387,9 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
   ierr = VecDuplicate(vx_zz, &vy_zz); CHKERRXX(ierr);
 #endif
 #ifdef P4_TO_P8
-  qnnn.second_derivatives_central(vy, vy_xx, vy_yy, vy_zz);
+  ngbd_->second_derivatives_central(vy, vy_xx, vy_yy, vy_zz);
 #else
-  qnnn.second_derivatives_central(vy, vy_xx, vy_yy);
+  ngbd_->second_derivatives_central(vy, vy_xx, vy_yy);
 #endif
 
 #ifdef P4_TO_P8
@@ -400,7 +399,7 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
   ierr = VecDuplicate(vx_yy, &vz_yy); CHKERRXX(ierr);
   ierr = VecDuplicate(vx_zz, &vz_zz); CHKERRXX(ierr);
 
-  qnnn.second_derivatives_central(vz, vz_xx, vz_yy, vz_zz);
+  ngbd_->second_derivatives_central(vz, vz_xx, vz_yy, vz_zz);
 #endif
 
 
@@ -423,9 +422,9 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
 #endif
 
 #ifdef P4_TO_P8
-    qnnn.second_derivatives_central(phi, phi_xx_, phi_yy_, phi_zz_);
+    ngbd_->second_derivatives_central(phi, phi_xx_, phi_yy_, phi_zz_);
 #else
-    qnnn.second_derivatives_central(phi, phi_xx_, phi_yy_);
+    ngbd_->second_derivatives_central(phi, phi_xx_, phi_yy_);
 #endif
     local_derivatives = true;
   }
@@ -440,7 +439,7 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
     /* compute phi_np1 on intermediate grid */
     phi_tmp.resize(nodes_tmp->indep_nodes.elem_count);
 
-    advect_from_n_to_np1(qnnn, dt,
+    advect_from_n_to_np1(dt,
                      #ifdef P4_TO_P8
                          vx,  vx_xx,   vx_yy,   vx_zz,
                          vy,  vy_xx,   vy_yy,   vy_zz,
@@ -481,7 +480,7 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
   ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
   ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-  advect_from_n_to_np1(qnnn, dt,
+  advect_from_n_to_np1(dt,
                      #ifdef P4_TO_P8
                          vx,  vx_xx,   vx_yy,   vx_zz,
                          vy,  vy_xx,   vy_yy,   vy_zz,
@@ -499,6 +498,8 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
   p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
   p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
   p4est_ghost_destroy(ghost_); ghost_ = *p_ghost_ = ghost_np1;
+  hierarchy_->update(p4est_, ghost_);
+  ngbd_->update(hierarchy_, nodes_);
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
@@ -535,10 +536,6 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
   p4est_t *p4est_np1 = my_p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
-
-  /* create hierarchy structure on p4est_n if you want to do quadratic interpolation */
-  my_p4est_hierarchy_t hierarchy(p4est_, ghost_, myb_);
-  my_p4est_node_neighbors_t qnnn(&hierarchy, nodes_);
   std::vector<double> phi_tmp;
 
   // compute phi_xx and phi_yy
@@ -561,9 +558,9 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
 #endif
 
 #ifdef P4_TO_P8
-    qnnn.second_derivatives_central(phi, phi_xx_, phi_yy_, phi_zz_);
+    ngbd_->second_derivatives_central(phi, phi_xx_, phi_yy_, phi_zz_);
 #else
-    qnnn.second_derivatives_central(phi, phi_xx_, phi_yy_);
+    ngbd_->second_derivatives_central(phi, phi_xx_, phi_yy_);
 #endif
 
     local_derivatives = true;
@@ -578,7 +575,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
 
     /* compute phi_np1 on intermediate grid */
     phi_tmp.resize(nodes_tmp->indep_nodes.elem_count);
-    advect_from_n_to_np1(qnnn, dt,
+    advect_from_n_to_np1(dt,
                      #ifdef P4_TO_P8
                          vx, vy, vz,
                          phi, phi_xx_, phi_yy_, phi_zz_,
@@ -616,7 +613,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
   ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-  advect_from_n_to_np1(qnnn, dt,
+  advect_from_n_to_np1(dt,
                      #ifdef P4_TO_P8
                          vx, vy, vz,
                          phi, phi_xx_, phi_yy_, phi_zz_,
@@ -631,6 +628,8 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
   p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
   p4est_ghost_destroy(ghost_); ghost_ = *p_ghost_ = ghost_np1;
+  hierarchy_->update(p4est_, ghost_);
+  ngbd_->update(hierarchy_, nodes_);
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
