@@ -244,12 +244,19 @@ int main (int argc, char* argv[]){
 
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
-
-    w2.start("Reinit");
-    if(cmd.contains("enable-qnnn-buffer"))
+		if(cmd.contains("enable-qnnn-buffer"))
       node_neighbors.init_neighbors();
+
     my_p4est_level_set level_set(&node_neighbors);
+
+    w2.start("Reinit_1st_2nd");
     level_set.reinitialize_1st_order_time_2nd_order_space(phi, cmd.get("iter", 10));
+    w2.stop(); w2.read_duration();
+
+		// reset the level-set
+		sample_cf_on_nodes(p4est, nodes, *cf, phi);
+		w2.start("Reinit_2nd_2nd");
+    level_set.reinitialize_2nd_order(phi, cmd.get("iter", 10));
     w2.stop(); w2.read_duration();
 
     if (write_vtk){
