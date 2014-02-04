@@ -132,6 +132,7 @@ int main (int argc, char* argv[]){
     cmd.add_option("test", "weak or strong scaling test");
     cmd.add_option("write-vtk", "pass this flag if interested in the vtk files");
     cmd.add_option("output-dir", "parent folder to save everythiong in");
+		cmd.add_option("iter", "number of iterations for the reinitialization process");
     cmd.add_option("enable-qnnn-buffer", "if this flag is set qnnns are internally buffered");
     cmd.parse(argc, argv);
     cmd.print();
@@ -248,7 +249,7 @@ int main (int argc, char* argv[]){
     if(cmd.contains("enable-qnnn-buffer"))
       node_neighbors.init_neighbors();
     my_p4est_level_set level_set(&node_neighbors);
-    level_set.reinitialize_1st_order_time_2nd_order_space(phi, 20);
+    level_set.reinitialize_1st_order_time_2nd_order_space(phi, cmd.get("iter", 10));
     w2.stop(); w2.read_duration();
 
     if (write_vtk){
