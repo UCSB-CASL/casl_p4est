@@ -113,6 +113,7 @@ private:
 
 int main (int argc, char* argv[]){
 
+<<<<<<< HEAD
   try {
     mpi_context_t mpi_context, *mpi = &mpi_context;
     mpi->mpicomm  = MPI_COMM_WORLD;
@@ -121,6 +122,16 @@ int main (int argc, char* argv[]){
     MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
     MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
+=======
+  mpi_context_t mpi_context, *mpi = &mpi_context;
+  mpi->mpicomm  = MPI_COMM_WORLD;
+  Session mpi_session;
+  mpi_session.init(argc, argv, mpi->mpicomm);
+  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
+  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
+
+  try {
+>>>>>>> 0eec286d241f960cf97f51d6520de6897e4eb325
     p4est_t            *p4est;
     p4est_nodes_t      *nodes;
     p4est_ghost_t      *ghost;
@@ -169,7 +180,7 @@ int main (int argc, char* argv[]){
         }
       }
       if (nb == -1)
-        throw invalid_argument("not a valid mpi size");
+        throw invalid_argument("[ERROR]: not a valid mpi size");
       cf = &w_cf;
     } else if (test == "strong"){
       nb = 3;
@@ -282,9 +293,9 @@ int main (int argc, char* argv[]){
 
     w1.stop(); w1.read_duration();
   } catch (const std::exception& e) {
-    PetscSynchronizedPrintf(MPI_COMM_WORLD, "%s\n", e.what());
-    PetscSynchronizedFlush(MPI_COMM_WORLD);
-    MPI_Abort(MPI_COMM_WORLD, MPI_ERR_UNKNOWN);
+    PetscSynchronizedFPrintf(mpi->mpicomm, stderr, "[%d] %s\n", mpi->mpirank, e.what());
+    PetscSynchronizedFlush(mpi->mpicomm);
+    MPI_Abort(mpi->mpicomm, MPI_ERR_UNKNOWN);
   }
 
   return 0;
