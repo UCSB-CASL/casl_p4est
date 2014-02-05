@@ -43,11 +43,6 @@ void my_p4est_node_neighbors_t::init_neighbors()
   for( p4est_locidx_t n=0; n < nodes->num_owned_indeps; ++n)
   {
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,nodes->offset_owned_indeps+n);
-
-    // need to unclamp the node to make sure we get the correct coordinate
-    p4est_indep_t node_unclamped = *node;
-    p4est_node_unclamp((p4est_quadrant_t*)&node_unclamped);
-
     p4est_topidx_t tree_id = node->p.piggy3.which_tree;
     p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
 
@@ -57,11 +52,10 @@ void my_p4est_node_neighbors_t::init_neighbors()
     double tree_zmin = connectivity->vertices[3*v_mmm + 2];
 #endif
 
-
-    double x = node_unclamped.x / (double) P4EST_ROOT_LEN + tree_xmin;
-    double y = node_unclamped.y / (double) P4EST_ROOT_LEN + tree_ymin;
+    double x = node_x_fr_i(node) + tree_xmin;
+    double y = node_y_fr_j(node) + tree_ymin;
 #ifdef P4_TO_P8
-    double z = node_unclamped.z / (double) P4EST_ROOT_LEN + tree_zmin;
+    double z = node_z_fr_k(node) + tree_zmin;
 #endif
 
     p4est_locidx_t quad_mmm_idx; p4est_topidx_t tree_mmm_idx;

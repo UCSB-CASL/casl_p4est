@@ -124,6 +124,10 @@ public:
     p_InterfaceValue = &in;
   }
 
+  inline const CF_2& getInterfaceValue(){
+    return *p_InterfaceValue;
+  }
+
   inline BoundaryConditionType wallType( double x, double y ) const
   {
 #ifdef CASL_THROWS
@@ -189,6 +193,10 @@ public:
 
   inline void setInterfaceValue(const CF_3& in){
     p_InterfaceValue = &in;
+  }
+
+  inline const CF_3& getInterfaceValue(){
+    return *p_InterfaceValue;
   }
 
   inline BoundaryConditionType wallType( double x, double y, double z ) const

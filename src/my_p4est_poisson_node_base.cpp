@@ -1026,7 +1026,9 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           if(ABS(w_0p0) > EPS) {ierr = MatSetValue(A, node_000_g, node_0p0_g, w_0p0, ADD_VALUES); CHKERRXX(ierr);}
           if(ABS(w_00m) > EPS) {ierr = MatSetValue(A, node_000_g, node_00m_g, w_00m, ADD_VALUES); CHKERRXX(ierr);}
           if(ABS(w_00p) > EPS) {ierr = MatSetValue(A, node_000_g, node_00p_g, w_00p, ADD_VALUES); CHKERRXX(ierr);}
+
 #else
+
           p4est_locidx_t quad_mmm_idx, quad_ppm_idx;
           p4est_topidx_t tree_mmm_idx, tree_ppm_idx;
 
@@ -1062,8 +1064,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           if (ABS(w_0m0) > EPS) {ierr = MatSetValue(A, node_000_g, node_0m0_g, w_0m0,  ADD_VALUES); CHKERRXX(ierr);}
           if (ABS(w_0p0) > EPS) {ierr = MatSetValue(A, node_000_g, node_0p0_g, w_0p0,  ADD_VALUES); CHKERRXX(ierr);}
 
-          if(add_p[n] > 0) matrix_has_nullspace = false;
 #endif
+
+          if(add_p[n] > 0) matrix_has_nullspace = false;
+
         } else {
           ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
         }
@@ -1085,7 +1089,8 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
   ierr = VecRestoreArray(add_,    &add_p   ); CHKERRXX(ierr);
 
   // check for null space
-  ierr = MPI_Allreduce(&matrix_has_nullspace, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm); CHKERRXX(ierr);
+  // FIXME: the return value should be checked for errors ...
+  MPI_Allreduce(&matrix_has_nullspace, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
   if (matrix_has_nullspace)
   {
     if (A_null_space == NULL) // pun not intended!

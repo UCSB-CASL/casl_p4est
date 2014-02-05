@@ -821,6 +821,30 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
 
+
+void my_p4est_level_set::perturb_level_set_function( Vec phi_petsc, double epsilon )
+{
+  PetscErrorCode ierr;
+  double *phi_ptr;
+
+  ierr = VecGetArray(phi_petsc, &phi_ptr); CHKERRXX(ierr);
+
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  {
+    if(ABS(phi_ptr[n]) < epsilon)
+    {
+      if(phi_ptr[n] > 0) phi_ptr[n] =  epsilon;
+      else               phi_ptr[n] = -epsilon;
+    }
+  }
+
+  ierr = VecRestoreArray(phi_petsc, &phi_ptr); CHKERRXX(ierr);
+
+//  ierr = VecGhostUpdateBegin(phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd  (phi_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+}
+
+
 void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration, double limit )
 {
   PetscErrorCode ierr;  
@@ -1395,18 +1419,26 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
   InterpolatingFunctionNodeBase interp2(p4est, nodes, ghost, myb, ngbd);
 
   /* find dx and dy smallest */
-  // NOTE: this, like all other places, assumes all trees are of the same size [0,1]^d
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  double dx = 1.0 / pow(2.,(double) data->max_lvl);
-  double dy = dx;
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
+  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+
 #ifdef P4_TO_P8
-  double dz = dx;
+  double zmin = p4est->connectivity->vertices[3*vm + 2];
+  double zmax = p4est->connectivity->vertices[3*vp + 2];
+  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
 #endif
-  /* NOTE: I don't understand why the 1.6 coefficient is needed ... 1 should work, but it doesn't */
+
 #ifdef P4_TO_P8
-  double diag = 1.6*sqrt(dx*dx + dy*dy + dz*dz);
+  double diag = sqrt(dx*dx + dy*dy + dz*dz);
 #else
-  double diag = 1.6*sqrt(dx*dx + dy*dy);
+  double diag = sqrt(dx*dx + dy*dy);
 #endif
 
   std::vector<double> q0;
@@ -1461,11 +1493,11 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
       {
         double xyz_ [] =
         {
-          xyz[0] + grad_phi.x * (diag + phi[n]),
-          xyz[1] + grad_phi.y * (diag + phi[n])
+          xyz[0] + grad_phi.x * (2*diag + phi[n]),
+          xyz[1] + grad_phi.y * (2*diag + phi[n])
   #ifdef P4_TO_P8
           ,
-          xyz[2] + grad_phi.z * (diag + phi[n])
+          xyz[2] + grad_phi.z * (2*diag + phi[n])
   #endif
         };
         interp1.add_point_to_buffer(n, xyz_);
@@ -1475,11 +1507,11 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
       {
         double xyz_ [] =
         {
-          xyz[0] + grad_phi.x * (2.0*diag + phi[n]),
-          xyz[1] + grad_phi.y * (2.0*diag + phi[n])
+          xyz[0] + grad_phi.x * (3*diag + phi[n]),
+          xyz[1] + grad_phi.y * (3*diag + phi[n])
   #ifdef P4_TO_P8
           ,
-          xyz[2] + grad_phi.z * (2.0*diag + phi[n])
+          xyz[2] + grad_phi.z * (3*diag + phi[n])
   #endif
         };
         interp2.add_point_to_buffer(n, xyz_);
@@ -1530,6 +1562,16 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
   #endif
       };
 
+//      double xy1 [] = {xyz[0] - grad_phi.x*(phi[n]), xyz[1] - grad_phi.y*(phi[n])};
+//      double xy2 [] = {xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)};
+
+//      q1[n] = 0.25*(
+//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
+//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
+//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
+//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) );
+//      q2[n] = bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+3*diag), xyz[1] - grad_phi.y*(phi[n]+3*diag));
+
       if(order==0)
       {
         if(bc.interfaceType()==DIRICHLET)
@@ -1542,7 +1584,8 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
       {
         if(bc.interfaceType()==DIRICHLET)
         {
-          double dif01 = (q1[n] - q0[n])/(diag - 0);
+          double dif01 = (q1[n] - q0[n])/(2*diag - 0);
+//          double dif01 = (q1[n] - q0[n])/(sqrt(SQR(xy2[0]-xy1[0])+SQR(xy2[1]-xy1[1])) - 0);
           q[n] = q0[n] + (-phi[n] - 0) * dif01;
         }
         else /* interface Neumann */
@@ -1552,7 +1595,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 #else
       double dif01 = -bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n]);
 #endif
-          q[n] = q1[n] + (-phi[n] - diag) * dif01;
+          q[n] = q1[n] + (-phi[n] - 2*diag) * dif01;
         }
       }
 
@@ -1560,20 +1603,33 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
       {
         if(bc.interfaceType()==DIRICHLET)
         {
-          double dif01  = (q1[n] - q0[n]) / (diag);
+          double dif01  = (q1[n] - q0[n]) / (2*diag);
           double dif12  = (q2[n] - q1[n]) / (diag);
-          double dif012 = (dif12 - dif01) / (2*diag);
-          q[n] = q0[n] + (-phi[n] - 0) * dif01 + (-phi[n] - 0)*(-phi[n] - diag) * dif012;
+          double dif012 = (dif12 - dif01) / (3*diag);
+          q[n] = q0[n] + (-phi[n] - 0) * dif01 + (-phi[n] - 0)*(-phi[n] - 2*diag) * dif012;
         }
         else /* interface Neumann */
         {
-          double dif01 = (q2[n] - q1[n])/(diag);
-#ifdef P4_TO_P8
-          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n])) / (2*diag);
-#else
-          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n])) / (2*diag);
-#endif
-          q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
+          double x1 = 2*diag;
+          double x2 = 3*diag;
+          double b = -bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n]
+    #ifdef P4_TO_P8
+              , xyz[2]-grad_phi.z*phi[n]
+    #endif
+              );
+          double a = (q2[n] - q1[n] + b*(x1 - x2)) / (x2*x2 - x1*x1);
+          double c = q1[n] - a*x1*x1 - b*x1;
+
+          double x = -phi[n];
+          q[n] = a*x*x + b*x + c;
+
+//          double dif01 = (q2[n] - q1[n])/(diag);
+//#ifdef P4_TO_P8
+//          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n])) / (2*diag);
+//#else
+//          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n])) / (2*diag);
+//#endif
+//          q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
         }
       }
 
@@ -1622,18 +1678,26 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
   InterpolatingFunctionNodeBase interp2(p4est, nodes, ghost, myb, ngbd);
 
   /* find dx and dy smallest */
-  // NOTE: Assuming all trees are of the same size [0, 1]^d
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  double dx = 1.0 / pow(2.,(double) data->max_lvl);
-  double dy = dx;
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
+  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+
 #ifdef P4_TO_P8
-  double dz = dx;
+  double zmin = p4est->connectivity->vertices[3*vm + 2];
+  double zmax = p4est->connectivity->vertices[3*vp + 2];
+  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
 #endif
-  /* NOTE: I don't understand why the 1.6 coefficient is needed ... 1 should work, but it doesn't */
+
 #ifdef P4_TO_P8
-  double diag = 1.6*sqrt(dx*dx + dy*dy + dz*dz);
+  double diag = sqrt(dx*dx + dy*dy + dz*dz);
 #else
-  double diag = 1.6*sqrt(dx*dx + dy*dy);
+  double diag = sqrt(dx*dx + dy*dy);
 #endif
 
   std::vector<double> q0;
@@ -1695,11 +1759,11 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
       {
         double xyz_ [] =
         {
-          xyz[0] + grad_phi.x * (diag + phi[n]),
-          xyz[1] + grad_phi.y * (diag + phi[n])
+          xyz[0] + grad_phi.x * (2*diag + phi[n]),
+          xyz[1] + grad_phi.y * (2*diag + phi[n])
   #ifdef P4_TO_P8
           ,
-          xyz[2] + grad_phi.z * (diag + phi[n])
+          xyz[2] + grad_phi.z * (2*diag + phi[n])
   #endif
         };
         interp1.add_point_to_buffer(n, xyz_);
@@ -1709,11 +1773,11 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
       {
         double xyz_ [] =
         {
-          xyz[0] + grad_phi.x * (2.0*diag + phi[n]),
-          xyz[1] + grad_phi.y * (2.0*diag + phi[n])
+          xyz[0] + grad_phi.x * (3*diag + phi[n]),
+          xyz[1] + grad_phi.y * (3*diag + phi[n])
   #ifdef P4_TO_P8
           ,
-          xyz[2] + grad_phi.z * (2.0*diag + phi[n])
+          xyz[2] + grad_phi.z * (3*diag + phi[n])
   #endif
         };
         interp2.add_point_to_buffer(n, xyz_);
@@ -1756,13 +1820,13 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
       {
         if(bc_type==DIRICHLET)
         {
-          double dif01 = (q1[n] - q0[n])/(diag - 0);
+          double dif01 = (q1[n] - q0[n])/(2*diag - 0);
           q[n] = q0[n] + (-phi[n] - 0) * dif01;
         }
         else /* interface Neumann */
         {
           double dif01 = -q0[n];
-          q[n] = q1[n] + (-phi[n] - diag) * dif01;
+          q[n] = q1[n] + (-phi[n] - 2*diag) * dif01;
         }
       }
 
@@ -1770,16 +1834,21 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
       {
         if(bc_type==DIRICHLET)
         {
-          double dif01  = (q1[n] - q0[n]) / (diag);
+          double dif01  = (q1[n] - q0[n]) / (2*diag);
           double dif12  = (q2[n] - q1[n]) / (diag);
-          double dif012 = (dif12 - dif01) / (2*diag);
-          q[n] = q0[n] + (-phi[n] - 0) * dif01 + (-phi[n] - 0)*(-phi[n] - diag) * dif012;
+          double dif012 = (dif12 - dif01) / (3*diag);
+          q[n] = q0[n] + (-phi[n] - 0) * dif01 + (-phi[n] - 0)*(-phi[n] - 2*diag) * dif012;
         }
         else /* interface Neumann */
         {
-          double dif01 = (q2[n] - q1[n])/(diag);
-          double dif012 = (dif01 + q0[n]) / (2*diag);
-          q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
+          double x1 = 2*diag;
+          double x2 = 3*diag;
+          double b = -q0[n];
+          double a = (q2[n] - q1[n] + b*(x1 - x2)) / (x2*x2 - x1*x1);
+          double c = q1[n] - a*x1*x1 - b*x1;
+
+          double x = -phi[n];
+          q[n] = a*x*x + b*x + c;
         }
       }
 
@@ -1804,11 +1873,22 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
   /* find dx and dy smallest */
   // NOTE: Assuming all trees are of equal size [0, 1]^d
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  double dx = 1.0 / pow(2.,(double) data->max_lvl);
-  double dy = dx;
+
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
+  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+
 #ifdef P4_TO_P8
-  double dz = dx;
+  double zmin = p4est->connectivity->vertices[3*vm + 2];
+  double zmax = p4est->connectivity->vertices[3*vp + 2];
+  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
 #endif
+
 #ifdef P4_TO_P8
   double diag = sqrt(dx*dx + dy*dy + dz*dz);
 #else

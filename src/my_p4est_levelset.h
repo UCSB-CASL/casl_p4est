@@ -55,6 +55,9 @@ public:
       layer_nodes(ngbd_->layer_nodes), local_nodes(ngbd_->local_nodes)
   {}
 
+  /* perturb the level set function by epsilon */
+  void perturb_level_set_function( Vec phi_petsc, double epsilon );
+
   /* 2nd order in time, 1st order in space */
   void reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
 

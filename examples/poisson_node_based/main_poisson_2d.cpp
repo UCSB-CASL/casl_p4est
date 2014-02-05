@@ -55,6 +55,30 @@ static class: public CF_3
 {
 public:
   double operator()(double x, double y, double z) const {
+    return  -2*M_PI*sin(2*M_PI*x)*cos(2*M_PI*y)*cos(2*M_PI*z);
+  }
+} u_ex_x;
+
+static class: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const {
+    return  -2*M_PI*cos(2*M_PI*x)*sin(2*M_PI*y)*cos(2*M_PI*z);
+  }
+} u_ex_y;
+
+static class: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const {
+    return  -2*M_PI*cos(2*M_PI*x)*cos(2*M_PI*y)*sin(2*M_PI*z);
+  }
+} u_ex_z;
+
+static class: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const {
     return  12*M_PI*M_PI*cos(2*M_PI*x)*cos(2*M_PI*y)*cos(2*M_PI*z);
   }
 } f_ex;
@@ -127,6 +151,22 @@ public:
     return  cos(2*M_PI*x)*cos(2*M_PI*y);
   }
 } u_ex;
+
+static class: public CF_2
+{
+public:
+  double operator()(double x, double y) const {
+    return  -2*M_PI*sin(2*M_PI*x)*cos(2*M_PI*y);
+  }
+} u_ex_x;
+
+static class: public CF_2
+{
+public:
+  double operator()(double x, double y) const {
+    return  -2*M_PI*cos(2*M_PI*x)*sin(2*M_PI*y);
+  }
+} u_ex_y;
 
 static class: public CF_2
 {
@@ -302,7 +342,7 @@ int main (int argc, char* argv[]){
 
     /* generate the neighborhood information */
     w2.start("construct the neighborhood information");
-    my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
+    my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
     w2.stop(); w2.read_duration();
 
     /* initalize the bc information */
@@ -313,7 +353,7 @@ int main (int argc, char* argv[]){
     sample_cf_on_nodes(p4est, nodes, *bc_interface_value, interface_value_Vec);
     sample_cf_on_nodes(p4est, nodes, *bc_wall_value, wall_value_Vec);
 
-    InterpolatingFunctionNodeBase interface_interp(p4est, nodes, ghost, &brick, &node_neighbors), wall_interp(p4est, nodes, ghost, &brick, &node_neighbors);
+    InterpolatingFunctionNodeBase interface_interp(p4est, nodes, ghost, &brick, &ngbd), wall_interp(p4est, nodes, ghost, &brick, &ngbd);
     interface_interp.set_input_parameters(interface_value_Vec, linear);
     wall_interp.set_input_parameters(wall_value_Vec, linear);
 
@@ -332,7 +372,7 @@ int main (int argc, char* argv[]){
 
     /* initialize the poisson solver */
     w2.start("solve the poisson equation");
-    PoissonSolverNodeBase solver(&node_neighbors);
+    PoissonSolverNodeBase solver(&ngbd);
     solver.set_phi(phi);
     solver.set_rhs(rhs);
     solver.set_bc(bc);
@@ -350,21 +390,73 @@ int main (int argc, char* argv[]){
     ierr = VecGetArray(uex, &uex_p); CHKERRXX(ierr);
 
     /* compute the error */
-    double err_max = 0;
+#ifdef P4_TO_P8
+    double err_max[4] = {0, 0, 0, 0};
+#else
+    double err_max[3] = {0, 0, 0};
+#endif
     double err[nodes->indep_nodes.elem_count];
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     {
       if(phi_p[n]<0)
       {
         err[n] = fabs(sol_p[n] - uex_p[n]);
-        err_max = max(err_max, err[n]);
+        err_max[0] = max( err_max[0], err[n] );
       }
       else
         err[n] = 0;
     }
-    double glob_err_max;
-    MPI_Allreduce(&err_max, &glob_err_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-    PetscPrintf(p4est->mpicomm, "lvl : %d / %d, L_inf error : %e\n",min_level+nb_splits, max_level+nb_splits, glob_err_max);
+
+    Vec uex_x, uex_y;
+    ierr = VecDuplicate(phi, &uex_x); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &uex_y); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, u_ex_x, uex_x);
+    sample_cf_on_nodes(p4est, nodes, u_ex_y, uex_y);
+    double *uex_x_ptr, *uex_y_ptr;
+    ierr = VecGetArray(uex_x, &uex_x_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(uex_y, &uex_y_ptr); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    Vec uex_z;
+    ierr = VecDuplicate(phi, &uex_z); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, u_ex_z, uex_z);
+    double *uex_z_ptr;
+    ierr = VecGetArray(uex_z, &uex_z_ptr); CHKERRXX(ierr);
+#endif
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      if(phi_p[n]<0)
+      {
+        err_max[1] = max( err_max[1], ABS(ngbd[n].dx_central(sol_p) - uex_x_ptr[n]) );
+        err_max[2] = max( err_max[2], ABS(ngbd[n].dy_central(sol_p) - uex_y_ptr[n]) );
+#ifdef P4_TO_P8
+        err_max[3] = max( err_max[3], ABS(ngbd[n].dz_central(sol_p) - uex_z_ptr[n]) );
+#endif
+      }
+    }
+    ierr = VecRestoreArray(uex_x, &uex_x_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(uex_y, &uex_y_ptr); CHKERRXX(ierr);
+    ierr = VecDestroy(uex_x); CHKERRXX(ierr);
+    ierr = VecDestroy(uex_y); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(uex_z, &uex_z_ptr); CHKERRXX(ierr);
+    ierr = VecDestroy(uex_z); CHKERRXX(ierr);
+#endif
+
+
+#ifdef P4_TO_P8
+    double glob_err_max[4];
+    MPI_Allreduce(&err_max, &glob_err_max, 4, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+#else
+    double glob_err_max[3];
+    MPI_Allreduce(&err_max, &glob_err_max, 3, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+#endif
+
+    PetscPrintf(p4est->mpicomm, "lvl : %d / %d, L_inf error : %e\n", min_level+nb_splits, max_level+nb_splits, glob_err_max[0]);
+#ifdef P4_TO_P8
+    PetscPrintf(p4est->mpicomm, "L_inf error dx / dy / dz : %e / %e / %e\n", glob_err_max[1], glob_err_max[2], glob_err_max[3]);
+#else
+    PetscPrintf(p4est->mpicomm, "L_inf error dx / dy : %e / %e\n", glob_err_max[1], glob_err_max[2]);
+#endif
 
     /* save the vtk file */
     std::ostringstream oss; oss << P4EST_DIM << "d_solution_" << p4est->mpisize;

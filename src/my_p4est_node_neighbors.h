@@ -26,6 +26,7 @@ class my_p4est_node_neighbors_t {
   friend class PoissonSolverCellBase;
   friend class InterpolatingFunctionNodeBase;
   friend class my_p4est_level_set;
+  friend class CF_2;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information

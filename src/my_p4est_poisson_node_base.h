@@ -33,7 +33,7 @@ class PoissonSolverNodeBase
 
   double mu_, diag_add_;
   bool is_matrix_ready;
-  bool matrix_has_nullspace;
+  int matrix_has_nullspace;
   double dx_min, dy_min, d_min, diag_min;
 #ifdef P4_TO_P8
   double dz_min;
