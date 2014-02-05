@@ -517,6 +517,8 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& 
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
 #endif
 
+void write_stats(const p4est_t *p4est, const p4est_ghost_t* ghost, const p4est_nodes_t *nodes, const std::string &foldername);
+
 inline double ranged_rand(double a, double b, int seed = 0){
   if (seed) srand(seed);
   return (static_cast<double>(rand())/static_cast<double>(RAND_MAX) * (b-a) + a);

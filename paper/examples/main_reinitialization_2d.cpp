@@ -29,7 +29,6 @@
 #include <src/my_p4est_log_wrappers.h>
 #endif
 
-
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 
@@ -223,18 +222,8 @@ int main (int argc, char* argv[]){
     // generate the node data structure
     nodes = my_p4est_nodes_new(p4est, ghost);
 
-    w2.start("gather statistics");
-    {
-      p4est_gloidx_t num_nodes = 0;
-      for (int r =0; r<p4est->mpisize; r++)
-        num_nodes += nodes->global_owned_indeps[r];
-
-      PetscPrintf(p4est->mpicomm, "%% global_quads = %ld \t global_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
-      PetscPrintf(p4est->mpicomm, "%% mpi_rank local_node_size local_quad_size ghost_node_size ghost_quad_size\n");
-      PetscSynchronizedPrintf(p4est->mpicomm, "%4d, %7d, %7d, %5d, %5d\n",
-                              p4est->mpirank, nodes->num_owned_indeps, p4est->local_num_quadrants, nodes->indep_nodes.elem_count-nodes->num_owned_indeps, ghost->ghosts.elem_count);
-      PetscSynchronizedFlush(p4est->mpicomm);
-    }
+    w2.start("writing statistics");
+    write_stats(p4est, ghost, nodes, foldername);
     w2.stop(); w2.read_duration();
 
     // Initialize the level-set function

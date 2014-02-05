@@ -12,6 +12,8 @@
 
 #include "mpi.h"
 #include <vector>
+#include <set>
+#include <sstream>
 #include <petsclog.h>
 #include <src/CASL_math.h>
 
@@ -262,6 +264,57 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
   return value;
+}
+
+void write_stats(const p4est_t *p4est, const p4est_ghost_t* ghost, const p4est_nodes_t *nodes, const std::string &foldername)
+{
+  FILE *file = NULL;
+  PetscErrorCode ierr;
+
+  /* save partition information */
+  std::ostringstream oss; oss << foldername << "/" << "partition.n_" << p4est->mpisize;
+  ierr = PetscFOpen(p4est->mpicomm, oss.str().c_str(), "w", &file); CHKERRXX(ierr);
+
+  p4est_gloidx_t num_nodes = 0;
+  for (int r =0; r<p4est->mpisize; r++)
+    num_nodes += nodes->global_owned_indeps[r];
+
+  PetscFPrintf(p4est->mpicomm, file, "%% global_quads = %ld \t global_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
+  PetscFPrintf(p4est->mpicomm, file, "%% mpi_rank local_node_size local_quad_size ghost_node_size ghost_quad_size\n");
+  PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d, %7d, %7d, %5d, %5d\n",
+                           p4est->mpirank, nodes->num_owned_indeps, p4est->local_num_quadrants, nodes->indep_nodes.elem_count-nodes->num_owned_indeps, ghost->ghosts.elem_count);
+  PetscSynchronizedFlush(p4est->mpicomm);
+  ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
+
+  /* save recv info based on the ghost nodes */
+  oss.str(""); oss << foldername << "/" << "topo.n_" << p4est->mpisize;
+  ierr = PetscFOpen(p4est->mpicomm, oss.str().c_str(), "w", &file); CHKERRXX(ierr);
+
+  PetscFPrintf(p4est->mpicomm, file, "%% Topology of ghost nodes based on how many ghost nodes belongs to a certain processor \n");
+  PetscFPrintf(p4est->mpicomm, file, "%% this_rank ghost_rank ghost_node_size \n");
+  std::vector<p4est_locidx_t> ghost_nodes(p4est->mpisize, 0);
+  std::set<int> proc_neighbors;
+  for (size_t i=0; i<nodes->indep_nodes.elem_count - nodes->num_owned_indeps; i++){
+    int r = nodes->nonlocal_ranks[i];
+    proc_neighbors.insert(r);
+    ghost_nodes[r]++;
+  }
+  for (std::set<int>::const_iterator it = proc_neighbors.begin(); it != proc_neighbors.end(); ++it){
+    int r = *it;
+    PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d %4d %6d\n", p4est->mpirank, r, ghost_nodes[r]);
+  }
+  PetscSynchronizedFlush(p4est->mpicomm);
+  ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
+
+  /* save recv info based on the ghost nodes */
+  oss.str(""); oss << foldername << "/" << "proc.n_" << p4est->mpisize;
+  ierr = PetscFOpen(p4est->mpicomm, oss.str().c_str(), "w", &file); CHKERRXX(ierr);
+
+  PetscFPrintf(p4est->mpicomm, file, "%% number of neighboring processors \n");
+  PetscFPrintf(p4est->mpicomm, file, "%% this_rank number_ghost_rank \n");
+  PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d %4d\n", p4est->mpirank, proc_neighbors.size());
+  PetscSynchronizedFlush(p4est->mpicomm);
+  ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
 }
 
 PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
