@@ -87,17 +87,21 @@ struct square:CF_3{
 #else
 static class: public CF_2
 {
+  double f;
 	public:
+void update (double t) { f = t <= 1 ? 1:-1; /*f = sin(M_PI*t); f = f>0 ? ceil(f):floor(f);*/}
 		double operator()(double x, double y) const {
-			return -SQR(sin(M_PI*x))*sin(2*M_PI*y);
+      return (-SQR(sin(M_PI*x))*sin(2*M_PI*y));
 		}
 } vx_vortex;
 
 static class: public CF_2
 {
+  double f;
 	public:
+    void update (double t) { f = t <= 1 ? 1:-1;/*f = sin(M_PI*t); f = f>0 ? ceil(f):floor(f);*/}
 		double operator()(double x, double y) const {
-			return  SQR(sin(M_PI*y))*sin(2*M_PI*x);
+      return  (SQR(sin(M_PI*y))*sin(2*M_PI*x));
 		}
 } vy_vortex;
 
@@ -132,179 +136,304 @@ struct square:CF_2{
 
 int main (int argc, char* argv[]){
 
-	try {
-		mpi_context_t mpi_context, *mpi = &mpi_context;
-		mpi->mpicomm  = MPI_COMM_WORLD;
-		Session mpi_session;
-		mpi_session.init(argc, argv, mpi->mpicomm);
+  mpi_context_t mpi_context, *mpi = &mpi_context;
+  mpi->mpicomm  = MPI_COMM_WORLD;
+  Session mpi_session;
+  mpi_session.init(argc, argv, mpi->mpicomm);
+  try {
 
-		p4est_t            *p4est;
-		p4est_nodes_t      *nodes;
-		p4est_ghost_t      *ghost;
-		PetscErrorCode ierr;
-		cmdParser cmd;
-		cmd.add_option("lmin", "min level");
-		cmd.add_option("lmax", "max level");
-		cmd.add_option("tf", "t final");
-	  	cmd.add_option("write-vtk", "pass this flag if interested in the vtk files");
-		cmd.add_option("output-dir", "parent folder to save everythiong in");
-	  	cmd.add_option("lip", "lip constant for refinement");
-		cmd.parse(argc, argv);
-		cmd.print();
+    p4est_t            *p4est;
+    p4est_nodes_t      *nodes;
+    p4est_ghost_t      *ghost;
+    PetscErrorCode ierr;
+    cmdParser cmd;
+    cmd.add_option("lmin", "min level");
+    cmd.add_option("lmax", "max level");
+    cmd.add_option("tf", "t final");
+    cmd.add_option("write-vtk", "pass this flag if interested in the vtk files");
+    cmd.add_option("output-dir", "parent folder to save everythiong in");
+    cmd.add_option("lip", "lip constant for refinement");
+    cmd.add_option("cfl", "cfl number for the SL method");
+    cmd.add_option("write-stats", "set this flag if interested in writing the stats");
+    cmd.add_option("dt-max", "maximum dt to be taken");
+    cmd.parse(argc, argv);
+    cmd.print();
 
-		const std::string foldername = cmd.get<std::string>("output-dir");
-		const int lmin = cmd.get("lmin", 0);
-		const int lmax = cmd.get("lmax", 7);
-	  	const double lip = cmd.get("lip", 1.2);
-	  	const bool write_vtk = cmd.contains("write-vtk");
-		mkdir(foldername.c_str(), 0777);
+    const std::string foldername = cmd.get<std::string>("output-dir");
+    const int lmin = cmd.get("lmin", 0);
+    const int lmax = cmd.get("lmax", 7);
+    const double lip = cmd.get("lip", 1.2);
+    const bool write_vtk = cmd.contains("write-vtk");
+    mkdir(foldername.c_str(), 0777);
 
-		PetscPrintf(mpi->mpicomm, "git commit hash value = %s (%s)\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG);
+    PetscPrintf(mpi->mpicomm, "git commit hash value = %s (%s)\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG);
 
-	#ifdef P4_TO_P8
-		circle circ(0.35, 0.35, 0.35, .15);
-	#else
-		circle circ(0.35, 0.35, .15);
-	#endif
-		splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 7), &circ, lip);
+    double radius = 0.15;
+#ifdef P4_TO_P8
+    circle circ(0.35, 0.35, 0.35, radius);
+#else
+    circle circ(0.50, 0.75, radius);
+#endif
+    splitting_criteria_cf_t data(lmin, lmax, &circ, lip);
 
-		parStopWatch w1, w2;
-		w1.start("total time");
+    parStopWatch w1, w2;
+    w1.start("total time");
 
-		MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-		MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
+    MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
+    MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
-		// Create the connectivity object
-		w2.start("connectivity");
-		p4est_connectivity_t *connectivity;
-		my_p4est_brick_t brick;
-	#ifdef P4_TO_P8
-		connectivity = my_p4est_brick_new(1, 1, 1, &brick);
-	#else
-		connectivity = my_p4est_brick_new(1, 1, &brick);
-	#endif
-		w2.stop(); w2.read_duration();
+    // Create the connectivity object
+    w2.start("connectivity");
+    p4est_connectivity_t *connectivity;
+    my_p4est_brick_t brick;
+#ifdef P4_TO_P8
+    connectivity = my_p4est_brick_new(1, 1, 1, &brick);
+#else
+    connectivity = my_p4est_brick_new(1, 1, &brick);
+#endif
+    w2.stop(); w2.read_duration();
 
-		// Now create the forest
-		w2.start("p4est generation");
-		p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
-		w2.stop(); w2.read_duration();
+    // Now create the forest
+    w2.start("p4est generation");
+    p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    w2.stop(); w2.read_duration();
 
-		// Now refine the tree
-		// Note that we do non-recursive refine + partitioning to ensure that :
-		// 1. the work is load-balanced (although this should not be a big deal here ...)
-		// 2. and more importantly, we have enough memory for the global grid. If we do not do it this way, the code usually break around level 13 or so.
-		w2.start("refine");
-		p4est->user_pointer = (void*)(&data);
-		for (int l=0; l<lmax; l++){
-			my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
-			my_p4est_partition(p4est, NULL);
-		}
-		w2.stop(); w2.read_duration();
+    // Now refine the tree
+    // Note that we do non-recursive refine + partitioning to ensure that :
+    // 1. the work is load-balanced (although this should not be a big deal here ...)
+    // 2. and more importantly, we have enough memory for the global grid. If we do not do it this way, the code usually break around level 13 or so.
+    w2.start("refine");
+    p4est->user_pointer = (void*)(&data);
+    for (int l=0; l<lmax; l++){
+      my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+      my_p4est_partition(p4est, NULL);
+    }
+    w2.stop(); w2.read_duration();
 
-		// Finally re-partition
-		w2.start("partition");
-		my_p4est_partition(p4est, NULL);
-		w2.stop(); w2.read_duration();
+    // Finally re-partition
+    w2.start("partition");
+    my_p4est_partition(p4est, NULL);
+    w2.stop(); w2.read_duration();
 
-		// create the ghost layer
-		ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+    // create the ghost layer
+    ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
 
-		// generate the node data structure
-		nodes = my_p4est_nodes_new(p4est, ghost);
+    // generate the node data structure
+    nodes = my_p4est_nodes_new(p4est, ghost);
 
-		// Initialize the level-set function
-		Vec phi;
-		ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
-		sample_cf_on_nodes(p4est, nodes, circ, phi);
+    // Initialize the level-set function
+    Vec phi;
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, circ, phi);
 
-		char filename[4096];
-		int ns = sprintf(filename, "%s/gridsize_%dd_%dp_%dx%d", foldername.c_str(), P4EST_DIM, p4est->mpisize, brick.nxyztrees[0], brick.nxyztrees[1]);
-	#ifdef P4_TO_P8
-		sprintf(filename+ns, "x%d", brick.nxyztrees[2]);
-	#endif
+    // loop over time
+    double tf = cmd.get<double>("tf");
+    int tc = 0;
+    int ts = 0;
+    double save = cmd.get("write-vtk", 0.1);
 
-		if (p4est->mpirank == 0){
-			FILE *file = fopen(filename, "w");
-			fprintf(file, "%% global_quads \t global_nodes \n");
-			fclose(file);
-		}
+    my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
+    my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
 
-		// loop over time
-		double tf = cmd.get<double>("tf");
-		int tc = 0;
-		int save = cmd.get<int>("write-vtk", 5);
-		double dt = 0.05;
+    // SemiLagrangian object
+    SemiLagrangian sl(&p4est, &nodes, &ghost, &brick, &node_neighbors);
+    double cfl = cmd.get("cfl", 0.95);
+    sl.set_CFL(cfl);
+    bool cfl_condition = cmd.contains("cfl");
 
-		my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
-		my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
-		
-		// SemiLagrangian object
-		SemiLagrangian sl(&p4est, &nodes, &ghost, &brick, &node_neighbors);
+#ifdef P4_TO_P8
+    double dt_cfl = cfl * sl.compute_dt(vx_vortex, vy_vortex, vz_vortex);
+#else
+    double dt_cfl = cfl * sl.compute_dt(vx_vortex, vy_vortex);
+#endif
 
-		for (double t=0; t<tf; t+=dt, tc++){
-			if (write_vtk && (tc % save == 0)){
-	      		w2.start("saving vtk file");
-				// Save stuff
-				std::ostringstream oss; oss << foldername << "/semi_lagrangian_" << p4est->mpisize << "_"
-					<< brick.nxyztrees[0] << "x"
-					<< brick.nxyztrees[1]
-	#ifdef P4_TO_P8
-					<< "x" << brick.nxyztrees[2]
-	#endif
-					<< "." << tc/save;
+    double dt = 0.05;
+    double dt_max = MIN(save, cmd.get("dt-max",dt_cfl));
 
-				double *phi_ptr;
-				ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-				my_p4est_vtk_write_all(p4est, nodes, ghost,
-						P4EST_TRUE, P4EST_TRUE,
-						1, 0, oss.str().c_str(),
-						VTK_POINT_DATA, "phi", phi_ptr);
+    // prepare to calculate mass loss
+#ifdef P4_TO_P8
+    double mass_exact = 4.0/3.0 * M_PI * pow(radius,3.0);
+#else
+    double mass_exact = M_PI*pow(radius,2.0);
+#endif
+    Vec ones;
+    ostringstream oss;
+#ifdef P4_TO_P8
+    oss << foldername + "/" + "mass_";
+    if (cfl_condition)
+      oss << "CFL_" << cfl << "_";
+    else
+      oss << "dt-max_" << dt_max << "_";
+    oss << p4est->mpisize << "p_"
+        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+#else
+    oss << foldername + "/" + "mass_";
+    if (cfl_condition)
+      oss << "CFL_" << cfl << "_";
+    else
+      oss << "dt-max_" << dt_max << "_";
+    oss << p4est->mpisize << "p_"
+        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+#endif
 
-				ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
-	      		w2.stop(); w2.read_duration();
-			}
-			// advect the function in time and get the computed time-step
-			w2.start("advecting");
-			PetscPrintf(p4est->mpicomm, "t = %lf, tc = %d\n", t, tc);
-	#ifdef P4_TO_P8
-			sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
-	#else
-			sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
-	#endif
-			w2.stop(); w2.read_duration();
+    FILE *err_file;
+    ierr = PetscFOpen(p4est->mpicomm, oss.str().c_str(), "w", &err_file); CHKERRXX(ierr);
+    ierr = PetscFPrintf(p4est->mpicomm, err_file, "%% Error measured as the mass loss of the level-set at different times\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(p4est->mpicomm, err_file, "%% time | rel. err\n"); CHKERRXX(ierr);
 
-			w2.start("Reinit");
-			node_neighbors.init_neighbors();
-			my_p4est_level_set level_set(&node_neighbors);
-			level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
-			w2.stop(); w2.read_duration();
+    if (write_vtk){
+      w2.start("saving vtk file");
+      // Save stuff
+      std::ostringstream oss; oss << foldername << "/semi_lagrangian_";
+      if (cfl_condition)
+        oss << "CFL_";
 
-			p4est_gloidx_t num_nodes = 0;
-			for (int r =0; r<p4est->mpisize; r++)
-				num_nodes += nodes->global_owned_indeps[r];
+      oss << p4est->mpisize << "_"
+          << brick.nxyztrees[0] << "x"
+          << brick.nxyztrees[1]
+   #ifdef P4_TO_P8
+          << "x" << brick.nxyztrees[2]
+   #endif
+          << "." << 0;
 
-			if (p4est->mpirank == 0){
-				FILE *file = fopen(filename, "a");
-				printf("num_quads = %ld \t num_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
-				fprintf(file, "%9ld %9ld\n", p4est->global_num_quadrants, num_nodes);
-				fclose(file);
-			}
-		}
+      double *phi_ptr;
+      ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
+      my_p4est_vtk_write_all(p4est, nodes, ghost,
+                             P4EST_TRUE, P4EST_TRUE,
+                             1, 0, oss.str().c_str(),
+                             VTK_POINT_DATA, "phi", phi_ptr);
 
-		ierr = VecDestroy(phi); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
+      w2.stop(); w2.read_duration();
+    }
 
-		// destroy the p4est and its connectivity structure
-		p4est_ghost_destroy(ghost);
-		p4est_nodes_destroy(nodes);
-		p4est_destroy(p4est);
-		my_p4est_brick_destroy(connectivity, &brick);
 
-		w1.stop(); w1.read_duration();
-	} catch (const std::exception& e) {
-		std::cerr << e.what() << std::endl;
-		MPI_Abort(MPI_COMM_WORLD, MPI_ERR_UNKNOWN);
-	}
+    for (double t=0; t<tf; t+=dt, tc++){
+      if (t+dt >= (ts+1)*save){
+        // advect to (ts+1)*save time
+        dt = (ts+1)*save - t;
+        if (dt/save > 1e-6){
+          w2.start("advecting for save");
+#ifdef P4_TO_P8
+          if (cfl_condition)
+            dt = sl.update_p4est_second_order_CFL(vx_vortex, vy_vortex, vz_vortex, dt, phi);
+          else
+            sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
+#else
+          if (cfl_condition)
+            dt = sl.update_p4est_second_order_CFL(vx_vortex, vy_vortex, dt, phi);
+          else
+            sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
+#endif
+          PetscPrintf(p4est->mpicomm, "t = %f, dt = %f, tc = %d\n", t+dt, dt, tc+1);
+          w2.stop(); w2.read_duration();
 
-	return 0;
+          w2.start("Reinit");
+          node_neighbors.init_neighbors();
+          my_p4est_level_set level_set(&node_neighbors);
+          level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
+          w2.stop(); w2.read_duration();
+        }
+
+
+        ts++;
+        if (cmd.contains("write-stats")){
+          w2.start("writing stats");
+          std::ostringstream partition_name, topology_name, neighbors_name;
+#ifdef P4_TO_P8
+          partition_name << foldername + "/" + "partition_" << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+          topology_name  << foldername + "/" + "topology_"  << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+          neighbors_name << foldername + "/" + "neighbors_" << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+#else
+          partition_name << foldername + "/" + "partition_" << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+          topology_name  << foldername + "/" + "topology_"  << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+          neighbors_name << foldername + "/" + "neighbors_" << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+#endif
+          write_stats(p4est, ghost, nodes, partition_name.str().c_str(), topology_name.str().c_str(), neighbors_name.str().c_str());
+          w2.stop(); w2.read_duration();
+        }
+
+        if (write_vtk){
+          w2.start("saving vtk file");
+          // Save stuff
+          std::ostringstream oss; oss << foldername << "/semi_lagrangian_";
+          if (cfl_condition)
+            oss << "CFL_";
+
+          oss << p4est->mpisize << "_"
+              << brick.nxyztrees[0] << "x"
+              << brick.nxyztrees[1]
+       #ifdef P4_TO_P8
+              << "x" << brick.nxyztrees[2]
+       #endif
+              << "." << ts;
+
+          double *phi_ptr;
+          ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
+          my_p4est_vtk_write_all(p4est, nodes, ghost,
+                                 P4EST_TRUE, P4EST_TRUE,
+                                 1, 0, oss.str().c_str(),
+                                 VTK_POINT_DATA, "phi", phi_ptr);
+
+          ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
+          w2.stop(); w2.read_duration();
+        }
+
+        continue;
+      }
+      // advect the function in time and get the computed time-step
+      w2.start("advecting");
+#ifdef P4_TO_P8
+      if (cfl_condition)
+        dt = sl.update_p4est_second_order_CFL(vx_vortex, vy_vortex, vz_vortex, dt_max, phi);
+      else {
+        sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt_max, phi);
+        dt = dt_max;
+      }
+#else
+      if (cfl_condition)
+        dt = sl.update_p4est_second_order_CFL(vx_vortex, vy_vortex, dt_max, phi);
+      else {
+        sl.update_p4est_second_order(vx_vortex, vy_vortex, dt_max, phi);
+        dt = dt_max;
+      }
+#endif
+      PetscPrintf(p4est->mpicomm, "t = %f, dt = %f, tc = %d\n", t+dt, dt, tc+1);
+      w2.stop(); w2.read_duration();
+
+      w2.start("Reinit");
+      node_neighbors.init_neighbors();
+      my_p4est_level_set level_set(&node_neighbors);
+      level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
+      w2.stop(); w2.read_duration();
+
+      // calculate mass loss error
+      ierr = VecDuplicate(phi, &ones); CHKERRXX(ierr);
+      ierr = VecSet(ones, 1.0); CHKERRXX(ierr);
+      double err = fabs(mass_exact - integrate_over_negative_domain(p4est, nodes, phi, ones))/mass_exact;
+      ierr = PetscFPrintf(p4est->mpicomm, err_file, "%1.5e %1.5e\n", t, err); CHKERRXX(ierr);
+      ierr = VecDestroy(ones); CHKERRXX(ierr);
+    }
+
+    ierr = PetscFClose(p4est->mpicomm, err_file); CHKERRXX(ierr);
+    ierr = VecDestroy(phi); CHKERRXX(ierr);
+
+    // destroy the p4est and its connectivity structure
+    p4est_ghost_destroy(ghost);
+    p4est_nodes_destroy(nodes);
+    p4est_destroy(p4est);
+    my_p4est_brick_destroy(connectivity, &brick);
+
+    w1.stop(); w1.read_duration();
+  } catch (const std::exception& e) {
+    PetscFPrintf(MPI_COMM_SELF, stderr, "[%d] %s\n", mpi->mpirank, e.what());
+  }
+
+  return 0;
 }

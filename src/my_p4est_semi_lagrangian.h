@@ -29,6 +29,7 @@ class SemiLagrangian
   my_p4est_brick_t *myb_;
   my_p4est_node_neighbors_t *ngbd_;
   my_p4est_hierarchy_t *hierarchy_;
+  double cfl;
 
   struct splitting_criteria_update_t : splitting_criteria_t
   {
@@ -37,10 +38,10 @@ class SemiLagrangian
     p4est_t *p4est_tmp;
     p4est_ghost_t *ghost_tmp;
     p4est_nodes_t *nodes_tmp;
-    std::vector<double> *phi_tmp;
+    double *phi_tmp;
     my_p4est_hierarchy_t *hierarchy;
     splitting_criteria_update_t( double lip, int min_lvl, int max_lvl,
-                                 std::vector<double> *phi,  my_p4est_brick_t *myb,
+                                 double *phi,  my_p4est_brick_t *myb,
                                  p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes)
     {
       this->lip = lip;
@@ -73,12 +74,6 @@ class SemiLagrangian
   std::vector<double> local_xyz_departure_dep, non_local_xyz_departure_dep;   //Buffers to hold local and non-local departure points
   PetscErrorCode ierr;
 
-#ifdef P4_TO_P8
-  double compute_dt(const CF_3& vx, const CF_3& vy, const CF_3& vz);
-#else
-  double compute_dt(const CF_2& vx, const CF_2& vy);
-#endif
-
   void advect_from_n_to_np1(double dt,
                           #ifdef P4_TO_P8
                             const CF_3& vx, const CF_3& vy, const CF_3& vz,
@@ -89,7 +84,30 @@ class SemiLagrangian
                           #endif
                             double *phi_np1,p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
 
+  void advect_from_n_to_np1_CFL(const std::vector<p4est_locidx_t> &map, double dt,
+                          #ifdef P4_TO_P8
+                            const CF_3& vx, const CF_3& vy, const CF_3& vz,
+                            Vec phi_n, Vec phi_xx_n, Vec phi_yy_n, Vec phi_zz_n,
+                          #else
+                            const CF_2& vx, const CF_2& vy,
+                            Vec phi_n, Vec phi_xx_n, Vec phi_yy_n,
+                          #endif
+                            double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
+
   void advect_from_n_to_np1(double dt,
+                          #ifdef P4_TO_P8
+                            Vec vx, Vec vx_xx, Vec vx_yy, Vec vx_zz,
+                            Vec vy, Vec vy_xx, Vec vy_yy, Vec vy_zz,
+                            Vec vz, Vec vz_xx, Vec vz_yy, Vec vz_zz,
+                            Vec phi_n, Vec phi_xx_n, Vec phi_yy_n, Vec phi_zz_n,
+                          #else
+                            Vec vx, Vec vx_xx, Vec vx_yy,
+                            Vec vy, Vec vy_xx, Vec vy_yy,
+                            Vec phi_n, Vec phi_xx_n, Vec phi_yy_n,
+                          #endif
+                            double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
+
+  void advect_from_n_to_np1_CFL(const std::vector<double> &map, double dt,
                           #ifdef P4_TO_P8
                             Vec vx, Vec vx_xx, Vec vx_yy, Vec vx_zz,
                             Vec vy, Vec vy_xx, Vec vy_yy, Vec vy_zz,
@@ -150,7 +168,7 @@ class SemiLagrangian
       p4est_locidx_t quad_tmp_idx = quad_tmp.p.piggy3.local_num + tree_tmp->quadrants_offset;
 
       double *phi_tmp;
-      phi_tmp = data->phi_tmp->data();
+      phi_tmp = data->phi_tmp;
 
       double f[P4EST_CHILDREN];
       for(short j=0; j<P4EST_CHILDREN; ++j)
@@ -230,7 +248,7 @@ class SemiLagrangian
       }
 
       double *phi_tmp;
-      phi_tmp = data->phi_tmp->data();
+      phi_tmp = data->phi_tmp;
 
       double f[P4EST_CHILDREN];
       p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
@@ -326,7 +344,7 @@ class SemiLagrangian
           }
         }
 
-      double *phi_tmp = data->phi_tmp->data();
+      double *phi_tmp = data->phi_tmp;
 
       double f[P4EST_CHILDREN];
       p4est_locidx_t *q2n = data->nodes_tmp->local_nodes;
@@ -366,13 +384,27 @@ class SemiLagrangian
 public:
   SemiLagrangian(p4est_t **p4est, p4est_nodes_t **nodes, p4est_ghost_t **ghost, my_p4est_brick_t *myb, my_p4est_node_neighbors_t *ngbd);
 
+  inline void set_CFL(double cfl) {this->cfl = cfl;}
+
+#ifdef P4_TO_P8
+  double compute_dt(const CF_3& vx, const CF_3& vy, const CF_3& vz);
+  double compute_dt(Vec vx, Vec vy, Vec vz);
+#else
+  double compute_dt(const CF_2& vx, const CF_2& vy);
+  double compute_dt(Vec vx, Vec vy);
+#endif
+
   /* start from a root tree and successively refine intermediate trees until tree n+1 is built */
 #ifdef P4_TO_P8
   void update_p4est_second_order(Vec vx, Vec vy, Vec vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
   void update_p4est_second_order(const CF_3& vx, const CF_3& vy, const CF_3& vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
+  double update_p4est_second_order_CFL(Vec vx, Vec vy, Vec vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
+  double update_p4est_second_order_CFL(const CF_3& vx, const CF_3& vy, const CF_3& vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
 #else
   void update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
   void update_p4est_second_order(const CF_2& vx, const CF_2& vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
+  double update_p4est_second_order_CFL(Vec vx, Vec vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
+  double update_p4est_second_order_CFL(const CF_2& vx, const CF_2& vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
 #endif
 };
 
