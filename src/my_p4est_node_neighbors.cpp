@@ -514,7 +514,11 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     p4est_indep_t *node_tmp;
     p4est_locidx_t quad_tmp_idx;
     p4est_topidx_t tree_tmp_idx;
-    short ci = 1, cj = -1, ck = -1;
+    short ci = 1, cj = -1;
+#ifdef P4_TO_P8
+    short ck = -1;
+#endif
+
 
     /* NOTE: First we find the smallest cell in the p00 direction that is neighbor
      * to this node. However, since we later need to fetch the second neighbors
@@ -529,10 +533,18 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 
     p4est_quadrant_t *quad_min     = &root;
     p4est_locidx_t    quad_min_idx = -1;
-    if (quad_min->level < quad_pmm->level && quad_pmm_idx < p4est->local_num_quadrants)
-    { quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; cj = -1; ck = -1; }
-    if (quad_min->level < quad_ppm->level && quad_ppm_idx < p4est->local_num_quadrants)
-    { quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; cj =  1; ck = -1; }
+    if (quad_min->level < quad_pmm->level && quad_pmm_idx < p4est->local_num_quadrants) {
+      quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; cj = -1;
+#ifdef P4_TO_P8
+      ck = -1;
+#endif
+    }
+    if (quad_min->level < quad_ppm->level && quad_ppm_idx < p4est->local_num_quadrants) {
+      quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; cj =  1;
+#ifdef P4_TO_P8
+      ck = -1;
+#endif
+    }
 #ifdef P4_TO_P8
     if (quad_min->level < quad_pmp->level && quad_pmp_idx < p4est->local_num_quadrants)
     { quad_min = quad_pmp; quad_min_idx = quad_pmp_idx; cj = -1; ck =  1; }
@@ -610,15 +622,26 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     p4est_indep_t *node_tmp;
     p4est_locidx_t quad_tmp_idx;
     p4est_topidx_t tree_tmp_idx;
-    short ci = -1, cj = -1, ck = -1;
+    short ci = -1, cj = -1;
+#ifdef P4_TO_P8
+    short ck = -1;
+#endif
 
     p4est_quadrant_t *quad_min     = &root;
     p4est_locidx_t    quad_min_idx = -1;
 
-    if (quad_min->level < quad_mmm->level && quad_mmm_idx < p4est->local_num_quadrants)
-    { quad_min = quad_mmm; quad_min_idx = quad_mmm_idx; cj = -1; ck = -1; }
-    if (quad_min->level < quad_mpm->level && quad_mpm_idx < p4est->local_num_quadrants)
-    { quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; cj =  1; ck = -1; }
+    if (quad_min->level < quad_mmm->level && quad_mmm_idx < p4est->local_num_quadrants) {
+      quad_min = quad_mmm; quad_min_idx = quad_mmm_idx; cj = -1;
+#ifdef P4_TO_P8
+      ck = -1;
+#endif
+    }
+    if (quad_min->level < quad_mpm->level && quad_mpm_idx < p4est->local_num_quadrants) {
+      quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; cj =  1;
+#ifdef P4_TO_P8
+      ck = -1;
+#endif
+    }
 #ifdef P4_TO_P8
     if (quad_min->level < quad_mmp->level && quad_mmp_idx < p4est->local_num_quadrants)
     { quad_min = quad_mmp; quad_min_idx = quad_mmp_idx; cj = -1; ck =  1; }
@@ -696,15 +719,26 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     p4est_indep_t *node_tmp;
     p4est_locidx_t quad_tmp_idx;
     p4est_topidx_t tree_tmp_idx;
-    short ci = -1, cj = 1, ck = -1;
+    short ci = -1, cj = 1;
+#ifdef P4_TO_P8
+    short ck = -1;
+#endif
 
     p4est_quadrant_t *quad_min     = &root;
     p4est_locidx_t    quad_min_idx = -1;
 
-    if (quad_min->level < quad_mpm->level && quad_mpm_idx < p4est->local_num_quadrants)
-    { quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; ci = -1; ck = -1; }
-    if (quad_min->level < quad_ppm->level && quad_ppm_idx < p4est->local_num_quadrants)
-    { quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; ci =  1; ck = -1; }
+    if (quad_min->level < quad_mpm->level && quad_mpm_idx < p4est->local_num_quadrants) {
+      quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; ci = -1;
+#ifdef P4_TO_P8
+      ck = -1;
+#endif
+    }
+    if (quad_min->level < quad_ppm->level && quad_ppm_idx < p4est->local_num_quadrants) {
+      quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; ci =  1;
+#ifdef P4_TO_P8
+      ck = -1;
+#endif
+    }
 #ifdef P4_TO_P8
     if (quad_min->level < quad_mpp->level && quad_mpp_idx < p4est->local_num_quadrants)
     { quad_min = quad_mpp; quad_min_idx = quad_mpp_idx; ci = -1; ck =  1; }
@@ -784,15 +818,26 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     p4est_indep_t *node_tmp;
     p4est_locidx_t quad_tmp_idx;
     p4est_topidx_t tree_tmp_idx;
-    short ci = -1, cj = -1, ck = -1;
+    short ci = -1, cj = -1;
+#ifdef P4_TO_P8
+    ck = -1;
+#endif
 
     p4est_quadrant_t *quad_min     = &root;
     p4est_locidx_t    quad_min_idx = -1;
 
-    if (quad_min->level < quad_mmm->level && quad_mmm_idx < p4est->local_num_quadrants)
-    { quad_min = quad_mmm; quad_min_idx = quad_mmm_idx; ci = -1; ck = -1; }
-    if (quad_min->level < quad_pmm->level && quad_pmm_idx < p4est->local_num_quadrants)
-    { quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; ci =  1; ck = -1; }
+    if (quad_min->level < quad_mmm->level && quad_mmm_idx < p4est->local_num_quadrants) {
+      quad_min = quad_mmm; quad_min_idx = quad_mmm_idx; ci = -1;
+#ifdef P4_TO_P8
+      ck = -1;
+#endif
+    }
+    if (quad_min->level < quad_pmm->level && quad_pmm_idx < p4est->local_num_quadrants) {
+      quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; ci =  1;
+#ifdef P4_TO_P8
+      ck = -1;
+#endif
+    }
 #ifdef P4_TO_P8
     if (quad_min->level < quad_mmp->level && quad_mmp_idx < p4est->local_num_quadrants)
     { quad_min = quad_mmp; quad_min_idx = quad_mmp_idx; ci = -1; ck =  1; }

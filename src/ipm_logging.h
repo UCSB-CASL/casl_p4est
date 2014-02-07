@@ -6,9 +6,9 @@
 #define IPMLogRegionEnd(e) MPI_Pcontrol(-1, e)
 #define IPMLogEvent(e) MPI_Pcontrol(0, e)
 #else
-#define IPMLogRegionBegin(e) 0
-#define IPMLogRegionEnd(e) 0
-#define IPMLogEvent(e) 0
+#define IPMLogRegionBegin(e) (void)0
+#define IPMLogRegionEnd(e) (void)0
+#define IPMLogEvent(e) (void)0
 #endif // IPM_LOG_EVENTS
 
 #endif // _IPM_LOGGING_H_

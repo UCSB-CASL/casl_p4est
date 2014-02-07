@@ -17,13 +17,15 @@
 #include <vector>
 
 struct splitting_criteria_t {
-  splitting_criteria_t(int min_lvl = 0, int max_lvl = 0)
+  splitting_criteria_t(int min_lvl = 0, int max_lvl = 0, double lip = 1.2)
   {
     this->max_lvl = max_lvl;
     this->min_lvl = min_lvl;
+    this->lip     = lip;
   }
 
   int max_lvl, min_lvl;
+  double lip;
 };
 
 struct splitting_criteria_cf_t : splitting_criteria_t {
@@ -32,7 +34,6 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
 #else
   CF_2 *phi;
 #endif
-  double lip;
 #ifdef P4_TO_P8
   splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_3 *phi, double lip)
 #else
@@ -124,6 +125,7 @@ public:
   }
 
   inline p4est_bool_t& operator[](p4est_locidx_t q) {return markers[q];}
+  inline const p4est_bool_t& operator[](p4est_locidx_t q) const {return markers[q];}
 };
 
 /*!

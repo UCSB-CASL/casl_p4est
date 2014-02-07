@@ -12,8 +12,11 @@
 
 #include "mpi.h"
 #include <vector>
+#include <set>
+#include <sstream>
 #include <petsclog.h>
 #include <src/CASL_math.h>
+#include <src/petsc_compatibility.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_TINY_EVENTS
@@ -264,6 +267,75 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
   return value;
 }
 
+void write_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes, const char *partition_name, const char *topology_name, const char *neighbors_name)
+{
+  FILE *file;
+  PetscErrorCode ierr;
+
+  /* save partition information */
+  if (partition_name) {
+    ierr = PetscFOpen(p4est->mpicomm, partition_name, "w", &file); CHKERRXX(ierr);
+  } else {
+    file = stdout;
+  }
+
+  p4est_gloidx_t num_nodes = 0;
+  for (int r =0; r<p4est->mpisize; r++)
+    num_nodes += nodes->global_owned_indeps[r];
+
+  PetscFPrintf(p4est->mpicomm, file, "%% global_quads = %ld \t global_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
+  PetscFPrintf(p4est->mpicomm, file, "%% mpi_rank | local_node_size | local_quad_size | ghost_node_size | ghost_quad_size\n");
+  PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d, %7d, %7d, %5d, %5d\n",
+                           p4est->mpirank, nodes->num_owned_indeps, p4est->local_num_quadrants, nodes->indep_nodes.elem_count-nodes->num_owned_indeps, ghost->ghosts.elem_count);
+  PetscSynchronizedFlush(p4est->mpicomm);
+
+  if (partition_name){
+    ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
+  }
+
+  /* save recv info based on the ghost nodes */
+  if (topology_name){
+    ierr = PetscFOpen(p4est->mpicomm, topology_name, "w", &file); CHKERRXX(ierr);
+  } else {
+    file = stdout;
+  }
+
+  PetscFPrintf(p4est->mpicomm, file, "%% Topology of ghost nodes based on how many ghost nodes belongs to a certain processor \n");
+  PetscFPrintf(p4est->mpicomm, file, "%% this_rank | ghost_rank | ghost_node_size \n");
+  std::vector<p4est_locidx_t> ghost_nodes(p4est->mpisize, 0);
+  std::set<int> proc_neighbors;
+  for (size_t i=0; i<nodes->indep_nodes.elem_count - nodes->num_owned_indeps; i++){
+    int r = nodes->nonlocal_ranks[i];
+    proc_neighbors.insert(r);
+    ghost_nodes[r]++;
+  }
+  for (std::set<int>::const_iterator it = proc_neighbors.begin(); it != proc_neighbors.end(); ++it){
+    int r = *it;
+    PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d %4d %6d\n", p4est->mpirank, r, ghost_nodes[r]);
+  }
+  PetscSynchronizedFlush(p4est->mpicomm);
+
+  if (topology_name){
+    ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
+  }
+
+  /* save recv info based on the ghost nodes */
+  if (neighbors_name){
+    ierr = PetscFOpen(p4est->mpicomm, neighbors_name, "w", &file); CHKERRXX(ierr);
+  } else {
+    file = stdout;
+  }
+
+  PetscFPrintf(p4est->mpicomm, file, "%% number of neighboring processors \n");
+  PetscFPrintf(p4est->mpicomm, file, "%% this_rank | number_ghost_rank \n");
+  PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d %4d\n", p4est->mpirank, proc_neighbors.size());
+  PetscSynchronizedFlush(p4est->mpicomm);
+
+  if (neighbors_name){
+    ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
+  }
+}
+
 PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
 {
   PetscErrorCode ierr = 0;
@@ -361,6 +433,66 @@ PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *gho
                              block_size, num_local*block_size, num_global*block_size,
                              ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode VecScatterCreateChangeLayout(MPI_Comm comm, Vec from, Vec to, VecScatter *ctx)
+{
+  PetscErrorCode ierr = 0;
+#ifdef CASL_THROWS
+  PetscInt size_from, size_to;
+  ierr = VecGetSize(from, &size_from); CHKERRXX(ierr);
+  ierr = VecGetSize(to, &size_to); CHKERRXX(ierr);
+  if (size_from != size_to)
+    throw std::invalid_argument("[ERROR]: Change layout is only supported for vectors with the same global size");
+#endif
+
+  IS is_from, is_to;
+
+  ISLocalToGlobalMapping l2g;
+  ierr = VecGetLocalToGlobalMapping(to, &l2g); CHKERRXX(ierr);
+
+  const PetscInt *idx;
+  PetscInt l2g_size;
+  ierr = ISLocalToGlobalMappingGetIndices(l2g, &idx); CHKERRXX(ierr);
+  ierr = ISLocalToGlobalMappingGetSize(l2g, &l2g_size); CHKERRXX(ierr);
+
+  ierr = ISCreateStride(comm, l2g_size, 0, 1, &is_to); CHKERRXX(ierr);
+  ierr = ISCreateGeneral(comm, l2g_size, idx, PETSC_USE_POINTER, &is_from); CHKERRXX(ierr);
+
+  Vec to_l;
+  ierr = VecGhostGetLocalForm(to, &to_l); CHKERRXX(ierr);
+  ierr = VecScatterCreate(from, is_from, to_l, is_to, ctx); CHKERRXX(ierr);
+
+  ierr = ISDestroy(is_from); CHKERRXX(ierr);
+  ierr = ISDestroy(is_to); CHKERRXX(ierr);
+  ierr = ISLocalToGlobalMappingRestoreIndices(l2g, &idx); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(to, &to_l); CHKERRXX(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode VecGhostChangeLayoutBegin(VecScatter ctx, Vec from, Vec to)
+{
+  PetscErrorCode ierr;
+  Vec to_l;
+
+  ierr = VecGhostGetLocalForm(to, &to_l);
+  ierr = VecScatterBegin(ctx, from, to_l, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(to, &to_l);
+
+  return ierr;
+}
+
+PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to)
+{
+  PetscErrorCode ierr;
+  Vec to_l;
+
+  ierr = VecGhostGetLocalForm(to, &to_l);
+  ierr = VecScatterEnd(ctx, from, to_l, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(to, &to_l);
 
   return ierr;
 }

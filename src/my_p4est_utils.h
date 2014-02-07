@@ -291,6 +291,36 @@ PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, V
  */
 PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v);
 
+/*!
+ * \brief VecScatterCreateChangeLayout Create a VecScatter context useful for changing the parallel layout of a vector
+ * \param comm  [in]  MPI_Comm to which parallel vectors belong
+ * \param from  [in]  input vector layout
+ * \param to    [in]  output vector layout
+ * \param ctx   [out] the created VecScatter context
+ * \return
+ */
+PetscErrorCode VecScatterCreateChangeLayout(MPI_Comm comm, Vec from, Vec to, VecScatter *ctx);
+
+/*!
+ * \brief VecGhostChangeLayoutBegin Start changing the layout of a parallel vector. This potentially involves
+ *  sending and receiving messages in a non-blocking mode
+ * \param ctx   [in]  VecScatter context to initiate the transfer
+ * \param from  [in]  input vector to the change the parallel layout
+ * \param to    [out] output vector with the same global values but with a different parallel layout
+ * \return
+ */
+PetscErrorCode VecGhostChangeLayoutBegin(VecScatter ctx, Vec from, Vec to);
+
+/*!
+ * \brief VecGhostChangeLayoutEnd Finish changing the layout of a parallel vector. This potentially involves
+ *  sending and receiving messages in a non-blocking mode
+ * \param ctx   [in]  VecScatter context to initiate the transfer
+ * \param from  [in]  input vector to the change the parallel layout
+ * \param to    [out] output vector with the same global values but with a different parallel layout
+ * \return
+ */
+PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to);
+
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
@@ -516,6 +546,9 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
 void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& cf, Vec f);
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
 #endif
+
+void write_stats(const p4est_t *p4est, const p4est_ghost_t* ghost, const p4est_nodes_t *nodes,
+                 const char* partition_name = NULL, const char* topology_name = NULL, const char* neighbors_name = NULL);
 
 inline double ranged_rand(double a, double b, int seed = 0){
   if (seed) srand(seed);
