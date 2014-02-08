@@ -316,18 +316,18 @@ int main (int argc, char* argv[]){
 				std::ostringstream partition_name, topology_name, neighbors_name;
 #ifdef P4_TO_P8
 				partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << tc << ".dat";
 				topology_name  << foldername + "/" + "topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << tc << ".dat";
 				neighbors_name << foldername + "/" + "neighbors_CFL_" << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << tc << ".dat";
 #else
 				partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << tc << ".dat";
 				topology_name  << foldername + "/" + "topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << tc << ".dat";
 				neighbors_name << foldername + "/" + "neighbors_CFL_" << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << tc << ".dat";
 #endif
 				write_stats(p4est, ghost, nodes, partition_name.str().c_str(), topology_name.str().c_str(), neighbors_name.str().c_str());
 				w2.stop(); w2.read_duration();

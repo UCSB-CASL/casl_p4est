@@ -1127,7 +1127,7 @@ double SemiLagrangian::update_p4est_second_order_CFL(const CF_2& vx, const CF_2&
   /* update the grid based on new information */
   p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
   splitting_criteria_t *data = (splitting_criteria_t*)p4est_->user_pointer;
-  splitting_criteria_update_t data_np1(2 * data->lip, data->min_lvl, data->max_lvl, phi_np1_p, myb_, p4est_, ghost_, nodes_);
+  splitting_criteria_update_t data_np1(data->lip+0.5, data->min_lvl, data->max_lvl, phi_np1_p, myb_, p4est_, ghost_, nodes_);
   p4est_np1->user_pointer = &data_np1;
 
   my_p4est_refine(p4est_np1, P4EST_FALSE, refine_criteria_with_ghost_sl, NULL);
