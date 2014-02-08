@@ -310,9 +310,31 @@ int main (int argc, char* argv[]){
 
     for (double t=0; t<tf; t+=dt, tc++){
       if (t+dt >= (ts+1)*save){
+        if (cmd.contains("write-stats")){
+          w2.start("writing stats");
+          std::ostringstream partition_name, topology_name, neighbors_name;
+#ifdef P4_TO_P8
+          partition_name << foldername + "/" + "partition_" << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+          topology_name  << foldername + "/" + "topology_"  << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+          neighbors_name << foldername + "/" + "neighbors_" << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+#else
+          partition_name << foldername + "/" + "partition_" << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+          topology_name  << foldername + "/" + "topology_"  << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+          neighbors_name << foldername + "/" + "neighbors_" << p4est->mpisize << "p_"
+                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+#endif
+          write_stats(p4est, ghost, nodes, partition_name.str().c_str(), topology_name.str().c_str(), neighbors_name.str().c_str());
+          w2.stop(); w2.read_duration();
+        }
+ 
         // advect to (ts+1)*save time
-        dt = (ts+1)*save - t;
-        if (dt/save > 1e-6){
+        if (((ts+1)*save - t)/save > 1e-6){		
+					dt = (ts+1)*save - t;
           w2.start("advecting for save");
 #ifdef P4_TO_P8
           if (cfl_condition)
@@ -335,31 +357,7 @@ int main (int argc, char* argv[]){
           w2.stop(); w2.read_duration();
         }
 
-
-        ts++;
-        if (cmd.contains("write-stats")){
-          w2.start("writing stats");
-          std::ostringstream partition_name, topology_name, neighbors_name;
-#ifdef P4_TO_P8
-          partition_name << foldername + "/" + "partition_" << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
-          topology_name  << foldername + "/" + "topology_"  << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
-          neighbors_name << foldername + "/" + "neighbors_" << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
-#else
-          partition_name << foldername + "/" + "partition_" << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
-          topology_name  << foldername + "/" + "topology_"  << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
-          neighbors_name << foldername + "/" + "neighbors_" << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
-#endif
-          write_stats(p4est, ghost, nodes, partition_name.str().c_str(), topology_name.str().c_str(), neighbors_name.str().c_str());
-          w2.stop(); w2.read_duration();
-        }
-
-        if (write_vtk){
+	      if (write_vtk){
           w2.start("saving vtk file");
           // Save stuff
           std::ostringstream oss; oss << foldername << "/semi_lagrangian_";
@@ -384,7 +382,8 @@ int main (int argc, char* argv[]){
           ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
           w2.stop(); w2.read_duration();
         }
-
+	
+	      ts++;
         continue;
       }
       // advect the function in time and get the computed time-step

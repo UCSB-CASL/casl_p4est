@@ -820,7 +820,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     p4est_topidx_t tree_tmp_idx;
     short ci = -1, cj = -1;
 #ifdef P4_TO_P8
-    ck = -1;
+    short ck = -1;
 #endif
 
     p4est_quadrant_t *quad_min     = &root;
