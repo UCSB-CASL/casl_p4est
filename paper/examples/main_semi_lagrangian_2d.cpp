@@ -156,6 +156,7 @@ int main (int argc, char* argv[]){
     cmd.add_option("cfl", "cfl number for the SL method");
     cmd.add_option("write-stats", "set this flag if interested in writing the stats");
     cmd.add_option("dt-max", "maximum dt to be taken");
+		cmd.add_option("it-max" ,"maximum iterations before termination");
     cmd.parse(argc, argv);
     cmd.print();
 
@@ -228,6 +229,7 @@ int main (int argc, char* argv[]){
 
     // loop over time
     double tf = cmd.get<double>("tf");
+		int itmax = cmd.get<double>("it-max");
     int tc = 0;
     int ts = 0;
     double save = cmd.get("write-vtk", 0.1);
@@ -237,9 +239,9 @@ int main (int argc, char* argv[]){
 
     // SemiLagrangian object
     SemiLagrangian sl(&p4est, &nodes, &ghost, &brick, &node_neighbors);
-    double cfl = cmd.get("cfl", 0.95);
+    double cfl = cmd.get("cfl");
     sl.set_CFL(cfl);
-    bool cfl_condition = cmd.contains("cfl");
+    bool cfl_condition = cmd.contains("cfl") && cfl < 1.0;
 
 #ifdef P4_TO_P8
     double dt_cfl = cfl * sl.compute_dt(vx_vortex, vy_vortex, vz_vortex);
@@ -248,7 +250,7 @@ int main (int argc, char* argv[]){
 #endif
 
     double dt = 0.05;
-    double dt_max = MIN(save, cmd.get("dt-max",dt_cfl));
+    double dt_max = MIN(save, cmd.get("dt-max", dt_cfl));
 
     // prepare to calculate mass loss
 #ifdef P4_TO_P8
@@ -308,7 +310,7 @@ int main (int argc, char* argv[]){
     }
 
 
-    for (double t=0; t<tf; t+=dt, tc++){
+    for (double t=0; t<tf && tc<itmax; t+=dt, tc++){
       if (t+dt >= (ts+1)*save){
         if (cmd.contains("write-stats")){
           w2.start("writing stats");
@@ -386,6 +388,7 @@ int main (int argc, char* argv[]){
 	      ts++;
         continue;
       }
+
       // advect the function in time and get the computed time-step
       w2.start("advecting");
 #ifdef P4_TO_P8
