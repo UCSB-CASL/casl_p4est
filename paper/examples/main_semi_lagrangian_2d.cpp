@@ -239,9 +239,9 @@ int main (int argc, char* argv[]){
 
     // SemiLagrangian object
     SemiLagrangian sl(&p4est, &nodes, &ghost, &brick, &node_neighbors);
-    double cfl = cmd.get("cfl");
+    double cfl = cmd.get<double>("cfl");
     sl.set_CFL(cfl);
-    bool cfl_condition = cmd.contains("cfl") && cfl < 1.0;
+		bool cfl_condition = cmd.contains("cfl") && cfl <= 1.0;
 
 #ifdef P4_TO_P8
     double dt_cfl = cfl * sl.compute_dt(vx_vortex, vy_vortex, vz_vortex);
@@ -311,29 +311,30 @@ int main (int argc, char* argv[]){
 
 
     for (double t=0; t<tf && tc<itmax; t+=dt, tc++){
-      if (t+dt >= (ts+1)*save){
-        if (cmd.contains("write-stats")){
-          w2.start("writing stats");
-          std::ostringstream partition_name, topology_name, neighbors_name;
+			if (cmd.contains("write-stats")){
+				w2.start("writing stats");
+				std::ostringstream partition_name, topology_name, neighbors_name;
 #ifdef P4_TO_P8
-          partition_name << foldername + "/" + "partition_" << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
-          topology_name  << foldername + "/" + "topology_"  << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
-          neighbors_name << foldername + "/" + "neighbors_" << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+				partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+				topology_name  << foldername + "/" + "topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+				neighbors_name << foldername + "/" + "neighbors_CFL_" << cfl << "_" << p4est->mpisize << "p_"
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
 #else
-          partition_name << foldername + "/" + "partition_" << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
-          topology_name  << foldername + "/" + "topology_"  << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
-          neighbors_name << foldername + "/" + "neighbors_" << p4est->mpisize << "p_"
-                         << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+				partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+				topology_name  << foldername + "/" + "topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+				neighbors_name << foldername + "/" + "neighbors_CFL_" << cfl << "_" << p4est->mpisize << "p_"
+											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
 #endif
-          write_stats(p4est, ghost, nodes, partition_name.str().c_str(), topology_name.str().c_str(), neighbors_name.str().c_str());
-          w2.stop(); w2.read_duration();
-        }
+				write_stats(p4est, ghost, nodes, partition_name.str().c_str(), topology_name.str().c_str(), neighbors_name.str().c_str());
+				w2.stop(); w2.read_duration();
+			}
  
+      if (t+dt >= (ts+1)*save){
+
         // advect to (ts+1)*save time
         if (((ts+1)*save - t)/save > 1e-6){		
 					dt = (ts+1)*save - t;
@@ -359,31 +360,29 @@ int main (int argc, char* argv[]){
           w2.stop(); w2.read_duration();
         }
 
-	      if (write_vtk){
-          w2.start("saving vtk file");
-          // Save stuff
-          std::ostringstream oss; oss << foldername << "/semi_lagrangian_";
-          if (cfl_condition)
-            oss << "CFL_";
+				w2.start("saving vtk file");
+				// Save stuff
+				std::ostringstream oss; oss << foldername << "/semi_lagrangian_";
+				if (cfl_condition)
+					oss << "CFL_";
 
-          oss << p4est->mpisize << "_"
-              << brick.nxyztrees[0] << "x"
-              << brick.nxyztrees[1]
-       #ifdef P4_TO_P8
-              << "x" << brick.nxyztrees[2]
-       #endif
-              << "." << ts;
+				oss << p4est->mpisize << "_"
+						<< brick.nxyztrees[0] << "x"
+						<< brick.nxyztrees[1]
+		 #ifdef P4_TO_P8
+						<< "x" << brick.nxyztrees[2]
+		 #endif
+						<< "." << ts;
 
-          double *phi_ptr;
-          ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-          my_p4est_vtk_write_all(p4est, nodes, ghost,
-                                 P4EST_TRUE, P4EST_TRUE,
-                                 1, 0, oss.str().c_str(),
-                                 VTK_POINT_DATA, "phi", phi_ptr);
+				double *phi_ptr;
+				ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
+				my_p4est_vtk_write_all(p4est, nodes, ghost,
+															 P4EST_TRUE, P4EST_TRUE,
+															 1, 0, oss.str().c_str(),
+															 VTK_POINT_DATA, "phi", phi_ptr);
 
-          ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
-          w2.stop(); w2.read_duration();
-        }
+				ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
+				w2.stop(); w2.read_duration();
 	
 	      ts++;
         continue;
