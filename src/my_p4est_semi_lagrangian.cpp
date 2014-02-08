@@ -155,7 +155,8 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
                                           const CF_2& vx, const CF_2& vy,
                                           Vec phi_n, Vec phi_xx_n, Vec phi_yy_n,
                                         #endif
-                                          double *phi_np1,p4est_t *p4est_np1, p4est_nodes_t *nodes_np1)
+                                          double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1,
+                                          bool save_topology)
 {
   ierr = PetscLogEventBegin(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
 
@@ -223,6 +224,12 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
 
   /* interpolate from old vector into our output vector */
   interp.interpolate(phi_np1);
+
+  if(save_topology && !partition_name_.empty() && !topology_name_.empty()){
+    interp.save_comm_topology(partition_name_.c_str(), topology_name_.c_str());
+    partition_name_.clear();
+    topology_name_.clear();
+  }
 
   ierr = PetscLogFlops(20); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
@@ -319,7 +326,8 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
                                           Vec vy, Vec vy_xx, Vec vy_yy,
                                           Vec phi_n, Vec phi_xx_n, Vec phi_yy_n,
                                           #endif
-                                          double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1)
+                                          double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1,
+                                          bool save_topology)
 {
   ierr = PetscLogEventBegin(log_Semilagrangian_advect_from_n_to_np1_Vec, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -469,6 +477,12 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
 
   /* interpolate from old vector into our output vector */
   interp.interpolate(phi_np1);
+
+  if(save_topology && !partition_name_.empty() && !topology_name_.empty()){
+    interp.save_comm_topology(partition_name_.c_str(), topology_name_.c_str());
+    partition_name_.clear();
+    topology_name_.clear();
+  }
 
   ierr = PetscLogFlops(40); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_Semilagrangian_advect_from_n_to_np1_Vec, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1018,7 +1032,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
                          vx,  vy,
                          phi, phi_xx_, phi_yy_,
                      #endif
-                       phi_np1_p, p4est_np1, nodes_np1);
+                       phi_np1_p, p4est_np1, nodes_np1, true);
   ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
   /* now that everything is updated, get rid of old stuff and swap them with new ones */

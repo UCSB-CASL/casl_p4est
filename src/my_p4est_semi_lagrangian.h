@@ -31,6 +31,8 @@ class SemiLagrangian
   my_p4est_hierarchy_t *hierarchy_;
   double cfl;
 
+  std::string partition_name_, topology_name_;
+
   struct splitting_criteria_update_t : splitting_criteria_t
   {
     double lip;
@@ -82,7 +84,7 @@ class SemiLagrangian
                             const CF_2& vx, const CF_2& vy,
                             Vec phi_n, Vec phi_xx_n, Vec phi_yy_n,
                           #endif
-                            double *phi_np1,p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
+                            double *phi_np1,p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, bool save_topology = false);
 
   void advect_from_n_to_np1_CFL(const std::vector<p4est_locidx_t> &map, double dt,
                           #ifdef P4_TO_P8
@@ -105,7 +107,7 @@ class SemiLagrangian
                             Vec vy, Vec vy_xx, Vec vy_yy,
                             Vec phi_n, Vec phi_xx_n, Vec phi_yy_n,
                           #endif
-                            double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
+                            double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, bool save_topology = false);
 
   void advect_from_n_to_np1_CFL(const std::vector<double> &map, double dt,
                           #ifdef P4_TO_P8
@@ -393,6 +395,11 @@ public:
   double compute_dt(const CF_2& vx, const CF_2& vy);
   double compute_dt(Vec vx, Vec vy);
 #endif
+
+  inline void set_comm_topology_filenames(const std::string& partition_name, const std::string& topology_name) {
+    partition_name_ = partition_name;
+    topology_name_  = topology_name;
+  }
 
   /* start from a root tree and successively refine intermediate trees until tree n+1 is built */
 #ifdef P4_TO_P8

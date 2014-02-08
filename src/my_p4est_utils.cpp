@@ -267,7 +267,7 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
   return value;
 }
 
-void write_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes, const char *partition_name, const char *topology_name, const char *neighbors_name)
+void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes, const char *partition_name, const char *topology_name, const char *neighbors_name)
 {
   FILE *file;
   PetscErrorCode ierr;

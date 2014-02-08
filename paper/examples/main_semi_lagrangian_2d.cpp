@@ -164,7 +164,8 @@ int main (int argc, char* argv[]){
     const int lmin = cmd.get("lmin", 0);
     const int lmax = cmd.get("lmax", 7);
     const double lip = cmd.get("lip", 1.2);
-    const bool write_vtk = cmd.contains("write-vtk");
+    const bool write_vtk   = cmd.contains("write-vtk");
+    const bool write_stats = cmd.contains("write-stats");
     mkdir(foldername.c_str(), 0777);
 
     PetscPrintf(mpi->mpicomm, "git commit hash value = %s (%s)\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG);
@@ -231,8 +232,9 @@ int main (int argc, char* argv[]){
     double tf = cmd.get<double>("tf");
 		int itmax = cmd.get<double>("it-max");
     int tc = 0;
-    int ts = 0;
-    double save = cmd.get("write-vtk", 0.1);
+    int ts_vtk = 0, ts_stats = 0;
+    double save_vtk   = cmd.get("write-vtk", 0.1);
+    int save_stats = cmd.get("write-stats", 1);
 
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
@@ -250,7 +252,7 @@ int main (int argc, char* argv[]){
 #endif
 
     double dt = 0.05;
-    double dt_max = MIN(save, cmd.get("dt-max", dt_cfl));
+    double dt_max = MIN(save_vtk, cmd.get("dt-max", dt_cfl));
 
     // prepare to calculate mass loss
 #ifdef P4_TO_P8
@@ -275,7 +277,7 @@ int main (int argc, char* argv[]){
     else
       oss << "dt-max_" << dt_max << "_";
     oss << p4est->mpisize << "p_"
-        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts << ".dat";
+        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts_vtk << ".dat";
 #endif
 
     FILE *err_file;
@@ -311,33 +313,45 @@ int main (int argc, char* argv[]){
 
 
     for (double t=0; t<tf && tc<itmax; t+=dt, tc++){
-			if (cmd.contains("write-stats")){
+      if (write_stats && tc % save_stats == 0){
 				w2.start("writing stats");
 				std::ostringstream partition_name, topology_name, neighbors_name;
+        std::ostringstream sl_partition_name, sl_topology_name;
 #ifdef P4_TO_P8
 				partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << tc << ".dat";
+                       << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
 				topology_name  << foldername + "/" + "topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << tc << ".dat";
-				neighbors_name << foldername + "/" + "neighbors_CFL_" << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << tc << ".dat";
+                       << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
+        neighbors_name << foldername + "/" + "neighbors_CFL_" << cfl << "_" << p4est->mpisize << "p_"
+                       << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
+
+        sl_partition_name << foldername + "/" + "SL_partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
+                          << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
+        sl_topology_name  << foldername + "/" + "SLtopology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
+                          << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
 #else
 				partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << tc << ".dat";
+                       << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts_stats << ".dat";
 				topology_name  << foldername + "/" + "topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << tc << ".dat";
+                       << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts_stats << ".dat";
 				neighbors_name << foldername + "/" + "neighbors_CFL_" << cfl << "_" << p4est->mpisize << "p_"
-											 << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << tc << ".dat";
+                       << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts_stats << ".dat";
+
+        sl_partition_name << foldername + "/" + "SL_partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
+                          << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts_stats << ".dat";
+        sl_topology_name  << foldername + "/" + "SL_topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
+                          << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts_stats << ".dat";
 #endif
-				write_stats(p4est, ghost, nodes, partition_name.str().c_str(), topology_name.str().c_str(), neighbors_name.str().c_str());
-				w2.stop(); w2.read_duration();
+        write_comm_stats(p4est, ghost, nodes, partition_name.str().c_str(), topology_name.str().c_str(), neighbors_name.str().c_str());
+        sl.set_comm_topology_filenames(sl_partition_name.str(), sl_topology_name.str());
+        ts_stats++;
+        w2.stop(); w2.read_duration();
 			}
  
-      if (t+dt >= (ts+1)*save){
-
+      if (write_vtk && t+dt >= (ts_vtk+1)*save_vtk){
         // advect to (ts+1)*save time
-        if (((ts+1)*save - t)/save > 1e-6){		
-					dt = (ts+1)*save - t;
+        if (((ts_vtk+1)*save_vtk - t)/save_vtk > 1e-6){
+          dt = (ts_vtk+1)*save_vtk - t;
           w2.start("advecting for save");
 #ifdef P4_TO_P8
           if (cfl_condition)
@@ -372,7 +386,7 @@ int main (int argc, char* argv[]){
 		 #ifdef P4_TO_P8
 						<< "x" << brick.nxyztrees[2]
 		 #endif
-						<< "." << ts;
+            << "." << ts_vtk;
 
 				double *phi_ptr;
 				ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
@@ -384,7 +398,7 @@ int main (int argc, char* argv[]){
 				ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
 				w2.stop(); w2.read_duration();
 	
-	      ts++;
+        ts_vtk++;
         continue;
       }
 

@@ -515,6 +515,38 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
+void InterpolatingFunctionNodeBase::save_comm_topology(const char *partition_name, const char *topology_name) {
+#ifdef CASL_THROWS
+  if(!is_buffer_prepared)
+    throw std::runtime_error("[ERROR] communication topology can only be saved after buffer is prepared (i.e. interpolate has at least been called once) ");
+#endif
+  FILE *par_file, *topo_file;
+  ierr = PetscFOpen(p4est_->mpicomm, partition_name, "w", &par_file);
+  ierr = PetscFOpen(p4est_->mpicomm, topology_name, "w", &topo_file);
+
+  PetscFPrintf(p4est_->mpicomm, par_file, "%% Partition of communcation pattern in doing interpolation\n");
+  PetscFPrintf(p4est_->mpicomm, par_file, "%% this_rank | local_buffer | ghost_buffer | send_buffer(this --> others) | recv_buffer(others --> this) | num_senders(others --> this) | num_receivers(this --> others) \n");
+
+  PetscFPrintf(p4est_->mpicomm, topo_file, "%% Topology of communcation pattern in doing interpolation\n");
+  PetscFPrintf(p4est_->mpicomm, topo_file, "%% this_rank | other_rank | send_buffer \n");
+
+  int send_buffer = 0, recv_buffer = 0;
+  for (remote_transfer_map::const_iterator it = remote_send_buffer.begin(); it != remote_send_buffer.end(); ++it){
+    PetscSynchronizedFPrintf(p4est_->mpicomm, topo_file, "%4d %4d %5d\n", p4est_->mpirank, it->first, it->second.size());
+    send_buffer += it->second.size();
+  }
+  PetscSynchronizedFlush(p4est_->mpicomm);
+  ierr = PetscFClose(p4est_->mpicomm, topo_file);
+
+  for (remote_transfer_map::const_iterator it = remote_recv_buffer.begin(); it != remote_recv_buffer.end(); ++it)
+    recv_buffer += it->second.size();
+
+  PetscSynchronizedFPrintf(p4est_->mpicomm, par_file, "%4d %7d %5d %5d %5d %4d %4d\n",
+                           p4est_->mpirank, local_point_buffer.size(), ghost_point_buffer.size(), send_buffer, recv_buffer, remote_senders.size(), remote_receivers.size());
+  PetscSynchronizedFlush(p4est_->mpicomm);
+  ierr = PetscFClose(p4est_->mpicomm, par_file);
+}
+
 void InterpolatingFunctionNodeBase::process_remote_data(std::vector<double>& xyz_recv, std::vector<double>& f_send) {
   PetscErrorCode ierr;
   // Get a pointer to the data

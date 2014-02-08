@@ -102,6 +102,7 @@ public:
   // interpolation methods
   void interpolate(Vec output_vec);
   void interpolate(double *output_vec);
+  void save_comm_topology(const char* partition_name, const char *topology_name);
   double operator()(double x, double y
 #ifdef P4_TO_P8
     , double z
