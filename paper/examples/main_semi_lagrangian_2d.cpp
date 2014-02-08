@@ -269,7 +269,7 @@ int main (int argc, char* argv[]){
     else
       oss << "dt-max_" << dt_max << "_";
     oss << p4est->mpisize << "p_"
-        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts << ".dat";
+        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_vtk << ".dat";
 #else
     oss << foldername + "/" + "mass_";
     if (cfl_condition)
