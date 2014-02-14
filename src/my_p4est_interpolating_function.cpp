@@ -47,6 +47,9 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
     Fzz_(NULL),
     #endif
     local_derivatives(false),
+#ifdef P4EST_SC_NOTIFY
+    remote_senders(p4est->mpisize, -1),
+#endif
     is_buffer_prepared(false)
 {
   // compute domain sizes
@@ -73,6 +76,9 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
     Fzz_(NULL),
     #endif
     local_derivatives(false),
+#ifdef P4EST_SC_NOTIFY
+    remote_senders(p4est->mpisize, -1),
+#endif
     is_buffer_prepared(false)
 {
   // compute domain sizes
