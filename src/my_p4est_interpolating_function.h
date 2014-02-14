@@ -72,6 +72,9 @@ class InterpolatingFunctionNodeBase: public CF_2
   bool is_buffer_prepared;
 
   std::vector<MPI_Request> remote_send_req;
+#ifdef P4EST_SC_NOTIFY
+  std::vector<MPI_Request> remote_recv_req;
+#endif
 
   enum {
     remote_point_tag,
@@ -82,6 +85,11 @@ class InterpolatingFunctionNodeBase: public CF_2
   // methods
   void process_remote_data(std::vector<double>& xyz_recv, std::vector<double>& f_send);
   void compute_second_derivatives();
+
+#ifdef P4EST_SC_NOTIFY
+  void send_point_buffers_begin();
+  void recv_point_buffers_begin();
+#endif
 
   // rule of three -- disable copy ctr and assignment if not useful
   InterpolatingFunctionNodeBase(const InterpolatingFunctionNodeBase& other);

@@ -154,6 +154,7 @@ int main (int argc, char* argv[]){
     cmd.add_option("output-dir", "parent folder to save everythiong in");
     cmd.add_option("lip", "lip constant for refinement");
     cmd.add_option("cfl", "cfl number for the SL method");
+    cmd.add_option("cfl-condition", "decide whether to use the cfl condition advection");
     cmd.add_option("write-stats", "set this flag if interested in writing the stats");
     cmd.add_option("dt-max", "maximum dt to be taken");
 		cmd.add_option("it-max" ,"maximum iterations before termination");
@@ -243,7 +244,7 @@ int main (int argc, char* argv[]){
     SemiLagrangian sl(&p4est, &nodes, &ghost, &brick, &node_neighbors);
     double cfl = cmd.get<double>("cfl");
     sl.set_CFL(cfl);
-		bool cfl_condition = cmd.contains("cfl") && cfl <= 1.0;
+		bool cfl_condition = cmd.contains("cfl-condition") && cfl <= 1.0;
 
 #ifdef P4_TO_P8
     double dt_cfl = cfl * sl.compute_dt(vx_vortex, vy_vortex, vz_vortex);
@@ -327,7 +328,7 @@ int main (int argc, char* argv[]){
 
         sl_partition_name << foldername + "/" + "SL_partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
                           << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
-        sl_topology_name  << foldername + "/" + "SLtopology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
+        sl_topology_name  << foldername + "/" + "SL_topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
                           << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
 #else
 				partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"

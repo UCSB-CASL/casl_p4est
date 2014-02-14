@@ -51,6 +51,10 @@ CONFIG(office, stampede|office): {
     DEFINES += OFFICE
 }
 
+CONFIG(sc_notify): {
+    DEFINES += P4EST_SC_NOTIFY
+}
+
 # --------------------------------- Define configs  --------------------------------- #
 CONFIG(debug, debug|release): {
     INCLUDEPATH += $$P4EST_INCLUDES_DEBUG $$PETSC_INCLUDES_DEBUG
