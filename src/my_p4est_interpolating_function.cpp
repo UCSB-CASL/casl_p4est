@@ -271,7 +271,6 @@ void InterpolatingFunctionNodeBase::interpolate(Vec output_vec)
 }
 
 #ifdef P4EST_SC_NOTIFY
-
 void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
 { 
   PetscErrorCode ierr;
@@ -853,6 +852,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   IPMLogRegionEnd("interpolate");
   ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+#endif // P4EST_SC_NOTIFY
 
 void InterpolatingFunctionNodeBase::save_comm_topology(const char *partition_name, const char *topology_name) {
 #ifdef CASL_THROWS
@@ -1000,7 +1000,6 @@ void InterpolatingFunctionNodeBase::process_remote_data(std::vector<double>& xyz
 #endif
   }
 }
-#endif // P4EST_SC_NOTIFY
 
 #ifdef P4_TO_P8
 double InterpolatingFunctionNodeBase::operator ()(double x, double y, double z) const
