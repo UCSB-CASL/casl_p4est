@@ -501,18 +501,16 @@ int main (int argc, char* argv[]){
       for (size_t i=0; i<points.size(); i++){
   #ifdef P4_TO_P8
         double xyz [] = {points[i].x, points[i].y, points[i].z};
-        f[i] = interp(xyz[0], xyz[1], xyz[2]);
   #else
         double xyz [] = {points[i].x, points[i].y};
-        f[i] = interp(xyz[0], xyz[1]);
   #endif
-        // interp.add_point_to_buffer(i, xyz);        
+        interp.add_point_to_buffer(i, xyz);        
       }
       ierr = PetscLogEventEnd(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
       w2.stop(); w2.read_duration();      
 
       w2.start("interpolating");
-      // interp.interpolate(&f[0]);
+      interp.interpolate(&f[0]);
       ierr = PetscLogEventEnd(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
       w2.stop(); w2.read_duration();
       w3.stop(); w3.read_duration();      

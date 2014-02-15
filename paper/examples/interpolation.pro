@@ -26,6 +26,8 @@ CONFIG(stampede, stampede|office): {
     PETSC_INCLUDES_RELEASE = $$TACC_PETSC_HOME/include $$TACC_PETSC_HOME/$$TACC_PETSC_ARCH_RELEASE/include
     PETSC_LIBS_DEBUG = -Wl,-rpath,$$TACC_PETSC_LIB_DEBUG -L$$TACC_PETSC_LIB_DEBUG -lpetsc
     PETSC_LIBS_RELEASE = -Wl,-rpath,$$TACC_PETSC_LIB_RELEASE -L$$TACC_PETSC_LIB_RELEASE -lpetsc
+
+		DEFINES += STAMPEDE
 }
 
 CONFIG(office, stampede|office): {
@@ -45,6 +47,12 @@ CONFIG(office, stampede|office): {
     PETSC_LIBS_RELEASE = -L/usr/local/petsc/release/lib -Wl,-rpath,/usr/local/petsc/release/lib -lpetsc
 
     INCLUDEPATH += /usr/include/mpich2
+
+		DEFINES += OFFICE
+}
+
+CONFIG(sc_notify): {
+	    DEFINES += P4EST_SC_NOTIFY
 }
 
 # --------------------------------- Define configs  --------------------------------- #
