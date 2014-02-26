@@ -42,6 +42,7 @@ int nb_splits = 0;
 //#define LINEAR
 //#define CONSTANT
 
+int nb_iterations = 100;
 int band = 10;
 int order = 2;
 
@@ -98,7 +99,7 @@ public:
 #endif
 
 #ifdef LINEAR
-    return 1000*((x-x_center) + (y-y_center) + (z-z_center));
+    return (x-x_center) + (y-y_center) + (z-z_center);
 #endif
 
 #ifdef CONSTANT
@@ -161,7 +162,7 @@ public:
 #endif
 
 #ifdef LINEAR
-    return 1000*((x-x_center) + (y-y_center));
+    return (x-x_center) + (y-y_center);
 #endif
 
 #ifdef CONSTANT
@@ -203,8 +204,8 @@ public:
 #endif
 
 
-int main (int argc, char* argv[]){
-
+int main (int argc, char* argv[])
+{
   mpi_context_t mpi_context, *mpi = &mpi_context;
   mpi->mpicomm  = MPI_COMM_WORLD;
   p4est_t            *p4est;
@@ -335,7 +336,7 @@ int main (int argc, char* argv[]){
       f_ptr[n] = bc_interface_dirichlet(x,y);
 #endif
     else
-      f_ptr[n] = 0;
+      f_ptr[n] = 100;
   }
 
   ierr = VecRestoreArray(phi   , &phi_ptr   ); CHKERRXX(ierr);
@@ -355,7 +356,8 @@ int main (int argc, char* argv[]){
     bc.setInterfaceValue(bc_interface_neumann);
 
 //  ls.extend_Over_Interface(phi, f, bc, order, band);
-  ls.extend_Over_Interface(phi, f, bc_interface_type, bc_vec, order, band);
+//  ls.extend_Over_Interface(phi, f, bc_interface_type, bc_vec, order, band);
+  ls.extend_Over_Interface_TVD(phi, f, nb_iterations, order);
 
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(f  , &f_ptr); CHKERRXX(ierr);
@@ -452,6 +454,8 @@ int main (int argc, char* argv[]){
                          VTK_POINT_DATA, "phi", phi_ptr,
                          VTK_POINT_DATA, "f", f_ptr,
                          VTK_POINT_DATA, "error", err);
+  char *path = getenv("PWD");
+  cout << "file saved in ... " << path << "/extension_0" << endl;
 
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(f  , &f_ptr); CHKERRXX(ierr);
