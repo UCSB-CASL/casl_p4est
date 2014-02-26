@@ -1,6 +1,8 @@
 #ifndef PETSC_COMPATIBILITY_H
 #define PETSC_COMPATIBILITY_H
 
+#include <petsc.h>
+
 #ifndef CHKERRXX
 #define CHKERRXX(ierr) CHKERRABORT(PETSC_COMM_WORLD, ierr)
 #endif
@@ -29,6 +31,10 @@
 #define PetscViewerDestroy(a)            PetscViewerDestroy(&a)
 #define MatNullSpaceDestroy(a)           MatNullSpaceDestroy(&a)
 #define ISLocalToGlobalMappingDestroy(a) ISLocalToGlobalMappingDestroy(&a)
+#endif
+
+#if PETSC_VERSION_GT(3,4,3)
+#define MatNullSpaceRemove(a, b, c) MatNullSpaceRemove(a, b)
 #endif
 
 #endif // PETSC_COMPATIBILITY_H
