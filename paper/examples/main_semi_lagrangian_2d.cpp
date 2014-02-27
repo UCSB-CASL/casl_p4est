@@ -365,6 +365,8 @@ int main (int argc, char* argv[]){
           else
             sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
 #endif
+          hierarchy->update(p4est, ghost);
+          node_neighbors->update(hierarchy, nodes);
           PetscPrintf(p4est->mpicomm, "t = %f, dt = %f, tc = %d\n", t+dt, dt, tc+1);
           w2.stop(); w2.read_duration();
 
