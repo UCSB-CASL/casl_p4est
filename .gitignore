@@ -16,6 +16,11 @@
 *.visit
 *.cproject
 *.project
+*.DS_Store
+*._.DS_Store
+*.sw[op]
+*script*
+*ddt*
 
 # What directories to ignore
 [Dd]ebug/
@@ -23,3 +28,4 @@
 [Oo]bjs/
 [Pp]roject[s]/
 [Bb]uild/
+

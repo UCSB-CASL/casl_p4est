@@ -112,6 +112,7 @@ public:
 
   inline const HierarchyCell* get_cell(p4est_topidx_t tr, p4est_locidx_t q) const {return &trees[tr][q];}
   int find_smallest_quadrant_containing_point(double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
+  void update(p4est_t *p4est_, p4est_ghost_t *ghost_);
   void write_vtk(const char* filename) const;
 };
 

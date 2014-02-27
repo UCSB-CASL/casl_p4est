@@ -299,6 +299,36 @@ PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, V
  */
 PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v);
 
+/*!
+ * \brief VecScatterCreateChangeLayout Create a VecScatter context useful for changing the parallel layout of a vector
+ * \param comm  [in]  MPI_Comm to which parallel vectors belong
+ * \param from  [in]  input vector layout
+ * \param to    [in]  output vector layout
+ * \param ctx   [out] the created VecScatter context
+ * \return
+ */
+PetscErrorCode VecScatterCreateChangeLayout(MPI_Comm comm, Vec from, Vec to, VecScatter *ctx);
+
+/*!
+ * \brief VecGhostChangeLayoutBegin Start changing the layout of a parallel vector. This potentially involves
+ *  sending and receiving messages in a non-blocking mode
+ * \param ctx   [in]  VecScatter context to initiate the transfer
+ * \param from  [in]  input vector to the change the parallel layout
+ * \param to    [out] output vector with the same global values but with a different parallel layout
+ * \return
+ */
+PetscErrorCode VecGhostChangeLayoutBegin(VecScatter ctx, Vec from, Vec to);
+
+/*!
+ * \brief VecGhostChangeLayoutEnd Finish changing the layout of a parallel vector. This potentially involves
+ *  sending and receiving messages in a non-blocking mode
+ * \param ctx   [in]  VecScatter context to initiate the transfer
+ * \param from  [in]  input vector to the change the parallel layout
+ * \param to    [out] output vector with the same global values but with a different parallel layout
+ * \return
+ */
+PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to);
+
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
@@ -525,6 +555,9 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& 
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
 #endif
 
+void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t* ghost, const p4est_nodes_t *nodes,
+                 const char* partition_name = NULL, const char* topology_name = NULL, const char* neighbors_name = NULL);
+
 inline double ranged_rand(double a, double b, int seed = 0){
   if (seed) srand(seed);
   return (static_cast<double>(rand())/static_cast<double>(RAND_MAX) * (b-a) + a);
@@ -573,16 +606,20 @@ private:
   double ts, tf;
   MPI_Comm comm_;
   int mpirank;
+  int mpisize;
   std::string msg_;
   stopwatch_timing timing_;
+  std::vector<double> t;
   FILE *f_;
 
-public:   
+public:
 
-  parStopWatch(FILE *f = stdout, stopwatch_timing timing = root_timings, MPI_Comm comm = MPI_COMM_WORLD)
+  parStopWatch(stopwatch_timing timing = root_timings, FILE *f = stdout, MPI_Comm comm = MPI_COMM_WORLD)
     : comm_(comm), timing_(timing), f_(f)
   {
     MPI_Comm_rank(comm_, &mpirank);
+    MPI_Comm_size(comm_, &mpisize);
+    t.resize(mpisize,0);
   }
 
   void start(const std::string& msg){
@@ -598,13 +635,34 @@ public:
   double read_duration(){
     double elap = tf - ts;
 
-    PetscPrintf(comm_, "%s ... done in ", msg_.c_str());
+    PetscPrintf(comm_, "%s ... done in \n", msg_.c_str());
     if (timing_ == all_timings){
-      PetscSynchronizedFPrintf(comm_, f_, "\n   %.4lf secs. on process %2d",elap, mpirank);
-      PetscSynchronizedFlush(comm_);
-      PetscFPrintf(comm_, f_, "\n");
+      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
+      double tmax, tmin, tavg, tdev;
+      tmax = tmin = elap;
+      tavg = tdev = 0;
+      if (mpirank == 0){
+        PetscFPrintf(comm_, f_, "t = [");
+        for (size_t i=0; i<t.size()-1; i++)
+          PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
+        PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
+
+        for (size_t i=0; i<t.size(); i++){
+          tavg += t[i];
+          tmax = MAX(tmax, t[i]);
+          tmin = MIN(tmin, t[i]);
+        }
+        tavg /= mpisize;
+
+        for (size_t i=0; i<t.size(); i++){
+          tdev += (t[i]-tavg)*(t[i]-tavg);
+        }
+        tdev = sqrt(tdev/mpisize);
+      }
+
+      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_max/t_min = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %% %2.1lf, t_dev/(t_max-t_min) = %% %2.1lf\n\n", tmax, tmax/tmin, tavg, tdev/tavg*100, tdev/(tmax-tmin)*100);
     } else {
-      PetscFPrintf(comm_, f_, " %.4lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
+      PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank);
     }
     return elap;
   }

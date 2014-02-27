@@ -121,10 +121,21 @@ private:
 };
 #endif
 
+#ifndef GIT_COMMIT_HASH_SHORT
+#define GIT_COMMIT_HASH_SHORT "unknown"
+#endif
+
+#ifndef GIT_COMMIT_HASH_LONG
+#define GIT_COMMIT_HASH_LONG "unknown"
+#endif
+
 int main (int argc, char* argv[]){
 
   mpi_context_t mpi_context, *mpi = &mpi_context;
   mpi->mpicomm  = MPI_COMM_WORLD;
+  Session mpi_session;
+  mpi_session.init(argc, argv, mpi->mpicomm);
+
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   p4est_ghost_t      *ghost;
@@ -132,7 +143,11 @@ int main (int argc, char* argv[]){
   cmdParser cmd;
   cmd.add_option("lmin", "min level");
   cmd.add_option("lmax", "max level");
+	cmd.add_option("tf", "t final");
   cmd.parse(argc, argv);
+	cmd.print();
+
+  PetscPrintf(mpi->mpicomm, "git commit hash value = %s (%s)\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG);
 
 #ifdef P4_TO_P8
   circle circ(0.5, 0.5, 0.5, .3);
@@ -140,9 +155,6 @@ int main (int argc, char* argv[]){
   circle circ(0.5, 0.5, .3);
 #endif
   splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 7), &circ, 1.3);
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
 
   parStopWatch w1, w2;
   w1.start("total time");
@@ -192,23 +204,24 @@ int main (int argc, char* argv[]){
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
 
   // write the intial data to disk
-  my_p4est_vtk_write_all(p4est, nodes, ghost,
+  /*
+ 		my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
                          1, 0, "init",
                          VTK_POINT_DATA, "phi", phi_ptr);
-
+	*/
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
 
   // SemiLagrangian object
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
 
   // loop over time
-  double tf = 10;
+  double tf = cmd.get<double>("tf");
   int tc = 0;
-  int save = 5;
+  int save = 50000;
   double dt = 0.05;
   for (double t=0; t<tf; t+=dt, tc++){
-    if (tc % save == 0){
+    if (false && tc % save == 0){
       // Save stuff
       std::ostringstream oss; oss << "semi_lagrangian_" << p4est->mpisize << "_"
                                   << brick.nxyztrees[0] << "x"
@@ -229,6 +242,7 @@ int main (int argc, char* argv[]){
 
     // advect the function in time and get the computed time-step
     w2.start("advecting");
+		PetscPrintf(p4est->mpicomm, "t = %lf, tc = %d\n", t, tc);
 #ifdef P4_TO_P8
     sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
 #else
@@ -238,9 +252,16 @@ int main (int argc, char* argv[]){
     // reinitialize
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
+    node_neighbors.init_neighbors();
     my_p4est_level_set level_set(&node_neighbors);
     level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
+    
 
+		p4est_gloidx_t num_nodes = 0;
+      for (int r =0; r<p4est->mpisize; r++)
+        num_nodes += nodes->global_owned_indeps[r];
+
+    PetscPrintf(p4est->mpicomm, "global_quads = %ld \t global_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
     w2.stop(); w2.read_duration();
   }
 

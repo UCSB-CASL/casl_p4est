@@ -28,7 +28,7 @@ EXAMPLE_NAME = poisson_node_base
 
 # Define the location for the CASL library 
 CASL_P4EST = ../..
-INCLUDE_FLAGS += -I$(CASL_P4EST)
+INCLUDE_FLAGS += -I$(CASL_P4EST) -I$(TACC_HDF5_INC)
 
 # Project info
 vpath %.cpp $(CASL_P4EST)/src

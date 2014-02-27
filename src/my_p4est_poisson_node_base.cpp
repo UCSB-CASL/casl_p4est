@@ -175,7 +175,6 @@ void PoissonSolverNodeBase::preallocate_matrix()
   for (p4est_locidx_t n=0; n<num_owned_local; n++)
   {
     const quad_neighbor_nodes_of_node_t& qnnn = (*node_neighbors_)[n];
-    const p4est_indep_t *ni = (const p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
 
     /*
      * Check for neighboring nodes:

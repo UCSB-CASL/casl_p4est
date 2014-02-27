@@ -1,11 +1,14 @@
 #ifdef P4_TO_P8
 #include "my_p8est_refine_coarsen.h"
 #include <p8est_bits.h>
+#include <p8est_algorithms.h>
 #else
 #include "my_p4est_refine_coarsen.h"
 #include <p4est_bits.h>
+#include <p4est_algorithms.h>
 #endif
 #include <sc_search.h>
+#include <iostream>
 
 p4est_bool_t
 refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
@@ -155,13 +158,49 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
   }
 }
 
+//p4est_bool_t
+//refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+//{
+//  splitting_criteria_local_random_t *data = (splitting_criteria_local_random_t*) p4est->user_pointer;
+
+//  if (quad->level < data->min_lvl)
+//    return P4EST_TRUE;
+//  else if (quad->level >= data->max_lvl)
+//    return P4EST_FALSE;
+//  else
+//    return *(u_int8_t*)(quad->p.user_data);
+//}
+
+//p4est_bool_t
+//coarsen_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
+//{
+//  (void) which_tree;
+//  splitting_criteria_random_t *data = (splitting_criteria_random_t*) p4est->user_pointer;
+
+//  // if (data->num_quads <= (p4est_gloidx_t) ((double)data->min_quads/(double)p4est->mpisize))
+//  if (data->num_quads <= data->min_quads)
+//    return P4EST_FALSE;
+//  else if (quad[0]->level <= data->min_lvl)
+//    return P4EST_FALSE;
+//  else if (quad[0]->level >  data->max_lvl)
+//  { data->num_quads -= P4EST_CHILDREN - 1; return P4EST_TRUE; }
+//  else
+//  {
+//    if (rand()%2)
+//    { data->num_quads -= P4EST_CHILDREN - 1; return P4EST_TRUE; }
+//    else
+//      return P4EST_FALSE;
+//  }
+//}
+
 p4est_bool_t
 refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
   (void) which_tree;
   splitting_criteria_random_t *data = (splitting_criteria_random_t*) p4est->user_pointer;
 
-  if (data->num_quads >= (p4est_gloidx_t) ((double)data->max_quads/(double)p4est->mpisize))
+  // if (data->num_quads >= (p4est_gloidx_t) ((double)data->max_quads/(double)p4est->mpisize))
+  if (data->num_quads >= data->max_quads)
     return P4EST_FALSE;
   else if (quad->level < data->min_lvl)
   { data->num_quads += P4EST_CHILDREN - 1; return P4EST_TRUE; }
@@ -182,7 +221,8 @@ coarsen_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **qua
   (void) which_tree;
   splitting_criteria_random_t *data = (splitting_criteria_random_t*) p4est->user_pointer;
 
-  if (data->num_quads <= (p4est_gloidx_t) ((double)data->min_quads/(double)p4est->mpisize))
+  // if (data->num_quads <= (p4est_gloidx_t) ((double)data->min_quads/(double)p4est->mpisize))
+  if (data->num_quads <= data->min_quads)
     return P4EST_FALSE;
   else if (quad[0]->level <= data->min_lvl)
     return P4EST_FALSE;
@@ -216,3 +256,33 @@ coarsen_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *
 
   return P4EST_TRUE;
 }
+
+p4est_bool_t
+refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  (void) which_tree;
+  const splitting_criteria_marker_t& marker = *(splitting_criteria_marker_t*)(p4est->user_pointer);
+  if (quad->level < marker.min_lvl)
+    return P4EST_TRUE;
+  else if (quad->level >= marker.max_lvl)
+    return P4EST_FALSE;
+  else
+    return *(p4est_bool_t*)quad->p.user_data;
+}
+
+p4est_bool_t
+coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
+{
+  (void) which_tree;
+  const splitting_criteria_marker_t& marker = *(splitting_criteria_marker_t*)(p4est->user_pointer);
+  if (quad[0]->level < marker.min_lvl)
+    return P4EST_FALSE;
+  else if (quad[0]->level >= marker.max_lvl)
+    return P4EST_TRUE;
+  else
+    for (short i=0; i<P4EST_CHILDREN; i++)
+      if (*(p4est_bool_t*)quad[i]->p.user_data) return P4EST_TRUE;
+
+  return P4EST_FALSE;
+}
+

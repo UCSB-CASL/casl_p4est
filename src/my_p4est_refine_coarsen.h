@@ -5,20 +5,27 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_utils.h>
+#include <p8est.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_utils.h>
+#include <p4est.h>
 #endif
 
+#include <set>
+#include <vector>
+
 struct splitting_criteria_t {
-  splitting_criteria_t(int min_lvl = 0, int max_lvl = 0)
+  splitting_criteria_t(int min_lvl = 0, int max_lvl = 0, double lip = 1.2)
   {
     this->max_lvl = max_lvl;
     this->min_lvl = min_lvl;
+    this->lip     = lip;
   }
 
   int max_lvl, min_lvl;
+  double lip;
 };
 
 struct splitting_criteria_cf_t : splitting_criteria_t {
@@ -27,7 +34,6 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
 #else
   CF_2 *phi;
 #endif
-  double lip;
 #ifdef P4_TO_P8
   splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_3 *phi, double lip)
 #else
@@ -51,6 +57,75 @@ struct splitting_criteria_random_t : splitting_criteria_t {
     this->max_quads = max_quads;
     num_quads = 0;
   }
+};
+
+//struct splitting_criteria_random_t : splitting_criteria_t {
+//  splitting_criteria_random_t(p4est_t *p4est, int min_lvl, int max_lvl)
+//    : marked(p4est->local_num_quadrants, false)
+//  {
+//    this->min_lvl = min_lvl;
+//    this->max_lvl = max_lvl;
+
+//    std::vector<double> s(max_lvl - min_lvl + 1);
+//    double sum = 0;
+//    for (int l=0; l<max_lvl-min_lvl+1; l++) {
+//      s[l] = 1.0/sqrt(l+1.0);
+//      sum += s[l];
+//    }
+
+//    for (int l=0; l<max_lvl-min_lvl+1; l++)
+//      s[l] /= sum;
+
+//    volatile u_int8_t refine; // prevent compiler to optimize the loop
+//    for (p4est_gloidx_t i = 0; i<p4est->global_first_quadrant[p4est->mpirank]; i++)
+//      refine = ranged_rand(0.,1.) < 0.5;
+//    for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++){
+//      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+//      for (size_t qu = 0; qu < tree->quadrants.elem_count; qu++){
+//        p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, qu);
+//        p4est_locidx_t q = qu + tree->quadrants_offset;
+
+//        if (quad->level < min_lvl)
+//          marked[q] = 1;
+//        else if (quad->level > max_lvl)
+//          marked[q] = 0;
+//        else
+//          marked[q] = ranged_rand(0.,1.) < s[quad->level - min_lvl];
+
+//        quad->p.user_data = &marked[qu+tree->quadrants_offset];
+//      }
+//    }
+//    for (p4est_gloidx_t i = p4est->global_first_quadrant[p4est->mpirank+1]; i<p4est->global_num_quadrants; i++)
+//      refine = ranged_rand(0.,1.) < 0.5;
+//  }
+
+//private:
+//  std::vector<u_int8_t> marked;
+//};
+
+class splitting_criteria_marker_t: public splitting_criteria_t {
+  std::vector<p4est_bool_t> markers;
+public:
+  splitting_criteria_marker_t(p4est_t *p4est, int min_lvl, int max_lvl)
+    : markers(p4est->local_num_quadrants, P4EST_FALSE)
+  {
+    this->min_lvl = min_lvl;
+    this->max_lvl = max_lvl;
+
+    // Associate each marker with a quadrant
+    for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++){
+      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+      for (size_t qu = 0; qu < tree->quadrants.elem_count; qu++){
+        p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, qu);
+        p4est_locidx_t q = qu + tree->quadrants_offset;
+
+        quad->p.user_data = &markers[q];
+      }
+    }
+  }
+
+  inline p4est_bool_t& operator[](p4est_locidx_t q) {return markers[q];}
+  inline const p4est_bool_t& operator[](p4est_locidx_t q) const {return markers[q];}
 };
 
 /*!
@@ -112,6 +187,15 @@ refine_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *q
  */
 p4est_bool_t
 coarsen_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+p4est_bool_t
+refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+p4est_bool_t
+coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+void
+my_p4est_refine_quadrant(p4est_t *p4est, p4est_topidx_t which_tree, p4est_locidx_t which_quad);
 
 
 #endif // REFINE_COARSEN_H

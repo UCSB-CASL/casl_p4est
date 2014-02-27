@@ -32,7 +32,7 @@ void cmdParser::parse(int argc, char* argv[])
 
     if (key != "help" && options.find(key) == options.end())
     {
-      std::cout << "[WARNING]: option '" << key << "' does not exists in the database -- ignoring." << std::endl;
+      PetscPrintf(MPI_COMM_WORLD, "[WARNING]: option '%s' does not exists in the database -- ignoring.\n", key.c_str());
       continue;
     }
 
@@ -51,6 +51,16 @@ void cmdParser::parse(int argc, char* argv[])
 
     exit(EXIT_SUCCESS);
   }
+}
+
+void cmdParser::print(FILE *f){
+  PetscFPrintf(MPI_COMM_WORLD, f, " -------------------== CASL Options Database ==------------------- \n");
+  PetscFPrintf(MPI_COMM_WORLD, f, " List of entered options:\n\n");
+  for (std::map<std::string, std::string>::const_iterator it = buffer.begin(); it != buffer.end(); ++it)
+    {
+      PetscFPrintf(MPI_COMM_WORLD, f, "  -%s %s\n", it->first.c_str(), it->second.c_str());
+    }
+  PetscPrintf(MPI_COMM_WORLD, " ----------------------------------------------------------------- \n");    
 }
 
 bool cmdParser::contains(const std::string& key)

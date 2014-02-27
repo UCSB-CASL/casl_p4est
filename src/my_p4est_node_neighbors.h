@@ -26,12 +26,11 @@ class my_p4est_node_neighbors_t {
   friend class PoissonSolverCellBase;
   friend class InterpolatingFunctionNodeBase;
   friend class my_p4est_level_set;
-  friend class CF_2;
+  friend class SemiLagrangian;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information
      */
-  void init_neighbors();
 
   my_p4est_hierarchy_t *hierarchy;
   p4est_t *p4est;
@@ -41,13 +40,13 @@ class my_p4est_node_neighbors_t {
   std::vector< quad_neighbor_nodes_of_node_t > neighbors;
   std::vector<p4est_locidx_t> layer_nodes;
   std::vector<p4est_locidx_t> local_nodes;
+  bool is_initialized;
 
 public:
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
-    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb),
-      neighbors(nodes_->num_owned_indeps)
+    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb)
   {
-    init_neighbors();
+    is_initialized = false;
 
     /* compute the layer and local nodes.
      * layer_nodes: This is a list of indices for nodes in the local range on this
@@ -76,6 +75,10 @@ public:
     }
   }
 
+  void init_neighbors();
+  void clear_neighbors();
+  void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_);
+  
   inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
 #ifdef CASL_THROWS
     if (n<0 || n>=nodes->num_owned_indeps){
@@ -85,9 +88,25 @@ public:
           << "). This probably means you are trying to acess neighboring nodes"
              " of a ghost nod. This is not supported." << std::endl;
       throw std::invalid_argument(oss.str());
-    }
+    }    
+
+    if (!is_initialized)
+      throw std::runtime_error("[ERROR]: operator[] can only be used if nodes are buffered. Either initialize the buffer by calling"
+                               "'init_neighbors()' or consider calling 'get_neighbors()' to compute the neighbors on the fly.");
 #endif
-    return neighbors[n];
+      return neighbors[n];
+  }
+
+  void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
+
+  inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n) const {
+    if (is_initialized)
+      return neighbors[n];
+    else {
+      quad_neighbor_nodes_of_node_t qnnn;
+      get_neighbors(n, qnnn);
+      return qnnn;
+    }
   }
 
   /**
@@ -160,7 +179,7 @@ public:
 
 private:
 #ifdef P4_TO_P8
-  void dxx_and_dyy_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;
+  void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;
 #else
   void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy) const;
 #endif

@@ -43,12 +43,14 @@
 #define MIN_LEVEL 2
 #define MAX_LEVEL 5
 
-#define PLAN
-//#define SEED
+//#define PLAN
+#define SEED
 
 // logging variables
 PetscLogEvent log_compute_curvature;
 #ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #endif
@@ -531,6 +533,7 @@ int main (int argc, char* argv[])
 
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
     my_p4est_node_neighbors_t ngbd(&hierarchy,nodes);
+    ngbd.init_neighbors();
 
 //    cout << "2 : " << p4est->mpirank << ", " << tc << endl;
     my_p4est_level_set ls(&ngbd);
@@ -792,7 +795,7 @@ int main (int argc, char* argv[])
     ierr = VecRestoreArray(vz_extended, &vz_ptr ); CHKERRXX(ierr);
 #endif
     double max_norm_u;
-    ierr = MPI_Allreduce(&max_norm_u_loc, &max_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
+    MPI_Allreduce(&max_norm_u_loc, &max_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 
     splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
     double dx = 1.0 / pow(2.,(double) data->max_lvl);
@@ -806,7 +809,7 @@ int main (int argc, char* argv[])
     p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-    SemiLagrangian sl(&p4est_np1, &nodes_np1, &ghost_np1, &brick);
+    SemiLagrangian sl(&p4est_np1, &nodes_np1, &ghost_np1, &brick, &ngbd);
 #ifdef P4_TO_P8
     sl.update_p4est_second_order(vx_extended, vy_extended, vz_extended, dt_n, phi_l);
 #else
@@ -852,10 +855,10 @@ int main (int argc, char* argv[])
       interp.add_point_to_buffer(n, xyz);
     }
 
-    interp.set_input_parameters(Tn_l, quadratic);
+    interp.set_input_parameters(Tn_l, linear);
     interp.interpolate(Tnp1_l);
 
-    interp.set_input_parameters(Tn_s, quadratic);
+    interp.set_input_parameters(Tn_s, linear);
     interp.interpolate(Tnp1_s);
 
     ierr = VecDestroy(Tn_l); CHKERRXX(ierr);

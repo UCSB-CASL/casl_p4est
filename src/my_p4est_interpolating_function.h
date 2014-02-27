@@ -33,7 +33,7 @@ class InterpolatingFunctionNodeBase: public CF_2
   p4est_nodes_t *nodes_;
   p4est_ghost_t *ghost_;
   my_p4est_brick_t *myb_;
-  const my_p4est_node_neighbors_t *qnnn_;
+  const my_p4est_node_neighbors_t *neighbors_;
 
   double xyz_min[3], xyz_max[3];
 
@@ -71,17 +71,25 @@ class InterpolatingFunctionNodeBase: public CF_2
   std::vector<int> remote_receivers, remote_senders;
   bool is_buffer_prepared;
 
-  std::vector<MPI_Request> remote_send_req, remote_recv_req;
+  std::vector<MPI_Request> remote_send_req;
+#ifndef ENABLE_NONBLOCKING_NOTIFY
+  std::vector<MPI_Request> remote_recv_req;
+#endif
 
   enum {
     remote_point_tag,
-    remote_data_tag
+    remote_data_tag,
+    remote_notify_tag
   };
 
   // methods
+  void process_remote_data(std::vector<double>& xyz_recv, std::vector<double>& f_send);
+  void compute_second_derivatives();
+
+#ifndef ENABLE_NONBLOCKING_NOTIFY
   void send_point_buffers_begin();
   void recv_point_buffers_begin();
-  void compute_second_derivatives();
+#endif
 
   // rule of three -- disable copy ctr and assignment if not useful
   InterpolatingFunctionNodeBase(const InterpolatingFunctionNodeBase& other);
@@ -89,7 +97,7 @@ class InterpolatingFunctionNodeBase: public CF_2
 
 public:
   InterpolatingFunctionNodeBase(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb);
-  InterpolatingFunctionNodeBase(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, const my_p4est_node_neighbors_t *qnnn);
+  InterpolatingFunctionNodeBase(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_brick_t *myb, const my_p4est_node_neighbors_t *neighbors);
   ~InterpolatingFunctionNodeBase();
 
   void add_point_to_buffer(p4est_locidx_t node_locidx, const double *xyz);
@@ -102,6 +110,7 @@ public:
   // interpolation methods
   void interpolate(Vec output_vec);
   void interpolate(double *output_vec);
+  void save_comm_topology(const char* partition_name, const char *topology_name);
   double operator()(double x, double y
 #ifdef P4_TO_P8
     , double z

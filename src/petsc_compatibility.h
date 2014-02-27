@@ -10,6 +10,7 @@
 #if PETSC_VERSION_LT(3,2,0)
 #define MatDestroy(a)                    MatDestroy(a)
 #define VecDestroy(a)                    VecDestroy(a)
+#define VecScatterDestroy(a)             VecScatterDestroy(a)
 #define AODestroy(a)                     AODestroy(a)
 #define ISDestroy(a)                     ISDestroy(a)
 #define KSPDestroy(a)                    KSPDestroy(a)
@@ -22,6 +23,7 @@
 #else
 #define MatDestroy(a)                    MatDestroy(&a)
 #define VecDestroy(a)                    VecDestroy(&a)
+#define VecScatterDestroy(a)             VecScatterDestroy(&a)
 #define AODestroy(a)                     AODestroy(&a)
 #define ISDestroy(a)                     ISDestroy(&a)
 #define KSPDestroy(a)                    KSPDestroy(&a)
