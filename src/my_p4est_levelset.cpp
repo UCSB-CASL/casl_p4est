@@ -2534,7 +2534,11 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
     }
 
     ierr = VecRestoreArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
-    if(order==2) ierr = VecRestoreArray(qnn, &qnn_p); CHKERRXX(ierr);
+    if(order==2)
+    {
+      ierr = VecRestoreArray(qnn, &qnn_p); CHKERRXX(ierr);
+      ierr = VecDestroy(qnn); CHKERRXX(ierr);
+    }
   }
   ierr = VecRestoreArray(q, &q_p); CHKERRXX(ierr);
 
@@ -2710,7 +2714,12 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
     ierr = VecGhostUpdateEnd  (q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
-  if(order>=1) ierr = VecRestoreArray(qn, &qn_p); CHKERRXX(ierr);
+  if(order>=1)
+  {
+    ierr = VecRestoreArray(qn, &qn_p); CHKERRXX(ierr);
+    ierr = VecDestroy(qn); CHKERRXX(ierr);
+  }
+
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
   ierr = VecDestroy(qxx); CHKERRXX(ierr);

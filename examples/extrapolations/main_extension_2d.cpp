@@ -465,6 +465,7 @@ int main (int argc, char* argv[])
   ierr = VecDestroy(bc_vec); CHKERRXX(ierr);
 
   // destroy the p4est and its connectivity structure
+  p4est_ghost_destroy(ghost);
   p4est_nodes_destroy (nodes);
   p4est_destroy (p4est);
   my_p4est_brick_destroy(connectivity, &brick);
