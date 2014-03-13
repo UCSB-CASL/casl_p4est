@@ -114,6 +114,5 @@ public:
   void extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend=INT_MAX) const;
 
   /* extend a quantity over the interface with the TVD algorithm */
-  /* TODO: the MPI communication needs to be optimized with the sandwich techinque !! */
   void extend_Over_Interface_TVD( Vec phi, Vec q, int iterations=20, int order=2, int band_to_extend=INT_MAX ) const;
 };

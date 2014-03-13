@@ -34,6 +34,7 @@ PetscLogEvent log_my_p4est_level_set_reinit_2nd_time_1st_space;
 PetscLogEvent log_my_p4est_level_set_reinit_1_iter_1st_order;
 PetscLogEvent log_my_p4est_level_set_reinit_1_iter_2nd_order;
 PetscLogEvent log_my_p4est_level_set_extend_over_interface;
+PetscLogEvent log_my_p4est_level_set_extend_over_interface_TVD;
 PetscLogEvent log_my_p4est_level_set_extend_from_interface;
 PetscLogEvent log_my_p4est_level_set_compute_derivatives;
 PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_1_iter;
@@ -105,6 +106,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_1_iter_1st_order             ", 0, &log_my_p4est_level_set_reinit_1_iter_1st_order); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_1_iter_2nd_order             ", 0, &log_my_p4est_level_set_reinit_1_iter_2nd_order); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::extend_over_interface               ", 0, &log_my_p4est_level_set_extend_over_interface); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_level_set::extend_over_interface_TVD           ", 0, &log_my_p4est_level_set_extend_over_interface_TVD); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::extend_from_interface               ", 0, &log_my_p4est_level_set_extend_from_interface); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_1_iter   ", 0, &log_my_p4est_level_set_advect_in_normal_direction_1_iter); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_CF2      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_CF2); CHKERRXX(ierr);

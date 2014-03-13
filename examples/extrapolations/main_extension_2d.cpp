@@ -37,9 +37,9 @@ int max_level = 7;
 
 int nb_splits = 0;
 
-#define EXPONENTIAL
+//#define EXPONENTIAL
 //#define QUADRATIC
-//#define LINEAR
+#define LINEAR
 //#define CONSTANT
 
 int nb_iterations = 100;
@@ -216,12 +216,14 @@ int main (int argc, char* argv[])
   cmd.add_option("lmax", "max level of the tree");
   cmd.add_option("nb_splits", "number of additional levels");
   cmd.add_option("order", "order of the extrapolating polynomial");
+  cmd.add_option("iter", "number of iterations");
   cmd.parse(argc, argv);
 
   nb_splits = cmd.get("nb_splits", 0);
   order = cmd.get("order", 2);
   min_level = cmd.get("lmin", 2);
   max_level = cmd.get("lmax", 5);
+  nb_iterations = cmd.get("iter", 100);
 
   circle circ;
   splitting_criteria_cf_t data(min_level+nb_splits, max_level+nb_splits, &circ, 1.2);

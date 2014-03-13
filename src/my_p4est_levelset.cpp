@@ -30,6 +30,7 @@ extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_time_1st_space;
 extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_1st_order;
 extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_2nd_order;
 extern PetscLogEvent log_my_p4est_level_set_extend_over_interface;
+extern PetscLogEvent log_my_p4est_level_set_extend_over_interface_TVD;
 extern PetscLogEvent log_my_p4est_level_set_extend_from_interface;
 extern PetscLogEvent log_my_p4est_level_set_compute_derivatives;
 extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_1_iter;
@@ -1992,12 +1993,13 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
 
 
 
-
-
-
 void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iterations, int order, int band_to_extend ) const
 {
+#ifdef CASL_THROWS
+  if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: my_p4est_level_set->extend_Over_Interface_TVD: order must be 0, 1 or 2.");
+#endif
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 
   /* find dx and dy smallest */
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
@@ -2727,4 +2729,6 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
 #ifdef P4_TO_P8
   ierr = VecDestroy(qzz); CHKERRXX(ierr);
 #endif
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }
