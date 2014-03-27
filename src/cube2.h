@@ -88,6 +88,13 @@ public:
   void kuhn_Triangulation( Simplex2& s1, Simplex2& s2 ) const;
 
   /*!
+   * \brief interface_Length_In_Cell compute the length of the interface in the cell
+   * \param level_set_values ...
+   * \return length of the interface in the cell
+   */
+  double interface_Length_In_Cell(QuadValue& level_set_values) const;
+
+  /*!
      * \brief compute the area of the Cube2 in the negative domain
      * \param level_set_values the values of the level-set function at the corners of the Cube2
      * \return the area of the Cube2 in the negative domain
