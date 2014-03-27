@@ -64,6 +64,7 @@ public:
 typedef enum {
   DIRICHLET,
   NEUMANN,
+  ROBIN,
   NOINTERFACE,
   MIXED
 } BoundaryConditionType;
