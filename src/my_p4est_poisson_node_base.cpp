@@ -575,8 +575,8 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           continue;
         }
 
-        double w_m00, w_p00, w_0m0, w_0p0;
-        PetscInt node_m00_g, node_p00_g, node_0m0_g, node_0p0_g;
+        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
+        PetscInt node_m00_g=0, node_p00_g=0, node_0m0_g=0, node_0p0_g=0;
 
         if (!is_node_xmWall(p4est, ni)){
 #ifdef P4_TO_P8
@@ -586,7 +586,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           p4est_locidx_t n_m00 = d_m00_m0 == 0 ? node_m00_mm : node_m00_pm;
 #endif
           node_m00_g  = petsc_gloidx[n_m00];
-          w_m00 = -1./(d_m00*d_m00);
+          w_m00 = -mu_/(d_m00*d_m00);
         }
 
         if (!is_node_xpWall(p4est, ni)){
@@ -597,7 +597,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           p4est_locidx_t n_p00 = d_p00_m0 == 0 ? node_p00_mm : node_p00_pm;
 #endif
           node_p00_g  = petsc_gloidx[n_p00];
-          w_p00 = -1./(d_p00*d_p00);
+          w_p00 = -mu_/(d_p00*d_p00);
         }
 
         if (!is_node_ymWall(p4est, ni)){
@@ -608,7 +608,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           p4est_locidx_t n_0m0 = d_0m0_m0 == 0 ? node_0m0_mm : node_0m0_pm;
 #endif
           node_0m0_g  = petsc_gloidx[n_0m0];
-          w_0m0 = -1./(d_0m0*d_0m0);
+          w_0m0 = -mu_/(d_0m0*d_0m0);
         }
 
         if (!is_node_ypWall(p4est, ni)){
@@ -619,7 +619,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           p4est_locidx_t n_0p0 = d_0p0_m0 == 0 ? node_0p0_mm:node_0p0_pm;
 #endif
           node_0p0_g  = petsc_gloidx[n_0p0];
-          w_0p0 = -1./(d_0p0*d_0p0);
+          w_0p0 = -mu_/(d_0p0*d_0p0);
         }
 
         double diag = add_p[n]-(w_m00+w_p00+w_0m0+w_0p0);
@@ -1282,40 +1282,34 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
       if(bc_->wallType(x_C,y_C)     == NEUMANN)
 #endif
       {
-        if (is_node_xpWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_m00;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_m00;
-#endif
+        if(phi_p[n] > diag_min)
+        {
+          rhs_p[n] = 0;
           continue;
         }
 
-        if (is_node_xmWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_p00;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_p00;
-#endif
-          continue;
-        }
+        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
 
-        if (is_node_ypWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_0m0;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_0m0;
-#endif
-          continue;
-        }
-        if (is_node_ymWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_0p0;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_0p0;
-#endif
-          continue;
-        }
+        if (!is_node_xmWall(p4est, ni)) w_m00 = -mu_/(d_m00*d_m00);
+        if (!is_node_xpWall(p4est, ni)) w_p00 = -mu_/(d_p00*d_p00);
+        if (!is_node_ymWall(p4est, ni)) w_0m0 = -mu_/(d_0m0*d_0m0);
+        if (!is_node_ypWall(p4est, ni)) w_0p0 = -mu_/(d_0p0*d_0p0);
+
+        double diag = add_p[n]-(w_m00+w_p00+w_0m0+w_0p0);
+        w_m00 /= diag;
+        w_p00 /= diag;
+        w_0m0 /= diag;
+        w_0p0 /= diag;
+
+        if(is_node_xmWall(p4est, ni)) rhs_p[n] += mu_*bc_->wallValue(x_C, y_C) / d_p00;
+        if(is_node_xpWall(p4est, ni)) rhs_p[n] += mu_*bc_->wallValue(x_C, y_C) / d_m00;
+        if(is_node_ymWall(p4est, ni)) rhs_p[n] += mu_*bc_->wallValue(x_C, y_C) / d_0p0;
+        if(is_node_ypWall(p4est, ni)) rhs_p[n] += mu_*bc_->wallValue(x_C, y_C) / d_0m0;
+
+        rhs_p[n] /= diag;
+
+        continue;
+
 #ifdef P4_TO_P8
         if (is_node_zpWall(p4est, ni)){
           rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_00m;

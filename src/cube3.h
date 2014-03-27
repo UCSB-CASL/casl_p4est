@@ -80,6 +80,13 @@ public:
     Cube3(double x0, double x1, double y0, double y1, double z0, double z1);
 
     /*!
+     * \brief interface_Area_In_Cell compute the are of the interface in the cube3
+     * \param level_set_values ...
+     * \return the are of the interface in the cell
+     */
+    double interface_Area_In_Cell( OctValue& level_set_values) const;
+
+    /*!
      * \brief compute the volume of the Cube3 in the negative domain
      * \param level_set_values the values of the level-set function at the corners of the Cube3
      * \return the volume of the Cube3 in the negative domain

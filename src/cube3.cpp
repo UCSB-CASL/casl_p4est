@@ -14,6 +14,12 @@ Cube3::Cube3(double x0, double x1, double y0, double y1, double z0, double z1)
   this->z0 = z0; this->z1 = z1;
 }
 
+double Cube3::interface_Area_In_Cell( OctValue& level_set_values) const
+{
+  OctValue tmp(1.,1.,1.,1.,1.,1.,1.,1.);
+  return integrate_Over_Interface(tmp, level_set_values);
+}
+
 double Cube3::volume_In_Negative_Domain( OctValue& level_set_values) const
 {
     OctValue tmp(1.,1.,1.,1.,1.,1.,1.,1.);
