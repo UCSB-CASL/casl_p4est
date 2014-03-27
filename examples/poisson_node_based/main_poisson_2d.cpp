@@ -138,7 +138,7 @@ static struct:CF_3{
 #else
 static struct:CF_2{
   void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
-  double operator()(double x, double y) const {
+  double operator()(double x, double y) const{
     return r - sqrt(SQR(x-x0) + SQR(y-y0));
   }
   double  x0, y0, r;
@@ -343,6 +343,7 @@ int main (int argc, char* argv[]){
     /* generate the neighborhood information */
     w2.start("construct the neighborhood information");
     my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
+    ngbd.init_neighbors();
     w2.stop(); w2.read_duration();
 
     /* initalize the bc information */
@@ -467,6 +468,7 @@ int main (int argc, char* argv[]){
                            VTK_POINT_DATA, "sol", sol_p,
                            VTK_POINT_DATA, "uex", uex_p,
                            VTK_POINT_DATA, "err", err );
+    PetscPrintf(mpi->mpicomm, "Results saved in %s\n", oss.str().c_str());
 
     /* restore internal pointers */
     ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);

@@ -115,4 +115,29 @@ public:
 
   /* extend a quantity over the interface with the TVD algorithm */
   void extend_Over_Interface_TVD( Vec phi, Vec q, int iterations=20, int order=2, int band_to_extend=INT_MAX ) const;
+
+  void extend_Over_Interface_TVD_not_parallel( Vec phi, Vec q, int iterations=20, int order=2, int band_to_extend=INT_MAX ) const;
+
+  void extend_from_interface_to_whole_domain_TVD_one_iteration( std::vector<int>& map, double *phi_p,
+                                                                std::vector<double>& nx, std::vector<double>& ny,
+                                                              #ifdef P4_TO_P8
+                                                              std::vector<double>& nz,
+                                                              #endif
+                                                                double *q_out_p,
+                                                                double *q_p, double *qxx_p, double *qyy_p,
+                                                              #ifdef P4_TO_P8
+                                                              double *qzz_p,
+                                                              #endif
+                                                                std::vector<double>& qi_m00, std::vector<double>& qi_p00,
+                                                                std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
+                                                              #ifdef P4_TO_P8
+                                                                std::vector<double>& qi_00m, std::vector<double>& qi_00p,
+                                                              #endif
+                                                                std::vector<double>& s_m00, std::vector<double>& s_p00,
+                                                                std::vector<double>& s_0m0, std::vector<double>& s_0p0
+                                                              #ifdef P4_TO_P8
+                                                                , std::vector<double>& s_00m, std::vector<double>& s_00p
+                                                              #endif
+                                                                ) const;
+  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20 ) const;
 };

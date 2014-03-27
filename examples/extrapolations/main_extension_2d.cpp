@@ -37,9 +37,9 @@ int max_level = 7;
 
 int nb_splits = 0;
 
-//#define EXPONENTIAL
+#define EXPONENTIAL
 //#define QUADRATIC
-#define LINEAR
+//#define LINEAR
 //#define CONSTANT
 
 int nb_iterations = 100;
@@ -217,6 +217,7 @@ int main (int argc, char* argv[])
   cmd.add_option("nb_splits", "number of additional levels");
   cmd.add_option("order", "order of the extrapolating polynomial");
   cmd.add_option("iter", "number of iterations");
+  cmd.add_option("band", "size of the band for accuracy computation");
   cmd.parse(argc, argv);
 
   nb_splits = cmd.get("nb_splits", 0);
@@ -224,6 +225,7 @@ int main (int argc, char* argv[])
   min_level = cmd.get("lmin", 2);
   max_level = cmd.get("lmax", 5);
   nb_iterations = cmd.get("iter", 100);
+  band = cmd.get("band", 10);
 
   circle circ;
   splitting_criteria_cf_t data(min_level+nb_splits, max_level+nb_splits, &circ, 1.2);
@@ -452,7 +454,7 @@ int main (int argc, char* argv[])
   // write the intial data to disk
   my_p4est_vtk_write_all(p4est, nodes, NULL,
                          P4EST_TRUE, P4EST_TRUE,
-                         3, 0, "extension_0",
+                         3, 0, "extension_1",
                          VTK_POINT_DATA, "phi", phi_ptr,
                          VTK_POINT_DATA, "f", f_ptr,
                          VTK_POINT_DATA, "error", err);
