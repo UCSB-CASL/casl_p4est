@@ -216,12 +216,16 @@ int main (int argc, char* argv[])
   cmd.add_option("lmax", "max level of the tree");
   cmd.add_option("nb_splits", "number of additional levels");
   cmd.add_option("order", "order of the extrapolating polynomial");
+  cmd.add_option("iter", "number of iterations");
+  cmd.add_option("band", "size of the band for accuracy computation");
   cmd.parse(argc, argv);
 
   nb_splits = cmd.get("nb_splits", 0);
   order = cmd.get("order", 2);
   min_level = cmd.get("lmin", 2);
   max_level = cmd.get("lmax", 5);
+  nb_iterations = cmd.get("iter", 100);
+  band = cmd.get("band", 10);
 
   circle circ;
   splitting_criteria_cf_t data(min_level+nb_splits, max_level+nb_splits, &circ, 1.2);
@@ -450,7 +454,7 @@ int main (int argc, char* argv[])
   // write the intial data to disk
   my_p4est_vtk_write_all(p4est, nodes, NULL,
                          P4EST_TRUE, P4EST_TRUE,
-                         3, 0, "extension_0",
+                         3, 0, "extension_1",
                          VTK_POINT_DATA, "phi", phi_ptr,
                          VTK_POINT_DATA, "f", f_ptr,
                          VTK_POINT_DATA, "error", err);
@@ -465,6 +469,7 @@ int main (int argc, char* argv[])
   ierr = VecDestroy(bc_vec); CHKERRXX(ierr);
 
   // destroy the p4est and its connectivity structure
+  p4est_ghost_destroy(ghost);
   p4est_nodes_destroy (nodes);
   p4est_destroy (p4est);
   my_p4est_brick_destroy(connectivity, &brick);

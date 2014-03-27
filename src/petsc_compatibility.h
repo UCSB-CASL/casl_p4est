@@ -35,6 +35,11 @@
 #define ISLocalToGlobalMappingDestroy(a) ISLocalToGlobalMappingDestroy(&a)
 #endif
 
+#ifndef PETSC_VERSION_GT
+#define PETSC_VERSION_GT(MAJOR,MINOR,SUBMINOR) \
+  (!PETSC_VERSION_LE(MAJOR,MINOR,SUBMINOR))
+#endif
+
 #if PETSC_VERSION_GT(3,4,3)
 #define MatNullSpaceRemove(a, b, c) MatNullSpaceRemove(a, b)
 #endif
