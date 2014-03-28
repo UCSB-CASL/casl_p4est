@@ -28,6 +28,8 @@
 #undef MIN
 #undef MAX
 
+double c = -.1;
+
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <src/CASL_math.h>
@@ -148,7 +150,7 @@ static class: public CF_2
 {
 public:
   double operator()(double x, double y) const {
-    return  cos(2*M_PI*x)*cos(2*M_PI*y);
+    return  cos(2*M_PI*(x+c))*cos(2*M_PI*(y+c));
   }
 } u_ex;
 
@@ -156,7 +158,7 @@ static class: public CF_2
 {
 public:
   double operator()(double x, double y) const {
-    return  -2*M_PI*sin(2*M_PI*x)*cos(2*M_PI*y);
+    return  -2*M_PI*sin(2*M_PI*(x+c))*cos(2*M_PI*(y+c));
   }
 } u_ex_x;
 
@@ -164,7 +166,7 @@ static class: public CF_2
 {
 public:
   double operator()(double x, double y) const {
-    return  -2*M_PI*cos(2*M_PI*x)*sin(2*M_PI*y);
+    return  -2*M_PI*cos(2*M_PI*(x+c))*sin(2*M_PI*(y+c));
   }
 } u_ex_y;
 
@@ -172,7 +174,7 @@ static class: public CF_2
 {
 public:
   double operator()(double x, double y) const {
-    return  8*M_PI*M_PI*cos(2*M_PI*x)*cos(2*M_PI*y);
+    return  8*M_PI*M_PI*cos(2*M_PI*(x+c))*cos(2*M_PI*(y+c));
   }
 } f_ex;
 
@@ -192,11 +194,21 @@ static struct:WallBC2D{
   }
 } bc_wall_dirichlet_type;
 
-static struct:CF_2{
+//static
+struct:CF_2{
   double operator()(double x, double y) const {
     (void) x;
     (void) y;
-    return 0;
+    if(ABS(x  )<EPS && ABS(y  )<EPS) return .5*(-u_ex_x(x,y)-u_ex_y(x,y));
+    if(ABS(x  )<EPS && ABS(y-2)<EPS) return .5*(-u_ex_x(x,y)+u_ex_y(x,y));
+    if(ABS(x-2)<EPS && ABS(y  )<EPS) return .5*( u_ex_x(x,y)-u_ex_y(x,y));
+    if(ABS(x-2)<EPS && ABS(y-2)<EPS) return .5*( u_ex_x(x,y)+u_ex_y(x,y));
+    if(ABS(x)<EPS)   return -u_ex_x(x,y);
+    if(ABS(x-2)<EPS) return  u_ex_x(x,y);
+    if(ABS(y)<EPS)   return -u_ex_y(x,y);
+//    if(ABS(y-2)<EPS)
+      return  u_ex_y(x,y);
+//    return 0;
   }
 } bc_wall_neumann_value;
 
@@ -219,7 +231,7 @@ static struct:CF_2{
     double ny = (y-circle.y0) / r;
     double norm = sqrt( nx*nx + ny*ny);
     nx /= norm; ny /= norm;
-    return 2*M_PI*sin(2*M_PI*x)*cos(2*M_PI*y) * nx + 2*M_PI*cos(2*M_PI*x)*sin(2*M_PI*y) * ny;
+    return 2*M_PI*sin(2*M_PI*(x+c))*cos(2*M_PI*(y+c)) * nx + 2*M_PI*cos(2*M_PI*(x+c))*sin(2*M_PI*(y+c)) * ny;
   }
 } bc_interface_neumann_value;
 #endif
