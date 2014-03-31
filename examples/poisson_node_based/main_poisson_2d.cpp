@@ -28,7 +28,11 @@
 #undef MIN
 #undef MAX
 
-double c = -.1;
+//#define NO_INTERFACE
+#define PLAN
+//#define CIRCLE
+
+double c = -.124;//-.1;
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
@@ -40,7 +44,15 @@ using namespace std;
 static struct:CF_3{
   void update (double x0_, double y0_, double z0_, double r_) {x0 = x0_; y0 = y0_; z0 = z0_; r = r_; }
   double operator()(double x, double y, double z) const {
+#ifdef NO_INTERFACE
+    return -1;
+#endif
+#ifdef PLAN
+    return x - 1.212;
+#endif
+#ifdef CIRCLE
     return r - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
+#endif
   }
   double  x0, y0, z0, r;
 } circle ;
@@ -49,7 +61,7 @@ static class: public CF_3
 {
 public:
   double operator()(double x, double y, double z) const {
-    return  cos(2*M_PI*x)*cos(2*M_PI*y)*cos(2*M_PI*z);
+    return  cos(2*M_PI*(x+c))*cos(2*M_PI*(y+c))*cos(2*M_PI*(z+c));
   }
 } u_ex;
 
@@ -57,7 +69,7 @@ static class: public CF_3
 {
 public:
   double operator()(double x, double y, double z) const {
-    return  -2*M_PI*sin(2*M_PI*x)*cos(2*M_PI*y)*cos(2*M_PI*z);
+    return  -2*M_PI*sin(2*M_PI*(x+c))*cos(2*M_PI*(y+c))*cos(2*M_PI*(z+c));
   }
 } u_ex_x;
 
@@ -65,7 +77,7 @@ static class: public CF_3
 {
 public:
   double operator()(double x, double y, double z) const {
-    return  -2*M_PI*cos(2*M_PI*x)*sin(2*M_PI*y)*cos(2*M_PI*z);
+    return  -2*M_PI*cos(2*M_PI*(x+c))*sin(2*M_PI*(y+c))*cos(2*M_PI*(z+c));
   }
 } u_ex_y;
 
@@ -73,7 +85,7 @@ static class: public CF_3
 {
 public:
   double operator()(double x, double y, double z) const {
-    return  -2*M_PI*cos(2*M_PI*x)*cos(2*M_PI*y)*sin(2*M_PI*z);
+    return  -2*M_PI*cos(2*M_PI*(x+c))*cos(2*M_PI*(y+c))*sin(2*M_PI*(z+c));
   }
 } u_ex_z;
 
@@ -81,7 +93,7 @@ static class: public CF_3
 {
 public:
   double operator()(double x, double y, double z) const {
-    return  12*M_PI*M_PI*cos(2*M_PI*x)*cos(2*M_PI*y)*cos(2*M_PI*z);
+    return  12*M_PI*M_PI*cos(2*M_PI*(x+c))*cos(2*M_PI*(y+c))*cos(2*M_PI*(z+c));
   }
 } f_ex;
 
@@ -105,10 +117,23 @@ static struct:WallBC3D{
 
 static struct:CF_3{
   double operator()(double x, double y, double z) const {
-    (void) x;
-    (void) y;
-    (void) z;
-    return 0;
+    if(ABS(x  )<EPS && ABS(y  )<EPS && ABS(z  )<EPS) return 1./3.*(-u_ex_x(x,y,z) -u_ex_y(x,y,z) -u_ex_z(x,y,z));
+    if(ABS(x  )<EPS && ABS(y  )<EPS && ABS(z-2)<EPS) return 1./3.*(-u_ex_x(x,y,z) -u_ex_y(x,y,z) +u_ex_z(x,y,z));
+    if(ABS(x  )<EPS && ABS(y-2)<EPS && ABS(z  )<EPS) return 1./3.*(-u_ex_x(x,y,z) +u_ex_y(x,y,z) -u_ex_z(x,y,z));
+    if(ABS(x  )<EPS && ABS(y-2)<EPS && ABS(z-2)<EPS) return 1./3.*(-u_ex_x(x,y,z) +u_ex_y(x,y,z) +u_ex_z(x,y,z));
+
+    if(ABS(x-2)<EPS && ABS(y  )<EPS && ABS(z  )<EPS) return 1./3.*( u_ex_x(x,y,z) -u_ex_y(x,y,z) -u_ex_z(x,y,z));
+    if(ABS(x-2)<EPS && ABS(y  )<EPS && ABS(z-2)<EPS) return 1./3.*( u_ex_x(x,y,z) -u_ex_y(x,y,z) +u_ex_z(x,y,z));
+    if(ABS(x-2)<EPS && ABS(y-2)<EPS && ABS(z  )<EPS) return 1./3.*( u_ex_x(x,y,z) +u_ex_y(x,y,z) -u_ex_z(x,y,z));
+    if(ABS(x-2)<EPS && ABS(y-2)<EPS && ABS(z-2)<EPS) return 1./3.*( u_ex_x(x,y,z) +u_ex_y(x,y,z) +u_ex_z(x,y,z));
+
+    if(ABS(x)<EPS)   return -u_ex_x(x,y,z);
+    if(ABS(x-2)<EPS) return  u_ex_x(x,y,z);
+    if(ABS(y)<EPS)   return -u_ex_y(x,y,z);
+    if(ABS(y-2)<EPS) return  u_ex_y(x,y,z);
+    if(ABS(z)<EPS)   return -u_ex_z(x,y,z);
+//    if(ABS(z-2)<EPS)
+      return  u_ex_z(x,y,z);
   }
 } bc_wall_neumann_value;
 
@@ -126,6 +151,11 @@ static struct:CF_3{
 
 static struct:CF_3{
   double operator()(double x, double y, double z) const {
+#ifdef PLAN
+    return u_ex_x(x,y);
+#endif
+
+#ifdef CIRCLE
     double r  = sqrt(SQR(x-circle.x0) + SQR(y-circle.y0) + SQR(z-circle.z0));
     double nx = (x-circle.x0) / r;
     double ny = (y-circle.y0) / r;
@@ -135,13 +165,22 @@ static struct:CF_3{
     return ( 2*M_PI*sin(2*M_PI*x)*cos(2*M_PI*y)*cos(2*M_PI*z) * nx +
              2*M_PI*cos(2*M_PI*x)*sin(2*M_PI*y)*cos(2*M_PI*z) * ny +
              2*M_PI*cos(2*M_PI*x)*cos(2*M_PI*y)*sin(2*M_PI*z) * nz );
+#endif
   }
 } bc_interface_neumann_value;
 #else
 static struct:CF_2{
   void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
   double operator()(double x, double y) const{
+#ifdef NO_INTERFACE
+    return -1;
+#endif
+#ifdef PLAN
+    return x - 1.212;
+#endif
+#ifdef CIRCLE
     return r - sqrt(SQR(x-x0) + SQR(y-y0));
+#endif
   }
   double  x0, y0, r;
 } circle;
@@ -195,10 +234,10 @@ static struct:WallBC2D{
 } bc_wall_dirichlet_type;
 
 //static
-struct:CF_2{
+static struct:CF_2{
   double operator()(double x, double y) const {
-    (void) x;
-    (void) y;
+//    (void) x;
+//    (void) y;
     if(ABS(x  )<EPS && ABS(y  )<EPS) return .5*(-u_ex_x(x,y)-u_ex_y(x,y));
     if(ABS(x  )<EPS && ABS(y-2)<EPS) return .5*(-u_ex_x(x,y)+u_ex_y(x,y));
     if(ABS(x-2)<EPS && ABS(y  )<EPS) return .5*( u_ex_x(x,y)-u_ex_y(x,y));
@@ -226,12 +265,18 @@ static struct:CF_2{
 
 static struct:CF_2{
   double operator()(double x, double y) const {
+#ifdef PLAN
+    return u_ex_x(x,y);
+#endif
+
+#ifdef CIRCLE
     double r = sqrt( SQR(x-circle.x0) + SQR(y-circle.y0) );
     double nx = (x-circle.x0) / r;
     double ny = (y-circle.y0) / r;
     double norm = sqrt( nx*nx + ny*ny);
     nx /= norm; ny /= norm;
     return 2*M_PI*sin(2*M_PI*(x+c))*cos(2*M_PI*(y+c)) * nx + 2*M_PI*cos(2*M_PI*(x+c))*sin(2*M_PI*(y+c)) * ny;
+#endif
   }
 } bc_interface_neumann_value;
 #endif
@@ -396,6 +441,13 @@ int main (int argc, char* argv[]){
     ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
     w2.stop(); w2.read_duration();
 
+    if(bc_interface_type==NEUMANN && bc_wall_type==NEUMANN)
+    {
+      PetscPrintf(p4est->mpicomm, "Neumann BC only! Shifting solution\n\n");
+      solver.shift_to_exact_solution(sol, uex);
+    }
+    PetscPrintf(mpi->mpicomm, "coucou\n");
+
     /* prepare for output */
     double *sol_p, *phi_p, *uex_p;
     ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
@@ -408,16 +460,20 @@ int main (int argc, char* argv[]){
 #else
     double err_max[3] = {0, 0, 0};
 #endif
-    double err[nodes->indep_nodes.elem_count];
+
+    Vec err;
+    double *err_p;
+    ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
+    ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     {
       if(phi_p[n]<0)
       {
-        err[n] = fabs(sol_p[n] - uex_p[n]);
-        err_max[0] = max( err_max[0], err[n] );
+        err_p[n] = fabs(sol_p[n] - uex_p[n]);
+        err_max[0] = max( err_max[0], err_p[n] );
       }
       else
-        err[n] = 0;
+        err_p[n] = 0;
     }
 
     Vec uex_x, uex_y;
@@ -425,6 +481,7 @@ int main (int argc, char* argv[]){
     ierr = VecDuplicate(phi, &uex_y); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, u_ex_x, uex_x);
     sample_cf_on_nodes(p4est, nodes, u_ex_y, uex_y);
+
     double *uex_x_ptr, *uex_y_ptr;
     ierr = VecGetArray(uex_x, &uex_x_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(uex_y, &uex_y_ptr); CHKERRXX(ierr);
@@ -479,15 +536,17 @@ int main (int argc, char* argv[]){
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "sol", sol_p,
                            VTK_POINT_DATA, "uex", uex_p,
-                           VTK_POINT_DATA, "err", err );
+                           VTK_POINT_DATA, "err", err_p );
     PetscPrintf(mpi->mpicomm, "Results saved in %s\n", oss.str().c_str());
 
     /* restore internal pointers */
+    ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(uex, &uex_p); CHKERRXX(ierr);
 
     /* destroy allocated vectors */
+    ierr = VecDestroy(err); CHKERRXX(ierr);
     ierr = VecDestroy(phi); CHKERRXX(ierr);
     ierr = VecDestroy(uex); CHKERRXX(ierr);
     ierr = VecDestroy(sol); CHKERRXX(ierr);

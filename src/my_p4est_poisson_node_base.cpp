@@ -89,10 +89,19 @@ PoissonSolverNodeBase::PoissonSolverNodeBase(const my_p4est_node_neighbors_t *no
 
   // compute grid parameters
   // NOTE: Assuming all trees are of the same size [0, 1]^d
-  dx_min = 1.0 / pow(2.,(double) data->max_lvl);
-  dy_min = dx_min;
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  dx_min = (xmax-xmin) / pow(2.,(double) data->max_lvl);
+  dy_min = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+
 #ifdef P4_TO_P8
-  dz_min = dx_min;
+  double zmin = p4est->connectivity->vertices[3*vm + 2];
+  double zmax = p4est->connectivity->vertices[3*vp + 2];
+  double dz_min = (zmax-zmin) / pow(2.,(double) data->max_lvl);
 #endif
 #ifdef P4_TO_P8
   d_min = MIN(dx_min, dy_min, dz_min);
@@ -551,126 +560,17 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 
     PetscInt node_000_g = petsc_gloidx[qnnn.node_000];
 
-    if(is_node_Wall(p4est, ni))
+    if(is_node_Wall(p4est, ni) &&
+   #ifdef P4_TO_P8
+       bc_->wallType(x_C,y_C,z_C) == DIRICHLET
+   #else
+       bc_->wallType(x_C,y_C) == DIRICHLET
+   #endif
+       )
     {
-#ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == DIRICHLET)
-#else
-      if(bc_->wallType(x_C,y_C)     == DIRICHLET)
-#endif
-      {
-        ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
-        if (phi_p[n]<0.) matrix_has_nullspace = false;
-        continue;
-      }
-#ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == NEUMANN)
-#else
-      if(bc_->wallType(x_C,y_C)     == NEUMANN)
-#endif
-      {
-        if(phi_p[n] > diag_min)
-        {
-          ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
-          continue;
-        }
-
-        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
-        PetscInt node_m00_g=0, node_p00_g=0, node_0m0_g=0, node_0p0_g=0;
-
-        if (!is_node_xmWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_m00 = d_m00_0m == 0 ? ( d_m00_m0==0 ? node_m00_mm : node_m00_pm )
-                                               : ( d_m00_m0==0 ? node_m00_mp : node_m00_pp );
-#else
-          p4est_locidx_t n_m00 = d_m00_m0 == 0 ? node_m00_mm : node_m00_pm;
-#endif
-          node_m00_g  = petsc_gloidx[n_m00];
-          w_m00 += -mu_/(d_m00*d_m00);
-        }
-        else
-          w_p00 += -mu_/(d_p00*d_p00);
-
-        if (!is_node_xpWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_p00 = d_p00_0m == 0 ? ( d_p00_m0 == 0 ? node_p00_mm : node_p00_pm )
-                                               : ( d_p00_m0 == 0 ? node_p00_mp : node_p00_pp );
-#else
-          p4est_locidx_t n_p00 = d_p00_m0 == 0 ? node_p00_mm : node_p00_pm;
-#endif
-          node_p00_g  = petsc_gloidx[n_p00];
-          w_p00 += -mu_/(d_p00*d_p00);
-        }
-        else
-          w_m00 += -mu_/(d_m00*d_m00);
-
-        if (!is_node_ymWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_0m0 = d_0m0_0m == 0 ? ( d_0m0_m0 == 0 ? node_0m0_mm : node_0m0_pm )
-                                               : ( d_0m0_m0 == 0 ? node_0m0_mp : node_0m0_pp );
-#else
-          p4est_locidx_t n_0m0 = d_0m0_m0 == 0 ? node_0m0_mm : node_0m0_pm;
-#endif
-          node_0m0_g  = petsc_gloidx[n_0m0];
-          w_0m0 += -mu_/(d_0m0*d_0m0);
-        }
-        else
-          w_0p0 += -mu_/(d_0p0*d_0p0);
-
-        if (!is_node_ypWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_0p0 = d_0p0_0m == 0 ? ( d_0p0_m0 == 0 ? node_0p0_mm : node_0p0_pm )
-                                               : ( d_0p0_m0 == 0 ? node_0p0_mp : node_0p0_pp );
-#else
-          p4est_locidx_t n_0p0 = d_0p0_m0 == 0 ? node_0p0_mm:node_0p0_pm;
-#endif
-          node_0p0_g  = petsc_gloidx[n_0p0];
-          w_0p0 += -mu_/(d_0p0*d_0p0);
-        }
-        else
-          w_0m0 += -mu_/(d_0m0*d_0m0);
-
-        double diag = add_p[n]-(w_m00+w_p00+w_0m0+w_0p0);
-        w_m00 /= diag;
-        w_p00 /= diag;
-        w_0m0 /= diag;
-        w_0p0 /= diag;
-
-        ierr = MatSetValue(A, node_000_g, node_000_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
-        if (!is_node_xmWall(p4est, ni)) { ierr = MatSetValue(A, node_000_g, node_m00_g, w_m00, ADD_VALUES); CHKERRXX(ierr); }
-        if (!is_node_xpWall(p4est, ni)) { ierr = MatSetValue(A, node_000_g, node_p00_g, w_p00, ADD_VALUES); CHKERRXX(ierr); }
-        if (!is_node_ymWall(p4est, ni)) { ierr = MatSetValue(A, node_000_g, node_0m0_g, w_0m0, ADD_VALUES); CHKERRXX(ierr); }
-        if (!is_node_ypWall(p4est, ni)) { ierr = MatSetValue(A, node_000_g, node_0p0_g, w_0p0, ADD_VALUES); CHKERRXX(ierr); }
-
-        if(add_p[n] > 0) matrix_has_nullspace = false;
-        continue;
-
-#ifdef P4_TO_P8
-        if (is_node_zpWall(p4est, ni)){
-          p4est_locidx_t n_00m = d_00m_0m == 0 ? ( d_00m_m0 == 0 ? node_00m_mm : node_00m_pm )
-                                               : ( d_00m_m0 == 0 ? node_00m_mp : node_00m_pp );
-          PetscInt node_00m_g  = petsc_gloidx[n_00m];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_00m_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-
-        if (is_node_zmWall(p4est, ni)){
-          p4est_locidx_t n_00p = d_00p_0m == 0 ? ( d_00p_m0 == 0 ? node_00p_mm : node_00p_pm )
-                                               : ( d_00p_m0 == 0 ? node_00p_mp : node_00p_pp );
-          PetscInt node_00p_g  = petsc_gloidx[n_00p];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_00p_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-#endif
-      }
+      ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
+      if (phi_p[n]<0.) matrix_has_nullspace = false;
+      continue;
     } else {
       double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
 #ifdef P4_TO_P8
@@ -695,19 +595,33 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
 
       // TODO: This needs optimization
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_mmp = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_mpp = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
-      double P_pmp = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_ppp = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
+        Cube3 cube;
 #else
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min);
+        Cube2 cube;
+#endif
+        cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+        cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+        cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+        cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+#ifdef P4_TO_P8
+        cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+        cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+#endif
+
+#ifdef P4_TO_P8
+      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
+      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
+      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
+      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
+      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
+      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
+      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
+      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+#else
+      double P_mmm = phi_interp(cube.x0, cube.y0);
+      double P_mpm = phi_interp(cube.x0, cube.y1);
+      double P_pmm = phi_interp(cube.x1, cube.y0);
+      double P_ppm = phi_interp(cube.x1, cube.y1);
 #endif
 
 #ifdef P4_TO_P8
@@ -945,10 +859,22 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
         //---------------------------------------------------------------------
         // Shortley-Weller method, dimension by dimension
         //---------------------------------------------------------------------
-        double w_m00 = -2./d_m00/(d_m00+d_p00);
-        double w_p00 = -2./d_p00/(d_m00+d_p00);
-        double w_0m0 = -2./d_0m0/(d_0m0+d_0p0);
-        double w_0p0 = -2./d_0p0/(d_0m0+d_0p0);
+        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
+        if(is_node_xmWall(p4est, ni))      w_p00 += -1./(d_p00*d_p00);
+        else if(is_node_xpWall(p4est, ni)) w_m00 += -1./(d_m00*d_m00);
+        else                               w_m00 += -2./d_m00/(d_m00+d_p00);
+
+        if(is_node_xpWall(p4est, ni))      w_m00 += -1./(d_m00*d_m00);
+        else if(is_node_xmWall(p4est, ni)) w_p00 += -1./(d_p00*d_p00);
+        else                               w_p00 += -2./d_p00/(d_m00+d_p00);
+
+        if(is_node_ymWall(p4est, ni))      w_0p0 += -1./(d_0p0*d_0p0);
+        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1./(d_0m0*d_0m0);
+        else                               w_0m0 += -2./d_0m0/(d_0m0+d_0p0);
+
+        if(is_node_ypWall(p4est, ni))      w_0m0 += -1./(d_0m0*d_0m0);
+        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1./(d_0p0*d_0p0);
+        else                               w_0p0 += -2./d_0p0/(d_0m0+d_0p0);
 
         //---------------------------------------------------------------------
         // compensating the error of linear interpolation at T-junction using
@@ -975,29 +901,33 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
         //---------------------------------------------------------------------
         // addition to diagonal elements
         //---------------------------------------------------------------------
+        if (!is_node_Wall(p4est, ni) && node_000_g < fixed_value_idx_g){
+          fixed_value_idx_l = n;
+          fixed_value_idx_g = node_000_g;
+        }
         ierr = MatSetValue(A, node_000_g, node_000_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
-        if(!is_interface_m00) {
+        if(!is_interface_m00 && !is_node_xmWall(p4est, ni)) {
           PetscInt node_m00_pm_g = petsc_gloidx[node_m00_pm];
           PetscInt node_m00_mm_g = petsc_gloidx[node_m00_mm];
 
           if (d_m00_m0 != 0) ierr = MatSetValue(A, node_000_g, node_m00_pm_g, w_m00*d_m00_m0/(d_m00_m0+d_m00_p0), ADD_VALUES); CHKERRXX(ierr);
           if (d_m00_p0 != 0) ierr = MatSetValue(A, node_000_g, node_m00_mm_g, w_m00*d_m00_p0/(d_m00_m0+d_m00_p0), ADD_VALUES); CHKERRXX(ierr);
         }
-        if(!is_interface_p00) {
+        if(!is_interface_p00 && !is_node_xpWall(p4est, ni)) {
           PetscInt node_p00_pm_g = petsc_gloidx[node_p00_pm];
           PetscInt node_p00_mm_g = petsc_gloidx[node_p00_mm];
 
           if (d_p00_m0 != 0) ierr = MatSetValue(A, node_000_g, node_p00_pm_g, w_p00*d_p00_m0/(d_p00_m0+d_p00_p0), ADD_VALUES); CHKERRXX(ierr);
           if (d_p00_p0 != 0) ierr = MatSetValue(A, node_000_g, node_p00_mm_g, w_p00*d_p00_p0/(d_p00_m0+d_p00_p0), ADD_VALUES); CHKERRXX(ierr);
         }
-        if(!is_interface_0m0) {
+        if(!is_interface_0m0 && !is_node_ymWall(p4est, ni)) {
           PetscInt node_0m0_pm_g = petsc_gloidx[node_0m0_pm];
           PetscInt node_0m0_mm_g = petsc_gloidx[node_0m0_mm];
 
           if (d_0m0_m0 != 0) ierr = MatSetValue(A, node_000_g, node_0m0_pm_g, w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0), ADD_VALUES); CHKERRXX(ierr);
           if (d_0m0_p0 != 0) ierr = MatSetValue(A, node_000_g, node_0m0_mm_g, w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0), ADD_VALUES); CHKERRXX(ierr);
         }
-        if(!is_interface_0p0) {
+        if(!is_interface_0p0 && !is_node_ypWall(p4est, ni)) {
           PetscInt node_0p0_pm_g = petsc_gloidx[node_0p0_pm];
           PetscInt node_0p0_mm_g = petsc_gloidx[node_0p0_mm];
 
@@ -1017,19 +947,6 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
       // FIXME: the neumann BC on the interface works only if the interface doesn't touch the edge of the domain
       if (is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN) )
       {
-#ifdef P4_TO_P8
-        Cube3 cube;
-#else
-        Cube2 cube;
-#endif
-        cube.x0 = x_C-0.5*dx_min;
-        cube.x1 = x_C+0.5*dx_min;
-        cube.y0 = y_C-0.5*dy_min;
-        cube.y1 = y_C+0.5*dy_min;
-#ifdef P4_TO_P8
-        cube.z0 = z_C-0.5*dz_min;
-        cube.z1 = z_C+0.5*dz_min;
-#endif
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
                            P_pmm, P_pmp, P_ppm, P_ppp);
@@ -1114,30 +1031,43 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           if(ABS(w_00p) > EPS) {ierr = MatSetValue(A, node_000_g, node_00p_g, w_00p, ADD_VALUES); CHKERRXX(ierr);}
 #else
 
-          p4est_locidx_t quad_mmm_idx, quad_ppm_idx;
-          p4est_topidx_t tree_mmm_idx, tree_ppm_idx;
+//          p4est_locidx_t quad_mmm_idx, quad_ppm_idx;
+//          p4est_locidx_t quad_pmm_idx, quad_mpm_idx;
+//          p4est_topidx_t tree_mmm_idx, tree_ppm_idx;
+//          p4est_topidx_t tree_pmm_idx, tree_mpm_idx;
 
-          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1, quad_ppm_idx, tree_ppm_idx);
+//          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, quad_mmm_idx, tree_mmm_idx);
+//          node_neighbors_->find_neighbor_cell_of_node(ni, -1,  1, quad_mpm_idx, tree_mpm_idx);
+//          node_neighbors_->find_neighbor_cell_of_node(ni,  1, -1, quad_pmm_idx, tree_pmm_idx);
+//          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1, quad_ppm_idx, tree_ppm_idx);
 
-          PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm]];
-          PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm]];
-          PetscInt node_p00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmm]];
-          PetscInt node_0p0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpm]];
+//          PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[ (is_node_ymWall(p4est, ni) ?  P4EST_CHILDREN*quad_mpm_idx + dir::v_mmm : P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm) ]];
+//          PetscInt node_p00_g = petsc_gloidx[nodes->local_nodes[ (is_node_ymWall(p4est, ni) ?  P4EST_CHILDREN*quad_ppm_idx + dir::v_pmm : P4EST_CHILDREN*quad_pmm_idx + dir::v_ppm) ]];
+//          PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[ (is_node_xmWall(p4est, ni) ?  P4EST_CHILDREN*quad_pmm_idx + dir::v_mmm : P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm) ]];
+//          PetscInt node_0p0_g = petsc_gloidx[nodes->local_nodes[ (is_node_xmWall(p4est, ni) ?  P4EST_CHILDREN*quad_ppm_idx + dir::v_mpm : P4EST_CHILDREN*quad_mpm_idx + dir::v_ppm) ]];
+
+          PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm];
+          PetscInt node_p00_g = petsc_gloidx[qnnn.d_p00_m0==0 ? qnnn.node_p00_mm : qnnn.node_p00_pm];
+          PetscInt node_0m0_g = petsc_gloidx[qnnn.d_0m0_m0==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_pm];
+          PetscInt node_0p0_g = petsc_gloidx[qnnn.d_0p0_m0==0 ? qnnn.node_0p0_mm : qnnn.node_0p0_pm];
 
           double fxx,fyy;
           fxx = phi_xx_p[n];
           fyy = phi_yy_p[n];
 
-          double s_0m0 = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx_min);
-          double s_0p0 = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx_min);
-          double s_m00 = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy_min);
-          double s_p00 = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy_min);
+          double dx = cube.x1 - cube.x0;
+          double dy = cube.y1 - cube.y0;
 
-          double w_m00 = -mu_ * s_m00/dx_min;
-          double w_p00 = -mu_ * s_p00/dx_min;
-          double w_0p0 = -mu_ * s_0p0/dy_min;
-          double w_0m0 = -mu_ * s_0m0/dy_min;
+          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
+          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
+          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
+          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
+
+          double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
+          if(!is_node_xmWall(p4est, ni)) w_m00 += -mu_ * s_m00/dx_min;
+          if(!is_node_xpWall(p4est, ni)) w_p00 += -mu_ * s_p00/dx_min;
+          if(!is_node_ymWall(p4est, ni)) w_0m0 += -mu_ * s_0m0/dy_min;
+          if(!is_node_ypWall(p4est, ni)) w_0p0 += -mu_ * s_0p0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           if (bc_->interfaceType() == ROBIN){
@@ -1148,6 +1078,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
           w_m00 /= w_000; w_p00 /= w_000;
           w_0m0 /= w_000; w_0p0 /= w_000;
 
+          if (!is_node_Wall(p4est, ni) && node_000_g < fixed_value_idx_g){
+            fixed_value_idx_l = n;
+            fixed_value_idx_g = node_000_g;
+          }
           ierr = MatSetValue(A, node_000_g, node_000_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
           if (ABS(w_m00) > EPS) {ierr = MatSetValue(A, node_000_g, node_m00_g, w_m00,  ADD_VALUES); CHKERRXX(ierr);}
           if (ABS(w_p00) > EPS) {ierr = MatSetValue(A, node_000_g, node_p00_g, w_p00,  ADD_VALUES); CHKERRXX(ierr);}
@@ -1195,7 +1129,6 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
       // reset the value
       ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
     }
-
   }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
@@ -1271,65 +1204,20 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
     double d_00p_0m=qnnn.d_00p_0m; double d_00p_0p=qnnn.d_00p_0p;
 #endif
 
-    if(is_node_Wall(p4est, ni))
+    if(is_node_Wall(p4est, ni) &&
+   #ifdef P4_TO_P8
+       bc_->wallType(x_C,y_C,z_C) == DIRICHLET
+   #else
+       bc_->wallType(x_C,y_C) == DIRICHLET
+   #endif
+       )
     {
 #ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == DIRICHLET)
-      {
-        rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C);
+      rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C);
 #else
-      if(bc_->wallType(x_C,y_C)     == DIRICHLET)
-      {
-        rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C);
+      rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C);
 #endif
-        continue;
-      }
-#ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == NEUMANN)
-#else
-      if(bc_->wallType(x_C,y_C)     == NEUMANN)
-#endif
-      {
-        if(phi_p[n] > diag_min)
-        {
-          rhs_p[n] = 0;
-          continue;
-        }
-
-        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
-
-        if (!is_node_xmWall(p4est, ni)) w_m00 += -mu_/(d_m00*d_m00);
-        else                            w_p00 += -mu_/(d_p00*d_p00);
-        if (!is_node_xpWall(p4est, ni)) w_p00 += -mu_/(d_p00*d_p00);
-        else                            w_m00 += -mu_/(d_m00*d_m00);
-        if (!is_node_ymWall(p4est, ni)) w_0m0 += -mu_/(d_0m0*d_0m0);
-        else                            w_0p0 += -mu_/(d_0p0*d_0p0);
-        if (!is_node_ypWall(p4est, ni)) w_0p0 += -mu_/(d_0p0*d_0p0);
-        else                            w_0m0 += -mu_/(d_0m0*d_0m0);
-
-        double diag = add_p[n]-(w_m00+w_p00+w_0m0+w_0p0);
-
-        if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_p00;
-        if(is_node_xpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_m00;
-        if(is_node_ymWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_0p0;
-        if(is_node_ypWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_0m0;
-
-        rhs_p[n] /= diag;
-
-        continue;
-
-#ifdef P4_TO_P8
-        if (is_node_zpWall(p4est, ni)){
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_00m;
-          continue;
-        }
-
-        if (is_node_zmWall(p4est, ni)){
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_00p;
-          continue;
-        }
-#endif
-      }
+      continue;
     } else {
       double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
 #ifdef P4_TO_P8
@@ -1356,19 +1244,33 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
 
       // TODO: This needs optimization
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_mmp = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_mpp = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
-      double P_pmp = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_ppp = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
+        Cube3 cube;
 #else
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min);
+        Cube2 cube;
+#endif
+        cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+        cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+        cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+        cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+#ifdef P4_TO_P8
+        cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+        cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+#endif
+
+#ifdef P4_TO_P8
+      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
+      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
+      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
+      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
+      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
+      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
+      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
+      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+#else
+      double P_mmm = phi_interp(cube.x0, cube.y0);
+      double P_mpm = phi_interp(cube.x0, cube.y1);
+      double P_pmm = phi_interp(cube.x1, cube.y0);
+      double P_ppm = phi_interp(cube.x1, cube.y1);
 #endif
 
 #ifdef P4_TO_P8
@@ -1567,10 +1469,22 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
         //---------------------------------------------------------------------
         // Shortley-Weller method, dimension by dimension
         //---------------------------------------------------------------------
-        double w_m00 = -2./d_m00/(d_m00+d_p00);
-        double w_p00 = -2./d_p00/(d_m00+d_p00);
-        double w_0m0 = -2./d_0m0/(d_0m0+d_0p0);
-        double w_0p0 = -2./d_0p0/(d_0m0+d_0p0);
+        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
+        if(is_node_xmWall(p4est, ni))      w_p00 += -1./(d_p00*d_p00);
+        else if(is_node_xpWall(p4est, ni)) w_m00 += -1./(d_m00*d_m00);
+        else                               w_m00 += -2./d_m00/(d_m00+d_p00);
+
+        if(is_node_xpWall(p4est, ni))      w_m00 += -1./(d_m00*d_m00);
+        else if(is_node_xmWall(p4est, ni)) w_p00 += -1./(d_p00*d_p00);
+        else                               w_p00 += -2./d_p00/(d_m00+d_p00);
+
+        if(is_node_ymWall(p4est, ni))      w_0p0 += -1./(d_0p0*d_0p0);
+        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1./(d_0m0*d_0m0);
+        else                               w_0m0 += -2./d_0m0/(d_0m0+d_0p0);
+
+        if(is_node_ypWall(p4est, ni))      w_0m0 += -1./(d_0m0*d_0m0);
+        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1./(d_0p0*d_0p0);
+        else                               w_0p0 += -2./d_0p0/(d_0m0+d_0p0);
 
         //---------------------------------------------------------------------
         // compensating the error of linear interpolation at T-junction using
@@ -1589,17 +1503,20 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
         //---------------------------------------------------------------------
 
         double diag = add_p[n]-(w_m00+w_p00+w_0m0+w_0p0);
-        w_m00 /= diag;
-        w_p00 /= diag;
-        w_0m0 /= diag;
-        w_0p0 /= diag;
+
+        if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_p00;
+        else if(is_interface_m00)     rhs_p[n] -= w_m00*val_interface_m00;
+
+        if(is_node_xpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_m00;
+        else if(is_interface_p00)     rhs_p[n] -= w_p00*val_interface_p00;
+
+        if(is_node_ymWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_0p0;
+        else if(is_interface_0m0)     rhs_p[n] -= w_0m0*val_interface_0m0;
+
+        if(is_node_ypWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_0m0;
+        else if(is_interface_0p0)     rhs_p[n] -= w_0p0*val_interface_0p0;
 
         rhs_p[n] /= diag;
-
-        if(is_interface_m00) rhs_p[n] -= w_m00*val_interface_m00;
-        if(is_interface_p00) rhs_p[n] -= w_p00*val_interface_p00;
-        if(is_interface_0m0) rhs_p[n] -= w_0m0*val_interface_0m0;
-        if(is_interface_0p0) rhs_p[n] -= w_0p0*val_interface_0p0;
 #endif
         continue;
       }
@@ -1611,19 +1528,6 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
       // FIXME: the neumann BC on the interface works only if the interface doesn't touch the edge of the domain
       if (is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN) )
       {
-#ifdef P4_TO_P8
-        Cube3 cube;
-#else
-        Cube2 cube;
-#endif
-        cube.x0 = x_C-0.5*dx_min;
-        cube.x1 = x_C+0.5*dx_min;
-        cube.y0 = y_C-0.5*dy_min;
-        cube.y1 = y_C+0.5*dy_min;
-#ifdef P4_TO_P8
-        cube.z0 = z_C-0.5*dz_min;
-        cube.z1 = z_C+0.5*dz_min;
-#endif
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
                            P_pmm, P_pmp, P_ppm, P_ppp);
@@ -1700,15 +1604,19 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
           fxx = phi_xx_p[n];
           fyy = phi_yy_p[n];
 
-          double s_m00 = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy_min);
-          double s_p00 = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy_min);
-          double s_0m0 = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx_min);
-          double s_0p0 = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx_min);
+          double dx = cube.x1 - cube.x0;
+          double dy = cube.y1 - cube.y0;
 
-          double w_m00 = -mu_ * s_m00/dx_min;
-          double w_p00 = -mu_ * s_p00/dx_min;
-          double w_0p0 = -mu_ * s_0p0/dy_min;
-          double w_0m0 = -mu_ * s_0m0/dy_min;
+          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
+          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
+          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
+          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
+
+          double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
+          if(!is_node_xmWall(p4est, ni)) w_m00 += -mu_ * s_m00/dx_min;
+          if(!is_node_xpWall(p4est, ni)) w_p00 += -mu_ * s_p00/dx_min;
+          if(!is_node_ymWall(p4est, ni)) w_0m0 += -mu_ * s_0m0/dy_min;
+          if(!is_node_ypWall(p4est, ni)) w_0p0 += -mu_ * s_0p0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           if (bc_->interfaceType() == ROBIN){
@@ -1726,6 +1634,11 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
             rhs_p[n] += mu_*integral_bc;
           else
             rhs_p[n] += integral_bc;
+
+          if (is_node_xmWall(p4est, ni)) rhs_p[n] += mu_*s_m00*bc_->wallValue(x_C, y_C);
+          if (is_node_xpWall(p4est, ni)) rhs_p[n] += mu_*s_p00*bc_->wallValue(x_C, y_C);
+          if (is_node_ymWall(p4est, ni)) rhs_p[n] += mu_*s_0m0*bc_->wallValue(x_C, y_C);
+          if (is_node_ypWall(p4est, ni)) rhs_p[n] += mu_*s_0p0*bc_->wallValue(x_C, y_C);
 
           rhs_p[n] /= w_000;
 #endif
@@ -3314,7 +3227,7 @@ void PoissonSolverNodeBase::shift_to_exact_solution(Vec sol, Vec uex){
   double shift;
 
   for (int r = 0; r<p4est->mpisize; r++){
-    if (global_node_offset[r] < fixed_value_idx_g && fixed_value_idx_g < global_node_offset[r+1]){
+    if (global_node_offset[r] <= fixed_value_idx_g && fixed_value_idx_g < global_node_offset[r+1]){
       root = r;
       shift = uex_p[fixed_value_idx_l];
 
