@@ -14,6 +14,7 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_levelset.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -23,6 +24,7 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_poisson_node_base.h>
+#include <src/my_p4est_levelset.h>
 #endif
 
 #undef MIN
@@ -48,7 +50,7 @@ static struct:CF_3{
     return -1;
 #endif
 #ifdef PLAN
-    return x - 1.212;
+    return -x + 1.212;
 #endif
 #ifdef CIRCLE
     return r - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
@@ -127,6 +129,21 @@ static struct:CF_3{
     if(ABS(x-2)<EPS && ABS(y-2)<EPS && ABS(z  )<EPS) return 1./3.*( u_ex_x(x,y,z) +u_ex_y(x,y,z) -u_ex_z(x,y,z));
     if(ABS(x-2)<EPS && ABS(y-2)<EPS && ABS(z-2)<EPS) return 1./3.*( u_ex_x(x,y,z) +u_ex_y(x,y,z) +u_ex_z(x,y,z));
 
+    if(ABS(x  )<EPS && ABS(y  )<EPS) return .5*(-u_ex_x(x,y,z) -u_ex_y(x,y,z));
+    if(ABS(x  )<EPS && ABS(y-2)<EPS) return .5*(-u_ex_x(x,y,z) +u_ex_y(x,y,z));
+    if(ABS(x-2)<EPS && ABS(y  )<EPS) return .5*( u_ex_x(x,y,z) -u_ex_y(x,y,z));
+    if(ABS(x-2)<EPS && ABS(y-2)<EPS) return .5*( u_ex_x(x,y,z) +u_ex_y(x,y,z));
+
+    if(ABS(x  )<EPS && ABS(z  )<EPS) return .5*(-u_ex_x(x,y,z) -u_ex_z(x,y,z));
+    if(ABS(x  )<EPS && ABS(z-2)<EPS) return .5*(-u_ex_x(x,y,z) +u_ex_z(x,y,z));
+    if(ABS(x-2)<EPS && ABS(z  )<EPS) return .5*( u_ex_x(x,y,z) -u_ex_z(x,y,z));
+    if(ABS(x-2)<EPS && ABS(z-2)<EPS) return .5*( u_ex_x(x,y,z) +u_ex_z(x,y,z));
+
+    if(ABS(y  )<EPS && ABS(z  )<EPS) return .5*(-u_ex_y(x,y,z) -u_ex_z(x,y,z));
+    if(ABS(y  )<EPS && ABS(z-2)<EPS) return .5*(-u_ex_y(x,y,z) +u_ex_z(x,y,z));
+    if(ABS(y-2)<EPS && ABS(z  )<EPS) return .5*( u_ex_y(x,y,z) -u_ex_z(x,y,z));
+    if(ABS(y-2)<EPS && ABS(z-2)<EPS) return .5*( u_ex_y(x,y,z) +u_ex_z(x,y,z));
+
     if(ABS(x)<EPS)   return -u_ex_x(x,y,z);
     if(ABS(x-2)<EPS) return  u_ex_x(x,y,z);
     if(ABS(y)<EPS)   return -u_ex_y(x,y,z);
@@ -152,7 +169,7 @@ static struct:CF_3{
 static struct:CF_3{
   double operator()(double x, double y, double z) const {
 #ifdef PLAN
-    return u_ex_x(x,y);
+    return -u_ex_x(x,y,z);
 #endif
 
 #ifdef CIRCLE
@@ -403,6 +420,28 @@ int main (int argc, char* argv[]){
     ngbd.init_neighbors();
     w2.stop(); w2.read_duration();
 
+    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+    double xmin = p4est->connectivity->vertices[3*vm + 0];
+    double ymin = p4est->connectivity->vertices[3*vm + 1];
+    double xmax = p4est->connectivity->vertices[3*vp + 0];
+    double ymax = p4est->connectivity->vertices[3*vp + 1];
+    double dx = (xmax-xmin) / pow(2.,(double) data.max_lvl);
+    double dy = (ymax-ymin) / pow(2.,(double) data.max_lvl);
+
+  #ifdef P4_TO_P8
+    double zmin = p4est->connectivity->vertices[3*vm + 2];
+    double zmax = p4est->connectivity->vertices[3*vp + 2];
+    double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
+  #endif
+
+    my_p4est_level_set ls(&ngbd);
+    ls.perturb_level_set_function(phi, SQR(MIN(dx, dy
+                                           #ifdef P4_TO_P8
+                                               , dz
+                                           #endif
+                                               ))*1e-3);
+
     /* initalize the bc information */
     Vec interface_value_Vec, wall_value_Vec;
     ierr = VecDuplicate(phi, &interface_value_Vec); CHKERRXX(ierr);
@@ -446,7 +485,6 @@ int main (int argc, char* argv[]){
       PetscPrintf(p4est->mpicomm, "Neumann BC only! Shifting solution\n\n");
       solver.shift_to_exact_solution(sol, uex);
     }
-    PetscPrintf(mpi->mpicomm, "coucou\n");
 
     /* prepare for output */
     double *sol_p, *phi_p, *uex_p;
