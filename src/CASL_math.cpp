@@ -194,6 +194,38 @@ int is_Zero(double x)
   return x > - EPS && x < EPS;
 }
 
+//---------------------------------------------------------------------------------
+// the fraction of the interval covered by irregular domain {phi \le 0}
+//---------------------------------------------------------------------------------
+double fraction_Interval_Covered_By_Irregular_Domain( double phi0, double phi1, double dx, double dy )
+{
+  // perturbation
+  if(ABS(phi0)<EPS) phi0 = 0;
+  if(ABS(phi1)<EPS) phi1 = 0;
+
+  // there are 9 cases.
+  double l;
+  if(phi0<=0 && phi1<=0) l=1.; // --, -0, 0-, 00
+  else
+  {
+    if(phi0>=0 && phi1>=0) l=0.; // ++, +0, 0+
+    else
+    {
+      if(phi0< 0 && phi1> 0) l=1./(1.-phi1/phi0); // -+
+      else                   l=1./(1.-phi0/phi1); // +-
+    }
+  }
+
+  // Just to be sure
+#ifdef CASL_THROWS
+  if(l<0 || l>1) throw std::logic_error("[CASL_ERROR]: invalid length fraction.");
+#endif
+
+  double eps = MIN(MIN(EPS,dx/100.),dy/100.);
+  if(l*l<eps) return 0;
+  else        return l;
+}
+
 double fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives( double phi0, double phi1, double phi0xx, double phi1xx, double dx){
   // perturbation
   if(ABS(phi0)<EPS) phi0 = 0;
