@@ -101,6 +101,8 @@ public:
      */
   double area_In_Negative_Domain( QuadValue& level_set_values) const;
 
+  double interface_Length_In_Cell( QuadValue& level_set_values) const;
+
   /*!
      * \brief integrate a quantity over the Cube2 using bilinear interpolation
      * \param f the values of f at the corners of the Cube2

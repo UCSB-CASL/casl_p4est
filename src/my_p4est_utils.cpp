@@ -1053,6 +1053,61 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }
 
+
+#ifdef P4_TO_P8
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f)
+#else
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f)
+#endif
+{
+#ifdef CASL_THROWS
+  {
+    if (f.size() != (PetscInt) nodes->indep_nodes.elem_count){
+      std::ostringstream oss;
+      oss << "[ERROR]: size of the input vector must be equal to the total number of points."
+             "nodes->indep_nodes.elem_count = " << nodes->indep_nodes.elem_count
+          << " VecSize = " << f.size() << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+  }
+#endif
+
+  const p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+  const double *v2q = p4est->connectivity->vertices;
+
+  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
+  {
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+    p4est_topidx_t v_mm = t2v[P4EST_CHILDREN*tree_id + 0];
+
+    double tree_xmin = v2q[3*v_mm + 0];
+    double tree_ymin = v2q[3*v_mm + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = v2q[3*v_mm + 2];
+#endif
+
+    double x = node->x != P4EST_ROOT_LEN - 1 ? (double)node->x/(double)P4EST_ROOT_LEN : 1.0;
+    double y = node->y != P4EST_ROOT_LEN - 1 ? (double)node->y/(double)P4EST_ROOT_LEN : 1.0;
+#ifdef P4_TO_P8
+    double z = node->z != P4EST_ROOT_LEN - 1 ? (double)node->z/(double)P4EST_ROOT_LEN : 1.0;
+#endif
+
+    x += tree_xmin;
+    y += tree_ymin;
+#ifdef P4_TO_P8
+    z += tree_zmin;
+#endif
+#ifdef P4_TO_P8
+    f[i] = cf(x,y,z);
+#else
+    f[i] = cf(x,y);
+#endif
+  }
+}
+
 #ifdef P4_TO_P8
 void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_3& cf, Vec f)
 #else

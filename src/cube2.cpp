@@ -39,6 +39,12 @@ double Cube2::area_In_Negative_Domain( QuadValue& level_set_values) const
   return integral(tmp,level_set_values);
 }
 
+double Cube2::interface_Length_In_Cell(QuadValue& level_set_values) const
+{
+  QuadValue tmp(1.,1.,1.,1.);
+  return integrate_Over_Interface(tmp,level_set_values);
+}
+
 double Cube2::integral( QuadValue f ) const
 {
   PetscErrorCode ierr = PetscLogFlops(8); CHKERRXX(ierr);

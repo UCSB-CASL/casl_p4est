@@ -219,7 +219,7 @@ void PoissonSolverNodeBase::preallocate_matrix()
      * 3) If they do not exist, simply skip
      */
 
-    if (phi_p[n] > diag_min)
+    if (phi_p[n] > 2*diag_min)
       continue;
 
 #ifdef P4_TO_P8
@@ -439,6 +439,10 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
   // Solve the system
   ierr = KSPSolve(ksp, rhs_, solution); CHKERRXX(ierr);
 
+  // update ghosts
+  ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   // get rid of local stuff
   if(local_add)
   {
@@ -453,8 +457,6 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 }
-
-
 
 void PoissonSolverNodeBase::setup_negative_laplace_matrix_neumann_wall_1st_order()
 {

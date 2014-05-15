@@ -440,6 +440,9 @@ int main (int argc, char* argv[])
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   PetscErrorCode ierr;
+  Session mpi_session;
+  mpi_session.init(argc, argv, mpi->mpicomm);
+
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
@@ -462,8 +465,6 @@ int main (int argc, char* argv[])
 #endif
   splitting_criteria_cf_t data(cmd.get("lmin", MIN_LEVEL), cmd.get("lmax", MAX_LEVEL), &level_set_func, 1.2);
 
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
 #ifdef CASL_LOGS
   ierr = PetscLogEventRegister("compute_curvature                              " , 0, &log_compute_curvature); CHKERRXX(ierr);
 #endif

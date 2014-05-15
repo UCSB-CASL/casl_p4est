@@ -64,7 +64,10 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
   ghost = hierarchy_->ghost;
   nodes = nodes_;
 
-  clear_neighbors();
+  if (is_initialized){
+    is_initialized = false;
+    init_neighbors();
+  }
 
   layer_nodes.clear();
   local_nodes.clear();

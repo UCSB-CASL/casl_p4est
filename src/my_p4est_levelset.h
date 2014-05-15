@@ -1,4 +1,6 @@
-#include <src/CASL_math.h>
+#ifndef MY_P4EST_LEVELSET_H
+#define MY_P4EST_LEVELSET_H
+
 #ifdef P4_TO_P8
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_nodes.h>
@@ -12,6 +14,7 @@
 
 #include <vector>
 #include <src/ipm_logging.h>
+#include <src/CASL_math.h>
 
 class my_p4est_level_set {
 
@@ -22,8 +25,8 @@ class my_p4est_level_set {
   my_p4est_node_neighbors_t *ngbd;
 
   /* order the nodes based on whether they are in another mpirank's ghost layer or not */
-  std::vector<p4est_locidx_t>& layer_nodes;
-  std::vector<p4est_locidx_t>& local_nodes;
+  std::vector<p4est_locidx_t>* layer_nodes;
+  std::vector<p4est_locidx_t>* local_nodes;
 
 #ifdef P4_TO_P8
   void compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc) const;
@@ -52,9 +55,16 @@ class my_p4est_level_set {
                                                 const double *pn, double *pnp1);
 public:
   my_p4est_level_set(my_p4est_node_neighbors_t *ngbd_ )
-    : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
-      layer_nodes(ngbd_->layer_nodes), local_nodes(ngbd_->local_nodes)
+    : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_)
   {}
+
+  inline void update(my_p4est_node_neighbors_t *ngbd_) {
+    ngbd  = ngbd_;
+    myb   = ngbd->myb;
+    p4est = ngbd->p4est;
+    nodes = ngbd->nodes;
+    ghost = ngbd->ghost;
+  }
 
   /* perturb the level set function by epsilon */
   void perturb_level_set_function( Vec phi_petsc, double epsilon );
@@ -110,6 +120,9 @@ public:
   /* extrapolate using geometrical extrapolation */
   void extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditionType bc_type, Vec bc_vec, int order=2, int band_to_extend=INT_MAX ) const;
 
+  /* same as above except does not use boundary condition information */
+  void extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int order=2, int band_to_extend = INT_MAX ) const ;
+
   /* extend a quantity from the interface */
   void extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend=INT_MAX) const;
 
@@ -141,3 +154,5 @@ public:
                                                                 ) const;
   void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20 ) const;
 };
+
+#endif // MY_P4EST_LEVELSET_H

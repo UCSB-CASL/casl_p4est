@@ -66,7 +66,8 @@ typedef enum {
   NEUMANN,
   ROBIN,
   NOINTERFACE,
-  MIXED
+  MIXED,
+  IGNORE
 } BoundaryConditionType;
 
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
@@ -406,7 +407,7 @@ double integrate_over_interface_in_one_quadrant(p4est_nodes_t *nodes, p4est_quad
  * \param f the scalar to integrate
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
-double integrate_over_interface(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec f);
+double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief is_node_xmWall checks if a node is on x^- domain boundary

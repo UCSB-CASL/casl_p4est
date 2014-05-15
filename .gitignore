@@ -20,6 +20,8 @@
 *._.DS_Store
 *.sw[op]
 *script*
+*.job
+*.pvsm
 *ddt*
 
 # What directories to ignore
