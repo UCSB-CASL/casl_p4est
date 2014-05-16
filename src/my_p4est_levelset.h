@@ -24,10 +24,6 @@ class my_p4est_level_set {
   p4est_ghost_t *ghost;
   my_p4est_node_neighbors_t *ngbd;
 
-  /* order the nodes based on whether they are in another mpirank's ghost layer or not */
-  std::vector<p4est_locidx_t>* layer_nodes;
-  std::vector<p4est_locidx_t>* local_nodes;
-
 #ifdef P4_TO_P8
   void compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc) const;
 #else
@@ -127,11 +123,11 @@ public:
   void extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend=INT_MAX) const;
 
   /* extend a quantity over the interface with the TVD algorithm */
-  void extend_Over_Interface_TVD( Vec phi, Vec q, int iterations=20, int order=2, int band_to_extend=INT_MAX ) const;
+  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2, int =INT_MAX) const;
 
-  void extend_Over_Interface_TVD_not_parallel( Vec phi, Vec q, int iterations=20, int order=2, int band_to_extend=INT_MAX ) const;
+  void extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations=20, int order=2, int =INT_MAX) const;
 
-  void extend_from_interface_to_whole_domain_TVD_one_iteration( std::vector<int>& map, double *phi_p,
+  void extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
                                                                 std::vector<double>& nx, std::vector<double>& ny,
                                                               #ifdef P4_TO_P8
                                                               std::vector<double>& nz,

@@ -2183,7 +2183,8 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface, phi_petsc, q_petsc, q_extended_petsc, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iterations, int order, int band_to_extend ) const
+// NOTE: Why is there a band_to_extend when its not used?
+void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iterations, int order, int /* band_to_extend */) const
 {
 #ifdef CASL_THROWS
   if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: my_p4est_level_set->extend_Over_Interface_TVD: order must be 0, 1 or 2.");
@@ -2255,6 +2256,9 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
   /* initialize qn */
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+
   if(order >=1 )
   {
     ierr = VecCreateGhostNodes(p4est, nodes, &qn); CHKERRXX(ierr);
@@ -2263,7 +2267,7 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
     ierr = VecGetArray(qn, &qn_p); CHKERRXX(ierr);
     ierr = VecGetArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
 
-    /* first do the layer nodes */
+    /* first do the layer nodes */    
     for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
     {
       p4est_locidx_t n = layer_nodes[n_map];
@@ -2925,7 +2929,7 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
 
 
 
-void my_p4est_level_set::extend_Over_Interface_TVD_not_parallel( Vec phi, Vec q, int iterations, int order, int band_to_extend ) const
+void my_p4est_level_set::extend_Over_Interface_TVD_not_parallel( Vec phi, Vec q, int iterations, int order, int /* band_to_extend */ ) const
 {
   PetscErrorCode ierr;
 
@@ -3377,7 +3381,7 @@ void my_p4est_level_set::extend_Over_Interface_TVD_not_parallel( Vec phi, Vec q,
 }
 
 
-void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD_one_iteration( std::vector<int>& map, double *phi_p,
+void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
                                                                                   std::vector<double>& nx, std::vector<double>& ny,
                                                                                   #ifdef P4_TO_P8
                                                                                   std::vector<double>& nz,
@@ -3619,6 +3623,9 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
   }
 
   /* initialization of q */
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+
   for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
   {
     p4est_locidx_t n = layer_nodes[n_map];

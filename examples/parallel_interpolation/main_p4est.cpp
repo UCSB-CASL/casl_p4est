@@ -177,7 +177,7 @@ int main (int argc, char* argv[]){
 
     grid_name.str(""); grid_name << P4EST_DIM << "d_grid_qnnn_" << p4est->mpirank << "_" << p4est->mpisize;
     FILE *qFile = fopen(grid_name.str().c_str(), "w");
-    for (size_t n=0; n<nodes->num_owned_indeps; n++)
+    for (p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++)
       qnnn[n].print_debug(qFile);
     fclose(qFile);
 

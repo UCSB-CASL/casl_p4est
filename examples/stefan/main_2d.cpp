@@ -172,8 +172,8 @@ public:
   double operator() (double x, double y, double z) const
   {
 //    return Tmax;
-    double theta_xy = atan2( interp_phi_y(x,y,z) , interp_phi_x(x,y,z) );
-    double theta_xz = atan2( interp_phi_z(x,y,z) , interp_phi_x(x,y,z) );
+//    double theta_xy = atan2( interp_phi_y(x,y,z) , interp_phi_x(x,y,z) );
+//    double theta_xz = atan2( interp_phi_z(x,y,z) , interp_phi_x(x,y,z) );
     double theta_yz = atan2( interp_phi_z(x,y,z) , interp_phi_y(x,y,z) );
     return Tinterface - epsilon_c * interp(x,y,z) *
 //        (1. - epsilon_anisotropy * cos(N_anisotropy*(theta_xy + theta_0))) *

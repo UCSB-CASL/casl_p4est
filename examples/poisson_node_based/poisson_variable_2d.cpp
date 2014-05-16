@@ -84,6 +84,10 @@ static class: public CF_3
 public:
   double operator()(double x, double y, double z) const {
 #ifdef const_mue
+    (void) x;
+    (void) y;
+    (void) z;
+
     return 1;
 #else
     return  1 + x*x + y*y + z*z;
@@ -197,6 +201,8 @@ static class: public CF_2
 public:
   double operator()(double x, double y) const {
 #ifdef const_mue
+    (void) x;
+    (void) y;
     return  1 ; // + x*x + y*y;
 #else
     return  1 + x*x + y*y;
@@ -384,7 +390,11 @@ int main (int argc, char* argv[]){
     ierr = VecDuplicate(phi, &mue); CHKERRXX(ierr);
 
     struct:CF_2{
-      double operator()(double x, double y) const { return -1; }
+      double operator()(double x, double y) const {
+        (void) x;
+        (void) y;
+        return -1;
+      }
     } m1;
 
     sample_cf_on_nodes(p4est, nodes, circle, phi);

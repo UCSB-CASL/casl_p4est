@@ -1062,7 +1062,7 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
 {
 #ifdef CASL_THROWS
   {
-    if (f.size() != (PetscInt) nodes->indep_nodes.elem_count){
+    if ((PetscInt) f.size() != (PetscInt) nodes->indep_nodes.elem_count){
       std::ostringstream oss;
       oss << "[ERROR]: size of the input vector must be equal to the total number of points."
              "nodes->indep_nodes.elem_count = " << nodes->indep_nodes.elem_count

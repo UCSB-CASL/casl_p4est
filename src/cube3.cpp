@@ -26,12 +26,6 @@ double Cube3::volume_In_Negative_Domain( OctValue& level_set_values) const
   return integral(tmp,level_set_values);
 }
 
-double Cube3::interface_Area_In_Cell( OctValue& level_set_values) const
-{
-  OctValue tmp(1.,1.,1.,1.,1.,1.,1.,1.);
-  return integrate_Over_Interface(tmp, level_set_values);
-}
-
 //Finds the volume of domain inside each cell. Takes in values at imaginary points +/-dx/2, +/-dy/2, +/-dz/2 away from the actual node (those values have to be interpolated before the function is called)
 double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
 {
