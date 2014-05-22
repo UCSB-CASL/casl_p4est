@@ -1053,6 +1053,79 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }
 
+#ifdef P4_TO_P8
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3* cf_array[], Vec f)
+#else
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2* cf_array[], Vec f)
+#endif
+{
+  double *f_p;
+  PetscInt bs;
+  PetscErrorCode ierr;
+  ierr = VecGetBlockSize(f, &bs); CHKERRXX(ierr);
+
+#ifdef CASL_THROWS
+  {
+    Vec local_form;
+    ierr = VecGhostGetLocalForm(f, &local_form); CHKERRXX(ierr);
+    PetscInt size;
+    ierr = VecGetSize(local_form, &size); CHKERRXX(ierr);
+    if (size != (PetscInt) nodes->indep_nodes.elem_count * bs){
+      std::ostringstream oss;
+      oss << "[ERROR]: size of the input vector must be equal to the total number of points x block_size."
+             "nodes->indep_nodes.elem_count = " << nodes->indep_nodes.elem_count
+          << " block_size = " << bs
+          << " VecSize = " << size << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+    ierr = VecGhostRestoreLocalForm(f, &local_form); CHKERRXX(ierr);
+  }
+#endif
+
+  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
+
+  const p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+  const double *v2q = p4est->connectivity->vertices;
+
+  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i) {
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+    p4est_topidx_t v_mm = t2v[P4EST_CHILDREN*tree_id + 0];
+
+    double tree_xmin = v2q[3*v_mm + 0];
+    double tree_ymin = v2q[3*v_mm + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = v2q[3*v_mm + 2];
+#endif
+
+    double x = node->x != P4EST_ROOT_LEN - 1 ? (double)node->x/(double)P4EST_ROOT_LEN : 1.0;
+    double y = node->y != P4EST_ROOT_LEN - 1 ? (double)node->y/(double)P4EST_ROOT_LEN : 1.0;
+#ifdef P4_TO_P8
+    double z = node->z != P4EST_ROOT_LEN - 1 ? (double)node->z/(double)P4EST_ROOT_LEN : 1.0;
+#endif
+
+    x += tree_xmin;
+    y += tree_ymin;
+#ifdef P4_TO_P8
+    z += tree_zmin;
+#endif
+    for (PetscInt j = 0; j<bs; j++) {
+#ifdef P4_TO_P8
+      const CF_3& cf = *cf_array[j];
+      f_p[i*bs + j] = cf(x,y,z);
+#else
+      const CF_2& cf = *cf_array[j];
+      f_p[i*bs + j] = cf(x,y);
+#endif
+    }
+  }
+
+  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+}
+
+
 
 #ifdef P4_TO_P8
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f)
