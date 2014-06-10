@@ -37,9 +37,9 @@
 
 // forward declaration
 #ifdef P4_TO_P8
-struct Point3;
+#include "point3.h"
 #else
-struct Point2;
+#include "point2.h"
 #endif
 
 struct HierarchyCell {

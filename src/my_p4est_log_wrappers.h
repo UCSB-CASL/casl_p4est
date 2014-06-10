@@ -9,6 +9,8 @@
 #include <p4est_ghost.h>
 #endif
 
+#include "petsc_compatibility.h"
+
 #ifdef __cplusplus
 extern "C"
 {

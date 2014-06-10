@@ -9,6 +9,7 @@
 #include <p4est_nodes.h>
 #endif
 #include <src/petsc_logging.h>
+#include "petsc_compatibility.h"
 
 #include <petsc.h>
 #include <stdexcept>

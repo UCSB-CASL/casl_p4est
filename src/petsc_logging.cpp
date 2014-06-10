@@ -1,4 +1,5 @@
 #include "petsc_logging.h"
+#include "petsc_compatibility.h"
 
 /* define proper logging events
  * Note that these are global variables to ensure all subsequent calls to the
