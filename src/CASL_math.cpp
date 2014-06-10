@@ -1,6 +1,7 @@
 #include "CASL_math.h"
 #include <stdio.h>
 #include <petsclog.h>
+#include "petsc_compatibility.h"
 
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops

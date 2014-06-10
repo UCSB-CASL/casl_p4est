@@ -7,6 +7,7 @@
 #include <p4est_communication.h>
 #include <src/point2.h>
 #endif
+#include "petsc_compatibility.h"
 
 #include <stdexcept>
 #include <sstream>
