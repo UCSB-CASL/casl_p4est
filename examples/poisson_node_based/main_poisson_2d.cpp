@@ -31,8 +31,8 @@
 #undef MAX
 
 //#define NO_INTERFACE
-#define PLAN
-//#define CIRCLE
+//#define PLAN
+#define CIRCLE
 
 double c = -.124;//-.1;
 
