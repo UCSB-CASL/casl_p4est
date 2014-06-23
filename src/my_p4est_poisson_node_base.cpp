@@ -19,10 +19,10 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
-extern PetscLogEvent log_PoissonSolverNodeBase_matrix_preallocation;
-extern PetscLogEvent log_PoissonSolverNodeBase_matrix_setup;
-extern PetscLogEvent log_PoissonSolverNodeBase_rhsvec_setup;
-extern PetscLogEvent log_PoissonSolverNodeBase_solve;
+extern PetscLogEvent log_PoissonSolverNodeBased_matrix_preallocation;
+extern PetscLogEvent log_PoissonSolverNodeBased_matrix_setup;
+extern PetscLogEvent log_PoissonSolverNodeBased_rhsvec_setup;
+extern PetscLogEvent log_PoissonSolverNodeBased_solve;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -168,7 +168,7 @@ PoissonSolverNodeBase::~PoissonSolverNodeBase()
 void PoissonSolverNodeBase::preallocate_matrix()
 {  
   // enable logging for the preallocation
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 
   PetscInt num_owned_global = global_node_offset[p4est->mpisize];
   PetscInt num_owned_local  = (PetscInt)(nodes->num_owned_indeps);
@@ -313,12 +313,12 @@ void PoissonSolverNodeBase::preallocate_matrix()
   ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
   ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBased_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
   if(bc_ == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
@@ -455,7 +455,7 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
     phi_ = NULL;
   }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBased_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBase::setup_negative_laplace_matrix_neumann_wall_1st_order()
@@ -463,7 +463,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix_neumann_wall_1st_order
   preallocate_matrix();
 
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -1225,13 +1225,13 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix_neumann_wall_1st_order
 
   }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBased_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBase::setup_negative_laplace_rhsvec_neumann_wall_1st_order()
 {
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -1784,7 +1784,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec_neumann_wall_1st_order
   ierr = VecRestoreArray(rhs_,    &phi_p   ); CHKERRXX(ierr);
   if (robin_coef_) { ierr = VecGetArray(robin_coef_, &robin_coef_p); CHKERRXX(ierr); }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBased_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -1796,7 +1796,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
   preallocate_matrix();
 
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -2497,13 +2497,13 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
     }
   }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBased_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
 {
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -3069,7 +3069,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
   ierr = VecRestoreArray(rhs_,    &phi_p   ); CHKERRXX(ierr);
   if (robin_coef_) { ierr = VecGetArray(robin_coef_, &robin_coef_p); CHKERRXX(ierr); }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBased_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_matrix()
@@ -3077,7 +3077,7 @@ void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_matrix()
   preallocate_matrix();
 
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -3921,14 +3921,14 @@ void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_matrix()
     }
   }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBased_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
 }
 
 void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_rhsvec()
 {
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -4515,7 +4515,7 @@ void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_rhsvec()
     ierr = VecRestoreArray(robin_coef_, &robin_coef_p); CHKERRXX(ierr);
   }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBased_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
 }
 
 #ifdef P4_TO_P8

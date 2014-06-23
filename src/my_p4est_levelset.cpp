@@ -2092,7 +2092,6 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
   ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface, phi_petsc, q_petsc, q_extended_petsc, 0); CHKERRXX(ierr);
 
   /* find dx and dy smallest */
-  // NOTE: Assuming all trees are of equal size [0, 1]^d
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
 
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];

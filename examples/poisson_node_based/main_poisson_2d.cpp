@@ -27,18 +27,20 @@
 #include <src/my_p4est_levelset.h>
 #endif
 
+extern PetscLogEvent log_PoissonSolverNodeBased_global;
+
 #undef MIN
 #undef MAX
+
+#include <src/petsc_compatibility.h>
+#include <src/Parser.h>
+#include <src/CASL_math.h>
 
 //#define NO_INTERFACE
 //#define PLAN
 #define CIRCLE
 
 double c = -.124;//-.1;
-
-#include <src/petsc_compatibility.h>
-#include <src/Parser.h>
-#include <src/CASL_math.h>
 
 using namespace std;
 
@@ -475,7 +477,9 @@ int main (int argc, char* argv[]){
     solver.set_bc(bc);
 
     /* solve the system */
+    ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_global, sol, 0, 0, 0); CHKERRXX(ierr);
     solver.solve(sol);
+    ierr = PetscLogEventEnd  (log_PoissonSolverNodeBased_global, sol, 0, 0, 0); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
     w2.stop(); w2.read_duration();
