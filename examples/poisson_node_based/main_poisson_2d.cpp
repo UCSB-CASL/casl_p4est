@@ -318,7 +318,9 @@ int main (int argc, char* argv[]){
     cmd.add_option("lmin", "the min level of the tree");
     cmd.add_option("lmax", "the max level of the tree");
     cmd.add_option("sp", "number of splits to apply to the min and max level");
+    cmd.add_option("save_vtk", "give this flag to save a vtk file of the solution and error");
     cmd.parse(argc, argv);
+    cmd.print();
 
     // decide on the type and value of the boundary conditions
     BoundaryConditionType bc_wall_type, bc_interface_type;
@@ -477,6 +479,8 @@ int main (int argc, char* argv[]){
     solver.set_bc(bc);
 
     /* solve the system */
+    PetscLogEvent log_PoissonSolverNodeBased_global;
+    ierr = PetscLogEventRegister("PoissonSolverNodeBased::global                           ", 0, &log_PoissonSolverNodeBased_global); CHKERRXX(ierr);
     ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_global, sol, 0, 0, 0); CHKERRXX(ierr);
     solver.solve(sol);
     ierr = PetscLogEventEnd  (log_PoissonSolverNodeBased_global, sol, 0, 0, 0); CHKERRXX(ierr);
@@ -571,15 +575,18 @@ int main (int argc, char* argv[]){
 #endif
 
     /* save the vtk file */
-    std::ostringstream oss; oss << P4EST_DIM << "d_solution_" << p4est->mpisize;
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_TRUE, P4EST_TRUE,
-                           4, 0, oss.str().c_str(),
-                           VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "sol", sol_p,
-                           VTK_POINT_DATA, "uex", uex_p,
-                           VTK_POINT_DATA, "err", err_p );
-    PetscPrintf(mpi->mpicomm, "Results saved in %s\n", oss.str().c_str());
+    if(cmd.contains("save_vtk"))
+    {
+      std::ostringstream oss; oss << P4EST_DIM << "d_solution_" << p4est->mpisize;
+      my_p4est_vtk_write_all(p4est, nodes, ghost,
+                             P4EST_TRUE, P4EST_TRUE,
+                             4, 0, oss.str().c_str(),
+                             VTK_POINT_DATA, "phi", phi_p,
+                             VTK_POINT_DATA, "sol", sol_p,
+                             VTK_POINT_DATA, "uex", uex_p,
+                             VTK_POINT_DATA, "err", err_p );
+      PetscPrintf(mpi->mpicomm, "Results saved in %s\n", oss.str().c_str());
+    }
 
     /* restore internal pointers */
     ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
