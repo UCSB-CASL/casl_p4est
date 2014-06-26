@@ -27,8 +27,6 @@
 #include <src/my_p4est_levelset.h>
 #endif
 
-extern PetscLogEvent log_PoissonSolverNodeBased_global;
-
 #undef MIN
 #undef MAX
 
