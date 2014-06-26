@@ -11,6 +11,7 @@ PetscLogEvent log_PoissonSolverNodeBased_matrix_preallocation;
 PetscLogEvent log_PoissonSolverNodeBased_matrix_setup;
 PetscLogEvent log_PoissonSolverNodeBased_rhsvec_setup;
 PetscLogEvent log_PoissonSolverNodeBased_solve;
+PetscLogEvent log_PoissonSolverNodeBased_KSPSolve;
 
 // InterpolatingFunction
 PetscLogEvent log_InterpolatingFunction_interpolate;
@@ -84,6 +85,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_setup                     ", 0, &log_PoissonSolverNodeBased_matrix_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::rhsvec_setup                     ", 0, &log_PoissonSolverNodeBased_rhsvec_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::solve                            ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::KSPSolve                         ", 0, &log_PoissonSolverNodeBased_KSPSolve); CHKERRXX(ierr);
 
   // InterpolatingFunction
   ierr = PetscLogEventRegister("InterpolatingFunction::interpolate                      ", 0, &log_InterpolatingFunction_interpolate); CHKERRXX(ierr);

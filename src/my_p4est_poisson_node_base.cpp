@@ -22,6 +22,7 @@
 extern PetscLogEvent log_PoissonSolverNodeBased_matrix_preallocation;
 extern PetscLogEvent log_PoissonSolverNodeBased_matrix_setup;
 extern PetscLogEvent log_PoissonSolverNodeBased_rhsvec_setup;
+extern PetscLogEvent log_PoissonSolverNodeBased_KSPSolve;
 extern PetscLogEvent log_PoissonSolverNodeBased_solve;
 #endif
 #ifndef CASL_LOG_FLOPS
@@ -437,7 +438,9 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
     setup_negative_variable_coeff_laplace_rhsvec();
 
   // Solve the system
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs_, solution); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd  (log_PoissonSolverNodeBased_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
 
   // update ghosts
   ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
