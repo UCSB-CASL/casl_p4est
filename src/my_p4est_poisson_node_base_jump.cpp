@@ -329,9 +329,9 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
   {
     PetscInt sol_size;
     ierr = VecGetLocalSize(solution, &sol_size); CHKERRXX(ierr);
-    if (sol_size != nodes->num_owned_indeps){
+    if (sol_size != 2*nodes->num_owned_indeps){
       std::ostringstream oss;
-      oss << "[CASL_ERROR]: solution vector must be preallocated and locally have the same size as num_owned_indeps"
+      oss << "[CASL_ERROR]: solution vector must be preallocated and locally have the same size as num_owned_indeps: "
           << "solution.local_size = " << sol_size << " nodes->num_owned_indeps = " << nodes->num_owned_indeps << std::endl;
       throw std::invalid_argument(oss.str());
     }

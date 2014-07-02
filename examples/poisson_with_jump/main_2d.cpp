@@ -13,7 +13,7 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_poisson_node_base_jump.h>
 #include <src/my_p8est_levelset.h>
 #else
 #include <p4est_bits.h>
@@ -23,7 +23,7 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_poisson_node_base.h>
+#include <src/my_p4est_poisson_node_base_jump.h>
 #include <src/my_p4est_levelset.h>
 #endif
 
@@ -36,44 +36,150 @@
 
 using namespace std;
 
-#define POW3(x) (x*x*x)
+#define POW3(x) (x)*(x)*(x)
 
 #ifdef P4_TO_P8
-struct:CF_3{
+static struct:WallBC3D{
+  BoundaryConditionType operator()(double x, double y, double z) const {
+    (void) x;
+    (void) y;
+    (void) z;
+
+    return DIRICHLET;
+  }
+} bc_wall_type;
+
+static struct:CF_3{
+  const static double r0 = 0.45, x0 = 1.0, y0 = 1.0, z0 = 1.0;
   double operator()(double x, double y, double z) const {
-    return 0.45 - sqrt(SQR(x - 1.0) + SQR(y - 1.0) + SQR(z - 1.0));
+    return r0 - sqrt(SQR(x - x0) + SQR(y - y0) + SQR(z - z0));
   }
 } circle;
 
-struct:CF_3{
+static struct:CF_3{
+  // make sure to change dn and laplacian if you changed this
   double operator()(double x, double y, double z) const {
-    return POW3(x - 1.0) + POW3(y - 1.0) + POW3(z - 1.0);
+    return 5*POW3(x - 1.0) - POW3(y - 1.0) + 3*POW3(z - 1.0);
+  }
+
+  double dn(double x, double y, double z) const {
+    double nx = (x - circle.x0)/ circle.r0;
+    double ny = (y - circle.y0)/ circle.r0;
+    double nz = (z - circle.z0)/ circle.r0;
+
+    return (  5*3*SQR(x - 1.0)*nx
+            - 3*SQR(y - 1.0)*ny
+            + 3*3*SQR(z - 1.0)*nz);
   }
 } plus_cf;
 
-struct:CF_3{
+static struct:CF_3{
   double operator()(double x, double y, double z) const {
-    return -2.0 - (POW3(x - 1.0) + POW3(y - 1.0) + POW3(z - 1.0));
+    return -(5*3*2*(x - 1.0) - 3*2*(y - 1.0) + 3*3*2*(z - 1.0));
+  }
+} rhs_plus_cf;
+
+static struct:CF_3{
+  // make sure to change dn if you changed this
+  double operator()(double x, double y, double z) const {
+    return -2.0 - (2*POW3(x - 1.0) + POW3(y - 1.0) + POW3(z - 1.0));
+  }
+  double dn(double x, double y, double z) const {
+    double nx = (x - circle.x0)/ circle.r0;
+    double ny = (y - circle.y0)/ circle.r0;
+    double nz = (z - circle.z0)/ circle.r0;
+
+    return (- 2*3*SQR(x - 1.0)*nx
+            - 3*SQR(y - 1.0)*ny
+            + 3*SQR(z - 1.0)*nz);
   }
 } minus_cf;
+
+static struct:CF_3{
+  double operator()(double x, double y, double z) const {
+    return 2*3*2*(x - 1.0) + 3*2*(y - 1.0) + 3*2*(z - 1.0);
+  }
+} rhs_minus_cf;
+
+static struct:CF_3{
+  double operator()(double x, double y, double z) const {
+    return plus_cf(x,y,z) - minus_cf(x,y,z);
+  }
+} jump_sol;
+
+static struct:CF_3{
+  double operator()(double x, double y, double z) const {
+    return plus_cf.dn(x,y,z) - minus_cf.dn(x,y,z);
+  }
+} jump_dn_sol;
+
 #else
-struct:CF_2{
+static struct:WallBC2D{
+  BoundaryConditionType operator()(double x, double y) const {
+    (void) x;
+    (void) y;
+    return DIRICHLET;
+  }
+} bc_wall_type;
+
+static struct:CF_2{
+  const static double r0 = 0.45, x0 = 1.0, y0 = 1.0;
   double operator()(double x, double y) const {
-    return 0.45 - sqrt(SQR(x - 1.0) + SQR(y - 1.0));
+    return r0 - sqrt(SQR(x - x0) + SQR(y - y0));
   }
 } circle;
 
-struct:CF_2{
+static struct:CF_2{
+  // make sure to change dn if you changed this
   double operator()(double x, double y) const {
-    return POW3(x - 1.0) + POW3(y - 1.0);
+    return 5*POW3(x - 1.0) - POW3(y - 1.0);
+  }
+  double dn(double x, double y) const {
+    double nx = (x - circle.x0)/ circle.r0;
+    double ny = (y - circle.y0)/ circle.r0;
+
+    return (  5*3*SQR(x - 1.0)*nx
+              - 3*SQR(y - 1.0)*ny);
   }
 } plus_cf;
 
-struct:CF_2{
+static struct:CF_2{
   double operator()(double x, double y) const {
-    return -2.0 - (POW3(x - 1.0) + POW3(y - 1.0));
+    return -(5*3*2*(x - 1.0) - 3*2*(y - 1.0));
+  }
+} rhs_plus_cf;
+
+static struct:CF_2{
+  // make sure to change dn if you changed this
+  double operator()(double x, double y) const {
+    return -2.0 - (2*POW3(x - 1.0) + POW3(y - 1.0));
+  }
+  double dn(double x, double y) const {
+    double nx = (x - circle.x0)/ circle.r0;
+    double ny = (y - circle.y0)/ circle.r0;
+
+    return (- 2*3*SQR(x - 1.0)*nx
+            - 3*SQR(y - 1.0)*ny);
   }
 } minus_cf;
+
+static struct:CF_2{
+  double operator()(double x, double y) const {
+    return 2*3*2*(x - 1.0) + 3*2*(y - 1.0);
+  }
+} rhs_minus_cf;
+
+static struct:CF_2{
+  double operator()(double x, double y) const {
+    return plus_cf(x,y) - minus_cf(x,y);
+  }
+} jump_sol;
+
+static struct:CF_2{
+  double operator()(double x, double y) const {
+    return plus_cf.dn(x,y) - minus_cf.dn(x,y);
+  }
+} jump_dn_sol;
 #endif
 
 int main (int argc, char* argv[]){
@@ -97,10 +203,7 @@ int main (int argc, char* argv[]){
     cmd.parse(argc, argv);
 
     // decide on the type and value of the boundary conditions
-    BoundaryConditionType bc_wall_type, bc_interface_type;
     int nb_splits, min_level, max_level;
-    bc_wall_type      = cmd.get("bc_wtype"  , DIRICHLET);
-    bc_interface_type = cmd.get("bc_itype"  , DIRICHLET);
     nb_splits         = cmd.get("sp" , 0);
     min_level         = cmd.get("lmin"      , 3);
     max_level         = cmd.get("lmax"      , 8);
@@ -144,15 +247,19 @@ int main (int argc, char* argv[]){
       double minus, plus;
     };
 
-    Vec sol, phi;
+    Vec sol, phi, rhs;
 #ifdef P4_TO_P8
     const CF_3* sol_cf [] = {&minus_cf, &plus_cf};
+    const CF_3* rhs_cf [] = {&rhs_minus_cf, &rhs_plus_cf};
 #else
     const CF_2* sol_cf [] = {&minus_cf, &plus_cf};
+    const CF_2* rhs_cf [] = {&rhs_minus_cf, &rhs_plus_cf};
 #endif
     ierr = VecCreateGhostNodes(p4est, nodes, &phi);
     ierr = VecCreateGhostNodesBlock(p4est, nodes, 2, &sol); CHKERRXX(ierr);
+    ierr = VecDuplicate(sol, &rhs); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, sol_cf, sol);
+    sample_cf_on_nodes(p4est, nodes, rhs_cf, rhs);
     sample_cf_on_nodes(p4est, nodes, circle, phi);
 
     // copy to local buffers to save as vtk
@@ -168,7 +275,37 @@ int main (int argc, char* argv[]){
     double *phi_p;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_FALSE, P4EST_FALSE,
+                           P4EST_TRUE, P4EST_FALSE,
+                           3, 0, "test",
+                           VTK_POINT_DATA, "phi",   phi_p,
+                           VTK_POINT_DATA, "exact plus",  &sol_plus[0],
+                           VTK_POINT_DATA, "exact minus", &sol_minus[0]);
+
+    // set up the boundary conditions
+#ifdef P4_TO_P8
+    BoundaryConditions3D bc;
+#else
+    BoundaryConditions2D bc;
+#endif
+    bc.setWallTypes(bc_wall_type);
+    bc.setWallValues(minus_cf);
+
+    my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
+    my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
+    PoissonSolverNodeBaseJump solver(&neighbors);
+    solver.set_bc(bc);
+    solver.set_jump(jump_sol, jump_dn_sol);
+    solver.set_phi(phi);
+    solver.set_rhs(rhs);
+    solver.solve(sol);
+
+    // save the result
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+      sol_minus[i] = sol_p[i].minus;
+      sol_plus[i]  = sol_p[i].plus;
+    }
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_FALSE,
                            3, 0, "test",
                            VTK_POINT_DATA, "phi",   phi_p,
                            VTK_POINT_DATA, "plus",  &sol_plus[0],
