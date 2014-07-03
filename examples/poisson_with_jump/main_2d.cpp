@@ -37,6 +37,8 @@
 using namespace std;
 
 #define POW3(x) (x)*(x)*(x)
+const static double mue_p = 5.0;
+const static double mue_m = 1.0;
 
 #ifdef P4_TO_P8
 static struct:WallBC3D{
@@ -67,15 +69,15 @@ static struct:CF_3{
     double ny = (y - circle.y0)/ circle.r0;
     double nz = (z - circle.z0)/ circle.r0;
 
-    return (  5*3*SQR(x - 1.0)*nx
-            - 3*SQR(y - 1.0)*ny
-            + 3*3*SQR(z - 1.0)*nz);
+    return mue_p*(  5*3*SQR(x - 1.0)*nx
+                  - 3*SQR(y - 1.0)*ny
+                  + 3*3*SQR(z - 1.0)*nz);
   }
 } plus_cf;
 
 static struct:CF_3{
   double operator()(double x, double y, double z) const {
-    return -(5*3*2*(x - 1.0) - 3*2*(y - 1.0) + 3*3*2*(z - 1.0));
+    return -mue_p*(5*3*2*(x - 1.0) - 3*2*(y - 1.0) + 3*3*2*(z - 1.0));
   }
 } rhs_plus_cf;
 
@@ -89,15 +91,15 @@ static struct:CF_3{
     double ny = (y - circle.y0)/ circle.r0;
     double nz = (z - circle.z0)/ circle.r0;
 
-    return (- 2*3*SQR(x - 1.0)*nx
-            - 3*SQR(y - 1.0)*ny
-            + 3*SQR(z - 1.0)*nz);
+    return mue_m*(- 2*3*SQR(x - 1.0)*nx
+                  - 3*SQR(y - 1.0)*ny
+                  + 3*SQR(z - 1.0)*nz);
   }
 } minus_cf;
 
 static struct:CF_3{
   double operator()(double x, double y, double z) const {
-    return 2*3*2*(x - 1.0) + 3*2*(y - 1.0) + 3*2*(z - 1.0);
+    return mue_m*(2*3*2*(x - 1.0) + 3*2*(y - 1.0) + 3*2*(z - 1.0));
   }
 } rhs_minus_cf;
 
@@ -130,6 +132,7 @@ static struct:CF_2{
 } circle;
 
 static struct:CF_2{
+
   // make sure to change dn if you changed this
   double operator()(double x, double y) const {
     return 5*POW3(x - 1.0) - POW3(y - 1.0);
@@ -138,14 +141,14 @@ static struct:CF_2{
     double nx = (x - circle.x0)/ circle.r0;
     double ny = (y - circle.y0)/ circle.r0;
 
-    return (  5*3*SQR(x - 1.0)*nx
-              - 3*SQR(y - 1.0)*ny);
+    return mue_p*( 5*3*SQR(x - 1.0)*nx
+                  -3*SQR(y - 1.0)*ny);
   }
 } plus_cf;
 
 static struct:CF_2{
   double operator()(double x, double y) const {
-    return -(5*3*2*(x - 1.0) - 3*2*(y - 1.0));
+    return -mue_p*(5*3*2*(x - 1.0) - 3*2*(y - 1.0));
   }
 } rhs_plus_cf;
 
@@ -158,14 +161,14 @@ static struct:CF_2{
     double nx = (x - circle.x0)/ circle.r0;
     double ny = (y - circle.y0)/ circle.r0;
 
-    return (- 2*3*SQR(x - 1.0)*nx
-            - 3*SQR(y - 1.0)*ny);
+    return mue_m*(-2*3*SQR(x - 1.0)*nx
+                  -3*SQR(y - 1.0)*ny);
   }
 } minus_cf;
 
 static struct:CF_2{
   double operator()(double x, double y) const {
-    return 2*3*2*(x - 1.0) + 3*2*(y - 1.0);
+    return mue_m*(2*3*2*(x - 1.0) + 3*2*(y - 1.0));
   }
 } rhs_minus_cf;
 
@@ -266,17 +269,19 @@ int main (int argc, char* argv[]){
     std::vector<double> sol_plus(nodes->indep_nodes.elem_count), sol_minus(nodes->indep_nodes.elem_count);
 
     solution_t *sol_p;
+    double *phi_p;
+    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     ierr = VecGetArray(sol, (double**)&sol_p); CHKERRXX(ierr);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
       sol_minus[i] = sol_p[i].minus;
       sol_plus[i]  = sol_p[i].plus;
+
+//      phi_p[i] = 1;
     }
 
-    double *phi_p;
-    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_FALSE,
-                           3, 0, "test",
+                           3, 0, "exact",
                            VTK_POINT_DATA, "phi",   phi_p,
                            VTK_POINT_DATA, "exact plus",  &sol_plus[0],
                            VTK_POINT_DATA, "exact minus", &sol_minus[0]);
@@ -297,6 +302,7 @@ int main (int argc, char* argv[]){
     solver.set_jump(jump_sol, jump_dn_sol);
     solver.set_phi(phi);
     solver.set_rhs(rhs);
+    solver.set_mue(mue_p, mue_m);
     solver.solve(sol);
 
     // save the result
@@ -306,7 +312,7 @@ int main (int argc, char* argv[]){
     }
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_FALSE,
-                           3, 0, "test",
+                           3, 0, "sol",
                            VTK_POINT_DATA, "phi",   phi_p,
                            VTK_POINT_DATA, "plus",  &sol_plus[0],
                            VTK_POINT_DATA, "minus", &sol_minus[0]);

@@ -31,7 +31,7 @@ extern PetscLogEvent log_PoissonSolverNodeBase_solve;
 
 void PoissonSolverNodeBaseJump::preallocate_row(p4est_locidx_t n, const quad_neighbor_nodes_of_node_t& qnnn, std::vector<PetscInt>& d_nnz, std::vector<PetscInt>& o_nnz)
 {
-  PetscInt num_owned_local  = 2 * (PetscInt)(nodes->num_owned_indeps);
+  PetscInt num_owned_local  = (PetscInt)(nodes->num_owned_indeps);
 #ifdef P4_TO_P8
   if (qnnn.d_m00_p0*qnnn.d_m00_0p != 0) // node_m00_mm will enter discretization
     qnnn.node_m00_mm < num_owned_local ? d_nnz[n]++ : o_nnz[n]++;
@@ -290,7 +290,7 @@ void PoissonSolverNodeBaseJump::preallocate_matrix()
    * results in intermediate arrays and only allocate as much space as needed.
    * This is left for future optimizations if necessary.
    */
-  std::vector<PetscInt> d_nnz(num_owned_local, 1), o_nnz(num_owned_local, 0);
+  std::vector<PetscInt> d_nnz(num_owned_local, 2), o_nnz(num_owned_local, 1);
   double *phi_p;
   ierr = VecGetArray(phi_, &phi_p); CHKERRXX(ierr);
 
@@ -742,6 +742,13 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
         w_00p  = -mue_m_ * s_00p_m/dz_min;
         w_000 += -(w_00m + w_00p);
 #endif
+#ifdef P4_TO_P8
+        PetscSynchronizedPrintf(p4est->mpicomm, "Omega^-\n  w_000 = %1.5e, w_m00 = %1.5e, w_p00 = %1.5e, w_0m0 = %1.5e, w_0p0 = %1.5e, w_00m = %1.5e, w_00p = %1.5e \n",
+                                w_000, w_m00, w_p00, w_0m0, w_0p0, w_00m, w_00p);
+#else
+        PetscSynchronizedPrintf(p4est->mpicomm, "Omega^-\n  w_000 = %1.5e, w_m00 = %1.5e, w_p00 = %1.5e, w_0m0 = %1.5e, w_0p0 = %1.5e \n",
+                                w_000, w_m00, w_p00, w_0m0, w_0p0);
+#endif
 
         ierr = MatSetValue(A, 2*node_000_g, 2*node_000_g, w_000, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, 2*node_000_g, 2*node_m00_g, w_m00, ADD_VALUES); CHKERRXX(ierr);
@@ -765,6 +772,14 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
         w_000 += -(w_00m + w_00p);
 #endif
 
+#ifdef P4_TO_P8
+        PetscSynchronizedPrintf(p4est->mpicomm, "Omega^+\n  w_000 = %1.5e, w_m00 = %1.5e, w_p00 = %1.5e, w_0m0 = %1.5e, w_0p0 = %1.5e, w_00m = %1.5e, w_00p = %1.5e \n",
+                                w_000, w_m00, w_p00, w_0m0, w_0p0, w_00m, w_00p);
+#else
+        PetscSynchronizedPrintf(p4est->mpicomm, "Omega^+\n  w_000 = %1.5e, w_m00 = %1.5e, w_p00 = %1.5e, w_0m0 = %1.5e, w_0p0 = %1.5e \n",
+                                w_000, w_m00, w_p00, w_0m0, w_0p0);
+#endif
+
         ierr = MatSetValue(A, 2*node_000_g + 1, 2*node_000_g + 1, w_000, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, 2*node_000_g + 1, 2*node_m00_g + 1, w_m00, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, 2*node_000_g + 1, 2*node_p00_g + 1, w_p00, ADD_VALUES); CHKERRXX(ierr);
@@ -774,6 +789,7 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
         ierr = MatSetValue(A, 2*node_000_g + 1, 2*node_00m_g + 1, w_00m, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, 2*node_000_g + 1, 2*node_00p_g + 1, w_00p, ADD_VALUES); CHKERRXX(ierr);
 #endif
+
 
         // jump contributions
         double diff = mue_p_ - mue_m_;
@@ -786,6 +802,10 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
         }
         double dist = MAX(1E-6*d_min, fabs(phi_000));
         double jump = mue_p_*mue_m_*interface_area/diff/dist;
+
+        PetscSynchronizedPrintf(p4est->mpicomm, "  jump = %1.5e\n\n", jump);
+        PetscSynchronizedFlush(p4est->mpicomm);
+
 
         ierr = MatSetValue(A, 2*node_000_g    , 2*node_000_g    ,  jump, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, 2*node_000_g    , 2*node_000_g + 1, -jump, ADD_VALUES); CHKERRXX(ierr);
@@ -1265,16 +1285,6 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
         double volume_m = cube.area_In_Negative_Domain(phi_cube); // technically an area ...
         double volume_p = dx_min*dy_min - volume_m;
         double interface_area  = cube.interface_Length_In_Cell(phi_cube); // technically a length ...
-
-        double diff = mue_p_ - mue_m_;
-        double avg  = 0.5*(mue_p_ + mue_m_);
-        if (fabs(diff/avg) < EPS){
-          if (diff > 0)
-            diff =  EPS*avg;
-          else
-            diff = -EPS*avg;
-        }
-        double dist = MAX(1E-6*d_min, fabs(phi_000));
 #endif
         // project the point onto the interface
 #ifdef P4_TO_P8
@@ -1303,11 +1313,21 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
         double bp = (*bp_cf_)(xp, yp);
 #endif
 
+        double diff = mue_p_ - mue_m_;
+        double avg  = 0.5*(mue_p_ + mue_m_);
+        if (fabs(diff/avg) < EPS){
+          if (diff > 0)
+            diff =  EPS*avg;
+          else
+            diff = -EPS*avg;
+        }
+        double dist = MAX(1E-6*d_min, fabs(phi_000));
+
         rhs_p[2*n    ] *= volume_m;
-        rhs_p[2*n    ] += -mue_m_ * interface_area/diff*(bp + mue_p_*ap/dist);
+        rhs_p[2*n    ] += -mue_m_ * interface_area/diff*(bp - mue_p_*ap/dist);
 
         rhs_p[2*n + 1] *= volume_p;
-        rhs_p[2*n + 1] +=  mue_p_ * interface_area/diff*(bp + mue_m_*ap/dist);
+        rhs_p[2*n + 1] +=  mue_p_ * interface_area/diff*(bp - mue_m_*ap/dist);
 
       } else {
         // regular node-wise discretization as if point is in omega^-
