@@ -742,14 +742,6 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
         w_00p  = -mue_m_ * s_00p_m/dz_min;
         w_000 += -(w_00m + w_00p);
 #endif
-#ifdef P4_TO_P8
-        PetscSynchronizedPrintf(p4est->mpicomm, "Omega^-\n  w_000 = %1.5e, w_m00 = %1.5e, w_p00 = %1.5e, w_0m0 = %1.5e, w_0p0 = %1.5e, w_00m = %1.5e, w_00p = %1.5e \n",
-                                w_000, w_m00, w_p00, w_0m0, w_0p0, w_00m, w_00p);
-#else
-        PetscSynchronizedPrintf(p4est->mpicomm, "Omega^-\n  w_000 = %1.5e, w_m00 = %1.5e, w_p00 = %1.5e, w_0m0 = %1.5e, w_0p0 = %1.5e \n",
-                                w_000, w_m00, w_p00, w_0m0, w_0p0);
-#endif
-
         ierr = MatSetValue(A, 2*node_000_g, 2*node_000_g, w_000, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, 2*node_000_g, 2*node_m00_g, w_m00, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, 2*node_000_g, 2*node_p00_g, w_p00, ADD_VALUES); CHKERRXX(ierr);
@@ -770,14 +762,6 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
         w_00m  = -mue_p_ * s_00m_p/dz_min;
         w_00p  = -mue_p_ * s_00p_p/dz_min;
         w_000 += -(w_00m + w_00p);
-#endif
-
-#ifdef P4_TO_P8
-        PetscSynchronizedPrintf(p4est->mpicomm, "Omega^+\n  w_000 = %1.5e, w_m00 = %1.5e, w_p00 = %1.5e, w_0m0 = %1.5e, w_0p0 = %1.5e, w_00m = %1.5e, w_00p = %1.5e \n",
-                                w_000, w_m00, w_p00, w_0m0, w_0p0, w_00m, w_00p);
-#else
-        PetscSynchronizedPrintf(p4est->mpicomm, "Omega^+\n  w_000 = %1.5e, w_m00 = %1.5e, w_p00 = %1.5e, w_0m0 = %1.5e, w_0p0 = %1.5e \n",
-                                w_000, w_m00, w_p00, w_0m0, w_0p0);
 #endif
 
         ierr = MatSetValue(A, 2*node_000_g + 1, 2*node_000_g + 1, w_000, ADD_VALUES); CHKERRXX(ierr);
@@ -802,10 +786,6 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
         }
         double dist = MAX(1E-6*d_min, fabs(phi_000));
         double jump = mue_p_*mue_m_*interface_area/diff/dist;
-
-        PetscSynchronizedPrintf(p4est->mpicomm, "  jump = %1.5e\n\n", jump);
-        PetscSynchronizedFlush(p4est->mpicomm);
-
 
         ierr = MatSetValue(A, 2*node_000_g    , 2*node_000_g    ,  jump, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, 2*node_000_g    , 2*node_000_g + 1, -jump, ADD_VALUES); CHKERRXX(ierr);
@@ -1091,6 +1071,7 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
 
   // check for null space
   // FIXME: the return value should be checked for errors ...
+
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
   if (matrix_has_nullspace) {
     ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
@@ -1324,10 +1305,10 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
         double dist = MAX(1E-6*d_min, fabs(phi_000));
 
         rhs_p[2*n    ] *= volume_m;
-        rhs_p[2*n    ] += -mue_m_ * interface_area/diff*(bp - mue_p_*ap/dist);
+        rhs_p[2*n    ] += -mue_m_ * interface_area/diff*(bp + mue_p_*ap/dist);
 
         rhs_p[2*n + 1] *= volume_p;
-        rhs_p[2*n + 1] +=  mue_p_ * interface_area/diff*(bp - mue_m_*ap/dist);
+        rhs_p[2*n + 1] +=  mue_p_ * interface_area/diff*(bp + mue_m_*ap/dist);
 
       } else {
         // regular node-wise discretization as if point is in omega^-

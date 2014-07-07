@@ -65,9 +65,11 @@ static struct:CF_3{
   }
 
   double dn(double x, double y, double z) const {
-    double nx = (x - circle.x0)/ circle.r0;
-    double ny = (y - circle.y0)/ circle.r0;
-    double nz = (z - circle.z0)/ circle.r0;
+    double nx = x - circle.x0;
+    double ny = y - circle.y0;
+    double nz = z - circle.z0;
+    double abs = MAX(EPS, sqrt(nx*nx + ny*ny + nz*nz));
+    nx /= abs; ny /= abs; nz /= abs;
 
     return mue_p*(  5*3*SQR(x - 1.0)*nx
                   - 3*SQR(y - 1.0)*ny
@@ -87,12 +89,14 @@ static struct:CF_3{
     return -2.0 - (2*POW3(x - 1.0) + POW3(y - 1.0) + POW3(z - 1.0));
   }
   double dn(double x, double y, double z) const {
-    double nx = (x - circle.x0)/ circle.r0;
-    double ny = (y - circle.y0)/ circle.r0;
-    double nz = (z - circle.z0)/ circle.r0;
+    double nx = x - circle.x0;
+    double ny = y - circle.y0;
+    double nz = z - circle.z0;
+    double abs = MAX(EPS, sqrt(nx*nx + ny*ny + nz*nz));
+    nx /= abs; ny /= abs; nz /= abs;
 
-    return mue_m*(- 2*3*SQR(x - 1.0)*nx
-                  - 3*SQR(y - 1.0)*ny
+    return -mue_m*( 2*3*SQR(x - 1.0)*nx
+                  + 3*SQR(y - 1.0)*ny
                   + 3*SQR(z - 1.0)*nz);
   }
 } minus_cf;
@@ -138,8 +142,10 @@ static struct:CF_2{
     return 5*POW3(x - 1.0) - POW3(y - 1.0);
   }
   double dn(double x, double y) const {
-    double nx = (x - circle.x0)/ circle.r0;
-    double ny = (y - circle.y0)/ circle.r0;
+    double nx = x - circle.x0;
+    double ny = y - circle.y0;
+    double abs = MAX(EPS, sqrt(nx*nx + ny*ny));
+    nx /= abs; ny /= abs;
 
     return mue_p*( 5*3*SQR(x - 1.0)*nx
                   -3*SQR(y - 1.0)*ny);
@@ -158,11 +164,13 @@ static struct:CF_2{
     return -2.0 - (2*POW3(x - 1.0) + POW3(y - 1.0));
   }
   double dn(double x, double y) const {
-    double nx = (x - circle.x0)/ circle.r0;
-    double ny = (y - circle.y0)/ circle.r0;
+    double nx = x - circle.x0;
+    double ny = y - circle.y0;
+    double abs = MAX(EPS, sqrt(nx*nx + ny*ny));
+    nx /= abs; ny /= abs;
 
-    return mue_m*(-2*3*SQR(x - 1.0)*nx
-                  -3*SQR(y - 1.0)*ny);
+    return -mue_m*( 2*3*SQR(x - 1.0)*nx
+                  + 3*SQR(y - 1.0)*ny);
   }
 } minus_cf;
 
