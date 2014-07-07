@@ -30,6 +30,7 @@
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <src/CASL_math.h>
+#include <mpi.h>
 
 #undef MIN
 #undef MAX
@@ -216,10 +217,11 @@ int main (int argc, char* argv[]){
     // decide on the type and value of the boundary conditions
     int nb_splits, min_level, max_level;
     nb_splits         = cmd.get("sp" , 0);
-    min_level         = cmd.get("lmin"      , 3);
-    max_level         = cmd.get("lmax"      , 8);
+    min_level         = cmd.get("lmin", 3);
+    max_level         = cmd.get("lmax", 8);
+    double lip        = cmd.get("lip", 1.5);
 
-    splitting_criteria_cf_t data(min_level+nb_splits, max_level+nb_splits, &circle, 1);
+    splitting_criteria_cf_t data(min_level+nb_splits, max_level+nb_splits, &circle, lip);
 
     parStopWatch w1, w2;
     w1.start("total time");
@@ -274,25 +276,26 @@ int main (int argc, char* argv[]){
     sample_cf_on_nodes(p4est, nodes, circle, phi);
 
     // copy to local buffers to save as vtk
-    std::vector<double> sol_plus(nodes->indep_nodes.elem_count), sol_minus(nodes->indep_nodes.elem_count);
+    std::vector<double> exact_plus(nodes->indep_nodes.elem_count), exact_minus(nodes->indep_nodes.elem_count);
+    Vec sol_plus, sol_minus;
+    ierr = VecDuplicate(phi, &sol_plus); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &sol_minus); CHKERRXX(ierr);
 
     solution_t *sol_p;
     double *phi_p;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     ierr = VecGetArray(sol, (double**)&sol_p); CHKERRXX(ierr);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-      sol_minus[i] = sol_p[i].minus;
-      sol_plus[i]  = sol_p[i].plus;
-
-//      phi_p[i] = 1;
+      exact_minus[i] = sol_p[i].minus;
+      exact_plus[i]  = sol_p[i].plus;
     }
 
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_FALSE,
                            3, 0, "exact",
                            VTK_POINT_DATA, "phi",   phi_p,
-                           VTK_POINT_DATA, "exact plus",  &sol_plus[0],
-                           VTK_POINT_DATA, "exact minus", &sol_minus[0]);
+                           VTK_POINT_DATA, "exact plus",  &exact_plus[0],
+                           VTK_POINT_DATA, "exact minus", &exact_minus[0]);
 
     // set up the boundary conditions
 #ifdef P4_TO_P8
@@ -303,6 +306,7 @@ int main (int argc, char* argv[]){
     bc.setWallTypes(bc_wall_type);
     bc.setWallValues(minus_cf);
 
+    w2.start("solving jump problem");
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
     PoissonSolverNodeBaseJump solver(&neighbors);
@@ -312,23 +316,76 @@ int main (int argc, char* argv[]){
     solver.set_rhs(rhs);
     solver.set_mue(mue_p, mue_m);
     solver.solve(sol);
+    w2.stop(); w2.read_duration();
 
     // save the result
+    double *sol_plus_p, *sol_minus_p;
+    ierr = VecGetArray(sol_plus, &sol_plus_p); CHKERRXX(ierr);
+    ierr = VecGetArray(sol_minus, &sol_minus_p); CHKERRXX(ierr);
+
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-      sol_minus[i] = sol_p[i].minus;
-      sol_plus[i]  = sol_p[i].plus;
+      sol_minus_p[i] = sol_p[i].minus;
+      sol_plus_p[i]  = sol_p[i].plus;
     }
+
+    // extend solutions over interface
+    w2.start("extending solution");
+    my_p4est_level_set ls(&neighbors);
+    ls.extend_Over_Interface_TVD(phi, sol_minus, 50);
+    // reverse sign
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+      phi_p[i] = -phi_p[i];
+    }
+    ls.extend_Over_Interface_TVD(phi, sol_plus, 50);
+    // reverse sign to its normal value
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+      phi_p[i] = -phi_p[i];
+    }
+    w2.stop(); w2.read_duration();
+
+    // compute the error -- overwritting to save on space
+    double err_max [] = {0, 0}; // {minus, plus}
+    std::vector<double> err(nodes->indep_nodes.elem_count, 0);
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+      exact_minus[i] = fabs(exact_minus[i] - sol_minus_p[i]);
+      exact_plus[i]  = fabs(exact_plus[i] - sol_plus_p[i]);
+      if (phi_p[i] < 0){
+        err_max[0] = MAX(err_max[0], exact_minus[i]);
+        err[i] = exact_minus[i];
+      } else {
+        err_max[1] = MAX(err_max[1], exact_plus[i]);
+        err[i] = exact_plus[i];
+      }
+    }
+
+    // compute the globally maximum error. Note that MPI_IN_PLACE should only be used at the root
+    if (p4est->mpirank == 0)
+      MPI_Reduce(MPI_IN_PLACE, err_max, 2, MPI_DOUBLE, MPI_MAX, 0, p4est->mpicomm);
+    else
+      MPI_Reduce(err_max, err_max, 2, MPI_DOUBLE, MPI_MAX, 0, p4est->mpicomm);
+
+    PetscPrintf(p4est->mpicomm, "Max err: minus = %1.5e \t plus = %1.5e\n", err_max[0], err_max[1]);
+
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_FALSE,
-                           3, 0, "sol",
+                           6, 0, "sol",
                            VTK_POINT_DATA, "phi",   phi_p,
-                           VTK_POINT_DATA, "plus",  &sol_plus[0],
-                           VTK_POINT_DATA, "minus", &sol_minus[0]);
+                           VTK_POINT_DATA, "plus",  sol_plus_p,
+                           VTK_POINT_DATA, "minus", sol_minus_p,
+                           VTK_POINT_DATA, "err_plus",  &exact_plus[0],
+                           VTK_POINT_DATA, "err_minus", &exact_minus[0],
+                           VTK_POINT_DATA, "err", &err[0]);
+
 
     /* destroy p4est objects */
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(sol, (double**)&sol_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol_plus, &sol_plus_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol_minus, &sol_minus_p); CHKERRXX(ierr);
+
     ierr = VecDestroy(sol); CHKERRXX(ierr);
+    ierr = VecDestroy(sol_plus); CHKERRXX(ierr);
+    ierr = VecDestroy(sol_minus); CHKERRXX(ierr);
 
     p4est_nodes_destroy (nodes);
     p4est_ghost_destroy (ghost);
