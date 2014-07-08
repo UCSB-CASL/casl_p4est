@@ -37,6 +37,11 @@
 
 using namespace std;
 
+#define CUBIC_TEST 0
+#define COS_TEST 1
+
+#define TEST COS_TEST
+
 #define POW3(x) (x)*(x)*(x)
 const static double mue_p = 5.0;
 const static double mue_m = 1.0;
@@ -53,7 +58,7 @@ static struct:WallBC3D{
 } bc_wall_type;
 
 static struct:CF_3{
-  const static double r0 = 0.45, x0 = 1.0, y0 = 1.0, z0 = 1.0;
+  const static double r0 = 0.35, x0 = 0.56, y0 = 1.23, z0 = 0.68;
   double operator()(double x, double y, double z) const {
     return r0 - sqrt(SQR(x - x0) + SQR(y - y0) + SQR(z - z0));
   }
@@ -62,7 +67,11 @@ static struct:CF_3{
 static struct:CF_3{
   // make sure to change dn and laplacian if you changed this
   double operator()(double x, double y, double z) const {
+#if TEST == CUBIC_TEST
     return 5*POW3(x - 1.0) - POW3(y - 1.0) + 3*POW3(z - 1.0);
+#elif TEST == COS_TEST
+    return cos(M_PI*x)*cos(M_PI*y)*cos(M_PI*z);
+#endif
   }
 
   double dn(double x, double y, double z) const {
@@ -71,23 +80,36 @@ static struct:CF_3{
     double nz = z - circle.z0;
     double abs = MAX(EPS, sqrt(nx*nx + ny*ny + nz*nz));
     nx /= abs; ny /= abs; nz /= abs;
-
+#if TEST == CUBIC
     return mue_p*(  5*3*SQR(x - 1.0)*nx
                   - 3*SQR(y - 1.0)*ny
                   + 3*3*SQR(z - 1.0)*nz);
+#elif TEST == COS_TEST
+    return mue_p*(-M_PI*sin(M_PI*x)*cos(M_PI*y)*cos(M_PI*z)*nx
+                  -M_PI*cos(M_PI*x)*sin(M_PI*y)*cos(M_PI*z)*ny
+                  -M_PI*cos(M_PI*x)*cos(M_PI*y)*sin(M_PI*z)*nz);
+#endif
   }
 } plus_cf;
 
 static struct:CF_3{
   double operator()(double x, double y, double z) const {
+#if TEST == CUBIC_TEST
     return -mue_p*(5*3*2*(x - 1.0) - 3*2*(y - 1.0) + 3*3*2*(z - 1.0));
+#elif TEST == COS_TEST
+    return  mue_p*3.0*M_PI*M_PI*cos(M_PI*x)*cos(M_PI*y)*cos(M_PI*z);
+#endif
   }
 } rhs_plus_cf;
 
 static struct:CF_3{
   // make sure to change dn if you changed this
   double operator()(double x, double y, double z) const {
-    return -2.0 - (2*POW3(x - 1.0) + POW3(y - 1.0) + POW3(z - 1.0));
+#if TEST == CUBIC_TEST
+    return 1.0 - (2*POW3(x - 1.0) + POW3(y - 1.0) + POW3(z - 1.0));
+#elif TEST == COS_TEST
+    return 1.0 - sin(x*y*z*M_PI);
+#endif
   }
   double dn(double x, double y, double z) const {
     double nx = x - circle.x0;
@@ -96,15 +118,32 @@ static struct:CF_3{
     double abs = MAX(EPS, sqrt(nx*nx + ny*ny + nz*nz));
     nx /= abs; ny /= abs; nz /= abs;
 
+#if TEST == CUBIC_TEST
     return -mue_m*( 2*3*SQR(x - 1.0)*nx
                   + 3*SQR(y - 1.0)*ny
                   + 3*SQR(z - 1.0)*nz);
+#elif TEST == COS_TEST
+    return -mue_m*M_PI*cos(x*y*z*M_PI)*(y*z*nx + x*z*ny + x*y*nz);
+#endif
   }
 } minus_cf;
 
 static struct:CF_3{
   double operator()(double x, double y, double z) const {
+    if (circle(x,y,z) > 0)
+      return plus_cf(x,y,z);
+    else
+      return minus_cf(x,y,z);
+  }
+} bc_wall_value;
+
+static struct:CF_3{
+  double operator()(double x, double y, double z) const {
+#if TEST == CUBIC_TEST
     return mue_m*(2*3*2*(x - 1.0) + 3*2*(y - 1.0) + 3*2*(z - 1.0));
+#elif TEST == COS_TEST
+    return -mue_m*M_PI*M_PI*(SQR(x*y)+SQR(x*z)+SQR(y*z))*sin(x*y*z*M_PI);
+#endif
   }
 } rhs_minus_cf;
 
@@ -130,54 +169,90 @@ static struct:WallBC2D{
 } bc_wall_type;
 
 static struct:CF_2{
-  const static double r0 = 0.45, x0 = 1.0, y0 = 1.0;
+  const static double r0 = 0.35, x0 = 1.38, y0 = 0.61;
   double operator()(double x, double y) const {
     return r0 - sqrt(SQR(x - x0) + SQR(y - y0));
   }
-} circle;
+} circle;  
 
 static struct:CF_2{
 
   // make sure to change dn if you changed this
   double operator()(double x, double y) const {
+#if TEST == CUBIC_TEST
     return 5*POW3(x - 1.0) - POW3(y - 1.0);
+#elif TEST == COS_TEST
+    return cos(M_PI*x)*cos(M_PI*y);
+#endif
   }
+
   double dn(double x, double y) const {
     double nx = x - circle.x0;
     double ny = y - circle.y0;
     double abs = MAX(EPS, sqrt(nx*nx + ny*ny));
     nx /= abs; ny /= abs;
 
-    return mue_p*( 5*3*SQR(x - 1.0)*nx
-                  -3*SQR(y - 1.0)*ny);
+#if TEST == CUBIC
+    return mue_p*(  5*3*SQR(x - 1.0)*nx
+                  - 3*SQR(y - 1.0)*ny);
+#elif TEST == COS_TEST
+    return mue_p*(-M_PI*sin(M_PI*x)*cos(M_PI*y) * nx
+                  -M_PI*cos(M_PI*x)*sin(M_PI*y) * ny);
+#endif
   }
 } plus_cf;
 
 static struct:CF_2{
   double operator()(double x, double y) const {
+#if TEST == CUBIC_TEST
     return -mue_p*(5*3*2*(x - 1.0) - 3*2*(y - 1.0));
+#elif TEST == COS_TEST
+    return  mue_p*2.0*M_PI*M_PI*cos(M_PI*x)*cos(M_PI*y);
+#endif
   }
 } rhs_plus_cf;
 
 static struct:CF_2{
   // make sure to change dn if you changed this
   double operator()(double x, double y) const {
-    return -2.0 - (2*POW3(x - 1.0) + POW3(y - 1.0));
+#if TEST == CUBIC_TEST
+    return 1.0 - (2*POW3(x - 1.0) + POW3(y - 1.0));
+#elif TEST == COS_TEST
+    return 1.0 - sin(x*y*M_PI);
+#endif
   }
+
   double dn(double x, double y) const {
     double nx = x - circle.x0;
     double ny = y - circle.y0;
     double abs = MAX(EPS, sqrt(nx*nx + ny*ny));
     nx /= abs; ny /= abs;
 
+#if TEST == CUBIC_TEST
     return -mue_m*( 2*3*SQR(x - 1.0)*nx
                   + 3*SQR(y - 1.0)*ny);
+#elif TEST == COS_TEST
+    return -mue_m*M_PI*cos(x*y*M_PI)*(y*nx + x*ny);
+#endif
   }
 } minus_cf;
 
 static struct:CF_2{
   double operator()(double x, double y) const {
+    if (circle(x,y) > 0)
+      return plus_cf(x,y);
+    else
+      return minus_cf(x,y);
+  }
+} bc_wall_value;
+
+static struct:CF_2{
+  double operator()(double x, double y) const {
+#if TEST == CUBIC_TEST
     return mue_m*(2*3*2*(x - 1.0) + 3*2*(y - 1.0));
+#elif TEST == COS_TEST
+    return -mue_m*M_PI*M_PI*(SQR(y)+SQR(x))*sin(x*y*M_PI);
+#endif
   }
 } rhs_minus_cf;
 
@@ -304,7 +379,7 @@ int main (int argc, char* argv[]){
     BoundaryConditions2D bc;
 #endif
     bc.setWallTypes(bc_wall_type);
-    bc.setWallValues(minus_cf);
+    bc.setWallValues(bc_wall_value);
 
     w2.start("solving jump problem");
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
