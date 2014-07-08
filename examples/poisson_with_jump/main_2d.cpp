@@ -80,7 +80,7 @@ static struct:CF_3{
     double nz = z - circle.z0;
     double abs = MAX(EPS, sqrt(nx*nx + ny*ny + nz*nz));
     nx /= abs; ny /= abs; nz /= abs;
-#if TEST == CUBIC
+#if TEST == CUBIC_TEST
     return mue_p*(  5*3*SQR(x - 1.0)*nx
                   - 3*SQR(y - 1.0)*ny
                   + 3*3*SQR(z - 1.0)*nz);
@@ -192,7 +192,7 @@ static struct:CF_2{
     double abs = MAX(EPS, sqrt(nx*nx + ny*ny));
     nx /= abs; ny /= abs;
 
-#if TEST == CUBIC
+#if TEST == CUBIC_TEST
     return mue_p*(  5*3*SQR(x - 1.0)*nx
                   - 3*SQR(y - 1.0)*ny);
 #elif TEST == COS_TEST
