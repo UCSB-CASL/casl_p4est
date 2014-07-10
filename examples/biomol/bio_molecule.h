@@ -18,9 +18,9 @@ class BioMolecule: public CF_3
   std::ifstream reader;
   std::vector<Atom> atoms;
 
+  const mpi_context_t& mpi;
   double xc_, yc_, zc_, s_, rmax_;
   double rp_;
-  const mpi_context_t& mpi;
 
   double D_, L_;
   bool is_partitioned;

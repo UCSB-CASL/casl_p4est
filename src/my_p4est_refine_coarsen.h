@@ -59,11 +59,14 @@ struct splitting_criteria_random_t : splitting_criteria_t {
   }
 };
 
-class splitting_criteria_marker_t: public splitting_criteria_t {
+class splitting_criteria_marker_t: public splitting_criteria_t {  
+protected:
+  p4est_t *p4est;
   std::vector<p4est_bool_t> markers;
+
 public:
   splitting_criteria_marker_t(p4est_t *p4est, int min_lvl, int max_lvl, double lip)
-    : markers(p4est->local_num_quadrants, P4EST_FALSE)
+    : p4est(p4est), markers(p4est->local_num_quadrants, P4EST_FALSE)
   {
     this->min_lvl = min_lvl;
     this->max_lvl = max_lvl;
@@ -84,6 +87,17 @@ public:
   inline p4est_bool_t& operator[](p4est_locidx_t q) {return markers[q];}
   inline const p4est_bool_t& operator[](p4est_locidx_t q) const {return markers[q];}
 };
+
+class splitting_criteria_discrete_t : public splitting_criteria_marker_t {
+public:
+  splitting_criteria_discrete_t(p4est_t *p4est, int min_lvl, int max_lvl, double lip)
+    : splitting_criteria_marker_t(p4est, min_lvl, max_lvl, lip)
+  {}
+
+  void mark_cells_for_refinement(p4est_nodes_t *nodes, double *phi);
+  void mark_cells_for_coarsening(p4est_nodes_t *nodes, double *phi);
+};
+
 
 /*!
  * \brief refine_levelset_cf refine based on distance to a cf levelset

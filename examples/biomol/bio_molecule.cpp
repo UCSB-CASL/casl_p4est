@@ -23,7 +23,7 @@ ostream& operator << (ostream& os, Atom& atom) {
 }
 
 BioMolecule::BioMolecule(my_p4est_brick_t& brick, const mpi_context_t &mpi)
-  : xc_(0.), yc_(0.), zc_(0.), s_(1.), mpi(mpi), rp_(1.4)
+  : mpi(mpi), xc_(0.), yc_(0.), zc_(0.), s_(1.), rp_(1.4)
 {
   D_ = MIN(brick.nxyztrees[0], MIN(brick.nxyztrees[1], brick.nxyztrees[2]));
   L_ = s_*D_;
@@ -152,6 +152,10 @@ void BioMolecule::partition_atoms(){
 
 }
 
+void BioMolecule::set_probe_radius(double rp) {
+  rp_ = s_*D_/L_*rp;
+}
+
 double BioMolecule::operator ()(double x, double y, double z) const {
   double xmin = xc_ - 0.5*L_;
   double ymin = yc_ - 0.5*L_;
@@ -164,28 +168,6 @@ double BioMolecule::operator ()(double x, double y, double z) const {
   int cj = floor((y - ymin) / d);
   int ck = floor((z - zmin) / d);
 
-  // clip to molecule's box boundary/* refine the forest */
-  splitting_criteria_cf_t split(lmin, lmax, &mol, lip);
-  p4est->user_pointer = (void*)(&split);
-  p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-
-  /* partition the p4est */
-  p4est_partition(p4est, NULL);
-
-  /* create the ghost layer */
-  p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-
-  /* generate unique node indices */
-  p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
-  w2.stop(); w2.read_duration();
-
-  /* reinitialize the level-set */
-  w2.start("constructing vdW surface");
-  Vec phi;
-  PetscErrorCode ierr;
-  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
-  sample_cf_on_nodes(p4est, nodes, mol, phi);
-  w2.stop(); w2.read_duration();
   if      (ci <  0) ci = 0;
   else if (ci >= N) ci = N - 1;
   if      (cj <  0) cj = 0;
@@ -193,7 +175,7 @@ double BioMolecule::operator ()(double x, double y, double z) const {
   if      (ck <  0) ck = 0;
   else if (ck >= N) ck = N - 1;
 
-  double phi = atoms[0].r + rp_ - sqrt(SQR(x - atoms[0].x) + SQR(y - atoms[0].y) + SQR(z - atoms[0].z));
+  double phi = -L_; //atoms[0].r + rp_ - sqrt(SQR(x - atoms[0].x) + SQR(y - atoms[0].y) + SQR(z - atoms[0].z));
 
   for (int k = ck-1; k <= ck+1; k++){
     if (k<0 || k>=N) continue;
@@ -209,7 +191,7 @@ double BioMolecule::operator ()(double x, double y, double z) const {
 
         for (size_t m = 0; m < mapping.size(); m++) {
           const Atom& a = atoms[mapping[m]];
-          phi = MAX(phi, a.r + rp_ - sqrt(SQR(x - a.x) + SQR(y - a.y) + SQR(z - a.z)));
+          phi = MAX(phi, a.r - sqrt(SQR(x - a.x) + SQR(y - a.y) + SQR(z - a.z)));
         }
       }
     }

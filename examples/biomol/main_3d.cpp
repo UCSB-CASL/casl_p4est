@@ -60,6 +60,8 @@ int main(int argc, char *argv[]) {
     w2.start("reading pqr molecule");
     BioMolecule mol(brick, mpi);
     mol.read(folder + "/" + pqr + ".pqr");
+    const double rp = 1.4;
+//    mol.set_probe_radius(rp);
     w2.stop(); w2.read_duration();
 
     /* create the p4est */
@@ -101,11 +103,90 @@ int main(int argc, char *argv[]) {
 
     double *phi_p;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
+    /* reconstruct the new grid */
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+//      phi_p[i] -= rp;
+    ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+    InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, &brick, &neighbors);
+    phi_interp.set_input_parameters(phi, quadratic_non_oscillatory);
+
+    p4est_t *p4est_tmp = p4est_new(mpi.mpicomm, connectivity, 0, NULL, NULL);
+    p4est_ghost_t *ghost_tmp = NULL;
+    p4est_nodes_t *nodes_tmp = NULL;
+    Vec phi_tmp = NULL;
+
+    w2.start("regenerating the forest and level-set");
+    PetscPrintf(mpi.mpicomm, "old number of global quadrants = %7d \n\n", p4est->global_num_quadrants);
+    for (int l = 0; l<=lmax; l++) {
+      break;
+      /* partition and recompute the grid and levelset */
+      w2.start("interpolating values onto the new tree");
+      p4est_partition(p4est_tmp, NULL);
+      ghost_tmp = p4est_ghost_new(p4est_tmp, P4EST_CONNECT_FULL);
+      nodes_tmp = p4est_nodes_new(p4est_tmp, ghost_tmp);
+      ierr = VecCreateGhostNodes(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);
+
+      PetscPrintf(mpi.mpicomm, "current number of global quadrants = %7d \n", p4est_tmp->global_num_quadrants);
+
+      /* buffer all the points in the current tree */
+      for (size_t i = 0; i<nodes_tmp->indep_nodes.elem_count; i++) {
+        const p4est_indep_t *ni = (const p4est_indep_t *)sc_array_index(&nodes_tmp->indep_nodes, i);
+
+        p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*ni->p.piggy3.which_tree + 0];
+
+        double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+        double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+        double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+        double xyz [P4EST_DIM] =
+        {
+          node_x_fr_i(ni) + tree_xmin,
+          node_y_fr_j(ni) + tree_ymin,
+          node_z_fr_k(ni) + tree_zmin
+        };
+
+        phi_interp.add_point_to_buffer(i, xyz);
+      }
+      phi_interp.interpolate(phi_tmp);
+      w2.stop(); w2.read_duration();
+
+      /* dont do the final refinement */
+      if (l == lmax) break;
+
+      /* refine the tree */
+      w2.start("refinig the tree");
+      double *phi_tmp_p;
+      ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+      splitting_criteria_discrete_t sp(p4est_tmp, lmin, lmax, lip);
+      sp.mark_cells_for_refinement(nodes_tmp, phi_tmp_p);
+      ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+
+      p4est_tmp->user_pointer = &sp;
+      p4est_refine(p4est_tmp, P4EST_FALSE, refine_marked_quadrants, NULL);
+
+      /* free memory */
+      ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
+      p4est_ghost_destroy(ghost_tmp);
+      p4est_nodes_destroy(nodes_tmp);
+      w2.stop(); w2.read_duration();
+    }
+    w2.stop(); w2.read_duration();
+
+    /* free memory and reset pointers */
+//    p4est_destroy(p4est); p4est = p4est_tmp; p4est->user_pointer = &split; p4est_tmp = NULL;
+//    p4est_ghost_destroy(ghost); ghost = ghost_tmp; ghost_tmp = NULL;
+//    p4est_nodes_destroy(nodes); nodes = nodes_tmp; nodes_tmp = NULL;
+//    ierr = VecDestroy(phi); phi = phi_tmp; phi_tmp = NULL;
+
+    w2.start("saving vtk file");
+    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est, nodes, NULL,
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, pqr.c_str(),
                            VTK_POINT_DATA, "phi", phi_p);
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+    w2.stop(); w2.read_duration();
 
     /* release memory */
     ierr = VecDestroy(phi); CHKERRXX(ierr);
@@ -113,9 +194,6 @@ int main(int argc, char *argv[]) {
     p4est_ghost_destroy (ghost);
     p4est_destroy (p4est);
     my_p4est_brick_destroy(connectivity, &brick);
-
-
-
 
     w1.stop(); w1.read_duration();
   } catch (const std::exception& e) {

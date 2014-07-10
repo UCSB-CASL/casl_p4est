@@ -10,6 +10,108 @@
 #include <sc_search.h>
 #include <iostream>
 
+void splitting_criteria_discrete_t::mark_cells_for_refinement(p4est_nodes_t *nodes, double *phi)
+{
+  p4est_locidx_t *q2n = nodes->local_nodes;
+
+  // loop over quadrants and tag them -- have to do this with p4est since we need access to the actual quadrant
+  for (p4est_topidx_t tr_id = p4est->first_local_tree; tr_id <= p4est->last_local_tree; tr_id++){
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr_id);
+    for (size_t qu = 0; qu < tree->quadrants.elem_count; qu++){
+      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, qu);
+      p4est_locidx_t q = qu + tree->quadrants_offset;
+
+      double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // assuming dx = dy = dz
+      double d = sqrt(P4EST_DIM)*dx;
+
+      // reset the marker
+      markers[q] = P4EST_FALSE;
+
+      // check for level first
+      if (quad->level < min_lvl) {
+        markers[q] = P4EST_TRUE;
+        continue;
+      } else if (quad->level >= max_lvl) {
+        markers[q] = P4EST_FALSE;
+        continue;
+      }
+
+      // check for distance
+      double f[P4EST_CHILDREN];
+      for (short i = 0; i<P4EST_CHILDREN; i++){
+        f[i] = phi[q2n[q*P4EST_CHILDREN + i]];
+        if (fabs(f[i]) <= 0.5*lip*d){
+          markers[q] = P4EST_TRUE;
+          break;
+        }
+      }
+
+      // dont check the interface condition if  we are already decided
+      if (markers[q]) continue;
+
+      // refine if crossing interface
+#ifdef P4_TO_P8
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
+          f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0 )
+#else
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 )
+#endif
+        markers[q] = P4EST_TRUE;
+    }
+  }
+}
+
+void splitting_criteria_discrete_t::mark_cells_for_coarsening(p4est_nodes_t *nodes, double *phi)
+{
+  p4est_locidx_t *q2n = nodes->local_nodes;
+
+  // loop over quadrants and tag them -- have to do this with p4est since we need access to the actual quadrant
+  for (p4est_topidx_t tr_id = p4est->first_local_tree; tr_id <= p4est->last_local_tree; tr_id++){
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr_id);
+    for (size_t qu = 0; qu < tree->quadrants.elem_count; qu++){
+      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, qu);
+      p4est_locidx_t q = qu + tree->quadrants_offset;
+
+      double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // assuming dx = dy = dz
+      double d = sqrt(P4EST_DIM)*dx;
+
+      // reset the marker
+      markers[q] = P4EST_TRUE;
+
+      // check for level first
+      if (quad->level <= min_lvl) {
+        markers[q] = P4EST_FALSE;
+        continue;
+      } else if (quad->level > max_lvl) {
+        markers[q] = P4EST_TRUE;
+        continue;
+      }
+
+      // check for distance
+      double f[P4EST_CHILDREN];
+      for (short i = 0; i<P4EST_CHILDREN; i++){
+        f[i] = phi[q2n[q*P4EST_CHILDREN + i]];
+        if (fabs(f[i]) <= 0.5*lip*d){
+          markers[q] = P4EST_FALSE;
+          break;
+        }
+      }
+
+      // dont check the interface condition if  we are already decided
+      if (!markers[q]) continue;
+
+      // refine if crossing interface
+#ifdef P4_TO_P8
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
+          f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0 )
+#else
+      if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 )
+#endif
+        markers[q] = P4EST_FALSE;
+    }
+  }
+}
+
 p4est_bool_t
 refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
@@ -226,28 +328,18 @@ p4est_bool_t
 refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
   (void) which_tree;
-  const splitting_criteria_marker_t& marker = *(splitting_criteria_marker_t*)(p4est->user_pointer);
-  if (quad->level < marker.min_lvl)
-    return P4EST_TRUE;
-  else if (quad->level >= marker.max_lvl)
-    return P4EST_FALSE;
-  else
-    return (*(p4est_bool_t*)quad->p.user_data);
+  (void) p4est;
+  return (*(p4est_bool_t*)quad->p.user_data);
 }
 
 p4est_bool_t
 coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
 {
   (void) which_tree;
-  const splitting_criteria_marker_t& marker = *(splitting_criteria_marker_t*)(p4est->user_pointer);
-  if (quad[0]->level < marker.min_lvl)
-    return P4EST_FALSE;
-  else if (quad[0]->level >= marker.max_lvl)
-    return P4EST_TRUE;
-  else
-    for (short i=0; i<P4EST_CHILDREN; i++)
-      if (*(p4est_bool_t*)quad[i]->p.user_data) return P4EST_TRUE;
+  (void) p4est;
+  for (short i=0; i<P4EST_CHILDREN; i++)
+    if ((*(p4est_bool_t*)quad[i]->p.user_data) == P4EST_FALSE) return P4EST_FALSE;
 
-  return P4EST_FALSE;
+  return P4EST_TRUE;
 }
 
