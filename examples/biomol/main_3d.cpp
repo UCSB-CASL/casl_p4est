@@ -62,10 +62,10 @@ int main(int argc, char *argv[]) {
     mol.read(folder + "/" + pqr + ".pqr");
     w2.stop(); w2.read_duration();
 
-
-    w2.start("initializing the grid");
     /* create the p4est */
+    w2.start("initializing the grid");
     p4est_t *p4est = p4est_new(mpi.mpicomm, connectivity, 0, NULL, NULL);
+    w2.stop(); w2.read_duration();
 
     /* refine the forest */
     splitting_criteria_cf_t split(lmin, lmax, &mol, lip);
@@ -83,12 +83,14 @@ int main(int argc, char *argv[]) {
     w2.stop(); w2.read_duration();
 
     /* reinitialize the level-set */
-    w2.start("reinitializing the level-set");
+    w2.start("constructing SAS surface");
     Vec phi;
     PetscErrorCode ierr;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, mol, phi);
+    w2.stop(); w2.read_duration();
 
+    w2.start("reinitializing the level-set");
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
     neighbors.init_neighbors();

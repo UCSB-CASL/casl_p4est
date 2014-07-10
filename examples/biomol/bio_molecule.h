@@ -19,6 +19,7 @@ class BioMolecule: public CF_3
   std::vector<Atom> atoms;
 
   double xc_, yc_, zc_, s_, rmax_;
+  double rp_;
   const mpi_context_t& mpi;
 
   double D_, L_;
@@ -32,6 +33,7 @@ public:
   void read(const std::string& pqr);
   void translate(double xc, double yc, double zc);
   void scale(double s);
+  void set_probe_radius(double rp);
   void partition_atoms();
   double operator()(double x, double y, double z) const;
 };

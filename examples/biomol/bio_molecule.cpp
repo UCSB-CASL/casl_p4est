@@ -3,9 +3,12 @@
 #include <sstream>
 #include <iomanip>
 
+#include <src/my_p8est_refine_coarsen.h>
 #include <src/CASL_math.h>
 
 using namespace std;
+
+#define MAX_BLOCK_SIZE 32
 
 istream& operator >> (istream& is, Atom& atom) {
   string ignore [4];
@@ -20,7 +23,7 @@ ostream& operator << (ostream& os, Atom& atom) {
 }
 
 BioMolecule::BioMolecule(my_p4est_brick_t& brick, const mpi_context_t &mpi)
-  : xc_(0.), yc_(0.), zc_(0.), s_(1.), mpi(mpi)
+  : xc_(0.), yc_(0.), zc_(0.), s_(1.), mpi(mpi), rp_(1.4)
 {
   D_ = MIN(brick.nxyztrees[0], MIN(brick.nxyztrees[1], brick.nxyztrees[2]));
   L_ = s_*D_;
@@ -78,7 +81,7 @@ void BioMolecule::read(const string &pqr) {
     L_ = MAX(L_, fabs(atoms[i].y - yc_));
     L_ = MAX(L_, fabs(atoms[i].z - zc_));
   }
-  L_ *= 2.0;
+  L_ *= 2.1;
 
   // scale and recenter the molecule to middle
   translate(0.5, 0.5, 0.5);
@@ -119,14 +122,16 @@ void BioMolecule::scale(double s) {
     rmax_ = MAX(rmax_, a.r);
   }
 
-  L_ = s*D_;
-  s_ = s;
+  rp_ *= alpha;
+  L_   = s*D_;
+  s_   = s;
 }
 
 void BioMolecule::partition_atoms(){
   if (is_partitioned) return;
 
-  int N = floor(L_/rmax_); // to ensure locality
+  int N = MIN((int)floor(L_/rmax_), MAX_BLOCK_SIZE); // to ensure locality
+  double d = L_/N;
   cell2atom.resize(N*N*N);
 
   double xmin = xc_ - 0.5*L_;
@@ -135,15 +140,16 @@ void BioMolecule::partition_atoms(){
 
   for (size_t i = 0; i<atoms.size(); i++) {
     const Atom& a = atoms[i];
-    int ci = floor((a.x - xmin) / L_);
-    int cj = floor((a.y - ymin) / L_);
-    int ck = floor((a.z - zmin) / L_);
+    int ci = floor((a.x - xmin) / d);
+    int cj = floor((a.y - ymin) / d);
+    int ck = floor((a.z - zmin) / d);
 
     int cell_idx = N*N*ck + N*cj + ci;
     cell2atom[cell_idx].push_back(i);
   }
 
   is_partitioned = true;
+
 }
 
 double BioMolecule::operator ()(double x, double y, double z) const {
@@ -152,12 +158,34 @@ double BioMolecule::operator ()(double x, double y, double z) const {
   double zmin = zc_ - 0.5*L_;
 
   // fins the cell index for the point
-  int ci = floor((x - xmin) / L_);
-  int cj = floor((y - ymin) / L_);
-  int ck = floor((z - zmin) / L_);
+  int N = MIN((int)floor(L_/rmax_), MAX_BLOCK_SIZE);
+  double d = L_/N;
+  int ci = floor((x - xmin) / d);
+  int cj = floor((y - ymin) / d);
+  int ck = floor((z - zmin) / d);
 
-  // clip to molecule's box boundary
-  int N = floor(L_/rmax_);
+  // clip to molecule's box boundary/* refine the forest */
+  splitting_criteria_cf_t split(lmin, lmax, &mol, lip);
+  p4est->user_pointer = (void*)(&split);
+  p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+
+  /* partition the p4est */
+  p4est_partition(p4est, NULL);
+
+  /* create the ghost layer */
+  p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+
+  /* generate unique node indices */
+  p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
+  w2.stop(); w2.read_duration();
+
+  /* reinitialize the level-set */
+  w2.start("constructing vdW surface");
+  Vec phi;
+  PetscErrorCode ierr;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, mol, phi);
+  w2.stop(); w2.read_duration();
   if      (ci <  0) ci = 0;
   else if (ci >= N) ci = N - 1;
   if      (cj <  0) cj = 0;
@@ -165,12 +193,7 @@ double BioMolecule::operator ()(double x, double y, double z) const {
   if      (ck <  0) ck = 0;
   else if (ck >= N) ck = N - 1;
 
-  double phi = -100*L_;
-
-//  for (size_t i = 0; i<atoms.size(); i++){
-//    const Atom& a = atoms[i];
-//    phi = MAX(phi, a.r - sqrt(SQR(x - a.x) + SQR(y - a.y) + SQR(z - a.z)));
-//  }
+  double phi = atoms[0].r + rp_ - sqrt(SQR(x - atoms[0].x) + SQR(y - atoms[0].y) + SQR(z - atoms[0].z));
 
   for (int k = ck-1; k <= ck+1; k++){
     if (k<0 || k>=N) continue;
@@ -186,7 +209,7 @@ double BioMolecule::operator ()(double x, double y, double z) const {
 
         for (size_t m = 0; m < mapping.size(); m++) {
           const Atom& a = atoms[mapping[m]];
-          phi = MAX(phi, a.r - sqrt(SQR(x - a.x) + SQR(y - a.y) + SQR(z - a.z)));
+          phi = MAX(phi, a.r + rp_ - sqrt(SQR(x - a.x) + SQR(y - a.y) + SQR(z - a.z)));
         }
       }
     }
@@ -194,3 +217,4 @@ double BioMolecule::operator ()(double x, double y, double z) const {
 
   return phi;
 }
+
