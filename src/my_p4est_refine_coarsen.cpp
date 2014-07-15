@@ -10,7 +10,7 @@
 #include <sc_search.h>
 #include <iostream>
 
-void splitting_criteria_discrete_t::mark_cells_for_refinement(p4est_nodes_t *nodes, double *phi)
+void splitting_criteria_discrete_t::mark_cells_for_refinement(p4est_nodes_t *nodes, const double *phi)
 {
   p4est_locidx_t *q2n = nodes->local_nodes;
 
@@ -61,7 +61,7 @@ void splitting_criteria_discrete_t::mark_cells_for_refinement(p4est_nodes_t *nod
   }
 }
 
-void splitting_criteria_discrete_t::mark_cells_for_coarsening(p4est_nodes_t *nodes, double *phi)
+void splitting_criteria_discrete_t::mark_cells_for_coarsening(p4est_nodes_t *nodes, const double *phi)
 {
   p4est_locidx_t *q2n = nodes->local_nodes;
 
@@ -260,6 +260,141 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
   }
 }
 
+
+p4est_bool_t
+refine_threshold_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  const splitting_criteria_threshold_cf_t *data = (const splitting_criteria_threshold_cf_t*)p4est->user_pointer;
+
+  if (quad->level < data->min_lvl)
+    return P4EST_TRUE;
+  else if (quad->level >= data->max_lvl)
+    return P4EST_FALSE;
+  else
+  {
+    double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    double dy = dx;
+  #ifdef P4_TO_P8
+    double dz = dx;
+  #endif
+
+#ifdef P4_TO_P8
+    double d = sqrt(dx*dx + dy*dy + dz*dz);
+#else
+    double d = sqrt(dx*dx + dy*dy);
+#endif
+
+    p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0];
+
+    double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
+#endif
+
+    double x = (double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;
+    double y = (double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;
+#ifdef P4_TO_P8
+    double z = (double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
+#endif
+
+#ifdef P4_TO_P8
+    CF_3&  phi = *(data->phi);
+#else
+    CF_2&  phi = *(data->phi);
+#endif
+    double lip = data->lip;
+
+    double f;
+#ifdef P4_TO_P8
+    for (unsigned short ck = 0; ck<2; ++ck)
+#endif
+    for (unsigned short cj = 0; cj<2; ++cj)
+      for (unsigned short ci = 0; ci <2; ++ci){
+#ifdef P4_TO_P8
+        f = phi(x+ci*dx, y+cj*dy, z+ck*dz);
+#else
+        f = phi(x+ci*dx, y+cj*dy);
+#endif
+        if (fabs(f - data->min_thr) <= 0.5*lip*d ||
+            fabs(f - data->max_thr) <= 0.5*lip*d ||
+            (data->min_thr <= f && f <= data->max_thr))
+        {
+          return P4EST_TRUE;
+        }
+      }
+
+    return P4EST_FALSE;
+  }
+}
+
+p4est_bool_t
+coarsen_threshold_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
+{
+  const splitting_criteria_threshold_cf_t *data = (const splitting_criteria_threshold_cf_t*) p4est->user_pointer;
+
+  if (quad[0]->level <= data->min_lvl)
+    return P4EST_FALSE;
+  else if (quad[0]->level > data->max_lvl)
+    return P4EST_TRUE;
+  else
+  {
+    double dx = 2*(double)P4EST_QUADRANT_LEN((*quad)->level)/(double)P4EST_ROOT_LEN;
+    double dy = dx;
+  #ifdef P4_TO_P8
+    double dz = dx;
+  #endif
+
+#ifdef P4_TO_P8
+    double d = sqrt(dx*dx + dy*dy + dz*dz);
+#else
+    double d = sqrt(dx*dx + dy*dy);
+#endif
+
+    p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0];
+
+    double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
+#endif
+
+    double x = (double)((*quad)->x)/(double)P4EST_ROOT_LEN + tree_xmin;
+    double y = (double)((*quad)->y)/(double)P4EST_ROOT_LEN + tree_ymin;
+#ifdef P4_TO_P8
+    double z = (double)((*quad)->z)/(double)P4EST_ROOT_LEN + tree_zmin;
+#endif
+
+#ifdef P4_TO_P8
+    CF_3&  phi = *(data->phi);
+#else
+    CF_2&  phi = *(data->phi);
+#endif
+    double lip = data->lip;
+
+    double f;
+#ifdef P4_TO_P8
+    for (unsigned short ck = 0; ck<2; ++ck)
+#endif
+    for (unsigned short cj = 0; cj<2; ++cj)
+      for (unsigned short ci = 0; ci <2; ++ci){
+#ifdef P4_TO_P8
+        f = phi(x+ci*dx, y+cj*dy, z+ck*dz);
+#else
+        f = phi(x+ci*dx, y+cj*dy);
+#endif
+        if (fabs(f - data->min_thr) <= 0.5*lip*d ||
+            fabs(f - data->max_thr) <= 0.5*lip*d ||
+            (data->min_thr <= f && f <= data->max_thr))
+        {
+          return P4EST_FALSE;
+        }
+      }
+
+    return P4EST_TRUE;
+  }
+}
+
 p4est_bool_t
 refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
@@ -328,17 +463,34 @@ p4est_bool_t
 refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
   (void) which_tree;
-  (void) p4est;
-  return (*(p4est_bool_t*)quad->p.user_data);
+  (void) quad;
+
+  splitting_criteria_marker_t *sp = (splitting_criteria_marker_t*)p4est->user_pointer;
+#ifdef CASL_THROWS
+  if (sp->is_empty())
+    throw std::invalid_argument("[CASL_ERROR]: cell markers are empty. Did you forget to mark them for refinement?");
+#endif
+  return sp->pop_front();
 }
 
 p4est_bool_t
 coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
 {
   (void) which_tree;
-  (void) p4est;
+  (void) quad;
+
+  splitting_criteria_marker_t *sp = (splitting_criteria_marker_t*)p4est->user_pointer;
+#ifdef CASL_THROWS
+  if (sp->is_empty())
+    throw std::invalid_argument("[CASL_ERROR]: cell markers are empty. Did you forget to mark them for coarsening?");
+#endif
+
+  p4est_bool_t coarsen[P4EST_CHILDREN];
   for (short i=0; i<P4EST_CHILDREN; i++)
-    if ((*(p4est_bool_t*)quad[i]->p.user_data) == P4EST_FALSE) return P4EST_FALSE;
+    coarsen[i] = sp->pop_front();
+
+  for (short i=0; i<P4EST_CHILDREN; i++)
+    if (!coarsen[i]) return P4EST_FALSE;
 
   return P4EST_TRUE;
 }

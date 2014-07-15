@@ -49,6 +49,7 @@ static const int    p4est_vtk_write_rank = 1;
 static const int    p4est_vtk_wrap_rank = 0;
 
 #undef P4EST_VTK_COMPRESSION
+//#undef P4EST_VTK_BINARY
 
 #ifndef P4EST_VTK_DOUBLES
 #define P4EST_VTK_FLOAT_NAME "Float32"
@@ -1026,7 +1027,7 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
 
 		char vtu_sourcename[BUFSIZ];
 		/* scan the filename in reverse to get the first '/' char */
-		size_t pv_end = strlen(filename)+1;
+    size_t pv_end = strlen(filename);
 		size_t pv_beg = pv_end;
 		while(pv_beg>0 && filename[pv_beg-1] != '/')
 			--pv_beg;

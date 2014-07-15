@@ -926,6 +926,7 @@ void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_pe
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_time_1st_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
 
+// BUG: Somthing wrong with this method -- for the biomol example it messes up with the level-set ...
 void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_petsc, int number_of_iteration, double limit )
 {
   PetscErrorCode ierr;
