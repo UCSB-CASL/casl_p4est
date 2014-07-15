@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
     /* create the macro mesh */
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t brick;
-    connectivity = my_p4est_brick_new(1, 1, 1, &brick);
+    connectivity = my_p4est_brick_new(2, 2, 2, &brick);
 
     w2.start("reading pqr molecule");
     BioMolecule mol(brick, mpi);

@@ -89,10 +89,10 @@ void BioMolecule::read(const string &pqr) {
     L_ = MAX(L_, fabs(atoms[i].y - yc_));
     L_ = MAX(L_, fabs(atoms[i].z - zc_));
   }
-  L_ *= 2.1;
+  L_ *= 2.5;
 
   // scale and recenter the molecule to middle
-  translate(0.5, 0.5, 0.5);
+  translate(0.5*Dx_, 0.5*Dy_, 0.5*Dz_);
   scale(0.25);
   partition_atoms();
 }
@@ -138,19 +138,21 @@ void BioMolecule::partition_atoms(){
 #ifdef FAST_SURFACE_COMPUTATION
   if (is_partitioned) return;
 
-  int N = MIN((int)floor(D_/rmax_), MAX_BLOCK_SIZE); // to ensure locality
-  double dx = Dx_/N;
-  double dy = Dy_/N;
-  double dz = Dz_/N;
+  int N = MIN((int)floor(L_/rmax_), MAX_BLOCK_SIZE); // to ensure locality
+
+  double d = L_/N;
+  double xmin = xc_ - 0.5*L_;
+  double ymin = yc_ - 0.5*L_;
+  double zmin = zc_ - 0.5*L_;
 
   cell2atom.resize(N*N*N);
   cell_buffer.resize((N+1)*(N+1)*(N+1));
 
   for (size_t i = 0; i<atoms.size(); i++) {
     const Atom& a = atoms[i];
-    int ci = floor(a.x / dx);
-    int cj = floor(a.y / dy);
-    int ck = floor(a.z / dz);
+    int ci = floor((a.x-xmin) / d);
+    int cj = floor((a.y-ymin) / d);
+    int ck = floor((a.z-zmin) / d);
 
     int cell_idx = N*N*ck + N*cj + ci;
     cell2atom[cell_idx].push_back(i);    
@@ -158,11 +160,11 @@ void BioMolecule::partition_atoms(){
 
   // update buffer values
   for (int ck = 0; ck <= N; ck++){
-    double z = ck*dx;
+    double z = ck*d + zmin;
     for (int cj = 0; cj <= N; cj++) {
-      double y = cj*dy;
+      double y = cj*d + ymin;
       for (int ci = 0; ci <= N; ci++) {
-        double x = ci*dz;
+        double x = ci*d + xmin;
         int idx = (N+1)*(N+1)*ck + (N+1)*cj + ci;
 
         const Atom& a = atoms[0];
@@ -195,14 +197,22 @@ double BioMolecule::operator ()(double x, double y, double z) const {
 
 #ifdef FAST_SURFACE_COMPUTATION
   // find the cell index for the point
-  int N = MIN((int)floor(D_/rmax_), MAX_BLOCK_SIZE);
-  double dx = Dx_/N;
-  double dy = Dy_/N;
-  double dz = Dz_/N;
+  int N = MIN((int)floor(L_/rmax_), MAX_BLOCK_SIZE);
+  double d = L_/N;
+  double xmin = xc_ - 0.5*L_;
+  double ymin = yc_ - 0.5*L_;
+  double zmin = zc_ - 0.5*L_;
 
-  int ci = floor(x / dx);
-  int cj = floor(y / dy);
-  int ck = floor(z / dz);
+  int ci = floor((x-xmin) / d);
+  int cj = floor((y-ymin) / d);
+  int ck = floor((z-zmin) / d);
+
+  if (ci < 0)        ci = 0;
+  else if (ci > N-1) ci = N-1;
+  if (cj < 0)        cj = 0;
+  else if (cj > N-1) cj = N-1;
+  if (ck < 0)        ck = 0;
+  else if (ck > N-1) ck = N-1;
 
   bool is_phi_computed = false;
   for (int k = ck-1; k <= ck+1; k++){
@@ -227,7 +237,12 @@ double BioMolecule::operator ()(double x, double y, double z) const {
   }
 
   if (!is_phi_computed) {
-    double s [] = {x/dx - ci, (ci+1) - x/dx, y/dy - cj, (cj+1) - y/dy, z/dz - ck, (ck+1) - z/dz};
+    double s [] = {(x-xmin)/d - ci, (ci+1) - (x-xmin)/d, (y-ymin)/d - cj, (cj+1) - (y-ymin)/d, (z-zmin)/d - ck, (ck+1) - (z-zmin)/d};
+    bool is_outside_box = false;
+    for (int i=0; i<2*P4EST_DIM; i++){
+      if (s[i] < 0)      {s[i] = 0; is_outside_box = true;}
+      else if (s[i] > 1) {s[i] = 1; is_outside_box = true;}
+    }
     double w [] = {s[1]*s[3]*s[5],
                    s[0]*s[3]*s[5],
                    s[1]*s[2]*s[5],
@@ -246,6 +261,9 @@ double BioMolecule::operator ()(double x, double y, double z) const {
           w[5]*cell_buffer[idx + (N+1)*(N+1) + 1] +
           w[6]*cell_buffer[idx + (N+1)*(N+1) + N+1] +
           w[7]*cell_buffer[idx + (N+1)*(N+1) + N+1 + 1];
+
+    if (is_outside_box)
+      phi -= sqrt(SQR(x - (ci+0.5)*d - xmin) + SQR(y - (cj+0.5)*d - ymin) + SQR(z - (ck+0.5)*d - zmin));
   }
 #else
   for (size_t m = 0; m < atoms.size(); m++) {
@@ -262,7 +280,7 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
   const p4est_connectivity_t *connectivity = p4est->connectivity;
 
   // split based on the SAS distance
-  splitting_criteria_threshold_cf_t sp_thr(sp->min_lvl, sp->max_lvl, -0.05*rp_, 1.5*rp_, this, sp->lip);
+  splitting_criteria_threshold_cf_t sp_thr(sp->min_lvl, sp->max_lvl, -1.5*rp_, 1.5*rp_, this, sp->lip);
   p4est->user_pointer = &sp_thr;
   p4est_refine(p4est, P4EST_TRUE, refine_threshold_cf, NULL);
 
@@ -279,87 +297,88 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
   PetscErrorCode ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   sample_cf_on_nodes(p4est, nodes, *this, phi);
 
-  // subtract off the probe radius to get SES
-  my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
-  my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
-  neighbors.init_neighbors();
-  my_p4est_level_set ls(&neighbors);
+    // subtract off the probe radius to get SES
+    my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
+    my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
+    neighbors.init_neighbors();
+    my_p4est_level_set ls(&neighbors);
 
-  ls.reinitialize_2nd_order(phi, 10);
-  subtract_probe_radius(phi);
+    int it = floor(4.0*rp_/ (D_/ (1<<sp->max_lvl)));
+    ls.reinitialize_2nd_order(phi, MAX(it, 10));
+    subtract_probe_radius(phi);
 
-  /* construct a newby refining only close to the SES. We do this in a
-   * level by level approach and tag appropriate cells in each step for
-   * refinement
-   */
-  p4est_t *p4est_tmp = p4est_new(p4est->mpicomm, p4est->connectivity, 0, NULL, NULL);
-  p4est_ghost_t *ghost_tmp = NULL;
-  p4est_nodes_t *nodes_tmp = NULL;
-  Vec phi_tmp = NULL;
+    /* construct a newby refining only close to the SES. We do this in a
+     * level by level approach and tag appropriate cells in each step for
+     * refinement
+     */
+    p4est_t *p4est_tmp = p4est_new(p4est->mpicomm, p4est->connectivity, 0, NULL, NULL);
+    p4est_ghost_t *ghost_tmp = NULL;
+    p4est_nodes_t *nodes_tmp = NULL;
+    Vec phi_tmp = NULL;
 
-  for (int l = 0; l <= sp->max_lvl; l++) {
-    p4est_partition(p4est_tmp, NULL);
-    ghost_tmp = p4est_ghost_new(p4est_tmp, P4EST_CONNECT_FULL);
-    nodes_tmp = my_p4est_nodes_new(p4est_tmp, ghost_tmp);
-    ierr = VecCreateGhostNodes(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);
+    for (int l = 0; l <= sp->max_lvl; l++) {
+      p4est_partition(p4est_tmp, NULL);
+      ghost_tmp = p4est_ghost_new(p4est_tmp, P4EST_CONNECT_FULL);
+      nodes_tmp = my_p4est_nodes_new(p4est_tmp, ghost_tmp);
+      ierr = VecCreateGhostNodes(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);
 
-    /* buffer all the points in the current tree */
-    InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, &brick, &neighbors);
-    double *phi_tmp_p;
-    ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+      /* buffer all the points in the current tree */
+      InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, &brick, &neighbors);
+      double *phi_tmp_p;
+      ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
 
-    for (size_t i = 0; i<nodes_tmp->indep_nodes.elem_count; i++) {
-      const p4est_indep_t *ni = (const p4est_indep_t *)sc_array_index(&nodes_tmp->indep_nodes, i);
+      for (size_t i = 0; i<nodes_tmp->indep_nodes.elem_count; i++) {
+        const p4est_indep_t *ni = (const p4est_indep_t *)sc_array_index(&nodes_tmp->indep_nodes, i);
 
-      p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*ni->p.piggy3.which_tree + 0];
+        p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*ni->p.piggy3.which_tree + 0];
 
-      double tree_xmin = connectivity->vertices[3*v_mmm + 0];
-      double tree_ymin = connectivity->vertices[3*v_mmm + 1];
-      double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-      double xyz [P4EST_DIM] =
-      {
-        node_x_fr_i(ni) + tree_xmin,
-        node_y_fr_j(ni) + tree_ymin,
-        node_z_fr_k(ni) + tree_zmin
-      };
+        double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+        double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+        double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+        double xyz [P4EST_DIM] =
+        {
+          node_x_fr_i(ni) + tree_xmin,
+          node_y_fr_j(ni) + tree_ymin,
+          node_z_fr_k(ni) + tree_zmin
+        };
 
-      phi_interp.add_point_to_buffer(i, xyz);
+        phi_interp.add_point_to_buffer(i, xyz);
+      }
+      phi_interp.set_input_parameters(phi, linear);
+      phi_interp.interpolate(phi_tmp);
+
+      VecGhostUpdateBegin(phi_tmp, INSERT_VALUES, SCATTER_FORWARD);
+      VecGhostUpdateEnd(phi_tmp, INSERT_VALUES, SCATTER_FORWARD);
+
+      ostringstream oss;
+      oss << "mol." << l;
+      my_p4est_vtk_write_all(p4est_tmp, nodes_tmp, ghost_tmp,
+                             P4EST_TRUE, P4EST_TRUE,
+                             1, 0, oss.str().c_str(),
+                             VTK_POINT_DATA, "phi", phi_tmp_p);
+
+      /* dont do the final refinement */
+      if (l == sp->max_lvl) break;
+
+      /* refine the tree */
+      splitting_criteria_discrete_t sp_tag(p4est_tmp, sp->min_lvl, sp->max_lvl, sp->lip);
+      sp_tag.mark_cells_for_refinement(nodes_tmp, phi_tmp_p);
+      ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+
+      p4est_tmp->user_pointer = &sp_tag;
+      p4est_refine(p4est_tmp, P4EST_FALSE, refine_marked_quadrants, NULL);
+
+      /* free memory */
+      ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
+      p4est_ghost_destroy(ghost_tmp);
+      p4est_nodes_destroy(nodes_tmp);
     }
-    phi_interp.set_input_parameters(phi, linear);
-    phi_interp.interpolate(phi_tmp);
 
-    VecGhostUpdateBegin(phi_tmp, INSERT_VALUES, SCATTER_FORWARD);
-    VecGhostUpdateEnd(phi_tmp, INSERT_VALUES, SCATTER_FORWARD);
-
-    ostringstream oss;
-    oss << "mol." << l;
-    my_p4est_vtk_write_all(p4est_tmp, nodes_tmp, ghost_tmp,
-                           P4EST_TRUE, P4EST_TRUE,
-                           1, 0, oss.str().c_str(),
-                           VTK_POINT_DATA, "phi", phi_tmp_p);
-
-    /* dont do the final refinement */
-    if (l == sp->max_lvl) break;
-
-    /* refine the tree */
-    splitting_criteria_discrete_t sp_tag(p4est_tmp, sp->min_lvl, sp->max_lvl, sp->lip);
-    sp_tag.mark_cells_for_refinement(nodes_tmp, phi_tmp_p);
-    ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
-
-    p4est_tmp->user_pointer = &sp_tag;
-    p4est_refine(p4est_tmp, P4EST_FALSE, refine_marked_quadrants, NULL);
-
-    /* free memory */
-    ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
-    p4est_ghost_destroy(ghost_tmp);
-    p4est_nodes_destroy(nodes_tmp);
-  }
-
-  /* free memory and reset pointers */
-  p4est_destroy(p4est); p4est = p4est_tmp; p4est->user_pointer = &sp;
-  p4est_ghost_destroy(ghost); ghost = ghost_tmp;
-  p4est_nodes_destroy(nodes); nodes = nodes_tmp;
-  ierr = VecDestroy(phi); CHKERRXX(ierr); phi = phi_tmp;
+    /* free memory and reset pointers */
+    p4est_destroy(p4est); p4est = p4est_tmp; p4est->user_pointer = &sp;
+    p4est_ghost_destroy(ghost); ghost = ghost_tmp;
+    p4est_nodes_destroy(nodes); nodes = nodes_tmp;
+    ierr = VecDestroy(phi); CHKERRXX(ierr); phi = phi_tmp;
 }
 
 
