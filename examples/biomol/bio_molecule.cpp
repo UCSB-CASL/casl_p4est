@@ -611,8 +611,9 @@ void BioMolecule::remove_internal_cavities(p8est_t *&p4est, p8est_nodes_t *&node
 
 }
 
-BioMoleculeSolver::BioMoleculeSolver(p8est_t *p4est, p8est_nodes_t *nodes, p8est_ghost_t *ghost, my_p4est_brick_t &brick)
-  : p4est(p4est), nodes(nodes), ghost(ghost), brick(brick),
+BioMoleculeSolver::BioMoleculeSolver(const BioMolecule &mol, p8est_t *p4est, p8est_nodes_t *nodes, p8est_ghost_t *ghost, my_p4est_brick_t &brick)
+  : mol(&mol),
+    p4est(p4est), nodes(nodes), ghost(ghost), brick(brick),
     hierarchy(p4est, ghost, &brick),
     neighbors(&hierarchy, nodes)
 {}
@@ -624,9 +625,8 @@ void BioMoleculeSolver::set_electrolyte_parameters(double edl, double epsilon_mo
   this->mue_p = epsilon_electrolyte;
 }
 
-void BioMoleculeSolver::set_molecule_parameters(const BioMolecule &mol, Vec phi)
+void BioMoleculeSolver::set_phi(Vec phi)
 {
-  this->mol = &mol;
   this->phi = phi;
 }
 

@@ -39,13 +39,15 @@ int main(int argc, char *argv[]) {
     cmd.add_option("lmax", "the max level of the tree");
     cmd.add_option("lip", "Lipchitz constant for the levelset");
     cmd.add_option("pqr", "path to the pqr file");
-    cmd.add_option("folder", "folder in which pqr files are located");
+    cmd.add_option("input-dir", "folder in which pqr files are located");
+    cmd.add_option("output-dir", "folder to save the results in");
     cmd.parse(argc, argv);
 
     // decide on the type and value of the boundary conditions
     const int lmin   = cmd.get("lmin", 0);
     const int lmax   = cmd.get("lmax", 10);
-    const string folder = cmd.get<string> ("folder", "../../examples/biomol");
+    const string folder = cmd.get<string> ("input-dir", "../../examples/biomol");
+    const string output_folder = cmd.get<string>("output-dir");
     const string pqr = cmd.get<string>("pqr", "1d65");
     const double lip = cmd.get("lip", 1.5);
 
@@ -76,13 +78,31 @@ int main(int argc, char *argv[]) {
     mol.construct_SES_by_reinitialization(p4est, nodes, ghost, brick, phi);
     w2.stop(); w2.read_duration();
 
+    p4est_gloidx_t global_num_quadrants = p4est->global_num_quadrants;
+    p4est_gloidx_t global_num_nodes = 0;
+    for (int i = 0; i<p4est->mpisize; i++){
+      PetscPrintf(p4est->mpicomm, "%ld\n", nodes->global_owned_indeps[i]);
+      global_num_nodes += nodes->global_owned_indeps[i];
+    }
+
+    PetscPrintf(p4est->mpicomm, "global number of nodes     = %7ld \n"
+                                "global number of quadrants = %7ld \n", global_num_nodes, global_num_quadrants);
+
     w2.start("removing internal cavities");
     mol.remove_internal_cavities(p4est, nodes, ghost, brick, phi);
     w2.stop(); w2.read_duration();
 
-    BioMoleculeSolver solver(p4est, nodes, ghost, brick);
+    global_num_quadrants = p4est->global_num_quadrants;
+    global_num_nodes = 0;
+    for (int i = 0; i<p4est->mpisize; i++)
+      global_num_nodes += nodes->global_owned_indeps[i];
+
+    PetscPrintf(p4est->mpicomm, "global number of nodes     = %7ld \n"
+                                "global number of quadrants = %7ld \n", global_num_nodes, global_num_quadrants);
+
+    BioMoleculeSolver solver(mol, p4est, nodes, ghost, brick);
     solver.set_electrolyte_parameters(10*sqrt(10), 2, 80);
-    solver.set_molecule_parameters(mol, phi);
+    solver.set_phi(phi);
 
     w2.start("solving pb on the molecule");
     Vec psi_mol, psi_elec;
@@ -95,9 +115,10 @@ int main(int argc, char *argv[]) {
     ierr = VecGetArray(psi_mol,  &psi_mol_p);  CHKERRXX(ierr);
     ierr = VecGetArray(psi_elec, &psi_elec_p); CHKERRXX(ierr);
 
+    ostringstream oss; oss << output_folder + "/" + pqr;
     my_p4est_vtk_write_all(p4est, nodes, NULL,
                            P4EST_TRUE, P4EST_TRUE,
-                           3, 0, pqr.c_str(),
+                           3, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "psi_mol", psi_mol_p,
                            VTK_POINT_DATA, "phi_elec", psi_elec_p);

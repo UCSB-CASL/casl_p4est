@@ -47,6 +47,7 @@ public:
 };
 
 class BioMoleculeSolver{
+  const BioMolecule* mol;
   p4est_t* p4est;
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
@@ -62,15 +63,14 @@ class BioMoleculeSolver{
 
   double edl, mue_p, mue_m;
 
-  const BioMolecule* mol;
   Vec phi, psi_bar;
 
   void solve_singular_part();
 
 public:
-  BioMoleculeSolver(p4est_t* p4est, p4est_nodes_t* nodes, p4est_ghost_t *ghost, my_p4est_brick_t& brick);
+  BioMoleculeSolver(const BioMolecule& mol, p4est_t* p4est, p4est_nodes_t* nodes, p4est_ghost_t *ghost, my_p4est_brick_t& brick);
   void set_electrolyte_parameters(double edl, double mue_p, double mue_m);
-  void set_molecule_parameters(const BioMolecule& mol, Vec phi);
+  void set_phi(Vec phi);
   void solve_linear(Vec& psi_molecule, Vec &psi_electrolyte);
   void solve_nonlinear(Vec& psi_molecule, Vec &psi_electrolyte, int itmax = 10, double tol = 1e-6);
 };
