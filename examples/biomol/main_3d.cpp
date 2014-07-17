@@ -29,6 +29,7 @@ int main(int argc, char *argv[]) {
   try{
     mpi_context_t mpi = {MPI_COMM_WORLD, 0, 0};
     Session mpi_session;
+    PetscErrorCode ierr;
     mpi_session.init(argc, argv, mpi.mpicomm);
     MPI_Comm_size (mpi.mpicomm, &mpi.mpisize);
     MPI_Comm_rank (mpi.mpicomm, &mpi.mpirank);
@@ -54,7 +55,7 @@ int main(int argc, char *argv[]) {
     /* create the macro mesh */
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t brick;
-    connectivity = my_p4est_brick_new(2, 2, 2, &brick);
+    connectivity = my_p4est_brick_new(1, 1, 1, &brick);
 
     w2.start("reading pqr molecule");
     BioMolecule mol(brick, mpi);
@@ -63,7 +64,6 @@ int main(int argc, char *argv[]) {
     w2.stop(); w2.read_duration();
 
     /* create the p4est */
-    w2.start("constructing the grid and initializing level-set");
     p4est_t *p4est = p4est_new(mpi.mpicomm, connectivity, 0, NULL, NULL);
     splitting_criteria_t split(lmin, lmax, lip);
     p4est->user_pointer = (void*)(&split);
@@ -71,20 +71,45 @@ int main(int argc, char *argv[]) {
     p4est_nodes_t *nodes;
     p4est_ghost_t *ghost;
     Vec phi;
+    w2.start("constructing the grid and initializing level-set");
+//    mol.construct_SES_by_advection(p4est, nodes, ghost, brick, phi);
     mol.construct_SES_by_reinitialization(p4est, nodes, ghost, brick, phi);
     w2.stop(); w2.read_duration();
 
+    w2.start("removing internal cavities");
+    mol.remove_internal_cavities(p4est, nodes, ghost, brick, phi);
+    w2.stop(); w2.read_duration();
+
+    BioMoleculeSolver solver(p4est, nodes, ghost, brick);
+    solver.set_electrolyte_parameters(10*sqrt(10), 2, 80);
+    solver.set_molecule_parameters(mol, phi);
+
+    w2.start("solving pb on the molecule");
+    Vec psi_mol, psi_elec;
+    solver.solve_nonlinear(psi_mol, psi_elec);
+    w2.stop(); w2.read_duration();
+
     w2.start("saving vtk file");
-    double *phi_p;
-    PetscErrorCode ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+    double *phi_p,*psi_mol_p, *psi_elec_p;
+    ierr = VecGetArray(phi,      &phi_p); CHKERRXX(ierr);
+    ierr = VecGetArray(psi_mol,  &psi_mol_p);  CHKERRXX(ierr);
+    ierr = VecGetArray(psi_elec, &psi_elec_p); CHKERRXX(ierr);
+
     my_p4est_vtk_write_all(p4est, nodes, NULL,
                            P4EST_TRUE, P4EST_TRUE,
-                           1, 0, pqr.c_str(),
-                           VTK_POINT_DATA, "phi", phi_p);
-    ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+                           3, 0, pqr.c_str(),
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "psi_mol", psi_mol_p,
+                           VTK_POINT_DATA, "phi_elec", psi_elec_p);
+
+    ierr = VecRestoreArray(phi,      &phi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(psi_mol,  &psi_mol_p);  CHKERRXX(ierr);
+    ierr = VecRestoreArray(psi_elec, &psi_elec_p); CHKERRXX(ierr);
     w2.stop(); w2.read_duration();
 
     /* release memory */
+    ierr = VecDestroy(psi_mol); CHKERRXX(ierr);
+    ierr = VecDestroy(psi_elec); CHKERRXX(ierr);
     ierr = VecDestroy(phi); CHKERRXX(ierr);
     p4est_nodes_destroy (nodes);
     p4est_ghost_destroy (ghost);

@@ -1069,9 +1069,9 @@ void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec 
 }
 
 #ifdef P4_TO_P8
-double my_p4est_level_set::advect_in_normal_direction(const CF_3& vn, Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
+double my_p4est_level_set::advect_in_normal_direction(const CF_3& vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
-double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, Vec phi_xx, Vec phi_yy)
+double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy)
 #endif
 {
   /* TODO: do not allocate memory for vn */
@@ -1163,6 +1163,8 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
   }
   MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
+  dt = MIN(dt, dt_max);
+
   Vec p1, p2;
   double *p1_p, *p2_p;
   ierr = VecDuplicate(phi_xx_, &p1); CHKERRXX(ierr);
@@ -1251,9 +1253,9 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
 }
 
 #ifdef P4_TO_P8
-double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
+double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
-double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx, Vec phi_yy)
+double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy)
 #endif
 {
   PetscErrorCode ierr;
@@ -1317,6 +1319,8 @@ double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec
     dt_local = MIN(dt_local, 0.8*ABS(s_min/vn_p[n]));
   }
   MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+
+  dt = MIN(dt, dt_max);
 
   Vec p1, p2;
   double *p1_p, *p2_p;
