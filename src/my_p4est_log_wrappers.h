@@ -32,7 +32,7 @@ my_p4est_coarsen(p4est_t *p4est, int coarsen_recursive,
                  p4est_coarsen_t coarsen_fn, p4est_init_t init_fn);
 
 void
-my_p4est_partition(p4est_t *p4est, p4est_weight_t weight_fn);
+my_p4est_partition(p4est_t *p4est, int allow_for_coarsening, p4est_weight_t weight_fn);
 
 void
 my_sc_notify(int *receivers, int num_receivers,

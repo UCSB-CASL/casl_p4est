@@ -139,12 +139,13 @@ int main (int argc, char* argv[]){
 
     // Finally re-partition
     w2.start("partition");
-    p4est_partition(p4est, NULL);
+    p4est_partition(p4est, P4EST_FALSE, NULL);
     w2.stop(); w2.read_duration();
 
     // Create the ghost structure
     w2.start("ghost");
     p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+    p4est_ghost_expand(p4est, ghost);
     w2.stop(); w2.read_duration();
 
     // generate the node data structure
@@ -163,7 +164,7 @@ int main (int argc, char* argv[]){
     w2.stop(); w2.read_duration();
 
     std::ostringstream grid_name; grid_name << P4EST_DIM << "d_grid";
-    my_p4est_vtk_write_all(p4est, nodes, NULL,
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            0, 0, grid_name.str().c_str());
 
@@ -172,14 +173,8 @@ int main (int argc, char* argv[]){
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     std::ostringstream hierarchy_name; hierarchy_name << P4EST_DIM << "d_hierrchy";
     hierarchy.write_vtk(hierarchy_name.str().c_str());
-    my_p4est_node_neighbors_t qnnn(&hierarchy, nodes);
-    qnnn.init_neighbors();
-
-    grid_name.str(""); grid_name << P4EST_DIM << "d_grid_qnnn_" << p4est->mpirank << "_" << p4est->mpisize;
-    FILE *qFile = fopen(grid_name.str().c_str(), "w");
-    for (p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++)
-      qnnn[n].print_debug(qFile);
-    fclose(qFile);
+    my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
+//    neighbors.init_neighbors();
 
     Vec u_xx, u_yy;
     double *u_xx_p, *u_yy_p;
@@ -191,32 +186,34 @@ int main (int argc, char* argv[]){
     ierr = VecCreateGhostNodes(p4est, nodes, &u_zz); CHKERRXX(ierr);
 #endif
 
-    double u_xx_min, u_xx_max;
-    double u_yy_min, u_yy_max;
+    double *u_p;
+    ierr = VecGetArray(u, &u_p); CHKERRXX(ierr);
+
 #ifdef P4_TO_P8
-    double u_zz_min, u_zz_max;
 //    qnnn.second_derivatives_central(u, u_xx, u_yy, u_zz);
     ierr = VecGetArray(u_zz, &u_zz_p); CHKERRXX(ierr);
 #else
-    qnnn.second_derivatives_central(u, u_xx, u_yy);
+//    qnnn.second_derivatives_central(u, u_xx, u_yy);
 #endif
     ierr = VecGetArray(u_xx, &u_xx_p); CHKERRXX(ierr);
     ierr = VecGetArray(u_yy, &u_yy_p); CHKERRXX(ierr);
+    for (p4est_topidx_t i = p4est->first_local_tree; i <= p4est->last_local_tree; i++) {
+      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, i);
+      for (size_t q = 0; q<tree->quadrants.elem_count; q++) {
+        p4est_locidx_t qu = q + tree->quadrants_offset;
 
-    ierr = VecMax(u_xx, NULL, &u_xx_max); CHKERRXX(ierr);
-    ierr = VecMin(u_xx, NULL, &u_xx_min); CHKERRXX(ierr);
-    ierr = VecMax(u_yy, NULL, &u_yy_max); CHKERRXX(ierr);
-    ierr = VecMin(u_yy, NULL, &u_yy_min); CHKERRXX(ierr);
+        for (int j = 0; j < P4EST_CHILDREN; j++){
+          int idx = nodes->local_nodes[qu*P4EST_CHILDREN + j];
+          quad_neighbor_nodes_of_node_t qnnn;
+          neighbors.get_neighbors(idx, qnnn);
+          u_xx_p[idx] = qnnn.dxx_central(u_p);
+          u_yy_p[idx] = qnnn.dyy_central(u_p);
 #ifdef P4_TO_P8
-    ierr = VecMax(u_zz, NULL, &u_zz_max); CHKERRXX(ierr);
-    ierr = VecMin(u_zz, NULL, &u_zz_min); CHKERRXX(ierr);
+          u_zz_p[idx] = qnnn.dzz_central(u_p);
 #endif
-
-    PetscPrintf(p4est->mpicomm, "d_u_xx = %1.12E\n", u_xx_max - u_xx_min);
-    PetscPrintf(p4est->mpicomm, "d_u_yy = %1.12E\n", u_yy_max - u_yy_min);
-#ifdef P4_TO_P8
-    PetscPrintf(p4est->mpicomm, "d_u_zz = %1.12E\n", u_zz_max - u_zz_min);
-#endif
+        }
+      }
+    }
 
     std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi->mpisize;
     double *phi_p;
@@ -225,6 +222,7 @@ int main (int argc, char* argv[]){
                            P4EST_TRUE, P4EST_TRUE,
                            1 + P4EST_DIM, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "u", u_p,
                            VTK_POINT_DATA, "u_xx", u_xx_p,
                            VTK_POINT_DATA, "u_yy", u_yy_p
                        #ifdef P4_TO_P8
@@ -232,15 +230,12 @@ int main (int argc, char* argv[]){
                        #endif
                            );
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(u,    &u_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(u_xx, &u_xx_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(u_yy, &u_yy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
     ierr = VecRestoreArray(u_xx, &u_xx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(u_yy, &u_yy_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(u_zz, &u_zz_p); CHKERRXX(ierr);
-#else
-    ierr = VecRestoreArray(u_xx, &u_xx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(u_yy, &u_yy_p); CHKERRXX(ierr);
 #endif
-
 
     // move the circle to create another grid
     cf_data.max_lvl -= 2;
@@ -256,7 +251,7 @@ int main (int argc, char* argv[]){
     p4est_t *p4est_np1 = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
     p4est_np1->user_pointer = (void*)&cf_data;
     p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
-    p4est_partition(p4est_np1, NULL);
+    p4est_partition(p4est_np1, P4EST_FALSE, NULL);
     w2.stop(); w2.read_duration();
 
     /*
@@ -272,7 +267,7 @@ int main (int argc, char* argv[]){
     w2.stop(); w2.read_duration();
 
     // Create an interpolating function
-    InterpolatingFunctionNodeBase phi_func(p4est, nodes, ghost, brick, &qnnn);
+    InterpolatingFunctionNodeBase phi_func(p4est, nodes, ghost, brick, &neighbors);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
