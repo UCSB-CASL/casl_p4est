@@ -40,46 +40,32 @@ void my_p4est_node_neighbors_t::init_neighbors()
 
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t, 0, 0, 0, 0); CHKERRXX(ierr);
-  neighbors.resize(nodes->num_owned_indeps);
-  ghost_qnnn_exception_log.resize(nodes->indep_nodes.elem_count - nodes->num_owned_indeps);
-  ghost_qnnn_idx.resize(nodes->indep_nodes.elem_count - nodes->num_owned_indeps);
+  neighbors.resize(nodes->indep_nodes.elem_count);
 
-  /* We loop over ALL nodes and try to find their neighbors. This following method will potentially
-   * throw exception. However, here we can only handle exceptions that are thrown for ghost node. As
-   * a result we catch them, log their error message, and simply dont copy the qnnn.
-   *
-   * If an exception is thrown for a local node, it indicates a serious error in the data structure
-   * and since we cannot handle here, we merely let it propagate to the higher level try block for
-   * the user to handle. If most cases simply crashes the code with an error message that will be
-   * useful for debugging.
+#ifdef CASL_THROWS
+  is_qnnn_valid.resize(nodes->indep_nodes.elem_count);
+#endif
+
+  /* construct qnnn for ALL nodes. Note that we will not throw if a qnnn is not valid for
+   * a node, e.g. a ghost node that is part of the last layer ghost cells. Instead, we set
+   * a flag and postpone the actual throw if the user actually tries to access this qnnn.
    */
-  for ( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++)
-    get_neighbors(n, neighbors[n]);
-
-  quad_neighbor_nodes_of_node_t qnnn;
-  for ( size_t n = nodes->num_owned_indeps; n < nodes->indep_nodes.elem_count; ++n){
-    p4est_locidx_t g = n - nodes->num_owned_indeps;
-    try {
-      get_neighbors(n, qnnn);
-
-      neighbors.push_back(qnnn);
-      ghost_qnnn_idx[g] = neighbors.size() - 1;
-    } catch (const ghost_qnnn_exception& e) {
-      ghost_qnnn_idx[g] = NOT_A_VALID_QNNN;
-      ghost_qnnn_exception_log[g] = e.what();
-    }
+  for ( size_t n = 0; n < nodes->indep_nodes.elem_count; n++) {
+#ifdef CASL_THROWS
+    is_qnnn_valid[n] = !construct_neighbors(n, neighbors[n]);
+#else
+    construct_neighbors(n, neighbors[n]);
+#endif
   }
 
   is_initialized = true;
-
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_node_neighbors_t::clear_neighbors()
 {
   neighbors.clear();
-  ghost_qnnn_exception_log.clear();
-  ghost_qnnn_idx.clear();
+  is_qnnn_valid.clear();
   is_initialized = false;
 }
 
@@ -107,7 +93,7 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
   }
 }
 
-void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
+bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
 {
   p4est_connectivity_t *connectivity = p4est->connectivity;
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
@@ -148,19 +134,19 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
    * higher level try-block handle the exception.
    */
 #ifdef P4_TO_P8
-  find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
-  find_neighbor_cell_of_node(n, -1,  1, -1, quad_mpm_idx, tree_mpm_idx);
-  find_neighbor_cell_of_node(n,  1, -1, -1, quad_pmm_idx, tree_pmm_idx);
-  find_neighbor_cell_of_node(n,  1,  1, -1, quad_ppm_idx, tree_ppm_idx);
-  find_neighbor_cell_of_node(n, -1, -1,  1, quad_mmp_idx, tree_mmp_idx);
-  find_neighbor_cell_of_node(n, -1,  1,  1, quad_mpp_idx, tree_mpp_idx);
-  find_neighbor_cell_of_node(n,  1, -1,  1, quad_pmp_idx, tree_pmp_idx);
-  find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
+  find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx); if (quad_mmm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n, -1,  1, -1, quad_mpm_idx, tree_mpm_idx); if (quad_mpm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1, -1, -1, quad_pmm_idx, tree_pmm_idx); if (quad_pmm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1,  1, -1, quad_ppm_idx, tree_ppm_idx); if (quad_ppm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n, -1, -1,  1, quad_mmp_idx, tree_mmp_idx); if (quad_mmp_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n, -1,  1,  1, quad_mpp_idx, tree_mpp_idx); if (quad_mpp_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1, -1,  1, quad_pmp_idx, tree_pmp_idx); if (quad_pmp_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx); if (quad_ppp_idx == NOT_A_P4EST_QUADRANT) return true;
 #else
-  find_neighbor_cell_of_node(n, -1, -1, quad_mmm_idx, tree_mmm_idx);
-  find_neighbor_cell_of_node(n, -1,  1, quad_mpm_idx, tree_mpm_idx);
-  find_neighbor_cell_of_node(n,  1, -1, quad_pmm_idx, tree_pmm_idx);
-  find_neighbor_cell_of_node(n,  1,  1, quad_ppm_idx, tree_ppm_idx);
+  find_neighbor_cell_of_node(n, -1, -1, quad_mmm_idx, tree_mmm_idx); if (quad_mmm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n, -1,  1, quad_mpm_idx, tree_mpm_idx); if (quad_mpm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1, -1, quad_pmm_idx, tree_pmm_idx); if (quad_pmm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1,  1, quad_ppm_idx, tree_ppm_idx); if (quad_ppm_idx == NOT_A_P4EST_QUADRANT) return true;
 #endif
 
   /* create dummy root quadrant */
@@ -598,9 +584,9 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 
     node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
 #ifdef P4_TO_P8
-    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #else
-    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #endif
 
     p4est_quadrant_t *quad_tmp;
@@ -690,9 +676,9 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 
     node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
 #ifdef P4_TO_P8
-    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #else
-    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #endif
 
     p4est_quadrant_t *quad_tmp;
@@ -783,9 +769,9 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 
     node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
 #ifdef P4_TO_P8
-    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #else
-    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #endif
 
     p4est_quadrant_t *quad_tmp;
@@ -876,9 +862,9 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 
     node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
 #ifdef P4_TO_P8
-    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #else
-    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #endif
 
     p4est_quadrant_t *quad_tmp;
@@ -948,7 +934,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     const bool dk = 1;
 
     node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
-    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 
     p4est_quadrant_t *quad_tmp;
     if(quad_tmp_idx < p4est->local_num_quadrants)
@@ -1010,7 +996,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     const bool dk = 0;
 
     node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
-    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 
     p4est_quadrant_t *quad_tmp;
     if(quad_tmp_idx < p4est->local_num_quadrants)
@@ -1040,6 +1026,8 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     qnnn.d_00p_0p = qh - qnnn.d_00p_0m;
   }
 #endif
+
+  return false;
 }
 
 #ifdef P4_TO_P8
@@ -1434,35 +1422,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
     ind = hierarchy->trees[nb_tree_idx][ind].child + 4*ck + 2*cj + ci;
   }
 
-  quad = hierarchy->trees[nb_tree_idx][ind].quad;
-
-  /* NOTE: This exception, unlike most others, MUST always be thrown. This is
-   * because the init_neighbors method will always try ALL nodes, i.e. all local
-   * and ALL ghost, and catches these exceptions to decide which nodes actually
-   * have a valid qnnn and which don't. As a result, we cannot afford to disable
-   * this check.
-   *
-   * One way to avoid this, of course, is to do a first pass inside the init method
-   * to tag ghost nodes and decide which ghost nodes have a valid qnnn. That, however,
-   * comes at the price of extra pass and storage.
-   *
-   * I believe this is the most elegant way of solving this problem. If it proved to be
-   * really inefficient (which most probably wont) we can switch to that tagging approach.
-   */
-  if (quad == NOT_A_P4EST_QUADRANT) {
-    if (n < nodes->num_owned_indeps)
-      /* if exception is thrown for a local node, it most definately indicates a problem
-       * either in the 'my-p4est_hierarchy_t' implementation or that one of p4est data
-       * structures is horribly messed up! Good luck debugging this one ;)
-       */
-      throw local_qnnn_exception(n, i, j, k);
-    else
-      /* if exception is thrown for a ghost node, it simply means that the node is on an
-       * outer-most layer of ghost quadrants. If you really must calculate the neighbors,
-       * consider expanding the ghost layer by calling the 'p4est_ghost_expand' method.
-       */
-      throw ghost_qnnn_exception(n, i, j, k);
-  }
+  quad = hierarchy->trees[nb_tree_idx][ind].quad;  
 }
 
 #else
@@ -1554,34 +1514,6 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   }
 
   quad = hierarchy->trees[nb_tree_idx][ind].quad;
-
-  /* NOTE: This exception, unlike most others, MUST always be thrown. This is
-   * because the init_neighbors method will always try ALL nodes, i.e. all local
-   * and ALL ghost, and catches these exceptions to decide which nodes actually
-   * have a valid qnnn and which don't. As a result, we cannot afford to disable
-   * this check.
-   *
-   * One way to avoid this, of course, is to do a first pass inside the init method
-   * to tag ghost nodes and decide which ghost nodes have a valid qnnn. That, however,
-   * comes at the price of extra pass and storage.
-   *
-   * I believe this is the most elegant way of solving this problem. If it proved to be
-   * really inefficient (which most probably wont) we can switch to that tagging approach.
-   */
-  if (quad == NOT_A_P4EST_QUADRANT) {
-    if (n < nodes->num_owned_indeps)
-      /* if exception is thrown for a local node, it most definately indicates a problem
-       * either in the 'my-p4est_hierarchy_t' implementation or that one of p4est data
-       * structures is horribly messed up! Good luck debugging this one ;)
-       */
-      throw local_qnnn_exception(n, i, j);
-    else
-      /* if exception is thrown for a ghost node, it simply means that the node is on an
-       * outer-most layer of ghost quadrants. If you really must calculate the neighbors,
-       * consider expanding the ghost layer by calling the 'p4est_ghost_expand' method.
-       */
-      throw ghost_qnnn_exception(n, i, j);
-  }
 }
 #endif
 

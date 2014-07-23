@@ -21,62 +21,6 @@
 #include <vector>
 #include <sstream>
 
-#define NOT_A_VALID_QNNN -1
-
-class ghost_qnnn_exception:public std::exception {
-  std::string msg;
-public:
-  ghost_qnnn_exception(const std::string& msg)
-    : msg(msg)
-  {}
-#ifdef P4_TO_P8
-  ghost_qnnn_exception(p4est_locidx_t n, int i, int j, int k)
-#else
-  ghost_qnnn_exception(p4est_locidx_t n, int i, int j)
-#endif
-  {
-    std::ostringstream oss;
-    oss << "[Error]: Could not find a suitable neighboring quadrant in the (" << i << ", " << j <<
-       #ifdef P4_TO_P8
-           ", " << k <<
-       #endif
-           ") direction for the ghost node with locidx = " << n << ". If the neighborhood information on"
-           " this node is required, make sure that the ghost layer is expanded far enough by calling the"
-           " 'p4est_ghost_expand' method." << std::endl;
-
-    msg = oss.str();
-  }
-
-  const char* what() const throw() { return msg.c_str(); }
-  ~ghost_qnnn_exception() throw() {}
-};
-
-class local_qnnn_exception:public std::exception {
-  std::string msg;
-public:
-  local_qnnn_exception(const std::string& msg)
-    : msg(msg)
-  {}
-#ifdef P4_TO_P8
-  local_qnnn_exception(p4est_locidx_t n, int i, int j, int k)
-#else
-  local_qnnn_exception(p4est_locidx_t n, int i, int j)
-#endif
-  {
-    std::ostringstream oss;
-    oss << "[Error]: Could not find a suitable neighboring quadrant in the (" << i << ", " << j <<
-       #ifdef P4_TO_P8
-           ", " << k <<
-       #endif
-           ") direction for the local node with locidx = " << n << ". This is most probably a bug in the"
-           " implementation of 'my_p4est_hierarchy_t' class." << std::endl;
-    msg = oss.str();
-  }
-
-  const char* what() const throw() { return msg.c_str(); }
-  ~local_qnnn_exception() throw() {}
-};
-
 class my_p4est_node_neighbors_t {
   friend class PoissonSolverNodeBase;
   friend class PoissonSolverCellBase;
@@ -94,11 +38,12 @@ class my_p4est_node_neighbors_t {
   p4est_nodes_t *nodes;
   my_p4est_brick_t *myb;
   std::vector< quad_neighbor_nodes_of_node_t > neighbors;
-  std::vector<std::string> ghost_qnnn_exception_log;
-  std::vector<p4est_locidx_t> ghost_qnnn_idx;
+  std::vector<bool> is_qnnn_valid;
   std::vector<p4est_locidx_t> layer_nodes;
   std::vector<p4est_locidx_t> local_nodes;  
   bool is_initialized;
+
+  bool construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
 
 public:
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
@@ -137,15 +82,13 @@ public:
   inline size_t get_local_size() const { return local_nodes.size(); }
   inline p4est_locidx_t get_layer_node(size_t i) const {
 #ifdef CASL_THROWS
-    if (i > layer_nodes.size())
-      throw std::invalid_argument("[ERROR]: accessing beyod layer node size");
+    return layer_nodes.at(i);
 #endif
     return layer_nodes[i];
   }
   inline p4est_locidx_t get_local_node(size_t i) const {
 #ifdef CASL_THROWS
-    if (i > local_nodes.size())
-      throw std::invalid_argument("[ERROR]: accessing beyod local node size");
+    return local_nodes.at(i);
 #endif
     return local_nodes[i];
   }
@@ -160,50 +103,49 @@ public:
       throw std::runtime_error("[ERROR]: operator[] can only be used if nodes are buffered. Either initialize the buffer by calling"
                                "'init_neighbors()' or consider calling 'get_neighbors()' to compute the neighbors on the fly.");
 
-    if (n < nodes->num_owned_indeps)
+    if (is_qnnn_valid[n])
       return neighbors.at(n);
     else {
-      p4est_locidx_t g = n - nodes->num_owned_indeps;
-      p4est_locidx_t qnnn_idx = ghost_qnnn_idx[g];
-      if (qnnn_idx == NOT_A_VALID_QNNN)
-        throw ghost_qnnn_exception(ghost_qnnn_exception_log[g]);
-      else
-        return neighbors.at(qnnn_idx);
+      std::ostringstream oss;
+      oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
+      throw std::invalid_argument(oss.str().c_str());
     }
 #else
-    if (n < nodes->num_owned_indeps)
-      return neighbors[n];
-    else
-      return neighbors[ghost_qnnn_idx[n - nodes->num_owned_indeps]];
+    return neighbors[n];
 #endif
   }
-
-  void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
 
   inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n) const {
     if (is_initialized) {
 #ifdef CASL_THROWS
-      if (n < nodes->num_owned_indeps)
+      if (is_qnnn_valid[n])
         return neighbors.at(n);
       else {
-        p4est_locidx_t g = n - nodes->num_owned_indeps;
-        p4est_locidx_t qnnn_idx = ghost_qnnn_idx[g];
-        if (qnnn_idx == NOT_A_VALID_QNNN)
-          throw ghost_qnnn_exception(ghost_qnnn_exception_log[g]);
-        else
-          return neighbors.at(qnnn_idx);
+        std::ostringstream oss;
+        oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
+        throw std::invalid_argument(oss.str().c_str());
       }
 #else
-      if (n < nodes->num_owned_indeps)
-        return neighbors[n];
-      else
-        return neighbors[ghost_qnnn_idx[n - nodes->num_owned_indeps]];
+      return neighbors[n];
 #endif
     } else {
       quad_neighbor_nodes_of_node_t qnnn;
       get_neighbors(n, qnnn);
       return qnnn;
     }
+  }
+
+  inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const {
+#ifdef CASL_THROWS
+    bool err = construct_neighbors(n, qnnn);
+    if (err){
+      std::ostringstream oss;
+      oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
+      throw std::invalid_argument(oss.str().c_str());
+    }
+#else
+    construct_neighbors(n, qnnn);
+#endif
   }
 
   /**

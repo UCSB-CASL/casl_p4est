@@ -30,7 +30,6 @@
 #include <src/Parser.h>
 #include <src/CASL_math.h>
 
-
 using namespace std;
 
 #ifdef P4_TO_P8
@@ -52,13 +51,6 @@ struct circle:CF_3{
 private:
   double x0, y0, z0, r;
 };
-
-static struct:CF_3{
-  double operator()(double x, double y, double z) const {
-    return x*x + y*y + z*z;
-  }
-} uex;
-
 #else
 struct circle:CF_2{
   circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
@@ -75,13 +67,6 @@ struct circle:CF_2{
 private:
   double x0, y0, r;
 };
-
-static struct:CF_2{
-  double operator()(double x, double y) const {
-    return x*x + y*y;
-  }
-} uex;
-
 #endif
 
 int main (int argc, char* argv[]){
@@ -98,7 +83,6 @@ int main (int argc, char* argv[]){
     cmd.add_option("lmax", "max level of the tree");
     cmd.add_option("mode", "interpolation mode 0 = linear, 1 = quadratic, 2 = non-oscilatory quadratic");
     cmd.parse(argc, argv);
-
 
 #ifdef P4_TO_P8
     circle circ(1, 1, 1, .3);
@@ -154,15 +138,6 @@ int main (int argc, char* argv[]){
     nodes = my_p4est_nodes_new(p4est, ghost);
     w2.stop(); w2.read_duration();
 
-//    for (size_t i = 0; i < ghost->ghosts.elem_count; i++) {
-//      PetscSynchronizedPrintf(p4est->mpicomm, "[%d]: ", p4est->mpirank);
-//      p4est_locidx_t q = p4est->local_num_quadrants + i;
-//      for (short j = 0; j < P4EST_CHILDREN - 1; j++)
-//        PetscSynchronizedPrintf(p4est->mpicomm, "%4d, ", nodes->local_nodes[q*P4EST_CHILDREN + j]);
-//      PetscSynchronizedPrintf(p4est->mpicomm, "%4d\n", nodes->local_nodes[(q+1)*P4EST_CHILDREN - 1]);
-//    }
-//    PetscSynchronizedFlush(p4est->mpicomm);
-
     w2.start("computing phi");
     Vec phi;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
@@ -170,7 +145,6 @@ int main (int argc, char* argv[]){
     ierr = VecDuplicate(phi, &u); CHKERRXX(ierr);
 
     sample_cf_on_nodes(p4est, nodes, circ, phi);
-    sample_cf_on_nodes(p4est, nodes, uex, u);
     w2.stop(); w2.read_duration();
 
     std::ostringstream grid_name; grid_name << P4EST_DIM << "d_grid";
@@ -178,83 +152,25 @@ int main (int argc, char* argv[]){
                            P4EST_TRUE, P4EST_TRUE,
                            0, 0, grid_name.str().c_str());
 
-
     // set up the qnnn neighbors
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     std::ostringstream hierarchy_name; hierarchy_name << P4EST_DIM << "d_hierrchy";
     hierarchy.write_vtk(hierarchy_name.str().c_str());
+
     w2.start("finding node neighbors");
     my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
     neighbors.init_neighbors();
     w2.stop(); w2.read_duration();
-
-    Vec u_xx, u_yy;
-    double *u_xx_p, *u_yy_p;
-    ierr = VecCreateGhostNodes(p4est, nodes, &u_xx); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est, nodes, &u_yy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    Vec u_zz;
-    double *u_zz_p;
-    ierr = VecCreateGhostNodes(p4est, nodes, &u_zz); CHKERRXX(ierr);
-#endif
-
-    double *u_p;
-    ierr = VecGetArray(u, &u_p); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-//    qnnn.second_derivatives_central(u, u_xx, u_yy, u_zz);
-    ierr = VecGetArray(u_zz, &u_zz_p); CHKERRXX(ierr);
-#else
-//    qnnn.second_derivatives_central(u, u_xx, u_yy);
-#endif
-    ierr = VecGetArray(u_xx, &u_xx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(u_yy, &u_yy_p); CHKERRXX(ierr);
-    for (p4est_topidx_t i = p4est->first_local_tree; i <= p4est->last_local_tree; i++) {
-      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, i);
-      for (size_t q = 0; q<tree->quadrants.elem_count; q++) {
-        p4est_locidx_t qu = q + tree->quadrants_offset;
-
-        for (int j = 0; j < P4EST_CHILDREN; j++){
-          int idx = nodes->local_nodes[qu*P4EST_CHILDREN + j];
-//          if (idx < nodes->num_owned_indeps) {
-            quad_neighbor_nodes_of_node_t qnnn;
-            neighbors.get_neighbors(idx, qnnn);
-            u_xx_p[idx] = qnnn.dxx_central(u_p);
-            u_yy_p[idx] = qnnn.dyy_central(u_p);
-#ifdef P4_TO_P8
-            u_zz_p[idx] = qnnn.dzz_central(u_p);
-#endif
-//          }
-        }
-      }
-    }
-
-//    for (size_t i = 0; i < nodes->indep_nodes.elem_count; i++){
-//      quad_neighbor_nodes_of_node_t qnnn;
-//      neighbors.get_neighbors(i, qnnn);
-//    }
 
     std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi->mpisize;
     double *phi_p;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
-                           1 + P4EST_DIM, 0, oss.str().c_str(),
-                           VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "u", u_p,
-                           VTK_POINT_DATA, "u_xx", u_xx_p,
-                           VTK_POINT_DATA, "u_yy", u_yy_p
-                       #ifdef P4_TO_P8
-                           , VTK_POINT_DATA, "u_zz", u_zz_p
-                       #endif
-                           );
+                           1, 0, oss.str().c_str(),
+                           VTK_POINT_DATA, "phi", phi_p);
+
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(u,    &u_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(u_xx, &u_xx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(u_yy, &u_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(u_xx, &u_xx_p); CHKERRXX(ierr);
-#endif
 
     // move the circle to create another grid
     cf_data.max_lvl -= 2;
@@ -301,16 +217,14 @@ int main (int argc, char* argv[]){
       double tree_zmin = connectivity->vertices[3*v_mm + 2];
 #endif
       double xyz [P4EST_DIM] =
-      {
-        node->x == P4EST_ROOT_LEN-1 ? 1.0 + tree_xmin:(double)node->x/(double)P4EST_ROOT_LEN + tree_xmin,
-        node->y == P4EST_ROOT_LEN-1 ? 1.0 + tree_ymin:(double)node->y/(double)P4EST_ROOT_LEN + tree_ymin
+      {        
+        node_x_fr_i(node) + tree_xmin,
+        node_y_fr_j(node) + tree_ymin
 #ifdef P4_TO_P8
         ,
-        node->z == P4EST_ROOT_LEN-1 ? 1.0 + tree_zmin:(double)node->z/(double)P4EST_ROOT_LEN + tree_zmin
+        node_z_fr_k(node) + tree_zmin,
 #endif
       };
-
-      // buffer the point
       phi_func.add_point_to_buffer(i, xyz);
     }
     PetscSynchronizedFlush(p4est->mpicomm);
@@ -353,13 +267,6 @@ int main (int argc, char* argv[]){
     // finally, delete PETSc Vecs by calling 'VecDestroy' function
     ierr = VecDestroy(phi);          CHKERRXX(ierr);
     ierr = VecDestroy(phi_np1);  CHKERRXX(ierr);
-
-    ierr = VecDestroy(u);    CHKERRXX(ierr);
-    ierr = VecDestroy(u_xx); CHKERRXX(ierr);
-    ierr = VecDestroy(u_yy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecDestroy(u_zz); CHKERRXX(ierr);
-#endif
 
     // destroy the p4est and its connectivity structure
     p4est_nodes_destroy (nodes);
