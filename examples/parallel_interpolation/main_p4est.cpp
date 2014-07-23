@@ -30,6 +30,7 @@
 #include <src/Parser.h>
 #include <src/CASL_math.h>
 
+
 using namespace std;
 
 #ifdef P4_TO_P8
@@ -148,10 +149,19 @@ int main (int argc, char* argv[]){
     p4est_ghost_expand(p4est, ghost);
     w2.stop(); w2.read_duration();
 
-    // generate the node data structure
+    // generate the node data structure    
     w2.start("creating node structure");
     nodes = my_p4est_nodes_new(p4est, ghost);
     w2.stop(); w2.read_duration();
+
+//    for (size_t i = 0; i < ghost->ghosts.elem_count; i++) {
+//      PetscSynchronizedPrintf(p4est->mpicomm, "[%d]: ", p4est->mpirank);
+//      p4est_locidx_t q = p4est->local_num_quadrants + i;
+//      for (short j = 0; j < P4EST_CHILDREN - 1; j++)
+//        PetscSynchronizedPrintf(p4est->mpicomm, "%4d, ", nodes->local_nodes[q*P4EST_CHILDREN + j]);
+//      PetscSynchronizedPrintf(p4est->mpicomm, "%4d\n", nodes->local_nodes[(q+1)*P4EST_CHILDREN - 1]);
+//    }
+//    PetscSynchronizedFlush(p4est->mpicomm);
 
     w2.start("computing phi");
     Vec phi;
@@ -173,8 +183,10 @@ int main (int argc, char* argv[]){
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     std::ostringstream hierarchy_name; hierarchy_name << P4EST_DIM << "d_hierrchy";
     hierarchy.write_vtk(hierarchy_name.str().c_str());
+    w2.start("finding node neighbors");
     my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
-//    neighbors.init_neighbors();
+    neighbors.init_neighbors();
+    w2.stop(); w2.read_duration();
 
     Vec u_xx, u_yy;
     double *u_xx_p, *u_yy_p;
@@ -204,16 +216,23 @@ int main (int argc, char* argv[]){
 
         for (int j = 0; j < P4EST_CHILDREN; j++){
           int idx = nodes->local_nodes[qu*P4EST_CHILDREN + j];
-          quad_neighbor_nodes_of_node_t qnnn;
-          neighbors.get_neighbors(idx, qnnn);
-          u_xx_p[idx] = qnnn.dxx_central(u_p);
-          u_yy_p[idx] = qnnn.dyy_central(u_p);
+//          if (idx < nodes->num_owned_indeps) {
+            quad_neighbor_nodes_of_node_t qnnn;
+            neighbors.get_neighbors(idx, qnnn);
+            u_xx_p[idx] = qnnn.dxx_central(u_p);
+            u_yy_p[idx] = qnnn.dyy_central(u_p);
 #ifdef P4_TO_P8
-          u_zz_p[idx] = qnnn.dzz_central(u_p);
+            u_zz_p[idx] = qnnn.dzz_central(u_p);
 #endif
+//          }
         }
       }
     }
+
+//    for (size_t i = 0; i < nodes->indep_nodes.elem_count; i++){
+//      quad_neighbor_nodes_of_node_t qnnn;
+//      neighbors.get_neighbors(i, qnnn);
+//    }
 
     std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi->mpisize;
     double *phi_p;

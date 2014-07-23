@@ -13,6 +13,8 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
 #include <mpi.h>
+#include <string>
+#include <sstream>
 #include <fstream>
 #include <set>
 

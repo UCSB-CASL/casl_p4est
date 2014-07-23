@@ -13,9 +13,18 @@
 
 #include <vector>
 
-#define CELL_LEAF   -1
-#define NOT_A_P4EST_QUADRANT -1
-#define REMOTE_OWNER -1
+// Following defines are used for child index in HierarchyCell
+#define CELL_LEAF   -1          /* denotes a leaf cell */
+
+// Following defines are used for owner_rank in HierarchyCell
+#define REMOTE_OWNER -1         /* denotes that a cell does not have a owner in p4est representation, i.e. is a NOT_A_P4EST_QUADRANT */
+
+// Following defines are used for the quad index in HierarchyCell
+#define NOT_A_P4EST_QUADRANT -1 /* denotes a cell that does not exist in the p4est representation */
+#define NOT_A_VALID_QUADRANT -2 /* denotes a quadrant that is not valid, i.e. does not exist in the hierarchy structure (e.g.
+                                 * this is useful in dealing with quadrants that are outside the computational domain when
+                                 * searching for neighboring quadrants of a quadrant or node */
+
 
 #ifndef P4EST_VTK_CELL_TYPE
 #ifdef P4_TO_P8
