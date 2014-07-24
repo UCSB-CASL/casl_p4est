@@ -23,9 +23,9 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
   {
     double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
     double dy = dx;
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     double dz = dx;
-  #endif
+#endif
 
 #ifdef P4_TO_P8
     double d = sqrt(dx*dx + dy*dy + dz*dz);
@@ -58,18 +58,18 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
 #ifdef P4_TO_P8
     for (unsigned short ck = 0; ck<2; ++ck)
 #endif
-    for (unsigned short cj = 0; cj<2; ++cj)
-      for (unsigned short ci = 0; ci <2; ++ci){
+      for (unsigned short cj = 0; cj<2; ++cj)
+        for (unsigned short ci = 0; ci <2; ++ci){
 #ifdef P4_TO_P8
-        f[4*ck+2*cj+ci] = phi(x+ci*dx, y+cj*dy, z+ck*dz);
-        if (fabs(f[4*ck+2*cj+ci]) <= 0.5*lip*d)
-          return P4EST_TRUE;
+          f[4*ck+2*cj+ci] = phi(x+ci*dx, y+cj*dy, z+ck*dz);
+          if (fabs(f[4*ck+2*cj+ci]) <= 0.5*lip*d)
+            return P4EST_TRUE;
 #else
-        f[2*cj+ci] = phi(x+ci*dx, y+cj*dy);
-        if (fabs(f[2*cj+ci]) <= 0.5*lip*d)
-          return P4EST_TRUE;
+          f[2*cj+ci] = phi(x+ci*dx, y+cj*dy);
+          if (fabs(f[2*cj+ci]) <= 0.5*lip*d)
+            return P4EST_TRUE;
 #endif
-      }
+        }
 
 #ifdef P4_TO_P8
     if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
@@ -97,9 +97,9 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
   {
     double dx = 2*(double)P4EST_QUADRANT_LEN((*quad)->level)/(double)P4EST_ROOT_LEN;
     double dy = dx;
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     double dz = dx;
-  #endif
+#endif
 
 #ifdef P4_TO_P8
     double d = sqrt(dx*dx + dy*dy + dz*dz);
@@ -132,18 +132,18 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
 #ifdef P4_TO_P8
     for (unsigned short ck = 0; ck<2; ++ck)
 #endif
-    for (unsigned short cj = 0; cj<2; ++cj)
-      for (unsigned short ci = 0; ci <2; ++ci){
+      for (unsigned short cj = 0; cj<2; ++cj)
+        for (unsigned short ci = 0; ci <2; ++ci){
 #ifdef P4_TO_P8
-        f[4*ck+2*cj+ci] = phi(x+ci*dx, y+cj*dy, z+ck*dz);
-        if (fabs(f[4*ck+2*cj+ci]) <= 0.5*lip*d)
-          return P4EST_FALSE;
+          f[4*ck+2*cj+ci] = phi(x+ci*dx, y+cj*dy, z+ck*dz);
+          if (fabs(f[4*ck+2*cj+ci]) <= 0.5*lip*d)
+            return P4EST_FALSE;
 #else
-        f[2*cj+ci] = phi(x+ci*dx, y+cj*dy);
-        if (fabs(f[2*cj+ci]) <= 0.5*lip*d)
-          return P4EST_FALSE;
+          f[2*cj+ci] = phi(x+ci*dx, y+cj*dy);
+          if (fabs(f[2*cj+ci]) <= 0.5*lip*d)
+            return P4EST_FALSE;
 #endif
-      }
+        }
 
 #ifdef P4_TO_P8
     if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||

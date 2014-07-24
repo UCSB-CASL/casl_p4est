@@ -51,10 +51,19 @@ PetscLogEvent log_my_p4est_hierarchy_t_find_smallest_quad;
 PetscLogEvent log_quad_neighbor_nodes_of_node_t_ngbd_with_quad_interp;
 PetscLogEvent log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quad_interp;
 PetscLogEvent log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quad_interp;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quad_interp;
 PetscLogEvent log_quad_neighbor_nodes_of_node_t_dx_central;
 PetscLogEvent log_quad_neighbor_nodes_of_node_t_dy_central;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_dz_central;
 PetscLogEvent log_quad_neighbor_nodes_of_node_t_dxx_central;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_dxx_central_m00;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_dxx_central_p00;
 PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central_0m0;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central_0p0;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_dzz_central;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_dzz_central_00m;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_dzz_central_00p;
 
 // my_p4est_node_neighbors_t
 PetscLogEvent log_my_p4est_node_neighbors_t;
@@ -69,6 +78,7 @@ PetscLogEvent log_my_p4est_vtk_write_all;
 PetscLogEvent log_my_p4est_nodes_new;
 PetscLogEvent log_my_p4est_new;
 PetscLogEvent log_my_p4est_ghost_new;
+PetscLogEvent log_my_p4est_ghost_expand;
 PetscLogEvent log_my_p4est_refine;
 PetscLogEvent log_my_p4est_coarsen;
 PetscLogEvent log_my_p4est_partition;
@@ -77,13 +87,12 @@ PetscLogEvent log_my_sc_notify_allgather;
 
 void register_petsc_logs()
 {
-
   PetscErrorCode ierr;
   // PoissonSolverNodeBase
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_preallocation             ", 0, &log_PoissonSolverNodeBased_matrix_preallocation); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_setup                     ", 0, &log_PoissonSolverNodeBased_matrix_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::rhsvec_setup                     ", 0, &log_PoissonSolverNodeBased_rhsvec_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::solve                            ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_preallocation            ", 0, &log_PoissonSolverNodeBased_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_setup                    ", 0, &log_PoissonSolverNodeBased_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::rhsvec_setup                    ", 0, &log_PoissonSolverNodeBased_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::solve                           ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
 
   // InterpolatingFunction
   ierr = PetscLogEventRegister("InterpolatingFunction::interpolate                      ", 0, &log_InterpolatingFunction_interpolate); CHKERRXX(ierr);
@@ -123,10 +132,19 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::ngbd_with_quad_interp    ", 0, &log_quad_neighbor_nodes_of_node_t_ngbd_with_quad_interp); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::x_ngbd_with_quad_interp  ", 0, &log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quad_interp); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::y_ngbd_with_quad_interp  ", 0, &log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quad_interp); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::z_ngbd_with_quad_interp  ", 0, &log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quad_interp); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dx_central               ", 0, &log_quad_neighbor_nodes_of_node_t_dx_central); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dy_central               ", 0, &log_quad_neighbor_nodes_of_node_t_dy_central); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dz_central               ", 0, &log_quad_neighbor_nodes_of_node_t_dz_central); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dxx_central              ", 0, &log_quad_neighbor_nodes_of_node_t_dxx_central); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dxx_central_m00          ", 0, &log_quad_neighbor_nodes_of_node_t_dxx_central_m00); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dxx_central_p00          ", 0, &log_quad_neighbor_nodes_of_node_t_dxx_central_p00); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dyy_central              ", 0, &log_quad_neighbor_nodes_of_node_t_dyy_central); CHKERRXX(ierr);  
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dyy_central_0m0          ", 0, &log_quad_neighbor_nodes_of_node_t_dyy_central_0m0); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dyy_central_0p0          ", 0, &log_quad_neighbor_nodes_of_node_t_dyy_central_0p0); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dzz_central              ", 0, &log_quad_neighbor_nodes_of_node_t_dzz_central); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dzz_central_00m          ", 0, &log_quad_neighbor_nodes_of_node_t_dzz_central_00m); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dzz_central_00p          ", 0, &log_quad_neighbor_nodes_of_node_t_dzz_central_00p); CHKERRXX(ierr);
 
   // my_p4est_node_neighbors_t
   ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::init                         ", 0, &log_my_p4est_node_neighbors_t); CHKERRXX(ierr);
@@ -141,6 +159,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_nodes_new                                      ", 0, &log_my_p4est_nodes_new); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_new                                            ", 0, &log_my_p4est_new); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_ghost_new                                      ", 0, &log_my_p4est_ghost_new); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_ghost_expand                                   ", 0, &log_my_p4est_ghost_expand); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_refine                                         ", 0, &log_my_p4est_refine); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_coarsen                                        ", 0, &log_my_p4est_coarsen); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_partition                                      ", 0, &log_my_p4est_partition); CHKERRXX(ierr);
