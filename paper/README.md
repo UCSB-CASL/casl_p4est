@@ -6,7 +6,13 @@
 1. [**p4est: Scalable Algorithms for Parallel Adaptive Mesh Refinement on Forests of Octrees.**][Burstedde2011]
  	This is the p4est paper that describes the low-level algorithms for parallelizing a forest of octrees.
 
-- ### Parallel Level-Set Papers
+2. [**Scalable Algorithms for Distributed-Memory Adaptive Mesh Refinement**][Langer2012]
+
+3. [**Algorithms and Data Structures for Massively Parallel Generic Adaptive Finite Element Codes**][Bangerth2011]
+
+- ### Sequential Level-Set Methods
+1. [**Fast Two-Scale Methods for Eikonal Equations**][Chacon2012]
+- ### Parallel Level-Set Methods
 1. [**A parallel adaptive mesh method for the numerical simulation of multiphase flows**][Rodriguez2013]
 	This paper tries to couple a FEM solver with a level-set mehtod on unstructured grids using a software called "PHASTA". They do not present any scaling result and simply mention that "PHASTA" has been scaled to up to 32,000 processors.
 
@@ -35,6 +41,7 @@
 	Authors propose an adaptive compressible multiphase method which uses level-set method to track the location of interface. They also make use of what they call "pyramid data structure" which just seems to be the Quadtree! They use task-based parallelism on shared memory machines in which computations within coarse blocks are treated as separate tasks and carried on by individual threads. Their algorithm is only reported in 2D and a single scaling study is performed up to 16 cores yielding 10X speedup.
 	
 10. [**Fast Marching Methods -- Parallel Implementation and Analysis (Ph.D. Thesis)**][Tugurlan2008]
+	This thesis describes a parallelization of the Fast Marching Method (FMM) using domain decomposition and MPI. Author presents pretty good (linear) scaling up to about 50 processors in 2D even though the number of iterations to convergence grows as the number of processors is increased.
 
 11. [**Hybrid Distributed-/Shared-Memory Parallelization For Re-Initializing Level Set Functions**][Fortmeier2010]
 
@@ -44,8 +51,18 @@
 
 14. [**Parallel Implementations of the Fast Sweeping Method**][Zhao2007]
 
-15. [**A parallel fast sweeping method for the Eikonal equation**][Detrixhe2013]
+15. [**A Parallel Fast Sweeping Method for the Eikonal Equation**][Detrixhe2013]
 
+16. [**A Fast Iterative Method for the Eikonal Equation**][Jeong2008]
+
+17. [**A Parallel Heap-Cell Method for Eikonal Equations**][Chacon2013]
+ 
+18. [**A Patchy Dynamic Programming Scheme for a Class of Hamilton-Jacobi-Bellman Equations**][Cacace2011]
+
+19. [**Fast Iterative Method in Solving Eikonal Equations : a Multi-Level Parallel Approach**][Dang2014]
+
+
+[References]: <>
 [Burstedde2011]: http://p4est.github.io/papers/BursteddeWilcoxGhattas11.pdf
 [Rodriguez2013]: http://www.sciencedirect.com/science/article/pii/S004579301300131X
 [Wang2006]: http://www.sciencedirect.com/science/article/pii/S0743731506000244
@@ -63,3 +80,10 @@
 [Breub2011]: http://www.sciencedirect.com/science/article/pii/S0096300311007107
 [Zhao2007]: http://web.b.ebscohost.com/ehost/detail/detail?sid=c78ff1d5-ddf3-459d-8287-b9c3058fe63b%40sessionmgr111&vid=0&hid=112&bdata=JnNpdGU9ZWhvc3QtbGl2ZQ%3d%3d#db=mth&AN=25853983
 [Detrixhe2013]: http://www.sciencedirect.com/science/article/pii/S002199911200722X
+[Langer2012]: http://charm.cs.illinois.edu/newPapers/12-35/paper.pdf
+[Bangerth2011]: http://p4est.github.io/papers/BangerthBursteddeHeisterEtAl11.pdf
+[Chacon2012]: http://epubs.siam.org/doi/pdf/10.1137/10080909X
+[Jeong2008]: http://epubs.siam.org/doi/pdf/10.1137/060670298
+[Chacon2013]: http://arxiv.org/pdf/1306.4743v1.pdf
+[Cacace2011]: http://hal-ensta.archivesouvertes.fr/docs/00/62/81/08/PDF/CacaceChristianiFalconePicarelli_2011.pdf
+[Dang2014]: http://www.sciencedirect.com/science/article/pii/S1877050914003470
