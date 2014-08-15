@@ -10,8 +10,15 @@
 
 3. [**Algorithms and Data Structures for Massively Parallel Generic Adaptive Finite Element Codes**][Bangerth2011]
 
+4. [**Fast BVH Construction on GPUs**][Lauterbach2009]
+
+5. [**Maximizing Parallelism in the Construction of BVHs, Octrees, and k-d Trees**][Karras2012]
+
+6. [**Simpler and Faster HLBVH with Work Queues**][Garanzha2011]
+
 - ### Sequential Level-Set Methods
 1. [**Fast Two-Scale Methods for Eikonal Equations**][Chacon2012]
+
 - ### Parallel Level-Set Methods
 1. [**A parallel adaptive mesh method for the numerical simulation of multiphase flows**][Rodriguez2013]
 	This paper tries to couple a FEM solver with a level-set mehtod on unstructured grids using a software called "PHASTA". They do not present any scaling result and simply mention that "PHASTA" has been scaled to up to 32,000 processors.
@@ -28,7 +35,7 @@
 5. [**A parallelized, adaptive algorithm for multiphase flows in general geometries**][Sussman2005]	
 	In this paper authors implement a parallel multiphase solver on adaptive block-Cartesian grids. As part of this they also parallelize their level-set solver to track the location of interface. They use the [boxlib][boxlib] library from the CCSE group in LLBL which utilizes MPI for parallelization. Parallel speedup study is restricted to simple situations with at most 1-16 processors. There is also a "big" simulation on 32 processors but they do not report any *parallel speedup* whatsoever.
 	
-6. [**A parallel Eulerian interface tracking/Lagrangian point particle multi-scale coupling procedure**][Herrmann2010]
+6. [**A Parallel Eulerian Interface Tracking/Lagrangian Point Particle Multi-Scale Coupling Procedure**][Herrmann2010]
 	In this paper authors describe a hybrid Eulerian/Lagrangian framework for the interface tracking problems. The main idea is to represent small patches of liquid or gas which cannot be resolved on the grid explicitly in a Lagrangian framework. Furthermore they make use of two separate grids: 1) the flow solver grid on which NS equations are solved and could potentially be unstructured and 2) a Cartesian grid which is used for the level-set equation. They do not present scaling of level-set advection. Instead, they present scaling for their Eulerian-to-Lagrangian conversion algorithm. It is not quite clear if this also involves level-set evolution (probably does) and/or flow solver on the separate grid (probably does not). Nonetheless they report good scalings (no number -- just a figure showing the scalability) up to 2,048 processors.
 	
 7. [**Parallel 3D Image Segmentation of Large Data Sets on a GPU Cluster**][Hagan2009]
@@ -61,6 +68,17 @@
 
 19. [**Fast Iterative Method in Solving Eikonal Equations : a Multi-Level Parallel Approach**][Dang2014]
 
+20. [**Parallel Algorithms for Semi-Lagrangian Advection**][Malevsky1997]
+
+21. [**Massively parallel semi-Lagrangian advection**][Thomas1995]
+
+22. [**High-performance high-resolution semi-Lagrangian tracer transport on a sphere**][White2011]
+
+23. [**Parallel Domain Decomposition Methods with Mixed Order Discretization for Fully Implicit Solution of Tracer Transport Problems on the Cubed-Sphere**][Yang2014]
+
+24. [**Design and Performance of a Scalable Parallel Community Climate Model**][Drake1995]
+
+25. [**An Adaptive Semi-Lagrangian Advection Scheme and Its Parallelization**][Behrens1995] 
 
 [References]: <>
 [Burstedde2011]: http://p4est.github.io/papers/BursteddeWilcoxGhattas11.pdf
@@ -87,3 +105,12 @@
 [Chacon2013]: http://arxiv.org/pdf/1306.4743v1.pdf
 [Cacace2011]: http://hal-ensta.archivesouvertes.fr/docs/00/62/81/08/PDF/CacaceChristianiFalconePicarelli_2011.pdf
 [Dang2014]: http://www.sciencedirect.com/science/article/pii/S1877050914003470
+[Lauterbach2009]: http://luebke.us/publications/eg09.pdf
+[Karras2012]: https://research.nvidia.com/sites/default/files/publications/karras2012hpg_paper.pdf
+[Garanzha2011]: http://dl.acm.org/citation.cfm?id=2018333
+[Malevsky1997]: http://onlinelibrary.wiley.com/doi/10.1002/(SICI)1097-0363(19970830)25:4%3C455::AID-FLD572%3E3.0.CO;2-H/abstract
+[Thomas1995]: http://www.sciencedirect.com/science/article/pii/0928486995000334
+[White2011]: http://www.sciencedirect.com/science/article/pii/S0021999111003123
+[Yang2014]: http://link.springer.com/article/10.1007/s10915-014-9828-y
+[Drake1995]: http://www.sciencedirect.com/science/article/pii/0167819196800019
+[Behrens1995]: http://journals.ametsoc.org/doi/abs/10.1175/1520-0493(1996)124%3C2386:AASLAS%3E2.0.CO%3B2
