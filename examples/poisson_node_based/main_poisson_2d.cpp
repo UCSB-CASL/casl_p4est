@@ -440,11 +440,11 @@ int main (int argc, char* argv[]){
   #endif
 
     my_p4est_level_set ls(&ngbd);
-    ls.perturb_level_set_function(phi, SQR(MIN(dx, dy
-                                           #ifdef P4_TO_P8
-                                               , dz
-                                           #endif
-                                               ))*1e-3);
+#ifdef P4_TO_P8
+    ls.perturb_level_set_function(phi, SQR(MIN(dx, dy, dz))*1e-3);
+#else
+    ls.perturb_level_set_function(phi, SQR(MIN(dx, dy))*1e-3);
+#endif
 
     /* initalize the bc information */
     Vec interface_value_Vec, wall_value_Vec;

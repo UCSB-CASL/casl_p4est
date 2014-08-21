@@ -275,7 +275,7 @@ int main (int argc, char* argv[]){
     cmd.parse(argc, argv);
     cmd.print();
 
-    output_dir                  = cmd.get<std::string>("output-dir");
+    output_dir                  = cmd.get<std::string>("output-dir",".");
     const int lmin              = cmd.get("lmin", 2);
     const int lmax              = cmd.get("lmax", 10);
     const int qmin              = cmd.get("qmin", 100);    
