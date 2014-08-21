@@ -10,8 +10,19 @@
 
 3. [**Algorithms and Data Structures for Massively Parallel Generic Adaptive Finite Element Codes**][Bangerth2011]
 
+4. [**Fast BVH Construction on GPUs**][Lauterbach2009]
+
+5. [**Maximizing Parallelism in the Construction of BVHs, Octrees, and k-d Trees**][Karras2012]
+
+6. [**Simpler and Faster HLBVH with Work Queues**][Garanzha2011]
+
+7. [**Data-Parallel Octrees for Surface Reconstruction**][Zhou2011]
+    Authors present a parallel Octree algorithm for surface construction applications on the GPU. Their algorithm generates the octree from a cloud of points in a bottom-up approach, entirely runs on the GPU, and Compared to similar cpu algorithms they achieve about 100X-200X speed up in both the tree construction and surface generation. One key aspect of their algorithm is the use of static lookup tables to generate neighborhood information.
+
 - ### Sequential Level-Set Methods
 1. [**Fast Two-Scale Methods for Eikonal Equations**][Chacon2012]
+    Authors introduce a two-level solution method for the Eikonal equation. In this method initially an FMM algorithm is used on a coarse level to find the correct updating rules for the coarse cells. Inside each coarse cell, a fine grid is initialized and the FSM is used to obtain the solution. FMM is a good method when the speed function and/or interfaces are highly irregular but is $\mathcal{O}(N\log N)$. FSM, on the other hand is an $\mathcal{O}(N)$ method but may require many iterations for complicated problems. By combining the two methods, authors come arrive at an algorithm that is both fast and robust. They suggest this approach might also be a good way to tackle the parallelization problem.
+
 - ### Parallel Level-Set Methods
 1. [**A parallel adaptive mesh method for the numerical simulation of multiphase flows**][Rodriguez2013]
 	This paper tries to couple a FEM solver with a level-set mehtod on unstructured grids using a software called "PHASTA". They do not present any scaling result and simply mention that "PHASTA" has been scaled to up to 32,000 processors.
@@ -28,7 +39,7 @@
 5. [**A parallelized, adaptive algorithm for multiphase flows in general geometries**][Sussman2005]	
 	In this paper authors implement a parallel multiphase solver on adaptive block-Cartesian grids. As part of this they also parallelize their level-set solver to track the location of interface. They use the [boxlib][boxlib] library from the CCSE group in LLBL which utilizes MPI for parallelization. Parallel speedup study is restricted to simple situations with at most 1-16 processors. There is also a "big" simulation on 32 processors but they do not report any *parallel speedup* whatsoever.
 	
-6. [**A parallel Eulerian interface tracking/Lagrangian point particle multi-scale coupling procedure**][Herrmann2010]
+6. [**A Parallel Eulerian Interface Tracking/Lagrangian Point Particle Multi-Scale Coupling Procedure**][Herrmann2010]
 	In this paper authors describe a hybrid Eulerian/Lagrangian framework for the interface tracking problems. The main idea is to represent small patches of liquid or gas which cannot be resolved on the grid explicitly in a Lagrangian framework. Furthermore they make use of two separate grids: 1) the flow solver grid on which NS equations are solved and could potentially be unstructured and 2) a Cartesian grid which is used for the level-set equation. They do not present scaling of level-set advection. Instead, they present scaling for their Eulerian-to-Lagrangian conversion algorithm. It is not quite clear if this also involves level-set evolution (probably does) and/or flow solver on the separate grid (probably does not). Nonetheless they report good scalings (no number -- just a figure showing the scalability) up to 2,048 processors.
 	
 7. [**Parallel 3D Image Segmentation of Large Data Sets on a GPU Cluster**][Hagan2009]
@@ -43,15 +54,20 @@
 10. [**Fast Marching Methods -- Parallel Implementation and Analysis (Ph.D. Thesis)**][Tugurlan2008]
 	This thesis describes a parallelization of the Fast Marching Method (FMM) using domain decomposition and MPI. Author presents pretty good (linear) scaling up to about 50 processors in 2D even though the number of iterations to convergence grows as the number of processors is increased.
 
-11. [**Hybrid Distributed-/Shared-Memory Parallelization For Re-Initializing Level Set Functions**][Fortmeier2010]
+26. [**Parallel re-initialization of level set functions on distributed unstructured tetrahedral grids**][Fortmeier2011]
+	Authors use a new geometrical approach to the reinitialization problem in which distance function is calculated by directly computing the Euclidean distance to the interface. This is done in a several pass approach. Initially, they compute the distance to just the vertices of elements that are cut by the interface. Next, they compute the projection points of these vertices onto the interface. Finally for far away vertices, they compute the minimum distance of vertices to the set of projected and close vertices. This is achieved by using a k-d tree. This k-d tree, however, is built in serial and uses ALL the points from all processors which requires a global all-to-all communication. They show scaling for their algorithm up to 128 processors. For larger problems (~16M) they achieve good scalability but only because the set of projected and close by points are quite small for their problem. They show test cases where this is not the case which, unsurprisingly, results in really bad speed up (~14 on 64 processors).
 
-12. [**Data-Parallel Octrees for Surface Reconstruction**][Zhou2011]
+11. [**Hybrid Distributed-/Shared-Memory Parallelization For Re-Initializing Level Set Functions**][Fortmeier2010]
+    Authors in this paper take their [MPI code][Fortmeier2011] (described above) and adapt it so that it uses OpenMP for on-node parallelism and MPI for off-node parallelism. They find that better results may be obtained by using OpenMP-MPI approach than a pure MPI which they attribute to reduction in the network traffic due to less MPI processes.
 
 13. [**An adaptive domain-decomposition technique for parallelization of the fast marching method**][Breub2011]
+    The authors present a novel technique for parallelization of the FMM using what they call "adaptive domain decomposition". The idea here is instead of statically partitioning the domain, as in traditional methods, they let all threads have access to the whole shared data and run a local FMM on the whole domain but for only starting from a segment of the interface. This way, threads prevent each other from further expanding their FMM's "near" node list by rewriting a smaller value that originates from another a closer interface segment.  
 
 14. [**Parallel Implementations of the Fast Sweeping Method**][Zhao2007]
+    This is the classic paper of Zhao in which he describes the domain decomposition strategy for FSM. The idea is very simple in that a regular domain decomposition is used and inside each block and after 4 iterations, ghost nodes data are updated and the FSM is repeated until convergence. No speedup information is provided, likely because they are poor as increase in number of domains increases the number of iterations to converge.
 
 15. [**A Parallel Fast Sweeping Method for the Eikonal Equation**][Detrixhe2013]
+    This is Mile's paper in which FSM is parallelized by sweeping in diagonal directions instead of regular Cartesian ones. This is useful since all nodes on a diagonal are completely independent of each other which allows for simultaneous update. He compares the method to that of Zhao and reports good scaling up to 32 threads.
 
 16. [**A Fast Iterative Method for the Eikonal Equation**][Jeong2008]
 
@@ -61,6 +77,21 @@
 
 19. [**Fast Iterative Method in Solving Eikonal Equations : a Multi-Level Parallel Approach**][Dang2014]
 
+20. [**Parallel Algorithms for Semi-Lagrangian Advection**][Malevsky1997]
+
+21. [**Massively parallel semi-Lagrangian advection**][Thomas1995]
+
+22. [**High-performance high-resolution semi-Lagrangian tracer transport on a sphere**][White2011]
+
+23. [**Parallel Domain Decomposition Methods with Mixed Order Discretization for Fully Implicit Solution of Tracer Transport Problems on the Cubed-Sphere**][Yang2014]
+
+24. [**Design and Performance of a Scalable Parallel Community Climate Model**][Drake1995]
+
+25. [**An Adaptive Semi-Lagrangian Advection Scheme and Its Parallelization**][Behrens1995] 
+
+26. [**A domain decomposition parallelization of the Fast Marching Method**][Hermann2003]
+
+27. [**Parallel algorithms for approximation of distance maps on parametric surfaces**][Weber2008]
 
 [References]: <>
 [Burstedde2011]: http://p4est.github.io/papers/BursteddeWilcoxGhattas11.pdf
@@ -87,3 +118,15 @@
 [Chacon2013]: http://arxiv.org/pdf/1306.4743v1.pdf
 [Cacace2011]: http://hal-ensta.archivesouvertes.fr/docs/00/62/81/08/PDF/CacaceChristianiFalconePicarelli_2011.pdf
 [Dang2014]: http://www.sciencedirect.com/science/article/pii/S1877050914003470
+[Lauterbach2009]: http://luebke.us/publications/eg09.pdf
+[Karras2012]: https://research.nvidia.com/sites/default/files/publications/karras2012hpg_paper.pdf
+[Garanzha2011]: http://dl.acm.org/citation.cfm?id=2018333
+[Malevsky1997]: http://onlinelibrary.wiley.com/doi/10.1002/(SICI)1097-0363(19970830)25:4%3C455::AID-FLD572%3E3.0.CO;2-H/abstract
+[Thomas1995]: http://www.sciencedirect.com/science/article/pii/0928486995000334
+[White2011]: http://www.sciencedirect.com/science/article/pii/S0021999111003123
+[Yang2014]: http://link.springer.com/article/10.1007/s10915-014-9828-y
+[Drake1995]: http://www.sciencedirect.com/science/article/pii/0167819196800019
+[Behrens1995]: http://journals.ametsoc.org/doi/abs/10.1175/1520-0493(1996)124%3C2386:AASLAS%3E2.0.CO%3B2
+[Fortmeier2011]: http://www.sciencedirect.com/science/article/pii/S0021999111000878
+[Hermann2003]: http://ctr.stanford.edu/ResBriefs03/herrmann1.pdf
+[Weber2008]: http://dl.acm.org/citation.cfm?doid=1409625.1409626
