@@ -1075,7 +1075,7 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
     splitting_criteria_update_t data_np1(data->lip, data->min_lvl, data->max_lvl, &phi_tmp[0], myb_, p4est_tmp, NULL, nodes_tmp);
     p4est_np1->user_pointer = (void*) &data_np1;
     my_p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_sl , NULL);
-    my_p4est_partition(p4est_np1, NULL);
+    my_p4est_partition(p4est_np1, 0, NULL);
 
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
@@ -1298,7 +1298,7 @@ void SemiLagrangian::update_p4est_second_order_test(Vec vx_nm1, Vec vy_nm1,
     splitting_criteria_update_t data_np1(data->lip, data->min_lvl, data->max_lvl, &phi_tmp[0], myb_, p4est_tmp, NULL, nodes_tmp);
     p4est_np1->user_pointer = (void*) &data_np1;
     my_p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_sl , NULL);
-    my_p4est_partition(p4est_np1, NULL);
+    my_p4est_partition(p4est_np1, 0, NULL);
 
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
@@ -1446,7 +1446,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
     splitting_criteria_update_t data_np1(data->lip, data->min_lvl, data->max_lvl, &phi_tmp[0], myb_, p4est_tmp, NULL, nodes_tmp);
     p4est_np1->user_pointer = (void*) &data_np1;
     my_p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_sl , NULL);
-    my_p4est_partition(p4est_np1, NULL);
+    my_p4est_partition(p4est_np1, 0, NULL);
 
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
@@ -1672,7 +1672,7 @@ double SemiLagrangian::update_p4est_second_order_CFL(const CF_2& vx, const CF_2&
   ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   /* partition the new tree compute the partitioned nodes and ghost */
-  my_p4est_partition(p4est_np1, NULL);
+  my_p4est_partition(p4est_np1, 0, NULL);
   p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
   hierarchy_->update(p4est_np1, ghost_np1);

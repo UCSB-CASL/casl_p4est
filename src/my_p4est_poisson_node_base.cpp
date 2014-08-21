@@ -394,7 +394,7 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
    * 2- Coarsennig Type
    * 3- Truncation Factor
    *
-   * Plerase refer to HYPRE manual for more information on the actual importance or check Mohammad Mirzade's
+   * Plerase refer to HYPRE manual for more information on the actual importance or check Mohammad Mirzadeh's
    * summary of HYPRE papers! Also for a complete list of all the options that can be set from PETSc, one can
    * consult the 'src/ksp/pc/impls/hypre.c' in the PETSc home directory.
    */

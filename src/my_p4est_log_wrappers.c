@@ -75,12 +75,12 @@ my_p4est_coarsen(p4est_t *p4est, int coarsen_recursive, p4est_coarsen_t coarsen_
 }
 
 void
-my_p4est_partition(p4est_t *p4est, p4est_weight_t weight_fn)
+my_p4est_partition(p4est_t *p4est, int allow_for_coarsening, p4est_weight_t weight_fn)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
 	IPMLogRegionBegin("p4est_partition");  
-  p4est_partition(p4est, weight_fn);
+  p4est_partition(p4est, allow_for_coarsening, weight_fn);
 	IPMLogRegionEnd("p4est_partition");
   ierr = PetscLogEventEnd(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
 }

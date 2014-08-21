@@ -393,7 +393,7 @@ int main (int argc, char* argv[]){
     p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
     /* partition the p4est */
-    p4est_partition(p4est, NULL);
+    p4est_partition(p4est, 0, NULL);
 
     /* create the ghost layer */
     p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);

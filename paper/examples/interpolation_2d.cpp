@@ -248,6 +248,11 @@ int main (int argc, char* argv[]){
     Session mpi_session;
     mpi_session.init(argc, argv, mpi->mpicomm);
 
+    int petsc_version_length = 1000;
+    char petsc_version[petsc_version_length];
+    ierr = PetscGetVersion(petsc_version, petsc_version_length); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi->mpicomm, "Petsc version %s\n", petsc_version); CHKERRXX(ierr);
+
     cmdParser cmd;
     cmd.add_option("lmin", "min level of the tree");
     cmd.add_option("lmax", "max level of the tree");
@@ -330,18 +335,18 @@ int main (int argc, char* argv[]){
       while (p4est->local_num_quadrants < random_data.max_quads){
 
         my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
-        my_p4est_partition(p4est, NULL);
+        my_p4est_partition(p4est, P4EST_FALSE, NULL);
       }
     } else if (test == 1) { // strong scaling
       while(p4est->global_num_quadrants < qmin){
         // define a globally unique random refinement
-        splitting_criteria_marker_t markers(p4est, lmin, lmax);
+        splitting_criteria_marker_t markers(p4est, lmin, lmax, 1.2);
         mark_random_quadrants(p4est, markers);
 
         p4est->user_pointer = &markers;
         my_p4est_refine(p4est, P4EST_FALSE, refine_marked_quadrants, NULL);
         
-        my_p4est_partition(p4est, NULL);
+        my_p4est_partition(p4est, P4EST_FALSE, NULL);
         
       }
     }
@@ -353,7 +358,7 @@ int main (int argc, char* argv[]){
     // Finally re-partition
     w2.start("partition");
     
-    my_p4est_partition(p4est, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
     
     w2.stop(); w2.read_duration();
 
@@ -404,7 +409,7 @@ int main (int argc, char* argv[]){
       PetscPrintf(p4est->mpicomm, "%% mpi_rank local_node_size local_quad_size ghost_node_size ghost_quad_size\n");
       PetscSynchronizedPrintf(p4est->mpicomm, "%4d, %7d, %7d, %5d, %5d\n", 
         p4est->mpirank, nodes->num_owned_indeps, p4est->local_num_quadrants, nodes->indep_nodes.elem_count-nodes->num_owned_indeps, ghost->ghosts.elem_count);
-      PetscSynchronizedFlush(p4est->mpicomm);
+      PetscSynchronizedFlush(p4est->mpicomm, stdout);
     }
     w2.stop(); w2.read_duration();
 
