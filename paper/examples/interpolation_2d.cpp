@@ -535,7 +535,9 @@ int main (int argc, char* argv[]){
 #endif
           err_max = MAX(err_max, ABS(ex-f[i]));
         }
-        ierr = PetscPrintf(mpi->mpicomm, "Max error: %g\n", err_max); CHKERRXX(ierr);
+        double err_max_glob;
+        MPI_Allreduce(&err_max, &err_max_glob, 1, MPI_DOUBLE, MPI_MAX, mpi->mpicomm);
+        ierr = PetscPrintf(mpi->mpicomm, "Max error: %g\n", err_max_glob); CHKERRXX(ierr);
         ierr = PetscLogEventEnd(log_interpolation_compute_error, 0, 0, 0 ,0); CHKERRXX(ierr);
       }
     }
