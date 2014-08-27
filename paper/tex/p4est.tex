@@ -65,7 +65,7 @@ p4est \sep Level-Set
 
 \section{The level-set method}
 
-\indent The level-set method is a method to capture interfaces implicitely by constructing a function $\phi$, called the level-set function, that is negative on on side of the domain $\Omega^-$ and positive on the other side $\Omega^+$, thus defining the interface $\Gamma$ as the zero contour of $\phi$, $\Gamma = \{\mathbf{x} \vert \phi(\mathbf{x}=0\}$.\\
+\indent The level-set method is a method to capture interfaces implicitly by constructing a function $\phi$, called the level-set function, that is negative on on side of the domain $\Omega^-$ and positive on the other side $\Omega^+$, thus defining the interface $\Gamma$ as the zero contour of $\phi$, $\Gamma = \{\mathbf{x} \vert \phi(\mathbf{x}=0\}$.\\
 
 If infinitely many functions satisfy these requirements, the most natural and most convenient representation is a signed distance function to the interface. The level-set function is therefore reinitialized to a signed distance function at every time step by solving the reinitialization equation
 
@@ -88,7 +88,7 @@ where it should be noted that $\lvert \nabla \phi \rvert = 1$ when the level-set
 
 \section{The \texttt{p4est} library}
 
-The work we present relies on the parallel octree library \texttt{p4est} \cite{burstedded:2011:p4est}. It is scalable implementation of the general octree structure in a massively parallel mpi environment. We limit our presentation of \texttt{p4est} to the relevant information for our application, for more details the reader is invited to read the original article \cite{burstedded:2011:p4est}.
+The work we present relies on the parallel octree library \texttt{p4est} \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}. It is scalable implementation of the general octree structure in a massively parallel mpi environment. We limit our presentation of \texttt{p4est} to the relevant information for our application, for more details the reader is invited to read the original article \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}.
 
 The \texttt{p4est} library provides the geometrical information for the leaves of an octree which includes the neighboring information for the leaves (called quadrants in the original article) of the tree, a layer of ghost quadrants and ghost vertices for each process, the coarsening and refining procedures, and encapsulates the communication between processes. However, it does not provide the vertical structure of the octrees. If it is generally unnecessary, it is a desirable feature for a finite differences based code as it speeds up the access to arbitrary quadrants information dramatically. Thus, we choose to reconstruct the local vertical structure of the octree on every processes. Note that given the local and ghost layer information, this is an entirely local procedure and no communication is needed.
 
@@ -130,9 +130,9 @@ The first important step to build a level-set based code is to provide an interp
 
 \subsection{Reinitialization and extensions} \label{section::reinitialization}
 
-The reinitialization procedure transforms an arbitrary function into a signed distance function to its zero contour. One of the popular methods to achieve this results is to solve the reinitialization equation \ref{eq::reinitialization} \cite{Sussman:1994:levelsetincompressible, Min_Gibou:2007:Level_Set_Adaptive}. Other methods, such as the Fast Sweeping \cite{??} and the Fast Marching methods \cite{Sethian:1996:FMM, chopp:2001:fmm}, are based on the wave propagation nature of the reinitialization front and provide faster implementations of the reinitialization procedure in a serial environment. However, their parallelization is an involved process and we opt for solving the reinitialization equation.
+The reinitialization procedure transforms an arbitrary function into a signed distance function to its zero contour. One of the popular methods to achieve this results is to solve the reinitialization equation \ref{eq::reinitialization} \cite{Sussman;Smereka;Osher:94:A-Level-Set-Approach, Min;Gibou:07:A-second-order-accur}. Other methods, such as the Fast Sweeping \cite{Zhao:04:A-Fast-Sweeping-Meth} and the Fast Marching methods \cite{Sethian:96:A-Fast-Marching-Leve, Chopp:01:Some-improvements-of}, are based on the wave propagation nature of the reinitialization front and provide faster implementations of the reinitialization procedure in a serial environment. However, their parallelization is an involved process and we opt for solving the reinitialization equation.
 
-We base our approach on Min and Gibou \cite{Min_Gibou:2007:Level_Set_Adaptive} and discretize the reinitialization equation as
+We base our approach on Min and Gibou \cite{Min;Gibou:07:A-second-order-accur} and discretize the reinitialization equation as
 
 \begin{equation*}
 \frac{d\phi}{d\tau} + \mathrm{sign}(\phi^0)[H_G(D^+_x\phi, D^-_x\phi, D^+_y\phi, D^-_y\phi)-1] = 0,
@@ -148,7 +148,7 @@ H_G(a,b,c,d) =
 \end{cases}
 \end{equation*}
 
-with $a^+=\max(a,0)$ and $a^-=\min(a,0)$. The one-sided derivatives $D^{+/-}_{x/y}\phi$ are discretized by second order accurate finite differences as explained by Min and Gibou in \cite{Min_Gibou:2007:Level_Set_Adaptive}. Following the presentation in \cite{Min_Gibou:2007:Level_Set_Adaptive} which incorporates the subcell resolution introduced by Russo and Smereka \cite{Russo_Smereka}, we include the initial position of the interface, given by $\phi^0$, in the computation of the one sided derivatives next to the interface in order to preserve the interface location. Finally, we choose a simple Euler step for the time discretization.
+with $a^+=\max(a,0)$ and $a^-=\min(a,0)$. The one-sided derivatives $D^{+/-}_{x/y}\phi$ are discretized by second order accurate finite differences as explained by Min and Gibou in \cite{Min;Gibou:07:A-second-order-accur}. Following the presentation in \cite{Min;Gibou:07:A-second-order-accur} which incorporates the subcell resolution introduced by Russo and Smereka \cite{Russo;Smereka:00:A-Remark-on-Computin}, we include the initial position of the interface, given by $\phi^0$, in the computation of the one sided derivatives next to the interface in order to preserve the interface location. Finally, we choose a simple Euler step for the time discretization.
 
 The general parallel algorithm for the reinitialization procedure is presented in \ref{algo::reinitialization}. For each fictitious time step, we start by computing the new value of the level-set function for the layer nodes. We then initiate the communication to update the ghost values while computing the new values for local nodes. After finishing the communication, we can then update $\phi^n$ to $\phi^{n+1}$ and move on to the next time step. The number of iterations needed for the reinitialization procedure to converge on the whole domain or on a band surrounding the interface depends on the size of the mesh, the geometry of the interface and how far from a signed distance function $\phi^0$ is. In practice, twenty iterations provide reasonable results for the applications we present.
 
@@ -235,10 +235,11 @@ with $L$ the latent heat.
 \end{center}
 \end{figure}
 
-\section{Acknowledgment} 
+\section{Acknowledgment}
 
-\newpage
+\section*{References}
 \bibliographystyle{plain}
-\addcontentsline{toc}{section}{\refname}\bibliography{references}
+\addcontentsline{toc}{section}{\refname}
+\bibliography{/home/guittet/code/CASL_Library/references.bib}
 
 \end{document}
