@@ -29,7 +29,7 @@
 *.pdfsync
 *.spl
 *.synctex.gz
-
+paper/tex/draft.pdf
 # What directories to ignore
 [Dd]ebug/
 [Rr]elease/
