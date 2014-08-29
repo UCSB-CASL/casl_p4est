@@ -44,4 +44,12 @@
 #define MatNullSpaceRemove(a, b, c) MatNullSpaceRemove(a, b)
 #endif
 
+#if PETSC_VERSION_LT(3,5,1)
+#define PetscSynchronizedFlush(a,b) PetscSynchronizedFlush(a)
+#else
+#define SAME_PRECONDITIONER 0
+#define KSPSetOperators(a,b,c,d) KSPSetOperators(a,b,c)
+#endif
+
+
 #endif // PETSC_COMPATIBILITY_H
