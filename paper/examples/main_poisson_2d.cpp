@@ -317,8 +317,8 @@ int main (int argc, char* argv[]){
     cmd.add_option("lmax", "the max level of the tree");
     cmd.add_option("sp", "number of splits to apply to the min and max level");
     cmd.add_option("save_vtk", "give this flag to save a vtk file of the solution and error");
-		cmd.add_option("repeat", "number of repeat to perform");
-		cmd.add_option("compute_error", "compute the error on the computed solution");
+    cmd.add_option("repeat", "number of repeat to perform");
+    cmd.add_option("compute_error", "compute the error on the computed solution");
     cmd.parse(argc, argv);
     cmd.print();
 
@@ -330,7 +330,7 @@ int main (int argc, char* argv[]){
     nb_splits         = cmd.get("sp" , 0);
     min_level         = cmd.get("lmin"      , 3);
     max_level         = cmd.get("lmax"      , 8);
-		int repeat        = cmd.get("repeat"    , 1);
+    int repeat        = cmd.get("repeat"    , 1);
 
 #ifdef P4_TO_P8
     CF_3 *bc_wall_value, *bc_interface_value;
@@ -472,136 +472,136 @@ int main (int argc, char* argv[]){
     bc.setWallTypes(*wall_bc);
     bc.setWallValues(*bc_wall_value);
 
-		Vec err;
-		ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
+    Vec err;
+    ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
 
     /* initialize the poisson solver */
-		for(int i=0; i<repeat; ++i)
-		{
-			w2.start("solve the poisson equation");
-			PoissonSolverNodeBase solver(&ngbd);
-			solver.set_phi(phi);
-			solver.set_rhs(rhs);
-			solver.set_bc(bc);
+    for(int i=0; i<repeat; ++i)
+    {
+      w2.start("solve the poisson equation");
+      PoissonSolverNodeBase solver(&ngbd);
+      solver.set_phi(phi);
+      solver.set_rhs(rhs);
+      solver.set_bc(bc);
 
-			/* solve the system */
-			MPI_Barrier(p4est->mpicomm);
-			solver.solve(sol);
+      /* solve the system */
+      MPI_Barrier(p4est->mpicomm);
+      solver.solve(sol);
+    }
 
-			if(cmd.contains("compute_error"))
-			{
-				ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-				ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
-				w2.stop(); w2.read_duration();
+    if(cmd.contains("compute_error"))
+    {
+      ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
+      w2.stop(); w2.read_duration();
 
-				if(bc_interface_type==NEUMANN && bc_wall_type==NEUMANN)
-				{
-					PetscPrintf(p4est->mpicomm, "Neumann BC only! Shifting solution\n\n");
-					solver.shift_to_exact_solution(sol, uex);
-				}
+      if(bc_interface_type==NEUMANN && bc_wall_type==NEUMANN)
+      {
+        PetscPrintf(p4est->mpicomm, "Neumann BC only! Shifting solution\n\n");
+        solver.shift_to_exact_solution(sol, uex);
+      }
 
-				/* prepare for output */
-				double *sol_p, *phi_p, *uex_p;
-				ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
-				ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-				ierr = VecGetArray(uex, &uex_p); CHKERRXX(ierr);
+      /* prepare for output */
+      double *sol_p, *phi_p, *uex_p;
+      ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
+      ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+      ierr = VecGetArray(uex, &uex_p); CHKERRXX(ierr);
 
-				/* compute the error */
+      /* compute the error */
 #ifdef P4_TO_P8
-				double err_max[4] = {0, 0, 0, 0};
+      double err_max[4] = {0, 0, 0, 0};
 #else
-				double err_max[3] = {0, 0, 0};
+      double err_max[3] = {0, 0, 0};
 #endif
 
-				double *err_p;
-				ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
-				for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-				{
-					if(phi_p[n]<0)
-					{
-						err_p[n] = fabs(sol_p[n] - uex_p[n]);
-						err_max[0] = max( err_max[0], err_p[n] );
-					}
-					else
-						err_p[n] = 0;
-				}
+      double *err_p;
+      ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+        if(phi_p[n]<0)
+        {
+          err_p[n] = fabs(sol_p[n] - uex_p[n]);
+          err_max[0] = max( err_max[0], err_p[n] );
+        }
+        else
+          err_p[n] = 0;
+      }
 
-				Vec uex_x, uex_y;
-				ierr = VecDuplicate(phi, &uex_x); CHKERRXX(ierr);
-				ierr = VecDuplicate(phi, &uex_y); CHKERRXX(ierr);
-				sample_cf_on_nodes(p4est, nodes, u_ex_x, uex_x);
-				sample_cf_on_nodes(p4est, nodes, u_ex_y, uex_y);
+      Vec uex_x, uex_y;
+      ierr = VecDuplicate(phi, &uex_x); CHKERRXX(ierr);
+      ierr = VecDuplicate(phi, &uex_y); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est, nodes, u_ex_x, uex_x);
+      sample_cf_on_nodes(p4est, nodes, u_ex_y, uex_y);
 
-				double *uex_x_ptr, *uex_y_ptr;
-				ierr = VecGetArray(uex_x, &uex_x_ptr); CHKERRXX(ierr);
-				ierr = VecGetArray(uex_y, &uex_y_ptr); CHKERRXX(ierr);
+      double *uex_x_ptr, *uex_y_ptr;
+      ierr = VecGetArray(uex_x, &uex_x_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(uex_y, &uex_y_ptr); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-				Vec uex_z;
-				ierr = VecDuplicate(phi, &uex_z); CHKERRXX(ierr);
-				sample_cf_on_nodes(p4est, nodes, u_ex_z, uex_z);
-				double *uex_z_ptr;
-				ierr = VecGetArray(uex_z, &uex_z_ptr); CHKERRXX(ierr);
+      Vec uex_z;
+      ierr = VecDuplicate(phi, &uex_z); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est, nodes, u_ex_z, uex_z);
+      double *uex_z_ptr;
+      ierr = VecGetArray(uex_z, &uex_z_ptr); CHKERRXX(ierr);
 #endif
-				for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-				{
-					if(phi_p[n]<0)
-					{
-						err_max[1] = max( err_max[1], ABS(ngbd[n].dx_central(sol_p) - uex_x_ptr[n]) );
-						err_max[2] = max( err_max[2], ABS(ngbd[n].dy_central(sol_p) - uex_y_ptr[n]) );
+      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+      {
+        if(phi_p[n]<0)
+        {
+          err_max[1] = max( err_max[1], ABS(ngbd[n].dx_central(sol_p) - uex_x_ptr[n]) );
+          err_max[2] = max( err_max[2], ABS(ngbd[n].dy_central(sol_p) - uex_y_ptr[n]) );
 #ifdef P4_TO_P8
-						err_max[3] = max( err_max[3], ABS(ngbd[n].dz_central(sol_p) - uex_z_ptr[n]) );
+          err_max[3] = max( err_max[3], ABS(ngbd[n].dz_central(sol_p) - uex_z_ptr[n]) );
 #endif
-					}
-				}
-				ierr = VecRestoreArray(uex_x, &uex_x_ptr); CHKERRXX(ierr);
-				ierr = VecRestoreArray(uex_y, &uex_y_ptr); CHKERRXX(ierr);
-				ierr = VecDestroy(uex_x); CHKERRXX(ierr);
-				ierr = VecDestroy(uex_y); CHKERRXX(ierr);
+        }
+      }
+      ierr = VecRestoreArray(uex_x, &uex_x_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(uex_y, &uex_y_ptr); CHKERRXX(ierr);
+      ierr = VecDestroy(uex_x); CHKERRXX(ierr);
+      ierr = VecDestroy(uex_y); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-				ierr = VecRestoreArray(uex_z, &uex_z_ptr); CHKERRXX(ierr);
-				ierr = VecDestroy(uex_z); CHKERRXX(ierr);
+      ierr = VecRestoreArray(uex_z, &uex_z_ptr); CHKERRXX(ierr);
+      ierr = VecDestroy(uex_z); CHKERRXX(ierr);
 #endif
 
 
 #ifdef P4_TO_P8
-				double glob_err_max[4];
-				MPI_Allreduce(&err_max, &glob_err_max, 4, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+      double glob_err_max[4];
+      MPI_Allreduce(&err_max, &glob_err_max, 4, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 #else
-				double glob_err_max[3];
-				MPI_Allreduce(&err_max, &glob_err_max, 3, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+      double glob_err_max[3];
+      MPI_Allreduce(&err_max, &glob_err_max, 3, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 #endif
 
-				PetscPrintf(p4est->mpicomm, "lvl : %d / %d, L_inf error : %e\n", min_level+nb_splits, max_level+nb_splits, glob_err_max[0]);
+      PetscPrintf(p4est->mpicomm, "lvl : %d / %d, L_inf error : %e\n", min_level+nb_splits, max_level+nb_splits, glob_err_max[0]);
 #ifdef P4_TO_P8
-				PetscPrintf(p4est->mpicomm, "L_inf error dx / dy / dz : %e / %e / %e\n", glob_err_max[1], glob_err_max[2], glob_err_max[3]);
+      PetscPrintf(p4est->mpicomm, "L_inf error dx / dy / dz : %e / %e / %e\n", glob_err_max[1], glob_err_max[2], glob_err_max[3]);
 #else
-				PetscPrintf(p4est->mpicomm, "L_inf error dx / dy : %e / %e\n", glob_err_max[1], glob_err_max[2]);
+      PetscPrintf(p4est->mpicomm, "L_inf error dx / dy : %e / %e\n", glob_err_max[1], glob_err_max[2]);
 #endif
 
-				/* save the vtk file */
-				if(cmd.contains("save_vtk"))
-				{
-					std::ostringstream oss; oss << P4EST_DIM << "d_solution_" << p4est->mpisize;
-					my_p4est_vtk_write_all(p4est, nodes, ghost,
-							P4EST_TRUE, P4EST_TRUE,
-							4, 0, oss.str().c_str(),
-							VTK_POINT_DATA, "phi", phi_p,
-							VTK_POINT_DATA, "sol", sol_p,
-							VTK_POINT_DATA, "uex", uex_p,
-							VTK_POINT_DATA, "err", err_p );
-					PetscPrintf(mpi->mpicomm, "Results saved in %s\n", oss.str().c_str());
-				}
+      /* save the vtk file */
+      if(cmd.contains("save_vtk"))
+      {
+        std::ostringstream oss; oss << P4EST_DIM << "d_solution_" << p4est->mpisize;
+        my_p4est_vtk_write_all(p4est, nodes, ghost,
+                               P4EST_TRUE, P4EST_TRUE,
+                               4, 0, oss.str().c_str(),
+                               VTK_POINT_DATA, "phi", phi_p,
+                               VTK_POINT_DATA, "sol", sol_p,
+                               VTK_POINT_DATA, "uex", uex_p,
+                               VTK_POINT_DATA, "err", err_p );
+        PetscPrintf(mpi->mpicomm, "Results saved in %s\n", oss.str().c_str());
+      }
 
-				/* restore internal pointers */
-				ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
-				ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
-				ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-				ierr = VecRestoreArray(uex, &uex_p); CHKERRXX(ierr);
-			}
-		}
+      /* restore internal pointers */
+      ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(uex, &uex_p); CHKERRXX(ierr);
+    }
 
     /* destroy allocated vectors */
-		ierr = VecDestroy(err); CHKERRXX(ierr);
+    ierr = VecDestroy(err); CHKERRXX(ierr);
     ierr = VecDestroy(phi); CHKERRXX(ierr);
     ierr = VecDestroy(uex); CHKERRXX(ierr);
     ierr = VecDestroy(sol); CHKERRXX(ierr);
