@@ -271,10 +271,11 @@ int main (int argc, char* argv[]){
     cmd.add_option("write-points", "write csv information for the random points");
     cmd.add_option("test", "type of test (weak = 0 and strong = 1, 2)");
     cmd.add_option("nc", "number of randomly placed circles");
+    cmd.add_option("compute_error", "compute the max (L_inf) error");
     cmd.parse(argc, argv);
     cmd.print();
 
-    output_dir                  = cmd.get<std::string>("output-dir");
+    output_dir                  = cmd.get<std::string>("output-dir",".");
     const int lmin              = cmd.get("lmin", 2);
     const int lmax              = cmd.get("lmax", 10);
     const int qmin              = cmd.get("qmin", 100);    
@@ -467,10 +468,12 @@ int main (int argc, char* argv[]){
     PetscLogEvent log_interpolation_all;
     PetscLogEvent log_interpolation_construction;
     PetscLogEvent log_interpolation_add_points;
+    PetscLogEvent log_interpolation_compute_error;
 #ifdef CASL_LOG_EVENTS
     ierr = PetscLogEventRegister("log_interpolation_all                                   ", 0, &log_interpolation_all); CHKERRXX(ierr);
     ierr = PetscLogEventRegister("log_interpolation_construction                          ", 0, &log_interpolation_construction); CHKERRXX(ierr);
-    ierr = PetscLogEventRegister("log_interpolation_add_points                            ", 0, &log_interpolation_add_points); CHKERRXX(ierr);    
+    ierr = PetscLogEventRegister("log_interpolation_add_points                            ", 0, &log_interpolation_add_points); CHKERRXX(ierr);
+    ierr = PetscLogEventRegister("log_interpolation_compute_error                         ", 0, &log_interpolation_compute_error); CHKERRXX(ierr);
 #endif
     parStopWatch w3;//(parStopWatch::all_timings);
     parStopWatch w4;//(parStopWatch::all_timings);
@@ -512,13 +515,31 @@ int main (int argc, char* argv[]){
         interp.add_point_to_buffer(i, xyz);        
       }
       ierr = PetscLogEventEnd(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
-      w2.stop(); w2.read_duration();      
+      w2.stop(); w2.read_duration();
 
       w2.start("interpolating");
       interp.interpolate(&f[0]);
       ierr = PetscLogEventEnd(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
       w2.stop(); w2.read_duration();
-      w3.stop(); w3.read_duration();      
+      w3.stop(); w3.read_duration();
+
+      if(cmd.contains("compute_error"))
+      {
+        ierr = PetscLogEventBegin(log_interpolation_compute_error, 0, 0, 0 ,0); CHKERRXX(ierr);
+        double err_max = 0;
+        for (size_t i=0; i<points.size(); ++i){
+#ifdef P4_TO_P8
+          double ex = uex(points[i].x, points[i].y, points[i].z);
+#else
+          double ex = uex(points[i].x, points[i].y);
+#endif
+          err_max = MAX(err_max, ABS(ex-f[i]));
+        }
+        double err_max_glob;
+        MPI_Allreduce(&err_max, &err_max_glob, 1, MPI_DOUBLE, MPI_MAX, mpi->mpicomm);
+        ierr = PetscPrintf(mpi->mpicomm, "Max error: %g\n", err_max_glob); CHKERRXX(ierr);
+        ierr = PetscLogEventEnd(log_interpolation_compute_error, 0, 0, 0 ,0); CHKERRXX(ierr);
+      }
     }
     w4.stop(); w4.read_duration();
 
