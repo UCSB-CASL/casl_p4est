@@ -394,7 +394,7 @@ int main (int argc, char* argv[]){
     p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
     /* partition the p4est */
-    p4est_partition(p4est, NULL);
+    p4est_partition(p4est, P4EST_FALSE, NULL);
 
     /* create the ghost layer */
     p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
@@ -487,6 +487,13 @@ int main (int argc, char* argv[]){
       /* solve the system */
       MPI_Barrier(p4est->mpicomm);
       solver.solve(sol);
+
+      if(i==repeat-1 && bc_interface_type==NEUMANN && bc_wall_type==NEUMANN)
+      {
+        PetscPrintf(p4est->mpicomm, "Neumann BC only! Shifting solution\n\n");
+        solver.shift_to_exact_solution(sol, uex);
+      }
+
     }
 
     if(cmd.contains("compute_error"))
@@ -494,12 +501,6 @@ int main (int argc, char* argv[]){
       ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
       w2.stop(); w2.read_duration();
-
-      if(bc_interface_type==NEUMANN && bc_wall_type==NEUMANN)
-      {
-        PetscPrintf(p4est->mpicomm, "Neumann BC only! Shifting solution\n\n");
-        solver.shift_to_exact_solution(sol, uex);
-      }
 
       /* prepare for output */
       double *sol_p, *phi_p, *uex_p;
