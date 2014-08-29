@@ -6,6 +6,12 @@
 1. [**p4est: Scalable Algorithms for Parallel Adaptive Mesh Refinement on Forests of Octrees.**][Burstedde2011]
  	This is the p4est paper that describes the low-level algorithms for parallelizing a forest of octrees.
 
+2. [**Scalable Parallel Octree Meshing for Terascale Applications**][Tu2005]
+	This is the original paper for the parallel Octree code, Octor, developed at UT Austin. Authors use the idea of space-filling curves, specifically Z-curve, for parallel partitioning and load balancing. They achieve nice scaling up to about 2000 processor for some earthquake modeling application
+	
+3. [**Scalable adaptive mantle convection simulation on petascale supercomputers**][Burstedde2008]
+	This is the extension of Octor code for mantle convection problem and shows decent scalability up to 62000 processors on Ranger. One part that does not seem t one scalable is the HYPRE preconditioner they use ...
+	
 2. [**Scalable Algorithms for Distributed-Memory Adaptive Mesh Refinement**][Langer2012]
 
 3. [**Algorithms and Data Structures for Massively Parallel Generic Adaptive Finite Element Codes**][Bangerth2011]
@@ -146,3 +152,5 @@
 [Hermann2003]: http://ctr.stanford.edu/ResBriefs03/herrmann1.pdf
 [Weber2008]: http://dl.acm.org/citation.cfm?doid=1409625.1409626
 [Croce2014]: http://icsweb.inf.unisi.ch/preprints/preprints/file201314.pdf
+[Tu2005]: http://delivery.acm.org/10.1145/1110000/1105769/27580004.pdf?ip=169.231.111.232&id=1105769&acc=ACTIVE%20SERVICE&key=CA367851C7E3CE77%2E022A0CC51A76093F%2E4D4702B0C3E38B35%2E4D4702B0C3E38B35&CFID=547119353&CFTOKEN=52663127&__acm__=1409250252_bfeea312afd52535cb5a93f90f4c6c20
+[Burstedde2008]: http://dl.acm.org/citation.cfm?id=1413434
