@@ -476,8 +476,6 @@ int main (int argc, char* argv[]){
 		ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
 
     /* initialize the poisson solver */
-    PetscLogEvent log_PoissonSolverNodeBased_global;
-    ierr = PetscLogEventRegister("PoissonSolverNodeBased::global                           ", 0, &log_PoissonSolverNodeBased_global); CHKERRXX(ierr);
 		for(int i=0; i<repeat; ++i)
 		{
 			w2.start("solve the poisson equation");
@@ -488,9 +486,7 @@ int main (int argc, char* argv[]){
 
 			/* solve the system */
 			MPI_Barrier(p4est->mpicomm);
-			ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_global, sol, 0, 0, 0); CHKERRXX(ierr);
 			solver.solve(sol);
-			ierr = PetscLogEventEnd  (log_PoissonSolverNodeBased_global, sol, 0, 0, 0); CHKERRXX(ierr);
 
 			if(cmd.contains("compute_error"))
 			{
