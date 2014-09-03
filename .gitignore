@@ -29,7 +29,13 @@
 *.pdfsync
 *.spl
 *.synctex.gz
+*.bbl
+*.blg
+
+# related to paper
 paper/tex/draft.pdf
+paper/tex/casl.bib
+
 # What directories to ignore
 [Dd]ebug/
 [Rr]elease/
