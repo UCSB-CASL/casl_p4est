@@ -39,8 +39,9 @@
 3. [**A Parallel Strategy for a Level Set Simulation of Droplets Moving in a Liquid Medium**][Fortmeier2011]
 	In this article authors parallelize a FEM solver, "DROPS", for use in multiphase simulation of droplets in a liquid. Both the Navier-Stokes and the level-set equations are solved on hierarchical tetrahedral meshes. The library ParMetis is utilized for partitioning the unstructured tetrahedral mesh and for load balancing. Decent speedups are reported up to 256 processors (~82% equivalent at best). One part of their algorithm that does not scale well the updating of the unstructured grid and its parallel partitioning.
 
-4. [**High performance computing for the level-set reconstruction algorithm**][Hajihashemi2010]
+4. <del> [**High performance computing for the level-set reconstruction algorithm**][Hajihashemi2010]
 	In this article, authors present a parallelization of the level-set equation using MPI. Their code, which is implemented using regular Cartesian grids in 2D, is used for electromagnetic inverse scattering problems and achieves really bad scaling (~21%-33% on 256 processors). However, this seems mostly due to the bottlenecks in computing the speed functions and matrix inversion rather than solution of the level-set equations or domain decomposition. Also, the domain decomposition technique used here is 1D (i.e. only in the y direction) to reduce the communication latency (NOTE: while communication *volume* decreases in 2D decomposition, the communication *latency* increases due to more separate messages)
+</del>
 		
 5. [**A parallelized, adaptive algorithm for multiphase flows in general geometries**][Sussman2005]	
 	In this paper authors implement a parallel multiphase solver on adaptive block-Cartesian grids. As part of this they also parallelize their level-set solver to track the location of interface. They use the [boxlib][boxlib] library from the CCSE group in LLBL which utilizes MPI for parallelization. Parallel speedup study is restricted to simple situations with at most 1-16 processors. There is also a "big" simulation on 32 processors but they do not report any *parallel speedup* whatsoever.
@@ -130,7 +131,7 @@
 [Fortmeier2010]: http://ieeexplore.ieee.org/xpl/articleDetails.jsp?arnumber=5581331
 [Zhou2011]: http://ieeexplore.ieee.org/xpl/articleDetails.jsp?arnumber=5473223
 [Breub2011]: http://www.sciencedirect.com/science/article/pii/S0096300311007107
-[Zhao2007]: http://web.b.ebscohost.com/ehost/detail/detail?sid=c78ff1d5-ddf3-459d-8287-b9c3058fe63b%40sessionmgr111&vid=0&hid=112&bdata=JnNpdGU9ZWhvc3QtbGl2ZQ%3d%3d#db=mth&AN=25853983
+[Zhao2007]: http://web.b.ebscohost.com/ehost/detail/detail?sid=c78ff1d5-ddf3-459d-8287-b9c3058fe63b%40sessionmgr111&vid=0&hid=112&bdata=JnNpdGU9ZWhvc3QtbGl2ZQ%3072d%3d#db=mth&AN=25853983
 [Detrixhe2013]: http://www.sciencedirect.com/science/article/pii/S002199911200722X
 [Langer2012]: http://charm.cs.illinois.edu/newPapers/12-35/paper.pdf
 [Bangerth2011]: http://p4est.github.io/papers/BangerthBursteddeHeisterEtAl11.pdf
