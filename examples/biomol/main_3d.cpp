@@ -81,7 +81,6 @@ int main(int argc, char *argv[]) {
     p4est_gloidx_t global_num_quadrants = p4est->global_num_quadrants;
     p4est_gloidx_t global_num_nodes = 0;
     for (int i = 0; i<p4est->mpisize; i++){
-      PetscPrintf(p4est->mpicomm, "%ld\n", nodes->global_owned_indeps[i]);
       global_num_nodes += nodes->global_owned_indeps[i];
     }
 

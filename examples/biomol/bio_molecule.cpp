@@ -15,7 +15,7 @@
 
 using namespace std;
 
-#define MAX_BLOCK_SIZE 16
+#define MAX_BLOCK_SIZE 32
 #define FAST_SURFACE_COMPUTATION
 
 istream& operator >> (istream& is, Atom& atom) {
@@ -282,12 +282,20 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
   const p4est_connectivity_t *connectivity = p4est->connectivity;
 
   // split based on the SAS distance
-  splitting_criteria_threshold_cf_t sp_thr(sp->min_lvl, sp->max_lvl, -1.5*rp_, 1.5*rp_, this, sp->lip);
+  parStopWatch w;
+  w.start("making intial tree");
+  splitting_criteria_threshold_cf_t sp_thr(sp->min_lvl, sp->max_lvl, -1.0*rp_, 1.5*rp_, this, sp->lip);
   p4est->user_pointer = &sp_thr;
-  my_p4est_refine(p4est, P4EST_TRUE, refine_threshold_cf, NULL);
 
-  // partition the p4est
-  my_p4est_partition(p4est, NULL);
+	// refine and partition
+	// Note: Using recursive on large molecules causes the whole thing to be build in serial on 
+	// one processor which is obviously not scalable 
+	for (int l = 0; l<sp->max_lvl; l++){
+	  my_p4est_refine(p4est, P4EST_FALSE, refine_threshold_cf, NULL);
+		my_p4est_partition(p4est, NULL);
+	}
+
+  PetscPrintf(p4est->mpicomm, "num of global quadrants = %ld\n", p4est->global_num_quadrants);
 
   // create the ghost layer
   ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
@@ -298,6 +306,8 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
   // calculate the SAS on
   PetscErrorCode ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   sample_cf_on_nodes(p4est, nodes, *this, phi);
+  w.stop(); w.read_duration();
+
 
   // subtract off the probe radius to get SES
   my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
