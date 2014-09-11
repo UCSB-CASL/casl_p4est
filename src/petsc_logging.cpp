@@ -1,4 +1,5 @@
 #include "petsc_logging.h"
+#include "petsc_compatibility.h"
 
 /* define proper logging events
  * Note that these are global variables to ensure all subsequent calls to the
@@ -6,10 +7,11 @@
  */
 
 // PoissonSolverNodeBase
-PetscLogEvent log_PoissonSolverNodeBase_matrix_preallocation;
-PetscLogEvent log_PoissonSolverNodeBase_matrix_setup;
-PetscLogEvent log_PoissonSolverNodeBase_rhsvec_setup;
-PetscLogEvent log_PoissonSolverNodeBase_solve;
+PetscLogEvent log_PoissonSolverNodeBased_matrix_preallocation;
+PetscLogEvent log_PoissonSolverNodeBased_matrix_setup;
+PetscLogEvent log_PoissonSolverNodeBased_rhsvec_setup;
+PetscLogEvent log_PoissonSolverNodeBased_solve;
+PetscLogEvent log_PoissonSolverNodeBased_KSPSolve;
 
 // InterpolatingFunction
 PetscLogEvent log_InterpolatingFunction_interpolate;
@@ -34,7 +36,9 @@ PetscLogEvent log_my_p4est_level_set_reinit_2nd_time_1st_space;
 PetscLogEvent log_my_p4est_level_set_reinit_1_iter_1st_order;
 PetscLogEvent log_my_p4est_level_set_reinit_1_iter_2nd_order;
 PetscLogEvent log_my_p4est_level_set_extend_over_interface;
+PetscLogEvent log_my_p4est_level_set_extend_over_interface_TVD;
 PetscLogEvent log_my_p4est_level_set_extend_from_interface;
+PetscLogEvent log_my_p4est_level_set_extend_from_interface_TVD;
 PetscLogEvent log_my_p4est_level_set_compute_derivatives;
 PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_1_iter;
 PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_Vec;
@@ -77,10 +81,11 @@ void register_petsc_logs()
 
   PetscErrorCode ierr;
   // PoissonSolverNodeBase
-  ierr = PetscLogEventRegister("PoissonSolverNodeBase::matrix_preallocation             ", 0, &log_PoissonSolverNodeBase_matrix_preallocation); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBase::matrix_setup                     ", 0, &log_PoissonSolverNodeBase_matrix_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBase::rhsvec_setup                     ", 0, &log_PoissonSolverNodeBase_rhsvec_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBase::solve                            ", 0, &log_PoissonSolverNodeBase_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_preallocation             ", 0, &log_PoissonSolverNodeBased_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_setup                     ", 0, &log_PoissonSolverNodeBased_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::rhsvec_setup                     ", 0, &log_PoissonSolverNodeBased_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::solve                            ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::KSPSolve                         ", 0, &log_PoissonSolverNodeBased_KSPSolve); CHKERRXX(ierr);
 
   // InterpolatingFunction
   ierr = PetscLogEventRegister("InterpolatingFunction::interpolate                      ", 0, &log_InterpolatingFunction_interpolate); CHKERRXX(ierr);
@@ -105,7 +110,9 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_1_iter_1st_order             ", 0, &log_my_p4est_level_set_reinit_1_iter_1st_order); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_1_iter_2nd_order             ", 0, &log_my_p4est_level_set_reinit_1_iter_2nd_order); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::extend_over_interface               ", 0, &log_my_p4est_level_set_extend_over_interface); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_level_set::extend_over_interface_TVD           ", 0, &log_my_p4est_level_set_extend_over_interface_TVD); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::extend_from_interface               ", 0, &log_my_p4est_level_set_extend_from_interface); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_level_set::extend_from_interface_TVD           ", 0, &log_my_p4est_level_set_extend_from_interface_TVD); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_1_iter   ", 0, &log_my_p4est_level_set_advect_in_normal_direction_1_iter); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_CF2      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_Vec      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_Vec); CHKERRXX(ierr);

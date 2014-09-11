@@ -20,7 +20,17 @@
 *._.DS_Store
 *.sw[op]
 *script*
+*.job
+*.pvsm
 *ddt*
+*.aux
+*.fdb_latexmk
+*.log
+*.pdfsync
+*.spl
+*.synctex.gz
+*.bbl
+*.blg
 
 # What directories to ignore
 [Dd]ebug/

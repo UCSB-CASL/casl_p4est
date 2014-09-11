@@ -287,7 +287,7 @@ void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4
   PetscFPrintf(p4est->mpicomm, file, "%% mpi_rank | local_node_size | local_quad_size | ghost_node_size | ghost_quad_size\n");
   PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d, %7d, %7d, %5d, %5d\n",
                            p4est->mpirank, nodes->num_owned_indeps, p4est->local_num_quadrants, nodes->indep_nodes.elem_count-nodes->num_owned_indeps, ghost->ghosts.elem_count);
-  PetscSynchronizedFlush(p4est->mpicomm);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
   if (partition_name){
     ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
@@ -313,7 +313,7 @@ void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4
     int r = *it;
     PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d %4d %6d\n", p4est->mpirank, r, ghost_nodes[r]);
   }
-  PetscSynchronizedFlush(p4est->mpicomm);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
   if (topology_name){
     ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
@@ -329,7 +329,7 @@ void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4
   PetscFPrintf(p4est->mpicomm, file, "%% number of neighboring processors \n");
   PetscFPrintf(p4est->mpicomm, file, "%% this_rank | number_ghost_rank \n");
   PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d %4d\n", p4est->mpirank, proc_neighbors.size());
-  PetscSynchronizedFlush(p4est->mpicomm);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
   if (neighbors_name){
     ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
@@ -1051,6 +1051,61 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
   }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+}
+
+
+#ifdef P4_TO_P8
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f)
+#else
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f)
+#endif
+{
+#ifdef CASL_THROWS
+  {
+    if ((PetscInt) f.size() != (PetscInt) nodes->indep_nodes.elem_count){
+      std::ostringstream oss;
+      oss << "[ERROR]: size of the input vector must be equal to the total number of points."
+             "nodes->indep_nodes.elem_count = " << nodes->indep_nodes.elem_count
+          << " VecSize = " << f.size() << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+  }
+#endif
+
+  const p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+  const double *v2q = p4est->connectivity->vertices;
+
+  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
+  {
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+    p4est_topidx_t v_mm = t2v[P4EST_CHILDREN*tree_id + 0];
+
+    double tree_xmin = v2q[3*v_mm + 0];
+    double tree_ymin = v2q[3*v_mm + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = v2q[3*v_mm + 2];
+#endif
+
+    double x = node->x != P4EST_ROOT_LEN - 1 ? (double)node->x/(double)P4EST_ROOT_LEN : 1.0;
+    double y = node->y != P4EST_ROOT_LEN - 1 ? (double)node->y/(double)P4EST_ROOT_LEN : 1.0;
+#ifdef P4_TO_P8
+    double z = node->z != P4EST_ROOT_LEN - 1 ? (double)node->z/(double)P4EST_ROOT_LEN : 1.0;
+#endif
+
+    x += tree_xmin;
+    y += tree_ymin;
+#ifdef P4_TO_P8
+    z += tree_zmin;
+#endif
+#ifdef P4_TO_P8
+    f[i] = cf(x,y,z);
+#else
+    f[i] = cf(x,y);
+#endif
+  }
 }
 
 #ifdef P4_TO_P8

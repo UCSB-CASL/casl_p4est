@@ -248,6 +248,11 @@ int main (int argc, char* argv[]){
     Session mpi_session;
     mpi_session.init(argc, argv, mpi->mpicomm);
 
+    int petsc_version_length = 1000;
+    char petsc_version[petsc_version_length];
+    ierr = PetscGetVersion(petsc_version, petsc_version_length); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi->mpicomm, "Petsc version %s\n", petsc_version); CHKERRXX(ierr);
+
     cmdParser cmd;
     cmd.add_option("lmin", "min level of the tree");
     cmd.add_option("lmax", "max level of the tree");
@@ -266,10 +271,11 @@ int main (int argc, char* argv[]){
     cmd.add_option("write-points", "write csv information for the random points");
     cmd.add_option("test", "type of test (weak = 0 and strong = 1, 2)");
     cmd.add_option("nc", "number of randomly placed circles");
+    cmd.add_option("compute_error", "compute the max (L_inf) error");
     cmd.parse(argc, argv);
     cmd.print();
 
-    output_dir                  = cmd.get<std::string>("output-dir");
+    output_dir                  = cmd.get<std::string>("output-dir",".");
     const int lmin              = cmd.get("lmin", 2);
     const int lmax              = cmd.get("lmax", 10);
     const int qmin              = cmd.get("qmin", 100);    
@@ -330,18 +336,18 @@ int main (int argc, char* argv[]){
       while (p4est->local_num_quadrants < random_data.max_quads){
 
         my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
-        my_p4est_partition(p4est, NULL);
+        my_p4est_partition(p4est, P4EST_FALSE, NULL);
       }
     } else if (test == 1) { // strong scaling
       while(p4est->global_num_quadrants < qmin){
         // define a globally unique random refinement
-        splitting_criteria_marker_t markers(p4est, lmin, lmax);
+        splitting_criteria_marker_t markers(p4est, lmin, lmax, 1.2);
         mark_random_quadrants(p4est, markers);
 
         p4est->user_pointer = &markers;
         my_p4est_refine(p4est, P4EST_FALSE, refine_marked_quadrants, NULL);
         
-        my_p4est_partition(p4est, NULL);
+        my_p4est_partition(p4est, P4EST_FALSE, NULL);
         
       }
     }
@@ -353,7 +359,7 @@ int main (int argc, char* argv[]){
     // Finally re-partition
     w2.start("partition");
     
-    my_p4est_partition(p4est, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
     
     w2.stop(); w2.read_duration();
 
@@ -403,8 +409,8 @@ int main (int argc, char* argv[]){
       PetscPrintf(p4est->mpicomm, "%% global_quads = %ld \t global_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
       PetscPrintf(p4est->mpicomm, "%% mpi_rank local_node_size local_quad_size ghost_node_size ghost_quad_size\n");
       PetscSynchronizedPrintf(p4est->mpicomm, "%4d, %7d, %7d, %5d, %5d\n", 
-        p4est->mpirank, nodes->num_owned_indeps, p4est->local_num_quadrants, nodes->indep_nodes.elem_count-nodes->num_owned_indeps, ghost->ghosts.elem_count);
-      PetscSynchronizedFlush(p4est->mpicomm);
+      p4est->mpirank, nodes->num_owned_indeps, p4est->local_num_quadrants, nodes->indep_nodes.elem_count-nodes->num_owned_indeps, ghost->ghosts.elem_count);
+      PetscSynchronizedFlush(p4est->mpicomm, stdout);
     }
     w2.stop(); w2.read_duration();
 
@@ -462,10 +468,12 @@ int main (int argc, char* argv[]){
     PetscLogEvent log_interpolation_all;
     PetscLogEvent log_interpolation_construction;
     PetscLogEvent log_interpolation_add_points;
+    PetscLogEvent log_interpolation_compute_error;
 #ifdef CASL_LOG_EVENTS
     ierr = PetscLogEventRegister("log_interpolation_all                                   ", 0, &log_interpolation_all); CHKERRXX(ierr);
     ierr = PetscLogEventRegister("log_interpolation_construction                          ", 0, &log_interpolation_construction); CHKERRXX(ierr);
-    ierr = PetscLogEventRegister("log_interpolation_add_points                            ", 0, &log_interpolation_add_points); CHKERRXX(ierr);    
+    ierr = PetscLogEventRegister("log_interpolation_add_points                            ", 0, &log_interpolation_add_points); CHKERRXX(ierr);
+    ierr = PetscLogEventRegister("log_interpolation_compute_error                         ", 0, &log_interpolation_compute_error); CHKERRXX(ierr);
 #endif
     parStopWatch w3;//(parStopWatch::all_timings);
     parStopWatch w4;//(parStopWatch::all_timings);
@@ -507,13 +515,31 @@ int main (int argc, char* argv[]){
         interp.add_point_to_buffer(i, xyz);        
       }
       ierr = PetscLogEventEnd(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
-      w2.stop(); w2.read_duration();      
+      w2.stop(); w2.read_duration();
 
       w2.start("interpolating");
       interp.interpolate(&f[0]);
       ierr = PetscLogEventEnd(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
       w2.stop(); w2.read_duration();
-      w3.stop(); w3.read_duration();      
+      w3.stop(); w3.read_duration();
+
+      if(cmd.contains("compute_error"))
+      {
+        ierr = PetscLogEventBegin(log_interpolation_compute_error, 0, 0, 0 ,0); CHKERRXX(ierr);
+        double err_max = 0;
+        for (size_t i=0; i<points.size(); ++i){
+#ifdef P4_TO_P8
+          double ex = uex(points[i].x, points[i].y, points[i].z);
+#else
+          double ex = uex(points[i].x, points[i].y);
+#endif
+          err_max = MAX(err_max, ABS(ex-f[i]));
+        }
+        double err_max_glob;
+        MPI_Allreduce(&err_max, &err_max_glob, 1, MPI_DOUBLE, MPI_MAX, mpi->mpicomm);
+        ierr = PetscPrintf(mpi->mpicomm, "Max error: %g\n", err_max_glob); CHKERRXX(ierr);
+        ierr = PetscLogEventEnd(log_interpolation_compute_error, 0, 0, 0 ,0); CHKERRXX(ierr);
+      }
     }
     w4.stop(); w4.read_duration();
 

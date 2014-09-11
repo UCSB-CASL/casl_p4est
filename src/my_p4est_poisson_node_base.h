@@ -31,9 +31,10 @@ class PoissonSolverNodeBase
   const CF_2* phi_cf;
 #endif
 
+  bool neumann_wall_first_order;
   double mu_, diag_add_;
-  bool is_matrix_ready;
-  bool matrix_has_nullspace;
+  bool is_matrix_computed;
+  int matrix_has_nullspace;
   double dx_min, dy_min, d_min, diag_min;
 #ifdef P4_TO_P8
   double dz_min;
@@ -48,18 +49,27 @@ class PoissonSolverNodeBase
 
   // PETSc objects
   Mat A;
-  MatNullSpace A_null_space;
-  Vec rhs_, phi_, add_, phi_xx_, phi_yy_;
+  p4est_gloidx_t fixed_value_idx_g;
+  p4est_gloidx_t fixed_value_idx_l;
+  bool is_phi_dd_owned, is_mue_dd_owned;
+  Vec rhs_, phi_, add_, mue_, phi_xx_, phi_yy_, mue_xx_, mue_yy_;
+  Vec robin_coef_;
 #ifdef P4_TO_P8
-  Vec phi_zz_;
+  Vec phi_zz_, mue_zz_;
 #endif
-  bool is_phi_dd_owned;
   KSP ksp;
   PetscErrorCode ierr;
 
   void preallocate_matrix();
+
+  void setup_negative_laplace_matrix_neumann_wall_1st_order();
+  void setup_negative_laplace_rhsvec_neumann_wall_1st_order();
+
   void setup_negative_laplace_matrix();
-  void setup_negative_laplace_rhsvec();  
+  void setup_negative_laplace_rhsvec();
+
+  void setup_negative_variable_coeff_laplace_matrix();
+  void setup_negative_variable_coeff_laplace_rhsvec();
 
   // disallow copy ctr and copy assignment
   PoissonSolverNodeBase(const PoissonSolverNodeBase& other);
@@ -83,14 +93,28 @@ public:
   void set_phi(Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
 #endif
   inline void set_rhs(Vec rhs)                 {rhs_      = rhs;}
-  inline void set_diagonal(double add)         {diag_add_ = add; is_matrix_ready = false;}
-  inline void set_diagonal(Vec add)            {add_      = add; is_matrix_ready = false;}
+  inline void set_diagonal(double add)         {diag_add_ = add;          is_matrix_computed = false;}
+  inline void set_diagonal(Vec add)            {add_      = add;          is_matrix_computed = false;}
 #ifdef P4_TO_P8
-  inline void set_bc(BoundaryConditions3D& bc) {bc_       = &bc; is_matrix_ready = false;}
+  inline void set_bc(BoundaryConditions3D& bc) {bc_       = &bc;          is_matrix_computed = false;}
 #else
-  inline void set_bc(BoundaryConditions2D& bc) {bc_       = &bc; is_matrix_ready = false;}
+  inline void set_bc(BoundaryConditions2D& bc) {bc_       = &bc;          is_matrix_computed = false;}
 #endif
-  inline void set_mu(double mu)                {mu_       = mu;  is_matrix_ready = false;}
+  inline void set_robin_coef(Vec robin_coef)   {robin_coef_ = robin_coef; is_matrix_computed = false;}
+  inline void set_mu(double mu)                {mu_       = mu;           is_matrix_computed = false;}
+  inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT) {
+    ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
+  }
+
+  inline void set_first_order_neumann_wall( bool val ) { neumann_wall_first_order=val; }
+
+  void shift_to_exact_solution(Vec sol, Vec uex);
+
+#ifdef P4_TO_P8
+  void set_mu(Vec mu, Vec mu_xx = NULL, Vec mu_yy = NULL, Vec mu_zz = NULL);
+#else
+  void set_mu(Vec mu, Vec mu_xx = NULL, Vec mu_yy = NULL);
+#endif
 
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 };

@@ -1,0 +1,66 @@
+%!TEX root = draft.tex
+\section{Presentation of the algorithms}
+
+We now propose a detailed description of the main algorithms for the level-set method.
+
+\subsection{Interpolations}
+
+The first important step to build a level-set based code is to provide an interpolation procedure on the vertices. Being able to evaluate quantities at arbitrary locations in the computational domain is mandatory for procedures such as advecting the level-set function or enforcing boundary conditions on the irregular interface. The interpolation procedure enables any process to evaluate a quantity anywhere in the domain.
+
+\begin{algorithm}[ht!]
+\begin{algorithmic}
+\If {interpolation order $>$ 2}
+	\State compute second order derivatives for local and ghost points if needed
+\EndIf
+\State begin send point buffer
+\State do the interpolation for local points
+\State do the interpolation for ghost points
+\State begin receiving point buffer
+\For {in $\in$ \{remote senders\} }
+	\State finish receiving from send i
+	\State interpolate all points from sender i
+\EndFor
+\State receive the point buffer
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Semi lagrangian advection}
+
+\subsection{Reinitialization and extensions} \label{section::reinitialization}
+
+The reinitialization procedure transforms an arbitrary function into a signed distance function to its zero contour. One of the popular methods to achieve this results is to solve the reinitialization equation \ref{eq::reinitialization} \cite{Sussman;Smereka;Osher:94:A-Level-Set-Approach, Min;Gibou:07:A-second-order-accur}. Other methods, such as the Fast Sweeping \cite{Zhao:04:A-Fast-Sweeping-Meth} and the Fast Marching methods \cite{Sethian:96:A-Fast-Marching-Leve, Chopp:01:Some-improvements-of}, are based on the wave propagation nature of the reinitialization front and provide faster implementations of the reinitialization procedure in a serial environment. However, their parallelization is an involved process and we opt for solving the reinitialization equation.
+
+We base our approach on Min and Gibou \cite{Min;Gibou:07:A-second-order-accur} and discretize the reinitialization equation as
+
+\begin{equation*}
+\frac{d\phi}{d\tau} + \mathrm{sign}(\phi^0)[H_G(D^+_x\phi, D^-_x\phi, D^+_y\phi, D^-_y\phi)-1] = 0,
+\end{equation*}
+
+with $\mathrm{sign}(\phi^0)$ the signum of the initial level-set function and $H_G$ the Godunov Hamiltonian:
+
+\begin{equation*}
+H_G(a,b,c,d) =
+\begin{cases}
+\sqrt{\max(\lvert a^+ \rvert^2, \lvert b^- \rvert^2) + \max(\lvert c^+ \rvert^2, \lvert d^- \rvert^2)} \quad \mathrm{if~sgn}(\phi^0) \leq 0\\
+\sqrt{\max(\lvert a^- \rvert^2, \lvert b^+ \rvert^2) + \max(\lvert c^- \rvert^2, \lvert d^+ \rvert^2)} \quad \mathrm{if~sgn}(\phi^0) > 0
+\end{cases}
+\end{equation*}
+
+with $a^+=\max(a,0)$ and $a^-=\min(a,0)$. The one-sided derivatives $D^{+/-}_{x/y}\phi$ are discretized by second order accurate finite differences as explained by Min and Gibou in \cite{Min;Gibou:07:A-second-order-accur}. Following the presentation in \cite{Min;Gibou:07:A-second-order-accur} which incorporates the subcell resolution introduced by Russo and Smereka \cite{Russo;Smereka:00:A-Remark-on-Computin}, we include the initial position of the interface, given by $\phi^0$, in the computation of the one sided derivatives next to the interface in order to preserve the interface location. Finally, we choose a simple Euler step for the time discretization.
+
+The general parallel algorithm for the reinitialization procedure is presented in \ref{algo::reinitialization}. For each fictitious time step, we start by computing the new value of the level-set function for the layer nodes. We then initiate the communication to update the ghost values while computing the new values for local nodes. After finishing the communication, we can then update $\phi^n$ to $\phi^{n+1}$ and move on to the next time step. The number of iterations needed for the reinitialization procedure to converge on the whole domain or on a band surrounding the interface depends on the size of the mesh, the geometry of the interface and how far from a signed distance function $\phi^0$ is. In practice, twenty iterations provide reasonable results for the applications we present.
+
+\begin{algorithm}[ht!]
+\begin{algorithmic}
+\State Compute initial derivatives of $\phi$ for subcell resolution
+\For {number of iterations}
+	\State Compute the derivatives of $\phi$
+	\State Solve reinitialization of layer nodes: $\phi_{layer} \leftarrow \phi_{layer}^{n+1}$
+	\State Begin update for layer nodes
+	\State Solve reinitialization on local nodes : $\phi_{local} \leftarrow \phi_{local}^{n+1}$
+	\State End update for layer nodes
+	\State Update $\phi$: $\phi \leftarrow \phi^{n+1}$
+\EndFor
+\end{algorithmic}
+\caption{General structure of the parallel implementation of the reinitialization procedure presented in section \ref{section::reinitialization}.} \label{algo::reinitialization}
+\end{algorithm}

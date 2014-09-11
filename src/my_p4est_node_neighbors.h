@@ -75,6 +75,23 @@ public:
     }
   }
 
+  inline size_t get_layer_size() const { return layer_nodes.size(); }
+  inline size_t get_local_size() const { return local_nodes.size(); }
+  inline p4est_locidx_t get_layer_node(size_t i) const {
+#ifdef CASL_THROWS
+    if (i > layer_nodes.size())
+      throw std::invalid_argument("[ERROR]: accessing beyod layer node size");
+#endif
+    return layer_nodes[i];
+  }
+  inline p4est_locidx_t get_local_node(size_t i) const {
+#ifdef CASL_THROWS
+    if (i > local_nodes.size())
+      throw std::invalid_argument("[ERROR]: accessing beyod local node size");
+#endif
+    return local_nodes[i];
+  }
+
   void init_neighbors();
   void clear_neighbors();
   void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_);

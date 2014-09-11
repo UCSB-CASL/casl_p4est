@@ -212,8 +212,12 @@ int main (int argc, char* argv[]){
 	*/
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
 
+  my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
+  my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
+  node_neighbors.init_neighbors();
+
   // SemiLagrangian object
-  SemiLagrangian sl(&p4est, &nodes, &ghost, &brick);
+  SemiLagrangian sl(&p4est, &nodes, &ghost, &brick, &node_neighbors);
 
   // loop over time
   double tf = cmd.get<double>("tf");
@@ -221,7 +225,7 @@ int main (int argc, char* argv[]){
   int save = 50000;
   double dt = 0.05;
   for (double t=0; t<tf; t+=dt, tc++){
-    if (false && tc % save == 0){
+    if (tc % save == 0){
       // Save stuff
       std::ostringstream oss; oss << "semi_lagrangian_" << p4est->mpisize << "_"
                                   << brick.nxyztrees[0] << "x"
@@ -250,9 +254,6 @@ int main (int argc, char* argv[]){
 #endif
 
     // reinitialize
-    my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
-    my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
-    node_neighbors.init_neighbors();
     my_p4est_level_set level_set(&node_neighbors);
     level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
     

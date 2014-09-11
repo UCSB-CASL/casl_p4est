@@ -7,7 +7,9 @@
 #endif
 
 #include "petsc_compatibility.h"
-// #include <sc_notify.h>
+#ifndef ENABLE_NONBLOCKING_NOTIFY
+#include <sc_notify.h>
+#endif
 #include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
 #include <mpi.h>
@@ -47,7 +49,7 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
     Fzz_(NULL),
     #endif
     local_derivatives(false),
-#ifdef P4EST_SC_NOTIFY
+#ifndef ENABLE_NONBLOCKING_NOTIFY
     remote_senders(p4est->mpisize, -1),
 #endif
     is_buffer_prepared(false)
@@ -76,7 +78,7 @@ InterpolatingFunctionNodeBase::InterpolatingFunctionNodeBase(p4est_t *p4est,
     Fzz_(NULL),
     #endif
     local_derivatives(false),
-#ifdef P4EST_SC_NOTIFY
+#ifndef ENABLE_NONBLOCKING_NOTIFY
     remote_senders(p4est->mpisize, -1),
 #endif
     is_buffer_prepared(false)
@@ -276,7 +278,7 @@ void InterpolatingFunctionNodeBase::interpolate(Vec output_vec)
   ierr = VecRestoreArray(output_vec, &Fo_p); CHKERRXX(ierr);
 }
 
-#ifdef P4EST_SC_NOTIFY
+#ifndef ENABLE_NONBLOCKING_NOTIFY
 void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
 { 
   PetscErrorCode ierr;
@@ -799,7 +801,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
       } else {
         MPI_Testall(remote_send_req.size(), &remote_send_req[0], &all_sent, MPI_STATUSES_IGNORE);
         if (all_sent)
-#ifdef STAMPEDE
+#ifdef ENABLE_MPI_EXTENSIONS
           MPIX_Ibarrier(p4est_->mpicomm, &breq);
 #else
           MPI_Ibarrier(p4est_->mpicomm, &breq);
@@ -858,7 +860,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   IPMLogRegionEnd("interpolate");
   ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 }
-#endif // P4EST_SC_NOTIFY
+#endif // ENABLE_NONBLOCKING_NOTIFY
 
 void InterpolatingFunctionNodeBase::save_comm_topology(const char *partition_name, const char *topology_name) {
 #ifdef CASL_THROWS
@@ -880,7 +882,7 @@ void InterpolatingFunctionNodeBase::save_comm_topology(const char *partition_nam
     PetscSynchronizedFPrintf(p4est_->mpicomm, topo_file, "%4d %4d %5d\n", p4est_->mpirank, it->first, it->second.size());
     send_buffer += it->second.size();
   }
-  PetscSynchronizedFlush(p4est_->mpicomm);
+  PetscSynchronizedFlush(p4est_->mpicomm, stdout);
   ierr = PetscFClose(p4est_->mpicomm, topo_file);
 
   for (remote_transfer_map::const_iterator it = remote_recv_buffer.begin(); it != remote_recv_buffer.end(); ++it)
@@ -888,7 +890,7 @@ void InterpolatingFunctionNodeBase::save_comm_topology(const char *partition_nam
 
   PetscSynchronizedFPrintf(p4est_->mpicomm, par_file, "%4d %7d %5d %5d %5d %4d %4d\n",
                            p4est_->mpirank, local_point_buffer.size(), ghost_point_buffer.size(), send_buffer, recv_buffer, remote_senders.size(), remote_receivers.size());
-  PetscSynchronizedFlush(p4est_->mpicomm);
+  PetscSynchronizedFlush(p4est_->mpicomm, stdout);
   ierr = PetscFClose(p4est_->mpicomm, par_file);
 }
 

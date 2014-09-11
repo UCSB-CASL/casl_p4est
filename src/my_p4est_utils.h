@@ -9,6 +9,7 @@
 #include <p4est_nodes.h>
 #endif
 #include <src/petsc_logging.h>
+#include "petsc_compatibility.h"
 
 #include <petsc.h>
 #include <stdexcept>
@@ -64,8 +65,10 @@ public:
 typedef enum {
   DIRICHLET,
   NEUMANN,
+  ROBIN,
   NOINTERFACE,
-  MIXED
+  MIXED,
+  IGNORE
 } BoundaryConditionType;
 
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
@@ -122,6 +125,10 @@ public:
 
   inline void setInterfaceValue(const CF_2& in){
     p_InterfaceValue = &in;
+  }
+
+  inline const CF_2& getInterfaceValue(){
+    return *p_InterfaceValue;
   }
 
   inline BoundaryConditionType wallType( double x, double y ) const
@@ -189,6 +196,10 @@ public:
 
   inline void setInterfaceValue(const CF_3& in){
     p_InterfaceValue = &in;
+  }
+
+  inline const CF_3& getInterfaceValue(){
+    return *p_InterfaceValue;
   }
 
   inline BoundaryConditionType wallType( double x, double y, double z ) const
@@ -397,7 +408,7 @@ double integrate_over_interface_in_one_quadrant(p4est_nodes_t *nodes, p4est_quad
  * \param f the scalar to integrate
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
-double integrate_over_interface(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec f);
+double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief is_node_xmWall checks if a node is on x^- domain boundary

@@ -27,6 +27,12 @@ void Cube2::kuhn_Triangulation(Simplex2& s1, Simplex2& s2 ) const
   s2.y0=y0 ; s2.y1=y1 ; s2.y2=y1;
 }
 
+double Cube2::interface_Length_In_Cell(QuadValue& level_set_values) const
+{
+  QuadValue tmp(1.,1.,1.,1.);
+  return integrate_Over_Interface(tmp,level_set_values);
+}
+
 double Cube2::area_In_Negative_Domain( QuadValue& level_set_values) const
 {
   QuadValue tmp(1.,1.,1.,1.);

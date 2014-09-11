@@ -267,7 +267,7 @@ refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadran
   else if (quad->level >= marker.max_lvl)
     return P4EST_FALSE;
   else
-    return *(p4est_bool_t*)quad->p.user_data;
+    return (*(p4est_bool_t*)quad->p.user_data);
 }
 
 p4est_bool_t

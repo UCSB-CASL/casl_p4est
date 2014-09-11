@@ -72,7 +72,7 @@ class InterpolatingFunctionNodeBase: public CF_2
   bool is_buffer_prepared;
 
   std::vector<MPI_Request> remote_send_req;
-#ifdef P4EST_SC_NOTIFY
+#ifndef ENABLE_NONBLOCKING_NOTIFY
   std::vector<MPI_Request> remote_recv_req;
 #endif
 
@@ -86,7 +86,7 @@ class InterpolatingFunctionNodeBase: public CF_2
   void process_remote_data(std::vector<double>& xyz_recv, std::vector<double>& f_send);
   void compute_second_derivatives();
 
-#ifdef P4EST_SC_NOTIFY
+#ifndef ENABLE_NONBLOCKING_NOTIFY
   void send_point_buffers_begin();
   void recv_point_buffers_begin();
 #endif

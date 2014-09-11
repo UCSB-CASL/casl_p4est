@@ -92,6 +92,9 @@ int main (int argc, char* argv[]){
     p4est_nodes_t      *nodes;
     PetscErrorCode      ierr;
 
+    Session mpi_session;
+    mpi_session.init(argc, argv, mpi->mpicomm);
+
     cmdParser cmd;
     cmd.add_option("lmin", "min level of the tree");
     cmd.add_option("lmax", "max level of the tree");
@@ -105,9 +108,6 @@ int main (int argc, char* argv[]){
     circle circ(1, 1, .3);
 #endif
     splitting_criteria_cf_t cf_data(cmd.get("lmin", 0), cmd.get("lmax",5), &circ, 1);
-
-    Session mpi_session;
-    mpi_session.init(argc, argv, mpi->mpicomm);
 
     parStopWatch w1, w2;
     w1.start("total time");
@@ -139,7 +139,7 @@ int main (int argc, char* argv[]){
 
     // Finally re-partition
     w2.start("partition");
-    p4est_partition(p4est, NULL);
+    p4est_partition(p4est, P4EST_FALSE, NULL);
     w2.stop(); w2.read_duration();
 
     // Create the ghost structure
@@ -177,7 +177,7 @@ int main (int argc, char* argv[]){
 
     grid_name.str(""); grid_name << P4EST_DIM << "d_grid_qnnn_" << p4est->mpirank << "_" << p4est->mpisize;
     FILE *qFile = fopen(grid_name.str().c_str(), "w");
-    for (size_t n=0; n<nodes->num_owned_indeps; n++)
+    for (p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++)
       qnnn[n].print_debug(qFile);
     fclose(qFile);
 
@@ -256,7 +256,7 @@ int main (int argc, char* argv[]){
     p4est_t *p4est_np1 = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
     p4est_np1->user_pointer = (void*)&cf_data;
     p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
-    p4est_partition(p4est_np1, NULL);
+    p4est_partition(p4est_np1, P4EST_FALSE, NULL);
     w2.stop(); w2.read_duration();
 
     /*
@@ -299,7 +299,7 @@ int main (int argc, char* argv[]){
       // buffer the point
       phi_func.add_point_to_buffer(i, xyz);
     }
-    PetscSynchronizedFlush(p4est->mpicomm);
+    PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
     // interpolate on to the new vector
     Vec phi_np1;
