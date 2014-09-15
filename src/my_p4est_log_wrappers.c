@@ -5,6 +5,7 @@
 #endif
 
 #include <petsclog.h>
+#include <src/p4est_compatibility.h>
 #include <sc_notify.h>
 #include <src/ipm_logging.h>
 
@@ -80,7 +81,12 @@ my_p4est_partition(p4est_t *p4est, int allow_for_coarsening, p4est_weight_t weig
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
 	IPMLogRegionBegin("p4est_partition");  
+#if P4EST_VERSION_LT(1,0)
+  (void) allow_for_coarsening;
+  p4est_partition(p4est, weight_fn);
+#else  
   p4est_partition(p4est, allow_for_coarsening, weight_fn);
+#endif  
 	IPMLogRegionEnd("p4est_partition");
   ierr = PetscLogEventEnd(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
 }

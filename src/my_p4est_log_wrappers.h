@@ -48,20 +48,4 @@ my_sc_notify_allgather(int *receivers, int num_receivers,
 }
 #endif
 
-
-void
-my_sc_notify(int *receivers, int num_receivers,
-             int *senders, int *num_senders,
-             MPI_Comm mpicomm);
-
-void
-my_sc_notify_allgather(int *receivers, int num_receivers,
-             		   int *senders, int *num_senders,
-             		   MPI_Comm mpicomm);
-
-#ifdef __cplusplus
-}
-#endif
-
-
 #endif // MY_P4EST_LOG_WRAPPERS_H

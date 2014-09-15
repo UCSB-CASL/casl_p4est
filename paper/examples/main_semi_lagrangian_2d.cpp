@@ -29,7 +29,6 @@
 #include <src/my_p4est_log_wrappers.h>
 #endif
 
-
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 
@@ -209,13 +208,13 @@ int main (int argc, char* argv[]){
     p4est->user_pointer = (void*)(&data);
     for (int l=0; l<lmax; l++){
       my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
-      my_p4est_partition(p4est, NULL);
+      my_p4est_partition(p4est, P4EST_FALSE, NULL);
     }
     w2.stop(); w2.read_duration();
 
     // Finally re-partition
     w2.start("partition");
-    my_p4est_partition(p4est, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
     w2.stop(); w2.read_duration();
 
     // create the ghost layer
@@ -365,8 +364,8 @@ int main (int argc, char* argv[]){
           else
             sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
 #endif
-          hierarchy->update(p4est, ghost);
-          node_neighbors->update(hierarchy, nodes);
+          hierarchy.update(p4est, ghost);
+          node_neighbors.update(&hierarchy, nodes);
           PetscPrintf(p4est->mpicomm, "t = %f, dt = %f, tc = %d\n", t+dt, dt, tc+1);
           w2.stop(); w2.read_duration();
 
