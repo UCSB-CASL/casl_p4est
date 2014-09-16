@@ -421,7 +421,7 @@ int main (int argc, char* argv[]){
         dt = dt_max;
       }
 #endif
-      PetscPrintf(p4est->mpicomm, "t = %f, dt = %f, tc = %d\n", t+dt, dt, tc+1);
+      PetscPrintf(p4est->mpicomm, "t = %f, dt_max = %f, dt = %f, tc = %d\n", t+dt, dt_max, dt, tc+1);
       w2.stop(); w2.read_duration();
 
       w2.start("Reinit");

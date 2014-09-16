@@ -76,7 +76,7 @@ class SemiLagrangian
   std::vector<double> local_xyz_departure_dep, non_local_xyz_departure_dep;   //Buffers to hold local and non-local departure points
   PetscErrorCode ierr;
 
-  void advect_from_n_to_np1(double dt,
+  void advect_from_n_to_np1(const std::vector<p4est_locidx_t>& map, double dt,
                           #ifdef P4_TO_P8
                             const CF_3& vx, const CF_3& vy, const CF_3& vz,
                             Vec phi_n, Vec phi_xx_n, Vec phi_yy_n, Vec phi_zz_n,

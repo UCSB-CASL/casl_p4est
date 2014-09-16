@@ -147,7 +147,7 @@ double SemiLagrangian::compute_dt(Vec vx, Vec vy)
   return dt_min;
 }
 
-void SemiLagrangian::advect_from_n_to_np1(double dt,
+void SemiLagrangian::advect_from_n_to_np1(const std::vector<p4est_locidx_t>& map, double dt,
                                         #ifdef P4_TO_P8
                                           const CF_3& vx, const CF_3& vy, const CF_3& vz,
                                           Vec phi_n, Vec phi_xx_n, Vec phi_yy_n, Vec phi_zz_n,
@@ -170,10 +170,8 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
   p4est_topidx_t *t2v = p4est_np1->connectivity->tree_to_vertex; // tree to vertex list
   double *t2c = p4est_np1->connectivity->vertices; // coordinates of the vertices of a tree
 
-  p4est_locidx_t ni_begin = 0;
-  p4est_locidx_t ni_end   = nodes_np1->indep_nodes.elem_count;
-
-  for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
+  for (size_t i = 0; i < map.size(); ++i){ //Loop through all nodes of a single processor
+    p4est_locidx_t ni = map[i];
     p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni);
     p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
 
@@ -1393,7 +1391,6 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
   p4est_t *p4est_np1 = my_p4est_new(p4est_->mpicomm, p4est_->connectivity, 0, NULL, NULL);
-  std::vector<double> phi_tmp;
 
   // compute phi_xx and phi_yy
   Vec phi_xx_ = phi_xx, phi_yy_ = phi_yy;
@@ -1424,15 +1421,32 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   }
 
   int nb_iter = ((splitting_criteria_t*) (p4est_->user_pointer))->max_lvl;
+  
 
   for( int iter = 0; iter < nb_iter; ++iter )
   {
     p4est_t       *p4est_tmp = p4est_copy(p4est_np1, P4EST_FALSE);
     p4est_nodes_t *nodes_tmp = my_p4est_nodes_new(p4est_tmp,NULL);
 
+    std::vector<p4est_locidx_t> layer_nodes, local_nodes;
+    layer_nodes.reserve(nodes_tmp->num_owned_shared);
+    local_nodes.reserve(nodes_tmp->num_owned_indeps - nodes_tmp->num_owned_shared);
+
+    for (p4est_locidx_t i=0; i<nodes_tmp->num_owned_indeps; ++i){
+      p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_tmp->indep_nodes, i);
+      ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
+    }
+
+    
+
     /* compute phi_np1 on intermediate grid */
-    phi_tmp.resize(nodes_tmp->indep_nodes.elem_count);
-    advect_from_n_to_np1(dt,
+    Vec phi_tmp;
+    ierr =  VecCreateGhostNodes(p4est_tmp, nodes_tmp, &phi_tmp);
+    double *phi_tmp_p;
+    ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+  
+    // 1) layer nodes
+    advect_from_n_to_np1(layer_nodes, dt,
                      #ifdef P4_TO_P8
                          vx, vy, vz,
                          phi, phi_xx_, phi_yy_, phi_zz_,
@@ -1440,15 +1454,36 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
                          vx,  vy,
                          phi, phi_xx_, phi_yy_,
                      #endif
-                         phi_tmp.data(), p4est_tmp, nodes_tmp);
+                         phi_tmp_p, p4est_tmp, nodes_tmp);
+
+    // 2) update the ghost
+    ierr = VecGhostUpdateBegin(phi_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    // 3) local nodes
+    advect_from_n_to_np1(local_nodes, dt,
+                     #ifdef P4_TO_P8
+                         vx, vy, vz,
+                         phi, phi_xx_, phi_yy_, phi_zz_,
+                     #else
+                         vx,  vy,
+                         phi, phi_xx_, phi_yy_,
+                     #endif
+                         phi_tmp_p, p4est_tmp, nodes_tmp);
+
+    // 4) finish update
+    ierr = VecGhostUpdateEnd(phi_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);        
 
     /* refine p4est_np1 */
     splitting_criteria_t *data = (splitting_criteria_t*) p4est_->user_pointer;
-    splitting_criteria_update_t data_np1(data->lip, data->min_lvl, data->max_lvl, &phi_tmp[0], myb_, p4est_tmp, NULL, nodes_tmp);
+    splitting_criteria_update_t data_np1(data->lip, data->min_lvl, data->max_lvl, phi_tmp_p, myb_, p4est_tmp, NULL, nodes_tmp);
     p4est_np1->user_pointer = (void*) &data_np1;
     my_p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_sl , NULL);
-    my_p4est_partition(p4est_np1, 0, NULL);
+    my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
 
+    ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+    ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
+
+    
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
   }
@@ -1462,15 +1497,40 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   /* compute the nodes structure */
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-  /* update the values of phi at the new time-step */
-  phi_tmp.clear();
+  /* compute the local and layer nodes for this grid */
+  std::vector<p4est_locidx_t> layer_nodes, local_nodes;
+  layer_nodes.reserve(nodes_np1->num_owned_shared);
+  local_nodes.reserve(nodes_np1->num_owned_indeps - nodes_np1->num_owned_shared);
 
+  for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i){
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, i);
+    ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
+  }
+  
+  /* update the values of phi at the new time-step */
   Vec phi_np1;
   double *phi_np1_p;
   ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
+  /* 1- update layer nodes */
   ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-  advect_from_n_to_np1(dt,
+  advect_from_n_to_np1(layer_nodes, dt,
+                     #ifdef P4_TO_P8
+                         vx, vy, vz,
+                         phi, phi_xx_, phi_yy_, phi_zz_,
+                     #else
+                         vx,  vy,
+                         phi, phi_xx_, phi_yy_,
+                     #endif
+                       phi_np1_p, p4est_np1, nodes_np1, true);
+  ierr = VecRestoreArray(phi_np1, &phi_np1_p);
+
+  /* 2- begin sending ghost values */
+  ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  /* 3- update local points */
+  ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+  advect_from_n_to_np1(local_nodes, dt,
                      #ifdef P4_TO_P8
                          vx, vy, vz,
                          phi, phi_xx_, phi_yy_, phi_zz_,
@@ -1481,12 +1541,19 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
                        phi_np1_p, p4est_np1, nodes_np1, true);
   ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
+  /* 4- finish ghost update */
+  ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   /* now that everything is updated, get rid of old stuff and swap them with new ones */
   p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
   p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
   p4est_ghost_destroy(ghost_); ghost_ = *p_ghost_ = ghost_np1;
+
+  /* update hierarchy and node neighbors */
   hierarchy_->update(p4est_, ghost_);
-  ngbd_->update(hierarchy_, nodes_);
+  ngbd_->update(hierarchy_,  nodes_);
+
+  
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
