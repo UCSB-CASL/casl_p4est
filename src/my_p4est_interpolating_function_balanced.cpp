@@ -224,12 +224,12 @@ void InterpolatingFunctionNodeBaseBalanced::process_data(const input_buffer_t* i
   p4est_topidx_t v_mmm = p4est_->connectivity->tree_to_vertex[data.tree_idx*P4EST_CHILDREN + 0];
 
   double *tree_xyz  = &(p4est_->connectivity->vertices[3*v_mmm]);
-  const double *point_xyz = &(input->p_xyz[data.input_buffer_idx]);
+  const double *point_xyz = &(input->p_xyz[data.input_buffer_idx * P4EST_DIM]);
 
   double x = (point_xyz[0] - tree_xyz[0]);
-  double y = (point_xyz[1] - tree_xyz[0]);
+  double y = (point_xyz[1] - tree_xyz[1]);
 #ifdef P4_TO_P8
-  double z = (point_xyz[2] - tree_xyz[0]);
+  double z = (point_xyz[2] - tree_xyz[2]);
 #endif
 
   double qh   = (double)P4EST_QUADRANT_LEN(data.level) / (double)(P4EST_ROOT_LEN);
