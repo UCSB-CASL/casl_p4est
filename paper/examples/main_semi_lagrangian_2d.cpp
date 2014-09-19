@@ -37,91 +37,91 @@ using namespace std;
 #ifdef P4_TO_P8
 static class: public CF_3
 {
-	public:
-		double operator()(double x, double y, double z) const {
-			return 2.0*SQR(sin(M_PI*x))*sin(2*M_PI*y)*sin(2*M_PI*z);
-		}
+  public:
+    double operator()(double x, double y, double z) const {
+      return 2.0*SQR(sin(M_PI*x))*sin(2*M_PI*y)*sin(2*M_PI*z);
+    }
 } vx_vortex;
 
 static class: public CF_3
 {
-	public:
-		double operator()(double x, double y, double z) const {
-			return  -SQR(sin(M_PI*y))*sin(2*M_PI*x)*sin(2*M_PI*z);
-		}
+  public:
+    double operator()(double x, double y, double z) const {
+      return  -SQR(sin(M_PI*y))*sin(2*M_PI*x)*sin(2*M_PI*z);
+    }
 } vy_vortex;
 
 static class: public CF_3
 {
-	public:
-		double operator()(double x, double y, double z) const {
-			return  -SQR(sin(M_PI*z))*sin(2*M_PI*x)*sin(2*M_PI*y);
-		}
+  public:
+    double operator()(double x, double y, double z) const {
+      return  -SQR(sin(M_PI*z))*sin(2*M_PI*x)*sin(2*M_PI*y);
+    }
 } vz_vortex;
 
 struct circle:CF_3{
-	circle(double x0_, double y0_, double z0_, double r_)
-		: x0(x0_), y0(y0_), z0(z0_), r(r_)
-	{}
-	void update (double x0_, double y0_, double z0_, double r_) {x0 = x0_; y0 = y0_; z0 = z0_; r = r_; }
-	double operator()(double x, double y, double z) const {
-		return r - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
-	}
-	private:
-	double  x0, y0, z0, r;
+  circle(double x0_, double y0_, double z0_, double r_)
+    : x0(x0_), y0(y0_), z0(z0_), r(r_)
+  {}
+  void update (double x0_, double y0_, double z0_, double r_) {x0 = x0_; y0 = y0_; z0 = z0_; r = r_; }
+  double operator()(double x, double y, double z) const {
+    return r - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
+  }
+  private:
+  double  x0, y0, z0, r;
 };
 
 struct square:CF_3{
-	square(double x0_, double y0_, double z0_, double h_)
-		: x0(x0_), y0(y0_), z0(z0_), h(h_)
-	{}
-	void update (double x0_, double y0_, double z0_, double h_) {x0 = x0_; y0 = y0_; z0 = z0_; h = h_; }
-	double operator()(double x, double y, double z) const {
-		return h - MIN(ABS(x-x0) , ABS(y-y0), ABS(z-z0));
-	}
-	private:
-	double  x0, y0, z0, h;
+  square(double x0_, double y0_, double z0_, double h_)
+    : x0(x0_), y0(y0_), z0(z0_), h(h_)
+  {}
+  void update (double x0_, double y0_, double z0_, double h_) {x0 = x0_; y0 = y0_; z0 = z0_; h = h_; }
+  double operator()(double x, double y, double z) const {
+    return h - MIN(ABS(x-x0) , ABS(y-y0), ABS(z-z0));
+  }
+  private:
+  double  x0, y0, z0, h;
 };
 
 #else
 static class: public CF_2
 {
   double f;
-	public:
+  public:
 void update (double t) { f = t <= 1 ? 1:-1; /*f = sin(M_PI*t); f = f>0 ? ceil(f):floor(f);*/}
-		double operator()(double x, double y) const {
+    double operator()(double x, double y) const {
       return (-SQR(sin(M_PI*x))*sin(2*M_PI*y));
-		}
+    }
 } vx_vortex;
 
 static class: public CF_2
 {
   double f;
-	public:
+  public:
     void update (double t) { f = t <= 1 ? 1:-1;/*f = sin(M_PI*t); f = f>0 ? ceil(f):floor(f);*/}
-		double operator()(double x, double y) const {
+    double operator()(double x, double y) const {
       return  (SQR(sin(M_PI*y))*sin(2*M_PI*x));
-		}
+    }
 } vy_vortex;
 
 struct circle:CF_2{
-	circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
-	void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
-	double operator()(double x, double y) const {
-		return r - sqrt(SQR(x-x0) + SQR(y-y0));
-	}
-	private:
-	double  x0, y0, r;
+  circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
+  void update (double x0_, double y0_, double r_) {x0 = x0_; y0 = y0_; r = r_; }
+  double operator()(double x, double y) const {
+    return r - sqrt(SQR(x-x0) + SQR(y-y0));
+  }
+  private:
+  double  x0, y0, r;
 };
 
 struct square:CF_2{
-	square(double x0_, double y0_, double h_): x0(x0_), y0(y0_), h(h_) {}
-	void update (double x0_, double y0_, double h_) {x0 = x0_; y0 = y0_; h = h_; }
-	double operator()(double x, double y) const {
-		return h - MIN(ABS(x-x0) , ABS(y-y0));
-	}
-	private:
-	double  x0, y0, h;
+  square(double x0_, double y0_, double h_): x0(x0_), y0(y0_), h(h_) {}
+  void update (double x0_, double y0_, double h_) {x0 = x0_; y0 = y0_; h = h_; }
+  double operator()(double x, double y) const {
+    return h - MIN(ABS(x-x0) , ABS(y-y0));
+  }
+  private:
+  double  x0, y0, h;
 };
 #endif
 
@@ -156,7 +156,7 @@ int main (int argc, char* argv[]){
     cmd.add_option("cfl-condition", "decide whether to use the cfl condition advection");
     cmd.add_option("write-stats", "set this flag if interested in writing the stats");
     cmd.add_option("dt-max", "maximum dt to be taken");
-		cmd.add_option("it-max" ,"maximum iterations before termination");
+    cmd.add_option("it-max" ,"maximum iterations before termination");
     cmd.parse(argc, argv);
     cmd.print();
 
@@ -230,7 +230,7 @@ int main (int argc, char* argv[]){
 
     // loop over time
     double tf = cmd.get<double>("tf");
-		int itmax = cmd.get<double>("it-max");
+    int itmax = cmd.get<double>("it-max");
     int tc = 0;
     int ts_vtk = 0, ts_stats = 0;
     double save_vtk   = cmd.get("write-vtk", 0.1);
@@ -243,7 +243,7 @@ int main (int argc, char* argv[]){
     SemiLagrangian sl(&p4est, &nodes, &ghost, &brick, &node_neighbors);
     double cfl = cmd.get<double>("cfl");
     sl.set_CFL(cfl);
-		bool cfl_condition = cmd.contains("cfl-condition") && cfl <= 1.0;
+    bool cfl_condition = cmd.contains("cfl-condition") && cfl <= 1.0;
 
 #ifdef P4_TO_P8
     double dt_cfl = cfl * sl.compute_dt(vx_vortex, vy_vortex, vz_vortex);
@@ -314,13 +314,13 @@ int main (int argc, char* argv[]){
 
     for (double t=0; t<tf && tc<itmax; t+=dt, tc++){
       if (write_stats && tc % save_stats == 0){
-				w2.start("writing stats");
-				std::ostringstream partition_name, topology_name, neighbors_name;
+        w2.start("writing stats");
+        std::ostringstream partition_name, topology_name, neighbors_name;
         std::ostringstream sl_partition_name, sl_topology_name;
 #ifdef P4_TO_P8
-				partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
+        partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
                        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
-				topology_name  << foldername + "/" + "topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
+        topology_name  << foldername + "/" + "topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
                        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
         neighbors_name << foldername + "/" + "neighbors_CFL_" << cfl << "_" << p4est->mpisize << "p_"
                        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
@@ -330,11 +330,11 @@ int main (int argc, char* argv[]){
         sl_topology_name  << foldername + "/" + "SL_topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
                           << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "x" << brick.nxyztrees[2] << "." << ts_stats << ".dat";
 #else
-				partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
+        partition_name << foldername + "/" + "partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
                        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts_stats << ".dat";
-				topology_name  << foldername + "/" + "topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
+        topology_name  << foldername + "/" + "topology_CFL_"  << cfl << "_" << p4est->mpisize << "p_"
                        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts_stats << ".dat";
-				neighbors_name << foldername + "/" + "neighbors_CFL_" << cfl << "_" << p4est->mpisize << "p_"
+        neighbors_name << foldername + "/" + "neighbors_CFL_" << cfl << "_" << p4est->mpisize << "p_"
                        << brick.nxyztrees[0] << "x" << brick.nxyztrees[1] << "." << ts_stats << ".dat";
 
         sl_partition_name << foldername + "/" + "SL_partition_CFL_" << cfl << "_" << p4est->mpisize << "p_"
@@ -346,8 +346,8 @@ int main (int argc, char* argv[]){
         sl.set_comm_topology_filenames(sl_partition_name.str(), sl_topology_name.str());
         ts_stats++;
         w2.stop(); w2.read_duration();
-			}
- 
+      }
+
       if (write_vtk && t+dt >= (ts_vtk+1)*save_vtk){
         // advect to (ts+1)*save time
         if (((ts_vtk+1)*save_vtk - t)/save_vtk > 1e-6){
@@ -376,30 +376,30 @@ int main (int argc, char* argv[]){
           w2.stop(); w2.read_duration();
         }
 
-				w2.start("saving vtk file");
-				// Save stuff
-				std::ostringstream oss; oss << foldername << "/semi_lagrangian_";
-				if (cfl_condition)
-					oss << "CFL_";
+        w2.start("saving vtk file");
+        // Save stuff
+        std::ostringstream oss; oss << foldername << "/semi_lagrangian_";
+        if (cfl_condition)
+          oss << "CFL_";
 
-				oss << p4est->mpisize << "_"
-						<< brick.nxyztrees[0] << "x"
-						<< brick.nxyztrees[1]
-		 #ifdef P4_TO_P8
-						<< "x" << brick.nxyztrees[2]
-		 #endif
+        oss << p4est->mpisize << "_"
+            << brick.nxyztrees[0] << "x"
+            << brick.nxyztrees[1]
+     #ifdef P4_TO_P8
+            << "x" << brick.nxyztrees[2]
+     #endif
             << "." << ts_vtk;
 
-				double *phi_ptr;
-				ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-				my_p4est_vtk_write_all(p4est, nodes, ghost,
-															 P4EST_TRUE, P4EST_TRUE,
-															 1, 0, oss.str().c_str(),
-															 VTK_POINT_DATA, "phi", phi_ptr);
+        double *phi_ptr;
+        ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
+        my_p4est_vtk_write_all(p4est, nodes, ghost,
+                               P4EST_TRUE, P4EST_TRUE,
+                               1, 0, oss.str().c_str(),
+                               VTK_POINT_DATA, "phi", phi_ptr);
 
-				ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
-				w2.stop(); w2.read_duration();
-	
+        ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
+        w2.stop(); w2.read_duration();
+
         ts_vtk++;
         continue;
       }

@@ -18,6 +18,11 @@ PetscLogEvent log_InterpolatingFunction_interpolate;
 PetscLogEvent log_InterpolatingFunction_send_buffer;
 PetscLogEvent log_InterpolatingFunction_recv_buffer;
 
+// InterpolatingFunctionBalanced
+PetscLogEvent log_InterpolatingFunctionBalanced_interpolate;
+PetscLogEvent log_InterpolatingFunctionBalanced_process_data;
+PetscLogEvent log_InterpolatingFunctionBalanced_process_message;
+
 // SemiLagrangian
 PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_Vec;
 PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CF2;
@@ -91,6 +96,11 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("InterpolatingFunction::interpolate                      ", 0, &log_InterpolatingFunction_interpolate); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("InterpolatingFunction::send_buffer                      ", 0, &log_InterpolatingFunction_send_buffer); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("InterpolatingFunction::recv_buffer                      ", 0, &log_InterpolatingFunction_recv_buffer); CHKERRXX(ierr);
+
+  // InterpolatingFunctionBalanced
+  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::interpolate              ", 0, &log_InterpolatingFunctionBalanced_interpolate); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::process_data             ", 0, &log_InterpolatingFunctionBalanced_process_data); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::process_message          ", 0, &log_InterpolatingFunctionBalanced_process_message); CHKERRXX(ierr);
 
   // Semilagrangian
   ierr = PetscLogEventRegister("Semilagrangian::advect_from_n_to_np1_Vec                ", 0, &log_Semilagrangian_advect_from_n_to_np1_Vec); CHKERRXX(ierr);
