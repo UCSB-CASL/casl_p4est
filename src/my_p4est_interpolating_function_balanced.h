@@ -69,13 +69,12 @@ class InterpolatingFunctionNodeBaseBalanced: public CF_2
 
   enum {
     point_tag,
-    data_tag,
-    ignore_tag
+    data_tag
   };
 
   // methods  
   void process_data(const input_buffer_t* input, const cell_data_t& data, double *Fo_p);
-  void process_message(MPI_Status& status, std::queue<const input_buffer_t*> &queue);
+  void process_message(MPI_Status& status, std::queue<std::pair<const input_buffer_t*, size_t> > &queue);
 
   // rule of three -- disable copy ctr and assignment if not useful
   InterpolatingFunctionNodeBaseBalanced(const InterpolatingFunctionNodeBaseBalanced& other);

@@ -186,18 +186,20 @@ void InterpolatingFunctionNodeBaseBalanced::interpolate(double *Fo_p) {
   num_remaining_msgs += senders[p4est_->mpirank];
 
   bool done = false;
-  std::queue<const input_buffer_t*> queue;
+  std::queue<std::pair<const input_buffer_t*, size_t> > queue;
 
-  size_t it = 0;
+  size_t it = 0, end = data_buffer.size();
   const input_buffer_t* input = &input_buffer[p4est_->mpirank];
   MPI_Status status;
 
   while (!done) {
-    if (it != data_buffer.size()) {
+    if (it < end) {
       process_data(input, data_buffer[it], Fo_p);
       ++it;
     } else if (!queue.empty()) {
-      input = queue.front();
+      const std::pair<const input_buffer_t*, size_t>& next = queue.front();
+      input = next.first;
+      end   = next.second;
       queue.pop();
     }
 
@@ -283,7 +285,7 @@ void InterpolatingFunctionNodeBaseBalanced::process_data(const input_buffer_t* i
   Fo_p[input->node_idx[data.input_buffer_idx]] = value;
 }
 
-void InterpolatingFunctionNodeBaseBalanced::process_message(MPI_Status& status, std::queue<const input_buffer_t*>& queue) {
+void InterpolatingFunctionNodeBaseBalanced::process_message(MPI_Status& status, std::queue<std::pair<const input_buffer_t *, size_t> > &queue) {
   if (point_tag == status.MPI_TAG) {
     // receive incoming quqery about points and send back the results
     int vec_size;
@@ -345,9 +347,8 @@ void InterpolatingFunctionNodeBaseBalanced::process_message(MPI_Status& status, 
     ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 
     // we are done with searching, lets send the buffer back
-    int tag = buff.size() == 0 ? ignore_tag:data_tag;
     MPI_Request req;
-    MPI_Isend(&buff[0], buff.size()*sizeof(cell_data_t), MPI_BYTE, status.MPI_SOURCE, tag, p4est_->mpicomm, &req);
+    MPI_Isend(&buff[0], buff.size()*sizeof(cell_data_t), MPI_BYTE, status.MPI_SOURCE, data_tag, p4est_->mpicomm, &req);
     data_send_req.push_back(req);
 
   } else if (data_tag == status.MPI_TAG) {
@@ -362,10 +363,9 @@ void InterpolatingFunctionNodeBaseBalanced::process_message(MPI_Status& status, 
     MPI_Recv(&data_buffer[old_size], byte_count, MPI_BYTE, status.MPI_SOURCE, status.MPI_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);
 
     // Add the new input to the queue
-    queue.push(&input_buffer[status.MPI_SOURCE]);
+    if (byte_count != 0)
+      queue.push(std::make_pair(&input_buffer[status.MPI_SOURCE], new_size));
 
-  } else if (ignore_tag == status.MPI_TAG) {
-    // ignore this message since the processor was not able to send any proper data
   } else {
     throw std::runtime_error("[ERROR] Received an MPI message with an unknown tag!");
   }
