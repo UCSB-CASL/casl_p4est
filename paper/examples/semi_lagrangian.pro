@@ -87,6 +87,7 @@ SOURCES += \
     $$CASL_P4EST/src/my_p4est_tools.c\
     $$CASL_P4EST/src/my_p4est_nodes.c \
     $$CASL_P4EST/src/my_p4est_interpolating_function.cpp \
+    $$CASL_P4EST/src/my_p4est_interpolating_function_balanced.cpp \
     $$CASL_P4EST/src/my_p4est_semi_lagrangian.cpp \
     $$CASL_P4EST/src/my_p4est_levelset.cpp \
     $$CASL_P4EST/src/cube2.cpp \
@@ -112,6 +113,7 @@ SOURCES += \
     $$CASL_P4EST/src/my_p8est_tools.c\
     $$CASL_P4EST/src/my_p8est_nodes.c \
     $$CASL_P4EST/src/my_p8est_interpolating_function.cpp \
+    $$CASL_P4EST/src/my_p8est_interpolating_function_balanced.cpp \
     $$CASL_P4EST/src/my_p8est_semi_lagrangian.cpp \
     $$CASL_P4EST/src/my_p8est_levelset.cpp \
     $$CASL_P4EST/src/cube3.cpp \

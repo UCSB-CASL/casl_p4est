@@ -1,11 +1,13 @@
 #ifdef P4_TO_P8
 #include "my_p8est_semi_lagrangian.h"
 #include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_interpolating_function_balanced.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
 #else
 #include "my_p4est_semi_lagrangian.h"
 #include <src/my_p4est_interpolating_function.h>
+#include <src/my_p4est_interpolating_function_balanced.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_log_wrappers.h>
 #endif
@@ -160,11 +162,12 @@ void SemiLagrangian::advect_from_n_to_np1(const std::vector<p4est_locidx_t>& map
 {
   ierr = PetscLogEventBegin(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
 
-  InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, ngbd_);
+  // InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, ngbd_);
+  InterpolatingFunctionNodeBaseBalanced interp(phi_n, ngbd_);
 #ifdef P4_TO_P8
-  interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n, phi_zz_n);
+  // interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n, phi_zz_n);
 #else
-  interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n);
+  // interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n);
 #endif
 
   p4est_topidx_t *t2v = p4est_np1->connectivity->tree_to_vertex; // tree to vertex list
@@ -217,17 +220,20 @@ void SemiLagrangian::advect_from_n_to_np1(const std::vector<p4est_locidx_t>& map
     };
 
     /* Buffer the point for interpolation */
-    interp.add_point_to_buffer(ni, xyz_departure);
+    // interp.add_point_to_buffer(ni, xyz_departure);
+		interp.add_point(ni, xyz_departure);
   }
 
   /* interpolate from old vector into our output vector */
   interp.interpolate(phi_np1);
 
-  if(save_topology && !partition_name_.empty() && !topology_name_.empty()){
+  /*
+	 if(save_topology && !partition_name_.empty() && !topology_name_.empty()){
     interp.save_comm_topology(partition_name_.c_str(), topology_name_.c_str());
-    partition_name_.clear();
+		partition_name_.clear();
     topology_name_.clear();
   }
+	*/
 
   ierr = PetscLogFlops(20); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
@@ -1435,9 +1441,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
     for (p4est_locidx_t i=0; i<nodes_tmp->num_owned_indeps; ++i){
       p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_tmp->indep_nodes, i);
       ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
-    }
-
-    
+    } 
 
     /* compute phi_np1 on intermediate grid */
     Vec phi_tmp;
@@ -1487,6 +1491,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
   }
+
 
   /* restore the user pointer in the p4est */
   p4est_np1->user_pointer = p4est_->user_pointer;

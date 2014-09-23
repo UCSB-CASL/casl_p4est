@@ -79,7 +79,6 @@ void InterpolatingFunctionNodeBaseBalanced::add_point(p4est_locidx_t node_locidx
   int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
 
   input_buffer_t *local_input_buffer = &input_buffer[p4est_->mpirank];
-  static p4est_locidx_t local_input_buffer_idx = 0;
 
   // check who is going to own the quadrant
   if (rank_found == p4est_->mpirank) {
@@ -100,7 +99,7 @@ void InterpolatingFunctionNodeBaseBalanced::add_point(p4est_locidx_t node_locidx
     p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
     for (short i = 0; i<P4EST_CHILDREN; i++)
       data.f[i] = Fi_p[nodes_->local_nodes[qu_locidx*P4EST_CHILDREN + i]];
-    data.input_buffer_idx = local_input_buffer_idx++;
+    data.input_buffer_idx = local_input_buffer->size() - 1;
     data_buffer.push_back(data);
 
   } else if ( rank_found != -1 ) {
@@ -123,7 +122,7 @@ void InterpolatingFunctionNodeBaseBalanced::add_point(p4est_locidx_t node_locidx
     p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + p4est_->local_num_quadrants;
     for (short i = 0; i<P4EST_CHILDREN; i++)
       data.f[i] = Fi_p[nodes_->local_nodes[qu_locidx*P4EST_CHILDREN + i]];
-    data.input_buffer_idx = local_input_buffer_idx++;
+    data.input_buffer_idx = local_input_buffer->size() - 1;
     data_buffer.push_back(data);
 
   } else if ( remote_matches.size() != 0) {
@@ -164,9 +163,17 @@ void InterpolatingFunctionNodeBaseBalanced::interpolate(double *Fo_p) {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_InterpolatingFunctionBalanced_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
+	// determine how many processors will be communicating with this processor
+  p4est_locidx_t num_remaining_msgs = 0;
+  for (size_t i = 0; i<senders.size(); i++)
+    num_remaining_msgs += senders[i];
+  
+	MPI_Allreduce(MPI_IN_PLACE, &senders[0], p4est_->mpisize, MPI_INT, MPI_SUM, p4est_->mpicomm);
+  num_remaining_msgs += senders[p4est_->mpirank];
+
+  // initiate sending points
   const double *Fi_p;
   ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
-  // initiate sending points
   for (std::map<int, input_buffer_t>::const_iterator it = input_buffer.begin();
        it != input_buffer.end(); ++it) {
     if (it->first == p4est_->mpirank)
@@ -178,13 +185,7 @@ void InterpolatingFunctionNodeBaseBalanced::interpolate(double *Fo_p) {
     point_send_req.push_back(req);
   }
 
-  // determine how many processors will be communicating with this processor
-  p4est_locidx_t num_remaining_msgs = 0;
-  for (size_t i = 0; i<senders.size(); i++)
-    num_remaining_msgs += senders[i];
-  MPI_Allreduce(MPI_IN_PLACE, &senders[0], p4est_->mpisize, MPI_INT, MPI_SUM, p4est_->mpicomm);
-  num_remaining_msgs += senders[p4est_->mpirank];
-
+	// Begin main loop
   bool done = false;
   std::queue<std::pair<const input_buffer_t*, size_t> > queue;
 
@@ -208,9 +209,15 @@ void InterpolatingFunctionNodeBaseBalanced::interpolate(double *Fo_p) {
     MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, p4est_->mpicomm, &is_msg_pending, &status);
 
     // receive pending message based on its status
-    if (is_msg_pending) {
-      process_message(status, queue);
-      num_remaining_msgs--;
+    if (is_msg_pending && (status.MPI_TAG == point_tag || status.MPI_TAG == data_tag)) {
+			if (num_remaining_msgs > 0) {
+				process_message(status, queue, num_remaining_msgs);
+			} else {
+				std::ostringstream oss; oss << "[Error]: Rank  " << p4est_->mpirank << "recved an"
+				" unexpected message of " << status.count << " byte from rank " << status.MPI_SOURCE <<  
+				" with tag = " << status.MPI_TAG << std::endl;
+				throw std::runtime_error(oss.str().c_str());
+			}
     }
 
     done = num_remaining_msgs == 0 && it == data_buffer.size();
@@ -282,10 +289,11 @@ void InterpolatingFunctionNodeBaseBalanced::process_data(const input_buffer_t* i
   value /= qh*qh;
 #endif
 
+
   Fo_p[input->node_idx[data.input_buffer_idx]] = value;
 }
 
-void InterpolatingFunctionNodeBaseBalanced::process_message(MPI_Status& status, std::queue<std::pair<const input_buffer_t *, size_t> > &queue) {
+void InterpolatingFunctionNodeBaseBalanced::process_message(MPI_Status& status, std::queue<std::pair<const input_buffer_t *, size_t> > &queue, int& num_remaining_msgs) {
   if (point_tag == status.MPI_TAG) {
     // receive incoming quqery about points and send back the results
     int vec_size;
@@ -351,6 +359,8 @@ void InterpolatingFunctionNodeBaseBalanced::process_message(MPI_Status& status, 
     MPI_Isend(&buff[0], buff.size()*sizeof(cell_data_t), MPI_BYTE, status.MPI_SOURCE, data_tag, p4est_->mpicomm, &req);
     data_send_req.push_back(req);
 
+		num_remaining_msgs--;
+
   } else if (data_tag == status.MPI_TAG) {
     // receive incoming data we asked before and add it to the queue
     int byte_count;
@@ -366,8 +376,7 @@ void InterpolatingFunctionNodeBaseBalanced::process_message(MPI_Status& status, 
     if (byte_count != 0)
       queue.push(std::make_pair(&input_buffer[status.MPI_SOURCE], new_size));
 
-  } else {
-    throw std::runtime_error("[ERROR] Received an MPI message with an unknown tag!");
+		num_remaining_msgs--;
   }
 
   // check if we can free data buffers

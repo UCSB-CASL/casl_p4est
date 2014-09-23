@@ -1,5 +1,5 @@
-#ifndef INTERPOLATING_FUNCTION_H
-#define INTERPOLATING_FUNCTION_H
+#ifndef INTERPOLATING_FUNCTION_BALANCED_H
+#define INTERPOLATING_FUNCTION_BALANCED_H
 
 #include <vector>
 #include <queue>
@@ -67,14 +67,15 @@ class InterpolatingFunctionNodeBaseBalanced: public CF_2
   std::vector<MPI_Request> data_send_req;
   std::vector<int> senders;
 
+	// using a number other than 0 to ensure no other message uses the same tag by mistake
   enum {
-    point_tag,
+    point_tag = 1234,
     data_tag
   };
 
   // methods  
   void process_data(const input_buffer_t* input, const cell_data_t& data, double *Fo_p);
-  void process_message(MPI_Status& status, std::queue<std::pair<const input_buffer_t*, size_t> > &queue);
+  void process_message(MPI_Status& status, std::queue<std::pair<const input_buffer_t*, size_t> > &queue, int& num_remaining_msgs);
 
   // rule of three -- disable copy ctr and assignment if not useful
   InterpolatingFunctionNodeBaseBalanced(const InterpolatingFunctionNodeBaseBalanced& other);
@@ -95,4 +96,4 @@ public:
     ) const;
 };
 
-#endif // INTERPOLATING_FUNCTION_H
+#endif // INTERPOLATING_FUNCTION_BALANCED_H
