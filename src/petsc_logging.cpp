@@ -20,8 +20,10 @@ PetscLogEvent log_InterpolatingFunction_recv_buffer;
 
 // InterpolatingFunctionBalanced
 PetscLogEvent log_InterpolatingFunctionBalanced_interpolate;
+PetscLogEvent log_InterpolatingFunctionBalanced_interpolate_nonblocking;
 PetscLogEvent log_InterpolatingFunctionBalanced_process_data;
 PetscLogEvent log_InterpolatingFunctionBalanced_process_message;
+PetscLogEvent log_InterpolatingFunctionBalanced_all_reduce;
 
 // SemiLagrangian
 PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_Vec;
@@ -29,9 +31,11 @@ PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CF2;
 PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CFL_Vec;
 PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CFL_CF2;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_Vec;
-PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_CFL_Vec;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_CFL_CF2;
+PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
+PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_grid;
+PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_value;
 
 // my_p4est_level_set
 PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
@@ -99,8 +103,10 @@ void register_petsc_logs()
 
   // InterpolatingFunctionBalanced
   ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::interpolate              ", 0, &log_InterpolatingFunctionBalanced_interpolate); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::interpolate_nonblocking  ", 0, &log_InterpolatingFunctionBalanced_interpolate_nonblocking); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::process_data             ", 0, &log_InterpolatingFunctionBalanced_process_data); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::process_message          ", 0, &log_InterpolatingFunctionBalanced_process_message); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::all_reduce			          ", 0, &log_InterpolatingFunctionBalanced_all_reduce); CHKERRXX(ierr);
 
   // Semilagrangian
   ierr = PetscLogEventRegister("Semilagrangian::advect_from_n_to_np1_Vec                ", 0, &log_Semilagrangian_advect_from_n_to_np1_Vec); CHKERRXX(ierr);
@@ -108,9 +114,11 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("Semilagrangian::advect_from_n_to_np1_CFL_Vec            ", 0, &log_Semilagrangian_advect_from_n_to_np1_CFL_Vec); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::advect_from_n_to_np1_CFL_CF2            ", 0, &log_Semilagrangian_advect_from_n_to_np1_CFL_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_Vec           ", 0, &log_Semilagrangian_update_p4est_second_order_Vec); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2           ", 0, &log_Semilagrangian_update_p4est_second_order_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CFL_Vec       ", 0, &log_Semilagrangian_update_p4est_second_order_CFL_Vec); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CFL_CF2       ", 0, &log_Semilagrangian_update_p4est_second_order_CFL_CF2); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2           ", 0, &log_Semilagrangian_update_p4est_second_order_CF2); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2_value     ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_value); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CFL_grid      ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_grid); CHKERRXX(ierr);
 
   // my_p4est_level_set
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_1st_order                    ", 0, &log_my_p4est_level_set_reinit_1st_order); CHKERRXX(ierr);

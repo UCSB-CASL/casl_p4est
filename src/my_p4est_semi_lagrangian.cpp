@@ -36,9 +36,11 @@ extern PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CF2;
 extern PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CFL_Vec;
 extern PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CFL_CF2;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_Vec;
-extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CFL_Vec;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CFL_CF2;
+extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
+extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_grid;
+extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_value;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -1429,6 +1431,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   int nb_iter = ((splitting_criteria_t*) (p4est_->user_pointer))->max_lvl;
   
 
+  ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_CF2_grid, 0, 0, 0, 0); CHKERRXX(ierr);
   for( int iter = 0; iter < nb_iter; ++iter )
   {
     p4est_t       *p4est_tmp = p4est_copy(p4est_np1, P4EST_FALSE);
@@ -1491,8 +1494,10 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
   }
+  ierr = PetscLogEventEnd(log_Semilagrangian_update_p4est_second_order_CF2_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 
 
+  ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_CF2_value, 0, 0, 0, 0); CHKERRXX(ierr);
   /* restore the user pointer in the p4est */
   p4est_np1->user_pointer = p4est_->user_pointer;
 
@@ -1557,7 +1562,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   /* update hierarchy and node neighbors */
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_,  nodes_);
-
+  ierr = PetscLogEventEnd(log_Semilagrangian_update_p4est_second_order_CF2_value, 0, 0, 0, 0); CHKERRXX(ierr);
   
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);

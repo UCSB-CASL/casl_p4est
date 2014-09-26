@@ -129,7 +129,7 @@ SOURCES += \
 }
 
 # ------------------------------- Compiler Options ------------------------------- #
-CONFIG(profile):{
+CONFIG(gdb):{
     QMAKE_LFLAGS += -g
     QMAKE_CFLAGS += -g
     QMAKE_CXXFLAGS += -g

@@ -59,13 +59,14 @@ class InterpolatingFunctionNodeBaseBalanced: public CF_2
     double f[P4EST_CHILDREN];
     p4est_locidx_t input_buffer_idx;
   };
-
+  
   std::map<int, input_buffer_t> input_buffer;
   std::vector<cell_data_t> data_buffer;
   std::map<int, std::vector<cell_data_t> > send_buffer;
   std::vector<MPI_Request> point_send_req;
   std::vector<MPI_Request> data_send_req;
   std::vector<int> senders;
+  size_t input_buffer_size;
 
 	// using a number other than 0 to ensure no other message uses the same tag by mistake
   enum {
@@ -75,7 +76,7 @@ class InterpolatingFunctionNodeBaseBalanced: public CF_2
 
   // methods  
   void process_data(const input_buffer_t* input, const cell_data_t& data, double *Fo_p);
-  void process_message(MPI_Status& status, std::queue<std::pair<const input_buffer_t*, size_t> > &queue, int& num_remaining_msgs);
+  void process_message(MPI_Status& status, std::queue<std::pair<const input_buffer_t*, size_t> > &queue);
 
   // rule of three -- disable copy ctr and assignment if not useful
   InterpolatingFunctionNodeBaseBalanced(const InterpolatingFunctionNodeBaseBalanced& other);
@@ -89,6 +90,7 @@ public:
   // interpolation methods
   void interpolate(Vec Fo);
   void interpolate(double *Fo_p);
+  void interpolate_nonblocking(double *Fo_p);
   double operator()(double x, double y
 #ifdef P4_TO_P8
     , double z
