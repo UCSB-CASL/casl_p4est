@@ -1718,8 +1718,6 @@ void SemiLagrangian::update_p4est_second_order_from_last_grid(const CF_2& vx, co
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_last_grid_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
-  p4est_t *p4est_np1 = my_p4est_copy(p4est_, P4EST_FALSE);
-  std::vector<double> phi_tmp;
 
   // compute phi_xx and phi_yy
   Vec phi_xx_ = phi_xx, phi_yy_ = phi_yy;
@@ -1749,16 +1747,19 @@ void SemiLagrangian::update_p4est_second_order_from_last_grid(const CF_2& vx, co
     local_derivatives = true;
   }
 
-  int nb_iter = ((splitting_criteria_t*) (p4est_->user_pointer))->max_lvl;
+  p4est_t       *p4est_np1 = my_p4est_copy(p4est_, P4EST_FALSE);
+  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+  Vec phi_np1;
+  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
-  for( int iter = 0; iter < nb_iter; ++iter )
-  {
-    p4est_t       *p4est_tmp = p4est_copy(p4est_np1, P4EST_FALSE);
-    p4est_nodes_t *nodes_tmp = my_p4est_nodes_new(p4est_tmp,NULL);
-`
-    splitting_criteria_marker_t
-    /* compute phi_np1 on intermediate grid */
-    phi_tmp.resize(nodes_tmp->indep_nodes.elem_count);
+  splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est_->user_pointer;
+  bool is_grid_changing = true;
+  while (is_grid_changing) {
+    // advect from np1 to n to enable refinement
+    double* phi_np1_p;
+    ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
     advect_from_n_to_np1(dt,
                      #ifdef P4_TO_P8
                          vx, vy, vz,
@@ -1767,50 +1768,30 @@ void SemiLagrangian::update_p4est_second_order_from_last_grid(const CF_2& vx, co
                          vx,  vy,
                          phi, phi_xx_, phi_yy_,
                      #endif
-                         phi_tmp.data(), p4est_tmp, nodes_tmp);
-
-    /* refine p4est_np1 */
-    splitting_criteria_t *data = (splitting_criteria_t*) p4est_->user_pointer;
-    splitting_criteria_update_t data_np1(data->lip, data->min_lvl, data->max_lvl, &phi_tmp[0], myb_, p4est_tmp, NULL, nodes_tmp);
-    p4est_np1->user_pointer = (void*) &data_np1;
-    my_p4est_refine (p4est_np1, P4EST_FALSE, refine_criteria_sl , NULL);
-    my_p4est_partition(p4est_np1, 0, NULL);
+                         phi_np1_p, p4est_np1, nodes_np1);
 
 
-    p4est_nodes_destroy(nodes_tmp);
-    p4est_destroy(p4est_tmp);
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    is_grid_changing = sp.refine_and_coarsen(p4est_np1, nodes_np1, phi_np1_p);
+
+    ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+    if (is_grid_changing) {
+      my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+
+      // reset nodes, ghost, and phi
+      p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+      ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+    }
   }
 
-  /* restore the user pointer in the p4est */
   p4est_np1->user_pointer = p4est_->user_pointer;
 
-  /* compute new ghost layer */
-  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-
-  /* compute the nodes structure */
-  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-
-  /* update the values of phi at the new time-step */
-  phi_tmp.clear();
-
-  Vec phi_np1;
-  double *phi_np1_p;
-  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
-
-  ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-  advect_from_n_to_np1(dt,
-                     #ifdef P4_TO_P8
-                         vx, vy, vz,
-                         phi, phi_xx_, phi_yy_, phi_zz_,
-                     #else
-                         vx,  vy,
-                         phi, phi_xx_, phi_yy_,
-                     #endif
-                       phi_np1_p, p4est_np1, nodes_np1, true);
-  ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-
   /* now that everything is updated, get rid of old stuff and swap them with new ones */
-  p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
+  p4est_destroy(p4est_);       p4est_ = *p_p4est_ = p4est_np1;
   p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
   p4est_ghost_destroy(ghost_); ghost_ = *p_ghost_ = ghost_np1;
   hierarchy_->update(p4est_, ghost_);

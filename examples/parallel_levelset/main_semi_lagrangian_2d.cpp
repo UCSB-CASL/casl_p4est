@@ -144,6 +144,7 @@ int main (int argc, char* argv[]){
   cmd.add_option("lmin", "min level");
   cmd.add_option("lmax", "max level");
 	cmd.add_option("tf", "t final");
+  cmd.add_option("cfl", "cfl for the SL advection");
   cmd.parse(argc, argv);
 	cmd.print();
 
@@ -157,6 +158,7 @@ int main (int argc, char* argv[]){
 
   const int lmax = cmd.get("lmax", 7);
   const int lmin = cmd.get("lmin", 0);
+  const double cfl = cmd.get("cfl", 10.0);
 
   splitting_criteria_cf_t data(lmin, lmax, &circ, 1.3);
 
@@ -220,14 +222,17 @@ int main (int argc, char* argv[]){
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick, &node_neighbors);
 
   // loop over time
-  double tf = cmd.get("tf", 1.0);
+  double tf = cmd.get("tf", 3.0);
   int tc = 0;
   int save = 1;
-  double dt = 0.05;
+  double dt = cfl * sl.compute_dt(vx_vortex, vy_vortex);
+
   for (double t=0; t<tf; t+=dt, tc++){
     if (tc % save == 0){
       // Save stuff
-      std::ostringstream oss; oss << "semi_lagrangian_" << p4est->mpisize << "_"
+      std::ostringstream oss; oss << "semi_lagrangian_"
+                                  << p4est->mpisize << "_"
+                                  << "cfl_" << cfl  << "_"
                                   << brick.nxyztrees[0] << "x"
                                   << brick.nxyztrees[1]
                                #ifdef P4_TO_P8
@@ -248,9 +253,11 @@ int main (int argc, char* argv[]){
     w2.start("advecting");
 		PetscPrintf(p4est->mpicomm, "t = %lf, tc = %d\n", t, tc);
 #ifdef P4_TO_P8
-    sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
+    sl.update_p4est_second_order_from_last_grid(vx_vortex, vy_vortex, vz_vortex, dt, phi);
+//    sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
 #else
-    sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
+    sl.update_p4est_second_order_from_last_grid(vx_vortex, vy_vortex, dt, phi);
+//    sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
 #endif
 
     // reinitialize
