@@ -39,6 +39,18 @@ my_p4est_new(MPI_Comm mpicomm, p4est_connectivity_t *connectivity, size_t data_s
   return p4est;
 }
 
+p4est_t*
+my_p4est_copy(p4est_t* input, int copy_data) {
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_copy, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionBegin("p4est_copy");
+  p4est_t* p4est = p4est_copy(input, copy_data);
+  IPMLogRegionEnd("p4est_copy");
+  ierr = PetscLogEventEnd(log_my_p4est_copy, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return p4est;
+}
+
 p4est_ghost_t*
 my_p4est_ghost_new(p4est_t *p4est, p4est_connect_type_t btype)
 {

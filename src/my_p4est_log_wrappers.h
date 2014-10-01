@@ -20,6 +20,9 @@ p4est_t*
 my_p4est_new (MPI_Comm mpicomm, p4est_connectivity_t * connectivity,
               size_t data_size, p4est_init_t init_fn, void *user_pointer);
 
+p4est_t*
+my_p4est_copy(p4est_t* input, int copy_data);
+
 p4est_ghost_t*
 my_p4est_ghost_new(p4est_t *p4est, p4est_connect_type_t btype);
 
