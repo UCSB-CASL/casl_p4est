@@ -85,6 +85,25 @@ public:
   inline const p4est_bool_t& operator[](p4est_locidx_t q) const {return markers[q];}
 };
 
+class splitting_criteria_tag_t: public splitting_criteria_t {
+  p4est_t* p4est;
+
+  bool refine_quadrant(p4est_quadrant_t* quad, const double *f);
+  bool coarsen_quadrant(p4est_quadrant_t* quad, const double *f);
+
+public:
+  splitting_criteria_tag_t(p4est_t *p4est, int min_lvl, int max_lvl, double lip)
+  {
+    this->min_lvl = min_lvl;
+    this->max_lvl = max_lvl;
+    this->lip     = lip;
+    this->p4est   = p4est;
+  }
+
+  bool tag_for_refinement(p4est_nodes_t* nodes, const double *phi);
+  bool tag_for_coarsening(p4est_nodes_t* nodes, const double *phi);
+};
+
 /*!
  * \brief refine_levelset_cf refine based on distance to a cf levelset
  * \param p4est       [in] forest object to consider
@@ -165,4 +184,23 @@ refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadran
 p4est_bool_t
 coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
+/*!
+ * \brief refine_tagged_quadrants refines quadrants that have been explicitly tagged for refinement
+ * \param p4est       [in] forest object
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] pointer to the current quadrant
+ * \return                 a boolean (0/1) describing if refinement is needed
+ */
+p4est_bool_t
+refine_tagged_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+/*!
+ * \brief coarsen_tagged_quadrants coarsens quadrants that have been explicitly tagged for coarsening
+ * \param p4est       [in] forest object
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] a pointer to a list of quadrant to be coarsened
+ * \return                 a boolean (0/1) describing if a set of quadrants need to be coarsened
+ */
+p4est_bool_t
+coarsen_tagged_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 #endif // REFINE_COARSEN_H

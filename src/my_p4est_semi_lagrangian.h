@@ -424,12 +424,14 @@ public:
   void update_p4est_second_order(Vec vx, Vec vy, Vec vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
   void update_p4est_second_order_test(Vec vx_nm1, Vec vy_nm1, Vec vz_nm1, Vec vx_n, Vec vy_n, Vec vz_n, double dt, Vec &phi, Vec phi_xx=NULL, Vec phi_yy=NULL, Vec phi_zz=NULL);
   void update_p4est_second_order(const CF_3& vx, const CF_3& vy, const CF_3& vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
+  void update_p4est_second_order_from_last_grid(const CF_3& vx, const CF_3& vy, const CF_3& vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
   double update_p4est_second_order_CFL(Vec vx, Vec vy, Vec vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
   double update_p4est_second_order_CFL(const CF_3& vx, const CF_3& vy, const CF_3& vz, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
 #else
   void update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
   void update_p4est_second_order_test(Vec vx_nm1, Vec vy_nm1, Vec vx_n, Vec vy_n, double dt, Vec &phi, Vec phi_xx=NULL, Vec phi_yy=NULL);
   void update_p4est_second_order(const CF_2& vx, const CF_2& vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
+  void update_p4est_second_order_from_last_grid(const CF_2& vx, const CF_2& vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
   double update_p4est_second_order_CFL(Vec vx, Vec vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
   double update_p4est_second_order_CFL(const CF_2& vx, const CF_2& vy, double dt, Vec &phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
 #endif

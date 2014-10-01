@@ -1,13 +1,13 @@
-folder = '3d_sl_st-cfl_1p0';
+folder = '/home/mohammad/stampede_scratch_data/3d_sl_sc_cfl_10';
 files = {
 %     'stdout.n_16';
 %     'stdout.n_32';
-    'stdout.n_64';
+%     'stdout.n_64';
     'stdout.n_128';
     'stdout.n_256';
     'stdout.n_512';
     'stdout.n_1024';
-%     'stdout.n_2048';
+    'stdout.n_2048';
 %     'stdout.n_4096';
     };
 
@@ -17,6 +17,7 @@ events = {
     'my_p4est_node_neighbors_t::2nd_derivatives_cent';
     'my_p4est_nodes_new';
     'InterpolatingFunction::interpolate';
+    'my_sc_notify';
     };
 
 %% Total time:
