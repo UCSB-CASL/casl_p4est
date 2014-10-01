@@ -122,7 +122,7 @@ int main (int argc, char* argv[]){
 
   w2.start("refine and partition");
   p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
-  splitting_criteria_random_t sp_data2(lmin, lmax, 100, 1000);
+  splitting_criteria_random_t sp_data2(lmin, lmax, 1000, 10000);
   p4est->user_pointer = (void*)(&sp_data2);
   for (int i = 0; i < lmax; i++){
     my_p4est_refine(p4est, false, refine_random, NULL);
@@ -154,11 +154,10 @@ int main (int argc, char* argv[]){
 #endif
 
   Vec phi;
-  double *phi_p;
-  int done = false;
+  double *phi_p;  
 
   int counter = 0;
-  while (!done) {
+  while (true) {
     ostringstream wss;
     wss << "refining iteration " << counter;
     w2.start(wss.str());
@@ -172,38 +171,34 @@ int main (int argc, char* argv[]){
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, oss.str().c_str(),
-                           VTK_POINT_DATA, "phi", phi_p);
+                           VTK_POINT_DATA, "phi", phi_p);    
+
+    // reset nodes and ghost    
+    splitting_criteria_tag_t sp(lmin, lmax, 1.2);
+    bool is_grid_changed = sp.refine_and_coarsen(p4est, nodes, phi_p);
+
+    unsigned checksum = p4est_checksum(p4est);
+    PetscPrintf(p4est->mpicomm, "Checksum = %u\n", checksum);
+
     VecRestoreArray(phi, &phi_p);
 
-    // reset nodes and ghost
-    FILE *fp = fopen("rf.txt", "w");
-    p4est->user_pointer = fp;
-    splitting_criteria_tag_t sp(p4est, lmin, lmax, 1.2);
-    bool refined   = sp.tag_for_refinement(nodes, phi_p);
-    my_p4est_refine(p4est, false, refine_tagged_quadrants, NULL);
-
-    bool coarsened = sp.tag_for_refinement(nodes, phi_p);
-    my_p4est_coarsen(p4est, false, coarsen_tagged_quadrants, NULL);
-
-    fclose(fp);
-    my_p4est_partition(p4est, true, NULL);
-
-    p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-    p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
-    VecDestroy(phi);
+    if (is_grid_changed) {
+      my_p4est_partition(p4est, true, NULL);
+      p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
+      VecDestroy(phi);
+    }
 
     p4est_gloidx_t num_nodes = 0;
       for (int r =0; r<p4est->mpisize; r++)
         num_nodes += nodes->global_owned_indeps[r];
 
     PetscPrintf(p4est->mpicomm, "global_quads = %ld \t global_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
-
-    done = !(refined || coarsened);
-    MPI_Allreduce(MPI_IN_PLACE, &done, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
     counter++;
-
-//    break;
     w2.stop(); w2.read_duration();
+
+    if (!is_grid_changed)
+      break;
   }
 
   oss.str("");

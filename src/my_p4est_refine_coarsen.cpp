@@ -10,6 +10,11 @@
 #include <sc_search.h>
 #include <iostream>
 
+#define SKIP_QUADRANT		 0
+#define REFINE_QUADRANT  1
+#define COARSEN_QUADRANT 2
+#define NEW_QUADRANT     3
+
 p4est_bool_t
 refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
@@ -251,102 +256,84 @@ coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadra
   return P4EST_FALSE;
 }
 
-p4est_bool_t
-refine_tagged_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad) {
-  (void) p4est;
-  (void) which_tree;
-  return quad->p.user_int;
+void splitting_criteria_tag_t::tag_quadrant(p4est_quadrant_t *quad, const double* f) {
+  if (quad->level < min_lvl) {
+    quad->p.user_int = REFINE_QUADRANT;
+
+  } else if (quad->level > max_lvl) {
+    quad->p.user_int = COARSEN_QUADRANT;    
+
+  } else {
+    double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    double dy = dx;
+#ifdef P4_TO_P8
+    double dz = dx;
+#endif
+
+#ifdef P4_TO_P8
+    double d = sqrt(dx*dx + dy*dy + dz*dz);
+#else
+    double d = sqrt(dx*dx + dy*dy);
+#endif
+
+    // refinement based on distance
+		bool refine = false, coarsen = true;
+//		bool is_interface_crossing = 
+//#ifdef P4_TO_P8
+//    ( f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
+//      f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0 );
+//#else
+//    ( f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 );
+//#endif
+//
+//		if (is_interface_crossing && quad->level < max_lvl ) {
+//			quad->p.user_int = REFINE_QUADRANT;
+//			return true;
+//		}
+//
+    for (short i = 0; i < P4EST_CHILDREN; i++) {
+			refine  = refine  || (fabs(f[i]) <= 0.5*lip*d && quad->level < max_lvl);
+			coarsen = coarsen && (fabs(f[i]) >= 1.0*lip*d && quad->level > min_lvl);
+		}
+		
+		if (refine) {
+			quad->p.user_int = REFINE_QUADRANT;
+
+		} else if (coarsen) {
+			quad->p.user_int = COARSEN_QUADRANT;
+
+		} else { 
+			quad->p.user_int = SKIP_QUADRANT;
+
+		}		
+  }
 }
 
-p4est_bool_t
-coarsen_tagged_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad) {
+int splitting_criteria_tag_t::refine_fn(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad) {
+  (void) p4est;
+  (void) which_tree;
+  return quad->p.user_int == REFINE_QUADRANT;
+}
+
+int splitting_criteria_tag_t::coarsen_fn(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad) {
   (void) p4est;
   (void) which_tree;
 
-  int coarsen = quad[0]->p.user_int;
+  int coarsen = quad[0]->p.user_int == COARSEN_QUADRANT;
   for (short i = 1; i<P4EST_CHILDREN; i++)
-    coarsen = coarsen && quad[i]->p.user_int;
+    coarsen = coarsen && (quad[i]->p.user_int == COARSEN_QUADRANT);
 
   return coarsen;
 }
 
-
-bool splitting_criteria_tag_t::refine_quadrant(p4est_quadrant_t *quad, const double *f) {
-  if (quad->level < min_lvl)
-    return true;
-  else if (quad->level >= max_lvl) {
-    return false;
-  } else {
-    double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-    double dy = dx;
-#ifdef P4_TO_P8
-    double dz = dx;
-#endif
-
-#ifdef P4_TO_P8
-    double d = sqrt(dx*dx + dy*dy + dz*dz);
-#else
-    double d = sqrt(dx*dx + dy*dy);
-#endif
-
-    // refinement based on distance
-    for (short i = 0; i < P4EST_CHILDREN; i++)
-      if (fabs(f[i]) <= 0.5*lip*d)
-        return true;
-
-    // enforce refinement if interface crosses the quadrant
-#ifdef P4_TO_P8
-    if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
-        f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0)
-      return true;
-#else
-    if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
-      return true;
-#endif
-
-    return false;
-  }
+void splitting_criteria_tag_t::init_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t* quad) {
+	(void) p4est;
+	(void) which_tree;
+  quad->p.user_int = NEW_QUADRANT;
 }
 
-bool splitting_criteria_tag_t::coarsen_quadrant(p4est_quadrant_t *quad, const double* f) {
-  if (quad->level <= min_lvl)
-    return false;
-  else if (quad->level > max_lvl) {
-    return true;
-  } else {
-    double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-    double dy = dx;
-#ifdef P4_TO_P8
-    double dz = dx;
-#endif
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi) {
 
-#ifdef P4_TO_P8
-    double d = sqrt(dx*dx + dy*dy + dz*dz);
-#else
-    double d = sqrt(dx*dx + dy*dy);
-#endif
-
-    // refinement based on distance
-    for (short i = 0; i < P4EST_CHILDREN; i++)
-      if (fabs(f[i]) <= 0.5*lip*d)
-        return false;
-
-    // enforce refinement if interface crosses the quadrant
-#ifdef P4_TO_P8
-    if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
-        f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0)
-      return false;
-#else
-    if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
-      return false;
-#endif
-
-    return true;
-  }
-}
-
-bool splitting_criteria_tag_t::tag_for_refinement(p4est_nodes_t* nodes, const double *phi) {
-  bool any_quad_tagged = false;
   double f[P4EST_CHILDREN];
   for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
     p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, it);
@@ -356,33 +343,28 @@ bool splitting_criteria_tag_t::tag_for_refinement(p4est_nodes_t* nodes, const do
 
       for (short i = 0; i<P4EST_CHILDREN; i++)
         f[i] = phi[nodes->local_nodes[qu_idx*P4EST_CHILDREN + i]];
-      quad->p.user_int = refine_quadrant(quad, f);
-
-      any_quad_tagged = any_quad_tagged || quad->p.user_int;
+      tag_quadrant(quad, f);
     }
   }
 
-  return any_quad_tagged;
-}
+  my_p4est_coarsen(p4est, P4EST_FALSE, splitting_criteria_tag_t::coarsen_fn, splitting_criteria_tag_t::init_fn);
+	my_p4est_refine (p4est, P4EST_FALSE, splitting_criteria_tag_t::refine_fn,  splitting_criteria_tag_t::init_fn);
 
-bool splitting_criteria_tag_t::tag_for_coarsening(p4est_nodes_t* nodes, const double *phi) {
-  bool any_quad_tagged = false;
-  double f[P4EST_CHILDREN];
+  int is_grid_changed = false;
   for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
     p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, it);
     for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
       p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-      p4est_locidx_t qu_idx  = q + tree->quadrants_offset;
-
-      for (short i = 0; i<P4EST_CHILDREN; i++)
-        f[i] = phi[nodes->local_nodes[qu_idx*P4EST_CHILDREN + i]];
-      quad->p.user_int = coarsen_quadrant(quad, f);
-
-      any_quad_tagged = any_quad_tagged || quad->p.user_int;
+      if (quad->p.user_int == NEW_QUADRANT) {
+        is_grid_changed = true;
+        goto function_end;
+      }
     }
   }
 
-  return any_quad_tagged;
-}
+function_end:
+  MPI_Allreduce(MPI_IN_PLACE, &is_grid_changed, 1, MPI_INT, MPI_LOR, p4est->mpicomm);
 
+  return is_grid_changed;
+}
 
