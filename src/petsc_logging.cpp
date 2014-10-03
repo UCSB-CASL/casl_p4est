@@ -36,6 +36,7 @@ PetscLogEvent log_Semilagrangian_update_p4est_second_order_CFL_CF2;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_grid;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_value;
+PetscLogEvent log_Semilagrangian_update_p4est_second_order_last_grid_CF2;
 
 // my_p4est_level_set
 PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
@@ -79,6 +80,7 @@ PetscLogEvent log_my_p4est_vtk_write_all;
 PetscLogEvent log_my_p4est_nodes_new;
 PetscLogEvent log_my_p4est_new;
 PetscLogEvent log_my_p4est_ghost_new;
+PetscLogEvent log_my_p4est_copy;
 PetscLogEvent log_my_p4est_refine;
 PetscLogEvent log_my_p4est_coarsen;
 PetscLogEvent log_my_p4est_partition;
@@ -118,7 +120,8 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CFL_CF2       ", 0, &log_Semilagrangian_update_p4est_second_order_CFL_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2           ", 0, &log_Semilagrangian_update_p4est_second_order_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2_value     ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_value); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CFL_grid      ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_grid); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2_grid      ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_grid); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_last_grid_CF2 ", 0, &log_Semilagrangian_update_p4est_second_order_last_grid_CF2); CHKERRXX(ierr);
 
   // my_p4est_level_set
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_1st_order                    ", 0, &log_my_p4est_level_set_reinit_1st_order); CHKERRXX(ierr);
@@ -161,6 +164,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_nodes_new                                      ", 0, &log_my_p4est_nodes_new); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_new                                            ", 0, &log_my_p4est_new); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_ghost_new                                      ", 0, &log_my_p4est_ghost_new); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_copy                                           ", 0, &log_my_p4est_copy); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_refine                                         ", 0, &log_my_p4est_refine); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_coarsen                                        ", 0, &log_my_p4est_coarsen); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_partition                                      ", 0, &log_my_p4est_partition); CHKERRXX(ierr);

@@ -41,6 +41,7 @@ extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CFL_CF2;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_grid;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_value;
+extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_last_grid_CF2;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -223,19 +224,19 @@ void SemiLagrangian::advect_from_n_to_np1(const std::vector<p4est_locidx_t>& map
 
     /* Buffer the point for interpolation */
     // interp.add_point_to_buffer(ni, xyz_departure);
-		interp.add_point(ni, xyz_departure);
+    interp.add_point(ni, xyz_departure);
   }
 
   /* interpolate from old vector into our output vector */
   interp.interpolate(phi_np1);
 
   /*
-	 if(save_topology && !partition_name_.empty() && !topology_name_.empty()){
+   if(save_topology && !partition_name_.empty() && !topology_name_.empty()){
     interp.save_comm_topology(partition_name_.c_str(), topology_name_.c_str());
-		partition_name_.clear();
+    partition_name_.clear();
     topology_name_.clear();
   }
-	*/
+  */
 
   ierr = PetscLogFlops(20); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
@@ -1573,9 +1574,9 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
     ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
     ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-		ierr = VecDestroy(phi_zz_); CHKERRXX(ierr);
+    ierr = VecDestroy(phi_zz_); CHKERRXX(ierr);
 #endif  
-	}
+  }
 
   ierr = PetscLogEventEnd(log_Semilagrangian_update_p4est_second_order_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1838,7 +1839,11 @@ void SemiLagrangian::update_p4est_second_order_from_last_grid(const CF_2& vx, co
     double* phi_np1_p;
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
-    advect_from_n_to_np1(dt,
+    std::vector<p4est_locidx_t> map(nodes_np1->indep_nodes.elem_count);
+    for (size_t i = 0; i<map.size(); i++)
+      map[i] = i;
+
+    advect_from_n_to_np1(map, dt,
                      #ifdef P4_TO_P8
                          vx, vy, vz,
                          phi, phi_xx_, phi_yy_, phi_zz_,
@@ -1847,7 +1852,6 @@ void SemiLagrangian::update_p4est_second_order_from_last_grid(const CF_2& vx, co
                          phi, phi_xx_, phi_yy_,
                      #endif
                          phi_np1_p, p4est_np1, nodes_np1);
-
 
     splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
     is_grid_changing = sp.refine_and_coarsen(p4est_np1, nodes_np1, phi_np1_p);

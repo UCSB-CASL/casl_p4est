@@ -30,8 +30,6 @@ class InterpolatingFunctionNodeBaseBalanced: public CF_2
   const my_p4est_brick_t *myb_;
   Vec Fi;
 
-  MPI_Comm comm;
-
   double xyz_min[3], xyz_max[3];
   PetscErrorCode ierr;  
 
@@ -67,12 +65,18 @@ class InterpolatingFunctionNodeBaseBalanced: public CF_2
   std::map<int, std::vector<cell_data_t> > send_buffer;
   std::vector<MPI_Request> point_send_req;
   std::vector<MPI_Request> data_send_req;
+  std::vector<int> senders;
   size_t input_buffer_size;
+
+	// using a number other than 0 to ensure no other message uses the same tag by mistake
+  enum {
+    point_tag = 1234,
+    data_tag
+  };
 
   // methods  
   void process_data(const input_buffer_t* input, const cell_data_t& data, double *Fo_p);
-  void process_remote_reply(MPI_Status& status, std::queue<std::pair<const input_buffer_t *, size_t> > &queue);
-  void process_remote_request(MPI_Status& status);
+  void process_message(MPI_Status& status, std::queue<std::pair<const input_buffer_t*, size_t> > &queue);
 
   // rule of three -- disable copy ctr and assignment if not useful
   InterpolatingFunctionNodeBaseBalanced(const InterpolatingFunctionNodeBaseBalanced& other);
@@ -86,6 +90,7 @@ public:
   // interpolation methods
   void interpolate(Vec Fo);
   void interpolate(double *Fo_p);
+  void interpolate_nonblocking(double *Fo_p);
   double operator()(double x, double y
 #ifdef P4_TO_P8
     , double z

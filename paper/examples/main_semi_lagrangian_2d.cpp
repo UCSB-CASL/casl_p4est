@@ -140,8 +140,7 @@ int main (int argc, char* argv[]){
   Session mpi_session;
   mpi_session.init(argc, argv, mpi->mpicomm);
   try {
-
-    p4est_t            *p4est;
+		p4est_t            *p4est;
     p4est_nodes_t      *nodes;
     p4est_ghost_t      *ghost;
     PetscErrorCode ierr;
@@ -357,12 +356,12 @@ int main (int argc, char* argv[]){
           if (cfl_condition)
             dt = sl.update_p4est_second_order_CFL(vx_vortex, vy_vortex, vz_vortex, dt, phi);
           else
-            sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
+            sl.update_p4est_second_order_from_last_grid(vx_vortex, vy_vortex, vz_vortex, dt, phi);
 #else
           if (cfl_condition)
             dt = sl.update_p4est_second_order_CFL(vx_vortex, vy_vortex, dt, phi);
           else
-            sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
+            sl.update_p4est_second_order_from_last_grid(vx_vortex, vy_vortex, dt, phi);
 #endif
           hierarchy.update(p4est, ghost);
           node_neighbors.update(&hierarchy, nodes);
@@ -410,14 +409,14 @@ int main (int argc, char* argv[]){
       if (cfl_condition)
         dt = sl.update_p4est_second_order_CFL(vx_vortex, vy_vortex, vz_vortex, dt_max, phi);
       else {
-        sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt_max, phi);
+        sl.update_p4est_second_order_from_last_grid(vx_vortex, vy_vortex, vz_vortex, dt_max, phi);
         dt = dt_max;
       }
 #else
       if (cfl_condition)
         dt = sl.update_p4est_second_order_CFL(vx_vortex, vy_vortex, dt_max, phi);
       else {
-        sl.update_p4est_second_order(vx_vortex, vy_vortex, dt_max, phi);
+        sl.update_p4est_second_order_from_last_grid(vx_vortex, vy_vortex, dt_max, phi);
         dt = dt_max;
       }
 #endif
@@ -426,7 +425,7 @@ int main (int argc, char* argv[]){
       w2.start("Reinit");
       node_neighbors.init_neighbors();
       my_p4est_level_set level_set(&node_neighbors);
-      level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
+      level_set.reinitialize_1st_order_time_2nd_order_space(phi, 20);
       w2.stop(); w2.read_duration();
 
       // calculate mass loss error

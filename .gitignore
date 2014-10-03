@@ -31,6 +31,8 @@
 *.synctex.gz
 *.bbl
 *.blg
+sync
+.rsync.exclude
 
 # What directories to ignore
 [Dd]ebug/

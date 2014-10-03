@@ -31,15 +31,10 @@ extern PetscLogEvent log_InterpolatingFunctionBalanced_all_reduce;
 #define PetscLogFlops(n) 0
 #endif
 
-/* Maximum number of different tag values allowed. Although most MPI implementations 
- * allow any positive integer (32 bit) to be used as tag, the standard only explicitly 
- * gurantees up to 16 bit integer, i.e. INT16_MAX.
- */
-#define TAG_HASH_SIZE (INT16_MAX / 2)
-
 InterpolatingFunctionNodeBaseBalanced::InterpolatingFunctionNodeBaseBalanced(Vec F, const my_p4est_node_neighbors_t *neighbors)
   : neighbors_(neighbors), p4est_(neighbors_->p4est), nodes_(neighbors_->nodes), ghost_(neighbors_->ghost), myb_(neighbors_->myb),
     Fi(F),
+    senders(p4est_->mpisize, 0),
     input_buffer_size(0)
 {
   // compute domain sizes
@@ -147,6 +142,7 @@ void InterpolatingFunctionNodeBaseBalanced::add_point(p4est_locidx_t node_locidx
     for(std::set<int>::const_iterator it = remote_ranks.begin(); it != remote_ranks.end(); ++it){
       int r = *it;
       input_buffer[r].push_back(node_locidx, xyz);
+      senders[r] = 1;
     }
 
   } else {
@@ -166,22 +162,111 @@ void InterpolatingFunctionNodeBaseBalanced::interpolate(Vec Fo)
 }
 
 void InterpolatingFunctionNodeBaseBalanced::interpolate(double *Fo_p) {
-  static int counter = 0;  
 
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_InterpolatingFunctionBalanced_interpolate_nonblocking, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_InterpolatingFunctionBalanced_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  /* compute a simple hash value for poinnt and data tag
-   * This is done to avoid collision with possible future messages due to the purely 
-   * asynchronous nature of communication.  
-   */
-  int point_tag = 2*(counter % TAG_HASH_SIZE);
-  int data_tag  = point_tag + 1;
+  IPMLogRegionBegin("all_reduce");
+  ierr = PetscLogEventBegin(log_InterpolatingFunctionBalanced_all_reduce, 0, 0, 0, 0); CHKERRXX(ierr);
+
+	// determine how many processors will be communicating with this processor
+  p4est_locidx_t num_remaining_msgs = 0;
+  for (size_t i = 0; i<senders.size(); i++)
+    num_remaining_msgs += senders[i];
+  
+	// MPI_Allreduce(MPI_IN_PLACE, &senders[0], p4est_->mpisize, MPI_INT, MPI_SUM, p4est_->mpicomm);
+  // num_remaining_msgs += senders[p4est_->mpirank];
+  std::vector<int> recvcount(p4est_->mpisize, 1);
+  int receivers = 0; 
+  MPI_Reduce_scatter(&senders[0], &receivers, &recvcount[0], MPI_INT, MPI_SUM, p4est_->mpicomm);
+  num_remaining_msgs += receivers;
+  
+  ierr = PetscLogEventEnd(log_InterpolatingFunctionBalanced_all_reduce, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionEnd("all_reduce");
 
   // initiate sending points
   const double *Fi_p;
   ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
-  int num_remaining_replies = 0;
+  for (std::map<int, input_buffer_t>::const_iterator it = input_buffer.begin();
+       it != input_buffer.end(); ++it) {
+    if (it->first == p4est_->mpirank)
+      continue;
+
+    const std::vector<double>& xyz = it->second.p_xyz;
+    MPI_Request req;
+    MPI_Isend((void*)&xyz[0], xyz.size(), MPI_DOUBLE, it->first, point_tag, p4est_->mpicomm, &req);
+    point_send_req.push_back(req);
+  }
+
+	// Begin main loop
+  bool done = false;
+  std::queue<std::pair<const input_buffer_t*, size_t> > queue;
+
+  size_t it = 0, end = data_buffer.size();
+  const input_buffer_t* input = &input_buffer[p4est_->mpirank];
+  MPI_Status status;
+
+  while (!done) {
+    if (it < end) {
+      ierr = PetscLogEventBegin(log_InterpolatingFunctionBalanced_process_data, 0, 0, 0, 0); CHKERRXX(ierr);
+      IPMLogRegionBegin("process_data");
+
+      process_data(input, data_buffer[it], Fo_p);
+      ++it;
+
+      IPMLogRegionEnd("process_data");
+      ierr = PetscLogEventEnd(log_InterpolatingFunctionBalanced_process_data, 0, 0, 0, 0); CHKERRXX(ierr);
+
+    } else if (!queue.empty()) {
+      const std::pair<const input_buffer_t*, size_t>& next = queue.front();
+      input = next.first;
+      end   = next.second;
+      queue.pop();
+    }
+
+    // probe for incoming messages
+    IPMLogRegionBegin("interpolation_probe");
+    
+    int is_msg_pending;
+    MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, p4est_->mpicomm, &is_msg_pending, &status);
+    
+    IPMLogRegionEnd("interpolation_probe");
+
+    // receive pending message based on its status
+    if (is_msg_pending && (status.MPI_TAG == point_tag || status.MPI_TAG == data_tag)) {
+      if (num_remaining_msgs > 0) {
+        ierr = PetscLogEventBegin(log_InterpolatingFunctionBalanced_process_message, 0, 0, 0, 0); CHKERRXX(ierr);
+        IPMLogRegionBegin("process_message");
+		
+    		process_message(status, queue);
+        num_remaining_msgs--;
+    
+        IPMLogRegionEnd("process_message");
+        ierr = PetscLogEventEnd(log_InterpolatingFunctionBalanced_process_message, 0, 0, 0, 0); CHKERRXX(ierr);
+			} else {
+				std::ostringstream oss; oss << "[Error]: Rank  " << p4est_->mpirank << "recved an"
+				" unexpected message of " << status.count << " byte from rank " << status.MPI_SOURCE <<  
+				" with tag = " << status.MPI_TAG << std::endl;
+				throw std::runtime_error(oss.str().c_str());
+			}
+    }
+
+    done = num_remaining_msgs == 0 && it == input_buffer_size;
+  }
+  
+  ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_InterpolatingFunctionBalanced_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void InterpolatingFunctionNodeBaseBalanced::interpolate_nonblocking(double *Fo_p) {
+
+  MPI_Barrier(p4est_->mpicomm);
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_InterpolatingFunctionBalanced_interpolate_nonblocking, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  // initiate sending points
+  const double *Fi_p;
+  ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
   for (std::map<int, input_buffer_t>::const_iterator it = input_buffer.begin();
        it != input_buffer.end(); ++it) {
     if (it->first == p4est_->mpirank)
@@ -191,7 +276,6 @@ void InterpolatingFunctionNodeBaseBalanced::interpolate(double *Fo_p) {
     MPI_Request req;
     MPI_Issend((void*)&xyz[0], xyz.size(), MPI_DOUBLE, it->first, point_tag, p4est_->mpicomm, &req);
     point_send_req.push_back(req);  
-    num_remaining_replies++;
   }
 
   // Begin main loop
@@ -202,8 +286,7 @@ void InterpolatingFunctionNodeBaseBalanced::interpolate(double *Fo_p) {
   const input_buffer_t* input = &input_buffer[p4est_->mpirank];
   MPI_Status status;
 
-  int all_requests_processed = false;
-  int all_sends_done = false;
+  int is_barrier_on = false;
   MPI_Request barrier_req;
 
   while (!done) {
@@ -227,44 +310,42 @@ void InterpolatingFunctionNodeBaseBalanced::interpolate(double *Fo_p) {
     // probe for incoming messages
     IPMLogRegionBegin("interpolation_probe");
     
-    if (num_remaining_replies > 0) {
-      int is_msg_pending;
-      MPI_Iprobe(MPI_ANY_SOURCE, data_tag, p4est_->mpicomm, &is_msg_pending, &status);
-      if (is_msg_pending) {
-        process_remote_reply(status, queue);
-        num_remaining_replies--;
-      }
-    } 
-#ifdef CASL_THROWS
-    else if (input_buffer_size != data_buffer.size()) {
-      std::ostringstream oss;
-      oss << "[ERROR]: Process " << p4est_->mpirank << " is expected to perform interpolation for "  
-          << input_buffer_size << " points but can only do so for " << data_buffer.size() << std::endl
-          << " This is possibly due to tag collions with future messages. Try increasing the TAG_HASH_SIZE value." << std::endl;
-      throw std::runtime_error(oss.str().c_str());
-    }
-#endif
-
-    if (!all_requests_processed) {
-      int is_msg_pending;
-      MPI_Iprobe(MPI_ANY_SOURCE, point_tag, p4est_->mpicomm, &is_msg_pending, &status);
-      if (is_msg_pending)
-        process_remote_request(status);
-    }
+    int is_msg_pending;
+    MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, p4est_->mpicomm, &is_msg_pending, &status);
     
     IPMLogRegionEnd("interpolation_probe");
 
-    if (all_sends_done) {      
-      MPI_Test(&barrier_req, &all_requests_processed, MPI_STATUS_IGNORE);
-      done = all_requests_processed && (it == input_buffer_size);
+    // receive pending message based on its status
+    if (is_msg_pending) {
+      if (status.MPI_TAG == point_tag || status.MPI_TAG == data_tag) {
+        ierr = PetscLogEventBegin(log_InterpolatingFunctionBalanced_process_message, 0, 0, 0, 0); CHKERRXX(ierr);
+        IPMLogRegionBegin("process_message");
+    
+        process_message(status, queue);
+    
+        IPMLogRegionEnd("process_message");
+        ierr = PetscLogEventEnd(log_InterpolatingFunctionBalanced_process_message, 0, 0, 0, 0); CHKERRXX(ierr);      
+
+      } else {
+        std::ostringstream oss; oss << "[Error]: Rank  " << p4est_->mpirank << "recved an"
+        " unexpected message of " << status.count << " byte from rank " << status.MPI_SOURCE <<  
+        " with tag = " << status.MPI_TAG << std::endl;
+        throw std::runtime_error(oss.str().c_str());
+      }
+    }      
+
+    if (is_barrier_on) {      
+        MPI_Test(&barrier_req, &done, MPI_STATUS_IGNORE);
+        done = done && (it == input_buffer_size);
     } else {
-      MPI_Testall(point_send_req.size(), &point_send_req[0], &all_sends_done, MPI_STATUSES_IGNORE);
-      if (all_sends_done)
+      int is_send_done = false;
+      MPI_Testall(point_send_req.size(), &point_send_req[0], &is_send_done, MPI_STATUSES_IGNORE);
+      if (is_send_done) {
         MPIX_Ibarrier(p4est_->mpicomm, &barrier_req);
+        is_barrier_on = true;
+      }
     }
   }
-
-  counter++;
 
   ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_InterpolatingFunctionBalanced_interpolate_nonblocking, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -334,86 +415,95 @@ void InterpolatingFunctionNodeBaseBalanced::process_data(const input_buffer_t* i
   Fo_p[input->node_idx[data.input_buffer_idx]] = value;
 }
 
-void InterpolatingFunctionNodeBaseBalanced::process_remote_request(MPI_Status& status) {
-  // receive incoming quqery about points and send back the results
-  int vec_size;
-  MPI_Get_count(&status, MPI_DOUBLE, &vec_size);
-  std::vector<double> xyz(vec_size);
-  MPI_Recv(&xyz[0], vec_size, MPI_DOUBLE, status.MPI_SOURCE, status.MPI_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);
+void InterpolatingFunctionNodeBaseBalanced::process_message(MPI_Status& status, std::queue<std::pair<const input_buffer_t *, size_t> > &queue) {
+  if (point_tag == status.MPI_TAG) {
+    // receive incoming quqery about points and send back the results
+    int vec_size;
+    MPI_Get_count(&status, MPI_DOUBLE, &vec_size);
+    std::vector<double> xyz(vec_size);
+    MPI_Recv(&xyz[0], vec_size, MPI_DOUBLE, status.MPI_SOURCE, status.MPI_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);
 
-  // search for the quadrants and fill in the data
-  p4est_quadrant_t best_match;
-  std::vector<p4est_quadrant_t> remote_matches;
-  cell_data_t data;
+    // search for the quadrants and fill in the data
+    p4est_quadrant_t best_match;
+    std::vector<p4est_quadrant_t> remote_matches;
+    cell_data_t data;
 
-  const double *Fi_p;
-  PetscErrorCode ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+    const double *Fi_p;
+    PetscErrorCode ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 
-  std::vector<cell_data_t>& buff = send_buffer[status.MPI_SOURCE];
-  for (size_t i = 0; i<vec_size; i += P4EST_DIM) {
-    // clip to bounding box
-    for (short j = 0; j<P4EST_DIM; j++){
-      if (xyz[i+j] > xyz_max[j]) xyz[i+j] = xyz_max[j];
-      if (xyz[i+j] < xyz_min[j]) xyz[i+j] = xyz_min[j];
-    }
+    std::vector<cell_data_t>& buff = send_buffer[status.MPI_SOURCE];
+    for (size_t i = 0; i<vec_size; i += P4EST_DIM) {
+      // clip to bounding box
+      for (short j = 0; j<P4EST_DIM; j++){
+        if (xyz[i+j] > xyz_max[j]) xyz[i+j] = xyz_max[j];
+        if (xyz[i+j] < xyz_min[j]) xyz[i+j] = xyz_min[j];
+      }
 
-    int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(&xyz[i], best_match, remote_matches);
+      int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(&xyz[i], best_match, remote_matches);
 
-    /* only accept the quadrant if it is in our local part. If the point
-     * is in our ghost it means another processor will eventually be able
-     * to find it and send it back.
-     *
-     * Note that the point **CANNOT** be in remote matches as this means
-     * the source processor has made a mistake when search for possible
-     * remote candidates
-     */
-    if (rank_found == p4est_->mpirank) {
-      // copy the important properties of quadrant into buffer
-      data.q_xyz[0] = best_match.x;
-      data.q_xyz[1] = best_match.y;
-#ifdef P4_TO_P8
-      data.q_xyz[2] = best_match.z;
-#endif
-      data.level    = best_match.level;
-      data.tree_idx = best_match.p.piggy3.which_tree;
-      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_->trees, data.tree_idx);
-      p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
-      for (short j = 0; j<P4EST_CHILDREN; j++)
-        data.f[j] = Fi_p[nodes_->local_nodes[qu_locidx*P4EST_CHILDREN + j]];
-      data.input_buffer_idx = i / P4EST_DIM;
-
-      buff.push_back(data);
-    } else if (rank_found == -1) {
-      /* this cannot happen as it means the source processor made a mistake in
-       * calculating its remote matches.
+      /* only accept the quadrant if it is in our local part. If the point
+       * is in our ghost it means another processor will eventually be able
+       * to find it and send it back.
+       *
+       * Note that the point **CANNOT** be in remote matches as this means
+       * the source processor has made a mistake when search for possible
+       * remote candidates
        */
-      throw std::runtime_error("[ERROR] A remote processor could not find a local or ghost quadrant "
-                               "for a query point sent by the source processor.");
+      if (rank_found == p4est_->mpirank) {
+        // copy the important properties of quadrant into buffer
+        data.q_xyz[0] = best_match.x;
+        data.q_xyz[1] = best_match.y;
+#ifdef P4_TO_P8
+        data.q_xyz[2] = best_match.z;
+#endif
+        data.level    = best_match.level;
+        data.tree_idx = best_match.p.piggy3.which_tree;
+        p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_->trees, data.tree_idx);
+        p4est_locidx_t qu_locidx = best_match.p.piggy3.local_num + tree->quadrants_offset;
+        for (short j = 0; j<P4EST_CHILDREN; j++)
+          data.f[j] = Fi_p[nodes_->local_nodes[qu_locidx*P4EST_CHILDREN + j]];
+        data.input_buffer_idx = i / P4EST_DIM;
+
+        buff.push_back(data);
+      } else if (rank_found == -1) {
+        /* this cannot happen as it means the source processor made a mistake in
+         * calculating its remote matches.
+         */
+        throw std::runtime_error("[ERROR] A remote processor could not find a local or ghost quadrant "
+                                 "for a query point sent by the source processor.");
+      }
     }
+
+    ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+
+    // we are done with searching, lets send the buffer back
+    MPI_Request req;
+    MPI_Isend(&buff[0], buff.size()*sizeof(cell_data_t), MPI_BYTE, status.MPI_SOURCE, data_tag, p4est_->mpicomm, &req);
+    data_send_req.push_back(req);
+
+  } else if (data_tag == status.MPI_TAG) {
+    // receive incoming data we asked before and add it to the queue
+    int byte_count;
+    MPI_Get_count(&status, MPI_BYTE, &byte_count);
+
+    size_t old_size = data_buffer.size();
+    size_t new_size = old_size + byte_count / sizeof(cell_data_t);
+    data_buffer.resize(new_size);
+
+    MPI_Recv(&data_buffer[old_size], byte_count, MPI_BYTE, status.MPI_SOURCE, status.MPI_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);
+
+    // Add the new input to the queue
+    if (byte_count != 0)
+      queue.push(std::make_pair(&input_buffer[status.MPI_SOURCE], new_size));
+
   }
 
-  ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
-
-  // we are done with searching, lets send the buffer back
-  MPI_Request req;
-  MPI_Isend(&buff[0], buff.size()*sizeof(cell_data_t), MPI_BYTE, status.MPI_SOURCE, status.MPI_TAG + 1, p4est_->mpicomm, &req);
-  data_send_req.push_back(req);
-}
-
-void InterpolatingFunctionNodeBaseBalanced::process_remote_reply(MPI_Status& status, std::queue<std::pair<const input_buffer_t *, size_t> > &queue) {
-  // receive incoming data we asked before and add it to the queue
-  int byte_count;
-  MPI_Get_count(&status, MPI_BYTE, &byte_count);
-
-  size_t old_size = data_buffer.size();
-  size_t new_size = old_size + byte_count / sizeof(cell_data_t);
-  data_buffer.resize(new_size);
-
-  MPI_Recv(&data_buffer[old_size], byte_count, MPI_BYTE, status.MPI_SOURCE, status.MPI_TAG, p4est_->mpicomm, MPI_STATUS_IGNORE);
-
-  // Add the new input to the queue
-  if (byte_count != 0)
-    queue.push(std::make_pair(&input_buffer[status.MPI_SOURCE], new_size));  
+  // check if we can free data buffers
+  int req_idx;
+  int is_request_completed;
+  MPI_Testany(data_send_req.size(), &data_send_req[0], &req_idx, &is_request_completed, &status);
+  if (is_request_completed)
+    send_buffer[status.MPI_SOURCE].clear();
 }
 
 #ifdef P4_TO_P8

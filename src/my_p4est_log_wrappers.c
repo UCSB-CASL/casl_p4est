@@ -18,6 +18,7 @@
 #else
 extern PetscLogEvent log_my_p4est_new;
 extern PetscLogEvent log_my_p4est_ghost_new;
+extern PetscLogEvent log_my_p4est_copy;
 extern PetscLogEvent log_my_p4est_refine;
 extern PetscLogEvent log_my_p4est_coarsen;
 extern PetscLogEvent log_my_p4est_partition;
