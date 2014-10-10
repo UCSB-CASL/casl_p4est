@@ -15,7 +15,7 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_interpolating_function_balanced.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/point3.h>
 #else
@@ -27,7 +27,7 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_interpolating_function.h>
+#include <src/my_p4est_interpolating_function_balanced.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/point2.h>
 #endif
@@ -296,6 +296,7 @@ int main (int argc, char* argv[]){
 
     MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
     MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
+		MPI_Barrier(mpi->mpicomm);
 
     // Print the SHA1 of the current commit
     PetscPrintf(mpi->mpicomm, "git commit hash value = %s (%s)\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG);
@@ -308,9 +309,9 @@ int main (int argc, char* argv[]){
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t my_brick, *brick = &my_brick;
 #ifdef P4_TO_P8
-    connectivity = my_p4est_brick_new(2, 2, 2, brick);
+    connectivity = my_p4est_brick_new(1, 1, 1, brick);
 #else
-    connectivity = my_p4est_brick_new(2, 2, brick);
+    connectivity = my_p4est_brick_new(1, 1, brick);
 #endif
     w2.stop(); w2.read_duration();
 
@@ -377,30 +378,6 @@ int main (int argc, char* argv[]){
     
     w2.stop(); w2.read_duration();
 
-//    char name[1024];
-//    sprintf(name, "test_%d", p4est->mpisize);
-//    std::vector<double> levels(p4est->local_num_quadrants + ghost->ghosts.elem_count);
-
-//    p4est_locidx_t count = 0;
-//    for (p4est_topidx_t tr_it = p4est->first_local_tree; tr_it <= p4est->last_local_tree; tr_it++)
-//    {
-//      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr_it);
-//      for(size_t q = 0; q<tree->quadrants.elem_count; q++){
-//        const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-//        levels[count++] = quad->level;
-//      }
-//    }
-//    for (size_t q = 0 ; q<ghost->ghosts.elem_count; q++){
-//      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
-//      levels[count++] = quad->level;
-//    }
-
-//    my_p4est_vtk_write_all(p4est, nodes, ghost,
-//                           P4EST_TRUE, P4EST_TRUE,
-//                           0, 1, name,
-//                           VTK_CELL_DATA, "level", &levels[0]);
-
-    w2.start("gather statistics");
     {
       p4est_gloidx_t num_nodes = 0;
       for (int r =0; r<p4est->mpisize; r++)
@@ -425,7 +402,7 @@ int main (int argc, char* argv[]){
     w2.start("hierarchy and node neighbors");
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
-//    node_neighbors.init_neighbors(); /* decide if you want to initialize and cache the neighborhood information */
+    node_neighbors.init_neighbors(); /* decide if you want to initialize and cache the neighborhood information */
     w2.stop(); w2.read_duration();
 
     // generate a bunch of random points
@@ -484,21 +461,7 @@ int main (int argc, char* argv[]){
       ierr = PetscLogEventBegin(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
       ierr = PetscLogEventBegin(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);      
       
-      InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, brick, &node_neighbors);      
-
-      switch (mode){
-      case 0:
-        interp.set_input_parameters(u, linear);
-        break;
-      case 1:
-        interp.set_input_parameters(u, quadratic);
-        break;
-      case 2:
-        interp.set_input_parameters(u, quadratic_non_oscillatory);
-        break;
-      default:
-        throw std::runtime_error("[ERROR]: invalid interpolation method");
-      }      
+      InterpolatingFunctionNodeBaseBalanced interp(u, &node_neighbors);      
       
       w2.stop(); w2.read_duration();
 
@@ -512,7 +475,7 @@ int main (int argc, char* argv[]){
   #else
         double xyz [] = {points[i].x, points[i].y};
   #endif
-        interp.add_point_to_buffer(i, xyz);        
+        interp.add_point(i, xyz);        
       }
       ierr = PetscLogEventEnd(log_interpolation_add_points, 0, 0, 0, 0); CHKERRXX(ierr);
       w2.stop(); w2.read_duration();

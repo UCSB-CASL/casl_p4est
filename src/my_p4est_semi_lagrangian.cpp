@@ -42,6 +42,7 @@ extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_grid;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_value;
 extern PetscLogEvent log_Semilagrangian_update_p4est_second_order_last_grid_CF2;
+extern PetscLogEvent log_Semilagrangian_grid_gen_iter[P4EST_MAXLEVEL];
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -1435,6 +1436,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_CF2_grid, 0, 0, 0, 0); CHKERRXX(ierr);
   for( int iter = 0; iter < nb_iter; ++iter )
   {
+		ierr = PetscLogEventBegin(log_Semilagrangian_grid_gen_iter[iter], 0, 0, 0, 0); CHKERRXX(ierr);
     p4est_t       *p4est_tmp = p4est_copy(p4est_np1, P4EST_FALSE);
     p4est_nodes_t *nodes_tmp = my_p4est_nodes_new(p4est_tmp,NULL);
 
@@ -1494,11 +1496,13 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
     
     p4est_nodes_destroy(nodes_tmp);
     p4est_destroy(p4est_tmp);
+
+
+		ierr = PetscLogEventEnd(log_Semilagrangian_grid_gen_iter[iter], 0, 0, 0, 0); CHKERRXX(ierr);
   }
   ierr = PetscLogEventEnd(log_Semilagrangian_update_p4est_second_order_CF2_grid, 0, 0, 0, 0); CHKERRXX(ierr);
-
-
-  ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_CF2_value, 0, 0, 0, 0); CHKERRXX(ierr);
+	ierr = PetscLogEventBegin(log_Semilagrangian_update_p4est_second_order_CF2_value, 0, 0, 0, 0); CHKERRXX(ierr);
+	ierr = PetscLogEventBegin(log_Semilagrangian_grid_gen_iter[nb_iter], 0, 0, 0, 0); CHKERRXX(ierr);
   /* restore the user pointer in the p4est */
   p4est_np1->user_pointer = p4est_->user_pointer;
 
@@ -1564,7 +1568,7 @@ void SemiLagrangian::update_p4est_second_order(const CF_2& vx, const CF_2& vy, d
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_,  nodes_);
   ierr = PetscLogEventEnd(log_Semilagrangian_update_p4est_second_order_CF2_value, 0, 0, 0, 0); CHKERRXX(ierr);
-  
+	ierr = PetscLogEventEnd(log_Semilagrangian_grid_gen_iter[nb_iter], 0, 0, 0, 0); CHKERRXX(ierr);
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
@@ -1834,7 +1838,11 @@ void SemiLagrangian::update_p4est_second_order_from_last_grid(const CF_2& vx, co
 
   splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est_->user_pointer;
   bool is_grid_changing = true;
+
+	int counter = 0;
   while (is_grid_changing) {
+		ierr = PetscLogEventBegin(log_Semilagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
+
     // advect from np1 to n to enable refinement
     double* phi_np1_p;
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
@@ -1868,6 +1876,9 @@ void SemiLagrangian::update_p4est_second_order_from_last_grid(const CF_2& vx, co
       ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
     }
+
+		ierr = PetscLogEventEnd(log_Semilagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
+		counter++;
   }
 
   p4est_np1->user_pointer = p4est_->user_pointer;

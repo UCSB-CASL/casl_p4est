@@ -1,5 +1,6 @@
 #include "petsc_logging.h"
 #include "petsc_compatibility.h"
+#include <p4est.h>
 
 /* define proper logging events
  * Note that these are global variables to ensure all subsequent calls to the
@@ -37,6 +38,7 @@ PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_grid;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_value;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_last_grid_CF2;
+PetscLogEvent log_Semilagrangian_grid_gen_iter[P4EST_MAXLEVEL];
 
 // my_p4est_level_set
 PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
@@ -122,7 +124,12 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2_value     ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_value); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2_grid      ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_grid); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_last_grid_CF2 ", 0, &log_Semilagrangian_update_p4est_second_order_last_grid_CF2); CHKERRXX(ierr);
-
+  
+	for (short i = 0; i < P4EST_MAXLEVEL; i++) {
+		char logname [128]; 
+		sprintf(logname,"Semilagrangian::grid_gen_iter_%02d                        ", i);
+		ierr = PetscLogEventRegister(logname, 0, &log_Semilagrangian_grid_gen_iter[i]); CHKERRXX(ierr);	
+	}
   // my_p4est_level_set
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_1st_order                    ", 0, &log_my_p4est_level_set_reinit_1st_order); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_2nd_order                    ", 0, &log_my_p4est_level_set_reinit_2nd_order); CHKERRXX(ierr);
