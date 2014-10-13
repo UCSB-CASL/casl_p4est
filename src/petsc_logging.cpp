@@ -26,6 +26,13 @@ PetscLogEvent log_InterpolatingFunctionBalanced_process_data;
 PetscLogEvent log_InterpolatingFunctionBalanced_process_message;
 PetscLogEvent log_InterpolatingFunctionBalanced_all_reduce;
 
+// InterpolatingFunctionHost
+PetscLogEvent log_InterpolatingFunctionHost_interpolate;
+PetscLogEvent log_InterpolatingFunctionHost_process_local;
+PetscLogEvent log_InterpolatingFunctionHost_process_queries;
+PetscLogEvent log_InterpolatingFunctionHost_process_replies;
+PetscLogEvent log_InterpolatingFunctionHost_all_reduce;
+
 // SemiLagrangian
 PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_Vec;
 PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CF2;
@@ -111,6 +118,13 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::process_data             ", 0, &log_InterpolatingFunctionBalanced_process_data); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::process_message          ", 0, &log_InterpolatingFunctionBalanced_process_message); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::all_reduce			          ", 0, &log_InterpolatingFunctionBalanced_all_reduce); CHKERRXX(ierr);
+
+  // InterpolatingFunctionHost
+  ierr = PetscLogEventRegister("InterpolatingFunctionHost::interpolate                  ", 0, &log_InterpolatingFunctionHost_interpolate); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_local                ", 0, &log_InterpolatingFunctionHost_process_local); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_queries              ", 0, &log_InterpolatingFunctionHost_process_queries); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_replies              ", 0, &log_InterpolatingFunctionHost_process_replies); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("InterpolatingFunctionHost::all_reduce                   ", 0, &log_InterpolatingFunctionHost_all_reduce); CHKERRXX(ierr);
 
   // Semilagrangian
   ierr = PetscLogEventRegister("Semilagrangian::advect_from_n_to_np1_Vec                ", 0, &log_Semilagrangian_advect_from_n_to_np1_Vec); CHKERRXX(ierr);
