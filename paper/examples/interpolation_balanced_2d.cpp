@@ -15,7 +15,7 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_interpolating_function_balanced.h>
+#include <src/my_p8est_interpolating_function_host.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/point3.h>
 #else
@@ -27,7 +27,7 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_interpolating_function_balanced.h>
+#include <src/my_p4est_interpolating_function_host.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/point2.h>
 #endif
@@ -383,9 +383,9 @@ int main (int argc, char* argv[]){
 			ierr = PetscLogEventBegin(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
 			ierr = PetscLogEventBegin(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);      
 
-			InterpolatingFunctionNodeBaseBalanced interp(u, &node_neighbors);      
+			InterpolatingFunctionNodeBaseHost interp(u, &node_neighbors);      
 
-		w2.stop(); w2.read_duration();
+			w2.stop(); w2.read_duration();
 
 			w2.start("adding points");
 

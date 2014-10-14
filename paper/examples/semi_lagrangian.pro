@@ -27,6 +27,8 @@ CONFIG(stampede, stampede|office): {
     PETSC_INCLUDES_RELEASE = $$TACC_PETSC_HOME/include $$TACC_PETSC_HOME/$$TACC_PETSC_ARCH_RELEASE/include
     PETSC_LIBS_DEBUG = -Wl,-rpath,$$TACC_PETSC_LIB_DEBUG -L$$TACC_PETSC_LIB_DEBUG -lpetsc
     PETSC_LIBS_RELEASE = -Wl,-rpath,$$TACC_PETSC_LIB_RELEASE -L$$TACC_PETSC_LIB_RELEASE -lpetsc
+
+    INCLUDEPATH += /opt/apps/intel13/mvapich2/1.9/include
 }
 
 CONFIG(office, stampede|office): {
@@ -87,7 +89,7 @@ SOURCES += \
     $$CASL_P4EST/src/my_p4est_tools.c\
     $$CASL_P4EST/src/my_p4est_nodes.c \
     $$CASL_P4EST/src/my_p4est_interpolating_function.cpp \
-    $$CASL_P4EST/src/my_p4est_interpolating_function_balanced.cpp \
+    $$CASL_P4EST/src/my_p4est_interpolating_function_host.cpp \
     $$CASL_P4EST/src/my_p4est_semi_lagrangian.cpp \
     $$CASL_P4EST/src/my_p4est_levelset.cpp \
     $$CASL_P4EST/src/cube2.cpp \
@@ -113,7 +115,7 @@ SOURCES += \
     $$CASL_P4EST/src/my_p8est_tools.c\
     $$CASL_P4EST/src/my_p8est_nodes.c \
     $$CASL_P4EST/src/my_p8est_interpolating_function.cpp \
-    $$CASL_P4EST/src/my_p8est_interpolating_function_balanced.cpp \
+    $$CASL_P4EST/src/my_p8est_interpolating_function_host.cpp \
     $$CASL_P4EST/src/my_p8est_semi_lagrangian.cpp \
     $$CASL_P4EST/src/my_p8est_levelset.cpp \
     $$CASL_P4EST/src/cube3.cpp \

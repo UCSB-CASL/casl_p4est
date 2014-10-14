@@ -80,14 +80,13 @@ CONFIG(profile): {
 CONFIG(2d, 2d|3d): {
 TARGET = interpolation_2d
 SOURCES += \
-    $$CASL_P4EST/paper/examples/interpolation_balanced_2d.cpp\
+    interpolation_balanced_2d.cpp\
     $$CASL_P4EST/src/my_p4est_utils.cpp \
     $$CASL_P4EST/src/my_p4est_refine_coarsen.cpp\
     $$CASL_P4EST/src/my_p4est_vtk.c \
     $$CASL_P4EST/src/my_p4est_tools.c\
     $$CASL_P4EST/src/my_p4est_nodes.c \
-    $$CASL_P4EST/src/my_p4est_interpolating_function.cpp \
-    $$CASL_P4EST/src/my_p4est_interpolating_function_balanced.cpp \
+    $$CASL_P4EST/src/my_p4est_interpolating_function_host.cpp \
     $$CASL_P4EST/src/cube2.cpp \
     $$CASL_P4EST/src/point2.cpp \
     $$CASL_P4EST/src/simplex2.cpp \
@@ -102,16 +101,15 @@ SOURCES += \
 }
 
 CONFIG(3d, 2d|3d): {
-TARGET = interpolation_balanced_3d
+TARGET = interpolation_3d
 SOURCES += \
-    $$CASL_P4EST/paper/examples/interpolation_balanced_3d.cpp\
+    interpolation_balanced_3d.cpp\
     $$CASL_P4EST/src/my_p8est_utils.cpp\
     $$CASL_P4EST/src/my_p8est_refine_coarsen.cpp\
     $$CASL_P4EST/src/my_p8est_vtk.c \
     $$CASL_P4EST/src/my_p8est_tools.c\
     $$CASL_P4EST/src/my_p8est_nodes.c \
-    $$CASL_P4EST/src/my_p8est_interpolating_function.cpp \
-    $$CASL_P4EST/src/my_p8est_interpolating_function_balanced.cpp \
+    $$CASL_P4EST/src/my_p8est_interpolating_function_host.cpp \
     $$CASL_P4EST/src/cube3.cpp \
     $$CASL_P4EST/src/point3.cpp \
     $$CASL_P4EST/src/simplex2.cpp \
