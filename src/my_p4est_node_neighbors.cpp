@@ -26,14 +26,6 @@ extern PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central_block
 #define PetscLogFlops(n) 0
 #endif
 
-#include <assert.h>
-#define sc_array_index(a,n) my_sc_array_index(a,n)
-
-void* my_sc_array_index(sc_array_t* a, size_t n){
-  assert(n<a->elem_count);
-  return ((void *) (a->array + (a->elem_size * n)));
-}
-
 void my_p4est_node_neighbors_t::init_neighbors()
 {
   if (is_initialized) return;

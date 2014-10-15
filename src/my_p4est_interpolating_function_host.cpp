@@ -180,21 +180,21 @@ void InterpolatingFunctionNodeBaseHost::interpolate(double *Fo_p) {
 
       p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_->trees, quad.p.piggy3.which_tree);
       p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
-      for (short i = 0; i<P4EST_CHILDREN; i++) {
-        p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + i];
-        f[i] = Fi_p[node_idx];
+      for (short j = 0; j<P4EST_CHILDREN; j++) {
+        p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
+        f[j] = Fi_p[node_idx];
       }
 
       // compute derivatives      
       if (method_ == quadratic || method_ == quadratic_non_oscillatory) {
-        for (short i = 0; i<P4EST_CHILDREN; i++) {
-          p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + i];
+        for (short j = 0; j<P4EST_CHILDREN; j++) {
+          p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
           neighbors_->get_neighbors(node_idx, qnnn);
 
-          fdd[i*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
-          fdd[i*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
+          fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
+          fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
 #ifdef P4_TO_P8
-          fdd[i*P4EST_DIM + 2] = qnnn.dzz_central(Fi_p);
+          fdd[j*P4EST_DIM + 2] = qnnn.dzz_central(Fi_p);
 #endif          
         }
       }
@@ -296,7 +296,7 @@ void InterpolatingFunctionNodeBaseHost::process_incoming_query(MPI_Status& statu
 
       // compute derivatives
       if (method_ == quadratic || method_ == quadratic_non_oscillatory) {
-        for (short j = 0; i<P4EST_CHILDREN; j++) {
+        for (short j = 0; j<P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
           neighbors_->get_neighbors(node_idx, qnnn);
 

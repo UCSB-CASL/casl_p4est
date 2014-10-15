@@ -18,6 +18,7 @@
 #include <src/my_p4est_hierarchy.h>
 #include <p4est_bits.h>
 #endif
+
 #include <vector>
 #include <sstream>
 

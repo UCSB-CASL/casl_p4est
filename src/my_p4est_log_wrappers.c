@@ -18,6 +18,7 @@
 #else
 extern PetscLogEvent log_my_p4est_new;
 extern PetscLogEvent log_my_p4est_ghost_new;
+extern PetscLogEvent log_my_p4est_ghost_expand;
 extern PetscLogEvent log_my_p4est_copy;
 extern PetscLogEvent log_my_p4est_refine;
 extern PetscLogEvent log_my_p4est_coarsen;
@@ -64,6 +65,17 @@ my_p4est_ghost_new(p4est_t *p4est, p4est_connect_type_t btype)
   
 
   return ghost;
+}
+
+void
+my_p4est_ghost_expand(p4est_t *p4est, p4est_ghost_t *ghost)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_ghost_expand, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionBegin("p4est_ghost_expand");
+  p4est_ghost_expand(p4est, ghost);
+  IPMLogRegionEnd("p4est_ghost_expand");
+  ierr = PetscLogEventEnd(log_my_p4est_ghost_expand, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void
