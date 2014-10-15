@@ -199,10 +199,10 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
 #endif
 
   double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = (double)quad.x / (double)(P4EST_ROOT_LEN);
-  double ymin = (double)quad.y / (double)(P4EST_ROOT_LEN);
+  double xmin = quad_x_fr_i(&quad);
+  double ymin = quad_y_fr_j(&quad);
 #ifdef P4_TO_P8
-  double zmin = (double)quad.z / (double)(P4EST_ROOT_LEN);
+  double zmin = quad_z_fr_k(&quad);
 #endif
 
   double d_m00 = x - xmin;

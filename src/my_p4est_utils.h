@@ -37,6 +37,12 @@ enum {
 };
 }
 
+enum interpolation_method{
+  linear,
+  quadratic,
+  quadratic_non_oscillatory
+};
+
 class CF_1
 {
 public:

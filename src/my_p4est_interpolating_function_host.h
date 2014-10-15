@@ -30,6 +30,8 @@ class InterpolatingFunctionNodeBaseHost: public CF_2
   const my_p4est_brick_t *myb_;
   Vec Fi;
 
+  interpolation_method method_;
+
   double xyz_min[3], xyz_max[3];
   PetscErrorCode ierr;  
 
@@ -76,7 +78,6 @@ class InterpolatingFunctionNodeBaseHost: public CF_2
   };
 
   // methods  
-  double linear_interpolation_local(const double* xyz, const p4est_quadrant_t& quad, const double* f);
   void process_incoming_query(MPI_Status& status);
   void process_incoming_reply(MPI_Status& status, double *Fo_p);
 
@@ -84,14 +85,14 @@ class InterpolatingFunctionNodeBaseHost: public CF_2
   InterpolatingFunctionNodeBaseHost(const InterpolatingFunctionNodeBaseHost& other);
   InterpolatingFunctionNodeBaseHost& operator=(const InterpolatingFunctionNodeBaseHost& other);
 public:
-  InterpolatingFunctionNodeBaseHost(Vec F, const my_p4est_node_neighbors_t *neighbors);
+  InterpolatingFunctionNodeBaseHost(Vec F, const my_p4est_node_neighbors_t *neighbors, interpolation_method method = linear);
   ~InterpolatingFunctionNodeBaseHost();
 
   void add_point(p4est_locidx_t node_locidx, const double *xyz);
 
   // interpolation methods
   void interpolate(Vec Fo);
-  void interpolate(double *Fo_p);
+  void interpolate(double *Fo);
   double operator()(double x, double y
 #ifdef P4_TO_P8
     , double z
