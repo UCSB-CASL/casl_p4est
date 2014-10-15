@@ -40,9 +40,12 @@ class my_p4est_node_neighbors_t {
   p4est_nodes_t *nodes;
   my_p4est_brick_t *myb;
   std::vector< quad_neighbor_nodes_of_node_t > neighbors;
+  std::vector<bool> is_qnnn_valid;
   std::vector<p4est_locidx_t> layer_nodes;
-  std::vector<p4est_locidx_t> local_nodes;
+  std::vector<p4est_locidx_t> local_nodes;  
   bool is_initialized;
+
+  bool construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
 
 public:
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
@@ -81,15 +84,13 @@ public:
   inline size_t get_local_size() const { return local_nodes.size(); }
   inline p4est_locidx_t get_layer_node(size_t i) const {
 #ifdef CASL_THROWS
-    if (i > layer_nodes.size())
-      throw std::invalid_argument("[ERROR]: accessing beyod layer node size");
+    return layer_nodes.at(i);
 #endif
     return layer_nodes[i];
   }
   inline p4est_locidx_t get_local_node(size_t i) const {
 #ifdef CASL_THROWS
-    if (i > local_nodes.size())
-      throw std::invalid_argument("[ERROR]: accessing beyod local node size");
+    return local_nodes.at(i);
 #endif
     return local_nodes[i];
   }
@@ -100,32 +101,53 @@ public:
   
   inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
 #ifdef CASL_THROWS
-    if (n<0 || n>=nodes->num_owned_indeps){
-      std::ostringstream oss;
-      oss << "[ERROR]: Trying to access neighboring nodes of element " << n
-          << " in the QNNN structure which is out of bound [0, " << nodes->num_owned_indeps
-          << "). This probably means you are trying to acess neighboring nodes"
-             " of a ghost nod. This is not supported." << std::endl;
-      throw std::invalid_argument(oss.str());
-    }    
-
     if (!is_initialized)
       throw std::runtime_error("[ERROR]: operator[] can only be used if nodes are buffered. Either initialize the buffer by calling"
                                "'init_neighbors()' or consider calling 'get_neighbors()' to compute the neighbors on the fly.");
+
+    if (is_qnnn_valid[n])
+      return neighbors.at(n);
+    else {
+      std::ostringstream oss;
+      oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
+      throw std::invalid_argument(oss.str().c_str());
+    }
+#else
+    return neighbors[n];
 #endif
-      return neighbors[n];
   }
 
-  void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
-
   inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n) const {
-    if (is_initialized)
+    if (is_initialized) {
+#ifdef CASL_THROWS
+      if (is_qnnn_valid[n])
+        return neighbors.at(n);
+      else {
+        std::ostringstream oss;
+        oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
+        throw std::invalid_argument(oss.str().c_str());
+      }
+#else
       return neighbors[n];
-    else {
+#endif
+    } else {
       quad_neighbor_nodes_of_node_t qnnn;
       get_neighbors(n, qnnn);
       return qnnn;
     }
+  }
+
+  inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const {
+#ifdef CASL_THROWS
+    bool err = construct_neighbors(n, qnnn);
+    if (err){
+      std::ostringstream oss;
+      oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
+      throw std::invalid_argument(oss.str().c_str());
+    }
+#else
+    construct_neighbors(n, qnnn);
+#endif
   }
 
   /**
@@ -140,9 +162,9 @@ public:
      *
      */
 #ifdef P4_TO_P8
-  void find_neighbor_cell_of_node( p4est_indep_t *node, char i, char j, char k, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
+  void find_neighbor_cell_of_node( p4est_locidx_t n, char i, char j, char k, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
 #else
-  void find_neighbor_cell_of_node( p4est_indep_t *node, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
+  void find_neighbor_cell_of_node( p4est_locidx_t n, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
 #endif
 
   /*!

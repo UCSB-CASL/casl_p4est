@@ -27,7 +27,6 @@ extern PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central_block
 #endif
 
 #include <assert.h>
-
 #define sc_array_index(a,n) my_sc_array_index(a,n)
 
 void* my_sc_array_index(sc_array_t* a, size_t n){
@@ -41,19 +40,32 @@ void my_p4est_node_neighbors_t::init_neighbors()
 
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t, 0, 0, 0, 0); CHKERRXX(ierr);
-  neighbors.resize(nodes->num_owned_indeps);
+  neighbors.resize(nodes->indep_nodes.elem_count);
 
-  for( p4est_locidx_t n=0; n < nodes->num_owned_indeps; ++n)
-    get_neighbors(n, neighbors[n]);
+#ifdef CASL_THROWS
+  is_qnnn_valid.resize(nodes->indep_nodes.elem_count);
+#endif
+
+  /* construct qnnn for ALL nodes. Note that we will not throw if a qnnn is not valid for
+   * a node, e.g. a ghost node that is part of the last layer ghost cells. Instead, we set
+   * a flag and postpone the actual throw if the user actually tries to access this qnnn.
+   */
+  for ( size_t n = 0; n < nodes->indep_nodes.elem_count; n++) {
+#ifdef CASL_THROWS
+    is_qnnn_valid[n] = !construct_neighbors(n, neighbors[n]);
+#else
+    construct_neighbors(n, neighbors[n]);
+#endif
+  }
 
   is_initialized = true;
-
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_node_neighbors_t::clear_neighbors()
 {
   neighbors.clear();
+  is_qnnn_valid.clear();
   is_initialized = false;
 }
 
@@ -65,7 +77,7 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
   nodes = nodes_;
 
   if (is_initialized){
-    is_initialized = false;
+    clear_neighbors();
     init_neighbors();
   }
 
@@ -81,7 +93,7 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
   }
 }
 
-void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
+bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
 {
   p4est_connectivity_t *connectivity = p4est->connectivity;
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
@@ -117,22 +129,25 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
   p4est_locidx_t quad_ppp_idx; p4est_topidx_t tree_ppp_idx;
 #endif
 
+  /* NOTE: The following function calls will throw if qnnn is not found. We will catch these
+   * for ghost nodes inside the init method. For local nodes, we do not do anything and let the
+   * higher level try-block handle the exception.
+   */
 #ifdef P4_TO_P8
-  find_neighbor_cell_of_node(node,-1,-1, -1, quad_mmm_idx, tree_mmm_idx);
-  find_neighbor_cell_of_node(node,-1, 1, -1, quad_mpm_idx, tree_mpm_idx);
-  find_neighbor_cell_of_node(node, 1,-1, -1, quad_pmm_idx, tree_pmm_idx);
-  find_neighbor_cell_of_node(node, 1, 1, -1, quad_ppm_idx, tree_ppm_idx);
-  find_neighbor_cell_of_node(node,-1,-1,  1, quad_mmp_idx, tree_mmp_idx);
-  find_neighbor_cell_of_node(node,-1, 1,  1, quad_mpp_idx, tree_mpp_idx);
-  find_neighbor_cell_of_node(node, 1,-1,  1, quad_pmp_idx, tree_pmp_idx);
-  find_neighbor_cell_of_node(node, 1, 1,  1, quad_ppp_idx, tree_ppp_idx);
+  find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx); if (quad_mmm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n, -1,  1, -1, quad_mpm_idx, tree_mpm_idx); if (quad_mpm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1, -1, -1, quad_pmm_idx, tree_pmm_idx); if (quad_pmm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1,  1, -1, quad_ppm_idx, tree_ppm_idx); if (quad_ppm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n, -1, -1,  1, quad_mmp_idx, tree_mmp_idx); if (quad_mmp_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n, -1,  1,  1, quad_mpp_idx, tree_mpp_idx); if (quad_mpp_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1, -1,  1, quad_pmp_idx, tree_pmp_idx); if (quad_pmp_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx); if (quad_ppp_idx == NOT_A_P4EST_QUADRANT) return true;
 #else
-  find_neighbor_cell_of_node(node,-1,-1, quad_mmm_idx, tree_mmm_idx);
-  find_neighbor_cell_of_node(node,-1, 1, quad_mpm_idx, tree_mpm_idx);
-  find_neighbor_cell_of_node(node, 1,-1, quad_pmm_idx, tree_pmm_idx);
-  find_neighbor_cell_of_node(node, 1, 1, quad_ppm_idx, tree_ppm_idx);
+  find_neighbor_cell_of_node(n, -1, -1, quad_mmm_idx, tree_mmm_idx); if (quad_mmm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n, -1,  1, quad_mpm_idx, tree_mpm_idx); if (quad_mpm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1, -1, quad_pmm_idx, tree_pmm_idx); if (quad_pmm_idx == NOT_A_P4EST_QUADRANT) return true;
+  find_neighbor_cell_of_node(n,  1,  1, quad_ppm_idx, tree_ppm_idx); if (quad_ppm_idx == NOT_A_P4EST_QUADRANT) return true;
 #endif
-
 
   /* create dummy root quadrant */
   p4est_quadrant_t root;
@@ -153,7 +168,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
   p4est_quadrant_t *quad_ppp;
 #endif
 
-  if(quad_mmm_idx == -1)
+  if(quad_mmm_idx == NOT_A_VALID_QUADRANT)
     quad_mmm = &root;
   else
   {
@@ -166,7 +181,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
       quad_mmm = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_mmm_idx-p4est->local_num_quadrants);
   }
 
-  if(quad_mpm_idx == -1)
+  if(quad_mpm_idx == NOT_A_VALID_QUADRANT)
     quad_mpm = &root;
   else
   {
@@ -179,7 +194,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
       quad_mpm = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_mpm_idx-p4est->local_num_quadrants);
   }
 
-  if(quad_pmm_idx == -1)
+  if(quad_pmm_idx == NOT_A_VALID_QUADRANT)
     quad_pmm = &root;
   else
   {
@@ -192,7 +207,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
       quad_pmm = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_pmm_idx-p4est->local_num_quadrants);
   }
 
-  if(quad_ppm_idx == -1)
+  if(quad_ppm_idx == NOT_A_VALID_QUADRANT)
     quad_ppm = &root;
   else
   {
@@ -207,7 +222,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     }
   }
 #ifdef P4_TO_P8
-  if(quad_mmp_idx == -1)
+  if(quad_mmp_idx == NOT_A_VALID_QUADRANT)
     quad_mmp = &root;
   else
   {
@@ -220,7 +235,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
       quad_mmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_mmp_idx-p4est->local_num_quadrants);
   }
 
-  if(quad_mpp_idx == -1)
+  if(quad_mpp_idx == NOT_A_VALID_QUADRANT)
     quad_mpp = &root;
   else
   {
@@ -233,7 +248,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
       quad_mpp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_mpp_idx-p4est->local_num_quadrants);
   }
 
-  if(quad_pmp_idx == -1)
+  if(quad_pmp_idx == NOT_A_VALID_QUADRANT)
     quad_pmp = &root;
   else
   {
@@ -246,7 +261,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
       quad_pmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_pmp_idx-p4est->local_num_quadrants);
   }
 
-  if(quad_ppp_idx == -1)
+  if(quad_ppp_idx == NOT_A_VALID_QUADRANT)
     quad_ppp = &root;
   else
   {
@@ -514,7 +529,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 #endif
   {
     /* fetch the second order neighbor to the right */
-    p4est_indep_t *node_tmp;
+    p4est_locidx_t node_tmp_idx;
     p4est_locidx_t quad_tmp_idx;
     p4est_topidx_t tree_tmp_idx;
     short ci = 1, cj = -1;
@@ -535,29 +550,29 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
      */
 
     p4est_quadrant_t *quad_min     = &root;
-    p4est_locidx_t    quad_min_idx = -1;
-    if (quad_min->level < quad_pmm->level && quad_pmm_idx < p4est->local_num_quadrants) {
+    p4est_locidx_t    quad_min_idx = NOT_A_VALID_QUADRANT;
+    if (quad_min->level < quad_pmm->level) {
       quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; cj = -1;
 #ifdef P4_TO_P8
       ck = -1;
 #endif
     }
-    if (quad_min->level < quad_ppm->level && quad_ppm_idx < p4est->local_num_quadrants) {
+    if (quad_min->level < quad_ppm->level) {
       quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; cj =  1;
 #ifdef P4_TO_P8
       ck = -1;
 #endif
     }
 #ifdef P4_TO_P8
-    if (quad_min->level < quad_pmp->level && quad_pmp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_pmp->level)
     { quad_min = quad_pmp; quad_min_idx = quad_pmp_idx; cj = -1; ck =  1; }
-    if (quad_min->level < quad_ppp->level && quad_ppp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_ppp->level)
     { quad_min = quad_ppp; quad_min_idx = quad_ppp_idx; cj =  1; ck =  1; }
 #endif
 #ifdef CASL_THROWS
-    if (quad_min_idx == -1)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in m00."
-                                 "This is most probably a bug in my_p4est_hierarchy_t construction");
+    if (quad_min_idx == NOT_A_VALID_QUADRANT)
+        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the p00 direction when correcting for wall in m00 direction."
+                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
     const bool di = 1;
     const bool dj = cj != 1;
@@ -567,17 +582,11 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     const bool dk = 0;
 #endif
 
-    node_tmp = (p4est_indep_t*)sc_array_index( &nodes->indep_nodes, nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di] );
+    node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
 #ifdef P4_TO_P8
-    find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #else
-    find_neighbor_cell_of_node( node_tmp, ci, cj, quad_tmp_idx, tree_tmp_idx );
-#endif
-
-#ifdef CASL_THROWS
-    if (quad_tmp_idx == -1)
-    throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in m00."
-                             "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #endif
 
     p4est_quadrant_t *quad_tmp;
@@ -622,7 +631,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 #endif
   {
     /* fetch the second order neighbor to the right */
-    p4est_indep_t *node_tmp;
+    p4est_locidx_t node_tmp_idx;
     p4est_locidx_t quad_tmp_idx;
     p4est_topidx_t tree_tmp_idx;
     short ci = -1, cj = -1;
@@ -631,31 +640,32 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 #endif
 
     p4est_quadrant_t *quad_min     = &root;
-    p4est_locidx_t    quad_min_idx = -1;
+    p4est_locidx_t    quad_min_idx = NOT_A_VALID_QUADRANT;
 
-    if (quad_min->level < quad_mmm->level && quad_mmm_idx < p4est->local_num_quadrants) {
+    if (quad_min->level < quad_mmm->level) {
       quad_min = quad_mmm; quad_min_idx = quad_mmm_idx; cj = -1;
 #ifdef P4_TO_P8
       ck = -1;
 #endif
     }
-    if (quad_min->level < quad_mpm->level && quad_mpm_idx < p4est->local_num_quadrants) {
+    if (quad_min->level < quad_mpm->level) {
       quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; cj =  1;
 #ifdef P4_TO_P8
       ck = -1;
 #endif
     }
 #ifdef P4_TO_P8
-    if (quad_min->level < quad_mmp->level && quad_mmp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_mmp->level)
     { quad_min = quad_mmp; quad_min_idx = quad_mmp_idx; cj = -1; ck =  1; }
-    if (quad_min->level < quad_mpp->level && quad_mpp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_mpp->level)
     { quad_min = quad_mpp; quad_min_idx = quad_mpp_idx; cj =  1; ck =  1; }
 #endif
 #ifdef CASL_THROWS
-    if (quad_min_idx == -1)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in p00."
-                                 "This is most probably a bug in my_p4est_hierarchy_t construction");
+    if (quad_min_idx == NOT_A_VALID_QUADRANT)
+        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the m00 direction when correcting for wall in p00 direction."
+                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
+
     const bool di = 0;
     const bool dj = cj != 1;
 #ifdef P4_TO_P8
@@ -664,17 +674,11 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     const bool dk = 0;
 #endif
 
-    node_tmp = (p4est_indep_t*)sc_array_index( &nodes->indep_nodes, nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di] );
+    node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
 #ifdef P4_TO_P8
-    find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #else
-    find_neighbor_cell_of_node( node_tmp, ci, cj, quad_tmp_idx, tree_tmp_idx );
-#endif
-
-#ifdef CASL_THROWS
-    if (quad_tmp_idx == -1)
-    throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in p00."
-                             "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #endif
 
     p4est_quadrant_t *quad_tmp;
@@ -719,7 +723,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 #endif
   {
     /* fetch the second order neighbor to the right */
-    p4est_indep_t *node_tmp;
+    p4est_locidx_t node_tmp_idx;
     p4est_locidx_t quad_tmp_idx;
     p4est_topidx_t tree_tmp_idx;
     short ci = -1, cj = 1;
@@ -728,31 +732,31 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 #endif
 
     p4est_quadrant_t *quad_min     = &root;
-    p4est_locidx_t    quad_min_idx = -1;
+    p4est_locidx_t    quad_min_idx = NOT_A_VALID_QUADRANT;
 
-    if (quad_min->level < quad_mpm->level && quad_mpm_idx < p4est->local_num_quadrants) {
+    if (quad_min->level < quad_mpm->level) {
       quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; ci = -1;
 #ifdef P4_TO_P8
       ck = -1;
 #endif
     }
-    if (quad_min->level < quad_ppm->level && quad_ppm_idx < p4est->local_num_quadrants) {
+    if (quad_min->level < quad_ppm->level) {
       quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; ci =  1;
 #ifdef P4_TO_P8
       ck = -1;
 #endif
     }
 #ifdef P4_TO_P8
-    if (quad_min->level < quad_mpp->level && quad_mpp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_mpp->level)
     { quad_min = quad_mpp; quad_min_idx = quad_mpp_idx; ci = -1; ck =  1; }
-    if (quad_min->level < quad_ppp->level && quad_ppp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_ppp->level)
     { quad_min = quad_ppp; quad_min_idx = quad_ppp_idx; ci =  1; ck =  1; }
 #endif
 
 #ifdef CASL_THROWS
-    if (quad_min_idx == -1)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in 0m0."
-                                 "This is most probably a bug in my_p4est_hierarchy_t construction");
+    if (quad_min_idx == NOT_A_VALID_QUADRANT)
+        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 0p0 direction when correcting for wall in 0m0 direction."
+                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
 
     const bool di = ci != 1;
@@ -763,17 +767,11 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     const bool dk = 0;
 #endif
 
-    node_tmp = (p4est_indep_t*)sc_array_index( &nodes->indep_nodes, nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di] );
+    node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
 #ifdef P4_TO_P8
-    find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #else
-    find_neighbor_cell_of_node( node_tmp, ci, cj, quad_tmp_idx, tree_tmp_idx );
-#endif
-
-#ifdef CASL_THROWS
-    if (quad_tmp_idx == -1)
-    throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in 0m0."
-                             "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #endif
 
     p4est_quadrant_t *quad_tmp;
@@ -818,7 +816,7 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 #endif
   {
     /* fetch the second order neighbor to the right */
-    p4est_indep_t *node_tmp;
+    p4est_locidx_t node_tmp_idx;
     p4est_locidx_t quad_tmp_idx;
     p4est_topidx_t tree_tmp_idx;
     short ci = -1, cj = -1;
@@ -827,31 +825,31 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
 #endif
 
     p4est_quadrant_t *quad_min     = &root;
-    p4est_locidx_t    quad_min_idx = -1;
+    p4est_locidx_t    quad_min_idx = NOT_A_VALID_QUADRANT;
 
-    if (quad_min->level < quad_mmm->level && quad_mmm_idx < p4est->local_num_quadrants) {
+    if (quad_min->level < quad_mmm->level) {
       quad_min = quad_mmm; quad_min_idx = quad_mmm_idx; ci = -1;
 #ifdef P4_TO_P8
       ck = -1;
 #endif
     }
-    if (quad_min->level < quad_pmm->level && quad_pmm_idx < p4est->local_num_quadrants) {
+    if (quad_min->level < quad_pmm->level) {
       quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; ci =  1;
 #ifdef P4_TO_P8
       ck = -1;
 #endif
     }
 #ifdef P4_TO_P8
-    if (quad_min->level < quad_mmp->level && quad_mmp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_mmp->level)
     { quad_min = quad_mmp; quad_min_idx = quad_mmp_idx; ci = -1; ck =  1; }
-    if (quad_min->level < quad_pmp->level && quad_pmp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_pmp->level)
     { quad_min = quad_pmp; quad_min_idx = quad_pmp_idx; ci =  1; ck =  1; }
 #endif
 
 #ifdef CASL_THROWS
-    if (quad_min_idx == -1)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in 0p0."
-                                 "This is most probably a bug in my_p4est_hierarchy_t construction");
+    if (quad_min_idx == NOT_A_VALID_QUADRANT)
+        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 0m0 direction when correcting for wall in 0p0 direction."
+                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
 
     const bool di = ci != 1;
@@ -862,17 +860,11 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     const bool dk = 0;
 #endif
 
-    node_tmp = (p4est_indep_t*)sc_array_index( &nodes->indep_nodes, nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di] );
+    node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
 #ifdef P4_TO_P8
-    find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #else
-    find_neighbor_cell_of_node( node_tmp, ci, cj, quad_tmp_idx, tree_tmp_idx );
-#endif
-
-#ifdef CASL_THROWS
-    if (quad_tmp_idx == -1)
-    throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in 0p0."
-                             "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj,     quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 #endif
 
     p4est_quadrant_t *quad_tmp;
@@ -914,41 +906,35 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
   if(quad_mmm==&root && quad_pmm==&root && quad_mpm==&root && quad_ppm==&root)
   {
     /* fetch the second order neighbor to the right */
-    p4est_indep_t *node_tmp;
+    p4est_locidx_t node_tmp_idx;
     p4est_locidx_t quad_tmp_idx;
     p4est_topidx_t tree_tmp_idx;
     short ci = -1, cj = -1, ck = 1;
 
     p4est_quadrant_t *quad_min     = &root;
-    p4est_locidx_t    quad_min_idx = -1;
+    p4est_locidx_t    quad_min_idx = NOT_A_VALID_QUADRANT;
 
-    if (quad_min->level < quad_mmp->level && quad_mmp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_mmp->level)
     { quad_min = quad_mmp; quad_min_idx = quad_mmp_idx; ci = -1; cj = -1; }
-    if (quad_min->level < quad_pmp->level && quad_pmp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_pmp->level)
     { quad_min = quad_pmp; quad_min_idx = quad_pmp_idx; ci =  1; cj = -1; }
-    if (quad_min->level < quad_mpp->level && quad_mpp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_mpp->level)
     { quad_min = quad_mpp; quad_min_idx = quad_mpp_idx; ci = -1; cj =  1; }
-    if (quad_min->level < quad_ppp->level && quad_ppp_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_ppp->level)
     { quad_min = quad_ppp; quad_min_idx = quad_ppp_idx; ci =  1; cj =  1; }
 
 #ifdef CASL_THROWS
-    if (quad_min_idx == -1)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in 00m."
-                                 "This is most probably a bug in my_p4est_hierarchy_t construction");
+    if (quad_min_idx == NOT_A_VALID_QUADRANT)
+        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 00p direction when correcting for wall in 00m direction."
+                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
 
     const bool di = ci != 1;
     const bool dj = cj != 1;
     const bool dk = 1;
 
-    node_tmp = (p4est_indep_t*)sc_array_index( &nodes->indep_nodes, nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di] );
-    find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
-
-#ifdef CASL_THROWS
-    if (quad_tmp_idx == -1)
-    throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in 00m."
-                             "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
-#endif
+    node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 
     p4est_quadrant_t *quad_tmp;
     if(quad_tmp_idx < p4est->local_num_quadrants)
@@ -982,41 +968,35 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
   if(quad_mmp==&root && quad_pmp==&root && quad_mpp==&root && quad_ppp==&root)
   {
     /* fetch the second order neighbor to the right */
-    p4est_indep_t *node_tmp;
+    p4est_locidx_t node_tmp_idx;
     p4est_locidx_t quad_tmp_idx;
     p4est_topidx_t tree_tmp_idx;
     short ci = -1, cj = -1, ck = -1;
 
     p4est_quadrant_t *quad_min     = &root;
-    p4est_locidx_t    quad_min_idx = -1;
+    p4est_locidx_t    quad_min_idx = NOT_A_VALID_QUADRANT;
 
-    if (quad_min->level < quad_mmm->level && quad_mmm_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_mmm->level)
     { quad_min = quad_mmm; quad_min_idx = quad_mmm_idx; ci = -1; cj = -1; }
-    if (quad_min->level < quad_pmm->level && quad_pmm_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_pmm->level)
     { quad_min = quad_pmm; quad_min_idx = quad_pmm_idx; ci =  1; cj = -1; }
-    if (quad_min->level < quad_mpm->level && quad_mpm_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_mpm->level)
     { quad_min = quad_mpm; quad_min_idx = quad_mpm_idx; ci = -1; cj =  1; }
-    if (quad_min->level < quad_ppm->level && quad_ppm_idx < p4est->local_num_quadrants)
+    if (quad_min->level < quad_ppm->level)
     { quad_min = quad_ppm; quad_min_idx = quad_ppm_idx; ci =  1; cj =  1; }
 
 #ifdef CASL_THROWS
-    if (quad_min_idx == -1)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell when correcting for wall in 00p."
-                                 "This is most probably a bug in my_p4est_hierarchy_t construction");
+    if (quad_min_idx == NOT_A_VALID_QUADRANT)
+        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 00m direction when correcting for wall in 00p direction."
+                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
 
     const bool di = ci != 1;
     const bool dj = cj != 1;
     const bool dk = 0;
 
-    node_tmp = (p4est_indep_t*)sc_array_index( &nodes->indep_nodes, nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di] );
-    find_neighbor_cell_of_node( node_tmp, ci, cj, ck, quad_tmp_idx, tree_tmp_idx );
-
-#ifdef CASL_THROWS
-    if (quad_tmp_idx == -1)
-    throw std::runtime_error("[ERROR]: could not find a suitable second order neighbor when correcting for wall in 00p."
-                             "This is most probably a bug in 'find_neighbor_cell_of_node' function.");
-#endif
+    node_tmp_idx = nodes->local_nodes[P4EST_CHILDREN*quad_min_idx + 4*dk+2*dj+di];
+    find_neighbor_cell_of_node( node_tmp_idx, ci, cj, ck, quad_tmp_idx, tree_tmp_idx ); if (quad_tmp_idx == NOT_A_P4EST_QUADRANT) return true;
 
     p4est_quadrant_t *quad_tmp;
     if(quad_tmp_idx < p4est->local_num_quadrants)
@@ -1046,12 +1026,15 @@ void my_p4est_node_neighbors_t::get_neighbors(p4est_locidx_t n, quad_neighbor_no
     qnnn.d_00p_0p = qh - qnnn.d_00p_0m;
   }
 #endif
+
+  return false;
 }
 
 #ifdef P4_TO_P8
-void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_, char i, char j, char k, p4est_locidx_t& quad, p4est_topidx_t& nb_tree_idx ) const
+void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, char i, char j, char k, p4est_locidx_t& quad, p4est_topidx_t& nb_tree_idx ) const
 {
-  p4est_indep_t node_struct = *node_;
+  // make a local copy of the current node structure
+  p4est_indep_t node_struct = *(p4est_indep_t *)sc_array_index(&nodes->indep_nodes, n);
   p4est_indep_t *node = &node_struct;
   p4est_node_unclamp((p4est_quadrant_t*)node);
 
@@ -1081,11 +1064,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = -1; return; }
+    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1097,11 +1080,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = -1; return; }
+    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1113,11 +1096,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = -1; return; }
+    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = 1;
@@ -1129,11 +1112,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = -1; return; }
+    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = 1;
@@ -1145,11 +1128,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = -1; return; }
+    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1161,11 +1144,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = -1; return; }
+    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1177,11 +1160,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = -1; return; }
+    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = 1;
@@ -1193,11 +1176,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = -1; return; }
+    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = 1;
@@ -1215,9 +1198,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1228,9 +1211,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1241,9 +1224,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = 1;
@@ -1254,9 +1237,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = 1;
@@ -1267,9 +1250,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     z_perturb = P4EST_ROOT_LEN - 1;
@@ -1280,9 +1263,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     z_perturb = P4EST_ROOT_LEN - 1;
@@ -1293,9 +1276,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     z_perturb = 1;
@@ -1306,9 +1289,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     z_perturb = 1;
@@ -1319,9 +1302,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = P4EST_ROOT_LEN - 1;
     z_perturb = P4EST_ROOT_LEN - 1;
@@ -1332,9 +1315,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = 1;
     z_perturb = P4EST_ROOT_LEN - 1;
@@ -1345,9 +1328,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = P4EST_ROOT_LEN - 1;
     z_perturb = 1;
@@ -1358,9 +1341,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = -1; return; }
+    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = 1;
     z_perturb = 1;
@@ -1373,7 +1356,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
   }
@@ -1383,7 +1366,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
   }
@@ -1393,7 +1376,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = P4EST_ROOT_LEN - 1;
   }
@@ -1403,7 +1386,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = 1;
   }
@@ -1413,7 +1396,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_00m]; // 00m
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     z_perturb = P4EST_ROOT_LEN - 1;
   }
@@ -1423,7 +1406,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_00p]; // 00p
-    if(tmp_tree_idx[0] == tree_idx)        { quad = -1; return; }
+    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     z_perturb = 1;
   }
@@ -1439,12 +1422,14 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
     ind = hierarchy->trees[nb_tree_idx][ind].child + 4*ck + 2*cj + ci;
   }
 
-  quad = hierarchy->trees[nb_tree_idx][ind].quad;
+  quad = hierarchy->trees[nb_tree_idx][ind].quad;  
 }
+
 #else
-void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_, char i, char j, p4est_locidx_t& quad, p4est_topidx_t& nb_tree_idx ) const
+void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, char i, char j, p4est_locidx_t& quad, p4est_topidx_t& nb_tree_idx ) const
 {
-  p4est_indep_t node_struct = *node_;
+  // make a copy of the current node
+  p4est_indep_t node_struct = *(p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_indep_t *node = &node_struct;
   p4est_node_unclamp((p4est_quadrant_t*)node);
 
@@ -1459,36 +1444,36 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   if(node->x==0 && node->y==0 && i==-1 && j==-1)
   {
     p4est_topidx_t tmp_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 0];
-    if(tmp_tree_idx == tree_idx) { quad = -1; return; }
+    if(tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tmp_tree_idx + 2];
-    if(nb_tree_idx == tmp_tree_idx) { quad = -1; return; }
+    if(nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = P4EST_ROOT_LEN - 1;
   }
   else if(node->x==P4EST_ROOT_LEN && node->y==0 && i== 1 && j==-1)
   {
     p4est_topidx_t tmp_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 1];
-    if(tmp_tree_idx == tree_idx) { quad = -1; return; }
+    if(tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tmp_tree_idx + 2];
-    if(nb_tree_idx == tmp_tree_idx) { quad = -1; return; }
+    if(nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = 1;
     y_perturb = P4EST_ROOT_LEN - 1;
   }
   else if(node->x==0 && node->y==P4EST_ROOT_LEN && i==-1 && j== 1)
   {
     p4est_topidx_t tmp_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 0];
-    if(tmp_tree_idx == tree_idx) { quad = -1; return; }
+    if(tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tmp_tree_idx + 3];
-    if(nb_tree_idx == tmp_tree_idx) { quad = -1; return; }
+    if(nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = 1;
   }
   else if(node->x==P4EST_ROOT_LEN && node->y==P4EST_ROOT_LEN && i== 1 && j== 1)
   {
     p4est_topidx_t tmp_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 1];
-    if(tmp_tree_idx == tree_idx) { quad = -1; return; }
+    if(tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tmp_tree_idx + 3];
-    if(nb_tree_idx == tmp_tree_idx) { quad = -1; return; }
+    if(nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = 1;
     y_perturb = 1;
   }
@@ -1497,25 +1482,25 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_indep_t *node_
   else if(node->x==0 && i==-1)
   {
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 0];
-    if(nb_tree_idx == tree_idx) { quad = -1; return; }
+    if(nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = P4EST_ROOT_LEN - 1;
   }
   else if(node->x==P4EST_ROOT_LEN && i==1)
   {
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 1];
-    if(nb_tree_idx == tree_idx) { quad = -1; return; }
+    if(nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = 1;
   }
   else if(node->y==0 && j==-1)
   {
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 2];
-    if(nb_tree_idx == tree_idx) { quad = -1; return; }
+    if(nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     y_perturb = P4EST_ROOT_LEN - 1;
   }
   else if(node->y==P4EST_ROOT_LEN && j==1)
   {
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 3];
-    if(nb_tree_idx == tree_idx) { quad = -1; return; }
+    if(nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     y_perturb = 1;
   }
 
