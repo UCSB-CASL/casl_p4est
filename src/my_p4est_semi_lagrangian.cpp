@@ -167,7 +167,7 @@ void SemiLagrangian::advect_from_n_to_np1(const std::vector<p4est_locidx_t>& map
   ierr = PetscLogEventBegin(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
 
   // InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, ngbd_);
-  InterpolatingFunctionNodeBaseHost interp(phi_n, ngbd_);
+  InterpolatingFunctionNodeBaseHost interp(phi_n, *ngbd_, quadratic_non_oscillatory);
 #ifdef P4_TO_P8
   // interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n, phi_zz_n);
 #else

@@ -23,12 +23,16 @@ class InterpolatingFunctionNodeBaseHost: public CF_3
 class InterpolatingFunctionNodeBaseHost: public CF_2
 #endif
 {
-  const my_p4est_node_neighbors_t *neighbors_;
+  const my_p4est_node_neighbors_t& neighbors_;
   const p4est_t *p4est_;
   const p4est_nodes_t *nodes_;
   const p4est_ghost_t *ghost_;
   const my_p4est_brick_t *myb_;
   Vec Fi;
+  Vec Fxx, Fyy;
+#ifdef P4_TO_P8
+  Vec Fzz;
+#endif  
 
   interpolation_method method_;
 
@@ -85,7 +89,12 @@ class InterpolatingFunctionNodeBaseHost: public CF_2
   InterpolatingFunctionNodeBaseHost(const InterpolatingFunctionNodeBaseHost& other);
   InterpolatingFunctionNodeBaseHost& operator=(const InterpolatingFunctionNodeBaseHost& other);
 public:
-  InterpolatingFunctionNodeBaseHost(Vec F, const my_p4est_node_neighbors_t *neighbors, interpolation_method method = linear);
+  InterpolatingFunctionNodeBaseHost(Vec F, const my_p4est_node_neighbors_t& neighbors, interpolation_method method = linear);
+#ifdef P4_TO_P8  
+  InterpolatingFunctionNodeBaseHost(Vec F, Vec Fxx, Vec Fyy, Vec Fzz, const my_p4est_node_neighbors_t& neighbors, interpolation_method method = quadratic_non_oscillatory);
+#else
+  InterpolatingFunctionNodeBaseHost(Vec F, Vec Fxx, Vec Fyy, const my_p4est_node_neighbors_t& neighbors, interpolation_method method = quadratic_non_oscillatory);
+#endif  
   ~InterpolatingFunctionNodeBaseHost();
 
   void add_point(p4est_locidx_t node_locidx, const double *xyz);

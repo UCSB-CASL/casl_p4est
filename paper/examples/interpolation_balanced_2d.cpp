@@ -383,7 +383,7 @@ int main (int argc, char* argv[]){
 			ierr = PetscLogEventBegin(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
 			ierr = PetscLogEventBegin(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);      
 
-			InterpolatingFunctionNodeBaseHost interp(u, &node_neighbors);      
+			InterpolatingFunctionNodeBaseHost interp(u, &node_neighbors, quadratic);      
 
 			w2.stop(); w2.read_duration();
 

@@ -32,9 +32,13 @@ extern PetscLogEvent log_InterpolatingFunctionHost_all_reduce;
 #define PetscLogFlops(n) 0
 #endif
 
-InterpolatingFunctionNodeBaseHost::InterpolatingFunctionNodeBaseHost(Vec F, const my_p4est_node_neighbors_t *neighbors, interpolation_method method)
-  : neighbors_(neighbors), p4est_(neighbors_->p4est), nodes_(neighbors_->nodes), ghost_(neighbors_->ghost), myb_(neighbors_->myb),
+InterpolatingFunctionNodeBaseHost::InterpolatingFunctionNodeBaseHost(Vec F, const my_p4est_node_neighbors_t& neighbors, interpolation_method method)
+  : neighbors_(neighbors), p4est_(neighbors_.p4est), nodes_(neighbors_.nodes), ghost_(neighbors_.ghost), myb_(neighbors_.myb),
     Fi(F),
+    Fxx(NULL), Fyy(NULL),
+#ifdef P4_TO_P8
+    Fzz(NULL),
+#endif
     method_(method),
     senders(p4est_->mpisize, 0)
 {
@@ -53,6 +57,36 @@ InterpolatingFunctionNodeBaseHost::InterpolatingFunctionNodeBaseHost(Vec F, cons
     xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
 }
 
+#ifdef P4_TO_P8
+InterpolatingFunctionNodeBaseHost::InterpolatingFunctionNodeBaseHost(Vec F, Vec Fxx, Vec Fyy, Vec Fzz, const my_p4est_node_neighbors_t& neighbors, interpolation_method method)
+#else
+InterpolatingFunctionNodeBaseHost::InterpolatingFunctionNodeBaseHost(Vec F, Vec Fxx, Vec Fyy, const my_p4est_node_neighbors_t& neighbors, interpolation_method method)
+#endif
+  : neighbors_(neighbors), p4est_(neighbors_.p4est), nodes_(neighbors_.nodes), ghost_(neighbors_.ghost), myb_(neighbors_.myb),
+    Fi(F),
+    Fxx(Fxx), Fyy(Fyy),
+#ifdef P4_TO_P8
+    Fzz(Fzz),
+#endif
+    method_(method),
+    senders(p4est_->mpisize, 0)
+{
+  if (!(method_ == linear || method_ == quadratic || method_ == quadratic_non_oscillatory))
+    throw std::invalid_argument("[ERROR]: interpolation method should be one of 'linear', 'quadratic', or 'quadratic_non_oscillatory'. ");
+
+  // compute domain sizes
+  double *v2c = p4est_->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
+  p4est_topidx_t first_tree = 0, last_tree = p4est_->trees->elem_count-1;
+  p4est_topidx_t first_vertex = 0, last_vertex = P4EST_CHILDREN - 1;
+
+  for (short i=0; i<3; i++)
+    xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
+  for (short i=0; i<3; i++)
+    xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
+}
+
+
 InterpolatingFunctionNodeBaseHost::~InterpolatingFunctionNodeBaseHost() {  
   // make sure all messages are finsished sending
   MPI_Waitall(query_req.size(), &query_req[0], MPI_STATUSES_IGNORE);
@@ -61,9 +95,6 @@ InterpolatingFunctionNodeBaseHost::~InterpolatingFunctionNodeBaseHost() {
 
 void InterpolatingFunctionNodeBaseHost::add_point(p4est_locidx_t node_locidx, const double *xyz)
 {
-  const double *Fi_p;
-  ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
-
   // first clip the coordinates
   double xyz_clip [] =
   {
@@ -83,7 +114,7 @@ void InterpolatingFunctionNodeBaseHost::add_point(p4est_locidx_t node_locidx, co
 
   // find the quadrant -- Note point may become slightly purturbed after this call
   std::vector<p4est_quadrant_t> remote_matches;
-  int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
+  int rank_found = neighbors_.hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
   
   /* check who is going to own the quadrant.
    * we add the point to the local buffer if it is locally owned   
@@ -111,8 +142,6 @@ void InterpolatingFunctionNodeBaseHost::add_point(p4est_locidx_t node_locidx, co
       senders[r] = 1;
     }
   }
-
-  ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 }
 
 void InterpolatingFunctionNodeBaseHost::interpolate(Vec Fo)
@@ -133,12 +162,26 @@ void InterpolatingFunctionNodeBaseHost::interpolate(double *Fo_p) {
   const double *Fi_p;
   ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 
+  const double *Fxx_p, *Fyy_p;
+#ifdef P4_TO_P8
+  bool use_precomputed_derivatives = Fxx != NULL && Fyy != NULL && Fzz != NULL;
+  const double *Fzz_p;
+#else
+  bool use_precomputed_derivatives = Fxx != NULL && Fyy != NULL;
+#endif
+
+  if (use_precomputed_derivatives) {
+    ierr = VecGetArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(Fyy, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArrayRead(Fzz, &Fzz_p); CHKERRXX(ierr);
+#endif
+  }
+
   int num_remaining_replies = 0;
   for (size_t i = 0; i<senders.size(); i++)
     num_remaining_replies += senders[i];
   
-  // MPI_Allreduce(MPI_IN_PLACE, &senders[0], p4est_->mpisize, MPI_INT, MPI_SUM, p4est_->mpicomm);
-  // num_remaining_msgs += senders[p4est_->mpirank];
   std::vector<int> recvcount(p4est_->mpisize, 1);
   int num_remaining_queries = 0;
   MPI_Reduce_scatter(&senders[0], &num_remaining_queries, &recvcount[0], MPI_INT, MPI_SUM, p4est_->mpicomm);
@@ -167,7 +210,6 @@ void InterpolatingFunctionNodeBaseHost::interpolate(double *Fo_p) {
 
   double f[P4EST_CHILDREN];
   double fdd[P4EST_CHILDREN*P4EST_DIM]; // fxx[0] = fdd[0], fyy[0] = fdd[1], fzz[0] = fdd[2], fxx[1] = fdd[3], ...
-  quad_neighbor_nodes_of_node_t qnnn;
 
   while (!done) {
     // interpolate local points
@@ -187,15 +229,27 @@ void InterpolatingFunctionNodeBaseHost::interpolate(double *Fo_p) {
 
       // compute derivatives      
       if (method_ == quadratic || method_ == quadratic_non_oscillatory) {
-        for (short j = 0; j<P4EST_CHILDREN; j++) {
-          p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
-          neighbors_->get_neighbors(node_idx, qnnn);
+        if (use_precomputed_derivatives) {
+          for (short j = 0; j<P4EST_CHILDREN; j++) {
+            p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
 
-          fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
-          fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
+            fdd[j*P4EST_DIM + 0] = Fxx_p[node_idx];
+            fdd[j*P4EST_DIM + 1] = Fyy_p[node_idx];
 #ifdef P4_TO_P8
-          fdd[j*P4EST_DIM + 2] = qnnn.dzz_central(Fi_p);
+            fdd[j*P4EST_DIM + 2] = Fzz_p[node_idx];
 #endif          
+          }
+        } else {
+          for (short j = 0; j<P4EST_CHILDREN; j++) {
+            p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
+            const quad_neighbor_nodes_of_node_t& qnnn = neighbors_[node_idx];
+
+            fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
+            fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
+#ifdef P4_TO_P8
+            fdd[j*P4EST_DIM + 2] = qnnn.dzz_central(Fi_p);
+#endif          
+          }          
         }
       }
 
@@ -242,6 +296,13 @@ void InterpolatingFunctionNodeBaseHost::interpolate(double *Fo_p) {
   }
   
   ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+  if (use_precomputed_derivatives) {
+    ierr = VecRestoreArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(Fyy, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArrayRead(Fzz, &Fzz_p); CHKERRXX(ierr);
+#endif
+  }
   ierr = PetscLogEventEnd(log_InterpolatingFunctionHost_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -260,9 +321,25 @@ void InterpolatingFunctionNodeBaseHost::process_incoming_query(MPI_Status& statu
 
   const double *Fi_p;
   PetscErrorCode ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+  
+  const double *Fxx_p, *Fyy_p;
+#ifdef P4_TO_P8
+  bool use_precomputed_derivatives = Fxx != NULL && Fyy != NULL && Fzz != NULL;
+  const double *Fzz_p;
+#else
+  bool use_precomputed_derivatives = Fxx != NULL && Fyy != NULL;
+#endif
+
+  if (use_precomputed_derivatives) {
+    ierr = VecGetArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(Fyy, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArrayRead(Fzz, &Fzz_p); CHKERRXX(ierr);
+#endif
+  }
+
   double f  [P4EST_CHILDREN];
   double fdd[P4EST_CHILDREN*P4EST_DIM];
-  quad_neighbor_nodes_of_node_t qnnn;
   double xyz_clip[P4EST_DIM];
 
   std::vector<remote_buffer_t>& buff = send_buffer[status.MPI_SOURCE];
@@ -275,7 +352,7 @@ void InterpolatingFunctionNodeBaseHost::process_incoming_query(MPI_Status& statu
       if (xyz[i+j] < xyz_min[j]) xyz_clip[j] = xyz_min[j];
     }
 
-    int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(&xyz_clip[0], best_match, remote_matches);
+    int rank_found = neighbors_.hierarchy->find_smallest_quadrant_containing_point(&xyz_clip[0], best_match, remote_matches);
 
     /* only accept the quadrant if it is in our local part. If the point
      * is in our ghost it means another processor will eventually be able
@@ -294,17 +371,29 @@ void InterpolatingFunctionNodeBaseHost::process_incoming_query(MPI_Status& statu
         f[j] = Fi_p[node_idx];
       }
 
-      // compute derivatives
+      // compute derivatives      
       if (method_ == quadratic || method_ == quadratic_non_oscillatory) {
-        for (short j = 0; j<P4EST_CHILDREN; j++) {
-          p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
-          neighbors_->get_neighbors(node_idx, qnnn);
+        if (use_precomputed_derivatives) {
+          for (short j = 0; j<P4EST_CHILDREN; j++) {
+            p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
 
-          fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
-          fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
+            fdd[j*P4EST_DIM + 0] = Fxx_p[node_idx];
+            fdd[j*P4EST_DIM + 1] = Fyy_p[node_idx];
 #ifdef P4_TO_P8
-          fdd[j*P4EST_DIM + 2] = qnnn.dzz_central(Fi_p);
+            fdd[j*P4EST_DIM + 2] = Fzz_p[node_idx];
 #endif          
+          }
+        } else {
+          for (short j = 0; j<P4EST_CHILDREN; j++) {
+            p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
+            const quad_neighbor_nodes_of_node_t& qnnn = neighbors_[node_idx];
+
+            fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
+            fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
+#ifdef P4_TO_P8
+            fdd[j*P4EST_DIM + 2] = qnnn.dzz_central(Fi_p);
+#endif          
+          }          
         }
       }
       
@@ -328,6 +417,13 @@ void InterpolatingFunctionNodeBaseHost::process_incoming_query(MPI_Status& statu
   }
 
   ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+  if (use_precomputed_derivatives) {
+    ierr = VecRestoreArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(Fyy, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArrayRead(Fzz, &Fzz_p); CHKERRXX(ierr);
+#endif
+  }
 
   // we are done, lets send the buffer back
   MPI_Request req;
@@ -383,16 +479,31 @@ double InterpolatingFunctionNodeBaseHost::operator ()(double x, double y) const
     if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
   }
   
-  double *Fi_p;
-  ierr = VecGetArray(Fi, &Fi_p); CHKERRXX(ierr);
+  const double *Fi_p;
+  ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+
+  const double *Fxx_p, *Fyy_p;
+#ifdef P4_TO_P8
+  bool use_precomputed_derivatives = Fxx != NULL && Fyy != NULL && Fzz != NULL;
+  const double *Fzz_p;
+#else
+  bool use_precomputed_derivatives = Fxx != NULL && Fyy != NULL;
+#endif
+
+  if (use_precomputed_derivatives) {
+    ierr = VecGetArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(Fyy, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArrayRead(Fzz, &Fzz_p); CHKERRXX(ierr);
+#endif
+  }
   
   double f  [P4EST_CHILDREN];
   double fdd[P4EST_CHILDREN*P4EST_DIM];
-  quad_neighbor_nodes_of_node_t qnnn;
   
   p4est_quadrant_t best_match;
   std::vector<p4est_quadrant_t> remote_matches;
-  int rank_found = neighbors_->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
+  int rank_found = neighbors_.hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
   
   if (rank_found == p4est_->mpirank) { // local quadrant
     p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, best_match.p.piggy3.which_tree);
@@ -405,19 +516,40 @@ double InterpolatingFunctionNodeBaseHost::operator ()(double x, double y) const
 
       // compute derivatives
     if (method_ == quadratic || method_ == quadratic_non_oscillatory) {
-      for (short i = 0; i<P4EST_CHILDREN; i++) {
-        p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + i];
-        neighbors_->get_neighbors(node_idx, qnnn);
-        
-        fdd[i*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
-        fdd[i*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
+      if (use_precomputed_derivatives) {
+        for (short j = 0; j<P4EST_CHILDREN; j++) {
+          p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
+
+          fdd[j*P4EST_DIM + 0] = Fxx_p[node_idx];
+          fdd[j*P4EST_DIM + 1] = Fyy_p[node_idx];
 #ifdef P4_TO_P8
-        fdd[i*P4EST_DIM + 2] = qnnn.dzz_central(Fi_p);
-#endif
-      }      
-    }  
+          fdd[j*P4EST_DIM + 2] = Fzz_p[node_idx];
+#endif          
+        }
+      } else {
+        for (short j = 0; j<P4EST_CHILDREN; j++) {
+          p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
+          const quad_neighbor_nodes_of_node_t& qnnn = neighbors_[node_idx];
+
+          fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
+          fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
+#ifdef P4_TO_P8
+          fdd[j*P4EST_DIM + 2] = qnnn.dzz_central(Fi_p);
+#endif          
+        }          
+      }
+    }
+     
     // restore arrays and release remote_maches
-    ierr = VecRestoreArray(Fi, &Fi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+  
+    if (use_precomputed_derivatives) {
+      ierr = VecRestoreArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(Fyy, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecRestoreArrayRead(Fzz, &Fzz_p); CHKERRXX(ierr);
+#endif
+    }
 
     double value;
     if (method_ == linear) {
@@ -431,7 +563,14 @@ double InterpolatingFunctionNodeBaseHost::operator ()(double x, double y) const
     return value;
     
   } else {
-    ierr = VecRestoreArray(Fi, &Fi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+    if (use_precomputed_derivatives) {
+      ierr = VecRestoreArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(Fyy, &Fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecRestoreArrayRead(Fzz, &Fzz_p); CHKERRXX(ierr);
+#endif
+    }
 
     std::ostringstream oss;
     oss << "[ERROR]: Point (" << x << "," << y <<
