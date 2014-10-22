@@ -237,6 +237,7 @@ int main (int argc, char* argv[]){
 
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
+    node_neighbors.init_neighbors();
 
     // SemiLagrangian object
     SemiLagrangian sl(&p4est, &nodes, &ghost, &brick, &node_neighbors);

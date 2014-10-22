@@ -86,7 +86,7 @@ SOURCES += \
     $$CASL_P4EST/src/my_p4est_vtk.c \
     $$CASL_P4EST/src/my_p4est_tools.c\
     $$CASL_P4EST/src/my_p4est_nodes.c \
-    $$CASL_P4EST/src/my_p4est_interpolating_function_host.cpp \
+    $$CASL_P4EST/src/my_p4est_interpolating_function_nonblocking.cpp \
     $$CASL_P4EST/src/cube2.cpp \
     $$CASL_P4EST/src/point2.cpp \
     $$CASL_P4EST/src/simplex2.cpp \
@@ -109,7 +109,7 @@ SOURCES += \
     $$CASL_P4EST/src/my_p8est_vtk.c \
     $$CASL_P4EST/src/my_p8est_tools.c\
     $$CASL_P4EST/src/my_p8est_nodes.c \
-    $$CASL_P4EST/src/my_p8est_interpolating_function_host.cpp \
+    $$CASL_P4EST/src/my_p8est_interpolating_function_nonblocking.cpp \
     $$CASL_P4EST/src/cube3.cpp \
     $$CASL_P4EST/src/point3.cpp \
     $$CASL_P4EST/src/simplex2.cpp \
