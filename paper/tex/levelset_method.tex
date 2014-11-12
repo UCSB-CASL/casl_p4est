@@ -1,38 +1,51 @@
 %!TEX root = draft.tex
-\section{The level-set method}
+\section{The level-set method}\label{sec:levelset method}
+The level-set method, introduced in \cite{Osher;Sethian:88:Fronts-Propagating-w}, is an implicit framework for tracking interfaces that undergo complicated topological changes. In this framework an interface is represented by the zero contour of a higher dimensional function, e.g. a curve in two spatial dimension can be described as $\Gamma = \{(x,y) | \phi(x,y) = 0\}$ where $\phi(x,y)$ is the level-set function. Evolution of the curve under a velocity field $\mathbf{V}$ is then obtained by solving the level-set equation:
+\be
+\phi_t + \mathbf{V} \cdot \nabla \phi = 0.
+\label{eq:ls}
+\ee
+When velocity field does not depend on the level set function itself, equation \eqref{eq:ls} can be solved using the Semi-Lagrangian method. An important advantage of the Semi-Lagrangian method over regular finite difference method is its unconditional stability which allows for arbitrarily large time steps. This is specially of interest when using adaptive grids that allow for higher grid resolutions.
 
-\indent The level-set method is a method to capture interfaces implicitely by constructing a function $\phi$, called the level-set function, that is negative on on side of the domain $\Omega^-$ and positive on the other side $\Omega^+$, thus defining the interface $\Gamma$ as the zero contour of $\phi$, $\Gamma = \{\mathbf{x} \vert \phi(\mathbf{x}=0\}$.\\
+In general, an infinite number of level-set functions can describe the same zero contour and thus interface. However, it is desirable to chose functions with signed distance property, i.e. $|\nabla \phi| = 1$. As detailed in section \ref{sec:introduction}, we solve the pseudo-time transient reinitialization equation \cite{Sussman;Smereka;Osher:94:A-Level-Set-Approach, Osher;Fedkiw:01:Level-Set-Methods:-A} to achieve this property,
+\be
+\phi_\tau + S(\phi_0)\left(|\nabla \phi| - 1\right) = 0,
+\label{eq:reinitialization}
+\ee
+where $\phi_0$ is any level-set function that correctly describes the interface location and $S(\phi_0)$ is an appropriate approximation of the sign function \cite{Osher;Fedkiw:02:Level-Set-Methods-an}. Here, we do not go into the details of the sequential algorithms for solving equations \eqref{eq:ls} and \eqref{eq:reinitialization}. Instead, we note that the algorithms presented in section \ref{sec:parallel algorithms} are based on the sequential methods presented in \cite{Min;Gibou:07:A-second-order-accur} and refer the interested reader to the aforementioned article and references therein for more details.
 
-If infinitely many functions satisfy these requirements, the most natural and most convenient representation is a signed distance function to the interface. The level-set function is therefore reinitialized to a signed distance function at every time step by solving the reinitialization equation
+% \indent The level-set method is a method to capture interfaces implicitely by constructing a function $\phi$, called the level-set function, that is negative on on side of the domain $\Omega^-$ and positive on the other side $\Omega^+$, thus defining the interface $\Gamma$ as the zero contour of $\phi$, $\Gamma = \{\mathbf{x} \vert \phi(\mathbf{x}=0\}$.\\
 
-\begin{equation} \label{eq::reinitialization}
-\pd{\phi}{\tau} + \mathrm{sign}(\phi) \left( \lvert \phi \rvert - 1 \right) = 0,
-\end{equation}
+% If infinitely many functions satisfy these requirements, the most natural and most convenient representation is a signed distance function to the interface. The level-set function is therefore reinitialized to a signed distance function at every time step by solving the reinitialization equation
 
-where $\tau$ is a fictitious time. The discretization and implementation of this procedure will be discussed later in section \ref{section::reinitialization}. Geometrical quantities such as the normal to the interface and the local curvature can be computed straightforwardly from the level-set function as
+% \begin{equation} \label{eq::reinitialization}
+% \pd{\phi}{\tau} + \mathrm{sign}(\phi) \left( \lvert \phi \rvert - 1 \right) = 0,
+% \end{equation}
 
-\begin{equation*}
-\mathbf{n} = \frac{\nabla \phi}{\lvert \nabla \phi \rvert},
-\end{equation*}
+% where $\tau$ is a fictitious time. The discretization and implementation of this procedure will be discussed later in section \ref{section::reinitialization}. Geometrical quantities such as the normal to the interface and the local curvature can be computed straightforwardly from the level-set function as
 
-where it should be noted that $\lvert \nabla \phi \rvert = 1$ when the level-set function is reinitialized, and
+% \begin{equation*}
+% \mathbf{n} = \frac{\nabla \phi}{\lvert \nabla \phi \rvert},
+% \end{equation*}
 
-\begin{equation*}
-\kappa = \nabla \cdot \mathbf{n} =  \nabla \cdot \left( \frac{\nabla \phi}{\lvert \nabla \phi \rvert} \right).
-\end{equation*}
+% where it should be noted that $\lvert \nabla \phi \rvert = 1$ when the level-set function is reinitialized, and
+
+% \begin{equation*}
+% \kappa = \nabla \cdot \mathbf{n} =  \nabla \cdot \left( \frac{\nabla \phi}{\lvert \nabla \phi \rvert} \right).
+% \end{equation*}
 
 
-\section{The \texttt{p4est} library}
+% \section{The \texttt{p4est} library}
 
-The work we present relies on the parallel octree library \texttt{p4est} \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}. It is scalable implementation of the general octree structure in a massively parallel mpi environment. We limit our presentation of \texttt{p4est} to the relevant information for our application, for more details the reader is invited to read the original article \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}.
+% The work we present relies on the parallel octree library \texttt{p4est} \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}. It is scalable implementation of the general octree structure in a massively parallel mpi environment. We limit our presentation of \texttt{p4est} to the relevant information for our application, for more details the reader is invited to read the original article \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}.
 
-The \texttt{p4est} library provides the geometrical information for the leaves of an octree which includes the neighboring information for the leaves (called quadrants in the original article) of the tree, a layer of ghost quadrants and ghost vertices for each process, the coarsening and refining procedures, and encapsulates the communication between processes. However, it does not provide the vertical structure of the octrees. If it is generally unnecessary, it is a desirable feature for a finite differences based code as it speeds up the access to arbitrary quadrants information dramatically. Thus, we choose to reconstruct the local vertical structure of the octree on every processes. Note that given the local and ghost layer information, this is an entirely local procedure and no communication is needed.
+% The \texttt{p4est} library provides the geometrical information for the leaves of an octree which includes the neighboring information for the leaves (called quadrants in the original article) of the tree, a layer of ghost quadrants and ghost vertices for each process, the coarsening and refining procedures, and encapsulates the communication between processes. However, it does not provide the vertical structure of the octrees. If it is generally unnecessary, it is a desirable feature for a finite differences based code as it speeds up the access to arbitrary quadrants information dramatically. Thus, we choose to reconstruct the local vertical structure of the octree on every processes. Note that given the local and ghost layer information, this is an entirely local procedure and no communication is needed.
 
-In addition to the owned and ghost categories, we choose to group the vertices in \textit{local} and \textit{layer} sets. We define the layer vertices as the vertices that are part of another process's ghost layer and the local vertices as the vertices that are not part of any other process's ghost layer. Figure \ref{fig::local_layer_vertices} gives a graphical representation of a boundary between two processes and the classification of the various quadrants and vertices. The idea behind this sorting is that layer vertices are needed by other processes for finite difference calculations and therefore require to be synchronized while the local vertices are used only by the process they belong to. We make use of this classification to implement scalable algorithms for the level-set method, as explained in the following sections.
+% In addition to the owned and ghost categories, we choose to group the vertices in \textit{local} and \textit{layer} sets. We define the layer vertices as the vertices that are part of another process's ghost layer and the local vertices as the vertices that are not part of any other process's ghost layer. Figure \ref{fig::local_layer_vertices} gives a graphical representation of a boundary between two processes and the classification of the various quadrants and vertices. The idea behind this sorting is that layer vertices are needed by other processes for finite difference calculations and therefore require to be synchronized while the local vertices are used only by the process they belong to. We make use of this classification to implement scalable algorithms for the level-set method, as explained in the following sections.
 
-\begin{figure}[ht!]
-\begin{center}
-\includegraphics[width=.4\textwidth]{pictures/layer_nodes.pdf}
-\caption{Illustration of a possible layout at the interface between two processes. The red quarants and the orange and purples vertices belong to process 1 while the green quadrants and the green and black vertices belong to process 2. The green G denotes the ghost quadrants for process 2, the green dots are the ghost vertices for process 1, and the purple dots correspond to layer vertices for process 1 (and therefore ghost vertices for process 2).} \label{fig::local_layer_vertices}
-\end{center}
-\end{figure}
+% \begin{figure}[ht!]
+% \begin{center}
+% \includegraphics[width=.4\textwidth]{pictures/layer_nodes.pdf}
+% \caption{Illustration of a possible layout at the interface between two processes. The red quarants and the orange and purples vertices belong to process 1 while the green quadrants and the green and black vertices belong to process 2. The green G denotes the ghost quadrants for process 2, the green dots are the ghost vertices for process 1, and the purple dots correspond to layer vertices for process 1 (and therefore ghost vertices for process 2).} \label{fig::local_layer_vertices}
+% \end{center}
+% \end{figure}
