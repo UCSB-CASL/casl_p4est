@@ -216,12 +216,12 @@ where $a^+ = \max(a, 0)$ and $a^- = \min(a, 0)$. Similar to \cite{Min;Gibou:07:A
 \caption{$\phi^{n+1} \gets \texttt{Overlap (}\phi^n, \mathcal{F}\texttt{)}$}\label{euclid}
 \begin{algorithmic}[1]
 \For {$i:B_p$} \Comment{I -- perform computation on boundary points}
-	\State $\phi^{n+1}_i \gets \mathcal{F}(\phi_i^n})$
+	\State $\phi^{n+1}_i \gets \mathcal{F}(\phi_i^n)$
 \EndFor
 \State $send\_req \gets \texttt{MPI\_Isend(}\phi^{n+1}_B\texttt{)}$ \Comment{II -- begin updating ghost values}
 \State $recv\_req \gets \texttt{MPI\_Irecv(}\phi^{n+1}_G\texttt{)}$
 \For {$i:P_p$} \Comment{III -- perform computation on private points}
-	\State $\phi^{n+1}_i \gets \mathcal{F}(\phi_i^n})$ 
+	\State $\phi^{n+1}_i \gets \mathcal{F}(\phi_i^n)$ 
 \EndFor
 \State $\texttt{MPI\_Waitall(}send\_req, recv\_req\texttt{)}$ \Comment{IV -- finish updating ghost values}
 \State \Return $\phi^{n+1}$
