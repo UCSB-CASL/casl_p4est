@@ -223,7 +223,7 @@ where $a^+ = \max(a, 0)$ and $a^- = \min(a, 0)$. Similar to \cite{Min;Gibou:07:A
 \For {$i:P_p$} \Comment{III -- perform computation on private points}
 	\State $\phi^{n+1}_i \gets \mathcal{F}(\phi_i^n)$ 
 \EndFor
-\State $\texttt{MPI\_Waitall(}send\_req, recv\_req\texttt{)}$ \Comment{IV -- finish updating ghost values}
+\State $\texttt{MPI\_Waitall(}send\_req, recv\_req\texttt{)}$ \Comment{IV -- wait for ghost update to finish}
 \State \Return $\phi^{n+1}$
 \end{algorithmic}
 \label{alg:overlap}
