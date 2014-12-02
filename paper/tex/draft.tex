@@ -19,6 +19,12 @@
 \usepackage{color}
 \usepackage{caption}
 \usepackage{url}
+\usepackage{tikz}
+
+\DeclareSymbolFont{extraup}{U}{zavm}{m}{n}
+\DeclareMathSymbol{\varheart}{\mathalpha}{extraup}{86}
+\DeclareMathSymbol{\vardiamond}{\mathalpha}{extraup}{87}
+
 
 \hypersetup{
     colorlinks=true,      		% false: boxed links; true: colored links
@@ -52,6 +58,12 @@
 \newcommand{\ddivg}[1]{\nabla \cdot #1}
 \newcommand{\non}{\nonumber}
 \newcommand{\fcite}[1]{(\textcolor{blue}{cite: #1})}
+% \newcommand{\drawcircle}[2]{\protect  \tikz \protect \node[circle,draw,scale=#1,fill=#2] {};}
+% \newcommand{\drawsquare}[2]{\protect  \tikz \protect \node[rectangle,draw,scale=#1,fill=#2] {};}
+% \newcommand{\drawdiamond}[2]{\protect \tikz \protect \node[rectangle,draw,scale=#1,fill=#2,rotate=45] {};}
+\newcommand{\drawcircle}[1]{\textcolor{#1}{$\bullet$}}
+\newcommand{\drawsquare}[1]{\textcolor{#1}{$\blacksquare$}}
+\newcommand{\drawdiamond}[1]{\textcolor{#1}{$\vardiamond$}}
 \newtheorem{property}{Property}
 
 \begin{document}

@@ -26,7 +26,7 @@ u(x,y,z) &=& 2\sin(\pi x)^2 \sin(2\pi y) \sin(2 \pi z), \\
 v(x,y,z) &=& -\sin(\pi y)^2 \sin(2\pi x) \sin(2 \pi z),\\
 w(x,y,z) &=& -\sin(\pi z)^2 \sin(2\pi x) \sin(2 \pi y). 
 \eean
-To understand the effect of CFLnumber on the scalability of the algorithm we perform one step of the Semi-Lagrangian algorithm for $\text{CFL} = 1$, $\text{CFL} = 10$, and $\text{CFL} = 100$. We also perform the test for two set of initial girds, a small grid with $l_\max = 10$ and a larger grid with $l_\max = 12$. After one advection step, each of these grids have approximately 15M and 255M nodes, respectively. 
+To understand the effect of CFLnumber on the scalability of the algorithm we perform one step of the Semi-Lagrangian algorithm for $\text{CFL} = 1$, $\text{CFL} = 10$, and $\text{CFL} = 100$. We also perform the test for two set of initial girds, a small grid with $l_\text{max} = 10$ and a larger grid with $l_\text{max} = 12$. After one advection step, each of these grids have approximately 15M and 255M nodes, respectively. 
 \begin{table}[htbp]
 	\begin{minipage}{.5\linewidth}
 		\begin{center}
@@ -39,7 +39,7 @@ To understand the effect of CFLnumber on the scalability of the algorithm we per
 				100 & 6 & 6 & 6 & 6 & 6 & 6 \\
 			\hline
 		\end{tabular}
-		\caption*{(a) $l_\max = 10$}
+		\caption*{(a) $l_\text{max} = 10$}
 		\end{center}
 	\end{minipage}%
 	\begin{minipage}{.5\linewidth}
@@ -53,7 +53,7 @@ To understand the effect of CFLnumber on the scalability of the algorithm we per
 				100 & 6 & 6 & 6 & 6 & 6 & 7 \\
 			\hline
 		\end{tabular}
-		\caption*{(b) $l_\max = 12$}
+		\caption*{(b) $l_\text{max} = 12$}
 		\end{center}
 	\end{minipage}	
 	\caption{Number of iterations required for grid construction in algorithm \ref{alg:semi-lagrangian} for the rotation test on a (a) level-10 and (b) level-12 octree with approximately 15M and 255M nodes, respectively. Note how the iteration count increases with the CFL number but is almost independent of number of processors. The slight dependence of iteration count on number of processors is most likely due to dependence of round-off errors on the number of processors. Nonetheless, close examination of generated octrees (data not shown) reveals that they are identical and independent of the number of processors used to perform the test.}
@@ -62,8 +62,7 @@ To understand the effect of CFLnumber on the scalability of the algorithm we per
 
 Table \ref{tab:semilagrangian} illustrates the dependence of number of iterations required to build the grid; as the CFL is increased, interface travels a farther distance which necessitates more iterations to generate the grid. Note that the apparent dependence on the number processors is most likely due to round-off errors during the interpolation and/or backtracking step. Figures \ref{fig:semilagrangian_small} and \ref{fig:semilagrangian_large} illustrate the scalability of the algorithm for small and large problems, respectively. To enable meaningful comparisons between different CFL numbers and number of processors, the maximum time has been scaled to the number of iterations required for grid construction as reported in table \ref{tab:semilagrangian}. For both problems excellent scalability is observed for $\text{CFL} = 1$ and $\text{CFL} = 10$. The algorithm even shows good scalability when taken to the extreme, i.e. for $\text{CFL} = 100$.
 
-An increase in the CFL number has two effects on the algorithm. First, a larger fraction of departure points land in domains of remote processors. Moreover, these points are potentially dispersed across a larger number of processors. This means both the number MPI messages and their volume increases for larger CFL numbers. Second, as more points are shipped to remote processors for interpolation, there is a greater chance that interpolation load is unbalanced across processors. This is specially true for regions of space in which streamlines cluster. Both factors contribute to decrease the scalability of the algorithm at larger CFL numbers. To shed more light on this, we have recorded a complete history of communication pattern in the interpolation step.
-
+An increase in the CFL number has two effects on the algorithm. First, a larger fraction of departure points land in domains of remote processors. Moreover, these points are potentially dispersed across a larger number of processors. This means both the number MPI messages and their volume increases for larger CFL numbers. Second, as more points are shipped to remote processors for interpolation, there is a greater chance that interpolation load is unbalanced across processors. This is specially true for regions of space in which streamlines cluster. Both factors contribute to decrease the scalability of the algorithm at larger CFL numbers. To shed more light on this, we have recorded a complete history of communication pattern in the interpolation step. Figures \ref{fig:communication_128} and \ref{fig:communication_4096} illustrates the effect of CFL number on three different metrics for $p= 128$ and $p=4096$ processors in the first and last iterations of the Semi-Lagrangian algorithm. 
 \begin{figure}[htbp]
 	\begin{center}
 		\subfigure[Semi-Lagrangian, $\text{CFL} = 1$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Small_1_SemiLagrangian.pdf}}
@@ -92,6 +91,34 @@ An increase in the CFL number has two effects on the algorithm. First, a larger 
 	\label{fig:semilagrangian_large}
 \end{figure}
 
+\begin{figure}[htbp]
+	\begin{center}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/point_first_128.pdf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/message_first_128.pdf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/volume_first_128.pdf}}
+		\\
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/point_last_128.pdf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/message_last_128.pdf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/volume_last_128.pdf}}		
+	\end{center}
+	\caption{Performance indicators of the first (top row) and last (bottom row) iterations of the Semi-Lagrangian algorithm for the advection test for $p=128$ processors. Increasing the CFL number greatly causes load imbalance in the amount of computation done during interpolation (a) and increases the communication volume (c). However the CFL number does not seem to appreciably affect the number of messages sent by processors (b). During the last Semi-Lagrangian iteration the initial grid, $G_0$ (c.f. algorithm \ref{alg:semi-lagrangian}), is very close to the final grid. As a result load imbalance is considerably improved (d). Curiously, however, communication pattern does not seem to be affected by much between first and last iterations (e-f).}
+	\label{fig:communication_128}
+\end{figure}
+
+\begin{figure}[htbp]
+	\begin{center}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/point_first_4096.pdf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/message_first_4096.pdf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/volume_first_4096.pdf}}
+		\\
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/point_last_4096.pdf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/message_last_4096.pdf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/volume_last_4096.pdf}}		
+	\end{center}
+	\caption{Performance indicators of the first (top row) and last (bottom row) iterations of the Semi-Lagrangian algorithm for the advection test for $p=4096$ processors. Increasing the CFL number greatly causes load imbalance in the amount of computation done during interpolation (a) and increases the communication volume (c). However the CFL number does not seem to appreciably affect the number of messages sent by processors (b). During the last Semi-Lagrangian iteration the initial grid, $G_0$ (c.f. algorithm \ref{alg:semi-lagrangian}), is very close to the final grid. As a result load imbalance is considerably improved (d). Curiously, however, communication pattern does not seem to be affected by much between first and last iterations (e-f).}
+	\label{fig:communication_4096}
+\end{figure}
+
 % \subsection{Reinitialization} \label{section::scaling_reinitialization}
 
 % The reinitialization procedure presented in section \ref{section::reinitialization} necessitates the second order derivatives of the level-set function for the second order discretization in space. The finite difference schemes we implemented rely on the description of the neighborhood of each vertex in the adaptive tree environment. This information can either be computed on the fly or stored in a buffer. Fetching the neighbors information is rather time consuming and was observed to improve the overall scalability of the algorithm by increasing the local computation load. However, it slowed down the procedure significantly and therefore we choose to present the buffered version of the implementation. If one was to be limited in memory, constructing the neighborhood information on the fly would be a desirable option and would lead to better scaling, but in our case memory is not a limiting factor.
@@ -106,3 +133,72 @@ An increase in the CFL number has two effects on the algorithm. First, a larger 
 % \end{figure}
 
 % \subsection{Poisson solver}
+% p = 128, folder =  host/large/100, mode = _first_ (min, max, avg, std) 
+% point  : 1.56e+06, 2.82e+06, 2.07e+06, 1.65e+05
+% message: 19, 131, 41.78, 19.73
+% volume : 5.81e+00, 3.45e+01, 1.97e+01, 6.46e+00
+
+
+% p = 128, folder =  host/large/10, mode = _first_ (min, max, avg, std) 
+% point  : 1.98e+06, 2.21e+06, 2.07e+06, 3.52e+04
+% message: 22, 131, 42.92, 19.56
+% volume : 2.58e+00, 9.64e+00, 4.92e+00, 1.24e+00
+
+
+% p = 128, folder =  host/large/1, mode = _first_ (min, max, avg, std) 
+% point  : 2.02e+06, 2.20e+06, 2.07e+06, 2.97e+04
+% message: 22, 131, 42.97, 19.53
+% volume : 2.45e+00, 9.03e+00, 4.21e+00, 1.17e+00
+
+
+% p = 4096, folder =  host/large/100, mode = _first_ (min, max, avg, std) 
+% point  : 8.28e+02, 4.98e+05, 7.57e+04, 3.14e+04
+% message: 11, 373, 41.18, 30.85
+% volume : 5.28e-01, 1.01e+01, 2.65e+00, 9.24e-01
+
+
+% p = 4096, folder =  host/large/10, mode = _first_ (min, max, avg, std) 
+% point  : 5.56e+04, 1.63e+05, 7.57e+04, 6.07e+03
+% message: 17, 387, 46.73, 31.78
+% volume : 4.01e-01, 3.06e+00, 8.40e-01, 2.21e-01
+
+
+% p = 4096, folder =  host/large/1, mode = _first_ (min, max, avg, std) 
+% point  : 6.67e+04, 1.59e+05, 7.57e+04, 4.86e+03
+% message: 18, 387, 47.55, 31.72
+% volume : 4.01e-01, 2.93e+00, 7.25e-01, 1.95e-01
+
+% p = 128, folder =  host/large/100, mode = _last_ (min, max, avg, std) 
+% point  : 1.96e+06, 2.17e+06, 2.06e+06, 3.37e+04
+% message: 22, 133, 41.86, 18.62
+% volume : 1.04e+01, 6.63e+01, 2.98e+01, 1.16e+01
+
+
+% p = 128, folder =  host/large/10, mode = _last_ (min, max, avg, std) 
+% point  : 2.02e+06, 2.16e+06, 2.07e+06, 2.76e+04
+% message: 22, 131, 42.88, 19.53
+% volume : 3.22e+00, 1.26e+01, 6.24e+00, 1.43e+00
+
+
+% p = 128, folder =  host/large/1, mode = _last_ (min, max, avg, std) 
+% point  : 2.02e+06, 2.19e+06, 2.07e+06, 2.93e+04
+% message: 22, 131, 42.89, 19.54
+% volume : 2.72e+00, 9.54e+00, 4.46e+00, 1.12e+00
+
+
+% p = 4096, folder =  host/large/100, mode = _last_ (min, max, avg, std) 
+% point  : 6.30e+04, 1.10e+05, 7.57e+04, 4.20e+03
+% message: 16, 357, 41.77, 22.66
+% volume : 9.76e-01, 4.86e+00, 3.78e+00, 5.69e-01
+
+
+% p = 4096, folder =  host/large/10, mode = _last_ (min, max, avg, std) 
+% point  : 6.65e+04, 1.33e+05, 7.57e+04, 4.50e+03
+% message: 19, 393, 46.68, 27.93
+% volume : 4.40e-01, 4.80e+00, 2.14e+00, 9.88e-01
+
+
+% p = 4096, folder =  host/large/1, mode = _last_ (min, max, avg, std) 
+% point  : 6.69e+04, 1.55e+05, 7.57e+04, 4.73e+03
+% message: 18, 392, 47.55, 31.19
+% volume : 4.13e-01, 3.91e+00, 9.68e-01, 2.62e-01
