@@ -108,7 +108,7 @@ To better understand the importance of CFL number on the scalability, we have re
 
 \begin{table}[htbp]
 	\centering
-	\resizebox{\columnwidth}{!}{%
+	\resizebox{\columnwidth}{!}{
 	\begin{tabular}{|c|c|cccc|cccc|}
 	\hline
 	\multirow{2}{*}{CFL} & \multirow{2}{*}{Metric} & \multicolumn{4}{|c|}{First Iteration} & \multicolumn{4}{|c|}{Last Iteration} \\
@@ -138,10 +138,11 @@ To better understand the importance of CFL number on the scalability, we have re
 
 \subsection{Reinitialization} \label{section::scaling_reinitialization}
 
-Finally we present scaling results of our parallel reinitialization algorithm where we extensively make use of algorithm \ref{alg:overlap} for overlapping computation with communication when computing spatial derivatives. Our test is consisted of computing the signed distance to a collection of 100 sphere, whose radii and centers have been selected randomly (c.f. \ref{fig:reinit}). Computation is conducted on a forest with a $3\times3\times3$ macromesh and level-10 octree per macro-cell which results in a final grid with roughly $350$M nodes.
+Finally we present scaling results of our parallel reinitialization algorithm where we extensively make use of algorithm \ref{alg:overlap} for overlapping computation with communication when computing spatial derivatives. Our test is consisted of computing the signed distance to a collection of 100 sphere, whose radii and centers have been chosen randomly. Test is perform on a small, level-8 octree with nearly 21M and a larger, level-10 octree with nearly 337M grid points. In both cases the forest is built on a $3\times3\times3$ macro-mesh. Figures \ref{fig:reinit} illustrates that our reinitialization algorithm and, in particular the overlapping strategy presented in algorithm \ref{alg:overlap}, scales very well. In general we expect similar scaling results for any local, finite-difference based calculations on octrees that can efficiently utilize algorithm \ref{alg:overlap}. 
 \begin{figure}
 \centering
-\includegraphics[width=0.5\textwidth]{figures/reinit.png}
+\subfigure[]{\includegraphics[width=0.45\textwidth]{figures/Reinit_Small.pdf}}
+\subfigure[]{\includegraphics[width=0.45\textwidth]{figures/Reinit_Large.pdf}}
+\caption{Scalability of the reinitialization test for a small (left) and large octrees with roughtly 21M and 337M grid points, respectively. Excellent results are obtained in both cases, illustrating the scalability of the overlapping strategy (c.f. algorithm \ref{alg:overlap}).}
 \label{fig:reinit}
-\caption{Computational domain for the reinitialization test}
 \end{figure}
