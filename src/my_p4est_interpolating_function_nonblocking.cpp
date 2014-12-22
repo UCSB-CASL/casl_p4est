@@ -188,17 +188,26 @@ void InterpolatingFunctionNodeBaseNonblocking::interpolate(double *Fo_p) {
 #endif
   }
 
-  int num_remaining_replies = 0;
+  int num_remaining_replies = 0, num_remote_points = 0;
+
   for (std::map<int, input_buffer_t>::const_iterator it = input_buffer.begin();
        it != input_buffer.end(); ++it) {
     if (it->first == p4est_->mpirank)
       continue;
 
     const std::vector<double>& xyz = it->second.p_xyz;
+    num_remote_points += xyz.size() / P4EST_DIM;
+
     MPI_Request req;
     MPI_Issend((void*)&xyz[0], xyz.size(), MPI_DOUBLE, it->first, query_tag, comm, &req); num_remaining_replies++;
     query_req.push_back(req);  
   }
+
+  // get an instance of logger
+  InterpolatingFunctionLogEntry log_entry = {0, 0, 0, 0, 0};
+  log_entry.num_local_points = local_buffer.size();
+  log_entry.num_send_points  = num_remote_points;
+  log_entry.num_send_procs   = num_remaining_replies;
 
   // Begin main loop
   int done = false;
@@ -272,7 +281,7 @@ void InterpolatingFunctionNodeBaseNonblocking::interpolate(double *Fo_p) {
     {          
       int is_msg_pending;
       MPI_Iprobe(MPI_ANY_SOURCE, query_tag, comm, &is_msg_pending, &status);
-      if (is_msg_pending) { process_incoming_query(status); }          
+      if (is_msg_pending) { process_incoming_query(status, log_entry); }          
     }
 
     // probe for incoming replies
@@ -293,6 +302,9 @@ void InterpolatingFunctionNodeBaseNonblocking::interpolate(double *Fo_p) {
     }
   }
 
+  InterpolatingFunctionLogger& logger = InterpolatingFunctionLogger::get_instance();
+  logger.log(log_entry);
+
   ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
   if (use_precomputed_derivatives) {
     ierr = VecRestoreArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
@@ -304,7 +316,7 @@ void InterpolatingFunctionNodeBaseNonblocking::interpolate(double *Fo_p) {
   ierr = PetscLogEventEnd(log_InterpolatingFunctionNonblocking_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void InterpolatingFunctionNodeBaseNonblocking::process_incoming_query(MPI_Status& status) {
+void InterpolatingFunctionNodeBaseNonblocking::process_incoming_query(MPI_Status& status, InterpolatingFunctionLogEntry& entry) {
   ierr = PetscLogEventBegin(log_InterpolatingFunctionNonblocking_process_queries, 0, 0, 0, 0); CHKERRXX(ierr);
   IPMLogRegionBegin("process_queries");
 
@@ -313,6 +325,10 @@ void InterpolatingFunctionNodeBaseNonblocking::process_incoming_query(MPI_Status
   MPI_Get_count(&status, MPI_DOUBLE, &vec_size);
   std::vector<double> xyz(vec_size);
   MPI_Recv(&xyz[0], vec_size, MPI_DOUBLE, status.MPI_SOURCE, query_tag, comm, MPI_STATUS_IGNORE);
+
+  // log information
+  entry.num_recv_points += vec_size / P4EST_DIM;
+  entry.num_recv_procs++;
 
   // search for the quadrants and fill in the data
   p4est_quadrant_t best_match;

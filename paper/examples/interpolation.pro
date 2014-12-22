@@ -87,6 +87,7 @@ SOURCES += \
     $$CASL_P4EST/src/my_p4est_tools.c\
     $$CASL_P4EST/src/my_p4est_nodes.c \
     $$CASL_P4EST/src/my_p4est_interpolating_function_nonblocking.cpp \
+    $$CASL_P4EST/src/my_p4est_interpolating_function_host.cpp \
     $$CASL_P4EST/src/cube2.cpp \
     $$CASL_P4EST/src/point2.cpp \
     $$CASL_P4EST/src/simplex2.cpp \
@@ -101,7 +102,7 @@ SOURCES += \
 }
 
 CONFIG(3d, 2d|3d): {
-TARGET = interpolation_3d
+TARGET = interpolation_3d.non
 SOURCES += \
     interpolation_balanced_3d.cpp\
     $$CASL_P4EST/src/my_p8est_utils.cpp\
@@ -110,6 +111,7 @@ SOURCES += \
     $$CASL_P4EST/src/my_p8est_tools.c\
     $$CASL_P4EST/src/my_p8est_nodes.c \
     $$CASL_P4EST/src/my_p8est_interpolating_function_nonblocking.cpp \
+    $$CASL_P4EST/src/my_p8est_interpolating_function_host.cpp \
     $$CASL_P4EST/src/cube3.cpp \
     $$CASL_P4EST/src/point3.cpp \
     $$CASL_P4EST/src/simplex2.cpp \

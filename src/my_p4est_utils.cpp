@@ -32,6 +32,8 @@
 #define PetscLogFlops(n) 0
 #endif
 
+std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
+
 double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
 {  
   PetscErrorCode ierr;

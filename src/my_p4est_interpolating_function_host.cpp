@@ -178,7 +178,7 @@ void InterpolatingFunctionNodeBaseHost::interpolate(double *Fo_p) {
 #endif
   }
 
-  int num_remaining_replies = 0;
+  int num_remaining_replies = 0, num_remote_points = 0;
   for (size_t i = 0; i<senders.size(); i++)
     num_remaining_replies += senders[i];
   
@@ -196,11 +196,18 @@ void InterpolatingFunctionNodeBaseHost::interpolate(double *Fo_p) {
       continue;
 
     const std::vector<double>& xyz = it->second.p_xyz;
+    num_remote_points += xyz.size() / P4EST_DIM;
+
     MPI_Request req;
     MPI_Isend((void*)&xyz[0], xyz.size(), MPI_DOUBLE, it->first, query_tag, p4est_->mpicomm, &req);
     query_req.push_back(req);
   }
-
+  
+  InterpolatingFunctionLogEntry log_entry = {0, 0, 0, 0, 0};
+  log_entry.num_local_points = local_buffer.size();
+  log_entry.num_send_points  = num_remote_points;
+  log_entry.num_send_procs   = num_remaining_replies;
+  
   // Begin main loop
   bool done = false;
 
@@ -273,7 +280,7 @@ void InterpolatingFunctionNodeBaseHost::interpolate(double *Fo_p) {
       
       int is_msg_pending;
       MPI_Iprobe(MPI_ANY_SOURCE, query_tag, p4est_->mpicomm, &is_msg_pending, &status);
-      if (is_msg_pending) { process_incoming_query(status); num_remaining_queries--; }
+      if (is_msg_pending) { process_incoming_query(status, log_entry); num_remaining_queries--; }
       
       IPMLogRegionEnd("process_queries");
       ierr = PetscLogEventEnd(log_InterpolatingFunctionHost_process_queries, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -295,6 +302,9 @@ void InterpolatingFunctionNodeBaseHost::interpolate(double *Fo_p) {
     done = num_remaining_queries == 0 && num_remaining_replies == 0 && it == end;
   }
   
+  InterpolatingFunctionLogger& logger = InterpolatingFunctionLogger::get_instance();
+  logger.log(log_entry);
+  
   ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
   if (use_precomputed_derivatives) {
     ierr = VecRestoreArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
@@ -306,11 +316,16 @@ void InterpolatingFunctionNodeBaseHost::interpolate(double *Fo_p) {
   ierr = PetscLogEventEnd(log_InterpolatingFunctionHost_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void InterpolatingFunctionNodeBaseHost::process_incoming_query(MPI_Status& status) {
+void InterpolatingFunctionNodeBaseHost::process_incoming_query(MPI_Status& status, InterpolatingFunctionLogEntry& entry) {
   // receive incoming queries about points and send back the interpolated result
   int vec_size;
   MPI_Get_count(&status, MPI_DOUBLE, &vec_size);
   std::vector<double> xyz(vec_size);
+  
+  // log information
+  entry.num_recv_points += vec_size / P4EST_DIM;
+  entry.num_recv_procs++;
+
   MPI_Recv(&xyz[0], vec_size, MPI_DOUBLE, status.MPI_SOURCE, query_tag, p4est_->mpicomm, MPI_STATUS_IGNORE);
 
   // search for the quadrants and fill in the data
@@ -362,7 +377,7 @@ void InterpolatingFunctionNodeBaseHost::process_incoming_query(MPI_Status& statu
      * the source processor has made a mistake when search for possible
      * remote candidates
      */
-    if (rank_found == p4est_->mpirank) {
+    if (rank_found == p4est_->mpirank) {            
       p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_->trees, best_match.p.piggy3.which_tree);
       p4est_locidx_t quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
 

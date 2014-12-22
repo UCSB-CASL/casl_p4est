@@ -15,6 +15,7 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_interpolating_function_host.h>
 #include <src/my_p8est_interpolating_function_nonblocking.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/point3.h>
@@ -27,6 +28,7 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_interpolating_function_host.h>
 #include <src/my_p4est_interpolating_function_nonblocking.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/point2.h>
@@ -195,7 +197,7 @@ int main (int argc, char* argv[]){
 		cmd.parse(argc, argv);
 		cmd.print();
 
-		output_dir                  = cmd.get<std::string>("output-dir",".");
+		output_dir                  = cmd.get<std::string>("output-dir",".");	
 		const int lmin              = cmd.get("lmin", 2);
 		const int lmax              = cmd.get("lmax", 10);
 		const int qmin              = cmd.get("qmin", 100);    
@@ -383,7 +385,7 @@ int main (int argc, char* argv[]){
 			ierr = PetscLogEventBegin(log_interpolation_all, 0, 0, 0, 0); CHKERRXX(ierr);
 			ierr = PetscLogEventBegin(log_interpolation_construction, 0, 0, 0, 0); CHKERRXX(ierr);      
 
-			InterpolatingFunctionNodeBaseNonblocking interp(u, &node_neighbors, quadratic);      
+			InterpolatingFunctionNodeBaseNonblocking interp(u, node_neighbors, quadratic);      
 
 			w2.stop(); w2.read_duration();
 
@@ -427,6 +429,11 @@ int main (int argc, char* argv[]){
 			}
 		}
 		w4.stop(); w4.read_duration();
+
+		// write down the interpolation log info
+		InterpolatingFunctionLogger& logger = InterpolatingFunctionLogger::get_instance();
+		std::ostringstream oss; oss << output_dir << "/interpolation_log";
+		logger.write(oss.str());
 
 		// destroy the p4est and its connectivity structure
 		ierr = VecDestroy(u); CHKERRXX(ierr);

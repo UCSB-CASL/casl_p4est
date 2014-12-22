@@ -80,7 +80,7 @@ CONFIG(profile): {
 }
 
 CONFIG(2d, 2d|3d): {
-TARGET = semi_lagrangian_2d
+TARGET = semi_lagrangian_2d.host
 SOURCES += \
     $$CASL_P4EST/paper/examples/main_semi_lagrangian_2d.cpp \
     $$CASL_P4EST/src/my_p4est_utils.cpp\
@@ -90,6 +90,7 @@ SOURCES += \
     $$CASL_P4EST/src/my_p4est_nodes.c \
     $$CASL_P4EST/src/my_p4est_interpolating_function.cpp \
     $$CASL_P4EST/src/my_p4est_interpolating_function_nonblocking.cpp \
+    $$CASL_P4EST/src/my_p4est_interpolating_function_host.cpp \
     $$CASL_P4EST/src/my_p4est_semi_lagrangian.cpp \
     $$CASL_P4EST/src/my_p4est_levelset.cpp \
     $$CASL_P4EST/src/cube2.cpp \
@@ -106,7 +107,7 @@ SOURCES += \
 }
 
 CONFIG(3d, 2d|3d): {
-TARGET = semi_lagrangian_3d
+TARGET = semi_lagrangian_3d.host
 SOURCES += \
     $$CASL_P4EST/paper/examples/main_semi_lagrangian_3d.cpp\
     $$CASL_P4EST/src/my_p8est_utils.cpp\
@@ -116,6 +117,7 @@ SOURCES += \
     $$CASL_P4EST/src/my_p8est_nodes.c \
     $$CASL_P4EST/src/my_p8est_interpolating_function.cpp \
     $$CASL_P4EST/src/my_p8est_interpolating_function_nonblocking.cpp \
+    $$CASL_P4EST/src/my_p8est_interpolating_function_host.cpp \
     $$CASL_P4EST/src/my_p8est_semi_lagrangian.cpp \
     $$CASL_P4EST/src/my_p8est_levelset.cpp \
     $$CASL_P4EST/src/cube3.cpp \

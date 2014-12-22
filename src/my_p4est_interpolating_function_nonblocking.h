@@ -83,7 +83,7 @@ class InterpolatingFunctionNodeBaseNonblocking: public CF_2
   };
 
   // methods  
-  void process_incoming_query(MPI_Status& status);
+  void process_incoming_query(MPI_Status& status, InterpolatingFunctionLogEntry& entry);
   void process_incoming_reply(MPI_Status& status, double *Fo_p);
 
   // rule of three -- disable copy ctr and assignment if not useful
