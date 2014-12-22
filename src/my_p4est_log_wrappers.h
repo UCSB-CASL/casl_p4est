@@ -27,6 +27,9 @@ p4est_ghost_t*
 my_p4est_ghost_new(p4est_t *p4est, p4est_connect_type_t btype);
 
 void
+my_p4est_ghost_expand(p4est_t *p4est, p4est_ghost_t *ghost);
+
+void
 my_p4est_refine (p4est_t * p4est, int refine_recursive,
                  p4est_refine_t refine_fn, p4est_init_t init_fn);
 
@@ -50,6 +53,5 @@ my_sc_notify_allgather(int *receivers, int num_receivers,
 #ifdef __cplusplus
 }
 #endif
-
 
 #endif // MY_P4EST_LOG_WRAPPERS_H

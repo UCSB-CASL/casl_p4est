@@ -31,10 +31,8 @@
 *.synctex.gz
 *.bbl
 *.blg
-
-# related to paper
-paper/tex/draft.pdf
-paper/tex/casl.bib
+sync
+.rsync.exclude
 
 # What directories to ignore
 [Dd]ebug/

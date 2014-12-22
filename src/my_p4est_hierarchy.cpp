@@ -21,7 +21,7 @@
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
 extern PetscLogEvent log_my_p4est_hierarchy_t;
-#ifdef CASL_LOG_TINY_EVENTS0
+#ifdef CASL_LOG_TINY_EVENTS
 #warning "Use of 'CASL_LOG_TINY_EVENTS' macro is discouraged but supported. Logging tiny sections of the code may produce unreliable results due to overhead."
 extern PetscLogEvent log_my_p4est_hierarchy_t_find_smallest_quad;
 #endif

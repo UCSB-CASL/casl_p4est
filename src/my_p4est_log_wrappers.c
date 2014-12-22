@@ -5,6 +5,7 @@
 #endif
 
 #include <petsclog.h>
+#include <src/p4est_compatibility.h>
 #include <sc_notify.h>
 #include <src/ipm_logging.h>
 
@@ -17,6 +18,8 @@
 #else
 extern PetscLogEvent log_my_p4est_new;
 extern PetscLogEvent log_my_p4est_ghost_new;
+extern PetscLogEvent log_my_p4est_ghost_expand;
+extern PetscLogEvent log_my_p4est_copy;
 extern PetscLogEvent log_my_p4est_refine;
 extern PetscLogEvent log_my_p4est_coarsen;
 extern PetscLogEvent log_my_p4est_partition;
@@ -65,6 +68,17 @@ my_p4est_ghost_new(p4est_t *p4est, p4est_connect_type_t btype)
 }
 
 void
+my_p4est_ghost_expand(p4est_t *p4est, p4est_ghost_t *ghost)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_ghost_expand, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionBegin("p4est_ghost_expand");
+  p4est_ghost_expand(p4est, ghost);
+  IPMLogRegionEnd("p4est_ghost_expand");
+  ierr = PetscLogEventEnd(log_my_p4est_ghost_expand, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void
 my_p4est_refine(p4est_t *p4est, int refine_recursive, p4est_refine_t refine_fn, p4est_init_t init_fn)
 {
   PetscErrorCode ierr;
@@ -92,8 +106,13 @@ my_p4est_partition(p4est_t *p4est, int allow_for_coarsening, p4est_weight_t weig
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
 	IPMLogRegionBegin("p4est_partition");  
+#if P4EST_VERSION_LT(1,0)
+  (void) allow_for_coarsening;
+  p4est_partition(p4est, weight_fn);
+#else  
   p4est_partition(p4est, allow_for_coarsening, weight_fn);
-	IPMLogRegionEnd("p4est_partition");
+#endif  
+IPMLogRegionEnd("p4est_partition");
   ierr = PetscLogEventEnd(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 

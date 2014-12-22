@@ -8,12 +8,13 @@ CONFIG += log
 CONFIG(stampede, stampede|office): {
     CONFIG += intel
     CASL_P4EST = $$(WORK)/casl_p4est
+    P4EST_DIR  = $$(WORK)/soft/p4est-dev
 
     # p4est
-    P4EST_INCLUDES_DEBUG = $$(WORK)/soft/intel/p4est/debug/include
-    P4EST_INCLUDES_RELEASE = $$(WORK)/soft/intel/p4est/release/include
-    P4EST_LIBS_DEBUG = -L$$(WORK)/soft/intel/p4est/debug/lib -lp4est -lsc
-    P4EST_LIBS_RELEASE = -L$$(WORK)/soft/intel/p4est/release/lib -lp4est -lsc
+    P4EST_INCLUDES_DEBUG = $$P4EST_DIR/debug/include
+    P4EST_INCLUDES_RELEASE = $$P4EST_DIR/release/include
+    P4EST_LIBS_DEBUG = -Wl,-rpath,$$P4EST_DIR/debug/lib -L$$P4EST_DIR/debug/lib -lp4est -lsc
+    P4EST_LIBS_RELEASE = -Wl,-rpath,$$P4EST_DIR/release/lib -L$$P4EST_DIR/release/lib -lp4est -lsc
 
     # petsc -- WARNING, this is hardcoded, you might want to change to TACC macros?
     TACC_PETSC_HOME = /opt/apps/intel13/mvapich2_1_9/petsc/3.4
@@ -27,18 +28,19 @@ CONFIG(stampede, stampede|office): {
     PETSC_LIBS_DEBUG = -Wl,-rpath,$$TACC_PETSC_LIB_DEBUG -L$$TACC_PETSC_LIB_DEBUG -lpetsc
     PETSC_LIBS_RELEASE = -Wl,-rpath,$$TACC_PETSC_LIB_RELEASE -L$$TACC_PETSC_LIB_RELEASE -lpetsc
 
-    DEFINES += STAMPEDE
+    INCLUDEPATH += /opt/apps/intel13/mvapich2/1.9/include
 }
 
 CONFIG(office, stampede|office): {
     CONFIG += gcc
     CASL_P4EST = $(HOME)/casl_p4est
+    P4EST_DIR = /usr/local/p4est
 
     # p4est
-    P4EST_INCLUDES_DEBUG = /usr/local/p4est/debug/include
-    P4EST_INCLUDES_RELEASE = /usr/local/p4est/release/include
-    P4EST_LIBS_DEBUG = -L/usr/local/p4est/debug/lib -lp4est -lsc
-    P4EST_LIBS_RELEASE = -L/usr/local/p4est/release/lib -lp4est -lsc
+    P4EST_INCLUDES_DEBUG = $$P4EST_DIR/debug/include
+    P4EST_INCLUDES_RELEASE = $$P4EST_DIR/release/include
+    P4EST_LIBS_DEBUG = -Wl,-rpath,$$P4EST_DIR/debug/lib -L$$P4EST_DIR/debug/lib -lp4est -lsc
+    P4EST_LIBS_RELEASE = -Wl,-rpath,$$P4EST_DIR/release/lib -L$$P4EST_DIR/release/lib -lp4est -lsc
 
     # petsc
     PETSC_INCLUDES_DEBUG = /usr/local/petsc/debug/include
@@ -47,12 +49,13 @@ CONFIG(office, stampede|office): {
     PETSC_LIBS_RELEASE = -L/usr/local/petsc/release/lib -Wl,-rpath,/usr/local/petsc/release/lib -lpetsc
 
     INCLUDEPATH += /usr/local/mpich3/include
-
-    DEFINES += OFFICE
 }
 
-CONFIG(sc_notify): {
-    DEFINES += P4EST_SC_NOTIFY
+CONFIG(nonblocking_notify): {
+    DEFINES += ENABLE_NONBLOCKING_NOTIFY
+    CONFIG(stampede, office|stampede) : {
+        DEFINES += ENABLE_MPI_EXTENSIONS
+    }
 }
 
 # --------------------------------- Define configs  --------------------------------- #
@@ -68,7 +71,7 @@ CONFIG(release, debug|release): {
     LIBS += $$P4EST_LIBS_RELEASE $$PETSC_LIBS_RELEASE
 }
 
-log{
+CONFIG(log): {
     DEFINES += CASL_LOG_EVENTS
 }
 
@@ -77,19 +80,17 @@ CONFIG(profile): {
 }
 
 CONFIG(2d, 2d|3d): {
-CONFIG(profile): {
-    TARGET = semi_lagrangian_2d.prof
-} else {
-    TARGET = semi_lagrangian_2d
-}
+TARGET = semi_lagrangian_2d.host
 SOURCES += \
-    main_semi_lagrangian_2d.cpp\
+    $$CASL_P4EST/paper/examples/main_semi_lagrangian_2d.cpp \
     $$CASL_P4EST/src/my_p4est_utils.cpp\
     $$CASL_P4EST/src/my_p4est_refine_coarsen.cpp\
     $$CASL_P4EST/src/my_p4est_vtk.c \
     $$CASL_P4EST/src/my_p4est_tools.c\
     $$CASL_P4EST/src/my_p4est_nodes.c \
     $$CASL_P4EST/src/my_p4est_interpolating_function.cpp \
+    $$CASL_P4EST/src/my_p4est_interpolating_function_nonblocking.cpp \
+    $$CASL_P4EST/src/my_p4est_interpolating_function_host.cpp \
     $$CASL_P4EST/src/my_p4est_semi_lagrangian.cpp \
     $$CASL_P4EST/src/my_p4est_levelset.cpp \
     $$CASL_P4EST/src/cube2.cpp \
@@ -106,19 +107,17 @@ SOURCES += \
 }
 
 CONFIG(3d, 2d|3d): {
-CONFIG(profile):{
-    TARGET = semi_lagrangian_3d.prof
-} else {
-    TARGET = semi_lagrangian_3d
-}
+TARGET = semi_lagrangian_3d.host
 SOURCES += \
-    main_semi_lagrangian_3d.cpp\
+    $$CASL_P4EST/paper/examples/main_semi_lagrangian_3d.cpp\
     $$CASL_P4EST/src/my_p8est_utils.cpp\
     $$CASL_P4EST/src/my_p8est_refine_coarsen.cpp\
     $$CASL_P4EST/src/my_p8est_vtk.c \
     $$CASL_P4EST/src/my_p8est_tools.c\
     $$CASL_P4EST/src/my_p8est_nodes.c \
     $$CASL_P4EST/src/my_p8est_interpolating_function.cpp \
+    $$CASL_P4EST/src/my_p8est_interpolating_function_nonblocking.cpp \
+    $$CASL_P4EST/src/my_p8est_interpolating_function_host.cpp \
     $$CASL_P4EST/src/my_p8est_semi_lagrangian.cpp \
     $$CASL_P4EST/src/my_p8est_levelset.cpp \
     $$CASL_P4EST/src/cube3.cpp \
@@ -134,7 +133,7 @@ SOURCES += \
 }
 
 # ------------------------------- Compiler Options ------------------------------- #
-CONFIG(profile):{
+CONFIG(gdb):{
     QMAKE_LFLAGS += -g
     QMAKE_CFLAGS += -g
     QMAKE_CXXFLAGS += -g
