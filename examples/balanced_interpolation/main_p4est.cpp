@@ -14,7 +14,7 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_interpolating_function_balanced.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -23,10 +23,11 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_interpolating_function.h>
+#include <src/my_p4est_interpolating_function_balanced.h>
 #endif
 
 #include <src/petsc_compatibility.h>
+#include <src/my_p4est_log_wrappers.h>
 #include <src/Parser.h>
 #include <src/CASL_math.h>
 
@@ -51,6 +52,13 @@ struct circle:CF_3{
 private:
   double x0, y0, z0, r;
 };
+
+static struct:CF_3{
+  double operator()(double x, double y, double z) const {
+    return x*x + y*y + z*z;
+  }
+} uex;
+
 #else
 struct circle:CF_2{
   circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
@@ -67,6 +75,13 @@ struct circle:CF_2{
 private:
   double x0, y0, r;
 };
+
+static struct:CF_2{
+  double operator()(double x, double y) const {
+    return x*x + y*y;
+  }
+} uex;
+
 #endif
 
 int main (int argc, char* argv[]){
@@ -84,7 +99,6 @@ int main (int argc, char* argv[]){
     cmdParser cmd;
     cmd.add_option("lmin", "min level of the tree");
     cmd.add_option("lmax", "max level of the tree");
-    cmd.add_option("mode", "interpolation mode 0 = linear, 1 = quadratic, 2 = non-oscilatory quadratic");
     cmd.parse(argc, argv);
 
 #ifdef P4_TO_P8
@@ -92,7 +106,7 @@ int main (int argc, char* argv[]){
 #else
     circle circ(1, 1, .3);
 #endif
-    splitting_criteria_cf_t cf_data(cmd.get("lmin", 0), cmd.get("lmax",5), &circ, 1);
+    splitting_criteria_cf_t cf_data(cmd.get("lmin", 2), cmd.get("lmax",9), &circ, 1);
 
     parStopWatch w1, w2;
     w1.start("total time");
@@ -113,26 +127,26 @@ int main (int argc, char* argv[]){
 
     // Now create the forest
     w2.start("p4est generation");
-    p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
     w2.stop(); w2.read_duration();
 
     // Now refine the tree
     w2.start("refine");
     p4est->user_pointer = (void*)(&cf_data);
-    p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
     w2.stop(); w2.read_duration();
 
     // Finally re-partition
     w2.start("partition");
-    p4est_partition(p4est, P4EST_FALSE, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
     w2.stop(); w2.read_duration();
 
     // Create the ghost structure
     w2.start("ghost");
-    p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+    p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
     w2.stop(); w2.read_duration();
 
-    // generate the node data structure    
+    // generate the node data structure
     w2.start("creating node structure");
     nodes = my_p4est_nodes_new(p4est, ghost);
     w2.stop(); w2.read_duration();
@@ -140,26 +154,23 @@ int main (int argc, char* argv[]){
     w2.start("computing phi");
     Vec phi;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
-    Vec u;
-    ierr = VecDuplicate(phi, &u); CHKERRXX(ierr);
-
     sample_cf_on_nodes(p4est, nodes, circ, phi);
     w2.stop(); w2.read_duration();
 
     std::ostringstream grid_name; grid_name << P4EST_DIM << "d_grid";
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
+    my_p4est_vtk_write_all(p4est, nodes, NULL,
                            P4EST_TRUE, P4EST_TRUE,
                            0, 0, grid_name.str().c_str());
+
 
     // set up the qnnn neighbors
     my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
     std::ostringstream hierarchy_name; hierarchy_name << P4EST_DIM << "d_hierrchy";
     hierarchy.write_vtk(hierarchy_name.str().c_str());
+    my_p4est_node_neighbors_t qnnn(&hierarchy, nodes);
+    qnnn.init_neighbors();
 
-    w2.start("finding node neighbors");
-    my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
-    neighbors.init_neighbors();
-    w2.stop(); w2.read_duration();
+    grid_name.str(""); grid_name << P4EST_DIM << "d_grid_qnnn_" << p4est->mpirank << "_" << p4est->mpisize;
 
     std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi->mpisize;
     double *phi_p;
@@ -168,7 +179,6 @@ int main (int argc, char* argv[]){
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_p);
-
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
     // move the circle to create another grid
@@ -184,8 +194,8 @@ int main (int argc, char* argv[]){
     w2.start("creating/refining/partitioning new p4est");
     p4est_t *p4est_np1 = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
     p4est_np1->user_pointer = (void*)&cf_data;
-    p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
-    p4est_partition(p4est_np1, P4EST_FALSE, NULL);
+    my_p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
+    my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
     w2.stop(); w2.read_duration();
 
     /*
@@ -201,7 +211,7 @@ int main (int argc, char* argv[]){
     w2.stop(); w2.read_duration();
 
     // Create an interpolating function
-    InterpolatingFunctionNodeBase phi_func(p4est, nodes, ghost, brick, &neighbors);
+    InterpolatingFunctionNodeBaseBalanced phi_func(phi, &qnnn);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
@@ -216,36 +226,23 @@ int main (int argc, char* argv[]){
       double tree_zmin = connectivity->vertices[3*v_mm + 2];
 #endif
       double xyz [P4EST_DIM] =
-      {        
+      {
         node_x_fr_i(node) + tree_xmin,
         node_y_fr_j(node) + tree_ymin
 #ifdef P4_TO_P8
         ,
-        node_z_fr_k(node) + tree_zmin,
+        node_z_fr_k(node) + tree_zmin
 #endif
       };
-      phi_func.add_point_to_buffer(i, xyz);
+
+      // buffer the point
+      phi_func.add_point(i, xyz);
     }
-    PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
     // interpolate on to the new vector
     Vec phi_np1;
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
-    // interpolate
-    switch (cmd.get("mode",0)){
-    case 0:
-      phi_func.set_input_parameters(phi, linear);
-      break;
-    case 1:
-      phi_func.set_input_parameters(phi, quadratic);
-      break;
-    case 2:
-      phi_func.set_input_parameters(phi, quadratic_non_oscillatory);
-      break;
-    default:
-      throw std::invalid_argument("[Error]: Interpolation mode can only be 0, 1, or 2");
-    }
     phi_func.interpolate(phi_np1);
 
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

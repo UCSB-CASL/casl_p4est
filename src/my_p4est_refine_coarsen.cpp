@@ -163,6 +163,41 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
   }
 }
 
+//p4est_bool_t
+//refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+//{
+//  splitting_criteria_local_random_t *data = (splitting_criteria_local_random_t*) p4est->user_pointer;
+
+//  if (quad->level < data->min_lvl)
+//    return P4EST_TRUE;
+//  else if (quad->level >= data->max_lvl)
+//    return P4EST_FALSE;
+//  else
+//    return *(u_int8_t*)(quad->p.user_data);
+//}
+
+//p4est_bool_t
+//coarsen_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
+//{
+//  (void) which_tree;
+//  splitting_criteria_random_t *data = (splitting_criteria_random_t*) p4est->user_pointer;
+
+//  // if (data->num_quads <= (p4est_gloidx_t) ((double)data->min_quads/(double)p4est->mpisize))
+//  if (data->num_quads <= data->min_quads)
+//    return P4EST_FALSE;
+//  else if (quad[0]->level <= data->min_lvl)
+//    return P4EST_FALSE;
+//  else if (quad[0]->level >  data->max_lvl)
+//  { data->num_quads -= P4EST_CHILDREN - 1; return P4EST_TRUE; }
+//  else
+//  {
+//    if (rand()%2)
+//    { data->num_quads -= P4EST_CHILDREN - 1; return P4EST_TRUE; }
+//    else
+//      return P4EST_FALSE;
+//  }
+//}
+
 p4est_bool_t
 refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {

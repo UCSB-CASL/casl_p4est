@@ -37,6 +37,12 @@ enum {
 };
 }
 
+enum interpolation_method{
+  linear,
+  quadratic,
+  quadratic_non_oscillatory
+};
+
 class CF_1
 {
 public:
@@ -575,6 +581,44 @@ inline int ranged_rand_inclusive(int a, int b, int seed = 0){
   if (seed) srand(seed);
   return (rand()%(b-a+1) + a);
 }
+
+// A Logger for interpolation function
+struct InterpolatingFunctionLogEntry{
+  int num_local_points, num_send_points, num_send_procs, num_recv_points, num_recv_procs;
+};
+
+class InterpolatingFunctionLogger{
+  InterpolatingFunctionLogger() {};
+  InterpolatingFunctionLogger(const InterpolatingFunctionLogger& logger) {};
+  static std::vector<InterpolatingFunctionLogEntry> entries;
+
+public:
+  inline static InterpolatingFunctionLogger& get_instance() {
+    static InterpolatingFunctionLogger instance;
+    return instance;
+  }
+
+  inline void log(const InterpolatingFunctionLogEntry& entry) {
+    entries.push_back(entry);
+  }
+
+  inline void write(const std::string& filename) {
+    for (size_t i = 0; i<entries.size();i++) {
+      FILE *fp;
+      std::ostringstream oss; oss << filename << "_" << i << ".dat";
+      PetscFOpen(PETSC_COMM_WORLD, oss.str().c_str(), "w", &fp);
+      PetscFPrintf(PETSC_COMM_WORLD, fp, "%% num_local_points | num_send_points | num_send_procs | num_recv_points | num_recv_procs \n");
+      PetscSynchronizedFPrintf(PETSC_COMM_WORLD, fp, "%7d \t %7d \t %4d \t %7d \t %4d \n", entries[i].num_local_points,
+                                                                                           entries[i].num_send_points,
+                                                                                           entries[i].num_send_procs,
+                                                                                           entries[i].num_recv_points,
+                                                                                           entries[i].num_recv_procs);
+      PetscSynchronizedFlush(PETSC_COMM_WORLD, fp);
+      PetscFClose(PETSC_COMM_WORLD, fp);        
+    }
+    entries.clear();
+  }
+};
 
 /*!
  * \brief prepares MPI, PETSc, p4est, and sc libraries

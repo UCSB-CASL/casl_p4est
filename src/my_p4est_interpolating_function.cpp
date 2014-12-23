@@ -13,6 +13,8 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
 #include <mpi.h>
+#include <string>
+#include <sstream>
 #include <fstream>
 #include <set>
 
@@ -284,7 +286,6 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   PetscErrorCode ierr;
 
   ierr = PetscLogEventBegin(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
-  IPMLogRegionBegin("interpolate");
   
   // begin sending point buffers
   if (!is_buffer_prepared)
@@ -398,8 +399,10 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   }
 
   // begin recieving point buffers
+  IPMLogRegionBegin("recv points");
   if (!is_buffer_prepared)
     recv_point_buffers_begin();
+  IPMLogRegionEnd("recv points");
 
   // begin data send/recv for ghost and remote
   typedef std::map<int, std::vector<double> > data_transfer_map;
@@ -407,6 +410,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   std::vector<MPI_Request> remote_data_send_req(remote_senders.size());
 
   // Do interpolation for remote points
+  IPMLogRegionBegin("interpolating remotes");
   {
     remote_transfer_map::iterator it = remote_recv_buffer.begin(),
         end = remote_recv_buffer.end();
@@ -515,7 +519,9 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
       MPI_Isend(&f_send[0], f_send.size(), MPI_DOUBLE, send_rank, remote_data_tag, p4est_->mpicomm, &remote_data_send_req[req_counter]);
     }
   }
+  IPMLogRegionEnd("interpolating remotes");
 
+  IPMLogRegionBegin("recv remote data");
   // Receive the interpolated remote data and put them in the correct position.
   {
     for (size_t i=0; i<remote_receivers.size(); ++i)
@@ -543,6 +549,7 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
 
   // wait for all data send buffers to finish
   MPI_Waitall(remote_data_send_req.size(), &remote_data_send_req[0], MPI_STATUSES_IGNORE);
+  IPMLogRegionEnd("recv remote data");
 
   // Restore the pointer
   ierr = VecRestoreArray(input_vec_, &Fi_p); CHKERRXX(ierr);
@@ -557,14 +564,11 @@ void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
   }
 
   ierr = PetscLogEventEnd(log_InterpolatingFunction_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  IPMLogRegionEnd("interpolate");
 }
 
 
 void InterpolatingFunctionNodeBase::send_point_buffers_begin()
 {
-  IPMLogRegionBegin("send_buffer");  
   int req_counter = 0;
 
   remote_transfer_map::iterator it = remote_send_buffer.begin(), end = remote_send_buffer.end();
@@ -586,15 +590,11 @@ void InterpolatingFunctionNodeBase::send_point_buffers_begin()
     int msg_size = buff.size();
 
     MPI_Isend(&buff[0], msg_size, MPI_DOUBLE, it->first, remote_point_tag, p4est_->mpicomm, &remote_send_req[req_counter]);
-  }
-        
-  IPMLogRegionEnd("send_buffer");
+  }        
 }
 
 void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
 {
-  IPMLogRegionBegin("recv_buffer");
-
   // Allocate enough requests slots
   remote_recv_req.resize(remote_senders.size());
 
@@ -612,8 +612,6 @@ void InterpolatingFunctionNodeBase::recv_point_buffers_begin()
     // Receive the data
     MPI_Irecv(&buff[0], msg_size, MPI_DOUBLE, remote_senders[i], remote_point_tag, p4est_->mpicomm, &remote_recv_req[i]);
   }
-
-  IPMLogRegionEnd("recv_buffer");  
 }
 #else
 void InterpolatingFunctionNodeBase::interpolate( double *output_vec )
@@ -882,15 +880,18 @@ void InterpolatingFunctionNodeBase::save_comm_topology(const char *partition_nam
     PetscSynchronizedFPrintf(p4est_->mpicomm, topo_file, "%4d %4d %5d\n", p4est_->mpirank, it->first, it->second.size());
     send_buffer += it->second.size();
   }
-  PetscSynchronizedFlush(p4est_->mpicomm, stdout);
+
+  PetscSynchronizedFlush(p4est_->mpicomm, topo_file);
   ierr = PetscFClose(p4est_->mpicomm, topo_file);
 
   for (remote_transfer_map::const_iterator it = remote_recv_buffer.begin(); it != remote_recv_buffer.end(); ++it)
     recv_buffer += it->second.size();
 
+  PetscSynchronizedPrintf(p4est_->mpicomm, "[%2d] %d\n", p4est_->mpirank, send_buffer);
+
   PetscSynchronizedFPrintf(p4est_->mpicomm, par_file, "%4d %7d %5d %5d %5d %4d %4d\n",
                            p4est_->mpirank, local_point_buffer.size(), ghost_point_buffer.size(), send_buffer, recv_buffer, remote_senders.size(), remote_receivers.size());
-  PetscSynchronizedFlush(p4est_->mpicomm, stdout);
+  PetscSynchronizedFlush(p4est_->mpicomm, par_file);
   ierr = PetscFClose(p4est_->mpicomm, par_file);
 }
 

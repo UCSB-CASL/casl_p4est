@@ -15,12 +15,6 @@
 #include <src/my_p4est_node_neighbors.h>
 #endif
 
-enum interpolation_method{
-  linear,
-  quadratic,
-  quadratic_non_oscillatory
-};
-
 #ifdef P4_TO_P8
 class InterpolatingFunctionNodeBase: public CF_3
 #else
