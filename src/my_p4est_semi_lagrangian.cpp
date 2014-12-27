@@ -1125,8 +1125,8 @@ void SemiLagrangian::update_p4est_second_order(Vec vx, Vec vy, double dt, Vec &p
   p4est_destroy(p4est_); p4est_ = *p_p4est_ = p4est_np1;
   p4est_nodes_destroy(nodes_); nodes_ = *p_nodes_ = nodes_np1;
   p4est_ghost_destroy(ghost_); ghost_ = *p_ghost_ = ghost_np1;
-  hierarchy_->update(p4est_, ghost_);
-  ngbd_->update(hierarchy_, nodes_);
+//  hierarchy_->update(p4est_, ghost_);
+//  ngbd_->update(hierarchy_, nodes_);
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
