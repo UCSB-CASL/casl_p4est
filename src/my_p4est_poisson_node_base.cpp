@@ -1069,8 +1069,8 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix_neumann_wall_1st_order
           p4est_locidx_t quad_mmm_idx, quad_ppp_idx;
           p4est_topidx_t tree_mmm_idx, tree_ppp_idx;
 
-          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
 
           PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpp]];
           PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmp]];
@@ -3770,8 +3770,8 @@ void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_matrix()
           p4est_locidx_t quad_mmm_idx, quad_ppp_idx;
           p4est_topidx_t tree_mmm_idx, tree_ppp_idx;
 
-          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
 
           PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpp]];
           PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmp]];
