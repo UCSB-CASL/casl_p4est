@@ -589,7 +589,7 @@ struct InterpolatingFunctionLogEntry{
 
 class InterpolatingFunctionLogger{
   InterpolatingFunctionLogger() {};
-  InterpolatingFunctionLogger(const InterpolatingFunctionLogger& logger) {};
+  InterpolatingFunctionLogger(const InterpolatingFunctionLogger& ) {};
   static std::vector<InterpolatingFunctionLogEntry> entries;
 
 public:

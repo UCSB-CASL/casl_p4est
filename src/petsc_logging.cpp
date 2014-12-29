@@ -52,6 +52,7 @@ PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_grid;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_value;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_last_grid_CF2;
+PetscLogEvent log_Semilagrangian_update_p4est_second_order_last_grid_Vec;
 PetscLogEvent log_Semilagrangian_grid_gen_iter[P4EST_MAXLEVEL];
 
 // my_p4est_level_set
@@ -160,6 +161,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2_value     ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_value); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2_grid      ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_grid); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_last_grid_CF2 ", 0, &log_Semilagrangian_update_p4est_second_order_last_grid_CF2); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_last_grid_Vec ", 0, &log_Semilagrangian_update_p4est_second_order_last_grid_Vec); CHKERRXX(ierr);
   
 	for (short i = 0; i < P4EST_MAXLEVEL; i++) {
 		char logname [128]; 
