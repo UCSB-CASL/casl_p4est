@@ -168,12 +168,10 @@ void SemiLagrangian::advect_from_n_to_np1(const std::vector<p4est_locidx_t>& map
 {
   ierr = PetscLogEventBegin(log_Semilagrangian_advect_from_n_to_np1_CF2, phi_n, 0, 0, 0); CHKERRXX(ierr);
 
-  // InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, ngbd_);
-  InterpolatingFunctionNodeBaseHost interp(phi_n, *ngbd_, quadratic_non_oscillatory);
 #ifdef P4_TO_P8
-  // interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n, phi_zz_n);
+  InterpolatingFunctionNodeBaseHost interp(phi_n, phi_xx_n, phi_yy_n, phi_zz_n, *ngbd_, quadratic_non_oscillatory);
 #else
-  // interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n);
+  InterpolatingFunctionNodeBaseHost interp(phi_n, phi_xx_n, phi_yy_n, *ngbd_, quadratic_non_oscillatory);
 #endif
 
   p4est_topidx_t *t2v = p4est_np1->connectivity->tree_to_vertex; // tree to vertex list
@@ -350,7 +348,11 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
   /* first find the velocities at the nodes */
   // NOTE: We need to get rid of intermediate interpolating function since they
   // consume considerable amount of memory ...
-  InterpolatingFunctionNodeBase interp_vel(p4est_, nodes_, ghost_, myb_, ngbd_);
+#ifdef P4_TO_P8
+  InterpolatingFunctionNodeBaseHost interp_vel(vx, vx_xx, vx_yy, vx_zz, *ngbd_, quadratic_non_oscillatory);
+#else
+  InterpolatingFunctionNodeBaseHost interp_vel(vx, vx_xx, vx_yy, *ngbd_, quadratic_non_oscillatory);
+#endif
 
   std::vector<double> vx_tmp(nodes_np1->indep_nodes.elem_count);
   std::vector<double> vy_tmp(nodes_np1->indep_nodes.elem_count);
@@ -381,29 +383,29 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
   #endif
     };
 
-    interp_vel.add_point_to_buffer(ni, xyz);
+    interp_vel.add_point(ni, xyz);
   }
-#ifdef P4_TO_P8
-  interp_vel.set_input_parameters(vx, quadratic, vx_xx, vx_yy, vx_zz);
-#else
-  interp_vel.set_input_parameters(vx, quadratic, vx_xx, vx_yy);
-#endif
+
   interp_vel.interpolate(vx_tmp.data());
 
 #ifdef P4_TO_P8
-  interp_vel.set_input_parameters(vy, quadratic, vy_xx, vy_yy, vy_zz);
+  interp_vel.set_input(vy, vy_xx, vy_yy, vy_zz);
 #else
-  interp_vel.set_input_parameters(vy, quadratic, vy_xx, vy_yy);
+  interp_vel.set_input(vy, vy_xx, vy_yy);
 #endif
   interp_vel.interpolate(vy_tmp.data());
 
 #ifdef P4_TO_P8
-  interp_vel.set_input_parameters(vz, quadratic, vz_xx, vz_yy, vz_zz);
+  interp_vel.set_input(vz, vz_xx, vz_yy, vz_zz);
   interp_vel.interpolate(vz_tmp.data());
 #endif
 
   /* now find v_star */
-  InterpolatingFunctionNodeBase interp_vel_star(p4est_, nodes_, ghost_, myb_, ngbd_);
+#ifdef P4_TO_P8
+  InterpolatingFunctionNodeBaseHost interp_vel_star(vx, vx_xx, vx_yy, vx_zz, *ngbd_, quadratic_non_oscillatory);
+#else
+  InterpolatingFunctionNodeBaseHost interp_vel_star(vx, vx_xx, vx_yy, *ngbd_, quadratic_non_oscillatory);
+#endif
 
   for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
     p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, ni);
@@ -427,30 +429,29 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
   #endif
     };
 
-    interp_vel_star.add_point_to_buffer(ni, xyz_star);
+    interp_vel_star.add_point(ni, xyz_star);
   }
 
-#ifdef P4_TO_P8
-  interp_vel_star.set_input_parameters(vx, quadratic, vx_xx, vx_yy, vx_zz);
-#else
-  interp_vel_star.set_input_parameters(vx, quadratic, vx_xx, vx_yy);
-#endif
   interp_vel_star.interpolate(vx_tmp.data());
 
 #ifdef P4_TO_P8
-  interp_vel_star.set_input_parameters(vy, quadratic, vy_xx, vy_yy, vy_zz);
+  interp_vel_star.set_input(vy, vy_xx, vy_yy, vy_zz);
 #else
-  interp_vel_star.set_input_parameters(vy, quadratic, vy_xx, vy_yy);
+  interp_vel_star.set_input(vy, vy_xx, vy_yy);
 #endif
   interp_vel_star.interpolate(vy_tmp.data());
 
 #ifdef P4_TO_P8
-  interp_vel_star.set_input_parameters(vz, quadratic, vz_xx, vz_yy, vz_zz);
+  interp_vel_star.set_input(vz, vz_xx, vz_yy, vz_zz);
   interp_vel_star.interpolate(vz_tmp.data());
 #endif
 
   /* finally, find the backtracing value */
-  InterpolatingFunctionNodeBase interp(p4est_, nodes_, ghost_, myb_, ngbd_);
+#ifdef P4_TO_P8
+  InterpolatingFunctionNodeBaseHost interp(phi_n, phi_xx_n, phi_yy_n, phi_zz_n, *ngbd_, quadratic_non_oscillatory);
+#else
+  InterpolatingFunctionNodeBaseHost interp(phi_n, phi_xx_n, phi_yy_n, *ngbd_, quadratic_non_oscillatory);
+#endif
 
   /* find the departure node via backtracing */
   for (p4est_locidx_t ni = ni_begin; ni < ni_end; ++ni){ //Loop through all nodes of a single processor
@@ -477,22 +478,17 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
     };
 
     /* Buffer the point for interpolation */
-    interp.add_point_to_buffer(ni, xyz_departure);
+    interp.add_point(ni, xyz_departure);
   }
-#ifdef P4_TO_P8
-  interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n, phi_zz_n);
-#else
-  interp.set_input_parameters(phi_n, quadratic_non_oscillatory, phi_xx_n, phi_yy_n);
-#endif
 
   /* interpolate from old vector into our output vector */
   interp.interpolate(phi_np1);
 
-  if(save_topology && !partition_name_.empty() && !topology_name_.empty()){
-    interp.save_comm_topology(partition_name_.c_str(), topology_name_.c_str());
-    partition_name_.clear();
-    topology_name_.clear();
-  }
+//  if(save_topology && !partition_name_.empty() && !topology_name_.empty()){
+//    interp.save_comm_topology(partition_name_.c_str(), topology_name_.c_str());
+//    partition_name_.clear();
+//    topology_name_.clear();
+//  }
 
   ierr = PetscLogFlops(40); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_Semilagrangian_advect_from_n_to_np1_Vec, 0, 0, 0, 0); CHKERRXX(ierr);

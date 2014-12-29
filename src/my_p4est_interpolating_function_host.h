@@ -97,6 +97,14 @@ public:
 #endif  
   ~InterpolatingFunctionNodeBaseHost();
 
+  void set_input(Vec F);
+
+#ifdef P4_TO_P8
+  void set_input(Vec F, Vec Fxx, Vec Fyy, Vec Fzz);
+#else
+  void set_input(Vec F, Vec Fxx, Vec Fyy);
+#endif
+
   void add_point(p4est_locidx_t node_locidx, const double *xyz);
 
   // interpolation methods

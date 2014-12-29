@@ -2,11 +2,13 @@
 #include "my_p8est_levelset.h"
 #include <src/point3.h>
 #include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_interpolating_function_host.h>
 #include <src/my_p8est_refine_coarsen.h>
 #else
 #include "my_p4est_levelset.h"
 #include <src/point2.h>
 #include <src/my_p4est_interpolating_function.h>
+#include <src/my_p4est_interpolating_function_host.h>
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 
@@ -1440,8 +1442,8 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 #endif
   }
 
-  InterpolatingFunctionNodeBase interp1(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunctionNodeBase interp2(p4est, nodes, ghost, myb, ngbd);
+  InterpolatingFunctionNodeBaseHost interp1(q_petsc, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp2(q_petsc, *ngbd, quadratic_non_oscillatory);
 
   /* find dx and dy smallest */
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
@@ -1525,7 +1527,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
           xyz[2] + grad_phi.z * (2*diag + phi[n])
   #endif
         };
-        interp1.add_point_to_buffer(n, xyz_);
+        interp1.add_point(n, xyz_);
       }
 
       if(order >= 2)
@@ -1539,15 +1541,12 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
           xyz[2] + grad_phi.z * (3*diag + phi[n])
   #endif
         };
-        interp2.add_point_to_buffer(n, xyz_);
+        interp2.add_point(n, xyz_);
       }
 
       ierr = PetscLogFlops(26); CHKERRXX(ierr);
     }
   }
-
-  interp1.set_input_parameters(q_petsc, quadratic);
-  interp2.set_input_parameters(q_petsc, quadratic);
 
   interp1.interpolate(q1.data());
   interp2.interpolate(q2.data());
@@ -1700,9 +1699,9 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 #endif
   }
 
-  InterpolatingFunctionNodeBase interp0(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunctionNodeBase interp1(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunctionNodeBase interp2(p4est, nodes, ghost, myb, ngbd);
+  InterpolatingFunctionNodeBaseHost interp0(q_petsc, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp1(q_petsc, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp2(q_petsc, *ngbd, quadratic_non_oscillatory);
 
   /* find dx and dy smallest */
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
@@ -1779,7 +1778,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
   #endif
         };
 
-        interp0.add_point_to_buffer(n, xyz_);
+        interp0.add_point(n, xyz_);
       }
 
       if(order >= 1 || (order==0 && bc_type==NEUMANN))
@@ -1793,7 +1792,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
           xyz[2] + grad_phi.z * (2*diag + phi[n])
   #endif
         };
-        interp1.add_point_to_buffer(n, xyz_);
+        interp1.add_point(n, xyz_);
       }
 
       if(order >= 2)
@@ -1807,16 +1806,12 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
           xyz[2] + grad_phi.z * (3*diag + phi[n])
   #endif
         };
-        interp2.add_point_to_buffer(n, xyz_);
+        interp2.add_point(n, xyz_);
       }
 
       ierr = PetscLogFlops(26); CHKERRXX(ierr);
     }
   }
-
-  interp0.set_input_parameters(bc_vec , quadratic);
-  interp1.set_input_parameters(q_petsc, quadratic);
-  interp2.set_input_parameters(q_petsc, quadratic);
 
   interp0.interpolate(q0.data());
   interp1.interpolate(q1.data());
@@ -3596,6 +3591,18 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
   ierr = VecGetArray(q2, &q2_p); CHKERRXX(ierr);
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
+  Vec qxx, qyy;
+  double *qxx_p, *qyy_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  Vec qzz; double *qzz_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &qzz); CHKERRXX(ierr);
+  compute_derivatives(qi, qxx, qyy, qzz);
+#else
+  compute_derivatives(qi, qxx, qyy);
+#endif
+
   /* compute the normals */
   std::vector<double> nx(nodes->num_owned_indeps);
   std::vector<double> ny(nodes->num_owned_indeps);
@@ -3651,18 +3658,22 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
   std::vector<double> s_0m0(nodes->num_owned_indeps);
   std::vector<double> s_0p0(nodes->num_owned_indeps);
 
-  InterpolatingFunctionNodeBase interp_m00(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunctionNodeBase interp_p00(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunctionNodeBase interp_0m0(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunctionNodeBase interp_0p0(p4est, nodes, ghost, myb, ngbd);
-
 #ifdef P4_TO_P8
   std::vector<double> qi_00m(nodes->num_owned_indeps);
   std::vector<double> qi_00p(nodes->num_owned_indeps);
   std::vector<double> s_00m(nodes->num_owned_indeps);
   std::vector<double> s_00p(nodes->num_owned_indeps);
-  InterpolatingFunctionNodeBase interp_00m(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunctionNodeBase interp_00p(p4est, nodes, ghost, myb, ngbd);
+  InterpolatingFunctionNodeBaseHost interp_m00(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp_p00(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp_0m0(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp_0p0(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp_00m(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp_00p(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
+#else
+  InterpolatingFunctionNodeBaseHost interp_m00(qi, qxx, qyy, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp_p00(qi, qxx, qyy, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp_0m0(qi, qxx, qyy, *ngbd, quadratic_non_oscillatory);
+  InterpolatingFunctionNodeBaseHost interp_0p0(qi, qxx, qyy, *ngbd, quadratic_non_oscillatory);
 #endif
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
@@ -3715,7 +3726,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
                        , z
                  #endif
                      };
-      interp_m00.add_point_to_buffer(n, xyz);
+      interp_m00.add_point(n, xyz);
     }
     else {
       qi_m00[n] = qi_p[n];
@@ -3728,7 +3739,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
                        , z
                  #endif
                      };
-      interp_p00.add_point_to_buffer(n, xyz);
+      interp_p00.add_point(n, xyz);
     }
     else {
       qi_p00[n] = qi_p[n];
@@ -3741,7 +3752,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
                        , z
                  #endif
                      };
-      interp_0m0.add_point_to_buffer(n, xyz);
+      interp_0m0.add_point(n, xyz);
     }
     else {
       qi_0m0[n] = qi_p[n];
@@ -3754,7 +3765,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
                        , z
                  #endif
                      };
-      interp_0p0.add_point_to_buffer(n, xyz);
+      interp_0p0.add_point(n, xyz);
     }
     else{
       qi_0p0[n] = qi_p[n];
@@ -3764,7 +3775,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
     if(p_000*p_00m<0) {
       s_00m[n] = interface_Location(0, s_00m_, p_000, p_00m);
       double xyz[] = { x, y, z-s_00m[n]};
-      interp_00m.add_point_to_buffer(n, xyz);
+      interp_00m.add_point(n, xyz);
     }
     else {
       qi_00m[n] = qi_p[n];
@@ -3773,7 +3784,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
     if(p_000*p_00p<0) {
       s_00p[n] = interface_Location(0, s_00p_, p_000, p_00p);
       double xyz[] = { x, y, z+s_00p[n] };
-      interp_00p.add_point_to_buffer(n, xyz);
+      interp_00p.add_point(n, xyz);
     }
     else {
       qi_00p[n] = qi_p[n];
@@ -3782,44 +3793,17 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
 #endif
   }
 
-  Vec qxx, qyy;
-  double *qxx_p, *qyy_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  Vec qzz; double *qzz_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &qzz); CHKERRXX(ierr);
-  compute_derivatives(qi, qxx, qyy, qzz);
-#else
-  compute_derivatives(qi, qxx, qyy);
-#endif
-
-#ifdef P4_TO_P8
-  interp_m00.set_input_parameters(qi, quadratic, qxx, qyy, qzz);
-  interp_p00.set_input_parameters(qi, quadratic, qxx, qyy, qzz);
-  interp_0m0.set_input_parameters(qi, quadratic, qxx, qyy, qzz);
-  interp_0p0.set_input_parameters(qi, quadratic, qxx, qyy, qzz);
-  interp_00m.set_input_parameters(qi, quadratic, qxx, qyy, qzz);
-  interp_00p.set_input_parameters(qi, quadratic, qxx, qyy, qzz);
-
-  interp_00m.interpolate(qi_00m.data());
-  interp_00p.interpolate(qi_00p.data());
-
-  ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
-#else
-  interp_m00.set_input_parameters(qi, quadratic, qxx, qyy);
-  interp_p00.set_input_parameters(qi, quadratic, qxx, qyy);
-  interp_0m0.set_input_parameters(qi, quadratic, qxx, qyy);
-  interp_0p0.set_input_parameters(qi, quadratic, qxx, qyy);
-#endif
-
   interp_m00.interpolate(qi_m00.data());
   interp_p00.interpolate(qi_p00.data());
   interp_0m0.interpolate(qi_0m0.data());
   interp_0p0.interpolate(qi_0p0.data());
-
   ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
   ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  interp_00m.interpolate(qi_00m.data());
+  interp_00p.interpolate(qi_00p.data());
+  ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
+#endif
 
   for(int it=0; it<iterations; ++it)
   {

@@ -93,6 +93,26 @@ InterpolatingFunctionNodeBaseHost::~InterpolatingFunctionNodeBaseHost() {
   MPI_Waitall(reply_req.size(), &reply_req[0], MPI_STATUSES_IGNORE);
 }
 
+
+void InterpolatingFunctionNodeBaseHost::set_input(Vec F) {
+  Fi = F;
+}
+
+
+#ifdef P4_TO_P8
+void InterpolatingFunctionNodeBaseHost::set_input(Vec F, Vec Fxx, Vec Fyy, Vec Fzz) {
+#else
+void InterpolatingFunctionNodeBaseHost::set_input(Vec F, Vec Fxx, Vec Fyy) {
+#endif
+  Fi = F;
+  this->Fxx = Fxx;
+  this->Fyy = Fyy;
+#ifdef P4_TO_P8
+  this->Fzz = Fzz;
+#endif
+}
+
+
 void InterpolatingFunctionNodeBaseHost::add_point(p4est_locidx_t node_locidx, const double *xyz)
 {
   // first clip the coordinates
