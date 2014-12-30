@@ -2040,6 +2040,18 @@ void SemiLagrangian::update_p4est_second_order_from_last_grid(Vec vx, Vec vy, do
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
 
+  ierr = VecDestroy(vx_xx); CHKERRXX(ierr);
+  ierr = VecDestroy(vx_yy); CHKERRXX(ierr);
+  ierr = VecDestroy(vy_xx); CHKERRXX(ierr);
+  ierr = VecDestroy(vy_yy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecDestroy(vx_zz); CHKERRXX(ierr);
+  ierr = VecDestroy(vy_zz); CHKERRXX(ierr);
+  ierr = VecDestroy(vz_xx); CHKERRXX(ierr);
+  ierr = VecDestroy(vz_yy); CHKERRXX(ierr);
+  ierr = VecDestroy(vz_zz); CHKERRXX(ierr);
+#endif
+
   if (local_derivatives)
   {
     ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
