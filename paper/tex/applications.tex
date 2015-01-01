@@ -1,5 +1,5 @@
 %!TEX root = draft.tex
-\section{Application to Stefan Problems}
+\section{Application to Stefan Problems} \label{sec:application}
 
 We now propose an application of the level-set method on parallel adaptive cartesian mesh to the well studied stefan problem.
 
@@ -28,10 +28,21 @@ with $L$ the latent heat.
 
 \subsection{Scalability}
 
+\begin{figure}
+\centering
+\subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_scaling_small.pdf}}
+\subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_scaling_large.pdf}}
+\caption{Scalability of the Stefan problem for small (left) and large (right) octrees with roughly 7M and 105M grid points, respectively. As expected from the scalability analysis of the individual components, we observe excellent results, illustrating the potential of our solver.}
+\label{fig:stefan_scaling}
+\end{figure}
+
+
 \subsection{Numerical experiments}
 
 \begin{figure}[ht!]
 \begin{center}
-\includegraphics[width=.8\textwidth]{pictures/crystal_grid_low.png}
+\subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_grid.png}}
+\subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_grid_zoom.png}}
+\caption{} \label{fig:stefan_grid}
 \end{center}
 \end{figure}
