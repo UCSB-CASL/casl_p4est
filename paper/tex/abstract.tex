@@ -1,10 +1,8 @@
 %!TEX root = draft.tex
 \begin{abstract}
-Abstract will be filled in after finalization of the paper.
+In this article we present scalable parallel algorithms for the advection and reinitialization of level-set functions on adaptive Quadtree and Octree grids. Our algorithms are based on domain decomposition technique and implemented using \texttt{MPI} and the open-source \texttt{p4est} library. An important contribution of the paper is a parallel Semi-Lagrangian method which, similar to its serial implementation, is free of any time-step restriction due to CFL condition. This is achieved by introducing a scalable parallel interpolation scheme on adaptive Quadtree and Octree grids. Moreover, we present a simple parallel reinitialization scheme using the pseudo-time transient formulation. Both parallel algorithms scale nicely on the Stampede supercomputer where we are limited to 4096 cores at most. Finally a relevant application of the algorithms is presented in modeling the crystallization phenomena by solving a Stefan problem, illustrating a level of detailed calculation that would be impossible on uniform grids. We believe that the algorithms presented in this article will be of interest and useful to researchers working with the level-set framework and modeling multi-scale physics in general.
 \end{abstract}
-
 \begin{keyword}
-Level-set Method \sep Adaptive Grids \sep Parallel Computing \sep Oct-/Quadtree datastructures
 \end{keyword}
 
 \maketitle
