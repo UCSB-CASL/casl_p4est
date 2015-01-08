@@ -1,13 +1,13 @@
 %!TEX root = draft.tex
 \section{The level-set method}\label{sec:levelset method}
-The level-set method, introduced in \cite{Osher;Sethian:88:Fronts-Propagating-w}, is an implicit framework for tracking interfaces that undergo complicated topological changes. In this framework an interface is represented by the zero contour of a higher dimensional function, e.g. a curve in two spatial dimension can be described as $\Gamma = \{(x,y) | \phi(x,y) = 0\}$ where $\phi(x,y)$ is the level-set function. The evolution of the curve under a velocity field $\mathbf{V}$ is then obtained by solving the level-set equation:
+The level-set method, introduced in \cite{Osher;Sethian:88:Fronts-Propagating-w}, is an implicit framework for tracking interfaces that undergo complicated topological changes. In this framework an interface is represented by the zero contour of a higher dimensional function, e.g.\ a curve in two spatial dimension can be described as $\Gamma = \{(x,y) | \phi(x,y) = 0\}$ where $\phi(x,y)$ is the level-set function. The evolution of the curve under a velocity field $\mathbf{V}$ is then obtained by solving the level-set equation:
 \be
 \phi_t + \mathbf{V} \cdot \nabla \phi = 0.
 \label{eq:ls}
 \ee
-When the velocity field does not depend on the level-set function itself, equation \eqref{eq:ls} can be solved using the Semi-Lagrangian method. An important advantage of the Semi-Lagrangian method over the regular finite difference method is its unconditional stability which allows for arbitrarily large time steps. This is particularly important when using adaptive grids that allow for higher grid resolutions.
+When the velocity field does not depend on the level-set function itself, equation \eqref{eq:ls} can be solved using the semi-Lagrangian method. An important advantage of the semi-Lagrangian method over the regular finite difference method is its unconditional stability which allows for arbitrarily large time steps. This is particularly important when using adaptive grids that allow for higher grid resolutions.
 
-In general, an infinite number of level-set functions can describe the same zero contour and thus interface. However, it is desirable to chose a function with the signed distance property, i.e. $|\nabla \phi| = 1$. As detailed in section \ref{sec:introduction}, we solve the pseudo-time transient reinitialization equation \cite{Sussman;Smereka;Osher:94:A-Level-Set-Approach, Osher;Fedkiw:01:Level-Set-Methods:-A} to achieve this property,
+In general, an infinite number of level-set functions can describe the same zero contour and thus interface. However, it is desirable to chose a function with the signed distance property, i.e.\ $|\nabla \phi| = 1$. As detailed in section \ref{sec:introduction}, we solve the pseudo-time transient reinitialization equation \cite{Sussman;Smereka;Osher:94:A-Level-Set-Approach, Osher;Fedkiw:01:Level-Set-Methods:-A} to achieve this property,
 \be
 \phi_\tau + S(\phi_0)\left(|\nabla \phi| - 1\right) = 0,
 \label{eq:reinitialization}
