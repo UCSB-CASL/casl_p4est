@@ -3,7 +3,7 @@
 
 \subsection{Presentation of the problem}
 
-We propose to apply our approach to the study of the phase transition of a liquid melt to a solid crystaline structure. In the case of a single component melt and in the absence of convection, the process is dominated by diffusion and can be modeled as a Stefan problem. We decompose the computational domain $\Omega$ into two subdomains $\Omega^-$ and $\Omega^+$, separated by an interface $\Gamma$. The Stefan problem describes the evolution of the temperature $T$, decomposed into $T_s$ in the solid phase $\Omega^+$ and $T_l$ in the liquid phase $\Omega^-$, as
+We propose to apply \mohammad{what about: In this section we apply ...} our approach to the study of the phase transition of a liquid melt to a solid crystaline structure. In the case of a single component melt, and in the absence of convection, the process is dominated by diffusion and can be modeled as a Stefan problem. We decompose the computational domain $\Omega$ into \mohammad{How about: Consider a computational domain $\Omega$ decomposed into ...} two subdomains $\Omega^-$ and $\Omega^+$, separated by an interface $\Gamma$. The Stefan problem describes the evolution of the temperature $T$, decomposed into $T_s$ in the solid phase $\Omega^+$ and $T_l$ in the liquid phase $\Omega^-$, as
 \begin{align}
 \pd{T_l}{t} & = D_l \Delta T_l \quad \mathrm{in} ~~ \Omega^-, \label{eq:stefan_heat_equation_l} \\
 \pd{T_s}{t} & = D_s \Delta T_s \quad \mathrm{in} ~~ \Omega^+. \label{eq:stefan_heat_equation_s}
@@ -24,6 +24,7 @@ where $\Delta x_{min}$ is the size of the smallest cell of the forest. The gener
 
 \begin{algorithm}[htbp]
 \caption{$\texttt{General procedure for solving the Stefan problem}$}
+\mohammad{Is there a reason all of the algorithm is in type-writer font? Usually its reserved for code segments, etc.}
 \begin{algorithmic}[1]
 \State $\texttt{Initialize the forest and }\phi\texttt{ given the initial geometry}.$
 \State $\texttt{Initialize }T_s\texttt{ in }\Omega^+\texttt{ and }T_l\texttt{ in }\Omega^-.$
@@ -47,12 +48,12 @@ The implementation of the Stefan problem relies on the components described in t
 \centering
 \subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_scaling_small.pdf}}
 \subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_scaling_large.pdf}}
-\caption{Scalability of the Stefan problem for small (left) and large (right) octrees with roughly 7M and 105M grid points, respectively. As expected from the scalability analysis of the individual components, we observe excellent results, illustrating the potential of our solver.}
+\caption{Scalability of the Stefan problem for small (left) and large (right) octrees with roughly 7M and 105M grid points, respectively. As expected from the scalability analysis of the individual components, we observe excellent results, illustrating the potential \mohammad{applicability?} of our solver \mohammad{algorithms?}.}
 \label{fig:stefan_scaling}
 \end{figure}
 
 \subsection{Numerical experiments}
-
+\mohammad{too many transitive statements and keyword ``choose''. Can we rephrase this?}
 We now present the results from a large simulation of the Stefan problem. We choose to work with a $20\times20\times20$ macro-mesh and with level-10 octrees. We choose to define the Gibbs-Tompson anisotropy undercooling coefficients \eqref{eq:stefan_gibbs_tompson} as
 \begin{align*}
 \epsilon_c & = \left[ \epsilon_1 \left( 1+\alpha_1 \cos(3\theta_1) \right) + \epsilon_2 \left( 1+\alpha_2 \cos(3\theta_2) \right) \right] \kappa,\\
@@ -63,9 +64,9 @@ with $\theta_1$ the angle between the normal to the interface $\mathbf{n}$ and t
 \epsilon_1 & = 2~(\sin(x)+\cos(y)+2)\cdot10^{-6}, & \epsilon_2 & = 2~(\sin(x)+\cos(z)+2)\cdot10^{-6}, \\
 \alpha_1 & = \frac{1}{4}(\cos(x)+\sin(y)+2), & \alpha_2 & = \frac{1}{4}(\cos(x)+\sin(z)+2).
 \end{align*}
-Note that these expressions are arbitrary and lead to very varied crystal shapes. The computation is initialized with twenty spherical seeds of radius $0.0015$ placed randomly in the domain. We choose $D_s=D_l=1$ and set the initial temperatures $T^0_l=-0.25$ and $T^0_s=0$.
+Note that these expressions are arbitrary and lead to very varied crystal shapes \mohammad{How about: ... lead to a variety of shapes?}. The computation is initialized with twenty spherical seeds of radius $0.0015$ placed randomly in the domain. We choose $D_s=D_l=1$ and set the initial temperatures $T^0_l=-0.25$ and $T^0_s=0$.
 
-We let the simulation run with $256$ mpi processes for $6$ hours and $30$ minutes, resulting in $396$ time iterations. Visualizations of the final iteration are presented in figures \ref{fig:stefan_grid} and \ref{fig:stefan_crystals}. The final iteration of the simulation consisted of $167$M grid points when a uniform grid with the equivalent finest resolution would lead to $8.59\cdot10^{12}$ grid points, i.e. over eight trillion grid points ! Our simulation used only $0.001948\%$ of the number of grid points needed for the same simulation on a uniform grid. This application demonstrates the potential of our approach.
+We let the simulation run with \mohammad{How about: The simulation is ran on ...} $256$ mpi processes for $6$ hours and $30$ minutes, resulting in $396$ time iterations. Visualizations of the final iteration are presented in figures \ref{fig:stefan_grid} and \ref{fig:stefan_crystals}. The final iteration of the simulation consisted of $167$M grid points when a uniform grid with the equivalent finest resolution would lead to $8.59\cdot10^{12}$ grid points, i.e. over eight trillion grid points ! Our simulation used only $0.001948\%$ \mohammad{I think if we are going to report percentage, we should trim it to 1st digit} of the number of grid points needed for the same simulation on a uniform grid. This application demonstrates the potential of our approach.
 
 \begin{figure}[ht!]
 \begin{center}
