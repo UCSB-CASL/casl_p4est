@@ -5,18 +5,37 @@ In this section we present some results that demonstrate the scalability of our 
 \subsection{Interpolation}
 In this section we show the results for a simple test to measure the scalability of the interpolation algorithm \ref{alg:interpolation}. The test consists of interpolating a function at a number of random points on a randomly refined Octree in three spatial dimensions. We consider two cases, a small test on a level 9 tree with roughly 33M nodes and larger test on a level 13 tree with roughly 280M nodes. In both cases the number of randomly generated points is chosen to be equal to the number of nodes and the stabilized second-order interpolation of \cite{Min;Gibou:07:A-second-order-accur} is performed 10 times to smooth out possible timing fluctuations.
 
-To simulate the effect of different CFL numbers, we generate the random points such that on each process $\alpha$ percentage of them are located outside the process boundary and thus will initiate communication. Scaling results are presented for $\alpha = 5 \%$ and $\alpha = 95\%$ for both the small and large problems in figure \ref{fig:interpolation}. Excellent scaling is obtained for the small problem for $P = 16-512$ even when $95\%$ of the interpolation points belong to a remote process. For the larger problem, however, the communication overhead prevents the algorithm from scaling beyond $4096$ processes when $\alpha = 95\%$. 
+To simulate the effect of different CFL numbers, we generate the random points such that on each process $\alpha$ percentage of them are located outside the process boundary and thus will initiate communication. Scaling results are presented for $\alpha = 5 \%$ and $\alpha = 95\%$ for both the small and large problems in figure \ref{fig:interpolation}. Excellent scaling is obtained for the small problem for $P = 16-512$ even when $95\%$ of the interpolation points belong to a remote process. For the larger problem, however, the communication overhead prevents the algorithm from scaling beyond $2048$ processes when $\alpha = 95\%$ (c.f\ table \ref{tab:scaling_interpolation}). 
 \begin{figure}[htbp]
 	\begin{center}
-		\subfigure[$N_G = 33$M, $\alpha = 5\%$]{\includegraphics[width = 0.45 \textwidth] {figures/interpolation_small_05.pdf}}
-		\subfigure[$N_G = 33$M, $\alpha = 95\%$]{\includegraphics[width = 0.45 \textwidth] {figures/interpolation_small_95.pdf}}
+		\subfigure[$N_G = 33$M, $\alpha = 5\%$]{\includegraphics[width = 0.48 \textwidth] {figures/host_Interpolation_small_alpha_5.pdf}}
+		\subfigure[$N_G = 33$M, $\alpha = 95\%$]{\includegraphics[width = 0.48 \textwidth] {figures/host_Interpolation_small_alpha_95.pdf}}
 		\\
-		\subfigure[$N_G = 280$M, $\alpha = 5\%$]{\includegraphics[width = 0.45 \textwidth] {figures/interpolation_large_05.pdf}}
-		\subfigure[$N_G = 280$M, $\alpha = 95\%$]{\includegraphics[width = 0.45 \textwidth] {figures/interpolation_large_95.pdf}}
+		\subfigure[$N_G = 280$M, $\alpha = 5\%$]{\includegraphics[width = 0.48 \textwidth] {figures/host_Interpolation_large_alpha_5.pdf}}
+		\subfigure[$N_G = 280$M, $\alpha = 95\%$]{\includegraphics[width = 0.48 \textwidth] {figures/host_Interpolation_large_alpha_95.pdf}}
 	\end{center}
-	\caption{Strong scaling of algorithm \ref{alg:interpolation} for several tests where $N_G$ denotes the number of random interpolation points (which is the same as the number of nodes in the Octree) and $\alpha$ denotes the percentage of these points that are remote for each process. Here ``Total'' represents the total time spent in the interpolation while ``buffer'', ``local'', ``queries'', and ``replies'' represent the the timing for different sections (c.f. algorithm \ref{alg:interpolation}). The results indicate excellent scaling for the small test (a-b) and for the large test when $\alpha = 5\%$ (c). For the extreme case (d) the algorithm stops scaling at $4096$ processes due to communication overhead.}
+	\caption{Strong scaling of algorithm \ref{alg:interpolation} for several tests where $N_G$ denotes the number of random interpolation points (which is the same as the number of nodes in the Octree) and $\alpha$ denotes the percentage of these points that are remote for each process. Here ``Total'' represents the total time spent in the interpolation while ``buffer'', ``local'', ``queries'', and ``replies'' represent the the timing for different sections (c.f. algorithm \ref{alg:interpolation}). The black dashed line represents the ideal scaling. The results indicate excellent scaling for the small test (a-b) and for the large test when $\alpha = 5\%$ (c). For the extreme case (d) the algorithm stops scaling at $2048$ processes due to communication overhead.}
 	\label{fig:interpolation}
 \end{figure}
+
+\begin{table}
+\centering
+	\begin{tabular}{|l|l|cccccc|}
+	\hline
+	\multirow{3}{*}{Small Test} & \multicolumn{1}{|c|}{$P$} & 16      & 32      & 64      & 128     & 256    & 512 \\
+	\cline{2-8} 	                            
+	                            & $\alpha = 5\%$   & $100\%$ & $101\%$ & $102\%$ & $106\%$ & $127\%$& $165\%$ \\
+	                            & $\alpha = 95\%$  & $100\%$ & $104\%$ & $110\%$ & $125\%$ & $127\%$& $106\%$ \\ 	                            
+	\hline
+	\multirow{3}{*}{Large Test} & \multicolumn{1}{|c|}{$P$} & 128     & 256     & 512     & 1024    & 2048   & 4096 \\
+	\cline{2-8} 	                            
+	                            & $\alpha = 5\%$   & $100\%$ & $89\%$  & $95\%$  & $101\%$ & $109\%$& $114\%$ \\
+	                            & $\alpha = 95\%$  & $100\%$ & $103\%$ & $108\%$ & $99\%$  & $67\%$ & $34\%$ \\
+	\hline
+	\end{tabular}
+	\caption{Parallel efficiency of the total runtime the interpolation test. Reported efficiencies are based on the lowest number of processes for each test.}
+	\label{tab:scaling_interpolation}
+\end{table}
 
 \subsection{Semi-Lagrangian}
 To test the scalability of the semi-Lagrangian algorithm \ref{alg:semi-lagrangian}, we consider a slightly modified version of the Enright's rotation test \cite{Enright;Fedkiw;Ferziger;etal:02:A-Hybrid-Particle-Le}, i.e. we advect a sphere of radius 0.35 located at $(0.4, 0.4, 0.4)$ with a divergence free velocity field given by:
@@ -64,42 +83,63 @@ Table \ref{tab:semilagrangian} illustrates the dependence of the number of itera
 An increase in the CFL number has two effects on the algorithm. First, a larger fraction of the departure points lands in the domains of remote processes. Moreover, these points are potentially dispersed across a larger number of processes. This means that the communication volume should increase with the CFL number. Second, as more points are shipped to remote processes for interpolation, there is a greater chance that the interpolation load is imbalanced across processes. This is especially true for regions of space in which the streamlines cluster. Both factors can contribute to reduce the scalability of the algorithm at large CFL numbers. 
 \begin{figure}[htbp]
 	\begin{center}
-		\subfigure[semi-Lagrangian, $\text{CFL} = 1$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Small_1_SemiLagrangian.pdf}}
-		\subfigure[semi-Lagrangian, $\text{CFL} = 10$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Small_10_SemiLagrangian.pdf}}
-		\subfigure[semi-Lagrangian, $\text{CFL} = 100$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Small_100_SemiLagrangian.pdf}}
+		\subfigure[semi-Lagrangian, $\text{CFL} = 1$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_small_CFL_1.pdf}}
+		\subfigure[semi-Lagrangian, $\text{CFL} = 10$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_small_CFL_10.pdf}}
+		\subfigure[semi-Lagrangian, $\text{CFL} = 100$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_small_CFL_100.pdf}}
 		\\
-		\subfigure[Interpolation, $\text{CFL} = 1$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Small_1_Interpolation.pdf}}
-		\subfigure[Interpolation, $\text{CFL} = 10$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Small_10_Interpolation.pdf}}
-		\subfigure[Interpolation, $\text{CFL} = 100$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Small_100_Interpolation.pdf}}
+		\subfigure[Interpolation, $\text{CFL} = 1$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_Interpolation_small_CFL_1.pdf}}
+		\subfigure[Interpolation, $\text{CFL} = 10$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_Interpolation_small_CFL_1.pdf}}
+		\subfigure[Interpolation, $\text{CFL} = 100$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_Interpolation_small_CFL_1.pdf}}
 	\end{center}
-	\caption{Strong scaling of a single iteration of algorithm \ref{alg:semi-lagrangian} for the rotation test on a level-10 Octree with approximately 15M nodes. Top row: scaling of the various components of the algorithm for (a) $\text{CFL} = 1$, (b) $\text{CFL} = 10$, and (c) $\text{CFL} = 100$. Bottom row: breakdown of the various components of the interpolation phase for the same CFL numbers. Note that the maximum time has been scaled by the number of iterations required to build the tree (c.f. table \ref{tab:semilagrangian}).}
+	\caption{Strong scaling of a single iteration of algorithm \ref{alg:semi-lagrangian} for the rotation test on a level-10 Octree with approximately 15M nodes. Top row: scaling of the various components of the algorithm for (a) $\text{CFL} = 1$, (b) $\text{CFL} = 10$, and (c) $\text{CFL} = 100$. Bottom row: breakdown of the various components of the interpolation phase for the same CFL numbers. The solid dashed line represents the ideal scaling. Note that the maximum time has been scaled by the number of iterations required to build the tree (c.f. table \ref{tab:semilagrangian}).}
 	\label{fig:semilagrangian_small}
 \end{figure}
 
 \begin{figure}[htbp]
 	\begin{center}
-		\subfigure[semi-Lagrangian, $\text{CFL} = 1$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Large_1_SemiLagrangian.pdf}}
-		\subfigure[semi-Lagrangian, $\text{CFL} = 10$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Large_10_SemiLagrangian.pdf}}
-		\subfigure[semi-Lagrangian, $\text{CFL} = 100$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Large_100_SemiLagrangian.pdf}}
+		\subfigure[semi-Lagrangian, $\text{CFL} = 1$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_large_CFL_1.pdf}}
+		\subfigure[semi-Lagrangian, $\text{CFL} = 10$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_large_CFL_10.pdf}}
+		\subfigure[semi-Lagrangian, $\text{CFL} = 100$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_large_CFL_100.pdf}}
 		\\
-		\subfigure[Interpolation, $\text{CFL} = 1$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Large_1_Interpolation.pdf}}
-		\subfigure[Interpolation, $\text{CFL} = 10$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Large_10_Interpolation.pdf}}
-		\subfigure[Interpolation, $\text{CFL} = 100$]{\includegraphics[width = 0.3 \textwidth] {figures/SL_Large_100_Interpolation.pdf}}
+		\subfigure[Interpolation, $\text{CFL} = 1$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_Interpolation_large_CFL_1.pdf}}
+		\subfigure[Interpolation, $\text{CFL} = 10$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_Interpolation_large_CFL_10.pdf}}
+		\subfigure[Interpolation, $\text{CFL} = 100$]{\includegraphics[width = 0.32 \textwidth] {figures/host_SemiLagrangian_Interpolation_large_CFL_100.pdf}}
 	\end{center}
-	\caption{Strong scaling of a single iteration of algorithm \ref{alg:semi-lagrangian} for the rotation test on a level-12 Octree with approximately 255M nodes. Top row: scaling of the various components of the algorithm for (a) $\text{CFL} = 1$, (b) $\text{CFL} = 10$, and (c) $\text{CFL} = 100$. Bottom row: breakdown of the various components of the interpolation phase for the same CFL numbers. Note that the maximum time has been scaled by the number of iterations required to build the tree (c.f. table \ref{tab:semilagrangian}).}
+	\caption{Strong scaling of a single iteration of algorithm \ref{alg:semi-lagrangian} for the rotation test on a level-12 Octree with approximately 255M nodes. Top row: scaling of the various components of the algorithm for (a) $\text{CFL} = 1$, (b) $\text{CFL} = 10$, and (c) $\text{CFL} = 100$. Bottom row: breakdown of the various components of the interpolation phase for the same CFL numbers. The solid dashed line represents the ideal scaling. Note that the maximum time has been scaled by the number of iterations required to build the tree (c.f. table \ref{tab:semilagrangian}).}
 	\label{fig:semilagrangian_large}
 \end{figure}
+
+\begin{table}
+\centering
+	\begin{tabular}{|l|l|cccccc|}
+	\hline
+	\multirow{4}{*}{Small Test} & \multicolumn{1}{|c|}{$P$} & 16      & 32      & 64      & 128     & 256    & 512 \\
+	\cline{2-8} 	                            
+	                            & $\text{CFL} = 1$   & $100\%$ & $88\%$  & $84\%$  & $82\%$  & $74\%$ & $67\%$ \\
+	                            & $\text{CFL} = 10$  & $100\%$ & $99\%$  & $104\%$ & $88\%$  & $80\%$ & $71\%$ \\ 	                            
+	                            & $\text{CFL} = 100$ & $100\%$ & $95\%$  & $90\%$  & $84\%$  & $67\%$ & $49\%$ \\
+	\hline
+	\multirow{4}{*}{Large Test} & \multicolumn{1}{|c|}{$P$} & 128     & 256     & 512     & 1024    & 2048   & 4096 \\
+	\cline{2-8} 	                            
+	                            & $\text{CFL} = 1$   & $100\%$ & $94\%$  & $87\%$  & $82\%$  & $75\%$ & $65\%$ \\
+	                            & $\text{CFL} = 10$  & $100\%$ & $90\%$  & $92\%$  & $86\%$  & $79\%$ & $63\%$ \\
+	                            & $\text{CFL} = 100$ & $100\%$ & $94\%$  & $90\%$  & $84\%$  & $70\%$ & $57\%$ \\
+	\hline
+	\end{tabular}
+	\caption{Parallel efficiency of the runtime of a single semi-Lagrangian step. Reported efficiencies are based on the lowest number of processes for each test.}
+	\label{tab:scaling_semilagrangian}
+\end{table}
 
 To better understand the importance of the CFL number on the scalability, we have recorded a complete history of the communication pattern in the interpolation step. Figure \ref{fig:communication_4096} illustrates the effects of the CFL number on different metrics, namely the number of interpolation points\footnote{Note that this includes both the local points and the points queried by other processes}, $N_p$, the number of sent and received messages, $N_m = S + R$, and the total communication volume, $V_m$ in megabytes (MB), for $p=4096$ processes. Furthermore, these values are reported for the first (top row) and last (bottom row) iterations of the semi-Lagrangian algorithm. There are several points to make. First, increasing the CFL number greatly increases the load imbalance, as shown by the spread of the data in figure \ref{fig:communication_4096_pf}. This is because at higher CFL numbers, it is more likely that some processes will receive a larger portion of the backtracked points. Second, increasing the CFL number increases both the communication volume and its spread across processes (c.f. figure \ref{fig:communication_4096_vf}). Interestingly, however, the number of sent and received messages do not seem to affected by the CFL number. The bottom row of figure \ref{fig:communication_4096} exhibits a better balance both in the computation and communication volume in the last iteration of the semi-Lagrangian algorithm. This can be explained by noting that for the final iteration, partitioning of $G^{n+1}$ is a good approximation of partitioning of departure points on $G^n$. \comment{awkward ... maybe: the partitioning of the grids $G^n$ and $G^{n+1}$ become very similar ?} \mohammad{not quite ... I am not sure what would be the best to phrase it but what i want to say is load balancing really requires you to partition the departure points on $G^n$ and not the $G^{n+1}$ which, of course, you cannot since you do not have that information ... the situation becomes better at the final iteration because both partitions are proportional to (Surface area of interface)/(Number of processors) ...} . Detailed information about the load balancing and the communication patterns is listed in table \ref{tab:communication}.
 \begin{figure}[htbp]
 	\begin{center}
-		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/point_first_4096.pdf}  \label{fig:communication_4096_pf}}
-		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/message_first_4096.pdf}\label{fig:communication_4096_mf}}
-		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/volume_first_4096.pdf} \label{fig:communication_4096_vf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/host_large_point_first_4096.pdf}  \label{fig:communication_4096_pf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/host_large_message_first_4096.pdf}\label{fig:communication_4096_mf}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/host_large_volume_first_4096.pdf} \label{fig:communication_4096_vf}}
 		\\
-		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/point_last_4096.pdf}   \label{fig:communication_4096_pl}}
-		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/message_last_4096.pdf} \label{fig:communication_4096_ml}}
-		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/volume_last_4096.pdf}  \label{fig:communication_4096_vl}}		
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/host_large_point_last_4096.pdf}   \label{fig:communication_4096_pl}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/host_large_message_last_4096.pdf} \label{fig:communication_4096_ml}}
+		\subfigure[]{\includegraphics[width = 0.3 \textwidth] {figures/host_large_volume_last_4096.pdf}  \label{fig:communication_4096_vl}}		
 	\end{center}
 	\caption{Performance indicators of the first (top row) and last (bottom row) iterations of the semi-Lagrangian algorithm for the advection on 4096 processes with $\text{CFL} = 1$ (\drawdiamond{black} \comment{this does not work on my computer, I see a W} \mohammad{hum ... not sure what to do for this one. it should be part of latex...}), $\text{CFL} = 10$ (\drawsquare{red}), and $\text{CFL} = 100$ (\drawcircle{blue}). Increasing the CFL number greatly causes load imbalance during interpolation (a) and increases the communication volume (c). However, the CFL number does not seem to appreciably affect the number of messages sent by the processes (b). During the last semi-Lagrangian iteration, the initial grid $G_0$ (c.f. algorithm \ref{alg:semi-lagrangian}) is very close to the final grid. As a result, the load imbalance is considerably improved (d). Curiously, however, the communication pattern does not seem to be change much between first and last iterations (e-f) \comment{e-f ?} \mohammad{e and f figures. Should we rephrase?}.}
 	\label{fig:communication_4096}
@@ -137,11 +177,26 @@ To better understand the importance of the CFL number on the scalability, we hav
 
 \subsection{Reinitialization} \label{section::scaling_reinitialization}
 
-Finally we present the scaling results of our parallel reinitialization algorithm where we extensively make use of algorithm \ref{alg:overlap} for overlapping computation with communication when computing spatial derivatives. Our test consists in computing the signed distance to a collection of 100 spheres, whose radii and centers have been chosen randomly. The test is performed on a small, level-8 Octree with nearly 21M and a larger, level-10 Octree with nearly 337M grid points. In both cases the forest is built on a $3\times3\times3$ macro-mesh. Figure \ref{fig:reinit} illustrates that our reinitialization algorithm, and in particular the overlapping strategy presented in algorithm \ref{alg:overlap}, scales very well. In general we expect similar scaling results for any local, finite-difference based calculations on Octrees that can efficiently utilize algorithm \ref{alg:overlap}. 
+Finally we present the scaling results of our parallel reinitialization algorithm where we extensively make use of algorithm \ref{alg:overlap} for overlapping computation with communication when computing spatial derivatives. Our test consists in computing the signed distance to a collection of 100 spheres, whose radii and centers have been chosen randomly. The test is performed on a small, level-8 Octree with nearly 21M and a larger, level-10 Octree with nearly 337M grid points. In both cases the forest is built on a $3\times3\times3$ macro-mesh. Figure \ref{fig:reinit} illustrates that our reinitialization algorithm, and in particular the overlapping strategy presented in algorithm \ref{alg:overlap}, scales very well (c.f.\ table \ref{tab:scaling_reinit}). In general we expect similar scaling results for any local, finite-difference based calculations on Octrees that can efficiently utilize algorithm \ref{alg:overlap}. 
 \begin{figure}
 \centering
-\subfigure[]{\includegraphics[width=0.45\textwidth]{figures/Reinit_Small.pdf}}
-\subfigure[]{\includegraphics[width=0.45\textwidth]{figures/Reinit_Large.pdf}}
-\caption{Scalability of the reinitialization test for a small (left) and large (right) Octree with roughly 21M and 337M grid points, respectively. Excellent results are obtained in both cases, illustrating the scalability of the overlapping strategy (c.f. algorithm \ref{alg:overlap}).}
+\subfigure[]{\includegraphics[width=0.48\textwidth]{figures/Reinit_Small.pdf}}
+\subfigure[]{\includegraphics[width=0.48\textwidth]{figures/Reinit_Large.pdf}}
+\caption{Scalability of the reinitialization test for a small (left) and large (right) Octree with roughly 21M and 337M grid points, respectively. The black dashed line represents ideal scaling. Excellent results are obtained in both cases, illustrating the scalability of the overlapping strategy (c.f. algorithm \ref{alg:overlap}).}
 \label{fig:reinit}
 \end{figure}
+
+\begin{table}
+\centering
+	\begin{tabular}{|l|c|cccccc|}
+	\hline
+	\multirow{2}{*}{Small Test} & $P$ & 16      & 32      & 64      & 128     & 256    & 512 \\ 	                            
+	                            & $e$ & $100\%$ & $115\%$ & $110\%$ & $105\%$ & $96\%$ & $80\%$ \\
+	\hline
+	\multirow{2}{*}{Large Test} & $P$ & 128     & 256     & 512     & 1024    & 2048   & 4096 \\ 	                            
+	                            & $e$ & $100\%$ & $95\%$ & $95\%$ & $89\%$ & $82\%$ & $67\%$ \\
+	\hline
+	\end{tabular}
+	\caption{Parallel efficiency of the total runtime for the reinitialization test based on the lowest number of processes for each test.}
+	\label{tab:scaling_reinit}
+\end{table}
