@@ -3,7 +3,7 @@
 
 \subsection{Presentation of the problem}
 
-We propose to apply \mohammad{what about: In this section we apply ...} our approach to the study of the phase transition of a liquid melt to a solid crystaline structure. In the case of a single component melt, and in the absence of convection, the process is dominated by diffusion and can be modeled as a Stefan problem. We decompose the computational domain $\Omega$ into \mohammad{How about: Consider a computational domain $\Omega$ decomposed into ...} two subdomains $\Omega^-$ and $\Omega^+$, separated by an interface $\Gamma$. The Stefan problem describes the evolution of the temperature $T$, decomposed into $T_s$ in the solid phase $\Omega^+$ and $T_l$ in the liquid phase $\Omega^-$, as
+In this section we apply our approach to the study of the phase transition of a liquid melt to a solid crystaline structure. In the case of a single component melt, and in the absence of convection, the process is dominated by diffusion and can be modeled as a Stefan problem. We decompose the computational domain $\Omega$ into \mohammad{How about: Consider a computational domain $\Omega$ decomposed into ...} \comment{this would be the exact phrasing of another article} two subdomains $\Omega^-$ and $\Omega^+$, separated by an interface $\Gamma$. The Stefan problem describes the evolution of the temperature $T$, decomposed into $T_s$ in the solid phase $\Omega^+$ and $T_l$ in the liquid phase $\Omega^-$, as
 \begin{align}
 \pd{T_l}{t} & = D_l \Delta T_l \quad \mathrm{in} ~~ \Omega^-, \label{eq:stefan_heat_equation_l} \\
 \pd{T_s}{t} & = D_s \Delta T_s \quad \mathrm{in} ~~ \Omega^+. \label{eq:stefan_heat_equation_s}
@@ -48,7 +48,7 @@ The implementation of the Stefan problem relies on the components described in t
 \centering
 \subfigure[]{\includegraphics[width=0.48\textwidth]{figures/Stefan_small.pdf}}
 \subfigure[]{\includegraphics[width=0.48\textwidth]{figures/Stefan_large.pdf}}
-\caption{Scalability of the Stefan problem for small (left) and large (right) octrees with roughly 7M and 105M grid points, respectively. The solid dashed line represents perfect scaling. As expected from the scalability analysis of the individual components, we observe excellent results, illustrating the potential \mohammad{applicability?} of our solver \mohammad{algorithms?}.}
+\caption{Scalability of the Stefan problem for small (left) and large (right) octrees with roughly 7M and 105M grid points, respectively. The solid dashed line represents perfect scaling. As expected from the scalability analysis of the individual components, we observe excellent results, illustrating the potential of our algorithms.}
 \label{fig:stefan_scaling}
 \end{figure}
 
@@ -63,13 +63,13 @@ The implementation of the Stefan problem relies on the components described in t
 	                            & $e$ & $100\%$ & $98\%$  & $94\%$  & $89\%$  & $73\%$ & $61\%$ \\
 	\hline
 	\end{tabular}
-	\caption{Parallel efficiency of the total runtime for the stefan test based on the lowest number of processes for each test.}
+	\caption{Parallel efficiency of the total runtime for the Stefan test based on the lowest number of processes for each test. \comment{frederic, what do you think about this table ?}}
 	\label{tab:scaling_stefan} 
 \end{table}
 
 \subsection{Numerical experiments}
 \mohammad{too many transitive statements and keyword ``choose''. Can we rephrase this?}
-We now present the results from a large simulation of the Stefan problem. We choose to work with a $20\times20\times20$ macro-mesh and with level-10 octrees. We choose to define the Gibbs-Tompson anisotropy undercooling coefficients \eqref{eq:stefan_gibbs_tompson} as
+We now present the results from a large simulation of the Stefan problem on a $20\times20\times20$ macro-mesh and with level-10 Octrees. We choose to define the Gibbs-Tompson anisotropy undercooling coefficients \eqref{eq:stefan_gibbs_tompson} as
 \begin{align*}
 \epsilon_c & = \left[ \epsilon_1 \left( 1+\alpha_1 \cos(3\theta_1) \right) + \epsilon_2 \left( 1+\alpha_2 \cos(3\theta_2) \right) \right] \kappa,\\
 \epsilon_v & = 0,
@@ -79,9 +79,9 @@ with $\theta_1$ the angle between the normal to the interface $\mathbf{n}$ and t
 \epsilon_1 & = 2~(\sin(x)+\cos(y)+2)\cdot10^{-6}, & \epsilon_2 & = 2~(\sin(x)+\cos(z)+2)\cdot10^{-6}, \\
 \alpha_1 & = \frac{1}{4}(\cos(x)+\sin(y)+2), & \alpha_2 & = \frac{1}{4}(\cos(x)+\sin(z)+2).
 \end{align*}
-Note that these expressions are arbitrary and lead to very varied crystal shapes \mohammad{How about: ... lead to a variety of shapes?}. The computation is initialized with twenty spherical seeds of radius $0.0015$ placed randomly in the domain. We choose $D_s=D_l=1$ and set the initial temperatures $T^0_l=-0.25$ and $T^0_s=0$.
+Note that these expressions are arbitrary and lead to a variety of shapes. The computation is initialized with twenty spherical seeds of radius $0.0015$ placed randomly in the domain. We choose $D_s=D_l=1$ and set the initial temperatures $T^0_l=-0.25$ and $T^0_s=0$.
 
-We let the simulation run with \mohammad{How about: The simulation is ran on ...} $256$ mpi processes for $6$ hours and $30$ minutes, resulting in $396$ time iterations. Visualizations of the final iteration are presented in figures \ref{fig:stefan_grid} and \ref{fig:stefan_crystals}. The final iteration of the simulation consisted of $167$M grid points when a uniform grid with the equivalent finest resolution would lead to $8.59\cdot10^{12}$ grid points, i.e. over eight trillion grid points ! Our simulation used only $0.001948\%$ \mohammad{I think if we are going to report percentage, we should trim it to 1st digit} of the number of grid points needed for the same simulation on a uniform grid. This application demonstrates the potential of our approach.
+The simulation was ran on $256$ mpi processes for $6$ hours and $30$ minutes, resulting in $396$ time iterations. Visualizations of the final iteration are presented in figures \ref{fig:stefan_grid}, \ref{fig:stefan_crystals} and \ref{fig:stefan_evolution}. The final iteration of the simulation consisted of $167$M grid points when a uniform grid with the equivalent finest resolution would lead to $8.59\cdot10^{12}$ grid points, i.e. over eight trillion grid points ! Our simulation used only $0.001948\%$ \mohammad{I think if we are going to report percentage, we should trim it to 1st digit} of the number of grid points needed for the same simulation on a uniform grid. This application demonstrates the potential of our approach.
 
 \begin{figure}[ht!]
 \begin{center}
@@ -89,7 +89,7 @@ We let the simulation run with \mohammad{How about: The simulation is ran on ...
 \subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_temperature.png}}
 \subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_grid.png}}
 \subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_grid_zoom.png}}
-\caption{Visualization of the computational mesh (a,b,c) and the temperature field (b) for the Stefan problem simulation.} \label{fig:stefan_grid}
+\caption{Visualization of the computational mesh (a, c, d) and the temperature field (b) for the Stefan problem simulation.} \label{fig:stefan_grid}
 \end{center}
 \end{figure}
 
@@ -100,5 +100,35 @@ We let the simulation run with \mohammad{How about: The simulation is ran on ...
 \subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_crystal_4.png}}
 \subfigure[]{\includegraphics[width=0.45\textwidth]{figures/stefan_crystal_3.png}}
 \caption{Representation of the computational domain (a) and of various crystal observed for the Stefan problem simulation.} \label{fig:stefan_crystals}
+\end{center}
+\end{figure}
+
+\begin{figure}[ht!]
+\begin{center}
+\subfigure[]{
+\includegraphics[width=.2\textwidth]{stefan/nb2_iter19.png}
+\includegraphics[width=.2\textwidth]{stefan/nb2_iter39.png}
+\includegraphics[width=.2\textwidth]{stefan/nb2_iter59.png}
+\includegraphics[width=.2\textwidth]{stefan/nb2_iter79.png}
+}
+\subfigure[]{
+\includegraphics[width=.2\textwidth]{stefan/nb5_iter19.png}
+\includegraphics[width=.2\textwidth]{stefan/nb5_iter39.png}
+\includegraphics[width=.2\textwidth]{stefan/nb5_iter59.png}
+\includegraphics[width=.2\textwidth]{stefan/nb5_iter79.png}
+}
+\subfigure[]{
+\includegraphics[width=.2\textwidth]{stefan/nb8_iter19.png}
+\includegraphics[width=.2\textwidth]{stefan/nb8_iter39.png}
+\includegraphics[width=.2\textwidth]{stefan/nb8_iter59.png}
+\includegraphics[width=.2\textwidth]{stefan/nb8_iter79.png}
+}
+\subfigure[]{
+\includegraphics[width=.2\textwidth]{stefan/nb12_iter19.png}
+\includegraphics[width=.2\textwidth]{stefan/nb12_iter39.png}
+\includegraphics[width=.2\textwidth]{stefan/nb12_iter59.png}
+\includegraphics[width=.2\textwidth]{stefan/nb12_iter79.png}
+}
+\caption{Time evolution of four of the crystals obtained for the Stefan problem simulation. The snapshots represent, from left to right, iterations 96, 196, 296 and 396.} \label{fig:stefan_evolution}
 \end{center}
 \end{figure}
