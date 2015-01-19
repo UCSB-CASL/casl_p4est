@@ -68,6 +68,16 @@ public:
   virtual ~CF_3() {}
 };
 
+enum {
+  WALL_m00 = -1,
+  WALL_p00 = -2,
+  WALL_0m0 = -3,
+  WALL_0p0 = -4,
+  WALL_00m = -5,
+  WALL_00p = -6,
+  INTERFACE = -7
+};
+
 typedef enum {
   DIRICHLET,
   NEUMANN,
@@ -343,11 +353,11 @@ inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
-inline double node_x_fr_i(const p4est_indep_t *ni){
+inline double node_x_fr_n(const p4est_indep_t *ni){
   return ni->x == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->x)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
-inline double node_y_fr_j(const p4est_indep_t *ni){
+inline double node_y_fr_n(const p4est_indep_t *ni){
   return ni->y == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->y)/static_cast<double>(P4EST_ROOT_LEN);
 }
 

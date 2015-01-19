@@ -17,6 +17,7 @@
 
 class my_p4est_cell_neighbors_t {
   friend class PoissonSolverCellBase;
+  friend class PoissonSolverNodeBaseJump;
   friend class InterpolatingFunctionCellBase;
 
   my_p4est_hierarchy_t *hierarchy;

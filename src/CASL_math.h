@@ -91,18 +91,6 @@ inline double SUPERBEE( double a, double b )
 }
 
 template <typename T>
-inline T mod(const T& a, const T& b)
-{
-#ifdef CASL_THROWS
-  if(b==0) throw std::invalid_argument("[CASL_ERROR]: mod: cannot take the modulus with zero.");
-#endif
-  T c=a%b;
-  return (c<0)? c+b:c;
-}
-
-double mod(double a, double b);
-
-template <typename T>
 inline const T& MIN(const T& val1, const T& val2)
 {
   return  val1 < val2 ? val1 : val2;

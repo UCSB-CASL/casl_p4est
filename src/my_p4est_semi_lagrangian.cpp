@@ -91,8 +91,8 @@ double SemiLagrangian::compute_dt(const CF_2 &vx, const CF_2 &vy)
     p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
     double *v2c = p4est_->connectivity->vertices;
 
-    double x = node_x_fr_i(ni) + v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 0];
-    double y = node_y_fr_j(ni) + v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 1];
+    double x = node_x_fr_n(ni) + v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 0];
+    double y = node_y_fr_n(ni) + v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 1];
 #ifdef P4_TO_P8
     double z = node_z_fr_k(ni) + v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 2];
 #endif
@@ -193,8 +193,8 @@ void SemiLagrangian::advect_from_n_to_np1(const std::vector<p4est_locidx_t>& map
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin,
-      node_y_fr_j(indep_node) + tr_ymin
+      node_x_fr_n(indep_node) + tr_xmin,
+      node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin
@@ -282,8 +282,8 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<p4est_locidx_t>&
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin,
-      node_y_fr_j(indep_node) + tr_ymin
+      node_x_fr_n(indep_node) + tr_xmin,
+      node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin
@@ -376,8 +376,8 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin,
-      node_y_fr_j(indep_node) + tr_ymin
+      node_x_fr_n(indep_node) + tr_xmin,
+      node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin
@@ -422,8 +422,8 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
     /* Find initial xy points */
     double xyz_star[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin - .5*dt*vx_tmp[ni],
-      node_y_fr_j(indep_node) + tr_ymin - .5*dt*vy_tmp[ni]
+      node_x_fr_n(indep_node) + tr_xmin - .5*dt*vx_tmp[ni],
+      node_y_fr_n(indep_node) + tr_ymin - .5*dt*vy_tmp[ni]
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
@@ -470,8 +470,8 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
     /* Find initial xy points */
     double xyz_departure[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin - dt*vx_tmp[ni],
-      node_y_fr_j(indep_node) + tr_ymin - dt*vy_tmp[ni]
+      node_x_fr_n(indep_node) + tr_xmin - dt*vx_tmp[ni],
+      node_y_fr_n(indep_node) + tr_ymin - dt*vy_tmp[ni]
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin - dt*vz_tmp[ni]
@@ -554,8 +554,8 @@ void SemiLagrangian::advect_from_n_to_np1_test(double dt,
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin,
-      node_y_fr_j(indep_node) + tr_ymin
+      node_x_fr_n(indep_node) + tr_xmin,
+      node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin
@@ -601,8 +601,8 @@ void SemiLagrangian::advect_from_n_to_np1_test(double dt,
     /* Find initial xy points */
     double xyz_star[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin - .5*dt*vx_tmp_n[ni],
-      node_y_fr_j(indep_node) + tr_ymin - .5*dt*vy_tmp_n[ni]
+      node_x_fr_n(indep_node) + tr_xmin - .5*dt*vx_tmp_n[ni],
+      node_y_fr_n(indep_node) + tr_ymin - .5*dt*vy_tmp_n[ni]
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin - .5*dt*vz_tmp_n[ni]
@@ -672,8 +672,8 @@ void SemiLagrangian::advect_from_n_to_np1_test(double dt,
     /* Find initial xy points */
     double xyz_departure[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin - dt*(1.5*vx_tmp_n[ni] - .5*vx_tmp_nm1[ni]),
-      node_y_fr_j(indep_node) + tr_ymin - dt*(1.5*vy_tmp_n[ni] - .5*vy_tmp_nm1[ni])
+      node_x_fr_n(indep_node) + tr_xmin - dt*(1.5*vx_tmp_n[ni] - .5*vx_tmp_nm1[ni]),
+      node_y_fr_n(indep_node) + tr_ymin - dt*(1.5*vy_tmp_n[ni] - .5*vy_tmp_nm1[ni])
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin - dt*(1.5*vz_tmp_n[ni] - .5*vz_tmp_nm1[ni])
@@ -754,8 +754,8 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin,
-      node_y_fr_j(indep_node) + tr_ymin
+      node_x_fr_n(indep_node) + tr_xmin,
+      node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin
@@ -791,8 +791,8 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin,
-      node_y_fr_j(indep_node) + tr_ymin
+      node_x_fr_n(indep_node) + tr_xmin,
+      node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin
@@ -855,8 +855,8 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin - .5*dt*vx_tmp[ni],
-      node_y_fr_j(indep_node) + tr_ymin - .5*dt*vy_tmp[ni]
+      node_x_fr_n(indep_node) + tr_xmin - .5*dt*vx_tmp[ni],
+      node_y_fr_n(indep_node) + tr_ymin - .5*dt*vy_tmp[ni]
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
@@ -892,8 +892,8 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin - .5*dt*vx_tmp[ni],
-      node_y_fr_j(indep_node) + tr_ymin - .5*dt*vy_tmp[ni]
+      node_x_fr_n(indep_node) + tr_xmin - .5*dt*vx_tmp[ni],
+      node_y_fr_n(indep_node) + tr_ymin - .5*dt*vy_tmp[ni]
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
@@ -957,8 +957,8 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin - dt*vx_tmp[ni],
-      node_y_fr_j(indep_node) + tr_ymin - dt*vy_tmp[ni]
+      node_x_fr_n(indep_node) + tr_xmin - dt*vx_tmp[ni],
+      node_y_fr_n(indep_node) + tr_ymin - dt*vy_tmp[ni]
   #ifdef P4_TO_P8
       ,
       node_z_fr_k(indep_node) + tr_zmin - dt*vz_tmp[ni]
@@ -1713,8 +1713,8 @@ double SemiLagrangian::update_p4est_second_order_CFL(const CF_2& vx, const CF_2&
 
     p4est_topidx_t tr_mm = t2v[P4EST_CHILDREN*tree_idx + 0];  //mm vertex of tree
 
-    double x = node_x_fr_i(indep_node) + t2c[3 * tr_mm + 0];
-    double y = node_y_fr_j(indep_node) + t2c[3 * tr_mm + 1];
+    double x = node_x_fr_n(indep_node) + t2c[3 * tr_mm + 0];
+    double y = node_y_fr_n(indep_node) + t2c[3 * tr_mm + 1];
 #ifdef P4_TO_P8
     double z = node_z_fr_k(indep_node) + t2c[3 * tr_mm + 2];
 #endif
@@ -1737,8 +1737,8 @@ double SemiLagrangian::update_p4est_second_order_CFL(const CF_2& vx, const CF_2&
 
     p4est_topidx_t tr_mm = t2v[P4EST_CHILDREN*tree_idx + 0];  //mm vertex of tree
 
-    double x = node_x_fr_i(indep_node) + t2c[3 * tr_mm + 0];
-    double y = node_y_fr_j(indep_node) + t2c[3 * tr_mm + 1];
+    double x = node_x_fr_n(indep_node) + t2c[3 * tr_mm + 0];
+    double y = node_y_fr_n(indep_node) + t2c[3 * tr_mm + 1];
 #ifdef P4_TO_P8
     double z = node_z_fr_k(indep_node) + t2c[3 * tr_mm + 2];
 #endif
