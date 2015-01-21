@@ -292,7 +292,7 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
 	// one processor which is obviously not scalable 
 	for (int l = 0; l<sp->max_lvl; l++){
 	  my_p4est_refine(p4est, P4EST_FALSE, refine_threshold_cf, NULL);
-		my_p4est_partition(p4est, NULL);
+    my_p4est_partition(p4est, P4EST_TRUE, NULL);
 	}
 
   PetscPrintf(p4est->mpicomm, "num of global quadrants = %ld\n", p4est->global_num_quadrants);
@@ -329,7 +329,7 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
   Vec phi_tmp = NULL;
 
   for (int l = 0; l <= sp->max_lvl; l++) {
-    my_p4est_partition(p4est_tmp, NULL);
+    my_p4est_partition(p4est_tmp, P4EST_TRUE, NULL);
     ghost_tmp = p4est_ghost_new(p4est_tmp, P4EST_CONNECT_FULL);
     nodes_tmp = my_p4est_nodes_new(p4est_tmp, ghost_tmp);
     ierr = VecCreateGhostNodes(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);
@@ -395,7 +395,7 @@ void BioMolecule::construct_SES_by_advection(p8est_t *&p4est, p8est_nodes_t *&no
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
   // partition the p4est
-  my_p4est_partition(p4est, NULL);
+  my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
   // create the ghost layer
   ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
@@ -443,7 +443,7 @@ void BioMolecule::construct_SES_by_advection(p8est_t *&p4est, p8est_nodes_t *&no
     my_p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
 
     // partition
-    my_p4est_partition(p4est_np1, NULL);
+    my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
 
     // recompute ghost and nodes
     p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
@@ -566,7 +566,7 @@ void BioMolecule::remove_internal_cavities(p8est_t *&p4est, p8est_nodes_t *&node
   Vec phi_tmp = NULL;
 
   for (int l = 0; l <= sp->max_lvl; l++) {
-    my_p4est_partition(p4est_tmp, NULL);
+    my_p4est_partition(p4est_tmp, P4EST_TRUE, NULL);
     ghost_tmp = p4est_ghost_new(p4est_tmp, P4EST_CONNECT_FULL);
     nodes_tmp = my_p4est_nodes_new(p4est_tmp, ghost_tmp);
     ierr = VecCreateGhostNodes(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);

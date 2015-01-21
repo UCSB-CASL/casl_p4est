@@ -7,6 +7,12 @@
 #define CHKERRXX(ierr) CHKERRABORT(PETSC_COMM_WORLD, ierr)
 #endif
 
+#ifndef PETSC_VERSION_GT
+#define PETSC_VERSION_GT(MAJOR,MINOR,SUBMINOR) \
+  (!PETSC_VERSION_LE(MAJOR,MINOR,SUBMINOR))
+#endif
+
+// Changes in the destructors
 #if PETSC_VERSION_LT(3,2,0)
 #define MatDestroy(a)                    MatDestroy(a)
 #define VecDestroy(a)                    VecDestroy(a)
@@ -35,9 +41,13 @@
 #define ISLocalToGlobalMappingDestroy(a) ISLocalToGlobalMappingDestroy(&a)
 #endif
 
-#ifndef PETSC_VERSION_GT
-#define PETSC_VERSION_GT(MAJOR,MINOR,SUBMINOR) \
-  (!PETSC_VERSION_LE(MAJOR,MINOR,SUBMINOR))
+// Changes in number of arguments
+#if PETSC_VERSION_GT(3,5,0)
+#define KSPSetOperators(ksp, Amat, Pmat, MatStructure) KSPSetOperators(ksp, Amat, Pmat)
+#endif
+
+#if PETSC_VERSION_LE(3,5,0)
+#define PetscSynchronizedFlush(comm, fd) PetscSynchronizedFlush(comm)
 #endif
 
 #if PETSC_VERSION_GT(3,4,3)

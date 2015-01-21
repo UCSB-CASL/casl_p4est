@@ -287,7 +287,7 @@ void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4
   PetscFPrintf(p4est->mpicomm, file, "%% mpi_rank | local_node_size | local_quad_size | ghost_node_size | ghost_quad_size\n");
   PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d, %7d, %7d, %5d, %5d\n",
                            p4est->mpirank, nodes->num_owned_indeps, p4est->local_num_quadrants, nodes->indep_nodes.elem_count-nodes->num_owned_indeps, ghost->ghosts.elem_count);
-  PetscSynchronizedFlush(p4est->mpicomm);
+  PetscSynchronizedFlush(p4est->mpicomm, file);
 
   if (partition_name){
     ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
@@ -313,7 +313,7 @@ void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4
     int r = *it;
     PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d %4d %6d\n", p4est->mpirank, r, ghost_nodes[r]);
   }
-  PetscSynchronizedFlush(p4est->mpicomm);
+  PetscSynchronizedFlush(p4est->mpicomm, file);
 
   if (topology_name){
     ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
@@ -329,7 +329,7 @@ void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4
   PetscFPrintf(p4est->mpicomm, file, "%% number of neighboring processors \n");
   PetscFPrintf(p4est->mpicomm, file, "%% this_rank | number_ghost_rank \n");
   PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d %4d\n", p4est->mpirank, proc_neighbors.size());
-  PetscSynchronizedFlush(p4est->mpicomm);
+  PetscSynchronizedFlush(p4est->mpicomm, file);
 
   if (neighbors_name){
     ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);

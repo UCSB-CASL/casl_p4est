@@ -5,6 +5,7 @@
 #endif
 
 #include <petsclog.h>
+#include <src/p4est_compatibility.h>
 #include <sc_notify.h>
 #include <src/ipm_logging.h>
 
@@ -17,6 +18,8 @@
 #else
 extern PetscLogEvent log_my_p4est_new;
 extern PetscLogEvent log_my_p4est_ghost_new;
+extern PetscLogEvent log_my_p4est_ghost_expand;
+extern PetscLogEvent log_my_p4est_copy;
 extern PetscLogEvent log_my_p4est_refine;
 extern PetscLogEvent log_my_p4est_coarsen;
 extern PetscLogEvent log_my_p4est_partition;
@@ -38,6 +41,18 @@ my_p4est_new(MPI_Comm mpicomm, p4est_connectivity_t *connectivity, size_t data_s
   return p4est;
 }
 
+p4est_t*
+my_p4est_copy(p4est_t* input, int copy_data) {
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_copy, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionBegin("p4est_copy");
+  p4est_t* p4est = p4est_copy(input, copy_data);
+  IPMLogRegionEnd("p4est_copy");
+  ierr = PetscLogEventEnd(log_my_p4est_copy, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return p4est;
+}
+
 p4est_ghost_t*
 my_p4est_ghost_new(p4est_t *p4est, p4est_connect_type_t btype)
 {
@@ -50,6 +65,17 @@ my_p4est_ghost_new(p4est_t *p4est, p4est_connect_type_t btype)
   
 
   return ghost;
+}
+
+void
+my_p4est_ghost_expand(p4est_t *p4est, p4est_ghost_t *ghost)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_ghost_expand, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionBegin("p4est_ghost_expand");
+  p4est_ghost_expand(p4est, ghost);
+  IPMLogRegionEnd("p4est_ghost_expand");
+  ierr = PetscLogEventEnd(log_my_p4est_ghost_expand, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void
@@ -75,13 +101,18 @@ my_p4est_coarsen(p4est_t *p4est, int coarsen_recursive, p4est_coarsen_t coarsen_
 }
 
 void
-my_p4est_partition(p4est_t *p4est, p4est_weight_t weight_fn)
+my_p4est_partition(p4est_t *p4est, int allow_for_coarsening, p4est_weight_t weight_fn)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
 	IPMLogRegionBegin("p4est_partition");  
+#if P4EST_VERSION_LT(1,0)
+  (void) allow_for_coarsening;
   p4est_partition(p4est, weight_fn);
-	IPMLogRegionEnd("p4est_partition");
+#else  
+  p4est_partition(p4est, allow_for_coarsening, weight_fn);
+#endif  
+IPMLogRegionEnd("p4est_partition");
   ierr = PetscLogEventEnd(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 

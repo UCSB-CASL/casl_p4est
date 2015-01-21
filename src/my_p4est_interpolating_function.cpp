@@ -882,7 +882,7 @@ void InterpolatingFunctionNodeBase::save_comm_topology(const char *partition_nam
     PetscSynchronizedFPrintf(p4est_->mpicomm, topo_file, "%4d %4d %5d\n", p4est_->mpirank, it->first, it->second.size());
     send_buffer += it->second.size();
   }
-  PetscSynchronizedFlush(p4est_->mpicomm);
+  PetscSynchronizedFlush(p4est_->mpicomm, topo_file);
   ierr = PetscFClose(p4est_->mpicomm, topo_file);
 
   for (remote_transfer_map::const_iterator it = remote_recv_buffer.begin(); it != remote_recv_buffer.end(); ++it)
@@ -890,7 +890,7 @@ void InterpolatingFunctionNodeBase::save_comm_topology(const char *partition_nam
 
   PetscSynchronizedFPrintf(p4est_->mpicomm, par_file, "%4d %7d %5d %5d %5d %4d %4d\n",
                            p4est_->mpirank, local_point_buffer.size(), ghost_point_buffer.size(), send_buffer, recv_buffer, remote_senders.size(), remote_receivers.size());
-  PetscSynchronizedFlush(p4est_->mpicomm);
+  PetscSynchronizedFlush(p4est_->mpicomm, par_file);
   ierr = PetscFClose(p4est_->mpicomm, par_file);
 }
 
