@@ -20,6 +20,41 @@
 
 class PoissonSolverNodeBaseJump
 {
+  class ZERO: public CF_2
+  {
+  public:
+    double operator()(double, double) const
+    {
+      return 0;
+    }
+  } zero;
+
+  class MU_CONSTANT: public CF_2
+  {
+  private:
+    double cst;
+  public:
+    MU_CONSTANT() { cst = 1; }
+    void set(double cst) { this->cst = cst; }
+    double operator()(double, double) const
+    {
+      return cst;
+    }
+  } mu_constant;
+
+  class ADD_CONSTANT: public CF_2
+  {
+  private:
+    double cst;
+  public:
+    ADD_CONSTANT() { cst = 0; }
+    void set(double cst) { this->cst = cst; }
+    double operator()(double, double) const
+    {
+      return cst;
+    }
+  } add_constant;
+
   const my_p4est_node_neighbors_t *ngbd_n;
   const my_p4est_cell_neighbors_t *ngbd_c;
 
@@ -51,40 +86,74 @@ class PoissonSolverNodeBaseJump
 
   BoundaryConditions2D *bc;
 
+  InterpolatingFunctionNodeBaseHost interp_phi;
+  InterpolatingFunctionNodeBaseHost rhs_m;
+  InterpolatingFunctionNodeBaseHost rhs_p;
+
+  bool local_mu;
+  bool local_add;
+  bool local_u_jump;
+  bool local_mu_grad_u_jump;
+
+  CF_2 *mu_m, *mu_p;
+  CF_2 *add;
+  CF_2 *u_jump;
+  CF_2 *mu_grad_u_jump;
+
+
   // PETSc objects
   Mat A;
-  p4est_gloidx_t fixed_value_idx_g;
-  p4est_gloidx_t fixed_value_idx_l;
+  MatNullSpace A_null_space;
   KSP ksp;
   PetscErrorCode ierr;
 
+  bool is_voronoi_partition_constructed;
   bool matrix_has_nullspace;
   bool is_matrix_computed;
 
   void preallocate_matrix();
 
-  void setup_negative_laplace_matrix();
-  void setup_negative_laplace_rhsvec();
-
   // disallow copy ctr and copy assignment
   PoissonSolverNodeBaseJump(const PoissonSolverNodeBaseJump& other);
   PoissonSolverNodeBaseJump& operator=(const PoissonSolverNodeBaseJump& other);
 
+  PetscErrorCode VecCreateGhostVoronoi();
+
 public:
   void compute_voronoi_mesh();
+  void setup_negative_laplace_matrix();
+  void setup_negative_laplace_rhsvec();
 
   PoissonSolverNodeBaseJump(const my_p4est_node_neighbors_t *node_neighbors, const my_p4est_cell_neighbors_t *cell_neighbors);
   ~PoissonSolverNodeBaseJump();
 
   void set_phi(Vec phi);
 
+  void set_rhs(Vec rhs_m, Vec rhs_p);
+
+  void set_diagonal(double add);
+
+  void set_diagonal(Vec add);
+
+  void set_bc(BoundaryConditions2D& bc);
+
+  void set_mu(double mu);
+
+  void set_mu(Vec mu_m, Vec mu_p);
+
+  void set_u_jump(Vec u_jump);
+
+  void set_mu_grad_u_jump(Vec mu_grad_u_jump);
+
+  inline bool get_matrix_has_nullspace(void) { return matrix_has_nullspace; }
+
   inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT) {
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
 
-  void shift_to_exact_solution(Vec sol, Vec uex);
-
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+
+  void interpolate_solution_from_voronoi_to_tree(Vec solution);
 };
 
 #endif // POISSON_SOLVER_NODE_BASE_JUMP_H

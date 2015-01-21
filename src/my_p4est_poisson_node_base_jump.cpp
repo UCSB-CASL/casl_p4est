@@ -1,6 +1,8 @@
 #include <src/my_p4est_poisson_node_base_jump.h>
 #include <src/my_p4est_refine_coarsen.h>
 
+#include <algorithm>
+
 #include <src/petsc_compatibility.h>
 #include <src/CASL_math.h>
 
@@ -28,8 +30,15 @@ PoissonSolverNodeBaseJump::PoissonSolverNodeBaseJump(const my_p4est_node_neighbo
   : ngbd_n(node_neighbors),  ngbd_c(cell_neighbors), myb(node_neighbors->myb),
     p4est(node_neighbors->p4est), ghost(node_neighbors->ghost), nodes(node_neighbors->nodes),
     phi(NULL), rhs(NULL), sol_voro(NULL),
-    A(NULL),
-    matrix_has_nullspace(NULL), is_matrix_computed(NULL)
+    interp_phi(NULL, *node_neighbors, linear),
+    rhs_m(NULL, *node_neighbors, linear),
+    rhs_p(NULL, *node_neighbors, linear),
+    local_mu(false), local_add(false),
+    local_u_jump(false), local_mu_grad_u_jump(false),
+    mu_m(&mu_constant), mu_p(&mu_constant), add(&add_constant),
+    u_jump(&zero), mu_grad_u_jump(&zero),
+    A(PETSC_NULL), A_null_space(PETSC_NULL), ksp(PETSC_NULL),
+    is_voronoi_partition_constructed(false), matrix_has_nullspace(false), is_matrix_computed(false)
 {
   // compute global numbering of nodes
   global_node_offset.resize(p4est->mpisize+1, 0);
@@ -76,14 +85,114 @@ PoissonSolverNodeBaseJump::PoissonSolverNodeBaseJump(const my_p4est_node_neighbo
 
 PoissonSolverNodeBaseJump::~PoissonSolverNodeBaseJump()
 {
-  if (A             != NULL) ierr = MatDestroy(A);                      CHKERRXX(ierr);
-  if (ksp           != NULL) ierr = KSPDestroy(ksp);                    CHKERRXX(ierr);
+  if(A            != PETSC_NULL) { ierr = MatDestroy(A);                     CHKERRXX(ierr); }
+  if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr); }
+  if(ksp          != PETSC_NULL) { ierr = KSPDestroy(ksp);                   CHKERRXX(ierr); }
+  if(local_mu)             { delete mu_m; delete mu_p; }
+  if(local_add)            { delete add; }
+  if(local_u_jump)         { delete u_jump; }
+  if(local_mu_grad_u_jump) { delete mu_grad_u_jump; }
+}
+
+
+PetscErrorCode PoissonSolverNodeBaseJump::VecCreateGhostVoronoi()
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = voro.size();
+
+//  std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
+  std::vector<PetscInt> ghost_nodes(0, 0);
+  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
+
+  // Calculate the global number of points
+  for (int r = 0; r<p4est->mpisize; ++r)
+    global_offset_sum[r+1] = voro.size();
+//    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
+
+  PetscInt num_global = global_offset_sum[p4est->mpisize];
+
+  for (size_t i = 0; i<ghost_nodes.size(); ++i)
+  {
+    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+num_local);
+    ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
+  }
+
+  if(rhs!=NULL) VecDestroy(rhs);
+
+  ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
+                        ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], &rhs); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(rhs); CHKERRQ(ierr);
+
+  return ierr;
 }
 
 
 void PoissonSolverNodeBaseJump::set_phi(Vec phi)
 {
   this->phi = phi;
+  interp_phi.set_input(phi);
+}
+
+
+void PoissonSolverNodeBaseJump::set_rhs(Vec rhs_m, Vec rhs_p)
+{
+  this->rhs_m.set_input(rhs_m);
+  this->rhs_p.set_input(rhs_p);
+}
+
+
+void PoissonSolverNodeBaseJump::set_diagonal(double add)
+{
+  if(local_add) { delete this->add; local_add = false; }
+  add_constant.set(add);
+  this->add = &add_constant;
+}
+
+void PoissonSolverNodeBaseJump::set_diagonal(Vec add)
+{
+  if(local_add) delete this->add;
+  this->add = new InterpolatingFunctionNodeBaseHost(add, *ngbd_n, linear);
+  local_add = true;
+}
+
+
+void PoissonSolverNodeBaseJump::set_bc(BoundaryConditions2D& bc)
+{
+  this->bc = &bc;
+  is_matrix_computed = false;
+}
+
+
+void PoissonSolverNodeBaseJump::set_mu(double mu)
+{
+  if(local_mu) { delete mu_m; delete mu_p; local_mu = false; }
+  mu_constant.set(mu);
+  mu_m = &mu_constant;
+  mu_p = &mu_constant;
+}
+
+
+void PoissonSolverNodeBaseJump::set_mu(Vec mu_m, Vec mu_p)
+{
+  if(local_mu) { delete this->mu_m; delete this->mu_p; }
+  this->mu_m = new InterpolatingFunctionNodeBaseHost(mu_m, *ngbd_n, linear);
+  this->mu_p = new InterpolatingFunctionNodeBaseHost(mu_p, *ngbd_n, linear);
+  local_mu = true;
+}
+
+
+void PoissonSolverNodeBaseJump::set_u_jump(Vec u_jump)
+{
+  if(local_u_jump) delete this->u_jump;
+  this->u_jump = new InterpolatingFunctionNodeBaseHost(u_jump, *ngbd_n, linear);
+  local_u_jump = true;
+}
+
+void PoissonSolverNodeBaseJump::set_mu_grad_u_jump(Vec mu_grad_u_jump)
+{
+  if(local_mu_grad_u_jump) delete this->mu_grad_u_jump;
+  this->mu_grad_u_jump = new InterpolatingFunctionNodeBaseHost(mu_grad_u_jump, *ngbd_n, linear);
+  local_mu_grad_u_jump = true;
 }
 
 
@@ -92,8 +201,8 @@ void PoissonSolverNodeBaseJump::preallocate_matrix()
   /* enable logging for the preallocation */
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBaseJumpd_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 
-  PetscInt num_owned_global = global_node_offset[p4est->mpisize];
-  PetscInt num_owned_local  = (PetscInt)(nodes->num_owned_indeps);
+//  PetscInt num_owned_global = global_node_offset[p4est->mpisize];
+//  PetscInt num_owned_local  = (PetscInt)(nodes->num_owned_indeps);
 
   if (A != NULL)
     ierr = MatDestroy(A); CHKERRXX(ierr);
@@ -101,19 +210,37 @@ void PoissonSolverNodeBaseJump::preallocate_matrix()
   /* set up the matrix */
   ierr = MatCreate(p4est->mpicomm, &A); CHKERRXX(ierr);
   ierr = MatSetType(A, MATAIJ); CHKERRXX(ierr);
-  ierr = MatSetSizes(A, num_owned_local , num_owned_local,
-                     num_owned_global, num_owned_global); CHKERRXX(ierr);
+  ierr = MatSetSizes(A, voro.size() , voro.size(),
+                     voro.size(), voro.size()); CHKERRXX(ierr);
   ierr = MatSetFromOptions(A); CHKERRXX(ierr);
 
-//  ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
-//  ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
+  std::vector<PetscInt> d_nnz(voro.size(), 1), o_nnz(voro.size(), 0);
+
+  for(unsigned int n=0; n<voro.size(); ++n)
+  {
+    const std::vector<Point2> *partition;
+    const std::vector<Voronoi2DPoint> *points;
+    voro[n].get_Partition(points, partition);
+
+    for(unsigned int m=0; m<points->size(); ++m)
+    {
+      if((*points)[m].n>=0)
+      {
+        if((unsigned int) (*points)[m].n<voro.size()) d_nnz[n]++;
+        else                                          o_nnz[n]++;
+      }
+    }
+  }
+
+  ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
+  ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBaseJumpd_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBaseJumpd_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBaseJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
   if(bc == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
@@ -135,6 +262,13 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
   if (use_nonzero_initial_guess)
     ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
   ierr = KSPSetFromOptions(ksp); CHKERRXX(ierr);
+
+  /* first compute the voronoi partition */
+  if(!is_voronoi_partition_constructed)
+  {
+    is_voronoi_partition_constructed = true;
+    compute_voronoi_mesh();
+  }
 
   /*
    * Here we set the matrix, ksp, and pc. If the matrix is not changed during
@@ -190,25 +324,54 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
   // setup rhs
   setup_negative_laplace_rhsvec();
 
+  // set the nullspace
+  if (matrix_has_nullspace)
+    ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
+
   // Solve the system
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBaseJumpd_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
-  ierr = KSPSolve(ksp, rhs, solution); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd  (log_PoissonSolverNodeBaseJumpd_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
+  ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBaseJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
+  ierr = KSPSolve(ksp, rhs, sol_voro); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd  (log_PoissonSolverNodeBaseJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
 
   // update ghosts
-  ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBaseJumpd_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
+  // interpolate the solution back onto the original mesh
+  interpolate_solution_from_voronoi_to_tree(solution);
+
+
+//  Voronoi2D::print_VTK_Format(voro, "/home/guittet/code/Output/p4est_jump/vtu/voronoi.vtk");
+
+//  std::vector<double> sol_voro_(voro.size());
+//  double *sol_voro_p;
+//  ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+//  for(unsigned int n=0; n<voro.size(); ++n)
+//  {
+//    Point2 p = voro[n].get_Center_Point();
+//    sol_voro_[n] = sol_voro_p[n];
+//  }
+//  ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+//  Voronoi2D::print_VTK_Format(voro, sol_voro_, "sol_voro", "/home/guittet/code/Output/p4est_jump/vtu/voronoi.vtk");
+
+
+  ierr = VecDestroy(sol_voro); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBaseJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 }
 
 
 void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
 {
   PetscErrorCode ierr;
+
+  for(unsigned int n=0; n<grid2voro.size(); ++n)
+    grid2voro[n].clear();
   grid2voro.resize(nodes->indep_nodes.elem_count);
 
-  voro.resize(0);
+  voro.clear();
+
   std::vector<Point2> added_points;
 
   double band = diag_min/5;
@@ -220,19 +383,8 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
     double p_00, p_m0, p_p0, p_0m, p_0p;
     (*ngbd_n)[n].ngbd_with_quadratic_interpolation(phi_p, p_00, p_m0, p_p0, p_0m, p_0p);
 
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-    p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-    double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-#endif
-
-    double xn = node_x_fr_n(node) + tree_xmin;
-    double yn = node_y_fr_n(node) + tree_ymin;
+    double xn = node_x_fr_n(n, p4est, nodes);
+    double yn = node_y_fr_n(n, p4est, nodes);
 
     if(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0)
     {
@@ -372,7 +524,6 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
     if( (fabs(xyz[0]-qx)<EPS || fabs(xyz[0]-(qx+qh))<EPS) &&
         (fabs(xyz[1]-qy)<EPS || fabs(xyz[1]-(qy+qh))<EPS) )
     {
-      std::cout << "type 1" << std::endl;
       int dir = (fabs(xyz[0]-qx)<EPS ?
             (fabs(xyz[1]-qy)<EPS ? dir::v_mmm : dir::v_mpm)
           : (fabs(xyz[1]-qy)<EPS ? dir::v_pmm : dir::v_ppm) );
@@ -425,7 +576,6 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
     /* the voronoi point is not a grid node */
     else
     {
-      std::cout << "type 2" << std::endl;
       ngbd_quads.push_back(quad.p.piggy3.local_num + tree->quadrants_offset);
 
       const my_p4est_cell_neighbors_t::quad_info_t* it;
@@ -438,9 +588,6 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
         ngbd_quads.push_back(it->locidx);
       for(it=ngbd_c->begin(ngbd_quads[0], dir::f_0p0); it<ngbd_c->end(ngbd_quads[0], dir::f_0p0); ++it)
         ngbd_quads.push_back(it->locidx);
-
-//      for(unsigned int i=0; i<ngbd_quads.size(); ++i)
-//        std::cout << ngbd_quads[i] << std::endl;
 
       p4est_locidx_t node_idx;
       p4est_locidx_t quad_idx;
@@ -457,7 +604,6 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
     /* now create the list of nodes */
     for(unsigned int k=0; k<ngbd_quads.size(); ++k)
     {
-//      std::cout << k << " : " << ngbd_quads[k] << std::endl;
       for(int dir=0; dir<P4EST_CHILDREN; ++dir)
       {
         p4est_locidx_t node_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
@@ -482,20 +628,329 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
     voro[n].construct_Partition();
   }
 
-  Voronoi2D::print_VTK_Format(voro, "/home/guittet/code/Output/p4est_jump/vtu/voronoi.vtk");
-
-
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+  VecCreateGhostVoronoi();
 }
 
 
 
 void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
 {
+  PetscErrorCode ierr;
 
+  preallocate_matrix();
+
+  for(unsigned int n=0; n<voro.size(); ++n)
+  {
+    Point2 pc = voro[n].get_Center_Point();
+    if( ((ABS(pc.x-xmin)<EPS || ABS(pc.x-xmax)<EPS) ||
+         (ABS(pc.y-ymin)<EPS || ABS(pc.y-ymax)<EPS)) &&
+        bc->wallType(pc.x,pc.y)==DIRICHLET)
+    {
+      matrix_has_nullspace = false;
+      ierr = MatSetValue(A, n, n, 1, ADD_VALUES); CHKERRXX(ierr);
+      continue;
+    }
+
+    const std::vector<Voronoi2DPoint> *points;
+    const std::vector<Point2> *partition;
+    voro[n].get_Partition(points, partition);
+    double phi_n = interp_phi(pc.x, pc.y);
+    double mu_n;
+    if(phi_n<0) mu_n = (*mu_m)(pc.x, pc.y);
+    else        mu_n = (*mu_p)(pc.x, pc.y);
+
+    double add_n = (*add)(pc.x, pc.y);
+    if(add_n>EPS) matrix_has_nullspace = false;
+    ierr = MatSetValue(A, n, n, voro[n].area()*add_n, ADD_VALUES); CHKERRXX(ierr);
+
+    for(unsigned int l=0; l<points->size(); ++l)
+    {
+      if((*points)[l].n>=0)
+      {
+        /* regular point */
+        Point2 pl = (*points)[l].p;
+        int k = (l+partition->size()-1) % partition->size();
+        double s = ((*partition)[k]-(*partition)[l]).norm_L2();
+        double d = (pc - pl).norm_L2();
+        double phi_l = interp_phi(pl.x, pl.y);
+        double mu_l;
+        if(phi_l<0) mu_l = (*mu_m)(pl.x, pl.y);
+        else        mu_l = (*mu_p)(pl.x, pl.y);
+
+        double mu_harmonic = 2*mu_n*mu_l/(mu_n + mu_l);
+
+        ierr = MatSetValue(A, n, n             ,  s*mu_harmonic/d, ADD_VALUES); CHKERRXX(ierr);
+        ierr = MatSetValue(A, n, (*points)[l].n, -s*mu_harmonic/d, ADD_VALUES); CHKERRXX(ierr);
+      }
+    }
+  }
+
+  /* assemble the matrix */
+  ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+  ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+
+  /* check for null space */
+  MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
+  if (matrix_has_nullspace)
+  {
+    if (A_null_space == NULL) // pun not intended!
+    {
+      ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
+    }
+    ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+  }
 }
 
 void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
 {
+  PetscErrorCode ierr;
 
+  double *rhs_p;
+  ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
+
+  for(unsigned int n=0; n<voro.size(); ++n)
+  {
+    Point2 pc = voro[n].get_Center_Point();
+    if( ((ABS(pc.x-xmin)<EPS || ABS(pc.x-xmax)<EPS) ||
+         (ABS(pc.y-ymin)<EPS || ABS(pc.y-ymax)<EPS) ) &&
+        bc->wallType(pc.x,pc.y)==DIRICHLET)
+    {
+      rhs_p[n] = bc->wallValue(pc.x, pc.y);
+      continue;
+    }
+
+    const std::vector<Voronoi2DPoint> *points;
+    const std::vector<Point2> *partition;
+    voro[n].get_Partition(points, partition);
+
+    double p_n = interp_phi(pc.x, pc.y);
+    double mu_n;
+
+    if(p_n<0)
+    {
+      rhs_p[n] = this->rhs_m(pc.x, pc.y);
+      mu_n     = (*mu_m)(pc.x, pc.y);
+    }
+    else
+    {
+      rhs_p[n] = this->rhs_p(pc.x, pc.y);
+      mu_n     = (*mu_p)(pc.x, pc.y);
+    }
+
+    rhs_p[n] *= voro[n].area();
+
+    for(unsigned int l=0; l<points->size(); ++l)
+    {
+      int k = (l+partition->size()-1) % partition->size();
+      double s = ((*partition)[k]-(*partition)[l]).norm_L2();
+      if((*points)[l].n>=0)
+      {
+        Point2 pl = (*points)[l].p;
+        double p_l = interp_phi(pl.x, pl.y);
+        if(p_n*p_l<0)
+        {
+          Point2 norm = p_n<0 ? pl - pc : pc - pl;
+          double d = norm.norm_L2();
+          norm /= d;
+          double mu_l;
+          if(p_l<0) mu_l = (*mu_m)(pl.x, pl.y);
+          else      mu_l = (*mu_p)(pl.x, pl.y);
+          Point2 p_ln = (pc+pl)/2;
+
+          double mu_harmonic = 2*mu_n*mu_l/(mu_n + mu_l);
+
+          rhs_p[n] += s*mu_harmonic/d * SIGN(p_n) * (*u_jump)(p_ln.x, p_ln.y);
+          rhs_p[n] -= mu_harmonic/mu_l * s/2 * (*mu_grad_u_jump)(p_ln.x, p_ln.y);
+        }
+      }
+      else /* wall with neumann */
+      {
+        double x_tmp = pc.x;
+        double y_tmp = pc.y;
+
+        /* perturb the corners to differentiate between the edges of the domain ... otherwise 1st order only at the corners */
+        if(pc.y==ymin && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
+        if(pc.y==ymax && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
+        if(pc.x==xmin && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS;
+        if(pc.x==xmax && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS;
+
+        rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp);
+      }
+    }
+  }
+
+  ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
+
+  if (matrix_has_nullspace)
+    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+}
+
+
+
+
+void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec solution)
+{
+  PetscErrorCode ierr;
+
+  /* for debugging, compute the error on the voronoi mesh */
+//  double err = 0;
+//  for(unsigned int n=0; n<voro.size(); ++n)
+//  {
+//    Point2 pc = voro[n].get_Center_Point();
+
+//    double phi_n = quadratic_Interpolation_Non_Oscillatory(*tr, *phi, pc.x, pc.y);
+//    double u_ex;
+//    if(phi_n<0) u_ex = exp(pc.x);
+//    else        u_ex = cos(pc.x)*sin(pc.y);
+
+//    err = MAX(err, ABS(u_ex - sol_voro[n]));
+//  }
+
+//  cout << "Error : " << err << endl;
+
+  double *phi_p, *sol_voro_p, *solution_p;
+  ierr = VecGetArray(phi     , &phi_p     ); CHKERRXX(ierr);
+  ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+  ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);
+
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+    p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+
+    double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
+#endif
+
+    double xyz [] =
+    {
+      node_x_fr_n(node) + tree_xmin,
+      node_y_fr_n(node) + tree_ymin
+#ifdef P4_TO_P8
+      , node_z_fr_n(node) + tree_zmin
+#endif
+    };
+
+    Point2 pn(xyz[0], xyz[1]);
+
+    p4est_quadrant_t quad;
+    std::vector<p4est_quadrant_t> remote_matches;
+    int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
+    if(rank_found!=p4est->mpirank)
+      throw std::invalid_argument("interpolate_solution_from_voronoi_to_tree: found quadrant in remote process.");
+
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, quad.p.piggy3.which_tree);
+
+    double phi_n = phi_p[n];
+
+    int n0 = -1;
+    double d = DBL_MAX;
+    for(int dir=0; dir<P4EST_CHILDREN; ++dir)
+    {
+      p4est_locidx_t nb = nodes->local_nodes[P4EST_CHILDREN*(quad.p.piggy3.local_num+tree->quadrants_offset) + dir];
+
+      for(unsigned int m=0; m<grid2voro[nb].size(); ++m)
+      {
+        Point2 pm = voro[grid2voro[nb][m]].get_Center_Point();
+        double dm = (pm-pn).norm_L2();
+        if(dm<d && interp_phi(pm.x, pm.y)*phi_n>0)
+        {
+          n0 = grid2voro[nb][m];
+          d = dm;
+        }
+      }
+    }
+
+    if(n0 == -1)
+      throw std::invalid_argument("[CASL_ERROR]: PoissonSolverNodeBaseJump->interpolate_solution_from_voronoi_to_tree: could not find partition containing (x,y).");
+
+    /* the voronoi point is a node */
+    if(d<EPS)
+    {
+      solution_p[n] = sol_voro_p[n0];
+      continue;
+    }
+
+    std::vector<Voronoi2DPoint> *points;
+    std::vector<Point2> *partition;
+    voro[n0].get_Partition(points, partition);
+    int n1 = n0;
+    for(unsigned int m=0; m<points->size(); ++m)
+    {
+      if((*points)[m].n>=0)
+      {
+        double d_tmp = (pn-(*points)[m].p).norm_L2();
+        if(d_tmp<d)
+        {
+          d = d_tmp;
+          n1 = (*points)[m].n;
+        }
+      }
+    }
+
+    /* find the closest triangle with the same sign for phi */
+    Point2 p0 = voro[n1].get_Center_Point();
+
+    voro[n1].get_Partition(points, partition);
+    double d1 = DBL_MAX;
+    int m1 = -1; int m2 = -1;
+    for(int m=0; m<(int) points->size(); ++m)
+    {
+      int k = (m+points->size()-1) % points->size();
+
+      if((*points)[m].n>=0 && (*points)[k].n>=0)
+      {
+        Point2 pm = (*points)[m].p;
+        double phi_m = interp_phi(pm.x, pm.y);
+
+        Point2 pk = (*points)[k].p;
+        double phi_k = interp_phi(pk.x, pk.y);
+
+        double d_tmp = MIN((pm-pn).norm_L2(), (pk-pn).norm_L2());
+
+        if(d_tmp<d1 && phi_n*phi_m>0 && phi_n*phi_k>0)
+        {
+          d1 = d_tmp; m1 = m; m2 = k;
+        }
+      }
+    }
+
+    if(m1==-1 || m2==-1)
+    {
+      ierr = PetscPrintf(p4est->mpicomm, "QuadTreeSolverVoronoiPoissonJump->interpolate_Solution_From_Voronoi_To_Tree: could not find interpolation simplex.\n");
+      solution_p[n] = sol_voro_p[n1];
+      continue;
+    }
+
+    double f0 = sol_voro_p[n1];
+    double f1 = sol_voro_p[(*points)[m1].n];
+    double f2 = sol_voro_p[(*points)[m2].n];
+
+    Point2 p1((*points)[m1].p);
+    Point2 p2((*points)[m2].p);
+    double det = p0.x*p1.y + p1.x*p2.y + p2.x*p0.y - p1.x*p0.y - p2.x*p1.y - p0.x*p2.y;
+
+#ifdef CASL_THROWS
+    if(ABS(det)<EPS) throw std::invalid_argument("[CASL_ERROR]: interpolation_Voronoi: could not invert system ...");
+#endif
+
+    double c0 = ( (p1.y* 1- 1*p2.y)*f0 + ( 1*p2.y-p0.y* 1)*f1 + (p0.y* 1- 1*p1.y)*f2 ) / det;
+    double c1 = ( ( 1*p2.x-p1.x* 1)*f0 + (p0.x* 1- 1*p2.x)*f1 + ( 1*p1.x-p0.x* 1)*f2 ) / det;
+    double c2 = ( (p1.x*p2.y-p2.x*p1.y)*f0 + (p2.x*p0.y-p0.x*p2.y)*f1 + (p0.x*p1.y-p1.x*p0.y)*f2 ) / det;
+
+    solution_p[n] = c0*pn.x + c1*pn.y + c2;
+  }
+
+  ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(solution, &solution_p); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }

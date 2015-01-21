@@ -361,6 +361,44 @@ inline double node_y_fr_n(const p4est_indep_t *ni){
   return ni->y == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->y)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
+#ifdef P4_TO_P8
+inline double node_z_fr_k(const p4est_indep_t *ni){
+  return ni->z == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->z)/static_cast<double>(P4EST_ROOT_LEN);
+}
+#endif
+
+inline double node_x_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+{
+  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
+  return node_x_fr_n(node) + tree_xmin;
+}
+
+inline double node_y_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+{
+  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+  return node_y_fr_n(node) + tree_ymin;
+}
+
+#ifdef P4_TO_P8
+inline double node_z_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+{
+  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
+  return node_z_fr_n(node) + tree_zmin;
+}
+#endif
+
 inline double quad_x_fr_i(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
 }
@@ -370,14 +408,10 @@ inline double quad_y_fr_j(const p4est_quadrant_t *qi){
 }
 
 #ifdef P4_TO_P8
-inline double node_z_fr_k(const p4est_indep_t *ni){
-  return ni->z == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->z)/static_cast<double>(P4EST_ROOT_LEN);
-}
 inline double quad_z_fr_k(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
 }
 #endif
-
 
 /*!
  * \brief integrate_over_negative_domain_in_one_quadrant
