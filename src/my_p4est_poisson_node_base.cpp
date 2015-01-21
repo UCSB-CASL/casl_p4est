@@ -353,6 +353,12 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
     ierr = VecSet(phi_, -1.); CHKERRXX(ierr);
   }
 
+  // a trick to avoid allocating zero RHS is to set it equal to solution. PETSc can handle this.
+  if (rhs_ == NULL)
+  {
+    rhs_ = solution;
+  }
+
   // set ksp type
   ierr = KSPSetType(ksp, ksp_type); CHKERRXX(ierr);  
   if (use_nonzero_initial_guess)

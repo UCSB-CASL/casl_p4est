@@ -16,7 +16,7 @@
 using namespace std;
 
 #define MAX_BLOCK_SIZE 32
-#define FAST_SURFACE_COMPUTATION
+//#define FAST_SURFACE_COMPUTATION
 
 istream& operator >> (istream& is, Atom& atom) {
   string ignore [4];
