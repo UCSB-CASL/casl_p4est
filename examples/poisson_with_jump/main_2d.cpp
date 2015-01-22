@@ -282,8 +282,7 @@ int main (int argc, char* argv[]){
     mpi_session.init(argc, argv, mpi->mpicomm);
 
     cmdParser cmd;
-    cmd.add_option("bc_wtype", "type of boundary condition to use on the wall");
-    cmd.add_option("bc_itype", "type of boundary condition to use on the interface");
+    cmd.add_option("lip", "Lipchitz constant of level-set for grid generation");
     cmd.add_option("lmin", "the min level of the tree");
     cmd.add_option("lmax", "the max level of the tree");
     cmd.add_option("sp", "number of splits to apply to the min and max level");
@@ -315,13 +314,13 @@ int main (int argc, char* argv[]){
     connectivity = my_p4est_brick_new(2, 2, &brick);
 #endif
 
-    /* create the p4est */
+    /* create the p4est and partition it iteratively */
     p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
     p4est->user_pointer = (void*)(&data);
-    p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-
-    /* partition the p4est */
-    p4est_partition(p4est, NULL);
+    for (int l=0; l<max_level+nb_splits; l++){
+      p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+      p4est_partition(p4est, P4EST_TRUE, NULL);
+    }
 
     /* create the ghost layer */
     p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
@@ -329,6 +328,15 @@ int main (int argc, char* argv[]){
     /* generate unique node indices */
     nodes = my_p4est_nodes_new(p4est, ghost);
     w2.stop(); w2.read_duration();
+
+    p4est_gloidx_t global_num_quadrants = p4est->global_num_quadrants;
+    p4est_gloidx_t global_num_nodes = 0;
+    for (int i = 0; i<p4est->mpisize; i++){
+      global_num_nodes += nodes->global_owned_indeps[i];
+    }
+
+    PetscPrintf(p4est->mpicomm, "global number of nodes     = %7ld \n"
+                                "global number of quadrants = %7ld \n", global_num_nodes, global_num_quadrants);
 
     /* initialize the vectors */
     struct solution_t {

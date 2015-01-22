@@ -36,7 +36,8 @@ public:
   BioMolecule(my_p4est_brick_t& brick, const mpi_context_t& mpi);
   void read(const std::string& pqr);
   void translate(double xc, double yc, double zc);
-  void scale(double s);
+  void set_scale(double s);
+  double get_scale() const;
   void set_probe_radius(double rp);
   void subtract_probe_radius(Vec phi);
   void partition_atoms();

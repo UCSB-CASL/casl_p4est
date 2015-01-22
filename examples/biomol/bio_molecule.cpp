@@ -95,7 +95,7 @@ void BioMolecule::read(const string &pqr) {
 
   // scale and recenter the molecule to middle
   translate(0.5*Dx_, 0.5*Dy_, 0.5*Dz_);
-  scale(0.25);
+  set_scale(0.25);
   partition_atoms();
 }
 
@@ -115,7 +115,7 @@ void BioMolecule::translate(double xc, double yc, double zc) {
   zc_ = zc;
 }
 
-void BioMolecule::scale(double s) {
+void BioMolecule::set_scale(double s) {
   is_partitioned = false;
 
   // reset the position of atoms
@@ -134,6 +134,10 @@ void BioMolecule::scale(double s) {
 
   rp_ *= s_;
   L_  *= s_;
+}
+
+double BioMolecule::get_scale() const {
+  return s_;
 }
 
 void BioMolecule::partition_atoms(){
@@ -535,7 +539,7 @@ void BioMolecule::remove_internal_cavities(p8est_t *&p4est, p8est_nodes_t *&node
 
     solver.set_phi(phi);
     solver.set_rhs(sol);
-    solver.set_tolerances(1e-8, 10);
+    solver.set_tolerances(1e-6);
     solver.solve(sol);
   }
 
@@ -933,6 +937,7 @@ void BioMoleculeSolver::solve_nonlinear(Vec &psi_molecule, Vec& psi_electrolyte,
       else
         err = MAX(err, fabs(psi_elec_p[i] - psi_p[2*i+1]));
     }
+    MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 
     // reset solutions
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++) {

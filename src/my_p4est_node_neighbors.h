@@ -76,6 +76,8 @@ public:
     }
   }
 
+  inline const p4est_t* get_p4est() const { return p4est; }
+  inline const p4est_nodes_t* get_nodes() const { return nodes; }
   inline size_t get_layer_size() const { return layer_nodes.size(); }
   inline size_t get_local_size() const { return local_nodes.size(); }
   inline p4est_locidx_t get_layer_node(size_t i) const {
