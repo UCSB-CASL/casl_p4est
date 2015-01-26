@@ -20,6 +20,13 @@
 
 class PoissonSolverNodeBaseJump
 {
+  typedef struct voro_comm
+  {
+    p4est_locidx_t local_num;
+    double x;
+    double y;
+  } voro_comm_t;
+
   class ZERO: public CF_2
   {
   public:
@@ -78,10 +85,23 @@ class PoissonSolverNodeBaseJump
   Vec phi;
   Vec rhs;
   Vec sol_voro;
+  unsigned int num_local_voro;
   std::vector<Voronoi2D> voro;
   std::vector< std::vector<size_t> > grid2voro;
 
-  std::vector<PetscInt> global_node_offset;
+  /* each rank's offset to compute global index for voro points */
+  std::vector<PetscInt> global_voro_offset;
+
+  /* ranks of the owners of the voro ghost points */
+  std::vector<p4est_locidx_t> voro_ghost_rank;
+
+  /*
+   * remote local number for ghost points. a point is ghost if n>=num_local_voro
+   * - if the voro point is local, then its local number is its location in the voro array
+   * - if the voro point is ghost, then its local number is voro_ghost_local_num[n-local_num_voro]
+   * the global index is then local_num + global_voro_offset[owner's rank]
+   */
+  std::vector<p4est_locidx_t> voro_ghost_local_num;
   std::vector<PetscInt> petsc_gloidx;
 
   BoundaryConditions2D *bc;
@@ -117,7 +137,7 @@ class PoissonSolverNodeBaseJump
   PoissonSolverNodeBaseJump(const PoissonSolverNodeBaseJump& other);
   PoissonSolverNodeBaseJump& operator=(const PoissonSolverNodeBaseJump& other);
 
-  PetscErrorCode VecCreateGhostVoronoi();
+  PetscErrorCode VecCreateGhostVoronoiRhs();
 
 public:
   void compute_voronoi_mesh();

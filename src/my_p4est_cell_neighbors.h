@@ -16,15 +16,7 @@
 #include <vector>
 
 class my_p4est_cell_neighbors_t {
-  friend class PoissonSolverCellBase;
-  friend class PoissonSolverNodeBaseJump;
-  friend class InterpolatingFunctionCellBase;
-
-  my_p4est_hierarchy_t *hierarchy;
-  p4est_t *p4est;
-  p4est_ghost_t *ghost;
-  my_p4est_brick_t *myb;
-
+public:
   /* local quadrants from 0 .. local_number_of_quadrants - 1
    * ghosts from local_number_of_quadrants .. local_number_of_quadrants + num_ghosts
    */
@@ -33,6 +25,16 @@ class my_p4est_cell_neighbors_t {
     p4est_locidx_t locidx;
     p4est_gloidx_t gloidx;
   };
+
+private:
+  friend class PoissonSolverCellBase;
+  friend class InterpolatingFunctionCellBase;
+
+  my_p4est_hierarchy_t *hierarchy;
+  p4est_t *p4est;
+  p4est_ghost_t *ghost;
+  my_p4est_brick_t *myb;
+
   std::vector<quad_info_t> neighbor_cells;
   std::vector<p4est_locidx_t> offsets;
   p4est_locidx_t n_quads;
