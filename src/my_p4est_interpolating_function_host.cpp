@@ -540,9 +540,17 @@ double InterpolatingFunctionNodeBaseHost::operator ()(double x, double y) const
   std::vector<p4est_quadrant_t> remote_matches;
   int rank_found = neighbors_.hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
   
-  if (rank_found == p4est_->mpirank) { // local quadrant
-    p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, best_match.p.piggy3.which_tree);
-    p4est_locidx_t quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
+  if (rank_found == p4est_->mpirank || (rank_found!=-1 && method_==linear)) { // local quadrant
+    p4est_locidx_t quad_idx;
+    if(rank_found==p4est_->mpirank)
+    {
+      p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, best_match.p.piggy3.which_tree);
+      quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
+    }
+    else
+    {
+      quad_idx = best_match.p.piggy3.local_num + p4est_->local_num_quadrants;
+    }
 
     for (short i = 0; i<P4EST_CHILDREN; i++) {
       p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + i];
@@ -570,8 +578,8 @@ double InterpolatingFunctionNodeBaseHost::operator ()(double x, double y) const
           fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
 #ifdef P4_TO_P8
           fdd[j*P4EST_DIM + 2] = qnnn.dzz_central(Fi_p);
-#endif          
-        }          
+#endif
+        }
       }
     }
      
@@ -586,7 +594,7 @@ double InterpolatingFunctionNodeBaseHost::operator ()(double x, double y) const
 #endif
     }
 
-    double value;
+    double value=0;
     if (method_ == linear) {
       value = linear_interpolation(p4est_, best_match.p.piggy3.which_tree, best_match, f, xyz);
     } else if (method_ == quadratic) {

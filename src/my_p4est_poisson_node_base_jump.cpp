@@ -92,12 +92,10 @@ PoissonSolverNodeBaseJump::~PoissonSolverNodeBaseJump()
 PetscErrorCode PoissonSolverNodeBaseJump::VecCreateGhostVoronoiRhs()
 {
   PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = num_local_voro;
+  PetscInt num_local = num_local_voro;
+  PetscInt num_global = global_voro_offset[p4est->mpisize];
 
   std::vector<PetscInt> ghost_voro(voro.size() - num_local, 0);
-
-  /* Calculate the global number of points */
-  PetscInt num_global = global_voro_offset[p4est->mpisize];
 
   for (size_t i = 0; i<ghost_voro.size(); ++i)
   {
@@ -218,6 +216,8 @@ void PoissonSolverNodeBaseJump::preallocate_matrix()
       }
     }
   }
+
+  if(p4est->mpirank==1) std::cout << "Alloc size : " << d_nnz[12] << ", " << o_nnz[12] << std::endl;
 
   ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
   ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
@@ -765,6 +765,7 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
 
   preallocate_matrix();
 
+  if(p4est->mpirank==1)
   for(unsigned int n=0; n<num_local_voro; ++n)
   {
     PetscInt global_n_idx = n+global_voro_offset[p4est->mpirank];
@@ -792,6 +793,8 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
 
     ierr = MatSetValue(A, global_n_idx, global_n_idx, voro[n].area()*add_n, ADD_VALUES); CHKERRXX(ierr);
 
+    int cpt_o = 0;
+    int cpt_d = 0;
     for(unsigned int l=0; l<points->size(); ++l)
     {
       if((*points)[l].n>=0)
@@ -812,8 +815,18 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
         if((unsigned int)(*points)[l].n<num_local_voro) global_l_idx += global_voro_offset[p4est->mpirank];
         else                                            global_l_idx += global_voro_offset[voro_ghost_rank[(*points)[l].n]];
 
+        if(n==12)
+        {
+          std::cout << p4est->mpirank << " : adding " << global_n_idx << ", " << global_l_idx << std::endl;
+          std::cout << num_local_voro << ", " << (*points)[l].n << std::endl;
+          if((unsigned int) (*points)[l].n<num_local_voro) cpt_d++;
+          else                                             cpt_o++;
+          std::cout << "compt : " << cpt_d << ", " << cpt_o << std::endl;
+        }
         ierr = MatSetValue(A, global_n_idx, global_n_idx,  s*mu_harmonic/d, ADD_VALUES); CHKERRXX(ierr);
+        if(n==12) std::cout << "added 1" << std::endl;
         ierr = MatSetValue(A, global_n_idx, global_l_idx, -s*mu_harmonic/d, ADD_VALUES); CHKERRXX(ierr);
+        if(n==12) std::cout << "added 2" << std::endl;
       }
     }
   }
