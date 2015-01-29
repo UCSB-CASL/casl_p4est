@@ -936,6 +936,9 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
     err = std::max(err, ABS(u_ex - sol_voro_p[n]));
   }
   std::cout << "Error : " << err << std::endl;
+  err = 0;
+  unsigned int indx[4];
+  unsigned int idx_;
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
@@ -1016,7 +1019,48 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
      */
     double phi_n = phi_p[n];
     double di[] = {DBL_MAX, DBL_MAX, DBL_MAX, DBL_MAX};
-    unsigned int ni[] = {0, 0, 0, 0};
+    unsigned int ni[] = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
+    Point2 p0;
+    //    for(unsigned int k=0; k<ngbd_quads.size(); ++k)
+    //    {
+    //      for(int dir=0; dir<P4EST_CHILDREN; ++dir)
+    //      {
+    //        p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
+    //        for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
+    //        {
+    //          /* if point is not already in the list */
+    //          if( ni[0]!=grid2voro[n_idx][m] &&
+    //              ni[1]!=grid2voro[n_idx][m] &&
+    //              ni[2]!=grid2voro[n_idx][m] &&
+    //              ni[3]!=grid2voro[n_idx][m] )
+    //          {
+    //            Point2 pm = voro[grid2voro[n_idx][m]].get_Center_Point();
+    //            double phi_m = interp_phi(pm.x, pm.y);
+    ////            if(phi_m*phi_n>=0)
+    //            {
+    //              double d = (pm-pn).norm_L2();
+    //              for(int k=0; k<4; ++k)
+    //              {
+    //                /* if points is closer */
+    //                if(d<di[k])
+    //                {
+    //                  for(int l=3; l>k; --l)
+    //                  {
+    //                    di[l] = di[l-1];
+    //                    ni[l] = ni[l-1];
+    //                  }
+    //                  di[k] = d;
+    //                  ni[k] = grid2voro[n_idx][m];
+    //                  break;
+    //                }
+    //              }
+    //            }
+    //          }
+    //        }
+    //      }
+    //    }
+
+    /* find the closest point */
     for(unsigned int k=0; k<ngbd_quads.size(); ++k)
     {
       for(int dir=0; dir<P4EST_CHILDREN; ++dir)
@@ -1025,27 +1069,84 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
         for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
         {
           /* if point is not already in the list */
-          if(ni[0]!=grid2voro[n_idx][m] && ni[1]!=grid2voro[n_idx][m] && ni[2]!=grid2voro[n_idx][m] && ni[3]!=grid2voro[n_idx][m])
+          if( ni[0]!=grid2voro[n_idx][m] )
           {
             Point2 pm = voro[grid2voro[n_idx][m]].get_Center_Point();
-            double phi_m = interp_phi(pm.x, pm.y);
-//            if(phi_m*phi_n>=0)
+            double d = (pm-pn).norm_L2();
+            if(d<di[0])
             {
+              di[0] = d;
+              ni[0] = grid2voro[n_idx][m];
+              p0 = pm;
+            }
+          }
+        }
+      }
+    }
+
+    /* now find the two other points to form a triangle that contains pn */
+    Point2 p1;
+    Point2 p2;
+    for(unsigned int k=0; k<ngbd_quads.size(); ++k)
+    {
+      for(int dir=0; dir<P4EST_CHILDREN; ++dir)
+      {
+        p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
+        for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
+        {
+          /* if point is not already in the list */
+          if( ni[0]!=grid2voro[n_idx][m] &&
+              ni[1]!=grid2voro[n_idx][m] &&
+              ni[2]!=grid2voro[n_idx][m] )
+          {
+            Point2 pm = voro[grid2voro[n_idx][m]].get_Center_Point();
+            double d = (pm-pn).norm_L2();
+            double cross = (pm-p0).cross(pm-pn);
+
+            if(d<di[1] && cross>0)
+            {
+              ni[1] = grid2voro[n_idx][m];
+              di[1] = d;
+              p1 = pm;
+            }
+            else if(d<di[2] && cross<0)
+            {
+              ni[2] = grid2voro[n_idx][m];
+              di[2] = d;
+              p2 = pm;
+            }
+          }
+        }
+      }
+    }
+
+    /* if flat triangle ... find another point */
+    if((p1-p0).cross(p2-p0)<EPS)
+    {
+      if(di[2]<di[1])
+      {
+        di[1] = di[2]; ni[1] = ni[2]; p1 = p2;
+      }
+      di[2] = DBL_MAX; ni[2] = UINT_MAX;
+      for(unsigned int k=0; k<ngbd_quads.size(); ++k)
+      {
+        for(int dir=0; dir<P4EST_CHILDREN; ++dir)
+        {
+          p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
+          for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
+          {
+            /* if point is not already in the list */
+            if( ni[0]!=grid2voro[n_idx][m] &&
+                ni[1]!=grid2voro[n_idx][m] &&
+                ni[2]!=grid2voro[n_idx][m] )
+            {
+              Point2 pm = voro[grid2voro[n_idx][m]].get_Center_Point();
               double d = (pm-pn).norm_L2();
-              for(int k=0; k<4; ++k)
+              if(d<di[2] && (p0-pm).cross(pn-pm)*(p1-pm).cross(pn-pm)<0)
               {
-                /* if points is closer */
-                if(d<di[k])
-                {
-                  for(int l=3; l>k; --l)
-                  {
-                    di[l] = di[l-1];
-                    ni[l] = ni[l-1];
-                  }
-                  di[k] = d;
-                  ni[k] = grid2voro[n_idx][m];
-                  break;
-                }
+                ni[2] = grid2voro[n_idx][m];
+                di[2] = d;
+                p2 = pm;
               }
             }
           }
@@ -1053,6 +1154,8 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
       }
     }
 
+    if(di[2]==DBL_MAX)
+      std::cerr << "MISSING " << n << std::endl;
 
     /* make sure we found 3 points */
     if(di[0]==DBL_MAX || di[1]==DBL_MAX || di[2]==DBL_MAX)
@@ -1069,9 +1172,9 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
     double f1 = sol_voro_p[ni[1]];
     double f2 = sol_voro_p[ni[2]];
 
-    Point2 p0(voro[ni[0]].get_Center_Point());
-    Point2 p1(voro[ni[1]].get_Center_Point());
-    Point2 p2(voro[ni[2]].get_Center_Point());
+//    Point2 p0(voro[ni[0]].get_Center_Point());
+//    Point2 p1(voro[ni[1]].get_Center_Point());
+//    Point2 p2(voro[ni[2]].get_Center_Point());
 
     double det = p0.x*p1.y + p1.x*p2.y + p2.x*p0.y - p1.x*p0.y - p2.x*p1.y - p0.x*p2.y;
 
@@ -1092,11 +1195,30 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
     double c2 = ( (p1.x*p2.y-p2.x*p1.y)*f0 + (p2.x*p0.y-p0.x*p2.y)*f1 + (p0.x*p1.y-p1.x*p0.y)*f2 ) / det;
 
     solution_p[n] = c0*pn.x + c1*pn.y + c2;
-    solution_p[n] = f0;
+//    solution_p[n] = f0;
 //    std::cout << f0 << ", " << f1 << ", " << f2 << std::endl;
-    std::cout << di[0] << ", " << di[1] << ", " << di[2] << std::endl;
+//    std::cout << di[0] << ", " << di[1] << ", " << di[2] << std::endl;
 //    std::cout << solution_p[n] << std::endl;
+
+    double u_ex = cos(pn.x)*sin(pn.y);
+    double err_n = ABS(u_ex - solution_p[n]);
+    if(err_n>err)
+    {
+      err = err_n;
+      idx_ = n;
+      indx[0] = ni[0]; indx[1] = ni[1];
+      indx[2] = ni[2]; indx[3] = ni[3];
+    }
   }
+
+  std::cout << "Max err " << err << " at " << idx_ << std::endl;
+//  Point2 pn = voro[idx_].get_Center_Point();
+//  Point2 p0 = voro[indx[0]].get_Center_Point();
+//  Point2 p1 = voro[indx[1]].get_Center_Point();
+//  Point2 p2 = voro[indx[2]].get_Center_Point();
+//  Point2 p3 = voro[indx[3]].get_Center_Point();
+//  std::cout << pn << std::endl;
+//  std::cout << p0 << p1 << p2 << p3 << std::endl;
 
   ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
   ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
