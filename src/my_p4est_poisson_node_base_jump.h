@@ -128,8 +128,8 @@ class PoissonSolverNodeBaseJump
   PetscErrorCode ierr;
 
   bool is_voronoi_partition_constructed;
-  bool matrix_has_nullspace;
   bool is_matrix_computed;
+  int matrix_has_nullspace;
 
   void preallocate_matrix();
 
@@ -166,6 +166,8 @@ public:
   void set_mu_grad_u_jump(Vec mu_grad_u_jump);
 
   inline bool get_matrix_has_nullspace(void) const { return matrix_has_nullspace; }
+
+  inline double get_num_local_voro(void) const { return num_local_voro; }
 
   inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT) {
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
