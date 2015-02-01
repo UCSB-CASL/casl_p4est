@@ -19,6 +19,7 @@ extern PetscLogEvent log_PoissonSolverNodeBasedJump_rhsvec_setup;
 extern PetscLogEvent log_PoissonSolverNodeBasedJump_KSPSolve;
 extern PetscLogEvent log_PoissonSolverNodeBasedJump_solve;
 extern PetscLogEvent log_PoissonSolverNodeBasedJump_compute_voronoi_mesh;
+extern PetscLogEvent log_PoissonSolverNodeBasedJump_interpolate_to_tree;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -1020,7 +1021,7 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
 
 void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec solution)
 {
-  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
 
   double *phi_p, *sol_voro_p, *solution_p;
   ierr = VecGetArray(phi     , &phi_p     ); CHKERRXX(ierr);
@@ -1240,4 +1241,6 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
 
   ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
 }
