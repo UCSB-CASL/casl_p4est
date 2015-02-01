@@ -173,15 +173,13 @@ public:
 
   inline bool get_matrix_has_nullspace(void) const { return matrix_has_nullspace; }
 
-  inline double get_num_local_voro(void) const { return num_local_voro; }
-
   inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT) {
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
 
-  void solve(Vec solution, std::vector<Voronoi2D> &voro, Vec &sol_voro, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 
-  void interpolate_solution_from_voronoi_to_tree(Vec sol_voro, Vec solution);
+  void interpolate_solution_from_voronoi_to_tree(Vec solution);
 };
 
 #endif // POISSON_SOLVER_NODE_BASE_JUMP_H
