@@ -352,11 +352,98 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
   voro.clear();
 
   std::vector<Point2> added_points;
+  std::vector< std::vector<coords_t> > buff_shared_added_points_send(p4est->mpisize);
 
   double *phi_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
   double band = diag_min/5;
+
+  /* find the projected points associated to shared nodes
+   * if a projected point is shared, all larger rank are informed.
+   * The goal here is to avoid building two close projected points at a processor boundary
+   */
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+    size_t num_sharers = (size_t) node->pad8;
+    if(num_sharers>0)
+    {
+      double p_00, p_m0, p_p0, p_0m, p_0p;
+      (*ngbd_n)[n].ngbd_with_quadratic_interpolation(phi_p, p_00, p_m0, p_p0, p_0m, p_0p);
+
+      if(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0)
+      {
+        double d = phi_p[n];
+        Point2 dp((*ngbd_n)[n].dx_central(phi_p), (*ngbd_n)[n].dy_central(phi_p));
+        dp /= dp.norm_L2();
+        double xn = node_x_fr_n(n, p4est, nodes);
+        double yn = node_y_fr_n(n, p4est, nodes);
+
+        coords_t coords_n;
+        coords_n.x = xn-d*dp.x;
+        coords_n.y = yn-d*dp.y;
+
+        sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
+        int *sharers;
+        size_t sharers_index;
+        if(nodes->shared_offsets == NULL)
+        {
+          P4EST_ASSERT(node->pad16 >= 0);
+          sharers_index = (size_t) node->pad16;
+        }
+        else
+        {
+          P4EST_ASSERT(node->pad16 == -1);
+          sharers_index = (size_t) nodes->shared_offsets[n];
+        }
+
+        sharers = (int*) sc_array_index(&rec->a, sharers_index);
+        for(size_t s=0; s<num_sharers; ++s)
+        {
+          if(sharers[s]>p4est->mpirank)
+          {
+            buff_shared_added_points_send[sharers[s]].push_back(coords_n);
+          }
+        }
+      }
+    }
+  }
+
+  /* send the shared points to the corresponding neighbors ranks
+   * note that some messages have a size 0 since the processes can't know who is going to send them data
+   * in order to find that out, one needs to call ngbd_with_quadratic_interpolation on ghost nodes...
+   */
+  for(int r=0; r<p4est->mpisize; ++r)
+  {
+    MPI_Request req;
+    MPI_Isend(&buff_shared_added_points_send[r][0], buff_shared_added_points_send[r].size()*sizeof(coords_t), MPI_BYTE, r, 4, p4est->mpicomm, &req);
+    MPI_Request_free(&req);
+  }
+
+  /* now receive the points */
+  int nb_rcv = p4est->mpisize;
+  std::vector<coords_t> buff_shared_added_points_recv;
+  while(nb_rcv>0)
+  {
+    MPI_Status status;
+    MPI_Probe(MPI_ANY_SOURCE, 4, p4est->mpicomm, &status);
+    int vec_size;
+    MPI_Get_count(&status, MPI_BYTE, &vec_size);
+    vec_size /= sizeof(coords_t);
+
+    buff_shared_added_points_recv.resize(vec_size);
+    MPI_Recv(&buff_shared_added_points_recv[0], vec_size*sizeof(coords_t), MPI_BYTE, status.MPI_SOURCE, 4, p4est->mpicomm, &status);
+
+    for(int m=0; m<vec_size; ++m)
+    {
+      Point2 p(buff_shared_added_points_recv[m].x, buff_shared_added_points_recv[m].y);
+      if(std::find(added_points.begin(), added_points.end(), p)==added_points.end())
+        added_points.push_back(p);
+    }
+    nb_rcv--;
+  }
+
 
   /* the list of points to ship off to remote processes */
   std::vector< std::vector<voro_comm_t> > buff_send_points(p4est->mpisize);
@@ -435,9 +522,10 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
         else if(xyz1[0]> qx+qh/2 && xyz1[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
         else if(xyz1[0]> qx+qh/2 && xyz1[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 
-        if(node<nodes->num_owned_indeps)
+//        if(node<nodes->num_owned_indeps)
         {
-          grid2voro[node].push_back(voro.size());
+          grid2voro[n].push_back(voro.size());
+//          grid2voro[node].push_back(voro.size());
           voro.push_back(v);
         }
 
@@ -475,9 +563,10 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
         else if(xyz2[0]> qx+qh/2 && xyz2[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
         else if(xyz2[0]> qx+qh/2 && xyz2[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 
-        if(node<nodes->num_owned_indeps)
+//        if(node<nodes->num_owned_indeps)
         {
-          grid2voro[node].push_back(voro.size());
+          grid2voro[n].push_back(voro.size());
+//          grid2voro[node].push_back(voro.size());
           voro.push_back(v);
         }
       }
@@ -489,7 +578,11 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
       grid2voro[n].push_back(voro.size());
       voro.push_back(v);
     }
+  }
 
+  /* prepare the buffer to send */
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
     /* if the node is shared, add to corresponding buffer */
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     size_t num_sharers = (size_t) node->pad8;
@@ -536,7 +629,9 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
     {
       MPI_Request req;
       MPI_Isend((void*)&buff_send_offset[r][0], buff_send_offset[r].size(), MPI_INT, r, 1, p4est->mpicomm, &req);
+      MPI_Request_free(&req);
       MPI_Isend((void*)&buff_send_points[r][0], buff_send_points[r].size()*sizeof(voro_comm_t), MPI_BYTE, r, 2, p4est->mpicomm, &req);
+      MPI_Request_free(&req);
     }
   }
 
@@ -1115,7 +1210,8 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
     double det = p0.x*p1.y + p1.x*p2.y + p2.x*p0.y - p1.x*p0.y - p2.x*p1.y - p0.x*p2.y;
 
 #ifdef CASL_THROWS
-    if(ABS(det)<EPS) throw std::invalid_argument("[CASL_ERROR]: interpolation_Voronoi: could not invert system ...");
+    if(ABS(det)<EPS)
+      throw std::invalid_argument("[CASL_ERROR]: interpolation_Voronoi: could not invert system ...");
 #endif
 
     double c0 = ( (p1.y* 1- 1*p2.y)*f0 + ( 1*p2.y-p0.y* 1)*f1 + (p0.y* 1- 1*p1.y)*f2 ) / det;
