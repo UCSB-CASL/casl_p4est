@@ -44,7 +44,7 @@
 #define MatNullSpaceRemove(a, b, c) MatNullSpaceRemove(a, b)
 #endif
 
-#if PETSC_VERSION_LT(3,5,1)
+#if PETSC_VERSION_LT(3,5,0)
 #define PetscSynchronizedFlush(a,b) PetscSynchronizedFlush(a)
 #else
 #define SAME_PRECONDITIONER 0
