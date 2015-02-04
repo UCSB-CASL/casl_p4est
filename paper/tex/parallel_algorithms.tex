@@ -19,7 +19,7 @@ Once the gird is adapted to the interface, it must be partitioned to ensure load
 \begin{figure}[hbtp]
 \begin{center}
 \includegraphics[width = \columnwidth]{figures/p4est_zcurve.pdf}
-\caption{Left: a ``forest'' made up of two trees $k_0$ and $k_1$. Parallel partitioning is achieved by first constructing a Z-curve starting at cell ``S'' and ending at cell ``E''. Next, the one dimensional curve is split up among processes either uniformly or by assigning different weights to cells. Here processes are represented via different colors. Note how using the Z-curve naturally leads to clustering of most cells in each domain. Right: schematic of a tree data structure representing the forest and its partitioning.}
+\caption{Left: a ``forest'' made up of two trees $T_0$ and $T_1$. Parallel partitioning is achieved by first constructing a Z-curve starting at cell ``S'' and ending at cell ``E''. Next, the one dimensional curve is split up among processes either uniformly or by assigning different weights to cells. Here processes are represented via different colors. Note how using the Z-curve naturally leads to clustering of most cells in each domain. Right: schematic of a tree data structure representing the forest and its partitioning.}
 \label{fig:p4est_zcurve}
 \end{center}
 \end{figure}
@@ -34,32 +34,32 @@ Finally, in \texttt{p4est} trees are linearized, i.e. only the leaves are explic
 \label{fig:reconstruction}
 \end{figure}
 \begin{algorithm}[htbp]
-\caption{$H \gets \texttt{Reconstruct (}G\texttt{)}$} %\label{euclid}
+\caption{$H \gets \texttt{Reconstruct (}G\texttt{)}$: construction of the local tree hierarchy $H$ from the grid $G$}
 \begin{algorithmic}[1]
 \State $H \gets G.\texttt{macromesh()}$
-\For {$tr : G.\texttt{local\_trees()}$} \Comment{traverse local cells}
-	\For {$q : tr.\texttt{cells()}$}
-		\State $H.\texttt{update\_tree(} tr, q \texttt{)}$
+\For {$tr : G.\texttt{local\_trees()}$} \Comment{build hierarchy for local cells}
+	\For {$c : tr.\texttt{cells()}$}
+		\State $H.\texttt{update\_tree(} tr, c \texttt{)}$
 	\EndFor
 \EndFor
 
-\For {$q : G.\texttt{ghost\_cells()}$} \Comment{traverse ghost cells}
-	\State $H.\texttt{update\_tree(} q.\texttt{tree()}, q \texttt{)}$
+\For {$c : G.\texttt{ghost\_cells()}$} \Comment{build hierarchy for ghost cells}
+	\State $H.\texttt{update\_tree(} c.\texttt{tree()}, c \texttt{)}$
 \EndFor
 
 \State \Return $H$
 \\
-\Function{$H.\texttt{update\_tree}$}{$tr, q$}   \Comment{recursive reconstruction}
-	\State $q_l \gets H.\texttt{root(}tr\texttt{)}$
-	\While{$q_l.\texttt{level()} \not= q.\texttt{level()} $}
-		\If {$q_l.$\texttt{is\_leaf()}} $q_l$\texttt{.split()}
+\Function{$H.\texttt{update\_tree}$}{$tr, c$}   \Comment{recursive tree reconstruction}
+	\State $c_l \gets H.\texttt{root(}tr\texttt{)}$
+	\While{$c_l.\texttt{level()} \not= c.\texttt{level()} $}
+		\If {$c_l.$\texttt{is\_leaf()}} $c_l$\texttt{.split()}
 		\EndIf
-		\State $h \gets q_l.\texttt{length()} / 2$ \Comment{select the next child based on direction}
-		\State $i \gets q.x \ge q_l.x + h$
-		\State $j \gets q.y \ge q_l.y + h$
-		\State $k \gets q.z \ge q_l.z + h$
+		\State $h \gets c_l.\texttt{length()} / 2$ \Comment{select the next child based on direction}
+		\State $i \gets c.x \ge c_l.x + h$
+		\State $j \gets c.y \ge c_l.y + h$
+		\State $k \gets c.z \ge c_l.z + h$
 
-		\State $q_l \gets q_l.\texttt{child(} i, j, k \texttt{)}$
+		\State $c_l \gets c_l.\texttt{child(} i, j, k \texttt{)}$
 	\EndWhile	
 \EndFunction
 \end{algorithmic}
@@ -67,28 +67,28 @@ Finally, in \texttt{p4est} trees are linearized, i.e. only the leaves are explic
 \end{algorithm}
 
 \subsection{Interpolation and semi-Lagrangian methods}
-As indicated earlier, we use the semi-Lagrangian method to solve equation \eqref{eq:ls} when the velocity field is externally generated, i.e. when it does not depend explicitly on the level-set function itself. Let us rewrite equation \eqref{eq:ls} along the characteristic curve $\mathbf{X}(t)$ as:
+As indicated earlier, we use the semi-Lagrangian method to solve equation \eqref{eq:ls} when the velocity field is externally generated, i.e. when it does not depend explicitly on the level-set function itself. Let us rewrite equation \eqref{eq:ls} along the characteristic curve $\underline{\mathbf{X}}(t)$ as:
 \be
 \left\{
 \begin{array}{rcl}
-\dfrac{\text{d} \mathbf{X}}{\text{d} t} &=& \underline{\mbf{u}}, \\ [3ex]
-\dfrac{\text{d} \phi(\mathbf{X}(t), t)}{\text{d} t} &=& 0.
+\dfrac{\text{d} \underline{\mathbf{X}}}{\text{d} t} &=& \underline{\mbf{u}}, \\ [3ex]
+\dfrac{\text{d} \phi(\underline{\mathbf{X}}(t), t)}{\text{d} t} &=& 0.
 \end{array}
 \right.
 \label{eq:sl}
 \ee
-The semi-Lagrangian method integrates equations \eqref{eq:sl} backward in time, i.e. starting from the grid $G^{n+1}$ \footnote{$G^{n+1}$ itself is computed in an iterative fashion as explained later on.}, we simply write $\phi^{n+1}(\mathbf{X}^{n+1}) = \phi(\mathbf{X}(t^{n+1}), t^{n+1}) = \phi(\mathbf{X}(t^n), t^n) = \phi^n(\mathbf{X}_d)$. Here, the characteristic curves are chosen such that $\mathbf{X}(t^{n+1})$ are simply the coordinates of grids points of $G^{n+1}$, and $\mathbf{X}_d$ are the departure points, which are computed using the second-order midpoint method \cite{Min;Gibou:07:A-second-order-accur}:
+The semi-Lagrangian method integrates equations \eqref{eq:sl} backward in time, i.e. starting from the grid $G^{n+1}$ (computed in iteratively as explained later on), we simply write $\phi^{n+1}(\underline{\mathbf{X}}^{n+1}) = \phi(\underline{\mathbf{X}}(t^{n+1}), t^{n+1}) = \phi(\underline{\mathbf{X}}(t^n), t^n) = \phi^n(\underline{\mathbf{X}}_d)$. Here, the characteristic curves are chosen such that $\underline{\mathbf{X}}(t^{n+1})$ are simply the coordinates of grids points of $G^{n+1}$, and $\underline{\mathbf{X}}_d$ are the departure points, which are computed using the second-order midpoint method \cite{Min;Gibou:07:A-second-order-accur}:
 \bea
-\mathbf{X}^\star &=& \mathbf{X}^{n+1} - \frac{\Delta t}{2} \underline{\mbf{u}}^{n}(\mathbf{X}^n),	   \label{eq:xstar}      \\
-\mathbf{X}_d     &=& \mathbf{X}^{n+1} - \Delta t \underline{\mbf{u}}^{n+\frac{1}{2}}(\mathbf{X}^\star), \label{eq:xdeparture}
+\underline{\mathbf{X}}^\star &=& \underline{\mathbf{X}}^{n+1} - \frac{\Delta t}{2} \underline{\mbf{u}}^{n}(\underline{\mathbf{X}}^n),	   \label{eq:xstar}      \\
+\underline{\mathbf{X}}_d     &=& \underline{\mathbf{X}}^{n+1} - \Delta t \underline{\mbf{u}}^{n+\frac{1}{2}}(\underline{\mathbf{X}}^\star), \label{eq:xdeparture}
 \eea
 where $\underline{\mbf{u}}^{n+\frac{1}{2}}$ is obtained via extrapolation from previous times, i.e.:
 \be
 \underline{\mbf{u}}^{n+\frac{1}{2}} = \frac{3}{2} \underline{\mbf{u}}^n - \frac{1}{2}\underline{\mbf{u}}^{n-1}. \label{eq:vn_p_half}
 \ee
-Note that all values at the intermediate point, $\mathbf{X}^\star$, and departure point, $\mathbf{X}_d$, must be calculated via interpolation from the previous grids $G^{n}$ and $G^{n-1}$. Here, we use the stabilized second-order interpolation for $\phi(\mathbf{X}_d)$ and the multi-linear interpolation for $\underline{\mbf{u}}^{n+\frac{1}{2}}(\mathbf{X}^\star)$ \cite{Min;Gibou:07:A-second-order-accur}. Although parallelization of the interpolation process on a shared-memory machine is trivial, the same cannot be said for distributed-memory machines. In fact, the parallel interpolation procedure given in Algorithm \ref{alg:interpolation} is probably the most important contribution of this article since the procedure, which is trivial on uniform grids, is challenging in the case of trees because it is not straightforward to identify which processes owns the departure points. Indeed, complications arise because not all departure points will reside in the domain owned by the current process. Moreover, due to the irregular shapes of the partitions, one cannot even ensure they are entirely owned by neighboring processes. At best we can only expect that their locations are bounded by a halo of width $w \le \text{CFL} \: \Delta x_{\min}$ around the local partition, where $x_{\min}$ is the size of the smallest cell in the forest. Naturally, if one enforces $\text{CFL} \le 1$, one can ensure that the halo is bounded by the ghost layer, which significantly simplifies the communication problem. This assumption, however, defeats the purpose of using a semi-Lagrangian approach, whose purpose is to enable large CFL values.
+Note that all values at the intermediate point, $\underline{\mathbf{X}}^\star$, and departure point, $\underline{\mathbf{X}}_d$, must be calculated via interpolation from the previous grids $G^{n}$ and $G^{n-1}$. Here, we use the stabilized second-order interpolation for $\phi(\underline{\mathbf{X}}_d)$ and the multi-linear interpolation for $\underline{\mbf{u}}^{n+\frac{1}{2}}(\underline{\mathbf{X}}^\star)$ \cite{Min;Gibou:07:A-second-order-accur}. Although parallelization of the interpolation process on a shared-memory machine is trivial, the same cannot be said for distributed-memory machines. In fact, the parallel interpolation procedure given in Algorithm \ref{alg:interpolation} is probably the most important contribution of this article since the procedure, which is trivial on uniform grids, is challenging in the case of trees because it is not straightforward to identify which processes owns the departure points. Indeed, complications arise because not all departure points will reside in the domain owned by the current process. Moreover, due to the irregular shapes of the partitions, one cannot even ensure they are entirely owned by neighboring processes. At best we can only expect that their locations are bounded by a halo of width $w \le \text{CFL} \: \Delta x_{\min}$ around the local partition, where $x_{\min}$ is the size of the smallest cell in the forest. Naturally, if one enforces $\text{CFL} \le 1$, one can ensure that the halo is bounded by the ghost layer, which significantly simplifies the communication problem. This assumption, however, defeats the purpose of using a semi-Lagrangian approach, whose purpose is to enable large CFL values.
 
-One remedy to this problem, proposed in \cite{Thomas;Cote:95:Massively-parallel-s} for uniform grids, is to increase the size of ghost layer to $\lceil \text{CFL} \rceil$. For large values of the $\text{CFL}$ number, however, this approach can substantially increase the communication volume. Moreover, this simple approach does not work in the process of generating $G^{n+1}$ due to repartitioning. An alternative approach would be to handle local and remote interpolations separately. Our remote interpolation algorithm is composed of three separate phases. In the first phase, which we call buffering, every process searches for all departure points inside the local trees. If the point is owned by a local cell, it is added to a local buffer, otherwise we find the process which owns the point and add the point to a separate buffer belonging to the found rank. Note that searching the point in the local tree is performed recursively using the hierarchal reconstruction (c.f.\ algorithm \ref{alg:reconstruction}). Moreover, the owner's rank is found by computing the Z-index of the point and then using a binary search on the Z-curve. This is already implemented in \texttt{p4est} and explained in details in section 2.5 of \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}.
+One remedy to this problem, proposed in \cite{Thomas;Cote:95:Massively-parallel-s} for uniform grids, is to increase the size of ghost layer to $\lceil \text{CFL} \rceil$. For large values of the $\text{CFL}$ number, however, this approach can substantially increase the communication volume. Moreover, this simple approach does not work in the process of generating $G^{n+1}$ due to repartitioning. Indeed, $G^{n+1}$ is built iteratively and load balancing is enforced by repartitioning at each sub-iteration. Therefore, after one such sub-iteration, the backtracked points can end up outside of the initial ghost layer. An alternative approach would be to handle local and remote interpolations separately. Our remote interpolation algorithm is composed of three separate phases. In the first phase, which we call buffering, every process searches for all departure points inside the local trees. If the point is owned by a local cell, it is added to a local buffer, otherwise we find the process which owns the point and add the point to a separate buffer belonging to the found rank. Note that searching the point in the local tree is performed recursively using the hierarchal reconstruction (c.f.\ algorithm \ref{alg:reconstruction}). Moreover, the owner's rank is found by computing the Z-index of the point and then using a binary search on the Z-curve. This is already implemented in \texttt{p4est} and explained in details in section 2.5 of \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}.
 
 Once buffering is done, every process knows exactly how many messages it needs to send and to which processes. This also implicitly defines processes that will later on send a reply message to this process. However, at this point no process knows which processes to expect a message from. We solve this problem using a simple \textit{communication matrix} (see figure \ref{fig:communication}). Other approaches for solving this problem could include using non-blocking collective or one-sided communication operations introduced in the MPI-3 standard \cite{Hoefler;Siebert;Lumsdaine:10:Scalable-communication}. Although these algorithms have better theoretical communication complexities, we did not see any difference in the runtime or scalability of algorithm \ref{alg:interpolation} when using them. 
 
@@ -116,15 +116,15 @@ S_i = \sum_j a_{ij} \hspace{5 mm} \text {and} \hspace{5 mm} R_i = \sum_j a_{ji}
 \een
 where $S_i$ and $R_i$ denote the number of sent and received messages, respectively. While $S_i$ can be computed trivially, a reduction operation is required to compute $R_i$. For instance, this can be achieved using a single \texttt{MPI\_Reduce\_scatter} function call. The last phase of the interpolation procedure involves overlapping the computation of interpolated values for local points with the communication of data between processes. This is done by alternating between local calculations and probing for incoming messages from other processes. The interpolation is finished once the values for all local the points have been calculated and all the remote requests have been processed (see Algorithm \ref{alg:interpolation}).
 \begin{algorithm}[htbp]
-\caption{$values \gets \texttt{Interpolate (}H, \mathbf{X}\texttt{)}$} %\label{euclid}
+\caption{$values \gets \texttt{Interpolate (}H, F, \underline{\mathbf{X}}\texttt{)}$: interpolate the value of $F$, defined on the local tree hierarchy $H$, at coordinates $\underline{\mathbf{X}}$}
 \begin{algorithmic}[1]
 \State $col \gets 0, buff \gets null$ \Comment{Phase I -- buffering}
-\For {$\mathbf{p} : \mathbf{X}$} 
-	\State $[r, cell] \gets H.\texttt{search(}\mathbf{p}\texttt{)}$ \Comment{search for the owner's rank and cell}
+\For {$\underline{\mathbf{p}} : \underline{\mathbf{X}}$} 
+	\State $[r, cell] \gets H.\texttt{search(}\underline{\mathbf{p}}\texttt{)}$ \Comment{search for the owner's rank and cell}
 	\If {$r = mpirank$}
-		\State $buff[r].\texttt{push\_back(}\mathbf{p}, cell\texttt{)}$
+		\State $buff[r].\texttt{push\_back(}\underline{\mathbf{p}}, cell\texttt{)}$
 	\Else
-		\State $buff[r].\texttt{push\_back(}\mathbf{p}\texttt{)}$
+		\State $buff[r].\texttt{push\_back(}\underline{\mathbf{p}}\texttt{)}$
 		\State $col[r] \gets 1$
 	\EndIf
 \EndFor
@@ -166,15 +166,15 @@ where $S_i$ and $R_i$ denote the number of sent and received messages, respectiv
 
 Using the interpolation Algorithm \ref{alg:interpolation}, we close this section by presenting the final semi-Lagrangian Algorithm \ref{alg:semi-lagrangian}. The basic idea is to start from an initial guess $G^{n+1}_0$ for the grid and modify it using the refinement \eqref{eq:refine} and coarsening \eqref{eq:coarsen} criteria until convergence is obtained. Various options are available for $G^{n+1}_0$. For instance it is possible to start from the macromesh and only perform refinement steps until convergence. This choice, however, is not suitable since the first few iterations do not contain many cells and there is little work for parallelism. Here we simply take the previous grid as the starting point, i.e. $G^{n+1}_0 = G^n$. Note that this iterative process is essentially unavoidable since the grid is based on the values of the level-set function at $t^{n+1}$, which itself is unknown and is to be defined on $G^{n+1}$. Nonetheless the process converges to the final grid in at most $l_{\max}-l_{\min}$ steps where $l_{\min}$ and $l_{\max}$ denote the maximum and minimum depth of all trees in the forest, receptively.
 \begin{algorithm}[htbp]
-\caption{$[G^{n+1}, \phi^{n+1}] \gets \texttt{SemiLagrangian (}G^n, \phi^n, \mathbf{V}^n, \mathbf{V}^{n-1}, \text{CFL}\texttt{)}$} %\label{euclid}
+\caption{$[G^{n+1}, \phi^{n+1}] \gets \texttt{SemiLagrangian (}G^n, \phi^n, \underline{\mathbf{u}}^n, \underline{\mathbf{u}}^{n-1}, \text{CFL}\texttt{)}$: update $\phi^{n+1}$ from $\phi^n$ using a semi-Lagrangian scheme and construct the new forest $G^{n+1}$ that is consistent with the zero level-set of $\phi^{n+1}$}
 \begin{algorithmic}[1]
-\State $\Delta t_l \gets \text{CFL} \times G^n.\texttt{hmin()} / \max \{\mathbf{V}^n \} $
+\State $\Delta t_l \gets \text{CFL} \times G^n.\texttt{hmin()} / \max \{\underline{\mathbf{u}}^n \} $
 \State $\Delta t   \gets \texttt{MPI\_Allreduce(}\Delta t_l,\texttt{MPI\_MIN)}$
 \State $H^n \gets \texttt{Reconstruct(} G^n\texttt{)}$ 
 \State $G^{n+1}_0 \gets G^n$
 \While {$true$}
-	\State $\mathbf{X}_d  \gets \texttt{ComputeDeparturePoints(}G^{n+1}_0, \mathbf{V}^n, \mathbf{V}^{n-1}, \Delta t\texttt{)}$ \Comment{using equations \ref{eq:xstar} -- \ref{eq:vn_p_half}}
-	\State $\phi^{n+1} \gets \texttt{Interpolate(}H^n, \textbf{X}_d\texttt{)}$
+	\State $\underline{\mathbf{X}}_d  \gets \texttt{ComputeDeparturePoints(}G^{n+1}_0, \underline{\mathbf{u}}^n, \underline{\mathbf{u}}^{n-1}, \Delta t\texttt{)}$ \Comment{using equations \ref{eq:xstar} -- \ref{eq:vn_p_half}}
+	\State $\phi^{n+1} \gets \texttt{Interpolate(}H^n, \phi^n, \underline{\textbf{X}}_d\texttt{)}$
 	\State $G^{n+1} \gets G^{n+1}_0.\texttt{refine\_and\_coarsen(}\phi^{n+1}\texttt{)}$ \Comment{using equations \ref{eq:refine} and \ref{eq:coarsen} as criteria}
 	\If {$G^{n+1} \not= G^{n+1}_0$}
 		\State $G^{n+1}.\texttt{partition()}$
@@ -207,21 +207,21 @@ where $D^+_i \phi$ and $D^-_i \phi$ are the forward and backward derivatives in 
 \right.
 ,
 \een
-where $a^+ = \max(a, 0)$ and $a^- = \min(a, 0)$. Similar to \cite{Min;Gibou:07:A-second-order-accur}, equation \eqref{eq:semidiscrete_reinit} is integrated in time using the TVD-RK2 scheme with adaptive time-stepping in order to accelerate the convergence to the steady state. Since the computation is based on a local stencil, the parallel implementation of this scheme is mostly trivial. However, one minor point requires further explanation. As suggested in \cite{Min;Gibou:07:A-second-order-accur}, one-sided derivatives $D^+_i \phi$ and $D^-_i \phi$ are computed using second order discretization which require to compute the second-order derivatives. To enable overlap between computation and communications when computing second-order derivatives and also integrating equation \eqref{eq:semidiscrete_reinit}, we use the following common technique. First, we label all local points, $L_p$, as either private, $P_p$, or boundary, $B_p$. Here, the boundary points are the collection of all local points that are regarded as a ghost point, $G_r$, on at least one other process, i.e. $B_p = \underset{r,\;r\neq p}{\bigcup} G_r$. Private points are defined as the collection of all local points that are not a boundary point, i.e. $P_p = L_p \setminus B_p$. Algorithm \ref{alg:overlap} illustrates how this labeling can help with overlapping the computation and the communication associated to an arbitrary local operation $\phi^{n+1} \gets \mathcal{F}(\phi^n)$. Note that the \texttt{p4est} library already includes all the primitives required for labeling local points without any further communication.
+where $a^+ = \max(a, 0)$ and $a^- = \min(a, 0)$. Similar to \cite{Min;Gibou:07:A-second-order-accur}, equation \eqref{eq:semidiscrete_reinit} is integrated in time using the TVD-RK2 scheme with adaptive time-stepping in order to accelerate the convergence to the steady state. Since the computation is based on a local stencil, the parallel implementation of this scheme is mostly trivial. However, one minor point requires further explanation. As suggested in \cite{Min;Gibou:07:A-second-order-accur}, one-sided derivatives $D^+_i \phi$ and $D^-_i \phi$ are computed using second order discretization which require to compute the second-order derivatives. To enable overlap between computation and communications when computing second-order derivatives and also integrating equation \eqref{eq:semidiscrete_reinit}, we use the following common technique. First, we label all local points, $L_p$, as either private, $P_p$, or boundary, $B_p$. Here, the boundary points are the collection of all local points that are regarded as a ghost point, $G_r$, on at least one other process, i.e. $B_p = \underset{r,\;r\neq p}{\bigcup} G_r$. Private points are defined as the collection of all local points that are not a boundary point, i.e. $P_p = L_p \setminus B_p$. Algorithm \ref{alg:overlap} illustrates how this labeling can help with overlapping the computation and the communication associated to an arbitrary local operation $y \gets \mathcal{F}(x)$. Note that the \texttt{p4est} library already includes all the primitives required for labeling local points without any further communication.
 
 \begin{algorithm}[htbp]
-\caption{$\phi^{n+1} \gets \texttt{Overlap (}\phi^n, \mathcal{F}\texttt{)}$} %\label{euclid}
+\caption{$y \gets \texttt{Overlap (}x, \mathcal{F}\texttt{)}$: compute $y_i=\mathcal{F}(x_i)$ for all nodes $i$, where $\mathcal{F}$ is a local operation, while hiding the communication to update the ghost layer}
 \begin{algorithmic}[1]
 \For {$i:B_p$} \Comment{I -- perform computation on boundary points}
-	\State $\phi^{n+1}_i \gets \mathcal{F}(\phi_i^n)$
+	\State $y_i \gets \mathcal{F}(x_i)$
 \EndFor
-\State $send\_req \gets \texttt{MPI\_Isend(}\phi^{n+1}_B\texttt{)}$ \Comment{II -- begin updating ghost values}
-\State $recv\_req \gets \texttt{MPI\_Irecv(}\phi^{n+1}_G\texttt{)}$
+\State $send\_req \gets \texttt{MPI\_Isend(}y_B\texttt{)}$ \Comment{II -- begin updating ghost values}
+\State $recv\_req \gets \texttt{MPI\_Irecv(}y_G\texttt{)}$
 \For {$i:P_p$} \Comment{III -- perform computation on private points}
-	\State $\phi^{n+1}_i \gets \mathcal{F}(\phi_i^n)$ 
+	\State $y_i \gets \mathcal{F}(x_i)$ 
 \EndFor
 \State $\texttt{MPI\_Waitall(}send\_req, recv\_req\texttt{)}$ \Comment{IV -- wait for ghost update to finish}
-\State \Return $\phi^{n+1}$
+\State \Return $y$
 \end{algorithmic}
 \label{alg:overlap}
 \end{algorithm}
