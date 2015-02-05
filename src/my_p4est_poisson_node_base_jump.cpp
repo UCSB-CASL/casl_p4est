@@ -469,11 +469,11 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
       }
     }
 
-    buff_shared_added_points_send[r].clear();
+//    buff_shared_added_points_send[r].clear();
     buff_shared_added_points_recv[r].clear();
   }
 
-  buff_shared_added_points_send.clear();
+//  buff_shared_added_points_send.clear();
   buff_shared_added_points_recv.clear();
 
   /* add the local points to the list of projected points */
@@ -769,11 +769,9 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
   }
 
   /* clear buffers */
-  for(int r=0; r<p4est->mpisize; ++r)
-  {
-    buff_send_points[r].clear();
-  }
-  buff_send_points.clear();
+//  for(int r=0; r<p4est->mpisize; ++r)
+//    buff_send_points[r].clear();
+//  buff_send_points.clear();
   send_to.clear();
   recv_fr.clear();
 
