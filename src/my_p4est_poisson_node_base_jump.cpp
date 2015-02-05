@@ -333,7 +333,7 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
   ierr = VecGhostUpdateEnd  (sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   /* interpolate the solution back onto the original mesh */
-  interpolate_solution_from_voronoi_to_tree(solution);
+//  interpolate_solution_from_voronoi_to_tree(solution);
 
   ierr = VecDestroy(sol_voro); CHKERRXX(ierr);
 
@@ -361,101 +361,8 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
 
   double band = diag_min/5;
 
-//  /* find the projected points associated to shared nodes
-//   * if a projected point is shared, all larger rank are informed.
-//   * The goal here is to avoid building two close projected points at a processor boundary
-//   */
-//  std::vector< std::vector<coords_t> > buff_shared_added_points_send(p4est->mpisize);
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-//    size_t num_sharers = (size_t) node->pad8;
-//    if(num_sharers>0)
-//    {
-//      double p_00, p_m0, p_p0, p_0m, p_0p;
-//      (*ngbd_n)[n].ngbd_with_quadratic_interpolation(phi_p, p_00, p_m0, p_p0, p_0m, p_0p);
-
-//      if(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0)
-//      {
-//        double d = phi_p[n];
-//        Point2 dp((*ngbd_n)[n].dx_central(phi_p), (*ngbd_n)[n].dy_central(phi_p));
-//        dp /= dp.norm_L2();
-//        double xn = node_x_fr_n(n, p4est, nodes);
-//        double yn = node_y_fr_n(n, p4est, nodes);
-
-//        coords_t coords_n;
-//        coords_n.x = xn-d*dp.x;
-//        coords_n.y = yn-d*dp.y;
-
-//        sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
-//        int *sharers;
-//        size_t sharers_index;
-//        if(nodes->shared_offsets == NULL)
-//        {
-//          P4EST_ASSERT(node->pad16 >= 0);
-//          sharers_index = (size_t) node->pad16;
-//        }
-//        else
-//        {
-//          P4EST_ASSERT(node->pad16 == -1);
-//          sharers_index = (size_t) nodes->shared_offsets[n];
-//        }
-
-//        sharers = (int*) sc_array_index(&rec->a, sharers_index);
-//        for(size_t s=0; s<num_sharers; ++s)
-//        {
-//          if(sharers[s]>p4est->mpirank)
-//          {
-//            buff_shared_added_points_send[sharers[s]].push_back(coords_n);
-//          }
-//        }
-//      }
-//    }
-//  }
-
-//  /* send the shared points to the corresponding neighbors ranks
-//   * note that some messages have a size 0 since the processes can't know who is going to send them data
-//   * in order to find that out, one needs to call ngbd_with_quadratic_interpolation on ghost nodes...
-//   */
-//  for(int r=0; r<p4est->mpisize; ++r)
-//  {
-//    MPI_Request req;
-//    MPI_Isend(&buff_shared_added_points_send[r][0], buff_shared_added_points_send[r].size()*sizeof(coords_t), MPI_BYTE, r, 4, p4est->mpicomm, &req);
-//    MPI_Request_free(&req);
-//  }
-
-//  /* now receive the points */
-//  int nb_rcv = p4est->mpisize;
-//  std::vector<coords_t> buff_shared_added_points_recv;
-//  while(nb_rcv>0)
-//  {
-//    MPI_Status status;
-//    MPI_Probe(MPI_ANY_SOURCE, 4, p4est->mpicomm, &status);
-//    int vec_size;
-//    MPI_Get_count(&status, MPI_BYTE, &vec_size);
-//    vec_size /= sizeof(coords_t);
-
-//    buff_shared_added_points_recv.resize(vec_size);
-//    MPI_Recv(&buff_shared_added_points_recv[0], vec_size*sizeof(coords_t), MPI_BYTE, status.MPI_SOURCE, 4, p4est->mpicomm, &status);
-
-//    for(int m=0; m<vec_size; ++m)
-//    {
-//      Point2 p(buff_shared_added_points_recv[m].x, buff_shared_added_points_recv[m].y);
-//      if(std::find(added_points.begin(), added_points.end(), p)==added_points.end())
-//        added_points.push_back(p);
-//    }
-//    nb_rcv--;
-//  }
-
-
-  /* the list of points to ship off to remote processes */
-  std::vector< std::vector<voro_comm_t> > buff_send_points(p4est->mpisize);
-
-  /* the number of voronoi points associated to each node */
-  std::vector< std::vector<int> > buff_send_offset(p4est->mpisize);
-
   /* generate the voronoi points */
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
     double p_00, p_m0, p_p0, p_0m, p_0p;
     try
@@ -482,14 +389,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
       Point2 p_proj(xn-d*dp.x, yn-d*dp.y);
 
       bool already_added = false;
-      for(unsigned int m=0; m<added_points.size(); ++m)
-      {
-        if((p_proj-added_points[m]).norm_L2() < diag_min/5)
-        {
-          already_added = true;
-          break;
-        }
-      }
+//      for(unsigned int m=0; m<added_points.size(); ++m)
+//      {
+//        if((p_proj-added_points[m]).norm_L2() < diag_min/5)
+//        {
+//          already_added = true;
+//          break;
+//        }
+//      }
 
       if(!already_added)
       {
@@ -508,25 +415,20 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
         std::vector<p4est_quadrant_t> remote_matches;
         int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz1, quad, remote_matches);
 
-        p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
-        p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-        p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-        double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-        double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-
-        double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-        double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
-        double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
-
-        p4est_locidx_t quad_idx;
-#ifdef CASL_THROWS
-        if(rank_found==-1)
-          throw std::invalid_argument("[CASL_ERROR]: PoissonSolverNodeBaseJump->compute_voronoi_mesh: found remote quadrant.");
-#endif
         if(rank_found==p4est->mpirank)
         {
+          p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
+          p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+          p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+          double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+          double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+
+          double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
+          double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
+          double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
+          p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+
           p4est_locidx_t node = -1;
-          quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
           if     (xyz1[0]<=qx+qh/2 && xyz1[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
           else if(xyz1[0]<=qx+qh/2 && xyz1[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
           else if(xyz1[0]> qx+qh/2 && xyz1[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
@@ -547,24 +449,20 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
         remote_matches.clear();
         rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz2, quad, remote_matches);
 
-        tree_idx = quad.p.piggy3.which_tree;
-        tree = p4est_tree_array_index(p4est->trees, tree_idx);
-        v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-        tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-        tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-
-        qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-        qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
-        qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
-
-#ifdef CASL_THROWS
-        if(rank_found==-1)
-          throw std::invalid_argument("[CASL_ERROR]: PoissonSolverNodeBaseJump->compute_voronoi_mesh: found remote quadrant.");
-#endif
         if(rank_found==p4est->mpirank)
         {
+          p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
+          p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+          p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+          double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+          double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+
+          double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
+          double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
+          double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
+          p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+
           p4est_locidx_t node = -1;
-          quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
           if     (xyz2[0]<=qx+qh/2 && xyz2[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
           else if(xyz2[0]<=qx+qh/2 && xyz2[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
           else if(xyz2[0]> qx+qh/2 && xyz2[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
@@ -585,9 +483,16 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
   }
 
   /* prepare the buffer to send shared local voro points */
+  std::vector< std::vector<voro_comm_t> > buff_send_points(p4est->mpisize);
+  std::vector<bool> send_to(p4est->mpisize, false);
+
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
-    /* if the node is shared, add to corresponding buffer */
+    /* if the node is shared, add to corresponding buffer
+     * note that we are sending empty messages to some processes, this is
+     * because checking who is going to send a message requires a communication ...
+     * so we just send a message to all possible processes, even if the message is empty
+     */
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     size_t num_sharers = (size_t) node->pad8;
     if(num_sharers>0)
@@ -610,7 +515,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
 
       for(size_t s=0; s<num_sharers; ++s)
       {
-        buff_send_offset[sharers[s]].push_back(grid2voro[n].size());
+        send_to[sharers[s]] = true;
 
         for(unsigned int m=0; m<grid2voro[n].size(); ++m)
         {
@@ -629,11 +534,9 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
   /* send the data to remote processes */
   for(int r=0; r<p4est->mpisize; ++r)
   {
-    if(buff_send_points[r].size() != 0)
+    if(send_to[r]==true)
     {
       MPI_Request req;
-      MPI_Isend((void*)&buff_send_offset[r][0], buff_send_offset[r].size(), MPI_INT, r, 1, p4est->mpicomm, &req);
-      MPI_Request_free(&req);
       MPI_Isend((void*)&buff_send_points[r][0], buff_send_points[r].size()*sizeof(voro_comm_t), MPI_BYTE, r, 2, p4est->mpicomm, &req);
       MPI_Request_free(&req);
     }
@@ -651,84 +554,98 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
   global_voro_offset.insert(global_voro_offset.begin(), 0);
 
   /* initialize the buffer to receive remote points */
-  std::vector< std::vector<unsigned int> > rcv_map(p4est->mpisize);
+  std::vector<bool> recv_fr(p4est->mpisize);
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
-    if((p4est_locidx_t) n<nodes->num_owned_indeps)
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+    size_t num_sharers = (size_t) node->pad8;
+    if(num_sharers>0)
     {
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-      size_t num_sharers = (size_t) node->pad8;
-      if(num_sharers>0)
+      sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
+      int *sharers;
+      size_t sharers_index;
+      if(nodes->shared_offsets == NULL)
       {
-        sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
-        int *sharers;
-        size_t sharers_index;
-        if(nodes->shared_offsets == NULL)
-        {
-          P4EST_ASSERT(node->pad16 >= 0);
-          sharers_index = (size_t) node->pad16;
-        }
-        else
-        {
-          P4EST_ASSERT(node->pad16 == -1);
-          sharers_index = (size_t) nodes->shared_offsets[n];
-        }
+        P4EST_ASSERT(node->pad16 >= 0);
+        sharers_index = (size_t) node->pad16;
+      }
+      else
+      {
+        P4EST_ASSERT(node->pad16 == -1);
+        sharers_index = (size_t) nodes->shared_offsets[n];
+      }
 
-        sharers = (int*) sc_array_index(&rec->a, sharers_index);
+      sharers = (int*) sc_array_index(&rec->a, sharers_index);
 
-        for(size_t s=0; s<num_sharers; ++s)
-        {
-          rcv_map[sharers[s]].push_back((unsigned int) n);
-        }
+      for(size_t s=0; s<num_sharers; ++s)
+      {
+        recv_fr[sharers[s]] = true;
       }
     }
-    else
-      rcv_map[nodes->nonlocal_ranks[n-nodes->num_owned_indeps]].push_back((unsigned int) n);
   }
 
-  std::cout << "proc " << p4est->mpirank << std::endl;
-  /* now receive the data */
-  std::vector< std::vector<voro_comm_t> > buff_recv_points(p4est->mpisize);
-  std::vector< std::vector<int> >         buff_recv_offset(p4est->mpisize);
+  int nb_recv = 0;
   for(int r=0; r<p4est->mpisize; ++r)
+    if(recv_fr[r]) nb_recv++;
+
+  /* now receive the data */
+  while(nb_recv>0)
   {
-    if(rcv_map[r].size() != 0)
+    MPI_Status status;
+    MPI_Probe(MPI_ANY_SOURCE, 2, p4est->mpicomm, &status);
+
+    int nb_points;
+    MPI_Get_count(&status, MPI_BYTE, &nb_points);
+    nb_points /= sizeof(voro_comm_t);
+
+    std::vector<voro_comm_t> buff_recv_points(nb_points);
+
+    int sender_rank = status.MPI_SOURCE;
+    MPI_Recv(&buff_recv_points[0], nb_points*sizeof(voro_comm_t), MPI_BYTE, sender_rank, status.MPI_TAG, p4est->mpicomm, &status);
+
+    /* now associate the received voronoi points to the corresponding local/ghost nodes */
+    for(int n=0; n<nb_points; ++n)
     {
-      buff_recv_offset[r].resize(rcv_map[r].size());
-      MPI_Status status;
-      MPI_Recv(&buff_recv_offset[r][0], rcv_map[r].size(), MPI_INT, r, 1, p4est->mpicomm, &status);
-
-      /* compute how many points are to be received */
-      int nb_points_to_receive = 0;
-      for(unsigned int m=0; m<buff_recv_offset[r].size(); ++m)
-        nb_points_to_receive += buff_recv_offset[r][m];
-
-      /* receive the points */
-      buff_recv_points[r].resize(nb_points_to_receive);
-      MPI_Recv(&buff_recv_points[r][0], nb_points_to_receive*sizeof(voro_comm_t), MPI_BYTE, r, 2, p4est->mpicomm, &status);
-
-      /* put the data into the local grid2voro structure */
-      int idx = 0;
-      for(unsigned int m=0; m<rcv_map[r].size(); ++m)
+      double xyz[] =
       {
-        for(int k=0; k<buff_recv_offset[r][m]; ++k)
-        {
-          Voronoi2D v;
-          v.set_Center_Point(buff_recv_points[r][idx].x, buff_recv_points[r][idx].y);
+        buff_recv_points[n].x,
+        buff_recv_points[n].y
+      };
 
-          grid2voro[rcv_map[r][m]].push_back(voro.size());
-          voro.push_back(v);
-          voro_ghost_local_num.push_back(buff_recv_points[r][idx].local_num);
-          voro_ghost_rank.push_back(r);
-          idx++;
-        }
-      }
+      p4est_quadrant_t quad;
+      std::vector<p4est_quadrant_t> remote_matches;
+      int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
 
-#ifdef CASL_THROWS
-      if(idx!=nb_points_to_receive)
-        throw std::invalid_argument("[CASL_ERROR]: PoissonSolverNodeBaseJump->compute_voronoi_mesh: size mismatch when receiving remote voronoi points.");
-#endif
+      p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
+      p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+      p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+      double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+      double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+
+      double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
+      double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
+      double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
+
+      p4est_locidx_t quad_idx;
+      if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+      else                           quad_idx = quad.p.piggy3.local_num + p4est->local_num_quadrants;
+
+      p4est_locidx_t node = -1;
+      if     (xyz[0]<=qx+qh/2 && xyz[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz[0]<=qx+qh/2 && xyz[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz[0]> qx+qh/2 && xyz[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz[0]> qx+qh/2 && xyz[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+
+      Voronoi2D v;
+      v.set_Center_Point(xyz[0], xyz[1]);
+      grid2voro[node].push_back(voro.size());
+      voro.push_back(v);
+
+      voro_ghost_local_num.push_back(buff_recv_points[n].local_num);
+      voro_ghost_rank.push_back(sender_rank);
     }
+
+    nb_recv--;
   }
 
   for(unsigned int n=0; n<num_local_voro; ++n)
