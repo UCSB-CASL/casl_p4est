@@ -364,12 +364,31 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
    */
   std::vector< std::vector<added_point_t> > buff_shared_added_points_send(p4est->mpisize);
   std::vector< std::vector<added_point_t> > buff_shared_added_points_recv(p4est->mpisize);
+  std::vector<bool> send_shared_to(p4est->mpisize, false);
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     size_t num_sharers = (size_t) node->pad8;
     if(num_sharers>0)
     {
+      sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
+      int *sharers;
+      size_t sharers_index;
+      if(nodes->shared_offsets == NULL)
+      {
+        P4EST_ASSERT(node->pad16 >= 0);
+        sharers_index = (size_t) node->pad16;
+      }
+      else
+      {
+        P4EST_ASSERT(node->pad16 == -1);
+        sharers_index = (size_t) nodes->shared_offsets[n];
+      }
+
+      sharers = (int*) sc_array_index(&rec->a, sharers_index);
+      for(size_t s=0; s<num_sharers; ++s)
+        send_shared_to[sharers[s]] = true;
+
       double p_00, p_m0, p_p0, p_0m, p_0p;
       (*ngbd_n)[n].ngbd_with_quadratic_interpolation(phi_p, p_00, p_m0, p_p0, p_0m, p_0p);
 
@@ -386,21 +405,6 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
         added_point_n.dx = dp.x;
         added_point_n.dy = dp.y;
 
-        sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
-        int *sharers;
-        size_t sharers_index;
-        if(nodes->shared_offsets == NULL)
-        {
-          P4EST_ASSERT(node->pad16 >= 0);
-          sharers_index = (size_t) node->pad16;
-        }
-        else
-        {
-          P4EST_ASSERT(node->pad16 == -1);
-          sharers_index = (size_t) nodes->shared_offsets[n];
-        }
-
-        sharers = (int*) sc_array_index(&rec->a, sharers_index);
         for(size_t s=0; s<num_sharers; ++s)
         {
           buff_shared_added_points_send[sharers[s]].push_back(added_point_n);
@@ -410,14 +414,13 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
     }
   }
 
-  /* NOTE: not true anymore .. this can be improved */
   /* send the shared points to the corresponding neighbors ranks
    * note that some messages have a size 0 since the processes can't know who is going to send them data
    * in order to find that out, one needs to call ngbd_with_quadratic_interpolation on ghost nodes...
    */
   for(int r=0; r<p4est->mpisize; ++r)
   {
-    if(r!=p4est->mpirank)
+    if(send_shared_to[r]==true)
     {
       MPI_Request req;
       MPI_Isend(&buff_shared_added_points_send[r][0], buff_shared_added_points_send[r].size()*sizeof(added_point_t), MPI_BYTE, r, 4, p4est->mpicomm, &req);
@@ -425,8 +428,16 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
     }
   }
 
+  /* compute how many messages we are expecting to receive */
+  std::vector<bool> recv_shared_fr(p4est->mpisize, false);
+  for(size_t n=nodes->num_owned_indeps; n<nodes->indep_nodes.elem_count; ++n)
+    recv_shared_fr[nodes->nonlocal_ranks[n-nodes->num_owned_indeps]] = true;
+
+  int nb_rcv = 0;
+  for(int r=0; r<p4est->mpisize; ++r)
+    if(recv_shared_fr[r]==true) nb_rcv++;
+
   /* now receive the points */
-  int nb_rcv = p4est->mpisize-1;
   while(nb_rcv>0)
   {
     MPI_Status status;
@@ -704,12 +715,12 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
     }
   }
 
-  int nb_recv = 0;
+  nb_rcv = 0;
   for(int r=0; r<p4est->mpisize; ++r)
-    if(recv_fr[r]) nb_recv++;
+    if(recv_fr[r]) nb_rcv++;
 
   /* now receive the data */
-  while(nb_recv>0)
+  while(nb_rcv>0)
   {
     MPI_Status status;
     MPI_Probe(MPI_ANY_SOURCE, 2, p4est->mpicomm, &status);
@@ -765,7 +776,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
       voro_ghost_rank.push_back(sender_rank);
     }
 
-    nb_recv--;
+    nb_rcv--;
   }
 
   /* clear buffers */
