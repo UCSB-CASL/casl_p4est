@@ -468,7 +468,13 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
         added_points_grad.push_back(dp);
       }
     }
+
+    buff_shared_added_points_send[r].clear();
+    buff_shared_added_points_recv[r].clear();
   }
+
+  buff_shared_added_points_send.clear();
+  buff_shared_added_points_recv.clear();
 
   /* add the local points to the list of projected points */
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
@@ -592,6 +598,9 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
       voro.push_back(v);
     }
   }
+
+  added_points.clear();
+  added_points_grad.clear();
 
   /* prepare the buffer to send shared local voro points */
   std::vector< std::vector<voro_comm_t> > buff_send_points(p4est->mpisize);
@@ -758,6 +767,15 @@ void PoissonSolverNodeBaseJump::compute_voronoi_mesh()
 
     nb_recv--;
   }
+
+  /* clear buffers */
+  for(int r=0; r<p4est->mpisize; ++r)
+  {
+    buff_send_points[r].clear();
+  }
+  buff_send_points.clear();
+  send_to.clear();
+  recv_fr.clear();
 
   for(unsigned int n=0; n<num_local_voro; ++n)
   {
