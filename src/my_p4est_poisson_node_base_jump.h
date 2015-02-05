@@ -27,11 +27,13 @@ class PoissonSolverNodeBaseJump
     double y;
   } voro_comm_t;
 
-  typedef struct coords
+  typedef struct added_point
   {
     double x;
     double y;
-  } coords_t;
+    double dx;
+    double dy;
+  } added_point_t;
 
   class ZERO: public CF_2
   {
