@@ -1,0 +1,15 @@
+#!/bin/bash
+# This script can be used to strip the .N* of the stdout files which is needed 
+# before they can be parsed via the parse_log.m MATLAB file
+# useage: ./fixnames /path/to/directory
+# WARNING: Files will be replaced and not copied
+
+for file in $(find $1 -type f -name "std*"); do
+	mv $file $(echo $file | sed -e 's/\(.N.*$\)//g');
+done
+
+for file in $(find $1 -type d -name "n_*"); do
+	mv $file $(echo $file | sed -e 's/\(.N.*$\)//g');
+done
+
+

@@ -3,16 +3,16 @@ set(0,'DefaultTextFontname', 'CMU Serif')
 set(0,'DefaultAxesFontName', 'CMU Serif')
 
 type = 'host';
-run  = 'large';
-alpha = 5;
+run  = 'super_large';
+alpha = 50;
 
-folder = strcat(type, '/', run, '/alpha_', num2str(alpha/100));
+folder = strcat(type, '/', run, '/alpha_0.50');%, num2str(alpha/100));
 files = {
 %     'stdout.n_16';
 %     'stdout.n_32';
 %     'stdout.n_64';
-    'stdout.n_128';
-    'stdout.n_256';
+%     'stdout.n_128';
+%     'stdout.n_256';
     'stdout.n_512';
     'stdout.n_1024';
     'stdout.n_2048';
@@ -82,6 +82,7 @@ for j=1:length(events)
                 flag = 1;
             end
             if strfind(line, event);
+%                 line
                 t(j, i) = sscanf(line, '%*s %*d %*f %e %*[^\n]') / 10;
                 break
             end
@@ -113,7 +114,7 @@ close all;
 hfig = figure(1);
 fs = 16;
 ls = 15;
-
+t(:,:) = 2*t(:,:);
 for i=1:length(events)
     loglog(p, t(idx(i),:), modes{i}, 'markersize', 7, 'MarkerfaceColor',faces{i}, 'MarkerEdgeColor','k', 'linewidth', 1 ); hold on;           
     set(gca, 'fontsize', fs);

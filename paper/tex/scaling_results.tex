@@ -7,16 +7,19 @@ We define parallel efficiency as $e=s\cdot P_1 / P$ where $s=t_1/t_P$ is the spe
 \subsection{Interpolation}
 In this section we show the results for a simple test to measure the scalability of the interpolation Algorithm \ref{alg:interpolation}. The test consists of interpolating a function at a number of random points on a randomly refined Octree in three spatial dimensions. We consider two cases, a small test on a level\footnote{the level is the number of recursive splits allowed for each tree.} 9 tree with roughly 33M nodes and a larger test on a level 13 tree with roughly 280M nodes. In both cases the number of randomly generated points is chosen to be equal to the number of nodes and the stabilized second-order interpolation of \cite{Min;Gibou:07:A-second-order-accur} is performed 10 times to smooth out possible timing fluctuations.
 
-To simulate the effect of different CFL numbers, we generate the random points such that on each process $\alpha$ percentage of them are located outside the process boundary and thus will initiate communication. Scaling results are presented for $\alpha = 5 \%$ and $\alpha = 95\%$ for both the small and large problems in figure \ref{fig:interpolation}. Excellent scaling is obtained for the small problem for $P = 16-512$ even when $95\%$ of the interpolation points belong to a remote process. For the larger problem, however, the communication overhead prevents the algorithm from scaling beyond $2048$ processes when $\alpha = 95\%$ (c.f\ table \ref{tab:scaling_interpolation}). 
+To simulate the effect of different CFL numbers, we generate the random points such that on each process $\alpha$ percentage of them are located outside the process boundary and thus will initiate communication. Scaling results are presented for $\alpha = 5 \%$ and $\alpha = 95\%$ for both the small and large problems in figure \ref{fig:interpolation}. We also present a third row of results for a much larger problem with roughly 1.66B nodes on a level 14 tree. Excellent scaling is obtained for the small problem for $P = 16-512$ even when $95\%$ of the interpolation points belong to a remote process. For the larger problem, however, the communication overhead prevents the algorithm from scaling beyond $2048$ processes when $\alpha = 95\%$ (c.f\ table \ref{tab:scaling_interpolation}). Note, however, that this is expected since the total time is dominated by communication for $\alpha = 95\%$ and there is very little local work in this case. Indeed, the last row of figure \ref{fig:interpolation} show much better scaling behavior on a larger problem size, e.g. efficiencies are increased from $e=34\%$ to $e=68\%$ for $\alpha = 95\%$ on 4096 processes. This is a typical result with strong scaling and simply implies that our algorithms are scalablable for sufficiently large problems.
 \begin{figure}[htbp]
 	\begin{center}
-		\subfigure[$N_G = 33$M, $\alpha = 5\%$]{\includegraphics[width = 0.48 \textwidth] {figures/host_Interpolation_small_alpha_5.pdf}}
-		\subfigure[$N_G = 33$M, $\alpha = 95\%$]{\includegraphics[width = 0.48 \textwidth] {figures/host_Interpolation_small_alpha_95.pdf}}
+		\subfigure[$N_G = 33$M, $\alpha = 5\%$]{\includegraphics[width = 0.38 \textwidth] {figures/host_Interpolation_small_alpha_5.pdf}} \hspace{0.5 in}
+		\subfigure[$N_G = 33$M, $\alpha = 95\%$]{\includegraphics[width = 0.38 \textwidth] {figures/host_Interpolation_small_alpha_95.pdf}}
 		\\
-		\subfigure[$N_G = 280$M, $\alpha = 5\%$]{\includegraphics[width = 0.48 \textwidth] {figures/host_Interpolation_large_alpha_5.pdf}}
-		\subfigure[$N_G = 280$M, $\alpha = 95\%$]{\includegraphics[width = 0.48 \textwidth] {figures/host_Interpolation_large_alpha_95.pdf}}
+		\subfigure[$N_G = 280$M, $\alpha = 5\%$]{\includegraphics[width = 0.38 \textwidth] {figures/host_Interpolation_large_alpha_5.pdf}} \hspace{0.5 in}
+		\subfigure[$N_G = 280$M, $\alpha = 95\%$]{\includegraphics[width = 0.38 \textwidth] {figures/host_Interpolation_large_alpha_95.pdf}}
+		\\
+		\subfigure[$N_G = 1.66$B, $\alpha = 50\%$]{\includegraphics[width = 0.38 \textwidth] {figures/host_Interpolation_super_large_alpha_50.pdf}} \hspace{0.5 in}
+		\subfigure[$N_G = 1.66$B, $\alpha = 95\%$]{\includegraphics[width = 0.38 \textwidth] {figures/host_Interpolation_super_large_alpha_95.pdf}}
 	\end{center}
-	\caption{Strong scaling of Algorithm \ref{alg:interpolation} for several tests where $N_G$ denotes the number of random interpolation points (which is the same as the number of nodes in the Octree) and $\alpha$ denotes the percentage of these points that are remote for each process. Here ``Total'' represents the total time spent in the interpolation while ``buffer'', ``local'', ``queries'', and ``replies'' represent the the timing for different sections (c.f. Algorithm \ref{alg:interpolation}). The black dashed line represents the ideal scaling. The results indicate excellent scaling for the small test (a-b) and for the large test when $\alpha = 5\%$ (c). For the extreme case (d) the algorithm stops scaling at $2048$ processes due to communication overhead.}
+	\caption{Strong scaling of Algorithm \ref{alg:interpolation} for several tests where $N_G$ denotes the number of random interpolation points (which is the same as the number of nodes in the Octree) and $\alpha$ denotes the percentage of these points that are remote for each process. Here ``Total'' represents the total time spent in the interpolation while ``buffer'', ``local'', ``queries'', and ``replies'' represent the the timing for different sections (c.f. Algorithm \ref{alg:interpolation}). The black dashed line represents the ideal scaling. The results indicate excellent scaling for the small test (a-b) and for the large test when $\alpha = 5\%$ (c). For the extreme case (d) the algorithm stops scaling at $2048$ processes due to communication overhead. Note, however, that this merely indicates that the problem size is not large enough for this test case. Indeed much better scaling is obtained when the problem size is increased to $N_G = 1.66$B points (e-f).}
 	\label{fig:interpolation}
 \end{figure}
 
@@ -34,8 +37,13 @@ To simulate the effect of different CFL numbers, we generate the random points s
 	                            & $\alpha = 5\%$   & $100\%$ & $89\%$  & $95\%$  & $101\%$ & $109\%$& $114\%$ \\
 	                            & $\alpha = 95\%$  & $100\%$ & $103\%$ & $108\%$ & $99\%$  & $67\%$ & $34\%$ \\
 	\hline
+	\multirow{3}{*}{Very Large Test} & \multicolumn{1}{|c|}{$P$} & 128     & 256     & 512     & 1024    & 2048   & 4096 \\
+	\cline{2-8} 	                            
+	                            & $\alpha = 50\%$  & -- & -- & $100\%$ & $108\%$ & $102\%$& $78\%$ \\
+	                            & $\alpha = 95\%$  & -- & -- & $100\%$ & $103\%$ & $94\%$ & $64\%$ \\
+	\hline
 	\end{tabular}
-	\caption{Parallel efficiency of the total runtime the interpolation test. Reported efficiencies are based on the lowest number of processes for each test.}
+	\caption{Parallel efficiency of the total runtime of the interpolation algorithm for the small (33M nodes), large (280M nodes), and very large (1.66B nodes) tests. Reported efficiencies are based on the lowest number of processes for each test.}
 	\label{tab:scaling_interpolation}
 \end{table}
 
