@@ -94,11 +94,11 @@ class PoissonSolverNodeBaseJump
   Vec rhs;
   Vec sol_voro;
   unsigned int num_local_voro;
-  std::vector<Voronoi2D> voro;
+  std::vector<Point2> voro_points;
   std::vector< std::vector<size_t> > grid2voro;
 
   /* each rank's offset to compute global index for voro points */
-  std::vector<PetscInt> global_voro_offset;
+  std::vector<PetscInt> voro_global_offset;
 
   /* ranks of the owners of the voro ghost points */
   std::vector<p4est_locidx_t> voro_ghost_rank;
@@ -148,8 +148,10 @@ class PoissonSolverNodeBaseJump
   PetscErrorCode VecCreateGhostVoronoiRhs();
 
 public:
-  void compute_voronoi_mesh();
-  void setup_negative_laplace_matrix();
+  void compute_voronoi_points();
+  void compute_voronoi_cell(unsigned int n, Voronoi2D &voro) const;
+  void print_voronoi_VTK(const char* path) const;
+  void setup_linear_system();
   void setup_negative_laplace_rhsvec();
 
   PoissonSolverNodeBaseJump(const my_p4est_node_neighbors_t *node_neighbors, const my_p4est_cell_neighbors_t *cell_neighbors);
