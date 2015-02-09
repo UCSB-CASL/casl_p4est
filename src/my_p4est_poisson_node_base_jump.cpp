@@ -316,52 +316,51 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
   std::vector< std::vector<added_point_t> > buff_shared_added_points_send(p4est->mpisize);
   std::vector< std::vector<added_point_t> > buff_shared_added_points_recv(p4est->mpisize);
   std::vector<bool> send_shared_to(p4est->mpisize, false);
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  for(size_t l=0; l<ngbd_n->get_layer_size(); ++l)
   {
+    p4est_locidx_t n = ngbd_n->get_layer_node(l);
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     size_t num_sharers = (size_t) node->pad8;
-    if(num_sharers>0)
+
+    sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
+    int *sharers;
+    size_t sharers_index;
+    if(nodes->shared_offsets == NULL)
     {
-      sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
-      int *sharers;
-      size_t sharers_index;
-      if(nodes->shared_offsets == NULL)
-      {
-        P4EST_ASSERT(node->pad16 >= 0);
-        sharers_index = (size_t) node->pad16;
-      }
-      else
-      {
-        P4EST_ASSERT(node->pad16 == -1);
-        sharers_index = (size_t) nodes->shared_offsets[n];
-      }
+      P4EST_ASSERT(node->pad16 >= 0);
+      sharers_index = (size_t) node->pad16;
+    }
+    else
+    {
+      P4EST_ASSERT(node->pad16 == -1);
+      sharers_index = (size_t) nodes->shared_offsets[n];
+    }
 
-      sharers = (int*) sc_array_index(&rec->a, sharers_index);
+    sharers = (int*) sc_array_index(&rec->a, sharers_index);
+    for(size_t s=0; s<num_sharers; ++s)
+      send_shared_to[sharers[s]] = true;
+
+    double p_00, p_m0, p_p0, p_0m, p_0p;
+    (*ngbd_n)[n].ngbd_with_quadratic_interpolation(phi_p, p_00, p_m0, p_p0, p_0m, p_0p);
+
+    if(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0)
+    {
+      double d = phi_p[n];
+      Point2 dp((*ngbd_n)[n].dx_central(phi_p), (*ngbd_n)[n].dy_central(phi_p));
+      dp /= dp.norm_L2();
+      double xn = node_x_fr_n(n, p4est, nodes);
+      double yn = node_y_fr_n(n, p4est, nodes);
+      added_point_t added_point_n;
+      added_point_n.x = xn-d*dp.x;
+      added_point_n.y = yn-d*dp.y;
+      added_point_n.dx = dp.x;
+      added_point_n.dy = dp.y;
+
       for(size_t s=0; s<num_sharers; ++s)
-        send_shared_to[sharers[s]] = true;
-
-      double p_00, p_m0, p_p0, p_0m, p_0p;
-      (*ngbd_n)[n].ngbd_with_quadratic_interpolation(phi_p, p_00, p_m0, p_p0, p_0m, p_0p);
-
-      if(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0)
       {
-        double d = phi_p[n];
-        Point2 dp((*ngbd_n)[n].dx_central(phi_p), (*ngbd_n)[n].dy_central(phi_p));
-        dp /= dp.norm_L2();
-        double xn = node_x_fr_n(n, p4est, nodes);
-        double yn = node_y_fr_n(n, p4est, nodes);
-        added_point_t added_point_n;
-        added_point_n.x = xn-d*dp.x;
-        added_point_n.y = yn-d*dp.y;
-        added_point_n.dx = dp.x;
-        added_point_n.dy = dp.y;
-
-        for(size_t s=0; s<num_sharers; ++s)
-        {
-          buff_shared_added_points_send[sharers[s]].push_back(added_point_n);
-        }
-        buff_shared_added_points_recv[p4est->mpirank].push_back(added_point_n);
+        buff_shared_added_points_send[sharers[s]].push_back(added_point_n);
       }
+      buff_shared_added_points_recv[p4est->mpirank].push_back(added_point_n);
     }
   }
 
