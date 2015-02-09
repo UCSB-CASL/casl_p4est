@@ -308,6 +308,8 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
   double *phi_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
+  std::vector<p4est_locidx_t> marked_nodes;
+
   /* find the projected points associated to shared nodes
    * if a projected point is shared, all larger rank are informed.
    * The goal here is to avoid building two close projected points at a processor boundary
@@ -362,6 +364,8 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
       }
       buff_shared_added_points_recv[p4est->mpirank].push_back(added_point_n);
     }
+    else
+      marked_nodes.push_back(n);
   }
 
   /* send the shared points to the corresponding neighbors ranks
@@ -376,6 +380,41 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
       MPI_Isend(&buff_shared_added_points_send[r][0], buff_shared_added_points_send[r].size()*sizeof(added_point_t), MPI_BYTE, r, 4, p4est->mpicomm, &req);
       MPI_Request_free(&req);
     }
+  }
+
+  /* add the nodes that are actual voronoi points (not close to interface)
+   * to the list of voronoi points
+   */
+  /* layer nodes first */
+  for(unsigned int i=0; i<marked_nodes.size(); ++i)
+  {
+    p4est_locidx_t n = marked_nodes[i];
+    double xn = node_x_fr_n(n, p4est, nodes);
+    double yn = node_y_fr_n(n, p4est, nodes);
+    grid2voro[n].push_back(voro_points.size());
+    Point2 p(xn, yn);
+    voro_points.push_back(p);
+  }
+
+  /* now local nodes */
+  marked_nodes.clear();
+  for(size_t l=0; l<ngbd_n->get_local_size(); ++l)
+  {
+    p4est_locidx_t n = ngbd_n->get_local_node(l);
+    double p_00, p_m0, p_p0, p_0m, p_0p;
+    (*ngbd_n)[n].ngbd_with_quadratic_interpolation(phi_p, p_00, p_m0, p_p0, p_0m, p_0p);
+
+    bool is_interface = (p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0);
+    if(!is_interface)
+    {
+      double xn = node_x_fr_n(n, p4est, nodes);
+      double yn = node_y_fr_n(n, p4est, nodes);
+      grid2voro[n].push_back(voro_points.size());
+      Point2 p(xn, yn);
+      voro_points.push_back(p);
+    }
+    else
+      marked_nodes.push_back(n);
   }
 
   /* compute how many messages we are expecting to receive */
@@ -438,47 +477,33 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
   buff_shared_added_points_recv.clear();
 
   /* add the local points to the list of projected points */
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  for(size_t i=0; i<marked_nodes.size(); ++i)
   {
-    double p_00, p_m0, p_p0, p_0m, p_0p;
-    (*ngbd_n)[n].ngbd_with_quadratic_interpolation(phi_p, p_00, p_m0, p_p0, p_0m, p_0p);
+    p4est_locidx_t n = marked_nodes[i];
+
     double xn = node_x_fr_n(n, p4est, nodes);
     double yn = node_y_fr_n(n, p4est, nodes);
 
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    size_t num_sharers = (size_t) node->pad8;
+    double d = phi_p[n];
+    Point2 dp((*ngbd_n)[n].dx_central(phi_p), (*ngbd_n)[n].dy_central(phi_p));
+    dp /= dp.norm_L2();
 
-    bool is_interface = (p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0);
+    Point2 p_proj(xn-d*dp.x, yn-d*dp.y);
 
-    if(is_interface && num_sharers==0)
+    bool already_added = false;
+    for(unsigned int m=0; m<added_points.size(); ++m)
     {
-      double d = phi_p[n];
-      Point2 dp((*ngbd_n)[n].dx_central(phi_p), (*ngbd_n)[n].dy_central(phi_p));
-      dp /= dp.norm_L2();
-
-      Point2 p_proj(xn-d*dp.x, yn-d*dp.y);
-
-      bool already_added = false;
-      for(unsigned int m=0; m<added_points.size(); ++m)
+      if((p_proj-added_points[m]).norm_L2() < diag_min/5)
       {
-        if((p_proj-added_points[m]).norm_L2() < diag_min/5)
-        {
-          already_added = true;
-          break;
-        }
-      }
-
-      if(!already_added)
-      {
-        added_points.push_back(p_proj);
-        added_points_grad.push_back(dp);
+        already_added = true;
+        break;
       }
     }
-    else if(!is_interface)
+
+    if(!already_added)
     {
-      grid2voro[n].push_back(voro_points.size());
-      Point2 p(xn, yn);
-      voro_points.push_back(p);
+      added_points.push_back(p_proj);
+      added_points_grad.push_back(dp);
     }
   }
 
