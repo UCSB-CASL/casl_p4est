@@ -1195,35 +1195,13 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
 
 
 
-
-void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec solution)
+double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const
 {
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
+  PetscErrorCode ierr;
 
-  double *phi_p, *sol_voro_p, *solution_p;
-  ierr = VecGetArray(phi     , &phi_p     ); CHKERRXX(ierr);
+  double *sol_voro_p;
   ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
-  ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);
 
-//  /* for debugging, compute the error on the voronoi mesh */
-//  double err = 0;
-//  for(unsigned int n=0; n<num_local_voro; ++n)
-//  {
-//    Point2 pc = voro[n].get_Center_Point();
-
-////    double phi_n = interp_phi(pc.x, pc.y);
-//    double u_ex;
-//    u_ex = cos(pc.x)*sin(pc.y);
-////    if(phi_n<0) u_ex = exp(pc.x);
-////    else        u_ex = cos(pc.x)*sin(pc.y);
-
-//    err = std::max(err, ABS(u_ex - sol_voro_p[n]));
-//  }
-//  MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-//  PetscPrintf(p4est->mpicomm, "Error : %g\n", err);
-
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-  {
 #ifdef P4_TO_P8
     Point3 pn(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est, nodes));
 #else
@@ -1231,21 +1209,19 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
 #endif
 
     /* first check if the node is a voronoi point */
-    if(grid2voro[n].size()>0)
+    for(unsigned int m=0; m<grid2voro[n].size(); ++m)
     {
-      bool voro_point = false;
-      for(unsigned int m=0; m<grid2voro[n].size(); ++m)
+      Point2 pm = voro_points[grid2voro[n][m]];
+      if((pn-pm).norm_L2()<EPS)
       {
-        Point2 pm = voro_points[grid2voro[n][m]];
-        if((pn-pm).norm_L2()<EPS)
-        {
-          solution_p[n] = sol_voro_p[grid2voro[n][m]];
-          voro_point = true;
-          break;
-        }
+        double retval = sol_voro_p[grid2voro[n][m]];
+        ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+        return retval;
       }
-      if(voro_point) continue;
     }
+
+    double *phi_p;
+    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
     /* if not a grid point, gather all the neighbor voro points and find the
      * three closest with the same sign for phi */
@@ -1387,8 +1363,10 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
     if(di[0]==DBL_MAX || di[1]==DBL_MAX || di[2]==DBL_MAX)
     {
       std::cerr << "PoissonSolverNodeBaseJump->interpolate_solution_from_voronoi_to_tree: not enough points found." << std::endl;
-      solution_p[n] = sol_voro_p[ni[0]];
-      continue;
+      double retval = sol_voro_p[ni[0]];
+      ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
+      ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+      return retval;
     }
 
     if(ni[0]==ni[1] || ni[0]==ni[2] || ni[1]==ni[2])
@@ -1409,15 +1387,57 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
     double c1 = ( ( 1*p2.x-p1.x* 1)*f0 + (p0.x* 1- 1*p2.x)*f1 + ( 1*p1.x-p0.x* 1)*f2 ) / det;
     double c2 = ( (p1.x*p2.y-p2.x*p1.y)*f0 + (p2.x*p0.y-p0.x*p2.y)*f1 + (p0.x*p1.y-p1.x*p0.y)*f2 ) / det;
 
-    solution_p[n] = c0*pn.x + c1*pn.y + c2;
+    ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+
+    return c0*pn.x + c1*pn.y + c2;
+}
+
+
+
+void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec solution) const
+{
+  PetscErrorCode ierr;
+
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
+
+  double *solution_p;
+  ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);
+
+//  /* for debugging, compute the error on the voronoi mesh */
+//  double err = 0;
+//  for(unsigned int n=0; n<num_local_voro; ++n)
+//  {
+//    Point2 pc = voro[n].get_Center_Point();
+
+////    double phi_n = interp_phi(pc.x, pc.y);
+//    double u_ex;
+//    u_ex = cos(pc.x)*sin(pc.y);
+////    if(phi_n<0) u_ex = exp(pc.x);
+////    else        u_ex = cos(pc.x)*sin(pc.y);
+
+//    err = std::max(err, ABS(u_ex - sol_voro_p[n]));
+//  }
+//  MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+//  PetscPrintf(p4est->mpicomm, "Error : %g\n", err);
+
+  for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+  {
+    p4est_locidx_t n = ngbd_n->get_layer_node(i);
+    solution_p[n] = interpolate_solution_from_voronoi_to_tree_on_node_n(n);
   }
 
-  ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(solution, &solution_p); CHKERRXX(ierr);
-
   ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
+  {
+    p4est_locidx_t n = ngbd_n->get_local_node(i);
+    solution_p[n] = interpolate_solution_from_voronoi_to_tree_on_node_n(n);
+  }
+
   ierr = VecGhostUpdateEnd  (solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(solution, &solution_p); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
 }

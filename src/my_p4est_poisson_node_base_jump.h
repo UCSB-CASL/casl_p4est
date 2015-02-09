@@ -183,7 +183,8 @@ public:
 
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 
-  void interpolate_solution_from_voronoi_to_tree(Vec solution);
+  double interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const;
+  void interpolate_solution_from_voronoi_to_tree(Vec solution) const;
 };
 
 #endif // POISSON_SOLVER_NODE_BASE_JUMP_H
