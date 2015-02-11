@@ -71,9 +71,8 @@ public:
      *
      * The vertices of the voronoi partition associated with the point number m are m and m+1, i.e. points(m) corresponds to vertices partition(m) and partition(m+1).
      */
-  void get_Partition( vector<Voronoi2DPoint>& points, vector<Point2>& partition ) const;
-  void get_Partition( const vector<Voronoi2DPoint> *&points, const vector<Point2> *&partition ) const;
-  void get_Partition( vector<Voronoi2DPoint> *&points, vector<Point2> *&partition );
+  void get_Points( const vector<Voronoi2DPoint> *&points) const;
+  void get_Partition( const vector<Point2> *&partition ) const;
 
   /*!
      * \brief update the partition
@@ -159,7 +158,7 @@ public:
      * \brief compute the area inside the voronoi partition
      * \return the area of the voronoi partition containing pc and built using the provided points
      */
-  double area() const;
+  double volume() const;
 
   /*!
    * \brief is_Wall

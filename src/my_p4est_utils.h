@@ -362,7 +362,7 @@ inline double node_y_fr_n(const p4est_indep_t *ni){
 }
 
 #ifdef P4_TO_P8
-inline double node_z_fr_k(const p4est_indep_t *ni){
+inline double node_z_fr_n(const p4est_indep_t *ni){
   return ni->z == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->z)/static_cast<double>(P4EST_ROOT_LEN);
 }
 #endif

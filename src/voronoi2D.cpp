@@ -17,21 +17,13 @@ void Voronoi2D::operator=( const Voronoi2D& voro )
   phi_c = voro.phi_c;
 }
 
-void Voronoi2D::get_Partition( vector<Voronoi2DPoint>& points, vector<Point2>& partition ) const
+void Voronoi2D::get_Points( const vector<Voronoi2DPoint>*& points) const
 {
-  points = this->points;
-  partition = this->partition;
+  points = &this->points;
 }
 
-void Voronoi2D::get_Partition( const vector<Voronoi2DPoint> *&points, const vector<Point2> *&partition ) const
+void Voronoi2D::get_Partition( const vector<Point2> *&partition ) const
 {
-  points = &(this->points);
-  partition = &(this->partition);
-}
-
-void Voronoi2D::get_Partition( vector<Voronoi2DPoint> *&points, vector<Point2> *&partition )
-{
-  points = &(this->points);
   partition = &(this->partition);
 }
 
@@ -365,7 +357,7 @@ void Voronoi2D::clip_Interface()
 #endif
 }
 
-double Voronoi2D::area() const
+double Voronoi2D::volume() const
 {
   double sum = 0.;
   for(unsigned int m=0; m<partition.size(); ++m)

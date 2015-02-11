@@ -4,19 +4,20 @@
 #include <petsc.h>
 
 #ifdef P4_TO_P8
+#include <src/my_p8est_cell_neighbors.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_interpolating_function_host.h>
 #include <src/my_p8est_utils.h>
+#include <src/voronoi3D.h>
 #else
 #include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_interpolating_function_host.h>
 #include <src/my_p4est_utils.h>
-#endif
-
 #include <src/voronoi2D.h>
+#endif
 
 class PoissonSolverNodeBaseJump
 {
@@ -25,16 +26,61 @@ class PoissonSolverNodeBaseJump
     p4est_locidx_t local_num;
     double x;
     double y;
+#ifdef P4_TO_P8
+    double z;
+#endif
   } voro_comm_t;
 
   typedef struct added_point
   {
     double x;
     double y;
+#ifdef P4_TO_P8
+    double z;
+#endif
     double dx;
     double dy;
+#ifdef P4_TO_P8
+    double dz;
+#endif
   } added_point_t;
 
+#ifdef P4_TO_P8
+  class ZERO: public CF_3
+  {
+  public:
+    double operator()(double, double, double) const
+    {
+      return 0;
+    }
+  } zero;
+
+  class MU_CONSTANT: public CF_3
+  {
+  private:
+    double cst;
+  public:
+    MU_CONSTANT() { cst = 1; }
+    void set(double cst) { this->cst = cst; }
+    double operator()(double, double, double) const
+    {
+      return cst;
+    }
+  } mu_constant;
+
+  class ADD_CONSTANT: public CF_3
+  {
+  private:
+    double cst;
+  public:
+    ADD_CONSTANT() { cst = 0; }
+    void set(double cst) { this->cst = cst; }
+    double operator()(double, double, double) const
+    {
+      return cst;
+    }
+  } add_constant;
+#else
   class ZERO: public CF_2
   {
   public:
@@ -69,6 +115,8 @@ class PoissonSolverNodeBaseJump
       return cst;
     }
   } add_constant;
+#endif
+
 
   const my_p4est_node_neighbors_t *ngbd_n;
   const my_p4est_cell_neighbors_t *ngbd_c;
@@ -81,7 +129,9 @@ class PoissonSolverNodeBaseJump
 
   double xmin, xmax;
   double ymin, ymax;
+#ifdef P4_TO_P8
   double zmin, zmax;
+#endif
 
   double dx_min, dy_min;
 #ifdef P4_TO_P8
@@ -94,7 +144,11 @@ class PoissonSolverNodeBaseJump
   Vec rhs;
   Vec sol_voro;
   unsigned int num_local_voro;
+#ifdef P4_TO_P8
+  std::vector<Point3> voro_points;
+#else
   std::vector<Point2> voro_points;
+#endif
   std::vector< std::vector<size_t> > grid2voro;
 
   /* each rank's offset to compute global index for voro points */
@@ -112,7 +166,11 @@ class PoissonSolverNodeBaseJump
   std::vector<p4est_locidx_t> voro_ghost_local_num;
   std::vector<PetscInt> petsc_gloidx;
 
+#ifdef P4_TO_P8
+  BoundaryConditions3D *bc;
+#else
   BoundaryConditions2D *bc;
+#endif
 
   InterpolatingFunctionNodeBaseHost interp_phi;
   InterpolatingFunctionNodeBaseHost rhs_m;
@@ -123,11 +181,17 @@ class PoissonSolverNodeBaseJump
   bool local_u_jump;
   bool local_mu_grad_u_jump;
 
+#ifdef P4_TO_P8
+  CF_3 *mu_m, *mu_p;
+  CF_3 *add;
+  CF_3 *u_jump;
+  CF_3 *mu_grad_u_jump;
+#else
   CF_2 *mu_m, *mu_p;
   CF_2 *add;
   CF_2 *u_jump;
   CF_2 *mu_grad_u_jump;
-
+#endif
 
   // PETSc objects
   Mat A;
@@ -149,7 +213,11 @@ class PoissonSolverNodeBaseJump
 
 public:
   void compute_voronoi_points();
+#ifdef P4_TO_P8
+  void compute_voronoi_cell(unsigned int n, Voronoi3D &voro) const;
+#else
   void compute_voronoi_cell(unsigned int n, Voronoi2D &voro) const;
+#endif
   void print_voronoi_VTK(const char* path) const;
   void setup_linear_system();
   void setup_negative_laplace_rhsvec();
@@ -165,7 +233,11 @@ public:
 
   void set_diagonal(Vec add);
 
+#ifdef P4_TO_P8
+  void set_bc(BoundaryConditions3D& bc);
+#else
   void set_bc(BoundaryConditions2D& bc);
+#endif
 
   void set_mu(double mu);
 
@@ -185,6 +257,8 @@ public:
 
   double interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const;
   void interpolate_solution_from_voronoi_to_tree(Vec solution) const;
+
+  void write_stats(const char *path) const;
 };
 
 #endif // POISSON_SOLVER_NODE_BASE_JUMP_H

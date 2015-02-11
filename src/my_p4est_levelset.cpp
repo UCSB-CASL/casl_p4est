@@ -1134,7 +1134,7 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
     double xn = node_x_fr_n(node);
     double yn = node_y_fr_n(node);
 #ifdef P4_TO_P8
-    double zn = node_z_fr_k(node);
+    double zn = node_z_fr_n(node);
 #endif
 
     xn += tree_xmin;
@@ -1505,7 +1505,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
         node_y_fr_n(node) + tree_ymin
   #ifdef P4_TO_P8
         ,
-        node_z_fr_k(node) + tree_zmin
+        node_z_fr_n(node) + tree_zmin
   #endif
       };
 
@@ -1582,7 +1582,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
         node_y_fr_n(node) + tree_ymin
   #ifdef P4_TO_P8
         ,
-        node_z_fr_k(node) + tree_zmin
+        node_z_fr_n(node) + tree_zmin
   #endif
       };
 
@@ -1763,7 +1763,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
         node_y_fr_n(node) + tree_ymin
   #ifdef P4_TO_P8
         ,
-        node_z_fr_k(node) + tree_zmin
+        node_z_fr_n(node) + tree_zmin
   #endif
       };
 
@@ -1979,7 +1979,7 @@ void my_p4est_level_set::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int o
         node_y_fr_n(node) + tree_ymin
   #ifdef P4_TO_P8
         ,
-        node_z_fr_k(node) + tree_zmin
+        node_z_fr_n(node) + tree_zmin
   #endif
       };
 
@@ -2153,7 +2153,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
         node_y_fr_n(node) + tree_ymin - grad_phi.y*phi[n]
   #ifdef P4_TO_P8
         ,
-        node_z_fr_k(node) + tree_zmin - grad_phi.z*phi[n]
+        node_z_fr_n(node) + tree_zmin - grad_phi.z*phi[n]
   #endif
       };
 
@@ -3692,7 +3692,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
     double x = node_x_fr_n(node);
     double y = node_y_fr_n(node);
 #ifdef P4_TO_P8
-    double z = node_z_fr_k(node);
+    double z = node_z_fr_n(node);
 #endif
 
     x += tree_xmin;

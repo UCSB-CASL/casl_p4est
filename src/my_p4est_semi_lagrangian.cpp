@@ -94,7 +94,7 @@ double SemiLagrangian::compute_dt(const CF_2 &vx, const CF_2 &vy)
     double x = node_x_fr_n(ni) + v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 0];
     double y = node_y_fr_n(ni) + v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 1];
 #ifdef P4_TO_P8
-    double z = node_z_fr_k(ni) + v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 2];
+    double z = node_z_fr_n(ni) + v2c[3*t2v[P4EST_CHILDREN*tr_it + 0] + 2];
 #endif
 #ifdef P4_TO_P8
     double vn = sqrt(SQR(vx(x,y,z)) + SQR(vy(x,y,z)) + SQR(vz(x,y,z)));
@@ -197,7 +197,7 @@ void SemiLagrangian::advect_from_n_to_np1(const std::vector<p4est_locidx_t>& map
       node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin
+      node_z_fr_n(indep_node) + tr_zmin
   #endif
     };
 
@@ -286,7 +286,7 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<p4est_locidx_t>&
       node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin
+      node_z_fr_n(indep_node) + tr_zmin
   #endif
     };
 
@@ -380,7 +380,7 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
       node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin
+      node_z_fr_n(indep_node) + tr_zmin
   #endif
     };
 
@@ -426,7 +426,7 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
       node_y_fr_n(indep_node) + tr_ymin - .5*dt*vy_tmp[ni]
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
+      node_z_fr_n(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
   #endif
     };
 
@@ -474,7 +474,7 @@ void SemiLagrangian::advect_from_n_to_np1(double dt,
       node_y_fr_n(indep_node) + tr_ymin - dt*vy_tmp[ni]
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin - dt*vz_tmp[ni]
+      node_z_fr_n(indep_node) + tr_zmin - dt*vz_tmp[ni]
   #endif
     };
 
@@ -558,7 +558,7 @@ void SemiLagrangian::advect_from_n_to_np1_test(double dt,
       node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin
+      node_z_fr_n(indep_node) + tr_zmin
   #endif
     };
 
@@ -605,7 +605,7 @@ void SemiLagrangian::advect_from_n_to_np1_test(double dt,
       node_y_fr_n(indep_node) + tr_ymin - .5*dt*vy_tmp_n[ni]
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin - .5*dt*vz_tmp_n[ni]
+      node_z_fr_n(indep_node) + tr_zmin - .5*dt*vz_tmp_n[ni]
   #endif
     };
 
@@ -676,7 +676,7 @@ void SemiLagrangian::advect_from_n_to_np1_test(double dt,
       node_y_fr_n(indep_node) + tr_ymin - dt*(1.5*vy_tmp_n[ni] - .5*vy_tmp_nm1[ni])
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin - dt*(1.5*vz_tmp_n[ni] - .5*vz_tmp_nm1[ni])
+      node_z_fr_n(indep_node) + tr_zmin - dt*(1.5*vz_tmp_n[ni] - .5*vz_tmp_nm1[ni])
   #endif
     };
 
@@ -758,7 +758,7 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
       node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin
+      node_z_fr_n(indep_node) + tr_zmin
   #endif
     };
 
@@ -795,7 +795,7 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
       node_y_fr_n(indep_node) + tr_ymin
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin
+      node_z_fr_n(indep_node) + tr_zmin
   #endif
     };
 
@@ -823,9 +823,9 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin,
-      node_y_fr_j(indep_node) + tr_ymin,
-      node_z_fr_k(indep_node) + tr_zmin
+      node_x_fr_n(indep_node) + tr_xmin,
+      node_y_fr_n(indep_node) + tr_ymin,
+      node_z_fr_n(indep_node) + tr_zmin
     };
 
     vz_tmp[ni] = interp(xyz[0], xyz[1], xyz[2]);
@@ -859,7 +859,7 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
       node_y_fr_n(indep_node) + tr_ymin - .5*dt*vy_tmp[ni]
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
+      node_z_fr_n(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
   #endif
     };
 
@@ -896,7 +896,7 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
       node_y_fr_n(indep_node) + tr_ymin - .5*dt*vy_tmp[ni]
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
+      node_z_fr_n(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
   #endif
     };
 
@@ -924,9 +924,9 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
     /* Find initial xy points */
     double xyz[] =
     {
-      node_x_fr_i(indep_node) + tr_xmin - .5*dt*vx_tmp[ni],
-      node_y_fr_j(indep_node) + tr_ymin - .5*dt*vy_tmp[ni],
-      node_z_fr_k(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
+      node_x_fr_n(indep_node) + tr_xmin - .5*dt*vx_tmp[ni],
+      node_y_fr_n(indep_node) + tr_ymin - .5*dt*vy_tmp[ni],
+      node_z_fr_n(indep_node) + tr_zmin - .5*dt*vz_tmp[ni]
     };
 
     vz_tmp[ni] = interp(xyz[0], xyz[1], xyz[2]);
@@ -961,7 +961,7 @@ void SemiLagrangian::advect_from_n_to_np1_CFL(const std::vector<double>& map, do
       node_y_fr_n(indep_node) + tr_ymin - dt*vy_tmp[ni]
   #ifdef P4_TO_P8
       ,
-      node_z_fr_k(indep_node) + tr_zmin - dt*vz_tmp[ni]
+      node_z_fr_n(indep_node) + tr_zmin - dt*vz_tmp[ni]
   #endif
     };
 
@@ -1716,7 +1716,7 @@ double SemiLagrangian::update_p4est_second_order_CFL(const CF_2& vx, const CF_2&
     double x = node_x_fr_n(indep_node) + t2c[3 * tr_mm + 0];
     double y = node_y_fr_n(indep_node) + t2c[3 * tr_mm + 1];
 #ifdef P4_TO_P8
-    double z = node_z_fr_k(indep_node) + t2c[3 * tr_mm + 2];
+    double z = node_z_fr_n(indep_node) + t2c[3 * tr_mm + 2];
 #endif
 
 #ifdef P4_TO_P8
@@ -1740,7 +1740,7 @@ double SemiLagrangian::update_p4est_second_order_CFL(const CF_2& vx, const CF_2&
     double x = node_x_fr_n(indep_node) + t2c[3 * tr_mm + 0];
     double y = node_y_fr_n(indep_node) + t2c[3 * tr_mm + 1];
 #ifdef P4_TO_P8
-    double z = node_z_fr_k(indep_node) + t2c[3 * tr_mm + 2];
+    double z = node_z_fr_n(indep_node) + t2c[3 * tr_mm + 2];
 #endif
 
 #ifdef P4_TO_P8
