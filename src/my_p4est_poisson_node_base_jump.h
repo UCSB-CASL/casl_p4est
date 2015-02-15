@@ -259,6 +259,8 @@ public:
   void interpolate_solution_from_voronoi_to_tree(Vec solution) const;
 
   void write_stats(const char *path) const;
+
+  void check_voronoi_partition() const;
 };
 
 #endif // POISSON_SOLVER_NODE_BASE_JUMP_H

@@ -115,7 +115,9 @@ public:
      * \param voro the list of voronoi partitions to save
      * \param file_name the file in which the voronoi partition is to be saved
      */
-  static void print_VTK_Format( const vector<Voronoi3D>& voro, const char* file_name );
+  static void print_VTK_Format( const vector<Voronoi3D>& voro, const char* file_name,
+                                double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
+                                bool periodic_x, bool periodic_y, bool periodic_z);
 };
 
 #endif // CASL_VORONOI3D_H

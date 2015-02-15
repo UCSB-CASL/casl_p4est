@@ -321,6 +321,12 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
   std::vector< std::vector<added_point_t> > buff_shared_added_points_recv(p4est->mpisize);
   std::vector<bool> send_shared_to(p4est->mpisize, false);
 
+  // bousouf
+  if(nodes->shared_offsets!=NULL)
+    std::cout << p4est->mpirank << " : SHARED OFFSETS ! " << std::endl;
+  else
+    std::cout << p4est->mpirank << " : It's ok " << std::endl;
+
   for(size_t l=0; l<ngbd_n->get_layer_size(); ++l)
   {
     p4est_locidx_t n = ngbd_n->get_layer_node(l);
@@ -905,7 +911,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
 #endif
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, A, rhs, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
 
   /* find the cell to which this point belongs */
 #ifdef P4_TO_P8
@@ -1227,7 +1233,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
   voro.construct_Partition();
 #endif
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, A, rhs, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -1305,6 +1311,8 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 {
   preallocate_matrix();
 
+  std::cerr << "Assembling matrix" << std::endl;
+
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 
   double *rhs_p;
@@ -1335,6 +1343,10 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 #else
       rhs_p[n] = bc->wallValue(pc.x, pc.y);
 #endif
+
+      // bousouf
+      if(ISINF(rhs_p[n]))
+        std::cerr << "NAN DIR " << n << std::endl;
       continue;
     }
 
@@ -1392,6 +1404,9 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 #endif
     if(add_n>EPS) matrix_has_nullspace = false;
 
+    if(ISINF(volume*add_n))
+      std::cerr << "NAN MAT " << n << std::endl;
+
     ierr = MatSetValue(A, global_n_idx, global_n_idx, volume*add_n, ADD_VALUES); CHKERRXX(ierr);
 
     for(unsigned int l=0; l<points->size(); ++l)
@@ -1430,6 +1445,9 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
         if((unsigned int)(*points)[l].n<num_local_voro) global_l_idx = (*points)[l].n + voro_global_offset[p4est->mpirank];
         else                                            global_l_idx = voro_ghost_local_num[(*points)[l].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[l].n-num_local_voro]];
 
+        if(ISINF(s*mu_harmonic/d))
+          std::cerr << "NAN MAT " << n << std::endl;
+
         ierr = MatSetValue(A, global_n_idx, global_n_idx,  s*mu_harmonic/d, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, global_n_idx, global_l_idx, -s*mu_harmonic/d, ADD_VALUES); CHKERRXX(ierr);
 
@@ -1447,6 +1465,8 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 #else
           rhs_p[n] += s*mu_harmonic/d * SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y);
           rhs_p[n] -= mu_harmonic/mu_l * s/2 * (*mu_grad_u_jump)(p_ln.x, p_ln.y);
+          if(ISINF(rhs_p[n]))
+            std::cerr << "NAN RHS " << n << std::endl;
 #endif
         }
       }
@@ -1655,6 +1675,7 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
 double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const
 {
 #ifdef P4_TO_P8
+  return 0;
   std::cerr << "IMPLEMENT INTERPOLATE TO TREE FOR OCTREES !" << std::endl;
 #else
   PetscErrorCode ierr;
@@ -1867,6 +1888,7 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
   ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);
 
   /* for debugging, compute the error on the voronoi mesh */
+  // bousouf
   if(1)
   {
     double *sol_voro_p;
@@ -1879,10 +1901,10 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
 #ifdef P4_TO_P8
       Point3 pc = voro_points[n];
 
-//      double phi_n = interp_phi(pc.x, pc.y, pc.z);
+      double phi_n = interp_phi(pc.x, pc.y, pc.z);
+      if(phi_n<0) u_ex = exp(pc.z);
+      else        u_ex = cos(pc.x)*sin(pc.y);
       u_ex = cos(pc.x)*sin(pc.y)*exp(pc.z);
-//      if(phi_n<0) u_ex = exp(pc.x);
-//      else        u_ex = cos(pc.x)*sin(pc.y);
 #else
       Point2 pc = voro_points[n];
 
@@ -1972,14 +1994,71 @@ next_point:
 
 void PoissonSolverNodeBaseJump::print_voronoi_VTK(const char* path) const
 {
-#ifndef P4_TO_P8
+#ifdef P4_TO_P8
+  std::vector<Voronoi3D> voro(num_local_voro);
+#else
   std::vector<Voronoi2D> voro(num_local_voro);
+#endif
   for(unsigned int n=0; n<num_local_voro; ++n)
     compute_voronoi_cell(n, voro[n]);
 
   char name[1000];
   sprintf(name, "%s_%d.vtk", path, p4est->mpirank);
+#ifdef P4_TO_P8
+
+  Voronoi3D::print_VTK_Format(voro, name, xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
+#else
   Voronoi2D::print_VTK_Format(voro, name);
 #endif
 }
 
+
+void PoissonSolverNodeBaseJump::check_voronoi_partition() const
+{
+#ifdef P4_TO_P8
+  std::vector<Voronoi3D> voro(num_local_voro);
+  const std::vector<Voronoi3DPoint> *points;
+  const std::vector<Voronoi3DPoint> *pts;
+#else
+  std::vector<Voronoi2D> voro(num_local_voro);
+  const std::vector<Voronoi2DPoint> *points;
+  const std::vector<Voronoi2DPoint> *pts;
+#endif
+
+  for(unsigned int n=0; n<num_local_voro; ++n)
+    compute_voronoi_cell(n, voro[n]);
+
+  bool partition_is_good = true;
+  for(unsigned int n=0; n<num_local_voro; ++n)
+  {
+    voro[n].get_Points(points);
+
+    for(unsigned int m=0; m<points->size(); ++m)
+    {
+      if((*points)[m].n>=0)
+      {
+        voro[(*points)[m].n].get_Points(pts);
+        bool ok = false;
+        for(unsigned int k=0; k<pts->size(); ++k)
+        {
+          if((*pts)[k].n==(int) n)
+          {
+            ok = true;
+            continue;
+          }
+        }
+
+        if(ok==false)
+        {
+          std::cout << "Bad voronoi cell for point # " << n << " : " << (*points)[m].n << ", \t Centerd on : " << voro[n].get_Center_Point();
+//          std::cout << (*points)[m].n << ", " << (*points)[m].s << std::endl;
+          partition_is_good = false;
+        }
+      }
+    }
+  }
+
+
+  if(partition_is_good) printf("Partition is good.\n");
+  else                  printf("Partition is NOT good.\n");
+}
