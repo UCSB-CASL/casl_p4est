@@ -321,12 +321,6 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
   std::vector< std::vector<added_point_t> > buff_shared_added_points_recv(p4est->mpisize);
   std::vector<bool> send_shared_to(p4est->mpisize, false);
 
-  // bousouf
-//  if(nodes->shared_offsets!=NULL)
-//    std::cout << p4est->mpirank << " : SHARED OFFSETS ! " << std::endl;
-//  else
-//    std::cout << p4est->mpirank << " : It's ok " << std::endl;
-
   for(size_t l=0; l<ngbd_n->get_layer_size(); ++l)
   {
     p4est_locidx_t n = ngbd_n->get_layer_node(l);
@@ -479,7 +473,6 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
   }
 
   /* now add the points to the list of projected points */
-  double band = diag_min/5;
 #ifdef P4_TO_P8
   std::vector<Point3> added_points;
   std::vector<Point3> added_points_grad;
@@ -567,6 +560,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
   }
 
   /* finally build the voronoi points from the list of projected points */
+  double band = diag_min/10;
   for(unsigned int n=0; n<added_points.size(); ++n)
   {
 #ifdef P4_TO_P8
@@ -1963,10 +1957,10 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
 #ifdef P4_TO_P8
       Point3 pc = voro_points[n];
 
+      u_ex = cos(pc.x)*sin(pc.y)*exp(pc.z);
       double phi_n = interp_phi(pc.x, pc.y, pc.z);
       if(phi_n<0) u_ex = exp(pc.z);
       else        u_ex = cos(pc.x)*sin(pc.y);
-      u_ex = cos(pc.x)*sin(pc.y)*exp(pc.z);
 #else
       Point2 pc = voro_points[n];
 
@@ -2066,8 +2060,8 @@ void PoissonSolverNodeBaseJump::print_voronoi_VTK(const char* path) const
 
   char name[1000];
   sprintf(name, "%s_%d.vtk", path, p4est->mpirank);
-#ifdef P4_TO_P8
 
+#ifdef P4_TO_P8
   Voronoi3D::print_VTK_Format(voro, name, xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
 #else
   Voronoi2D::print_VTK_Format(voro, name);
@@ -2079,8 +2073,10 @@ void PoissonSolverNodeBaseJump::check_voronoi_partition() const
 {
 #ifdef CASL_THROWS
   if(p4est->mpisize!=1)
+  {
     fprintf(stderr, "WARNING ! PoissonSolverNodeBaseJump->check_voronoi_partition: cannot check partition with multiple processes.\n");
-  return;
+    return;
+  }
 #endif
 
 #ifdef P4_TO_P8
