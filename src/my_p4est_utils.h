@@ -17,23 +17,29 @@
 #include <vector>
 
 namespace dir {
+/* vertices directions */
 enum {
   v_mmm = 0,
   v_pmm,
   v_mpm,
-  v_ppm,
-  v_mmp,
+  v_ppm
+#ifdef P4_TO_P8
+  ,v_mmp,
   v_pmp,
   v_mpp,
   v_ppp
+#endif
 };
+/* faces directions */
 enum {
   f_m00 = 0,
   f_p00,
   f_0m0,
-  f_0p0,
-  f_00m,
+  f_0p0
+#ifdef P4_TO_P8
+  ,f_00m,
   f_00p
+#endif
 };
 }
 

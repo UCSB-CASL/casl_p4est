@@ -322,10 +322,10 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
   std::vector<bool> send_shared_to(p4est->mpisize, false);
 
   // bousouf
-  if(nodes->shared_offsets!=NULL)
-    std::cout << p4est->mpirank << " : SHARED OFFSETS ! " << std::endl;
-  else
-    std::cout << p4est->mpirank << " : It's ok " << std::endl;
+//  if(nodes->shared_offsets!=NULL)
+//    std::cout << p4est->mpirank << " : SHARED OFFSETS ! " << std::endl;
+//  else
+//    std::cout << p4est->mpirank << " : It's ok " << std::endl;
 
   for(size_t l=0; l<ngbd_n->get_layer_size(); ++l)
   {
@@ -1008,6 +1008,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
 #ifdef P4_TO_P8
       for(it=ngbd_c->begin(quad_idx, dir::f_00m); it<ngbd_c->end(quad_idx, dir::f_00m); ++it)
         ngbd_quads.push_back(it->locidx);
+
+      std::vector<p4est_quadrant_t> tmp;
+//      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1, -1, -1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1, -1,  0);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1,  0, -1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0, -1, -1);
+      for(unsigned int i=0; i<tmp.size(); ++i)
+        ngbd_quads.push_back(tmp[i].p.piggy3.local_num);
 #endif
     }
 
@@ -1026,6 +1034,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
 #ifdef P4_TO_P8
       for(it=ngbd_c->begin(quad_idx, dir::f_00m); it<ngbd_c->end(quad_idx, dir::f_00m); ++it)
         ngbd_quads.push_back(it->locidx);
+
+      std::vector<p4est_quadrant_t> tmp;
+//      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1, -1, -1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1, -1,  0);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1,  0, -1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0, -1, -1);
+      for(unsigned int i=0; i<tmp.size(); ++i)
+        ngbd_quads.push_back(tmp[i].p.piggy3.local_num);
 #endif
     }
 
@@ -1044,6 +1060,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
 #ifdef P4_TO_P8
       for(it=ngbd_c->begin(quad_idx, dir::f_00m); it<ngbd_c->end(quad_idx, dir::f_00m); ++it)
         ngbd_quads.push_back(it->locidx);
+
+      std::vector<p4est_quadrant_t> tmp;
+//      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1,  1, -1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1,  1,  0);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1,  0, -1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0,  1, -1);
+      for(unsigned int i=0; i<tmp.size(); ++i)
+        ngbd_quads.push_back(tmp[i].p.piggy3.local_num);
 #endif
     }
 
@@ -1062,6 +1086,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
 #ifdef P4_TO_P8
       for(it=ngbd_c->begin(quad_idx, dir::f_00m); it<ngbd_c->end(quad_idx, dir::f_00m); ++it)
         ngbd_quads.push_back(it->locidx);
+
+      std::vector<p4est_quadrant_t> tmp;
+//      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1,  1, -1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1,  1,  0);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1,  0, -1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0,  1, -1);
+      for(unsigned int i=0; i<tmp.size(); ++i)
+        ngbd_quads.push_back(tmp[i].p.piggy3.local_num);
 #endif
     }
 
@@ -1076,6 +1108,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
         ngbd_quads.push_back(it->locidx);
       for(it=ngbd_c->begin(quad_idx, dir::f_00p); it<ngbd_c->end(quad_idx, dir::f_00p); ++it)
         ngbd_quads.push_back(it->locidx);
+
+      std::vector<p4est_quadrant_t> tmp;
+//      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1, -1,  1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1, -1,  0);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1,  0,  1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0, -1,  1);
+      for(unsigned int i=0; i<tmp.size(); ++i)
+        ngbd_quads.push_back(tmp[i].p.piggy3.local_num);
     }
 
     ngbd_n->find_neighbor_cell_of_node(node,  1, -1,  1, quad_idx, tree_idx);
@@ -1088,6 +1128,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
         ngbd_quads.push_back(it->locidx);
       for(it=ngbd_c->begin(quad_idx, dir::f_00p); it<ngbd_c->end(quad_idx, dir::f_00p); ++it)
         ngbd_quads.push_back(it->locidx);
+
+      std::vector<p4est_quadrant_t> tmp;
+//      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1, -1,  1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1, -1,  0);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1,  0,  1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0, -1,  1);
+      for(unsigned int i=0; i<tmp.size(); ++i)
+        ngbd_quads.push_back(tmp[i].p.piggy3.local_num);
     }
 
     ngbd_n->find_neighbor_cell_of_node(node, -1,  1,  1, quad_idx, tree_idx);
@@ -1100,6 +1148,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
         ngbd_quads.push_back(it->locidx);
       for(it=ngbd_c->begin(quad_idx, dir::f_00p); it<ngbd_c->end(quad_idx, dir::f_00p); ++it)
         ngbd_quads.push_back(it->locidx);
+
+      std::vector<p4est_quadrant_t> tmp;
+//      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1,  1,  1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1,  1,  0);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1,  0,  1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0,  1,  1);
+      for(unsigned int i=0; i<tmp.size(); ++i)
+        ngbd_quads.push_back(tmp[i].p.piggy3.local_num);
     }
 
     ngbd_n->find_neighbor_cell_of_node(node,  1,  1,  1, quad_idx, tree_idx);
@@ -1112,6 +1168,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
         ngbd_quads.push_back(it->locidx);
       for(it=ngbd_c->begin(quad_idx, dir::f_00p); it<ngbd_c->end(quad_idx, dir::f_00p); ++it)
         ngbd_quads.push_back(it->locidx);
+
+      std::vector<p4est_quadrant_t> tmp;
+//      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1,  1,  1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1,  1,  0);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1,  0,  1);
+      ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0,  1,  1);
+      for(unsigned int i=0; i<tmp.size(); ++i)
+        ngbd_quads.push_back(tmp[i].p.piggy3.local_num);
     }
 #endif
   }
@@ -1310,8 +1374,6 @@ void PoissonSolverNodeBaseJump::preallocate_matrix()
 void PoissonSolverNodeBaseJump::setup_linear_system()
 {
   preallocate_matrix();
-
-  std::cerr << "Assembling matrix" << std::endl;
 
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 
@@ -2015,6 +2077,12 @@ void PoissonSolverNodeBaseJump::print_voronoi_VTK(const char* path) const
 
 void PoissonSolverNodeBaseJump::check_voronoi_partition() const
 {
+#ifdef CASL_THROWS
+  if(p4est->mpisize!=1)
+    fprintf(stderr, "WARNING ! PoissonSolverNodeBaseJump->check_voronoi_partition: cannot check partition with multiple processes.\n");
+  return;
+#endif
+
 #ifdef P4_TO_P8
   std::vector<Voronoi3D> voro(num_local_voro);
   const std::vector<Voronoi3DPoint> *points;
@@ -2029,6 +2097,7 @@ void PoissonSolverNodeBaseJump::check_voronoi_partition() const
     compute_voronoi_cell(n, voro[n]);
 
   bool partition_is_good = true;
+  int nb_bad = 0;
   for(unsigned int n=0; n<num_local_voro; ++n)
   {
     voro[n].get_Points(points);
@@ -2053,6 +2122,7 @@ void PoissonSolverNodeBaseJump::check_voronoi_partition() const
           std::cout << "Bad voronoi cell for point # " << n << " : " << (*points)[m].n << ", \t Centerd on : " << voro[n].get_Center_Point();
 //          std::cout << (*points)[m].n << ", " << (*points)[m].s << std::endl;
           partition_is_good = false;
+          nb_bad++;
         }
       }
     }
@@ -2060,5 +2130,5 @@ void PoissonSolverNodeBaseJump::check_voronoi_partition() const
 
 
   if(partition_is_good) printf("Partition is good.\n");
-  else                  printf("Partition is NOT good.\n");
+  else                  printf("Partition is NOT good, %d problem found.\n", nb_bad);
 }

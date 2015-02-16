@@ -85,6 +85,22 @@ public:
     return &neighbor_cells[offsets[q*P4EST_FACES + dir_f + 1]];
   }
 
+  /**
+   * @brief find the neighbor cell of a cell in the direction (dir_x, dir_y). Use this for finding corner/arete neighbors
+   * @return
+   */
+#ifdef P4_TO_P8
+  void find_neighbor_cells_of_cell_test(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y, char dir_z ) const;
+#else
+  void find_neighbor_cells_of_cell_test(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y ) const;
+#endif
+
+#ifdef P4_TO_P8
+  void find_neighbor_cells_of_cell_recursive_test( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y, char dir_z ) const;
+#else
+  void find_neighbor_cells_of_cell_recursive_test( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y ) const;
+#endif
+
   void __attribute__((used)) print_debug(p4est_locidx_t q, FILE* stream = stdout);
 
 };
