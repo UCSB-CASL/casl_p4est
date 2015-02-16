@@ -493,7 +493,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
       bool already_added = false;
       for(unsigned int k=0; k<added_points.size(); ++k)
       {
-        if((p-added_points[k]).norm_L2() < diag_min/5)
+        if((p-added_points[k]).norm_L2() < diag_min/10)
         {
           already_added = true;
           break;
@@ -545,7 +545,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
     bool already_added = false;
     for(unsigned int m=0; m<added_points.size(); ++m)
     {
-      if((p_proj-added_points[m]).norm_L2() < diag_min/5)
+      if((p_proj-added_points[m]).norm_L2() < diag_min/10)
       {
         already_added = true;
         break;
@@ -1400,9 +1400,6 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
       rhs_p[n] = bc->wallValue(pc.x, pc.y);
 #endif
 
-      // bousouf
-      if(ISINF(rhs_p[n]))
-        std::cerr << "NAN DIR " << n << std::endl;
       continue;
     }
 
@@ -1460,9 +1457,6 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 #endif
     if(add_n>EPS) matrix_has_nullspace = false;
 
-    if(ISINF(volume*add_n))
-      std::cerr << "NAN MAT " << n << std::endl;
-
     ierr = MatSetValue(A, global_n_idx, global_n_idx, volume*add_n, ADD_VALUES); CHKERRXX(ierr);
 
     for(unsigned int l=0; l<points->size(); ++l)
@@ -1501,9 +1495,6 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
         if((unsigned int)(*points)[l].n<num_local_voro) global_l_idx = (*points)[l].n + voro_global_offset[p4est->mpirank];
         else                                            global_l_idx = voro_ghost_local_num[(*points)[l].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[l].n-num_local_voro]];
 
-        if(ISINF(s*mu_harmonic/d))
-          std::cerr << "NAN MAT " << n << std::endl;
-
         ierr = MatSetValue(A, global_n_idx, global_n_idx,  s*mu_harmonic/d, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, global_n_idx, global_l_idx, -s*mu_harmonic/d, ADD_VALUES); CHKERRXX(ierr);
 
@@ -1521,8 +1512,6 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 #else
           rhs_p[n] += s*mu_harmonic/d * SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y);
           rhs_p[n] -= mu_harmonic/mu_l * s/2 * (*mu_grad_u_jump)(p_ln.x, p_ln.y);
-          if(ISINF(rhs_p[n]))
-            std::cerr << "NAN RHS " << n << std::endl;
 #endif
         }
       }
@@ -1730,10 +1719,6 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
 
 double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const
 {
-#ifdef P4_TO_P8
-  return 0;
-  std::cerr << "IMPLEMENT INTERPOLATE TO TREE FOR OCTREES !" << std::endl;
-#else
   PetscErrorCode ierr;
 
   double *sol_voro_p;
@@ -1745,10 +1730,15 @@ double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_n
     Point2 pn(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes));
 #endif
 
+#ifdef P4_TO_P8
+    Point3 pm;
+#else
+    Point2 pm;
+#endif
     /* first check if the node is a voronoi point */
     for(unsigned int m=0; m<grid2voro[n].size(); ++m)
     {
-      Point2 pm = voro_points[grid2voro[n][m]];
+      pm = voro_points[grid2voro[n][m]];
       if((pn-pm).norm_L2()<EPS)
       {
         double retval = sol_voro_p[grid2voro[n][m]];
@@ -1765,10 +1755,36 @@ double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_n
     p4est_locidx_t quad_idx;
     p4est_topidx_t tree_idx;
 
-    const my_p4est_cell_neighbors_t::quad_info_t* it;
-
     std::vector<p4est_locidx_t> ngbd_quads;
 
+#ifdef P4_TO_P8
+    std::vector<p4est_quadrant_t> tmp;
+    for(char i=-1; i<=1; i+=2)
+    {
+      for(char j=-1; j<=1; j+=2)
+      {
+        for(char k=-1; k<=1; k+=2)
+        {
+          ngbd_n->find_neighbor_cell_of_node(n,  i,  j, k, quad_idx, tree_idx);
+          if(quad_idx>=0)
+          {
+            ngbd_quads.push_back(quad_idx);
+            ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, i, 0, 0);
+            ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, 0, j, 0);
+            ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, 0, 0, k);
+            ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, i, j, 0);
+            ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, i, 0, k);
+            ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, 0, j, k);
+            ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, i, j, k);
+            for(unsigned int m=0; m<tmp.size(); ++m)
+              ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+            tmp.clear();
+          }
+        }
+      }
+    }
+#else
+    const my_p4est_cell_neighbors_t::quad_info_t* it;
     ngbd_n->find_neighbor_cell_of_node(n, -1, -1, quad_idx, tree_idx);
     if(quad_idx>=0)
     {
@@ -1808,12 +1824,17 @@ double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_n
       for(it=ngbd_c->begin(quad_idx, dir::f_0p0); it<ngbd_c->end(quad_idx, dir::f_0p0); ++it)
         ngbd_quads.push_back(it->locidx);
     }
+#endif
 
     /* now find the two voronoi points closest to the node */
     double phi_n = phi_p[n];
+#ifdef P4_TO_P8
+    double di[] = {DBL_MAX, DBL_MAX, DBL_MAX, DBL_MAX};
+    unsigned int ni[] = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
+#else
     double di[] = {DBL_MAX, DBL_MAX, DBL_MAX};
     unsigned int ni[] = {UINT_MAX, UINT_MAX, UINT_MAX};
-
+#endif
     for(unsigned int k=0; k<ngbd_quads.size(); ++k)
     {
       for(int dir=0; dir<P4EST_CHILDREN; ++dir)
@@ -1825,15 +1846,23 @@ double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_n
           if( ni[0]!=grid2voro[n_idx][m] &&
               ni[1]!=grid2voro[n_idx][m] )
           {
-            Point2 pm = voro_points[grid2voro[n_idx][m]];
+            pm = voro_points[grid2voro[n_idx][m]];
+#ifdef P4_TO_P8
+            double xyz[] = {pm.x, pm.y, pm.z};
+#else
             double xyz[] = {pm.x, pm.y};
+#endif
             p4est_quadrant_t quad;
             std::vector<p4est_quadrant_t> remote_matches;
 
             int rank = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
             if(rank!=-1)
             {
+#ifdef P4_TO_P8
+              double phi_m = interp_phi(pm.x, pm.y, pm.z);
+#else
               double phi_m = interp_phi(pm.x, pm.y);
+#endif
               if(phi_m*phi_n>=0)
               {
                 double d = (pm-pn).norm_L2();
@@ -1854,8 +1883,13 @@ double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_n
       }
     }
 
+#ifdef P4_TO_P8
+    Point3 p0(voro_points[ni[0]]);
+    Point3 p1(voro_points[ni[1]]);
+#else
     Point2 p0(voro_points[ni[0]]);
     Point2 p1(voro_points[ni[1]]);
+#endif
 
     /* find a third point forming a non-flat triangle */
     for(unsigned int k=0; k<ngbd_quads.size(); ++k)
@@ -1870,20 +1904,32 @@ double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_n
               ni[1]!=grid2voro[n_idx][m] &&
               ni[2]!=grid2voro[n_idx][m])
           {
-            Point2 pm = voro_points[grid2voro[n_idx][m]];
+            pm = voro_points[grid2voro[n_idx][m]];
+#ifdef P4_TO_P8
+            double xyz[] = {pm.x, pm.y, pm.z};
+#else
             double xyz[] = {pm.x, pm.y};
+#endif
             p4est_quadrant_t quad;
             std::vector<p4est_quadrant_t> remote_matches;
 
             int rank = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
             if(rank!=-1)
             {
+#ifdef P4_TO_P8
+              double phi_m = interp_phi(pm.x, pm.y, pm.z);
+#else
               double phi_m = interp_phi(pm.x, pm.y);
+#endif
               if(phi_m*phi_n>=0)
               {
                 double d = (pm-pn).norm_L2();
 
+#ifdef P4_TO_P8
+                if( d<di[2] && ((p0-p1).normalize().cross((pm-p1).normalize())).norm_L2() > sin(PI/10) )
+#else
                 if(d<di[2] && ABS((p0-p1).normalize().cross((pm-p1).normalize())) > sin(PI/5))
+#endif
                 {
                   ni[2]=grid2voro[n_idx][m]; di[2]=d;
                 }
@@ -1894,10 +1940,63 @@ double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_n
       }
     }
 
+#ifdef P4_TO_P8
+    Point3 p2(voro_points[ni[2]]);
+#else
     Point2 p2(voro_points[ni[2]]);
+#endif
+
+#ifdef P4_TO_P8
+    /* in 3D, found a fourth point to form a non-flat tetrahedron */
+    for(unsigned int k=0; k<ngbd_quads.size(); ++k)
+    {
+      for(int dir=0; dir<P4EST_CHILDREN; ++dir)
+      {
+        p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
+        for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
+        {
+          /* if point is not already in the list */
+          if( ni[0]!=grid2voro[n_idx][m] &&
+              ni[1]!=grid2voro[n_idx][m] &&
+              ni[2]!=grid2voro[n_idx][m] &&
+              ni[3]!=grid2voro[n_idx][m])
+          {
+            pm = voro_points[grid2voro[n_idx][m]];
+            double xyz[] = {pm.x, pm.y, pm.z};
+            p4est_quadrant_t quad;
+            std::vector<p4est_quadrant_t> remote_matches;
+
+            int rank = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
+            if(rank!=-1)
+            {
+              double phi_m = interp_phi(pm.x, pm.y, pm.z);
+              if(phi_m*phi_n>=0)
+              {
+                double d = (pm-pn).norm_L2();
+
+                Point3 n = (p1-p0).cross(p2-p0).normalize();
+                double h = ABS((pm-p0).dot(n));
+
+                if(d<di[3] && h > diag_min/5)
+                {
+                  ni[3]=grid2voro[n_idx][m]; di[3]=d;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    Point3 p3(voro_points[ni[3]]);
+#endif
 
     /* make sure we found 3 points */
+#ifdef P4_TO_P8
+    if(di[0]==DBL_MAX || di[1]==DBL_MAX || di[2]==DBL_MAX || di[3]==DBL_MAX)
+#else
     if(di[0]==DBL_MAX || di[1]==DBL_MAX || di[2]==DBL_MAX)
+#endif
     {
       std::cerr << "PoissonSolverNodeBaseJump->interpolate_solution_from_voronoi_to_tree: not enough points found." << std::endl;
       double retval = sol_voro_p[ni[0]];
@@ -1906,30 +2005,92 @@ double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_n
       return retval;
     }
 
+#ifdef P4_TO_P8
+    if(ni[0]==ni[1] || ni[0]==ni[2] || ni[0]==ni[3] || ni[1]==ni[2] || ni[1]==ni[3] || ni[2]==ni[3])
+#else
     if(ni[0]==ni[1] || ni[0]==ni[2] || ni[1]==ni[2])
+#endif
       std::cerr << "PoissonSolverNodeBaseJump->interpolate_solution_from_voronoi_to_tree: point is double !" << std::endl;
 
     double f0 = sol_voro_p[ni[0]];
     double f1 = sol_voro_p[ni[1]];
     double f2 = sol_voro_p[ni[2]];
+#ifdef P4_TO_P8
+    double f3 = sol_voro_p[ni[3]];
+#endif
 
+#ifdef P4_TO_P8
+    double det = ( -( p1.x*p2.y*p3.z + p2.x*p3.y*p1.z + p3.x*p1.y*p2.z - p3.x*p2.y*p1.z - p2.x*p1.y*p3.z - p1.x*p3.y*p2.z )
+                   +( p0.x*p2.y*p3.z + p2.x*p3.y*p0.z + p3.x*p0.y*p2.z - p3.x*p2.y*p0.z - p2.x*p0.y*p3.z - p0.x*p3.y*p2.z )
+                   -( p0.x*p1.y*p3.z + p1.x*p3.y*p0.z + p3.x*p0.y*p1.z - p3.x*p1.y*p0.z - p1.x*p0.y*p3.z - p0.x*p3.y*p1.z )
+                   +( p0.x*p1.y*p2.z + p1.x*p2.y*p0.z + p2.x*p0.y*p1.z - p2.x*p1.y*p0.z - p1.x*p0.y*p2.z - p0.x*p2.y*p1.z ) );
+#else
     double det = p0.x*p1.y + p1.x*p2.y + p2.x*p0.y - p1.x*p0.y - p2.x*p1.y - p0.x*p2.y;
+#endif
 
 #ifdef CASL_THROWS
     if(ABS(det)<EPS)
+    {
+      std::cout << p0 << p1 << p2 << p3;
       throw std::invalid_argument("[CASL_ERROR]: interpolation_Voronoi: could not invert system ...");
+    }
 #endif
+
+    ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+
+    /*
+     * solving A*C = F,
+     *     | x0 y0 z0 1 |      | c0 |      | f0 |
+     *     | x1 y1 z1 1 |      | c1 |      | f1 |
+     * A = | x2 y2 z2 1 |, C = | c2 |, F = | f2 |
+     *     | x3 y3 z3 1 |      | c3 |      | f3 |
+     *
+     *               | b00 b01 b02 b03 |       | c0 |        | f0 |
+     *  -1           | b10 b11 b12 b13 |       | c1 |    -1  | f1 |
+     * A   = 1/det * | b20 b21 b22 b23 |, and  | c2 | = A  * | f2 |
+     *               | b30 b31 b32 b33 |       | c3 |        | f3 |
+     *
+     */
+
+    double b00 =  ( p1.y*p2.z + p2.y*p3.z + p3.y*p1.z - p1.y*p3.z - p2.y*p1.z - p3.y*p2.z );
+    double b01 = -( p0.y*p2.z + p2.y*p3.z + p3.y*p0.z - p0.y*p3.z - p2.y*p0.z - p3.y*p2.z );
+    double b02 =  ( p0.y*p1.z + p1.y*p3.z + p3.y*p0.z - p0.y*p3.z - p1.y*p0.z - p3.y*p1.z );
+    double b03 = -( p0.y*p1.z + p1.y*p2.z + p2.y*p0.z - p0.y*p2.z - p1.y*p0.z - p2.y*p1.z );
+
+    double b10 = -( p1.x*p2.z + p2.x*p3.z + p3.x*p1.z - p1.x*p3.z - p2.x*p1.z - p3.x*p2.z );
+    double b11 =  ( p0.x*p2.z + p2.x*p3.z + p3.x*p0.z - p0.x*p3.z - p2.x*p0.z - p3.x*p2.z );
+    double b12 = -( p0.x*p1.z + p1.x*p3.z + p3.x*p0.z - p0.x*p3.z - p1.x*p0.z - p3.x*p1.z );
+    double b13 =  ( p0.x*p1.z + p1.x*p2.z + p2.x*p0.z - p0.x*p2.z - p1.x*p0.z - p2.x*p1.z );
+
+    double b20 =  ( p1.x*p2.y + p2.x*p3.y + p3.x*p1.y - p1.x*p3.y - p2.x*p1.y - p3.x*p2.y );
+    double b21 = -( p0.x*p2.y + p2.x*p3.y + p3.x*p0.y - p0.x*p3.y - p2.x*p0.y - p3.x*p2.y );
+    double b22 =  ( p0.x*p1.y + p1.x*p3.y + p3.x*p0.y - p0.x*p3.y - p1.x*p0.y - p3.x*p1.y );
+    double b23 = -( p0.x*p1.y + p1.x*p2.y + p2.x*p0.y - p0.x*p2.y - p1.x*p0.y - p2.x*p1.y );
+
+    double b30 = -( p1.x*p2.y*p3.z + p2.x*p3.y*p1.z + p3.x*p1.y*p2.z - p1.x*p3.y*p2.z - p2.x*p1.y*p3.z - p3.x*p2.y*p1.z );
+    double b31 =  ( p0.x*p2.y*p3.z + p2.x*p3.y*p0.z + p3.x*p0.y*p2.z - p0.x*p3.y*p2.z - p2.x*p0.y*p3.z - p3.x*p2.y*p0.z );
+    double b32 = -( p0.x*p1.y*p3.z + p1.x*p3.y*p0.z + p3.x*p0.y*p1.z - p0.x*p3.y*p1.z - p1.x*p0.y*p3.z - p3.x*p1.y*p0.z );
+    double b33 =  ( p0.x*p1.y*p2.z + p1.x*p2.y*p0.z + p2.x*p0.y*p1.z - p0.x*p2.y*p1.z - p1.x*p0.y*p2.z - p2.x*p1.y*p0.z );
+
+    double c0 = (b00*f0 + b01*f1 + b02*f2 + b03*f3) / det;
+    double c1 = (b10*f0 + b11*f1 + b12*f2 + b13*f3) / det;
+    double c2 = (b20*f0 + b21*f1 + b22*f2 + b23*f3) / det;
+    double c3 = (b30*f0 + b31*f1 + b32*f2 + b33*f3) / det;
+
+    return c0*pn.x + c1*pn.y + c2*pn.z + c3;
+
+#else
 
     double c0 = ( (p1.y* 1- 1*p2.y)*f0 + ( 1*p2.y-p0.y* 1)*f1 + (p0.y* 1- 1*p1.y)*f2 ) / det;
     double c1 = ( ( 1*p2.x-p1.x* 1)*f0 + (p0.x* 1- 1*p2.x)*f1 + ( 1*p1.x-p0.x* 1)*f2 ) / det;
     double c2 = ( (p1.x*p2.y-p2.x*p1.y)*f0 + (p2.x*p0.y-p0.x*p2.y)*f1 + (p0.x*p1.y-p1.x*p0.y)*f2 ) / det;
 
-    ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
-    ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
-
     return c0*pn.x + c1*pn.y + c2;
+
 #endif
-    return 0;
 }
 
 
@@ -1976,8 +2137,7 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
     ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
 
     MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-    PetscPrintf(p4est->mpicomm, "Error : %g\n", err);
-    return;
+    PetscPrintf(p4est->mpicomm, "Error on voronoi : %g\n", err);
   }
 
   for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
