@@ -454,7 +454,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_test(std::vector<p4e
 #ifdef P4_TO_P8
   find_neighbor_cells_of_cell_recursive_test( ngbd, nb_tree_idx, ind, dir_x, dir_y, dir_z );
 #else
-  find_neighbor_cells_of_cell_recursive_test( ngbd, nb_tree_idx, ind, dir_x, dir_y );
+  find_neighbor_cells_of_cell_recursive( ngbd, nb_tree_idx, ind, dir_x, dir_y );
 #endif
 }
 
@@ -462,7 +462,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_test(std::vector<p4e
 #ifdef P4_TO_P8
 void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y, char dir_z ) const
 #else
-void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y ) const
+void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y ) const
 #endif
 {
   if (hierarchy->trees[tr][ind].child == CELL_LEAF)
@@ -503,7 +503,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std:
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_ppm, -1, -1,  0);
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_ppp, -1, -1,  0);
 #else
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_ppm, -1, -1);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_ppm, -1, -1);
 #endif
   }
   else if(dir_x== 1 && dir_y==-1)
@@ -512,7 +512,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std:
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mpm,  1, -1,  0);
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mpp,  1, -1,  0);
 #else
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mpm,  1, -1);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mpm,  1, -1);
 #endif
   }
   else if(dir_x==-1 && dir_y== 1)
@@ -521,7 +521,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std:
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_pmm, -1,  1,  0);
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_pmp, -1,  1,  0);
 #else
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_pmm, -1,  1);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_pmm, -1,  1);
 #endif
   }
   else if(dir_x== 1 && dir_y== 1)
@@ -530,7 +530,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std:
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mmm,  1,  1,  0);
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mmp,  1,  1,  0);
 #else
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mmm,  1,  1);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mmm,  1,  1);
 #endif
   }
 #ifdef P4_TO_P8
@@ -584,8 +584,8 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std:
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_pmp, -1,  0,  0);
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_ppp, -1,  0,  0);
 #else
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_pmm, -1,  0);
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_ppm, -1,  0);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_pmm, -1,  0);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_ppm, -1,  0);
 #endif
   }
   else if(dir_x== 1)
@@ -596,8 +596,8 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std:
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mmp,  1,  0,  0);
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mpp,  1,  0,  0);
 #else
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mmm,  1,  0);
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mpm,  1,  0);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mmm,  1,  0);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mpm,  1,  0);
 #endif
   }
   else if(dir_y==-1)
@@ -608,8 +608,8 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std:
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mpp,  0, -1,  0);
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_ppp,  0, -1,  0);
 #else
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mpm,  0, -1);
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_ppm,  0, -1);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mpm,  0, -1);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_ppm,  0, -1);
 #endif
   }
   else if(dir_y== 1)
@@ -620,8 +620,8 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std:
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mmp,  0,  1,  0);
     find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_pmp,  0,  1,  0);
 #else
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mmm,  0,  1);
-    find_neighbor_cells_of_cell_recursive_test(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_pmm,  0,  1);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_mmm,  0,  1);
+    find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + dir::v_pmm,  0,  1);
 #endif
   }
 #ifdef P4_TO_P8

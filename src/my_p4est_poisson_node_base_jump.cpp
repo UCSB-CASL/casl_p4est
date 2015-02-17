@@ -1037,8 +1037,8 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
         if(quad_idx>=0)
         {
           ngbd_quads.push_back(quad_idx);
-          ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, i, 0);
-          ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, 0, j);
+          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0);
+          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j);
           for(unsigned int m=0; m<tmp.size(); ++m)
             ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
           tmp.clear();
@@ -1266,10 +1266,10 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
     ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0,  0, -1);
     ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0,  0,  1);
 #else
-    ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, -1,  0);
-    ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  1,  0);
-    ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0,  1);
-    ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx,  0, -1);
+    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, -1,  0);
+    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  1,  0);
+    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  0,  1);
+    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  0, -1);
 #endif
 
     for(unsigned int m=0; m<tmp.size(); ++m)
@@ -1318,10 +1318,10 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
       ngbd_c->find_neighbor_cells_of_cell_test(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  0, -1);
       ngbd_c->find_neighbor_cells_of_cell_test(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  0,  1);
 #else
-      ngbd_c->find_neighbor_cells_of_cell_test(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree, -1,  0);
-      ngbd_c->find_neighbor_cells_of_cell_test(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  1,  0);
-      ngbd_c->find_neighbor_cells_of_cell_test(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0, -1);
-      ngbd_c->find_neighbor_cells_of_cell_test(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  1);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree, -1,  0);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  1,  0);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0, -1);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  1);
 #endif
       for(unsigned int l=0; l<tmp2.size(); ++l)
         ngbd_quads.push_back(tmp2[l].p.piggy3.local_num);
@@ -2134,9 +2134,9 @@ double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_n
         if(quad_idx>=0)
         {
           ngbd_quads.push_back(quad_idx);
-          ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, i, 0);
-          ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, 0, j);
-          ngbd_c->find_neighbor_cells_of_cell_test(tmp, quad_idx, tree_idx, i, j);
+          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0);
+          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j);
+          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j);
           for(unsigned int m=0; m<tmp.size(); ++m)
             ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
           tmp.clear();

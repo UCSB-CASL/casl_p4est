@@ -98,6 +98,12 @@ public:
     return local_nodes[i];
   }
 
+  /**
+   * @brief initialize the buffers containing the information about the neighboring nodes for
+   * every local and ghost nodes provided when instantiating the my_p4est_node_neighbors_t structure.
+   * This consumes a lot of memory, and it can improve the time performances of the code if repetitive
+   * access to the neighbors information is required.
+   */
   void init_neighbors();
   void clear_neighbors();
   void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_);

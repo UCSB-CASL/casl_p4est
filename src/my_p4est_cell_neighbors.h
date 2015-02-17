@@ -53,6 +53,12 @@ private:
      */
   void find_neighbor_cells_of_cell( const p4est_quadrant_t* quad, p4est_locidx_t q, p4est_topidx_t tr, int dir_f);
 
+#ifdef P4_TO_P8
+  void find_neighbor_cells_of_cell_recursive_test( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y, char dir_z ) const;
+#else
+  void find_neighbor_cells_of_cell_recursive( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y ) const;
+#endif
+
 public:
   my_p4est_cell_neighbors_t( my_p4est_hierarchy_t *hierarchy_ )
     : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), myb(hierarchy_->myb),
@@ -60,9 +66,13 @@ public:
   {
   }
 
-
+  /**
+   * @brief initialize the buffers containing the information about the neighboring cell for
+   * every local and ghost cell provided when instantiating the my_p4est_cell_neighbors_t structure.
+   * This consumes a lot of memory, and it can improve the time performances of the code if repetitive
+   * access to the neighbors information is required.
+   */
   void init_neighbors();
-
 
   inline const quad_info_t* begin(p4est_locidx_t q, int dir_f) const {
 #ifdef CASL_THROWS
@@ -95,13 +105,7 @@ public:
 #ifdef P4_TO_P8
   void find_neighbor_cells_of_cell_test(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y, char dir_z ) const;
 #else
-  void find_neighbor_cells_of_cell_test(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y ) const;
-#endif
-
-#ifdef P4_TO_P8
-  void find_neighbor_cells_of_cell_recursive_test( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y, char dir_z ) const;
-#else
-  void find_neighbor_cells_of_cell_recursive_test( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y ) const;
+  void find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y ) const;
 #endif
 
   void __attribute__((used)) print_debug(p4est_locidx_t q, FILE* stream = stdout);

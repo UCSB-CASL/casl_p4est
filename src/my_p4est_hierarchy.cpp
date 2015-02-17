@@ -49,7 +49,7 @@ void my_p4est_hierarchy_t::split( int tree_idx, int ind )
   #ifdef P4_TO_P8
           trees[tree_idx][ind].kmin + k*size, /* kmin (3D) only */
   #endif
-          trees[tree_idx][ind].level+1,       /* level */
+          (int8_t) (trees[tree_idx][ind].level+1),       /* level */
           REMOTE_OWNER                        /* owner's rank */
         };
         trees[tree_idx].push_back(child);
