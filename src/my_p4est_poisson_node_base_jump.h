@@ -202,8 +202,6 @@ class PoissonSolverNodeBaseJump
   bool is_matrix_computed;
   int matrix_has_nullspace;
 
-  void preallocate_matrix();
-
   // disallow copy ctr and copy assignment
   PoissonSolverNodeBaseJump(const PoissonSolverNodeBaseJump& other);
   PoissonSolverNodeBaseJump& operator=(const PoissonSolverNodeBaseJump& other);
@@ -219,7 +217,6 @@ public:
 #endif
   void print_voronoi_VTK(const char* path) const;
   void setup_linear_system();
-  void setup_linear_system_without_preallocation();
   void setup_negative_laplace_rhsvec();
 
   PoissonSolverNodeBaseJump(const my_p4est_node_neighbors_t *node_neighbors, const my_p4est_cell_neighbors_t *cell_neighbors);
