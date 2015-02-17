@@ -4,8 +4,11 @@
 #include "my_p4est_cell_neighbors.h"
 #endif
 
-void my_p4est_cell_neighbors_t::initialize_neighbors()
+void my_p4est_cell_neighbors_t::init_neighbors()
 {
+  neighbor_cells.reserve(P4EST_FACES * n_quads);
+  offsets.resize(P4EST_FACES*n_quads + 1, 0);
+
   // find neighboring quadrants of local quadrants
   for( p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx )
   {

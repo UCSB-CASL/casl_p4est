@@ -39,7 +39,6 @@ private:
   std::vector<p4est_locidx_t> offsets;
   p4est_locidx_t n_quads;
 
-  void initialize_neighbors();
 
   /**
      * perform the recursive search to find the neighboring cells of a cell
@@ -59,14 +58,16 @@ public:
     : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), myb(hierarchy_->myb),
       n_quads(p4est->local_num_quadrants + ghost->ghosts.elem_count)
   {
-    neighbor_cells.reserve(P4EST_FACES * n_quads);
-    offsets.resize(P4EST_FACES*n_quads + 1, 0);
-
-    initialize_neighbors();
   }
+
+
+  void init_neighbors();
+
 
   inline const quad_info_t* begin(p4est_locidx_t q, int dir_f) const {
 #ifdef CASL_THROWS
+    if(neighbor_cells.size()==0 || offsets.size()==0)
+      throw std::invalid_argument("did you forget to call my_p4est_cell_neighbors_t::init_neighbors ?");
     if (dir_f < 0 || dir_f >= P4EST_FACES)
       throw std::invalid_argument("invalid face direction index.");
     if (q < 0 || q >= n_quads)
@@ -77,6 +78,8 @@ public:
 
   inline const quad_info_t* end(p4est_locidx_t q, int dir_f) const {
 #ifdef CASL_THROWS
+    if(neighbor_cells.size()==0 || offsets.size()==0)
+      throw std::invalid_argument("did you forget to call my_p4est_cell_neighbors_t::init_neighbors ?");
     if (dir_f < 0 || dir_f >= P4EST_FACES)
       throw std::invalid_argument("invalid face direction index.");
     if (q < 0 || q >= n_quads)

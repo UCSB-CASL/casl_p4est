@@ -164,7 +164,6 @@ class PoissonSolverNodeBaseJump
    * the global index is then local_num + global_voro_offset[owner's rank]
    */
   std::vector<p4est_locidx_t> voro_ghost_local_num;
-  std::vector<PetscInt> petsc_gloidx;
 
 #ifdef P4_TO_P8
   BoundaryConditions3D *bc;
