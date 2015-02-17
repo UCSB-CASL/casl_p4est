@@ -216,7 +216,9 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
   if(!is_voronoi_partition_constructed)
   {
     is_voronoi_partition_constructed = true;
+    ierr = PetscPrintf(p4est->mpicomm, "Computing voronoi points ...\n"); CHKERRXX(ierr);
     compute_voronoi_points();
+    ierr = PetscPrintf(p4est->mpicomm, "Done computing voronoi points.\n"); CHKERRXX(ierr);
   }
 
   /*
@@ -227,7 +229,19 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
   if(!is_matrix_computed)
   {
     matrix_has_nullspace = true;
-    setup_linear_system();
+
+    ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
+    setup_linear_system_without_preallocation();
+    ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
+
+//    ierr = PetscPrintf(p4est->mpicomm, "Preallocating matrix ...\n"); CHKERRXX(ierr);
+//    preallocate_matrix();
+//    ierr = PetscPrintf(p4est->mpicomm, "Done preallocating matrix.\n"); CHKERRXX(ierr);
+
+//    ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
+//    setup_linear_system();
+//    ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
+
     is_matrix_computed = true;
     ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   } else {
@@ -277,9 +291,12 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
 
   /* Solve the system */
   ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
+
+  ierr = PetscPrintf(p4est->mpicomm, "Solving linear system ...\n"); CHKERRXX(ierr);
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs, sol_voro); CHKERRXX(ierr);
   ierr = PetscLogEventEnd  (log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
+  ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system.\n"); CHKERRXX(ierr);
 
   /* update ghosts */
   ierr = VecGhostUpdateBegin(sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1367,8 +1384,6 @@ void PoissonSolverNodeBaseJump::preallocate_matrix()
 
 void PoissonSolverNodeBaseJump::setup_linear_system()
 {
-  preallocate_matrix();
-
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 
   double *rhs_p;
@@ -1561,6 +1576,248 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 }
+
+
+void PoissonSolverNodeBaseJump::setup_linear_system_without_preallocation()
+{
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
+
+  double *rhs_p;
+  ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
+
+  typedef struct entry
+  {
+    double val;
+    PetscInt n;
+  } entry_t;
+
+  std::vector< std::vector<entry_t> > matrix_entries(num_local_voro);
+  std::vector<PetscInt> d_nnz(num_local_voro, 1), o_nnz(num_local_voro, 0);
+
+  for(unsigned int n=0; n<num_local_voro; ++n)
+  {
+    PetscInt global_n_idx = n+voro_global_offset[p4est->mpirank];
+
+#ifdef P4_TO_P8
+    Point3 pc = voro_points[n];
+#else
+    Point2 pc = voro_points[n];
+#endif
+    if( (ABS(pc.x-xmin)<EPS || ABS(pc.x-xmax)<EPS ||
+         ABS(pc.y-ymin)<EPS || ABS(pc.y-ymax)<EPS
+     #ifdef P4_TO_P8
+         || ABS(pc.z-zmin)<EPS || ABS(pc.z-zmax)<EPS
+        ) && bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
+     #else
+         ) && bc->wallType(pc.x,pc.y)==DIRICHLET)
+     #endif
+    {
+      matrix_has_nullspace = false;
+      entry_t ent; ent.n = global_n_idx; ent.val = 1;
+      matrix_entries[n].push_back(ent);
+#ifdef P4_TO_P8
+      rhs_p[n] = bc->wallValue(pc.x, pc.y, pc.z);
+#else
+      rhs_p[n] = bc->wallValue(pc.x, pc.y);
+#endif
+
+      continue;
+    }
+
+#ifdef P4_TO_P8
+    Voronoi3D voro;
+#else
+    Voronoi2D voro;
+#endif
+    compute_voronoi_cell(n, voro);
+
+#ifdef P4_TO_P8
+    const std::vector<Voronoi3DPoint> *points;
+#else
+    const std::vector<Point2> *partition;
+    const std::vector<Voronoi2DPoint> *points;
+    voro.get_Partition(partition);
+#endif
+    voro.get_Points(points);
+
+#ifdef P4_TO_P8
+    double phi_n = interp_phi(pc.x, pc.y, pc.z);
+#else
+    double phi_n = interp_phi(pc.x, pc.y);
+#endif
+    double mu_n;
+
+    if(phi_n<0)
+    {
+#ifdef P4_TO_P8
+      rhs_p[n] = this->rhs_m(pc.x, pc.y, pc.z);
+      mu_n     = (*mu_m)(pc.x, pc.y, pc.z);
+#else
+      rhs_p[n] = this->rhs_m(pc.x, pc.y);
+      mu_n     = (*mu_m)(pc.x, pc.y);
+#endif
+    }
+    else
+    {
+#ifdef P4_TO_P8
+      rhs_p[n] = this->rhs_p(pc.x, pc.y, pc.z);
+      mu_n     = (*mu_p)(pc.x, pc.y, pc.z);
+#else
+      rhs_p[n] = this->rhs_p(pc.x, pc.y);
+      mu_n     = (*mu_p)(pc.x, pc.y);
+#endif
+    }
+
+    double volume = voro.volume();
+
+    rhs_p[n] *= volume;
+#ifdef P4_TO_P8
+    double add_n = (*add)(pc.x, pc.y, pc.z);
+#else
+    double add_n = (*add)(pc.x, pc.y);
+#endif
+    if(add_n>EPS) matrix_has_nullspace = false;
+
+    entry_t ent; ent.n = global_n_idx; ent.val = volume*add_n;
+    matrix_entries[n].push_back(ent);
+
+    for(unsigned int l=0; l<points->size(); ++l)
+    {
+#ifdef P4_TO_P8
+      double s = (*points)[l].s;
+#else
+      int k = (l+partition->size()-1) % partition->size();
+      double s = ((*partition)[k]-(*partition)[l]).norm_L2();
+#endif
+
+      if((*points)[l].n>=0)
+      {
+        /* regular point */
+#ifdef P4_TO_P8
+        Point3 pl = (*points)[l].p;
+        double phi_l = interp_phi(pl.x, pl.y, pl.z);
+#else
+        Point2 pl = (*points)[l].p;
+        double phi_l = interp_phi(pl.x, pl.y);
+#endif
+        double d = (pc - pl).norm_L2();
+        double mu_l;
+
+#ifdef P4_TO_P8
+        if(phi_l<0) mu_l = (*mu_m)(pl.x, pl.y, pl.z);
+        else        mu_l = (*mu_p)(pl.x, pl.y, pl.z);
+#else
+        if(phi_l<0) mu_l = (*mu_m)(pl.x, pl.y);
+        else        mu_l = (*mu_p)(pl.x, pl.y);
+#endif
+
+        double mu_harmonic = 2*mu_n*mu_l/(mu_n + mu_l);
+
+        PetscInt global_l_idx;
+        if((unsigned int)(*points)[l].n<num_local_voro)
+        {
+          global_l_idx = (*points)[l].n + voro_global_offset[p4est->mpirank];
+          d_nnz[n]++;
+        }
+        else
+        {
+          global_l_idx = voro_ghost_local_num[(*points)[l].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[l].n-num_local_voro]];
+          o_nnz[n]++;
+        }
+
+        entry_t ent; ent.n = global_l_idx; ent.val = -s*mu_harmonic/d;
+        matrix_entries[n][0].val += s*mu_harmonic/d;
+        matrix_entries[n].push_back(ent);
+
+        if(phi_n*phi_l<0)
+        {
+#ifdef P4_TO_P8
+          Point3 p_ln = (pc+pl)/2;
+#else
+          Point2 p_ln = (pc+pl)/2;
+#endif
+
+#ifdef P4_TO_P8
+          rhs_p[n] += s*mu_harmonic/d * SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y, p_ln.z);
+          rhs_p[n] -= mu_harmonic/mu_l * s/2 * (*mu_grad_u_jump)(p_ln.x, p_ln.y, p_ln.z);
+#else
+          rhs_p[n] += s*mu_harmonic/d * SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y);
+          rhs_p[n] -= mu_harmonic/mu_l * s/2 * (*mu_grad_u_jump)(p_ln.x, p_ln.y);
+#endif
+        }
+      }
+      else /* wall with neumann */
+      {
+        double x_tmp = pc.x;
+        double y_tmp = pc.y;
+
+        /* perturb the corners to differentiate between the edges of the domain ... otherwise 1st order only at the corners */
+#ifdef P4_TO_P8
+        double z_tmp = pc.z;
+        if(pc.x==xmin && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS;
+        if(pc.x==xmax && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS;
+        if(pc.y==ymin && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS;
+        if(pc.y==ymax && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS;
+        if(pc.z==zmin && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS;
+        if(pc.z==zmax && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS;
+        rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp, z_tmp);
+#else
+        if(pc.x==xmin && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS;
+        if(pc.x==xmax && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS;
+        if(pc.y==ymin && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
+        if(pc.y==ymax && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
+        rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp);
+#endif
+      }
+    }
+  }
+
+  ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
+
+  PetscInt num_owned_global = voro_global_offset[p4est->mpisize];
+  PetscInt num_owned_local  = (PetscInt) num_local_voro;
+
+  if (A != NULL)
+    ierr = MatDestroy(A); CHKERRXX(ierr);
+
+  /* set up the matrix */
+  ierr = MatCreate(p4est->mpicomm, &A); CHKERRXX(ierr);
+  ierr = MatSetType(A, MATAIJ); CHKERRXX(ierr);
+  ierr = MatSetSizes(A, num_owned_local , num_owned_local,
+                     num_owned_global, num_owned_global); CHKERRXX(ierr);
+  ierr = MatSetFromOptions(A); CHKERRXX(ierr);
+
+  /* allocate the matrix */
+  ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
+  ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
+
+  /* fill the matrix with the values */
+  for(unsigned int n=0; n<num_local_voro; ++n)
+  {
+    PetscInt global_n_idx = n+voro_global_offset[p4est->mpirank];
+    for(unsigned int m=0; m<matrix_entries[n].size(); ++m)
+      ierr = MatSetValue(A, global_n_idx, matrix_entries[n][m].n, matrix_entries[n][m].val, ADD_VALUES); CHKERRXX(ierr);
+  }
+
+  /* assemble the matrix */
+  ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+  ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+
+  /* check for null space */
+  MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
+  if (matrix_has_nullspace)
+  {
+    if (A_null_space == NULL)
+    {
+      ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
+    }
+    ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+  }
+
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
+}
+
 
 void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
 {
