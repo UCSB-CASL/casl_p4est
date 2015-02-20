@@ -78,7 +78,7 @@ public:
      * \brief set the point at the center of the partition
      * \param pc the coordinates of the point
      */
-  void set_Center_Point( int nc, Point3 pc );
+  void set_Center_Point( int nc, Point3 &pc );
 
   /*!
      * \brief set the coordinates of the point at the center of the partition
@@ -100,7 +100,7 @@ public:
      * \param y the second coordinate of the point to add
      */
   void push( int n, double x, double y, double z);
-  void push( int n, Point3 pt);
+  void push( int n, Point3 &pt);
 
   /*!
      * \brief construct the voronoi parition around point pc using the neighborhood given in "points"

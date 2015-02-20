@@ -103,7 +103,7 @@ public:
    * @return
    */
 #ifdef P4_TO_P8
-  void find_neighbor_cells_of_cell_test(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y, char dir_z ) const;
+  void find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y, char dir_z ) const;
 #else
   void find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y ) const;
 #endif

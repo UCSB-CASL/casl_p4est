@@ -166,7 +166,7 @@ void Voronoi2D::construct_Partition()
   partition.resize(points.size());
   for(unsigned int m=0; m<points.size(); ++m)
   {
-    unsigned int k = (m+1) % points.size();
+    unsigned int k = mod(m+1, points.size());
     double denom = dir[m].cross(dir[k]);
 
     // if the points are aligned, keep the point that is the closest to pc
@@ -199,7 +199,7 @@ void Voronoi2D::construct_Partition()
     // check if the new vertex point is indeed a vertex of the voronoi partition
     if(m!=0)
     {
-      k = (m-1) % points.size();
+      k = mod(m-1, points.size());
 
       // if the new vertex is before the previous one, in trigonometric order
       // or check for a double vertex, which means the new point [m] leads to an edge of length zero
@@ -255,7 +255,7 @@ void Voronoi2D::clip_Interface()
 
   /* otherwise clip the partition */
   unsigned int m = m0;
-  unsigned int k = (m+1) % partition.size();
+  unsigned int k = mod(m+1, partition.size());
   do
   {
     /* the next vertex needs to be clipped */
@@ -271,17 +271,17 @@ void Voronoi2D::clip_Interface()
 
       /* find the following vertex */
       unsigned int l = k;
-      unsigned int r = (l+1) % partition.size();
+      unsigned int r = mod(l+1, partition.size());
       while(phi_values[r]>thresh)
       {
         l = r;
-        r = (l+1) % partition.size();
+        r = mod(l+1, partition.size());
       }
 
       /* remove intermediate vertices if necessary */
       if(k!=l)
       {
-        unsigned int h = (k+1) % partition.size();
+        unsigned int h = mod(k+1, partition.size());
         while(h!=l)
         {
           points.erase(points.begin() + h);
@@ -294,7 +294,7 @@ void Voronoi2D::clip_Interface()
           if(h<l)  l--;
           if(h<r)  r--;
 
-          h = (k+1) % partition.size();
+          h = mod(k+1, partition.size());
         }
       }
 
@@ -331,7 +331,7 @@ void Voronoi2D::clip_Interface()
         if(r<=m0) m0++;
 
         /* move on to next point */
-        m = (r+1) % partition.size();
+        m = mod(r+1, partition.size());
       }
       else
       {
@@ -340,15 +340,15 @@ void Voronoi2D::clip_Interface()
         points[l] = tmp;
 
         /* move on to next point */
-        m = (l+1) % partition.size();
+        m = mod(l+1, partition.size());
       }
     }
     else
     {
-      m = (m+1) % partition.size();
+      m = mod(m+1, partition.size());
     }
 
-    k = (m+1) % partition.size();
+    k = mod(m+1, partition.size());
   } while(k!=m0 && m!=m0);
 
 #ifdef CASL_THROWS
@@ -362,7 +362,7 @@ double Voronoi2D::volume() const
   double sum = 0.;
   for(unsigned int m=0; m<partition.size(); ++m)
   {
-    unsigned int k = (m+partition.size()-1) % partition.size();
+    unsigned int k = mod(m+partition.size()-1, partition.size());
     Point2 u = partition[k]-pc;
     Point2 v = partition[m]-pc;
     sum += u.cross(v)/2.;
@@ -387,7 +387,7 @@ double Voronoi2D::area_In_Negative_Domain( const CF_2& ls ) const
 
   for(unsigned int m=0; m<partition.size(); ++m)
   {
-    unsigned int k = (m+partition.size()-1) % partition.size();
+    unsigned int k = mod(m+partition.size()-1, partition.size());
 
     s.x0 = pc.x; s.y0 = pc.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
@@ -407,7 +407,7 @@ double Voronoi2D::area_In_Negative_Domain() const
 
   for(unsigned int m=0; m<partition.size(); ++m)
   {
-    int k = (m+1) % partition.size();
+    int k = mod(m+1, partition.size());
 
     s.x0 = pc.x; s.y0 = pc.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
@@ -432,7 +432,7 @@ double Voronoi2D::integral( const CF_2& ls, double fc, vector<double> &f ) const
 
   for(unsigned int m=0; m<partition.size(); ++m)
   {
-    int k = (m+1) % partition.size();
+    int k = mod(m+1, partition.size());
 
     s.x0 = pc.x; s.y0 = pc.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
@@ -458,7 +458,7 @@ double Voronoi2D::integral( double fc, vector<double> &f ) const
 
   for(unsigned int m=0; m<partition.size(); ++m)
   {
-    int k = (m+1) % partition.size();
+    int k = mod(m+1, partition.size());
 
     s.x0 = pc.x; s.y0 = pc.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
@@ -484,7 +484,7 @@ double Voronoi2D::integrate_Over_Interface( double fc, vector<double> &f ) const
 
   for(unsigned int m=0; m<partition.size(); ++m)
   {
-    int k = (m+1) % partition.size();
+    int k = mod(m+1, partition.size());
 
     s.x0 = pc.x; s.y0 = pc.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
@@ -508,7 +508,7 @@ double Voronoi2D::integrate_Over_Interface( const CF_2& f ) const
 
   for(unsigned int m=0; m<partition.size(); ++m)
   {
-    int k = (m+1) % partition.size();
+    int k = mod(m+1, partition.size());
 
     s.x0 = pc.x; s.y0 = pc.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;

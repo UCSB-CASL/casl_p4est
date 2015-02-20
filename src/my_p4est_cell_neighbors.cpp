@@ -185,9 +185,9 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive(p4est_topi
 
 
 #ifdef P4_TO_P8
-void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_test(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y, char dir_z ) const
+void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y, char dir_z ) const
 #else
-void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_test(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y ) const
+void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y ) const
 #endif
 {
   const p4est_quadrant_t *quad;

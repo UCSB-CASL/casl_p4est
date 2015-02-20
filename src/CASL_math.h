@@ -26,6 +26,17 @@
 #define SQR(a) (a)*(a)
 #endif
 
+inline int mod(int a, int b)
+{
+#ifdef CASL_THROWS
+  if (b==0) throw std::domain_error("[CASL_ERROR]: trying to take modulo (a,b) whith b=0.");
+#endif
+
+  int c = a%b;
+  if(c<0) c+=b;
+  return c;
+}
+
 inline double DELTA( double x, double h )
 {
   if( x > h ) return 0;
