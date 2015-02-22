@@ -773,6 +773,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
   }
 
   voro_global_offset.insert(voro_global_offset.begin(), 0);
+  ierr = PetscPrintf(p4est->mpicomm, "Number of voronoi points : %d\n", voro_global_offset[p4est->mpisize]);
 
   /* initialize the buffer to receive remote points */
   std::vector<bool> recv_fr(p4est->mpisize);
@@ -1944,10 +1945,10 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
 #ifdef P4_TO_P8
       Point3 pc = voro_points[n];
 
-      u_ex = cos(pc.x)*sin(pc.y)*exp(pc.z);
       double phi_n = interp_phi(pc.x, pc.y, pc.z);
       if(phi_n<0) u_ex = exp(pc.z);
       else        u_ex = cos(pc.x)*sin(pc.y);
+      u_ex = cos(pc.x)*sin(pc.y)*exp(pc.z);
 #else
       Point2 pc = voro_points[n];
 

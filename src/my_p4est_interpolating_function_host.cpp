@@ -572,7 +572,7 @@ double InterpolatingFunctionNodeBaseHost::operator ()(double x, double y) const
       } else {
         for (short j = 0; j<P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
-          const quad_neighbor_nodes_of_node_t& qnnn = neighbors_[node_idx];
+          const quad_neighbor_nodes_of_node_t& qnnn = neighbors_.get_neighbors(node_idx);
 
           fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
           fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
