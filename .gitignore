@@ -33,6 +33,7 @@
 *.blg
 sync
 .rsync.exclude
+paper/tex/convert
 
 # What directories to ignore
 [Dd]ebug/
