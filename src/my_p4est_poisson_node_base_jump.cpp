@@ -1946,9 +1946,9 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
       Point3 pc = voro_points[n];
 
       double phi_n = interp_phi(pc.x, pc.y, pc.z);
+      u_ex = cos(pc.x)*sin(pc.y)*exp(pc.z);
       if(phi_n<0) u_ex = exp(pc.z);
       else        u_ex = cos(pc.x)*sin(pc.y);
-      u_ex = cos(pc.x)*sin(pc.y)*exp(pc.z);
 #else
       Point2 pc = voro_points[n];
 

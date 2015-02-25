@@ -5,9 +5,16 @@
 #include <fstream>
 #include <vector>
 
-#include <src/my_p4est_utils.h>
+#include <src/my_p8est_utils.h>
 #include <src/CASL_math.h>
 #include <src/point3.h>
+
+//#include <lib/tools/CASL_types.h>
+//#include <lib/tools/CASL_math.h>
+//#include <lib/geometry/Point3.h>
+
+namespace CASL
+{
 
 using std::vector;
 
@@ -39,6 +46,7 @@ typedef struct candidate
 {
   int n;
   Point3 p;
+  Point3 norm;
 
   /* basis for the plane */
   Point3 u;
@@ -73,6 +81,7 @@ private:
   bool cut_polygon(int n, int c);
 
 public:
+  static int cpt_restart;
   /*!
      * \brief default constructor for the Voronoi2D class
      */
@@ -140,17 +149,26 @@ public:
   /*!
      * \brief construct the voronoi parition around point pc using the neighborhood given in "points"
      */
-  void construct_Partition(double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
-                           bool periodic_x, bool periodic_y, bool periodic_z);
+  void construct_Partition();
 
   inline double volume() const { return this->volume_; }
+
+  /*!
+   * \brief check that the voronoi partition is valid, i.e. if k is a neighbor of n, then n
+   *   is also a neighbor of k, and the area connecting them is the same from both perspectives
+   * \param voro the voronoi partition. Note that you must call "construct_Partition" for all elements first
+   * \return true is the partition is valid, false otherwise
+   */
+  static bool check_Partition(const vector<Voronoi3D_NEW>& voro);
 
   /*!
      * \brief save the voronoi partition in the .vtk format
      * \param voro the list of voronoi partitions to save
      * \param file_name the file in which the voronoi partition is to be saved
      */
-  static void print_VTK_Format( const vector<Voronoi3D_NEW>& voro, const char* file_name );
+  static void print_VTK_Format( vector<Voronoi3D_NEW>& voro, const char* file_name );
 };
 
-#endif // CASL_VORONOI3D_H
+} /* namespace CASL */
+
+#endif /* CASL_VORONOI3D_H */
