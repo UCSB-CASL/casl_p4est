@@ -47,6 +47,7 @@ private:
   int nc;
   vector<Voronoi3DPoint> points;
   double volume_;
+  double scaling;
 
 public:
   /*!
@@ -78,14 +79,14 @@ public:
      * \brief set the point at the center of the partition
      * \param pc the coordinates of the point
      */
-  void set_Center_Point( int nc, Point3 &pc );
+  void set_Center_Point( int nc, Point3 &pc, double scaling );
 
   /*!
      * \brief set the coordinates of the point at the center of the partition
      * \param x the first coordinate of the point
      * \param y the second coordinate of the point
      */
-  void set_Center_Point( int nc, double x, double y, double z);
+  void set_Center_Point( int nc, double x, double y, double z, double scaling );
 
   /*!
      * \brief get the point at the center of the partition

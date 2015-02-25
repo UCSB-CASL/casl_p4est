@@ -2,9 +2,6 @@
 #include <vector>
 #include <algorithm>
 
-namespace CASL
-{
-
 void Voronoi3D_NEW::clear()
 {
   points.resize(0);
@@ -463,4 +460,3 @@ void Voronoi3D_NEW::print_VTK_Format( std::vector<Voronoi3D_NEW>& voro, const ch
   printf("Saved voronoi partition in %s\n", file_name);
 }
 
-} /* namespace CASL */

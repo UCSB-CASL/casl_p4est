@@ -45,23 +45,64 @@ void Voronoi3D::push( int n, Point3 &pt )
   points.push_back(p);
 }
 
-void Voronoi3D::set_Center_Point( int nc, Point3 &pc )
+void Voronoi3D::set_Center_Point( int nc, Point3 &pc, double scaling )
 {
   this->nc = nc;
   this->pc = pc;
+  this->scaling = scaling;
 }
 
-void Voronoi3D::set_Center_Point( int nc, double x, double y, double z)
+void Voronoi3D::set_Center_Point( int nc, double x, double y, double z, double scaling)
 {
   this->nc = nc;
   pc.x = x;
   pc.y = y;
   pc.z = z;
+  this->scaling = scaling;
 }
 
 void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
                                     bool periodic_x, bool periodic_y, bool periodic_z)
 {
+
+//  double xmin_ = MAX((xmin-pc.x)/scaling-10, (xmin-pc.x)/scaling);
+//  double xmax_ = MIN((xmax-pc.x)/scaling+10, (xmax-pc.x)/scaling);
+//  double ymin_ = MAX((ymin-pc.y)/scaling-10, (ymin-pc.y)/scaling);
+//  double ymax_ = MIN((ymax-pc.y)/scaling+10, (ymax-pc.y)/scaling);
+//  double zmin_ = MAX((zmin-pc.z)/scaling-10, (zmin-pc.z)/scaling);
+//  double zmax_ = MIN((zmax-pc.z)/scaling+10, (zmax-pc.z)/scaling);
+
+//  /* create a container for the particles */
+//  voro::container voronoi(xmin_, xmax_, ymin_, ymax_, zmin_, zmax_,
+//                          1, 1, 1, periodic_x, periodic_y, periodic_z, 8);
+
+//  /* store the order in which the particles are added to the container */
+//  voro::particle_order po;
+
+//  /* add the center point */
+//  double x_tmp = 0; //pc.x/scaling;
+//  double y_tmp = 0; //pc.y/scaling;
+//  double z_tmp = 0; //pc.z/scaling;
+//  x_tmp = ABS(x_tmp-xmin_)<EPS ? x_tmp+EPS : ABS(x_tmp-xmax_)<EPS ? x_tmp-EPS : x_tmp;
+//  y_tmp = ABS(y_tmp-ymin_)<EPS ? y_tmp+EPS : ABS(y_tmp-ymax_)<EPS ? y_tmp-EPS : y_tmp;
+//  z_tmp = ABS(z_tmp-zmin_)<EPS ? z_tmp+EPS : ABS(z_tmp-zmax_)<EPS ? z_tmp-EPS : z_tmp;
+//  voronoi.put(po, nc, x_tmp, y_tmp, z_tmp);
+
+//  /* add the points potentially involved in the voronoi partition */
+//  for(unsigned int m=0; m<points.size(); ++m)
+//  {
+//    double x_tmp = (points[m].p.x-pc.x)/scaling;
+//    double y_tmp = (points[m].p.y-pc.y)/scaling;
+//    double z_tmp = (points[m].p.z-pc.z)/scaling;
+//    x_tmp = ABS(x_tmp-xmin_)<EPS ? x_tmp+EPS : ABS(x_tmp-xmax_)<EPS ? x_tmp-EPS : x_tmp;
+//    y_tmp = ABS(y_tmp-ymin_)<EPS ? y_tmp+EPS : ABS(y_tmp-ymax_)<EPS ? y_tmp-EPS : y_tmp;
+//    z_tmp = ABS(z_tmp-zmin_)<EPS ? z_tmp+EPS : ABS(z_tmp-zmax_)<EPS ? z_tmp-EPS : z_tmp;
+//    voronoi.put(po, points[m].n, x_tmp, y_tmp, z_tmp);
+//  }
+
+
+
+
   /* create a container for the particles */
   voro::container voronoi(xmin, xmax, ymin, ymax, zmin, zmax,
                           1, 1, 1, periodic_x, periodic_y, periodic_z, 8);
@@ -84,6 +125,8 @@ void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, doubl
     voronoi.put(po, points[m].n, x_tmp, y_tmp, z_tmp);
   }
 
+
+
   voro::voronoicell_neighbor voro_cell;
   std::vector<int> neigh;
   std::vector<double> areas;
@@ -92,6 +135,7 @@ void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, doubl
   if(cl.start() && voronoi.compute_cell(voro_cell,cl))
   {
     vector<Voronoi3DPoint> final_points;
+//    volume_ = voro_cell.volume() / (scaling*scaling*scaling);
     volume_ = voro_cell.volume();
 
     voro_cell.neighbors(neigh);
@@ -101,6 +145,7 @@ void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, doubl
     {
       struct Voronoi3DPoint new_voro_nb;
       new_voro_nb.n = neigh[n];
+//      new_voro_nb.s = areas[n] / (scaling*scaling);
       new_voro_nb.s = areas[n];
 
       if(neigh[n]<0)

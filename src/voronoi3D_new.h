@@ -9,13 +9,6 @@
 #include <src/CASL_math.h>
 #include <src/point3.h>
 
-//#include <lib/tools/CASL_types.h>
-//#include <lib/tools/CASL_math.h>
-//#include <lib/geometry/Point3.h>
-
-namespace CASL
-{
-
 using std::vector;
 
 struct Voronoi3D_NEWPoint
@@ -168,7 +161,5 @@ public:
      */
   static void print_VTK_Format( vector<Voronoi3D_NEW>& voro, const char* file_name );
 };
-
-} /* namespace CASL */
 
 #endif /* CASL_VORONOI3D_H */
