@@ -2063,6 +2063,8 @@ void PoissonSolverNodeBaseJump::print_voronoi_VTK(const char* path) const
 
 void PoissonSolverNodeBaseJump::check_voronoi_partition() const
 {
+  PetscErrorCode ierr;
+  ierr = PetscPrintf(p4est->mpicomm, "Checking partition ...\n"); CHKERRXX(ierr);
 #ifdef P4_TO_P8
   std::vector<Voronoi3D> voro(num_local_voro);
   const std::vector<Voronoi3DPoint> *points;
@@ -2170,7 +2172,6 @@ void PoissonSolverNodeBaseJump::check_voronoi_partition() const
 
   MPI_Allreduce(MPI_IN_PLACE, (void*) &nb_bad, 1, MPI_INT, MPI_SUM, p4est->mpicomm);
 
-  PetscErrorCode ierr;
   if(nb_bad==0) { ierr = PetscPrintf(p4est->mpicomm, "Partition is good.\n"); CHKERRXX(ierr); }
   else          { ierr = PetscPrintf(p4est->mpicomm, "Partition is NOT good, %d problem found.\n", nb_bad); CHKERRXX(ierr); }
 }
