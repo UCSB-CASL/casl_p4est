@@ -21,6 +21,12 @@
 
 class PoissonSolverNodeBaseJump
 {
+  typedef struct check_comm
+  {
+    unsigned int n;
+    unsigned int k;
+  } check_comm_t;
+
   typedef struct voro_comm
   {
     p4est_locidx_t local_num;

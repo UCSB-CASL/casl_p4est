@@ -398,13 +398,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
    * note that some messages have a size 0 since the processes can't know who is going to send them data
    * in order to find that out, one needs to call ngbd_with_quadratic_interpolation on ghost nodes...
    */
+  std::vector<MPI_Request> req_shared_added_points;
   for(int r=0; r<p4est->mpisize; ++r)
   {
     if(send_shared_to[r]==true)
     {
       MPI_Request req;
       MPI_Isend(&buff_shared_added_points_send[r][0], buff_shared_added_points_send[r].size()*sizeof(added_point_t), MPI_BYTE, r, 4, p4est->mpicomm, &req);
-      MPI_Request_free(&req);
+      req_shared_added_points.push_back(req);
     }
   }
 
@@ -753,13 +754,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
   /* send the data to remote processes */
+  std::vector<MPI_Request> req_send_points;
   for(int r=0; r<p4est->mpisize; ++r)
   {
     if(send_to[r]==true)
     {
       MPI_Request req;
       MPI_Isend((void*)&buff_send_points[r][0], buff_send_points[r].size()*sizeof(voro_comm_t), MPI_BYTE, r, 2, p4est->mpicomm, &req);
-      MPI_Request_free(&req);
+      req_send_points.push_back(req);
     }
   }
 
@@ -893,6 +895,9 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
     nb_rcv--;
   }
 
+  MPI_Waitall(req_shared_added_points.size(), &req_shared_added_points[0], MPI_STATUSES_IGNORE);
+  MPI_Waitall(req_send_points.size(), &req_send_points[0], MPI_STATUSES_IGNORE);
+
   /* clear buffers */
 //  for(int r=0; r<p4est->mpisize; ++r)
 //    buff_send_points[r].clear();
@@ -925,12 +930,6 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
 #endif
   pc = voro_points[n];
 
-#ifdef P4_TO_P8
-  voro.set_Center_Point(n, pc);
-#else
-  voro.set_Center_Point(pc);
-#endif
-
   double xyz [] =
   {
     pc.x,
@@ -957,7 +956,13 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
   double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
   double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
 #ifdef P4_TO_P8
-      double qz = quad.z / (double) P4EST_ROOT_LEN + tree_zmin;
+  double qz = quad.z / (double) P4EST_ROOT_LEN + tree_zmin;
+#endif
+
+#ifdef P4_TO_P8
+  voro.set_Center_Point(n, pc, qh);
+#else
+  voro.set_Center_Point(pc);
 #endif
 
   p4est_locidx_t quad_idx;
@@ -2058,14 +2063,6 @@ void PoissonSolverNodeBaseJump::print_voronoi_VTK(const char* path) const
 
 void PoissonSolverNodeBaseJump::check_voronoi_partition() const
 {
-#ifdef CASL_THROWS
-  if(p4est->mpisize!=1)
-  {
-    fprintf(stderr, "WARNING ! PoissonSolverNodeBaseJump->check_voronoi_partition: cannot check partition with multiple processes.\n");
-    return;
-  }
-#endif
-
 #ifdef P4_TO_P8
   std::vector<Voronoi3D> voro(num_local_voro);
   const std::vector<Voronoi3DPoint> *points;
@@ -2076,10 +2073,11 @@ void PoissonSolverNodeBaseJump::check_voronoi_partition() const
   const std::vector<Voronoi2DPoint> *pts;
 #endif
 
+  std::vector< std::vector<check_comm_t> > buff_send(p4est->mpisize);
+
   for(unsigned int n=0; n<num_local_voro; ++n)
     compute_voronoi_cell(n, voro[n]);
 
-  bool partition_is_good = true;
   int nb_bad = 0;
   for(unsigned int n=0; n<num_local_voro; ++n)
   {
@@ -2089,11 +2087,69 @@ void PoissonSolverNodeBaseJump::check_voronoi_partition() const
     {
       if((*points)[m].n>=0)
       {
-        voro[(*points)[m].n].get_Points(pts);
+        if((*points)[m].n<(int) num_local_voro)
+        {
+          voro[(*points)[m].n].get_Points(pts);
+          bool ok = false;
+          for(unsigned int k=0; k<pts->size(); ++k)
+          {
+            if((*pts)[k].n==(int) n)
+            {
+              ok = true;
+              continue;
+            }
+          }
+
+          if(ok==false)
+          {
+            std::cout << p4est->mpirank << " found bad voronoi cell for point # " << n << " : " << (*points)[m].n << ", \t Centerd on : " << voro[n].get_Center_Point();
+            nb_bad++;
+          }
+        }
+        else if(voro_ghost_rank[(*points)[m].n-num_local_voro]<p4est->mpirank)
+        {
+          check_comm_t tmp;
+          tmp.n = n;
+          tmp.k = voro_ghost_local_num[(*points)[m].n-num_local_voro];
+          buff_send[voro_ghost_rank[(*points)[m].n-num_local_voro]].push_back(tmp);
+        }
+      }
+    }
+  }
+
+  /* initiate communication */
+  std::vector<MPI_Request> req(p4est->mpirank);
+  for(int r=0; r<p4est->mpirank; ++r)
+  {
+    MPI_Isend(&buff_send[r][0], buff_send[r].size()*sizeof(check_comm_t), MPI_BYTE, r, 8, p4est->mpicomm, &req[r]);
+  }
+
+  /* now receive */
+  int nb_recv = p4est->mpisize-(p4est->mpirank+1);
+  while(nb_recv>0)
+  {
+    MPI_Status status;
+    MPI_Probe(MPI_ANY_SOURCE, 8, p4est->mpicomm, &status);
+    int vec_size;
+    MPI_Get_count(&status, MPI_BYTE, &vec_size);
+    vec_size /= sizeof(check_comm_t);
+
+    std::vector<check_comm_t> buff_recv(vec_size);
+    MPI_Recv(&buff_recv[0], vec_size*sizeof(check_comm_t), MPI_BYTE, status.MPI_SOURCE, status.MPI_TAG, p4est->mpicomm, &status);
+
+    for(unsigned int s=0; s<buff_recv.size(); ++s)
+    {
+      int local_idx = buff_recv[s].k;
+      int ghost_idx = buff_recv[s].n;
+
+      if(local_idx<0 || local_idx>=(int) num_local_voro)
+        throw std::invalid_argument("PoissonSolverNodeBaseJump->check_voronoi_partition: asked to check a non local point or a wall.");
+
+        voro[local_idx].get_Points(pts);
         bool ok = false;
         for(unsigned int k=0; k<pts->size(); ++k)
         {
-          if((*pts)[k].n==(int) n)
+          if((*pts)[k].n>=(int) num_local_voro && voro_ghost_local_num[(*pts)[k].n-num_local_voro]==ghost_idx)
           {
             ok = true;
             continue;
@@ -2102,16 +2158,19 @@ void PoissonSolverNodeBaseJump::check_voronoi_partition() const
 
         if(ok==false)
         {
-          std::cout << "Bad voronoi cell for point # " << n << " : " << (*points)[m].n << ", \t Centerd on : " << voro[n].get_Center_Point();
-//          std::cout << (*points)[m].n << ", " << (*points)[m].s << std::endl;
-          partition_is_good = false;
+          std::cout << p4est->mpirank << " found bad ghost voronoi cell for point # " << local_idx << " : " << ghost_idx << ", \t Centerd on : " << voro[local_idx].get_Center_Point();
           nb_bad++;
         }
-      }
     }
+
+    nb_recv--;
   }
 
+  MPI_Waitall(req.size(), &req[0], MPI_STATUSES_IGNORE);
 
-  if(partition_is_good) printf("Partition is good.\n");
-  else                  printf("Partition is NOT good, %d problem found.\n", nb_bad);
+  MPI_Allreduce(MPI_IN_PLACE, (void*) &nb_bad, 1, MPI_INT, MPI_SUM, p4est->mpicomm);
+
+  PetscErrorCode ierr;
+  if(nb_bad==0) { ierr = PetscPrintf(p4est->mpicomm, "Partition is good.\n"); CHKERRXX(ierr); }
+  else          { ierr = PetscPrintf(p4est->mpicomm, "Partition is NOT good, %d problem found.\n", nb_bad); CHKERRXX(ierr); }
 }
