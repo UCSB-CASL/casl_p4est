@@ -926,6 +926,14 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
 #endif
 }
 
+int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghost_idx)
+{
+  P4EST_ASSERT(ghost_idx<(p4est_locidx_t) ghost->ghosts.elem_count);
+  int r=0;
+  while(ghost->proc_offsets[r+1]<ghost_idx) r++;
+  return r;
+}
+
 #ifdef P4_TO_P8
 void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, Vec f)
 #else

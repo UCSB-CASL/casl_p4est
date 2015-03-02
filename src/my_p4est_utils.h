@@ -595,6 +595,14 @@ bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
 bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
 /*!
+ * \brief find the owner rank of a ghost quadrant
+ * \param ghost the ghost structure
+ * \param ghost_idx the index of the ghost quadrant (between 0 and the number of ghost quadrants)
+ * \return the rank who owns the ghost quadrant
+ */
+int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghost_idx);
+
+/*!
  * \brief sample_cf_on_nodes samples a cf function on the nodes. both local and ghost poinst are considered
  * \param p4est [in] the p4est object
  * \param nodes [in] the nodes data structure
