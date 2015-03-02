@@ -23,11 +23,23 @@ using std::vector;
 class my_p4est_faces_t
 {
 private:
-  typedef struct dir_face
+  typedef struct face_quad_ngbds
   {
-    p4est_locidx_t m;
-    p4est_locidx_t p;
-  } dir_face_t;
+    /* the indices of the neighbor quadrants. -1 if no neighbor in this direction.
+     * otherwise, the local index of the quadrant is stored together with the index of the tree it belongs to.
+     * Note that it is the local index in the forest (including ghosts), and not the index in the tree
+     */
+    p4est_locidx_t quad_idx[2];
+    p4est_topidx_t tree_idx[2];
+    face_quad_ngbds()
+    {
+      for(int i=0; i<P4EST_DIM; ++i)
+      {
+        quad_idx[i] = -1;
+        tree_idx[i] = -1;
+      }
+    }
+  } face_quad_ngbds;
 
   typedef struct faces_comm_1
   {
@@ -67,7 +79,7 @@ private:
   /* u2q[P4EST_DIM][u_idx].p/m
    * e.g. u2q[1][12].p is the top y face of quadrant 12
    */
-  vector<my_p4est_faces_t::dir_face_t> u2q_[P4EST_DIM];
+  vector<my_p4est_faces_t::face_quad_ngbds> u2q_[P4EST_DIM];
 
   /* which processes do the ghost velocities belong to
    * proc_offsets[P4EST_DIM][mpisize+1]
@@ -85,10 +97,41 @@ public:
   {
     return q2u_[dir][quad_idx];
   }
+
+  /*!
+   * \brief get the local index of the neighbor cell in the direction dir
+   * \param u_idx the index of the face
+   * \param dir 0 for the cell in the minus direction, 1 for the one in the plus direction
+   * \return the local index of the neighbor cell in the direction dir
+   */
+  inline p4est_locidx_t u2q(p4est_locidx_t u_idx, bool dir)
+  {
+    return u2q_[0][u_idx].quad_idx[dir];
+  }
+
+
+  /*!
+  * \brief get the local index of the neighbor cell in the direction dir
+  * \param v_idx the index of the face
+  * \param dir 0 for the cell in the minus direction, 1 for the one in the plus direction
+  * \return the local index of the neighbor cell in the direction dir
+  */
+  inline p4est_locidx_t v2q(p4est_locidx_t v_idx, bool dir)
+  {
+    return u2q_[1][v_idx].quad_idx[dir];
+  }
 };
 
 
 
+inline double face_x_fr_u(my_p4est_faces_t* faces, p4est_locidx_t u)
+{
+//  p4est_locidx_t qp = faces->u2q(u,1);
+//  if(qp!=-1)
+//  {
+//    return quad_x_fr_q(qp, )
+//  }
+}
 
 
 #endif /* MY_P4EST_FACES_H */

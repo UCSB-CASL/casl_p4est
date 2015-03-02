@@ -4,9 +4,11 @@
 #ifdef P4_TO_P8
 #include <p8est.h>
 #include <p8est_nodes.h>
+#include <p8est_ghost.h>
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
+#include <p4est_ghost.h>
 #endif
 #include <src/petsc_logging.h>
 #include "petsc_compatibility.h"
