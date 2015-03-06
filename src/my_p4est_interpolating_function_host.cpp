@@ -32,6 +32,32 @@ extern PetscLogEvent log_InterpolatingFunctionHost_all_reduce;
 #define PetscLogFlops(n) 0
 #endif
 
+InterpolatingFunctionNodeBaseHost::InterpolatingFunctionNodeBaseHost(const my_p4est_node_neighbors_t& neighbors, interpolation_method method)
+  : neighbors_(neighbors), p4est_(neighbors_.p4est), nodes_(neighbors_.nodes), ghost_(neighbors_.ghost), myb_(neighbors_.myb),
+    Fi(NULL),
+    Fxx(NULL), Fyy(NULL),
+#ifdef P4_TO_P8
+    Fzz(NULL),
+#endif
+    method_(method),
+    senders(p4est_->mpisize, 0)
+{
+  if (!(method_ == linear || method_ == quadratic || method_ == quadratic_non_oscillatory))
+    throw std::invalid_argument("[ERROR]: interpolation method should be one of 'linear', 'quadratic', or 'quadratic_non_oscillatory'. ");
+
+  // compute domain sizes
+  double *v2c = p4est_->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
+  p4est_topidx_t first_tree = 0, last_tree = p4est_->trees->elem_count-1;
+  p4est_topidx_t first_vertex = 0, last_vertex = P4EST_CHILDREN - 1;
+
+  for (short i=0; i<3; i++)
+    xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
+  for (short i=0; i<3; i++)
+    xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
+}
+
+
 InterpolatingFunctionNodeBaseHost::InterpolatingFunctionNodeBaseHost(Vec F, const my_p4est_node_neighbors_t& neighbors, interpolation_method method)
   : neighbors_(neighbors), p4est_(neighbors_.p4est), nodes_(neighbors_.nodes), ghost_(neighbors_.ghost), myb_(neighbors_.myb),
     Fi(F),

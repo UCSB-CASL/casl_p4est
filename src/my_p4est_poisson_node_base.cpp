@@ -501,10 +501,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix_neumann_wall_1st_order
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -1268,10 +1268,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec_neumann_wall_1st_order
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -1834,10 +1834,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -2540,10 +2540,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -3123,10 +3123,10 @@ void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_matrix()
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -3973,10 +3973,10 @@ void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_rhsvec()
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
