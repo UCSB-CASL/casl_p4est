@@ -107,6 +107,8 @@ public:
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
 
+  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
+
   inline void set_first_order_neumann_wall( bool val ) { neumann_wall_first_order=val; }
 
   void shift_to_exact_solution(Vec sol, Vec uex);

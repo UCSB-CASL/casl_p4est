@@ -350,8 +350,14 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
   if(phi_ == NULL)
   {
     local_phi = true;
-    ierr = VecCreateSeq(PETSC_COMM_SELF, nodes->num_owned_indeps, &phi_); CHKERRXX(ierr);
-    ierr = VecSet(phi_, -1.); CHKERRXX(ierr);
+    ierr = VecDuplicate(solution, &phi_); CHKERRXX(ierr);
+
+    Vec tmp;
+    ierr = VecGhostGetLocalForm(phi_, &tmp); CHKERRXX(ierr);
+    ierr = VecSet(tmp, -1.); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(phi_, &tmp); CHKERRXX(ierr);
+//    ierr = VecCreateSeq(PETSC_COMM_SELF, nodes->num_owned_indeps, &phi_); CHKERRXX(ierr);
+    set_phi(phi_);
   }
 
   // set ksp type
@@ -456,6 +462,17 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
   {
     ierr = VecDestroy(phi_); CHKERRXX(ierr);
     phi_ = NULL;
+
+    ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
+    phi_xx_ = NULL;
+
+    ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
+    phi_yy_ = NULL;
+
+#ifdef P4_TO_P8
+    ierr = VecDestroy(phi_zz_); CHKERRXX(ierr);
+    phi_zz_ = NULL;
+#endif
   }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBased_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
@@ -2485,7 +2502,6 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
   }
 
   // check for null space
-  // FIXME: the return value should be checked for errors ...
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
   if (matrix_has_nullspace) {
     ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
@@ -2843,25 +2859,29 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
         //---------------------------------------------------------------------
         double w_000 = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p );
 
+        double eps_x = is_node_xmWall(p4est, ni) ? 2*EPS : (is_node_xpWall(p4est, ni) ? -2*EPS : 0);
+        double eps_y = is_node_ymWall(p4est, ni) ? 2*EPS : (is_node_ypWall(p4est, ni) ? -2*EPS : 0);
+        double eps_z = is_node_zmWall(p4est, ni) ? 2*EPS : (is_node_zpWall(p4est, ni) ? -2*EPS : 0);
+
         //---------------------------------------------------------------------
         // add coefficients to the right hand side
         //---------------------------------------------------------------------
-        if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_p00;
+        if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C+eps_y, z_C+eps_z) / d_p00;
         else if(is_interface_m00)     rhs_p[n] -= w_m00 * val_interface_m00;
 
-        if(is_node_xpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_m00;
+        if(is_node_xpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C+eps_y, z_C+eps_z) / d_m00;
         else if(is_interface_p00)     rhs_p[n] -= w_p00 * val_interface_p00;
 
-        if(is_node_ymWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_0p0;
+        if(is_node_ymWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C, z_C+eps_z) / d_0p0;
         else if(is_interface_0m0)     rhs_p[n] -= w_0m0 * val_interface_0m0;
 
-        if(is_node_ypWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_0m0;
+        if(is_node_ypWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C, z_C+eps_z) / d_0m0;
         else if(is_interface_0p0)     rhs_p[n] -= w_0p0 * val_interface_0p0;
 
-        if(is_node_zmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_00p;
+        if(is_node_zmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C+eps_y, z_C) / d_00p;
         else if(is_interface_00m)     rhs_p[n] -= w_00m * val_interface_00m;
 
-        if(is_node_zpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_00m;
+        if(is_node_zpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C+eps_y, z_C) / d_00m;
         if(is_interface_00p)          rhs_p[n] -= w_00p * val_interface_00p;
 
         rhs_p[n] /= w_000;
@@ -2904,16 +2924,19 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
 
         double diag = add_p[n]-(w_m00+w_p00+w_0m0+w_0p0);
 
-        if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_p00;
+        double eps_x = is_node_xmWall(p4est, ni) ? 2*EPS : (is_node_xpWall(p4est, ni) ? -2*EPS : 0);
+        double eps_y = is_node_ymWall(p4est, ni) ? 2*EPS : (is_node_ypWall(p4est, ni) ? -2*EPS : 0);
+
+        if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C+eps_y) / d_p00;
         else if(is_interface_m00)     rhs_p[n] -= w_m00*val_interface_m00;
 
-        if(is_node_xpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_m00;
+        if(is_node_xpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C+eps_y) / d_m00;
         else if(is_interface_p00)     rhs_p[n] -= w_p00*val_interface_p00;
 
-        if(is_node_ymWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_0p0;
+        if(is_node_ymWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C) / d_0p0;
         else if(is_interface_0m0)     rhs_p[n] -= w_0m0*val_interface_0m0;
 
-        if(is_node_ypWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_0m0;
+        if(is_node_ypWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C) / d_0m0;
         else if(is_interface_0p0)     rhs_p[n] -= w_0p0*val_interface_0p0;
 
         rhs_p[n] /= diag;
@@ -3060,6 +3083,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
   if (matrix_has_nullspace && fixed_value_idx_l > 0){
     rhs_p[fixed_value_idx_l] = 0;
   }
+
 
   // restore the pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -4544,7 +4568,6 @@ void PoissonSolverNodeBase::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
 
     is_phi_dd_owned = false;
   } else {
-
     /*
      * We have two options here:
      * 1) Either compute phi_xx and phi_yy using the function that treats them

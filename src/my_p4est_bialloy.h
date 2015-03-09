@@ -29,6 +29,10 @@ private:
   InterpolatingFunctionNodeBaseHost *interface_value_c;
 
   /* grid */
+  p4est_t **p4est_ptr;
+  p4est_ghost_t **ghost_ptr;
+  p4est_nodes_t **nodes_ptr;
+
   my_p4est_brick_t *brick;
   p4est_t *p4est;
   p4est_ghost_t *ghost;
@@ -76,13 +80,13 @@ private:
   bool solve_concentration_solid;
 
   bool matrices_are_constructed;
-  PoissonSolverNodeBase solver_t;
-  PoissonSolverNodeBase solver_c;
   Vec rhs;
 
 public:
 
-  my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd);
+  my_p4est_bialloy_t(p4est_t **p4est, p4est_ghost_t **ghost, p4est_nodes_t **nodes, my_p4est_node_neighbors_t *ngbd);
+
+  ~my_p4est_bialloy_t();
 
   void set_parameters( double latent_heat,
                        double thermal_conductivity,
@@ -110,6 +114,10 @@ public:
   void set_concentration(Vec cl, Vec cs);
 
   void set_normal_velocity(Vec v);
+
+  inline p4est_t* get_p4est() { return p4est; }
+
+  inline p4est_nodes_t* get_nodes() { return nodes; }
 
   inline Vec get_phi() { return phi; }
 

@@ -123,9 +123,9 @@ public:
   void extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend=INT_MAX) const;
 
   /* extend a quantity over the interface with the TVD algorithm */
-  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2, int =INT_MAX) const;
+  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2, int=INT_MAX) const;
 
-  void extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations=20, int order=2, int =INT_MAX) const;
+  void extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations=20, int order=2, int=INT_MAX) const;
 
   void extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
                                                                 std::vector<double>& nx, std::vector<double>& ny,
