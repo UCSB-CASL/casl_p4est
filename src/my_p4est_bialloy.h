@@ -26,14 +26,11 @@ private:
   BoundaryConditions2D bc_cs;
   BoundaryConditions2D bc_cl;
 
-  InterpolatingFunctionNodeBaseHost *interface_value_c;
+//  InterpolatingFunctionNodeBaseHost *interface_value_c;
 
   /* grid */
-  p4est_t **p4est_ptr;
-  p4est_ghost_t **ghost_ptr;
-  p4est_nodes_t **nodes_ptr;
-
   my_p4est_brick_t *brick;
+  p4est_connectivity_t *connectivity;
   p4est_t *p4est;
   p4est_ghost_t *ghost;
   p4est_nodes_t *nodes;
@@ -84,7 +81,7 @@ private:
 
 public:
 
-  my_p4est_bialloy_t(p4est_t **p4est, p4est_ghost_t **ghost, p4est_nodes_t **nodes, my_p4est_node_neighbors_t *ngbd);
+  my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd);
 
   ~my_p4est_bialloy_t();
 
