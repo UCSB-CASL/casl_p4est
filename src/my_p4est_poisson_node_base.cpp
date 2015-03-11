@@ -444,6 +444,7 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
     setup_negative_variable_coeff_laplace_rhsvec();
 
   // Solve the system
+  ierr = KSPSetTolerances(ksp, 1e-14, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs_, solution); CHKERRXX(ierr);
   ierr = PetscLogEventEnd  (log_PoissonSolverNodeBased_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
