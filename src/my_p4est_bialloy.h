@@ -79,6 +79,8 @@ private:
   bool matrices_are_constructed;
   Vec rhs;
 
+  double scaling;
+
 public:
 
   my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -96,7 +98,8 @@ public:
                        double ml,
                        double epsilon_anisotropy,
                        double epsilon_c,
-                       double epsilon_v );
+                       double epsilon_v,
+                       double scaling );
 
   void set_phi(Vec phi);
 

@@ -107,7 +107,8 @@ void my_p4est_bialloy_t::set_parameters( double latent_heat,
                                          double ml,
                                          double epsilon_anisotropy,
                                          double epsilon_c,
-                                         double epsilon_v )
+                                         double epsilon_v,
+                                         double scaling )
 {
   this->latent_heat          = latent_heat;
   this->thermal_conductivity = thermal_conductivity;
@@ -121,6 +122,7 @@ void my_p4est_bialloy_t::set_parameters( double latent_heat,
   this->epsilon_anisotropy   = epsilon_anisotropy;
   this->epsilon_c            = epsilon_c;
   this->epsilon_v            = epsilon_v;
+  this->scaling              = scaling;
 }
 
 
@@ -321,6 +323,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   {
     p4est_locidx_t n = ngbd->get_layer_node(i);
     kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p), 1/MAX(dx, dy)), -1/MAX(dx,dy));
+    kappa_p[n] /= scaling;
 //    kappa_p[n] = qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p);
   }
   ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
@@ -328,6 +331,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   {
     p4est_locidx_t n = ngbd->get_local_node(i);
     kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p), 1/MAX(dx, dy)), -1/MAX(dx,dy));
+    kappa_p[n] /= scaling;
 //    kappa_p[n] = qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p);
   }
   ierr = VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
@@ -655,33 +659,33 @@ void my_p4est_bialloy_t::compute_dt()
   ierr = VecGetArray(u_interface_np1, &u_interface_np1_p); CHKERRXX(ierr);
   ierr = VecGetArray(v_interface_np1, &v_interface_np1_p); CHKERRXX(ierr);
 
-  double *kappa_p;
-  ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
+//  double *kappa_p;
+//  ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
 
   double u_max = 0;
-  double kappa_min = 0;
+//  double kappa_min = 0;
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
     u_max = MAX(u_max, fabs(u_interface_np1_p[n]), fabs(v_interface_np1_p[n]));
-    kappa_min = MIN(kappa_min, kappa_p[n]);
+//    kappa_min = MIN(kappa_min, kappa_p[n]);
   }
 
-  ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(u_interface_np1, &u_interface_np1_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(v_interface_np1, &v_interface_np1_p); CHKERRXX(ierr);
 
   MPI_Allreduce(MPI_IN_PLACE, &u_max    , 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-  MPI_Allreduce(MPI_IN_PLACE, &kappa_min, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+//  MPI_Allreduce(MPI_IN_PLACE, &kappa_min, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   dt_nm1 = dt_n;
   dt_n = .5 * MIN(dx,dy) * MIN(1/u_max, 1/cooling_velocity);
 
-  if(dt_n>0.5/MAX(1e-7, kappa_min))
-  {
-    dt_n = MIN(dt_n, 0.5/MAX(1e-7, kappa_min));
-    ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
-  }
+//  if(dt_n>0.5/MAX(1e-7, kappa_min))
+//  {
+//    dt_n = MIN(dt_n, 0.5/MAX(1e-7, kappa_min));
+//    ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
+//  }
 }
 
 
