@@ -321,12 +321,14 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   {
     p4est_locidx_t n = ngbd->get_layer_node(i);
     kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p), 1/MAX(dx, dy)), -1/MAX(dx,dy));
+//    kappa_p[n] = qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p);
   }
   ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
   for(size_t i=0; i<ngbd->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_local_node(i);
     kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p), 1/MAX(dx, dy)), -1/MAX(dx,dy));
+//    kappa_p[n] = qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p);
   }
   ierr = VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
   ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
