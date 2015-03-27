@@ -2584,12 +2584,6 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
                                      + nz[n]*qnnz
                            #endif
                                      );
-//          qnn_p[n] -= ( dt*nx[n]*qnnx +
-//                        dt*ny[n]*qnny
-//              #ifdef P4_TO_P8
-//                        + dt*nz[n]*qnnz
-//              #endif
-//                        );
         }
         else
           tmp_p[n] = qnn_p[n];
@@ -2627,12 +2621,6 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
                                      + nz[n]*qnnz
                            #endif
                                      );
-//          qnn_p[n] -= ( dt*nx[n]*qnnx +
-//                        dt*ny[n]*qnny
-//              #ifdef P4_TO_P8
-//                        + dt*nz[n]*qnnz
-//              #endif
-//                        );
         }
         else
           tmp_p[n] = qnn_p[n];
@@ -2694,12 +2682,6 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
                                     + nz[n]*qnz
                           #endif
                                     ) + (order==2 ? dt*qnn_p[n] : 0);
-//          qn_p[n] -= ( dt*nx[n]*qnx +
-//                       dt*ny[n]*qny
-//             #ifdef P4_TO_P8
-//                       + dt*nz[n]*qnz
-//             #endif
-//                       - (order==2 ? dt*qnn_p[n] : 0) );
         }
         else
           tmp_p[n] = qn_p[n];
@@ -2737,12 +2719,6 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
                                     + nz[n]*qnz
                           #endif
                                     ) + (order==2 ? dt*qnn_p[n] : 0);
-//          qn_p[n] -= ( dt*nx[n]*qnx +
-//                       dt*ny[n]*qny
-//             #ifdef P4_TO_P8
-//                       + dt*nz[n]*qnz
-//             #endif
-//                       - (order==2 ? dt*qnn_p[n] : 0) );
         }
         else
           tmp_p[n] = qn_p[n];
@@ -2857,16 +2833,22 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
         else        qz += .5*(*ngbd)[n].d_00m*qzz_00m;
 #endif
 
-        tmp_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
-                      #ifdef P4_TO_P8
-                                 + nz[n]*qz
-                      #endif
-                                 ) + (order>=1 ? dt*qn_p[n] : 0);
-//        q_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
-//                       #ifdef P4_TO_P8
-//                               + nz[n]*qz
-//                       #endif
-//                               ) + (order>=1 ? dt*qn_p[n] : 0);
+#ifdef P4_TO_P8
+        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
+          tmp_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +
+                      (*ngbd)[n].f_0m0_linear(q_p) + (*ngbd)[n].f_0p0_linear(q_p) +
+                      (*ngbd)[n].f_00m_linear(q_p) + (*ngbd)[n].f_00p_linear(q_p))/6.;
+#else
+        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
+          tmp_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +
+                      (*ngbd)[n].f_0m0_linear(q_p) + (*ngbd)[n].f_0p0_linear(q_p))/4.;
+#endif
+        else
+          tmp_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
+                         #ifdef P4_TO_P8
+                                   + nz[n]*qz
+                         #endif
+                                   ) + (order>=1 ? dt*qn_p[n] : 0);
       }
       else
         tmp_p[n] = q_p[n];
@@ -2929,16 +2911,22 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
         else        qz += .5*(*ngbd)[n].d_00m*qzz_00m;
 #endif
 
-        tmp_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
-                      #ifdef P4_TO_P8
-                                 + nz[n]*qz
-                      #endif
-                                 ) + (order>=1 ? dt*qn_p[n] : 0);
-//        q_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
-//                       #ifdef P4_TO_P8
-//                               + nz[n]*qz
-//                       #endif
-//                               ) + (order>=1 ? dt*qn_p[n] : 0);
+#ifdef P4_TO_P8
+        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
+          tmp_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +
+                      (*ngbd)[n].f_0m0_linear(q_p) + (*ngbd)[n].f_0p0_linear(q_p) +
+                      (*ngbd)[n].f_00m_linear(q_p) + (*ngbd)[n].f_00p_linear(q_p))/6.;
+#else
+        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
+          tmp_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +
+                      (*ngbd)[n].f_0m0_linear(q_p) + (*ngbd)[n].f_0p0_linear(q_p))/4.;
+#endif
+        else
+          tmp_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
+                         #ifdef P4_TO_P8
+                                   + nz[n]*qz
+                         #endif
+                                   ) + (order>=1 ? dt*qn_p[n] : 0);
       }
       else
         tmp_p[n] = q_p[n];
@@ -3579,12 +3567,20 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD_one_iteration
     dt /= 2.;
 #endif
 
-    q_out_p[n] = q_000 - (dt*sgn) * ( nx[n]*( (sgn*nx[n]>0) ? qxm : qxp) +
-                                      ny[n]*( (sgn*ny[n]>0) ? qym : qyp)
+#ifdef P4_TO_P8
+    if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
+      q_out_p[n] = (q_m00+q_p00+q_0m0+q_0p0+q_00m+q_00p)/6.;
+#else
+    if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
+      q_out_p[n] = (q_m00+q_p00+q_0m0+q_0p0)/4.;
+#endif
+    else
+      q_out_p[n] = q_000 - (dt*sgn) * ( nx[n]*( (sgn*nx[n]>0) ? qxm : qxp) +
+                                        ny[n]*( (sgn*ny[n]>0) ? qym : qyp)
                                   #ifdef P4_TO_P8
-                                      + nz[n]*( (sgn*nz[n]>0) ? qzm : qzp)
+                                        + nz[n]*( (sgn*nz[n]>0) ? qzm : qzp)
                                   #endif
-                                      );
+                                        );
   }
 }
 
@@ -3683,7 +3679,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
   const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    q_p[n] = fabs(phi_p[n]<5.*dl) ? qi_p[n] : 0;
+    q_p[n] = fabs(phi_p[n])<5.*dl ? qi_p[n] : 0;
 
   // first initialize the quantities at the interface (instead of doing it each time in the loop ...)
   std::vector<double> qi_m00(nodes->num_owned_indeps);
