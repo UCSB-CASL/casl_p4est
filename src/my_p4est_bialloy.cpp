@@ -701,7 +701,10 @@ void my_p4est_bialloy_t::update_grid()
   SemiLagrangian sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
 
   /* bousouf update this for second order in time */
-  sl.update_p4est_second_order(u_interface_np1, v_interface_np1, dt_n, phi);
+//  sl.update_p4est_second_order(u_interface_np1, v_interface_np1, dt_n, phi);
+  sl.update_p4est_second_order_from_last_grid(u_interface_n  , v_interface_n  ,
+                                              u_interface_np1, v_interface_np1,
+                                              dt_nm1, dt_n, phi);
 
   /* interpolate the quantities on the new grid */
   InterpolatingFunctionNodeBaseHost interp(*ngbd, quadratic_non_oscillatory);
