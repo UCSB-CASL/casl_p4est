@@ -110,7 +110,7 @@ class SemiLagrangian
                             double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, bool save_topology = false);
 
 
-  void advect_from_n_to_np1(double dt_n, double dt_nm1,
+  void advect_from_n_to_np1(double dt_nm1, double dt_n,
                           #ifdef P4_TO_P8
                             Vec vx_nm1, Vec vx_xx_nm1, Vec vx_yy_nm1, Vec vx_zz_nm1,
                             Vec vy_nm1, Vec vy_xx_nm1, Vec vy_yy_nm1, Vec vy_zz_nm1,
