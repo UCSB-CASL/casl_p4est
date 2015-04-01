@@ -324,17 +324,15 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   for(size_t i=0; i<ngbd->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_layer_node(i);
+    qnnn = ngbd->get_neighbors(n);
     kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p), 1/MAX(dx, dy)), -1/MAX(dx,dy));
-//    kappa_p[n] /= scaling;
-//    kappa_p[n] = qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p);
   }
   ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
   for(size_t i=0; i<ngbd->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_local_node(i);
+    qnnn = ngbd->get_neighbors(n);
     kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p), 1/MAX(dx, dy)), -1/MAX(dx,dy));
-//    kappa_p[n] /= scaling;
-//    kappa_p[n] = qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p);
   }
   ierr = VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
   ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
@@ -596,10 +594,23 @@ void my_p4est_bialloy_t::solve_concentration()
   {
     double theta = atan2(ny_p[n], nx_p[n]);
 
-    c_interface_tmp_p[n] = t_interface_p[n]/ml
+    c_interface_tmp_p[n] = (t_interface_p[n]-Tm)/ml
         + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta))*kappa_p[n]/ml
         + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta))*normal_velocity_np1_p[n]/ml;
   }
+
+//  p4est_locidx_t N = 12603;
+//  std::cout << scaling << std::endl;
+//  std::cout << node_x_fr_n(N, p4est, nodes)/scaling << ", " << node_y_fr_n(N, p4est, nodes)/scaling << std::endl;
+//  std::cout << node_x_fr_n(N, p4est, nodes) << ", " << node_y_fr_n(N, p4est, nodes) << std::endl;
+//  std::cout << ny_p[N] << ", " << nx_p[N] << std::endl;
+//  double theta = atan2(ny_p[N], nx_p[N]);
+//  std::cout << c_interface_tmp_p[N] << ", " << (t_interface_p[N]-Tm)/ml << ", " << epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta))*kappa_p[N]/ml << ", " << epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta))*normal_velocity_np1_p[N]/ml << std::endl;
+//  std::cout << epsilon_anisotropy << ", " << theta << std::endl;
+//  std::cout << epsilon_v << ", " << normal_velocity_np1_p[N] << std::endl;
+//  std::cout << epsilon_v * normal_velocity_np1_p[N] << std::endl;
+//  std::cout << epsilon_c << ", " << kappa_p[N] << std::endl;
+//  std::cout << epsilon_c * kappa_p[N] << std::endl;
 
   ierr = VecRestoreArray(c_interface_tmp, &c_interface_tmp_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(nx, &nx_p); CHKERRXX(ierr);
@@ -888,6 +899,11 @@ void my_p4est_bialloy_t::save_VTK(int iter)
   ierr = VecGetArray(cl_n, &cl_p); CHKERRXX(ierr);
   ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
+  double *nx_p, *ny_p, *kappa_p;
+  ierr = VecGetArray(nx, &nx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(ny, &ny_p); CHKERRXX(ierr);
+  ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
+
   /* save the size of the leaves */
   Vec leaf_level;
   ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
@@ -912,12 +928,20 @@ void my_p4est_bialloy_t::save_VTK(int iter)
 
   my_p4est_vtk_write_all(  p4est, nodes, NULL,
                            P4EST_TRUE, P4EST_TRUE,
-                           4, 1, oss.str().c_str(),
+                           7, 1, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "temperature", temperature_p,
                            VTK_POINT_DATA, "concentration", cl_p,
                            VTK_POINT_DATA, "un", normal_velocity_np1_p,
+                           VTK_POINT_DATA, "nx", nx_p,
+                           VTK_POINT_DATA, "ny", ny_p,
+                           VTK_POINT_DATA, "kappa", kappa_p,
                            VTK_CELL_DATA , "leaf_level", l_p);
+
+
+  ierr = VecRestoreArray(nx, &nx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(ny, &ny_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
