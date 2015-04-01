@@ -405,34 +405,212 @@ void my_p4est_faces_t::init_faces()
     for(size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
       p4est_topidx_t quad_idx = q+tree->quadrants_offset;
-      if(q2u_[dir::f_m00][quad_idx] != NO_VELOCITY) { u2q_[0][q2u_[dir::f_m00][quad_idx]].quad_idx[0] = quad_idx; u2q_[0][q2u_[dir::f_m00][quad_idx]].tree_idx[0] = tree_idx; }
-      if(q2u_[dir::f_p00][quad_idx] != NO_VELOCITY) { u2q_[0][q2u_[dir::f_p00][quad_idx]].quad_idx[1] = quad_idx; u2q_[0][q2u_[dir::f_p00][quad_idx]].tree_idx[1] = tree_idx; }
-      if(q2u_[dir::f_0m0][quad_idx] != NO_VELOCITY) { u2q_[1][q2u_[dir::f_0m0][quad_idx]].quad_idx[0] = quad_idx; u2q_[1][q2u_[dir::f_0m0][quad_idx]].tree_idx[0] = tree_idx; }
-      if(q2u_[dir::f_0p0][quad_idx] != NO_VELOCITY) { u2q_[1][q2u_[dir::f_0p0][quad_idx]].quad_idx[1] = quad_idx; u2q_[1][q2u_[dir::f_0p0][quad_idx]].tree_idx[1] = tree_idx; }
-//      if(q2u_[dir::f_p00][quad_idx] != NO_VELOCITY) u2q_[0][q2u_[dir::f_p00][quad_idx]].m = quad_idx;
-//      if(q2u_[dir::f_0m0][quad_idx] != NO_VELOCITY) u2q_[1][q2u_[dir::f_0m0][quad_idx]].p = quad_idx;
-//      if(q2u_[dir::f_0p0][quad_idx] != NO_VELOCITY) u2q_[1][q2u_[dir::f_0p0][quad_idx]].m = quad_idx;
+      if(q2u_[dir::f_m00][quad_idx] != NO_VELOCITY) { u2q_[0][q2u_[dir::f_m00][quad_idx]].quad_idx = quad_idx; u2q_[0][q2u_[dir::f_m00][quad_idx]].tree_idx = tree_idx; }
+      if(q2u_[dir::f_p00][quad_idx] != NO_VELOCITY) { u2q_[0][q2u_[dir::f_p00][quad_idx]].quad_idx = quad_idx; u2q_[0][q2u_[dir::f_p00][quad_idx]].tree_idx = tree_idx; }
+      if(q2u_[dir::f_0m0][quad_idx] != NO_VELOCITY) { u2q_[1][q2u_[dir::f_0m0][quad_idx]].quad_idx = quad_idx; u2q_[1][q2u_[dir::f_0m0][quad_idx]].tree_idx = tree_idx; }
+      if(q2u_[dir::f_0p0][quad_idx] != NO_VELOCITY) { u2q_[1][q2u_[dir::f_0p0][quad_idx]].quad_idx = quad_idx; u2q_[1][q2u_[dir::f_0p0][quad_idx]].tree_idx = tree_idx; }
     }
   }
-  for(p4est_locidx_t quad_idx=0; quad_idx<p4est->local_num_quadrants; ++quad_idx)
+
+  for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
   {
-//    if(q2u_[dir::f_m00][quad_idx] != NO_VELOCITY) u2q_[0][q2u_[dir::f_m00][quad_idx]].p = quad_idx;
-//    if(q2u_[dir::f_p00][quad_idx] != NO_VELOCITY) u2q_[0][q2u_[dir::f_p00][quad_idx]].m = quad_idx;
-//    if(q2u_[dir::f_0m0][quad_idx] != NO_VELOCITY) u2q_[1][q2u_[dir::f_0m0][quad_idx]].p = quad_idx;
-//    if(q2u_[dir::f_0p0][quad_idx] != NO_VELOCITY) u2q_[1][q2u_[dir::f_0p0][quad_idx]].m = quad_idx;
+    p4est_locidx_t quad_idx = q+p4est->local_num_quadrants;
+
+    if(q2u_[dir::f_m00][quad_idx] != NO_VELOCITY && u2q_[0][q2u_[dir::f_m00][quad_idx]].quad_idx == -1) { u2q_[0][q2u_[dir::f_m00][quad_idx]].quad_idx = quad_idx; }
+    if(q2u_[dir::f_p00][quad_idx] != NO_VELOCITY && u2q_[0][q2u_[dir::f_p00][quad_idx]].quad_idx == -1) { u2q_[0][q2u_[dir::f_p00][quad_idx]].quad_idx = quad_idx; }
+    if(q2u_[dir::f_0m0][quad_idx] != NO_VELOCITY && u2q_[1][q2u_[dir::f_0m0][quad_idx]].quad_idx == -1) { u2q_[1][q2u_[dir::f_0m0][quad_idx]].quad_idx = quad_idx; }
+    if(q2u_[dir::f_0p0][quad_idx] != NO_VELOCITY && u2q_[1][q2u_[dir::f_0p0][quad_idx]].quad_idx == -1) { u2q_[1][q2u_[dir::f_0p0][quad_idx]].quad_idx = quad_idx; }
   }
 
-//  for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
+  // check data for debugging
+//  for(unsigned int i=0; i<u2q_[0].size(); ++i)
 //  {
-//    p4est_locidx_t quad_idx = q+p4est->local_num_quadrants;
-
-//    if(q2u_[dir::f_m00][quad_idx] != NO_VELOCITY) u2q_[0][q2u_[dir::f_m00][quad_idx]].p = quad_idx;
-//    if(q2u_[dir::f_p00][quad_idx] != NO_VELOCITY) u2q_[0][q2u_[dir::f_p00][quad_idx]].m = quad_idx;
-//    if(q2u_[dir::f_0m0][quad_idx] != NO_VELOCITY) u2q_[1][q2u_[dir::f_0m0][quad_idx]].p = quad_idx;
-//    if(q2u_[dir::f_0p0][quad_idx] != NO_VELOCITY) u2q_[1][q2u_[dir::f_0p0][quad_idx]].m = quad_idx;
+//    if(u2q_[0][i].quad_idx==-1)                                                    std::cout << p4est->mpirank << " problem in u !!" << std::endl;
+//    if(u2q_[0][i].quad_idx< p4est->local_num_quadrants && u2q_[0][i].tree_idx==-1) std::cout << p4est->mpirank << " problem in u local !!" << std::endl;
+//    if(u2q_[0][i].quad_idx>=p4est->local_num_quadrants && u2q_[0][i].tree_idx!=-1) std::cout << p4est->mpirank << " problem in u ghost !!" << std::endl;
+//  }
+//  for(unsigned int i=0; i<u2q_[1].size(); ++i)
+//  {
+//    if(u2q_[1][i].quad_idx==-1)                                                    std::cout << p4est->mpirank << " problem in v !!" << std::endl;
+//    if(u2q_[1][i].quad_idx< p4est->local_num_quadrants && u2q_[1][i].tree_idx==-1) std::cout << p4est->mpirank << " problem in v local !!" << std::endl;
+//    if(u2q_[1][i].quad_idx>=p4est->local_num_quadrants && u2q_[1][i].tree_idx!=-1) std::cout << p4est->mpirank << " problem in v ghost !!" << std::endl;
 //  }
 
   MPI_Waitall(req_query2.size(), &req_query2[0], MPI_STATUSES_IGNORE);
   MPI_Waitall(req_reply2.size(), &req_reply2[0], MPI_STATUSES_IGNORE);
 }
 
+
+
+double face_x_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t u_idx)
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  faces->u2q(u_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+
+  double x = quad_x_fr_i(quad) + tree_xmin;
+
+  if(faces->q2u(quad_idx, dir::f_m00) == u_idx) return x;
+  else return x + (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+}
+
+
+double face_y_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t u_idx)
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  faces->u2q(u_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+
+  double y = quad_y_fr_j(quad) + tree_ymin;
+  double dy = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  return y + .5*dy;
+}
+
+
+double face_x_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t v_idx)
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  faces->v2q(v_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+
+  double x = quad_x_fr_i(quad) + tree_xmin;
+  double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  return x + .5*dx;
+}
+
+
+double face_y_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t v_idx)
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  faces->v2q(v_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+
+  double y = quad_y_fr_j(quad) + tree_ymin;
+
+  if(faces->q2u(quad_idx, dir::f_0m0) == v_idx) return y;
+  else return y + (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+}
+
+
+void face_xyz_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t u_idx, double* xyz)
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  faces->u2q(u_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+
+  xyz[0] = quad_x_fr_i(quad) + tree_xmin;
+  xyz[1] = quad_y_fr_j(quad) + tree_ymin;
+
+  if(faces->q2u(quad_idx, dir::f_p00) == u_idx) xyz[1] += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+}
+
+
+void face_xyz_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t v_idx, double* xyz)
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  faces->v2q(v_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+
+  xyz[0] = quad_x_fr_i(quad) + tree_xmin;
+  xyz[1] = quad_y_fr_j(quad) + tree_ymin;
+
+  if(faces->q2u(quad_idx, dir::f_0p0) == v_idx) xyz[1] += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+}
