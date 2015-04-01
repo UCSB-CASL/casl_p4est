@@ -105,6 +105,7 @@ void my_p4est_bialloy_t::set_parameters( double latent_heat,
                                          double kp,
                                          double c0,
                                          double ml,
+                                         double Tm,
                                          double epsilon_anisotropy,
                                          double epsilon_c,
                                          double epsilon_v,
@@ -119,6 +120,7 @@ void my_p4est_bialloy_t::set_parameters( double latent_heat,
   this->kp                   = kp;
   this->c0                   = c0;
   this->ml                   = ml;
+  this->Tm                   = Tm;
   this->epsilon_anisotropy   = epsilon_anisotropy;
   this->epsilon_c            = epsilon_c;
   this->epsilon_v            = epsilon_v;
@@ -323,7 +325,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   {
     p4est_locidx_t n = ngbd->get_layer_node(i);
     kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p), 1/MAX(dx, dy)), -1/MAX(dx,dy));
-    kappa_p[n] /= scaling;
+//    kappa_p[n] /= scaling;
 //    kappa_p[n] = qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p);
   }
   ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
@@ -331,7 +333,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   {
     p4est_locidx_t n = ngbd->get_local_node(i);
     kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p), 1/MAX(dx, dy)), -1/MAX(dx,dy));
-    kappa_p[n] /= scaling;
+//    kappa_p[n] /= scaling;
 //    kappa_p[n] = qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p);
   }
   ierr = VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);

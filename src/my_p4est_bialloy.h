@@ -70,6 +70,7 @@ private:
   double kp;                   /* partition coefficient */
   double c0;                   /* initial concentration */
   double ml;                   /* liquidus slope */
+  double Tm;                   /* melting temperature */
   double epsilon_anisotropy;   /* anisotropy coefficient */
   double epsilon_c;            /* curvature undercooling coefficient */
   double epsilon_v;            /* kinetic undercooling coefficient */
@@ -96,6 +97,7 @@ public:
                        double kp,
                        double c0,
                        double ml,
+                       double Tm,
                        double epsilon_anisotropy,
                        double epsilon_c,
                        double epsilon_v,
