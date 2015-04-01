@@ -58,11 +58,18 @@ using namespace std;
 
 int nx = 2;
 int ny = 2;
+#ifdef P4_TO_P8
+int nz = 2;
+#endif
 
 bool save_velocity = true;
 bool save_vtk = true;
 
+#ifdef P4_TO_P8
+char direction = 'z';
+#else
 char direction = 'y';
+#endif
 
 double box_size = 4e-2;//4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 
@@ -110,8 +117,6 @@ double initial_interface = 0.1*(double) nx;
 
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
-//    if(direction=='x') return x - 0.1*nx + .05*nx*sin(2*PI*5*y/ny);
-//    else               return y - 0.1*ny + .05*ny*sin(2*PI*5*x/nx);
     if(direction=='x') return x - initial_interface;
     else               return y - initial_interface;
   }
@@ -267,7 +272,11 @@ int main (int argc, char* argv[])
   double G_orig = G;
 
   /* scale parameters */
+#ifdef P4_TO_P8
+  double scaling = (direction=='x' ? nx : (direction=='y' ? ny : nz))/box_size;  //1 cm = scaling U
+#else
   double scaling = (direction=='x' ? nx : ny)/box_size;  //1 cm = scaling U
+#endif
   rho                  /= (scaling*scaling*scaling);
   thermal_conductivity /= scaling;
   Dl                   *= (scaling*scaling);
@@ -287,7 +296,11 @@ int main (int argc, char* argv[])
 
   /* create the p4est */
   my_p4est_brick_t brick;
+#ifdef P4_TO_P8
+  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, nz, &brick);
+#else
   p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, &brick);
+#endif
   p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
 
   lmin = cmd.get("lmin", lmin);

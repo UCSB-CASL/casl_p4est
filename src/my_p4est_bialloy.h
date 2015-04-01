@@ -1,11 +1,18 @@
 #ifndef MY_P4EST_BIALLOY_H
 #define MY_P4EST_BIALLOY_H
 
-#ifdef P4_TO_P8
-
-#else
 #include <src/casl_types.h>
 #include <src/CASL_math.h>
+
+#ifdef P4_TO_P8
+#include <src/my_p8est_tools.h>
+#include <p8est.h>
+#include <p8est_ghost.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_interpolating_function_host.h>
+#else
 #include <src/my_p4est_tools.h>
 #include <p4est.h>
 #include <p4est_ghost.h>
@@ -39,6 +46,9 @@ private:
 
   double dx;
   double dy;
+#ifdef P4_TO_P8
+  double dz;
+#endif
 
   /* temperature */
   Vec temperature_n, temperature_np1;
@@ -52,11 +62,17 @@ private:
   /* velocity */
   Vec u_interface_n, u_interface_np1;
   Vec v_interface_n, v_interface_np1;
+#ifdef P4_TO_P8
+  Vec w_interface_n, w_interface_np1;
+#endif
   Vec normal_velocity_np1;
 
   /* level-set */
   Vec phi;
   Vec nx, ny;
+#ifdef P4_TO_P8
+  Vec nz;
+#endif
   Vec kappa;
 
   /* physical parameters */
