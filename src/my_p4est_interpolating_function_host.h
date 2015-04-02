@@ -89,6 +89,7 @@ class InterpolatingFunctionNodeBaseHost: public CF_2
   InterpolatingFunctionNodeBaseHost(const InterpolatingFunctionNodeBaseHost& other);
   InterpolatingFunctionNodeBaseHost& operator=(const InterpolatingFunctionNodeBaseHost& other);
 public:
+  InterpolatingFunctionNodeBaseHost(const my_p4est_node_neighbors_t& neighbors, interpolation_method method = linear);
   InterpolatingFunctionNodeBaseHost(Vec F, const my_p4est_node_neighbors_t& neighbors, interpolation_method method = linear);
 #ifdef P4_TO_P8  
   InterpolatingFunctionNodeBaseHost(Vec F, Vec Fxx, Vec Fyy, Vec Fzz, const my_p4est_node_neighbors_t& neighbors, interpolation_method method = quadratic_non_oscillatory);

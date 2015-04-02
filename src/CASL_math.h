@@ -18,13 +18,18 @@
 
 // Some Macros
 #define EPS 1e-13
-#ifndef ABS
-#define ABS(a) ((a)>0 ? (a) : -(a))
-#endif
 
-#ifndef SQR
-#define SQR(a) (a)*(a)
-#endif
+template <typename T>
+inline T ABS(const T& val)
+{
+  return val>0 ? val : -val;
+}
+
+template <typename T>
+inline T SQR(const T& val)
+{
+  return  val*val;
+}
 
 inline int mod(int a, int b)
 {
