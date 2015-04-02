@@ -62,7 +62,7 @@ int ny = 2;
 int nz = 2;
 #endif
 
-bool save_velocity = false;
+bool save_velocity = true;
 bool save_vtk = true;
 
 #ifdef P4_TO_P8
@@ -386,6 +386,7 @@ int main (int argc, char* argv[])
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
   cmd.add_option("save_vtk", "1 to save vtu files, 0 otherwise");
+  cmd.add_option("save_velo", "1 to save velocity of the interface, 0 otherwise");
   cmd.add_option("save_every_n", "save vtk every n iteration");
   cmd.add_option("write_stats", "write the statistics about the p4est");
 	cmd.add_option("tf", "final time");
@@ -393,7 +394,9 @@ int main (int argc, char* argv[])
   cmd.add_option("G", "set heat gradient");
   cmd.add_option("box_size", "set box_size");
   cmd.parse(argc, argv);
+
   save_vtk = cmd.get("save_vtk", save_vtk);
+  save_velocity = cmd.get("save_velo", save_velocity);
 
   cmd.print();
 
