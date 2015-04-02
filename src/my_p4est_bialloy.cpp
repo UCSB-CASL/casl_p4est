@@ -1149,6 +1149,9 @@ void my_p4est_bialloy_t::save_VTK(int iter)
     l_p[p4est->local_num_quadrants+q] = quad->level;
   }
 
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    normal_velocity_np1_p[n] /= scaling;
+
   my_p4est_vtk_write_all(  p4est, nodes, NULL,
                            P4EST_TRUE, P4EST_TRUE,
                            4, 1, oss.str().c_str(),
@@ -1157,6 +1160,9 @@ void my_p4est_bialloy_t::save_VTK(int iter)
                            VTK_POINT_DATA, "concentration", cl_p,
                            VTK_POINT_DATA, "un", normal_velocity_np1_p,
                            VTK_CELL_DATA , "leaf_level", l_p);
+
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    normal_velocity_np1_p[n] *= scaling;
 
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
