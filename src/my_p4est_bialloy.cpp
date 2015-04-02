@@ -20,9 +20,19 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
     temperature_n(NULL), temperature_np1(NULL), t_interface(NULL),
     cs_n(NULL), cs_np1(NULL), cl_n(NULL), cl_np1(NULL), c_interface(NULL),
     u_interface_n(NULL), u_interface_np1(NULL),
+    #ifdef P4_TO_P8
+    w_interface_n(NULL),
+    #endif
     v_interface_n(NULL), v_interface_np1(NULL),
+    #ifdef P4_TO_P8
+    w_interface_np1(NULL),
+    #endif
     normal_velocity_np1(NULL),
-    phi(NULL), nx(NULL), ny(NULL), kappa(NULL), rhs(NULL)
+    phi(NULL), nx(NULL), ny(NULL),
+    #ifdef P4_TO_P8
+    nz(NULL),
+    #endif
+    kappa(NULL), rhs(NULL)
 {
   solve_concentration_solid = false;
 
