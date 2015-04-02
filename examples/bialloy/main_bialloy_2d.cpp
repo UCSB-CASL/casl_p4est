@@ -62,7 +62,7 @@ int ny = 2;
 int nz = 2;
 #endif
 
-bool save_velocity = true;
+bool save_velocity = false;
 bool save_vtk = true;
 
 #ifdef P4_TO_P8
@@ -114,6 +114,143 @@ double eps_anisotropy       = 0.05;
 double t_final = 10000;
 
 double initial_interface = 0.1*(double) nx;
+
+#ifdef P4_TO_P8
+
+struct plan_t : CF_3{
+  double operator()(double x, double y, double z) const {
+    if     (direction=='x') return x - initial_interface;
+    else if(direction=='y') return y - initial_interface;
+    else                    return z - initial_interface;
+  }
+} LS;
+
+
+class WallBCTypeTemperature : public WallBC3D
+{
+public:
+  BoundaryConditionType operator()( double , double , double ) const
+  {
+    return NEUMANN;
+  }
+} wall_bc_type_temperature;
+
+class WallBCValueTemperature : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    if(direction=='x')
+    {
+      if (ABS(x-nx)<EPS)
+        return G;
+
+      if (ABS(x   )<EPS)
+        return -G - V*latent_heat/thermal_conductivity;
+    }
+    else if(direction=='y')
+    {
+      if (ABS(y-ny)<EPS)
+        return G;
+
+      if (ABS(y   )<EPS)
+        return -G - V*latent_heat/thermal_conductivity;
+    }
+    else
+    {
+      if (ABS(z-nz)<EPS)
+        return G;
+
+      if (ABS(z   )<EPS)
+        return -G - V*latent_heat/thermal_conductivity;
+    }
+
+    return 0;
+  }
+} wall_bc_value_temperature;
+
+class WallBCTypeConcentration : public WallBC3D
+{
+public:
+  BoundaryConditionType operator()( double x, double y, double z ) const
+  {
+    if(direction=='x')
+    {
+      if (ABS(x)<EPS || ABS(x-nx)<EPS)
+        return DIRICHLET;
+      else
+        return NEUMANN;
+    }
+    else if(direction=='y')
+    {
+      if (ABS(y)<EPS || ABS(y-ny)<EPS)
+        return DIRICHLET;
+      else
+        return NEUMANN;
+    }
+    else
+    {
+      if (ABS(z)<EPS || ABS(z-nz)<EPS)
+        return DIRICHLET;
+      else
+        return NEUMANN;
+    }
+  }
+} wall_bc_type_concentration;
+
+class WallBCValueConcentrationS : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    if (wall_bc_type_concentration(x,y,z)==NEUMANN)
+      return 0;
+    else
+      return kp * c0;
+  }
+} wall_bc_value_concentration_s;
+
+class WallBCValueConcentrationL : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    if (wall_bc_type_concentration(x,y,z)==NEUMANN)
+      return 0;
+    else
+      return c0;
+  }
+} wall_bc_value_concentration_l;
+
+class InitialTemperature : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    if(LS(x,y,z)<0) return LS(x,y,z)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
+    else            return LS(x,y,z)*G + c0*ml + Tm;
+  }
+} initial_temperature;
+
+class InitialConcentrationS : public CF_3
+{
+public:
+  double operator()(double , double, double ) const
+  {
+    return kp * c0;
+  }
+} initial_concentration_s;
+
+class InitialConcentrationL : public CF_3
+{
+public:
+  double operator()(double , double , double ) const
+  {
+    return c0;
+  }
+} initial_concentration_l;
+
+#else
 
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
@@ -218,9 +355,8 @@ public:
 class InitialConcentrationS : public CF_2
 {
 public:
-  double operator()(double x, double y) const
+  double operator()(double , double ) const
   {
-    (void) x; (void) y;
     return kp * c0;
   }
 } initial_concentration_s;
@@ -228,12 +364,13 @@ public:
 class InitialConcentrationL : public CF_2
 {
 public:
-  double operator()(double x, double y) const
+  double operator()(double , double ) const
   {
-    (void) x; (void) y;
     return c0;
   }
 } initial_concentration_l;
+
+#endif
 
 
 
@@ -353,7 +490,7 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   double zmin = p4est->connectivity->vertices[3*vm + 2];
   double zmax = p4est->connectivity->vertices[3*vp + 2];
-  dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
+  double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
 #endif
 
 #ifdef P4_TO_P8

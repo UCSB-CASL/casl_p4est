@@ -573,7 +573,7 @@ void SemiLagrangian::advect_from_n_to_np1(double dt_nm1, double dt_n,
       node_y_fr_n(ni, p4est_np1, nodes_np1) - .5*dt_n*vy_tmp_n[ni]
   #ifdef P4_TO_P8
       ,
-      node_z_fr_n(ni, p4est_np1, nodes_np1) - .5*dt*vz_tmp_n[ni]
+      node_z_fr_n(ni, p4est_np1, nodes_np1) - .5*dt_n*vz_tmp_n[ni]
   #endif
     };
 
@@ -636,7 +636,7 @@ void SemiLagrangian::advect_from_n_to_np1(double dt_nm1, double dt_n,
     double xyz_departure[] =
     {
       node_x_fr_n(ni, p4est_np1, nodes_np1) - dt_n*vx_star,
-      node_y_fr_n(ni, p4est_np1, nodes_np1) - dt_n*vy_star,
+      node_y_fr_n(ni, p4est_np1, nodes_np1) - dt_n*vy_star
   #ifdef P4_TO_P8
       ,
       node_z_fr_n(ni, p4est_np1, nodes_np1) - dt_n*vz_star
@@ -1785,10 +1785,10 @@ void SemiLagrangian::update_p4est_second_order_from_last_grid(Vec vx, Vec vy, do
 
 
 #ifdef P4_TO_P8
-void SemiLagrangian::update_p4est_second_order_test(Vec vx_nm1, Vec vy_nm1, Vec vz_nm1,
-                                                    Vec vx_n, Vec vy_n, Vec vz_n,
-                                                    double dt, Vec &phi,
-                                                    Vec phi_xx, Vec phi_yy, Vec phi_zz)
+void SemiLagrangian::update_p4est_second_order_from_last_grid(Vec vx_nm1, Vec vy_nm1, Vec vz_nm1,
+                                                              Vec vx_n  , Vec vy_n  , Vec vz_n,
+                                                              double dt_nm1, double dt_n,
+                                                              Vec &phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
 void SemiLagrangian::update_p4est_second_order_from_last_grid(Vec vx_nm1, Vec vy_nm1,
                                                               Vec vx_n  , Vec vy_n,

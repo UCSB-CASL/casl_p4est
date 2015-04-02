@@ -29,9 +29,15 @@ private:
 
   PetscErrorCode ierr;
 
+#ifdef P4_TO_P8
+  BoundaryConditions3D bc_t;
+  BoundaryConditions3D bc_cs;
+  BoundaryConditions3D bc_cl;
+#else
   BoundaryConditions2D bc_t;
   BoundaryConditions2D bc_cs;
   BoundaryConditions2D bc_cl;
+#endif
 
 //  InterpolatingFunctionNodeBaseHost *interface_value_c;
 
@@ -121,11 +127,19 @@ public:
 
   void set_phi(Vec phi);
 
+#ifdef P4_TO_P8
+  void set_bc(WallBC3D& bc_wall_type_t,
+              WallBC3D& bc_wall_type_c,
+              CF_3& bc_wall_value_t,
+              CF_3& bc_wall_value_cs,
+              CF_3& bc_wall_value_cl);
+#else
   void set_bc(WallBC2D& bc_wall_type_t,
               WallBC2D& bc_wall_type_c,
               CF_2& bc_wall_value_t,
               CF_2& bc_wall_value_cs,
               CF_2& bc_wall_value_cl);
+#endif
 
   void set_temperature(Vec temperature);
 

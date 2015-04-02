@@ -155,12 +155,19 @@ void my_p4est_bialloy_t::set_phi(Vec phi)
 
 
 
-
+#ifdef P4_TO_P8
+void my_p4est_bialloy_t::set_bc(WallBC3D& bc_wall_type_t,
+                                WallBC3D& bc_wall_type_c,
+                                CF_3& bc_wall_value_t,
+                                CF_3& bc_wall_value_cs,
+                                CF_3& bc_wall_value_cl)
+#else
 void my_p4est_bialloy_t::set_bc(WallBC2D& bc_wall_type_t,
-            WallBC2D& bc_wall_type_c,
-            CF_2& bc_wall_value_t,
-            CF_2& bc_wall_value_cs,
-            CF_2& bc_wall_value_cl)
+                                WallBC2D& bc_wall_type_c,
+                                CF_2& bc_wall_value_t,
+                                CF_2& bc_wall_value_cs,
+                                CF_2& bc_wall_value_cl)
+#endif
 {
   bc_t.setWallTypes(bc_wall_type_t);
   bc_t.setWallValues(bc_wall_value_t);
@@ -875,7 +882,7 @@ void my_p4est_bialloy_t::compute_dt()
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
 #ifdef P4_TO_P8
-    u_max = MAX(u_max, fabs(u_interface_np1_p[n]), fabs(v_interface_np1_p[n]), fabs(w_interface_np1_p[n]));
+    u_max = MAX(u_max, MAX(fabs(u_interface_np1_p[n]), fabs(v_interface_np1_p[n]), fabs(w_interface_np1_p[n])));
 #else
     u_max = MAX(u_max, fabs(u_interface_np1_p[n]), fabs(v_interface_np1_p[n]));
 #endif
@@ -938,7 +945,7 @@ void my_p4est_bialloy_t::update_grid()
     double xyz [] =
     {
       node_x_fr_n(n, p4est_np1, nodes_np1),
-      node_y_fr_n(n, p4est_np1, nodes_np1),
+      node_y_fr_n(n, p4est_np1, nodes_np1)
 #ifdef P4_TO_P8
       , node_z_fr_n(n, p4est_np1, nodes_np1),
 #endif
