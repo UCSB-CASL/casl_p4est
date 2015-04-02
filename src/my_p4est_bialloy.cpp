@@ -20,12 +20,9 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
     temperature_n(NULL), temperature_np1(NULL), t_interface(NULL),
     cs_n(NULL), cs_np1(NULL), cl_n(NULL), cl_np1(NULL), c_interface(NULL),
     u_interface_n(NULL), u_interface_np1(NULL),
-    #ifdef P4_TO_P8
-    w_interface_n(NULL),
-    #endif
     v_interface_n(NULL), v_interface_np1(NULL),
     #ifdef P4_TO_P8
-    w_interface_np1(NULL),
+    w_interface_n(NULL), w_interface_np1(NULL),
     #endif
     normal_velocity_np1(NULL),
     phi(NULL), nx(NULL), ny(NULL),
@@ -934,9 +931,8 @@ void my_p4est_bialloy_t::update_grid()
 
   /* bousouf update this for second order in time */
 #ifdef P4_TO_P8
-  sl.update_p4est_second_order_from_last_grid(u_interface_n  , v_interface_n  ,
-                                              u_interface_np1, v_interface_np1,
-                                              w_interface_np1, w_interface_np1,
+  sl.update_p4est_second_order_from_last_grid(u_interface_n  , v_interface_n  , w_interface_n  ,
+                                              u_interface_np1, v_interface_np1, w_interface_np1,
                                               dt_nm1, dt_n, phi);
 #else
   sl.update_p4est_second_order_from_last_grid(u_interface_n  , v_interface_n  ,
