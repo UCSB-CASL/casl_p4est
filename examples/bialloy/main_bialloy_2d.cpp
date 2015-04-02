@@ -56,10 +56,10 @@ using namespace std;
 
 /* The physical parameters */
 
-int nx = 2;
-int ny = 2;
+int nx = 1;
+int ny = 1;
 #ifdef P4_TO_P8
-int nz = 2;
+int nz = 1;
 #endif
 
 bool save_velocity = true;

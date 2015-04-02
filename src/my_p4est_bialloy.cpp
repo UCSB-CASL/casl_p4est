@@ -327,7 +327,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
     nx_p[n] = qnnn.dx_central(phi_p);
     ny_p[n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
-    nz_p[n] = qnnn.dy_central(phi_p);
+    nz_p[n] = qnnn.dz_central(phi_p);
     double norm = sqrt(SQR(nx_p[n]) + SQR(ny_p[n]) + SQR(nz_p[n]));
 #else
     double norm = sqrt(SQR(nx_p[n]) + SQR(ny_p[n]));
@@ -353,7 +353,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
     nx_p[n] = qnnn.dx_central(phi_p);
     ny_p[n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
-    nz_p[n] = qnnn.dy_central(phi_p);
+    nz_p[n] = qnnn.dz_central(phi_p);
     double norm = sqrt(SQR(nx_p[n]) + SQR(ny_p[n]) + SQR(nz_p[n]));
 #else
     double norm = sqrt(SQR(nx_p[n]) + SQR(ny_p[n]));
@@ -796,8 +796,8 @@ void my_p4est_bialloy_t::solve_concentration()
     double theta_xz = atan2(nz_p[n], nx_p[n]);
     double theta_yz = atan2(nz_p[n], ny_p[n]);
     c_interface_tmp_p[n] = (t_interface_p[n]-Tm)/ml
-        + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_xz)-15*epsilon_anisotropy*cos(4*theta_yz))*kappa_p[n]/ml
-        + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_xz)-15*epsilon_anisotropy*cos(4*theta_yz))*normal_velocity_np1_p[n]/ml;
+        + epsilon_c*(1-15*epsilon_anisotropy*.5*(cos(4*theta_xz)+cos(4*theta_yz)))*kappa_p[n]/ml
+        + epsilon_v*(1-15*epsilon_anisotropy*.5*(cos(4*theta_xz)+cos(4*theta_yz)))*normal_velocity_np1_p[n]/ml;
 #else
     double theta = atan2(ny_p[n], nx_p[n]);
     c_interface_tmp_p[n] = (t_interface_p[n]-Tm)/ml
@@ -923,7 +923,6 @@ void my_p4est_bialloy_t::update_grid()
   SemiLagrangian sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
 
   /* bousouf update this for second order in time */
-//  sl.update_p4est_second_order(u_interface_np1, v_interface_np1, dt_n, phi);
 #ifdef P4_TO_P8
   sl.update_p4est_second_order_from_last_grid(u_interface_n  , v_interface_n  ,
                                               u_interface_np1, v_interface_np1,
