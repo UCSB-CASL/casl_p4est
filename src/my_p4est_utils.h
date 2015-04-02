@@ -17,25 +17,37 @@
 #include <vector>
 
 namespace dir {
+/* vertices directions */
 enum {
   v_mmm = 0,
   v_pmm,
   v_mpm,
-  v_ppm,
-  v_mmp,
+  v_ppm
+#ifdef P4_TO_P8
+  ,v_mmp,
   v_pmp,
   v_mpp,
   v_ppp
+#endif
 };
+/* faces directions */
 enum {
   f_m00 = 0,
   f_p00,
   f_0m0,
-  f_0p0,
-  f_00m,
+  f_0p0
+#ifdef P4_TO_P8
+  ,f_00m,
   f_00p
+#endif
 };
 }
+
+enum interpolation_method{
+  linear,
+  quadratic,
+  quadratic_non_oscillatory
+};
 
 class CF_1
 {
@@ -60,6 +72,16 @@ public:
   double lip;
   virtual double operator()(double x, double y,double z) const=0 ;
   virtual ~CF_3() {}
+};
+
+enum {
+  WALL_m00 = -1,
+  WALL_p00 = -2,
+  WALL_0m0 = -3,
+  WALL_0p0 = -4,
+  WALL_00m = -5,
+  WALL_00p = -6,
+  INTERFACE = -7
 };
 
 typedef enum {
@@ -337,13 +359,51 @@ inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
-inline double node_x_fr_i(const p4est_indep_t *ni){
+inline double node_x_fr_n(const p4est_indep_t *ni){
   return ni->x == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->x)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
-inline double node_y_fr_j(const p4est_indep_t *ni){
+inline double node_y_fr_n(const p4est_indep_t *ni){
   return ni->y == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->y)/static_cast<double>(P4EST_ROOT_LEN);
 }
+
+#ifdef P4_TO_P8
+inline double node_z_fr_n(const p4est_indep_t *ni){
+  return ni->z == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->z)/static_cast<double>(P4EST_ROOT_LEN);
+}
+#endif
+
+inline double node_x_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+{
+  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
+  return node_x_fr_n(node) + tree_xmin;
+}
+
+inline double node_y_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+{
+  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+  return node_y_fr_n(node) + tree_ymin;
+}
+
+#ifdef P4_TO_P8
+inline double node_z_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+{
+  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
+  return node_z_fr_n(node) + tree_zmin;
+}
+#endif
 
 inline double quad_x_fr_i(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
@@ -354,14 +414,10 @@ inline double quad_y_fr_j(const p4est_quadrant_t *qi){
 }
 
 #ifdef P4_TO_P8
-inline double node_z_fr_k(const p4est_indep_t *ni){
-  return ni->z == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->z)/static_cast<double>(P4EST_ROOT_LEN);
-}
 inline double quad_z_fr_k(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
 }
 #endif
-
 
 /*!
  * \brief integrate_over_negative_domain_in_one_quadrant
@@ -575,6 +631,44 @@ inline int ranged_rand_inclusive(int a, int b, int seed = 0){
   if (seed) srand(seed);
   return (rand()%(b-a+1) + a);
 }
+
+// A Logger for interpolation function
+struct InterpolatingFunctionLogEntry{
+  int num_local_points, num_send_points, num_send_procs, num_recv_points, num_recv_procs;
+};
+
+class InterpolatingFunctionLogger{
+  InterpolatingFunctionLogger() {};
+  InterpolatingFunctionLogger(const InterpolatingFunctionLogger& ) {};
+  static std::vector<InterpolatingFunctionLogEntry> entries;
+
+public:
+  inline static InterpolatingFunctionLogger& get_instance() {
+    static InterpolatingFunctionLogger instance;
+    return instance;
+  }
+
+  inline void log(const InterpolatingFunctionLogEntry& entry) {
+    entries.push_back(entry);
+  }
+
+  inline void write(const std::string& filename) {
+    for (size_t i = 0; i<entries.size();i++) {
+      FILE *fp;
+      std::ostringstream oss; oss << filename << "_" << i << ".dat";
+      PetscFOpen(PETSC_COMM_WORLD, oss.str().c_str(), "w", &fp);
+      PetscFPrintf(PETSC_COMM_WORLD, fp, "%% num_local_points | num_send_points | num_send_procs | num_recv_points | num_recv_procs \n");
+      PetscSynchronizedFPrintf(PETSC_COMM_WORLD, fp, "%7d \t %7d \t %4d \t %7d \t %4d \n", entries[i].num_local_points,
+                                                                                           entries[i].num_send_points,
+                                                                                           entries[i].num_send_procs,
+                                                                                           entries[i].num_recv_points,
+                                                                                           entries[i].num_recv_procs);
+      PetscSynchronizedFlush(PETSC_COMM_WORLD, fp);
+      PetscFClose(PETSC_COMM_WORLD, fp);        
+    }
+    entries.clear();
+  }
+};
 
 /*!
  * \brief prepares MPI, PETSc, p4est, and sc libraries

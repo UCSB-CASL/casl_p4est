@@ -8,6 +8,7 @@
 #define PetscLogFlops(n) 0
 #endif
 
+
 double interface_Location( double   a, double   b, double  fa, double  fb )
 {
   PetscErrorCode ierr = PetscLogFlops(8); CHKERRXX(ierr);

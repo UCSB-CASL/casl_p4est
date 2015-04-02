@@ -144,6 +144,7 @@ int main (int argc, char* argv[]){
   cmd.add_option("lmin", "min level");
   cmd.add_option("lmax", "max level");
 	cmd.add_option("tf", "t final");
+  cmd.add_option("cfl", "cfl for the SL advection");
   cmd.parse(argc, argv);
 	cmd.print();
 
@@ -154,7 +155,12 @@ int main (int argc, char* argv[]){
 #else
   circle circ(0.5, 0.5, .3);
 #endif
-  splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 7), &circ, 1.3);
+
+  const int lmax = cmd.get("lmax", 7);
+  const int lmin = cmd.get("lmin", 0);
+  const double cfl = cmd.get("cfl", 10.0);
+
+  splitting_criteria_cf_t data(lmin, lmax, &circ, 1.3);
 
   parStopWatch w1, w2;
   w1.start("total time");
@@ -179,14 +185,12 @@ int main (int argc, char* argv[]){
   w2.stop(); w2.read_duration();
 
   // Now refine the tree
-  w2.start("refine");
+  w2.start("refine and partition");
   p4est->user_pointer = (void*)(&data);
-  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-  w2.stop(); w2.read_duration();
-
-  // Finally re-partition
-  w2.start("partition");
-  my_p4est_partition(p4est, NULL);
+  for (int i = 0; i<lmax; i++) {
+    my_p4est_refine(p4est, false, refine_levelset_cf, NULL);
+    my_p4est_partition(p4est, true, NULL);
+  }
   w2.stop(); w2.read_duration();
 
   // create the ghost layer
@@ -204,12 +208,10 @@ int main (int argc, char* argv[]){
   ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
 
   // write the intial data to disk
-  /*
- 		my_p4est_vtk_write_all(p4est, nodes, ghost,
+  my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
                          1, 0, "init",
                          VTK_POINT_DATA, "phi", phi_ptr);
-	*/
   ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
 
   my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
@@ -220,14 +222,17 @@ int main (int argc, char* argv[]){
   SemiLagrangian sl(&p4est, &nodes, &ghost, &brick, &node_neighbors);
 
   // loop over time
-  double tf = cmd.get<double>("tf");
+  double tf = cmd.get("tf", 3.0);
   int tc = 0;
-  int save = 50000;
-  double dt = 0.05;
+  int save = 1;
+  double dt = cfl * sl.compute_dt(vx_vortex, vy_vortex);
+
   for (double t=0; t<tf; t+=dt, tc++){
-    if (false && tc % save == 0){
+    if (tc % save == 0){
       // Save stuff
-      std::ostringstream oss; oss << "semi_lagrangian_" << p4est->mpisize << "_"
+      std::ostringstream oss; oss << "semi_lagrangian_"
+                                  << p4est->mpisize << "_"
+                                  << "cfl_" << cfl  << "_"
                                   << brick.nxyztrees[0] << "x"
                                   << brick.nxyztrees[1]
                                #ifdef P4_TO_P8
@@ -248,15 +253,16 @@ int main (int argc, char* argv[]){
     w2.start("advecting");
 		PetscPrintf(p4est->mpicomm, "t = %lf, tc = %d\n", t, tc);
 #ifdef P4_TO_P8
-    sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
+    sl.update_p4est_second_order_from_last_grid(vx_vortex, vy_vortex, vz_vortex, dt, phi);
+//    sl.update_p4est_second_order(vx_vortex, vy_vortex, vz_vortex, dt, phi);
 #else
-    sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
+    sl.update_p4est_second_order_from_last_grid(vx_vortex, vy_vortex, dt, phi);
+//    sl.update_p4est_second_order(vx_vortex, vy_vortex, dt, phi);
 #endif
 
     // reinitialize
     my_p4est_level_set level_set(&node_neighbors);
-    level_set.reinitialize_1st_order_time_2nd_order_space(phi, 10);
-    
+    level_set.reinitialize_1st_order_time_2nd_order_space(phi, 20);
 
 		p4est_gloidx_t num_nodes = 0;
       for (int r =0; r<p4est->mpisize; r++)

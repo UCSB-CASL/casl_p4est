@@ -5,11 +5,13 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_utils.h>
+#include <src/my_p8est_log_wrappers.h>
 #include <p8est.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_utils.h>
+#include <src/my_p4est_log_wrappers.h>
 #include <p4est.h>
 #endif
 
@@ -83,6 +85,23 @@ public:
 
   inline p4est_bool_t& operator[](p4est_locidx_t q) {return markers[q];}
   inline const p4est_bool_t& operator[](p4est_locidx_t q) const {return markers[q];}
+};
+
+class splitting_criteria_tag_t: public splitting_criteria_t {
+
+	static void init_fn   (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
+	static int  refine_fn (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
+	static int  coarsen_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t** quad);
+	
+  void tag_quadrant(p4est_quadrant_t* quad, const double* f);
+public:
+  splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip) {
+    this->min_lvl = min_lvl;
+    this->max_lvl = max_lvl;
+    this->lip     = lip;
+  }
+
+	bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
 };
 
 /*!

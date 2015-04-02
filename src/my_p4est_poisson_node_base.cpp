@@ -22,6 +22,7 @@
 extern PetscLogEvent log_PoissonSolverNodeBased_matrix_preallocation;
 extern PetscLogEvent log_PoissonSolverNodeBased_matrix_setup;
 extern PetscLogEvent log_PoissonSolverNodeBased_rhsvec_setup;
+extern PetscLogEvent log_PoissonSolverNodeBased_KSPSolve;
 extern PetscLogEvent log_PoissonSolverNodeBased_solve;
 #endif
 #ifndef CASL_LOG_FLOPS
@@ -349,8 +350,14 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
   if(phi_ == NULL)
   {
     local_phi = true;
-    ierr = VecCreateSeq(PETSC_COMM_SELF, nodes->num_owned_indeps, &phi_); CHKERRXX(ierr);
-    ierr = VecSet(phi_, -1.); CHKERRXX(ierr);
+    ierr = VecDuplicate(solution, &phi_); CHKERRXX(ierr);
+
+    Vec tmp;
+    ierr = VecGhostGetLocalForm(phi_, &tmp); CHKERRXX(ierr);
+    ierr = VecSet(tmp, -1.); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(phi_, &tmp); CHKERRXX(ierr);
+//    ierr = VecCreateSeq(PETSC_COMM_SELF, nodes->num_owned_indeps, &phi_); CHKERRXX(ierr);
+    set_phi(phi_);
   }
 
   // set ksp type
@@ -394,7 +401,7 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
    * 2- Coarsennig Type
    * 3- Truncation Factor
    *
-   * Plerase refer to HYPRE manual for more information on the actual importance or check Mohammad Mirzade's
+   * Plerase refer to HYPRE manual for more information on the actual importance or check Mohammad Mirzadeh's
    * summary of HYPRE papers! Also for a complete list of all the options that can be set from PETSc, one can
    * consult the 'src/ksp/pc/impls/hypre.c' in the PETSc home directory.
    */
@@ -437,7 +444,10 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
     setup_negative_variable_coeff_laplace_rhsvec();
 
   // Solve the system
+  ierr = KSPSetTolerances(ksp, 1e-14, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBased_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs_, solution); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd  (log_PoissonSolverNodeBased_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
 
   // update ghosts
   ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -453,6 +463,17 @@ void PoissonSolverNodeBase::solve(Vec solution, bool use_nonzero_initial_guess, 
   {
     ierr = VecDestroy(phi_); CHKERRXX(ierr);
     phi_ = NULL;
+
+    ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
+    phi_xx_ = NULL;
+
+    ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
+    phi_yy_ = NULL;
+
+#ifdef P4_TO_P8
+    ierr = VecDestroy(phi_zz_); CHKERRXX(ierr);
+    phi_zz_ = NULL;
+#endif
   }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBased_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
@@ -498,10 +519,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix_neumann_wall_1st_order
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -1066,8 +1087,8 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix_neumann_wall_1st_order
           p4est_locidx_t quad_mmm_idx, quad_ppp_idx;
           p4est_topidx_t tree_mmm_idx, tree_ppp_idx;
 
-          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
 
           PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpp]];
           PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmp]];
@@ -1140,8 +1161,8 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix_neumann_wall_1st_order
           p4est_locidx_t quad_mmm_idx, quad_ppm_idx;
           p4est_topidx_t tree_mmm_idx, tree_ppm_idx;
 
-          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1, quad_ppm_idx, tree_ppm_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, quad_mmm_idx, tree_mmm_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n,  1,  1, quad_ppm_idx, tree_ppm_idx);
 
           PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm]];
           PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm]];
@@ -1265,10 +1286,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec_neumann_wall_1st_order
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -1831,10 +1852,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -2482,7 +2503,6 @@ void PoissonSolverNodeBase::setup_negative_laplace_matrix()
   }
 
   // check for null space
-  // FIXME: the return value should be checked for errors ...
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
   if (matrix_has_nullspace) {
     ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
@@ -2537,10 +2557,10 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -2840,25 +2860,29 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
         //---------------------------------------------------------------------
         double w_000 = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p );
 
+        double eps_x = is_node_xmWall(p4est, ni) ? 2*EPS : (is_node_xpWall(p4est, ni) ? -2*EPS : 0);
+        double eps_y = is_node_ymWall(p4est, ni) ? 2*EPS : (is_node_ypWall(p4est, ni) ? -2*EPS : 0);
+        double eps_z = is_node_zmWall(p4est, ni) ? 2*EPS : (is_node_zpWall(p4est, ni) ? -2*EPS : 0);
+
         //---------------------------------------------------------------------
         // add coefficients to the right hand side
         //---------------------------------------------------------------------
-        if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_p00;
+        if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C+eps_y, z_C+eps_z) / d_p00;
         else if(is_interface_m00)     rhs_p[n] -= w_m00 * val_interface_m00;
 
-        if(is_node_xpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_m00;
+        if(is_node_xpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C+eps_y, z_C+eps_z) / d_m00;
         else if(is_interface_p00)     rhs_p[n] -= w_p00 * val_interface_p00;
 
-        if(is_node_ymWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_0p0;
+        if(is_node_ymWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C, z_C+eps_z) / d_0p0;
         else if(is_interface_0m0)     rhs_p[n] -= w_0m0 * val_interface_0m0;
 
-        if(is_node_ypWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_0m0;
+        if(is_node_ypWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C, z_C+eps_z) / d_0m0;
         else if(is_interface_0p0)     rhs_p[n] -= w_0p0 * val_interface_0p0;
 
-        if(is_node_zmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_00p;
+        if(is_node_zmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C+eps_y, z_C) / d_00p;
         else if(is_interface_00m)     rhs_p[n] -= w_00m * val_interface_00m;
 
-        if(is_node_zpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C, z_C) / d_00m;
+        if(is_node_zpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C+eps_y, z_C) / d_00m;
         if(is_interface_00p)          rhs_p[n] -= w_00p * val_interface_00p;
 
         rhs_p[n] /= w_000;
@@ -2901,16 +2925,19 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
 
         double diag = add_p[n]-(w_m00+w_p00+w_0m0+w_0p0);
 
-        if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_p00;
+        double eps_x = is_node_xmWall(p4est, ni) ? 2*EPS : (is_node_xpWall(p4est, ni) ? -2*EPS : 0);
+        double eps_y = is_node_ymWall(p4est, ni) ? 2*EPS : (is_node_ypWall(p4est, ni) ? -2*EPS : 0);
+
+        if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C+eps_y) / d_p00;
         else if(is_interface_m00)     rhs_p[n] -= w_m00*val_interface_m00;
 
-        if(is_node_xpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_m00;
+        if(is_node_xpWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C+eps_y) / d_m00;
         else if(is_interface_p00)     rhs_p[n] -= w_p00*val_interface_p00;
 
-        if(is_node_ymWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_0p0;
+        if(is_node_ymWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C) / d_0p0;
         else if(is_interface_0m0)     rhs_p[n] -= w_0m0*val_interface_0m0;
 
-        if(is_node_ypWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C, y_C) / d_0m0;
+        if(is_node_ypWall(p4est, ni)) rhs_p[n] += 2.*mu_*bc_->wallValue(x_C+eps_x, y_C) / d_0m0;
         else if(is_interface_0p0)     rhs_p[n] -= w_0p0*val_interface_0p0;
 
         rhs_p[n] /= diag;
@@ -3058,6 +3085,7 @@ void PoissonSolverNodeBase::setup_negative_laplace_rhsvec()
     rhs_p[fixed_value_idx_l] = 0;
   }
 
+
   // restore the pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
@@ -3120,10 +3148,10 @@ void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_matrix()
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -3767,8 +3795,8 @@ void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_matrix()
           p4est_locidx_t quad_mmm_idx, quad_ppp_idx;
           p4est_topidx_t tree_mmm_idx, tree_ppp_idx;
 
-          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
 
           PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpp]];
           PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmp]];
@@ -3836,8 +3864,8 @@ void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_matrix()
           p4est_locidx_t quad_mmm_idx, quad_ppm_idx;
           p4est_topidx_t tree_mmm_idx, tree_ppm_idx;
 
-          node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1, quad_ppm_idx, tree_ppm_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, quad_mmm_idx, tree_mmm_idx);
+          node_neighbors_->find_neighbor_cell_of_node(n,  1,  1, quad_ppm_idx, tree_ppm_idx);
 
           PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm]];
           PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm]];
@@ -3970,10 +3998,10 @@ void PoissonSolverNodeBase::setup_negative_variable_coeff_laplace_rhsvec()
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -4541,7 +4569,6 @@ void PoissonSolverNodeBase::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
 
     is_phi_dd_owned = false;
   } else {
-
     /*
      * We have two options here:
      * 1) Either compute phi_xx and phi_yy using the function that treats them

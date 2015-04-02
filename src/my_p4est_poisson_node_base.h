@@ -102,9 +102,12 @@ public:
 #endif
   inline void set_robin_coef(Vec robin_coef)   {robin_coef_ = robin_coef; is_matrix_computed = false;}
   inline void set_mu(double mu)                {mu_       = mu;           is_matrix_computed = false;}
+  inline void set_is_matrix_computed(bool is_matrix_computed) { this->is_matrix_computed = is_matrix_computed; }
   inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT) {
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
+
+  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
 
   inline void set_first_order_neumann_wall( bool val ) { neumann_wall_first_order=val; }
 
