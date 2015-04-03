@@ -409,6 +409,7 @@ int main (int argc, char* argv[])
 	cmd.add_option("tf", "final time");
   cmd.add_option("L", "set latent heat");
   cmd.add_option("G", "set heat gradient");
+  cmd.add_option("V", "set velocity");
   cmd.add_option("box_size", "set box_size");
   cmd.add_option("alloy", "choose the type of alloy. Default is 0.\n  0 - NiCu\n  1 - AlCu");
   cmd.parse(argc, argv);
@@ -427,10 +428,12 @@ int main (int argc, char* argv[])
   t_final = cmd.get("tf", t_final);
   latent_heat = cmd.get("L", latent_heat);
   G = cmd.get("G", G);
+  V = cmd.get("V", V);
   box_size = cmd.get("box_size", box_size);
 
   double latent_heat_orig = latent_heat;
   double G_orig = G;
+  double V_orig = V;
 
   /* scale parameters */
 #ifdef P4_TO_P8
@@ -552,9 +555,9 @@ int main (int argc, char* argv[])
 #ifdef STAMPEDE
   char *out_dir;
   out_dir = getenv("OUT_DIR");
-  sprintf(name, "%s/velo_L_%g_G_%g_box_%g_level_%d-%d.dat", out_dir, latent_heat_orig, G_orig, box_size, lmin, lmax);
+  sprintf(name, "%s/velo_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #else
-  sprintf(name, "/home/guittet/code/Output/p4est_bialloy/velo/velo_L_%g_G_%g_box_%g_level_%d-%d.dat", latent_heat_orig, G_orig, box_size, lmin, lmax);
+  sprintf(name, "/home/guittet/code/Output/p4est_bialloy/velo/velo_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 //  sprintf(name, "/home/guittet/code/Output/p4est_bialloy/velo/velo.dat");
 #endif
 
