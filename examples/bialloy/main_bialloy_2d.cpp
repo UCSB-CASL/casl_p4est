@@ -71,40 +71,27 @@ char direction = 'z';
 char direction = 'y';
 #endif
 
+/* 0 - NiCu
+ * 1 - AlCu
+ */
+int alloy_type = 0;
+
 double box_size = 4e-2;//4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 
-//double scaling = (direction=='x' ? nx : ny)/box_size;  //1 cm = scaling U
-//double rho                  = 8.88e-3 / (scaling*scaling*scaling);
-//double heat_capacity        = 0.46e3;
-//double ml                   =-357;                                     // liquidous slope
-//double kp                   = 0.86;
-//double c0                   = 0.40831;
-//double Tpure                = 1728;
-//double thermal_conductivity = 6.07e-1 / scaling;
-//double Dl                   = 1e-5 * (scaling*scaling);               // concentration diffusion coefficient
-//double Ds                   = 1e-13 * (scaling*scaling);              // solid concentration diffusion coefficient
-//double G                    = 215e2 / scaling;
-//double V                    = 0.01 * scaling;
-//double latent_heat          = 2350 / (scaling*scaling*scaling);
-//double lambda               = thermal_conductivity/(rho*heat_capacity); // thermal diffusion coeffient
-
-//double eps_c                = 2.7207e-5 * scaling;
-//double eps_v                = 2.27e-2 / scaling;
-//double eps_anisotropy       = 0.05;
-
-double rho                  = 8.88e-3;
-double heat_capacity        = 0.46e3;
-double ml                   =-357;                                     // liquidous slope
-double kp                   = 0.86;
-double c0                   = 0.40831;
-double Tm                   = 1728;
-double thermal_conductivity = 6.07e-1;
-double Dl                   = 1e-5;               // concentration diffusion coefficient
-double Ds                   = 1e-13;              // solid concentration diffusion coefficient
-double G                    = 4e2;
-double V                    = 0.01;
-double latent_heat          = 2350;
-double lambda               = thermal_conductivity/(rho*heat_capacity); // thermal diffusion coeffient
+/* default parameters for NiCu */
+double rho                  = 8.88e-3;        /* kg.cm-3    */
+double heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
+double ml                   =-357;            /* K / at frac. - liquidous slope */
+double kp                   = 0.86;           /* partition coefficient */
+double c0                   = 0.40831;        /* at frac.    */
+double Tm                   = 1728;           /* K           */
+double thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
+double Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
+double Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
+double G                    = 4e2;            /* k.cm-1      */
+double V                    = 0.01;           /* cm.s-1      */
+double latent_heat          = 2350;           /* J.cm-3      */
+double lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
 
 double eps_c                = 2.7207e-5;
 double eps_v                = 2.27e-2;
@@ -114,6 +101,36 @@ double eps_anisotropy       = 0.05;
 double t_final = 10000;
 
 double initial_interface = 0.1*(double) nx;
+
+
+void set_alloy_parameters()
+{
+  switch(alloy_type)
+  {
+  case 0:
+    /* those are the default parameters */
+    break;
+  case 1:
+    rho            = 2.8e-3;
+    heat_capacity  = 1221.6;
+    ml             = -652.9;
+    kp             = 0.15;
+    c0             = 0.6;
+    Tm             = 933;
+    Dl             = 1e-5;
+    G              = 50;
+    V              = 0.01; /* 1um = 10-4cm */
+    latent_heat    = 898.8;
+    eps_c          = 2.7207e-5;
+    eps_v          = 2.27e-2;
+    eps_anisotropy = 0.05;
+    lambda         = 0.84;
+    thermal_conductivity =  lambda*rho*heat_capacity;
+    break;
+  }
+}
+
+
 
 #ifdef P4_TO_P8
 
@@ -393,7 +410,11 @@ int main (int argc, char* argv[])
   cmd.add_option("L", "set latent heat");
   cmd.add_option("G", "set heat gradient");
   cmd.add_option("box_size", "set box_size");
+  cmd.add_option("alloy", "choose the type of alloy. Default is 0.\n  0 - NiCu\n  1 - AlCu");
   cmd.parse(argc, argv);
+
+  alloy_type = cmd.get("alloy", alloy_type);
+  set_alloy_parameters();
 
   save_vtk = cmd.get("save_vtk", save_vtk);
   save_velocity = cmd.get("save_velo", save_velocity);
