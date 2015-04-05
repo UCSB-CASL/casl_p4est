@@ -582,6 +582,11 @@ int main (int argc, char* argv[])
       phi = bas.get_phi();
       normal_velocity = bas.get_normal_velocity();
 
+      if(p4est->mpirank==0)
+      {
+        std::cout << "Process # " << p4est->mpirank << " has " << nodes->num_owned_indeps << " nodes." << std::endl;
+      }
+
       Vec ones;
       ierr = VecDuplicate(phi, &ones); CHKERRXX(ierr);
       ierr = VecGhostGetLocalForm(ones, &tmp); CHKERRXX(ierr);
