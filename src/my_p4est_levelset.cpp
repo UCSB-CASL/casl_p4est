@@ -58,7 +58,7 @@ void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4e
       pnp1[n] = 0;
     else if(fabs(p0[n]) <= limit)
     {
-      
+
       const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
       double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
@@ -241,7 +241,7 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
     if(fabs(p0[n]) <= EPS)
       pnp1[n] = 0;
     else if(fabs(p0[n]) <= limit)
-    {      
+    {
       const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
       double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
@@ -463,7 +463,7 @@ void my_p4est_level_set::advect_in_normal_direction_one_iteration(std::vector<p4
   for( size_t n_map=0; n_map<map.size(); ++n_map)
   {
     p4est_locidx_t n    = map[n_map];
-    
+
     const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
     double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0;
@@ -643,7 +643,7 @@ void my_p4est_level_set::reinitialize_1st_order( Vec phi_petsc, int number_of_it
 
     /* 5) Copy data into phi */
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-      phi[n] = p1[n];   
+      phi[n] = p1[n];
   }
   IPMLogRegionEnd("reinit_1st_1st");
 
@@ -860,7 +860,7 @@ void my_p4est_level_set::perturb_level_set_function( Vec phi_petsc, double epsil
 
 void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration, double limit )
 {
-  PetscErrorCode ierr;  
+  PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_time_1st_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 
   Vec p1_petsc, p2_petsc;
@@ -929,7 +929,7 @@ void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_pe
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-  
+
   Vec p1_petsc;
   double *p1, *phi;
   ierr = VecCreateGhostNodes(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
@@ -1103,7 +1103,7 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
   double *phi_p, *phi_xx_p, *phi_yy_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
   ierr = VecGetArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);  
+  ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
   double *phi_zz_p;
   ierr = VecGetArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
@@ -1287,7 +1287,7 @@ double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec
   double *phi_p, *phi_xx_p, *phi_yy_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
   ierr = VecGetArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);  
+  ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
   double *phi_zz_p;
   ierr = VecGetArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
@@ -1297,7 +1297,7 @@ double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec
   double dt_local = DBL_MAX;
   double dt;
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
-    
+
     const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
     double s_p00 = fabs(qnnn.d_p00); double s_m00 = fabs(qnnn.d_m00);
@@ -2193,7 +2193,11 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
   double *b_qn_well_defined_p;
   double *b_qnn_well_defined_p;
 
-  Vec q_loc, qn_loc, qnn_loc;
+  Vec tmp;
+  double *tmp_p;
+  ierr = VecDuplicate(phi, &tmp); CHKERRXX(ierr);
+
+  Vec tmp_loc, q_loc, qn_loc, qnn_loc;
 
   /* init the neighborhood information if needed */
   /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
@@ -2549,6 +2553,7 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
     for(int it=0; it<iterations; ++it)
     {
       ierr = VecGetArray(qnn, &qnn_p); CHKERRXX(ierr);
+      ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
 
       /* first do the layer nodes */
       for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
@@ -2574,16 +2579,18 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
           double qnnz = nz[n]>0 ? (qnn_p[n] - (*ngbd)[n].f_00m_linear(qnn_p)) / (*ngbd)[n].d_00m
                                 : ((*ngbd)[n].f_00p_linear(qnn_p) - qnn_p[n]) / (*ngbd)[n].d_00p;
 #endif
-          qnn_p[n] = qnn_p[n] - dt*( nx[n]*qnnx + ny[n]*qnny
+          tmp_p[n] = qnn_p[n] - dt*( nx[n]*qnnx + ny[n]*qnny
                            #ifdef P4_TO_P8
                                      + nz[n]*qnnz
                            #endif
                                      );
         }
+        else
+          tmp_p[n] = qnn_p[n];
       }
 
       /* initiate the communication */
-      ierr = VecGhostUpdateBegin(qnn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
       /* now process the local nodes */
       for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
@@ -2609,18 +2616,27 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
           double qnnz = nz[n]>0 ? (qnn_p[n] - (*ngbd)[n].f_00m_linear(qnn_p)) / (*ngbd)[n].d_00m
                                 : ((*ngbd)[n].f_00p_linear(qnn_p) - qnn_p[n]) / (*ngbd)[n].d_00p;
 #endif
-          qnn_p[n] = qnn_p[n] - dt*( nx[n]*qnnx + ny[n]*qnny
+          tmp_p[n] = qnn_p[n] - dt*( nx[n]*qnnx + ny[n]*qnny
                            #ifdef P4_TO_P8
                                      + nz[n]*qnnz
                            #endif
                                      );
         }
+        else
+          tmp_p[n] = qnn_p[n];
       }
 
       /* end update communication */
-      ierr = VecGhostUpdateEnd  (qnn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
       ierr = VecRestoreArray(qnn, &qnn_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
+
+      ierr = VecGhostGetLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(qnn, &qnn_loc); CHKERRXX(ierr);
+      ierr = VecCopy(tmp_loc, qnn_loc); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(qnn, &qnn_loc); CHKERRXX(ierr);
     }
     ierr = VecRestoreArray(b_qnn_well_defined, &b_qnn_well_defined_p); CHKERRXX(ierr);
   }
@@ -2634,6 +2650,7 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
     for(int it=0; it<iterations; ++it)
     {
       ierr = VecGetArray(qn , &qn_p ); CHKERRXX(ierr);
+      ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
 
       /* first do the layer nodes */
       for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
@@ -2660,16 +2677,18 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
                                : ((*ngbd)[n].f_00p_linear(qn_p) - qn_p[n]) / (*ngbd)[n].d_00p;
 #endif
 
-          qn_p[n] = qn_p[n] - dt*( nx[n]*qnx + ny[n]*qny
+          tmp_p[n] = qn_p[n] - dt*( nx[n]*qnx + ny[n]*qny
                        #ifdef P4_TO_P8
                                     + nz[n]*qnz
                           #endif
                                     ) + (order==2 ? dt*qnn_p[n] : 0);
         }
+        else
+          tmp_p[n] = qn_p[n];
       }
 
       /* initiate the communication */
-      ierr = VecGhostUpdateBegin(qn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
       /* now process the local nodes */
       for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
@@ -2695,18 +2714,27 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
           double qnz = nz[n]>0 ? (qn_p[n] - (*ngbd)[n].f_00m_linear(qn_p)) / (*ngbd)[n].d_00m
                                : ((*ngbd)[n].f_00p_linear(qn_p) - qn_p[n]) / (*ngbd)[n].d_00p;
 #endif
-          qn_p[n] = qn_p[n] - dt*( nx[n]*qnx + ny[n]*qny
+          tmp_p[n] = qn_p[n] - dt*( nx[n]*qnx + ny[n]*qny
                           #ifdef P4_TO_P8
                                     + nz[n]*qnz
                           #endif
                                     ) + (order==2 ? dt*qnn_p[n] : 0);
         }
+        else
+          tmp_p[n] = qn_p[n];
       }
 
       /* end update communication */
-      ierr = VecGhostUpdateEnd  (qn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
       ierr = VecRestoreArray(qn , &qn_p ); CHKERRXX(ierr);
+      ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
+
+      ierr = VecGhostGetLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(qn , &qn_loc ); CHKERRXX(ierr);
+      ierr = VecCopy(tmp_loc, qn_loc); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(qn , &qn_loc ); CHKERRXX(ierr);
     }
 
     ierr = VecRestoreArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
@@ -2749,6 +2777,7 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
 #endif
 
     ierr = VecGetArray(q  , &q_p  ); CHKERRXX(ierr);
+    ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
 
     /* first do the layer nodes */
     for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
@@ -2804,16 +2833,29 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
         else        qz += .5*(*ngbd)[n].d_00m*qzz_00m;
 #endif
 
-				q_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
 #ifdef P4_TO_P8
-						+ nz[n]*qz
+        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
+          tmp_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +
+                      (*ngbd)[n].f_0m0_linear(q_p) + (*ngbd)[n].f_0p0_linear(q_p) +
+                      (*ngbd)[n].f_00m_linear(q_p) + (*ngbd)[n].f_00p_linear(q_p))/6.;
+#else
+        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
+          tmp_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +
+                      (*ngbd)[n].f_0m0_linear(q_p) + (*ngbd)[n].f_0p0_linear(q_p))/4.;
 #endif
-						) + (order>=1 ? dt*qn_p[n] : 0);
+        else
+          tmp_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
+                         #ifdef P4_TO_P8
+                                   + nz[n]*qz
+                         #endif
+                                   ) + (order>=1 ? dt*qn_p[n] : 0);
       }
+      else
+        tmp_p[n] = q_p[n];
     }
 
     /* initiate the communication */
-    ierr = VecGhostUpdateBegin(q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     /* now process the local nodes */
     for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
@@ -2869,16 +2911,29 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
         else        qz += .5*(*ngbd)[n].d_00m*qzz_00m;
 #endif
 
-				q_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
 #ifdef P4_TO_P8
-						+ nz[n]*qz
+        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
+          tmp_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +
+                      (*ngbd)[n].f_0m0_linear(q_p) + (*ngbd)[n].f_0p0_linear(q_p) +
+                      (*ngbd)[n].f_00m_linear(q_p) + (*ngbd)[n].f_00p_linear(q_p))/6.;
+#else
+        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
+          tmp_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +
+                      (*ngbd)[n].f_0m0_linear(q_p) + (*ngbd)[n].f_0p0_linear(q_p))/4.;
 #endif
-						) + (order>=1 ? dt*qn_p[n] : 0);
+        else
+          tmp_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
+                         #ifdef P4_TO_P8
+                                   + nz[n]*qz
+                         #endif
+                                   ) + (order>=1 ? dt*qn_p[n] : 0);
       }
+      else
+        tmp_p[n] = q_p[n];
     }
 
     /* end update communication */
-    ierr = VecGhostUpdateEnd  (q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
@@ -2886,6 +2941,13 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
     ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr);
 #endif
     ierr = VecRestoreArray(q  , &q_p  ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
+
+    ierr = VecGhostGetLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(q  , &q_loc  ); CHKERRXX(ierr);
+    ierr = VecCopy(tmp_loc, q_loc); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(q  , &q_loc  ); CHKERRXX(ierr);
   }
 
   if(order>=1)
@@ -2901,6 +2963,8 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
 #ifdef P4_TO_P8
   ierr = VecDestroy(qzz); CHKERRXX(ierr);
 #endif
+
+  ierr = VecDestroy(tmp); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }

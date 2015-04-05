@@ -437,9 +437,9 @@ int main (int argc, char* argv[])
 
   /* scale parameters */
 #ifdef P4_TO_P8
-  double scaling = (direction=='x' ? nx : (direction=='y' ? ny : nz))/box_size;  //1 cm = scaling U
+  double scaling = (direction=='x' ? ny : (direction=='y' ? nx : nx))/box_size;  //1 cm = scaling U
 #else
-  double scaling = (direction=='x' ? nx : ny)/box_size;  //1 cm = scaling U
+  double scaling = (direction=='x' ? ny : nx)/box_size;  //1 cm = scaling U
 #endif
   rho                  /= (scaling*scaling*scaling);
   thermal_conductivity /= scaling;
