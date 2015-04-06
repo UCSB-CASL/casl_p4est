@@ -27,6 +27,16 @@ void Voronoi2D::get_Partition( const vector<Point2> *&partition ) const
   partition = &(this->partition);
 }
 
+void Voronoi2D::get_Points( vector<Voronoi2DPoint>*& points)
+{
+  points = &this->points;
+}
+
+void Voronoi2D::get_Partition( vector<Point2> *&partition )
+{
+  partition = &(this->partition);
+}
+
 void Voronoi2D::set_Partition( vector<Point2>& partition )
 {
   this->partition = partition;
@@ -356,6 +366,16 @@ void Voronoi2D::clip_Interface()
     throw std::invalid_argument("[CASL_ERROR]: Voronoi2D->clip_Interface: error while clipping the interface.");
 #endif
 }
+
+
+bool Voronoi2D::is_Interface() const
+{
+  for(unsigned int n=0; n<points.size(); ++n)
+    if(points[n].n == INTERFACE)
+      return true;
+  return false;
+}
+
 
 double Voronoi2D::volume() const
 {

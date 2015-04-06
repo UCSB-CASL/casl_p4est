@@ -24,6 +24,12 @@ PetscLogEvent log_PoissonSolverNodeBased_rhsvec_setup;
 PetscLogEvent log_PoissonSolverNodeBased_solve;
 PetscLogEvent log_PoissonSolverNodeBased_KSPSolve;
 
+// PoissonSolverFaces
+PetscLogEvent log_PoissonSolverFaces_matrix_preallocation;
+PetscLogEvent log_PoissonSolverFaces_setup_linear_system;
+PetscLogEvent log_PoissonSolverFaces_solve;
+PetscLogEvent log_PoissonSolverFaces_KSPSolve;
+
 // InterpolatingFunction
 PetscLogEvent log_InterpolatingFunction_interpolate;
 PetscLogEvent log_InterpolatingFunction_send_buffer;
@@ -137,12 +143,16 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::compute_voronoi_cell        ", 0, &log_PoissonSolverNodeBasedJump_compute_voronoi_cell); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::interpolate_to_tree         ", 0, &log_PoissonSolverNodeBasedJump_interpolate_to_tree); CHKERRXX(ierr);
 
-
   // PoissonSolverNodeBase
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_preallocation            ", 0, &log_PoissonSolverNodeBased_matrix_preallocation); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_setup                    ", 0, &log_PoissonSolverNodeBased_matrix_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::rhsvec_setup                    ", 0, &log_PoissonSolverNodeBased_rhsvec_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::solve                           ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
+
+  // PoissonSolverFaces
+  ierr = PetscLogEventRegister("PoissonSolverFaces::matrix_preallocation                ", 0, &log_PoissonSolverNodeBased_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverFaces::setup_linear_system                 ", 0, &log_PoissonSolverNodeBased_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverFaces::solve                               ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
 
   // InterpolatingFunction
   ierr = PetscLogEventRegister("InterpolatingFunction::interpolate                      ", 0, &log_InterpolatingFunction_interpolate); CHKERRXX(ierr);

@@ -73,6 +73,8 @@ public:
      */
   void get_Points( const vector<Voronoi2DPoint> *&points) const;
   void get_Partition( const vector<Point2> *&partition ) const;
+  void get_Points( vector<Voronoi2DPoint> *&points);
+  void get_Partition( vector<Point2> *&partition );
 
   /*!
      * \brief update the partition
@@ -153,6 +155,12 @@ public:
      * to the negative domain. It also updates the level-set values at the vertices of the partition
      */
   void clip_Interface();
+
+  /*!
+   * \brief Check if the voronoi cell is crossed by the irregular interface
+   * \return true if the cell is crossed by the interface, false otherwise
+   */
+  bool is_Interface() const;
 
   /*!
      * \brief compute the area inside the voronoi partition

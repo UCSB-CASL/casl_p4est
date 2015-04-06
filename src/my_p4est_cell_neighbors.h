@@ -29,6 +29,7 @@ public:
 private:
   friend class PoissonSolverCellBase;
   friend class InterpolatingFunctionCellBase;
+  friend class my_p4est_faces_t;
 
   my_p4est_hierarchy_t *hierarchy;
   p4est_t *p4est;
@@ -99,7 +100,7 @@ public:
   }
 
   /**
-   * @brief find the neighbor cell of a cell in the direction (dir_x, dir_y). Use this for finding corner/arete neighbors
+   * @brief find the neighbor cell of a cell in the direction (dir_x, dir_y), any combination of directions is accepted
    * @return
    */
 #ifdef P4_TO_P8

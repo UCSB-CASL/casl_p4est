@@ -22,24 +22,8 @@ using std::vector;
 
 class my_p4est_faces_t
 {
+  friend class PoissonSolverFaces;
 private:
-//  typedef struct face_quad_ngbds
-//  {
-//    /* the indices of the neighbor quadrants. -1 if no neighbor in this direction.
-//     * otherwise, the local index of the quadrant is stored together with the index of the tree it belongs to.
-//     * Note that it is the local index in the forest (including ghosts), and not the index in the tree
-//     */
-//    p4est_locidx_t quad_idx[2];
-//    p4est_topidx_t tree_idx[2];
-//    face_quad_ngbds()
-//    {
-//      for(int i=0; i<P4EST_DIM; ++i)
-//      {
-//        quad_idx[i] = -1;
-//        tree_idx[i] = -1;
-//      }
-//    }
-//  } face_quad_ngbds;
 
   typedef struct face_quad_ngbd
   {
@@ -72,6 +56,9 @@ private:
   const my_p4est_brick_t *myb;
   const my_p4est_cell_neighbors_t *ngbd_c;
 
+  void init_faces();
+
+public:
   /* the remote local number of the ghost velocities
    * ghost_local_num[P4EST_DIM]
    */
@@ -85,31 +72,25 @@ private:
    */
   vector<my_p4est_faces_t::face_quad_ngbd> u2q_[P4EST_DIM];
 
-  /* which processes do the ghost velocities belong to
-   * proc_offsets[P4EST_DIM][mpisize+1]
-   * proc_offsets[0][n] tells us the index where the x velocities (or u) of process n start.
-   * note that proc_offsets[k][0] = 0, i.e. you have to add num_local_k to find the local index in the u2q list
+  /* Store which process the ghost faces belong to.
+   * Ghost y-face #i belongs to process nonlocal_ranks[0][i]
    */
-  vector< vector<p4est_locidx_t> > proc_offsets;
+  vector<int> nonlocal_ranks[P4EST_DIM];
 
-  void init_faces();
+  /* Store the number of owned faces for each rank.
+   * Process #j owns global_owned_indeps[0][j] x-faces
+   */
+  vector<p4est_locidx_t> global_owned_indeps[P4EST_DIM];
 
-public:
+  /* num_local[dir] contains the number of local faces in the direction "dir" */
+  p4est_locidx_t num_local[P4EST_DIM];
 
-  size_t num_local_u;
-  size_t num_ghost_u;
-
-  size_t num_local_v;
-  size_t num_ghost_v;
-
-#ifdef P4_TO_P8
-  size_t num_local_w;
-  size_t num_ghost_w;
-#endif
+  /* num_ghost[dir] contains the number of ghost faces in the direction "dir" */
+  p4est_locidx_t num_ghost[P4EST_DIM];
 
   my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_cell_neighbors_t *ngbd_c);
 
-  inline p4est_locidx_t q2u(p4est_locidx_t quad_idx, int dir)
+  inline p4est_locidx_t q2u(p4est_locidx_t quad_idx, int dir) const
   {
     return q2u_[dir][quad_idx];
   }
@@ -119,7 +100,7 @@ public:
    * \param u_idx the index of the face
    * \return the local index of the neighbor cell
    */
-  inline void u2q(p4est_locidx_t u_idx, p4est_locidx_t& quad_idx, p4est_topidx_t& tree_idx)
+  inline void u2q(p4est_locidx_t u_idx, p4est_locidx_t& quad_idx, p4est_topidx_t& tree_idx) const
   {
     quad_idx = u2q_[0][u_idx].quad_idx;
     tree_idx = u2q_[0][u_idx].tree_idx;
@@ -131,23 +112,27 @@ public:
   * \param v_idx the index of the face
   * \return the local index of the neighbor cell
   */
-  inline void v2q(p4est_locidx_t v_idx, p4est_locidx_t& quad_idx, p4est_topidx_t& tree_idx)
+  inline void v2q(p4est_locidx_t v_idx, p4est_locidx_t& quad_idx, p4est_topidx_t& tree_idx) const
   {
     quad_idx = u2q_[1][v_idx].quad_idx;
     tree_idx = u2q_[1][v_idx].tree_idx;
   }
+
+  double x_fr_u(p4est_locidx_t u_idx) const;
+  double y_fr_u(p4est_locidx_t u_idx) const;
+
+  double x_fr_v(p4est_locidx_t v_idx) const;
+  double y_fr_v(p4est_locidx_t v_idx) const;
+
+  void xyz_fr_u(p4est_locidx_t u_idx, double* xyz) const;
+  void xyz_fr_v(p4est_locidx_t v_idx, double* xyz) const;
+
+  double u_at_point_xyz(Vec u, double *xyz, BoundaryConditionType bc_type, Vec phi, char order);
 };
 
 
 
-double face_x_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t u_idx);
-double face_y_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t u_idx);
-
-double face_x_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t v_idx);
-double face_y_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t v_idx);
-
-void face_xyz_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t u_idx, double* xyz);
-void face_xyz_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t v_idx, double* xyz);
-
+PetscErrorCode VecCreateGhostFaces     (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, int dir);
+PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, int dir);
 
 #endif /* MY_P4EST_FACES_H */

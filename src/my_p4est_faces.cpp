@@ -13,11 +13,13 @@ my_p4est_faces_t::my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4es
 
 void my_p4est_faces_t::init_faces()
 {
+  int mpiret;
+
   for(int d=0; d<P4EST_FACES; ++d)
     q2u_[d].resize(p4est->local_num_quadrants + ghost->ghosts.elem_count, NO_VELOCITY);
 
-  num_local_u = 0;
-  num_local_v = 0;
+  num_local[0] = 0;
+  num_local[1] = 0;
 
   vector<p4est_quadrant_t> ngbd;
   vector< vector<faces_comm_1_t> > buff_query1(p4est->mpisize);
@@ -33,7 +35,7 @@ void my_p4est_faces_t::init_faces()
       p4est_locidx_t quad_idx = q+tree->quadrants_offset;
 
       if(is_quad_xmWall(p4est, tree_idx, quad))
-        q2u_[dir::f_m00][quad_idx] = num_local_u++;
+        q2u_[dir::f_m00][quad_idx] = num_local[0]++;
       else
       {
         ngbd.resize(0);
@@ -43,7 +45,7 @@ void my_p4est_faces_t::init_faces()
           if(ngbd[0].level>quad->level /* the neighbor is a bigger cell */
              || (ngbd[0].p.piggy3.local_num <  p4est->local_num_quadrants && q2u_[dir::f_p00][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
              || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
-            q2u_[dir::f_m00][quad_idx] = num_local_u++;
+            q2u_[dir::f_m00][quad_idx] = num_local[0]++;
           else if(ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants < ghost->proc_offsets[p4est->mpirank])
           {
             p4est_locidx_t ghost_idx = ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants;
@@ -59,7 +61,7 @@ void my_p4est_faces_t::init_faces()
       }
 
       if(is_quad_xpWall(p4est, tree_idx, quad))
-        q2u_[dir::f_p00][quad_idx] = num_local_u++;
+        q2u_[dir::f_p00][quad_idx] = num_local[0]++;
       else
       {
         ngbd.resize(0);
@@ -69,7 +71,7 @@ void my_p4est_faces_t::init_faces()
           if(ngbd[0].level>quad->level /* the neighbor is a bigger cell */
              || (ngbd[0].p.piggy3.local_num < p4est->local_num_quadrants && q2u_[dir::f_m00][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
              || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
-            q2u_[dir::f_p00][quad_idx] = num_local_u++;
+            q2u_[dir::f_p00][quad_idx] = num_local[0]++;
           else if(ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants < ghost->proc_offsets[p4est->mpirank])
           {
             p4est_locidx_t ghost_idx = ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants;
@@ -85,7 +87,7 @@ void my_p4est_faces_t::init_faces()
       }
 
       if(is_quad_ymWall(p4est, tree_idx, quad))
-        q2u_[dir::f_0m0][quad_idx] = num_local_v++;
+        q2u_[dir::f_0m0][quad_idx] = num_local[1]++;
       else
       {
         ngbd.resize(0);
@@ -95,7 +97,7 @@ void my_p4est_faces_t::init_faces()
           if(ngbd[0].level>quad->level /* the neighbor is a bigger cell */
              || (ngbd[0].p.piggy3.local_num < p4est->local_num_quadrants && q2u_[dir::f_0p0][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
              || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
-            q2u_[dir::f_0m0][quad_idx] = num_local_v++;
+            q2u_[dir::f_0m0][quad_idx] = num_local[1]++;
           else if(ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants < ghost->proc_offsets[p4est->mpirank])
           {
             p4est_locidx_t ghost_idx = ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants;
@@ -111,7 +113,7 @@ void my_p4est_faces_t::init_faces()
       }
 
       if(is_quad_ypWall(p4est, tree_idx, quad))
-        q2u_[dir::f_0p0][quad_idx] = num_local_v++;
+        q2u_[dir::f_0p0][quad_idx] = num_local[1]++;
       else
       {
         ngbd.resize(0);
@@ -121,7 +123,7 @@ void my_p4est_faces_t::init_faces()
           if(ngbd[0].level>quad->level /* the neighbor is a bigger cell */
              || (ngbd[0].p.piggy3.local_num < p4est->local_num_quadrants && q2u_[dir::f_0m0][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
              || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
-            q2u_[dir::f_0p0][quad_idx] = num_local_v++;
+            q2u_[dir::f_0p0][quad_idx] = num_local[1]++;
           else if(ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants < ghost->proc_offsets[p4est->mpirank])
           {
             p4est_locidx_t ghost_idx = ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants;
@@ -138,10 +140,26 @@ void my_p4est_faces_t::init_faces()
     }
   }
 
+
+  /* synchronize number of owned faces with the rest of the processes */
+  global_owned_indeps[0].resize(p4est->mpisize);
+  global_owned_indeps[0][p4est->mpirank] = num_local[0];
+  mpiret = MPI_Allgather(&num_local[0], 1, P4EST_MPI_LOCIDX, &global_owned_indeps[0][0], 1, P4EST_MPI_LOCIDX, p4est->mpicomm);
+  SC_CHECK_MPI(mpiret);
+
+  global_owned_indeps[1].resize(p4est->mpisize);
+  global_owned_indeps[1][p4est->mpirank] = num_local[1];
+  mpiret = MPI_Allgather(&num_local[1], 1, P4EST_MPI_LOCIDX, &global_owned_indeps[1][0], 1, P4EST_MPI_LOCIDX, p4est->mpicomm);
+  SC_CHECK_MPI(mpiret);
+
+
   /* send the queries to fill in the local information */
   vector<MPI_Request> req_query1(p4est->mpisize);
   for(int r=0; r<p4est->mpisize; ++r)
-    MPI_Isend(&buff_query1[r][0], buff_query1[r].size()*sizeof(faces_comm_1_t), MPI_BYTE, r, 5, p4est->mpicomm, &req_query1[r]);
+  {
+    mpiret = MPI_Isend(&buff_query1[r][0], buff_query1[r].size()*sizeof(faces_comm_1_t), MPI_BYTE, r, 5, p4est->mpicomm, &req_query1[r]);
+    SC_CHECK_MPI(mpiret);
+  }
 
   vector<faces_comm_1_t> buff_recv_comm1;
   vector< vector<p4est_locidx_t> > buff_reply1_send(p4est->mpisize);
@@ -150,14 +168,15 @@ void my_p4est_faces_t::init_faces()
   while(nb_recv>0)
   {
     MPI_Status status;
-    MPI_Probe(MPI_ANY_SOURCE, 5, p4est->mpicomm, &status);
+    mpiret = MPI_Probe(MPI_ANY_SOURCE, 5, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
     int vec_size;
-    MPI_Get_count(&status, MPI_BYTE, &vec_size);
+    mpiret = MPI_Get_count(&status, MPI_BYTE, &vec_size); SC_CHECK_MPI(mpiret);
     vec_size /= sizeof(faces_comm_1_t);
     int r = status.MPI_SOURCE;
 
     buff_recv_comm1.resize(vec_size);
-    MPI_Recv(&buff_recv_comm1[0], vec_size*sizeof(faces_comm_1_t), MPI_BYTE, r, status.MPI_TAG, p4est->mpicomm, &status);
+    mpiret = MPI_Recv(&buff_recv_comm1[0], vec_size*sizeof(faces_comm_1_t), MPI_BYTE, r, status.MPI_TAG, p4est->mpicomm, &status);
+    SC_CHECK_MPI(mpiret);
 
     /* prepare the reply */
     buff_reply1_send[r].resize(buff_recv_comm1.size());
@@ -167,28 +186,32 @@ void my_p4est_faces_t::init_faces()
     }
 
     /* send reply */
-    MPI_Isend(&buff_reply1_send[r][0], vec_size*sizeof(p4est_locidx_t), MPI_BYTE, r, 6, p4est->mpicomm, &req_reply1[r]);
+    mpiret = MPI_Isend(&buff_reply1_send[r][0], vec_size*sizeof(p4est_locidx_t), MPI_BYTE, r, 6, p4est->mpicomm, &req_reply1[r]);
+    SC_CHECK_MPI(mpiret);
 
     nb_recv--;
   }
   buff_recv_comm1.clear();
 
   /* get the reply and fill in the missing local information */
-  num_ghost_u = 0;
-  num_ghost_v = 0;
+  num_ghost[0] = 0;
+  num_ghost[1] = 0;
+  nonlocal_ranks[0].resize(0);
+  nonlocal_ranks[1].resize(0);
   vector<p4est_locidx_t> buff_recv_locidx;
   nb_recv = p4est->mpisize;
   while(nb_recv>0)
   {
     MPI_Status status;
-    MPI_Probe(MPI_ANY_SOURCE, 6, p4est->mpicomm, &status);
+    mpiret = MPI_Probe(MPI_ANY_SOURCE, 6, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
     int vec_size;
-    MPI_Get_count(&status, MPI_BYTE, &vec_size);
+    mpiret = MPI_Get_count(&status, MPI_BYTE, &vec_size); SC_CHECK_MPI(mpiret);
     vec_size /= sizeof(p4est_locidx_t);
     int r = status.MPI_SOURCE;
 
     buff_recv_locidx.resize(vec_size);
-    MPI_Recv(&buff_recv_locidx[0], vec_size*sizeof(p4est_locidx_t), MPI_BYTE, r, status.MPI_TAG, p4est->mpicomm, &status);
+    mpiret = MPI_Recv(&buff_recv_locidx[0], vec_size*sizeof(p4est_locidx_t), MPI_BYTE, r, status.MPI_TAG, p4est->mpicomm, &status);
+    SC_CHECK_MPI(mpiret);
 
     for(unsigned int n=0; n<buff_recv_locidx.size(); ++n)
     {
@@ -196,15 +219,17 @@ void my_p4est_faces_t::init_faces()
       {
       case dir::f_m00:
       case dir::f_p00:
-        q2u_[buff_query1[r][n].dir==dir::f_m00 ? dir::f_p00 : dir::f_m00][map[r][n]] = num_ghost_u+num_local_u;
+        q2u_[buff_query1[r][n].dir==dir::f_m00 ? dir::f_p00 : dir::f_m00][map[r][n]] = num_ghost[0]+num_local[0];
         ghost_local_num[0].push_back(buff_recv_locidx[n]);
-        num_ghost_u++;
+        nonlocal_ranks[0].push_back(r);
+        num_ghost[0]++;
         break;
       case dir::f_0m0:
       case dir::f_0p0:
-        q2u_[buff_query1[r][n].dir==dir::f_0m0 ? dir::f_0p0 : dir::f_0m0][map[r][n]] = num_ghost_v+num_local_v;
+        q2u_[buff_query1[r][n].dir==dir::f_0m0 ? dir::f_0p0 : dir::f_0m0][map[r][n]] = num_ghost[1]+num_local[1];
         ghost_local_num[1].push_back(buff_recv_locidx[n]);
-        num_ghost_v++;
+        nonlocal_ranks[1].push_back(r);
+        num_ghost[1]++;
         break;
       }
     }
@@ -213,8 +238,8 @@ void my_p4est_faces_t::init_faces()
   }
   buff_recv_locidx.clear();
 
-  MPI_Waitall(req_query1.size(), &req_query1[0], MPI_STATUSES_IGNORE);
-  MPI_Waitall(req_reply1.size(), &req_reply1[0], MPI_STATUSES_IGNORE);
+  mpiret = MPI_Waitall(req_query1.size(), &req_query1[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Waitall(req_reply1.size(), &req_reply1[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
 
 
 
@@ -235,7 +260,8 @@ void my_p4est_faces_t::init_faces()
   vector<MPI_Request> req_query2(p4est->mpisize);
   for(int r=0; r<p4est->mpisize; ++r)
   {
-    MPI_Isend(&buff_query2[r][0], buff_query2[r].size()*sizeof(p4est_locidx_t), MPI_BYTE, r, 7, p4est->mpicomm, &req_query2[r]);
+    mpiret = MPI_Isend(&buff_query2[r][0], buff_query2[r].size()*sizeof(p4est_locidx_t), MPI_BYTE, r, 7, p4est->mpicomm, &req_query2[r]);
+    SC_CHECK_MPI(mpiret);
   }
 
   vector<MPI_Request> req_reply2(p4est->mpisize);
@@ -244,14 +270,15 @@ void my_p4est_faces_t::init_faces()
   while(nb_recv>0)
   {
     MPI_Status status;
-    MPI_Probe(MPI_ANY_SOURCE, 7, p4est->mpicomm, &status);
+    mpiret = MPI_Probe(MPI_ANY_SOURCE, 7, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
     int vec_size;
-    MPI_Get_count(&status, MPI_BYTE, &vec_size);
+    mpiret = MPI_Get_count(&status, MPI_BYTE, &vec_size); SC_CHECK_MPI(mpiret);
     vec_size /= sizeof(p4est_locidx_t);
     int r = status.MPI_SOURCE;
 
     buff_recv_locidx.resize(vec_size);
-    MPI_Recv(&buff_recv_locidx[0], vec_size*sizeof(p4est_locidx_t), MPI_BYTE, r, status.MPI_TAG, p4est->mpicomm, &status);
+    mpiret = MPI_Recv(&buff_recv_locidx[0], vec_size*sizeof(p4est_locidx_t), MPI_BYTE, r, status.MPI_TAG, p4est->mpicomm, &status);
+    SC_CHECK_MPI(mpiret);
 
     for(unsigned int q=0; q<buff_recv_locidx.size(); ++q)
     {
@@ -261,7 +288,8 @@ void my_p4est_faces_t::init_faces()
       buff_reply2[r].push_back(c);
     }
 
-    MPI_Isend(&buff_reply2[r][0], buff_reply2[r].size()*sizeof(faces_comm_2_t), MPI_BYTE, r, 8, p4est->mpicomm, &req_reply2[r]);
+    mpiret = MPI_Isend(&buff_reply2[r][0], buff_reply2[r].size()*sizeof(faces_comm_2_t), MPI_BYTE, r, 8, p4est->mpicomm, &req_reply2[r]);
+    SC_CHECK_MPI(mpiret);
 
     nb_recv--;
   }
@@ -274,14 +302,15 @@ void my_p4est_faces_t::init_faces()
   while(nb_recv>0)
   {
     MPI_Status status;
-    MPI_Probe(MPI_ANY_SOURCE, 8, p4est->mpicomm, &status);
+    mpiret = MPI_Probe(MPI_ANY_SOURCE, 8, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
     int vec_size;
-    MPI_Get_count(&status, MPI_BYTE, &vec_size);
+    mpiret = MPI_Get_count(&status, MPI_BYTE, &vec_size); SC_CHECK_MPI(mpiret);
     vec_size /= sizeof(faces_comm_2_t);
     int r = status.MPI_SOURCE;
 
     buff_recv_comm2.resize(vec_size);
-    MPI_Recv(&buff_recv_comm2[0], vec_size*sizeof(faces_comm_2_t), MPI_BYTE, r, status.MPI_TAG, p4est->mpicomm, &status);
+    mpiret = MPI_Recv(&buff_recv_comm2[0], vec_size*sizeof(faces_comm_2_t), MPI_BYTE, r, status.MPI_TAG, p4est->mpicomm, &status);
+    SC_CHECK_MPI(mpiret);
 
     /* FILL IN LOCAL INFO */
     for(int n=0; n<vec_size; ++n)
@@ -292,9 +321,10 @@ void my_p4est_faces_t::init_faces()
 
       if(is_quad_xmWall(p4est, tree_idx, quad))
       {
-        q2u_[dir::f_m00][quad_idx] = num_local_u + num_ghost_u;
+        q2u_[dir::f_m00][quad_idx] = num_local[0] + num_ghost[0];
         ghost_local_num[0].push_back(buff_recv_comm2[n].local_num[dir::f_m00]);
-        num_ghost_u++;
+        nonlocal_ranks[0].push_back(r);
+        num_ghost[0]++;
       }
       else
       {
@@ -304,9 +334,10 @@ void my_p4est_faces_t::init_faces()
         {
           if(q2u_[dir::f_p00][ngbd[0].p.piggy3.local_num]==-1)
           {
-            q2u_[dir::f_m00][quad_idx] = num_local_u + num_ghost_u;
+            q2u_[dir::f_m00][quad_idx] = num_local[0] + num_ghost[0];
             ghost_local_num[0].push_back(buff_recv_comm2[n].local_num[dir::f_m00]);
-            num_ghost_u++;
+            nonlocal_ranks[0].push_back(r);
+            num_ghost[0]++;
           }
           else
           {
@@ -317,9 +348,10 @@ void my_p4est_faces_t::init_faces()
 
       if(is_quad_xpWall(p4est, tree_idx, quad))
       {
-        q2u_[dir::f_p00][quad_idx] = num_local_u + num_ghost_u;
+        q2u_[dir::f_p00][quad_idx] = num_local[0] + num_ghost[0];
         ghost_local_num[0].push_back(buff_recv_comm2[n].local_num[dir::f_p00]);
-        num_ghost_u++;
+        nonlocal_ranks[0].push_back(r);
+        num_ghost[0]++;
       }
       else
       {
@@ -329,9 +361,10 @@ void my_p4est_faces_t::init_faces()
         {
           if(q2u_[dir::f_m00][ngbd[0].p.piggy3.local_num]==-1)
           {
-            q2u_[dir::f_p00][quad_idx] = num_local_u + num_ghost_u;
+            q2u_[dir::f_p00][quad_idx] = num_local[0] + num_ghost[0];
             ghost_local_num[0].push_back(buff_recv_comm2[n].local_num[dir::f_p00]);
-            num_ghost_u++;
+            nonlocal_ranks[0].push_back(r);
+            num_ghost[0]++;
           }
           else
           {
@@ -342,9 +375,10 @@ void my_p4est_faces_t::init_faces()
 
       if(is_quad_ymWall(p4est, tree_idx, quad))
       {
-        q2u_[dir::f_0m0][quad_idx] = num_local_v + num_ghost_v;
+        q2u_[dir::f_0m0][quad_idx] = num_local[1] + num_ghost[1];
         ghost_local_num[1].push_back(buff_recv_comm2[n].local_num[dir::f_0m0]);
-        num_ghost_v++;
+        nonlocal_ranks[1].push_back(r);
+        num_ghost[1]++;
       }
       else
       {
@@ -354,9 +388,10 @@ void my_p4est_faces_t::init_faces()
         {
           if(q2u_[dir::f_0p0][ngbd[0].p.piggy3.local_num]==-1)
           {
-            q2u_[dir::f_0m0][quad_idx] = num_local_v + num_ghost_v;
+            q2u_[dir::f_0m0][quad_idx] = num_local[1] + num_ghost[1];
             ghost_local_num[1].push_back(buff_recv_comm2[n].local_num[dir::f_0m0]);
-            num_ghost_v++;
+            nonlocal_ranks[1].push_back(r);
+            num_ghost[1]++;
           }
           else
           {
@@ -367,9 +402,10 @@ void my_p4est_faces_t::init_faces()
 
       if(is_quad_ypWall(p4est, tree_idx, quad))
       {
-        q2u_[dir::f_0p0][quad_idx] = num_local_v + num_ghost_v;
+        q2u_[dir::f_0p0][quad_idx] = num_local[1] + num_ghost[1];
         ghost_local_num[1].push_back(buff_recv_comm2[n].local_num[dir::f_0p0]);
-        num_ghost_v++;
+        nonlocal_ranks[1].push_back(r);
+        num_ghost[1]++;
       }
       else
       {
@@ -379,9 +415,10 @@ void my_p4est_faces_t::init_faces()
         {
           if(q2u_[dir::f_0m0][ngbd[0].p.piggy3.local_num]==-1)
           {
-            q2u_[dir::f_0p0][quad_idx] = num_local_v + num_ghost_v;
+            q2u_[dir::f_0p0][quad_idx] = num_local[1] + num_ghost[1];
             ghost_local_num[1].push_back(buff_recv_comm2[n].local_num[dir::f_0p0]);
-            num_ghost_v++;
+            nonlocal_ranks[1].push_back(r);
+            num_ghost[1]++;
           }
           else
           {
@@ -396,8 +433,8 @@ void my_p4est_faces_t::init_faces()
 
 
   /* now construct the velocity to quadrant link */
-  u2q_[0].resize(num_local_u + num_ghost_u);
-  u2q_[1].resize(num_local_v + num_ghost_v);
+  u2q_[0].resize(num_local[0] + num_ghost[0]);
+  u2q_[1].resize(num_local[1] + num_ghost[1]);
 
   for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
   {
@@ -436,17 +473,17 @@ void my_p4est_faces_t::init_faces()
 //    if(u2q_[1][i].quad_idx>=p4est->local_num_quadrants && u2q_[1][i].tree_idx!=-1) std::cout << p4est->mpirank << " problem in v ghost !!" << std::endl;
 //  }
 
-  MPI_Waitall(req_query2.size(), &req_query2[0], MPI_STATUSES_IGNORE);
-  MPI_Waitall(req_reply2.size(), &req_reply2[0], MPI_STATUSES_IGNORE);
+  mpiret = MPI_Waitall(req_query2.size(), &req_query2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Waitall(req_reply2.size(), &req_reply2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
 }
 
 
 
-double face_x_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t u_idx)
+double my_p4est_faces_t::x_fr_u(p4est_locidx_t u_idx) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
-  faces->u2q(u_idx, quad_idx, tree_idx);
+  u2q(u_idx, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -466,16 +503,16 @@ double face_x_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces
 
   double x = quad_x_fr_i(quad) + tree_xmin;
 
-  if(faces->q2u(quad_idx, dir::f_m00) == u_idx) return x;
+  if(q2u(quad_idx, dir::f_m00) == u_idx) return x;
   else return x + (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 }
 
 
-double face_y_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t u_idx)
+double my_p4est_faces_t::y_fr_u(p4est_locidx_t u_idx) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
-  faces->u2q(u_idx, quad_idx, tree_idx);
+  u2q(u_idx, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -499,11 +536,11 @@ double face_y_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces
 }
 
 
-double face_x_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t v_idx)
+double my_p4est_faces_t::x_fr_v(p4est_locidx_t v_idx) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
-  faces->v2q(v_idx, quad_idx, tree_idx);
+  v2q(v_idx, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -527,11 +564,11 @@ double face_x_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces
 }
 
 
-double face_y_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t v_idx)
+double my_p4est_faces_t::y_fr_v(p4est_locidx_t v_idx) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
-  faces->v2q(v_idx, quad_idx, tree_idx);
+  v2q(v_idx, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -551,16 +588,16 @@ double face_y_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces
 
   double y = quad_y_fr_j(quad) + tree_ymin;
 
-  if(faces->q2u(quad_idx, dir::f_0m0) == v_idx) return y;
+  if(q2u(quad_idx, dir::f_0m0) == v_idx) return y;
   else return y + (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 }
 
 
-void face_xyz_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t u_idx, double* xyz)
+void my_p4est_faces_t::xyz_fr_u(p4est_locidx_t u_idx, double* xyz) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
-  faces->u2q(u_idx, quad_idx, tree_idx);
+  u2q(u_idx, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -582,15 +619,15 @@ void face_xyz_fr_u(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces
   xyz[0] = quad_x_fr_i(quad) + tree_xmin;
   xyz[1] = quad_y_fr_j(quad) + tree_ymin;
 
-  if(faces->q2u(quad_idx, dir::f_p00) == u_idx) xyz[1] += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  if(q2u(quad_idx, dir::f_p00) == u_idx) xyz[1] += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 }
 
 
-void face_xyz_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces, p4est_locidx_t v_idx, double* xyz)
+void my_p4est_faces_t::xyz_fr_v(p4est_locidx_t v_idx, double* xyz) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
-  faces->v2q(v_idx, quad_idx, tree_idx);
+  v2q(v_idx, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -612,5 +649,102 @@ void face_xyz_fr_v(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_faces_t* faces
   xyz[0] = quad_x_fr_i(quad) + tree_xmin;
   xyz[1] = quad_y_fr_j(quad) + tree_ymin;
 
-  if(faces->q2u(quad_idx, dir::f_0p0) == v_idx) xyz[1] += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  if(q2u(quad_idx, dir::f_0p0) == v_idx) xyz[1] += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+}
+
+
+
+double my_p4est_faces_t::u_at_point_xyz(Vec u, double *xyz, BoundaryConditionType bc_type, Vec phi, char order)
+{
+  /* TODO ... need an actual class, like the interpolation on nodes .... */
+  double xyz_clip[2];
+
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[p4est->trees->elem_count-1 + P4EST_CHILDREN-1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+
+  xyz_clip[0] = xyz[0]<xmin ? xmin : (xyz[0]>xmax ? xmax : xyz[0]);
+  xyz_clip[1] = xyz[1]<ymin ? ymin : (xyz[1]>ymax ? ymax : xyz[1]);
+
+  p4est_quadrant_t best_match;
+  std::vector<p4est_quadrant_t> remote_matches;
+  ngbd_c->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
+}
+
+
+
+
+
+
+
+
+
+
+PetscErrorCode VecCreateGhostFaces(const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, int dir)
+{
+  PetscErrorCode ierr = 0;
+
+  if(p4est->mpirank==2)
+  {
+    std::cout << faces->num_local[0] << " - " << faces->num_ghost[0] << std::endl;
+    std::cout << faces->global_owned_indeps[0][0] << ", " << faces->global_owned_indeps[0][1] << ", " << faces->global_owned_indeps[0][2] << ", " << faces->global_owned_indeps[0][3] << std::endl;
+    std::cout << "local : " << std::endl;
+    for(p4est_locidx_t u=0; u<faces->num_local[0]; ++u)
+    {
+      std::cout << u << " : " << faces->x_fr_u(u) << ", " << faces->y_fr_u(u) << std::endl;
+    }
+    std::cout << "ghost : " << std::endl;
+    for(p4est_locidx_t u=0; u<faces->num_ghost[0]; ++u)
+    {
+      std::cout << u << " : " << faces->nonlocal_ranks[0][u] << ", " << faces->ghost_local_num[0][u] << std::endl;
+    }
+  }
+
+  p4est_locidx_t num_local = faces->num_local[dir];
+
+  std::vector<PetscInt> ghost_faces(faces->num_ghost[dir], 0);
+  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
+
+  // Calculate the global number of points
+  for (int r = 0; r<p4est->mpisize; ++r)
+    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)faces->global_owned_indeps[dir][r];
+
+  PetscInt num_global = global_offset_sum[p4est->mpisize];
+
+  for(size_t i=0; i<ghost_faces.size(); ++i)
+    ghost_faces[i] = faces->ghost_local_num[dir][i] + global_offset_sum[faces->nonlocal_ranks[dir][i]];
+
+  ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
+                        ghost_faces.size(), (const PetscInt*)&ghost_faces[0], v); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, int dir)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = faces->num_local[dir];
+
+  std::vector<PetscInt> ghost_faces(faces->num_ghost[dir], 0);
+  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
+
+  // Calculate the global number of points
+  for (int r = 0; r<p4est->mpisize; ++r)
+    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)faces->global_owned_indeps[dir][r];
+
+  PetscInt num_global = global_offset_sum[p4est->mpisize];
+
+  for(size_t i=0; i<ghost_faces.size(); ++i)
+    ghost_faces[i] = faces->ghost_local_num[dir][i] + global_offset_sum[faces->nonlocal_ranks[dir][i]];
+
+  ierr = VecCreateGhostBlock(p4est->mpicomm,
+                             block_size, num_local*block_size, num_global*block_size,
+                             ghost_faces.size(), (const PetscInt*)&ghost_faces[0], v); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
 }

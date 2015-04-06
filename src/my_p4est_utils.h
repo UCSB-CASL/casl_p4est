@@ -43,6 +43,14 @@ enum {
   f_00p
 #endif
 };
+/* cartesian direction */
+enum {
+  x = 0,
+  y
+#ifdef P4_TO_P8
+  ,z
+#endif
+};
 }
 
 enum interpolation_method{
