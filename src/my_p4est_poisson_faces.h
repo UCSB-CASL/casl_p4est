@@ -100,7 +100,7 @@ public:
 
   void solve_u(Vec solution_u);
 
-  void print_partition_u_VTK();
+  void print_partition_u_VTK(const char *file);
 };
 
 #endif // POISSON_SOLVER_NODE_BASE_H

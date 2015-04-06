@@ -242,9 +242,6 @@ void my_p4est_faces_t::init_faces()
   mpiret = MPI_Waitall(req_reply1.size(), &req_reply1[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
 
 
-
-
-
   /* now synchronize the ghost layer */
   vector< vector<p4est_locidx_t> > buff_query2(p4est->mpisize);
   for(int r=0; r<p4est->mpisize; ++r)
@@ -256,6 +253,7 @@ void my_p4est_faces_t::init_faces()
     buff_query2[r].push_back(g->p.piggy3.local_num);
     map[r].push_back(ghost_idx);
   }
+
 
   vector<MPI_Request> req_query2(p4est->mpisize);
   for(int r=0; r<p4est->mpisize; ++r)
@@ -284,7 +282,21 @@ void my_p4est_faces_t::init_faces()
     {
       faces_comm_2_t c;
       for(int dir=0; dir<P4EST_FACES; dir++)
-        c.local_num[dir] = q2u_[dir][buff_recv_locidx[q]];
+      {
+        p4est_locidx_t u_tmp = q2u_[dir][buff_recv_locidx[q]];
+        /* local value */
+        if(u_tmp<num_local[dir/2])
+        {
+          c.rank[dir] = p4est->mpirank;
+          c.local_num[dir] = u_tmp;
+        }
+        /* ghost value */
+        else
+        {
+          c.rank[dir] = nonlocal_ranks[dir/2][u_tmp-num_local[dir/2]];
+          c.local_num[dir] = ghost_local_num[dir/2][u_tmp-num_local[dir/2]];
+        }
+      }
       buff_reply2[r].push_back(c);
     }
 
@@ -293,7 +305,6 @@ void my_p4est_faces_t::init_faces()
 
     nb_recv--;
   }
-
 
 
   /* receive the ghost information and fill in the local info */
@@ -323,20 +334,20 @@ void my_p4est_faces_t::init_faces()
       {
         q2u_[dir::f_m00][quad_idx] = num_local[0] + num_ghost[0];
         ghost_local_num[0].push_back(buff_recv_comm2[n].local_num[dir::f_m00]);
-        nonlocal_ranks[0].push_back(r);
+        nonlocal_ranks[0].push_back(buff_recv_comm2[n].rank[dir::f_m00]);
         num_ghost[0]++;
       }
       else
       {
         ngbd.resize(0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, -1, 0);
-        if(ngbd.size()==1 && buff_recv_comm2[n].local_num[dir::f_m00]!=-1)
+        if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[dir::f_m00]!=NO_VELOCITY)
         {
-          if(q2u_[dir::f_p00][ngbd[0].p.piggy3.local_num]==-1)
+          if(ngbd.size()==0 || q2u_[dir::f_p00][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
           {
             q2u_[dir::f_m00][quad_idx] = num_local[0] + num_ghost[0];
             ghost_local_num[0].push_back(buff_recv_comm2[n].local_num[dir::f_m00]);
-            nonlocal_ranks[0].push_back(r);
+            nonlocal_ranks[0].push_back(buff_recv_comm2[n].rank[dir::f_m00]);
             num_ghost[0]++;
           }
           else
@@ -350,20 +361,20 @@ void my_p4est_faces_t::init_faces()
       {
         q2u_[dir::f_p00][quad_idx] = num_local[0] + num_ghost[0];
         ghost_local_num[0].push_back(buff_recv_comm2[n].local_num[dir::f_p00]);
-        nonlocal_ranks[0].push_back(r);
+        nonlocal_ranks[0].push_back(buff_recv_comm2[n].rank[dir::f_p00]);
         num_ghost[0]++;
       }
       else
       {
         ngbd.resize(0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 1, 0);
-        if(ngbd.size()==1 && buff_recv_comm2[n].local_num[dir::f_p00]!=-1)
+        if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[dir::f_p00]!=NO_VELOCITY)
         {
-          if(q2u_[dir::f_m00][ngbd[0].p.piggy3.local_num]==-1)
+          if(ngbd.size()==0 || q2u_[dir::f_m00][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
           {
             q2u_[dir::f_p00][quad_idx] = num_local[0] + num_ghost[0];
             ghost_local_num[0].push_back(buff_recv_comm2[n].local_num[dir::f_p00]);
-            nonlocal_ranks[0].push_back(r);
+            nonlocal_ranks[0].push_back(buff_recv_comm2[n].rank[dir::f_p00]);
             num_ghost[0]++;
           }
           else
@@ -377,20 +388,20 @@ void my_p4est_faces_t::init_faces()
       {
         q2u_[dir::f_0m0][quad_idx] = num_local[1] + num_ghost[1];
         ghost_local_num[1].push_back(buff_recv_comm2[n].local_num[dir::f_0m0]);
-        nonlocal_ranks[1].push_back(r);
+        nonlocal_ranks[1].push_back(buff_recv_comm2[n].rank[dir::f_0m0]);
         num_ghost[1]++;
       }
       else
       {
         ngbd.resize(0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, -1);
-        if(ngbd.size()==1 && buff_recv_comm2[n].local_num[dir::f_0m0]!=-1)
+        if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[dir::f_0m0]!=NO_VELOCITY)
         {
-          if(q2u_[dir::f_0p0][ngbd[0].p.piggy3.local_num]==-1)
+          if(ngbd.size()==0 || q2u_[dir::f_0p0][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
           {
             q2u_[dir::f_0m0][quad_idx] = num_local[1] + num_ghost[1];
             ghost_local_num[1].push_back(buff_recv_comm2[n].local_num[dir::f_0m0]);
-            nonlocal_ranks[1].push_back(r);
+            nonlocal_ranks[1].push_back(buff_recv_comm2[n].rank[dir::f_0m0]);
             num_ghost[1]++;
           }
           else
@@ -404,20 +415,20 @@ void my_p4est_faces_t::init_faces()
       {
         q2u_[dir::f_0p0][quad_idx] = num_local[1] + num_ghost[1];
         ghost_local_num[1].push_back(buff_recv_comm2[n].local_num[dir::f_0p0]);
-        nonlocal_ranks[1].push_back(r);
+        nonlocal_ranks[1].push_back(buff_recv_comm2[n].rank[dir::f_0p0]);
         num_ghost[1]++;
       }
       else
       {
         ngbd.resize(0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 1);
-        if(ngbd.size()==1 && buff_recv_comm2[n].local_num[dir::f_0p0]!=-1)
+        if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[dir::f_0p0]!=NO_VELOCITY)
         {
-          if(q2u_[dir::f_0m0][ngbd[0].p.piggy3.local_num]==-1)
+          if(ngbd.size()==0 || q2u_[dir::f_0m0][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
           {
             q2u_[dir::f_0p0][quad_idx] = num_local[1] + num_ghost[1];
             ghost_local_num[1].push_back(buff_recv_comm2[n].local_num[dir::f_0p0]);
-            nonlocal_ranks[1].push_back(r);
+            nonlocal_ranks[1].push_back(buff_recv_comm2[n].rank[dir::f_0p0]);
             num_ghost[1]++;
           }
           else
@@ -686,23 +697,6 @@ double my_p4est_faces_t::u_at_point_xyz(Vec u, double *xyz, BoundaryConditionTyp
 PetscErrorCode VecCreateGhostFaces(const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, int dir)
 {
   PetscErrorCode ierr = 0;
-
-  if(p4est->mpirank==2)
-  {
-    std::cout << faces->num_local[0] << " - " << faces->num_ghost[0] << std::endl;
-    std::cout << faces->global_owned_indeps[0][0] << ", " << faces->global_owned_indeps[0][1] << ", " << faces->global_owned_indeps[0][2] << ", " << faces->global_owned_indeps[0][3] << std::endl;
-    std::cout << "local : " << std::endl;
-    for(p4est_locidx_t u=0; u<faces->num_local[0]; ++u)
-    {
-      std::cout << u << " : " << faces->x_fr_u(u) << ", " << faces->y_fr_u(u) << std::endl;
-    }
-    std::cout << "ghost : " << std::endl;
-    for(p4est_locidx_t u=0; u<faces->num_ghost[0]; ++u)
-    {
-      std::cout << u << " : " << faces->nonlocal_ranks[0][u] << ", " << faces->ghost_local_num[0][u] << std::endl;
-    }
-  }
-
   p4est_locidx_t num_local = faces->num_local[dir];
 
   std::vector<PetscInt> ghost_faces(faces->num_ghost[dir], 0);

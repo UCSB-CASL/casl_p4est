@@ -49,6 +49,7 @@ private:
   typedef struct faces_comm_2
   {
     p4est_locidx_t local_num[P4EST_FACES];
+    int rank[P4EST_FACES];
   } faces_comm_2_t;
 
   const p4est_t *p4est;

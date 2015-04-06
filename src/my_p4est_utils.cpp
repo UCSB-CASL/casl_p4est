@@ -930,7 +930,7 @@ int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghost_idx)
 {
   P4EST_ASSERT(ghost_idx<(p4est_locidx_t) ghost->ghosts.elem_count);
   int r=0;
-  while(ghost->proc_offsets[r+1]<ghost_idx) r++;
+  while(ghost->proc_offsets[r+1]<=ghost_idx) r++;
   return r;
 }
 

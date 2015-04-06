@@ -203,23 +203,24 @@ void PoissonSolverFaces::compute_voronoi_cell_u(p4est_locidx_t u_idx, Voronoi2D&
 
   /* gather neighbor cells */
   ngbd.clear();
-  ngbd.push_back(qp);
-  ngbd.push_back(qm);
   if(qm_idx!=-1)
   {
+    ngbd.push_back(qm);
     ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0);
-    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1);
-    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 1);
     ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1);
     ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 1);
   }
+
   if(qp_idx!=-1)
   {
+    ngbd.push_back(qp);
     ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0);
-    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0,-1);
-    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1);
     ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1);
     ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1);
   }
 
   /* add the faces to the voronoi partition */
@@ -581,11 +582,11 @@ void PoissonSolverFaces::setup_linear_system_u()
 
 
 
-void PoissonSolverFaces::print_partition_u_VTK()
+void PoissonSolverFaces::print_partition_u_VTK(const char *file)
 {
   vector<Voronoi2D> voro(faces->num_local[0]);
   for(p4est_locidx_t u=0; u<faces->num_local[0]; ++u)
     compute_voronoi_cell_u(u, voro[u]);
 
-  Voronoi2D::print_VTK_Format(voro, "/home/guittet/code/Output/p4est_navier_stokes/voro_u.vtk");
+  Voronoi2D::print_VTK_Format(voro, file);
 }
