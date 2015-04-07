@@ -96,9 +96,9 @@ public:
 #endif
 
 
-  void solve(Vec solution_u, Vec solution_v);
+  void solve(Vec solution_u, Vec solution_v, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
 
-  void solve_u(Vec solution_u);
+  void solve_u(Vec solution_u, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
 
   void print_partition_u_VTK(const char *file);
 };
