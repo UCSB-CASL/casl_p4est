@@ -59,6 +59,13 @@ PoissonSolverFaces::PoissonSolverFaces(const my_p4est_faces_t *faces, const my_p
   dz_min = (zmax-zmin) / pow(2.,(double) data->max_lvl);
 #endif
 
+  vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1];
+  xmax = p4est->connectivity->vertices[3*vp + 0];
+  ymax = p4est->connectivity->vertices[3*vp + 1];
+#ifdef P4_TO_P8
+  zmax = p4est->connectivity->vertices[3*vp + 2];
+#endif
+
   mu = 1;
   diag_add = 0;
 }
@@ -408,6 +415,7 @@ void PoissonSolverFaces::preallocate_matrix_u()
     }
   }
 
+
   ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
   ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 
@@ -418,6 +426,17 @@ void PoissonSolverFaces::preallocate_matrix_u()
 void PoissonSolverFaces::setup_linear_system_u()
 {
   preallocate_matrix_u();
+
+  if(0)
+  {
+    int i = 0;
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+    fflush(stdout);
+    while (0 == i)
+      sleep(5);
+  }
 
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_PoissonSolverFaces_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
@@ -487,7 +506,6 @@ void PoissonSolverFaces::setup_linear_system_u()
       }
     }
 
-
     /* check for walls */
     if(qm_idx==-1 && bc_u->wallType(xmin,y)==DIRICHLET)
     {
@@ -509,7 +527,7 @@ void PoissonSolverFaces::setup_linear_system_u()
     compute_voronoi_cell_u(u_idx, voro);
 
     /* close to interface and dirichlet => finite differences */
-    if(bc_u->interfaceType()==DIRICHLET && voro.is_Interface())
+    if(bc_u->interfaceType()==DIRICHLET && phi_c>-2*MAX(dx_min,dy_min))
     {
       if(fabs(phi_c) < SQR(MIN(dx_min,dy_min)))
       {
@@ -531,24 +549,17 @@ void PoissonSolverFaces::setup_linear_system_u()
       double phi_0m0 = interp_phi(x, y-dy_min);
       double phi_0p0 = interp_phi(x, y+dy_min);
 
-      if(phi_m00>0 || phi_p00>0. || phi_0m0>0 || phi_0p0>0)
+      if(phi_m00>0 || phi_p00>0. || phi_0m0>0 || phi_0p0>0 || voro.is_Interface())
       {
         bool wall_m00 = qm_idx==-1;
         bool wall_p00 = qp_idx==-1;
         bool wall_0m0 = (qm_idx==-1 || is_quad_ymWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ymWall(p4est, tp_idx, &qp));
         bool wall_0p0 = (qm_idx==-1 || is_quad_ypWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ypWall(p4est, tp_idx, &qp));
 
-//        QuadNgbdNodesOfNode qnnn_B, qnnn_T;
-//        tr->get_Ngbd_Nodes_Of_Node(C_R.node_mm(),qnnn_B);
-//        tr->get_Ngbd_Nodes_Of_Node(C_L.node_pp(),qnnn_T);
-
-//        double phixx_C = .5*(qnnn_B.dxx_Central(*phi) + qnnn_T.dxx_Central(*phi));
-//        double phiyy_C = .5*(qnnn_B.dyy_Central(*phi) + qnnn_T.dyy_Central(*phi));
-
-        bool is_interface_m00 = !wall_m00 && phi_m00*phi_c <= 0.;
-        bool is_interface_p00 = !wall_p00 && phi_p00*phi_c <= 0.;
-        bool is_interface_0m0 = !wall_0m0 && phi_0m0*phi_c <= 0.;
-        bool is_interface_0p0 = !wall_0p0 && phi_0p0*phi_c <= 0.;
+        bool is_interface_m00 = !wall_m00 && phi_m00*phi_c <= 0;
+        bool is_interface_p00 = !wall_p00 && phi_p00*phi_c <= 0;
+        bool is_interface_0m0 = !wall_0m0 && phi_0m0*phi_c <= 0;
+        bool is_interface_0p0 = !wall_0p0 && phi_0p0*phi_c <= 0;
 
         if(  is_interface_m00 || is_interface_0m0 ||
              is_interface_p00 || is_interface_0p0 ) matrix_has_nullspace_u = false;
@@ -594,10 +605,10 @@ void PoissonSolverFaces::setup_linear_system_u()
         if(wall_m00) d_m00 = d_p00;
         if(wall_p00) d_p00 = d_m00;
 
-        double coeff_m00 = -2.*mu/d_m00/(d_m00+d_p00);
-        double coeff_p00 = -2.*mu/d_p00/(d_m00+d_p00);
-        double coeff_0m0 = -2.*mu/d_0m0/(d_0m0+d_0p0);
-        double coeff_0p0 = -2.*mu/d_0p0/(d_0m0+d_0p0);
+        double coeff_m00 = -2*mu/d_m00/(d_m00+d_p00);
+        double coeff_p00 = -2*mu/d_p00/(d_m00+d_p00);
+        double coeff_0m0 = -2*mu/d_0m0/(d_0m0+d_0p0);
+        double coeff_0p0 = -2*mu/d_0p0/(d_0m0+d_0p0);
 
         //---------------------------------------------------------------------
         // diag scaling
@@ -610,9 +621,11 @@ void PoissonSolverFaces::setup_linear_system_u()
         rhs_u_p[u_idx] /= diag;
 
         //---------------------------------------------------------------------
-        // addition to diagonal elements
+        // insert the coefficients in the matrix
         //---------------------------------------------------------------------
+
         ierr = MatSetValue(A, u_idx_g, u_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
+
         if(wall_m00)
         {
           if(!is_interface_p00)
@@ -644,7 +657,7 @@ void PoissonSolverFaces::setup_linear_system_u()
         {
           if(!is_interface_m00)
           {
-            p4est_locidx_t u_tmp = faces->q2u(qp_idx, dir::f_m00);
+            p4est_locidx_t u_tmp = faces->q2u(qm_idx, dir::f_m00);
             p4est_gloidx_t u_tmp_g;
             if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
             else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
@@ -657,7 +670,7 @@ void PoissonSolverFaces::setup_linear_system_u()
         }
         else if(!is_interface_p00)
         {
-          p4est_locidx_t u_tmp = faces->q2u(qm_idx, dir::f_p00);
+          p4est_locidx_t u_tmp = faces->q2u(qp_idx, dir::f_p00);
           p4est_gloidx_t u_tmp_g;
           if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
           else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
@@ -687,7 +700,8 @@ void PoissonSolverFaces::setup_linear_system_u()
             ngbd.resize(0);
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1);
 #ifdef CASL_THROWS
-            if(ngbd.size()!=1) throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
+            if(ngbd.size()!=1 && ngbd[0].level==quad->level)
+              throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
             p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_p00);
             p4est_gloidx_t u_tmp_g;
@@ -700,7 +714,8 @@ void PoissonSolverFaces::setup_linear_system_u()
             ngbd.resize(0);
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0,-1);
 #ifdef CASL_THROWS
-            if(ngbd.size()!=1) throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
+            if(ngbd.size()!=1 && ngbd[0].level==quad->level)
+              throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
             p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_m00);
             p4est_gloidx_t u_tmp_g;
@@ -732,7 +747,8 @@ void PoissonSolverFaces::setup_linear_system_u()
             ngbd.resize(0);
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 1);
 #ifdef CASL_THROWS
-            if(ngbd.size()!=1) throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
+            if(ngbd.size()!=1 && ngbd[0].level==quad->level)
+              throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
             p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_p00);
             p4est_gloidx_t u_tmp_g;
@@ -745,7 +761,8 @@ void PoissonSolverFaces::setup_linear_system_u()
             ngbd.resize(0);
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1);
 #ifdef CASL_THROWS
-            if(ngbd.size()!=1) throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
+            if(ngbd.size()!=1 && ngbd[0].level==quad->level)
+              throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
             p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_m00);
             p4est_gloidx_t u_tmp_g;
@@ -761,7 +778,6 @@ void PoissonSolverFaces::setup_linear_system_u()
 
         continue;
       }
-
     }
 
     vector<Voronoi2DPoint> *points;
@@ -772,10 +788,14 @@ void PoissonSolverFaces::setup_linear_system_u()
     /* integrally in positive domain */
     if(partition->size()==0)
     {
-      ierr = MatSetValue(A, u_idx_g, u_idx_g, 0, ADD_VALUES); CHKERRXX(ierr);
+      ierr = MatSetValue(A, u_idx_g, u_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
       rhs_u_p[u_idx] = 0;
       continue;
     }
+
+    double volume = voro.volume();
+    ierr = MatSetValue(A, u_idx_g, u_idx_g, volume*diag_add, ADD_VALUES); CHKERRXX(ierr);
+    rhs_u_p[u_idx] *= volume;
 
     /* bulk case, finite volume on voronoi cell */
     Point2 pc(x,y);
@@ -890,11 +910,14 @@ void PoissonSolverFaces::setup_linear_system_u()
         /* add coefficients in the matrix */
         m_idx_g = (*points)[m].n;
         if(m_idx_g<faces->num_local[0]) m_idx_g += proc_offset[0][p4est->mpirank];
-        else                            m_idx_g = (m_idx_g-faces->num_local[0]) + proc_offset[0][faces->nonlocal_ranks[0][m_idx_g-faces->num_local[0]]];
+        else
+        {
+          m_idx_g = m_idx_g - faces->num_local[0];
+          m_idx_g = faces->ghost_local_num[0][m_idx_g] + proc_offset[0][faces->nonlocal_ranks[0][m_idx_g]];
+        }
 
         ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
         ierr = MatSetValue(A, u_idx_g, m_idx_g,-mu*s/d, ADD_VALUES); CHKERRXX(ierr);
-
       }
     }
   }
@@ -905,6 +928,8 @@ void PoissonSolverFaces::setup_linear_system_u()
   ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
   ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
 
+//  VecView(rhs_u, PETSC_VIEWER_STDOUT_WORLD);
+//  MatView(A, PETSC_VIEWER_STDOUT_WORLD);
 
   /* take care of the nullspace if needed */
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace_u, 1, MPI_INT, MPI_LAND, p4est->mpicomm); SC_CHECK_MPI(mpiret);

@@ -40,9 +40,10 @@ void my_p4est_faces_t::init_faces()
       {
         ngbd.resize(0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, -1, 0);
+
         if(ngbd.size()==1)
         {
-          if(ngbd[0].level>quad->level /* the neighbor is a bigger cell */
+          if(ngbd[0].level<quad->level /* the neighbor is a bigger cell */
              || (ngbd[0].p.piggy3.local_num <  p4est->local_num_quadrants && q2u_[dir::f_p00][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
              || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
             q2u_[dir::f_m00][quad_idx] = num_local[0]++;
@@ -68,7 +69,7 @@ void my_p4est_faces_t::init_faces()
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 1, 0);
         if(ngbd.size()==1)
         {
-          if(ngbd[0].level>quad->level /* the neighbor is a bigger cell */
+          if(ngbd[0].level<quad->level /* the neighbor is a bigger cell */
              || (ngbd[0].p.piggy3.local_num < p4est->local_num_quadrants && q2u_[dir::f_m00][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
              || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
             q2u_[dir::f_p00][quad_idx] = num_local[0]++;
@@ -94,7 +95,7 @@ void my_p4est_faces_t::init_faces()
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, -1);
         if(ngbd.size()==1)
         {
-          if(ngbd[0].level>quad->level /* the neighbor is a bigger cell */
+          if(ngbd[0].level<quad->level /* the neighbor is a bigger cell */
              || (ngbd[0].p.piggy3.local_num < p4est->local_num_quadrants && q2u_[dir::f_0p0][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
              || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
             q2u_[dir::f_0m0][quad_idx] = num_local[1]++;
@@ -120,7 +121,7 @@ void my_p4est_faces_t::init_faces()
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 1);
         if(ngbd.size()==1)
         {
-          if(ngbd[0].level>quad->level /* the neighbor is a bigger cell */
+          if(ngbd[0].level<quad->level /* the neighbor is a bigger cell */
              || (ngbd[0].p.piggy3.local_num < p4est->local_num_quadrants && q2u_[dir::f_0m0][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
              || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
             q2u_[dir::f_0p0][quad_idx] = num_local[1]++;
@@ -671,7 +672,7 @@ double my_p4est_faces_t::u_at_point_xyz(Vec u, double *xyz, BoundaryConditionTyp
   double xyz_clip[2];
 
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[p4est->trees->elem_count-1 + P4EST_CHILDREN-1];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1];
   double xmin = p4est->connectivity->vertices[3*vm + 0];
   double ymin = p4est->connectivity->vertices[3*vm + 1];
   double xmax = p4est->connectivity->vertices[3*vp + 0];
