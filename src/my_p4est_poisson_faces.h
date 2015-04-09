@@ -91,6 +91,14 @@ class PoissonSolverFaces
   PoissonSolverFaces(const PoissonSolverFaces& other);
   PoissonSolverFaces& operator=(const PoissonSolverFaces& other);
 
+  inline p4est_topidx_t face_global_number(p4est_locidx_t f_idx, int dir)
+  {
+    if(f_idx<faces->num_local[dir])
+      return f_idx + proc_offset[dir][p4est->mpirank];
+    f_idx -= faces->num_local[dir];
+    return faces->ghost_local_num[dir][f_idx] + proc_offset[dir][faces->nonlocal_ranks[dir][f_idx]];
+  }
+
 public:
   PoissonSolverFaces(const my_p4est_faces_t *faces, const my_p4est_node_neighbors_t *ngbd);
   ~PoissonSolverFaces();
@@ -117,9 +125,17 @@ public:
 
   inline bool is_nullspace_v() { return matrix_has_nullspace_v; }
 
+#ifdef P4_TO_P8
+  void solve(Vec solution_u, Vec solution_v, Vec solution_w, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
+#else
   void solve(Vec solution_u, Vec solution_v, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
+#endif
 
-  void solve_u(Vec solution_u, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
+  void solve_u(Vec solution_u);
+  void solve_v(Vec solution_v);
+#ifdef P4_TO_P8
+  void solve_w(Vec solution_w);
+#endif
 
   void print_partition_u_VTK(const char *file);
 };
