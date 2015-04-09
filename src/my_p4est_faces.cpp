@@ -18,8 +18,13 @@ void my_p4est_faces_t::init_faces()
   for(int d=0; d<P4EST_FACES; ++d)
     q2u_[d].resize(p4est->local_num_quadrants + ghost->ghosts.elem_count, NO_VELOCITY);
 
-  num_local[0] = 0;
-  num_local[1] = 0;
+  for(int d=0; d<P4EST_DIM; ++d)
+  {
+    num_local[d] = 0;
+    num_ghost[d] = 0;
+    nonlocal_ranks[d].resize(0);
+    ghost_local_num[d].resize(0);
+  }
 
   vector<p4est_quadrant_t> ngbd;
   vector< vector<faces_comm_1_t> > buff_query1(p4est->mpisize);
@@ -39,8 +44,11 @@ void my_p4est_faces_t::init_faces()
       else
       {
         ngbd.resize(0);
+#ifdef P4_TO_P8
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, -1, 0, 0);
+#else
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, -1, 0);
-
+#endif
         if(ngbd.size()==1)
         {
           if(ngbd[0].level<quad->level /* the neighbor is a bigger cell */
@@ -66,7 +74,11 @@ void my_p4est_faces_t::init_faces()
       else
       {
         ngbd.resize(0);
+#ifdef P4_TO_P8
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 1, 0, 0);
+#else
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 1, 0);
+#endif
         if(ngbd.size()==1)
         {
           if(ngbd[0].level<quad->level /* the neighbor is a bigger cell */
@@ -92,7 +104,11 @@ void my_p4est_faces_t::init_faces()
       else
       {
         ngbd.resize(0);
+#ifdef P4_TO_P8
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, -1, 0);
+#else
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, -1);
+#endif
         if(ngbd.size()==1)
         {
           if(ngbd[0].level<quad->level /* the neighbor is a bigger cell */
@@ -118,7 +134,11 @@ void my_p4est_faces_t::init_faces()
       else
       {
         ngbd.resize(0);
+#ifdef P4_TO_P8
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 1, 0);
+#else
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 1);
+#endif
         if(ngbd.size()==1)
         {
           if(ngbd[0].level<quad->level /* the neighbor is a bigger cell */
@@ -138,20 +158,72 @@ void my_p4est_faces_t::init_faces()
             q2u_[dir::f_0p0][quad_idx] = q2u_[dir::f_0m0][ngbd[0].p.piggy3.local_num];
         }
       }
+
+#ifdef P4_TO_P8
+      if(is_quad_zmWall(p4est, tree_idx, quad))
+        q2u_[dir::f_00m][quad_idx] = num_local[2]++;
+      else
+      {
+        ngbd.resize(0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 0,-1);
+        if(ngbd.size()==1)
+        {
+          if(ngbd[0].level<quad->level /* the neighbor is a bigger cell */
+             || (ngbd[0].p.piggy3.local_num < p4est->local_num_quadrants && q2u_[dir::f_00p][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
+             || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
+            q2u_[dir::f_00m][quad_idx] = num_local[2]++;
+          else if(ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants < ghost->proc_offsets[p4est->mpirank])
+          {
+            p4est_locidx_t ghost_idx = ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants;
+            int r = quad_find_ghost_owner(ghost, ghost_idx);
+            const p4est_quadrant_t* g = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, ghost_idx);
+            faces_comm_1_t c; c.local_num = g->p.piggy3.local_num; c.dir = dir::f_00p;
+            buff_query1[r].push_back(c);
+            map[r].push_back(quad_idx);
+          }
+          else
+            q2u_[dir::f_00m][quad_idx] = q2u_[dir::f_00p][ngbd[0].p.piggy3.local_num];
+        }
+      }
+
+      if(is_quad_zpWall(p4est, tree_idx, quad))
+        q2u_[dir::f_00p][quad_idx] = num_local[2]++;
+      else
+      {
+        ngbd.resize(0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 0, 1);
+        if(ngbd.size()==1)
+        {
+          if(ngbd[0].level<quad->level /* the neighbor is a bigger cell */
+             || (ngbd[0].p.piggy3.local_num < p4est->local_num_quadrants && q2u_[dir::f_00m][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
+             || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
+            q2u_[dir::f_00p][quad_idx] = num_local[2]++;
+          else if(ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants < ghost->proc_offsets[p4est->mpirank])
+          {
+            p4est_locidx_t ghost_idx = ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants;
+            int r = quad_find_ghost_owner(ghost, ghost_idx);
+            const p4est_quadrant_t* g = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, ghost_idx);
+            faces_comm_1_t c; c.local_num = g->p.piggy3.local_num; c.dir = dir::f_00m;
+            buff_query1[r].push_back(c);
+            map[r].push_back(quad_idx);
+          }
+          else
+            q2u_[dir::f_00p][quad_idx] = q2u_[dir::f_00m][ngbd[0].p.piggy3.local_num];
+        }
+      }
+#endif
     }
   }
 
 
   /* synchronize number of owned faces with the rest of the processes */
-  global_owned_indeps[0].resize(p4est->mpisize);
-  global_owned_indeps[0][p4est->mpirank] = num_local[0];
-  mpiret = MPI_Allgather(&num_local[0], 1, P4EST_MPI_LOCIDX, &global_owned_indeps[0][0], 1, P4EST_MPI_LOCIDX, p4est->mpicomm);
-  SC_CHECK_MPI(mpiret);
-
-  global_owned_indeps[1].resize(p4est->mpisize);
-  global_owned_indeps[1][p4est->mpirank] = num_local[1];
-  mpiret = MPI_Allgather(&num_local[1], 1, P4EST_MPI_LOCIDX, &global_owned_indeps[1][0], 1, P4EST_MPI_LOCIDX, p4est->mpicomm);
-  SC_CHECK_MPI(mpiret);
+  for(int d=0; d<P4EST_DIM; ++d)
+  {
+    global_owned_indeps[d].resize(p4est->mpisize);
+    global_owned_indeps[d][p4est->mpirank] = num_local[d];
+    mpiret = MPI_Allgather(&num_local[d], 1, P4EST_MPI_LOCIDX, &global_owned_indeps[d][0], 1, P4EST_MPI_LOCIDX, p4est->mpicomm);
+    SC_CHECK_MPI(mpiret);
+  }
 
 
   /* send the queries to fill in the local information */
@@ -195,10 +267,6 @@ void my_p4est_faces_t::init_faces()
   buff_recv_comm1.clear();
 
   /* get the reply and fill in the missing local information */
-  num_ghost[0] = 0;
-  num_ghost[1] = 0;
-  nonlocal_ranks[0].resize(0);
-  nonlocal_ranks[1].resize(0);
   vector<p4est_locidx_t> buff_recv_locidx;
   nb_recv = p4est->mpisize;
   while(nb_recv>0)
@@ -232,6 +300,15 @@ void my_p4est_faces_t::init_faces()
         nonlocal_ranks[1].push_back(r);
         num_ghost[1]++;
         break;
+#ifdef P4_TO_P8
+      case dir::f_00m:
+      case dir::f_00p:
+        q2u_[buff_query1[r][n].dir==dir::f_00m ? dir::f_00p : dir::f_00m][map[r][n]] = num_ghost[2]+num_local[2];
+        ghost_local_num[2].push_back(buff_recv_locidx[n]);
+        nonlocal_ranks[2].push_back(r);
+        num_ghost[2]++;
+        break;
+#endif
       }
     }
 
@@ -341,7 +418,11 @@ void my_p4est_faces_t::init_faces()
       else
       {
         ngbd.resize(0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, -1, 0);
+#ifdef P4_TO_P8
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx,-1, 0, 0);
+#else
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx,-1, 0);
+#endif
         if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[dir::f_m00]!=NO_VELOCITY)
         {
           if(ngbd.size()==0 || q2u_[dir::f_p00][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
@@ -368,7 +449,11 @@ void my_p4est_faces_t::init_faces()
       else
       {
         ngbd.resize(0);
+#ifdef P4_TO_P8
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 1, 0, 0);
+#else
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 1, 0);
+#endif
         if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[dir::f_p00]!=NO_VELOCITY)
         {
           if(ngbd.size()==0 || q2u_[dir::f_m00][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
@@ -395,7 +480,11 @@ void my_p4est_faces_t::init_faces()
       else
       {
         ngbd.resize(0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, -1);
+#ifdef P4_TO_P8
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0,-1, 0);
+#else
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0,-1);
+#endif
         if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[dir::f_0m0]!=NO_VELOCITY)
         {
           if(ngbd.size()==0 || q2u_[dir::f_0p0][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
@@ -422,7 +511,11 @@ void my_p4est_faces_t::init_faces()
       else
       {
         ngbd.resize(0);
+#ifdef P4_TO_P8
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 1, 0);
+#else
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 1);
+#endif
         if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[dir::f_0p0]!=NO_VELOCITY)
         {
           if(ngbd.size()==0 || q2u_[dir::f_0m0][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
@@ -439,14 +532,70 @@ void my_p4est_faces_t::init_faces()
         }
       }
 
+#ifdef P4_TO_P8
+      if(is_quad_zmWall(p4est, tree_idx, quad))
+      {
+        q2u_[dir::f_00m][quad_idx] = num_local[2] + num_ghost[2];
+        ghost_local_num[2].push_back(buff_recv_comm2[n].local_num[dir::f_00m]);
+        nonlocal_ranks[2].push_back(buff_recv_comm2[n].rank[dir::f_00m]);
+        num_ghost[2]++;
+      }
+      else
+      {
+        ngbd.resize(0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 0,-1);
+        if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[dir::f_00m]!=NO_VELOCITY)
+        {
+          if(ngbd.size()==0 || q2u_[dir::f_00p][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
+          {
+            q2u_[dir::f_00m][quad_idx] = num_local[2] + num_ghost[2];
+            ghost_local_num[2].push_back(buff_recv_comm2[n].local_num[dir::f_00m]);
+            nonlocal_ranks[2].push_back(buff_recv_comm2[n].rank[dir::f_00m]);
+            num_ghost[2]++;
+          }
+          else
+          {
+            q2u_[dir::f_00m][quad_idx] = q2u_[dir::f_00p][ngbd[0].p.piggy3.local_num];
+          }
+        }
+      }
+
+      if(is_quad_zpWall(p4est, tree_idx, quad))
+      {
+        q2u_[dir::f_00p][quad_idx] = num_local[2] + num_ghost[2];
+        ghost_local_num[2].push_back(buff_recv_comm2[n].local_num[dir::f_00p]);
+        nonlocal_ranks[2].push_back(buff_recv_comm2[n].rank[dir::f_00p]);
+        num_ghost[2]++;
+      }
+      else
+      {
+        ngbd.resize(0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 0, 1);
+        if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[dir::f_00p]!=NO_VELOCITY)
+        {
+          if(ngbd.size()==0 || q2u_[dir::f_00m][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
+          {
+            q2u_[dir::f_00p][quad_idx] = num_local[2] + num_ghost[2];
+            ghost_local_num[2].push_back(buff_recv_comm2[n].local_num[dir::f_00p]);
+            nonlocal_ranks[2].push_back(buff_recv_comm2[n].rank[dir::f_00p]);
+            num_ghost[2]++;
+          }
+          else
+          {
+            q2u_[dir::f_00p][quad_idx] = q2u_[dir::f_00m][ngbd[0].p.piggy3.local_num];
+          }
+        }
+      }
+#endif
+
     }
     nb_recv--;
   }
 
 
   /* now construct the velocity to quadrant link */
-  u2q_[0].resize(num_local[0] + num_ghost[0]);
-  u2q_[1].resize(num_local[1] + num_ghost[1]);
+  for(int d=0; d<P4EST_DIM; ++d)
+    u2q_[d].resize(num_local[d] + num_ghost[d]);
 
   for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
   {
@@ -458,6 +607,10 @@ void my_p4est_faces_t::init_faces()
       if(q2u_[dir::f_p00][quad_idx] != NO_VELOCITY) { u2q_[0][q2u_[dir::f_p00][quad_idx]].quad_idx = quad_idx; u2q_[0][q2u_[dir::f_p00][quad_idx]].tree_idx = tree_idx; }
       if(q2u_[dir::f_0m0][quad_idx] != NO_VELOCITY) { u2q_[1][q2u_[dir::f_0m0][quad_idx]].quad_idx = quad_idx; u2q_[1][q2u_[dir::f_0m0][quad_idx]].tree_idx = tree_idx; }
       if(q2u_[dir::f_0p0][quad_idx] != NO_VELOCITY) { u2q_[1][q2u_[dir::f_0p0][quad_idx]].quad_idx = quad_idx; u2q_[1][q2u_[dir::f_0p0][quad_idx]].tree_idx = tree_idx; }
+#ifdef P4_TO_P8
+      if(q2u_[dir::f_00m][quad_idx] != NO_VELOCITY) { u2q_[2][q2u_[dir::f_00m][quad_idx]].quad_idx = quad_idx; u2q_[2][q2u_[dir::f_00m][quad_idx]].tree_idx = tree_idx; }
+      if(q2u_[dir::f_00p][quad_idx] != NO_VELOCITY) { u2q_[2][q2u_[dir::f_00p][quad_idx]].quad_idx = quad_idx; u2q_[2][q2u_[dir::f_00p][quad_idx]].tree_idx = tree_idx; }
+#endif
     }
   }
 
@@ -469,6 +622,10 @@ void my_p4est_faces_t::init_faces()
     if(q2u_[dir::f_p00][quad_idx] != NO_VELOCITY && u2q_[0][q2u_[dir::f_p00][quad_idx]].quad_idx == -1) { u2q_[0][q2u_[dir::f_p00][quad_idx]].quad_idx = quad_idx; }
     if(q2u_[dir::f_0m0][quad_idx] != NO_VELOCITY && u2q_[1][q2u_[dir::f_0m0][quad_idx]].quad_idx == -1) { u2q_[1][q2u_[dir::f_0m0][quad_idx]].quad_idx = quad_idx; }
     if(q2u_[dir::f_0p0][quad_idx] != NO_VELOCITY && u2q_[1][q2u_[dir::f_0p0][quad_idx]].quad_idx == -1) { u2q_[1][q2u_[dir::f_0p0][quad_idx]].quad_idx = quad_idx; }
+#ifdef P4_TO_P8
+    if(q2u_[dir::f_00m][quad_idx] != NO_VELOCITY && u2q_[2][q2u_[dir::f_00m][quad_idx]].quad_idx == -1) { u2q_[2][q2u_[dir::f_00m][quad_idx]].quad_idx = quad_idx; }
+    if(q2u_[dir::f_00p][quad_idx] != NO_VELOCITY && u2q_[2][q2u_[dir::f_00p][quad_idx]].quad_idx == -1) { u2q_[2][q2u_[dir::f_00p][quad_idx]].quad_idx = quad_idx; }
+#endif
   }
 
   // check data for debugging
@@ -547,6 +704,35 @@ double my_p4est_faces_t::y_fr_u(p4est_locidx_t u_idx) const
   return y + .5*dy;
 }
 
+#ifdef P4_TO_P8
+double my_p4est_faces_t::z_fr_u(p4est_locidx_t u_idx) const
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  u2q(u_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
+
+  double z = quad_z_fr_k(quad) + tree_zmin;
+  double dz = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  return z + .5*dz;
+}
+#endif
+
 
 double my_p4est_faces_t::x_fr_v(p4est_locidx_t v_idx) const
 {
@@ -604,6 +790,117 @@ double my_p4est_faces_t::y_fr_v(p4est_locidx_t v_idx) const
   else return y + (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 }
 
+#ifdef P4_TO_P8
+double my_p4est_faces_t::z_fr_v(p4est_locidx_t v_idx) const
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  v2q(v_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
+
+  double z = quad_z_fr_k(quad) + tree_zmin;
+  double dz = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  return z + .5*dz;
+}
+
+double my_p4est_faces_t::x_fr_w(p4est_locidx_t w_idx) const
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  w2q(w_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+
+  double x = quad_x_fr_i(quad) + tree_xmin;
+  double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  return x + .5*dx;
+}
+
+double my_p4est_faces_t::y_fr_w(p4est_locidx_t w_idx) const
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  w2q(w_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
+
+  double y = quad_y_fr_j(quad) + tree_ymin;
+  double dy = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  return y + .5*dy;
+}
+
+double my_p4est_faces_t::z_fr_w(p4est_locidx_t w_idx) const
+{
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  w2q(w_idx, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
+
+  double z = quad_z_fr_k(quad) + tree_zmin;
+
+  if(q2u(quad_idx, dir::f_00m) == w_idx) return z;
+  else return z + (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+}
+#endif
+
 
 void my_p4est_faces_t::xyz_fr_u(p4est_locidx_t u_idx, double* xyz) const
 {
@@ -631,7 +928,12 @@ void my_p4est_faces_t::xyz_fr_u(p4est_locidx_t u_idx, double* xyz) const
   xyz[0] = quad_x_fr_i(quad) + tree_xmin;
   xyz[1] = quad_y_fr_j(quad) + tree_ymin;
 
-  if(q2u(quad_idx, dir::f_p00) == u_idx) xyz[1] += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+#ifdef P4_TO_P8
+  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
+  xyz[2] = quad_z_fr_k(quad) + tree_zmin;
+#endif
+
+  if(q2u(quad_idx, dir::f_p00) == u_idx) xyz[0] += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 }
 
 
@@ -661,36 +963,50 @@ void my_p4est_faces_t::xyz_fr_v(p4est_locidx_t v_idx, double* xyz) const
   xyz[0] = quad_x_fr_i(quad) + tree_xmin;
   xyz[1] = quad_y_fr_j(quad) + tree_ymin;
 
+#ifdef P4_TO_P8
+  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
+  xyz[2] = quad_z_fr_k(quad) + tree_zmin;
+#endif
+
   if(q2u(quad_idx, dir::f_0p0) == v_idx) xyz[1] += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 }
 
 
-
-double my_p4est_faces_t::u_at_point_xyz(Vec u, double *xyz, BoundaryConditionType bc_type, Vec phi, char order)
+#ifdef P4_TO_P8
+void my_p4est_faces_t::xyz_fr_w(p4est_locidx_t w_idx, double* xyz) const
 {
-  /* TODO ... need an actual class, like the interpolation on nodes .... */
-  double xyz_clip[2];
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  w2q(w_idx, quad_idx, tree_idx);
 
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
 
-  xyz_clip[0] = xyz[0]<xmin ? xmin : (xyz[0]>xmax ? xmax : xyz[0]);
-  xyz_clip[1] = xyz[1]<ymin ? ymin : (xyz[1]>ymax ? ymax : xyz[1]);
+  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
 
-  p4est_quadrant_t best_match;
-  std::vector<p4est_quadrant_t> remote_matches;
-  ngbd_c->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
+  xyz[0] = quad_x_fr_i(quad) + tree_xmin;
+  xyz[1] = quad_y_fr_j(quad) + tree_ymin;
+
+#ifdef P4_TO_P8
+  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
+  xyz[2] = quad_z_fr_k(quad) + tree_zmin;
+#endif
+
+  if(q2u(quad_idx, dir::f_00p) == w_idx) xyz[2] += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 }
-
-
-
-
-
-
+#endif
 
 
 

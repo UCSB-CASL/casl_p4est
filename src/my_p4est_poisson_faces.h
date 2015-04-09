@@ -6,8 +6,10 @@
 #ifdef P4_TO_P8
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_tools.h>
-#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_interpolating_function_host.h>
 #include <src/my_p8est_utils.h>
+#include <src/my_p8est_faces.h>
+#include <src/voronoi3D.h>
 #else
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_tools.h>
@@ -65,7 +67,11 @@ class PoissonSolverFaces
   int matrix_has_nullspace_w;
 #endif
 
+#ifdef P4_TO_P8
+  void compute_voronoi_cell_u(p4est_locidx_t u_idx, Voronoi3D& voro) const;
+#else
   void compute_voronoi_cell_u(p4est_locidx_t u_idx, Voronoi2D& voro) const;
+#endif
   void preallocate_matrix_u();
   void setup_linear_system_u();
 
@@ -95,6 +101,9 @@ public:
   void set_bc(const BoundaryConditions2D& bc_u, const BoundaryConditions2D& bc_v);
 #endif
 
+  inline bool is_nullspace_u() { return matrix_has_nullspace_u; }
+
+  inline bool is_nullspace_v() { return matrix_has_nullspace_v; }
 
   void solve(Vec solution_u, Vec solution_v, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
 

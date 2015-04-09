@@ -79,14 +79,14 @@ public:
      * \brief set the point at the center of the partition
      * \param pc the coordinates of the point
      */
-  void set_Center_Point( int nc, Point3 &pc, double scaling );
+  void set_Center_Point( int nc, Point3 &pc, double scaling=1 );
 
   /*!
      * \brief set the coordinates of the point at the center of the partition
      * \param x the first coordinate of the point
      * \param y the second coordinate of the point
      */
-  void set_Center_Point( int nc, double x, double y, double z, double scaling );
+  void set_Center_Point( int nc, double x, double y, double z, double scaling=1 );
 
   /*!
      * \brief get the point at the center of the partition

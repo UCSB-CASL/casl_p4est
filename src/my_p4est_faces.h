@@ -4,13 +4,16 @@
 #ifdef P4_TO_P8
 #include <p8est.h>
 #include <p8est_ghost.h>
+#include <src/CASL_math.h>
 #include <src/my_p8est_tools.h>
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_cell_neighbors.h>
 #else
 #include <p4est.h>
 #include <p4est_ghost.h>
+#include <src/CASL_math.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_utils.h>
-#include <src/CASL_math.h>
 #include <src/my_p4est_cell_neighbors.h>
 #endif
 
@@ -119,16 +122,41 @@ public:
     tree_idx = u2q_[1][v_idx].tree_idx;
   }
 
+
+  /*!
+  * \brief get the local index of the neighbor cell
+  * \param w_idx the index of the face
+  * \return the local index of the neighbor cell
+  */
+  inline void w2q(p4est_locidx_t w_idx, p4est_locidx_t& quad_idx, p4est_topidx_t& tree_idx) const
+  {
+    quad_idx = u2q_[2][w_idx].quad_idx;
+    tree_idx = u2q_[2][w_idx].tree_idx;
+  }
+
   double x_fr_u(p4est_locidx_t u_idx) const;
   double y_fr_u(p4est_locidx_t u_idx) const;
+#ifdef P4_TO_P8
+  double z_fr_u(p4est_locidx_t u_idx) const;
+#endif
 
   double x_fr_v(p4est_locidx_t v_idx) const;
   double y_fr_v(p4est_locidx_t v_idx) const;
+#ifdef P4_TO_P8
+  double z_fr_v(p4est_locidx_t v_idx) const;
+#endif
+
+#ifdef P4_TO_P8
+  double x_fr_w(p4est_locidx_t w_idx) const;
+  double y_fr_w(p4est_locidx_t w_idx) const;
+  double z_fr_w(p4est_locidx_t w_idx) const;
+#endif
 
   void xyz_fr_u(p4est_locidx_t u_idx, double* xyz) const;
   void xyz_fr_v(p4est_locidx_t v_idx, double* xyz) const;
-
-  double u_at_point_xyz(Vec u, double *xyz, BoundaryConditionType bc_type, Vec phi, char order);
+#ifdef P4_TO_P8
+  void xyz_fr_w(p4est_locidx_t w_idx, double* xyz) const;
+#endif
 };
 
 
