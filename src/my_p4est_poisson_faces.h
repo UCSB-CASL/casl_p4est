@@ -56,6 +56,12 @@ class PoissonSolverFaces
   const BoundaryConditions2D *bc_v;
 #endif
 
+#ifdef P4_TO_P8
+  vector<Voronoi3D> voro;
+#else
+  vector<Voronoi2D> voro;
+#endif
+
   Mat A;
   MatNullSpace A_null_space;
   KSP ksp;
@@ -67,11 +73,7 @@ class PoissonSolverFaces
   int matrix_has_nullspace_w;
 #endif
 
-#ifdef P4_TO_P8
-  void compute_voronoi_cell_u(p4est_locidx_t u_idx, Voronoi3D& voro) const;
-#else
-  void compute_voronoi_cell_u(p4est_locidx_t u_idx, Voronoi2D& voro) const;
-#endif
+  void compute_voronoi_cell_u(p4est_locidx_t u_idx);
   void preallocate_matrix_u();
   void setup_linear_system_u();
 
