@@ -220,7 +220,7 @@ void PoissonSolverFaces::compute_voronoi_cell_u(p4est_locidx_t u_idx)
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
 
-  faces->u2q(u_idx, quad_idx, tree_idx);
+  faces->f2q(u_idx, dir::x, quad_idx, tree_idx);
 
   p4est_tree_t *tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
   p4est_quadrant_t *quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
@@ -230,10 +230,10 @@ void PoissonSolverFaces::compute_voronoi_cell_u(p4est_locidx_t u_idx)
   double dz = dx;
 #endif
 
-  double x = faces->x_fr_u(u_idx);
-  double y = faces->y_fr_u(u_idx);
+  double x = faces->x_fr_f(u_idx, dir::x);
+  double y = faces->y_fr_f(u_idx, dir::x);
 #ifdef P4_TO_P8
-  double z = faces->z_fr_u(u_idx);
+  double z = faces->z_fr_f(u_idx, dir::x);
 #endif
 
 #ifdef P4_TO_P8
@@ -253,7 +253,7 @@ void PoissonSolverFaces::compute_voronoi_cell_u(p4est_locidx_t u_idx)
   p4est_topidx_t tm_idx=-1, tp_idx=-1;
   p4est_quadrant_t qm, qp;
   vector<p4est_quadrant_t> ngbd;
-  if(faces->q2u(quad_idx, dir::f_m00)==u_idx)
+  if(faces->q2f(quad_idx, dir::f_m00)==u_idx)
   {
     qp_idx = quad_idx;
     tp_idx = tree_idx;
@@ -392,23 +392,23 @@ void PoissonSolverFaces::compute_voronoi_cell_u(p4est_locidx_t u_idx)
   for(unsigned int m=0; m<ngbd.size(); ++m)
   {
     p4est_locidx_t q_tmp = ngbd[m].p.piggy3.local_num;
-    p4est_locidx_t u_tmp = faces->q2u(q_tmp, dir::f_m00);
-    if(u_tmp!=NO_VELOCITY && u_tmp!=u_idx)
+    p4est_locidx_t f_tmp = faces->q2f(q_tmp, dir::f_m00);
+    if(f_tmp!=NO_VELOCITY && f_tmp!=u_idx)
     {
 #ifdef P4_TO_P8
-      voro[u_idx].push(u_tmp, faces->x_fr_u(u_tmp), faces->y_fr_u(u_tmp), faces->z_fr_u(u_tmp));
+      voro[u_idx].push(f_tmp, faces->x_fr_f(f_tmp, dir::x), faces->y_fr_f(f_tmp, dir::x), faces->z_fr_f(f_tmp, dir::x));
 #else
-      voro[u_idx].push(u_tmp, faces->x_fr_u(u_tmp), faces->y_fr_u(u_tmp));
+      voro[u_idx].push(f_tmp, faces->x_fr_f(f_tmp, dir::x), faces->y_fr_f(f_tmp, dir::x));
 #endif
     }
 
-    u_tmp = faces->q2u(q_tmp, dir::f_p00);
-    if(u_tmp!=NO_VELOCITY && u_tmp!=u_idx)
+    f_tmp = faces->q2f(q_tmp, dir::f_p00);
+    if(f_tmp!=NO_VELOCITY && f_tmp!=u_idx)
     {
 #ifdef P4_TO_P8
-      voro[u_idx].push(u_tmp, faces->x_fr_u(u_tmp), faces->y_fr_u(u_tmp), faces->z_fr_u(u_tmp));
+      voro[u_idx].push(f_tmp, faces->x_fr_f(f_tmp, dir::x), faces->y_fr_f(f_tmp, dir::x), faces->z_fr_f(f_tmp, dir::x));
 #else
-      voro[u_idx].push(u_tmp, faces->x_fr_u(u_tmp), faces->y_fr_u(u_tmp));
+      voro[u_idx].push(f_tmp, faces->x_fr_f(f_tmp, dir::x), faces->y_fr_f(f_tmp, dir::x));
 #endif
     }
   }
@@ -475,18 +475,292 @@ void PoissonSolverFaces::compute_voronoi_cell_u(p4est_locidx_t u_idx)
 }
 
 
-void PoissonSolverFaces::preallocate_matrix_u()
+
+
+void PoissonSolverFaces::compute_voronoi_cell_v(p4est_locidx_t v_idx)
+{
+  voro[v_idx].clear();
+
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+
+  faces->f2q(v_idx, dir::y, quad_idx, tree_idx);
+
+  p4est_tree_t *tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+  p4est_quadrant_t *quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  double dy = dx;
+#ifdef P4_TO_P8
+  double dz = dx;
+#endif
+
+  double x = faces->x_fr_f(v_idx, dir::y);
+  double y = faces->y_fr_f(v_idx, dir::y);
+#ifdef P4_TO_P8
+  double z = faces->z_fr_f(v_idx, dir::y);
+#endif
+
+#ifdef P4_TO_P8
+  double phi_c = interp_phi(x,y,z);
+#else
+  double phi_c = interp_phi(x,y);
+#endif
+  /* far in the positive domain */
+#ifdef P4_TO_P8
+  if(phi_c > 2*MAX(dx_min,dy_min,dz_min))
+#else
+  if(phi_c > 2*MAX(dx_min,dy_min))
+#endif
+    return;
+
+  p4est_locidx_t qm_idx=-1, qp_idx=-1;
+  p4est_topidx_t tm_idx=-1, tp_idx=-1;
+  p4est_quadrant_t qm, qp;
+  vector<p4est_quadrant_t> ngbd;
+  if(faces->q2f(quad_idx, dir::f_0m0)==v_idx)
+  {
+    qp_idx = quad_idx;
+    tp_idx = tree_idx;
+    qp = *quad; qp.p.piggy3.local_num = qp_idx;
+    ngbd.clear();
+#ifdef P4_TO_P8
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0,-1, 0);
+#else
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0,-1);
+#endif
+    if(ngbd.size()>0)
+    {
+      qm = ngbd[0];
+      qm_idx = ngbd[0].p.piggy3.local_num;
+      tm_idx = ngbd[0].p.piggy3.which_tree;
+    }
+  }
+  else
+  {
+    qm_idx = quad_idx;
+    tm_idx = tree_idx;
+    qm = *quad; qm.p.piggy3.local_num = qm_idx;
+    ngbd.clear();
+#ifdef P4_TO_P8
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 1, 0);
+#else
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 1);
+#endif
+    if(ngbd.size()>0)
+    {
+      qp = ngbd[0];
+      qp_idx = ngbd[0].p.piggy3.local_num;
+      tp_idx = ngbd[0].p.piggy3.which_tree;
+    }
+  }
+
+  /* check for walls */
+#ifdef P4_TO_P8
+  if(qm_idx==-1 && bc_v->wallType(x,ymin,z)==DIRICHLET) return;
+  if(qp_idx==-1 && bc_v->wallType(x,ymax,z)==DIRICHLET) return;
+#else
+  if(qm_idx==-1 && bc_v->wallType(x,ymin)==DIRICHLET) return;
+  if(qp_idx==-1 && bc_v->wallType(x,ymax)==DIRICHLET) return;
+#endif
+
+  /* now gather the neighbor cells to get the potential voronoi neighbors */
+#ifdef P4_TO_P8
+  voro[v_idx].set_Center_Point(v_idx,x,y,z);
+#else
+  voro[v_idx].set_Center_Point(x,y);
+#endif
+
+//#ifdef P4_TO_P8
+//  if(qm_idx==-1 && bc_v->wallType(x,ymin,z)==NEUMANN) voro[v_idx].push(WALL_0m0, xmin-dx, ymin-dy,z);
+//  if(qp_idx==-1 && bc_v->wallType(x,ymax,z)==NEUMANN) voro[v_idx].push(WALL_0p0, xmax+dx, ymax+dy,z);
+//  if( (qm_idx==-1 || is_quad_ymWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ymWall(p4est, tp_idx, &qp)) ) voro[u_idx].push(WALL_0m0, x, y-dy, z);
+//  if( (qm_idx==-1 || is_quad_ypWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ypWall(p4est, tp_idx, &qp)) ) voro[u_idx].push(WALL_0p0, x, y+dy, z);
+//  if( (qm_idx==-1 || is_quad_zmWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_zmWall(p4est, tp_idx, &qp)) ) voro[u_idx].push(WALL_00m, x, y, z-dz);
+//  if( (qm_idx==-1 || is_quad_zpWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_zpWall(p4est, tp_idx, &qp)) ) voro[u_idx].push(WALL_00p, x, y, z+dz);
+//#else
+#ifndef P4_TO_P8
+  if(qm_idx==-1 && bc_v->wallType(x,ymin)==NEUMANN) voro[v_idx].push(WALL_0m0, x, ymin-dy);
+  if(qp_idx==-1 && bc_v->wallType(x,ymax)==NEUMANN) voro[v_idx].push(WALL_0p0, x, ymax+dy);
+  if( (qm_idx==-1 || is_quad_xmWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xmWall(p4est, tp_idx, &qp)) ) voro[v_idx].push(WALL_m00, x-dx, y);
+  if( (qm_idx==-1 || is_quad_xpWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xpWall(p4est, tp_idx, &qp)) ) voro[v_idx].push(WALL_p00, x+dx, y);
+#endif
+
+  /* gather neighbor cells */
+  ngbd.clear();
+  if(qm_idx!=-1)
+  {
+    ngbd.push_back(qm);
+#ifdef P4_TO_P8
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 1, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0, 1);
+
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 1,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 1, 1);
+
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0, 1);
+
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1, 1);
+#else
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1, 0);
+#endif
+  }
+
+  if(qp_idx!=-1)
+  {
+    ngbd.push_back(qp);
+#ifdef P4_TO_P8
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0,-1, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0, 1);
+
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0,-1,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0,-1, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1, 1);
+
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0, 1);
+
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1,-1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1, 1);
+#else
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 0);
+    ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0);
+#endif
+  }
+
+  /* add the faces to the voronoi partition */
+  for(unsigned int m=0; m<ngbd.size(); ++m)
+  {
+    p4est_locidx_t q_tmp = ngbd[m].p.piggy3.local_num;
+    p4est_locidx_t v_tmp = faces->q2f(q_tmp, dir::f_0m0);
+    if(v_tmp!=NO_VELOCITY && v_tmp!=v_idx)
+    {
+#ifdef P4_TO_P8
+      voro[v_idx].push(v_tmp, faces->x_fr_f(v_tmp, dir::y), faces->y_fr_f(v_tmp, dir::y), faces->z_fr_f(v_tmp, dir::y));
+#else
+      voro[v_idx].push(v_tmp, faces->x_fr_f(v_tmp, dir::y), faces->y_fr_f(v_tmp, dir::y));
+#endif
+    }
+
+    v_tmp = faces->q2f(q_tmp, dir::f_0p0);
+    if(v_tmp!=NO_VELOCITY && v_tmp!=v_idx)
+    {
+#ifdef P4_TO_P8
+      voro[v_idx].push(v_tmp, faces->x_fr_f(v_tmp, dir::y), faces->y_fr_f(v_tmp, dir::y), faces->z_fr_f(v_tmp, dir::y));
+#else
+      voro[v_idx].push(v_tmp, faces->x_fr_f(v_tmp, dir::y), faces->y_fr_f(v_tmp, dir::y));
+#endif
+    }
+  }
+
+#ifdef P4_TO_P8
+  voro[v_idx].construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
+#else
+  voro[v_idx].construct_Partition();
+#endif
+
+#ifndef P4_TO_P8
+  vector<Voronoi2DPoint> *points;
+  vector<Point2> *partition;
+
+  voro[v_idx].get_Points(points);
+  voro[v_idx].get_Partition(partition);
+
+  /* first clip the voronoi partition at the boundary of the domain */
+  for(unsigned int m=0; m<points->size(); m++)
+  {
+    if((*points)[m].n == WALL_0m0)
+    {
+      for(int i=-1; i<1; ++i)
+      {
+        int k   = mod(m+i            ,partition->size());
+        int tmp = mod(k+(i==-1? -1:1),partition->size());
+        Point2 dir = (*partition)[tmp]-(*partition)[k];
+        double lambda = (ymin - (*partition)[k].y)/dir.y;
+        (*partition)[k].x = (*partition)[k].x + lambda*dir.x;
+        (*partition)[k].y = ymin;
+      }
+    }
+
+    if((*points)[m].n == WALL_0p0)
+    {
+      for(int i=-1; i<1; ++i)
+      {
+        int k   = mod(m+i            ,partition->size());
+        int tmp = mod(k+(i==-1? -1:1),partition->size());
+        Point2 dir = (*partition)[tmp]-(*partition)[k];
+        double lambda = (ymax - (*partition)[k].y)/dir.y;
+        (*partition)[k].x = (*partition)[k].x + lambda*dir.x;
+        (*partition)[k].y = ymax;
+      }
+    }
+  }
+
+  /* clip the partition by the irregular interface */
+  vector<double> phi_values(partition->size());
+  bool is_pos = false;
+  for(unsigned int m=0; m<partition->size(); m++)
+  {
+    phi_values[m] = interp_phi((*partition)[m].x, (*partition)[m].y);
+    is_pos = is_pos || phi_values[m]>0;
+  }
+
+  // clip the voronoi partition with the interface
+  if(is_pos)
+  {
+    voro[v_idx].set_Level_Set_Values(phi_values, phi_c);
+    voro[v_idx].clip_Interface();
+  }
+#endif
+}
+
+
+#ifdef P4_TO_P8
+void PoissonSolverFaces::compute_voronoi_cell_w(p4est_locidx_t w_idx)
+{
+
+}
+#endif
+
+
+
+void PoissonSolverFaces::preallocate_matrix(int dir)
 {
   PetscErrorCode ierr;
 
   ierr = PetscLogEventBegin(log_PoissonSolverFaces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
-  proc_offset[0].resize(p4est->mpisize+1);
-  proc_offset[0][0] = 0;
+  proc_offset[dir].resize(p4est->mpisize+1);
+  proc_offset[dir][0] = 0;
   for(int r=1; r<=p4est->mpisize; ++r)
-    proc_offset[0][r] = proc_offset[0][r-1] + faces->global_owned_indeps[0][r-1];
+    proc_offset[dir][r] = proc_offset[dir][r-1] + faces->global_owned_indeps[dir][r-1];
 
-  PetscInt num_owned_local  = (PetscInt) faces->num_local[0];
-  PetscInt num_owned_global = (PetscInt) proc_offset[0][p4est->mpisize];
+  PetscInt num_owned_local  = (PetscInt) faces->num_local[dir];
+  PetscInt num_owned_global = (PetscInt) proc_offset[dir][p4est->mpisize];
 
   if(A!=PETSC_NULL)
     ierr = MatDestroy(A); CHKERRXX(ierr);
@@ -500,14 +774,17 @@ void PoissonSolverFaces::preallocate_matrix_u()
 
   vector<PetscInt> d_nnz(num_owned_local, 1), o_nnz(num_owned_local, 0);
 
-  voro.resize(faces->num_local[0]);
+  voro.resize(faces->num_local[dir]);
 
-  for(p4est_locidx_t u_idx=0; u_idx<faces->num_local[0]; ++u_idx)
+  for(p4est_locidx_t idx=0; idx<faces->num_local[dir]; ++idx)
   {
-    double x = faces->x_fr_u(u_idx);
-    double y = faces->y_fr_u(u_idx);
+    double x = faces->x_fr_f(idx, dir);
+    double y = faces->y_fr_f(idx, dir);
 #ifdef P4_TO_P8
-    double z = faces->z_fr_u(u_idx);
+    double z = faces->z_fr_f(idx, dir);
+#endif
+
+#ifdef P4_TO_P8
     double phi_c = interp_phi(x,y,z);
 #else
     double phi_c = interp_phi(x,y);
@@ -519,21 +796,35 @@ void PoissonSolverFaces::preallocate_matrix_u()
     if(bc_u->interfaceType()==NOINTERFACE || phi_c<2*MAX(dx_min,dy_min))
 #endif
     {
-      compute_voronoi_cell_u(u_idx);
+      switch(dir)
+      {
+      case dir::x:
+        compute_voronoi_cell_u(idx);
+        break;
+      case dir::y:
+        compute_voronoi_cell_v(idx);
+        break;
+#ifdef P4_TO_P8
+      case dir::z:
+        compute_voronoi_cell_w(idx);
+        break;
+#endif
+      }
+
 
 #ifdef P4_TO_P8
       const vector<Voronoi3DPoint> *points;
 #else
       vector<Voronoi2DPoint> *points;
 #endif
-      voro[u_idx].get_Points(points);
+      voro[idx].get_Points(points);
 
       for(unsigned int n=0; n<points->size(); ++n)
       {
         if((*points)[n].n>=0)
         {
-          if((*points)[n].n<num_owned_local) d_nnz[u_idx]++;
-          else                               o_nnz[u_idx]++;
+          if((*points)[n].n<num_owned_local) d_nnz[idx]++;
+          else                               o_nnz[idx]++;
         }
       }
     }
@@ -549,7 +840,7 @@ void PoissonSolverFaces::preallocate_matrix_u()
 
 void PoissonSolverFaces::setup_linear_system_u()
 {
-  preallocate_matrix_u();
+  preallocate_matrix(dir::x);
 
   if(0)
   {
@@ -572,19 +863,19 @@ void PoissonSolverFaces::setup_linear_system_u()
   double *rhs_u_p;
   ierr = VecGetArray(rhs_u, &rhs_u_p); CHKERRXX(ierr);
 
-  for(p4est_locidx_t u_idx=0; u_idx<faces->num_local[0]; ++u_idx)
+  for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[0]; ++f_idx)
   {
-    p4est_gloidx_t u_idx_g = u_idx + proc_offset[0][p4est->mpirank];
+    p4est_gloidx_t f_idx_g = f_idx + proc_offset[0][p4est->mpirank];
 
-    faces->u2q(u_idx, quad_idx, tree_idx);
+    faces->f2q(f_idx, dir::x, quad_idx, tree_idx);
 
     p4est_tree_t *tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
     p4est_quadrant_t *quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
 
-    double x = faces->x_fr_u(u_idx);
-    double y = faces->y_fr_u(u_idx);
+    double x = faces->x_fr_f(f_idx, dir::x);
+    double y = faces->y_fr_f(f_idx, dir::x);
 #ifdef P4_TO_P8
-    double z = faces->z_fr_u(u_idx);
+    double z = faces->z_fr_f(f_idx, dir::x);
 #endif
 
 #ifdef P4_TO_P8
@@ -599,8 +890,8 @@ void PoissonSolverFaces::setup_linear_system_u()
     if(phi_c > 2*MAX(dx_min,dy_min))
   #endif
     {
-      ierr = MatSetValue(A, u_idx_g, u_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
-      rhs_u_p[u_idx] = 0;
+      ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
+      rhs_u_p[f_idx] = 0;
       continue;
     }
 
@@ -608,7 +899,7 @@ void PoissonSolverFaces::setup_linear_system_u()
     vector<p4est_quadrant_t> ngbd;
     p4est_quadrant_t qm, qp;
     p4est_topidx_t tm_idx=-1, tp_idx=-1;
-    if(faces->q2u(quad_idx, dir::f_m00)==u_idx)
+    if(faces->q2f(quad_idx, dir::f_m00)==f_idx)
     {
       qp_idx = quad_idx;
       tp_idx = tree_idx;
@@ -653,11 +944,11 @@ void PoissonSolverFaces::setup_linear_system_u()
 #endif
     {
       matrix_has_nullspace_u = false;
-      ierr = MatSetValue(A, u_idx_g, u_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
+      ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-      rhs_u_p[u_idx] = bc_u->wallValue(xmin,y,z);
+      rhs_u_p[f_idx] = bc_u->wallValue(xmin,y,z);
 #else
-      rhs_u_p[u_idx] = bc_u->wallValue(xmin,y);
+      rhs_u_p[f_idx] = bc_u->wallValue(xmin,y);
 #endif
       continue;
     }
@@ -669,11 +960,11 @@ void PoissonSolverFaces::setup_linear_system_u()
 #endif
     {
       matrix_has_nullspace_u = false;
-      ierr = MatSetValue(A, u_idx_g, u_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
+      ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-      rhs_u_p[u_idx] = bc_u->wallValue(xmax,y,z);
+      rhs_u_p[f_idx] = bc_u->wallValue(xmax,y,z);
 #else
-      rhs_u_p[u_idx] = bc_u->wallValue(xmax,y);
+      rhs_u_p[f_idx] = bc_u->wallValue(xmax,y);
 #endif
       continue;
     }
@@ -690,11 +981,11 @@ void PoissonSolverFaces::setup_linear_system_u()
     {
       if(fabs(phi_c) < EPS)
       {
-        ierr = MatSetValue(A, u_idx_g, u_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
+        ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-        rhs_u_p[u_idx] = bc_u->interfaceValue(x,y,z);
+        rhs_u_p[f_idx] = bc_u->interfaceValue(x,y,z);
 #else
-        rhs_u_p[u_idx] = bc_u->interfaceValue(x,y);
+        rhs_u_p[f_idx] = bc_u->interfaceValue(x,y);
 #endif
         matrix_has_nullspace_u = false;
         continue;
@@ -702,8 +993,8 @@ void PoissonSolverFaces::setup_linear_system_u()
 
       if(phi_c>0)
       {
-        ierr = MatSetValue(A, u_idx_g, u_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
-        rhs_u_p[u_idx] = 0;
+        ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
+        rhs_u_p[f_idx] = 0;
         continue;
       }
 
@@ -859,89 +1150,89 @@ void PoissonSolverFaces::setup_linear_system_u()
         coeff_00m /= diag;
         coeff_00p /= diag;
 #endif
-        rhs_u_p[u_idx] /= diag;
+        rhs_u_p[f_idx] /= diag;
 
         //---------------------------------------------------------------------
         // insert the coefficients in the matrix
         //---------------------------------------------------------------------
 
-        ierr = MatSetValue(A, u_idx_g, u_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
+        ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
 
         if(wall_m00)
         {
           if(!is_interface_p00)
           {
-            p4est_locidx_t u_tmp = faces->q2u(qp_idx, dir::f_p00);
-            p4est_gloidx_t u_tmp_g;
-            if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-            else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-            ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_m00, ADD_VALUES); CHKERRXX(ierr);
+            p4est_locidx_t f_tmp = faces->q2f(qp_idx, dir::f_p00);
+            p4est_gloidx_t f_tmp_g;
+            if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+            else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+            ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_m00, ADD_VALUES); CHKERRXX(ierr);
           }
           else
-            rhs_u_p[u_idx] -= coeff_m00 * val_interface_p00;
+            rhs_u_p[f_idx] -= coeff_m00 * val_interface_p00;
 #ifdef P4_TO_P8
-          rhs_u_p[u_idx] -= coeff_m00 * (d_m00+d_p00) * bc_u->wallValue(x,y,z);
+          rhs_u_p[f_idx] -= coeff_m00 * (d_m00+d_p00) * bc_u->wallValue(x,y,z);
 #else
-          rhs_u_p[u_idx] -= coeff_m00 * (d_m00+d_p00) * bc_u->wallValue(x,y);
+          rhs_u_p[f_idx] -= coeff_m00 * (d_m00+d_p00) * bc_u->wallValue(x,y);
 #endif
         }
         else if(!is_interface_m00)
         {
-          p4est_locidx_t u_tmp = faces->q2u(qm_idx, dir::f_m00);
-          p4est_gloidx_t u_tmp_g;
-          if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-          else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-          ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_m00, ADD_VALUES); CHKERRXX(ierr);
+          p4est_locidx_t f_tmp = faces->q2f(qm_idx, dir::f_m00);
+          p4est_gloidx_t f_tmp_g;
+          if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+          else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_m00, ADD_VALUES); CHKERRXX(ierr);
         }
         else
-          rhs_u_p[u_idx] -= coeff_m00*val_interface_m00;
+          rhs_u_p[f_idx] -= coeff_m00*val_interface_m00;
 
 
         if(wall_p00)
         {
           if(!is_interface_m00)
           {
-            p4est_locidx_t u_tmp = faces->q2u(qm_idx, dir::f_m00);
-            p4est_gloidx_t u_tmp_g;
-            if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-            else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-            ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_p00, ADD_VALUES); CHKERRXX(ierr);
+            p4est_locidx_t f_tmp = faces->q2f(qm_idx, dir::f_m00);
+            p4est_gloidx_t f_tmp_g;
+            if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+            else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+            ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_p00, ADD_VALUES); CHKERRXX(ierr);
           }
           else
-            rhs_u_p[u_idx] -= coeff_p00 * val_interface_m00;
+            rhs_u_p[f_idx] -= coeff_p00 * val_interface_m00;
 #ifdef P4_TO_P8
-          rhs_u_p[u_idx] -= coeff_p00 * (d_m00+d_p00) * bc_u->wallValue(x,y,z);
+          rhs_u_p[f_idx] -= coeff_p00 * (d_m00+d_p00) * bc_u->wallValue(x,y,z);
 #else
-          rhs_u_p[u_idx] -= coeff_p00 * (d_m00+d_p00) * bc_u->wallValue(x,y);
+          rhs_u_p[f_idx] -= coeff_p00 * (d_m00+d_p00) * bc_u->wallValue(x,y);
 #endif
         }
         else if(!is_interface_p00)
         {
-          p4est_locidx_t u_tmp = faces->q2u(qp_idx, dir::f_p00);
-          p4est_gloidx_t u_tmp_g;
-          if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-          else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-          ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_p00, ADD_VALUES); CHKERRXX(ierr);
+          p4est_locidx_t f_tmp = faces->q2f(qp_idx, dir::f_p00);
+          p4est_gloidx_t f_tmp_g;
+          if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+          else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_p00, ADD_VALUES); CHKERRXX(ierr);
         }
         else
-          rhs_u_p[u_idx] -= coeff_p00*val_interface_p00;
+          rhs_u_p[f_idx] -= coeff_p00*val_interface_p00;
 
 
         if(wall_0m0)
         {
 #ifdef P4_TO_P8
-          if(bc_u->wallType(x,ymin,z) == DIRICHLET) rhs_u_p[u_idx] -= coeff_0m0*bc_u->wallValue(x,ymin,z);
+          if(bc_u->wallType(x,ymin,z) == DIRICHLET) rhs_u_p[f_idx] -= coeff_0m0*bc_u->wallValue(x,ymin,z);
           else if(bc_u->wallType(x,ymin,z) == NEUMANN)
 #else
-          if(bc_u->wallType(x,ymin) == DIRICHLET) rhs_u_p[u_idx] -= coeff_0m0*bc_u->wallValue(x,ymin);
+          if(bc_u->wallType(x,ymin) == DIRICHLET) rhs_u_p[f_idx] -= coeff_0m0*bc_u->wallValue(x,ymin);
           else if(bc_u->wallType(x,ymin) == NEUMANN)
 #endif
           {
-            ierr = MatSetValue(A, u_idx_g, u_idx_g, coeff_0m0, ADD_VALUES); CHKERRXX(ierr);
+            ierr = MatSetValue(A, f_idx_g, f_idx_g, coeff_0m0, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-            rhs_u_p[u_idx] -= coeff_0m0 * d_0m0 * bc_u->wallValue(x,ymin,z);
+            rhs_u_p[f_idx] -= coeff_0m0 * d_0m0 * bc_u->wallValue(x,ymin,z);
 #else
-            rhs_u_p[u_idx] -= coeff_0m0 * d_0m0 * bc_u->wallValue(x,ymin);
+            rhs_u_p[f_idx] -= coeff_0m0 * d_0m0 * bc_u->wallValue(x,ymin);
 #endif
           }
 #ifdef CASL_THROWS
@@ -963,11 +1254,11 @@ void PoissonSolverFaces::setup_linear_system_u()
             if(ngbd.size()!=1 && ngbd[0].level==quad->level)
               throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
-            p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_p00);
-            p4est_gloidx_t u_tmp_g;
-            if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-            else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-            ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_0m0, ADD_VALUES); CHKERRXX(ierr);
+            p4est_locidx_t f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_p00);
+            p4est_gloidx_t f_tmp_g;
+            if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+            else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+            ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_0m0, ADD_VALUES); CHKERRXX(ierr);
           }
           else
           {
@@ -981,31 +1272,31 @@ void PoissonSolverFaces::setup_linear_system_u()
             if(ngbd.size()!=1 && ngbd[0].level==quad->level)
               throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
-            p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_m00);
-            p4est_gloidx_t u_tmp_g;
-            if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-            else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-            ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_0m0, ADD_VALUES); CHKERRXX(ierr);
+            p4est_locidx_t f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_m00);
+            p4est_gloidx_t f_tmp_g;
+            if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+            else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+            ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_0m0, ADD_VALUES); CHKERRXX(ierr);
           }
         }
-        else rhs_u_p[u_idx] -= coeff_0m0*val_interface_0m0;
+        else rhs_u_p[f_idx] -= coeff_0m0*val_interface_0m0;
 
 
         if(wall_0p0)
         {
 #ifdef P4_TO_P8
-          if(bc_u->wallType(x,ymax,z) == DIRICHLET) rhs_u_p[u_idx] -= coeff_0p0*bc_u->wallValue(x,ymax,z);
+          if(bc_u->wallType(x,ymax,z) == DIRICHLET) rhs_u_p[f_idx] -= coeff_0p0*bc_u->wallValue(x,ymax,z);
           else if(bc_u->wallType(x,ymax,z) == NEUMANN)
 #else
-          if(bc_u->wallType(x,ymax) == DIRICHLET) rhs_u_p[u_idx] -= coeff_0p0*bc_u->wallValue(x,ymax);
+          if(bc_u->wallType(x,ymax) == DIRICHLET) rhs_u_p[f_idx] -= coeff_0p0*bc_u->wallValue(x,ymax);
           else if(bc_u->wallType(x,ymax) == NEUMANN)
 #endif
           {
-            ierr = MatSetValue(A, u_idx_g, u_idx_g, coeff_0p0, ADD_VALUES); CHKERRXX(ierr);
+            ierr = MatSetValue(A, f_idx_g, f_idx_g, coeff_0p0, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-            rhs_u_p[u_idx] -= coeff_0p0 * d_0p0 * bc_u->wallValue(x,ymax,z);
+            rhs_u_p[f_idx] -= coeff_0p0 * d_0p0 * bc_u->wallValue(x,ymax,z);
 #else
-            rhs_u_p[u_idx] -= coeff_0p0 * d_0p0 * bc_u->wallValue(x,ymax);
+            rhs_u_p[f_idx] -= coeff_0p0 * d_0p0 * bc_u->wallValue(x,ymax);
 #endif
           }
 #ifdef CASL_THROWS
@@ -1027,11 +1318,11 @@ void PoissonSolverFaces::setup_linear_system_u()
             if(ngbd.size()!=1 && ngbd[0].level==quad->level)
               throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
-            p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_p00);
-            p4est_gloidx_t u_tmp_g;
-            if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-            else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-            ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_0p0, ADD_VALUES); CHKERRXX(ierr);
+            p4est_locidx_t f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_p00);
+            p4est_gloidx_t f_tmp_g;
+            if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+            else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+            ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_0p0, ADD_VALUES); CHKERRXX(ierr);
           }
           else
           {
@@ -1045,23 +1336,23 @@ void PoissonSolverFaces::setup_linear_system_u()
             if(ngbd.size()!=1 && ngbd[0].level==quad->level)
               throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
-            p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_m00);
-            p4est_gloidx_t u_tmp_g;
-            if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-            else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-            ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_0p0, ADD_VALUES); CHKERRXX(ierr);
+            p4est_locidx_t f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_m00);
+            p4est_gloidx_t f_tmp_g;
+            if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+            else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+            ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_0p0, ADD_VALUES); CHKERRXX(ierr);
           }
         }
-        else rhs_u_p[u_idx] -= coeff_0p0*val_interface_0p0;
+        else rhs_u_p[f_idx] -= coeff_0p0*val_interface_0p0;
 
 #ifdef P4_TO_P8
         if(wall_00m)
         {
-          if(bc_u->wallType(x,y,zmin) == DIRICHLET) rhs_u_p[u_idx] -= coeff_00m*bc_u->wallValue(x,y,zmin);
+          if(bc_u->wallType(x,y,zmin) == DIRICHLET) rhs_u_p[f_idx] -= coeff_00m*bc_u->wallValue(x,y,zmin);
           else if(bc_u->wallType(x,y,zmin) == NEUMANN)
           {
-            ierr = MatSetValue(A, u_idx_g, u_idx_g, coeff_00m, ADD_VALUES); CHKERRXX(ierr);
-            rhs_u_p[u_idx] -= coeff_00m * d_00m * bc_u->wallValue(x,y,zmin);
+            ierr = MatSetValue(A, f_idx_g, f_idx_g, coeff_00m, ADD_VALUES); CHKERRXX(ierr);
+            rhs_u_p[f_idx] -= coeff_00m * d_00m * bc_u->wallValue(x,y,zmin);
           }
 #ifdef CASL_THROWS
           else
@@ -1078,11 +1369,11 @@ void PoissonSolverFaces::setup_linear_system_u()
             if(ngbd.size()!=1 && ngbd[0].level==quad->level)
               throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
-            p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_p00);
-            p4est_gloidx_t u_tmp_g;
-            if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-            else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-            ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_00m, ADD_VALUES); CHKERRXX(ierr);
+            p4est_locidx_t f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_p00);
+            p4est_gloidx_t f_tmp_g;
+            if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+            else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+            ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_00m, ADD_VALUES); CHKERRXX(ierr);
           }
           else
           {
@@ -1092,23 +1383,23 @@ void PoissonSolverFaces::setup_linear_system_u()
             if(ngbd.size()!=1 && ngbd[0].level==quad->level)
               throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
-            p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_m00);
-            p4est_gloidx_t u_tmp_g;
-            if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-            else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-            ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_00m, ADD_VALUES); CHKERRXX(ierr);
+            p4est_locidx_t f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_m00);
+            p4est_gloidx_t f_tmp_g;
+            if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+            else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+            ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_00m, ADD_VALUES); CHKERRXX(ierr);
           }
         }
-        else rhs_u_p[u_idx] -= coeff_00m*val_interface_00m;
+        else rhs_u_p[f_idx] -= coeff_00m*val_interface_00m;
 
 
         if(wall_00p)
         {
-          if(bc_u->wallType(x,y,zmax) == DIRICHLET) rhs_u_p[u_idx] -= coeff_00p*bc_u->wallValue(x,y,zmax);
+          if(bc_u->wallType(x,y,zmax) == DIRICHLET) rhs_u_p[f_idx] -= coeff_00p*bc_u->wallValue(x,y,zmax);
           else if(bc_u->wallType(x,y,zmax) == NEUMANN)
           {
-            ierr = MatSetValue(A, u_idx_g, u_idx_g, coeff_00p, ADD_VALUES); CHKERRXX(ierr);
-            rhs_u_p[u_idx] -= coeff_00p * d_00p * bc_u->wallValue(x,y,zmax);
+            ierr = MatSetValue(A, f_idx_g, f_idx_g, coeff_00p, ADD_VALUES); CHKERRXX(ierr);
+            rhs_u_p[f_idx] -= coeff_00p * d_00p * bc_u->wallValue(x,y,zmax);
           }
 #ifdef CASL_THROWS
           else
@@ -1125,11 +1416,11 @@ void PoissonSolverFaces::setup_linear_system_u()
             if(ngbd.size()!=1 && ngbd[0].level==quad->level)
               throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
-            p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_p00);
-            p4est_gloidx_t u_tmp_g;
-            if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-            else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-            ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_00p, ADD_VALUES); CHKERRXX(ierr);
+            p4est_locidx_t f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_p00);
+            p4est_gloidx_t f_tmp_g;
+            if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+            else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+            ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_00p, ADD_VALUES); CHKERRXX(ierr);
           }
           else
           {
@@ -1139,14 +1430,14 @@ void PoissonSolverFaces::setup_linear_system_u()
             if(ngbd.size()!=1 && ngbd[0].level==quad->level)
               throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system_u: the grid is not uniform close to the interface.");
 #endif
-            p4est_locidx_t u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_m00);
-            p4est_gloidx_t u_tmp_g;
-            if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-            else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
-            ierr = MatSetValue(A, u_idx_g, u_tmp_g, coeff_00p, ADD_VALUES); CHKERRXX(ierr);
+            p4est_locidx_t f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_m00);
+            p4est_gloidx_t f_tmp_g;
+            if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+            else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
+            ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff_00p, ADD_VALUES); CHKERRXX(ierr);
           }
         }
-        else rhs_u_p[u_idx] -= coeff_00p*val_interface_00p;
+        else rhs_u_p[f_idx] -= coeff_00p*val_interface_00p;
 #endif
 
         if(diag_add > 0) matrix_has_nullspace_u = false;
@@ -1217,17 +1508,17 @@ void PoissonSolverFaces::setup_linear_system_u()
       /* entirely in the positive domain */
       if(!is_neg)
       {
-        ierr = MatSetValue(A, u_idx_g, u_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
-        rhs_u_p[u_idx] = 0;
+        ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
+        rhs_u_p[f_idx] = 0;
         continue;
       }
 
       if(is_pos)
       {
-        ierr = MatSetValue(A, u_idx_g, u_idx_g, volume*diag_add, ADD_VALUES); CHKERRXX(ierr);
+        ierr = MatSetValue(A, f_idx_g, f_idx_g, volume*diag_add, ADD_VALUES); CHKERRXX(ierr);
         if(diag_add > 0) matrix_has_nullspace_u = false;
-        rhs_u_p[u_idx] *= volume;
-        rhs_u_p[u_idx] += mu * c3.integrate_Over_Interface(bc, op);
+        rhs_u_p[f_idx] *= volume;
+        rhs_u_p[f_idx] += mu * c3.integrate_Over_Interface(bc, op);
 
         Cube2 c2;
         QuadValue qp;
@@ -1246,16 +1537,16 @@ void PoissonSolverFaces::setup_linear_system_u()
         double s_m00 = c2.area_In_Negative_Domain(qp);
 
         if(qm_idx==-1)
-          rhs_u_p[u_idx] += mu * s_m00 * bc_u->wallValue(xmin, y, z);
+          rhs_u_p[f_idx] += mu * s_m00 * bc_u->wallValue(xmin, y, z);
         else
         {
-          p4est_locidx_t u_tmp = faces->q2u(qm_idx, dir::f_m00);
-          p4est_gloidx_t u_tmp_g;
-          if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-          else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
+          p4est_locidx_t f_tmp = faces->q2f(qm_idx, dir::f_m00);
+          p4est_gloidx_t f_tmp_g;
+          if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+          else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
 
-          ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s_m00/dx_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, u_idx_g, u_tmp_g,-mu*s_m00/dx_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_m00/dx_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_m00/dx_min, ADD_VALUES); CHKERRXX(ierr);
         }
 
 
@@ -1271,16 +1562,16 @@ void PoissonSolverFaces::setup_linear_system_u()
         double s_p00 = c2.area_In_Negative_Domain(qp);
 
         if(qp_idx==-1)
-          rhs_u_p[u_idx] += mu * s_p00 * bc_u->wallValue(xmax, y, z);
+          rhs_u_p[f_idx] += mu * s_p00 * bc_u->wallValue(xmax, y, z);
         else
         {
-          p4est_locidx_t u_tmp = faces->q2u(qp_idx, dir::f_p00);
-          p4est_gloidx_t u_tmp_g;
-          if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-          else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
+          p4est_locidx_t f_tmp = faces->q2f(qp_idx, dir::f_p00);
+          p4est_gloidx_t f_tmp_g;
+          if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+          else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
 
-          ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s_p00/dx_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, u_idx_g, u_tmp_g,-mu*s_p00/dx_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_p00/dx_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_p00/dx_min, ADD_VALUES); CHKERRXX(ierr);
         }
 
         // 0m0
@@ -1293,24 +1584,24 @@ void PoissonSolverFaces::setup_linear_system_u()
         double s_0m0 = c2.area_In_Negative_Domain(qp);
 
         if(qm_idx==-1)
-          rhs_u_p[u_idx] += mu * s_0m0 * bc_u->wallValue(x, ymin, z);
+          rhs_u_p[f_idx] += mu * s_0m0 * bc_u->wallValue(x, ymin, z);
         else
         {
           ngbd.resize(0);
-          p4est_locidx_t u_tmp;
-          p4est_topidx_t u_tmp_g;
+          p4est_locidx_t f_tmp;
+          p4est_topidx_t f_tmp_g;
           if(qp_idx==-1) {
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1, 0);
-            u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_p00); }
+            f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_p00); }
           else {
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0,-1, 0);
-            u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_m00); }
+            f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_m00); }
 
-          if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-          else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
+          if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+          else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
 
-          ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s_0m0/dy_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, u_idx_g, u_tmp_g,-mu*s_0m0/dy_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_0m0/dy_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_0m0/dy_min, ADD_VALUES); CHKERRXX(ierr);
         }
 
 
@@ -1322,24 +1613,24 @@ void PoissonSolverFaces::setup_linear_system_u()
         double s_0p0 = c2.area_In_Negative_Domain(qp);
 
         if(qp_idx==-1)
-          rhs_u_p[u_idx] += mu * s_0p0 * bc_u->wallValue(x, ymax, z);
+          rhs_u_p[f_idx] += mu * s_0p0 * bc_u->wallValue(x, ymax, z);
         else
         {
           ngbd.resize(0);
-          p4est_locidx_t u_tmp;
-          p4est_topidx_t u_tmp_g;
+          p4est_locidx_t f_tmp;
+          p4est_topidx_t f_tmp_g;
           if(qp_idx==-1) {
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 1, 0);
-            u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_p00); }
+            f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_p00); }
           else {
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1, 0);
-            u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_m00); }
+            f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_m00); }
 
-          if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-          else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
+          if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+          else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
 
-          ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s_0p0/dy_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, u_idx_g, u_tmp_g,-mu*s_0p0/dy_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_0p0/dy_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_0p0/dy_min, ADD_VALUES); CHKERRXX(ierr);
         }
 
 
@@ -1353,24 +1644,24 @@ void PoissonSolverFaces::setup_linear_system_u()
         double s_00m = c2.area_In_Negative_Domain(qp);
 
         if(qm_idx==-1)
-          rhs_u_p[u_idx] += mu * s_00m * bc_u->wallValue(x, y, zmin);
+          rhs_u_p[f_idx] += mu * s_00m * bc_u->wallValue(x, y, zmin);
         else
         {
           ngbd.resize(0);
-          p4est_locidx_t u_tmp;
-          p4est_topidx_t u_tmp_g;
+          p4est_locidx_t f_tmp;
+          p4est_topidx_t f_tmp_g;
           if(qp_idx==-1) {
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0,-1);
-            u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_p00); }
+            f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_p00); }
           else {
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0,-1);
-            u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_m00); }
+            f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_m00); }
 
-          if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-          else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
+          if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+          else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
 
-          ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s_00m/dz_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, u_idx_g, u_tmp_g,-mu*s_00m/dz_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_00m/dz_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_00m/dz_min, ADD_VALUES); CHKERRXX(ierr);
         }
 
 
@@ -1382,24 +1673,24 @@ void PoissonSolverFaces::setup_linear_system_u()
         double s_00p = c2.area_In_Negative_Domain(qp);
 
         if(qp_idx==-1)
-          rhs_u_p[u_idx] += mu * s_00p * bc_u->wallValue(x, y, zmax);
+          rhs_u_p[f_idx] += mu * s_00p * bc_u->wallValue(x, y, zmax);
         else
         {
           ngbd.resize(0);
-          p4est_locidx_t u_tmp;
-          p4est_topidx_t u_tmp_g;
+          p4est_locidx_t f_tmp;
+          p4est_topidx_t f_tmp_g;
           if(qp_idx==-1) {
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0, 1);
-            u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_p00); }
+            f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_p00); }
           else {
             ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0, 1);
-            u_tmp = faces->q2u(ngbd[0].p.piggy3.local_num, dir::f_m00); }
+            f_tmp = faces->q2f(ngbd[0].p.piggy3.local_num, dir::f_m00); }
 
-          if(u_tmp<faces->num_local[0]) u_tmp_g = u_tmp + proc_offset[0][p4est->mpirank];
-          else { u_tmp -= faces->num_local[0]; u_tmp_g = faces->ghost_local_num[0][u_tmp] + proc_offset[0][faces->nonlocal_ranks[0][u_tmp]]; }
+          if(f_tmp<faces->num_local[0]) f_tmp_g = f_tmp + proc_offset[0][p4est->mpirank];
+          else { f_tmp -= faces->num_local[0]; f_tmp_g = faces->ghost_local_num[0][f_tmp] + proc_offset[0][faces->nonlocal_ranks[0][f_tmp]]; }
 
-          ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s_00p/dz_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, u_idx_g, u_tmp_g,-mu*s_00p/dz_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_00p/dz_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_00p/dz_min, ADD_VALUES); CHKERRXX(ierr);
         }
 
         ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
@@ -1414,30 +1705,28 @@ void PoissonSolverFaces::setup_linear_system_u()
      * Bulk case, away from the interface
      * Use finite volumes on the voronoi cells
      */
-//    compute_voronoi_cell_u(u_idx);
-
 #ifdef P4_TO_P8
     const vector<Voronoi3DPoint> *points;
 #else
     vector<Voronoi2DPoint> *points;
     vector<Point2> *partition;
-    voro[u_idx].get_Partition(partition);
+    voro[f_idx].get_Partition(partition);
 #endif
-    voro[u_idx].get_Points(points);
+    voro[f_idx].get_Points(points);
 
     /* integrally in positive domain */
 #ifndef P4_TO_P8
     if(partition->size()==0)
     {
-      ierr = MatSetValue(A, u_idx_g, u_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
-      rhs_u_p[u_idx] = 0;
+      ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
+      rhs_u_p[f_idx] = 0;
       continue;
     }
 #endif
 
-    double volume = voro[u_idx].volume();
-    ierr = MatSetValue(A, u_idx_g, u_idx_g, volume*diag_add, ADD_VALUES); CHKERRXX(ierr);
-    rhs_u_p[u_idx] *= volume;
+    double volume = voro[f_idx].volume();
+    ierr = MatSetValue(A, f_idx_g, f_idx_g, volume*diag_add, ADD_VALUES); CHKERRXX(ierr);
+    rhs_u_p[f_idx] *= volume;
     if(diag_add>0) matrix_has_nullspace_u = false;
 
     /* bulk case, finite volume on voronoi cell */
@@ -1474,9 +1763,9 @@ void PoissonSolverFaces::setup_linear_system_u()
         case NEUMANN:
           /* nothing to do for the matrix */
 #ifdef P4_TO_P8
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(xmin,y,z);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(xmin,y,z);
 #else
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(xmin,y);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(xmin,y);
 #endif
           break;
         default:
@@ -1495,9 +1784,9 @@ void PoissonSolverFaces::setup_linear_system_u()
         case NEUMANN:
           /* nothing to do for the matrix */
 #ifdef P4_TO_P8
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(xmax,y,z);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(xmax,y,z);
 #else
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(xmax,y);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(xmax,y);
 #endif
           break;
         default:
@@ -1515,19 +1804,19 @@ void PoissonSolverFaces::setup_linear_system_u()
         case DIRICHLET:
           matrix_has_nullspace_u = false;
           d /= 2;
-          ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,ymin,z) / d;
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,ymin,z) / d;
 #else
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,ymin) / d;
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,ymin) / d;
 #endif
           break;
         case NEUMANN:
           /* nothing to do for the matrix */
 #ifdef P4_TO_P8
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,ymin,z);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,ymin,z);
 #else
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,ymin);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,ymin);
 #endif
           break;
         default:
@@ -1545,19 +1834,19 @@ void PoissonSolverFaces::setup_linear_system_u()
         case DIRICHLET:
           matrix_has_nullspace_u = false;
           d /= 2;
-          ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,ymax,z) / d;
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,ymax,z) / d;
 #else
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,ymax) / d;
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,ymax) / d;
 #endif
           break;
         case NEUMANN:
           /* nothing to do for the matrix */
 #ifdef P4_TO_P8
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,ymax,z);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,ymax,z);
 #else
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,ymax);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,ymax);
 #endif
           break;
         default:
@@ -1572,12 +1861,12 @@ void PoissonSolverFaces::setup_linear_system_u()
         case DIRICHLET:
           matrix_has_nullspace_u = false;
           d /= 2;
-          ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,y,zmin) / d;
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,y,zmin) / d;
           break;
         case NEUMANN:
           /* nothing to do for the matrix */
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,y,zmin);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,y,zmin);
           break;
         default:
           throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: unknown boundary condition type.");
@@ -1590,12 +1879,12 @@ void PoissonSolverFaces::setup_linear_system_u()
         case DIRICHLET:
           matrix_has_nullspace_u = false;
           d /= 2;
-          ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,y,zmax) / d;
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,y,zmax) / d;
           break;
         case NEUMANN:
           /* nothing to do for the matrix */
-          rhs_u_p[u_idx] += mu*s*bc_u->wallValue(x_pert,y,zmax);
+          rhs_u_p[f_idx] += mu*s*bc_u->wallValue(x_pert,y,zmax);
           break;
         default:
           throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: unknown boundary condition type.");
@@ -1612,7 +1901,7 @@ void PoissonSolverFaces::setup_linear_system_u()
 #ifdef P4_TO_P8
           throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: Neumann boundary conditions should be treated separately in 3D ...");
 #else
-          rhs_u_p[u_idx] += mu*s*bc_u->interfaceValue(((*points)[m].p.x+x)/2.,((*points)[m].p.y+y)/2.);
+          rhs_u_p[f_idx] += mu*s*bc_u->interfaceValue(((*points)[m].p.x+x)/2.,((*points)[m].p.y+y)/2.);
 #endif
           break;
         default:
@@ -1630,8 +1919,8 @@ void PoissonSolverFaces::setup_linear_system_u()
           m_idx_g = faces->ghost_local_num[0][m_idx_g] + proc_offset[0][faces->nonlocal_ranks[0][m_idx_g]];
         }
 
-        ierr = MatSetValue(A, u_idx_g, u_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
-        ierr = MatSetValue(A, u_idx_g, m_idx_g,-mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+        ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+        ierr = MatSetValue(A, f_idx_g, m_idx_g,-mu*s/d, ADD_VALUES); CHKERRXX(ierr);
       }
     }
   }

@@ -73,9 +73,19 @@ class PoissonSolverFaces
   int matrix_has_nullspace_w;
 #endif
 
+  void preallocate_matrix(int dir);
+
   void compute_voronoi_cell_u(p4est_locidx_t u_idx);
-  void preallocate_matrix_u();
+  void compute_voronoi_cell_v(p4est_locidx_t v_idx);
+#ifdef P4_TO_P8
+  void compute_voronoi_cell_w(p4est_locidx_t w_idx);
+#endif
+
   void setup_linear_system_u();
+  void setup_linear_system_v();
+#ifdef P4_TO_P8
+  void setup_linear_system_w();
+#endif
 
   // disallow copy ctr and copy assignment
   PoissonSolverFaces(const PoissonSolverFaces& other);
