@@ -91,6 +91,8 @@ class PoissonSolverFaces
   PoissonSolverFaces(const PoissonSolverFaces& other);
   PoissonSolverFaces& operator=(const PoissonSolverFaces& other);
 
+  void reset_linear_solver(bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
+
   inline p4est_topidx_t face_global_number(p4est_locidx_t f_idx, int dir)
   {
     if(f_idx<faces->num_local[dir])
@@ -131,10 +133,10 @@ public:
   void solve(Vec solution_u, Vec solution_v, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
 #endif
 
-  void solve_u(Vec solution_u);
-  void solve_v(Vec solution_v);
+  void solve_u(Vec solution_u, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
+  void solve_v(Vec solution_v, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
 #ifdef P4_TO_P8
-  void solve_w(Vec solution_w);
+  void solve_w(Vec solution_w, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
 #endif
 
   void print_partition_u_VTK(const char *file);

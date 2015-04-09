@@ -597,44 +597,42 @@ void my_p4est_faces_t::init_faces()
   for(int d=0; d<P4EST_DIM; ++d)
     f2q_[d].resize(num_local[d] + num_ghost[d]);
 
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  for(int dir=0; dir<P4EST_FACES; dir++)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
     {
-      p4est_topidx_t quad_idx = q+tree->quadrants_offset;
-      for(int dir=0; dir<P4EST_DIM; dir++)
-      if(q2f_[dir][quad_idx] != NO_VELOCITY)
+      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+      for(size_t q=0; q<tree->quadrants.elem_count; ++q)
       {
-        f2q_[dir/2][q2f_[dir][quad_idx]].quad_idx = quad_idx;
-        f2q_[dir/2][q2f_[dir][quad_idx]].tree_idx = tree_idx;
+        p4est_topidx_t quad_idx = q+tree->quadrants_offset;
+        if(q2f_[dir][quad_idx] != NO_VELOCITY)
+        {
+          f2q_[dir/2][q2f_[dir][quad_idx]].quad_idx = quad_idx;
+          f2q_[dir/2][q2f_[dir][quad_idx]].tree_idx = tree_idx;
+        }
       }
     }
   }
 
-  for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
+  for(int dir=0; dir<P4EST_FACES; dir++)
   {
-    p4est_locidx_t quad_idx = q+p4est->local_num_quadrants;
-    for(int dir=0; dir<P4EST_DIM; dir++)
+    for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
+    {
+      p4est_locidx_t quad_idx = q+p4est->local_num_quadrants;
       if(q2f_[dir][quad_idx] != NO_VELOCITY && f2q_[dir/2][q2f_[dir][quad_idx]].quad_idx == -1)
         f2q_[dir/2][q2f_[dir][quad_idx]].quad_idx = quad_idx;
+    }
   }
 
-
-
-
-  // check data for debugging
-//  for(unsigned int i=0; i<f2q_[0].size(); ++i)
+//  check data for debugging
+//  for(int dir=0; dir<P4EST_DIM; ++dir)
 //  {
-//    if(f2q_[0][i].quad_idx==-1)                                                    std::cout << p4est->mpirank << " problem in u !!" << std::endl;
-//    if(f2q_[0][i].quad_idx< p4est->local_num_quadrants && f2q_[0][i].tree_idx==-1) std::cout << p4est->mpirank << " problem in u local !!" << std::endl;
-//    if(f2q_[0][i].quad_idx>=p4est->local_num_quadrants && f2q_[0][i].tree_idx!=-1) std::cout << p4est->mpirank << " problem in u ghost !!" << std::endl;
-//  }
-//  for(unsigned int i=0; i<f2q_[1].size(); ++i)
-//  {
-//    if(f2q_[1][i].quad_idx==-1)                                                    std::cout << p4est->mpirank << " problem in v !!" << std::endl;
-//    if(f2q_[1][i].quad_idx< p4est->local_num_quadrants && f2q_[1][i].tree_idx==-1) std::cout << p4est->mpirank << " problem in v local !!" << std::endl;
-//    if(f2q_[1][i].quad_idx>=p4est->local_num_quadrants && f2q_[1][i].tree_idx!=-1) std::cout << p4est->mpirank << " problem in v ghost !!" << std::endl;
+//    for(unsigned int i=0; i<f2q_[dir].size(); ++i)
+//    {
+//      if(f2q_[dir][i].quad_idx==-1)                                                      std::cout << p4est->mpirank << " problem in " << dir << " !!" << std::endl;
+//      if(f2q_[dir][i].quad_idx< p4est->local_num_quadrants && f2q_[dir][i].tree_idx==-1) std::cout << p4est->mpirank << " problem in " << dir << " local !!" << std::endl;
+//      if(f2q_[dir][i].quad_idx>=p4est->local_num_quadrants && f2q_[dir][i].tree_idx!=-1) std::cout << p4est->mpirank << " problem in " << dir << " ghost !!" << std::endl;
+//    }
 //  }
 
   mpiret = MPI_Waitall(req_query2.size(), &req_query2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
