@@ -39,6 +39,8 @@ class PoissonSolverFaces
   InterpolatingFunctionNodeBaseHost interp_phi;
   Vec phi;
 
+  Vec *rhs;
+
   Vec rhs_u, rhs_v;
 #ifdef P4_TO_P8
   Vec rhs_w;
@@ -48,12 +50,9 @@ class PoissonSolverFaces
   double mu;
 
 #ifdef P4_TO_P8
-  const BoundaryConditions3D *bc_u;
-  const BoundaryConditions3D *bc_v;
-  const BoundaryConditions3D *bc_w;
+  const BoundaryConditions3D *bc;
 #else
-  const BoundaryConditions2D *bc_u;
-  const BoundaryConditions2D *bc_v;
+  const BoundaryConditions2D *bc;
 #endif
 
 #ifdef P4_TO_P8
@@ -67,25 +66,13 @@ class PoissonSolverFaces
   KSP ksp;
   PetscErrorCode ierr;
 
-  int matrix_has_nullspace_u;
-  int matrix_has_nullspace_v;
-#ifdef P4_TO_P8
-  int matrix_has_nullspace_w;
-#endif
+  int matrix_has_nullspace[P4EST_DIM];
 
   void preallocate_matrix(int dir);
 
-  void compute_voronoi_cell_u(p4est_locidx_t u_idx);
-  void compute_voronoi_cell_v(p4est_locidx_t v_idx);
-#ifdef P4_TO_P8
-  void compute_voronoi_cell_w(p4est_locidx_t w_idx);
-#endif
+  void compute_voronoi_cell(p4est_locidx_t f_idx, int dir);
 
-  void setup_linear_system_u();
-  void setup_linear_system_v();
-#ifdef P4_TO_P8
-  void setup_linear_system_w();
-#endif
+  void setup_linear_system(int dir);
 
   // disallow copy ctr and copy assignment
   PoissonSolverFaces(const PoissonSolverFaces& other);
@@ -107,39 +94,24 @@ public:
 
   void set_phi(Vec phi);
 
-#ifdef P4_TO_P8
-  void set_rhs(Vec rhs_u, Vec rhs_v, Vec rhs_w);
-#else
-  void set_rhs(Vec rhs_u, Vec rhs_v);
-#endif
+  void set_rhs(Vec *rhs);
 
   void set_diagonal(double add);
 
   void set_mu(double mu);
 
 #ifdef P4_TO_P8
-  void set_bc(const BoundaryConditions3D& bc_u, const BoundaryConditions3D& bc_v, const BoundaryConditions3D& bc_w);
+  void set_bc(const BoundaryConditions3D *bc);
 #else
-  void set_bc(const BoundaryConditions2D& bc_u, const BoundaryConditions2D& bc_v);
+  void set_bc(const BoundaryConditions2D *bc);
 #endif
 
-  inline bool is_nullspace_u() { return matrix_has_nullspace_u; }
+//  inline bool is_nullspace_u() { return matrix_has_nullspace_u; }
+//  inline bool is_nullspace_v() { return matrix_has_nullspace_v; }
 
-  inline bool is_nullspace_v() { return matrix_has_nullspace_v; }
+  void solve(Vec *solution, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
 
-#ifdef P4_TO_P8
-  void solve(Vec solution_u, Vec solution_v, Vec solution_w, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
-#else
-  void solve(Vec solution_u, Vec solution_v, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
-#endif
-
-  void solve_u(Vec solution_u, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
-  void solve_v(Vec solution_v, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
-#ifdef P4_TO_P8
-  void solve_w(Vec solution_w, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
-#endif
-
-  void print_partition_u_VTK(const char *file);
+  void print_partition_VTK(const char *file);
 };
 
 #endif // POISSON_SOLVER_NODE_BASE_H

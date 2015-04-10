@@ -596,6 +596,16 @@ bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
 bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
 /*!
+ * \brief is_quad_Wall checks if a quad is on the domain boundary in a given direction
+ * \param p4est [in] p4est
+ * \param qi    [in] pointer to the quadrant
+ * \param dir   [in] the direction to check, dir::f_m00, dir::f_p00, dir::f_0m0 ...
+ * \return true if the quad is on the domain boundary in the direction dir and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
+ */
+bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi, int dir);
+
+/*!
  * \brief is_quad_Wall checks if a quad is on any of domain boundaries
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant

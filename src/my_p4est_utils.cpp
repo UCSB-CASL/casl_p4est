@@ -914,6 +914,23 @@ bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
 }
 #endif
 
+bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi, int dir)
+{
+  switch(dir)
+  {
+  case dir::f_m00: return is_quad_xmWall(p4est, tr_it, qi);
+  case dir::f_p00: return is_quad_xpWall(p4est, tr_it, qi);
+  case dir::f_0m0: return is_quad_ymWall(p4est, tr_it, qi);
+  case dir::f_0p0: return is_quad_ypWall(p4est, tr_it, qi);
+#ifdef P4_TO_P8
+  case dir::f_00m: return is_quad_zmWall(p4est, tr_it, qi);
+  case dir::f_00p: return is_quad_zpWall(p4est, tr_it, qi);
+#endif
+  default:
+    throw std::invalid_argument("[CASL_ERROR]: is_quad_wall: unknown direction.");
+  }
+}
+
 bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
 #ifdef P4_TO_P8
