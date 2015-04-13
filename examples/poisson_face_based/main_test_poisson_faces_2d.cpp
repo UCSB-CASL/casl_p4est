@@ -400,6 +400,7 @@ int main (int argc, char* argv[])
   cmd.add_option("bc_wtype", "type of boundary condition to use on the wall");
   cmd.add_option("bc_itype", "type of boundary condition to use on the interface");
   cmd.add_option("save_voro", "save the voronoi partition in vtk format");
+  cmd.add_option("save_vtk", "save the p4est in vtk format");
 #ifdef P4_TO_P8
   cmd.add_option("test", "choose a test.\n\
                  0 - u_m=1+log(r/r0), u_p=1, mu=1\n\
@@ -424,6 +425,7 @@ int main (int argc, char* argv[])
   bc_itype = cmd.get("bc_itype", bc_itype);
 
   bool save_voro = cmd.get("save_voro", false);
+  bool save_vtk = cmd.get("save_vtk", false);
 
   parStopWatch w;
   w.start("total time");
@@ -600,60 +602,64 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArray(sol[dir], &sol_p); CHKERRXX(ierr);
     }
 
-    double *sol_u_p;
-    ierr = VecGetArray(sol[0], &sol_u_p); CHKERRXX(ierr);
-
-    Vec um_cells, up_cells;
-    ierr = VecCreateGhostCells(p4est, ghost, &um_cells); CHKERRXX(ierr);
-    ierr = VecDuplicate(um_cells, &up_cells);
-    double *um_cells_p;
-    ierr = VecGetArray(um_cells, &um_cells_p); CHKERRXX(ierr);
-    double *up_cells_p;
-    ierr = VecGetArray(up_cells, &up_cells_p); CHKERRXX(ierr);
-    for(p4est_locidx_t q=0; q<p4est->local_num_quadrants; ++q)
+    if(save_vtk)
     {
-      p4est_locidx_t um = faces.q2f(q, dir::f_m00);
-      if(um!=-1)
+      double *sol_u_p;
+      ierr = VecGetArray(sol[0], &sol_u_p); CHKERRXX(ierr);
+
+      Vec um_cells, up_cells;
+      ierr = VecCreateGhostCells(p4est, ghost, &um_cells); CHKERRXX(ierr);
+      ierr = VecDuplicate(um_cells, &up_cells);
+      double *um_cells_p;
+      ierr = VecGetArray(um_cells, &um_cells_p); CHKERRXX(ierr);
+      double *up_cells_p;
+      ierr = VecGetArray(up_cells, &up_cells_p); CHKERRXX(ierr);
+      for(p4est_locidx_t q=0; q<p4est->local_num_quadrants; ++q)
       {
-        double x = faces.x_fr_f(um, dir::x);
-        double y = faces.y_fr_f(um, dir::x);
-#ifdef P4_TO_P8
-        double z = faces.z_fr_f(um, dir::x);
-        if(interp(x,y,z)<0)
-#else
-        if(interp(x,y)<0)
-#endif
+        p4est_locidx_t um = faces.q2f(q, dir::f_m00);
+        if(um!=-1)
         {
-          um_cells_p[q] = sol_u_p[um];
+          double x = faces.x_fr_f(um, dir::x);
+          double y = faces.y_fr_f(um, dir::x);
 #ifdef P4_TO_P8
-          up_cells_p[q] = fabs(sol_u_p[um] - u_exact(x,y,z));
+          double z = faces.z_fr_f(um, dir::x);
+          if(interp(x,y,z)<0)
 #else
-          up_cells_p[q] = fabs(sol_u_p[um] - u_exact(x,y));
+          if(interp(x,y)<0)
 #endif
+          {
+            um_cells_p[q] = sol_u_p[um];
+#ifdef P4_TO_P8
+            up_cells_p[q] = fabs(sol_u_p[um] - u_exact(x,y,z));
+#else
+            up_cells_p[q] = fabs(sol_u_p[um] - u_exact(x,y));
+#endif
+          }
+        }
+        else
+        {
+          um_cells_p[q] = 0;
+          up_cells_p[q] = 0;
         }
       }
-      else
-      {
-        um_cells_p[q] = 0;
-        up_cells_p[q] = 0;
-      }
+      ierr = VecGhostUpdateBegin(um_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (um_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(up_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (up_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      ierr = VecRestoreArray(sol[0], &sol_u_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(um_cells, &um_cells_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(up_cells, &up_cells_p); CHKERRXX(ierr);
+
+      /* END OF TESTS */
+
+      save_VTK(p4est, ghost, nodes, &brick, phi, um_cells, up_cells, iter);
+
+      ierr = VecDestroy(um_cells); CHKERRXX(ierr);
+      ierr = VecDestroy(up_cells); CHKERRXX(ierr);
     }
-    ierr = VecGhostUpdateBegin(um_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (um_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(up_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (up_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    ierr = VecRestoreArray(sol[0], &sol_u_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(um_cells, &um_cells_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(up_cells, &up_cells_p); CHKERRXX(ierr);
-
-    /* END OF TESTS */
-
-    save_VTK(p4est, ghost, nodes, &brick, phi, um_cells, up_cells, iter);
 
     ierr = VecDestroy(phi); CHKERRXX(ierr);
-    ierr = VecDestroy(um_cells); CHKERRXX(ierr);
-    ierr = VecDestroy(up_cells); CHKERRXX(ierr);
 
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
