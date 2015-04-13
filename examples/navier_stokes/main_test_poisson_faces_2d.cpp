@@ -1,0 +1,674 @@
+// System
+#include <stdexcept>
+#include <iostream>
+#include <sys/stat.h>
+#include <vector>
+#include <algorithm>
+#include <iterator>
+#include <set>
+#include <time.h>
+#include <stdio.h>
+
+// p4est Library
+#ifdef P4_TO_P8
+#include <p8est_bits.h>
+#include <p8est_extended.h>
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_vtk.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_log_wrappers.h>
+#include <src/my_p8est_cell_neighbors.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_faces.h>
+#include <src/my_p8est_poisson_faces.h>
+#else
+#include <p4est_bits.h>
+#include <p4est_extended.h>
+#include <src/my_p4est_utils.h>
+#include <src/my_p4est_vtk.h>
+#include <src/my_p4est_nodes.h>
+#include <src/my_p4est_tools.h>
+#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_log_wrappers.h>
+#include <src/my_p4est_cell_neighbors.h>
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_faces.h>
+#include <src/my_p4est_poisson_faces.h>
+#endif
+
+#include <src/point3.h>
+
+#include <src/petsc_compatibility.h>
+#include <src/Parser.h>
+
+#undef MIN
+#undef MAX
+
+using namespace std;
+
+int lmin = 3;
+int lmax = 3;
+int nb_splits = 1;
+
+int nx = 2;
+int ny = 2;
+#ifdef P4_TO_P8
+int nz = 2;
+#endif
+
+/*
+ * 0 - circle
+ */
+int interface_type = 0;
+
+/*
+ *  ********* 2D *********
+ * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1, diag_add=0
+ */
+int test_number = 0;
+
+BoundaryConditionType bc_itype = DIRICHLET;
+BoundaryConditionType bc_wtype = DIRICHLET;
+
+double diag_add = 0;
+
+#ifdef P4_TO_P8
+double r0 = (double) MIN(nx,ny,nz) / 4;
+#else
+double r0 = (double) MIN(nx,ny) / 4;
+#endif
+
+
+
+#ifdef P4_TO_P8
+
+class LEVEL_SET: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+      return r0 - sqrt(SQR(x - (double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} level_set;
+
+class NO_INTERFACE_CF : public CF_3
+{
+public:
+  double operator()(double, double, double) const
+  {
+    return -1;
+  }
+} no_interface_cf;
+
+double u_exact(double x, double y, double z)
+{
+  switch(test_number)
+  {
+  case 0:
+    return x+y+z;
+  case 1:
+    return x*x + y*y + z*z;
+  case 2:
+    return sin(x)*cos(y)*exp(z);
+  default:
+    throw std::invalid_argument("Choose a valid test.");
+  }
+}
+
+class BCINTERFACEVAL : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    if(bc_itype==DIRICHLET)
+      return u_exact(x,y,z);
+    else
+    {
+      double dx, dy, dz;
+      switch(interface_type)
+      {
+      case 0:
+        dx = -(x - (double) nx/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
+        dy = -(y - (double) ny/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
+        dz = -(z - (double) nz/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
+        break;
+      default:
+        throw std::invalid_argument("choose a valid interface type.");
+      }
+
+      switch(test_number)
+      {
+      case 0:
+        return dx + dy + dz;
+      case 1:
+        return 2*x*dx + 2*y*dy + 2*z*dz;
+      case 2:
+        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+      }
+    }
+  }
+} bc_interface_val;
+
+class BCWALLTYPE : public WallBC3D
+{
+public:
+  BoundaryConditionType operator()(double, double, double) const
+  {
+    return bc_wtype;
+  }
+} bc_wall_type;
+
+class BCWALLVAL : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    if(bc_wall_type(x,y,z)==DIRICHLET)
+      return u_exact(x,y,z);
+    else
+    {
+      double dx = 0; dx = fabs(x)<EPS ? -1 : (fabs(x-nx)<EPS  ? 1 : 0);
+      double dy = 0; dy = fabs(y)<EPS ? -1 : (fabs(y-ny)<EPS  ? 1 : 0);
+      double dz = 0; dz = fabs(z)<EPS ? -1 : (fabs(z-nz)<EPS  ? 1 : 0);
+      switch(test_number)
+      {
+      case 0:
+        return dx + dy + dz;
+      case 1:
+        return 2*x*dx + 2*y*dy + 2*z*dz;
+      case 2:
+        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+      }
+    }
+  }
+} bc_wall_val;
+
+#else
+
+class LEVEL_SET: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+      return r0 - sqrt(SQR(x - (double) nx/2) + SQR(y - (double) ny/2));
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} level_set;
+
+class NO_INTERFACE_CF : public CF_2
+{
+public:
+  double operator()(double, double) const
+  {
+    return -1;
+  }
+} no_interface_cf;
+
+double u_exact(double x, double y)
+{
+  switch(test_number)
+  {
+  case 0:
+    return x+y;
+  case 1:
+    return x*x + y*y;
+  case 2:
+    return sin(x)*cos(y);
+  default:
+    throw std::invalid_argument("Choose a valid test.");
+  }
+}
+
+class BCINTERFACEVAL : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    if(bc_itype==DIRICHLET)
+      return u_exact(x,y);
+    else
+    {
+      double dx, dy;
+      switch(interface_type)
+      {
+      case 0:
+        dx = -(x - (double) nx/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2));
+        dy = -(y - (double) ny/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2));
+        break;
+      default:
+        throw std::invalid_argument("choose a valid interface type.");
+      }
+
+      switch(test_number)
+      {
+      case 0:
+        return dx + dy;
+      case 1:
+        return 2*x*dx + 2*y*dy;
+      case 2:
+        return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy;
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+      }
+    }
+  }
+} bc_interface_val;
+
+class BCWALLTYPE : public WallBC2D
+{
+public:
+  BoundaryConditionType operator()(double, double) const
+  {
+    return bc_wtype;
+  }
+} bc_wall_type;
+
+class BCWALLVAL : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    if(bc_wall_type(x,y)==DIRICHLET)
+      return u_exact(x,y);
+    else
+    {
+      double dx = 0; dx = fabs(x)<EPS ? -1 : (fabs(x-nx)<EPS  ? 1 : 0);
+      double dy = 0; dy = fabs(y)<EPS ? -1 : (fabs(y-ny)<EPS  ? 1 : 0);
+      switch(test_number)
+      {
+      case 0:
+        return dx + dy;
+      case 1:
+        return 2*x*dx + 2*y*dy;
+      case 2:
+        return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy;
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+      }
+    }
+  }
+} bc_wall_val;
+
+#endif
+
+
+
+void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_brick_t *brick,
+              Vec phi, Vec u_idx, Vec v_idx,
+              int compt)
+{
+  PetscErrorCode ierr;
+#ifdef STAMPEDE
+  char *out_dir;
+  out_dir = getenv("OUT_DIR");
+#else
+  char out_dir[10000];
+  sprintf(out_dir, "/home/guittet/code/Output/p4est_navier_stokes");
+#endif
+
+  std::ostringstream oss;
+
+  oss << out_dir
+      << "/vtu/faces_"
+      << p4est->mpisize << "_"
+      << brick->nxyztrees[0] << "x"
+      << brick->nxyztrees[1] <<
+       #ifdef P4_TO_P8
+         "x" << brick->nxyztrees[2] <<
+       #endif
+         "." << compt;
+
+  double *phi_p, *u_idx_p, *v_idx_p;
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(u_idx, &u_idx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(v_idx, &v_idx_p); CHKERRXX(ierr);
+
+  /* save the size of the leaves */
+  Vec leaf_level;
+  ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
+  double *l_p;
+  ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for( size_t q=0; q<tree->quadrants.elem_count; ++q)
+    {
+      const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      l_p[tree->quadrants_offset+q] = quad->level;
+    }
+  }
+
+  for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
+  {
+    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+    l_p[p4est->local_num_quadrants+q] = quad->level;
+  }
+
+  my_p4est_vtk_write_all(p4est, nodes, ghost,
+                         P4EST_TRUE, P4EST_TRUE,
+                         1, 3, oss.str().c_str(),
+                         VTK_POINT_DATA, "phi", phi_p,
+                         VTK_CELL_DATA, "u_idx", u_idx_p,
+                         VTK_CELL_DATA, "v_idx", v_idx_p,
+                         VTK_CELL_DATA , "leaf_level", l_p);
+
+  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(u_idx, &u_idx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(v_idx, &v_idx_p); CHKERRXX(ierr);
+
+  PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
+}
+
+
+
+int main (int argc, char* argv[])
+{
+  PetscErrorCode ierr;
+  mpi_context_t mpi_context, *mpi = &mpi_context;
+  mpi->mpicomm  = MPI_COMM_WORLD;
+
+  Session mpi_session;
+  mpi_session.init(argc, argv, mpi->mpicomm);
+
+  cmdParser cmd;
+  cmd.add_option("lmin", "min level of the tree");
+  cmd.add_option("lmax", "max level of the tree");
+  cmd.add_option("nb_splits", "number of recursive splits");
+  cmd.add_option("bc_wtype", "type of boundary condition to use on the wall");
+  cmd.add_option("bc_itype", "type of boundary condition to use on the interface");
+  cmd.add_option("save_voro", "save the voronoi partition in vtk format");
+#ifdef P4_TO_P8
+  cmd.add_option("test", "choose a test.\n\
+                 0 - u_m=1+log(r/r0), u_p=1, mu=1\n\
+                 1 - u_m=exp(z), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-z)   article example 4.6");
+#else
+  cmd.add_option("test", "choose a test.\n\
+                 0 - x*x\n\
+                 1 - sin(x)*cos(y), BC dirichlet\n\
+                 2 - u_m=u_p=sin(x)*sin(y), mu_m=mu_p, BC neumann\n\
+                 3 - u_m=exp(x), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-y)   article example 4.4");
+#endif
+  cmd.parse(argc, argv);
+
+  cmd.print();
+
+  lmin = cmd.get("lmin", lmin);
+  lmax = cmd.get("lmax", lmax);
+  nb_splits = cmd.get("nb_splits", nb_splits);
+  test_number = cmd.get("test", test_number);
+
+  bc_wtype = cmd.get("bc_wtype", bc_wtype);
+  bc_itype = cmd.get("bc_itype", bc_itype);
+
+  bool save_voro = cmd.get("save_voro", false);
+
+  parStopWatch w;
+  w.start("total time");
+
+  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
+  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
+
+  if(0)
+  {
+    int i = 0;
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+    fflush(stdout);
+    while (0 == i)
+      sleep(5);
+  }
+
+  p4est_connectivity_t *connectivity;
+  my_p4est_brick_t brick;
+#ifdef P4_TO_P8
+  connectivity = my_p4est_brick_new(nx, ny, nz, &brick);
+#else
+  connectivity = my_p4est_brick_new(nx, ny, &brick);
+#endif
+
+  p4est_t       *p4est;
+  p4est_nodes_t *nodes;
+  p4est_ghost_t *ghost;
+
+  vector<double> err_n  (P4EST_DIM, 0);
+  vector<double> err_nm1(P4EST_DIM, 0);
+
+  for(int iter=0; iter<nb_splits; ++iter)
+  {
+    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
+    p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+
+//    srand(1);
+//    splitting_criteria_random_t data(2, 7, 1000, 10000);
+    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set, 1.2);
+    p4est->user_pointer = (void*)(&data);
+
+//    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
+    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+    p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+
+    ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+    my_p4est_ghost_expand(p4est, ghost);
+    nodes = my_p4est_nodes_new(p4est, ghost);
+
+    my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
+    my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
+    my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
+
+    Vec phi;
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
+    if(bc_itype==NOINTERFACE)
+      sample_cf_on_nodes(p4est, nodes, no_interface_cf, phi);
+    else
+      sample_cf_on_nodes(p4est, nodes, level_set, phi);
+
+    my_p4est_level_set ls(&ngbd_n);
+    ls.perturb_level_set_function(phi, EPS);
+
+    /* TEST THE FACES FUNCTIONS */
+    my_p4est_faces_t faces(p4est, ghost, &brick, &ngbd_c);
+
+#ifdef P4_TO_P8
+    BoundaryConditions3D bc[P4EST_DIM];
+#else
+    BoundaryConditions2D bc[P4EST_DIM];
+#endif
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      bc[dir].setWallTypes(bc_wall_type);
+      bc[dir].setWallValues(bc_wall_val);
+      bc[dir].setInterfaceType(bc_itype);
+      bc[dir].setInterfaceValue(bc_interface_val);
+    }
+
+    Vec rhs[P4EST_DIM];
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecCreateGhostFaces(p4est, &faces, &rhs[dir], dir); CHKERRXX(ierr);
+      double *rhs_p;
+      ierr = VecGetArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
+
+      for(p4est_locidx_t f_idx=0; f_idx<faces.num_local[dir]; ++f_idx)
+      {
+        double x = faces.x_fr_f(f_idx, dir);
+        double y = faces.y_fr_f(f_idx, dir);
+#ifdef P4_TO_P8
+        double z = faces.z_fr_f(f_idx, dir);
+#endif
+        switch(test_number)
+        {
+        case 0:
+          rhs_p[f_idx] = 0;
+          break;
+        case 1:
+#ifdef P4_TO_P8
+          rhs_p[f_idx] = -6;
+#else
+          rhs_p[f_idx] = -4;
+#endif
+          break;
+        case 2:
+#ifdef P4_TO_P8
+          rhs_p[f_idx] = sin(x)*cos(y)*exp(z);
+#else
+          rhs_p[f_idx] = 2*sin(x)*cos(y);
+#endif
+          break;
+        default:
+          throw std::invalid_argument("set rhs : unknown test number.");
+        }
+      }
+
+      ierr = VecRestoreArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
+    }
+
+    PoissonSolverFaces solver(&faces, &ngbd_n);
+    solver.set_phi(phi);
+    solver.set_mu(1);
+    solver.set_bc(bc);
+    solver.set_rhs(rhs);
+
+    Vec sol[P4EST_DIM];
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+      ierr = VecDuplicate(rhs[dir], &sol[dir]); CHKERRXX(ierr);
+
+    solver.solve(sol);
+
+    if(save_voro)
+    {
+      char name[1000];
+      sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/voro_%d.vtk", p4est->mpirank);
+      solver.print_partition_VTK(name);
+    }
+
+    /* check the error */
+    InterpolatingFunctionNodeBaseHost interp(ngbd_n, linear);
+    interp.set_input(phi);
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      double *sol_p;
+      ierr = VecGetArray(sol[dir], &sol_p); CHKERRXX(ierr);
+
+      err_nm1[dir] = err_n[dir];
+      err_n[dir] = 0;
+
+      for(p4est_locidx_t f_idx=0; f_idx<faces.num_local[dir]; ++f_idx)
+      {
+        double x = faces.x_fr_f(f_idx, dir);
+        double y = faces.y_fr_f(f_idx, dir);
+#ifdef P4_TO_P8
+        double z = faces.z_fr_f(f_idx, dir);
+        if(interp(x,y,z)<0)
+          err_n[dir] = MAX(err_n[dir], fabs(sol_p[f_idx] - u_exact(x,y,z)));
+#else
+        if(interp(x,y)<0)
+          err_n[dir] = MAX(err_n[dir], fabs(sol_p[f_idx] - u_exact(x,y)));
+#endif
+      }
+
+      int mpiret;
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n[dir], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+      ierr = PetscPrintf(p4est->mpicomm, "Error for direction %d : %g, order = %g\n", dir, err_n[dir], log(err_nm1[dir]/err_n[dir])/log(2)); CHKERRXX(ierr);
+
+      ierr = VecRestoreArray(sol[dir], &sol_p); CHKERRXX(ierr);
+    }
+
+    double *sol_u_p;
+    ierr = VecGetArray(sol[0], &sol_u_p); CHKERRXX(ierr);
+
+    Vec um_cells, up_cells;
+    ierr = VecCreateGhostCells(p4est, ghost, &um_cells); CHKERRXX(ierr);
+    ierr = VecDuplicate(um_cells, &up_cells);
+    double *um_cells_p;
+    ierr = VecGetArray(um_cells, &um_cells_p); CHKERRXX(ierr);
+    double *up_cells_p;
+    ierr = VecGetArray(up_cells, &up_cells_p); CHKERRXX(ierr);
+    for(p4est_locidx_t q=0; q<p4est->local_num_quadrants; ++q)
+    {
+      p4est_locidx_t um = faces.q2f(q, dir::f_m00);
+      if(um!=-1)
+      {
+        double x = faces.x_fr_f(um, dir::x);
+        double y = faces.y_fr_f(um, dir::x);
+#ifdef P4_TO_P8
+        double z = faces.z_fr_f(um, dir::x);
+        if(interp(x,y,z)<0)
+#else
+        if(interp(x,y)<0)
+#endif
+        {
+          um_cells_p[q] = sol_u_p[um];
+#ifdef P4_TO_P8
+          up_cells_p[q] = fabs(sol_u_p[um] - u_exact(x,y,z));
+#else
+          up_cells_p[q] = fabs(sol_u_p[um] - u_exact(x,y));
+#endif
+        }
+      }
+      else
+      {
+        um_cells_p[q] = 0;
+        up_cells_p[q] = 0;
+      }
+    }
+    ierr = VecGhostUpdateBegin(um_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (um_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(up_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (up_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(sol[0], &sol_u_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(um_cells, &um_cells_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(up_cells, &up_cells_p); CHKERRXX(ierr);
+
+    /* END OF TESTS */
+
+    save_VTK(p4est, ghost, nodes, &brick, phi, um_cells, up_cells, iter);
+
+    ierr = VecDestroy(phi); CHKERRXX(ierr);
+    ierr = VecDestroy(um_cells); CHKERRXX(ierr);
+    ierr = VecDestroy(up_cells); CHKERRXX(ierr);
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
+      ierr = VecDestroy(sol[dir]); CHKERRXX(ierr);
+    }
+
+    p4est_nodes_destroy(nodes);
+    p4est_ghost_destroy(ghost);
+    p4est_destroy      (p4est);
+  }
+
+  my_p4est_brick_destroy(connectivity, &brick);
+
+  w.stop(); w.read_duration();
+
+  return 0;
+}

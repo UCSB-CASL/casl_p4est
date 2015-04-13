@@ -1,5 +1,18 @@
 #include "my_p4est_faces.h"
 
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_faces_t;
+#endif
+#ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops
+#define PetscLogFlops(n) 0
+#endif
+
 
 my_p4est_faces_t::my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_cell_neighbors_t *ngbd_c)
 {
@@ -13,6 +26,9 @@ my_p4est_faces_t::my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4es
 
 void my_p4est_faces_t::init_faces()
 {
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_faces_t, 0, 0, 0, 0); CHKERRXX(ierr);
+
   int mpiret;
 
   for(int d=0; d<P4EST_FACES; ++d)
@@ -637,6 +653,8 @@ void my_p4est_faces_t::init_faces()
 
   mpiret = MPI_Waitall(req_query2.size(), &req_query2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
   mpiret = MPI_Waitall(req_reply2.size(), &req_reply2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+
+  ierr = PetscLogEventEnd(log_my_p4est_faces_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
