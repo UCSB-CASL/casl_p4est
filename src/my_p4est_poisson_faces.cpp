@@ -19,10 +19,11 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
+extern PetscLogEvent log_PoissonSolverFaces_compute_voronoi_cell;
 extern PetscLogEvent log_PoissonSolverFaces_matrix_preallocation;
 extern PetscLogEvent log_PoissonSolverFaces_setup_linear_system;
-extern PetscLogEvent log_PoissonSolverNodeBased_KSPSolve;
-extern PetscLogEvent log_PoissonSolverNodeBased_solve;
+extern PetscLogEvent log_PoissonSolverFaces_solve;
+extern PetscLogEvent log_PoissonSolverFaces_KSPSolve;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -39,6 +40,8 @@ PoissonSolverFaces::PoissonSolverFaces(const my_p4est_faces_t *faces, const my_p
     #endif
     A(PETSC_NULL), A_null_space(PETSC_NULL), ksp(PETSC_NULL)
 {
+  PetscErrorCode ierr;
+
   /* set up the KSP solver */
   ierr = KSPCreate(p4est->mpicomm, &ksp); CHKERRXX(ierr);
   ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
@@ -170,6 +173,8 @@ void PoissonSolverFaces::set_bc(const BoundaryConditions2D *bc)
 
 void PoissonSolverFaces::solve(Vec *solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
+  PetscErrorCode ierr;
+
 #ifdef CASL_THROWS
   if(bc == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -185,6 +190,7 @@ void PoissonSolverFaces::solve(Vec *solution, bool use_nonzero_initial_guess, KS
   }
 #endif
 
+  ierr = PetscLogEventBegin(log_PoissonSolverFaces_solve, A, rhs, solution, 0); CHKERRXX(ierr);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -203,17 +209,25 @@ void PoissonSolverFaces::solve(Vec *solution, bool use_nonzero_initial_guess, KS
       ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
 
     /* solve the system */
+    ierr = PetscLogEventBegin(log_PoissonSolverFaces_solve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
     ierr = KSPSolve(ksp, rhs[dir], solution[dir]); CHKERRXX(ierr);
+    ierr = PetscLogEventEnd(log_PoissonSolverFaces_solve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
 
     /* update ghosts */
     ierr = VecGhostUpdateBegin(solution[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (solution[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
+
+  ierr = PetscLogEventEnd(log_PoissonSolverFaces_solve, A, rhs, solution, 0); CHKERRXX(ierr);
 }
 
 
 void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
 {
+  PetscErrorCode ierr;
+
+  ierr = PetscLogEventBegin(log_PoissonSolverFaces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
+
   voro[f_idx].clear();
 
   p4est_locidx_t quad_idx;
@@ -586,6 +600,8 @@ void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
     voro[f_idx].clip_Interface();
   }
 #endif
+
+  ierr = PetscLogEventEnd(log_PoissonSolverFaces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -633,9 +649,13 @@ void PoissonSolverFaces::preallocate_matrix(int dir)
 #endif
 
 #ifdef P4_TO_P8
-    if(bc[dir].interfaceType()==NOINTERFACE || phi_c<2*MAX(dx_min,dy_min,dz_min))
+    if(bc[dir].interfaceType()==NOINTERFACE ||
+      (bc[dir].interfaceType()==DIRICHLET && phi_c<0) ||
+       (bc[dir].interfaceType()==NEUMANN   && phi_c<MAX(dx_min,dy_min,dz_min)) )
 #else
-    if(bc[dir].interfaceType()==NOINTERFACE || phi_c<2*MAX(dx_min,dy_min))
+    if(bc[dir].interfaceType()==NOINTERFACE ||
+       (bc[dir].interfaceType()==DIRICHLET && phi_c<0) ||
+       (bc[dir].interfaceType()==NEUMANN   && phi_c<MAX(dx_min,dy_min)) )
 #endif
     {
       compute_voronoi_cell(f_idx, dir);

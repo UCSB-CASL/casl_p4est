@@ -64,7 +64,6 @@ class PoissonSolverFaces
   Mat A;
   MatNullSpace A_null_space;
   KSP ksp;
-  PetscErrorCode ierr;
 
   int matrix_has_nullspace[P4EST_DIM];
 

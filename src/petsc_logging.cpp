@@ -25,6 +25,7 @@ PetscLogEvent log_PoissonSolverNodeBased_solve;
 PetscLogEvent log_PoissonSolverNodeBased_KSPSolve;
 
 // PoissonSolverFaces
+PetscLogEvent log_PoissonSolverFaces_compute_voronoi_cell;
 PetscLogEvent log_PoissonSolverFaces_matrix_preallocation;
 PetscLogEvent log_PoissonSolverFaces_setup_linear_system;
 PetscLogEvent log_PoissonSolverFaces_solve;
@@ -150,9 +151,11 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::solve                           ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
 
   // PoissonSolverFaces
-  ierr = PetscLogEventRegister("PoissonSolverFaces::matrix_preallocation                ", 0, &log_PoissonSolverNodeBased_matrix_preallocation); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverFaces::setup_linear_system                 ", 0, &log_PoissonSolverNodeBased_matrix_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverFaces::solve                               ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverFaces::compute_voronoi_cell                ", 0, &log_PoissonSolverFaces_compute_voronoi_cell); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverFaces::matrix_preallocation                ", 0, &log_PoissonSolverFaces_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverFaces::setup_linear_system                 ", 0, &log_PoissonSolverFaces_setup_linear_system); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverFaces::solve                               ", 0, &log_PoissonSolverFaces_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverFaces::KSPSolve                            ", 0, &log_PoissonSolverFaces_KSPSolve); CHKERRXX(ierr);
 
   // InterpolatingFunction
   ierr = PetscLogEventRegister("InterpolatingFunction::interpolate                      ", 0, &log_InterpolatingFunction_interpolate); CHKERRXX(ierr);
