@@ -1,4 +1,4 @@
-Hi Mohammad, Arthur, and Frederik,
+Hi Mohammad, Arthur, and Frederic,
 
 I've read through the paper draft.  Very impressive work!  I have a bunch of
 handwritten comments that I'll scan and upload tomorrow.  For now, I'll list
@@ -12,37 +12,38 @@ the main points that come to my mind.
    and to summarize the basics of the FD method in the text, even if it has been
    published before in more detail.  This will make the paper more
    self-contained, and also help distinguish the paper from other AMR work that
-   is mostly FE-based.  The paper will attract more citations this way too.  
+   is mostly FE-based.  Our paper will attract more citations this way too.
 
  * The node numbering algorithm in this paper is modified from the original
    p4est paper.  We could add it to the paper as another new contribution.
 
  * The paper reports timings on the algorithm p4est_refine_coarsen that takes
    up a large fraction of the overall runtime.  What this algorithm does exactly
-   is not fully described in the paper.  To avoid being shot down for seemingly
+   is not fully described.  To avoid being shot down for seemingly
    slow octree algorithms, I'd propose to write an Algorithm that lists and
    explains the different steps in this function.  We might also want to stress
    that changing the mesh not only once, but several times in a single time step
    puts very stern requirements on the absolute run times of all octree
-   algorithms, so in fact we can turn the situation around by arguing that our
-   method satisfies these to the extreme.
+   algorithms, so in fact we can and should turn the situation around by
+   arguing that our method satisfies these to the extreme.
 
  * The current code creates a full tree hierarchy to help searching for the
    departure points.  In the mean time, I have written a function in p4est that
-   does such a search for multiple points in a very optimized way.  In particular,
+   does such a search for multiple points in a highly optimized way.  In particular,
    it works with a plain p4est structure and does not require a full hierarchy.
    It is documented in our current arxiv preprint that is still under review.
    I'd suggest to implement an option to replace the current combination of
-   Algorithms 1 and H.search with a direct use of the p4est_search function.  We
-   might as well see how the timings of the two algorithms is different and then
-   decide which algorithm to use in the future.
+   Algorithms 1 and H.search with a direct use of the p4est_search function,
+   avoiding the construction of H altogether.  We might as well see how the
+   timings of the two approaches are different and then decide which algorithm to
+   use in the future.
 
  * The transposition of the communication matrix is nicely described.  I have
    a function sc_notify that is covered in our 2012 paper on balance
-   algorithms.  Again, it should be easy to call and compare its timings with
-   what the code is doing now.  Also, like the previous point, we might do
-   this while waiting for the first review; I'd definitely like to have this
-   tried out for the final version though.
+   algorithms and has the same functionality.  Again, it should be easy to call
+   and compare its timings with what the code is doing now.  Also, like the
+   previous point, we might do this while waiting for the first review; I'd
+   definitely welcome to have this tried out for the final version though.
 
 Most other comments of mine are editorial.  Just some random points:
 
@@ -60,10 +61,13 @@ Most other comments of mine are editorial.  Just some random points:
 
    In the draft, sometimes we speak of the forest, and sometimes of the octree,
    which we should unify.  We are currently using mxmxm forests instead of
-   mxnxp ones, which does not make a very good point in using a forest at all.
-   Just for good measure, should we show for example that a 1x1 forest at level l
-   and say 4x1 at level l-1 are equally fast with the same number of seeds.
+   mxnxp ones, which does not make a very good point for using a forest at all.
+   Just for good measure, should we show for example that a 1x1 forest at level
+   l and say a 4x1 forest at level l-1 are equally fast with the same number of
+   seeds?
 
  * When you get a look at my handwritten comments, please don't take offense and
    take them with a grain of salt.  I'm just trying to understand the paper and
    noting down things that I find subjectively inconsistent or incomplete.
+
+ * Again, thanks for all your work and your patience!
