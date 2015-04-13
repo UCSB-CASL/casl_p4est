@@ -209,9 +209,9 @@ void PoissonSolverFaces::solve(Vec *solution, bool use_nonzero_initial_guess, KS
       ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
 
     /* solve the system */
-    ierr = PetscLogEventBegin(log_PoissonSolverFaces_solve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
+    ierr = PetscLogEventBegin(log_PoissonSolverFaces_KSPSolve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
     ierr = KSPSolve(ksp, rhs[dir], solution[dir]); CHKERRXX(ierr);
-    ierr = PetscLogEventEnd(log_PoissonSolverFaces_solve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
+    ierr = PetscLogEventEnd(log_PoissonSolverFaces_KSPSolve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
 
     /* update ghosts */
     ierr = VecGhostUpdateBegin(solution[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
