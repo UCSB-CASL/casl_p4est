@@ -205,18 +205,7 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
   if(f==NULL) throw std::invalid_argument("[CASL_ERROR]: Voronoi3D: cannot open file.");
 #endif
 
-  struct Voro_Ngbd {
-    voro::container* voronoi;
-    voro::particle_order* po;
-    Voro_Ngbd() : voronoi(NULL), po(NULL) {}
-    ~Voro_Ngbd()
-    {
-      if(voronoi!=NULL) delete voronoi;
-      if(po!=NULL) delete po;
-    }
-  };
-
-  vector<Voro_Ngbd> voro_global(voro.size());
+  vector<VoroNgbd> voro_global(voro.size());
   for(unsigned int n=0; n<voro.size(); ++n)
   {
     voro_global[n].voronoi = new voro::container(xmin, xmax, ymin, ymax, zmin, zmax,

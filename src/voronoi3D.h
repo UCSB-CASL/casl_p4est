@@ -13,6 +13,17 @@
 
 using std::vector;
 
+struct VoroNgbd {
+  voro::container* voronoi;
+  voro::particle_order* po;
+  VoroNgbd() : voronoi(NULL), po(NULL) {}
+  ~VoroNgbd()
+  {
+    if(voronoi!=NULL) delete voronoi;
+    if(po!=NULL) delete po;
+  }
+};
+
 struct Voronoi3DPoint
 {
   /*!
