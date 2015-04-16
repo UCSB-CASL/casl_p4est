@@ -8,6 +8,7 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_cell_neighbors.h>
+#include <src/my_p8est_node_neighbors.h>
 #else
 #include <p4est.h>
 #include <p4est_ghost.h>
@@ -130,9 +131,17 @@ public:
 PetscErrorCode VecCreateGhostFaces     (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, int dir);
 PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, int dir);
 
+
+#ifdef P4_TO_P8
+double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
+                               my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
+                               Vec f, int dir, p4est_locidx_t node_idx,
+                               Vec phi, BoundaryConditionType bc_type, BoundaryConditions3D *bc);
+#else
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                Vec f, int dir, p4est_locidx_t node_idx,
                                Vec phi, BoundaryConditionType bc_type, BoundaryConditions2D *bc);
+#endif
 
 #endif /* MY_P4EST_FACES_H */

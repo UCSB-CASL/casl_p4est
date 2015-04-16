@@ -627,7 +627,12 @@ int main (int argc, char* argv[])
 
           double x = node_x_fr_n(n, p4est, nodes);
           double y = node_y_fr_n(n, p4est, nodes);
+#ifdef P4_TO_P8
+          double z = node_z_fr_n(n, p4est, nodes);
+          err_nodes_n[dir] = max(err_nodes_n[dir], fabs(u_exact(x,y,z) - sol_p[n]));
+#else
           err_nodes_n[dir] = max(err_nodes_n[dir], fabs(u_exact(x,y) - sol_p[n]));
+#endif
         }
       }
 

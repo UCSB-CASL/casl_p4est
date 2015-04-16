@@ -789,13 +789,13 @@ void my_p4est_faces_t::xyz_fr_f(p4est_locidx_t f_idx, int dir, double* xyz) cons
   xyz[2] = quad_z_fr_k(quad) + tree_xyz_min[2];
 #endif
 
-  if(dir==dir::x && q2f(quad_idx, dir::f_p00)==f_idx) xyz[0] +=    (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  else                                                xyz[0] += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  if(dir==dir::y && q2f(quad_idx, dir::f_0p0)==f_idx) xyz[1] +=    (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  else                                                xyz[1] += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  if(dir!=dir::x)                           xyz[0] += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  else if(q2f(quad_idx, dir::f_p00)==f_idx) xyz[0] +=    (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  if(dir!=dir::y)                           xyz[1] += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  else if(q2f(quad_idx, dir::f_0p0)==f_idx) xyz[1] +=    (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 #ifdef P4_TO_P8
-  if(dir==dir::z && q2f(quad_idx, dir::f_00p)==f_idx) xyz[2] +=    (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  else                                                xyz[2] += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  if(dir!=dir::z)                           xyz[2] += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  else if(q2f(quad_idx, dir::f_00p)==f_idx) xyz[2] +=    (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 #endif
 }
 
@@ -854,10 +854,17 @@ PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_fac
 
 
 
+#ifdef P4_TO_P8
+double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
+                               my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
+                               Vec f, int dir, p4est_locidx_t node_idx,
+                               Vec phi, BoundaryConditionType bc_type, BoundaryConditions3D *bc)
+#else
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                Vec f, int dir, p4est_locidx_t node_idx,
                                Vec phi, BoundaryConditionType bc_type, BoundaryConditions2D *bc)
+#endif
 {
 #ifdef CASL_THROWS
   if(node_idx>nodes->num_owned_indeps) throw std::invalid_argument("[CASL_ERROR]: interpolate_f_at_node_n: cannot be called on a ghost node.");
@@ -985,14 +992,19 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
       bool is_neg = true;
       if(bc_type==NEUMANN)
       {
-        double phi_0=0, phi_1=0;
-        double phi_2=0, phi_3=0;
+        double phi_N[P4EST_CHILDREN];
         if(is_quad_Wall(p4est, tree_idx, &ngbd[m], 2*dir))
         {
           switch(dir)
           {
-          case dir::x : phi_0 = phi_tmp[dir::v_mmm]; phi_1 = phi_tmp[dir::v_mpm]; break;
-          case dir::y : phi_0 = phi_tmp[dir::v_mmm]; phi_1 = phi_tmp[dir::v_pmm]; break;
+#ifdef P4_TO_P8
+          case dir::x : phi_N[0] = phi_tmp[dir::v_mmm]; phi_N[1] = phi_tmp[dir::v_mpm]; phi_N[2] = phi_tmp[dir::v_mmp]; phi_N[3] = phi_tmp[dir::v_mpp]; break;
+          case dir::y : phi_N[0] = phi_tmp[dir::v_mmm]; phi_N[1] = phi_tmp[dir::v_pmm]; phi_N[2] = phi_tmp[dir::v_mmp]; phi_N[3] = phi_tmp[dir::v_pmp]; break;
+          case dir::z : phi_N[0] = phi_tmp[dir::v_mmm]; phi_N[1] = phi_tmp[dir::v_pmm]; phi_N[2] = phi_tmp[dir::v_mpm]; phi_N[3] = phi_tmp[dir::v_ppm]; break;
+#else
+          case dir::x : phi_N[0] = phi_tmp[dir::v_mmm]; phi_N[1] = phi_tmp[dir::v_mpm]; break;
+          case dir::y : phi_N[0] = phi_tmp[dir::v_mmm]; phi_N[1] = phi_tmp[dir::v_pmm]; break;
+#endif
           default: throw std::invalid_argument("[CASL_ERROR]: interpolate_f_at_node: unknown direction.");
           }
         }
@@ -1002,14 +1014,35 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
           ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 2*dir);
           switch(dir)
           {
+#ifdef P4_TO_P8
           case dir::x:
-            phi_0 = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mmm]] + phi_tmp[dir::v_mmm])/2;
-            phi_1 = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mpm]] + phi_tmp[dir::v_mpm])/2;
+            phi_N[0] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mmm]] + phi_tmp[dir::v_mmm])/2;
+            phi_N[1] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mpm]] + phi_tmp[dir::v_mpm])/2;
+            phi_N[2] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mmp]] + phi_tmp[dir::v_mmp])/2;
+            phi_N[3] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mpp]] + phi_tmp[dir::v_mpp])/2;
             break;
           case dir::y:
-            phi_0 = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mmm]] + phi_tmp[dir::v_mmm])/2;
-            phi_1 = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_pmm]] + phi_tmp[dir::v_pmm])/2;
+            phi_N[0] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mmm]] + phi_tmp[dir::v_mmm])/2;
+            phi_N[1] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_pmm]] + phi_tmp[dir::v_pmm])/2;
+            phi_N[2] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mmp]] + phi_tmp[dir::v_mmp])/2;
+            phi_N[3] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_pmp]] + phi_tmp[dir::v_pmp])/2;
             break;
+          case dir::z:
+            phi_N[0] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mmm]] + phi_tmp[dir::v_mmm])/2;
+            phi_N[1] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_pmm]] + phi_tmp[dir::v_pmm])/2;
+            phi_N[2] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mpm]] + phi_tmp[dir::v_mpm])/2;
+            phi_N[3] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_ppm]] + phi_tmp[dir::v_ppm])/2;
+            break;
+#else
+          case dir::x:
+            phi_N[0] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mmm]] + phi_tmp[dir::v_mmm])/2;
+            phi_N[1] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mpm]] + phi_tmp[dir::v_mpm])/2;
+            break;
+          case dir::y:
+            phi_N[0] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mmm]] + phi_tmp[dir::v_mmm])/2;
+            phi_N[1] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_pmm]] + phi_tmp[dir::v_pmm])/2;
+            break;
+#endif
           default:
             throw std::invalid_argument("[CASL_ERROR]: interpolate_f_at_node: unknown direction.");
           }
@@ -1017,12 +1050,29 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
         switch(dir)
         {
-        case dir::x: phi_2 = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_pmm])/2; phi_3 = (phi_tmp[dir::v_mpm]+phi_tmp[dir::v_ppm])/2; break;
-        case dir::y: phi_2 = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_mpm])/2; phi_3 = (phi_tmp[dir::v_pmm]+phi_tmp[dir::v_ppm])/2; break;
+#ifdef P4_TO_P8
+        case dir::x:
+          phi_N[4] = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_pmm])/2; phi_N[5] = (phi_tmp[dir::v_mpm]+phi_tmp[dir::v_ppm])/2;
+          phi_N[6] = (phi_tmp[dir::v_mmp]+phi_tmp[dir::v_pmp])/2; phi_N[7] = (phi_tmp[dir::v_mpp]+phi_tmp[dir::v_ppp])/2;
+          break;
+        case dir::y:
+          phi_N[4] = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_mpm])/2; phi_N[5] = (phi_tmp[dir::v_pmm]+phi_tmp[dir::v_ppm])/2;
+          phi_N[6] = (phi_tmp[dir::v_mmp]+phi_tmp[dir::v_mpp])/2; phi_N[7] = (phi_tmp[dir::v_pmp]+phi_tmp[dir::v_ppp])/2;
+          break;
+        case dir::z:
+          phi_N[4] = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_mmp])/2; phi_N[5] = (phi_tmp[dir::v_pmm]+phi_tmp[dir::v_pmp])/2;
+          phi_N[6] = (phi_tmp[dir::v_mpm]+phi_tmp[dir::v_mpp])/2; phi_N[7] = (phi_tmp[dir::v_ppm]+phi_tmp[dir::v_ppp])/2;
+          break;
+#else
+        case dir::x: phi_N[2] = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_pmm])/2; phi_N[3] = (phi_tmp[dir::v_mpm]+phi_tmp[dir::v_ppm])/2; break;
+        case dir::y: phi_N[2] = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_mpm])/2; phi_N[3] = (phi_tmp[dir::v_pmm]+phi_tmp[dir::v_ppm])/2; break;
+#endif
         default: throw std::invalid_argument("[CASL_ERROR]: interpolate_f_at_node: unknown direction.");
         }
 
-        is_neg = phi_0<0 || phi_1<0 || phi_2<0 || phi_3<0;
+        is_neg = false;
+        for(int i=0; i<P4EST_CHILDREN; ++i)
+          is_neg = is_neg || (phi_N[i]<0);
       }
 
       if(( bc_type==NOINTERFACE ||
@@ -1031,19 +1081,35 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
          && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
       {
         double xyz_t[P4EST_DIM];
-        xyz_t[0] = xyz[0] - faces->x_fr_f(fm_idx, dir);
-        xyz_t[1] = xyz[1] - faces->y_fr_f(fm_idx, dir);
-        xyz_t[0] /= scaling;
-        xyz_t[1] /= scaling;
+        faces->xyz_fr_f(fm_idx, dir, xyz_t);
+        for(int i=0; i<P4EST_DIM; ++i)
+          xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
 
+#ifdef P4_TO_P8
+        double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));
+#else
         double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]))));
+#endif
 
-        A.set_value(interp_points.size(), 0, 1     * w);
-        A.set_value(interp_points.size(), 1, xyz_t[0]    * w);
-        A.set_value(interp_points.size(), 2, xyz_t[1]    * w);
+#ifdef P4_TO_P8
+        A.set_value(interp_points.size(), 0, 1                 * w);
+        A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
+        A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
+        A.set_value(interp_points.size(), 3, xyz_t[2]          * w);
+        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
+#else
+        A.set_value(interp_points.size(), 0, 1                 * w);
+        A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
+        A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
         A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
         A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
         A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
+#endif
 
         p.push_back(f_p[fm_idx] * w);
 
@@ -1066,8 +1132,14 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
       double phi_m;
       switch(dir)
       {
+#ifdef P4_TO_P8
+      case dir::x: phi_m = (phi_tmp[dir::v_pmm] + phi_tmp[dir::v_ppm] + phi_tmp[dir::v_pmp] + phi_tmp[dir::v_ppp]) / 4; break;
+      case dir::y: phi_m = (phi_tmp[dir::v_mpm] + phi_tmp[dir::v_ppm] + phi_tmp[dir::v_mpp] + phi_tmp[dir::v_ppp]) / 4; break;
+      case dir::z: phi_m = (phi_tmp[dir::v_mmp] + phi_tmp[dir::v_pmp] + phi_tmp[dir::v_mpp] + phi_tmp[dir::v_ppp]) / 4; break;
+#else
       case dir::x: phi_m = (phi_tmp[dir::v_pmm] + phi_tmp[dir::v_ppm]) / 2; break;
       case dir::y: phi_m = (phi_tmp[dir::v_mpm] + phi_tmp[dir::v_ppm]) / 2; break;
+#endif
       default: throw std::invalid_argument("[CASL_ERROR]: interpolate_f_at_node: unknown direction.");
       }
 
@@ -1075,14 +1147,19 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
       bool is_neg = true;
       if(bc_type==NEUMANN)
       {
-        double phi_0=0, phi_1=0;
-        double phi_2=0, phi_3=0;
+        double phi_N[P4EST_CHILDREN];
         if(is_quad_Wall(p4est, tree_idx, &ngbd[m], 2*dir+1))
         {
           switch(dir)
           {
-          case dir::x : phi_0 = phi_tmp[dir::v_pmm]; phi_1 = phi_tmp[dir::v_ppm]; break;
-          case dir::y : phi_0 = phi_tmp[dir::v_mpm]; phi_1 = phi_tmp[dir::v_ppm]; break;
+#ifdef P4_TO_P8
+          case dir::x : phi_N[0] = phi_tmp[dir::v_pmm]; phi_N[1] = phi_tmp[dir::v_ppm]; phi_N[2] = phi_tmp[dir::v_pmp]; phi_N[3] = phi_tmp[dir::v_ppp]; break;
+          case dir::y : phi_N[0] = phi_tmp[dir::v_mpm]; phi_N[1] = phi_tmp[dir::v_ppm]; phi_N[2] = phi_tmp[dir::v_mpp]; phi_N[3] = phi_tmp[dir::v_ppp]; break;
+          case dir::z : phi_N[0] = phi_tmp[dir::v_mmp]; phi_N[1] = phi_tmp[dir::v_pmp]; phi_N[2] = phi_tmp[dir::v_mpp]; phi_N[3] = phi_tmp[dir::v_ppp]; break;
+#else
+          case dir::x : phi_N[0] = phi_tmp[dir::v_pmm]; phi_N[1] = phi_tmp[dir::v_ppm]; break;
+          case dir::y : phi_N[0] = phi_tmp[dir::v_mpm]; phi_N[1] = phi_tmp[dir::v_ppm]; break;
+#endif
           default: throw std::invalid_argument("[CASL_ERROR]: interpolate_f_at_node: unknown direction.");
           }
         }
@@ -1092,14 +1169,35 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
           ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 2*dir+1);
           switch(dir)
           {
+#ifdef P4_TO_P8
           case dir::x:
-            phi_0 = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_pmm]] + phi_tmp[dir::v_pmm])/2;
-            phi_1 = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_ppm]] + phi_tmp[dir::v_ppm])/2;
+            phi_N[0] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_pmm]] + phi_tmp[dir::v_pmm])/2;
+            phi_N[1] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_ppm]] + phi_tmp[dir::v_ppm])/2;
+            phi_N[2] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_pmp]] + phi_tmp[dir::v_pmp])/2;
+            phi_N[3] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_ppp]] + phi_tmp[dir::v_ppp])/2;
             break;
           case dir::y:
-            phi_0 = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mpm]] + phi_tmp[dir::v_mpm])/2;
-            phi_1 = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_ppm]] + phi_tmp[dir::v_ppm])/2;
+            phi_N[0] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mpm]] + phi_tmp[dir::v_mpm])/2;
+            phi_N[1] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_ppm]] + phi_tmp[dir::v_ppm])/2;
+            phi_N[2] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mpp]] + phi_tmp[dir::v_mpp])/2;
+            phi_N[3] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_ppp]] + phi_tmp[dir::v_ppp])/2;
             break;
+          case dir::z:
+            phi_N[0] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mmp]] + phi_tmp[dir::v_mmp])/2;
+            phi_N[1] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_pmp]] + phi_tmp[dir::v_pmp])/2;
+            phi_N[2] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mpp]] + phi_tmp[dir::v_mpp])/2;
+            phi_N[3] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_ppp]] + phi_tmp[dir::v_ppp])/2;
+            break;
+#else
+          case dir::x:
+            phi_N[0] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_pmm]] + phi_tmp[dir::v_pmm])/2;
+            phi_N[1] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_ppm]] + phi_tmp[dir::v_ppm])/2;
+            break;
+          case dir::y:
+            phi_N[0] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_mpm]] + phi_tmp[dir::v_mpm])/2;
+            phi_N[1] = (phi_p[nodes->local_nodes[P4EST_CHILDREN*ngbd_tmp[0].p.piggy3.local_num + dir::v_ppm]] + phi_tmp[dir::v_ppm])/2;
+            break;
+#endif
           default:
             throw std::invalid_argument("[CASL_ERROR]: interpolate_f_at_node: unknown direction.");
           }
@@ -1107,12 +1205,29 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
         switch(dir)
         {
-        case dir::x: phi_2 = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_pmm])/2; phi_3 = (phi_tmp[dir::v_mpm]+phi_tmp[dir::v_ppm])/2; break;
-        case dir::y: phi_2 = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_mpm])/2; phi_3 = (phi_tmp[dir::v_pmm]+phi_tmp[dir::v_ppm])/2; break;
+#ifdef P4_TO_P8
+        case dir::x:
+          phi_N[4] = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_pmm])/2; phi_N[5] = (phi_tmp[dir::v_mpm]+phi_tmp[dir::v_ppm])/2;
+          phi_N[6] = (phi_tmp[dir::v_mmp]+phi_tmp[dir::v_pmp])/2; phi_N[7] = (phi_tmp[dir::v_mpp]+phi_tmp[dir::v_ppp])/2;
+          break;
+        case dir::y:
+          phi_N[4] = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_mpm])/2; phi_N[5] = (phi_tmp[dir::v_pmm]+phi_tmp[dir::v_ppm])/2;
+          phi_N[6] = (phi_tmp[dir::v_mmp]+phi_tmp[dir::v_mpp])/2; phi_N[7] = (phi_tmp[dir::v_pmp]+phi_tmp[dir::v_ppp])/2;
+          break;
+        case dir::z:
+          phi_N[4] = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_mmp])/2; phi_N[5] = (phi_tmp[dir::v_pmm]+phi_tmp[dir::v_pmp])/2;
+          phi_N[6] = (phi_tmp[dir::v_mpm]+phi_tmp[dir::v_mpp])/2; phi_N[7] = (phi_tmp[dir::v_ppm]+phi_tmp[dir::v_ppp])/2;
+          break;
+#else
+        case dir::x: phi_N[2] = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_pmm])/2; phi_N[3] = (phi_tmp[dir::v_mpm]+phi_tmp[dir::v_ppm])/2; break;
+        case dir::y: phi_N[2] = (phi_tmp[dir::v_mmm]+phi_tmp[dir::v_mpm])/2; phi_N[3] = (phi_tmp[dir::v_pmm]+phi_tmp[dir::v_ppm])/2; break;
+#endif
         default: throw std::invalid_argument("[CASL_ERROR]: interpolate_f_at_node: unknown direction.");
         }
 
-        is_neg = phi_0<0 || phi_1<0 || phi_2<0 || phi_3<0;
+        is_neg = false;
+        for(int i=0; i<P4EST_CHILDREN; ++i)
+          is_neg = is_neg || (phi_N[i]<0);
       }
 
       if(( bc_type==NOINTERFACE ||
@@ -1121,19 +1236,35 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
          && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
       {
         double xyz_t[P4EST_DIM];
-        xyz_t[0] = xyz[0] - faces->x_fr_f(fm_idx, dir);
-        xyz_t[1] = xyz[1] - faces->y_fr_f(fm_idx, dir);
-        xyz_t[0] /= scaling;
-        xyz_t[1] /= scaling;
+        faces->xyz_fr_f(fm_idx, dir, xyz_t);
+        for(int i=0; i<P4EST_DIM; ++i)
+          xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
 
+#ifdef P4_TO_P8
+        double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));
+#else
         double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]))));
+#endif
 
-        A.set_value(interp_points.size(), 0, 1     * w);
-        A.set_value(interp_points.size(), 1, xyz_t[0]    * w);
-        A.set_value(interp_points.size(), 2, xyz_t[1]    * w);
+#ifdef P4_TO_P8
+        A.set_value(interp_points.size(), 0, 1                 * w);
+        A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
+        A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
+        A.set_value(interp_points.size(), 3, xyz_t[2]          * w);
+        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
+#else
+        A.set_value(interp_points.size(), 0, 1                 * w);
+        A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
+        A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
         A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
         A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
         A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
+#endif
 
         p.push_back(f_p[fm_idx] * w);
 
