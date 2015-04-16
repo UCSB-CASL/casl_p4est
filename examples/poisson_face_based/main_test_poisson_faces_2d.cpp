@@ -71,7 +71,7 @@ int interface_type = 0;
  */
 int test_number = 0;
 
-BoundaryConditionType bc_itype = DIRICHLET;
+BoundaryConditionType bc_itype = NOINTERFACE;
 BoundaryConditionType bc_wtype = DIRICHLET;
 
 double diag_add = 0;
@@ -459,6 +459,9 @@ int main (int argc, char* argv[])
   vector<double> err_n  (P4EST_DIM, 0);
   vector<double> err_nm1(P4EST_DIM, 0);
 
+  vector<double> err_nodes_n  (P4EST_DIM, 0);
+  vector<double> err_nodes_nm1(P4EST_DIM, 0);
+
   for(int iter=0; iter<nb_splits; ++iter)
   {
     ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
@@ -602,6 +605,40 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArray(sol[dir], &sol_p); CHKERRXX(ierr);
     }
 
+
+    /* interpolate the solution on the nodes */
+    Vec sol_nodes[P4EST_DIM];
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecDuplicate(phi, &sol_nodes[dir]); CHKERRXX(ierr);
+      double *sol_p;
+      ierr = VecGetArray(sol_nodes[dir], &sol_p); CHKERRXX(ierr);
+      double *phi_p;
+      ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
+      err_nodes_nm1[dir] = err_nodes_n[dir];
+      err_nodes_n[dir] = 0;
+      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+      {
+        if(phi_p[n]<0)
+        {
+          sol_p[n] = interpolate_f_at_node_n(p4est, ghost, nodes, &faces, &ngbd_c, &ngbd_n, sol[dir], dir,
+                                             n, phi, bc_itype, bc);
+
+          double x = node_x_fr_n(n, p4est, nodes);
+          double y = node_y_fr_n(n, p4est, nodes);
+          err_nodes_n[dir] = max(err_nodes_n[dir], fabs(u_exact(x,y) - sol_p[n]));
+        }
+      }
+
+      ierr = VecRestoreArray(sol_nodes[dir], &sol_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(sol_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (sol_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      ierr = PetscPrintf(p4est->mpicomm, "Error on nodes for direction %d : %g, order = %g\n", dir, err_nodes_n[dir], log(err_nodes_nm1[dir]/err_nodes_n[dir])/log(2)); CHKERRXX(ierr);
+    }
+
     if(save_vtk)
     {
       double *sol_u_p;
@@ -665,6 +702,7 @@ int main (int argc, char* argv[])
     {
       ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
       ierr = VecDestroy(sol[dir]); CHKERRXX(ierr);
+      ierr = VecDestroy(sol_nodes[dir]); CHKERRXX(ierr);
     }
 
     p4est_nodes_destroy(nodes);

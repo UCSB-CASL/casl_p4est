@@ -383,7 +383,7 @@ inline double node_z_fr_n(const p4est_indep_t *ni){
 }
 #endif
 
-inline double node_x_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+inline double node_x_fr_n(p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
 {
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
@@ -393,7 +393,7 @@ inline double node_x_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t 
   return node_x_fr_n(node) + tree_xmin;
 }
 
-inline double node_y_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+inline double node_y_fr_n(p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
 {
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
@@ -404,7 +404,7 @@ inline double node_y_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t 
 }
 
 #ifdef P4_TO_P8
-inline double node_z_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+inline double node_z_fr_n(p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
 {
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
