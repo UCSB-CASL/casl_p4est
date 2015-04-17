@@ -1,4 +1,9 @@
-#include "solve_lsqr.h"
+#ifdef P4_TO_P8
+#include "my_p8est_solve_lsqr.h"
+#else
+#include "my_p4est_solve_lsqr.h"
+#endif
+
 #include "CASL_math.h"
 
 #include <iostream>
@@ -63,9 +68,17 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
 
 
 
+#ifdef P4_TO_P8
+double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int nb_z, char order)
+#else
 double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, char order)
+#endif
 {
+#ifdef P4_TO_P8
+  if(order<1 || p.size()<4 || nb_x<2 || nb_y<2 || nb_z<2)
+#else
   if(order<1 || p.size()<3 || nb_x<2 || nb_y<2)
+#endif
   {
     /* 0-th order polynomial approximation, just compute coeff(0) */
     double sum = 0;
@@ -80,14 +93,22 @@ double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, cha
 
   matrix_t M;
   vector<double> Atp;
-  vector<double> coeffs(10);
+  vector<double> coeffs;
 
+#ifdef P4_TO_P8
+  if(order<2 || p.size()<10 || nb_x<3 || nb_y<3 || nb_z<3)
+#else
   if(order<2 || p.size()<6 || nb_x<3 || nb_y<3)
+#endif
   {
-    if(order!=1 || A.num_cols()>3)
+    if(order==2)
     {
       matrix_t Asub;
+#ifdef P4_TO_P8
+      Asub.truncate_matrix(A.num_rows(), 4, A);
+#else
       Asub.truncate_matrix(A.num_rows(), 3, A);
+#endif
 
       Asub.tranpose_matvec(p, Atp);
       Asub.mtm_product(M);
@@ -121,7 +142,11 @@ double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, cha
   if(!solve_cholesky(M, Atp, coeffs))
   {
     matrix_t Asub;
-    Asub.truncate_matrix(A.num_rows(), 3, A);
+#ifdef P4_TO_P8
+      Asub.truncate_matrix(A.num_rows(), 4, A);
+#else
+      Asub.truncate_matrix(A.num_rows(), 3, A);
+#endif
 
     Asub.tranpose_matvec(p, Atp);
     Asub.mtm_product(M);

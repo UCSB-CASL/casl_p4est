@@ -1,5 +1,5 @@
-#ifndef SOLVE_LSQR_H
-#define SOLVE_LSQR_H
+#ifndef MY_P4EST_SOLVE_LSQR_H
+#define MY_P4EST_SOLVE_LSQR_H
 
 #include <vector>
 
@@ -16,6 +16,10 @@ using std::vector;
  * \param order the desired order of interpolation, 0 - constant, 1 - linear, 2 - quadratic
  * \return
  */
+#ifdef P4_TO_P8
+double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int nb_z, char order=2);
+#else
 double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, char order=2);
+#endif
 
-#endif /* SOLVE_LSQR_H */
+#endif /* MY_P4EST_SOLVE_LSQR_H */

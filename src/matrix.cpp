@@ -149,7 +149,7 @@ void matrix_t::sub( int im, int jm, int iM, int jM, matrix_t& M )
   M.resize(iM-im+1,jM-jm+1);
   for( int i=im; i<=iM; i++ )
     for( int j=jm; j<=jM; j++ )
-      M.values[(i-im)*n+(j-jm)] = values[i*n+j];
+      M.values[(i-im)*n+(j-jm)] = get_value(i,j);
 }
 
 void matrix_t::truncate_matrix( int M, int N,  matrix_t& Mat )
@@ -160,7 +160,7 @@ void matrix_t::truncate_matrix( int M, int N,  matrix_t& Mat )
   resize(M,N);
   for( int i=0; i<M; i++ )
     for( int j=0; j<N; j++ )
-      values[i*n+j] = Mat.values[i*n+j];
+      values[i*n+j] = Mat.values[i*Mat.n+j];
 }
 
 

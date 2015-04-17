@@ -2,7 +2,12 @@
 
 #include <algorithm>
 #include <src/matrix.h>
-#include <src/solve_lsqr.h>
+
+#ifdef P4_TO_P8
+#include <src/my_p8est_solve_lsqr.h>
+#else
+#include <src/my_p4est_solve_lsqr.h>
+#endif
 
 #ifndef CASL_LOG_EVENTS
 #undef PetscLogEventBegin
@@ -858,12 +863,12 @@ PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_fac
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                Vec f, int dir, p4est_locidx_t node_idx,
-                               Vec phi, BoundaryConditionType bc_type, BoundaryConditions3D *bc)
+                               Vec phi, BoundaryConditions3D *bc)
 #else
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                Vec f, int dir, p4est_locidx_t node_idx,
-                               Vec phi, BoundaryConditionType bc_type, BoundaryConditions2D *bc)
+                               Vec phi, BoundaryConditions2D *bc)
 #endif
 {
 #ifdef CASL_THROWS
@@ -897,7 +902,7 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   for(int i=-1; i<2; i+=2)
     for(int j=-1; j<2; j+=2)
 #ifdef P4_TO_P8
-      for(int k=-1; k<2; ++k)
+      for(int k=-1; k<2; k+=2)
       {
         ngbd_n->find_neighbor_cell_of_node(node_idx, i, j, k, quad_idx, tree_idx);
 #else
@@ -945,7 +950,6 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   double *phi_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
-
   vector<p4est_locidx_t> interp_points;
   matrix_t A;
 #ifdef P4_TO_P8
@@ -990,7 +994,7 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
       /* for neumann interface */
       bool is_neg = true;
-      if(bc_type==NEUMANN)
+      if(bc[dir].interfaceType()==NEUMANN)
       {
         double phi_N[P4EST_CHILDREN];
         if(is_quad_Wall(p4est, tree_idx, &ngbd[m], 2*dir))
@@ -1075,9 +1079,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
           is_neg = is_neg || (phi_N[i]<0);
       }
 
-      if(( bc_type==NOINTERFACE ||
-           (bc_type==DIRICHLET && phi_m<0) ||
-           (bc_type==NEUMANN && is_neg) )
+      if(( bc[dir].interfaceType()==NOINTERFACE ||
+           (bc[dir].interfaceType()==DIRICHLET && phi_m<0) ||
+           (bc[dir].interfaceType()==NEUMANN && is_neg) )
          && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
       {
         double xyz_t[P4EST_DIM];
@@ -1145,7 +1149,7 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
       /* for neumann interface */
       bool is_neg = true;
-      if(bc_type==NEUMANN)
+      if(bc[dir].interfaceType()==NEUMANN)
       {
         double phi_N[P4EST_CHILDREN];
         if(is_quad_Wall(p4est, tree_idx, &ngbd[m], 2*dir+1))
@@ -1230,9 +1234,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
           is_neg = is_neg || (phi_N[i]<0);
       }
 
-      if(( bc_type==NOINTERFACE ||
-           (bc_type==DIRICHLET && phi_m<0) ||
-           (bc_type==NEUMANN && is_neg) )
+      if(( bc[dir].interfaceType()==NOINTERFACE ||
+           (bc[dir].interfaceType()==DIRICHLET && phi_m<0) ||
+           (bc[dir].interfaceType()==NEUMANN && is_neg) )
          && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
       {
         double xyz_t[P4EST_DIM];
@@ -1277,7 +1281,6 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
     }
   }
 
-
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
@@ -1286,5 +1289,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
   A.scale_by_maxabs(p);
 
+#ifdef P4_TO_P8
+  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), nb[2].size());
+#else
   return solve_lsqr_system(A, p, nb[0].size(), nb[1].size());
+#endif
 }

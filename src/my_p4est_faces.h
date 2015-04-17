@@ -136,12 +136,12 @@ PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_fac
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                Vec f, int dir, p4est_locidx_t node_idx,
-                               Vec phi, BoundaryConditionType bc_type, BoundaryConditions3D *bc);
+                               Vec phi, BoundaryConditions3D *bc);
 #else
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                Vec f, int dir, p4est_locidx_t node_idx,
-                               Vec phi, BoundaryConditionType bc_type, BoundaryConditions2D *bc);
+                               Vec phi, BoundaryConditions2D *bc);
 #endif
 
 #endif /* MY_P4EST_FACES_H */

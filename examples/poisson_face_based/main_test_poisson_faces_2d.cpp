@@ -119,7 +119,7 @@ double u_exact(double x, double y, double z)
   case 1:
     return x*x + y*y + z*z;
   case 2:
-    return sin(x)*cos(y)*exp(z);
+    return sin(x)*cos(y)*exp(z)+2;
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
@@ -313,7 +313,7 @@ public:
 
 
 void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_brick_t *brick,
-              Vec phi, Vec u_idx, Vec v_idx,
+              Vec phi, Vec u_idx, Vec v_idx, Vec *sol_nodes, Vec *err_nodes,
               int compt)
 {
   PetscErrorCode ierr;
@@ -342,6 +342,14 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   ierr = VecGetArray(u_idx, &u_idx_p); CHKERRXX(ierr);
   ierr = VecGetArray(v_idx, &v_idx_p); CHKERRXX(ierr);
 
+  double *sol_nodes_p[P4EST_DIM];
+  double *err_nodes_p[P4EST_DIM];
+  for(int d=0; d<P4EST_DIM; ++d)
+  {
+    ierr = VecGetArray(sol_nodes[d], &sol_nodes_p[d]); CHKERRXX(ierr);
+    ierr = VecGetArray(err_nodes[d], &err_nodes_p[d]); CHKERRXX(ierr);
+  }
+
   /* save the size of the leaves */
   Vec leaf_level;
   ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
@@ -366,8 +374,18 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
 
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
-                         1, 3, oss.str().c_str(),
+                         1+2*P4EST_DIM, 3, oss.str().c_str(),
                          VTK_POINT_DATA, "phi", phi_p,
+                         VTK_POINT_DATA, "sol_u", sol_nodes_p[0],
+      VTK_POINT_DATA, "sol_v", sol_nodes_p[1],
+    #ifdef P4_TO_P8
+      VTK_POINT_DATA, "sol_w", sol_nodes_p[2],
+    #endif
+                         VTK_POINT_DATA, "err_u", err_nodes_p[0],
+      VTK_POINT_DATA, "err_v", err_nodes_p[1],
+    #ifdef P4_TO_P8
+      VTK_POINT_DATA, "err_w", err_nodes_p[2],
+    #endif
                          VTK_CELL_DATA, "u_idx", u_idx_p,
                          VTK_CELL_DATA, "v_idx", v_idx_p,
                          VTK_CELL_DATA , "leaf_level", l_p);
@@ -378,6 +396,12 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(u_idx, &u_idx_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(v_idx, &v_idx_p); CHKERRXX(ierr);
+
+  for(int d=0; d<P4EST_DIM; ++d)
+  {
+    ierr = VecRestoreArray(sol_nodes[d], &sol_nodes_p[d]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(err_nodes[d], &err_nodes_p[d]); CHKERRXX(ierr);
+  }
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
 }
@@ -609,11 +633,17 @@ int main (int argc, char* argv[])
 
     /* interpolate the solution on the nodes */
     Vec sol_nodes[P4EST_DIM];
+    Vec err_nodes[P4EST_DIM];
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
       ierr = VecDuplicate(phi, &sol_nodes[dir]); CHKERRXX(ierr);
-      double *sol_p;
-      ierr = VecGetArray(sol_nodes[dir], &sol_p); CHKERRXX(ierr);
+      double *sol_nodes_p;
+      ierr = VecGetArray(sol_nodes[dir], &sol_nodes_p); CHKERRXX(ierr);
+
+      ierr = VecDuplicate(phi, &err_nodes[dir]); CHKERRXX(ierr);
+      double *err_p;
+      ierr = VecGetArray(err_nodes[dir], &err_p); CHKERRXX(ierr);
+
       double *phi_p;
       ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
@@ -623,25 +653,35 @@ int main (int argc, char* argv[])
       {
         if(phi_p[n]<0)
         {
-          sol_p[n] = interpolate_f_at_node_n(p4est, ghost, nodes, &faces, &ngbd_c, &ngbd_n, sol[dir], dir,
-                                             n, phi, bc_itype, bc);
+          sol_nodes_p[n] = interpolate_f_at_node_n(p4est, ghost, nodes, &faces, &ngbd_c, &ngbd_n, sol[dir], dir,
+                                             n, phi, bc);
+
 
           double x = node_x_fr_n(n, p4est, nodes);
           double y = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
           double z = node_z_fr_n(n, p4est, nodes);
-          err_nodes_n[dir] = max(err_nodes_n[dir], fabs(u_exact(x,y,z) - sol_p[n]));
+          err_p[n] = fabs(sol_nodes_p[n] - u_exact(x,y,z));
+          err_nodes_n[dir] = max(err_nodes_n[dir], fabs(u_exact(x,y,z) - sol_nodes_p[n]));
 #else
-          err_nodes_n[dir] = max(err_nodes_n[dir], fabs(u_exact(x,y) - sol_p[n]));
+          err_p[n] = fabs(sol_nodes_p[n] - u_exact(x,y));
+          err_nodes_n[dir] = max(err_nodes_n[dir], fabs(u_exact(x,y) - sol_nodes_p[n]));
 #endif
         }
       }
 
-      ierr = VecRestoreArray(sol_nodes[dir], &sol_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(sol_nodes[dir], &sol_nodes_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(err_nodes[dir], &err_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-      ierr = VecGhostUpdateBegin(sol_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (sol_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
+      ierr = VecGhostUpdateBegin(sol_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (sol_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);\
+
+      ierr = VecGhostUpdateBegin(err_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (err_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      int mpiret;
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_nodes_n[dir], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
       ierr = PetscPrintf(p4est->mpicomm, "Error on nodes for direction %d : %g, order = %g\n", dir, err_nodes_n[dir], log(err_nodes_nm1[dir]/err_nodes_n[dir])/log(2)); CHKERRXX(ierr);
     }
 
@@ -696,7 +736,7 @@ int main (int argc, char* argv[])
 
       /* END OF TESTS */
 
-      save_VTK(p4est, ghost, nodes, &brick, phi, um_cells, up_cells, iter);
+      save_VTK(p4est, ghost, nodes, &brick, phi, um_cells, up_cells, sol_nodes, err_nodes, iter);
 
       ierr = VecDestroy(um_cells); CHKERRXX(ierr);
       ierr = VecDestroy(up_cells); CHKERRXX(ierr);
@@ -709,6 +749,7 @@ int main (int argc, char* argv[])
       ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
       ierr = VecDestroy(sol[dir]); CHKERRXX(ierr);
       ierr = VecDestroy(sol_nodes[dir]); CHKERRXX(ierr);
+      ierr = VecDestroy(err_nodes[dir]); CHKERRXX(ierr);
     }
 
     p4est_nodes_destroy(nodes);
