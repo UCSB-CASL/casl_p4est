@@ -55,6 +55,7 @@ class PoissonSolverFaces
   const BoundaryConditions2D *bc;
 #endif
 
+  bool compute_partition_on_the_fly;
 #ifdef P4_TO_P8
   vector<Voronoi3D> voro;
 #else
@@ -104,6 +105,8 @@ public:
 #else
   void set_bc(const BoundaryConditions2D *bc);
 #endif
+
+  void set_compute_partition_on_the_fly(bool val);
 
 //  inline bool is_nullspace_u() { return matrix_has_nullspace_u; }
 //  inline bool is_nullspace_v() { return matrix_has_nullspace_v; }

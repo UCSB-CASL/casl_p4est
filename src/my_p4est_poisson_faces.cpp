@@ -69,6 +69,7 @@ PoissonSolverFaces::PoissonSolverFaces(const my_p4est_faces_t *faces, const my_p
   zmax = p4est->connectivity->vertices[3*vp + 2];
 #endif
 
+  compute_partition_on_the_fly = false;
   mu = 1;
   diag_add = 0;
 }
@@ -171,6 +172,12 @@ void PoissonSolverFaces::set_bc(const BoundaryConditions2D *bc)
 }
 
 
+void PoissonSolverFaces::set_compute_partition_on_the_fly(bool val)
+{
+  this->compute_partition_on_the_fly = val;
+}
+
+
 void PoissonSolverFaces::solve(Vec *solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
   PetscErrorCode ierr;
@@ -228,7 +235,12 @@ void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
 
   ierr = PetscLogEventBegin(log_PoissonSolverFaces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
 
-  voro[f_idx].clear();
+#ifdef P4_TO_P8
+  Voronoi3D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
+#else
+  Voronoi2D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
+#endif
+  voro_tmp.clear();
 
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -309,9 +321,9 @@ void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
 
   /* now gather the neighbor cells to get the potential voronoi neighbors */
 #ifdef P4_TO_P8
-  voro[f_idx].set_Center_Point(f_idx,x,y,z);
+  voro_tmp.set_Center_Point(f_idx,x,y,z);
 #else
-  voro[f_idx].set_Center_Point(x,y);
+  voro_tmp.set_Center_Point(x,y);
 #endif
 
   /* note that the walls are dealt with by voro++ in 3D */
@@ -319,16 +331,16 @@ void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
   switch(dir)
   {
   case dir::x:
-    if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro[f_idx].push(WALL_m00, x-dx, y);
-    if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro[f_idx].push(WALL_p00, x+dx, y);
-    if( (qm_idx==-1 || is_quad_ymWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ymWall(p4est, tp_idx, &qp)) ) voro[f_idx].push(WALL_0m0, x, y-dy);
-    if( (qm_idx==-1 || is_quad_ypWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ypWall(p4est, tp_idx, &qp)) ) voro[f_idx].push(WALL_0p0, x, y+dy);
+    if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_m00, x-dx, y);
+    if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_p00, x+dx, y);
+    if( (qm_idx==-1 || is_quad_ymWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ymWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0m0, x, y-dy);
+    if( (qm_idx==-1 || is_quad_ypWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ypWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0p0, x, y+dy);
     break;
   case dir::y:
-    if( (qm_idx==-1 || is_quad_xmWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xmWall(p4est, tp_idx, &qp)) ) voro[f_idx].push(WALL_m00, x-dx, y);
-    if( (qm_idx==-1 || is_quad_xpWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xpWall(p4est, tp_idx, &qp)) ) voro[f_idx].push(WALL_p00, x+dx, y);
-    if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro[f_idx].push(WALL_0m0, x, y-dy);
-    if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro[f_idx].push(WALL_0p0, x, y+dy);
+    if( (qm_idx==-1 || is_quad_xmWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xmWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_m00, x-dx, y);
+    if( (qm_idx==-1 || is_quad_xpWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xpWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_p00, x+dx, y);
+    if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0m0, x, y-dy);
+    if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0p0, x, y+dy);
     break;
   }
 #endif
@@ -488,9 +500,9 @@ void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
     if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
     {
 #ifdef P4_TO_P8
-      voro[f_idx].push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
+      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
 #else
-      voro[f_idx].push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
+      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
 #endif
     }
 
@@ -498,17 +510,17 @@ void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
     if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
     {
 #ifdef P4_TO_P8
-      voro[f_idx].push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
+      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
 #else
-      voro[f_idx].push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
+      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
 #endif
     }
   }
 
 #ifdef P4_TO_P8
-  voro[f_idx].construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
+  voro_tmp.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
 #else
-  voro[f_idx].construct_Partition();
+  voro_tmp.construct_Partition();
 #endif
 
 
@@ -517,8 +529,8 @@ void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
   vector<Voronoi2DPoint> *points;
   vector<Point2> *partition;
 
-  voro[f_idx].get_Points(points);
-  voro[f_idx].get_Partition(partition);
+  voro_tmp.get_Points(points);
+  voro_tmp.get_Partition(partition);
 
   /* first clip the voronoi partition at the boundary of the domain */
   if(dir==dir::x)
@@ -596,8 +608,8 @@ void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
   // clip the voronoi partition with the interface
   if(is_pos)
   {
-    voro[f_idx].set_Level_Set_Values(phi_values, phi_c);
-    voro[f_idx].clip_Interface();
+    voro_tmp.set_Level_Set_Values(phi_values, phi_c);
+    voro_tmp.clip_Interface();
   }
 #endif
 
@@ -632,7 +644,8 @@ void PoissonSolverFaces::preallocate_matrix(int dir)
 
   vector<PetscInt> d_nnz(num_owned_local, 1), o_nnz(num_owned_local, 0);
 
-  voro.resize(faces->num_local[dir]);
+  if(compute_partition_on_the_fly) voro.resize(1);
+  else                             voro.resize(faces->num_local[dir]);
 
   for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
   {
@@ -666,7 +679,9 @@ void PoissonSolverFaces::preallocate_matrix(int dir)
 #else
       vector<Voronoi2DPoint> *points;
 #endif
-      voro[f_idx].get_Points(points);
+
+      if(compute_partition_on_the_fly) voro[0].get_Points(points);
+      else                             voro[f_idx].get_Points(points);
 
       for(unsigned int n=0; n<points->size(); ++n)
       {
@@ -1301,14 +1316,18 @@ void PoissonSolverFaces::setup_linear_system(int dir)
      * Bulk case, away from the interface
      * Use finite volumes on the voronoi cells
      */
+    if(compute_partition_on_the_fly)
+      compute_voronoi_cell(f_idx, dir);
 #ifdef P4_TO_P8
+    Voronoi3D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
     const vector<Voronoi3DPoint> *points;
 #else
+    Voronoi2D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
     vector<Voronoi2DPoint> *points;
     vector<Point2> *partition;
-    voro[f_idx].get_Partition(partition);
+    voro_tmp.get_Partition(partition);
 #endif
-    voro[f_idx].get_Points(points);
+    voro_tmp.get_Points(points);
 
     /* integrally in positive domain */
 #ifndef P4_TO_P8
@@ -1320,7 +1339,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
     }
 #endif
 
-    double volume = voro[f_idx].volume();
+    double volume = voro_tmp.volume();
     ierr = MatSetValue(A, f_idx_g, f_idx_g, volume*diag_add, ADD_VALUES); CHKERRXX(ierr);
     rhs_p[f_idx] *= volume;
     if(diag_add>0) matrix_has_nullspace[dir] = false;

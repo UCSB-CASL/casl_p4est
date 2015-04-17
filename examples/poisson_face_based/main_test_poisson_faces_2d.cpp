@@ -558,6 +558,7 @@ int main (int argc, char* argv[])
     solver.set_mu(1);
     solver.set_bc(bc);
     solver.set_rhs(rhs);
+    solver.set_compute_partition_on_the_fly(true);
 
     Vec sol[P4EST_DIM];
     for(int dir=0; dir<P4EST_DIM; ++dir)
