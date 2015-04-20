@@ -11,6 +11,7 @@
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_solve_lsqr.h>
 #include <src/my_p4est_interpolating_function_host.h>
+#include <src/cube2.h>
 #endif
 
 #ifndef CASL_LOG_EVENTS
@@ -863,7 +864,8 @@ PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_fac
 
 
 
-void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, int dir,
+void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *ngbd_n,
+                                     my_p4est_faces_t *faces, int dir,
                                      Vec phi, BoundaryConditionType bc_type, Vec face_is_well_defined)
 {
   PetscErrorCode ierr;
@@ -876,9 +878,6 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
     ierr = VecGhostRestoreLocalForm(face_is_well_defined, &face_is_well_defined_loc); CHKERRXX(ierr);
     return;
   }
-
-  double *phi_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
   PetscScalar *face_is_well_defined_p;
   ierr = VecGetArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
@@ -893,12 +892,12 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
   double ymin = p4est->connectivity->vertices[3*vm + 1];
   double xmax = p4est->connectivity->vertices[3*vp + 0];
   double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+  double dx = .5 * (xmax-xmin) / pow(2.,(double) data->max_lvl);
+  double dy = .5 * (ymax-ymin) / pow(2.,(double) data->max_lvl);
 #ifdef P4_TO_P8
   double zmin = p4est->connectivity->vertices[3*vm + 2];
   double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
+  double dz = .5 * (zmax-zmin) / pow(2.,(double) data->max_lvl);
 #endif
 
   if(bc_type==DIRICHLET)
@@ -915,7 +914,7 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
 #endif
     }
   }
-  else
+  else /* NEUMANN */
   {
     for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
     {
@@ -934,7 +933,6 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
     }
   }
 
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
   ierr = VecGhostUpdateBegin(face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

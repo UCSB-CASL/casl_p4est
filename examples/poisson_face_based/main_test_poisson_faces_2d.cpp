@@ -658,8 +658,9 @@ int main (int argc, char* argv[])
       {
         if(phi_p[n]<0)
         {
-          sol_nodes_p[n] = interpolate_f_at_node_n(p4est, ghost, nodes, &faces, &ngbd_c, &ngbd_n, sol[dir], dir,
-                                             n, phi, bc);
+          sol_nodes_p[n] = interpolate_f_at_node_n(p4est, ghost, nodes, &faces,
+                                                   &ngbd_c, &ngbd_n, sol[dir], dir, n,
+                                                   face_is_well_defined[dir], bc);
 
 
           double x = node_x_fr_n(n, p4est, nodes);
