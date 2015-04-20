@@ -50,8 +50,8 @@
 
 using namespace std;
 
-int lmin = 3;
-int lmax = 3;
+int lmin = 2;
+int lmax = 4;
 int nb_splits = 1;
 
 int nx = 2;
@@ -71,7 +71,7 @@ int interface_type = 0;
  */
 int test_number = 0;
 
-BoundaryConditionType bc_itype = NOINTERFACE;
+BoundaryConditionType bc_itype = DIRICHLET;
 BoundaryConditionType bc_wtype = DIRICHLET;
 
 double diag_add = 0;
@@ -503,6 +503,7 @@ int main (int argc, char* argv[])
 
     ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est, ghost);
+//    my_p4est_ghost_expand(p4est, ghost);
     nodes = my_p4est_nodes_new(p4est, ghost);
 
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
@@ -537,11 +538,15 @@ int main (int argc, char* argv[])
     }
 
     Vec rhs[P4EST_DIM];
+    Vec face_is_well_defined[P4EST_DIM];
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
       ierr = VecCreateGhostFaces(p4est, &faces, &rhs[dir], dir); CHKERRXX(ierr);
       double *rhs_p;
       ierr = VecGetArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
+
+      ierr = VecDuplicate(rhs[dir], &face_is_well_defined[dir]); CHKERRXX(ierr);
+      check_if_faces_are_well_defined(p4est, &ngbd_n, &faces, dir, phi, bc_itype, face_is_well_defined[dir]);
 
       for(p4est_locidx_t f_idx=0; f_idx<faces.num_local[dir]; ++f_idx)
       {
@@ -582,7 +587,7 @@ int main (int argc, char* argv[])
     solver.set_mu(1);
     solver.set_bc(bc);
     solver.set_rhs(rhs);
-    solver.set_compute_partition_on_the_fly(true);
+    solver.set_compute_partition_on_the_fly(false);
 
     Vec sol[P4EST_DIM];
     for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -746,6 +751,7 @@ int main (int argc, char* argv[])
 
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
+      ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
       ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
       ierr = VecDestroy(sol[dir]); CHKERRXX(ierr);
       ierr = VecDestroy(sol_nodes[dir]); CHKERRXX(ierr);
