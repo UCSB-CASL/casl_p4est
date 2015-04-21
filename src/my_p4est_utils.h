@@ -415,17 +415,85 @@ inline double node_z_fr_n(p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes
 }
 #endif
 
+/*!
+ * \brief get the z-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
+ */
 inline double quad_x_fr_i(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
+/*!
+ * \brief get the y-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
+ */
 inline double quad_y_fr_j(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->y)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
 #ifdef P4_TO_P8
+/*!
+ * \brief get the x-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
+ */
 inline double quad_z_fr_k(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
+}
+#endif
+
+/*!
+ * \brief get the x-coordinate of the center of a quadrant
+ */
+inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+{
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+    quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
+  return quad_x_fr_i(quad) + tree_xmin + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+}
+
+/*!
+ * \brief get the y-coordinate of the center of a quadrant
+ */
+inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+{
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+    quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+  return quad_y_fr_j(quad) + tree_ymin + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+}
+
+#ifdef P4_TO_P8
+/*!
+ * \brief get the z-coordinate of the center of a quadrant
+ */
+inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+{
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+    quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
+  return quad_z_fr_k(quad) + tree_zmin + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 }
 #endif
 

@@ -33,6 +33,7 @@ class my_p4est_node_neighbors_t {
   friend class InterpolatingFunctionNodeBaseNonblocking;
   friend class my_p4est_interpolation_t;
   friend class my_p4est_interpolation_nodes_t;
+  friend class my_p4est_interpolation_cells_t;
   friend class my_p4est_interpolation_faces_t;
   friend class my_p4est_level_set;
   friend class SemiLagrangian;

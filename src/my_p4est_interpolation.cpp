@@ -35,7 +35,7 @@ extern PetscLogEvent log_my_p4est_interpolation_all_reduce;
 
 my_p4est_interpolation_t::my_p4est_interpolation_t(const my_p4est_node_neighbors_t* ngbd_n)
   : ngbd_n(ngbd_n), p4est(ngbd_n->p4est), ghost(ngbd_n->ghost), myb(ngbd_n->myb),
-    senders(p4est->mpisize, 0)
+    Fi(NULL), senders(p4est->mpisize, 0)
 {
   // compute domain sizes
   double *v2c = p4est->connectivity->vertices;

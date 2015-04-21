@@ -1,38 +1,29 @@
-#ifndef MY_P4EST_INTERPOLATION_FACES_H
-#define MY_P4EST_INTERPOLATION_FACES_H
+#ifndef MY_P4EST_INTERPOLATION_CESLL_H
+#define MY_P4EST_INTERPOLATION_CELLS_H
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_cell_neighbors.h>
-#include <src/my_p8est_faces.h>
 #include <src/my_p8est_interpolation.h>
 #else
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_cell_neighbors.h>
-#include <src/my_p4est_faces.h>
 #include <src/my_p4est_interpolation.h>
 #endif
 
-class my_p4est_interpolation_faces_t : public my_p4est_interpolation_t
+class my_p4est_interpolation_cells_t : public my_p4est_interpolation_t
 {
 private:
-  const my_p4est_faces_t *faces;
   const my_p4est_cell_neighbors_t *ngbd_c;
 
-  int dir;
-
-  Vec face_is_well_defined;
-
   // rule of three -- disable copy ctr and assignment if not useful
-  my_p4est_interpolation_faces_t(const my_p4est_interpolation_faces_t& other);
-  my_p4est_interpolation_faces_t& operator=(const my_p4est_interpolation_faces_t& other);
+  my_p4est_interpolation_cells_t(const my_p4est_interpolation_cells_t& other);
+  my_p4est_interpolation_cells_t& operator=(const my_p4est_interpolation_cells_t& other);
 
 public:
   using my_p4est_interpolation_t::interpolate;
 
-  my_p4est_interpolation_faces_t(const my_p4est_node_neighbors_t* ngbd_n, const my_p4est_faces_t *faces);
-
-  void set_input(Vec F, Vec face_is_well_defined, int dir);
+  my_p4est_interpolation_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t* ngbd_n);
 
   // interpolation methods
 #ifdef P4_TO_P8
@@ -44,4 +35,4 @@ public:
   double interpolate(const p4est_quadrant_t &quad, const double *xyz) const;
 };
 
-#endif /* MY_P4EST_INTERPOLATION_NODES_H */
+#endif /* MY_P4EST_INTERPOLATION_CELLS_H */
