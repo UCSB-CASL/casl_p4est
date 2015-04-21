@@ -60,6 +60,9 @@ int ny = 2;
 int nz = 2;
 #endif
 
+double mu = 1.5;
+double add_diagonal = 2.3;
+
 /*
  * 0 - circle
  */
@@ -557,23 +560,27 @@ int main (int argc, char* argv[])
 #endif
         switch(test_number)
         {
+#ifdef P4_TO_P8
         case 0:
-          rhs_p[f_idx] = 0;
+          rhs_p[f_idx] = mu*0 + add_diagonal*u_exact(x,y,z);
           break;
         case 1:
-#ifdef P4_TO_P8
-          rhs_p[f_idx] = -6;
-#else
-          rhs_p[f_idx] = -4;
-#endif
+          rhs_p[f_idx] = -6*mu + add_diagonal*u_exact(x,y,z);
           break;
         case 2:
-#ifdef P4_TO_P8
-          rhs_p[f_idx] = sin(x)*cos(y)*exp(z);
-#else
-          rhs_p[f_idx] = 2*sin(x)*cos(y);
-#endif
+          rhs_p[f_idx] = mu*sin(x)*cos(y)*exp(z) + add_diagonal*u_exact(x,y,z);
           break;
+#else
+        case 0:
+          rhs_p[f_idx] = mu*0 + add_diagonal*u_exact(x,y);
+          break;
+          break;
+        case 1:
+          rhs_p[f_idx] = -4*mu + add_diagonal*u_exact(x,y);
+          break;
+          rhs_p[f_idx] = 2*mu*sin(x)*cos(y) + add_diagonal*u_exact(x,y);
+          break;
+#endif
         default:
           throw std::invalid_argument("set rhs : unknown test number.");
         }
@@ -584,7 +591,8 @@ int main (int argc, char* argv[])
 
     PoissonSolverFaces solver(&faces, &ngbd_n);
     solver.set_phi(phi);
-    solver.set_mu(1);
+    solver.set_diagonal(add_diagonal);
+    solver.set_mu(mu);
     solver.set_bc(bc);
     solver.set_rhs(rhs);
     solver.set_compute_partition_on_the_fly(false);

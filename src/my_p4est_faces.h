@@ -28,6 +28,7 @@ using std::vector;
 class my_p4est_faces_t
 {
   friend class PoissonSolverFaces;
+  friend class my_p4est_interpolation_faces_t;
 private:
 
   typedef struct face_quad_ngbd
@@ -132,6 +133,17 @@ PetscErrorCode VecCreateGhostFaces     (const p4est_t *p4est, const my_p4est_fac
 PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, int dir);
 
 
+/*!
+ * \brief mark the faces that are well defined, i.e. that are solved for in an implicit poisson solve with irregular interface.
+ *   For Dirichlet b.c. the condition is phi(face)<0. For Neumann, the control volume of the face must be at least partially in the negative domain.
+ * \param p4est the forest
+ * \param ngbd_n the node neighbors structure
+ * \param faces the faces structure
+ * \param dir the cartesian direction treated, dir::x, dir::y or dir::z
+ * \param phi the level-set function
+ * \param bc_type the type of boundary condition on the interface
+ * \param is_well_defined a Vector the size of the number of faces in direction dir, to be filled
+ */
 void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, int dir,
                                      Vec phi, BoundaryConditionType bc_type, Vec is_well_defined);
 

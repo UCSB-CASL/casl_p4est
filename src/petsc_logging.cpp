@@ -50,6 +50,13 @@ PetscLogEvent log_InterpolatingFunctionHost_process_queries;
 PetscLogEvent log_InterpolatingFunctionHost_process_replies;
 PetscLogEvent log_InterpolatingFunctionHost_all_reduce;
 
+// my_p4est_interpolation_t
+PetscLogEvent log_my_p4est_interpolation_interpolate;
+PetscLogEvent log_my_p4est_interpolation_process_local;
+PetscLogEvent log_my_p4est_interpolation_process_queries;
+PetscLogEvent log_my_p4est_interpolation_process_replies;
+PetscLogEvent log_my_p4est_interpolation_all_reduce;
+
 // InterpolatingFunctionNonblocking
 PetscLogEvent log_InterpolatingFunctionNonblocking_interpolate;
 PetscLogEvent log_InterpolatingFunctionNonblocking_process_local;
@@ -178,6 +185,13 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_queries              ", 0, &log_InterpolatingFunctionHost_process_queries); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_replies              ", 0, &log_InterpolatingFunctionHost_process_replies); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("InterpolatingFunctionHost::all_reduce                   ", 0, &log_InterpolatingFunctionHost_all_reduce); CHKERRXX(ierr);
+
+  // my_p4est_interpolation
+  ierr = PetscLogEventRegister("my_p4est_interpolation::interpolate                     ", 0, &log_my_p4est_interpolation_interpolate); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_interpolation::process_local                   ", 0, &log_my_p4est_interpolation_process_local); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_interpolation::process_queries                 ", 0, &log_my_p4est_interpolation_process_queries); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_interpolation::process_replies                 ", 0, &log_my_p4est_interpolation_process_replies); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_interpolation::all_reduce                      ", 0, &log_my_p4est_interpolation_all_reduce); CHKERRXX(ierr);
 
   // InterpolatingFunctionNonblocking
   ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::interpolate           ", 0, &log_InterpolatingFunctionNonblocking_interpolate); CHKERRXX(ierr);

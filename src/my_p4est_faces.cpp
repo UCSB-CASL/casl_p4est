@@ -6,11 +6,11 @@
 #ifdef P4_TO_P8
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_solve_lsqr.h>
-#include <src/my_p8est_interpolating_function_host.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_solve_lsqr.h>
-#include <src/my_p4est_interpolating_function_host.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/cube2.h>
 #endif
 
@@ -882,8 +882,8 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
   PetscScalar *face_is_well_defined_p;
   ierr = VecGetArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
-  InterpolatingFunctionNodeBaseHost interp(*ngbd_n, linear);
-  interp.set_input(phi);
+  my_p4est_interpolation_nodes_t interp(ngbd_n);
+  interp.set_input(phi, linear);
 
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
@@ -999,21 +999,18 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 #endif
       if(quad_idx!=-1)
       {
-        p4est_quadrant_t quad;
+        p4est_quadrant_t *quad;
         if(quad_idx<p4est->local_num_quadrants)
         {
           p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-          quad = *(p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
-          quad.p.piggy3.which_tree = tree_idx;
-          quad.p.piggy3.local_num = quad_idx;
+          quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
         }
         else
         {
-          quad = *(p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
-          quad.p.piggy3.local_num = quad_idx;
+          quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
         }
 
-        scaling = MIN(scaling, (double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN);
+        scaling = MIN(scaling, (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN);
 
         f_tmp = faces->q2f(quad_idx, 2*dir  ); if(f_tmp!=NO_VELOCITY) ngbd.push_back(f_tmp);
         f_tmp = faces->q2f(quad_idx, 2*dir+1); if(f_tmp!=NO_VELOCITY) ngbd.push_back(f_tmp);
@@ -1063,19 +1060,19 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 #else
         ngbd_tmp.resize(0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, 0);
-        for(int m=0; m<ngbd_tmp.size(); ++m) {
+        for(unsigned int m=0; m<ngbd_tmp.size(); ++m) {
           f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir  ); if(f_tmp!=NO_VELOCITY) ngbd.push_back(f_tmp);
           f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir+1); if(f_tmp!=NO_VELOCITY) ngbd.push_back(f_tmp); }
 
         ngbd_tmp.resize(0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 0, j);
-        for(int m=0; m<ngbd_tmp.size(); ++m) {
+        for(unsigned int m=0; m<ngbd_tmp.size(); ++m) {
           f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir  ); if(f_tmp!=NO_VELOCITY) ngbd.push_back(f_tmp);
           f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir+1); if(f_tmp!=NO_VELOCITY) ngbd.push_back(f_tmp); }
 
         ngbd_tmp.resize(0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j);
-        for(int m=0; m<ngbd_tmp.size(); ++m) {
+        for(unsigned int m=0; m<ngbd_tmp.size(); ++m) {
           f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir  ); if(f_tmp!=NO_VELOCITY) ngbd.push_back(f_tmp);
           f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir+1); if(f_tmp!=NO_VELOCITY) ngbd.push_back(f_tmp); }
 #endif

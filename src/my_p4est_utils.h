@@ -666,8 +666,8 @@ struct InterpolatingFunctionLogEntry{
 };
 
 class InterpolatingFunctionLogger{
-  InterpolatingFunctionLogger() {};
-  InterpolatingFunctionLogger(const InterpolatingFunctionLogger& ) {};
+  InterpolatingFunctionLogger() {}
+  InterpolatingFunctionLogger(const InterpolatingFunctionLogger& ) {}
   static std::vector<InterpolatingFunctionLogEntry> entries;
 
 public:
