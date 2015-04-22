@@ -31,38 +31,12 @@ PetscLogEvent log_PoissonSolverFaces_setup_linear_system;
 PetscLogEvent log_PoissonSolverFaces_solve;
 PetscLogEvent log_PoissonSolverFaces_KSPSolve;
 
-// InterpolatingFunction
-PetscLogEvent log_InterpolatingFunction_interpolate;
-PetscLogEvent log_InterpolatingFunction_send_buffer;
-PetscLogEvent log_InterpolatingFunction_recv_buffer;
-
-// InterpolatingFunctionBalanced
-PetscLogEvent log_InterpolatingFunctionBalanced_interpolate;
-PetscLogEvent log_InterpolatingFunctionBalanced_interpolate_nonblocking;
-PetscLogEvent log_InterpolatingFunctionBalanced_process_data;
-PetscLogEvent log_InterpolatingFunctionBalanced_process_message;
-PetscLogEvent log_InterpolatingFunctionBalanced_all_reduce;
-
-// InterpolatingFunctionHost
-PetscLogEvent log_InterpolatingFunctionHost_interpolate;
-PetscLogEvent log_InterpolatingFunctionHost_process_local;
-PetscLogEvent log_InterpolatingFunctionHost_process_queries;
-PetscLogEvent log_InterpolatingFunctionHost_process_replies;
-PetscLogEvent log_InterpolatingFunctionHost_all_reduce;
-
 // my_p4est_interpolation_t
 PetscLogEvent log_my_p4est_interpolation_interpolate;
 PetscLogEvent log_my_p4est_interpolation_process_local;
 PetscLogEvent log_my_p4est_interpolation_process_queries;
 PetscLogEvent log_my_p4est_interpolation_process_replies;
 PetscLogEvent log_my_p4est_interpolation_all_reduce;
-
-// InterpolatingFunctionNonblocking
-PetscLogEvent log_InterpolatingFunctionNonblocking_interpolate;
-PetscLogEvent log_InterpolatingFunctionNonblocking_process_local;
-PetscLogEvent log_InterpolatingFunctionNonblocking_process_queries;
-PetscLogEvent log_InterpolatingFunctionNonblocking_process_replies;
-PetscLogEvent log_InterpolatingFunctionNonblocking_barrier;
 
 // SemiLagrangian
 PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_Vec;
@@ -94,6 +68,9 @@ PetscLogEvent log_my_p4est_level_set_compute_derivatives;
 PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_1_iter;
 PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_Vec;
 PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_CF2;
+
+// my_p4est_level_set_faces_t
+PetscLogEvent log_my_p4est_level_set_faces_extend_over_interface;
 
 // my_p4est_hierarchy_t
 PetscLogEvent log_my_p4est_hierarchy_t;
@@ -167,38 +144,12 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("PoissonSolverFaces::solve                               ", 0, &log_PoissonSolverFaces_solve); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverFaces::KSPSolve                            ", 0, &log_PoissonSolverFaces_KSPSolve); CHKERRXX(ierr);
 
-  // InterpolatingFunction
-  ierr = PetscLogEventRegister("InterpolatingFunction::interpolate                      ", 0, &log_InterpolatingFunction_interpolate); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunction::send_buffer                      ", 0, &log_InterpolatingFunction_send_buffer); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunction::recv_buffer                      ", 0, &log_InterpolatingFunction_recv_buffer); CHKERRXX(ierr);
-
-  // InterpolatingFunctionBalanced
-  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::interpolate              ", 0, &log_InterpolatingFunctionBalanced_interpolate); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::interpolate_nonblocking  ", 0, &log_InterpolatingFunctionBalanced_interpolate_nonblocking); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::process_data             ", 0, &log_InterpolatingFunctionBalanced_process_data); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::process_message          ", 0, &log_InterpolatingFunctionBalanced_process_message); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::all_reduce			          ", 0, &log_InterpolatingFunctionBalanced_all_reduce); CHKERRXX(ierr);
-
-  // InterpolatingFunctionHost
-  ierr = PetscLogEventRegister("InterpolatingFunctionHost::interpolate                  ", 0, &log_InterpolatingFunctionHost_interpolate); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_local                ", 0, &log_InterpolatingFunctionHost_process_local); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_queries              ", 0, &log_InterpolatingFunctionHost_process_queries); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_replies              ", 0, &log_InterpolatingFunctionHost_process_replies); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionHost::all_reduce                   ", 0, &log_InterpolatingFunctionHost_all_reduce); CHKERRXX(ierr);
-
   // my_p4est_interpolation
   ierr = PetscLogEventRegister("my_p4est_interpolation::interpolate                     ", 0, &log_my_p4est_interpolation_interpolate); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_interpolation::process_local                   ", 0, &log_my_p4est_interpolation_process_local); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_interpolation::process_queries                 ", 0, &log_my_p4est_interpolation_process_queries); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_interpolation::process_replies                 ", 0, &log_my_p4est_interpolation_process_replies); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_interpolation::all_reduce                      ", 0, &log_my_p4est_interpolation_all_reduce); CHKERRXX(ierr);
-
-  // InterpolatingFunctionNonblocking
-  ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::interpolate           ", 0, &log_InterpolatingFunctionNonblocking_interpolate); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::process_local         ", 0, &log_InterpolatingFunctionNonblocking_process_local); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::process_queries       ", 0, &log_InterpolatingFunctionNonblocking_process_queries); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::process_replies       ", 0, &log_InterpolatingFunctionNonblocking_process_replies); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::barrier               ", 0, &log_InterpolatingFunctionNonblocking_barrier); CHKERRXX(ierr);
 
   // Semilagrangian
   ierr = PetscLogEventRegister("Semilagrangian::advect_from_n_to_np1_Vec                ", 0, &log_Semilagrangian_advect_from_n_to_np1_Vec); CHKERRXX(ierr);
@@ -233,6 +184,9 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_1_iter   ", 0, &log_my_p4est_level_set_advect_in_normal_direction_1_iter); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_CF2      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_Vec      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_Vec); CHKERRXX(ierr);
+
+  // my_p4est_level_set_t
+  ierr = PetscLogEventRegister("my_p4est_level_set_faces::extend_over_interface         ", 0, &log_my_p4est_level_set_faces_extend_over_interface); CHKERRXX(ierr);
 
   // my_p4est_hierarchy_t
   ierr = PetscLogEventRegister("my_p4est_hierarchy_t::init                              ", 0, &log_my_p4est_hierarchy_t); CHKERRXX(ierr);

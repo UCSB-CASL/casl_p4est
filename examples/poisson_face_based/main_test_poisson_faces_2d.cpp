@@ -21,9 +21,11 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_cell_neighbors.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_level_set_faces.h>
 #include <src/my_p8est_faces.h>
 #include <src/my_p8est_poisson_faces.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -35,9 +37,11 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_level_set_faces.h>
 #include <src/my_p4est_faces.h>
 #include <src/my_p4est_poisson_faces.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #endif
 
 #include <src/point3.h>
@@ -430,14 +434,14 @@ int main (int argc, char* argv[])
   cmd.add_option("save_vtk", "save the p4est in vtk format");
 #ifdef P4_TO_P8
   cmd.add_option("test", "choose a test.\n\
-                 0 - u_m=1+log(r/r0), u_p=1, mu=1\n\
-                 1 - u_m=exp(z), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-z)   article example 4.6");
+                 0 - x+y+z\n\
+                 1 - x*x + y*y + z*z\n\
+                 2 - sin(x)*cos(y)*exp(z)");
 #else
   cmd.add_option("test", "choose a test.\n\
-                 0 - x*x\n\
-                 1 - sin(x)*cos(y), BC dirichlet\n\
-                 2 - u_m=u_p=sin(x)*sin(y), mu_m=mu_p, BC neumann\n\
-                 3 - u_m=exp(x), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-y)   article example 4.4");
+                 0 - x+y\n\
+                 1 - x*x + y*y\n\
+                 2 - sin(x)*cos(y)");
 #endif
   cmd.parse(argc, argv);
 
@@ -489,6 +493,9 @@ int main (int argc, char* argv[])
   vector<double> err_nodes_n  (P4EST_DIM, 0);
   vector<double> err_nodes_nm1(P4EST_DIM, 0);
 
+  vector<double> err_ex_f_n  (P4EST_DIM, 0);
+  vector<double> err_ex_f_nm1(P4EST_DIM, 0);
+
   for(int iter=0; iter<nb_splits; ++iter)
   {
     ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
@@ -503,10 +510,10 @@ int main (int argc, char* argv[])
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
     my_p4est_partition(p4est, P4EST_FALSE, NULL);
     p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
     ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est, ghost);
-//    my_p4est_ghost_expand(p4est, ghost);
     nodes = my_p4est_nodes_new(p4est, ghost);
 
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
@@ -520,8 +527,24 @@ int main (int argc, char* argv[])
     else
       sample_cf_on_nodes(p4est, nodes, level_set, phi);
 
-    my_p4est_level_set ls(&ngbd_n);
+    my_p4est_level_set_t ls(&ngbd_n);
     ls.perturb_level_set_function(phi, EPS);
+
+    /* find dx and dy smallest */
+    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+    double xmin = p4est->connectivity->vertices[3*vm + 0];
+    double ymin = p4est->connectivity->vertices[3*vm + 1];
+    double xmax = p4est->connectivity->vertices[3*vp + 0];
+    double ymax = p4est->connectivity->vertices[3*vp + 1];
+    double dx = (xmax-xmin) / pow(2.,(double) data.max_lvl);
+    double dy = (ymax-ymin) / pow(2.,(double) data.max_lvl);
+
+  #ifdef P4_TO_P8
+    double zmin = p4est->connectivity->vertices[3*vm + 2];
+    double zmax = p4est->connectivity->vertices[3*vp + 2];
+    double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
+  #endif
 
     /* TEST THE FACES FUNCTIONS */
     my_p4est_faces_t faces(p4est, ghost, &brick, &ngbd_c);
@@ -574,10 +597,10 @@ int main (int argc, char* argv[])
         case 0:
           rhs_p[f_idx] = mu*0 + add_diagonal*u_exact(x,y);
           break;
-          break;
         case 1:
           rhs_p[f_idx] = -4*mu + add_diagonal*u_exact(x,y);
           break;
+        case 2:
           rhs_p[f_idx] = 2*mu*sin(x)*cos(y) + add_diagonal*u_exact(x,y);
           break;
 #endif
@@ -611,8 +634,8 @@ int main (int argc, char* argv[])
     }
 
     /* check the error */
-    InterpolatingFunctionNodeBaseHost interp(ngbd_n, linear);
-    interp.set_input(phi);
+    my_p4est_interpolation_nodes_t interp_n(&ngbd_n);
+    interp_n.set_input(phi, linear);
 
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
@@ -628,10 +651,10 @@ int main (int argc, char* argv[])
         double y = faces.y_fr_f(f_idx, dir);
 #ifdef P4_TO_P8
         double z = faces.z_fr_f(f_idx, dir);
-        if(interp(x,y,z)<0)
+        if(interp_n(x,y,z)<0)
           err_n[dir] = MAX(err_n[dir], fabs(sol_p[f_idx] - u_exact(x,y,z)));
 #else
-        if(interp(x,y)<0)
+        if(interp_n(x,y)<0)
           err_n[dir] = MAX(err_n[dir], fabs(sol_p[f_idx] - u_exact(x,y)));
 #endif
       }
@@ -699,6 +722,47 @@ int main (int argc, char* argv[])
       ierr = PetscPrintf(p4est->mpicomm, "Error on nodes for direction %d : %g, order = %g\n", dir, err_nodes_n[dir], log(err_nodes_nm1[dir]/err_nodes_n[dir])/log(2)); CHKERRXX(ierr);
     }
 
+
+    /* extrapolate the solution and check accuracy */
+    my_p4est_level_set_faces_t ls_f(&ngbd_n, &faces);
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      double band = 4;
+      ls_f.extend_Over_Interface(phi, sol[dir], bc[dir], dir, face_is_well_defined[dir], 2, band);
+
+      double *sol_p;
+      ierr = VecGetArray(sol[dir], &sol_p); CHKERRXX(ierr);
+
+      err_ex_f_nm1[dir] = err_ex_f_n[dir];
+      err_ex_f_n[dir] = 0;
+
+      const PetscScalar *face_is_well_defined_p;
+      ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+
+      for(p4est_locidx_t f_idx=0; f_idx<faces.num_local[dir]+faces.num_ghost[dir]; ++f_idx)
+      {
+        double x = faces.x_fr_f(f_idx, dir);
+        double y = faces.y_fr_f(f_idx, dir);
+#ifdef P4_TO_P8
+        double z = faces.z_fr_f(f_idx, dir);
+        if(!face_is_well_defined_p[f_idx] && interp_n(x,y,z)<band*MIN(dx,dy,dz))
+          err_ex_f_n[dir] = MAX(err_ex_f_n[dir], fabs(sol_p[f_idx] - u_exact(x,y,z)));
+#else
+        if(!face_is_well_defined_p[f_idx] && interp_n(x,y)<band*MIN(dx,dy))
+          err_ex_f_n[dir] = MAX(err_ex_f_n[dir], fabs(sol_p[f_idx] - u_exact(x,y)));
+#endif
+      }
+
+      ierr = VecRestoreArray(sol[dir], &sol_p); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+
+      int mpiret;
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_f_n[dir], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+      ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation for direction %d : %g, order = %g\n", dir, err_ex_f_n[dir], log(err_ex_f_nm1[dir]/err_ex_f_n[dir])/log(2)); CHKERRXX(ierr);
+
+    }
+
+
     if(save_vtk)
     {
       double *sol_u_p;
@@ -720,9 +784,9 @@ int main (int argc, char* argv[])
           double y = faces.y_fr_f(um, dir::x);
 #ifdef P4_TO_P8
           double z = faces.z_fr_f(um, dir::x);
-          if(interp(x,y,z)<0)
+          if(interp_n(x,y,z)<0)
 #else
-          if(interp(x,y)<0)
+          if(interp_n(x,y)<0)
 #endif
           {
             um_cells_p[q] = sol_u_p[um];

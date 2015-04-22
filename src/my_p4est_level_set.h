@@ -16,7 +16,7 @@
 #include <src/ipm_logging.h>
 #include <src/CASL_math.h>
 
-class my_p4est_level_set {
+class my_p4est_level_set_t {
 
   my_p4est_brick_t *myb;
   p4est_t *p4est;
@@ -50,7 +50,7 @@ class my_p4est_level_set {
                                               #endif
                                                 const double *pn, double *pnp1);
 public:
-  my_p4est_level_set(my_p4est_node_neighbors_t *ngbd_ )
+  my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_ )
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_)
   {}
 

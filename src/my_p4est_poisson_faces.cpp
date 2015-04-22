@@ -33,7 +33,7 @@ extern PetscLogEvent log_PoissonSolverFaces_KSPSolve;
 using std::vector;
 
 PoissonSolverFaces::PoissonSolverFaces(const my_p4est_faces_t *faces, const my_p4est_node_neighbors_t *ngbd_n)
-  : faces(faces), p4est(faces->p4est), ngbd_c(faces->ngbd_c), ngbd_n(ngbd_n), interp_phi(*ngbd_n, linear),
+  : faces(faces), p4est(faces->p4est), ngbd_c(faces->ngbd_c), ngbd_n(ngbd_n), interp_phi(ngbd_n),
     phi(NULL), rhs_u(NULL), rhs_v(NULL),
     #ifdef P4_TO_P8
     rhs_w(NULL),
@@ -140,7 +140,7 @@ void PoissonSolverFaces::reset_linear_solver(bool use_nonzero_initial_guess, KSP
 void PoissonSolverFaces::set_phi(Vec phi)
 {
   this->phi = phi;
-  interp_phi.set_input(phi);
+  interp_phi.set_input(phi, linear);
 }
 
 

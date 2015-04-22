@@ -28,7 +28,6 @@ public:
 
 private:
   friend class PoissonSolverCellBase;
-  friend class InterpolatingFunctionCellBase;
   friend class my_p4est_faces_t;
 
   my_p4est_hierarchy_t *hierarchy;

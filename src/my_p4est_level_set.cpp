@@ -1,14 +1,12 @@
 #ifdef P4_TO_P8
-#include "my_p8est_levelset.h"
+#include "my_p8est_level_set.h"
 #include <src/point3.h>
-#include <src/my_p8est_interpolating_function.h>
-#include <src/my_p8est_interpolating_function_host.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_refine_coarsen.h>
 #else
-#include "my_p4est_levelset.h"
+#include "my_p4est_level_set.h"
 #include <src/point2.h>
-#include <src/my_p4est_interpolating_function.h>
-#include <src/my_p4est_interpolating_function_host.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 
@@ -45,7 +43,7 @@ extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_CF2;
 #define PetscLogFlops(n) 0
 #endif
 
-void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double limit )
+void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double limit )
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_1st_order, 0, 0, 0, 0);
@@ -221,7 +219,7 @@ void my_p4est_level_set::reinitialize_One_Iteration_First_Order( std::vector<p4e
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_1st_order, 0, 0, 0, 0);
 }
 
-void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map,
+void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map,
                                                                   #ifdef P4_TO_P8
                                                                   const double *dxx0, const double *dyy0, const double *dzz0,
                                                                   const double *dxx,  const double *dyy,  const double *dzz,
@@ -450,7 +448,7 @@ void my_p4est_level_set::reinitialize_One_Iteration_Second_Order( std::vector<p4
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_2nd_order, 0, 0, 0, 0);
 }
 
-void my_p4est_level_set::advect_in_normal_direction_one_iteration(std::vector<p4est_locidx_t> &map, const double* vn, double dt,
+void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(std::vector<p4est_locidx_t> &map, const double* vn, double dt,
                                                                   const double *dxx,  const double *dyy,
                                                                   #ifdef P4_TO_P8
                                                                   const double *dzz,
@@ -608,7 +606,7 @@ void my_p4est_level_set::advect_in_normal_direction_one_iteration(std::vector<p4
 }
 
 
-void my_p4est_level_set::reinitialize_1st_order( Vec phi_petsc, int number_of_iteration, double limit )
+void my_p4est_level_set_t::reinitialize_1st_order( Vec phi_petsc, int number_of_iteration, double limit )
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
@@ -658,7 +656,7 @@ void my_p4est_level_set::reinitialize_1st_order( Vec phi_petsc, int number_of_it
 }
 
 
-void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration, double limit )
+void my_p4est_level_set_t::reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration, double limit )
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
@@ -838,7 +836,7 @@ void my_p4est_level_set::reinitialize_2nd_order( Vec phi_petsc, int number_of_it
 }
 
 
-void my_p4est_level_set::perturb_level_set_function( Vec phi_petsc, double epsilon )
+void my_p4est_level_set_t::perturb_level_set_function( Vec phi_petsc, double epsilon )
 {
   PetscErrorCode ierr;
   double *phi_ptr;
@@ -858,7 +856,7 @@ void my_p4est_level_set::perturb_level_set_function( Vec phi_petsc, double epsil
 }
 
 
-void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration, double limit )
+void my_p4est_level_set_t::reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration, double limit )
 {
   PetscErrorCode ierr;  
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_time_1st_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
@@ -925,7 +923,7 @@ void my_p4est_level_set::reinitialize_2nd_order_time_1st_order_space( Vec phi_pe
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_time_1st_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_petsc, int number_of_iteration, double limit )
+void my_p4est_level_set_t::reinitialize_1st_order_time_2nd_order_space( Vec phi_petsc, int number_of_iteration, double limit )
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
@@ -1049,9 +1047,9 @@ void my_p4est_level_set::reinitialize_1st_order_time_2nd_order_space( Vec phi_pe
 }
 
 #ifdef P4_TO_P8
-void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc) const
+void my_p4est_level_set_t::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc) const
 #else
-void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc) const
+void my_p4est_level_set_t::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc) const
 #endif
 {
   PetscErrorCode ierr;
@@ -1067,9 +1065,9 @@ void my_p4est_level_set::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec 
 }
 
 #ifdef P4_TO_P8
-double my_p4est_level_set::advect_in_normal_direction(const CF_3& vn, Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
+double my_p4est_level_set_t::advect_in_normal_direction(const CF_3& vn, Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
-double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, Vec phi_xx, Vec phi_yy)
+double my_p4est_level_set_t::advect_in_normal_direction(const CF_2& vn, Vec phi, Vec phi_xx, Vec phi_yy)
 #endif
 {
   /* TODO: do not allocate memory for vn */
@@ -1249,9 +1247,9 @@ double my_p4est_level_set::advect_in_normal_direction(const CF_2& vn, Vec phi, V
 }
 
 #ifdef P4_TO_P8
-double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
-double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx, Vec phi_yy)
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx, Vec phi_yy)
 #endif
 {
   PetscErrorCode ierr;
@@ -1406,9 +1404,9 @@ double my_p4est_level_set::advect_in_normal_direction(const Vec vn, Vec phi, Vec
 }
 
 #ifdef P4_TO_P8
-void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditions3D &bc, int order, int band_to_extend ) const
+void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditions3D &bc, int order, int band_to_extend ) const
 #else
-void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditions2D &bc, int order, int band_to_extend ) const
+void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditions2D &bc, int order, int band_to_extend ) const
 #endif
 {
 #ifdef CASL_THROWS
@@ -1439,8 +1437,8 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 #endif
   }
 
-  InterpolatingFunctionNodeBaseHost interp1(q_petsc, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp2(q_petsc, *ngbd, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp1(ngbd); interp1.set_input(q_petsc, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp2(ngbd); interp2.set_input(q_petsc, quadratic_non_oscillatory);
 
   /* find dx and dy smallest */
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
@@ -1666,7 +1664,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditionType bc_type, Vec bc_vec, int order, int band_to_extend ) const
+void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditionType bc_type, Vec bc_vec, int order, int band_to_extend ) const
 {
 #ifdef CASL_THROWS
   if(bc_type==NOINTERFACE) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: no interface defined in the boundary condition ... needs to be dirichlet or neumann.");
@@ -1696,9 +1694,9 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
 #endif
   }
 
-  InterpolatingFunctionNodeBaseHost interp0(q_petsc, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp1(q_petsc, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp2(q_petsc, *ngbd, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp0(ngbd); interp0.set_input(q_petsc, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp1(ngbd); interp1.set_input(q_petsc, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp2(ngbd); interp2.set_input(q_petsc, quadratic_non_oscillatory);
 
   /* find dx and dy smallest */
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
@@ -1883,7 +1881,7 @@ void my_p4est_level_set::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Boun
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_level_set::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int order, int band_to_extend ) const
+void my_p4est_level_set_t::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int order, int band_to_extend ) const
 {
 #ifdef CASL_THROWS
   if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: invalid order. Choose 0, 1 or 2");
@@ -1912,9 +1910,9 @@ void my_p4est_level_set::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int o
 #endif
   }
 
-  InterpolatingFunctionNodeBase interp0(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunctionNodeBase interp1(p4est, nodes, ghost, myb, ngbd);
-  InterpolatingFunctionNodeBase interp2(p4est, nodes, ghost, myb, ngbd);
+  my_p4est_interpolation_nodes_t interp0(ngbd); interp0.set_input(q_petsc, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp1(ngbd); interp1.set_input(q_petsc, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp2(ngbd); interp2.set_input(q_petsc, quadratic_non_oscillatory);
 
   /* find dx and dy smallest */
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
@@ -1991,7 +1989,7 @@ void my_p4est_level_set::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int o
   #endif
         };
 
-        interp0.add_point_to_buffer(n, xyz_);
+        interp0.add_point(n, xyz_);
       }
 
       if(order >= 1)
@@ -2005,7 +2003,7 @@ void my_p4est_level_set::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int o
           xyz[2] + grad_phi.z * (3*diag + phi[n])
   #endif
         };
-        interp1.add_point_to_buffer(n, xyz_);
+        interp1.add_point(n, xyz_);
       }
 
       if(order >= 2)
@@ -2019,16 +2017,12 @@ void my_p4est_level_set::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int o
           xyz[2] + grad_phi.z * (4*diag + phi[n])
   #endif
         };
-        interp2.add_point_to_buffer(n, xyz_);
+        interp2.add_point(n, xyz_);
       }
 
       ierr = PetscLogFlops(26); CHKERRXX(ierr);
     }
   }
-
-  interp0.set_input_parameters(q_petsc, quadratic_non_oscillatory);
-  interp1.set_input_parameters(q_petsc, quadratic_non_oscillatory);
-  interp2.set_input_parameters(q_petsc, quadratic_non_oscillatory);
 
   interp0.interpolate(q0.data());
   interp1.interpolate(q1.data());
@@ -2078,7 +2072,7 @@ void my_p4est_level_set::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int o
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend) const
+void my_p4est_level_set_t::extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface, phi_petsc, q_petsc, q_extended_petsc, 0); CHKERRXX(ierr);
@@ -2106,7 +2100,8 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
 #else
   double diag = sqrt(dx*dx + dy*dy);
 #endif
-  InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, myb, ngbd);
+
+  my_p4est_interpolation_nodes_t interp(ngbd);
 
   double *q_extended;
   ierr = VecGetArray(q_extended_petsc, &q_extended); CHKERRXX(ierr);
@@ -2154,7 +2149,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
   #endif
       };
 
-      interp.add_point_to_buffer(n, xyz);
+      interp.add_point(n, xyz);
 
       ierr = PetscLogFlops(14); CHKERRXX(ierr);
     }
@@ -2165,7 +2160,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
   ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
   ierr = VecRestoreArray(q_extended_petsc, &q_extended); CHKERRXX(ierr);
 
-  interp.set_input_parameters(q_petsc, quadratic);
+  interp.set_input(q_petsc, quadratic);
   interp.interpolate(q_extended_petsc);
 
   ierr = VecGhostUpdateBegin(q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -2175,10 +2170,10 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain( Vec phi_petsc, V
 }
 
 
-void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iterations, int order) const
+void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterations, int order) const
 {
 #ifdef CASL_THROWS
-  if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: my_p4est_level_set->extend_Over_Interface_TVD: order must be 0, 1 or 2.");
+  if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: my_p4est_level_set_t->extend_Over_Interface_TVD: order must be 0, 1 or 2.");
 #endif
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
@@ -2971,7 +2966,7 @@ void my_p4est_level_set::extend_Over_Interface_TVD( Vec phi, Vec q, int iteratio
 
 
 
-void my_p4est_level_set::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations, int order) const
+void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations, int order) const
 {
   PetscErrorCode ierr;
 
@@ -3412,7 +3407,7 @@ void my_p4est_level_set::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, 
 }
 
 
-void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
+void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
                                                                                   std::vector<double>& nx, std::vector<double>& ny,
                                                                                   #ifdef P4_TO_P8
                                                                                   std::vector<double>& nz,
@@ -3553,7 +3548,7 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD_one_iteration
 }
 
 
-void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec qi, Vec q, int iterations ) const
+void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec qi, Vec q, int iterations ) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
@@ -3664,17 +3659,17 @@ void my_p4est_level_set::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec
   std::vector<double> qi_00p(nodes->num_owned_indeps);
   std::vector<double> s_00m(nodes->num_owned_indeps);
   std::vector<double> s_00p(nodes->num_owned_indeps);
-  InterpolatingFunctionNodeBaseHost interp_m00(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp_p00(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp_0m0(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp_0p0(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp_00m(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp_00p(qi, qxx, qyy, qzz, *ngbd, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp_m00(ngbd); interp_m00.set_input(qi, qxx, qyy, qzz, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp_p00(ngbd); interp_p00.set_input(qi, qxx, qyy, qzz, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp_0m0(ngbd); interp_0m0.set_input(qi, qxx, qyy, qzz, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp_0p0(ngbd); interp_0p0.set_input(qi, qxx, qyy, qzz, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp_00m(ngbd); interp_00m.set_input(qi, qxx, qyy, qzz, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp_00p(ngbd); interp_00p.set_input(qi, qxx, qyy, qzz, quadratic_non_oscillatory);
 #else
-  InterpolatingFunctionNodeBaseHost interp_m00(qi, qxx, qyy, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp_p00(qi, qxx, qyy, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp_0m0(qi, qxx, qyy, *ngbd, quadratic_non_oscillatory);
-  InterpolatingFunctionNodeBaseHost interp_0p0(qi, qxx, qyy, *ngbd, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp_m00(ngbd); interp_m00.set_input(qi, qxx, qyy, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp_p00(ngbd); interp_p00.set_input(qi, qxx, qyy, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp_0m0(ngbd); interp_0m0.set_input(qi, qxx, qyy, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp_0p0(ngbd); interp_0p0.set_input(qi, qxx, qyy, quadratic_non_oscillatory);
 #endif
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)

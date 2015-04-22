@@ -35,7 +35,8 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_cells_t;
   friend class my_p4est_interpolation_faces_t;
-  friend class my_p4est_level_set;
+  friend class my_p4est_level_set_t;
+  friend class my_p4est_level_set_faces_t;
   friend class SemiLagrangian;
   friend class my_p4est_bialloy_t;
 
