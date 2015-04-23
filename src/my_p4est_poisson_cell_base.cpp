@@ -998,9 +998,6 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
   if (matrix_has_nullspace)
     ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
 
-//  PetscViewerSetFormat(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_ASCII_INDEX);
-//  VecView(rhs, PETSC_VIEWER_STDOUT_WORLD);
-
   ierr = PetscLogEventEnd(log_PoissonSolverCellBased_rhsvec_setup, rhs, 0, 0, 0); CHKERRXX(ierr);
 }
 
