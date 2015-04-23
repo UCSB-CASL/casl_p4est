@@ -654,17 +654,6 @@ void my_p4est_faces_t::init_faces()
     }
   }
 
-//  check data for debugging
-//  for(int dir=0; dir<P4EST_DIM; ++dir)
-//  {
-//    for(unsigned int i=0; i<f2q_[dir].size(); ++i)
-//    {
-//      if(f2q_[dir][i].quad_idx==-1)                                                      std::cout << p4est->mpirank << " problem in " << dir << " !!" << std::endl;
-//      if(f2q_[dir][i].quad_idx< p4est->local_num_quadrants && f2q_[dir][i].tree_idx==-1) std::cout << p4est->mpirank << " problem in " << dir << " local !!" << std::endl;
-//      if(f2q_[dir][i].quad_idx>=p4est->local_num_quadrants && f2q_[dir][i].tree_idx!=-1) std::cout << p4est->mpirank << " problem in " << dir << " ghost !!" << std::endl;
-//    }
-//  }
-
   mpiret = MPI_Waitall(req_query2.size(), &req_query2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
   mpiret = MPI_Waitall(req_reply2.size(), &req_reply2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
 

@@ -111,7 +111,7 @@ public:
   /*!
    * \brief find the neighbor cells of a cell in a cartesian direction
    * \param ngbd the list of neighbor cells, to be filled
-   * \param q the index of the quadrant
+   * \param q the index of the quadrant in the local p4est, NOT in the tree tr
    * \param tr the tree to which the quadrant belongs
    * \param dir_f the cartesian direction to search, i.e. dir::f_m00, dir::f_p00 ...
    */

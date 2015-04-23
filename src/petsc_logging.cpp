@@ -24,6 +24,13 @@ PetscLogEvent log_PoissonSolverNodeBased_rhsvec_setup;
 PetscLogEvent log_PoissonSolverNodeBased_solve;
 PetscLogEvent log_PoissonSolverNodeBased_KSPSolve;
 
+// PoissonSolverCellBase
+PetscLogEvent log_PoissonSolverCellBased_matrix_preallocation;
+PetscLogEvent log_PoissonSolverCellBased_matrix_setup;
+PetscLogEvent log_PoissonSolverCellBased_rhsvec_setup;
+PetscLogEvent log_PoissonSolverCellBased_solve;
+PetscLogEvent log_PoissonSolverCellBased_KSPSolve;
+
 // PoissonSolverFaces
 PetscLogEvent log_PoissonSolverFaces_compute_voronoi_cell;
 PetscLogEvent log_PoissonSolverFaces_matrix_preallocation;
@@ -71,6 +78,9 @@ PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_CF2;
 
 // my_p4est_level_set_faces_t
 PetscLogEvent log_my_p4est_level_set_faces_extend_over_interface;
+
+// my_p4est_level_set_cells_t
+PetscLogEvent log_my_p4est_level_set_cells_extend_over_interface;
 
 // my_p4est_hierarchy_t
 PetscLogEvent log_my_p4est_hierarchy_t;
@@ -137,6 +147,13 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::rhsvec_setup                    ", 0, &log_PoissonSolverNodeBased_rhsvec_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::solve                           ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
 
+  // PoissonSolverCellBase
+  ierr = PetscLogEventRegister("PoissonSolverCellBased::matrix_preallocation            ", 0, &log_PoissonSolverCellBased_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverCellBased::matrix_setup                    ", 0, &log_PoissonSolverCellBased_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverCellBased::rhsvec_setup                    ", 0, &log_PoissonSolverCellBased_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverCellBased::solve                           ", 0, &log_PoissonSolverCellBased_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverCellBased::KSPSolve                        ", 0, &log_PoissonSolverCellBased_KSPSolve); CHKERRXX(ierr);
+
   // PoissonSolverFaces
   ierr = PetscLogEventRegister("PoissonSolverFaces::compute_voronoi_cell                ", 0, &log_PoissonSolverFaces_compute_voronoi_cell); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverFaces::matrix_preallocation                ", 0, &log_PoissonSolverFaces_matrix_preallocation); CHKERRXX(ierr);
@@ -185,8 +202,11 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_CF2      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_Vec      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_Vec); CHKERRXX(ierr);
 
-  // my_p4est_level_set_t
+  // my_p4est_level_set_faces_t
   ierr = PetscLogEventRegister("my_p4est_level_set_faces::extend_over_interface         ", 0, &log_my_p4est_level_set_faces_extend_over_interface); CHKERRXX(ierr);
+
+  // my_p4est_level_set_cells_t
+  ierr = PetscLogEventRegister("my_p4est_level_set_cells::extend_over_interface         ", 0, &log_my_p4est_level_set_cells_extend_over_interface); CHKERRXX(ierr);
 
   // my_p4est_hierarchy_t
   ierr = PetscLogEventRegister("my_p4est_hierarchy_t::init                              ", 0, &log_my_p4est_hierarchy_t); CHKERRXX(ierr);

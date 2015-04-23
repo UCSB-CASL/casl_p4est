@@ -1,3 +1,13 @@
+
+/*
+ * Test the face based p4est.
+ * 1 - solve a poisson equation on an irregular domain (circle)
+ * 2 - interpolate from faces to nodes
+ * 3 - extrapolate faces over interface
+ *
+ * run the program with the -help flag to see the available options
+ */
+
 // System
 #include <stdexcept>
 #include <iostream>

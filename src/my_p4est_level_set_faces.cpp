@@ -234,60 +234,56 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
       if(phi_f<band_to_extend*diag && grad_phi.norm_L2()>EPS)
       {
         grad_phi /= grad_phi.norm_L2();
-        if(phi_f<band_to_extend*diag && grad_phi.norm_L2()>EPS)
+
+        if(order==0)
         {
-          grad_phi /= grad_phi.norm_L2();
+          if(bc.interfaceType()==DIRICHLET)
+            q_p[f_idx] = q0[f_idx];
+          else /* interface neumann */
+            q_p[f_idx] = q1[f_idx];
+        }
 
-          if(order==0)
+        else if(order==1)
+        {
+          if(bc.interfaceType()==DIRICHLET)
           {
-            if(bc.interfaceType()==DIRICHLET)
-              q_p[f_idx] = q0[f_idx];
-            else /* interface neumann */
-              q_p[f_idx] = q1[f_idx];
+            double dif01 = (q1[f_idx] - q0[f_idx])/(2*diag - 0);
+            q_p[f_idx] = q0[f_idx] + (-phi_f - 0) * dif01;
           }
-
-          else if(order==1)
+          else /* interface Neumann */
           {
-            if(bc.interfaceType()==DIRICHLET)
-            {
-              double dif01 = (q1[f_idx] - q0[f_idx])/(2*diag - 0);
-              q_p[f_idx] = q0[f_idx] + (-phi_f - 0) * dif01;
-            }
-            else /* interface Neumann */
-            {
 #ifdef P4_TO_P8
-              double dif01 = -bc.interfaceValue(x-grad_phi.x*phi_f, y-grad_phi.y*phi_f, z-grad_phi.z*phi_f);
+            double dif01 = -bc.interfaceValue(x-grad_phi.x*phi_f, y-grad_phi.y*phi_f, z-grad_phi.z*phi_f);
 #else
-              double dif01 = -bc.interfaceValue(x-grad_phi.x*phi_f, y-grad_phi.y*phi_f);
+            double dif01 = -bc.interfaceValue(x-grad_phi.x*phi_f, y-grad_phi.y*phi_f);
 #endif
-              q_p[f_idx] = q1[f_idx] + (-phi_f - 2*diag) * dif01;
-            }
+            q_p[f_idx] = q1[f_idx] + (-phi_f - 2*diag) * dif01;
           }
+        }
 
-          else if(order==2)
+        else if(order==2)
+        {
+          if(bc.interfaceType()==DIRICHLET)
           {
-            if(bc.interfaceType()==DIRICHLET)
-            {
-              double dif01  = (q1[f_idx] - q0[f_idx]) / (2*diag);
-              double dif12  = (q2[f_idx] - q1[f_idx]) / (diag);
-              double dif012 = (dif12 - dif01) / (3*diag);
-              q_p[f_idx] = q0[f_idx] + (-phi_f - 0) * dif01 + (-phi_f - 0)*(-phi_f - 2*diag) * dif012;
-            }
-            else if (bc.interfaceType() == NEUMANN) /* interface Neumann */
-            {
-              double x1 = 2*diag;
-              double x2 = 3*diag;
+            double dif01  = (q1[f_idx] - q0[f_idx]) / (2*diag);
+            double dif12  = (q2[f_idx] - q1[f_idx]) / (diag);
+            double dif012 = (dif12 - dif01) / (3*diag);
+            q_p[f_idx] = q0[f_idx] + (-phi_f - 0) * dif01 + (-phi_f - 0)*(-phi_f - 2*diag) * dif012;
+          }
+          else if (bc.interfaceType() == NEUMANN) /* interface Neumann */
+          {
+            double x1 = 2*diag;
+            double x2 = 3*diag;
 #ifdef P4_TO_P8
-              double b = -bc.interfaceValue(x-grad_phi.x*phi_f, y-grad_phi.y*phi_f, z-grad_phi.z*phi_f);
+            double b = -bc.interfaceValue(x-grad_phi.x*phi_f, y-grad_phi.y*phi_f, z-grad_phi.z*phi_f);
 #else
-              double b = -bc.interfaceValue(x-grad_phi.x*phi_f, y-grad_phi.y*phi_f);
+            double b = -bc.interfaceValue(x-grad_phi.x*phi_f, y-grad_phi.y*phi_f);
 #endif
-              double a = (q2[f_idx] - q1[f_idx] + b*(x1 - x2)) / (x2*x2 - x1*x1);
-              double c = q1[f_idx] - a*x1*x1 - b*x1;
+            double a = (q2[f_idx] - q1[f_idx] + b*(x1 - x2)) / (x2*x2 - x1*x1);
+            double c = q1[f_idx] - a*x1*x1 - b*x1;
 
-              double x = -phi_f;
-              q_p[f_idx] = a*x*x + b*x + c;
-            }
+            double x = -phi_f;
+            q_p[f_idx] = a*x*x + b*x + c;
           }
         }
       }

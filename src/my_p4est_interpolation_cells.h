@@ -14,7 +14,16 @@
 class my_p4est_interpolation_cells_t : public my_p4est_interpolation_t
 {
 private:
+  const p4est_nodes_t *nodes;
   const my_p4est_cell_neighbors_t *ngbd_c;
+
+  Vec phi;
+
+#ifdef P4_TO_P8
+  const BoundaryConditions3D *bc;
+#else
+  const BoundaryConditions2D *bc;
+#endif
 
   // rule of three -- disable copy ctr and assignment if not useful
   my_p4est_interpolation_cells_t(const my_p4est_interpolation_cells_t& other);
@@ -24,6 +33,12 @@ public:
   using my_p4est_interpolation_t::interpolate;
 
   my_p4est_interpolation_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t* ngbd_n);
+
+#ifdef P4_TO_P8
+  void set_input(Vec F, Vec phi, const BoundaryConditions3D *bc);
+#else
+  void set_input(Vec F, Vec phi, const BoundaryConditions2D *bc);
+#endif
 
   // interpolation methods
 #ifdef P4_TO_P8

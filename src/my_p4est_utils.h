@@ -440,6 +440,7 @@ inline double quad_z_fr_k(const p4est_quadrant_t *qi){
 
 /*!
  * \brief get the x-coordinate of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
 inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
 {
@@ -459,6 +460,7 @@ inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
 
 /*!
  * \brief get the y-coordinate of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
 inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
 {
@@ -479,6 +481,7 @@ inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
 #ifdef P4_TO_P8
 /*!
  * \brief get the z-coordinate of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
 inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
 {

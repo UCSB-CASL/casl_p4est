@@ -11,9 +11,21 @@
 
 
 my_p4est_interpolation_cells_t::my_p4est_interpolation_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t* ngbd_n)
-  : my_p4est_interpolation_t(ngbd_n), ngbd_c(ngbd_c)
+  : my_p4est_interpolation_t(ngbd_n), nodes(ngbd_n->nodes), ngbd_c(ngbd_c), phi(NULL), bc(NULL)
 
 {
+}
+
+
+#ifdef P4_TO_P8
+void my_p4est_interpolation_cells_t::set_input(Vec F, const Vec phi, const BoundaryConditions3D *bc)
+#else
+void my_p4est_interpolation_cells_t::set_input(Vec F, const Vec phi, const BoundaryConditions2D *bc)
+#endif
+{
+  this->Fi = F;
+  this->phi = phi;
+  this->bc = bc;
 }
 
 
@@ -118,58 +130,76 @@ double my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad,
   double min_w = 1e-6;
   double inv_max_w = 1e-6;
 
+  const double *phi_p;
+  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
   for(unsigned int m=0; m<ngbd.size(); m++)
   {
     p4est_locidx_t qm_idx = ngbd[m].p.piggy3.local_num;
-    if(std::find(interp_points.begin(), interp_points.end(),qm_idx)==interp_points.end() )
+    if(std::find(interp_points.begin(), interp_points.end(),qm_idx)==interp_points.end())
     {
-      double xyz_t[P4EST_DIM];
+      /* check if quadrant is well defined */
+      double phi_q = 0;
+      bool neumann_is_neg = false;
+      for(int i=0; i<P4EST_CHILDREN; ++i)
+      {
+        double tmp = phi_p[nodes->local_nodes[P4EST_CHILDREN*qm_idx + i]];
+        neumann_is_neg = neumann_is_neg || (tmp<0);
+        phi_q += tmp;
+      }
+      phi_q /= (double) P4EST_CHILDREN;
 
-      xyz_t[0] = quad_x_fr_q(ngbd[m].p.piggy3.local_num, ngbd[m].p.piggy3.which_tree, p4est, ghost);
-      xyz_t[1] = quad_y_fr_q(ngbd[m].p.piggy3.local_num, ngbd[m].p.piggy3.which_tree, p4est, ghost);
+      if( (bc->interfaceType()==NOINTERFACE || (bc->interfaceType()==DIRICHLET && phi_q<0) || (bc->interfaceType()==NEUMANN && neumann_is_neg) ) )
+      {
+        double xyz_t[P4EST_DIM];
+
+        xyz_t[0] = quad_x_fr_q(ngbd[m].p.piggy3.local_num, ngbd[m].p.piggy3.which_tree, p4est, ghost);
+        xyz_t[1] = quad_y_fr_q(ngbd[m].p.piggy3.local_num, ngbd[m].p.piggy3.which_tree, p4est, ghost);
 #ifdef P4_TO_P8
-      xyz_t[2] = quad_z_fr_q(ngbd[m].p.piggy3.local_num, ngbd[m].p.piggy3.which_tree, p4est, ghost);
+        xyz_t[2] = quad_z_fr_q(ngbd[m].p.piggy3.local_num, ngbd[m].p.piggy3.which_tree, p4est, ghost);
 #endif
 
-      for(int i=0; i<P4EST_DIM; ++i)
-        xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
+        for(int i=0; i<P4EST_DIM; ++i)
+          xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
 
 #ifdef P4_TO_P8
-      double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));
+        double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));
 #else
-      double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]))));
+        double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]))));
 #endif
 
 #ifdef P4_TO_P8
-      A.set_value(interp_points.size(), 0, 1                 * w);
-      A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
-      A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
-      A.set_value(interp_points.size(), 3, xyz_t[2]          * w);
-      A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
-      A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
-      A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
-      A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
-      A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
-      A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 0, 1                 * w);
+        A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
+        A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
+        A.set_value(interp_points.size(), 3, xyz_t[2]          * w);
+        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
 #else
-      A.set_value(interp_points.size(), 0, 1                 * w);
-      A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
-      A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
-      A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
-      A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
-      A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 0, 1                 * w);
+        A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
+        A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
+        A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
 #endif
 
-      p.push_back(Fi_p[qm_idx] * w);
+        p.push_back(Fi_p[qm_idx] * w);
 
-      for(int d=0; d<P4EST_DIM; ++d)
-        if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
-          nb[d].push_back(xyz_t[d]);
+        for(int d=0; d<P4EST_DIM; ++d)
+          if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
+            nb[d].push_back(xyz_t[d]);
 
-      interp_points.push_back(qm_idx);
+        interp_points.push_back(qm_idx);
+      }
     }
   }
 
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 
   if(interp_points.size()==0)
