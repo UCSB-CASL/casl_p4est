@@ -17,26 +17,26 @@ PetscLogEvent log_PoissonSolverNodeBasedJump_compute_voronoi_points;
 PetscLogEvent log_PoissonSolverNodeBasedJump_compute_voronoi_cell;
 PetscLogEvent log_PoissonSolverNodeBasedJump_interpolate_to_tree;
 
-// PoissonSolverNodeBase
-PetscLogEvent log_PoissonSolverNodeBased_matrix_preallocation;
-PetscLogEvent log_PoissonSolverNodeBased_matrix_setup;
-PetscLogEvent log_PoissonSolverNodeBased_rhsvec_setup;
-PetscLogEvent log_PoissonSolverNodeBased_solve;
-PetscLogEvent log_PoissonSolverNodeBased_KSPSolve;
+// my_p4est_poisson_nodes_t
+PetscLogEvent log_my_p4est_poisson_nodes_matrix_preallocation;
+PetscLogEvent log_my_p4est_poisson_nodes_matrix_setup;
+PetscLogEvent log_my_p4est_poisson_nodes_rhsvec_setup;
+PetscLogEvent log_my_p4est_poisson_nodes_solve;
+PetscLogEvent log_my_p4est_poisson_nodes_KSPSolve;
 
-// PoissonSolverCellBase
-PetscLogEvent log_PoissonSolverCellBased_matrix_preallocation;
-PetscLogEvent log_PoissonSolverCellBased_matrix_setup;
-PetscLogEvent log_PoissonSolverCellBased_rhsvec_setup;
-PetscLogEvent log_PoissonSolverCellBased_solve;
-PetscLogEvent log_PoissonSolverCellBased_KSPSolve;
+// my_p4est_poisson_cells_t
+PetscLogEvent log_my_p4est_poisson_cells_matrix_preallocation;
+PetscLogEvent log_my_p4est_poisson_cells_matrix_setup;
+PetscLogEvent log_my_p4est_poisson_cells_rhsvec_setup;
+PetscLogEvent log_my_p4est_poisson_cells_solve;
+PetscLogEvent log_my_p4est_poisson_cells_KSPSolve;
 
-// PoissonSolverFaces
-PetscLogEvent log_PoissonSolverFaces_compute_voronoi_cell;
-PetscLogEvent log_PoissonSolverFaces_matrix_preallocation;
-PetscLogEvent log_PoissonSolverFaces_setup_linear_system;
-PetscLogEvent log_PoissonSolverFaces_solve;
-PetscLogEvent log_PoissonSolverFaces_KSPSolve;
+// my_p4est_poisson_faces_t
+PetscLogEvent log_my_p4est_poisson_faces_compute_voronoi_cell;
+PetscLogEvent log_my_p4est_poisson_faces_matrix_preallocation;
+PetscLogEvent log_my_p4est_poisson_faces_setup_linear_system;
+PetscLogEvent log_my_p4est_poisson_faces_solve;
+PetscLogEvent log_my_p4est_poisson_faces_KSPSolve;
 
 // my_p4est_interpolation_t
 PetscLogEvent log_my_p4est_interpolation_interpolate;
@@ -142,24 +142,24 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::interpolate_to_tree         ", 0, &log_PoissonSolverNodeBasedJump_interpolate_to_tree); CHKERRXX(ierr);
 
   // PoissonSolverNodeBase
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_preallocation            ", 0, &log_PoissonSolverNodeBased_matrix_preallocation); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_setup                    ", 0, &log_PoissonSolverNodeBased_matrix_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::rhsvec_setup                    ", 0, &log_PoissonSolverNodeBased_rhsvec_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::solve                           ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes::matrix_preallocation            ", 0, &log_my_p4est_poisson_nodes_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes::matrix_setup                    ", 0, &log_my_p4est_poisson_nodes_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes::rhsvec_setup                    ", 0, &log_my_p4est_poisson_nodes_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes::solve                           ", 0, &log_my_p4est_poisson_nodes_solve); CHKERRXX(ierr);
 
   // PoissonSolverCellBase
-  ierr = PetscLogEventRegister("PoissonSolverCellBased::matrix_preallocation            ", 0, &log_PoissonSolverCellBased_matrix_preallocation); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverCellBased::matrix_setup                    ", 0, &log_PoissonSolverCellBased_matrix_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverCellBased::rhsvec_setup                    ", 0, &log_PoissonSolverCellBased_rhsvec_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverCellBased::solve                           ", 0, &log_PoissonSolverCellBased_solve); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverCellBased::KSPSolve                        ", 0, &log_PoissonSolverCellBased_KSPSolve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_cells::matrix_preallocation            ", 0, &log_my_p4est_poisson_cells_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_cells::matrix_setup                    ", 0, &log_my_p4est_poisson_cells_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_cells::rhsvec_setup                    ", 0, &log_my_p4est_poisson_cells_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_cells::solve                           ", 0, &log_my_p4est_poisson_cells_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_cells::KSPSolve                        ", 0, &log_my_p4est_poisson_cells_KSPSolve); CHKERRXX(ierr);
 
-  // PoissonSolverFaces
-  ierr = PetscLogEventRegister("PoissonSolverFaces::compute_voronoi_cell                ", 0, &log_PoissonSolverFaces_compute_voronoi_cell); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverFaces::matrix_preallocation                ", 0, &log_PoissonSolverFaces_matrix_preallocation); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverFaces::setup_linear_system                 ", 0, &log_PoissonSolverFaces_setup_linear_system); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverFaces::solve                               ", 0, &log_PoissonSolverFaces_solve); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverFaces::KSPSolve                            ", 0, &log_PoissonSolverFaces_KSPSolve); CHKERRXX(ierr);
+  // my_p4est_poisson_faces_t
+  ierr = PetscLogEventRegister("my_p4est_poisson_faces::compute_voronoi_cell            ", 0, &log_my_p4est_poisson_faces_compute_voronoi_cell); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_faces::matrix_preallocation            ", 0, &log_my_p4est_poisson_faces_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_faces::setup_linear_system             ", 0, &log_my_p4est_poisson_faces_setup_linear_system); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_faces::solve                           ", 0, &log_my_p4est_poisson_faces_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_faces::KSPSolve                        ", 0, &log_my_p4est_poisson_faces_KSPSolve); CHKERRXX(ierr);
 
   // my_p4est_interpolation
   ierr = PetscLogEventRegister("my_p4est_interpolation::interpolate                     ", 0, &log_my_p4est_interpolation_interpolate); CHKERRXX(ierr);

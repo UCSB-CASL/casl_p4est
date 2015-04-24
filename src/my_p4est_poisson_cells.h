@@ -19,7 +19,7 @@
 #include <p4est_nodes.h>
 #endif
 
-class PoissonSolverCellBase
+class my_p4est_poisson_cells_t
 {
   const my_p4est_cell_neighbors_t *ngbd_c;
   const my_p4est_node_neighbors_t *ngbd_n;
@@ -82,12 +82,12 @@ class PoissonSolverCellBase
   }
 
   // disallow copy ctr and copy assignment
-  PoissonSolverCellBase(const PoissonSolverCellBase& other);
-  PoissonSolverCellBase& operator=(const PoissonSolverCellBase& other);
+  my_p4est_poisson_cells_t(const my_p4est_poisson_cells_t& other);
+  my_p4est_poisson_cells_t& operator=(const my_p4est_poisson_cells_t& other);
 
 public:
-  PoissonSolverCellBase(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t* ngbd_n);
-  ~PoissonSolverCellBase();
+  my_p4est_poisson_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t* ngbd_n);
+  ~my_p4est_poisson_cells_t();
 
 #ifdef P4_TO_P8
   void set_phi(Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);

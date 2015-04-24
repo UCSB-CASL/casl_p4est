@@ -1,21 +1,21 @@
-#ifndef POISSON_SOLVER_NODE_BASE_H
-#define POISSON_SOLVER_NODE_BASE_H
+#ifndef MY_P4EST_POISSON_NODEs_H
+#define MY_P4EST_POISSON_NODEs_H
 
 #include <petsc.h>
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_tools.h>
-#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_utils.h>
 #else
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_tools.h>
-#include <src/my_p4est_interpolating_function.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_utils.h>
 #endif
 
-class PoissonSolverNodeBase
+class my_p4est_poisson_nodes_t
 {
   const my_p4est_node_neighbors_t *node_neighbors_;
 
@@ -24,7 +24,7 @@ class PoissonSolverNodeBase
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
   my_p4est_brick_t *myb_;
-  InterpolatingFunctionNodeBase phi_interp;
+  my_p4est_interpolation_nodes_t phi_interp;
 #ifdef P4_TO_P8
   const CF_3* phi_cf;
 #else
@@ -72,12 +72,12 @@ class PoissonSolverNodeBase
   void setup_negative_variable_coeff_laplace_rhsvec();
 
   // disallow copy ctr and copy assignment
-  PoissonSolverNodeBase(const PoissonSolverNodeBase& other);
-  PoissonSolverNodeBase& operator=(const PoissonSolverNodeBase& other);
+  my_p4est_poisson_nodes_t(const my_p4est_poisson_nodes_t& other);
+  my_p4est_poisson_nodes_t& operator=(const my_p4est_poisson_nodes_t& other);
 
 public:
-  PoissonSolverNodeBase(const my_p4est_node_neighbors_t *node_neighbors);
-  ~PoissonSolverNodeBase();
+  my_p4est_poisson_nodes_t(const my_p4est_node_neighbors_t *node_neighbors);
+  ~my_p4est_poisson_nodes_t();
 
   // inlines setters
   /* FIXME: shouldn't those be references instead of copies ? I guess Vec is just a pointer ... but still ?
@@ -122,4 +122,4 @@ public:
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 };
 
-#endif // POISSON_SOLVER_NODE_BASE_H
+#endif // MY_P4EST_POISSON_NODEs_H

@@ -27,8 +27,9 @@ using std::vector;
 
 class my_p4est_faces_t
 {
-  friend class PoissonSolverFaces;
+  friend class my_p4est_poisson_faces_t;
   friend class my_p4est_interpolation_faces_t;
+  friend class my_p4est_navier_stokes_t;
 private:
 
   typedef struct face_quad_ngbd
@@ -61,7 +62,7 @@ private:
   const p4est_t *p4est;
   p4est_ghost_t *ghost;
   const my_p4est_brick_t *myb;
-  const my_p4est_cell_neighbors_t *ngbd_c;
+  my_p4est_cell_neighbors_t *ngbd_c;
 
   void init_faces();
 
@@ -97,6 +98,12 @@ public:
 
   my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_cell_neighbors_t *ngbd_c);
 
+  /*!
+   * \brief q2f return the face of quadrant quad_idx in the direction dir
+   * \param quad_idx the quadrant index in the local p4est
+   * \param dir the direction of the face, dir::f_m00, dir::f_p00, dir::f_0m0 ...
+   * \return the index of the face of quadrant quad_idx in direction dir, return NO_VELOCITY if there is many small neighbor quadrant in the direction dir
+   */
   inline p4est_locidx_t q2f(p4est_locidx_t quad_idx, int dir) const
   {
     return q2f_[dir][quad_idx];

@@ -34,7 +34,7 @@
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_level_set_cells.h>
 #include <src/my_p8est_faces.h>
-#include <src/my_p8est_poisson_cell_base.h>
+#include <src/my_p8est_poisson_cells.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #else
 #include <p4est_bits.h>
@@ -50,7 +50,7 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_level_set_cells.h>
 #include <src/my_p4est_faces.h>
-#include <src/my_p4est_poisson_cell_base.h>
+#include <src/my_p4est_poisson_cells.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #endif
 
@@ -611,7 +611,7 @@ int main (int argc, char* argv[])
 
     ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
-    PoissonSolverCellBase solver(&ngbd_c, &ngbd_n);
+    my_p4est_poisson_cells_t solver(&ngbd_c, &ngbd_n);
     solver.set_phi(phi);
     solver.set_mu(mu);
     solver.set_diagonal(add_diagonal);

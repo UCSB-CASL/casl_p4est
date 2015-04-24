@@ -1,10 +1,10 @@
 #ifdef P4_TO_P8
-#include "my_p8est_poisson_cell_base.h"
+#include "my_p8est_poisson_cells.h"
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/cube3.h>
 #include <src/cube2.h>
 #else
-#include "my_p4est_poisson_cell_base.h"
+#include "my_p4est_poisson_cells.h"
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/cube2.h>
 #endif
@@ -19,11 +19,11 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
-extern PetscLogEvent log_PoissonSolverCellBased_matrix_preallocation;
-extern PetscLogEvent log_PoissonSolverCellBased_matrix_setup;
-extern PetscLogEvent log_PoissonSolverCellBased_rhsvec_setup;
-extern PetscLogEvent log_PoissonSolverCellBased_solve;
-extern PetscLogEvent log_PoissonSolverCellBased_KSPSolve;
+extern PetscLogEvent log_my_p4est_poisson_cells_matrix_preallocation;
+extern PetscLogEvent log_my_p4est_poisson_cells_matrix_setup;
+extern PetscLogEvent log_my_p4est_poisson_cells_rhsvec_setup;
+extern PetscLogEvent log_my_p4est_poisson_cells_solve;
+extern PetscLogEvent log_my_p4est_poisson_cells_KSPSolve;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -31,8 +31,8 @@ extern PetscLogEvent log_PoissonSolverCellBased_KSPSolve;
 #endif
 #define bcstrength 1.0
 
-PoissonSolverCellBase::PoissonSolverCellBase(const my_p4est_cell_neighbors_t *ngbd_c,
-                                             const my_p4est_node_neighbors_t *ngbd_n)
+my_p4est_poisson_cells_t::my_p4est_poisson_cells_t(const my_p4est_cell_neighbors_t *ngbd_c,
+                                                   const my_p4est_node_neighbors_t *ngbd_n)
   : ngbd_c(ngbd_c), ngbd_n(ngbd_n),
     p4est(ngbd_c->p4est), nodes(ngbd_n->nodes), ghost(ngbd_c->ghost), myb(ngbd_c->myb),
     phi_interp(ngbd_n),
@@ -67,7 +67,7 @@ PoissonSolverCellBase::PoissonSolverCellBase(const my_p4est_cell_neighbors_t *ng
 #endif
 }
 
-PoissonSolverCellBase::~PoissonSolverCellBase()
+my_p4est_poisson_cells_t::~my_p4est_poisson_cells_t()
 {
   if (A             != NULL) ierr = MatDestroy(A);                      CHKERRXX(ierr);
   if (A_null_space  != NULL) ierr = MatNullSpaceDestroy (A_null_space); CHKERRXX(ierr);
@@ -81,10 +81,10 @@ PoissonSolverCellBase::~PoissonSolverCellBase()
   }
 }
 
-void PoissonSolverCellBase::preallocate_matrix()
+void my_p4est_poisson_cells_t::preallocate_matrix()
 {
   // enable logging for the preallocation
-  ierr = PetscLogEventBegin(log_PoissonSolverCellBased_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 
   PetscInt num_owned_global = p4est->global_num_quadrants;
   PetscInt num_owned_local  = p4est->local_num_quadrants;
@@ -175,12 +175,12 @@ void PoissonSolverCellBase::preallocate_matrix()
   ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
   ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_PoissonSolverCellBased_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void PoissonSolverCellBase::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
+void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
-  ierr = PetscLogEventBegin(log_PoissonSolverCellBased_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
   if(bc == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
@@ -251,9 +251,9 @@ void PoissonSolverCellBase::solve(Vec solution, bool use_nonzero_initial_guess, 
     ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
 
   // Solve the system
-  ierr = PetscLogEventBegin(log_PoissonSolverCellBased_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs, solution); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_PoissonSolverCellBased_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
 
   // get rid of local stuff
   if(local_add)
@@ -270,15 +270,15 @@ void PoissonSolverCellBase::solve(Vec solution, bool use_nonzero_initial_guess, 
   ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_PoissonSolverCellBased_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 }
 
-void PoissonSolverCellBase::setup_negative_laplace_matrix()
+void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 {
   preallocate_matrix();
 
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverCellBased_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
   double *phi_p, *add_p, *phi_xx_p, *phi_yy_p;
 
   ierr = VecGetArray(phi,    &phi_p);    CHKERRXX(ierr);
@@ -708,15 +708,15 @@ void PoissonSolverCellBase::setup_negative_laplace_matrix()
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
   }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverCellBased_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
 
-void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
+void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 {
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverCellBased_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *rhs_p;
   ierr = VecGetArray(phi,    &phi_p   ); CHKERRXX(ierr);
@@ -998,7 +998,7 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
   if (matrix_has_nullspace)
     ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_PoissonSolverCellBased_rhsvec_setup, rhs, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_rhsvec_setup, rhs, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -1006,7 +1006,7 @@ void PoissonSolverCellBase::setup_negative_laplace_rhsvec()
 #ifdef P4_TO_P8
 void PoissonSolverCellBase::set_phi(Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
-void PoissonSolverCellBase::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
+void my_p4est_poisson_cells_t::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
 #endif
 {
   this->phi = phi;

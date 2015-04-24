@@ -19,11 +19,11 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
-extern PetscLogEvent log_PoissonSolverFaces_compute_voronoi_cell;
-extern PetscLogEvent log_PoissonSolverFaces_matrix_preallocation;
-extern PetscLogEvent log_PoissonSolverFaces_setup_linear_system;
-extern PetscLogEvent log_PoissonSolverFaces_solve;
-extern PetscLogEvent log_PoissonSolverFaces_KSPSolve;
+extern PetscLogEvent log_my_p4est_poisson_faces_compute_voronoi_cell;
+extern PetscLogEvent log_my_p4est_poisson_faces_matrix_preallocation;
+extern PetscLogEvent log_my_p4est_poisson_faces_setup_linear_system;
+extern PetscLogEvent log_my_p4est_poisson_faces_solve;
+extern PetscLogEvent log_my_p4est_poisson_faces_KSPSolve;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -32,7 +32,7 @@ extern PetscLogEvent log_PoissonSolverFaces_KSPSolve;
 
 using std::vector;
 
-PoissonSolverFaces::PoissonSolverFaces(const my_p4est_faces_t *faces, const my_p4est_node_neighbors_t *ngbd_n)
+my_p4est_poisson_faces_t::my_p4est_poisson_faces_t(const my_p4est_faces_t *faces, const my_p4est_node_neighbors_t *ngbd_n)
   : faces(faces), p4est(faces->p4est), ngbd_c(faces->ngbd_c), ngbd_n(ngbd_n), interp_phi(ngbd_n),
     phi(NULL), rhs_u(NULL), rhs_v(NULL),
     #ifdef P4_TO_P8
@@ -75,7 +75,7 @@ PoissonSolverFaces::PoissonSolverFaces(const my_p4est_faces_t *faces, const my_p
 }
 
 
-PoissonSolverFaces::~PoissonSolverFaces()
+my_p4est_poisson_faces_t::~my_p4est_poisson_faces_t()
 {
   PetscErrorCode ierr;
   if(A!=NULL)                    { ierr = MatDestroy(A);                     CHKERRXX(ierr); }
@@ -84,7 +84,7 @@ PoissonSolverFaces::~PoissonSolverFaces()
 }
 
 
-void PoissonSolverFaces::reset_linear_solver(bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
+void my_p4est_poisson_faces_t::reset_linear_solver(bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
   PetscErrorCode ierr;
   if(ksp!=PETSC_NULL) { ierr = KSPDestroy(ksp); CHKERRXX(ierr);}
@@ -137,48 +137,48 @@ void PoissonSolverFaces::reset_linear_solver(bool use_nonzero_initial_guess, KSP
 }
 
 
-void PoissonSolverFaces::set_phi(Vec phi)
+void my_p4est_poisson_faces_t::set_phi(Vec phi)
 {
   this->phi = phi;
   interp_phi.set_input(phi, linear);
 }
 
 
-void PoissonSolverFaces::set_rhs(Vec *rhs)
+void my_p4est_poisson_faces_t::set_rhs(Vec *rhs)
 {
   this->rhs = rhs;
 }
 
 
-void PoissonSolverFaces::set_diagonal(double add)
+void my_p4est_poisson_faces_t::set_diagonal(double add)
 {
   this->diag_add = add;
 }
 
 
-void PoissonSolverFaces::set_mu(double mu)
+void my_p4est_poisson_faces_t::set_mu(double mu)
 {
   this->mu = mu;
 }
 
 
 #ifdef P4_TO_P8
-void PoissonSolverFaces::set_bc(const BoundaryConditions3D *bc)
+void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions3D *bc)
 #else
-void PoissonSolverFaces::set_bc(const BoundaryConditions2D *bc)
+void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions2D *bc)
 #endif
 {
   this->bc = bc;
 }
 
 
-void PoissonSolverFaces::set_compute_partition_on_the_fly(bool val)
+void my_p4est_poisson_faces_t::set_compute_partition_on_the_fly(bool val)
 {
   this->compute_partition_on_the_fly = val;
 }
 
 
-void PoissonSolverFaces::solve(Vec *solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
+void my_p4est_poisson_faces_t::solve(Vec *solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
   PetscErrorCode ierr;
 
@@ -197,7 +197,7 @@ void PoissonSolverFaces::solve(Vec *solution, bool use_nonzero_initial_guess, KS
   }
 #endif
 
-  ierr = PetscLogEventBegin(log_PoissonSolverFaces_solve, A, rhs, solution, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_solve, A, rhs, solution, 0); CHKERRXX(ierr);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -216,24 +216,24 @@ void PoissonSolverFaces::solve(Vec *solution, bool use_nonzero_initial_guess, KS
       ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
 
     /* solve the system */
-    ierr = PetscLogEventBegin(log_PoissonSolverFaces_KSPSolve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_KSPSolve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
     ierr = KSPSolve(ksp, rhs[dir], solution[dir]); CHKERRXX(ierr);
-    ierr = PetscLogEventEnd(log_PoissonSolverFaces_KSPSolve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_KSPSolve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
 
     /* update ghosts */
     ierr = VecGhostUpdateBegin(solution[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (solution[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverFaces_solve, A, rhs, solution, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_solve, A, rhs, solution, 0); CHKERRXX(ierr);
 }
 
 
-void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
+void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
 {
   PetscErrorCode ierr;
 
-  ierr = PetscLogEventBegin(log_PoissonSolverFaces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
   Voronoi3D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
@@ -613,17 +613,17 @@ void PoissonSolverFaces::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
   }
 #endif
 
-  ierr = PetscLogEventEnd(log_PoissonSolverFaces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
 
 
-void PoissonSolverFaces::preallocate_matrix(int dir)
+void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
 {
   PetscErrorCode ierr;
 
-  ierr = PetscLogEventBegin(log_PoissonSolverFaces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
   proc_offset[dir].resize(p4est->mpisize+1);
   proc_offset[dir][0] = 0;
   for(int r=1; r<=p4est->mpisize; ++r)
@@ -697,14 +697,14 @@ void PoissonSolverFaces::preallocate_matrix(int dir)
   ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
   ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_PoissonSolverFaces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
-void PoissonSolverFaces::setup_linear_system(int dir)
+void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_PoissonSolverFaces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
 
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -1054,7 +1054,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
                 rhs_p[f_idx] -= coeff[f] * d_[f] * bc_w_value;
                 break;
               default:
-                throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system: invalid boundary condition.");
+                throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: invalid boundary condition.");
               }
             }
 
@@ -1064,7 +1064,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
               ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, f);
 #ifdef CASL_THROWS
               if(ngbd.size()!=1 || ngbd[0].level!=quad->level)
-                throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system: the grid is not uniform close to the interface.");
+                throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: the grid is not uniform close to the interface.");
 #endif
               p4est_gloidx_t f_tmp_g;
               if(quad_idx==qm_idx) f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p), dir);
@@ -1397,7 +1397,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::x)
-            throw std::runtime_error("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1415,7 +1415,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
 #endif
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
         }
         break;
 
@@ -1430,7 +1430,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::x)
-            throw std::runtime_error("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1448,7 +1448,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
 #endif
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
         }
         break;
 
@@ -1461,7 +1461,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::y)
-            throw std::runtime_error("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1479,7 +1479,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
 #endif
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
         }
         break;
 
@@ -1492,7 +1492,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::y)
-            throw std::runtime_error("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1510,7 +1510,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
 #endif
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
         }
         break;
 
@@ -1520,7 +1520,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::z)
-            throw std::runtime_error("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1530,7 +1530,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
           rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,y_pert,zmin);
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
         }
         break;
 
@@ -1539,7 +1539,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::z)
-            throw std::runtime_error("[CASL_ERROR]: PoissonSolverFaces->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1550,7 +1550,7 @@ void PoissonSolverFaces::setup_linear_system(int dir)
           rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,y_pert,zmax);
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
         }
         break;
 #endif
@@ -1561,13 +1561,13 @@ void PoissonSolverFaces::setup_linear_system(int dir)
         /* note that DIRICHLET done with finite differences */
         case NEUMANN:
 #ifdef P4_TO_P8
-          throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: Neumann boundary conditions should be treated separately in 3D ...");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: Neumann boundary conditions should be treated separately in 3D ...");
 #else
           rhs_p[f_idx] += mu*s*bc[dir].interfaceValue(((*points)[m].p.x+x)/2.,((*points)[m].p.y+y)/2.);
 #endif
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: PoissonSolverFaces: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
         }
         break;
 
@@ -1599,12 +1599,12 @@ void PoissonSolverFaces::setup_linear_system(int dir)
     ierr = MatNullSpaceRemove(A_null_space, rhs[dir], NULL); CHKERRXX(ierr);
   }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverFaces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
 }
 
 
 
-void PoissonSolverFaces::print_partition_VTK(const char *file)
+void my_p4est_poisson_faces_t::print_partition_VTK(const char *file)
 {
 #ifdef P4_TO_P8
   Voronoi3D::print_VTK_Format(voro, file, xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);

@@ -27,8 +27,8 @@ public:
   };
 
 private:
-  friend class PoissonSolverCellBase;
   friend class my_p4est_faces_t;
+  friend class my_p4est_poisson_cells_t;
 
   my_p4est_hierarchy_t *hierarchy;
   p4est_t *p4est;

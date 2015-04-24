@@ -1,5 +1,5 @@
-#ifndef POISSON_SOLVER_NODE_BASE_H
-#define POISSON_SOLVER_NODE_BASE_H
+#ifndef MY_P4EST_POISSON_FACES_H
+#define MY_P4EST_POISSON_FACES_H
 
 #include <petsc.h>
 
@@ -19,7 +19,7 @@
 #include <src/voronoi2D.h>
 #endif
 
-class PoissonSolverFaces
+class my_p4est_poisson_faces_t
 {
   const my_p4est_faces_t *faces;
   const p4est_t *p4est;
@@ -75,8 +75,8 @@ class PoissonSolverFaces
   void setup_linear_system(int dir);
 
   // disallow copy ctr and copy assignment
-  PoissonSolverFaces(const PoissonSolverFaces& other);
-  PoissonSolverFaces& operator=(const PoissonSolverFaces& other);
+  my_p4est_poisson_faces_t(const my_p4est_poisson_faces_t& other);
+  my_p4est_poisson_faces_t& operator=(const my_p4est_poisson_faces_t& other);
 
   void reset_linear_solver(bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
 
@@ -89,8 +89,8 @@ class PoissonSolverFaces
   }
 
 public:
-  PoissonSolverFaces(const my_p4est_faces_t *faces, const my_p4est_node_neighbors_t *ngbd);
-  ~PoissonSolverFaces();
+  my_p4est_poisson_faces_t(const my_p4est_faces_t *faces, const my_p4est_node_neighbors_t *ngbd);
+  ~my_p4est_poisson_faces_t();
 
   void set_phi(Vec phi);
 
@@ -116,4 +116,4 @@ public:
   void print_partition_VTK(const char *file);
 };
 
-#endif // POISSON_SOLVER_NODE_BASE_H
+#endif // MY_P4EST_POISSON_FACES_H
