@@ -60,6 +60,11 @@ PetscLogEvent log_Semilagrangian_update_p4est_second_order_last_grid_CF2;
 PetscLogEvent log_Semilagrangian_update_p4est_second_order_last_grid_Vec;
 PetscLogEvent log_Semilagrangian_grid_gen_iter[P4EST_MAXLEVEL];
 
+// my_p4est_trajectory_of_point
+PetscLogEvent log_trajectory_from_np1_to_n;
+PetscLogEvent log_trajectory_from_np1_to_nm1;
+PetscLogEvent log_trajectory_from_np1_to_nm1_faces;
+
 // my_p4est_level_set
 PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
 PetscLogEvent log_my_p4est_level_set_reinit_2nd_order;
@@ -141,13 +146,13 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::compute_voronoi_cell        ", 0, &log_PoissonSolverNodeBasedJump_compute_voronoi_cell); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::interpolate_to_tree         ", 0, &log_PoissonSolverNodeBasedJump_interpolate_to_tree); CHKERRXX(ierr);
 
-  // PoissonSolverNodeBase
+  // my_p4est_poisson_nodes_t
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::matrix_preallocation            ", 0, &log_my_p4est_poisson_nodes_matrix_preallocation); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::matrix_setup                    ", 0, &log_my_p4est_poisson_nodes_matrix_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::rhsvec_setup                    ", 0, &log_my_p4est_poisson_nodes_rhsvec_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::solve                           ", 0, &log_my_p4est_poisson_nodes_solve); CHKERRXX(ierr);
 
-  // PoissonSolverCellBase
+  // my_p4est_poisson_cells_t
   ierr = PetscLogEventRegister("my_p4est_poisson_cells::matrix_preallocation            ", 0, &log_my_p4est_poisson_cells_matrix_preallocation); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_cells::matrix_setup                    ", 0, &log_my_p4est_poisson_cells_matrix_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_cells::rhsvec_setup                    ", 0, &log_my_p4est_poisson_cells_rhsvec_setup); CHKERRXX(ierr);
@@ -182,6 +187,12 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_last_grid_CF2 ", 0, &log_Semilagrangian_update_p4est_second_order_last_grid_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_last_grid_Vec ", 0, &log_Semilagrangian_update_p4est_second_order_last_grid_Vec); CHKERRXX(ierr);
   
+
+  // my_p4est_trajectory_of_point
+  ierr = PetscLogEventRegister("log_trajectory_from_np1_to_n                            ", 0, &log_trajectory_from_np1_to_n); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("log_trajectory_from_np1_to_nm1                          ", 0, &log_trajectory_from_np1_to_nm1); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("log_trajectory_from_np1_to_nm1_faces                    ", 0, &log_trajectory_from_np1_to_nm1_faces); CHKERRXX(ierr);
+
 	for (short i = 0; i < P4EST_MAXLEVEL; i++) {
 		char logname [128]; 
 		sprintf(logname,"Semilagrangian::grid_gen_iter_%02d                        ", i);

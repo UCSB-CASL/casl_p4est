@@ -87,6 +87,11 @@ public:
   my_p4est_interpolation_t(const my_p4est_node_neighbors_t* neighbors);
   ~my_p4est_interpolation_t();
 
+  /*!
+   * \brief clear the points buffered for interpolation. Call this method to re-use an instantiation.
+   */
+  void clear();
+
   void set_input(Vec F);
 
   void add_point(p4est_locidx_t node_locidx, const double *xyz);

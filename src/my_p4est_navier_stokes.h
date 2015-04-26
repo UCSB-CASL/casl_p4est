@@ -5,9 +5,13 @@
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_faces.h>
+#include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_interpolation_cells.h>
+#include <src/my_p8est_interpolation_faces.h>
 #else
 #include <src/my_p4est_faces.h>
 #include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_interpolation_cells.h>
 #include <src/my_p4est_interpolation_faces.h>
 #endif
 
@@ -89,14 +93,21 @@ private:
 #endif
   };
 
-
   my_p4est_brick_t *brick;
-  p4est_t *p4est;
-  p4est_ghost_t *ghost;
-  p4est_nodes_t *nodes;
-  my_p4est_cell_neighbors_t *ngbd_c;
+
+  p4est_t *p4est_nm1;
+  p4est_ghost_t *ghost_nm1;
+  p4est_nodes_t *nodes_nm1;
+  my_p4est_hierarchy_t *hierarchy_nm1;
+  my_p4est_node_neighbors_t *ngbd_nm1;
+
+  p4est_t *p4est_n;
+  p4est_ghost_t *ghost_n;
+  p4est_nodes_t *nodes_n;
+  my_p4est_hierarchy_t *hierarchy_n;
   my_p4est_node_neighbors_t *ngbd_n;
-  my_p4est_faces_t *faces;
+  my_p4est_cell_neighbors_t *ngbd_c;
+  my_p4est_faces_t *faces_n;
 
   double dxyz_min[P4EST_DIM];
   double xyz_min[P4EST_DIM];
@@ -109,6 +120,8 @@ private:
   double max_L2_norm_u;
   double uniform_band;
   double threshold_split_cell;
+  double n_times_dt;
+  bool dt_updated;
 
   Vec phi;
   Vec hodge;
@@ -126,6 +139,8 @@ private:
 #else
   Vec vorticity;
 #endif
+
+  Vec norm_grad_v;
 
   Vec face_is_well_defined[P4EST_DIM];
 
@@ -162,10 +177,12 @@ private:
 
   void compute_vorticity();
 
-public:
-  my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces);
+  void compute_norm_grad_v();
 
-  void set_parameters(double mu, double rho, double uniform_band, double threshold_split_cell);
+public:
+  my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
+
+  void set_parameters(double mu, double rho, double uniform_band, double threshold_split_cell, double n_times_dt);
 
   void set_phi(Vec phi);
 
@@ -182,6 +199,12 @@ public:
 #endif
 
   void set_velocities(Vec *vnm1, Vec *vn);
+
+#ifdef P4_TO_P8
+  void set_velocities(CF_3 *vnm1, CF_3 *vn);
+#else
+  void set_velocities(CF_2 *vnm1, CF_2 *vn);
+#endif
 
   void solve_viscosity();
 

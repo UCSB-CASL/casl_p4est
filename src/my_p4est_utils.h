@@ -415,6 +415,15 @@ inline double node_z_fr_n(p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes
 }
 #endif
 
+inline void node_xyz_fr_n(p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, double *xyz)
+{
+  xyz[0] = node_x_fr_n(n,p4est,nodes);
+  xyz[1] = node_y_fr_n(n,p4est,nodes);
+#ifdef P4_TO_P8
+  xyz[2] = node_z_fr_n(n,p4est,nodes);
+#endif
+}
+
 /*!
  * \brief get the z-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
  */
@@ -499,6 +508,21 @@ inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
   return quad_z_fr_k(quad) + tree_zmin + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
 }
 #endif
+
+
+/*!
+ * \brief get the xyz-coordinates of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
+ */
+inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost, double *xyz)
+{
+  xyz[0] = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+  xyz[1] = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+#ifdef P4_TO_P8
+  xyz[2] = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+#endif
+}
+
 
 /*!
  * \brief integrate_over_negative_domain_in_one_quadrant

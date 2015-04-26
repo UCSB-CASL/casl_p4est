@@ -57,6 +57,23 @@ my_p4est_interpolation_t::~my_p4est_interpolation_t() {
 }
 
 
+
+void my_p4est_interpolation_t::clear()
+{
+  // make sure all messages are finsished sending
+  mpiret = MPI_Waitall(query_req.size(), &query_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Waitall(reply_req.size(), &reply_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+
+  /* clear the buffers */
+  input_buffer.clear();
+  local_buffer.clear();
+  send_buffer.clear();
+  query_req.clear();
+  reply_req.clear();
+  senders.clear();
+}
+
+
 void my_p4est_interpolation_t::set_input(Vec F) {
   Fi = F;
 }
