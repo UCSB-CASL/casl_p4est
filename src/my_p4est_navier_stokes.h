@@ -181,6 +181,7 @@ private:
 
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
+  ~my_p4est_navier_stokes_t();
 
   void set_parameters(double mu, double rho, double uniform_band, double threshold_split_cell, double n_times_dt);
 
@@ -206,6 +207,8 @@ public:
   void set_velocities(CF_2 *vnm1, CF_2 *vn);
 #endif
 
+  inline double get_dt() { return dt_n; }
+
   void solve_viscosity();
 
   void solve_projection();
@@ -215,6 +218,8 @@ public:
   void update_from_tn_to_tnp1();
 
   void compute_forces();
+
+  void save_vtk(const char* name);
 };
 
 

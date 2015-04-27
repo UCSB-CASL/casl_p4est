@@ -8,6 +8,7 @@
 #include <src/my_p8est_level_set_cells.h>
 #include <src/my_p8est_level_set_faces.h>
 #include <src/my_p8est_trajectory_of_point.h>
+#include <src/my_p8est_vtk.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_poisson_cells.h>
@@ -16,6 +17,7 @@
 #include <src/my_p4est_level_set_cells.h>
 #include <src/my_p4est_level_set_faces.h>
 #include <src/my_p4est_trajectory_of_point.h>
+#include <src/my_p4est_vtk.h>
 #endif
 
 
@@ -113,17 +115,29 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
   threshold_split_cell = 0.04;
   n_times_dt = 1;
   dt_updated = false;
+  max_L2_norm_u = 0;
 
   double *v2c = p4est_n->connectivity->vertices;
   p4est_topidx_t *t2v = p4est_n->connectivity->tree_to_vertex;
   p4est_topidx_t first_tree = 0, last_tree = p4est_n->trees->elem_count-1;
   p4est_topidx_t first_vertex = 0, last_vertex = P4EST_CHILDREN - 1;
 
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est_n->user_pointer;
+
   for (int dir=0; dir<P4EST_DIM; dir++)
   {
     xyz_min[dir] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + dir];
     xyz_max[dir] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + dir];
+
+    double xyz_tmp = v2c[3*t2v[P4EST_CHILDREN*first_tree + last_vertex] + dir];
+    dxyz_min[dir] = (xyz_tmp-xyz_min[dir]) / pow(2., (double)data->max_lvl);
   }
+
+#ifdef P4_TO_P8
+  dt_nm1 = dt_n = MIN(1., 1/max_L2_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+#else
+  dt_nm1 = dt_n = MIN(1., 1/max_L2_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1]);
+#endif
 
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
   Vec vec_loc;
@@ -137,15 +151,26 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
   ierr = VecGhostRestoreLocalForm(phi, &vec_loc); CHKERRXX(ierr);
 
   bc_v = NULL;
+  bc_pressure = NULL;
   external_forces = NULL;
+
+#ifndef P4_TO_P8
+  vorticity = NULL;
+#endif
+
+  norm_grad_v = NULL;
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    vnp1[dir] = NULL;
     vstar[dir] = NULL;
+    vnp1[dir] = NULL;
 #ifdef P4_TO_P8
     vorticity[dir] = NULL;
 #endif
+
+    vnm1_nodes[dir] = NULL;
+    vn_nodes  [dir] = NULL;
+    vnp1_nodes[dir] = NULL;
 
     wall_bc_value_vstar[dir] = new wall_bc_value_vstar_t(this, dir);
     interface_bc_value_vstar[dir] = new interface_bc_value_vstar_t(this, dir);
@@ -169,6 +194,52 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
   interp_phi->set_input(phi, linear);
 }
 
+
+my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
+{
+  PetscErrorCode ierr;
+  if(phi!=NULL) { ierr = VecDestroy(phi); CHKERRXX(ierr); }
+  if(hodge!=NULL) { ierr = VecDestroy(hodge); CHKERRXX(ierr); }
+#ifndef P4_TO_P8
+  if(vorticity!=NULL) { ierr = VecDestroy(vorticity); CHKERRXX(ierr); }
+#endif
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    if(dxyz_hodge[dir]!=NULL) { ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr); }
+    if(vstar[dir]!=NULL) { ierr = VecDestroy(vstar[dir]); CHKERRXX(ierr); }
+    if(vnp1[dir]!=NULL) { ierr = VecDestroy(vnp1[dir]); CHKERRXX(ierr); }
+    if(vnm1_nodes[dir]!=NULL) { ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr); }
+    if(vn_nodes[dir]!=NULL) { ierr = VecDestroy(vn_nodes[dir]); CHKERRXX(ierr); }
+    if(vnp1_nodes[dir]!=NULL) { ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr); }
+#ifdef P4_TO_P8
+    if(vorticity[dir]!=NULL) { ierr = VecDestroy(vorticity[dir]); CHKERRXX(ierr); }
+#endif
+    if(face_is_well_defined[dir]!=NULL) { ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr); }
+
+    if(interp_dxyz_hodge[dir]!=NULL) delete interp_dxyz_hodge[dir];
+    if(wall_bc_value_vstar[dir]!=NULL) delete wall_bc_value_vstar[dir];
+    if(interface_bc_value_vstar[dir]!=NULL) delete interface_bc_value_vstar[dir];
+  }
+
+  if(interp_phi!=NULL) delete interp_phi;
+
+  delete ngbd_nm1;
+  delete hierarchy_nm1;
+  p4est_nodes_destroy(nodes_nm1);
+  p4est_ghost_destroy(ghost_nm1);
+  p4est_destroy(p4est_nm1);
+
+  delete faces_n;
+  delete ngbd_c;
+  delete ngbd_n;
+  delete hierarchy_n;
+  p4est_nodes_destroy(nodes_n);
+  p4est_ghost_destroy(ghost_n);
+  p4est_destroy(p4est_n);
+}
+
+
 void my_p4est_navier_stokes_t::set_parameters(double mu, double rho, double uniform_band, double threshold_split_cell, double n_times_dt)
 {
   this->mu = mu;
@@ -190,6 +261,8 @@ void my_p4est_navier_stokes_t::set_phi(Vec phi)
     for(int dir=0; dir<P4EST_DIM; ++dir)
       check_if_faces_are_well_defined(p4est_n, ngbd_n, faces_n, dir, phi, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
   }
+
+  interp_phi->set_input(phi, linear);
 }
 
 
@@ -349,6 +422,8 @@ void my_p4est_navier_stokes_t::compute_max_L2_norm_u()
   for(int dir=0; dir<P4EST_DIM; ++dir) { ierr = VecRestoreArrayRead(vnp1_nodes[dir], &v_p[dir]); CHKERRXX(ierr); }
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_L2_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+
+  ierr = PetscPrintf(p4est_n->mpicomm, "max norm velocity : %g\n", max_L2_norm_u); CHKERRXX(ierr);
 }
 
 
@@ -665,20 +740,20 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   double alpha = (2*dt_n+dt_nm1)/(dt_n+dt_nm1);
   double beta = -dt_n/(dt_n+dt_nm1);
 
-  /* backtrace the nodes with semi-Lagrangian / BDF scheme */
+  /* construct the right hand side */
   std::vector<double> xyz_nm1[P4EST_DIM];
   std::vector<double> xyz_n  [P4EST_DIM];
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    xyz_nm1[dir].resize(faces_n->num_local[dir]);
-    xyz_n  [dir].resize(faces_n->num_local[dir]);
-  }
-  trajectory_from_np1_to_nm1(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_nm1, xyz_n);
-
-  /* construct the right hand side */
   Vec rhs[P4EST_DIM];
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
+    /* backtrace the nodes with semi-Lagrangian / BDF scheme */
+    for(int dd=0; dd<P4EST_DIM; ++dd)
+    {
+      xyz_nm1[dd].resize(faces_n->num_local[dir]);
+      xyz_n  [dd].resize(faces_n->num_local[dir]);
+    }
+    trajectory_from_np1_to_nm1(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_nm1, xyz_n, dir);
+
     /* find the velocity at the backtraced points */
     my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);
     my_p4est_interpolation_nodes_t interp_n  (ngbd_n  );
@@ -750,12 +825,20 @@ void my_p4est_navier_stokes_t::solve_viscosity()
 
   solver.solve(vstar);
 
-  my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
-
   for(int dir=0; dir<P4EST_DIM; ++dir)
+    if(VecIsNan(vstar[dir]))
+      std::cout << "NAN in vstar[" << dir << "]" << std::endl;
+  // bousouf
+//  ierr = VecView(rhs[0], PETSC_VIEWER_STDOUT_WORLD);
+
+  if(bc_pressure->interfaceType()!=NOINTERFACE)
   {
-    lsf.extend_Over_Interface(phi, vstar[dir], bc_vstar[dir], dir, face_is_well_defined[dir], 2, 8);
-    ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
+    my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      lsf.extend_Over_Interface(phi, vstar[dir], bc_vstar[dir], dir, face_is_well_defined[dir], 2, 8);
+      ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
+    }
   }
 }
 
@@ -871,10 +954,11 @@ void my_p4est_navier_stokes_t::solve_projection()
 
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
 
-  my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
-  lsc.extend_Over_Interface(phi, hodge, &bc_hodge, 2, 8);
-
-  my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
+  if(bc_pressure->interfaceType()!=NOINTERFACE)
+  {
+    my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
+    lsc.extend_Over_Interface(phi, hodge, &bc_hodge, 2, 8);
+  }
 
   /* project vstar */
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -914,8 +998,16 @@ void my_p4est_navier_stokes_t::solve_projection()
     ierr = VecGhostUpdateBegin(vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], 2, 8);
+    if(bc_pressure->interfaceType()!=NOINTERFACE)
+    {
+      my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
+      lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], 2, 8);
+    }
   }
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+    if(VecIsNan(vnp1[dir]))
+      std::cout << "NAN in vnp1[" << dir << "]" << std::endl;
 }
 
 
@@ -923,7 +1015,6 @@ void my_p4est_navier_stokes_t::solve_projection()
 void my_p4est_navier_stokes_t::compute_dt()
 {
   /* interpolate vnp1 from faces to nodes */
-  my_p4est_level_set_t lsn(ngbd_n);
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     my_p4est_interpolation_faces_t interp(ngbd_n, faces_n);
@@ -936,8 +1027,20 @@ void my_p4est_navier_stokes_t::compute_dt()
     interp.set_input(vnp1[dir], face_is_well_defined[dir], dir);
     interp.interpolate(vnp1_nodes[dir]);
 
-    lsn.extend_Over_Interface_TVD(phi, vnp1_nodes[dir]);
+    if(bc_pressure->interfaceType()!=NOINTERFACE)
+    {
+      my_p4est_level_set_t lsn(ngbd_n);
+      lsn.extend_Over_Interface_TVD(phi, vnp1_nodes[dir]);
+    }
+
+    PetscErrorCode ierr;
+    ierr = VecGhostUpdateBegin(vnp1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (vnp1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+    if(VecIsNan(vn_nodes[dir]))
+      std::cout << "NAN in vnp1_nodes[" << dir << "]" << std::endl;
 
   compute_vorticity();
   compute_norm_grad_v();
@@ -967,6 +1070,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1()
 
   /* construct the new forest */
   p4est_t *p4est_np1 = p4est_copy(p4est_n, P4EST_FALSE);
+  p4est_np1->user_pointer = p4est_n->user_pointer;
   my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
   p4est_ghost_t *ghost_np1 = p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_np1, ghost_np1);
@@ -991,6 +1095,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1()
   phi = phi_np1;
   interp_new_phi.clear();
 
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   /* interpolate the quantities on the new forest at the nodes */
   my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
@@ -1001,6 +1106,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1()
     interp_nodes.add_point(n, xyz);
   }
 
+
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
@@ -1010,11 +1116,19 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1()
     interp_nodes.set_input(vnp1_nodes[dir], quadratic_non_oscillatory);
     interp_nodes.interpolate(vn_nodes[dir]); CHKERRXX(ierr);
 
-    ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &vnp1_nodes[dir]); CHKERRXX(ierr);
+
+    if(VecIsNan(vn_nodes[dir]))
+      std::cout << "NAN middle update in vn_nodes[" << dir << "]" << std::endl;
 
     ierr = VecGhostUpdateBegin(vn_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
 
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &vnp1_nodes[dir]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
     Vec vort;
     ierr = VecDuplicate(phi, &vort); CHKERRXX(ierr);
@@ -1112,7 +1226,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1()
 
   delete interp_phi;
   interp_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
-  interp_phi->set_input(phi, quadratic_non_oscillatory);
+  interp_phi->set_input(phi, linear);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -1120,4 +1234,58 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1()
     interp_dxyz_hodge[dir] = new my_p4est_interpolation_faces_t(ngbd_n, faces_n);
     interp_dxyz_hodge[dir]->set_input(dxyz_hodge[dir], face_is_well_defined[dir], dir);
   }
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    if(VecIsNan(vn_nodes[dir]))
+      std::cout << "NAN after update in vn_nodes[" << dir << "]" << std::endl;
+
+    if(VecIsNan(vnm1_nodes[dir]))
+      std::cout << "NAN after update in vnm1_nodes[" << dir << "]" << std::endl;
+
+    if(VecIsNan(vnp1[dir]))
+      std::cout << "NAN after update in vnp1[" << dir << "]" << std::endl;
+  }
+}
+
+
+void my_p4est_navier_stokes_t::save_vtk(const char* name)
+{
+  PetscErrorCode ierr;
+
+  const double *phi_p;
+  const double *vn_p[P4EST_DIM];
+  const double *hodge_p;
+
+  ierr = VecGetArrayRead(phi  , &phi_p  ); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGetArrayRead(vn_nodes[dir], &vn_p[dir]); CHKERRXX(ierr);
+  }
+
+  my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
+                         P4EST_TRUE, P4EST_TRUE,
+                         1+P4EST_DIM, /* number of VTK_POINT_DATA */
+                         1, /* number of VTK_CELL_DATA  */
+                         name,
+                         VTK_POINT_DATA, "phi", phi_p,
+                         VTK_POINT_DATA, "vx", vn_p[0],
+                         VTK_POINT_DATA, "vy", vn_p[1],
+    #ifdef P4_TO_P8
+                         VTK_POINT_DATA, "vz", vn_p[2],
+    #endif
+                         VTK_CELL_DATA, "hodge", hodge_p);
+
+
+  ierr = VecRestoreArrayRead(phi  , &phi_p  ); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecRestoreArrayRead(vn_nodes[dir], &vn_p[dir]); CHKERRXX(ierr);
+  }
+
+  ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", name); CHKERRXX(ierr);
 }

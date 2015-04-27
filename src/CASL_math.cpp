@@ -1,13 +1,30 @@
 #include "CASL_math.h"
 #include <stdio.h>
 #include <petsclog.h>
-#include "petsc_compatibility.h"
 
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 
+
+bool VecIsNan(Vec v)
+{
+  PetscErrorCode ierr;
+  PetscInt size;
+  ierr = VecGetLocalSize(v, &size); CHKERRXX(ierr);
+  double *v_p;
+  ierr = VecGetArray(v, &v_p); CHKERRXX(ierr);
+  for(PetscInt i=0; i<size; ++i)
+    if(ISNAN(v_p[i]))
+    {
+      ierr = VecRestoreArray(v, &v_p); CHKERRXX(ierr);
+      return true;
+    }
+
+  ierr = VecRestoreArray(v, &v_p); CHKERRXX(ierr);
+  return false;
+}
 
 double interface_Location( double   a, double   b, double  fa, double  fb )
 {

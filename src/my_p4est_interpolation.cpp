@@ -70,7 +70,7 @@ void my_p4est_interpolation_t::clear()
   send_buffer.clear();
   query_req.clear();
   reply_req.clear();
-  senders.clear();
+  senders.clear(); senders.resize(p4est->mpisize, 0);
 }
 
 
@@ -79,7 +79,7 @@ void my_p4est_interpolation_t::set_input(Vec F) {
 }
 
 
-void my_p4est_interpolation_t::add_point(p4est_locidx_t node_locidx, const double *xyz)
+void my_p4est_interpolation_t::add_point(p4est_locidx_t locidx, const double *xyz)
 {
   // first clip the coordinates
   double xyz_clip [] =
@@ -106,12 +106,11 @@ void my_p4est_interpolation_t::add_point(p4est_locidx_t node_locidx, const doubl
    * we add the point to the local buffer if it is locally owned   
    */
   if (rank_found == p4est->mpirank) { // local quadrant
-    input_buffer[p4est->mpirank].push_back(node_locidx, xyz);
+    input_buffer[p4est->mpirank].push_back(locidx, xyz);
     local_buffer.push_back(best_match);
-
   } else {
     if (rank_found != -1) { // ghost quadrant
-      input_buffer[rank_found].push_back(node_locidx, xyz);
+      input_buffer[rank_found].push_back(locidx, xyz);
       senders[rank_found] = 1;
     }
 
@@ -124,7 +123,7 @@ void my_p4est_interpolation_t::add_point(p4est_locidx_t node_locidx, const doubl
     for(std::set<int>::const_iterator it = remote_ranks.begin(); it != remote_ranks.end(); ++it){
       int r = *it;
       if (r == rank_found) continue;
-      input_buffer[r].push_back(node_locidx, xyz);
+      input_buffer[r].push_back(locidx, xyz);
       senders[r] = 1;
     }
   }

@@ -94,7 +94,7 @@ public:
 
   void set_input(Vec F);
 
-  void add_point(p4est_locidx_t node_locidx, const double *xyz);
+  void add_point(p4est_locidx_t locidx, const double *xyz);
 
   // interpolation methods
   void interpolate(Vec Fo);

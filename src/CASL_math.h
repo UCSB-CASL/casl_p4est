@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <limits>
 
+#include "petsc_compatibility.h"
+
 #undef MIN
 #undef MAX
 
@@ -156,6 +158,7 @@ inline const T SGNMAX(T x, T y)
     return -ym;
 }
 
+bool VecIsNan(Vec v);
 
 /*!
 * \brief return the CuBi RooT of x

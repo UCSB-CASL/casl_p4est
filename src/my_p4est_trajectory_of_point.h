@@ -68,6 +68,7 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
  * \param[in] dt_n      the time step between n and np1
  * \param[out] xyz_nm1  the coordinates of the departure points at time nm1, to be filled
  * \param[out] xyz_n    the coordinates of the departure points at time n, to be filled
+ * \param[in] dir       the direction in which the backtraced faces are, dir::x, dir::y or dir::z
  */
 void trajectory_from_np1_to_nm1( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
                                  my_p4est_node_neighbors_t *ngbd_nm1,
@@ -76,6 +77,7 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
                                  Vec vn[P4EST_DIM],
                                  double dt_nm1, double dt_n,
                                  std::vector<double> xyz_nm1[P4EST_DIM],
-                                 std::vector<double> xyz_n[P4EST_DIM] );
+                                 std::vector<double> xyz_n[P4EST_DIM],
+                                 int dir );
 
 #endif /* MY_P4EST_TRAJECTORY_OF_POINT_H */
