@@ -93,7 +93,8 @@ void Point2::operator/=(double r)
 {
   // NOTE: change r==0 to an epsilon test ?
 #ifdef CASL_THROWS
-  if(r == 0) throw std::domain_error("[CASL_ERROR]: Division by 0.");
+  if(r == 0)
+      throw std::domain_error("[CASL_ERROR]: Division by 0.");
 #endif
   x /= r;
   y /= r;

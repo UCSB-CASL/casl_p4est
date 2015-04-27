@@ -271,7 +271,8 @@ void PoissonSolverCellBase::solve(Vec solution, bool use_nonzero_initial_guess, 
   ierr = PetscLogEventBegin(log_PoissonSolverCellBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
-  if(bc_ == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
+  if(bc_ == NULL)
+      throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
 
   {
     PetscInt sol_size;

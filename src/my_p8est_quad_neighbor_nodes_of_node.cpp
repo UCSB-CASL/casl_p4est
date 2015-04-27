@@ -1,5 +1,4 @@
 #include "my_p8est_quad_neighbor_nodes_of_node.h"
-#include <src/my_p8est_node_neighbors.h>
 #include <petsclog.h>
 
 #ifndef CASL_LOG_TINY_EVENTS
@@ -20,12 +19,6 @@ extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dx_gradient;
 extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dxx_central;
 extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central;
 extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dzz_central;
-extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dxx_central_m00;
-extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dxx_central_p00;
-extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central_0m0;
-extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central_0p0;
-extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dzz_central_00m;
-extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dzz_central_00p;
 extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_laplace;
 #endif
 #ifndef CASL_LOG_FLOPS
@@ -53,6 +46,20 @@ double quad_neighbor_nodes_of_node_t::f_0m0_linear(const double* f) const{
             f[node_0m0_mp]*d_0m0_p0*d_0m0_0m +
             f[node_0m0_pm]*d_0m0_m0*d_0m0_0p +
             f[node_0m0_pp]*d_0m0_m0*d_0m0_0m )/(d_0m0_m0 + d_0m0_p0)/(d_0m0_0m + d_0m0_0p);
+}
+double quad_neighbor_nodes_of_node_t::f_0m0_linear_tester(const double* f) const{
+    PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+
+
+    double f1=f[node_0m0_mm];
+    f1=f1*d_0m0_p0*d_0m0_0p;
+    double f2=  f[node_0m0_mp];
+    f2=f2*d_0m0_p0*d_0m0_0m ;
+    double f3=f[node_0m0_pm];
+    f3=f3*d_0m0_m0*d_0m0_0p;
+    double f4=    f[node_0m0_pp];
+    f4=f4*d_0m0_m0*d_0m0_0m;
+    return (f1+f2+f3+f4)/(d_0m0_m0 + d_0m0_p0)/(d_0m0_0m + d_0m0_0p);
 }
 double quad_neighbor_nodes_of_node_t::f_0p0_linear(const double* f) const{
     PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
@@ -107,6 +114,31 @@ double quad_neighbor_nodes_of_node_t::dy_central( const double* f ) const
     // Dfy = cfxx +  fy  + dfzz
     double Dfy = ( (f_0p0_linear(f)-f[node_000])/d_0p0*d_0m0
                   +(f[node_000]-f_0m0_linear(f))/d_0m0*d_0p0 ) / (d_0p0+d_0m0);
+
+    double c =-d_0m0_m0*d_0m0_p0/d_0m0*d_0p0/2.
+              +d_0p0_m0*d_0p0_p0/d_0p0*d_0m0/2.; c /= (d_0m0+d_0p0);
+    double d =-d_0m0_0m*d_0m0_0p/d_0m0*d_0p0/2.
+              +d_0p0_0m*d_0p0_0p/d_0p0*d_0m0/2.; d /= (d_0m0+d_0p0);
+
+    if( c!=0 || d!=0 )
+    {
+        double fxx,fyy,fzz; laplace(f,fxx,fyy,fzz);
+        Dfy -= c*fxx + d*fzz;
+    }
+    ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dy_central, 0, 0, 0, 0); CHKERRXX(ierr);
+    return Dfy;
+}
+
+
+double quad_neighbor_nodes_of_node_t::dy_central_tester( const double* f ) const
+{
+    PetscErrorCode ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dy_central, 0, 0, 0, 0); CHKERRXX(ierr);
+    ierr = PetscLogFlops(35); CHKERRXX(ierr);
+
+    // Dfy = cfxx +  fy  + dfzz
+    double Dfy1= (f_0p0_linear(f)-f[node_000])/d_0p0*d_0m0;
+    double Dfy2=(f[node_000]-f_0m0_linear_tester(f))/d_0m0*d_0p0;
+     double Dfy = (Dfy1+Dfy2)/ (d_0p0+d_0m0);
 
     double c =-d_0m0_m0*d_0m0_p0/d_0m0*d_0p0/2.
               +d_0p0_m0*d_0p0_p0/d_0p0*d_0m0/2.; c /= (d_0m0+d_0p0);
@@ -224,144 +256,6 @@ double quad_neighbor_nodes_of_node_t::dzz_central( const double* f ) const
     ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dzz_central, 0, 0, 0, 0); CHKERRXX(ierr);
 
     return ((fp-fc)/d_00p+(fm-fc)/d_00m)*2./(d_00p+d_00m);
-}
-
-double quad_neighbor_nodes_of_node_t::dxx_central_on_m00(const double *f, const my_p4est_node_neighbors_t &neighbors) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dxx_central_m00, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  double fxx_m00_mm = 0, fxx_m00_pm = 0, fxx_m00_mp = 0, fxx_m00_pp = 0;
-  double w_m00_mm = d_m00_p0*d_m00_0p;
-  double w_m00_mp = d_m00_p0*d_m00_0m;
-  double w_m00_pm = d_m00_m0*d_m00_0p;
-  double w_m00_pp = d_m00_m0*d_m00_0m;
-
-  if (w_m00_mm != 0) { fxx_m00_mm = neighbors[node_m00_mm].dxx_central(f); }
-  if (w_m00_mp != 0) { fxx_m00_mp = neighbors[node_m00_mp].dxx_central(f); }
-  if (w_m00_pm != 0) { fxx_m00_pm = neighbors[node_m00_pm].dxx_central(f); }
-  if (w_m00_pp != 0) { fxx_m00_pp = neighbors[node_m00_pp].dxx_central(f); }
-
-  ierr = PetscLogFlops(15); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dxx_central_m00, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  return (fxx_m00_mm*w_m00_mm + fxx_m00_mp*w_m00_mp +
-          fxx_m00_pm*w_m00_pm + fxx_m00_pp*w_m00_pp )/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-}
-
-double quad_neighbor_nodes_of_node_t::dxx_central_on_p00(const double *f, const my_p4est_node_neighbors_t &neighbors) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dxx_central_p00, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  double fxx_p00_mm = 0, fxx_p00_pm = 0, fxx_p00_mp = 0, fxx_p00_pp = 0;
-  double w_p00_mm = d_p00_p0*d_p00_0p;
-  double w_p00_mp = d_p00_p0*d_p00_0m;
-  double w_p00_pm = d_p00_m0*d_p00_0p;
-  double w_p00_pp = d_p00_m0*d_p00_0m;
-
-  if (w_p00_mm != 0) { fxx_p00_mm = neighbors[node_p00_mm].dxx_central(f); }
-  if (w_p00_mp != 0) { fxx_p00_mp = neighbors[node_p00_mp].dxx_central(f); }
-  if (w_p00_pm != 0) { fxx_p00_pm = neighbors[node_p00_pm].dxx_central(f); }
-  if (w_p00_pp != 0) { fxx_p00_pp = neighbors[node_p00_pp].dxx_central(f); }
-
-  ierr = PetscLogFlops(15); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dxx_central_p00, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  return (fxx_p00_mm*w_p00_mm + fxx_p00_mp*w_p00_mp +
-          fxx_p00_pm*w_p00_pm + fxx_p00_pp*w_p00_pp )/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-}
-
-double quad_neighbor_nodes_of_node_t::dyy_central_on_0m0(const double *f, const my_p4est_node_neighbors_t &neighbors) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dyy_central_0m0, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  double fyy_0m0_mm = 0, fyy_0m0_pm = 0, fyy_0m0_mp = 0, fyy_0m0_pp = 0;
-  double w_0m0_mm = d_0m0_p0*d_0m0_0p;
-  double w_0m0_mp = d_0m0_p0*d_0m0_0m;
-  double w_0m0_pm = d_0m0_m0*d_0m0_0p;
-  double w_0m0_pp = d_0m0_m0*d_0m0_0m;
-
-  if (w_0m0_mm != 0) { fyy_0m0_mm = neighbors[node_0m0_mm].dyy_central(f); }
-  if (w_0m0_mp != 0) { fyy_0m0_mp = neighbors[node_0m0_mp].dyy_central(f); }
-  if (w_0m0_pm != 0) { fyy_0m0_pm = neighbors[node_0m0_pm].dyy_central(f); }
-  if (w_0m0_pp != 0) { fyy_0m0_pp = neighbors[node_0m0_pp].dyy_central(f); }
-
-  ierr = PetscLogFlops(15); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central_0m0, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  return (fyy_0m0_mm*w_0m0_mm + fyy_0m0_mp*w_0m0_mp +
-          fyy_0m0_pm*w_0m0_pm + fyy_0m0_pp*w_0m0_pp )/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-}
-
-double quad_neighbor_nodes_of_node_t::dyy_central_on_0p0(const double *f, const my_p4est_node_neighbors_t &neighbors) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dyy_central_0p0, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  double fyy_0p0_mm = 0, fyy_0p0_pm = 0, fyy_0p0_mp = 0, fyy_0p0_pp = 0;
-  double w_0p0_mm = d_0p0_p0*d_0p0_0p;
-  double w_0p0_mp = d_0p0_p0*d_0p0_0m;
-  double w_0p0_pm = d_0p0_m0*d_0p0_0p;
-  double w_0p0_pp = d_0p0_m0*d_0p0_0m;
-
-  if (w_0p0_mm != 0) { fyy_0p0_mm = neighbors[node_0p0_mm].dyy_central(f); }
-  if (w_0p0_mp != 0) { fyy_0p0_mp = neighbors[node_0p0_mp].dyy_central(f); }
-  if (w_0p0_pm != 0) { fyy_0p0_pm = neighbors[node_0p0_pm].dyy_central(f); }
-  if (w_0p0_pp != 0) { fyy_0p0_pp = neighbors[node_0p0_pp].dyy_central(f); }
-
-  ierr = PetscLogFlops(15); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central_0p0, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  return (fyy_0p0_mm*w_0p0_mm + fyy_0p0_mp*w_0p0_mp +
-          fyy_0p0_pm*w_0p0_pm + fyy_0p0_pp*w_0p0_pp )/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-}
-
-double quad_neighbor_nodes_of_node_t::dzz_central_on_00m(const double *f, const my_p4est_node_neighbors_t &neighbors) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dzz_central_00m, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  double fzz_00m_mm = 0, fzz_00m_pm = 0, fzz_00m_mp = 0, fzz_00m_pp = 0;
-  double w_00m_mm = d_00m_p0*d_00m_0p;
-  double w_00m_mp = d_00m_p0*d_00m_0m;
-  double w_00m_pm = d_00m_m0*d_00m_0p;
-  double w_00m_pp = d_00m_m0*d_00m_0m;
-
-  if (w_00m_mm != 0) { fzz_00m_mm = neighbors[node_00m_mm].dzz_central(f); }
-  if (w_00m_mp != 0) { fzz_00m_mp = neighbors[node_00m_mp].dzz_central(f); }
-  if (w_00m_pm != 0) { fzz_00m_pm = neighbors[node_00m_pm].dzz_central(f); }
-  if (w_00m_pp != 0) { fzz_00m_pp = neighbors[node_00m_pp].dzz_central(f); }
-
-  ierr = PetscLogFlops(15); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dzz_central_00m, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  return (fzz_00m_mm*w_00m_mm + fzz_00m_mp*w_00m_mp +
-          fzz_00m_pm*w_00m_pm + fzz_00m_pp*w_00m_pp )/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-}
-
-double quad_neighbor_nodes_of_node_t::dzz_central_on_00p(const double *f, const my_p4est_node_neighbors_t &neighbors) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dzz_central_00p, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  double fzz_00p_mm = 0, fzz_00p_pm = 0, fzz_00p_mp = 0, fzz_00p_pp = 0;
-  double w_00p_mm = d_00p_p0*d_00p_0p;
-  double w_00p_mp = d_00p_p0*d_00p_0m;
-  double w_00p_pm = d_00p_m0*d_00p_0p;
-  double w_00p_pp = d_00p_m0*d_00p_0m;
-
-  if (w_00p_mm != 0) { fzz_00p_mm = neighbors[node_00p_mm].dzz_central(f); }
-  if (w_00p_mp != 0) { fzz_00p_mp = neighbors[node_00p_mp].dzz_central(f); }
-  if (w_00p_pm != 0) { fzz_00p_pm = neighbors[node_00p_pm].dzz_central(f); }
-  if (w_00p_pp != 0) { fzz_00p_pp = neighbors[node_00p_pp].dzz_central(f); }
-
-  ierr = PetscLogFlops(15); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dzz_central_00p, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  return (fzz_00p_mm*w_00p_mm + fzz_00p_mp*w_00p_mp +
-          fzz_00p_pm*w_00p_pm + fzz_00p_pp*w_00p_pp )/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
 }
 
 void quad_neighbor_nodes_of_node_t::gradient( const double* f, double& fx, double& fy, double& fz ) const

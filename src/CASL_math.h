@@ -18,29 +18,13 @@
 
 // Some Macros
 #define EPS 1e-13
-
-template <typename T>
-inline T ABS(const T& val)
-{
-  return val>0 ? val : -val;
-}
-
-template <typename T>
-inline T SQR(const T& val)
-{
-  return  val*val;
-}
-
-inline int mod(int a, int b)
-{
-#ifdef CASL_THROWS
-  if (b==0) throw std::domain_error("[CASL_ERROR]: trying to take modulo (a,b) whith b=0.");
+#ifndef ABS
+#define ABS(a) ((a)>0 ? (a) : -(a))
 #endif
 
-  int c = a%b;
-  if(c<0) c+=b;
-  return c;
-}
+#ifndef SQR
+#define SQR(a) (a)*(a)
+#endif
 
 inline double DELTA( double x, double h )
 {
@@ -105,6 +89,18 @@ inline double SUPERBEE( double a, double b )
     else          return 2*a;
   }
 }
+
+template <typename T>
+inline T mod(const T& a, const T& b)
+{
+#ifdef CASL_THROWS
+  if(b==0) throw std::invalid_argument("[CASL_ERROR]: mod: cannot take the modulus with zero.");
+#endif
+  T c=a%b;
+  return (c<0)? c+b:c;
+}
+
+double mod(double a, double b);
 
 template <typename T>
 inline const T& MIN(const T& val1, const T& val2)

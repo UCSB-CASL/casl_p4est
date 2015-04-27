@@ -41,7 +41,14 @@ extern              "C"
 
 typedef struct
 {
+
+  // number of trees in the x direction
+  // number of tress in the y direction
+  // number of trees in the z direction
   int                 nxyztrees[3];
+
+  // Acts as an hash table given vertex indexes of the treee
+  //one can get the tree id
   p4est_topidx_t     *nxyz_to_treeid;
 }
 my_p4est_brick_t;
@@ -54,10 +61,10 @@ my_p4est_brick_t;
  */
 #ifdef P4_TO_P8
 p4est_connectivity_t *my_p4est_brick_new (int nxtrees, int nytrees, int nztrees,
-                                          my_p4est_brick_t * myb);
+                                          my_p4est_brick_t * myb,int periodic_a,int periodic_b,int periodic_c);
 #else
 p4est_connectivity_t *my_p4est_brick_new (int nxtrees, int nytrees,
-                                          my_p4est_brick_t * myb);
+                                          my_p4est_brick_t * myb,int periodic_a,int periodic_b);
 #endif
 
 /** Free a brick connectivity and tree lookup structure.

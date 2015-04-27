@@ -30,8 +30,6 @@
 #include <p4est_nodes.h>
 #endif
 
-#include "petsc_compatibility.h"
-
 #ifdef __cplusplus
 extern              "C"
 {

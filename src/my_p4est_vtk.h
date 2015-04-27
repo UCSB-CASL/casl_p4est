@@ -21,9 +21,6 @@
   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
-#ifndef MY_P4EST_VTK_H
-#define MY_P4EST_VTK_H
-
 #ifdef P4_TO_P8
 #include "my_p8est_nodes.h"
 #include <p8est_bits.h>
@@ -32,6 +29,8 @@
 #include <p4est_bits.h>
 #endif
 
+#ifndef MY_P4EST_VTK_H
+#define MY_P4EST_VTK_H
 
 /********************************************************************
  *                          IMPORTANT NOTE                          *

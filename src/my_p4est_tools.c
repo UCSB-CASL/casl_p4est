@@ -35,9 +35,9 @@
 
 p4est_connectivity_t *
 #ifdef P4_TO_P8
-my_p4est_brick_new (int nxtrees, int nytrees, int nztrees, my_p4est_brick_t * myb)
+my_p4est_brick_new (int nxtrees, int nytrees, int nztrees, my_p4est_brick_t * myb,int periodic_a,int periodic_b,int periodic_c)
 #else
-my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t * myb)
+my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t * myb,int periodic_a,int periodic_b)
 #endif
 {
   int                 i, j;
@@ -56,9 +56,9 @@ my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t * myb)
   P4EST_ASSERT (0 < nztrees);
 #endif
 #ifdef P4_TO_P8
-  conn = p4est_connectivity_new_brick (nxtrees, nytrees, nztrees, 0, 0, 0);
+  conn = p4est_connectivity_new_brick (nxtrees, nytrees, nztrees, periodic_a, periodic_b, periodic_c);
 #else
-  conn = p4est_connectivity_new_brick (nxtrees, nytrees, 0, 0);
+  conn = p4est_connectivity_new_brick (nxtrees, nytrees, periodic_a, periodic_b);
 #endif
   vv = conn->vertices;
   P4EST_ASSERT (vv != NULL);
@@ -76,6 +76,7 @@ my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t * myb)
   nxyztrees = myb->nxyztrees[0] * myb->nxyztrees[1] * myb->nxyztrees[2];
   myb->nxyz_to_treeid = P4EST_ALLOC (p4est_topidx_t, nxyztrees);
 
+  // Creates the hash table from starting vertex coordinates to tree
   for (tt = 0; tt < conn->num_trees; ++tt) {
     /* build lookup structure from tree corner coordinates to treeid */
     vindex = conn->tree_to_vertex[P4EST_CHILDREN * tt + 0];

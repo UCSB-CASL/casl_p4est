@@ -40,7 +40,8 @@ private:
   {
     // NOTE: replace with an epsilon test
 #ifdef CASL_THROWS
-    if(phi2 == phi1) throw std::domain_error("[CASL_ERROR]: division by zero.");
+    if(phi2 == phi1)
+        throw std::domain_error("[CASL_ERROR]: division by zero.");
 #endif
     return (f1*phi2 - f2*phi1)/(phi2-phi1);
   }
@@ -57,7 +58,8 @@ private:
   {
     // NOTE: replace with an epsilon test
 #ifdef CASL_THROWS
-    if(phi2 == phi1) throw std::domain_error("[CASL_ERROR]: division by zero.");
+    if(phi2 == phi1)
+        throw std::domain_error("[CASL_ERROR]: division by zero.");
 #endif
     return (p1*phi2 - p2*phi1)/(phi2-phi1);
   }
@@ -86,13 +88,6 @@ public:
      * \param s2 the second triangle
      */
   void kuhn_Triangulation( Simplex2& s1, Simplex2& s2 ) const;
-
-  /*!
-   * \brief interface_Length_In_Cell compute the length of the interface in the cell
-   * \param level_set_values ...
-   * \return length of the interface in the cell
-   */
-  double interface_Length_In_Cell(QuadValue& level_set_values) const;
 
   /*!
      * \brief compute the area of the Cube2 in the negative domain

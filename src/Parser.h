@@ -6,7 +6,6 @@
 #include <iostream>
 #include <stdlib.h>
 #include <map>
-#include <stdio.h>
 #include <stdexcept>
 
 class cmdParser{
@@ -45,9 +44,9 @@ public:
     T get(const std::string& key)
     {
         if (options.find(key) == options.end())
-            throw std::runtime_error("[ERROR]: Option '" + key + "' was not found in option database.");
+            throw std::runtime_error("[CASL_ERROR]: Option '" + key + "' was not found in option database.");
         else if (options.find(key) != options.end() && buffer.find(key) == buffer.end())
-            throw std::runtime_error("[ERROR]: Option '" + key + "' was found in option database but was not entered.");
+            throw std::runtime_error("[CASL_ERROR]: Option '" + key + "' was found in option database but was not entered.");
         else
         {
             if (!buffer[key].compare("no-arg"))
@@ -81,12 +80,6 @@ public:
             return tmp;
         }
     }
-
-    /*!
-     * \brief print: prints the options database into the stream 'f'
-     * \param [in] f file stream (default value is stdout)
-     */
-    void print(FILE *f = stdout);
 };
 
 #endif // PARSER_H

@@ -1,10 +1,7 @@
 #ifndef __SIMPLEX2_H__
 #define __SIMPLEX2_H__
 
-#include <src/point2.h>
-#include <src/CASL_math.h>
-#include <src/my_p4est_utils.h>
-#include <math.h>
+#include "point2.h"
 
 /*!
  * \file Simplex2.h
@@ -17,35 +14,8 @@
  * The Simplex2 class is a two dimentional simplex (i.e. triangle) with the basic functions associated
  */
 
-class Simplex2
+struct Simplex2
 {
-private:
-  inline void swap(double &v1, double &v2)
-  {
-    double tmp = v1; v1 = v2; v2 = tmp;
-  }
-
-  inline double interpol_f(double f1, double phi1, double f2, double phi2) const
-  {
-#ifdef CASL_THROWS
-      if(fabs(phi2-phi1)<EPS) throw std::domain_error("[CASL_ERROR]: division by zero.");
-#endif
-      return (f1*phi2 - f2*phi1)/(phi2-phi1);
-  }
-
-  inline Point2 interpol_p(double x1, double y1, double phi1, double x2, double y2, double phi2) const
-  {
-#ifdef CASL_THROWS
-      if(fabs(phi2-phi1)<EPS) throw std::domain_error("[CASL_ERROR]: division by zero.");
-#endif
-      Point2 p;
-      p.x = (x1*phi2 - x2*phi1)/(phi2-phi1);
-      p.y = (y1*phi2 - y2*phi1)/(phi2-phi1);
-      return p;
-  }
-
-public:
-
   double x0,x1,x2; // nodes
   double y0,y1,y2;
 
@@ -97,30 +67,6 @@ public:
      */
   double integral( double f0, double f1, double f2,
                    double p0, double p1, double p2);
-
-
-  /*!
-   * \brief integrate a quantity over the interface in the simplex
-   * \param f0 the value of the quantity at the first point
-   * \param f1 the value of the quantity at the second point
-   * \param f2 the value of the quantity at the third point
-   * \param p0 the value of the level-set at the first point
-   * \param p1 the value of the level-set at the second point
-   * \param p2 the value of the level-set at the third point
-   * \return the integral of f over the interface in the simplex
-   */
-  double integrate_Over_Interface( double f0, double f1, double f2,
-                                   double p0, double p1, double p2);
-
-  /*!
-   * \brief integrate a quantity over the interface in the simplex
-   * \param f the continuous description of the quantity to integrate
-   * \param p0 the value of the level-set at the first point
-   * \param p1 the value of the level-set at the second point
-   * \param p2 the value of the level-set at the third point
-   * \return the integral of f over the interface in the simplex
-   */
-  double integrate_Over_Interface( const CF_2& f, double p0, double p1, double p2);
 };
 
 #endif // __SIMPLEX2_H__

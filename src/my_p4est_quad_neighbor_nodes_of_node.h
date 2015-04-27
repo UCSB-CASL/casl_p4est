@@ -26,9 +26,6 @@
 //
 //---------------------------------------------------------------------
 
-// forward declaration
-class my_p4est_node_neighbors_t;
-
 struct quad_neighbor_nodes_of_node_t {
   p4est_nodes_t *nodes;
 
@@ -67,6 +64,7 @@ struct quad_neighbor_nodes_of_node_t {
   double f_m00_linear( const double *f ) const;
   double f_p00_linear( const double *f ) const;
   double f_0m0_linear( const double *f ) const;
+  double f_0m0_linear_tester( const double *f ) const;
   double f_0p0_linear( const double *f ) const;
 #ifdef P4_TO_P8
   double f_00m_linear( const double *f ) const;
@@ -94,6 +92,7 @@ struct quad_neighbor_nodes_of_node_t {
 
   double dx_central ( const double *f ) const;
   double dy_central ( const double *f ) const;
+   double dy_central_tester ( const double *f ) const;
 #ifdef P4_TO_P8
   double dz_central ( const double *f ) const;
 #endif
@@ -117,15 +116,6 @@ struct quad_neighbor_nodes_of_node_t {
   double dyy_central( const double *f ) const;
 #ifdef P4_TO_P8
   double dzz_central( const double *f ) const;
-#endif
-
-  double dxx_central_on_m00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-  double dxx_central_on_p00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-  double dyy_central_on_0m0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-  double dyy_central_on_0p0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-#ifdef P4_TO_P8
-  double dzz_central_on_00m(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-  double dzz_central_on_00p(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
 #endif
 
   void print_debug(FILE* pFile) const
@@ -157,7 +147,7 @@ struct quad_neighbor_nodes_of_node_t {
     p4est_indep_t *n_00p_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_mp);
     p4est_indep_t *n_00p_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_pp);
 #endif
-    fprintf(pFile,"------------- Printing QNNN for node %d ------------\n",node_000);
+    fprintf(pFile,"------------- Printing QNNN for node %d -------%d-----\n",node_000,(double) P4EST_ROOT_LEN);
     fprintf(pFile,"node_m00_mm : %d - ( %f , %f )  -  %f\n",node_m00_mm, n_m00_mm->x / (double) P4EST_ROOT_LEN,n_m00_mm->y / (double) P4EST_ROOT_LEN,d_m00_m0);
     fprintf(pFile,"node_m00_pm : %d - ( %f , %f )  -  %f\n",node_m00_pm, n_m00_pm->x / (double) P4EST_ROOT_LEN,n_m00_pm->y / (double) P4EST_ROOT_LEN,d_m00_p0);
 #ifdef P4_TO_P8
@@ -198,6 +188,94 @@ struct quad_neighbor_nodes_of_node_t {
     fprintf(pFile,"d_m00 : %f\nd_p00 : %f\nd_0m0 : %f\nd_0p0 : %f\n",d_m00,d_p00,d_0m0,d_0p0);
 #endif
   }
+
+
+
+
+  void print_debug_global(FILE* pFile,std::vector<PetscInt> petsc_gloidx) const
+  {
+
+
+
+
+      int myRank;
+      MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+      p4est_topidx_t global_node_number=0;
+      for(int ii=0;ii<myRank;ii++)
+          global_node_number+=this->nodes->global_owned_indeps[ii];
+
+
+
+
+    p4est_indep_t *n_m00_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_mm);
+    p4est_indep_t *n_m00_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_pm);
+    p4est_indep_t *n_p00_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_mm);
+    p4est_indep_t *n_p00_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_pm);
+    p4est_indep_t *n_0m0_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_mm);
+    p4est_indep_t *n_0m0_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_pm);
+    p4est_indep_t *n_0p0_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_mm);
+    p4est_indep_t *n_0p0_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_pm);
+#ifdef P4_TO_P8
+    p4est_indep_t *n_m00_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_mp);
+    p4est_indep_t *n_m00_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_pp);
+    p4est_indep_t *n_p00_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_mp);
+    p4est_indep_t *n_p00_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_pp);
+    p4est_indep_t *n_0m0_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_mp);
+    p4est_indep_t *n_0m0_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_pp);
+    p4est_indep_t *n_0p0_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_mp);
+    p4est_indep_t *n_0p0_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_pp);
+
+    p4est_indep_t *n_00m_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_mp);
+    p4est_indep_t *n_00m_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_pp);
+    p4est_indep_t *n_00p_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_mp);
+    p4est_indep_t *n_00p_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_pp);
+    p4est_indep_t *n_00m_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_mp);
+    p4est_indep_t *n_00m_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_pp);
+    p4est_indep_t *n_00p_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_mp);
+    p4est_indep_t *n_00p_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_pp);
+#endif
+    fprintf(pFile,"------------- Printing QNNN for node %d ------------\n",petsc_gloidx [node_000]);
+    fprintf(pFile,"node_m00_mm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_m00_mm], n_m00_mm->x / (double) P4EST_ROOT_LEN,n_m00_mm->y / (double) P4EST_ROOT_LEN,d_m00_m0);
+    fprintf(pFile,"node_m00_pm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_m00_pm] , n_m00_pm->x / (double) P4EST_ROOT_LEN,n_m00_pm->y / (double) P4EST_ROOT_LEN,d_m00_p0);
+#ifdef P4_TO_P8
+    fprintf(pFile,"node_m00_mp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[ node_m00_mp], n_m00_mp->x / (double) P4EST_ROOT_LEN,n_m00_mp->y / (double) P4EST_ROOT_LEN,d_m00_0m);
+    fprintf(pFile,"node_m00_pp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_m00_pp], n_m00_pp->x / (double) P4EST_ROOT_LEN,n_m00_pp->y / (double) P4EST_ROOT_LEN,d_m00_0p);
+#endif
+    fprintf(pFile,"node_p00_mm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_p00_mm], n_p00_mm->x / (double) P4EST_ROOT_LEN,n_p00_mm->y / (double) P4EST_ROOT_LEN,d_p00_m0);
+    fprintf(pFile,"node_p00_pm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_p00_pm], n_p00_pm->x / (double) P4EST_ROOT_LEN,n_p00_pm->y / (double) P4EST_ROOT_LEN,d_p00_p0);
+#ifdef P4_TO_P8
+    fprintf(pFile,"node_p00_mp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_p00_mp], n_p00_mp->x / (double) P4EST_ROOT_LEN,n_p00_mp->y / (double) P4EST_ROOT_LEN,d_p00_0m);
+    fprintf(pFile,"node_p00_pp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[ node_p00_pp], n_p00_pp->x / (double) P4EST_ROOT_LEN,n_p00_pp->y / (double) P4EST_ROOT_LEN,d_p00_0p);
+#endif
+    fprintf(pFile,"node_0m0_mm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_0m0_mm], n_0m0_mm->x / (double) P4EST_ROOT_LEN,n_0m0_mm->y / (double) P4EST_ROOT_LEN,d_0m0_m0);
+    fprintf(pFile,"node_0m0_pm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_0m0_pm], n_0m0_pm->x / (double) P4EST_ROOT_LEN,n_0m0_pm->y / (double) P4EST_ROOT_LEN,d_0m0_p0);
+#ifdef P4_TO_P8
+    fprintf(pFile,"node_0m0_mp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_0m0_mp], n_0m0_mp->x / (double) P4EST_ROOT_LEN,n_0m0_mp->y / (double) P4EST_ROOT_LEN,d_0m0_0m);
+    fprintf(pFile,"node_0m0_pp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_0m0_pp], n_0m0_pp->x / (double) P4EST_ROOT_LEN,n_0m0_pp->y / (double) P4EST_ROOT_LEN,d_0m0_0p);
+#endif
+    fprintf(pFile,"node_0p0_mm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_0p0_mm], n_0p0_mm->x / (double) P4EST_ROOT_LEN,n_0p0_mm->y / (double) P4EST_ROOT_LEN,d_0p0_m0);
+    fprintf(pFile,"node_0p0_pm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_0p0_pm], n_0p0_pm->x / (double) P4EST_ROOT_LEN,n_0p0_pm->y / (double) P4EST_ROOT_LEN,d_0p0_p0);
+#ifdef P4_TO_P8
+    fprintf(pFile,"node_0p0_mp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_0p0_mp], n_0p0_mp->x / (double) P4EST_ROOT_LEN,n_0p0_mp->y / (double) P4EST_ROOT_LEN,d_0p0_0m);
+    fprintf(pFile,"node_0p0_pp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_0p0_pp], n_0p0_pp->x / (double) P4EST_ROOT_LEN,n_0p0_pp->y / (double) P4EST_ROOT_LEN,d_0p0_0p);
+#endif
+#ifdef P4_TO_P8
+    fprintf(pFile,"node_00m_mm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_00m_mm], n_00m_mm->x / (double) P4EST_ROOT_LEN,n_00m_mm->y / (double) P4EST_ROOT_LEN,d_00m_m0);
+    fprintf(pFile,"node_00m_pm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_00m_pm], n_00m_pm->x / (double) P4EST_ROOT_LEN,n_00m_pm->y / (double) P4EST_ROOT_LEN,d_00m_p0);
+    fprintf(pFile,"node_00m_mp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_00m_mp], n_00m_mp->x / (double) P4EST_ROOT_LEN,n_00m_mp->y / (double) P4EST_ROOT_LEN,d_00m_0m);
+    fprintf(pFile,"node_00m_pp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_00m_pp], n_00m_pp->x / (double) P4EST_ROOT_LEN,n_00m_pp->y / (double) P4EST_ROOT_LEN,d_00m_0p);
+    fprintf(pFile,"node_00p_mm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_00p_mm], n_00p_mm->x / (double) P4EST_ROOT_LEN,n_00p_mm->y / (double) P4EST_ROOT_LEN,d_00p_m0);
+    fprintf(pFile,"node_00p_pm : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_00p_pm], n_00p_pm->x / (double) P4EST_ROOT_LEN,n_00p_pm->y / (double) P4EST_ROOT_LEN,d_00p_p0);
+    fprintf(pFile,"node_00p_mp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_00p_mp], n_00p_mp->x / (double) P4EST_ROOT_LEN,n_00p_mp->y / (double) P4EST_ROOT_LEN,d_00p_0m);
+    fprintf(pFile,"node_00p_pp : %d - ( %f , %f )  -  %f\n",petsc_gloidx[node_00p_pp], n_00p_pp->x / (double) P4EST_ROOT_LEN,n_00p_pp->y / (double) P4EST_ROOT_LEN,d_00p_0p);
+#endif
+#ifdef P4_TO_P8
+    fprintf(pFile,"d_m00 : %f\nd_p00 : %f\nd_0m0 : %f\nd_0p0 : %f\nd_00m : %f\nd_00p : %f\n",d_m00,d_p00,d_0m0,d_0p0,d_00m,d_00p);
+#else
+    fprintf(pFile,"d_m00 : %f\nd_p00 : %f\nd_0m0 : %f\nd_0p0 : %f\n",d_m00,d_p00,d_0m0,d_0p0);
+#endif
+  }
+
 };
 
 #endif /* !MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H */

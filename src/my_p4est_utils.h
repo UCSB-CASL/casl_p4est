@@ -9,7 +9,6 @@
 #include <p4est_nodes.h>
 #endif
 #include <src/petsc_logging.h>
-#include "petsc_compatibility.h"
 
 #include <petsc.h>
 #include <stdexcept>
@@ -17,37 +16,25 @@
 #include <vector>
 
 namespace dir {
-/* vertices directions */
 enum {
   v_mmm = 0,
   v_pmm,
   v_mpm,
-  v_ppm
-#ifdef P4_TO_P8
-  ,v_mmp,
+  v_ppm,
+  v_mmp,
   v_pmp,
   v_mpp,
   v_ppp
-#endif
 };
-/* faces directions */
 enum {
   f_m00 = 0,
   f_p00,
   f_0m0,
-  f_0p0
-#ifdef P4_TO_P8
-  ,f_00m,
+  f_0p0,
+  f_00m,
   f_00p
-#endif
 };
 }
-
-enum interpolation_method{
-  linear,
-  quadratic,
-  quadratic_non_oscillatory
-};
 
 class CF_1
 {
@@ -74,23 +61,11 @@ public:
   virtual ~CF_3() {}
 };
 
-enum {
-  WALL_m00 = -1,
-  WALL_p00 = -2,
-  WALL_0m0 = -3,
-  WALL_0p0 = -4,
-  WALL_00m = -5,
-  WALL_00p = -6,
-  INTERFACE = -7
-};
-
 typedef enum {
   DIRICHLET,
   NEUMANN,
-  ROBIN,
   NOINTERFACE,
-  MIXED,
-  IGNORE
+  MIXED
 } BoundaryConditionType;
 
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
@@ -147,10 +122,6 @@ public:
 
   inline void setInterfaceValue(const CF_2& in){
     p_InterfaceValue = &in;
-  }
-
-  inline const CF_2& getInterfaceValue(){
-    return *p_InterfaceValue;
   }
 
   inline BoundaryConditionType wallType( double x, double y ) const
@@ -218,10 +189,6 @@ public:
 
   inline void setInterfaceValue(const CF_3& in){
     p_InterfaceValue = &in;
-  }
-
-  inline const CF_3& getInterfaceValue(){
-    return *p_InterfaceValue;
   }
 
   inline BoundaryConditionType wallType( double x, double y, double z ) const
@@ -324,86 +291,18 @@ PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, V
  */
 PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v);
 
-/*!
- * \brief VecScatterCreateChangeLayout Create a VecScatter context useful for changing the parallel layout of a vector
- * \param comm  [in]  MPI_Comm to which parallel vectors belong
- * \param from  [in]  input vector layout
- * \param to    [in]  output vector layout
- * \param ctx   [out] the created VecScatter context
- * \return
- */
-PetscErrorCode VecScatterCreateChangeLayout(MPI_Comm comm, Vec from, Vec to, VecScatter *ctx);
-
-/*!
- * \brief VecGhostChangeLayoutBegin Start changing the layout of a parallel vector. This potentially involves
- *  sending and receiving messages in a non-blocking mode
- * \param ctx   [in]  VecScatter context to initiate the transfer
- * \param from  [in]  input vector to the change the parallel layout
- * \param to    [out] output vector with the same global values but with a different parallel layout
- * \return
- */
-PetscErrorCode VecGhostChangeLayoutBegin(VecScatter ctx, Vec from, Vec to);
-
-/*!
- * \brief VecGhostChangeLayoutEnd Finish changing the layout of a parallel vector. This potentially involves
- *  sending and receiving messages in a non-blocking mode
- * \param ctx   [in]  VecScatter context to initiate the transfer
- * \param from  [in]  input vector to the change the parallel layout
- * \param to    [out] output vector with the same global values but with a different parallel layout
- * \return
- */
-PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to);
-
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
-inline double node_x_fr_n(const p4est_indep_t *ni){
+inline double node_x_fr_i(const p4est_indep_t *ni){
   return ni->x == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->x)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
-inline double node_y_fr_n(const p4est_indep_t *ni){
+inline double node_y_fr_j(const p4est_indep_t *ni){
   return ni->y == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->y)/static_cast<double>(P4EST_ROOT_LEN);
 }
-
-#ifdef P4_TO_P8
-inline double node_z_fr_n(const p4est_indep_t *ni){
-  return ni->z == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->z)/static_cast<double>(P4EST_ROOT_LEN);
-}
-#endif
-
-inline double node_x_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
-{
-  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-  p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-  double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-  return node_x_fr_n(node) + tree_xmin;
-}
-
-inline double node_y_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
-{
-  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-  p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-  return node_y_fr_n(node) + tree_ymin;
-}
-
-#ifdef P4_TO_P8
-inline double node_z_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
-{
-  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-  p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-  double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-  return node_z_fr_n(node) + tree_zmin;
-}
-#endif
 
 inline double quad_x_fr_i(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
@@ -414,10 +313,14 @@ inline double quad_y_fr_j(const p4est_quadrant_t *qi){
 }
 
 #ifdef P4_TO_P8
+inline double node_z_fr_k(const p4est_indep_t *ni){
+  return ni->z == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->z)/static_cast<double>(P4EST_ROOT_LEN);
+}
 inline double quad_z_fr_k(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
 }
 #endif
+
 
 /*!
  * \brief integrate_over_negative_domain_in_one_quadrant
@@ -464,7 +367,7 @@ double integrate_over_interface_in_one_quadrant(p4est_nodes_t *nodes, p4est_quad
  * \param f the scalar to integrate
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
-double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+double integrate_over_interface(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief is_node_xmWall checks if a node is on x^- domain boundary
@@ -614,61 +517,11 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& 
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
 #endif
 
-void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t* ghost, const p4est_nodes_t *nodes,
-                 const char* partition_name = NULL, const char* topology_name = NULL, const char* neighbors_name = NULL);
-
-inline double ranged_rand(double a, double b, int seed = 0){
+template<typename T>
+T ranged_rand(T a, T b, int seed = 0){
   if (seed) srand(seed);
-  return (static_cast<double>(rand())/static_cast<double>(RAND_MAX) * (b-a) + a);
+  return static_cast<T>(static_cast<double>(rand())/static_cast<double>(RAND_MAX) * (b-a) + a);
 }
-
-inline int ranged_rand(int a, int b, int seed = 0){
-  if (seed) srand(seed);
-  return (rand()%(b-a) + a);
-}
-
-inline int ranged_rand_inclusive(int a, int b, int seed = 0){
-  if (seed) srand(seed);
-  return (rand()%(b-a+1) + a);
-}
-
-// A Logger for interpolation function
-struct InterpolatingFunctionLogEntry{
-  int num_local_points, num_send_points, num_send_procs, num_recv_points, num_recv_procs;
-};
-
-class InterpolatingFunctionLogger{
-  InterpolatingFunctionLogger() {};
-  InterpolatingFunctionLogger(const InterpolatingFunctionLogger& ) {};
-  static std::vector<InterpolatingFunctionLogEntry> entries;
-
-public:
-  inline static InterpolatingFunctionLogger& get_instance() {
-    static InterpolatingFunctionLogger instance;
-    return instance;
-  }
-
-  inline void log(const InterpolatingFunctionLogEntry& entry) {
-    entries.push_back(entry);
-  }
-
-  inline void write(const std::string& filename) {
-    for (size_t i = 0; i<entries.size();i++) {
-      FILE *fp;
-      std::ostringstream oss; oss << filename << "_" << i << ".dat";
-      PetscFOpen(PETSC_COMM_WORLD, oss.str().c_str(), "w", &fp);
-      PetscFPrintf(PETSC_COMM_WORLD, fp, "%% num_local_points | num_send_points | num_send_procs | num_recv_points | num_recv_procs \n");
-      PetscSynchronizedFPrintf(PETSC_COMM_WORLD, fp, "%7d \t %7d \t %4d \t %7d \t %4d \n", entries[i].num_local_points,
-                                                                                           entries[i].num_send_points,
-                                                                                           entries[i].num_send_procs,
-                                                                                           entries[i].num_recv_points,
-                                                                                           entries[i].num_recv_procs);
-      PetscSynchronizedFlush(PETSC_COMM_WORLD, fp);
-      PetscFClose(PETSC_COMM_WORLD, fp);        
-    }
-    entries.clear();
-  }
-};
 
 /*!
  * \brief prepares MPI, PETSc, p4est, and sc libraries
@@ -703,63 +556,48 @@ private:
   double ts, tf;
   MPI_Comm comm_;
   int mpirank;
-  int mpisize;
   std::string msg_;
   stopwatch_timing timing_;
-  std::vector<double> t;
-  FILE *f_;
 
-public:
+public:   
 
-  parStopWatch(stopwatch_timing timing = root_timings, FILE *f = stdout, MPI_Comm comm = MPI_COMM_WORLD)
-    : comm_(comm), timing_(timing), f_(f)
+  parStopWatch(stopwatch_timing timing = root_timings, MPI_Comm comm = MPI_COMM_WORLD)
+    : comm_(comm), timing_(timing)
   {
     MPI_Comm_rank(comm_, &mpirank);
-    MPI_Comm_size(comm_, &mpisize);
-    t.resize(mpisize,0);
   }
 
   void start(const std::string& msg){
     msg_ = msg;
-    PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
+    PetscPrintf(comm_, "%s ... \n", msg.c_str());
     ts = MPI_Wtime();
   }
+  void start_without_printing(const std::string& msg){
+    msg_ = msg;
 
+    ts = MPI_Wtime();
+  }
   void stop(){
     tf = MPI_Wtime();
+  }
+
+  double get_duration(){
+    double elap = tf - ts;
+
+
+    return elap;
   }
 
   double read_duration(){
     double elap = tf - ts;
 
-    PetscPrintf(comm_, "%s ... done in \n", msg_.c_str());
+    PetscPrintf(comm_, "%s ... done in ", msg_.c_str());
     if (timing_ == all_timings){
-      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
-      double tmax, tmin, tavg, tdev;
-      tmax = tmin = elap;
-      tavg = tdev = 0;
-      if (mpirank == 0){
-        PetscFPrintf(comm_, f_, "t = [");
-        for (size_t i=0; i<t.size()-1; i++)
-          PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
-        PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
-
-        for (size_t i=0; i<t.size(); i++){
-          tavg += t[i];
-          tmax = MAX(tmax, t[i]);
-          tmin = MIN(tmin, t[i]);
-        }
-        tavg /= mpisize;
-
-        for (size_t i=0; i<t.size(); i++){
-          tdev += (t[i]-tavg)*(t[i]-tavg);
-        }
-        tdev = sqrt(tdev/mpisize);
-      }
-
-      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_max/t_min = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %% %2.1lf, t_dev/(t_max-t_min) = %% %2.1lf\n\n", tmax, tmax/tmin, tavg, tdev/tavg*100, tdev/(tmax-tmin)*100);
+      PetscSynchronizedPrintf(comm_, "\n   %.4lf secs. on process %2d",elap, mpirank);
+      PetscSynchronizedFlush(comm_);
+      PetscPrintf(comm_, "\n");
     } else {
-      PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank);
+      PetscPrintf(comm_, " %.4lf secs. on process %d [Note: only showing root's timings]\n", elap, mpirank);
     }
     return elap;
   }

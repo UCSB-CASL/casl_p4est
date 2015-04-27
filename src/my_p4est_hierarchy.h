@@ -13,18 +13,9 @@
 
 #include <vector>
 
-// Following defines are used for child index in HierarchyCell
-#define CELL_LEAF   -1          /* denotes a leaf cell */
-
-// Following defines are used for owner_rank in HierarchyCell
-#define REMOTE_OWNER -1         /* denotes that a cell does not have a owner in p4est representation, i.e. is a NOT_A_P4EST_QUADRANT */
-
-// Following defines are used for the quad index in HierarchyCell
-#define NOT_A_P4EST_QUADRANT -1 /* denotes a cell that does not exist in the p4est representation */
-#define NOT_A_VALID_QUADRANT -2 /* denotes a quadrant that is not valid, i.e. does not exist in the hierarchy structure (e.g.
-                                 * this is useful in dealing with quadrants that are outside the computational domain when
-                                 * searching for neighboring quadrants of a quadrant or node */
-
+#define CELL_LEAF   -1
+#define NOT_A_P4EST_QUADRANT -1
+#define REMOTE_OWNER -1
 
 #ifndef P4EST_VTK_CELL_TYPE
 #ifdef P4_TO_P8
@@ -46,9 +37,9 @@
 
 // forward declaration
 #ifdef P4_TO_P8
-#include "point3.h"
+struct Point3;
 #else
-#include "point2.h"
+struct Point2;
 #endif
 
 struct HierarchyCell {
@@ -119,9 +110,11 @@ public:
     construct_tree();
   }
 
-  inline const HierarchyCell* get_cell(p4est_topidx_t tr, p4est_locidx_t q) const {return &trees[tr][q];}
+  ~my_p4est_hierarchy_t()
+  {
+      this->trees.clear();
+  }
   int find_smallest_quadrant_containing_point(double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
-  void update(p4est_t *p4est_, p4est_ghost_t *ghost_);
   void write_vtk(const char* filename) const;
 };
 

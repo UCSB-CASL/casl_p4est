@@ -39,4 +39,5 @@
 #define my_p4est_brick_new              my_p8est_brick_new
 #define my_p4est_brick_destroy          my_p8est_brick_destroy
 
+
 #endif /* !MY_P4EST_TO_P8EST_H */

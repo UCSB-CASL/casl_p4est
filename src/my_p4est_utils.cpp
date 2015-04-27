@@ -12,11 +12,8 @@
 
 #include "mpi.h"
 #include <vector>
-#include <set>
-#include <sstream>
 #include <petsclog.h>
 #include <src/CASL_math.h>
-#include <src/petsc_compatibility.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_TINY_EVENTS
@@ -31,8 +28,6 @@
 #undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
-
-std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 
 double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
 {  
@@ -201,10 +196,10 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
 #endif
 
   double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = quad_x_fr_i(&quad);
-  double ymin = quad_y_fr_j(&quad);
+  double xmin = (double)quad.x / (double)(P4EST_ROOT_LEN);
+  double ymin = (double)quad.y / (double)(P4EST_ROOT_LEN);
 #ifdef P4_TO_P8
-  double zmin = quad_z_fr_k(&quad);
+  double zmin = (double)quad.z / (double)(P4EST_ROOT_LEN);
 #endif
 
   double d_m00 = x - xmin;
@@ -267,75 +262,6 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
   return value;
-}
-
-void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes, const char *partition_name, const char *topology_name, const char *neighbors_name)
-{
-  FILE *file;
-  PetscErrorCode ierr;
-
-  /* save partition information */
-  if (partition_name) {
-    ierr = PetscFOpen(p4est->mpicomm, partition_name, "w", &file); CHKERRXX(ierr);
-  } else {
-    file = stdout;
-  }
-
-  p4est_gloidx_t num_nodes = 0;
-  for (int r =0; r<p4est->mpisize; r++)
-    num_nodes += nodes->global_owned_indeps[r];
-
-  PetscFPrintf(p4est->mpicomm, file, "%% global_quads = %ld \t global_nodes = %ld\n", p4est->global_num_quadrants, num_nodes);
-  PetscFPrintf(p4est->mpicomm, file, "%% mpi_rank | local_node_size | local_quad_size | ghost_node_size | ghost_quad_size\n");
-  PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d, %7d, %7d, %5d, %5d\n",
-                           p4est->mpirank, nodes->num_owned_indeps, p4est->local_num_quadrants, nodes->indep_nodes.elem_count-nodes->num_owned_indeps, ghost->ghosts.elem_count);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
-  if (partition_name){
-    ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
-  }
-
-  /* save recv info based on the ghost nodes */
-  if (topology_name){
-    ierr = PetscFOpen(p4est->mpicomm, topology_name, "w", &file); CHKERRXX(ierr);
-  } else {
-    file = stdout;
-  }
-
-  PetscFPrintf(p4est->mpicomm, file, "%% Topology of ghost nodes based on how many ghost nodes belongs to a certain processor \n");
-  PetscFPrintf(p4est->mpicomm, file, "%% this_rank | ghost_rank | ghost_node_size \n");
-  std::vector<p4est_locidx_t> ghost_nodes(p4est->mpisize, 0);
-  std::set<int> proc_neighbors;
-  for (size_t i=0; i<nodes->indep_nodes.elem_count - nodes->num_owned_indeps; i++){
-    int r = nodes->nonlocal_ranks[i];
-    proc_neighbors.insert(r);
-    ghost_nodes[r]++;
-  }
-  for (std::set<int>::const_iterator it = proc_neighbors.begin(); it != proc_neighbors.end(); ++it){
-    int r = *it;
-    PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d %4d %6d\n", p4est->mpirank, r, ghost_nodes[r]);
-  }
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
-  if (topology_name){
-    ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
-  }
-
-  /* save recv info based on the ghost nodes */
-  if (neighbors_name){
-    ierr = PetscFOpen(p4est->mpicomm, neighbors_name, "w", &file); CHKERRXX(ierr);
-  } else {
-    file = stdout;
-  }
-
-  PetscFPrintf(p4est->mpicomm, file, "%% number of neighboring processors \n");
-  PetscFPrintf(p4est->mpicomm, file, "%% this_rank | number_ghost_rank \n");
-  PetscSynchronizedFPrintf(p4est->mpicomm, file, "%4d %4d\n", p4est->mpirank, proc_neighbors.size());
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
-  if (neighbors_name){
-    ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
-  }
 }
 
 PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
@@ -435,66 +361,6 @@ PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *gho
                              block_size, num_local*block_size, num_global*block_size,
                              ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
-
-  return ierr;
-}
-
-PetscErrorCode VecScatterCreateChangeLayout(MPI_Comm comm, Vec from, Vec to, VecScatter *ctx)
-{
-  PetscErrorCode ierr = 0;
-#ifdef CASL_THROWS
-  PetscInt size_from, size_to;
-  ierr = VecGetSize(from, &size_from); CHKERRXX(ierr);
-  ierr = VecGetSize(to, &size_to); CHKERRXX(ierr);
-  if (size_from != size_to)
-    throw std::invalid_argument("[ERROR]: Change layout is only supported for vectors with the same global size");
-#endif
-
-  IS is_from, is_to;
-
-  ISLocalToGlobalMapping l2g;
-  ierr = VecGetLocalToGlobalMapping(to, &l2g); CHKERRXX(ierr);
-
-  const PetscInt *idx;
-  PetscInt l2g_size;
-  ierr = ISLocalToGlobalMappingGetIndices(l2g, &idx); CHKERRXX(ierr);
-  ierr = ISLocalToGlobalMappingGetSize(l2g, &l2g_size); CHKERRXX(ierr);
-
-  ierr = ISCreateStride(comm, l2g_size, 0, 1, &is_to); CHKERRXX(ierr);
-  ierr = ISCreateGeneral(comm, l2g_size, idx, PETSC_USE_POINTER, &is_from); CHKERRXX(ierr);
-
-  Vec to_l;
-  ierr = VecGhostGetLocalForm(to, &to_l); CHKERRXX(ierr);
-  ierr = VecScatterCreate(from, is_from, to_l, is_to, ctx); CHKERRXX(ierr);
-
-  ierr = ISDestroy(is_from); CHKERRXX(ierr);
-  ierr = ISDestroy(is_to); CHKERRXX(ierr);
-  ierr = ISLocalToGlobalMappingRestoreIndices(l2g, &idx); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(to, &to_l); CHKERRXX(ierr);
-
-  return ierr;
-}
-
-PetscErrorCode VecGhostChangeLayoutBegin(VecScatter ctx, Vec from, Vec to)
-{
-  PetscErrorCode ierr;
-  Vec to_l;
-
-  ierr = VecGhostGetLocalForm(to, &to_l);
-  ierr = VecScatterBegin(ctx, from, to_l, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(to, &to_l);
-
-  return ierr;
-}
-
-PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to)
-{
-  PetscErrorCode ierr;
-  Vec to_l;
-
-  ierr = VecGhostGetLocalForm(to, &to_l);
-  ierr = VecScatterEnd(ctx, from, to_l, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(to, &to_l);
 
   return ierr;
 }
@@ -998,6 +864,8 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
   double *f_p;
   PetscErrorCode ierr;
 
+
+ // Check that the parallel petsc vector f has the same size than  nodes
 #ifdef CASL_THROWS
   {
     Vec local_form;
@@ -1053,61 +921,6 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
   }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
-}
-
-
-#ifdef P4_TO_P8
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f)
-#else
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f)
-#endif
-{
-#ifdef CASL_THROWS
-  {
-    if ((PetscInt) f.size() != (PetscInt) nodes->indep_nodes.elem_count){
-      std::ostringstream oss;
-      oss << "[ERROR]: size of the input vector must be equal to the total number of points."
-             "nodes->indep_nodes.elem_count = " << nodes->indep_nodes.elem_count
-          << " VecSize = " << f.size() << std::endl;
-
-      throw std::invalid_argument(oss.str());
-    }
-  }
-#endif
-
-  const p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  const double *v2q = p4est->connectivity->vertices;
-
-  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
-  {
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-    p4est_topidx_t v_mm = t2v[P4EST_CHILDREN*tree_id + 0];
-
-    double tree_xmin = v2q[3*v_mm + 0];
-    double tree_ymin = v2q[3*v_mm + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = v2q[3*v_mm + 2];
-#endif
-
-    double x = node->x != P4EST_ROOT_LEN - 1 ? (double)node->x/(double)P4EST_ROOT_LEN : 1.0;
-    double y = node->y != P4EST_ROOT_LEN - 1 ? (double)node->y/(double)P4EST_ROOT_LEN : 1.0;
-#ifdef P4_TO_P8
-    double z = node->z != P4EST_ROOT_LEN - 1 ? (double)node->z/(double)P4EST_ROOT_LEN : 1.0;
-#endif
-
-    x += tree_xmin;
-    y += tree_ymin;
-#ifdef P4_TO_P8
-    z += tree_zmin;
-#endif
-#ifdef P4_TO_P8
-    f[i] = cf(x,y,z);
-#else
-    f[i] = cf(x,y);
-#endif
-  }
 }
 
 #ifdef P4_TO_P8
