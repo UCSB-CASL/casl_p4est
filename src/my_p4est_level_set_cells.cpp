@@ -1,12 +1,14 @@
 #ifdef P4_TO_P8
 #include "my_p8est_level_set_cells.h"
 #include <src/point3.h>
+#include <src/cube3.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_interpolation_cells.h>
 #include <src/my_p8est_refine_coarsen.h>
 #else
 #include "my_p4est_level_set_cells.h"
 #include <src/point2.h>
+#include <src/cube2.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_interpolation_cells.h>
 #include <src/my_p4est_refine_coarsen.h>
@@ -31,6 +33,167 @@ extern PetscLogEvent log_my_p4est_level_set_cells_extend_over_interface;
 #undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
+
+
+
+double my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f) const
+{
+  PetscErrorCode ierr;
+
+#ifdef P4_TO_P8
+  Cube3 cube;
+  OctValue f_vals;
+  OctValue phi_vals;
+#else
+  Cube2 cube;
+  QuadValue f_vals;
+  QuadValue phi_vals;
+#endif
+
+  double sum = 0;
+  const double *phi_p;
+  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+  double *f_p;
+  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
+
+  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    {
+      p4est_locidx_t quad_idx = q+tree->quadrants_offset;
+      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+
+      double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double dy = dx;
+
+      double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+      double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+
+      cube.x0 = x - dx/2;
+      cube.x1 = x + dx/2;
+      cube.y0 = y - dy/2;
+      cube.y1 = y + dy/2;
+
+#ifdef P4_TO_P8
+      double dz = dx;
+      double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+      cube.z0 = z - dz/2;
+      cube.z1 = z + dz/2;
+
+      phi_vals.val000 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+      phi_vals.val100 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+      phi_vals.val010 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+      phi_vals.val110 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+      phi_vals.val001 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
+      phi_vals.val101 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
+      phi_vals.val011 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
+      phi_vals.val111 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
+
+      f_vals.val000   = f_p[quad_idx];
+      f_vals.val100   = f_p[quad_idx];
+      f_vals.val010   = f_p[quad_idx];
+      f_vals.val110   = f_p[quad_idx];
+      f_vals.val001   = f_p[quad_idx];
+      f_vals.val101   = f_p[quad_idx];
+      f_vals.val011   = f_p[quad_idx];
+      f_vals.val111   = f_p[quad_idx];
+#else
+      phi_vals.val00 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+      phi_vals.val10 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+      phi_vals.val01 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+      phi_vals.val11 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+
+      f_vals.val00   = f_p[quad_idx];
+      f_vals.val10   = f_p[quad_idx];
+      f_vals.val01   = f_p[quad_idx];
+      f_vals.val11   = f_p[quad_idx];
+#endif
+
+      sum += cube.integrate_Over_Interface(f_vals, phi_vals);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  return sum;
+}
+
+
+
+double my_p4est_level_set_cells_t::integrate(Vec phi, Vec f) const
+{
+  PetscErrorCode ierr;
+
+#ifdef P4_TO_P8
+  Cube3 cube;
+  OctValue phi_vals;
+#else
+  Cube2 cube;
+  QuadValue phi_vals;
+#endif
+
+  double sum = 0;
+  const double *phi_p;
+  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+  double *f_p;
+  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
+
+  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    {
+      p4est_locidx_t quad_idx = q+tree->quadrants_offset;
+      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+
+      double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double dy = dx;
+
+      double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+      double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+
+      cube.x0 = x - dx/2;
+      cube.x1 = x + dx/2;
+      cube.y0 = y - dy/2;
+      cube.y1 = y + dy/2;
+
+#ifdef P4_TO_P8
+      double dz = dx;
+      double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+      cube.z0 = z - dz/2;
+      cube.z1 = z + dz/2;
+
+      phi_vals.val000 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+      phi_vals.val100 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+      phi_vals.val010 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+      phi_vals.val110 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+      phi_vals.val001 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
+      phi_vals.val101 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
+      phi_vals.val011 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
+      phi_vals.val111 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
+#else
+      phi_vals.val00 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+      phi_vals.val10 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+      phi_vals.val01 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+      phi_vals.val11 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+#endif
+
+      sum += cube.area_In_Negative_Domain(phi_vals)*f_p[quad_idx];
+    }
+  }
+
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  return sum;
+}
+
 
 
 

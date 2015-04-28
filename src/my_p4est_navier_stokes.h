@@ -202,10 +202,18 @@ public:
   void set_velocities(Vec *vnm1, Vec *vn);
 
 #ifdef P4_TO_P8
-  void set_velocities(CF_3 *vnm1, CF_3 *vn);
+  void set_velocities(CF_3 **vnm1, CF_3 **vn);
 #else
-  void set_velocities(CF_2 *vnm1, CF_2 *vn);
+  void set_velocities(CF_2 **vnm1, CF_2 **vn);
 #endif
+
+  void set_vstar(Vec *vstar);
+
+  void get_vnp1(Vec *vnp1);
+
+  void get_hodge(Vec &hodge);
+
+  void set_hodge(Vec hodge);
 
   inline double get_dt() { return dt_n; }
 

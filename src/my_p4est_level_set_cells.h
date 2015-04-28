@@ -31,6 +31,10 @@ public:
     : p4est(ngbd_n->p4est), ghost(ngbd_n->ghost), nodes(ngbd_n->nodes), ngbd_c(ngbd_c), ngbd_n(ngbd_n)
   {}
 
+  double integrate_over_interface(Vec phi, Vec f) const;
+
+  double integrate(Vec phi, Vec f) const;
+
   /* extrapolate using geometrical extrapolation */
 #ifdef P4_TO_P8
   void extend_Over_Interface( Vec phi, Vec q, const BoundaryConditions3D *bc, int order=2, int band_to_extend=INT_MAX ) const;

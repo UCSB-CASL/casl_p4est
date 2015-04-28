@@ -11,18 +11,24 @@
 bool VecIsNan(Vec v)
 {
   PetscErrorCode ierr;
+
+  Vec loc = v;
+//  ierr = VecGhostGetLocalForm(v, &loc); CHKERRXX(ierr);
+
   PetscInt size;
-  ierr = VecGetLocalSize(v, &size); CHKERRXX(ierr);
+  ierr = VecGetLocalSize(loc, &size); CHKERRXX(ierr);
   double *v_p;
-  ierr = VecGetArray(v, &v_p); CHKERRXX(ierr);
+  ierr = VecGetArray(loc, &v_p); CHKERRXX(ierr);
   for(PetscInt i=0; i<size; ++i)
     if(ISNAN(v_p[i]))
     {
-      ierr = VecRestoreArray(v, &v_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(loc, &v_p); CHKERRXX(ierr);
+//      ierr = VecGhostRestoreLocalForm(v, &loc); CHKERRXX(ierr);
       return true;
     }
 
-  ierr = VecRestoreArray(v, &v_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(loc, &v_p); CHKERRXX(ierr);
+//  ierr = VecGhostRestoreLocalForm(v, &loc); CHKERRXX(ierr);
   return false;
 }
 
