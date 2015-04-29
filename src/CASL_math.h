@@ -158,7 +158,19 @@ inline const T SGNMAX(T x, T y)
     return -ym;
 }
 
+/*!
+ * \brief Check if the local data of a vector contains a NAN
+ * \param v the vector to check
+ * \return true if the vector contains a NAN, false otherwise
+ */
 bool VecIsNan(Vec v);
+
+/*!
+ * \brief Check if a ghosted vector contains a NAN
+ * \param v the vector to check
+ * \return true if the vector contains a NAN, false otherwise
+ */
+bool VecGhostIsNan(Vec v);
 
 /*!
 * \brief return the CuBi RooT of x

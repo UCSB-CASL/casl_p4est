@@ -129,6 +129,7 @@ void my_p4est_interpolation_t::add_point(p4est_locidx_t locidx, const double *xy
   }
 }
 
+
 void my_p4est_interpolation_t::interpolate(Vec Fo)
 {
   double *Fo_p;
@@ -136,6 +137,7 @@ void my_p4est_interpolation_t::interpolate(Vec Fo)
   interpolate(Fo_p);
   ierr = VecRestoreArray(Fo, &Fo_p); CHKERRXX(ierr);
 }
+
 
 void my_p4est_interpolation_t::interpolate(double *Fo_p) {
   ierr = PetscLogEventBegin(log_my_p4est_interpolation_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);

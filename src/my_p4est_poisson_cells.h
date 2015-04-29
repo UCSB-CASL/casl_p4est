@@ -104,6 +104,8 @@ public:
 #endif
   inline void set_mu(double mu)                {this->mu       = mu;  is_matrix_ready = false;}
 
+  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
+
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 };
 #endif // MY_P4EST_POISSON_CELL_BASE_H

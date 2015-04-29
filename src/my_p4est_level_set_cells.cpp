@@ -198,9 +198,9 @@ double my_p4est_level_set_cells_t::integrate(Vec phi, Vec f) const
 
 
 #ifdef P4_TO_P8
-void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, const BoundaryConditions3D *bc, int order, int band_to_extend ) const
+void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, BoundaryConditions3D *bc, int order, int band_to_extend ) const
 #else
-void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, const BoundaryConditions2D *bc, int order, int band_to_extend ) const
+void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, BoundaryConditions2D *bc, int order, int band_to_extend ) const
 #endif
 {
 #ifdef CASL_THROWS
@@ -277,6 +277,33 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, const Bo
   my_p4est_interpolation_nodes_t interp_phi_z(ngbd_n); interp_phi_z.set_input(phi_z, linear);
 #endif
 
+  Vec bc_interface_values;
+  ierr = VecDuplicate(phi, &bc_interface_values); CHKERRXX(ierr);
+  double *bc_p;
+  ierr = VecGetArray(bc_interface_values, &bc_p); CHKERRXX(ierr);
+  for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+  {
+    p4est_locidx_t n = ngbd_n->get_layer_node(i);
+#ifdef P4_TO_P8
+    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est_nodes));
+#else
+    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes));
+#endif
+  }
+  ierr = VecGhostUpdateBegin(bc_interface_values, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
+  {
+    p4est_locidx_t n = ngbd_n->get_local_node(i);
+#ifdef P4_TO_P8
+    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est_nodes));
+#else
+    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes));
+#endif
+  }
+  ierr = VecGhostUpdateEnd(bc_interface_values, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(bc_interface_values, &bc_p); CHKERRXX(ierr);
+
+  my_p4est_interpolation_nodes_t interp0(ngbd_n); interp0.set_input(bc_interface_values, quadratic_non_oscillatory);
   my_p4est_interpolation_cells_t interp1(ngbd_c, ngbd_n); interp1.set_input(q, phi, bc);
   my_p4est_interpolation_cells_t interp2(ngbd_c, ngbd_n); interp2.set_input(q, phi, bc);
 
@@ -307,7 +334,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, const Bo
   std::vector<double> q1;
   std::vector<double> q2;
 
-  if(bc->interfaceType()==DIRICHLET)                           q0.resize(p4est->local_num_quadrants);
+  q0.resize(p4est->local_num_quadrants);
   if(order >= 1 || (order==0 && bc->interfaceType()==NEUMANN)) q1.resize(p4est->local_num_quadrants);
   if(order >= 2)                                               q2.resize(p4est->local_num_quadrants);
 
@@ -346,12 +373,15 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, const Bo
         {
           grad_phi /= grad_phi.norm_L2();
 
-          if(bc->interfaceType()==DIRICHLET)
-#ifdef P4_TO_P8
-            q0[q_idx] = bc->interfaceValue(x-grad_phi.x*phi_q, y-grad_phi.y*phi_q, z-grad_phi.z*phi_q);
-#else
-            q0[q_idx] = bc->interfaceValue(x-grad_phi.x*phi_q, y-grad_phi.y*phi_q);
-#endif
+          double xyz_i[] =
+          {
+            x - grad_phi.x*phi_q,
+            y - grad_phi.y*phi_q
+    #ifdef P4_TO_P8
+            ,z - grad_phi.z*phi_q
+    #endif
+          };
+          interp0.add_point(q_idx, xyz_i);
 
           if(order >= 1 || (order==0 && bc->interfaceType()==NEUMANN))
           {
@@ -440,11 +470,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, const Bo
             }
             else /* interface Neumann */
             {
-#ifdef P4_TO_P8
-              double dif01 = -bc->interfaceValue(x-grad_phi.x*phi_q, y-grad_phi.y*phi_q, z-grad_phi.z*phi_q);
-#else
-              double dif01 = -bc->interfaceValue(x-grad_phi.x*phi_q, y-grad_phi.y*phi_q);
-#endif
+              double dif01 = -q0[q_idx];
               q_p[q_idx] = q1[q_idx] + (-phi_q - 2*diag) * dif01;
             }
           }
@@ -462,11 +488,8 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, const Bo
             {
               double x1 = 2*diag;
               double x2 = 3*diag;
-#ifdef P4_TO_P8
-              double b = -bc->interfaceValue(x-grad_phi.x*phi_q, y-grad_phi.y*phi_q, z-grad_phi.z*phi_q);
-#else
-              double b = -bc->interfaceValue(x-grad_phi.x*phi_q, y-grad_phi.y*phi_q);
-#endif
+
+              double b = -q0[q_idx];
               double a = (q2[q_idx] - q1[q_idx] + b*(x1 - x2)) / (x2*x2 - x1*x1);
               double c = q1[q_idx] - a*x1*x1 - b*x1;
 
@@ -487,6 +510,8 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, const Bo
 
   ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(q, &q_p); CHKERRXX(ierr);
+
+  ierr = VecDestroy(bc_interface_values); CHKERRXX(ierr);
 
   ierr = VecGhostUpdateBegin(q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

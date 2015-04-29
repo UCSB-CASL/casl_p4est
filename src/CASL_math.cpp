@@ -12,23 +12,44 @@ bool VecIsNan(Vec v)
 {
   PetscErrorCode ierr;
 
-  Vec loc = v;
-//  ierr = VecGhostGetLocalForm(v, &loc); CHKERRXX(ierr);
-
   PetscInt size;
-  ierr = VecGetLocalSize(loc, &size); CHKERRXX(ierr);
+  ierr = VecGetLocalSize(v, &size); CHKERRXX(ierr);
   double *v_p;
-  ierr = VecGetArray(loc, &v_p); CHKERRXX(ierr);
+  ierr = VecGetArray(v, &v_p); CHKERRXX(ierr);
   for(PetscInt i=0; i<size; ++i)
     if(ISNAN(v_p[i]))
     {
-      ierr = VecRestoreArray(loc, &v_p); CHKERRXX(ierr);
-//      ierr = VecGhostRestoreLocalForm(v, &loc); CHKERRXX(ierr);
+      ierr = VecRestoreArray(v, &v_p); CHKERRXX(ierr);
       return true;
     }
 
-  ierr = VecRestoreArray(loc, &v_p); CHKERRXX(ierr);
-//  ierr = VecGhostRestoreLocalForm(v, &loc); CHKERRXX(ierr);
+  ierr = VecRestoreArray(v, &v_p); CHKERRXX(ierr);
+  return false;
+}
+
+bool VecGhostIsNan(Vec v)
+{
+  PetscErrorCode ierr;
+
+  Vec loc;
+  ierr = VecGhostGetLocalForm(v, &loc); CHKERRXX(ierr);
+
+  PetscInt size;
+  ierr = VecGetLocalSize(loc, &size); CHKERRXX(ierr);
+
+  const double *v_p;
+  ierr = VecGetArrayRead(loc, &v_p); CHKERRXX(ierr);
+
+  for(PetscInt i=0; i<size; ++i)
+    if(ISNAN(v_p[i]))
+    {
+      ierr = VecRestoreArrayRead(loc, &v_p); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(v, &loc); CHKERRXX(ierr);
+      return true;
+    }
+
+  ierr = VecRestoreArrayRead(loc, &v_p); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(v, &loc); CHKERRXX(ierr);
   return false;
 }
 

@@ -622,7 +622,7 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
     }
 
-    PoissonSolverFaces solver(&faces, &ngbd_n);
+    my_p4est_poisson_faces_t solver(&faces, &ngbd_n);
     solver.set_phi(phi);
     solver.set_diagonal(add_diagonal);
     solver.set_mu(mu);
