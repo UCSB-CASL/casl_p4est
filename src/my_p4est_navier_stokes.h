@@ -4,11 +4,13 @@
 #include <petsc.h>
 
 #ifdef P4_TO_P8
+#include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_faces.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_interpolation_cells.h>
 #include <src/my_p8est_interpolation_faces.h>
 #else
+#include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_faces.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_interpolation_cells.h>
@@ -22,6 +24,18 @@
 class my_p4est_navier_stokes_t
 {
 private:
+
+  class splitting_criteria_vorticity_t : public splitting_criteria_tag_t
+  {
+  private:
+    my_p4est_navier_stokes_t *_prnt;
+    void tag_quadrant(p4est_quadrant_t *quad, const double *f, const double *v);
+  public:
+    double max_L2_norm_u;
+    double threshold;
+    splitting_criteria_vorticity_t(my_p4est_navier_stokes_t *prnt, int min_lvl, int max_lvl, double lip, double threshold, double max_L2_norm_u);
+    bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t *nodes, Vec phi, Vec vorticity);
+  };
 
 #ifdef P4_TO_P8
   class wall_bc_value_hodge_t : public CF_3

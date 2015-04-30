@@ -10,11 +10,6 @@
 #include <sc_search.h>
 #include <iostream>
 
-#define SKIP_QUADRANT		 0
-#define REFINE_QUADRANT  1
-#define COARSEN_QUADRANT 2
-#define NEW_QUADRANT     3
-
 p4est_bool_t
 refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
@@ -357,7 +352,6 @@ int splitting_criteria_tag_t::coarsen_fn(p4est_t *p4est, p4est_topidx_t which_tr
   int coarsen = quad[0]->p.user_int == COARSEN_QUADRANT;
   for (short i = 1; i<P4EST_CHILDREN; i++)
     coarsen = coarsen && (quad[i]->p.user_int == COARSEN_QUADRANT);
-
   return coarsen;
 }
 

@@ -18,6 +18,11 @@
 #include <set>
 #include <vector>
 
+#define SKIP_QUADRANT		 0
+#define REFINE_QUADRANT  1
+#define COARSEN_QUADRANT 2
+#define NEW_QUADRANT     3
+
 struct splitting_criteria_t {
   splitting_criteria_t(int min_lvl = 0, int max_lvl = 0, double lip = 1.2)
   {
@@ -88,7 +93,7 @@ public:
 };
 
 class splitting_criteria_tag_t: public splitting_criteria_t {
-
+protected:
 	static void init_fn   (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
 	static int  refine_fn (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
 	static int  coarsen_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t** quad);
