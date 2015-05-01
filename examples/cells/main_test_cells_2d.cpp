@@ -501,6 +501,46 @@ int main (int argc, char* argv[])
   double err_ex_n;
   double err_ex_nm1;
 
+  double avg_exa = 0;
+  if((bc_itype==NOINTERFACE || bc_itype==NEUMANN) && bc_wtype==NEUMANN)
+  {
+    if(bc_itype==NOINTERFACE)
+    {
+      switch(test_number)
+      {
+#ifdef P4_TO_P8
+      case 0: avg_exa = .5*nx*ny*nz*(nx+ny+nz); break;
+      case 1: avg_exa = 1./3.*nx*ny*nz*(nx*nx + ny*ny + nz*nz); break;
+      case 2: avg_exa = sin(ny)*(1-cos(nx))*(exp(nz)-1) + 2.*nx*ny*nz; break;
+#else
+      case 0: avg_exa = .5*nx*ny*(nx+ny); break;
+      case 1: avg_exa = 1./3.*nx*ny*(nx*nx + ny*ny); break;
+      case 2: avg_exa = sin(ny)*(1-cos(nx)); break;
+#endif
+      default: throw std::invalid_argument("invalid test number.");
+      }
+
+#ifdef P4_TO_P8
+      avg_exa /= (double)nx*ny*nz;
+#else
+      avg_exa /= (double)nx*ny;
+#endif
+    }
+    else
+    {
+      switch(test_number)
+      {
+#ifndef P4_TO_P8
+      case 0: avg_exa = .5*nx*ny*(nx+ny) - 2*PI*r0*r0; break;
+      case 1: avg_exa = 1./3.*nx*ny*(nx*nx + ny*ny) - PI*r0*r0*(SQR((double)nx/2) + SQR((double)ny/2) + r0*r0/2); break;
+#endif
+      default: throw std::invalid_argument("all neumann bc not implemented for this case.");
+      }
+
+      avg_exa /= (double)nx*ny - PI*r0*r0;
+    }
+  }
+
   for(int iter=0; iter<nb_splits; ++iter)
   {
     ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
@@ -623,6 +663,24 @@ int main (int argc, char* argv[])
 
     solver.solve(sol);
 
+    /* if all NEUMANN boundary conditions, shift solution */
+    if(solver.get_matrix_has_nullspace())
+    {
+      my_p4est_level_set_cells_t lsc(&ngbd_c, &ngbd_n);
+      double avg_sol = lsc.integrate(phi, sol)/area_in_negative_domain(p4est, nodes, phi);
+
+      double *sol_p;
+      ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
+
+      for(p4est_locidx_t quad_idx=0; quad_idx<p4est->local_num_quadrants; ++quad_idx)
+        sol_p[quad_idx] = sol_p[quad_idx] - avg_sol + avg_exa;
+
+      for(size_t quad_idx=0; quad_idx<ghost->ghosts.elem_count; ++quad_idx)
+        sol_p[quad_idx+p4est->local_num_quadrants] = sol_p[quad_idx+p4est->local_num_quadrants] - avg_sol + avg_exa;
+
+      ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
+    }
+
     /* check the error */
     err_nm1 = err_n;
     err_n = 0;
@@ -630,8 +688,8 @@ int main (int argc, char* argv[])
     const double *phi_p;
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
-    double *sol_p;
-    ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
+    const double *sol_p;
+    ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
 
     Vec err_cells;
     ierr = VecDuplicate(sol, &err_cells); CHKERRXX(ierr);
@@ -673,7 +731,7 @@ int main (int argc, char* argv[])
       }
     }
     ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(sol, &sol_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_cells, &err_p); CHKERRXX(ierr);
 
     ierr = VecGhostUpdateBegin(err_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -690,7 +748,7 @@ int main (int argc, char* argv[])
     if(bc_itype!=NOINTERFACE)
       ls_c.extend_Over_Interface(phi, sol, &bc, 2, band);
 
-    ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
     Vec err_ex;
@@ -742,7 +800,7 @@ int main (int argc, char* argv[])
     }
 
     ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(sol, &sol_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_ex, &err_ex_p); CHKERRXX(ierr);
 
     ierr = VecGhostUpdateBegin(err_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

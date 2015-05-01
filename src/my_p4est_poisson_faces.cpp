@@ -88,6 +88,7 @@ void my_p4est_poisson_faces_t::reset_linear_solver(bool use_nonzero_initial_gues
 {
   PetscErrorCode ierr;
   if(ksp!=PETSC_NULL) { ierr = KSPDestroy(ksp); CHKERRXX(ierr);}
+  if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr); }
 
   ierr = KSPCreate(p4est->mpicomm, &ksp); CHKERRXX(ierr);
   ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);

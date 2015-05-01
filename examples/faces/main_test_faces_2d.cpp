@@ -89,7 +89,7 @@ int interface_type = 0;
 int test_number = 0;
 
 BoundaryConditionType bc_itype = DIRICHLET;
-BoundaryConditionType bc_wtype = DIRICHLET;
+BoundaryConditionType bc_wtype = NEUMANN;
 
 double diag_add = 0;
 
@@ -636,6 +636,15 @@ int main (int argc, char* argv[])
 
     solver.solve(sol);
 
+    const int *matrix_has_nullspace = solver.get_matrix_has_nullspace();
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if(matrix_has_nullspace[dir])
+      {
+        ierr = PetscPrintf(p4est->mpicomm, "Warning !! all neumann not tested for solver on faces ... missing integrations on faces.");
+      }
+    }
+
     if(save_voro)
     {
       char name[1000];
@@ -695,6 +704,7 @@ int main (int argc, char* argv[])
 
       err_nodes_nm1[dir] = err_nodes_n[dir];
       err_nodes_n[dir] = 0;
+
       for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
       {
         if(phi_p[n]<0)

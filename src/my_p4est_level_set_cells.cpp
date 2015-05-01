@@ -270,7 +270,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   ierr = VecRestoreArray(phi_z, &phi_z_p); CHKERRXX(ierr);
 #endif
 
-  my_p4est_interpolation_nodes_t interp_phi  (ngbd_n); interp_phi  .set_input(phi, linear);
+  my_p4est_interpolation_nodes_t interp_phi  (ngbd_n); interp_phi  .set_input(phi  , linear);
   my_p4est_interpolation_nodes_t interp_phi_x(ngbd_n); interp_phi_x.set_input(phi_x, linear);
   my_p4est_interpolation_nodes_t interp_phi_y(ngbd_n); interp_phi_y.set_input(phi_y, linear);
 #ifdef P4_TO_P8
@@ -413,6 +413,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
     }
   }
 
+  interp0.interpolate(q0.data());
   interp1.interpolate(q1.data());
   interp2.interpolate(q2.data());
 

@@ -248,7 +248,9 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
 
   // set the null-space if necessary
   if (matrix_has_nullspace)
+  {
     ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
+  }
 
   // Solve the system
   ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);

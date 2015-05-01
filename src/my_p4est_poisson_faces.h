@@ -108,8 +108,7 @@ public:
 
   void set_compute_partition_on_the_fly(bool val);
 
-//  inline bool is_nullspace_u() { return matrix_has_nullspace_u; }
-//  inline bool is_nullspace_v() { return matrix_has_nullspace_v; }
+  inline const int* get_matrix_has_nullspace() { return matrix_has_nullspace; }
 
   void solve(Vec *solution, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
 

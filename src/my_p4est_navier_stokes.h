@@ -28,13 +28,13 @@ private:
   class splitting_criteria_vorticity_t : public splitting_criteria_tag_t
   {
   private:
-    my_p4est_navier_stokes_t *_prnt;
-    void tag_quadrant(p4est_quadrant_t *quad, const double *f, const double *v);
+    void tag_quadrant(p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx,
+                      my_p4est_interpolation_nodes_t &phi, my_p4est_interpolation_nodes_t &vor);
   public:
     double max_L2_norm_u;
     double threshold;
-    splitting_criteria_vorticity_t(my_p4est_navier_stokes_t *prnt, int min_lvl, int max_lvl, double lip, double threshold, double max_L2_norm_u);
-    bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t *nodes, Vec phi, Vec vorticity);
+    splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double threshold, double max_L2_norm_u);
+    bool refine_and_coarsen(p4est_t* p4est, my_p4est_node_neighbors_t *ngbd_n, Vec phi, Vec vorticity);
   };
 
 #ifdef P4_TO_P8
@@ -154,8 +154,6 @@ private:
   Vec vorticity;
 #endif
 
-  Vec norm_grad_v;
-
   Vec face_is_well_defined[P4EST_DIM];
 
 #ifdef P4_TO_P8
@@ -176,9 +174,9 @@ private:
   interface_bc_value_vstar_t *interface_bc_value_vstar[P4EST_DIM];
 
 #ifdef P4_TO_P8
-  CF_3 *external_forces;
+  CF_3 *external_forces[P4EST_DIM];
 #else
-  CF_2 *external_forces;
+  CF_2 *external_forces[P4EST_DIM];
 #endif
 
   my_p4est_interpolation_nodes_t *interp_phi;
@@ -202,9 +200,9 @@ public:
   void set_phi(Vec phi);
 
 #ifdef P4_TO_P8
-  void set_external_forces(CF_3 *external_forces);
+  void set_external_forces(CF_3 **external_forces);
 #else
-  void set_external_forces(CF_2 *external_forces);
+  void set_external_forces(CF_2 **external_forces);
 #endif
 
 #ifdef P4_TO_P8
@@ -223,17 +221,33 @@ public:
 
   void set_vstar(Vec *vstar);
 
-  void get_vnp1(Vec *vnp1);
-
-  void get_hodge(Vec &hodge);
-
   void set_hodge(Vec hodge);
 
   inline double get_dt() { return dt_n; }
 
+  inline const my_p4est_node_neighbors_t* get_ngbd_n() { return ngbd_n; }
+
+  inline const p4est_t *get_p4est() { return p4est_n; }
+
+  inline const p4est_ghost_t *get_ghost() { return ghost_n; }
+
+  inline const p4est_nodes_t *get_nodes() { return nodes_n; }
+
+  inline const my_p4est_faces_t* get_faces() { return faces_n; }
+
+  inline const Vec* get_velocity() { return vn_nodes; }
+
+  inline Vec get_hodge() { return hodge; }
+
+  inline double get_max_L2_norm_u() { return max_L2_norm_u; }
+
   void solve_viscosity();
 
   void solve_projection();
+
+  void compute_velocity_at_nodes();
+
+  void set_dt(double dt_n);
 
   void compute_dt();
 
