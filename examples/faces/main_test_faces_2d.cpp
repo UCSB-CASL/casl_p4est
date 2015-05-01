@@ -36,6 +36,7 @@
 #include <src/my_p8est_faces.h>
 #include <src/my_p8est_poisson_faces.h>
 #include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_interpolation_faces.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -52,6 +53,7 @@
 #include <src/my_p4est_faces.h>
 #include <src/my_p4est_poisson_faces.h>
 #include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_interpolation_faces.h>
 #endif
 
 #include <src/point3.h>
@@ -75,7 +77,7 @@ int nz = 2;
 #endif
 
 double mu = 1.5;
-double add_diagonal = 2.3;
+double add_diagonal = 0;
 
 /*
  * 0 - circle
@@ -689,9 +691,25 @@ int main (int argc, char* argv[])
     /* interpolate the solution on the nodes */
     Vec sol_nodes[P4EST_DIM];
     Vec err_nodes[P4EST_DIM];
+
+    my_p4est_interpolation_faces_t interp_f(&ngbd_n, &faces);
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est, nodes, xyz);
+      interp_f.add_point(n, xyz);
+    }
+
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
       ierr = VecDuplicate(phi, &sol_nodes[dir]); CHKERRXX(ierr);
+      interp_f.set_input(sol[dir], face_is_well_defined[dir], dir);
+      interp_f.interpolate(sol_nodes[dir]);
+    }
+    interp_f.clear();
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
       double *sol_nodes_p;
       ierr = VecGetArray(sol_nodes[dir], &sol_nodes_p); CHKERRXX(ierr);
 
@@ -709,11 +727,6 @@ int main (int argc, char* argv[])
       {
         if(phi_p[n]<0)
         {
-          sol_nodes_p[n] = interpolate_f_at_node_n(p4est, ghost, nodes, &faces,
-                                                   &ngbd_c, &ngbd_n, sol[dir], dir, n,
-                                                   face_is_well_defined[dir], bc);
-
-
           double x = node_x_fr_n(n, p4est, nodes);
           double y = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8

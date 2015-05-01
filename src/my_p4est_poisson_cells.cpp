@@ -358,7 +358,11 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 #endif
 
       /* First add the diagonal term */
-      ierr = MatSetValue(A, quad_gloidx, quad_gloidx, volume_cut_cell*add_p[quad_idx], ADD_VALUES); CHKERRXX(ierr);
+      if(add_p[quad_idx]!=0)
+      {
+        ierr = MatSetValue(A, quad_gloidx, quad_gloidx, volume_cut_cell*add_p[quad_idx], ADD_VALUES); CHKERRXX(ierr);
+        matrix_has_nullspace = false;
+      }
 
       double s;
 #ifdef P4_TO_P8

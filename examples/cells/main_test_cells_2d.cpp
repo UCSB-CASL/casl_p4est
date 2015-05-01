@@ -74,8 +74,8 @@ int ny = 2;
 int nz = 2;
 #endif
 
-double mu = 1;
-double add_diagonal = 0;
+double mu = 1.3;
+double add_diagonal = 2.3;
 
 /*
  * 0 - circle
@@ -653,8 +653,8 @@ int main (int argc, char* argv[])
 
     my_p4est_poisson_cells_t solver(&ngbd_c, &ngbd_n);
     solver.set_phi(phi);
-    solver.set_mu(mu);
     solver.set_diagonal(add_diagonal);
+    solver.set_mu(mu);
     solver.set_bc(bc);
     solver.set_rhs(rhs);
 
