@@ -237,6 +237,10 @@ public:
 
   inline const Vec* get_velocity() { return vn_nodes; }
 
+  inline Vec* get_vstar() { return vstar; }
+
+  inline Vec* get_vnp1() { return vnp1; }
+
   inline Vec get_hodge() { return hodge; }
 
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }

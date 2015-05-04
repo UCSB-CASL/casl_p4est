@@ -650,36 +650,36 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
     {
 #ifdef P4_TO_P8
     case dir::f_m00:
-      if(bc_hodge.wallType(x-dx,y,z)==NEUMANN) return -bc_hodge.wallValue(x-dx,y,z);
-      else                                     return (hodge_q - bc_hodge.wallValue(x-dx,y,z)) * 2 / dx;
+      if(bc_hodge.wallType(x-dx/2,y,z)==NEUMANN) return -bc_hodge.wallValue(x-dx/2,y,z);
+      else                                     return (hodge_q - bc_hodge.wallValue(x-dx/2,y,z)) * 2 / dx;
     case dir::f_p00:
-      if(bc_hodge.wallType(x+dx,y,z)==NEUMANN) return  bc_hodge.wallValue(x+dx,y,z);
-      else                                     return (bc_hodge.wallValue(x+dx,y,z) - hodge_q) * 2 / dx;
+      if(bc_hodge.wallType(x+dx/2,y,z)==NEUMANN) return  bc_hodge.wallValue(x+dx/2,y,z);
+      else                                     return (bc_hodge.wallValue(x+dx/2,y,z) - hodge_q) * 2 / dx;
     case dir::f_0m0:
-      if(bc_hodge.wallType(x,y-dy,z)==NEUMANN) return -bc_hodge.wallValue(x,y-dy,z);
-      else                                     return (hodge_q - bc_hodge.wallValue(x,y-dy,z)) * 2 / dy;
+      if(bc_hodge.wallType(x,y-dy/2,z)==NEUMANN) return -bc_hodge.wallValue(x,y-dy/2,z);
+      else                                     return (hodge_q - bc_hodge.wallValue(x,y-dy/2,z)) * 2 / dy;
     case dir::f_0p0:
-      if(bc_hodge.wallType(x,y+dy,z)==NEUMANN) return  bc_hodge.wallValue(x,y+dy,z);
-      else                                     return (bc_hodge.wallValue(x,y+dy,z) - hodge_q) * 2 / dy;
+      if(bc_hodge.wallType(x,y+dy/2,z)==NEUMANN) return  bc_hodge.wallValue(x,y+dy/2,z);
+      else                                     return (bc_hodge.wallValue(x,y+dy/2,z) - hodge_q) * 2 / dy;
     case dir::f_00m:
-      if(bc_hodge.wallType(x,y,z-dz)==NEUMANN) return -bc_hodge.wallValue(x,y,z-dz);
-      else                                     return (hodge_q - bc_hodge.wallValue(x,y,z-dz)) * 2 / dz;
+      if(bc_hodge.wallType(x,y,z-dz/2)==NEUMANN) return -bc_hodge.wallValue(x,y,z-dz/2);
+      else                                     return (hodge_q - bc_hodge.wallValue(x,y,z-dz/2)) * 2 / dz;
     case dir::f_00p:
-      if(bc_hodge.wallType(x,y,z+dz)==NEUMANN) return  bc_hodge.wallValue(x,y,z+dz);
-      else                                     return (bc_hodge.wallValue(x,y,z+dz) - hodge_q) * 2 / dz;
+      if(bc_hodge.wallType(x,y,z+dz/2)==NEUMANN) return  bc_hodge.wallValue(x,y,z+dz/2);
+      else                                     return (bc_hodge.wallValue(x,y,z+dz/2) - hodge_q) * 2 / dz;
 #else
     case dir::f_m00:
-      if(bc_hodge.wallType(x-dx,y)==NEUMANN) return -bc_hodge.wallValue(x-dx,y);
-      else                                   return (hodge_q - bc_hodge.wallValue(x-dx,y)) * 2 / dx;
+      if(bc_hodge.wallType(x-dx/2,y)==NEUMANN) return -bc_hodge.wallValue(x-dx/2,y);
+      else                                   return (hodge_q - bc_hodge.wallValue(x-dx/2,y)) * 2 / dx;
     case dir::f_p00:
-      if(bc_hodge.wallType(x+dx,y)==NEUMANN) return  bc_hodge.wallValue(x+dx,y);
-      else                                   return (bc_hodge.wallValue(x+dx,y) - hodge_q) * 2 / dx;
+      if(bc_hodge.wallType(x+dx/2,y)==NEUMANN) return  bc_hodge.wallValue(x+dx/2,y);
+      else                                   return (bc_hodge.wallValue(x+dx/2,y) - hodge_q) * 2 / dx;
     case dir::f_0m0:
-      if(bc_hodge.wallType(x,y-dy)==NEUMANN) return -bc_hodge.wallValue(x,y-dy);
-      else                                   return (hodge_q - bc_hodge.wallValue(x,y-dy)) * 2 / dy;
+      if(bc_hodge.wallType(x,y-dy/2)==NEUMANN) return -bc_hodge.wallValue(x,y-dy/2);
+      else                                   return (hodge_q - bc_hodge.wallValue(x,y-dy/2)) * 2 / dy;
     case dir::f_0p0:
-      if(bc_hodge.wallType(x,y+dy)==NEUMANN) return  bc_hodge.wallValue(x,y+dy);
-      else                                   return (bc_hodge.wallValue(x,y+dy) - hodge_q) * 2 / dy;
+      if(bc_hodge.wallType(x,y+dy/2)==NEUMANN) return  bc_hodge.wallValue(x,y+dy/2);
+      else                                   return (bc_hodge.wallValue(x,y+dy/2) - hodge_q) * 2 / dy;
 #endif
     default:
       throw std::invalid_argument("[ERROR]: my_p4est_navier_stokes_t->dxyz_hodge: unknown direction.");
@@ -728,7 +728,7 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
         if(phi_q>0)
         {
           double phi_tmp = phi_q; phi_q = phi_0; phi_0 = phi_tmp;
-          dir += 1;
+          dir = dir%2==0 ? dir+1 : dir-1;
           quad_idx = ngbd[0].p.piggy3.local_num;
           switch(dir)
           {
@@ -1001,7 +1001,6 @@ void my_p4est_navier_stokes_t::solve_projection()
       }
     }
   }
-
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
