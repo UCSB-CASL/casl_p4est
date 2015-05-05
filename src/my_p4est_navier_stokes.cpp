@@ -812,6 +812,8 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
         dist += dm * .5*(d0+dm);
         grad_hodge += (hodge_p[ngbd[m].p.piggy3.local_num] - hodge_p[quad_tmp.p.piggy3.local_num]) * dm;
       }
+      dist *= (xyz_max[dir/2] - xyz_min[dir/2]);
+
       ierr = VecRestoreArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
       return dir%2==0 ? grad_hodge/dist : -grad_hodge/dist;
     }
@@ -863,13 +865,12 @@ void my_p4est_navier_stokes_t::solve_viscosity()
       interp_n.add_point(f_idx, xyz_tmp);
     }
 
-    /* NOTE: bousouf in the original code, we used quadratic interpolations */
     std::vector<double> vnm1_faces(faces_n->num_local[dir]);
-    interp_nm1.set_input(vnm1_nodes[dir], quadratic_non_oscillatory);
+    interp_nm1.set_input(vnm1_nodes[dir], quadratic);
     interp_nm1.interpolate(vnm1_faces.data());
 
     std::vector<double> vn_faces(faces_n->num_local[dir]);
-    interp_n.set_input(vn_nodes[dir], quadratic_non_oscillatory);
+    interp_n.set_input(vn_nodes[dir], quadratic);
     interp_n.interpolate(vn_faces.data());
 
     /* assemble the right-hand-side */
@@ -1310,7 +1311,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1()
     vnm1_nodes[dir] = vn_nodes[dir];
 
     ierr = VecDuplicate(phi, &vn_nodes[dir]); CHKERRXX(ierr);
-    interp_nodes.set_input(vnp1_nodes[dir], quadratic_non_oscillatory);
+    interp_nodes.set_input(vnp1_nodes[dir], quadratic);
     interp_nodes.interpolate(vn_nodes[dir]); CHKERRXX(ierr);
 
     ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
@@ -1322,7 +1323,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1()
   {
     Vec vort;
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vort); CHKERRXX(ierr);
-    interp_nodes.set_input(vorticity[dir], quadratic_non_oscillatory);
+    interp_nodes.set_input(vorticity[dir], quadratic);
     interp_nodes.interpolate(vort);
 
     ierr = VecDestroy(vorticity[dir]); CHKERRXX(ierr);

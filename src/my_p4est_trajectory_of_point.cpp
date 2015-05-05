@@ -68,7 +68,7 @@ void trajectory_from_np1_to_n( p4est_t *p4est, p4est_nodes_t *nodes,
   {
     ierr = VecRestoreArrayRead(v[dir], &v_p[dir]); CHKERRXX(ierr);
     vstar[dir].resize(nodes->num_owned_indeps);
-    interp.set_input(v[dir], quadratic_non_oscillatory);
+    interp.set_input(v[dir], quadratic);
     interp.interpolate(vstar[dir].data());
   }
 
@@ -166,11 +166,11 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
     ierr = VecRestoreArrayRead(vn[dir], &v_p[dir]); CHKERRXX(ierr);
 
     vnm1_star[dir].resize(nodes_n->num_owned_indeps);
-    interp_nm1.set_input(vnm1[dir], quadratic_non_oscillatory);
+    interp_nm1.set_input(vnm1[dir], quadratic);
     interp_nm1.interpolate(vnm1_star[dir].data());
 
     vn_star[dir].resize(nodes_n->num_owned_indeps);
-    interp_n.set_input(vn[dir], quadratic_non_oscillatory);
+    interp_n.set_input(vn[dir], quadratic);
     interp_n.interpolate(vn_star[dir].data());
   }
   interp_nm1.clear();
@@ -230,10 +230,10 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
   {
     ierr = VecRestoreArrayRead(vn[dir], &v_p[dir]); CHKERRXX(ierr);
 
-    interp_nm1.set_input(vnm1[dir], quadratic_non_oscillatory);
+    interp_nm1.set_input(vnm1[dir], quadratic);
     interp_nm1.interpolate(vnm1_star[dir].data());
 
-    interp_n.set_input(vn[dir], quadratic_non_oscillatory);
+    interp_n.set_input(vn[dir], quadratic);
     interp_n.interpolate(vn_star[dir].data());
   }
   interp_nm1.clear();
@@ -300,7 +300,7 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
   for(int dd=0; dd<P4EST_DIM; ++dd)
   {
     vnp1[dd].resize(faces_n->num_local[dir]);
-    interp_np1.set_input(vn[dd], quadratic_non_oscillatory);
+    interp_np1.set_input(vn[dd], quadratic);
     interp_np1.interpolate(vnp1[dd].data());
   }
 
@@ -338,11 +338,11 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
   for(int dd=0; dd<P4EST_DIM; ++dd)
   {
     vnm1_star[dd].resize(faces_n->num_local[dir]);
-    interp_nm1.set_input(vnm1[dd], quadratic_non_oscillatory);
+    interp_nm1.set_input(vnm1[dd], quadratic);
     interp_nm1.interpolate(vnm1_star[dd].data());
 
     vn_star[dd].resize(faces_n->num_local[dir]);
-    interp_n.set_input(vn[dd], quadratic_non_oscillatory);
+    interp_n.set_input(vn[dd], quadratic);
     interp_n.interpolate(vn_star[dd].data());
   }
   interp_nm1.clear();
@@ -396,10 +396,10 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
   /* compute the velocities at the intermediate point */
   for(int dd=0; dd<P4EST_DIM; ++dd)
   {
-    interp_nm1.set_input(vnm1[dd], quadratic_non_oscillatory);
+    interp_nm1.set_input(vnm1[dd], quadratic);
     interp_nm1.interpolate(vnm1_star[dd].data());
 
-    interp_n.set_input(vn[dd], quadratic_non_oscillatory);
+    interp_n.set_input(vn[dd], quadratic);
     interp_n.interpolate(vn_star[dd].data());
   }
   interp_nm1.clear();

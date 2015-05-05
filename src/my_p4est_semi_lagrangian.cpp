@@ -242,9 +242,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   {
     v_tmp[dir].resize(nodes_np1->indep_nodes.elem_count);
 #ifdef P4_TO_P8
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], quadratic_non_oscillatory);
+    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], quadratic);
 #else
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], quadratic_non_oscillatory);
+    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], quadratic);
 #endif
     interp.interpolate(v_tmp[dir].data());
   }
@@ -269,9 +269,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
 #ifdef P4_TO_P8
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], quadratic_non_oscillatory);
+    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], quadratic);
 #else
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], quadratic_non_oscillatory);
+    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], quadratic);
 #endif
     interp.interpolate(v_tmp[dir].data());
   }
@@ -330,9 +330,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     v_tmp_n[dir].resize(nodes_np1->indep_nodes.elem_count);
 
 #ifdef P4_TO_P8
-    interp.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], linear);
+    interp.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], quadratic);
 #else
-    interp.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], linear);
+    interp.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], quadratic);
 #endif
     interp.interpolate(v_tmp_n[dir].data());
   }
@@ -361,17 +361,17 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     v_tmp_nm1[dir].resize(nodes_np1->indep_nodes.elem_count);
 
 #ifdef P4_TO_P8
-    interp.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], vxx_nm1[dir][2], linear);
+    interp.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], vxx_nm1[dir][2], quadratic);
 #else
-    interp.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], linear);
+    interp.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], quadratic);
 #endif
     interp.interpolate(v_tmp_nm1[dir].data());
 
 
 #ifdef P4_TO_P8
-    interp.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], linear);
+    interp.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], quadratic);
 #else
-    interp.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], linear);
+    interp.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], quadratic);
 #endif
     interp.interpolate(v_tmp_n[dir].data());
   }
