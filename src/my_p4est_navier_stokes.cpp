@@ -581,7 +581,7 @@ void my_p4est_navier_stokes_t::compute_vorticity()
 {
   PetscErrorCode ierr;
 
-//  quad_neighbor_nodes_of_node_t qnnn;
+  quad_neighbor_nodes_of_node_t qnnn;
 
   const double *vnp1_p[P4EST_DIM];
   for(int dir=0; dir<P4EST_DIM; dir++) { ierr = VecGetArrayRead(vnp1_nodes[dir], &vnp1_p[dir]); CHKERRXX(ierr); }

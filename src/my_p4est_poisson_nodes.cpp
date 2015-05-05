@@ -487,8 +487,6 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
-  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  double *v2q = p4est->connectivity->vertices;
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *robin_coef_p = NULL;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -507,22 +505,14 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
   {
     // tree information
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    p4est_topidx_t tree_it = ni->p.piggy3.which_tree;
-
-    double tree_xmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 0];
-    double tree_ymin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 2];
-#endif
 
     //---------------------------------------------------------------------
     // Information at neighboring nodes
     //---------------------------------------------------------------------
-
-    double x_C  = node_x_fr_n(ni) + tree_xmin;
-    double y_C  = node_y_fr_n(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(n, p4est, nodes);
+    double y_C  = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_n(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -1255,8 +1245,6 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
-  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  double *v2q = p4est->connectivity->vertices;
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *rhs_p, *robin_coef_p = NULL;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -1274,22 +1262,14 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
   {
     // tree information
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    p4est_topidx_t tree_it = ni->p.piggy3.which_tree;
-
-    double tree_xmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 0];
-    double tree_ymin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 2];
-#endif
 
     //---------------------------------------------------------------------
     // Information at neighboring nodes
     //---------------------------------------------------------------------
-
-    double x_C  = node_x_fr_n(ni) + tree_xmin;
-    double y_C  = node_y_fr_n(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(n, p4est, nodes);
+    double y_C  = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_n(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -1820,8 +1800,6 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
-  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  double *v2q = p4est->connectivity->vertices;
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *robin_coef_p = NULL;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -1840,22 +1818,14 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
   {    
     // tree information
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    p4est_topidx_t tree_it = ni->p.piggy3.which_tree;
-
-    double tree_xmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 0];
-    double tree_ymin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 2];
-#endif
 
     //---------------------------------------------------------------------
     // Information at neighboring nodes
     //---------------------------------------------------------------------
-
-    double x_C  = node_x_fr_n(ni) + tree_xmin;
-    double y_C  = node_y_fr_n(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(n, p4est, nodes);
+    double y_C  = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_n(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -2526,8 +2496,6 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
-  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  double *v2q = p4est->connectivity->vertices;
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *rhs_p, *robin_coef_p = NULL;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -2545,22 +2513,14 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
   {
     // tree information
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    p4est_topidx_t tree_it = ni->p.piggy3.which_tree;
-
-    double tree_xmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 0];
-    double tree_ymin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 2];
-#endif
 
     //---------------------------------------------------------------------
     // Information at neighboring nodes
     //---------------------------------------------------------------------
-
-    double x_C  = node_x_fr_n(ni) + tree_xmin;
-    double y_C  = node_y_fr_n(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(n, p4est, nodes);
+    double y_C  = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_n(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -3108,8 +3068,6 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
-  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  double *v2q = p4est->connectivity->vertices;
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *robin_coef_p = NULL;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -3136,22 +3094,14 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
   {
     // tree information
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    p4est_topidx_t tree_it = ni->p.piggy3.which_tree;
-
-    double tree_xmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 0];
-    double tree_ymin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 2];
-#endif
 
     //---------------------------------------------------------------------
     // Information at neighboring nodes
     //---------------------------------------------------------------------
-
-    double x_C  = node_x_fr_n(ni) + tree_xmin;
-    double y_C  = node_y_fr_n(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(n, p4est, nodes);
+    double y_C  = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_n(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -3959,8 +3909,6 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double eps = 1E-6*d_min*d_min;
-  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  double *v2q = p4est->connectivity->vertices;
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *rhs_p, *robin_coef_p = NULL;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -3986,22 +3934,14 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
   {
     // tree information
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    p4est_topidx_t tree_it = ni->p.piggy3.which_tree;
-
-    double tree_xmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 0];
-    double tree_ymin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = v2q[3*t2v[P4EST_CHILDREN*tree_it] + 2];
-#endif
 
     //---------------------------------------------------------------------
     // Information at neighboring nodes
     //---------------------------------------------------------------------
-
-    double x_C  = node_x_fr_n(ni) + tree_xmin;
-    double y_C  = node_y_fr_n(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(n, p4est, nodes);
+    double y_C  = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_n(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -4600,9 +4540,9 @@ void my_p4est_poisson_nodes_t::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
 
   // set the interpolating function parameters
 #ifdef P4_TO_P8
-  phi_interp.set_input_parameters(phi_, phi_xx_, phi_yy_, phi_zz_, quadratic_non_oscillatory);
+  phi_interp.set_input(phi_, phi_xx_, phi_yy_, phi_zz_, linear);
 #else
-  phi_interp.set_input(phi_, phi_xx_, phi_yy_, quadratic_non_oscillatory);
+  phi_interp.set_input(phi_, phi_xx_, phi_yy_, linear);
 #endif
 }
 
