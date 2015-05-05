@@ -63,7 +63,7 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
 #else
   double xyz_clip [] = { x, y };
 #endif
-  
+
   // clip to bounding box
   for (short i=0; i<P4EST_DIM; i++){
     if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];

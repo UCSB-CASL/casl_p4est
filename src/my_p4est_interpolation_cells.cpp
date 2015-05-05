@@ -116,6 +116,24 @@ double my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad,
   for(unsigned int m=0; m<ngbd.size(); ++m)
     scaling = MIN(scaling, (double)P4EST_QUADRANT_LEN(ngbd[m].level)/(double)P4EST_ROOT_LEN);
 
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+
+  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+#ifdef P4_TO_P8
+  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+#endif
+
+#ifdef P4_TO_P8
+  scaling *= MIN(tree_xmax-tree_xmin, tree_ymax-tree_ymin, tree_zmax-tree_zmin);
+#else
+  scaling *= MIN(tree_xmax-tree_xmin, tree_ymax-tree_ymin);
+#endif
+
   std::vector<p4est_locidx_t> interp_points;
   matrix_t A;
 #ifdef P4_TO_P8

@@ -52,18 +52,21 @@ my_p4est_poisson_cells_t::my_p4est_poisson_cells_t(const my_p4est_cell_neighbors
   splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
 
   // compute grid parameters
-  // NOTE: Assuming all trees are of the same size [0, 1]^d
-  dx_min = 1.0 / pow(2.,(double) data->max_lvl);
-  dy_min = dx_min;
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    xyz_min[dir] = p4est->connectivity->vertices[3*vm + dir];
+    xyz_max[dir] = p4est->connectivity->vertices[3*vp + dir];
+    dxyz_min[dir] = (xyz_max[dir]-xyz_min[dir]) / pow(2.,(double) data->max_lvl);
+  }
+
 #ifdef P4_TO_P8
-  dz_min = dx_min;
-#endif
-#ifdef P4_TO_P8
-  d_min = MIN(dx_min, dy_min, dz_min);
-  diag_min = sqrt(dx_min*dx_min + dy_min*dy_min + dz_min*dz_min);
+  d_min = MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+  diag_min = sqrt(SQR(dxyz_min[0]) + SQR(dxyz_min[1]) + SQR(dxyz_min[2]));
 #else
-  d_min = MIN(dx_min, dy_min);
-  diag_min = sqrt(dx_min*dx_min + dy_min*dy_min);
+  d_min = MIN(dxyz_min[0], dxyz_min[1]);
+  diag_min = sqrt(SQR(dxyz_min[0]) + SQR(dxyz_min[1]));
 #endif
 }
 
@@ -314,12 +317,12 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 
       double phi_q = phi_cell(quad_idx, phi_p);
 
-      // NOTE: assuming quadrants are squares. This is only true if macro blocks are squares (which they are for now)
-      double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-      double dy = dx;
-#ifdef P4_TO_P8
-      double dz = dx;
-#endif
+      double dtmp = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double dx = (xyz_max[0]-xyz_min[0]) * dtmp;
+      double dy = (xyz_max[1]-xyz_min[1]) * dtmp;
+  #ifdef P4_TO_P8
+      double dz = (xyz_max[2]-xyz_min[2]) * dtmp;
+  #endif
 
       double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
       double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
@@ -392,7 +395,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               q2.val10 = p.val010; q2.val11 = p.val011;
               s = c2.area_In_Negative_Domain(q2);
 #else
-              s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dx, dy);
+              s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dy, dy);
 #endif
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dx, ADD_VALUES); CHKERRXX(ierr);
             }
@@ -413,7 +416,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               q2.val10 = p.val110; q2.val11 = p.val111;
               s = c2.area_In_Negative_Domain(q2);
 #else
-              s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dx, dy);
+              s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dy, dy);
 #endif
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dx, ADD_VALUES); CHKERRXX(ierr);
             }
@@ -434,9 +437,9 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               q2.val10 = p.val100; q2.val11 = p.val101;
               s = c2.area_In_Negative_Domain(q2);
 #else
-              s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dx, dy);
+              s = dx * fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dx, dx);
 #endif
-              ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dx, ADD_VALUES); CHKERRXX(ierr);
+              ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dy, ADD_VALUES); CHKERRXX(ierr);
             }
             break;
 
@@ -455,9 +458,9 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               q2.val10 = p.val110; q2.val11 = p.val111;
               s = c2.area_In_Negative_Domain(q2);
 #else
-              s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val01, p.val11, dx, dy);
+              s = dx * fraction_Interval_Covered_By_Irregular_Domain(p.val01, p.val11, dx, dx);
 #endif
-              ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dx, ADD_VALUES); CHKERRXX(ierr);
+              ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dy, ADD_VALUES); CHKERRXX(ierr);
             }
             break;
 
@@ -472,7 +475,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               q2.val10 = p.val100; q2.val11 = p.val110;
               s = c2.area_In_Negative_Domain(q2);
 
-              ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dx, ADD_VALUES); CHKERRXX(ierr);
+              ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dz, ADD_VALUES); CHKERRXX(ierr);
             }
             break;
 
@@ -486,7 +489,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               q2.val10 = p.val101; q2.val11 = p.val111;
               s = c2.area_In_Negative_Domain(q2);
 
-              ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dx, ADD_VALUES); CHKERRXX(ierr);
+              ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dz, ADD_VALUES); CHKERRXX(ierr);
             }
             break;
 #endif
@@ -505,7 +508,6 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           int8_t level_tmp = ngbd[0].level;
           p4est_locidx_t quad_tmp_idx = ngbd[0].p.piggy3.local_num;
           p4est_locidx_t tree_tmp_idx = ngbd[0].p.piggy3.which_tree;
-          double s_tmp = pow((double)P4EST_QUADRANT_LEN(ngbd[0].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
 
           double phi_tmp = phi_cell(quad_tmp_idx, phi_p);
 
@@ -544,7 +546,17 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           if(bc->interfaceType()==DIRICHLET && phi_tmp>0)
           {
             matrix_has_nullspace = false;
-            double theta =  fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_tmp, dx, dy);
+            double dtmp;
+            switch(dir)
+            {
+            case dir::f_m00: case dir::f_p00: dtmp = dx; break;
+            case dir::f_0m0: case dir::f_0p0: dtmp = dy; break;
+#ifdef P4_TO_P8
+            case dir::f_00m: case dir::f_00p: dtmp = dz; break;
+#endif
+            }
+
+            double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_tmp, dtmp, dtmp);
             if(theta<EPS) theta = EPS;
             if(theta>1  ) theta = 1;
             switch(dir)
@@ -612,10 +624,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               s = c2.area_In_Negative_Domain(q2); d = dz;
               break;
 #else
-            case dir::f_m00: s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dx, dy); d = dx; break;
-            case dir::f_p00: s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dx, dy); d = dx; break;
-            case dir::f_0m0: s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dx, dy); d = dy; break;
-            case dir::f_0p0: s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val01, p.val11, dx, dy); d = dy; break;
+            case dir::f_m00: s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dy, dy); d = dx; break;
+            case dir::f_p00: s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dy, dy); d = dx; break;
+            case dir::f_0m0: s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dx, dx); d = dy; break;
+            case dir::f_0p0: s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val01, p.val11, dx, dx); d = dy; break;
 #endif
             }
 
@@ -628,6 +640,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           /* no interface - regular discretization */
           else if(is_neg)
           {
+            double s_tmp = pow((double)P4EST_QUADRANT_LEN(ngbd[0].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
+
             ngbd.resize(0);
             ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_tmp_idx, tree_tmp_idx, dir%2==0 ? dir+1 : dir-1);
 
@@ -639,7 +653,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             for(unsigned int i=0; i<ngbd.size(); ++i)
               d += s_ng[i]/s_tmp * 0.5 * (double)(P4EST_QUADRANT_LEN(level_tmp)+P4EST_QUADRANT_LEN(ngbd[i].level))/(double)P4EST_ROOT_LEN;
 
-            s=0;
+            d *= (xyz_max[dir/2]-xyz_min[dir/2]);
+
             switch(dir)
             {
 #ifdef P4_TO_P8
@@ -661,11 +676,18 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
         /* there is more than one neighbor, regular bulk case. This assumes uniform on interface ! */
         else if(ngbd.size()>1)
         {
+          double s_tmp = pow((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
+
           std::vector<double> s_ng(ngbd.size());
           for(unsigned int i=0; i<ngbd.size(); ++i)
             s_ng[i] = pow((double)P4EST_QUADRANT_LEN(ngbd[i].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
 
-          s=0;
+          double d = 0;
+          for(unsigned int i=0; i<ngbd.size(); ++i)
+            d += s_ng[i]/s_tmp * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(ngbd[i].level))/(double)P4EST_ROOT_LEN;
+
+          d *= (xyz_max[dir/2]-xyz_min[dir/2]);
+
           switch(dir)
           {
 #ifdef P4_TO_P8
@@ -678,12 +700,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 #endif
           }
 
-          double d = 0;
           for(unsigned int i=0; i<ngbd.size(); ++i)
-            d += s_ng[i]/s * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(ngbd[i].level))/(double)P4EST_ROOT_LEN;
-
-          for(unsigned int i=0; i<ngbd.size(); ++i)
-            ierr = MatSetValue(A, quad_gloidx, compute_global_index(ngbd[i].p.piggy3.local_num), -mu * s_ng[i]/d, ADD_VALUES); CHKERRXX(ierr);
+            ierr = MatSetValue(A, quad_gloidx, compute_global_index(ngbd[i].p.piggy3.local_num), -mu*s * s_ng[i]/s_tmp/d, ADD_VALUES); CHKERRXX(ierr);
 
           ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
         }
@@ -757,12 +775,12 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 
       double phi_q = phi_cell(quad_idx, phi_p);
 
-      /* NOTE: assuming quadrants are squares. This is only true if macro blocks are squares (which they are for now) */
-      double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-      double dy = dx;
-#ifdef P4_TO_P8
-      double dz = dx;
-#endif
+      double dtmp = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double dx = (xyz_max[0]-xyz_min[0]) * dtmp;
+      double dy = (xyz_max[1]-xyz_min[1]) * dtmp;
+  #ifdef P4_TO_P8
+      double dz = (xyz_max[2]-xyz_min[2]) * dtmp;
+  #endif
 
       double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
       double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
@@ -845,7 +863,17 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 
             if(phi_tmp*phi_q < 0)
             {
-              double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_tmp, dx, dy);
+              double dtmp;
+              switch(dir)
+              {
+              case dir::f_m00: case dir::f_p00: dtmp = dx; break;
+              case dir::f_0m0: case dir::f_0p0: dtmp = dy; break;
+#ifdef P4_TO_P8
+              case dir::f_00m: case dir::f_00p: dtmp = dz; break;
+#endif
+              }
+
+              double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_tmp, dtmp, dtmp);
               if (theta < EPS) theta = EPS;
               if (theta > 1  ) theta = 1;
 
@@ -951,25 +979,25 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
           case dir::f_m00:
             bc_wtype = bc->wallType (x-.5*dx, y);
             val_wall = bc->wallValue(x-.5*dx, y);
-            s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dx, dy);
+            s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dx, dx);
             d = dx;
             break;
           case dir::f_p00:
             bc_wtype = bc->wallType (x+.5*dx, y);
             val_wall = bc->wallValue(x+.5*dx, y);
-            s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dx, dy);
+            s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dx, dx);
             d = dx;
             break;
           case dir::f_0m0:
             bc_wtype = bc->wallType (x, y-.5*dy);
             val_wall = bc->wallValue(x, y-.5*dy);
-            s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dx, dy);
+            s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dy, dy);
             d = dy;
             break;
           case dir::f_0p0:
             bc_wtype = bc->wallType (x, y+.5*dy);
             val_wall = bc->wallValue(x, y+.5*dy);
-            s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val01, p.val11, dx, dy);
+            s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val01, p.val11, dy, dy);
             d = dy;
             break;
 #endif

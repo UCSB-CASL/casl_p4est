@@ -35,16 +35,22 @@
 
 p4est_connectivity_t *
 #ifdef P4_TO_P8
-my_p4est_brick_new (int nxtrees, int nytrees, int nztrees, my_p4est_brick_t * myb)
+my_p4est_brick_new (int nxtrees, int nytrees, int nztrees,
+                    double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
+                    my_p4est_brick_t * myb)
 #else
-my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t * myb)
+my_p4est_brick_new (int nxtrees, int nytrees,
+                    double xmin, double xmax, double ymin, double ymax,
+                    my_p4est_brick_t * myb)
 #endif
 {
   int                 i, j;
+  int                 ii, jj;
   int                 nxyztrees;
   double              dii, djj;
 #ifdef P4_TO_P8
   int k;
+  int kk;
   double dkk;
 #endif
   const double       *vv;
@@ -104,6 +110,40 @@ my_p4est_brick_new (int nxtrees, int nytrees, my_p4est_brick_t * myb)
     myb->nxyz_to_treeid[nxtrees*j + i] = tt;
 #endif
   }
+
+  /* resize the domain from [0,nx]x[0,ny]x[0,nz] to [xmin,xmax]x[ymin,ymax]x[zmin,zmax] */
+  double dx = (xmax-xmin)/(double)nxtrees;
+  double dy = (ymax-ymin)/(double)nytrees;
+#ifdef P4_TO_P8
+  double dz = (zmax-zmin)/(double)nztrees;
+#endif
+  for(i=0; i<nxtrees; ++i)
+    for(j=0; j<nytrees; ++j)
+#ifdef P4_TO_P8
+      for(k=0; k<nztrees; ++k)
+      {
+        int tree_id = myb->nxyz_to_treeid[nxtrees*nytrees*k + nxtrees*j + i];
+#else
+    {
+      int tree_id = myb->nxyz_to_treeid[nxtrees*j + i];
+#endif
+      for(ii=0; ii<2; ++ii)
+        for(jj=0; jj<2; ++jj)
+#ifdef P4_TO_P8
+          for(kk=0; kk<2; ++kk)
+          {
+            vindex = conn->tree_to_vertex[P4EST_CHILDREN * tree_id + kk*4 + jj*2 + ii];
+#else
+        {
+          vindex = conn->tree_to_vertex[P4EST_CHILDREN * tree_id + jj*2 + ii];
+#endif
+          conn->vertices[3 * vindex + 0] = xmin + (i+ii)*dx;
+          conn->vertices[3 * vindex + 1] = ymin + (j+jj)*dy;
+#ifdef P4_TO_P8
+          conn->vertices[3 * vindex + 2] = zmin + (k+kk)*dz;
+#endif
+          }
+    }
 
   return conn;
 }

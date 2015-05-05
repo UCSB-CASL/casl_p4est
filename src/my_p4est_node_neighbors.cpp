@@ -95,19 +95,25 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
   p4est_node_unclamp((p4est_quadrant_t*)&node_unclamped);
 
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-  p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  p4est_topidx_t v_m = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  p4est_topidx_t v_p = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + P4EST_CHILDREN-1];
 
-  double tree_xmin = connectivity->vertices[3*v_mmm + 0];
-  double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+  double tree_xmin = connectivity->vertices[3*v_m + 0];
+  double tree_ymin = connectivity->vertices[3*v_m + 1];
 #ifdef P4_TO_P8
-  double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+  double tree_zmin = connectivity->vertices[3*v_m + 2];
 #endif
 
-
-  double x = node_unclamped.x / (double) P4EST_ROOT_LEN + tree_xmin;
-  double y = node_unclamped.y / (double) P4EST_ROOT_LEN + tree_ymin;
+  double tree_xmax = connectivity->vertices[3*v_p + 0];
+  double tree_ymax = connectivity->vertices[3*v_p + 1];
 #ifdef P4_TO_P8
-  double z = node_unclamped.z / (double) P4EST_ROOT_LEN + tree_zmin;
+  double tree_zmax = connectivity->vertices[3*v_p + 2];
+#endif
+
+  double x = (tree_xmax-tree_xmin)*(node_unclamped.x / (double) P4EST_ROOT_LEN) + tree_xmin;
+  double y = (tree_ymax-tree_ymin)*(node_unclamped.y / (double) P4EST_ROOT_LEN) + tree_ymin;
+#ifdef P4_TO_P8
+  double z = (tree_zmax-tree_zmin)*(node_unclamped.z / (double) P4EST_ROOT_LEN) + tree_zmin;
 #endif
 
   p4est_locidx_t quad_mmm_idx; p4est_topidx_t tree_mmm_idx;
@@ -289,7 +295,18 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     if (quad_m00->level < quad_mpp->level) { quad_m00 = quad_mpp; quad_m00_idx = quad_mpp_idx; tree_m00_idx = tree_mpp_idx; }
 #endif
 
-    qnnn.d_m00 = P4EST_QUADRANT_LEN(quad_m00->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_m00_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_m00_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+#endif
+
+    qnnn.d_m00 = (tree_xmax-tree_xmin)*(P4EST_QUADRANT_LEN(quad_m00->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_m00_mm = nodes->local_nodes[P4EST_CHILDREN*quad_m00_idx + dir::v_mmm];
     qnnn.node_m00_pm = nodes->local_nodes[P4EST_CHILDREN*quad_m00_idx + dir::v_mpm];
 #ifdef P4_TO_P8
@@ -297,22 +314,16 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     qnnn.node_m00_pp = nodes->local_nodes[P4EST_CHILDREN*quad_m00_idx + dir::v_mpp];
 #endif
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_m00_idx + 0];
-    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double qy = (tree_ymax-tree_ymin)*(quad_m00->y / (double) P4EST_ROOT_LEN) + tree_ymin;
 #ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-#endif
-
-    double qy = quad_m00->y / (double) P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-    double qz = quad_m00->z / (double) P4EST_ROOT_LEN + tree_zmin;
+    double qz = (tree_zmax-tree_zmin)*(quad_m00->z / (double) P4EST_ROOT_LEN) + tree_zmin;
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_m00->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_m00_m0 = y - qy;
-    qnnn.d_m00_p0 = qh - qnnn.d_m00_m0;
+    qnnn.d_m00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_m00_m0;
 #ifdef P4_TO_P8
     qnnn.d_m00_0m = z - qz;
-    qnnn.d_m00_0p = qh - qnnn.d_m00_0m;
+    qnnn.d_m00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_m00_0m;
 #endif
   }
 
@@ -333,7 +344,18 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     if (quad_p00->level < quad_ppp->level) { quad_p00 = quad_ppp; quad_p00_idx = quad_ppp_idx; tree_p00_idx = tree_ppp_idx; }
 #endif
 
-    qnnn.d_p00 = P4EST_QUADRANT_LEN(quad_p00->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_p00_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_p00_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+#endif
+
+    qnnn.d_p00 = (tree_xmax-tree_xmin)*(P4EST_QUADRANT_LEN(quad_p00->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_p00_mm = nodes->local_nodes[P4EST_CHILDREN*quad_p00_idx + dir::v_pmm];
     qnnn.node_p00_pm = nodes->local_nodes[P4EST_CHILDREN*quad_p00_idx + dir::v_ppm];
 #ifdef P4_TO_P8
@@ -341,22 +363,16 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     qnnn.node_p00_pp = nodes->local_nodes[P4EST_CHILDREN*quad_p00_idx + dir::v_ppp];
 #endif
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_p00_idx + 0];
-    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double qy = (tree_ymax-tree_ymin)*(quad_p00->y / (double) P4EST_ROOT_LEN) + tree_ymin;
 #ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-#endif
-
-    double qy = quad_p00->y / (double) P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-    double qz = quad_p00->z / (double) P4EST_ROOT_LEN + tree_zmin;
+    double qz = (tree_zmax-tree_zmin)*(quad_p00->z / (double) P4EST_ROOT_LEN) + tree_zmin;
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_p00->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_p00_m0 = y - qy;
-    qnnn.d_p00_p0 = qh - qnnn.d_p00_m0;
+    qnnn.d_p00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_p00_m0;
 #ifdef P4_TO_P8
     qnnn.d_p00_0m = z - qz;
-    qnnn.d_p00_0p = qh - qnnn.d_p00_0m;
+    qnnn.d_p00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_p00_0m;
 #endif
   }
 
@@ -377,7 +393,18 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     if (quad_0m0->level < quad_pmp->level) { quad_0m0 = quad_pmp; quad_0m0_idx = quad_pmp_idx; tree_0m0_idx = tree_pmp_idx; }
 #endif
 
-    qnnn.d_0m0 = P4EST_QUADRANT_LEN(quad_0m0->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_0m0_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_0m0_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+#endif
+
+    qnnn.d_0m0 = (tree_ymax-tree_ymin)*(P4EST_QUADRANT_LEN(quad_0m0->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_0m0_mm = nodes->local_nodes[P4EST_CHILDREN*quad_0m0_idx + dir::v_mmm];
     qnnn.node_0m0_pm = nodes->local_nodes[P4EST_CHILDREN*quad_0m0_idx + dir::v_pmm];
 #ifdef P4_TO_P8
@@ -385,22 +412,16 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     qnnn.node_0m0_pp = nodes->local_nodes[P4EST_CHILDREN*quad_0m0_idx + dir::v_pmp];
 #endif
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_0m0_idx + 0];
-    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double qx = (tree_xmax-tree_xmin)*(quad_0m0->x / (double) P4EST_ROOT_LEN) + tree_xmin;
 #ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-#endif
-
-    double qx = quad_0m0->x / (double) P4EST_ROOT_LEN + tree_xmin;
-#ifdef P4_TO_P8
-    double qz = quad_0m0->z / (double) P4EST_ROOT_LEN + tree_zmin;
+    double qz = (tree_zmax-tree_zmin)*(quad_0m0->z / (double) P4EST_ROOT_LEN) + tree_zmin;
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_0m0->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_0m0_m0 = x - qx;
-    qnnn.d_0m0_p0 = qh - qnnn.d_0m0_m0;
+    qnnn.d_0m0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0m0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0m0_0m = z - qz;
-    qnnn.d_0m0_0p = qh - qnnn.d_0m0_0m;
+    qnnn.d_0m0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0m0_0m;
 #endif
   }
 
@@ -421,7 +442,18 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     if (quad_0p0->level < quad_ppp->level) { quad_0p0 = quad_ppp; quad_0p0_idx = quad_ppp_idx; tree_0p0_idx = tree_ppp_idx; }
 #endif
 
-    qnnn.d_0p0 = P4EST_QUADRANT_LEN(quad_0p0->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_0p0_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_0p0_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+#endif
+
+    qnnn.d_0p0 = (tree_ymax-tree_ymin)*(P4EST_QUADRANT_LEN(quad_0p0->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_0p0_mm = nodes->local_nodes[P4EST_CHILDREN*quad_0p0_idx + dir::v_mpm];
     qnnn.node_0p0_pm = nodes->local_nodes[P4EST_CHILDREN*quad_0p0_idx + dir::v_ppm];
 #ifdef P4_TO_P8
@@ -429,22 +461,16 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     qnnn.node_0p0_pp = nodes->local_nodes[P4EST_CHILDREN*quad_0p0_idx + dir::v_ppp];
 #endif
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_0p0_idx + 0];
-    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double qx = (tree_xmax-tree_xmin)*(quad_0p0->x / (double) P4EST_ROOT_LEN) + tree_xmin;
 #ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-#endif
-
-    double qx = quad_0p0->x / (double) P4EST_ROOT_LEN + tree_xmin;
-#ifdef P4_TO_P8
-    double qz = quad_0p0->z / (double) P4EST_ROOT_LEN + tree_zmin;
+    double qz = (tree_zmax-tree_zmin)*(quad_0p0->z / (double) P4EST_ROOT_LEN) + tree_zmin;
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_0p0->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_0p0_m0 = x - qx;
-    qnnn.d_0p0_p0 = qh - qnnn.d_0p0_m0;
+    qnnn.d_0p0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0p0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0p0_0m = z - qz;
-    qnnn.d_0p0_0p = qh - qnnn.d_0p0_0m;
+    qnnn.d_0p0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0p0_0m;
 #endif
   }
 
@@ -460,24 +486,29 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     if (quad_00m->level < quad_mpm->level) { quad_00m = quad_mpm; quad_00m_idx = quad_mpm_idx; tree_00m_idx = tree_mpm_idx; }
     if (quad_00m->level < quad_ppm->level) { quad_00m = quad_ppm; quad_00m_idx = quad_ppm_idx; tree_00m_idx = tree_ppm_idx; }
 
-    qnnn.d_00m = P4EST_QUADRANT_LEN(quad_00m->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_00m_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_00m_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+
+    qnnn.d_00m = (tree_zmax-tree_zmin)*(P4EST_QUADRANT_LEN(quad_00m->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_00m_mm = nodes->local_nodes[P4EST_CHILDREN*quad_00m_idx + dir::v_mmm];
     qnnn.node_00m_pm = nodes->local_nodes[P4EST_CHILDREN*quad_00m_idx + dir::v_pmm];
     qnnn.node_00m_mp = nodes->local_nodes[P4EST_CHILDREN*quad_00m_idx + dir::v_mpm];
     qnnn.node_00m_pp = nodes->local_nodes[P4EST_CHILDREN*quad_00m_idx + dir::v_ppm];
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_00m_idx + 0];
-    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
-    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
-
-    double qx = quad_00m->x / (double) P4EST_ROOT_LEN + tree_xmin;
-    double qy = quad_00m->y / (double) P4EST_ROOT_LEN + tree_ymin;
+    double qx = (tree_xmax-tree_xmin)*(quad_00m->x / (double) P4EST_ROOT_LEN) + tree_xmin;
+    double qy = (tree_ymax-tree_ymin)*(quad_00m->y / (double) P4EST_ROOT_LEN) + tree_ymin;
     double qh = P4EST_QUADRANT_LEN(quad_00m->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00m_m0 = x - qx;
-    qnnn.d_00m_p0 = qh - qnnn.d_00m_m0;
+    qnnn.d_00m_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00m_m0;
     qnnn.d_00m_0m = y - qy;
-    qnnn.d_00m_0p = qh - qnnn.d_00m_0m;
+    qnnn.d_00m_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00m_0m;
   }
 
   /* 00p */
@@ -491,24 +522,29 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     if (quad_00p->level < quad_mpp->level) { quad_00p = quad_mpp; quad_00p_idx = quad_mpp_idx; tree_00p_idx = tree_mpp_idx; }
     if (quad_00p->level < quad_ppp->level) { quad_00p = quad_ppp; quad_00p_idx = quad_ppp_idx; tree_00p_idx = tree_ppp_idx; }
 
-    qnnn.d_00p = P4EST_QUADRANT_LEN(quad_00p->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_00m_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_00m_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+
+    qnnn.d_00p = (tree_zmax-tree_zmin)*(P4EST_QUADRANT_LEN(quad_00p->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_00p_mm = nodes->local_nodes[P4EST_CHILDREN*quad_00p_idx + dir::v_mmp];
     qnnn.node_00p_pm = nodes->local_nodes[P4EST_CHILDREN*quad_00p_idx + dir::v_pmp];
     qnnn.node_00p_mp = nodes->local_nodes[P4EST_CHILDREN*quad_00p_idx + dir::v_mpp];
     qnnn.node_00p_pp = nodes->local_nodes[P4EST_CHILDREN*quad_00p_idx + dir::v_ppp];
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_00p_idx + 0];
-    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
-    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
-
-    double qx = quad_00p->x / (double) P4EST_ROOT_LEN + tree_xmin;
-    double qy = quad_00p->y / (double) P4EST_ROOT_LEN + tree_ymin;
+    double qx = (tree_xmax-tree_xmin)*(quad_00p->x / (double) P4EST_ROOT_LEN) + tree_xmin;
+    double qy = (tree_ymax-tree_ymin)*(quad_00p->y / (double) P4EST_ROOT_LEN) + tree_ymin;
     double qh = P4EST_QUADRANT_LEN(quad_00p->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00p_m0 = x - qx;
-    qnnn.d_00p_p0 = qh - qnnn.d_00p_m0;
+    qnnn.d_00p_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00p_m0;
     qnnn.d_00p_0m = y - qy;
-    qnnn.d_00p_0p = qh - qnnn.d_00p_0m;
+    qnnn.d_00p_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00p_0m;
   }
 #endif
 
@@ -590,7 +626,18 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     else
       quad_tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_tmp_idx-p4est->local_num_quadrants);
 
-    qnnn.d_m00 = - qnnn.d_p00 - P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+#endif
+
+    qnnn.d_m00 = - qnnn.d_p00 - (tree_xmax-tree_xmin)*(P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_m00_mm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_pmm];
     qnnn.node_m00_pm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_ppm];
 #ifdef P4_TO_P8
@@ -598,20 +645,17 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     qnnn.node_m00_pp = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_ppp];
 #endif
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
-    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
-    double qy = quad_tmp->y / (double) P4EST_ROOT_LEN + tree_ymin;
+    double qy = (tree_ymax-tree_ymin)*(quad_tmp->y / (double) P4EST_ROOT_LEN) + tree_ymin;
 #ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-    double qz = quad_tmp->z / (double) P4EST_ROOT_LEN + tree_zmin;
+    double qz = (tree_zmax-tree_zmin)*(quad_tmp->z / (double) P4EST_ROOT_LEN) + tree_zmin;
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_m00_m0 = y - qy;
-    qnnn.d_m00_p0 = qh - qnnn.d_m00_m0;
+    qnnn.d_m00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_m00_m0;
 #ifdef P4_TO_P8
     qnnn.d_m00_0m = z - qz;
-    qnnn.d_m00_0p = qh - qnnn.d_m00_0m;
+    qnnn.d_m00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_m00_0m;
 #endif
   }
 
@@ -682,7 +726,18 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     else
       quad_tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_tmp_idx-p4est->local_num_quadrants);
 
-    qnnn.d_p00 = - qnnn.d_m00 - P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+#endif
+
+    qnnn.d_p00 = - qnnn.d_m00 - (tree_xmax-tree_xmin)*(P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_p00_mm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_mmm];
     qnnn.node_p00_pm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_mpm];
 #ifdef P4_TO_P8
@@ -690,20 +745,17 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     qnnn.node_p00_pp = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_mpp];
 #endif
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
-    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
-    double qy = quad_tmp->y / (double) P4EST_ROOT_LEN + tree_ymin;
+    double qy = (tree_ymax-tree_ymin)*(quad_tmp->y / (double) P4EST_ROOT_LEN) + tree_ymin;
 #ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-    double qz = quad_tmp->z / (double) P4EST_ROOT_LEN + tree_zmin;
+    double qz = (tree_zmax-tree_zmin)*(quad_tmp->z / (double) P4EST_ROOT_LEN) + tree_zmin;
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_p00_m0 = y - qy;
-    qnnn.d_p00_p0 = qh - qnnn.d_p00_m0;
+    qnnn.d_p00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_p00_m0;
 #ifdef P4_TO_P8
     qnnn.d_p00_0m = z - qz;
-    qnnn.d_p00_0p = qh - qnnn.d_p00_0m;
+    qnnn.d_p00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_p00_0m;
 #endif
   }
 
@@ -775,7 +827,18 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     else
       quad_tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_tmp_idx-p4est->local_num_quadrants);
 
-    qnnn.d_0m0 = - qnnn.d_0p0 - P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+#endif
+
+    qnnn.d_0m0 = - qnnn.d_0p0 - (tree_ymax-tree_ymin)*(P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_0m0_mm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_mpm];
     qnnn.node_0m0_pm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_ppm];
 #ifdef P4_TO_P8
@@ -783,20 +846,17 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     qnnn.node_0m0_pp = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_ppp];
 #endif
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
-    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
-    double qx = quad_tmp->x / (double) P4EST_ROOT_LEN + tree_xmin;
+    double qx = (tree_xmax-tree_xmin)*(quad_tmp->x / (double) P4EST_ROOT_LEN) + tree_xmin;
 #ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-    double qz = quad_tmp->z / (double) P4EST_ROOT_LEN + tree_zmin;
+    double qz = (tree_zmax-tree_zmin)*(quad_tmp->z / (double) P4EST_ROOT_LEN) + tree_zmin;
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_0m0_m0 = x - qx;
-    qnnn.d_0m0_p0 = qh - qnnn.d_0m0_m0;
+    qnnn.d_0m0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0m0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0m0_0m = z - qz;
-    qnnn.d_0m0_0p = qh - qnnn.d_0m0_0m;
+    qnnn.d_0m0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0m0_0m;
 #endif
   }
 
@@ -868,7 +928,18 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     else
       quad_tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_tmp_idx-p4est->local_num_quadrants);
 
-    qnnn.d_0p0 = - qnnn.d_0m0 - P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+#endif
+
+    qnnn.d_0p0 = - qnnn.d_0m0 - (tree_ymax-tree_ymin)*(P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_0p0_mm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_mmm];
     qnnn.node_0p0_pm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_pmm];
 #ifdef P4_TO_P8
@@ -876,20 +947,17 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     qnnn.node_0p0_pp = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_pmp];
 #endif
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
-    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
-    double qx = quad_tmp->x / (double) P4EST_ROOT_LEN + tree_xmin;
+    double qx = (tree_xmax-tree_xmin)*(quad_tmp->x / (double) P4EST_ROOT_LEN) + tree_xmin;
 #ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-    double qz = quad_tmp->z / (double) P4EST_ROOT_LEN + tree_zmin;
+    double qz = (tree_zmax-tree_zmin)*(quad_tmp->z / (double) P4EST_ROOT_LEN) + tree_zmin;
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_0p0_m0 = x - qx;
-    qnnn.d_0p0_p0 = qh - qnnn.d_0p0_m0;
+    qnnn.d_0p0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0p0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0p0_0m = z - qz;
-    qnnn.d_0p0_0p = qh - qnnn.d_0p0_0m;
+    qnnn.d_0p0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0p0_0m;
 #endif
   }
 
@@ -937,23 +1005,29 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     else
       quad_tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_tmp_idx-p4est->local_num_quadrants);
 
-    qnnn.d_00m = - qnnn.d_00p - P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+
+    qnnn.d_00m = - qnnn.d_00p - (tree_zmax-tree_zmin)*(P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_00m_mm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_mmp];
     qnnn.node_00m_pm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_pmp];
     qnnn.node_00m_mp = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_mpp];
     qnnn.node_00m_pp = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_ppp];
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
-    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
-    double qx = quad_tmp->x / (double) P4EST_ROOT_LEN + tree_xmin;
-    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
-    double qy = quad_tmp->y / (double) P4EST_ROOT_LEN + tree_ymin;
+    double qx = (tree_xmax-tree_xmin)*(quad_tmp->x / (double) P4EST_ROOT_LEN) + tree_xmin;
+    double qy = (tree_ymax-tree_ymin)*(quad_tmp->y / (double) P4EST_ROOT_LEN) + tree_ymin;
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00m_m0 = x - qx;
-    qnnn.d_00m_p0 = qh - qnnn.d_00m_m0;
+    qnnn.d_00m_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00m_m0;
     qnnn.d_00m_0m = y - qy;
-    qnnn.d_00m_0p = qh - qnnn.d_00m_0m;
+    qnnn.d_00m_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00m_0m;
   }
 
   /* correcting for wall in the 00p direction  (Only in 3D) */
@@ -999,23 +1073,29 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     else
       quad_tmp = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts,quad_tmp_idx-p4est->local_num_quadrants);
 
-    qnnn.d_00p = - qnnn.d_00m - P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
+    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
+    p4est_topidx_t v_ppp = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + P4EST_CHILDREN-1];
+    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
+    double tree_xmax = connectivity->vertices[3*v_ppp + 0];
+    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
+    double tree_ymax = connectivity->vertices[3*v_ppp + 1];
+    double tree_zmin = connectivity->vertices[3*v_mmm + 2];
+    double tree_zmax = connectivity->vertices[3*v_ppp + 2];
+
+    qnnn.d_00p = - qnnn.d_00m - (tree_zmax-tree_zmin)*(P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN);
     qnnn.node_00p_mm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_mmm];
     qnnn.node_00p_pm = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_pmm];
     qnnn.node_00p_mp = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_mpm];
     qnnn.node_00p_pp = nodes->local_nodes[P4EST_CHILDREN*quad_tmp_idx + dir::v_ppm];
 
-    p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_tmp_idx + 0];
-    double tree_xmin = connectivity->vertices[3*v_mmm + 0];
-    double qx = quad_tmp->x / (double) P4EST_ROOT_LEN + tree_xmin;
-    double tree_ymin = connectivity->vertices[3*v_mmm + 1];
-    double qy = quad_tmp->y / (double) P4EST_ROOT_LEN + tree_ymin;
+    double qx = (tree_xmax-tree_xmin)*quad_tmp->x / (double) P4EST_ROOT_LEN) + tree_xmin;
+    double qy = (tree_ymax-tree_ymin)*quad_tmp->y / (double) P4EST_ROOT_LEN) + tree_ymin;
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00p_m0 = x - qx;
-    qnnn.d_00p_p0 = qh - qnnn.d_00p_m0;
+    qnnn.d_00p_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00p_m0;
     qnnn.d_00p_0m = y - qy;
-    qnnn.d_00p_0p = qh - qnnn.d_00p_0m;
+    qnnn.d_00p_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00p_0m;
   }
 #endif
 

@@ -43,10 +43,23 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
 
   else
   {
-    double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-    double dy = dx;
+    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+    double xmin = p4est->connectivity->vertices[3*vm + 0];
+    double ymin = p4est->connectivity->vertices[3*vm + 1];
+    double xmax = p4est->connectivity->vertices[3*vp + 0];
+    double ymax = p4est->connectivity->vertices[3*vp + 1];
+
+  #ifdef P4_TO_P8
+    double zmin = p4est->connectivity->vertices[3*vm + 2];
+    double zmax = p4est->connectivity->vertices[3*vp + 2];
+  #endif
+
+    double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    double dx = (xmax-xmin) * dmin;
+    double dy = (ymax-ymin) * dmin;
 #ifdef P4_TO_P8
-    double dz = dx;
+    double dz = (zmax-zmin) * dmin;
 #endif
 
 #ifdef P4_TO_P8
@@ -637,10 +650,11 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
     double z = quad_z_fr_q(quad_idx, tree_idx, p4est_n, ghost_n);
 #endif
 
-    double dx = (double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN;
-    double dy = dx;
+    double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    double dx = (xyz_max[0]-xyz_min[0]) * dmin;
+    double dy = (xyz_max[1]-xyz_min[1]) * dmin;
 #ifdef P4_TO_P8
-      double dz = dx;
+    double dz = (xyz_max[2]-xyz_min[2]) * dmin;
 #endif
 
     double hodge_q = hodge_p[quad_idx];
@@ -717,11 +731,8 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
       double phi_0 = (*interp_phi)(x0, y0);
 #endif
 
-      double dx = (double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN;
-      double dy = dx;
-#ifdef P4_TO_P8
-      double dz = dx;
-#endif
+      double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double dx = (xyz_max[dir/2] - xyz_min[dir/2]) * dmin;
 
       if(bc_hodge.interfaceType()==DIRICHLET && phi_q*phi_0<0)
       {
@@ -740,19 +751,19 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
           }
         }
 
-        double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_0, dx, dy);
+        double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_0, dx, dx);
         if(theta<EPS) theta = EPS; if(theta>1) theta = 1;
         double val_interface;
-        double dist;
+        double dist = dx*theta;
         switch(dir)
         {
 #ifdef P4_TO_P8
-        case dir::f_m00: case dir::f_p00: dist = dx*theta; val_interface = bc_hodge.interfaceValue(xq + (dir%2==0 ? -1 : 1)*theta*dx, yq, zq); break;
-        case dir::f_0m0: case dir::f_0p0: dist = dy*theta; val_interface = bc_hodge.interfaceValue(xq, yq + (dir%2==0 ? -1 : 1)*theta*dy, zq); break;
-        case dir::f_00m: case dir::f_00p: dist = dz*theta; val_interface = bc_hodge.interfaceValue(xq, yq, zq + (dir%2==0 ? -1 : 1)*theta*dz); break;
+        case dir::f_m00: case dir::f_p00: val_interface = bc_hodge.interfaceValue(xq + (dir%2==0 ? -1 : 1)*dist, yq, zq); break;
+        case dir::f_0m0: case dir::f_0p0: val_interface = bc_hodge.interfaceValue(xq, yq + (dir%2==0 ? -1 : 1)*dist, zq); break;
+        case dir::f_00m: case dir::f_00p: val_interface = bc_hodge.interfaceValue(xq, yq, zq + (dir%2==0 ? -1 : 1)*dist); break;
 #else
-        case dir::f_m00: case dir::f_p00: dist = dx*theta; val_interface = bc_hodge.interfaceValue(xq + (dir%2==0 ? -1 : 1)*theta*dx, yq); break;
-        case dir::f_0m0: case dir::f_0p0: dist = dy*theta; val_interface = bc_hodge.interfaceValue(xq, yq + (dir%2==0 ? -1 : 1)*theta*dy); break;
+        case dir::f_m00: case dir::f_p00: val_interface = bc_hodge.interfaceValue(xq + (dir%2==0 ? -1 : 1)*dist, yq); break;
+        case dir::f_0m0: case dir::f_0p0: val_interface = bc_hodge.interfaceValue(xq, yq + (dir%2==0 ? -1 : 1)*dist); break;
 #endif
         default:
           throw std::invalid_argument("[ERROR]: my_p4est_navier_stokes_t->dxyz_hodge: uknown direction.");
@@ -942,7 +953,7 @@ void my_p4est_navier_stokes_t::solve_projection()
       p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q_idx);
 
       rhs_p[quad_idx] = 0;
-      double dx = (double)P4EST_QUADRANT_LEN(quad->level) / (double)P4EST_ROOT_LEN;
+      double dmin = (double)P4EST_QUADRANT_LEN(quad->level) / (double)P4EST_ROOT_LEN;
 
       for(int dir=0; dir<P4EST_DIM; ++dir)
       {
@@ -997,7 +1008,7 @@ void my_p4est_navier_stokes_t::solve_projection()
           vp /= (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
         }
 
-        rhs_p[quad_idx] -= (vp-vm)/dx;
+        rhs_p[quad_idx] -= (vp-vm)/((xyz_max[dir] - xyz_min[dir]) * dmin);
       }
     }
   }

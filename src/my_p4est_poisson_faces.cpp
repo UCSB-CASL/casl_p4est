@@ -51,8 +51,8 @@ my_p4est_poisson_faces_t::my_p4est_poisson_faces_t(const my_p4est_faces_t *faces
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
   xmin = p4est->connectivity->vertices[3*vm + 0];
-  ymin = p4est->connectivity->vertices[3*vm + 1];
   xmax = p4est->connectivity->vertices[3*vp + 0];
+  ymin = p4est->connectivity->vertices[3*vm + 1];
   ymax = p4est->connectivity->vertices[3*vp + 1];
   dx_min = (xmax-xmin) / pow(2.,(double) data->max_lvl);
   dy_min = (ymax-ymin) / pow(2.,(double) data->max_lvl);
@@ -255,8 +255,12 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   p4est_quadrant_t *quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
 
 #ifndef P4_TO_P8
-  double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  double dy = dx;
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xtmp = p4est->connectivity->vertices[3*vp + 0];
+  double ytmp = p4est->connectivity->vertices[3*vp + 1];
+  double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  double dx = (xtmp-xmin) * dmin;
+  double dy = (ytmp-ymin) * dmin;
 #endif
 
   double x = faces->x_fr_f(f_idx, dir);

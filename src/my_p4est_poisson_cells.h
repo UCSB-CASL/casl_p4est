@@ -40,7 +40,11 @@ class my_p4est_poisson_cells_t
   double mu, diag_add;
   bool is_matrix_ready;
   int matrix_has_nullspace;
-  double dx_min, dy_min, d_min, diag_min;
+
+  double dxyz_min[P4EST_DIM];
+  double xyz_min[P4EST_DIM];
+  double xyz_max[P4EST_DIM];
+  double d_min, diag_min;
 #ifdef P4_TO_P8
   double dz_min;
 #endif

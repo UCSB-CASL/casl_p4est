@@ -388,9 +388,11 @@ inline double node_x_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_no
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-  double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-  return node_x_fr_n(node) + tree_xmin;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + P4EST_CHILDREN-1];
+  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  return (tree_xmax-tree_xmin)*node_x_fr_n(node) + tree_xmin;
 }
 
 inline double node_y_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes)
@@ -398,9 +400,11 @@ inline double node_y_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_no
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-  return node_y_fr_n(node) + tree_ymin;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + P4EST_CHILDREN-1];
+  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+  return (tree_ymax-tree_ymin)*node_y_fr_n(node) + tree_ymin;
 }
 
 #ifdef P4_TO_P8
@@ -409,9 +413,11 @@ inline double node_z_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_no
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-  double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-  return node_z_fr_n(node) + tree_zmin;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + P4EST_CHILDREN-1];
+  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+  return (tree_zmax-tree_zmin)*node_z_fr_n(node) + tree_zmin;
 }
 #endif
 
@@ -462,9 +468,11 @@ inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
   else
     quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
 
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-  return quad_x_fr_i(quad) + tree_xmin + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  return (tree_xmax-tree_xmin)*(quad_x_fr_i(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_xmin;
 }
 
 /*!
@@ -482,9 +490,11 @@ inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
   else
     quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
 
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-  return quad_y_fr_j(quad) + tree_ymin + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+  return (tree_ymax-tree_ymin)*(quad_y_fr_j(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_ymin;
 }
 
 #ifdef P4_TO_P8
@@ -503,9 +513,11 @@ inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
   else
     quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
 
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-  return quad_z_fr_k(quad) + tree_zmin + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+  return (tree_zmax-tree_zmin)*(quad_z_fr_k(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_zmin;
 }
 #endif
 
@@ -527,7 +539,7 @@ inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
 /*!
  * \brief integrate_over_negative_domain_in_one_quadrant
  */
-double integrate_over_negative_domain_in_one_quadrant(const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_negative_domain integrate a quantity f over the negative domain defined by phi
@@ -543,7 +555,7 @@ double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t 
 /*!
  * \brief area_in_negative_domain_in_one_quadrant
  */
-double area_in_negative_domain_in_one_quadrant(p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
+double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
 
 /*!
  * \brief area_in_negative_domain compute the area of the negative domain defined by phi
@@ -558,7 +570,7 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
 /*!
  * \brief integrate_over_interface_in_one_quadrant
  */
-double integrate_over_interface_in_one_quadrant(p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.

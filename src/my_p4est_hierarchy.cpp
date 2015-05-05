@@ -179,12 +179,16 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
   fprintf(vtk, "POINTS %ld double \n", P4EST_CHILDREN*num_quads);
 
   for (size_t i=0; i<trees.size(); ++i){
-    p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*i + 0];
+    p4est_topidx_t v_m = connectivity->tree_to_vertex[P4EST_CHILDREN*i + 0];
+    p4est_topidx_t v_p = connectivity->tree_to_vertex[P4EST_CHILDREN*i + P4EST_CHILDREN-1];
 
-    double tree_xmin = connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = connectivity->vertices[3*v_mm + 1];
+    double tree_xmin = connectivity->vertices[3*v_m + 0];
+    double tree_xmax = connectivity->vertices[3*v_p + 0];
+    double tree_ymin = connectivity->vertices[3*v_m + 1];
+    double tree_ymax = connectivity->vertices[3*v_p + 1];
 #ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mm + 2];
+    double tree_zmin = connectivity->vertices[3*v_m + 2];
+    double tree_zmax = connectivity->vertices[3*v_p + 2];
 #endif
 
     for (size_t j=0; j<trees[i].size(); j++){
@@ -196,10 +200,10 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
 #endif
           for (short xj=0; xj<2; xj++)
             for (short xi=0; xi<2; xi++){
-              double x = (double) cell.imin / (double)P4EST_ROOT_LEN + xi*h + tree_xmin;
-              double y = (double) cell.jmin / (double)P4EST_ROOT_LEN + xj*h + tree_ymin;
+              double x = (tree_xmax-tree_xmin)*((double) cell.imin / (double)P4EST_ROOT_LEN + xi*h) + tree_xmin;
+              double y = (tree_ymax-tree_ymin)*((double) cell.jmin / (double)P4EST_ROOT_LEN + xj*h) + tree_ymin;
 #ifdef P4_TO_P8
-              double z = (double) cell.kmin / (double)P4EST_ROOT_LEN + xk*h + tree_zmin;
+              double z = (tree_zmax-tree_zmin)*((double) cell.kmin / (double)P4EST_ROOT_LEN + xk*h) + tree_zmin;
 #endif
 #ifdef P4_TO_P8
               fprintf(vtk, "%lf %lf %lf\n", x, y, z);
@@ -232,14 +236,28 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
 #endif
+
+  /* rescale xyz to [0,nx] */
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1];
+
+  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+#ifdef P4_TO_P8
+  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+#endif
+
 #ifdef CASL_THROWS
 #ifdef P4_TO_P8
-  if (xyz[0] < 0 || xyz[0] > myb->nxyztrees[0] ||
-      xyz[1] < 0 || xyz[1] > myb->nxyztrees[1] ||
-      xyz[2] < 0 || xyz[2] > myb->nxyztrees[2])
+  if(xyz[0]<tree_xmin || xyz[0]>tree_xmax ||
+     xyz[1]<tree_ymin || xyz[1]>tree_ymax ||
+     xyz[2]<tree_zmin || xyz[2]>tree_zmax)
 #else
-  if (xyz[0] < 0 || xyz[0] > myb->nxyztrees[0] ||
-      xyz[1] < 0 || xyz[1] > myb->nxyztrees[1])
+  if(xyz[0]<tree_xmin || xyz[0]>tree_xmax ||
+     xyz[1]<tree_ymin || xyz[1]>tree_ymax)
 #endif
   {
     std::ostringstream oss;
@@ -250,6 +268,19 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
            ") is outside computational domain" << std::endl;
     throw std::invalid_argument(oss.str());
   }
+#endif
+
+  v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+#ifdef P4_TO_P8
+  tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+#endif
+
+  xyz[0] = (xyz[0]-tree_xmin)/(tree_xmax-tree_xmin);
+  xyz[1] = (xyz[1]-tree_ymin)/(tree_ymax-tree_ymin);
+#ifdef P4_TO_P8
+  xyz[2] = (xyz[2]-tree_zmin)/(tree_zmax-tree_zmin);
 #endif
 
   int rank = -1;
@@ -397,6 +428,12 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
 
 #ifdef CASL_LOG_TINY_EVENTS
   ierr = PetscLogEventEnd(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
+#endif
+
+  xyz[0] = xyz[0]*(tree_xmax-tree_xmin) + tree_xmin;
+  xyz[1] = xyz[1]*(tree_ymax-tree_ymin) + tree_ymin;
+#ifdef P4_TO_P8
+  xyz[2] = xyz[2]*(tree_zmax-tree_zmin) + tree_zmin;
 #endif
 
   return rank;

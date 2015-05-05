@@ -74,6 +74,18 @@ double my_p4est_semi_lagrangian_t::compute_dt(const CF_2 &vx, const CF_2 &vy)
   splitting_criteria_t* data = (splitting_criteria_t*)p4est->user_pointer;
   double dx = (double)P4EST_QUADRANT_LEN(data->max_lvl) / (double)P4EST_ROOT_LEN;
 
+  double tree_xmax = p4est->connectivity->vertices[0 + 0];
+  double tree_ymax = p4est->connectivity->vertices[0 + 1];
+#ifdef P4_TO_P8
+  double tree_zmax = p4est->connectivity->vertices[0 + 2];
+#endif
+
+#ifdef P4_TO_P8
+  dx *= MIN(tree_xmax-xyz_min[0], tree_ymax-xyz_min[1], tree_zmax-xyz_min[2]);
+#else
+  dx *= MIN(tree_xmax-xyz_min[0], tree_ymax-xyz_min[1]);
+#endif
+
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; n++)
   {
     double x = node_x_fr_n(n, p4est, nodes);
@@ -117,6 +129,18 @@ double my_p4est_semi_lagrangian_t::compute_dt(Vec vx, Vec vy)
   // get the min dx
   splitting_criteria_t* data = (splitting_criteria_t*)p4est->user_pointer;
   double dx = (double)P4EST_QUADRANT_LEN(data->max_lvl) / (double)P4EST_ROOT_LEN;
+
+  double tree_xmax = p4est->connectivity->vertices[0 + 0];
+  double tree_ymax = p4est->connectivity->vertices[0 + 1];
+#ifdef P4_TO_P8
+  double tree_zmax = p4est->connectivity->vertices[0 + 2];
+#endif
+
+#ifdef P4_TO_P8
+  dx *= MIN(tree_xmax-xyz_min[0], tree_ymax-xyz_min[1], tree_zmax-xyz_min[2]);
+#else
+  dx *= MIN(tree_xmax-xyz_min[0], tree_ymax-xyz_min[1]);
+#endif
 
   for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; i++){
 #ifdef P4_TO_P8

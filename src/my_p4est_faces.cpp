@@ -681,13 +681,16 @@ double my_p4est_faces_t::x_fr_f(p4est_locidx_t f_idx, int dir) const
     tree_idx = quad->p.piggy3.which_tree;
   }
 
-  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
-  double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-  double x = quad_x_fr_i(quad) + tree_xmin;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  double x = (tree_xmax-tree_xmin)*quad_x_fr_i(quad) + tree_xmin;
+  double qh = (tree_xmax-tree_xmin)*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
   if(dir!=dir::x)
-    x += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    x += .5*qh;
   else if(q2f(quad_idx, dir::f_p00)==f_idx)
-    x += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    x += qh;
 
   return x;
 }
@@ -712,13 +715,16 @@ double my_p4est_faces_t::y_fr_f(p4est_locidx_t f_idx, int dir) const
     tree_idx = quad->p.piggy3.which_tree;
   }
 
-  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-  double y = quad_y_fr_j(quad) + tree_ymin;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+  double y = (tree_ymax-tree_ymin)*quad_y_fr_j(quad) + tree_ymin;
+  double qh = (tree_ymax-tree_ymin)*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
   if(dir!=dir::y)
-    y += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    y += .5*qh;
   else if(q2f(quad_idx, dir::f_0p0)==f_idx)
-    y += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    y += qh;
 
   return y;
 }
@@ -744,9 +750,12 @@ double my_p4est_faces_t::z_fr_f(p4est_locidx_t f_idx, int dir) const
     tree_idx = quad->p.piggy3.which_tree;
   }
 
-  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
-  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
-  double z = quad_z_fr_k(quad) + tree_zmin;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+  double z = (tree_zmax-tree_zmin)*quad_z_fr_k(quad) + tree_zmin;
+  double qh = (tree_zmax-tree_zmin)*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
   if(dir!=dir::z)
     z += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
   else if(q2f(quad_idx, dir::f_00p)==f_idx)
@@ -777,24 +786,30 @@ void my_p4est_faces_t::xyz_fr_f(p4est_locidx_t f_idx, int dir, double* xyz) cons
     tree_idx = quad->p.piggy3.which_tree;
   }
 
-  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
   double tree_xyz_min[P4EST_DIM];
+  double tree_xyz_max[P4EST_DIM];
   for(int i=0; i<P4EST_DIM; ++i)
-    tree_xyz_min[i] = p4est->connectivity->vertices[3*v_mmm + i];
+  {
+    tree_xyz_min[i] = p4est->connectivity->vertices[3*v_m + i];
+    tree_xyz_max[i] = p4est->connectivity->vertices[3*v_p + i];
+  }
 
-  xyz[0] = quad_x_fr_i(quad) + tree_xyz_min[0];
-  xyz[1] = quad_y_fr_j(quad) + tree_xyz_min[1];
+  xyz[0] = (tree_xyz_max[0]-tree_xyz_min[0])*quad_x_fr_i(quad) + tree_xyz_min[0];
+  xyz[1] = (tree_xyz_max[1]-tree_xyz_min[1])*quad_y_fr_j(quad) + tree_xyz_min[1];
 #ifdef P4_TO_P8
-  xyz[2] = quad_z_fr_k(quad) + tree_xyz_min[2];
+  xyz[2] = (tree_xyz_max[2]-tree_xyz_min[2])*quad_z_fr_k(quad) + tree_xyz_min[2];
 #endif
 
-  if(dir!=dir::x)                           xyz[0] += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  else if(q2f(quad_idx, dir::f_p00)==f_idx) xyz[0] +=    (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  if(dir!=dir::y)                           xyz[1] += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  else if(q2f(quad_idx, dir::f_0p0)==f_idx) xyz[1] +=    (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  if(dir!=dir::x)                           xyz[0] += .5*(tree_xyz_max[0]-tree_xyz_min[0])*qh;
+  else if(q2f(quad_idx, dir::f_p00)==f_idx) xyz[0] +=    (tree_xyz_max[0]-tree_xyz_min[0])*qh;
+  if(dir!=dir::y)                           xyz[1] += .5*(tree_xyz_max[1]-tree_xyz_min[1])*qh;
+  else if(q2f(quad_idx, dir::f_0p0)==f_idx) xyz[1] +=    (tree_xyz_max[1]-tree_xyz_min[1])*qh;
 #ifdef P4_TO_P8
-  if(dir!=dir::z)                           xyz[2] += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  else if(q2f(quad_idx, dir::f_00p)==f_idx) xyz[2] +=    (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  if(dir!=dir::z)                           xyz[2] += .5*(tree_xyz_max[2]-tree_xyz_min[2])*qh;
+  else if(q2f(quad_idx, dir::f_00p)==f_idx) xyz[2] +=    (tree_xyz_max[2]-tree_xyz_min[2])*qh;
 #endif
 }
 

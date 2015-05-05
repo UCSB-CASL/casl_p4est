@@ -64,20 +64,29 @@
 #undef MIN
 #undef MAX
 
+double xmin = -1;
+double xmax =  4;
+double ymin = -3;
+double ymax =  2;
+#ifdef P4_TO_P8
+double zmin = -1;
+double zmax =  1;
+#endif
+
 using namespace std;
 
 int lmin = 2;
 int lmax = 4;
 int nb_splits = 1;
 
-int nx = 2;
-int ny = 2;
+int nx = 1;
+int ny = 3;
 #ifdef P4_TO_P8
 int nz = 2;
 #endif
 
 double mu = 1.5;
-double add_diagonal = 0;
+double add_diagonal = 2.4;
 
 /*
  * 0 - circle
@@ -93,12 +102,10 @@ int test_number = 0;
 BoundaryConditionType bc_itype = DIRICHLET;
 BoundaryConditionType bc_wtype = NEUMANN;
 
-double diag_add = 0;
-
 #ifdef P4_TO_P8
-double r0 = (double) MIN(nx,ny,nz) / 4;
+double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
 #else
-double r0 = (double) MIN(nx,ny) / 4;
+double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
 #endif
 
 
@@ -113,7 +120,7 @@ public:
     switch(interface_type)
     {
     case 0:
-      return r0 - sqrt(SQR(x - (double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
+      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -157,9 +164,18 @@ public:
       switch(interface_type)
       {
       case 0:
-        dx = -(x - (double) nx/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
-        dy = -(y - (double) ny/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
-        dz = -(z - (double) nz/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
+        if(fabs(x-(xmax+xmin)/2)<EPS && fabs(y-(ymax+ymin)/2)<EPS && fabs(z-(zmax+zmin)/2)<EPS)
+        {
+          dx = 0;
+          dy = 0;
+          dz = 0;
+        }
+        else
+        {
+          dx = -(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+          dy = -(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+          dz = -(z - (zmax+zmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+        }
         break;
       default:
         throw std::invalid_argument("choose a valid interface type.");
@@ -198,9 +214,9 @@ public:
       return u_exact(x,y,z);
     else
     {
-      double dx = 0; dx = fabs(x)<EPS ? -1 : (fabs(x-nx)<EPS  ? 1 : 0);
-      double dy = 0; dy = fabs(y)<EPS ? -1 : (fabs(y-ny)<EPS  ? 1 : 0);
-      double dz = 0; dz = fabs(z)<EPS ? -1 : (fabs(z-nz)<EPS  ? 1 : 0);
+      double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
+      double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
+      double dz = 0; dz = fabs(z-zmin)<EPS ? -1 : (fabs(z-zmax)<EPS  ? 1 : 0);
       switch(test_number)
       {
       case 0:
@@ -226,7 +242,7 @@ public:
     switch(interface_type)
     {
     case 0:
-      return r0 - sqrt(SQR(x - (double) nx/2) + SQR(y - (double) ny/2));
+      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -270,8 +286,16 @@ public:
       switch(interface_type)
       {
       case 0:
-        dx = -(x - (double) nx/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2));
-        dy = -(y - (double) ny/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2));
+        if(fabs(x-(xmax+xmin)/2)<EPS && fabs(y-(ymax+ymin)/2)<EPS)
+        {
+          dx = 0;
+          dy = 0;
+        }
+        else
+        {
+          dx = -(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
+          dy = -(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
+        }
         break;
       default:
         throw std::invalid_argument("choose a valid interface type.");
@@ -310,8 +334,8 @@ public:
       return u_exact(x,y);
     else
     {
-      double dx = 0; dx = fabs(x)<EPS ? -1 : (fabs(x-nx)<EPS  ? 1 : 0);
-      double dy = 0; dy = fabs(y)<EPS ? -1 : (fabs(y-ny)<EPS  ? 1 : 0);
+      double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
+      double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
       switch(test_number)
       {
       case 0:
@@ -490,9 +514,9 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz, &brick);
+  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax &brick);
 #else
-  connectivity = my_p4est_brick_new(nx, ny, &brick);
+  connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick);
 #endif
 
   p4est_t       *p4est;
@@ -515,7 +539,7 @@ int main (int argc, char* argv[])
 
 //    srand(1);
 //    splitting_criteria_random_t data(2, 7, 1000, 10000);
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set, 1.2);
+    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set, 1.6);
     p4est->user_pointer = (void*)(&data);
 
 //    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
@@ -757,42 +781,44 @@ int main (int argc, char* argv[])
 
 
     /* extrapolate the solution and check accuracy */
-    my_p4est_level_set_faces_t ls_f(&ngbd_n, &faces);
-    for(int dir=0; dir<P4EST_DIM; ++dir)
+    if(bc_itype!=NOINTERFACE)
     {
-      double band = 4;
-      ls_f.extend_Over_Interface(phi, sol[dir], bc[dir], dir, face_is_well_defined[dir], 2, band);
-
-      double *sol_p;
-      ierr = VecGetArray(sol[dir], &sol_p); CHKERRXX(ierr);
-
-      err_ex_f_nm1[dir] = err_ex_f_n[dir];
-      err_ex_f_n[dir] = 0;
-
-      const PetscScalar *face_is_well_defined_p;
-      ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
-
-      for(p4est_locidx_t f_idx=0; f_idx<faces.num_local[dir]+faces.num_ghost[dir]; ++f_idx)
+      my_p4est_level_set_faces_t ls_f(&ngbd_n, &faces);
+      for(int dir=0; dir<P4EST_DIM; ++dir)
       {
-        double x = faces.x_fr_f(f_idx, dir);
-        double y = faces.y_fr_f(f_idx, dir);
+        double band = 4;
+        ls_f.extend_Over_Interface(phi, sol[dir], bc[dir], dir, face_is_well_defined[dir], 2, band);
+
+        double *sol_p;
+        ierr = VecGetArray(sol[dir], &sol_p); CHKERRXX(ierr);
+
+        err_ex_f_nm1[dir] = err_ex_f_n[dir];
+        err_ex_f_n[dir] = 0;
+
+        const PetscScalar *face_is_well_defined_p;
+        ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+
+        for(p4est_locidx_t f_idx=0; f_idx<faces.num_local[dir]+faces.num_ghost[dir]; ++f_idx)
+        {
+          double x = faces.x_fr_f(f_idx, dir);
+          double y = faces.y_fr_f(f_idx, dir);
 #ifdef P4_TO_P8
-        double z = faces.z_fr_f(f_idx, dir);
-        if(!face_is_well_defined_p[f_idx] && interp_n(x,y,z)<band*MIN(dx,dy,dz))
-          err_ex_f_n[dir] = MAX(err_ex_f_n[dir], fabs(sol_p[f_idx] - u_exact(x,y,z)));
+          double z = faces.z_fr_f(f_idx, dir);
+          if(!face_is_well_defined_p[f_idx] && interp_n(x,y,z)<band*MIN(dx,dy,dz))
+            err_ex_f_n[dir] = MAX(err_ex_f_n[dir], fabs(sol_p[f_idx] - u_exact(x,y,z)));
 #else
-        if(!face_is_well_defined_p[f_idx] && interp_n(x,y)<band*MIN(dx,dy))
-          err_ex_f_n[dir] = MAX(err_ex_f_n[dir], fabs(sol_p[f_idx] - u_exact(x,y)));
+          if(!face_is_well_defined_p[f_idx] && interp_n(x,y)<band*MIN(dx,dy))
+            err_ex_f_n[dir] = MAX(err_ex_f_n[dir], fabs(sol_p[f_idx] - u_exact(x,y)));
 #endif
+        }
+
+        ierr = VecRestoreArray(sol[dir], &sol_p); CHKERRXX(ierr);
+        ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+
+        int mpiret;
+        mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_f_n[dir], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+        ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation for direction %d : %g, order = %g\n", dir, err_ex_f_n[dir], log(err_ex_f_nm1[dir]/err_ex_f_n[dir])/log(2)); CHKERRXX(ierr);
       }
-
-      ierr = VecRestoreArray(sol[dir], &sol_p); CHKERRXX(ierr);
-      ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
-
-      int mpiret;
-      mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_f_n[dir], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-      ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation for direction %d : %g, order = %g\n", dir, err_ex_f_n[dir], log(err_ex_f_nm1[dir]/err_ex_f_n[dir])/log(2)); CHKERRXX(ierr);
-
     }
 
 

@@ -62,17 +62,28 @@
 #undef MIN
 #undef MAX
 
+double xmin = -1;
+double xmax =  1;
+double ymin = -1;
+double ymax =  2;
+#ifdef P4_TO_P8
+double zmin = -1;
+double zmax =  1;
+#endif
+
 using namespace std;
 
-int lmin = 2;
-int lmax = 4;
+int lmin = 3;
+int lmax = 5;
 int nb_splits = 1;
 
 int nx = 2;
-int ny = 2;
+int ny = 1;
 #ifdef P4_TO_P8
 int nz = 2;
 #endif
+
+bool save_vtk = true;
 
 double mu = 1.3;
 double add_diagonal = 2.3;
@@ -88,15 +99,15 @@ int interface_type = 0;
  */
 int test_number = 0;
 
-BoundaryConditionType bc_itype = DIRICHLET;
+BoundaryConditionType bc_itype = NEUMANN;
 BoundaryConditionType bc_wtype = DIRICHLET;
 
 double diag_add = 0;
 
 #ifdef P4_TO_P8
-double r0 = (double) MIN(nx,ny,nz) / 4;
+double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
 #else
-double r0 = (double) MIN(nx,ny) / 4;
+double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
 #endif
 
 
@@ -111,7 +122,7 @@ public:
     switch(interface_type)
     {
     case 0:
-      return r0 - sqrt(SQR(x - (double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
+      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -155,7 +166,7 @@ public:
       switch(interface_type)
       {
       case 0:
-        if(fabs(x-(double)nx/2)<EPS && fabs(y-(double)ny/2)<EPS && fabs(z-(double)nz/2)<EPS)
+        if(fabs(x-(xmax+xmin)/2)<EPS && fabs(y-(ymax+ymin)/2)<EPS && fabs(z-(zmax+zmin)/2)<EPS)
         {
           dx = 0;
           dy = 0;
@@ -163,9 +174,9 @@ public:
         }
         else
         {
-          dx = -(x - (double) nx/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
-          dy = -(y - (double) ny/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
-          dz = -(z - (double) nz/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2) + SQR(z - (double) nz/2));
+          dx = -(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+          dy = -(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+          dz = -(z - (zmax+zmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
         }
         break;
       default:
@@ -205,9 +216,9 @@ public:
       return u_exact(x,y,z);
     else
     {
-      double dx = 0; dx = fabs(x)<EPS ? -1 : (fabs(x-nx)<EPS  ? 1 : 0);
-      double dy = 0; dy = fabs(y)<EPS ? -1 : (fabs(y-ny)<EPS  ? 1 : 0);
-      double dz = 0; dz = fabs(z)<EPS ? -1 : (fabs(z-nz)<EPS  ? 1 : 0);
+      double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
+      double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
+      double dz = 0; dz = fabs(z-zmin)<EPS ? -1 : (fabs(z-zmax)<EPS  ? 1 : 0);
       switch(test_number)
       {
       case 0:
@@ -233,7 +244,7 @@ public:
     switch(interface_type)
     {
     case 0:
-      return r0 - sqrt(SQR(x - (double) nx/2) + SQR(y - (double) ny/2));
+      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -277,15 +288,15 @@ public:
       switch(interface_type)
       {
       case 0:
-        if(fabs(x-(double)nx/2)<EPS && fabs(y-(double)ny/2)<EPS)
+        if(fabs(x-(xmax+xmin)/2)<EPS && fabs(y-(ymax+ymin)/2)<EPS)
         {
           dx = 0;
           dy = 0;
         }
         else
         {
-          dx = -(x - (double) nx/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2));
-          dy = -(y - (double) ny/2)/sqrt(SQR(x -(double) nx/2) + SQR(y - (double) ny/2));
+          dx = -(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
+          dy = -(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
         }
         break;
       default:
@@ -325,8 +336,8 @@ public:
       return u_exact(x,y);
     else
     {
-      double dx = 0; dx = fabs(x)<EPS ? -1 : (fabs(x-nx)<EPS  ? 1 : 0);
-      double dy = 0; dy = fabs(y)<EPS ? -1 : (fabs(y-ny)<EPS  ? 1 : 0);
+      double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
+      double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
       switch(test_number)
       {
       case 0:
@@ -464,7 +475,7 @@ int main (int argc, char* argv[])
   bc_wtype = cmd.get("bc_wtype", bc_wtype);
   bc_itype = cmd.get("bc_itype", bc_itype);
 
-  bool save_vtk = cmd.get("save_vtk", false);
+  save_vtk = cmd.get("save_vtk", save_vtk);
 
   parStopWatch w;
   w.start("total time");
@@ -486,9 +497,13 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz, &brick);
+  connectivity = my_p4est_brick_new(nx, ny, nz,
+                                    xmin, xmax, ymin, ymax, zmin, zmax,
+                                    &brick);
 #else
-  connectivity = my_p4est_brick_new(nx, ny, &brick);
+  connectivity = my_p4est_brick_new(nx, ny,
+                                    xmin, xmax, ymin, ymax,
+                                    &brick);
 #endif
 
   p4est_t       *p4est;
@@ -509,21 +524,21 @@ int main (int argc, char* argv[])
       switch(test_number)
       {
 #ifdef P4_TO_P8
-      case 0: avg_exa = .5*nx*ny*nz*(nx+ny+nz); break;
-      case 1: avg_exa = 1./3.*nx*ny*nz*(nx*nx + ny*ny + nz*nz); break;
-      case 2: avg_exa = sin(ny)*(1-cos(nx))*(exp(nz)-1) + 2.*nx*ny*nz; break;
+      case 0: avg_exa = .5*dx*dy*dz*(dx+dy+dz); break;
+      case 1: avg_exa = 1./3.*dx*dy*dz*(dx*dx + dy*dy + dz*dz); break;
+      case 2: avg_exa = sin(dy)*(1-cos(dx))*(exp(dz)-1) + 2.*dx*dy*dz; break;
 #else
-      case 0: avg_exa = .5*nx*ny*(nx+ny); break;
-      case 1: avg_exa = 1./3.*nx*ny*(nx*nx + ny*ny); break;
-      case 2: avg_exa = sin(ny)*(1-cos(nx)); break;
+      case 0: avg_exa = .5*xmax*ymax*(xmax+ymax) - .5*xmin*ymin*(xmin+ymin); break;
+      case 1: avg_exa = 1./3.*xmax*ymax*(xmax*xmax + ymax*ymax) - 1./3.*xmin*ymin*(xmin*xmin + ymin*ymin); break;
+      case 2: avg_exa = sin(ymax)*(1-cos(xmax)) - sin(ymin)*(1-cos(xmin)); break;
 #endif
       default: throw std::invalid_argument("invalid test number.");
       }
 
 #ifdef P4_TO_P8
-      avg_exa /= (double)nx*ny*nz;
+      avg_exa /= (double)(xmax-xmin)*(ymax-ymin)*(zmax-zmin);
 #else
-      avg_exa /= (double)nx*ny;
+      avg_exa /= (double)(xmax-xmin)*(ymax-ymin);
 #endif
     }
     else
@@ -531,13 +546,13 @@ int main (int argc, char* argv[])
       switch(test_number)
       {
 #ifndef P4_TO_P8
-      case 0: avg_exa = .5*nx*ny*(nx+ny) - 2*PI*r0*r0; break;
-      case 1: avg_exa = 1./3.*nx*ny*(nx*nx + ny*ny) - PI*r0*r0*(SQR((double)nx/2) + SQR((double)ny/2) + r0*r0/2); break;
+      case 0: avg_exa = .5*xmax*ymax*(xmax+ymax) - .5*xmin*ymin*(xmin+ymin) - 2*PI*r0*r0; break;
+      case 1: avg_exa = 1./3.*xmax*ymax*(xmax*xmax + ymax*ymax) - 1./3.*xmin*ymin*(xmin*xmin + ymin*ymin) - PI*r0*r0*(SQR((xmax+xmin)/2) + SQR((ymax+ymin)/2) + r0*r0/2); break;
 #endif
       default: throw std::invalid_argument("all neumann bc not implemented for this case.");
       }
 
-      avg_exa /= (double)nx*ny - PI*r0*r0;
+      avg_exa /= (double)(xmax-xmin)*(ymax-ymin) - PI*r0*r0;
     }
   }
 
@@ -586,11 +601,14 @@ int main (int argc, char* argv[])
     double dx = (xmax-xmin) / pow(2.,(double) data.max_lvl);
     double dy = (ymax-ymin) / pow(2.,(double) data.max_lvl);
 
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     double zmin = p4est->connectivity->vertices[3*vm + 2];
     double zmax = p4est->connectivity->vertices[3*vp + 2];
     double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
-  #endif
+    double diag = sqrt(dx*dx + dy*dy + dz*dz);
+#else
+    double diag = sqrt(dx*dx + dy*dy);
+#endif
 
     /* TEST THE FACES FUNCTIONS */
 #ifdef P4_TO_P8
@@ -783,10 +801,10 @@ int main (int argc, char* argv[])
           double y = quad_y_fr_q(q_idx, tree_idx, p4est, ghost);
 #ifdef P4_TO_P8
           double z = quad_z_fr_q(q_idx, tree_idx, p4est, ghost);
-          if(phi_q<band*MIN(dx,dy,dz))
+          if(phi_q<band*diag)
             err_ex_p[q_idx] = fabs(sol_p[q_idx] - u_exact(x,y,z));
 #else
-          if(phi_q<band*MIN(dx,dy))
+          if(phi_q<band*diag)
             err_ex_p[q_idx] = fabs(sol_p[q_idx] - u_exact(x,y));
 #endif
           else

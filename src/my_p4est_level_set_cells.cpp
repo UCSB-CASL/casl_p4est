@@ -50,6 +50,18 @@ double my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f) cons
   QuadValue phi_vals;
 #endif
 
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+
+#ifdef P4_TO_P8
+  double zmin = p4est->connectivity->vertices[3*vm + 2];
+  double zmax = p4est->connectivity->vertices[3*vp + 2];
+#endif
+
   double sum = 0;
   const double *phi_p;
   ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
@@ -65,8 +77,9 @@ double my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f) cons
       p4est_locidx_t quad_idx = q+tree->quadrants_offset;
       p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
 
-      double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-      double dy = dx;
+      double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double dx = (xmax-xmin) * dmin;
+      double dy = (ymax-ymin) * dmin;
 
       double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
       double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
@@ -77,7 +90,7 @@ double my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f) cons
       cube.y1 = y + dy/2;
 
 #ifdef P4_TO_P8
-      double dz = dx;
+      double dz = (zmax-zmin) * dmin;
       double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
       cube.z0 = z - dz/2;
       cube.z1 = z + dz/2;
@@ -136,6 +149,18 @@ double my_p4est_level_set_cells_t::integrate(Vec phi, Vec f) const
   QuadValue phi_vals;
 #endif
 
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+
+#ifdef P4_TO_P8
+  double zmin = p4est->connectivity->vertices[3*vm + 2];
+  double zmax = p4est->connectivity->vertices[3*vp + 2];
+#endif
+
   double sum = 0;
   const double *phi_p;
   ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
@@ -151,8 +176,9 @@ double my_p4est_level_set_cells_t::integrate(Vec phi, Vec f) const
       p4est_locidx_t quad_idx = q+tree->quadrants_offset;
       p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
 
-      double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-      double dy = dx;
+      double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double dx = (xmax-xmin) * dmin;
+      double dy = (ymax-ymin) * dmin;
 
       double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
       double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
@@ -163,7 +189,7 @@ double my_p4est_level_set_cells_t::integrate(Vec phi, Vec f) const
       cube.y1 = y + dy/2;
 
 #ifdef P4_TO_P8
-      double dz = dx;
+      double dz = (zmax-zmin) * dmin;
       double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
       cube.z0 = z - dz/2;
       cube.z1 = z + dz/2;
@@ -312,8 +338,8 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
   double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
   double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
   double ymax = p4est->connectivity->vertices[3*vp + 1];
   double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
   double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);

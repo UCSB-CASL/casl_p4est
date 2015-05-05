@@ -98,7 +98,7 @@ protected:
 	static int  refine_fn (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
 	static int  coarsen_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t** quad);
 	
-  void tag_quadrant(p4est_quadrant_t* quad, const double* f);
+  void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
 public:
   splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip) {
     this->min_lvl = min_lvl;
