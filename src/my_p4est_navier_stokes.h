@@ -157,9 +157,9 @@ private:
   Vec face_is_well_defined[P4EST_DIM];
 
 #ifdef P4_TO_P8
-  BoundaryConditions3D bc_pressure;
+  BoundaryConditions3D *bc_pressure;
   BoundaryConditions3D bc_hodge;
-  BoundaryConditions3D bc_v[P4EST_DIM];
+  BoundaryConditions3D *bc_v;
   BoundaryConditions3D bc_vstar[P4EST_DIM];
 #else
   BoundaryConditions2D *bc_pressure;

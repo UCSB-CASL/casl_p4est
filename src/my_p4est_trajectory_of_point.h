@@ -3,7 +3,11 @@
 
 
 #ifdef P4_TO_P8
-
+#include <p8est.h>
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_faces.h>
+#include <src/my_p8est_node_neighbors.h>
 #else
 #include <p4est.h>
 #include <src/my_p4est_utils.h>

@@ -1,5 +1,10 @@
 #include "my_p4est_trajectory_of_point.h"
+
+#ifdef P4_TO_P8
+#include "my_p8est_interpolation_nodes.h"
+#else
 #include "my_p4est_interpolation_nodes.h"
+#endif
 
 extern PetscLogEvent log_trajectory_from_np1_to_n;
 extern PetscLogEvent log_trajectory_from_np1_to_nm1;

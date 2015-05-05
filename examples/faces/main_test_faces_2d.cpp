@@ -64,13 +64,13 @@
 #undef MIN
 #undef MAX
 
-double xmin = -1;
-double xmax =  4;
-double ymin = -3;
-double ymax =  2;
+double xmin = 0;
+double xmax = 3;
+double ymin = 0;
+double ymax = 4;
 #ifdef P4_TO_P8
-double zmin = -1;
-double zmax =  1;
+double zmin = -2;
+double zmax = 1;
 #endif
 
 using namespace std;
@@ -79,10 +79,10 @@ int lmin = 2;
 int lmax = 4;
 int nb_splits = 1;
 
-int nx = 1;
+int nx = 2;
 int ny = 3;
 #ifdef P4_TO_P8
-int nz = 2;
+int nz = 1;
 #endif
 
 double mu = 1.5;
@@ -514,7 +514,7 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax &brick);
+  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, &brick);
 #else
   connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick);
 #endif

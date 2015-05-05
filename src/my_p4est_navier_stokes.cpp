@@ -43,13 +43,12 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
 
   else
   {
-    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
     double xmin = p4est->connectivity->vertices[3*vm + 0];
     double ymin = p4est->connectivity->vertices[3*vm + 1];
     double xmax = p4est->connectivity->vertices[3*vp + 0];
     double ymax = p4est->connectivity->vertices[3*vp + 1];
-
   #ifdef P4_TO_P8
     double zmin = p4est->connectivity->vertices[3*vm + 2];
     double zmax = p4est->connectivity->vertices[3*vp + 2];
@@ -68,21 +67,28 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
     double d = sqrt(dx*dx + dy*dy);
 #endif
 
-    p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-    double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-
-    double x = quad_x_fr_i(quad) + tree_xmin;
-    double y = quad_y_fr_j(quad) + tree_ymin;
+    double x = (xmax-xmin)*quad_x_fr_i(quad) + xmin;
+    double y = (ymax-ymin)*quad_y_fr_j(quad) + ymin;
+#ifdef P4_TO_P8
+    double z = (zmax-zmin)*quad_z_fr_k(quad) + zmin;
+#endif
 
     bool coarsen = true;
     bool all_pos = true;
     for(int i=0; i<2; ++i)
       for(int j=0; j<2; ++j)
+#ifdef P4_TO_P8
+        for(int k=0; k<2; ++k)
+        {
+        coarsen = coarsen && fabs(vor(x+i*dx, y+j*dy, z+k*dz))*2*dx/max_L2_norm_u<threshold;
+        coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>=lip*2*d;
+        all_pos = all_pos && phi(x+i*dx, y+j*dy, z+k*dz)>0;
+#else
       {
         coarsen = coarsen && fabs(vor(x+i*dx, y+j*dy))*2*dx/max_L2_norm_u<threshold;
         coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy))>=lip*2*d;
         all_pos = all_pos && phi(x+i*dx, y+j*dy)>0;
+#endif
       }
 
     coarsen = (coarsen || all_pos) && quad->level > min_lvl;
@@ -91,10 +97,18 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
     bool is_neg = false;
     for(int i=0; i<3; ++i)
       for(int j=0; j<3; ++j)
+#ifdef P4_TO_P8
+        for(int k=0; k<3; ++k)
+        {
+          refine = refine || fabs(vor(x+i*dx/2, y+j*dy/2, z+k*dz/2))*dx/max_L2_norm_u>threshold;
+          refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2, z+k*dz/2))<=lip*d;
+          is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2, z+k*dz/2)<0;
+#else
       {
         refine = refine || fabs(vor(x+i*dx/2, y+j*dy/2))*dx/max_L2_norm_u>threshold;
         refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2))<=lip*d;
         is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2)<0;
+#endif
       }
 
     refine = refine && quad->level < max_lvl && is_neg;
@@ -567,36 +581,36 @@ void my_p4est_navier_stokes_t::compute_vorticity()
 {
   PetscErrorCode ierr;
 
-  quad_neighbor_nodes_of_node_t qnnn;
+//  quad_neighbor_nodes_of_node_t qnnn;
 
   const double *vnp1_p[P4EST_DIM];
   for(int dir=0; dir<P4EST_DIM; dir++) { ierr = VecGetArrayRead(vnp1_nodes[dir], &vnp1_p[dir]); CHKERRXX(ierr); }
 
 #ifdef P4_TO_P8
-  double *vorticity_p[P4EST_DIM];
-  for(int dir=0; dir<P4EST_DIM; dir++) { ierr = VecGetArray(vorticity[dir], &vorticity_p[dir]); CHKERRXX(ierr); }
+//  double *vorticity_p[P4EST_DIM];
+//  for(int dir=0; dir<P4EST_DIM; dir++) { ierr = VecGetArray(vorticity[dir], &vorticity_p[dir]); CHKERRXX(ierr); }
 
-  for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_n->get_layer_node(i);
-    ngbd_n->get_neighbors(n, qnnn);
-    vorticity_p[0] = qnnn.dy_central(vnp1_p[2]) - qnnn.dz_central(vnp1_p[1]);
-    vorticity_p[1] = qnnn.dz_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[2]);
-    vorticity_p[2] = qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]);
-  }
+//  for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+//  {
+//    p4est_locidx_t n = ngbd_n->get_layer_node(i);
+//    ngbd_n->get_neighbors(n, qnnn);
+//    vorticity_p[0] = qnnn.dy_central(vnp1_p[2]) - qnnn.dz_central(vnp1_p[1]);
+//    vorticity_p[1] = qnnn.dz_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[2]);
+//    vorticity_p[2] = qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]);
+//  }
 
-  for(int dir=0; dir<P4EST_DIM; ++dir) { ierr = VecGhostUpdateBegin(vorticity[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+//  for(int dir=0; dir<P4EST_DIM; ++dir) { ierr = VecGhostUpdateBegin(vorticity[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 
-  for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_n->get_local_node(i);
-    ngbd_n->get_neighbors(n, qnnn);
-    vorticity_p[0] = qnnn.dy_central(vnp1_p[2]) - qnnn.dz_central(vnp1_p[1]);
-    vorticity_p[1] = qnnn.dz_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[2]);
-    vorticity_p[2] = qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]);
-  }
+//  for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
+//  {
+//    p4est_locidx_t n = ngbd_n->get_local_node(i);
+//    ngbd_n->get_neighbors(n, qnnn);
+//    vorticity_p[0] = qnnn.dy_central(vnp1_p[2]) - qnnn.dz_central(vnp1_p[1]);
+//    vorticity_p[1] = qnnn.dz_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[2]);
+//    vorticity_p[2] = qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]);
+//  }
 
-  for(int dir=0; dir<P4EST_DIM; ++dir) { ierr = VecGhostUpdateEnd(vorticity[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+//  for(int dir=0; dir<P4EST_DIM; ++dir) { ierr = VecGhostUpdateEnd(vorticity[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 #else
   double *vorticity_p;
   ierr = VecGetArray(vorticity, &vorticity_p); CHKERRXX(ierr);
@@ -722,8 +736,8 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
       double y0 = quad_y_fr_q(ngbd[0].p.piggy3.local_num, ngbd[0].p.piggy3.which_tree, p4est_n, ghost_n);
 
 #ifdef P4_TO_P8
-      double zq = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
-      double z0 = quad_z_fr_q(ngbd[0].p.piggy3.local_num, ngbd[0].p.piggy3.which_tree, p4est, ghost);
+      double zq = quad_z_fr_q(quad_idx, tree_idx, p4est_n, ghost_n);
+      double z0 = quad_z_fr_q(ngbd[0].p.piggy3.local_num, ngbd[0].p.piggy3.which_tree, p4est_n, ghost_n);
       double phi_q = (*interp_phi)(xq, yq, zq);
       double phi_0 = (*interp_phi)(x0, y0, z0);
 #else

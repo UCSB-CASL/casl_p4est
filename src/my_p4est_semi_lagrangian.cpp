@@ -348,7 +348,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
       node_y_fr_n(n, p4est_np1, nodes_np1) - .5*dt_n*v_tmp_n[1][n]
   #ifdef P4_TO_P8
       ,
-      node_z_fr_n(ni, p4est_np1, nodes_np1) - .5*dt_n*v_tmp_n[2][ni]
+      node_z_fr_n(n, p4est_np1, nodes_np1) - .5*dt_n*v_tmp_n[2][n]
   #endif
     };
 
@@ -384,7 +384,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     double vx_star = (1 + 0.5*dt_n/dt_nm1)*v_tmp_n[0][n] - 0.5*dt_n/dt_nm1 * v_tmp_nm1[0][n];
     double vy_star = (1 + 0.5*dt_n/dt_nm1)*v_tmp_n[1][n] - 0.5*dt_n/dt_nm1 * v_tmp_nm1[1][n];
 #ifdef P4_TO_P8
-    double vz_star = (1 + 0.5*dt_n/dt_nm1)*v_tmp_n[2][ni] - 0.5*dt_n/dt_nm1 * v_tmp_nm1[2][ni];
+    double vz_star = (1 + 0.5*dt_n/dt_nm1)*v_tmp_n[2][n] - 0.5*dt_n/dt_nm1 * v_tmp_nm1[2][n];
 #endif
 
     double xyz_departure[] =
@@ -393,7 +393,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
       node_y_fr_n(n, p4est_np1, nodes_np1) - dt_n*vy_star
   #ifdef P4_TO_P8
       ,
-      node_z_fr_n(ni, p4est_np1, nodes_np1) - dt_n*vz_star
+      node_z_fr_n(n, p4est_np1, nodes_np1) - dt_n*vz_star
   #endif
     };
 
@@ -410,8 +410,11 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_advect_from_n_to_np1_2nd_order, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-
+#ifdef P4_TO_P8
+void my_p4est_semi_lagrangian_t::update_p4est(const CF_3 *v, double dt, Vec &phi, Vec *phi_xx)
+#else
 void my_p4est_semi_lagrangian_t::update_p4est(const CF_2 *v, double dt, Vec &phi, Vec *phi_xx)
+#endif
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_CF2, 0, 0, 0, 0); CHKERRXX(ierr);

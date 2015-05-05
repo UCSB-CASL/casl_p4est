@@ -2799,9 +2799,9 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
 
 #ifdef P4_TO_P8
         if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
-          tmp_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +
-                      (*ngbd)[n].f_0m0_linear(q_p) + (*ngbd)[n].f_0p0_linear(q_p) +
-                      (*ngbd)[n].f_00m_linear(q_p) + (*ngbd)[n].f_00p_linear(q_p))/6.;
+          q_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +
+                    (*ngbd)[n].f_0m0_linear(q_p) + (*ngbd)[n].f_0p0_linear(q_p) +
+                    (*ngbd)[n].f_00m_linear(q_p) + (*ngbd)[n].f_00p_linear(q_p))/6.;
 #else
         if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
           q_p[n] = ((*ngbd)[n].f_m00_linear(q_p) + (*ngbd)[n].f_p00_linear(q_p) +

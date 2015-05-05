@@ -757,9 +757,9 @@ double my_p4est_faces_t::z_fr_f(p4est_locidx_t f_idx, int dir) const
   double z = (tree_zmax-tree_zmin)*quad_z_fr_k(quad) + tree_zmin;
   double qh = (tree_zmax-tree_zmin)*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
   if(dir!=dir::z)
-    z += .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    z += .5*qh;
   else if(q2f(quad_idx, dir::f_00p)==f_idx)
-    z += (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    z += qh;
 
   return z;
 }

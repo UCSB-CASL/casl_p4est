@@ -206,27 +206,26 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
 #endif
 
   vector<VoroNgbd> voro_global(voro.size());
-  for(unsigned int n=0; n<voro.size(); ++n)
-  {
-    voro_global[n].voronoi = new voro::container(xmin, xmax, ymin, ymax, zmin, zmax,
-                                                 1, 1, 1, periodic_x, periodic_y, periodic_z, 8);
-    voro_global[n].po = new voro::particle_order;
+    for(unsigned int n=0; n<voro.size(); ++n)
+    {
+      voro_global[n].voronoi = new voro::container(xmin, xmax, ymin, ymax, zmin, zmax,
+                                                   1, 1, 1, periodic_x, periodic_y, periodic_z, 8);
+      voro_global[n].po = new voro::particle_order;
 
-    double x_c = ABS(voro[n].pc.x-xmin)<EPS ? voro[n].pc.x+EPS : ABS(voro[n].pc.x-xmax)<EPS ? voro[n].pc.x-EPS : voro[n].pc.x;
-    double y_c = ABS(voro[n].pc.y-ymin)<EPS ? voro[n].pc.y+EPS : ABS(voro[n].pc.y-ymax)<EPS ? voro[n].pc.y-EPS : voro[n].pc.y;
-    double z_c = ABS(voro[n].pc.z-zmin)<EPS ? voro[n].pc.z+EPS : ABS(voro[n].pc.z-zmax)<EPS ? voro[n].pc.z-EPS : voro[n].pc.z;
-    voro_global[n].voronoi->put(*voro_global[n].po, voro[n].nc, x_c, y_c, z_c);
+      double x_c = ABS(voro[n].pc.x-xmin)<EPS ? voro[n].pc.x+EPS : ABS(voro[n].pc.x-xmax)<EPS ? voro[n].pc.x-EPS : voro[n].pc.x;
+      double y_c = ABS(voro[n].pc.y-ymin)<EPS ? voro[n].pc.y+EPS : ABS(voro[n].pc.y-ymax)<EPS ? voro[n].pc.y-EPS : voro[n].pc.y;
+      double z_c = ABS(voro[n].pc.z-zmin)<EPS ? voro[n].pc.z+EPS : ABS(voro[n].pc.z-zmax)<EPS ? voro[n].pc.z-EPS : voro[n].pc.z;
+      voro_global[n].voronoi->put(*voro_global[n].po, voro[n].nc, x_c, y_c, z_c);
 
-    for(unsigned int m=0; m<voro[n].points.size(); ++m)
-      if(voro[n].points[m].n>=0)
-      {
-        double x_m = ABS(voro[n].points[m].p.x-xmin)<EPS ? voro[n].points[m].p.x+EPS : ABS(voro[n].points[m].p.x-xmax)<EPS ? voro[n].points[m].p.x-EPS : voro[n].points[m].p.x;
-        double y_m = ABS(voro[n].points[m].p.y-ymin)<EPS ? voro[n].points[m].p.y+EPS : ABS(voro[n].points[m].p.y-ymax)<EPS ? voro[n].points[m].p.y-EPS : voro[n].points[m].p.y;
-        double z_m = ABS(voro[n].points[m].p.z-zmin)<EPS ? voro[n].points[m].p.z+EPS : ABS(voro[n].points[m].p.z-zmax)<EPS ? voro[n].points[m].p.z-EPS : voro[n].points[m].p.z;
-        voro_global[n].voronoi->put(*voro_global[n].po, voro[n].points[m].n, x_m, y_m, z_m);
-      }
-  }
-
+      for(unsigned int m=0; m<voro[n].points.size(); ++m)
+        if(voro[n].points[m].n>=0)
+        {
+          double x_m = ABS(voro[n].points[m].p.x-xmin)<EPS ? voro[n].points[m].p.x+EPS : ABS(voro[n].points[m].p.x-xmax)<EPS ? voro[n].points[m].p.x-EPS : voro[n].points[m].p.x;
+          double y_m = ABS(voro[n].points[m].p.y-ymin)<EPS ? voro[n].points[m].p.y+EPS : ABS(voro[n].points[m].p.y-ymax)<EPS ? voro[n].points[m].p.y-EPS : voro[n].points[m].p.y;
+          double z_m = ABS(voro[n].points[m].p.z-zmin)<EPS ? voro[n].points[m].p.z+EPS : ABS(voro[n].points[m].p.z-zmax)<EPS ? voro[n].points[m].p.z-EPS : voro[n].points[m].p.z;
+          voro_global[n].voronoi->put(*voro_global[n].po, voro[n].points[m].n, x_m, y_m, z_m);
+        }
+    }
 
   voro::voronoicell_neighbor c;
   vector<int> neigh, f_vert;
@@ -243,7 +242,7 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
   // first count the number of vertices and polygons
   for(unsigned int n=0; n<voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL)
+    if(voro_global[n].voronoi!=NULL && voro[n].points.size()>0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
       if(cl.start() && cl.pid()==(int) voro[n].nc && voro_global[n].voronoi->compute_cell(c,cl))
@@ -271,7 +270,7 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
 
   for(unsigned int n=0; n<voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL)
+    if(voro_global[n].voronoi!=NULL && voro[n].points.size()>0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
       if(cl.start() && cl.pid()==(int) voro[n].nc && voro_global[n].voronoi->compute_cell(c,cl))
@@ -290,7 +289,7 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
   int offset = 0;
   for(unsigned int n=0; n<voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL)
+    if(voro_global[n].voronoi!=NULL && voro[n].points.size()>0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
       if(cl.start() && cl.pid()==(int) voro[n].nc && voro_global[n].voronoi->compute_cell(c,cl))
@@ -317,7 +316,7 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
   fprintf(f, "\nCELL_TYPES %d\n", nb_polygons);
   for(unsigned int n=0; n<voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL)
+    if(voro_global[n].voronoi!=NULL && voro[n].points.size()>0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
       if(cl.start() && cl.pid()==(int) voro[n].nc && voro_global[n].voronoi->compute_cell(c,cl))

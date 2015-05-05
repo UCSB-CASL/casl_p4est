@@ -67,7 +67,7 @@ double xmax =  1;
 double ymin = -1;
 double ymax =  2;
 #ifdef P4_TO_P8
-double zmin = -1;
+double zmin = -4;
 double zmax =  1;
 #endif
 
@@ -77,7 +77,7 @@ int lmin = 3;
 int lmax = 5;
 int nb_splits = 1;
 
-int nx = 2;
+int nx = 3;
 int ny = 1;
 #ifdef P4_TO_P8
 int nz = 2;
@@ -524,9 +524,9 @@ int main (int argc, char* argv[])
       switch(test_number)
       {
 #ifdef P4_TO_P8
-      case 0: avg_exa = .5*dx*dy*dz*(dx+dy+dz); break;
-      case 1: avg_exa = 1./3.*dx*dy*dz*(dx*dx + dy*dy + dz*dz); break;
-      case 2: avg_exa = sin(dy)*(1-cos(dx))*(exp(dz)-1) + 2.*dx*dy*dz; break;
+      case 0: avg_exa = .5*xmax*ymax*zmax*(xmax+ymax+zmax) - .5*xmin*ymin*zmin*(xmin+ymin+zmin); break;
+      case 1: avg_exa = 1./3.*xmax*ymax*zmax*(xmax*xmax + ymax*ymax + zmax*zmax) - 1./3.*xmin*ymin*zmin*(xmin*xmin + ymin*ymin + zmin*zmin); break;
+      case 2: avg_exa = sin(ymax)*(1-cos(xmax))*(exp(zmax)-1) + 2.*xmax*ymax*zmax - sin(ymin)*(1-cos(xmin))*(exp(zmin)-1) + 2.*xmin*ymin*zmin; break;
 #else
       case 0: avg_exa = .5*xmax*ymax*(xmax+ymax) - .5*xmin*ymin*(xmin+ymin); break;
       case 1: avg_exa = 1./3.*xmax*ymax*(xmax*xmax + ymax*ymax) - 1./3.*xmin*ymin*(xmin*xmin + ymin*ymin); break;

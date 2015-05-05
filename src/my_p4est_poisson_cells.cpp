@@ -554,6 +554,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 #ifdef P4_TO_P8
             case dir::f_00m: case dir::f_00p: dtmp = dz; break;
 #endif
+            default: throw std::invalid_argument("[ERROR]: unknown direction.");
             }
 
             double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_tmp, dtmp, dtmp);
@@ -665,6 +666,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             case dir::f_m00: case dir::f_p00: s = dy; break;
             case dir::f_0m0: case dir::f_0p0: s = dx; break;
 #endif
+            default: throw std::invalid_argument("[ERROR]: unknown direction.");
             }
 
             for(unsigned int i=0; i<ngbd.size(); ++i)
@@ -698,6 +700,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           case dir::f_m00: case dir::f_p00: s = dy; break;
           case dir::f_0m0: case dir::f_0p0: s = dx; break;
 #endif
+          default: throw std::invalid_argument("[ERROR]: unknown direction.");
           }
 
           for(unsigned int i=0; i<ngbd.size(); ++i)
@@ -871,6 +874,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 #ifdef P4_TO_P8
               case dir::f_00m: case dir::f_00p: dtmp = dz; break;
 #endif
+              default: throw std::invalid_argument("[ERROR]: unknown direction.");
               }
 
               double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_tmp, dtmp, dtmp);
@@ -1038,7 +1042,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 
 
 #ifdef P4_TO_P8
-void PoissonSolverCellBase::set_phi(Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
+void my_p4est_poisson_cells_t::set_phi(Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
 void my_p4est_poisson_cells_t::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
 #endif

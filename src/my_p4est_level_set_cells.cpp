@@ -209,7 +209,11 @@ double my_p4est_level_set_cells_t::integrate(Vec phi, Vec f) const
       phi_vals.val11 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
 
+#ifdef P4_TO_P8
+      sum += cube.volume_In_Negative_Domain(phi_vals)*f_p[quad_idx];
+#else
       sum += cube.area_In_Negative_Domain(phi_vals)*f_p[quad_idx];
+#endif
     }
   }
 
@@ -311,7 +315,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   {
     p4est_locidx_t n = ngbd_n->get_layer_node(i);
 #ifdef P4_TO_P8
-    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est_nodes));
+    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est, nodes));
 #else
     bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes));
 #endif
@@ -321,7 +325,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   {
     p4est_locidx_t n = ngbd_n->get_local_node(i);
 #ifdef P4_TO_P8
-    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est_nodes));
+    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est, nodes));
 #else
     bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes));
 #endif
