@@ -1083,13 +1083,14 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   double inv_max_w = 1e-6;
 
   PetscScalar *face_is_well_defined_p;
-  ierr = VecGetArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+  if(face_is_well_defined!=NULL)
+    ierr = VecGetArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
   for(unsigned int m=0; m<ngbd.size(); m++)
   {
     /* minus direction */
     p4est_locidx_t fm_idx = ngbd[m];
-    if(face_is_well_defined_p[fm_idx] && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
+    if((face_is_well_defined==NULL || face_is_well_defined_p[fm_idx]) && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
     {
       double xyz_t[P4EST_DIM];
       faces->xyz_fr_f(fm_idx, dir, xyz_t);
@@ -1133,7 +1134,8 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+  if(face_is_well_defined!=NULL)
+    ierr = VecRestoreArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
   if(interp_points.size()==0)
     return 0;

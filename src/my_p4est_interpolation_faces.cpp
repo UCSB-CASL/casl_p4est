@@ -16,7 +16,11 @@ my_p4est_interpolation_faces_t::my_p4est_interpolation_faces_t(const my_p4est_no
 }
 
 
-void my_p4est_interpolation_faces_t::set_input(Vec F, Vec face_is_well_defined, int dir, BoundaryConditions2D *bc)
+#ifdef P4_TO_P8
+void my_p4est_interpolation_faces_t::set_input(Vec F, int dir, Vec face_is_well_defined, BoundaryConditions3D *bc)
+#else
+void my_p4est_interpolation_faces_t::set_input(Vec F, int dir, Vec face_is_well_defined, BoundaryConditions2D *bc)
+#endif
 {
   this->Fi = F;
   this->face_is_well_defined = face_is_well_defined;
@@ -141,6 +145,10 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
   const double *Fi_p;
   ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 
+  const PetscScalar *face_is_well_defined_p;
+  if(face_is_well_defined!=NULL)
+    ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+
   for(unsigned int m=0; m<ngbd_tmp.size(); ++m)
   {
     for(int d=0; d<2; ++d)
@@ -150,13 +158,17 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
       if(f_tmp!=NO_VELOCITY && std::find(ngbd.begin(), ngbd.end(),f_tmp)==ngbd.end())
       {
 #ifdef P4_TO_P8
-        if(fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS && fabs(xyz[2]-faces->z_fr_f(f_tmp,dir))<EPS)
+        if((face_is_well_defined==NULL || face_is_well_defined_p[f_tmp]) &&
+           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS && fabs(xyz[2]-faces->z_fr_f(f_tmp,dir))<EPS)
 #else
-        if(fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS)
+        if((face_is_well_defined==NULL || face_is_well_defined_p[f_tmp]) &&
+           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS)
 #endif
         {
           double Fi_tmp = Fi_p[f_tmp];
           ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+          if(face_is_well_defined!=NULL)
+            ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
           return Fi_tmp;
         }
 
@@ -178,13 +190,10 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
   double min_w = 1e-6;
   double inv_max_w = 1e-6;
 
-  const PetscScalar *face_is_well_defined_p;
-  ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
-
   for(unsigned int m=0; m<ngbd.size(); m++)
   {
     p4est_locidx_t fm_idx = ngbd[m];
-    if(face_is_well_defined_p[fm_idx] && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
+    if((face_is_well_defined==NULL || face_is_well_defined_p[fm_idx]) && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
     {
       double xyz_t[P4EST_DIM];
       faces->xyz_fr_f(fm_idx, dir, xyz_t);
@@ -229,7 +238,8 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
   }
 
   ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+  if(face_is_well_defined!=NULL)
+    ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
   if(interp_points.size()==0)
     return 0;

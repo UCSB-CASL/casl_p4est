@@ -126,6 +126,7 @@ private:
   double dxyz_min[P4EST_DIM];
   double xyz_min[P4EST_DIM];
   double xyz_max[P4EST_DIM];
+  double convert_to_xyz[P4EST_DIM];
 
   double mu;
   double rho;
@@ -257,7 +258,7 @@ public:
 
   void compute_dt();
 
-  void update_from_tn_to_tnp1();
+  void update_from_tn_to_tnp1(const CF_2 *level_set=NULL);
 
   void compute_forces();
 

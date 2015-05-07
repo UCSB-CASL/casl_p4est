@@ -39,9 +39,9 @@ public:
   my_p4est_interpolation_faces_t(const my_p4est_node_neighbors_t* ngbd_n, const my_p4est_faces_t *faces);
 
 #ifdef P4_TO_P8
-  void set_input(Vec F, Vec face_is_well_defined, int dir, BoundaryConditions3D *bc=NULL);
+  void set_input(Vec F, int dir, Vec face_is_well_defined=NULL, BoundaryConditions3D *bc=NULL);
 #else
-  void set_input(Vec F, Vec face_is_well_defined, int dir, BoundaryConditions2D *bc=NULL);
+  void set_input(Vec F, int dir, Vec face_is_well_defined=NULL, BoundaryConditions2D *bc=NULL);
 #endif
 
   // interpolation methods

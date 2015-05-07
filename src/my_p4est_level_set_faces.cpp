@@ -143,8 +143,8 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 
 
   my_p4est_interpolation_nodes_t interp0(ngbd_n); interp0.set_input(bc_interface_values, quadratic);
-  my_p4est_interpolation_faces_t interp1(ngbd_n, faces); interp1.set_input(q, face_is_well_defined, dir);
-  my_p4est_interpolation_faces_t interp2(ngbd_n, faces); interp2.set_input(q, face_is_well_defined, dir);
+  my_p4est_interpolation_faces_t interp1(ngbd_n, faces); interp1.set_input(q, dir, face_is_well_defined);
+  my_p4est_interpolation_faces_t interp2(ngbd_n, faces); interp2.set_input(q, dir, face_is_well_defined);
 
   /* find dx and dy smallest */
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
