@@ -11,17 +11,17 @@
 
 
 my_p4est_interpolation_faces_t::my_p4est_interpolation_faces_t(const my_p4est_node_neighbors_t* ngbd_n, const my_p4est_faces_t *faces)
-  : my_p4est_interpolation_t(ngbd_n), faces(faces), ngbd_c(faces->ngbd_c), face_is_well_defined(NULL)
-
+  : my_p4est_interpolation_t(ngbd_n), faces(faces), ngbd_c(faces->ngbd_c), face_is_well_defined(NULL), bc(NULL)
 {
 }
 
 
-void my_p4est_interpolation_faces_t::set_input(Vec F, Vec face_is_well_defined, int dir)
+void my_p4est_interpolation_faces_t::set_input(Vec F, Vec face_is_well_defined, int dir, BoundaryConditions2D *bc)
 {
   this->Fi = F;
   this->face_is_well_defined = face_is_well_defined;
   this->dir = dir;
+  this->bc = bc;
 }
 
 
@@ -65,6 +65,37 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
 {
   PetscErrorCode ierr;
 
+  double *v2c = p4est->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+  double xmin = v2c[3*t2v[0 + 0] + 0];
+  double ymin = v2c[3*t2v[0 + 0] + 1];
+  double xmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 0];
+  double ymax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 1];
+
+#ifdef P4_TO_P8
+  double zmin = v2c[3*t2v[0 + 0] + 2];
+  double zmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 2];
+  if(bc!=NULL && bc->wallType(xyz[0],xyz[1],xyz[2])==DIRICHLET &&
+     (fabs(xyz[0]-xmin)<EPS || fabs(xyz[0]-xmax)<EPS ||
+      fabs(xyz[1]-ymin)<EPS || fabs(xyz[1]-ymax)<EPS ||
+      fabs(xyz[2]-zmin)<EPS || fabs(xyz[2]-zmax)<EPS))
+    return bc->wallValue(xyz[0], xyz[1], xyz[2]);
+#else
+  if(bc!=NULL && bc->wallType(xyz[0],xyz[1])==DIRICHLET &&
+     (fabs(xyz[0]-xmin)<EPS || fabs(xyz[0]-xmax)<EPS || fabs(xyz[1]-ymin)<EPS || fabs(xyz[1]-ymax)<EPS))
+    return bc->wallValue(xyz[0], xyz[1]);
+#endif
+
+  xmax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 0];
+  ymax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 1];
+#ifdef P4_TO_P8
+  zmax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 2];
+  double qh = MIN(xmax-xmin, ymax-ymin, zmax-zmin);
+#else
+  double qh = MIN(xmax-xmin, ymax-ymin);
+#endif
+  double scaling = .5 * qh*(double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+
   p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
   p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
   p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
@@ -73,7 +104,6 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
   std::vector<p4est_quadrant_t> ngbd_tmp;
   std::vector<p4est_locidx_t> ngbd;
   p4est_locidx_t f_tmp;
-  double scaling = DBL_MAX;
 
   for(int i=-1; i<2; ++i)
     for(int j=-1; j<2; ++j)
@@ -83,6 +113,13 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
 #else
       ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j);
 #endif
+//  p4est_quadrant_t qq = quad;
+//  qq.p.piggy3.local_num = quad_idx;
+//  ngbd_tmp.push_back(qq);
+//  ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx,-1, 0);
+//  ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 1, 0);
+//  ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 0,-1);
+//  ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 0, 1);
 
   int nb_ngbd = ngbd_tmp.size();
   for(int m=0; m<nb_ngbd; ++m)
@@ -95,6 +132,10 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
 #else
         ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, i, j);
 #endif
+//    ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree,-1, 0);
+//    ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, 1, 0);
+//    ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, 0,-1);
+//    ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, 0, 1);
   }
 
   const double *Fi_p;
@@ -102,11 +143,10 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
 
   for(unsigned int m=0; m<ngbd_tmp.size(); ++m)
   {
-    scaling = MIN(scaling, (double)P4EST_QUADRANT_LEN(ngbd_tmp[m].level)/(double)P4EST_ROOT_LEN);
-
     for(int d=0; d<2; ++d)
     {
       f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir+d);
+
       if(f_tmp!=NO_VELOCITY && std::find(ngbd.begin(), ngbd.end(),f_tmp)==ngbd.end())
       {
 #ifdef P4_TO_P8
@@ -135,7 +175,6 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
   std::vector<double> p;
   std::vector<double> nb[P4EST_DIM];
 
-  scaling *= .5;
   double min_w = 1e-6;
   double inv_max_w = 1e-6;
 
@@ -149,6 +188,7 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
     {
       double xyz_t[P4EST_DIM];
       faces->xyz_fr_f(fm_idx, dir, xyz_t);
+
       for(int i=0; i<P4EST_DIM; ++i)
         xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
 

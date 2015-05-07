@@ -23,6 +23,12 @@ private:
 
   Vec face_is_well_defined;
 
+#ifdef P4_TO_P8
+  BoundaryConditions3D* bc;
+#else
+  BoundaryConditions2D* bc;
+#endif
+
   // rule of three -- disable copy ctr and assignment if not useful
   my_p4est_interpolation_faces_t(const my_p4est_interpolation_faces_t& other);
   my_p4est_interpolation_faces_t& operator=(const my_p4est_interpolation_faces_t& other);
@@ -32,7 +38,11 @@ public:
 
   my_p4est_interpolation_faces_t(const my_p4est_node_neighbors_t* ngbd_n, const my_p4est_faces_t *faces);
 
-  void set_input(Vec F, Vec face_is_well_defined, int dir);
+#ifdef P4_TO_P8
+  void set_input(Vec F, Vec face_is_well_defined, int dir, BoundaryConditions3D *bc=NULL);
+#else
+  void set_input(Vec F, Vec face_is_well_defined, int dir, BoundaryConditions2D *bc=NULL);
+#endif
 
   // interpolation methods
 #ifdef P4_TO_P8

@@ -489,8 +489,13 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive( std::vect
   {
     if (hierarchy->trees[tr][ind].quad == NOT_A_P4EST_QUADRANT) return;
 
-    p4est_quadrant_t quad;
     p4est_locidx_t locid = hierarchy->trees[tr][ind].quad;
+
+    for(unsigned int n=0; n<ngbd.size(); ++n)
+      if(ngbd[n].p.piggy3.local_num==locid)
+        return;
+
+    p4est_quadrant_t quad;
     if (locid < p4est->local_num_quadrants) {// local quadrant
       p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
       quad = *(const p4est_quadrant_t*)sc_array_index(&tree->quadrants, locid - tree->quadrants_offset);
@@ -500,6 +505,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive( std::vect
     quad.p.piggy3.local_num = locid;
     quad.p.piggy3.which_tree = tr;
     ngbd.push_back(quad);
+
     return;
   }
 

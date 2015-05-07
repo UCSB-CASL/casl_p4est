@@ -237,6 +237,8 @@ public:
 
   inline const Vec* get_velocity() { return vn_nodes; }
 
+  inline const Vec* get_velocity_np1() { return vnp1_nodes; }
+
   inline Vec* get_vstar() { return vstar; }
 
   inline Vec* get_vnp1() { return vnp1; }
