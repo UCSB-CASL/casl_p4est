@@ -182,7 +182,7 @@ private:
 
   my_p4est_interpolation_nodes_t *interp_phi;
 
-  my_p4est_interpolation_faces_t *interp_dxyz_hodge[P4EST_DIM];
+  my_p4est_interpolation_nodes_t *interp_dxyz_hodge[P4EST_DIM];
 
   double compute_dxyz_hodge( p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir);
 

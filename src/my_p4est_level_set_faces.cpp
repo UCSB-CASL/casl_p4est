@@ -141,7 +141,6 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   ierr = VecGhostUpdateEnd(bc_interface_values, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecRestoreArray(bc_interface_values, &bc_p); CHKERRXX(ierr);
 
-
   my_p4est_interpolation_nodes_t interp0(ngbd_n); interp0.set_input(bc_interface_values, quadratic);
   my_p4est_interpolation_faces_t interp1(ngbd_n, faces); interp1.set_input(q, dir, face_is_well_defined);
   my_p4est_interpolation_faces_t interp2(ngbd_n, faces); interp2.set_input(q, dir, face_is_well_defined);
@@ -151,8 +150,8 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
   double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
   double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
   double ymax = p4est->connectivity->vertices[3*vp + 1];
   double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
   double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
@@ -209,6 +208,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
           ,z - grad_phi.z*phi_f
   #endif
         };
+
         interp0.add_point(f_idx, xyz_i);
 
         if(order >= 1 || (order==0 && bc.interfaceType()==NEUMANN))
@@ -312,6 +312,8 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
           }
         }
       }
+      else
+        q_p[f_idx] = 0;
     }
   }
 
