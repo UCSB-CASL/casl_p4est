@@ -33,6 +33,14 @@ public:
 
   double integrate_over_interface(Vec phi, Vec f) const;
 
+  /*!
+   * \brief integrate f dot grad(phi) over the irregular interface phi
+   * \param phi[in]       the level-set function
+   * \param f[in]         the scalar to integrate
+   * \param integral[out] the integral of f dot grad(phi) in each dimension
+   */
+  void integrate_over_interface(Vec phi, Vec f, double *integral) const;
+
   double integrate(Vec phi, Vec f) const;
 
   /* extrapolate using geometrical extrapolation */

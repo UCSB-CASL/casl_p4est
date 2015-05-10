@@ -149,11 +149,9 @@ private:
   Vec vn_nodes  [P4EST_DIM];
   Vec vnp1_nodes[P4EST_DIM];
 
-#ifdef P4_TO_P8
-  Vec vorticity[P4EST_DIM];
-#else
   Vec vorticity;
-#endif
+
+  Vec pressure;
 
   Vec face_is_well_defined[P4EST_DIM];
 
@@ -184,7 +182,9 @@ private:
 
   my_p4est_interpolation_nodes_t *interp_dxyz_hodge[P4EST_DIM];
 
-  double compute_dxyz_hodge( p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir);
+  double compute_dxyz_hodge( p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, int dir);
+
+  double compute_divergence(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx);
 
   void compute_max_L2_norm_u();
 
@@ -260,7 +260,9 @@ public:
 
   void update_from_tn_to_tnp1(const CF_2 *level_set=NULL);
 
-  void compute_forces();
+  void compute_pressure();
+
+  void compute_forces(double *f);
 
   void save_vtk(const char* name);
 };
