@@ -503,7 +503,13 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
   {
     FILE* fp;
     char name[1000];
+#ifdef STAMPEDE
+    char *out_dir;
+    out_dir = getenv("OUT_DIR");
+    sprintf(name, "%s/velo_driven_cavity_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+#else
     sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/driven_cavity/velo.dat");
+#endif
     ierr = PetscFOpen(PETSC_COMM_SELF, name, "w", &fp); CHKERRXX(ierr);
 
     if(fp==NULL) std::cout << mpi->mpirank << " could not open file ... " << std::endl;
@@ -767,11 +773,22 @@ int main (int argc, char* argv[])
 
   FILE *fp_forces;
   char file_forces[1000];
-  if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/karman/forces_no_inside_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
-  else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
+
+#ifdef STAMPEDE
+  char *out_dir;
+  out_dir = getenv("OUT_DIR");
+#endif
 
   if(test_number==4 || test_number==5)
   {
+#ifdef STAMPEDE
+    if     (test_number==4) sprintf(name, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    else if(test_number==5) sprintf(name, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+#else
+    if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/karman/forces_no_inside_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
+    else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
+#endif
+
     ierr = PetscPrintf(mpi->mpicomm, "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
     if(!mpi->mpirank)
     {
@@ -826,11 +843,15 @@ int main (int argc, char* argv[])
     {
       switch(test_number)
       {
+#ifdef STAMPEDE
+      sprintf(name, "%s/vtu/%05d_", iter/save_every_n);
+#else
       case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
       case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
       case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/driven_cavity/cavity_%d", iter/save_every_n); break;
       case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/driven_cavity_with_hole/hole_%d", iter/save_every_n); break;
       case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/karman/karman_%d", iter/save_every_n); break;
+#endif
       default: throw std::invalid_argument("choose a valid test.");
       }
 
