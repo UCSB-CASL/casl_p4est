@@ -33,7 +33,8 @@ private:
   public:
     double max_L2_norm_u;
     double threshold;
-    splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double threshold, double max_L2_norm_u);
+    double uniform_band;
+    splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold, double max_L2_norm_u);
     bool refine_and_coarsen(p4est_t* p4est, my_p4est_node_neighbors_t *ngbd_n, Vec phi, Vec vorticity);
   };
 

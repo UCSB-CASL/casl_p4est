@@ -22,9 +22,10 @@
 
 
 
-my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double threshold, double max_L2_norm_u)
+my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold, double max_L2_norm_u)
   : splitting_criteria_tag_t(min_lvl, max_lvl, lip)
 {
+  this->uniform_band = uniform_band;
   this->threshold = threshold;
   this->max_L2_norm_u = max_L2_norm_u;
 }
@@ -67,6 +68,12 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
     double d = sqrt(dx*dx + dy*dy);
 #endif
 
+#ifdef P4_TO_P8
+    double dxyz_min = MAX(xmax-xmin, ymax-ymin, zmax-zmin) / (1<<max_lvl);
+#else
+    double dxyz_min = MAX(xmax-xmin, ymax-ymin) / (1<<max_lvl);
+#endif
+
     double x = (xmax-xmin)*quad_x_fr_i(quad) + xmin;
     double y = (ymax-ymin)*quad_y_fr_j(quad) + ymin;
 #ifdef P4_TO_P8
@@ -87,11 +94,13 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
       {
         coarsen = coarsen && fabs(vor(x+i*dx, y+j*dy))*2*dx/max_L2_norm_u<threshold;
         coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy))>=lip*2*d;
+        coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy))>uniform_band;
         all_pos = all_pos && phi(x+i*dx, y+j*dy)>0;
 #endif
       }
 
     coarsen = (coarsen || all_pos) && quad->level > min_lvl;
+//    coarsen = (coarsen) && quad->level > min_lvl;
 
     bool refine = false;
     bool is_neg = false;
@@ -107,11 +116,13 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
       {
         refine = refine || fabs(vor(x+i*dx/2, y+j*dy/2))*dx/max_L2_norm_u>threshold;
         refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2))<=lip*d;
+        refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2))<uniform_band;
         is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2)<0;
 #endif
       }
 
     refine = refine && quad->level < max_lvl && is_neg;
+//    refine = refine && quad->level < max_lvl;
 
     if (refine)
       quad->p.user_int = REFINE_QUADRANT;
@@ -1174,7 +1185,7 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
     if(bc_pressure->interfaceType()!=NOINTERFACE)
     {
       my_p4est_level_set_t lsn(ngbd_n);
-      lsn.extend_Over_Interface_TVD(phi, vnp1_nodes[dir], 50, 2);
+      lsn.extend_Over_Interface_TVD(phi, vnp1_nodes[dir]);
     }
   }
 
@@ -1217,7 +1228,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
   splitting_criteria_t *data = (splitting_criteria_t*)p4est_n->user_pointer;
 
   /* construct the new forest */
-  splitting_criteria_vorticity_t criteria(data->min_lvl, data->max_lvl, data->lip, threshold_split_cell, max_L2_norm_u);
+  splitting_criteria_vorticity_t criteria(data->min_lvl, data->max_lvl, data->lip, uniform_band, threshold_split_cell, max_L2_norm_u);
   p4est_t *p4est_np1 = p4est_copy(p4est_n, P4EST_FALSE);
   p4est_np1->user_pointer = (void*)&criteria;
 
@@ -1440,7 +1451,7 @@ void my_p4est_navier_stokes_t::compute_pressure()
   if(bc_pressure->interfaceType()!=NOINTERFACE)
   {
     my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
-    lsc.extend_Over_Interface(phi, pressure, bc_pressure);
+    lsc.extend_Over_Interface(phi, pressure, bc_pressure, 2, 4);
   }
 }
 
@@ -1459,7 +1470,7 @@ void my_p4est_navier_stokes_t::compute_forces(double *f)
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &forces[dir]); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(vnp1[dir], &v_p[dir]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(vnp1_nodes[dir], &v_p[dir]); CHKERRXX(ierr);
     ierr = VecGetArray(forces[dir], &forces_p[dir]); CHKERRXX(ierr);
   }
 
@@ -1469,7 +1480,7 @@ void my_p4est_navier_stokes_t::compute_forces(double *f)
   for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd_n->get_layer_node(i);
-    if(fabs(phi_p[n])<5*MAX(dxyz_min[0],dxyz_min[1]))
+    if(fabs(phi_p[n])<10*MAX(dxyz_min[0],dxyz_min[1]))
     {
       ngbd_n->get_neighbors(n, qnnn);
 
@@ -1503,7 +1514,7 @@ void my_p4est_navier_stokes_t::compute_forces(double *f)
   for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd_n->get_local_node(i);
-    if(fabs(phi_p[n])<5*MAX(dxyz_min[0],dxyz_min[1]))
+    if(fabs(phi_p[n])<10*MAX(dxyz_min[0],dxyz_min[1]))
     {
       ngbd_n->get_neighbors(n, qnnn);
 
@@ -1529,18 +1540,14 @@ void my_p4est_navier_stokes_t::compute_forces(double *f)
     }
   }
 
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    ierr = VecGhostUpdateEnd(forces[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    f[dir] = integrate_over_interface(p4est_n, nodes_n, phi, forces[dir]);
-  }
-
   ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    ierr = VecDestroy(forces[dir]); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(vnp1[dir], &v_p[dir]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(vnp1_nodes[dir], &v_p[dir]); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(forces[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecRestoreArray(forces[dir], &forces_p[dir]); CHKERRXX(ierr);
+    f[dir] = integrate_over_interface(p4est_n, nodes_n, phi, forces[dir]);
+    ierr = VecDestroy(forces[dir]); CHKERRXX(ierr);
   }
 
   my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
@@ -1589,10 +1596,13 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   const double *pressure_nodes_p;
   ierr = VecGetArrayRead(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
 
+  const double *pressure_p;
+  ierr = VecGetArrayRead(pressure, &pressure_p); CHKERRXX(ierr);
+
   my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                          P4EST_TRUE, P4EST_TRUE,
                          3+P4EST_DIM, /* number of VTK_POINT_DATA */
-                         1, /* number of VTK_CELL_DATA  */
+                         2, /* number of VTK_CELL_DATA  */
                          name,
                          VTK_POINT_DATA, "phi", phi_p,
                          VTK_POINT_DATA, "vorticity", vort_p,
@@ -1602,13 +1612,16 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
                        #ifdef P4_TO_P8
                          VTK_POINT_DATA, "vz", vn_p[2],
                        #endif
-                         VTK_CELL_DATA, "hodge", hodge_p);
+                         VTK_CELL_DATA, "hodge", hodge_p,
+                         VTK_CELL_DATA, "pressure_cells", pressure_p);
 
 
   ierr = VecRestoreArrayRead(phi  , &phi_p  ); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(vorticity, &vort_p); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(pressure, &pressure_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
   ierr = VecDestroy(pressure_nodes); CHKERRXX(ierr);
