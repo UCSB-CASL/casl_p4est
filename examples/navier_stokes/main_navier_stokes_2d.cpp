@@ -506,7 +506,7 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
 #ifdef STAMPEDE
     char *out_dir;
     out_dir = getenv("OUT_DIR");
-    sprintf(name, "%s/velo_driven_cavity_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    sprintf(name, "%s/velo_driven_cavity_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
 #else
     sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/driven_cavity/velo.dat");
 #endif
@@ -782,8 +782,8 @@ int main (int argc, char* argv[])
   if(test_number==4 || test_number==5)
   {
 #ifdef STAMPEDE
-    if     (test_number==4) sprintf(name, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
-    else if(test_number==5) sprintf(name, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    if     (test_number==4) sprintf(name, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    else if(test_number==5) sprintf(name, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
 #else
     if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/karman/forces_no_inside_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
     else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
@@ -844,7 +844,7 @@ int main (int argc, char* argv[])
       switch(test_number)
       {
 #ifdef STAMPEDE
-      sprintf(name, "%s/vtu/%05d_", iter/save_every_n);
+      sprintf(name, "%s/vtu/%05d_", out_dir, iter/save_every_n);
 #else
       case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
       case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
