@@ -727,7 +727,7 @@ int main (int argc, char* argv[])
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
       ierr = VecDuplicate(phi, &sol_nodes[dir]); CHKERRXX(ierr);
-      interp_f.set_input(sol[dir], face_is_well_defined[dir], dir);
+      interp_f.set_input(sol[dir], dir, face_is_well_defined[dir]);
       interp_f.interpolate(sol_nodes[dir]);
     }
     interp_f.clear();
