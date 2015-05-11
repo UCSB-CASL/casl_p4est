@@ -94,7 +94,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
       {
         coarsen = coarsen && fabs(vor(x+i*dx, y+j*dy))*2*dx/max_L2_norm_u<threshold;
         coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy))>=lip*2*d;
-        coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy))>uniform_band;
+        coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy))>uniform_band*dxyz_min;
         all_pos = all_pos && phi(x+i*dx, y+j*dy)>0;
 #endif
       }
@@ -116,7 +116,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
       {
         refine = refine || fabs(vor(x+i*dx/2, y+j*dy/2))*dx/max_L2_norm_u>threshold;
         refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2))<=lip*d;
-        refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2))<uniform_band;
+        refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2))<uniform_band*dxyz_min;
         is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2)<0;
 #endif
       }

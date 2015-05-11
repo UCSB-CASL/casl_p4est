@@ -231,9 +231,9 @@ public:
 
   inline const p4est_t *get_p4est() { return p4est_n; }
 
-  inline const p4est_ghost_t *get_ghost() { return ghost_n; }
+  inline p4est_ghost_t *get_ghost() { return ghost_n; }
 
-  inline const p4est_nodes_t *get_nodes() { return nodes_n; }
+  inline p4est_nodes_t *get_nodes() { return nodes_n; }
 
   inline const my_p4est_faces_t* get_faces() { return faces_n; }
 

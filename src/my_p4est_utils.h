@@ -383,7 +383,7 @@ inline double node_z_fr_n(const p4est_indep_t *ni){
 }
 #endif
 
-inline double node_x_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes)
+inline double node_x_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes)
 {
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
@@ -395,7 +395,7 @@ inline double node_x_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_no
   return (tree_xmax-tree_xmin)*node_x_fr_n(node) + tree_xmin;
 }
 
-inline double node_y_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes)
+inline double node_y_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes)
 {
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
@@ -408,7 +408,7 @@ inline double node_y_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_no
 }
 
 #ifdef P4_TO_P8
-inline double node_z_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes)
+inline double node_z_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes)
 {
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
@@ -421,7 +421,7 @@ inline double node_z_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_no
 }
 #endif
 
-inline void node_xyz_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes, double *xyz)
+inline void node_xyz_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes, double *xyz)
 {
   xyz[0] = node_x_fr_n(n,p4est,nodes);
   xyz[1] = node_y_fr_n(n,p4est,nodes);
@@ -457,7 +457,7 @@ inline double quad_z_fr_k(const p4est_quadrant_t *qi){
  * \brief get the x-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
 {
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -479,7 +479,7 @@ inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
  * \brief get the y-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
 {
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -502,7 +502,7 @@ inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
  * \brief get the z-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
 {
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -526,7 +526,7 @@ inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
  * \brief get the xyz-coordinates of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost, double *xyz)
+inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost, double *xyz)
 {
   xyz[0] = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
   xyz[1] = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);

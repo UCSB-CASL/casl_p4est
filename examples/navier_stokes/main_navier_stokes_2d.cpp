@@ -410,8 +410,8 @@ void check_error_analytic_vortex(mpi_context_t *mpi, my_p4est_navier_stokes_t *n
   int mpiret;
 
   const p4est_t *p4est = ns->get_p4est();
-  const p4est_ghost_t *ghost = ns->get_ghost();
-  const p4est_nodes_t *nodes = ns->get_nodes();
+  p4est_ghost_t *ghost = ns->get_ghost();
+  p4est_nodes_t *nodes = ns->get_nodes();
   const Vec *v = ns->get_velocity_np1();
 
   const double *v_p[P4EST_DIM];
@@ -506,7 +506,7 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
 #ifdef STAMPEDE
     char *out_dir;
     out_dir = getenv("OUT_DIR");
-    sprintf(name, "%s/velo_driven_cavity_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    sprintf(name, "%s/velo_driven_cavity.dat", out_dir);
 #else
     sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/driven_cavity/velo.dat");
 #endif
@@ -598,9 +598,9 @@ int main (int argc, char* argv[])
 
   double uniform_band = 3*r0/sqrt(Re);
 #ifdef P4_TO_P8
-  double dxmin = MIN((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny, (zmax-zmin)/(double)ny) / (1<<lmax);
+  double dxmin = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny, (zmax-zmin)/(double)ny) / (1<<lmax);
 #else
-  double dxmin = MIN((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny) / (1<<lmax);
+  double dxmin = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny) / (1<<lmax);
 #endif
   uniform_band /= dxmin;
   uniform_band = cmd.get("uniform_band", uniform_band);
