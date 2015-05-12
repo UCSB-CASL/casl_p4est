@@ -726,7 +726,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
   ierr = VecRestoreArray(add,    &add_p   ); CHKERRXX(ierr);
 
   // check for null space
-  ierr = MPI_Allreduce(&matrix_has_nullspace, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm); CHKERRXX(ierr);
+  ierr = MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm); CHKERRXX(ierr);
   if (matrix_has_nullspace)
   {
     if (A_null_space == NULL)
