@@ -971,7 +971,11 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   solver.set_diagonal(alpha * rho/dt_n);
   solver.set_bc(bc_vstar);
   solver.set_rhs(rhs);
+#ifdef P4_TO_P8
+  solver.set_compute_partition_on_the_fly(true);
+#else
   solver.set_compute_partition_on_the_fly(false);
+#endif
 
   solver.solve(vstar);
 
@@ -980,7 +984,6 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
   }
 
-//  solver.print_partition_VTK("/home/guittet/code/Output/p4est_navier_stokes/voro.vtk");
   if(bc_pressure->interfaceType()!=NOINTERFACE)
   {
     my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
@@ -1338,11 +1341,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
   {
     sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
   }
-
-  double *pp;
-  VecGetArray(phi_np1, &pp);
-  my_p4est_vtk_write_all(p4est_np1, nodes_np1, ghost_np1, P4EST_TRUE, P4EST_TRUE, 1, 0, "/home/guittet/code/Output/p4est_navier_stokes/test", VTK_POINT_DATA, "phi", pp);
-  VecRestoreArray(phi_np1, &pp);
 
   my_p4est_level_set_t lsn(ngbd_np1);
   lsn.reinitialize_1st_order_time_2nd_order_space(phi_np1);
