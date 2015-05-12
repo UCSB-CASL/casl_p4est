@@ -20,11 +20,14 @@
 // p4est Library
 #ifdef P4_TO_P8
 #include <src/my_p8est_navier_stokes.h>
+#include <src/my_p8est_log_wrappers.h>
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_level_set.h>
 #else
+#include <src/my_p4est_navier_stokes.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_level_set.h>
-#include <src/my_p4est_navier_stokes.h>
 #endif
 
 #include <src/Parser.h>
@@ -57,6 +60,7 @@ int nz = 2;
  * 3 - driven cavity with a hole in the middle
  * 4 - karman street
  * 5 - oscillating cylinder
+ * 6 - naca
  */
 int test_number;
 
@@ -72,62 +76,274 @@ double KC;
 double X0;
 double f0;
 
-//#ifdef P4_TO_P8
+#ifdef P4_TO_P8
 
-//class LEVEL_SET: public CF_3
-//{
-//public:
-//  double operator()(double x, double y, double z) const
-//  {
-//    switch(test_number)
-//    {
-//    case 0:
-//      return -1;
-//    case 1:
-//      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
-//    default:
-//      throw std::invalid_argument("Choose a valid level set.");
-//    }
-//  }
-//} level_set;
+class LEVEL_SET: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+    case 0: return r0 - sqrt(SQR(x-(xmax+xmin)/2) + SQR(y-(ymax+ymin)/2) + SQR(z-(zmax+zmin)/2));
+    default: throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} level_set;
 
-//class BCWALLTYPE_U : public WallBC3D
-//{
-//public:
-//  BoundaryConditionType operator()(double, double, double) const
-//  {
-//    switch(test_number)
-//    {
-//    case 0: return NEUMANN;
-//    }
-//  }
-//} bc_wall_type_u;
+struct BCWALLTYPE_P : WallBC3D
+{
+  BoundaryConditionType operator()(double x, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: if(fabs(x-xmax)<EPS) return DIRICHLET; return NEUMANN;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_wall_type_p;
 
-//class BCWALLTYPE_V : public WallBC3D
-//{
-//public:
-//  BoundaryConditionType operator()(double, double, double) const
-//  {
-//    switch(test_number)
-//    {
-//    case 0: return NEUMANN;
-//    }
-//  }
-//} bc_wall_type_v;
+struct BCWALLVALUE_P : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_wall_value_p;
 
-//class BCWALLTYPE_W : public WallBC3D
-//{
-//public:
-//  BoundaryConditionType operator()(double, double, double) const
-//  {
-//    switch(test_number)
-//    {
-//    case 0: return NEUMANN;
-//    }
-//  }
-//} bc_wall_type_W;
+struct BCINTERFACEVALUE_P : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_interface_value_p;
 
-//#else
+struct BCWALLTYPE_U : WallBC3D
+{
+  BoundaryConditionType operator()(double x, double, double) const
+  {
+    switch(test_number)
+    {
+    case 4: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_wall_type_u;
+
+struct BCWALLTYPE_V : WallBC3D
+{
+  BoundaryConditionType operator()(double x, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_wall_type_v;
+
+struct BCWALLTYPE_W : WallBC3D
+{
+  BoundaryConditionType operator()(double x, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_wall_type_w;
+
+struct BCWALLVALUE_U : CF_3
+{
+  double operator()(double x, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: if(fabs(x-xmax)<EPS) return 0; else return u0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_wall_value_u;
+
+struct BCWALLVALUE_V : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_wall_value_v;
+
+struct BCWALLVALUE_W : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_wall_value_w;
+
+struct BCINTERFACE_VALUE_U : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_interface_value_u;
+
+struct BCINTERFACE_VALUE_V : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_interface_value_v;
+
+struct BCINTERFACE_VALUE_W : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_interface_value_w;
+
+struct initial_velocity_unm1_t : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return u0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} initial_velocity_unm1;
+
+struct initial_velocity_u_n_t : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return u0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} initial_velocity_un;
+
+struct initial_velocity_vnm1_t : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} initial_velocity_vnm1;
+
+struct initial_velocity_v_n_t : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} initial_velocity_vn;
+
+struct initial_velocity_wnm1_t : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} initial_velocity_wnm1;
+
+struct initial_velocity_w_n_t : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} initial_velocity_wn;
+
+struct external_force_u_t : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} external_force_u;
+
+struct external_force_v_t : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} external_force_v;
+
+struct external_force_w_t : CF_3
+{
+  double operator()(double, double, double) const
+  {
+    switch(test_number)
+    {
+    case 0: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} external_force_w;
+
+#else
 
 
 class NACA : public CF_2
@@ -478,10 +694,11 @@ struct external_force_v_t : CF_2
   }
 } external_force_v;
 
-//#endif
+#endif
 
 
 
+#ifndef P4_TO_P8
 void check_error_analytic_vortex(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
 {
   PetscErrorCode ierr;
@@ -603,6 +820,7 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
     ierr = PetscFClose(PETSC_COMM_SELF, fp); CHKERRXX(ierr);
   }
 }
+#endif
 
 
 
@@ -633,6 +851,10 @@ int main (int argc, char* argv[])
   cmd.add_option("save_every_n", "export images every n iterations");
   cmd.add_option("naca_angle", "angle of the naca airfoil for test 6");
   cmd.add_option("naca_number", "number of the naca, see naca reference online. Default is 0015");
+#ifdef P4_TO_P8
+  cmd.add_option("test", "choose a test.\n\
+                 0 - karman\n");
+#else
   cmd.add_option("test", "choose a test.\n\
                  0 - analytic vortex\n\
                  1 - analytic vortex with time dependance\n\
@@ -641,6 +863,7 @@ int main (int argc, char* argv[])
                  4 - karman street\n\
                  5 - oscillating cylinder\
                  6 - naca airfoil\n");
+#endif
   cmd.parse(argc, argv);
 
   cmd.print();
@@ -663,6 +886,9 @@ int main (int argc, char* argv[])
 
   switch(test_number)
   {
+#ifdef P4_TO_P8
+  case 0: nx=8; ny=4; nz=4; xmin=0; xmax=32; ymin=-8; ymax=8; zmin=-8; zmax=8; Re=cmd.get("Re",350); r0=.5; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
+#else
   case 0: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; tf = cmd.get("tf", PI/3);  break;
   case 1: nx=2; ny=2; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; tf = cmd.get("tf", PI/3);  break;
   case 2: nx=2; ny=2; xmin = 0; xmax =  1; ymin = 0; ymax =  1; Re = cmd.get("Re", 1000); u0 = 1; rho = 1; mu = rho*u0*(xmax-xmin)/Re; tf = cmd.get("tf", 37);    break;
@@ -670,15 +896,18 @@ int main (int argc, char* argv[])
   case 4: nx=8; ny=4; xmin = 0; xmax = 32; ymin =-8; ymax =  8; Re = cmd.get("Re", 200);  r0 = 0.5 ; u0 = 1; rho = 1; mu = 2*r0*rho*u0/Re; tf = cmd.get("tf", 200);   break;
   case 5: nx=2; ny=2; xmin =-1; xmax =  1; ymin =-1; ymax =  1; Re = cmd.get("Re", 100);  r0 = 0.05; KC = 5; X0 = .7957*2*r0; Re = 100; u0 = Re/(2*r0); mu = rho = 1; f0 = u0/(KC*2*r0); tf = cmd.get("tf", 3/f0); break;
   case 6: nx=8; ny=4; xmin = 0; xmax = 32; ymin =-8; ymax =  8; Re = cmd.get("Re", 5300); u0 = 1; rho = 1; mu = rho*u0*naca_length/Re; tf = cmd.get("tf", 200);break;
+#endif
   default: throw std::invalid_argument("choose a valid test.");
   }
 
+#ifndef P4_TO_P8
   if(test_number==6)
   {
     double naca_angle = cmd.get("naca_angle", 15.);
     double naca_number = cmd.get("naca_number", 12.);
     naca = new NACA(naca_number, naca_length, naca_angle);
   }
+#endif
 
   tf = cmd.get("tf", tf);
   nx = cmd.get("nx", nx);
@@ -689,11 +918,15 @@ int main (int argc, char* argv[])
 
 //  double uniform_band = 3*r0/sqrt(Re);
   double uniform_band = 0;
+#ifdef P4_TO_P8
+  if(test_number==0)
+#else
   if(test_number==4)
+#endif
     uniform_band = .5*r0;
 
 #ifdef P4_TO_P8
-  double dxmin = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny, (zmax-zmin)/(double)ny) / (1<<lmax);
+  double dxmin = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny, (zmax-zmin)/(double)nz) / (1<<lmax);
 #else
   double dxmin = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny) / (1<<lmax);
 #endif
@@ -727,7 +960,7 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz, xmax, ymin, ymax, zmin, zmax, &brick);
+  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, &brick);
 #else
   connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick);
 #endif
@@ -735,6 +968,7 @@ int main (int argc, char* argv[])
   p4est_t *p4est_nm1 = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
   splitting_criteria_cf_t data(lmin+nb_splits, lmax+nb_splits, &level_set, 1.2);
 
+#ifndef P4_TO_P8
   /* create a temporary forest to reinitialize the level set function for the analytic vortex case */
   if(test_number==0 || test_number==1)
   {
@@ -775,6 +1009,7 @@ int main (int argc, char* argv[])
     p4est_nm1->user_pointer = (void*)&data;
   }
   else
+#endif
   {
     p4est_nm1->user_pointer = (void*)&data;
     my_p4est_refine(p4est_nm1, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -876,16 +1111,13 @@ int main (int argc, char* argv[])
   out_dir = getenv("OUT_DIR");
 #endif
 
-  if(test_number==4 || test_number==5)
+#ifdef P4_TO_P8
+  if(test_number==0)
   {
 #ifdef STAMPEDE
-    if     (test_number==4) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
-    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
-    else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    if     (test_number==0) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
 #else
-    if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/karman/forces_no_inside_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
-    else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
-    else if(test_number==6) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/naca/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
+    if     (test_number==0) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/karman/forces_no_inside_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
 #endif
 
     ierr = PetscPrintf(mpi->mpicomm, "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
@@ -898,8 +1130,36 @@ int main (int argc, char* argv[])
       fclose(fp_forces);
     }
   }
+#else
+  if(test_number==4 || test_number==5)
+  {
+#ifdef STAMPEDE
+    if     (test_number==4) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+#else
+    if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/karman/forces_no_inside_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
+    else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
+    else if(test_number==6) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/naca/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
+#endif
 
-  while(tn+0.05*dt<tf)
+    ierr = PetscPrintf(mpi->mpicomm, "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
+    if(!mpi->mpirank)
+    {
+      fp_forces = fopen(file_forces, "w");
+      if(fp_forces==NULL)
+        throw std::invalid_argument("[ERROR]: could not open file for forces output.");
+#ifdef P4_TO_P8
+      fprintf(fp_forces, "%% tn | f_x | f_y | f_z\n");
+#else
+      fprintf(fp_forces, "%% tn | f_x | f_y\n");
+#endif
+      fclose(fp_forces);
+    }
+  }
+#endif
+
+  while(tn+0.01*dt<tf)
   {
     if(iter>0)
     {
@@ -932,7 +1192,11 @@ int main (int argc, char* argv[])
 
     tn += dt;
 
+#ifdef P4_TO_P8
+    if(test_number==0)
+#else
     if(test_number==4 || test_number==5)
+#endif
     {
       ns.compute_forces(forces);
       if(!mpi->mpirank)
@@ -940,7 +1204,11 @@ int main (int argc, char* argv[])
         fp_forces = fopen(file_forces, "a");
         if(fp_forces==NULL)
           throw std::invalid_argument("[ERROR]: could not open file for forces output.");
+#ifdef P4_TO_P8
+        fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(PI*r0*r0*u0*u0*rho), forces[1]/(PI*r0*r0*u0*u0*rho), forces[2]/(PI*r0*r0*u0*u0*rho));
+#else
         fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
+#endif
         fclose(fp_forces);
       }
     }
@@ -954,13 +1222,17 @@ int main (int argc, char* argv[])
 #else
       switch(test_number)
       {
-      case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
-      case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
-      case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/driven_cavity/cavity_%d", iter/save_every_n); break;
-      case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/driven_cavity_with_hole/hole_%d", iter/save_every_n); break;
-      case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/karman/karman_%d", iter/save_every_n); break;
-      case 5: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/oscillating_cylinder/oscillating_%d", iter/save_every_n); break;
-      case 6: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/naca/naca_%d", iter/save_every_n); break;
+#ifdef P4_TO_P8
+      case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/karman/karman_%d", iter/save_every_n); break;
+#else
+      case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
+      case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
+      case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/driven_cavity/cavity_%d", iter/save_every_n); break;
+      case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/driven_cavity_with_hole/hole_%d", iter/save_every_n); break;
+      case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/karman/karman_%d", iter/save_every_n); break;
+      case 5: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/oscillating_cylinder/oscillating_%d", iter/save_every_n); break;
+      case 6: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/naca/naca_%d", iter/save_every_n); break;
+#endif
       default: throw std::invalid_argument("choose a valid test.");
       }
 #endif
@@ -969,17 +1241,21 @@ int main (int argc, char* argv[])
     }
 
 
+#ifndef P4_TO_P8
     if(test_number==2)
       check_velocity_cavity(mpi, &ns);
+#endif
 
     iter++;
   }
 
+#ifndef P4_TO_P8
   if(test_number==0 || test_number==1)
     check_error_analytic_vortex(mpi, &ns);
 
   if(test_number==6)
     delete naca;
+#endif
 
   return 0;
 }

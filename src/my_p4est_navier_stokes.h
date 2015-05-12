@@ -259,7 +259,11 @@ public:
 
   void compute_dt();
 
+#ifdef P4_TO_P8
+  void update_from_tn_to_tnp1(const CF_3 *level_set=NULL);
+#else
   void update_from_tn_to_tnp1(const CF_2 *level_set=NULL);
+#endif
 
   void compute_pressure();
 

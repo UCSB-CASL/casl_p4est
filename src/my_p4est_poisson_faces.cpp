@@ -701,7 +701,7 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
         }
       }
 
-#ifdef P4_TO_P8
+#ifndef P4_TO_P8
       /* in 2D, clip the partition by the interface and by the walls of the domain */
       clip_voro_cell_by_interface(f_idx, dir);
 #endif

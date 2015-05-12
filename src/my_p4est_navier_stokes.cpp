@@ -87,12 +87,13 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
 #ifdef P4_TO_P8
         for(int k=0; k<2; ++k)
         {
-        coarsen = coarsen && fabs(vor(x+i*dx, y+j*dy, z+k*dz))*2*dx/max_L2_norm_u<threshold;
+        coarsen = coarsen && fabs(vor(x+i*dx, y+j*dy, z+k*dz))*2*MAX(dx,dy,dz)/max_L2_norm_u<threshold;
         coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>=lip*2*d;
+        coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>uniform_band*dxyz_min;
         all_pos = all_pos && phi(x+i*dx, y+j*dy, z+k*dz)>0;
 #else
       {
-        coarsen = coarsen && fabs(vor(x+i*dx, y+j*dy))*2*dx/max_L2_norm_u<threshold;
+        coarsen = coarsen && fabs(vor(x+i*dx, y+j*dy))*2*MAX(dx,dy)/max_L2_norm_u<threshold;
         coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy))>=lip*2*d;
         coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy))>uniform_band*dxyz_min;
         all_pos = all_pos && phi(x+i*dx, y+j*dy)>0;
@@ -109,12 +110,13 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
 #ifdef P4_TO_P8
         for(int k=0; k<3; ++k)
         {
-          refine = refine || fabs(vor(x+i*dx/2, y+j*dy/2, z+k*dz/2))*dx/max_L2_norm_u>threshold;
+          refine = refine || fabs(vor(x+i*dx/2, y+j*dy/2, z+k*dz/2))*MAX(dx,dy,dz)/max_L2_norm_u>threshold;
           refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2, z+k*dz/2))<=lip*d;
+          refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2, z+k*dz/2))<uniform_band*dxyz_min;
           is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2, z+k*dz/2)<0;
 #else
       {
-        refine = refine || fabs(vor(x+i*dx/2, y+j*dy/2))*dx/max_L2_norm_u>threshold;
+        refine = refine || fabs(vor(x+i*dx/2, y+j*dy/2))*MAX(dx,dy)/max_L2_norm_u>threshold;
         refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2))<=lip*d;
         refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2))<uniform_band*dxyz_min;
         is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2)<0;
@@ -308,18 +310,13 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
   bc_v = NULL;
   bc_pressure = NULL;
 
-#ifndef P4_TO_P8
   vorticity = NULL;
-#endif
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     external_forces[dir] = NULL;
     vstar[dir] = NULL;
     vnp1[dir] = NULL;
-#ifdef P4_TO_P8
-    vorticity[dir] = NULL;
-#endif
 
     vnm1_nodes[dir] = NULL;
     vn_nodes  [dir] = NULL;
@@ -354,9 +351,7 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
   if(phi!=NULL)       { ierr = VecDestroy(phi);       CHKERRXX(ierr); }
   if(hodge!=NULL)     { ierr = VecDestroy(hodge);     CHKERRXX(ierr); }
   if(pressure!=NULL)  { ierr = VecDestroy(pressure);  CHKERRXX(ierr); }
-#ifndef P4_TO_P8
   if(vorticity!=NULL) { ierr = VecDestroy(vorticity); CHKERRXX(ierr); }
-#endif
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -366,9 +361,6 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
     if(vnm1_nodes[dir]!=NULL) { ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr); }
     if(vn_nodes[dir]!=NULL)   { ierr = VecDestroy(vn_nodes[dir]);   CHKERRXX(ierr); }
     if(vnp1_nodes[dir]!=NULL) { ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr); }
-#ifdef P4_TO_P8
-    if(vorticity[dir]!=NULL) { ierr = VecDestroy(vorticity[dir]); CHKERRXX(ierr); }
-#endif
     if(face_is_well_defined[dir]!=NULL) { ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr); }
 
     if(interp_dxyz_hodge[dir]!=NULL)        delete interp_dxyz_hodge[dir];
@@ -476,15 +468,9 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes, Vec *vn_nodes)
 
     ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-    ierr = VecDuplicate(phi, &vorticity[dir]); CHKERRXX(ierr);
-#endif
   }
 
-#ifndef P4_TO_P8
   ierr = VecDuplicate(phi, &vorticity); CHKERRXX(ierr);
-#endif
 }
 
 
@@ -532,15 +518,9 @@ void my_p4est_navier_stokes_t::set_velocities(CF_2 **vnm1, CF_2 **vn)
     ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes [dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-    ierr = VecDuplicate(phi, &vorticity[dir]); CHKERRXX(ierr);
-#endif
   }
 
-#ifndef P4_TO_P8
   ierr = VecDuplicate(phi, &vorticity); CHKERRXX(ierr);
-#endif
 }
 
 
@@ -608,7 +588,14 @@ void my_p4est_navier_stokes_t::compute_vorticity()
   {
     p4est_locidx_t n = ngbd_n->get_layer_node(i);
     ngbd_n->get_neighbors(n, qnnn);
+#ifdef P4_TO_P8
+    double vx = qnnn.dy_central(vnp1_p[3]) - qnnn.dz_central(vnp1_p[2]);
+    double vy = qnnn.dz_central(vnp1_p[1]) - qnnn.dx_central(vnp1_p[3]);
+    double vz = qnnn.dx_central(vnp1_p[2]) - qnnn.dy_central(vnp1_p[1]);
+    vorticity_p[n] = sqrt(vx*vx + vy*vy + vz*vz);
+#else
     vorticity_p[n] = qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]);
+#endif
   }
 
   ierr = VecGhostUpdateBegin(vorticity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -617,7 +604,14 @@ void my_p4est_navier_stokes_t::compute_vorticity()
   {
     p4est_locidx_t n = ngbd_n->get_local_node(i);
     ngbd_n->get_neighbors(n, qnnn);
+#ifdef P4_TO_P8
+    double vx = qnnn.dy_central(vnp1_p[3]) - qnnn.dz_central(vnp1_p[2]);
+    double vy = qnnn.dz_central(vnp1_p[1]) - qnnn.dx_central(vnp1_p[3]);
+    double vz = qnnn.dx_central(vnp1_p[2]) - qnnn.dy_central(vnp1_p[1]);
+    vorticity_p[n] = sqrt(vx*vx + vy*vy + vz*vz);
+#else
     vorticity_p[n] = qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]);
+#endif
   }
 
   ierr = VecGhostUpdateEnd(vorticity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1214,8 +1208,11 @@ void my_p4est_navier_stokes_t::compute_dt()
 
 
 
-
+#ifdef P4_TO_P8
+void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_3 *level_set)
+#else
 void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
+#endif
 {
   PetscErrorCode ierr;
 

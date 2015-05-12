@@ -108,7 +108,11 @@ double my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f) cons
       phi_vals.val11 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
 
+#ifdef P4_TO_P8
+      sum += f_p[quad_idx]*cube.interface_Area_In_Cell(phi_vals);
+#else
       sum += f_p[quad_idx]*cube.interface_Length_In_Cell(phi_vals);
+#endif
     }
   }
 
