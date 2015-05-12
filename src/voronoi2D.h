@@ -1,6 +1,7 @@
 #ifndef VORONOI2D_H
 #define VORONOI2D_H
 
+#include <mpi.h>
 #include <float.h>
 #include <fstream>
 #include <vector>

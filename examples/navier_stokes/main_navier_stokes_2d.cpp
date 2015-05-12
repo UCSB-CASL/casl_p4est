@@ -6,6 +6,7 @@
  */
 
 // System
+#include <mpi.h>
 #include <stdexcept>
 #include <iostream>
 #include <sys/stat.h>

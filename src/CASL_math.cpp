@@ -1,5 +1,4 @@
 #include "CASL_math.h"
-#include <stdio.h>
 #include <petsclog.h>
 
 #ifndef CASL_LOG_FLOPS
@@ -129,7 +128,7 @@ double interface_Location_With_First_Order_Derivative(	double   a, double   b,
   PetscErrorCode ierr = PetscLogFlops(20); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
-  if(number_of_valid_solution < 1) { printf("ouiiiiiii %f %f %f %f %f %f %d\n",a, b, fa, fb, fxa, fxb, b>0); throw std::invalid_argument("[CASL_ERROR]: Wrong arguments."); }
+  if(number_of_valid_solution < 1) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
 #endif
 
   if(number_of_valid_solution==1) return s_valid[0]+a;
@@ -294,8 +293,6 @@ double fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives
 #ifdef CASL_THROWS
   if(l<0 || l>1) throw std::logic_error("[CASL_ERROR]: invalid length fraction.");
 #endif
-  //    if (ABS(l-fraction_Interval_Covered_By_Irregular_Domain(phi0,phi1,dx,dx))>1E-1)
-  //        printf("error in length frac %f phis:  %f  and  %f   derivatives %f     and    %f     \n",l-fraction_Interval_Covered_By_Irregular_Domain(phi0,phi1,dx,dx),phi0,phi1,phi0xx,phi1xx);
   double eps = MIN(EPS,dx/100.);
   if(l*l<eps) return 0;
   else        return l;
