@@ -1196,7 +1196,6 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
 
 void my_p4est_navier_stokes_t::set_dt(double dt_n)
 {
-  dt_nm1 = dt_n;
   this->dt_n = dt_n;
 }
 
@@ -1264,45 +1263,51 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
     sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
   }
 
-  criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1);
+//  criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1);
+
+  bool grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1);
+  int iter=0;
+  while(1 && grid_is_changing)
+  {
+    my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
+    p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+    p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+    delete hierarchy_np1; hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
+    delete ngbd_np1; ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
+
+    ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+
+    ierr = VecDestroy(vorticity_np1); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_np1, &vorticity_np1); CHKERRXX(ierr);
+
+    interp_nodes.clear();
+    for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+    {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+      interp_nodes.add_point(n, xyz);
+    }
+
+    interp_nodes.set_input(vorticity, linear);
+    interp_nodes.interpolate(vorticity_np1);
+
+    if(level_set==NULL)
+    {
+      interp_nodes.set_input(phi, quadratic_non_oscillatory);
+      interp_nodes.interpolate(phi_np1);
+    }
+    else
+    {
+      sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
+    }
+
+    grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1);
+
+    if(iter==10)
+      throw std::runtime_error("[ERROR]: my_p4est_navier_stokes_t->update_from_tn_to_tnp1: grid update did not converge in 10 iterations.");
+  }
   ierr = VecDestroy(vorticity_np1);
-
-//  bool grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1);
-
-//  int iter=0;
-//  while(0 && grid_is_changing)
-//  {
-//    my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
-//    p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-//    p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-//    delete hierarchy_np1; hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
-//    delete ngbd_np1; ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
-
-//    ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
-//    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
-
-//    ierr = VecDestroy(vorticity_np1); CHKERRXX(ierr);
-//    ierr = VecDuplicate(phi_np1, &vorticity_np1); CHKERRXX(ierr);
-
-//    interp_nodes.clear();
-//    for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
-//    {
-//      double xyz[P4EST_DIM];
-//      node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
-//      interp_nodes.add_point(n, xyz);
-//    }
-
-//    interp_nodes.set_input(vorticity, linear);
-//    interp_nodes.interpolate(vorticity_np1);
-
-//    interp_nodes.set_input(phi, quadratic_non_oscillatory);
-//    interp_nodes.interpolate(phi_np1);
-
-//    grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1);
-
-//    if(iter==10)
-//      throw std::runtime_error("[ERROR]: my_p4est_navier_stokes_t->update_from_tn_to_tnp1: grid update did not converge in 10 iterations.");
-//  }
 
   p4est_np1->user_pointer = data;
 
@@ -1329,7 +1334,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
   if(level_set==NULL)
   {
-
     interp_nodes.set_input(phi, quadratic_non_oscillatory);
     interp_nodes.interpolate(phi_np1);
   }
@@ -1337,6 +1341,11 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
   {
     sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
   }
+
+  double *pp;
+  VecGetArray(phi_np1, &pp);
+  my_p4est_vtk_write_all(p4est_np1, nodes_np1, ghost_np1, P4EST_TRUE, P4EST_TRUE, 1, 0, "/home/guittet/code/Output/p4est_navier_stokes/test", VTK_POINT_DATA, "phi", pp);
+  VecRestoreArray(phi_np1, &pp);
 
   my_p4est_level_set_t lsn(ngbd_np1);
   lsn.reinitialize_1st_order_time_2nd_order_space(phi_np1);

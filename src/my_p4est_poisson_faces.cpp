@@ -528,9 +528,15 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   voro_tmp.construct_Partition();
 #endif
 
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
+}
 
-  /* in 2D, clip the partition by the interface and by the walls of the domain */
+
+
 #ifndef P4_TO_P8
+void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(p4est_locidx_t f_idx, int dir)
+{
+  Voronoi2D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
   vector<Voronoi2DPoint> *points;
   vector<Point2> *partition;
 
@@ -613,15 +619,14 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   // clip the voronoi partition with the interface
   if(is_pos)
   {
+    double x = faces->x_fr_f(f_idx, dir);
+    double y = faces->y_fr_f(f_idx, dir);
+    double phi_c = interp_phi(x,y);
     voro_tmp.set_Level_Set_Values(phi_values, phi_c);
     voro_tmp.clip_Interface();
   }
-#endif
-
-  ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
 }
-
-
+#endif
 
 
 void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
@@ -668,16 +673,15 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
 
 #ifdef P4_TO_P8
     if(bc[dir].interfaceType()==NOINTERFACE ||
-       (bc[dir].interfaceType()==DIRICHLET && phi_c<0) ||
+       (bc[dir].interfaceType()==DIRICHLET && phi_c<.5*MIN(dx_min,dy_min,dz_min)) ||
        (bc[dir].interfaceType()==NEUMANN   && phi_c<2*MAX(dx_min,dy_min,dz_min)) )
 #else
     if(bc[dir].interfaceType()==NOINTERFACE ||
-       (bc[dir].interfaceType()==DIRICHLET && phi_c<0) ||
+       (bc[dir].interfaceType()==DIRICHLET && phi_c<.5*MIN(dx_min,dy_min)) ||
        (bc[dir].interfaceType()==NEUMANN   && phi_c<2*MAX(dx_min,dy_min)) )
 #endif
     {
       compute_voronoi_cell(f_idx, dir);
-
 
 #ifdef P4_TO_P8
       const vector<Voronoi3DPoint> *points;
@@ -696,6 +700,11 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
           else                               o_nnz[f_idx]++;
         }
       }
+
+#ifdef P4_TO_P8
+      /* in 2D, clip the partition by the interface and by the walls of the domain */
+      clip_voro_cell_by_interface(f_idx, dir);
+#endif
     }
   }
 
@@ -703,6 +712,8 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
   ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+
+//  print_partition_VTK("/home/guittet/code/Output/p4est_navier_stokes/voro.vtk");
 }
 
 
@@ -838,6 +849,25 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       }
     }
 
+    if(compute_partition_on_the_fly)
+    {
+      compute_voronoi_cell(f_idx, dir);
+#ifndef P4_TO_P8
+      clip_voro_cell_by_interface(f_idx, dir);
+#endif
+    }
+
+#ifdef P4_TO_P8
+    Voronoi3D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
+    const vector<Voronoi3DPoint> *points;
+#else
+    Voronoi2D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
+    vector<Voronoi2DPoint> *points;
+    vector<Point2> *partition;
+    voro_tmp.get_Partition(partition);
+#endif
+    voro_tmp.get_Points(points);
+
     /*
      * close to interface and dirichlet => finite differences
      */
@@ -881,11 +911,13 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       phi[dir::f_0p0] = interp_phi(x, y+dy_min);
 #endif
 
-      bool is_pos = false;
+      bool is_interface = false;
       for(int i=0; i<P4EST_FACES; ++i)
-        is_pos = is_pos || phi[i]>0;
+        is_interface = is_interface || phi[i]>0;
+      for(unsigned int i=0; i<points->size(); ++i)
+        is_interface = is_interface || (*points)[i].n==INTERFACE;
 
-      if(is_pos)
+      if(is_interface)
       {
         bool is_interface[P4EST_FACES];
         bool is_crossed_by_interface = false;
@@ -1321,18 +1353,6 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
      * Bulk case, away from the interface
      * Use finite volumes on the voronoi cells
      */
-    if(compute_partition_on_the_fly)
-      compute_voronoi_cell(f_idx, dir);
-#ifdef P4_TO_P8
-    Voronoi3D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
-    const vector<Voronoi3DPoint> *points;
-#else
-    Voronoi2D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
-    vector<Voronoi2DPoint> *points;
-    vector<Point2> *partition;
-    voro_tmp.get_Partition(partition);
-#endif
-    voro_tmp.get_Points(points);
 
     /* integrally in positive domain */
 #ifndef P4_TO_P8

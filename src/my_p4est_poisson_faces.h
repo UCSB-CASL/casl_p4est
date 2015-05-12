@@ -72,6 +72,10 @@ class my_p4est_poisson_faces_t
 
   void compute_voronoi_cell(p4est_locidx_t f_idx, int dir);
 
+#ifndef P4_TO_P8
+  void clip_voro_cell_by_interface(p4est_locidx_t f_idx, int dir);
+#endif
+
   void setup_linear_system(int dir);
 
   // disallow copy ctr and copy assignment

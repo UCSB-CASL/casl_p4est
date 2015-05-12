@@ -128,6 +128,67 @@ double f0;
 
 //#else
 
+
+class NACA : public CF_2
+{
+private:
+  vector<double> sample;
+  unsigned int N;
+  double naca_length;
+  double naca_number;
+  double naca_angle;
+  double x_edge;
+public:
+  NACA(double number, double length, double angle)
+  {
+    N = 10000;
+    sample.resize(N);
+    lip = 1.2;
+    naca_length = length;
+    naca_number = number;
+    naca_angle = angle;
+    x_edge = 8;
+
+    double dx = naca_length/(double)(N-1);
+
+    for(unsigned int i=0; i<N; ++i)
+    {
+      double x = i*dx;
+      double r = x/naca_length;
+      sample[i] = naca_number/100/.2 * naca_length * (.2969*sqrt(r) - .126*r -.3516*r*r + .2843*r*r*r - .1015*r*r*r*r);
+    }
+  }
+
+  double operator()(double x, double y) const
+  {
+    x -= x_edge;
+
+    /* apply the rotation */
+    x -= naca_length/2;
+    double theta = PI*naca_angle/180;
+    double x_rot = x*cos(theta) - y*sin(theta);
+    double y_rot = x*sin(theta) + y*cos(theta);
+    x = x_rot + naca_length/2;
+    y = y_rot;
+
+    double dx = naca_length/(double) (N-1);
+    double dist = DBL_MAX;
+    for(unsigned int i=0; i<N; ++i)
+    {
+      double xt = i*dx;
+      double yt = sample[i];
+      dist = MIN(dist, sqrt(SQR(x-xt)+SQR(y-yt)), sqrt(SQR(x-xt)+SQR(y+yt)));
+    }
+
+    if(x<0 || x>naca_length) return -dist;
+
+    double r = x/naca_length;
+    double yt = naca_number/100/.2 * naca_length * (.2969*sqrt(r) - .126*r -.3516*r*r + .2843*r*r*r - .1015*r*r*r*r);
+    if(-yt<y && y<yt) return  dist;
+    else              return -dist;
+  }
+} *naca;
+
 class LEVEL_SET: public CF_2
 {
 public:
@@ -140,7 +201,8 @@ public:
     case 2: return -1;
     case 3: return r0 - sqrt(SQR(x-(xmax+xmin)/2) + SQR(y-(ymax+ymin)/2));
     case 4: return r0 - sqrt(SQR(x-(xmax+xmin)/4) + SQR(y-(ymax+ymin)/2));
-    case 5: return r0 - sqrt(SQR(x-X0*(1-cos(2*PI*f0*(tn+dt)))) + SQR(y));
+    case 5: return r0 - sqrt(SQR(x-X0*(1-cos(2*PI*f0*(tn+dt)))+X0) + SQR(y));
+    case 6: return (*naca)(x,y);
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -158,6 +220,7 @@ struct BCWALLTYPE_P : WallBC2D
     case 3: return NEUMANN;
     case 4: if(fabs(x-xmax)<EPS) return DIRICHLET; return NEUMANN;
     case 5: return NEUMANN;
+    case 6: if(fabs(x-xmax)<EPS) return DIRICHLET; return NEUMANN;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -175,6 +238,7 @@ struct BCWALLVALUE_P : CF_2
     case 3: return 0;
     case 4: return 0;
     case 5: return 0;
+    case 6: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -191,6 +255,7 @@ struct BCINTERFACEVALUE_P : CF_2
     case 3: return 0;
     case 4: return 0;
     case 5: return 0;
+    case 6: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -208,6 +273,7 @@ struct BCWALLTYPE_U : WallBC2D
     case 3: return DIRICHLET;
     case 4: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     case 5: return DIRICHLET;
+    case 6: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -225,6 +291,7 @@ struct BCWALLTYPE_V : WallBC2D
     case 3: return DIRICHLET;
     case 4: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     case 5: return DIRICHLET;
+    case 6: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -242,6 +309,7 @@ struct BCWALLVALUE_U : CF_2
     case 3: if(fabs(y-ymax)<EPS) return u0; else return 0;
     case 4: if(fabs(x-xmax)<EPS) return 0; else return u0;
     case 5: return 0;
+    case 6: if(fabs(x-xmax)<EPS) return 0; else return u0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -259,6 +327,7 @@ struct BCWALLVALUE_V : CF_2
     case 3: return 0;
     case 4: return 0;
     case 5: return 0;
+    case 6: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -276,6 +345,7 @@ struct BCINTERFACE_VALUE_U : CF_2
     case 3: return 0;
     case 4: return 0;
     case 5: return u0*sin(2*PI*f0*tn);
+    case 6: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -293,6 +363,7 @@ struct BCINTERFACE_VALUE_V : CF_2
     case 3: return 0;
     case 4: return 0;
     case 5: return 0;
+    case 6: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -310,6 +381,7 @@ struct initial_velocity_unm1_t : CF_2
     case 3: return 0;
     case 4: return u0;
     case 5: return u0*sin(2*PI*f0*(tn-2*dt));
+    case 6: return u0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -327,6 +399,7 @@ struct initial_velocity_u_n_t : CF_2
     case 3: return 0;
     case 4: return u0;
     case 5: return u0*sin(2*PI*f0*(tn-dt));
+    case 6: return u0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -344,6 +417,7 @@ struct initial_velocity_vnm1_t : CF_2
     case 3: return 0;
     case 4: return 0;
     case 5: return 0;
+    case 6: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -361,6 +435,7 @@ struct initial_velocity_vn_t : CF_2
     case 3: return 0;
     case 4: return 0;
     case 5: return 0;
+    case 6: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -378,6 +453,7 @@ struct external_force_u_t : CF_2
     case 3: return 0;
     case 4: return 0;
     case 5: return 0;
+    case 6: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -395,6 +471,7 @@ struct external_force_v_t : CF_2
     case 3: return 0;
     case 4: return 0;
     case 5: return 0;
+    case 6: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -553,25 +630,30 @@ int main (int argc, char* argv[])
   cmd.add_option("thresh", "the threshold used for the refinement criteria");
   cmd.add_option("save_vtk", "save the p4est in vtk format");
   cmd.add_option("save_every_n", "export images every n iterations");
+  cmd.add_option("naca_angle", "angle of the naca airfoil for test 6");
+  cmd.add_option("naca_number", "number of the naca, see naca reference online. Default is 0015");
   cmd.add_option("test", "choose a test.\n\
                  0 - analytic vortex\n\
                  1 - analytic vortex with time dependance\n\
                  2 - driven cavity\n\
                  3 - driven cavity with hole\n\
                  4 - karman street\n\
-                 5 - oscillating cylinder\n");
+                 5 - oscillating cylinder\
+                 6 - naca airfoil\n");
   cmd.parse(argc, argv);
 
   cmd.print();
 
   int lmin = cmd.get("lmin", 3);
-  int lmax = cmd.get("lmax", 5);
+  int lmax = cmd.get("lmax", 6);
   int nb_splits = cmd.get("nb_splits", 0);
   double n_times_dt = cmd.get("n_times_dt", 2.);
   double threshold_split_cell = cmd.get("thresh", 0.04);
   bool save_vtk = cmd.get("save_vtk", true);
-  int save_every_n = cmd.get("save_every_n", 50);
-  test_number = cmd.get("test", 4);
+  int save_every_n = cmd.get("save_every_n", 1);
+  test_number = cmd.get("test", 6);
+
+  double naca_length = 4;
 
   double Re;
   rho = 1;
@@ -580,13 +662,21 @@ int main (int argc, char* argv[])
 
   switch(test_number)
   {
-  case 0: nx=1; ny=1; xmin = 0; xmax = PI; ymin =  0; ymax = PI; Re = 0; mu = rho = 1; tf = cmd.get("tf", PI/3);  break;
-  case 1: nx=2; ny=2; xmin = 0; xmax = PI; ymin =  0; ymax = PI; Re = 0; mu = rho = 1; tf = cmd.get("tf", PI/3);  break;
-  case 2: nx=2; ny=2; xmin = 0; xmax =  1; ymin =  0; ymax =  1; Re = cmd.get("Re", 1000); u0 = 1; rho = 1; mu = rho*u0*(xmax-xmin)/Re; tf = cmd.get("tf", 37);    break;
-  case 3: nx=2; ny=2; xmin = 0; xmax =  1; ymin =  0; ymax =  1; Re = cmd.get("Re", 1000); r0 = 0.25; u0 = 1; rho = 1; mu = rho*u0*1/Re; tf = cmd.get("tf", 37);    break;
-  case 4: nx=8; ny=4; xmin = 0; xmax = 32; ymin = -8; ymax =  8; Re = cmd.get("Re", 200);  r0 = 0.5 ; u0 = 1; rho = 1; mu = 2*r0*rho*u0/Re; tf = cmd.get("tf", 200);   break;
-  case 5: nx=2; ny=2; xmin =-1; xmax =  1; ymin = -1; ymax =  1; Re = cmd.get("Re", 100);  r0 = 0.05; KC = 5; X0 = .7957*2*r0; Re = 100; u0 = Re/(2*r0); mu = rho = 1; f0 = u0/(KC*2*r0); tf = cmd.get("tf", 10/f0); break;
+  case 0: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; tf = cmd.get("tf", PI/3);  break;
+  case 1: nx=2; ny=2; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; tf = cmd.get("tf", PI/3);  break;
+  case 2: nx=2; ny=2; xmin = 0; xmax =  1; ymin = 0; ymax =  1; Re = cmd.get("Re", 1000); u0 = 1; rho = 1; mu = rho*u0*(xmax-xmin)/Re; tf = cmd.get("tf", 37);    break;
+  case 3: nx=2; ny=2; xmin = 0; xmax =  1; ymin = 0; ymax =  1; Re = cmd.get("Re", 1000); r0 = 0.25; u0 = 1; rho = 1; mu = rho*u0*1/Re; tf = cmd.get("tf", 37);    break;
+  case 4: nx=8; ny=4; xmin = 0; xmax = 32; ymin =-8; ymax =  8; Re = cmd.get("Re", 200);  r0 = 0.5 ; u0 = 1; rho = 1; mu = 2*r0*rho*u0/Re; tf = cmd.get("tf", 200);   break;
+  case 5: nx=2; ny=2; xmin =-1; xmax =  1; ymin =-1; ymax =  1; Re = cmd.get("Re", 100);  r0 = 0.05; KC = 5; X0 = .7957*2*r0; Re = 100; u0 = Re/(2*r0); mu = rho = 1; f0 = u0/(KC*2*r0); tf = cmd.get("tf", 3/f0); break;
+  case 6: nx=8; ny=4; xmin = 0; xmax = 32; ymin =-8; ymax =  8; Re = cmd.get("Re", 5300); u0 = 1; rho = 1; mu = rho*u0*naca_length/Re; tf = cmd.get("tf", 200);break;
   default: throw std::invalid_argument("choose a valid test.");
+  }
+
+  if(test_number==6)
+  {
+    double naca_angle = cmd.get("naca_angle", 15.);
+    double naca_number = cmd.get("naca_number", 12.);
+    naca = new NACA(naca_number, naca_length, naca_angle);
   }
 
   tf = cmd.get("tf", tf);
@@ -596,20 +686,25 @@ int main (int argc, char* argv[])
   nz = cmd.get("nz", nz);
 #endif
 
-  double uniform_band = 3*r0/sqrt(Re);
+//  double uniform_band = 3*r0/sqrt(Re);
+  double uniform_band = 0;
+  if(test_number==4)
+    uniform_band = .5*r0;
+
 #ifdef P4_TO_P8
   double dxmin = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny, (zmax-zmin)/(double)ny) / (1<<lmax);
 #else
   double dxmin = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny) / (1<<lmax);
 #endif
-  uniform_band /= dxmin;
   uniform_band = cmd.get("uniform_band", uniform_band);
+  uniform_band /= dxmin;
 
 #ifdef P4_TO_P8
   ierr = PetscPrintf(mpi->mpicomm, "Parameters : mu = %g, rho = %g, grid is %dx%dx%d\n", mu, rho, nx, ny, nz); CHKERRXX(ierr);
 #else
   ierr = PetscPrintf(mpi->mpicomm, "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%d\n", Re, mu, rho, nx, ny); CHKERRXX(ierr);
 #endif
+  ierr = PetscPrintf(mpi->mpicomm, "n_times_dt = %g, uniform_band = %g\n", n_times_dt, uniform_band);
 
   parStopWatch w;
   w.start("total time");
@@ -763,6 +858,7 @@ int main (int argc, char* argv[])
   ns.set_external_forces(external_forces);
   ns.set_velocities(vnm1, vn);
   ns.set_bc(bc_v, &bc_p);
+  ns.set_dt(dxmin*n_times_dt/u0);
 
   tn = 0;
   int iter = 0;
@@ -784,9 +880,11 @@ int main (int argc, char* argv[])
 #ifdef STAMPEDE
     if     (test_number==4) sprintf(name, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
     else if(test_number==5) sprintf(name, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    else if(test_number==6) sprintf(name, "%s/forces_naca_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
 #else
     if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/karman/forces_no_inside_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
     else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
+    else if(test_number==6) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/naca/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
 #endif
 
     ierr = PetscPrintf(mpi->mpicomm, "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
@@ -800,29 +898,38 @@ int main (int argc, char* argv[])
     }
   }
 
-  while(tn<tf)
+  while(tn+0.05*dt<tf)
   {
     if(iter>0)
-      ns.update_from_tn_to_tnp1(&level_set);
+    {
+      ns.compute_dt();
 
-//    for(int i=0; i<4; ++i)
+      if(test_number==5 && iter<4)
+        ns.set_dt(dxmin*n_times_dt/u0);
+
+      dt = ns.get_dt();
+
+      if(tn+dt>tf)
+      {
+        dt = tf-tn;
+        ns.set_dt(dt);
+      }
+
+      if(test_number==6)
+        ns.update_from_tn_to_tnp1();
+      else
+        ns.update_from_tn_to_tnp1(&level_set);
+    }
+
+    for(int i=0; i<(test_number==5 ? 3 : 1); ++i)
     {
       ns.solve_viscosity();
       ns.solve_projection();
     }
     ns.compute_velocity_at_nodes();
-    ns.compute_dt();
-
-
     ns.compute_pressure();
 
     tn += dt;
-    dt = ns.get_dt();
-    if(tn+dt>tf)
-    {
-      dt = tf-tn;
-      ns.set_dt(dt);
-    }
 
     if(test_number==4 || test_number==5)
     {
@@ -851,6 +958,8 @@ int main (int argc, char* argv[])
       case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/driven_cavity/cavity_%d", iter/save_every_n); break;
       case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/driven_cavity_with_hole/hole_%d", iter/save_every_n); break;
       case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/karman/karman_%d", iter/save_every_n); break;
+      case 5: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/oscillating_cylinder/oscillating_%d", iter/save_every_n); break;
+      case 6: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vtu/naca/naca_%d", iter/save_every_n); break;
 #endif
       default: throw std::invalid_argument("choose a valid test.");
       }
@@ -867,6 +976,9 @@ int main (int argc, char* argv[])
 
   if(test_number==0 || test_number==1)
     check_error_analytic_vortex(mpi, &ns);
+
+  if(test_number==6)
+    delete naca;
 
   return 0;
 }
