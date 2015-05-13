@@ -16,6 +16,7 @@
 #include <set>
 #include <time.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // p4est Library
 #ifdef P4_TO_P8
@@ -799,7 +800,7 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
   {
     FILE* fp;
     char name[1000];
-#ifdef STAMPEDE
+#if defined(STAMPEDE) || defined(COMET)
     char *out_dir;
     out_dir = getenv("OUT_DIR");
     sprintf(name, "%s/velo_driven_cavity.dat", out_dir);
@@ -892,7 +893,7 @@ int main (int argc, char* argv[])
   switch(test_number)
   {
 #ifdef P4_TO_P8
-  case 0: nx=8; ny=4; nz=4; xmin=0; xmax=32; ymin=-8; ymax=8; zmin=-8; zmax=8; Re=cmd.get("Re",350); r0=1; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
+  case 0: nx=3; ny=2; nz=2; xmin=0; xmax=32; ymin=-8; ymax=8; zmin=-8; zmax=8; Re=cmd.get("Re",350); r0=1; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
 #else
   case 0: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; tf = cmd.get("tf", PI/3);  break;
   case 1: nx=2; ny=2; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; tf = cmd.get("tf", PI/3);  break;
@@ -1114,7 +1115,7 @@ int main (int argc, char* argv[])
   FILE *fp_forces;
   char file_forces[1000];
 
-#ifdef STAMPEDE
+#if defined(STAMPEDE) || defined(COMET)
   char *out_dir;
   out_dir = getenv("OUT_DIR");
 #endif
@@ -1122,7 +1123,7 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   if(test_number==0)
   {
-#ifdef STAMPEDE
+#if defined(STAMPEDE) || defined(COMET)
     if     (test_number==0) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
 #else
     if     (test_number==0) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/karman/forces_no_inside_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
@@ -1141,7 +1142,7 @@ int main (int argc, char* argv[])
 #else
   if(test_number==4 || test_number==5)
   {
-#ifdef STAMPEDE
+#if defined(STAMPEDE) || defined(COMET)
     if     (test_number==4) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
     else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
     else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
@@ -1225,7 +1226,7 @@ int main (int argc, char* argv[])
 
     if(save_vtk && iter%save_every_n==0)
     {
-#ifdef STAMPEDE
+#if defined(STAMPEDE) || defined(COMET)
       sprintf(name, "%s/vtu/%05d_", out_dir, iter/save_every_n); break;
 #else
       switch(test_number)
