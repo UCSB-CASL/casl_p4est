@@ -364,8 +364,8 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
       for(int i=-1; i<2; i+=2)
       {
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, i, 0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0, i);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, i, 0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0, i);
         for(int j=-1; j<2; j+=2)
         {
@@ -388,8 +388,8 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
       for(int i=-1; i<2; i+=2)
       {
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i,-1, 0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0, i);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i,-1, 0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1, i);
         for(int j=-1; j<2; j+=2)
         {
@@ -412,8 +412,8 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
       for(int i=-1; i<2; i+=2)
       {
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0,-1);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i, 0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0,-1);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i,-1);
         for(int j=-1; j<2; j+=2)
         {
@@ -421,6 +421,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
           ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, j,-1);
         }
       }
+      break;
 #endif
     }
   }
@@ -436,8 +437,8 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
       for(int i=-1; i<2; i+=2)
       {
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, i, 0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0, i);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, i, 0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0, i);
         for(int j=-1; j<2; j+=2)
         {
@@ -460,8 +461,8 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
       for(int i=-1; i<2; i+=2)
       {
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 1, 0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0, i);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 1, 0);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1, i);
         for(int j=-1; j<2; j+=2)
         {
@@ -484,8 +485,8 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
       for(int i=-1; i<2; i+=2)
       {
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, 1);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, 0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, 1);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, 1);
         for(int j=-1; j<2; j+=2)
         {
@@ -493,6 +494,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
           ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, j, 1);
         }
       }
+      break;
 #endif
     }
   }
@@ -523,7 +525,14 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   }
 
 #ifdef P4_TO_P8
-  voro_tmp.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xmax_ = p4est->connectivity->vertices[3*vp + 0];
+  double ymax_ = p4est->connectivity->vertices[3*vp + 1];
+  double zmax_ = p4est->connectivity->vertices[3*vp + 2];
+
+  double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  qh *= MAX(xmax_-xmin,ymax_-ymin,zmax_-zmin);
+  voro_tmp.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, .5*qh, false, false, false);
 #else
   voro_tmp.construct_Partition();
 #endif
@@ -655,7 +664,7 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
   vector<PetscInt> d_nnz(num_owned_local, 1), o_nnz(num_owned_local, 0);
 
   if(compute_partition_on_the_fly) voro.resize(1);
-  else                             voro.resize(faces->num_local[dir]);
+  else                           { voro.clear(); voro.resize(faces->num_local[dir]); }
 
   for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
   {
@@ -714,6 +723,7 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 
 //  print_partition_VTK("/home/guittet/code/Output/p4est_navier_stokes/voro.vtk");
+//  throw std::invalid_argument("");
 }
 
 
@@ -1422,7 +1432,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::x)
-            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditions on walls should have been done before. Are you using a rectangular grid ?");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1455,7 +1465,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::x)
-            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditions on walls should have been done before. Are you using a rectangular grid ?");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1486,7 +1496,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::y)
-            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditions on walls should have been done before. Are you using a rectangular grid ?");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1517,7 +1527,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::y)
-            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditions on walls should have been done before. Are you using a rectangular grid ?");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1545,7 +1555,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::z)
-            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditions on walls should have been done before. Are you using a rectangular grid ?");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1564,7 +1574,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         {
         case DIRICHLET:
           if(dir==dir::z)
-            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditionson walls should have been done before.");
+            throw std::runtime_error("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: dirichlet conditions on walls should have been done before. Are you using a rectangular grid ?");
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1631,9 +1641,16 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 
 void my_p4est_poisson_faces_t::print_partition_VTK(const char *file)
 {
+  if(compute_partition_on_the_fly)
+  {
+    throw std::invalid_argument("[ERROR]: my_p4est_poisson_faces_t->print_partition_VTK: please don't use compute_partition_on_the_fly if you want to output the voronoi partition.");
+  }
+  else
+  {
 #ifdef P4_TO_P8
-  Voronoi3D::print_VTK_Format(voro, file, xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
+    Voronoi3D::print_VTK_Format(voro, file, xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
 #else
-  Voronoi2D::print_VTK_Format(voro, file);
+    Voronoi2D::print_VTK_Format(voro, file);
 #endif
+  }
 }

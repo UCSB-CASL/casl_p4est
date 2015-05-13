@@ -23,6 +23,7 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_level_set.h>
+#include <src/my_p8est_vtk.h>
 #else
 #include <src/my_p4est_navier_stokes.h>
 #include <src/my_p4est_log_wrappers.h>
@@ -49,7 +50,7 @@ double zmax = 1;
 int nx = 1;
 int ny = 1;
 #ifdef P4_TO_P8
-int nz = 2;
+int nz = 1;
 #endif
 
 /*
@@ -85,7 +86,7 @@ public:
   {
     switch(test_number)
     {
-    case 0: return r0 - sqrt(SQR(x-(xmax+xmin)/2) + SQR(y-(ymax+ymin)/2) + SQR(z-(zmax+zmin)/2));
+    case 0: return r0 - sqrt(SQR(x-(xmax+xmin)/4) + SQR(y-(ymax+ymin)/2) + SQR(z-(zmax+zmin)/2));
     default: throw std::invalid_argument("Choose a valid test.");
     }
   }
@@ -133,7 +134,7 @@ struct BCWALLTYPE_U : WallBC3D
   {
     switch(test_number)
     {
-    case 4: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
+    case 0: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -849,8 +850,10 @@ int main (int argc, char* argv[])
   cmd.add_option("thresh", "the threshold used for the refinement criteria");
   cmd.add_option("save_vtk", "save the p4est in vtk format");
   cmd.add_option("save_every_n", "export images every n iterations");
+#ifndef P4_TO_P8
   cmd.add_option("naca_angle", "angle of the naca airfoil for test 6");
   cmd.add_option("naca_number", "number of the naca, see naca reference online. Default is 0015");
+#endif
 #ifdef P4_TO_P8
   cmd.add_option("test", "choose a test.\n\
                  0 - karman\n");
@@ -868,16 +871,18 @@ int main (int argc, char* argv[])
 
   cmd.print();
 
-  int lmin = cmd.get("lmin", 3);
-  int lmax = cmd.get("lmax", 6);
+  int lmin = cmd.get("lmin", 2);
+  int lmax = cmd.get("lmax", 4);
   int nb_splits = cmd.get("nb_splits", 0);
   double n_times_dt = cmd.get("n_times_dt", 2.);
   double threshold_split_cell = cmd.get("thresh", 0.04);
   bool save_vtk = cmd.get("save_vtk", true);
   int save_every_n = cmd.get("save_every_n", 1);
-  test_number = cmd.get("test", 6);
+  test_number = cmd.get("test", 0);
 
+#ifndef P4_TO_P8
   double naca_length = 4;
+#endif
 
   double Re;
   rho = 1;
@@ -887,7 +892,7 @@ int main (int argc, char* argv[])
   switch(test_number)
   {
 #ifdef P4_TO_P8
-  case 0: nx=8; ny=4; nz=4; xmin=0; xmax=32; ymin=-8; ymax=8; zmin=-8; zmax=8; Re=cmd.get("Re",350); r0=.5; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
+  case 0: nx=8; ny=4; nz=4; xmin=0; xmax=32; ymin=-8; ymax=8; zmin=-8; zmax=8; Re=cmd.get("Re",350); r0=1; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
 #else
   case 0: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; tf = cmd.get("tf", PI/3);  break;
   case 1: nx=2; ny=2; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; tf = cmd.get("tf", PI/3);  break;
@@ -1087,6 +1092,9 @@ int main (int argc, char* argv[])
   CF_2 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v };
 #endif
 
+//  std::cout << "WARNING ! printing vtu" << std::endl;
+//  my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n, P4EST_TRUE, P4EST_TRUE, 0, 0,
+//                         "/home/guittet/code/Output/p4est_navier_stokes/test");
 
   my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
   ns.set_phi(phi);
@@ -1247,6 +1255,7 @@ int main (int argc, char* argv[])
 #endif
 
     iter++;
+//    break;
   }
 
 #ifndef P4_TO_P8

@@ -65,11 +65,11 @@
 #undef MAX
 
 double xmin = 0;
-double xmax = 3;
+double xmax = 4;
 double ymin = 0;
-double ymax = 4;
+double ymax = 3;
 #ifdef P4_TO_P8
-double zmin = -2;
+double zmin = -4;
 double zmax = 1;
 #endif
 
@@ -79,10 +79,10 @@ int lmin = 2;
 int lmax = 4;
 int nb_splits = 1;
 
-int nx = 2;
+int nx = 3;
 int ny = 3;
 #ifdef P4_TO_P8
-int nz = 1;
+int nz = 4;
 #endif
 
 double mu = 1.5;

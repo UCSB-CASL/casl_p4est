@@ -589,9 +589,9 @@ void my_p4est_navier_stokes_t::compute_vorticity()
     p4est_locidx_t n = ngbd_n->get_layer_node(i);
     ngbd_n->get_neighbors(n, qnnn);
 #ifdef P4_TO_P8
-    double vx = qnnn.dy_central(vnp1_p[3]) - qnnn.dz_central(vnp1_p[2]);
-    double vy = qnnn.dz_central(vnp1_p[1]) - qnnn.dx_central(vnp1_p[3]);
-    double vz = qnnn.dx_central(vnp1_p[2]) - qnnn.dy_central(vnp1_p[1]);
+    double vx = qnnn.dy_central(vnp1_p[2]) - qnnn.dz_central(vnp1_p[1]);
+    double vy = qnnn.dz_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[2]);
+    double vz = qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]);
     vorticity_p[n] = sqrt(vx*vx + vy*vy + vz*vz);
 #else
     vorticity_p[n] = qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]);
@@ -605,9 +605,9 @@ void my_p4est_navier_stokes_t::compute_vorticity()
     p4est_locidx_t n = ngbd_n->get_local_node(i);
     ngbd_n->get_neighbors(n, qnnn);
 #ifdef P4_TO_P8
-    double vx = qnnn.dy_central(vnp1_p[3]) - qnnn.dz_central(vnp1_p[2]);
-    double vy = qnnn.dz_central(vnp1_p[1]) - qnnn.dx_central(vnp1_p[3]);
-    double vz = qnnn.dx_central(vnp1_p[2]) - qnnn.dy_central(vnp1_p[1]);
+    double vx = qnnn.dy_central(vnp1_p[2]) - qnnn.dz_central(vnp1_p[1]);
+    double vy = qnnn.dz_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[2]);
+    double vz = qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]);
     vorticity_p[n] = sqrt(vx*vx + vy*vy + vz*vz);
 #else
     vorticity_p[n] = qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]);
@@ -972,7 +972,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   solver.set_bc(bc_vstar);
   solver.set_rhs(rhs);
 #ifdef P4_TO_P8
-  solver.set_compute_partition_on_the_fly(true);
+  solver.set_compute_partition_on_the_fly(false);
 #else
   solver.set_compute_partition_on_the_fly(false);
 #endif
@@ -1267,7 +1267,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
   bool grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1);
   int iter=0;
-  while(1 && grid_is_changing)
+  while(0 && grid_is_changing)
   {
     my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
     p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
@@ -1484,29 +1484,55 @@ void my_p4est_navier_stokes_t::compute_forces(double *f)
   for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd_n->get_layer_node(i);
+#ifdef P4_TO_P8
+    if(fabs(phi_p[n])<10*MAX(dxyz_min[0],dxyz_min[1],dxyz_min[2]))
+#else
     if(fabs(phi_p[n])<10*MAX(dxyz_min[0],dxyz_min[1]))
+#endif
     {
       ngbd_n->get_neighbors(n, qnnn);
 
       double nx = -qnnn.dx_central(phi_p);
       double ny = -qnnn.dy_central(phi_p);
-
+#ifdef P4_TO_P8
+      double nz = -qnnn.dz_central(phi_p);
+      double norm = sqrt(nx*nx + ny*ny + nz*nz);
+#else
       double norm = sqrt(nx*nx + ny*ny);
+#endif
+
       nx = norm>EPS ? nx/norm : 0;
       ny = norm>EPS ? ny/norm : 0;
+#ifdef P4_TO_P8
+      nz = norm>EPS ? nz/norm : 0;
+#endif
 
       double ux = qnnn.dx_central(v_p[0]);
       double uy = qnnn.dy_central(v_p[0]);
       double vx = qnnn.dx_central(v_p[1]);
       double vy = qnnn.dy_central(v_p[1]);
 
+#ifdef P4_TO_P8
+      double uz = qnnn.dz_central(v_p[0]);
+      double vz = qnnn.dz_central(v_p[1]);
+      double wx = qnnn.dx_central(v_p[2]);
+      double wy = qnnn.dy_central(v_p[2]);
+      double wz = qnnn.dz_central(v_p[2]);
+      forces_p[0][n] = 2*mu*ux*nx + mu*(uy+vx)*ny + mu*(uz+wx)*nz;
+      forces_p[1][n] = 2*mu*vy*ny + mu*(uy+vx)*nx + mu*(vz+wy)*nz;
+      forces_p[2][n] = 2*mu*wz*nz + mu*(uz+wx)*nx + mu*(vz+wy)*ny;
+#else
       forces_p[0][n] = 2*mu*ux*nx + mu*(uy+vx)*ny;
       forces_p[1][n] = 2*mu*vy*ny + mu*(uy+vx)*nx;
+#endif
     }
     else
     {
       forces_p[0][n] = 0;
       forces_p[1][n] = 0;
+#ifdef P4_TO_P8
+      forces_p[2][n] = 0;
+#endif
     }
   }
 
@@ -1518,29 +1544,55 @@ void my_p4est_navier_stokes_t::compute_forces(double *f)
   for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd_n->get_local_node(i);
+#ifdef P4_TO_P8
+    if(fabs(phi_p[n])<10*MAX(dxyz_min[0],dxyz_min[1],dxyz_min[2]))
+#else
     if(fabs(phi_p[n])<10*MAX(dxyz_min[0],dxyz_min[1]))
+#endif
     {
       ngbd_n->get_neighbors(n, qnnn);
 
       double nx = -qnnn.dx_central(phi_p);
       double ny = -qnnn.dy_central(phi_p);
-
+#ifdef P4_TO_P8
+      double nz = -qnnn.dz_central(phi_p);
+      double norm = sqrt(nx*nx + ny*ny + nz*nz);
+#else
       double norm = sqrt(nx*nx + ny*ny);
+#endif
+
       nx = norm>EPS ? nx/norm : 0;
       ny = norm>EPS ? ny/norm : 0;
+#ifdef P4_TO_P8
+      nz = norm>EPS ? nz/norm : 0;
+#endif
 
       double ux = qnnn.dx_central(v_p[0]);
       double uy = qnnn.dy_central(v_p[0]);
       double vx = qnnn.dx_central(v_p[1]);
       double vy = qnnn.dy_central(v_p[1]);
 
+#ifdef P4_TO_P8
+      double uz = qnnn.dz_central(v_p[0]);
+      double vz = qnnn.dz_central(v_p[1]);
+      double wx = qnnn.dx_central(v_p[2]);
+      double wy = qnnn.dy_central(v_p[2]);
+      double wz = qnnn.dz_central(v_p[2]);
+      forces_p[0][n] = 2*mu*ux*nx + mu*(uy+vx)*ny + mu*(uz+wx)*nz;
+      forces_p[1][n] = 2*mu*vy*ny + mu*(uy+vx)*nx + mu*(vz+wy)*nz;
+      forces_p[2][n] = 2*mu*wz*nz + mu*(uz+wx)*nx + mu*(vz+wy)*ny;
+#else
       forces_p[0][n] = 2*mu*ux*nx + mu*(uy+vx)*ny;
       forces_p[1][n] = 2*mu*vy*ny + mu*(uy+vx)*nx;
+#endif
     }
     else
     {
       forces_p[0][n] = 0;
       forces_p[1][n] = 0;
+#ifdef P4_TO_P8
+      forces_p[2][n] = 0;
+#endif
     }
   }
 
