@@ -237,6 +237,8 @@ public:
 
   inline const my_p4est_faces_t* get_faces() { return faces_n; }
 
+  inline Vec get_phi() { return phi; }
+
   inline const Vec* get_velocity() { return vn_nodes; }
 
   inline const Vec* get_velocity_np1() { return vnp1_nodes; }
