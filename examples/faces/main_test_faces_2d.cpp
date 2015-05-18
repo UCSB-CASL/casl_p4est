@@ -65,24 +65,24 @@
 #undef MAX
 
 double xmin = -1;
-double xmax =  2;
-double ymin = -1;
+double xmax =  1;
+double ymin = -2;
 double ymax =  1;
 #ifdef P4_TO_P8
-double zmin = 0;
-double zmax = 1;
+double zmin = -1;
+double zmax =  2;
 #endif
 
 using namespace std;
 
 int lmin = 2;
-int lmax = 5;
-int nb_splits = 4;
+int lmax = 4;
+int nb_splits = 1;
 
 int nx = 2;
 int ny = 3;
 #ifdef P4_TO_P8
-int nz = 4;
+int nz = 3;
 #endif
 
 double mu = 1.;
@@ -101,14 +101,13 @@ int interface_type = 0;
  */
 int test_number = 2;
 
-BoundaryConditionType bc_itype = NEUMANN;
+BoundaryConditionType bc_itype = DIRICHLET;
 BoundaryConditionType bc_wtype = DIRICHLET;
 
 #ifdef P4_TO_P8
 double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
 #else
-//double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
-double r0 = 0.25;
+double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
 #endif
 
 

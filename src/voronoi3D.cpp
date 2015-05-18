@@ -11,6 +11,12 @@ void Voronoi3D::get_Points( const vector<Voronoi3DPoint>*& points) const
   points = &this->points;
 }
 
+void Voronoi3D::set_Points( vector<Voronoi3DPoint> &points, double volume )
+{
+  this->points = points;
+  this->volume = volume;
+}
+
 void Voronoi3D::push( int n, double x, double y,double z )
 {
   for(unsigned int m=0; m<points.size(); m++)

@@ -81,6 +81,13 @@ public:
   void get_Points( const vector<Voronoi3DPoint>*& points) const;
 
   /*!
+   * \brief set the voronoi cell with precomputed values
+   * \param points the list of voronoi neighbors with their properties
+   * \param the volume of the voronoi cell
+   */
+  void set_Points( vector<Voronoi3DPoint> &points, double volume );
+
+  /*!
      * \brief set the level-set values at the vertices of the voronoi partition
      * \param phi_values the list of the level-set values
      */
