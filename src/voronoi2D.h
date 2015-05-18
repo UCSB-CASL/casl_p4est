@@ -47,6 +47,9 @@ private:
   vector<Point2> partition;
   vector<double> phi_values;
   double phi_c;
+  double volume;
+
+  void compute_volume();
 
 public:
   /*!
@@ -82,6 +85,14 @@ public:
      * \param partition the new partition
      */
   void set_Partition( vector<Point2>& partition );
+
+  /*!
+     * \brief set the precomputed voronoi cell
+     * \param points the voronoi neighbors
+     * \param partition the new partition
+     * \param volume the volume/area of the partition
+     */
+  void set_Points_And_Partition( vector<Voronoi2DPoint>& points, vector<Point2>& partition, double volume );
 
   /*!
      * \brief set the level-set values at the vertices of the voronoi partition
@@ -164,10 +175,10 @@ public:
   bool is_Interface() const;
 
   /*!
-     * \brief compute the area inside the voronoi partition
+     * \brief get the area inside the voronoi partition
      * \return the area of the voronoi partition containing pc and built using the provided points
      */
-  double volume() const;
+  inline double get_volume() const { return volume; }
 
   /*!
    * \brief is_Wall

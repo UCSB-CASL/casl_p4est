@@ -42,6 +42,13 @@ void Voronoi2D::set_Partition( vector<Point2>& partition )
   this->partition = partition;
 }
 
+void Voronoi2D::set_Points_And_Partition( vector<Voronoi2DPoint>& points, vector<Point2>& partition, double volume )
+{
+  this->points = points;
+  this->partition = partition;
+  this->volume = volume;
+}
+
 void Voronoi2D::set_Level_Set_Values( const CF_2 &ls )
 {
   phi_c = ls(pc.x, pc.y);
@@ -224,6 +231,8 @@ void Voronoi2D::construct_Partition()
       }
     }
   }
+
+  compute_volume();
 }
 
 
@@ -365,6 +374,8 @@ void Voronoi2D::clip_Interface()
   if(partition.size()!=points.size() || phi_values.size()!=points.size())
     throw std::invalid_argument("[CASL_ERROR]: Voronoi2D->clip_Interface: error while clipping the interface.");
 #endif
+
+  compute_volume();
 }
 
 
@@ -377,17 +388,16 @@ bool Voronoi2D::is_Interface() const
 }
 
 
-double Voronoi2D::volume() const
+void Voronoi2D::compute_volume()
 {
-  double sum = 0.;
+  volume = 0;
   for(unsigned int m=0; m<partition.size(); ++m)
   {
     unsigned int k = mod(m+partition.size()-1, partition.size());
     Point2 u = partition[k]-pc;
     Point2 v = partition[m]-pc;
-    sum += u.cross(v)/2.;
+    volume += u.cross(v)/2.;
   }
-  return sum;
 }
 
 

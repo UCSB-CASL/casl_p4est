@@ -230,6 +230,317 @@ void my_p4est_poisson_faces_t::solve(Vec *solution, bool use_nonzero_initial_gue
 }
 
 
+//void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
+//{
+//  PetscErrorCode ierr;
+
+//  ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
+
+//#ifdef P4_TO_P8
+//  Voronoi3D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
+//#else
+//  Voronoi2D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
+//#endif
+//  voro_tmp.clear();
+
+//  p4est_locidx_t quad_idx;
+//  p4est_topidx_t tree_idx;
+
+//  int dir_m = 2*dir;
+//  int dir_p = 2*dir+1;
+
+//  faces->f2q(f_idx, dir, quad_idx, tree_idx);
+
+//  p4est_tree_t *tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+//  p4est_quadrant_t *quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+
+//#ifndef P4_TO_P8
+//  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+//  double xtmp = p4est->connectivity->vertices[3*vp + 0];
+//  double ytmp = p4est->connectivity->vertices[3*vp + 1];
+//  double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+//  double dx = (xtmp-xmin) * dmin;
+//  double dy = (ytmp-ymin) * dmin;
+//#endif
+
+//  double x = faces->x_fr_f(f_idx, dir);
+//  double y = faces->y_fr_f(f_idx, dir);
+//#ifdef P4_TO_P8
+//  double z = faces->z_fr_f(f_idx, dir);
+//#endif
+
+//#ifdef P4_TO_P8
+//  double phi_c = interp_phi(x,y,z);
+//#else
+//  double phi_c = interp_phi(x,y);
+//#endif
+//  /* far in the positive domain */
+//#ifdef P4_TO_P8
+//  if(phi_c > 2*MAX(dx_min,dy_min,dz_min))
+//#else
+//  if(phi_c > 2*MAX(dx_min,dy_min))
+//#endif
+//    return;
+
+//  p4est_locidx_t qm_idx=-1, qp_idx=-1;
+//  p4est_topidx_t tm_idx=-1, tp_idx=-1;
+//  p4est_quadrant_t qm, qp;
+//  vector<p4est_quadrant_t> ngbd;
+//  if(faces->q2f(quad_idx, dir_m)==f_idx)
+//  {
+//    qp_idx = quad_idx;
+//    tp_idx = tree_idx;
+//    qp = *quad; qp.p.piggy3.local_num = qp_idx;
+//    ngbd.clear();
+//    ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, dir_m);
+//    if(ngbd.size()>0)
+//    {
+//      qm = ngbd[0];
+//      qm_idx = ngbd[0].p.piggy3.local_num;
+//      tm_idx = ngbd[0].p.piggy3.which_tree;
+//    }
+//  }
+//  else
+//  {
+//    qm_idx = quad_idx;
+//    tm_idx = tree_idx;
+//    qm = *quad; qm.p.piggy3.local_num = qm_idx;
+//    ngbd.clear();
+//    ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, dir_p);
+//    if(ngbd.size()>0)
+//    {
+//      qp = ngbd[0];
+//      qp_idx = ngbd[0].p.piggy3.local_num;
+//      tp_idx = ngbd[0].p.piggy3.which_tree;
+//    }
+//  }
+
+//  /* check for walls */
+//#ifdef P4_TO_P8
+//  if(qm_idx==-1 && bc[dir].wallType(x,y,z)==DIRICHLET) return;
+//  if(qp_idx==-1 && bc[dir].wallType(x,y,z)==DIRICHLET) return;
+//#else
+//  if(qm_idx==-1 && bc[dir].wallType(x,y)==DIRICHLET) return;
+//  if(qp_idx==-1 && bc[dir].wallType(x,y)==DIRICHLET) return;
+//#endif
+
+//  /* now gather the neighbor cells to get the potential voronoi neighbors */
+//#ifdef P4_TO_P8
+//  voro_tmp.set_Center_Point(f_idx,x,y,z);
+//#else
+//  voro_tmp.set_Center_Point(x,y);
+//#endif
+
+//  /* note that the walls are dealt with by voro++ in 3D */
+//#ifndef P4_TO_P8
+//  switch(dir)
+//  {
+//  case dir::x:
+//    if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_m00, x-dx, y);
+//    if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_p00, x+dx, y);
+//    if( (qm_idx==-1 || is_quad_ymWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ymWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0m0, x, y-dy);
+//    if( (qm_idx==-1 || is_quad_ypWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ypWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0p0, x, y+dy);
+//    break;
+//  case dir::y:
+//    if( (qm_idx==-1 || is_quad_xmWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xmWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_m00, x-dx, y);
+//    if( (qm_idx==-1 || is_quad_xpWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xpWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_p00, x+dx, y);
+//    if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0m0, x, y-dy);
+//    if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0p0, x, y+dy);
+//    break;
+//  }
+//#endif
+
+//  /* gather neighbor cells */
+//  ngbd.clear();
+//  if(qm_idx!=-1)
+//  {
+//    ngbd.push_back(qm);
+//    switch(dir)
+//    {
+//    case dir::x:
+//#ifdef P4_TO_P8
+
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0, 0);
+//      for(int i=-1; i<2; i+=2)
+//      {
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0, i);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, i, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0, i);
+//        for(int j=-1; j<2; j+=2)
+//        {
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i, j);
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, i, j);
+//        }
+//      }
+//#else
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 1);
+//#endif
+//      break;
+
+//    case dir::y:
+//#ifdef P4_TO_P8
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1, 0);
+//      for(int i=-1; i<2; i+=2)
+//      {
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0, i);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i,-1, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1, i);
+//        for(int j=-1; j<2; j+=2)
+//        {
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0, j);
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i,-1, j);
+//        }
+//      }
+//#else
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1,-1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1, 0);
+//#endif
+//      break;
+
+//#ifdef P4_TO_P8
+//    case dir::z:
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0,-1);
+//      for(int i=-1; i<2; i+=2)
+//      {
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0,-1);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i,-1);
+//        for(int j=-1; j<2; j+=2)
+//        {
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, j, 0);
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, j,-1);
+//        }
+//      }
+//      break;
+//#endif
+//    }
+//  }
+
+//  if(qp_idx!=-1)
+//  {
+//    ngbd.push_back(qp);
+//    switch(dir)
+//    {
+//    case dir::x:
+//#ifdef P4_TO_P8
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0, 0);
+//      for(int i=-1; i<2; i+=2)
+//      {
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0, i);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, i, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0, i);
+//        for(int j=-1; j<2; j+=2)
+//        {
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, j);
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, i, j);
+//        }
+//      }
+//#else
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0,-1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1);
+//#endif
+//      break;
+
+//    case dir::y:
+//#ifdef P4_TO_P8
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1, 0);
+//      for(int i=-1; i<2; i+=2)
+//      {
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0, i);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 1, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1, i);
+//        for(int j=-1; j<2; j+=2)
+//        {
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, j);
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 1, j);
+//        }
+//      }
+//#else
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 0);
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0);
+//#endif
+//      break;
+
+//#ifdef P4_TO_P8
+//    case dir::z:
+//      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0, 1);
+//      for(int i=-1; i<2; i+=2)
+//      {
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, 0);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, 1);
+//        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, 1);
+//        for(int j=-1; j<2; j+=2)
+//        {
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, j, 0);
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, j, 1);
+//        }
+//      }
+//      break;
+//#endif
+//    }
+//  }
+
+//  /* add the faces to the voronoi partition */
+//  for(unsigned int m=0; m<ngbd.size(); ++m)
+//  {
+//    p4est_locidx_t q_tmp = ngbd[m].p.piggy3.local_num;
+//    p4est_locidx_t f_tmp = faces->q2f(q_tmp, dir_m);
+//    if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
+//    {
+//#ifdef P4_TO_P8
+//      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
+//#else
+//      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
+//#endif
+//    }
+
+//    f_tmp = faces->q2f(q_tmp, dir_p);
+//    if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
+//    {
+//#ifdef P4_TO_P8
+//      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
+//#else
+//      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
+//#endif
+//    }
+//  }
+
+//#ifdef P4_TO_P8
+//  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+//  double xmax_ = p4est->connectivity->vertices[3*vp + 0];
+//  double ymax_ = p4est->connectivity->vertices[3*vp + 1];
+//  double zmax_ = p4est->connectivity->vertices[3*vp + 2];
+
+//  double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+//  qh *= MAX(xmax_-xmin,ymax_-ymin,zmax_-zmin);
+//  voro_tmp.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, .5*qh, false, false, false);
+//#else
+//  voro_tmp.construct_Partition();
+//#endif
+
+//  ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
+//}
+
+
 void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int dir)
 {
   PetscErrorCode ierr;
@@ -324,218 +635,257 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   if(qp_idx==-1 && bc[dir].wallType(x,y)==DIRICHLET) return;
 #endif
 
-  /* now gather the neighbor cells to get the potential voronoi neighbors */
+  /* find direct neighbors */
+  vector<p4est_quadrant_t> ngbd_m_m0, ngbd_p_m0;
+  vector<p4est_quadrant_t> ngbd_m_p0, ngbd_p_p0;
 #ifdef P4_TO_P8
-  voro_tmp.set_Center_Point(f_idx,x,y,z);
-#else
-  voro_tmp.set_Center_Point(x,y);
+  vector<p4est_quadrant_t> ngbd_m_0m, ngbd_p_0m;
+  vector<p4est_quadrant_t> ngbd_m_0p, ngbd_p_0p;
 #endif
-
-  /* note that the walls are dealt with by voro++ in 3D */
-#ifndef P4_TO_P8
-  switch(dir)
-  {
-  case dir::x:
-    if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_m00, x-dx, y);
-    if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_p00, x+dx, y);
-    if( (qm_idx==-1 || is_quad_ymWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ymWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0m0, x, y-dy);
-    if( (qm_idx==-1 || is_quad_ypWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ypWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0p0, x, y+dy);
-    break;
-  case dir::y:
-    if( (qm_idx==-1 || is_quad_xmWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xmWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_m00, x-dx, y);
-    if( (qm_idx==-1 || is_quad_xpWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xpWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_p00, x+dx, y);
-    if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0m0, x, y-dy);
-    if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0p0, x, y+dy);
-    break;
-  }
-#endif
-
-  /* gather neighbor cells */
-  ngbd.clear();
   if(qm_idx!=-1)
   {
-    ngbd.push_back(qm);
     switch(dir)
     {
+#ifdef P4_TO_P8
     case dir::x:
-#ifdef P4_TO_P8
-
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0, 0);
-      for(int i=-1; i<2; i+=2)
-      {
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0, i);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, i, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0, i);
-        for(int j=-1; j<2; j+=2)
-        {
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i, j);
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, i, j);
-        }
-      }
-#else
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 1);
-#endif
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_m0, qm_idx, tm_idx, 0,-1, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_p0, qm_idx, tm_idx, 0, 1, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_0m, qm_idx, tm_idx, 0, 0,-1);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_0p, qm_idx, tm_idx, 0, 0, 1);
       break;
-
     case dir::y:
-#ifdef P4_TO_P8
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1, 0);
-      for(int i=-1; i<2; i+=2)
-      {
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0, i);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i,-1, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1, i);
-        for(int j=-1; j<2; j+=2)
-        {
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0, j);
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i,-1, j);
-        }
-      }
-#else
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1,-1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1, 0);
-#endif
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_m0, qm_idx, tm_idx,-1, 0, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_p0, qm_idx, tm_idx, 1, 0, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_0m, qm_idx, tm_idx, 0, 0,-1);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_0p, qm_idx, tm_idx, 0, 0, 1);
       break;
-
-#ifdef P4_TO_P8
     case dir::z:
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 0,-1);
-      for(int i=-1; i<2; i+=2)
-      {
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, 0,-1);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, i,-1);
-        for(int j=-1; j<2; j+=2)
-        {
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, j, 0);
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, i, j,-1);
-        }
-      }
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_m0, qm_idx, tm_idx,-1, 0, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_p0, qm_idx, tm_idx, 1, 0, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_0m, qm_idx, tm_idx, 0,-1, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_0p, qm_idx, tm_idx, 0, 1, 0);
+      break;
+#else
+    case dir::x:
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_m0, qm_idx, tm_idx, 0,-1);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_p0, qm_idx, tm_idx, 0, 1);
+      break;
+    case dir::y:
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_m0, qm_idx, tm_idx,-1, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_p0, qm_idx, tm_idx, 1, 0);
       break;
 #endif
     }
   }
-
   if(qp_idx!=-1)
   {
-    ngbd.push_back(qp);
+    switch(dir)
+    {
+#ifdef P4_TO_P8
+    case dir::x:
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_m0, qp_idx, tp_idx, 0,-1, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_p0, qp_idx, tp_idx, 0, 1, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_0m, qp_idx, tp_idx, 0, 0,-1);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_0p, qp_idx, tp_idx, 0, 0, 1);
+      break;
+    case dir::y:
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_m0, qp_idx, tp_idx,-1, 0, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_p0, qp_idx, tp_idx, 1, 0, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_0m, qp_idx, tp_idx, 0, 0,-1);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_0p, qp_idx, tp_idx, 0, 0, 1);
+      break;
+    case dir::z:
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_m0, qp_idx, tp_idx,-1, 0, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_p0, qp_idx, tp_idx, 1, 0, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_0m, qp_idx, tp_idx, 0,-1, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_0p, qp_idx, tp_idx, 0, 1, 0);
+      break;
+#else
+    case dir::x:
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_m0, qp_idx, tp_idx, 0,-1);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_p0, qp_idx, tp_idx, 0, 1);
+      break;
+    case dir::y:
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_m0, qp_idx, tp_idx,-1, 0);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_p0, qp_idx, tp_idx, 1, 0);
+      break;
+#endif
+    }
+  }
+
+
+  /* check for uniform case, if so build voronoi partition by hand */
+  if(qm.level==qp.level &&
+     (ngbd_p_m0.size()==1 && ngbd_m_m0.size()==1 && ngbd_m_m0[0].level==qm.level && ngbd_p_m0[0].level==qp.level &&
+      faces->q2f(ngbd_m_m0[0].p.piggy3.local_num,2*dir)!=NO_VELOCITY && faces->q2f(ngbd_p_m0[0].p.piggy3.local_num,2*dir+1)!=NO_VELOCITY) &&
+     (ngbd_p_p0.size()==1 && ngbd_m_p0.size()==1 && ngbd_m_p0[0].level==qm.level && ngbd_p_p0[0].level==qp.level &&
+      faces->q2f(ngbd_m_p0[0].p.piggy3.local_num,2*dir)!=NO_VELOCITY && faces->q2f(ngbd_p_p0[0].p.piggy3.local_num,2*dir+1)!=NO_VELOCITY) &&
+   #ifdef P4_TO_P8
+     (ngbd_p_0m.size()==1 && ngbd_m_0m.size()==1 && faces->q2f(ngbd_m_0m[0].p.piggy3.local_num, 2*dir+1)==faces->q2f(ngbd_p_0m[0].p.piggy3.local_num, 2*dir)) &&
+     (ngbd_p_0p.size()==1 && ngbd_m_0p.size()==1 && faces->q2f(ngbd_m_0p[0].p.piggy3.local_num, 2*dir+1)==faces->q2f(ngbd_p_0p[0].p.piggy3.local_num, 2*dir)) &&
+   #endif
+     faces->q2f(qm_idx,2*dir)!=NO_VELOCITY && faces->q2f(qp_idx,2*dir+1)!=NO_VELOCITY)
+  {
+    vector<Voronoi2DPoint> points(P4EST_FACES);
+#ifdef P4_TO_P8
+
+#else
+    vector<Point2> partition(4);
+
+    points[0].n = faces->q2f(qp_idx,2*dir+1);
+    points[0].p.x = faces->x_fr_f(points[0].n,dir);
+    points[0].p.y = faces->y_fr_f(points[0].n,dir);
+    points[0].theta = 0;
+
+    points[1].n = faces->q2f(ngbd_p_p0[0].p.piggy3.local_num,2*dir);
+    points[1].p.x = faces->x_fr_f(points[1].n,dir);
+    points[1].p.y = faces->y_fr_f(points[1].n,dir);
+    points[1].theta = PI/2;
+
+    points[2].n = faces->q2f(qm_idx,2*dir);
+    points[2].p.x = faces->x_fr_f(points[2].n,dir);
+    points[2].p.y = faces->y_fr_f(points[2].n,dir);
+    points[2].theta = PI;
+
+    points[3].n = faces->q2f(ngbd_p_m0[0].p.piggy3.local_num,2*dir);
+    points[3].p.x = faces->x_fr_f(points[3].n,dir);
+    points[3].p.y = faces->y_fr_f(points[3].n,dir);
+    points[3].theta = 3*PI/2;
+
     switch(dir)
     {
     case dir::x:
-#ifdef P4_TO_P8
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0, 0);
-      for(int i=-1; i<2; i+=2)
-      {
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0, i);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, i, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0, i);
-        for(int j=-1; j<2; j+=2)
-        {
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, j);
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, i, j);
-        }
-      }
-#else
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0,-1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1);
-#endif
+      partition[0].x = x+dx/2; partition[0].y = y+dy/2;
+      partition[1].x = x-dx/2; partition[1].y = y+dy/2;
+      partition[2].x = x-dx/2; partition[2].y = y-dy/2;
+      partition[3].x = x+dx/2; partition[3].y = y-dy/2;
       break;
-
     case dir::y:
-#ifdef P4_TO_P8
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1, 0);
-      for(int i=-1; i<2; i+=2)
-      {
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0, i);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 1, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1, i);
-        for(int j=-1; j<2; j+=2)
-        {
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, j);
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 1, j);
-        }
-      }
-#else
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 0);
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0);
-#endif
+      partition[0].x = x-dx/2; partition[0].y = y+dy/2;
+      partition[1].x = x-dx/2; partition[1].y = y-dy/2;
+      partition[2].x = x+dx/2; partition[2].y = y-dy/2;
+      partition[3].x = x+dx/2; partition[3].y = y+dy/2;
       break;
-
-#ifdef P4_TO_P8
-    case dir::z:
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 0, 1);
-      for(int i=-1; i<2; i+=2)
-      {
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, 0, 1);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, i, 1);
-        for(int j=-1; j<2; j+=2)
-        {
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, j, 0);
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, i, j, 1);
-        }
-      }
-      break;
-#endif
     }
+
+    voro_tmp.set_Points_And_Partition(points, partition, dx*dy);
+#endif
   }
 
-  /* add the faces to the voronoi partition */
-  for(unsigned int m=0; m<ngbd.size(); ++m)
+  /* otherwise, there is a T-junction and the grid is not uniform, need to compute the voronoi cell */
+  else
   {
-    p4est_locidx_t q_tmp = ngbd[m].p.piggy3.local_num;
-    p4est_locidx_t f_tmp = faces->q2f(q_tmp, dir_m);
-    if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
+    /* now gather the neighbor cells to get the potential voronoi neighbors */
+  #ifdef P4_TO_P8
+    voro_tmp.set_Center_Point(f_idx,x,y,z);
+  #else
+    voro_tmp.set_Center_Point(x,y);
+  #endif
+
+    /* note that the walls are dealt with by voro++ in 3D */
+  #ifndef P4_TO_P8
+    switch(dir)
     {
-#ifdef P4_TO_P8
-      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
-#else
-      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
-#endif
+    case dir::x:
+      if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_m00, x-dx, y);
+      if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_p00, x+dx, y);
+      if( (qm_idx==-1 || is_quad_ymWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ymWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0m0, x, y-dy);
+      if( (qm_idx==-1 || is_quad_ypWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ypWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0p0, x, y+dy);
+      break;
+    case dir::y:
+      if( (qm_idx==-1 || is_quad_xmWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xmWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_m00, x-dx, y);
+      if( (qm_idx==-1 || is_quad_xpWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xpWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_p00, x+dx, y);
+      if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0m0, x, y-dy);
+      if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0p0, x, y+dy);
+      break;
+    }
+  #endif
+
+    /* gather neighbor cells */
+    ngbd.clear();
+    if(qm_idx!=-1)
+    {
+      ngbd.push_back(qm);
+
+      if(faces->q2f(qm_idx,2*dir)==NO_VELOCITY)
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 2*dir);
+
+      switch(dir)
+      {
+      case dir::x:
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1);
+        break;
+      case dir::y:
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1,-1);
+        break;
+      }
+
+      for(unsigned int i=0; i<ngbd_m_m0.size(); ++i) ngbd.push_back(ngbd_m_m0[i]);
+      for(unsigned int i=0; i<ngbd_m_p0.size(); ++i) ngbd.push_back(ngbd_m_p0[i]);
+    }
+    if(qp_idx!=-1)
+    {
+      ngbd.push_back(qp);
+
+      if(faces->q2f(qp_idx,2*dir+1)==NO_VELOCITY)
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 2*dir+1);
+
+      switch(dir)
+      {
+      case dir::x:
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1);
+        break;
+      case dir::y:
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1);
+        break;
+      }
+
+      for(unsigned int i=0; i<ngbd_p_m0.size(); ++i) ngbd.push_back(ngbd_p_m0[i]);
+      for(unsigned int i=0; i<ngbd_p_p0.size(); ++i) ngbd.push_back(ngbd_p_p0[i]);
     }
 
-    f_tmp = faces->q2f(q_tmp, dir_p);
-    if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
+    /* add the faces to the voronoi partition */
+    for(unsigned int m=0; m<ngbd.size(); ++m)
     {
+      p4est_locidx_t q_tmp = ngbd[m].p.piggy3.local_num;
+      p4est_locidx_t f_tmp = faces->q2f(q_tmp, dir_m);
+      if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
+      {
 #ifdef P4_TO_P8
-      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
+        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
 #else
-      voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
+        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
 #endif
+      }
+
+      f_tmp = faces->q2f(q_tmp, dir_p);
+      if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
+      {
+#ifdef P4_TO_P8
+        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
+#else
+        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
+#endif
+      }
     }
+
+#ifdef P4_TO_P8
+    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+    double xmax_ = p4est->connectivity->vertices[3*vp + 0];
+    double ymax_ = p4est->connectivity->vertices[3*vp + 1];
+    double zmax_ = p4est->connectivity->vertices[3*vp + 2];
+
+    double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    qh *= MAX(xmax_-xmin,ymax_-ymin,zmax_-zmin);
+    voro_tmp.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, .5*qh, false, false, false);
+#else
+    voro_tmp.construct_Partition();
+#endif
   }
-
-#ifdef P4_TO_P8
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmax_ = p4est->connectivity->vertices[3*vp + 0];
-  double ymax_ = p4est->connectivity->vertices[3*vp + 1];
-  double zmax_ = p4est->connectivity->vertices[3*vp + 2];
-
-  double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  qh *= MAX(xmax_-xmin,ymax_-ymin,zmax_-zmin);
-  voro_tmp.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, .5*qh, false, false, false);
-#else
-  voro_tmp.construct_Partition();
-#endif
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -722,7 +1072,7 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 
-//  print_partition_VTK("/home/guittet/code/Output/p4est_navier_stokes/voro.vtk");
+//  print_partition_VTK("/home/guittet/code/Output/p4est_navier_stokes/voro_0.vtk");
 //  throw std::invalid_argument("");
 }
 
@@ -1374,7 +1724,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     }
 #endif
 
-    double volume = voro_tmp.volume();
+    double volume = voro_tmp.get_volume();
     ierr = MatSetValue(A, f_idx_g, f_idx_g, volume*diag_add, ADD_VALUES); CHKERRXX(ierr);
     rhs_p[f_idx] *= volume;
     if(diag_add>0) matrix_has_nullspace[dir] = false;

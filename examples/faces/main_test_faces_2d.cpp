@@ -75,9 +75,9 @@ double zmax = 1;
 
 using namespace std;
 
-int lmin = 2;
-int lmax = 4;
-int nb_splits = 1;
+int lmin = 3;
+int lmax = 5;
+int nb_splits = 2;
 
 int nx = 3;
 int ny = 3;
@@ -100,7 +100,7 @@ int interface_type = 0;
 int test_number = 0;
 
 BoundaryConditionType bc_itype = DIRICHLET;
-BoundaryConditionType bc_wtype = NEUMANN;
+BoundaryConditionType bc_wtype = DIRICHLET;
 
 #ifdef P4_TO_P8
 double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
@@ -365,7 +365,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   out_dir = getenv("OUT_DIR");
 #else
   char out_dir[10000];
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_navier_stokes");
+  sprintf(out_dir, "/home/guittet/code/Output/p4est_navier_stokes/validation");
 #endif
 
   std::ostringstream oss;
