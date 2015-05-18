@@ -1159,7 +1159,7 @@ int main (int argc, char* argv[])
     }
   }
 #else
-  if(test_number==4 || test_number==5)
+  if(test_number==4 || test_number==5 || test_number==6)
   {
 #if defined(STAMPEDE) || defined(COMET)
     if     (test_number==4) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
@@ -1223,7 +1223,7 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     if(test_number==0)
 #else
-    if(test_number==4 || test_number==5)
+    if(test_number==4 || test_number==5 || test_number==6)
 #endif
     {
       ns.compute_forces(forces);
@@ -1235,7 +1235,10 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
         fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(PI*r0*r0*u0*u0*rho), forces[1]/(PI*r0*r0*u0*u0*rho), forces[2]/(PI*r0*r0*u0*u0*rho));
 #else
-        fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
+				if(test_number==4 || test_number==5)
+	        fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
+				if(test_number==6)
+	        fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/(naca_length*0.5*rho*u0*u0), forces[1]/(naca_length*0.5*rho*u0*u0));
 #endif
         fclose(fp_forces);
       }
@@ -1246,8 +1249,9 @@ int main (int argc, char* argv[])
     if(save_vtk && iter%save_every_n==0)
     {
 #if defined(STAMPEDE) || defined(COMET)
-      sprintf(name, "%s/vtu/%05d_", out_dir, iter/save_every_n); break;
+      sprintf(name, "%s/vtu/%05d_", out_dir, iter/save_every_n);
 #else
+
       switch(test_number)
       {
 #ifdef P4_TO_P8
