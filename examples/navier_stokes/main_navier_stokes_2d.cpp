@@ -769,23 +769,31 @@ void check_error_analytic_vortex(mpi_context_t *mpi, my_p4est_navier_stokes_t *n
 }
 
 
-void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
+void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns, double Re, double n_times_dt)
 {
   PetscErrorCode ierr;
 
   const my_p4est_node_neighbors_t *ngbd_n = ns->get_ngbd_n();
   const Vec *vn = ns->get_velocity_np1();
+  const p4est_t *p4est = ns->get_p4est();
+  Vec phi = ns->get_phi();
+
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
 
   my_p4est_interpolation_nodes_t interp0(ngbd_n);
   my_p4est_interpolation_nodes_t interp1(ngbd_n);
+  my_p4est_interpolation_nodes_t interp0_phi(ngbd_n);
+  my_p4est_interpolation_nodes_t interp1_phi(ngbd_n);
   int N = 200;
   for(int i=0; i<=N; ++i)
   {
     double xyz0[] = { (double)i/(double)N, .5 };
     interp0.add_point(i, xyz0);
+    interp0_phi.add_point(i, xyz0);
 
     double xyz1[] = { .5, (double)i/(double)N };
     interp1.add_point(i, xyz1);
+    interp1_phi.add_point(i, xyz1);
   }
 
   std::vector<double> v0(N+1);
@@ -796,6 +804,14 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
   interp1.set_input(vn[0], quadratic);
   interp1.interpolate(v1.data());
 
+  std::vector<double> phi0(N+1);
+  interp1.set_input(phi, quadratic);
+  interp1.interpolate(phi0.data());
+
+  std::vector<double> phi1(N+1);
+  interp1.set_input(phi, quadratic);
+  interp1.interpolate(phi1.data());
+
   if(!mpi->mpirank)
   {
     FILE* fp;
@@ -803,13 +819,15 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
 #if defined(STAMPEDE) || defined(COMET)
     char *out_dir;
     out_dir = getenv("OUT_DIR");
-    sprintf(name, "%s/velo_driven_cavity.dat", out_dir);
+    if     (test_number==2) sprintf(name, "%s/velo_driven_cavity.dat", out_dir);
+    else if(test_number==3) sprintf(name, "%s/velo_driven_cavity_hole.dat", out_dir);
 #else
-    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/driven_cavity/velo.dat");
+    if     (test_number==2) sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/driven_cavity/cavity_velocity_%d-%d_%dx%d_Re%g_ntimesdt%g.dat", data->min_lvl, data->max_lvl, nx, ny, Re, n_times_dt);
+    else if(test_number==3) sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/driven_cavity_hole/cavity_hole_velocity_%d-%d_%dx%d_Re%g_ntimesdt%g.dat", data->min_lvl, data->max_lvl, nx, ny, Re, n_times_dt);
 #endif
-    ierr = PetscFOpen(PETSC_COMM_SELF, name, "w", &fp); CHKERRXX(ierr);
+    fp = fopen(name, "w");
 
-    if(fp==NULL) std::cout << mpi->mpirank << " could not open file ... " << std::endl;
+    if(fp==NULL) std::cout << mpi->mpirank << "save velocity cavity: could not open file ... " << name << std::endl;
 
     if(fp==NULL)
       throw std::invalid_argument("check_forces_cavity: could not open file.");
@@ -817,9 +835,10 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
     ierr = PetscFPrintf(mpi->mpicomm, fp, "%% x/y \t vx \t vy\n"); CHKERRXX(ierr);
     for(int i=0; i<=N; ++i)
     {
-      ierr = PetscFPrintf(mpi->mpicomm, fp, "%g \t %g \t %g\n", (double)i/(double)N, v0[i], v1[i]); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi->mpicomm, fp, "%g, %g, %g\n", (double)i/(double)N, phi0[i]<0 ? v0[i] : 0, phi1[i]<0 ? v1[i] : 0); CHKERRXX(ierr);
     }
-    ierr = PetscFClose(PETSC_COMM_SELF, fp); CHKERRXX(ierr);
+
+    fclose(fp);
   }
 }
 #endif
@@ -1147,7 +1166,7 @@ int main (int argc, char* argv[])
     else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
     else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
 #else
-    if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/karman/forces_no_inside_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
+    if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/karman/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
     else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
     else if(test_number==6) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/naca/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
 #endif
@@ -1242,7 +1261,7 @@ int main (int argc, char* argv[])
       case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
       case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/driven_cavity/cavity_%d", iter/save_every_n); break;
       case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/driven_cavity_with_hole/hole_%d", iter/save_every_n); break;
-      case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/karman/karman_%d", iter/save_every_n); break;
+      case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/karman_Re%g/karman_%d", Re, iter/save_every_n); break;
       case 5: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/oscillating_cylinder/oscillating_%d", iter/save_every_n); break;
       case 6: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/naca/naca_%d", iter/save_every_n); break;
 #endif
@@ -1251,13 +1270,13 @@ int main (int argc, char* argv[])
 #endif
 
       ns.save_vtk(name);
-    }
-
 
 #ifndef P4_TO_P8
-    if(test_number==2)
-      check_velocity_cavity(mpi, &ns);
+    if(test_number==2 || test_number==3)
+      check_velocity_cavity(mpi, &ns, Re, n_times_dt);
 #endif
+    }
+
 
     iter++;
 //    break;
