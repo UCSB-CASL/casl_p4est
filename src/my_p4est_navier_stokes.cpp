@@ -1267,7 +1267,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
   bool grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1);
   int iter=0;
-  while(0 && grid_is_changing)
+  while(1 && grid_is_changing)
   {
     my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
     p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);

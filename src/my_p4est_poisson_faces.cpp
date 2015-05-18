@@ -682,11 +682,11 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
 
 #ifdef P4_TO_P8
     if(bc[dir].interfaceType()==NOINTERFACE ||
-       (bc[dir].interfaceType()==DIRICHLET && phi_c<.5*MIN(dx_min,dy_min,dz_min)) ||
+       (bc[dir].interfaceType()==DIRICHLET && phi_c<0.5*MIN(dx_min,dy_min,dz_min)) ||
        (bc[dir].interfaceType()==NEUMANN   && phi_c<2*MAX(dx_min,dy_min,dz_min)) )
 #else
     if(bc[dir].interfaceType()==NOINTERFACE ||
-       (bc[dir].interfaceType()==DIRICHLET && phi_c<.5*MIN(dx_min,dy_min)) ||
+       (bc[dir].interfaceType()==DIRICHLET && phi_c<0.5*MIN(dx_min,dy_min)) ||
        (bc[dir].interfaceType()==NEUMANN   && phi_c<2*MAX(dx_min,dy_min)) )
 #endif
     {
