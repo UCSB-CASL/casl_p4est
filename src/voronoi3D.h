@@ -57,7 +57,7 @@ private:
   Point3 pc;
   int nc;
   vector<Voronoi3DPoint> points;
-  double volume_;
+  double volume;
   double scaling;
 
 public:
@@ -118,10 +118,9 @@ public:
      * \brief construct the voronoi parition around point pc using the neighborhood given in "points"
      */
   void construct_Partition(double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
-                           double box_size,
                            bool periodic_x, bool periodic_y, bool periodic_z);
 
-  inline double volume() const { return this->volume_; }
+  inline double get_volume() const { return this->volume; }
 
   /*!
      * \brief save the voronoi partition in the .vtk format

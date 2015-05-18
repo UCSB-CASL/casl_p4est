@@ -64,29 +64,29 @@
 #undef MIN
 #undef MAX
 
-double xmin = 0;
-double xmax = 4;
-double ymin = 0;
-double ymax = 3;
+double xmin = -1;
+double xmax =  2;
+double ymin = -1;
+double ymax =  1;
 #ifdef P4_TO_P8
-double zmin = -4;
+double zmin = 0;
 double zmax = 1;
 #endif
 
 using namespace std;
 
-int lmin = 3;
+int lmin = 2;
 int lmax = 5;
-int nb_splits = 2;
+int nb_splits = 4;
 
-int nx = 3;
+int nx = 2;
 int ny = 3;
 #ifdef P4_TO_P8
 int nz = 4;
 #endif
 
-double mu = 1.5;
-double add_diagonal = 2.4;
+double mu = 1.;
+double add_diagonal = 0;
 
 /*
  * 0 - circle
@@ -95,17 +95,20 @@ int interface_type = 0;
 
 /*
  *  ********* 2D *********
- * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1, diag_add=0
+ * 0 - x+y
+ * 1 - x*x + y*y
+ * 2 - sin(x)*cos(y)
  */
-int test_number = 0;
+int test_number = 2;
 
-BoundaryConditionType bc_itype = DIRICHLET;
+BoundaryConditionType bc_itype = NEUMANN;
 BoundaryConditionType bc_wtype = DIRICHLET;
 
 #ifdef P4_TO_P8
 double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
 #else
-double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
+//double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
+double r0 = 0.25;
 #endif
 
 

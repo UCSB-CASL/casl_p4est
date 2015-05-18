@@ -49,8 +49,6 @@ private:
   double phi_c;
   double volume;
 
-  void compute_volume();
-
 public:
   /*!
      * \brief default constructor for the Voronoi2D class
@@ -173,6 +171,11 @@ public:
    * \return true if the cell is crossed by the interface, false otherwise
    */
   bool is_Interface() const;
+
+  /*!
+     * \brief compute the volume enclosed by the voronoi partition
+     */
+  void compute_volume();
 
   /*!
      * \brief get the area inside the voronoi partition

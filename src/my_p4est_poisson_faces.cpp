@@ -565,13 +565,15 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   p4est_tree_t *tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
   p4est_quadrant_t *quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
 
-#ifndef P4_TO_P8
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
   double xtmp = p4est->connectivity->vertices[3*vp + 0];
   double ytmp = p4est->connectivity->vertices[3*vp + 1];
   double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
   double dx = (xtmp-xmin) * dmin;
   double dy = (ytmp-ymin) * dmin;
+#ifdef P4_TO_P8
+  double ztmp = p4est->connectivity->vertices[3*vp + 2];
+  double dz = (ztmp-zmin) * dmin;
 #endif
 
   double x = faces->x_fr_f(f_idx, dir);
@@ -713,58 +715,110 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
     }
   }
 
+  /* now gather the neighbor cells to get the potential voronoi neighbors */
+#ifdef P4_TO_P8
+  voro_tmp.set_Center_Point(f_idx,x,y,z);
+#else
+  voro_tmp.set_Center_Point(x,y);
+#endif
 
   /* check for uniform case, if so build voronoi partition by hand */
-  if(qm.level==qp.level &&
+  if(0 && qm.level==qp.level &&
      (ngbd_p_m0.size()==1 && ngbd_m_m0.size()==1 && ngbd_m_m0[0].level==qm.level && ngbd_p_m0[0].level==qp.level &&
       faces->q2f(ngbd_m_m0[0].p.piggy3.local_num,2*dir)!=NO_VELOCITY && faces->q2f(ngbd_p_m0[0].p.piggy3.local_num,2*dir+1)!=NO_VELOCITY) &&
      (ngbd_p_p0.size()==1 && ngbd_m_p0.size()==1 && ngbd_m_p0[0].level==qm.level && ngbd_p_p0[0].level==qp.level &&
       faces->q2f(ngbd_m_p0[0].p.piggy3.local_num,2*dir)!=NO_VELOCITY && faces->q2f(ngbd_p_p0[0].p.piggy3.local_num,2*dir+1)!=NO_VELOCITY) &&
    #ifdef P4_TO_P8
-     (ngbd_p_0m.size()==1 && ngbd_m_0m.size()==1 && faces->q2f(ngbd_m_0m[0].p.piggy3.local_num, 2*dir+1)==faces->q2f(ngbd_p_0m[0].p.piggy3.local_num, 2*dir)) &&
-     (ngbd_p_0p.size()==1 && ngbd_m_0p.size()==1 && faces->q2f(ngbd_m_0p[0].p.piggy3.local_num, 2*dir+1)==faces->q2f(ngbd_p_0p[0].p.piggy3.local_num, 2*dir)) &&
+     (ngbd_p_0m.size()==1 && ngbd_m_0m.size()==1 && ngbd_m_0m[0].level==qm.level && ngbd_p_0m[0].level==qp.level &&
+      faces->q2f(ngbd_m_0m[0].p.piggy3.local_num,2*dir)!=NO_VELOCITY && faces->q2f(ngbd_p_0m[0].p.piggy3.local_num,2*dir+1)!=NO_VELOCITY) &&
+     (ngbd_p_0p.size()==1 && ngbd_m_0p.size()==1 && ngbd_m_0p[0].level==qm.level && ngbd_p_0p[0].level==qp.level &&
+      faces->q2f(ngbd_m_0p[0].p.piggy3.local_num,2*dir)!=NO_VELOCITY && faces->q2f(ngbd_p_0p[0].p.piggy3.local_num,2*dir+1)!=NO_VELOCITY) &&
    #endif
      faces->q2f(qm_idx,2*dir)!=NO_VELOCITY && faces->q2f(qp_idx,2*dir+1)!=NO_VELOCITY)
   {
     vector<Voronoi2DPoint> points(P4EST_FACES);
 #ifdef P4_TO_P8
+    points[0].n = faces->q2f(qp_idx,2*dir+1);
+    points[0].p.x = faces->x_fr_f(points[0].n,dir);
+    points[0].p.y = faces->y_fr_f(points[0].n,dir);
+    points[0].p.z = faces->z_fr_f(points[0].n,dir);
+    points[0].s = dir==dir::x ? dy*dz : (dir==dir::y ? dx*dz : dx*dy);
 
+    points[1].n = faces->q2f(qm_idx,2*dir);
+    points[1].p.x = faces->x_fr_f(points[1].n,dir);
+    points[1].p.y = faces->y_fr_f(points[1].n,dir);
+    points[1].p.z = faces->z_fr_f(points[1].n,dir);
+    points[1].s = dir==dir::x ? dy*dz : (dir==dir::y ? dx*dz : dx*dy);
+
+    points[2].n = faces->q2f(ngbd_p_m0[0].p.piggy3.local_num,2*dir);
+    points[2].p.x = faces->x_fr_f(points[2].n,dir);
+    points[2].p.y = faces->y_fr_f(points[2].n,dir);
+    points[2].p.z = faces->z_fr_f(points[2].n,dir);
+    points[2].s = dir==dir::x ? dx*dz : (dir==dir::y ? dy*dz : dy*dz);
+
+    points[3].n = faces->q2f(ngbd_p_p0[0].p.piggy3.local_num,2*dir);
+    points[3].p.x = faces->x_fr_f(points[3].n,dir);
+    points[3].p.y = faces->y_fr_f(points[3].n,dir);
+    points[3].p.z = faces->z_fr_f(points[3].n,dir);
+    points[3].s = dir==dir::x ? dx*dz : (dir==dir::y ? dy*dz : dy*dz);
+
+    points[4].n = faces->q2f(ngbd_p_0m[0].p.piggy3.local_num,2*dir);
+    points[4].p.x = faces->x_fr_f(points[4].n,dir);
+    points[4].p.y = faces->y_fr_f(points[4].n,dir);
+    points[4].p.z = faces->z_fr_f(points[4].n,dir);
+    points[4].s = dir==dir::x ? dx*dy : (dir==dir::y ? dx*dy : dx*dz);
+
+    points[5].n = faces->q2f(ngbd_p_0p[0].p.piggy3.local_num,2*dir);
+    points[5].p.x = faces->x_fr_f(points[5].n,dir);
+    points[5].p.y = faces->y_fr_f(points[5].n,dir);
+    points[5].p.z = faces->z_fr_f(points[5].n,dir);
+    points[5].s = dir==dir::x ? dx*dy : (dir==dir::y ? dx*dy : dx*dz);
 #else
     vector<Point2> partition(4);
 
-    points[0].n = faces->q2f(qp_idx,2*dir+1);
+    points[0].n = faces->q2f(qm_idx,2*dir);
     points[0].p.x = faces->x_fr_f(points[0].n,dir);
     points[0].p.y = faces->y_fr_f(points[0].n,dir);
     points[0].theta = 0;
 
-    points[1].n = faces->q2f(ngbd_p_p0[0].p.piggy3.local_num,2*dir);
-    points[1].p.x = faces->x_fr_f(points[1].n,dir);
-    points[1].p.y = faces->y_fr_f(points[1].n,dir);
-    points[1].theta = PI/2;
-
-    points[2].n = faces->q2f(qm_idx,2*dir);
+    points[2].n = faces->q2f(qp_idx,2*dir+1);
     points[2].p.x = faces->x_fr_f(points[2].n,dir);
     points[2].p.y = faces->y_fr_f(points[2].n,dir);
     points[2].theta = PI;
 
-    points[3].n = faces->q2f(ngbd_p_m0[0].p.piggy3.local_num,2*dir);
-    points[3].p.x = faces->x_fr_f(points[3].n,dir);
-    points[3].p.y = faces->y_fr_f(points[3].n,dir);
-    points[3].theta = 3*PI/2;
-
     switch(dir)
     {
     case dir::x:
-      partition[0].x = x+dx/2; partition[0].y = y+dy/2;
-      partition[1].x = x-dx/2; partition[1].y = y+dy/2;
-      partition[2].x = x-dx/2; partition[2].y = y-dy/2;
-      partition[3].x = x+dx/2; partition[3].y = y-dy/2;
+      partition[0].x = x-dx/2; partition[0].y = y-dy/2;
+      partition[1].x = x+dx/2; partition[1].y = y-dy/2;
+      partition[2].x = x+dx/2; partition[2].y = y+dy/2;
+      partition[3].x = x-dx/2; partition[3].y = y+dy/2;
+
+      points[1].n = faces->q2f(ngbd_p_m0[0].p.piggy3.local_num,2*dir);
+      points[1].p.x = faces->x_fr_f(points[1].n,dir);
+      points[1].p.y = faces->y_fr_f(points[1].n,dir);
+      points[1].theta = PI/2;
+
+      points[3].n = faces->q2f(ngbd_p_p0[0].p.piggy3.local_num,2*dir);
+      points[3].p.x = faces->x_fr_f(points[3].n,dir);
+      points[3].p.y = faces->y_fr_f(points[3].n,dir);
+      points[3].theta = 3*PI/2;
       break;
     case dir::y:
-      partition[0].x = x-dx/2; partition[0].y = y+dy/2;
-      partition[1].x = x-dx/2; partition[1].y = y-dy/2;
-      partition[2].x = x+dx/2; partition[2].y = y-dy/2;
-      partition[3].x = x+dx/2; partition[3].y = y+dy/2;
+      partition[0].x = x+dx/2; partition[0].y = y-dy/2;
+      partition[1].x = x+dx/2; partition[1].y = y+dy/2;
+      partition[2].x = x-dx/2; partition[2].y = y+dy/2;
+      partition[3].x = x-dx/2; partition[3].y = y-dy/2;
+
+      points[1].n = faces->q2f(ngbd_p_p0[0].p.piggy3.local_num,2*dir);
+      points[1].p.x = faces->x_fr_f(points[1].n,dir);
+      points[1].p.y = faces->y_fr_f(points[1].n,dir);
+      points[1].theta = PI/2;
+
+      points[3].n = faces->q2f(ngbd_p_m0[0].p.piggy3.local_num,2*dir);
+      points[3].p.x = faces->x_fr_f(points[3].n,dir);
+      points[3].p.y = faces->y_fr_f(points[3].n,dir);
+      points[3].theta = 3*PI/2;
       break;
     }
 
@@ -775,13 +829,6 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   /* otherwise, there is a T-junction and the grid is not uniform, need to compute the voronoi cell */
   else
   {
-    /* now gather the neighbor cells to get the potential voronoi neighbors */
-  #ifdef P4_TO_P8
-    voro_tmp.set_Center_Point(f_idx,x,y,z);
-  #else
-    voro_tmp.set_Center_Point(x,y);
-  #endif
-
     /* note that the walls are dealt with by voro++ in 3D */
   #ifndef P4_TO_P8
     switch(dir)
@@ -812,6 +859,38 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 
       switch(dir)
       {
+#ifdef P4_TO_P8
+      case dir::x:
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1, 0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1, 0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1, 1);
+        break;
+      case dir::y:
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1, 0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1,-1, 0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1,-1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1,-1, 1);
+        break;
+      case dir::z:
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 0,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1, 0,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0,-1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 0, 1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1,-1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1, 1,-1);
+        break;
+#else
       case dir::x:
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1, 1);
@@ -820,6 +899,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx,-1,-1);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qm_idx, tm_idx, 1,-1);
         break;
+#endif
       }
 
       for(unsigned int i=0; i<ngbd_m_m0.size(); ++i) ngbd.push_back(ngbd_m_m0[i]);
@@ -834,6 +914,38 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 
       switch(dir)
       {
+#ifdef P4_TO_P8
+      case dir::x:
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1, 0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1, 0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1, 1);
+        break;
+      case dir::y:
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 1, 0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1, 0);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1,-1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1, 1);
+        break;
+      case dir::z:
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 0, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 0, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0,-1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 0, 1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1,-1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1, 1);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1, 1);
+        break;
+#else
       case dir::x:
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1,-1);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1);
@@ -842,6 +954,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx,-1, 1);
         ngbd_c->find_neighbor_cells_of_cell(ngbd, qp_idx, tp_idx, 1, 1);
         break;
+#endif
       }
 
       for(unsigned int i=0; i<ngbd_p_m0.size(); ++i) ngbd.push_back(ngbd_p_m0[i]);
@@ -878,12 +991,10 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
     double xmax_ = p4est->connectivity->vertices[3*vp + 0];
     double ymax_ = p4est->connectivity->vertices[3*vp + 1];
     double zmax_ = p4est->connectivity->vertices[3*vp + 2];
-
-    double qh = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-    qh *= MAX(xmax_-xmin,ymax_-ymin,zmax_-zmin);
-    voro_tmp.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, .5*qh, false, false, false);
+    voro_tmp.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
 #else
     voro_tmp.construct_Partition();
+    voro_tmp.compute_volume();
 #endif
   }
 
@@ -980,10 +1091,13 @@ void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(p4est_locidx_t f_idx,
   {
     double x = faces->x_fr_f(f_idx, dir);
     double y = faces->y_fr_f(f_idx, dir);
+
     double phi_c = interp_phi(x,y);
     voro_tmp.set_Level_Set_Values(phi_values, phi_c);
     voro_tmp.clip_Interface();
   }
+
+  voro_tmp.compute_volume();
 }
 #endif
 
@@ -1240,6 +1354,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       if(fabs(phi_c) < EPS)
       {
         ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
+
 #ifdef P4_TO_P8
         rhs_p[f_idx] = bc[dir].interfaceValue(x,y,z);
 #else
@@ -1352,7 +1467,6 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         //---------------------------------------------------------------------
         // insert the coefficients in the matrix
         //---------------------------------------------------------------------
-
         ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
 
         for(int f=0; f<P4EST_FACES; ++f)
@@ -1735,33 +1849,34 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #else
     Point2 pc(x,y);
 #endif
+
+    double x_pert = x;
+    double y_pert = y;
+#ifdef P4_TO_P8
+    double z_pert = z;
+#endif
+
+    switch(dir)
+    {
+    case dir::x:
+      if(fabs(x-xmin)<EPS) x_pert = xmin+2*EPS;
+      if(fabs(x-xmax)<EPS) x_pert = xmax-2*EPS;
+      break;
+    case dir::y:
+      if(fabs(y-ymin)<EPS) y_pert = ymin+2*EPS;
+      if(fabs(y-ymax)<EPS) y_pert = ymax-2*EPS;
+      break;
+#ifdef P4_TO_P8
+    case dir::z:
+      if(fabs(z-zmin)<EPS) z_pert = zmin+2*EPS;
+      if(fabs(z-zmax)<EPS) z_pert = zmax-2*EPS;
+      break;
+#endif
+    }
+
     for(unsigned int m=0; m<points->size(); ++m)
     {
       PetscInt m_idx_g;
-      double x_pert = x;
-      double y_pert = y;
-#ifdef P4_TO_P8
-      double z_pert = z;
-#endif
-
-      switch(dir)
-      {
-      case dir::x:
-        if(fabs(x-xmin)<EPS) x_pert = xmin+2*EPS;
-        if(fabs(x-xmax)<EPS) x_pert = xmax-2*EPS;
-        break;
-      case dir::y:
-        if(fabs(y-ymin)<EPS) y_pert = ymin+2*EPS;
-        if(fabs(y-ymax)<EPS) y_pert = ymax-2*EPS;
-        break;
-#ifdef P4_TO_P8
-      case dir::z:
-        if(fabs(z-zmin)<EPS) z_pert = zmin+2*EPS;
-        if(fabs(z-zmax)<EPS) z_pert = zmax-2*EPS;
-        break;
-#endif
-      }
-
 
 #ifdef P4_TO_P8
       double s = (*points)[m].s;
@@ -1769,7 +1884,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       int k = mod(m-1, points->size());
       double s = ((*partition)[m] - (*partition)[k]).norm_L2();
 #endif
-      double d = ((*points)[m].p - pc).norm_L2();;
+      double d = ((*points)[m].p - pc).norm_L2();
 
       switch((*points)[m].n)
       {

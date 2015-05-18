@@ -231,8 +231,6 @@ void Voronoi2D::construct_Partition()
       }
     }
   }
-
-  compute_volume();
 }
 
 
@@ -255,7 +253,7 @@ void Voronoi2D::clip_Interface()
    * note that using epsilon instead of zero eliminate the problem of cells
    * with very small areas
    */
-  double thresh = -EPS;
+  double thresh = -EPS/2;
 
   /* find a vertex that is in the negative domain */
   unsigned int m0 = 0;
@@ -269,6 +267,7 @@ void Voronoi2D::clip_Interface()
     points.resize(0);
     partition.resize(0);
     phi_values.resize(0);
+    volume = 0;
     return;
   }
 
@@ -374,8 +373,6 @@ void Voronoi2D::clip_Interface()
   if(partition.size()!=points.size() || phi_values.size()!=points.size())
     throw std::invalid_argument("[CASL_ERROR]: Voronoi2D->clip_Interface: error while clipping the interface.");
 #endif
-
-  compute_volume();
 }
 
 

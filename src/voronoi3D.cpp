@@ -62,7 +62,6 @@ void Voronoi3D::set_Center_Point( int nc, double x, double y, double z, double s
 }
 
 void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
-                                    double box_size,
                                     bool periodic_x, bool periodic_y, bool periodic_z)
 {
 
@@ -102,18 +101,9 @@ void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, doubl
 //  }
 
 
-  double eps = 1e-1;
-//  double eps = box_size/1e5;
+  double eps = EPS;
 
   /* create a container for the particles */
-  double kk = box_size;
-  xmin = MAX(xmin,pc.x-kk);
-  xmax = MIN(xmax,pc.x+kk);
-  ymin = MAX(ymin,pc.y-kk);
-  ymax = MIN(ymax,pc.y+kk);
-  zmin = MAX(zmin,pc.z-kk);
-  zmax = MIN(zmax,pc.z+kk);
-  std::cout << xmin << ", " << xmax << std::endl;
   voro::container voronoi(xmin, xmax, ymin, ymax, zmin, zmax,
                           1, 1, 1, periodic_x, periodic_y, periodic_z, 8);
 //  voro::container voronoi(MAX(xmin,pc.x-kk), MIN(xmax,pc.x+kk), MAX(ymin,pc.y-kk), MIN(ymax,pc.y+kk), MAX(zmin,pc.z-kk), MIN(zmax,pc.z+kk),
@@ -149,7 +139,7 @@ void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, doubl
   {
     vector<Voronoi3DPoint> final_points;
 //    volume_ = voro_cell.volume() / (scaling*scaling*scaling);
-    volume_ = voro_cell.volume();
+    volume = voro_cell.volume();
 
     voro_cell.neighbors(neigh);
     voro_cell.face_areas(areas);
@@ -218,7 +208,7 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
   if(f==NULL) throw std::invalid_argument("[CASL_ERROR]: Voronoi3D: cannot open file.");
 #endif
 
-  double eps = 1e-1;
+  double eps = EPS;
 
   vector<VoroNgbd> voro_global(voro.size());
     for(unsigned int n=0; n<voro.size(); ++n)
