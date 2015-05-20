@@ -660,35 +660,35 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
 #ifdef P4_TO_P8
     case dir::f_m00:
       if(bc_hodge.wallType(x-dx/2,y,z)==NEUMANN) return -bc_hodge.wallValue(x-dx/2,y,z);
-      else                                     return (hodge_q - bc_hodge.wallValue(x-dx/2,y,z)) * 2 / dx;
+      else                                       return (hodge_q - bc_hodge.wallValue(x-dx/2,y,z)) * 2 / dx;
     case dir::f_p00:
       if(bc_hodge.wallType(x+dx/2,y,z)==NEUMANN) return  bc_hodge.wallValue(x+dx/2,y,z);
-      else                                     return (bc_hodge.wallValue(x+dx/2,y,z) - hodge_q) * 2 / dx;
+      else                                       return (bc_hodge.wallValue(x+dx/2,y,z) - hodge_q) * 2 / dx;
     case dir::f_0m0:
       if(bc_hodge.wallType(x,y-dy/2,z)==NEUMANN) return -bc_hodge.wallValue(x,y-dy/2,z);
-      else                                     return (hodge_q - bc_hodge.wallValue(x,y-dy/2,z)) * 2 / dy;
+      else                                       return (hodge_q - bc_hodge.wallValue(x,y-dy/2,z)) * 2 / dy;
     case dir::f_0p0:
       if(bc_hodge.wallType(x,y+dy/2,z)==NEUMANN) return  bc_hodge.wallValue(x,y+dy/2,z);
-      else                                     return (bc_hodge.wallValue(x,y+dy/2,z) - hodge_q) * 2 / dy;
+      else                                       return (bc_hodge.wallValue(x,y+dy/2,z) - hodge_q) * 2 / dy;
     case dir::f_00m:
       if(bc_hodge.wallType(x,y,z-dz/2)==NEUMANN) return -bc_hodge.wallValue(x,y,z-dz/2);
-      else                                     return (hodge_q - bc_hodge.wallValue(x,y,z-dz/2)) * 2 / dz;
+      else                                       return (hodge_q - bc_hodge.wallValue(x,y,z-dz/2)) * 2 / dz;
     case dir::f_00p:
       if(bc_hodge.wallType(x,y,z+dz/2)==NEUMANN) return  bc_hodge.wallValue(x,y,z+dz/2);
-      else                                     return (bc_hodge.wallValue(x,y,z+dz/2) - hodge_q) * 2 / dz;
+      else                                       return (bc_hodge.wallValue(x,y,z+dz/2) - hodge_q) * 2 / dz;
 #else
     case dir::f_m00:
       if(bc_hodge.wallType(x-dx/2,y)==NEUMANN) return -bc_hodge.wallValue(x-dx/2,y);
-      else                                   return (hodge_q - bc_hodge.wallValue(x-dx/2,y)) * 2 / dx;
+      else                                     return (hodge_q - bc_hodge.wallValue(x-dx/2,y)) * 2 / dx;
     case dir::f_p00:
       if(bc_hodge.wallType(x+dx/2,y)==NEUMANN) return  bc_hodge.wallValue(x+dx/2,y);
-      else                                   return (bc_hodge.wallValue(x+dx/2,y) - hodge_q) * 2 / dx;
+      else                                     return (bc_hodge.wallValue(x+dx/2,y) - hodge_q) * 2 / dx;
     case dir::f_0m0:
       if(bc_hodge.wallType(x,y-dy/2)==NEUMANN) return -bc_hodge.wallValue(x,y-dy/2);
-      else                                   return (hodge_q - bc_hodge.wallValue(x,y-dy/2)) * 2 / dy;
+      else                                     return (hodge_q - bc_hodge.wallValue(x,y-dy/2)) * 2 / dy;
     case dir::f_0p0:
       if(bc_hodge.wallType(x,y+dy/2)==NEUMANN) return  bc_hodge.wallValue(x,y+dy/2);
-      else                                   return (bc_hodge.wallValue(x,y+dy/2) - hodge_q) * 2 / dy;
+      else                                     return (bc_hodge.wallValue(x,y+dy/2) - hodge_q) * 2 / dy;
 #endif
     default:
       throw std::invalid_argument("[ERROR]: my_p4est_navier_stokes_t->dxyz_hodge: unknown direction.");
@@ -787,11 +787,12 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
       double dist = 0;
       double grad_hodge = 0;
       double d0 = (double)P4EST_QUADRANT_LEN(quad_tmp.level)/(double)P4EST_ROOT_LEN;
+
       for(unsigned int m=0; m<ngbd.size(); ++m)
       {
         double dm = (double)P4EST_QUADRANT_LEN(ngbd[m].level)/(double)P4EST_ROOT_LEN;
-        dist += dm * .5*(d0+dm);
-        grad_hodge += (hodge_p[ngbd[m].p.piggy3.local_num] - hodge_p[quad_tmp.p.piggy3.local_num]) * dm;
+        dist += pow(dm,P4EST_DIM-1) * .5*(d0+dm);
+        grad_hodge += (hodge_p[ngbd[m].p.piggy3.local_num] - hodge_p[quad_tmp.p.piggy3.local_num]) * pow(dm,P4EST_DIM-1);
       }
       dist *= convert_to_xyz[dir/2];
 
@@ -834,16 +835,16 @@ double my_p4est_navier_stokes_t::compute_divergence(p4est_locidx_t quad_idx, p4e
       ngbd.resize(0);
       ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_tmp.p.piggy3.local_num, quad_tmp.p.piggy3.which_tree, 2*dir+1);
       for(unsigned int m=0; m<ngbd.size(); ++m)
-        vm += (double)P4EST_QUADRANT_LEN(ngbd[m].level)/(double)P4EST_ROOT_LEN * vstar_p[faces_n->q2f(ngbd[m].p.piggy3.local_num, 2*dir)];
-      vm /= (double)P4EST_QUADRANT_LEN(quad_tmp.level)/(double)P4EST_ROOT_LEN;
+        vm += pow((double)P4EST_QUADRANT_LEN(ngbd[m].level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1) * vstar_p[faces_n->q2f(ngbd[m].p.piggy3.local_num, 2*dir)];
+      vm /= pow((double)P4EST_QUADRANT_LEN(quad_tmp.level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1);
     }
     else
     {
       ngbd.resize(0);
       ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*dir);
       for(unsigned int m=0; m<ngbd.size(); ++m)
-        vm += (double)P4EST_QUADRANT_LEN(ngbd[m].level)/(double)P4EST_ROOT_LEN * vstar_p[faces_n->q2f(ngbd[m].p.piggy3.local_num, 2*dir+1)];
-      vm /= (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+        vm += pow((double)P4EST_QUADRANT_LEN(ngbd[m].level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1) * vstar_p[faces_n->q2f(ngbd[m].p.piggy3.local_num, 2*dir+1)];
+      vm /= pow((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1);
     }
 
     double vp = 0;
@@ -860,21 +861,21 @@ double my_p4est_navier_stokes_t::compute_divergence(p4est_locidx_t quad_idx, p4e
       ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_tmp.p.piggy3.local_num, quad_tmp.p.piggy3.which_tree, 2*dir);
 
       for(unsigned int m=0; m<ngbd.size(); ++m)
-        vp += (double)P4EST_QUADRANT_LEN(ngbd[m].level)/(double)P4EST_ROOT_LEN * vstar_p[faces_n->q2f(ngbd[m].p.piggy3.local_num, 2*dir+1)];
-      vp /= (double)P4EST_QUADRANT_LEN(quad_tmp.level)/(double)P4EST_ROOT_LEN;
+        vp += pow((double)P4EST_QUADRANT_LEN(ngbd[m].level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1) * vstar_p[faces_n->q2f(ngbd[m].p.piggy3.local_num, 2*dir+1)];
+      vp /= pow((double)P4EST_QUADRANT_LEN(quad_tmp.level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1);
     }
     else
     {
       ngbd.resize(0);
       ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*dir+1);
       for(unsigned int m=0; m<ngbd.size(); ++m)
-        vp += (double)P4EST_QUADRANT_LEN(ngbd[m].level)/(double)P4EST_ROOT_LEN * vstar_p[faces_n->q2f(ngbd[m].p.piggy3.local_num, 2*dir)];
-      vp /= (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+        vp += pow((double)P4EST_QUADRANT_LEN(ngbd[m].level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1) * vstar_p[faces_n->q2f(ngbd[m].p.piggy3.local_num, 2*dir)];
+      vp /= pow((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1);
     }
 
     ierr = VecRestoreArrayRead(vstar[dir], &vstar_p); CHKERRXX(ierr);
 
-    val -= (vp-vm)/(convert_to_xyz[dir] * dmin);
+    val += (vp-vm)/(convert_to_xyz[dir] * dmin);
   }
 
   return val;
@@ -1017,7 +1018,7 @@ void my_p4est_navier_stokes_t::solve_projection()
     {
       p4est_locidx_t quad_idx = q_idx+tree->quadrants_offset;
 
-      rhs_p[quad_idx] = compute_divergence(quad_idx, tree_idx);
+      rhs_p[quad_idx] = -compute_divergence(quad_idx, tree_idx);
     }
   }
 
@@ -1126,7 +1127,6 @@ void my_p4est_navier_stokes_t::solve_projection()
 
 void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
 {
-
   /* interpolate vnp1 from faces to nodes */
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -1652,13 +1652,10 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   const double *pressure_nodes_p;
   ierr = VecGetArrayRead(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
 
-  const double *pressure_p;
-  ierr = VecGetArrayRead(pressure, &pressure_p); CHKERRXX(ierr);
-
   my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                          P4EST_TRUE, P4EST_TRUE,
                          3+P4EST_DIM, /* number of VTK_POINT_DATA */
-                         2, /* number of VTK_CELL_DATA  */
+                         1, /* number of VTK_CELL_DATA  */
                          name,
                          VTK_POINT_DATA, "phi", phi_p,
                          VTK_POINT_DATA, "vorticity", vort_p,
@@ -1668,16 +1665,13 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
                        #ifdef P4_TO_P8
                          VTK_POINT_DATA, "vz", vn_p[2],
                        #endif
-                         VTK_CELL_DATA, "hodge", hodge_p,
-                         VTK_CELL_DATA, "pressure_cells", pressure_p);
+                         VTK_CELL_DATA, "hodge", hodge_p);
 
 
   ierr = VecRestoreArrayRead(phi  , &phi_p  ); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(vorticity, &vort_p); CHKERRXX(ierr);
-
-  ierr = VecRestoreArrayRead(pressure, &pressure_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
   ierr = VecDestroy(pressure_nodes); CHKERRXX(ierr);

@@ -954,7 +954,7 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 
 //  print_partition_VTK("/home/guittet/code/Output/p4est_navier_stokes/voro_0.vtk");
-//  throw std::invalid_argument("");
+//  if(dir==1) throw std::invalid_argument("");
 }
 
 

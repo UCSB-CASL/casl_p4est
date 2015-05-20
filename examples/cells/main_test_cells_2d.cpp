@@ -62,31 +62,31 @@
 #undef MIN
 #undef MAX
 
-double xmin = -1;
+double xmin =  0;
 double xmax =  1;
-double ymin = -1;
-double ymax =  2;
+double ymin =  0;
+double ymax =  1;
 #ifdef P4_TO_P8
-double zmin = -4;
+double zmin =  0;
 double zmax =  1;
 #endif
 
 using namespace std;
 
-int lmin = 3;
-int lmax = 5;
-int nb_splits = 1;
+int lmin = 2;
+int lmax = 4;
+int nb_splits = 4;
 
-int nx = 3;
+int nx = 1;
 int ny = 1;
 #ifdef P4_TO_P8
-int nz = 2;
+int nz = 1;
 #endif
 
 bool save_vtk = true;
 
-double mu = 1.3;
-double add_diagonal = 2.3;
+double mu = 1;
+double add_diagonal = 0;
 
 /*
  * 0 - circle
@@ -95,11 +95,18 @@ int interface_type = 0;
 
 /*
  *  ********* 2D *********
- * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1, diag_add=0
+ * 0 - x+y
+ * 1 - x*x + y*y
+ * 2 - sin(x)*cos(y)
+ *
+ *  ********* 3D *********
+ * 0 - x+y+z
+ * 1 - x*x + y*y + z*z
+ * 2 - sin(x)*cos(y)*exp(z)+2
  */
-int test_number = 0;
+int test_number = 2;
 
-BoundaryConditionType bc_itype = NEUMANN;
+BoundaryConditionType bc_itype = NOINTERFACE;
 BoundaryConditionType bc_wtype = DIRICHLET;
 
 double diag_add = 0;
@@ -367,7 +374,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   out_dir = getenv("OUT_DIR");
 #else
   char out_dir[10000];
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_navier_stokes");
+  sprintf(out_dir, "/home/guittet/code/Output/p4est_navier_stokes/validation");
 #endif
 
   std::ostringstream oss;
