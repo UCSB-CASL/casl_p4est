@@ -35,7 +35,6 @@ my_p4est_poisson_nodes_t::my_p4est_poisson_nodes_t(const my_p4est_node_neighbors
   : node_neighbors_(node_neighbors),
     p4est(node_neighbors->p4est), nodes(node_neighbors->nodes), ghost(node_neighbors->ghost), myb_(node_neighbors->myb),
     phi_interp(node_neighbors),
-    phi_cf(NULL),
     neumann_wall_first_order(false),
     mu_(1.), diag_add_(0.),
     is_matrix_computed(false), matrix_has_nullspace(false),

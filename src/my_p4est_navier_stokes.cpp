@@ -1653,19 +1653,21 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   ierr = VecGetArrayRead(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
 
   my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
-                         P4EST_TRUE, P4EST_TRUE,
-                         3+P4EST_DIM, /* number of VTK_POINT_DATA */
-                         1, /* number of VTK_CELL_DATA  */
+//                         P4EST_TRUE, P4EST_TRUE,
+                         P4EST_FALSE, P4EST_FALSE,
+                         2+P4EST_DIM, /* number of VTK_POINT_DATA */
+                         0, /* number of VTK_CELL_DATA  */
                          name,
                          VTK_POINT_DATA, "phi", phi_p,
-                         VTK_POINT_DATA, "vorticity", vort_p,
+//                         VTK_POINT_DATA, "vorticity", vort_p,
                          VTK_POINT_DATA, "pressure", pressure_nodes_p,
                          VTK_POINT_DATA, "vx", vn_p[0],
                          VTK_POINT_DATA, "vy", vn_p[1],
                        #ifdef P4_TO_P8
-                         VTK_POINT_DATA, "vz", vn_p[2],
+                         VTK_POINT_DATA, "vz", vn_p[2]
                        #endif
-                         VTK_CELL_DATA, "hodge", hodge_p);
+                         );
+//                         VTK_CELL_DATA, "hodge", hodge_p);
 
 
   ierr = VecRestoreArrayRead(phi  , &phi_p  ); CHKERRXX(ierr);

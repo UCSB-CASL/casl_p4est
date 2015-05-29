@@ -87,6 +87,7 @@ double f0;
 class LEVEL_SET: public CF_3
 {
 public:
+  LEVEL_SET() { lip = 1.2; }
   double operator()(double x, double y, double z) const
   {
     switch(test_number)
@@ -415,6 +416,7 @@ public:
 class LEVEL_SET: public CF_2
 {
 public:
+  LEVEL_SET() { lip = 1.2; }
   double operator()(double x, double y) const
   {
     switch(test_number)
@@ -830,8 +832,6 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns, dou
     else if(test_number==3) sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/driven_cavity_hole/cavity_hole_velocity_%d-%d_%dx%d_Re%g_ntimesdt%g.dat", data->min_lvl, data->max_lvl, nx, ny, Re, n_times_dt);
 #endif
     fp = fopen(name, "w");
-
-    if(fp==NULL) std::cout << mpi->mpirank << "save velocity cavity: could not open file ... " << name << std::endl;
 
     if(fp==NULL)
       throw std::invalid_argument("check_forces_cavity: could not open file.");

@@ -36,7 +36,6 @@ my_p4est_poisson_cells_t::my_p4est_poisson_cells_t(const my_p4est_cell_neighbors
   : ngbd_c(ngbd_c), ngbd_n(ngbd_n),
     p4est(ngbd_c->p4est), nodes(ngbd_n->nodes), ghost(ngbd_c->ghost), myb(ngbd_c->myb),
     phi_interp(ngbd_n),
-    phi_cf(NULL),
     mu(1.), diag_add(0.),
     is_matrix_ready(false), matrix_has_nullspace(false),
     bc(NULL),

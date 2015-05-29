@@ -31,11 +31,6 @@ class my_p4est_poisson_cells_t
 
   my_p4est_brick_t *myb;
   my_p4est_interpolation_nodes_t phi_interp;
-#ifdef P4_TO_P8
-  const CF_3* phi_cf;
-#else
-  const CF_2* phi_cf;
-#endif
 
   double mu, diag_add;
   bool is_matrix_ready;

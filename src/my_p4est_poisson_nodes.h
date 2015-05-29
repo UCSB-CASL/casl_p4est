@@ -25,11 +25,6 @@ class my_p4est_poisson_nodes_t
   p4est_ghost_t *ghost;
   my_p4est_brick_t *myb_;
   my_p4est_interpolation_nodes_t phi_interp;
-#ifdef P4_TO_P8
-  const CF_3* phi_cf;
-#else
-  const CF_2* phi_cf;
-#endif
 
   bool neumann_wall_first_order;
   double mu_, diag_add_;
