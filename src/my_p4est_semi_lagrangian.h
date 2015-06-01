@@ -34,9 +34,9 @@ class my_p4est_semi_lagrangian_t
 
   void advect_from_n_to_np1(double dt,
                           #ifdef P4_TO_P8
-                            const CF_3 *v,
+                            const CF_3 **v,
                           #else
-                            const CF_2* v,
+                            const CF_2 **v,
                           #endif
                             Vec phi_n, Vec *phi_xx_n,
                             double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
@@ -72,9 +72,9 @@ public:
    * \param phi_xx  the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
    */
 #ifdef P4_TO_P8
-  void update_p4est(const CF_3 *v, double dt, Vec &phi, Vec *phi_xx=NULL);
+  void update_p4est(const CF_3 **v, double dt, Vec &phi, Vec *phi_xx=NULL);
 #else
-  void update_p4est(const CF_2 *v, double dt, Vec &phi, Vec *phi_xx=NULL);
+  void update_p4est(const CF_2 **v, double dt, Vec &phi, Vec *phi_xx=NULL);
 #endif
 
   /*!

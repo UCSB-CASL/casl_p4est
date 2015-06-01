@@ -167,9 +167,9 @@ double my_p4est_semi_lagrangian_t::compute_dt(Vec vx, Vec vy)
 
 void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt,
                                                       #ifdef P4_TO_P8
-                                                      const CF_3 *v,
+                                                      const CF_3 **v,
                                                       #else
-                                                      const CF_2* v,
+                                                      const CF_2 **v,
                                                       #endif
                                                       Vec phi_n, Vec *phi_xx_n,
                                                       double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1)
@@ -186,28 +186,28 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt,
 
     /* find the departure node via backtracing */
 #ifdef P4_TO_P8
-    double x_star = xyz[0] - 0.5*dt*v[0](xyz[0], xyz[1], xyz[2]);
-    double y_star = xyz[0] - 0.5*dt*v[1](xyz[0], xyz[1], xyz[2]);
-    double z_star = xyz[2] - 0.5*dt*v[2](xyz[0], xyz[1], xyz[2]);
+    double x_star = xyz[0] - 0.5*dt*(*v[0])(xyz[0], xyz[1], xyz[2]);
+    double y_star = xyz[1] - 0.5*dt*(*v[1])(xyz[0], xyz[1], xyz[2]);
+    double z_star = xyz[2] - 0.5*dt*(*v[2])(xyz[0], xyz[1], xyz[2]);
 #else
-    double x_star = xyz[0] - 0.5*dt*v[0](xyz[0], xyz[1]);
-    double y_star = xyz[0] - 0.5*dt*v[1](xyz[0], xyz[1]);
+    double x_star = xyz[0] - 0.5*dt*(*v[0])(xyz[0], xyz[1]);
+    double y_star = xyz[1] - 0.5*dt*(*v[1])(xyz[0], xyz[1]);
 #endif
 
-    double xyz_departure[] =
+    double xyz_d[] =
     {
   #ifdef P4_TO_P8
-      xyz[0] - dt*v[0](x_star, y_star, z_star),
-      xyz[1] - dt*v[1](x_star, y_star, z_star),
-      xyz[2] - dt*v[2](x_star, y_star, z_star)
+      xyz[0] - dt*(*v[0])(x_star, y_star, z_star),
+      xyz[1] - dt*(*v[1])(x_star, y_star, z_star),
+      xyz[2] - dt*(*v[2])(x_star, y_star, z_star)
   #else
-      xyz[0] - dt*v[0](x_star, y_star),
-      xyz[1] - dt*v[1](x_star, y_star)
+      xyz[0] - dt*(*v[0])(x_star, y_star),
+      xyz[1] - dt*(*v[1])(x_star, y_star)
   #endif
     };
 
     /* Buffer the point for interpolation */
-    interp.add_point(n, xyz_departure);
+    interp.add_point(n, xyz_d);
   }
 
 #ifdef P4_TO_P8
@@ -411,9 +411,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
 }
 
 #ifdef P4_TO_P8
-void my_p4est_semi_lagrangian_t::update_p4est(const CF_3 *v, double dt, Vec &phi, Vec *phi_xx)
+void my_p4est_semi_lagrangian_t::update_p4est(const CF_3 **v, double dt, Vec &phi, Vec *phi_xx)
 #else
-void my_p4est_semi_lagrangian_t::update_p4est(const CF_2 *v, double dt, Vec &phi, Vec *phi_xx)
+void my_p4est_semi_lagrangian_t::update_p4est(const CF_2 **v, double dt, Vec &phi, Vec *phi_xx)
 #endif
 {
   PetscErrorCode ierr;

@@ -73,12 +73,93 @@ double L = 1;
 double G = 1;
 double V = 0.1;
 double t_interface = 0.;
-double epsilon_c = -1e-5;
+double epsilon_c = -5e-6;
 double epsilon_anisotropy = .5;
 double N_anisotropy = 3;
 double theta_0 = 0;
 
+double tn;
+double dt;
+
 using namespace std;
+
+
+/* error function */
+double E1(double x)
+{
+  const double EULER=0.5772156649;
+  const int    MAXIT=100;
+  const double FPMIN=1.0e-20;
+
+  int i,ii;
+  double a,b,c,d,del,fact,h,psi,ans=0;
+
+  int n   =1;
+  int nm1 =0;
+
+  if (x > 1.0)
+  {        /* Lentz's algorithm */
+    b=x+n;
+    c=1.0/FPMIN;
+    d=1.0/b;
+    h=d;
+    for (i=1;i<=MAXIT;i++)
+    {
+      a = -i*(nm1+i);
+      b += 2.0;
+      d=1.0/(a*d+b);    /* Denominators cannot be zero */
+      c=b+a/c;
+      del=c*d;
+      h *= del;
+      if (fabs(del-1.0) < EPS)
+      {
+        ans=h*exp(-x);
+        return ans;
+      }
+    }
+    printf("Continued fraction failed in expint\n");
+  }
+  else
+  {
+    ans = (nm1!=0 ? 1.0/nm1 : -log(x)-EULER);    /* Set first term */
+    fact=1.0;
+    for (i=1;i<=MAXIT;i++)
+    {
+      fact *= -x/i;
+      if (i != nm1) del = -fact/(i-nm1);
+      else
+      {
+        psi = -EULER;  /* Compute psi(n) */
+        for (ii=1;ii<=nm1;ii++) psi += 1.0/ii;
+        del=fact*(-log(x)+psi);
+      }
+      ans += del;
+      if (fabs(del) < fabs(ans)*EPS) return ans;
+    }
+    printf("series failed in expint\n");
+  }
+
+  return ans;
+}
+
+double F (double s)
+{
+  return E1(.25*s*s);
+}
+
+double dF (double s)
+{
+  return -.5*s*exp(-s*s/4)/(s*s/4);
+}
+
+double t_frank_sphere(double x, double y, double t)
+{
+  double s = sqrt(x*x + y*y)/sqrt(t);
+  double s0 = 0.5;
+  double Tinf = .5*s0*F(s0)/dF(s0);
+  if(s<=s0) return 0;
+  else      return Tinf*(1-F(s)/F(s0));
+}
 
 #ifdef P4_TO_P8
 #else
@@ -89,8 +170,8 @@ struct level_set_t : CF_2
   {
     switch(test_number)
     {
-    case 0: return sqrt(x*x + y*y) - .5;
-    case 1: return sqrt(x*x + y*y) - .5;
+    case 0: return sqrt(x*x + y*y) - 0.5*sqrt(tn);
+    case 1: return sqrt(x*x + y*y) - .01;
     default: throw std::invalid_argument("[ERROR]: choose a valid test.");
     }
   }
@@ -98,10 +179,10 @@ struct level_set_t : CF_2
 
 struct init_temperature_l_t:CF_2
 {
-  double operator()(double, double y) const {
+  double operator()(double x, double y) const {
     switch(test_number)
     {
-    case 0:
+    case 0: return t_frank_sphere(x,y,tn);
     case 1: return -.25;
     case 2: return -.25;
     case 3: return G*(y - (ymin + .1*(ymax-ymin))) + t_interface;
@@ -112,10 +193,10 @@ struct init_temperature_l_t:CF_2
 
 struct init_temperature_s_t:CF_2
 {
-  double operator()(double, double y) const {
+  double operator()(double x, double y) const {
     switch(test_number)
     {
-    case 0:
+    case 0: return t_frank_sphere(x,y,tn);
     case 1: return 0;
     case 2: return 0;
     case 3: return (G+L/k_l*V)*(y - (ymin + .1*(ymax-ymin))) + t_interface;
@@ -140,11 +221,11 @@ struct bc_wall_type_t : WallBC2D
 
 struct bc_wall_value_t : CF_2
 {
-  double operator()( double, double y) const
+  double operator()( double x, double y) const
   {
     switch(test_number)
     {
-    case 0: return 0;
+    case 0: return t_frank_sphere(x,y,tn+dt);
     case 1: return 0;
     case 3:
       if     (ABS(y-ymax)<EPS) return G;
@@ -174,9 +255,11 @@ public:
 
   double operator() (double x, double y) const
   {
-    (void) x; (void) y;
+    /* frank sphere: no surface tension */
+    if(test_number==0) return 0;
+
     double theta = atan2( interp_phi_y(x,y) , interp_phi_x(x,y) );
-    return t_interface - epsilon_c * (1. - epsilon_anisotropy * cos(N_anisotropy*(theta + theta_0))) * interp(x,y);
+    return t_interface + epsilon_c * (1. - epsilon_anisotropy * cos(N_anisotropy*(theta + theta_0))) * interp(x,y);
     /* T = -eps_c kappa - eps_v V */
   }
 };
@@ -215,13 +298,13 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
        #endif
          "." << compt;
 
-  double *phi_ptr, *T_l_ptr, *T_s_ptr, *kappa_ptr;
+  double *phi_p, *t_l_p, *t_s_p, *kappa_p;
   double *v_p[P4EST_DIM];
 
-  ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
-  ierr = VecGetArray(T_s, &T_s_ptr); CHKERRXX(ierr);
-  ierr = VecGetArray(T_l, &T_l_ptr); CHKERRXX(ierr);
-  ierr = VecGetArray(kappa , &kappa_ptr ); CHKERRXX(ierr);
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(T_s, &t_s_p); CHKERRXX(ierr);
+  ierr = VecGetArray(T_l, &t_l_p); CHKERRXX(ierr);
+  ierr = VecGetArray(kappa , &kappa_p ); CHKERRXX(ierr);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -229,12 +312,12 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
   }
 
   /* compute the temperature in the domain */
-  Vec T;
-  ierr = VecDuplicate(phi, &T); CHKERRXX(ierr);
-  double *T_ptr;
-  ierr = VecGetArray(T, &T_ptr); CHKERRXX(ierr);
+  Vec t;
+  ierr = VecDuplicate(phi, &t); CHKERRXX(ierr);
+  double *t_p;
+  ierr = VecGetArray(t, &t_p); CHKERRXX(ierr);
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    T_ptr[n] = phi_ptr[n]<0 ? T_l_ptr[n] : T_s_ptr[n];
+    t_p[n] = phi_p[n]<0 ? t_s_p[n] : t_l_p[n];
 
   my_p4est_vtk_write_all(  p4est, nodes, NULL,
                            P4EST_TRUE, P4EST_TRUE,
@@ -244,24 +327,24 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
                            6,
                          #endif
                            0, oss.str().c_str(),
-                           VTK_POINT_DATA, "phi", phi_ptr,
-                           VTK_POINT_DATA, "temperature", T_ptr,
-                           VTK_POINT_DATA, "temp_liquid", T_l_ptr,
-                           VTK_POINT_DATA, "temp_solid" , T_s_ptr,
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "temperature", t_p,
+                           VTK_POINT_DATA, "temp_liquid", t_l_p,
+                           VTK_POINT_DATA, "temp_solid" , t_s_p,
                            VTK_POINT_DATA, "vx", v_p[0],
                            VTK_POINT_DATA, "vy", v_p[1],
                          #ifdef P4_TO_P8
                            VTK_POINT_DATA, "vz", v_p[2],
                          #endif
-                           VTK_POINT_DATA, "kappa", kappa_ptr);
+                           VTK_POINT_DATA, "kappa", kappa_p);
 
-  ierr = VecRestoreArray(T, &T_ptr); CHKERRXX(ierr);
-  ierr = VecDestroy(T); CHKERRXX(ierr);
+  ierr = VecRestoreArray(t, &t_p); CHKERRXX(ierr);
+  ierr = VecDestroy(t); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(T_l, &T_l_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(T_s, &T_s_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(kappa , &kappa_ptr ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(T_l, &t_l_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(T_s, &t_s_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(kappa , &kappa_p ); CHKERRXX(ierr);
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecRestoreArray(v[dir], &v_p[dir]); CHKERRXX(ierr);
@@ -310,7 +393,6 @@ void update_p4est(my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&ghos
   ierr = VecDestroy(t_s); CHKERRXX(ierr);
   t_s = tnp1_s;
 
-  p4est_np1->user_pointer = (splitting_criteria_t*) p4est->user_pointer;
   p4est_destroy(p4est); p4est = p4est_np1;
   p4est_ghost_destroy(ghost); ghost = ghost_np1;
   p4est_nodes_destroy(nodes); nodes = nodes_np1;
@@ -327,21 +409,9 @@ void update_p4est(my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&ghos
     ierr = VecDuplicate(d_phi[dir], &v[dir]); CHKERRXX(ierr);
   }
 
-  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
-  double dxyz_min[P4EST_DIM];
-  dxyz_min[0] = (xmax-xmin)/brick->nxyztrees[0]/(1<<data->max_lvl);
-  dxyz_min[1] = (ymax-ymin)/brick->nxyztrees[1]/(1<<data->max_lvl);
-#ifdef P4_TO_P8
-  dxyz_min[2] = (zmax-zmin)/brick->nxyztrees[2]/(1<<data->max_lvl);
-#endif
-
   my_p4est_level_set_t ls(ngbd);
   ls.reinitialize_1st_order_time_2nd_order_space(phi, 20);
-#ifdef P4_TO_P8
-  ls.perturb_level_set_function(phi, MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]));
-#else
-  ls.perturb_level_set_function(phi, MIN(dxyz_min[0], dxyz_min[1]));
-#endif
+  ls.perturb_level_set_function(phi, EPS);
 }
 
 
@@ -532,10 +602,10 @@ void compute_velocity(my_p4est_node_neighbors_t *ngbd, Vec phi, Vec t_l, Vec t_s
   {
     p4est_locidx_t n = ngbd->get_layer_node(i);
     ngbd->get_neighbors(n, qnnn);
-    jump_p[0][n] = -(k_s*qnnn.dx_central(t_s_p) - k_l*qnnn.dx_central(t_l_p)) / L;
-    jump_p[1][n] = -(k_s*qnnn.dy_central(t_s_p) - k_l*qnnn.dy_central(t_l_p)) / L;
+    jump_p[0][n] = (k_s*qnnn.dx_central(t_s_p) - k_l*qnnn.dx_central(t_l_p)) / L;
+    jump_p[1][n] = (k_s*qnnn.dy_central(t_s_p) - k_l*qnnn.dy_central(t_l_p)) / L;
 #ifdef P4_TO_P8
-    jump_p[2][n] = -(k_s*qnnn.dz_central(t_s_p) - k_l*qnnn.dz_central(t_l_p)) / L;
+    jump_p[2][n] = (k_s*qnnn.dz_central(t_s_p) - k_l*qnnn.dz_central(t_l_p)) / L;
 #endif
   }
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -546,10 +616,10 @@ void compute_velocity(my_p4est_node_neighbors_t *ngbd, Vec phi, Vec t_l, Vec t_s
   {
     p4est_locidx_t n = ngbd->get_local_node(i);
     ngbd->get_neighbors(n, qnnn);
-    jump_p[0][n] = -(k_s*qnnn.dx_central(t_s_p) - k_l*qnnn.dx_central(t_l_p)) / L;
-    jump_p[1][n] = -(k_s*qnnn.dy_central(t_s_p) - k_l*qnnn.dy_central(t_l_p)) / L;
+    jump_p[0][n] = (k_s*qnnn.dx_central(t_s_p) - k_l*qnnn.dx_central(t_l_p)) / L;
+    jump_p[1][n] = (k_s*qnnn.dy_central(t_s_p) - k_l*qnnn.dy_central(t_l_p)) / L;
 #ifdef P4_TO_P8
-    jump_p[2][n] = -(k_s*qnnn.dz_central(t_s_p) - k_l*qnnn.dz_central(t_l_p)) / L;
+    jump_p[2][n] = (k_s*qnnn.dz_central(t_s_p) - k_l*qnnn.dz_central(t_l_p)) / L;
 #endif
   }
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -569,6 +639,48 @@ void compute_velocity(my_p4est_node_neighbors_t *ngbd, Vec phi, Vec t_l, Vec t_s
   }
 }
 
+
+void check_error_frank_sphere(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec t_l)
+{
+  PetscErrorCode ierr;
+
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  double dxyzmin = MAX(xmax-xmin, ymax-ymin) / (1<<data->max_lvl);
+
+  const double *t_l_p, *phi_p;
+  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(t_l, &t_l_p); CHKERRXX(ierr);
+
+  double err[] = {0, 0};
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    double x = node_x_fr_n(n, p4est, nodes);
+    double y = node_y_fr_n(n, p4est, nodes);
+    double r = .5*sqrt(tn);
+
+    if(fabs(phi_p[n]<2*dxyzmin))
+    {
+      double phi_exact = sqrt(x*x+y*y) - r;
+      err[0] = max(err[0], fabs(phi_p[n]-phi_exact));
+    }
+
+    if(phi_p[n]>0)
+      err[1] = max(err[1], fabs(t_frank_sphere(x,y,tn)-t_l_p[n]));
+  }
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(t_l, &t_l_p); CHKERRXX(ierr);
+
+  int mpiret;
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, err, 2, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+  ierr = PetscPrintf(p4est->mpicomm, "Error on phi: %g\nError on t_l: %g\n", err[0], err[1]); CHKERRXX(ierr);
+}
 
 
 int main (int argc, char* argv[])
@@ -598,8 +710,8 @@ int main (int argc, char* argv[])
                  \t 3 - a plane\n");
   cmd.parse(argc, argv);
 
-  int lmin = cmd.get("lmin", 3);
-  int lmax = cmd.get("lmax", 5);
+  int lmin = cmd.get("lmin", 4);
+  int lmax = cmd.get("lmax", 8);
   test_number = cmd.get("test", test_number);
   bool save_vtk = cmd.get("save_vtk", 1);
   int save_every_n = cmd.get("save_every_n", 1);
@@ -615,7 +727,6 @@ int main (int argc, char* argv[])
   int nz;
 #endif
   double tf;
-  double tn;
 
   switch(test_number)
   {
@@ -682,11 +793,11 @@ int main (int argc, char* argv[])
 
   // loop over time
   int iter = 0;
-  double dt = 0;
+  dt = 0;
 
   while(tn<tf && iter<max_iter)
   {
-    ierr = PetscPrintf(p4est->mpicomm, "Iteration #%d, tn=%g\n", iter, tn);
+//    ierr = PetscPrintf(p4est->mpicomm, "Iteration #%d, tn=%g\n", iter, tn);
 
     /* compute the time step dt */
     for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -695,12 +806,19 @@ int main (int argc, char* argv[])
     }
 
     double max_norm_u = 0;
+    const double *phi_p;
+    ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
 #ifdef P4_TO_P8
-      max_norm_u = max(max_norm_u, sqrt( SQR(v_p[0][n]) + SQR(v_p[1][n]) + SQR(v_p[2][n]) ) );
+      if(fabs(phi_p[n])<3*MIN(dxyz_min[0],dxyz_min[1],dxyz_min[2]))
+        max_norm_u = max(max_norm_u, sqrt( SQR(v_p[0][n]) + SQR(v_p[1][n]) + SQR(v_p[2][n]) ) );
 #else
-      max_norm_u = max(max_norm_u, sqrt( SQR(v_p[0][n]) + SQR(v_p[1][n]) ) );
+      if(fabs(phi_p[n])<3*MIN(dxyz_min[0],dxyz_min[1]))
+        max_norm_u = max(max_norm_u, sqrt( SQR(v_p[0][n]) + SQR(v_p[1][n]) ) );
 #endif
+    }
+    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
@@ -710,9 +828,9 @@ int main (int argc, char* argv[])
     MPI_Allreduce(MPI_IN_PLACE, &max_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 
 #ifdef P4_TO_P8
-    dt = min(1.,1./max_norm_u) * .5 * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+    dt = min(1.,1/max_norm_u) * 1 * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
 #else
-    dt = min(1.,1./max_norm_u) * .5 * MIN(dxyz_min[0], dxyz_min[1]);
+    dt = min(1.,1/max_norm_u) * 1 * SQR(MIN(dxyz_min[0], dxyz_min[1]));
 #endif
 
     if(tn+dt>tf) dt = tf-tn;
@@ -727,14 +845,14 @@ int main (int argc, char* argv[])
     compute_normal_and_curvature(ngbd, phi, d_phi, kappa);
 
     Vec phi_l;
-    double *phi_l_p, *phi_p;
+    double *phi_l_p;
     ierr = VecDuplicate(phi, &phi_l); CHKERRXX(ierr);
     ierr = VecGetArray(phi_l, &phi_l_p); CHKERRXX(ierr);
-    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
     for(size_t n=0; n<nodes->indep_nodes.elem_count ; ++n)
       phi_l_p[n] = -phi_p[n];
     ierr = VecRestoreArray(phi_l, &phi_l_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
     /* solve for the temperatures */
     solve_temperature(ngbd, phi, phi_l, d_phi, kappa, dt, t_l, t_s);
@@ -753,6 +871,11 @@ int main (int argc, char* argv[])
     tn += dt;
     iter++;
   }
+
+  ierr = PetscPrintf(mpi->mpicomm, "Final time of the simulation: tf=%g\n", tf); CHKERRXX(ierr);
+
+  if(test_number==0)
+    check_error_frank_sphere(p4est, nodes, phi, t_l);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
