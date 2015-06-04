@@ -701,6 +701,7 @@ int main (int argc, char* argv[])
   cmd.add_option("save_vtk", "1 to export vtu images, 0 otherwise");
   cmd.add_option("save_every_n", "export images every n iterations");
   cmd.add_option("max_iter", "maximum number of iterations");
+  cmd.add_option("n_times_dt", "CFL restriction, dt = n_times_dt * dx/umax");
   cmd.add_option("test", "the test to run. Available options are\
                  \t 0 - frank sphere\n\
                  \t 1 - a single seed\n\
@@ -714,6 +715,7 @@ int main (int argc, char* argv[])
   bool save_vtk = cmd.get("save_vtk", 1);
   int save_every_n = cmd.get("save_every_n", 1);
   int max_iter = cmd.get("max_iter", INT_MAX);
+  double n_times_dt = cmd.get("n_times_dt", 1);
 
   splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
 
@@ -844,9 +846,9 @@ int main (int argc, char* argv[])
     MPI_Allreduce(MPI_IN_PLACE, &max_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 
 #ifdef P4_TO_P8
-    dt = min(1.,1/max_norm_u) * .5 * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+    dt = min(1.,1/max_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
 #else
-    dt = min(1.,1/max_norm_u) * .5 * MIN(dxyz_min[0], dxyz_min[1]);
+    dt = min(1.,1/max_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1]);
 #endif
 
     if(tn+dt>tf) dt = tf-tn;
