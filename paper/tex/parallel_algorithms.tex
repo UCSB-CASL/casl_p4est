@@ -1,5 +1,6 @@
 %!TEX root = draft.tex
 \section{Parallel algorithms}\label{sec:parallel algorithms}
+
 \subsection{Grid management}
 Adaptive tree-based grids can significantly reduce the computational cost of level-set methods by restricting the fine grid close to the interface where it is most needed \cite{Strain:99:Tree-Methods-for-Mov}. Moreover, adaptive tree-based grids are easy to generate in the presence of a signed-distance level-set function \cite{Min;Gibou:07:A-second-order-accur} and can efficiently be encoded using a tree datastructure \cite{Samet:90:Applications-of-Spat}. In order to develop scalable parallel algorithms on these grids, it is necessary to parallelize the datastructure and grid manipulation methods such as refinement and coarsening of cells as well as to provide a fast method for grid partitioning and load balancing. The \texttt{p4est} library \cite{p4est-github} is a collection of such parallel algorithms that has recently emerged and shown to scale up to 200,000 cores \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}.
 

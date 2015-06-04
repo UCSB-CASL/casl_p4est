@@ -10,15 +10,15 @@ In this section we apply our approach to the study of the phase transition of a 
 \end{align}
 The diffusion constants $D_l$ and $D_s$ can be discontinuous across the interface. We prescribe homogeneous Neumann boundary conditions on the edge of the computational domain, $\nabla T \cdot \underline{\mathbf{n}}\vert_{\partial \Omega}=0$. At the interface between the solid and the liquid phases, the temperature is given by the Gibbs-Tompson boundary condition \cite{Alexiades;Solomon;Wilson:88:The-formation-of-a-s, Alexiades;Solomon:93:Mathematical-Modelin}:
 \begin{equation} \label{eq:stefan_gibbs_tompson}
-T_s = T_l = T_{\Gamma} = -\epsilon_c \kappa - \epsilon_v (\underline{\mathbf{V}} \cdot \underline{\mathbf{n}}),
+T_s = T_l = T_{\Gamma} = -\epsilon_c \kappa - \epsilon_v (\underline{\mathbf{u}} \cdot \underline{\mathbf{n}}),
 \end{equation}
-where $\kappa$ is the local interface curvature, $\underline{\mbf{V}}$ is the velocity of the interface, $\underline{\mathbf{n}}$ is the outward normal to the solidification front and $\epsilon_c$ and $\epsilon_v$ are the surface tension and kinetic undercooling coefficients. The interface velocity $\underline{\mbf{V}}$ is defined from the jump in the heat flux at the interface,
+where $\kappa$ is the local interface curvature, $\underline{\mbf{u}}$ is the velocity of the interface, $\underline{\mathbf{n}}$ is the outward normal to the solidification front and $\epsilon_c$ and $\epsilon_v$ are the surface tension and kinetic undercooling coefficients. The interface velocity $\underline{\mbf{u}}$ is defined from the jump in the heat flux at the interface,
 \begin{equation} \label{eq:stefan_velocity}
-(\underline{\mathbf{V}} \cdot \underline{\mathbf{n}}) = - \left[ D_l \pd{T_l}{\underline{\mathbf{n}}} - D_s \pd{T_s}{\underline{\mathbf{n}}} \right].
+(\underline{\mathbf{u}} \cdot \underline{\mathbf{n}}) = - \left[ D_l \pd{T_l}{\underline{\mathbf{n}}} - D_s \pd{T_s}{\underline{\mathbf{n}}} \right].
 \end{equation}
 We choose to use an adaptive time step with a $\text{CFL} = 5$, i.e.
 \begin{equation} \label{eq:stefan_dt}
-\Delta t = 5 ~ \Delta x_{min} ~ \min(1,1/\max \lVert \underline{\mathbf{V}} \rVert),
+\Delta t = 5 ~ \Delta x_{min} ~ \min(1,1/\max \lVert \underline{\mathbf{u}} \rVert),
 \end{equation}
 where $\Delta x_{min}$ is the size of the smallest cell of the forest. The general procedure to solve the Stefan problem is presented in Algorithm \ref{alg:stefan}.
 
@@ -30,7 +30,7 @@ where $\Delta x_{min}$ is the size of the smallest cell of the forest. The gener
 \State Reinitialize $\phi$ and compute the local interface curvature $\kappa$.
 \State Compute $T^{n+1}_l$ and $T^{n+1}_s$ by solving the heat equations \eqref{eq:stefan_heat_equation_l} and \eqref{eq:stefan_heat_equation_s}.
 \State Extrapolate $T^{n+1}_s$ from $\Omega^+$ to $\Omega^-$ and $T^{n+1}_l$ from $\Omega^-$ to $\Omega^+$.
-\State Compute the velocity field $\underline{\mathbf{V}}$ according to \eqref{eq:stefan_velocity}.
+\State Compute the velocity field $\underline{\mathbf{u}}$ according to \eqref{eq:stefan_velocity}.
 \State Compute the time step dt following \eqref{eq:stefan_dt}.
 \State Evolve the interface and construct the new forest using the Semi-Lagrangian procedure.
 \State Interpolate $T^{n+1}_s$ and $T^{n+1}_l$ from the old forest to the new forest.
