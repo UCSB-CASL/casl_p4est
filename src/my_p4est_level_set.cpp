@@ -2086,13 +2086,13 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain( Vec phi_petsc,
   double ymin = p4est->connectivity->vertices[3*vm + 1];
   double xmax = p4est->connectivity->vertices[3*vp + 0];
   double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+  double dx = (xmax-xmin) / (1<<data->max_lvl);
+  double dy = (ymax-ymin) / (1<<data->max_lvl);
 
 #ifdef P4_TO_P8
   double zmin = p4est->connectivity->vertices[3*vm + 2];
   double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
+  double dz = (zmax-zmin) / (1<<data->max_lvl);
 #endif
 
 #ifdef P4_TO_P8
@@ -2109,10 +2109,12 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain( Vec phi_petsc,
   double *phi;
   ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
 
+  quad_neighbor_nodes_of_node_t qnnn;
+
   /* now buffer the interpolation points */
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n,qnnn);
 
 #ifdef P4_TO_P8
     Point3 grad_phi;

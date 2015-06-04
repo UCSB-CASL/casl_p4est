@@ -52,9 +52,6 @@ using namespace std;
  */
 int test_number = 0;
 
-/* choose order, 1 or 2 */
-int order = 2;
-
 double tn;
 double dt;
 
@@ -164,17 +161,15 @@ int main (int argc, char* argv[])
 #endif
   cmd.add_option("tf", "final time");
   cmd.add_option("save_vtk", "1 to export vtu images, 0 otherwise");
-  cmd.add_option("save_every_n", "export images every n iterations");\
-  cmd.add_option("order", "order of the SL scheme, 1 or 2");
+  cmd.add_option("save_every_n", "export images every n iterations");
   cmd.add_option("test", "the test to run. Available options are\
                  \t 0 - rotation\n\
                  \t 1 - vortex\n");
   cmd.parse(argc, argv);
 
   int lmin = cmd.get("lmin", 0);
-  int lmax = cmd.get("lmax", 5);
+  int lmax = cmd.get("lmax", 6);
   test_number = cmd.get("test", test_number);
-  order = cmd.get("order", order);
   bool save_vtk = cmd.get("save_vtk", 0);
   int save_every_n = cmd.get("save_every_n", 1);
 
@@ -191,7 +186,7 @@ int main (int argc, char* argv[])
 
   switch(test_number)
   {
-  case 0: nx=2; ny=2; xmin=-1; xmax= 1; ymin=-1; ymax= 1; tf=2*PI; break;
+  case 0: nx=1; ny=1; xmin=-1; xmax= 1; ymin=-1; ymax= 1; tf=2*PI; break;
   case 1: nx=2; ny=2; xmin= 0; xmax= 1; ymin= 0; ymax= 1; tf=1; break;
   default: throw std::invalid_argument("[ERROR]: choose a valid test.");
   }
@@ -220,104 +215,76 @@ int main (int argc, char* argv[])
 #endif
 
 #ifdef P4_TO_P8
-  dt = 5*MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+  dt = 1*MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
 #else
-  dt = 5*MIN(dxyz_min[0], dxyz_min[1]);
+  dt = 1*MIN(dxyz_min[0], dxyz_min[1]);
 #endif
 
-  p4est_t *p4est_n = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
-  p4est_n->user_pointer = (void*)(&data);
-  my_p4est_refine(p4est_n, P4EST_TRUE, refine_levelset_cf, NULL);
-  my_p4est_partition(p4est_n, P4EST_FALSE, NULL);
-  p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
-  p4est_nodes_t *nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
-  my_p4est_hierarchy_t *hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, &brick);
-  my_p4est_node_neighbors_t *ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
-  ngbd_n->init_neighbors();
-
-  p4est_t *p4est_nm1 = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
-  p4est_nm1->user_pointer = (void*)(&data);
-  my_p4est_refine(p4est_nm1, P4EST_TRUE, refine_levelset_cf, NULL);
-  my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
-  p4est_ghost_t *ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
-  p4est_nodes_t *nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
-  my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick);
-  my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
-  ngbd_nm1->init_neighbors();
+  p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est->user_pointer = (void*)(&data);
+  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+  my_p4est_partition(p4est, P4EST_FALSE, NULL);
+  p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
+  my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
+  my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
+  ngbd->init_neighbors();
 
   /* Initialize the level-set function */
   tn = 0;
   Vec phi_n;
-  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_n); CHKERRXX(ierr);
-  sample_cf_on_nodes(p4est_n, nodes_n, level_set, phi_n);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_n); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, level_set, phi_n);
 
   /* initialize the velocity field */
   const CF_2 *velo_cf[2] = { &u, &v };
-
-  Vec velo_nm1[P4EST_DIM];
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    ierr = VecDuplicate(p4est_nm1, nodes_nm1, &velo_nm1[dir]); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est_nm1, nodes_nm1, *velo_cf[dir], velo_nm1[dir]);
-  }
-
   Vec velo_n[P4EST_DIM];
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecDuplicate(phi_n, &velo_n[dir]); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est_n, nodes_n, *velo_cf[dir], velo_n[dir]);
+    sample_cf_on_nodes(p4est, nodes, *velo_cf[dir], velo_n[dir]);
   }
 
   int iter = 0;
 
-  save_VTK(p4est_n, nodes_n, &brick, phi_n, iter/save_every_n);
+  save_VTK(p4est, nodes, &brick, phi_n, iter/save_every_n);
   iter++;
 
   while(tn+.1*dt<tf)
   {
-    ierr = PetscPrintf(p4est_n->mpicomm, "Iteration #%d, tn=%g\n", iter, tn);
+//    ierr = PetscPrintf(p4est_n->mpicomm, "Iteration #%d, tn=%g\n", iter, tn);
 
     if(tn+dt>tf)
       dt = tf-tn;
 
-    p4est_t *p4est_np1 = p4est_copy(p4est_n, P4EST_FALSE);
-    p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-    p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-    my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, &brick, ngbd_n);
-
-    if(1)
-    {
-      switch(order)
-      {
-      case 1: sl.update_p4est(velo_n, dt, phi_n); break;
-      case 2: sl.update_p4est(velo_n, velo_nm1, dt, dt, phi_n); break;
-      default: throw std::invalid_argument("[ERROR]: invalid order, choose 1 or 2.");
-      }
-    }
-    else
-      sl.update_p4est(velo_cf, dt, phi_n);
-
-
-    p4est_destroy(p4est_nm1); p4est_nm1 = p4est_n; p4est_n = p4est_np1;
-    p4est_ghost_destroy(ghost_nm1); ghost_nm1 = ghost_n; ghost_n = ghost_np1;
-    p4est_nodes_destroy(nodes_nm1); nodes_nm1 = nodes_n; nodes_n = nodes_np1;
-    delete hierarchy_nm1; hierarchy_nm1 = hierarchy_n; hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, &brick);
-    delete ngbd_nm1; ngbd_nm1 = ngbd_n; ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
-    ngbd_n->init_neighbors();
-
-    my_p4est_level_set_t ls(ngbd_n);
-    ls.reinitialize_1st_order_time_2nd_order_space(phi_n);
-
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
-      ierr = VecDestroy(velo_nm1[dir]); CHKERRXX(ierr);
-      velo_nm1[dir] = velo_n[dir];
+      ierr = VecDestroy(velo_n[dir]); CHKERRXX(ierr);
       ierr = VecDuplicate(phi_n, &velo_n[dir]); CHKERRXX(ierr);
-      sample_cf_on_nodes(p4est_n, nodes_n, *velo_cf[dir], velo_n[dir]);
+      sample_cf_on_nodes(p4est, nodes, *velo_cf[dir], velo_n[dir]);
     }
 
+    p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
+    p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+    p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+    my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, &brick, ngbd);
+    sl.update_p4est(velo_n, dt, phi_n);
+    //      sl.update_p4est(velo_cf, dt, phi_n);
+
+    p4est_destroy(p4est); p4est = p4est_np1;
+    p4est_ghost_destroy(ghost); ghost = ghost_np1;
+    p4est_nodes_destroy(nodes); nodes = nodes_np1;
+    delete hierarchy; hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
+    delete ngbd; ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
+    ngbd->init_neighbors();
+
+    my_p4est_level_set_t ls(ngbd);
+    ls.reinitialize_1st_order_time_2nd_order_space(phi_n);
+//    ls.reinitialize_2nd_order(phi_n);
+
     if(save_vtk && iter % save_every_n == 0)
-      save_VTK(p4est_n, nodes_n, &brick, phi_n, iter/save_every_n);
+      save_VTK(p4est, nodes, &brick, phi_n, iter/save_every_n);
 
     tn += dt;
     iter++;
@@ -329,17 +296,17 @@ int main (int argc, char* argv[])
   const double *phi_p;
   ierr = VecGetArrayRead(phi_n, &phi_p); CHKERRXX(ierr);
   double err = 0;
-  for(p4est_locidx_t n=0; n<nodes_n->num_owned_indeps; ++n)
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    double x = node_x_fr_n(n, p4est_n, nodes_n);
-    double y = node_y_fr_n(n, p4est_n, nodes_n);
+    double x = node_x_fr_n(n, p4est, nodes);
+    double y = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
     double z = node_z_fr_n(n, p4est, nodes);
     if(fabs(phi_p[n])<3*MAX(dxyz_min[0],dxyz_min[1],dxyz_min[2]))
-       err = max(err, level_set(x,y,z));
+       err = max(err, (phi_p[n]-level_set(x,y,z)));
 #else
     if(fabs(phi_p[n])<3*MAX(dxyz_min[0],dxyz_min[1]))
-       err = max(err, level_set(x,y));
+       err = max(err, fabs(phi_p[n]-level_set(x,y)));
 #endif
   }
   ierr = VecRestoreArrayRead(phi_n, &phi_p); CHKERRXX(ierr);
@@ -351,22 +318,15 @@ int main (int argc, char* argv[])
   ierr = VecDestroy(phi_n);   CHKERRXX(ierr);
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    ierr = VecDestroy(velo_nm1[dir]); CHKERRXX(ierr);
     ierr = VecDestroy(velo_n  [dir]); CHKERRXX(ierr);
   }
 
-  // destroy the p4est and its connectivity structure
-  delete ngbd_nm1;
-  delete hierarchy_nm1;
-  p4est_nodes_destroy (nodes_nm1);
-  p4est_ghost_destroy(ghost_nm1);
-  p4est_destroy (p4est_nm1);
-
-  delete ngbd_n;
-  delete hierarchy_n;
-  p4est_nodes_destroy (nodes_n);
-  p4est_ghost_destroy(ghost_n);
-  p4est_destroy (p4est_n);
+  /* destroy the p4est and its connectivity structure */
+  delete ngbd;
+  delete hierarchy;
+  p4est_nodes_destroy (nodes);
+  p4est_ghost_destroy(ghost);
+  p4est_destroy (p4est);
   my_p4est_brick_destroy(connectivity, &brick);
 
   return 0;

@@ -28,6 +28,7 @@ class my_p4est_semi_lagrangian_t
   p4est_ghost_t **p_ghost, *ghost;
   my_p4est_brick_t *myb;
   my_p4est_node_neighbors_t *ngbd_n;
+  my_p4est_node_neighbors_t *ngbd_nm1;
   my_p4est_hierarchy_t *hierarchy;
 
   double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
@@ -52,7 +53,7 @@ class my_p4est_semi_lagrangian_t
                             double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
 
 public:
-  my_p4est_semi_lagrangian_t(p4est_t **p4est, p4est_nodes_t **nodes, p4est_ghost_t **ghost, my_p4est_brick_t *myb, my_p4est_node_neighbors_t *ngbd);
+  my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1, p4est_ghost_t **ghost_np1, my_p4est_brick_t *myb, my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1=NULL);
 
 #ifdef P4_TO_P8
   double compute_dt(const CF_3& vx, const CF_3& vy, const CF_3& vz);
