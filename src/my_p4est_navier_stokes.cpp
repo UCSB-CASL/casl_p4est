@@ -21,6 +21,18 @@
 #endif
 
 
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_navier_stokes_viscosity;
+extern PetscLogEvent log_my_p4est_navier_stokes_projection;
+extern PetscLogEvent log_my_p4est_navier_stokes_update;
+#endif
+
+
 
 my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold, double max_L2_norm_u)
   : splitting_criteria_tag_t(min_lvl, max_lvl, lip)
@@ -887,6 +899,8 @@ void my_p4est_navier_stokes_t::solve_viscosity()
 {
   PetscErrorCode ierr;
 
+  ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
+
   double alpha = (2*dt_n+dt_nm1)/(dt_n+dt_nm1);
   double beta = -dt_n/(dt_n+dt_nm1);
 
@@ -993,6 +1007,8 @@ void my_p4est_navier_stokes_t::solve_viscosity()
       lsf.extend_Over_Interface(phi, vstar[dir], bc_vstar[dir], dir, face_is_well_defined[dir], 2, 8);
     }
   }
+
+  ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -1003,6 +1019,8 @@ void my_p4est_navier_stokes_t::solve_viscosity()
 void my_p4est_navier_stokes_t::solve_projection()
 {
   PetscErrorCode ierr;
+
+  ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
 
   Vec rhs;
   ierr = VecDuplicate(hodge, &rhs); CHKERRXX(ierr);
@@ -1122,6 +1140,8 @@ void my_p4est_navier_stokes_t::solve_projection()
       lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], 2, 8);
     }
   }
+
+  ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -1218,6 +1238,8 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 #endif
 {
   PetscErrorCode ierr;
+
+  ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
   if(!dt_updated)
     compute_dt();
@@ -1420,6 +1442,8 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
     interp_dxyz_hodge[dir] = new my_p4est_interpolation_nodes_t(ngbd_n);
     interp_dxyz_hodge[dir]->set_input(dxyz_hodge[dir], linear);
   }
+
+  ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -1662,9 +1686,9 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
 //                         VTK_POINT_DATA, "vorticity", vort_p,
                          VTK_POINT_DATA, "pressure", pressure_nodes_p,
                          VTK_POINT_DATA, "vx", vn_p[0],
-                         VTK_POINT_DATA, "vy", vn_p[1],
+                         VTK_POINT_DATA, "vy", vn_p[1]
                        #ifdef P4_TO_P8
-                         VTK_POINT_DATA, "vz", vn_p[2]
+                         , VTK_POINT_DATA, "vz", vn_p[2]
                        #endif
                          );
 //                         VTK_CELL_DATA, "hodge", hodge_p);

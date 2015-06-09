@@ -38,6 +38,11 @@ PetscLogEvent log_my_p4est_poisson_faces_setup_linear_system;
 PetscLogEvent log_my_p4est_poisson_faces_solve;
 PetscLogEvent log_my_p4est_poisson_faces_KSPSolve;
 
+// my_p4est_navier_stokes_t
+PetscLogEvent log_my_p4est_navier_stokes_viscosity;
+PetscLogEvent log_my_p4est_navier_stokes_projection;
+PetscLogEvent log_my_p4est_navier_stokes_update;
+
 // my_p4est_interpolation_t
 PetscLogEvent log_my_p4est_interpolation_interpolate;
 PetscLogEvent log_my_p4est_interpolation_process_local;
@@ -159,6 +164,11 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_poisson_faces::setup_linear_system             ", 0, &log_my_p4est_poisson_faces_setup_linear_system); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_faces::solve                           ", 0, &log_my_p4est_poisson_faces_solve); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_faces::KSPSolve                        ", 0, &log_my_p4est_poisson_faces_KSPSolve); CHKERRXX(ierr);
+
+  // my_p4est_navier_stokes_t
+  ierr = PetscLogEventRegister("my_p4est_navier_stokes::viscosity                       ", 0, &log_my_p4est_navier_stokes_viscosity); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_navier_stokes::projection                      ", 0, &log_my_p4est_navier_stokes_projection); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_navier_stokes::update                          ", 0, &log_my_p4est_navier_stokes_update); CHKERRXX(ierr);
 
   // my_p4est_interpolation
   ierr = PetscLogEventRegister("my_p4est_interpolation::interpolate                     ", 0, &log_my_p4est_interpolation_interpolate); CHKERRXX(ierr);

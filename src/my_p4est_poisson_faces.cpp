@@ -235,7 +235,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 {
   PetscErrorCode ierr;
 
-  ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
   Voronoi3D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
@@ -283,7 +283,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 #else
   if(phi_c > 2*MAX(dx_min,dy_min))
 #endif
-    return;
+     { ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr); return; }
 
   p4est_locidx_t qm_idx=-1, qp_idx=-1;
   p4est_topidx_t tm_idx=-1, tp_idx=-1;
@@ -320,11 +320,11 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 
   /* check for walls */
 #ifdef P4_TO_P8
-  if(qm_idx==-1 && bc[dir].wallType(x,y,z)==DIRICHLET) return;
-  if(qp_idx==-1 && bc[dir].wallType(x,y,z)==DIRICHLET) return;
+  if(qm_idx==-1 && bc[dir].wallType(x,y,z)==DIRICHLET) { ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr); return; }
+  if(qp_idx==-1 && bc[dir].wallType(x,y,z)==DIRICHLET) { ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr); return; }
 #else
-  if(qm_idx==-1 && bc[dir].wallType(x,y)==DIRICHLET) return;
-  if(qp_idx==-1 && bc[dir].wallType(x,y)==DIRICHLET) return;
+  if(qm_idx==-1 && bc[dir].wallType(x,y)==DIRICHLET) { ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr); return; }
+  if(qp_idx==-1 && bc[dir].wallType(x,y)==DIRICHLET) { ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr); return; }
 #endif
 
   /* find direct neighbors */
@@ -765,7 +765,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 #endif
   }
 
-  ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -954,7 +954,8 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 
 //  print_partition_VTK("/home/guittet/code/Output/p4est_navier_stokes/voro_0.vtk");
-//  if(dir==1) throw std::invalid_argument("");
+//  if(dir==0)
+//    throw std::invalid_argument("");
 }
 
 

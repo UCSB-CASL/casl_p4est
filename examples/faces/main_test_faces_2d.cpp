@@ -64,23 +64,23 @@
 #undef MIN
 #undef MAX
 
-double xmin = -1;
-double xmax =  1;
-double ymin = -2;
+double xmin = -2;
+double xmax =  2;
+double ymin = -1;
 double ymax =  1;
 #ifdef P4_TO_P8
 double zmin = -1;
-double zmax =  2;
+double zmax =  1;
 #endif
 
 using namespace std;
 
-int lmin = 2;
+int lmin = 0;
 int lmax = 4;
 int nb_splits = 1;
 
-int nx = 2;
-int ny = 3;
+int nx = 4;
+int ny = 2;
 #ifdef P4_TO_P8
 int nz = 3;
 #endif
