@@ -210,24 +210,24 @@ where $S_i$ and $R_i$ denote the number of messages sent and received, respectiv
 \begin{algorithm}[htbp]
 \caption{$values \gets \texttt{Interpolate (}H, F, \underline{\mathbf{X}}\texttt{)}$: interpolate the value of $F$, defined on the local tree hierarchy $H$, at coordinates $\underline{\mathbf{X}}$}
 \begin{algorithmic}[1]
-\State $col \gets 0, buff \gets null$ \Comment{Phase I -- buffering}
+\State $col \gets 0, \mathit{buff} \gets null$ \Comment{Phase I -- buffering}
 \For {$\underline{\mathbf{p}} : \underline{\mathbf{X}}$} 
 	\State $[r, cell] \gets H.\texttt{search(}\underline{\mathbf{p}}\texttt{)}$ \Comment{search for the owner's rank and cell}
 	\If {$r = mpirank$}
-		\State $buff[r].\texttt{push\_back(}\underline{\mathbf{p}}, cell\texttt{)}$
+        \State $\mathit{buff}[r].\texttt{push\_back(}\underline{\mathbf{p}}, cell\texttt{)}$
 	\Else
-		\State $buff[r].\texttt{push\_back(}\underline{\mathbf{p}}\texttt{)}$
-		\State $col[r] \gets 1$
+        \State $\mathit{buff}[r].\texttt{push\_back(}\underline{\mathbf{p}}\texttt{)}$
+        \State $\mathit{col}[r] \gets 1$
 	\EndIf
 \EndFor
 \For {$r: mpisize$} \Comment{Phase II -- initiate communication and compute number of messages}
 	\If {$col[r]$}
-		\State $\texttt{MP\_Isend(}r, buff[r]\texttt{)}$
+        \State $\texttt{MP\_Isend(}r, \mathit{buff}[r]\texttt{)}$
 	\EndIf
 \EndFor
 \State  $S \gets \texttt{sum(}col\texttt{)}$ 
 \State  $R \gets \texttt{MPI\_Reduce\_scatter(}col,\texttt{MPI\_SUM)}$
-\State $done \gets false, it \gets buff[mpirank].\texttt{begin()}$
+\State $done \gets \mathit{false}, it \gets \mathit{buff}[mpirank].\texttt{begin()}$
 \While {$!done$} \Comment{Phase III -- main loop}
 	\If {$it \not= buff[mpirank].\texttt{end()}$}
 		\State $values \gets \texttt{process\_local(}it\texttt{)}$ \Comment{process local interpolations}
