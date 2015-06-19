@@ -60,14 +60,20 @@ as well as multiple trees and has been shown to scale to more than
 % 200,000 cores,
 450,000 CPU cores \cite{IsaacBursteddeWilcoxEtAl15}.
 In fact, the algorithms presented in this paper are implemented on top of
-the \texttt{p4est} API using a single octree to represent the unit cube.
+the \texttt{p4est} API.
+Due to the need for multiple adaptation and partitioning operations in each
+time step, the semi-Lagrangian method we describe below presents a stringent
+test of the algorithms and implementation both in terms of scalability and
+absolute run time.
+% using a single octree to represent the unit cube.
 % In fact, the algorithms presented in this paper are implemented on top of the
 % \texttt{p4est} library \cite{p4est-github} that is publicly available and
 % provides a simple API for handling the grid.
 %
 % and we do not discuss any algorithm that is already covered in
 % \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}.
-We also make use of the popular \texttt{PETSc}
+
+In implementing the numerical solver, we make use of the popular \texttt{PETSc}
 \cite{Balay;Abhyankar;Adams;etal:14:PETSc-Web-page} library for linear algebra
 and its parallel primitives, such as parallel ghosted vector and scatter/gather
 operations, which simplifies the implementation.
