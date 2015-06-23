@@ -73,11 +73,6 @@ absolute run time.
 % and we do not discuss any algorithm that is already covered in
 % \cite{Burstedde;Wilcox;Ghattas:11:p4est:-Scalable-Algo}.
 
-In implementing the numerical solver, we make use of the popular \texttt{PETSc}
-\cite{Balay;Abhyankar;Adams;etal:14:PETSc-Web-page} library for linear algebra
-and its parallel primitives, such as parallel ghosted vector and scatter/gather
-operations, which simplifies the implementation.
-
 Parallel level-set algorithms can be categorized into two groups: parallel advection algorithms and parallel reinitialization algorithms. Eulerian advection schemes can easily be parallelized but unfortunately are limited by the CFL condition, which could be very restrictive for adaptive grids. Semi-Lagrangian methods combine the unconditional stability of Lagrangian methods and the ease of use of Eulerian grids and have been successfully used for advecting the level-set function on tree-based grids \cite{Losasso;Gibou;Fedkiw:04:Simulating-Water-and, Losasso;Fedkiw;Osher:06:Spatially-Adaptive-T, Min;Gibou:07:A-second-order-accur}. However, parallelizing the semi-Lagrangian algorithm in a domain decomposition context is not an easy task.
 The reason for this is twofold.
 First, depending on the CFL number, the departure points may end up outside the

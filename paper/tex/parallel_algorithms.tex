@@ -99,9 +99,9 @@ Finally, in \texttt{p4est} trees are linearized, i.e.\ only the leaves are expli
 \caption{$H \gets \texttt{Reconstruct (}G\texttt{)}$: construction of the local tree hierarchy $H$ from the grid $G$}
 \begin{algorithmic}[1]
 \State $H \gets G.\texttt{macromesh()}$
-\For {$tr : G.\texttt{local\_trees()}$} \Comment{build hierarchy for local cells}
-	\For {$c : tr.\texttt{cells()}$}
-		\State $H.\texttt{update\_tree(} tr, c \texttt{)}$
+\For {$\mathit{tr} : G.\texttt{local\_trees()}$} \Comment{build hierarchy for local cells}
+	\For {$c : \mathit{tr}.\texttt{cells()}$}
+		\State $H.\texttt{update\_tree(} \mathit{tr}, c \texttt{)}$
 	\EndFor
 \EndFor
 
@@ -111,8 +111,8 @@ Finally, in \texttt{p4est} trees are linearized, i.e.\ only the leaves are expli
 
 \State \Return $H$
 \\
-\Function{$H.\texttt{update\_tree}$}{$tr, c$}   \Comment{recursive tree reconstruction}
-	\State $c_l \gets H.\texttt{root(}tr\texttt{)}$
+\Function{$H.\texttt{update\_tree}$}{$\mathit{tr}, c$}   \Comment{recursive tree reconstruction}
+	\State $c_l \gets H.\texttt{root(}\mathit{tr}\texttt{)}$
 	\While{$c_l.\texttt{level()} \not= c.\texttt{level()} $}
 		\If {$c_l.$\texttt{is\_leaf()}} $c_l$\texttt{.split()}
 		\EndIf
@@ -210,48 +210,48 @@ where $S_i$ and $R_i$ denote the number of messages sent and received, respectiv
 \begin{algorithm}[htbp]
 \caption{$values \gets \texttt{Interpolate (}H, F, \underline{\mathbf{X}}\texttt{)}$: interpolate the value of $F$, defined on the local tree hierarchy $H$, at coordinates $\underline{\mathbf{X}}$}
 \begin{algorithmic}[1]
-\State $col \gets 0, \mathit{buff} \gets null$ \Comment{Phase I -- buffering}
+\State $col \gets 0, \mathit{buff} \gets \mathit{null}$ \Comment{Phase I -- buffering}
 \For {$\underline{\mathbf{p}} : \underline{\mathbf{X}}$} 
-	\State $[r, cell] \gets H.\texttt{search(}\underline{\mathbf{p}}\texttt{)}$ \Comment{search for the owner's rank and cell}
-	\If {$r = mpirank$}
+	\State $[r, \mathit{cell})] \gets H.\texttt{search(}\underline{\mathbf{p}}\texttt{)}$ \Comment{search for the owner's rank and cell}
+	\If {$r = \mathit{mpirank}$}
         \State $\mathit{buff}[r].\texttt{push\_back(}\underline{\mathbf{p}}, cell\texttt{)}$
 	\Else
         \State $\mathit{buff}[r].\texttt{push\_back(}\underline{\mathbf{p}}\texttt{)}$
         \State $\mathit{col}[r] \gets 1$
 	\EndIf
 \EndFor
-\For {$r: mpisize$} \Comment{Phase II -- initiate communication and compute number of messages}
-	\If {$col[r]$}
+\For {$r:\mathit{mpisize}$} \Comment{Phase II -- initiate communication and compute number of messages}
+	\If {$\mathit{col}[r]$}
         \State $\texttt{MP\_Isend(}r, \mathit{buff}[r]\texttt{)}$
 	\EndIf
 \EndFor
 \State  $S \gets \texttt{sum(}col\texttt{)}$ 
-\State  $R \gets \texttt{MPI\_Reduce\_scatter(}col,\texttt{MPI\_SUM)}$
-\State $done \gets \mathit{false}, it \gets \mathit{buff}[mpirank].\texttt{begin()}$
-\While {$!done$} \Comment{Phase III -- main loop}
-	\If {$it \not= buff[mpirank].\texttt{end()}$}
-		\State $values \gets \texttt{process\_local(}it\texttt{)}$ \Comment{process local interpolations}
-		\State $\texttt{++}it$
+\State  $R \gets \texttt{MPI\_Reduce\_scatter(}\mathit{col},\texttt{MPI\_SUM)}$
+\State $\mathit{done} \gets \mathit{false}, it \gets \mathit{buff}[mpirank].\texttt{begin()}$
+\While {$\mathit{!done}$} \Comment{Phase III -- main loop}
+	\If {$\mathit{it} \not= \mathit{buff[mpirank]}.\texttt{end()}$}
+		\State $\mathit{values} \gets \texttt{process\_local(}it\texttt{)}$ \Comment{process local interpolations}
+		\State $\texttt{++}\mathit{it}$
 	\EndIf
 	\If {$R > 0$} \Comment{process queries sent from remote processes}
-		\State $[msg, st] \gets \texttt{MPI\_Iprobe()}$
-		\If {$msg$}
+		\State $[\mathit{msg, st}] \gets \texttt{MPI\_Iprobe()}$
+		\If {$\mathit{msg}$}
 			% \State $values \gets \texttt{MPI\_Recv(}st.\texttt{MPI\_SOURCE)}$ \Comment{}
-			\State $val\_buff \gets \texttt{process\_queries(}st\texttt{)}$ \Comment{receive, search, and interpolate values}
-			\State $\texttt{MPI\_Isend(}st.\texttt{MPI\_SOURCE},val\_buff\texttt{)}$ \Comment{send back interpolated values}
+			\State $\mathit{val\_buff} \gets \texttt{process\_queries(}\mathit{st}\texttt{)}$ \Comment{receive, search, and interpolate values}
+			\State $\texttt{MPI\_Isend(}\mathit{st}.\texttt{MPI\_SOURCE},\mathit{val\_buff}\texttt{)}$ \Comment{send back interpolated values}
 			\State $R\texttt{--}$
 		\EndIf
 	\EndIf
 	\If {$S > 0$} \Comment{process replies sent to our queries}
-		\State $[msg, st] \gets \texttt{MPI\_Iprobe()}$
-		\If {$msg$}
-			\State $values \gets \texttt{process\_replies(}st.\texttt{MPI\_SOURCE)}$ \Comment{receive remotely interpolated values}
+		\State $\mathit{[msg, st]} \gets \texttt{MPI\_Iprobe()}$
+		\If {$\mathit{msg}$}
+			\State $\mathit{values} \gets \texttt{process\_replies(}\mathit{st}.\texttt{MPI\_SOURCE)}$ \Comment{receive remotely interpolated values}
 			\State $S\texttt{--}$
 		\EndIf
 	\EndIf
-	\State $done \gets S = 0 \: \And \: R = 0 \: \And \: it = buff[mpirank].\texttt{end()}$
+	\State $\mathit{done} \gets S = 0 \: \And \: R = 0 \: \And \: \mathit{it = buff[mpirank]}.\texttt{end()}$
 \EndWhile
-\State \Return $values$
+\State \Return $\mathit{values}$
 \end{algorithmic}
 \label{alg:interpolation}
 \end{algorithm}
@@ -264,7 +264,7 @@ Using the interpolation Algorithm \ref{alg:interpolation}, we close this section
 \State $\Delta t   \gets \texttt{MPI\_Allreduce(}\Delta t_l,\texttt{MPI\_MIN)}$
 \State $H^n \gets \texttt{Reconstruct(} G^n\texttt{)}$ 
 \State $G^{n+1}_0 \gets G^n$
-\While {$true$}
+\While {$\mathit{true}$}
 	\State $\underline{\mathbf{X}}_d  \gets \texttt{ComputeDeparturePoints(}G^{n+1}_0, \underline{\mathbf{u}}^n, \underline{\mathbf{u}}^{n-1}, \Delta t\texttt{)}$ \Comment{using equations \ref{eq:xstar} -- \ref{eq:vn_p_half}}
 	\State $\phi^{n+1} \gets \texttt{Interpolate(}H^n, \phi^n, \underline{\textbf{X}}_d\texttt{)}$
 	\State $G^{n+1} \gets G^{n+1}_0.\texttt{refine\_and\_coarsen(}\phi^{n+1}\texttt{)}$ \Comment{using equations \ref{eq:refine} and \ref{eq:coarsen} as criteria}
@@ -306,12 +306,12 @@ where $a^+ = \max(a, 0)$ and $a^- = \min(a, 0)$. Similar to \cite{Min;Gibou:07:A
 \For {$i:B_p$} \Comment{I -- perform computation on boundary points}
 	\State $y_i \gets \mathcal{F}(x_i)$
 \EndFor
-\State $send\_req \gets \texttt{MPI\_Isend(}y_B\texttt{)}$ \Comment{II -- begin updating ghost values}
-\State $recv\_req \gets \texttt{MPI\_Irecv(}y_G\texttt{)}$
+\State $\mathit{send\_req} \gets \texttt{MPI\_Isend(}y_B\texttt{)}$ \Comment{II -- begin updating ghost values}
+\State $\mathit{recv\_req} \gets \texttt{MPI\_Irecv(}y_G\texttt{)}$
 \For {$i:P_p$} \Comment{III -- perform computation on private points}
 	\State $y_i \gets \mathcal{F}(x_i)$ 
 \EndFor
-\State $\texttt{MPI\_Waitall(}send\_req, recv\_req\texttt{)}$ \Comment{IV -- wait for ghost update to finish}
+\State $\texttt{MPI\_Waitall(}\mathit{send\_req, recv\_req}\texttt{)}$ \Comment{IV -- wait for ghost update to finish}
 \State \Return $y$
 \end{algorithmic}
 \label{alg:overlap}
