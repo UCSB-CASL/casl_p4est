@@ -1,0 +1,40 @@
+\documentclass[11pt]{article}
+%\usepackage[pdftex,breaklinks,linktocpage,pagebackref,hyperindex,hyperfigures]
+\usepackage{hyperref}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage[tmargin=1in,bmargin=1in,lmargin=1in,rmargin=1in]{geometry}
+\usepackage{subfigure}
+\usepackage{graphicx}
+\usepackage{latexsym}
+\usepackage{pdfsync}
+% \usepackage[boxed]{algorithm}
+\usepackage{algpseudocode}
+\usepackage{algorithm}
+% \usepackage{algorithmic}
+\usepackage{multirow}
+\usepackage{rotating}
+\usepackage{color}
+\usepackage{caption}
+\usepackage{url}
+\usepackage{tikz}
+\usepackage{diagbox}
+
+
+\begin{document}
+
+\title{Parallel Level-Set Methods on Adaptive Tree-Based Grids}
+
+\author{Mohammad Mirzadeh, Arthur Guittet, Carsten Burstedde, and Frederic Gibou}
+\maketitle
+\section*{Significance and Novely of the Paper}
+In this article we present scalable parallel level-set algorithms on adaptive Quadtree and Octree grids which allow efficient advection of the level-set function by automatically confining the fine grid close to the interface. These algorithms are suitable for massively parallel applications of the level-set methods on machines with distributed memory architecture. The parallelism is based on the partitioning of the adaptive grid using the idea of Space Filling Curves (SFCs). For this purpose we use the open-source \texttt{p4est} library which implements a collection of scalable refinement, coarsening, and partitioning algorithms and has recently been scaled to more than 450,000 CPU cores.
+
+To advect the level-set function on such distributed adaptive grids, we present a parallel semi-Lagrangian algorithm which, similar to its serial counterpart, is unconditionally stable and allows for very large time-steps. Parallelizing the semi-Lagrangian algorithm on distributed adaptive grids, however, proves to be a nontrivial task. This has to do with the inconsistencies between the distribution of departure points across the processes and the parallel partitioning of the tree, which results in an asymmetric communication pattern and can potentially lead to load imbalances. We present an scalable interpolation algorithm that addresses these issues.
+
+We also present a parallel reinitialization algorithm based on the pseudo-time formulation. To ensure maximum scalability, this algorithm is presented in a way that overlaps local calculation with remote communication. Finally we present an application of these algorithms to the solidification phenomena by solving a Stefan problem. Our algorithms show good scalability up to 4096 CPU cores, which is the current limit of our research allocation on the Stampede supercomputer. 
+
+To the best of our knowledge, this is the first large-scale application of the distributed parallelism to the level-set problem on adaptive tree-based grids. We believe that our findings are of interest to a diverse group of researchers in computational physics. We also believe that there are still many interesting directions that could be pursued to further improve upon our algorithms and we hope this paper serves as a starting point for such investigations.
+\end{document}
