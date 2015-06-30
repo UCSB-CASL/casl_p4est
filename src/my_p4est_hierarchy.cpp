@@ -49,7 +49,7 @@ void my_p4est_hierarchy_t::split( int tree_idx, int ind )
   #ifdef P4_TO_P8
           trees[tree_idx][ind].kmin + k*size, /* kmin (3D) only */
   #endif
-          trees[tree_idx][ind].level+1,       /* level */
+          (int8_t) (trees[tree_idx][ind].level+1),       /* level */
           REMOTE_OWNER                        /* owner's rank */
         };
         trees[tree_idx].push_back(child);
@@ -259,38 +259,46 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
   const static double qeps = (double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL) / (double) P4EST_ROOT_LEN;
   const static double  eps = 0.5*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL);
 
-  /* same trick as in p4est poin tlookup */
-  if( fabs(round(xyz[0])-xyz[0]) < 1e-9 ) xyz[0] = round(xyz[0]);
-  if( fabs(round(xyz[1])-xyz[1]) < 1e-9 ) xyz[1] = round(xyz[1]);
+  double xyz_ [] =
+  {
+    xyz[0], xyz[1]
+  #ifdef P4_TO_P8
+    , xyz[2]
+  #endif
+  };
+
+  /* same trick as in p4est point lookup */
+  if( fabs(round(xyz_[0])-xyz_[0]) < 1e-9 ) xyz_[0] = round(xyz_[0]);
+  if( fabs(round(xyz_[1])-xyz_[1]) < 1e-9 ) xyz_[1] = round(xyz_[1]);
 #ifdef P4_TO_P8
-  if( fabs(round(xyz[2])-xyz[2]) < 1e-9 ) xyz[2] = round(xyz[2]);
+  if( fabs(round(xyz_[2])-xyz_[2]) < 1e-9 ) xyz_[2] = round(xyz_[2]);
 #endif
 
   /* clip inside computational domain
    * TODO: this wont work with periodic. Need to add something in myb
    * to indicate if the p4est is periodic
    */
-  if      (xyz[0] < qeps)                     xyz[0] = qeps;
-  else if (xyz[0] > myb->nxyztrees[0] - qeps) xyz[0] = myb->nxyztrees[0] - qeps;
-  if      (xyz[1] < qeps)                     xyz[1] = qeps;
-  else if (xyz[1] > myb->nxyztrees[1] - qeps) xyz[1] = myb->nxyztrees[1] - qeps;
+  if      (xyz_[0] < qeps)                     xyz_[0] = qeps;
+  else if (xyz_[0] > myb->nxyztrees[0] - qeps) xyz_[0] = myb->nxyztrees[0] - qeps;
+  if      (xyz_[1] < qeps)                     xyz_[1] = qeps;
+  else if (xyz_[1] > myb->nxyztrees[1] - qeps) xyz_[1] = myb->nxyztrees[1] - qeps;
 #ifdef P4_TO_P8
-  if      (xyz[2] < qeps)                     xyz[2] = qeps;
-  else if (xyz[2] > myb->nxyztrees[2] - qeps) xyz[2] = myb->nxyztrees[2] - qeps;
+  if      (xyz_[2] < qeps)                     xyz_[2] = qeps;
+  else if (xyz_[2] > myb->nxyztrees[2] - qeps) xyz_[2] = myb->nxyztrees[2] - qeps;
 #endif
 
   int tr_xyz_orig [] =
   {
-     (int)floor(xyz[0]),
-     (int)floor(xyz[1])
+     (int)floor(xyz_[0]),
+     (int)floor(xyz_[1])
   #ifdef P4_TO_P8
-    ,(int)floor(xyz[2])
+    ,(int)floor(xyz_[2])
   #endif
   };
-  double ii = (xyz[0] - tr_xyz_orig[0]) * P4EST_ROOT_LEN;
-  double jj = (xyz[1] - tr_xyz_orig[1]) * P4EST_ROOT_LEN;
+  double ii = (xyz_[0] - tr_xyz_orig[0]) * P4EST_ROOT_LEN;
+  double jj = (xyz_[1] - tr_xyz_orig[1]) * P4EST_ROOT_LEN;
 #ifdef P4_TO_P8
-  double kk = (xyz[2] - tr_xyz_orig[2]) * P4EST_ROOT_LEN;
+  double kk = (xyz_[2] - tr_xyz_orig[2]) * P4EST_ROOT_LEN;
 #endif
 
   bool is_on_face_x = (fabs(ii-floor(ii))<1e-3 || fabs(ceil(ii)-ii)<1e-3);

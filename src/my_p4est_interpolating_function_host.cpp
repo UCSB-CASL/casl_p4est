@@ -32,6 +32,32 @@ extern PetscLogEvent log_InterpolatingFunctionHost_all_reduce;
 #define PetscLogFlops(n) 0
 #endif
 
+InterpolatingFunctionNodeBaseHost::InterpolatingFunctionNodeBaseHost(const my_p4est_node_neighbors_t& neighbors, interpolation_method method)
+  : neighbors_(neighbors), p4est_(neighbors_.p4est), nodes_(neighbors_.nodes), ghost_(neighbors_.ghost), myb_(neighbors_.myb),
+    Fi(NULL),
+    Fxx(NULL), Fyy(NULL),
+#ifdef P4_TO_P8
+    Fzz(NULL),
+#endif
+    method_(method),
+    senders(p4est_->mpisize, 0)
+{
+  if (!(method_ == linear || method_ == quadratic || method_ == quadratic_non_oscillatory))
+    throw std::invalid_argument("[ERROR]: interpolation method should be one of 'linear', 'quadratic', or 'quadratic_non_oscillatory'. ");
+
+  // compute domain sizes
+  double *v2c = p4est_->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est_->connectivity->tree_to_vertex;
+  p4est_topidx_t first_tree = 0, last_tree = p4est_->trees->elem_count-1;
+  p4est_topidx_t first_vertex = 0, last_vertex = P4EST_CHILDREN - 1;
+
+  for (short i=0; i<3; i++)
+    xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
+  for (short i=0; i<3; i++)
+    xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
+}
+
+
 InterpolatingFunctionNodeBaseHost::InterpolatingFunctionNodeBaseHost(Vec F, const my_p4est_node_neighbors_t& neighbors, interpolation_method method)
   : neighbors_(neighbors), p4est_(neighbors_.p4est), nodes_(neighbors_.nodes), ghost_(neighbors_.ghost), myb_(neighbors_.myb),
     Fi(F),
@@ -540,9 +566,17 @@ double InterpolatingFunctionNodeBaseHost::operator ()(double x, double y) const
   std::vector<p4est_quadrant_t> remote_matches;
   int rank_found = neighbors_.hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
   
-  if (rank_found == p4est_->mpirank) { // local quadrant
-    p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, best_match.p.piggy3.which_tree);
-    p4est_locidx_t quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
+  if (rank_found == p4est_->mpirank || (rank_found!=-1 && method_==linear)) { // local quadrant
+    p4est_locidx_t quad_idx;
+    if(rank_found==p4est_->mpirank)
+    {
+      p4est_tree_t *tree = p4est_tree_array_index(p4est_->trees, best_match.p.piggy3.which_tree);
+      quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
+    }
+    else
+    {
+      quad_idx = best_match.p.piggy3.local_num + p4est_->local_num_quadrants;
+    }
 
     for (short i = 0; i<P4EST_CHILDREN; i++) {
       p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + i];
@@ -564,14 +598,14 @@ double InterpolatingFunctionNodeBaseHost::operator ()(double x, double y) const
       } else {
         for (short j = 0; j<P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes_->local_nodes[quad_idx*P4EST_CHILDREN + j];
-          const quad_neighbor_nodes_of_node_t& qnnn = neighbors_[node_idx];
+          const quad_neighbor_nodes_of_node_t& qnnn = neighbors_.get_neighbors(node_idx);
 
           fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
           fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
 #ifdef P4_TO_P8
           fdd[j*P4EST_DIM + 2] = qnnn.dzz_central(Fi_p);
-#endif          
-        }          
+#endif
+        }
       }
     }
      
@@ -586,7 +620,7 @@ double InterpolatingFunctionNodeBaseHost::operator ()(double x, double y) const
 #endif
     }
 
-    double value;
+    double value=0;
     if (method_ == linear) {
       value = linear_interpolation(p4est_, best_match.p.piggy3.which_tree, best_match, f, xyz);
     } else if (method_ == quadratic) {

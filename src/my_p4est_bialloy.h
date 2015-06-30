@@ -1,0 +1,192 @@
+#ifndef MY_P4EST_BIALLOY_H
+#define MY_P4EST_BIALLOY_H
+
+#include <src/casl_types.h>
+#include <src/CASL_math.h>
+
+#ifdef P4_TO_P8
+#include <src/my_p8est_tools.h>
+#include <p8est.h>
+#include <p8est_ghost.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_interpolating_function_host.h>
+#else
+#include <src/my_p4est_tools.h>
+#include <p4est.h>
+#include <p4est_ghost.h>
+#include <src/my_p4est_nodes.h>
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_poisson_node_base.h>
+#include <src/my_p4est_interpolating_function_host.h>
+#endif
+
+
+class my_p4est_bialloy_t
+{
+private:
+
+  PetscErrorCode ierr;
+
+#ifdef P4_TO_P8
+  BoundaryConditions3D bc_t;
+  BoundaryConditions3D bc_cs;
+  BoundaryConditions3D bc_cl;
+#else
+  BoundaryConditions2D bc_t;
+  BoundaryConditions2D bc_cs;
+  BoundaryConditions2D bc_cl;
+#endif
+
+//  InterpolatingFunctionNodeBaseHost *interface_value_c;
+
+  /* grid */
+  my_p4est_brick_t *brick;
+  p4est_connectivity_t *connectivity;
+  p4est_t *p4est;
+  p4est_ghost_t *ghost;
+  p4est_nodes_t *nodes;
+  my_p4est_hierarchy_t *hierarchy;
+  my_p4est_node_neighbors_t *ngbd;
+
+  double dx;
+  double dy;
+#ifdef P4_TO_P8
+  double dz;
+#endif
+
+  /* temperature */
+  Vec temperature_n, temperature_np1;
+  Vec t_interface;
+
+  /* concentration */
+  Vec cs_n, cs_np1;
+  Vec cl_n, cl_np1;
+  Vec c_interface;
+
+  /* velocity */
+  Vec u_interface_n, u_interface_np1;
+  Vec v_interface_n, v_interface_np1;
+#ifdef P4_TO_P8
+  Vec w_interface_n, w_interface_np1;
+#endif
+  Vec normal_velocity_np1;
+
+  /* level-set */
+  Vec phi;
+  Vec nx, ny;
+#ifdef P4_TO_P8
+  Vec nz;
+#endif
+  Vec kappa;
+
+  /* physical parameters */
+  double dt_nm1, dt_n;
+  double cooling_velocity;     /* V */
+  double latent_heat;          /* L */
+  double thermal_conductivity; /* k */
+  double thermal_diffusivity;  /* lambda, dT/dt = lambda Laplace(T) */
+  double solute_diffusivity_l; /* Dl, dCl/dt = Dl Laplace(Cl) */
+  double solute_diffusivity_s; /* Ds, dCs/dt = Ds Laplace(Cl) */
+  double kp;                   /* partition coefficient */
+  double c0;                   /* initial concentration */
+  double ml;                   /* liquidus slope */
+  double Tm;                   /* melting temperature */
+  double epsilon_anisotropy;   /* anisotropy coefficient */
+  double epsilon_c;            /* curvature undercooling coefficient */
+  double epsilon_v;            /* kinetic undercooling coefficient */
+
+  bool solve_concentration_solid;
+
+  bool matrices_are_constructed;
+  Vec rhs;
+
+  double scaling;
+
+public:
+
+  my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd);
+
+  ~my_p4est_bialloy_t();
+
+  void set_parameters( double latent_heat,
+                       double thermal_conductivity,
+                       double thermal_diffusivity,
+                       double solute_diffusivity_l,
+                       double solute_diffusivity_s,
+                       double cooling_velocity,
+                       double kp,
+                       double c0,
+                       double ml,
+                       double Tm,
+                       double epsilon_anisotropy,
+                       double epsilon_c,
+                       double epsilon_v,
+                       double scaling );
+
+  void set_phi(Vec phi);
+
+#ifdef P4_TO_P8
+  void set_bc(WallBC3D& bc_wall_type_t,
+              WallBC3D& bc_wall_type_c,
+              CF_3& bc_wall_value_t,
+              CF_3& bc_wall_value_cs,
+              CF_3& bc_wall_value_cl);
+#else
+  void set_bc(WallBC2D& bc_wall_type_t,
+              WallBC2D& bc_wall_type_c,
+              CF_2& bc_wall_value_t,
+              CF_2& bc_wall_value_cs,
+              CF_2& bc_wall_value_cl);
+#endif
+
+  void set_temperature(Vec temperature);
+
+  void set_concentration(Vec cl, Vec cs);
+
+  void set_normal_velocity(Vec v);
+
+  inline p4est_t* get_p4est() { return p4est; }
+
+  inline p4est_nodes_t* get_nodes() { return nodes; }
+
+  inline Vec get_phi() { return phi; }
+
+  inline Vec get_normal_velocity() { return normal_velocity_np1; }
+
+  inline double get_dt() { return dt_n; }
+
+  void set_dt( double dt );
+
+  void compute_normal_and_curvature();
+
+  void compute_normal_velocity();
+
+  void compute_velocity();
+
+  void solve_temperature();
+
+  void solve_concentration();
+
+  void compute_dt();
+
+  void update_grid();
+
+  void one_step();
+
+  void save_VTK(int iter);
+};
+
+
+
+
+
+
+
+
+
+
+
+
+#endif /* MY_P4EST_BIALLOY_H */

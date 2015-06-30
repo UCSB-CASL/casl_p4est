@@ -7,6 +7,16 @@
  * same functions are logged properly
  */
 
+// PoissonSolverNodeBaseJump
+PetscLogEvent log_PoissonSolverNodeBasedJump_matrix_preallocation;
+PetscLogEvent log_PoissonSolverNodeBasedJump_setup_linear_system;
+PetscLogEvent log_PoissonSolverNodeBasedJump_rhsvec_setup;
+PetscLogEvent log_PoissonSolverNodeBasedJump_KSPSolve;
+PetscLogEvent log_PoissonSolverNodeBasedJump_solve;
+PetscLogEvent log_PoissonSolverNodeBasedJump_compute_voronoi_points;
+PetscLogEvent log_PoissonSolverNodeBasedJump_compute_voronoi_cell;
+PetscLogEvent log_PoissonSolverNodeBasedJump_interpolate_to_tree;
+
 // PoissonSolverNodeBase
 PetscLogEvent log_PoissonSolverNodeBased_matrix_preallocation;
 PetscLogEvent log_PoissonSolverNodeBased_matrix_setup;
@@ -117,8 +127,19 @@ PetscLogEvent log_my_sc_notify_allgather;
 void register_petsc_logs()
 {
   PetscErrorCode ierr;
+
+  // PoissonSolverNodeBaseJump
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::matrix_preallocation        ", 0, &log_PoissonSolverNodeBasedJump_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::setup_linear_system         ", 0, &log_PoissonSolverNodeBasedJump_setup_linear_system); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::rhsvec_setup                ", 0, &log_PoissonSolverNodeBasedJump_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::solve                       ", 0, &log_PoissonSolverNodeBasedJump_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::compute_voronoi_points      ", 0, &log_PoissonSolverNodeBasedJump_compute_voronoi_points); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::compute_voronoi_cell        ", 0, &log_PoissonSolverNodeBasedJump_compute_voronoi_cell); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::interpolate_to_tree         ", 0, &log_PoissonSolverNodeBasedJump_interpolate_to_tree); CHKERRXX(ierr);
+
+
   // PoissonSolverNodeBase
- ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_preallocation            ", 0, &log_PoissonSolverNodeBased_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_preallocation            ", 0, &log_PoissonSolverNodeBased_matrix_preallocation); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_setup                    ", 0, &log_PoissonSolverNodeBased_matrix_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::rhsvec_setup                    ", 0, &log_PoissonSolverNodeBased_rhsvec_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBased::solve                           ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);

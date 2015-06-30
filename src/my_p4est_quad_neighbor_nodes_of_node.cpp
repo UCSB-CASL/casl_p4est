@@ -223,8 +223,8 @@ double quad_neighbor_nodes_of_node_t::dxx_central_on_m00(const double *f, const 
   ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dxx_central_m00, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double fxx_m00_mm = 0, fxx_m00_pm = 0;
-  if (d_m00_p0 != 0) { fxx_m00_mm = neighbors[node_m00_mm].dxx_central(f); }
-  if (d_m00_m0 != 0) { fxx_m00_pm = neighbors[node_m00_pm].dxx_central(f); }
+  if (d_m00_p0 != 0) { fxx_m00_mm = neighbors.get_neighbors(node_m00_mm).dxx_central(f); }
+  if (d_m00_m0 != 0) { fxx_m00_pm = neighbors.get_neighbors(node_m00_pm).dxx_central(f); }
 
   ierr = PetscLogFlops(5); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dxx_central_m00, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -238,8 +238,8 @@ double quad_neighbor_nodes_of_node_t::dxx_central_on_p00(const double *f, const 
   ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dxx_central_p00, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double fxx_p00_mm = 0, fxx_p00_pm = 0;
-  if (d_p00_p0 != 0) { fxx_p00_mm = neighbors[node_p00_mm].dxx_central(f); }
-  if (d_p00_m0 != 0) { fxx_p00_pm = neighbors[node_p00_pm].dxx_central(f); }
+  if (d_p00_p0 != 0) { fxx_p00_mm = neighbors.get_neighbors(node_p00_mm).dxx_central(f); }
+  if (d_p00_m0 != 0) { fxx_p00_pm = neighbors.get_neighbors(node_p00_pm).dxx_central(f); }
 
   ierr = PetscLogFlops(5); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dxx_central_p00, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -253,8 +253,8 @@ double quad_neighbor_nodes_of_node_t::dyy_central_on_0m0(const double *f, const 
   ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dyy_central_0m0, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double fyy_0m0_mm = 0, fyy_0m0_pm = 0;
-  if (d_0m0_p0 != 0) { fyy_0m0_mm = neighbors[node_0m0_mm].dyy_central(f); }
-  if (d_0m0_m0 != 0) { fyy_0m0_pm = neighbors[node_0m0_pm].dyy_central(f); }
+  if (d_0m0_p0 != 0) { fyy_0m0_mm = neighbors.get_neighbors(node_0m0_mm).dyy_central(f); }
+  if (d_0m0_m0 != 0) { fyy_0m0_pm = neighbors.get_neighbors(node_0m0_pm).dyy_central(f); }
 
   ierr = PetscLogFlops(5); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central_0m0, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -268,8 +268,8 @@ double quad_neighbor_nodes_of_node_t::dyy_central_on_0p0(const double *f, const 
   ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dyy_central_0p0, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double fyy_0p0_mm = 0, fyy_0p0_pm = 0;
-  if (d_0p0_p0 != 0) { fyy_0p0_mm = neighbors[node_0p0_mm].dyy_central(f); }
-  if (d_0p0_m0 != 0) { fyy_0p0_pm = neighbors[node_0p0_pm].dyy_central(f); }
+  if (d_0p0_p0 != 0) { fyy_0p0_mm = neighbors.get_neighbors(node_0p0_mm).dyy_central(f); }
+  if (d_0p0_m0 != 0) { fyy_0p0_pm = neighbors.get_neighbors(node_0p0_pm).dyy_central(f); }
 
   ierr = PetscLogFlops(5); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central_0p0, 0, 0, 0, 0); CHKERRXX(ierr);

@@ -154,3 +154,79 @@ double Simplex2::integral( double f0, double f1, double f2,
     }
   }
 }
+
+
+double Simplex2::integrate_Over_Interface( double f0, double f1, double f2,
+                                           double p0, double p1, double p2)
+{
+  /* simple cases */
+  if(p0<=0 && p1<=0 && p2<=0) return 0;
+  if(p0>=0 && p1>=0 && p2>=0) return 0;
+
+
+  int number_of_negatives = 0;
+  if(p0<0) number_of_negatives++;
+  if(p1<0) number_of_negatives++;
+  if(p2<0) number_of_negatives++;
+
+#ifdef CASL_THROWS
+  if(number_of_negatives!=1 && number_of_negatives!=2) throw std::runtime_error("[CASL_ERROR]: Simplex2->integrate_Over_Interface: Wrong configuration.");
+#endif
+
+  if(number_of_negatives==2)
+  {
+    p0*=-1; p1*=-1; p2*=-1;
+  }
+
+  /* sorting for simplification into one case */
+  if(p0>0 && p1<0) { swap(p0,p1); swap(f0,f1); swap(x0,x1); swap(y0,y1); }
+  if(p0>0 && p2<0) { swap(p0,p2); swap(f0,f2); swap(x0,x2); swap(y0,y2); }
+  if(p1>0 && p2<0) { swap(p1,p2); swap(f1,f2); swap(x1,x2); swap(y1,y2); }
+
+  /* type : (-++) */
+  Point2 p_btw_01 = interpol_p(x0, y0, p0, x1, y1, p1); Point2 p_btw_02 = interpol_p(x0, y0, p0, x2, y2, p2);
+  double f_btw_01 = interpol_f(f0, p0, f1, p1); double f_btw_02 = interpol_f(f0, p0, f2, p2);
+
+  double length_of_line_segment = (p_btw_02 - p_btw_01).norm_L2();
+
+  return length_of_line_segment * (f_btw_02 + f_btw_01)/2.;
+}
+
+
+
+
+double Simplex2::integrate_Over_Interface( const CF_2& f,
+                                           double p0, double p1, double p2)
+{
+  /* simple cases */
+  if(p0<=0 && p1<=0 && p2<=0) return 0;
+  if(p0>=0 && p1>=0 && p2>=0) return 0;
+
+
+  int number_of_negatives = 0;
+  if(p0<0) number_of_negatives++;
+  if(p1<0) number_of_negatives++;
+  if(p2<0) number_of_negatives++;
+
+#ifdef CASL_THROWS
+  if(number_of_negatives!=1 && number_of_negatives!=2) throw std::runtime_error("[CASL_ERROR]: Simplex2->integrate_Over_Interface: Wrong configuration.");
+#endif
+
+  if(number_of_negatives==2)
+  {
+    p0*=-1; p1*=-1; p2*=-1;
+  }
+
+  /* sorting for simplification into one case */
+  if(p0>0 && p1<0) { swap(p0,p1); swap(x0,x1); swap(y0,y1); }
+  if(p0>0 && p2<0) { swap(p0,p2); swap(x0,x2); swap(y0,y2); }
+  if(p1>0 && p2<0) { swap(p1,p2); swap(x1,x2); swap(y1,y2); }
+
+  /* type : (-++) */
+  Point2 p_btw_01 = interpol_p(x0, y0, p0, x1, y1, p1); Point2 p_btw_02 = interpol_p(x0, y0, p0, x2, y2, p2);
+  double f_btw_01 = f(p_btw_01.x, p_btw_01.y); double f_btw_02 = f(p_btw_02.x, p_btw_02.y);
+
+  double length_of_line_segment = (p_btw_02 - p_btw_01).norm_L2();
+
+  return length_of_line_segment * (f_btw_02 + f_btw_01)/2.;
+}
