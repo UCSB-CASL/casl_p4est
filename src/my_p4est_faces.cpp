@@ -14,6 +14,8 @@
 #include <src/cube2.h>
 #endif
 
+#include <sc_notify.h>
+
 #ifndef CASL_LOG_EVENTS
 #undef PetscLogEventBegin
 #undef PetscLogEventEnd
@@ -256,19 +258,37 @@ void my_p4est_faces_t::init_faces()
   }
 
 
-  /* send the queries to fill in the local information */
-  vector<MPI_Request> req_query1(p4est->mpisize);
+  vector<int> receivers_rank;
   for(int r=0; r<p4est->mpisize; ++r)
   {
-    mpiret = MPI_Isend(&buff_query1[r][0], buff_query1[r].size()*sizeof(faces_comm_1_t), MPI_BYTE, r, 5, p4est->mpicomm, &req_query1[r]);
+    if(buff_query1[r].size()>0)
+    {
+      P4EST_ASSERT(r != p4est->mpirank);
+      receivers_rank.push_back(r);
+    }
+  }
+  int num_receivers = receivers_rank.size();
+  vector<int> senders_rank(p4est->mpisize);
+  int num_senders;
+
+  /* figure out the first communication pattern */
+  sc_notify(receivers_rank.data(), num_receivers, senders_rank.data(), &num_senders, p4est->mpicomm);
+
+
+  /* send the queries to fill in the local information */
+  vector<MPI_Request> req_query1(num_receivers);
+  for(int l=0; l<num_receivers; ++l)
+  {
+    mpiret = MPI_Isend(&buff_query1[receivers_rank[l]][0],
+        buff_query1[receivers_rank[l]].size()*sizeof(faces_comm_1_t),
+        MPI_BYTE, receivers_rank[l], 5, p4est->mpicomm, &req_query1[l]);
     SC_CHECK_MPI(mpiret);
   }
 
   vector<faces_comm_1_t> buff_recv_comm1;
-  vector< vector<p4est_locidx_t> > buff_reply1_send(p4est->mpisize);
-  vector<MPI_Request> req_reply1(p4est->mpisize);
-  int nb_recv = p4est->mpisize;
-  while(nb_recv>0)
+  vector< vector<p4est_locidx_t> > buff_reply1_send(num_senders);
+  vector<MPI_Request> req_reply1(num_senders);
+  for(int l=0; l<num_senders; ++l)
   {
     MPI_Status status;
     mpiret = MPI_Probe(MPI_ANY_SOURCE, 5, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
@@ -282,24 +302,22 @@ void my_p4est_faces_t::init_faces()
     SC_CHECK_MPI(mpiret);
 
     /* prepare the reply */
-    buff_reply1_send[r].resize(buff_recv_comm1.size());
+    buff_reply1_send[l].resize(buff_recv_comm1.size());
     for(unsigned int n=0; n<buff_recv_comm1.size(); ++n)
     {
-      buff_reply1_send[r][n] = q2f_[buff_recv_comm1[n].dir][buff_recv_comm1[n].local_num];
+      buff_reply1_send[l][n] = q2f_[buff_recv_comm1[n].dir][buff_recv_comm1[n].local_num];
     }
 
     /* send reply */
-    mpiret = MPI_Isend(&buff_reply1_send[r][0], vec_size*sizeof(p4est_locidx_t), MPI_BYTE, r, 6, p4est->mpicomm, &req_reply1[r]);
+    mpiret = MPI_Isend(&buff_reply1_send[l][0], vec_size*sizeof(p4est_locidx_t), MPI_BYTE, r, 6, p4est->mpicomm, &req_reply1[l]);
     SC_CHECK_MPI(mpiret);
-
-    nb_recv--;
   }
   buff_recv_comm1.clear();
 
+
   /* get the reply and fill in the missing local information */
   vector<p4est_locidx_t> buff_recv_locidx;
-  nb_recv = p4est->mpisize;
-  while(nb_recv>0)
+  for(int l=0; l<num_receivers; ++l)
   {
     MPI_Status status;
     mpiret = MPI_Probe(MPI_ANY_SOURCE, 6, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
@@ -341,14 +359,11 @@ void my_p4est_faces_t::init_faces()
 #endif
       }
     }
-
-    nb_recv--;
   }
   buff_recv_locidx.clear();
 
-  mpiret = MPI_Waitall(req_query1.size(), &req_query1[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
-  mpiret = MPI_Waitall(req_reply1.size(), &req_reply1[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
-
+  mpiret = MPI_Waitall(num_receivers, &req_query1[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Waitall(num_senders  , &req_reply1[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
 
   /* now synchronize the ghost layer */
   vector< vector<p4est_locidx_t> > buff_query2(p4est->mpisize);
@@ -362,18 +377,31 @@ void my_p4est_faces_t::init_faces()
     map[r].push_back(ghost_idx);
   }
 
-
-  vector<MPI_Request> req_query2(p4est->mpisize);
+  /* figure out the second communication pattern */
+  receivers_rank.clear();
   for(int r=0; r<p4est->mpisize; ++r)
   {
-    mpiret = MPI_Isend(&buff_query2[r][0], buff_query2[r].size()*sizeof(p4est_locidx_t), MPI_BYTE, r, 7, p4est->mpicomm, &req_query2[r]);
+    if(buff_query2[r].size()>0)
+    {
+      P4EST_ASSERT(r != p4est->mpirank);
+      receivers_rank.push_back(r);
+    }
+  }
+  num_receivers = receivers_rank.size();
+  sc_notify(receivers_rank.data(), num_receivers, senders_rank.data(), &num_senders, p4est->mpicomm);
+
+  vector<MPI_Request> req_query2(num_receivers);
+  for(int l=0; l<num_receivers; ++l)
+  {
+    mpiret = MPI_Isend(&buff_query2[receivers_rank[l]][0],
+        buff_query2[receivers_rank[l]].size()*sizeof(p4est_locidx_t),
+        MPI_BYTE, receivers_rank[l], 7, p4est->mpicomm, &req_query2[l]);
     SC_CHECK_MPI(mpiret);
   }
 
-  vector<MPI_Request> req_reply2(p4est->mpisize);
-  vector< vector<faces_comm_2_t> > buff_reply2(p4est->mpisize);
-  nb_recv = p4est->mpisize;
-  while(nb_recv>0)
+  vector<MPI_Request> req_reply2(num_senders);
+  vector< vector<faces_comm_2_t> > buff_reply2(num_senders);
+  for(int l=0; l<num_senders; ++l)
   {
     MPI_Status status;
     mpiret = MPI_Probe(MPI_ANY_SOURCE, 7, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
@@ -405,20 +433,17 @@ void my_p4est_faces_t::init_faces()
           c.local_num[dir] = ghost_local_num[dir/2][u_tmp-num_local[dir/2]];
         }
       }
-      buff_reply2[r].push_back(c);
+      buff_reply2[l].push_back(c);
     }
 
-    mpiret = MPI_Isend(&buff_reply2[r][0], buff_reply2[r].size()*sizeof(faces_comm_2_t), MPI_BYTE, r, 8, p4est->mpicomm, &req_reply2[r]);
+    mpiret = MPI_Isend(&buff_reply2[l][0], buff_reply2[l].size()*sizeof(faces_comm_2_t), MPI_BYTE, r, 8, p4est->mpicomm, &req_reply2[l]);
     SC_CHECK_MPI(mpiret);
-
-    nb_recv--;
   }
 
 
   /* receive the ghost information and fill in the local info */
-  nb_recv = p4est->mpisize;
   vector<faces_comm_2_t> buff_recv_comm2;
-  while(nb_recv>0)
+  for(int l=0; l<num_receivers; ++l)
   {
     MPI_Status status;
     mpiret = MPI_Probe(MPI_ANY_SOURCE, 8, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
@@ -619,7 +644,6 @@ void my_p4est_faces_t::init_faces()
 #endif
 
     }
-    nb_recv--;
   }
 
 
@@ -654,8 +678,8 @@ void my_p4est_faces_t::init_faces()
     }
   }
 
-  mpiret = MPI_Waitall(req_query2.size(), &req_query2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
-  mpiret = MPI_Waitall(req_reply2.size(), &req_reply2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Waitall(num_receivers, &req_query2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Waitall(num_senders  , &req_reply2[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
 
   ierr = PetscLogEventEnd(log_my_p4est_faces_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
