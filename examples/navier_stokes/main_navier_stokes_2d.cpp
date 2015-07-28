@@ -1248,7 +1248,7 @@ int main (int argc, char* argv[])
       }
     }
 
-    ierr = PetscPrintf(mpi->mpicomm, "Iteration #%04d : tn = %.5f, percent done : %.1f%%, \t max_L2_norm_u = %.5f\n", iter, tn, 100*tn/tf, ns.get_max_L2_norm_u()); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi->mpicomm, "Iteration #%04d : tn = %.5f, percent done : %.1f%%, \t max_L2_norm_u = %.5f, \t number of leaves = %d\n", iter, tn, 100*tn/tf, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
     if(save_vtk && iter%save_every_n==0)
     {
@@ -1283,6 +1283,8 @@ int main (int argc, char* argv[])
 
 
     iter++;
+    if(iter==5)
+      break;
   }
 
 #ifndef P4_TO_P8
