@@ -460,7 +460,7 @@ int main (int argc, char* argv[])
 
   for(int repeat=0; repeat<nb_repeat; ++repeat)
   {
-    ierr = PetscPrintf(mpi->mpicomm, "#################### REPEAT %d ####################\n");
+    ierr = PetscPrintf(mpi->mpicomm, "#################### REPEAT %d ####################\n", repeat);
 
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t brick;
