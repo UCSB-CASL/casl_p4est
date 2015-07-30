@@ -221,7 +221,13 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
   ierr = KSPSetType(ksp, ksp_type); CHKERRXX(ierr);
   ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
   if (use_nonzero_initial_guess)
+  {
     ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
+  }
+  if (matrix_has_nullspace)
+  {
+    ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+  }
   ierr = KSPSetFromOptions(ksp); CHKERRXX(ierr);
 
   // set pc type
@@ -247,12 +253,6 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
 
   // setup rhs
   setup_negative_laplace_rhsvec();
-
-  // set the null-space if necessary
-  if (matrix_has_nullspace)
-  {
-    ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
-  }
 
   // Solve the system
   ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
