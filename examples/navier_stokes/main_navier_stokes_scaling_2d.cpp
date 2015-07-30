@@ -473,77 +473,48 @@ int main (int argc, char* argv[])
     p4est_t *p4est_nm1 = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
     splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
 
-#ifndef P4_TO_P8
-    /* create a temporary forest to reinitialize the level set function for the analytic vortex case */
-    if(test_number==0 || test_number==1)
-    {
-      splitting_criteria_cf_t data_tmp(lmin+nb_splits, lmax+nb_splits, &level_set, 1.2);
-      p4est_t *p4est_tmp = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
-      p4est_tmp->user_pointer = (void*)&data_tmp;
-      my_p4est_refine(p4est_tmp, P4EST_TRUE, refine_levelset_cf, NULL);
-      //  my_p4est_partition(p4est_tmp, P4EST_FALSE, NULL); cannot partition ! otherwise communications when refining ...
-      p4est_ghost_t *ghost_tmp = my_p4est_ghost_new(p4est_tmp, P4EST_CONNECT_FULL);
-      p4est_nodes_t *nodes_tmp = my_p4est_nodes_new(p4est_tmp, ghost_tmp);
-      my_p4est_hierarchy_t *hierarchy_tmp = new my_p4est_hierarchy_t(p4est_tmp, ghost_tmp, &brick);
-      my_p4est_node_neighbors_t *ngbd_tmp = new my_p4est_node_neighbors_t(hierarchy_tmp, nodes_tmp);
-      Vec phi_tmp;
-      ierr = VecCreateGhostNodes(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);
-      sample_cf_on_nodes(p4est_tmp, nodes_tmp, level_set, phi_tmp);
-
-      my_p4est_level_set_t *ls_tmp = new my_p4est_level_set_t(ngbd_tmp);
-      ls_tmp->reinitialize_1st_order_time_2nd_order_space(phi_tmp, 100);
-      ls_tmp->perturb_level_set_function(phi_tmp, EPS);
-      delete ls_tmp;
-
-      my_p4est_interpolation_nodes_t *interp = new my_p4est_interpolation_nodes_t(ngbd_tmp);
-      interp->set_input(phi_tmp, linear);
-      splitting_criteria_cf_t data_reinit(lmin+nb_splits, lmax+nb_splits, interp, 1.2);
-
-      p4est_nm1->user_pointer = (void*)&data_reinit;
-      my_p4est_refine(p4est_nm1, P4EST_TRUE, refine_levelset_cf, NULL);
-
-      /* destroy the temporary forest */
-      delete interp;
-      ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
-      delete ngbd_tmp;
-      delete hierarchy_tmp;
-      p4est_nodes_destroy(nodes_tmp);
-      p4est_ghost_destroy(ghost_tmp);
-      p4est_destroy(p4est_tmp);
-
-      p4est_nm1->user_pointer = (void*)&data;
-    }
-    else
-#endif
-    {
-      p4est_nm1->user_pointer = (void*)&data;
-      my_p4est_refine(p4est_nm1, P4EST_TRUE, refine_levelset_cf, NULL);
-    }
+		p4est_nm1->user_pointer = (void*)&data;
+		my_p4est_refine(p4est_nm1, P4EST_TRUE, refine_levelset_cf, NULL);
 
     /* create the initial forest at time nm1 */
     p4est_balance(p4est_nm1, P4EST_CONNECT_FULL, NULL);
     my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
 
+    ierr = PetscPrintf(mpi->mpicomm, "partitioning nm1 done...\n");
+
     p4est_ghost_t *ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
+
+    ierr = PetscPrintf(mpi->mpicomm, "ceating ghost nm1 done...\n");
 
     p4est_nodes_t *nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
     my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick);
     my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+
+    ierr = PetscPrintf(mpi->mpicomm, "forest nm1 done...\n");
 
     /* create the initial forest at time n */
     p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
     p4est_n->user_pointer = (void*)&data;
     my_p4est_partition(p4est_n, P4EST_FALSE, NULL);
 
+    ierr = PetscPrintf(mpi->mpicomm, "partitioning n done...\n");
+
     p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_n, ghost_n);
+
+    ierr = PetscPrintf(mpi->mpicomm, "ceating ghost n done...\n");
 
     p4est_nodes_t *nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
     my_p4est_hierarchy_t *hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, &brick);
     my_p4est_node_neighbors_t *ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
     my_p4est_cell_neighbors_t *ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_n);
+
+    ierr = PetscPrintf(mpi->mpicomm, "forest nm1 done...\n");
+
     my_p4est_faces_t *faces_n = new my_p4est_faces_t(p4est_n, ghost_n, &brick, ngbd_c);
+
+    ierr = PetscPrintf(mpi->mpicomm, "ceating faces done...\n");
 
     Vec phi;
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
@@ -608,12 +579,15 @@ int main (int argc, char* argv[])
         ns.compute_dt();
         dt = ns.get_dt();
         ns.update_from_tn_to_tnp1(&level_set);
+				ierr = PetscPrintf(mpi->mpicomm, "update done...\n");
       }
 
       ns.solve_viscosity();
+			ierr = PetscPrintf(mpi->mpicomm, "viscosity done...\n");
       ns.solve_projection();
+			ierr = PetscPrintf(mpi->mpicomm, "projection done...\n");
       ns.compute_velocity_at_nodes();
-      ns.compute_pressure();
+			ierr = PetscPrintf(mpi->mpicomm, "switch to nodes done...\n");
 
       tn += dt;
 

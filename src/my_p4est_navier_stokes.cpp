@@ -987,7 +987,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   solver.set_bc(bc_vstar);
   solver.set_rhs(rhs);
 #ifdef P4_TO_P8
-  solver.set_compute_partition_on_the_fly(false);
+  solver.set_compute_partition_on_the_fly(true);
 #else
   solver.set_compute_partition_on_the_fly(false);
 #endif
