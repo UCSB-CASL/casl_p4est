@@ -82,7 +82,7 @@ class my_p4est_poisson_faces_t
   my_p4est_poisson_faces_t(const my_p4est_poisson_faces_t& other);
   my_p4est_poisson_faces_t& operator=(const my_p4est_poisson_faces_t& other);
 
-  void reset_linear_solver(bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
+  void reset_linear_solver(bool use_nonzero_initial_guess, bool null_space, KSPType ksp_type, PCType pc_type);
 
   inline p4est_topidx_t face_global_number(p4est_locidx_t f_idx, int dir)
   {

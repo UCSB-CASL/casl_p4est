@@ -84,7 +84,7 @@ my_p4est_poisson_faces_t::~my_p4est_poisson_faces_t()
 }
 
 
-void my_p4est_poisson_faces_t::reset_linear_solver(bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
+void my_p4est_poisson_faces_t::reset_linear_solver(bool use_nonzero_initial_guess, bool null_space, KSPType ksp_type, PCType pc_type)
 {
   PetscErrorCode ierr;
   if(ksp!=PETSC_NULL) { ierr = KSPDestroy(ksp); CHKERRXX(ierr);}
@@ -96,7 +96,13 @@ void my_p4est_poisson_faces_t::reset_linear_solver(bool use_nonzero_initial_gues
   /* set ksp type */
   ierr = KSPSetType(ksp, ksp_type); CHKERRXX(ierr);
   if (use_nonzero_initial_guess)
+  {
     ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
+  }
+  if (null_space)
+  {
+    ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+  }
   ierr = KSPSetFromOptions(ksp); CHKERRXX(ierr);
 
   /* set pc type */
@@ -208,13 +214,9 @@ void my_p4est_poisson_faces_t::solve(Vec *solution, bool use_nonzero_initial_gue
     /* assemble the linear system */
     setup_linear_system(dir);
 
-    reset_linear_solver(use_nonzero_initial_guess, ksp_type, pc_type);
+    reset_linear_solver(use_nonzero_initial_guess, matrix_has_nullspace[dir], ksp_type, pc_type);
 
     ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
-
-    /* set the nullspace */
-    if (matrix_has_nullspace[dir])
-      ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
 
     /* solve the system */
     ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_KSPSolve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
