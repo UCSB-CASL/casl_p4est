@@ -487,8 +487,11 @@ int main (int argc, char* argv[])
 
     ierr = PetscPrintf(mpi->mpicomm, "ceating ghost nm1 done...\n");
 
+    ierr = PetscPrintf(p4est_n->mpicomm, "starting nodes...\n"); CHKERRXX(ierr);
     p4est_nodes_t *nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
+    ierr = PetscPrintf(p4est_n->mpicomm, "starting hierarchy...\n"); CHKERRXX(ierr);
     my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick);
+    ierr = PetscPrintf(p4est_n->mpicomm, "starting nodes_neighbors...\n"); CHKERRXX(ierr);
     my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
 
     ierr = PetscPrintf(mpi->mpicomm, "forest nm1 done...\n");
