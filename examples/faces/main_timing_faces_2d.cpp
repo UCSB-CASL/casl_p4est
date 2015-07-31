@@ -110,6 +110,7 @@ public:
 
 int main (int argc, char* argv[])
 {
+	PetscErrorCode ierr;
   mpi_context_t mpi_context, *mpi = &mpi_context;
   mpi->mpicomm  = MPI_COMM_WORLD;
 
@@ -153,13 +154,25 @@ int main (int argc, char* argv[])
   p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
   my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
+	ierr = PetscPrintf(mpi->mpicomm, "partition created\n"); CHKERRXX(ierr);
+
   p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est, ghost);
+	
+	ierr = PetscPrintf(mpi->mpicomm, "ghost created\n"); CHKERRXX(ierr);
+
   p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
+
+	ierr = PetscPrintf(mpi->mpicomm, "nodes created\n"); CHKERRXX(ierr);
 
   my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
   my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
+
+	ierr = PetscPrintf(mpi->mpicomm, "ngbd_c created\n"); CHKERRXX(ierr);
+
   my_p4est_faces_t faces(p4est, ghost, &brick, &ngbd_c);
+
+	ierr = PetscPrintf(mpi->mpicomm, "faces created\n"); CHKERRXX(ierr);
 
   p4est_nodes_destroy(nodes);
   p4est_ghost_destroy(ghost);
