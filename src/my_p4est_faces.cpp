@@ -23,6 +23,7 @@
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
 extern PetscLogEvent log_my_p4est_faces_t;
+extern PetscLogEvent log_my_p4est_faces_notify_t;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -272,7 +273,9 @@ void my_p4est_faces_t::init_faces()
   int num_senders;
 
   /* figure out the first communication pattern */
+  ierr = PetscLogEventBegin(log_my_p4est_faces_notify_t, 0, 0, 0, 0); CHKERRXX(ierr);
   sc_notify(receivers_rank.data(), num_receivers, senders_rank.data(), &num_senders, p4est->mpicomm);
+  ierr = PetscLogEventEnd(log_my_p4est_faces_notify_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
 
   /* send the queries to fill in the local information */
@@ -388,7 +391,9 @@ void my_p4est_faces_t::init_faces()
     }
   }
   num_receivers = receivers_rank.size();
+  ierr = PetscLogEventBegin(log_my_p4est_faces_notify_t, 0, 0, 0, 0); CHKERRXX(ierr);
   sc_notify(receivers_rank.data(), num_receivers, senders_rank.data(), &num_senders, p4est->mpicomm);
+  ierr = PetscLogEventEnd(log_my_p4est_faces_notify_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
   vector<MPI_Request> req_query2(num_receivers);
   for(int l=0; l<num_receivers; ++l)

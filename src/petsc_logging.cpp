@@ -118,6 +118,7 @@ PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central_block;
 
 // my_p4est_faces_t
 PetscLogEvent log_my_p4est_faces_t;
+PetscLogEvent log_my_p4est_faces_notify_t;
 
 // functions
 PetscLogEvent log_my_p4est_vtk_write_all;
@@ -223,6 +224,7 @@ void register_petsc_logs()
 
   // my_p4est_faces_t
   ierr = PetscLogEventRegister("my_p4est_faces_t::init                                  ", 0, &log_my_p4est_faces_t); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_faces_t::notify                                ", 0, &log_my_p4est_faces_notify_t); CHKERRXX(ierr);
 
   // quad_neighbor_nodes_of_node_t
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::ngbd_with_quad_interp    ", 0, &log_quad_neighbor_nodes_of_node_t_ngbd_with_quad_interp); CHKERRXX(ierr);
