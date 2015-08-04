@@ -986,9 +986,9 @@ int main (int argc, char* argv[])
 
   cmd.print();
 
-  int lmin = cmd.get("lmin", 2);
-  int lmax = cmd.get("lmax", 4);
   int nb_splits = cmd.get("nb_splits", 0);
+  int lmin = cmd.get("lmin", 2) + nb_splits;
+  int lmax = cmd.get("lmax", 4) + nb_splits;
   double n_times_dt = cmd.get("n_times_dt", 2.);
   double threshold_split_cell = cmd.get("thresh", 0.04);
   bool save_vtk = cmd.get("save_vtk", true);
@@ -1088,13 +1088,13 @@ int main (int argc, char* argv[])
 #endif
 
   p4est_t *p4est_nm1 = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
-  splitting_criteria_cf_t data(lmin+nb_splits, lmax+nb_splits, &level_set, 1.2);
+  splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
 
 #ifndef P4_TO_P8
   /* create a temporary forest to reinitialize the level set function for the analytic vortex case */
   if(test_number==0 || test_number==1)
   {
-    splitting_criteria_cf_t data_tmp(lmin+nb_splits, lmax+nb_splits, &level_set, 1.2);
+    splitting_criteria_cf_t data_tmp(lmin, lmax, &level_set, 1.2);
     p4est_t *p4est_tmp = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
     p4est_tmp->user_pointer = (void*)&data_tmp;
     my_p4est_refine(p4est_tmp, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -1114,7 +1114,7 @@ int main (int argc, char* argv[])
 
     my_p4est_interpolation_nodes_t *interp = new my_p4est_interpolation_nodes_t(ngbd_tmp);
     interp->set_input(phi_tmp, linear);
-    splitting_criteria_cf_t data_reinit(lmin+nb_splits, lmax+nb_splits, interp, 1.2);
+    splitting_criteria_cf_t data_reinit(lmin, lmax, interp, 1.2);
 
     p4est_nm1->user_pointer = (void*)&data_reinit;
     my_p4est_refine(p4est_nm1, P4EST_TRUE, refine_levelset_cf, NULL);

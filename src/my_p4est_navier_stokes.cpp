@@ -1254,13 +1254,13 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
   p4est_np1->user_pointer = (void*)&criteria;
 
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  ierr = PetscPrintf(p4est_n->mpicomm, "starting nodes...\n"); CHKERRXX(ierr);
+//  ierr = PetscPrintf(p4est_n->mpicomm, "starting nodes...\n"); CHKERRXX(ierr);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-  ierr = PetscPrintf(p4est_n->mpicomm, "starting hierarchy...\n"); CHKERRXX(ierr);
+//  ierr = PetscPrintf(p4est_n->mpicomm, "starting hierarchy...\n"); CHKERRXX(ierr);
   my_p4est_hierarchy_t *hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
-  ierr = PetscPrintf(p4est_n->mpicomm, "starting nodes_neighbors...\n"); CHKERRXX(ierr);
+//  ierr = PetscPrintf(p4est_n->mpicomm, "starting nodes_neighbors...\n"); CHKERRXX(ierr);
   my_p4est_node_neighbors_t *ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
-  ierr = PetscPrintf(p4est_n->mpicomm, "done!\n"); CHKERRXX(ierr);
+//  ierr = PetscPrintf(p4est_n->mpicomm, "done!\n"); CHKERRXX(ierr);
 
   Vec phi_np1;
   ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
@@ -1297,13 +1297,13 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
   {
     my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
     p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-    ierr = PetscPrintf(p4est_n->mpicomm, "starting nodes...\n"); CHKERRXX(ierr);
+//    ierr = PetscPrintf(p4est_n->mpicomm, "starting nodes...\n"); CHKERRXX(ierr);
     p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-    ierr = PetscPrintf(p4est_n->mpicomm, "starting hierarchy...\n"); CHKERRXX(ierr);
+//    ierr = PetscPrintf(p4est_n->mpicomm, "starting hierarchy...\n"); CHKERRXX(ierr);
     delete hierarchy_np1; hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
-    ierr = PetscPrintf(p4est_n->mpicomm, "starting nodes_neighbors...\n"); CHKERRXX(ierr);
+//    ierr = PetscPrintf(p4est_n->mpicomm, "starting nodes_neighbors...\n"); CHKERRXX(ierr);
     delete ngbd_np1; ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
-    ierr = PetscPrintf(p4est_n->mpicomm, "done!\n"); CHKERRXX(ierr);
+//    ierr = PetscPrintf(p4est_n->mpicomm, "done!\n"); CHKERRXX(ierr);
 
     ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
