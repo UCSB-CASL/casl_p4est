@@ -1769,7 +1769,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
     }
   }
 
-  if (matrix_has_nullspace && fixed_value_idx_l > 0){
+  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
     rhs_p[fixed_value_idx_l] = 0;
   }
 
@@ -3040,7 +3040,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
     }
   }
 
-  if (matrix_has_nullspace && fixed_value_idx_l > 0){
+  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
     rhs_p[fixed_value_idx_l] = 0;
   }
 
@@ -4460,7 +4460,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
     }
   }
 
-  if (matrix_has_nullspace && fixed_value_idx_l > 0){
+  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
     rhs_p[fixed_value_idx_l] = 0;
   }
 

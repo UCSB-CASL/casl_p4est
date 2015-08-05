@@ -49,8 +49,11 @@ class my_p4est_poisson_cells_t
 #endif
 
   // PETSc objects
+  bool nullspace_use_fixed_point;
   Mat A;
   MatNullSpace A_null_space;
+  p4est_gloidx_t fixed_value_idx_g;
+  p4est_gloidx_t fixed_value_idx_l;
   Vec rhs, phi, add;
   KSP ksp;
   PetscErrorCode ierr;
@@ -82,6 +85,11 @@ class my_p4est_poisson_cells_t
 public:
   my_p4est_poisson_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t* ngbd_n);
   ~my_p4est_poisson_cells_t();
+
+  /* Default value is false, the nullspace is then removed from the linear system by calling the Petsc procedures.
+   * If you choose true, the point with the smallest global index that is computed for is fixed to zero
+   */
+  inline void set_nullspace_use_fixed_point(bool val) {this->nullspace_use_fixed_point = val;}
 
   inline void set_phi(Vec phi)                 {this->phi      = phi;}
   inline void set_rhs(Vec rhs)                 {this->rhs      = rhs;}

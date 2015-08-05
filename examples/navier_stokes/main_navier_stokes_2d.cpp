@@ -991,8 +991,8 @@ int main (int argc, char* argv[])
   int lmin = cmd.get("lmin", 2) + nb_splits;
   int lmax = cmd.get("lmax", 4) + nb_splits;
   double n_times_dt = cmd.get("n_times_dt", 2.);
-  double threshold_split_cell = cmd.get("thresh", 0.04);
-  bool save_vtk = cmd.get("save_vtk", true);
+  double threshold_split_cell = cmd.get("thresh", 0.1);
+  bool save_vtk = cmd.get("save_vtk", false);
   int save_every_n = cmd.get("save_every_n", 1);
   test_number = cmd.get("test", 0);
 

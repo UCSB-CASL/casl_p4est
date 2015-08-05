@@ -39,6 +39,7 @@ my_p4est_poisson_cells_t::my_p4est_poisson_cells_t(const my_p4est_cell_neighbors
     mu(1.), diag_add(0.),
     is_matrix_ready(false), matrix_has_nullspace(false),
     bc(NULL),
+    nullspace_use_fixed_point(false),
     A(NULL), A_null_space(NULL),
     rhs(NULL), phi(NULL), add(NULL)
 {
@@ -88,7 +89,7 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
 
   // set up the matrix
   ierr = MatCreate(p4est->mpicomm, &A); CHKERRXX(ierr);
-  ierr = MatSetType(A, MATMPIAIJ); CHKERRXX(ierr);
+  ierr = MatSetType(A, MATAIJ); CHKERRXX(ierr);
   ierr = MatSetSizes(A, num_owned_local , num_owned_local,
                      num_owned_global, num_owned_global); CHKERRXX(ierr);
   ierr = MatSetFromOptions(A); CHKERRXX(ierr);
@@ -241,10 +242,6 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
   {
     ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
   }
-  if (matrix_has_nullspace)
-  {
-    ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-  }
   ierr = KSPSetFromOptions(ksp); CHKERRXX(ierr);
 
   // set pc type
@@ -279,6 +276,8 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
 void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 {
   preallocate_matrix();
+
+  fixed_value_idx_g = p4est->global_num_quadrants;
 
   // register for logging purpose
   ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
@@ -665,6 +664,12 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               ierr = MatSetValue(A, quad_gloidx, compute_global_index(ngbd[i].p.piggy3.local_num), mu*s * s_ng[i]/s_tmp/d, ADD_VALUES); CHKERRXX(ierr);
 
             ierr = MatSetValue(A, quad_gloidx, compute_global_index(quad_tmp_idx), -mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+
+            if(nullspace_use_fixed_point && quad_gloidx<fixed_value_idx_g)
+            {
+              fixed_value_idx_l = quad_idx;
+              fixed_value_idx_g = quad_gloidx;
+            }
           }
         }
         /* there is more than one neighbor, regular bulk case. This assumes uniform on interface ! */
@@ -699,6 +704,12 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             ierr = MatSetValue(A, quad_gloidx, compute_global_index(ngbd[i].p.piggy3.local_num), -mu*s * s_ng[i]/s_tmp/d, ADD_VALUES); CHKERRXX(ierr);
 
           ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+
+          if(nullspace_use_fixed_point && quad_gloidx<fixed_value_idx_g)
+          {
+            fixed_value_idx_l = quad_idx;
+            fixed_value_idx_g = quad_gloidx;
+          }
         }
       }
     }
@@ -716,10 +727,25 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
   ierr = MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm); CHKERRXX(ierr);
   if (matrix_has_nullspace)
   {
-    if (A_null_space == NULL)
-      ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
+    if(!nullspace_use_fixed_point)
+    {
+      if (A_null_space == NULL)
+        ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
 
-    ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+      ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+    }
+    else
+    {
+      ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
+      p4est_gloidx_t fixed_value_idx;
+      MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
+      if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
+        fixed_value_idx_l = -1;
+        fixed_value_idx_g = fixed_value_idx;
+      }
+      // reset the value
+      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
+    }
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
@@ -1004,13 +1030,23 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
     }
   }
 
+
+  if (matrix_has_nullspace)
+  {
+    if(!nullspace_use_fixed_point)
+    {
+      ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+    }
+    else if(fixed_value_idx_l >= 0)
+      rhs_p[fixed_value_idx_l] = 0;
+  }
+
   // restore the pointers
   ierr = VecRestoreArray(phi,    &phi_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(add,    &add_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(rhs,    &rhs_p   ); CHKERRXX(ierr);
 
-  if (matrix_has_nullspace)
-    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+//  if (matrix_has_nullspace)
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_rhsvec_setup, rhs, 0, 0, 0); CHKERRXX(ierr);
 }
