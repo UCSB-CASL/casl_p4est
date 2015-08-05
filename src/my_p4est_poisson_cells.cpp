@@ -36,15 +36,11 @@ my_p4est_poisson_cells_t::my_p4est_poisson_cells_t(const my_p4est_cell_neighbors
                                                    const my_p4est_node_neighbors_t *ngbd_n)
   : ngbd_c(ngbd_c), ngbd_n(ngbd_n),
     p4est(ngbd_c->p4est), nodes(ngbd_n->nodes), ghost(ngbd_c->ghost), myb(ngbd_c->myb),
-    phi_interp(ngbd_n),
     mu(1.), diag_add(0.),
     is_matrix_ready(false), matrix_has_nullspace(false),
     bc(NULL),
     A(NULL), A_null_space(NULL),
-    rhs(NULL), phi(NULL), add(NULL), phi_xx(NULL), phi_yy(NULL)
-  #ifdef P4_TO_P8
-  , phi_zz(NULL)
-  #endif
+    rhs(NULL), phi(NULL), add(NULL)
 {
   // set up the KSP solver
   ierr = KSPCreate(p4est->mpicomm, &ksp); CHKERRXX(ierr);
@@ -75,13 +71,6 @@ my_p4est_poisson_cells_t::~my_p4est_poisson_cells_t()
   if (A             != NULL) ierr = MatDestroy(A);                      CHKERRXX(ierr);
   if (A_null_space  != NULL) ierr = MatNullSpaceDestroy (A_null_space); CHKERRXX(ierr);
   if (ksp           != NULL) ierr = KSPDestroy(ksp);                    CHKERRXX(ierr);
-  if (is_phi_dd_owned){
-    if (phi_xx     != NULL) ierr = VecDestroy(phi_xx);                CHKERRXX(ierr);
-    if (phi_yy     != NULL) ierr = VecDestroy(phi_yy);                CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    if (phi_zz     != NULL) ierr = VecDestroy(phi_zz);                CHKERRXX(ierr);
-#endif
-  }
 }
 
 void my_p4est_poisson_cells_t::preallocate_matrix()
@@ -293,15 +282,9 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 
   // register for logging purpose
   ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
-  double *phi_p, *add_p, *phi_xx_p, *phi_yy_p;
+  double *phi_p, *add_p;
 
   ierr = VecGetArray(phi,    &phi_p);    CHKERRXX(ierr);
-  ierr = VecGetArray(phi_xx, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  double *phi_zz_p;
-  ierr = VecGetArray(phi_zz, &phi_zz_p); CHKERRXX(ierr);
-#endif
   ierr = VecGetArray(add,    &add_p);    CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
@@ -727,11 +710,6 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 
   // restore pointers
   ierr = VecRestoreArray(phi,    &phi_p   ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_xx, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_yy, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(phi_zz, &phi_zz_p); CHKERRXX(ierr);
-#endif
   ierr = VecRestoreArray(add,    &add_p   ); CHKERRXX(ierr);
 
   // check for null space
@@ -754,14 +732,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
   // register for logging purpose
   ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *rhs_p;
+  double *phi_p, *add_p, *rhs_p;
   ierr = VecGetArray(phi,    &phi_p   ); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_xx, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  double *phi_zz_p;
-  ierr = VecGetArray(phi_zz, &phi_zz_p); CHKERRXX(ierr);
-#endif
   ierr = VecGetArray(add,    &add_p   ); CHKERRXX(ierr);
   ierr = VecGetArray(rhs,    &rhs_p   ); CHKERRXX(ierr);
 
@@ -1034,11 +1006,6 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 
   // restore the pointers
   ierr = VecRestoreArray(phi,    &phi_p   ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_xx, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_yy, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(phi_zz, &phi_zz_p); CHKERRXX(ierr);
-#endif
   ierr = VecRestoreArray(add,    &add_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(rhs,    &rhs_p   ); CHKERRXX(ierr);
 
@@ -1048,64 +1015,3 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_rhsvec_setup, rhs, 0, 0, 0); CHKERRXX(ierr);
 }
 
-
-
-#ifdef P4_TO_P8
-void my_p4est_poisson_cells_t::set_phi(Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
-#else
-void my_p4est_poisson_cells_t::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
-#endif
-{
-  this->phi = phi;
-
-#ifdef P4_TO_P8
-  if (phi_xx != NULL && phi_yy != NULL && phi_zz != NULL)
-#else
-  if (phi_xx != NULL && phi_yy != NULL)
-#endif
-  {
-    this->phi_xx = phi_xx;
-    this->phi_yy = phi_yy;
-#ifdef P4_TO_P8
-    this->phi_zz = phi_zz;
-#endif
-
-    is_phi_dd_owned = false;
-  } else {
-
-    /*
-     * We have two options here:
-     * 1) Either compute phi_xx and phi_yy using the function that treats them
-     * as two regular functions
-     * or,
-     * 2) Use the function that uses one block vector and then copy stuff into
-     * these two vectors
-     *
-     * Case 1 requires less communications but case two inccures additional copies
-     * Which one is faster? I don't know!
-     *
-     * TODO: Going with case 1 for the moment -- to be tested
-     */
-
-    // Allocate memory for second derivaties
-    ierr = VecCreateGhostNodes(p4est, nodes, &this->phi_xx); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est, nodes, &this->phi_yy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecCreateGhostNodes(p4est, nodes, &this->phi_zz); CHKERRXX(ierr);
-#endif
-
-#ifdef P4_TO_P8
-    ngbd_n->second_derivatives_central(phi, this->phi_xx, this->phi_yy, this->phi_zz);
-#else
-    ngbd_n->second_derivatives_central(phi, this->phi_xx, this->phi_yy);
-#endif
-    is_phi_dd_owned = true;
-  }
-
-  // set the interpolating function parameters
-#ifdef P4_TO_P8
-  phi_interp.set_input(this->phi, this->phi_xx, this->phi_yy, this->phi_zz, quadratic_non_oscillatory);
-#else
-  phi_interp.set_input(this->phi, this->phi_xx, this->phi_yy, quadratic_non_oscillatory);
-#endif
-}

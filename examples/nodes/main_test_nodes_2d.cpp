@@ -89,7 +89,9 @@ int interface_type = 0;
 
 /*
  *  ********* 2D *********
- * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1, diag_add=0
+ * 0 - x+y
+ * 1 - x*x + y*y
+ * 2 - sin(x)*cos(y)
  */
 int test_number = 0;
 

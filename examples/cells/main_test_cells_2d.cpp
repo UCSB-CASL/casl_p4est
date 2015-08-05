@@ -617,7 +617,7 @@ int main (int argc, char* argv[])
     double diag = sqrt(dx*dx + dy*dy);
 #endif
 
-    /* TEST THE FACES FUNCTIONS */
+    /* TEST THE CELLS FUNCTIONS */
 #ifdef P4_TO_P8
     BoundaryConditions3D bc;
 #else

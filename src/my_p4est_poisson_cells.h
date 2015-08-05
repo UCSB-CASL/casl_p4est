@@ -30,7 +30,6 @@ class my_p4est_poisson_cells_t
   p4est_ghost_t *ghost;
 
   my_p4est_brick_t *myb;
-  my_p4est_interpolation_nodes_t phi_interp;
 
   double mu, diag_add;
   bool is_matrix_ready;
@@ -52,11 +51,7 @@ class my_p4est_poisson_cells_t
   // PETSc objects
   Mat A;
   MatNullSpace A_null_space;
-  Vec rhs, phi, add, phi_xx, phi_yy;
-#ifdef P4_TO_P8
-  Vec phi_zz;
-#endif
-  bool is_phi_dd_owned;
+  Vec rhs, phi, add;
   KSP ksp;
   PetscErrorCode ierr;
 
@@ -88,11 +83,7 @@ public:
   my_p4est_poisson_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t* ngbd_n);
   ~my_p4est_poisson_cells_t();
 
-#ifdef P4_TO_P8
-  void set_phi(Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
-#else
-  void set_phi(Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
-#endif
+  inline void set_phi(Vec phi)                 {this->phi      = phi;}
   inline void set_rhs(Vec rhs)                 {this->rhs      = rhs;}
   inline void set_diagonal(double add)         {this->diag_add = add; is_matrix_ready = false;}
   inline void set_diagonal(Vec add)            {this->add      = add; is_matrix_ready = false;}
