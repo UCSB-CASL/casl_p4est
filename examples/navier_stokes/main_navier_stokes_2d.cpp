@@ -30,6 +30,7 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_level_set.h>
+#include <src/my_p4est_vtk.h>
 #endif
 
 #include <src/Parser.h>
@@ -1213,7 +1214,7 @@ int main (int argc, char* argv[])
 
 //  std::cout << "WARNING ! printing vtu" << std::endl;
 //  my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n, P4EST_TRUE, P4EST_TRUE, 0, 0,
-//                         "/home/guittet/code/Output/p4est_navier_stokes/test");
+//                         "/home/guittet/code/Output/p4est_navier_stokes/debug/test");
 
   my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
   ns.set_phi(phi);

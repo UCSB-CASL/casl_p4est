@@ -11,6 +11,7 @@
 
 #include <src/petsc_compatibility.h>
 #include <src/CASL_math.h>
+#include <algorithm>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -108,6 +109,7 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
   const p4est_locidx_t *q2n = nodes->local_nodes;
+  std::vector<p4est_locidx_t> indices;
 
   for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){
     p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
@@ -130,6 +132,8 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
       if((bc->interfaceType()==DIRICHLET && phi_c > 0) || (bc->interfaceType()==NEUMANN && all_pos))
         continue;
 
+      indices.resize(0);
+
       /*
      * Check for neighboring cells:
      * 1) If they exist and are local quads, increment d_nnz[n]
@@ -146,6 +150,7 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
           p4est_locidx_t q_tmp = ngbd[0].p.piggy3.local_num;
           p4est_topidx_t t_tmp = ngbd[0].p.piggy3.which_tree;
 
+          /* no need to add this one to "indices" since it can't be found with a search in another direction */
           if(q_tmp<num_owned_local) d_nnz[quad_idx]++;
           else                      o_nnz[quad_idx]++;
 
@@ -153,8 +158,9 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
           ngbd_c->find_neighbor_cells_of_cell(ngbd, q_tmp, t_tmp, dir%2==0 ? dir+1 : dir-1);
           for(unsigned int m=0; m<ngbd.size(); ++m)
           {
-            if(ngbd[m].p.piggy3.local_num!=quad_idx)
+            if(ngbd[m].p.piggy3.local_num!=quad_idx && std::find(indices.begin(), indices.end(), ngbd[m].p.piggy3.local_num)==indices.end())
             {
+              indices.push_back(ngbd[m].p.piggy3.local_num);
               if(ngbd[m].p.piggy3.local_num<num_owned_local) d_nnz[quad_idx]++;
               else                                           o_nnz[quad_idx]++;
             }
@@ -164,8 +170,12 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
         {
           for(unsigned int m=0; m<ngbd.size(); ++m)
           {
-            if(ngbd[m].p.piggy3.local_num<num_owned_local) d_nnz[quad_idx]++;
-            else                                           o_nnz[quad_idx]++;
+            if(std::find(indices.begin(), indices.end(), ngbd[m].p.piggy3.local_num)==indices.end())
+            {
+              indices.push_back(ngbd[m].p.piggy3.local_num);
+              if(ngbd[m].p.piggy3.local_num<num_owned_local) d_nnz[quad_idx]++;
+              else                                           o_nnz[quad_idx]++;
+            }
           }
         }
       }
@@ -217,6 +227,24 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
     ierr = VecSet(phi, -1.); CHKERRXX(ierr);
   }
 
+  /*
+   * Here we set the matrix, ksp, and pc. If the matrix is not changed during
+   * successive solves, we will reuse the same preconditioner, otherwise we
+   * have to recompute the preconditioner
+   */
+  if (!is_matrix_ready)
+  {
+    matrix_has_nullspace = true;
+    setup_negative_laplace_matrix();
+
+    ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
+  } else {
+    ierr = KSPSetOperators(ksp, A, A, SAME_PRECONDITIONER);  CHKERRXX(ierr);
+  }
+
+  // setup rhs
+  setup_negative_laplace_rhsvec();
+
   // set ksp type
   ierr = KSPSetType(ksp, ksp_type); CHKERRXX(ierr);
   ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
@@ -235,24 +263,6 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
   ierr = KSPGetPC(ksp, &pc); CHKERRXX(ierr);
   ierr = PCSetType(pc, pc_type); CHKERRXX(ierr);
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
-
-  /*
-   * Here we set the matrix, ksp, and pc. If the matrix is not changed during
-   * successive solves, we will reuse the same preconditioner, otherwise we
-   * have to recompute the preconditioner
-   */
-  if (!is_matrix_ready)
-  {
-    matrix_has_nullspace = true;
-    setup_negative_laplace_matrix();
-
-    ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
-  } else {
-    ierr = KSPSetOperators(ksp, A, A, SAME_PRECONDITIONER);  CHKERRXX(ierr);
-  }
-
-  // setup rhs
-  setup_negative_laplace_rhsvec();
 
   // Solve the system
   ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
@@ -713,7 +723,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 
   // Assemble the matrix
   ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
-  ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+  ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
 
   // restore pointers
   ierr = VecRestoreArray(phi,    &phi_p   ); CHKERRXX(ierr);
