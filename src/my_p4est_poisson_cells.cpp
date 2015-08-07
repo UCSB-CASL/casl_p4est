@@ -39,7 +39,7 @@ my_p4est_poisson_cells_t::my_p4est_poisson_cells_t(const my_p4est_cell_neighbors
     mu(1.), diag_add(0.),
     is_matrix_ready(false), matrix_has_nullspace(false),
     bc(NULL),
-    nullspace_use_fixed_point(false),
+    nullspace_use_fixed_point(true),
     A(NULL), A_null_space(NULL),
     rhs(NULL), phi(NULL), add(NULL)
 {
@@ -742,13 +742,22 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
         fixed_value_idx_l = -1;
         fixed_value_idx_g = fixed_value_idx;
+        ierr = MatZeroRows(A, 0, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
       }
+      else
       // reset the value
       ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
     }
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+
+//  PetscViewer view;
+//  char name[1000];
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/mat_%d.dat", p4est->mpisize);
+//  ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = MatView(A, view); CHKERRXX(ierr);
 }
 
 
@@ -1046,8 +1055,14 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
   ierr = VecRestoreArray(add,    &add_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(rhs,    &rhs_p   ); CHKERRXX(ierr);
 
-//  if (matrix_has_nullspace)
-
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_rhsvec_setup, rhs, 0, 0, 0); CHKERRXX(ierr);
+
+//  PetscViewer view;
+//  char name[1000];
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs_%d.dat", p4est->mpisize);
+//  ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(rhs, view); CHKERRXX(ierr);
+//  PetscPrintf(p4est->mpicomm, "SAVED RHS\n");
 }
 

@@ -58,7 +58,8 @@ double my_p4est_interpolation_faces_t::operator ()(double x, double y) const
   std::vector<p4est_quadrant_t> remote_matches;
   int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
 
-  if(rank_found!=-1)//rank_found == p4est->mpirank)
+//  if(rank_found!=-1)
+  if(rank_found == p4est->mpirank)
     return interpolate(best_match, xyz);
 
   throw std::invalid_argument("[ERROR]: my_p4est_interpolation_faces_t->interpolate(): the point does not belong to the local forest.");
@@ -117,13 +118,6 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
 #else
       ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j);
 #endif
-//  p4est_quadrant_t qq = quad;
-//  qq.p.piggy3.local_num = quad_idx;
-//  ngbd_tmp.push_back(qq);
-//  ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx,-1, 0);
-//  ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 1, 0);
-//  ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 0,-1);
-//  ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 0, 1);
 
   int nb_ngbd = ngbd_tmp.size();
   for(int m=0; m<nb_ngbd; ++m)
@@ -136,10 +130,6 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
 #else
         ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, i, j);
 #endif
-//    ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree,-1, 0);
-//    ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, 1, 0);
-//    ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, 0,-1);
-//    ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, 0, 1);
   }
 
   const double *Fi_p;

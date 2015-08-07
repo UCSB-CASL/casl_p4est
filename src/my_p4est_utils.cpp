@@ -694,10 +694,9 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
   }
 
   /* compute global sum */
-  double sum_global;
   PetscErrorCode ierr;
-  ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
-  return sum_global;
+  ierr = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+  return sum;
 }
 
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)

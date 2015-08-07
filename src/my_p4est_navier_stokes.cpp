@@ -20,7 +20,6 @@
 #include <src/my_p4est_vtk.h>
 #endif
 
-
 #ifndef CASL_LOG_EVENTS
 #undef PetscLogEventBegin
 #undef PetscLogEventEnd
@@ -980,6 +979,19 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
   }
 
+
+//  PetscViewer view;
+//  char name[1000];
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs0_%d.dat", p4est_n->mpisize);
+//  ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, name, &view); CHKERRXX(ierr);
+////  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(rhs[0], view); CHKERRXX(ierr);
+
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs1_%d.dat", p4est_n->mpisize);
+//  ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, name, &view); CHKERRXX(ierr);
+////  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(rhs[1], view); CHKERRXX(ierr);
+
   my_p4est_poisson_faces_t solver(faces_n, ngbd_n);
   solver.set_phi(phi);
   solver.set_mu(mu);
@@ -994,6 +1006,19 @@ void my_p4est_navier_stokes_t::solve_viscosity()
 
   solver.solve(vstar);
 
+//  for(int dir=0; dir<P4EST_DIM; ++dir)
+//  {
+//    double *v_p;
+//    ierr = VecGetArray(vstar[dir], &v_p); CHKERRXX(ierr);
+//    for(p4est_locidx_t f=0; f<faces_n->num_local[dir]; ++f)
+//      v_p[f] = bc_v[dir].interfaceValue(faces_n->x_fr_f(f,dir), faces_n->y_fr_f(f,dir));
+//    ierr = VecRestoreArray(vstar[dir], &v_p); CHKERRXX(ierr);
+
+//    ierr = VecGhostUpdateBegin(vstar[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd  (vstar[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
+
+
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
@@ -1007,6 +1032,16 @@ void my_p4est_navier_stokes_t::solve_viscosity()
       lsf.extend_Over_Interface(phi, vstar[dir], bc_vstar[dir], dir, face_is_well_defined[dir], 2, 8);
     }
   }
+
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vstar0_%d.dat", p4est_n->mpisize);
+//  ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(vstar[0], view); CHKERRXX(ierr);
+
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vstar1_%d.dat", p4est_n->mpisize);
+//  ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(vstar[1], view); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1042,6 +1077,16 @@ void my_p4est_navier_stokes_t::solve_projection()
 
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
+//  ierr = VecGhostUpdateBegin(rhs, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd  (rhs, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+//  PetscViewer view;
+//  char name[1000];
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs_%d.dat", p4est_n->mpisize);
+//  ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(rhs, view); CHKERRXX(ierr);
+
   /* solve the linear system */
   my_p4est_poisson_cells_t solver(ngbd_c, ngbd_n);
   solver.set_phi(phi);
@@ -1051,13 +1096,33 @@ void my_p4est_navier_stokes_t::solve_projection()
 
   solver.solve(hodge);
 
+//  double *hh_p;
+//  ierr = VecGetArray(hodge, &hh_p); CHKERRXX(ierr);
+//  for(p4est_topidx_t tree_idx=p4est_n->first_local_tree; tree_idx<=p4est_n->last_local_tree; ++tree_idx)
+//  {
+//    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_n->trees, tree_idx);
+//    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+//    {
+//      p4est_locidx_t quad_idx = q+tree->quadrants_offset;
+//      hh_p[quad_idx] = sin(quad_x_fr_q(quad_idx, tree_idx, p4est_n, ghost_n)) * cos(quad_y_fr_q(quad_idx, tree_idx, p4est_n, ghost_n));
+//    }
+//  }
+//  ierr = VecRestoreArray(hodge, &hh_p); CHKERRXX(ierr);
+
+//  ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd  (hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
 
   /* if needed, shift the hodge variable to a zero average */
-  if(solver.get_matrix_has_nullspace())
+  if(0 && solver.get_matrix_has_nullspace())
   {
     my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
     double average = lsc.integrate(phi, hodge) / area_in_negative_domain(p4est_n, nodes_n, phi);
+//    MPI_Allreduce(MPI_IN_PLACE, &average, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm);
+//    printf("Average = %.17g\n", average);
+//    printf("int = %.17g\n", lsc.integrate(phi, hodge));
+//    printf("int = %.17g\n", area_in_negative_domain(p4est_n, nodes_n, phi));
     double *hodge_p;
     ierr = VecGetArray(hodge, &hodge_p); CHKERRXX(ierr);
     for(p4est_locidx_t quad_idx=0; quad_idx<p4est_n->local_num_quadrants; ++quad_idx)
@@ -1065,6 +1130,8 @@ void my_p4est_navier_stokes_t::solve_projection()
     for(size_t q=0; q<ghost_n->ghosts.elem_count; ++q)
       hodge_p[q+p4est_n->local_num_quadrants] -= average;
     ierr = VecRestoreArray(hodge, &hodge_p); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd  (hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
   if(bc_pressure->interfaceType()!=NOINTERFACE)
@@ -1072,6 +1139,11 @@ void my_p4est_navier_stokes_t::solve_projection()
     my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
     lsc.extend_Over_Interface(phi, hodge, &bc_hodge, 2, 8);
   }
+
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/hodge_%d.dat", p4est_n->mpisize);
+//  ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(hodge, view); CHKERRXX(ierr);
 
   /* project vstar */
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -1142,6 +1214,16 @@ void my_p4est_navier_stokes_t::solve_projection()
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
+
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vnp0_%d.dat", p4est_n->mpisize);
+//  ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(vnp1[0], view); CHKERRXX(ierr);
+
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/vnp1_%d.dat", p4est_n->mpisize);
+//  ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(vnp1[1], view); CHKERRXX(ierr);
 }
 
 
