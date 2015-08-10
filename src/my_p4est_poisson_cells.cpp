@@ -39,7 +39,7 @@ my_p4est_poisson_cells_t::my_p4est_poisson_cells_t(const my_p4est_cell_neighbors
     mu(1.), diag_add(0.),
     is_matrix_ready(false), matrix_has_nullspace(false),
     bc(NULL),
-    nullspace_use_fixed_point(true),
+    nullspace_use_fixed_point(false),
     A(NULL), A_null_space(NULL),
     rhs(NULL), phi(NULL), add(NULL)
 {

@@ -1063,8 +1063,8 @@ int main (int argc, char* argv[])
 #endif
   ierr = PetscPrintf(mpi->mpicomm, "n_times_dt = %g, uniform_band = %g\n", n_times_dt, uniform_band);
 
-  parStopWatch w;
-  w.start("total time");
+  parStopWatch watch;
+  watch.start("total time");
 
   MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
   MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
@@ -1354,6 +1354,8 @@ int main (int argc, char* argv[])
 
     ierr = PetscPrintf(mpi->mpicomm, "Iteration #%04d : tn = %.5f, percent done : %.1f%%, \t max_L2_norm_u = %.5f, \t number of leaves = %d\n", iter, tn, 100*tn/tf, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
+    if(ns.get_max_L2_norm_u()>10) break;
+
     if(save_vtk && iter%save_every_n==0)
     {
 #if defined(STAMPEDE) || defined(COMET)
@@ -1402,6 +1404,9 @@ int main (int argc, char* argv[])
   if(test_number==6)
     delete naca;
 #endif
+
+  watch.stop();
+  watch.read_duration();
 
   return 0;
 }
