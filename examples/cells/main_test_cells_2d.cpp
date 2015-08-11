@@ -73,8 +73,8 @@ double zmax =  1;
 
 using namespace std;
 
-int lmin = 2;
-int lmax = 4;
+int lmin = 3;
+int lmax = 3;
 int nb_splits = 4;
 
 int nx = 1;
@@ -83,7 +83,7 @@ int ny = 1;
 int nz = 1;
 #endif
 
-bool save_vtk = true;
+bool save_vtk = false;
 
 double mu = 1;
 double add_diagonal = 0;
@@ -98,15 +98,16 @@ int interface_type = 0;
  * 0 - x+y
  * 1 - x*x + y*y
  * 2 - sin(x)*cos(y)
+ * 3 - cos(r-r0)  so that homogeneous neumann on interface
  *
  *  ********* 3D *********
  * 0 - x+y+z
  * 1 - x*x + y*y + z*z
- * 2 - sin(x)*cos(y)*exp(z)+2
+ * 2 - sin(x)*cos(y)*exp(z)
  */
 int test_number = 2;
 
-BoundaryConditionType bc_itype = NOINTERFACE;
+BoundaryConditionType bc_itype = NEUMANN;
 BoundaryConditionType bc_wtype = DIRICHLET;
 
 double diag_add = 0;
@@ -128,10 +129,8 @@ public:
   {
     switch(interface_type)
     {
-    case 0:
-      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
-    default:
-      throw std::invalid_argument("Choose a valid level set.");
+    case 0: return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+    default: throw std::invalid_argument("Choose a valid level set.");
     }
   }
 } level_set;
@@ -149,14 +148,11 @@ double u_exact(double x, double y, double z)
 {
   switch(test_number)
   {
-  case 0:
-    return x+y+z;
-  case 1:
-    return x*x + y*y + z*z;
-  case 2:
-    return sin(x)*cos(y)*exp(z)+2;
-  default:
-    throw std::invalid_argument("Choose a valid test.");
+  case 0: return x+y+z;
+  case 1: return x*x + y*y + z*z;
+  case 2: return sin(x)*cos(y)*exp(z);
+  case 3: return cos(sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2)) - r0);
+  default: throw std::invalid_argument("Choose a valid test.");
   }
 }
 
@@ -192,14 +188,11 @@ public:
 
       switch(test_number)
       {
-      case 0:
-        return dx + dy + dz;
-      case 1:
-        return 2*x*dx + 2*y*dy + 2*z*dz;
-      case 2:
-        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
-      default:
-        throw std::invalid_argument("Choose a valid test.");
+      case 0: return dx + dy + dz;
+      case 1: return 2*x*dx + 2*y*dy + 2*z*dz;
+      case 2: return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
+      case 3: return sin(sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2)) - r0);
+      default: throw std::invalid_argument("Choose a valid test.");
       }
     }
   }
@@ -226,16 +219,14 @@ public:
       double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
       double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
       double dz = 0; dz = fabs(z-zmin)<EPS ? -1 : (fabs(z-zmax)<EPS  ? 1 : 0);
+      double r = sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
       switch(test_number)
       {
-      case 0:
-        return dx + dy + dz;
-      case 1:
-        return 2*x*dx + 2*y*dy + 2*z*dz;
-      case 2:
-        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
-      default:
-        throw std::invalid_argument("Choose a valid test.");
+      case 0: return dx + dy + dz;
+      case 1: return 2*x*dx + 2*y*dy + 2*z*dz;
+      case 2: return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
+      case 3: return -sin(r-r0) * (dx*x/r + dy*y/r + dz*z/r);
+      default: throw std::invalid_argument("Choose a valid test.");
       }
     }
   }
@@ -644,6 +635,7 @@ int main (int argc, char* argv[])
         double y = quad_y_fr_q(q_idx, tree_idx, p4est, ghost);
 #ifdef P4_TO_P8
         double z = quad_z_fr_q(q_idx, tree_idx, p4est, ghost);
+        double r = sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
 #endif
         switch(test_number)
         {
@@ -656,6 +648,9 @@ int main (int argc, char* argv[])
           break;
         case 2:
           rhs_p[q_idx] = mu*sin(x)*cos(y)*exp(z) + add_diagonal*u_exact(x,y,z);
+          break;
+        case 3:
+          rhs_p[q_idx] = mu*(2/r * sin(r-r0) + cos(r-r0)) + add_diagonal*u_exact(x,y,z);
           break;
 #else
         case 0:
@@ -763,7 +758,7 @@ int main (int argc, char* argv[])
     ierr = VecGhostUpdateEnd  (err_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    ierr = PetscPrintf(p4est->mpicomm, "Error on cells : %g, order = %g\n", err_n, log(err_nm1/err_n)/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Error on cells : %.5e, order = %g\n", err_n, log(err_nm1/err_n)/log(2)); CHKERRXX(ierr);
 
 
     /* extrapolate the solution and check accuracy */
@@ -832,7 +827,7 @@ int main (int argc, char* argv[])
     ierr = VecGhostUpdateEnd  (err_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation : %g, order = %g\n", err_ex_n, log(err_ex_nm1/err_ex_n)/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation : %.5e, order = %g\n", err_ex_n, log(err_ex_nm1/err_ex_n)/log(2)); CHKERRXX(ierr);
 
 
     if(save_vtk)

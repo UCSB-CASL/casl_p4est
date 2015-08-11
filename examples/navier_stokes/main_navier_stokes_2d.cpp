@@ -687,7 +687,7 @@ struct initial_velocity_u_n_t : CF_2
     switch(test_number)
     {
     case 0: return sin(x)*cos(y);
-    case 1: return sin(x)*cos(y);
+    case 1: return sin(x)*cos(y)*cos(0);
     case 2: return 0;
     case 3: return 0;
     case 4: return u0;
@@ -723,7 +723,7 @@ struct initial_velocity_vn_t : CF_2
     switch(test_number)
     {
     case 0: return -cos(x)*sin(y);
-    case 1: return -cos(x)*sin(y);
+    case 1: return -cos(x)*sin(y)*cos(0);
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
@@ -741,7 +741,7 @@ struct external_force_u_t : CF_2
     switch(test_number)
     {
     case 0: return rho*sin(x)*cos(x) + 2*mu*sin(x)*cos(y);
-    case 1: return rho*sin(x)*cos(x)*SQR(cos(tn+dt)) - 2*mu*sin(x)*cos(y)*cos(tn+dt) - rho*sin(x)*cos(y)*sin(tn+dt);
+    case 1: return rho*sin(x)*cos(x)*SQR(cos(tn+dt)) + 2*mu*sin(x)*cos(y)*cos(tn+dt) - rho*sin(x)*cos(y)*sin(tn+dt);
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;

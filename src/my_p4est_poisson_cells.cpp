@@ -758,6 +758,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 //  ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
 //  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
 //  ierr = MatView(A, view); CHKERRXX(ierr);
+//  MatView(A, PETSC_VIEWER_STDOUT_WORLD);
 }
 
 

@@ -57,11 +57,11 @@
 #undef MAX
 
 double xmin = -1;
-double xmax =  2;
-double ymin = -3;
+double xmax =  1;
+double ymin = -1;
 double ymax =  1;
 #ifdef P4_TO_P8
-double zmin = -4;
+double zmin = -1;
 double zmax =  1;
 #endif
 
@@ -71,16 +71,16 @@ int lmin = 3;
 int lmax = 5;
 int nb_splits = 1;
 
-int nx = 2;
+int nx = 1;
 int ny = 1;
 #ifdef P4_TO_P8
-int nz = 2;
+int nz = 1;
 #endif
 
 bool save_vtk = true;
 
-double mu = 1.3;
-double add_diagonal = 2.3;
+double mu = 1;
+double add_diagonal = 0;
 
 /*
  * 0 - circle
