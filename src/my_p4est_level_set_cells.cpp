@@ -493,7 +493,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   ierr = VecGhostUpdateEnd(bc_interface_values, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecRestoreArray(bc_interface_values, &bc_p); CHKERRXX(ierr);
 
-  my_p4est_interpolation_nodes_t interp0(ngbd_n); interp0.set_input(bc_interface_values, quadratic);
+  my_p4est_interpolation_nodes_t interp0(ngbd_n); interp0.set_input(bc_interface_values, linear);
   my_p4est_interpolation_cells_t interp1(ngbd_c, ngbd_n); interp1.set_input(q, phi, bc);
   my_p4est_interpolation_cells_t interp2(ngbd_c, ngbd_n); interp2.set_input(q, phi, bc);
 
