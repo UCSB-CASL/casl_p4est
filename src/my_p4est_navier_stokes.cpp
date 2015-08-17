@@ -1004,6 +1004,21 @@ void my_p4est_navier_stokes_t::solve_viscosity()
 
   solver.solve(vstar);
 
+	if(0)
+	{
+		for(int dir=0; dir<P4EST_DIM; ++dir)
+		{
+			double *v;
+			VecGetArray(vstar[dir], &v);
+			double m = 0;
+			for(p4est_locidx_t f=0; f<faces_n->num_local[dir]; ++f)
+				m = MAX(m, fabs(v[f]));
+			MPI_Allreduce(MPI_IN_PLACE, &m, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm);
+			PetscPrintf(p4est_n->mpicomm, "Max vstar in direction %d: %g\n", dir, m);
+			VecRestoreArray(vstar[dir], &v);
+		}
+	}
+
 //  for(int dir=0; dir<P4EST_DIM; ++dir)
 //  {
 //    double *v_p;
@@ -1034,6 +1049,21 @@ void my_p4est_navier_stokes_t::solve_viscosity()
       lsf.extend_Over_Interface(phi, vstar[dir], bc_vstar[dir], dir, face_is_well_defined[dir], 2, 8);
     }
   }
+
+	if(0)
+	{
+		for(int dir=0; dir<P4EST_DIM; ++dir)
+		{
+			double *v;
+			VecGetArray(vstar[dir], &v);
+			double m = 0;
+			for(p4est_locidx_t f=0; f<faces_n->num_local[dir]; ++f)
+				m = MAX(m, fabs(v[f]));
+			MPI_Allreduce(MPI_IN_PLACE, &m, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm);
+			PetscPrintf(p4est_n->mpicomm, "Max vstar after extensions in direction %d: %g\n", dir, m);
+			VecRestoreArray(vstar[dir], &v);
+		}
+	}
 
 //  for(int dir=0; dir<P4EST_DIM; ++dir)
 //  {
@@ -1095,8 +1125,21 @@ void my_p4est_navier_stokes_t::solve_projection()
   solver.set_mu(1);
   solver.set_bc(bc_hodge);
   solver.set_rhs(rhs);
+	solver.set_nullspace_use_fixed_point(true);
 
   solver.solve(hodge);
+
+	if(0)
+	{
+		double *h;
+		VecGetArray(hodge, &h);
+		double m = 0;
+		for(p4est_locidx_t q=0; q<p4est_n->local_num_quadrants; ++q)
+			m = MAX(m, fabs(h[q]));
+		MPI_Allreduce(MPI_IN_PLACE, &m, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm);
+		PetscPrintf(p4est_n->mpicomm, "Max hodge: %g\n", m);
+		VecRestoreArray(hodge, &h);
+	}
 
 //  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/hodge_%d.dat", p4est_n->mpisize);
 //  ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, name, &view); CHKERRXX(ierr);
@@ -1139,18 +1182,42 @@ void my_p4est_navier_stokes_t::solve_projection()
     ierr = VecGetArray(hodge, &hodge_p); CHKERRXX(ierr);
     for(p4est_locidx_t quad_idx=0; quad_idx<p4est_n->local_num_quadrants; ++quad_idx)
       hodge_p[quad_idx] -= average;
-    for(size_t q=0; q<ghost_n->ghosts.elem_count; ++q)
-      hodge_p[q+p4est_n->local_num_quadrants] -= average;
+//    for(size_t q=0; q<ghost_n->ghosts.elem_count; ++q)
+//      hodge_p[q+p4est_n->local_num_quadrants] -= average;
     ierr = VecRestoreArray(hodge, &hodge_p); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd  (hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
+
+	if(0)
+	{
+		double *h;
+		VecGetArray(hodge, &h);
+		double m = 0;
+		for(p4est_locidx_t q=0; q<p4est_n->local_num_quadrants; ++q)
+			m = MAX(m, fabs(h[q]));
+		MPI_Allreduce(MPI_IN_PLACE, &m, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm);
+		PetscPrintf(p4est_n->mpicomm, "Max hodge after gauging: %g\n", m);
+		VecRestoreArray(hodge, &h);
+	}
 
   if(bc_pressure->interfaceType()!=NOINTERFACE)
   {
     my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
     lsc.extend_Over_Interface(phi, hodge, &bc_hodge, 2, 8);
   }
+
+	if(0)
+	{
+		double *h;
+		VecGetArray(hodge, &h);
+		double m = 0;
+		for(p4est_locidx_t q=0; q<p4est_n->local_num_quadrants; ++q)
+			m = MAX(m, fabs(h[q]));
+		MPI_Allreduce(MPI_IN_PLACE, &m, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm);
+		PetscPrintf(p4est_n->mpicomm, "Max hodge after extension: %g\n", m);
+		VecRestoreArray(hodge, &h);
+	}
 
   /* project vstar */
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -1221,6 +1288,21 @@ void my_p4est_navier_stokes_t::solve_projection()
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
+
+	if(0)
+	{
+		for(int dir=0; dir<P4EST_DIM; ++dir)
+		{
+			double *v;
+			VecGetArray(vnp1[dir], &v);
+			double m = 0;
+			for(p4est_locidx_t f=0; f<faces_n->num_local[dir]; ++f)
+				m = MAX(m, fabs(v[f]));
+			MPI_Allreduce(MPI_IN_PLACE, &m, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm);
+			PetscPrintf(p4est_n->mpicomm, "Max vnp1 after extensions in direction %d: %g\n", dir, m);
+			VecRestoreArray(vnp1[dir], &v);
+		}
+	}
 
 //  for(int dir=0; dir<P4EST_DIM; ++dir)
 //  {
@@ -1294,6 +1376,21 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
       lsn.extend_Over_Interface_TVD(phi, vnp1_nodes[dir]);
     }
   }
+
+	if(0)
+	{
+		for(int dir=0; dir<P4EST_DIM; ++dir)
+		{
+			double *v;
+			VecGetArray(vnp1_nodes[dir], &v);
+			double m = 0;
+			for(p4est_locidx_t n=0; n<nodes_n->num_owned_indeps; ++n)
+				m = MAX(m, fabs(v[n]));
+			MPI_Allreduce(MPI_IN_PLACE, &m, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm);
+			PetscPrintf(p4est_n->mpicomm, "Max vnp1 nodes in direction %d: %g\n", dir, m);
+			VecRestoreArray(vnp1_nodes[dir], &v);
+		}
+	}
 
   compute_vorticity();
   compute_max_L2_norm_u();
