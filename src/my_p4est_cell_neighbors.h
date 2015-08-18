@@ -27,8 +27,8 @@ public:
   };
 
 private:
-  friend class PoissonSolverCellBase;
-  friend class InterpolatingFunctionCellBase;
+  friend class my_p4est_faces_t;
+  friend class my_p4est_poisson_cells_t;
 
   my_p4est_hierarchy_t *hierarchy;
   p4est_t *p4est;
@@ -99,7 +99,7 @@ public:
   }
 
   /**
-   * @brief find the neighbor cell of a cell in the direction (dir_x, dir_y). Use this for finding corner/arete neighbors
+   * @brief find the neighbor cell of a cell in the direction (dir_x, dir_y), any combination of directions is accepted
    * @return
    */
 #ifdef P4_TO_P8
@@ -107,6 +107,33 @@ public:
 #else
   void find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y ) const;
 #endif
+
+  /*!
+   * \brief find the neighbor cells of a cell in a cartesian direction
+   * \param ngbd the list of neighbor cells, to be filled
+   * \param q the index of the quadrant in the local p4est, NOT in the tree tr
+   * \param tr the tree to which the quadrant belongs
+   * \param dir_f the cartesian direction to search, i.e. dir::f_m00, dir::f_p00 ...
+   */
+  inline void find_neighbor_cells_of_cell( std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t q, p4est_topidx_t tr, int dir_f) const
+  {
+    switch(dir_f)
+    {
+#ifdef P4_TO_P8
+    case dir::f_m00: find_neighbor_cells_of_cell(ngbd, q, tr, -1, 0, 0); break;
+    case dir::f_p00: find_neighbor_cells_of_cell(ngbd, q, tr,  1, 0, 0); break;
+    case dir::f_0m0: find_neighbor_cells_of_cell(ngbd, q, tr,  0,-1, 0); break;
+    case dir::f_0p0: find_neighbor_cells_of_cell(ngbd, q, tr,  0, 1, 0); break;
+    case dir::f_00m: find_neighbor_cells_of_cell(ngbd, q, tr,  0, 0,-1); break;
+    case dir::f_00p: find_neighbor_cells_of_cell(ngbd, q, tr,  0, 0, 1); break;
+#else
+    case dir::f_m00: find_neighbor_cells_of_cell(ngbd, q, tr, -1, 0); break;
+    case dir::f_p00: find_neighbor_cells_of_cell(ngbd, q, tr,  1, 0); break;
+    case dir::f_0m0: find_neighbor_cells_of_cell(ngbd, q, tr,  0,-1); break;
+    case dir::f_0p0: find_neighbor_cells_of_cell(ngbd, q, tr,  0, 1); break;
+#endif
+    }
+  }
 
   void __attribute__((used)) print_debug(p4est_locidx_t q, FILE* stream = stdout);
 

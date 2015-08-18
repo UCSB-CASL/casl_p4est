@@ -11,6 +11,12 @@ void Voronoi3D::get_Points( const vector<Voronoi3DPoint>*& points) const
   points = &this->points;
 }
 
+void Voronoi3D::set_Points( vector<Voronoi3DPoint> &points, double volume )
+{
+  this->points = points;
+  this->volume = volume;
+}
+
 void Voronoi3D::push( int n, double x, double y,double z )
 {
   for(unsigned int m=0; m<points.size(); m++)
@@ -101,27 +107,30 @@ void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, doubl
 //  }
 
 
-
+  double eps = EPS;
 
   /* create a container for the particles */
   voro::container voronoi(xmin, xmax, ymin, ymax, zmin, zmax,
                           1, 1, 1, periodic_x, periodic_y, periodic_z, 8);
+//  voro::container voronoi(MAX(xmin,pc.x-kk), MIN(xmax,pc.x+kk), MAX(ymin,pc.y-kk), MIN(ymax,pc.y+kk), MAX(zmin,pc.z-kk), MIN(zmax,pc.z+kk),
+//                          1, 1, 1, periodic_x, periodic_y, periodic_z, 16);
+
 
   /* store the order in which the particles are added to the container */
   voro::particle_order po;
 
   /* add the center point */
-  double x_tmp = ABS(pc.x-xmin)<EPS ? pc.x+EPS : ABS(pc.x-xmax)<EPS ? pc.x-EPS : pc.x;
-  double y_tmp = ABS(pc.y-ymin)<EPS ? pc.y+EPS : ABS(pc.y-ymax)<EPS ? pc.y-EPS : pc.y;
-  double z_tmp = ABS(pc.z-zmin)<EPS ? pc.z+EPS : ABS(pc.z-zmax)<EPS ? pc.z-EPS : pc.z;
+  double x_tmp = fabs(pc.x-xmin)<eps ? xmin+eps : fabs(pc.x-xmax)<eps ? xmax-eps : pc.x;
+  double y_tmp = fabs(pc.y-ymin)<eps ? ymin+eps : fabs(pc.y-ymax)<eps ? ymax-eps : pc.y;
+  double z_tmp = fabs(pc.z-zmin)<eps ? zmin+eps : fabs(pc.z-zmax)<eps ? zmax-eps : pc.z;
   voronoi.put(po, nc, x_tmp, y_tmp, z_tmp);
 
   /* add the points potentially involved in the voronoi partition */
   for(unsigned int m=0; m<points.size(); ++m)
   {
-    double x_tmp = ABS(points[m].p.x-xmin)<EPS ? points[m].p.x+EPS : ABS(points[m].p.x-xmax)<EPS ? points[m].p.x-EPS : points[m].p.x;
-    double y_tmp = ABS(points[m].p.y-ymin)<EPS ? points[m].p.y+EPS : ABS(points[m].p.y-ymax)<EPS ? points[m].p.y-EPS : points[m].p.y;
-    double z_tmp = ABS(points[m].p.z-zmin)<EPS ? points[m].p.z+EPS : ABS(points[m].p.z-zmax)<EPS ? points[m].p.z-EPS : points[m].p.z;
+    double x_tmp = fabs(points[m].p.x-xmin)<eps ? xmin+eps : fabs(points[m].p.x-xmax)<eps ? xmax-eps : points[m].p.x;
+    double y_tmp = fabs(points[m].p.y-ymin)<eps ? ymin+eps : fabs(points[m].p.y-ymax)<eps ? ymax-eps : points[m].p.y;
+    double z_tmp = fabs(points[m].p.z-zmin)<eps ? zmin+eps : fabs(points[m].p.z-zmax)<eps ? zmax-eps : points[m].p.z;
     voronoi.put(po, points[m].n, x_tmp, y_tmp, z_tmp);
   }
 
@@ -136,7 +145,7 @@ void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, doubl
   {
     vector<Voronoi3DPoint> final_points;
 //    volume_ = voro_cell.volume() / (scaling*scaling*scaling);
-    volume_ = voro_cell.volume();
+    volume = voro_cell.volume();
 
     voro_cell.neighbors(neigh);
     voro_cell.face_areas(areas);
@@ -205,39 +214,29 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
   if(f==NULL) throw std::invalid_argument("[CASL_ERROR]: Voronoi3D: cannot open file.");
 #endif
 
-  struct Voro_Ngbd {
-    voro::container* voronoi;
-    voro::particle_order* po;
-    Voro_Ngbd() : voronoi(NULL), po(NULL) {}
-    ~Voro_Ngbd()
+  double eps = EPS;
+
+  vector<VoroNgbd> voro_global(voro.size());
+    for(unsigned int n=0; n<voro.size(); ++n)
     {
-      if(voronoi!=NULL) delete voronoi;
-      if(po!=NULL) delete po;
+      voro_global[n].voronoi = new voro::container(xmin, xmax, ymin, ymax, zmin, zmax,
+                                                   1, 1, 1, periodic_x, periodic_y, periodic_z, 8);
+      voro_global[n].po = new voro::particle_order;
+
+      double x_c = fabs(voro[n].pc.x-xmin)<eps ? xmin+eps : fabs(voro[n].pc.x-xmax)<eps ? xmax-eps : voro[n].pc.x;
+      double y_c = fabs(voro[n].pc.y-ymin)<eps ? ymin+eps : fabs(voro[n].pc.y-ymax)<eps ? ymax-eps : voro[n].pc.y;
+      double z_c = fabs(voro[n].pc.z-zmin)<eps ? zmin+eps : fabs(voro[n].pc.z-zmax)<eps ? zmax-eps : voro[n].pc.z;
+      voro_global[n].voronoi->put(*voro_global[n].po, voro[n].nc, x_c, y_c, z_c);
+
+      for(unsigned int m=0; m<voro[n].points.size(); ++m)
+        if(voro[n].points[m].n>=0)
+        {
+          double x_m = fabs(voro[n].points[m].p.x-xmin)<eps ? xmin+eps : fabs(voro[n].points[m].p.x-xmax)<eps ? xmax-eps : voro[n].points[m].p.x;
+          double y_m = fabs(voro[n].points[m].p.y-ymin)<eps ? ymin+eps : fabs(voro[n].points[m].p.y-ymax)<eps ? ymax-eps : voro[n].points[m].p.y;
+          double z_m = fabs(voro[n].points[m].p.z-zmin)<eps ? zmin+eps : fabs(voro[n].points[m].p.z-zmax)<eps ? zmax-eps : voro[n].points[m].p.z;
+          voro_global[n].voronoi->put(*voro_global[n].po, voro[n].points[m].n, x_m, y_m, z_m);
+        }
     }
-  };
-
-  vector<Voro_Ngbd> voro_global(voro.size());
-  for(unsigned int n=0; n<voro.size(); ++n)
-  {
-    voro_global[n].voronoi = new voro::container(xmin, xmax, ymin, ymax, zmin, zmax,
-                                                 1, 1, 1, periodic_x, periodic_y, periodic_z, 8);
-    voro_global[n].po = new voro::particle_order;
-
-    double x_c = ABS(voro[n].pc.x-xmin)<EPS ? voro[n].pc.x+EPS : ABS(voro[n].pc.x-xmax)<EPS ? voro[n].pc.x-EPS : voro[n].pc.x;
-    double y_c = ABS(voro[n].pc.y-ymin)<EPS ? voro[n].pc.y+EPS : ABS(voro[n].pc.y-ymax)<EPS ? voro[n].pc.y-EPS : voro[n].pc.y;
-    double z_c = ABS(voro[n].pc.z-zmin)<EPS ? voro[n].pc.z+EPS : ABS(voro[n].pc.z-zmax)<EPS ? voro[n].pc.z-EPS : voro[n].pc.z;
-    voro_global[n].voronoi->put(*voro_global[n].po, voro[n].nc, x_c, y_c, z_c);
-
-    for(unsigned int m=0; m<voro[n].points.size(); ++m)
-      if(voro[n].points[m].n>=0)
-      {
-        double x_m = ABS(voro[n].points[m].p.x-xmin)<EPS ? voro[n].points[m].p.x+EPS : ABS(voro[n].points[m].p.x-xmax)<EPS ? voro[n].points[m].p.x-EPS : voro[n].points[m].p.x;
-        double y_m = ABS(voro[n].points[m].p.y-ymin)<EPS ? voro[n].points[m].p.y+EPS : ABS(voro[n].points[m].p.y-ymax)<EPS ? voro[n].points[m].p.y-EPS : voro[n].points[m].p.y;
-        double z_m = ABS(voro[n].points[m].p.z-zmin)<EPS ? voro[n].points[m].p.z+EPS : ABS(voro[n].points[m].p.z-zmax)<EPS ? voro[n].points[m].p.z-EPS : voro[n].points[m].p.z;
-        voro_global[n].voronoi->put(*voro_global[n].po, voro[n].points[m].n, x_m, y_m, z_m);
-      }
-  }
-
 
   voro::voronoicell_neighbor c;
   vector<int> neigh, f_vert;
@@ -254,7 +253,7 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
   // first count the number of vertices and polygons
   for(unsigned int n=0; n<voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL)
+    if(voro_global[n].voronoi!=NULL && voro[n].points.size()>0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
       if(cl.start() && cl.pid()==(int) voro[n].nc && voro_global[n].voronoi->compute_cell(c,cl))
@@ -282,7 +281,7 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
 
   for(unsigned int n=0; n<voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL)
+    if(voro_global[n].voronoi!=NULL && voro[n].points.size()>0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
       if(cl.start() && cl.pid()==(int) voro[n].nc && voro_global[n].voronoi->compute_cell(c,cl))
@@ -301,7 +300,7 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
   int offset = 0;
   for(unsigned int n=0; n<voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL)
+    if(voro_global[n].voronoi!=NULL && voro[n].points.size()>0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
       if(cl.start() && cl.pid()==(int) voro[n].nc && voro_global[n].voronoi->compute_cell(c,cl))
@@ -328,7 +327,7 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
   fprintf(f, "\nCELL_TYPES %d\n", nb_polygons);
   for(unsigned int n=0; n<voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL)
+    if(voro_global[n].voronoi!=NULL && voro[n].points.size()>0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
       if(cl.start() && cl.pid()==(int) voro[n].nc && voro_global[n].voronoi->compute_cell(c,cl))

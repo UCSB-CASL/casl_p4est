@@ -17,53 +17,52 @@ PetscLogEvent log_PoissonSolverNodeBasedJump_compute_voronoi_points;
 PetscLogEvent log_PoissonSolverNodeBasedJump_compute_voronoi_cell;
 PetscLogEvent log_PoissonSolverNodeBasedJump_interpolate_to_tree;
 
-// PoissonSolverNodeBase
-PetscLogEvent log_PoissonSolverNodeBased_matrix_preallocation;
-PetscLogEvent log_PoissonSolverNodeBased_matrix_setup;
-PetscLogEvent log_PoissonSolverNodeBased_rhsvec_setup;
-PetscLogEvent log_PoissonSolverNodeBased_solve;
-PetscLogEvent log_PoissonSolverNodeBased_KSPSolve;
+// my_p4est_poisson_nodes_t
+PetscLogEvent log_my_p4est_poisson_nodes_matrix_preallocation;
+PetscLogEvent log_my_p4est_poisson_nodes_matrix_setup;
+PetscLogEvent log_my_p4est_poisson_nodes_rhsvec_setup;
+PetscLogEvent log_my_p4est_poisson_nodes_solve;
+PetscLogEvent log_my_p4est_poisson_nodes_KSPSolve;
 
-// InterpolatingFunction
-PetscLogEvent log_InterpolatingFunction_interpolate;
-PetscLogEvent log_InterpolatingFunction_send_buffer;
-PetscLogEvent log_InterpolatingFunction_recv_buffer;
+// my_p4est_poisson_cells_t
+PetscLogEvent log_my_p4est_poisson_cells_matrix_preallocation;
+PetscLogEvent log_my_p4est_poisson_cells_matrix_setup;
+PetscLogEvent log_my_p4est_poisson_cells_rhsvec_setup;
+PetscLogEvent log_my_p4est_poisson_cells_solve;
+PetscLogEvent log_my_p4est_poisson_cells_KSPSolve;
 
-// InterpolatingFunctionBalanced
-PetscLogEvent log_InterpolatingFunctionBalanced_interpolate;
-PetscLogEvent log_InterpolatingFunctionBalanced_interpolate_nonblocking;
-PetscLogEvent log_InterpolatingFunctionBalanced_process_data;
-PetscLogEvent log_InterpolatingFunctionBalanced_process_message;
-PetscLogEvent log_InterpolatingFunctionBalanced_all_reduce;
+// my_p4est_poisson_faces_t
+PetscLogEvent log_my_p4est_poisson_faces_compute_voronoi_cell;
+PetscLogEvent log_my_p4est_poisson_faces_matrix_preallocation;
+PetscLogEvent log_my_p4est_poisson_faces_setup_linear_system;
+PetscLogEvent log_my_p4est_poisson_faces_solve;
+PetscLogEvent log_my_p4est_poisson_faces_KSPSolve;
 
-// InterpolatingFunctionHost
-PetscLogEvent log_InterpolatingFunctionHost_interpolate;
-PetscLogEvent log_InterpolatingFunctionHost_process_local;
-PetscLogEvent log_InterpolatingFunctionHost_process_queries;
-PetscLogEvent log_InterpolatingFunctionHost_process_replies;
-PetscLogEvent log_InterpolatingFunctionHost_all_reduce;
+// my_p4est_navier_stokes_t
+PetscLogEvent log_my_p4est_navier_stokes_viscosity;
+PetscLogEvent log_my_p4est_navier_stokes_projection;
+PetscLogEvent log_my_p4est_navier_stokes_update;
 
-// InterpolatingFunctionNonblocking
-PetscLogEvent log_InterpolatingFunctionNonblocking_interpolate;
-PetscLogEvent log_InterpolatingFunctionNonblocking_process_local;
-PetscLogEvent log_InterpolatingFunctionNonblocking_process_queries;
-PetscLogEvent log_InterpolatingFunctionNonblocking_process_replies;
-PetscLogEvent log_InterpolatingFunctionNonblocking_barrier;
+// my_p4est_interpolation_t
+PetscLogEvent log_my_p4est_interpolation_interpolate;
+PetscLogEvent log_my_p4est_interpolation_process_local;
+PetscLogEvent log_my_p4est_interpolation_process_queries;
+PetscLogEvent log_my_p4est_interpolation_process_replies;
+PetscLogEvent log_my_p4est_interpolation_all_reduce;
 
-// SemiLagrangian
-PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_Vec;
-PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CF2;
-PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CFL_Vec;
-PetscLogEvent log_Semilagrangian_advect_from_n_to_np1_CFL_CF2;
-PetscLogEvent log_Semilagrangian_update_p4est_second_order_Vec;
-PetscLogEvent log_Semilagrangian_update_p4est_second_order_CFL_Vec;
-PetscLogEvent log_Semilagrangian_update_p4est_second_order_CFL_CF2;
-PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2;
-PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_grid;
-PetscLogEvent log_Semilagrangian_update_p4est_second_order_CF2_value;
-PetscLogEvent log_Semilagrangian_update_p4est_second_order_last_grid_CF2;
-PetscLogEvent log_Semilagrangian_update_p4est_second_order_last_grid_Vec;
-PetscLogEvent log_Semilagrangian_grid_gen_iter[P4EST_MAXLEVEL];
+// my_p4est_semi_lagrangian_t
+PetscLogEvent log_my_p4est_semi_lagrangian_advect_from_n_to_np1_CF2;
+PetscLogEvent log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order;
+PetscLogEvent log_my_p4est_semi_lagrangian_advect_from_n_to_np1_2nd_order;
+PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_CF2;
+PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_1st_order;
+PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_2nd_order;
+PetscLogEvent log_my_p4est_semi_lagrangian_grid_gen_iter[P4EST_MAXLEVEL];
+
+// my_p4est_trajectory_of_point
+PetscLogEvent log_trajectory_from_np1_to_n;
+PetscLogEvent log_trajectory_from_np1_to_nm1;
+PetscLogEvent log_trajectory_from_np1_to_nm1_faces;
 
 // my_p4est_level_set
 PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
@@ -80,6 +79,12 @@ PetscLogEvent log_my_p4est_level_set_compute_derivatives;
 PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_1_iter;
 PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_Vec;
 PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_CF2;
+
+// my_p4est_level_set_faces_t
+PetscLogEvent log_my_p4est_level_set_faces_extend_over_interface;
+
+// my_p4est_level_set_cells_t
+PetscLogEvent log_my_p4est_level_set_cells_extend_over_interface;
 
 // my_p4est_hierarchy_t
 PetscLogEvent log_my_p4est_hierarchy_t;
@@ -111,6 +116,10 @@ PetscLogEvent log_my_p4est_node_neighbors_t_dzz_central;
 PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central;
 PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central_block;
 
+// my_p4est_faces_t
+PetscLogEvent log_my_p4est_faces_t;
+PetscLogEvent log_my_p4est_faces_notify_t;
+
 // functions
 PetscLogEvent log_my_p4est_vtk_write_all;
 PetscLogEvent log_my_p4est_nodes_new;
@@ -137,57 +146,56 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::compute_voronoi_cell        ", 0, &log_PoissonSolverNodeBasedJump_compute_voronoi_cell); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::interpolate_to_tree         ", 0, &log_PoissonSolverNodeBasedJump_interpolate_to_tree); CHKERRXX(ierr);
 
+  // my_p4est_poisson_nodes_t
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes::matrix_preallocation            ", 0, &log_my_p4est_poisson_nodes_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes::matrix_setup                    ", 0, &log_my_p4est_poisson_nodes_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes::rhsvec_setup                    ", 0, &log_my_p4est_poisson_nodes_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes::solve                           ", 0, &log_my_p4est_poisson_nodes_solve); CHKERRXX(ierr);
 
-  // PoissonSolverNodeBase
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_preallocation            ", 0, &log_PoissonSolverNodeBased_matrix_preallocation); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::matrix_setup                    ", 0, &log_PoissonSolverNodeBased_matrix_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::rhsvec_setup                    ", 0, &log_PoissonSolverNodeBased_rhsvec_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("PoissonSolverNodeBased::solve                           ", 0, &log_PoissonSolverNodeBased_solve); CHKERRXX(ierr);
+  // my_p4est_poisson_cells_t
+  ierr = PetscLogEventRegister("my_p4est_poisson_cells::matrix_preallocation            ", 0, &log_my_p4est_poisson_cells_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_cells::matrix_setup                    ", 0, &log_my_p4est_poisson_cells_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_cells::rhsvec_setup                    ", 0, &log_my_p4est_poisson_cells_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_cells::solve                           ", 0, &log_my_p4est_poisson_cells_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_cells::KSPSolve                        ", 0, &log_my_p4est_poisson_cells_KSPSolve); CHKERRXX(ierr);
 
-  // InterpolatingFunction
-  ierr = PetscLogEventRegister("InterpolatingFunction::interpolate                      ", 0, &log_InterpolatingFunction_interpolate); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunction::send_buffer                      ", 0, &log_InterpolatingFunction_send_buffer); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunction::recv_buffer                      ", 0, &log_InterpolatingFunction_recv_buffer); CHKERRXX(ierr);
+  // my_p4est_poisson_faces_t
+  ierr = PetscLogEventRegister("my_p4est_poisson_faces::compute_voronoi_cell            ", 0, &log_my_p4est_poisson_faces_compute_voronoi_cell); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_faces::matrix_preallocation            ", 0, &log_my_p4est_poisson_faces_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_faces::setup_linear_system             ", 0, &log_my_p4est_poisson_faces_setup_linear_system); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_faces::solve                           ", 0, &log_my_p4est_poisson_faces_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_faces::KSPSolve                        ", 0, &log_my_p4est_poisson_faces_KSPSolve); CHKERRXX(ierr);
 
-  // InterpolatingFunctionBalanced
-  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::interpolate              ", 0, &log_InterpolatingFunctionBalanced_interpolate); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::interpolate_nonblocking  ", 0, &log_InterpolatingFunctionBalanced_interpolate_nonblocking); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::process_data             ", 0, &log_InterpolatingFunctionBalanced_process_data); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::process_message          ", 0, &log_InterpolatingFunctionBalanced_process_message); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionBalanced::all_reduce			          ", 0, &log_InterpolatingFunctionBalanced_all_reduce); CHKERRXX(ierr);
+  // my_p4est_navier_stokes_t
+  ierr = PetscLogEventRegister("my_p4est_navier_stokes::viscosity                       ", 0, &log_my_p4est_navier_stokes_viscosity); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_navier_stokes::projection                      ", 0, &log_my_p4est_navier_stokes_projection); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_navier_stokes::update                          ", 0, &log_my_p4est_navier_stokes_update); CHKERRXX(ierr);
 
-  // InterpolatingFunctionHost
-  ierr = PetscLogEventRegister("InterpolatingFunctionHost::interpolate                  ", 0, &log_InterpolatingFunctionHost_interpolate); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_local                ", 0, &log_InterpolatingFunctionHost_process_local); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_queries              ", 0, &log_InterpolatingFunctionHost_process_queries); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionHost::process_replies              ", 0, &log_InterpolatingFunctionHost_process_replies); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionHost::all_reduce                   ", 0, &log_InterpolatingFunctionHost_all_reduce); CHKERRXX(ierr);
+  // my_p4est_interpolation
+  ierr = PetscLogEventRegister("my_p4est_interpolation::interpolate                     ", 0, &log_my_p4est_interpolation_interpolate); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_interpolation::process_local                   ", 0, &log_my_p4est_interpolation_process_local); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_interpolation::process_queries                 ", 0, &log_my_p4est_interpolation_process_queries); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_interpolation::process_replies                 ", 0, &log_my_p4est_interpolation_process_replies); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_interpolation::all_reduce                      ", 0, &log_my_p4est_interpolation_all_reduce); CHKERRXX(ierr);
 
-  // InterpolatingFunctionNonblocking
-  ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::interpolate           ", 0, &log_InterpolatingFunctionNonblocking_interpolate); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::process_local         ", 0, &log_InterpolatingFunctionNonblocking_process_local); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::process_queries       ", 0, &log_InterpolatingFunctionNonblocking_process_queries); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::process_replies       ", 0, &log_InterpolatingFunctionNonblocking_process_replies); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("InterpolatingFunctionNonblocking::barrier               ", 0, &log_InterpolatingFunctionNonblocking_barrier); CHKERRXX(ierr);
-
-  // Semilagrangian
-  ierr = PetscLogEventRegister("Semilagrangian::advect_from_n_to_np1_Vec                ", 0, &log_Semilagrangian_advect_from_n_to_np1_Vec); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::advect_from_n_to_np1_CF2                ", 0, &log_Semilagrangian_advect_from_n_to_np1_CF2); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::advect_from_n_to_np1_CFL_Vec            ", 0, &log_Semilagrangian_advect_from_n_to_np1_CFL_Vec); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::advect_from_n_to_np1_CFL_CF2            ", 0, &log_Semilagrangian_advect_from_n_to_np1_CFL_CF2); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_Vec           ", 0, &log_Semilagrangian_update_p4est_second_order_Vec); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CFL_Vec       ", 0, &log_Semilagrangian_update_p4est_second_order_CFL_Vec); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CFL_CF2       ", 0, &log_Semilagrangian_update_p4est_second_order_CFL_CF2); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2           ", 0, &log_Semilagrangian_update_p4est_second_order_CF2); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2_value     ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_value); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_CF2_grid      ", 0, &log_Semilagrangian_update_p4est_second_order_CF2_grid); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_last_grid_CF2 ", 0, &log_Semilagrangian_update_p4est_second_order_last_grid_CF2); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("Semilagrangian::update_p4est_second_order_last_grid_Vec ", 0, &log_Semilagrangian_update_p4est_second_order_last_grid_Vec); CHKERRXX(ierr);
+  // my_p4est_semi_lagrangian_t
+  ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::advect_from_n_to_np1_CF2    ", 0, &log_my_p4est_semi_lagrangian_advect_from_n_to_np1_CF2); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::advect_from_n_to_np1_1st    ", 0, &log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::advect_from_n_to_np1_2nd    ", 0, &log_my_p4est_semi_lagrangian_advect_from_n_to_np1_2nd_order); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_CF2            ", 0, &log_my_p4est_semi_lagrangian_update_p4est_CF2); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_1st_order      ", 0, &log_my_p4est_semi_lagrangian_update_p4est_1st_order); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_2nd_order      ", 0, &log_my_p4est_semi_lagrangian_update_p4est_2nd_order); CHKERRXX(ierr);
   
+
+  // my_p4est_trajectory_of_point
+  ierr = PetscLogEventRegister("log_trajectory_from_np1_to_n                            ", 0, &log_trajectory_from_np1_to_n); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("log_trajectory_from_np1_to_nm1                          ", 0, &log_trajectory_from_np1_to_nm1); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("log_trajectory_from_np1_to_nm1_faces                    ", 0, &log_trajectory_from_np1_to_nm1_faces); CHKERRXX(ierr);
+
 	for (short i = 0; i < P4EST_MAXLEVEL; i++) {
 		char logname [128]; 
-		sprintf(logname,"Semilagrangian::grid_gen_iter_%02d                        ", i);
-		ierr = PetscLogEventRegister(logname, 0, &log_Semilagrangian_grid_gen_iter[i]); CHKERRXX(ierr);	
+    sprintf(logname,"my_p4est_semi_lagrangian_t::grid_gen_iter_%02d                        ", i);
+    ierr = PetscLogEventRegister(logname, 0, &log_my_p4est_semi_lagrangian_grid_gen_iter[i]); CHKERRXX(ierr);
 	}
   // my_p4est_level_set
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_1st_order                    ", 0, &log_my_p4est_level_set_reinit_1st_order); CHKERRXX(ierr);
@@ -204,9 +212,19 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_CF2      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_Vec      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_Vec); CHKERRXX(ierr);
 
+  // my_p4est_level_set_faces_t
+  ierr = PetscLogEventRegister("my_p4est_level_set_faces::extend_over_interface         ", 0, &log_my_p4est_level_set_faces_extend_over_interface); CHKERRXX(ierr);
+
+  // my_p4est_level_set_cells_t
+  ierr = PetscLogEventRegister("my_p4est_level_set_cells::extend_over_interface         ", 0, &log_my_p4est_level_set_cells_extend_over_interface); CHKERRXX(ierr);
+
   // my_p4est_hierarchy_t
   ierr = PetscLogEventRegister("my_p4est_hierarchy_t::init                              ", 0, &log_my_p4est_hierarchy_t); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_hierarchy_t::find_smallest_quad                ", 0, &log_my_p4est_hierarchy_t_find_smallest_quad); CHKERRXX(ierr);
+
+  // my_p4est_faces_t
+  ierr = PetscLogEventRegister("my_p4est_faces_t::init                                  ", 0, &log_my_p4est_faces_t); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_faces_t::notify                                ", 0, &log_my_p4est_faces_notify_t); CHKERRXX(ierr);
 
   // quad_neighbor_nodes_of_node_t
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::ngbd_with_quad_interp    ", 0, &log_quad_neighbor_nodes_of_node_t_ngbd_with_quad_interp); CHKERRXX(ierr);

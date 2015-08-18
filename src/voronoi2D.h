@@ -1,6 +1,7 @@
 #ifndef VORONOI2D_H
 #define VORONOI2D_H
 
+#include <mpi.h>
 #include <float.h>
 #include <fstream>
 #include <vector>
@@ -46,6 +47,7 @@ private:
   vector<Point2> partition;
   vector<double> phi_values;
   double phi_c;
+  double volume;
 
 public:
   /*!
@@ -73,12 +75,22 @@ public:
      */
   void get_Points( const vector<Voronoi2DPoint> *&points) const;
   void get_Partition( const vector<Point2> *&partition ) const;
+  void get_Points( vector<Voronoi2DPoint> *&points);
+  void get_Partition( vector<Point2> *&partition );
 
   /*!
      * \brief update the partition
      * \param partition the new partition
      */
   void set_Partition( vector<Point2>& partition );
+
+  /*!
+     * \brief set the precomputed voronoi cell
+     * \param points the voronoi neighbors
+     * \param partition the new partition
+     * \param volume the volume/area of the partition
+     */
+  void set_Points_And_Partition( vector<Voronoi2DPoint>& points, vector<Point2>& partition, double volume );
 
   /*!
      * \brief set the level-set values at the vertices of the voronoi partition
@@ -155,10 +167,21 @@ public:
   void clip_Interface();
 
   /*!
-     * \brief compute the area inside the voronoi partition
+   * \brief Check if the voronoi cell is crossed by the irregular interface
+   * \return true if the cell is crossed by the interface, false otherwise
+   */
+  bool is_Interface() const;
+
+  /*!
+     * \brief compute the volume enclosed by the voronoi partition
+     */
+  void compute_volume();
+
+  /*!
+     * \brief get the area inside the voronoi partition
      * \return the area of the voronoi partition containing pc and built using the provided points
      */
-  double volume() const;
+  inline double get_volume() const { return volume; }
 
   /*!
    * \brief is_Wall

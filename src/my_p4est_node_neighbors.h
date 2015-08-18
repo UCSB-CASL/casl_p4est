@@ -23,16 +23,19 @@
 #include <sstream>
 
 class my_p4est_node_neighbors_t {
-  friend class PoissonSolverNodeBase;
-  friend class PoissonSolverCellBase;
+  friend class my_p4est_poisson_nodes_t;
+  friend class my_p4est_poisson_cells_t;
   friend class PoissonSolverNodeBaseJump;
-  friend class InterpolatingFunctionNodeBase;
-  friend class InterpolatingFunctionNodeBaseBalanced;
-  friend class InterpolatingFunctionNodeBaseHost;
-  friend class InterpolatingFunctionNodeBaseNonblocking;
-  friend class my_p4est_level_set;
-  friend class SemiLagrangian;
+  friend class my_p4est_interpolation_t;
+  friend class my_p4est_interpolation_nodes_t;
+  friend class my_p4est_interpolation_cells_t;
+  friend class my_p4est_interpolation_faces_t;
+  friend class my_p4est_level_set_t;
+  friend class my_p4est_level_set_cells_t;
+  friend class my_p4est_level_set_faces_t;
+  friend class my_p4est_semi_lagrangian_t;
   friend class my_p4est_bialloy_t;
+  friend class my_p4est_navier_stokes_t;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information

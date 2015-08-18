@@ -10,11 +10,6 @@
 #include <sc_search.h>
 #include <iostream>
 
-#define SKIP_QUADRANT		 0
-#define REFINE_QUADRANT  1
-#define COARSEN_QUADRANT 2
-#define NEW_QUADRANT     3
-
 p4est_bool_t
 refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
@@ -26,10 +21,26 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
     return P4EST_FALSE;
   else
   {
-    double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-    double dy = dx;
+    p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0];
+    p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + P4EST_CHILDREN-1];
+
+    double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
 #ifdef P4_TO_P8
-    double dz = dx;
+    double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+#endif
+
+    double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+    double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+#ifdef P4_TO_P8
+    double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+#endif
+
+    double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    double dx = (tree_xmax-tree_xmin) * dmin;
+    double dy = (tree_ymax-tree_ymin) * dmin;
+#ifdef P4_TO_P8
+    double dz = (tree_zmax-tree_zmin) * dmin;
 #endif
 
 #ifdef P4_TO_P8
@@ -38,18 +49,10 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
     double d = sqrt(dx*dx + dy*dy);
 #endif
 
-    p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0];
-
-    double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+    double x = (tree_xmax-tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;
+    double y = (tree_ymax-tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;
 #ifdef P4_TO_P8
-    double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-#endif
-
-    double x = (double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;
-    double y = (double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-    double z = (double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
+    double z = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
 #ifdef P4_TO_P8
@@ -100,10 +103,26 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
     return P4EST_TRUE;
   else
   {
-    double dx = 2*(double)P4EST_QUADRANT_LEN((*quad)->level)/(double)P4EST_ROOT_LEN;
-    double dy = dx;
+    p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0];
+    p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + P4EST_CHILDREN-1];
+
+    double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
 #ifdef P4_TO_P8
-    double dz = dx;
+    double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+#endif
+
+    double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+    double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+#ifdef P4_TO_P8
+    double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+#endif
+
+    double dmin = 2*(double)P4EST_QUADRANT_LEN(quad[0]->level)/(double)P4EST_ROOT_LEN;
+    double dx = (tree_xmax-tree_xmin) * dmin;
+    double dy = (tree_ymax-tree_ymin) * dmin;
+#ifdef P4_TO_P8
+    double dz = (tree_zmax-tree_zmin) * dmin;
 #endif
 
 #ifdef P4_TO_P8
@@ -112,18 +131,10 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
     double d = sqrt(dx*dx + dy*dy);
 #endif
 
-    p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0];
-
-    double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
+    double x = (tree_xmax-tree_xmin)*(double)quad[0]->x/(double)P4EST_ROOT_LEN + tree_xmin;
+    double y = (tree_ymax-tree_ymin)*(double)quad[0]->y/(double)P4EST_ROOT_LEN + tree_ymin;
 #ifdef P4_TO_P8
-    double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-#endif
-
-    double x = (double)((*quad)->x)/(double)P4EST_ROOT_LEN + tree_xmin;
-    double y = (double)((*quad)->y)/(double)P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-    double z = (double)((*quad)->z)/(double)P4EST_ROOT_LEN + tree_zmin;
+    double z = (tree_zmax-tree_zmin)*(double)quad[0]->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
 #ifdef P4_TO_P8
@@ -291,7 +302,7 @@ coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadra
   return P4EST_FALSE;
 }
 
-void splitting_criteria_tag_t::tag_quadrant(p4est_quadrant_t *quad, const double* f) {
+void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t which_tree, const double* f) {
   if (quad->level < min_lvl) {
     quad->p.user_int = REFINE_QUADRANT;
 
@@ -299,10 +310,26 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_quadrant_t *quad, const double
     quad->p.user_int = COARSEN_QUADRANT;    
 
   } else {
-    double dx = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-    double dy = dx;
+    p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0];
+    p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + P4EST_CHILDREN-1];
+
+    double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
 #ifdef P4_TO_P8
-    double dz = dx;
+    double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+#endif
+
+    double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+    double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+#ifdef P4_TO_P8
+    double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+#endif
+
+    double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    double dx = (tree_xmax-tree_xmin) * dmin;
+    double dy = (tree_ymax-tree_ymin) * dmin;
+#ifdef P4_TO_P8
+    double dz = (tree_zmax-tree_zmin) * dmin;
 #endif
 
 #ifdef P4_TO_P8
@@ -357,7 +384,6 @@ int splitting_criteria_tag_t::coarsen_fn(p4est_t *p4est, p4est_topidx_t which_tr
   int coarsen = quad[0]->p.user_int == COARSEN_QUADRANT;
   for (short i = 1; i<P4EST_CHILDREN; i++)
     coarsen = coarsen && (quad[i]->p.user_int == COARSEN_QUADRANT);
-
   return coarsen;
 }
 
@@ -378,7 +404,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, const p4est_no
 
       for (short i = 0; i<P4EST_CHILDREN; i++)
         f[i] = phi[nodes->local_nodes[qu_idx*P4EST_CHILDREN + i]];
-      tag_quadrant(quad, f);
+      tag_quadrant(p4est, quad, it, f);
     }
   }
 

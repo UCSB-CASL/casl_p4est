@@ -4,9 +4,11 @@
 #ifdef P4_TO_P8
 #include <p8est.h>
 #include <p8est_nodes.h>
+#include <p8est_ghost.h>
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
+#include <p4est_ghost.h>
 #endif
 #include <src/petsc_logging.h>
 #include "petsc_compatibility.h"
@@ -39,6 +41,14 @@ enum {
 #ifdef P4_TO_P8
   ,f_00m,
   f_00p
+#endif
+};
+/* cartesian direction */
+enum {
+  x = 0,
+  y
+#ifdef P4_TO_P8
+  ,z
 #endif
 };
 }
@@ -373,56 +383,163 @@ inline double node_z_fr_n(const p4est_indep_t *ni){
 }
 #endif
 
-inline double node_x_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+inline double node_x_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes)
 {
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-  double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-  return node_x_fr_n(node) + tree_xmin;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + P4EST_CHILDREN-1];
+  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  return (tree_xmax-tree_xmin)*node_x_fr_n(node) + tree_xmin;
 }
 
-inline double node_y_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+inline double node_y_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes)
 {
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-  return node_y_fr_n(node) + tree_ymin;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + P4EST_CHILDREN-1];
+  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+  return (tree_ymax-tree_ymin)*node_y_fr_n(node) + tree_ymin;
 }
 
 #ifdef P4_TO_P8
-inline double node_z_fr_n(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes)
+inline double node_z_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes)
 {
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-  double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-  return node_z_fr_n(node) + tree_zmin;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + P4EST_CHILDREN-1];
+  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+  return (tree_zmax-tree_zmin)*node_z_fr_n(node) + tree_zmin;
 }
 #endif
 
+inline void node_xyz_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes, double *xyz)
+{
+  xyz[0] = node_x_fr_n(n,p4est,nodes);
+  xyz[1] = node_y_fr_n(n,p4est,nodes);
+#ifdef P4_TO_P8
+  xyz[2] = node_z_fr_n(n,p4est,nodes);
+#endif
+}
+
+/*!
+ * \brief get the z-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
+ */
 inline double quad_x_fr_i(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
+/*!
+ * \brief get the y-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
+ */
 inline double quad_y_fr_j(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->y)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
 #ifdef P4_TO_P8
+/*!
+ * \brief get the x-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
+ */
 inline double quad_z_fr_k(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
 }
 #endif
 
 /*!
+ * \brief get the x-coordinate of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
+ */
+inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+{
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+    quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  return (tree_xmax-tree_xmin)*(quad_x_fr_i(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_xmin;
+}
+
+/*!
+ * \brief get the y-coordinate of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
+ */
+inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+{
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+    quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+  return (tree_ymax-tree_ymin)*(quad_y_fr_j(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_ymin;
+}
+
+#ifdef P4_TO_P8
+/*!
+ * \brief get the z-coordinate of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
+ */
+inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+{
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+    quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+  return (tree_zmax-tree_zmin)*(quad_z_fr_k(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_zmin;
+}
+#endif
+
+
+/*!
+ * \brief get the xyz-coordinates of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
+ */
+inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost, double *xyz)
+{
+  xyz[0] = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+  xyz[1] = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+#ifdef P4_TO_P8
+  xyz[2] = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+#endif
+}
+
+
+/*!
  * \brief integrate_over_negative_domain_in_one_quadrant
  */
-double integrate_over_negative_domain_in_one_quadrant(const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_negative_domain integrate a quantity f over the negative domain defined by phi
@@ -438,7 +555,7 @@ double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t 
 /*!
  * \brief area_in_negative_domain_in_one_quadrant
  */
-double area_in_negative_domain_in_one_quadrant(p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
+double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
 
 /*!
  * \brief area_in_negative_domain compute the area of the negative domain defined by phi
@@ -453,7 +570,7 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
 /*!
  * \brief integrate_over_interface_in_one_quadrant
  */
-double integrate_over_interface_in_one_quadrant(p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.
@@ -586,6 +703,16 @@ bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
 bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
 /*!
+ * \brief is_quad_Wall checks if a quad is on the domain boundary in a given direction
+ * \param p4est [in] p4est
+ * \param qi    [in] pointer to the quadrant
+ * \param dir   [in] the direction to check, dir::f_m00, dir::f_p00, dir::f_0m0 ...
+ * \return true if the quad is on the domain boundary in the direction dir and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
+ */
+bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi, int dir);
+
+/*!
  * \brief is_quad_Wall checks if a quad is on any of domain boundaries
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
@@ -593,6 +720,14 @@ bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \note: periodicity is not implemented
  */
 bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
+
+/*!
+ * \brief find the owner rank of a ghost quadrant
+ * \param ghost the ghost structure
+ * \param ghost_idx the index of the ghost quadrant (between 0 and the number of ghost quadrants)
+ * \return the rank who owns the ghost quadrant
+ */
+int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghost_idx);
 
 /*!
  * \brief sample_cf_on_nodes samples a cf function on the nodes. both local and ghost poinst are considered
@@ -638,8 +773,8 @@ struct InterpolatingFunctionLogEntry{
 };
 
 class InterpolatingFunctionLogger{
-  InterpolatingFunctionLogger() {};
-  InterpolatingFunctionLogger(const InterpolatingFunctionLogger& ) {};
+  InterpolatingFunctionLogger() {}
+  InterpolatingFunctionLogger(const InterpolatingFunctionLogger& ) {}
   static std::vector<InterpolatingFunctionLogEntry> entries;
 
 public:

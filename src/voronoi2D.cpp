@@ -27,9 +27,26 @@ void Voronoi2D::get_Partition( const vector<Point2> *&partition ) const
   partition = &(this->partition);
 }
 
+void Voronoi2D::get_Points( vector<Voronoi2DPoint>*& points)
+{
+  points = &this->points;
+}
+
+void Voronoi2D::get_Partition( vector<Point2> *&partition )
+{
+  partition = &(this->partition);
+}
+
 void Voronoi2D::set_Partition( vector<Point2>& partition )
 {
   this->partition = partition;
+}
+
+void Voronoi2D::set_Points_And_Partition( vector<Voronoi2DPoint>& points, vector<Point2>& partition, double volume )
+{
+  this->points = points;
+  this->partition = partition;
+  this->volume = volume;
 }
 
 void Voronoi2D::set_Level_Set_Values( const CF_2 &ls )
@@ -236,7 +253,7 @@ void Voronoi2D::clip_Interface()
    * note that using epsilon instead of zero eliminate the problem of cells
    * with very small areas
    */
-  double thresh = -EPS;
+  double thresh = -EPS/2;
 
   /* find a vertex that is in the negative domain */
   unsigned int m0 = 0;
@@ -250,6 +267,7 @@ void Voronoi2D::clip_Interface()
     points.resize(0);
     partition.resize(0);
     phi_values.resize(0);
+    volume = 0;
     return;
   }
 
@@ -357,17 +375,26 @@ void Voronoi2D::clip_Interface()
 #endif
 }
 
-double Voronoi2D::volume() const
+
+bool Voronoi2D::is_Interface() const
 {
-  double sum = 0.;
+  for(unsigned int n=0; n<points.size(); ++n)
+    if(points[n].n == INTERFACE)
+      return true;
+  return false;
+}
+
+
+void Voronoi2D::compute_volume()
+{
+  volume = 0;
   for(unsigned int m=0; m<partition.size(); ++m)
   {
     unsigned int k = mod(m+partition.size()-1, partition.size());
     Point2 u = partition[k]-pc;
     Point2 v = partition[m]-pc;
-    sum += u.cross(v)/2.;
+    volume += u.cross(v)/2.;
   }
-  return sum;
 }
 
 

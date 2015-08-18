@@ -13,6 +13,17 @@
 
 using std::vector;
 
+struct VoroNgbd {
+  voro::container* voronoi;
+  voro::particle_order* po;
+  VoroNgbd() : voronoi(NULL), po(NULL) {}
+  ~VoroNgbd()
+  {
+    if(voronoi!=NULL) delete voronoi;
+    if(po!=NULL) delete po;
+  }
+};
+
 struct Voronoi3DPoint
 {
   /*!
@@ -46,7 +57,7 @@ private:
   Point3 pc;
   int nc;
   vector<Voronoi3DPoint> points;
-  double volume_;
+  double volume;
   double scaling;
 
 public:
@@ -70,6 +81,13 @@ public:
   void get_Points( const vector<Voronoi3DPoint>*& points) const;
 
   /*!
+   * \brief set the voronoi cell with precomputed values
+   * \param points the list of voronoi neighbors with their properties
+   * \param the volume of the voronoi cell
+   */
+  void set_Points( vector<Voronoi3DPoint> &points, double volume );
+
+  /*!
      * \brief set the level-set values at the vertices of the voronoi partition
      * \param phi_values the list of the level-set values
      */
@@ -79,14 +97,14 @@ public:
      * \brief set the point at the center of the partition
      * \param pc the coordinates of the point
      */
-  void set_Center_Point( int nc, Point3 &pc, double scaling );
+  void set_Center_Point( int nc, Point3 &pc, double scaling=1 );
 
   /*!
      * \brief set the coordinates of the point at the center of the partition
      * \param x the first coordinate of the point
      * \param y the second coordinate of the point
      */
-  void set_Center_Point( int nc, double x, double y, double z, double scaling );
+  void set_Center_Point( int nc, double x, double y, double z, double scaling=1 );
 
   /*!
      * \brief get the point at the center of the partition
@@ -109,7 +127,7 @@ public:
   void construct_Partition(double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
                            bool periodic_x, bool periodic_y, bool periodic_z);
 
-  inline double volume() const { return this->volume_; }
+  inline double get_volume() const { return this->volume; }
 
   /*!
      * \brief save the voronoi partition in the .vtk format

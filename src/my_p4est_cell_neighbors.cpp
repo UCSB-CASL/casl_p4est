@@ -213,6 +213,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
 #ifdef P4_TO_P8
   if     (quad->x==0 && dir_x==-1 && quad->y==0 && dir_y==-1 && quad->z==0 && dir_z==-1)
   {
+    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_mmm];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -223,6 +224,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y==0 && dir_y==-1 && quad->z==0 && dir_z==-1)
   {
+    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_pmm];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -233,6 +235,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x==0 && dir_x==-1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z==0 && dir_z==-1)
   {
+    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_mpm];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -243,6 +246,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z==0 && dir_z==-1)
   {
+    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_ppm];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -253,6 +257,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x==0 && dir_x==-1 && quad->y==0 && dir_y==-1 && quad->z+size==P4EST_ROOT_LEN && dir_z==1)
   {
+    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_mmp];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -263,6 +268,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y==0 && dir_y==-1 && quad->z==P4EST_ROOT_LEN && dir_z==1)
   {
+    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_pmp];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -273,6 +279,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x==0 && dir_x==-1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z==P4EST_ROOT_LEN && dir_z==1)
   {
+    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_mpp];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -283,6 +290,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z==P4EST_ROOT_LEN && dir_z==1)
   {
+    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_ppp];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -297,98 +305,110 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
 #endif
   /* edges/corner directions */
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_m00];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_0m0];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_m00];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_0m0];
+    if(nb_tree_idx==tmp_idx) return;
     i_nb = P4EST_ROOT_LEN - size;
     j_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y==0 && dir_y==-1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_p00];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_0m0];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_0m0];
+    if(nb_tree_idx==tmp_idx) return;
     i_nb = 0;
     j_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->x==0 && dir_x==-1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_m00];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_0p0];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_0p0];
+    if(nb_tree_idx==tmp_idx) return;
     i_nb = P4EST_ROOT_LEN - size;
     j_nb = 0;
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_p00];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_0p0];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_0p0];
+    if(nb_tree_idx==tmp_idx) return;
     i_nb = 0;
     j_nb = 0;
   }
 #ifdef P4_TO_P8
   else if(quad->x==0 && dir_x==-1 && quad->z==0 && dir_z==-1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_m00];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_00m];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00m];
+    if(nb_tree_idx==tmp_idx) return;
     i_nb = P4EST_ROOT_LEN - size;
     k_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->z==0 && dir_z==-1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_p00];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_00m];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00m];
+    if(nb_tree_idx==tmp_idx) return;
     i_nb = 0;
     k_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->x==0 && dir_x==-1 && quad->z+size==P4EST_ROOT_LEN && dir_z==1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_m00];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_00p];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00p];
+    if(nb_tree_idx==tmp_idx) return;
     i_nb = P4EST_ROOT_LEN - size;
     k_nb = 0;
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->z+size==P4EST_ROOT_LEN && dir_z==1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_p00];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_00p];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00p];
+    if(nb_tree_idx==tmp_idx) return;
     i_nb = 0;
     k_nb = 0;
   }
   else if(quad->y==0 && dir_y==-1 && quad->z==0 && dir_z==-1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_0m0];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_00m];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00m];
+    if(nb_tree_idx==tmp_idx) return;
     j_nb = P4EST_ROOT_LEN - size;
     k_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z==0 && dir_z==-1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_0p0];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_00m];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00m];
+    if(nb_tree_idx==tmp_idx) return;
     j_nb = 0;
     k_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->y==0 && dir_y==-1 && quad->z+size==P4EST_ROOT_LEN && dir_z==1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_0m0];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_00p];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00p];
+    if(nb_tree_idx==tmp_idx) return;
     j_nb = P4EST_ROOT_LEN - size;
     k_nb = 0;
   }
   else if(quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z+size==P4EST_ROOT_LEN && dir_z==1)
   {
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_0p0];
-    if(nb_tree_idx==tree_idx) return;
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*nb_tree_idx + dir::f_00p];
+    p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
+    if(tmp_idx==tree_idx) return;
+    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00p];
+    if(nb_tree_idx==tmp_idx) return;
     j_nb = 0;
     k_nb = 0;
   }
@@ -469,8 +489,13 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive( std::vect
   {
     if (hierarchy->trees[tr][ind].quad == NOT_A_P4EST_QUADRANT) return;
 
-    p4est_quadrant_t quad;
     p4est_locidx_t locid = hierarchy->trees[tr][ind].quad;
+
+    for(unsigned int n=0; n<ngbd.size(); ++n)
+      if(ngbd[n].p.piggy3.local_num==locid)
+        return;
+
+    p4est_quadrant_t quad;
     if (locid < p4est->local_num_quadrants) {// local quadrant
       p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
       quad = *(const p4est_quadrant_t*)sc_array_index(&tree->quadrants, locid - tree->quadrants_offset);
@@ -480,6 +505,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive( std::vect
     quad.p.piggy3.local_num = locid;
     quad.p.piggy3.which_tree = tr;
     ngbd.push_back(quad);
+
     return;
   }
 
