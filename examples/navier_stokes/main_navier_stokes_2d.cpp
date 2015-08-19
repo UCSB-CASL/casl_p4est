@@ -1024,10 +1024,10 @@ int main (int argc, char* argv[])
   }
 
 #ifndef P4_TO_P8
+  double naca_angle = cmd.get("naca_angle", 15.);
+  int naca_number = cmd.get("naca_number", 12);
   if(test_number==6)
   {
-    double naca_angle = cmd.get("naca_angle", 15.);
-    double naca_number = cmd.get("naca_number", 12.);
     naca = new NACA(naca_number, naca_length, naca_angle);
   }
 #endif
@@ -1264,11 +1264,11 @@ int main (int argc, char* argv[])
 #if defined(STAMPEDE) || defined(COMET)
     if     (test_number==4) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
     else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
-    else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
 #else
     if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/karman/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
     else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
-    else if(test_number==6) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/naca/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
+    else if(test_number==6) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/naca/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
 #endif
 
     ierr = PetscPrintf(mpi->mpicomm, "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
