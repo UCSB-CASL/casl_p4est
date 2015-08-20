@@ -544,9 +544,12 @@ int main (int argc, char* argv[])
     splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set, 1.6);
     p4est->user_pointer = (void*)(&data);
 
-//    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
-    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+    for(int l=0; l<lmax; ++l)
+    {
+      //    my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
+      my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+      my_p4est_partition(p4est, P4EST_FALSE, NULL);
+    }
     p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
     my_p4est_partition(p4est, P4EST_FALSE, NULL);
 

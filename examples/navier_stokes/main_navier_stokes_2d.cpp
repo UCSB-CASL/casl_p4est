@@ -1135,7 +1135,11 @@ int main (int argc, char* argv[])
 #endif
   {
     p4est_nm1->user_pointer = (void*)&data;
-    my_p4est_refine(p4est_nm1, P4EST_TRUE, refine_levelset_cf, NULL);
+    for(int l=0; l<lmax; ++l)
+    {
+      my_p4est_refine(p4est_nm1, P4EST_FALSE, refine_levelset_cf, NULL);
+      my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
+    }
   }
 
   /* create the initial forest at time nm1 */
