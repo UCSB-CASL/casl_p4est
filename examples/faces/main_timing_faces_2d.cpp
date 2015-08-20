@@ -206,7 +206,7 @@ int main (int argc, char* argv[])
     nx = cbrt(mpi->mpisize);
     ny = nx; nz = nx;
     if(nx*nx*nx != mpi->mpisize)
-      throw std::invalid_argument("you must choose a number of processes that is a perfect cube for weak scaling in 2d.");
+      throw std::invalid_argument("you must choose a number of processes that is a perfect cube for weak scaling in 3d.");
 #else
     nx = sqrt(mpi->mpisize);
     ny = nx;
@@ -273,14 +273,32 @@ int main (int argc, char* argv[])
 
 		if(iter==0 && save_vtk)
 		{
+      Vec leaf_level;
+      ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
+      double *p;
+      ierr = VecGetArray(leaf_level, &p); CHKERRXX(ierr);
+      for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+      {
+        p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+        for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+        {
+          p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+          p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+          p[quad_idx] = quad->level;
+        }
+      }
+
 			char name[1000];
 #ifdef P4_TO_P8
 			sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/scaling/vtu/scaling_faces_3d_%d", mpi->mpisize);
 #else
 			sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/scaling/vtu/scaling_faces_2d_%d", mpi->mpisize);
 #endif
-			my_p4est_vtk_write_all(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 0, 0, name);
+      my_p4est_vtk_write_all(p4est, nodes, NULL, P4EST_FALSE, P4EST_FALSE, 0, 1, name, VTK_CELL_DATA, "leaf_level", p);
 			ierr = PetscPrintf(mpi->mpicomm, "saved visuals in %s\n", name);
+
+      ierr = VecRestoreArray(leaf_level, &p); CHKERRXX(ierr);
+      ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 		}
 
 		p4est_nodes_destroy(nodes);
