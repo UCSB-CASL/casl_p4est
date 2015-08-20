@@ -183,6 +183,7 @@ int main (int argc, char* argv[])
   cmd.add_option("lmax", "max level of the tree");
   cmd.add_option("scaling", "WEAK or STRONG scaling. If choosing weak scaling, you must choose a number of processes that is a perfect square (2D) or cube (3D)");
   cmd.add_option("save_vtk", "export vtk files");
+	cmd.add_option("repeat", "number of times the whole procedure is repeated");
   cmd.parse(argc, argv);
 
   cmd.print();
@@ -191,6 +192,7 @@ int main (int argc, char* argv[])
   lmax = cmd.get("lmax", lmax);
   scaling_type = cmd.get("scaling", scaling_type);
   bool save_vtk = cmd.get("save_vtk", 0);
+	int repeat = cmd.get("repeat", 1);
 
   parStopWatch w;
   w.start("total time");
@@ -233,51 +235,54 @@ int main (int argc, char* argv[])
   connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick);
 #endif
 
-  p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+	for(int iter=0; iter<repeat; ++iter)
+	{
+		p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
 
-  splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
-  p4est->user_pointer = (void*)(&data);
+		splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
+		p4est->user_pointer = (void*)(&data);
 
-  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-  my_p4est_partition(p4est, P4EST_FALSE, NULL);
-  p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
-  my_p4est_partition(p4est, P4EST_FALSE, NULL);
+		my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+		my_p4est_partition(p4est, P4EST_FALSE, NULL);
+		p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+		my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
-  ierr = PetscPrintf(mpi->mpicomm, "the tree has %d leaves\n", p4est->global_num_quadrants);
+		ierr = PetscPrintf(mpi->mpicomm, "the tree has %d leaves\n", p4est->global_num_quadrants);
 
-  p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est, ghost);
-	
-	ierr = PetscPrintf(mpi->mpicomm, "ghost created\n"); CHKERRXX(ierr);
+		p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+		my_p4est_ghost_expand(p4est, ghost);
 
-  p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
+		ierr = PetscPrintf(mpi->mpicomm, "ghost created\n"); CHKERRXX(ierr);
 
-	ierr = PetscPrintf(mpi->mpicomm, "nodes created\n"); CHKERRXX(ierr);
+		p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
 
-  my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
-  my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
+		ierr = PetscPrintf(mpi->mpicomm, "nodes created\n"); CHKERRXX(ierr);
 
-	ierr = PetscPrintf(mpi->mpicomm, "ngbd_c created\n"); CHKERRXX(ierr);
+		my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
+		my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
 
-  my_p4est_faces_t faces(p4est, ghost, &brick, &ngbd_c);
+		ierr = PetscPrintf(mpi->mpicomm, "ngbd_c created\n"); CHKERRXX(ierr);
 
-	ierr = PetscPrintf(mpi->mpicomm, "faces created\n"); CHKERRXX(ierr);
+		my_p4est_faces_t faces(p4est, ghost, &brick, &ngbd_c);
 
-  if(save_vtk)
-  {
-    char name[1000];
+		ierr = PetscPrintf(mpi->mpicomm, "faces created\n"); CHKERRXX(ierr);
+
+		if(iter==0 && save_vtk)
+		{
+			char name[1000];
 #ifdef P4_TO_P8
-    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/scaling/vtu/scaling_faces_3d_%d", mpi->mpisize);
+			sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/scaling/vtu/scaling_faces_3d_%d", mpi->mpisize);
 #else
-    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/scaling/vtu/scaling_faces_2d_%d", mpi->mpisize);
+			sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/scaling/vtu/scaling_faces_2d_%d", mpi->mpisize);
 #endif
-    my_p4est_vtk_write_all(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 0, 0, name);
-    ierr = PetscPrintf(mpi->mpicomm, "saved visuals in %s\n", name);
-  }
+			my_p4est_vtk_write_all(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 0, 0, name);
+			ierr = PetscPrintf(mpi->mpicomm, "saved visuals in %s\n", name);
+		}
 
-  p4est_nodes_destroy(nodes);
-  p4est_ghost_destroy(ghost);
-  p4est_destroy      (p4est);
+		p4est_nodes_destroy(nodes);
+		p4est_ghost_destroy(ghost);
+		p4est_destroy      (p4est);
+	}
   my_p4est_brick_destroy(connectivity, &brick);
 
   w.stop(); w.read_duration();
