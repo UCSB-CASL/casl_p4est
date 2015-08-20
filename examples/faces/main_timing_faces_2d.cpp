@@ -66,6 +66,51 @@ using namespace std;
 int lmin = 0;
 int lmax = 4;
 
+typedef enum
+{
+  WEAK = 0,
+  STRONG = 1
+} scaling_type_t;
+
+std::ostream& operator<< (std::ostream& os, scaling_type_t type)
+{
+  switch(type){
+  case WEAK:
+    os << "Weak";
+    break;
+  case STRONG:
+    os << "Strong";
+    break;
+  default:
+    os << "UNKNOWN";
+    break;
+  }
+  return os;
+}
+
+std::istream& operator>> (std::istream& is, scaling_type_t& type)
+{
+  std::string str;
+  is >> str;
+
+  if (str == "Weak" || str == "WEAK" || str == "weak")
+    type = WEAK;
+  else if (str == "Strong" || str == "STRONG" || str == "strong")
+    type = STRONG;
+  else
+    throw std::invalid_argument("[ERROR]: Unknown scaling_type_t entered");
+
+  return is;
+}
+
+/*
+ * 0 - weak scaling
+ * 1 - strong scaling
+ */
+scaling_type_t scaling_type = STRONG;
+
+
+
 int nx = 2;
 int ny = 2;
 #ifdef P4_TO_P8
@@ -74,14 +119,7 @@ int nz = 2;
 
 double mu = 1.;
 double add_diagonal = 0;
-
-#ifdef P4_TO_P8
-double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
-#else
-double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
-#endif
-
-
+double r0;
 
 #ifdef P4_TO_P8
 
@@ -90,7 +128,19 @@ class LEVEL_SET: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+    if(scaling_type==STRONG)
+    {
+      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+    }
+    else
+    {
+      double d = DBL_MAX;
+      for(int i=0; i<nx; ++i)
+        for(int j=0; j<ny; ++j)
+          for(int k=0; k<nz; ++k)
+            d = MIN(d, sqrt(SQR(x-(xmin+4*r0*i+2*r0)) + SQR(y-(ymin+4*r0*j+2*r0)) + SQR(z-(zmin+4*r0*k+2*r0))) - r0);
+      return d;
+    }
   }
 } level_set;
 
@@ -101,7 +151,18 @@ class LEVEL_SET: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
+    if(scaling_type==STRONG)
+    {
+      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
+    }
+    else
+    {
+      double d = DBL_MAX;
+      for(int i=0; i<nx; ++i)
+        for(int j=0; j<ny; ++j)
+          d = MIN(d, sqrt(SQR(x-(xmin+4*r0*i+2*r0)) + SQR(y-(ymin+4*r0*j+2*r0))) - r0);
+      return d;
+    }
   }
 } level_set;
 
@@ -120,18 +181,49 @@ int main (int argc, char* argv[])
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
+  cmd.add_option("scaling", "WEAK or STRONG scaling. If choosing weak scaling, you must choose a number of processes that is a perfect square (2D) or cube (3D)");
+  cmd.add_option("save_vtk", "export vtk files");
   cmd.parse(argc, argv);
 
   cmd.print();
 
   lmin = cmd.get("lmin", lmin);
   lmax = cmd.get("lmax", lmax);
+  scaling_type = cmd.get("scaling", scaling_type);
+  bool save_vtk = cmd.get("save_vtk", 0);
 
   parStopWatch w;
   w.start("total time");
 
   MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
   MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
+
+  if(scaling_type==WEAK)
+  {
+#ifdef P4_TO_P8
+    nx = cbrt(mpi->mpisize);
+    ny = nx; nz = nx;
+    if(nx*nx*nx != mpi->mpisize)
+      throw std::invalid_argument("you must choose a number of processes that is a perfect cube for weak scaling in 2d.");
+#else
+    nx = sqrt(mpi->mpisize);
+    ny = nx;
+    if(nx*nx != mpi->mpisize)
+      throw std::invalid_argument("you must choose a number of processes that is a perfect square for weak scaling in 2d.");
+#endif
+    r0 = (xmax-xmin)/(double)nx / 4.;
+  }
+  else
+  {
+    nx = 2;
+    ny = 2;
+#ifdef P4_TO_P8
+    nz = 2;
+    r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
+#else
+    r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
+#endif
+  }
 
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
@@ -143,12 +235,9 @@ int main (int argc, char* argv[])
 
   p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
 
-  //    srand(1);
-  //    splitting_criteria_random_t data(2, 7, 1000, 10000);
-  splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.6);
+  splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
   p4est->user_pointer = (void*)(&data);
 
-  //    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
   my_p4est_partition(p4est, P4EST_FALSE, NULL);
   p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
@@ -173,6 +262,18 @@ int main (int argc, char* argv[])
   my_p4est_faces_t faces(p4est, ghost, &brick, &ngbd_c);
 
 	ierr = PetscPrintf(mpi->mpicomm, "faces created\n"); CHKERRXX(ierr);
+
+  if(save_vtk)
+  {
+    char name[1000];
+#ifdef P4_TO_P8
+    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/scaling/vtu/scaling_faces_3d_%d", mpi->mpisize);
+#else
+    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/scaling/vtu/scaling_faces_2d_%d", mpi->mpisize);
+#endif
+    my_p4est_vtk_write_all(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 0, 0, name);
+    ierr = PetscPrintf(mpi->mpicomm, "saved visuals in %s\n", name);
+  }
 
   p4est_nodes_destroy(nodes);
   p4est_ghost_destroy(ghost);
