@@ -1305,7 +1305,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
     grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1);
 
-    if(iter==10)
+    if(iter>data->max_lvl-data->min_lvl)
       throw std::runtime_error("[ERROR]: my_p4est_navier_stokes_t->update_from_tn_to_tnp1: grid update did not converge in 10 iterations.");
   }
   ierr = VecDestroy(vorticity_np1);

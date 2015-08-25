@@ -1069,17 +1069,6 @@ int main (int argc, char* argv[])
   MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
   MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
-  if(0)
-  {
-    int i = 0;
-    char hostname[256];
-    gethostname(hostname, sizeof(hostname));
-    printf("PID %d on %s ready for attach\n", getpid(), hostname);
-    fflush(stdout);
-    while (0 == i)
-      sleep(5);
-  }
-
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
@@ -1216,10 +1205,6 @@ int main (int argc, char* argv[])
   CF_2 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v };
 #endif
 
-//  std::cout << "WARNING ! printing vtu" << std::endl;
-//  my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n, P4EST_TRUE, P4EST_TRUE, 0, 0,
-//                         "/home/guittet/code/Output/p4est_navier_stokes/debug/test");
-
   my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
   ns.set_phi(phi);
   ns.set_parameters(mu, rho, uniform_band, threshold_split_cell, n_times_dt);
@@ -1345,7 +1330,7 @@ int main (int argc, char* argv[])
         if(fp_forces==NULL)
           throw std::invalid_argument("[ERROR]: could not open file for forces output.");
 #ifdef P4_TO_P8
-        fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(PI*r0*r0*u0*u0*rho), forces[1]/(PI*r0*r0*u0*u0*rho), forces[2]/(PI*r0*r0*u0*u0*rho));
+        fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho));
 #else
 				if(test_number==4 || test_number==5)
 	        fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
