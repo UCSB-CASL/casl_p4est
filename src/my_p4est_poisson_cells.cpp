@@ -39,7 +39,7 @@ my_p4est_poisson_cells_t::my_p4est_poisson_cells_t(const my_p4est_cell_neighbors
     mu(1.), diag_add(0.),
     is_matrix_ready(false), matrix_has_nullspace(false),
     bc(NULL),
-    nullspace_use_fixed_point(false),
+    nullspace_use_fixed_point(true),
     A(NULL), A_null_space(NULL),
     rhs(NULL), phi(NULL), add(NULL)
 {
@@ -739,6 +739,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
       p4est_gloidx_t fixed_value_idx;
       MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
+      if(fixed_value_idx_g>=p4est->global_num_quadrants)
+        throw std::invalid_argument("my_p4est_poisson_cells_t->setup_negative_laplace_matrix: could not fix value for all neumann problem. Maybe there is no point inside the domain and away from the interface?");
       if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
         fixed_value_idx_l = -1;
         fixed_value_idx_g = fixed_value_idx;
@@ -754,7 +756,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 
 //  PetscViewer view;
 //  char name[1000];
-//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/mat_%d.dat", p4est->mpisize);
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/mat_%d.m", p4est->mpisize);
 //  ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
 //  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
 //  ierr = MatView(A, view); CHKERRXX(ierr);
@@ -1060,7 +1062,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 
 //  PetscViewer view;
 //  char name[1000];
-//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs_%d.dat", p4est->mpisize);
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs_%d.m", p4est->mpisize);
 //  ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
 //  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
 //  ierr = VecView(rhs, view); CHKERRXX(ierr);
