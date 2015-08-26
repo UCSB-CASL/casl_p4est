@@ -4,7 +4,7 @@
 #include "my_p4est_interpolation_nodes.h"
 #endif
 
-#include "CASL_math.h"
+#include "math.h"
 
 
 my_p4est_interpolation_nodes_t::my_p4est_interpolation_nodes_t(const my_p4est_node_neighbors_t* ngbd_n)

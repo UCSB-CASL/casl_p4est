@@ -1037,6 +1037,10 @@ void my_p4est_navier_stokes_t::solve_projection()
     }
   }
 
+  double vmax;
+  VecMax(rhs, NULL, &vmax);
+  std::cout << vmax << std::endl;
+
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
   /* solve the linear system */
@@ -1045,9 +1049,13 @@ void my_p4est_navier_stokes_t::solve_projection()
   solver.set_mu(1);
   solver.set_bc(bc_hodge);
   solver.set_rhs(rhs);
-	solver.set_nullspace_use_fixed_point(true);
+  solver.set_nullspace_use_fixed_point(true);
 
   solver.solve(hodge);
+
+  double hmax;
+  VecMax(hodge, NULL, &hmax);
+  std::cout << hmax << std::endl;
 
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
 
@@ -1668,6 +1676,10 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
                          , VTK_POINT_DATA, "vz", vn_p[2]
                        #endif
                          );
+
+  double vmax;
+  VecMax(vnp1_nodes[1], NULL, &vmax);
+  std::cout << vmax << std::endl;
 
 
   ierr = VecRestoreArrayRead(phi  , &phi_p  ); CHKERRXX(ierr);

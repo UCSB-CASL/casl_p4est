@@ -4,7 +4,7 @@
 #ifdef P4_TO_P8
 #include <p8est.h>
 #include <p8est_ghost.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_cell_neighbors.h>
@@ -12,7 +12,7 @@
 #else
 #include <p4est.h>
 #include <p4est_ghost.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_cell_neighbors.h>

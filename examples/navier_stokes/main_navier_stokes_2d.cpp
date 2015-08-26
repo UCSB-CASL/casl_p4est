@@ -33,6 +33,11 @@
 #include <src/my_p4est_vtk.h>
 #endif
 
+// casl library
+#include <lib/arrays/ArrayV.h>
+#include <lib/amr/QuadTree.h>
+#include <lib/tools/QuadraticInterpolationOnQuadTree.h>
+
 #include <src/Parser.h>
 
 #undef MIN
@@ -421,7 +426,7 @@ struct external_force_w_t : CF_3
 #else
 
 
-class NACA : public CF_2
+class NACA_SAMPLED : public CF_2
 {
 private:
   vector<double> sample;
@@ -431,7 +436,7 @@ private:
   double naca_angle;
   double x_edge;
 public:
-  NACA(double number, double length, double angle)
+  NACA_SAMPLED(double number, double length, double angle)
   {
     N = 10000;
     sample.resize(N);
@@ -479,7 +484,45 @@ public:
     if(-yt<y && y<yt) return  dist;
     else              return -dist;
   }
-} *naca;
+};
+
+
+class NACA_CASL : public CF_2
+{
+private:
+  CASL::QuadTree tr;
+  CASL::ArrayV<double> phi;
+  CASL::QuadraticInterpolationOnQuadTree interp;
+  double x_edge;
+  double naca_length;
+  double angle;
+public:
+  NACA_CASL(double number, double length, double angle)
+  {
+    (void) number; (void) length;
+    tr.load("/home/guittet/code/data/casl_naca/naca_tree.dat");
+    phi.load("/home/guittet/code/data/casl_naca/naca_phi.dat");
+    interp.set(tr,phi);
+    this->angle = angle;
+    this->x_edge = 8;
+    this->naca_length = 4;
+  }
+  double operator()(double x, double y) const
+  {
+    double theta = PI*angle/180;
+    x -= x_edge;
+    x -= naca_length/2;
+
+    double x_ = x*cos(theta) - y*sin(theta);
+    double y_ = x*sin(theta) + y*cos(theta);
+    x_ += naca_length/2;
+    x_ += x_edge;
+    return interp(x_,y_);
+  }
+};
+
+CF_2 *naca;
+
 
 class LEVEL_SET: public CF_2
 {
@@ -1028,7 +1071,8 @@ int main (int argc, char* argv[])
   int naca_number = cmd.get("naca_number", 12);
   if(test_number==6)
   {
-    naca = new NACA(naca_number, naca_length, naca_angle);
+//    naca = new NACA_SAMPLED(naca_number, naca_length, naca_angle);
+    naca = new NACA_CASL(naca_number, naca_length, naca_angle);
   }
 #endif
 
@@ -1298,10 +1342,10 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
       ns.update_from_tn_to_tnp1(&level_set);
 #else
-      if(test_number==6)
-        ns.update_from_tn_to_tnp1();
-      else
-        ns.update_from_tn_to_tnp1(&level_set);
+//      if(test_number==6)
+//        ns.update_from_tn_to_tnp1();
+//      else
+      ns.update_from_tn_to_tnp1(&level_set);
 #endif
     }
 

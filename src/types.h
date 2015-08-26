@@ -1,5 +1,5 @@
-#ifndef __CASL_TYPES_H__
-#define __CASL_TYPES_H__
+#ifndef MY_P4EST_TYPES_H
+#define MY_P4EST_TYPES_H
 
 #include <stdlib.h>
 #include <ostream>
@@ -83,4 +83,4 @@ struct OctValue {
   }
 };
 
-#endif // __CASL_TYPES_H__
+#endif // MY_P4EST_TYPES_H

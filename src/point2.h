@@ -1,5 +1,5 @@
-#ifndef __POINT2_H__
-#define __POINT2_H__
+#ifndef MY_P4EST_POINT2_H
+#define MY_P4EST_POINT2_H
 
 #include <iostream>
 #include <stdexcept>
@@ -176,4 +176,4 @@ public:
   friend std::ostream& operator<<(std::ostream& os, const Point2& p);
 };
 
-#endif // __POINT2_H__
+#endif // MY_P4EST_POINT2_H

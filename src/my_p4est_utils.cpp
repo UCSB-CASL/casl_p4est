@@ -15,7 +15,7 @@
 #include <set>
 #include <sstream>
 #include <petsclog.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 #include <src/petsc_compatibility.h>
 
 // logging variables -- defined in src/petsc_logging.cpp

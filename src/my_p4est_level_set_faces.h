@@ -12,11 +12,11 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_faces.h>
 #endif
-#include <src/casl_types.h>
+#include <src/types.h>
 
 #include <vector>
 #include <src/ipm_logging.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 class my_p4est_level_set_faces_t
 {
