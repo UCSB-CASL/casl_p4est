@@ -91,49 +91,59 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
     double z = (zmax-zmin)*quad_z_fr_k(quad) + zmin;
 #endif
 
-    bool coarsen = true;
     bool all_pos = true;
+    bool cor_vort = true;
+    bool cor_band = true;
+    bool cor_intf = true;
     for(int i=0; i<2; ++i)
       for(int j=0; j<2; ++j)
 #ifdef P4_TO_P8
         for(int k=0; k<2; ++k)
         {
-        coarsen = coarsen && fabs(vor(x+i*dx, y+j*dy, z+k*dz))*2*MAX(dx,dy,dz)/max_L2_norm_u<threshold;
-        coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>=lip*2*d;
-        coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>uniform_band*dxyz_min;
+        cor_vort = cor_vort && fabs(vor(x+i*dx, y+j*dy, z+k*dz))*2*MAX(dx,dy,dz)/max_L2_norm_u<threshold;
+        cor_band = cor_band && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>uniform_band*dxyz_min;
+        cor_intf = cor_intf && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>=lip*2*d;
         all_pos = all_pos && phi(x+i*dx, y+j*dy, z+k*dz)>0;
 #else
       {
-        coarsen = coarsen && fabs(vor(x+i*dx, y+j*dy))*2*MAX(dx,dy)/max_L2_norm_u<threshold;
-        coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy))>=lip*2*d;
-        coarsen = coarsen && fabs(phi(x+i*dx, y+j*dy))>uniform_band*dxyz_min;
+        cor_vort = cor_vort && fabs(vor(x+i*dx, y+j*dy))*2*MAX(dx,dy)/max_L2_norm_u<threshold;
+        cor_band = cor_band && fabs(phi(x+i*dx, y+j*dy))>uniform_band*dxyz_min;
+        cor_intf = cor_intf && fabs(phi(x+i*dx, y+j*dy))>=lip*2*d;
         all_pos = all_pos && phi(x+i*dx, y+j*dy)>0;
 #endif
       }
 
-    coarsen = (coarsen || all_pos) && quad->level > min_lvl;
+    bool coarsen = true;
+    coarsen = (cor_vort && cor_band && cor_intf) || all_pos;
+//    coarsen = ((cor_vort && cor_band) || all_pos) && cor_intf;
+    coarsen = coarsen && quad->level > min_lvl;
 
-    bool refine = false;
     bool is_neg = false;
+    bool ref_vort = false;
+    bool ref_band = false;
+    bool ref_intf = false;
     for(int i=0; i<3; ++i)
       for(int j=0; j<3; ++j)
 #ifdef P4_TO_P8
         for(int k=0; k<3; ++k)
         {
-          refine = refine || fabs(vor(x+i*dx/2, y+j*dy/2, z+k*dz/2))*MAX(dx,dy,dz)/max_L2_norm_u>threshold;
-          refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2, z+k*dz/2))<=lip*d;
-          refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2, z+k*dz/2))<uniform_band*dxyz_min;
+          ref_vort = ref_vort || fabs(vor(x+i*dx/2, y+j*dy/2, z+k*dz/2))*MAX(dx,dy,dz)/max_L2_norm_u>threshold;
+          ref_band = ref_band || fabs(phi(x+i*dx/2, y+j*dy/2, z+k*dz/2))<uniform_band*dxyz_min;
+          ref_intf = ref_intf || fabs(phi(x+i*dx/2, y+j*dy/2, z+k*dz/2))<=lip*d;
           is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2, z+k*dz/2)<0;
 #else
       {
-        refine = refine || fabs(vor(x+i*dx/2, y+j*dy/2))*MAX(dx,dy)/max_L2_norm_u>threshold;
-        refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2))<=lip*d;
-        refine = refine || fabs(phi(x+i*dx/2, y+j*dy/2))<uniform_band*dxyz_min;
+        ref_vort = ref_vort || fabs(vor(x+i*dx/2, y+j*dy/2))*MAX(dx,dy)/max_L2_norm_u>threshold;
+        ref_band = ref_band || fabs(phi(x+i*dx/2, y+j*dy/2))<uniform_band*dxyz_min;
+        ref_intf = ref_intf || fabs(phi(x+i*dx/2, y+j*dy/2))<=lip*d;
         is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2)<0;
 #endif
       }
 
-    refine = refine && quad->level < max_lvl && is_neg;
+    bool refine = false;
+    refine = (ref_vort || ref_band || ref_intf) && is_neg;
+//    refine = ((ref_vort || ref_band) && is_neg) || ref_intf;
+    refine = refine && quad->level < max_lvl;
 
     if (refine)
       quad->p.user_int = REFINE_QUADRANT;
@@ -1037,10 +1047,6 @@ void my_p4est_navier_stokes_t::solve_projection()
     }
   }
 
-  double vmax;
-  VecMax(rhs, NULL, &vmax);
-  std::cout << vmax << std::endl;
-
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
   /* solve the linear system */
@@ -1052,10 +1058,6 @@ void my_p4est_navier_stokes_t::solve_projection()
   solver.set_nullspace_use_fixed_point(true);
 
   solver.solve(hodge);
-
-  double hmax;
-  VecMax(hodge, NULL, &hmax);
-  std::cout << hmax << std::endl;
 
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
 
@@ -1313,6 +1315,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
     grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1);
 
+    iter++;
     if(iter>data->max_lvl-data->min_lvl)
       throw std::runtime_error("[ERROR]: my_p4est_navier_stokes_t->update_from_tn_to_tnp1: grid update did not converge in 10 iterations.");
   }
@@ -1676,11 +1679,6 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
                          , VTK_POINT_DATA, "vz", vn_p[2]
                        #endif
                          );
-
-  double vmax;
-  VecMax(vnp1_nodes[1], NULL, &vmax);
-  std::cout << vmax << std::endl;
-
 
   ierr = VecRestoreArrayRead(phi  , &phi_p  ); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(hodge, &hodge_p); CHKERRXX(ierr);

@@ -1406,7 +1406,7 @@ int main (int argc, char* argv[])
       case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
       case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/driven_cavity/cavity_%d", iter/save_every_n); break;
       case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/driven_cavity_with_hole/hole_%d", iter/save_every_n); break;
-      case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/karman_Re%g/karman_%d", Re, iter/save_every_n); break;
+      case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/karman/karman_%d", iter/save_every_n); break;
       case 5: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/oscillating_cylinder/oscillating_%d", iter/save_every_n); break;
       case 6: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/naca/naca_%d", iter/save_every_n); break;
 #endif
