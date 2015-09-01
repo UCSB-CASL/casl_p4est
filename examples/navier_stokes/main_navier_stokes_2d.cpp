@@ -497,11 +497,21 @@ private:
   double naca_length;
   double angle;
 public:
-  NACA_CASL(double number, double length, double angle)
+  NACA_CASL(int number, double length, double angle)
   {
-    (void) number; (void) length;
-    tr.load("/home/guittet/code/data/casl_naca/naca_tree.dat");
-    phi.load("/home/guittet/code/data/casl_naca/naca_phi.dat");
+    (void) length;
+		char name[1000];
+#if defined(STAMPEDE)
+		sprintf(name, "/work/02673/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_tree.dat", number);
+    tr.load(name);
+		sprintf(name, "/work/02673/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_phi.dat", number);
+    phi.load(name);
+#else
+		sprintf(name, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_tree.dat", number);
+    tr.load(name);
+		sprintf(name, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_phi.dat", number);
+    phi.load(name);
+#endif
     interp.set(tr,phi);
     this->angle = angle;
     this->x_edge = 8;

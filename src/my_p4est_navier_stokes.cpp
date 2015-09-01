@@ -1317,7 +1317,11 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
     iter++;
     if(iter>data->max_lvl-data->min_lvl)
-      throw std::runtime_error("[ERROR]: my_p4est_navier_stokes_t->update_from_tn_to_tnp1: grid update did not converge in 10 iterations.");
+		{
+			ierr = PetscPrintf(p4est_n->mpicomm, "ooops ... the grid update did not converge\n"); CHKERRXX(ierr);
+			break;
+		}
+//      throw std::runtime_error("[ERROR]: my_p4est_navier_stokes_t->update_from_tn_to_tnp1: grid update did not converge in 10 iterations.");
   }
   ierr = VecDestroy(vorticity_np1);
 
