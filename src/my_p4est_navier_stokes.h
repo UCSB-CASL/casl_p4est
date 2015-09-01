@@ -29,13 +29,15 @@ private:
   {
   private:
     void tag_quadrant(p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx,
-                      my_p4est_interpolation_nodes_t &phi, my_p4est_interpolation_nodes_t &vor);
+                      my_p4est_interpolation_nodes_t &phi, my_p4est_interpolation_nodes_t &vor,
+                      my_p4est_interpolation_nodes_t *smo);
   public:
     double max_L2_norm_u;
     double threshold;
     double uniform_band;
-    splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold, double max_L2_norm_u);
-    bool refine_and_coarsen(p4est_t* p4est, my_p4est_node_neighbors_t *ngbd_n, Vec phi, Vec vorticity);
+    double smoke_thresh;
+    splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold, double max_L2_norm_u, double smoke_thresh);
+    bool refine_and_coarsen(p4est_t* p4est, my_p4est_node_neighbors_t *ngbd_n, Vec phi, Vec vorticity, Vec smoke);
   };
 
 #ifdef P4_TO_P8
@@ -154,6 +156,15 @@ private:
 
   Vec pressure;
 
+  Vec smoke;
+#ifdef P4_TO_P8
+  CF_3 *bc_smoke;
+#else
+  CF_2 *bc_smoke;
+#endif
+  bool refine_with_smoke;
+  double smoke_thresh;
+
   Vec face_is_well_defined[P4EST_DIM];
 
 #ifdef P4_TO_P8
@@ -199,6 +210,12 @@ public:
 
   void set_parameters(double mu, double rho, double uniform_band, double threshold_split_cell, double n_times_dt);
 
+#ifdef P4_TO_P8
+  void set_smoke(Vec smoke, CF_3 *bc_smoke, bool refine_with_smoke=true, double smoke_thresh=.5);
+#else
+  void set_smoke(Vec smoke, CF_2 *bc_smoke, bool refine_with_smoke=true, double smoke_thresh=.5);
+#endif
+
   void set_phi(Vec phi);
 
 #ifdef P4_TO_P8
@@ -227,27 +244,31 @@ public:
 
   inline double get_dt() { return dt_n; }
 
-  inline const my_p4est_node_neighbors_t* get_ngbd_n() { return ngbd_n; }
+  inline my_p4est_node_neighbors_t* get_ngbd_n() { return ngbd_n; }
 
-  inline const p4est_t *get_p4est() { return p4est_n; }
+  inline p4est_t *get_p4est() { return p4est_n; }
+
+  inline p4est_t *get_p4est_nm1() { return p4est_nm1; }
 
   inline p4est_ghost_t *get_ghost() { return ghost_n; }
 
   inline p4est_nodes_t *get_nodes() { return nodes_n; }
 
-  inline const my_p4est_faces_t* get_faces() { return faces_n; }
+  inline my_p4est_faces_t* get_faces() { return faces_n; }
 
   inline Vec get_phi() { return phi; }
 
-  inline const Vec* get_velocity() { return vn_nodes; }
+  inline Vec* get_velocity() { return vn_nodes; }
 
-  inline const Vec* get_velocity_np1() { return vnp1_nodes; }
+  inline Vec* get_velocity_np1() { return vnp1_nodes; }
 
   inline Vec* get_vstar() { return vstar; }
 
   inline Vec* get_vnp1() { return vnp1; }
 
   inline Vec get_hodge() { return hodge; }
+
+  inline Vec get_smoke() { return smoke; }
 
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }
 
@@ -260,6 +281,8 @@ public:
   void set_dt(double dt_n);
 
   void compute_dt();
+
+  void advect_smoke(my_p4est_node_neighbors_t *ngbd_np1, Vec *v, Vec smoke, Vec smoke_np1);
 
 #ifdef P4_TO_P8
   void update_from_tn_to_tnp1(const CF_3 *level_set=NULL);

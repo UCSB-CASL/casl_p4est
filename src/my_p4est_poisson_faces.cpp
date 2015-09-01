@@ -756,10 +756,10 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
     }
 
 #ifdef P4_TO_P8
-    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-    double xmax_ = p4est->connectivity->vertices[3*vp + 0];
-    double ymax_ = p4est->connectivity->vertices[3*vp + 1];
-    double zmax_ = p4est->connectivity->vertices[3*vp + 2];
+//    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+//    double xmax_ = p4est->connectivity->vertices[3*vp + 0];
+//    double ymax_ = p4est->connectivity->vertices[3*vp + 1];
+//    double zmax_ = p4est->connectivity->vertices[3*vp + 2];
     voro_tmp.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
 #else
     voro_tmp.construct_Partition();

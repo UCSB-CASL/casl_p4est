@@ -31,6 +31,7 @@
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_vtk.h>
+#include <src/my_p4est_trajectory_of_point.h>
 #endif
 
 // casl library
@@ -69,11 +70,13 @@ int nz = 1;
  * 4 - karman street
  * 5 - oscillating cylinder
  * 6 - naca
+ * 7 - smoke drop
  *
  *  ********* 3D *********
  * 0 - analytic vortex without time dependence
  * 1 - analytic vortex with time dependence
  * 2 - karman
+ * 3 - smoke drop
  */
 
 int test_number;
@@ -92,6 +95,38 @@ double f0;
 
 #ifdef P4_TO_P8
 
+class INIT_SMOKE : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+    case 0:
+    case 1: return (sqrt(SQR(x-PI) + SQR(y-PI) + SQR(z-PI))<.2) ? 1 : 0;
+    case 2: return (x<2 && sqrt(SQR(y) + SQR(z))<.4) ? 1 : 0;
+    case 3: return (sqrt(SQR(x-.5) + +SQR(y-.5) + SQR(z-.75))<.1) ? 1 : 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} init_smoke;
+
+class BC_SMOKE : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+    case 0:
+    case 1: return 0;
+    case 2: return (fabs(x-xmin)<EPS && sqrt(SQR(y) + SQR(z))<.4) ? 1 : 0;
+    case 3: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_smoke;
+
 class LEVEL_SET: public CF_3
 {
 public:
@@ -103,6 +138,7 @@ public:
     case 0: return cos(x)*cos(y)*cos(z) + .4;
     case 1: return cos(x)*cos(y)*cos(z) + .4;
     case 2: return r0 - sqrt(SQR(x-(xmax+xmin)/4) + SQR(y-(ymax+ymin)/2) + SQR(z-(zmax+zmin)/2));
+    case 3: return -1;
     default: throw std::invalid_argument("Choose a valid test.");
     }
   }
@@ -117,6 +153,7 @@ struct BCWALLTYPE_P : WallBC3D
     case 0: return NEUMANN;
     case 1: return NEUMANN;
     case 2: if(fabs(x-xmax)<EPS) return DIRICHLET; return NEUMANN;
+    case 3: return NEUMANN;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -131,6 +168,7 @@ struct BCWALLVALUE_P : CF_3
     case 0: return 0;
     case 1: return 0;
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -145,6 +183,7 @@ struct BCINTERFACEVALUE_P : CF_3
     case 0: return 0;
     case 1: return 0;
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -159,6 +198,7 @@ struct BCWALLTYPE_U : WallBC3D
     case 0: return DIRICHLET;
     case 1: return DIRICHLET;
     case 2: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
+    case 3: return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -173,6 +213,7 @@ struct BCWALLTYPE_V : WallBC3D
     case 0: return DIRICHLET;
     case 1: return DIRICHLET;
     case 2: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
+    case 3: return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -187,6 +228,7 @@ struct BCWALLTYPE_W : WallBC3D
     case 0: return DIRICHLET;
     case 1: return DIRICHLET;
     case 2: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
+    case 3: return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -201,6 +243,7 @@ struct BCWALLVALUE_U : CF_3
     case 0: return 0;
     case 1: return 0;
     case 2: if(fabs(x-xmax)<EPS) return 0; else return u0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -215,6 +258,7 @@ struct BCWALLVALUE_V : CF_3
     case 0: return 0;
     case 1: return 0;
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -229,6 +273,7 @@ struct BCWALLVALUE_W : CF_3
     case 0: return 0;
     case 1: return 0;
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -243,6 +288,7 @@ struct BCINTERFACE_VALUE_U : CF_3
     case 0: return cos(x)*sin(y)*sin(z);
     case 1: return cos(x)*sin(y)*sin(z)*cos(tn+dt);
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -257,6 +303,7 @@ struct BCINTERFACE_VALUE_V : CF_3
     case 0: return sin(x)*cos(y)*sin(z);
     case 1: return sin(x)*cos(y)*sin(z)*cos(tn+dt);
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -271,6 +318,7 @@ struct BCINTERFACE_VALUE_W : CF_3
     case 0: return -2*sin(x)*sin(y)*cos(z);
     case 1: return -2*sin(x)*sin(y)*cos(z)*cos(tn+dt);
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -285,6 +333,7 @@ struct initial_velocity_unm1_t : CF_3
     case 0: return cos(x)*sin(y)*sin(z);
     case 1: return cos(x)*sin(y)*sin(z)*cos(-dt);
     case 2: return u0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -299,6 +348,7 @@ struct initial_velocity_u_n_t : CF_3
     case 0: return cos(x)*sin(y)*sin(z);
     case 1: return cos(x)*sin(y)*sin(z)*cos(0);
     case 2: return u0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -313,6 +363,7 @@ struct initial_velocity_vnm1_t : CF_3
     case 0: return sin(x)*cos(y)*sin(z);
     case 1: return sin(x)*cos(y)*sin(z)*cos(-dt);
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -327,6 +378,7 @@ struct initial_velocity_v_n_t : CF_3
     case 0: return sin(x)*cos(y)*sin(z);
     case 1: return sin(x)*cos(y)*sin(z)*cos(0);
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -341,6 +393,7 @@ struct initial_velocity_wnm1_t : CF_3
     case 0: return -2*sin(x)*sin(y)*cos(z);
     case 1: return -2*sin(x)*sin(y)*cos(z)*cos(-dt);
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -355,6 +408,7 @@ struct initial_velocity_w_n_t : CF_3
     case 0: return -2*sin(x)*sin(y)*cos(z);
     case 1: return -2*sin(x)*sin(y)*cos(z)*cos(0);
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -376,10 +430,11 @@ struct external_force_u_t : CF_3
                     -2*rho*sin(x)*sin(y)*cos(z)*cos(tn+dt) * cos(x)*sin(y)*cos(z)*cos(tn+dt)
                     +3*mu *cos(x)*sin(y)*sin(z)*cos(tn+dt));
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
-} external_force_u;
+};
 
 struct external_force_v_t : CF_3
 {
@@ -397,13 +452,26 @@ struct external_force_v_t : CF_3
                     -2*rho*sin(x)*sin(y)*cos(z)*cos(tn+dt) * sin(x)*cos(y)*cos(z)*cos(tn+dt)
                     +3*mu *sin(x)*cos(y)*sin(z)*cos(tn+dt));
     case 2: return 0;
+    case 3: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
-} external_force_v;
+};
 
 struct external_force_w_t : CF_3
 {
+private:
+  my_p4est_interpolation_nodes_t *interp;
+public:
+  external_force_w_t(my_p4est_node_neighbors_t *ngbd_n, Vec smoke)
+  {
+    interp = new my_p4est_interpolation_nodes_t(ngbd_n);
+    interp->set_input(smoke, linear);
+  }
+  ~external_force_w_t()
+  {
+    delete interp;
+  }
   double operator()(double x, double y, double z) const
   {
     switch(test_number)
@@ -418,13 +486,54 @@ struct external_force_w_t : CF_3
                     -2*rho*sin(x)*sin(y)*cos(z)*cos(tn+dt) * 2*sin(x)*sin(y)*sin(z)*cos(tn+dt)
                     -6*mu *sin(x)*sin(y)*cos(z)*cos(tn+dt));
     case 2: return 0;
+    case 3: return -(*interp)(x,y,z)*9.81;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
-} external_force_w;
+};
 
 #else
 
+class INIT_SMOKE : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    switch(test_number)
+    {
+    case 0:
+    case 1: return (sqrt(SQR(x-PI/2) + SQR(y-3*PI/4))<.2) ? 1 : 0;
+    case 2:
+    case 3: return (sqrt(SQR(x-.5) + SQR(y-.85))<.05) ? 1 : 0;
+    case 4: return (x<2 && y>-1 && y<1) ? 1 : 0;
+    case 5: return (sqrt(SQR(x) + SQR(y))<.05) ? 1 : 0;
+    case 6: return (x<2 && y>-1 && y<1) ? 1 : 0;
+    case 7: return (sqrt(SQR(x-.5) + SQR(y-.75))<.1) ? 1 : 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} init_smoke;
+
+
+class BC_SMOKE : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    switch(test_number)
+    {
+    case 0:
+    case 1:
+    case 2:
+    case 3:
+    case 5: return 0;
+    case 4:
+    case 6: return(fabs(x-xmin)<EPS && y>-1 && y<1) ? 1 : 0;
+    case 7: return 0;
+    default: throw std::invalid_argument("choose a valid test.");
+    }
+  }
+} bc_smoke;
 
 class NACA_SAMPLED : public CF_2
 {
@@ -549,6 +658,7 @@ public:
     case 4: return r0 - sqrt(SQR(x-(xmax+xmin)/4) + SQR(y-(ymax+ymin)/2));
     case 5: return r0 - sqrt(SQR(x-X0*(1-cos(2*PI*f0*(tn+dt)))+X0) + SQR(y));
     case 6: return (*naca)(x,y);
+    case 7: return -1;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -567,6 +677,7 @@ struct BCWALLTYPE_P : WallBC2D
     case 4: if(fabs(x-xmax)<EPS) return DIRICHLET; return NEUMANN;
     case 5: return NEUMANN;
     case 6: if(fabs(x-xmax)<EPS) return DIRICHLET; return NEUMANN;
+    case 7: return NEUMANN;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -585,6 +696,7 @@ struct BCWALLVALUE_P : CF_2
     case 4: return 0;
     case 5: return 0;
     case 6: return 0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -602,6 +714,7 @@ struct BCINTERFACEVALUE_P : CF_2
     case 4: return 0;
     case 5: return 0;
     case 6: return 0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -620,6 +733,7 @@ struct BCWALLTYPE_U : WallBC2D
     case 4: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     case 5: return DIRICHLET;
     case 6: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
+    case 7: return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -638,6 +752,7 @@ struct BCWALLTYPE_V : WallBC2D
     case 4: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     case 5: return DIRICHLET;
     case 6: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
+    case 7: return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -656,6 +771,7 @@ struct BCWALLVALUE_U : CF_2
     case 4: if(fabs(x-xmax)<EPS) return 0; else return u0;
     case 5: return 0;
     case 6: if(fabs(x-xmax)<EPS) return 0; else return u0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -674,6 +790,7 @@ struct BCWALLVALUE_V : CF_2
     case 4: return 0;
     case 5: return 0;
     case 6: return 0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -692,6 +809,7 @@ struct BCINTERFACE_VALUE_U : CF_2
     case 4: return 0;
     case 5: return u0*sin(2*PI*f0*tn);
     case 6: return 0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -710,6 +828,7 @@ struct BCINTERFACE_VALUE_V : CF_2
     case 4: return 0;
     case 5: return 0;
     case 6: return 0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -728,6 +847,7 @@ struct initial_velocity_unm1_t : CF_2
     case 4: return u0;
     case 5: return u0*sin(2*PI*f0*(tn-2*dt));
     case 6: return u0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -746,6 +866,7 @@ struct initial_velocity_u_n_t : CF_2
     case 4: return u0;
     case 5: return u0*sin(2*PI*f0*(tn-dt));
     case 6: return u0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -764,6 +885,7 @@ struct initial_velocity_vnm1_t : CF_2
     case 4: return 0;
     case 5: return 0;
     case 6: return 0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -782,6 +904,7 @@ struct initial_velocity_vn_t : CF_2
     case 4: return 0;
     case 5: return 0;
     case 6: return 0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -800,6 +923,7 @@ struct external_force_u_t : CF_2
     case 4: return 0;
     case 5: return 0;
     case 6: return 0;
+    case 7: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -807,6 +931,19 @@ struct external_force_u_t : CF_2
 
 struct external_force_v_t : CF_2
 {
+private:
+  my_p4est_interpolation_nodes_t *interp;
+public:
+  external_force_v_t(my_p4est_node_neighbors_t *ngbd_n, Vec smoke)
+  {
+    interp = new my_p4est_interpolation_nodes_t(ngbd_n);
+    interp->set_input(smoke, linear);
+  }
+  ~external_force_v_t()
+  {
+    delete interp;
+  }
+
   double operator()(double x, double y) const
   {
     switch(test_number)
@@ -818,10 +955,11 @@ struct external_force_v_t : CF_2
     case 4: return 0;
     case 5: return 0;
     case 6: return 0;
+    case 7: return -(*interp)(x,y)*9.81;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
-} external_force_v;
+};
 
 #endif
 
@@ -1017,6 +1155,8 @@ int main (int argc, char* argv[])
   cmd.add_option("thresh", "the threshold used for the refinement criteria");
   cmd.add_option("save_vtk", "save the p4est in vtk format");
   cmd.add_option("save_every_n", "export images every n iterations");
+  cmd.add_option("smoke", "0 - no smoke, 1 - with smoke");
+  cmd.add_option("smoke_thresh", "threshold for smoke refinement");
 #ifndef P4_TO_P8
   cmd.add_option("naca_angle", "angle of the naca airfoil for test 6");
   cmd.add_option("naca_number", "number of the naca, see naca reference online. Default is 0015");
@@ -1033,8 +1173,9 @@ int main (int argc, char* argv[])
                  2 - driven cavity\n\
                  3 - driven cavity with hole\n\
                  4 - karman street\n\
-                 5 - oscillating cylinder\
-                 6 - naca airfoil\n");
+                 5 - oscillating cylinder\n\
+                 6 - naca airfoil\n\
+                 7 - smoke drop\n");
 #endif
   cmd.parse(argc, argv);
 
@@ -1047,7 +1188,10 @@ int main (int argc, char* argv[])
   double threshold_split_cell = cmd.get("thresh", 0.1);
   bool save_vtk = cmd.get("save_vtk", false);
   int save_every_n = cmd.get("save_every_n", 1);
-  test_number = cmd.get("test", 0);
+  test_number = cmd.get("test", 3);
+
+  bool is_smoke = cmd.get("smoke", 1);
+  double smoke_thresh = cmd.get("smoke_thresh", .5);
 
 #ifndef P4_TO_P8
   double naca_length = 4;
@@ -1064,6 +1208,7 @@ int main (int argc, char* argv[])
   case 0: nx=2; ny=2; nz=2; xmin=PI/2; xmax=3*PI/2; ymin=PI/2; ymax=3*PI/2; zmin=PI/2; zmax=3*PI/2; Re=0; mu = rho = 1; u0 = 1; tf=cmd.get("tf",PI/3); break;
   case 1: nx=2; ny=2; nz=2; xmin=PI/2; xmax=3*PI/2; ymin=PI/2; ymax=3*PI/2; zmin=PI/2; zmax=3*PI/2; Re=0; mu = rho = 1; u0 = 1; tf=cmd.get("tf",PI/3); break;
   case 2: nx=8; ny=4; nz=4; xmin=0; xmax=32; ymin=-8; ymax=8; zmin=-8; zmax=8; Re=cmd.get("Re",350); r0=1; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
+  case 3: nx=2; ny=2; nz=2; xmin=0; xmax=1; ymin=0; ymax=1; zmin=0; zmax=1; Re=cmd.get("Re",1000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",200); break;
 #else
   case 0: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; u0 = 1; tf = cmd.get("tf", PI/3);  break;
   case 1: nx=2; ny=2; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; u0 = 1; tf = cmd.get("tf", PI/3);  break;
@@ -1071,7 +1216,8 @@ int main (int argc, char* argv[])
   case 3: nx=2; ny=2; xmin = 0; xmax =  1; ymin = 0; ymax =  1; Re = cmd.get("Re", 1000); r0 = 0.25; u0 = 1; rho = 1; mu = rho*u0*1/Re; tf = cmd.get("tf", 37);    break;
   case 4: nx=8; ny=4; xmin = 0; xmax = 32; ymin =-8; ymax =  8; Re = cmd.get("Re", 200);  r0 = 0.5 ; u0 = 1; rho = 1; mu = 2*r0*rho*u0/Re; tf = cmd.get("tf", 200);   break;
   case 5: nx=2; ny=2; xmin =-1; xmax =  1; ymin =-1; ymax =  1; Re = cmd.get("Re", 100);  r0 = 0.05; KC = 5; X0 = .7957*2*r0; Re = 100; u0 = Re/(2*r0); mu = rho = 1; f0 = u0/(KC*2*r0); tf = cmd.get("tf", 3/f0); break;
-  case 6: nx=8; ny=4; xmin = 0; xmax = 32; ymin =-8; ymax =  8; Re = cmd.get("Re", 5300); u0 = 1; rho = 1; mu = rho*u0*naca_length/Re; tf = cmd.get("tf", 200);break;
+  case 6: nx=8; ny=4; xmin = 0; xmax = 32; ymin =-8; ymax =  8; Re = cmd.get("Re", 5300); u0 = 1; rho = 1; mu = rho*u0*naca_length/Re; tf = cmd.get("tf", 200); break;
+  case 7: nx=2; ny=2; xmin = 0; xmax =  1; ymin = 0; ymax =  1; Re = cmd.get("Re", 1000); u0 = 1; rho = 1; mu = rho*u0*(xmax-xmin)/Re; tf = cmd.get("tf", 200); break;
 #endif
   default: throw std::invalid_argument("choose a valid test.");
   }
@@ -1198,6 +1344,11 @@ int main (int argc, char* argv[])
 
   /* create the initial forest at time n */
   p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
+
+  splitting_criteria_thresh_t crit_thresh(lmin, lmax, &init_smoke, smoke_thresh);
+  p4est_n->user_pointer = (void*)&crit_thresh;
+  my_p4est_refine(p4est_n, P4EST_TRUE, refine_levelset_thresh, NULL);
+
   p4est_n->user_pointer = (void*)&data;
   my_p4est_partition(p4est_n, P4EST_FALSE, NULL);
 
@@ -1253,19 +1404,26 @@ int main (int argc, char* argv[])
     bc_p.setInterfaceType(NEUMANN); bc_p.setInterfaceValue(bc_interface_value_p);
   }
 
+  external_force_u_t *external_force_u;
+  external_force_v_t *external_force_v;
 #ifdef P4_TO_P8
-  CF_3 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v, &external_force_w };
-#else
-  CF_2 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v };
+  external_force_w_t *external_force_w;
 #endif
 
   my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
   ns.set_phi(phi);
   ns.set_parameters(mu, rho, uniform_band, threshold_split_cell, n_times_dt);
-  ns.set_external_forces(external_forces);
   ns.set_velocities(vnm1, vn);
   ns.set_bc(bc_v, &bc_p);
   ns.set_dt(dxmin*n_times_dt/u0);
+
+  if(is_smoke)
+  {
+    Vec smoke;
+    ierr = VecDuplicate(phi, &smoke); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est_n, nodes_n, init_smoke, smoke);
+    ns.set_smoke(smoke, &bc_smoke, true, smoke_thresh);
+  }
 
   tn = 0;
   int iter = 0;
@@ -1359,6 +1517,29 @@ int main (int argc, char* argv[])
 #endif
     }
 
+    if(external_force_u==NULL) delete external_force_u;
+    external_force_u = new external_force_u_t;
+
+    if(external_force_v==NULL) delete external_force_v;
+#ifdef P4_TO_P8
+    external_force_v = new external_force_v_t();
+#else
+    external_force_v = new external_force_v_t(ns.get_ngbd_n(), ns.get_smoke());
+#endif
+
+#ifdef P4_TO_P8
+    if(external_force_w==NULL) delete external_force_w;
+    external_force_w = new external_force_w_t(ns.get_ngbd_n(), ns.get_smoke());
+#endif
+
+
+#ifdef P4_TO_P8
+    CF_3 *external_forces[P4EST_DIM] = { external_force_u, external_force_v, external_force_w };
+#else
+    CF_2 *external_forces[P4EST_DIM] = { external_force_u, external_force_v };
+#endif
+    ns.set_external_forces(external_forces);
+
 #ifndef P4_TO_P8
     for(int i=0; i<(test_number==5 ? 3 : 1); ++i)
 #endif
@@ -1411,6 +1592,7 @@ int main (int argc, char* argv[])
       case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
       case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
       case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/karman/karman_%d", iter/save_every_n); break;
+      case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/smoke_drop/smoke_drop_%d", iter/save_every_n); break;
 #else
       case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
       case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
@@ -1419,6 +1601,7 @@ int main (int argc, char* argv[])
       case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/karman/karman_%d", iter/save_every_n); break;
       case 5: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/oscillating_cylinder/oscillating_%d", iter/save_every_n); break;
       case 6: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/naca/naca_%d", iter/save_every_n); break;
+      case 7: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/smoke_drop/smoke_drop_%d", iter/save_every_n); break;
 #endif
       default: throw std::invalid_argument("choose a valid test.");
       }
@@ -1427,11 +1610,10 @@ int main (int argc, char* argv[])
       ns.save_vtk(name);
 
 #ifndef P4_TO_P8
-    if(test_number==2 || test_number==3)
-      check_velocity_cavity(mpi, &ns, Re, n_times_dt);
+      if(test_number==2 || test_number==3)
+        check_velocity_cavity(mpi, &ns, Re, n_times_dt);
 #endif
     }
-
 
     iter++;
   }
@@ -1446,6 +1628,12 @@ int main (int argc, char* argv[])
 #ifndef P4_TO_P8
   if(test_number==6)
     delete naca;
+#endif
+
+  if(external_force_u==NULL) delete external_force_u;
+  if(external_force_v==NULL) delete external_force_v;
+#ifdef P4_TO_P8
+  if(external_force_w==NULL) delete external_force_w;
 #endif
 
   watch.stop();

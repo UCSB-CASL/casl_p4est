@@ -54,6 +54,25 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
   }
 };
 
+struct splitting_criteria_thresh_t : splitting_criteria_t {
+#ifdef P4_TO_P8
+  CF_3 *f;
+#else
+  CF_2 *f;
+#endif
+  double thresh;
+#ifdef P4_TO_P8
+  splitting_criteria_thresh_t(int min_lvl, int max_lvl, CF_3 *f, double thresh)
+#else
+  splitting_criteria_thresh_t(int min_lvl, int max_lvl, CF_2 *f, double thresh)
+#endif
+    :splitting_criteria_t(min_lvl, max_lvl, lip)
+  {
+    this->f = f;
+    this->thresh = thresh;
+  }
+};
+
 struct splitting_criteria_random_t : splitting_criteria_t {
   p4est_gloidx_t max_quads, min_quads, num_quads;
   splitting_criteria_random_t(int min_lvl, int max_lvl, p4est_gloidx_t min_quads, p4est_gloidx_t max_quads)
@@ -122,6 +141,26 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
  */
 p4est_bool_t
 coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+/*!
+ * \brief refine_levelset_cf refine based on the threshold of a continuous function
+ * \param p4est       [in] forest object to consider
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] pointer to the current quadrant
+ * \return                a boolean (0/1) describing if refinement is needed
+ */
+p4est_bool_t
+refine_levelset_thresh(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+/*!
+ * \brief coarsen_levelset coarsen based on the threshold of a continuous function
+ * \param p4est       [in] forest object
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] a pointer to a list of quadrant to be coarsened
+ * \return                 a boolean (0/1) describing if a set of quadrants need to be coarsened
+ */
+p4est_bool_t
+coarsen_levelset_thresh(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
 /*!
  * \brief refine_random a random refinement method
