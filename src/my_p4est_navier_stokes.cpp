@@ -1383,9 +1383,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
     {
       ierr = VecDestroy(vtmp[dir]); CHKERRXX(ierr);
     }
-
-//    interp_nodes.set_input(smoke, linear);
-//    interp_nodes.interpolate(smoke_np1);
   }
 
   bool grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1, smoke_np1);
