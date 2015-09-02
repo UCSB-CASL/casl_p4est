@@ -1165,7 +1165,8 @@ int main (int argc, char* argv[])
   cmd.add_option("test", "choose a test.\n\
                  0 - analytic vortex without time dependence\n\
                  1 - analytic vortex with time dependence\n\
-                 2 - karman\n");
+                 2 - karman\n\
+                 3 - smoke drop\n");
 #else
   cmd.add_option("test", "choose a test.\n\
                  0 - analytic vortex\n\
