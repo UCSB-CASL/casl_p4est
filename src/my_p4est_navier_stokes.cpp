@@ -1368,8 +1368,24 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
   if(smoke!=NULL && refine_with_smoke)
   {
     ierr = VecDuplicate(phi_np1, &smoke_np1); CHKERRXX(ierr);
-    interp_nodes.set_input(smoke, linear);
-    interp_nodes.interpolate(smoke_np1);
+
+    Vec vtmp[P4EST_DIM];
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecDuplicate(phi_np1, &vtmp[dir]); CHKERRXX(ierr);
+      interp_nodes.set_input(vnp1_nodes[dir], linear);
+      interp_nodes.interpolate(vtmp[dir]);
+    }
+
+    advect_smoke(ngbd_np1, vtmp, smoke, smoke_np1);
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecDestroy(vtmp[dir]); CHKERRXX(ierr);
+    }
+
+//    interp_nodes.set_input(smoke, linear);
+//    interp_nodes.interpolate(smoke_np1);
   }
 
   bool grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1, smoke_np1);
@@ -1413,8 +1429,24 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
     {
       ierr = VecDestroy(smoke_np1); CHKERRXX(ierr);
       ierr = VecDuplicate(phi_np1, &smoke_np1); CHKERRXX(ierr);
-      interp_nodes.set_input(smoke, linear);
-      interp_nodes.interpolate(smoke_np1);
+
+      Vec vtmp[P4EST_DIM];
+      for(int dir=0; dir<P4EST_DIM; ++dir)
+      {
+        ierr = VecDuplicate(phi_np1, &vtmp[dir]); CHKERRXX(ierr);
+        interp_nodes.set_input(vnp1_nodes[dir], linear);
+        interp_nodes.interpolate(vtmp[dir]);
+      }
+
+      advect_smoke(ngbd_np1, vtmp, smoke, smoke_np1);
+
+      for(int dir=0; dir<P4EST_DIM; ++dir)
+      {
+        ierr = VecDestroy(vtmp[dir]); CHKERRXX(ierr);
+      }
+
+//      interp_nodes.set_input(smoke, linear);
+//      interp_nodes.interpolate(smoke_np1);
     }
 
     grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1, smoke_np1);
@@ -1790,44 +1822,70 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   const double *pressure_nodes_p;
   ierr = VecGetArrayRead(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
 
+  Vec leaf_level;
+  ierr = VecDuplicate(hodge, &leaf_level); CHKERRXX(ierr);
+  PetscScalar *l_p;
+  ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
+
+  for(p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_n->trees, tree_idx);
+    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    {
+      const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      l_p[tree->quadrants_offset+q] = quad->level;
+    }
+  }
+
+  for(size_t q=0; q<ghost_n->ghosts.elem_count; ++q)
+  {
+    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost_n->ghosts, q);
+    l_p[p4est_n->local_num_quadrants+q] = quad->level;
+  }
+
   const double *smoke_p;
   if(smoke!=NULL)
   {
     ierr = VecGetArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est_n, nodes_n, NULL,
-                           //                         P4EST_TRUE, P4EST_TRUE,
-                           P4EST_FALSE, P4EST_FALSE,
+                           P4EST_TRUE, P4EST_TRUE,
+//                           P4EST_FALSE, P4EST_FALSE,
                            3+P4EST_DIM, /* number of VTK_POINT_DATA */
-                           0, /* number of VTK_CELL_DATA  */
+                           1, /* number of VTK_CELL_DATA  */
                            name,
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "pressure", pressure_nodes_p,
                            VTK_POINT_DATA, "smoke", smoke_p,
                            VTK_POINT_DATA, "vx", vn_p[0],
-                           VTK_POINT_DATA, "vy", vn_p[1]
+                           VTK_POINT_DATA, "vy", vn_p[1],
                     #ifdef P4_TO_P8
-                         , VTK_POINT_DATA, "vz", vn_p[2]
+                           VTK_POINT_DATA, "vz", vn_p[2],
                     #endif
+                           VTK_CELL_DATA, "leaf_level", l_p
                            );
     ierr = VecRestoreArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
   }
   else
   {
     my_p4est_vtk_write_all(p4est_n, nodes_n, NULL,
-                           //                         P4EST_TRUE, P4EST_TRUE,
-                           P4EST_FALSE, P4EST_FALSE,
+                           P4EST_TRUE, P4EST_TRUE,
+//                           P4EST_FALSE, P4EST_FALSE,
                            2+P4EST_DIM, /* number of VTK_POINT_DATA */
-                           0, /* number of VTK_CELL_DATA  */
+                           1, /* number of VTK_CELL_DATA  */
                            name,
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "pressure", pressure_nodes_p,
                            VTK_POINT_DATA, "vx", vn_p[0],
-                           VTK_POINT_DATA, "vy", vn_p[1]
+                           VTK_POINT_DATA, "vy", vn_p[1],
                     #ifdef P4_TO_P8
-                         , VTK_POINT_DATA, "vz", vn_p[2]
+                           VTK_POINT_DATA, "vz", vn_p[2],
                     #endif
+                           VTK_CELL_DATA, "leaf_level", l_p
                            );
   }
+
+  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(phi  , &phi_p  ); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
