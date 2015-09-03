@@ -1414,6 +1414,7 @@ int main (int argc, char* argv[])
     splitting_criteria_thresh_t crit_thresh(lmin, lmax, &init_smoke, smoke_thresh);
     p4est_n->user_pointer = (void*)&crit_thresh;
     my_p4est_refine(p4est_n, P4EST_TRUE, refine_levelset_thresh, NULL);
+    p4est_balance(p4est_n, P4EST_CONNECT_FULL, NULL);
   }
 
   p4est_n->user_pointer = (void*)&data;
@@ -1433,7 +1434,7 @@ int main (int argc, char* argv[])
   sample_cf_on_nodes(p4est_n, nodes_n, level_set, phi);
 
   my_p4est_level_set_t lsn(ngbd_n);
-  lsn.reinitialize_1st_order_time_2nd_order_space(phi, 100);
+  lsn.reinitialize_1st_order_time_2nd_order_space(phi);
   lsn.perturb_level_set_function(phi, EPS);
 
 #ifdef P4_TO_P8
