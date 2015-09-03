@@ -108,7 +108,7 @@ public:
     case 1: return (sqrt(SQR(x-PI) + SQR(y-PI) + SQR(z-PI))<.2) ? 1 : 0;
     case 2: return (x<2 && sqrt(SQR(y) + SQR(z))<.4) ? 1 : 0;
     case 3: return (sqrt(SQR(x-.5) + +SQR(y-.5) + SQR(z-.75))<.1) ? 1 : 0;
-    case 4: return (0.01<x && x<.4 && z<.9 && -.5<y && y<.5 && x+z>.51) ? 1 : 0;
+    case 4: return (0.02<x && x<.4 && z<.9 && -.5<y && y<.5 && x+z>.51) ? 1 : 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -152,6 +152,9 @@ public:
       d = .5-(x+z);
       for(int i=0; i<8; ++i)
         d = MAX(d, MIN(-z+zc[i], MIN(x-(xc[i]-lc[i]),-x+(xc[i]+lc[i])), MIN(y-(yc[i]-lc[i]),-y+(yc[i]+lc[i]))));
+      d = MAX(d, -x+(xmin+0.01), x-(xmax-0.01));
+      d = MAX(d, -y+(ymin+0.01), y-(ymax-0.01));
+      d = MAX(d, -z+(zmin+0.01), z-(zmax-0.01));
       return d;
     default: throw std::invalid_argument("Choose a valid test.");
     }
@@ -496,13 +499,11 @@ struct external_force_w_t : CF_3
 {
 private:
   my_p4est_interpolation_nodes_t *interp;
-  double rho;
 public:
-  external_force_w_t(my_p4est_node_neighbors_t *ngbd_n, Vec smoke, double rho)
+  external_force_w_t(my_p4est_node_neighbors_t *ngbd_n, Vec smoke)
   {
     interp = new my_p4est_interpolation_nodes_t(ngbd_n);
     interp->set_input(smoke, linear);
-    this->rho = rho;
   }
   ~external_force_w_t()
   {
@@ -987,13 +988,11 @@ struct external_force_v_t : CF_2
 {
 private:
   my_p4est_interpolation_nodes_t *interp;
-  double rho;
 public:
-  external_force_v_t(my_p4est_node_neighbors_t *ngbd_n, Vec smoke, double rho)
+  external_force_v_t(my_p4est_node_neighbors_t *ngbd_n, Vec smoke)
   {
     interp = new my_p4est_interpolation_nodes_t(ngbd_n);
     interp->set_input(smoke, linear);
-    this->rho = rho;
   }
   ~external_force_v_t()
   {
@@ -1253,9 +1252,9 @@ int main (int argc, char* argv[])
   bool save_vtk = cmd.get("save_vtk", false);
   int save_every_n = cmd.get("save_every_n", 1);
   test_number = cmd.get("test", 3);
-  bool refine_with_smoke = cmd.get("refine_with_smoke", 1);
 
-  bool is_smoke = cmd.get("smoke", 1);
+  bool is_smoke = cmd.get("smoke", 0);
+  bool refine_with_smoke = cmd.get("refine_with_smoke", 1);
   double smoke_thresh = cmd.get("smoke_thresh", .5);
 
 #ifndef P4_TO_P8
@@ -1277,7 +1276,7 @@ int main (int argc, char* argv[])
   case 4: nx=3; ny=2; nz=1; xmin=0; xmax=3; ymin=-1; ymax=1; zmin=0; zmax=1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); u0=500; break;
 #else
   case 0: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; u0 = 1; tf = cmd.get("tf", PI/3);  break;
-  case 1: nx=2; ny=2; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; u0 = 1; tf = cmd.get("tf", PI/3);  break;
+  case 1: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; u0 = 1; tf = cmd.get("tf", PI/3);  break;
   case 2: nx=2; ny=2; xmin = 0; xmax =  1; ymin = 0; ymax =  1; Re = cmd.get("Re", 1000); u0 = 1; rho = 1; mu = rho*u0*(xmax-xmin)/Re; tf = cmd.get("tf", 37);    break;
   case 3: nx=2; ny=2; xmin = 0; xmax =  1; ymin = 0; ymax =  1; Re = cmd.get("Re", 1000); r0 = 0.25; u0 = 1; rho = 1; mu = rho*u0*1/Re; tf = cmd.get("tf", 37);    break;
   case 4: nx=8; ny=4; xmin = 0; xmax = 32; ymin =-8; ymax =  8; Re = cmd.get("Re", 200);  r0 = 0.5 ; u0 = 1; rho = 1; mu = 2*r0*rho*u0/Re; tf = cmd.get("tf", 200);   break;
@@ -1590,14 +1589,14 @@ int main (int argc, char* argv[])
 
     if(external_force_v==NULL) delete external_force_v;
 #ifdef P4_TO_P8
-    external_force_v = new external_force_v_t();
+    external_force_v = new external_force_v_t;
 #else
-    external_force_v = new external_force_v_t(ns.get_ngbd_n(), ns.get_smoke(), rho);
+    external_force_v = new external_force_v_t(ns.get_ngbd_n(), ns.get_smoke());
 #endif
 
 #ifdef P4_TO_P8
     if(external_force_w==NULL) delete external_force_w;
-    external_force_w = new external_force_w_t(ns.get_ngbd_n(), ns.get_smoke(), rho);
+    external_force_w = new external_force_w_t(ns.get_ngbd_n(), ns.get_smoke());
 #endif
 
 
