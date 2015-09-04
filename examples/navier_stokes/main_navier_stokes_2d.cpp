@@ -108,7 +108,7 @@ public:
     case 1: return (sqrt(SQR(x-PI) + SQR(y-PI) + SQR(z-PI))<.2) ? 1 : 0;
     case 2: return (x<2 && sqrt(SQR(y) + SQR(z))<.4) ? 1 : 0;
     case 3: return (sqrt(SQR(x-.5) + +SQR(y-.5) + SQR(z-.75))<.1) ? 1 : 0;
-    case 4: return (0.02<x && x<.4 && z<.9 && -.5<y && y<.5 && x+z>.51) ? 1 : 0;
+    case 4: return (0.01<x && x<.4 && z<.9 && -.5<y && y<.5 && x+z>.51) ? 1 : 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -152,9 +152,9 @@ public:
       d = .5-(x+z);
       for(int i=0; i<8; ++i)
         d = MAX(d, MIN(-z+zc[i], MIN(x-(xc[i]-lc[i]),-x+(xc[i]+lc[i])), MIN(y-(yc[i]-lc[i]),-y+(yc[i]+lc[i]))));
-      d = MAX(d, -x+(xmin+0.01), x-(xmax-0.01));
-      d = MAX(d, -y+(ymin+0.01), y-(ymax-0.01));
-      d = MAX(d, -z+(zmin+0.01), z-(zmax-0.01));
+//      d = MAX(d, -x+(xmin+0.01), x-(xmax-0.01));
+//      d = MAX(d, -y+(ymin+0.01), y-(ymax-0.01));
+//      d = MAX(d, -z+(zmin+0.01), z-(zmax-0.01));
       return d;
     default: throw std::invalid_argument("Choose a valid test.");
     }
