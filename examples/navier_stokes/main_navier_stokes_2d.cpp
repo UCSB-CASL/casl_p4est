@@ -1080,7 +1080,7 @@ void check_error_analytic_vortex(mpi_context_t *mpi, my_p4est_navier_stokes_t *n
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecRestoreArrayRead(v[dir], &v_p[dir]); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi->mpicomm, "Error on velocity in direction %d : %.5g\n", dir, err_v[dir]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi->mpicomm, "Error on velocity in direction %d : %.5e\n", dir, err_v[dir]); CHKERRXX(ierr);
   }
 
   Vec hodge = ns->get_hodge();
@@ -1107,7 +1107,7 @@ void check_error_analytic_vortex(mpi_context_t *mpi, my_p4est_navier_stokes_t *n
 
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_h, 1, MPI_DOUBLE, MPI_MAX, mpi->mpicomm); SC_CHECK_MPI(mpiret);
 
-  ierr = PetscPrintf(mpi->mpicomm, "Error on hodge : %.5g\n", err_h); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi->mpicomm, "Error on hodge : %.5e\n", err_h); CHKERRXX(ierr);
 }
 
 
@@ -1482,7 +1482,8 @@ int main (int argc, char* argv[])
   ns.set_parameters(mu, rho, uniform_band, threshold_split_cell, n_times_dt);
   ns.set_velocities(vnm1, vn);
   ns.set_bc(bc_v, &bc_p);
-  ns.set_dt(dxmin*n_times_dt/u0);
+//  ns.set_dt(dxmin*n_times_dt/u0);
+  ns.set_dt(dxmin*n_times_dt/u0, dxmin*n_times_dt/u0);
 
   if(is_smoke)
   {

@@ -278,6 +278,8 @@ public:
 
   void compute_velocity_at_nodes();
 
+  void set_dt(double dt_nm1, double dt_n);
+
   void set_dt(double dt_n);
 
   void compute_dt();
