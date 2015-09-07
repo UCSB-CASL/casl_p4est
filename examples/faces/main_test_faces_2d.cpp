@@ -64,8 +64,8 @@
 #undef MIN
 #undef MAX
 
-double xmin = -2;
-double xmax =  2;
+double xmin = -1;
+double xmax =  1;
 double ymin = -1;
 double ymax =  1;
 #ifdef P4_TO_P8
@@ -75,14 +75,14 @@ double zmax =  1;
 
 using namespace std;
 
-int lmin = 0;
-int lmax = 4;
-int nb_splits = 1;
+int lmin = 2;
+int lmax = 2;
+int nb_splits = 4;
 
-int nx = 4;
-int ny = 2;
+int nx = 1;
+int ny = 1;
 #ifdef P4_TO_P8
-int nz = 3;
+int nz = 1;
 #endif
 
 double mu = 1.;
@@ -101,8 +101,8 @@ int interface_type = 0;
  */
 int test_number = 2;
 
-BoundaryConditionType bc_itype = DIRICHLET;
 BoundaryConditionType bc_wtype = DIRICHLET;
+BoundaryConditionType bc_itype = DIRICHLET;
 
 #ifdef P4_TO_P8
 double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
@@ -544,7 +544,7 @@ int main (int argc, char* argv[])
     splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set, 1.6);
     p4est->user_pointer = (void*)(&data);
 
-    for(int l=0; l<lmax; ++l)
+    for(int l=0; l<lmax+iter; ++l)
     {
       //    my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
       my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
@@ -732,7 +732,7 @@ int main (int argc, char* argv[])
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
       ierr = VecDuplicate(phi, &sol_nodes[dir]); CHKERRXX(ierr);
-      interp_f.set_input(sol[dir], dir, face_is_well_defined[dir]);
+      interp_f.set_input(sol[dir], dir, 2, face_is_well_defined[dir]);
       interp_f.interpolate(sol_nodes[dir]);
     }
     interp_f.clear();

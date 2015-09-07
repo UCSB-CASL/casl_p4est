@@ -20,6 +20,7 @@ private:
   const my_p4est_cell_neighbors_t *ngbd_c;
 
   int dir;
+  int order;
 
   Vec face_is_well_defined;
 
@@ -39,9 +40,9 @@ public:
   my_p4est_interpolation_faces_t(const my_p4est_node_neighbors_t* ngbd_n, const my_p4est_faces_t *faces);
 
 #ifdef P4_TO_P8
-  void set_input(Vec F, int dir, Vec face_is_well_defined=NULL, BoundaryConditions3D *bc=NULL);
+  void set_input(Vec F, int dir, int order=2, Vec face_is_well_defined=NULL, BoundaryConditions3D *bc=NULL);
 #else
-  void set_input(Vec F, int dir, Vec face_is_well_defined=NULL, BoundaryConditions2D *bc=NULL);
+  void set_input(Vec F, int dir, int order=2, Vec face_is_well_defined=NULL, BoundaryConditions2D *bc=NULL);
 #endif
 
   // interpolation methods

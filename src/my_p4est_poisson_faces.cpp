@@ -1178,13 +1178,13 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           matrix_has_nullspace[dir] = false;
 
         double d_[P4EST_FACES];
-        d_[dir::f_m00] = dx_min;
-        d_[dir::f_p00] = dx_min;
-        d_[dir::f_0m0] = dy_min;
-        d_[dir::f_0p0] = dy_min;
+        d_[dir::f_m00] = wall[dir::f_m00] ? x-xmin : dx_min;
+        d_[dir::f_p00] = wall[dir::f_p00] ? xmax-x : dx_min;
+        d_[dir::f_0m0] = wall[dir::f_0m0] ? y-ymin : dy_min;
+        d_[dir::f_0p0] = wall[dir::f_0p0] ? ymax-y : dy_min;
 #ifdef P4_TO_P8
-        d_[dir::f_00m] = dz_min;
-        d_[dir::f_00p] = dz_min;
+        d_[dir::f_00m] = wall[dir::f_00m] ? z-zmin : dz_min;
+        d_[dir::f_00p] = wall[dir::f_00p] ? zmax-z : dz_min;
 #endif
 
         for(int f=0; f<P4EST_FACES; ++f)
@@ -1220,7 +1220,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         double diag = diag_add;
         for(int f=0; f<P4EST_FACES; ++f)
         {
-          coeff[f] = -2*mu/d_[f]/(d_[f/2]+d_[f/2+1]);
+          int ff = f%2==0 ? f+1 : f-1;
+          coeff[f] = -2*mu/d_[f]/(d_[f]+d_[ff]);
           diag -= coeff[f];
         }
 
@@ -1242,7 +1243,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         for(int f=0; f<P4EST_FACES; ++f)
         {
           /* this is the cartesian direction for which the linear system is assembled.
-           * the treatment is different, for example x-velocity is ON the x-walls
+           * the treatment is different, for example x-velocity can be ON the x-walls
            */
           if(f/2==dir)
           {
@@ -1256,11 +1257,11 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
                 ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff[f], ADD_VALUES); CHKERRXX(ierr);
               }
               else
-                rhs_p[f_idx] -= coeff[f] * val_interface[f];
+                rhs_p[f_idx] -= coeff[f] * val_interface[f_op];
 #ifdef P4_TO_P8
-              rhs_p[f_idx] -= coeff[f] * (d_[f/2]+d_[f/2+1]) * bc[dir].wallValue(x,y,z);
+              rhs_p[f_idx] -= coeff[f] * (d_[f]+d_[f_op]) * bc[dir].wallValue(x,y,z);
 #else
-              rhs_p[f_idx] -= coeff[f] * (d_[f/2]+d_[f/2+1]) * bc[dir].wallValue(x,y);
+              rhs_p[f_idx] -= coeff[f] * (d_[f]+d_[f_op]) * bc[dir].wallValue(x,y);
 #endif
             }
             else if(!is_interface[f])
@@ -1855,7 +1856,24 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 
   /* Assemble the matrix */
   ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
-  ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+  ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+
+//  if(dir==0)
+//  {
+//    PetscViewer view;
+//    char name[1000];
+//    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/mat_p4est.m");
+//    ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
+//    ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//    ierr = MatView(A, view); CHKERRXX(ierr);
+
+//    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs_p4est.m");
+//    ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
+//    ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//    VecView(rhs[dir], view);
+//  }
+
+//    MatView(A, PETSC_VIEWER_STDOUT_WORLD);
 
   /* take care of the nullspace if needed */
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace[dir], 1, MPI_INT, MPI_LAND, p4est->mpicomm); SC_CHECK_MPI(mpiret);

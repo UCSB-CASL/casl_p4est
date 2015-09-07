@@ -1084,7 +1084,6 @@ void my_p4est_navier_stokes_t::solve_projection()
       rhs_p[quad_idx] = -compute_divergence(quad_idx, tree_idx);
     }
   }
-
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
   /* solve the linear system */
@@ -1093,7 +1092,8 @@ void my_p4est_navier_stokes_t::solve_projection()
   solver.set_mu(1);
   solver.set_bc(bc_hodge);
   solver.set_rhs(rhs);
-  solver.set_nullspace_use_fixed_point(true);
+//  solver.set_nullspace_use_fixed_point(true);
+  solver.set_nullspace_use_fixed_point(false);
 
   solver.solve(hodge);
 

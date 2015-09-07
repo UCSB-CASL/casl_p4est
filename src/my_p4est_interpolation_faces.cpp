@@ -17,15 +17,16 @@ my_p4est_interpolation_faces_t::my_p4est_interpolation_faces_t(const my_p4est_no
 
 
 #ifdef P4_TO_P8
-void my_p4est_interpolation_faces_t::set_input(Vec F, int dir, Vec face_is_well_defined, BoundaryConditions3D *bc)
+void my_p4est_interpolation_faces_t::set_input(Vec F, int dir, int order, Vec face_is_well_defined, BoundaryConditions3D *bc)
 #else
-void my_p4est_interpolation_faces_t::set_input(Vec F, int dir, Vec face_is_well_defined, BoundaryConditions2D *bc)
+void my_p4est_interpolation_faces_t::set_input(Vec F, int dir, int order, Vec face_is_well_defined, BoundaryConditions2D *bc)
 #endif
 {
   this->Fi = F;
   this->face_is_well_defined = face_is_well_defined;
   this->dir = dir;
   this->bc = bc;
+  this->order = order;
 }
 
 
@@ -116,6 +117,7 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
       for(int k=-1; k<2; ++k)
         ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j, k);
 #else
+      if(i==0 || j==0)
       ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j);
 #endif
 
@@ -128,6 +130,7 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
         for(int k=-1; k<2; ++k)
           ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, i, j, k);
 #else
+        if(i==0 || j==0)
         ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, i, j);
 #endif
   }
@@ -170,9 +173,9 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
   std::vector<p4est_locidx_t> interp_points;
   matrix_t A;
 #ifdef P4_TO_P8
-  A.resize(1,10);
+  A.resize(1,(order>=2) ? 10 : 4);
 #else
-  A.resize(1,6);
+  A.resize(1,(order>=2) ? 6 : 3);
 #endif
   std::vector<double> p;
   std::vector<double> nb[P4EST_DIM];
@@ -202,19 +205,25 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
       A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
       A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
       A.set_value(interp_points.size(), 3, xyz_t[2]          * w);
-      A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
-      A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
-      A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
-      A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
-      A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
-      A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
+      if(order>=2)
+      {
+        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
+      }
 #else
       A.set_value(interp_points.size(), 0, 1                 * w);
       A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
       A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
-      A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
-      A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
-      A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
+      if(order>=2)
+      {
+        A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
+      }
 #endif
 
       p.push_back(Fi_p[fm_idx] * w);
