@@ -41,6 +41,7 @@ my_p4est_poisson_cells_t::my_p4est_poisson_cells_t(const my_p4est_cell_neighbors
     bc(NULL),
     nullspace_use_fixed_point(true),
     A(NULL), A_null_space(NULL),
+    null_space(NULL),
     rhs(NULL), phi(NULL), add(NULL)
 {
   // set up the KSP solver
@@ -69,9 +70,10 @@ my_p4est_poisson_cells_t::my_p4est_poisson_cells_t(const my_p4est_cell_neighbors
 
 my_p4est_poisson_cells_t::~my_p4est_poisson_cells_t()
 {
-  if (A             != NULL) ierr = MatDestroy(A);                      CHKERRXX(ierr);
-  if (A_null_space  != NULL) ierr = MatNullSpaceDestroy (A_null_space); CHKERRXX(ierr);
-  if (ksp           != NULL) ierr = KSPDestroy(ksp);                    CHKERRXX(ierr);
+  if (A             != NULL) { ierr = MatDestroy(A);                      CHKERRXX(ierr); }
+  if (A_null_space  != NULL) { ierr = MatNullSpaceDestroy (A_null_space); CHKERRXX(ierr); }
+  if (null_space    != NULL) { ierr = VecDestroy(null_space);             CHKERRXX(ierr); }
+  if (ksp           != NULL) { ierr = KSPDestroy(ksp);                    CHKERRXX(ierr); }
 }
 
 void my_p4est_poisson_cells_t::preallocate_matrix()
@@ -255,6 +257,25 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
   ierr = KSPSolve(ksp, rhs, solution); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
 
+//  CASL::ArrayV<double> CASL_sol;
+//  CASL::Augmented_Matrix A_aug; A_aug.set_matrix(CASL_A);
+//  CASL::SGS_Preconditioner_Aug Precond_aug; Precond_aug.set_matrix(A_aug);
+
+//  CASL::ArrayV<double> RHS_aug; A_aug.merge(CASL_rhs,0,RHS_aug);
+//  CASL::ArrayV<double> X_aug;   A_aug.merge(CASL_sol,0,X_aug);
+
+//  CASL::BCGSTAB bcgstab;
+//  bcgstab.solve(A_aug,Precond_aug,RHS_aug,X_aug);
+
+//  double x_add;
+//  A_aug.split(X_aug,CASL_sol,x_add);
+
+//  double *p;
+//  VecGetArray(solution, &p);
+//  for(p4est_locidx_t q=0; q<p4est->local_num_quadrants; ++q)
+//    p[q] = CASL_sol[q];
+//  VecRestoreArray(solution, &p);
+
   // get rid of local stuff
   if(local_add)
   {
@@ -276,6 +297,14 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
 void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 {
   preallocate_matrix();
+
+  double *null_space_p;
+  if(!nullspace_use_fixed_point)
+  {
+    if(null_space!=NULL) { ierr = VecDestroy(null_space); CHKERRXX(ierr); }
+    ierr = VecDuplicate(rhs, &null_space);
+    ierr = VecGetArray(null_space, &null_space_p);
+  }
 
   fixed_value_idx_g = p4est->global_num_quadrants;
 
@@ -329,8 +358,12 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       if((bc->interfaceType()==DIRICHLET && phi_q>0) || (bc->interfaceType()==NEUMANN && all_pos))
       {
         ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 1, ADD_VALUES); CHKERRXX(ierr);
+//        CASL_A.add_Element(quad_gloidx, quad_gloidx, 1);
+        if(!nullspace_use_fixed_point) null_space_p[quad_idx] = 0;
         continue;
       }
+
+      if(!nullspace_use_fixed_point) null_space_p[quad_idx] = 1;
 
       cube.x0 = x - 0.5*dx;
       cube.x1 = x + 0.5*dx;
@@ -355,6 +388,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       if(add_p[quad_idx]!=0)
       {
         ierr = MatSetValue(A, quad_gloidx, quad_gloidx, volume_cut_cell*add_p[quad_idx], ADD_VALUES); CHKERRXX(ierr);
+//        CASL_A.add_Element(quad_gloidx, quad_gloidx, volume_cut_cell*add_p[quad_idx]);
         matrix_has_nullspace = false;
       }
 
@@ -389,6 +423,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dy, dy);
 #endif
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dx, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, 2*mu*s/dx);
             }
             break;
 
@@ -410,6 +445,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dy, dy);
 #endif
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dx, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, 2*mu*s/dx);
             }
             break;
 
@@ -431,6 +467,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               s = dx * fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dx, dx);
 #endif
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dy, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, 2*mu*s/dy);
             }
             break;
 
@@ -452,6 +489,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               s = dx * fraction_Interval_Covered_By_Irregular_Domain(p.val01, p.val11, dx, dx);
 #endif
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dy, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, 2*mu*s/dy);
             }
             break;
 
@@ -467,6 +505,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               s = c2.area_In_Negative_Domain(q2);
 
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dz, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, 2*mu*s/dz);
             }
             break;
 
@@ -481,6 +520,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               s = c2.area_In_Negative_Domain(q2);
 
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dz, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, 2*mu*s/dz);
             }
             break;
 #endif
@@ -557,23 +597,28 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             case dir::f_m00:
             case dir::f_p00:
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu/theta * dy*dz/dx, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, mu/theta * dy*dz/dx);
               break;
             case dir::f_0m0:
             case dir::f_0p0:
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu/theta * dx*dz/dy, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, mu/theta * dx*dz/dy);
               break;
             case dir::f_00m:
             case dir::f_00p:
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu/theta * dx*dy/dz, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, mu/theta * dx*dy/dz);
               break;
 #else
             case dir::f_m00:
             case dir::f_p00:
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu/theta * dy/dx, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, mu/theta * dy/dx);
               break;
             case dir::f_0m0:
             case dir::f_0p0:
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu/theta * dx/dy, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, mu/theta * dx/dy);
               break;
 #endif
             }
@@ -627,6 +672,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             {
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx                       ,  mu*s/d, ADD_VALUES); CHKERRXX(ierr);
               ierr = MatSetValue(A, quad_gloidx, compute_global_index(quad_tmp_idx), -mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, quad_gloidx, mu*s/d);
+//              CASL_A.add_Element(quad_gloidx, compute_global_index(quad_tmp_idx), -mu*s/d);
             }
           }
           /* no interface - regular discretization */
@@ -661,9 +708,13 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             }
 
             for(unsigned int i=0; i<ngbd.size(); ++i)
+            {
               ierr = MatSetValue(A, quad_gloidx, compute_global_index(ngbd[i].p.piggy3.local_num), mu*s * s_ng[i]/s_tmp/d, ADD_VALUES); CHKERRXX(ierr);
+//              CASL_A.add_Element(quad_gloidx, compute_global_index(ngbd[i].p.piggy3.local_num), mu*s * s_ng[i]/s_tmp/d);
+            }
 
             ierr = MatSetValue(A, quad_gloidx, compute_global_index(quad_tmp_idx), -mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+//            CASL_A.add_Element(quad_gloidx, compute_global_index(quad_tmp_idx), -mu*s/d);
 
             if(nullspace_use_fixed_point && quad_gloidx<fixed_value_idx_g)
             {
@@ -701,9 +752,13 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           }
 
           for(unsigned int i=0; i<ngbd.size(); ++i)
+          {
             ierr = MatSetValue(A, quad_gloidx, compute_global_index(ngbd[i].p.piggy3.local_num), -mu*s * s_ng[i]/s_tmp/d, ADD_VALUES); CHKERRXX(ierr);
+//            CASL_A.add_Element(quad_gloidx, compute_global_index(ngbd[i].p.piggy3.local_num), -mu*s * s_ng[i]/s_tmp/d);
+          }
 
           ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+//          CASL_A.add_Element(quad_gloidx, quad_gloidx, mu*s/d);
 
           if(nullspace_use_fixed_point && quad_gloidx<fixed_value_idx_g)
           {
@@ -715,6 +770,11 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
     }
   }
 
+  if(!nullspace_use_fixed_point)
+  {
+    ierr = VecRestoreArray(null_space, &null_space_p); CHKERRXX(ierr);
+  }
+
   // Assemble the matrix
   ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
   ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
@@ -723,14 +783,31 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
   ierr = VecRestoreArray(phi,    &phi_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(add,    &add_p   ); CHKERRXX(ierr);
 
+//  PetscViewer view;
+//  char name[1000];
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/mat_p4est.m");
+//  ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = MatView(A, view); CHKERRXX(ierr);
+
   // check for null space
   ierr = MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm); CHKERRXX(ierr);
   if (matrix_has_nullspace)
   {
     if(!nullspace_use_fixed_point)
     {
-      if (A_null_space == NULL)
-        ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
+      if(A_null_space != NULL)
+      {
+        ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr);
+      }
+
+      ierr = VecGhostUpdateBegin(null_space, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (null_space, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      double norm;
+      ierr = VecNormalize(null_space, &norm); CHKERRXX(ierr);
+//      ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
+      ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_FALSE, 1, &null_space, &A_null_space); CHKERRXX(ierr);
 
       ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
     }
@@ -750,6 +827,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       // reset the value
       ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
     }
+  }
+  else if(!nullspace_use_fixed_point)
+  {
+    ierr = VecDestroy(null_space); CHKERRXX(ierr);
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
@@ -1042,12 +1123,23 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
     }
   }
 
+//  CASL_rhs.resize_Without_Copy(p4est->local_num_quadrants);
+//  for(p4est_locidx_t q=0; q<p4est->local_num_quadrants; ++q)
+//    CASL_rhs[q] = rhs_p[q];
+
+//  PetscViewer view;
+//  char name[1000];
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs_p4est.m");
+//  ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(rhs, view); CHKERRXX(ierr);
 
   if (matrix_has_nullspace)
   {
     if(!nullspace_use_fixed_point)
     {
       ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+//      ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr);
     }
     else if(fixed_value_idx_l >= 0)
       rhs_p[fixed_value_idx_l] = 0;

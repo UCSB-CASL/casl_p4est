@@ -20,6 +20,8 @@
 #include <src/my_p4est_vtk.h>
 #endif
 
+#include <algorithm>
+
 #ifndef CASL_LOG_EVENTS
 #undef PetscLogEventBegin
 #undef PetscLogEventEnd
@@ -251,49 +253,6 @@ double my_p4est_navier_stokes_t::interface_bc_value_hodge_t::operator ()(double 
 }
 
 
-
-#ifdef P4_TO_P8
-double my_p4est_navier_stokes_t::wall_bc_value_vstar_t::operator ()(double x, double y, double z) const
-#else
-double my_p4est_navier_stokes_t::wall_bc_value_vstar_t::operator ()(double x, double y) const
-#endif
-{
-#ifdef P4_TO_P8
-  if(_prnt->bc_v[dir].wallType(x,y,z)==DIRICHLET)
-    return _prnt->bc_v[dir].wallValue(x,y,z) + (*_prnt->interp_dxyz_hodge[dir])(x,y,z);
-  else
-    return _prnt->bc_v[dir].wallValue(x,y,z);
-#else
-  if(_prnt->bc_v[dir].wallType(x,y)==DIRICHLET)
-    return _prnt->bc_v[dir].wallValue(x,y) + (*_prnt->interp_dxyz_hodge[dir])(x,y);
-  else
-    return _prnt->bc_v[dir].wallValue(x,y);
-#endif
-}
-
-
-
-#ifdef P4_TO_P8
-double my_p4est_navier_stokes_t::interface_bc_value_vstar_t::operator ()(double x, double y, double z) const
-#else
-double my_p4est_navier_stokes_t::interface_bc_value_vstar_t::operator ()(double x, double y) const
-#endif
-{
-#ifdef P4_TO_P8
-  if(_prnt->bc_v[dir].interfaceType()==DIRICHLET)
-    return _prnt->bc_v[dir].interfaceValue(x,y,z) + (*_prnt->interp_dxyz_hodge[dir])(x,y,z);
-  else
-    return _prnt->bc_v[dir].interfaceValue(x,y,z);
-#else
-  if(_prnt->bc_v[dir].interfaceType()==DIRICHLET)
-    return _prnt->bc_v[dir].interfaceValue(x,y) + (*_prnt->interp_dxyz_hodge[dir])(x,y);
-  else
-    return _prnt->bc_v[dir].interfaceValue(x,y);
-#endif
-}
-
-
-
 my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces)
   : brick(ngbd_n->myb),
     p4est_nm1(ngbd_nm1->p4est), ghost_nm1(ngbd_nm1->ghost), nodes_nm1(ngbd_nm1->nodes),
@@ -366,9 +325,6 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
     vn_nodes  [dir] = NULL;
     vnp1_nodes[dir] = NULL;
 
-    wall_bc_value_vstar[dir] = new wall_bc_value_vstar_t(this, dir);
-    interface_bc_value_vstar[dir] = new interface_bc_value_vstar_t(this, dir);
-
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &dxyz_hodge[dir]); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(dxyz_hodge[dir], &vec_loc); CHKERRXX(ierr);
     ierr = VecSet(vec_loc, 0); CHKERRXX(ierr);
@@ -380,8 +336,8 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
     ierr = VecGhostRestoreLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
 
     /* NOTE: bousouf in the original CASL code, dx_hodge is interpolated using extrapolated values */
-    interp_dxyz_hodge[dir] = new my_p4est_interpolation_nodes_t(ngbd_n);
-    interp_dxyz_hodge[dir]->set_input(dxyz_hodge[dir], linear);
+    interp_dxyz_hodge[dir] = new my_p4est_interpolation_faces_t(ngbd_n, faces_n);
+    interp_dxyz_hodge[dir]->set_input(dxyz_hodge[dir], dir);
   }
 
   interp_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
@@ -409,8 +365,6 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
     if(face_is_well_defined[dir]!=NULL) { ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr); }
 
     if(interp_dxyz_hodge[dir]!=NULL)        delete interp_dxyz_hodge[dir];
-    if(wall_bc_value_vstar[dir]!=NULL)      delete wall_bc_value_vstar[dir];
-    if(interface_bc_value_vstar[dir]!=NULL) delete interface_bc_value_vstar[dir];
   }
 
   if(interp_phi!=NULL) delete interp_phi;
@@ -497,14 +451,6 @@ void my_p4est_navier_stokes_t::set_bc(BoundaryConditions2D *bc_v, BoundaryCondit
   bc_hodge.setInterfaceType(bc_pressure->interfaceType());
   bc_hodge.setInterfaceValue(interface_bc_value_hodge);
 
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    bc_vstar[dir].setWallTypes(bc_v[dir].getWallType());
-    bc_vstar[dir].setWallValues(*wall_bc_value_vstar[dir]);
-    bc_vstar[dir].setInterfaceType(bc_v[dir].interfaceType());
-    bc_vstar[dir].setInterfaceValue(*interface_bc_value_vstar[dir]);
-  }
-
   if(phi!=NULL)
   {
     for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -549,9 +495,9 @@ void my_p4est_navier_stokes_t::set_velocities(CF_2 **vnm1, CF_2 **vn)
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_nm1, nodes_nm1, xyz);
 #ifdef P4_TO_P8
-      v_p[n] = (*vn[dir])(xyz[0], xyz[1], xyz[2]);
+      v_p[n] = (*vnm1[dir])(xyz[0], xyz[1], xyz[2]);
 #else
-      v_p[n] = (*vn[dir])(xyz[0], xyz[1]);
+      v_p[n] = (*vnm1[dir])(xyz[0], xyz[1]);
 #endif
     }
     ierr = VecRestoreArray(vnm1_nodes[dir], &v_p); CHKERRXX(ierr);
@@ -564,9 +510,9 @@ void my_p4est_navier_stokes_t::set_velocities(CF_2 **vnm1, CF_2 **vn)
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
 #ifdef P4_TO_P8
-      v_p[n] = (*vnm1[dir])(xyz[0], xyz[1], xyz[2]);
+      v_p[n] = (*vn[dir])(xyz[0], xyz[1], xyz[2]);
 #else
-      v_p[n] = (*vnm1[dir])(xyz[0], xyz[1]);
+      v_p[n] = (*vn[dir])(xyz[0], xyz[1]);
 #endif
     }
     ierr = VecRestoreArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
@@ -1029,7 +975,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   solver.set_phi(phi);
   solver.set_mu(mu);
   solver.set_diagonal(alpha * rho/dt_n);
-  solver.set_bc(bc_vstar);
+  solver.set_bc(bc_v, dxyz_hodge);
   solver.set_rhs(rhs);
 #ifdef P4_TO_P8
   solver.set_compute_partition_on_the_fly(true);
@@ -1049,7 +995,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
-      lsf.extend_Over_Interface(phi, vstar[dir], bc_vstar[dir], dir, face_is_well_defined[dir], 2, 8);
+      lsf.extend_Over_Interface(phi, vstar[dir], bc_v[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 2, 8);
     }
   }
 
@@ -1108,8 +1054,6 @@ void my_p4est_navier_stokes_t::solve_projection()
     ierr = VecGetArray(hodge, &hodge_p); CHKERRXX(ierr);
     for(p4est_locidx_t quad_idx=0; quad_idx<p4est_n->local_num_quadrants; ++quad_idx)
       hodge_p[quad_idx] -= average;
-//    for(size_t q=0; q<ghost_n->ghosts.elem_count; ++q)
-//      hodge_p[q+p4est_n->local_num_quadrants] -= average;
     ierr = VecRestoreArray(hodge, &hodge_p); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1124,10 +1068,8 @@ void my_p4est_navier_stokes_t::solve_projection()
   /* project vstar */
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    Vec tmp;
-    ierr = VecDuplicate(face_is_well_defined[dir], &tmp); CHKERRXX(ierr);
-    double *d_hodge_p;
-    ierr = VecGetArray(tmp, &d_hodge_p); CHKERRXX(ierr);
+    double *dxyz_hodge_p;
+    ierr = VecGetArray(dxyz_hodge[dir], &dxyz_hodge_p); CHKERRXX(ierr);
 
     const double *vstar_p;
     ierr = VecGetArrayRead(vstar[dir], &vstar_p); CHKERRXX(ierr);
@@ -1142,50 +1084,29 @@ void my_p4est_navier_stokes_t::solve_projection()
     {
       faces_n->f2q(f_idx, dir, quad_idx, tree_idx);
       int tmp = faces_n->q2f(quad_idx, 2*dir)==f_idx ? 0 : 1;
-      d_hodge_p[f_idx] = compute_dxyz_hodge(quad_idx, tree_idx, 2*dir+tmp);
+      dxyz_hodge_p[f_idx] = compute_dxyz_hodge(quad_idx, tree_idx, 2*dir+tmp);
     }
 
-    ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     for(p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
     {
-      vnp1_p[f_idx] = vstar_p[f_idx] - d_hodge_p[f_idx];
+      vnp1_p[f_idx] = vstar_p[f_idx] - dxyz_hodge_p[f_idx];
     }
 
-    ierr = VecGhostUpdateEnd  (tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     ierr = VecRestoreArray(vnp1[dir], &vnp1_p); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(vstar[dir], &vstar_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(tmp, &d_hodge_p); CHKERRXX(ierr);
-
-    ierr = VecGhostUpdateBegin(vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    double *dxyz_hodge_p;
-    ierr = VecGetArray(dxyz_hodge[dir], &dxyz_hodge_p); CHKERRXX(ierr);
-    for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
-    {
-      p4est_locidx_t n = ngbd_n->get_layer_node(i);
-      dxyz_hodge_p[n] = interpolate_f_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n,
-                                                n, tmp, dir, face_is_well_defined[dir]);
-    }
-    ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
-    {
-      p4est_locidx_t n = ngbd_n->get_local_node(i);
-      dxyz_hodge_p[n] = interpolate_f_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n,
-                                                n, tmp, dir, face_is_well_defined[dir]);
-    }
-    ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecRestoreArray(dxyz_hodge[dir], &dxyz_hodge_p); CHKERRXX(ierr);
 
+    ierr = VecGhostUpdateBegin(vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    ierr = VecDestroy(tmp); CHKERRXX(ierr);
 
     if(bc_pressure->interfaceType()!=NOINTERFACE)
     {
       my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
-      lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], 2, 8);
+      lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], NULL, 2, 8);
     }
   }
 
@@ -1208,7 +1129,7 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
       v_p[n] = interpolate_f_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
-                                       vnp1[dir], dir, NULL, bc_v);
+                                       vnp1[dir], dir, NULL, 2, bc_v);
     }
 
     ierr = VecGhostUpdateBegin(vnp1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1219,7 +1140,7 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
       v_p[n] = interpolate_f_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
-                                       vnp1[dir], dir, NULL, bc_v);
+                                       vnp1[dir], dir, NULL, 2, bc_v);
     }
 
     ierr = VecGhostUpdateEnd(vnp1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1518,14 +1439,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
     ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(phi_np1, &vnp1_nodes[dir]); CHKERRXX(ierr);
-
-    Vec dxyz_hodge_tmp;
-    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &dxyz_hodge_tmp); CHKERRXX(ierr);
-    interp_nodes.set_input(dxyz_hodge[dir], quadratic);
-    interp_nodes.interpolate(dxyz_hodge_tmp);
-
-    ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr);
-    dxyz_hodge[dir] = dxyz_hodge_tmp;
   }
 
   interp_nodes.clear();
@@ -1548,6 +1461,8 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
   ierr = VecDuplicate(hodge, &pressure); CHKERRXX(ierr);
 
   /* interpolate the quantities on the new forest at the faces */
+  my_p4est_interpolation_faces_t interp_faces(ngbd_n, faces_n);
+
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
@@ -1559,6 +1474,25 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
     ierr = VecDestroy(vnp1[dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
+
+    Vec dxyz_hodge_tmp;
+    ierr = VecDuplicate(face_is_well_defined[dir], &dxyz_hodge_tmp); CHKERRXX(ierr);
+
+    for(p4est_locidx_t f_idx=0; f_idx<faces_np1->num_local[dir]; ++f_idx)
+    {
+      double xyz[P4EST_DIM];
+      faces_np1->xyz_fr_f(f_idx, dir, xyz);
+      interp_faces.add_point(f_idx, xyz);
+    }
+    interp_faces.set_input(dxyz_hodge[dir], dir);
+    interp_faces.interpolate(dxyz_hodge_tmp);
+    interp_faces.clear();
+
+    ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr);
+    dxyz_hodge[dir] = dxyz_hodge_tmp;
+
+    ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
   /* update the variables */
@@ -1586,8 +1520,8 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     delete interp_dxyz_hodge[dir];
-    interp_dxyz_hodge[dir] = new my_p4est_interpolation_nodes_t(ngbd_n);
-    interp_dxyz_hodge[dir]->set_input(dxyz_hodge[dir], linear);
+    interp_dxyz_hodge[dir] = new my_p4est_interpolation_faces_t(ngbd_n, faces_n);
+    interp_dxyz_hodge[dir]->set_input(dxyz_hodge[dir], dir);
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);

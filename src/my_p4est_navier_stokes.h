@@ -74,42 +74,6 @@ private:
 #endif
   };
 
-#ifdef P4_TO_P8
-  class wall_bc_value_vstar_t : public CF_3
-    #else
-  class wall_bc_value_vstar_t : public CF_2
-    #endif
-  {
-  private:
-    my_p4est_navier_stokes_t* _prnt;
-    int dir;
-  public:
-    wall_bc_value_vstar_t(my_p4est_navier_stokes_t* obj, int dir) : _prnt(obj), dir(dir) {}
-#ifdef P4_TO_P8
-    double operator()( double x, double y, double z ) const;
-#else
-    double operator()( double x, double y ) const;
-#endif
-  };
-
-#ifdef P4_TO_P8
-  class interface_bc_value_vstar_t : public CF_3
-    #else
-  class interface_bc_value_vstar_t : public CF_2
-    #endif
-  {
-  private:
-    my_p4est_navier_stokes_t* _prnt;
-    int dir;
-  public:
-    interface_bc_value_vstar_t(my_p4est_navier_stokes_t* obj, int dir) : _prnt(obj), dir(dir) {}
-#ifdef P4_TO_P8
-    double operator()( double x, double y, double z ) const;
-#else
-    double operator()( double x, double y ) const;
-#endif
-  };
-
   my_p4est_brick_t *brick;
 
   p4est_t *p4est_nm1;
@@ -171,18 +135,14 @@ private:
   BoundaryConditions3D *bc_pressure;
   BoundaryConditions3D bc_hodge;
   BoundaryConditions3D *bc_v;
-  BoundaryConditions3D bc_vstar[P4EST_DIM];
 #else
   BoundaryConditions2D *bc_pressure;
   BoundaryConditions2D bc_hodge;
   BoundaryConditions2D *bc_v;
-  BoundaryConditions2D bc_vstar[P4EST_DIM];
 #endif
 
   wall_bc_value_hodge_t wall_bc_value_hodge;
-  wall_bc_value_vstar_t *wall_bc_value_vstar[P4EST_DIM];
   interface_bc_value_hodge_t interface_bc_value_hodge;
-  interface_bc_value_vstar_t *interface_bc_value_vstar[P4EST_DIM];
 
 #ifdef P4_TO_P8
   CF_3 *external_forces[P4EST_DIM];
@@ -192,7 +152,7 @@ private:
 
   my_p4est_interpolation_nodes_t *interp_phi;
 
-  my_p4est_interpolation_nodes_t *interp_dxyz_hodge[P4EST_DIM];
+  my_p4est_interpolation_faces_t *interp_dxyz_hodge[P4EST_DIM];
 
   double compute_dxyz_hodge( p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, int dir);
 

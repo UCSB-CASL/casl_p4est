@@ -107,8 +107,10 @@ int interface_type = 0;
  */
 int test_number = 2;
 
-BoundaryConditionType bc_itype = NEUMANN;
-BoundaryConditionType bc_wtype = DIRICHLET;
+//BoundaryConditionType bc_itype = NEUMANN;
+BoundaryConditionType bc_itype = NOINTERFACE;
+//BoundaryConditionType bc_wtype = DIRICHLET;
+BoundaryConditionType bc_wtype = NEUMANN;
 
 double diag_add = 0;
 

@@ -32,9 +32,9 @@ public:
 
   /* extrapolate using geometrical extrapolation */
 #ifdef P4_TO_P8
-  void extend_Over_Interface( Vec phi, Vec q, BoundaryConditions3D &bc, int dir, Vec face_is_well_defined, int order=2, int band_to_extend=INT_MAX ) const;
+  void extend_Over_Interface( Vec phi, Vec q, BoundaryConditions3D &bc, int dir, Vec face_is_well_defined, Vec dxyz_hodge=NULL, int order=2, int band_to_extend=INT_MAX ) const;
 #else
-  void extend_Over_Interface( Vec phi, Vec q, BoundaryConditions2D &bc, int dir, Vec face_is_well_defined, int order=2, int band_to_extend=INT_MAX ) const;
+  void extend_Over_Interface( Vec phi, Vec q, BoundaryConditions2D &bc, int dir, Vec face_is_well_defined, Vec dxyz_hodge=NULL, int order=2, int band_to_extend=INT_MAX ) const;
 #endif
 };
 

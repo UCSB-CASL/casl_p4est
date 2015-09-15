@@ -35,9 +35,9 @@ extern PetscLogEvent log_my_p4est_level_set_faces_extend_over_interface;
 
 
 #ifdef P4_TO_P8
-void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, BoundaryConditions3D &bc, int dir, Vec face_is_well_defined, int order, int band_to_extend ) const
+void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, BoundaryConditions3D &bc, int dir, Vec face_is_well_defined, Vec dxyz_hodge, int order, int band_to_extend ) const
 #else
-void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, BoundaryConditions2D &bc, int dir, Vec face_is_well_defined, int order, int band_to_extend ) const
+void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, BoundaryConditions2D &bc, int dir, Vec face_is_well_defined, Vec dxyz_hodge, int order, int band_to_extend ) const
 #endif
 {
 #ifdef CASL_THROWS
@@ -141,7 +141,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   ierr = VecGhostUpdateEnd(bc_interface_values, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecRestoreArray(bc_interface_values, &bc_p); CHKERRXX(ierr);
 
-  my_p4est_interpolation_nodes_t interp0(ngbd_n); interp0.set_input(bc_interface_values, linear);
+  my_p4est_interpolation_faces_t interp0(ngbd_n, faces); interp0.set_input(dxyz_hodge, dir, 2);
   my_p4est_interpolation_faces_t interp1(ngbd_n, faces); interp1.set_input(q, dir, 2, face_is_well_defined);
   my_p4est_interpolation_faces_t interp2(ngbd_n, faces); interp2.set_input(q, dir, 2, face_is_well_defined);
 
@@ -176,6 +176,9 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   if(order >= 1 || (order==0 && bc.interfaceType()==NEUMANN)) q1.resize(faces->num_local[dir]);
   if(order >= 2)                                              q2.resize(faces->num_local[dir]);
 
+  std::vector<double> q0_bc;
+  if(dxyz_hodge!=NULL) q0_bc.resize(faces->num_local[dir]);
+
   const PetscScalar *face_is_well_defined_p;
   ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
@@ -209,7 +212,24 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   #endif
         };
 
-        interp0.add_point(f_idx, xyz_i);
+        if(dxyz_hodge!=NULL)
+        {
+#ifdef P4_TO_P8
+          q0_bc[f_idx] = bc.interfaceValue(xyz_i[0], xyz_i[1], xyz_i[2]);
+#else
+          q0_bc[f_idx] = bc.interfaceValue(xyz_i[0], xyz_i[1]);
+#endif
+          for(int dd=0; dd<P4EST_DIM; ++dd)
+            interp0.add_point(f_idx, xyz_i);
+        }
+        else
+        {
+#ifdef P4_TO_P8
+          q0[f_idx] = bc.interfaceValue(xyz_i[0], xyz_i[1], xyz_i[2]);
+#else
+          q0[f_idx] = bc.interfaceValue(xyz_i[0], xyz_i[1]);
+#endif
+        }
 
         if(order >= 1 || (order==0 && bc.interfaceType()==NEUMANN))
         {
@@ -240,9 +260,22 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
     }
   }
 
-  interp0.interpolate(q0.data());
+  if(dxyz_hodge!=NULL)
+  {
+    interp0.interpolate(q0.data());
+    interp0.clear();
+    for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
+    {
+      if(q0_bc[f_idx]!=DBL_MAX)
+        q0[f_idx] += q0_bc[f_idx];
+    }
+  }
+
   interp1.interpolate(q1.data());
+  interp1.clear();
+
   interp2.interpolate(q2.data());
+  interp2.clear();
 
   /* now compute the extrapolated values */
   double *q_p;

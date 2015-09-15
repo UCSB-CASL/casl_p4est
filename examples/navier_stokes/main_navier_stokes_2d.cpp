@@ -1245,13 +1245,13 @@ int main (int argc, char* argv[])
   cmd.print();
 
   int nb_splits = cmd.get("nb_splits", 0);
-  int lmin = cmd.get("lmin", 2) + nb_splits;
-  int lmax = cmd.get("lmax", 4) + nb_splits;
-  double n_times_dt = cmd.get("n_times_dt", 2.);
+  int lmin = cmd.get("lmin", 3) + nb_splits;
+  int lmax = cmd.get("lmax", 3) + nb_splits;
+  double n_times_dt = cmd.get("n_times_dt", 1.);
   double threshold_split_cell = cmd.get("thresh", 0.1);
   bool save_vtk = cmd.get("save_vtk", false);
   int save_every_n = cmd.get("save_every_n", 1);
-  test_number = cmd.get("test", 3);
+  test_number = cmd.get("test", 1);
 
   bool is_smoke = cmd.get("smoke", 0);
   bool refine_with_smoke = cmd.get("refine_with_smoke", 1);
@@ -1287,6 +1287,8 @@ int main (int argc, char* argv[])
 #endif
   default: throw std::invalid_argument("choose a valid test.");
   }
+//  tf = 0.01;
+//  tf = 0.7;
 
 #ifndef P4_TO_P8
   double naca_angle = cmd.get("naca_angle", 15.);
@@ -1477,13 +1479,15 @@ int main (int argc, char* argv[])
   external_force_w_t *external_force_w;
 #endif
 
+
   my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
   ns.set_phi(phi);
   ns.set_parameters(mu, rho, uniform_band, threshold_split_cell, n_times_dt);
-  ns.set_velocities(vnm1, vn);
-  ns.set_bc(bc_v, &bc_p);
 //  ns.set_dt(dxmin*n_times_dt/u0);
   ns.set_dt(dxmin*n_times_dt/u0, dxmin*n_times_dt/u0);
+  dt = ns.get_dt();
+  ns.set_velocities(vnm1, vn);
+  ns.set_bc(bc_v, &bc_p);
 
   if(is_smoke)
   {
@@ -1497,7 +1501,6 @@ int main (int argc, char* argv[])
   int iter = 0;
 
   char name[1000];
-  dt = ns.get_dt();
   double forces[P4EST_DIM];
 
   FILE *fp_forces;
