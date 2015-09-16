@@ -1767,7 +1767,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(xmax,y_pert,z_pert) + interp_dxyz_hodge(xmin,y_pert,z_pert)) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(xmax,y_pert,z_pert) + interp_dxyz_hodge(xmax,y_pert,z_pert)) / d;
 #else
           rhs_p[f_idx] += mu*s*(bc[dir].wallValue(xmax,y_pert) + interp_dxyz_hodge(xmax,y_pert)) / d;
 #endif

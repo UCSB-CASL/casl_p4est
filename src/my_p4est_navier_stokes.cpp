@@ -965,9 +965,6 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
   }
 
-//  PetscViewerSetFormat(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_ASCII_MATLAB);
-//  VecView(rhs[1], PETSC_VIEWER_STDOUT_WORLD);
-
   my_p4est_poisson_faces_t solver(faces_n, ngbd_n);
   solver.set_phi(phi);
   solver.set_mu(mu);
@@ -975,7 +972,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   solver.set_bc(bc_v, dxyz_hodge);
   solver.set_rhs(rhs);
 #ifdef P4_TO_P8
-  solver.set_compute_partition_on_the_fly(true);
+  solver.set_compute_partition_on_the_fly(false);
 #else
   solver.set_compute_partition_on_the_fly(false);
 #endif
@@ -1035,7 +1032,6 @@ void my_p4est_navier_stokes_t::solve_projection()
   solver.set_mu(1);
   solver.set_bc(bc_hodge);
   solver.set_rhs(rhs);
-//  solver.set_nullspace_use_fixed_point(true);
   solver.set_nullspace_use_fixed_point(false);
 
   solver.solve(hodge);

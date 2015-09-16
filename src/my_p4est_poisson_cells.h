@@ -61,9 +61,6 @@ class my_p4est_poisson_cells_t
   KSP ksp;
   PetscErrorCode ierr;
 
-//  CASL::SparseMatrix_CRS CASL_A;
-//  CASL::ArrayV<double> CASL_rhs;
-
   void preallocate_matrix();
   void setup_negative_laplace_matrix();
   void setup_negative_laplace_rhsvec();
