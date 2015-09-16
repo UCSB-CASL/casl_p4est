@@ -981,10 +981,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   double *rhs_p;
   ierr = VecGetArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
 
-  if(null_space!=PETSC_NULL)
-  {
-    ierr = VecDestroy(null_space); CHKERRXX(ierr);
-  }
+  ierr = VecDestroy(null_space); CHKERRXX(ierr);
   ierr = VecDuplicate(rhs[dir], &null_space); CHKERRXX(ierr);
   double *null_space_p;
   ierr = VecGetArray(null_space, &null_space_p); CHKERRXX(ierr);
@@ -1334,44 +1331,44 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #ifdef P4_TO_P8
               case dir::f_m00:
                 bc_w_type = bc[dir].wallType(xmin,y,z);
-                bc_w_value = bc[dir].wallValue(xmin,y,z) + (bc[dir].wallType(xmin,y,z)==DIRICHLET ? interp_dxyz_hodge(xmin,y,z) : 0);
+                bc_w_value = bc[dir].wallValue(xmin,y,z) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(xmin,y,z) : 0);
                 break;
               case dir::f_p00:
                 bc_w_type = bc[dir].wallType(xmax,y,z);
-                bc_w_value = bc[dir].wallValue(xmax,y,z) + (bc[dir].wallType(xmax,y,z)==DIRICHLET ? interp_dxyz_hodge(xmax,y,z) : 0);
+                bc_w_value = bc[dir].wallValue(xmax,y,z) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(xmax,y,z) : 0);
                 break;
               case dir::f_0m0:
                 bc_w_type = bc[dir].wallType(x,ymin,z);
-                bc_w_value = bc[dir].wallValue(x,ymin,z) + (bc[dir].wallType(x,ymin,z)==DIRICHLET ? interp_dxyz_hodge(x,ymin,z) : 0);
+                bc_w_value = bc[dir].wallValue(x,ymin,z) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,ymin,z) : 0);
                 break;
               case dir::f_0p0:
                 bc_w_type = bc[dir].wallType(x,ymax,z);
-                bc_w_value = bc[dir].wallValue(x,ymax,z) + (bc[dir].wallType(x,ymax,z)==DIRICHLET ? interp_dxyz_hodge(x,ymax,z) : 0);
+                bc_w_value = bc[dir].wallValue(x,ymax,z) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,ymax,z) : 0);
                 break;
               case dir::f_00m:
                 bc_w_type = bc[dir].wallType(x,y,zmin);
-                bc_w_value = bc[dir].wallValue(x,y,zmin) + (bc[dir].wallType(x,y,zmin)==DIRICHLET ? interp_dxyz_hodge(x,y,zmin) : 0);
+                bc_w_value = bc[dir].wallValue(x,y,zmin) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,y,zmin) : 0);
                 break;
               case dir::f_00p:
                 bc_w_type = bc[dir].wallType(x,y,zmax);
-                bc_w_value = bc[dir].wallValue(x,y,zmax) + (bc[dir].wallType(x,y,zmax)==DIRICHLET ? interp_dxyz_hodge(x,y,zmax) : 0);
+                bc_w_value = bc[dir].wallValue(x,y,zmax) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,y,zmax) : 0);
                 break;
 #else
               case dir::f_m00:
                 bc_w_type = bc[dir].wallType(xmin,y);
-                bc_w_value = bc[dir].wallValue(xmin,y) + (bc[dir].wallType(xmin,y)==DIRICHLET ? interp_dxyz_hodge(xmin,y) : 0);
+                bc_w_value = bc[dir].wallValue(xmin,y) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(xmin,y) : 0);
                 break;
               case dir::f_p00:
                 bc_w_type = bc[dir].wallType(xmax,y);
-                bc_w_value = bc[dir].wallValue(xmax,y) + (bc[dir].wallType(xmax,y)==DIRICHLET ? interp_dxyz_hodge(xmax,y) : 0);
+                bc_w_value = bc[dir].wallValue(xmax,y) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(xmax,y) : 0);
                 break;
               case dir::f_0m0:
                 bc_w_type = bc[dir].wallType(x,ymin);
-                bc_w_value = bc[dir].wallValue(x,ymin) + (bc[dir].wallType(x,ymin)==DIRICHLET ? interp_dxyz_hodge(x,ymin) : 0);
+                bc_w_value = bc[dir].wallValue(x,ymin) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,ymin) : 0);
                 break;
               case dir::f_0p0:
                 bc_w_type = bc[dir].wallType(x,ymax);
-                bc_w_value = bc[dir].wallValue(x,ymax) + (bc[dir].wallType(x,ymax)==DIRICHLET ? interp_dxyz_hodge(x,ymax) : 0);
+                bc_w_value = bc[dir].wallValue(x,ymax) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,ymax) : 0);
                 break;
 #endif
               }
@@ -1941,21 +1938,29 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 //  {
 //    PetscViewer view;
 //    char name[1000];
-//    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/mat_p4est.m");
+//    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/mat_p4est_%d.m", p4est->mpisize);
 //    ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
 //    ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
 //    ierr = MatView(A, view); CHKERRXX(ierr);
 
-//    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs_p4est.m");
+//    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs_p4est_%d.m", p4est->mpisize);
 //    ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
 //    ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
 //    VecView(rhs[dir], view);
+
+//    PetscViewerSetFormat(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_ASCII_MATLAB);
+//    MatView(A, PETSC_VIEWER_STDOUT_WORLD);
+//    PetscViewerSetFormat(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_ASCII_MATLAB);
+//    VecView(rhs[dir], PETSC_VIEWER_STDOUT_WORLD);
 //  }
 
   /* take care of the nullspace if needed */
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace[dir], 1, MPI_INT, MPI_LAND, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   if(matrix_has_nullspace[dir])
   {
+    ierr = VecGhostUpdateBegin(null_space, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (null_space, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
     double norm;
     ierr = VecNormalize(null_space, &norm); CHKERRXX(ierr);
 

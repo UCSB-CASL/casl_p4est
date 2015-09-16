@@ -1269,8 +1269,8 @@ int main (int argc, char* argv[])
   switch(test_number)
   {
 #ifdef P4_TO_P8
-  case 0: nx=2; ny=2; nz=2; xmin=PI/2; xmax=3*PI/2; ymin=PI/2; ymax=3*PI/2; zmin=PI/2; zmax=3*PI/2; Re=0; mu = rho = 1; u0 = 1; tf=cmd.get("tf",PI/3); break;
-  case 1: nx=2; ny=2; nz=2; xmin=PI/2; xmax=3*PI/2; ymin=PI/2; ymax=3*PI/2; zmin=PI/2; zmax=3*PI/2; Re=0; mu = rho = 1; u0 = 1; tf=cmd.get("tf",PI/3); break;
+  case 0: nx=1; ny=1; nz=1; xmin=PI/2; xmax=3*PI/2; ymin=PI/2; ymax=3*PI/2; zmin=PI/2; zmax=3*PI/2; Re=0; mu = rho = 1; u0 = 1; tf=cmd.get("tf",PI/3); break;
+  case 1: nx=1; ny=1; nz=1; xmin=PI/2; xmax=3*PI/2; ymin=PI/2; ymax=3*PI/2; zmin=PI/2; zmax=3*PI/2; Re=0; mu = rho = 1; u0 = 1; tf=cmd.get("tf",PI/3); break;
   case 2: nx=8; ny=4; nz=4; xmin=0; xmax=32; ymin=-8; ymax=8; zmin=-8; zmax=8; Re=cmd.get("Re",350); r0=1; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
   case 3: nx=2; ny=2; nz=2; xmin=0; xmax=1; ymin=0; ymax=1; zmin=0; zmax=1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); break;
   case 4: nx=3; ny=2; nz=1; xmin=0; xmax=3; ymin=-1; ymax=1; zmin=0; zmax=1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); u0=500; break;
@@ -1288,7 +1288,6 @@ int main (int argc, char* argv[])
   default: throw std::invalid_argument("choose a valid test.");
   }
 //  tf = 0.01;
-//  tf = 0.7;
 
 #ifndef P4_TO_P8
   double naca_angle = cmd.get("naca_angle", 15.);

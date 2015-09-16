@@ -325,19 +325,15 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
     vn_nodes  [dir] = NULL;
     vnp1_nodes[dir] = NULL;
 
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &dxyz_hodge[dir]); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(dxyz_hodge[dir], &vec_loc); CHKERRXX(ierr);
-    ierr = VecSet(vec_loc, 0); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(dxyz_hodge[dir], &vec_loc); CHKERRXX(ierr);
-
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
     ierr = VecSet(vec_loc, 1); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
 
-    /* NOTE: bousouf in the original CASL code, dx_hodge is interpolated using extrapolated values */
-    interp_dxyz_hodge[dir] = new my_p4est_interpolation_faces_t(ngbd_n, faces_n);
-    interp_dxyz_hodge[dir]->set_input(dxyz_hodge[dir], dir);
+    ierr = VecDuplicate(face_is_well_defined[dir], &dxyz_hodge[dir]); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(dxyz_hodge[dir], &vec_loc); CHKERRXX(ierr);
+    ierr = VecSet(vec_loc, 0); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(dxyz_hodge[dir], &vec_loc); CHKERRXX(ierr);
   }
 
   interp_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
@@ -363,8 +359,6 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
     if(vn_nodes[dir]!=NULL)   { ierr = VecDestroy(vn_nodes[dir]);   CHKERRXX(ierr); }
     if(vnp1_nodes[dir]!=NULL) { ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr); }
     if(face_is_well_defined[dir]!=NULL) { ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr); }
-
-    if(interp_dxyz_hodge[dir]!=NULL)        delete interp_dxyz_hodge[dir];
   }
 
   if(interp_phi!=NULL) delete interp_phi;
@@ -971,6 +965,9 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
   }
 
+//  PetscViewerSetFormat(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_ASCII_MATLAB);
+//  VecView(rhs[1], PETSC_VIEWER_STDOUT_WORLD);
+
   my_p4est_poisson_faces_t solver(faces_n, ngbd_n);
   solver.set_phi(phi);
   solver.set_mu(mu);
@@ -1516,13 +1513,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
   delete interp_phi;
   interp_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
   interp_phi->set_input(phi, linear);
-
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    delete interp_dxyz_hodge[dir];
-    interp_dxyz_hodge[dir] = new my_p4est_interpolation_faces_t(ngbd_n, faces_n);
-    interp_dxyz_hodge[dir]->set_input(dxyz_hodge[dir], dir);
-  }
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
 }
