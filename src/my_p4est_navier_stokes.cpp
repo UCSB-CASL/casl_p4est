@@ -1277,7 +1277,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
   if(level_set==NULL)
   {
-    interp_nodes.set_input(phi, quadratic_non_oscillatory);
+    interp_nodes.set_input(phi, linear);
     interp_nodes.interpolate(phi_np1);
   }
   else
@@ -1335,7 +1335,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
     if(level_set==NULL)
     {
-      interp_nodes.set_input(phi, quadratic_non_oscillatory);
+      interp_nodes.set_input(phi, linear);
       interp_nodes.interpolate(phi_np1);
     }
     else
