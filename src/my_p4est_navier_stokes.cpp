@@ -1458,26 +1458,15 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
-    ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
-    check_if_faces_are_well_defined(p4est_np1, ngbd_np1, faces_np1, dir, phi_np1, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
-
-    ierr = VecDestroy(vstar[dir]); CHKERRXX(ierr);
-    ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
-
-    ierr = VecDestroy(vnp1[dir]); CHKERRXX(ierr);
-    ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
-
     Vec dxyz_hodge_tmp;
-    ierr = VecDuplicate(face_is_well_defined[dir], &dxyz_hodge_tmp); CHKERRXX(ierr);
-
+    ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &dxyz_hodge_tmp, dir); CHKERRXX(ierr);
     for(p4est_locidx_t f_idx=0; f_idx<faces_np1->num_local[dir]; ++f_idx)
     {
       double xyz[P4EST_DIM];
       faces_np1->xyz_fr_f(f_idx, dir, xyz);
       interp_faces.add_point(f_idx, xyz);
     }
-    interp_faces.set_input(dxyz_hodge[dir], dir, 1);
+    interp_faces.set_input(dxyz_hodge[dir], dir, 2, face_is_well_defined[dir]);
     interp_faces.interpolate(dxyz_hodge_tmp);
     interp_faces.clear();
 
@@ -1486,6 +1475,16 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
     ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
+		ierr = VecDuplicate(dxyz_hodge[dir], &face_is_well_defined[dir]); CHKERRXX(ierr);
+    check_if_faces_are_well_defined(p4est_np1, ngbd_np1, faces_np1, dir, phi_np1, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
+
+    ierr = VecDestroy(vstar[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(dxyz_hodge[dir], &vstar[dir]); CHKERRXX(ierr);
+
+    ierr = VecDestroy(vnp1[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(dxyz_hodge[dir], &vnp1[dir]); CHKERRXX(ierr);
   }
 
   /* update the variables */
