@@ -1477,7 +1477,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
       faces_np1->xyz_fr_f(f_idx, dir, xyz);
       interp_faces.add_point(f_idx, xyz);
     }
-    interp_faces.set_input(dxyz_hodge[dir], dir);
+    interp_faces.set_input(dxyz_hodge[dir], dir, 1);
     interp_faces.interpolate(dxyz_hodge_tmp);
     interp_faces.clear();
 

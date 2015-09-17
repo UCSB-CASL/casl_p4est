@@ -114,7 +114,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 #ifdef P4_TO_P8
   my_p4est_interpolation_nodes_t interp_phi_z(ngbd_n); interp_phi_z.set_input(phi_z, linear);
 #endif
-  my_p4est_interpolation_faces_t interp0(ngbd_n, faces); interp0.set_input(dxyz_hodge, dir, 2);
+  my_p4est_interpolation_faces_t interp0(ngbd_n, faces); interp0.set_input(dxyz_hodge, dir, 1);
   my_p4est_interpolation_faces_t interp1(ngbd_n, faces); interp1.set_input(q, dir, 2, face_is_well_defined);
   my_p4est_interpolation_faces_t interp2(ngbd_n, faces); interp2.set_input(q, dir, 2, face_is_well_defined);
 

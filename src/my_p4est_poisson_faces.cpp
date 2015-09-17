@@ -989,7 +989,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   std::vector<double> bc_coeffs;
   std::vector<p4est_locidx_t> bc_index;
   my_p4est_interpolation_faces_t interp_dxyz_hodge(ngbd_n, faces);
-  interp_dxyz_hodge.set_input(dxyz_hodge[dir], dir, 2);
+  interp_dxyz_hodge.set_input(dxyz_hodge[dir], dir, 1);
 
   for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
   {
