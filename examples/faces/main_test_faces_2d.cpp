@@ -667,7 +667,7 @@ int main (int argc, char* argv[])
     solver.set_phi(phi);
     solver.set_diagonal(add_diagonal);
     solver.set_mu(mu);
-    solver.set_bc(bc, dxyz_hodge);
+    solver.set_bc(bc, dxyz_hodge, face_is_well_defined);
     solver.set_rhs(rhs);
     solver.set_compute_partition_on_the_fly(false);
 

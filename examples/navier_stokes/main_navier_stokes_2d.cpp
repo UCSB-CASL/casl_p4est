@@ -524,7 +524,7 @@ public:
                     -6*mu *sin(x)*sin(y)*cos(z)*cos(tn+dt));
     case 2: return 0;
     case 3: return -(*interp)(x,y,z)*9.81;
-    case 4: return -(rho+1000*(*interp)(x,y,z))*9.81;
+    case 4: return -(rho+10*(*interp)(x,y,z))*9.81;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -1287,7 +1287,6 @@ int main (int argc, char* argv[])
 #endif
   default: throw std::invalid_argument("choose a valid test.");
   }
-//  tf = 0.01;
 
 #ifndef P4_TO_P8
   double naca_angle = cmd.get("naca_angle", 15.);

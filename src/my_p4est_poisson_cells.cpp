@@ -334,16 +334,6 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       for(int i=0; i<P4EST_CHILDREN; ++i)
         all_pos = all_pos && (phi_p[corners[i]]>0);
 
-      /* Way inside omega_plus and we dont care! */
-      if((bc->interfaceType()==DIRICHLET && phi_q>0) || (bc->interfaceType()==NEUMANN && all_pos))
-      {
-        ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 1, ADD_VALUES); CHKERRXX(ierr);
-        if(!nullspace_use_fixed_point) null_space_p[quad_idx] = 0;
-        continue;
-      }
-
-      if(!nullspace_use_fixed_point) null_space_p[quad_idx] = 1;
-
       cube.x0 = x - 0.5*dx;
       cube.x1 = x + 0.5*dx;
       cube.y0 = y - 0.5*dy;
@@ -362,6 +352,17 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       QuadValue p(phi_p[corners[dir::v_mmm]], phi_p[corners[dir::v_mpm]], phi_p[corners[dir::v_pmm]], phi_p[corners[dir::v_ppm]]);
       double volume_cut_cell = cube.area_In_Negative_Domain(p);
 #endif
+
+      /* Way inside omega_plus and we dont care! */
+      if((bc->interfaceType()==DIRICHLET && phi_q>0) ||
+         (bc->interfaceType()==NEUMANN && (all_pos || volume_cut_cell<EPS)))
+      {
+        ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 1, ADD_VALUES); CHKERRXX(ierr);
+        if(!nullspace_use_fixed_point) null_space_p[quad_idx] = 0;
+        continue;
+      }
+
+      if(!nullspace_use_fixed_point) null_space_p[quad_idx] = 1;
 
       /* First add the diagonal term */
       if(add_p[quad_idx]!=0)
@@ -512,6 +513,38 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           p4est_locidx_t quad_tmp_idx = ngbd[0].p.piggy3.local_num;
           p4est_locidx_t tree_tmp_idx = ngbd[0].p.piggy3.which_tree;
 
+          /* make sure the neighbor is well defined ... important for the nullspace to be correct */
+          p4est_locidx_t corners_tmp[P4EST_CHILDREN];
+          for(int i=0; i<P4EST_CHILDREN; ++i)
+            corners_tmp[i] = nodes->local_nodes[quad_tmp_idx*P4EST_CHILDREN + i];
+
+          double x_tmp = quad_x_fr_q(quad_tmp_idx, tree_tmp_idx, p4est, ghost);
+          double y_tmp = quad_y_fr_q(quad_tmp_idx, tree_tmp_idx, p4est, ghost);
+#ifdef P4_TO_P8
+          double z_tmp = quad_z_fr_q(quad_tmp_idx, tree_tmp_idx, p4est, ghost);
+          Cube3 cube_tmp;
+#else
+          Cube2 cube_tmp;
+#endif
+          cube_tmp.x0 = x_tmp - 0.5*dx;
+          cube_tmp.x1 = x_tmp + 0.5*dx;
+          cube_tmp.y0 = y_tmp - 0.5*dy;
+          cube_tmp.y1 = y_tmp + 0.5*dy;
+
+#ifdef P4_TO_P8
+          OctValue  p_tmp(phi_p[corners_tmp[dir::v_mmm]], phi_p[corners_tmp[dir::v_mmp]],
+                          phi_p[corners_tmp[dir::v_mpm]], phi_p[corners_tmp[dir::v_mpp]],
+                          phi_p[corners_tmp[dir::v_pmm]], phi_p[corners_tmp[dir::v_pmp]],
+                          phi_p[corners_tmp[dir::v_ppm]], phi_p[corners_tmp[dir::v_ppp]]);
+
+          cube_tmp.z0 = z_tmp - 0.5*dz;
+          cube_tmp.z1 = z_tmp + 0.5*dz;
+          double volume_cut_cell_tmp = cube_tmp.volume_In_Negative_Domain(p_tmp);
+#else
+          QuadValue p_tmp(phi_p[corners_tmp[dir::v_mmm]], phi_p[corners_tmp[dir::v_mpm]], phi_p[corners_tmp[dir::v_pmm]], phi_p[corners_tmp[dir::v_ppm]]);
+          double volume_cut_cell_tmp = cube_tmp.area_In_Negative_Domain(p_tmp);
+#endif
+
           double phi_tmp = phi_cell(quad_tmp_idx, phi_p);
 
           bool is_pos = false;
@@ -591,7 +624,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             }
           }
           /* NEUMANN Boundary Condition */
-          else if(bc->interfaceType()==NEUMANN && is_pos && is_neg)
+          else if(bc->interfaceType()==NEUMANN && is_pos && is_neg && volume_cut_cell_tmp>EPS)
           {
             double d;
             switch(dir)
@@ -642,7 +675,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             }
           }
           /* no interface - regular discretization */
-          else if(is_neg)
+          else if(is_neg && !(bc->interfaceType()==NEUMANN && volume_cut_cell_tmp<EPS))
           {
             double s_tmp = pow((double)P4EST_QUADRANT_LEN(ngbd[0].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
 
@@ -751,6 +784,11 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 //  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
 //  ierr = MatView(A, view); CHKERRXX(ierr);
 
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs_p4est.m");
+//  ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
+//  ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//  ierr = VecView(rhs, view); CHKERRXX(ierr);
+
   // check for null space
   ierr = MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm); CHKERRXX(ierr);
   if (matrix_has_nullspace)
@@ -768,6 +806,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       double norm;
       ierr = VecNormalize(null_space, &norm); CHKERRXX(ierr);
       ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_FALSE, 1, &null_space, &A_null_space); CHKERRXX(ierr);
+
+      PetscBool nsp;
+      MatNullSpaceTest(A_null_space, A, &nsp);
+      PetscPrintf(p4est->mpicomm, "nullspace is ok : %d\n", nsp);
 
       ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
     }
@@ -860,13 +902,6 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
         is_pos = is_pos || (phi_p[corners[i]]>0);
       }
 
-      /* Way inside omega_plus and we dont care! */
-      if((bc->interfaceType()==DIRICHLET && phi_q>0) || (bc->interfaceType()==NEUMANN && all_pos))
-      {
-        rhs_p[quad_idx] = 0;
-        continue;
-      }
-
       cube.x0 = x - 0.5*dx;
       cube.x1 = x + 0.5*dx;
       cube.y0 = y - 0.5*dy;
@@ -885,6 +920,14 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
       QuadValue p(phi_p[corners[dir::v_mmm]], phi_p[corners[dir::v_mpm]], phi_p[corners[dir::v_pmm]], phi_p[corners[dir::v_ppm]]);
       double volume_cut_cell = cube.area_In_Negative_Domain(p);
 #endif
+
+      /* Way inside omega_plus and we dont care! */
+      if((bc->interfaceType()==DIRICHLET && phi_q>0) ||
+         (bc->interfaceType()==NEUMANN && (all_pos || volume_cut_cell<EPS)))
+      {
+        rhs_p[quad_idx] = 0;
+        continue;
+      }
 
       rhs_p[quad_idx] *= volume_cut_cell;
 
