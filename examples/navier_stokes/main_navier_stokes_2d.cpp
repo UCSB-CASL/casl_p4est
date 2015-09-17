@@ -140,7 +140,7 @@ public:
     double d;
     double xc[] = {1.5, 1.9 , 1.6 , 2.0 , 1.3,   1.25, 2.2 , 1.65}; /* building x center */
     double yc[] = {0.5,-0.3 , 0.01, 0.4 ,-0.6,  -0.1 ,-0.05,-0.5}; /* building y center */
-    double zc[] = {0.5, 0.4 , 0.6 , 0.265, 0.5,   0.45, 0.38, 0.62}; /* building z center */
+    double zc[] = {0.502, 0.412 , 0.642 , 0.265, 0.5052,   0.451, 0.3832, 0.6212}; /* building z center */
     double lc[] = {0.1, 0.08, 0.09, 0.092, 0.085, 0.11, 0.08, 0.078}; /* building half width */
     switch(test_number)
     {
