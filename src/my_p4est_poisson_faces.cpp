@@ -174,13 +174,14 @@ void my_p4est_poisson_faces_t::set_mu(double mu)
 
 
 #ifdef P4_TO_P8
-void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge)
+void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined)
 #else
-void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge)
+void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined)
 #endif
 {
   this->bc = bc;
   this->dxyz_hodge = dxyz_hodge;
+  this->face_is_well_defined = face_is_well_defined;
 }
 
 
@@ -254,6 +255,9 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
 
+  const PetscScalar *face_is_well_defined_p;
+  ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+
   int dir_m = 2*dir;
   int dir_p = 2*dir+1;
 
@@ -279,18 +283,14 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   double z = faces->z_fr_f(f_idx, dir);
 #endif
 
-#ifdef P4_TO_P8
-  double phi_c = interp_phi(x,y,z);
-#else
-  double phi_c = interp_phi(x,y);
-#endif
   /* far in the positive domain */
-#ifdef P4_TO_P8
-  if(phi_c > 2*MAX(dx_min,dy_min,dz_min))
-#else
-  if(phi_c > 2*MAX(dx_min,dy_min))
-#endif
-     { ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr); return; }
+  if(!face_is_well_defined_p[f_idx])
+  {
+    ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
+    return;
+  }
+  ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
 
   p4est_locidx_t qm_idx=-1, qp_idx=-1;
   p4est_topidx_t tm_idx=-1, tp_idx=-1;
@@ -978,6 +978,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   int dir_m = 2*dir;
   int dir_p = 2*dir+1;
 
+  const PetscScalar *face_is_well_defined_p;
+  ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+
   double *rhs_p;
   ierr = VecGetArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
 
@@ -989,7 +992,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   std::vector<double> bc_coeffs;
   std::vector<p4est_locidx_t> bc_index;
   my_p4est_interpolation_faces_t interp_dxyz_hodge(ngbd_n, faces);
-  interp_dxyz_hodge.set_input(dxyz_hodge[dir], dir, 1);
+  interp_dxyz_hodge.set_input(dxyz_hodge[dir], dir, 1, face_is_well_defined[dir]);
 
   for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
   {
@@ -1013,11 +1016,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     double phi_c = interp_phi(x,y);
 #endif
     /* far in the positive domain */
-  #ifdef P4_TO_P8
-    if(phi_c > 2*MAX(dx_min,dy_min,dz_min))
-  #else
-    if(phi_c > 2*MAX(dx_min,dy_min))
-  #endif
+    if(!face_is_well_defined_p[f_idx])
     {
       ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
       rhs_p[f_idx] = 0;
@@ -1912,6 +1911,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       }
     }
   }
+
+  ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
 
   /* complete the right hand side with correct boundary condition: bc_v + grad(dxyz_hodge) */
   if(bc[dir].interfaceType()==DIRICHLET)
