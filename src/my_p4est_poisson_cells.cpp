@@ -807,10 +807,6 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       ierr = VecNormalize(null_space, &norm); CHKERRXX(ierr);
       ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_FALSE, 1, &null_space, &A_null_space); CHKERRXX(ierr);
 
-      PetscBool nsp;
-      MatNullSpaceTest(A_null_space, A, &nsp);
-      PetscPrintf(p4est->mpicomm, "nullspace is ok : %d\n", nsp);
-
       ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
     }
     else
