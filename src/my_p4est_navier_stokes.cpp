@@ -1768,8 +1768,8 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   {
     ierr = VecGetArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est_n, nodes_n, NULL,
-                           P4EST_TRUE, P4EST_TRUE,
-//                           P4EST_FALSE, P4EST_FALSE,
+//                           P4EST_TRUE, P4EST_TRUE,
+                           P4EST_FALSE, P4EST_FALSE,
                            3+P4EST_DIM, /* number of VTK_POINT_DATA */
                            1, /* number of VTK_CELL_DATA  */
                            name,
@@ -1788,8 +1788,8 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   else
   {
     my_p4est_vtk_write_all(p4est_n, nodes_n, NULL,
-                           P4EST_TRUE, P4EST_TRUE,
-//                           P4EST_FALSE, P4EST_FALSE,
+//                           P4EST_TRUE, P4EST_TRUE,
+                           P4EST_FALSE, P4EST_FALSE,
                            2+P4EST_DIM, /* number of VTK_POINT_DATA */
                            1, /* number of VTK_CELL_DATA  */
                            name,

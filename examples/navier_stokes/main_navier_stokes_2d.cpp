@@ -1649,6 +1649,7 @@ int main (int argc, char* argv[])
 
 #ifdef P4_TO_P8
     if(test_number!=3 && test_number!=4 && ns.get_max_L2_norm_u()>10) break;
+		if(test_number==4 && ns.get_max_L2_norm_u()>200) break;
 #else
     if(test_number!=7 && test_number!=8 && ns.get_max_L2_norm_u()>10) break;
 #endif
