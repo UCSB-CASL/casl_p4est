@@ -545,7 +545,7 @@ public:
     case 3: return (sqrt(SQR(x-.5) + SQR(y-.85))<.05) ? 1 : 0;
     case 4: return (x<2 && y>-1 && y<1) ? 1 : 0;
     case 5: return (sqrt(SQR(x) + SQR(y))<.05) ? 1 : 0;
-    case 6: return (x<2 && y>-1 && y<1) ? 1 : 0;
+    case 6: return (x<2 && y>-.5 && y<.5) ? 1 : 0;
     case 7: return (sqrt(SQR(x-.5) + SQR(y-.75))<.1) ? 1 : 0;
     case 8: return (x>0.01 && x<.4 && y<.9 && x+y>.5) ? 1 : 0;
     default: throw std::invalid_argument("choose a valid test.");
@@ -567,7 +567,7 @@ public:
     case 3:
     case 5: return 0;
     case 4:
-    case 6: return(fabs(x-xmin)<EPS && y>-1 && y<1) ? 1 : 0;
+    case 6: return(fabs(x-xmin)<EPS && y>-.5 && y<.5) ? 1 : 0;
     case 7: return 0;
     case 8: return 0;
     default: throw std::invalid_argument("choose a valid test.");
@@ -646,21 +646,28 @@ private:
   double naca_length;
   double angle;
 public:
-  NACA_CASL(int number, double length, double angle)
+  NACA_CASL(MPI_Comm comm, int number, double length, double angle)
   {
     (void) length;
-		char name[1000];
+    char path_to_naca[1000];
 #if defined(STAMPEDE)
-		sprintf(name, "/work/02673/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_tree.dat", number);
-    tr.load(name);
-		sprintf(name, "/work/02673/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_phi.dat", number);
-    phi.load(name);
+    sprintf(root, "/work/02673/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000", number);
+#elif defined(COMET)
+    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000", number);
 #else
-		sprintf(name, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_tree.dat", number);
-    tr.load(name);
-		sprintf(name, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_phi.dat", number);
-    phi.load(name);
+    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000", number);
 #endif
+
+    PetscErrorCode ierr;
+    ierr = PetscPrintf(comm, "importing the naca model for file: %s\n", path_to_naca); CHKERRXX(ierr);
+
+    lip = 1.2;
+    char name[1000];
+    sprintf(name, "%s_tree.dat", path_to_naca);
+    tr.load(name);
+    sprintf(name, "%s_phi.dat", path_to_naca);
+    phi.load(name);
+
     interp.set(tr,phi);
     this->angle = angle;
     this->x_edge = 8;
@@ -1254,7 +1261,7 @@ int main (int argc, char* argv[])
   test_number = cmd.get("test", 1);
 
   bool is_smoke = cmd.get("smoke", 0);
-  bool refine_with_smoke = cmd.get("refine_with_smoke", 1);
+  bool refine_with_smoke = cmd.get("refine_with_smoke", 0);
   double smoke_thresh = cmd.get("smoke_thresh", .5);
 
 #ifndef P4_TO_P8
@@ -1294,7 +1301,7 @@ int main (int argc, char* argv[])
   if(test_number==6)
   {
 //    naca = new NACA_SAMPLED(naca_number, naca_length, naca_angle);
-    naca = new NACA_CASL(naca_number, naca_length, naca_angle);
+    naca = new NACA_CASL(mpi->mpicomm, naca_number, naca_length, naca_angle);
   }
 #endif
 
@@ -1481,7 +1488,6 @@ int main (int argc, char* argv[])
   my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
   ns.set_phi(phi);
   ns.set_parameters(mu, rho, uniform_band, threshold_split_cell, n_times_dt);
-//  ns.set_dt(dxmin*n_times_dt/u0);
   ns.set_dt(dxmin*n_times_dt/u0, dxmin*n_times_dt/u0);
   dt = ns.get_dt();
   ns.set_velocities(vnm1, vn);
