@@ -1232,9 +1232,9 @@ void my_p4est_navier_stokes_t::advect_smoke(my_p4est_node_neighbors_t *ngbd_np1,
 
 
 #ifdef P4_TO_P8
-void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_3 *level_set)
+void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_3 *level_set, bool convergence_test)
 #else
-void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
+void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, bool convergence_test)
 #endif
 {
   PetscErrorCode ierr;
@@ -1251,85 +1251,36 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
   /* construct the new forest */
   splitting_criteria_vorticity_t criteria(data->min_lvl, data->max_lvl, data->lip, uniform_band, threshold_split_cell, max_L2_norm_u, smoke_thresh);
   p4est_t *p4est_np1 = p4est_copy(p4est_n, P4EST_FALSE);
-  p4est_np1->user_pointer = (void*)&criteria;
 
-  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-  my_p4est_hierarchy_t *hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
-  my_p4est_node_neighbors_t *ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
+  p4est_ghost_t *ghost_np1 = NULL;
+  p4est_nodes_t *nodes_np1 = NULL;
+  my_p4est_hierarchy_t *hierarchy_np1 = NULL;
+  my_p4est_node_neighbors_t *ngbd_np1 = NULL;
 
-  Vec phi_np1;
-  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
-
-  Vec vorticity_np1;
-  ierr = VecDuplicate(phi_np1, &vorticity_np1); CHKERRXX(ierr);
-
-  my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
-
-  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
-  {
-    double xyz[P4EST_DIM];
-    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
-    interp_nodes.add_point(n, xyz);
-  }
-  interp_nodes.set_input(vorticity, linear);
-  interp_nodes.interpolate(vorticity_np1);
-
-  if(level_set==NULL)
-  {
-    interp_nodes.set_input(phi, linear);
-    interp_nodes.interpolate(phi_np1);
-  }
-  else
-  {
-    sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
-  }
-
+  Vec phi_np1 = NULL;
   Vec smoke_np1 = NULL;
-  if(smoke!=NULL && refine_with_smoke)
+  my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
+  bool grid_is_changing = false;
+
+  if(convergence_test==false)
   {
-    ierr = VecDuplicate(phi_np1, &smoke_np1); CHKERRXX(ierr);
+    ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+    nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+    hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
+    ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
 
-    Vec vtmp[P4EST_DIM];
-    for(int dir=0; dir<P4EST_DIM; ++dir)
-    {
-      ierr = VecDuplicate(phi_np1, &vtmp[dir]); CHKERRXX(ierr);
-      interp_nodes.set_input(vnp1_nodes[dir], linear);
-      interp_nodes.interpolate(vtmp[dir]);
-    }
-
-    advect_smoke(ngbd_np1, vtmp, smoke, smoke_np1);
-
-    for(int dir=0; dir<P4EST_DIM; ++dir)
-    {
-      ierr = VecDestroy(vtmp[dir]); CHKERRXX(ierr);
-    }
-  }
-
-  bool grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1, smoke_np1);
-  int iter=0;
-  while(1 && grid_is_changing)
-  {
-    my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
-    p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-    p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-    delete hierarchy_np1; hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
-    delete ngbd_np1; ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
-
-    ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+    p4est_np1->user_pointer = (void*)&criteria;
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
-    ierr = VecDestroy(vorticity_np1); CHKERRXX(ierr);
+    Vec vorticity_np1;
     ierr = VecDuplicate(phi_np1, &vorticity_np1); CHKERRXX(ierr);
 
-    interp_nodes.clear();
     for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
     {
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
       interp_nodes.add_point(n, xyz);
     }
-
     interp_nodes.set_input(vorticity, linear);
     interp_nodes.interpolate(vorticity_np1);
 
@@ -1345,7 +1296,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
 
     if(smoke!=NULL && refine_with_smoke)
     {
-      ierr = VecDestroy(smoke_np1); CHKERRXX(ierr);
       ierr = VecDuplicate(phi_np1, &smoke_np1); CHKERRXX(ierr);
 
       Vec vtmp[P4EST_DIM];
@@ -1365,30 +1315,91 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set)
     }
 
     grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1, smoke_np1);
-
-    iter++;
-
-    if(iter>data->max_lvl-data->min_lvl)
+    int iter=0;
+    while(1 && grid_is_changing)
     {
-      ierr = PetscPrintf(p4est_n->mpicomm, "ooops ... the grid update did not converge\n"); CHKERRXX(ierr);
-      break;
+      my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
+      p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+      delete hierarchy_np1; hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
+      delete ngbd_np1; ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
+
+      ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+
+      ierr = VecDestroy(vorticity_np1); CHKERRXX(ierr);
+      ierr = VecDuplicate(phi_np1, &vorticity_np1); CHKERRXX(ierr);
+
+      interp_nodes.clear();
+      for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+      {
+        double xyz[P4EST_DIM];
+        node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+        interp_nodes.add_point(n, xyz);
+      }
+
+      interp_nodes.set_input(vorticity, linear);
+      interp_nodes.interpolate(vorticity_np1);
+
+      if(level_set==NULL)
+      {
+        interp_nodes.set_input(phi, linear);
+        interp_nodes.interpolate(phi_np1);
+      }
+      else
+      {
+        sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
+      }
+
+      if(smoke!=NULL && refine_with_smoke)
+      {
+        ierr = VecDestroy(smoke_np1); CHKERRXX(ierr);
+        ierr = VecDuplicate(phi_np1, &smoke_np1); CHKERRXX(ierr);
+
+        Vec vtmp[P4EST_DIM];
+        for(int dir=0; dir<P4EST_DIM; ++dir)
+        {
+          ierr = VecDuplicate(phi_np1, &vtmp[dir]); CHKERRXX(ierr);
+          interp_nodes.set_input(vnp1_nodes[dir], linear);
+          interp_nodes.interpolate(vtmp[dir]);
+        }
+
+        advect_smoke(ngbd_np1, vtmp, smoke, smoke_np1);
+
+        for(int dir=0; dir<P4EST_DIM; ++dir)
+        {
+          ierr = VecDestroy(vtmp[dir]); CHKERRXX(ierr);
+        }
+      }
+
+      grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1, smoke_np1);
+
+      iter++;
+
+      if(iter>1+data->max_lvl-data->min_lvl)
+      {
+        ierr = PetscPrintf(p4est_n->mpicomm, "ooops ... the grid update did not converge\n"); CHKERRXX(ierr);
+        break;
+      }
     }
-//      throw std::runtime_error("[ERROR]: my_p4est_navier_stokes_t->update_from_tn_to_tnp1: grid update did not converge in 10 iterations.");
+    ierr = VecDestroy(vorticity_np1);
   }
-  ierr = VecDestroy(vorticity_np1);
 
   p4est_np1->user_pointer = data;
 
   /* balance the forest and expand the ghost layer */
   p4est_balance(p4est_np1, P4EST_CONNECT_FULL, NULL);
   my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
-  p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  if(ghost_np1!=NULL) p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_np1, ghost_np1);
-  p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-  delete hierarchy_np1; hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
-  delete ngbd_np1; ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
+  if(nodes_np1!=NULL) p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+  if(hierarchy_np1!=NULL) delete hierarchy_np1; hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
+  if(ngbd_np1!=NULL) delete ngbd_np1; ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
 
-  ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+  if(phi_np1!=NULL)
+  {
+    ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+  }
   ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
   interp_nodes.clear();

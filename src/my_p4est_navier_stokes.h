@@ -245,9 +245,9 @@ public:
   void advect_smoke(my_p4est_node_neighbors_t *ngbd_np1, Vec *v, Vec smoke, Vec smoke_np1);
 
 #ifdef P4_TO_P8
-  void update_from_tn_to_tnp1(const CF_3 *level_set=NULL);
+  void update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool convergence_test=false);
 #else
-  void update_from_tn_to_tnp1(const CF_2 *level_set=NULL);
+  void update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool convergence_test=false);
 #endif
 
   void compute_pressure();
