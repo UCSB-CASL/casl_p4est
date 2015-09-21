@@ -282,8 +282,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
   double *null_space_p;
   if(!nullspace_use_fixed_point)
   {
-    ierr = VecDuplicate(rhs, &null_space);
-    ierr = VecGetArray(null_space, &null_space_p);
+    ierr = VecDuplicate(rhs, &null_space); CHKERRXX(ierr);
+    ierr = VecGetArray(null_space, &null_space_p); CHKERRXX(ierr);
   }
 
   fixed_value_idx_g = p4est->global_num_quadrants;
