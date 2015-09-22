@@ -79,6 +79,7 @@ int nz = 1;
  * 2 - karman
  * 3 - smoke drop
  * 4 - smoke hill
+ * 5 - oscillating sphere
  */
 
 int test_number;
@@ -109,6 +110,7 @@ public:
     case 2: return (x<2 && sqrt(SQR(y) + SQR(z))<.4) ? 1 : 0;
     case 3: return (sqrt(SQR(x-.5) + +SQR(y-.5) + SQR(z-.75))<.1) ? 1 : 0;
     case 4: return (0.01<x && x<.4 && z<.9 && -.5<y && y<.5 && x+z>.51) ? 1 : 0;
+    case 5: return sqrt(x*x + y*y + z*z)<.05 ? 1 : 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -126,6 +128,7 @@ public:
     case 2: return (fabs(x-xmin)<EPS && sqrt(SQR(y) + SQR(z))<.4) ? 1 : 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -156,6 +159,7 @@ public:
 //      d = MAX(d, -y+(ymin+0.01), y-(ymax-0.01));
 //      d = MAX(d, -z+(zmin+0.01), z-(zmax-0.01));
       return d;
+    case 5: return r0 - sqrt(SQR(x-X0*(1-cos(2*PI*f0*(tn+dt)))+X0) + SQR(y) + SQR(z));
     default: throw std::invalid_argument("Choose a valid test.");
     }
   }
@@ -172,6 +176,7 @@ struct BCWALLTYPE_P : WallBC3D
     case 2: if(fabs(x-xmax)<EPS) return DIRICHLET; return NEUMANN;
     case 3: return NEUMANN;
     case 4: return NEUMANN;
+    case 5: return NEUMANN;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -188,6 +193,7 @@ struct BCWALLVALUE_P : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -204,6 +210,7 @@ struct BCINTERFACEVALUE_P : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -220,6 +227,7 @@ struct BCWALLTYPE_U : WallBC3D
     case 2: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     case 3: return DIRICHLET;
     case 4: return DIRICHLET;
+    case 5: return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -236,6 +244,7 @@ struct BCWALLTYPE_V : WallBC3D
     case 2: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     case 3: return DIRICHLET;
     case 4: return DIRICHLET;
+    case 5: return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -252,6 +261,7 @@ struct BCWALLTYPE_W : WallBC3D
     case 2: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     case 3: return DIRICHLET;
     case 4: return DIRICHLET;
+    case 5: return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -268,6 +278,7 @@ struct BCWALLVALUE_U : CF_3
     case 2: if(fabs(x-xmax)<EPS) return 0; else return u0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -284,6 +295,7 @@ struct BCWALLVALUE_V : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -300,6 +312,7 @@ struct BCWALLVALUE_W : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -316,6 +329,7 @@ struct BCINTERFACE_VALUE_U : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return u0*sin(2*PI*f0*tn);
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -332,6 +346,7 @@ struct BCINTERFACE_VALUE_V : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -348,6 +363,7 @@ struct BCINTERFACE_VALUE_W : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -364,6 +380,7 @@ struct initial_velocity_unm1_t : CF_3
     case 2: return u0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return u0*sin(2*PI*f0*(tn-2*dt));
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -380,6 +397,7 @@ struct initial_velocity_u_n_t : CF_3
     case 2: return u0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return u0*sin(2*PI*f0*(tn-dt));
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -396,6 +414,7 @@ struct initial_velocity_vnm1_t : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -412,6 +431,7 @@ struct initial_velocity_v_n_t : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -428,6 +448,7 @@ struct initial_velocity_wnm1_t : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -444,6 +465,7 @@ struct initial_velocity_w_n_t : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -467,6 +489,7 @@ struct external_force_u_t : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -490,6 +513,7 @@ struct external_force_v_t : CF_3
     case 2: return 0;
     case 3: return 0;
     case 4: return 0;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -525,6 +549,7 @@ public:
     case 2: return 0;
     case 3: return -(*interp)(x,y,z)*9.81;
     case 4: return -(rho+10*(*interp)(x,y,z))*9.81;
+    case 5: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -1234,7 +1259,8 @@ int main (int argc, char* argv[])
                  1 - analytic vortex with time dependence\n\
                  2 - karman\n\
                  3 - smoke drop\n\
-                 4 - smoke on hill\n");
+                 4 - smoke on hill\n\
+                 5 - oscillating sphere\n");
 #else
   cmd.add_option("test", "choose a test.\n\
                  0 - analytic vortex\n\
@@ -1281,6 +1307,7 @@ int main (int argc, char* argv[])
   case 2: nx=8; ny=4; nz=4; xmin=0; xmax=32; ymin=-8; ymax=8; zmin=-8; zmax=8; Re=cmd.get("Re",350); r0=1; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
   case 3: nx=2; ny=2; nz=2; xmin=0; xmax=1; ymin=0; ymax=1; zmin=0; zmax=1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); break;
   case 4: nx=3; ny=2; nz=1; xmin=0; xmax=3; ymin=-1; ymax=1; zmin=0; zmax=1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); u0=500; break;
+  case 5: nx=1; ny=1; xmin=-1; xmax=1; ymin=-1; ymax=1; zmin=-1; zmax=1; Re = cmd.get("Re", 78.54); r0 = 0.1; X0 = .125*2*r0; u0 = Re/(2*r0); mu = rho = 1; f0 = u0*1.2732/(2*r0); tf = cmd.get("tf", 3/f0); break;
 #else
   case 0: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; u0 = 1; tf = cmd.get("tf", PI/3);  break;
   case 1: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; u0 = 1; tf = cmd.get("tf", PI/3);  break;
@@ -1497,12 +1524,14 @@ int main (int argc, char* argv[])
 #endif
 
 #ifdef P4_TO_P8
-  if(test_number==2)
+  if(test_number==2 || test_number==5)
   {
 #if defined(STAMPEDE) || defined(COMET)
     if     (test_number==2) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, nz, Re, threshold_split_cell, n_times_dt);
+    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_sphere_%d-%d_%dx%dx%d_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, nz, threshold_split_cell, n_times_dt);
 #else
     if     (test_number==2) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/karman/forces_%d-%d_%dx%dx%d_Re_%g.dat", lmin, lmax, nx, ny, nz, Re);
+    else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/oscillating_sphere/forces_%d-%d_%dx%dx%d.dat", lmin, lmax, nx, ny, nz);
 #endif
 
     ierr = PetscPrintf(mpi->mpicomm, "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
@@ -1550,10 +1579,8 @@ int main (int argc, char* argv[])
     {
       ns.compute_dt();
 
-#ifndef P4_TO_P8
       if(test_number==5 && iter<4)
         ns.set_dt(dxmin*n_times_dt/u0);
-#endif
 
       dt = ns.get_dt();
 
@@ -1592,9 +1619,7 @@ int main (int argc, char* argv[])
 #endif
     ns.set_external_forces(external_forces);
 
-#ifndef P4_TO_P8
     for(int i=0; i<(test_number==5 ? 3 : 1); ++i)
-#endif
     {
       ns.solve_viscosity();
       ns.solve_projection();
@@ -1605,7 +1630,7 @@ int main (int argc, char* argv[])
     tn += dt;
 
 #ifdef P4_TO_P8
-    if(test_number==2)
+    if(test_number==2 || test_number==5)
 #else
     if(test_number==4 || test_number==5 || test_number==6)
 #endif
@@ -1631,7 +1656,7 @@ int main (int argc, char* argv[])
     ierr = PetscPrintf(mpi->mpicomm, "Iteration #%04d : tn = %.5f, percent done : %.1f%%, \t max_L2_norm_u = %.5f, \t number of leaves = %d\n", iter, tn, 100*tn/tf, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
-    if(test_number!=3 && test_number!=4 && ns.get_max_L2_norm_u()>10) break;
+    if((test_number==0 || test_number==1 || test_number==2) && ns.get_max_L2_norm_u()>10) break;
 		if(test_number==4 && ns.get_max_L2_norm_u()>200) break;
 #else
     if(test_number!=7 && test_number!=8 && ns.get_max_L2_norm_u()>10) break;
@@ -1651,6 +1676,7 @@ int main (int argc, char* argv[])
       case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/karman/karman_%d", iter/save_every_n); break;
       case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/smoke_drop/smoke_drop_%d", iter/save_every_n); break;
       case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/smoke_hill/smoke_hill_%d", iter/save_every_n); break;
+      case 5: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/oscillating_sphere/oscillating_sphere_%d", iter/save_every_n); break;
 #else
       case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
       case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
