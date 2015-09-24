@@ -204,6 +204,8 @@ public:
 
   inline my_p4est_node_neighbors_t* get_ngbd_n() { return ngbd_n; }
 
+  inline my_p4est_cell_neighbors_t* get_ngbd_c() { return ngbd_c; }
+
   inline p4est_t *get_p4est() { return p4est_n; }
 
   inline p4est_t *get_p4est_nm1() { return p4est_nm1; }
@@ -227,6 +229,8 @@ public:
   inline Vec get_hodge() { return hodge; }
 
   inline Vec get_smoke() { return smoke; }
+
+  inline Vec get_pressure() { return pressure; }
 
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }
 

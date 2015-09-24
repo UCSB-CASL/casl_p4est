@@ -24,6 +24,7 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_level_set.h>
+#include <src/my_p8est_level_set_cells.h>
 #include <src/my_p8est_vtk.h>
 #else
 #include <src/my_p4est_navier_stokes.h>
@@ -1304,10 +1305,10 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   case 0: nx=1; ny=1; nz=1; xmin=PI/2; xmax=3*PI/2; ymin=PI/2; ymax=3*PI/2; zmin=PI/2; zmax=3*PI/2; Re=0; mu = rho = 1; u0 = 1; tf=cmd.get("tf",PI/3); break;
   case 1: nx=1; ny=1; nz=1; xmin=PI/2; xmax=3*PI/2; ymin=PI/2; ymax=3*PI/2; zmin=PI/2; zmax=3*PI/2; Re=0; mu = rho = 1; u0 = 1; tf=cmd.get("tf",PI/3); break;
-  case 2: nx=8; ny=4; nz=4; xmin=0; xmax=32; ymin=-8; ymax=8; zmin=-8; zmax=8; Re=cmd.get("Re",350); r0=1; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
-  case 3: nx=2; ny=2; nz=2; xmin=0; xmax=1; ymin=0; ymax=1; zmin=0; zmax=1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); break;
-  case 4: nx=3; ny=2; nz=1; xmin=0; xmax=3; ymin=-1; ymax=1; zmin=0; zmax=1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); u0=500; break;
-  case 5: nx=1; ny=1; xmin=-1; xmax=1; ymin=-1; ymax=1; zmin=-1; zmax=1; Re = cmd.get("Re", 78.54); r0 = 0.1; X0 = .125*2*r0; u0 = Re/(2*r0); mu = rho = 1; f0 = u0*1.2732/(2*r0); tf = cmd.get("tf", 3/f0); break;
+  case 2: nx=8; ny=4; nz=4; xmin=   0; xmax=    32; ymin=  -8; ymax=     8; zmin=  -8; zmax=     8; Re=cmd.get("Re",350); r0=1; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
+  case 3: nx=2; ny=2; nz=2; xmin=   0; xmax=     1; ymin=   0; ymax=     1; zmin   =0; zmax=     1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); break;
+  case 4: nx=3; ny=2; nz=1; xmin=   0; xmax=     3; ymin=  -1; ymax=     1; zmin=   0; zmax=     1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); u0=500; break;
+  case 5: nx=1; ny=1; nz=1; xmin=  -1; xmax=     1; ymin=  -1; ymax=     1; zmin=  -1; zmax=     1; Re=cmd.get("Re", 78.54); r0=0.1; u0=Re/(2*r0); X0=0.125*2*r0; mu=rho=1; f0=u0*1.2732/(2*r0); tf=cmd.get("tf", 3/f0); break;
 #else
   case 0: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; u0 = 1; tf = cmd.get("tf", PI/3);  break;
   case 1: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; u0 = 1; tf = cmd.get("tf", PI/3);  break;
@@ -1496,7 +1497,8 @@ int main (int argc, char* argv[])
   my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
   ns.set_phi(phi);
   ns.set_parameters(mu, rho, uniform_band, threshold_split_cell, n_times_dt);
-  ns.set_dt(dxmin*n_times_dt/u0, dxmin*n_times_dt/u0);
+  if(test_number==5) ns.set_dt(.005*1/f0);
+  else               ns.set_dt(dxmin*n_times_dt/u0, dxmin*n_times_dt/u0);
   dt = ns.get_dt();
   ns.set_velocities(vnm1, vn);
   ns.set_bc(bc_v, &bc_p);
@@ -1540,7 +1542,8 @@ int main (int argc, char* argv[])
       fp_forces = fopen(file_forces, "w");
       if(fp_forces==NULL)
         throw std::invalid_argument("[ERROR]: could not open file for forces output.");
-      fprintf(fp_forces, "%% tn | f_x | f_y\n");
+      if(test_number==5) fprintf(fp_forces, "%% tn | Cd_x | Cd_y | Cd_z | Cp_x | Cp_y | Cp_z\n");
+      else               fprintf(fp_forces, "%% tn | Cd_x | Cd_y | Cd_z\n");
       fclose(fp_forces);
     }
   }
@@ -1563,11 +1566,7 @@ int main (int argc, char* argv[])
       fp_forces = fopen(file_forces, "w");
       if(fp_forces==NULL)
         throw std::invalid_argument("[ERROR]: could not open file for forces output.");
-#ifdef P4_TO_P8
-      fprintf(fp_forces, "%% tn | f_x | f_y | f_z\n");
-#else
-      fprintf(fp_forces, "%% tn | f_x | f_y\n");
-#endif
+      fprintf(fp_forces, "%% tn | Cd_x | Cd_y\n");
       fclose(fp_forces);
     }
   }
@@ -1579,8 +1578,10 @@ int main (int argc, char* argv[])
     {
       ns.compute_dt();
 
-      if(test_number==5 && iter<4)
-        ns.set_dt(dxmin*n_times_dt/u0);
+      if(test_number==5)
+        ns.set_dt(.005*1/f0);
+//      if(test_number==5 && iter<4)
+//        ns.set_dt(dxmin*n_times_dt/u0);
 
       dt = ns.get_dt();
 
@@ -1619,7 +1620,7 @@ int main (int argc, char* argv[])
 #endif
     ns.set_external_forces(external_forces);
 
-    for(int i=0; i<(test_number==5 ? 3 : 1); ++i)
+    for(int i=0; i<(test_number==5 ? 2 : 1); ++i)
     {
       ns.solve_viscosity();
       ns.solve_projection();
@@ -1636,13 +1637,27 @@ int main (int argc, char* argv[])
 #endif
     {
       ns.compute_forces(forces);
+      double integral[P4EST_DIM];
+      if(test_number==5)
+      {
+        my_p4est_level_set_cells_t lsc(ns.get_ngbd_c(), ns.get_ngbd_n());
+        lsc.integrate_over_interface(ns.get_phi(), ns.get_pressure(), integral);
+      }
       if(!mpi->mpirank)
       {
         fp_forces = fopen(file_forces, "a");
         if(fp_forces==NULL)
           throw std::invalid_argument("[ERROR]: could not open file for forces output.");
 #ifdef P4_TO_P8
-        fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho));
+        if(test_number==5)
+        {
+          fprintf(fp_forces, "%g %g %g %g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho),
+              integral[0]/(.5*PI*r0*r0*u0*u0*rho), integral[1]/(.5*PI*r0*r0*u0*u0*rho), integral[2]/(.5*PI*r0*r0*u0*u0*rho));
+        }
+        else
+        {
+          fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho));
+        }
 #else
 				if(test_number==4 || test_number==5)
 	        fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
