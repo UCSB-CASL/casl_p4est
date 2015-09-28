@@ -1650,10 +1650,25 @@ int main (int argc, char* argv[])
 #endif
     ns.set_external_forces(external_forces);
 
+    Vec hodge_old;
+    hodge_old = ns.get_hodge();
     for(int i=0; i<(test_number==5 ? 2 : 1); ++i)
     {
       ns.solve_viscosity();
       ns.solve_projection();
+
+      const double *ho_p;
+      ierr = VecGetArrayRead(hodge_old, &ho_p); CHKERRXX(ierr);
+
+      Vec hodge_new = ns.get_hodge();
+      const double *hn_p;
+      ierr = VecGetArrayRead(hodge_new, &hn_p); CHKERRXX(ierr);
+
+      double err_h = 0;
+      for(p4est_locidx_t q=0; q<ns.get_p4est()->local_num_quadrants; ++q)
+        err_h = max(err_h, fabs(hn_p[q]-ho_p[q]));
+      MPI_Allreduce(MPI_IN_PLACE, &err_h, 1, MPI_DOUBLE, MPI_MAX, mpi->mpicomm);
+      ierr = PetscPrintf(mpi->mpicomm, "Error hodge = %e\n", err_h);
     }
     ns.compute_velocity_at_nodes();
     ns.compute_pressure();
