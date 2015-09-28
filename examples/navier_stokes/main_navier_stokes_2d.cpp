@@ -1666,7 +1666,7 @@ int main (int argc, char* argv[])
     {
       ns.compute_forces(forces);
       double integral[P4EST_DIM];
-      if(test_number==5)
+      if(test_number==5 || test_number==6)
       {
         my_p4est_level_set_cells_t lsc(ns.get_ngbd_c(), ns.get_ngbd_n());
         lsc.integrate_over_interface(ns.get_phi(), ns.get_pressure(), integral);
