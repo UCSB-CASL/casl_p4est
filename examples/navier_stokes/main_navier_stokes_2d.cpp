@@ -1333,7 +1333,7 @@ int main (int argc, char* argv[])
   case 2: nx=8; ny=4; nz=4; xmin=   0; xmax=    32; ymin=  -8; ymax=     8; zmin=  -8; zmax=     8; Re=cmd.get("Re",350); r0=1; u0=1; rho=1; mu=2*r0*rho*u0/Re; tf=cmd.get("tf",200); break;
   case 3: nx=2; ny=2; nz=2; xmin=   0; xmax=     1; ymin=   0; ymax=     1; zmin   =0; zmax=     1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); break;
   case 4: nx=3; ny=2; nz=1; xmin=   0; xmax=     3; ymin=  -1; ymax=     1; zmin=   0; zmax=     1; Re=cmd.get("Re",5000); u0=rho=1; mu=rho*u0*(zmax-zmin)/Re; tf=cmd.get("tf",5); u0=500; break;
-  case 5: nx=1; ny=1; nz=1; xmin=  -1; xmax=     1; ymin=  -1; ymax=     1; zmin=  -1; zmax=     1; Re=cmd.get("Re", 78.54); r0=0.1; u0=Re/(2*r0); X0=0.125*2*r0; mu=rho=1; f0=u0*1.2732/(2*r0); tf=cmd.get("tf", 3/f0); break;
+  case 5: nx=1; ny=1; nz=1; xmin=  -1; xmax=     1; ymin=  -1; ymax=     1; zmin=  -1; zmax=     1; Re=cmd.get("Re", 80); r0=0.1; u0=Re/(2*r0); X0=0.125*2*r0; mu=rho=1; f0=u0*1.5/(2*r0); tf=cmd.get("tf", 3/f0); break;
   case 6: nx=1; ny=1; nz=1; xmin=  -1; xmax=     1; ymin=  -1; ymax=     1; zmin=  -1; zmax=     1; Re=cmd.get("Re", 78.54); r0=0.25; u0=Re/(2*r0); X0=0.125*2*r0; mu=rho=1; f0=u0*1.2732/(2*r0); tf=cmd.get("tf", 3/f0); break;
 #else
   case 0: nx=1; ny=1; xmin = 0; xmax = PI; ymin = 0; ymax = PI; Re = 0; mu = rho = 1; u0 = 1; tf = cmd.get("tf", PI/3);  break;
@@ -1696,7 +1696,7 @@ int main (int argc, char* argv[])
       }
     }
 
-    ierr = PetscPrintf(mpi->mpicomm, "Iteration #%04d : tn = %.5f, percent done : %.1f%%, \t max_L2_norm_u = %.5f, \t number of leaves = %d\n", iter, tn, 100*tn/tf, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi->mpicomm, "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", iter, tn, 100*tn/tf, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
     if((test_number==0 || test_number==1 || test_number==2) && ns.get_max_L2_norm_u()>10) break;
