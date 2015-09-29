@@ -1667,27 +1667,13 @@ int main (int argc, char* argv[])
 #endif
     {
       ns.compute_forces(forces);
-      double integral[P4EST_DIM];
-      if(test_number==5 || test_number==6)
-      {
-        my_p4est_level_set_cells_t lsc(ns.get_ngbd_c(), ns.get_ngbd_n());
-        lsc.integrate_over_interface(ns.get_phi(), ns.get_pressure(), integral);
-      }
       if(!mpi->mpirank)
       {
         fp_forces = fopen(file_forces, "a");
         if(fp_forces==NULL)
           throw std::invalid_argument("[ERROR]: could not open file for forces output.");
 #ifdef P4_TO_P8
-        if(test_number==5)
-        {
-          fprintf(fp_forces, "%g %g %g %g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho),
-              integral[0]/(.5*PI*r0*r0*u0*u0*rho), integral[1]/(.5*PI*r0*r0*u0*u0*rho), integral[2]/(.5*PI*r0*r0*u0*u0*rho));
-        }
-        else
-        {
-          fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho));
-        }
+				fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho));
 #else
 				if(test_number==4 || test_number==5)
 	        fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
