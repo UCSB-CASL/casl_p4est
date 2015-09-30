@@ -1655,7 +1655,7 @@ int main (int argc, char* argv[])
     ierr = VecCreateSeq(PETSC_COMM_SELF, ns.get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
     double err_hodge = 1;
     int iter_hodge = 0;
-    while(iter_hodge<10 && err_hodge>1e-1)
+    while(iter_hodge<10 && err_hodge>1e-3)
     {
       hodge_new = ns.get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
@@ -1677,7 +1677,11 @@ int main (int argc, char* argv[])
           p4est_locidx_t quad_idx = tree->quadrants_offset+q;
           double xyz[P4EST_DIM];
           quad_xyz_fr_q(quad_idx, tree_idx, p4est, ns.get_ghost(), xyz);
+#ifdef P4_TO_P8
+          if((*interp_phi)(xyz[0],xyz[1],xyz[2])<0)
+#else
           if((*interp_phi)(xyz[0],xyz[1])<0)
+#endif
             err_hodge = max(err_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
         }
       }
