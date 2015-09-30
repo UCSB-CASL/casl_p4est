@@ -1560,7 +1560,7 @@ int main (int argc, char* argv[])
   {
 #if defined(STAMPEDE) || defined(COMET)
     if     (test_number==2) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, nz, Re, threshold_split_cell, n_times_dt);
-    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_sphere_%d-%d_%dx%dx%d_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, nz, threshold_split_cell, n_times_dt);
+    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_sphere_%d-%d_%dx%dx%d_thresh_%g_Re_%g.dat", out_dir, lmin, lmax, nx, ny, nz, threshold_split_cell, Re);
 #else
     if     (test_number==2) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/karman/forces_%d-%d_%dx%dx%d_Re_%g.dat", lmin, lmax, nx, ny, nz, Re);
     else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/oscillating_sphere/forces_%d-%d_%dx%dx%d.dat", lmin, lmax, nx, ny, nz);
