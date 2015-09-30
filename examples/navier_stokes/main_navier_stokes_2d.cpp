@@ -81,7 +81,7 @@ int nz = 1;
  * 3 - smoke drop
  * 4 - smoke hill
  * 5 - oscillating sphere
- * 7 - smoke city
+ * 6 - smoke city
  */
 
 int test_number;
@@ -1290,7 +1290,8 @@ int main (int argc, char* argv[])
                  2 - karman\n\
                  3 - smoke drop\n\
                  4 - smoke on hill\n\
-                 5 - oscillating sphere\n");
+                 5 - oscillating sphere\n\
+                 6 - smoke city\n");
 #else
   cmd.add_option("test", "choose a test.\n\
                  0 - analytic vortex\n\
