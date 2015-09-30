@@ -1650,11 +1650,45 @@ int main (int argc, char* argv[])
 #endif
     ns.set_external_forces(external_forces);
 
-    for(int i=0; i<(test_number==5 ? 2 : 1); ++i)
+    Vec hodge_old;
+    Vec hodge_new;
+    ierr = VecCreateSeq(PETSC_COMM_SELF, ns.get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
+    double err_hodge = 1;
+    int iter_hodge = 0;
+    while(iter_hodge<10 && err_hodge>1e-1)
     {
+      hodge_new = ns.get_hodge();
+      ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
+
       ns.solve_viscosity();
       ns.solve_projection();
+
+      hodge_new = ns.get_hodge();
+      const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
+      const double *hn; ierr = VecGetArrayRead(hodge_new, &hn); CHKERRXX(ierr);
+      err_hodge = 0;
+      p4est_t *p4est = ns.get_p4est();
+      my_p4est_interpolation_nodes_t *interp_phi = ns.get_interp_phi();
+      for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+      {
+        p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+        for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+        {
+          p4est_locidx_t quad_idx = tree->quadrants_offset+q;
+          double xyz[P4EST_DIM];
+          quad_xyz_fr_q(quad_idx, tree_idx, p4est, ns.get_ghost(), xyz);
+          if((*interp_phi)(xyz[0],xyz[1])<0)
+            err_hodge = max(err_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
+        }
+      }
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi->mpicomm); SC_CHECK_MPI(mpiret);
+      ierr = VecRestoreArrayRead(hodge_old, &ho); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(hodge_new, &hn); CHKERRXX(ierr);
+
+      ierr = PetscPrintf(mpi->mpicomm, "hodge iteration #%d, error = %e\n", iter_hodge, err_hodge); CHKERRXX(ierr);
+      iter_hodge++;
     }
+    ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
     ns.compute_velocity_at_nodes();
     ns.compute_pressure();
 
@@ -1690,7 +1724,7 @@ int main (int argc, char* argv[])
     if((test_number==0 || test_number==1 || test_number==2) && ns.get_max_L2_norm_u()>10) break;
 		if(test_number==4 && ns.get_max_L2_norm_u()>200) break;
 #else
-    if(test_number!=7 && test_number!=8 && ns.get_max_L2_norm_u()>10) break;
+    if(test_number!=7 && test_number!=8 && ns.get_max_L2_norm_u()>100) break;
 #endif
 
     if(save_vtk && iter%save_every_n==0)

@@ -232,6 +232,8 @@ public:
 
   inline Vec get_pressure() { return pressure; }
 
+  inline my_p4est_interpolation_nodes_t* get_interp_phi() { return interp_phi; }
+
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }
 
   void solve_viscosity();
