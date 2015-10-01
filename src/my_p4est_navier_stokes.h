@@ -81,6 +81,8 @@ private:
   p4est_nodes_t *nodes_nm1;
   my_p4est_hierarchy_t *hierarchy_nm1;
   my_p4est_node_neighbors_t *ngbd_nm1;
+  my_p4est_cell_neighbors_t *ngbd_cm1;
+  my_p4est_faces_t *faces_nm1;
 
   p4est_t *p4est_n;
   p4est_ghost_t *ghost_n;
@@ -109,6 +111,8 @@ private:
   Vec hodge;
   Vec dxyz_hodge[P4EST_DIM];
 
+  Vec vnm1 [P4EST_DIM];
+  Vec vn   [P4EST_DIM];
   Vec vstar[P4EST_DIM];
   Vec vnp1 [P4EST_DIM];
 
@@ -129,7 +133,8 @@ private:
   bool refine_with_smoke;
   double smoke_thresh;
 
-  Vec face_is_well_defined[P4EST_DIM];
+  Vec face_is_well_defined_n  [P4EST_DIM];
+  Vec face_is_well_defined_nm1[P4EST_DIM];
 
 #ifdef P4_TO_P8
   BoundaryConditions3D *bc_pressure;
@@ -163,7 +168,7 @@ private:
   void compute_norm_grad_v();
 
 public:
-  my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
+  my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_nm1, my_p4est_faces_t* faces_n);
   ~my_p4est_navier_stokes_t();
 
   void set_parameters(double mu, double rho, double uniform_band, double threshold_split_cell, double n_times_dt);
@@ -187,8 +192,6 @@ public:
 #else
   void set_bc(BoundaryConditions2D *bc_v, BoundaryConditions2D *bc_p);
 #endif
-
-  void set_velocities(Vec *vnm1, Vec *vn);
 
 #ifdef P4_TO_P8
   void set_velocities(CF_3 **vnm1, CF_3 **vn);

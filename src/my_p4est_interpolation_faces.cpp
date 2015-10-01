@@ -115,10 +115,8 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
     for(int j=-1; j<2; ++j)
 #ifdef P4_TO_P8
       for(int k=-1; k<2; ++k)
-//        if((i==0 && j==0) || (i==0 && k==0) || (j==0 && k==0))
           ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j, k);
 #else
-//      if(i==0 || j==0)
         ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j);
 #endif
 
@@ -129,10 +127,8 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
       for(int j=-1; j<2; ++j)
 #ifdef P4_TO_P8
         for(int k=-1; k<2; ++k)
-//          if((i==0 && j==0) || (i==0 && k==0) || (j==0 && k==0))
             ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, i, j, k);
 #else
-//        if(i==0 || j==0)
           ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, i, j);
 #endif
   }

@@ -1451,6 +1451,8 @@ int main (int argc, char* argv[])
   p4est_nodes_t *nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
   my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick);
   my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+  my_p4est_cell_neighbors_t *ngbd_cm1 = new my_p4est_cell_neighbors_t(hierarchy_nm1);
+  my_p4est_faces_t *faces_nm1 = new my_p4est_faces_t(p4est_nm1, ghost_nm1, &brick, ngbd_cm1);
 
   /* create the initial forest at time n */
   p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
@@ -1524,8 +1526,7 @@ int main (int argc, char* argv[])
   external_force_w_t *external_force_w;
 #endif
 
-
-  my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
+  my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_nm1, faces_n);
   ns.set_phi(phi);
   ns.set_parameters(mu, rho, uniform_band, threshold_split_cell, n_times_dt);
   if(test_number==5) ns.set_dt(.005*1/f0);
@@ -1656,7 +1657,7 @@ int main (int argc, char* argv[])
     ierr = VecCreateSeq(PETSC_COMM_SELF, ns.get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
     double err_hodge = 1;
     int iter_hodge = 0;
-    while(iter_hodge<10 && err_hodge>1e-3)
+    while(iter_hodge<1 && err_hodge>1e-3)
     {
       hodge_new = ns.get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
@@ -1690,7 +1691,7 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArrayRead(hodge_old, &ho); CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(hodge_new, &hn); CHKERRXX(ierr);
 
-      ierr = PetscPrintf(mpi->mpicomm, "hodge iteration #%d, error = %e\n", iter_hodge, err_hodge); CHKERRXX(ierr);
+//      ierr = PetscPrintf(mpi->mpicomm, "hodge iteration #%d, error = %e\n", iter_hodge, err_hodge); CHKERRXX(ierr);
       iter_hodge++;
     }
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
