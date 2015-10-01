@@ -989,7 +989,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
-      lsf.extend_Over_Interface(phi, vstar[dir], bc_v[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 2, 8);
+      lsf.extend_Over_Interface(phi, vstar[dir], bc_v[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 2, 2);
     }
   }
 
@@ -1055,7 +1055,7 @@ void my_p4est_navier_stokes_t::solve_projection()
   if(bc_pressure->interfaceType()!=NOINTERFACE)
   {
     my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
-    lsc.extend_Over_Interface(phi, hodge, &bc_hodge, 2, 8);
+    lsc.extend_Over_Interface(phi, hodge, &bc_hodge, 2, 2);
   }
 
   /* project vstar */
@@ -1096,11 +1096,11 @@ void my_p4est_navier_stokes_t::solve_projection()
     ierr = VecGhostUpdateBegin(vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    if(bc_pressure->interfaceType()!=NOINTERFACE)
-    {
-      my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
-      lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], NULL, 2, 8);
-    }
+//    if(bc_pressure->interfaceType()!=NOINTERFACE)
+//    {
+//      my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
+//      lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], NULL, 2, 8);
+//    }
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1122,7 +1122,7 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
       v_p[n] = interpolate_f_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
-                                       vnp1[dir], dir, NULL, 2, bc_v);
+                                       vnp1[dir], dir, face_is_well_defined[dir], 2, bc_v);
     }
 
     ierr = VecGhostUpdateBegin(vnp1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1133,7 +1133,7 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
       v_p[n] = interpolate_f_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
-                                       vnp1[dir], dir, NULL, 2, bc_v);
+                                       vnp1[dir], dir, face_is_well_defined[dir], 2, bc_v);
     }
 
     ierr = VecGhostUpdateEnd(vnp1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1556,7 +1556,7 @@ void my_p4est_navier_stokes_t::compute_pressure()
   if(bc_pressure->interfaceType()!=NOINTERFACE)
   {
     my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
-    lsc.extend_Over_Interface(phi, pressure, bc_pressure, 2, 4);
+    lsc.extend_Over_Interface(phi, pressure, bc_pressure, 2, 3);
   }
 }
 
