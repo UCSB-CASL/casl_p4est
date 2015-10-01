@@ -132,7 +132,7 @@ public:
     case 3: return 0;
     case 4: return 0;
     case 5: return 0;
-    case 6: return (x<.1 && -.5<y && y<.5 && .2<z && z<.5) ? 1 : 0;
+    case 6: return (x<.1 && -.5<y && y<.5 && .2<z && z<.4) ? 1 : 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -147,7 +147,7 @@ public:
     double d;
     double xc[] = {1.5, 1.9 , 1.6 , 2.0 , 1.3,   1.25, 2.2 , 1.65, 0.62, 0.8, 0.7, 0.9, 1.05}; /* building x center */
     double yc[] = {0.5,-0.3 , 0.01, 0.4 ,-0.6,  -0.1 ,-0.05,-0.5 ,-0.45, 0.2, 0.5,-0.2, 0.3}; /* building y center */
-    double zc[] = {0.502, 0.412 , 0.642 , 0.265, 0.5052,   0.451, 0.3832, 0.6212, 0.76, 0.67, 0.56, 0.64, 0.71}; /* building z center */
+    double zc[] = {0.602, 0.812 , 0.642 , 1.065, 0.8052,   0.751, 0.6832, 0.7212, 0.96, 0.67, 0.86, 0.94, 1.11}; /* building z center */
     double lc[] = {0.1, 0.08, 0.09, 0.092, 0.085, 0.11, 0.08, 0.078, 0.095, 0.07, 0.06, 0.08, 0.072}; /* building half width */
     switch(test_number)
     {
