@@ -1656,7 +1656,7 @@ int main (int argc, char* argv[])
     ierr = VecCreateSeq(PETSC_COMM_SELF, ns.get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
     double err_hodge = 1;
     int iter_hodge = 0;
-    while(iter_hodge<10 && err_hodge>1e-3)
+    while(iter_hodge<1 && err_hodge>1e-3)
     {
       hodge_new = ns.get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
@@ -1690,7 +1690,7 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArrayRead(hodge_old, &ho); CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(hodge_new, &hn); CHKERRXX(ierr);
 
-      ierr = PetscPrintf(mpi->mpicomm, "hodge iteration #%d, error = %e\n", iter_hodge, err_hodge); CHKERRXX(ierr);
+//      ierr = PetscPrintf(mpi->mpicomm, "hodge iteration #%d, error = %e\n", iter_hodge, err_hodge); CHKERRXX(ierr);
       iter_hodge++;
     }
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
@@ -1729,7 +1729,7 @@ int main (int argc, char* argv[])
     if((test_number==0 || test_number==1 || test_number==2) && ns.get_max_L2_norm_u()>10) break;
 		if(test_number==4 && ns.get_max_L2_norm_u()>200) break;
 #else
-    if(test_number!=7 && test_number!=8 && ns.get_max_L2_norm_u()>100) break;
+    if(test_number!=7 && test_number!=8 && test_number!=5 && ns.get_max_L2_norm_u()>100) break;
 #endif
 
     if(save_vtk && iter%save_every_n==0)

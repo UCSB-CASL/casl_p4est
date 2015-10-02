@@ -228,6 +228,7 @@ double my_p4est_navier_stokes_t::wall_bc_value_hodge_t::operator ()(double x, do
 #endif
 {
   double alpha = (2*_prnt->dt_n + _prnt->dt_nm1)/(_prnt->dt_n + _prnt->dt_nm1);
+  alpha = 1;
 #ifdef P4_TO_P8
   return _prnt->bc_pressure->wallValue(x,y,z) * _prnt->dt_n / (alpha*_prnt->rho);
 #else
@@ -245,6 +246,7 @@ double my_p4est_navier_stokes_t::interface_bc_value_hodge_t::operator ()(double 
 #endif
 {
   double alpha = (2*_prnt->dt_n + _prnt->dt_nm1)/(_prnt->dt_n + _prnt->dt_nm1);
+  alpha = 1;
 #ifdef P4_TO_P8
   return _prnt->bc_pressure->interfaceValue(x,y,z) * _prnt->dt_n / (alpha*_prnt->rho);
 #else
@@ -944,7 +946,8 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     {
       if(face_is_well_defined_p[f_idx])
       {
-        rhs_p[f_idx] = -rho * ( (-alpha/dt_n + beta/dt_nm1)*vn_faces[f_idx] - beta/dt_nm1*vnm1_faces[f_idx]);
+//        rhs_p[f_idx] = -rho * ( (-alpha/dt_n + beta/dt_nm1)*vn_faces[f_idx] - beta/dt_nm1*vnm1_faces[f_idx]);
+        rhs_p[f_idx] = rho/dt_n * vn_faces[f_idx];
 
         if(external_forces!=NULL)
         {
@@ -968,7 +971,8 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   my_p4est_poisson_faces_t solver(faces_n, ngbd_n);
   solver.set_phi(phi);
   solver.set_mu(mu);
-  solver.set_diagonal(alpha * rho/dt_n);
+//  solver.set_diagonal(alpha * rho/dt_n);
+  solver.set_diagonal(rho/dt_n);
   solver.set_bc(bc_v, dxyz_hodge, face_is_well_defined);
   solver.set_rhs(rhs);
 #if defined(COMET) || defined(STAMPEDE)
@@ -1231,6 +1235,83 @@ void my_p4est_navier_stokes_t::advect_smoke(my_p4est_node_neighbors_t *ngbd_np1,
 }
 
 
+void my_p4est_navier_stokes_t::extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi)
+{
+  PetscErrorCode ierr;
+
+  double *phi_p;
+  ierr = VecGetArray(phi, &phi_p);
+  quad_neighbor_nodes_of_node_t qnnn;
+
+  double *v_p[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGetArray(v[dir], &v_p[dir]); CHKERRXX(ierr);
+  }
+
+  for(size_t i=0; i<ngbd->get_layer_size(); ++i)
+  {
+    p4est_locidx_t n = ngbd->get_layer_node(i);
+    if(phi_p[n]>0)
+    {
+      ngbd->get_neighbors(n, qnnn);
+
+      double x = node_x_fr_n(n, ngbd->p4est, ngbd->nodes) - phi_p[n]*qnnn.dx_central(phi_p);
+      double y = node_y_fr_n(n, ngbd->p4est, ngbd->nodes) - phi_p[n]*qnnn.dy_central(phi_p);
+#ifdef P4_TO_P8
+      double z = node_z_fr_n(n, ngbd->p4est, ngbd->nodes) - phi_p[n]*qnnn.dz_central(phi_p);
+#endif
+
+      for(int dir=0; dir<P4EST_DIM; ++dir)
+      {
+#ifdef P4_TO_P8
+        v_p[dir][n] = bc_v[dir].interfaceValue(x,y,z);
+#else
+        v_p[dir][n] = bc_v[dir].interfaceValue(x,y);
+#endif
+      }
+    }
+  }
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGhostUpdateBegin(v[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  for(size_t i=0; i<ngbd->get_local_size(); ++i)
+  {
+    p4est_locidx_t n = ngbd->get_local_node(i);
+    if(phi_p[n]>0)
+    {
+      ngbd->get_neighbors(n, qnnn);
+
+      double x = node_x_fr_n(n, ngbd->p4est, ngbd->nodes) - phi_p[n]*qnnn.dx_central(phi_p);
+      double y = node_y_fr_n(n, ngbd->p4est, ngbd->nodes) - phi_p[n]*qnnn.dy_central(phi_p);
+#ifdef P4_TO_P8
+      double z = node_z_fr_n(n, ngbd->p4est, ngbd->nodes) - phi_p[n]*qnnn.dz_central(phi_p);
+#endif
+
+      for(int dir=0; dir<P4EST_DIM; ++dir)
+      {
+#ifdef P4_TO_P8
+        v_p[dir][n] = bc_v[dir].interfaceValue(x,y,z);
+#else
+        v_p[dir][n] = bc_v[dir].interfaceValue(x,y);
+#endif
+      }
+    }
+  }
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecRestoreArray(v[dir], &v_p[dir]); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(v[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+}
+
+
 #ifdef P4_TO_P8
 void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_3 *level_set, bool convergence_test)
 #else
@@ -1423,12 +1504,12 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
     ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
     vnm1_nodes[dir] = vn_nodes[dir];
 
-    ierr = VecDuplicate(phi_np1, &vn_nodes[dir]); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_nodes[dir]); CHKERRXX(ierr);
     interp_nodes.set_input(vnp1_nodes[dir], quadratic);
     interp_nodes.interpolate(vn_nodes[dir]); CHKERRXX(ierr);
 
     ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi_np1, &vnp1_nodes[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes[dir]); CHKERRXX(ierr);
   }
 
   interp_nodes.set_input(phi, quadratic_non_oscillatory);
@@ -1436,21 +1517,8 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
 
   interp_nodes.clear();
 
-  /* set velocity inside solid to 0 */
-  const double *phi_p;
-  ierr = VecGetArrayRead(phi_np1, &phi_p); CHKERRXX(ierr);
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    double *v_p;
-    ierr = VecGetArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
-    for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
-    {
-      if(phi_p[n]>0)
-        v_p[n] = 0;
-    }
-    ierr = VecRestoreArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
-  }
-  ierr = VecRestoreArrayRead(phi_np1, &phi_p); CHKERRXX(ierr);
+  /* set velocity inside solid to bc_v */
+  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
 
   if(level_set!=NULL)
   {
@@ -1491,7 +1559,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
       faces_np1->xyz_fr_f(f_idx, dir, xyz);
       interp_faces.add_point(f_idx, xyz);
     }
-    interp_faces.set_input(dxyz_hodge[dir], dir, 2, face_is_well_defined[dir]);
+    interp_faces.set_input(dxyz_hodge[dir], dir, 1, face_is_well_defined[dir]);
     interp_faces.interpolate(dxyz_hodge_tmp);
     interp_faces.clear();
 
@@ -1557,7 +1625,8 @@ void my_p4est_navier_stokes_t::compute_pressure()
     {
       p4est_locidx_t quad_idx = q_idx+tree->quadrants_offset;
 
-      pressure_p[quad_idx] = alpha*rho/dt_n*hodge_p[quad_idx] - mu*compute_divergence(quad_idx, tree_idx);
+//      pressure_p[quad_idx] = alpha*rho/dt_n*hodge_p[quad_idx] - mu*compute_divergence(quad_idx, tree_idx);
+      pressure_p[quad_idx] = rho/dt_n*hodge_p[quad_idx] - mu*compute_divergence(quad_idx, tree_idx);
     }
   }
 
