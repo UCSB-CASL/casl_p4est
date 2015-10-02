@@ -888,11 +888,11 @@ void my_p4est_navier_stokes_t::solve_viscosity()
 
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  double alpha = (2*dt_n+dt_nm1)/(dt_n+dt_nm1);
-  double beta = -dt_n/(dt_n+dt_nm1);
+//  double alpha = (2*dt_n+dt_nm1)/(dt_n+dt_nm1);
+//  double beta = -dt_n/(dt_n+dt_nm1);
 
   /* construct the right hand side */
-  std::vector<double> xyz_nm1[P4EST_DIM];
+//  std::vector<double> xyz_nm1[P4EST_DIM];
   std::vector<double> xyz_n  [P4EST_DIM];
   Vec rhs[P4EST_DIM];
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -900,22 +900,25 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     /* backtrace the nodes with semi-Lagrangian / BDF scheme */
     for(int dd=0; dd<P4EST_DIM; ++dd)
     {
-      xyz_nm1[dd].resize(faces_n->num_local[dir]);
+//      xyz_nm1[dd].resize(faces_n->num_local[dir]);
       xyz_n  [dd].resize(faces_n->num_local[dir]);
     }
-    trajectory_from_np1_to_nm1(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_nm1, xyz_n, dir);
+//    trajectory_from_np1_to_nm1(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_nm1, xyz_n, dir);
+    trajectory_from_np1_to_n(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_n, dir);
 
     /* find the velocity at the backtraced points */
-    my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);
+//    my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);
     my_p4est_interpolation_nodes_t interp_n  (ngbd_n  );
     for(p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
     {
-#ifdef P4_TO_P8
-      double xyz_tmp[] = {xyz_nm1[0][f_idx], xyz_nm1[1][f_idx], xyz_nm1[2][f_idx]};
-#else
-      double xyz_tmp[] = {xyz_nm1[0][f_idx], xyz_nm1[1][f_idx]};
-#endif
-      interp_nm1.add_point(f_idx, xyz_tmp);
+      double xyz_tmp[P4EST_DIM];
+
+//#ifdef P4_TO_P8
+//      xyz_tmp[0] = xyz_nm1[0][f_idx]; xyz_tmp[1] = xyz_nm1[1][f_idx]; xyz_tmp[2] = xyz_nm1[2][f_idx]};
+//#else
+//      xyz_tmp[0] = xyz_nm1[0][f_idx]; xyz_tmp[1] = xyz_nm1[1][f_idx];
+//#endif
+//      interp_nm1.add_point(f_idx, xyz_tmp);
 
 #ifdef P4_TO_P8
       xyz_tmp[0] = xyz_n[0][f_idx]; xyz_tmp[1] = xyz_n[1][f_idx]; xyz_tmp[2] = xyz_n[2][f_idx];
@@ -925,9 +928,9 @@ void my_p4est_navier_stokes_t::solve_viscosity()
       interp_n.add_point(f_idx, xyz_tmp);
     }
 
-    std::vector<double> vnm1_faces(faces_n->num_local[dir]);
-    interp_nm1.set_input(vnm1_nodes[dir], quadratic);
-    interp_nm1.interpolate(vnm1_faces.data());
+//    std::vector<double> vnm1_faces(faces_n->num_local[dir]);
+//    interp_nm1.set_input(vnm1_nodes[dir], quadratic);
+//    interp_nm1.interpolate(vnm1_faces.data());
 
     std::vector<double> vn_faces(faces_n->num_local[dir]);
     interp_n.set_input(vn_nodes[dir], quadratic);
@@ -1610,7 +1613,7 @@ void my_p4est_navier_stokes_t::compute_pressure()
 {
   PetscErrorCode ierr;
 
-  double alpha = (2*dt_n+dt_nm1)/(dt_n+dt_nm1);
+//  double alpha = (2*dt_n+dt_nm1)/(dt_n+dt_nm1);
 
   const double *hodge_p;
   ierr = VecGetArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
