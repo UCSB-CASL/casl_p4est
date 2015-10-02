@@ -989,7 +989,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
-      lsf.extend_Over_Interface(phi, vstar[dir], bc_v[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 2, 2);
+      lsf.extend_Over_Interface(phi, vstar[dir], bc_v[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 0, 2);
     }
   }
 
@@ -1411,20 +1411,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
     interp_nodes.add_point(n, xyz);
   }
 
-  if(level_set==NULL)
-  {
-    interp_nodes.set_input(phi, quadratic_non_oscillatory);
-    interp_nodes.interpolate(phi_np1);
-  }
-  else
-  {
-    sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
-  }
-
-  my_p4est_level_set_t lsn(ngbd_np1);
-  lsn.reinitialize_1st_order_time_2nd_order_space(phi_np1);
-  lsn.perturb_level_set_function(phi_np1, EPS);
-
   my_p4est_cell_neighbors_t *ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
   my_p4est_faces_t *faces_np1 = new my_p4est_faces_t(p4est_np1, ghost_np1, brick, ngbd_c_np1);
 
@@ -1445,8 +1431,36 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
     ierr = VecDuplicate(phi_np1, &vnp1_nodes[dir]); CHKERRXX(ierr);
   }
 
+  interp_nodes.set_input(phi, quadratic_non_oscillatory);
+  interp_nodes.interpolate(phi_np1);
+
   interp_nodes.clear();
 
+  /* set velocity inside solid to 0 */
+  const double *phi_p;
+  ierr = VecGetArrayRead(phi_np1, &phi_p); CHKERRXX(ierr);
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    double *v_p;
+    ierr = VecGetArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
+    for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+    {
+      if(phi_p[n]>0)
+        v_p[n] = 0;
+    }
+    ierr = VecRestoreArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
+  }
+  ierr = VecRestoreArrayRead(phi_np1, &phi_p); CHKERRXX(ierr);
+
+  if(level_set!=NULL)
+  {
+    sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
+  }
+  my_p4est_level_set_t lsn(ngbd_np1);
+  lsn.reinitialize_1st_order_time_2nd_order_space(phi_np1);
+  lsn.perturb_level_set_function(phi_np1, EPS);
+
+  /* advect smoke */
   if(smoke!=NULL)
   {
     if(smoke_np1!=NULL)
