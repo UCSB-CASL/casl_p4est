@@ -996,7 +996,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
-      lsf.extend_Over_Interface(phi, vstar[dir], bc_v[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 0, 2);
+      lsf.extend_Over_Interface(phi, vstar[dir], bc_v[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 2, 2);
     }
   }
 
