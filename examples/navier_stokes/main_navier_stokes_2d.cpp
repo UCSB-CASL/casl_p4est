@@ -73,6 +73,7 @@ int nz = 1;
  * 6 - naca
  * 7 - smoke drop
  * 8 - smoke on hill
+ * 9 - rotating cylinder
  *
  *  ********* 3D *********
  * 0 - analytic vortex without time dependence
@@ -603,6 +604,7 @@ public:
     case 6: return (x<2 && y>-.5 && y<.5) ? 1 : 0;
     case 7: return (sqrt(SQR(x-.5) + SQR(y-.75))<.1) ? 1 : 0;
     case 8: return (x>0.01 && x<.4 && y<.9 && x+y>.5) ? 1 : 0;
+    case 9: return (sqrt(x*x+y*y)<.1) ? 1 : 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -625,6 +627,7 @@ public:
     case 6: return(fabs(x-xmin)<EPS && y>-.5 && y<.5) ? 1 : 0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -762,6 +765,7 @@ public:
     case 6: return (*naca)(x,y);
     case 7: return -1;
     case 8: return .5-(x+y);
+    case 9: return r0 - sqrt(SQR(x-.5*cos(tn+dt)) + SQR(y-.5*sin(tn+dt)));
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -782,6 +786,7 @@ struct BCWALLTYPE_P : WallBC2D
     case 6: if(fabs(x-xmax)<EPS) return DIRICHLET; return NEUMANN;
     case 7: return NEUMANN;
     case 8: return NEUMANN;
+    case 9: return NEUMANN;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -802,6 +807,7 @@ struct BCWALLVALUE_P : CF_2
     case 6: return 0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -821,6 +827,7 @@ struct BCINTERFACEVALUE_P : CF_2
     case 6: return 0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -841,6 +848,7 @@ struct BCWALLTYPE_U : WallBC2D
     case 6: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     case 7: return DIRICHLET;
     case 8: return DIRICHLET;
+    case 9: return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -861,6 +869,7 @@ struct BCWALLTYPE_V : WallBC2D
     case 6: if(fabs(x-xmax)<EPS) return NEUMANN; return DIRICHLET;
     case 7: return DIRICHLET;
     case 8: return DIRICHLET;
+    case 9: return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -881,6 +890,7 @@ struct BCWALLVALUE_U : CF_2
     case 6: if(fabs(x-xmax)<EPS) return 0; else return u0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -901,6 +911,7 @@ struct BCWALLVALUE_V : CF_2
     case 6: return 0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -921,6 +932,7 @@ struct BCINTERFACE_VALUE_U : CF_2
     case 6: return 0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return -y;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -941,6 +953,7 @@ struct BCINTERFACE_VALUE_V : CF_2
     case 6: return 0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return x;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -961,6 +974,7 @@ struct initial_velocity_unm1_t : CF_2
     case 6: return u0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -981,6 +995,7 @@ struct initial_velocity_u_n_t : CF_2
     case 6: return u0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -1001,6 +1016,7 @@ struct initial_velocity_vnm1_t : CF_2
     case 6: return 0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -1021,6 +1037,7 @@ struct initial_velocity_vn_t : CF_2
     case 6: return 0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -1041,6 +1058,7 @@ struct external_force_u_t : CF_2
     case 6: return 0;
     case 7: return 0;
     case 8: return 0;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -1074,6 +1092,7 @@ public:
     case 6: return 0;
     case 7: return -(*interp)(x,y)*9.81;
     case 8: return -(rho+1000*(*interp)(x,y))*9.81;
+    case 9: return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -1302,7 +1321,8 @@ int main (int argc, char* argv[])
                  5 - oscillating cylinder\n\
                  6 - naca airfoil\n\
                  7 - smoke drop\n\
-                 8 - smoke on hill\n");
+                 8 - smoke on hill\n\
+                 9 - rotating cylinder\n");
 #endif
   cmd.parse(argc, argv);
 
@@ -1350,6 +1370,7 @@ int main (int argc, char* argv[])
   case 6: nx=8; ny=4; xmin = 0; xmax = 32; ymin =-8; ymax =  8; Re = cmd.get("Re", 5300); u0 = 1; rho = 1; mu = rho*u0*naca_length/Re; tf = cmd.get("tf", 200); break;
   case 7: nx=2; ny=2; xmin = 0; xmax =  1; ymin = 0; ymax =  1; Re = cmd.get("Re", 5000); u0 = 1; rho = 1; mu = rho*u0*(xmax-xmin)/Re; tf = cmd.get("tf", 5); break;
   case 8: nx=6; ny=2; xmin = 0; xmax =  3; ymin = 0; ymax =  1; Re = cmd.get("Re", 5000); u0 = 1; rho = 1; mu = rho*u0*(xmax-xmin)/Re; tf = cmd.get("tf", 5); u0=100; break;
+  case 9: nx=2; ny=2; xmin =-1; xmax =  1; ymin =-1; ymax =  1; Re = cmd.get("Re", 5000); u0 = 1; r0 = .2; rho = 1; mu = 2*r0*rho*u0/Re; tf = cmd.get("tf", 500); break;
 #endif
   default: throw std::invalid_argument("choose a valid test.");
   }
@@ -1758,12 +1779,16 @@ int main (int argc, char* argv[])
       case 6: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/naca/naca_%d", iter/save_every_n); break;
       case 7: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/smoke_drop/smoke_drop_%d", iter/save_every_n); break;
       case 8: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/smoke_hill/smoke_hill_%d", iter/save_every_n); break;
+      case 9: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/rotating_cylinder/rotating_cylinder_%d", iter/save_every_n); break;
 #endif
       default: throw std::invalid_argument("choose a valid test.");
       }
 #endif
 
       ns.save_vtk(name);
+
+      sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/hierarchy/hierarchy_%d", iter/save_every_n);
+      ns.get_hierarchy()->write_vtk(name);
 
 #ifndef P4_TO_P8
       if(test_number==2 || test_number==3)

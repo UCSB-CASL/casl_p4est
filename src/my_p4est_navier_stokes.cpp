@@ -1521,7 +1521,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   interp_nodes.clear();
 
   /* set velocity inside solid to bc_v */
-  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
+//  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
 
   if(level_set!=NULL)
   {
@@ -1864,7 +1864,7 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   if(smoke!=NULL)
   {
     ierr = VecGetArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
-    my_p4est_vtk_write_all(p4est_n, nodes_n, NULL,
+    my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                            P4EST_TRUE, P4EST_TRUE,
 //                           P4EST_FALSE, P4EST_FALSE,
                            3+P4EST_DIM, /* number of VTK_POINT_DATA */
@@ -1884,7 +1884,7 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   }
   else
   {
-    my_p4est_vtk_write_all(p4est_n, nodes_n, NULL,
+    my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                            P4EST_TRUE, P4EST_TRUE,
 //                           P4EST_FALSE, P4EST_FALSE,
                            2+P4EST_DIM, /* number of VTK_POINT_DATA */

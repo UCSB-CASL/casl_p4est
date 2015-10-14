@@ -216,6 +216,8 @@ public:
 
   inline my_p4est_faces_t* get_faces() { return faces_n; }
 
+  inline my_p4est_hierarchy_t* get_hierarchy() { return hierarchy_n; }
+
   inline Vec get_phi() { return phi; }
 
   inline Vec* get_velocity() { return vn_nodes; }
