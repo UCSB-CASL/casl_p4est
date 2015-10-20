@@ -1787,9 +1787,6 @@ int main (int argc, char* argv[])
 
       ns.save_vtk(name);
 
-      sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/hierarchy/hierarchy_%d", iter/save_every_n);
-      ns.get_hierarchy()->write_vtk(name);
-
 #ifndef P4_TO_P8
       if(test_number==2 || test_number==3)
         check_velocity_cavity(mpi, &ns, Re, n_times_dt);
