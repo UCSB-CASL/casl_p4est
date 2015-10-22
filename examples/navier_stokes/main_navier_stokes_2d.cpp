@@ -1289,7 +1289,8 @@ int main (int argc, char* argv[])
   cmd.add_option("nz", "the number of trees in the z direction");
 #endif
   cmd.add_option("tf", "the final time");
-  cmd.add_option("Re", "the reynolds number.");
+  cmd.add_option("Re", "the reynolds number");
+  cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate)");
   cmd.add_option("uniform_band", "size of the uniform band around the interface, in number of dx");
   cmd.add_option("n_times_dt", "dx = n_times_dt * dx/vmax");
   cmd.add_option("thresh", "the threshold used for the refinement criteria");
@@ -1328,6 +1329,7 @@ int main (int argc, char* argv[])
 
   cmd.print();
 
+  int sl_order = cmd.get("sl_order", 1);
   int nb_splits = cmd.get("nb_splits", 0);
   int lmin = cmd.get("lmin", 3) + nb_splits;
   int lmax = cmd.get("lmax", 3) + nb_splits;
@@ -1548,7 +1550,7 @@ int main (int argc, char* argv[])
 
   my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
   ns.set_phi(phi);
-  ns.set_parameters(mu, rho, uniform_band, threshold_split_cell, n_times_dt);
+  ns.set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, n_times_dt);
   if(test_number==5) ns.set_dt(.005*1/f0);
   else               ns.set_dt(dxmin*n_times_dt/u0, dxmin*n_times_dt/u0);
   dt = ns.get_dt();

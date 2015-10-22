@@ -129,6 +129,8 @@ private:
   bool refine_with_smoke;
   double smoke_thresh;
 
+  int sl_order;
+
   Vec face_is_well_defined[P4EST_DIM];
 
 #ifdef P4_TO_P8
@@ -166,7 +168,7 @@ public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
   ~my_p4est_navier_stokes_t();
 
-  void set_parameters(double mu, double rho, double uniform_band, double threshold_split_cell, double n_times_dt);
+  void set_parameters(double mu, double rho, int sl_order, double uniform_band, double threshold_split_cell, double n_times_dt);
 
 #ifdef P4_TO_P8
   void set_smoke(Vec smoke, CF_3 *bc_smoke, bool refine_with_smoke=true, double smoke_thresh=.5);
