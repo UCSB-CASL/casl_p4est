@@ -393,7 +393,7 @@ void my_p4est_navier_stokes_t::set_parameters(double mu, double rho, int sl_orde
   this->threshold_split_cell = threshold_split_cell;
   this->n_times_dt = n_times_dt;
 
-  if(sl_order==1.5)
+  if(sl_order==3)
   {
     PetscErrorCode ierr = PetscPrintf(p4est_n->mpicomm, "WARNING ! SL 1.5 only works for homogeneous Neumann BC on the pressure field !!\n"); CHKERRXX(ierr);
   }
@@ -1667,7 +1667,7 @@ void my_p4est_navier_stokes_t::compute_pressure()
 {
   PetscErrorCode ierr;
 
-//  double alpha = (2*dt_n+dt_nm1)/(dt_n+dt_nm1);
+  double alpha = sl_order==1 ? 1 : (2*dt_n+dt_nm1)/(dt_n+dt_nm1);
 
   const double *hodge_p;
   ierr = VecGetArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
@@ -1682,8 +1682,7 @@ void my_p4est_navier_stokes_t::compute_pressure()
     {
       p4est_locidx_t quad_idx = q_idx+tree->quadrants_offset;
 
-//      pressure_p[quad_idx] = alpha*rho/dt_n*hodge_p[quad_idx] - mu*compute_divergence(quad_idx, tree_idx);
-      pressure_p[quad_idx] = rho/dt_n*hodge_p[quad_idx] - mu*compute_divergence(quad_idx, tree_idx);
+      pressure_p[quad_idx] = alpha*rho/dt_n*hodge_p[quad_idx] - mu*compute_divergence(quad_idx, tree_idx);
     }
   }
 
