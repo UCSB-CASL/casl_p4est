@@ -392,6 +392,11 @@ void my_p4est_navier_stokes_t::set_parameters(double mu, double rho, int sl_orde
   this->uniform_band = uniform_band;
   this->threshold_split_cell = threshold_split_cell;
   this->n_times_dt = n_times_dt;
+
+  if(sl_order==1.5)
+  {
+    PetscErrorCode ierr = PetscPrintf(p4est_n->mpicomm, "WARNING ! SL 1.5 only works for homogeneous Neumann BC on the pressure field !!\n"); CHKERRXX(ierr);
+  }
 }
 
 #ifdef P4_TO_P8
@@ -906,16 +911,17 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   std::vector<double> xyz_nm1[P4EST_DIM];
   std::vector<double> xyz_n  [P4EST_DIM];
   Vec rhs[P4EST_DIM];
+  Vec diag_add[P4EST_DIM];
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     /* backtrace the nodes with semi-Lagrangian / BDF scheme */
     for(int dd=0; dd<P4EST_DIM; ++dd)
     {
-      if(sl_order==2) xyz_nm1[dd].resize(faces_n->num_local[dir]);
+      if(sl_order>1) xyz_nm1[dd].resize(faces_n->num_local[dir]);
       xyz_n  [dd].resize(faces_n->num_local[dir]);
     }
-    if(sl_order==2) trajectory_from_np1_to_nm1(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_nm1, xyz_n, dir);
-    trajectory_from_np1_to_n(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_n, dir);
+    if(sl_order>1) trajectory_from_np1_to_nm1(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_nm1, xyz_n, dir);
+    else           trajectory_from_np1_to_n  (p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_n, dir);
 
     /* find the velocity at the backtraced points */
     my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);
@@ -924,7 +930,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     {
       double xyz_tmp[P4EST_DIM];
 
-      if(sl_order==2)
+      if(sl_order>1)
       {
 #ifdef P4_TO_P8
         xyz_tmp[0] = xyz_nm1[0][f_idx]; xyz_tmp[1] = xyz_nm1[1][f_idx]; xyz_tmp[2] = xyz_nm1[2][f_idx];
@@ -943,7 +949,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     }
 
     std::vector<double> vnm1_faces(faces_n->num_local[dir]);
-    if(sl_order==2)
+    if(sl_order>1)
     {
       vnm1_faces.resize(faces_n->num_local[dir]);
       interp_nm1.set_input(vnm1_nodes[dir], quadratic);
@@ -956,6 +962,10 @@ void my_p4est_navier_stokes_t::solve_viscosity()
 
     /* assemble the right-hand-side */
     ierr = VecDuplicate(vstar[dir], &rhs[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(vstar[dir], &diag_add[dir]); CHKERRXX(ierr);
+
+    double *diag_add_p;
+    ierr = VecGetArray(diag_add[dir], &diag_add_p); CHKERRXX(ierr);
 
     const PetscScalar *face_is_well_defined_p;
     ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
@@ -968,9 +978,31 @@ void my_p4est_navier_stokes_t::solve_viscosity()
       if(face_is_well_defined_p[f_idx])
       {
         if(sl_order==1)
-          rhs_p[f_idx] = rho/dt_n * vn_faces[f_idx];
+        {
+          diag_add_p[f_idx] = rho/dt_n;
+          rhs_p     [f_idx] = rho/dt_n * vn_faces[f_idx];
+        }
+        else if(sl_order==2)
+        {
+          diag_add_p[f_idx] = rho*alpha/dt_n;
+          rhs_p     [f_idx] = rho*( (alpha/dt_n - beta/dt_nm1)*vn_faces[f_idx] + beta/dt_nm1*vnm1_faces[f_idx]);
+        }
         else
-          rhs_p[f_idx] = -rho * ( (-alpha/dt_n + beta/dt_nm1)*vn_faces[f_idx] - beta/dt_nm1*vnm1_faces[f_idx]);
+        {
+          double vtmp = vn_faces[f_idx] - dt_n/dt_nm1 * beta/alpha * (vn_faces[f_idx]-vnm1_faces[f_idx])/dt_nm1;
+          if(fabs(vtmp)>fabs(vn_faces[f_idx]))
+          {
+            /* if velocity increases, revert to first order SL */
+            diag_add_p[f_idx] = rho/dt_n;
+            rhs_p     [f_idx] = rho/dt_n * vn_faces[f_idx];
+          }
+          else
+          {
+            /* otherwise keep second order */
+            diag_add_p[f_idx] = rho*alpha/dt_n;
+            rhs_p     [f_idx] = rho*( (alpha/dt_n - beta/dt_nm1)*vn_faces[f_idx] + beta/dt_nm1*vnm1_faces[f_idx]);
+          }
+        }
 
         if(external_forces!=NULL)
         {
@@ -988,13 +1020,15 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     }
 
     ierr = VecRestoreArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(diag_add[dir], &diag_add_p); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
   }
 
   my_p4est_poisson_faces_t solver(faces_n, ngbd_n);
   solver.set_phi(phi);
   solver.set_mu(mu);
-  solver.set_diagonal(alpha * rho/dt_n);
+//  solver.set_diagonal(alpha * rho/dt_n);
+  solver.set_diagonal(diag_add);
   solver.set_bc(bc_v, dxyz_hodge, face_is_well_defined);
   solver.set_rhs(rhs);
 #if defined(COMET) || defined(STAMPEDE)
@@ -1008,6 +1042,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
+    ierr = VecDestroy(diag_add[dir]); CHKERRXX(ierr);
   }
 
   if(bc_pressure->interfaceType()!=NOINTERFACE)

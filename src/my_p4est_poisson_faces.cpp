@@ -40,7 +40,7 @@ my_p4est_poisson_faces_t::my_p4est_poisson_faces_t(const my_p4est_faces_t *faces
     #ifdef P4_TO_P8
     rhs_w(NULL),
     #endif
-    bc(NULL), dxyz_hodge(NULL),
+    local_diag_add(false), bc(NULL), dxyz_hodge(NULL),
     A(PETSC_NULL), A_null_space(PETSC_NULL), null_space(PETSC_NULL), ksp(PETSC_NULL)
 {
   PetscErrorCode ierr;
@@ -85,6 +85,14 @@ my_p4est_poisson_faces_t::~my_p4est_poisson_faces_t()
   if(null_space!=PETSC_NULL)     { ierr = VecDestroy(null_space);            CHKERRXX(ierr); }
   if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr); }
   if(ksp!=PETSC_NULL)            { ierr = KSPDestroy(ksp);                   CHKERRXX(ierr); }
+  if(local_diag_add)
+  {
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if(diag_add[dir]!=PETSC_NULL) { ierr = VecDestroy(diag_add[dir]); CHKERRXX(ierr); }
+    }
+    delete diag_add;
+  }
 }
 
 
@@ -162,6 +170,30 @@ void my_p4est_poisson_faces_t::set_rhs(Vec *rhs)
 
 
 void my_p4est_poisson_faces_t::set_diagonal(double add)
+{
+  PetscErrorCode ierr;
+  if(!local_diag_add)
+  {
+    local_diag_add = new Vec[P4EST_DIM];
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecCreateGhostFaces(p4est, faces, &diag_add[dir], dir); CHKERRXX(ierr);
+    }
+  }
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    Vec loc;
+    ierr = VecGhostGetLocalForm(diag_add[dir], &loc); CHKERRXX(ierr);
+    ierr = VecSet(loc, add); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(diag_add[dir], &loc); CHKERRXX(ierr);
+  }
+
+  local_diag_add = true;
+}
+
+
+void my_p4est_poisson_faces_t::set_diagonal(Vec *add)
 {
   this->diag_add = add;
 }
@@ -984,6 +1016,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   double *rhs_p;
   ierr = VecGetArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
 
+  double *diag_add_p;
+  ierr = VecGetArray(diag_add[dir], &diag_add_p); CHKERRXX(ierr);
+
   ierr = VecDestroy(null_space); CHKERRXX(ierr);
   ierr = VecDuplicate(rhs[dir], &null_space); CHKERRXX(ierr);
   double *null_space_p;
@@ -1241,7 +1276,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         if(wall[dir_p]) d_[dir_p] = d_[dir_m];
 
         double coeff[P4EST_FACES];
-        double diag = diag_add;
+        double diag = diag_add_p[f_idx];
         for(int f=0; f<P4EST_FACES; ++f)
         {
           int ff = f%2==0 ? f+1 : f-1;
@@ -1257,7 +1292,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 
         rhs_p[f_idx] /= diag;
 
-        if(diag_add > 0) matrix_has_nullspace[dir] = false;
+        if(diag_add_p[f_idx] > 0) matrix_has_nullspace[dir] = false;
 
         //---------------------------------------------------------------------
         // insert the coefficients in the matrix
@@ -1474,8 +1509,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 
       if(is_pos)
       {
-        ierr = MatSetValue(A, f_idx_g, f_idx_g, volume*diag_add, ADD_VALUES); CHKERRXX(ierr);
-        if(diag_add > 0) matrix_has_nullspace[dir] = false;
+        ierr = MatSetValue(A, f_idx_g, f_idx_g, volume*diag_add_p[f_idx], ADD_VALUES); CHKERRXX(ierr);
+        if(diag_add_p[f_idx] > 0) matrix_has_nullspace[dir] = false;
         rhs_p[f_idx] *= volume;
         rhs_p[f_idx] += mu * c3.integrate_Over_Interface(iv, op);
 
@@ -1670,9 +1705,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #endif
 
     double volume = voro_tmp.get_volume();
-    ierr = MatSetValue(A, f_idx_g, f_idx_g, volume*diag_add, ADD_VALUES); CHKERRXX(ierr);
+    ierr = MatSetValue(A, f_idx_g, f_idx_g, volume*diag_add_p[f_idx], ADD_VALUES); CHKERRXX(ierr);
     rhs_p[f_idx] *= volume;
-    if(diag_add>0) matrix_has_nullspace[dir] = false;
+    if(diag_add_p[f_idx]>0) matrix_has_nullspace[dir] = false;
 
     /* bulk case, finite volume on voronoi cell */
 #ifdef P4_TO_P8
@@ -1913,6 +1948,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   }
 
   ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(diag_add[dir], &diag_add_p); CHKERRXX(ierr);
 
   /* complete the right hand side with correct boundary condition: bc_v + grad(dxyz_hodge) */
   if(bc[dir].interfaceType()==DIRICHLET)
