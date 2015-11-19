@@ -168,18 +168,6 @@ public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
   ~my_p4est_navier_stokes_t();
 
-  /*!
-   * \brief set the parameters for the navier stokes solver
-   * \param mu the dynamic viscosity of the fluid
-   * \param rho the density of the fluid
-   * \param sl_order the order of the semi lagrangian advections scheme. Available options are
-   *          + 1 - first order euler scheme
-   *          + 2 - second order BDF scheme (potentially unstable !!)
-   *          + 3 - second order BDF when possible, fallback to first order when local norm of u* increases
-   * \param uniform_band the size of the uniform band around the irregular interface, in number of dx, For example 2 will give a 2*dx uniform band
-   * \param threshold_split_cell the threshold for splitting the cells with respect to the magnitude of the vorticity. Usually between 0.005 (high resolution) - 0.01 (coarse resolution)
-   * \param n_times_dt the CFL condition, dt = n_times_dt * dx
-   */
   void set_parameters(double mu, double rho, int sl_order, double uniform_band, double threshold_split_cell, double n_times_dt);
 
 #ifdef P4_TO_P8

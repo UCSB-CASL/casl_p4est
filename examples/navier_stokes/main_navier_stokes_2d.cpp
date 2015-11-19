@@ -1290,7 +1290,7 @@ int main (int argc, char* argv[])
 #endif
   cmd.add_option("tf", "the final time");
   cmd.add_option("Re", "the reynolds number");
-  cmd.add_option("sl_order", "the order for the semi lagrangian\n\t\t1 (stable)\n\t\t2 (accurate)\n\t\t3 accurate when possible, stable otherwise");
+  cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate)");
   cmd.add_option("uniform_band", "size of the uniform band around the interface, in number of dx");
   cmd.add_option("n_times_dt", "dx = n_times_dt * dx/vmax");
   cmd.add_option("thresh", "the threshold used for the refinement criteria");

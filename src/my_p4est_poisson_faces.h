@@ -46,8 +46,7 @@ class my_p4est_poisson_faces_t
   Vec rhs_w;
 #endif
 
-  Vec *diag_add;
-  bool local_diag_add;
+  double diag_add;
   double mu;
 
 #ifdef P4_TO_P8
@@ -105,8 +104,6 @@ public:
   void set_rhs(Vec *rhs);
 
   void set_diagonal(double add);
-
-  void set_diagonal(Vec *add);
 
   void set_mu(double mu);
 
