@@ -1329,7 +1329,7 @@ int main (int argc, char* argv[])
 
   cmd.print();
 
-  int sl_order = cmd.get("sl_order", 1);
+  int sl_order = cmd.get("sl_order", 2);
   int nb_splits = cmd.get("nb_splits", 0);
   int lmin = cmd.get("lmin", 3) + nb_splits;
   int lmax = cmd.get("lmax", 3) + nb_splits;

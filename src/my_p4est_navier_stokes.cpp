@@ -1632,7 +1632,7 @@ void my_p4est_navier_stokes_t::compute_pressure()
 {
   PetscErrorCode ierr;
 
-//  double alpha = (2*dt_n+dt_nm1)/(dt_n+dt_nm1);
+  double alpha = sl_order==1 ? 1 : (2*dt_n+dt_nm1)/(dt_n+dt_nm1);
 
   const double *hodge_p;
   ierr = VecGetArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
@@ -1646,9 +1646,7 @@ void my_p4est_navier_stokes_t::compute_pressure()
     for(size_t q_idx=0; q_idx<tree->quadrants.elem_count; ++q_idx)
     {
       p4est_locidx_t quad_idx = q_idx+tree->quadrants_offset;
-
-//      pressure_p[quad_idx] = alpha*rho/dt_n*hodge_p[quad_idx] - mu*compute_divergence(quad_idx, tree_idx);
-      pressure_p[quad_idx] = rho/dt_n*hodge_p[quad_idx] - mu*compute_divergence(quad_idx, tree_idx);
+      pressure_p[quad_idx] = alpha*rho/dt_n*hodge_p[quad_idx] - mu*compute_divergence(quad_idx, tree_idx);
     }
   }
 
