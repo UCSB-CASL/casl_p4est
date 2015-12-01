@@ -503,8 +503,10 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   num_receivers = (int) receiver_ranks.elem_count;
   sender_ranks = P4EST_ALLOC (int, num_procs);
 
+	PetscPrintf(p4est->mpicomm, "Starting sc_notify\n");
   sc_notify ((int *) receiver_ranks.array, num_receivers,
              sender_ranks, &num_senders, p4est->mpicomm);
+	PetscPrintf(p4est->mpicomm, "done with sc_notify\n");
 
   //  P4EST_LDEBUGF ("Node query receivers %d senders %d\n",
   //                 num_receivers, num_senders);
