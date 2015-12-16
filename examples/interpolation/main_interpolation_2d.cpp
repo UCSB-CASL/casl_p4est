@@ -14,7 +14,8 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_interpolating_function_balanced.h>
+#include <src/my_p8est_interpolation.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -23,7 +24,8 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_interpolating_function_balanced.h>
+#include <src/my_p4est_interpolation.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -87,14 +89,12 @@ static struct:CF_2{
 int main (int argc, char* argv[]){
 
   try{
-    mpi_context_t mpi_context, *mpi = &mpi_context;
-    mpi->mpicomm  = MPI_COMM_WORLD;
+    mpi_enviroment_t mpi;
+    mpi.init(argc, argv);
+
     p4est_t            *p4est;
     p4est_nodes_t      *nodes;
     PetscErrorCode      ierr;
-
-    Session mpi_session;
-    mpi_session.init(argc, argv, mpi->mpicomm);
 
     cmdParser cmd;
     cmd.add_option("lmin", "min level of the tree");
@@ -111,23 +111,21 @@ int main (int argc, char* argv[]){
     parStopWatch w1, w2;
     w1.start("total time");
 
-    MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-    MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
     // Create the connectivity object
     w2.start("connectivity");
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t my_brick, *brick = &my_brick;
 #ifdef P4_TO_P8
-    connectivity = my_p4est_brick_new(2, 2, 2, brick);
+    connectivity = my_p4est_brick_new(2, 2, 2,
+                                      0, 2, 0, 2, 0, 2, brick);
 #else
-    connectivity = my_p4est_brick_new(2, 2, brick);
+    connectivity = my_p4est_brick_new(2, 2, 0, 2, 0, 2, brick);
 #endif
     w2.stop(); w2.read_duration();
 
     // Now create the forest
     w2.start("p4est generation");
-    p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
     w2.stop(); w2.read_duration();
 
     // Now refine the tree
@@ -172,7 +170,7 @@ int main (int argc, char* argv[]){
 
     grid_name.str(""); grid_name << P4EST_DIM << "d_grid_qnnn_" << p4est->mpirank << "_" << p4est->mpisize;
 
-    std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi->mpisize;
+    std::ostringstream oss; oss << P4EST_DIM << "d_phi_" << mpi.size();
     double *phi_p;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
@@ -192,7 +190,7 @@ int main (int argc, char* argv[]){
 
     // Create a new grid
     w2.start("creating/refining/partitioning new p4est");
-    p4est_t *p4est_np1 = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    p4est_t *p4est_np1 = p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
     p4est_np1->user_pointer = (void*)&cf_data;
     my_p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
     my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
@@ -211,7 +209,8 @@ int main (int argc, char* argv[]){
     w2.stop(); w2.read_duration();
 
     // Create an interpolating function
-    InterpolatingFunctionNodeBaseBalanced phi_func(phi, &qnnn);
+    my_p4est_interpolation_nodes_t phi_func(&qnnn);
+    phi_func.set_input(phi, linear);
 
     for (p4est_locidx_t i=0; i<nodes_np1->num_owned_indeps; ++i)
     {
@@ -227,11 +226,11 @@ int main (int argc, char* argv[]){
 #endif
       double xyz [P4EST_DIM] =
       {
-        node_x_fr_i(node) + tree_xmin,
-        node_y_fr_j(node) + tree_ymin
+        node_x_fr_n(node) + tree_xmin,
+        node_y_fr_n(node) + tree_ymin
 #ifdef P4_TO_P8
         ,
-        node_z_fr_k(node) + tree_zmin
+        node_z_fr_n(node) + tree_zmin
 #endif
       };
 
@@ -248,7 +247,7 @@ int main (int argc, char* argv[]){
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    oss.str(""); oss << P4EST_DIM << "d_phi_np1_" << mpi->mpisize;
+    oss.str(""); oss << P4EST_DIM << "d_phi_np1_" << mpi.size();
 
     double *phi_np1_p;
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);

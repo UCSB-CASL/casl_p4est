@@ -808,21 +808,37 @@ public:
 /*!
  * \brief prepares MPI, PETSc, p4est, and sc libraries
  */
-class Session{
+class mpi_enviroment_t{
   PetscErrorCode ierr;
+  MPI_Comm mpicomm;
+  int mpirank;
+  int mpisize;
+
 public:
-  ~Session(){
+  ~mpi_enviroment_t(){
     ierr = PetscFinalize(); CHKERRXX(ierr);
+    MPI_Finalize();
   }
 
-  void init(int argc, char **argv, MPI_Comm mpicomm){
+  void init(int argc, char **argv){
+    mpicomm = MPI_COMM_WORLD;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(mpicomm, &mpisize);
+    MPI_Comm_rank(mpicomm, &mpirank);
+
     ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
+
     sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_SILENT);
     p4est_init (NULL, SC_LP_SILENT);
 #ifdef CASL_LOG_EVENTS
     register_petsc_logs();
 #endif
   }
+
+  inline const MPI_Comm& comm() const {return mpicomm;}
+  inline const int& rank() const {return mpirank;}
+  inline const int& size() const {return mpisize;}
 
 };
 
@@ -898,13 +914,5 @@ public:
     return elap;
   }
 };
-
-typedef struct
-{
-  MPI_Comm            mpicomm;
-  int                 mpisize;
-  int                 mpirank;
-}
-mpi_context_t;
 
 #endif // UTILS_H

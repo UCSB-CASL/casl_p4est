@@ -7,6 +7,7 @@
 
 // p4est Library
 #ifdef P4_TO_P8
+#error "3d example is not fully implemented!"
 #include <p8est_bits.h>
 #include <p8est_extended.h>
 #include <src/my_p8est_utils.h>
@@ -143,11 +144,10 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
 
 int main (int argc, char* argv[])
 {
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
   PetscErrorCode ierr;
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
+
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -172,9 +172,6 @@ int main (int argc, char* argv[])
   int save_every_n = cmd.get("save_every_n", 1);
 
   splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
-
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
   int nx, ny;
 #ifdef P4_TO_P8
@@ -218,7 +215,7 @@ int main (int argc, char* argv[])
   dt = 1*MIN(dxyz_min[0], dxyz_min[1]);
 #endif
 
-  p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
   p4est->user_pointer = (void*)(&data);
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
   my_p4est_partition(p4est, P4EST_FALSE, NULL);
@@ -288,7 +285,7 @@ int main (int argc, char* argv[])
     iter++;
   }
 
-  ierr = PetscPrintf(mpi->mpicomm, "Final time: tf=%g\n", tn); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Final time: tf=%g\n", tn); CHKERRXX(ierr);
 
   /* compute the error */
   const double *phi_p;
@@ -310,8 +307,8 @@ int main (int argc, char* argv[])
   ierr = VecRestoreArrayRead(phi_n, &phi_p); CHKERRXX(ierr);
 
   int mpiret;
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, mpi->mpicomm); SC_CHECK_MPI(mpiret);
-  ierr = PetscPrintf(mpi->mpicomm, "Error : %g\n", err); CHKERRXX(ierr);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
+  ierr = PetscPrintf(mpi.comm(), "Error : %g\n", err); CHKERRXX(ierr);
 
   ierr = VecDestroy(phi_n);   CHKERRXX(ierr);
   for(int dir=0; dir<P4EST_DIM; ++dir)
