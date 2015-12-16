@@ -2,7 +2,6 @@
 # list of all files in src to be built
 # --------------------------------------------------------------
 CONFIG(2d, 2d|3d): {
-TARGET = $${TARGET}_2d
 SOURCES += \
   $$PARCASL/src/my_p4est_bialloy.cpp \
   $$PARCASL/src/my_p4est_cell_neighbors.cpp \
@@ -42,7 +41,6 @@ SOURCES += \
 }
 
 CONFIG(3d, 2d|3d): {
-TARGET = $${TARGET}_3d
 SOURCES += \
   $$PARCASL/src/my_p8est_bialloy.cpp \
   $$PARCASL/src/my_p8est_cell_neighbors.cpp \

@@ -18,7 +18,6 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
-#include <src/my_p8est_poisson_nodes.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -100,17 +99,16 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
 {
   PetscErrorCode ierr;
 
-#if defined(STAMPEDE) || defined(COMET)
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
-#else
-  char out_dir[10000];
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_test");
-#endif
-
   std::ostringstream oss;
+  const char* out_dir = getenv("OUT_DIR");
+  if (out_dir)
+    oss << out_dir << "/vtu";
+  else
+    oss << "out_dir/vtu";
 
-  oss << out_dir << "/vtu";
+  std::ostringstream command;
+  command << "mkdir -p " << oss.str();
+  system(command.str().c_str());
 
   struct stat st;
   if(stat(oss.str().data(),&st)!=0 || !S_ISDIR(st.st_mode))
@@ -268,7 +266,7 @@ int main (int argc, char* argv[])
     p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-    my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, &brick, ngbd);
+    my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
     sl.update_p4est(velo_n, dt, phi_n);
     //      sl.update_p4est(velo_cf, dt, phi_n);
 
