@@ -10,16 +10,18 @@
 #include <p8est_ghost.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_poisson_node_base.h>
-#include <src/my_p8est_interpolating_function_host.h>
+#include <src/my_p8est_poisson_nodes.h>
+#include <src/my_p8est_interpolation.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <p4est.h>
 #include <p4est_ghost.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_poisson_node_base.h>
-#include <src/my_p4est_interpolating_function_host.h>
+#include <src/my_p4est_poisson_nodes.h>
+#include <src/my_p4est_interpolation.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #endif
 
 

@@ -8,8 +8,8 @@
 *.bin
 *.exe
 *.pro
-*.pro.user
-*.creator.user
+*.pro.user*
+*.creator.user*
 *~
 *.vt[uks]
 *.pvt[uks]

@@ -3,12 +3,12 @@
 #ifdef P4_TO_P8
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_vtk.h>
-#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_level_set.h>
 #include <src/my_p8est_semi_lagrangian.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_vtk.h>
-#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian.h>
 #endif
 
@@ -511,7 +511,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
   ierr = VecRestoreArray(c_interface, &c_interface_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(v_gamma, &v_gamma_p); CHKERRXX(ierr);
 
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma, normal_velocity_np1);
 
   ierr = VecDestroy(v_gamma); CHKERRXX(ierr);
@@ -640,7 +640,7 @@ void my_p4est_bialloy_t::compute_velocity()
   ierr = VecRestoreArray(w_gamma, &w_gamma_p); CHKERRXX(ierr);
 #endif
 
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.extend_from_interface_to_whole_domain_TVD(phi, u_gamma, u_interface_np1);
   ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma, v_interface_np1);
 #ifdef P4_TO_P8
@@ -754,7 +754,7 @@ void my_p4est_bialloy_t::solve_temperature()
   ierr = VecRestoreArray(temperature_n, &temperature_n_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
-  PoissonSolverNodeBase solver_t(ngbd);
+  my_p4est_poisson_nodes_t solver_t(ngbd);
   solver_t.set_bc(bc_t);
   solver_t.set_mu(dt_n*thermal_diffusivity);
   solver_t.set_diagonal(1);
@@ -770,13 +770,9 @@ void my_p4est_bialloy_t::solve_temperature()
   ierr = VecGhostRestoreLocalForm(temperature_np1, &src); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(t_interface    , &out); CHKERRXX(ierr);
 
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.extend_Over_Interface_TVD(phi, t_interface);
 }
-
-
-
-
 
 void my_p4est_bialloy_t::solve_concentration()
 {
@@ -823,10 +819,11 @@ void my_p4est_bialloy_t::solve_concentration()
   ierr = VecRestoreArray(t_interface, &t_interface_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.extend_from_interface_to_whole_domain_TVD(phi, c_interface_tmp, c_interface);
 
-  InterpolatingFunctionNodeBaseHost interface_value_c(c_interface, *ngbd, linear);
+  my_p4est_interpolation_nodes_t interface_value_c(ngbd);
+  interface_value_c.set_input(c_interface, linear);
   bc_cl.setInterfaceValue(interface_value_c);
 
   /* compute the rhs for concentration */
@@ -843,7 +840,7 @@ void my_p4est_bialloy_t::solve_concentration()
     phi_p[n] *= -1;
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
-  PoissonSolverNodeBase solver_c(ngbd);
+  my_p4est_poisson_nodes_t solver_c(ngbd);
   solver_c.set_phi(phi);
   solver_c.set_bc(bc_cl);
   solver_c.set_mu(dt_n*solute_diffusivity_l);
@@ -927,21 +924,20 @@ void my_p4est_bialloy_t::update_grid()
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-  SemiLagrangian sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
+  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
 
   /* bousouf update this for second order in time */
 #ifdef P4_TO_P8
-  sl.update_p4est_second_order_from_last_grid(u_interface_n  , v_interface_n  , w_interface_n  ,
-                                              u_interface_np1, v_interface_np1, w_interface_np1,
-                                              dt_nm1, dt_n, phi);
+  Vec vel_n[]   = { u_interface_n,   v_interface_n,   w_interface_n   };
+  Vec vel_np1[] = { u_interface_np1, v_interface_np1, w_interface_np1 };
 #else
-  sl.update_p4est_second_order_from_last_grid(u_interface_n  , v_interface_n  ,
-                                              u_interface_np1, v_interface_np1,
-                                              dt_nm1, dt_n, phi);
+  Vec vel_n[]   = { u_interface_n,   v_interface_n   };
+  Vec vel_np1[] = { u_interface_np1, v_interface_np1 };
 #endif
+  sl.update_p4est(vel_n, vel_np1, dt_nm1, dt_n, phi);
 
   /* interpolate the quantities on the new grid */
-  InterpolatingFunctionNodeBaseHost interp(*ngbd, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp(ngbd);
 
   /* NOTE: should we do ghost updates ? or go through interpolations ? */
 //  for(p4est_locidx_t n=0; n<nodes_np1->num_owned_indeps; ++n)
@@ -961,35 +957,35 @@ void my_p4est_bialloy_t::update_grid()
 
   ierr = VecDestroy(temperature_n); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &temperature_n); CHKERRXX(ierr);
-  interp.set_input(temperature_np1);
+  interp.set_input(temperature_np1, quadratic_non_oscillatory);
   interp.interpolate(temperature_n);
   ierr = VecDestroy(temperature_np1); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &temperature_np1); CHKERRXX(ierr);
 
   ierr = VecDestroy(cl_n); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &cl_n); CHKERRXX(ierr);
-  interp.set_input(cl_np1);
+  interp.set_input(cl_np1, quadratic_non_oscillatory);
   interp.interpolate(cl_n);
   ierr = VecDestroy(cl_np1); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &cl_np1); CHKERRXX(ierr);
 
   ierr = VecDestroy(cs_n); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &cs_n); CHKERRXX(ierr);
-  interp.set_input(cs_np1);
+  interp.set_input(cs_np1, quadratic_non_oscillatory);
   interp.interpolate(cs_n);
   ierr = VecDestroy(cs_np1); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &cs_np1); CHKERRXX(ierr);
 
   ierr = VecDestroy(u_interface_n); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &u_interface_n); CHKERRXX(ierr);
-  interp.set_input(u_interface_np1);
+  interp.set_input(u_interface_np1, quadratic_non_oscillatory);
   interp.interpolate(u_interface_n);
   ierr = VecDestroy(u_interface_np1); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &u_interface_np1); CHKERRXX(ierr);
 
   ierr = VecDestroy(v_interface_n); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &v_interface_n); CHKERRXX(ierr);
-  interp.set_input(v_interface_np1);
+  interp.set_input(v_interface_np1, quadratic_non_oscillatory);
   interp.interpolate(v_interface_n);
   ierr = VecDestroy(v_interface_np1); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &v_interface_np1); CHKERRXX(ierr);
@@ -997,7 +993,7 @@ void my_p4est_bialloy_t::update_grid()
 #ifdef P4_TO_P8
   ierr = VecDestroy(w_interface_n); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &w_interface_n); CHKERRXX(ierr);
-  interp.set_input(w_interface_np1);
+  interp.set_input(w_interface_np1, quadratic_non_oscillatory);
   interp.interpolate(w_interface_n);
   ierr = VecDestroy(w_interface_np1); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &w_interface_np1); CHKERRXX(ierr);
@@ -1005,7 +1001,7 @@ void my_p4est_bialloy_t::update_grid()
 
   Vec normal_velocity_n;
   ierr = VecDuplicate(phi, &normal_velocity_n); CHKERRXX(ierr);
-  interp.set_input(normal_velocity_np1);
+  interp.set_input(normal_velocity_np1, quadratic_non_oscillatory);
   interp.interpolate(normal_velocity_n);
   ierr = VecDestroy(normal_velocity_np1); CHKERRXX(ierr);
   normal_velocity_np1 = normal_velocity_n;
@@ -1026,16 +1022,12 @@ void my_p4est_bialloy_t::update_grid()
   ngbd->update(hierarchy, nodes);
 
   /* reinitialize and perturb phi */
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.reinitialize_1st_order_time_2nd_order_space(phi);
   ls.perturb_level_set_function(phi, EPS);
 
   compute_normal_and_curvature();
 }
-
-
-
-
 
 void my_p4est_bialloy_t::one_step()
 {

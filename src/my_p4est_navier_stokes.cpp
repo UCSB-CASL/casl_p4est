@@ -556,9 +556,9 @@ void my_p4est_navier_stokes_t::compute_max_L2_norm_u()
   ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
-  double dxmax = MAX(dxyz_min[0], dxyz_min[1]);
-#else
   double dxmax = MAX(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+#else
+  double dxmax = MAX(dxyz_min[0], dxyz_min[1]);
 #endif
 
   const double *v_p[P4EST_DIM];

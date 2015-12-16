@@ -43,11 +43,6 @@
 #include <stdio.h>
 #include <petsclog.h>
 
-static const double p4est_vtk_scale = 1.0;
-static const int    p4est_vtk_write_tree = 1;
-static const int    p4est_vtk_write_rank = 1;
-static const int    p4est_vtk_wrap_rank = 0;
-
 #undef P4EST_VTK_COMPRESSION
 
 #ifndef P4EST_VTK_DOUBLES

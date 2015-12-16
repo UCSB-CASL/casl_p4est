@@ -42,11 +42,10 @@ extern PetscLogEvent log_my_p4est_semi_lagrangian_grid_gen_iter[P4EST_MAXLEVEL];
 #define PetscLogFlops(n) 0
 #endif
 
-my_p4est_semi_lagrangian_t::my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1, p4est_ghost_t **ghost_np1, my_p4est_brick_t *myb, my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1)
+my_p4est_semi_lagrangian_t::my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1, p4est_ghost_t **ghost_np1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1)
   : p_p4est(p4est_np1), p4est(*p4est_np1),
     p_nodes(nodes_np1), nodes(*nodes_np1),
     p_ghost(ghost_np1), ghost(*ghost_np1),
-    myb(myb),
     ngbd_n(ngbd_n),
     ngbd_nm1(ngbd_nm1),
     hierarchy(ngbd_n->hierarchy)

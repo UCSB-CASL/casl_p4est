@@ -34,9 +34,9 @@ PoissonSolverNodeBaseJump::PoissonSolverNodeBaseJump(const my_p4est_node_neighbo
     p4est(node_neighbors->p4est), ghost(node_neighbors->ghost), nodes(node_neighbors->nodes),
     phi(NULL), rhs(NULL), sol_voro(NULL),
     voro_global_offset(p4est->mpisize),
-    interp_phi(NULL, *node_neighbors, linear),
-    rhs_m(NULL, *node_neighbors, linear),
-    rhs_p(NULL, *node_neighbors, linear),
+    interp_phi(node_neighbors),
+    rhs_m(node_neighbors),
+    rhs_p(node_neighbors),
     local_mu(false), local_add(false),
     local_u_jump(false), local_mu_grad_u_jump(false),
     mu_m(&mu_constant), mu_p(&mu_constant), add(&add_constant),
@@ -117,14 +117,14 @@ PetscErrorCode PoissonSolverNodeBaseJump::VecCreateGhostVoronoiRhs()
 void PoissonSolverNodeBaseJump::set_phi(Vec phi)
 {
   this->phi = phi;
-  interp_phi.set_input(phi);
+  interp_phi.set_input(phi, linear);
 }
 
 
 void PoissonSolverNodeBaseJump::set_rhs(Vec rhs_m, Vec rhs_p)
 {
-  this->rhs_m.set_input(rhs_m);
-  this->rhs_p.set_input(rhs_p);
+  this->rhs_m.set_input(rhs_m, linear);
+  this->rhs_p.set_input(rhs_p, linear);
 }
 
 
@@ -138,7 +138,9 @@ void PoissonSolverNodeBaseJump::set_diagonal(double add)
 void PoissonSolverNodeBaseJump::set_diagonal(Vec add)
 {
   if(local_add) delete this->add;
-  this->add = new InterpolatingFunctionNodeBaseHost(add, *ngbd_n, linear);
+  my_p4est_interpolation_nodes_t *add_interp = new my_p4est_interpolation_nodes_t (ngbd_n);
+  add_interp->set_input(add, linear);
+  this->add = add_interp;
   local_add = true;
 }
 
@@ -166,8 +168,14 @@ void PoissonSolverNodeBaseJump::set_mu(double mu)
 void PoissonSolverNodeBaseJump::set_mu(Vec mu_m, Vec mu_p)
 {
   if(local_mu) { delete this->mu_m; delete this->mu_p; }
-  this->mu_m = new InterpolatingFunctionNodeBaseHost(mu_m, *ngbd_n, linear);
-  this->mu_p = new InterpolatingFunctionNodeBaseHost(mu_p, *ngbd_n, linear);
+  my_p4est_interpolation_nodes_t *mu_m_interp = new my_p4est_interpolation_nodes_t(ngbd_n);
+  mu_m_interp->set_input(mu_m, linear);
+  my_p4est_interpolation_nodes_t *mu_p_interp = new my_p4est_interpolation_nodes_t(ngbd_n);
+  mu_p_interp->set_input(mu_p, linear);
+
+  this->mu_m = mu_m_interp;
+  this->mu_p = mu_p_interp;
+
   local_mu = true;
 }
 
@@ -175,14 +183,18 @@ void PoissonSolverNodeBaseJump::set_mu(Vec mu_m, Vec mu_p)
 void PoissonSolverNodeBaseJump::set_u_jump(Vec u_jump)
 {
   if(local_u_jump) delete this->u_jump;
-  this->u_jump = new InterpolatingFunctionNodeBaseHost(u_jump, *ngbd_n, linear);
+  my_p4est_interpolation_nodes_t* u_jump_interp = new my_p4est_interpolation_nodes_t(ngbd_n);
+  u_jump_interp->set_input(u_jump, linear);
+  this->u_jump = u_jump_interp;
   local_u_jump = true;
 }
 
 void PoissonSolverNodeBaseJump::set_mu_grad_u_jump(Vec mu_grad_u_jump)
 {
   if(local_mu_grad_u_jump) delete this->mu_grad_u_jump;
-  this->mu_grad_u_jump = new InterpolatingFunctionNodeBaseHost(mu_grad_u_jump, *ngbd_n, linear);
+  my_p4est_interpolation_nodes_t *mu_grad_u_jump_interp = new my_p4est_interpolation_nodes_t(ngbd_n);
+  mu_grad_u_jump_interp->set_input(mu_grad_u_jump, linear);
+  this->mu_grad_u_jump = mu_grad_u_jump_interp;
   local_mu_grad_u_jump = true;
 }
 
@@ -278,8 +290,14 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
   /* set the nullspace */
-  if (matrix_has_nullspace)
+  if (matrix_has_nullspace){
+    // PETSc removed the KSPSetNullSpace in 3.6.0 ... Use MatSetNullSpace instead
+#if PETSC_VERSION_GE(3,6,0)
+    ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+#else
     ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
+#endif
+  }
 
   /* Solve the system */
   ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
@@ -1260,7 +1278,7 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 #endif
     }
 
-    double volume = voro.volume();
+    double volume = voro.get_volume();
 
     rhs_p[n] *= volume;
 #ifdef P4_TO_P8
@@ -1486,7 +1504,7 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
 #endif
     }
 
-    rhs_p[n] *= voro.volume();
+    rhs_p[n] *= voro.get_volume();
 
     for(unsigned int l=0; l<points->size(); ++l)
     {

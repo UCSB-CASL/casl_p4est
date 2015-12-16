@@ -809,7 +809,6 @@ public:
  * \brief prepares MPI, PETSc, p4est, and sc libraries
  */
 class Session{
-  PetscLogStage stage;
   PetscErrorCode ierr;
 public:
   ~Session(){
