@@ -62,7 +62,6 @@ public:
   double compute_dt(Vec vx, Vec vy);
 #endif
 
-
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with Euler along the characteristic.
    *   The forest at time n is copied, and is then refined, coarsened and balance iteratively until convergence.

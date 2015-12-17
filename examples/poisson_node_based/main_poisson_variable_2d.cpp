@@ -13,8 +13,8 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_poisson_node_base.h>
-#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_poisson_nodes.h>
+#include <src/my_p8est_level_set.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -23,8 +23,8 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_poisson_node_base.h>
-#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_poisson_nodes.h>
+#include <src/my_p4est_level_set.h>
 #endif
 
 #undef MIN
@@ -277,15 +277,12 @@ static struct:CF_2{
 
 int main (int argc, char* argv[]){
 
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
   try{
     p4est_t            *p4est;
     p4est_nodes_t      *nodes;
     PetscErrorCode      ierr;
-
-    Session mpi_session;
-    mpi_session.init(argc, argv, mpi->mpicomm);
 
     cmdParser cmd;
     cmd.add_option("bc_wtype", "type of boundary condition to use on the wall");
@@ -303,12 +300,6 @@ int main (int argc, char* argv[]){
     nb_splits         = cmd.get("sp", 0);
     min_level         = cmd.get("lmin"      , 3);
     max_level         = cmd.get("lmax"      , 8);
-
-    PetscPrintf(mpi->mpicomm, "sizeof(int) = %d, sizeof(long int) = %d, sizeof(long long int) = %d\nINT_MAX = %ld LONG_MAX = %ld LONG_LONG_MAX = %ld\n",
-                sizeof(int), sizeof(long int), sizeof(long long int), INT_MAX, LONG_MAX, LONG_LONG_MAX);
-
-    PetscPrintf(mpi->mpicomm, "sizeof(p4est_locidx_t) = %d, sizeof(p4est_gloidx_t) = %d\nP4EST_LOCIDX_MAX = %ld P4EST_GLOIDX_MAX = %ld\n",
-                sizeof(p4est_locidx_t), sizeof(p4est_gloidx_t), P4EST_LOCIDX_MAX, P4EST_GLOIDX_MAX);
 
 #ifdef P4_TO_P8
     CF_3 *bc_wall_value, *bc_interface_value;
@@ -351,31 +342,28 @@ int main (int argc, char* argv[]){
 
     parStopWatch w1, w2;
     w1.start("total time");
-
-    MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-    MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
     w2.start("initializing the grid");
 
     /* create the macro mesh */
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-    connectivity = my_p4est_brick_new(2, 2, 2, &brick);
+    connectivity = my_p4est_brick_new(2, 2, 2,
+                                      0, 2, 0, 2, 0, 2, &brick);
 #else
-    connectivity = my_p4est_brick_new(2, 2, &brick);
+    connectivity = my_p4est_brick_new(2, 2, 0, 2, 0, 2, &brick);
 #endif
 
     /* create the p4est */
-    p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    p4est = p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
     p4est->user_pointer = (void*)(&data);
-    p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
     /* partition the p4est */
-    p4est_partition(p4est, NULL);
+    my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
     /* create the ghost layer */
-    p4est_ghost_t* ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+    p4est_ghost_t* ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
 
     /* generate unique node indices */
     nodes = my_p4est_nodes_new(p4est, ghost);
@@ -388,14 +376,6 @@ int main (int argc, char* argv[]){
     ierr = VecDuplicate(phi, &uex); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &sol); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &mue); CHKERRXX(ierr);
-
-    struct:CF_2{
-      double operator()(double x, double y) const {
-        (void) x;
-        (void) y;
-        return -1;
-      }
-    } m1;
 
     sample_cf_on_nodes(p4est, nodes, circle, phi);
     sample_cf_on_nodes(p4est, nodes, u_ex, uex);
@@ -421,9 +401,9 @@ int main (int argc, char* argv[]){
     sample_cf_on_nodes(p4est, nodes, *bc_interface_value, interface_value_Vec);
     sample_cf_on_nodes(p4est, nodes, *bc_wall_value, wall_value_Vec);
 
-    InterpolatingFunctionNodeBase interface_interp(p4est, nodes, ghost, &brick, &ngbd), wall_interp(p4est, nodes, ghost, &brick, &ngbd);
-    interface_interp.set_input_parameters(interface_value_Vec, linear);
-    wall_interp.set_input_parameters(wall_value_Vec, linear);
+    my_p4est_interpolation_nodes_t interface_interp(&ngbd), wall_interp(&ngbd);
+    interface_interp.set_input(interface_value_Vec, linear);
+    wall_interp.set_input(wall_value_Vec, linear);
 
     bc_interface_value = &interface_interp;
     bc_wall_value = &wall_interp;
@@ -440,7 +420,7 @@ int main (int argc, char* argv[]){
 
     /* initialize the poisson solver */
     w2.start("solve the poisson equation");
-    PoissonSolverNodeBase solver(&ngbd);
+    my_p4est_poisson_nodes_t solver(&ngbd);
     solver.set_phi(phi);    
     solver.set_rhs(rhs);
     solver.set_mu(mue);
@@ -449,12 +429,7 @@ int main (int argc, char* argv[]){
     /* solve the system */
     solver.solve(sol);    
 
-    ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
     w2.stop(); w2.read_duration();
-
-    /* shift the solution vector to match the value at the exact solution */
-    solver.shift_to_exact_solution(sol, uex);
 
     /* prepare for output */
     double *sol_p, *phi_p, *uex_p;
@@ -565,7 +540,7 @@ int main (int argc, char* argv[]){
     w1.stop(); w1.read_duration();
 
   } catch (const std::exception& e) {
-    std::cout << "[" << mpi->mpirank << " -- ERROR]: " << e.what() << std::endl;
+    std::cout << "[" << mpi.rank() << " -- ERROR]: " << e.what() << std::endl;
   }
 
   return 0;

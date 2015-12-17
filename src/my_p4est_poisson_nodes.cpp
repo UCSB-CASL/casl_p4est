@@ -31,6 +31,7 @@ extern PetscLogEvent log_my_p4est_poisson_nodes_solve;
 #endif
 #define bc_strength 1.0
 
+
 my_p4est_poisson_nodes_t::my_p4est_poisson_nodes_t(const my_p4est_node_neighbors_t *node_neighbors)
   : node_neighbors_(node_neighbors),
     p4est(node_neighbors->p4est), nodes(node_neighbors->nodes), ghost(node_neighbors->ghost), myb_(node_neighbors->myb),
