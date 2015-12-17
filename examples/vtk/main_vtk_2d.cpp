@@ -22,6 +22,7 @@
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 #include <src/petsc_compatibility.h>
+#include <src/CASL_math.h>
 
 using namespace std;
 
@@ -49,8 +50,9 @@ private:
 
 int main (int argc, char* argv[]){
 
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
+
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   PetscErrorCode      ierr;
@@ -62,14 +64,8 @@ int main (int argc, char* argv[]){
 #endif
   splitting_criteria_cf_t data(0, 8, &circ, 1);
 
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
-
   parStopWatch w1, w2;
   w1.start("total time");
-
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
   // Create the connectivity object
   w2.start("connectivity");
@@ -77,15 +73,16 @@ int main (int argc, char* argv[]){
   my_p4est_brick_t brick;
 
 #ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(2, 2, 2, &brick);
+  connectivity = my_p4est_brick_new(2, 2, 2,
+                                    0, 2, 0, 2, 0, 2, &brick);
 #else
-  connectivity = my_p4est_brick_new(2, 2, &brick);
+  connectivity = my_p4est_brick_new(2, 2, 0, 2, 0, 2, &brick);
 #endif
   w2.stop(); w2.read_duration();
 
   // Now create the forest
   w2.start("p4est generation");
-  p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est = p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
   w2.stop(); w2.read_duration();
 
   // Now refine the tree
@@ -96,7 +93,7 @@ int main (int argc, char* argv[]){
 
   // Finally re-partition
   w2.start("partition");
-  p4est_partition(p4est, NULL);
+  my_p4est_partition(p4est, P4EST_TRUE, NULL);
   w2.stop(); w2.read_duration();
 
   // generate the ghost data-structure
@@ -155,27 +152,13 @@ int main (int argc, char* argv[]){
   w2.start("setting phi values");
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
   {
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
-    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-    p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-    double tree_xmin = connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mm + 2];
-#endif
-
-    double x = int2double_coordinate_transform(node->x) + tree_xmin;
-    double y = int2double_coordinate_transform(node->y) + tree_ymin;
-#ifdef P4_TO_P8
-    double z = int2double_coordinate_transform(node->z) + tree_zmin;
-#endif
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(i, p4est, nodes, xyz);
 
 #ifdef P4_TO_P8
-    phi[i] = circ(x,y,z);
+    phi[i] = circ(xyz[0], xyz[1], xyz[2]);
 #else
-    phi[i] = circ(x,y);
+    phi[i] = circ(xyz[0], xyz[1]);
 #endif
   }
   w2.stop(); w2.read_duration();
@@ -201,31 +184,13 @@ int main (int argc, char* argv[]){
   // do the loop. Note how we only loop over LOCAL nodes
   for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; ++i)
   {
-    /* since we want to access the local nodes, we need to 'jump' over intial
-     * nonlocal nodes. Number of initial nonlocal nodes is given by
-     * nodes->offset_owned_indeps
-     */
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+nodes->offset_owned_indeps);
-    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-    p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-    double tree_xmin = connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mm + 2];
-#endif
-
-    double x = int2double_coordinate_transform(node->x) + tree_xmin;
-    double y = int2double_coordinate_transform(node->y) + tree_ymin;
-#ifdef P4_TO_P8
-    double z = int2double_coordinate_transform(node->z) + tree_zmin;
-#endif
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(i, p4est, nodes, xyz);
 
 #ifdef P4_TO_P8
-    phi_copy[i] = circ(x,y,z);
+    phi_copy[i] = circ(xyz[0], xyz[1], xyz[2]);
 #else
-    phi_copy[i] = circ(x,y);
+    phi_copy[i] = circ(xyz[0], xyz[1]);
 #endif
   }
 
@@ -249,7 +214,7 @@ int main (int argc, char* argv[]){
   ierr = VecGhostUpdateEnd(phi_global_copy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // done. lets write both levelset. they MUST be identical when you open them.
-  std::ostringstream oss; oss << P4EST_DIM << "d_partition_" << p4est->mpisize;
+  std::ostringstream oss; oss << P4EST_DIM << "d_partition_" << mpi.size();
   my_p4est_vtk_write_all(p4est, nodes, ghost    ,
                          P4EST_TRUE, P4EST_TRUE,
                          2, 0, oss.str().c_str(),
