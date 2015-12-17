@@ -1583,8 +1583,8 @@ int main (int argc, char* argv[])
   if(test_number==2 || test_number==5)
   {
 #if defined(STAMPEDE) || defined(COMET)
-    if     (test_number==2) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, nz, Re, threshold_split_cell, n_times_dt);
-    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_sphere_%d-%d_%dx%dx%d_thresh_%g_Re_%g.dat", out_dir, lmin, lmax, nx, ny, nz, threshold_split_cell, Re);
+    if     (test_number==2) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, nz, Re, threshold_split_cell, n_times_dt, sl_order);
+    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_sphere_%d-%d_%dx%dx%d_thresh_%g_Re_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, nz, threshold_split_cell, Re, sl_order);
 #else
     if     (test_number==2) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/karman/forces_%d-%d_%dx%dx%d_Re_%g.dat", lmin, lmax, nx, ny, nz, Re);
     else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/oscillating_sphere/forces_%d-%d_%dx%dx%d.dat", lmin, lmax, nx, ny, nz);
@@ -1605,13 +1605,13 @@ int main (int argc, char* argv[])
   if(test_number==4 || test_number==5 || test_number==6)
   {
 #if defined(STAMPEDE) || defined(COMET)
-    if     (test_number==4) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
-    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
-    else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    if     (test_number==4) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
+    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
+    else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
 #else
     if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/karman/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
     else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
-    else if(test_number==6) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/naca/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
+    else if(test_number==6) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/naca/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
 #endif
 
     ierr = PetscPrintf(mpi->mpicomm, "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
