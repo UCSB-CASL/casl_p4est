@@ -228,9 +228,14 @@ void my_p4est_interpolation_t::interpolate(double *Fo_p) {
 
     done = num_remaining_queries == 0 && num_remaining_replies == 0 && it == end;
   }
+
+//  mpiret = MPI_Waitall(query_req.size(), &query_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+//  mpiret = MPI_Waitall(reply_req.size(), &reply_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+//  query_req.clear();
+//  reply_req.clear();
   
-  InterpolatingFunctionLogger& logger = InterpolatingFunctionLogger::get_instance();
-  logger.log(log_entry);
+//  InterpolatingFunctionLogger& logger = InterpolatingFunctionLogger::get_instance();
+//  logger.log(log_entry);
 
   ierr = PetscLogEventEnd(log_my_p4est_interpolation_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 }

@@ -709,11 +709,11 @@ public:
     (void) length;
     char path_to_naca[1000];
 #if defined(STAMPEDE)
-    sprintf(path_to_naca, "/work/02673/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000", number);
+    sprintf(path_to_naca, "/work/02673/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
 #elif defined(COMET)
-    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000", number);
+    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
 #else
-    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000", number);
+    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
 #endif
 
     PetscErrorCode ierr;
