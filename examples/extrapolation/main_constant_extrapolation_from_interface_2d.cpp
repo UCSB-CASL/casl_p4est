@@ -16,7 +16,7 @@
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_level_set.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -26,7 +26,7 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_level_set.h>
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 
@@ -43,17 +43,18 @@ int nb_splits = 0;
 #define LINEAR
 //#define CONSTANT
 
-int brick_nx = 2;
-int brick_ny = 2;
-double x_center = (double) brick_nx / 2.;
-double y_center = (double) brick_ny / 2.;
-double r = .512092;
+int n_xyz [] = {2, 2, 2};
+double xyz_min [] = {0, 0, 0};
+double xyz_max [] = {2, 2, 2};
+
+double x_center = (xyz_max[0]-xyz_min[0]) / 2.;
+double y_center = (xyz_max[1]-xyz_min[1]) / 2.;
 
 #ifdef P4_TO_P8
-int brick_nz = 2;
-double z_center = (double) brick_nz / 2.;
+double z_center = (xyz_max[2]-xyz_min[2]) / 2.;
 #endif
 
+double r = .512092;
 #undef MIN
 #undef MAX
 
@@ -151,11 +152,11 @@ void check_accuracy(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec q, CF_2 *
 
       double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
       double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-      double x = node_x_fr_i(node) + tree_xmin;
-      double y = node_y_fr_j(node) + tree_ymin;
+      double x = node_x_fr_n(node) + tree_xmin;
+      double y = node_y_fr_n(node) + tree_ymin;
 #ifdef P4_TO_P8
       double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-      double z = node_z_fr_k(node) + tree_zmin;
+      double z = node_z_fr_n(node) + tree_zmin;
 #endif
 
       double nx = x-x_center;
@@ -210,161 +211,153 @@ void check_accuracy(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec q, CF_2 *
 
 int main (int argc, char* argv[])
 {
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
 
-  try {
-    p4est_t            *p4est;
-    p4est_nodes_t      *nodes;
-    PetscErrorCode ierr;
-    cmdParser cmd;
-    cmd.add_option("lmin", "min level of the tree");
-    cmd.add_option("lmax", "max level of the tree");
-    cmd.add_option("nb_splits", "number of additional levels");
-    cmd.add_option("iter", "number of iterations");
-    cmd.add_option("compute_accuracy", "perform an accuracy check");
-    cmd.parse(argc, argv);
+  p4est_t            *p4est;
+  p4est_nodes_t      *nodes;
+  PetscErrorCode ierr;
+  cmdParser cmd;
+  cmd.add_option("lmin", "min level of the tree");
+  cmd.add_option("lmax", "max level of the tree");
+  cmd.add_option("nb_splits", "number of additional levels");
+  cmd.add_option("iter", "number of iterations");
+  cmd.add_option("compute_accuracy", "perform an accuracy check");
+  cmd.parse(argc, argv);
 
-    nb_splits = cmd.get("nb_splits", 0);
-    min_level = cmd.get("lmin", 2);
-    max_level = cmd.get("lmax", 5);
+  nb_splits = cmd.get("nb_splits", 0);
+  min_level = cmd.get("lmin", 2);
+  max_level = cmd.get("lmax", 5);
 
-    circle circ;
-    splitting_criteria_cf_t data(min_level+nb_splits, max_level+nb_splits, &circ, 1.2);
+  circle circ;
+  splitting_criteria_cf_t data(min_level+nb_splits, max_level+nb_splits, &circ, 1.2);
 
-    parStopWatch w1;
-    w1.start("total time");
+  parStopWatch w1;
+  w1.start("total time");
 
-    /* Create the connectivity object */
-    p4est_connectivity_t *connectivity;
-    my_p4est_brick_t brick;
+  /* Create the connectivity object */
+  p4est_connectivity_t *connectivity;
+  my_p4est_brick_t brick;
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+
+  /* Now create the forest */
+  p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+
+  /* Now refine the tree */
+  p4est->user_pointer = (void*)(&data);
+  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+
+  /* Finally re-partition */
+  my_p4est_partition(p4est, P4EST_TRUE, NULL);
+
+  /* Create the ghost structure */
+  p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+
+  /* generate the node data structure */
+  nodes = my_p4est_nodes_new(p4est, ghost);
+
+  /* Initialize the level-set function */
+  Vec phi;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, circ, phi);
+
+  my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
+  my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
+  my_p4est_level_set_t ls(&ngbd);
+
+  /* find dx and dy smallest */
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  double dx = (xmax-xmin) / pow(2.,(double) data.max_lvl);
+  double dy = (ymax-ymin) / pow(2.,(double) data.max_lvl);
+
 #ifdef P4_TO_P8
-    connectivity = my_p4est_brick_new(brick_nx, brick_ny, brick_nz, &brick);
+  double zmin = p4est->connectivity->vertices[3*vm + 2];
+  double zmax = p4est->connectivity->vertices[3*vp + 2];
+  double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
+#endif
+
+  /* perturb the level-set function */
+#ifdef P4_TO_P8
+  ls.perturb_level_set_function(phi, MIN(dx, dy, dz)*1e-3);
 #else
-    connectivity = my_p4est_brick_new(brick_nx, brick_ny, &brick);
+  ls.perturb_level_set_function(phi, MIN(dx, dy)*1e-3);
 #endif
 
-    /* Now create the forest */
-    p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  Vec f, f_ext;
+  ierr = VecDuplicate(phi, &f); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &f_ext); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, f_exact, f);
 
-    /* Now refine the tree */
-    p4est->user_pointer = (void*)(&data);
-    p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+  double *phi_p, *f_p, *f_ext_p;
 
-    /* Finally re-partition */
-    p4est_partition(p4est, NULL);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, f, f_ext, cmd.get("iter", 10));
 
-    /* Create the ghost structure */
-    p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-
-    /* generate the node data structure */
-    nodes = my_p4est_nodes_new(p4est, ghost);
-
-    /* Initialize the level-set function */
-    Vec phi;
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est, nodes, circ, phi);
-
-    my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
-    my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
-    my_p4est_level_set ls(&ngbd);
-
-    /* find dx and dy smallest */
-    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-    double xmin = p4est->connectivity->vertices[3*vm + 0];
-    double ymin = p4est->connectivity->vertices[3*vm + 1];
-    double xmax = p4est->connectivity->vertices[3*vp + 0];
-    double ymax = p4est->connectivity->vertices[3*vp + 1];
-    double dx = (xmax-xmin) / pow(2.,(double) data.max_lvl);
-    double dy = (ymax-ymin) / pow(2.,(double) data.max_lvl);
-
-#ifdef P4_TO_P8
-    double zmin = p4est->connectivity->vertices[3*vm + 2];
-    double zmax = p4est->connectivity->vertices[3*vp + 2];
-    double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
-#endif
-
-    /* perturb the level-set function */
-#ifdef P4_TO_P8
-    ls.perturb_level_set_function(phi, MIN(dx, dy, dz)*1e-3);
-#else
-    ls.perturb_level_set_function(phi, MIN(dx, dy)*1e-3);
-#endif
-
-    Vec f, f_ext;
-    ierr = VecDuplicate(phi, &f); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &f_ext); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est, nodes, f_exact, f);
-
-    double *phi_p, *f_p, *f_ext_p;
-
-    ls.extend_from_interface_to_whole_domain_TVD(phi, f, f_ext, cmd.get("iter", 10));
-
-    Vec err;
-    if(cmd.contains("compute_accuracy"))
-    {
-      ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
-      check_accuracy(p4est, nodes, phi, f_ext, &f_exact, err);
-    }
-
-    ierr = VecGetArray(phi  , &phi_p  ); CHKERRXX(ierr);
-    ierr = VecGetArray(f    , &f_p    ); CHKERRXX(ierr);
-    ierr = VecGetArray(f_ext, &f_ext_p); CHKERRXX(ierr);
-
-
-    /* write the data to disk */
-    char file_name[1000];
-    sprintf(file_name, "/Users/guittet/code/Output/p4est/misc/constant_extension_1");
-    if(cmd.contains("compute_accuracy"))
-    {
-      double *err_p;
-      ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
-      my_p4est_vtk_write_all(p4est, nodes, ghost,
-                             P4EST_TRUE, P4EST_TRUE,
-                             4, 0, file_name,
-                             VTK_POINT_DATA, "phi", phi_p,
-                             VTK_POINT_DATA, "f", f_p,
-                             VTK_POINT_DATA, "f_extended", f_ext_p,
-                             VTK_POINT_DATA, "error", err_p);
-      ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
-    }
-    else
-      my_p4est_vtk_write_all(p4est, nodes, NULL,
-                             P4EST_TRUE, P4EST_TRUE,
-                             3, 0, file_name,
-                             VTK_POINT_DATA, "phi", phi_p,
-                             VTK_POINT_DATA, "f", f_p,
-                             VTK_POINT_DATA, "f_extended", f_ext_p);
-
-    char *path = getenv("PWD");
-
-    PetscPrintf(mpi->mpicomm, "file saved in ... %s/extension_0\n", path);
-
-    ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(f  , &f_p); CHKERRXX(ierr);
-
-    if(cmd.contains("compute_accuracy")) ierr = VecDestroy(err); CHKERRXX(ierr);
-    ierr = VecDestroy(phi  ); CHKERRXX(ierr);
-    ierr = VecDestroy(f    ); CHKERRXX(ierr);
-    ierr = VecDestroy(f_ext); CHKERRXX(ierr);
-
-    // destroy the p4est and its connectivity structure
-    p4est_ghost_destroy(ghost);
-    p4est_nodes_destroy (nodes);
-    p4est_destroy (p4est);
-    my_p4est_brick_destroy(connectivity, &brick);
-
-    w1.stop(); w1.read_duration();
-  } catch (const std::exception &e) {
-    PetscSynchronizedFPrintf(mpi->mpicomm, stderr, "[%d] %s\n", mpi->mpirank, e.what());
-    PetscSynchronizedFlush(mpi->mpicomm);
-    MPI_Abort(mpi->mpicomm, MPI_ERR_UNKNOWN);
+  Vec err;
+  if(cmd.contains("compute_accuracy"))
+  {
+    ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
+    check_accuracy(p4est, nodes, phi, f_ext, &f_exact, err);
   }
+
+  ierr = VecGetArray(phi  , &phi_p  ); CHKERRXX(ierr);
+  ierr = VecGetArray(f    , &f_p    ); CHKERRXX(ierr);
+  ierr = VecGetArray(f_ext, &f_ext_p); CHKERRXX(ierr);
+
+
+  /* write the data to disk */
+  char file_name[1000];
+  const char* out_dir = getenv("OUT_DIR");
+  if (out_dir)
+    sprintf(file_name, "%s/misc", out_dir);
+  else {
+    mkdir("misc", 0755);
+    sprintf(file_name, "misc/constant_extension_1");
+  }
+  if(cmd.contains("compute_accuracy"))
+  {
+    double *err_p;
+    ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE,
+                           4, 0, file_name,
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "f", f_p,
+                           VTK_POINT_DATA, "f_extended", f_ext_p,
+                           VTK_POINT_DATA, "error", err_p);
+    ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
+  }
+  else
+    my_p4est_vtk_write_all(p4est, nodes, NULL,
+                           P4EST_TRUE, P4EST_TRUE,
+                           3, 0, file_name,
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "f", f_p,
+                           VTK_POINT_DATA, "f_extended", f_ext_p);
+
+  char *path = getenv("PWD");
+
+  PetscPrintf(mpi.comm(), "file saved in ... %s/%s\n", path, file_name);
+
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(f  , &f_p); CHKERRXX(ierr);
+
+  if(cmd.contains("compute_accuracy")) ierr = VecDestroy(err); CHKERRXX(ierr);
+  ierr = VecDestroy(phi  ); CHKERRXX(ierr);
+  ierr = VecDestroy(f    ); CHKERRXX(ierr);
+  ierr = VecDestroy(f_ext); CHKERRXX(ierr);
+
+  // destroy the p4est and its connectivity structure
+  p4est_ghost_destroy(ghost);
+  p4est_nodes_destroy (nodes);
+  p4est_destroy (p4est);
+  my_p4est_brick_destroy(connectivity, &brick);
+
+  w1.stop(); w1.read_duration();
 
   return 0;
 }

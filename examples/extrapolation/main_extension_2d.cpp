@@ -16,7 +16,7 @@
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_level_set.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -26,7 +26,7 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_level_set.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -52,15 +52,16 @@ int order = 2;
 //double y_center = .5;
 //double r = .25112;
 
-int brick_nx = 2;
-int brick_ny = 2;
-double x_center = (double) brick_nx / 2.;
-double y_center = (double) brick_ny / 2.;
+int n_xyz [] = {2, 2, 2};
+double xyz_min [] = {0, 0, 0};
+double xyz_max [] = {2, 2, 2};
+
+double x_center = (xyz_max[0]-xyz_min[0]) / 2.;
+double y_center = (xyz_max[1]-xyz_min[1]) / 2.;
 double r = .512092;
 
 #ifdef P4_TO_P8
-int brick_nz = 2;
-double z_center = (double) brick_nz / 2.;
+double z_center = (xyz_max[2]-xyz_min[2]) / 2.;
 #endif
 
 //int brick_nx = 3;
@@ -206,8 +207,9 @@ public:
 
 int main (int argc, char* argv[])
 {
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
+
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   PetscErrorCode ierr;
@@ -230,33 +232,23 @@ int main (int argc, char* argv[])
   circle circ;
   splitting_criteria_cf_t data(min_level+nb_splits, max_level+nb_splits, &circ, 1.2);
 
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
-
   parStopWatch w1;
   w1.start("total time");
-
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
   /* Create the connectivity object */
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-#ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(brick_nx, brick_ny, brick_nz, &brick);
-#else
-  connectivity = my_p4est_brick_new(brick_nx, brick_ny, &brick);
-#endif
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
   /* Now create the forest */
-  p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
   /* Now refine the tree */
   p4est->user_pointer = (void*)(&data);
-  p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
   /* Finally re-partition */
-  p4est_partition(p4est, NULL);
+  my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
   /* Create the ghost structure */
   p4est_ghost_t *ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
@@ -271,7 +263,7 @@ int main (int argc, char* argv[])
 
   my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
   my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
-  my_p4est_level_set ls(&ngbd);
+  my_p4est_level_set_t ls(&ngbd);
 
   /* find dx and dy smallest */
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
@@ -319,12 +311,12 @@ int main (int argc, char* argv[])
 
     double tree_xmin = connectivity->vertices[3*v_mm + 0];
     double tree_ymin = connectivity->vertices[3*v_mm + 1];
-    double x = node_x_fr_i(node) + tree_xmin;
-    double y = node_y_fr_j(node) + tree_ymin;
+    double x = node_x_fr_n(node) + tree_xmin;
+    double y = node_y_fr_n(node) + tree_ymin;
 
 #ifdef P4_TO_P8
     double tree_zmin = connectivity->vertices[3*v_mm + 2];
-    double z = node_z_fr_k(node) + tree_zmin;
+    double z = node_z_fr_n(node) + tree_zmin;
 #endif
 
 #ifdef P4_TO_P8
@@ -383,12 +375,12 @@ int main (int argc, char* argv[])
 
       double tree_xmin = connectivity->vertices[3*v_mm + 0];
       double tree_ymin = connectivity->vertices[3*v_mm + 1];
-      double x = node_x_fr_i(node) + tree_xmin;
-      double y = node_y_fr_j(node) + tree_ymin;
+      double x = node_x_fr_n(node) + tree_xmin;
+      double y = node_y_fr_n(node) + tree_ymin;
 
 #ifdef P4_TO_P8
       double tree_zmin = connectivity->vertices[3*v_mm + 2];
-      double z = node_z_fr_k(node) + tree_zmin;
+      double z = node_z_fr_n(node) + tree_zmin;
       if(fabs(f_ptr[n] - bc_interface_dirichlet(x,y,z)) > err_max)
 #else
       if(fabs(f_ptr[n] - bc_interface_dirichlet(x,y)) > err_max)
@@ -435,12 +427,12 @@ int main (int argc, char* argv[])
 
       double tree_xmin = connectivity->vertices[3*v_mm + 0];
       double tree_ymin = connectivity->vertices[3*v_mm + 1];
-      double x = node_x_fr_i(node) + tree_xmin;
-      double y = node_y_fr_j(node) + tree_ymin;
+      double x = node_x_fr_n(node) + tree_xmin;
+      double y = node_y_fr_n(node) + tree_ymin;
 
 #ifdef P4_TO_P8
       double tree_zmin = connectivity->vertices[3*v_mm + 2];
-      double z = node_z_fr_k(node) + tree_zmin;
+      double z = node_z_fr_n(node) + tree_zmin;
       err[n] = fabs(f_ptr[n] - bc_interface_dirichlet(x,y,z));
 #else
       err[n] = fabs(f_ptr[n] - bc_interface_dirichlet(x,y));
