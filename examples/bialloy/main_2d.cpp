@@ -21,8 +21,8 @@
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_levelset.h>
-#include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_poisson_nodes.h>
 #include <src/my_p8est_bialloy.h>
 #else
 #include <p4est_bits.h>
@@ -35,8 +35,8 @@
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_levelset.h>
-#include <src/my_p4est_poisson_node_base.h>
+#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_bialloy.h>
 #endif
 
@@ -393,11 +393,8 @@ public:
 
 int main (int argc, char* argv[])
 {
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -455,17 +452,20 @@ int main (int argc, char* argv[])
   parStopWatch w1;
   w1.start("total time");
 
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
   /* create the p4est */
   my_p4est_brick_t brick;
+
 #ifdef P4_TO_P8
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, nz, &brick);
+  int n_xyz [] = {nx, ny, nz};
+  double xyz_min [] = {0, 0, 0};
+  double xyz_max [] = {nx, ny, nz};
 #else
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, &brick);
+  int n_xyz [] = {nx, ny};
+  double xyz_min [] = {0, 0};
+  double xyz_max [] = {nx, ny};
 #endif
-  p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
   lmin = cmd.get("lmin", lmin);
   lmax = cmd.get("lmax", lmax);
@@ -502,7 +502,7 @@ int main (int argc, char* argv[])
   ierr = VecGhostRestoreLocalForm(normal_velocity, &tmp); CHKERRXX(ierr);
 
   /* perturb level set */
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.perturb_level_set_function(phi, EPS);
 
   /* set initial time step */
@@ -552,24 +552,23 @@ int main (int argc, char* argv[])
   FILE *fich;
   char name[10000];
 
-#ifdef STAMPEDE
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
-  sprintf(name, "%s/velo_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
-#else
-  sprintf(name, "/home/guittet/code/Output/p4est_bialloy/velo/velo_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
-//  sprintf(name, "/home/guittet/code/Output/p4est_bialloy/velo/velo.dat");
-#endif
+  const char *out_dir = getenv("OUT_DIR");
+  if (out_dir)
+    sprintf(name, "%s/velo_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
+  else {
+    mkdir("velo", 0755);
+    sprintf(name, "velo/velo_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
+  }
 
   if(save_velocity)
   {
-    ierr = PetscFOpen(mpi->mpicomm, name, "w", &fich); CHKERRXX(ierr);
-    ierr = PetscFClose(mpi->mpicomm, fich); CHKERRXX(ierr);
+    ierr = PetscFOpen(mpi.comm(), name, "w", &fich); CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
   }
 
   while(tn<t_final)
   {
-    ierr = PetscPrintf(mpi->mpicomm, "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
 
     bas.one_step();
 
@@ -601,10 +600,10 @@ int main (int argc, char* argv[])
 
       ierr = VecDestroy(ones); CHKERRXX(ierr);
 
-      ierr = PetscFOpen(mpi->mpicomm, name, "a", &fich); CHKERRXX(ierr);
-      PetscFPrintf(mpi->mpicomm, fich, "%e %e\n", tn, avg_velo/scaling);
-      ierr = PetscFClose(mpi->mpicomm, fich); CHKERRXX(ierr);
-      ierr = PetscPrintf(mpi->mpicomm, "saved velocity in %s\n", name); CHKERRXX(ierr);
+      ierr = PetscFOpen(mpi.comm(), name, "a", &fich); CHKERRXX(ierr);
+      PetscFPrintf(mpi.comm(), fich, "%e %e\n", tn, avg_velo/scaling);
+      ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "saved velocity in %s\n", name); CHKERRXX(ierr);
     }
 
 

@@ -34,15 +34,9 @@
 #include <assert.h>
 
 p4est_connectivity_t *
-#ifdef P4_TO_P8
-my_p4est_brick_new (int nxtrees, int nytrees, int nztrees,
-                    double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
+my_p4est_brick_new (const int* n_xyz,
+                    const double* xyz_min, const double* xyz_max,
                     my_p4est_brick_t * myb)
-#else
-my_p4est_brick_new (int nxtrees, int nytrees,
-                    double xmin, double xmax, double ymin, double ymax,
-                    my_p4est_brick_t * myb)
-#endif
 {
   int                 i, j;
   int                 ii, jj;
@@ -57,25 +51,25 @@ my_p4est_brick_new (int nxtrees, int nytrees,
   p4est_topidx_t      tt, vindex;
   p4est_connectivity_t *conn;
 
-  P4EST_ASSERT (0 < nxtrees && 0 < nytrees);
+  P4EST_ASSERT (0 < n_xyz[0] && 0 < n_xyz[1]);
 #ifdef P4_TO_P8
-  P4EST_ASSERT (0 < nztrees);
+  P4EST_ASSERT (0 < n_xyz[2]);
 #endif
 #ifdef P4_TO_P8
-  conn = p4est_connectivity_new_brick (nxtrees, nytrees, nztrees, 0, 0, 0);
+  conn = p4est_connectivity_new_brick (n_xyz[0], n_xyz[1], n_xyz[2], 0, 0, 0);
 #else
-  conn = p4est_connectivity_new_brick (nxtrees, nytrees, 0, 0);
+  conn = p4est_connectivity_new_brick (n_xyz[0], n_xyz[1], 0, 0);
 #endif
   vv = conn->vertices;
   P4EST_ASSERT (vv != NULL);
 
 #ifdef P4_TO_P8
-  myb->nxyztrees[0] = nxtrees;
-  myb->nxyztrees[1] = nytrees;
-  myb->nxyztrees[2] = nztrees;
+  myb->nxyztrees[0] = n_xyz[0];
+  myb->nxyztrees[1] = n_xyz[1];
+  myb->nxyztrees[2] = n_xyz[2];
 #else
-  myb->nxyztrees[0] = nxtrees;
-  myb->nxyztrees[1] = nytrees;
+  myb->nxyztrees[0] = n_xyz[0];
+  myb->nxyztrees[1] = n_xyz[1];
   myb->nxyztrees[2] = 1;
 #endif
 
@@ -90,42 +84,42 @@ my_p4est_brick_new (int nxtrees, int nytrees,
     dii = vv[3 * vindex + 0];
     P4EST_ASSERT (dii == floor (dii));
     i = (int) dii;
-    P4EST_ASSERT (i >= 0 && i < nxtrees);
+    P4EST_ASSERT (i >= 0 && i < n_xyz[0]);
 
     djj = vv[3 * vindex + 1];
     P4EST_ASSERT (djj == floor (djj));
     j = (int) djj;
-    P4EST_ASSERT (j >= 0 && j < nytrees);
+    P4EST_ASSERT (j >= 0 && j < n_xyz[1]);
 
 #ifdef P4_TO_P8
     dkk = vv[3 * vindex + 2];
     P4EST_ASSERT (dkk == floor (dkk));
     k = (int) dkk;
-    P4EST_ASSERT (k >= 0 && k < nztrees);
+    P4EST_ASSERT (k >= 0 && k < n_xyz[2]);
 #endif
 
 #ifdef P4_TO_P8
-    myb->nxyz_to_treeid[nxtrees*nytrees*k + nxtrees*j + i] = tt;
+    myb->nxyz_to_treeid[n_xyz[0]*n_xyz[1]*k + n_xyz[0]*j + i] = tt;
 #else
-    myb->nxyz_to_treeid[nxtrees*j + i] = tt;
+    myb->nxyz_to_treeid[n_xyz[0]*j + i] = tt;
 #endif
   }
 
-  /* resize the domain from [0,nx]x[0,ny]x[0,nz] to [xmin,xmax]x[ymin,ymax]x[zmin,zmax] */
-  double dx = (xmax-xmin)/(double)nxtrees;
-  double dy = (ymax-ymin)/(double)nytrees;
+  /* resize the domain from [0,nx]x[0,ny]x[0,nz] to [xyz_min[0],xyz_max[0]]x[xyz_min[1],xyz_max[1]]x[xyz_min[2],xyz_max[2]] */
+  double dx = (xyz_max[0]-xyz_min[0])/(double)n_xyz[0];
+  double dy = (xyz_max[1]-xyz_min[1])/(double)n_xyz[1];
 #ifdef P4_TO_P8
-  double dz = (zmax-zmin)/(double)nztrees;
+  double dz = (xyz_max[2]-xyz_min[2])/(double)n_xyz[2];
 #endif
-  for(i=0; i<nxtrees; ++i)
-    for(j=0; j<nytrees; ++j)
+  for(i=0; i<n_xyz[0]; ++i)
+    for(j=0; j<n_xyz[1]; ++j)
 #ifdef P4_TO_P8
-      for(k=0; k<nztrees; ++k)
+      for(k=0; k<n_xyz[2]; ++k)
       {
-        int tree_id = myb->nxyz_to_treeid[nxtrees*nytrees*k + nxtrees*j + i];
+        int tree_id = myb->nxyz_to_treeid[n_xyz[0]*n_xyz[1]*k + n_xyz[0]*j + i];
 #else
     {
-      int tree_id = myb->nxyz_to_treeid[nxtrees*j + i];
+      int tree_id = myb->nxyz_to_treeid[n_xyz[0]*j + i];
 #endif
       for(ii=0; ii<2; ++ii)
         for(jj=0; jj<2; ++jj)
@@ -137,10 +131,10 @@ my_p4est_brick_new (int nxtrees, int nytrees,
         {
           vindex = conn->tree_to_vertex[P4EST_CHILDREN * tree_id + jj*2 + ii];
 #endif
-          conn->vertices[3 * vindex + 0] = xmin + (i+ii)*dx;
-          conn->vertices[3 * vindex + 1] = ymin + (j+jj)*dy;
+          conn->vertices[3 * vindex + 0] = xyz_min[0] + (i+ii)*dx;
+          conn->vertices[3 * vindex + 1] = xyz_min[1] + (j+jj)*dy;
 #ifdef P4_TO_P8
-          conn->vertices[3 * vindex + 2] = zmin + (k+kk)*dz;
+          conn->vertices[3 * vindex + 2] = xyz_min[2] + (k+kk)*dz;
 #endif
           }
     }

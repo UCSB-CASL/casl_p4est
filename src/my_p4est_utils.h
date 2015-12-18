@@ -535,6 +535,57 @@ inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
 #endif
 }
 
+/*!
+ * \brief compute the xyz_min of a given tree index
+ * \param p4est the forest object
+ * \param tr_idx index of the tree to find the xyz_min
+ * \param xyz pointer to an array of double[P4EST_DIM]
+ */
+inline void tree_xyz_min(p4est_t* p4est, p4est_topidx_t tr_idx, double *xyz)
+{
+  p4est_topidx_t vtx = p4est->connectivity->tree_to_vertex[tr_idx*P4EST_CHILDREN];
+  xyz[0] = p4est->connectivity->vertices[3*vtx + 0];
+  xyz[1] = p4est->connectivity->vertices[3*vtx + 1];
+#ifdef P4_TO_P8
+  xyz[2] = p4est->connectivity->vertices[3*vtx + 2];
+#endif
+}
+
+/*!
+ * \brief compute the xyz_max of a given tree index
+ * \param p4est the forest object
+ * \param tr_idx index of the tree to find the xyz_max
+ * \param xyz pointer to an array of double[P4EST_DIM]
+ */
+inline void tree_xyz_max(p4est_t* p4est, p4est_topidx_t tr_idx, double *xyz)
+{
+  p4est_topidx_t vtx = p4est->connectivity->tree_to_vertex[tr_idx*P4EST_CHILDREN + P4EST_CHILDREN - 1];
+  xyz[0] = p4est->connectivity->vertices[3*vtx + 0];
+  xyz[1] = p4est->connectivity->vertices[3*vtx + 1];
+#ifdef P4_TO_P8
+  xyz[2] = p4est->connectivity->vertices[3*vtx + 2];
+#endif
+}
+
+/*!
+ * \brief computes the xyz_min of the entire forest
+ * \param p4est teh forest object
+ * \param xyz pointer to an array of double[P4EST_DIM]
+ */
+inline void p4est_xyz_min(p4est_t* p4est, double *xyz)
+{
+  tree_xyz_min(p4est, 0, xyz);
+}
+
+/*!
+ * \brief computes the xyz_max of the entire forest
+ * \param p4est teh forest object
+ * \param xyz pointer to an array of double[P4EST_DIM]
+ */
+inline void p4est_xyz_max(p4est_t* p4est, double *xyz)
+{
+  tree_xyz_max(p4est, p4est->trees->elem_count - 1, xyz);
+}
 
 /*!
  * \brief integrate_over_negative_domain_in_one_quadrant

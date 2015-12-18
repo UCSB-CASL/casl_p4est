@@ -1,8 +1,8 @@
 #ifndef MY_P4EST_BIALLOY_H
 #define MY_P4EST_BIALLOY_H
 
-#include <src/casl_types.h>
 #include <src/CASL_math.h>
+#include <src/casl_types.h>
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_tools.h>

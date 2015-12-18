@@ -32,8 +32,8 @@
 #include <src/my_p4est_level_set.h>
 #endif
 
-#include <src/petsc_compatibility.h>
 #include <src/Parser.h>
+#include <src/petsc_compatibility.h>
 
 #undef MIN
 #undef MAX
@@ -193,14 +193,14 @@ int main (int argc, char* argv[])
 #endif
   tf = cmd.get("tf", tf);
 
+  const int n_xyz [] = {nx, ny};
+  const double xyz_min [] = {xmin, ymin};
+  const double xyz_max [] = {xmax, ymax};
+
   // Create the connectivity object
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-#ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, &brick);
-#else
-  connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick);
-#endif
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
   double dxyz_min[P4EST_DIM];
   dxyz_min[0] = (xmax-xmin)/nx/(1<<lmax);
