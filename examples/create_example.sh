@@ -14,8 +14,8 @@ CONFIG += 2d
 # --------------------------------------------------------------
 # qmake config file for the poisson example
 # --------------------------------------------------------------
-include(../../qt_config/$2.pri)
-include(../../qt_config/libparcasl.pri)
+include(../../config/$2.pri)
+include(../../config/libparcasl.pri)
 
 main = main
 CONFIG(2d, 2d|3d): {
