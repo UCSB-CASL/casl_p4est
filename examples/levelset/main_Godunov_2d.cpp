@@ -13,9 +13,9 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_semi_lagrangian.h>
-#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_level_set.h>
 #include <src/my_p8est_log_wrappers.h>
 #else
 #include <p4est_bits.h>
@@ -25,9 +25,9 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_interpolating_function.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_semi_lagrangian.h>
-#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_level_set.h>
 #include <src/my_p4est_log_wrappers.h>
 #endif
 
@@ -104,8 +104,9 @@ private:
 
 int main (int argc, char* argv[]){
 
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
+
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
   p4est_ghost_t      *ghost;
@@ -123,29 +124,23 @@ int main (int argc, char* argv[]){
 #endif
   splitting_criteria_cf_t data(cmd.get("lmin", 0), cmd.get("lmax", 5), &sq, 1.3);
 
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
 
   parStopWatch w1, w2;
   w1.start("total time");
-
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
   // Create the connectivity object
   w2.start("connectivity");
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-#ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(2, 2, 2, &brick);
-#else
-  connectivity = my_p4est_brick_new(2, 2, &brick);
-#endif
+  int n_xyz [] = {2, 2, 2};
+  double xyz_min [] = {0, 0, 0};
+  double xyz_max [] = {2, 2, 2};
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
   w2.stop(); w2.read_duration();
 
   // Now create the forest
   w2.start("p4est generation");
-  p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
   w2.stop(); w2.read_duration();
 
   // Now refine the tree
@@ -156,7 +151,7 @@ int main (int argc, char* argv[]){
 
   // Finally re-partition
   w2.start("partition");
-  my_p4est_partition(p4est, NULL);
+  my_p4est_partition(p4est, P4EST_TRUE, NULL);
   w2.stop(); w2.read_duration();
 
   // create the ghost layer
@@ -213,7 +208,7 @@ int main (int argc, char* argv[]){
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     hierarchy.write_vtk("hierarchy");
     my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
-    my_p4est_level_set level_set(&node_neighbors);
+    my_p4est_level_set_t level_set(&node_neighbors);
 
     dt = level_set.advect_in_normal_direction(vn, phi);
     level_set.reinitialize_1st_order_time_2nd_order_space(phi, 6);
@@ -223,8 +218,8 @@ int main (int argc, char* argv[]){
     p4est_np1->user_pointer = p4est->user_pointer;
 
     // define interpolating function on the old stuff
-    InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, &brick, &node_neighbors);
-    phi_interp.set_input_parameters(phi, linear);
+    my_p4est_interpolation_nodes_t phi_interp(&node_neighbors);
+    phi_interp.set_input(phi, linear);
     data.phi = &phi_interp;
 
     // refine and coarsen new p4est
@@ -232,7 +227,7 @@ int main (int argc, char* argv[]){
     my_p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
 
     // partition
-    my_p4est_partition(p4est_np1, NULL);
+    my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
 
     // recompute ghost and nodes
     p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
@@ -257,15 +252,15 @@ int main (int argc, char* argv[]){
 
       double xyz [] =
       {
-        node_x_fr_i(node) + tree_xmin,
-        node_y_fr_j(node) + tree_ymin
+        node_x_fr_n(node) + tree_xmin,
+        node_y_fr_n(node) + tree_ymin
   #ifdef P4_TO_P8
         ,
-        node_z_fr_k(node) + tree_zmin
+        node_z_fr_n(node) + tree_zmin
   #endif
       };
 
-      phi_interp.add_point_to_buffer(n, xyz);
+      phi_interp.add_point(n, xyz);
     }
     phi_interp.interpolate(phi_np1);
 
