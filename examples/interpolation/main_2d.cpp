@@ -115,12 +115,11 @@ int main (int argc, char* argv[]){
     w2.start("connectivity");
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t my_brick, *brick = &my_brick;
-#ifdef P4_TO_P8
-    connectivity = my_p4est_brick_new(2, 2, 2,
-                                      0, 2, 0, 2, 0, 2, brick);
-#else
-    connectivity = my_p4est_brick_new(2, 2, 0, 2, 0, 2, brick);
-#endif
+    int n_xyz [] = {2, 2, 2};
+    double xyz_min [] = {0, 0, 0};
+    double xyz_max [] = {2, 2, 2};
+
+    connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, brick);
     w2.stop(); w2.read_duration();
 
     // Now create the forest
