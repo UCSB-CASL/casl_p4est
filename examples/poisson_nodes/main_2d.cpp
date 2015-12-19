@@ -358,18 +358,16 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
               int compt)
 {
   PetscErrorCode ierr;
-#ifdef STAMPEDE
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
-#else
-  char out_dir[10000];
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_navier_stokes");
-#endif
+  const char *out_dir = getenv("OUT_DIR");
+  if (!out_dir) {
+    out_dir = "out_dir/vtu";
+    system((string("mkdir -p ")+out_dir).c_str());
+  }
 
   std::ostringstream oss;
 
   oss << out_dir
-      << "/vtu/nodes_"
+      << "/nodes_"
       << p4est->mpisize << "_"
       << brick->nxyztrees[0] << "x"
       << brick->nxyztrees[1] <<
@@ -435,11 +433,8 @@ int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
   int mpiret;
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -476,9 +471,6 @@ int main (int argc, char* argv[])
   parStopWatch w;
   w.start("total time");
 
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
   if(0)
   {
     int i = 0;
@@ -493,14 +485,15 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz,
-                                    xmin, xmax, ymin, ymax, zmin, zmax,
-                                    &brick);
+  int n_xyz [] = {nx, ny, nz};
+  double xyz_min [] = {xmin, ymin, zmin};
+  double xyz_max [] = {xmax, ymax, zmax};
 #else
-  connectivity = my_p4est_brick_new(nx, ny,
-                                    xmin, xmax, ymin, ymax,
-                                    &brick);
+  int n_xyz [] = {nx, ny};
+  double xyz_min [] = {xmin, ymin};
+  double xyz_max [] = {xmax, ymax};
 #endif
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
   p4est_t       *p4est;
   p4est_nodes_t *nodes;
@@ -554,8 +547,8 @@ int main (int argc, char* argv[])
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
-    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
-    p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
+    p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
 //    srand(1);
 //    splitting_criteria_random_t data(2, 7, 1000, 10000);
