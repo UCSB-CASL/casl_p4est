@@ -109,6 +109,7 @@ private:
   };
 
   my_p4est_brick_t *brick;
+  p4est_connectivity_t *conn;
 
   p4est_t *p4est_nm1;
   p4est_ghost_t *ghost_nm1;

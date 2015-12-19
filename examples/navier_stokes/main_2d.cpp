@@ -774,7 +774,7 @@ struct external_force_v_t : CF_2
 
 
 
-void check_error_analytic_vortex(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns)
+void check_error_analytic_vortex(mpi_enviroment_t& mpi, my_p4est_navier_stokes_t *ns)
 {
   PetscErrorCode ierr;
   int mpiret;
@@ -828,12 +828,12 @@ void check_error_analytic_vortex(mpi_context_t *mpi, my_p4est_navier_stokes_t *n
     }
   }
 
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, err_v, P4EST_DIM, MPI_DOUBLE, MPI_MAX, mpi->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, err_v, P4EST_DIM, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecRestoreArrayRead(v[dir], &v_p[dir]); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi->mpicomm, "Error on velocity in direction %d : %.5g\n", dir, err_v[dir]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on velocity in direction %d : %.5g\n", dir, err_v[dir]); CHKERRXX(ierr);
   }
 
   Vec hodge = ns->get_hodge();
@@ -858,14 +858,14 @@ void check_error_analytic_vortex(mpi_context_t *mpi, my_p4est_navier_stokes_t *n
   }
   ierr = VecRestoreArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
 
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_h, 1, MPI_DOUBLE, MPI_MAX, mpi->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_h, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
 
-  ierr = PetscPrintf(mpi->mpicomm, "Error on hodge : %.5g\n", err_h); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Error on hodge : %.5g\n", err_h); CHKERRXX(ierr);
 }
 
 
 #ifndef P4_TO_P8
-void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns, double Re, double n_times_dt)
+void check_velocity_cavity(mpi_enviroment_t& mpi, my_p4est_navier_stokes_t *ns, double Re, double n_times_dt)
 {
   PetscErrorCode ierr;
 
@@ -908,7 +908,7 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns, dou
   interp1.set_input(phi, quadratic);
   interp1.interpolate(phi1.data());
 
-  if(!mpi->mpirank)
+  if(!mpi.rank())
   {
     FILE* fp;
     char name[1000];
@@ -926,10 +926,10 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns, dou
     if(fp==NULL)
       throw std::invalid_argument("check_forces_cavity: could not open file.");
 
-    ierr = PetscFPrintf(mpi->mpicomm, fp, "%% x/y \t vx \t vy\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fp, "%% x/y \t vx \t vy\n"); CHKERRXX(ierr);
     for(int i=0; i<=N; ++i)
     {
-      ierr = PetscFPrintf(mpi->mpicomm, fp, "%g, %g, %g\n", (double)i/(double)N, phi0[i]<0 ? v0[i] : 0, phi1[i]<0 ? v1[i] : 0); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(), fp, "%g, %g, %g\n", (double)i/(double)N, phi0[i]<0 ? v0[i] : 0, phi1[i]<0 ? v1[i] : 0); CHKERRXX(ierr);
     }
 
     fclose(fp);
@@ -942,11 +942,8 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns, dou
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -984,7 +981,6 @@ int main (int argc, char* argv[])
                  6 - naca airfoil\n");
 #endif
   cmd.parse(argc, argv);
-
   cmd.print();
 
   int nb_splits = cmd.get("nb_splits", 0);
@@ -1057,17 +1053,14 @@ int main (int argc, char* argv[])
   uniform_band /= dxmin;
 
 #ifdef P4_TO_P8
-  ierr = PetscPrintf(mpi->mpicomm, "Parameters : mu = %g, rho = %g, grid is %dx%dx%d\n", mu, rho, nx, ny, nz); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Parameters : mu = %g, rho = %g, grid is %dx%dx%d\n", mu, rho, nx, ny, nz); CHKERRXX(ierr);
 #else
-  ierr = PetscPrintf(mpi->mpicomm, "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%d\n", Re, mu, rho, nx, ny); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%d\n", Re, mu, rho, nx, ny); CHKERRXX(ierr);
 #endif
-  ierr = PetscPrintf(mpi->mpicomm, "n_times_dt = %g, uniform_band = %g\n", n_times_dt, uniform_band);
+  ierr = PetscPrintf(mpi.comm(), "n_times_dt = %g, uniform_band = %g\n", n_times_dt, uniform_band);
 
   parStopWatch watch;
   watch.start("total time");
-
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
   if(0)
   {
@@ -1082,13 +1075,19 @@ int main (int argc, char* argv[])
 
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-#ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, &brick);
-#else
-  connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick);
-#endif
 
-  p4est_t *p4est_nm1 = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+#ifdef P4_TO_P8
+  int n_xyz [] = {nx, ny, nz};
+  double xyz_min [] = {xmin, ymin, zmin};
+  double xyz_max [] = {xmax, ymax, zmax};
+#else
+  int n_xyz [] = {nx, ny};
+  double xyz_min [] = {xmin, ymin};
+  double xyz_max [] = {xmax, ymax};
+#endif
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+
+  p4est_t *p4est_nm1 = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
   splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
 
 #ifndef P4_TO_P8
@@ -1096,7 +1095,7 @@ int main (int argc, char* argv[])
   if(test_number==0 || test_number==1)
   {
     splitting_criteria_cf_t data_tmp(lmin, lmax, &level_set, 1.2);
-    p4est_t *p4est_tmp = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    p4est_t *p4est_tmp = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
     p4est_tmp->user_pointer = (void*)&data_tmp;
     my_p4est_refine(p4est_tmp, P4EST_TRUE, refine_levelset_cf, NULL);
     //  my_p4est_partition(p4est_tmp, P4EST_FALSE, NULL); cannot partition ! otherwise communications when refining ...
@@ -1234,22 +1233,40 @@ int main (int argc, char* argv[])
   FILE *fp_forces;
   char file_forces[1000];
 
-#if defined(STAMPEDE) || defined(COMET)
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
+  const char *out_dir = getenv("OUT_DIR");
+  if (!out_dir){
+    out_dir = "out_dir";
+    mkdir(out_dir, 0755);
+  }
+  
+  ostringstream command, path;
+  path << out_dir << "/";
+  switch(test_number)
+  {
+#ifdef P4_TO_P8
+  case 0: path << "3d/vtu/analytic_vortex"; break;
+  case 1: path << "3d/vtu/analytic_vortex"; break; 
+  case 2: path << "3d/vtu/karman"; break;
+#else
+  case 0: path << "2d/vtu/analytic_vortex"; break;
+  case 1: path << "2d/vtu/analytic_vortex"; break;
+  case 2: path << "2d/vtu/driven_cavity"; break;
+  case 3: path << "2d/vtu/driven_cavity_with_hole"; break; 
+  case 4: path << "2d/vtu/karman_Re" << Re; break;
+  case 5: path << "2d/vtu/oscillating_cylinder"; break;
+  case 6: path << "2d/vtu/naca"; break; 
 #endif
+  default: throw std::invalid_argument("choose a valid test.");
+  }
+  command << "mkdir -p " << path.str();
+  system(command.str().c_str());
 
 #ifdef P4_TO_P8
   if(test_number==2)
   {
-#if defined(STAMPEDE) || defined(COMET)
-    if     (test_number==2) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, nz, Re, threshold_split_cell, n_times_dt);
-#else
-    if     (test_number==2) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/karman/forces_%d-%d_%dx%dx%d_Re_%g.dat", lmin, lmax, nx, ny, nz, Re);
-#endif
-
-    ierr = PetscPrintf(mpi->mpicomm, "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
-    if(!mpi->mpirank)
+    sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, nz, Re, threshold_split_cell, n_times_dt);
+    ierr = PetscPrintf(mpi.comm(), "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
+    if(!mpi.rank())
     {
       fp_forces = fopen(file_forces, "w");
       if(fp_forces==NULL)
@@ -1261,18 +1278,12 @@ int main (int argc, char* argv[])
 #else
   if(test_number==4 || test_number==5 || test_number==6)
   {
-#if defined(STAMPEDE) || defined(COMET)
     if     (test_number==4) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
     else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
     else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt);
-#else
-    if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/karman/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
-    else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
-    else if(test_number==6) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/naca/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
-#endif
-
-    ierr = PetscPrintf(mpi->mpicomm, "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
-    if(!mpi->mpirank)
+    
+    ierr = PetscPrintf(mpi.comm(), "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
+    if(!mpi.rank())
     {
       fp_forces = fopen(file_forces, "w");
       if(fp_forces==NULL)
@@ -1335,7 +1346,7 @@ int main (int argc, char* argv[])
 #endif
     {
       ns.compute_forces(forces);
-      if(!mpi->mpirank)
+      if(!mpi.rank())
       {
         fp_forces = fopen(file_forces, "a");
         if(fp_forces==NULL)
@@ -1352,30 +1363,29 @@ int main (int argc, char* argv[])
       }
     }
 
-    ierr = PetscPrintf(mpi->mpicomm, "Iteration #%04d : tn = %.5f, percent done : %.1f%%, \t max_L2_norm_u = %.5f, \t number of leaves = %d\n", iter, tn, 100*tn/tf, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5f, percent done : %.1f%%, \t max_L2_norm_u = %.5f, \t number of leaves = %d\n", iter, tn, 100*tn/tf, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
     if(ns.get_max_L2_norm_u()>10) break;
 
     if(save_vtk && iter%save_every_n==0)
     {
 #if defined(STAMPEDE) || defined(COMET)
-      sprintf(name, "%s/vtu/%05d_", out_dir, iter/save_every_n);
 #else
 
       switch(test_number)
       {
 #ifdef P4_TO_P8
-      case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
-      case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
-      case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/karman/karman_%d", iter/save_every_n); break;
+      case 0: sprintf(name, "%s/without_time_%d", path.str().c_str(), iter/save_every_n); break;
+      case 1: sprintf(name, "%s/with_time_%d", path.str().c_str(), iter/save_every_n); break;
+      case 2: sprintf(name, "%s/karman_%d", path.str().c_str(), iter/save_every_n); break;
 #else
-      case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
-      case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
-      case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/driven_cavity/cavity_%d", iter/save_every_n); break;
-      case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/driven_cavity_with_hole/hole_%d", iter/save_every_n); break;
-      case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/karman_Re%g/karman_%d", Re, iter/save_every_n); break;
-      case 5: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/oscillating_cylinder/oscillating_%d", iter/save_every_n); break;
-      case 6: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/naca/naca_%d", iter/save_every_n); break;
+      case 0: sprintf(name, "%s/without_time_%d", path.str().c_str(), iter/save_every_n); break;
+      case 1: sprintf(name, "%s/with_time_%d", path.str().c_str(), iter/save_every_n); break;
+      case 2: sprintf(name, "%s/cavity_%d", path.str().c_str(), iter/save_every_n); break;
+      case 3: sprintf(name, "%s/hole_%d", path.str().c_str(), iter/save_every_n); break;
+      case 4: sprintf(name, "%s/karman_%d", path.str().c_str(), iter/save_every_n); break;
+      case 5: sprintf(name, "%s/oscillating_%d", path.str().c_str(), iter/save_every_n); break;
+      case 6: sprintf(name, "%s/naca_%d", path.str().c_str(), iter/save_every_n); break;
 #endif
       default: throw std::invalid_argument("choose a valid test.");
       }

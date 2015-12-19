@@ -262,7 +262,7 @@ double my_p4est_navier_stokes_t::interface_bc_value_vstar_t::operator ()(double 
 
 
 my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces)
-  : brick(ngbd_n->myb),
+  : brick(ngbd_n->myb), conn(ngbd_n->p4est->connectivity),
     p4est_nm1(ngbd_nm1->p4est), ghost_nm1(ngbd_nm1->ghost), nodes_nm1(ngbd_nm1->nodes),
     hierarchy_nm1(ngbd_nm1->hierarchy), ngbd_nm1(ngbd_nm1),
     p4est_n(ngbd_n->p4est), ghost_n(ngbd_n->ghost), nodes_n(ngbd_n->nodes),
@@ -379,7 +379,6 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
 
   if(interp_phi!=NULL) delete interp_phi;
 
-  my_p4est_brick_destroy(p4est_n->connectivity, brick);
 
   delete ngbd_nm1;
   delete hierarchy_nm1;
@@ -394,6 +393,8 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
   p4est_nodes_destroy(nodes_n);
   p4est_ghost_destroy(ghost_n);
   p4est_destroy(p4est_n);
+
+  my_p4est_brick_destroy(conn, brick);
 
 }
 

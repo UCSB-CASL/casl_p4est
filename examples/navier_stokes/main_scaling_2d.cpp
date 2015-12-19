@@ -385,11 +385,8 @@ struct external_force_v_t : CF_2
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -446,31 +443,34 @@ int main (int argc, char* argv[])
   uniform_band /= dxmin;
 
 #ifdef P4_TO_P8
-  ierr = PetscPrintf(mpi->mpicomm, "Parameters : mu = %g, rho = %g, grid is %dx%dx%d\n", mu, rho, nx, ny, nz); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Parameters : mu = %g, rho = %g, grid is %dx%dx%d\n", mu, rho, nx, ny, nz); CHKERRXX(ierr);
 #else
-  ierr = PetscPrintf(mpi->mpicomm, "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%d\n", Re, mu, rho, nx, ny); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%d\n", Re, mu, rho, nx, ny); CHKERRXX(ierr);
 #endif
-  ierr = PetscPrintf(mpi->mpicomm, "n_times_dt = %g, uniform_band = %g\n", n_times_dt, uniform_band);
+  ierr = PetscPrintf(mpi.comm(), "n_times_dt = %g, uniform_band = %g\n", n_times_dt, uniform_band);
 
   parStopWatch w;
   w.start("total time");
 
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
   for(int repeat=0; repeat<nb_repeat; ++repeat)
   {
-    ierr = PetscPrintf(mpi->mpicomm, "#################### REPEAT %d ####################\n", repeat);
+    ierr = PetscPrintf(mpi.comm(), "#################### REPEAT %d ####################\n", repeat);
 
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-    connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, &brick);
+    int n_xyz [] = {nx, ny, nz};
+    double xyz_min [] = {xmin, ymin, zmin};
+    double xyz_max [] = {xmax, ymax, zmax};
 #else
-    connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick);
+    int n_xyz [] = {nx, ny};
+    double xyz_min [] = {xmin, ymin};
+    double xyz_max [] = {xmax, ymax};
 #endif
 
-    p4est_t *p4est_nm1 = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+
+    p4est_t *p4est_nm1 = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
     splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
 
 		p4est_nm1->user_pointer = (void*)&data;
@@ -480,44 +480,44 @@ int main (int argc, char* argv[])
     p4est_balance(p4est_nm1, P4EST_CONNECT_FULL, NULL);
     my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
 
-    ierr = PetscPrintf(mpi->mpicomm, "partitioning nm1 done...\n");
+    ierr = PetscPrintf(mpi.comm(), "partitioning nm1 done...\n");
 
     p4est_ghost_t *ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
 
-    ierr = PetscPrintf(mpi->mpicomm, "ceating ghost nm1 done...\n");
+    ierr = PetscPrintf(mpi.comm(), "ceating ghost nm1 done...\n");
 
-    ierr = PetscPrintf(mpi->mpicomm, "starting nodes...\n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "starting nodes...\n"); CHKERRXX(ierr);
     p4est_nodes_t *nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
-    ierr = PetscPrintf(mpi->mpicomm, "starting hierarchy...\n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "starting hierarchy...\n"); CHKERRXX(ierr);
     my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick);
-    ierr = PetscPrintf(mpi->mpicomm, "starting nodes_neighbors...\n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "starting nodes_neighbors...\n"); CHKERRXX(ierr);
     my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
 
-    ierr = PetscPrintf(mpi->mpicomm, "forest nm1 done...\n");
+    ierr = PetscPrintf(mpi.comm(), "forest nm1 done...\n");
 
     /* create the initial forest at time n */
     p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
     p4est_n->user_pointer = (void*)&data;
     my_p4est_partition(p4est_n, P4EST_FALSE, NULL);
 
-    ierr = PetscPrintf(mpi->mpicomm, "partitioning n done...\n");
+    ierr = PetscPrintf(mpi.comm(), "partitioning n done...\n");
 
     p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_n, ghost_n);
 
-    ierr = PetscPrintf(mpi->mpicomm, "ceating ghost n done...\n");
+    ierr = PetscPrintf(mpi.comm(), "ceating ghost n done...\n");
 
     p4est_nodes_t *nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
     my_p4est_hierarchy_t *hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, &brick);
     my_p4est_node_neighbors_t *ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
     my_p4est_cell_neighbors_t *ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_n);
 
-    ierr = PetscPrintf(mpi->mpicomm, "forest nm1 done...\n");
+    ierr = PetscPrintf(mpi.comm(), "forest nm1 done...\n");
 
     my_p4est_faces_t *faces_n = new my_p4est_faces_t(p4est_n, ghost_n, &brick, ngbd_c);
 
-    ierr = PetscPrintf(mpi->mpicomm, "ceating faces done...\n");
+    ierr = PetscPrintf(mpi.comm(), "ceating faces done...\n");
 
     Vec phi;
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
@@ -582,19 +582,19 @@ int main (int argc, char* argv[])
         ns.compute_dt();
         dt = ns.get_dt();
         ns.update_from_tn_to_tnp1(&level_set);
-				ierr = PetscPrintf(mpi->mpicomm, "update done...\n");
+        ierr = PetscPrintf(mpi.comm(), "update done...\n");
       }
 
       ns.solve_viscosity();
-			ierr = PetscPrintf(mpi->mpicomm, "viscosity done...\n");
+      ierr = PetscPrintf(mpi.comm(), "viscosity done...\n");
       ns.solve_projection();
-			ierr = PetscPrintf(mpi->mpicomm, "projection done...\n");
+      ierr = PetscPrintf(mpi.comm(), "projection done...\n");
       ns.compute_velocity_at_nodes();
-			ierr = PetscPrintf(mpi->mpicomm, "switch to nodes done...\n");
+      ierr = PetscPrintf(mpi.comm(), "switch to nodes done...\n");
 
       tn += dt;
 
-      ierr = PetscPrintf(mpi->mpicomm, "Iteration #%04d : tn = %.5f, percent done : %.1f%%, \t max_L2_norm_u = %.5f, \t number of leaves = %d\n", iter, tn, 100*tn/tf, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5f, percent done : %.1f%%, \t max_L2_norm_u = %.5f, \t number of leaves = %d\n", iter, tn, 100*tn/tf, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
     }
   }
 
