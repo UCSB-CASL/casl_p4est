@@ -111,11 +111,8 @@ public:
 int main (int argc, char* argv[])
 {
 	PetscErrorCode ierr;
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -130,18 +127,20 @@ int main (int argc, char* argv[])
   parStopWatch w;
   w.start("total time");
 
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, &brick);
+  int n_xyz [] = {nx, ny, nz};
+  double xyz_min [] = {xmin, ymin, zmin};
+  double xyz_max [] = {xmax, ymax, zmax};
 #else
-  connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick);
+  int n_xyz [] = {nx, ny};
+  double xyz_min [] = {xmin, ymin};
+  double xyz_max [] = {xmax, ymax};
 #endif
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
-  p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
   //    srand(1);
   //    splitting_criteria_random_t data(2, 7, 1000, 10000);
@@ -154,25 +153,25 @@ int main (int argc, char* argv[])
   p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
   my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
-  ierr = PetscPrintf(mpi->mpicomm, "the tree has %d leaves\n", p4est->global_num_quadrants);
+  ierr = PetscPrintf(mpi.comm(), "the tree has %d leaves\n", p4est->global_num_quadrants);
 
   p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est, ghost);
 	
-	ierr = PetscPrintf(mpi->mpicomm, "ghost created\n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "ghost created\n"); CHKERRXX(ierr);
 
   p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
 
-	ierr = PetscPrintf(mpi->mpicomm, "nodes created\n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "nodes created\n"); CHKERRXX(ierr);
 
   my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
   my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
 
-	ierr = PetscPrintf(mpi->mpicomm, "ngbd_c created\n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "ngbd_c created\n"); CHKERRXX(ierr);
 
   my_p4est_faces_t faces(p4est, ghost, &brick, &ngbd_c);
 
-	ierr = PetscPrintf(mpi->mpicomm, "faces created\n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "faces created\n"); CHKERRXX(ierr);
 
   p4est_nodes_destroy(nodes);
   p4est_ghost_destroy(ghost);
