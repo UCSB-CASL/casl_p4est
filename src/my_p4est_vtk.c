@@ -160,10 +160,13 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *gh
 
   /* now write the actual data */
 
-  retval = my_p4est_vtk_write_point_scalar (p4est, nodes, filename,
-                                            num_point_scalars, point_scalars, point_names, point_values);
-  SC_CHECK_ABORT (!retval,
-                  P4EST_STRING "_vtk: Error writing point scalars");
+  if(num_point_scalars>0)
+  {
+    retval = my_p4est_vtk_write_point_scalar (p4est, nodes, filename,
+                                              num_point_scalars, point_scalars, point_names, point_values);
+    SC_CHECK_ABORT (!retval,
+                    P4EST_STRING "_vtk: Error writing point scalars");
+  }
 
   retval = my_p4est_vtk_write_cell_scalar (p4est, ghost, write_rank, write_tree, filename,
                                            num_cell_scalars, cell_scalars, cell_names, cell_values);

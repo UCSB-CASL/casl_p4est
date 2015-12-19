@@ -9,6 +9,9 @@
 #endif
 #include "petsc_compatibility.h"
 
+#include <src/types.h>
+#include <src/math.h>
+
 #include <stdexcept>
 #include <sstream>
 #include <petsclog.h>
@@ -142,9 +145,9 @@ void my_p4est_hierarchy_t::update(p4est_t *p4est_, p4est_ghost_t *ghost_)
     {
       CELL_LEAF, NOT_A_P4EST_QUADRANT, /* child, quad */
       0, 0,                            /* imin, jmin  */
-#ifdef P4_TO_P8
+  #ifdef P4_TO_P8
       0,                               /* kmin (3D only) */
-#endif
+  #endif
       0,                               /* level */
       REMOTE_OWNER                     /* owner's rank */
     };
@@ -241,6 +244,12 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1];
 
+  bool p_x = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_m00]!=0);
+  bool p_y = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_0m0]!=0);
+#ifdef P4_TO_P8
+  bool p_z = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_00m]!=0);
+#endif
+
   double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
   double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
   double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
@@ -248,6 +257,15 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
 #ifdef P4_TO_P8
   double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
   double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+#endif
+
+  if     (xyz[0]<tree_xmin && p_x) xyz[0] += (tree_xmax-tree_xmin);
+  else if(xyz[0]>tree_xmax && p_x) xyz[0] -= (tree_xmax-tree_xmin);
+  if     (xyz[1]<tree_ymin && p_y) xyz[1] += (tree_ymax-tree_ymin);
+  else if(xyz[1]>tree_ymax && p_y) xyz[1] -= (tree_ymax-tree_ymin);
+#ifdef P4_TO_P8
+  if     (xyz[2]<tree_zmin && p_z) xyz[2] += (tree_zmax-tree_zmin);
+  else if(xyz[2]>tree_zmax && p_z) xyz[2] -= (tree_zmax-tree_zmin);
 #endif
 
 #ifdef CASL_THROWS
@@ -305,9 +323,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
   if( fabs(round(xyz_[2])-xyz_[2]) < 1e-9 ) xyz_[2] = round(xyz_[2]);
 #endif
 
-  /* clip inside computational domain
-   * TODO: this wont work with periodic. Need to add something in myb
-   * to indicate if the p4est is periodic
+  /* clip inside tree boundaries to find tree coordinates
    */
   if      (xyz_[0] < qeps)                     xyz_[0] = qeps;
   else if (xyz_[0] > myb->nxyztrees[0] - qeps) xyz_[0] = myb->nxyztrees[0] - qeps;
@@ -320,16 +336,16 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
 
   int tr_xyz_orig [] =
   {
-     (int)floor(xyz_[0]),
-     (int)floor(xyz_[1])
+    (int)floor(xyz_[0]),
+    (int)floor(xyz_[1])
   #ifdef P4_TO_P8
     ,(int)floor(xyz_[2])
   #endif
   };
-  double ii = (xyz_[0] - tr_xyz_orig[0]) * P4EST_ROOT_LEN;
-  double jj = (xyz_[1] - tr_xyz_orig[1]) * P4EST_ROOT_LEN;
+  double ii = (xyz[0] - tr_xyz_orig[0]) * P4EST_ROOT_LEN;
+  double jj = (xyz[1] - tr_xyz_orig[1]) * P4EST_ROOT_LEN;
 #ifdef P4_TO_P8
-  double kk = (xyz_[2] - tr_xyz_orig[2]) * P4EST_ROOT_LEN;
+  double kk = (xyz[2] - tr_xyz_orig[2]) * P4EST_ROOT_LEN;
 #endif
 
   bool is_on_face_x = (fabs(ii-floor(ii))<1e-3 || fabs(ceil(ii)-ii)<1e-3);
@@ -447,26 +463,38 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 {
   const static p4est_qcoord_t qh = P4EST_QUADRANT_LEN(P4EST_QMAXLEVEL);
 
+  bool p_x = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_m00]!=0);
+  bool p_y = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_0m0]!=0);
+#ifdef P4_TO_P8
+  bool p_z = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_00m]!=0);
+#endif
+
+  if((s.x<0 || s.x>(double)P4EST_ROOT_LEN) && !p_x) return;
+  if((s.y<0 || s.y>(double)P4EST_ROOT_LEN) && !p_y) return;
+#ifdef P4_TO_P8
+  if((s.z<0 || s.z>(double)P4EST_ROOT_LEN) && !p_z) return;
+#endif
+
 #ifdef P4_TO_P8
   int tr_xyz[] = { tr_xyz_orig[0], tr_xyz_orig[1], tr_xyz_orig[2]};
 #else
-  int tr_xyz[] = { tr_xyz_orig[0], tr_xyz_orig[1]}; 
+  int tr_xyz[] = { tr_xyz_orig[0], tr_xyz_orig[1]};
 #endif
 
-  if      (s.x < 0)                      { s.x += (double)P4EST_ROOT_LEN; tr_xyz[0] = tr_xyz_orig[0] - 1; }
-  else if (s.x > (double)P4EST_ROOT_LEN) { s.x -= (double)P4EST_ROOT_LEN; tr_xyz[0] = tr_xyz_orig[0] + 1; }
-  if      (s.y < 0)                      { s.y += (double)P4EST_ROOT_LEN; tr_xyz[1] = tr_xyz_orig[1] - 1; }
-  else if (s.y > (double)P4EST_ROOT_LEN) { s.y -= (double)P4EST_ROOT_LEN; tr_xyz[1] = tr_xyz_orig[1] + 1; }
+  if      (s.x < 0)                      { s.x += (double)P4EST_ROOT_LEN; tr_xyz[0] = mod(tr_xyz_orig[0] - 1, myb->nxyztrees[0]); }
+  else if (s.x > (double)P4EST_ROOT_LEN) { s.x -= (double)P4EST_ROOT_LEN; tr_xyz[0] = mod(tr_xyz_orig[0] + 1, myb->nxyztrees[0]); }
+  if      (s.y < 0)                      { s.y += (double)P4EST_ROOT_LEN; tr_xyz[1] = mod(tr_xyz_orig[1] - 1, myb->nxyztrees[1]); }
+  else if (s.y > (double)P4EST_ROOT_LEN) { s.y -= (double)P4EST_ROOT_LEN; tr_xyz[1] = mod(tr_xyz_orig[1] + 1, myb->nxyztrees[1]); }
 #ifdef P4_TO_P8
-  if      (s.z < 0)                      { s.z += (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] - 1; }
-  else if (s.z > (double)P4EST_ROOT_LEN) { s.z -= (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] + 1; }
+  if      (s.z < 0)                      { s.z += (double)P4EST_ROOT_LEN; tr_xyz[2] = mod(tr_xyz_orig[2] - 1, myb->nxyztrees[2]); }
+  else if (s.z > (double)P4EST_ROOT_LEN) { s.z -= (double)P4EST_ROOT_LEN; tr_xyz[2] = mod(tr_xyz_orig[2] + 1, myb->nxyztrees[2]); }
 #endif
 
 #ifdef P4_TO_P8
   p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]
       + tr_xyz[2]*myb->nxyztrees[0]*myb->nxyztrees[1]];
 #else
-   p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]];
+  p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]];
 #endif
 
   const std::vector<HierarchyCell>& h_tr = trees[tt];

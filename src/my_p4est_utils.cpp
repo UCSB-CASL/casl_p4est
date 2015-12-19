@@ -202,6 +202,35 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
 double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   PetscErrorCode ierr;
+
+//  bool p_x = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_m00]!=0);
+//  bool p_y = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_0m0]!=0);
+//#ifdef P4_TO_P8
+//  bool p_z = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_00m]!=0);
+//#endif
+
+//  double *v2c = p4est->connectivity->vertices;
+//  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+//  double xmin = v2c[3*t2v[0 + 0] + 0];
+//  double ymin = v2c[3*t2v[0 + 0] + 1];
+//  double xmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 0];
+//  double ymax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 1];
+//#ifdef P4_TO_P8
+//  double zmin = v2c[3*t2v[0 + 0] + 2];
+//  double zmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 2];
+//#endif
+
+//  if     (p_x && xyz_global[0]<quad_x_fr_q()   ) x += (xmax-xmin);
+//  else if(p_x && x>qxmin+qh) x -= (xmax-xmin);
+
+//  if     (p_y && y<qymin   ) y += (ymax-ymin);
+//  else if(p_y && y>qymin+qh) y -= (ymax-ymin);
+
+//#ifdef P4_TO_P8
+//  if     (p_z && z<qzmin   ) z += (zmax-zmin);
+//  else if(p_z && z>qzmin+qh) z -= (zmax-zmin);
+//#endif
+
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
@@ -221,16 +250,25 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
 #endif
 
   double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = quad_x_fr_i(&quad);
-  double ymin = quad_y_fr_j(&quad);
+  double qxmin = quad_x_fr_i(&quad);
+  double qymin = quad_y_fr_j(&quad);
 #ifdef P4_TO_P8
-  double zmin = quad_z_fr_k(&quad);
+  double qzmin = quad_z_fr_k(&quad);
 #endif
 
-  x = (x-xmin) / qh;
-  y = (y-ymin) / qh;
+#ifdef CASL_THROWS
+  if(x<qxmin || x>qxmin+qh || y<qymin || y>qymin+qh)
+  {
+    std::cout << x << ", " << qxmin << ", " << qxmin+qh << std::endl;
+    std::cout << y << ", " << qymin << ", " << qymin+qh << std::endl;
+    throw std::invalid_argument("quadratic_interpolation: the point is not inside the quadrant.");
+  }
+#endif
+
+  x = (x-qxmin) / qh;
+  y = (y-qymin) / qh;
 #ifdef P4_TO_P8
-  z = (z-zmin) / qh;
+  z = (z-qzmin) / qh;
 #endif
 
   double d_m00 = x;
