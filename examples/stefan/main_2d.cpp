@@ -7,6 +7,8 @@
 
 // p4est Library
 #ifdef P4_TO_P8
+// FIXME: implement this example in 3d
+#error "Example not fully implemented in 3D"
 #include <p8est_bits.h>
 #include <p8est_extended.h>
 #include <src/my_p8est_utils.h>
@@ -274,18 +276,15 @@ void save_VTK(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec
               Vec *v, Vec kappa, int compt)
 {
   PetscErrorCode ierr;
+  const char *out_dir = getenv("OUT_DIR");
+  if (!out_dir)
+    out_dir = "out_dir";
 
-#if defined(STAMPEDE) || defined(COMET)
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
-#else
-  char out_dir[10000];
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_stefan");
-#endif
-
-  std::ostringstream oss;
-
+  std::ostringstream oss, command;
   oss << out_dir << "/vtu";
+
+  command << "mkdir -p " << oss.str();
+  system(command.str().c_str());
 
   struct stat st;
   if(stat(oss.str().data(),&st)!=0 || !S_ISDIR(st.st_mode))
@@ -370,7 +369,7 @@ void update_p4est(my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&ghos
   p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
+  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
   sl.update_p4est(v, dt, phi);
 
   /* interpolate the quanities on the new mesh */
@@ -683,11 +682,10 @@ void check_error_frank_sphere(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec
 
 int main (int argc, char* argv[])
 {
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
+
   PetscErrorCode ierr;
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -719,9 +717,6 @@ int main (int argc, char* argv[])
 
   splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
 
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
   int nx, ny;
 #ifdef P4_TO_P8
   int nz;
@@ -746,10 +741,15 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, &brick);
+  int n_xyz [] = {nx, ny, nz};
+  double xyz_min [] = {xmin, ymin, zmin};
+  double xyz_max [] = {xmax, ymax, zmax};
 #else
-  connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick);
+  int n_xyz [] = {nx, ny};
+  double xyz_min [] = {xmin, ymin};
+  double xyz_max [] = {xmax, ymax};
 #endif
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
   double dxyz_min[P4EST_DIM];
   dxyz_min[0] = (xmax-xmin)/nx/(1<<lmax);
@@ -758,7 +758,7 @@ int main (int argc, char* argv[])
   dxyz_min[2] = (zmax-zmin)/nz/(1<<lmax);
 #endif
 
-  p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
   p4est->user_pointer = (void*)(&data);
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
   my_p4est_partition(p4est, P4EST_FALSE, NULL);
@@ -888,7 +888,7 @@ int main (int argc, char* argv[])
 //    break;
   }
 
-  ierr = PetscPrintf(mpi->mpicomm, "Final time of the simulation: tf=%g\n", tf); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Final time of the simulation: tf=%g\n", tf); CHKERRXX(ierr);
 
   if(test_number==0)
     check_error_frank_sphere(p4est, nodes, phi_s, t_l);
