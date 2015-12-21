@@ -1,9 +1,11 @@
 #ifdef P4_TO_P8
-#include "my_p8est_refine_coarsen.h"
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_utils.h>
 #include <p8est_bits.h>
 #include <p8est_algorithms.h>
 #else
-#include "my_p4est_refine_coarsen.h"
+#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_utils.h>
 #include <p4est_bits.h>
 #include <p4est_algorithms.h>
 #endif

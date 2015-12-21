@@ -309,7 +309,7 @@ int main (int argc, char* argv[]){
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t brick;
 
-    int n_xyz [] = {1, 1, 1};
+    int n_xyz [] = {2, 2, 2};
     double xyz_min [] = {0, 0, 0};
     double xyz_max [] = {2, 2, 2};
 

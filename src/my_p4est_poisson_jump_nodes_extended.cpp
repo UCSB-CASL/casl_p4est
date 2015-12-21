@@ -172,24 +172,15 @@ my_p4est_poisson_jump_nodes_extended_t::my_p4est_poisson_jump_nodes_extended_t(c
   ierr = KSPCreate(p4est->mpicomm, &ksp); CHKERRXX(ierr);
   ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
 
-  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
-
   // compute grid parameters
-  // NOTE: Assuming all trees are of the same size [0, 1]^d
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  dx_min = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  dy_min = (ymax-ymin) / pow(2.,(double) data->max_lvl);
-
+  double dxyz[P4EST_DIM];
+  p4est_dxyz_min(p4est, dxyz);
+  dx_min = dxyz[0];
+  dy_min = dxyz[1];
 #ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  dz_min = (zmax-zmin) / pow(2.,(double) data->max_lvl);
+  dz_min = dxyz[2];
 #endif
+
 #ifdef P4_TO_P8
   d_min = MIN(dx_min, dy_min, dz_min);
   diag_min = sqrt(dx_min*dx_min + dy_min*dy_min + dz_min*dz_min);
@@ -267,6 +258,7 @@ void my_p4est_poisson_jump_nodes_extended_t::preallocate_matrix()
   ierr = MatSetType(A, MATAIJ); CHKERRXX(ierr);
   ierr = MatSetSizes(A, num_owned_local , num_owned_local,
                      num_owned_global, num_owned_global); CHKERRXX(ierr);
+
   ierr = MatSetFromOptions(A); CHKERRXX(ierr);
 
   /* preallocate space for matrix

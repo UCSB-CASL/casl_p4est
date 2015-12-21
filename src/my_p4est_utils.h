@@ -11,6 +11,7 @@
 #include <p4est_ghost.h>
 #endif
 #include <src/petsc_logging.h>
+#include <src/my_p4est_refine_coarsen.h>
 #include "petsc_compatibility.h"
 
 #include <petsc.h>
@@ -261,13 +262,6 @@ public:
   }
 };
 
-// p4est boolean type
-typedef int p4est_bool_t;
-#define P4EST_TRUE  1
-#define P4EST_FALSE 0
-
-
-
 double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
 
 /*!
@@ -429,6 +423,32 @@ inline void node_xyz_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t 
   xyz[2] = node_z_fr_n(n,p4est,nodes);
 #endif
 }
+
+inline void p4est_dxyz_min(const p4est_t* p4est, double *dxyz)
+{
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN-1];
+  const double *vert = p4est->connectivity->vertices;
+
+  double h = 1.0 / (double) (1 << data->max_lvl);
+  for (short i=0; i<P4EST_DIM; ++i)
+    dxyz[i] = (vert[3*vp + i] - vert[3*vm + i]) * h;
+}
+
+inline void p4est_dxyz_max(const p4est_t* p4est, double *dxyz)
+{
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+  p4est_topidx_t tr_idx = p4est->trees->elem_count - 1;
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[tr_idx * P4EST_CHILDREN + P4EST_CHILDREN-1];
+  const double *vert = p4est->connectivity->vertices;
+
+  double h = 1.0 / (double) (1 << data->min_lvl);
+  for (short i=0; i<P4EST_DIM; ++i)
+    dxyz[i] = (vert[3*vp + i] - vert[3*vm + i]) * h;
+}
+
 
 /*!
  * \brief get the z-coordinate of the bottom left corner of a quadrant in the local tree coordinate system

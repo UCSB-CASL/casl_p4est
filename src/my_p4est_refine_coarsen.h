@@ -4,13 +4,11 @@
 #ifdef P4_TO_P8
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_nodes.h>
-#include <src/my_p8est_utils.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <p8est.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_nodes.h>
-#include <src/my_p4est_utils.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <p4est.h>
 #endif
@@ -22,6 +20,15 @@
 #define REFINE_QUADRANT  1
 #define COARSEN_QUADRANT 2
 #define NEW_QUADRANT     3
+
+// p4est boolean type
+typedef int p4est_bool_t;
+#define P4EST_TRUE  1
+#define P4EST_FALSE 0
+
+// forward declaration
+class CF_3;
+class CF_2;
 
 struct splitting_criteria_t {
   splitting_criteria_t(int min_lvl = 0, int max_lvl = 0, double lip = 1.2)
