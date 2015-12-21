@@ -360,6 +360,12 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
     set_phi(phi_);
   }
 
+  // a trick to avoid allocating zero RHS is to set it equal to solution. PETSc can handle this.
+  if (rhs_ == NULL)
+  {
+    rhs_ = solution;
+  }
+
   // set ksp type
   ierr = KSPSetType(ksp, ksp_type); CHKERRXX(ierr);  
   if (use_nonzero_initial_guess)
