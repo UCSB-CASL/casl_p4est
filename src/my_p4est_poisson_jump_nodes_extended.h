@@ -6,16 +6,18 @@
 #ifdef P4_TO_P8
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_tools.h>
-#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p4est_interpolation.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p8est_utils.h>
 #else
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_tools.h>
-#include <src/my_p4est_interpolating_function.h>
+#include <src/my_p4est_interpolation.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_utils.h>
 #endif
 
-class PoissonSolverNodeBaseJump
+class my_p4est_poisson_jump_nodes_extended_t
 {
   const my_p4est_node_neighbors_t *node_neighbors_;
 
@@ -24,7 +26,7 @@ class PoissonSolverNodeBaseJump
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
   my_p4est_brick_t *myb_;
-  InterpolatingFunctionNodeBase phi_interp;
+  my_p4est_interpolation_nodes_t phi_interp;
 #ifdef P4_TO_P8
   const CF_3* phi_cf;
 #else
@@ -67,12 +69,12 @@ class PoissonSolverNodeBaseJump
   void setup_negative_laplace_rhsvec();
 
   // disallow copy ctr and copy assignment
-  PoissonSolverNodeBaseJump(const PoissonSolverNodeBaseJump& other);
-  PoissonSolverNodeBaseJump& operator=(const PoissonSolverNodeBaseJump& other);
+  my_p4est_poisson_jump_nodes_extended_t(const my_p4est_poisson_jump_nodes_extended_t& other);
+  my_p4est_poisson_jump_nodes_extended_t& operator=(const my_p4est_poisson_jump_nodes_extended_t& other);
 
 public:
-  PoissonSolverNodeBaseJump(const my_p4est_node_neighbors_t *node_neighbors);
-  ~PoissonSolverNodeBaseJump();
+  my_p4est_poisson_jump_nodes_extended_t(const my_p4est_node_neighbors_t *node_neighbors);
+  ~my_p4est_poisson_jump_nodes_extended_t();
 
   // inlines setters
   /* FIXME: shouldn't those be references instead of copies ? I guess Vec is just a pointer ... but still ?

@@ -1127,6 +1127,56 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }
 
+#ifdef P4_TO_P8
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3* cf_array[], Vec f)
+#else
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2* cf_array[], Vec f)
+#endif
+{
+  double *f_p;
+  PetscInt bs;
+  PetscErrorCode ierr;
+  ierr = VecGetBlockSize(f, &bs); CHKERRXX(ierr);
+
+#ifdef CASL_THROWS
+  {
+    Vec local_form;
+    ierr = VecGhostGetLocalForm(f, &local_form); CHKERRXX(ierr);
+    PetscInt size;
+    ierr = VecGetSize(local_form, &size); CHKERRXX(ierr);
+    if (size != (PetscInt) nodes->indep_nodes.elem_count * bs){
+      std::ostringstream oss;
+      oss << "[ERROR]: size of the input vector must be equal to the total number of points x block_size."
+             "nodes->indep_nodes.elem_count = " << nodes->indep_nodes.elem_count
+          << " block_size = " << bs
+          << " VecSize = " << size << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+    ierr = VecGhostRestoreLocalForm(f, &local_form); CHKERRXX(ierr);
+  }
+#endif
+
+  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
+
+  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i) {
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(i, p4est, nodes, xyz);
+
+    for (PetscInt j = 0; j<bs; j++) {
+#ifdef P4_TO_P8
+      const CF_3& cf = *cf_array[j];
+      f_p[i*bs + j] = cf(xyz[0], xyz[1], xyz[2]);
+#else
+      const CF_2& cf = *cf_array[j];
+      f_p[i*bs + j] = cf(xyz[0], xyz[1]);
+#endif
+    }
+  }
+
+  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+}
+
 
 #ifdef P4_TO_P8
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f)

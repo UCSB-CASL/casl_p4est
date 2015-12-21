@@ -29,7 +29,7 @@ extern PetscLogEvent log_PoissonSolverNodeBase_solve;
 #define PetscLogFlops(n) 0
 #endif
 
-void PoissonSolverNodeBaseJump::preallocate_row(p4est_locidx_t n, const quad_neighbor_nodes_of_node_t& qnnn, std::vector<PetscInt>& d_nnz, std::vector<PetscInt>& o_nnz)
+void my_p4est_poisson_jump_nodes_extended_t::preallocate_row(p4est_locidx_t n, const quad_neighbor_nodes_of_node_t& qnnn, std::vector<PetscInt>& d_nnz, std::vector<PetscInt>& o_nnz)
 {
   PetscInt num_owned_local  = (PetscInt)(nodes->num_owned_indeps);
 #ifdef P4_TO_P8
@@ -117,10 +117,10 @@ void PoissonSolverNodeBaseJump::preallocate_row(p4est_locidx_t n, const quad_nei
 #endif
 }
 
-PoissonSolverNodeBaseJump::PoissonSolverNodeBaseJump(const my_p4est_node_neighbors_t *node_neighbors)
+my_p4est_poisson_jump_nodes_extended_t::my_p4est_poisson_jump_nodes_extended_t(const my_p4est_node_neighbors_t *node_neighbors)
   : node_neighbors_(node_neighbors),
     p4est(node_neighbors->p4est), nodes(node_neighbors->nodes), ghost(node_neighbors->ghost), myb_(node_neighbors->myb),
-    phi_interp(p4est, nodes, ghost, myb_, node_neighbors),
+    phi_interp(node_neighbors),
     phi_cf(NULL),
     mue_p_(1.), mue_m_(1.0), diag_add_(0.),
     is_matrix_computed(false), matrix_has_nullspace(false),
@@ -230,7 +230,7 @@ PoissonSolverNodeBaseJump::PoissonSolverNodeBaseJump(const my_p4est_node_neighbo
   fixed_value_idx_g = global_node_offset[p4est->mpisize];
 }
 
-PoissonSolverNodeBaseJump::~PoissonSolverNodeBaseJump()
+my_p4est_poisson_jump_nodes_extended_t::~my_p4est_poisson_jump_nodes_extended_t()
 {
   if (A             != NULL) ierr = MatDestroy(A);                      CHKERRXX(ierr);
   if (ksp           != NULL) ierr = KSPDestroy(ksp);                    CHKERRXX(ierr);
@@ -251,7 +251,7 @@ PoissonSolverNodeBaseJump::~PoissonSolverNodeBaseJump()
   }
 }
 
-void PoissonSolverNodeBaseJump::preallocate_matrix()
+void my_p4est_poisson_jump_nodes_extended_t::preallocate_matrix()
 {  
   // enable logging for the preallocation
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
@@ -319,7 +319,7 @@ void PoissonSolverNodeBaseJump::preallocate_matrix()
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
+void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 
@@ -446,7 +446,7 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
 }
 
 
-void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
+void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
 {
   preallocate_matrix();
 
@@ -483,10 +483,10 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -691,8 +691,8 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
         p4est_locidx_t quad_mmm_idx, quad_ppp_idx;
         p4est_topidx_t tree_mmm_idx, tree_ppp_idx;
 
-        node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
-        node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
+        node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
+        node_neighbors_->find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
 
         PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpp]];
         PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmp]];
@@ -718,8 +718,8 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
         p4est_locidx_t quad_mmm_idx, quad_ppm_idx;
         p4est_topidx_t tree_mmm_idx, tree_ppm_idx;
 
-        node_neighbors_->find_neighbor_cell_of_node(ni, -1, -1, quad_mmm_idx, tree_mmm_idx);
-        node_neighbors_->find_neighbor_cell_of_node(ni,  1,  1, quad_ppm_idx, tree_ppm_idx);
+        node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, quad_mmm_idx, tree_mmm_idx);
+        node_neighbors_->find_neighbor_cell_of_node(n,  1,  1, quad_ppm_idx, tree_ppm_idx);
 
         PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm]];
         PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm]];
@@ -1090,7 +1090,7 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_matrix()
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
+void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_rhsvec()
 {
   // register for logging purpose
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1125,10 +1125,10 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
     // Information at neighboring nodes
     //---------------------------------------------------------------------
 
-    double x_C  = node_x_fr_i(ni) + tree_xmin;
-    double y_C  = node_y_fr_j(ni) + tree_ymin;
+    double x_C  = node_x_fr_n(ni) + tree_xmin;
+    double y_C  = node_y_fr_n(ni) + tree_ymin;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_k(ni) + tree_zmin;
+    double z_C  = node_z_fr_n(ni) + tree_zmin;
 #endif
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -1479,9 +1479,9 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
 }
 
 #ifdef P4_TO_P8
-void PoissonSolverNodeBaseJump::set_phi(Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
+void my_p4est_poisson_jump_nodes_extended_t::set_phi(Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
-void PoissonSolverNodeBaseJump::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
+void my_p4est_poisson_jump_nodes_extended_t::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
 #endif
 {
   phi_ = phi;
@@ -1533,13 +1533,13 @@ void PoissonSolverNodeBaseJump::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
 
   // set the interpolating function parameters
 #ifdef P4_TO_P8
-  phi_interp.set_input_parameters(phi_, quadratic_non_oscillatory, phi_xx_, phi_yy_, phi_zz_);
+  phi_interp.set_input(phi_, phi_xx_, phi_yy_, phi_zz_,  quadratic_non_oscillatory);
 #else
-  phi_interp.set_input_parameters(phi_, quadratic_non_oscillatory, phi_xx_, phi_yy_);
+  phi_interp.set_input(phi_, phi_xx_, phi_yy_, quadratic_non_oscillatory);
 #endif
 }
 
-void PoissonSolverNodeBaseJump::shift_to_exact_solution(Vec sol, Vec uex){
+void my_p4est_poisson_jump_nodes_extended_t::shift_to_exact_solution(Vec sol, Vec uex){
 #ifdef CASL_THROWS
   if (!matrix_has_nullspace)
     throw std::runtime_error("[ERROR]: Cannot shift since the original matrix is non-singular");

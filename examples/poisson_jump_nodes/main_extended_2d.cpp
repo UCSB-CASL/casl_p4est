@@ -13,8 +13,8 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_poisson_node_base_jump.h>
-#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_poisson_jump_nodes_extended.h>
+#include <src/my_p8est_level_set.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -23,8 +23,8 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_poisson_node_base_jump.h>
-#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_poisson_jump_nodes_extended.h>
+#include <src/my_p4est_level_set.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -57,12 +57,15 @@ static struct:WallBC3D{
   }
 } bc_wall_type;
 
-static struct:CF_3{
-  const static double r0 = 0.35, x0 = 0.56, y0 = 1.23, z0 = 0.68;
+struct circle_t:CF_3{
+  double x0, y0, z0, r0;
+  circle_t(double x, double y, double z, double r): x0(x), y0(y), z0(z), r0(r) {}
   double operator()(double x, double y, double z) const {
     return r0 - sqrt(SQR(x - x0) + SQR(y - y0) + SQR(z - z0));
   }
-} circle;
+};
+
+static circle_t circle(0.56, 1.23, 0.68, 0.35);
 
 static struct:CF_3{
   // make sure to change dn and laplacian if you changed this
@@ -168,12 +171,15 @@ static struct:WallBC2D{
   }
 } bc_wall_type;
 
-static struct:CF_2{
-  const static double r0 = 0.35, x0 = 1.38, y0 = 0.61;
+struct circle_t:CF_2{
+  double x0, y0, r0;
+  circle_t(double x, double y, double r): x0(x), y0(y), r0(r) {}
   double operator()(double x, double y) const {
     return r0 - sqrt(SQR(x - x0) + SQR(y - y0));
   }
-} circle;  
+};
+
+static circle_t circle(1.38, 0.61, 0.35);
 
 static struct:CF_2{
 
@@ -271,15 +277,12 @@ static struct:CF_2{
 
 int main (int argc, char* argv[]){
 
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
   try{
     p4est_t            *p4est;
     p4est_nodes_t      *nodes;
     PetscErrorCode      ierr;
-
-    Session mpi_session;
-    mpi_session.init(argc, argv, mpi->mpicomm);
 
     cmdParser cmd;
     cmd.add_option("lip", "Lipchitz constant of level-set for grid generation");
@@ -300,22 +303,20 @@ int main (int argc, char* argv[]){
     parStopWatch w1, w2;
     w1.start("total time");
 
-    MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-    MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
     w2.start("initializing the grid");
 
     /* create the macro mesh */
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t brick;
-#ifdef P4_TO_P8
-    connectivity = my_p4est_brick_new(2, 2, 2, &brick);
-#else
-    connectivity = my_p4est_brick_new(2, 2, &brick);
-#endif
+
+    int n_xyz [] = {1, 1, 1};
+    double xyz_min [] = {0, 0, 0};
+    double xyz_max [] = {2, 2, 2};
+
+    connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max,  &brick);
 
     /* create the p4est and partition it iteratively */
-    p4est = p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    p4est = p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
     p4est->user_pointer = (void*)(&data);
     for (int l=0; l<max_level+nb_splits; l++){
       p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
@@ -392,7 +393,7 @@ int main (int argc, char* argv[]){
     w2.start("solving jump problem");
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
-    PoissonSolverNodeBaseJump solver(&neighbors);
+    my_p4est_poisson_jump_nodes_extended_t solver(&neighbors);
     solver.set_bc(bc);
     solver.set_jump(jump_sol, jump_dn_sol);
     solver.set_phi(phi);
@@ -413,7 +414,7 @@ int main (int argc, char* argv[]){
 
     // extend solutions over interface
     w2.start("extending solution");
-    my_p4est_level_set ls(&neighbors);
+    my_p4est_level_set_t ls(&neighbors);
     ls.extend_Over_Interface_TVD(phi, sol_minus, 50);
     // reverse sign
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
@@ -478,7 +479,7 @@ int main (int argc, char* argv[]){
     w1.stop(); w1.read_duration();
 
   } catch (const std::exception& e) {
-    std::cout << "[" << mpi->mpirank << "]: " << e.what() << std::endl;
+    std::cout << "[" << mpi.rank() << "]: " << e.what() << std::endl;
   }
 
   return 0;

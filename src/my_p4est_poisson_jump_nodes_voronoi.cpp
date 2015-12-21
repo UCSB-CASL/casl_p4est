@@ -146,7 +146,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::set_diagonal(Vec add)
 
 
 #ifdef P4_TO_P8
-void PoissonSolverNodeBaseJump::set_bc(BoundaryConditions3D& bc)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_bc(BoundaryConditions3D& bc)
 #else
 void my_p4est_poisson_jump_nodes_voronoi_t::set_bc(BoundaryConditions2D& bc)
 #endif
@@ -932,7 +932,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 
 
 #ifdef P4_TO_P8
-void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi3D &voro) const
+void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n, Voronoi3D &voro) const
 #else
 void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n, Voronoi2D &voro) const
 #endif
@@ -986,7 +986,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
   p4est_locidx_t quad_idx;
 #ifdef CASL_THROWS
   if(rank_found==-1)
-    throw std::invalid_argument("[CASL_ERROR]: PoissonSolverNodeBaseJump->compute_voronoi_mesh: found remote quadrant.");
+    throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_jump_nodes_voronoi_t->compute_voronoi_mesh: found remote quadrant.");
 #endif
   if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
   else                           quad_idx = quad.p.piggy3.local_num + p4est->local_num_quadrants;
@@ -1843,7 +1843,7 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
     if(di[0]==DBL_MAX || di[1]==DBL_MAX || di[2]==DBL_MAX)
 #endif
     {
-      std::cerr << "PoissonSolverNodeBaseJump->interpolate_solution_from_voronoi_to_tree: not enough points found." << std::endl;
+      std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: not enough points found." << std::endl;
       double retval = sol_voro_p[ni[0]];
       ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
       ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
@@ -1855,7 +1855,7 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
 #else
     if(ni[0]==ni[1] || ni[0]==ni[2] || ni[1]==ni[2])
 #endif
-      std::cerr << "PoissonSolverNodeBaseJump->interpolate_solution_from_voronoi_to_tree: point is double !" << std::endl;
+      std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: point is double !" << std::endl;
 
     double f0 = sol_voro_p[ni[0]];
     double f1 = sol_voro_p[ni[1]];
@@ -2163,7 +2163,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::check_voronoi_partition() const
       int ghost_idx = buff_recv[s].n;
 
       if(local_idx<0 || local_idx>=(int) num_local_voro)
-        throw std::invalid_argument("PoissonSolverNodeBaseJump->check_voronoi_partition: asked to check a non local point or a wall.");
+        throw std::invalid_argument("my_p4est_poisson_jump_nodes_voronoi_t->check_voronoi_partition: asked to check a non local point or a wall.");
 
         voro[local_idx].get_Points(pts);
         bool ok = false;
