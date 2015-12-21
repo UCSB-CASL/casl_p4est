@@ -1,4 +1,4 @@
-#include <src/my_p4est_poisson_node_base_jump.h>
+#include <src/my_p4est_poisson_jump_nodes_voronoi.h>
 #include <src/my_p4est_refine_coarsen.h>
 
 #include <algorithm>
@@ -28,7 +28,7 @@ extern PetscLogEvent log_PoissonSolverNodeBasedJump_interpolate_to_tree;
 #endif
 #define bc_strength 1.0
 
-PoissonSolverNodeBaseJump::PoissonSolverNodeBaseJump(const my_p4est_node_neighbors_t *node_neighbors,
+my_p4est_poisson_jump_nodes_voronoi_t::my_p4est_poisson_jump_nodes_voronoi_t(const my_p4est_node_neighbors_t *node_neighbors,
                                                      const my_p4est_cell_neighbors_t *cell_neighbors)
   : ngbd_n(node_neighbors),  ngbd_c(cell_neighbors), myb(node_neighbors->myb),
     p4est(node_neighbors->p4est), ghost(node_neighbors->ghost), nodes(node_neighbors->nodes),
@@ -78,7 +78,7 @@ PoissonSolverNodeBaseJump::PoissonSolverNodeBaseJump(const my_p4est_node_neighbo
 }
 
 
-PoissonSolverNodeBaseJump::~PoissonSolverNodeBaseJump()
+my_p4est_poisson_jump_nodes_voronoi_t::~my_p4est_poisson_jump_nodes_voronoi_t()
 {
   if(A            != PETSC_NULL) { ierr = MatDestroy(A);                     CHKERRXX(ierr); }
   if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr); }
@@ -91,7 +91,7 @@ PoissonSolverNodeBaseJump::~PoissonSolverNodeBaseJump()
 }
 
 
-PetscErrorCode PoissonSolverNodeBaseJump::VecCreateGhostVoronoiRhs()
+PetscErrorCode my_p4est_poisson_jump_nodes_voronoi_t::VecCreateGhostVoronoiRhs()
 {
   PetscErrorCode ierr = 0;
   PetscInt num_local = num_local_voro;
@@ -114,28 +114,28 @@ PetscErrorCode PoissonSolverNodeBaseJump::VecCreateGhostVoronoiRhs()
 }
 
 
-void PoissonSolverNodeBaseJump::set_phi(Vec phi)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_phi(Vec phi)
 {
   this->phi = phi;
   interp_phi.set_input(phi, linear);
 }
 
 
-void PoissonSolverNodeBaseJump::set_rhs(Vec rhs_m, Vec rhs_p)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_rhs(Vec rhs_m, Vec rhs_p)
 {
   this->rhs_m.set_input(rhs_m, linear);
   this->rhs_p.set_input(rhs_p, linear);
 }
 
 
-void PoissonSolverNodeBaseJump::set_diagonal(double add)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_diagonal(double add)
 {
   if(local_add) { delete this->add; local_add = false; }
   add_constant.set(add);
   this->add = &add_constant;
 }
 
-void PoissonSolverNodeBaseJump::set_diagonal(Vec add)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_diagonal(Vec add)
 {
   if(local_add) delete this->add;
   my_p4est_interpolation_nodes_t *add_interp = new my_p4est_interpolation_nodes_t (ngbd_n);
@@ -148,7 +148,7 @@ void PoissonSolverNodeBaseJump::set_diagonal(Vec add)
 #ifdef P4_TO_P8
 void PoissonSolverNodeBaseJump::set_bc(BoundaryConditions3D& bc)
 #else
-void PoissonSolverNodeBaseJump::set_bc(BoundaryConditions2D& bc)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_bc(BoundaryConditions2D& bc)
 #endif
 {
   this->bc = &bc;
@@ -156,7 +156,7 @@ void PoissonSolverNodeBaseJump::set_bc(BoundaryConditions2D& bc)
 }
 
 
-void PoissonSolverNodeBaseJump::set_mu(double mu)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_mu(double mu)
 {
   if(local_mu) { delete mu_m; delete mu_p; local_mu = false; }
   mu_constant.set(mu);
@@ -165,7 +165,7 @@ void PoissonSolverNodeBaseJump::set_mu(double mu)
 }
 
 
-void PoissonSolverNodeBaseJump::set_mu(Vec mu_m, Vec mu_p)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_mu(Vec mu_m, Vec mu_p)
 {
   if(local_mu) { delete this->mu_m; delete this->mu_p; }
   my_p4est_interpolation_nodes_t *mu_m_interp = new my_p4est_interpolation_nodes_t(ngbd_n);
@@ -180,7 +180,7 @@ void PoissonSolverNodeBaseJump::set_mu(Vec mu_m, Vec mu_p)
 }
 
 
-void PoissonSolverNodeBaseJump::set_u_jump(Vec u_jump)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_u_jump(Vec u_jump)
 {
   if(local_u_jump) delete this->u_jump;
   my_p4est_interpolation_nodes_t* u_jump_interp = new my_p4est_interpolation_nodes_t(ngbd_n);
@@ -189,7 +189,7 @@ void PoissonSolverNodeBaseJump::set_u_jump(Vec u_jump)
   local_u_jump = true;
 }
 
-void PoissonSolverNodeBaseJump::set_mu_grad_u_jump(Vec mu_grad_u_jump)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_mu_grad_u_jump(Vec mu_grad_u_jump)
 {
   if(local_mu_grad_u_jump) delete this->mu_grad_u_jump;
   my_p4est_interpolation_nodes_t *mu_grad_u_jump_interp = new my_p4est_interpolation_nodes_t(ngbd_n);
@@ -199,7 +199,7 @@ void PoissonSolverNodeBaseJump::set_mu_grad_u_jump(Vec mu_grad_u_jump)
 }
 
 
-void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
+void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 
@@ -321,7 +321,7 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
 }
 
 
-void PoissonSolverNodeBaseJump::compute_voronoi_points()
+void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_compute_voronoi_points, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -934,7 +934,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
 #ifdef P4_TO_P8
 void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi3D &voro) const
 #else
-void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &voro) const
+void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n, Voronoi2D &voro) const
 #endif
 {
   PetscErrorCode ierr;
@@ -1188,7 +1188,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
 
 
 
-void PoissonSolverNodeBaseJump::setup_linear_system()
+void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1429,7 +1429,7 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 }
 
 
-void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
+void my_p4est_poisson_jump_nodes_voronoi_t::setup_negative_laplace_rhsvec()
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_rhsvec_setup, rhs, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1584,7 +1584,7 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
 
 
 
-double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const
+double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const
 {
   PetscErrorCode ierr;
 
@@ -1945,7 +1945,7 @@ double PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree_on_n
 
 
 
-void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec solution) const
+void my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_to_tree(Vec solution) const
 {
   PetscErrorCode ierr;
 
@@ -2013,7 +2013,7 @@ void PoissonSolverNodeBaseJump::interpolate_solution_from_voronoi_to_tree(Vec so
 
 
 
-void PoissonSolverNodeBaseJump::write_stats(const char *path) const
+void my_p4est_poisson_jump_nodes_voronoi_t::write_stats(const char *path) const
 {
   std::vector<unsigned int> nodes_voro(p4est->mpisize, 0);
   std::vector<unsigned int> indep_voro(p4est->mpisize, 0);
@@ -2058,7 +2058,7 @@ next_point:
 
 
 
-void PoissonSolverNodeBaseJump::print_voronoi_VTK(const char* path) const
+void my_p4est_poisson_jump_nodes_voronoi_t::print_voronoi_VTK(const char* path) const
 {
 #ifdef P4_TO_P8
   std::vector<Voronoi3D> voro(num_local_voro);
@@ -2079,7 +2079,7 @@ void PoissonSolverNodeBaseJump::print_voronoi_VTK(const char* path) const
 }
 
 
-void PoissonSolverNodeBaseJump::check_voronoi_partition() const
+void my_p4est_poisson_jump_nodes_voronoi_t::check_voronoi_partition() const
 {
   PetscErrorCode ierr;
   ierr = PetscPrintf(p4est->mpicomm, "Checking partition ...\n"); CHKERRXX(ierr);

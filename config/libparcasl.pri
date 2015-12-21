@@ -18,7 +18,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_node_neighbors.cpp \
   $$PARCASL/src/my_p4est_poisson_cells.cpp \
   $$PARCASL/src/my_p4est_poisson_faces.cpp \
-  $$PARCASL/src/my_p4est_poisson_node_base_jump.cpp \
+  $$PARCASL/src/my_p4est_poisson_jump_nodes_voronoi.cpp \
   $$PARCASL/src/my_p4est_poisson_nodes.cpp \
   $$PARCASL/src/my_p4est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p4est_refine_coarsen.cpp \
@@ -57,7 +57,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_node_neighbors.cpp \
   $$PARCASL/src/my_p8est_poisson_cells.cpp \
   $$PARCASL/src/my_p8est_poisson_faces.cpp \
-  $$PARCASL/src/my_p8est_poisson_node_base_jump.cpp \
+  $$PARCASL/src/my_p8est_poisson_jump_nodes_voronoi.cpp \
   $$PARCASL/src/my_p8est_poisson_nodes.cpp \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p8est_refine_coarsen.cpp \

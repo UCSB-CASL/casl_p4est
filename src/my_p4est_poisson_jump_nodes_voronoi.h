@@ -1,5 +1,5 @@
-#ifndef POISSON_SOLVER_NODE_BASE_JUMP_H
-#define POISSON_SOLVER_NODE_BASE_JUMP_H
+#ifndef MY_P4EST_POISSON_JUMP_NODES_VORONOI_H
+#define MY_P4EST_POISSON_JUMP_NODES_VORONOI_H
 
 #include <petsc.h>
 
@@ -21,7 +21,7 @@
 #include <src/voronoi2D.h>
 #endif
 
-class PoissonSolverNodeBaseJump
+class my_p4est_poisson_jump_nodes_voronoi_t
 {
   typedef struct check_comm
   {
@@ -210,8 +210,8 @@ class PoissonSolverNodeBaseJump
   int matrix_has_nullspace;
 
   // disallow copy ctr and copy assignment
-  PoissonSolverNodeBaseJump(const PoissonSolverNodeBaseJump& other);
-  PoissonSolverNodeBaseJump& operator=(const PoissonSolverNodeBaseJump& other);
+  my_p4est_poisson_jump_nodes_voronoi_t(const my_p4est_poisson_jump_nodes_voronoi_t& other);
+  my_p4est_poisson_jump_nodes_voronoi_t& operator=(const my_p4est_poisson_jump_nodes_voronoi_t& other);
 
   PetscErrorCode VecCreateGhostVoronoiRhs();
 
@@ -226,8 +226,8 @@ public:
   void setup_linear_system();
   void setup_negative_laplace_rhsvec();
 
-  PoissonSolverNodeBaseJump(const my_p4est_node_neighbors_t *node_neighbors, const my_p4est_cell_neighbors_t *cell_neighbors);
-  ~PoissonSolverNodeBaseJump();
+  my_p4est_poisson_jump_nodes_voronoi_t(const my_p4est_node_neighbors_t *node_neighbors, const my_p4est_cell_neighbors_t *cell_neighbors);
+  ~my_p4est_poisson_jump_nodes_voronoi_t();
 
   void set_phi(Vec phi);
 
@@ -267,4 +267,4 @@ public:
   void check_voronoi_partition() const;
 };
 
-#endif // POISSON_SOLVER_NODE_BASE_JUMP_H
+#endif // MY_P4EST_POISSON_JUMP_NODES_VORONOI_H
