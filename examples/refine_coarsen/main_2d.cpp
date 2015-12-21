@@ -32,13 +32,10 @@ using namespace std;
 
 int main (int argc, char* argv[]){
 
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
+  mpi_enviroment_t mpi;
+  mpi.init(argc, argv);
   p4est_t            *p4est;
   p4est_nodes_t      *nodes;
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level");
@@ -52,24 +49,20 @@ int main (int argc, char* argv[]){
   parStopWatch w1, w2;
   w1.start("total time");
 
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
   // Create the connectivity object
   w2.start("connectivity");
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 
-#ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(1, 1, 1, &brick);
-#else
-  connectivity = my_p4est_brick_new(1, 1, &brick);
-#endif
+  int n_xyz [] = {1, 1, 1};
+  double xyz_min [] = {0, 0, 0};
+  double xyz_max [] = {1, 1, 1};
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
   w2.stop(); w2.read_duration();
 
   // Now create the forest
   w2.start("p4est generation");
-  p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
   w2.stop(); w2.read_duration();
 
   // Now refine the tree
@@ -121,7 +114,7 @@ int main (int argc, char* argv[]){
   // Now try refinement based on distance
 
   w2.start("refine and partition");
-  p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
   splitting_criteria_random_t sp_data2(lmin, lmax, 1000, 10000);
   p4est->user_pointer = (void*)(&sp_data2);
   for (int i = 0; i < lmax; i++){

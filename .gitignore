@@ -35,9 +35,9 @@ sync
 .rsync.exclude
 
 # What directories to ignore
-[Dd]ebug/
-[Rr]elease/
-[Oo]bjs/
-[Pp]roject[s]/
-[Bb]uild/
+*[Dd]ebug*
+*[Rr]elease*
+*[Oo]bjs*
+*[Pp]roject[s]*
+*[Bb]uild*
 
