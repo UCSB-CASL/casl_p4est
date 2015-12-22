@@ -87,8 +87,26 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
 
 bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
 {
+  bool p_x = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_m00]!=0);
+  bool p_y = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_0m0]!=0);
+#ifdef P4_TO_P8
+  bool p_z = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_00m]!=0);
+#endif
+
   p4est_connectivity_t *connectivity = p4est->connectivity;
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
+
+
+  double *v2c = p4est->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+  double xmin = v2c[3*t2v[0 + 0] + 0];
+  double ymin = v2c[3*t2v[0 + 0] + 1];
+  double xmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 0];
+  double ymax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 1];
+#ifdef P4_TO_P8
+  double zmin = v2c[3*t2v[0 + 0] + 2];
+  double zmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 2];
+#endif
 
   // need to unclamp the node to make sure we get the correct coordinate
   p4est_indep_t node_unclamped = *node;
@@ -320,9 +338,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_m00->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_m00_m0 = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_m00_m0 += (ymax-ymin);
     qnnn.d_m00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_m00_m0;
 #ifdef P4_TO_P8
     qnnn.d_m00_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_m00_0m += (zmax-zmin);
     qnnn.d_m00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_m00_0m;
 #endif
   }
@@ -369,9 +389,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_p00->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_p00_m0 = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_p00_m0 += (ymax-ymin);
     qnnn.d_p00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_p00_m0;
 #ifdef P4_TO_P8
     qnnn.d_p00_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_p00_0m += (zmax-zmin);
     qnnn.d_p00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_p00_0m;
 #endif
   }
@@ -418,11 +440,14 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_0m0->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_0m0_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_0m0_m0 += (xmax-xmin);
     qnnn.d_0m0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0m0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0m0_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_0m0_0m += (zmax-zmin);
     qnnn.d_0m0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0m0_0m;
 #endif
+
   }
 
   /* 0p0 */
@@ -467,9 +492,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_0p0->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_0p0_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_0p0_m0 += (xmax-xmin);
     qnnn.d_0p0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0p0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0p0_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_0p0_0m += (zmax-zmin);
     qnnn.d_0p0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0p0_0m;
 #endif
   }
@@ -506,8 +533,10 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_00m->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00m_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_00m_m0 += (xmax-xmin);
     qnnn.d_00m_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00m_m0;
     qnnn.d_00m_0m = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_00m_0m += (ymax-ymin);
     qnnn.d_00m_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00m_0m;
   }
 
@@ -542,8 +571,10 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_00p->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00p_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_00p_m0 += (xmax-xmin);
     qnnn.d_00p_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00p_m0;
     qnnn.d_00p_0m = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_00p_0m += (ymax-ymin);
     qnnn.d_00p_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00p_0m;
   }
 #endif
@@ -652,9 +683,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_m00_m0 = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_m00_m0 += (ymax-ymin);
     qnnn.d_m00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_m00_m0;
 #ifdef P4_TO_P8
     qnnn.d_m00_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_m00_0m += (zmax-zmin);
     qnnn.d_m00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_m00_0m;
 #endif
   }
@@ -752,9 +785,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_p00_m0 = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_p00_m0 += (ymax-ymin);
     qnnn.d_p00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_p00_m0;
 #ifdef P4_TO_P8
     qnnn.d_p00_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_p00_0m += (zmax-zmin);
     qnnn.d_p00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_p00_0m;
 #endif
   }
@@ -853,9 +888,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_0m0_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_0m0_m0 += (xmax-xmin);
     qnnn.d_0m0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0m0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0m0_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_0m0_0m += (zmax-zmin);
     qnnn.d_0m0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0m0_0m;
 #endif
   }
@@ -954,9 +991,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_0p0_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_0p0_m0 += (xmax-xmin);
     qnnn.d_0p0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0p0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0p0_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_0p0_0m += (zmax-zmin);
     qnnn.d_0p0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0p0_0m;
 #endif
   }
@@ -1025,8 +1064,10 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00m_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_00m_m0 += (xmax-xmin);
     qnnn.d_00m_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00m_m0;
     qnnn.d_00m_0m = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_00m_0m += (ymax-ymin);
     qnnn.d_00m_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00m_0m;
   }
 
@@ -1093,8 +1134,10 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00p_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_00p_0m += (xmax-xmin);
     qnnn.d_00p_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00p_m0;
     qnnn.d_00p_0m = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_00p_0m += (ymax-ymin);
     qnnn.d_00p_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00p_0m;
   }
 #endif

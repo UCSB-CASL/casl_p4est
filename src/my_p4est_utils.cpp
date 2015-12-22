@@ -15,7 +15,7 @@
 #include <set>
 #include <sstream>
 #include <petsclog.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 #include <src/petsc_compatibility.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
@@ -202,6 +202,7 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
 double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   PetscErrorCode ierr;
+
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
@@ -221,16 +222,26 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
 #endif
 
   double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = quad_x_fr_i(&quad);
-  double ymin = quad_y_fr_j(&quad);
+  double qxmin = quad_x_fr_i(&quad);
+  double qymin = quad_y_fr_j(&quad);
 #ifdef P4_TO_P8
-  double zmin = quad_z_fr_k(&quad);
+  double qzmin = quad_z_fr_k(&quad);
 #endif
 
-  x = (x-xmin) / qh;
-  y = (y-ymin) / qh;
+#ifdef CASL_THROWS
+  if(x<qxmin-EPS || x>qxmin+qh+EPS || y<qymin-EPS || y>qymin+qh+EPS)
+  {
+    std::cout << x << ", " << qxmin << ", " << qxmin+qh << std::endl;
+    std::cout << y << ", " << qymin << ", " << qymin+qh << std::endl;
+    std::cout << y-qymin << std::endl;
+    throw std::invalid_argument("quadratic_interpolation: the point is not inside the quadrant.");
+  }
+#endif
+
+  x = (x-qxmin) / qh;
+  y = (y-qymin) / qh;
 #ifdef P4_TO_P8
-  z = (z-zmin) / qh;
+  z = (z-qzmin) / qh;
 #endif
 
   double d_m00 = x;

@@ -1,5 +1,5 @@
-#ifndef __CASL_MATH_H__
-#define __CASL_MATH_H__
+#ifndef MY_P4EST_MATH_H
+#define MY_P4EST_MATH_H
 
 #include <math.h>
 #include <stdexcept>
@@ -14,7 +14,7 @@
 #define PI 3.1415926535897932384626433832795
 #endif
 /*!
- * \file CASL_math.h
+ * \file math.h
  * \brief This file contains the basic mathematical functions used throughout the library
  */
 
@@ -336,4 +336,4 @@ int solve_Quartic(double c[ 5 ], double s[ 4 ]);
 int is_Zero(double x);
 
 
-#endif // __CASL_MATH_H__
+#endif // MY_P4EST_MATH_H

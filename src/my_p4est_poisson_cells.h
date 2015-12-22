@@ -19,6 +19,8 @@
 #include <p4est_nodes.h>
 #endif
 
+//#include <lib/algebra/LinearSolver.h>
+
 class my_p4est_poisson_cells_t
 {
   const my_p4est_cell_neighbors_t *ngbd_c;
@@ -52,6 +54,7 @@ class my_p4est_poisson_cells_t
   bool nullspace_use_fixed_point;
   Mat A;
   MatNullSpace A_null_space;
+  Vec null_space;
   p4est_gloidx_t fixed_value_idx_g;
   p4est_gloidx_t fixed_value_idx_l;
   Vec rhs, phi, add;

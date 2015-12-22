@@ -6,6 +6,8 @@
 #include <src/my_p4est_vtk.h>
 #endif
 
+#include <src/math.h>
+
 #include "petsc_compatibility.h"
 #include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
@@ -91,9 +93,12 @@ void my_p4est_interpolation_t::add_point(p4est_locidx_t locidx, const double *xy
   };
   
   // clip to bounding box
+  bool periodic[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+    periodic[dir] = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + 2*dir]!=0);
   for (short i=0; i<P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
+    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = periodic[i] ? xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
+    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = periodic[i] ? xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
   }
   
   p4est_quadrant_t best_match;
@@ -228,9 +233,14 @@ void my_p4est_interpolation_t::interpolate(double *Fo_p) {
 
     done = num_remaining_queries == 0 && num_remaining_replies == 0 && it == end;
   }
+
+//  mpiret = MPI_Waitall(query_req.size(), &query_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+//  mpiret = MPI_Waitall(reply_req.size(), &reply_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+//  query_req.clear();
+//  reply_req.clear();
   
-  InterpolatingFunctionLogger& logger = InterpolatingFunctionLogger::get_instance();
-  logger.log(log_entry);
+//  InterpolatingFunctionLogger& logger = InterpolatingFunctionLogger::get_instance();
+//  logger.log(log_entry);
 
   ierr = PetscLogEventEnd(log_my_p4est_interpolation_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 }

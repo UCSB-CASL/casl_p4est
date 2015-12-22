@@ -1,9 +1,9 @@
-#ifndef __CUBE2_H__
-#define __CUBE2_H__
+#ifndef MY_P4EST_CUBE2_H
+#define MY_P4EST_CUBE2_H
 
 #include "point2.h"
 #include "simplex2.h"
-#include "casl_types.h"
+#include "types.h"
 
 /*!
  * \file Cube2.h
@@ -125,4 +125,4 @@ public:
   double integrate_Over_Interface(const QuadValue &f, const QuadValue &level_set_values ) const;
 };
 
-#endif // __CUBE2_H__
+#endif // MY_P4EST_CUBE2_H

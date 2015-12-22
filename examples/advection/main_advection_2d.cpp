@@ -162,7 +162,8 @@ int main (int argc, char* argv[])
   cmd.add_option("tf", "final time");
   cmd.add_option("save_vtk", "1 to export vtu images, 0 otherwise");
   cmd.add_option("save_every_n", "export images every n iterations");
-  cmd.add_option("test", "the test to run. Available options are\
+  cmd.add_option("cfl", "set the cfl number, i.e. dt = cfl * dxmin");
+  cmd.add_option("test", "the test to run. Available options are\n\
                  \t 0 - rotation\n\
                  \t 1 - vortex\n");
   cmd.parse(argc, argv);
@@ -172,6 +173,7 @@ int main (int argc, char* argv[])
   test_number = cmd.get("test", test_number);
   bool save_vtk = cmd.get("save_vtk", 0);
   int save_every_n = cmd.get("save_every_n", 1);
+  double cfl = cmd.get("cfl", 1.);
 
   splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
 
@@ -215,9 +217,9 @@ int main (int argc, char* argv[])
 #endif
 
 #ifdef P4_TO_P8
-  dt = 1*MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+  dt = cfl*MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
 #else
-  dt = 1*MIN(dxyz_min[0], dxyz_min[1]);
+  dt = cfl*MIN(dxyz_min[0], dxyz_min[1]);
 #endif
 
   p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
@@ -247,7 +249,8 @@ int main (int argc, char* argv[])
 
   int iter = 0;
 
-  save_VTK(p4est, nodes, &brick, phi_n, iter/save_every_n);
+  if(save_vtk==1)
+    save_VTK(p4est, nodes, &brick, phi_n, iter/save_every_n);
   iter++;
 
   while(tn+.1*dt<tf)
@@ -270,7 +273,7 @@ int main (int argc, char* argv[])
 
     my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, &brick, ngbd);
     sl.update_p4est(velo_n, dt, phi_n);
-    //      sl.update_p4est(velo_cf, dt, phi_n);
+//    sl.update_p4est(velo_cf, dt, phi_n);
 
     p4est_destroy(p4est); p4est = p4est_np1;
     p4est_ghost_destroy(ghost); ghost = ghost_np1;

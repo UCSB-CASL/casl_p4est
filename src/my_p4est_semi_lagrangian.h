@@ -71,6 +71,7 @@ public:
    * \param dt      the time step
    * \param phi     the level set function
    * \param phi_xx  the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
+   * \note you need to update ngbd_n and hierarchy yourself !
    */
 #ifdef P4_TO_P8
   void update_p4est(const CF_3 **v, double dt, Vec &phi, Vec *phi_xx=NULL);
@@ -85,6 +86,7 @@ public:
    * \param dt      the time step
    * \param phi     the level set function
    * \param phi_xx  the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
+   * \note you need to update ngbd_n and hierarchy yourself !
    */
   void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx=NULL);
 
@@ -97,6 +99,7 @@ public:
    * \param dt_n    the time step from tn to tnp1
    * \param phi     the level set function
    * \param phi_xx  the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
+   * \note you need to update ngbd_n and hierarchy yourself !
    */
   void update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, Vec &phi, Vec *phi_xx=NULL);
 };

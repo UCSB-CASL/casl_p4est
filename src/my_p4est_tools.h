@@ -55,11 +55,13 @@ my_p4est_brick_t;
 #ifdef P4_TO_P8
 p4est_connectivity_t *my_p4est_brick_new (int nxtrees, int nytrees, int nztrees,
                                           double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
-                                          my_p4est_brick_t * myb);
+                                          my_p4est_brick_t * myb,
+                                          int periodic_a, int periodic_b, int periodic_c);
 #else
 p4est_connectivity_t *my_p4est_brick_new (int nxtrees, int nytrees,
                                           double xmin, double xmax, double ymin, double ymax,
-                                          my_p4est_brick_t * myb);
+                                          my_p4est_brick_t * myb,
+                                          int periodic_a, int periodic_b);
 #endif
 
 /** Free a brick connectivity and tree lookup structure.

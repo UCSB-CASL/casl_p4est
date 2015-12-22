@@ -1,6 +1,6 @@
 #include "math.h"
 #include "point2.h"
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 #ifdef P4_TO_P8
 #include "my_p8est_utils.h"

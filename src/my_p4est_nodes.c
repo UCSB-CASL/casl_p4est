@@ -503,8 +503,23 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   num_receivers = (int) receiver_ranks.elem_count;
   sender_ranks = P4EST_ALLOC (int, num_procs);
 
+//	char name[1000];
+//	char *out_dir;
+//	out_dir = getenv("OUT_DIR");
+//	sprintf(name, "%s/notify/%03d.dat", out_dir);
+//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/notify/%03d.dat", p4est->mpirank);
+//	FILE *fp = fopen(name, "w");
+//  fprintf(fp, "%d\n", num_receivers);
+//  for(l=0; l<num_receivers; ++l)
+//    fprintf(fp, "%d ", *(int*)sc_array_index_int(&receiver_ranks, l));
+//  fprintf(fp, "\n");
+//  fclose(fp);
+
+
+//	PetscPrintf(p4est->mpicomm, "Starting sc_notify\n");
   sc_notify ((int *) receiver_ranks.array, num_receivers,
              sender_ranks, &num_senders, p4est->mpicomm);
+//	PetscPrintf(p4est->mpicomm, "done with sc_notify\n");
 
   //  P4EST_LDEBUGF ("Node query receivers %d senders %d\n",
   //                 num_receivers, num_senders);

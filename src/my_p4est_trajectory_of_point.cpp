@@ -19,6 +19,12 @@ void trajectory_from_np1_to_n( p4est_t *p4est, p4est_nodes_t *nodes,
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_trajectory_from_np1_to_n, 0, 0, 0, 0); CHKERRXX(ierr);
 
+  bool periodic[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    periodic[dir] = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + 2*dir]!=0);
+  }
+
   double xyz_min[P4EST_DIM];
   double xyz_max[P4EST_DIM];
 
@@ -53,11 +59,12 @@ void trajectory_from_np1_to_n( p4est_t *p4est, p4est_nodes_t *nodes,
   #endif
     };
 
-    xyz_star[0] = MAX(xyz_min[0], MIN(xyz_max[0], xyz_star[0]));
-    xyz_star[1] = MAX(xyz_min[1], MIN(xyz_max[1], xyz_star[1]));
-#ifdef P4_TO_P8
-    xyz_star[2] = MAX(xyz_min[2], MIN(xyz_max[2], xyz_star[2]));
-#endif
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (periodic[dir] && xyz_star[dir]<xyz_min[dir]) xyz_star[dir] += xyz_max[dir]-xyz_min[dir];
+      else if (periodic[dir] && xyz_star[dir]>xyz_max[dir]) xyz_star[dir] -= xyz_max[dir]-xyz_min[dir];
+      else                                                  xyz_star[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_star[dir]));
+    }
 
     interp.add_point(n, xyz_star);
   }
@@ -84,11 +91,12 @@ void trajectory_from_np1_to_n( p4est_t *p4est, p4est_nodes_t *nodes,
     xyz_d[2][n] = xyz[2] - dt*vstar[2][n];
 #endif
 
-    xyz_d[0][n] = MAX(xyz_min[0], MIN(xyz_max[0], xyz_d[0][n]));
-    xyz_d[1][n] = MAX(xyz_min[1], MIN(xyz_max[1], xyz_d[1][n]));
-#ifdef P4_TO_P8
-    xyz_d[2][n] = MAX(xyz_min[2], MIN(xyz_max[2], xyz_d[2][n]));
-#endif
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (periodic[dir] && xyz_d[dir][n]<xyz_min[dir]) xyz_d[dir][n] += xyz_max[dir]-xyz_min[dir];
+      else if (periodic[dir] && xyz_d[dir][n]>xyz_max[dir]) xyz_d[dir][n] -= xyz_max[dir]-xyz_min[dir];
+      else                                                  xyz_d[dir][n] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_d[dir][n]));
+    }
   }
 
   ierr = PetscLogEventEnd(log_trajectory_from_np1_to_n, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -112,6 +120,12 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_trajectory_from_np1_to_nm1, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  bool periodic[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    periodic[dir] = (p4est_n->connectivity->tree_to_tree[P4EST_FACES*0 + 2*dir]!=0);
+  }
 
   double xyz_min[P4EST_DIM];
   double xyz_max[P4EST_DIM];
@@ -148,11 +162,12 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
   #endif
     };
 
-    xyz_star[0] = MAX(xyz_min[0], MIN(xyz_max[0], xyz_star[0]));
-    xyz_star[1] = MAX(xyz_min[1], MIN(xyz_max[1], xyz_star[1]));
-#ifdef P4_TO_P8
-    xyz_star[2] = MAX(xyz_min[2], MIN(xyz_max[2], xyz_star[2]));
-#endif
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (periodic[dir] && xyz_star[dir]<xyz_min[dir]) xyz_star[dir] += xyz_max[dir]-xyz_min[dir];
+      else if (periodic[dir] && xyz_star[dir]>xyz_max[dir]) xyz_star[dir] -= xyz_max[dir]-xyz_min[dir];
+      else                                                  xyz_star[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_star[dir]));
+    }
 
     interp_n  .add_point(n, xyz_star);
     interp_nm1.add_point(n, xyz_star);
@@ -188,11 +203,12 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
     xyz_n[2][n] = xyz[2] - dt_n* ( (1+.5*dt_n/dt_nm1)*vn_star[2][n] - .5*dt_n/dt_nm1*vnm1_star[2][n] );
 #endif
 
-    xyz_n[0][n] = MAX(xyz_min[0], MIN(xyz_max[0], xyz_n[0][n]));
-    xyz_n[1][n] = MAX(xyz_min[1], MIN(xyz_max[1], xyz_n[1][n]));
-#ifdef P4_TO_P8
-    xyz_n[2][n] = MAX(xyz_min[2], MIN(xyz_max[2], xyz_n[2][n]));
-#endif
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (periodic[dir] && xyz_n[dir][n]<xyz_min[dir]) xyz_n[dir][n] += xyz_max[dir]-xyz_min[dir];
+      else if (periodic[dir] && xyz_n[dir][n]>xyz_max[dir]) xyz_n[dir][n] -= xyz_max[dir]-xyz_min[dir];
+      else                                                  xyz_n[dir][n] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_n[dir][n]));
+    }
   }
 
 
@@ -215,11 +231,12 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
   #endif
     };
 
-    xyz_star[0] = MAX(xyz_min[0], MIN(xyz_max[0], xyz_star[0]));
-    xyz_star[1] = MAX(xyz_min[1], MIN(xyz_max[1], xyz_star[1]));
-#ifdef P4_TO_P8
-    xyz_star[2] = MAX(xyz_min[2], MIN(xyz_max[2], xyz_star[2]));
-#endif
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (periodic[dir] && xyz_star[dir]<xyz_min[dir]) xyz_star[dir] += xyz_max[dir]-xyz_min[dir];
+      else if (periodic[dir] && xyz_star[dir]>xyz_max[dir]) xyz_star[dir] -= xyz_max[dir]-xyz_min[dir];
+      else                                                  xyz_star[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_star[dir]));
+    }
 
     interp_n  .add_point(n, xyz_star);
     interp_nm1.add_point(n, xyz_star);
@@ -251,14 +268,129 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
     xyz_nm1[2][n] = xyz[2] - (dt_n+dt_nm1) * ( (1+.5*(dt_n-dt_nm1)/dt_nm1)*vn_star[2][n] - .5*(dt_n-dt_nm1)/dt_nm1*vnm1_star[2][n] );
 #endif
 
-    xyz_nm1[0][n] = MAX(xyz_min[0], MIN(xyz_max[0], xyz_nm1[0][n]));
-    xyz_nm1[1][n] = MAX(xyz_min[1], MIN(xyz_max[1], xyz_nm1[1][n]));
-#ifdef P4_TO_P8
-    xyz_nm1[2][n] = MAX(xyz_min[2], MIN(xyz_max[2], xyz_nm1[2][n]));
-#endif
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (periodic[dir] && xyz_nm1[dir][n]<xyz_min[dir]) xyz_nm1[dir][n] += xyz_max[dir]-xyz_min[dir];
+      else if (periodic[dir] && xyz_nm1[dir][n]>xyz_max[dir]) xyz_nm1[dir][n] -= xyz_max[dir]-xyz_min[dir];
+      else                                                    xyz_nm1[dir][n] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_nm1[dir][n]));
+    }
   }
 }
 
+
+void trajectory_from_np1_to_n( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
+                               my_p4est_node_neighbors_t *ngbd_nm1,
+                               my_p4est_node_neighbors_t *ngbd_n,
+                               Vec vnm1[P4EST_DIM],
+                               Vec vn[P4EST_DIM],
+                               double dt_nm1, double dt_n,
+                               std::vector<double> xyz_n[P4EST_DIM],
+                               int dir )
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_trajectory_from_np1_to_nm1_faces, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  bool periodic[P4EST_DIM];
+  for(int dd=0; dd<P4EST_DIM; ++dd)
+  {
+    periodic[dd] = (p4est_n->connectivity->tree_to_tree[P4EST_FACES*0 + 2*dd]!=0);
+  }
+
+  double xyz_min[P4EST_DIM];
+  double xyz_max[P4EST_DIM];
+
+  double *v2c = p4est_n->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est_n->connectivity->tree_to_vertex;
+  p4est_topidx_t first_tree = 0, last_tree = p4est_n->trees->elem_count-1;
+  p4est_topidx_t first_vertex = 0, last_vertex = P4EST_CHILDREN - 1;
+
+  for (int dd=0; dd<P4EST_DIM; dd++)
+  {
+    xyz_min[dd] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + dd];
+    xyz_max[dd] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + dd];
+  }
+
+  /* first find the velocity at the faces */
+  my_p4est_interpolation_nodes_t interp_np1(ngbd_n);
+  for (p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
+  {
+    double xyz[P4EST_DIM];
+    faces_n->xyz_fr_f(f_idx, dir, xyz);
+    interp_np1.add_point(f_idx, xyz);
+  }
+  std::vector<double> vnp1[P4EST_DIM];
+  for(int dd=0; dd<P4EST_DIM; ++dd)
+  {
+    vnp1[dd].resize(faces_n->num_local[dir]);
+    interp_np1.set_input(vn[dd], quadratic);
+    interp_np1.interpolate(vnp1[dd].data());
+  }
+
+  /* find xyz_star */
+  my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);
+  my_p4est_interpolation_nodes_t interp_n  (ngbd_n  );
+  for (p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
+  {
+    double xyz[P4EST_DIM];
+    faces_n->xyz_fr_f(f_idx, dir, xyz);
+
+    /* find the intermediate point */
+    double xyz_star[] =
+    {
+      xyz[0] - .5*dt_n*vnp1[0][f_idx],
+      xyz[1] - .5*dt_n*vnp1[1][f_idx]
+  #ifdef P4_TO_P8
+      ,xyz[2] - .5*dt_n*vnp1[2][f_idx]
+  #endif
+    };
+
+    for(int dd=0; dd<P4EST_DIM; ++dd)
+    {
+      if      (periodic[dd] && xyz_star[dd]<xyz_min[dd]) xyz_star[dd] += xyz_max[dd]-xyz_min[dd];
+      else if (periodic[dd] && xyz_star[dd]>xyz_max[dd]) xyz_star[dd] -= xyz_max[dd]-xyz_min[dd];
+      else                                                  xyz_star[dd] = MAX(xyz_min[dd], MIN(xyz_max[dd], xyz_star[dd]));
+    }
+
+    interp_nm1.add_point(f_idx, xyz_star);
+    interp_n  .add_point(f_idx, xyz_star);
+  }
+
+  /* compute the velocities at the intermediate point */
+  std::vector<double> vn_star  [P4EST_DIM];
+  std::vector<double> vnm1_star[P4EST_DIM];
+  for(int dd=0; dd<P4EST_DIM; ++dd)
+  {
+    vnm1_star[dd].resize(faces_n->num_local[dir]);
+    interp_nm1.set_input(vnm1[dd], quadratic);
+    interp_nm1.interpolate(vnm1_star[dd].data());
+
+    vn_star[dd].resize(faces_n->num_local[dir]);
+    interp_n.set_input(vn[dd], quadratic);
+    interp_n.interpolate(vn_star[dd].data());
+  }
+  interp_nm1.clear();
+  interp_n  .clear();
+
+  /* now find the departure point at time n */
+  for (p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
+  {
+    double xyz[P4EST_DIM];
+    faces_n->xyz_fr_f(f_idx, dir, xyz);
+
+    xyz_n[0][f_idx] = xyz[0] - dt_n* ( (1+.5*dt_n/dt_nm1)*vn_star[0][f_idx] - .5*dt_n/dt_nm1*vnm1_star[0][f_idx] );
+    xyz_n[1][f_idx] = xyz[1] - dt_n* ( (1+.5*dt_n/dt_nm1)*vn_star[1][f_idx] - .5*dt_n/dt_nm1*vnm1_star[1][f_idx] );
+#ifdef P4_TO_P8
+    xyz_n[2][f_idx] = xyz[2] - dt_n* ( (1+.5*dt_n/dt_nm1)*vn_star[2][f_idx] - .5*dt_n/dt_nm1*vnm1_star[2][f_idx] );
+#endif
+
+    for(int dd=0; dd<P4EST_DIM; ++dd)
+    {
+      if      (periodic[dd] && xyz_n[dd][f_idx]<xyz_min[dd]) xyz_n[dd][f_idx] += xyz_max[dd]-xyz_min[dd];
+      else if (periodic[dd] && xyz_n[dd][f_idx]>xyz_max[dd]) xyz_n[dd][f_idx] -= xyz_max[dd]-xyz_min[dd];
+      else                                                   xyz_n[dd][f_idx] = MAX(xyz_min[dd], MIN(xyz_max[dd], xyz_n[dd][f_idx]));
+    }
+  }
+}
 
 
 void trajectory_from_np1_to_nm1( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
