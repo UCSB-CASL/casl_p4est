@@ -9,25 +9,22 @@
 # creates a .pro file 
 function create_pro() {
 cat > $1/$1.pro << EOF
+# --------------------------------------------------------------
+# qmake config file for example $1
+# --------------------------------------------------------------
 CONFIG += 2d
 
-# --------------------------------------------------------------
-# qmake config file for the poisson example
-# --------------------------------------------------------------
 include(../../config/$2.pri)
 include(../../config/libparcasl.pri)
 
-main = main
 CONFIG(2d, 2d|3d): {
-  target = \$\${TARGET}_2d
-  TARGET = \$\${target}
-  SOURCES += \$\${main}_2d.cpp
+  TARGET = $1_2d
+  SOURCES += main_2d.cpp
 }
 
 CONFIG(3d, 2d|3d): {
-  target = \$\${TARGET}_3d
-  TARGET = \$\${target}
-  SOURCES += \$\${main}_3d.cpp
+  TARGET = $1_3d
+  SOURCES += main_3d.cpp
 }
 
 EOF
@@ -40,8 +37,8 @@ cat > $1/main_2d.cpp << EOF
  *
  * Title: $1
  * Description:
- * Author: 
- * Date Created: 
+ * Author: $(git config user.name)
+ * Date Created: $(date +%m-%d-%Y)
  *
 */
 
@@ -87,12 +84,31 @@ int main(int argc, char** argv) {
 
   // domain size information
   const int n_xyz []      = {1, 1, 1};
-  const double xyz_min [] = {0, 0, 0};
-  const double xyz_max [] = {1, 1, 1};
+  const double xyz_min [] = {-1, -1, -1};
+  const double xyz_max [] = { 1,  1,  1};
   conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
   // create the forest
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
+
+  // refine based on distance to a level-set
+#ifdef P4_TO_P8
+  struct:CF_3{
+    double operator()(double x, double y, double z) const {
+      return 0.5 - sqrt(SQR(x) + SQR(y) + SQR(z));
+    }
+  } circle;
+#else
+  struct:CF_2{
+    double operator()(double x, double y) const {
+      return 0.5 - sqrt(SQR(x) + SQR(y));
+    }
+  } circle;
+#endif
+
+  splitting_criteria_cf_t sp(3, 8, &circle);
+  p4est->user_pointer = &sp;
+  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
   // partition the forest
   my_p4est_partition(p4est, P4EST_TRUE, NULL);
