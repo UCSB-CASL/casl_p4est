@@ -13,7 +13,7 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_poisson_jump_nodes_extended.h>
+#include <src/my_p8est_poisson_jump_nodes_voronoi.h>
 #include <src/my_p8est_level_set.h>
 #else
 #include <p4est_bits.h>
@@ -23,7 +23,7 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_poisson_jump_nodes_extended.h>
+#include <src/my_p4est_poisson_jump_nodes_voronoi.h>
 #include <src/my_p4est_level_set.h>
 #endif
 
@@ -47,6 +47,13 @@ const static double mue_p = 5.0;
 const static double mue_m = 1.0;
 
 #ifdef P4_TO_P8
+class constant_cf_t:public CF_3{
+  double c;
+public:
+  constant_cf_t(double c): c(c) {}
+  double operator()(double, double, double) const { return c; }
+};
+
 static struct:WallBC3D{
   BoundaryConditionType operator()(double x, double y, double z) const {
     (void) x;
@@ -163,6 +170,13 @@ static struct:CF_3{
 } jump_dn_sol;
 
 #else
+class constant_cf_t:public CF_2{
+  double c;
+public:
+  constant_cf_t(double c): c(c) {}
+  double operator()(double, double) const { return c; }
+};
+
 static struct:WallBC2D{
   BoundaryConditionType operator()(double x, double y) const {
     (void) x;
@@ -340,46 +354,33 @@ int main (int argc, char* argv[]){
                                 "global number of quadrants = %7ld \n", global_num_nodes, global_num_quadrants);
 
     /* initialize the vectors */
-    struct solution_t {
-      double minus, plus;
-    };
 
-    Vec sol, phi, rhs;
-#ifdef P4_TO_P8
-    const CF_3* sol_cf [] = {&minus_cf, &plus_cf};
-    const CF_3* rhs_cf [] = {&rhs_minus_cf, &rhs_plus_cf};
-#else
-    const CF_2* sol_cf [] = {&minus_cf, &plus_cf};
-    const CF_2* rhs_cf [] = {&rhs_minus_cf, &rhs_plus_cf};
-#endif
+    Vec phi, sol[2], sol_ex[2], rhs[2], mue[2];
+    Vec jump_u, jump_du;
+
     ierr = VecCreateGhostNodes(p4est, nodes, &phi);
-    ierr = VecCreateGhostNodesBlock(p4est, nodes, 2, &sol); CHKERRXX(ierr);
-    ierr = VecDuplicate(sol, &rhs); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est, nodes, sol_cf, sol);
-    sample_cf_on_nodes(p4est, nodes, rhs_cf, rhs);
+    ierr = VecDuplicate(phi, &jump_u); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &jump_du); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &sol[0]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &sol[1]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &sol_ex[0]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &sol_ex[1]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &rhs[0]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &rhs[1]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &mue[0]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &mue[1]); CHKERRXX(ierr);
+
+    sample_cf_on_nodes(p4est, nodes, jump_sol, jump_u);
+    sample_cf_on_nodes(p4est, nodes, jump_dn_sol, jump_du);
     sample_cf_on_nodes(p4est, nodes, circle, phi);
+    sample_cf_on_nodes(p4est, nodes, minus_cf, sol_ex[0]);
+    sample_cf_on_nodes(p4est, nodes, plus_cf, sol_ex[1]);
+    sample_cf_on_nodes(p4est, nodes, rhs_minus_cf, rhs[0]);
+    sample_cf_on_nodes(p4est, nodes, rhs_plus_cf, rhs[1]);
 
-    // copy to local buffers to save as vtk
-    std::vector<double> exact_plus(nodes->indep_nodes.elem_count), exact_minus(nodes->indep_nodes.elem_count);
-    Vec sol_plus, sol_minus;
-    ierr = VecDuplicate(phi, &sol_plus); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &sol_minus); CHKERRXX(ierr);
-
-    solution_t *sol_p;
-    double *phi_p;
-    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecGetArray(sol, (double**)&sol_p); CHKERRXX(ierr);
-    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-      exact_minus[i] = sol_p[i].minus;
-      exact_plus[i]  = sol_p[i].plus;
-    }
-
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_TRUE, P4EST_FALSE,
-                           3, 0, "exact",
-                           VTK_POINT_DATA, "phi",   phi_p,
-                           VTK_POINT_DATA, "exact plus",  &exact_plus[0],
-                           VTK_POINT_DATA, "exact minus", &exact_minus[0]);
+    constant_cf_t mue_plus_cf(mue_p), mue_minus_cf(mue_m);
+    sample_cf_on_nodes(p4est, nodes, mue_minus_cf, mue[0]);
+    sample_cf_on_nodes(p4est, nodes, mue_plus_cf, mue[1]);
 
     // set up the boundary conditions
 #ifdef P4_TO_P8
@@ -392,53 +393,49 @@ int main (int argc, char* argv[]){
 
     w2.start("solving jump problem");
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
-    my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
-    my_p4est_poisson_jump_nodes_extended_t solver(&neighbors);
+    my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
+    my_p4est_cell_neighbors_t cell_neighbors(&hierarchy);
+    my_p4est_poisson_jump_nodes_voronoi_t solver(&node_neighbors, &cell_neighbors);
     solver.set_bc(bc);
-    solver.set_jump(jump_sol, jump_dn_sol);
     solver.set_phi(phi);
-    solver.set_rhs(rhs);
-    solver.set_mue(mue_p, mue_m);
-    solver.solve(sol);
+    solver.set_rhs(rhs[0], rhs[1]);
+    solver.set_mu(mue[0], mue[1]);
+    solver.set_u_jump(jump_u);
+    solver.set_mu_grad_u_jump(jump_du);
+    solver.solve(sol[0]);
+    VecCopy(sol[0], sol[1]);
     w2.stop(); w2.read_duration();
-
-    // save the result
-    double *sol_plus_p, *sol_minus_p;
-    ierr = VecGetArray(sol_plus, &sol_plus_p); CHKERRXX(ierr);
-    ierr = VecGetArray(sol_minus, &sol_minus_p); CHKERRXX(ierr);
-
-    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-      sol_minus_p[i] = sol_p[i].minus;
-      sol_plus_p[i]  = sol_p[i].plus;
-    }
 
     // extend solutions over interface
-    w2.start("extending solution");
-    my_p4est_level_set_t ls(&neighbors);
-    ls.extend_Over_Interface_TVD(phi, sol_minus, 50);
-    // reverse sign
-    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-      phi_p[i] = -phi_p[i];
-    }
-    ls.extend_Over_Interface_TVD(phi, sol_plus, 50);
-    // reverse sign to its normal value
-    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-      phi_p[i] = -phi_p[i];
-    }
-    w2.stop(); w2.read_duration();
+    double *phi_p;
+    VecGetArray(phi, &phi_p);
+//    w2.start("extending solution");
+//    my_p4est_level_set_t ls(&node_neighbors);
+//    ls.extend_Over_Interface_TVD(phi, sol[0], 10);
+//    // reverse sign
+//    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+//      phi_p[i] = -phi_p[i];
+//    }
+//    ls.extend_Over_Interface_TVD(phi, sol[1], 10);
+//    // reverse sign to its normal value
+//    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+//      phi_p[i] = -phi_p[i];
+//    }
+//    w2.stop(); w2.read_duration();
 
     // compute the error -- overwritting to save on space
+    double *sol_p[2], *sol_ex_p[2];
+    ierr = VecGetArray(sol[0], &sol_p[0]); CHKERRXX(ierr);
+    ierr = VecGetArray(sol[1], &sol_p[1]); CHKERRXX(ierr);
+    ierr = VecGetArray(sol_ex[0], &sol_ex_p[0]); CHKERRXX(ierr);
+    ierr = VecGetArray(sol_ex[1], &sol_ex_p[1]); CHKERRXX(ierr);
+
     double err_max [] = {0, 0}; // {minus, plus}
-    std::vector<double> err(nodes->indep_nodes.elem_count, 0);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-      exact_minus[i] = fabs(exact_minus[i] - sol_minus_p[i]);
-      exact_plus[i]  = fabs(exact_plus[i] - sol_plus_p[i]);
       if (phi_p[i] < 0){
-        err_max[0] = MAX(err_max[0], exact_minus[i]);
-        err[i] = exact_minus[i];
+        err_max[0] = MAX(err_max[0], fabs(sol_ex_p[0][i] - sol_p[0][i]));
       } else {
-        err_max[1] = MAX(err_max[1], exact_plus[i]);
-        err[i] = exact_plus[i];
+        err_max[1] = MAX(err_max[1], fabs(sol_ex_p[1][i] - sol_p[1][i]));
       }
     }
 
@@ -452,24 +449,29 @@ int main (int argc, char* argv[]){
 
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_FALSE,
-                           6, 0, "sol_extended",
+                           3, 0, "sol_voronoi",
                            VTK_POINT_DATA, "phi",   phi_p,
-                           VTK_POINT_DATA, "plus",  sol_plus_p,
-                           VTK_POINT_DATA, "minus", sol_minus_p,
-                           VTK_POINT_DATA, "err_plus",  &exact_plus[0],
-                           VTK_POINT_DATA, "err_minus", &exact_minus[0],
-                           VTK_POINT_DATA, "err", &err[0]);
-
+                           VTK_POINT_DATA, "plus",  sol_p[0],
+                           VTK_POINT_DATA, "minus", sol_p[1]);
 
     /* destroy p4est objects */
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(sol, (double**)&sol_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(sol_plus, &sol_plus_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(sol_minus, &sol_minus_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol[0], &sol_p[0]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol[1], &sol_p[1]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol_ex[0], &sol_ex_p[0]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol_ex[1], &sol_ex_p[1]); CHKERRXX(ierr);
 
-    ierr = VecDestroy(sol); CHKERRXX(ierr);
-    ierr = VecDestroy(sol_plus); CHKERRXX(ierr);
-    ierr = VecDestroy(sol_minus); CHKERRXX(ierr);
+    ierr = VecDestroy(sol[0]); CHKERRXX(ierr);
+    ierr = VecDestroy(sol[1]); CHKERRXX(ierr);
+    ierr = VecDestroy(sol_ex[0]); CHKERRXX(ierr);
+    ierr = VecDestroy(sol_ex[1]); CHKERRXX(ierr);
+    ierr = VecDestroy(rhs[0]); CHKERRXX(ierr);
+    ierr = VecDestroy(rhs[1]); CHKERRXX(ierr);
+    ierr = VecDestroy(mue[0]); CHKERRXX(ierr);
+    ierr = VecDestroy(mue[1]); CHKERRXX(ierr);
+    ierr = VecDestroy(phi); CHKERRXX(ierr);
+    ierr = VecDestroy(jump_u); CHKERRXX(ierr);
+    ierr = VecDestroy(jump_du); CHKERRXX(ierr);
 
     p4est_nodes_destroy (nodes);
     p4est_ghost_destroy (ghost);
