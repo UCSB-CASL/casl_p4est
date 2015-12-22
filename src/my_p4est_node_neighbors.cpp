@@ -496,7 +496,7 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     qnnn.d_0p0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0p0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0p0_0m = z - qz;
-    if(p_z && z < qz-qh/4) qnnn.d_0m0_0m += (zmax-zmin);
+    if(p_z && z < qz-qh/4) qnnn.d_0p0_0m += (zmax-zmin);
     qnnn.d_0p0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0p0_0m;
 #endif
   }

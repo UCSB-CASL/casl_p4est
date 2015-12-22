@@ -2457,7 +2457,8 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 
   // Assemble the matrix
   ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
-  ierr = MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+  ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+
 
   // restore pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -2480,6 +2481,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
     if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
       fixed_value_idx_l = -1;
       fixed_value_idx_g = fixed_value_idx;
+      ierr = MatZeroRows(A, 0, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
     } else {
       // reset the value
       ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
@@ -2487,6 +2489,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+
 }
 
 void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()

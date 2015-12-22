@@ -203,34 +203,6 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
 {
   PetscErrorCode ierr;
 
-//  bool p_x = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_m00]!=0);
-//  bool p_y = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_0m0]!=0);
-//#ifdef P4_TO_P8
-//  bool p_z = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_00m]!=0);
-//#endif
-
-//  double *v2c = p4est->connectivity->vertices;
-//  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-//  double xmin = v2c[3*t2v[0 + 0] + 0];
-//  double ymin = v2c[3*t2v[0 + 0] + 1];
-//  double xmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 0];
-//  double ymax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 1];
-//#ifdef P4_TO_P8
-//  double zmin = v2c[3*t2v[0 + 0] + 2];
-//  double zmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 2];
-//#endif
-
-//  if     (p_x && xyz_global[0]<quad_x_fr_q()   ) x += (xmax-xmin);
-//  else if(p_x && x>qxmin+qh) x -= (xmax-xmin);
-
-//  if     (p_y && y<qymin   ) y += (ymax-ymin);
-//  else if(p_y && y>qymin+qh) y -= (ymax-ymin);
-
-//#ifdef P4_TO_P8
-//  if     (p_z && z<qzmin   ) z += (zmax-zmin);
-//  else if(p_z && z>qzmin+qh) z -= (zmax-zmin);
-//#endif
-
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
@@ -257,10 +229,11 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
 #endif
 
 #ifdef CASL_THROWS
-  if(x<qxmin || x>qxmin+qh || y<qymin || y>qymin+qh)
+  if(x<qxmin-EPS || x>qxmin+qh+EPS || y<qymin-EPS || y>qymin+qh+EPS)
   {
     std::cout << x << ", " << qxmin << ", " << qxmin+qh << std::endl;
     std::cout << y << ", " << qymin << ", " << qymin+qh << std::endl;
+    std::cout << y-qymin << std::endl;
     throw std::invalid_argument("quadratic_interpolation: the point is not inside the quadrant.");
   }
 #endif

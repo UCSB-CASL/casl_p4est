@@ -6,6 +6,8 @@
 #include <src/my_p4est_vtk.h>
 #endif
 
+#include <src/math.h>
+
 #include "petsc_compatibility.h"
 #include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
@@ -91,9 +93,12 @@ void my_p4est_interpolation_t::add_point(p4est_locidx_t locidx, const double *xy
   };
   
   // clip to bounding box
+  bool periodic[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+    periodic[dir] = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + 2*dir]!=0);
   for (short i=0; i<P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
+    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = periodic[i] ? xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
+    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = periodic[i] ? xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
   }
   
   p4est_quadrant_t best_match;

@@ -59,6 +59,19 @@ my_p4est_brick_new (int nxtrees, int nytrees,
   p4est_topidx_t      tt, vindex;
   p4est_connectivity_t *conn;
 
+#ifdef CASL_THROWS
+  if((periodic_a && nxtrees==1) ||
+     (periodic_b && nytrees==1)
+   #ifdef P4_TO_P8
+     || (periodic_c && nztrees==1)
+   #endif
+     )
+  {
+    fprintf(stderr, "[P4EST_ERROR]: You cannot use periodic boundaries with a macromesh of size 1.\n");
+    return NULL;
+  }
+#endif
+
   P4EST_ASSERT (0 < nxtrees && 0 < nytrees);
 #ifdef P4_TO_P8
   P4EST_ASSERT (0 < nztrees);
