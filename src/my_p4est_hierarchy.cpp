@@ -259,23 +259,27 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
   double zmax = p4est->connectivity->vertices[3*v_p + 2];
 #endif
 
-  if     (xyz[0]<xmin && p_x) xyz[0] += (xmax-xmin);
-  else if(xyz[0]>xmax && p_x) xyz[0] -= (xmax-xmin);
-  if     (xyz[1]<ymin && p_y) xyz[1] += (ymax-ymin);
-  else if(xyz[1]>ymax && p_y) xyz[1] -= (ymax-ymin);
+  double xyz_[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+    xyz_[dir] = xyz[dir];
+
+  if     (xyz_[0]<xmin && p_x) xyz_[0] += (xmax-xmin);
+  else if(xyz_[0]>xmax && p_x) xyz_[0] -= (xmax-xmin);
+  if     (xyz_[1]<ymin && p_y) xyz_[1] += (ymax-ymin);
+  else if(xyz_[1]>ymax && p_y) xyz_[1] -= (ymax-ymin);
 #ifdef P4_TO_P8
-  if     (xyz[2]<zmin && p_z) xyz[2] += (zmax-zmin);
-  else if(xyz[2]>zmax && p_z) xyz[2] -= (zmax-zmin);
+  if     (xyz_[2]<zmin && p_z) xyz_[2] += (zmax-zmin);
+  else if(xyz_[2]>zmax && p_z) xyz_[2] -= (zmax-zmin);
 #endif
 
 #ifdef CASL_THROWS
 #ifdef P4_TO_P8
-  if(xyz[0]<xmin || xyz[0]>xmax ||
-     xyz[1]<ymin || xyz[1]>ymax ||
-     xyz[2]<zmin || xyz[2]>zmax)
+  if(xyz_[0]<xmin || xyz_[0]>xmax ||
+     xyz_[1]<ymin || xyz_[1]>ymax ||
+     xyz_[2]<zmin || xyz_[2]>zmax)
 #else
-  if(xyz[0]<xmin || xyz[0]>xmax ||
-     xyz[1]<ymin || xyz[1]>ymax)
+  if(xyz_[0]<xmin || xyz_[0]>xmax ||
+     xyz_[1]<ymin || xyz_[1]>ymax)
 #endif
   {
     std::ostringstream oss;
@@ -295,10 +299,10 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
   zmax = p4est->connectivity->vertices[3*v_p + 2];
 #endif
 
-  xyz[0] = (xyz[0]-xmin)/(xmax-xmin);
-  xyz[1] = (xyz[1]-ymin)/(ymax-ymin);
+  xyz_[0] = (xyz_[0]-xmin)/(xmax-xmin);
+  xyz_[1] = (xyz_[1]-ymin)/(ymax-ymin);
 #ifdef P4_TO_P8
-  xyz[2] = (xyz[2]-zmin)/(zmax-zmin);
+  xyz_[2] = (xyz_[2]-zmin)/(zmax-zmin);
 #endif
 
   int rank = -1;
@@ -307,14 +311,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
   // a quadrant length at most will be P4EST_QMAXLEVEL = P4EST_MAXLEVEL - 1
   const static double qeps = (double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL) / (double) P4EST_ROOT_LEN;
   const static double  eps = 0.5*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL);
-
-  double xyz_ [] =
-  {
-    xyz[0], xyz[1]
-  #ifdef P4_TO_P8
-    , xyz[2]
-  #endif
-  };
 
   /* same trick as in p4est point lookup */
   if( fabs(round(xyz_[0])-xyz_[0]) < 1e-9 ) xyz_[0] = round(xyz_[0]);
@@ -342,10 +338,10 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
     ,(int)floor(xyz_[2])
   #endif
   };
-  double ii = (xyz[0] - tr_xyz_orig[0]) * P4EST_ROOT_LEN;
-  double jj = (xyz[1] - tr_xyz_orig[1]) * P4EST_ROOT_LEN;
+  double ii = (xyz_[0] - tr_xyz_orig[0]) * P4EST_ROOT_LEN;
+  double jj = (xyz_[1] - tr_xyz_orig[1]) * P4EST_ROOT_LEN;
 #ifdef P4_TO_P8
-  double kk = (xyz[2] - tr_xyz_orig[2]) * P4EST_ROOT_LEN;
+  double kk = (xyz_[2] - tr_xyz_orig[2]) * P4EST_ROOT_LEN;
 #endif
 
   bool is_on_face_x = (fabs(ii-floor(ii))<1e-3 || fabs(ceil(ii)-ii)<1e-3);
@@ -444,12 +440,6 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
 
 #ifdef CASL_LOG_TINY_EVENTS
   ierr = PetscLogEventEnd(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
-#endif
-
-  xyz[0] = xyz[0]*(xmax-xmin) + xmin;
-  xyz[1] = xyz[1]*(ymax-ymin) + ymin;
-#ifdef P4_TO_P8
-  xyz[2] = xyz[2]*(tree_zmax-zmin) + zmin;
 #endif
 
   return rank;

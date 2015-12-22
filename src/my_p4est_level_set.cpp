@@ -942,8 +942,6 @@ void my_p4est_level_set_t::reinitialize_1st_order_time_2nd_order_space( Vec phi,
 
   double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
   memcpy(p0, phi_p, nodes->indep_nodes.elem_count*sizeof(double));
-//  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-//    p0[n] = phi[n];
 
   Vec dxx0, dyy0;
   double *dxx0_p, *dyy0_p;
@@ -1027,8 +1025,6 @@ void my_p4est_level_set_t::reinitialize_1st_order_time_2nd_order_space( Vec phi,
 
     /* update phi */
     memcpy(phi_p, p1_p, nodes->indep_nodes.elem_count*sizeof(double));
-//    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-//      phi[n] = p1[n];
   }
 
   /* restore arrays and destroy uneeded petsc objects */
@@ -1127,28 +1123,8 @@ double my_p4est_level_set_t::advect_in_normal_direction(const CF_2& vn, Vec phi,
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
     const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-    p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-    double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-#endif
-
-    double xn = node_x_fr_n(node);
-    double yn = node_y_fr_n(node);
-#ifdef P4_TO_P8
-    double zn = node_z_fr_n(node);
-#endif
-
-    xn += tree_xmin;
-    yn += tree_ymin;
-#ifdef P4_TO_P8
-    zn += tree_zmin;
-#endif
+    double xyzn[P4EST_DIM];
+    node_xyz_fr_n(n, p4est, nodes, xyzn);
 
     double s_p00 = fabs(qnnn.d_p00); double s_m00 = fabs(qnnn.d_m00);
     double s_0p0 = fabs(qnnn.d_0p0); double s_0m0 = fabs(qnnn.d_0m0);
@@ -1163,9 +1139,9 @@ double my_p4est_level_set_t::advect_in_normal_direction(const CF_2& vn, Vec phi,
 
     /* choose CFL = 0.8 ... just for fun! */
 #ifdef P4_TO_P8
-    vn_vec[n] = vn(xn, yn, zn);
+    vn_vec[n] = vn(xyzn[0], xyzn[1], xyzn[2]);
 #else
-    vn_vec[n] = vn(xn, yn);
+    vn_vec[n] = vn(xyzn[0], xyzn[1]);
 #endif
     dt_local = MIN(dt_local, 0.8*fabs(s_min/vn_vec[n]));
   }
@@ -1495,26 +1471,9 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
     if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-      p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-      double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-#endif
-
-      double xyz [] =
-      {
-        node_x_fr_n(node) + tree_xmin,
-        node_y_fr_n(node) + tree_ymin
-  #ifdef P4_TO_P8
-        ,
-        node_z_fr_n(node) + tree_zmin
-  #endif
-      };
+      double xyz [P4EST_DIM];
+      node_xyz_fr_n(n, p4est, nodes, xyz);
 
       if(bc.interfaceType()==DIRICHLET)
 #ifdef P4_TO_P8
