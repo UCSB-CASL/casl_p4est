@@ -250,32 +250,32 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
   bool p_z = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_00m]!=0);
 #endif
 
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+  double xmin = p4est->connectivity->vertices[3*v_m + 0];
+  double xmax = p4est->connectivity->vertices[3*v_p + 0];
+  double ymin = p4est->connectivity->vertices[3*v_m + 1];
+  double ymax = p4est->connectivity->vertices[3*v_p + 1];
 #ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+  double zmin = p4est->connectivity->vertices[3*v_m + 2];
+  double zmax = p4est->connectivity->vertices[3*v_p + 2];
 #endif
 
-  if     (xyz[0]<tree_xmin && p_x) xyz[0] += (tree_xmax-tree_xmin);
-  else if(xyz[0]>tree_xmax && p_x) xyz[0] -= (tree_xmax-tree_xmin);
-  if     (xyz[1]<tree_ymin && p_y) xyz[1] += (tree_ymax-tree_ymin);
-  else if(xyz[1]>tree_ymax && p_y) xyz[1] -= (tree_ymax-tree_ymin);
+  if     (xyz[0]<xmin && p_x) xyz[0] += (xmax-xmin);
+  else if(xyz[0]>xmax && p_x) xyz[0] -= (xmax-xmin);
+  if     (xyz[1]<ymin && p_y) xyz[1] += (ymax-ymin);
+  else if(xyz[1]>ymax && p_y) xyz[1] -= (ymax-ymin);
 #ifdef P4_TO_P8
-  if     (xyz[2]<tree_zmin && p_z) xyz[2] += (tree_zmax-tree_zmin);
-  else if(xyz[2]>tree_zmax && p_z) xyz[2] -= (tree_zmax-tree_zmin);
+  if     (xyz[2]<zmin && p_z) xyz[2] += (zmax-zmin);
+  else if(xyz[2]>zmax && p_z) xyz[2] -= (zmax-zmin);
 #endif
 
 #ifdef CASL_THROWS
 #ifdef P4_TO_P8
-  if(xyz[0]<tree_xmin || xyz[0]>tree_xmax ||
-     xyz[1]<tree_ymin || xyz[1]>tree_ymax ||
-     xyz[2]<tree_zmin || xyz[2]>tree_zmax)
+  if(xyz[0]<xmin || xyz[0]>xmax ||
+     xyz[1]<ymin || xyz[1]>ymax ||
+     xyz[2]<zmin || xyz[2]>zmax)
 #else
-  if(xyz[0]<tree_xmin || xyz[0]>tree_xmax ||
-     xyz[1]<tree_ymin || xyz[1]>tree_ymax)
+  if(xyz[0]<xmin || xyz[0]>xmax ||
+     xyz[1]<ymin || xyz[1]>ymax)
 #endif
   {
     std::ostringstream oss;
@@ -289,16 +289,16 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
 #endif
 
   v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+  xmax = p4est->connectivity->vertices[3*v_p + 0];
+  ymax = p4est->connectivity->vertices[3*v_p + 1];
 #ifdef P4_TO_P8
-  tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+  zmax = p4est->connectivity->vertices[3*v_p + 2];
 #endif
 
-  xyz[0] = (xyz[0]-tree_xmin)/(tree_xmax-tree_xmin);
-  xyz[1] = (xyz[1]-tree_ymin)/(tree_ymax-tree_ymin);
+  xyz[0] = (xyz[0]-xmin)/(xmax-xmin);
+  xyz[1] = (xyz[1]-ymin)/(ymax-ymin);
 #ifdef P4_TO_P8
-  xyz[2] = (xyz[2]-tree_zmin)/(tree_zmax-tree_zmin);
+  xyz[2] = (xyz[2]-zmin)/(zmax-zmin);
 #endif
 
   int rank = -1;
@@ -446,10 +446,10 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
   ierr = PetscLogEventEnd(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
 #endif
 
-  xyz[0] = xyz[0]*(tree_xmax-tree_xmin) + tree_xmin;
-  xyz[1] = xyz[1]*(tree_ymax-tree_ymin) + tree_ymin;
+  xyz[0] = xyz[0]*(xmax-xmin) + xmin;
+  xyz[1] = xyz[1]*(ymax-ymin) + ymin;
 #ifdef P4_TO_P8
-  xyz[2] = xyz[2]*(tree_zmax-tree_zmin) + tree_zmin;
+  xyz[2] = xyz[2]*(tree_zmax-zmin) + zmin;
 #endif
 
   return rank;

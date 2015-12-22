@@ -21,8 +21,8 @@
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_levelset.h>
-#include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_poisson_nodes.h>
 #include <src/my_p8est_bialloy.h>
 #else
 #include <p4est_bits.h>
@@ -35,8 +35,8 @@
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_levelset.h>
-#include <src/my_p4est_poisson_node_base.h>
+#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_bialloy.h>
 #endif
 
@@ -54,14 +54,6 @@ int save_every_n_iteration = 50;
 
 using namespace std;
 
-/* The physical parameters */
-
-int nx = 1;
-int ny = 1;
-#ifdef P4_TO_P8
-int nz = 1;
-#endif
-
 bool save_velocity = true;
 bool save_vtk = true;
 
@@ -76,7 +68,23 @@ char direction = 'y';
  */
 int alloy_type = 0;
 
+int nx = 2;
+int ny = 2;
+#ifdef P4_TO_P8
+int nz = 2;
+#endif
+
+double xmin = 0;
+double xmax = 1;
+double ymin = 0;
+double ymax = 1;
+#ifdef P4_TO_P8
+double zmin = 0;
+double zmax = 1;
+#endif
+
 double box_size = 4e-2;//4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double scaling = 1/box_size;
 
 /* default parameters for NiCu */
 double rho                  = 8.88e-3;        /* kg.cm-3    */
@@ -99,9 +107,6 @@ double eps_anisotropy       = 0.05;
 
 //double t_final = 1000*ny/V;
 double t_final = 10000;
-
-double initial_interface = 0.1*(double) nx;
-
 
 void set_alloy_parameters()
 {
@@ -136,9 +141,9 @@ void set_alloy_parameters()
 
 struct plan_t : CF_3{
   double operator()(double x, double y, double z) const {
-    if     (direction=='x') return x - initial_interface;
-    else if(direction=='y') return y - initial_interface;
-    else                    return z - initial_interface;
+    if     (direction=='x') return x - 0.1;
+    else if(direction=='y') return y - 0.1;
+    else                    return z - 0.1;
   }
 } LS;
 
@@ -159,26 +164,26 @@ public:
   {
     if(direction=='x')
     {
-      if (ABS(x-nx)<EPS)
+      if (ABS(x-xmax)<EPS)
         return G;
 
-      if (ABS(x   )<EPS)
+      if (ABS(x-xmin)<EPS)
         return -G - V*latent_heat/thermal_conductivity;
     }
     else if(direction=='y')
     {
-      if (ABS(y-ny)<EPS)
+      if (ABS(y-ymax)<EPS)
         return G;
 
-      if (ABS(y   )<EPS)
+      if (ABS(y-ymin)<EPS)
         return -G - V*latent_heat/thermal_conductivity;
     }
     else
     {
-      if (ABS(z-nz)<EPS)
+      if (ABS(z-zmax)<EPS)
         return G;
 
-      if (ABS(z   )<EPS)
+      if (ABS(z-zmin)<EPS)
         return -G - V*latent_heat/thermal_conductivity;
     }
 
@@ -193,21 +198,21 @@ public:
   {
     if(direction=='x')
     {
-      if (ABS(x)<EPS || ABS(x-nx)<EPS)
+      if (ABS(x-xmin)<EPS || ABS(x-xmax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
     }
     else if(direction=='y')
     {
-      if (ABS(y)<EPS || ABS(y-ny)<EPS)
+      if (ABS(y-ymin)<EPS || ABS(y-ymax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
     }
     else
     {
-      if (ABS(z)<EPS || ABS(z-nz)<EPS)
+      if (ABS(z-zmin)<EPS || ABS(z-zmax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
@@ -271,8 +276,8 @@ public:
 
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
-    if(direction=='x') return x - initial_interface;
-    else               return y - initial_interface;
+    if(direction=='x') return x - 0.1;
+    else               return y - 0.1;
   }
 } LS;
 
@@ -294,18 +299,18 @@ public:
   {
     if(direction=='x')
     {
-      if (ABS(x-nx)<EPS)
+      if (ABS(x-xmax)<EPS)
         return G;
 
-      if (ABS(x   )<EPS)
+      if (ABS(x-xmin)<EPS)
         return -G - V*latent_heat/thermal_conductivity;
     }
     else
     {
-      if (ABS(y-ny)<EPS)
+      if (ABS(y-ymax)<EPS)
         return G;
 
-      if (ABS(y   )<EPS)
+      if (ABS(y-ymin)<EPS)
         return -G - V*latent_heat/thermal_conductivity;
     }
 
@@ -320,14 +325,14 @@ public:
   {
     if(direction=='x')
     {
-      if (ABS(x)<EPS || ABS(x-nx)<EPS)
+      if (ABS(x-xmin)<EPS || ABS(x-xmax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
     }
     else
     {
-      if (ABS(y)<EPS || ABS(y-ny)<EPS)
+      if (ABS(y-ymin)<EPS || ABS(y-ymax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
@@ -402,6 +407,16 @@ int main (int argc, char* argv[])
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
+  cmd.add_option("nx", "number of blox in x-dimension");
+  cmd.add_option("ny", "number of blox in y-dimension");
+#ifdef P4_TO_P8
+  cmd.add_option("nz", "number of blox in z-dimension");
+#endif
+  cmd.add_option("px", "periodicity in x-dimension 0/1");
+  cmd.add_option("py", "periodicity in y-dimension 0/1");
+#ifdef P4_TO_P8
+  cmd.add_option("pz", "periodicity in z-dimension 0/1");
+#endif
   cmd.add_option("save_vtk", "1 to save vtu files, 0 otherwise");
   cmd.add_option("save_velo", "1 to save velocity of the interface, 0 otherwise");
   cmd.add_option("save_every_n", "save vtk every n iteration");
@@ -412,6 +427,7 @@ int main (int argc, char* argv[])
   cmd.add_option("V", "set velocity");
   cmd.add_option("box_size", "set box_size");
   cmd.add_option("alloy", "choose the type of alloy. Default is 0.\n  0 - NiCu\n  1 - AlCu");
+  cmd.add_option("direction", "direction of the crystal growth x/y");
   cmd.parse(argc, argv);
 
   alloy_type = cmd.get("alloy", alloy_type);
@@ -420,7 +436,32 @@ int main (int argc, char* argv[])
   save_vtk = cmd.get("save_vtk", save_vtk);
   save_velocity = cmd.get("save_velo", save_velocity);
 
+  nx = cmd.get("nx", nx);
+  ny = cmd.get("ny", ny);
+#ifdef P4_TO_P8
+  nz = cmd.get("nz", nz);
+#endif
+
+  int px = cmd.get("px", 0);
+  int py = cmd.get("py", 0);
+#ifdef P4_TO_P8
+  int pz = cmd.get("pz", 0);
+#endif
+
+  direction = cmd.get("direction", 'y');
+
   cmd.print();
+
+  if(0)
+  {
+    int i = 0;
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+    fflush(stdout);
+    while (0 == i)
+      sleep(5);
+  }
 
   PetscErrorCode ierr;
 
@@ -435,12 +476,7 @@ int main (int argc, char* argv[])
   double G_orig = G;
   double V_orig = V;
 
-  /* scale parameters */
-#ifdef P4_TO_P8
-  double scaling = (direction=='x' ? ny : (direction=='y' ? nx : nx))/box_size;  //1 cm = scaling U
-#else
-  double scaling = (direction=='x' ? ny : nx)/box_size;  //1 cm = scaling U
-#endif
+  scaling = 1/box_size;
   rho                  /= (scaling*scaling*scaling);
   thermal_conductivity /= scaling;
   Dl                   *= (scaling*scaling);
@@ -461,9 +497,9 @@ int main (int argc, char* argv[])
   /* create the p4est */
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, nz, &brick);
+  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, nz, 0, 1, 0, 1, 0, 1, &brick, px, py, pz);
 #else
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, &brick);
+  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, 0, 1, 0, 1, &brick, px, py);
 #endif
   p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
 
@@ -502,7 +538,7 @@ int main (int argc, char* argv[])
   ierr = VecGhostRestoreLocalForm(normal_velocity, &tmp); CHKERRXX(ierr);
 
   /* perturb level set */
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.perturb_level_set_function(phi, EPS);
 
   /* set initial time step */
@@ -555,10 +591,15 @@ int main (int argc, char* argv[])
 #ifdef STAMPEDE
   char *out_dir;
   out_dir = getenv("OUT_DIR");
-  sprintf(name, "%s/velo_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #else
-  sprintf(name, "/home/guittet/code/Output/p4est_bialloy/velo/velo_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
-//  sprintf(name, "/home/guittet/code/Output/p4est_bialloy/velo/velo.dat");
+  char out_dir[1000];
+  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/velo");
+#endif
+
+#ifdef P4_TO_P8
+  sprintf(name, "%s/velo_%dx%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, nx, ny, nz, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
+#else
+  sprintf(name, "%s/velo_%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, nx, ny, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #endif
 
   if(save_velocity)
@@ -585,7 +626,7 @@ int main (int argc, char* argv[])
       if(p4est->mpirank==0)
       {
         p4est_locidx_t nb_nodes_global = 0;
-        for(int r=0; r<=p4est->mpisize; ++r)
+        for(int r=0; r<p4est->mpisize; ++r)
           nb_nodes_global += nodes->global_owned_indeps[r];
 
         std::cout << "The p4est has " << nb_nodes_global << " nodes." << std::endl;

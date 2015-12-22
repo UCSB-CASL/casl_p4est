@@ -8,7 +8,7 @@
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_vtk.h>
-#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian.h>
 #endif
 
@@ -19,16 +19,8 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
   : brick(ngbd->myb), connectivity(ngbd->p4est->connectivity), p4est(ngbd->p4est), ghost(ngbd->ghost), nodes(ngbd->nodes), hierarchy(ngbd->hierarchy), ngbd(ngbd),
     temperature_n(NULL), temperature_np1(NULL), t_interface(NULL),
     cs_n(NULL), cs_np1(NULL), cl_n(NULL), cl_np1(NULL), c_interface(NULL),
-    u_interface_n(NULL), u_interface_np1(NULL),
-    v_interface_n(NULL), v_interface_np1(NULL),
-    #ifdef P4_TO_P8
-    w_interface_n(NULL), w_interface_np1(NULL),
-    #endif
     normal_velocity_np1(NULL),
-    phi(NULL), nx(NULL), ny(NULL),
-    #ifdef P4_TO_P8
-    nz(NULL),
-    #endif
+    phi(NULL),
     kappa(NULL), rhs(NULL)
 {
   solve_concentration_solid = false;
@@ -67,6 +59,13 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
   double zmax = this->p4est->connectivity->vertices[3*vp + 2];
   dz = (zmax-zmin) / pow(2., (double) data->max_lvl);
 #endif
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    v_interface_n  [dir] = NULL;
+    v_interface_np1[dir] = NULL;
+    normal[dir] = NULL;
+  }
 }
 
 
@@ -85,25 +84,18 @@ my_p4est_bialloy_t::~my_p4est_bialloy_t()
   if(c_interface!=NULL) { ierr = VecDestroy(c_interface); CHKERRXX(ierr); }
 
   if(normal_velocity_np1!=NULL) { ierr = VecDestroy(normal_velocity_np1); CHKERRXX(ierr); }
-  if(u_interface_n      !=NULL) { ierr = VecDestroy(u_interface_n);       CHKERRXX(ierr); }
-  if(v_interface_n      !=NULL) { ierr = VecDestroy(v_interface_n);       CHKERRXX(ierr); }
-  if(u_interface_np1    !=NULL) { ierr = VecDestroy(u_interface_np1);     CHKERRXX(ierr); }
-  if(v_interface_np1    !=NULL) { ierr = VecDestroy(v_interface_np1);     CHKERRXX(ierr); }
-#ifdef P4_TO_P8
-  if(w_interface_n      !=NULL) { ierr = VecDestroy(w_interface_n);       CHKERRXX(ierr); }
-  if(w_interface_np1    !=NULL) { ierr = VecDestroy(w_interface_np1);     CHKERRXX(ierr); }
-#endif
 
-  if(nx   !=NULL) { ierr = VecDestroy(nx);    CHKERRXX(ierr); }
-  if(ny   !=NULL) { ierr = VecDestroy(ny);    CHKERRXX(ierr); }
-#ifdef P4_TO_P8
-  if(nz   !=NULL) { ierr = VecDestroy(nz);    CHKERRXX(ierr); }
-#endif
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    if(v_interface_n  [dir] != NULL) { ierr = VecDestroy(v_interface_n  [dir]); CHKERRXX(ierr); }
+    if(v_interface_np1[dir] != NULL) { ierr = VecDestroy(v_interface_np1[dir]); CHKERRXX(ierr); }
+    if(normal         [dir] != NULL) { ierr = VecDestroy(normal         [dir]); CHKERRXX(ierr); }
+  }
+
   if(kappa!=NULL) { ierr = VecDestroy(kappa); CHKERRXX(ierr); }
   if(phi  !=NULL) { ierr = VecDestroy(phi);   CHKERRXX(ierr); }
 
   if(rhs!=NULL) { ierr = VecDestroy(rhs); CHKERRXX(ierr); }
-
 
   /* destroy the p4est and its connectivity structure */
   delete ngbd;
@@ -130,7 +122,7 @@ void my_p4est_bialloy_t::set_parameters( double latent_heat,
                                          double epsilon_anisotropy,
                                          double epsilon_c,
                                          double epsilon_v,
-                                         double scaling )
+                                         double scaling)
 {
   this->latent_heat          = latent_heat;
   this->thermal_conductivity = thermal_conductivity;
@@ -251,39 +243,18 @@ void my_p4est_bialloy_t::set_normal_velocity(Vec v)
   normal_velocity_np1 = v;
 
   Vec src;
-  ierr = VecDuplicate(v, &u_interface_np1); CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(u_interface_np1, &src); CHKERRXX(ierr);
-  ierr = VecSet(src, 0); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(u_interface_np1, &src); CHKERRXX(ierr);
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecDuplicate(v, &v_interface_np1[dir]); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(v_interface_np1[dir], &src); CHKERRXX(ierr);
+    ierr = VecSet(src, 0); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(v_interface_np1[dir], &src); CHKERRXX(ierr);
 
-  ierr = VecDuplicate(v, &v_interface_np1); CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(v_interface_np1, &src); CHKERRXX(ierr);
-  ierr = VecSet(src, 0); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(v_interface_np1, &src); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  ierr = VecDuplicate(v, &w_interface_np1); CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(w_interface_np1, &src); CHKERRXX(ierr);
-  ierr = VecSet(src, 0); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(w_interface_np1, &src); CHKERRXX(ierr);
-#endif
-
-  ierr = VecDuplicate(v, &u_interface_n); CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(u_interface_n, &src); CHKERRXX(ierr);
-  ierr = VecSet(src, 0); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(u_interface_n, &src); CHKERRXX(ierr);
-
-  ierr = VecDuplicate(v, &v_interface_n); CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(v_interface_n, &src); CHKERRXX(ierr);
-  ierr = VecSet(src, 0); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(v_interface_n, &src); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  ierr = VecDuplicate(v, &w_interface_n); CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(w_interface_n, &src); CHKERRXX(ierr);
-  ierr = VecSet(src, 0); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(w_interface_n, &src); CHKERRXX(ierr);
-#endif
+    ierr = VecDuplicate(v, &v_interface_n[dir]); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(v_interface_n[dir], &src); CHKERRXX(ierr);
+    ierr = VecSet(src, 0); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(v_interface_n[dir], &src); CHKERRXX(ierr);
+  }
 }
 
 
@@ -302,83 +273,71 @@ void my_p4est_bialloy_t::set_dt( double dt )
 
 void my_p4est_bialloy_t::compute_normal_and_curvature()
 {
-  if(nx!=NULL)    { ierr = VecDestroy(nx)   ; CHKERRXX(ierr); }
-  if(ny!=NULL)    { ierr = VecDestroy(ny)   ; CHKERRXX(ierr); }
-#ifdef P4_TO_P8
-  if(nz!=NULL)    { ierr = VecDestroy(nz)   ; CHKERRXX(ierr); }
-#endif
+  double *normal_p[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    if(normal[dir]!=NULL) { ierr = VecDestroy(normal[dir]); CHKERRXX(ierr); }
+    ierr = VecCreateGhostNodes(p4est, nodes, &normal[dir]); CHKERRXX(ierr);
+    ierr = VecGetArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+  }
   if(kappa!=NULL) { ierr = VecDestroy(kappa); CHKERRXX(ierr); }
 
-  ierr = VecCreateGhostNodes(p4est, nodes, &nx); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &ny); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecCreateGhostNodes(p4est, nodes, &nz); CHKERRXX(ierr);
-#endif
   ierr = VecDuplicate(phi, &kappa); CHKERRXX(ierr);
 
-  double *nx_p, *ny_p, *kappa_p, *phi_p;
-  ierr = VecGetArray(nx, &nx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(ny, &ny_p); CHKERRXX(ierr);
+  double *kappa_p, *phi_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  double *nz_p;
-  ierr = VecGetArray(nz, &nz_p); CHKERRXX(ierr);
-#endif
 
   quad_neighbor_nodes_of_node_t qnnn;
   for(size_t i=0; i<ngbd->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_layer_node(i);
     qnnn = ngbd->get_neighbors(n);
-    nx_p[n] = qnnn.dx_central(phi_p);
-    ny_p[n] = qnnn.dy_central(phi_p);
+    normal_p[0][n] = qnnn.dx_central(phi_p);
+    normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
-    nz_p[n] = qnnn.dz_central(phi_p);
-    double norm = sqrt(SQR(nx_p[n]) + SQR(ny_p[n]) + SQR(nz_p[n]));
+    normal_p[2][n] = qnnn.dz_central(phi_p);
+    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
 #else
-    double norm = sqrt(SQR(nx_p[n]) + SQR(ny_p[n]));
+    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
 #endif
 
-    nx_p[n] = norm<EPS ? 0 : nx_p[n]/norm;
-    ny_p[n] = norm<EPS ? 0 : ny_p[n]/norm;
+    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
 #ifdef P4_TO_P8
-    nz_p[n] = norm<EPS ? 0 : nz_p[n]/norm;
+    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
 #endif
   }
 
-  ierr = VecGhostUpdateBegin(nx, INSERT_VALUES, SCATTER_FORWARD);
-  ierr = VecGhostUpdateBegin(ny, INSERT_VALUES, SCATTER_FORWARD);
-#ifdef P4_TO_P8
-  ierr = VecGhostUpdateBegin(nz, INSERT_VALUES, SCATTER_FORWARD);
-#endif
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGhostUpdateBegin(normal[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
 
   for(size_t i=0; i<ngbd->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_local_node(i);
     qnnn = ngbd->get_neighbors(n);
-    nx_p[n] = qnnn.dx_central(phi_p);
-    ny_p[n] = qnnn.dy_central(phi_p);
+    normal_p[0][n] = qnnn.dx_central(phi_p);
+    normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
-    nz_p[n] = qnnn.dz_central(phi_p);
-    double norm = sqrt(SQR(nx_p[n]) + SQR(ny_p[n]) + SQR(nz_p[n]));
+    normal_p[2][n] = qnnn.dz_central(phi_p);
+    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
 #else
-    double norm = sqrt(SQR(nx_p[n]) + SQR(ny_p[n]));
+    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
 #endif
 
-    nx_p[n] = norm<EPS ? 0 : nx_p[n]/norm;
-    ny_p[n] = norm<EPS ? 0 : ny_p[n]/norm;
+    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
 #ifdef P4_TO_P8
-    nz_p[n] = norm<EPS ? 0 : nz_p[n]/norm;
+    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
 #endif
   }
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
-  ierr = VecGhostUpdateEnd(nx, INSERT_VALUES, SCATTER_FORWARD);
-  ierr = VecGhostUpdateEnd(ny, INSERT_VALUES, SCATTER_FORWARD);
-#ifdef P4_TO_P8
-  ierr = VecGhostUpdateEnd(nz, INSERT_VALUES, SCATTER_FORWARD);
-#endif
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGhostUpdateEnd(normal[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
 
   ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
   for(size_t i=0; i<ngbd->get_layer_size(); ++i)
@@ -386,9 +345,9 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
     p4est_locidx_t n = ngbd->get_layer_node(i);
     qnnn = ngbd->get_neighbors(n);
 #ifdef P4_TO_P8
-    kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p) + qnnn.dz_central(nz_p), 1/MAX(dx,dy,dz)), -1/MAX(dx,dy,dz));
+    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/MAX(dx,dy,dz)), -1/MAX(dx,dy,dz));
 #else
-    kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p), 1/MAX(dx,dy)), -1/MAX(dx,dy));
+    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1/MAX(dx,dy)), -1/MAX(dx,dy));
 #endif
   }
   ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
@@ -397,19 +356,18 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
     p4est_locidx_t n = ngbd->get_local_node(i);
     qnnn = ngbd->get_neighbors(n);
 #ifdef P4_TO_P8
-    kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p) + qnnn.dz_central(nz_p), 1/MAX(dx,dy,dz)), -1/MAX(dx,dy,dz));
+    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/MAX(dx,dy,dz)), -1/MAX(dx,dy,dz));
 #else
-    kappa_p[n] = MAX(MIN(qnnn.dx_central(nx_p) + qnnn.dy_central(ny_p), 1/MAX(dx,dy)), -1/MAX(dx,dy));
+    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1/MAX(dx,dy)), -1/MAX(dx,dy));
 #endif
   }
   ierr = VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
   ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(nx, &nx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(ny, &ny_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(nz, &nz_p); CHKERRXX(ierr);
-#endif
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecRestoreArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+  }
 }
 
 
@@ -422,16 +380,14 @@ void my_p4est_bialloy_t::compute_normal_velocity()
   double *v_gamma_p;
   ierr = VecGetArray(v_gamma, &v_gamma_p); CHKERRXX(ierr);
 
-  double *nx_p, *ny_p, *cl_n_p, *c_interface_p;
-  ierr = VecGetArray(nx, &nx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(ny, &ny_p); CHKERRXX(ierr);
+  const double *normal_p[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGetArrayRead(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+  }
+  double *cl_n_p, *c_interface_p;
   ierr = VecGetArray(cl_n, &cl_n_p); CHKERRXX(ierr);
   ierr = VecGetArray(c_interface, &c_interface_p); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  double *nz_p;
-  ierr = VecGetArray(nz, &nz_p); CHKERRXX(ierr);
-#endif
 
 
   quad_neighbor_nodes_of_node_t qnnn;
@@ -445,11 +401,11 @@ void my_p4est_bialloy_t::compute_normal_velocity()
       qnnn = ngbd->get_neighbors(n);
 
 #ifdef P4_TO_P8
-      double dcl_dn = qnnn.dx_central(cl_n_p)*nx_p[n] + qnnn.dy_central(cl_n_p)*ny_p[n] + qnnn.dz_central(cl_n_p)*nz_p[n];
-      double dcs_dn = qnnn.dx_central(cs_n_p)*nx_p[n] + qnnn.dy_central(cs_n_p)*ny_p[n] + qnnn.dz_central(cs_n_p)*nz_p[n];
+      double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
+      double dcs_dn = qnnn.dx_central(cs_n_p)*normal_p[0][n] + qnnn.dy_central(cs_n_p)*normal_p[1][n] + qnnn.dz_central(cs_n_p)*normal_p[2][n];
 #else
-      double dcl_dn = qnnn.dx_central(cl_n_p)*nx_p[n] + qnnn.dy_central(cl_n_p)*ny_p[n];
-      double dcs_dn = qnnn.dx_central(cs_n_p)*nx_p[n] + qnnn.dy_central(cs_n_p)*ny_p[n];
+      double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n];
+      double dcs_dn = qnnn.dx_central(cs_n_p)*normal_p[0][n] + qnnn.dy_central(cs_n_p)*normal_p[1][n];
 #endif
       v_gamma_p[n] = (dcs_dn*solute_diffusivity_s - dcl_dn*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
     }
@@ -460,11 +416,11 @@ void my_p4est_bialloy_t::compute_normal_velocity()
       qnnn = ngbd->get_neighbors(n);
 
 #ifdef P4_TO_P8
-      double dcl_dn = qnnn.dx_central(cl_n_p)*nx_p[n] + qnnn.dy_central(cl_n_p)*ny_p[n] + qnnn.dz_central(cl_n_p)*nz_p[n];
-      double dcs_dn = qnnn.dx_central(cs_n_p)*nx_p[n] + qnnn.dy_central(cs_n_p)*ny_p[n] + qnnn.dz_central(cs_n_p)*nz_p[n];
+      double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
+      double dcs_dn = qnnn.dx_central(cs_n_p)*normal_p[0][n] + qnnn.dy_central(cs_n_p)*normal_p[1][n] + qnnn.dz_central(cs_n_p)*normal_p[2][n];
 #else
-      double dcl_dn = qnnn.dx_central(cl_n_p)*nx_p[n] + qnnn.dy_central(cl_n_p)*ny_p[n];
-      double dcs_dn = qnnn.dx_central(cs_n_p)*nx_p[n] + qnnn.dy_central(cs_n_p)*ny_p[n];
+      double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n];
+      double dcs_dn = qnnn.dx_central(cs_n_p)*normal_p[0][n] + qnnn.dy_central(cs_n_p)*normal_p[1][n];
 #endif
       v_gamma_p[n] = (dcs_dn*solute_diffusivity_s - dcl_dn*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
     }
@@ -479,9 +435,9 @@ void my_p4est_bialloy_t::compute_normal_velocity()
       qnnn = ngbd->get_neighbors(n);
 
 #ifdef P4_TO_P8
-      double dcl_dn = qnnn.dx_central(cl_n_p)*nx_p[n] + qnnn.dy_central(cl_n_p)*ny_p[n] + qnnn.dz_central(cl_n_p)*nz_p[n];
+      double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
 #else
-      double dcl_dn = qnnn.dx_central(cl_n_p)*nx_p[n] + qnnn.dy_central(cl_n_p)*ny_p[n];
+      double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n];
 #endif
       v_gamma_p[n] = -dcl_dn*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
     }
@@ -492,26 +448,25 @@ void my_p4est_bialloy_t::compute_normal_velocity()
       qnnn = ngbd->get_neighbors(n);
 
 #ifdef P4_TO_P8
-      double dcl_dn = qnnn.dx_central(cl_n_p)*nx_p[n] + qnnn.dy_central(cl_n_p)*ny_p[n] + qnnn.dz_central(cl_n_p)*nz_p[n];
+      double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
 #else
-      double dcl_dn = qnnn.dx_central(cl_n_p)*nx_p[n] + qnnn.dy_central(cl_n_p)*ny_p[n];
+      double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n];
 #endif
       v_gamma_p[n] = -dcl_dn*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
     }
     ierr = VecGhostUpdateEnd(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
-  ierr = VecRestoreArray(nx, &nx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(ny, &ny_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(nz, &nz_p); CHKERRXX(ierr);
-#endif
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecRestoreArrayRead(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+  }
 
   ierr = VecRestoreArray(cl_n, &cl_n_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(c_interface, &c_interface_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(v_gamma, &v_gamma_p); CHKERRXX(ierr);
 
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma, normal_velocity_np1);
 
   ierr = VecDestroy(v_gamma); CHKERRXX(ierr);
@@ -523,33 +478,17 @@ void my_p4est_bialloy_t::compute_normal_velocity()
 
 void my_p4est_bialloy_t::compute_velocity()
 {
-  Vec u_gamma;
-  ierr = VecDuplicate(nx, &u_gamma); CHKERRXX(ierr);
-  double *u_gamma_p;
-  ierr = VecGetArray(u_gamma, &u_gamma_p); CHKERRXX(ierr);
+  Vec v_gamma[P4EST_DIM];
+  double *v_gamma_p[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecDuplicate(normal[dir], &v_gamma[dir]); CHKERRXX(ierr);
+    ierr = VecGetArray(v_gamma[dir], &v_gamma_p[dir]); CHKERRXX(ierr);
+  }
 
-  Vec v_gamma;
-  ierr = VecDuplicate(ny, &v_gamma); CHKERRXX(ierr);
-  double *v_gamma_p;
-  ierr = VecGetArray(v_gamma, &v_gamma_p); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  Vec w_gamma;
-  ierr = VecDuplicate(nz, &w_gamma); CHKERRXX(ierr);
-  double *w_gamma_p;
-  ierr = VecGetArray(w_gamma, &w_gamma_p); CHKERRXX(ierr);
-#endif
-
-  double *nx_p, *ny_p, *cl_np1_p, *c_interface_p;
-  ierr = VecGetArray(nx, &nx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(ny, &ny_p); CHKERRXX(ierr);
+  double *cl_np1_p, *c_interface_p;
   ierr = VecGetArray(cl_np1, &cl_np1_p); CHKERRXX(ierr);
   ierr = VecGetArray(c_interface, &c_interface_p); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  double *nz_p;
-  ierr = VecGetArray(nz, &nz_p); CHKERRXX(ierr);
-#endif
 
   quad_neighbor_nodes_of_node_t qnnn;
   if(solve_concentration_solid)
@@ -561,33 +500,32 @@ void my_p4est_bialloy_t::compute_velocity()
       p4est_locidx_t n = ngbd->get_layer_node(i);
       qnnn = ngbd->get_neighbors(n);
 
-      u_gamma_p[n] = (qnnn.dx_central(cs_np1_p)*solute_diffusivity_s - qnnn.dx_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
-      v_gamma_p[n] = (qnnn.dy_central(cs_np1_p)*solute_diffusivity_s - qnnn.dy_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[0][n] = (qnnn.dx_central(cs_np1_p)*solute_diffusivity_s - qnnn.dx_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[1][n] = (qnnn.dy_central(cs_np1_p)*solute_diffusivity_s - qnnn.dy_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #ifdef P4_TO_P8
-      w_gamma_p[n] = (qnnn.dz_central(cs_np1_p)*solute_diffusivity_s - qnnn.dz_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[2][n] = (qnnn.dz_central(cs_np1_p)*solute_diffusivity_s - qnnn.dz_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #endif
     }
-    ierr = VecGhostUpdateBegin(u_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGhostUpdateBegin(w_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecGhostUpdateBegin(v_gamma[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
       qnnn = ngbd->get_neighbors(n);
 
-      u_gamma_p[n] = (qnnn.dx_central(cs_np1_p)*solute_diffusivity_s - qnnn.dx_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
-      v_gamma_p[n] = (qnnn.dy_central(cs_np1_p)*solute_diffusivity_s - qnnn.dy_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[0][n] = (qnnn.dx_central(cs_np1_p)*solute_diffusivity_s - qnnn.dx_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[1][n] = (qnnn.dy_central(cs_np1_p)*solute_diffusivity_s - qnnn.dy_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #ifdef P4_TO_P8
-      w_gamma_p[n] = (qnnn.dz_central(cs_np1_p)*solute_diffusivity_s - qnnn.dz_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[2][n] = (qnnn.dz_central(cs_np1_p)*solute_diffusivity_s - qnnn.dz_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #endif
     }
-    ierr = VecGhostUpdateEnd(u_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGhostUpdateEnd(w_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecGhostUpdateEnd(v_gamma[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
     ierr = VecRestoreArray(cs_np1, &cs_np1_p); CHKERRXX(ierr);
   }
   else
@@ -597,61 +535,44 @@ void my_p4est_bialloy_t::compute_velocity()
       p4est_locidx_t n = ngbd->get_layer_node(i);
       qnnn = ngbd->get_neighbors(n);
 
-      u_gamma_p[n] = -qnnn.dx_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
-      v_gamma_p[n] = -qnnn.dy_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[0][n] = -qnnn.dx_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[1][n] = -qnnn.dy_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #ifdef P4_TO_P8
-      w_gamma_p[n] = -qnnn.dz_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[2][n] = -qnnn.dz_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #endif
     }
-    ierr = VecGhostUpdateBegin(u_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGhostUpdateBegin(w_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecGhostUpdateBegin(v_gamma[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
       qnnn = ngbd->get_neighbors(n);
 
-      u_gamma_p[n] = -qnnn.dx_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
-      v_gamma_p[n] = -qnnn.dy_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[0][n] = -qnnn.dx_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[1][n] = -qnnn.dy_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #ifdef P4_TO_P8
-      w_gamma_p[n] = -qnnn.dz_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[2][n] = -qnnn.dz_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #endif
     }
-    ierr = VecGhostUpdateEnd(u_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGhostUpdateEnd(w_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecGhostUpdateEnd(v_gamma[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
   }
-
-  ierr = VecRestoreArray(nx, &nx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(ny, &ny_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(nz, &nz_p); CHKERRXX(ierr);
-#endif
 
   ierr = VecRestoreArray(cl_np1, &cl_np1_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(c_interface, &c_interface_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(u_gamma, &u_gamma_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(v_gamma, &v_gamma_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(w_gamma, &w_gamma_p); CHKERRXX(ierr);
-#endif
 
-  my_p4est_level_set ls(ngbd);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, u_gamma, u_interface_np1);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma, v_interface_np1);
-#ifdef P4_TO_P8
-  ls.extend_from_interface_to_whole_domain_TVD(phi, w_gamma, w_interface_np1);
-#endif
-
-  ierr = VecDestroy(u_gamma); CHKERRXX(ierr);
-  ierr = VecDestroy(v_gamma); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(w_gamma); CHKERRXX(ierr);
-#endif
+  my_p4est_level_set_t ls(ngbd);
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecRestoreArray(v_gamma[dir], &v_gamma_p[dir]); CHKERRXX(ierr);
+    ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma[dir], v_interface_np1[dir]);
+    ierr = VecDestroy(v_gamma[dir]); CHKERRXX(ierr);
+  }
 }
 
 
@@ -754,7 +675,7 @@ void my_p4est_bialloy_t::solve_temperature()
   ierr = VecRestoreArray(temperature_n, &temperature_n_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
-  PoissonSolverNodeBase solver_t(ngbd);
+  my_p4est_poisson_nodes_t solver_t(ngbd);
   solver_t.set_bc(bc_t);
   solver_t.set_mu(dt_n*thermal_diffusivity);
   solver_t.set_diagonal(1);
@@ -770,7 +691,7 @@ void my_p4est_bialloy_t::solve_temperature()
   ierr = VecGhostRestoreLocalForm(temperature_np1, &src); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(t_interface    , &out); CHKERRXX(ierr);
 
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.extend_Over_Interface_TVD(phi, t_interface);
 }
 
@@ -784,49 +705,48 @@ void my_p4est_bialloy_t::solve_concentration()
   Vec c_interface_tmp;
   ierr = VecDuplicate(phi, &c_interface_tmp); CHKERRXX(ierr);
 
-  double *c_interface_tmp_p, *nx_p, *ny_p, *kappa_p, *t_interface_p, *normal_velocity_np1_p;
+  const double *normal_p[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGetArrayRead(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+  }
+
+  double *c_interface_tmp_p, *kappa_p, *t_interface_p, *normal_velocity_np1_p;
   ierr = VecGetArray(c_interface_tmp, &c_interface_tmp_p); CHKERRXX(ierr);
-  ierr = VecGetArray(nx, &nx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(ny, &ny_p); CHKERRXX(ierr);
   ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
   ierr = VecGetArray(t_interface, &t_interface_p); CHKERRXX(ierr);
   ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
-#ifdef P4_TO_P8
-  double *nz_p;
-  ierr = VecGetArray(nz, &nz_p); CHKERRXX(ierr);
-#endif
-
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
 #ifdef P4_TO_P8
-    double theta_xz = atan2(nz_p[n], nx_p[n]);
-    double theta_yz = atan2(nz_p[n], ny_p[n]);
+    double theta_xz = atan2(normal_p[2][n], normal_p[0][n]);
+    double theta_yz = atan2(normal_p[2][n], normal_p[1][n]);
     c_interface_tmp_p[n] = (t_interface_p[n]-Tm)/ml
         + epsilon_c*(1-15*epsilon_anisotropy*.5*(cos(4*theta_xz)+cos(4*theta_yz)))*kappa_p[n]/ml
         + epsilon_v*(1-15*epsilon_anisotropy*.5*(cos(4*theta_xz)+cos(4*theta_yz)))*normal_velocity_np1_p[n]/ml;
 #else
-    double theta = atan2(ny_p[n], nx_p[n]);
+    double theta = atan2(normal_p[1][n], normal_p[0][n]);
     c_interface_tmp_p[n] = (t_interface_p[n]-Tm)/ml
         + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta))*kappa_p[n]/ml
         + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta))*normal_velocity_np1_p[n]/ml;
 #endif
   }
 
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecRestoreArrayRead(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+  }
   ierr = VecRestoreArray(c_interface_tmp, &c_interface_tmp_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(nx, &nx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(ny, &ny_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(nz, &nz_p); CHKERRXX(ierr);
-#endif
   ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(t_interface, &t_interface_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.extend_from_interface_to_whole_domain_TVD(phi, c_interface_tmp, c_interface);
 
-  InterpolatingFunctionNodeBaseHost interface_value_c(c_interface, *ngbd, linear);
+  my_p4est_interpolation_nodes_t interface_value_c(ngbd);
+  interface_value_c.set_input(c_interface, linear);
   bc_cl.setInterfaceValue(interface_value_c);
 
   /* compute the rhs for concentration */
@@ -843,7 +763,7 @@ void my_p4est_bialloy_t::solve_concentration()
     phi_p[n] *= -1;
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
-  PoissonSolverNodeBase solver_c(ngbd);
+  my_p4est_poisson_nodes_t solver_c(ngbd);
   solver_c.set_phi(phi);
   solver_c.set_bc(bc_cl);
   solver_c.set_mu(dt_n*solute_diffusivity_l);
@@ -872,37 +792,33 @@ void my_p4est_bialloy_t::solve_concentration()
 
 void my_p4est_bialloy_t::compute_dt()
 {
-  double *u_interface_np1_p, *v_interface_np1_p;
-  ierr = VecGetArray(u_interface_np1, &u_interface_np1_p); CHKERRXX(ierr);
-  ierr = VecGetArray(v_interface_np1, &v_interface_np1_p); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  double *w_interface_np1_p;
-  ierr = VecGetArray(w_interface_np1, &w_interface_np1_p); CHKERRXX(ierr);
-#endif
+  const double *v_interface_np1_p[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGetArrayRead(v_interface_np1[dir], &v_interface_np1_p[dir]); CHKERRXX(ierr);
+  }
 
 //  double *kappa_p;
 //  ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
 
   double u_max = 0;
 //  double kappa_min = 0;
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-#ifdef P4_TO_P8
-    u_max = MAX(u_max, MAX(fabs(u_interface_np1_p[n]), fabs(v_interface_np1_p[n]), fabs(w_interface_np1_p[n])));
-#else
-    u_max = MAX(u_max, fabs(u_interface_np1_p[n]), fabs(v_interface_np1_p[n]));
-#endif
-//    kappa_min = MIN(kappa_min, kappa_p[n]);
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+
+      u_max = MAX(u_max, fabs(v_interface_np1_p[dir][n]));
+      //    kappa_min = MIN(kappa_min, kappa_p[n]);
+    }
   }
 
 //  ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(u_interface_np1, &u_interface_np1_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(v_interface_np1, &v_interface_np1_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(w_interface_np1, &w_interface_np1_p); CHKERRXX(ierr);
-#endif
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecRestoreArrayRead(v_interface_np1[dir], &v_interface_np1_p[dir]); CHKERRXX(ierr);
+  }
 
   MPI_Allreduce(MPI_IN_PLACE, &u_max    , 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 //  MPI_Allreduce(MPI_IN_PLACE, &kappa_min, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
@@ -927,85 +843,55 @@ void my_p4est_bialloy_t::update_grid()
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-  SemiLagrangian sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
+  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
 
   /* bousouf update this for second order in time */
-#ifdef P4_TO_P8
-  sl.update_p4est_second_order_from_last_grid(u_interface_n  , v_interface_n  , w_interface_n  ,
-                                              u_interface_np1, v_interface_np1, w_interface_np1,
-                                              dt_nm1, dt_n, phi);
-#else
-  sl.update_p4est_second_order_from_last_grid(u_interface_n  , v_interface_n  ,
-                                              u_interface_np1, v_interface_np1,
-                                              dt_nm1, dt_n, phi);
-#endif
+  sl.update_p4est(v_interface_np1, dt_n, phi);
 
   /* interpolate the quantities on the new grid */
-  InterpolatingFunctionNodeBaseHost interp(*ngbd, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t interp(ngbd);
 
-  /* NOTE: should we do ghost updates ? or go through interpolations ? */
-//  for(p4est_locidx_t n=0; n<nodes_np1->num_owned_indeps; ++n)
+  double xyz[P4EST_DIM];
   for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
   {
-    double xyz [] =
-    {
-      node_x_fr_n(n, p4est_np1, nodes_np1),
-      node_y_fr_n(n, p4est_np1, nodes_np1)
-#ifdef P4_TO_P8
-      , node_z_fr_n(n, p4est_np1, nodes_np1),
-#endif
-    };
-
+    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
     interp.add_point(n, xyz);
   }
 
   ierr = VecDestroy(temperature_n); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &temperature_n); CHKERRXX(ierr);
-  interp.set_input(temperature_np1);
+  interp.set_input(temperature_np1, quadratic_non_oscillatory);
   interp.interpolate(temperature_n);
   ierr = VecDestroy(temperature_np1); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &temperature_np1); CHKERRXX(ierr);
 
   ierr = VecDestroy(cl_n); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &cl_n); CHKERRXX(ierr);
-  interp.set_input(cl_np1);
+  interp.set_input(cl_np1, quadratic_non_oscillatory);
   interp.interpolate(cl_n);
   ierr = VecDestroy(cl_np1); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &cl_np1); CHKERRXX(ierr);
 
   ierr = VecDestroy(cs_n); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &cs_n); CHKERRXX(ierr);
-  interp.set_input(cs_np1);
+  interp.set_input(cs_np1, quadratic_non_oscillatory);
   interp.interpolate(cs_n);
   ierr = VecDestroy(cs_np1); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &cs_np1); CHKERRXX(ierr);
 
-  ierr = VecDestroy(u_interface_n); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &u_interface_n); CHKERRXX(ierr);
-  interp.set_input(u_interface_np1);
-  interp.interpolate(u_interface_n);
-  ierr = VecDestroy(u_interface_np1); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &u_interface_np1); CHKERRXX(ierr);
-
-  ierr = VecDestroy(v_interface_n); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &v_interface_n); CHKERRXX(ierr);
-  interp.set_input(v_interface_np1);
-  interp.interpolate(v_interface_n);
-  ierr = VecDestroy(v_interface_np1); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &v_interface_np1); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  ierr = VecDestroy(w_interface_n); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &w_interface_n); CHKERRXX(ierr);
-  interp.set_input(w_interface_np1);
-  interp.interpolate(w_interface_n);
-  ierr = VecDestroy(w_interface_np1); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &w_interface_np1); CHKERRXX(ierr);
-#endif
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecDestroy(v_interface_n[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &v_interface_n[dir]); CHKERRXX(ierr);
+    interp.set_input(v_interface_np1[dir], quadratic_non_oscillatory);
+    interp.interpolate(v_interface_n[dir]);
+    ierr = VecDestroy(v_interface_np1[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &v_interface_np1[dir]); CHKERRXX(ierr);
+  }
 
   Vec normal_velocity_n;
   ierr = VecDuplicate(phi, &normal_velocity_n); CHKERRXX(ierr);
-  interp.set_input(normal_velocity_np1);
+  interp.set_input(normal_velocity_np1, quadratic_non_oscillatory);
   interp.interpolate(normal_velocity_n);
   ierr = VecDestroy(normal_velocity_np1); CHKERRXX(ierr);
   normal_velocity_np1 = normal_velocity_n;
@@ -1026,7 +912,7 @@ void my_p4est_bialloy_t::update_grid()
   ngbd->update(hierarchy, nodes);
 
   /* reinitialize and perturb phi */
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.reinitialize_1st_order_time_2nd_order_space(phi);
   ls.perturb_level_set_function(phi, EPS);
 
@@ -1048,7 +934,6 @@ void my_p4est_bialloy_t::one_step()
 
   while(error>1e-5 && iteration<10)
   {
-
     Vec src, out;
     ierr = VecGhostGetLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(err                , &out); CHKERRXX(ierr);

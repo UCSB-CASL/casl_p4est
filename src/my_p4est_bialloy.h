@@ -1,8 +1,8 @@
 #ifndef MY_P4EST_BIALLOY_H
 #define MY_P4EST_BIALLOY_H
 
-#include <src/casl_types.h>
-#include <src/CASL_math.h>
+#include <src/types.h>
+#include <src/math.h>
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_tools.h>
@@ -10,16 +10,16 @@
 #include <p8est_ghost.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_poisson_node_base.h>
-#include <src/my_p8est_interpolating_function_host.h>
+#include <src/my_p8est_poisson_nodes.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <p4est.h>
 #include <p4est_ghost.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_poisson_node_base.h>
-#include <src/my_p4est_interpolating_function_host.h>
+#include <src/my_p4est_poisson_nodes.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #endif
 
 
@@ -66,19 +66,13 @@ private:
   Vec c_interface;
 
   /* velocity */
-  Vec u_interface_n, u_interface_np1;
-  Vec v_interface_n, v_interface_np1;
-#ifdef P4_TO_P8
-  Vec w_interface_n, w_interface_np1;
-#endif
+  Vec v_interface_n  [P4EST_DIM];
+  Vec v_interface_np1[P4EST_DIM];
   Vec normal_velocity_np1;
 
   /* level-set */
   Vec phi;
-  Vec nx, ny;
-#ifdef P4_TO_P8
-  Vec nz;
-#endif
+  Vec normal[P4EST_DIM];
   Vec kappa;
 
   /* physical parameters */
@@ -99,10 +93,10 @@ private:
 
   bool solve_concentration_solid;
 
+  double scaling;
+
   bool matrices_are_constructed;
   Vec rhs;
-
-  double scaling;
 
 public:
 
@@ -123,7 +117,7 @@ public:
                        double epsilon_anisotropy,
                        double epsilon_c,
                        double epsilon_v,
-                       double scaling );
+                       double scaling);
 
   void set_phi(Vec phi);
 

@@ -229,7 +229,7 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
 #endif
 
 #ifdef CASL_THROWS
-  if(x<qxmin-EPS || x>qxmin+qh+EPS || y<qymin-EPS || y>qymin+qh+EPS)
+  if(x<qxmin-qh/10 || x>qxmin+qh+qh/10 || y<qymin-qh/10 || y>qymin+qh+qh/10)
   {
     std::cout << x << ", " << qxmin << ", " << qxmin+qh << std::endl;
     std::cout << y << ", " << qymin << ", " << qymin+qh << std::endl;
