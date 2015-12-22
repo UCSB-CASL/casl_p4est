@@ -1,32 +1,40 @@
-#include "poisson_boltzman_solver.h"
+#include "my_p4est_poisson_boltzmann_nodes.h"
 
+#ifdef P4_TO_P8
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_poisson_nodes.h>
+#else
+#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_log_wrappers.h>
+#include <src/my_p4est_poisson_nodes.h>
+#endif
+
 #include <src/petsc_compatibility.h>
 #include <src/CASL_math.h>
 
 using namespace std;
 
-PoissonBoltzmanSolver::PoissonBoltzmanSolver(my_p4est_node_neighbors_t& neighbors)
+my_p4est_poisson_boltzmann_nodes_t::my_p4est_poisson_boltzmann_nodes_t(my_p4est_node_neighbors_t& neighbors)
   : neighbors(neighbors) {
   p4est = neighbors.get_p4est();
   nodes = neighbors.get_nodes();
 }
 
 
-void PoissonBoltzmanSolver::set_parameters(double edl, double zeta) {
+void my_p4est_poisson_boltzmann_nodes_t::set_parameters(double edl, double zeta) {
   this->edl  = edl;
   this->zeta = zeta;
 }
 
-void PoissonBoltzmanSolver::set_phi(Vec phi) {
+void my_p4est_poisson_boltzmann_nodes_t::set_phi(Vec phi) {
   this->phi = phi;
 }
 
 
-void PoissonBoltzmanSolver::solve_linear(Vec &psi)
+void my_p4est_poisson_boltzmann_nodes_t::solve_linear(Vec &psi)
 {
   PetscErrorCode ierr;
   my_p4est_poisson_nodes_t solver(&neighbors);
@@ -46,6 +54,7 @@ void PoissonBoltzmanSolver::solve_linear(Vec &psi)
   }
   ierr = VecRestoreArray(add, &add_p); CHKERRXX(ierr);
 
+#ifdef P4_TO_P8
   struct:CF_3{
     double operator()(double, double, double) const { return 0; }
   } bc_wall_value;
@@ -60,6 +69,23 @@ void PoissonBoltzmanSolver::solve_linear(Vec &psi)
   } bc_wall_type;
 
   BoundaryConditions3D bc;
+#else
+  struct:CF_2{
+    double operator()(double, double) const { return 0; }
+  } bc_wall_value;
+
+  struct bc_value_t:CF_2{
+    double value;
+    double operator()(double, double) const { return value; }
+  } bc_interface_value; bc_interface_value.value = zeta;
+
+  struct:WallBC2D {
+    BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
+  } bc_wall_type;
+
+  BoundaryConditions2D bc;
+#endif
+
   bc.setWallTypes(bc_wall_type);
   bc.setWallValues(bc_wall_value);
   bc.setInterfaceType(DIRICHLET);
@@ -82,7 +108,7 @@ void PoissonBoltzmanSolver::solve_linear(Vec &psi)
   ierr = VecRestoreArray(psi, &psi_p); CHKERRXX(ierr);
 }
 
-void PoissonBoltzmanSolver::solve_nonlinear(Vec &psi, int itmax, double tol)
+void my_p4est_poisson_boltzmann_nodes_t::solve_nonlinear(Vec &psi, int itmax, double tol)
 {
   PetscErrorCode ierr;
 
@@ -105,11 +131,12 @@ void PoissonBoltzmanSolver::solve_nonlinear(Vec &psi, int itmax, double tol)
     tmp_p[i] = 0;
   }
 
+#ifdef P4_TO_P8
   struct:CF_3{
     double operator()(double, double, double) const { return 0; }
   } bc_wall_value;
 
-  struct:CF_3{
+  struct bc_value_t:CF_3{
     double value;
     double operator()(double, double, double) const { return value; }
   } bc_interface_value; bc_interface_value.value = zeta;
@@ -119,6 +146,23 @@ void PoissonBoltzmanSolver::solve_nonlinear(Vec &psi, int itmax, double tol)
   } bc_wall_type;
 
   BoundaryConditions3D bc;
+#else
+  struct:CF_2{
+    double operator()(double, double) const { return 0; }
+  } bc_wall_value;
+
+  struct bc_value_t:CF_2{
+    double value;
+    double operator()(double, double) const { return value; }
+  } bc_interface_value; bc_interface_value.value = zeta;
+
+  struct:WallBC2D {
+    BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
+  } bc_wall_type;
+
+  BoundaryConditions2D bc;
+#endif
+
   bc.setWallTypes(bc_wall_type);
   bc.setWallValues(bc_wall_value);
   bc.setInterfaceType(DIRICHLET);
