@@ -88,6 +88,36 @@ public:
     }
   }
 
+  /*!
+   * \brief get_hierarchy
+   * \return returns a const ptr to the hierarchy structure
+   */
+  inline const my_p4est_hierarchy_t* get_hierarchy() const { return hierarchy; }
+
+  /*!
+   * \brief get_p4est
+   * \return returns a const ptr to p4est structure
+   */
+  inline const p4est_t* get_p4est() const { return p4est; }
+
+  /*!
+   * \brief get_ghost
+   * \return returns a const ptr to ghost structure
+   */
+  inline const p4est_ghost_t* get_ghost() const { return ghost; }
+
+  /*!
+   * \brief get_nodes
+   * \return returns a const ptr to nodes structure
+   */
+  inline const p4est_nodes_t* get_nodes() const { return nodes; }
+
+  /*!
+   * \brief get_brick
+   * \return returns a const ptr to brick structure
+   */
+  inline const my_p4est_brick_t* get_brick() const { return myb; }
+
   inline size_t get_layer_size() const { return layer_nodes.size(); }
   inline size_t get_local_size() const { return local_nodes.size(); }
   inline p4est_locidx_t get_layer_node(size_t i) const {

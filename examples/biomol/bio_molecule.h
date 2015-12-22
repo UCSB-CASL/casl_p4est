@@ -20,7 +20,7 @@ class BioMolecule: public CF_3
   friend class BioMoleculeSolver;
   std::vector<Atom> atoms;
 
-  const mpi_context_t& mpi;
+  const mpi_enviroment_t& mpi;
   double xc_, yc_, zc_, s_, rmax_;
   double rp_;
 
@@ -33,7 +33,7 @@ class BioMolecule: public CF_3
   std::vector<double> cell_buffer;
 
 public:
-  BioMolecule(my_p4est_brick_t& brick, const mpi_context_t& mpi);
+  BioMolecule(my_p4est_brick_t& brick, const mpi_enviroment_t& mpi);
   void read(const std::string& pqr);
   void translate(double xc, double yc, double zc);
   void set_scale(double s);

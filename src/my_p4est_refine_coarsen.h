@@ -61,6 +61,28 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
   }
 };
 
+struct splitting_criteria_threshold_cf_t : splitting_criteria_t {
+#ifdef P4_TO_P8
+  CF_3 *phi;
+#else
+  CF_2 *phi;
+#endif
+  double min_thr, max_thr;
+#ifdef P4_TO_P8
+  splitting_criteria_threshold_cf_t(int min_lvl, int max_lvl, double min_thr, double max_thr, CF_3 *phi, double lip)
+#else
+  splitting_criteria_threshold_cf_t(int min_lvl, int max_lvl, double min_thr, double max_thr, CF_2 *phi, double lip)
+#endif
+  {
+    this->min_lvl = min_lvl;
+    this->max_lvl = max_lvl;
+    this->min_lvl = min_thr;
+    this->max_thr = max_thr;
+    this->phi = phi;
+    this->lip = lip;
+  }
+};
+
 struct splitting_criteria_random_t : splitting_criteria_t {
   p4est_gloidx_t max_quads, min_quads, num_quads;
   splitting_criteria_random_t(int min_lvl, int max_lvl, p4est_gloidx_t min_quads, p4est_gloidx_t max_quads)
@@ -129,6 +151,26 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
  */
 p4est_bool_t
 coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+/*!
+ * \brief refine_threshold_cf refine based on a threshold on a cf function
+ * \param p4est       [in] forest object to consider
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] pointer to the current quadrant
+ * \return                a boolean (0/1) describing if refinement is needed
+ */
+p4est_bool_t
+refine_threshold_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+/*!
+ * \brief coarsen_threshold_cf coarsen based on threshold on a cf function
+ * \param p4est       [in] forest object
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] a pointer to a list of quadrant to be coarsened
+ * \return                 a boolean (0/1) describing if a set of quadrants need to be coarsened
+ */
+p4est_bool_t
+coarsen_threshold_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
 /*!
  * \brief refine_random a random refinement method

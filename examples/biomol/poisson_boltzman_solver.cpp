@@ -1,9 +1,9 @@
 #include "poisson_boltzman_solver.h"
 
-#include <src/my_p8est_levelset.h>
-#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_log_wrappers.h>
-#include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_poisson_nodes.h>
 #include <src/petsc_compatibility.h>
 #include <src/CASL_math.h>
 
@@ -29,7 +29,7 @@ void PoissonBoltzmanSolver::set_phi(Vec phi) {
 void PoissonBoltzmanSolver::solve_linear(Vec &psi)
 {
   PetscErrorCode ierr;
-  PoissonSolverNodeBase solver(&neighbors);
+  my_p4est_poisson_nodes_t solver(&neighbors);
 
   Vec add;
   ierr = VecDuplicate(phi, &add); CHKERRXX(ierr);
@@ -75,7 +75,7 @@ void PoissonBoltzmanSolver::solve_linear(Vec &psi)
   ierr = VecDestroy(add); CHKERRXX(ierr);
 
   // extend solutions
-  my_p4est_level_set ls(&neighbors);
+  my_p4est_level_set_t ls(&neighbors);
   ls.extend_Over_Interface_TVD(phi, psi);
 
   // restore pointers
@@ -124,9 +124,9 @@ void PoissonBoltzmanSolver::solve_nonlinear(Vec &psi, int itmax, double tol)
   bc.setInterfaceType(DIRICHLET);
   bc.setInterfaceValue(bc_interface_value);
 
-  my_p4est_level_set ls(&neighbors);
+  my_p4est_level_set_t ls(&neighbors);
   while (it++ < itmax && err > tol) {
-    PoissonSolverNodeBase solver(&neighbors);
+    my_p4est_poisson_nodes_t solver(&neighbors);
 
     for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; i++) {
       if (phi_p[i] < 0){

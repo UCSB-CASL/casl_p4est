@@ -4,12 +4,12 @@
 #include <iomanip>
 
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_levelset.h>
-#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_log_wrappers.h>
-#include <src/my_p8est_poisson_node_base.h>
-#include <src/my_p8est_poisson_node_base_jump.h>
+#include <src/my_p8est_poisson_nodes.h>
+#include <src/my_p8est_poisson_jump_nodes_extended.h>
 #include <src/petsc_compatibility.h>
 #include <src/CASL_math.h>
 
@@ -30,7 +30,7 @@ ostream& operator << (ostream& os, Atom& atom) {
   return os;
 }
 
-BioMolecule::BioMolecule(my_p4est_brick_t& brick, const mpi_context_t &mpi)
+BioMolecule::BioMolecule(my_p4est_brick_t& brick, const mpi_enviroment_t &mpi)
   : mpi(mpi), xc_(0.), yc_(0.), zc_(0.), rp_(1.4)
 {
   Dx_ = brick.nxyztrees[0];
@@ -43,7 +43,7 @@ BioMolecule::BioMolecule(my_p4est_brick_t& brick, const mpi_context_t &mpi)
 void BioMolecule::read(const string &pqr) {
 
   // only read on rank 0 and then broadcast the result to others
-  if (mpi.mpirank == 0) {
+  if (mpi.rank() == 0) {
 
     std::ifstream reader(pqr.c_str());
 #ifdef CASL_THROWS
@@ -66,10 +66,10 @@ void BioMolecule::read(const string &pqr) {
   }
 
   size_t msg_size = atoms.size()*sizeof(Atom);
-  MPI_Bcast(&msg_size, 1, MPI_UNSIGNED_LONG, 0, mpi.mpicomm);
-  if (mpi.mpirank != 0)
+  MPI_Bcast(&msg_size, 1, MPI_UNSIGNED_LONG, 0, mpi.comm());
+  if (mpi.rank() != 0)
     atoms.resize(msg_size/sizeof(Atom));
-  MPI_Bcast(&atoms[0], msg_size, MPI_BYTE, 0, mpi.mpicomm);
+  MPI_Bcast(&atoms[0], msg_size, MPI_BYTE, 0, mpi.comm());
 
   // compute the center of mass
   xc_ = 0;
@@ -295,7 +295,7 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
 	// Note: Using recursive on large molecules causes the whole thing to be build in serial on 
 	// one processor which is obviously not scalable 
 	for (int l = 0; l<sp->max_lvl; l++){
-	  my_p4est_refine(p4est, P4EST_FALSE, refine_threshold_cf, NULL);
+    my_p4est_refine(p4est, P4EST_FALSE, refine_threshold_cf, NULL);
     my_p4est_partition(p4est, P4EST_TRUE, NULL);
 	}
 
@@ -317,7 +317,7 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
   my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
   my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
   neighbors.init_neighbors();
-  my_p4est_level_set ls(&neighbors);
+  my_p4est_level_set_t ls(&neighbors);
 
   int it = floor(4.0*rp_/ (D_/ (1<<sp->max_lvl)));
   ls.reinitialize_2nd_order(phi, MAX(it, 20));
@@ -339,40 +339,26 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
     ierr = VecCreateGhostNodes(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);
 
     /* buffer all the points in the current tree */
-    InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, &brick, &neighbors);
+    my_p4est_interpolation_nodes_t phi_interp(&neighbors);
     double *phi_tmp_p;
     ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
 
-    for (size_t i = 0; i<nodes_tmp->indep_nodes.elem_count; i++) {
-      const p4est_indep_t *ni = (const p4est_indep_t *)sc_array_index(&nodes_tmp->indep_nodes, i);
+    for (size_t i = 0; i<nodes_tmp->indep_nodes.elem_count; i++) {      
+      double xyz [P4EST_DIM];
+      node_xyz_fr_n(i, p4est_tmp, nodes_tmp, xyz);
 
-      p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*ni->p.piggy3.which_tree + 0];
-
-      double tree_xmin = connectivity->vertices[3*v_mmm + 0];
-      double tree_ymin = connectivity->vertices[3*v_mmm + 1];
-      double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-      double xyz [P4EST_DIM] =
-      {
-        node_x_fr_i(ni) + tree_xmin,
-        node_y_fr_j(ni) + tree_ymin,
-        node_z_fr_k(ni) + tree_zmin
-      };
-
-      phi_interp.add_point_to_buffer(i, xyz);
+      phi_interp.add_point(i, xyz);
     }
-    phi_interp.set_input_parameters(phi, linear);
+    phi_interp.set_input(phi, linear);
     phi_interp.interpolate(phi_tmp);
 
     /* dont do the final refinement */
     if (l == sp->max_lvl) break;
 
     /* refine the tree */
-    splitting_criteria_discrete_t sp_tag(p4est_tmp, sp->min_lvl, sp->max_lvl, sp->lip);
-    sp_tag.mark_cells_for_refinement(nodes_tmp, phi_tmp_p);
+    splitting_criteria_tag_t sp_tag(sp->min_lvl, sp->max_lvl, sp->lip);
+    sp_tag.refine_and_coarsen(p4est_tmp, nodes_tmp, phi_tmp_p);
     ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
-
-    p4est_tmp->user_pointer = &sp_tag;
-    my_p4est_refine(p4est_tmp, P4EST_FALSE, refine_marked_quadrants, NULL);
 
     /* free memory */
     ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
@@ -416,7 +402,7 @@ void BioMolecule::construct_SES_by_advection(p8est_t *&p4est, p8est_nodes_t *&no
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
     neighbors.init_neighbors();
-    my_p4est_level_set ls(&neighbors);
+    my_p4est_level_set_t ls(&neighbors);
 
     ls.reinitialize_2nd_order(phi);
   }
@@ -429,16 +415,16 @@ void BioMolecule::construct_SES_by_advection(p8est_t *&p4est, p8est_nodes_t *&no
   for (; t<tf; t += dt) {
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
-    my_p4est_level_set ls(&neighbors);
+    my_p4est_level_set_t ls(&neighbors);
 
-    dt = ls.advect_in_normal_direction(vn, phi, tf - t);
+    dt = ls.advect_in_normal_direction(vn, phi);
 
     /* reconstruct the grid */
     p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
 
     // define interpolating function on the old stuff
-    InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, &brick, &neighbors);
-    phi_interp.set_input_parameters(phi, linear);
+    my_p4est_interpolation_nodes_t phi_interp(&neighbors);
+    phi_interp.set_input(phi, linear);
     splitting_criteria_cf_t sp_interp (sp->min_lvl, sp->max_lvl, &phi_interp, sp->lip);
     p4est_np1->user_pointer = &sp_interp;
 
@@ -459,28 +445,10 @@ void BioMolecule::construct_SES_by_advection(p8est_t *&p4est, p8est_nodes_t *&no
 
     for (size_t n=0; n<nodes_np1->indep_nodes.elem_count; n++)
     {
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, n);
-      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
 
-      p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-      double tree_xmin = connectivity->vertices[3*v_mm + 0];
-      double tree_ymin = connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = connectivity->vertices[3*v_mm + 2];
-#endif
-
-      double xyz [] =
-      {
-        node_x_fr_i(node) + tree_xmin,
-        node_y_fr_j(node) + tree_ymin
-  #ifdef P4_TO_P8
-        ,
-        node_z_fr_k(node) + tree_zmin
-  #endif
-      };
-
-      phi_interp.add_point_to_buffer(n, xyz);
+      phi_interp.add_point(n, xyz);
     }
     phi_interp.interpolate(phi_np1);
 
@@ -497,7 +465,7 @@ void BioMolecule::construct_SES_by_advection(p8est_t *&p4est, p8est_nodes_t *&no
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
     my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
     neighbors.init_neighbors();
-    my_p4est_level_set ls(&neighbors);
+    my_p4est_level_set_t ls(&neighbors);
 
     ls.reinitialize_2nd_order(phi);
   }
@@ -512,7 +480,7 @@ void BioMolecule::remove_internal_cavities(p8est_t *&p4est, p8est_nodes_t *&node
   // solve an auxiliary poisson to determine the cavities
   my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
   my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
-  my_p4est_level_set ls(&neighbors);
+  my_p4est_level_set_t ls(&neighbors);
 
   neighbors.init_neighbors();
   {
@@ -534,7 +502,7 @@ void BioMolecule::remove_internal_cavities(p8est_t *&p4est, p8est_nodes_t *&node
     bc.setWallTypes(bc_wall_type);
     bc.setWallValues(bc_wall_value);
 
-    PoissonSolverNodeBase solver(&neighbors);
+    my_p4est_poisson_nodes_t solver(&neighbors);
     solver.set_bc(bc);
 
     solver.set_phi(phi);
@@ -562,7 +530,6 @@ void BioMolecule::remove_internal_cavities(p8est_t *&p4est, p8est_nodes_t *&node
 
   // construct the grid in a level-by-level approach
   splitting_criteria_t *sp = (splitting_criteria_t*) p4est->user_pointer;
-  const p4est_connectivity_t *connectivity = p4est->connectivity;
 
   p4est_t *p4est_tmp = p4est_new(p4est->mpicomm, p4est->connectivity, 0, NULL, NULL);
   p4est_ghost_t *ghost_tmp = NULL;
@@ -576,40 +543,26 @@ void BioMolecule::remove_internal_cavities(p8est_t *&p4est, p8est_nodes_t *&node
     ierr = VecCreateGhostNodes(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);
 
     /* buffer all the points in the current tree */
-    InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, &brick, &neighbors);
+    my_p4est_interpolation_nodes_t phi_interp(&neighbors);
     double *phi_tmp_p;
     ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
 
     for (size_t i = 0; i<nodes_tmp->indep_nodes.elem_count; i++) {
-      const p4est_indep_t *ni = (const p4est_indep_t *)sc_array_index(&nodes_tmp->indep_nodes, i);
+      double xyz [P4EST_DIM];
+      node_xyz_fr_n(i, p4est_tmp, nodes_tmp, xyz);
 
-      p4est_topidx_t v_mmm = connectivity->tree_to_vertex[P4EST_CHILDREN*ni->p.piggy3.which_tree + 0];
-
-      double tree_xmin = connectivity->vertices[3*v_mmm + 0];
-      double tree_ymin = connectivity->vertices[3*v_mmm + 1];
-      double tree_zmin = connectivity->vertices[3*v_mmm + 2];
-      double xyz [P4EST_DIM] =
-      {
-        node_x_fr_i(ni) + tree_xmin,
-        node_y_fr_j(ni) + tree_ymin,
-        node_z_fr_k(ni) + tree_zmin
-      };
-
-      phi_interp.add_point_to_buffer(i, xyz);
+      phi_interp.add_point(i, xyz);
     }
-    phi_interp.set_input_parameters(phi, linear);
+    phi_interp.set_input(phi, linear);
     phi_interp.interpolate(phi_tmp);
 
     /* dont do the final refinement */
     if (l == sp->max_lvl) break;
 
     /* refine the tree */
-    splitting_criteria_discrete_t sp_tag(p4est_tmp, sp->min_lvl, sp->max_lvl, sp->lip);
-    sp_tag.mark_cells_for_refinement(nodes_tmp, phi_tmp_p);
+    splitting_criteria_tag_t sp_tag(sp->min_lvl, sp->max_lvl, sp->lip);
+    sp_tag.refine_and_coarsen(p4est_tmp, nodes_tmp, phi_tmp_p);
     ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
-
-    p4est_tmp->user_pointer = &sp_tag;
-    my_p4est_refine(p4est_tmp, P4EST_FALSE, refine_marked_quadrants, NULL);
 
     /* free memory */
     ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
@@ -671,9 +624,9 @@ void BioMoleculeSolver::solve_singular_part()
   ierr = VecDuplicate(phi, &psi_star); CHKERRXX(ierr);
   sample_cf_on_nodes(p4est, nodes, negative_coulomb, psi_star);
 
-  // solve a poisson equation to obtain the singular solution
-  InterpolatingFunctionNodeBase bc_interface_value(p4est, nodes, ghost, &brick, &neighbors);
-  bc_interface_value.set_input_parameters(psi_star, linear);
+  // solve a poisson equation to obtain the singular solution  
+  my_p4est_interpolation_nodes_t bc_interface_value(&neighbors);
+  bc_interface_value.set_input(psi_star, linear);
 
   double *psi_bar_p, *psi_star_p, *phi_p;
   ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
@@ -699,7 +652,7 @@ void BioMoleculeSolver::solve_singular_part()
   bc.setInterfaceType(DIRICHLET);
   bc.setInterfaceValue(bc_interface_value);
 
-  PoissonSolverNodeBase solver(&neighbors);
+  my_p4est_poisson_nodes_t solver(&neighbors);
   solver.set_bc(bc);
   solver.set_phi(phi);
   solver.set_mu(mue_p);
@@ -707,7 +660,7 @@ void BioMoleculeSolver::solve_singular_part()
   solver.solve(psi_bar);
 
   // extend psi_bar
-  my_p4est_level_set ls(&neighbors);
+  my_p4est_level_set_t ls(&neighbors);
   ls.extend_Over_Interface(phi, psi_bar, DIRICHLET, psi_star);
 
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
@@ -724,7 +677,7 @@ void BioMoleculeSolver::solve_linear(Vec &psi_molecule, Vec& psi_electrolyte)
   PetscErrorCode ierr;
 
   solve_singular_part();
-  PoissonSolverNodeBaseJump solver(&neighbors);
+  my_p4est_poisson_jump_nodes_extended_t solver(&neighbors);
 
   Vec psi, add, jump;
   ierr = VecDuplicate(phi, &add); CHKERRXX(ierr);
@@ -767,8 +720,8 @@ void BioMoleculeSolver::solve_linear(Vec &psi_molecule, Vec& psi_electrolyte)
   ierr = VecGhostUpdateBegin(jump, INSERT_VALUES, SCATTER_FORWARD);
   ierr = VecGhostUpdateEnd(jump, INSERT_VALUES, SCATTER_FORWARD);
 
-  InterpolatingFunctionNodeBase jump_flux(p4est, nodes, ghost, &brick, &neighbors);
-  jump_flux.set_input_parameters(jump, linear);
+  my_p4est_interpolation_nodes_t jump_flux(&neighbors);
+  jump_flux.set_input(jump, linear);
 
   struct:CF_3{
     double operator()(double, double, double) const { return 0; }
@@ -811,7 +764,7 @@ void BioMoleculeSolver::solve_linear(Vec &psi_molecule, Vec& psi_electrolyte)
   }
 
   // extend solutions
-  my_p4est_level_set ls(&neighbors);
+  my_p4est_level_set_t ls(&neighbors);
   ls.extend_Over_Interface_TVD(phi, psi_molecule);
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++) {
     phi_p[i]      = -phi_p[i];
@@ -887,8 +840,8 @@ void BioMoleculeSolver::solve_nonlinear(Vec &psi_molecule, Vec& psi_electrolyte,
 
   ierr = VecRestoreArray(jump,    &jump_p); CHKERRXX(ierr);
 
-  InterpolatingFunctionNodeBase jump_flux(p4est, nodes, ghost, &brick, &neighbors);
-  jump_flux.set_input_parameters(jump, linear);
+  my_p4est_interpolation_nodes_t jump_flux(&neighbors);
+  jump_flux.set_input(jump, linear);
 
   struct:CF_3{
     double operator()(double, double, double) const { return 0; }
@@ -906,9 +859,9 @@ void BioMoleculeSolver::solve_nonlinear(Vec &psi_molecule, Vec& psi_electrolyte,
   bc.setWallTypes(bc_wall_type);
   bc.setWallValues(bc_wall_value);
 
-  my_p4est_level_set ls(&neighbors);
+  my_p4est_level_set_t ls(&neighbors);
   while (it++ < itmax && err > tol) {
-    PoissonSolverNodeBaseJump solver(&neighbors);
+    my_p4est_poisson_jump_nodes_extended_t solver(&neighbors);
 
     for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; i++) {
       // use psi to set the rhs

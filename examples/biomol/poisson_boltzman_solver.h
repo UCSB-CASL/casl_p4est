@@ -14,11 +14,6 @@ class PoissonBoltzmanSolver{
   const p4est_t* p4est;
   const p4est_nodes_t *nodes;
 
-  typedef enum {
-    linearPB,
-    nonlinearPB
-  } solver_type;
-
   double edl, zeta;
 
   Vec phi;
