@@ -1,44 +1,9 @@
-#!/bin/sh
-# Use this script to create a sample example which creats a tree 
-# and saves it into a vtk file.
-# 
-# Usage:
-#   ./new_example example_name
-#
-
-# creates a .pro file 
-function create_pro() {
-cat > $1/$1.pro << EOF
-# --------------------------------------------------------------
-# qmake config file for example $1
-# --------------------------------------------------------------
-CONFIG += 2d
-
-include(../../config/$2.pri)
-include(../../config/libparcasl.pri)
-
-CONFIG(2d, 2d|3d): {
-  TARGET = $1_2d
-  SOURCES += main_2d.cpp
-}
-
-CONFIG(3d, 2d|3d): {
-  TARGET = $1_3d
-  SOURCES += main_3d.cpp
-}
-
-EOF
-}
-
-# creates a sample main_2d.cpp and main_3d.cpp
-function create_main() {
-cat > $1/main_2d.cpp << EOF
 /* 
  *
- * Title: $1
- * Description:
- * Author: $(git config user.name)
- * Date Created: $(date +%m-%d-%Y)
+ * Title: curvature
+ * Description: Computes the curvature using two methods. Also illustrates how to use foreach macros
+ * Author: Mohammad Mirzadeh
+ * Date Created: 12-22-2015
  *
  */
 
@@ -50,6 +15,8 @@ cat > $1/main_2d.cpp << EOF
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_macros.h>
 #else
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
@@ -58,6 +25,7 @@ cat > $1/main_2d.cpp << EOF
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_macros.h>
 #endif
 
 #include <src/Parser.h>
@@ -73,7 +41,7 @@ int main(int argc, char** argv) {
 
   // stopwatch
   parStopWatch w;
-  w.start("Running example: $1");
+  w.start("Running example: curvature");
 
   // p4est variables
   p4est_t*              p4est;
@@ -119,10 +87,60 @@ int main(int argc, char** argv) {
   // create node structure
   nodes = my_p4est_nodes_new(p4est, ghost);
 
-  // save the grid into vtk
+  // create node structure
+  my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
+  my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
+
+  Vec phi, kappa[2], normal[P4EST_DIM];
+  VecCreateGhostNodes(p4est, nodes, &phi);
+  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
+  VecDuplicate(phi, &kappa[0]);
+  VecDuplicate(phi, &kappa[1]);
+
+  // compute levelset
+  sample_cf_on_nodes(p4est, nodes, circle, phi);
+
+  // compute normals (reuturns scaled normal)
+  compute_normals(neighbors, phi, normal);
+
+  /* compute curvature with two methods
+   * 1) using compact stencil (does not require that normal be scaled)
+   * 2) using div(normal) expression (normal MUST be scaled)
+   */
+  compute_mean_curvature(neighbors, phi, normal, kappa[0]);
+  compute_mean_curvature(neighbors, normal, kappa[1]);
+
+  // compute normals
+  double *phi_p, *kappa_p[2], *normal_p[P4EST_DIM];
+  VecGetArray(phi, &phi_p);
+  VecGetArray(kappa[0], &kappa_p[0]);
+  VecGetArray(kappa[1], &kappa_p[1]);
+  foreach_dimension(dim) VecGetArray(normal[dim], &normal_p[dim]);
+
+  // save vtk
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
-                         0, 0, "$1");
+                         3+P4EST_DIM, 0, "curvature",
+                         VTK_POINT_DATA, "phi", phi_p,
+                         VTK_POINT_DATA, "curvature_compact", kappa_p[0],
+                         VTK_POINT_DATA, "curvature_div_n", kappa_p[1],
+                         VTK_POINT_DATA, "normal", normal_p[0],
+                         VTK_POINT_DATA, "phi_y", normal_p[1]
+#ifdef P4_TO_P8
+                       , VTK_POINT_DATA, "phi_z", normal_p[2]
+#endif
+                         );
+
+  VecRestoreArray(phi, &phi_p);
+  VecRestoreArray(kappa[0], &kappa_p[1]);
+  VecRestoreArray(kappa[1], &kappa_p[1]);
+  foreach_dimension(dim) VecRestoreArray(normal[dim], &normal_p[dim]);
+
+  // destroy vectors
+  VecDestroy(phi);
+  VecDestroy(kappa[0]);
+  VecDestroy(kappa[1]);
+  foreach_dimension(dim) VecDestroy(normal[dim]);
 
   // destroy the structures
   p4est_nodes_destroy(nodes);
@@ -133,35 +151,3 @@ int main(int argc, char** argv) {
   w.stop(); w.read_duration();
 }
 
-EOF
-
-cat > $1/main_3d.cpp << EOF
-#include <src/my_p4est_to_p8est.h>
-#include "main_2d.cpp"
-
-EOF
-}
-
-if [[ "$#" -ne 1 ]]; then
-    echo "useage: $(basename "$0") name [config]\n"\
-         "'name'  : name of the example file (will be skipped if already exist)\n"\
-         "'config': configuration to be used for finding dependencies (defaults to homebrew)"
-else
-	name=$1
-  config=$2
-
-  # check if a config is set, if not set it to homebrew 
-  if [[ -z $config ]]; then
-    config="homebrew"
-  fi
-
-  # create a new example only if one does not exist with the same name
-	if [[ ! -e $name ]]; then
-		mkdir $name
-    create_pro $name $config
-    create_main $name
-	else
-		echo "Example '$name' already exists. Please choose another name."
-		exit 1
-	fi	
-fi

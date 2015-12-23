@@ -262,6 +262,26 @@ public:
   void second_derivatives_central(const Vec f, Vec fxx, Vec fyy) const;
 #endif
 
+  /*!
+   * \brief second_derivatives_central computes the second derivative
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fxx array of size P4EST_DIM of PETSc vectors to store all results in.
+   */
+  inline void second_derivatives_central(const Vec f, Vec fxx[P4EST_DIM]) {
+#ifdef P4_TO_P8
+    second_derivatives_central(f, fxx[0], fxx[1], fxx[2]);
+#else
+    second_derivatives_central(f, fxx[0], fxx[1]);
+#endif
+  }
+
+  /*!
+   * \brief first_derivatives_central computes the first derivatives using central difference
+   * \param [in]  f   PETSc vector storing the
+   * \param [out] fx  array of size P4EST_DIM of PETSc vectors to store
+   */
+  void first_derivatives_central(const Vec f, Vec fx[P4EST_DIM]) const;
+
 private:
 #ifdef P4_TO_P8
   void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;

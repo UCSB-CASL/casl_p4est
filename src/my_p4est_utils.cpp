@@ -2,11 +2,15 @@
 #include "my_p8est_utils.h"
 #include "my_p8est_tools.h"
 #include <p8est_connectivity.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_macros.h>
 #include "cube3.h"
 #else
 #include "my_p4est_utils.h"
 #include "my_p4est_tools.h"
 #include <p4est_connectivity.h>
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_macros.h>
 #include "cube2.h"
 #endif
 
@@ -17,6 +21,7 @@
 #include <petsclog.h>
 #include <src/CASL_math.h>
 #include <src/petsc_compatibility.h>
+
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_TINY_EVENTS
@@ -792,6 +797,178 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
   PetscErrorCode ierr;
   ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum_global;
+}
+
+double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, double* phi_x[])
+{
+#ifdef CASL_THROWS
+  if(!phi_x)
+    throw std::invalid_argument("phi_x cannot be NULL when computing curvature.");
+#endif
+
+  // compute first derivatives
+  double dx = phi_x[0][qnnn.node_000];
+  double dy = phi_x[1][qnnn.node_000];
+#ifdef P4_TO_P8
+  double dz = phi_x[2][qnnn.node_000];
+#endif
+
+  // compute second derivatives
+  double dxx = qnnn.dxx_central(phi);
+  double dyy = qnnn.dyy_central(phi);
+  double dxy = qnnn.dy_central(phi_x[0]); // d/dy{d/dx}
+#ifdef P4_TO_P8
+  double dzz = qnnn.dzz_central(phi);
+  double dxz = qnnn.dz_central(phi_x[0]); // d/dz{d/dx}
+  double dyz = qnnn.dz_central(phi_x[1]); // d/dz{d/dy}
+#endif
+
+#ifdef P4_TO_P8
+  double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)+SQR(dz)));
+  double kappa = ((dyy+dzz)*SQR(dx) + (dxx+dzz)*SQR(dy) + (dxx+dyy)*SQR(dz) - 2*
+                  (dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / abs/abs/abs;
+#else
+  double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)));
+  double kappa = (dxx*SQR(dy) - 2*dy*dx*dxy + dyy*SQR(dx)) / abs/abs/abs;
+#endif
+  return kappa;
+}
+
+double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *normals[])
+{
+#ifdef CASL_THROWS
+  if(!normals)
+    throw std::invalid_argument("normals cannot be NULL when computing curvature.");
+#endif
+
+#ifdef P4_TO_P8
+  double kappa = qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]) + qnnn.dz_central(normals[2]);
+#else
+  double kappa = qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]);
+#endif
+
+  return kappa;
+}
+
+void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec phi_x[], Vec kappa)
+{
+#ifdef CASL_THROWS
+  if(!phi_x)
+    throw std::invalid_argument("phi_x cannot be NULL when computing curvature.");
+#endif
+
+  double *phi_p, *phi_x_p[P4EST_DIM], *kappa_p;
+  VecGetArray(phi, &phi_p);
+  VecGetArray(kappa, &kappa_p);
+  foreach_dimension(dim) VecGetArray(phi_x[dim], &phi_x_p[dim]);
+
+  // compute kappa on layer nodes
+  quad_neighbor_nodes_of_node_t qnnn;
+  for (size_t i=0; i<neighbors.get_layer_size(); ++i) {
+    p4est_locidx_t n = neighbors.get_layer_node(i);
+    neighbors.get_neighbors(n, qnnn);
+
+    kappa_p[n] = compute_mean_curvature(qnnn, phi_p, phi_x_p);
+  }
+
+  // initiate communication
+  VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
+
+  // compute on local nodes
+  for (size_t i=0; i<neighbors.get_local_size(); ++i) {
+    p4est_locidx_t n = neighbors.get_local_node(i);
+    neighbors.get_neighbors(n, qnnn);
+
+    kappa_p[n] = compute_mean_curvature(qnnn, phi_p, phi_x_p);
+  }
+
+  // finish communication
+  VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
+
+  VecRestoreArray(phi, &phi_p);
+  VecRestoreArray(kappa, &kappa_p);
+  foreach_dimension(dim) VecRestoreArray(phi_x[dim], &phi_x_p[dim]);
+}
+
+void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec normals[], Vec kappa)
+{
+#ifdef CASL_THROWS
+  if(!normals)
+    throw std::invalid_argument("normals cannot be NULL when computing curvature.");
+#endif
+
+  double *normals_p[P4EST_DIM], *kappa_p;
+  VecGetArray(kappa, &kappa_p);
+  foreach_dimension(dim) VecGetArray(normals[dim], &normals_p[dim]);
+
+  // compute kappa on layer nodes
+  quad_neighbor_nodes_of_node_t qnnn;
+  for (size_t i=0; i<neighbors.get_layer_size(); ++i) {
+    p4est_locidx_t n = neighbors.get_layer_node(i);
+    neighbors.get_neighbors(n, qnnn);
+
+    kappa_p[n] = compute_mean_curvature(qnnn, normals_p);
+  }
+
+  // initiate communication
+  VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
+
+  // compute on local nodes
+  for (size_t i=0; i<neighbors.get_local_size(); ++i) {
+    p4est_locidx_t n = neighbors.get_local_node(i);
+    neighbors.get_neighbors(n, qnnn);
+
+    kappa_p[n] = compute_mean_curvature(qnnn, normals_p);
+  }
+
+  // finish communication
+  VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
+
+  VecRestoreArray(kappa, &kappa_p);
+  foreach_dimension(dim) VecRestoreArray(normals[dim], &normals_p[dim]);
+}
+
+void compute_normals(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, double normals[])
+{
+#ifdef CASL_THROWS
+  if(!normals)
+    throw std::invalid_argument("normals array cannot be NULL.");
+#endif
+
+  normals[0] = qnnn.dx_central(phi);
+  normals[1] = qnnn.dy_central(phi);
+#ifdef P4_TO_P8
+  normals[2] = qnnn.dz_central(phi);
+  double abs = MAX(EPS, sqrt(SQR(normals[0]) + SQR(normals[1]) + SQR(normals[2])));
+#else
+  double abs = MAX(EPS, sqrt(SQR(normals[0]) + SQR(normals[1])));
+#endif
+
+  foreach_dimension(dim) normals[dim] /= abs;
+}
+
+void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec normals[])
+{
+#ifdef CASL_THROWS
+  if(!normals)
+    throw std::invalid_argument("normals array cannot be NULL.");
+#endif
+
+  neighbors.first_derivatives_central(phi, normals);
+  double *normals_p[P4EST_DIM];
+  foreach_dimension(dim) VecGetArray(normals[dim], &normals_p[dim]);
+
+  foreach_node(n, neighbors.get_nodes()) {
+#ifdef P4_TO_P8
+    double abs = MAX(EPS, sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]) + SQR(normals_p[2][n])));
+#else
+    double abs = MAX(EPS, sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n])));
+#endif
+
+    foreach_dimension(dim) normals_p[dim][n] /= abs;
+  }
+
+  foreach_dimension(dim) VecRestoreArray(normals[dim], &normals_p[dim]);
 }
 
 bool is_node_xmWall(const p4est_t *p4est, const p4est_indep_t *ni)

@@ -959,7 +959,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
       {
         rhs_p[f_idx] = -rho * ( (-alpha/dt_n + beta/dt_nm1)*vn_faces[f_idx] - beta/dt_nm1*vnm1_faces[f_idx]);
 
-        if(external_forces!=NULL)
+        if(external_forces[dir]!=NULL)
         {
           double xyz[P4EST_DIM];
           faces_n->xyz_fr_f(f_idx, dir, xyz);

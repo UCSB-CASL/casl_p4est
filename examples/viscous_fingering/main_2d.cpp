@@ -15,6 +15,8 @@
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_macros.h>
 #else
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
@@ -23,6 +25,7 @@
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_macros.h>
 #endif
 
 #include <src/Parser.h>
@@ -84,10 +87,60 @@ int main(int argc, char** argv) {
   // create node structure
   nodes = my_p4est_nodes_new(p4est, ghost);
 
-  // save the grid into vtk
+  // create node structure
+  my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
+  my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
+
+  Vec phi, kappa[2], phi_x[P4EST_DIM];
+  VecCreateGhostNodes(p4est, nodes, &phi);
+  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &phi_x[dim]);
+  VecDuplicate(phi, &kappa[0]);
+  VecDuplicate(phi, &kappa[1]);
+
+  // compute levelset
+  sample_cf_on_nodes(p4est, nodes, circle, phi);
+
+  // compute normals
+  compute_normals(neighbors, phi, phi_x);
+
+  /* compute curvature with two methods
+   * 1) using compact stencil
+   * 2) using div(normal) expression
+   */
+  compute_mean_curvature(neighbors, phi, phi_x, kappa[0]);
+  compute_mean_curvature(neighbors, phi_x, kappa[1]);
+
+  // compute normals
+  double *phi_p, *kappa_p[2], *phi_x_p[P4EST_DIM];
+  VecGetArray(phi, &phi_p);
+  VecGetArray(kappa[0], &kappa_p[0]);
+  VecGetArray(kappa[1], &kappa_p[1]);
+  foreach_dimension(dim) VecGetArray(phi_x[dim], &phi_x_p[dim]);
+
+  // save vtk
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
-                         0, 0, "viscous_fingering");
+                         3+P4EST_DIM, 0, "viscous_fingering",
+                         VTK_POINT_DATA, "phi", phi_p,
+                         VTK_POINT_DATA, "curvature_compact", kappa_p[0],
+                         VTK_POINT_DATA, "curvature_div_n", kappa_p[1],
+                         VTK_POINT_DATA, "phi_x", phi_x_p[0],
+                         VTK_POINT_DATA, "phi_y", phi_x_p[1]
+#ifdef P4_TO_P8
+                       , VTK_POINT_DATA, "phi_z", phi_x_p[2]
+#endif
+                         );
+
+  VecRestoreArray(phi, &phi_p);
+  VecRestoreArray(kappa[0], &kappa_p[1]);
+  VecRestoreArray(kappa[1], &kappa_p[1]);
+  foreach_dimension(dim) VecRestoreArray(phi_x[dim], &phi_x_p[dim]);
+
+  // destroy vectors
+  VecDestroy(phi);
+  VecDestroy(kappa[0]);
+  VecDestroy(kappa[1]);
+  foreach_dimension(dim) VecDestroy(phi_x[dim]);
 
   // destroy the structures
   p4est_nodes_destroy(nodes);

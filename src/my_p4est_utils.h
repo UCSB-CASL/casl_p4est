@@ -5,19 +5,25 @@
 #include <p8est.h>
 #include <p8est_nodes.h>
 #include <p8est_ghost.h>
+#include <src/my_p8est_refine_coarsen.h>
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
 #include <p4est_ghost.h>
-#endif
-#include <src/petsc_logging.h>
 #include <src/my_p4est_refine_coarsen.h>
+#endif
+
+#include <src/petsc_logging.h>
 #include "petsc_compatibility.h"
 
 #include <petsc.h>
 #include <stdexcept>
 #include <sstream>
 #include <vector>
+
+// forward declaration
+class my_p4est_node_neighbors_t;
+struct quad_neighbor_nodes_of_node_t;
 
 namespace dir {
 /* vertices directions */
@@ -473,6 +479,61 @@ inline double quad_z_fr_k(const p4est_quadrant_t *qi){
 }
 #endif
 
+inline p4est_tree_t* get_tree(p4est_topidx_t tr, p4est_t* p4est)
+{
+#ifdef CASL_THROWS
+  if(tr < p4est->first_local_tree || tr > p4est->last_local_tree) {
+    std::ostringstream oss;
+    oss << "Tree with index " << tr << " is outside range. Processor " << p4est->mpirank
+        << " inclusive range is [" << p4est->first_local_tree << ", " << p4est->last_local_tree << "]" << std::endl;
+    throw std::out_of_range(oss.str());
+  }
+#endif
+
+  return (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+}
+
+inline p4est_quadrant_t* get_quad(p4est_locidx_t q, p4est_tree_t* tree)
+{
+#ifdef CASL_THROWS
+  if(q < 0 || q >= (p4est_locidx_t) tree->quadrants.elem_count) {
+    std::ostringstream oss;
+    oss << "Quad with index " << q << " is outside range of current tree. "
+        << "Number of quadrants on this tree is " << tree->quadrants.elem_count << std::endl;
+    throw std::out_of_range(oss.str());
+  }
+#endif
+
+  return (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+}
+
+inline p4est_quadrant_t* get_quad(p4est_locidx_t q, p4est_ghost_t* ghost)
+{
+#ifdef CASL_THROWS
+  if(q < 0 || q >= (p4est_locidx_t) ghost->ghosts.elem_count) {
+    std::ostringstream oss;
+    oss << "Quad with index " << q << " is outside range of ghost layer. "
+        << "Size of ghost layer is " << ghost->ghosts.elem_count << std::endl;
+    throw std::out_of_range(oss.str());
+  }
+#endif
+
+  return (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+}
+
+inline p4est_indep_t* get_node(p4est_locidx_t n, p4est_nodes_t* nodes)
+{
+#ifdef CASL_THROWS
+  if(n < 0 || n >= (p4est_locidx_t) nodes->indep_nodes.elem_count) {
+    std::ostringstream oss;
+    oss << "Node with index " << n << " is outside range of nodes." << std::endl;
+    throw std::out_of_range(oss.str());
+  }
+#endif
+
+  return (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+}
+
 /*!
  * \brief get the x-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
@@ -653,6 +714,56 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief compute_mean_curvature computes the mean curvature using compact stencil
+ * \param qnnn neighborhood information for the point
+ * \param phi pointer to the level set function
+ * \param phi_x pointer to an array of size P4EST_DIM for the first derivatives of levelset. CANNOT be NULL.
+ * \return mean curvature at a single point
+ */
+double compute_mean_curvature(const quad_neighbor_nodes_of_node_t& qnnn, double* phi, double* phi_x[P4EST_DIM]);
+
+/*!
+ * \brief compute_mean_curvature computes the mean curvature using divergence of normal
+ * \param qnnn neighborhood information for the point
+ * \param normals pointer to an array of size P4EST_DIM of the normals. CANNOT be NULL.
+ * \return mean curvature at a single point
+ */
+double compute_mean_curvature(const quad_neighbor_nodes_of_node_t& qnnn, double* normals[P4EST_DIM]);
+
+/*!
+ * \brief compute_mean_curvature computes the mean curvature in the entire domain
+ * \param neighbors the node neighborhood information
+ * \param phi levelset function
+ * \param phi_x an array of size P4EST_DIM representing the first derivative of levelset in the entire domain. CANNOT be NULL.
+ * \param kappa curvature function in the entire domain
+ */
+void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec phi_x[P4EST_DIM], Vec kappa);
+
+/*!
+ * \brief compute_mean_curvature computes the mean curvature in the entire domain
+ * \param neighbors the node neighborhood information
+ * \param normals pointer to an array of size P4EST_DIM for the normals. CANNOT be NULL.
+ * \param kappa curvature function in the entire domain
+ */
+void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec normals[P4EST_DIM], Vec kappa);
+
+/*!
+ * \brief compute_normals computes the (scaled) normal to the surface
+ * \param [in]  qnnn    neighborhood information for the point
+ * \param [in]  phi     pointer to the levelset function
+ * \param [out] normals array of size P4EST_DIM for the normals
+ */
+void compute_normals(const quad_neighbor_nodes_of_node_t& qnnn, double *phi, double normals[P4EST_DIM]);
+
+/*!
+ * \brief compute_normals computes the (scaled) normal to the surface for the entire grid
+ * \param [in]  neighbors the neighborhood information
+ * \param [in]  phi       PETSc vector of the levelset function
+ * \param [out] normals   array of size P4EST_DIM of PETSc vectors to store the normal in the entire doamin
+ */
+void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals[P4EST_DIM]);
 
 /*!
  * \brief is_node_xmWall checks if a node is on x^- domain boundary

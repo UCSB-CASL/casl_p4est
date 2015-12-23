@@ -127,7 +127,7 @@ void my_p4est_poisson_boltzmann_nodes_t::solve_nonlinear(Vec &psi, int itmax, do
   double err = 1 + tol;
   double kappa_sqr = SQR(1.0/edl);
 
-  for (size_t i = 0; i < nodes->num_owned_indeps; i++) {
+  for (int i = 0; i < nodes->num_owned_indeps; i++) {
     tmp_p[i] = 0;
   }
 
@@ -195,7 +195,7 @@ void my_p4est_poisson_boltzmann_nodes_t::solve_nonlinear(Vec &psi, int itmax, do
     ls.extend_Over_Interface_TVD(phi, psi, 10);
 
     err = 0;
-    for (size_t i = 0; i<nodes->num_owned_indeps; i++) {
+    for (int i = 0; i<nodes->num_owned_indeps; i++) {
       if (phi_p[i] < 0)
         err = MAX(err, fabs(psi_p[i]  - tmp_p[i]));
     }
