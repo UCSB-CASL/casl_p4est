@@ -562,7 +562,7 @@ int main (int argc, char* argv[])
   double dt = 0.45*MIN(dx,dy)/V;
 #endif
 
-  /* initialize the solve */
+  /* initialize the solver */
   my_p4est_bialloy_t bas(ngbd);
   bas.set_parameters(latent_heat, thermal_conductivity, lambda,
                      Dl, Ds, V, kp, c0, ml, Tm, eps_anisotropy, eps_c, eps_v, scaling);
