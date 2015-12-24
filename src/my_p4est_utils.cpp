@@ -825,11 +825,11 @@ double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double 
 
 #ifdef P4_TO_P8
   double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)+SQR(dz)));
-  double kappa = ((dyy+dzz)*SQR(dx) + (dxx+dzz)*SQR(dy) + (dxx+dyy)*SQR(dz) - 2*
+  double kappa = -((dyy+dzz)*SQR(dx) + (dxx+dzz)*SQR(dy) + (dxx+dyy)*SQR(dz) - 2*
                   (dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / abs/abs/abs;
 #else
   double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)));
-  double kappa = (dxx*SQR(dy) - 2*dy*dx*dxy + dyy*SQR(dx)) / abs/abs/abs;
+  double kappa = -(dxx*SQR(dy) - 2*dy*dx*dxy + dyy*SQR(dx)) / abs/abs/abs;
 #endif
   return kappa;
 }
@@ -842,9 +842,9 @@ double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double 
 #endif
 
 #ifdef P4_TO_P8
-  double kappa = qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]) + qnnn.dz_central(normals[2]);
+  double kappa = -(qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]) + qnnn.dz_central(normals[2]));
 #else
-  double kappa = qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]);
+  double kappa = -(qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]));
 #endif
 
   return kappa;
@@ -939,12 +939,14 @@ void compute_normals(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, dou
   normals[1] = qnnn.dy_central(phi);
 #ifdef P4_TO_P8
   normals[2] = qnnn.dz_central(phi);
-  double abs = MAX(EPS, sqrt(SQR(normals[0]) + SQR(normals[1]) + SQR(normals[2])));
+  double abs = sqrt(SQR(normals[0]) + SQR(normals[1]) + SQR(normals[2]));
 #else
-  double abs = MAX(EPS, sqrt(SQR(normals[0]) + SQR(normals[1])));
+  double abs = sqrt(SQR(normals[0]) + SQR(normals[1]));
 #endif
-
-  foreach_dimension(dim) normals[dim] /= abs;
+  if (abs < EPS)
+    foreach_dimension(dim) normals[dim] = 0;
+  else
+    foreach_dimension(dim) normals[dim] /= abs;
 }
 
 void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec normals[])
@@ -960,12 +962,15 @@ void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec no
 
   foreach_node(n, neighbors.get_nodes()) {
 #ifdef P4_TO_P8
-    double abs = MAX(EPS, sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]) + SQR(normals_p[2][n])));
+    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]) + SQR(normals_p[2][n]));
 #else
-    double abs = MAX(EPS, sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n])));
+    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]));
 #endif
 
-    foreach_dimension(dim) normals_p[dim][n] /= abs;
+    if (abs < EPS)
+      foreach_dimension(dim) normals_p[dim][n] = 0;
+    else
+      foreach_dimension(dim) normals_p[dim][n] /= abs;
   }
 
   foreach_dimension(dim) VecRestoreArray(normals[dim], &normals_p[dim]);

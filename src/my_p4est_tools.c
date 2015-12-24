@@ -67,10 +67,26 @@ my_p4est_brick_new (const int* n_xyz,
   myb->nxyztrees[0] = n_xyz[0];
   myb->nxyztrees[1] = n_xyz[1];
   myb->nxyztrees[2] = n_xyz[2];
+
+  myb->xyz_min[0]   = xyz_min[0];
+  myb->xyz_min[1]   = xyz_min[1];
+  myb->xyz_min[2]   = xyz_min[2];
+
+  myb->xyz_max[0]   = xyz_max[0];
+  myb->xyz_max[1]   = xyz_max[1];
+  myb->xyz_max[2]   = xyz_max[2];
 #else
   myb->nxyztrees[0] = n_xyz[0];
   myb->nxyztrees[1] = n_xyz[1];
   myb->nxyztrees[2] = 1;
+
+  myb->xyz_min[0]   = xyz_min[0];
+  myb->xyz_min[1]   = xyz_min[1];
+  myb->xyz_min[2]   = 0;
+
+  myb->xyz_max[0]   = xyz_max[0];
+  myb->xyz_max[1]   = xyz_max[1];
+  myb->xyz_max[2]   = 0;
 #endif
 
   nxyztrees = myb->nxyztrees[0] * myb->nxyztrees[1] * myb->nxyztrees[2];

@@ -42,6 +42,7 @@ extern              "C"
 typedef struct
 {
   int                 nxyztrees[3];
+  double              xyz_min[3], xyz_max[3];
   p4est_topidx_t     *nxyz_to_treeid;
 }
 my_p4est_brick_t;

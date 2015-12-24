@@ -34,12 +34,10 @@ EOF
 function create_main() {
 cat > $1/main_2d.cpp << EOF
 /* 
- *
  * Title: $1
  * Description:
  * Author: $(git config user.name)
  * Date Created: $(date +%m-%d-%Y)
- *
  */
 
 #ifndef P4_TO_P8
@@ -50,6 +48,7 @@ cat > $1/main_2d.cpp << EOF
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_macros.h>
 #else
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
@@ -58,6 +57,7 @@ cat > $1/main_2d.cpp << EOF
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_macros.h>
 #endif
 
 #include <src/Parser.h>

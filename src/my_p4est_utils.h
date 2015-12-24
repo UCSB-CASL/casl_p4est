@@ -716,7 +716,7 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
- * \brief compute_mean_curvature computes the mean curvature using compact stencil
+ * \brief compute_mean_curvature computes the mean curvature using compact stencil k = -div(n)
  * \param qnnn neighborhood information for the point
  * \param phi pointer to the level set function
  * \param phi_x pointer to an array of size P4EST_DIM for the first derivatives of levelset. CANNOT be NULL.
@@ -725,7 +725,7 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
 double compute_mean_curvature(const quad_neighbor_nodes_of_node_t& qnnn, double* phi, double* phi_x[P4EST_DIM]);
 
 /*!
- * \brief compute_mean_curvature computes the mean curvature using divergence of normal
+ * \brief compute_mean_curvature computes the mean curvature using divergence of normal k = -div(n)
  * \param qnnn neighborhood information for the point
  * \param normals pointer to an array of size P4EST_DIM of the normals. CANNOT be NULL.
  * \return mean curvature at a single point
@@ -733,7 +733,7 @@ double compute_mean_curvature(const quad_neighbor_nodes_of_node_t& qnnn, double*
 double compute_mean_curvature(const quad_neighbor_nodes_of_node_t& qnnn, double* normals[P4EST_DIM]);
 
 /*!
- * \brief compute_mean_curvature computes the mean curvature in the entire domain
+ * \brief compute_mean_curvature computes the mean curvature in the entire domain k = -div(n)
  * \param neighbors the node neighborhood information
  * \param phi levelset function
  * \param phi_x an array of size P4EST_DIM representing the first derivative of levelset in the entire domain. CANNOT be NULL.
@@ -742,7 +742,7 @@ double compute_mean_curvature(const quad_neighbor_nodes_of_node_t& qnnn, double*
 void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec phi_x[P4EST_DIM], Vec kappa);
 
 /*!
- * \brief compute_mean_curvature computes the mean curvature in the entire domain
+ * \brief compute_mean_curvature computes the mean curvature in the entire domain k = -div(n)
  * \param neighbors the node neighborhood information
  * \param normals pointer to an array of size P4EST_DIM for the normals. CANNOT be NULL.
  * \param kappa curvature function in the entire domain

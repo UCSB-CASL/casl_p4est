@@ -1,31 +1,25 @@
 /* 
- *
  * Title: viscous_fingering
  * Description:
+ * Solves the viscous fingering problem in a one-fluid configuration, i.e. we solve
+ *                              div(k/mu grad(p)) = 0,                          (1)
+ * where k is teh permeability function and mu is the viscosity. Equation (1) is
+ * solved subjected to Dirichlet b.c on the interface, i.e.
+ *                              p = gamma * kappa,                              (2)
+ * where gamma is the surface tension and kappa = -div(n) is the curvature. The
+ * interface is then advected with a normal velocity given by Darcy's law, i.e.
+ *                              vn = -k/mu dp/dn.                               (3)
+ *
  * Author: Mohammad Mirzadeh
  * Date Created: 12-22-2015
- *
-*/
+ */
 
 #ifndef P4_TO_P8
-#include <src/my_p4est_utils.h>
+#include "one_fluid_solver_2d.h"
 #include <src/my_p4est_vtk.h>
-#include <src/my_p4est_nodes.h>
-#include <src/my_p4est_tools.h>
-#include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_log_wrappers.h>
-#include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_level_set.h>
-#include <src/my_p4est_macros.h>
 #else
-#include <src/my_p8est_utils.h>
-#include <src/my_p8est_vtk.h>
-#include <src/my_p8est_nodes.h>
-#include <src/my_p8est_tools.h>
-#include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_log_wrappers.h>
-#include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_macros.h>
+#include "one_fluid_solver_2d.h"
+#include <src/my_p4est_vtk.h>
 #endif
 
 #include <src/Parser.h>
@@ -87,60 +81,77 @@ int main(int argc, char** argv) {
   // create node structure
   nodes = my_p4est_nodes_new(p4est, ghost);
 
-  // create node structure
-  my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
-  my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
-
-  Vec phi, kappa[2], phi_x[P4EST_DIM];
+  // initialize variables
+  Vec phi, pressure;
   VecCreateGhostNodes(p4est, nodes, &phi);
-  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &phi_x[dim]);
-  VecDuplicate(phi, &kappa[0]);
-  VecDuplicate(phi, &kappa[1]);
-
-  // compute levelset
+  VecCreateGhostNodes(p4est, nodes, &pressure);
   sample_cf_on_nodes(p4est, nodes, circle, phi);
 
-  // compute normals
-  compute_normals(neighbors, phi, phi_x);
+  // save initial step
+  const char* filename = "viscous_fingering";
+  char vtk_name[FILENAME_MAX];
+  sprintf(vtk_name, "%s.%04d", filename, 0);
 
-  /* compute curvature with two methods
-   * 1) using compact stencil
-   * 2) using div(normal) expression
-   */
-  compute_mean_curvature(neighbors, phi, phi_x, kappa[0]);
-  compute_mean_curvature(neighbors, phi_x, kappa[1]);
-
-  // compute normals
-  double *phi_p, *kappa_p[2], *phi_x_p[P4EST_DIM];
+  double *phi_p, *pressure_p;
   VecGetArray(phi, &phi_p);
-  VecGetArray(kappa[0], &kappa_p[0]);
-  VecGetArray(kappa[1], &kappa_p[1]);
-  foreach_dimension(dim) VecGetArray(phi_x[dim], &phi_x_p[dim]);
-
-  // save vtk
+  VecGetArray(pressure, &pressure_p);
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
-                         3+P4EST_DIM, 0, "viscous_fingering",
+                         2, 0, vtk_name,
                          VTK_POINT_DATA, "phi", phi_p,
-                         VTK_POINT_DATA, "curvature_compact", kappa_p[0],
-                         VTK_POINT_DATA, "curvature_div_n", kappa_p[1],
-                         VTK_POINT_DATA, "phi_x", phi_x_p[0],
-                         VTK_POINT_DATA, "phi_y", phi_x_p[1]
-#ifdef P4_TO_P8
-                       , VTK_POINT_DATA, "phi_z", phi_x_p[2]
-#endif
-                         );
-
+                         VTK_POINT_DATA, "pressure", pressure_p);
   VecRestoreArray(phi, &phi_p);
-  VecRestoreArray(kappa[0], &kappa_p[1]);
-  VecRestoreArray(kappa[1], &kappa_p[1]);
-  foreach_dimension(dim) VecRestoreArray(phi_x[dim], &phi_x_p[dim]);
+  VecRestoreArray(pressure, &pressure_p);
+
+  // set up the solver
+#ifdef P4_TO_P8
+  struct:CF_3{
+    double operator()(double, double, double) const { return 1; }
+  } K_D;
+
+  struct:CF_3{
+    double operator()(double, double, double) const { return 1; }
+  } gamma;
+
+  struct:CF_3{
+    double operator()(double, double, double) const { return 10; }
+  } p_applied;
+#else
+  struct:CF_2{
+    double operator()(double, double) const { return 1; }
+  } K_D;
+
+  struct:CF_2{
+    double operator()(double, double) const { return 0; }
+  } gamma;
+
+  struct:CF_2{
+    double operator()(double, double) const { return 10; }
+  } p_applied;
+#endif
+
+  one_fluid_solver_t solver(p4est, ghost, nodes, brick);
+  solver.set_properties(K_D, gamma, p_applied);
+
+  for(int i=0; i<5; i++) {
+    solver.solve_one_step(phi, pressure);
+
+    // save vtk
+    sprintf(vtk_name, "%s.%04d", filename, i);
+    VecGetArray(phi, &phi_p);
+    VecGetArray(pressure, &pressure_p);
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE,
+                           2, 0, vtk_name,
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "pressure", pressure_p);
+    VecRestoreArray(phi, &phi_p);
+    VecRestoreArray(pressure, &pressure_p);
+  }
 
   // destroy vectors
   VecDestroy(phi);
-  VecDestroy(kappa[0]);
-  VecDestroy(kappa[1]);
-  foreach_dimension(dim) VecDestroy(phi_x[dim]);
+  VecDestroy(pressure);
 
   // destroy the structures
   p4est_nodes_destroy(nodes);
