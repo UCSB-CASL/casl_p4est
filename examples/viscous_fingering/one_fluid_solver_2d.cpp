@@ -88,8 +88,8 @@ double one_fluid_solver_t::advect_interface(Vec &phi, Vec &pressure, double cfl)
   // compute on the layer nodes
   quad_neighbor_nodes_of_node_t qnnn;
   double x[P4EST_DIM];
-  double vn_max = 0;
-  foreach_layer_node(n, neighbors) {
+  for (size_t i=0; i<neighbors.get_layer_size(); i++){
+    p4est_locidx_t n = neighbors.get_layer_node(i);
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
@@ -97,20 +97,19 @@ double one_fluid_solver_t::advect_interface(Vec &phi, Vec &pressure, double cfl)
 #else
     double k = (*K_D)(x[0], x[1]);
 #endif
+    k = 1;
     vx_p[0][n] = -k*qnnn.dx_central(pressure_p);
     vx_p[1][n] = -k*qnnn.dy_central(pressure_p);
 #ifdef P4_TO_P8
     vx_p[2][n] = -k*qnnn.dz_central(pressure_p);
-    vx_max = MAX(vn_max, sqrt(SQR(vx_p[0][n])+SQR(vx_p[1][n])+SQR(vx_p[2][n])));
-#else
-    vn_max = MAX(vn_max, sqrt(SQR(vx_p[0][n])+SQR(vx_p[1][n])));
 #endif
   }
   foreach_dimension(dim)
     VecGhostUpdateBegin(vx_tmp[dim], INSERT_VALUES, SCATTER_FORWARD);
 
   // compute on the local nodes
-  foreach_local_node(n, neighbors) {
+  for (size_t i=0; i<neighbors.get_local_size(); i++){
+    p4est_locidx_t n = neighbors.get_local_node(i);
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
@@ -118,13 +117,11 @@ double one_fluid_solver_t::advect_interface(Vec &phi, Vec &pressure, double cfl)
 #else
     double k = (*K_D)(x[0], x[1]);
 #endif
+
     vx_p[0][n] = -k*qnnn.dx_central(pressure_p);
     vx_p[1][n] = -k*qnnn.dy_central(pressure_p);
 #ifdef P4_TO_P8
     vx_p[2][n] = -k*qnnn.dz_central(pressure_p);
-    vx_max = MAX(vn_max, sqrt(SQR(vx_p[0][n])+SQR(vx_p[1][n])+SQR(vx_p[2][n])));
-#else
-    vn_max = MAX(vn_max, sqrt(SQR(vx_p[0][n])+SQR(vx_p[1][n])));
 #endif
   }
   foreach_dimension(dim)
@@ -133,28 +130,40 @@ double one_fluid_solver_t::advect_interface(Vec &phi, Vec &pressure, double cfl)
   // restore pointers
   foreach_dimension(dim) VecRestoreArray(vx_tmp[dim], &vx_p[dim]);
   VecRestoreArray(pressure, &pressure_p);
-  VecRestoreArray(phi, &phi_p);
 
   // constant extend the velocities from interface to the entire domain
-  Vec vx[P4EST_DIM];
-  foreach_dimension(dim) VecDuplicate(vx_tmp[dim], &vx[dim]);
-
   my_p4est_level_set_t ls(&neighbors);
-  foreach_dimension(dim){
+  Vec vx[P4EST_DIM];
+  foreach_dimension (dim) {
+    VecDuplicate(vx_tmp[dim], &vx[dim]);
     ls.extend_from_interface_to_whole_domain_TVD(phi, vx_tmp[dim], vx[dim]);
     VecDestroy(vx_tmp[dim]);
   }
 
-  // compute dt
+  // compute dt based on cfl number
   double dxyz[P4EST_DIM];
   p4est_dxyz_min(p4est, dxyz);
 #ifdef P4_TO_P8
+  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]));
   double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
 #else
+  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
   double dmin = MIN(dxyz[0], dxyz[1]);
 #endif
 
-  double dt = cfl*dmin/vn_max;
+  double vn_max = 0.1; // minmum vn_max to be used when computing dt.
+  foreach_dimension(dim) VecGetArray(vx[dim], &vx_p[dim]);
+  foreach_node(n, nodes) {
+    if (fabs(phi_p[n]) < 3*diag) {
+#ifdef P4_TO_P8
+      vx_max = MAX(vn_max, sqrt(SQR(vx_p[0][n])+SQR(vx_p[1][n])+SQR(vx_p[2][n])));
+#else
+      vn_max = MAX(vn_max, sqrt(SQR(vx_p[0][n])+SQR(vx_p[1][n])));
+#endif
+    }
+  }
+
+  double dt = cfl*dmin/MAX(0.1, vn_max);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   // advect the level-set and update the grid
@@ -174,6 +183,8 @@ double one_fluid_solver_t::advect_interface(Vec &phi, Vec &pressure, double cfl)
 
   VecDestroy(pressure);
   VecDuplicate(phi, &pressure);
+
+  foreach_dimension(dim) VecDestroy(vx[dim]);
 
   return dt;
 }
@@ -238,12 +249,13 @@ double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl)
   sample_cf_on_nodes(p4est, nodes, *K_D, K);
 
   my_p4est_poisson_nodes_t poisson(&neighbors);
+  poisson.set_phi(phi);
   poisson.set_bc(bc);
   poisson.set_mu(K);
   poisson.solve(pressure);
 
   // extend solution over interface
-  ls.extend_Over_Interface(phi, pressure, DIRICHLET, bc_val);
+  ls.extend_Over_Interface_TVD(phi, pressure);
 
   // destroy uneeded objects
   VecDestroy(bc_val);

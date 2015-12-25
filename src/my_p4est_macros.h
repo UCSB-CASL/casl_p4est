@@ -13,16 +13,8 @@
 #define foreach_tree(tr, p4est)\
   for (p4est_locidx_t tr = p4est->first_local_tree; tr <= (p4est_locidx_t) p4est->last_local_tree; ++tr)
 
-#define foreach_owned_node(n, nodes)\
+#define foreach_local_node(n, nodes)\
   for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-
-#define foreach_layer_node(n, neighbors)\
-  for (p4est_locidx_t i__ = 0, n = neighbors.get_layer_size() > 0 ? neighbors.get_layer_node(i__):0;\
-       i__ < (p4est_locidx_t)neighbors.get_layer_size(); ++i__)
-
-#define foreach_local_node(n, neighbors)\
-  for (p4est_locidx_t i__ = 0, n = neighbors.get_local_size() > 0 ? neighbors.get_local_node(i__):0;\
-       i__ < (p4est_locidx_t)neighbors.get_local_size(); ++i__)
 
 #define foreach_ghost_node(n, nodes)\
   for (p4est_locidx_t n = nodes->num_owned_indeps; n < (p4est_locidx_t) nodes->indep_nodes.elem_count; ++n)
@@ -30,7 +22,7 @@
 #define foreach_node(n, nodes)\
   for (p4est_locidx_t n = 0; n < (p4est_locidx_t) nodes->indep_nodes.elem_count; ++n)
 
-#define foreach_owned_quad(q, tree)\
+#define foreach_local_quad(q, tree)\
   for (p4est_locidx_t q = 0; q < (p4est_locidx_t) tree->quadrants.elem_count; ++q)
 
 #define foreach_ghost_quad(q, ghost)\

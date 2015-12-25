@@ -45,9 +45,9 @@ int main(int argc, char** argv) {
   my_p4est_brick_t      brick;
 
   // domain size information
-  const int n_xyz []      = {1, 1, 1};
-  const double xyz_min [] = {-1, -1, -1};
-  const double xyz_max [] = { 1,  1,  1};
+  const int n_xyz []      = {10, 1, 1};
+  const double xyz_min [] = {0, -0.5, -0.5};
+  const double xyz_max [] = {10, 0.5,  0.5};
   conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
   // create the forest
@@ -57,18 +57,18 @@ int main(int argc, char** argv) {
 #ifdef P4_TO_P8
   struct:CF_3{
     double operator()(double x, double y, double z) const {
-      return 0.5 - sqrt(SQR(x) + SQR(y) + SQR(z));
+      return 0.05-x;
     }
   } circle;
 #else
   struct:CF_2{
     double operator()(double x, double y) const {
-      return 0.5 - sqrt(SQR(x) + SQR(y));
+      return 0.05-x;
     }
-  } circle;
+  } interface;
 #endif
 
-  splitting_criteria_cf_t sp(3, 8, &circle);
+  splitting_criteria_cf_t sp(2, 10, &interface);
   p4est->user_pointer = &sp;
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
@@ -85,23 +85,7 @@ int main(int argc, char** argv) {
   Vec phi, pressure;
   VecCreateGhostNodes(p4est, nodes, &phi);
   VecCreateGhostNodes(p4est, nodes, &pressure);
-  sample_cf_on_nodes(p4est, nodes, circle, phi);
-
-  // save initial step
-  const char* filename = "viscous_fingering";
-  char vtk_name[FILENAME_MAX];
-  sprintf(vtk_name, "%s.%04d", filename, 0);
-
-  double *phi_p, *pressure_p;
-  VecGetArray(phi, &phi_p);
-  VecGetArray(pressure, &pressure_p);
-  my_p4est_vtk_write_all(p4est, nodes, ghost,
-                         P4EST_TRUE, P4EST_TRUE,
-                         2, 0, vtk_name,
-                         VTK_POINT_DATA, "phi", phi_p,
-                         VTK_POINT_DATA, "pressure", pressure_p);
-  VecRestoreArray(phi, &phi_p);
-  VecRestoreArray(pressure, &pressure_p);
+  sample_cf_on_nodes(p4est, nodes, interface, phi);
 
   // set up the solver
 #ifdef P4_TO_P8
@@ -122,24 +106,30 @@ int main(int argc, char** argv) {
   } K_D;
 
   struct:CF_2{
-    double operator()(double, double) const { return 0; }
+    double operator()(double, double) const { return 1; }
   } gamma;
 
   struct:CF_2{
-    double operator()(double, double) const { return 10; }
+    double operator()(double, double) const { return 1; }
   } p_applied;
 #endif
 
   one_fluid_solver_t solver(p4est, ghost, nodes, brick);
   solver.set_properties(K_D, gamma, p_applied);
 
-  for(int i=0; i<5; i++) {
-    solver.solve_one_step(phi, pressure);
+  const char* filename = "viscous_fingering";
+  char vtk_name[FILENAME_MAX];
+
+  double dt = 0;
+  for(int i=0; i<50; i++) {
+    dt = solver.solve_one_step(phi, pressure);
+    std::cout << "i = " << i << " dt = " << dt << std::endl;
 
     // save vtk
-    sprintf(vtk_name, "%s.%04d", filename, i);
+    double *phi_p, *pressure_p;
     VecGetArray(phi, &phi_p);
     VecGetArray(pressure, &pressure_p);
+    sprintf(vtk_name, "%s.%04d", filename, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            2, 0, vtk_name,
