@@ -25,6 +25,7 @@
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_level_set.h>
 #include <src/my_p8est_macros.h>
 #endif
 
@@ -32,6 +33,14 @@
 #include <src/CASL_math.h>
 
 using namespace std;
+
+#ifdef P4_TO_P8
+typedef CF_3 cf_t;
+#else
+typedef CF_2 cf_t;
+#endif
+
+double compute_curvature_err(my_p4est_node_neighbors_t& neighbors, Vec phi, Vec kappa, const cf_t &curvature, Vec error);
 
 int main(int argc, char** argv) {
   
@@ -56,98 +65,168 @@ int main(int argc, char** argv) {
   const double xyz_max [] = { 1,  1,  1};
   conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
-  // create the forest
-  p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
-
   // refine based on distance to a level-set
 #ifdef P4_TO_P8
   struct:CF_3{
     double operator()(double x, double y, double z) const {
       return 0.5 - sqrt(SQR(x) + SQR(y) + SQR(z));
     }
-  } circle;
+  } interface;
+
+  struct:CF_3{
+    double operator()(double x, double y, double z) const {
+      return 2.0/sqrt(SQR(x) + SQR(y) + SQR(z));
+    }
+  } curvature;
 #else
   struct:CF_2{
     double operator()(double x, double y) const {
       return 0.5 - sqrt(SQR(x) + SQR(y));
     }
-  } circle;
+  } interface;
+
+  struct:CF_2{
+    double operator()(double x, double y) const {
+      return 1.0/sqrt(SQR(x) + SQR(y));
+    }
+  } curvature;
 #endif
 
-  splitting_criteria_cf_t sp(3, 8, &circle);
-  p4est->user_pointer = &sp;
-  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+  const int lmin = 1;
+  const int lmax = 3;
+  const int splits = 8;
+  double err[2][splits+1];
+  char filename[FILENAME_MAX];
 
-  // partition the forest
-  my_p4est_partition(p4est, P4EST_TRUE, NULL);
+  for (int n_sp = 0; n_sp < splits; n_sp++) {
+    // create the forest
+    p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
-  // create ghost layer
-  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+    // refine
+    splitting_criteria_cf_t sp(lmin+n_sp, lmax+n_sp, &interface, 2.0);
+    p4est->user_pointer = &sp;
+    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
-  // create node structure
-  nodes = my_p4est_nodes_new(p4est, ghost);
+    // partition the forest
+    my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
-  // create node structure
-  my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
-  my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
+    // create ghost layer
+    ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
 
-  Vec phi, kappa[2], normal[P4EST_DIM];
-  VecCreateGhostNodes(p4est, nodes, &phi);
-  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
-  VecDuplicate(phi, &kappa[0]);
-  VecDuplicate(phi, &kappa[1]);
+    // create node structure
+    nodes = my_p4est_nodes_new(p4est, ghost);
 
-  // compute levelset
-  sample_cf_on_nodes(p4est, nodes, circle, phi);
+    // create node structure
+    my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
+    my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
+    neighbors.init_neighbors();
 
-  // compute normals (reuturns scaled normal)
-  compute_normals(neighbors, phi, normal);
+    Vec phi, error, kappa, normal[P4EST_DIM];
+    VecCreateGhostNodes(p4est, nodes, &phi);
+    foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
+    VecDuplicate(phi, &kappa);
+    VecDuplicate(phi, &error);
 
-  /* compute curvature with two methods
-   * 1) using compact stencil (does not require that normal be scaled)
-   * 2) using div(normal) expression (normal MUST be scaled)
-   */
-  compute_mean_curvature(neighbors, phi, normal, kappa[0]);
-  compute_mean_curvature(neighbors, normal, kappa[1]);
+    // compute levelset
+    double *phi_p, *error_p;
+    VecGetArray (phi,  &phi_p);
+    VecGetArray (error,  &error_p);
 
-  // compute normals
-  double *phi_p, *kappa_p[2], *normal_p[P4EST_DIM];
-  VecGetArray(phi, &phi_p);
-  VecGetArray(kappa[0], &kappa_p[0]);
-  VecGetArray(kappa[1], &kappa_p[1]);
-  foreach_dimension(dim) VecGetArray(normal[dim], &normal_p[dim]);
+    sample_cf_on_nodes(p4est, nodes, interface, phi);
 
-  // save vtk
-  my_p4est_vtk_write_all(p4est, nodes, ghost,
-                         P4EST_TRUE, P4EST_TRUE,
-                         3+P4EST_DIM, 0, "curvature",
-                         VTK_POINT_DATA, "phi", phi_p,
-                         VTK_POINT_DATA, "curvature_compact", kappa_p[0],
-                         VTK_POINT_DATA, "curvature_div_n", kappa_p[1],
-                         VTK_POINT_DATA, "normal", normal_p[0],
-                         VTK_POINT_DATA, "phi_y", normal_p[1]
-#ifdef P4_TO_P8
-                       , VTK_POINT_DATA, "phi_z", normal_p[2]
-#endif
-                         );
+    sprintf(filename, "before_%d.%d", P4EST_DIM, n_sp);
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE,
+                           1, 0, filename,
+                           VTK_POINT_DATA, "phi", phi_p);
 
-  VecRestoreArray(phi, &phi_p);
-  VecRestoreArray(kappa[0], &kappa_p[1]);
-  VecRestoreArray(kappa[1], &kappa_p[1]);
-  foreach_dimension(dim) VecRestoreArray(normal[dim], &normal_p[dim]);
+    // reinitialize
+    my_p4est_level_set_t ls(&neighbors);
+    ls.reinitialize_2nd_order(phi);
+    ls.perturb_level_set_function(phi, EPS);
 
-  // destroy vectors
-  VecDestroy(phi);
-  VecDestroy(kappa[0]);
-  VecDestroy(kappa[1]);
-  foreach_dimension(dim) VecDestroy(normal[dim]);
+    sprintf(filename, "after_%d.%d", P4EST_DIM, n_sp);
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE,
+                           1, 0, filename,
+                           VTK_POINT_DATA, "phi", phi_p);
 
-  // destroy the structures
-  p4est_nodes_destroy(nodes);
-  p4est_ghost_destroy(ghost);
-  p4est_destroy      (p4est);
+    // compute normals (reuturns scaled normal)
+    compute_normals(neighbors, phi, normal);
+
+    /* compute curvature with two methods
+     * 1) using compact stencil (does not require that normal be scaled)
+     * 2) using div(normal) expression (normal MUST be scaled)
+     */
+    compute_mean_curvature(neighbors, phi, normal, kappa);
+    err[0][n_sp+1] = compute_curvature_err(neighbors, phi, kappa, curvature, error);
+
+    sprintf(filename, "error1_%d.%d", P4EST_DIM, n_sp);
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE,
+                           2, 0, filename,
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "err", error_p);
+
+    compute_mean_curvature(neighbors, normal, kappa);
+    err[1][n_sp+1] = compute_curvature_err(neighbors, phi, kappa, curvature, error);
+
+    sprintf(filename, "error2_%d.%d", P4EST_DIM, n_sp);
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE,
+                           2, 0, filename,
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "err", error_p);
+
+    if (mpi.rank() == 0) {
+      PetscPrintf(mpi.comm(), "res = (%d, %d)\n", lmin+n_sp, lmax+n_sp);
+      PetscPrintf(mpi.comm(), "Max err for compact calculation = %e, order = %f\n", err[0][n_sp+1], log2(err[0][n_sp]/err[0][n_sp+1]));
+      PetscPrintf(mpi.comm(), "Max err for div (n) calculation = %e, order = %f\n", err[1][n_sp+1], log2(err[1][n_sp]/err[1][n_sp+1]));
+    }
+
+    // destroy vectors
+    VecDestroy(phi);
+    VecDestroy(kappa);
+    VecDestroy(error);
+    foreach_dimension(dim) VecDestroy(normal[dim]);
+
+    // destroy the structures
+    p4est_nodes_destroy(nodes);
+    p4est_ghost_destroy(ghost);
+    p4est_destroy      (p4est);
+  }
+
   my_p4est_brick_destroy(conn, &brick);
-
   w.stop(); w.read_duration();
+}
+
+double compute_curvature_err(my_p4est_node_neighbors_t& neighbors, Vec phi, Vec kappa, const cf_t &curvature, Vec error) {
+  double *kappa_p, *phi_p, *error_p;
+  VecGetArray(kappa, &kappa_p);
+  VecGetArray(phi, &phi_p);
+  VecGetArray(error, &error_p);
+
+  double diag_min = p4est_diag_min(neighbors.get_p4est());
+  double err = 0;
+  double x[P4EST_DIM];
+  node_xyz_fr_n(0, neighbors.get_p4est(), neighbors.get_nodes(), x);
+  foreach_node(n, neighbors.get_nodes()) {
+    if (fabs(phi_p[n]) < diag_min){
+      node_xyz_fr_n(n, neighbors.get_p4est(), neighbors.get_nodes(), x);
+#ifdef P4_TO_P8
+      double k = curvature(x[0], x[1], x[2]);
+#else
+      double k = curvature(x[0], x[1]);
+#endif
+      error_p[n] = fabs(kappa_p[n] - k);
+      err = MAX(err, error_p[n]);
+    }
+  }
+
+  VecRestoreArray(kappa, &kappa_p);
+  VecRestoreArray(phi, &phi_p);
+  VecRestoreArray(error, &error_p);
+
+  return err;
 }
 

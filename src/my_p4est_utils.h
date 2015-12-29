@@ -13,6 +13,7 @@
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 
+#include <src/CASL_math.h>
 #include <src/petsc_logging.h>
 #include "petsc_compatibility.h"
 
@@ -383,9 +384,9 @@ inline double node_z_fr_n(const p4est_indep_t *ni){
 }
 #endif
 
-inline double node_x_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes)
+inline double node_x_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes)
 {
-  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&const_cast<p4est_nodes_t*>(nodes)->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
@@ -395,9 +396,9 @@ inline double node_x_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t 
   return (tree_xmax-tree_xmin)*node_x_fr_n(node) + tree_xmin;
 }
 
-inline double node_y_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes)
+inline double node_y_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes)
 {
-  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&const_cast<p4est_nodes_t*>(nodes)->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
@@ -408,9 +409,9 @@ inline double node_y_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t 
 }
 
 #ifdef P4_TO_P8
-inline double node_z_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes)
+inline double node_z_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes)
 {
-  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&const_cast<p4est_nodes_t*>(nodes)->indep_nodes, n);
   p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
@@ -421,7 +422,7 @@ inline double node_z_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t 
 }
 #endif
 
-inline void node_xyz_fr_n(p4est_locidx_t n, const p4est_t *p4est, p4est_nodes_t *nodes, double *xyz)
+inline void node_xyz_fr_n(p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes, double *xyz)
 {
   xyz[0] = node_x_fr_n(n,p4est,nodes);
   xyz[1] = node_y_fr_n(n,p4est,nodes);
@@ -455,6 +456,25 @@ inline void p4est_dxyz_max(const p4est_t* p4est, double *dxyz)
     dxyz[i] = (vert[3*vp + i] - vert[3*vm + i]) * h;
 }
 
+inline double p4est_diag_min(const p4est_t* p4est) {
+  double dx[P4EST_DIM];
+  p4est_dxyz_min(p4est, dx);
+#ifdef P4_TO_P8
+  return sqrt(SQR(dx[0]) + SQR(dx[1]) + SQR(dx[2]));
+#else
+  return sqrt(SQR(dx[0]) + SQR(dx[1]));
+#endif
+}
+
+inline double p4est_diag_max(const p4est_t* p4est) {
+  double dx[P4EST_DIM];
+  p4est_dxyz_max(p4est, dx);
+#ifdef P4_TO_P8
+  return sqrt(SQR(dx[0]) + SQR(dx[1]) + SQR(dx[2]));
+#else
+  return sqrt(SQR(dx[0]) + SQR(dx[1]));
+#endif
+}
 
 /*!
  * \brief get the z-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
