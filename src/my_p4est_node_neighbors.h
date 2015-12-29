@@ -22,6 +22,14 @@
 #include <vector>
 #include <sstream>
 
+class async_computation_t {
+public:
+  virtual void foreach_local_node(p4est_locidx_t n) const = 0;
+  virtual void ghost_update_begin() const = 0;
+  virtual void ghost_update_end() const = 0;
+  ~async_computation_t () {}
+};
+
 class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_nodes_t;
   friend class my_p4est_poisson_cells_t;
@@ -192,6 +200,19 @@ public:
 #else
     construct_neighbors(n, qnnn);
 #endif
+  }
+
+  /*!
+   * \brief run_async_computation runs an asynchronous computation across processors by overlapping computation and communication
+   * \param async the abstract computation that needs to be run for each local node
+   */
+  inline void run_async_computation(const async_computation_t& async) const {
+    for (size_t i=0; i<layer_nodes.size(); i++)
+      async.foreach_local_node(layer_nodes[i]);
+    async.ghost_update_begin();
+    for (size_t i=0; i<local_nodes.size(); i++)
+      async.foreach_local_node(local_nodes[i]);
+    async.ghost_update_end();
   }
 
   /**

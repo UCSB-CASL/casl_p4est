@@ -97,7 +97,6 @@ double one_fluid_solver_t::advect_interface(Vec &phi, Vec &pressure, double cfl)
 #else
     double k = (*K_D)(x[0], x[1]);
 #endif
-    k = 1;
     vx_p[0][n] = -k*qnnn.dx_central(pressure_p);
     vx_p[1][n] = -k*qnnn.dy_central(pressure_p);
 #ifdef P4_TO_P8
@@ -117,7 +116,6 @@ double one_fluid_solver_t::advect_interface(Vec &phi, Vec &pressure, double cfl)
 #else
     double k = (*K_D)(x[0], x[1]);
 #endif
-
     vx_p[0][n] = -k*qnnn.dx_central(pressure_p);
     vx_p[1][n] = -k*qnnn.dy_central(pressure_p);
 #ifdef P4_TO_P8
@@ -151,19 +149,19 @@ double one_fluid_solver_t::advect_interface(Vec &phi, Vec &pressure, double cfl)
   double dmin = MIN(dxyz[0], dxyz[1]);
 #endif
 
-  double vn_max = 0.1; // minmum vn_max to be used when computing dt.
+  double vn_max = 1; // minmum vn_max to be used when computing dt.
   foreach_dimension(dim) VecGetArray(vx[dim], &vx_p[dim]);
   foreach_node(n, nodes) {
-    if (fabs(phi_p[n]) < 3*diag) {
+    if (fabs(phi_p[n]) < diag) {
 #ifdef P4_TO_P8
-      vx_max = MAX(vn_max, sqrt(SQR(vx_p[0][n])+SQR(vx_p[1][n])+SQR(vx_p[2][n])));
+      vn_max = MAX(vn_max, sqrt(SQR(vx_p[0][n])+SQR(vx_p[1][n])+SQR(vx_p[2][n])));
 #else
       vn_max = MAX(vn_max, sqrt(SQR(vx_p[0][n])+SQR(vx_p[1][n])));
 #endif
     }
   }
 
-  double dt = cfl*dmin/MAX(0.1, vn_max);
+  double dt = cfl*dmin/vn_max;
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   // advect the level-set and update the grid
@@ -208,7 +206,7 @@ double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl)
   VecDuplicate(phi, &bc_val);
   foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &phi_x[dim]);
   neighbors.first_derivatives_central(phi, phi_x);
-  compute_mean_curvature(neighbors, phi, phi_x, bc_val);
+  compute_mean_curvature(neighbors, phi_x, bc_val);
   foreach_dimension(dim) VecDestroy(phi_x[dim]);
 
   // compute the boundary condition for the pressure. we use kappa to store the resutls

@@ -33,6 +33,21 @@ int main(int argc, char** argv) {
   mpi_enviroment_t mpi;
   mpi.init(argc, argv);
 
+  // get input parameters
+  cmdParser cmd;
+  cmd.add_option("lmin", "min level");
+  cmd.add_option("lmax", "max level");
+  cmd.add_option("g", "surface tension");
+  cmd.add_option("iter", "number of iterations");
+  cmd.add_option("cfl", "the CFL number");
+  cmd.parse(argc, argv);
+
+  const static int lmin = cmd.get("lmin", 2);
+  const static int lmax = cmd.get("lmax", 8);
+  const static int iter = cmd.get("iter", 100);
+  const static double g = cmd.get("g", 0.01);
+  const static double cfl = cmd.get("cfl", 5.0);
+
   // stopwatch
   parStopWatch w;
   w.start("Running example: viscous_fingering");
@@ -48,6 +63,10 @@ int main(int argc, char** argv) {
   const int n_xyz []      = {10, 1, 1};
   const double xyz_min [] = {0, -0.5, -0.5};
   const double xyz_max [] = {10, 0.5,  0.5};
+//  const int n_xyz []      = {1, 1, 1};
+//  const double xyz_min [] = {-0.5, -0.5, -0.5};
+//  const double xyz_max [] = { 0.5,  0.5,  0.5};
+
   conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
   // create the forest
@@ -59,16 +78,18 @@ int main(int argc, char** argv) {
     double operator()(double x, double y, double z) const {
       return 0.05-x;
     }
-  } circle;
+  } interface;
 #else
   struct:CF_2{
     double operator()(double x, double y) const {
-      return 0.05-x;
+      return 0.05 - x + 0.005*sin(2*M_PI*5*y);
+//      return 0.05-x+0.005*sin(2*M_PI*10*y);
+//      return 0.005 - sqrt(SQR(x)+SQR(y));
     }
   } interface;
 #endif
 
-  splitting_criteria_cf_t sp(2, 10, &interface);
+  splitting_criteria_cf_t sp(lmin, lmax, &interface, 2.5);
   p4est->user_pointer = &sp;
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
@@ -94,11 +115,11 @@ int main(int argc, char** argv) {
   } K_D;
 
   struct:CF_3{
-    double operator()(double, double, double) const { return 1; }
+    double operator()(double, double, double) const { return g; }
   } gamma;
 
   struct:CF_3{
-    double operator()(double, double, double) const { return 10; }
+    double operator()(double, double, double) const { return 1; }
   } p_applied;
 #else
   struct:CF_2{
@@ -106,7 +127,7 @@ int main(int argc, char** argv) {
   } K_D;
 
   struct:CF_2{
-    double operator()(double, double) const { return 1; }
+    double operator()(double, double) const { return g; }
   } gamma;
 
   struct:CF_2{
@@ -121,15 +142,15 @@ int main(int argc, char** argv) {
   char vtk_name[FILENAME_MAX];
 
   double dt = 0;
-  for(int i=0; i<50; i++) {
-    dt = solver.solve_one_step(phi, pressure);
-    std::cout << "i = " << i << " dt = " << dt << std::endl;
+  for(int i=0; i<iter; i++) {
+    dt = solver.solve_one_step(phi, pressure, cfl);
+    if (mpi.rank() == 0) std::cout << "i = " << i << " dt = " << dt << std::endl;
 
     // save vtk
     double *phi_p, *pressure_p;
     VecGetArray(phi, &phi_p);
     VecGetArray(pressure, &pressure_p);
-    sprintf(vtk_name, "%s.%04d", filename, i);
+    sprintf(vtk_name, "%s_%dd.%04d", filename, P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            2, 0, vtk_name,
