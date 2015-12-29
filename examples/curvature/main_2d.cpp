@@ -142,8 +142,7 @@ int main(int argc, char** argv) {
 
     // reinitialize
     my_p4est_level_set_t ls(&neighbors);
-    ls.reinitialize_2nd_order(phi);
-    ls.perturb_level_set_function(phi, EPS);
+    ls.reinitialize_2nd_order(phi, 50);
 
     sprintf(filename, "after_%d.%d", P4EST_DIM, n_sp);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
@@ -179,9 +178,10 @@ int main(int argc, char** argv) {
                            VTK_POINT_DATA, "err", error_p);
 
     if (mpi.rank() == 0) {
-      PetscPrintf(mpi.comm(), "res = (%d, %d)\n", lmin+n_sp, lmax+n_sp);
-      PetscPrintf(mpi.comm(), "Max err for compact calculation = %e, order = %f\n", err[0][n_sp+1], log2(err[0][n_sp]/err[0][n_sp+1]));
-      PetscPrintf(mpi.comm(), "Max err for div (n) calculation = %e, order = %f\n", err[1][n_sp+1], log2(err[1][n_sp]/err[1][n_sp+1]));
+      PetscPrintf(mpi.comm(), "Resolution: (%d,%d)\n", lmin+n_sp, lmax+n_sp);
+      PetscPrintf(mpi.comm(), "Compact: err = %e, order = %f\n", err[0][n_sp+1], log2(err[0][n_sp]/err[0][n_sp+1]));
+      PetscPrintf(mpi.comm(), "div(n):  err = %e, order = %f\n", err[1][n_sp+1], log2(err[1][n_sp]/err[1][n_sp+1]));
+      PetscPrintf(mpi.comm(), "\n");
     }
 
     // destroy vectors

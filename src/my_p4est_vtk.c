@@ -44,6 +44,7 @@
 #include <petsclog.h>
 
 #undef P4EST_VTK_COMPRESSION
+#define P4EST_VTK_DOUBLES
 
 #ifndef P4EST_VTK_DOUBLES
 #define P4EST_VTK_FLOAT_NAME "Float32"
