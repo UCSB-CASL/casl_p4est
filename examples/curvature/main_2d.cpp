@@ -48,6 +48,12 @@ int main(int argc, char** argv) {
   mpi_enviroment_t mpi;
   mpi.init(argc, argv);
 
+  cmdParser parser;
+  parser.add_option("lmin", "min level in the tree");
+  parser.add_option("lmax", "max level in the tree");
+  parser.add_option("nsp", "number of splits");
+  parser.parse(argc, argv);
+
   // stopwatch
   parStopWatch w;
   w.start("Running example: curvature");
@@ -92,18 +98,18 @@ int main(int argc, char** argv) {
   } curvature;
 #endif
 
-  const int lmin = 1;
-  const int lmax = 3;
-  const int splits = 8;
-  double err[2][splits+1];
-  char filename[FILENAME_MAX];
+  const int lmin = parser.get("lmin", 1);
+  const int lmax = parser.get("lmax", 3);
+  const int nsp  = parser.get("nsp", 8);
 
-  for (int n_sp = 0; n_sp < splits; n_sp++) {
+  double err[2][nsp+1];
+  char filename[FILENAME_MAX];
+  for (int s = 0; s < nsp; s++) {
     // create the forest
     p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
     // refine
-    splitting_criteria_cf_t sp(lmin+n_sp, lmax+n_sp, &interface, 2.0);
+    splitting_criteria_cf_t sp(lmin+s, lmax+s, &interface, 2.0);
     p4est->user_pointer = &sp;
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
@@ -134,7 +140,7 @@ int main(int argc, char** argv) {
 
     sample_cf_on_nodes(p4est, nodes, interface, phi);
 
-    sprintf(filename, "before_%d.%d", P4EST_DIM, n_sp);
+    sprintf(filename, "before_%d.%d", P4EST_DIM, s);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, filename,
@@ -142,25 +148,26 @@ int main(int argc, char** argv) {
 
     // reinitialize
     my_p4est_level_set_t ls(&neighbors);
-    ls.reinitialize_2nd_order(phi, 50);
+    ls.reinitialize_2nd_order(phi, 10);
 
-    sprintf(filename, "after_%d.%d", P4EST_DIM, n_sp);
+    // compute normals (reuturns scaled normal)
+    compute_normals(neighbors, phi, normal);
+
+    sprintf(filename, "after_%d.%d", P4EST_DIM, s);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, filename,
                            VTK_POINT_DATA, "phi", phi_p);
 
-    // compute normals (reuturns scaled normal)
-    compute_normals(neighbors, phi, normal);
 
     /* compute curvature with two methods
      * 1) using compact stencil (does not require that normal be scaled)
      * 2) using div(normal) expression (normal MUST be scaled)
      */
     compute_mean_curvature(neighbors, phi, normal, kappa);
-    err[0][n_sp+1] = compute_curvature_err(neighbors, phi, kappa, curvature, error);
+    err[0][s+1] = compute_curvature_err(neighbors, phi, kappa, curvature, error);
 
-    sprintf(filename, "error1_%d.%d", P4EST_DIM, n_sp);
+    sprintf(filename, "error1_%d.%d", P4EST_DIM, s);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            2, 0, filename,
@@ -168,9 +175,9 @@ int main(int argc, char** argv) {
                            VTK_POINT_DATA, "err", error_p);
 
     compute_mean_curvature(neighbors, normal, kappa);
-    err[1][n_sp+1] = compute_curvature_err(neighbors, phi, kappa, curvature, error);
+    err[1][s+1] = compute_curvature_err(neighbors, phi, kappa, curvature, error);
 
-    sprintf(filename, "error2_%d.%d", P4EST_DIM, n_sp);
+    sprintf(filename, "error2_%d.%d", P4EST_DIM, s);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            2, 0, filename,
@@ -178,9 +185,9 @@ int main(int argc, char** argv) {
                            VTK_POINT_DATA, "err", error_p);
 
     if (mpi.rank() == 0) {
-      PetscPrintf(mpi.comm(), "Resolution: (%d,%d)\n", lmin+n_sp, lmax+n_sp);
-      PetscPrintf(mpi.comm(), "Compact: err = %e, order = %f\n", err[0][n_sp+1], log2(err[0][n_sp]/err[0][n_sp+1]));
-      PetscPrintf(mpi.comm(), "div(n):  err = %e, order = %f\n", err[1][n_sp+1], log2(err[1][n_sp]/err[1][n_sp+1]));
+      PetscPrintf(mpi.comm(), "Resolution: (%d,%d)\n", lmin+s, lmax+s);
+      PetscPrintf(mpi.comm(), "Compact: err = %e, order = %f\n", err[0][s+1], log2(err[0][s]/err[0][s+1]));
+      PetscPrintf(mpi.comm(), "div(n):  err = %e, order = %f\n", err[1][s+1], log2(err[1][s]/err[1][s+1]));
       PetscPrintf(mpi.comm(), "\n");
     }
 
@@ -207,7 +214,9 @@ double compute_curvature_err(my_p4est_node_neighbors_t& neighbors, Vec phi, Vec 
   VecGetArray(error, &error_p);
 
   double diag_min = p4est_diag_min(neighbors.get_p4est());
+//  PetscPrintf(neighbors.get_p4est()->mpicomm, "diag_min = %e\n",diag_min);
   double err = 0;
+  int nmax = 0;
   double x[P4EST_DIM];
   node_xyz_fr_n(0, neighbors.get_p4est(), neighbors.get_nodes(), x);
   foreach_node(n, neighbors.get_nodes()) {
@@ -219,9 +228,14 @@ double compute_curvature_err(my_p4est_node_neighbors_t& neighbors, Vec phi, Vec 
       double k = curvature(x[0], x[1]);
 #endif
       error_p[n] = fabs(kappa_p[n] - k);
-      err = MAX(err, error_p[n]);
+      if (error_p[n] > err) {
+          err = error_p[n];
+          nmax = n;
+      }
     }
   }
+  node_xyz_fr_n(nmax, neighbors.get_p4est(), neighbors.get_nodes(), x);
+//  PetscPrintf(neighbors.get_p4est()->mpicomm, "nmax = (%e,%e)\n", x[0], x[1]);
 
   VecRestoreArray(kappa, &kappa_p);
   VecRestoreArray(phi, &phi_p);

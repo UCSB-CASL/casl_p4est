@@ -10,11 +10,9 @@
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 
+#include <src/CASL_math.h>
 #include "petsc_compatibility.h"
 #include <petsclog.h>
-
-#undef MAX
-#undef MIN
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -236,10 +234,9 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
   {
     p4est_locidx_t n = map[n_map];
 
-    if(fabs(p0[n]) <= EPS)
+    if(fabs(p0[n]) < EPS) {
       pnp1[n] = 0;
-    else if(fabs(p0[n]) <= limit)
-    {
+    } else if(fabs(p0[n]) <= limit) {
       const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
 
       double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
@@ -325,52 +322,15 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
       //---------------------------------------------------------------------
       // Neumann boundary condition on the walls
       //---------------------------------------------------------------------
-      /* first unclamp the node */
       p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
-      p4est_indep_t unclamped_node = *node;
-      p4est_node_unclamp((p4est_quadrant_t*)&unclamped_node);
 
-      /* wall in the x direction */
-      if(unclamped_node.x==0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
-        if(nb_tree_idx == tree_idx) { s_m00 = s_p00; p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
-      }
-      else if(unclamped_node.x==P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-        if(nb_tree_idx == tree_idx) { s_p00 = s_m00; p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
-      }
-
-      /* wall in the y direction */
-      if(unclamped_node.y==0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
-        if(nb_tree_idx == tree_idx) { s_0m0 = s_0p0; p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
-      }
-      else if(unclamped_node.y==P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
-        if(nb_tree_idx == tree_idx) { s_0p0 = s_0m0; p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
-      }
+      if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
+      if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
+      if (is_node_ymWall(p4est, node)) { s_0m0 = s_0p0; p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
+      if (is_node_ypWall(p4est, node)) { s_0p0 = s_0m0; p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
 #ifdef P4_TO_P8
-      /* wall in the z direction */
-      if(unclamped_node.z==0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00m];
-        if(nb_tree_idx == tree_idx) { s_00m = s_00p; p_00m = p_00p; }
-      }
-      else if(unclamped_node.z==P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00p];
-        if(nb_tree_idx == tree_idx) { s_00p = s_00m; p_00p = p_00m; }
-      }
+      if (is_node_zmWall(p4est, node)) { s_00m = s_00p; p_00m=p_00p; pzz_000 = pzz_00m = pzz_00p = 0; }
+      if (is_node_zpWall(p4est, node)) { s_00p = s_00m; p_00p=p_00m; pzz_000 = pzz_00m = pzz_00p = 0; }
 #endif
 
       //---------------------------------------------------------------------
@@ -381,7 +341,6 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
 #ifdef P4_TO_P8
       double pz_00p = (p_00p-p_000)/s_00p; double pz_00m = (p_000-p_00m)/s_00m;
 #endif
-
 
       //---------------------------------------------------------------------
       // Second Order One-Sided Differencing
@@ -406,8 +365,10 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
 #ifdef P4_TO_P8
       dt = MIN(dt,s_00m);
       dt = MIN(dt,s_00p);
+      dt /= 3.0;
+#else
+      dt /= 2.0;
 #endif
-      dt = dt/2.;
 
       if(sgn>0) {
         if(px_p00>0) px_p00 = 0;
@@ -807,7 +768,7 @@ void my_p4est_level_set_t::reinitialize_2nd_order( Vec phi_petsc, int number_of_
 
     /* update phi */
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-      phi[n] = .5 * (p1[n] + p2[n]);
+      phi[n] = .5 * (phi[n] + p2[n]);
   }
 
   /* restore arrays and destroy uneeded petsc objects */
@@ -906,7 +867,7 @@ void my_p4est_level_set_t::reinitialize_2nd_order_time_1st_order_space( Vec phi_
 
     /* update phi */
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-      phi[n] = .5 * (p1[n] + p2[n]);
+      phi[n] = .5 * (phi[n] + p2[n]);
   }
   IPMLogRegionEnd("reinit_2nd_1st");
 

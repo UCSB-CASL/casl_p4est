@@ -1,7 +1,9 @@
 #ifdef P4_TO_P8
 #include "my_p8est_node_neighbors.h"
+#include <src/my_p8est_macros.h>
 #else
 #include "my_p4est_node_neighbors.h"
+#include <src/my_p4est_macros.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -2137,8 +2139,8 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
   // get access to the iternal data
   double *f_p, *fx_p[P4EST_DIM];
   ierr = VecGetArray(f,&f_p); CHKERRXX(ierr);
-  for (short i=0; i<P4EST_DIM; i++)
-    ierr = VecGetArray(fx[i], &fx_p[i]); CHKERRXX(ierr);
+  foreach_dimension(dim)
+    ierr = VecGetArray(fx[dim], &fx_p[dim]); CHKERRXX(ierr);
 
   if (is_initialized){
     // compute the derivatives on the boundary nodes -- fx
@@ -2173,6 +2175,9 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
   #endif
     }
 
+    foreach_dimension(dim)
+      ierr = VecGhostUpdateEnd(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   } else {
 
     quad_neighbor_nodes_of_node_t qnnn;
@@ -2187,7 +2192,7 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
 #endif
     }
     // start updating the ghost values
-    for (short dim=0; dim<P4EST_DIM; dim++)
+    foreach_dimension(dim)
       ierr = VecGhostUpdateBegin(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     // compute the derivaties for all internal nodes
@@ -2204,12 +2209,8 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
 
   // restore internal data
   ierr = VecRestoreArray(f,  &f_p  ); CHKERRXX(ierr);
-  for (short i=0; i<P4EST_DIM; i++)
-    ierr = VecRestoreArray(fx[i], &fx_p[i]); CHKERRXX(ierr);
-
-  // finish the ghost update process to ensure all values are updated
-  for (short i=0; i<P4EST_DIM; i++)
-    ierr = VecGhostUpdateEnd(fx[i], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  foreach_dimension(dim)
+    ierr = VecRestoreArray(fx[dim], &fx_p[dim]); CHKERRXX(ierr);
 
   IPMLogRegionEnd("1st_derivatives");
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_1st_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);

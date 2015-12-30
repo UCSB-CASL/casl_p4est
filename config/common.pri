@@ -59,7 +59,7 @@ DEFINES += "GIT_COMMIT_HASH_LONG=\\\"$$system(git rev-parse HEAD)\\\""
 DEFINES += "GIT_COMMIT_HASH_SHORT=\\\"$$system(git rev-parse --short HEAD)\\\""
 
 clean_data.target = clean_data
-clean_data.commands = rm -rf *.vtk *.vtu *.pvtu *.visit *.csv *.bin *.dat
+clean_data.commands = rm -rf *.vtk* *.vtu* *.pvtu* *.visit* *.csv* *.bin* *.dat*
 QMAKE_EXTRA_TARGETS += clean_data
 
 commit.target = commit
