@@ -826,7 +826,7 @@ double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double 
 #ifdef P4_TO_P8
   double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)+SQR(dz)));
   double kappa = -((dyy+dzz)*SQR(dx) + (dxx+dzz)*SQR(dy) + (dxx+dyy)*SQR(dz) - 2*
-                  (dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / abs/abs/abs;
+                   (dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / abs/abs/abs;
 #else
   double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)));
   double kappa = -(dxx*SQR(dy) - 2*dy*dx*dxy + dyy*SQR(dx)) / abs/abs/abs;
@@ -1459,24 +1459,24 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& 
 #endif
 
 #ifdef P4_TO_P8
-    f_p[quad_idx] = cf(x,y,z);
+      f_p[quad_idx] = cf(x,y,z);
 #else
-    f_p[quad_idx] = cf(x,y);
+      f_p[quad_idx] = cf(x,y);
 #endif
     }
   }
 
   // sample on ghost quadrants
   for (size_t q = 0; q < ghost->ghosts.elem_count; ++q)
-    {
-      const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
-      p4est_topidx_t tree_id  = quad->p.piggy3.which_tree;
-      p4est_locidx_t quad_idx = q + p4est->local_num_quadrants;
+  {
+    const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+    p4est_topidx_t tree_id  = quad->p.piggy3.which_tree;
+    p4est_locidx_t quad_idx = q + p4est->local_num_quadrants;
 
-      double x = quad_x_fr_q(quad_idx, tree_id, p4est, ghost);
-      double y = quad_y_fr_q(quad_idx, tree_id, p4est, ghost);
+    double x = quad_x_fr_q(quad_idx, tree_id, p4est, ghost);
+    double y = quad_y_fr_q(quad_idx, tree_id, p4est, ghost);
 #ifdef P4_TO_P8
-      double z = quad_z_fr_q(quad_idx, tree_id, p4est, ghost);
+    double z = quad_z_fr_q(quad_idx, tree_id, p4est, ghost);
 #endif
 
 #ifdef P4_TO_P8
@@ -1484,7 +1484,7 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& 
 #else
     f_p[quad_idx] = cf(x,y);
 #endif
-    }
+  }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }

@@ -214,7 +214,6 @@ double compute_curvature_err(my_p4est_node_neighbors_t& neighbors, Vec phi, Vec 
   VecGetArray(error, &error_p);
 
   double diag_min = p4est_diag_min(neighbors.get_p4est());
-//  PetscPrintf(neighbors.get_p4est()->mpicomm, "diag_min = %e\n",diag_min);
   double err = 0;
   int nmax = 0;
   double x[P4EST_DIM];
@@ -229,13 +228,11 @@ double compute_curvature_err(my_p4est_node_neighbors_t& neighbors, Vec phi, Vec 
 #endif
       error_p[n] = fabs(kappa_p[n] - k);
       if (error_p[n] > err) {
-          err = error_p[n];
-          nmax = n;
+        err = error_p[n];
+        nmax = n;
       }
     }
   }
-  node_xyz_fr_n(nmax, neighbors.get_p4est(), neighbors.get_nodes(), x);
-//  PetscPrintf(neighbors.get_p4est()->mpicomm, "nmax = (%e,%e)\n", x[0], x[1]);
 
   VecRestoreArray(kappa, &kappa_p);
   VecRestoreArray(phi, &phi_p);

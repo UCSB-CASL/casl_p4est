@@ -80,11 +80,11 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order( std::vector<p
       // check if the node is near interface
       //---------------------------------------------------------------------
       if (    (p0_000*p0_m00<0) || (p0_000*p0_p00<0)
-           || (p0_000*p0_0m0<0) || (p0_000*p0_0p0<0)
-#ifdef P4_TO_P8
-           || (p0_000*p0_00m<0) || (p0_000*p0_00p<0)
-#endif
-           )
+              || (p0_000*p0_0m0<0) || (p0_000*p0_0p0<0)
+        #ifdef P4_TO_P8
+              || (p0_000*p0_00m<0) || (p0_000*p0_00p<0)
+        #endif
+              )
       {
         if(p0_000*p0_m00<0) { s_m00 = -interface_Location(-s_m00, 0, p0_m00, p0_000); p_m00 = 0; }
         if(p0_000*p0_p00<0) { s_p00 =  interface_Location( s_p00, 0, p0_p00, p0_000); p_p00 = 0; }
@@ -218,14 +218,14 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order( std::vector<p
 }
 
 void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map,
-                                                                  #ifdef P4_TO_P8
-                                                                  const double *dxx0, const double *dyy0, const double *dzz0,
-                                                                  const double *dxx,  const double *dyy,  const double *dzz,
-                                                                  #else
-                                                                  const double *dxx0, const double *dyy0,
-                                                                  const double *dxx,  const double *dyy,
-                                                                  #endif
-                                                                  double *p0, double *pn, double *pnp1, double limit )
+                                                                    #ifdef P4_TO_P8
+                                                                    const double *dxx0, const double *dyy0, const double *dzz0,
+                                                                    const double *dxx,  const double *dyy,  const double *dzz,
+                                                                    #else
+                                                                    const double *dxx0, const double *dyy0,
+                                                                    const double *dxx,  const double *dyy,
+                                                                    #endif
+                                                                    double *p0, double *pn, double *pnp1, double limit )
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_2nd_order, 0, 0, 0, 0);
@@ -279,11 +279,11 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
       //---------------------------------------------------------------------
       // check if the node is near interface
       //---------------------------------------------------------------------
-      if (    (p0_000*p0_m00<0) || (p0_000*p0_p00<0)
-           || (p0_000*p0_0m0<0) || (p0_000*p0_0p0<0)
-#ifdef P4_TO_P8
-           || (p0_000*p0_00m<0) || (p0_000*p0_00p<0)
-#endif
+      if (  (p0_000*p0_m00<0) || (p0_000*p0_p00<0)
+         || (p0_000*p0_0m0<0) || (p0_000*p0_0p0<0)
+        #ifdef P4_TO_P8
+         || (p0_000*p0_00m<0) || (p0_000*p0_00p<0)
+        #endif
          )
       {
         double p0xx_000 = dxx0[n];
@@ -410,11 +410,11 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
 }
 
 void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(std::vector<p4est_locidx_t> &map, const double* vn, double dt,
-                                                                  const double *dxx,  const double *dyy,
-                                                                  #ifdef P4_TO_P8
-                                                                  const double *dzz,
-                                                                  #endif
-                                                                  const double *pn, double *pnp1)
+                                                                    const double *dxx,  const double *dyy,
+                                                                    #ifdef P4_TO_P8
+                                                                    const double *dzz,
+                                                                    #endif
+                                                                    const double *pn, double *pnp1)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_1_iter, 0, 0, 0, 0);
@@ -1467,9 +1467,9 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
 
       if(bc.interfaceType()==DIRICHLET)
 #ifdef P4_TO_P8
-      q0[n] = bc.interfaceValue(xyz[0] + grad_phi.x*phi[n], xyz[1] + grad_phi.y*phi[n], xyz[2] + grad_phi.z*phi[n]);
+        q0[n] = bc.interfaceValue(xyz[0] + grad_phi.x*phi[n], xyz[1] + grad_phi.y*phi[n], xyz[2] + grad_phi.z*phi[n]);
 #else
-      q0[n] = bc.interfaceValue(xyz[0] + grad_phi.x*phi[n], xyz[1] + grad_phi.y*phi[n]);
+        q0[n] = bc.interfaceValue(xyz[0] + grad_phi.x*phi[n], xyz[1] + grad_phi.y*phi[n]);
 #endif
 
       if(order >= 1 || (order==0 && bc.interfaceType()==NEUMANN))
@@ -1542,15 +1542,15 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
   #endif
       };
 
-//      double xy1 [] = {xyz[0] - grad_phi.x*(phi[n]), xyz[1] - grad_phi.y*(phi[n])};
-//      double xy2 [] = {xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)};
+      //      double xy1 [] = {xyz[0] - grad_phi.x*(phi[n]), xyz[1] - grad_phi.y*(phi[n])};
+      //      double xy2 [] = {xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)};
 
-//      q1[n] = 0.25*(
-//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
-//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
-//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
-//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) );
-//      q2[n] = bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+3*diag), xyz[1] - grad_phi.y*(phi[n]+3*diag));
+      //      q1[n] = 0.25*(
+      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
+      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
+      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
+      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) );
+      //      q2[n] = bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+3*diag), xyz[1] - grad_phi.y*(phi[n]+3*diag));
 
       if(order==0)
       {
@@ -1565,15 +1565,15 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
         if(bc.interfaceType()==DIRICHLET)
         {
           double dif01 = (q1[n] - q0[n])/(2*diag - 0);
-//          double dif01 = (q1[n] - q0[n])/(sqrt(SQR(xy2[0]-xy1[0])+SQR(xy2[1]-xy1[1])) - 0);
+          //          double dif01 = (q1[n] - q0[n])/(sqrt(SQR(xy2[0]-xy1[0])+SQR(xy2[1]-xy1[1])) - 0);
           q[n] = q0[n] + (-phi[n] - 0) * dif01;
         }
         else /* interface Neumann */
         {
 #ifdef P4_TO_P8
-      double dif01 = -bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n]);
+          double dif01 = -bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n]);
 #else
-      double dif01 = -bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n]);
+          double dif01 = -bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n]);
 #endif
           q[n] = q1[n] + (-phi[n] - 2*diag) * dif01;
         }
@@ -1603,13 +1603,13 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
           double x = -phi[n];
           q[n] = a*x*x + b*x + c;
 
-//          double dif01 = (q2[n] - q1[n])/(diag);
-//#ifdef P4_TO_P8
-//          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n])) / (2*diag);
-//#else
-//          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n])) / (2*diag);
-//#endif
-//          q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
+          //          double dif01 = (q2[n] - q1[n])/(diag);
+          //#ifdef P4_TO_P8
+          //          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n])) / (2*diag);
+          //#else
+          //          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n])) / (2*diag);
+          //#endif
+          //          q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
         }
       }
 
@@ -3372,26 +3372,26 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
 
 
 void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
-                                                                                  std::vector<double>& nx, std::vector<double>& ny,
-                                                                                  #ifdef P4_TO_P8
-                                                                                  std::vector<double>& nz,
-                                                                                  #endif
-                                                                                  double *q_out_p,
-                                                                                  double *q_p, double *qxx_p, double *qyy_p,
-                                                                                  #ifdef P4_TO_P8
-                                                                                  double *qzz_p,
-                                                                                  #endif
-                                                                                  std::vector<double>& qi_m00, std::vector<double>& qi_p00,
-                                                                                  std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
-                                                                                  #ifdef P4_TO_P8
-                                                                                  std::vector<double>& qi_00m, std::vector<double>& qi_00p,
-                                                                                  #endif
-                                                                                  std::vector<double>& s_m00 , std::vector<double>& s_p00,
-                                                                                  std::vector<double>& s_0m0 , std::vector<double>& s_0p0
-                                                                                  #ifdef P4_TO_P8
-                                                                                  , std::vector<double>& s_00m, std::vector<double>& s_00p
-                                                                                  #endif
-                                                                                  ) const
+                                                                                    std::vector<double>& nx, std::vector<double>& ny,
+                                                                                    #ifdef P4_TO_P8
+                                                                                    std::vector<double>& nz,
+                                                                                    #endif
+                                                                                    double *q_out_p,
+                                                                                    double *q_p, double *qxx_p, double *qyy_p,
+                                                                                    #ifdef P4_TO_P8
+                                                                                    double *qzz_p,
+                                                                                    #endif
+                                                                                    std::vector<double>& qi_m00, std::vector<double>& qi_p00,
+                                                                                    std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
+                                                                                    #ifdef P4_TO_P8
+                                                                                    std::vector<double>& qi_00m, std::vector<double>& qi_00p,
+                                                                                    #endif
+                                                                                    std::vector<double>& s_m00 , std::vector<double>& s_p00,
+                                                                                    std::vector<double>& s_0m0 , std::vector<double>& s_0p0
+                                                                                    #ifdef P4_TO_P8
+                                                                                    , std::vector<double>& s_00m, std::vector<double>& s_00p
+                                                                                    #endif
+                                                                                    ) const
 {
   for(size_t n_map=0; n_map<map.size(); ++n_map)
   {
