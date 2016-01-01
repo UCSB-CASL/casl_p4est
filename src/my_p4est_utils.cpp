@@ -825,11 +825,11 @@ double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double 
 
 #ifdef P4_TO_P8
   double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)+SQR(dz)));
-  double kappa = -((dyy+dzz)*SQR(dx) + (dxx+dzz)*SQR(dy) + (dxx+dyy)*SQR(dz) - 2*
+  double kappa = ((dyy+dzz)*SQR(dx) + (dxx+dzz)*SQR(dy) + (dxx+dyy)*SQR(dz) - 2*
                    (dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / abs/abs/abs;
 #else
   double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)));
-  double kappa = -(dxx*SQR(dy) - 2*dy*dx*dxy + dyy*SQR(dx)) / abs/abs/abs;
+  double kappa = (dxx*SQR(dy) - 2*dy*dx*dxy + dyy*SQR(dx)) / abs/abs/abs;
 #endif
   return kappa;
 }
@@ -842,9 +842,9 @@ double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double 
 #endif
 
 #ifdef P4_TO_P8
-  double kappa = -(qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]) + qnnn.dz_central(normals[2]));
+  double kappa = qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]) + qnnn.dz_central(normals[2]);
 #else
-  double kappa = -(qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]));
+  double kappa = qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]);
 #endif
 
   return kappa;
