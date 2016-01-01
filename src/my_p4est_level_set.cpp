@@ -1177,7 +1177,7 @@ double my_p4est_level_set_t::advect_in_normal_direction(const CF_2& vn, Vec phi,
   ierr = VecGhostUpdateEnd  (p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] = 0.5 * (p1_p[n] + p2_p[n]);
+    phi_p[n] = 0.5 * (phi_p[n] + p2_p[n]);
 
   /* restore arrays */
   ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
@@ -1334,7 +1334,7 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, V
   ierr = VecGhostUpdateEnd  (p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] = 0.5 * (p1_p[n] + p2_p[n]);
+    phi_p[n] = 0.5 * (phi_p[n] + p2_p[n]);
 
   /* restore arrays */
   ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
