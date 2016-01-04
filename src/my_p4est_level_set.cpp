@@ -1208,9 +1208,9 @@ double my_p4est_level_set_t::advect_in_normal_direction(const CF_2& vn, Vec phi,
 }
 
 #ifdef P4_TO_P8
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx, Vec phi_yy)
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy)
 #endif
 {
   PetscErrorCode ierr;
@@ -1253,7 +1253,7 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, V
 #endif
 
   /* compute dt based on CFL condition */
-  double dt_local = DBL_MAX;
+  double dt_local = dt_max;
   double dt;
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
 

@@ -25,7 +25,8 @@ class one_fluid_solver_t
   cf_t *K_D, *gamma, *p_applied;
 
 
-  double advect_interface(Vec& phi, Vec& pressure, double cfl);
+  double advect_interface_semi_lagrangian(Vec& phi, Vec& pressure, double cfl);
+  double advect_interface_godunov(Vec& phi, Vec& pressure, double cfl);
   void solve_pressure(Vec& pressure);
 
 public:

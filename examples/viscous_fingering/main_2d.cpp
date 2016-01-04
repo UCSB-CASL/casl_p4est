@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
   const static int lmax = cmd.get("lmax", 8);
   const static int iter = cmd.get("iter", 100);
   const static double g = cmd.get("g", 1e-5);
-  const static double cfl = cmd.get("cfl", 5.0);
+  const static double cfl = cmd.get("cfl", 0.8);
 
   // stopwatch
   parStopWatch w;
@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
   one_fluid_solver_t solver(p4est, ghost, nodes, brick);
   solver.set_properties(K_D, gamma, p_applied);
 
-  const char* filename = "viscous_fingering";
+  const char* filename = "viscous_fingering_semi";
   char vtk_name[FILENAME_MAX];
 
   double dt = 0;

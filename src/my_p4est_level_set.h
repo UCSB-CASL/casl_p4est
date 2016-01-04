@@ -101,9 +101,9 @@ public:
    * \return dt
    */
 #ifdef P4_TO_P8
-  double advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
+  double advect_in_normal_direction(const Vec vn, Vec phi, double dt_max = DBL_MAX, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
 #else
-  double advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
+  double advect_in_normal_direction(const Vec vn, Vec phi, double dt_max = DBL_MAX, Vec phi_xx = NULL, Vec phi_yy = NULL);
 #endif
 
   /* extrapolate using geometrical extrapolation */
