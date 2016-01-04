@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
   const static int lmin = cmd.get("lmin", 2);
   const static int lmax = cmd.get("lmax", 8);
   const static int iter = cmd.get("iter", 100);
-  const static double g = cmd.get("g", 0.01);
+  const static double g = cmd.get("g", 1e-5);
   const static double cfl = cmd.get("cfl", 5.0);
 
   // stopwatch
@@ -60,12 +60,12 @@ int main(int argc, char** argv) {
   my_p4est_brick_t      brick;
 
   // domain size information
-  const int n_xyz []      = {10, 1, 1};
-  const double xyz_min [] = {0, -0.5, -0.5};
-  const double xyz_max [] = {10, 0.5,  0.5};
-//  const int n_xyz []      = {1, 1, 1};
-//  const double xyz_min [] = {-0.5, -0.5, -0.5};
-//  const double xyz_max [] = { 0.5,  0.5,  0.5};
+//  const int n_xyz []      = {10, 1, 1};
+//  const double xyz_min [] = {0, -0.5, -0.5};
+//  const double xyz_max [] = {10, 0.5,  0.5};
+  const int n_xyz []      = {1, 1, 1};
+  const double xyz_min [] = {-0.5, -0.5, -0.5};
+  const double xyz_max [] = { 0.5,  0.5,  0.5};
 
   conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
@@ -82,14 +82,15 @@ int main(int argc, char** argv) {
 #else
   struct:CF_2{
     double operator()(double x, double y) const {
-      return 0.05 - x + 0.005*sin(2*M_PI*5*y);
+//      return 0.05 - x;
+//      return 0.05 - x + 0.005*sin(2*M_PI*5*y);
 //      return 0.05-x+0.005*sin(2*M_PI*10*y);
-//      return 0.005 - sqrt(SQR(x)+SQR(y));
+      return 0.01 - sqrt(SQR(x)+SQR(y));
     }
   } interface;
 #endif
 
-  splitting_criteria_cf_t sp(lmin, lmax, &interface, 2.5);
+  splitting_criteria_cf_t sp(lmin, lmax, &interface, 1.5);
   p4est->user_pointer = &sp;
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 

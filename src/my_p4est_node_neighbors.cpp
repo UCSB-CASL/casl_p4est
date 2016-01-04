@@ -2207,6 +2207,10 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
     }
   }
 
+  // finish updating the ghost values
+  foreach_dimension(dim)
+    ierr = VecGhostUpdateEnd(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   // restore internal data
   ierr = VecRestoreArray(f,  &f_p  ); CHKERRXX(ierr);
   foreach_dimension(dim)

@@ -202,12 +202,17 @@ double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl)
   ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
-  Vec bc_val, phi_x[P4EST_DIM];
+  Vec bc_val, bc_val_tmp, phi_x[P4EST_DIM];
   VecDuplicate(phi, &bc_val);
+  VecDuplicate(phi, &bc_val_tmp);
   foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &phi_x[dim]);
-  neighbors.first_derivatives_central(phi, phi_x);
-  compute_mean_curvature(neighbors, phi_x, bc_val);
+  compute_normals(neighbors, phi, phi_x);
+  compute_mean_curvature(neighbors, phi_x, bc_val_tmp);
   foreach_dimension(dim) VecDestroy(phi_x[dim]);
+
+  // extend curvature from interface to the entire domain
+  ls.extend_from_interface_to_whole_domain_TVD(phi, bc_val_tmp, bc_val);
+  VecDestroy(bc_val_tmp);
 
   // compute the boundary condition for the pressure. we use kappa to store the resutls
   double *bc_val_p;
@@ -217,9 +222,9 @@ double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl)
     double x[P4EST_DIM];
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
-    bc_val_p[n] = (*p_applied)(x[0], x[1], x[2]) - bc_val_p[n]*(*gamma)(x[0], x[1], x[2]);
+    bc_val_p[n] = (*p_applied)(x[0], x[1], x[2]) + bc_val_p[n]*(*gamma)(x[0], x[1], x[2]);
 #else
-    bc_val_p[n] = (*p_applied)(x[0], x[1]) - bc_val_p[n]*(*gamma)(x[0], x[1]);
+    bc_val_p[n] = (*p_applied)(x[0], x[1]) + bc_val_p[n]*(*gamma)(x[0], x[1]);
 #endif
   }
   VecRestoreArray(bc_val, &bc_val_p);
