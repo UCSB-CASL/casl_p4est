@@ -584,7 +584,7 @@ int main (int argc, char* argv[])
       if(p4est->mpirank==0)
       {
         p4est_locidx_t nb_nodes_global = 0;
-        for(int r=0; r<=p4est->mpisize; ++r)
+        for(int r=0; r<p4est->mpisize; ++r)
           nb_nodes_global += nodes->global_owned_indeps[r];
 
         std::cout << "The p4est has " << nb_nodes_global << " nodes." << std::endl;

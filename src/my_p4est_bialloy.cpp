@@ -934,7 +934,8 @@ void my_p4est_bialloy_t::update_grid()
   Vec vel_n[]   = { u_interface_n,   v_interface_n   };
   Vec vel_np1[] = { u_interface_np1, v_interface_np1 };
 #endif
-  sl.update_p4est(vel_n, vel_np1, dt_nm1, dt_n, phi);
+//  sl.update_p4est(vel_n, vel_np1, dt_nm1, dt_n, phi);
+  sl.update_p4est(vel_np1, dt_n, phi);
 
   /* interpolate the quantities on the new grid */
   my_p4est_interpolation_nodes_t interp(ngbd);
@@ -1098,15 +1099,13 @@ void my_p4est_bialloy_t::one_step()
 
 void my_p4est_bialloy_t::save_VTK(int iter)
 {
-#ifdef STAMPEDE
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
-#else
-  char out_dir[10000];
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy");
-#endif
+  const char* out_dir = getenv("OUT_DIR");
+  if (!out_dir)
+    out_dir = "out_dir";
 
-  std::ostringstream oss;
+  std::ostringstream oss, command;
+  command << "mkdir -p " << out_dir << "/vtu";
+  system(command.str().c_str());
 
   oss << out_dir
       << "/vtu/bialloy_"
