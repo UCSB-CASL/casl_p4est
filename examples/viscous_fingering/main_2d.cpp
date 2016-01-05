@@ -62,12 +62,12 @@ int main(int argc, char** argv) {
   my_p4est_brick_t      brick;
 
   // domain size information
-//  const int n_xyz []      = {10, 1, 1};
-//  const double xyz_min [] = {0, -0.5, -0.5};
-//  const double xyz_max [] = {10, 0.5,  0.5};
-  const int n_xyz []      = {1, 1, 1};
-  const double xyz_min [] = {-0.5, -0.5, -0.5};
-  const double xyz_max [] = { 0.5,  0.5,  0.5};
+//  const static int n_xyz []      = {10, 1, 1};
+//  const static double xyz_min [] = {0, -0.5, -0.5};
+//  const static double xyz_max [] = {10, 0.5,  0.5};
+  const static int n_xyz []      = {1, 1, 1};
+  const static double xyz_min [] = {-0.5, -0.5, -0.5};
+  const static double xyz_max [] = { 0.5,  0.5,  0.5};
 
   conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
@@ -121,9 +121,20 @@ int main(int argc, char** argv) {
     double operator()(double, double, double) const { return g; }
   } gamma;
 
-  struct:CF_3{
-    double operator()(double, double, double) const { return 1; }
-  } p_applied;
+  struct:WallBC3D {
+    BoundaryConditionType operator()(double x, double, double) const {
+      if (fabs(x-xyz_min[0]) < EPS || fabs(x-xyz_max[0]) < EPS)
+        return DIRICHLET;
+      else
+        return NEUMANN;
+    }
+  } bc_wall_type;
+
+  struct:CF_3 {
+    double operator()(double, double, double) const {
+      return 0;
+    }
+  } bc_wall_value;
 #else
   struct:CF_2{
     double operator()(double, double) const { return 1; }
@@ -133,21 +144,34 @@ int main(int argc, char** argv) {
     double operator()(double, double) const { return g; }
   } gamma;
 
-  struct:CF_2{
-    double operator()(double, double) const { return 1; }
-  } p_applied;
+  struct:WallBC2D {
+    BoundaryConditionType operator()(double x, double) const {
+      if (fabs(x-xyz_min[0]) < EPS || fabs(x-xyz_max[0]) < EPS)
+        return DIRICHLET;
+      else
+        return NEUMANN;
+    }
+  } bc_wall_type;
+
+  struct:CF_2 {
+    double operator()(double, double) const {
+      return 0;
+    }
+  } bc_wall_value;
 #endif
 
   one_fluid_solver_t solver(p4est, ghost, nodes, brick);
-  solver.set_properties(K_D, gamma, p_applied);
+  solver.set_properties(K_D, gamma);
+  solver.set_bc_wall(bc_wall_type, bc_wall_value);
 
   const char* filename = "viscous_fingering";
   char vtk_name[FILENAME_MAX];
 
-  double dt = 0;
+  double dt = 0, t = 0;
   for(int i=0; i<iter; i++) {
-    dt = solver.solve_one_step(phi, pressure, cfl, method);
-    if (mpi.rank() == 0) std::cout << "i = " << i << " dt = " << dt << std::endl;
+    dt = solver.solve_one_step(phi, pressure, method, cfl);
+    t += dt;
+    PetscPrintf(mpi.comm(), "i = %04d t = %1.5f dt = %1.5e\n", i, t, dt);
 
     // save vtk
     double *phi_p, *pressure_p;

@@ -14,46 +14,6 @@
 
 #include <src/CASL_math.h>
 
-namespace {
-#ifdef P4_TO_P8
-struct bc_wall_type:WallBC3D {
-  bc_wall_type(const my_p4est_brick_t* brick): brick(brick) {}
-  BoundaryConditionType operator()(double x, double, double) const {
-    if (fabs(x-brick->xyz_min[0]) < EPS || fabs(x-brick->xyz_max[0]) < EPS)
-      return DIRICHLET;
-    else
-      return NEUMANN;
-  }
-private:
-  const my_p4est_brick_t* brick;
-};
-
-struct bc_wall_value:CF_3 {
-  double operator()(double, double, double) const {
-    return 0;
-  }
-};
-#else
-struct bc_wall_type:WallBC2D {
-  bc_wall_type(const my_p4est_brick_t* brick): brick(brick) {}
-  BoundaryConditionType operator()(double x, double) const {
-    if (fabs(x-brick->xyz_min[0]) < EPS || fabs(x-brick->xyz_max[0]) < EPS)
-      return DIRICHLET;
-    else
-      return NEUMANN;
-  }
-private:
-  const my_p4est_brick_t* brick;
-};
-
-struct bc_wall_value:CF_2 {
-  double operator()(double, double) const {
-    return 0;
-  }
-};
-#endif
-}
-
 one_fluid_solver_t::one_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick)
   : p4est(p4est), ghost(ghost), nodes(nodes), brick(&brick)
 {
@@ -63,11 +23,16 @@ one_fluid_solver_t::one_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p
 
 one_fluid_solver_t::~one_fluid_solver_t() {}
 
-void one_fluid_solver_t::set_properties(cf_t &K_D, cf_t &gamma, cf_t &p_applied)
+void one_fluid_solver_t::set_properties(cf_t &K_D, cf_t &gamma)
 {
   this->K_D = &K_D;
   this->gamma = &gamma;
-  this->p_applied = &p_applied;
+}
+
+void one_fluid_solver_t::set_bc_wall(bc_wall_t &bc_wall_type, cf_t &bc_wall_value)
+{
+  this->bc_wall_type  = &bc_wall_type;
+  this->bc_wall_value = &bc_wall_value;
 }
 
 double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &pressure, double cfl)
@@ -183,7 +148,6 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
   VecDestroy(kappa);
 
   double dt = MIN(cfl*dmin/vn_max, 1.0/kvn_max);
-//  double dt = cfl*dmin/vn_max;
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   // advect the level-set and update the grid
@@ -356,28 +320,15 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, dou
   return dt;
 }
 
-
-double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl, const std::string& method)
+void one_fluid_solver_t::solve_pressure(Vec phi, Vec pressure)
 {
-  // advect the interface
-  double dt;
-  if (method == "semi_lagrangian")
-    dt = advect_interface_semi_lagrangian(phi, pressure, cfl);
-  else if (method == "godunov")
-    dt = advect_interface_godunov(phi, pressure, cfl);
-  else
-    throw std::invalid_argument("invalid advection method. Please choose either\n"
-                                "(a) semi_lagrangian, or\n"
-                                "(b) godunov.");
-
   // compute neighborhood information
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
   my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&neighbors);
-  ls.reinitialize_1st_order_time_2nd_order_space(phi);
-  ls.perturb_level_set_function(phi, EPS);
+  ls.reinitialize_2nd_order(phi);
 
   // compute the curvature. we store it in the boundary condition vector to save space
   Vec bc_val, bc_val_tmp, phi_x[P4EST_DIM];
@@ -402,9 +353,9 @@ double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl, c
     node_xyz_fr_n(n, p4est, nodes, x);
     double kappa = CLAMP(bc_val_p[n], -1.0/(2.0*diag_min), 1.0/(2.0*diag_min));
 #ifdef P4_TO_P8
-    bc_val_p[n] = (*p_applied)(x[0], x[1], x[2]) + kappa*(*gamma)(x[0], x[1], x[2]);
+    bc_val_p[n] = 1.0 + kappa*(*gamma)(x[0], x[1], x[2]);
 #else
-    bc_val_p[n] = (*p_applied)(x[0], x[1]) + kappa*(*gamma)(x[0], x[1]);
+    bc_val_p[n] = 1.0 + kappa*(*gamma)(x[0], x[1]);
 #endif
   }
   VecRestoreArray(bc_val, &bc_val_p);
@@ -413,9 +364,6 @@ double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl, c
   my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
   p_interface_value.set_input(bc_val, linear);
 
-  bc_wall_type p_wall_type(brick);
-  bc_wall_value p_wall_value;
-
 #ifdef P4_TO_P8
   BoundaryConditions3D bc;
 #else
@@ -423,8 +371,8 @@ double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl, c
 #endif
   bc.setInterfaceType(DIRICHLET);
   bc.setInterfaceValue(p_interface_value);
-  bc.setWallTypes(p_wall_type);
-  bc.setWallValues(p_wall_value);
+  bc.setWallTypes(*bc_wall_type);
+  bc.setWallValues(*bc_wall_value);
 
   // solve for the pressure
   Vec K;
@@ -443,6 +391,24 @@ double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl, c
   // destroy uneeded objects
   VecDestroy(bc_val);
   VecDestroy(K);
+}
+
+
+double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, const std::string& method, double cfl)
+{
+  // advect the interface
+  double dt;
+  if (method == "semi_lagrangian")
+    dt = advect_interface_semi_lagrangian(phi, pressure, cfl);
+  else if (method == "godunov")
+    dt = advect_interface_godunov(phi, pressure, cfl);
+  else
+    throw std::invalid_argument("invalid advection method. Valid options are:\n"
+                                "(a) semi_lagrangian, or\n"
+                                "(b) godunov.");
+
+  // solve for the pressure
+  solve_pressure(phi, pressure);
 
   return dt;
 }
