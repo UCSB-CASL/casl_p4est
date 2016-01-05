@@ -28,7 +28,7 @@
 using namespace std;
 
 int main(int argc, char** argv) {
-  
+
   // prepare parallel enviroment
   mpi_enviroment_t mpi;
   mpi.init(argc, argv);
@@ -40,6 +40,7 @@ int main(int argc, char** argv) {
   cmd.add_option("g", "surface tension");
   cmd.add_option("iter", "number of iterations");
   cmd.add_option("cfl", "the CFL number");
+  cmd.add_option("method", "choose advection method");
   cmd.parse(argc, argv);
 
   const static int lmin = cmd.get("lmin", 2);
@@ -47,6 +48,7 @@ int main(int argc, char** argv) {
   const static int iter = cmd.get("iter", 100);
   const static double g = cmd.get("g", 1e-5);
   const static double cfl = cmd.get("cfl", 0.8);
+  const static string method = cmd.get<string>("method", "semi_lagrangian");
 
   // stopwatch
   parStopWatch w;
@@ -139,19 +141,19 @@ int main(int argc, char** argv) {
   one_fluid_solver_t solver(p4est, ghost, nodes, brick);
   solver.set_properties(K_D, gamma, p_applied);
 
-  const char* filename = "viscous_fingering_semi";
+  const char* filename = "viscous_fingering";
   char vtk_name[FILENAME_MAX];
 
   double dt = 0;
   for(int i=0; i<iter; i++) {
-    dt = solver.solve_one_step(phi, pressure, cfl);
+    dt = solver.solve_one_step(phi, pressure, cfl, method);
     if (mpi.rank() == 0) std::cout << "i = " << i << " dt = " << dt << std::endl;
 
     // save vtk
     double *phi_p, *pressure_p;
     VecGetArray(phi, &phi_p);
     VecGetArray(pressure, &pressure_p);
-    sprintf(vtk_name, "%s_%dd.%04d", filename, P4EST_DIM, i);
+    sprintf(vtk_name, "%s_%s_%dd.%04d", filename, method.c_str(), P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            2, 0, vtk_name,

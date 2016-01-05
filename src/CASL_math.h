@@ -133,6 +133,17 @@ inline const T& MAX(const T& val1, const T& val2, const T& val3)
 }
 
 template <typename T>
+inline const T& CLAMP(const T& v, const T& vmin, const T& vmax)
+{
+  if (v > vmax)
+    return vmax;
+  else if (v < vmin)
+    return vmin;
+  else
+    return v;
+}
+
+template <typename T>
 inline bool ISNAN(T x)
 {
   return x != x;

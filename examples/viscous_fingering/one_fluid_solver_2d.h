@@ -34,7 +34,7 @@ public:
   ~one_fluid_solver_t();
 
   void set_properties(cf_t &K_D, cf_t &gamma, cf_t &p_applied);
-  double solve_one_step(Vec &phi, Vec &pressure, double cfl = 5);
+  double solve_one_step(Vec &phi, Vec &pressure, double cfl = 5, const std::string& method = "semi_lagrangian");
 };
 
 #endif // ONE_FLUID_SOLVER_2D_H

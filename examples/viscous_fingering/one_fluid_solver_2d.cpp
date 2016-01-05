@@ -12,6 +12,8 @@
 #include <src/my_p4est_macros.h>
 #endif
 
+#include <src/CASL_math.h>
+
 namespace {
 #ifdef P4_TO_P8
 struct bc_wall_type:WallBC3D {
@@ -355,11 +357,18 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, dou
 }
 
 
-double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl)
+double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl, const std::string& method)
 {
   // advect the interface
-  double dt = advect_interface_semi_lagrangian(phi, pressure, cfl);
-//  double dt = advect_interface_godunov(phi, pressure, cfl);
+  double dt;
+  if (method == "semi_lagrangian")
+    dt = advect_interface_semi_lagrangian(phi, pressure, cfl);
+  else if (method == "godunov")
+    dt = advect_interface_godunov(phi, pressure, cfl);
+  else
+    throw std::invalid_argument("invalid advection method. Please choose either\n"
+                                "(a) semi_lagrangian, or\n"
+                                "(b) godunov.");
 
   // compute neighborhood information
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
@@ -387,13 +396,15 @@ double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, double cfl)
   double *bc_val_p;
   VecGetArray(bc_val, &bc_val_p);
 
+  double x[P4EST_DIM];
+  double diag_min = p4est_diag_min(p4est);
   foreach_node(n, nodes) {
-    double x[P4EST_DIM];
     node_xyz_fr_n(n, p4est, nodes, x);
+    double kappa = CLAMP(bc_val_p[n], -1.0/(2.0*diag_min), 1.0/(2.0*diag_min));
 #ifdef P4_TO_P8
-    bc_val_p[n] = (*p_applied)(x[0], x[1], x[2]) + bc_val_p[n]*(*gamma)(x[0], x[1], x[2]);
+    bc_val_p[n] = (*p_applied)(x[0], x[1], x[2]) + kappa*(*gamma)(x[0], x[1], x[2]);
 #else
-    bc_val_p[n] = (*p_applied)(x[0], x[1]) + bc_val_p[n]*(*gamma)(x[0], x[1]);
+    bc_val_p[n] = (*p_applied)(x[0], x[1]) + kappa*(*gamma)(x[0], x[1]);
 #endif
   }
   VecRestoreArray(bc_val, &bc_val_p);
