@@ -3131,7 +3131,6 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
     double w_p00_mm, w_p00_pm;
     double w_0m0_mm, w_0m0_pm;
     double w_0p0_mm, w_0p0_pm;
-    double w_000, w_m00, w_p00, w_0m0, w_0p0;
 #ifdef P4_TO_P8
     double d_m00_0m=qnnn.d_m00_0m; double d_m00_0p=qnnn.d_m00_0p;
     double d_p00_0m=qnnn.d_p00_0m; double d_p00_0p=qnnn.d_p00_0p;
@@ -3152,7 +3151,6 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
     double w_00p_mm, w_00p_pm;
     double w_00m_mp, w_00m_pp;
     double w_00p_mp, w_00p_pp;
-    double w_00m, w_00p;
 #endif
 
     p4est_locidx_t node_m00_mm=qnnn.node_m00_mm; p4est_locidx_t node_m00_pm=qnnn.node_m00_pm;
@@ -3200,115 +3198,17 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 
     PetscInt node_000_g = petsc_gloidx[qnnn.node_000];
 
-    if(is_node_Wall(p4est, ni))
+    if(is_node_Wall(p4est, ni) &&
+   #ifdef P4_TO_P8
+       bc_->wallType(x_C,y_C,z_C) == DIRICHLET
+   #else
+       bc_->wallType(x_C,y_C) == DIRICHLET
+   #endif
+       )
     {
-#ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == DIRICHLET)
-#else
-      if(bc_->wallType(x_C,y_C)     == DIRICHLET)
-#endif
-      {
-        // FIXME: get rid of bc_strength alltogether!
-        ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
-        if (phi_p[n]<0.) matrix_has_nullspace = false;
-        continue;
-      }
-      // FIXME: make the neumann on the boundary second-order accurate
-#ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == NEUMANN)
-#else
-      if(bc_->wallType(x_C,y_C)     == NEUMANN)
-#endif
-      {
-        if (is_node_xpWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_m00 = d_m00_0m == 0 ? ( d_m00_m0==0 ? node_m00_mm : node_m00_pm )
-                                               : ( d_m00_m0==0 ? node_m00_mp : node_m00_pp );
-#else
-          p4est_locidx_t n_m00 = d_m00_m0 == 0 ? node_m00_mm : node_m00_pm;
-#endif
-          PetscInt node_m00_g  = petsc_gloidx[n_m00];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_m00_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-
-        if (is_node_xmWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_p00 = d_p00_0m == 0 ? ( d_p00_m0 == 0 ? node_p00_mm : node_p00_pm )
-                                               : ( d_p00_m0 == 0 ? node_p00_mp : node_p00_pp );
-#else
-          p4est_locidx_t n_p00 = d_p00_m0 == 0 ? node_p00_mm : node_p00_pm;
-#endif
-          PetscInt node_p00_g  = petsc_gloidx[n_p00];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_p00_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-
-        if (is_node_ypWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_0m0 = d_0m0_0m == 0 ? ( d_0m0_m0 == 0 ? node_0m0_mm : node_0m0_pm )
-                                               : ( d_0m0_m0 == 0 ? node_0m0_mp : node_0m0_pp );
-#else
-          p4est_locidx_t n_0m0 = d_0m0_m0 == 0 ? node_0m0_mm : node_0m0_pm;
-#endif
-          PetscInt node_0m0_g  = petsc_gloidx[n_0m0];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_0m0_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-        if (is_node_ymWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_0p0 = d_0p0_0m == 0 ? ( d_0p0_m0 == 0 ? node_0p0_mm : node_0p0_pm )
-                                               : ( d_0p0_m0 == 0 ? node_0p0_mp : node_0p0_pp );
-#else
-          p4est_locidx_t n_0p0 = d_0p0_m0 == 0 ? node_0p0_mm:node_0p0_pm;
-#endif
-          PetscInt node_0p0_g  = petsc_gloidx[n_0p0];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_0p0_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-#ifdef P4_TO_P8
-        if (is_node_zpWall(p4est, ni)){
-          p4est_locidx_t n_00m = d_00m_0m == 0 ? ( d_00m_m0 == 0 ? node_00m_mm : node_00m_pm )
-                                               : ( d_00m_m0 == 0 ? node_00m_mp : node_00m_pp );
-          PetscInt node_00m_g  = petsc_gloidx[n_00m];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_00m_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-
-        if (is_node_zmWall(p4est, ni)){
-          p4est_locidx_t n_00p = d_00p_0m == 0 ? ( d_00p_m0 == 0 ? node_00p_mm : node_00p_pm )
-                                               : ( d_00p_m0 == 0 ? node_00p_mp : node_00p_pp );
-          PetscInt node_00p_g  = petsc_gloidx[n_00p];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_00p_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-#endif
-      }
+      ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
+      if (phi_p[n]<0.) matrix_has_nullspace = false;
+      continue;
     } else {
       double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
       double mue_000, mue_p00, mue_m00, mue_0m0, mue_0p0;
@@ -3338,20 +3238,35 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 
       // TODO: This needs optimization
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_mmp = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_mpp = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
-      double P_pmp = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_ppp = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
+        Cube3 cube;
 #else
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min);
+        Cube2 cube;
 #endif
+        cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+        cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+        cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+        cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+#ifdef P4_TO_P8
+        cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+        cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+#endif
+
+#ifdef P4_TO_P8
+      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
+      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
+      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
+      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
+      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
+      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
+      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
+      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+#else
+      double P_mmm = phi_interp(cube.x0, cube.y0);
+      double P_mpm = phi_interp(cube.x0, cube.y1);
+      double P_pmm = phi_interp(cube.x1, cube.y0);
+      double P_ppm = phi_interp(cube.x1, cube.y1);
+#endif
+
 
 #ifdef P4_TO_P8
       bool is_one_positive = (P_mmm > 0 || P_pmm > 0 || P_mpm > 0 || P_ppm > 0 ||
@@ -3518,12 +3433,31 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         //---------------------------------------------------------------------
         // Shortley-Weller method, dimension by dimension
         //---------------------------------------------------------------------
-        w_m00 = -2.0*wi/d_m00/(d_m00+d_p00);
-        w_p00 = -2.0*wi/d_p00/(d_m00+d_p00);
-        w_0m0 = -2.0*wj/d_0m0/(d_0m0+d_0p0);
-        w_0p0 = -2.0*wj/d_0p0/(d_0m0+d_0p0);
-        w_00m = -2.0*wk/d_00m/(d_00m+d_00p);
-        w_00p = -2.0*wk/d_00p/(d_00m+d_00p);
+        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0, w_00m=0, w_00p=0;
+
+        if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
+        else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
+        else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
+
+        if(is_node_xpWall(p4est, ni))      w_m00 += -1.0/(d_m00*d_m00);
+        else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0/(d_p00*d_p00);
+        else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
+
+        if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0/(d_0p0*d_0p0);
+        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0/(d_0m0*d_0m0);
+        else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
+
+        if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0/(d_0m0*d_0m0);
+        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0/(d_0p0*d_0p0);
+        else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
+
+        if(is_node_zmWall(p4est, ni))      w_00p += -1.0/(d_00p*d_00p);
+        else if(is_node_zpWall(p4est, ni)) w_00m += -1.0/(d_00m*d_00m);
+        else                               w_00m += -2.0*wk/d_00m/(d_00m+d_00p);
+
+        if(is_node_zpWall(p4est, ni))      w_00m += -1.0/(d_00m*d_00m);
+        else if(is_node_zmWall(p4est, ni)) w_00p += -1.0/(d_00p*d_00p);
+        else                               w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
 
         if(!is_interface_m00) {
           w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
@@ -3595,10 +3529,23 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         //---------------------------------------------------------------------
         // Shortley-Weller method, dimension by dimension
         //---------------------------------------------------------------------
-        w_m00 = -2.0*wi/d_m00/(d_m00+d_p00);
-        w_p00 = -2.0*wi/d_p00/(d_m00+d_p00);
-        w_0m0 = -2.0*wj/d_0m0/(d_0m0+d_0p0);
-        w_0p0 = -2.0*wj/d_0p0/(d_0m0+d_0p0);
+        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
+
+        if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
+        else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
+        else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
+
+        if(is_node_xpWall(p4est, ni))      w_m00 += -1.0/(d_m00*d_m00);
+        else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0/(d_p00*d_p00);
+        else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
+
+        if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0/(d_0p0*d_0p0);
+        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0/(d_0m0*d_0m0);
+        else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
+
+        if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0/(d_0m0*d_0m0);
+        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0/(d_0p0*d_0p0);
+        else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
 
         //---------------------------------------------------------------------
         // addition to diagonal elements
@@ -3641,9 +3588,9 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         //---------------------------------------------------------------------
 
 #ifdef P4_TO_P8
-        w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
+        double w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
 #else
-        w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 );
+        double w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 );
 #endif
         w_m00 /= w_000; w_p00 /= w_000;
         w_0m0 /= w_000; w_0p0 /= w_000;
@@ -3978,71 +3925,20 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
     double d_00p_0m=qnnn.d_00p_0m; double d_00p_0p=qnnn.d_00p_0p;
 #endif
 
-    if(is_node_Wall(p4est, ni))
+    if(is_node_Wall(p4est, ni) &&
+   #ifdef P4_TO_P8
+       bc_->wallType(x_C,y_C,z_C) == DIRICHLET
+   #else
+       bc_->wallType(x_C,y_C) == DIRICHLET
+   #endif
+       )
     {
 #ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == DIRICHLET)
-      {
-        rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C);
+      rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C);
 #else
-      if(bc_->wallType(x_C,y_C)     == DIRICHLET)
-      {
-        rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C);
+      rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C);
 #endif
-        continue;
-      }
-#ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == NEUMANN)
-#else
-      if(bc_->wallType(x_C,y_C)     == NEUMANN)
-#endif
-      {
-        if (is_node_xpWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_m00;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_m00;
-#endif
-          continue;
-        }
-
-        if (is_node_xmWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_p00;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_p00;
-#endif
-          continue;
-        }
-
-        if (is_node_ypWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_0m0;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_0m0;
-#endif
-          continue;
-        }
-        if (is_node_ymWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_0p0;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_0p0;
-#endif
-          continue;
-        }
-#ifdef P4_TO_P8
-        if (is_node_zpWall(p4est, ni)){
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_00m;
-          continue;
-        }
-
-        if (is_node_zmWall(p4est, ni)){
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_00p;
-          continue;
-        }
-#endif
-      }
+      continue;
     } else {
       double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
       double mue_000, mue_p00, mue_m00, mue_0m0, mue_0p0;
@@ -4073,20 +3969,35 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
 
       // TODO: This needs optimization
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_mmp = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_mpp = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
-      double P_pmp = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_ppp = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
+        Cube3 cube;
 #else
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min);
+        Cube2 cube;
 #endif
+        cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+        cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+        cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+        cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+#ifdef P4_TO_P8
+        cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+        cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+#endif
+
+#ifdef P4_TO_P8
+      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
+      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
+      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
+      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
+      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
+      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
+      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
+      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+#else
+      double P_mmm = phi_interp(cube.x0, cube.y0);
+      double P_mpm = phi_interp(cube.x0, cube.y1);
+      double P_pmm = phi_interp(cube.x1, cube.y0);
+      double P_ppm = phi_interp(cube.x1, cube.y1);
+#endif
+
 
 #ifdef P4_TO_P8
       bool is_one_positive = (P_mmm > 0 || P_pmm > 0 || P_mpm > 0 || P_ppm > 0 ||
@@ -4303,13 +4214,42 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         //---------------------------------------------------------------------
         // Shortley-Weller method, dimension by dimension
         //---------------------------------------------------------------------
-        double w_m00 = -(mue_000 + mue_m00)*wi/d_m00/(d_m00+d_p00);
-        double w_p00 = -(mue_000 + mue_p00)*wi/d_p00/(d_m00+d_p00);
-        double w_0m0 = -(mue_000 + mue_0m0)*wj/d_0m0/(d_0m0+d_0p0);
-        double w_0p0 = -(mue_000 + mue_0p0)*wj/d_0p0/(d_0m0+d_0p0);
+        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
 #ifdef P4_TO_P8
-        double w_00m = -(mue_000 + mue_00m)*wk/d_00m/(d_00m+d_00p);
-        double w_00p = -(mue_000 + mue_00p)*wk/d_00p/(d_00m+d_00p);
+        double w_00m=0, w_00p=0;
+#endif
+        if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
+        else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
+        else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
+
+        if(is_node_xpWall(p4est, ni))      w_m00 += -1.0/(d_m00*d_m00);
+        else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0/(d_p00*d_p00);
+        else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
+
+        if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0/(d_0p0*d_0p0);
+        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0/(d_0m0*d_0m0);
+        else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
+
+        if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0/(d_0m0*d_0m0);
+        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0/(d_0p0*d_0p0);
+        else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
+
+#ifdef P4_TO_P8
+        if(is_node_zmWall(p4est, ni))      w_00p += -1.0/(d_00p*d_00p);
+        else if(is_node_zpWall(p4est, ni)) w_00m += -1.0/(d_00m*d_00m);
+        else                               w_00m += -2.0*wk/d_00m/(d_00m+d_00p);
+
+        if(is_node_zpWall(p4est, ni))      w_00m += -1.0/(d_00m*d_00m);
+        else if(is_node_zmWall(p4est, ni)) w_00p += -1.0/(d_00p*d_00p);
+        else                               w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
+#endif
+        w_m00 *= 0.5*(mue_000 + mue_m00);
+        w_p00 *= 0.5*(mue_000 + mue_p00);
+        w_0m0 *= 0.5*(mue_000 + mue_0m0);
+        w_0p0 *= 0.5*(mue_000 + mue_0p0);
+#ifdef P4_TO_P8
+        w_00m *= 0.5*(mue_000 + mue_00m);
+        w_00p *= 0.5*(mue_000 + mue_00p);
 #endif
 
         //---------------------------------------------------------------------
