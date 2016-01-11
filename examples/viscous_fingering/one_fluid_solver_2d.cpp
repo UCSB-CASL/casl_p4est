@@ -325,10 +325,12 @@ void one_fluid_solver_t::solve_pressure(Vec phi, Vec pressure)
   // compute neighborhood information
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
   my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
+  neighbors.init_neighbors();
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&neighbors);
   ls.reinitialize_2nd_order(phi);
+  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
   Vec bc_val, bc_val_tmp, phi_x[P4EST_DIM];
