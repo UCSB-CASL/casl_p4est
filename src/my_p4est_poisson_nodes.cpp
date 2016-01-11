@@ -370,7 +370,6 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
   ierr = KSPSetType(ksp, ksp_type); CHKERRXX(ierr);  
   if (use_nonzero_initial_guess)
     ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
-  ierr = KSPSetFromOptions(ksp); CHKERRXX(ierr);
 
   /*
    * Here we set the matrix, ksp, and pc. If the matrix is not changed during
@@ -451,7 +450,9 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
 
   // Solve the system
   ierr = KSPSetTolerances(ksp, 1e-14, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
-  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
+  ierr = KSPSetFromOptions(ksp); CHKERRXX(ierr);
+
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);  
   ierr = KSPSolve(ksp, rhs_, solution); CHKERRXX(ierr);
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
 
@@ -1800,7 +1801,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
 
 void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 {
-  preallocate_matrix();
+  preallocate_matrix(); 
 
   // register for logging purpose
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
