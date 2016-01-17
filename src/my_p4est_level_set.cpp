@@ -2189,12 +2189,22 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
     double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
 #endif
 
-    norm = MAX(norm,EPS);
-    nx[n] /= norm;
-    ny[n] /= norm;
+		if(norm>EPS)
+		{
+			nx[n] /= norm;
+			ny[n] /= norm;
 #ifdef P4_TO_P8
-    nz[n] /= norm;
+			nz[n] /= norm;
 #endif
+		}
+		else
+		{
+			nx[n] = 0;
+			ny[n] = 0;
+#ifdef P4_TO_P8
+			nz[n] = 0;
+#endif
+		}
   }
 
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
@@ -2704,8 +2714,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
     }
   }
 
-  if(order>=1) ierr = VecDestroy(b_qn_well_defined ); CHKERRXX(ierr);
-  if(order==2) ierr = VecDestroy(b_qnn_well_defined); CHKERRXX(ierr);
+  if(order>=1) { ierr = VecDestroy(b_qn_well_defined ); CHKERRXX(ierr); }
+  if(order==2) { ierr = VecDestroy(b_qnn_well_defined); CHKERRXX(ierr); }
 
   /* extrapolate q */
   Vec qxx, qyy;
@@ -2718,7 +2728,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
   ierr = VecCreateGhostNodes(p4est, nodes, &qzz); CHKERRXX(ierr);
 #endif
 
-  if(order>=1) ierr = VecGetArray(qn, &qn_p); CHKERRXX(ierr);
+  if(order>=1) { ierr = VecGetArray(qn, &qn_p); CHKERRXX(ierr); }
 
   for(int it=0; it<iterations; ++it)
   {
@@ -2839,16 +2849,6 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
         double qz = nz[n]>0 ? (q_p[n] - (*ngbd)[n].f_00m_linear(q_p)) / (*ngbd)[n].d_00m
                             : ((*ngbd)[n].f_00p_linear(q_p) - q_p[n]) / (*ngbd)[n].d_00p;
 #endif
-//        if(fabs(node_x_fr_n(n, p4est, nodes)-3.14)<0.1 && fabs(node_y_fr_n(n,p4est,nodes)-0)<0.1)
-        if(0 && fabs(node_x_fr_n(n, p4est, nodes)-0)<0.1 && fabs(node_y_fr_n(n,p4est,nodes)-0)<0.1)
-        {
-//          printf("node %d, ngbds: %d, %d\n", n, (*ngbd)[n].node_p00_mm, (*ngbd)[n].node_p00_pm);
-          printf("%.10e   %.5e   %.5e   %.5e\n", q_p[n], dt, qx, qy);
-          printf("%.5g    %.5g\n", nx[n], ny[n]);
-//          printf("%.5g    %.5g\n", (*ngbd)[n].f_p00_linear(q_p), q_p[n]);
-          printf("%.5e    %.5e    %.5e    %.5e\n", q_p[(*ngbd)[n].node_p00_mm], q_p[(*ngbd)[n].node_p00_pm],
-              (*ngbd)[n].d_p00_m0, (*ngbd)[n].d_p00_p0);
-        }
 
         /* second order derivatives */
         double qxx_m00 = (*ngbd)[n].f_m00_linear(qxx_p);

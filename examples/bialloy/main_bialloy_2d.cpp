@@ -614,6 +614,29 @@ int main (int argc, char* argv[])
 
     bas.one_step();
 
+    if(0)
+    {
+      MPI_Barrier(mpi->mpicomm);
+
+      p4est = bas.get_p4est();
+      nodes = bas.get_nodes();
+      phi = bas.get_phi();
+      const double *phi_p;
+      ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+      {
+        double xyz[P4EST_DIM];
+        node_xyz_fr_n(n, p4est, nodes, xyz);
+        if(fabs(xyz[0]-xmax)<EPS && phi_p[n]>0 && phi_p[n]<dx)
+        {
+          std::cout << "found it : (" << xyz[0] << ", " << xyz[1] << ") = " << phi_p[n] << std::endl;
+        }
+      }
+      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+      MPI_Barrier(mpi->mpicomm);
+    }
+
     tn += bas.get_dt();
 
     if(save_velocity)

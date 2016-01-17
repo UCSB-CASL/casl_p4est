@@ -733,6 +733,7 @@ void my_p4est_bialloy_t::solve_concentration()
 #endif
   }
 
+
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecRestoreArrayRead(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
@@ -772,8 +773,9 @@ void my_p4est_bialloy_t::solve_concentration()
 //  solver_c.set_is_matrix_computed(matrices_are_constructed);
 
   solver_c.solve(cl_np1);
-
-  ls.extend_Over_Interface_TVD(phi, cl_np1);
+	
+  ls.extend_Over_Interface_TVD_not_parallel(phi, cl_np1);
+//  ls.extend_Over_Interface_TVD(phi, cl_np1);
 
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
@@ -819,6 +821,8 @@ void my_p4est_bialloy_t::compute_dt()
   {
     ierr = VecRestoreArrayRead(v_interface_np1[dir], &v_interface_np1_p[dir]); CHKERRXX(ierr);
   }
+
+  ierr = PetscPrintf(p4est->mpicomm, "Max velo = %e\n", u_max); CHKERRXX(ierr);
 
   MPI_Allreduce(MPI_IN_PLACE, &u_max    , 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 //  MPI_Allreduce(MPI_IN_PLACE, &kappa_min, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);

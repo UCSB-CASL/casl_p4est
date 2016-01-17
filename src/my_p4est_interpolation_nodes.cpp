@@ -185,7 +185,6 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
 #endif
     }
 
-    std::cout << "Buuug " << x << ", " << y << ", found " << remote_matches.size() << " possible matches" << std::endl;
     std::ostringstream oss;
     oss << "[ERROR]: Point (" << x << "," << y <<
        #ifdef P4_TO_P8
