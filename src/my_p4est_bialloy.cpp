@@ -992,7 +992,7 @@ void my_p4est_bialloy_t::one_step()
 
 void my_p4est_bialloy_t::save_VTK(int iter)
 {
-#ifdef STAMPEDE
+#if defined(STAMPEDE) || defined(COMET)
   char *out_dir;
   out_dir = getenv("OUT_DIR");
 #else
