@@ -448,7 +448,11 @@ int main (int argc, char* argv[])
   int pz = cmd.get("pz", 0);
 #endif
 
+#ifdef P4_TO_P8
+  direction = cmd.get("direction", 'z');
+#else
   direction = cmd.get("direction", 'y');
+#endif
 
   cmd.print();
 

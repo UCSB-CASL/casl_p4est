@@ -3,7 +3,7 @@
 #ifdef P4_TO_P8
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_vtk.h>
-#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_level_set.h>
 #include <src/my_p8est_semi_lagrangian.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
@@ -1012,22 +1012,126 @@ void my_p4est_bialloy_t::save_VTK(int iter)
        #endif
          "." << iter;
 
+  /* if the domain is periodic, create a temporary tree without periodicity for visualization */
+  bool periodic = false;
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+    periodic = periodic || (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + 2*dir]!=0);
+
+  my_p4est_brick_t brick_vis;
+  p4est_connectivity_t *connectivity_vis = NULL;
+  p4est_t *p4est_vis;
+  p4est_ghost_t *ghost_vis;
+  p4est_nodes_t *nodes_vis;
+  Vec phi_vis;
+  Vec temperature_vis;
+  Vec cl_vis;
+  Vec normal_velocity_vis;
+
+  double *phi_vis_p;
+
+  if(periodic)
+  {
+    bool is_grid_changing = true;
+    splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est->user_pointer;
+    my_p4est_interpolation_nodes_t interp(ngbd);
+
+    double *v2c = p4est->connectivity->vertices;
+    p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+    p4est_topidx_t first_tree = 0, last_tree = p4est->trees->elem_count-1;
+    p4est_topidx_t first_vertex = 0, last_vertex = P4EST_CHILDREN - 1;
+
+    double xyz_min[P4EST_DIM];
+    double xyz_max[P4EST_DIM];
+    for (short i=0; i<3; i++)
+      xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
+    for (short i=0; i<3; i++)
+      xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
+
+#ifdef P4_TO_P8
+    connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], brick->nxyztrees[2], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], xyz_min[2], xyz_max[2], &brick_vis, 0, 0, 0);
+#else
+    connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], &brick_vis, 0, 0);
+#endif
+
+    p4est_vis = my_p4est_new(p4est->mpicomm, connectivity_vis, 0, NULL, NULL);
+    ghost_vis = my_p4est_ghost_new(p4est_vis, P4EST_CONNECT_FULL);
+    nodes_vis = my_p4est_nodes_new(p4est_vis, ghost_vis);
+    ierr = VecCreateGhostNodes(p4est_vis, nodes_vis, &phi_vis); CHKERRXX(ierr);
+
+    for(size_t n=0; n<nodes_vis->indep_nodes.elem_count; ++n)
+    {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est_vis, nodes_vis, xyz);
+      interp.add_point(n, xyz);
+    }
+    interp.set_input(phi, linear);
+    interp.interpolate(phi_vis);
+
+    while(is_grid_changing)
+    {
+      ierr = VecGetArray(phi_vis, &phi_vis_p); CHKERRXX(ierr);
+      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+      is_grid_changing = sp.refine_and_coarsen(p4est_vis, nodes_vis, phi_vis_p);
+      ierr = VecRestoreArray(phi_vis, &phi_vis_p); CHKERRXX(ierr);
+
+      if(is_grid_changing)
+      {
+        my_p4est_partition(p4est_vis, P4EST_TRUE, NULL);
+        p4est_ghost_destroy(ghost_vis); ghost_vis = my_p4est_ghost_new(p4est_vis, P4EST_CONNECT_FULL);
+        p4est_nodes_destroy(nodes_vis); nodes_vis = my_p4est_nodes_new(p4est_vis, ghost_vis);
+        ierr = VecDestroy(phi_vis); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est_vis, nodes_vis, &phi_vis); CHKERRXX(ierr);
+
+        interp.clear();
+        for(size_t n=0; n<nodes_vis->indep_nodes.elem_count; ++n)
+        {
+          double xyz[P4EST_DIM];
+          node_xyz_fr_n(n, p4est_vis, nodes_vis, xyz);
+          interp.add_point(n, xyz);
+        }
+        interp.set_input(phi, linear);
+        interp.interpolate(phi_vis);
+      }
+    }
+
+    ierr = VecDuplicate(phi_vis, &temperature_vis); CHKERRXX(ierr);
+    interp.set_input(temperature_n, linear);
+    interp.interpolate(temperature_vis);
+
+    ierr = VecDuplicate(phi_vis, &cl_vis); CHKERRXX(ierr);
+    interp.set_input(cl_n, linear);
+    interp.interpolate(cl_vis);
+
+    ierr = VecDuplicate(phi_vis, &normal_velocity_vis); CHKERRXX(ierr);
+    interp.set_input(normal_velocity_np1, linear);
+    interp.interpolate(normal_velocity_vis);
+  }
+  else
+  {
+    p4est_vis = p4est;
+    ghost_vis = ghost;
+    nodes_vis = nodes;
+    phi_vis = phi;
+    temperature_vis = temperature_n;
+    cl_vis = cl_n;
+    normal_velocity_vis = normal_velocity_np1;
+  }
 
   double *phi_p, *temperature_p, *cl_p, *normal_velocity_np1_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(temperature_n, &temperature_p); CHKERRXX(ierr);
-  ierr = VecGetArray(cl_n, &cl_p); CHKERRXX(ierr);
-  ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_vis, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(temperature_vis, &temperature_p); CHKERRXX(ierr);
+  ierr = VecGetArray(cl_vis, &cl_p); CHKERRXX(ierr);
+  ierr = VecGetArray(normal_velocity_vis, &normal_velocity_np1_p); CHKERRXX(ierr);
 
   /* save the size of the leaves */
   Vec leaf_level;
-  ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
+  ierr = VecCreateGhostCells(p4est_vis, ghost_vis, &leaf_level); CHKERRXX(ierr);
   double *l_p;
   ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
 
-  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est_vis->first_local_tree; tree_idx <= p4est_vis->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_vis->trees, tree_idx);
     for( size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
       const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
@@ -1035,16 +1139,16 @@ void my_p4est_bialloy_t::save_VTK(int iter)
     }
   }
 
-  for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
+  for(size_t q=0; q<ghost_vis->ghosts.elem_count; ++q)
   {
-    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
-    l_p[p4est->local_num_quadrants+q] = quad->level;
+    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost_vis->ghosts, q);
+    l_p[p4est_vis->local_num_quadrants+q] = quad->level;
   }
 
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  for(size_t n=0; n<nodes_vis->indep_nodes.elem_count; ++n)
     normal_velocity_np1_p[n] /= scaling;
 
-  my_p4est_vtk_write_all(  p4est, nodes, NULL,
+  my_p4est_vtk_write_all(  p4est_vis, nodes_vis, NULL,
                            P4EST_TRUE, P4EST_TRUE,
                            4, 1, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_p,
@@ -1053,16 +1157,31 @@ void my_p4est_bialloy_t::save_VTK(int iter)
                            VTK_POINT_DATA, "un", normal_velocity_np1_p,
                            VTK_CELL_DATA , "leaf_level", l_p);
 
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    normal_velocity_np1_p[n] *= scaling;
+  if(!periodic)
+  {
+    for(size_t n=0; n<nodes_vis->indep_nodes.elem_count; ++n)
+      normal_velocity_np1_p[n] *= scaling;
+  }
 
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(temperature_n, &temperature_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(cl_n, &cl_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_vis, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(temperature_vis, &temperature_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(cl_vis, &cl_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(normal_velocity_vis, &normal_velocity_np1_p); CHKERRXX(ierr);
+
+  if(periodic)
+  {
+    ierr = VecDestroy(normal_velocity_vis); CHKERRXX(ierr);
+    ierr = VecDestroy(cl_vis); CHKERRXX(ierr);
+    ierr = VecDestroy(temperature_vis); CHKERRXX(ierr);
+    ierr = VecDestroy(phi_vis); CHKERRXX(ierr);
+    p4est_nodes_destroy(nodes_vis);
+    p4est_ghost_destroy(ghost_vis);
+    p4est_destroy(p4est_vis);
+    my_p4est_brick_destroy(connectivity_vis, &brick_vis);
+  }
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
 }
