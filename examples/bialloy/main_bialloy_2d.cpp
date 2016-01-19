@@ -678,7 +678,7 @@ int main (int argc, char* argv[])
     }
 
     iteration++;
-//    if(iteration==1) break;
+//    if(iteration==264) break;
   }
 
   w1.stop(); w1.read_duration();

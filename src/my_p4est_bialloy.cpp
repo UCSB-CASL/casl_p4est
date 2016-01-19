@@ -773,9 +773,8 @@ void my_p4est_bialloy_t::solve_concentration()
 //  solver_c.set_is_matrix_computed(matrices_are_constructed);
 
   solver_c.solve(cl_np1);
-	
-  ls.extend_Over_Interface_TVD_not_parallel(phi, cl_np1);
-//  ls.extend_Over_Interface_TVD(phi, cl_np1);
+
+  ls.extend_Over_Interface_TVD(phi, cl_np1);
 
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
@@ -946,9 +945,7 @@ void my_p4est_bialloy_t::one_step()
     ierr = VecGhostRestoreLocalForm(err                , &out); CHKERRXX(ierr);
 
     solve_temperature();
-
     solve_concentration();
-
     compute_normal_velocity();
 
     ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);

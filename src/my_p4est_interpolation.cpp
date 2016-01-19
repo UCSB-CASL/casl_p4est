@@ -268,13 +268,17 @@ void my_p4est_interpolation_t::process_incoming_query(MPI_Status& status, Interp
 
   std::vector<remote_buffer_t>& buff = send_buffer[status.MPI_SOURCE];
 
+  bool periodic[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+    periodic[dir] = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + 2*dir]!=0);
+
   for (int i = 0; i<vec_size; i += P4EST_DIM) {
     // clip to bounding box
     for (short j = 0; j<P4EST_DIM; j++){
       xyz_tmp[j] = xyz[i+j];
       xyz_clip[j] = xyz[i+j];
-      if (xyz[i+j] > xyz_max[j]) xyz_clip[j] = xyz_max[j];
-      if (xyz[i+j] < xyz_min[j]) xyz_clip[j] = xyz_min[j];
+      if (xyz[i+j] > xyz_max[j]) xyz_clip[j] = periodic[j] ? xyz_clip[j]-(xyz_max[j]-xyz_min[j]) : xyz_max[j];
+      if (xyz[i+j] < xyz_min[j]) xyz_clip[j] = periodic[j] ? xyz_clip[j]+(xyz_max[j]-xyz_min[j]) : xyz_min[j];
     }
 
     p4est_quadrant_t best_match;

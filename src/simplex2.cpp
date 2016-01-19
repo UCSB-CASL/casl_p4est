@@ -78,6 +78,7 @@ double Simplex2::integral( double f0, double f1, double f2,
       tmp=x0; x0=x1; x1=tmp;
       tmp=y0; y0=y1; y1=tmp;
       tmp=p0; p0=p1; p1=tmp;
+      tmp=f0; f0=f1; f1=tmp;
     }
 
     if(p0>p2)
@@ -85,6 +86,7 @@ double Simplex2::integral( double f0, double f1, double f2,
       tmp=x0; x0=x2; x2=tmp;
       tmp=y0; y0=y2; y2=tmp;
       tmp=p0; p0=p2; p2=tmp;
+      tmp=f0; f0=f2; f2=tmp;
     }
 
     if(p1>p2)
@@ -92,6 +94,7 @@ double Simplex2::integral( double f0, double f1, double f2,
       tmp=x1; x1=x2; x2=tmp;
       tmp=y1; y1=y2; y2=tmp;
       tmp=p1; p1=p2; p2=tmp;
+      tmp=f1; f1=f2; f2=tmp;
     }
 
     //---------------------------------------------------------------------
