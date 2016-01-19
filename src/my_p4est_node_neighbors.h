@@ -150,6 +150,7 @@ public:
   void init_neighbors();
   void clear_neighbors();
   void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_);
+  void update(p4est_t* p4est, p4est_ghost_t* ghost, p4est_nodes_t* nodes);
   
   inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
 #ifdef CASL_THROWS

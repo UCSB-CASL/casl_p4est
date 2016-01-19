@@ -88,6 +88,31 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
   }
 }
 
+void my_p4est_node_neighbors_t::update(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes)
+{
+  hierarchy->update(p4est, ghost);
+
+  this->p4est = p4est;
+  this->ghost = ghost;
+  this->nodes = nodes;
+
+  if (is_initialized){
+    clear_neighbors();
+    init_neighbors();
+  }
+
+  layer_nodes.clear();
+  local_nodes.clear();
+
+  layer_nodes.reserve(nodes->num_owned_shared);
+  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
+
+  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i){
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
+    ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
+  }
+}
+
 bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
 {
   p4est_connectivity_t *connectivity = p4est->connectivity;
