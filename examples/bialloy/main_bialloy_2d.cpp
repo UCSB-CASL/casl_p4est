@@ -86,24 +86,23 @@ double zmax = 1;
 double box_size = 4e-2;//4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
 
-/* default parameters for NiCu */
-double rho                  = 8.88e-3;        /* kg.cm-3    */
-double heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
-double ml                   =-357;            /* K / at frac. - liquidous slope */
-double kp                   = 0.86;           /* partition coefficient */
-double c0                   = 0.40831;        /* at frac.    */
-double Tm                   = 1728;           /* K           */
-double thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
-double Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
-double Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
-double G                    = 4e2;            /* k.cm-1      */
-double V                    = 0.01;           /* cm.s-1      */
-double latent_heat          = 2350;           /* J.cm-3      */
-double lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+double rho;                  /* density                                    - kg.cm-3      */
+double heat_capacity;        /* c, heat capacity                           - J.kg-1.K-1   */
+double ml;                   /* liquidus slope                             - K / at frac. */
+double kp;                   /* partition coefficient                                     */
+double c0;                   /* initial concentration                      - at frac.     */
+double Tm;                   /* melting temperature                        - K            */
+double Dl;                   /* liquid concentration diffusion coefficient - cm2.s-1      */
+double Ds;                   /* solid concentration diffusion coefficient  - cm2.s-1      */
+double G;                    /* thermal gradient                           - k.cm-1       */
+double V;                    /* cooling velocity                           - cm.s-1       */
+double latent_heat;          /* L, latent heat                             - J.cm-3       */
+double thermal_conductivity; /* k, thermal conductivity                    - W.cm-1.K-1   */
+double lambda;               /* thermal diffusivity                        - cm2.s-1      */
 
-double eps_c                = 2.7207e-5;
-double eps_v                = 2.27e-2;
-double eps_anisotropy       = 0.05;
+double eps_c;                /* curvature undercooling coefficient         - cm.K         */
+double eps_v;                /* kinetic undercooling coefficient           - s.K.cm-1     */
+double eps_anisotropy;       /* anisotropy coefficient                                    */
 
 //double t_final = 1000*ny/V;
 double t_final = 10000;
@@ -113,24 +112,42 @@ void set_alloy_parameters()
   switch(alloy_type)
   {
   case 0:
-    /* those are the default parameters */
+    /* those are the default parameters for NiCu */
+    rho                  = 8.88e-3;        /* kg.cm-3    */
+    heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
+    ml                   =-357;            /* K / at frac. - liquidous slope */
+    kp                   = 0.86;           /* partition coefficient */
+    c0                   = 0.40831;        /* at frac.    */
+    Tm                   = 1728;           /* K           */
+    Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
+    Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
+    G                    = 4e2;            /* k.cm-1      */
+    V                    = 0.01;           /* cm.s-1      */
+    latent_heat          = 2350;           /* J.cm-3      */
+    thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
+    lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+    eps_c                = 2.7207e-5;
+    eps_v                = 2.27e-2;
+    eps_anisotropy       = 0.05;
     break;
   case 1:
+    /* experimental AlCu parameters */
     rho            = 2.8e-3;
     heat_capacity  = 1221.6;
     ml             = -652.9;
     kp             = 0.15;
     c0             = 0.6;
     Tm             = 933;
-    Dl             = 1e-5;
+    Dl             = 1e-4;
+    Ds             = 1e-13;
     G              = 50;
     V              = 0.01; /* 1um = 10-4cm */
     latent_heat    = 898.8;
+    lambda         = 0.84;
+    thermal_conductivity =  lambda*rho*heat_capacity;
     eps_c          = 2.7207e-5;
     eps_v          = 2.27e-2;
     eps_anisotropy = 0.05;
-    lambda         = 0.84;
-    thermal_conductivity =  lambda*rho*heat_capacity;
     break;
   }
 }
@@ -428,6 +445,9 @@ int main (int argc, char* argv[])
   cmd.add_option("box_size", "set box_size");
   cmd.add_option("alloy", "choose the type of alloy. Default is 0.\n  0 - NiCu\n  1 - AlCu");
   cmd.add_option("direction", "direction of the crystal growth x/y");
+  cmd.add_option("Dl", "set the concentration diffusion coefficient in the liquid phase");
+  cmd.add_option("eps_c", "set the curvature undercooling coefficient");
+  cmd.add_option("eps_v", "set the kinetic undercooling coefficient");
   cmd.parse(argc, argv);
 
   alloy_type = cmd.get("alloy", alloy_type);
@@ -475,6 +495,9 @@ int main (int argc, char* argv[])
   G = cmd.get("G", G);
   V = cmd.get("V", V);
   box_size = cmd.get("box_size", box_size);
+  Dl = cmd.get("Dl", Dl);
+  eps_c = cmd.get("eps_c", eps_c);
+  eps_v = cmd.get("eps_v", eps_v);
 
   double latent_heat_orig = latent_heat;
   double G_orig = G;
