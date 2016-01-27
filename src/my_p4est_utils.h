@@ -369,6 +369,8 @@ inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
+void dx_dy_dz(const p4est_t *p4est, double *dxyz);
+
 inline double node_x_fr_n(const p4est_indep_t *ni){
   return ni->x == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->x)/static_cast<double>(P4EST_ROOT_LEN);
 }

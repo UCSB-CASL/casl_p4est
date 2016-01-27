@@ -2,11 +2,13 @@
 #include "my_p8est_utils.h"
 #include "my_p8est_tools.h"
 #include <p8est_connectivity.h>
+#include <src/my_p8est_refine_coarsen.h>
 #include "cube3.h"
 #else
 #include "my_p4est_utils.h"
 #include "my_p4est_tools.h"
 #include <p4est_connectivity.h>
+#include <src/my_p4est_refine_coarsen.h>
 #include "cube2.h"
 #endif
 
@@ -528,6 +530,20 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to)
   ierr = VecGhostRestoreLocalForm(to, &to_l);
 
   return ierr;
+}
+
+void dx_dy_dz(const p4est_t *p4est, double *dxyz)
+{
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double *v = p4est->connectivity->vertices;
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
+  }
 }
 
 double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)
