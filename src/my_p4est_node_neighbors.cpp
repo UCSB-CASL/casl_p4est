@@ -2200,6 +2200,9 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
   #endif
     }
 
+    PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+    PetscSynchronizedFlush(p4est->mpicomm, stdout);
+
     foreach_dimension(dim)
       ierr = VecGhostUpdateEnd(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 

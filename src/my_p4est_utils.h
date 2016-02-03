@@ -70,7 +70,7 @@ enum interpolation_method{
 class CF_1
 {
 public:
-  double lip;
+  double lip, t;
   virtual double operator()(double x) const=0 ;
   virtual ~CF_1() {}
 };
@@ -79,7 +79,7 @@ public:
 class CF_2
 {
 public:
-  double lip;
+  double lip, t;
   virtual double operator()(double x, double y) const=0 ;
   virtual ~CF_2() {}
 };
@@ -87,7 +87,7 @@ public:
 class CF_3
 {
 public:
-  double lip;
+  double lip, t;
   virtual double operator()(double x, double y,double z) const=0 ;
   virtual ~CF_3() {}
 };

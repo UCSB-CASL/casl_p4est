@@ -960,18 +960,20 @@ void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec no
   double *normals_p[P4EST_DIM];
   foreach_dimension(dim) VecGetArray(normals[dim], &normals_p[dim]);
 
-  foreach_node(n, neighbors.get_nodes()) {
-#ifdef P4_TO_P8
-    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]) + SQR(normals_p[2][n]));
-#else
-    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]));
-#endif
+//  foreach_node(n, neighbors.get_nodes()) {
+////  for(size_t n = 0; n<neighbors.get_nodes()->indep_nodes.elem_count; n++) {
+//#ifdef P4_TO_P8
+//    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]) + SQR(normals_p[2][n]));
+//#else
+//    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]));
+//#endif
 
-    if (abs < EPS)
-      foreach_dimension(dim) normals_p[dim][n] = 0;
-    else
-      foreach_dimension(dim) normals_p[dim][n] /= abs;
-  }
+//    if (abs < EPS) {
+//      foreach_dimension(dim) normals_p[dim][n] = 0;
+//    } else {
+//      foreach_dimension(dim) normals_p[dim][n] /= abs;
+//    }
+//  }
 
   foreach_dimension(dim) VecRestoreArray(normals[dim], &normals_p[dim]);
 }

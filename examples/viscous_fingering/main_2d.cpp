@@ -27,35 +27,161 @@
 
 using namespace std;
 
+#ifdef P4_TO_P8
+#error "Not fully implemented!"
+typedef CF_3 cf_t;
+typedef WallBC3D wall_bc_t;
+#else
+typedef CF_2 cf_t;
+typedef WallBC2D wall_bc_t;
+#endif
+
+static struct {
+  int lmin, lmax, iter;
+  double lip, Ca, cfl, dts, dtmax;
+  double xmin[3], xmax[3];
+  int ntr[3];
+  string method, test;
+
+  cf_t *interface, *bc_wall_value, *K_D, *gamma;
+  wall_bc_t *bc_wall_type;
+} params;
+
+void set_parameters(int argc, char **argv) {
+  // parse input parameters
+  cmdParser cmd;
+  cmd.add_option("lmin", "min level");
+  cmd.add_option("lmax", "max level");
+  cmd.add_option("lip", "Lipschitz constant used for grid generation");
+  cmd.add_option("Ca", "the capillary number");
+  cmd.add_option("iter", "number of iterations");
+  cmd.add_option("cfl", "the CFL number");
+  cmd.add_option("dts", "dt for saving vtk files");
+  cmd.add_option("dtmax", "max dt to use when solving");
+  cmd.add_option("method", "choose advection method");
+  cmd.add_option("test", "Which test to run?, Options are:"
+                         "circle\n"
+                         "plane\n"
+                         "FastShelley04_Fig12\n");
+
+  cmd.parse(argc, argv);
+
+  params.test = cmd.get<string>("test", "FastShelley04_Fig12");
+
+  // set default values
+  params.ntr[0]  = params.ntr[1]  = params.ntr[2]  =  1;
+  params.xmin[0] = params.xmin[1] = params.xmin[2] = -1;
+  params.xmax[0] = params.xmax[1] = params.xmax[2] =  1;
+
+  if (params.test == "circle") {
+    // set interface
+#ifdef P4_TO_P8
+#else
+    static struct:cf_t{
+      double operator()(double, double) const { return 1.0/params.Ca; }
+    } gamma;
+
+    static struct:cf_t{
+      double operator()(double, double) const { return 1.0; }
+    } K_D;
+
+    static struct:cf_t {
+      double operator()(double x, double y) const {
+        return 0.25 - sqrt(SQR(x)+SQR(y));
+      }
+    } interface; interface.lip = params.lip;
+
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
+    } bc_wall_type;
+
+    static struct:cf_t{
+      double operator()(double, double) const { return 0; }
+    } bc_wall_value;
+#endif
+
+    params.gamma         = &gamma;
+    params.K_D           = &K_D;
+    params.interface     = &interface;
+    params.bc_wall_type  = &bc_wall_type;
+    params.bc_wall_value = &bc_wall_value;
+    params.dtmax         = 5e-3;
+    params.dts           = 1e-1;
+
+  } else if (params.test == "FastShelley04_Fig12") {
+
+    params.xmin[0] = params.xmin[1] = params.xmin[2] = -10;
+    params.xmax[0] = params.xmax[1] = params.xmax[2] =  10;
+
+#ifdef P4_TO_P8
+#else
+    static struct:cf_t{
+      double operator()(double, double) const { return 1.0/params.Ca; }
+    } gamma;
+
+    static struct:cf_t{
+      double operator()(double, double) const { return 1.0; }
+    } K_D;
+
+    static struct:cf_t{
+      double operator()(double x, double y) const  {
+        double theta = atan2(y,x);
+        double r     = sqrt(SQR(x)+SQR(y));
+
+        return 1.0+0.1*(cos(3*theta)+sin(2*theta)) - r;
+      }
+    } interface; interface.lip = params.lip;
+
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+    } bc_wall_type;
+
+    static struct:cf_t{
+      double operator()(double x, double y) const {
+        double theta = atan2(y,x);
+        double r     = sqrt(SQR(x)+SQR(y));
+        double ur    = -(1+t)/r;
+
+        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+          return x > 0 ? ur*cos(theta):-ur*cos(theta);
+        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+          return y > 0 ? ur*sin(theta):-ur*sin(theta);
+        else
+          return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+#endif
+
+    // set parameters specific to this test
+    params.gamma         = &gamma;
+    params.K_D           = &K_D;
+    params.interface     = &interface;
+    params.bc_wall_type  = &bc_wall_type;
+    params.bc_wall_value = &bc_wall_value;
+    params.dtmax         = 5e-3;
+    params.dts           = 1e-1;
+
+  } else {
+    throw std::invalid_argument("Unknown test");
+  }
+
+  // overwrite default values from stdin
+  params.lmin   = cmd.get("lmin", 5);
+  params.lmax   = cmd.get("lmax", 10);
+  params.iter   = cmd.get("iter", INT_MAX);
+  params.lip    = cmd.get("lip", 1.2);
+  params.Ca     = cmd.get("Ca", 250);
+  params.cfl    = cmd.get("cfl", 5.0);
+  params.dts    = cmd.get("dts", params.dts);
+  params.dtmax  = cmd.get("dtmax", params.dtmax);
+  params.method = cmd.get<string>("method", "semi_lagrangian");
+}
+
 int main(int argc, char** argv) {
 
   // prepare parallel enviroment
   mpi_enviroment_t mpi;
   mpi.init(argc, argv);
-
-  // get input parameters
-  cmdParser cmd;
-  cmd.add_option("lmin", "min level");
-  cmd.add_option("lmax", "max level");
-  cmd.add_option("lip", "Lipschitz constant used for grid generation");
-  cmd.add_option("g", "surface tension");
-  cmd.add_option("iter", "number of iterations");
-  cmd.add_option("cfl", "the CFL number");
-  cmd.add_option("method", "choose advection method");
-  cmd.add_option("test", "Which test to run? Options are:"
-                         "a) circle"
-                         "b) plane");
-
-  cmd.parse(argc, argv);
-
-  const static int lmin = cmd.get("lmin", 3);
-  const static int lmax = cmd.get("lmax", 10);
-  const static int iter = cmd.get("iter", 100);
-  const static double lip = cmd.get("lip", 1.2);
-  const static double g = cmd.get("g", 1e-5);
-  const static double cfl = cmd.get("cfl", 5.0);
-  const static string method = cmd.get<string>("method", "semi_lagrangian");
-  const static string test   = cmd.get<string>("test", "circle");
 
   // stopwatch
   parStopWatch w;
@@ -68,68 +194,16 @@ int main(int argc, char** argv) {
   p4est_connectivity_t* conn;
   my_p4est_brick_t      brick;
 
-  // domain size information
-  static int n_tr [3]    = {10, 1, 1};
-  static double xmin [3] = {0, -0.5, -0.5};
-  static double xmax [3] = {10, 0.5,  0.5};
+  // setup the parameters
+  set_parameters(argc, argv);
 
-  if (test == "circle") {
-    n_tr[0] = 1;
-    xmin[0] = -0.5;
-    xmax[0] =  0.5;
-  } else if (test == "plane") {
-    // default values
-  } else {
-    throw std::invalid_argument("Unknown test");
-  }
-
-  conn = my_p4est_brick_new(n_tr, xmin, xmax, &brick);
+  conn = my_p4est_brick_new(params.ntr, params.xmin, params.xmax, &brick);
 
   // create the forest
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
   // refine based on distance to a level-set
-#ifdef P4_TO_P8
-  typedef CF_3 cf_t;
-  typedef WallBC3D wall_bc_t;
-#else
-  typedef CF_2 cf_t;
-  typedef WallBC2D wall_bc_t;
-#endif
-
-#ifdef P4_TO_P8
-  struct:cf_t{
-    double operator()(double x, double, double) const {
-      return 0.05-x;
-    }
-  } interface_palne;
-
-  struct:cf_t{
-    double operator()(double x, double y, double z) const {
-      return return 0.01 - sqrt(SQR(x)+SQR(y)+SQR(z));
-    }
-  } interface_circle;
-#else
-  struct:cf_t{
-    double operator()(double x, double y) const {
-      return 0.01 - sqrt(SQR(x)+SQR(y));
-    }
-  } interface_circle;
-
-  struct:cf_t{
-    double operator()(double x, double) const {
-      return 0.05 - x;
-    }
-  } interface_plane;
-#endif
-
-  cf_t *interface = NULL;
-  if (test == "circle")
-    interface = &interface_circle;
-  else if (test == "plane")
-    interface = &interface_plane;
-
-  splitting_criteria_cf_t sp(lmin, lmax, interface, lip);
+  splitting_criteria_cf_t sp(params.lmin, params.lmax, params.interface, params.lip);
   p4est->user_pointer = &sp;
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
@@ -146,85 +220,25 @@ int main(int argc, char** argv) {
   Vec phi, pressure;
   VecCreateGhostNodes(p4est, nodes, &phi);
   VecCreateGhostNodes(p4est, nodes, &pressure);
-  sample_cf_on_nodes(p4est, nodes, *interface, phi);
+  sample_cf_on_nodes(p4est, nodes, *params.interface, phi);
 
   // set up the solver
-#ifdef P4_TO_P8
-  struct:cf_t{
-    double operator()(double, double, double) const { return 1; }
-  } K_D;
-
-  struct:cf_t{
-    double operator()(double, double, double) const { return g; }
-  } gamma;
-
-  struct:wall_bc_t {
-    BoundaryConditionType operator()(double x, double, double) const {
-      if (fabs(x-xmin[0]) < EPS || fabs(x-xmax[0]) < EPS)
-        return DIRICHLET;
-      else
-        return NEUMANN;
-    }
-  } bc_wall_type_plane;
-
-  struct:wall_bc_t {
-    BoundaryConditionType operator()(double, double, double) const {
-      return DIRICHLET;
-    }
-  } bc_wall_type_circle;
-
-  struct:CF_3 {
-    double operator()(double, double, double) const {
-      return 0;
-    }
-  } bc_wall_value;
-#else
-  struct:cf_t{
-    double operator()(double, double) const { return 1; }
-  } K_D;
-
-  struct:cf_t{
-    double operator()(double, double) const { return g; }
-  } gamma;
-
-  struct:wall_bc_t {
-    BoundaryConditionType operator()(double x, double) const {
-      if (fabs(x-xmin[0]) < EPS || fabs(x-xmax[0]) < EPS)
-        return DIRICHLET;
-      else
-        return NEUMANN;
-    }
-  } bc_wall_type_plane;
-
-  struct:wall_bc_t {
-    BoundaryConditionType operator()(double, double) const {
-      return DIRICHLET;
-    }
-  } bc_wall_type_circle;
-
-  struct:cf_t {
-    double operator()(double, double) const {
-      return 0;
-    }
-  } bc_wall_value;
-#endif
-
-  wall_bc_t *bc_wall_type = NULL;
-  if (test == "circle")
-    bc_wall_type = &bc_wall_type_circle;
-  else if (test == "plane")
-    bc_wall_type = &bc_wall_type_plane;
-
   one_fluid_solver_t solver(p4est, ghost, nodes, brick);
-  solver.set_properties(K_D, gamma);
-  solver.set_bc_wall(*bc_wall_type, bc_wall_value);
+  solver.set_properties(*params.K_D, *params.gamma);
+  solver.set_bc_wall(*params.bc_wall_type, *params.bc_wall_value);
 
-  const char* filename = "viscous_fingering";
+  const char* filename = params.test.c_str();
   char vtk_name[FILENAME_MAX];
 
+  PetscSynchronizedPrintf(mpi.comm(), "Hi from process %d @ line %d \n",mpi.rank(), __LINE__);
+  PetscSynchronizedFlush(mpi.comm(), stdout);
+
   double dt = 0, t = 0;
-  for(int i=0; i<iter; i++) {
-    dt = solver.solve_one_step(phi, pressure, method, cfl);
+  for(int i=0; i<params.iter; i++) {
+    PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+    PetscSynchronizedFlush(p4est->mpicomm, stdout);
+
+    dt = solver.solve_one_step(t, phi, pressure, params.method, params.cfl, params.dtmax);
     t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -236,7 +250,7 @@ int main(int argc, char** argv) {
     double *phi_p, *pressure_p;
     VecGetArray(phi, &phi_p);
     VecGetArray(pressure, &pressure_p);
-    sprintf(vtk_name, "%s_%s_%dd.%04d", filename, method.c_str(), P4EST_DIM, i);
+    sprintf(vtk_name, "%s_%s_%dd.%04d", filename, params.method.c_str(), P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            2, 0, vtk_name,

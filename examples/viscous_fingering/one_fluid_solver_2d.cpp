@@ -35,7 +35,7 @@ void one_fluid_solver_t::set_bc_wall(bc_wall_t &bc_wall_type, cf_t &bc_wall_valu
   this->bc_wall_value = &bc_wall_value;
 }
 
-double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &pressure, double cfl)
+double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &pressure, double cfl, double dtmax)
 {
   // compute neighborhood information
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
@@ -96,6 +96,9 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
   foreach_dimension(dim) VecRestoreArray(vx_tmp[dim], &vx_p[dim]);
   VecRestoreArray(pressure, &pressure_p);
 
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
+
   // constant extend the velocities from interface to the entire domain
   my_p4est_level_set_t ls(&neighbors);
   Vec vx[P4EST_DIM];
@@ -105,23 +108,42 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
     VecDestroy(vx_tmp[dim]);
   }
 
+
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
+
   // compute curvature
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
   VecDuplicate(phi, &kappa);
   VecDuplicate(phi, &kappa_tmp);
   foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
-  compute_normals(neighbors, phi, normal);
-  compute_mean_curvature(neighbors, normal, kappa_tmp);
+
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
+
+//  compute_normals(neighbors, phi, normal);
+
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
+
+//  compute_mean_curvature(neighbors, normal, kappa_tmp);
+
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
+
   foreach_dimension(dim) VecDestroy(normal[dim]);
   ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
   VecDestroy(kappa_tmp);
+
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
   // compute dt based on cfl number and curavture
   double dxyz[P4EST_DIM];
   p4est_dxyz_min(p4est, dxyz);
 #ifdef P4_TO_P8
   double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]));
-  double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
+  double dmin = MIN(dxyz[0], dxyz[1], dxyz[2]);
 #else
   double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
   double dmin = MIN(dxyz[0], dxyz[1]);
@@ -147,8 +169,11 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
   VecRestoreArray(kappa, &kappa_p);
   VecDestroy(kappa);
 
-  double dt = MIN(cfl*dmin/vn_max, 1.0/kvn_max);
+  double dt = MIN(cfl*dmin/vn_max, 1.0/kvn_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
   // advect the level-set and update the grid
   p4est_t* p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
@@ -173,7 +198,7 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
   return dt;
 }
 
-double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, double cfl)
+double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, double cfl, double dtmax)
 {
   // compute neighborhood information
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
@@ -279,7 +304,7 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, dou
   VecRestoreArray(vn, &vn_p);
   VecDestroy(kappa);
 
-  double dt = MIN(cfl*dmin/vn_max, 1.0/kvn_max);
+  double dt = MIN(cfl*dmin/vn_max, 1.0/kvn_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   // advect the level-set and update the grid
@@ -320,7 +345,7 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, dou
   return dt;
 }
 
-void one_fluid_solver_t::solve_pressure(Vec phi, Vec pressure)
+void one_fluid_solver_t::solve_pressure(double t, Vec phi, Vec pressure)
 {
   // compute neighborhood information
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
@@ -337,8 +362,14 @@ void one_fluid_solver_t::solve_pressure(Vec phi, Vec pressure)
   VecDuplicate(phi, &bc_val);
   VecDuplicate(phi, &bc_val_tmp);
   foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &phi_x[dim]);
+
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
   compute_normals(neighbors, phi, phi_x);
-  compute_mean_curvature(neighbors, phi_x, bc_val_tmp);
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
+
+//  compute_mean_curvature(neighbors, phi_x, bc_val_tmp);
   foreach_dimension(dim) VecDestroy(phi_x[dim]);
 
   // extend curvature from interface to the entire domain
@@ -353,11 +384,12 @@ void one_fluid_solver_t::solve_pressure(Vec phi, Vec pressure)
   double diag_min = p4est_diag_min(p4est);
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
-    double kappa = CLAMP(bc_val_p[n], -1.0/(2.0*diag_min), 1.0/(2.0*diag_min));
+    double kappa = bc_val_p[n];
+//    double kappa = CLAMP(bc_val_p[n], -1.0/(2.0*diag_min), 1.0/(2.0*diag_min));
 #ifdef P4_TO_P8
-    bc_val_p[n] = 1.0 + kappa*(*gamma)(x[0], x[1], x[2]);
+    bc_val_p[n] = kappa*(*gamma)(x[0], x[1], x[2]);
 #else
-    bc_val_p[n] = 1.0 + kappa*(*gamma)(x[0], x[1]);
+    bc_val_p[n] = kappa*(*gamma)(x[0], x[1]);
 #endif
   }
   VecRestoreArray(bc_val, &bc_val_p);
@@ -376,6 +408,8 @@ void one_fluid_solver_t::solve_pressure(Vec phi, Vec pressure)
   bc.setWallTypes(*bc_wall_type);
   bc.setWallValues(*bc_wall_value);
 
+  bc_wall_value->t = t;
+
   // solve for the pressure
   Vec K;
   VecCreateGhostNodes(p4est, nodes, &K);
@@ -384,7 +418,8 @@ void one_fluid_solver_t::solve_pressure(Vec phi, Vec pressure)
   my_p4est_poisson_nodes_t poisson(&neighbors);
   poisson.set_phi(phi);
   poisson.set_bc(bc);
-  poisson.set_mu(K);
+//  poisson.set_mu(K);
+  poisson.set_mu(1.0);
   poisson.solve(pressure);
 
   // extend solution over interface
@@ -396,21 +431,27 @@ void one_fluid_solver_t::solve_pressure(Vec phi, Vec pressure)
 }
 
 
-double one_fluid_solver_t::solve_one_step(Vec &phi, Vec &pressure, const std::string& method, double cfl)
+double one_fluid_solver_t::solve_one_step(double t, Vec &phi, Vec &pressure, const std::string& method, double cfl, double dtmax)
 {
   // advect the interface
   double dt;
   if (method == "semi_lagrangian")
-    dt = advect_interface_semi_lagrangian(phi, pressure, cfl);
+    dt = advect_interface_semi_lagrangian(phi, pressure, cfl, dtmax);
   else if (method == "godunov")
-    dt = advect_interface_godunov(phi, pressure, cfl);
+    dt = advect_interface_godunov(phi, pressure, cfl, dtmax);
   else
     throw std::invalid_argument("invalid advection method. Valid options are:\n"
                                 "(a) semi_lagrangian, or\n"
                                 "(b) godunov.");
 
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
+
   // solve for the pressure
-  solve_pressure(phi, pressure);
+  solve_pressure(t+dt,phi, pressure);
+
+  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
+  PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
   return dt;
 }
