@@ -2164,8 +2164,9 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
   // get access to the iternal data
   double *f_p, *fx_p[P4EST_DIM];
   ierr = VecGetArray(f,&f_p); CHKERRXX(ierr);
-  foreach_dimension(dim)
+  foreach_dimension(dim) {
     ierr = VecGetArray(fx[dim], &fx_p[dim]); CHKERRXX(ierr);
+  }
 
   if (is_initialized){
     // compute the derivatives on the boundary nodes -- fx
@@ -2200,11 +2201,9 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
   #endif
     }
 
-    PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-    PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
-    foreach_dimension(dim)
+    foreach_dimension(dim) {
       ierr = VecGhostUpdateEnd(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
 
   } else {
 
@@ -2233,16 +2232,18 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
       fx_p[2][local_nodes[i]] = qnnn.dz_central(f_p);
   #endif
     }
-  }
 
-  // finish updating the ghost values
-  foreach_dimension(dim)
-    ierr = VecGhostUpdateEnd(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    // finish updating the ghost values
+    foreach_dimension(dim) {
+      ierr = VecGhostUpdateEnd(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+  }
 
   // restore internal data
   ierr = VecRestoreArray(f,  &f_p  ); CHKERRXX(ierr);
-  foreach_dimension(dim)
+  foreach_dimension(dim) {
     ierr = VecRestoreArray(fx[dim], &fx_p[dim]); CHKERRXX(ierr);
+  }
 
   IPMLogRegionEnd("1st_derivatives");
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_1st_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);

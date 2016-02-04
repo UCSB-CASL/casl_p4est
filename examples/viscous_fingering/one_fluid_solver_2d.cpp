@@ -96,9 +96,6 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
   foreach_dimension(dim) VecRestoreArray(vx_tmp[dim], &vx_p[dim]);
   VecRestoreArray(pressure, &pressure_p);
 
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
   // constant extend the velocities from interface to the entire domain
   my_p4est_level_set_t ls(&neighbors);
   Vec vx[P4EST_DIM];
@@ -108,35 +105,16 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
     VecDestroy(vx_tmp[dim]);
   }
 
-
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
   // compute curvature
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
   VecDuplicate(phi, &kappa);
   VecDuplicate(phi, &kappa_tmp);
   foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
-
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
-//  compute_normals(neighbors, phi, normal);
-
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
-//  compute_mean_curvature(neighbors, normal, kappa_tmp);
-
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
+  compute_normals(neighbors, phi, normal);
+  compute_mean_curvature(neighbors, normal, kappa_tmp);
   foreach_dimension(dim) VecDestroy(normal[dim]);
   ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
   VecDestroy(kappa_tmp);
-
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
   // compute dt based on cfl number and curavture
   double dxyz[P4EST_DIM];
@@ -171,9 +149,6 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
 
   double dt = MIN(cfl*dmin/vn_max, 1.0/kvn_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
-
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
   // advect the level-set and update the grid
   p4est_t* p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
@@ -362,14 +337,8 @@ void one_fluid_solver_t::solve_pressure(double t, Vec phi, Vec pressure)
   VecDuplicate(phi, &bc_val);
   VecDuplicate(phi, &bc_val_tmp);
   foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &phi_x[dim]);
-
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
   compute_normals(neighbors, phi, phi_x);
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
-//  compute_mean_curvature(neighbors, phi_x, bc_val_tmp);
+  compute_mean_curvature(neighbors, phi_x, bc_val_tmp);
   foreach_dimension(dim) VecDestroy(phi_x[dim]);
 
   // extend curvature from interface to the entire domain
@@ -444,14 +413,8 @@ double one_fluid_solver_t::solve_one_step(double t, Vec &phi, Vec &pressure, con
                                 "(a) semi_lagrangian, or\n"
                                 "(b) godunov.");
 
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
   // solve for the pressure
   solve_pressure(t+dt,phi, pressure);
-
-  PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-  PetscSynchronizedFlush(p4est->mpicomm, stdout);
 
   return dt;
 }

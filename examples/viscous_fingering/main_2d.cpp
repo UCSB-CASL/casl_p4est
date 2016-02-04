@@ -230,14 +230,8 @@ int main(int argc, char** argv) {
   const char* filename = params.test.c_str();
   char vtk_name[FILENAME_MAX];
 
-  PetscSynchronizedPrintf(mpi.comm(), "Hi from process %d @ line %d \n",mpi.rank(), __LINE__);
-  PetscSynchronizedFlush(mpi.comm(), stdout);
-
   double dt = 0, t = 0;
   for(int i=0; i<params.iter; i++) {
-    PetscSynchronizedPrintf(p4est->mpicomm, "Hi from process %d @ line %d in file %s\n",p4est->mpirank, __LINE__, __FILE__);
-    PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
     dt = solver.solve_one_step(t, phi, pressure, params.method, params.cfl, params.dtmax);
     t += dt;
 
