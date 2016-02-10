@@ -495,11 +495,11 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   connectivity = my_p4est_brick_new(nx, ny, nz,
                                     xmin, xmax, ymin, ymax, zmin, zmax,
-                                    &brick);
+                                    &brick, 0, 0, 0);
 #else
   connectivity = my_p4est_brick_new(nx, ny,
                                     xmin, xmax, ymin, ymax,
-                                    &brick);
+                                    &brick, 0, 0);
 #endif
 
   p4est_t       *p4est;
