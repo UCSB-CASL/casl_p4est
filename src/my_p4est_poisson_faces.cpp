@@ -420,7 +420,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 #endif
 
   /* check for uniform case, if so build voronoi partition by hand */
-  if(1 && qm.level==qp.level &&
+  if(qm.level==qp.level &&
      (ngbd_p_m0.size()==1 && ngbd_m_m0.size()==1 && ngbd_m_m0[0].level==qm.level && ngbd_p_m0[0].level==qp.level &&
       faces->q2f(ngbd_m_m0[0].p.piggy3.local_num,2*dir)!=NO_VELOCITY && faces->q2f(ngbd_p_m0[0].p.piggy3.local_num,2*dir+1)!=NO_VELOCITY) &&
      (ngbd_p_p0.size()==1 && ngbd_m_p0.size()==1 && ngbd_m_p0[0].level==qm.level && ngbd_p_p0[0].level==qp.level &&
