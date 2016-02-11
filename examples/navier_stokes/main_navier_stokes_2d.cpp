@@ -1541,10 +1541,10 @@ int main (int argc, char* argv[])
     bc_p.setInterfaceType(NEUMANN); bc_p.setInterfaceValue(bc_interface_value_p);
   }
 
-  external_force_u_t *external_force_u;
-  external_force_v_t *external_force_v;
+  external_force_u_t *external_force_u=NULL;
+  external_force_v_t *external_force_v=NULL;
 #ifdef P4_TO_P8
-  external_force_w_t *external_force_w;
+  external_force_w_t *external_force_w=NULL;
 #endif
 
 
