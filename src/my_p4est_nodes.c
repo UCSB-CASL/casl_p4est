@@ -338,7 +338,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   p4est_locidx_t      num_local_nodes, num_added_nodes;
   p4est_locidx_t      num_owned_nodes, num_offproc_nodes;
   p4est_locidx_t      num_owned_shared;
-  p4est_locidx_t      offset_owned_indeps;
+  p4est_locidx_t      offset_owned_indeps, end_owned_indeps;
   p4est_locidx_t      num_indep_nodes, dup_indep_nodes;
   p4est_locidx_t     *local_nodes, *quad_nodes, *shared_offsets;
   p4est_locidx_t     *new_node_number;
