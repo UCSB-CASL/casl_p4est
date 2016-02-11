@@ -996,21 +996,21 @@ void my_p4est_bialloy_t::save_VTK(int iter)
   char *out_dir;
   out_dir = getenv("OUT_DIR");
 #else
-  char out_dir[10000];
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy");
+  char out_dir[1000];
+#ifdef P4_TO_P8
+  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/3d");
+#else
+  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/2d");
+#endif
 #endif
 
-  std::ostringstream oss;
+  char name[1000];
+#ifdef P4_TO_P8
+  sprintf(name, "%s/vtu/bialloy_%d_%dx%dx%d.%05d", out_dir, p4est->mpisize, brick->nxyztrees[0], brick->nxyztrees[1], brick->nxyztrees[2], iter);
+#else
+  sprintf(name, "%s/vtu/bialloy_%d_%dx%d.%05d", out_dir, p4est->mpisize, brick->nxyztrees[0], brick->nxyztrees[1], iter);
+#endif
 
-  oss << out_dir
-      << "/vtu/bialloy_"
-      << p4est->mpisize << "_"
-      << brick->nxyztrees[0] << "x"
-      << brick->nxyztrees[1] <<
-       #ifdef P4_TO_P8
-         "x" << brick->nxyztrees[2] <<
-       #endif
-         "." << iter;
 
   /* if the domain is periodic, create a temporary tree without periodicity for visualization */
   bool periodic = false;
@@ -1150,7 +1150,7 @@ void my_p4est_bialloy_t::save_VTK(int iter)
 
   my_p4est_vtk_write_all(  p4est_vis, nodes_vis, NULL,
                            P4EST_TRUE, P4EST_TRUE,
-                           4, 1, oss.str().c_str(),
+                           4, 1, name,
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "temperature", temperature_p,
                            VTK_POINT_DATA, "concentration", cl_p,
@@ -1183,5 +1183,5 @@ void my_p4est_bialloy_t::save_VTK(int iter)
     my_p4est_brick_destroy(connectivity_vis, &brick_vis);
   }
 
-  PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
+  PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", name);
 }
