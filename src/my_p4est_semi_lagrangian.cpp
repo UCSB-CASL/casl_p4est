@@ -497,7 +497,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(const CF_2 **v, double dt, Vec &ph
     {
       ierr = VecDestroy(phi_xx[dir]); CHKERRXX(ierr);
     }
-    delete phi_xx;
+    delete[] phi_xx;
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -610,7 +610,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     {
       ierr = VecDestroy(vxx[dir][dd]); CHKERRXX(ierr);
     }
-    delete vxx[dir];
+    delete[] vxx[dir];
   }
 
   if (local_derivatives)
@@ -619,7 +619,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     {
       ierr = VecDestroy(phi_xx[dir]); CHKERRXX(ierr);
     }
-    delete phi_xx;
+    delete[] phi_xx;
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -743,8 +743,8 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
       ierr = VecDestroy(vxx_nm1[dir][dd]); CHKERRXX(ierr);
       ierr = VecDestroy(vxx_n  [dir][dd]); CHKERRXX(ierr);
     }
-    delete vxx_nm1[dir];
-    delete vxx_n  [dir];
+    delete[] vxx_nm1[dir];
+    delete[] vxx_n  [dir];
   }
 
 
@@ -754,7 +754,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
     {
       ierr = VecDestroy(phi_xx[dir]); CHKERRXX(ierr);
     }
-    delete phi_xx;
+    delete[] phi_xx;
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_2nd_order, 0, 0, 0, 0); CHKERRXX(ierr);
