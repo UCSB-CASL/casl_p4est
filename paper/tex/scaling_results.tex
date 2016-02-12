@@ -48,12 +48,8 @@ To simulate the effect of different CFL numbers, we generate the random points s
 \end{table}
 
 \subsection{Semi-Lagrangian}
-To test the scalability of the semi-Lagrangian scheme of Algorithm \ref{alg:semi-lagrangian}, we consider a slightly modified version of the Enright's rotation test \cite{Enright;Fedkiw;Ferziger;etal:02:A-Hybrid-Particle-Le}, i.e. we advect a sphere of radius 0.35 located at $(0.4, 0.4, 0.4)$ with a divergence free velocity field given by:
-\bean
-u(x,y,z) &=& 2\sin(\pi x)^2 \sin(2\pi y) \sin(2 \pi z), \\
-v(x,y,z) &=& -\sin(\pi y)^2 \sin(2\pi x) \sin(2 \pi z),\\
-w(x,y,z) &=& -\sin(\pi z)^2 \sin(2\pi x) \sin(2 \pi y). 
-\eean
+To test the scalability of the semi-Lagrangian scheme of Algorithm \ref{alg:semi-lagrangian}, we consider a slightly modified version of the Enright's rotation test \cite{Enright;Fedkiw;Ferziger;etal:02:A-Hybrid-Particle-Le} presented in section \ref{sec:accuracy}, i.e. we advect a sphere of radius 0.35 located at $(0.4, 0.4, 0.4)$ with a divergence free velocity field given by equation \eqref{eq:velo_enright}.
+
 To understand the effect of the CFL number on the scalability of the algorithm we perform one step of the semi-Lagrangian algorithm for $\text{CFL} = 1$, $\text{CFL} = 10$, and $\text{CFL} = 100$. We also perform the test for two different initial girds, a small grid with maximum level $l_\text{max} = 10$ and a large grid with maximum level $l_\text{max} = 12$. In both cases, the minimum level is $l_\text{min}=0$. After one advection step, these grids have approximately 15M and 255M nodes, respectively. 
 \begin{table}[htbp]
 	\begin{minipage}{.48\linewidth}
