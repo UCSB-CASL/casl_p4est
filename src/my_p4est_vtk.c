@@ -42,6 +42,7 @@
 #include <sc_io.h>
 #include <stdio.h>
 #include <petsclog.h>
+#include <sys/stat.h>
 
 #undef P4EST_VTK_COMPRESSION
 #define P4EST_VTK_DOUBLES
@@ -220,6 +221,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   p4est_quadrant_t   *quad;
   p4est_indep_t      *in;
   char                vtufilename[BUFSIZ];
+  char                foldername[BUFSIZ];
   FILE               *vtufile;
 
   SC_CHECK_ABORT (p4est->connectivity->num_vertices > 0,
@@ -235,8 +237,17 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
     Ntotal = Ncorners;
   }
 
+  snprintf(foldername, BUFSIZ, "%s.vtus", filename);
+  /* create the folder structure on rank = 0 */
+  if (mpirank == 0) {
+    mkdir(foldername, 0755);
+  }
+
+  // make sure all processors wait for root to create directory
+  MPI_Barrier(p4est->mpicomm);
+
   /* Have each proc write to its own file */
-  snprintf (vtufilename, BUFSIZ, "%s_%04d.vtu", filename, mpirank);
+  snprintf (vtufilename, BUFSIZ, "%s/%04d.vtu", foldername, mpirank);
   /* Use "w" for writing the initial part of the file.
    * For further parts, use "r+" and fseek so write_compressed succeeds.
    */
@@ -574,7 +585,7 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes,
   Ntotal = nodes->indep_nodes.elem_count;
 
   /* Have each proc write to its own file */
-  snprintf (vtufilename, BUFSIZ, "%s_%04d.vtu", filename, mpirank);
+  snprintf (vtufilename, BUFSIZ, "%s.vtus/%04d.vtu", filename, mpirank);
   /* To be able to fseek in a file you cannot open in append mode.
    * so you need to open with "r+" and fseek to SEEK_END.
    */
@@ -724,7 +735,7 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_ghost_t *ghost,
   FILE               *vtufile;
 
   /* Have each proc write to its own file */
-  snprintf (vtufilename, BUFSIZ, "%s_%04d.vtu", filename, mpirank);
+  snprintf (vtufilename, BUFSIZ, "%s.vtus/%04d.vtu", filename, mpirank);
   /* To be able to fseek in a file you cannot open in append mode.
    * so you need to open with "r+" and fseek to SEEK_END.
    */
@@ -988,7 +999,7 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
 
 	
   /* Have each proc write to its own file */
-  snprintf (vtufilename, BUFSIZ, "%s_%04d.vtu", filename, procRank);
+  snprintf (vtufilename, BUFSIZ, "%s.vtus/%04d.vtu", filename, procRank);
   vtufile = fopen (vtufilename, "ab");
   if (vtufile == NULL) {
     P4EST_LERRORF ("Could not open %s for output!\n", vtufilename);
@@ -1055,8 +1066,8 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
     /* Write data about the parallel pieces into both files */
     for (p = 0; p < numProcs; ++p) {
       fprintf (pvtufile,
-               "    <Piece Source=\"%s_%04d.vtu\"/>\n", vtu_sourcename, p);
-      fprintf (visitfile, "%s_%04d.vtu\n", filename, p);
+               "    <Piece Source=\"%s.vtus/%04d.vtu\"/>\n", vtu_sourcename, p);
+      fprintf (visitfile, "%s.vtus/%04d.vtu\n", filename, p);
     }
     fprintf (pvtufile, "  </PUnstructuredGrid>\n");
     fprintf (pvtufile, "</VTKFile>\n");
