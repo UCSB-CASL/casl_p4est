@@ -54,6 +54,11 @@ INCLUDEPATH += $$PARCASL
 DEPENDPATH  += $$PARCASL
 OBJECTS_DIR = .obj
 
+# enable C++11
+QMAKE_CXXFLAGS += -std=c++11
+QMAKE_CCFLAGS  += -std=c++11
+QMAKE_LFAGS    += -std=c++11
+
 # Miscellaneous
 DEFINES += "GIT_COMMIT_HASH_LONG=\\\"$$system(git rev-parse HEAD)\\\""
 DEFINES += "GIT_COMMIT_HASH_SHORT=\\\"$$system(git rev-parse --short HEAD)\\\""

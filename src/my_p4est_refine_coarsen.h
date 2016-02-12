@@ -15,6 +15,7 @@
 
 #include <set>
 #include <vector>
+#include <stdexcept>
 
 #define SKIP_QUADRANT		 0
 #define REFINE_QUADRANT  1
