@@ -9,7 +9,7 @@ macx: {
 }
 
 # Disable useless qt packages
-CONFIG -= console app_bundle qt qui
+CONFIG -= console app_bundle qt qui qt_framework
 
 # Set the root directory for parcasl
 PARCASL = $$PWD/..

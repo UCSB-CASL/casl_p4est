@@ -20,5 +20,11 @@ VORO_INCLUDES_DEBUG   = /usr/local/include/voro++
 VORO_LIBS_RELEASE     = /usr/local/lib/libvoro++.a
 VORO_LIBS_DEBUG       = /usr/local/lib/libvoro++.a
 
+# set the compiler path
+QMAKE_CC=/usr/local/bin/mpicc
+QMAKE_CXX=/usr/local/bin/mpicxx
+QMAKE_LINK=$$QMAKE_CXX
+
+# load commmon settings
 include(common.pri)
 
