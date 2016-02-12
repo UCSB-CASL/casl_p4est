@@ -14,11 +14,9 @@ VORO_INCLUDES_DEBUG   = /usr/local/include/voro++
 VORO_LIBS_RELEASE     = /usr/local/lib/libvoro++.a
 VORO_LIBS_DEBUG       = /usr/local/lib/libvoro++.a
 
-contains(DEFINES, CASL_PETSC) {
-  QMAKE_CC=mpicc
-  QMAKE_CXX=mpicxx
-  QMAKE_LINK=mpicxx
-}
+QMAKE_CC = mpicc
+QMAKE_CXX = mpicxx
+QMAKE_LINK = mpicxx
 
 include(common.pri)
 

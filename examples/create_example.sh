@@ -1,4 +1,5 @@
-#!/bin/sh
+#!/usr/bin/env bash
+
 # Use this script to create a sample example which creats a tree 
 # and saves it into a vtk file.
 # 
