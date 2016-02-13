@@ -30,7 +30,7 @@ void one_fluid_solver_t::set_properties(cf_t &K_D, cf_t &K_EO, cf_t &gamma)
   this->gamma = &gamma;
 }
 
-void one_fluid_solver_t::set_injection_rates(cf_t &Q, cf_t &I, double alpha)
+void one_fluid_solver_t::set_injection_rates(CF_1 &Q, CF_1 &I, double alpha)
 {
   this->Q     = &Q;
   this->I     = &I;
@@ -417,17 +417,17 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
 
   // solve for the potential
   {
+    VecGetArray(bc_val, &bc_val_p);
     // Set the boundary condition
-    I->t = t;
     double x[P4EST_DIM];
     foreach_node(n, nodes) {
       node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
       double r = MAX(sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])), EPS);
-      bc_val_p[n] = (*I)(x[0],x[1],x[2])/(4*PI*r);
+      bc_val_p[n] = (*I)(t)/(4*PI*r);
 #else
       double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), EPS);
-      bc_val_p[n] = (*I)(x[0],x[1])/(2*PI) * log(r);
+      bc_val_p[n] = (*I)(t)/(2*PI) * log(r);
 #endif
     }
 
@@ -480,21 +480,21 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
 }
 
 
-double one_fluid_solver_t::solve_one_step(double t, Vec &phi, Vec &pressure, const std::string& method, double cfl, double dtmax)
+double one_fluid_solver_t::solve_one_step(double t, Vec &phi, Vec &pressure, Vec& potential, const std::string& method, double cfl, double dtmax)
 {
   // advect the interface
   double dt;
   if (method == "semi_lagrangian")
-    dt = advect_interface_semi_lagrangian(phi, pressure, cfl, dtmax);
+    dt = advect_interface_semi_lagrangian(phi, pressure, potential, cfl, dtmax);
   else if (method == "godunov")
-    dt = advect_interface_godunov(phi, pressure, cfl, dtmax);
+    dt = advect_interface_godunov(phi, pressure, potential, cfl, dtmax);
   else
     throw std::invalid_argument("invalid advection method. Valid options are:\n"
                                 "(a) semi_lagrangian, or\n"
                                 "(b) godunov.");
 
   // solve for the pressure
-  solve_pressure(t+dt,phi, pressure);
+  solve_fields(t+dt,phi, pressure, potential);
 
   return dt;
 }

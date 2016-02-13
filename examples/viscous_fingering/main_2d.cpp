@@ -38,12 +38,13 @@ typedef WallBC2D wall_bc_t;
 
 static struct {
   int lmin, lmax, iter;
-  double lip, Ca, cfl, dts, dtmax;
+  double lip, Ca, cfl, dts, dtmax, alpha;
   double xmin[3], xmax[3];
   int ntr[3];
   string method, test;
 
-  cf_t *interface, *bc_wall_value, *K_D, *gamma;
+  cf_t *interface, *bc_wall_value, *K_D, *K_EO, *gamma;
+  CF_1 *Q, *I;
   wall_bc_t *bc_wall_type;
 } params;
 
@@ -59,9 +60,9 @@ void set_parameters(int argc, char **argv) {
   cmd.add_option("dts", "dt for saving vtk files");
   cmd.add_option("dtmax", "max dt to use when solving");
   cmd.add_option("method", "choose advection method");
+  cmd.add_option("alpha", "EO coupling strength");
   cmd.add_option("test", "Which test to run?, Options are:"
                          "circle\n"
-                         "plane\n"
                          "FastShelley04_Fig12\n");
 
   cmd.parse(argc, argv);
@@ -85,6 +86,18 @@ void set_parameters(int argc, char **argv) {
       double operator()(double, double) const { return 1.0; }
     } K_D;
 
+    static struct:cf_t{
+      double operator()(double, double) const { return 1.0; }
+    } K_EO;
+
+    static struct:CF_1{
+      double operator()(double t) const { return 1+t; }
+    } Q;
+
+    static struct:CF_1{
+      double operator()(double t) const { return 1+t; }
+    } I;
+
     static struct:cf_t {
       double operator()(double x, double y) const {
         return 0.25 - sqrt(SQR(x)+SQR(y));
@@ -102,11 +115,15 @@ void set_parameters(int argc, char **argv) {
 
     params.gamma         = &gamma;
     params.K_D           = &K_D;
+    params.K_EO          = &K_EO;
+    params.Q             = &Q;
+    params.I             = &I;
     params.interface     = &interface;
     params.bc_wall_type  = &bc_wall_type;
     params.bc_wall_value = &bc_wall_value;
     params.dtmax         = 5e-3;
     params.dts           = 1e-1;
+    params.alpha         = 0;
 
   } else if (params.test == "FastShelley04_Fig12") {
 
@@ -122,6 +139,18 @@ void set_parameters(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double, double) const { return 1.0; }
     } K_D;
+
+    static struct:cf_t{
+      double operator()(double, double) const { return 1.0; }
+    } K_EO;
+
+    static struct:CF_1{
+      double operator()(double t) const { return 1+t; }
+    } Q;
+
+    static struct:CF_1{
+      double operator()(double t) const { return 1+t; }
+    } I;
 
     static struct:cf_t{
       double operator()(double x, double y) const  {
@@ -140,7 +169,7 @@ void set_parameters(int argc, char **argv) {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(1+t)/r;
+        double ur    = -Q(t)/r;
 
         if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta):-ur*cos(theta);
@@ -155,11 +184,15 @@ void set_parameters(int argc, char **argv) {
     // set parameters specific to this test
     params.gamma         = &gamma;
     params.K_D           = &K_D;
+    params.K_EO          = &K_EO;
+    params.Q             = &Q;
+    params.I             = &I;
     params.interface     = &interface;
     params.bc_wall_type  = &bc_wall_type;
     params.bc_wall_value = &bc_wall_value;
     params.dtmax         = 5e-3;
     params.dts           = 1e-1;
+    params.alpha         = 1;
 
   } else {
     throw std::invalid_argument("Unknown test");
@@ -175,6 +208,7 @@ void set_parameters(int argc, char **argv) {
   params.dts    = cmd.get("dts", params.dts);
   params.dtmax  = cmd.get("dtmax", params.dtmax);
   params.method = cmd.get<string>("method", "semi_lagrangian");
+  params.alpha  = cmd.get("alpha", params.alpha);
 }
 
 int main(int argc, char** argv) {
@@ -217,14 +251,16 @@ int main(int argc, char** argv) {
   nodes = my_p4est_nodes_new(p4est, ghost);
 
   // initialize variables
-  Vec phi, pressure;
+  Vec phi, pressure, potential;
   VecCreateGhostNodes(p4est, nodes, &phi);
   VecCreateGhostNodes(p4est, nodes, &pressure);
+  VecCreateGhostNodes(p4est, nodes, &potential);
   sample_cf_on_nodes(p4est, nodes, *params.interface, phi);
 
   // set up the solver
   one_fluid_solver_t solver(p4est, ghost, nodes, brick);
-  solver.set_properties(*params.K_D, *params.gamma);
+  solver.set_injection_rates(*params.Q, *params.I, params.alpha);
+  solver.set_properties(*params.K_D, *params.K_EO, *params.gamma);
   solver.set_bc_wall(*params.bc_wall_type, *params.bc_wall_value);
 
   const char* filename = params.test.c_str();
@@ -232,7 +268,7 @@ int main(int argc, char** argv) {
 
   double dt = 0, t = 0;
   for(int i=0; i<params.iter; i++) {
-    dt = solver.solve_one_step(t, phi, pressure, params.method, params.cfl, params.dtmax);
+    dt = solver.solve_one_step(t, phi, pressure, potential, params.method, params.cfl, params.dtmax);
     t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -241,22 +277,26 @@ int main(int argc, char** argv) {
     PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", i, num_nodes, t, dt);
 
     // save vtk
-    double *phi_p, *pressure_p;
+    double *phi_p, *pressure_p, *potential_p;
     VecGetArray(phi, &phi_p);
     VecGetArray(pressure, &pressure_p);
+    VecGetArray(potential, &potential_p);
     sprintf(vtk_name, "%s_%s_%dd.%04d", filename, params.method.c_str(), P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
-                           2, 0, vtk_name,
+                           3, 0, vtk_name,
                            VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "pressure", pressure_p);
+                           VTK_POINT_DATA, "pressure", pressure_p,
+                           VTK_POINT_DATA, "potential", potential_p);
     VecRestoreArray(phi, &phi_p);
     VecRestoreArray(pressure, &pressure_p);
+    VecRestoreArray(potential, &potential_p);
   }
 
   // destroy vectors
   VecDestroy(phi);
   VecDestroy(pressure);
+  VecDestroy(potential);
 
   // destroy the structures
   p4est_nodes_destroy(nodes);

@@ -25,7 +25,7 @@ class one_fluid_solver_t
   typedef WallBC2D bc_wall_t;
 #endif
   double alpha;
-  cf_t *Q, *I;
+  CF_1 *Q, *I;
   cf_t *K_D, *K_EO, *gamma;
   cf_t *bc_wall_value;
   bc_wall_t *bc_wall_type;
@@ -39,7 +39,7 @@ public:
   ~one_fluid_solver_t();
 
   void set_properties(cf_t &K_D, cf_t &K_EO, cf_t &gamma);
-  void set_injection_rates(cf_t& Q, cf_t& I, double alpha);
+  void set_injection_rates(CF_1& Q, CF_1& I, double alpha);
   void set_bc_wall(bc_wall_t& bc_wall_type, cf_t& bc_wall_value);
   double solve_one_step(double t, Vec &phi, Vec &pressure, Vec &potential, const std::string& method = "semi_lagrangian", double cfl = 5.0, double dtmax = DBL_MAX);
 };
