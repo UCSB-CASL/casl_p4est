@@ -23,10 +23,18 @@ one_fluid_solver_t::one_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p
 
 one_fluid_solver_t::~one_fluid_solver_t() {}
 
-void one_fluid_solver_t::set_properties(cf_t &K_D, cf_t &gamma)
-{
-  this->K_D = &K_D;
+void one_fluid_solver_t::set_properties(cf_t &K_D, cf_t &K_EO, cf_t &gamma)
+{  
+  this->K_D   = &K_D;
+  this->K_EO  = &K_EO;
   this->gamma = &gamma;
+}
+
+void one_fluid_solver_t::set_injection_rates(cf_t &Q, cf_t &I, double alpha)
+{
+  this->Q     = &Q;
+  this->I     = &I;
+  this->alpha = alpha;
 }
 
 void one_fluid_solver_t::set_bc_wall(bc_wall_t &bc_wall_type, cf_t &bc_wall_value)
@@ -35,7 +43,7 @@ void one_fluid_solver_t::set_bc_wall(bc_wall_t &bc_wall_type, cf_t &bc_wall_valu
   this->bc_wall_value = &bc_wall_value;
 }
 
-double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &pressure, double cfl, double dtmax)
+double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &pressure, Vec& potential, double cfl, double dtmax)
 {
   // compute neighborhood information
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
@@ -44,12 +52,13 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
 
   // compute interface velocity
   Vec vx_tmp[P4EST_DIM];
-  double *vx_p[P4EST_DIM], *pressure_p, *phi_p;
+  double *vx_p[P4EST_DIM], *pressure_p, *phi_p, *potential_p;
   foreach_dimension(dim) {
     VecCreateGhostNodes(p4est, nodes, &vx_tmp[dim]);
     VecGetArray(vx_tmp[dim], &vx_p[dim]);
   }
   VecGetArray(pressure, &pressure_p);
+  VecGetArray(potential, &potential_p);
   VecGetArray(phi, &phi_p);
 
   // compute on the layer nodes
@@ -60,18 +69,20 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
-    double k = (*K_D)(x[0], x[1], x[2]);
+    double kd  = (*K_D)(x[0], x[1], x[2]);
+    double keo = (*K_EO)(x[0], x[1], x[2]);
 #else
-    double k = (*K_D)(x[0], x[1]);
+    double kd  = (*K_D)(x[0], x[1]);
+    double keo = (*K_EO)(x[0], x[1]);
 #endif
-    vx_p[0][n] = -k*qnnn.dx_central(pressure_p);
-    vx_p[1][n] = -k*qnnn.dy_central(pressure_p);
+    vx_p[0][n] = -kd*qnnn.dx_central(pressure_p) - alpha*keo*qnnn.dx_central(potential_p);
+    vx_p[1][n] = -kd*qnnn.dy_central(pressure_p) - alpha*keo*qnnn.dy_central(potential_p);
 #ifdef P4_TO_P8
-    vx_p[2][n] = -k*qnnn.dz_central(pressure_p);
+    vx_p[2][n] = -kd*qnnn.dz_central(pressure_p) - alpha*keo*qnnn.dz_central(potential_p);
 #endif
   }
   foreach_dimension(dim)
-    VecGhostUpdateBegin(vx_tmp[dim], INSERT_VALUES, SCATTER_FORWARD);
+      VecGhostUpdateBegin(vx_tmp[dim], INSERT_VALUES, SCATTER_FORWARD);
 
   // compute on the local nodes
   for (size_t i=0; i<neighbors.get_local_size(); i++){
@@ -79,22 +90,25 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
-    double k = (*K_D)(x[0], x[1], x[2]);
+    double kd  = (*K_D)(x[0], x[1], x[2]);
+    double keo = (*K_EO)(x[0], x[1], x[2]);
 #else
-    double k = (*K_D)(x[0], x[1]);
+    double kd  = (*K_D)(x[0], x[1]);
+    double keo = (*K_EO)(x[0], x[1]);
 #endif
-    vx_p[0][n] = -k*qnnn.dx_central(pressure_p);
-    vx_p[1][n] = -k*qnnn.dy_central(pressure_p);
+    vx_p[0][n] = -kd*qnnn.dx_central(pressure_p) - alpha*keo*qnnn.dx_central(potential_p);
+    vx_p[1][n] = -kd*qnnn.dy_central(pressure_p) - alpha*keo*qnnn.dy_central(potential_p);
 #ifdef P4_TO_P8
-    vx_p[2][n] = -k*qnnn.dz_central(pressure_p);
+    vx_p[2][n] = -kd*qnnn.dz_central(pressure_p) - alpha*keo*qnnn.dz_central(potential_p);
 #endif
   }
   foreach_dimension(dim)
-    VecGhostUpdateEnd(vx_tmp[dim], INSERT_VALUES, SCATTER_FORWARD);
+      VecGhostUpdateEnd(vx_tmp[dim], INSERT_VALUES, SCATTER_FORWARD);
 
   // restore pointers
   foreach_dimension(dim) VecRestoreArray(vx_tmp[dim], &vx_p[dim]);
   VecRestoreArray(pressure, &pressure_p);
+  VecRestoreArray(potential, &potential_p);
 
   // constant extend the velocities from interface to the entire domain
   my_p4est_level_set_t ls(&neighbors);
@@ -166,14 +180,16 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
   p4est_ghost_destroy(ghost); ghost = ghost_np1;
 
   VecDestroy(pressure);
+  VecDestroy(potential);
   VecDuplicate(phi, &pressure);
+  VecDuplicate(phi, &potential);
 
   foreach_dimension(dim) VecDestroy(vx[dim]);
 
   return dt;
 }
 
-double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, double cfl, double dtmax)
+double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, Vec& potential, double cfl, double dtmax)
 {
   // compute neighborhood information
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
@@ -193,10 +209,11 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, dou
 
   // compute interface velocity
   Vec vn_tmp;
-  double *vn_p, *pressure_p, *phi_p;
+  double *vn_p, *pressure_p, *phi_p, *potential_p;
   VecCreateGhostNodes(p4est, nodes, &vn_tmp);
   VecGetArray(vn_tmp, &vn_p);
   VecGetArray(pressure, &pressure_p);
+  VecGetArray(potential, &potential_p);
   VecGetArray(phi, &phi_p);
 
   // compute on the layer nodes
@@ -208,16 +225,18 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, dou
     p4est_locidx_t n = neighbors.get_layer_node(i);
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
-#ifdef P4_TO_P8
-    double k = (*K_D)(x[0], x[1], x[2]);
+#ifdef P4_TO_P8    
+    double kd  = (*K_D)(x[0], x[1], x[2]);
+    double keo = (*K_EO)(x[0], x[1], x[2]);
 #else
-    double k = (*K_D)(x[0], x[1]);
+    double kd  = (*K_D)(x[0], x[1]);
+    double keo = (*K_D)(x[0], x[1]);
 #endif
 
-    vn_p[n]  = -k*qnnn.dx_central(pressure_p)*n_p[0][n];
-    vn_p[n] += -k*qnnn.dy_central(pressure_p)*n_p[1][n];
+    vn_p[n]  = -kd*qnnn.dx_central(pressure_p)*n_p[0][n] - alpha*keo*qnnn.dx_central(potential_p)*n_p[0][n];
+    vn_p[n] += -kd*qnnn.dy_central(pressure_p)*n_p[1][n] - alpha*keo*qnnn.dy_central(potential_p)*n_p[1][n];
 #ifdef P4_TO_P8
-    vn_p[n] += -k*qnnn.dz_central(pressure_p)*n_p[2][n];
+    vn_p[n] += -kd*qnnn.dz_central(pressure_p)*n_p[2][n] - alpha*keo*qnnn.dz_central(potential_p)*n_p[2][n];
 #endif
   }
   VecGhostUpdateBegin(vn_tmp, INSERT_VALUES, SCATTER_FORWARD);
@@ -228,15 +247,17 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, dou
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
-    double k = (*K_D)(x[0], x[1], x[2]);
+    double kd  = (*K_D)(x[0], x[1], x[2]);
+    double keo = (*K_EO)(x[0], x[1], x[2]);
 #else
-    double k = (*K_D)(x[0], x[1]);
+    double kd  = (*K_D)(x[0], x[1]);
+    double keo = (*K_D)(x[0], x[1]);
 #endif
 
-    vn_p[n]  = -k*qnnn.dx_central(pressure_p)*n_p[0][n];
-    vn_p[n] += -k*qnnn.dy_central(pressure_p)*n_p[1][n];
+    vn_p[n]  = -kd*qnnn.dx_central(pressure_p)*n_p[0][n] - alpha*keo*qnnn.dx_central(potential_p)*n_p[0][n];
+    vn_p[n] += -kd*qnnn.dy_central(pressure_p)*n_p[1][n] - alpha*keo*qnnn.dy_central(potential_p)*n_p[1][n];
 #ifdef P4_TO_P8
-    vn_p[n] += -k*qnnn.dz_central(pressure_p)*n_p[2][n];
+    vn_p[n] += -kd*qnnn.dz_central(pressure_p)*n_p[2][n] - alpha*keo*qnnn.dz_central(potential_p)*n_p[2][n];
 #endif
   }
   VecGhostUpdateEnd(vn_tmp, INSERT_VALUES, SCATTER_FORWARD);
@@ -316,11 +337,12 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, dou
 
   VecDestroy(phi); phi = phi_np1;
   VecDestroy(pressure); VecDuplicate(phi, &pressure);
+  VecDestroy(potential); VecDuplicate(phi, &potential);
 
   return dt;
 }
 
-void one_fluid_solver_t::solve_pressure(double t, Vec phi, Vec pressure)
+void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec potential)
 {
   // compute neighborhood information
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
@@ -333,13 +355,13 @@ void one_fluid_solver_t::solve_pressure(double t, Vec phi, Vec pressure)
   ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
-  Vec bc_val, bc_val_tmp, phi_x[P4EST_DIM];
+  Vec bc_val, bc_val_tmp, normal[P4EST_DIM];
   VecDuplicate(phi, &bc_val);
   VecDuplicate(phi, &bc_val_tmp);
-  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &phi_x[dim]);
-  compute_normals(neighbors, phi, phi_x);
-  compute_mean_curvature(neighbors, phi_x, bc_val_tmp);
-  foreach_dimension(dim) VecDestroy(phi_x[dim]);
+  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
+  compute_normals(neighbors, phi, normal);
+  compute_mean_curvature(neighbors, normal, bc_val_tmp);
+  foreach_dimension(dim) VecDestroy(normal[dim]);
 
   // extend curvature from interface to the entire domain
   ls.extend_from_interface_to_whole_domain_TVD(phi, bc_val_tmp, bc_val);
@@ -350,11 +372,11 @@ void one_fluid_solver_t::solve_pressure(double t, Vec phi, Vec pressure)
   VecGetArray(bc_val, &bc_val_p);
 
   double x[P4EST_DIM];
-  double diag_min = p4est_diag_min(p4est);
+  //  double diag_min = p4est_diag_min(p4est);
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
     double kappa = bc_val_p[n];
-//    double kappa = CLAMP(bc_val_p[n], -1.0/(2.0*diag_min), 1.0/(2.0*diag_min));
+//    kappa = CLAMP(kappa, -1.0/(2.0*diag_min), 1.0/(2.0*diag_min));
 #ifdef P4_TO_P8
     bc_val_p[n] = kappa*(*gamma)(x[0], x[1], x[2]);
 #else
@@ -363,36 +385,94 @@ void one_fluid_solver_t::solve_pressure(double t, Vec phi, Vec pressure)
   }
   VecRestoreArray(bc_val, &bc_val_p);
 
-  // Set the boundary conditions
-  my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
-  p_interface_value.set_input(bc_val, linear);
-
-#ifdef P4_TO_P8
-  BoundaryConditions3D bc;
-#else
-  BoundaryConditions2D bc;
-#endif
-  bc.setInterfaceType(DIRICHLET);
-  bc.setInterfaceValue(p_interface_value);
-  bc.setWallTypes(*bc_wall_type);
-  bc.setWallValues(*bc_wall_value);
-
-  bc_wall_value->t = t;
-
-  // solve for the pressure
   Vec K;
   VecCreateGhostNodes(p4est, nodes, &K);
-  sample_cf_on_nodes(p4est, nodes, *K_D, K);
+  // solve for pressure
+  {
+    // Set the boundary conditions
+    my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
+    p_interface_value.set_input(bc_val, linear);
 
-  my_p4est_poisson_nodes_t poisson(&neighbors);
-  poisson.set_phi(phi);
-  poisson.set_bc(bc);
-//  poisson.set_mu(K);
-  poisson.set_mu(1.0);
-  poisson.solve(pressure);
+#ifdef P4_TO_P8
+    BoundaryConditions3D bc;
+#else
+    BoundaryConditions2D bc;
+#endif
+    bc.setInterfaceType(DIRICHLET);
+    bc.setInterfaceValue(p_interface_value);
+    bc.setWallTypes(*bc_wall_type);
+    bc.setWallValues(*bc_wall_value);
+    bc_wall_value->t = t;
 
-  // extend solution over interface
-  ls.extend_Over_Interface_TVD(phi, pressure);
+    my_p4est_poisson_nodes_t poisson(&neighbors);
+    poisson.set_phi(phi);
+    poisson.set_bc(bc);
+//    sample_cf_on_nodes(p4est, nodes, *K_D, K);
+//    poisson.set_mu(K);
+    poisson.set_mu(1.0);
+    poisson.solve(pressure);
+
+    ls.extend_Over_Interface_TVD(phi, pressure);
+  }
+
+  // solve for the potential
+  {
+    // Set the boundary condition
+    I->t = t;
+    double x[P4EST_DIM];
+    foreach_node(n, nodes) {
+      node_xyz_fr_n(n, p4est, nodes, x);
+#ifdef P4_TO_P8
+      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])), EPS);
+      bc_val_p[n] = (*I)(x[0],x[1],x[2])/(4*PI*r);
+#else
+      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), EPS);
+      bc_val_p[n] = (*I)(x[0],x[1])/(2*PI) * log(r);
+#endif
+    }
+
+    my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
+    p_interface_value.set_input(bc_val, linear);
+
+#ifdef P4_TO_P8
+    BoundaryConditions3D bc;
+#else
+    BoundaryConditions2D bc;
+#endif
+    bc.setInterfaceType(DIRICHLET);
+    bc.setInterfaceValue(p_interface_value);
+    bc.setWallTypes(*bc_wall_type);
+    bc.setWallValues(*bc_wall_value);
+    bc_wall_value->t = t;
+
+    // invert the domain
+    Vec phi_l;
+    VecGhostGetLocalForm(phi, &phi_l);
+    VecScale(phi_l, -1);
+
+    my_p4est_poisson_nodes_t poisson(&neighbors);
+    poisson.set_phi(phi);
+    poisson.set_bc(bc);
+//    sample_cf_on_nodes(p4est, nodes, *K_EO, K);
+//    poisson.set_mu(K);
+    poisson.set_mu(1.0);
+    poisson.solve(potential);
+
+    ls.extend_Over_Interface_TVD(phi, potential);
+
+    VecScale(phi_l, -1);
+    VecGhostRestoreLocalForm(phi, &phi_l);
+
+    // add the regular and singular parts
+    double *potential_p;
+    VecGetArray(potential, &potential_p);
+    foreach_node(n, nodes) {
+      potential_p[n] -= bc_val_p[n];
+    }
+
+    VecRestoreArray(bc_val, &bc_val_p);
+    VecRestoreArray(potential, &potential_p);
+  }
 
   // destroy uneeded objects
   VecDestroy(bc_val);

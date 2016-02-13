@@ -24,20 +24,24 @@ class one_fluid_solver_t
   typedef CF_2 cf_t;
   typedef WallBC2D bc_wall_t;
 #endif
-  cf_t *K_D, *gamma, *bc_wall_value;
+  double alpha;
+  cf_t *Q, *I;
+  cf_t *K_D, *K_EO, *gamma;
+  cf_t *bc_wall_value;
   bc_wall_t *bc_wall_type;
 
-  double advect_interface_semi_lagrangian(Vec& phi, Vec& pressure, double cfl, double dtmax);
-  double advect_interface_godunov(Vec& phi, Vec& pressure, double cfl, double dtmax);
-  void solve_pressure(double t, Vec phi, Vec pressure);
+  double advect_interface_semi_lagrangian(Vec& phi, Vec& pressure, Vec &potential, double cfl, double dtmax);
+  double advect_interface_godunov(Vec& phi, Vec& pressure, Vec& potential, double cfl, double dtmax);
+  void solve_fields(double t, Vec phi, Vec pressure, Vec potential);
 
 public:
   one_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick);
   ~one_fluid_solver_t();
 
-  void set_properties(cf_t &K_D, cf_t &gamma);
+  void set_properties(cf_t &K_D, cf_t &K_EO, cf_t &gamma);
+  void set_injection_rates(cf_t& Q, cf_t& I, double alpha);
   void set_bc_wall(bc_wall_t& bc_wall_type, cf_t& bc_wall_value);
-  double solve_one_step(double t, Vec &phi, Vec &pressure, const std::string& method = "semi_lagrangian", double cfl = 5.0, double dtmax = DBL_MAX);
+  double solve_one_step(double t, Vec &phi, Vec &pressure, Vec &potential, const std::string& method = "semi_lagrangian", double cfl = 5.0, double dtmax = DBL_MAX);
 };
 
 #endif // ONE_FLUID_SOLVER_2D_H
