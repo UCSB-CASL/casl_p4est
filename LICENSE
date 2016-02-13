@@ -1,0 +1,159 @@
+--------------------------------------------------------------------------------
+This directory contains the parCASL library.
+
+The parCASL library is copyrighted by the University of California. Use of the
+parCASL library is subjected to the license terms quoted below.
+
+Some of the files in the ‘src’ directory fall under a different license. For 
+more information, please consult the `COPYING’ file.
+
+--------------------------------------------------------------------------------
+                       UCSB parCASL Library LICENSE TERMS                       
+
+These license terms form an agreement (“Agreement”) between The Regents of the
+University of California (“The Regents”) and you. Please read them.  They apply
+to the libraries named above (“Software”), including the media on which you
+receive it, if any.  The terms also apply to any updates, upgrades, supplements
+and documentation for this Software.  By using this Software, you are accepting
+these license terms.  If you do not accept them, do not use the Software.  If
+you comply with these license terms, then you have the rights and obligations
+below:
+
+1. Grant of License.  Subject to the limitations set forth in this Agreement and
+your compliance therewith and to the extent The Regents may lawfully grant such
+rights, The Regents hereby grants to you a non-exclusive, non-transferable
+worldwide license to use, reproduce and display the Software for internal, non-
+commercial academic research purposes only.  Your rights to use the Software are
+limited to those expressly granted in this license.  You have no right to
+sublicense, redistribute or prepare derivative works of the Software, or any
+portion thereof, under this license.  The license granted to you hereunder is
+limited to use of the executable code version of the Software.  All other rights
+are expressly reserved by The Regents.  You may not:
+
+* Disclose the results of any tests of the Software to any third party without
+The Regents’ prior written approval;
+
+* Workaround any technical limitations in the Software; Reverse engineer,
+reverse compile, decompile, or disassemble the Software;
+
+* Make more than one (1) copy of the Software; Publish the Software for others
+to copy;
+
+* Rent, lease or lend the Software; Transfer the Software or this agreement to
+any third party; or
+
+* Use the Software to provide services to third parties, including hosted
+application or Software services, or to otherwise operate a services bureau.
+
+2. Backup Copy. You may make one backup copy of the Software.  You may use it
+only to reinstall the Software.
+
+3. Documentation. You may copy and use any documentation about the Software for
+your internal reference purposes only.
+
+4. Export Control. This Software may be subject to United States export control
+laws and regulations.  You must comply with all domestic and international
+export laws and regulations that apply to the Software.  These laws include
+restrictions on destinations, end users and end use.
+
+5. Support Services. Because this Software is provided “as-is,” The Regents will
+not provide any support services for it.
+
+6. DISCLAIMER OF WARRANTY:  THE SOFTWARE IS NOT DESIGNED, INTENDED OR AUTHORIZED
+FOR USE  IN ANY TYPE OF SYSTEM OR APPLICATION IN WHICH THE FAILURE OF THE SYSTEM
+OR APPLICATION COULD CREATE A SITUATION WHERE PERSONAL  INJURY OR DEATH MAY
+OCCUR (E.G., MEDICAL SYSTEMS, LIFE-SUSTAINING OR LIFE-SAVING SYSTEMS).  THIS
+LICENSE, THE SOFTWARE, THE DOCUMENTATION ARE PROVIDED “AS-IS,” WITHOUT WARRANTY
+OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE OR ANY OTHER WARRANTY,
+EXPRESS OR IMPLIED.  THE REGENTS MAKES NO REPRESENTATION OR WARRANTY THAT THE
+SOFTWARE OR DOCUMENTATION WILL NOT INFRINGE ANY PATENT, COPYRIGHT OR OTHER
+PROPRIETARY RIGHT.   IN NO EVENT WILL THE REGENTS BE LIABLE FOR ANY INCIDENTAL,
+SPECIAL OR CONSEQUENTIAL DAMAGES RESULTING FROM EXERCISE OF THIS LICENSE OR THE
+USE OF THE SOFTWARE OR DOCUMENTION. This Agreement does not:
+
+* express or imply a warranty or representation as to the validity or scope of
+any copyright or other intellectual property rights licensed hereunder;
+
+* express or imply awarranty or representation that anything used under any
+license granted in this Agreement is or will be free from infringement of
+copyrights, patents or other intellectual property rights of third parties;
+
+* obligate The Regents to bring or prosecute actions or suits against third 
+parties for infringement;
+
+* confer by implication, estoppel or otherwise any license or rights under any
+copyrights, patents or patent applications of The Regents other than Software as 
+defined in this Agreement, regardless of whether those copyrights, patents or 
+patent applications are dominant or subordinate to Software; or
+
+* obligate The Regents to furnish any know-how not expressly provided herein.
+
+7. Confidentiality.  You agree that the Software and documentation, including
+structure, sequence and organization of the Software are proprietary and
+confidential to The Regents and you will take all reasonable measures to protect
+the confidentiality of the Software and documentation unless, and to the extent,
+The Regents makes them available to the public without such restrictions.  You
+further agree that all right, title and interest in and to the Software (and all
+intellectual property rights embodied therein) or any modification or
+improvement thereof made by The Regents or you is proprietary to, and owned by,
+The Regents.
+
+8. Copyright Notices; Derivative Works.  You agree: (a) not to remove from any
+copies of the Software or documentation any product identification, copyright or
+other notices; and (b) not to reproduce, modify, translate or create derivative
+works of all or any portion of the Software or documentation except as expressly
+permitted by the Agreement.
+
+9. Term and Termination.  Unless otherwise terminated by operation of law or by
+acts of the parties in accordance with the terms of this Agreement, this
+Agreement will be in force from the Effective Date until the first anniversary
+of the Effective Date.
+
+10. Use of Names and Trademarks.  Nothing contained in these license terms
+confers any right to use in advertising, publicity or other promotional
+activities any name, trade name, trademark or other designation of The Regents
+(including contraction, abbreviation or simulation of any of the foregoing).
+You are not allowed to use the “University of California” name, “The Regents of
+the University of California,” or the name, abbreviation, or logo of any campus
+of the University of California in any advertising, publicity or other
+promotional activities.
+
+11. Indemnification.  You will indemnify, hold harmless and defend The Regents,
+its officers, employees and agents; the sponsors of the research that led to the
+Software and documentation; and the authors or developers of the  Software and
+documentation against any and all claims, suits, losses, liabilities, damages,
+costs, fees and expenses resulting from or arising out of your  exercise of this
+license.
+
+12. Assignability.  This Agreement may be assigned by The Regents, but is
+personal to you and assignable by you only with the written consent of The
+Regents.
+
+13. Governing Laws.  This agreement will be interpreted and construed in
+accordance with the laws of the state of California without regard to conflict
+of laws or to which party drafted particular provisions of this agreement, but
+the scope and validity of any copyright will be governed by the applicable laws
+of the country of the copyright.  Disputes between the parties regarding this
+Agreement will utilize only judicial courts within California.
+
+14.  Limitation on and Exclusion of Remedies and Damages.  You can recover from
+The Regents only direct damages up to U.S. $5.00.  You cannot recover any other
+damages, including consequential, lost profits, special, indirect or incidental
+damages.  This limitation applies to claims for breach of contract, breach of
+warranty, guarantee, or conditions, strict liability, negligence or other tor to
+the extent permitted by applicable law. This limitation applies even if The
+Regents knew or should have known about the possibility of the damages.
+
+15. Severability.  In case any of the provisions contained in this Agreement is
+held to be invalid, illegal or unenforceable in any respect, that invalidity,
+illegality or unenforceability will not affect any other provisions of this
+Agreement and this Agreement will be construed as if the invalid, illegal or
+unenforceable provisions had never been contained in it.
+
+16. Entire Agreement.  This Agreement embodies the entire understanding of the
+parties and supersedes all previous communications, representations or
+understandings, either oral or written, between the parties relating to the
+subject matter hereof.
+
+                          END OF TERMS AND CONDITIONS
+--------------------------------------------------------------------------------
