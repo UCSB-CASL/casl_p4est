@@ -168,7 +168,7 @@ void quad_neighbor_nodes_of_node_t::gradient(const double *f, double &fx, double
   ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double f_000, f_m00, f_p00, f_0m0, f_0p0;
-  ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, f_0p0, f_0p0);
+  ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, f_0m0, f_0p0);
 
   fx = ((f_p00-f_000)/d_p00*d_m00 + (f_000-f_m00)/d_m00*d_p00)/(d_m00+d_p00);
   fy = ((f_0p0-f_000)/d_0p0*d_0m0 + (f_000-f_0m0)/d_0m0*d_0p0)/(d_0m0+d_0p0);
@@ -325,7 +325,7 @@ void quad_neighbor_nodes_of_node_t::laplace(const double *f, double &fxx, double
   ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double f_000, f_m00, f_p00, f_0m0, f_0p0;
-  ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, f_0p0, f_0p0);
+  ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, f_0m0, f_0p0);
 
   fxx = ((f_p00-f_000)/d_p00 + (f_m00-f_000)/d_m00)*2.0/(d_m00+d_p00);
   fyy = ((f_0p0-f_000)/d_0p0 + (f_0m0-f_000)/d_0m0)*2.0/(d_0m0+d_0p0);
