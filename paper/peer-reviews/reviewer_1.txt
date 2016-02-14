@@ -1,0 +1,11 @@
+Reviewer #1: 
+The article discusses a parallel implementation of the level-set
+method. In a shared-moemry computer, its implementation is trivial, as stated in
+page 7. In a distributed-memory model, however, there arise issues of memory
+distribution and communication scheduling. The authors use an open source
+library(p4est) for memory distribution and a simple strategy(Algorithm 2) for
+comminications between CPUs. Basically, the submission introduces a successful
+parallel implementation of the level-set method in octrees. It will be helpful
+to JCP audiences who needs to perform the level-set method in ultra fine scales.
+I suggest including some basic library codes in appendix, each matching its
+level set algorithm.

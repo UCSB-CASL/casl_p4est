@@ -1,0 +1,39 @@
+\documentclass{scrlttr2}
+
+\begin{document}
+\begin{letter} {Editorial Office, \\ Journal of Computational Physics}
+\setkomavar{subject}{Re: JCOMP-D-15-00846}
+\opening{Dear Editor,}
+We would like to appreciate the invaluable comments made by the reviewers. We have made adjustments to our article, titled `\textbf{Parallel level-set methods on adaptive tree-based grids}', to address the issues raised by the reviewers as detailed below. 
+
+\begin{itemize}
+\item \textbf{Reviewer \#1} \\
+The first reviewer has suggested to include ``\textit{some basic library codes in appendix, each matching its level set algorithm}''. Indeed it is important for the scientific community to share knowledge and facilitate ways for reproducing scientific work for others. In the case of computational science, unfortunately, this is a very daunting task that is not always possible. Many scientific codes are highly specialized and are often too technical to be fitted into a paper. 
+
+Specifically, in our case, our library amounts to nearly 30,000 lines of code, spread across more than 50 files and with complex dependencies. As such, it is practically not viable to include sample codes in the paper. Moreover, we believe inclusion of actual code, which involves many technical details, e.g. error checking, profiling tools, comments, etc., is not scientifically educational and may further alienate the reader from main message of the paper.
+
+Instead, and in accordance to the second reviewer who has raised related issues, we have opted to revise the pseudo-codes in the algorithms to make them more clear. We believe that the modifications should make the algorithms easier to understand and useful to the readers.
+
+\item \textbf{Reviewer \#2} \\
+The second reviewer has raised several issues, mostly related to the pseudo-codes in the paper, as well as suggesting additional numerical tests. These issues are addressed as detailed below:
+\begin{itemize}
+\item ``\textit{It is recommended that the authors' pseudocode be closer to a language that many people are familiar with like C++ or Fortran 90}.''
+
+Our library is coded in `\texttt{c++}' (with a mix of little `\texttt{c}' code). We have made adjustments to the to algorithms to make them easier to understand. However, we believe it is best not to directly use a `\texttt{c++}' syntax to keep the pseudo-code language-agnostic and accessible to all readers.
+
+\item ``\textit{In Algorithm 2, what is the definition of “rank”? “owner’s rank”? “mpirank”? “st”?}''
+
+\item ``\textit{}''
+
+\item ``\textit{}''
+
+\item ``\textit{}''
+\end{itemize}
+\end{itemize}
+
+
+In light of these adjustments, we respectfully ask that our article be reconsidered for publication in the Journal of Computational Physics.
+\closing{Sincerely,}
+Mohammad Mirzadeh (on behalf of all authors)
+\end{letter}
+\end{document}
