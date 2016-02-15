@@ -35,6 +35,7 @@ sync
 .rsync.exclude
 *.fls
 *.bak
+*.dvi
 
 # What directories to ignore
 *[Dd]ebug*
