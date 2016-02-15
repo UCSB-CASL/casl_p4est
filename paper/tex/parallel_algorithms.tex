@@ -339,7 +339,7 @@ v(x,y,z) = - \sin^2(\pi y)\sin(2 \pi x)\sin(2 \pi z), \\
 w(x,y,z) = - \sin^2(\pi z)\sin(2 \pi x)\sin(2 \pi y).
 \end{cases}
 \ee
-forward in time until $t_{1/2}=1$ and then backward to its original state at $t_f=2$. With set the time step to $\Delta t = 5 \Delta x_{min}$, where $\Delta x_{min}$ is the size of the smallest cell in the forest. We monitor the volume loss and the error in the interface location at the final time, when the original shape should be recovered, as the finest resolution of the forest increases. The results are reported in table \ref{tab:accuracy} and figure \ref{fig:accuracy} shows a visualization of the sphere at the initial time, at $t_{1/2}$ when the deformation is maximal, and at the final time. The results are consistent with those reported previously in \cite{Min;Gibou:07:A-second-order-accur} and indicate second order accuracy for the mass loss.
+forward in time until $t_{1/2}=1$ and then backward to its original state at $t_f=2$. We set the time step to $\Delta t = 5 \Delta x_{min}$, where $\Delta x_{min}$ is the size of the smallest cell in the forest. The level-set function is reinitialized at every time step by applying 20 iterations of the reinitialization procedure. We monitor the volume loss and the error in the interface location at the final time, when the original shape should be recovered, as the finest resolution of the forest increases. The results are reported in table \ref{tab:accuracy} and figure \ref{fig:accuracy} shows a visualization of the sphere at the initial time, at $t_{1/2}$ when the deformation is maximal, and at the final time. The results are consistent with those reported previously in \cite{Min;Gibou:07:A-second-order-accur} and indicate second order accuracy for the mass loss.
 
 \begin{table}[htbp]
 \begin{center}
@@ -361,15 +361,15 @@ $2048^3$ & 1.60E-03 & 0.67 & 5.17E-04 & 1.89 \\
 \begin{figure}[htbp]
 \begin{center}
 \begin{tabular}{ccccc}
-\includegraphics[width=.28\textwidth]{figures/enright_0.png}
+\includegraphics[width=.28\textwidth]{figures/enright_blue_0.png}
 &
 \hspace{.1cm}
 &
-\includegraphics[width=.28\textwidth]{figures/enright_1.png}
+\includegraphics[width=.28\textwidth]{figures/enright_blue_1.png}
 &
 \hspace{.1cm}
 &
-\includegraphics[width=.28\textwidth]{figures/enright_2.png}
+\includegraphics[width=.28\textwidth]{figures/enright_blue_2.png}
 \end{tabular}
 \caption{Visualization of the deformation undergone by the sphere for the Enright's test at time 0, $t_{1/2}$ and $t_f$ and colored with the processes ranks. The forest's finest resolution is equivalent to a uniform grid with $2048^3$ cells and contains between 17 (at initial and final times) and 63 (at $t_{1/2}$) million nodes. These results were obtained on the Comet supercomputer with 960 processes (40 compute nodes).} \label{fig:accuracy}
 \end{center}

@@ -27,12 +27,12 @@ spread across more than 50 files and with complex dependencies. As such, it is
 practically not viable to include sample codes in the paper. Moreover, we
 believe inclusion of actual code, which involves many technical details, e.g.
 error checking, profiling tools, comments, etc., is not scientifically
-educational and may further alienate the reader from main message of the paper.
+educational and may further alienate the reader from the main message of the paper.
 
 Instead, and in accordance to the second reviewer who has raised related issues,
 we have opted to revise the pseudo-codes in the algorithms to make them more
 clear. We believe that the modifications should make the algorithms easier to
-understand and useful to the readers.
+understand and more useful to the readers.
 
 \item \textbf{Reviewer \#2} \\ 
 The second reviewer has raised several issues, mostly related to the
@@ -40,16 +40,17 @@ pseudo-codes in the paper, as well as suggesting additional numerical tests.
 These issues are addressed as detailed below: 
 
 \begin{itemize} 
-\item ``\textit{It took me a while to understand Algorithms 1 and 2. It is
-  recom- mended that the authors’ pseudocode be closer to a language that many
+\item ``\textit{It took me a while to understand Algorithms 1 and 2. It is recommended that the authors�� pseudocode be closer to a language that many
 people are familiar with like C++ or Fortran 90 (or perhaps, the authors’ are
 using a new language that this referee is not aware of?).}''
 
-Our library is coded in `\texttt{c++}' (with a mix of little `\texttt{c}' code).
+Our library is coded in `\texttt{C++}' (with a mix of little `\texttt{C}' code).
 We have made adjustments to the to algorithms to make them easier to understand.
 However, we believe it is best not to directly use a `\texttt{c++}' syntax to
 keep the pseudo-code language-agnostic and accessible to all readers.
-\\
+
+\vspace{.5cm}
+
 \item ``\textit{In Algorithm 2, what is the definition of “rank”? “owner’s
   rank”? “mpirank”? “st”?}''
 
@@ -57,9 +58,11 @@ There were multiple references to the ``\textit{rank}'' in the pseudo-code that
 would have caused confusion. We have made things clear by explicitly referring 
 to ``\textit{owners\_rank}'' and ``\textit{mpirank}''. Also in the previous
 pseudo-code ``\textit{st}'' was meant to indicate ``\texttt{MPI\_STATUS}''. Again
-we have reorganized the pseudo-code to make this point more clear. We have also
+we have reorganized the pseudo-code to make this point clearer. We have also
 added more comments and text to the caption to explain things in more details.
-\\
+
+\vspace{.5cm}
+
 \item ``\textit{In algorithm 2, if X is contained within the mesh on a given
   processor, does that mean all the points needed in order to derive the value
 at X are also on the same processor? What if the points in the interpolatory
@@ -67,21 +70,23 @@ stencil of X belong to multiple processors? Which processor does the actual
 interpolation? Is it the processor that needs the value at X? or is it the
 processor that owns X?}''
 
-Since the Z-curve defines non-overlapping partition of the grid in parallel, it
+Since the $Z$-curve defines non-overlapping partition of the grid in parallel, it
 is guaranteed that the rank found by the search operation in line 3 of algorithm
 2, actually owns the interpolation point, i.e. there exists a \textit{local
-cell} \texttt{c} belonging to process \texttt{owners\_rank} which contains the
+cell} $\mathcal{C}$ belonging to process \texttt{owners\_rank} which contains the
 interpolation point. This is because the search operation uses a binary search
-on the Z-curve to find the remote \texttt{owners\_rank}.
+on the $Z$-curve to find the remote \texttt{owners\_rank}.
 
 Our method for interpolation only requires that the values of the function (and
 optionally its second derivatives if using multi-quadratic interpolation) be
-defined on all vertices of cell \texttt{c}. This, in turn is guaranteed by the
+defined on all vertices of cell $\mathcal{C}$. This, in turn is guaranteed by the
 fact that the boundary of each process is covered by a layer of ghost cells that
 have updated the ghost values at all their vertices before performing the
-interpolation. As a result, all the vertices of cell \texttt{c}, whether local
+interpolation. As a result, all the vertices of cell $\mathcal{C}$, whether local
 or ghost, have valid values that can be used for interpolation.
-\\
+
+\vspace{.5cm}
+
 \item ``\textit{In section 4.2, the authors should do a standard 3D reversible
   test when checking speed-up. A standard test allows researchers to compare
 the new method to previous schemes. Also the authors should report the
@@ -108,8 +113,10 @@ serial, have been studied before in relevant articles that we have cited in
 details. However, we agree with the reviewer that it is important to show that
 the presented methods are in fact accurate and convergent. As a result we have
 added a new section, 3.4, that checks the accuracy of the standard rotation
-test as was suggested by the reviewer.  
-\\
+test as was suggested by the reviewer.
+
+\vspace{.5cm}
+
 \item ``\textit{Also in section 4.2, how frequently is reinitialization carried
   out? What is the pseudo time step $\Delta \tau$? What is $\tau_{stop}$? If
 there is no reinitialization for this test, it is requested that the
@@ -144,19 +151,12 @@ interface. It also compares these costs with costs associated with grid
 operations in its entirety which includes generation, refinement and
 coarsening, and partitioning of the forest. As figure 10, and table 7,
 illustrate, both the semi-Lagrangian and the reinitialization scale well in a
-real scenario \textcolor{green}{@Arthur: How often do we call reinitialization
-and how many iterations each time? I think we should include these
-information}. Thus we hope the results of this test is satisfactory enough for
+real scenario. Thus we hope the results of this test is satisfactory enough for
 the reviewer.
 \end{itemize} 
 \end{itemize}
 
-\textcolor{red}{@Frederic: What should we do about the scaling of the full
-rotation test? Should we do it? I have the feeling that the reviewer is
-probably not going to be satisfied ... Deadline is Feb 21}
-
-In light of these adjustments, we respectfully ask that our article be
-reconsidered for publication in the Journal of Computational Physics.
+In light of these adjustments, we respectfully ask that our article be reconsidered for publication in the Journal of Computational Physics.
 \closing{Sincerely,} 
 Mohammad Mirzadeh (on behalf of all authors) 
 \end{letter}
