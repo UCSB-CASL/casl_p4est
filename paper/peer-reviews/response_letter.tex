@@ -68,7 +68,7 @@ interpolation? Is it the processor that needs the value at X? or is it the
 processor that owns X?}''
 
 Since the Z-curve defines non-overlapping partition of the grid in parallel, it
-is guarantied that the rank found by the search operation in line 3 of algorithm
+is guaranteed that the rank found by the search operation in line 3 of algorithm
 2, actually owns the interpolation point, i.e. there exists a \textit{local
 cell} \texttt{c} belonging to process \texttt{owners\_rank} which contains the
 interpolation point. This is because the search operation uses a binary search
@@ -76,7 +76,7 @@ on the Z-curve to find the remote \texttt{owners\_rank}.
 
 Our method for interpolation only requires that the values of the function (and
 optionally its second derivatives if using multi-quadratic interpolation) be
-defined on all vertices of cell \texttt{c}. This, in turn is guarantied by the
+defined on all vertices of cell \texttt{c}. This, in turn is guaranteed by the
 fact that the boundary of each process is covered by a layer of ghost cells that
 have updated the ghost values at all their vertices before performing the
 interpolation. As a result, all the vertices of cell \texttt{c}, whether local
