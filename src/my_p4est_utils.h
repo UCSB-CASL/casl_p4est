@@ -1012,14 +1012,14 @@ public:
 /*!
  * \brief prepares MPI, PETSc, p4est, and sc libraries
  */
-class mpi_enviroment_t{
+class mpi_environment_t{
   PetscErrorCode ierr;
   MPI_Comm mpicomm;
   int mpirank;
   int mpisize;
 
 public:
-  ~mpi_enviroment_t(){
+  ~mpi_environment_t(){
     ierr = PetscFinalize(); CHKERRXX(ierr);
     MPI_Finalize();
   }

@@ -774,7 +774,7 @@ struct external_force_v_t : CF_2
 
 
 
-void check_error_analytic_vortex(mpi_enviroment_t& mpi, my_p4est_navier_stokes_t *ns)
+void check_error_analytic_vortex(mpi_environment_t& mpi, my_p4est_navier_stokes_t *ns)
 {
   PetscErrorCode ierr;
   int mpiret;
@@ -865,7 +865,7 @@ void check_error_analytic_vortex(mpi_enviroment_t& mpi, my_p4est_navier_stokes_t
 
 
 #ifndef P4_TO_P8
-void check_velocity_cavity(mpi_enviroment_t& mpi, my_p4est_navier_stokes_t *ns, double Re, double n_times_dt)
+void check_velocity_cavity(mpi_environment_t& mpi, my_p4est_navier_stokes_t *ns, double Re, double n_times_dt)
 {
   PetscErrorCode ierr;
 
@@ -942,7 +942,7 @@ void check_velocity_cavity(mpi_enviroment_t& mpi, my_p4est_navier_stokes_t *ns, 
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
-  mpi_enviroment_t mpi;
+  mpi_environment_t mpi;
   mpi.init(argc, argv);
 
   cmdParser cmd;

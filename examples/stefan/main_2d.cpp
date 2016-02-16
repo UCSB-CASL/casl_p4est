@@ -682,7 +682,7 @@ void check_error_frank_sphere(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec
 
 int main (int argc, char* argv[])
 {
-  mpi_enviroment_t mpi;
+  mpi_environment_t mpi;
   mpi.init(argc, argv);
 
   PetscErrorCode ierr;

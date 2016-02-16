@@ -45,7 +45,7 @@ double compute_curvature_err(my_p4est_node_neighbors_t& neighbors, Vec phi, Vec 
 int main(int argc, char** argv) {
   
   // prepare parallel enviroment
-  mpi_enviroment_t mpi;
+  mpi_environment_t mpi;
   mpi.init(argc, argv);
 
   cmdParser parser;

@@ -30,7 +30,7 @@ ostream& operator << (ostream& os, Atom& atom) {
   return os;
 }
 
-BioMolecule::BioMolecule(my_p4est_brick_t& brick, const mpi_enviroment_t &mpi)
+BioMolecule::BioMolecule(my_p4est_brick_t& brick, const mpi_environment_t &mpi)
   : mpi(mpi), xc_(0.), yc_(0.), zc_(0.), rp_(1.4)
 {
   Dx_ = brick.nxyztrees[0];

@@ -454,7 +454,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
-  mpi_enviroment_t mpi;
+  mpi_environment_t mpi;
   mpi.init(argc, argv);
 
   cmdParser cmd;

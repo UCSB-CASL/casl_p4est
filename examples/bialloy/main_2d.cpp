@@ -393,7 +393,7 @@ public:
 
 int main (int argc, char* argv[])
 {
-  mpi_enviroment_t mpi;
+  mpi_environment_t mpi;
   mpi.init(argc, argv);
 
   cmdParser cmd;

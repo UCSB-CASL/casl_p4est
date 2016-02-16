@@ -385,7 +385,7 @@ struct external_force_v_t : CF_2
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
-  mpi_enviroment_t mpi;
+  mpi_environment_t mpi;
   mpi.init(argc, argv);
 
   cmdParser cmd;

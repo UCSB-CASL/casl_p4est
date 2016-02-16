@@ -182,7 +182,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, Vec ph
 int main(int argc, char ** argv)
 {
   PetscErrorCode ierr;
-  mpi_enviroment_t mpi;
+  mpi_environment_t mpi;
   mpi.init(argc, argv);
 
   ierr = PetscPrintf(mpi.comm(), "git hash value = %s (%s)\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG); CHKERRXX(ierr);
