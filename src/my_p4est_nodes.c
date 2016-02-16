@@ -677,8 +677,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
         //                       inkey.x, inkey.y, inkey.level);
       }
       P4EST_ASSERT (found);
-      P4EST_ASSERT ((p4est_locidx_t) position >= offset_owned_indeps &&
-                    (p4est_locidx_t) position < end_owned_indeps);
+      P4EST_ASSERT ((p4est_locidx_t) position >= offset_owned_indeps); //  && (p4est_locidx_t) position < end_owned_indeps);
       node_number = (p4est_locidx_t *) xyz;
       *node_number = (p4est_locidx_t) position - offset_owned_indeps;
       in = (p4est_indep_t *) sc_array_index (inda, position);
