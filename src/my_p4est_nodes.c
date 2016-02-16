@@ -52,6 +52,10 @@ extern PetscLogEvent log_my_p4est_nodes_new;
 #define PetscLogFlops(n) 0
 #endif
 
+#ifdef P4EST_ASSERT
+#undef P4EST_ASSERT 
+#define P4EST_ASSERT(n) 0
+#endif
 
 #ifdef P4EST_MPI
 
