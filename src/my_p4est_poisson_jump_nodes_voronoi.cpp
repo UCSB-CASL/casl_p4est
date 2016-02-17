@@ -1278,6 +1278,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
 #endif
     }
 
+    voro.compute_volume();
     double volume = voro.get_volume();
 
     rhs_p[n] *= volume;
@@ -1504,6 +1505,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_negative_laplace_rhsvec()
 #endif
     }
 
+    voro.compute_volume();
     rhs_p[n] *= voro.get_volume();
 
     for(unsigned int l=0; l<points->size(); ++l)
