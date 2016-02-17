@@ -207,8 +207,8 @@ static struct:CF_2{
   }
 
   double dn(double x, double y) const {
-    double nx = x - circle.x0;
-    double ny = y - circle.y0;
+    double nx = -(x - circle.x0);
+    double ny = -(y - circle.y0);
     double abs = MAX(EPS, sqrt(nx*nx + ny*ny));
     nx /= abs; ny /= abs;
 
@@ -243,8 +243,8 @@ static struct:CF_2{
   }
 
   double dn(double x, double y) const {
-    double nx = x - circle.x0;
-    double ny = y - circle.y0;
+    double nx = -(x - circle.x0);
+    double ny = -(y - circle.y0);
     double abs = MAX(EPS, sqrt(nx*nx + ny*ny));
     nx /= abs; ny /= abs;
 
@@ -409,19 +409,19 @@ int main (int argc, char* argv[]){
     // extend solutions over interface
     double *phi_p;
     VecGetArray(phi, &phi_p);
-//    w2.start("extending solution");
-//    my_p4est_level_set_t ls(&node_neighbors);
-//    ls.extend_Over_Interface_TVD(phi, sol[0], 10);
-//    // reverse sign
-//    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-//      phi_p[i] = -phi_p[i];
-//    }
-//    ls.extend_Over_Interface_TVD(phi, sol[1], 10);
-//    // reverse sign to its normal value
-//    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-//      phi_p[i] = -phi_p[i];
-//    }
-//    w2.stop(); w2.read_duration();
+    w2.start("extending solution");
+    my_p4est_level_set_t ls(&node_neighbors);
+    ls.extend_Over_Interface_TVD(phi, sol[0]);
+    // reverse sign
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+      phi_p[i] = -phi_p[i];
+    }
+    ls.extend_Over_Interface_TVD(phi, sol[1]);
+    // reverse sign to its normal value
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+      phi_p[i] = -phi_p[i];
+    }
+    w2.stop(); w2.read_duration();
 
     // compute the error -- overwritting to save on space
     double *sol_p[2], *sol_ex_p[2];
@@ -431,7 +431,16 @@ int main (int argc, char* argv[]){
     ierr = VecGetArray(sol_ex[1], &sol_ex_p[1]); CHKERRXX(ierr);
 
     double err_max [] = {0, 0}; // {minus, plus}
+    double dx[P4EST_DIM];
+    p4est_dxyz_min(p4est, dx);
+#ifdef P4_TO_P8
+    double diag = sqrt(SQR(dx[0])+SQR(dx[1])+SQR(dx[2]));
+#else
+    double diag = sqrt(SQR(dx[0])+SQR(dx[1]));
+#endif
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+      if (fabs(phi_p[i]) > 2*diag) continue;
+
       if (phi_p[i] < 0){
         err_max[0] = MAX(err_max[0], fabs(sol_ex_p[0][i] - sol_p[0][i]));
       } else {
@@ -451,8 +460,8 @@ int main (int argc, char* argv[]){
                            P4EST_TRUE, P4EST_FALSE,
                            3, 0, "sol_voronoi",
                            VTK_POINT_DATA, "phi",   phi_p,
-                           VTK_POINT_DATA, "plus",  sol_p[0],
-                           VTK_POINT_DATA, "minus", sol_p[1]);
+                           VTK_POINT_DATA, "minus",  sol_p[0],
+                           VTK_POINT_DATA, "plus", sol_p[1]);
 
     /* destroy p4est objects */
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
