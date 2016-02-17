@@ -10,8 +10,8 @@ decomposition technique.
 One of the main challenges in parallelizing algorithms on adaptive grids is
 handling the grid itself.
 One option is to replicate the entire grid on each process and to employ serial
-ordering techniques, as originally implemented by the \texttt{deal.II} library
-\cite{Bangerth;Hartmann;Kanschat:07:deal.II----a-General}, or serial
+ordering techniques, as implemented in an earlier version of the \texttt{deal.II} library
+\cite{Bangerth;Hartmann;Kanschat:07:deal.II----a-General}, or to use serial
 graph partitioners such as METIS \cite{KarypisKumar95}.
 %
 % off-the-shelf graph partitioners, e.g.\ ParMetis
@@ -31,6 +31,8 @@ has been improved (see e.g.\ \cite{SahniZhouShephardEtAl09}),
 % the use of a general-purpose graph partitioner
 their use
 adds extra overhead that can limit the overall scalability.
+Refining a grid consisting of multiple trees using recursive coordinate
+bisection has been implemented in the SIERRA framework \cite{StewartEdwards04}.
 Interestingly, tree-based grids have a nice spatial ordering that naturally
 leads to the concept of space-filling curves (SFCs) and can be efficiently
 exploited for parallel load balancing
@@ -105,7 +107,7 @@ or by solving the Eikonal equation
 \ben
 F(x)|\nabla\phi| = 1
 \een 
-with constant speed function $F(x) \equiv 1$. The transient reinitialization equation can be solved using explicit finite differences and thus can easily be parallelized in a domain decomposition approach. Moreover, only a few iterations may be needed if the signed-distance property is only required close to the interface \cite{Min;Gibou:07:A-second-order-accur}. This is the approach we have chosen in this paper. However, if the signed-distance property is required in the entire domain, solving the Eikonal equation is more computationally efficient. Unfortunately, the most popular algorithm for solving the Eikonal equation, i.e.\ the Fast Marching Method \cite{Sethian:96:A-Fast-Marching-Leve,Sethian:99:Level-set-methods-an}, is inherently sequential due to causal relationship between grid points and cannot be easily parallelized.
+with constant speed function $F(x) \equiv 1$. The transient reinitialization equation can be solved using explicit finite differences and thus can easily be parallelized in a domain decomposition approach. Moreover, only a few iterations may be needed if the signed-distance property is only required close to the interface \cite{Min;Gibou:07:A-second-order-accur}. This is the approach we have chosen in this paper. However, if the signed-distance property is required in the entire domain, solving the Eikonal equation is more computationally efficient. Unfortunately, the most popular algorithm for solving the Eikonal equation, i.e.\ the Fast Marching Method (FMM) \cite{Sethian:96:A-Fast-Marching-Leve,Sethian:99:Level-set-methods-an}, is inherently sequential due to causal relationship between grid points and cannot be easily parallelized.
 The Fast Sweeping Method (FSM) \cite{Zhao:05:A-fast-sweeping-meth} is an
 alternative for solving the Eikonal equation iteratively.
 The FSM can be more computationally efficient for simple choices of speed
