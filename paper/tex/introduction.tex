@@ -39,7 +39,7 @@ exploited for parallel load balancing
 \cite{Aluru;Sevilgen:97:Parallel-domain-deco, GriebelZumbusch99,
       Campbell;Devine;Flaherty;etal:03:Dynamic-octree-load-}.
 
-The idea of using SFCs for parallel partitioning of Quad-/Octrees is not new in itself and has been used by many researchers. For instance, \texttt{Octor} \cite{Tu;OHallaron;Ghattas:05:Scalable-parallel-oc} uses a Morton curve (also known as Z-curve) for traversing the leaves of an Octree for indexing and load balancing and has been scaled up to 62,000 cores \cite{Burstedde;Ghattas;Gurnis;etal:08:Scalable-adaptive-ma}.
+The idea of using SFCs for parallel partitioning of Quad-/Octrees is not new in itself and has been used by many researchers. For instance, \texttt{Octor} \cite{Tu;OHallaron;Ghattas:05:Scalable-parallel-oc} uses a Morton curve (also known as Z-curve) for traversing the leaves of an Octree for indexing and load balancing and has been scaled up to 62,000 CPU cores \cite{Burstedde;Ghattas;Gurnis;etal:08:Scalable-adaptive-ma}.
 \texttt{Dendro} \cite{Sampath;Adavani;Sundar;etal:08:Dendro:-parallel-alg} is
 an example of a so-called linear Octree code in which new algorithms are
 introduced for parallel partitioning and the development of a parallel
@@ -60,7 +60,10 @@ The \texttt{p4est} library \cite{p4est-github} provides a publicly available
 implementation of these algorithms that is equally efficient for a single tree
 as well as multiple trees and has been shown to scale to more than
 % 200,000 cores,
-450,000 CPU cores \cite{IsaacBursteddeWilcoxEtAl15}.
+450k CPU cores \cite{IsaacBursteddeWilcoxEtAl15}.
+Applications built with \pforest have scaled to 1.6M cores
+\cite{RudiMalossiIsaacEtAl15}
+and 2.9M cores \cite{MullerKoperaMarrasEtAl15}.
 In fact, the algorithms presented in this paper are implemented on top of
 the \texttt{p4est} API.
 Due to the need for multiple adaptation and partitioning operations in each
