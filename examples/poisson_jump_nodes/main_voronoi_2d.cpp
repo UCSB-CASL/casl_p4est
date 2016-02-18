@@ -85,9 +85,9 @@ static struct:CF_3{
   }
 
   double dn(double x, double y, double z) const {
-    double nx = x - circle.x0;
-    double ny = y - circle.y0;
-    double nz = z - circle.z0;
+    double nx = -(x - circle.x0);
+    double ny = -(y - circle.y0);
+    double nz = -(z - circle.z0);
     double abs = MAX(EPS, sqrt(nx*nx + ny*ny + nz*nz));
     nx /= abs; ny /= abs; nz /= abs;
 #if TEST == CUBIC_TEST
@@ -122,9 +122,9 @@ static struct:CF_3{
 #endif
   }
   double dn(double x, double y, double z) const {
-    double nx = x - circle.x0;
-    double ny = y - circle.y0;
-    double nz = z - circle.z0;
+    double nx = -(x - circle.x0);
+    double ny = -(y - circle.y0);
+    double nz = -(z - circle.z0);
     double abs = MAX(EPS, sqrt(nx*nx + ny*ny + nz*nz));
     nx /= abs; ny /= abs; nz /= abs;
 
@@ -403,25 +403,31 @@ int main (int argc, char* argv[]){
     solver.set_mu_grad_u_jump(jump_du);
     solver.set_rhs(rhs[0], rhs[1]);
     solver.solve(sol[0]);
-    VecCopy(sol[0], sol[1]);
+
+    Vec sol_l[2];
+    VecGhostGetLocalForm(sol[0], &sol_l[0]);
+    VecGhostGetLocalForm(sol[1], &sol_l[1]);
+    VecCopy(sol_l[0], sol_l[1]);
+    VecGhostRestoreLocalForm(sol[0], &sol_l[0]);
+    VecGhostRestoreLocalForm(sol[1], &sol_l[1]);
     w2.stop(); w2.read_duration();
 
     // extend solutions over interface
     double *phi_p;
     VecGetArray(phi, &phi_p);
-//    w2.start("extending solution");
-//    my_p4est_level_set_t ls(&node_neighbors);
-//    ls.extend_Over_Interface_TVD(phi, sol[0]);
-//    // reverse sign
-//    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-//      phi_p[i] = -phi_p[i];
-//    }
-//    ls.extend_Over_Interface_TVD(phi, sol[1]);
-//    // reverse sign to its normal value
-//    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
-//      phi_p[i] = -phi_p[i];
-//    }
-//    w2.stop(); w2.read_duration();
+    w2.start("extending solution");
+    my_p4est_level_set_t ls(&node_neighbors);
+    ls.extend_Over_Interface_TVD(phi, sol[0]);
+    // reverse sign
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+      phi_p[i] = -phi_p[i];
+    }
+    ls.extend_Over_Interface_TVD(phi, sol[1]);
+    // reverse sign to its normal value
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+      phi_p[i] = -phi_p[i];
+    }
+    w2.stop(); w2.read_duration();
 
     // compute the error -- overwritting to save on space
     double *sol_p[2], *sol_ex_p[2];
@@ -431,19 +437,12 @@ int main (int argc, char* argv[]){
     ierr = VecGetArray(sol_ex[1], &sol_ex_p[1]); CHKERRXX(ierr);
 
     double err_max [] = {0, 0}; // {minus, plus}
-//    double dx[P4EST_DIM];
-//    p4est_dxyz_min(p4est, dx);
-//#ifdef P4_TO_P8
-//    double diag = sqrt(SQR(dx[0])+SQR(dx[1])+SQR(dx[2]));
-//#else
-//    double diag = sqrt(SQR(dx[0])+SQR(dx[1]));
-//#endif
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
 
       if (phi_p[i] < 0){
         err_max[0] = MAX(err_max[0], fabs(sol_ex_p[0][i] - sol_p[0][i]));
       } else {
-        err_max[1] = MAX(err_max[1], fabs(sol_ex_p[1][i] - sol_p[0][i]));
+        err_max[1] = MAX(err_max[1], fabs(sol_ex_p[1][i] - sol_p[1][i]));
       }
     }
 
