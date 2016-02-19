@@ -65,12 +65,9 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
 #endif
 
   // clip to bounding box
-  bool periodic[P4EST_DIM];
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-    periodic[dir] = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + 2*dir]!=0);
   for (short i=0; i<P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = periodic[i] ? xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = periodic[i] ? xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
+    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
+    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
   }
   
   const double *Fi_p;
@@ -160,8 +157,8 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
       xyz_p[dir] = xyz[dir];
-      if     (periodic[dir] && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
-      else if(periodic[dir] && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
+      if     (is_periodic(p4est,dir) && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
+      else if(is_periodic(p4est,dir) && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
     }
 
     double value=0;
@@ -223,9 +220,6 @@ double my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad,
   }
 
   /* enforce periodicity if necessary */
-  bool periodic[P4EST_DIM];
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-    periodic[dir] = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + 2*dir]!=0);
   double xyz_q[P4EST_DIM];
   quad_xyz_fr_q(quad_idx, quad.p.piggy3.which_tree, p4est, ghost, xyz_q);
 
@@ -233,8 +227,8 @@ double my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad,
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     xyz_p[dir] = xyz[dir];
-    if     (periodic[dir] && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
-    else if(periodic[dir] && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
+    if     (is_periodic(p4est,dir) && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
+    else if(is_periodic(p4est,dir) && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
   }
 
   /* compute derivatives */

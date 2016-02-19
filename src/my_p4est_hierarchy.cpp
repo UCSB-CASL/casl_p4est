@@ -244,10 +244,10 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1];
 
-  bool p_x = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_m00]!=0);
-  bool p_y = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_0m0]!=0);
+  bool p_x = is_periodic(p4est,0);
+  bool p_y = is_periodic(p4est,1);
 #ifdef P4_TO_P8
-  bool p_z = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_00m]!=0);
+  bool p_z = is_periodic(p4est,2);
 #endif
 
   double xmin = p4est->connectivity->vertices[3*v_m + 0];
@@ -453,10 +453,10 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 {
   const static p4est_qcoord_t qh = P4EST_QUADRANT_LEN(P4EST_QMAXLEVEL);
 
-  bool p_x = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_m00]!=0);
-  bool p_y = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_0m0]!=0);
+  bool p_x = is_periodic(p4est,0);
+  bool p_y = is_periodic(p4est,1);
 #ifdef P4_TO_P8
-  bool p_z = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_00m]!=0);
+  bool p_z = is_periodic(p4est,2);
 #endif
 
   if((s.x<0 || s.x>(double)P4EST_ROOT_LEN) && !p_x) return;

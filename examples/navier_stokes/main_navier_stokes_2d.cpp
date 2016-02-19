@@ -1343,6 +1343,17 @@ int main (int argc, char* argv[])
   bool refine_with_smoke = cmd.get("refine_with_smoke", 0);
   double smoke_thresh = cmd.get("smoke_thresh", .5);
 
+  if(0)
+  {
+    int i = 0;
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+    fflush(stdout);
+    while (0 == i)
+      sleep(5);
+  }
+
 #ifndef P4_TO_P8
   double naca_length = 4;
 #endif

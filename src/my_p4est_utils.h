@@ -724,6 +724,17 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
 bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
 /*!
+ * \brief is_periodic checks if the forest is periodic in direction dir
+ * \param p4est [in] the forest
+ * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
+ * \return true if the forest is periodic in direction dir, false otherwise
+ */
+inline bool is_periodic(const p4est_t *p4est, int dir)
+{
+  return (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + 2*dir]!=0);
+}
+
+/*!
  * \brief find the owner rank of a ghost quadrant
  * \param ghost the ghost structure
  * \param ghost_idx the index of the ghost quadrant (between 0 and the number of ghost quadrants)

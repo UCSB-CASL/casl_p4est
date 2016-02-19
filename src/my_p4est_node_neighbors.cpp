@@ -87,10 +87,10 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
 
 bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
 {
-  bool p_x = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_m00]!=0);
-  bool p_y = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_0m0]!=0);
+  bool p_x = is_periodic(p4est,0);
+  bool p_y = is_periodic(p4est,1);
 #ifdef P4_TO_P8
-  bool p_z = (p4est->connectivity->tree_to_tree[P4EST_FACES*0 + dir::f_00m]!=0);
+  bool p_z = is_periodic(p4est,2);
 #endif
 
   p4est_connectivity_t *connectivity = p4est->connectivity;
