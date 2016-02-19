@@ -453,32 +453,50 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 {
   const static p4est_qcoord_t qh = P4EST_QUADRANT_LEN(P4EST_QMAXLEVEL);
 
-  bool p_x = is_periodic(p4est,0);
-  bool p_y = is_periodic(p4est,1);
-#ifdef P4_TO_P8
-  bool p_z = is_periodic(p4est,2);
-#endif
-
-  if((s.x<0 || s.x>(double)P4EST_ROOT_LEN) && !p_x) return;
-  if((s.y<0 || s.y>(double)P4EST_ROOT_LEN) && !p_y) return;
-#ifdef P4_TO_P8
-  if((s.z<0 || s.z>(double)P4EST_ROOT_LEN) && !p_z) return;
-#endif
-
 #ifdef P4_TO_P8
   int tr_xyz[] = { tr_xyz_orig[0], tr_xyz_orig[1], tr_xyz_orig[2]};
 #else
   int tr_xyz[] = { tr_xyz_orig[0], tr_xyz_orig[1]};
 #endif
 
-  if      (s.x < 0)                      { s.x += (double)P4EST_ROOT_LEN; tr_xyz[0] = mod(tr_xyz_orig[0] - 1, myb->nxyztrees[0]); }
-  else if (s.x > (double)P4EST_ROOT_LEN) { s.x -= (double)P4EST_ROOT_LEN; tr_xyz[0] = mod(tr_xyz_orig[0] + 1, myb->nxyztrees[0]); }
-  if      (s.y < 0)                      { s.y += (double)P4EST_ROOT_LEN; tr_xyz[1] = mod(tr_xyz_orig[1] - 1, myb->nxyztrees[1]); }
-  else if (s.y > (double)P4EST_ROOT_LEN) { s.y -= (double)P4EST_ROOT_LEN; tr_xyz[1] = mod(tr_xyz_orig[1] + 1, myb->nxyztrees[1]); }
+  /* NOTE: not sure why this is not needed and why tr_xyz[0] can never be negative ... in practice it isn't ??
+  if(is_periodic(p4est,0))
+  {
+    if      (s.x < 0)                      { s.x += (double)P4EST_ROOT_LEN; tr_xyz[0] = mod(tr_xyz_orig[0] - 1, myb->nxyztrees[0]); }
+    else if (s.x > (double)P4EST_ROOT_LEN) { s.x -= (double)P4EST_ROOT_LEN; tr_xyz[0] = mod(tr_xyz_orig[0] + 1, myb->nxyztrees[0]); }
+  }
+  else
+  {
+  }
+  if(is_periodic(p4est,1))
+  {
+    if      (s.y < 0)                      { s.y += (double)P4EST_ROOT_LEN; tr_xyz[1] = mod(tr_xyz_orig[1] - 1, myb->nxyztrees[1]); }
+    else if (s.y > (double)P4EST_ROOT_LEN) { s.y -= (double)P4EST_ROOT_LEN; tr_xyz[1] = mod(tr_xyz_orig[1] + 1, myb->nxyztrees[1]); }
+  }
+  else
+  {
+  }
 #ifdef P4_TO_P8
-  if      (s.z < 0)                      { s.z += (double)P4EST_ROOT_LEN; tr_xyz[2] = mod(tr_xyz_orig[2] - 1, myb->nxyztrees[2]); }
-  else if (s.z > (double)P4EST_ROOT_LEN) { s.z -= (double)P4EST_ROOT_LEN; tr_xyz[2] = mod(tr_xyz_orig[2] + 1, myb->nxyztrees[2]); }
+  if(is_periodic(p4est,2))
+  {
+    if      (s.z < 0)                      { s.z += (double)P4EST_ROOT_LEN; tr_xyz[2] = mod(tr_xyz_orig[2] - 1, myb->nxyztrees[2]); }
+    else if (s.z > (double)P4EST_ROOT_LEN) { s.z -= (double)P4EST_ROOT_LEN; tr_xyz[2] = mod(tr_xyz_orig[2] + 1, myb->nxyztrees[2]); }
+  }
+  else
+  {
+  }
 #endif
+  */
+
+  if      (s.x < 0)                      { s.x += (double)P4EST_ROOT_LEN; tr_xyz[0] = tr_xyz_orig[0] - 1; }
+  else if (s.x > (double)P4EST_ROOT_LEN) { s.x -= (double)P4EST_ROOT_LEN; tr_xyz[0] = tr_xyz_orig[0] + 1; }
+  if      (s.y < 0)                      { s.y += (double)P4EST_ROOT_LEN; tr_xyz[1] = tr_xyz_orig[1] - 1; }
+  else if (s.y > (double)P4EST_ROOT_LEN) { s.y -= (double)P4EST_ROOT_LEN; tr_xyz[1] = tr_xyz_orig[1] + 1; }
+#ifdef P4_TO_P8
+  if      (s.z < 0)                      { s.z += (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] - 1; }
+  else if (s.z > (double)P4EST_ROOT_LEN) { s.z -= (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] + 1; }
+#endif
+
 
 #ifdef P4_TO_P8
   p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]
