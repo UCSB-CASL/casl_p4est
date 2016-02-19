@@ -776,6 +776,7 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
           else
             diff = -EPS*avg;
         }
+        diff = fabs(diff);
         double dist = MAX(1E-6*d_min, fabs(phi_000));
         double jump = mue_p_*mue_m_*interface_area/diff/dist;
 
@@ -1297,10 +1298,16 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_rhsvec()
         double dist = MAX(1E-6*d_min, fabs(phi_000));
 
         rhs_p[2*n    ] *= volume_m;
-        rhs_p[2*n    ] += -mue_m_ * interface_area/diff*(bp + mue_p_*ap/dist);
+        if (diff > 0)
+          rhs_p[2*n    ] += -mue_m_ * interface_area/diff*(bp + mue_p_*ap/dist);
+        else
+          rhs_p[2*n    ] +=  mue_p_ * interface_area/diff*(bp + mue_m_*ap/dist);
 
         rhs_p[2*n + 1] *= volume_p;
-        rhs_p[2*n + 1] +=  mue_p_ * interface_area/diff*(bp + mue_m_*ap/dist);
+        if (diff > 0)
+          rhs_p[2*n + 1] +=  mue_p_ * interface_area/diff*(bp + mue_m_*ap/dist);
+        else
+          rhs_p[2*n + 1] += -mue_m_ * interface_area/diff*(bp + mue_p_*ap/dist);
 
       } else {
         // regular node-wise discretization as if point is in omega^-

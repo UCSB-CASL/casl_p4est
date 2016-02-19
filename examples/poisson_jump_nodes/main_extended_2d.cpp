@@ -43,8 +43,8 @@ using namespace std;
 #define TEST COS_TEST
 
 #define POW3(x) (x)*(x)*(x)
-const static double mue_p = 5.0;
-const static double mue_m = 1.0;
+const static double mue_p = 1.0;
+const static double mue_m = 5.0;
 
 #ifdef P4_TO_P8
 static struct:WallBC3D{
