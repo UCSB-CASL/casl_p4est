@@ -44,7 +44,7 @@ using namespace std;
 
 #define POW3(x) (x)*(x)*(x)
 const static double mue_p = 1.0;
-const static double mue_m = 5.0;
+const static double mue_m = 1.1;
 
 #ifdef P4_TO_P8
 static struct:WallBC3D{
@@ -309,9 +309,9 @@ int main (int argc, char* argv[]){
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t brick;
 
-    int n_xyz [] = {2, 2, 2};
-    double xyz_min [] = {0, 0, 0};
-    double xyz_max [] = {2, 2, 2};
+    int n_xyz [] = {1, 1, 1};
+    double xyz_min [] = {-1, -1, -1};
+    double xyz_max [] = { 2,  2,  2};
 
     connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max,  &brick);
 
