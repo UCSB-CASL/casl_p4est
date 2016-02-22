@@ -30,7 +30,8 @@ class two_fluid_solver_t
   bc_wall_t *bc_wall_type;
 
   double advect_interface(Vec& phi, Vec& press_m, Vec &press_p, double cfl, double dtmax);
-  void solve_fields(double t, Vec phi, Vec press_m, Vec press_p);
+  void solve_fields_extended(double t, Vec phi, Vec press_m, Vec press_p);
+  void solve_fields_voronoi(double t, Vec phi, Vec press_m, Vec press_p);
 
 public:
   two_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick);
