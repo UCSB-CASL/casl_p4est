@@ -52,8 +52,8 @@ double two_fluid_solver_t::advect_interface(Vec &phi, Vec &press_m, Vec& press_p
     VecCreateGhostNodes(p4est, nodes, &vx_tmp[dim]);
     VecGetArray(vx_tmp[dim], &vx_p[dim]);
   }
-  VecGetArray(press_m, &press_p_p);
-  VecGetArray(press_p, &press_m_p);
+  VecGetArray(press_m, &press_m_p);
+  VecGetArray(press_p, &press_p_p);
   VecGetArray(phi, &phi_p);
 
   // compute on the layer nodes

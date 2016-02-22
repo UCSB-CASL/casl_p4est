@@ -126,7 +126,7 @@ void set_parameters(int argc, char **argv) {
       }
     } interface; interface.lip = params.lip;
 
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
@@ -146,13 +146,13 @@ void set_parameters(int argc, char **argv) {
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
     } bc_wall_type;
 
     static struct:cf_t{
-      double operator()(double, double) const { return 0; }
+      double operator()(double, double) const { return -10; }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif
 
@@ -260,8 +260,8 @@ int main(int argc, char** argv) {
                            P4EST_TRUE, P4EST_TRUE,
                            3, 0, vtk_name,
                            VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "press_p", press_m_p,
-                           VTK_POINT_DATA, "press_m", press_p_p);
+                           VTK_POINT_DATA, "press_m", press_m_p,
+                           VTK_POINT_DATA, "press_p", press_p_p);
     VecRestoreArray(phi, &phi_p);
     VecRestoreArray(press_m, &press_m_p);
     VecRestoreArray(press_p, &press_p_p);
