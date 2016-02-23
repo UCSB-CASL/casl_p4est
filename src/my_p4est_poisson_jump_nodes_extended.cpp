@@ -245,6 +245,8 @@ my_p4est_poisson_jump_nodes_extended_t::~my_p4est_poisson_jump_nodes_extended_t(
 
 void my_p4est_poisson_jump_nodes_extended_t::preallocate_matrix()
 {  
+  //  MatSetOption(A, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+
   // enable logging for the preallocation
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 
@@ -468,7 +470,6 @@ void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzer
 void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
 {
   preallocate_matrix();
-  MatSetOption(A, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
 
   // register for logging purpose
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);

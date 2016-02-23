@@ -577,6 +577,23 @@ inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
 }
 
 /*!
+ * \brief quad_x        compute the x-coordinate of the center of a quadrant
+ * \param p4est [in]    const pointer to the p4est structure
+ * \param quad  [in]    const pointer to the quadrant.
+ *        NOTE: Assumes that the piggy3 member if filled
+ * \return  the x-coordinate
+ */
+inline double quad_x(const p4est_t *p4est, const p4est_quadrant_t *quad)
+{
+  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  return (tree_xmax-tree_xmin)*(quad_x_fr_i(quad) + 0.5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_xmin;
+}
+
+/*!
  * \brief get the y-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
@@ -596,6 +613,23 @@ inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
   double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
   double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
   return (tree_ymax-tree_ymin)*(quad_y_fr_j(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_ymin;
+}
+
+/*!
+ * \brief quad_y        compute the y-coordinate of the center of a quadrant
+ * \param p4est [in]    const pointer to the p4est structure
+ * \param quad  [in]    const pointer to the quadrant.
+ *        NOTE: Assumes that the piggy3 member if filled
+ * \return  the y-coordinate
+ */
+inline double quad_y(const p4est_t *p4est, const p4est_quadrant_t *quad)
+{
+  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+  return (tree_ymax-tree_ymin)*(quad_y_fr_j(quad) + 0.5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_ymin;
 }
 
 #ifdef P4_TO_P8
@@ -620,6 +654,23 @@ inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
   double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
   return (tree_zmax-tree_zmin)*(quad_z_fr_k(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_zmin;
 }
+
+/*!
+ * \brief quad_z        compute the y-coordinate of the center of a quadrant
+ * \param p4est [in]    const pointer to the p4est structure
+ * \param quad  [in]    const pointer to the quadrant.
+ *        NOTE: Assumes that the piggy3 member if filled
+ * \return  the z-coordinate
+ */
+inline double quad_z(const p4est_t *p4est, const p4est_quadrant_t *quad)
+{
+  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+  return (tree_zmax-tree_zmin)*(quad_z_fr_k(quad) + 0.5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_zmin;
+}
 #endif
 
 
@@ -633,6 +684,22 @@ inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
   xyz[1] = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
 #ifdef P4_TO_P8
   xyz[2] = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+#endif
+}
+
+/*!
+ * \brief quad_z_fr_q   compute the y-coordinate of the center of a quadrant
+ * \param p4est [in]    const pointer to the p4est structure
+ * \param quad  [in]    const pointer to the quadrant.
+ *        NOTE: Assumes that the piggy3 member if filled
+ * \return  the z-coordinate
+ */
+inline void quad_xyz(const p4est_t *p4est, const p4est_quadrant_t *quad, double *xyz)
+{
+  xyz[0] = quad_x(p4est, quad);
+  xyz[1] = quad_y(p4est, quad);
+#ifdef P4_TO_P8
+  xyz[2] = quad_z(p4est, quad);
 #endif
 }
 
@@ -1003,7 +1070,7 @@ public:
                                                                                            entries[i].num_recv_points,
                                                                                            entries[i].num_recv_procs);
       PetscSynchronizedFlush(PETSC_COMM_WORLD, fp);
-      PetscFClose(PETSC_COMM_WORLD, fp);        
+      PetscFClose(PETSC_COMM_WORLD, fp);
     }
     entries.clear();
   }

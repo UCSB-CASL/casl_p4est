@@ -52,23 +52,23 @@ my_p4est_poisson_jump_nodes_voronoi_t::my_p4est_poisson_jump_nodes_voronoi_t(con
 
   // compute grid parameters
   // NOTE: Assuming all trees are of the same size [0, 1]^d
-  xmin = 0; xmax = myb->nxyztrees[0];
-  ymin = 0; ymax = myb->nxyztrees[1];
+  double xyz_min[P4EST_DIM];
+  double xyz_max[P4EST_DIM];
+  p4est_xyz_min(p4est, xyz_min);
+  p4est_xyz_max(p4est, xyz_max);
 
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin_ = p4est->connectivity->vertices[3*vm + 0];
-  double ymin_ = p4est->connectivity->vertices[3*vm + 1];
-  double xmax_ = p4est->connectivity->vertices[3*vp + 0];
-  double ymax_ = p4est->connectivity->vertices[3*vp + 1];
-  dx_min = (xmax_-xmin_) / pow(2.,(double) data->max_lvl);
-  dy_min = (ymax_-ymin_) / pow(2.,(double) data->max_lvl);
+  xmin = xyz_min[0], ymin = xyz_min[1];
+#ifdef P4_TO_P8
+  zmin = xyz_min[2];
+#endif
+
+  double dxyz_min[P4EST_DIM];
+  p4est_dxyz_min(p4est, dxyz_min);
+
+  dx_min = dxyz_min[0], dy_min = dxyz_min[1];
 
 #ifdef P4_TO_P8
-  zmin = 0; zmax = myb->nxyztrees[2];
-  double zmin_ = p4est->connectivity->vertices[3*vm + 2];
-  double zmax_ = p4est->connectivity->vertices[3*vp + 2];
-  dz_min = (zmax_-zmin_) / pow(2.,(double) data->max_lvl);
+  dz_min = dxyz_min[2];
   d_min = MIN(dx_min, dy_min, dz_min);
   diag_min = sqrt(dx_min*dx_min + dy_min*dy_min + dz_min*dz_min);
 #else
@@ -294,6 +294,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
     // PETSc removed the KSPSetNullSpace in 3.6.0 ... Use MatSetNullSpace instead
 #if PETSC_VERSION_GE(3,6,0)
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+    ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
 #else
     ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
 #endif
@@ -617,36 +618,29 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
     {
       p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
       p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-      p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-      double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
-#endif
-
-      double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-      double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
-      double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-      double qz = quad.z / (double) P4EST_ROOT_LEN + tree_zmin;
-#endif
       p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+
+      double qx = quad_x(p4est, &quad);
+      double qy = quad_y(p4est, &quad);
+#ifdef P4_TO_P8
+      double qz = quad_z(p4est, &quad);
+#endif
 
       p4est_locidx_t node = -1;
 #ifdef P4_TO_P8
-      if     (xyz1[0]<=qx+qh/2 && xyz1[1]<=qy+qh/2 && xyz1[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz1[0]<=qx+qh/2 && xyz1[1]<=qy+qh/2 && xyz1[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
-      else if(xyz1[0]<=qx+qh/2 && xyz1[1]> qy+qh/2 && xyz1[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz1[0]<=qx+qh/2 && xyz1[1]> qy+qh/2 && xyz1[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]<=qy+qh/2 && xyz1[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]<=qy+qh/2 && xyz1[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]> qy+qh/2 && xyz1[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]> qy+qh/2 && xyz1[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
+      if     (xyz1[0]<=qx && xyz1[1]<=qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz1[0]<=qx && xyz1[1]<=qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
+      else if(xyz1[0]<=qx && xyz1[1]> qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz1[0]<=qx && xyz1[1]> qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
+      else if(xyz1[0]> qx && xyz1[1]<=qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz1[0]> qx && xyz1[1]<=qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
+      else if(xyz1[0]> qx && xyz1[1]> qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      else if(xyz1[0]> qx && xyz1[1]> qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
 #else
-      if     (xyz1[0]<=qx+qh/2 && xyz1[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz1[0]<=qx+qh/2 && xyz1[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      if     (xyz1[0]<=qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz1[0]<=qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz1[0]> qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz1[0]> qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
 
       grid2voro[node].push_back(voro_points.size());
@@ -675,36 +669,29 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
     {
       p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
       p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-      p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-      double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
-#endif
-
-      double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-      double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
-      double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-      double qz = quad.z / (double) P4EST_ROOT_LEN + tree_zmin;
-#endif
       p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+
+      double qx = quad_x(p4est, &quad);
+      double qy = quad_y(p4est, &quad);
+#ifdef P4_TO_P8
+      double qz = quad_z(p4est, &quad);
+#endif
 
       p4est_locidx_t node = -1;
 #ifdef P4_TO_P8
-      if     (xyz2[0]<=qx+qh/2 && xyz2[1]<=qy+qh/2 && xyz2[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz2[0]<=qx+qh/2 && xyz2[1]<=qy+qh/2 && xyz2[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
-      else if(xyz2[0]<=qx+qh/2 && xyz2[1]> qy+qh/2 && xyz2[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz2[0]<=qx+qh/2 && xyz2[1]> qy+qh/2 && xyz2[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]<=qy+qh/2 && xyz2[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]<=qy+qh/2 && xyz2[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]> qy+qh/2 && xyz2[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]> qy+qh/2 && xyz2[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
+      if     (xyz2[0]<=qx && xyz2[1]<=qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz2[0]<=qx && xyz2[1]<=qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
+      else if(xyz2[0]<=qx && xyz2[1]> qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz2[0]<=qx && xyz2[1]> qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
+      else if(xyz2[0]> qx && xyz2[1]<=qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz2[0]> qx && xyz2[1]<=qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
+      else if(xyz2[0]> qx && xyz2[1]> qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      else if(xyz2[0]> qx && xyz2[1]> qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
 #else
-      if     (xyz2[0]<=qx+qh/2 && xyz2[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz2[0]<=qx+qh/2 && xyz2[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      if     (xyz2[0]<=qx && xyz2[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz2[0]<=qx && xyz2[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz2[0]> qx && xyz2[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz2[0]> qx && xyz2[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
 
       grid2voro[node].push_back(voro_points.size());
@@ -793,7 +780,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
   }
 
   voro_global_offset.insert(voro_global_offset.begin(), 0);
-  ierr = PetscPrintf(p4est->mpicomm, "Number of voronoi points : %d\n", voro_global_offset[p4est->mpisize]);
+//  ierr = PetscPrintf(p4est->mpicomm, "Number of voronoi points : %d\n", voro_global_offset[p4est->mpisize]);
 
   /* initialize the buffer to receive remote points */
   std::vector<bool> recv_fr(p4est->mpisize);
@@ -863,39 +850,32 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 
       p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
       p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-      p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-      double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
-#endif
-
-      double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-      double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
-      double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-      double qz = quad.z / (double) P4EST_ROOT_LEN + tree_zmin;
-#endif
 
       p4est_locidx_t quad_idx;
       if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
       else                           quad_idx = quad.p.piggy3.local_num + p4est->local_num_quadrants;
 
+      double qx = quad_x(p4est, &quad);
+      double qy = quad_y(p4est, &quad);
+#ifdef P4_TO_P8
+      double qz = quad_z(p4est, &quad);
+#endif
+
       p4est_locidx_t node = -1;
 #ifdef P4_TO_P8
-      if     (xyz[0]<=qx+qh/2 && xyz[1]<=qy+qh/2 && xyz[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz[0]<=qx+qh/2 && xyz[1]<=qy+qh/2 && xyz[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
-      else if(xyz[0]<=qx+qh/2 && xyz[1]> qy+qh/2 && xyz[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz[0]<=qx+qh/2 && xyz[1]> qy+qh/2 && xyz[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
-      else if(xyz[0]> qx+qh/2 && xyz[1]<=qy+qh/2 && xyz[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz[0]> qx+qh/2 && xyz[1]<=qy+qh/2 && xyz[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
-      else if(xyz[0]> qx+qh/2 && xyz[1]> qy+qh/2 && xyz[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
-      else if(xyz[0]> qx+qh/2 && xyz[1]> qy+qh/2 && xyz[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
+      if     (xyz[0]<=qx && xyz[1]<=qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz[0]<=qx && xyz[1]<=qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
+      else if(xyz[0]<=qx && xyz[1]> qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz[0]<=qx && xyz[1]> qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
+      else if(xyz[0]> qx && xyz[1]<=qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz[0]> qx && xyz[1]<=qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
+      else if(xyz[0]> qx && xyz[1]> qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      else if(xyz[0]> qx && xyz[1]> qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
 #else
-      if     (xyz[0]<=qx+qh/2 && xyz[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz[0]<=qx+qh/2 && xyz[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz[0]> qx+qh/2 && xyz[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz[0]> qx+qh/2 && xyz[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      if     (xyz[0]<=qx && xyz[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz[0]<=qx && xyz[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz[0]> qx && xyz[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz[0]> qx && xyz[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
 
       grid2voro[node].push_back(voro_points.size());
@@ -963,18 +943,12 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
   /* check if the point is exactly a node */
   p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
   p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
-#endif
 
   double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-  double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
-  double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
+  double qx = quad_x(p4est, &quad);
+  double qy = quad_y(p4est, &quad);
 #ifdef P4_TO_P8
-  double qz = quad.z / (double) P4EST_ROOT_LEN + tree_zmin;
+  double qz = quad_z(p4est, &quad);
 #endif
 
 #ifdef P4_TO_P8
@@ -994,25 +968,25 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
   std::vector<p4est_locidx_t> ngbd_quads;
 
   /* if exactly on a grid node */
-  if( (fabs(xyz[0]-qx)<EPS || fabs(xyz[0]-(qx+qh))<EPS) &&
-      (fabs(xyz[1]-qy)<EPS || fabs(xyz[1]-(qy+qh))<EPS)
+  if( (fabs(xyz[0]-(qx-0.5*qh))<EPS || fabs(xyz[0]-(qx+0.5*qh))<EPS) &&
+      (fabs(xyz[1]-(qy-0.5*qh))<EPS || fabs(xyz[1]-(qy+0.5*qh))<EPS)
     #ifdef P4_TO_P8
-      && (fabs(xyz[2]-qz)<EPS || fabs(xyz[2]-(qz+qh))<EPS)
+      && (fabs(xyz[2]-(qz-0.5*qh))<EPS || fabs(xyz[2]-(qz+0.5*qh))<EPS)
     #endif
       )
   {
 #ifdef P4_TO_P8
-    int dir = (fabs(xyz[0]-qx)<EPS ?
-          (fabs(xyz[1]-qy)<EPS ?
-            (fabs(xyz[2]-qz)<EPS ? dir::v_mmm : dir::v_mmp)
-          : (fabs(xyz[2]-qz)<EPS ? dir::v_mpm : dir::v_mpp) )
-        : (fabs(xyz[1]-qy)<EPS ?
-            (fabs(xyz[2]-qz)<EPS ? dir::v_pmm : dir::v_pmp)
-          : (fabs(xyz[2]-qz)<EPS ? dir::v_ppm : dir::v_ppp) ) );
+    int dir = (fabs(xyz[0]-(qx-0.5*qh))<EPS ?
+          (fabs(xyz[1]-(qy-0.5*qh))<EPS ?
+            (fabs(xyz[2]-(qz-0.5*qh))<EPS ? dir::v_mmm : dir::v_mmp)
+          : (fabs(xyz[2]-(qz-0.5*qh))<EPS ? dir::v_mpm : dir::v_mpp) )
+        : (fabs(xyz[1]-(qy-0.5*qh))<EPS ?
+            (fabs(xyz[2]-(qz-0.5*qh))<EPS ? dir::v_pmm : dir::v_pmp)
+          : (fabs(xyz[2]-(qz-0.5*qh))<EPS ? dir::v_ppm : dir::v_ppp) ) );
 #else
-    int dir = (fabs(xyz[0]-qx)<EPS ?
-          (fabs(xyz[1]-qy)<EPS ? dir::v_mmm : dir::v_mpm)
-        : (fabs(xyz[1]-qy)<EPS ? dir::v_pmm : dir::v_ppm) );
+    int dir = (fabs(xyz[0]-(qx-0.5*qh))<EPS ?
+          (fabs(xyz[1]-(qy-0.5*qh))<EPS ? dir::v_mmm : dir::v_mpm)
+        : (fabs(xyz[1]-(qy-0.5*qh))<EPS ? dir::v_pmm : dir::v_ppm) );
 #endif
     p4est_locidx_t node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir];
 
@@ -1425,6 +1399,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
       ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
     }
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+    ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
     ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
   }
 
@@ -1993,7 +1968,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_to
     ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
 
     MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-    PetscPrintf(p4est->mpicomm, "Error on voronoi : %g\n", err);
+//    PetscPrintf(p4est->mpicomm, "Error on voronoi : %g\n", err);
   }
 
   for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
