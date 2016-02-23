@@ -360,12 +360,19 @@ void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzer
    * successive solves, we will reuse the same preconditioner, otherwise we
    * have to recompute the preconditioner
    */
+  MatNullSpace A_null;
   if (!is_matrix_computed)
   {
     matrix_has_nullspace = true;
     setup_negative_laplace_matrix();
 
     is_matrix_computed = true;
+
+    if (matrix_has_nullspace) {
+      MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, NULL, &A_null);
+      MatSetNullSpace(A, A_null);
+      MatSetTransposeNullSpace(A, A_null);
+    }
 
     ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   } else {
@@ -406,10 +413,10 @@ void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzer
      */
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
 
-    //    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
-    //    if (matrix_has_nullspace){
-    //      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
-    //    }
+    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
+    if (matrix_has_nullspace){
+      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
+    }
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
@@ -431,6 +438,10 @@ void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzer
   // update ghosts
   ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  if (matrix_has_nullspace) {
+    MatNullSpaceDestroy(A_null);
+  }
 
   // get rid of local stuff
   if(local_add)
@@ -457,6 +468,7 @@ void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzer
 void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
 {
   preallocate_matrix();
+  MatSetOption(A, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
 
   // register for logging purpose
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
@@ -1071,19 +1083,20 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
   // FIXME: the return value should be checked for errors ...
 
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
-  if (matrix_has_nullspace) {
-    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
-    p4est_gloidx_t fixed_value_idx;
-    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
-    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
-      fixed_value_idx_l = -1;
-      fixed_value_idx_g = fixed_value_idx;
-    } else {
-      // reset the value
-      // FIXME: on systems where size of p4est_gloidx_t is different from PetscInt, this will get us into trouble
-      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
-    }
-  }
+
+//  if (matrix_has_nullspace) {
+//    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
+//    p4est_gloidx_t fixed_value_idx;
+//    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
+//    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
+//      fixed_value_idx_l = -1;
+//      fixed_value_idx_g = fixed_value_idx;
+//    } else {
+//      // reset the value
+//      // FIXME: on systems where size of p4est_gloidx_t is different from PetscInt, this will get us into trouble
+//      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
+//    }
+//  }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1455,9 +1468,10 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_rhsvec()
       }
     }
   }
-  if (matrix_has_nullspace && fixed_value_idx_l > 0){
-    rhs_p[fixed_value_idx_l] = 0;
-  }
+
+//  if (matrix_has_nullspace && fixed_value_idx_l > 0){
+//    rhs_p[fixed_value_idx_l] = 0;
+//  }
 
   // restore the pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
