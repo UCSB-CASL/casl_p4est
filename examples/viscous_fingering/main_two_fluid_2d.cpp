@@ -42,7 +42,7 @@ static struct {
   double lip, Ca, cfl, dts, dtmax, viscosity;
   double xmin[3], xmax[3];
   int ntr[3];
-  string test;
+  string test, method;
 
   cf_t *interface, *bc_wall_value;
   CF_1 *Q;
@@ -61,6 +61,7 @@ void set_parameters(int argc, char **argv) {
   cmd.add_option("dts", "dt for saving vtk files");
   cmd.add_option("dtmax", "max dt to use when solving");  
   cmd.add_option("viscosity", "The viscosity ratio of inner to outer fluid");
+  cmd.add_option("method", "method for solving the jump equation");
   cmd.add_option("test", "Which test to run?, Options are:\n"
                          "\tcircle\n"
                          "\tFastShelley04_Fig12\n");
@@ -68,6 +69,7 @@ void set_parameters(int argc, char **argv) {
   cmd.parse(argc, argv);
 
   params.test = cmd.get<string>("test", "FastShelley04_Fig12");
+  params.method = cmd.get<string>("method", "voronoi");
 
   // set default values
   params.ntr[0]  = params.ntr[1]  = params.ntr[2]  =  1;
@@ -154,7 +156,7 @@ void set_parameters(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double x, double y) const {
         double r = sqrt(SQR(x)+SQR(y));
-        return -Q(t)/2/PI * log(r);
+        return -Q(t)/(2*PI) * log(r);
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif
@@ -244,7 +246,7 @@ int main(int argc, char** argv) {
 
   double dt = 0, t = 0;
   for(int i=0; i<params.iter; i++) {
-    dt = solver.solve_one_step(t, phi, press_m, press_p, params.cfl, params.dtmax);
+    dt = solver.solve_one_step(t, phi, press_m, press_p, params.cfl, params.dtmax, params.method);
     t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -258,7 +260,7 @@ int main(int argc, char** argv) {
     VecGetArray(press_m, &press_m_p);
     VecGetArray(press_p, &press_p_p);
 
-    sprintf(vtk_name, "%s/two_fluid_extended_%dd.%04d", folder, P4EST_DIM, i);
+    sprintf(vtk_name, "%s/%s_%dd.%04d", folder, params.method.c_str(), P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            3, 0, vtk_name,

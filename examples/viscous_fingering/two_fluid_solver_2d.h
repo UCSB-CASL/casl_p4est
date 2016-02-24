@@ -39,7 +39,7 @@ public:
 
   void set_properties(double viscosity_ratio, double Ca, CF_1& Q);
   void set_bc_wall(bc_wall_t& bc_wall_type, cf_t& bc_wall_value);
-  double solve_one_step(double t, Vec &phi, Vec &press_m, Vec &press_p, double cfl = 5, double dtmax = DBL_MAX);
+  double solve_one_step(double t, Vec &phi, Vec &press_m, Vec &press_p, double cfl = 5, double dtmax = DBL_MAX, std::string method = "voronoi");
 };
 
 #endif // ONE_FLUID_SOLVER_2D_H

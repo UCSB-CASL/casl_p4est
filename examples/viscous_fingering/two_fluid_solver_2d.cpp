@@ -395,10 +395,10 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     node_neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = -(qnnn.dx_central(pstar_p)*normal_p[0][n] +
+    jump_dp_p[n]  = (qnnn.dx_central(pstar_p)*normal_p[0][n] +
                       qnnn.dy_central(pstar_p)*normal_p[1][n]);
 #ifdef P4_TO_P8
-    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
   }
   VecGhostUpdateBegin(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
@@ -408,10 +408,10 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     node_neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = -(qnnn.dx_central(pstar_p)*normal_p[0][n] +
+    jump_dp_p[n]  = (qnnn.dx_central(pstar_p)*normal_p[0][n] +
                       qnnn.dy_central(pstar_p)*normal_p[1][n]);
 #ifdef P4_TO_P8
-    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
   }
   VecGhostUpdateEnd(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
@@ -503,17 +503,19 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   VecGhostRestoreLocalForm(phi, &phi_l);
 }
 
-
-
-double two_fluid_solver_t:: solve_one_step(double t, Vec &phi, Vec &press_m, Vec& press_p, double cfl, double dtmax)
+double two_fluid_solver_t:: solve_one_step(double t, Vec &phi, Vec &press_m, Vec& press_p, double cfl, double dtmax, std::string method)
 {
   // advect the interface
   double dt;
   dt = advect_interface(phi, press_m, press_p, cfl, dtmax);
 
   // solve for the pressure
-  solve_fields_extended(t+dt, phi, press_m, press_p);
-//  solve_fields_voronoi(t+dt, phi, press_m, press_p);
+  if (method == "extended")
+    solve_fields_extended(t+dt, phi, press_m, press_p);
+  else if (method == "voronoi")
+    solve_fields_voronoi(t+dt, phi, press_m, press_p);
+  else
+    throw std::invalid_argument("invalid method");
 
   return dt;
 }
