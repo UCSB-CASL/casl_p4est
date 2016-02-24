@@ -594,6 +594,24 @@ inline double quad_x(const p4est_t *p4est, const p4est_quadrant_t *quad)
 }
 
 /*!
+ * \brief quad_dx     compute the dx size of the a quadrant
+ * \param p4est [in]  const pointer to the p4est structure
+ * \param quad  [in]  const pointer to the quadrant structure
+ *        NOTE: Assumes that the piggy3 member if filled
+ * \return  dx
+ */
+inline double quad_dx(const p4est_t *p4est, const p4est_quadrant_t *quad)
+{
+  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+
+  return (tree_xmax-tree_xmin)*((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN);
+}
+
+/*!
  * \brief get the y-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
@@ -630,6 +648,24 @@ inline double quad_y(const p4est_t *p4est, const p4est_quadrant_t *quad)
   double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
   double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
   return (tree_ymax-tree_ymin)*(quad_y_fr_j(quad) + 0.5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_ymin;
+}
+
+/*!
+ * \brief quad_dy     compute the dy size of the a quadrant
+ * \param p4est [in]  const pointer to the p4est structure
+ * \param quad  [in]  const pointer to the quadrant structure
+ *        NOTE: Assumes that the piggy3 member if filled
+ * \return  dy
+ */
+inline double quad_dy(const p4est_t *p4est, const p4est_quadrant_t *quad)
+{
+  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+
+  return (tree_ymax-tree_ymin)*((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN);
 }
 
 #ifdef P4_TO_P8
@@ -671,6 +707,24 @@ inline double quad_z(const p4est_t *p4est, const p4est_quadrant_t *quad)
   double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
   return (tree_zmax-tree_zmin)*(quad_z_fr_k(quad) + 0.5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_zmin;
 }
+
+/*!
+ * \brief quad_dz     compute the dz size of the a quadrant
+ * \param p4est [in]  const pointer to the p4est structure
+ * \param quad  [in]  const pointer to the quadrant structure
+ *        NOTE: Assumes that the piggy3 member if filled
+ * \return  dz
+ */
+inline double quad_dz(const p4est_t *p4est, const p4est_quadrant_t *quad)
+{
+  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
+  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+
+  return (tree_zmax-tree_zmin)*((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN);
+}
 #endif
 
 
@@ -692,6 +746,7 @@ inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
  * \param p4est [in]    const pointer to the p4est structure
  * \param quad  [in]    const pointer to the quadrant.
  *        NOTE: Assumes that the piggy3 member if filled
+ * \param xyz   [out]   pointer to array of size P4EST_DIM to store xyz
  * \return  the z-coordinate
  */
 inline void quad_xyz(const p4est_t *p4est, const p4est_quadrant_t *quad, double *xyz)
@@ -700,6 +755,23 @@ inline void quad_xyz(const p4est_t *p4est, const p4est_quadrant_t *quad, double 
   xyz[1] = quad_y(p4est, quad);
 #ifdef P4_TO_P8
   xyz[2] = quad_z(p4est, quad);
+#endif
+}
+
+/*!
+ * \brief quad_dxyz   compute the dxyz sizes of the a quadrant
+ * \param p4est [in]  const pointer to the p4est structure
+ * \param quad  [in]  const pointer to the quadrant structure
+ *        NOTE: Assumes that the piggy3 member if filled
+ * \param dxyz  [out]   pointer to array of size P4EST_DIM to store dxyz
+ * \return  dy
+ */
+inline void quad_dxyz(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz)
+{
+  dxyz[0] = quad_dx(p4est, quad);
+  dxyz[1] = quad_dy(p4est, quad);
+#ifdef P4_TO_P8
+  dxyz[2] = quad_dz(p4est, quad);
 #endif
 }
 

@@ -48,8 +48,6 @@ my_p4est_poisson_jump_nodes_voronoi_t::my_p4est_poisson_jump_nodes_voronoi_t(con
   ierr = KSPCreate(p4est->mpicomm, &ksp); CHKERRXX(ierr);
   ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
 
-  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
-
   // compute grid parameters
   // NOTE: Assuming all trees are of the same size [0, 1]^d
   double xyz_min[P4EST_DIM];
@@ -58,8 +56,10 @@ my_p4est_poisson_jump_nodes_voronoi_t::my_p4est_poisson_jump_nodes_voronoi_t(con
   p4est_xyz_max(p4est, xyz_max);
 
   xmin = xyz_min[0], ymin = xyz_min[1];
+  xmax = xyz_max[0], ymax = xyz_max[1];
 #ifdef P4_TO_P8
   zmin = xyz_min[2];
+  zmax = xyz_max[2];
 #endif
 
   double dxyz_min[P4EST_DIM];
@@ -944,11 +944,14 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
   p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
   p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
 
-  double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-  double qx = quad_x(p4est, &quad);
-  double qy = quad_y(p4est, &quad);
+  // FIXME: This does not work if domain size is not the same in xyz directions
+  double qhx = quad_dx(p4est, &quad);
+  double qx  = quad_x(p4est,  &quad);
+  double qhy = quad_dy(p4est, &quad);
+  double qy  = quad_y(p4est,  &quad);
 #ifdef P4_TO_P8
-  double qz = quad_z(p4est, &quad);
+  double qz  = quad_z(p4est,  &quad);
+  double qhz = quad_dz(p4est, &quad);
 #endif
 
 #ifdef P4_TO_P8
@@ -968,25 +971,25 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
   std::vector<p4est_locidx_t> ngbd_quads;
 
   /* if exactly on a grid node */
-  if( (fabs(xyz[0]-(qx-0.5*qh))<EPS || fabs(xyz[0]-(qx+0.5*qh))<EPS) &&
-      (fabs(xyz[1]-(qy-0.5*qh))<EPS || fabs(xyz[1]-(qy+0.5*qh))<EPS)
+  if( (fabs(xyz[0]-(qx-0.5*qhx))<EPS || fabs(xyz[0]-(qx+0.5*qhx))<EPS) &&
+      (fabs(xyz[1]-(qy-0.5*qhy))<EPS || fabs(xyz[1]-(qy+0.5*qhy))<EPS)
     #ifdef P4_TO_P8
-      && (fabs(xyz[2]-(qz-0.5*qh))<EPS || fabs(xyz[2]-(qz+0.5*qh))<EPS)
+      && (fabs(xyz[2]-(qz-0.5*qhz))<EPS || fabs(xyz[2]-(qz+0.5*qhz))<EPS)
     #endif
       )
   {
 #ifdef P4_TO_P8
-    int dir = (fabs(xyz[0]-(qx-0.5*qh))<EPS ?
-          (fabs(xyz[1]-(qy-0.5*qh))<EPS ?
-            (fabs(xyz[2]-(qz-0.5*qh))<EPS ? dir::v_mmm : dir::v_mmp)
-          : (fabs(xyz[2]-(qz-0.5*qh))<EPS ? dir::v_mpm : dir::v_mpp) )
-        : (fabs(xyz[1]-(qy-0.5*qh))<EPS ?
-            (fabs(xyz[2]-(qz-0.5*qh))<EPS ? dir::v_pmm : dir::v_pmp)
-          : (fabs(xyz[2]-(qz-0.5*qh))<EPS ? dir::v_ppm : dir::v_ppp) ) );
+    int dir = (fabs(xyz[0]-(qx-0.5*qhx))<EPS ?
+          (fabs(xyz[1]-(qy-0.5*qhy))<EPS ?
+            (fabs(xyz[2]-(qz-0.5*qhz))<EPS ? dir::v_mmm : dir::v_mmp)
+          : (fabs(xyz[2]-(qz-0.5*qhz))<EPS ? dir::v_mpm : dir::v_mpp) )
+        : (fabs(xyz[1]-(qy-0.5*qhy))<EPS ?
+            (fabs(xyz[2]-(qz-0.5*qhz))<EPS ? dir::v_pmm : dir::v_pmp)
+          : (fabs(xyz[2]-(qz-0.5*qhz))<EPS ? dir::v_ppm : dir::v_ppp) ) );
 #else
-    int dir = (fabs(xyz[0]-(qx-0.5*qh))<EPS ?
-          (fabs(xyz[1]-(qy-0.5*qh))<EPS ? dir::v_mmm : dir::v_mpm)
-        : (fabs(xyz[1]-(qy-0.5*qh))<EPS ? dir::v_pmm : dir::v_ppm) );
+    int dir = (fabs(xyz[0]-(qx-0.5*qhx))<EPS ?
+          (fabs(xyz[1]-(qy-0.5*qhy))<EPS ? dir::v_mmm : dir::v_mpm)
+        : (fabs(xyz[1]-(qy-0.5*qhy))<EPS ? dir::v_pmm : dir::v_ppm) );
 #endif
     p4est_locidx_t node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir];
 
