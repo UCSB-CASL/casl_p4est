@@ -22,6 +22,7 @@
 #include <src/my_p4est_vtk.h>
 #endif
 
+#include <sys/stat.h>
 #include <src/Parser.h>
 #include <src/CASL_math.h>
 
@@ -161,6 +162,7 @@ void set_parameters(int argc, char **argv) {
       }
     } interface; interface.lip = params.lip;
 
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
@@ -179,6 +181,20 @@ void set_parameters(int argc, char **argv) {
           return 0;
       }
     } bc_wall_value; bc_wall_value.t = 0;
+#endif
+#if 1
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
+    } bc_wall_type;
+
+    static struct:cf_t{
+      double operator()(double x, double y) const {
+        double r = sqrt(SQR(x)+SQR(y));
+        return -Q(t)/(2*PI) * log(r);
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+#endif
+
 #endif
 
     // set parameters specific to this test
@@ -263,7 +279,8 @@ int main(int argc, char** argv) {
   solver.set_properties(*params.K_D, *params.K_EO, *params.gamma);
   solver.set_bc_wall(*params.bc_wall_type, *params.bc_wall_value);
 
-  const char* filename = params.test.c_str();
+  const char* folder = params.test.c_str();
+  mkdir(folder, 0755);
   char vtk_name[FILENAME_MAX];
 
   double dt = 0, t = 0;
@@ -281,7 +298,7 @@ int main(int argc, char** argv) {
     VecGetArray(phi, &phi_p);
     VecGetArray(pressure, &pressure_p);
     VecGetArray(potential, &potential_p);
-    sprintf(vtk_name, "%s_%s_%dd.%04d", filename, params.method.c_str(), P4EST_DIM, i);
+    sprintf(vtk_name, "%s/%s_%dd.%04d", folder, params.method.c_str(), P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            3, 0, vtk_name,

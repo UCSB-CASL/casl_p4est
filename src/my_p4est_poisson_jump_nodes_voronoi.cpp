@@ -1403,7 +1403,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
     }
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
     ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
-    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+//    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
   }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);

@@ -307,6 +307,8 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
 
   VecRestoreArray(sol, &sol_p);
   VecDestroy(sol);
+  VecDestroy(jump_p);
+  VecDestroy(jump_dp);
 
   // extend solutions
   VecRestoreArray(press_m, &press_m_p);
@@ -475,6 +477,8 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   VecDestroy(rhs_p);
   VecDestroy(mue_m);
   VecDestroy(mue_p);
+  VecDestroy(jump_p);
+  VecDestroy(jump_dp);
 
   // extract solutions
   double *press_m_p, *press_p_p;
