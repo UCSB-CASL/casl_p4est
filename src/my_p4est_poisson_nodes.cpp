@@ -430,10 +430,10 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
      */
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
 
-//    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
-//    if (matrix_has_nullspace){
-//      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
-//    }
+    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
+    if (matrix_has_nullspace){
+      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
+    }
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
@@ -449,11 +449,22 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
     setup_negative_variable_coeff_laplace_rhsvec();
 
   // Solve the system
-  ierr = KSPSetTolerances(ksp, 1e-14, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
+  ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
   ierr = KSPSetFromOptions(ksp); CHKERRXX(ierr);
 
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);  
+  MatNullSpace A_null;
+  if (matrix_has_nullspace) {
+    ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, NULL, &A_null); CHKERRXX(ierr);
+    ierr = MatSetNullSpace(A, A_null);
+
+    // For purely neumann problems GMRES is more robust
+    ierr = KSPSetType(ksp, KSPGMRES); CHKERRXX(ierr);
+  }
   ierr = KSPSolve(ksp, rhs_, solution); CHKERRXX(ierr);
+  if (matrix_has_nullspace) {
+    ierr = MatNullSpaceDestroy(A_null);
+  }
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
 
   // update ghosts
@@ -1229,19 +1240,20 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
   // check for null space
   // FIXME: the return value should be checked for errors ...
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
-  if (matrix_has_nullspace) {
-    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
-    p4est_gloidx_t fixed_value_idx;
-    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
-    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
-      fixed_value_idx_l = -1;
-      fixed_value_idx_g = fixed_value_idx;
-    } else {
-      // reset the value
-      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
-    }
 
-  }
+//  if (matrix_has_nullspace) {
+//    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
+//    p4est_gloidx_t fixed_value_idx;
+//    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
+//    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
+//      fixed_value_idx_l = -1;
+//      fixed_value_idx_g = fixed_value_idx;
+//    } else {
+//      // reset the value
+//      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
+//    }
+
+//  }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1777,9 +1789,9 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
     }
   }
 
-  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
-    rhs_p[fixed_value_idx_l] = 0;
-  }
+//  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
+//    rhs_p[fixed_value_idx_l] = 0;
+//  }
 
   // restore the pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -2481,18 +2493,19 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 
   // check for null space
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
-  if (matrix_has_nullspace) {
-    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
-    p4est_gloidx_t fixed_value_idx;
-    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
-    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
-      fixed_value_idx_l = -1;
-      fixed_value_idx_g = fixed_value_idx;
-    } else {
-      // reset the value
-      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
-    }
-  }
+
+//  if (matrix_has_nullspace) {
+//    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
+//    p4est_gloidx_t fixed_value_idx;
+//    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
+//    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
+//      fixed_value_idx_l = -1;
+//      fixed_value_idx_g = fixed_value_idx;
+//    } else {
+//      // reset the value
+//      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
+//    }
+//  }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -3048,9 +3061,9 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
     }
   }
 
-  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
-    rhs_p[fixed_value_idx_l] = 0;
-  }
+//  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
+//    rhs_p[fixed_value_idx_l] = 0;
+//  }
 
 
   // restore the pointers
@@ -3840,18 +3853,19 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
   // check for null space
   // FIXME: the return value should be checked for errors ...
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
-  if (matrix_has_nullspace) {
-    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
-    p4est_gloidx_t fixed_value_idx;
-    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
-    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
-      fixed_value_idx_l = -1;
-      fixed_value_idx_g = fixed_value_idx;
-    } else {
-      // reset the value
-      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
-    }
-  }
+
+//  if (matrix_has_nullspace) {
+//    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
+//    p4est_gloidx_t fixed_value_idx;
+//    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
+//    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
+//      fixed_value_idx_l = -1;
+//      fixed_value_idx_g = fixed_value_idx;
+//    } else {
+//      // reset the value
+//      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
+//    }
+//  }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
@@ -4408,9 +4422,9 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
     }
   }
 
-  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
-    rhs_p[fixed_value_idx_l] = 0;
-  }
+//  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
+//    rhs_p[fixed_value_idx_l] = 0;
+//  }
 
   // restore the pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
