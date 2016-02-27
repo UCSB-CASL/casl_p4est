@@ -373,7 +373,6 @@ void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzer
     if (matrix_has_nullspace) {
       MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, NULL, &A_null);
       MatSetNullSpace(A, A_null);
-      MatSetTransposeNullSpace(A, A_null);
     }
 
     ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);

@@ -241,11 +241,12 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
     neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = -(qnnn.dx_central(pstar_p)*normal_p[0][n] +
-                      qnnn.dy_central(pstar_p)*normal_p[1][n]);
+    jump_dp_p[n]  = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
-    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
+
+    jump_dp_p[n] *= -1;
   }
   VecGhostUpdateBegin(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
 
@@ -254,11 +255,12 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
     neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = -(qnnn.dx_central(pstar_p)*normal_p[0][n] +
-                      qnnn.dy_central(pstar_p)*normal_p[1][n]);
+    jump_dp_p[n]  = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
-    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
+
+    jump_dp_p[n] *= -1;
   }
   VecGhostUpdateEnd(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
   VecRestoreArray(jump_dp, &jump_dp_p);
@@ -397,8 +399,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     node_neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = (qnnn.dx_central(pstar_p)*normal_p[0][n] +
-                      qnnn.dy_central(pstar_p)*normal_p[1][n]);
+    jump_dp_p[n]  = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
     jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
@@ -410,8 +411,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     node_neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = (qnnn.dx_central(pstar_p)*normal_p[0][n] +
-                      qnnn.dy_central(pstar_p)*normal_p[1][n]);
+    jump_dp_p[n] = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
     jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif

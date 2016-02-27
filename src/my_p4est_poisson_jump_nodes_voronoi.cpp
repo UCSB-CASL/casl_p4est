@@ -294,7 +294,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
     // PETSc removed the KSPSetNullSpace in 3.6.0 ... Use MatSetNullSpace instead
 #if PETSC_VERSION_GE(3,6,0)
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-    ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
+//    ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
 #else
     ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
 #endif
