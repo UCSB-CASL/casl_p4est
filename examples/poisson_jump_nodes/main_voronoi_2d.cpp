@@ -45,6 +45,13 @@ using namespace std;
 #define POW3(x) (x)*(x)*(x)
 const static double mue_p = 5.0;
 const static double mue_m = 1.0;
+static BoundaryConditionType bc_wtype = DIRICHLET;
+static double xmin = 0;
+static double ymin = 0;
+static double xmax = 2;
+static double ymax = 2;
+static double zmin = 0;
+static double zmax = 2;
 
 #ifdef P4_TO_P8
 class constant_cf_t:public CF_3{
@@ -181,7 +188,7 @@ static struct:WallBC2D{
   BoundaryConditionType operator()(double x, double y) const {
     (void) x;
     (void) y;
-    return DIRICHLET;
+    return bc_wtype;
   }
 } bc_wall_type;
 
@@ -225,6 +232,22 @@ static struct:CF_2{
 static struct:CF_2{
   double operator()(double x, double y) const {
 #if TEST == CUBIC_TEST
+    if (fabs(x-xmin) < EPS || fabs(x-xmax) < EPS)
+      return mue_p * (5*3*SQR(x - 1.0)) * SIGN(x);
+    else
+      return mue_p * (-3*SQR(y - 1.0)) * SIGN(y);
+#elif TEST == COS_TEST
+    if (fabs(x-xmin) < EPS || fabs(x-xmax) < EPS)
+      return mue_p * (-M_PI*sin(M_PI*x)*cos(M_PI*y)) * SIGN(x);
+    else
+      return mue_p * (-M_PI*cos(M_PI*x)*sin(M_PI*y)) * SIGN(y);
+#endif
+  }
+} bc_neumann_plus;
+
+static struct:CF_2{
+  double operator()(double x, double y) const {
+#if TEST == CUBIC_TEST
     return -mue_p*(5*3*2*(x - 1.0) - 3*2*(y - 1.0));
 #elif TEST == COS_TEST
     return  mue_p*2.0*SQR(M_PI)*cos(M_PI*x)*cos(M_PI*y);
@@ -259,10 +282,33 @@ static struct:CF_2{
 
 static struct:CF_2{
   double operator()(double x, double y) const {
-    if (circle(x,y) > 0)
-      return plus_cf(x,y);
+#if TEST == CUBIC_TEST
+    if (fabs(x-xmin) < EPS || fabs(x-xmax) < EPS)
+      return -mue_m * (2*3*SQR(x - 1.0)) * SIGN(x-1);
     else
-      return minus_cf(x,y);
+      return -mue_m * (3*SQR(y - 1.0)) * SIGN(y-1);
+#elif TEST == COS_TEST
+    if (fabs(x-xmin) < EPS || fabs(x-xmax) < EPS)
+      return -mue_m * (M_PI*cos(x*y*M_PI)*y) * SIGN(x-1);
+    else
+      return -mue_m * (M_PI*cos(x*y*M_PI)*x) * SIGN(y-1);
+#endif
+  }
+} bc_neumann_minus;
+
+static struct:CF_2{
+  double operator()(double x, double y) const {
+    if (circle(x,y) > 0) {
+      if (bc_wtype == DIRICHLET)
+        return plus_cf(x,y);
+      else
+        return bc_neumann_plus(x,y);
+    } else {
+      if (bc_wtype == DIRICHLET)
+        return minus_cf(x,y);
+      else
+        return bc_neumann_minus(x,y);
+    }
   }
 } bc_wall_value;
 
@@ -303,6 +349,7 @@ int main (int argc, char* argv[]){
     cmd.add_option("lmin", "the min level of the tree");
     cmd.add_option("lmax", "the max level of the tree");
     cmd.add_option("sp", "number of splits to apply to the min and max level");
+    cmd.add_option("bc", "wall boundary condition type to be used");
     cmd.parse(argc, argv);
 
     // decide on the type and value of the boundary conditions
@@ -311,6 +358,7 @@ int main (int argc, char* argv[]){
     min_level         = cmd.get("lmin", 3);
     max_level         = cmd.get("lmax", 8);
     double lip        = cmd.get("lip", 1.5);
+    bc_wtype          = cmd.get("bc", bc_wtype);
 
     splitting_criteria_cf_t data(min_level+nb_splits, max_level+nb_splits, &circle, lip);
 
@@ -323,9 +371,9 @@ int main (int argc, char* argv[]){
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t brick;
 
-    int n_xyz [] = {2, 2, 2};
-    double xyz_min [] = {0, 0, 0};
-    double xyz_max [] = {2, 2, 2};
+    int n_xyz [] = {1, 1, 1};
+    double xyz_min [] = {xmin, ymin, zmin};
+    double xyz_max [] = {xmax, ymax, zmax};
 
     connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max,  &brick);
 
