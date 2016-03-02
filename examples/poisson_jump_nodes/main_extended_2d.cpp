@@ -43,7 +43,7 @@ using namespace std;
 #define TEST COS_TEST
 
 #define POW3(x) (x)*(x)*(x)
-const static double mue_p = 5.0;
+const static double mue_p = 1.0+1e-8;
 const static double mue_m = 1.0;
 static BoundaryConditionType bc_wtype = DIRICHLET;
 static double xmin = 0;

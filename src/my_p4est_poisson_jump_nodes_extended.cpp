@@ -786,14 +786,15 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
 
         // jump contributions
         double diff = mue_p_ - mue_m_;
-        double avg  = 0.5*(mue_p_ + mue_m_);
-        if (fabs(diff/avg) < EPS){
-          if (diff > 0)
-            diff =  EPS*avg;
-          else
-            diff = -EPS*avg;
-        }
+//        double avg  = 0.5*(mue_p_ + mue_m_);
+//        if (fabs(diff/avg) < EPS){
+//          if (diff > 0)
+//            diff =  EPS*avg;
+//          else
+//            diff = -EPS*avg;
+//        }
         diff = fabs(diff);
+
         double dist = MAX(1E-6*d_min, fabs(phi_000));
         double jump = mue_p_*mue_m_*interface_area/diff/dist;
 
@@ -1296,26 +1297,26 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_rhsvec()
 #endif
 
         double diff = mue_p_ - mue_m_;
-        double avg  = 0.5*(mue_p_ + mue_m_);
-        if (fabs(diff/avg) < EPS){
-          if (diff > 0)
-            diff =  EPS*avg;
-          else
-            diff = -EPS*avg;
-        }
+//        double avg  = 0.5*(mue_p_ + mue_m_);
+//        if (fabs(diff/avg) < EPS){
+//          if (diff > 0)
+//            diff =  EPS*avg;
+//          else
+//            diff = -EPS*avg;
+//        }
         double dist = MAX(1E-6*d_min, fabs(phi_000));
 
         rhs_p[2*n    ] *= volume_m;
-        if (diff > 0)
-          rhs_p[2*n    ] += -mue_m_ * interface_area/diff*(bp + mue_p_*ap/dist);
-        else
-          rhs_p[2*n    ] +=  mue_p_ * interface_area/diff*(bp + mue_m_*ap/dist);
-
         rhs_p[2*n + 1] *= volume_p;
-        if (diff > 0)
+
+        // FIXME: Why the hell does this work?!! (yes it works and its weired!)
+        if (diff > 0) {
+          rhs_p[2*n    ] += -mue_m_ * interface_area/diff*(bp + mue_p_*ap/dist);
           rhs_p[2*n + 1] +=  mue_p_ * interface_area/diff*(bp + mue_m_*ap/dist);
-        else
+        } else {
+          rhs_p[2*n    ] +=  mue_p_ * interface_area/diff*(bp + mue_m_*ap/dist);
           rhs_p[2*n + 1] += -mue_m_ * interface_area/diff*(bp + mue_p_*ap/dist);
+        }
 
       } else {
         // regular node-wise discretization as if point is in omega^-
