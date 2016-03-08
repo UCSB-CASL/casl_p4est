@@ -68,11 +68,11 @@ double zmax =  1;
 using namespace std;
 
 int lmin = 3;
-int lmax = 5;
+int lmax = 6;
 int nb_splits = 1;
 
-int nx = 1;
-int ny = 1;
+int nx = 2;
+int ny = 3;
 #ifdef P4_TO_P8
 int nz = 1;
 #endif
@@ -92,6 +92,7 @@ int interface_type = 0;
  * 0 - x+y
  * 1 - x*x + y*y
  * 2 - sin(x)*cos(y)
+ * 3 - sin(x) + cos(y)
  */
 int test_number = 0;
 
@@ -266,6 +267,8 @@ double u_exact(double x, double y)
     return x*x + y*y;
   case 2:
     return sin(x)*cos(y);
+  case 3:
+    return sin(x)+cos(y);
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
@@ -307,6 +310,8 @@ public:
         return 2*x*dx + 2*y*dy;
       case 2:
         return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy;
+      case 3:
+        return cos(x)*dx - sin(y)*dy;
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
@@ -342,6 +347,8 @@ public:
         return 2*x*dx + 2*y*dy;
       case 2:
         return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy;
+      case 3:
+        return cos(x)*dx - sin(y)*dy;
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
@@ -363,20 +370,23 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   out_dir = getenv("OUT_DIR");
 #else
   char out_dir[10000];
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_navier_stokes");
+  sprintf(out_dir, "/home/fgibou/code/Output/p4est_test");
 #endif
 
   std::ostringstream oss;
 
   oss << out_dir
-      << "/vtu/nodes_"
+      << "/vtu/Poisson_nodes_"
+      << "proc="
       << p4est->mpisize << "_"
+         << "brick="
       << brick->nxyztrees[0] << "x"
       << brick->nxyztrees[1] <<
        #ifdef P4_TO_P8
          "x" << brick->nxyztrees[2] <<
        #endif
-         "." << compt;
+         "_levels=(" <<lmin << "," << lmax << ")" <<
+         ".split=" << compt;
 
   double *phi_p, *sol_p, *err_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
@@ -457,7 +467,8 @@ int main (int argc, char* argv[])
   cmd.add_option("test", "choose a test.\n\
                  0 - x+y\n\
                  1 - x*x + y*y\n\
-                 2 - sin(x)*cos(y)");
+                 2 - sin(x)*cos(y)\n\
+                 3 - sin(x) + cos(y)");
 #endif
   cmd.parse(argc, argv);
 
@@ -649,6 +660,8 @@ int main (int argc, char* argv[])
         break;
       case 2:
         rhs_p[n] = 2*mu*sin(x)*cos(y) + add_diagonal*u_exact(x,y);
+      case 3:
+        rhs_p[n] = mu*u_exact(x,y) + add_diagonal*u_exact(x,y);
         break;
 #endif
       default:
