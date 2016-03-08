@@ -660,6 +660,7 @@ int main (int argc, char* argv[])
         break;
       case 2:
         rhs_p[n] = 2*mu*sin(x)*cos(y) + add_diagonal*u_exact(x,y);
+        break;
       case 3:
         rhs_p[n] = mu*u_exact(x,y) + add_diagonal*u_exact(x,y);
         break;
