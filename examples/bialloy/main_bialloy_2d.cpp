@@ -49,7 +49,7 @@
 #undef MAX
 
 int lmin = 4;
-int lmax = 10;
+int lmax = 6;
 int save_every_n_iteration = 50;
 
 using namespace std;
@@ -604,7 +604,7 @@ int main (int argc, char* argv[])
   bas.set_normal_velocity(normal_velocity);
   bas.set_dt(dt);
 
-  bas.compute_velocity();
+  bas.compute_normal_velocity();
   bas.compute_dt();
 
   // loop over time
@@ -615,12 +615,16 @@ int main (int argc, char* argv[])
   FILE *fich;
   char name[10000];
 
-#ifdef STAMPEDE
+#if defined(STAMPEDE) || defined(COMET)
   char *out_dir;
   out_dir = getenv("OUT_DIR");
 #else
   char out_dir[1000];
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/velo");
+#ifdef P4_TO_P8
+  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/3d/velo");
+#else
+  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/2d/velo");
+#endif
 #endif
 
 #ifdef P4_TO_P8

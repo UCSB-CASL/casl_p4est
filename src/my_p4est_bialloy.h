@@ -39,8 +39,6 @@ private:
   BoundaryConditions2D bc_cl;
 #endif
 
-//  InterpolatingFunctionNodeBaseHost *interface_value_c;
-
   /* grid */
   my_p4est_brick_t *brick;
   p4est_connectivity_t *connectivity;
@@ -50,11 +48,9 @@ private:
   my_p4est_hierarchy_t *hierarchy;
   my_p4est_node_neighbors_t *ngbd;
 
-  double dx;
-  double dy;
-#ifdef P4_TO_P8
-  double dz;
-#endif
+  double dxyz[P4EST_DIM];
+  double dxyz_max, dxyz_min;
+  double dxyz_close_interface;
 
   /* temperature */
   Vec temperature_n, temperature_np1;
@@ -69,6 +65,8 @@ private:
   Vec v_interface_n  [P4EST_DIM];
   Vec v_interface_np1[P4EST_DIM];
   Vec normal_velocity_np1;
+  /* max interface velocity in normal direction in band 4*MIN(dx,dy,dz) */
+  double u_max;
 
   /* level-set */
   Vec phi;
@@ -171,16 +169,6 @@ public:
 
   void save_VTK(int iter);
 };
-
-
-
-
-
-
-
-
-
-
 
 
 #endif /* MY_P4EST_BIALLOY_H */

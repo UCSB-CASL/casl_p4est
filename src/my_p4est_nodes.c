@@ -383,8 +383,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
                                    p4est_node_equal_piggy_fn, &clamped);
 
   /* This loop will collect independent nodes relevant for the elements. */
-	MPI_Barrier(p4est->mpicomm);
-	PetscPrintf(p4est->mpicomm, "before normal\n");
+//	MPI_Barrier(p4est->mpicomm);
+//	PetscPrintf(p4est->mpicomm, "before normal\n");
   num_owned_nodes = num_offproc_nodes = num_owned_shared = 0;
   num_indep_nodes = dup_indep_nodes = num_added_nodes = 0;
   quad_nodes = local_nodes;
@@ -419,8 +419,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   }
 
   // loop for nodes of ghost cells
-	MPI_Barrier(p4est->mpicomm);
-	PetscPrintf(p4est->mpicomm, "before ghost\n");
+//	MPI_Barrier(p4est->mpicomm);
+//	PetscPrintf(p4est->mpicomm, "before ghost\n");
   if (ghost != NULL){
     for (zz = 0; zz < ghost->ghosts.elem_count;
          quad_nodes += P4EST_CHILDREN, ++zz){
@@ -446,8 +446,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
       }
     }
   }
-	MPI_Barrier(p4est->mpicomm);
-	PetscPrintf(p4est->mpicomm, "after\n");
+//	MPI_Barrier(p4est->mpicomm);
+//	PetscPrintf(p4est->mpicomm, "after\n");
 
   P4EST_ASSERT (num_indep_nodes + dup_indep_nodes == num_local_nodes);
   inda = &indep_nodes->a;
