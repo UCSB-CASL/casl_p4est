@@ -33,12 +33,12 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_trajectory_of_point.h>
-#endif
 
 // casl library
 #include <lib/arrays/ArrayV.h>
 #include <lib/amr/QuadTree.h>
 #include <lib/tools/QuadraticInterpolationOnQuadTree.h>
+#endif
 
 #include <src/Parser.h>
 
