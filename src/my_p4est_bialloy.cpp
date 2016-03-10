@@ -804,15 +804,25 @@ void my_p4est_bialloy_t::compute_dt()
 
   double u_max = 0;
 //  double kappa_min = 0;
+	double dxyz[P4EST_DIM];
+	dx_dy_dz(p4est,dxyz);
+#ifdef P4_TO_P8
+	double dxyz_min = MIN(dxyz[0],dxyz[1],dxyz[2]);
+#else
+	double dxyz_min = MIN(dxyz[0],dxyz[1]);
+#endif
+	const double *phi_p;
+	ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
-
-      u_max = MAX(u_max, fabs(v_interface_np1_p[dir][n]));
+			if(fabs(phi_p[n])<5*dxyz_min)
+	      u_max = MAX(u_max, fabs(v_interface_np1_p[dir][n]));
       //    kappa_min = MIN(kappa_min, kappa_p[n]);
     }
   }
+	ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
 //  ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
 
@@ -821,9 +831,8 @@ void my_p4est_bialloy_t::compute_dt()
     ierr = VecRestoreArrayRead(v_interface_np1[dir], &v_interface_np1_p[dir]); CHKERRXX(ierr);
   }
 
-  ierr = PetscPrintf(p4est->mpicomm, "Max velo = %e\n", u_max); CHKERRXX(ierr);
-
   MPI_Allreduce(MPI_IN_PLACE, &u_max    , 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+  ierr = PetscPrintf(p4est->mpicomm, "Max velo = %e\n", u_max); CHKERRXX(ierr);
 //  MPI_Allreduce(MPI_IN_PLACE, &kappa_min, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   dt_nm1 = dt_n;
