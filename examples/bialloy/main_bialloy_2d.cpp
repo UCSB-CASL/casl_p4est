@@ -604,7 +604,7 @@ int main (int argc, char* argv[])
   bas.set_normal_velocity(normal_velocity);
   bas.set_dt(dt);
 
-  bas.compute_normal_velocity();
+  bas.compute_velocity();
   bas.compute_dt();
 
   // loop over time

@@ -465,19 +465,19 @@ void my_p4est_bialloy_t::compute_normal_velocity()
 
   ierr = VecDestroy(v_gamma); CHKERRXX(ierr);
 
-  /* compute the maximum velocity at the interface */
-  u_max = 0;
+  /* compute maximum normal velocity for convergence of v_gamma scaling */
+  vgamma_max = 0;
   const double *phi_p, *normal_velocity_np1_p;
   ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
     if(fabs(phi_p[n]) < dxyz_close_interface)
-      u_max = MAX(u_max, fabs(normal_velocity_np1_p[n]));
+      vgamma_max = MAX(vgamma_max, fabs(normal_velocity_np1_p[n]));
   }
-  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
-  MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  MPI_Allreduce(MPI_IN_PLACE, &vgamma_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 }
 
 
@@ -826,8 +826,25 @@ void my_p4est_bialloy_t::compute_dt()
 //  ierr = PetscPrintf(p4est->mpicomm, "Max velo = %e\n", u_max); CHKERRXX(ierr);
 //  MPI_Allreduce(MPI_IN_PLACE, &kappa_min, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
+  /* compute the maximum velocity at the interface */
+  double u_max = 0;
+  const double *phi_p, *v_interface_np1_p;
+  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGetArrayRead(v_interface_np1[dir], &v_interface_np1_p); CHKERRXX(ierr);
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      if(fabs(phi_p[n]) < dxyz_close_interface)
+        u_max = MAX(u_max, fabs(v_interface_np1_p[n]));
+    }
+    ierr = VecRestoreArrayRead(v_interface_np1[dir], &v_interface_np1_p); CHKERRXX(ierr);
+  }
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+
   dt_nm1 = dt_n;
-  dt_n = .5 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+  dt_n = .45 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
 
 //  if(dt_n>0.5/MAX(1e-7, kappa_min))
 //  {
@@ -962,10 +979,10 @@ void my_p4est_bialloy_t::one_step()
     ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
     MPI_Allreduce(MPI_IN_PLACE, &error, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-    error /= u_max;
+    error /= vgamma_max;
 
     matrices_are_constructed = true;
-    ierr = PetscPrintf(p4est->mpicomm, "Convergence iteration #%d, max_velo = %e, error = %e\n", iteration, u_max, error); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Convergence iteration #%d, max_velo = %e, error = %e\n", iteration, vgamma_max, error); CHKERRXX(ierr);
     iteration++;
   }
 

@@ -66,7 +66,7 @@ private:
   Vec v_interface_np1[P4EST_DIM];
   Vec normal_velocity_np1;
   /* max interface velocity in normal direction in band 4*MIN(dx,dy,dz) */
-  double u_max;
+  double vgamma_max;
 
   /* level-set */
   Vec phi;
