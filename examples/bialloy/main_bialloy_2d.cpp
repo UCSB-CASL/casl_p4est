@@ -636,6 +636,7 @@ int main (int argc, char* argv[])
   if(save_velocity)
   {
     ierr = PetscFOpen(mpi->mpicomm, name, "w", &fich); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi->mpicomm, fich, "%% time(s)      average interface velocity     max interface velocity\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi->mpicomm, fich); CHKERRXX(ierr);
   }
 
@@ -697,7 +698,7 @@ int main (int argc, char* argv[])
       ierr = VecDestroy(ones); CHKERRXX(ierr);
 
       ierr = PetscFOpen(mpi->mpicomm, name, "a", &fich); CHKERRXX(ierr);
-      PetscFPrintf(mpi->mpicomm, fich, "%e %e\n", tn, avg_velo/scaling);
+      PetscFPrintf(mpi->mpicomm, fich, "%e %e %e\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling);
       ierr = PetscFClose(mpi->mpicomm, fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi->mpicomm, "saved velocity in %s\n", name); CHKERRXX(ierr);
     }

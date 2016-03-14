@@ -149,6 +149,8 @@ public:
 
   inline double get_dt() { return dt_n; }
 
+  inline double get_max_interface_velocity() { return vgamma_max; }
+
   void set_dt( double dt );
 
   void compute_normal_and_curvature();
