@@ -388,7 +388,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     ierr = VecGetArrayRead(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
   }
   double *cl_n_p, *c_interface_p;
-  ierr = VecGetArray(cl_n, &cl_n_p); CHKERRXX(ierr);
+  ierr = VecGetArray(cl_np1, &cl_n_p); CHKERRXX(ierr);
   ierr = VecGetArray(c_interface, &c_interface_p); CHKERRXX(ierr);
 
   quad_neighbor_nodes_of_node_t qnnn;
@@ -463,7 +463,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     ierr = VecRestoreArrayRead(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
   }
 
-  ierr = VecRestoreArray(cl_n, &cl_n_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(cl_np1, &cl_n_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(c_interface, &c_interface_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(v_gamma, &v_gamma_p); CHKERRXX(ierr);
 
@@ -850,7 +850,7 @@ void my_p4est_bialloy_t::compute_dt()
   PetscPrintf(p4est->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e\n", u_max, vgamma_max, cooling_velocity);
 
 //  if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
-  if(dt_n>0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))))
+  if(0 && dt_n>0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))))
   {
 //    dt_n = MIN(dt_n, 0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max));
     dt_n = MIN(dt_n, 0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))));
