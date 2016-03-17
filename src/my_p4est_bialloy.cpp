@@ -819,7 +819,7 @@ void my_p4est_bialloy_t::compute_dt()
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
       if(fabs(phi_p[n]) < dxyz_close_interface)
-        kappa_max = MAX(kappa_max, kappa_p[n]);
+        kappa_max = MAX(kappa_max, fabs(kappa_p[n]));
     }
   }
   ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
@@ -846,7 +846,8 @@ void my_p4est_bialloy_t::compute_dt()
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
   dt_nm1 = dt_n;
-  dt_n = 1 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+  dt_n = 1 * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+//  dt_n = 1 * dxyz_min / MAX(u_max,1e-7);
   PetscPrintf(p4est->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e\n", u_max, vgamma_max, cooling_velocity);
 
 //  if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
