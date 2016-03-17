@@ -127,6 +127,7 @@ private:
 
   const CF_2 *p_WallValue;
   const CF_2 *p_InterfaceValue;
+  const CF_2 *p_InterfaceCoeff; // constant in Robin BC
 
 public:
   BoundaryConditions2D()
@@ -135,6 +136,7 @@ public:
     p_WallValue = NULL;
     InterfaceType_ = NOINTERFACE;
     p_InterfaceValue = NULL;
+    p_InterfaceCoeff = NULL;
   }
 
   inline void setWallTypes( const WallBC2D& w )
@@ -161,6 +163,14 @@ public:
 
   inline const CF_2& getInterfaceValue(){
     return *p_InterfaceValue;
+  }
+
+  inline void setInterfaceCoeff(const CF_2& in){
+    p_InterfaceCoeff = &in;
+  }
+
+  inline const CF_2& getInterfaceCoeff(){
+    return *p_InterfaceCoeff;
   }
 
   inline BoundaryConditionType wallType( double x, double y ) const
@@ -198,6 +208,7 @@ private:
 
   const CF_3 *p_WallValue;
   const CF_3 *p_InterfaceValue;
+  const CF_3 *p_InterfaceCoeff; // constant in Robin BC
 
 public:
   BoundaryConditions3D()
@@ -206,6 +217,7 @@ public:
     p_WallValue = NULL;
     InterfaceType_ = NOINTERFACE;
     p_InterfaceValue = NULL;
+    p_InterfaceCoeff = NULL;
   }
 
   inline void setWallTypes( const WallBC3D& w )
@@ -232,6 +244,14 @@ public:
 
   inline const CF_3& getInterfaceValue(){
     return *p_InterfaceValue;
+  }
+
+  inline void setInterfaceCoeff(const CF_3& in){
+    p_InterfaceCoeff = &in;
+  }
+
+  inline const CF_3& getInterfaceCoeff(){
+    return *p_InterfaceCoeff;
   }
 
   inline BoundaryConditionType wallType( double x, double y, double z ) const
