@@ -2,11 +2,13 @@
 #include "my_p8est_utils.h"
 #include "my_p8est_tools.h"
 #include <p8est_connectivity.h>
+#include <src/my_p8est_refine_coarsen.h>
 #include "cube3.h"
 #else
 #include "my_p4est_utils.h"
 #include "my_p4est_tools.h"
 #include <p4est_connectivity.h>
+#include <src/my_p4est_refine_coarsen.h>
 #include "cube2.h"
 #endif
 
@@ -15,7 +17,7 @@
 #include <set>
 #include <sstream>
 #include <petsclog.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 #include <src/petsc_compatibility.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
@@ -35,7 +37,7 @@
 std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 
 double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
-{  
+{
   PetscErrorCode ierr;
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
@@ -202,6 +204,7 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
 double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   PetscErrorCode ierr;
+
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
@@ -221,16 +224,26 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
 #endif
 
   double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = quad_x_fr_i(&quad);
-  double ymin = quad_y_fr_j(&quad);
+  double qxmin = quad_x_fr_i(&quad);
+  double qymin = quad_y_fr_j(&quad);
 #ifdef P4_TO_P8
-  double zmin = quad_z_fr_k(&quad);
+  double qzmin = quad_z_fr_k(&quad);
 #endif
 
-  x = (x-xmin) / qh;
-  y = (y-ymin) / qh;
+#ifdef CASL_THROWS
+  if(x<qxmin-qh/10 || x>qxmin+qh+qh/10 || y<qymin-qh/10 || y>qymin+qh+qh/10)
+  {
+    std::cout << x << ", " << qxmin << ", " << qxmin+qh << std::endl;
+    std::cout << y << ", " << qymin << ", " << qymin+qh << std::endl;
+    std::cout << y-qymin << std::endl;
+    throw std::invalid_argument("quadratic_interpolation: the point is not inside the quadrant.");
+  }
+#endif
+
+  x = (x-qxmin) / qh;
+  y = (y-qymin) / qh;
 #ifdef P4_TO_P8
-  z = (z-zmin) / qh;
+  z = (z-qzmin) / qh;
 #endif
 
   double d_m00 = x;
@@ -517,6 +530,20 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to)
   ierr = VecGhostRestoreLocalForm(to, &to_l);
 
   return ierr;
+}
+
+void dx_dy_dz(const p4est_t *p4est, double *dxyz)
+{
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double *v = p4est->connectivity->vertices;
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
+  }
 }
 
 double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)

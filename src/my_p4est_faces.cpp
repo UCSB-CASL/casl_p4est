@@ -973,12 +973,12 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                p4est_locidx_t node_idx, Vec f, int dir,
-                               Vec face_is_well_defined, BoundaryConditions3D *bc)
+                               Vec face_is_well_defined, int order, BoundaryConditions3D *bc)
 #else
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                p4est_locidx_t node_idx, Vec f, int dir,
-                               Vec face_is_well_defined, BoundaryConditions2D *bc)
+                               Vec face_is_well_defined, int order, BoundaryConditions2D *bc)
 #endif
 {
   PetscErrorCode ierr;
@@ -1093,9 +1093,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   vector<p4est_locidx_t> interp_points;
   matrix_t A;
 #ifdef P4_TO_P8
-  A.resize(1,10);
+  A.resize(1, order>=2 ? 10 : 6);
 #else
-  A.resize(1,6);
+  A.resize(1, order>=2 ? 6 : 4);
 #endif
   vector<double> p;
   vector<double> nb[P4EST_DIM];
@@ -1129,19 +1129,25 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
       A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
       A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
       A.set_value(interp_points.size(), 3, xyz_t[2]          * w);
-      A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
-      A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
-      A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
-      A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
-      A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
-      A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
+      if(order>=2)
+      {
+        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
+      }
 #else
       A.set_value(interp_points.size(), 0, 1                 * w);
       A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
       A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
-      A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
-      A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
-      A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
+      if(order>=2)
+      {
+        A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
+      }
 #endif
 
       p.push_back(f_p[fm_idx] * w);

@@ -1,7 +1,7 @@
-#ifndef __CASL_CUBE3_H__
-#define __CASL_CUBE3_H__
+#ifndef MY_P4EST_CUBE3_H
+#define MY_P4EST_CUBE3_H
 
-#include <src/casl_types.h>
+#include <src/types.h>
 #include <src/point3.h>
 
 /*!
@@ -104,4 +104,4 @@ public:
 
     double integrate_Over_Interface(const OctValue &f, const OctValue &level_set_values ) const;
 };
-#endif // __CASL_CUBE3_H__
+#endif // MY_P4EST_CUBE3_H

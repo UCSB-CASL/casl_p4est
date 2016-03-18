@@ -2,7 +2,7 @@
 #define MY_P4EST_INTERPOLATION_NODES
 
 #ifdef P4_TO_P8
-#include <src/my_p4est_nodes.h>
+#include <src/my_p8est_nodes.h>
 #include <src/my_p8est_interpolation.h>
 #else
 #include <src/my_p4est_nodes.h>

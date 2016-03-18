@@ -37,11 +37,13 @@ p4est_connectivity_t *
 #ifdef P4_TO_P8
 my_p4est_brick_new (int nxtrees, int nytrees, int nztrees,
                     double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
-                    my_p4est_brick_t * myb)
+                    my_p4est_brick_t * myb,
+                    int periodic_a, int periodic_b, int periodic_c)
 #else
 my_p4est_brick_new (int nxtrees, int nytrees,
                     double xmin, double xmax, double ymin, double ymax,
-                    my_p4est_brick_t * myb)
+                    my_p4est_brick_t * myb,
+                    int periodic_a, int periodic_b)
 #endif
 {
   int                 i, j;
@@ -57,14 +59,27 @@ my_p4est_brick_new (int nxtrees, int nytrees,
   p4est_topidx_t      tt, vindex;
   p4est_connectivity_t *conn;
 
+#ifdef CASL_THROWS
+  if((periodic_a && nxtrees==1) ||
+     (periodic_b && nytrees==1)
+   #ifdef P4_TO_P8
+     || (periodic_c && nztrees==1)
+   #endif
+     )
+  {
+    fprintf(stderr, "[P4EST_ERROR]: You cannot use periodic boundaries with a macromesh of size 1.\n");
+    return NULL;
+  }
+#endif
+
   P4EST_ASSERT (0 < nxtrees && 0 < nytrees);
 #ifdef P4_TO_P8
   P4EST_ASSERT (0 < nztrees);
 #endif
 #ifdef P4_TO_P8
-  conn = p4est_connectivity_new_brick (nxtrees, nytrees, nztrees, 0, 0, 0);
+  conn = p4est_connectivity_new_brick (nxtrees, nytrees, nztrees, periodic_a, periodic_b, periodic_c);
 #else
-  conn = p4est_connectivity_new_brick (nxtrees, nytrees, 0, 0);
+  conn = p4est_connectivity_new_brick (nxtrees, nytrees, periodic_a, periodic_b);
 #endif
   vv = conn->vertices;
   P4EST_ASSERT (vv != NULL);

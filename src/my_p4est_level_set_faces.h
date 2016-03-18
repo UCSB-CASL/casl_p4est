@@ -12,11 +12,11 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_faces.h>
 #endif
-#include <src/casl_types.h>
+#include <src/types.h>
 
 #include <vector>
 #include <src/ipm_logging.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 class my_p4est_level_set_faces_t
 {
@@ -32,9 +32,9 @@ public:
 
   /* extrapolate using geometrical extrapolation */
 #ifdef P4_TO_P8
-  void extend_Over_Interface( Vec phi, Vec q, BoundaryConditions3D &bc, int dir, Vec face_is_well_defined, int order=2, int band_to_extend=INT_MAX ) const;
+  void extend_Over_Interface( Vec phi, Vec q, BoundaryConditions3D &bc, int dir, Vec face_is_well_defined, Vec dxyz_hodge=NULL, int order=2, int band_to_extend=INT_MAX ) const;
 #else
-  void extend_Over_Interface( Vec phi, Vec q, BoundaryConditions2D &bc, int dir, Vec face_is_well_defined, int order=2, int band_to_extend=INT_MAX ) const;
+  void extend_Over_Interface( Vec phi, Vec q, BoundaryConditions2D &bc, int dir, Vec face_is_well_defined, Vec dxyz_hodge=NULL, int order=2, int band_to_extend=INT_MAX ) const;
 #endif
 };
 

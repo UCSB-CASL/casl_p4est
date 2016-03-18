@@ -114,7 +114,7 @@ public:
   void set_mu(Vec mu, Vec mu_xx = NULL, Vec mu_yy = NULL);
 #endif
 
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 };
 
 #endif // MY_P4EST_POISSON_NODEs_H

@@ -6,7 +6,7 @@
 #include <vector>
 
 #include <src/my_p4est_utils.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 #include <src/point3.h>
 
 #include <voro++.hh>

@@ -1,5 +1,5 @@
-#ifndef __CASL_POINT3_H__
-#define __CASL_POINT3_H__
+#ifndef MY_P4EST_POINT3_H
+#define MY_P4EST_POINT3_H
 
 #include <src/point2.h>
 
@@ -192,4 +192,4 @@ public:
      */
   void print() const;
 };
-#endif // __CASL_POINT3_H__
+#endif // MY_P4EST_POINT3_H

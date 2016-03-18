@@ -54,6 +54,8 @@ class my_p4est_poisson_faces_t
 #else
   const BoundaryConditions2D *bc;
 #endif
+  Vec *dxyz_hodge;
+  Vec *face_is_well_defined;
 
   bool compute_partition_on_the_fly;
 #ifdef P4_TO_P8
@@ -64,6 +66,7 @@ class my_p4est_poisson_faces_t
 
   Mat A;
   MatNullSpace A_null_space;
+  Vec null_space;
   KSP ksp;
 
   int matrix_has_nullspace[P4EST_DIM];
@@ -105,9 +108,9 @@ public:
   void set_mu(double mu);
 
 #ifdef P4_TO_P8
-  void set_bc(const BoundaryConditions3D *bc);
+  void set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined);
 #else
-  void set_bc(const BoundaryConditions2D *bc);
+  void set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined);
 #endif
 
   void set_compute_partition_on_the_fly(bool val);

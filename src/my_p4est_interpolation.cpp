@@ -6,6 +6,8 @@
 #include <src/my_p4est_vtk.h>
 #endif
 
+#include <src/math.h>
+
 #include "petsc_compatibility.h"
 #include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
@@ -17,7 +19,7 @@
 
 // Logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
-#undef  PetscLogEventBegintig
+#undef  PetscLogEventBegin
 #undef  PetscLogEventEnd
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
@@ -92,8 +94,8 @@ void my_p4est_interpolation_t::add_point(p4est_locidx_t locidx, const double *xy
   
   // clip to bounding box
   for (short i=0; i<P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
+    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
+    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
   }
   
   p4est_quadrant_t best_match;
@@ -228,9 +230,14 @@ void my_p4est_interpolation_t::interpolate(double *Fo_p) {
 
     done = num_remaining_queries == 0 && num_remaining_replies == 0 && it == end;
   }
+
+//  mpiret = MPI_Waitall(query_req.size(), &query_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+//  mpiret = MPI_Waitall(reply_req.size(), &reply_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+//  query_req.clear();
+//  reply_req.clear();
   
-  InterpolatingFunctionLogger& logger = InterpolatingFunctionLogger::get_instance();
-  logger.log(log_entry);
+//  InterpolatingFunctionLogger& logger = InterpolatingFunctionLogger::get_instance();
+//  logger.log(log_entry);
 
   ierr = PetscLogEventEnd(log_my_p4est_interpolation_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -263,8 +270,8 @@ void my_p4est_interpolation_t::process_incoming_query(MPI_Status& status, Interp
     for (short j = 0; j<P4EST_DIM; j++){
       xyz_tmp[j] = xyz[i+j];
       xyz_clip[j] = xyz[i+j];
-      if (xyz[i+j] > xyz_max[j]) xyz_clip[j] = xyz_max[j];
-      if (xyz[i+j] < xyz_min[j]) xyz_clip[j] = xyz_min[j];
+      if (xyz[i+j] > xyz_max[j]) xyz_clip[j] = is_periodic(p4est,j) ? xyz_clip[j]-(xyz_max[j]-xyz_min[j]) : xyz_max[j];
+      if (xyz[i+j] < xyz_min[j]) xyz_clip[j] = is_periodic(p4est,j) ? xyz_clip[j]+(xyz_max[j]-xyz_min[j]) : xyz_min[j];
     }
 
     p4est_quadrant_t best_match;

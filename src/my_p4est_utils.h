@@ -369,6 +369,8 @@ inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
+void dx_dy_dz(const p4est_t *p4est, double *dxyz);
+
 inline double node_x_fr_n(const p4est_indep_t *ni){
   return ni->x == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->x)/static_cast<double>(P4EST_ROOT_LEN);
 }
@@ -720,6 +722,24 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
  * \note: periodicity is not implemented
  */
 bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
+
+/*!
+ * \brief is_periodic checks if the forest is periodic in direction dir
+ * \param p4est [in] the forest
+ * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
+ * \return true if the forest is periodic in direction dir, false otherwise
+ */
+inline bool is_periodic(const p4est_t *p4est, int dir)
+{
+  /* check whether there is not a boundary on the left side of first tree */
+  P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
+
+  const int face = 2 * dir;
+  const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
+
+  return !(p4est->connectivity->tree_to_tree[tfindex] == 0 &&
+           p4est->connectivity->tree_to_face[tfindex] == face);
+}
 
 /*!
  * \brief find the owner rank of a ghost quadrant

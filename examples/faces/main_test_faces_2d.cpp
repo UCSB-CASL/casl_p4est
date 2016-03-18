@@ -64,8 +64,8 @@
 #undef MIN
 #undef MAX
 
-double xmin = -2;
-double xmax =  2;
+double xmin = -1;
+double xmax =  1;
 double ymin = -1;
 double ymax =  1;
 #ifdef P4_TO_P8
@@ -75,14 +75,14 @@ double zmax =  1;
 
 using namespace std;
 
-int lmin = 0;
+int lmin = 2;
 int lmax = 4;
-int nb_splits = 1;
+int nb_splits = 6;
 
-int nx = 4;
-int ny = 2;
+int nx = 1;
+int ny = 1;
 #ifdef P4_TO_P8
-int nz = 3;
+int nz = 1;
 #endif
 
 double mu = 1.;
@@ -101,8 +101,8 @@ int interface_type = 0;
  */
 int test_number = 2;
 
-BoundaryConditionType bc_itype = DIRICHLET;
 BoundaryConditionType bc_wtype = DIRICHLET;
+BoundaryConditionType bc_itype = NEUMANN;
 
 #ifdef P4_TO_P8
 double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
@@ -516,9 +516,9 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, &brick);
+  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, &brick, 0, 0, 0);
 #else
-  connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick);
+  connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick, 0, 0);
 #endif
 
   p4est_t       *p4est;
@@ -544,9 +544,12 @@ int main (int argc, char* argv[])
     splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set, 1.6);
     p4est->user_pointer = (void*)(&data);
 
-//    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
-    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+    for(int l=0; l<lmax+iter; ++l)
+    {
+      //    my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
+      my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+      my_p4est_partition(p4est, P4EST_FALSE, NULL);
+    }
     p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
     my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
@@ -650,11 +653,21 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
     }
 
+    Vec dxyz_hodge[P4EST_DIM];
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecDuplicate(rhs[dir], &dxyz_hodge[dir]); CHKERRXX(ierr);
+      Vec loc;
+      ierr = VecGhostGetLocalForm(dxyz_hodge[dir], &loc); CHKERRXX(ierr);
+      ierr = VecSet(loc, 0); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(dxyz_hodge[dir], &loc); CHKERRXX(ierr);
+    }
+
     my_p4est_poisson_faces_t solver(&faces, &ngbd_n);
     solver.set_phi(phi);
     solver.set_diagonal(add_diagonal);
     solver.set_mu(mu);
-    solver.set_bc(bc);
+    solver.set_bc(bc, dxyz_hodge, face_is_well_defined);
     solver.set_rhs(rhs);
     solver.set_compute_partition_on_the_fly(false);
 
@@ -663,6 +676,11 @@ int main (int argc, char* argv[])
       ierr = VecDuplicate(rhs[dir], &sol[dir]); CHKERRXX(ierr);
 
     solver.solve(sol);
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr);
+    }
 
     const int *matrix_has_nullspace = solver.get_matrix_has_nullspace();
     for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -729,7 +747,7 @@ int main (int argc, char* argv[])
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
       ierr = VecDuplicate(phi, &sol_nodes[dir]); CHKERRXX(ierr);
-      interp_f.set_input(sol[dir], dir, face_is_well_defined[dir]);
+      interp_f.set_input(sol[dir], dir, 2, face_is_well_defined[dir]);
       interp_f.interpolate(sol_nodes[dir]);
     }
     interp_f.clear();
@@ -789,7 +807,7 @@ int main (int argc, char* argv[])
       for(int dir=0; dir<P4EST_DIM; ++dir)
       {
         double band = 4;
-        ls_f.extend_Over_Interface(phi, sol[dir], bc[dir], dir, face_is_well_defined[dir], 2, band);
+        ls_f.extend_Over_Interface(phi, sol[dir], bc[dir], dir, face_is_well_defined[dir], NULL, 2, band);
 
         double *sol_p;
         ierr = VecGetArray(sol[dir], &sol_p); CHKERRXX(ierr);

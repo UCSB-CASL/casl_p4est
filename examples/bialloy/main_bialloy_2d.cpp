@@ -21,8 +21,8 @@
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_levelset.h>
-#include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_poisson_nodes.h>
 #include <src/my_p8est_bialloy.h>
 #else
 #include <p4est_bits.h>
@@ -35,8 +35,8 @@
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_levelset.h>
-#include <src/my_p4est_poisson_node_base.h>
+#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_bialloy.h>
 #endif
 
@@ -49,18 +49,10 @@
 #undef MAX
 
 int lmin = 4;
-int lmax = 10;
+int lmax = 6;
 int save_every_n_iteration = 50;
 
 using namespace std;
-
-/* The physical parameters */
-
-int nx = 1;
-int ny = 1;
-#ifdef P4_TO_P8
-int nz = 1;
-#endif
 
 bool save_velocity = true;
 bool save_vtk = true;
@@ -71,57 +63,104 @@ char direction = 'z';
 char direction = 'y';
 #endif
 
+/* 0 - NiCu
+ * 1 - AlCu
+ */
+int alloy_type = 0;
+
+int nx = 2;
+int ny = 2;
+#ifdef P4_TO_P8
+int nz = 2;
+#endif
+
+double xmin = 0;
+double xmax = 1;
+double ymin = 0;
+double ymax = 1;
+#ifdef P4_TO_P8
+double zmin = 0;
+double zmax = 1;
+#endif
+
 double box_size = 4e-2;//4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double scaling = 1/box_size;
 
-//double scaling = (direction=='x' ? nx : ny)/box_size;  //1 cm = scaling U
-//double rho                  = 8.88e-3 / (scaling*scaling*scaling);
-//double heat_capacity        = 0.46e3;
-//double ml                   =-357;                                     // liquidous slope
-//double kp                   = 0.86;
-//double c0                   = 0.40831;
-//double Tpure                = 1728;
-//double thermal_conductivity = 6.07e-1 / scaling;
-//double Dl                   = 1e-5 * (scaling*scaling);               // concentration diffusion coefficient
-//double Ds                   = 1e-13 * (scaling*scaling);              // solid concentration diffusion coefficient
-//double G                    = 215e2 / scaling;
-//double V                    = 0.01 * scaling;
-//double latent_heat          = 2350 / (scaling*scaling*scaling);
-//double lambda               = thermal_conductivity/(rho*heat_capacity); // thermal diffusion coeffient
+double rho;                  /* density                                    - kg.cm-3      */
+double heat_capacity;        /* c, heat capacity                           - J.kg-1.K-1   */
+double ml;                   /* liquidus slope                             - K / at frac. */
+double kp;                   /* partition coefficient                                     */
+double c0;                   /* initial concentration                      - at frac.     */
+double Tm;                   /* melting temperature                        - K            */
+double Dl;                   /* liquid concentration diffusion coefficient - cm2.s-1      */
+double Ds;                   /* solid concentration diffusion coefficient  - cm2.s-1      */
+double G;                    /* thermal gradient                           - k.cm-1       */
+double V;                    /* cooling velocity                           - cm.s-1       */
+double latent_heat;          /* L, latent heat                             - J.cm-3       */
+double thermal_conductivity; /* k, thermal conductivity                    - W.cm-1.K-1   */
+double lambda;               /* thermal diffusivity                        - cm2.s-1      */
 
-//double eps_c                = 2.7207e-5 * scaling;
-//double eps_v                = 2.27e-2 / scaling;
-//double eps_anisotropy       = 0.05;
-
-double rho                  = 8.88e-3;
-double heat_capacity        = 0.46e3;
-double ml                   =-357;                                     // liquidous slope
-double kp                   = 0.86;
-double c0                   = 0.40831;
-double Tm                   = 1728;
-double thermal_conductivity = 6.07e-1;
-double Dl                   = 1e-5;               // concentration diffusion coefficient
-double Ds                   = 1e-13;              // solid concentration diffusion coefficient
-double G                    = 4e2;
-double V                    = 0.01;
-double latent_heat          = 2350;
-double lambda               = thermal_conductivity/(rho*heat_capacity); // thermal diffusion coeffient
-
-double eps_c                = 2.7207e-5;
-double eps_v                = 2.27e-2;
-double eps_anisotropy       = 0.05;
+double eps_c;                /* curvature undercooling coefficient         - cm.K         */
+double eps_v;                /* kinetic undercooling coefficient           - s.K.cm-1     */
+double eps_anisotropy;       /* anisotropy coefficient                                    */
 
 //double t_final = 1000*ny/V;
 double t_final = 10000;
 
-double initial_interface = 0.1*(double) nx;
+void set_alloy_parameters()
+{
+  switch(alloy_type)
+  {
+  case 0:
+    /* those are the default parameters for NiCu */
+    rho                  = 8.88e-3;        /* kg.cm-3    */
+    heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
+    ml                   =-357;            /* K / at frac. - liquidous slope */
+    kp                   = 0.86;           /* partition coefficient */
+    c0                   = 0.40831;        /* at frac.    */
+    Tm                   = 1728;           /* K           */
+    Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
+    Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
+    G                    = 4e2;            /* k.cm-1      */
+    V                    = 0.01;           /* cm.s-1      */
+    latent_heat          = 2350;           /* J.cm-3      */
+    thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
+    lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+    eps_c                = 2.7207e-5;
+    eps_v                = 2.27e-2;
+    eps_anisotropy       = 0.05;
+    break;
+  case 1:
+    /* experimental AlCu parameters */
+    rho            = 2.8e-3;
+    heat_capacity  = 1221.6;
+    ml             = -652.9;
+    kp             = 0.15;
+    c0             = 0.6;
+    Tm             = 933;
+    Dl             = 1e-4;
+    Ds             = 1e-13;
+    G              = 50;
+    V              = 0.01; /* 1um = 10-4cm */
+    latent_heat    = 898.8;
+    lambda         = 0.84;
+    thermal_conductivity =  lambda*rho*heat_capacity;
+    eps_c          = 2.7207e-5;
+    eps_v          = 2.27e-2;
+    eps_anisotropy = 0.05;
+    break;
+  }
+}
+
+
 
 #ifdef P4_TO_P8
 
 struct plan_t : CF_3{
   double operator()(double x, double y, double z) const {
-    if     (direction=='x') return x - initial_interface;
-    else if(direction=='y') return y - initial_interface;
-    else                    return z - initial_interface;
+    if     (direction=='x') return x - 0.1;
+    else if(direction=='y') return y - 0.1;
+    else                    return z - 0.1;
   }
 } LS;
 
@@ -142,26 +181,26 @@ public:
   {
     if(direction=='x')
     {
-      if (ABS(x-nx)<EPS)
+      if (ABS(x-xmax)<EPS)
         return G;
 
-      if (ABS(x   )<EPS)
+      if (ABS(x-xmin)<EPS)
         return -G - V*latent_heat/thermal_conductivity;
     }
     else if(direction=='y')
     {
-      if (ABS(y-ny)<EPS)
+      if (ABS(y-ymax)<EPS)
         return G;
 
-      if (ABS(y   )<EPS)
+      if (ABS(y-ymin)<EPS)
         return -G - V*latent_heat/thermal_conductivity;
     }
     else
     {
-      if (ABS(z-nz)<EPS)
+      if (ABS(z-zmax)<EPS)
         return G;
 
-      if (ABS(z   )<EPS)
+      if (ABS(z-zmin)<EPS)
         return -G - V*latent_heat/thermal_conductivity;
     }
 
@@ -176,21 +215,21 @@ public:
   {
     if(direction=='x')
     {
-      if (ABS(x)<EPS || ABS(x-nx)<EPS)
+      if (ABS(x-xmin)<EPS || ABS(x-xmax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
     }
     else if(direction=='y')
     {
-      if (ABS(y)<EPS || ABS(y-ny)<EPS)
+      if (ABS(y-ymin)<EPS || ABS(y-ymax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
     }
     else
     {
-      if (ABS(z)<EPS || ABS(z-nz)<EPS)
+      if (ABS(z-zmin)<EPS || ABS(z-zmax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
@@ -254,8 +293,8 @@ public:
 
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
-    if(direction=='x') return x - initial_interface;
-    else               return y - initial_interface;
+    if(direction=='x') return x - 0.1;
+    else               return y - 0.1;
   }
 } LS;
 
@@ -277,18 +316,18 @@ public:
   {
     if(direction=='x')
     {
-      if (ABS(x-nx)<EPS)
+      if (ABS(x-xmax)<EPS)
         return G;
 
-      if (ABS(x   )<EPS)
+      if (ABS(x-xmin)<EPS)
         return -G - V*latent_heat/thermal_conductivity;
     }
     else
     {
-      if (ABS(y-ny)<EPS)
+      if (ABS(y-ymax)<EPS)
         return G;
 
-      if (ABS(y   )<EPS)
+      if (ABS(y-ymin)<EPS)
         return -G - V*latent_heat/thermal_conductivity;
     }
 
@@ -303,14 +342,14 @@ public:
   {
     if(direction=='x')
     {
-      if (ABS(x)<EPS || ABS(x-nx)<EPS)
+      if (ABS(x-xmin)<EPS || ABS(x-xmax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
     }
     else
     {
-      if (ABS(y)<EPS || ABS(y-ny)<EPS)
+      if (ABS(y-ymin)<EPS || ABS(y-ymax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
@@ -385,6 +424,16 @@ int main (int argc, char* argv[])
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
+  cmd.add_option("nx", "number of blox in x-dimension");
+  cmd.add_option("ny", "number of blox in y-dimension");
+#ifdef P4_TO_P8
+  cmd.add_option("nz", "number of blox in z-dimension");
+#endif
+  cmd.add_option("px", "periodicity in x-dimension 0/1");
+  cmd.add_option("py", "periodicity in y-dimension 0/1");
+#ifdef P4_TO_P8
+  cmd.add_option("pz", "periodicity in z-dimension 0/1");
+#endif
   cmd.add_option("save_vtk", "1 to save vtu files, 0 otherwise");
   cmd.add_option("save_velo", "1 to save velocity of the interface, 0 otherwise");
   cmd.add_option("save_every_n", "save vtk every n iteration");
@@ -392,13 +441,51 @@ int main (int argc, char* argv[])
 	cmd.add_option("tf", "final time");
   cmd.add_option("L", "set latent heat");
   cmd.add_option("G", "set heat gradient");
+  cmd.add_option("V", "set velocity");
   cmd.add_option("box_size", "set box_size");
+  cmd.add_option("alloy", "choose the type of alloy. Default is 0.\n  0 - NiCu\n  1 - AlCu");
+  cmd.add_option("direction", "direction of the crystal growth x/y");
+  cmd.add_option("Dl", "set the concentration diffusion coefficient in the liquid phase");
+  cmd.add_option("eps_c", "set the curvature undercooling coefficient");
+  cmd.add_option("eps_v", "set the kinetic undercooling coefficient");
   cmd.parse(argc, argv);
+
+  alloy_type = cmd.get("alloy", alloy_type);
+  set_alloy_parameters();
 
   save_vtk = cmd.get("save_vtk", save_vtk);
   save_velocity = cmd.get("save_velo", save_velocity);
 
+  nx = cmd.get("nx", nx);
+  ny = cmd.get("ny", ny);
+#ifdef P4_TO_P8
+  nz = cmd.get("nz", nz);
+#endif
+
+  int px = cmd.get("px", 0);
+  int py = cmd.get("py", 0);
+#ifdef P4_TO_P8
+  int pz = cmd.get("pz", 0);
+#endif
+
+#ifdef P4_TO_P8
+  direction = cmd.get("direction", 'z');
+#else
+  direction = cmd.get("direction", 'y');
+#endif
+
   cmd.print();
+
+  if(0)
+  {
+    int i = 0;
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+    fflush(stdout);
+    while (0 == i)
+      sleep(5);
+  }
 
   PetscErrorCode ierr;
 
@@ -406,17 +493,17 @@ int main (int argc, char* argv[])
   t_final = cmd.get("tf", t_final);
   latent_heat = cmd.get("L", latent_heat);
   G = cmd.get("G", G);
+  V = cmd.get("V", V);
   box_size = cmd.get("box_size", box_size);
+  Dl = cmd.get("Dl", Dl);
+  eps_c = cmd.get("eps_c", eps_c);
+  eps_v = cmd.get("eps_v", eps_v);
 
   double latent_heat_orig = latent_heat;
   double G_orig = G;
+  double V_orig = V;
 
-  /* scale parameters */
-#ifdef P4_TO_P8
-  double scaling = (direction=='x' ? nx : (direction=='y' ? ny : nz))/box_size;  //1 cm = scaling U
-#else
-  double scaling = (direction=='x' ? nx : ny)/box_size;  //1 cm = scaling U
-#endif
+  scaling = 1/box_size;
   rho                  /= (scaling*scaling*scaling);
   thermal_conductivity /= scaling;
   Dl                   *= (scaling*scaling);
@@ -437,9 +524,9 @@ int main (int argc, char* argv[])
   /* create the p4est */
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, nz, &brick);
+  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, nz, 0, 1, 0, 1, 0, 1, &brick, px, py, pz);
 #else
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, &brick);
+  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, 0, 1, 0, 1, &brick, px, py);
 #endif
   p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
 
@@ -478,7 +565,7 @@ int main (int argc, char* argv[])
   ierr = VecGhostRestoreLocalForm(normal_velocity, &tmp); CHKERRXX(ierr);
 
   /* perturb level set */
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.perturb_level_set_function(phi, EPS);
 
   /* set initial time step */
@@ -502,7 +589,7 @@ int main (int argc, char* argv[])
   double dt = 0.45*MIN(dx,dy)/V;
 #endif
 
-  /* initialize the solve */
+  /* initialize the solver */
   my_p4est_bialloy_t bas(ngbd);
   bas.set_parameters(latent_heat, thermal_conductivity, lambda,
                      Dl, Ds, V, kp, c0, ml, Tm, eps_anisotropy, eps_c, eps_v, scaling);
@@ -528,18 +615,28 @@ int main (int argc, char* argv[])
   FILE *fich;
   char name[10000];
 
-#ifdef STAMPEDE
+#if defined(STAMPEDE) || defined(COMET)
   char *out_dir;
   out_dir = getenv("OUT_DIR");
-  sprintf(name, "%s/velo_L_%g_G_%g_box_%g_level_%d-%d.dat", out_dir, latent_heat_orig, G_orig, box_size, lmin, lmax);
 #else
-  sprintf(name, "/home/guittet/code/Output/p4est_bialloy/velo/velo_L_%g_G_%g_box_%g_level_%d-%d.dat", latent_heat_orig, G_orig, box_size, lmin, lmax);
-//  sprintf(name, "/home/guittet/code/Output/p4est_bialloy/velo/velo.dat");
+  char out_dir[1000];
+#ifdef P4_TO_P8
+  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/3d/velo");
+#else
+  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/2d/velo");
+#endif
+#endif
+
+#ifdef P4_TO_P8
+  sprintf(name, "%s/velo_%dx%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, nx, ny, nz, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
+#else
+  sprintf(name, "%s/velo_%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, nx, ny, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #endif
 
   if(save_velocity)
   {
     ierr = PetscFOpen(mpi->mpicomm, name, "w", &fich); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi->mpicomm, fich, "%% time(s)      average interface velocity     max interface velocity\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi->mpicomm, fich); CHKERRXX(ierr);
   }
 
@@ -549,6 +646,29 @@ int main (int argc, char* argv[])
 
     bas.one_step();
 
+    if(0)
+    {
+      MPI_Barrier(mpi->mpicomm);
+
+      p4est = bas.get_p4est();
+      nodes = bas.get_nodes();
+      phi = bas.get_phi();
+      const double *phi_p;
+      ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+      {
+        double xyz[P4EST_DIM];
+        node_xyz_fr_n(n, p4est, nodes, xyz);
+        if(fabs(xyz[0]-xmax)<EPS && phi_p[n]>0 && phi_p[n]<dx)
+        {
+          std::cout << "found it : (" << xyz[0] << ", " << xyz[1] << ") = " << phi_p[n] << std::endl;
+        }
+      }
+      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+      MPI_Barrier(mpi->mpicomm);
+    }
+
     tn += bas.get_dt();
 
     if(save_velocity)
@@ -557,6 +677,15 @@ int main (int argc, char* argv[])
       nodes = bas.get_nodes();
       phi = bas.get_phi();
       normal_velocity = bas.get_normal_velocity();
+
+      if(p4est->mpirank==0)
+      {
+        p4est_locidx_t nb_nodes_global = 0;
+        for(int r=0; r<p4est->mpisize; ++r)
+          nb_nodes_global += nodes->global_owned_indeps[r];
+
+        std::cout << "The p4est has " << nb_nodes_global << " nodes." << std::endl;
+      }
 
       Vec ones;
       ierr = VecDuplicate(phi, &ones); CHKERRXX(ierr);
@@ -569,7 +698,7 @@ int main (int argc, char* argv[])
       ierr = VecDestroy(ones); CHKERRXX(ierr);
 
       ierr = PetscFOpen(mpi->mpicomm, name, "a", &fich); CHKERRXX(ierr);
-      PetscFPrintf(mpi->mpicomm, fich, "%e %e\n", tn, avg_velo/scaling);
+      PetscFPrintf(mpi->mpicomm, fich, "%e %e %e\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling);
       ierr = PetscFClose(mpi->mpicomm, fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi->mpicomm, "saved velocity in %s\n", name); CHKERRXX(ierr);
     }
@@ -581,7 +710,7 @@ int main (int argc, char* argv[])
     }
 
     iteration++;
-//    if(iteration==1) break;
+//    if(iteration==264) break;
   }
 
   w1.stop(); w1.read_duration();

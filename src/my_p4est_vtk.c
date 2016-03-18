@@ -785,6 +785,7 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_ghost_t *ghost,
             fprintf (vtufile, "\n         ");
           ++sk;
         }
+      il += p4est->local_num_quadrants;
     }
     fprintf (vtufile, "\n");
 #else
@@ -837,6 +838,7 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_ghost_t *ghost,
             fprintf (vtufile, "\n         ");
           ++sk;
         }
+      il += p4est->local_num_quadrants;
     }
     fprintf (vtufile, "\n");
 #else
