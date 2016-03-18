@@ -191,7 +191,7 @@ with \ttt{mpicomm} the mpi communicator to use, \ttt{lmin} and \ttt{lmax} the mi
 
 The forest is partitioned across processes by linearizing the trees, i.e. building an array of the leaves ordered by a particular procedure based on a space-filling curve. \ttt{p4est} uses the Z-ordering, or Morton ordering. Though alternatives exist (Hilbert curve for instance), their performances are similar to the Z-curve. The array is then distributed evenly across the processes. Figure \ref{fig::zcurve} illustrates the process.
 \figb
-\includegraphics[width=.9\textwidth]{p4est_zcurve.pdf}
+\includegraphics[width=.9\textwidth]{figures/p4est_zcurve.pdf}
 \caption{Illustration of the Z-curve ordering and of the partitioning process for a forest of 2 Octrees (macromesh 2x1) and for 3 mpi processes.} \label{fig::zcurve}
 \fige
 
@@ -269,8 +269,18 @@ The ghost structure also contains the information about the owner of a ghost qua
 
 \subsection{The nodes data structure}
 
+If working on node (i.e.\ vertices) based data, the nodes structure must be initialized. It contains the basic information about the nodes, such as the index of the nodes and the remote information for ghost layer nodes. The nodes structure is initialized by calling
+\begin{Verbatim}[frame=single]
+p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
+\end{Verbatim}
+The ghost information is optional and can be replaced by \ttt{NULL} if the ghost layer is not used. In the original \ttt{p4est} library, the nodes are organized differently than in \ttt{casl\_p4est}. That is, the ghost nodes for lower ranks are located at the beginning of the nodes array, the ghost nodes for higher ranks are at the end, and the local nodes are in between, starting at \ttt{nodes$\rightarrow$offset\_owned\_indeps}. Furthermore, the hanging nodes are indexed separately.
+
+In \ttt{casl\_p4est}, the nodes are reorganized to match the quadrants organization, thus simplifying the coupling with \ttt{Petsc}.
+
 \subsection{Communications with \texttt{Petsc}}
 
+
+\subsection{Finite differences and local tree reconstruction}
 
 \newpage
 \bibliographystyle{abbrv}

@@ -8,4 +8,5 @@
 \contentsline {subsection}{\numberline {2.2}Organization of the quadrants}{4}{subsection.2.2}
 \contentsline {subsection}{\numberline {2.3}The ghost quadrants data structure}{5}{subsection.2.3}
 \contentsline {subsection}{\numberline {2.4}The nodes data structure}{6}{subsection.2.4}
-\contentsline {subsection}{\numberline {2.5}Communications with \texttt {Petsc}}{6}{subsection.2.5}
+\contentsline {subsection}{\numberline {2.5}Communications with \texttt {Petsc}}{7}{subsection.2.5}
+\contentsline {subsection}{\numberline {2.6}Finite differences and local tree reconstruction}{7}{subsection.2.6}
