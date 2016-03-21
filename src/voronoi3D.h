@@ -124,8 +124,7 @@ public:
   /*!
      * \brief construct the voronoi parition around point pc using the neighborhood given in "points"
      */
-  void construct_Partition(double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
-                           bool periodic_x, bool periodic_y, bool periodic_z);
+  void construct_Partition(double *xyz_min, double *xyz_max, bool *periodic);
 
   inline double get_volume() const { return this->volume; }
 

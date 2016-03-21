@@ -67,6 +67,11 @@ double zmin = 0;
 double zmax = nz;
 #endif
 
+bool save_vtk = false;
+bool save_voro = false;
+bool save_stats = false;
+bool check_partition = false;
+
 /*
  * 0 - circle
  */
@@ -863,7 +868,8 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
   solver.solve(sol);
   //  solver.compute_voronoi_points();
-//  solver.check_voronoi_partition();
+  if(check_partition)
+    solver.check_voronoi_partition();
   //  if(p4est->mpirank==0)
   //  solver.compute_voronoi_mesh();
   //  solver.setup_negative_laplace_matrix();
@@ -879,11 +885,17 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
   }
   else
   {
-    sprintf(out_path, "%s/stats.dat", out_dir);
-    solver.write_stats(out_path);
+    if(save_stats)
+    {
+      sprintf(out_path, "%s/stats.dat", out_dir);
+      solver.write_stats(out_path);
+    }
 
-//    snprintf(out_path,1000, "%s/vtu/voronoi", out_dir);
-//    solver.print_voronoi_VTK(out_path);
+    if(save_voro)
+    {
+      snprintf(out_path,1000, "%s/vtu/voronoi", out_dir);
+      solver.print_voronoi_VTK(out_path);
+    }
   }
 
   if(solver.get_matrix_has_nullspace())
@@ -912,6 +924,10 @@ int main (int argc, char* argv[])
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
   cmd.add_option("nb_splits", "number of recursive splits");
+  cmd.add_option("save_vtk", "1 to save vtu files, 0 otherwise");
+  cmd.add_option("save_voro", "1 to save voronoi partition, 0 otherwise");
+  cmd.add_option("save_stats", "1 to save statistics about the voronoi partition, 0 otherwise");
+  cmd.add_option("check_partition", "1 to check if the voronoi partition is symmetric, 0 otherwise");
 #ifdef P4_TO_P8
   cmd.add_option("test", "choose a test.\n\
                  0 - u_m=1+log(r/r0), u_p=1, mu=1\n\
@@ -923,14 +939,18 @@ int main (int argc, char* argv[])
                  2 - u_m=u_p=sin(x)*sin(y), mu_m=mu_p, BC neumann\n\
                  3 - u_m=exp(x), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-y)   article example 4.4");
 #endif
-      cmd.parse(argc, argv);
+  cmd.parse(argc, argv);
 
-      cmd.print();
+  cmd.print();
 
   lmin = cmd.get("lmin", lmin);
   lmax = cmd.get("lmax", lmax);
   nb_splits = cmd.get("nb_splits", nb_splits);
   test_number = cmd.get("test", test_number);
+  save_vtk = cmd.get("save_vtk", save_vtk);
+  save_voro= cmd.get("save_voro", save_voro);
+  save_stats = cmd.get("save_stats", save_stats);
+  check_partition = cmd.get("check_partition", check_partition);
 
   parStopWatch w;
   w.start("total time");
@@ -1003,6 +1023,7 @@ int main (int argc, char* argv[])
     Vec phi;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, level_set, phi);
+    // bousouf
 //    sample_cf_on_nodes(p4est, nodes, one, phi);
 
     my_p4est_level_set_t ls(&ngbd_n);
@@ -1050,7 +1071,8 @@ int main (int argc, char* argv[])
     ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
 
-    save_VTK(p4est, ghost, nodes, &brick, phi, sol, err, iter);
+    if(save_vtk)
+      save_VTK(p4est, ghost, nodes, &brick, phi, sol, err, iter);
 
     ierr = VecDestroy(phi); CHKERRXX(ierr);
     ierr = VecDestroy(sol); CHKERRXX(ierr);

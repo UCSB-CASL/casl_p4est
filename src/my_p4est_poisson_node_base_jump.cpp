@@ -1151,14 +1151,7 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
   }
 
   /* add the walls */
-#ifdef P4_TO_P8
-  if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xmin)), pc.y, pc.z);
-  if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xmax-pc.x)), pc.y, pc.z);
-  if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX(EPS, 2*(pc.y-ymin)), pc.z);
-  if(is_quad_ypWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0p0, pc.x, pc.y+MAX(EPS, 2*(ymax-pc.y)), pc.z);
-  if(is_quad_zmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_00m, pc.x, pc.y, pc.z-MAX(EPS, 2*(pc.z-zmin)));
-  if(is_quad_zpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_00p, pc.x, pc.y, pc.z+MAX(EPS, 2*(zmax-pc.z)));
-#else
+#ifndef P4_TO_P8
   if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xmin)), pc.y );
   if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xmax-pc.x)), pc.y );
   if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX(EPS, 2*(pc.y-ymin)));
@@ -1167,7 +1160,10 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
 
   /* finally, construct the partition */
 #ifdef P4_TO_P8
-  voro.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
+  double xyz_min[] = {xmin, ymin, zmin};
+  double xyz_max[] = {xmax, ymax, zmax};
+  bool periodic[] = {false, false, false};
+  voro.construct_Partition(xyz_min, xyz_max, periodic);
 #else
   voro.construct_Partition();
 #endif
@@ -2104,7 +2100,7 @@ void PoissonSolverNodeBaseJump::check_voronoi_partition() const
             if((*pts)[k].n==(int) n)
             {
               ok = true;
-              continue;
+              break;
             }
           }
 

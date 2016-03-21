@@ -67,8 +67,7 @@ void Voronoi3D::set_Center_Point( int nc, double x, double y, double z, double s
   this->scaling = scaling;
 }
 
-void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
-                                    bool periodic_x, bool periodic_y, bool periodic_z)
+void Voronoi3D::construct_Partition(double *xyz_min, double *xyz_max, bool *periodic)
 {
 
 //  double xmin_ = MAX((xmin-pc.x)/scaling-10, (xmin-pc.x)/scaling);
@@ -110,8 +109,8 @@ void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, doubl
   double eps = EPS;
 
   /* create a container for the particles */
-  voro::container voronoi(xmin, xmax, ymin, ymax, zmin, zmax,
-                          1, 1, 1, periodic_x, periodic_y, periodic_z, 8);
+  voro::container voronoi(xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], xyz_min[2], xyz_max[2],
+                          1, 1, 1, periodic[0], periodic[1], periodic[2], 8);
 //  voro::container voronoi(MAX(xmin,pc.x-kk), MIN(xmax,pc.x+kk), MAX(ymin,pc.y-kk), MIN(ymax,pc.y+kk), MAX(zmin,pc.z-kk), MIN(zmax,pc.z+kk),
 //                          1, 1, 1, periodic_x, periodic_y, periodic_z, 16);
 
@@ -120,17 +119,17 @@ void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, doubl
   voro::particle_order po;
 
   /* add the center point */
-  double x_tmp = fabs(pc.x-xmin)<eps ? xmin+eps : fabs(pc.x-xmax)<eps ? xmax-eps : pc.x;
-  double y_tmp = fabs(pc.y-ymin)<eps ? ymin+eps : fabs(pc.y-ymax)<eps ? ymax-eps : pc.y;
-  double z_tmp = fabs(pc.z-zmin)<eps ? zmin+eps : fabs(pc.z-zmax)<eps ? zmax-eps : pc.z;
+  double x_tmp = fabs(pc.x-xyz_min[0])<eps ? xyz_min[0]+eps : fabs(pc.x-xyz_max[0])<eps ? xyz_max[0]-eps : pc.x;
+  double y_tmp = fabs(pc.y-xyz_min[1])<eps ? xyz_min[1]+eps : fabs(pc.y-xyz_max[1])<eps ? xyz_max[1]-eps : pc.y;
+  double z_tmp = fabs(pc.z-xyz_min[2])<eps ? xyz_min[2]+eps : fabs(pc.z-xyz_max[2])<eps ? xyz_max[2]-eps : pc.z;
   voronoi.put(po, nc, x_tmp, y_tmp, z_tmp);
 
   /* add the points potentially involved in the voronoi partition */
   for(unsigned int m=0; m<points.size(); ++m)
   {
-    double x_tmp = fabs(points[m].p.x-xmin)<eps ? xmin+eps : fabs(points[m].p.x-xmax)<eps ? xmax-eps : points[m].p.x;
-    double y_tmp = fabs(points[m].p.y-ymin)<eps ? ymin+eps : fabs(points[m].p.y-ymax)<eps ? ymax-eps : points[m].p.y;
-    double z_tmp = fabs(points[m].p.z-zmin)<eps ? zmin+eps : fabs(points[m].p.z-zmax)<eps ? zmax-eps : points[m].p.z;
+    double x_tmp = fabs(points[m].p.x-xyz_min[0])<eps ? xyz_min[0]+eps : fabs(points[m].p.x-xyz_max[0])<eps ? xyz_max[0]-eps : points[m].p.x;
+    double y_tmp = fabs(points[m].p.y-xyz_min[1])<eps ? xyz_min[1]+eps : fabs(points[m].p.y-xyz_max[1])<eps ? xyz_max[1]-eps : points[m].p.y;
+    double z_tmp = fabs(points[m].p.z-xyz_min[2])<eps ? xyz_min[2]+eps : fabs(points[m].p.z-xyz_max[2])<eps ? xyz_max[2]-eps : points[m].p.z;
     voronoi.put(po, points[m].n, x_tmp, y_tmp, z_tmp);
   }
 
@@ -162,22 +161,22 @@ void Voronoi3D::construct_Partition(double xmin, double xmax, double ymin, doubl
         switch(neigh[n])
         {
         case WALL_m00:
-          new_voro_nb.p.x = xmin-(pc.x-xmin); new_voro_nb.p.y = pc.y; new_voro_nb.p.z = pc.z;
+          new_voro_nb.p.x = xyz_min[0]-(pc.x-xyz_min[0]); new_voro_nb.p.y = pc.y; new_voro_nb.p.z = pc.z;
           break;
         case WALL_p00:
-          new_voro_nb.p.x = xmax+(xmax-pc.x); new_voro_nb.p.y = pc.y; new_voro_nb.p.z = pc.z;
+          new_voro_nb.p.x = xyz_max[0]+(xyz_max[0]-pc.x); new_voro_nb.p.y = pc.y; new_voro_nb.p.z = pc.z;
           break;
         case WALL_0m0:
-          new_voro_nb.p.x = pc.x; new_voro_nb.p.y = ymin-(pc.y-ymin); new_voro_nb.p.z = pc.z;
+          new_voro_nb.p.x = pc.x; new_voro_nb.p.y = xyz_min[1]-(pc.y-xyz_min[1]); new_voro_nb.p.z = pc.z;
           break;
         case WALL_0p0:
-          new_voro_nb.p.x = pc.x; new_voro_nb.p.y = ymax+(ymax-pc.y); new_voro_nb.p.z = pc.z;
+          new_voro_nb.p.x = pc.x; new_voro_nb.p.y = xyz_max[1]+(xyz_max[1]-pc.y); new_voro_nb.p.z = pc.z;
           break;
         case WALL_00m:
-          new_voro_nb.p.x = pc.x; new_voro_nb.p.y = pc.y; new_voro_nb.p.z = zmin-(pc.z-zmin);
+          new_voro_nb.p.x = pc.x; new_voro_nb.p.y = pc.y; new_voro_nb.p.z = xyz_min[2]-(pc.z-xyz_min[2]);
           break;
         case WALL_00p:
-          new_voro_nb.p.x = pc.x; new_voro_nb.p.y = pc.y; new_voro_nb.p.z = zmax+(zmax-pc.z);
+          new_voro_nb.p.x = pc.x; new_voro_nb.p.y = pc.y; new_voro_nb.p.z = xyz_max[2]+(xyz_max[2]-pc.z);
           break;
         default:
           throw std::invalid_argument("[CASL_ERROR]: Voronoi3D->construct_Partition: unknown boundary.");
