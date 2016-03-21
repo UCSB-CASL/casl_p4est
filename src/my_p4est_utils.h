@@ -369,7 +369,18 @@ inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
-void dx_dy_dz(const p4est_t *p4est, double *dxyz);
+void dxyz_min(const p4est_t *p4est, double *dxyz);
+
+void dxyz_quad(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz);
+
+void xyz_min(const p4est_t *p4est, double *xyz_min_);
+
+void xyz_max(const p4est_t *p4est, double *xyz_max_);
+
+inline void xyz_min_max(const p4est_t *p4est, double *xyz_min_, double *xyz_max_){
+  xyz_min(p4est, xyz_min_);
+  xyz_max(p4est, xyz_max_);
+}
 
 inline double node_x_fr_n(const p4est_indep_t *ni){
   return ni->x == P4EST_ROOT_LEN-1 ? 1.0:static_cast<double>(ni->x)/static_cast<double>(P4EST_ROOT_LEN);

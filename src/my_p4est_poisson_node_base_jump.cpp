@@ -48,32 +48,16 @@ PoissonSolverNodeBaseJump::PoissonSolverNodeBaseJump(const my_p4est_node_neighbo
   ierr = KSPCreate(p4est->mpicomm, &ksp); CHKERRXX(ierr);
   ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
 
-  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+  xyz_min_max(p4est, xyz_min, xyz_max);
 
-  // compute grid parameters
-  // NOTE: Assuming all trees are of the same size [0, 1]^d
-  xmin = 0; xmax = myb->nxyztrees[0];
-  ymin = 0; ymax = myb->nxyztrees[1];
-
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin_ = p4est->connectivity->vertices[3*vm + 0];
-  double ymin_ = p4est->connectivity->vertices[3*vm + 1];
-  double xmax_ = p4est->connectivity->vertices[3*vp + 0];
-  double ymax_ = p4est->connectivity->vertices[3*vp + 1];
-  dx_min = (xmax_-xmin_) / pow(2.,(double) data->max_lvl);
-  dy_min = (ymax_-ymin_) / pow(2.,(double) data->max_lvl);
+  dxyz_min(p4est, dxyz_min_);
 
 #ifdef P4_TO_P8
-  zmin = 0; zmax = myb->nxyztrees[2];
-  double zmin_ = p4est->connectivity->vertices[3*vm + 2];
-  double zmax_ = p4est->connectivity->vertices[3*vp + 2];
-  dz_min = (zmax_-zmin_) / pow(2.,(double) data->max_lvl);
-  d_min = MIN(dx_min, dy_min, dz_min);
-  diag_min = sqrt(dx_min*dx_min + dy_min*dy_min + dz_min*dz_min);
+  d_min = MIN(dxyz_min_[0],dxyz_min_[1],dxyz_min_[2]);
+  diag_min = sqrt(SQR(dxyz_min_[0]) + SQR(dxyz_min_[1]) + SQR(dxyz_min_[2]));
 #else
-  d_min = MIN(dx_min, dy_min);
-  diag_min = sqrt(dx_min*dx_min + dy_min*dy_min);
+  d_min = MIN(dxyz_min_[0],dxyz_min_[1]);
+  diag_min = sqrt(SQR(dxyz_min_[0]) + SQR(dxyz_min_[1]));
 #endif
 }
 
@@ -591,10 +575,10 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
     /* add first point */
     double xyz1 [] =
     {
-      std::min(xmax, std::max(xmin, p_proj.x + band*dp.x)),
-      std::min(ymax, std::max(ymin, p_proj.y + band*dp.y))
+      std::min(xyz_max[0], std::max(xyz_min[0], p_proj.x + band*dp.x)),
+      std::min(xyz_max[1], std::max(xyz_min[1], p_proj.y + band*dp.y))
   #ifdef P4_TO_P8
-      , std::min(zmax, std::max(zmin, p_proj.z + band*dp.z))
+      , std::min(xyz_max[2], std::max(xyz_min[2], p_proj.z + band*dp.z))
   #endif
     };
 
@@ -606,36 +590,29 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
     {
       p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
       p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-      p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-      double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
-#endif
-
-      double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-      double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
-      double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-      double qz = quad.z / (double) P4EST_ROOT_LEN + tree_zmin;
-#endif
       p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+
+      double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+      double qy = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+#ifdef P4_TO_P8
+      double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+#endif
 
       p4est_locidx_t node = -1;
 #ifdef P4_TO_P8
-      if     (xyz1[0]<=qx+qh/2 && xyz1[1]<=qy+qh/2 && xyz1[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz1[0]<=qx+qh/2 && xyz1[1]<=qy+qh/2 && xyz1[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
-      else if(xyz1[0]<=qx+qh/2 && xyz1[1]> qy+qh/2 && xyz1[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz1[0]<=qx+qh/2 && xyz1[1]> qy+qh/2 && xyz1[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]<=qy+qh/2 && xyz1[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]<=qy+qh/2 && xyz1[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]> qy+qh/2 && xyz1[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]> qy+qh/2 && xyz1[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
+      if     (xyz1[0]<=qx && xyz1[1]<=qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz1[0]<=qx && xyz1[1]<=qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
+      else if(xyz1[0]<=qx && xyz1[1]> qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz1[0]<=qx && xyz1[1]> qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
+      else if(xyz1[0]> qx && xyz1[1]<=qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz1[0]> qx && xyz1[1]<=qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
+      else if(xyz1[0]> qx && xyz1[1]> qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      else if(xyz1[0]> qx && xyz1[1]> qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
 #else
-      if     (xyz1[0]<=qx+qh/2 && xyz1[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz1[0]<=qx+qh/2 && xyz1[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz1[0]> qx+qh/2 && xyz1[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      if     (xyz1[0]<=qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz1[0]<=qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz1[0]> qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz1[0]> qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
 
       grid2voro[node].push_back(voro_points.size());
@@ -650,10 +627,10 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
     /* add second point */
     double xyz2 [] =
     {
-      std::min(xmax, std::max(xmin, p_proj.x - band*dp.x)),
-      std::min(ymax, std::max(ymin, p_proj.y - band*dp.y))
+      std::min(xyz_max[0], std::max(xyz_min[0], p_proj.x - band*dp.x)),
+      std::min(xyz_max[1], std::max(xyz_min[1], p_proj.y - band*dp.y))
   #ifdef P4_TO_P8
-      , std::min(zmax, std::max(zmin, p_proj.z - band*dp.z))
+      , std::min(xyz_max[2], std::max(xyz_min[2], p_proj.z - band*dp.z))
   #endif
     };
 
@@ -664,36 +641,29 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
     {
       p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
       p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-      p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-      double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
-#endif
-
-      double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-      double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
-      double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-      double qz = quad.z / (double) P4EST_ROOT_LEN + tree_zmin;
-#endif
       p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+
+      double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+      double qy = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+#ifdef P4_TO_P8
+      double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+#endif
 
       p4est_locidx_t node = -1;
 #ifdef P4_TO_P8
-      if     (xyz2[0]<=qx+qh/2 && xyz2[1]<=qy+qh/2 && xyz2[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz2[0]<=qx+qh/2 && xyz2[1]<=qy+qh/2 && xyz2[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
-      else if(xyz2[0]<=qx+qh/2 && xyz2[1]> qy+qh/2 && xyz2[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz2[0]<=qx+qh/2 && xyz2[1]> qy+qh/2 && xyz2[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]<=qy+qh/2 && xyz2[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]<=qy+qh/2 && xyz2[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]> qy+qh/2 && xyz2[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]> qy+qh/2 && xyz2[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
+      if     (xyz2[0]<=qx && xyz2[1]<=qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz2[0]<=qx && xyz2[1]<=qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
+      else if(xyz2[0]<=qx && xyz2[1]> qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz2[0]<=qx && xyz2[1]> qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
+      else if(xyz2[0]> qx && xyz2[1]<=qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz2[0]> qx && xyz2[1]<=qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
+      else if(xyz2[0]> qx && xyz2[1]> qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      else if(xyz2[0]> qx && xyz2[1]> qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
 #else
-      if     (xyz2[0]<=qx+qh/2 && xyz2[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz2[0]<=qx+qh/2 && xyz2[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz2[0]> qx+qh/2 && xyz2[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      if     (xyz2[0]<=qx && xyz2[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz2[0]<=qx && xyz2[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz2[0]> qx && xyz2[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz2[0]> qx && xyz2[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
 
       grid2voro[node].push_back(voro_points.size());
@@ -748,7 +718,8 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
         {
           voro_comm_t v;
           v.local_num = grid2voro[n][m];
-          v.x = voro_points[grid2voro[n][m]].x; v.y = voro_points[grid2voro[n][m]].y;
+          v.x = voro_points[grid2voro[n][m]].x;
+          v.y = voro_points[grid2voro[n][m]].y;
 #ifdef P4_TO_P8
           v.z = voro_points[grid2voro[n][m]].z;
 #endif
@@ -852,39 +823,31 @@ void PoissonSolverNodeBaseJump::compute_voronoi_points()
 
       p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
       p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-      p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-      double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
-#endif
-
-      double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-      double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
-      double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-      double qz = quad.z / (double) P4EST_ROOT_LEN + tree_zmin;
-#endif
-
       p4est_locidx_t quad_idx;
       if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
       else                           quad_idx = quad.p.piggy3.local_num + p4est->local_num_quadrants;
 
+      double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+      double qy = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+#ifdef P4_TO_P8
+      double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+#endif
+
       p4est_locidx_t node = -1;
 #ifdef P4_TO_P8
-      if     (xyz[0]<=qx+qh/2 && xyz[1]<=qy+qh/2 && xyz[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz[0]<=qx+qh/2 && xyz[1]<=qy+qh/2 && xyz[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
-      else if(xyz[0]<=qx+qh/2 && xyz[1]> qy+qh/2 && xyz[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz[0]<=qx+qh/2 && xyz[1]> qy+qh/2 && xyz[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
-      else if(xyz[0]> qx+qh/2 && xyz[1]<=qy+qh/2 && xyz[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz[0]> qx+qh/2 && xyz[1]<=qy+qh/2 && xyz[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
-      else if(xyz[0]> qx+qh/2 && xyz[1]> qy+qh/2 && xyz[2]<=qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
-      else if(xyz[0]> qx+qh/2 && xyz[1]> qy+qh/2 && xyz[2]> qz+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
+      if     (xyz[0]<=qx && xyz[1]<=qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz[0]<=qx && xyz[1]<=qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
+      else if(xyz[0]<=qx && xyz[1]> qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz[0]<=qx && xyz[1]> qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
+      else if(xyz[0]> qx && xyz[1]<=qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz[0]> qx && xyz[1]<=qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
+      else if(xyz[0]> qx && xyz[1]> qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      else if(xyz[0]> qx && xyz[1]> qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
 #else
-      if     (xyz[0]<=qx+qh/2 && xyz[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz[0]<=qx+qh/2 && xyz[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz[0]> qx+qh/2 && xyz[1]<=qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz[0]> qx+qh/2 && xyz[1]> qy+qh/2) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+      if     (xyz[0]<=qx && xyz[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+      else if(xyz[0]<=qx && xyz[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+      else if(xyz[0]> qx && xyz[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+      else if(xyz[0]> qx && xyz[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
 
       grid2voro[node].push_back(voro_points.size());
@@ -952,26 +915,6 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
   /* check if the point is exactly a node */
   p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
   p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-  p4est_topidx_t v_mmm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  double tree_xmin = p4est->connectivity->vertices[3*v_mmm + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_mmm + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_mmm + 2];
-#endif
-
-  double qh = P4EST_QUADRANT_LEN(quad.level) / (double) P4EST_ROOT_LEN;
-  double qx = quad.x / (double) P4EST_ROOT_LEN + tree_xmin;
-  double qy = quad.y / (double) P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-  double qz = quad.z / (double) P4EST_ROOT_LEN + tree_zmin;
-#endif
-
-#ifdef P4_TO_P8
-  voro.set_Center_Point(n, pc, qh);
-#else
-  voro.set_Center_Point(pc);
-#endif
-
   p4est_locidx_t quad_idx;
 #ifdef CASL_THROWS
   if(rank_found==-1)
@@ -980,28 +923,43 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
   if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
   else                           quad_idx = quad.p.piggy3.local_num + p4est->local_num_quadrants;
 
+  double qh[P4EST_DIM];
+  dxyz_quad(p4est, &quad, qh);
+
+  double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+  double qy = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+#ifdef P4_TO_P8
+  double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+#endif
+
+#ifdef P4_TO_P8
+  voro.set_Center_Point(n, pc);
+#else
+  voro.set_Center_Point(pc);
+#endif
+
   std::vector<p4est_locidx_t> ngbd_quads;
 
   /* if exactly on a grid node */
-  if( (fabs(xyz[0]-qx)<EPS || fabs(xyz[0]-(qx+qh))<EPS) &&
-      (fabs(xyz[1]-qy)<EPS || fabs(xyz[1]-(qy+qh))<EPS)
+  if( (fabs(xyz[0]-(qx-qh[0]/2))<EPS || fabs(xyz[0]-(qx+qh[0]/2))<EPS) &&
+      (fabs(xyz[1]-(qy-qh[1]/2))<EPS || fabs(xyz[1]-(qy+qh[1]/2))<EPS)
     #ifdef P4_TO_P8
-      && (fabs(xyz[2]-qz)<EPS || fabs(xyz[2]-(qz+qh))<EPS)
+      && (fabs(xyz[2]-(qz-qh[2]/2))<EPS || fabs(xyz[2]-(qz+qh[2]/2))<EPS)
     #endif
       )
   {
 #ifdef P4_TO_P8
-    int dir = (fabs(xyz[0]-qx)<EPS ?
-          (fabs(xyz[1]-qy)<EPS ?
-            (fabs(xyz[2]-qz)<EPS ? dir::v_mmm : dir::v_mmp)
-        : (fabs(xyz[2]-qz)<EPS ? dir::v_mpm : dir::v_mpp) )
-        : (fabs(xyz[1]-qy)<EPS ?
-        (fabs(xyz[2]-qz)<EPS ? dir::v_pmm : dir::v_pmp)
-        : (fabs(xyz[2]-qz)<EPS ? dir::v_ppm : dir::v_ppp) ) );
+    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<EPS ?
+          (fabs(xyz[1]-(qy-qh[1]/2))<EPS ?
+            (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_mmm : dir::v_mmp)
+        : (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_mpm : dir::v_mpp) )
+        : (fabs(xyz[1]-(qy-qh[1]/2))<EPS ?
+        (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_pmm : dir::v_pmp)
+        : (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_ppm : dir::v_ppp) ) );
 #else
-    int dir = (fabs(xyz[0]-qx)<EPS ?
-          (fabs(xyz[1]-qy)<EPS ? dir::v_mmm : dir::v_mpm)
-        : (fabs(xyz[1]-qy)<EPS ? dir::v_pmm : dir::v_ppm) );
+    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<EPS ?
+          (fabs(xyz[1]-(qy-qh[1]/2))<EPS ? dir::v_mmm : dir::v_mpm)
+        : (fabs(xyz[1]-(qy-qh[1]/2))<EPS ? dir::v_pmm : dir::v_ppm) );
 #endif
     p4est_locidx_t node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir];
 
@@ -1152,16 +1110,14 @@ void PoissonSolverNodeBaseJump::compute_voronoi_cell(unsigned int n, Voronoi2D &
 
   /* add the walls */
 #ifndef P4_TO_P8
-  if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xmin)), pc.y );
-  if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xmax-pc.x)), pc.y );
-  if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX(EPS, 2*(pc.y-ymin)));
-  if(is_quad_ypWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0p0, pc.x, pc.y+MAX(EPS, 2*(ymax-pc.y)));
+  if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xyz_min[0])), pc.y );
+  if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xyz_max[0]-pc.x)), pc.y );
+  if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX(EPS, 2*(pc.y-xyz_min[1])));
+  if(is_quad_ypWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0p0, pc.x, pc.y+MAX(EPS, 2*(xyz_max[1]-pc.y)));
 #endif
 
   /* finally, construct the partition */
 #ifdef P4_TO_P8
-  double xyz_min[] = {xmin, ymin, zmin};
-  double xyz_max[] = {xmax, ymax, zmax};
   bool periodic[] = {false, false, false};
   voro.construct_Partition(xyz_min, xyz_max, periodic);
 #else
@@ -1198,10 +1154,10 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 #else
     Point2 pc = voro_points[n];
 #endif
-    if( (ABS(pc.x-xmin)<EPS || ABS(pc.x-xmax)<EPS ||
-         ABS(pc.y-ymin)<EPS || ABS(pc.y-ymax)<EPS
+    if( (ABS(pc.x-xyz_min[0])<EPS || ABS(pc.x-xyz_max[0])<EPS ||
+         ABS(pc.y-xyz_min[1])<EPS || ABS(pc.y-xyz_max[1])<EPS
      #ifdef P4_TO_P8
-         || ABS(pc.z-zmin)<EPS || ABS(pc.z-zmax)<EPS
+         || ABS(pc.z-xyz_min[2])<EPS || ABS(pc.z-xyz_max[2])<EPS
          ) && bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
 #else
          ) && bc->wallType(pc.x,pc.y)==DIRICHLET)
@@ -1348,18 +1304,18 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
         /* perturb the corners to differentiate between the edges of the domain ... otherwise 1st order only at the corners */
 #ifdef P4_TO_P8
         double z_tmp = pc.z;
-        if(pc.x==xmin && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS;
-        if(pc.x==xmax && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS;
-        if(pc.y==ymin && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS;
-        if(pc.y==ymax && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS;
-        if(pc.z==zmin && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS;
-        if(pc.z==zmax && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS;
+        if(fabs(pc.x-xyz_min[0])<EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS;
+        if(fabs(pc.x-xyz_max[0])<EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS;
+        if(fabs(pc.y-xyz_min[1])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS;
+        if(fabs(pc.y-xyz_max[1])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS;
+        if(fabs(pc.z-xyz_min[2])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS;
+        if(fabs(pc.z-xyz_max[2])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS;
         rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp, z_tmp);
 #else
-        if(pc.x==xmin && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS;
-        if(pc.x==xmax && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS;
-        if(pc.y==ymin && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
-        if(pc.y==ymax && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
+        if(fabs(pc.x-xyz_min[0])<EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS;
+        if(fabs(pc.x-xyz_max[0])<EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS;
+        if(fabs(pc.y-xyz_min[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
+        if(fabs(pc.y-xyz_max[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
         rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp);
 #endif
       }
@@ -1427,10 +1383,10 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
 #else
     Point2 pc = voro_points[n];
 #endif
-    if( (ABS(pc.x-xmin)<EPS || ABS(pc.x-xmax)<EPS ||
-         ABS(pc.y-ymin)<EPS || ABS(pc.y-ymax)<EPS
+    if( (ABS(pc.x-xyz_min[0])<EPS || ABS(pc.x-xyz_max[0])<EPS ||
+         ABS(pc.y-xyz_min[1])<EPS || ABS(pc.y-xyz_max[1])<EPS
      #ifdef P4_TO_P8
-         || ABS(pc.z-zmin)<EPS || ABS(pc.z-zmax)<EPS
+         || ABS(pc.z-xyz_min[2])<EPS || ABS(pc.z-xyz_max[2])<EPS
          ) && bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
 #else
          ) && bc->wallType(pc.x,pc.y)==DIRICHLET)
@@ -1540,18 +1496,18 @@ void PoissonSolverNodeBaseJump::setup_negative_laplace_rhsvec()
         /* perturb the corners to differentiate between the edges of the domain ... otherwise 1st order only at the corners */
 #ifdef P4_TO_P8
         double z_tmp = pc.z;
-        if(pc.x==xmin && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS;
-        if(pc.x==xmax && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS;
-        if(pc.y==ymin && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS;
-        if(pc.y==ymax && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS;
-        if(pc.z==zmin && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS;
-        if(pc.z==zmax && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS;
+        if(fabs(pc.x-xyz_min[0])<EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS;
+        if(fabs(pc.x-xyz_max[0])<EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS;
+        if(fabs(pc.y-xyz_min[1])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS;
+        if(fabs(pc.y-xyz_max[1])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS;
+        if(fabs(pc.z-xyz_min[2])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS;
+        if(fabs(pc.z-xyz_max[2])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS;
         rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp, z_tmp);
 #else
-        if(pc.x==xmin && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS;
-        if(pc.x==xmax && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS;
-        if(pc.y==ymin && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
-        if(pc.y==ymax && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
+        if(fabs(pc.x-xyz_min[0])<EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS;
+        if(fabs(pc.x-xyz_max[0])<EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS;
+        if(fabs(pc.y-xyz_min[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
+        if(fabs(pc.y-xyz_max[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
         rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp);
 #endif
       }
@@ -2055,8 +2011,10 @@ void PoissonSolverNodeBaseJump::print_voronoi_VTK(const char* path) const
   char name[1000];
   sprintf(name, "%s_%d.vtk", path, p4est->mpirank);
 
+
 #ifdef P4_TO_P8
-  Voronoi3D::print_VTK_Format(voro, name, xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
+  bool periodic[P4EST_DIM] = {false, false, false};
+  Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
 #else
   Voronoi2D::print_VTK_Format(voro, name);
 #endif

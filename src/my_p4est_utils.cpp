@@ -532,7 +532,7 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to)
   return ierr;
 }
 
-void dx_dy_dz(const p4est_t *p4est, double *dxyz)
+void dxyz_min(const p4est_t *p4est, double *dxyz)
 {
   splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
 
@@ -544,6 +544,39 @@ void dx_dy_dz(const p4est_t *p4est, double *dxyz)
   {
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
   }
+}
+
+void dxyz_quad(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz)
+{
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double *v = p4est->connectivity->vertices;
+
+  double qh = P4EST_QUADRANT_LEN(quad->level) / (double) P4EST_ROOT_LEN;
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+    dxyz[dir] = (v[3*v_p+dir]-v[3*v_m+dir]) * qh;
+}
+
+void xyz_min(const p4est_t *p4est, double *xyz_min_)
+{
+  double *v2c = p4est->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+  p4est_topidx_t first_tree = 0;
+  p4est_topidx_t first_vertex = 0;
+
+  for (short i=0; i<3; i++)
+    xyz_min_[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
+}
+
+void xyz_max(const p4est_t *p4est, double *xyz_max_)
+{
+  double *v2c = p4est->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+  p4est_topidx_t last_tree = p4est->trees->elem_count-1;
+  p4est_topidx_t last_vertex = P4EST_CHILDREN - 1;
+
+  for (short i=0; i<3; i++)
+    xyz_max_[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
 }
 
 double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)

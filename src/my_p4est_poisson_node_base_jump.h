@@ -133,16 +133,10 @@ class PoissonSolverNodeBaseJump
   p4est_ghost_t *ghost;
   p4est_nodes_t *nodes;
 
-  double xmin, xmax;
-  double ymin, ymax;
-#ifdef P4_TO_P8
-  double zmin, zmax;
-#endif
+  double xyz_min[P4EST_DIM];
+  double xyz_max[P4EST_DIM];
 
-  double dx_min, dy_min;
-#ifdef P4_TO_P8
-  double dz_min;
-#endif
+  double dxyz_min_[P4EST_DIM];
   double d_min;
   double diag_min;
 
