@@ -7,14 +7,14 @@
 #include <src/my_p8est_cell_neighbors.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_tools.h>
-#include <src/my_p8est_interpolating_function_host.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_utils.h>
 #include <src/voronoi3D.h>
 #else
 #include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_tools.h>
-#include <src/my_p4est_interpolating_function_host.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_utils.h>
 #include <src/voronoi2D.h>
 #endif
@@ -177,9 +177,9 @@ class PoissonSolverNodeBaseJump
   BoundaryConditions2D *bc;
 #endif
 
-  InterpolatingFunctionNodeBaseHost interp_phi;
-  InterpolatingFunctionNodeBaseHost rhs_m;
-  InterpolatingFunctionNodeBaseHost rhs_p;
+  my_p4est_interpolation_nodes_t interp_phi;
+  my_p4est_interpolation_nodes_t rhs_m;
+  my_p4est_interpolation_nodes_t rhs_p;
 
   bool local_mu;
   bool local_add;
