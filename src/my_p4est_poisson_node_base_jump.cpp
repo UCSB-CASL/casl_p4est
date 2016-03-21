@@ -84,10 +84,10 @@ PoissonSolverNodeBaseJump::~PoissonSolverNodeBaseJump()
   if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr); }
   if(ksp          != PETSC_NULL) { ierr = KSPDestroy(ksp);                   CHKERRXX(ierr); }
   if(rhs          != PETSC_NULL) { ierr = VecDestroy(rhs);                   CHKERRXX(ierr); }
-  if(local_mu)             { delete mu_m; delete mu_p; }
-  if(local_add)            { delete add; }
-  if(local_u_jump)         { delete u_jump; }
-  if(local_mu_grad_u_jump) { delete mu_grad_u_jump; }
+  if(local_mu)             { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_m); delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_p); }
+  if(local_add)            { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(add); }
+  if(local_u_jump)         { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(u_jump); }
+  if(local_mu_grad_u_jump) { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_grad_u_jump); }
 }
 
 
@@ -130,14 +130,14 @@ void PoissonSolverNodeBaseJump::set_rhs(Vec rhs_m, Vec rhs_p)
 
 void PoissonSolverNodeBaseJump::set_diagonal(double add)
 {
-  if(local_add) { delete this->add; local_add = false; }
+  if(local_add) { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->add); local_add = false; }
   add_constant.set(add);
   this->add = &add_constant;
 }
 
 void PoissonSolverNodeBaseJump::set_diagonal(Vec add)
 {
-  if(local_add) delete this->add;
+  if(local_add) delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->add);
   my_p4est_interpolation_nodes_t *tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
   tmp->set_input(add, linear);
   this->add = tmp;
@@ -158,7 +158,7 @@ void PoissonSolverNodeBaseJump::set_bc(BoundaryConditions2D& bc)
 
 void PoissonSolverNodeBaseJump::set_mu(double mu)
 {
-  if(local_mu) { delete mu_m; delete mu_p; local_mu = false; }
+  if(local_mu) { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_m); delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_p); local_mu = false; }
   mu_constant.set(mu);
   mu_m = &mu_constant;
   mu_p = &mu_constant;
@@ -167,7 +167,7 @@ void PoissonSolverNodeBaseJump::set_mu(double mu)
 
 void PoissonSolverNodeBaseJump::set_mu(Vec mu_m, Vec mu_p)
 {
-  if(local_mu) { delete this->mu_m; delete this->mu_p; }
+  if(local_mu) { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->mu_m); delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->mu_p); }
   my_p4est_interpolation_nodes_t *tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
   tmp->set_input(mu_m, linear);
   this->mu_m = tmp;
@@ -181,7 +181,7 @@ void PoissonSolverNodeBaseJump::set_mu(Vec mu_m, Vec mu_p)
 
 void PoissonSolverNodeBaseJump::set_u_jump(Vec u_jump)
 {
-  if(local_u_jump) delete this->u_jump;
+  if(local_u_jump) delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->u_jump);
   my_p4est_interpolation_nodes_t *tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
   tmp->set_input(u_jump, linear);
   this->u_jump = tmp;
@@ -190,7 +190,7 @@ void PoissonSolverNodeBaseJump::set_u_jump(Vec u_jump)
 
 void PoissonSolverNodeBaseJump::set_mu_grad_u_jump(Vec mu_grad_u_jump)
 {
-  if(local_mu_grad_u_jump) delete this->mu_grad_u_jump;
+  if(local_mu_grad_u_jump) delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->mu_grad_u_jump);
   my_p4est_interpolation_nodes_t *tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
   tmp->set_input(mu_grad_u_jump, linear);
   this->mu_grad_u_jump = tmp;
@@ -287,10 +287,6 @@ void PoissonSolverNodeBaseJump::solve(Vec solution, bool use_nonzero_initial_gue
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
-
-  /* set the nullspace */
-  if (matrix_has_nullspace)
-    ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
 
   /* Solve the system */
   ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);

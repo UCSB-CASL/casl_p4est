@@ -875,7 +875,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
   out_dir = getenv("OUT_DIR");
   if(out_dir==NULL)
   {
-    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code\n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save stats\n"); CHKERRXX(ierr);
   }
   else
   {
