@@ -250,7 +250,7 @@ public:
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
 
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPCG, PCType pc_type = PCSOR);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 
   double interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const;
   void interpolate_solution_from_voronoi_to_tree(Vec solution) const;
