@@ -32,7 +32,7 @@ my_p4est_poisson_jump_voronoi_block_t::my_p4est_poisson_jump_voronoi_block_t(
     int block_size,
     const my_p4est_node_neighbors_t *node_neighbors,
     const my_p4est_cell_neighbors_t *cell_neighbors)
-  : ngbd_n(node_neighbors),  ngbd_c(cell_neighbors), myb(node_neighbors->myb),
+  : block_size(block_size), ngbd_n(node_neighbors),  ngbd_c(cell_neighbors), myb(node_neighbors->myb),
     p4est(node_neighbors->p4est), ghost(node_neighbors->ghost), nodes(node_neighbors->nodes),
     phi(NULL), rhs(NULL), sol_voro(NULL),
     voro_global_offset(p4est->mpisize),
@@ -110,13 +110,34 @@ PetscErrorCode my_p4est_poisson_jump_voronoi_block_t::VecCreateGhostVoronoiRhs()
   return ierr;
 }
 
+void my_p4est_poisson_jump_voronoi_block_t::inverse(const double** mue, double** mue_inv)
+{
+  if (block_size != 2)
+    throw std::invalid_argument("The block solver currently only works with 2x2 system\n");
+
+  double det = mue[0][0]*mue[1][1] - mue[0][1]*mue[1][0];
+  mue_inv[0][0] =  mue[1][1]/det;
+  mue_inv[0][1] = -mue[0][1]/det;
+  mue_inv[1][0] = -mue[1][0]/det;
+  mue_inv[1][1] =  mue[1][1]/det;
+}
+
+void my_p4est_poisson_jump_voronoi_block_t::matmult(const double **mue_1, const double **mue_2, double **mue)
+{
+  for (int i=0; i<block_size; i++) {
+    for (int j=0; j<block_size; j++) {
+      for (int k=0; k<block_size; k++) {
+        mue[i][j] = mue_1[i][k]*mue_2[k][j];
+      }
+    }
+  }
+}
 
 void my_p4est_poisson_jump_voronoi_block_t::set_phi(Vec phi)
 {
   this->phi = phi;
   interp_phi.set_input(phi, linear);
 }
-
 
 void my_p4est_poisson_jump_voronoi_block_t::set_rhs(Vec* rhs_m, Vec* rhs_p)
 {
@@ -126,14 +147,12 @@ void my_p4est_poisson_jump_voronoi_block_t::set_rhs(Vec* rhs_m, Vec* rhs_p)
   }
 }
 
-
 void my_p4est_poisson_jump_voronoi_block_t::set_diagonal(Vec* add)
 {
   for (int i = 0; i<block_size; i++){
     this->add[i].set_input(add[i], linear);
   }
 }
-
 
 #ifdef P4_TO_P8
 void my_p4est_poisson_jump_nodes_voronoi_t::set_bc(BoundaryConditions3D* bc)
@@ -1146,11 +1165,10 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
     PetscInt n;
   } entry_t;
 
-  std::vector< std::vector<entry_t> > matrix_entries(num_local_voro);
-  std::vector<PetscInt> d_nnz(num_local_voro, 1), o_nnz(num_local_voro, 0);
+  std::vector< std::vector<entry_t> > matrix_entries(block_size*num_local_voro);
+  std::vector<PetscInt> d_nnz(block_size*num_local_voro, 1), o_nnz(block_size*num_local_voro, 0);
 
-  for(unsigned int n=0; n<num_local_voro; ++n)
-  {
+  for(unsigned int n=0; n<num_local_voro; ++n) {
     PetscInt global_n_idx = n+voro_global_offset[p4est->mpirank];
 
 #ifdef P4_TO_P8
@@ -1158,26 +1176,6 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
 #else
     Point2 pc = voro_points[n];
 #endif
-    if( (ABS(pc.x-xmin)<EPS || ABS(pc.x-xmax)<EPS ||
-         ABS(pc.y-ymin)<EPS || ABS(pc.y-ymax)<EPS
-     #ifdef P4_TO_P8
-         || ABS(pc.z-zmin)<EPS || ABS(pc.z-zmax)<EPS
-        ) && bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
-     #else
-         ) && bc->wallType(pc.x,pc.y)==DIRICHLET)
-     #endif
-    {
-      matrix_has_nullspace = false;
-      entry_t ent; ent.n = global_n_idx; ent.val = 1;
-      matrix_entries[n].push_back(ent);
-#ifdef P4_TO_P8
-      rhs_p[n] = bc->wallValue(pc.x, pc.y, pc.z);
-#else
-      rhs_p[n] = bc->wallValue(pc.x, pc.y);
-#endif
-
-      continue;
-    }
 
 #ifdef P4_TO_P8
     Voronoi3D voro;
@@ -1194,141 +1192,195 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
     voro.get_Partition(partition);
 #endif
     voro.get_Points(points);
+#ifndef P4_TO_P8
+    voro.compute_volume();
+#endif
+    double volume = voro.get_volume();
 
 #ifdef P4_TO_P8
     double phi_n = interp_phi(pc.x, pc.y, pc.z);
 #else
     double phi_n = interp_phi(pc.x, pc.y);
 #endif
-    double mu_n;
 
-    if(phi_n<0)
-    {
-#ifdef P4_TO_P8
-      rhs_p[n] = this->rhs_m(pc.x, pc.y, pc.z);
-      mu_n     = (*mu_m)(pc.x, pc.y, pc.z);
-#else
-      rhs_p[n] = this->rhs_m(pc.x, pc.y);
-      mu_n     = (*mu_m)(pc.x, pc.y);
-#endif
-    }
-    else
-    {
-#ifdef P4_TO_P8
-      rhs_p[n] = this->rhs_p(pc.x, pc.y, pc.z);
-      mu_n     = (*mu_p)(pc.x, pc.y, pc.z);
-#else
-      rhs_p[n] = this->rhs_p(pc.x, pc.y);
-      mu_n     = (*mu_p)(pc.x, pc.y);
-#endif
-    }
+    double mue_n[block_size][block_size],
+        mue_l[block_size][block_size],
+        mue_h[block_size][block_size],
+        mue_tmp[block_size][block_size],
+        mue_inv[block_size][block_size];
+        add_n[block_size][block_size];
 
-#ifndef P4_TO_P8
-    voro.compute_volume();
-#endif
-    double volume = voro.get_volume();
-
-    rhs_p[n] *= volume;
-#ifdef P4_TO_P8
-    double add_n = (*add)(pc.x, pc.y, pc.z);
-#else
-    double add_n = (*add)(pc.x, pc.y);
-#endif
-    if(add_n>EPS) matrix_has_nullspace = false;
-
-    entry_t ent; ent.n = global_n_idx; ent.val = volume*add_n;
-    matrix_entries[n].push_back(ent);
-
-    for(unsigned int l=0; l<points->size(); ++l)
-    {
-#ifdef P4_TO_P8
-      double s = (*points)[l].s;
-#else
-      int k = (l+partition->size()-1) % partition->size();
-      double s = ((*partition)[k]-(*partition)[l]).norm_L2();
-#endif
-
-      if((*points)[l].n>=0)
-      {
-        /* regular point */
-#ifdef P4_TO_P8
-        Point3 pl = (*points)[l].p;
-        double phi_l = interp_phi(pl.x, pl.y, pl.z);
-#else
-        Point2 pl = (*points)[l].p;
-        double phi_l = interp_phi(pl.x, pl.y);
-#endif
-        double d = (pc - pl).norm_L2();
-        double mu_l;
-
-#ifdef P4_TO_P8
-        if(phi_l<0) mu_l = (*mu_m)(pl.x, pl.y, pl.z);
-        else        mu_l = (*mu_p)(pl.x, pl.y, pl.z);
-#else
-        if(phi_l<0) mu_l = (*mu_m)(pl.x, pl.y);
-        else        mu_l = (*mu_p)(pl.x, pl.y);
-#endif
-
-        double mu_harmonic = 2*mu_n*mu_l/(mu_n + mu_l);
-
-        PetscInt global_l_idx;
-        if((unsigned int)(*points)[l].n<num_local_voro)
-        {
-          global_l_idx = (*points)[l].n + voro_global_offset[p4est->mpirank];
-          d_nnz[n]++;
-        }
-        else
-        {
-          global_l_idx = voro_ghost_local_num[(*points)[l].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[l].n-num_local_voro]];
-          o_nnz[n]++;
-        }
-
-        entry_t ent; ent.n = global_l_idx; ent.val = -s*mu_harmonic/d;
-        matrix_entries[n][0].val += s*mu_harmonic/d;
-        matrix_entries[n].push_back(ent);
-
-        if(phi_n*phi_l<0)
-        {
-#ifdef P4_TO_P8
-          Point3 p_ln = (pc+pl)/2;
-#else
-          Point2 p_ln = (pc+pl)/2;
-#endif
-
-#ifdef P4_TO_P8
-          rhs_p[n] += s*mu_harmonic/d * SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y, p_ln.z);
-          rhs_p[n] -= mu_harmonic/mu_l * s/2 * (*mu_grad_u_jump)(p_ln.x, p_ln.y, p_ln.z);
-#else
-          rhs_p[n] += s*mu_harmonic/d * SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y);
-          rhs_p[n] -= mu_harmonic/mu_l * s/2 * (*mu_grad_u_jump)(p_ln.x, p_ln.y);
-#endif
+    // compute mue
+    for (int bi=0; bi<block_size; bi++) {
+      for (int bj=0; bj<block_size; bj++) {
+        if (phi_n < 0) {
+  #ifdef P4_TO_P8
+          mue_n[bi][bj] = (*mu_m[bi][bj])(pc.x, pc.y, pc.z);
+  #else
+          mue_n[bi][bj] = (*mu_m[bi][bj])(pc.x, pc.y);
+  #endif
+        } else {
+  #ifdef P4_TO_P8
+          mue_n[bi][bj] = (*mu_p[bi][bj])(pc.x, pc.y, pc.z);
+  #else
+          mue_n[bi][bj] = (*mu_p[bi][bj])(pc.x, pc.y);
+  #endif
         }
       }
-      else /* wall with neumann */
-      {
-        double x_tmp = pc.x;
-        double y_tmp = pc.y;
-
-        /* perturb the corners to differentiate between the edges of the domain ... otherwise 1st order only at the corners */
-#ifdef P4_TO_P8
-        double z_tmp = pc.z;
-        if(pc.x==xmin && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS;
-        if(pc.x==xmax && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS;
-        if(pc.y==ymin && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS;
-        if(pc.y==ymax && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS;
-        if(pc.z==zmin && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS;
-        if(pc.z==zmax && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS;
-        rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp, z_tmp);
-#else
-        if(pc.x==xmin && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS;
-        if(pc.x==xmax && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS;
-        if(pc.y==ymin && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
-        if(pc.y==ymax && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
-        rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp);
-#endif
-      }
     }
-  }
+
+    for (int bi = 0; bi<block_size; bi++) {
+      if( (ABS(pc.x-xmin)<EPS || ABS(pc.x-xmax)<EPS ||
+           ABS(pc.y-ymin)<EPS || ABS(pc.y-ymax)<EPS
+  #ifdef P4_TO_P8
+           || ABS(pc.z-zmin)<EPS || ABS(pc.z-zmax)<EPS
+           ) && bc[bi].wallType(pc.x,pc.y, pc.z)==DIRICHLET)
+  #else
+           ) && bc[bi].wallType(pc.x,pc.y)==DIRICHLET)
+  #endif
+      {
+        matrix_has_nullspace = false;
+        entry_t ent; ent.n = block_size*global_n_idx + bi; ent.val = 1;
+        matrix_entries[block_size*n+bi].push_back(ent);
+  #ifdef P4_TO_P8
+        rhs_p[block_size*n+bi] = bc[bi].wallValue(pc.x, pc.y, pc.z);
+  #else
+        rhs_p[block_size*n+bi] = bc[bi].wallValue(pc.x, pc.y);
+  #endif
+
+        continue;
+      }
+
+      for (int bj = 0; bj<block_size; bj++){
+        // compute add
+  #ifdef P4_TO_P8
+        double add_n = (*add[bi][bj])(pc.x, pc.y, pc.z);
+  #else
+        double add_n = (*add[bi][bj])(pc.x, pc.y);
+  #endif
+
+        if(add_n>EPS) matrix_has_nullspace = false;
+
+        // add the central value
+        entry_t ent; ent.n = block_size*global_n_idx + bj; ent.val = volume*add_n;
+        matrix_entries[block_size*n + bi].push_back(ent);
+      }
+
+      // compute rhs
+      if(phi_n<0) {
+  #ifdef P4_TO_P8
+        rhs_p[block_size*n+bi] = this->rhs_m[bi](pc.x, pc.y, pc.z) * volume;
+  #else
+        rhs_p[block_size*n+bi] = this->rhs_m[bi](pc.x, pc.y) * volume;
+  #endif
+      } else {
+  #ifdef P4_TO_P8
+        rhs_p[block_size*n+bi] = this->rhs_p[bi](pc.x, pc.y, pc.z) * volume;
+  #else
+        rhs_p[block_size*n+bi] = this->rhs_p[bi](pc.x, pc.y) * volume;
+  #endif
+      }
+
+    // add contribution for all neighboring points
+      for(unsigned int l=0; l<points->size(); ++l) {
+#ifdef P4_TO_P8
+        double s = (*points)[l].s;
+#else
+        int k = (l+partition->size()-1) % partition->size();
+        double s = ((*partition)[k]-(*partition)[l]).norm_L2();
+#endif
+
+        if((*points)[l].n>=0) {
+          /* regular point */
+#ifdef P4_TO_P8
+          Point3 pl = (*points)[l].p;
+          double phi_l = interp_phi(pl.x, pl.y, pl.z);
+#else
+          Point2 pl = (*points)[l].p;
+          double phi_l = interp_phi(pl.x, pl.y);
+#endif
+          double d = (pc - pl).norm_L2();
+
+          for (int bi = 0; bi<block_size; bi++) {
+            for (int bj = 0; bj<block_size; bj++) {
+
+#ifdef P4_TO_P8
+              if(phi_l<0) mue_l[bi][bj] = (*mu_m[bi][bj])(pl.x, pl.y, pl.z);
+              else        mue_l[bi][bj] = (*mu_p[bi][bj])(pl.x, pl.y, pl.z);
+#else
+              if(phi_l<0) mue_l[bi][bj] = (*mu_m[bi][bj])(pl.x, pl.y);
+              else        mue_l[bi][bj] = (*mu_p[bi][bj])(pl.x, pl.y);
+#endif
+              mue_tmp[bi][bj] = 0.5*(mue_n[bi][bj] + mue_l[bi][bj]);
+            }
+          }
+
+          inverse(mue_tmp, mue_inv);
+          matmult(mue_1, mue_inv, mue_tmp);
+          matmult(mue_tmp, mue_2, mue_h);
+
+          PetscInt global_l_idx;
+
+          for (int bj = 0; bj<block_size; bj++) {
+
+            if((unsigned int)(*points)[l].n<num_local_voro) {
+              global_l_idx = (*points)[l].n + voro_global_offset[p4est->mpirank];
+              d_nnz[block_size*n + bi]++;
+            } else {
+              global_l_idx = voro_ghost_local_num[(*points)[l].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[l].n-num_local_voro]];
+              o_nnz[block_size*n + bi]++;
+            }
+
+            entry_t ent; ent.n = block_size*global_l_idx + bj; ent.val = -s*mue_h[bi][bj]/d;
+            matrix_entries[block_size*n+bi][bj].val += s*mue_h[bi][bj]/d;
+            matrix_entries[block_size*n+bi].push_back(ent);
+
+            if(phi_n*phi_l<0) {
+#ifdef P4_TO_P8
+              Point3 p_ln = (pc+pl)/2;
+#else
+              Point2 p_ln = (pc+pl)/2;
+#endif
+
+              // mue_tmp = mue_h * mue_l^{-1} = mue_n * mue_inv * mue_l * mue_l{-1} = mue_n * mue_inv
+#ifdef P4_TO_P8
+              rhs_p[block_size*n+bi] += s*mue_h[bi][bj]/d * SIGN(phi_n) * (*u_jump[bi])(p_ln.x, p_ln.y, p_ln.z);
+              rhs_p[block_size*n+bi] -= mue_tmp[bi][bj] * s/2 * (*mu_grad_u_jump[bi])(p_ln.x, p_ln.y, p_ln.z);
+#else
+              rhs_p[block_size*n+bi] += s*mue_h[bi][bj]/d * SIGN(phi_n) * (*u_jump[bi])(p_ln.x, p_ln.y);
+              rhs_p[block_size*n+bi] -= mue_tmp[bi][bj] * s/2 * (*mu_grad_u_jump[bi])(p_ln.x, p_ln.y);
+#endif
+            }
+
+          }
+
+        }
+        else /* wall with neumann */
+        {
+          double x_tmp = pc.x;
+          double y_tmp = pc.y;
+
+          /* perturb the corners to differentiate between the edges of the domain ... otherwise 1st order only at the corners */
+#ifdef P4_TO_P8
+          double z_tmp = pc.z;
+          if(pc.x==xmin && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS;
+          if(pc.x==xmax && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS;
+          if(pc.y==ymin && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS;
+          if(pc.y==ymax && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS;
+          if(pc.z==zmin && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS;
+          if(pc.z==zmax && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS;
+          rhs_p[block_size*n+bi] += s*mue_n[bi][bi] * bc[bi].wallValue(x_tmp, y_tmp, z_tmp);
+#else
+          if(pc.x==xmin && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS;
+          if(pc.x==xmax && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS;
+          if(pc.y==ymin && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
+          if(pc.y==ymax && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
+          rhs_p[block_size*n+bi] += s*mue_n[bi][bi] * bc[bi].wallValue(x_tmp, y_tmp);
+#endif
+        }
+      } // l loop
+    } // bi loop
+  } // n loop
 
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
@@ -1341,8 +1393,9 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
   /* set up the matrix */
   ierr = MatCreate(p4est->mpicomm, &A); CHKERRXX(ierr);
   ierr = MatSetType(A, MATAIJ); CHKERRXX(ierr);
-  ierr = MatSetSizes(A, num_owned_local , num_owned_local,
-                     num_owned_global, num_owned_global); CHKERRXX(ierr);
+  ierr = MatSetSizes(A, block_size*num_owned_local , block_size*num_owned_local,
+                     block_size*num_owned_global, block_size*num_owned_global); CHKERRXX(ierr);
+  ierr = MatSetBlockSize(A, block_size); CHKERRXX(ierr);
   ierr = MatSetFromOptions(A); CHKERRXX(ierr);
 
   /* allocate the matrix */
@@ -1353,8 +1406,12 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
   for(unsigned int n=0; n<num_local_voro; ++n)
   {
     PetscInt global_n_idx = n+voro_global_offset[p4est->mpirank];
-    for(unsigned int m=0; m<matrix_entries[n].size(); ++m)
-      ierr = MatSetValue(A, global_n_idx, matrix_entries[n][m].n, matrix_entries[n][m].val, ADD_VALUES); CHKERRXX(ierr);
+    for (int bi = 0; bi < block_size; bi++) {
+      vector<entry_t>& row = matrix_entries[block_size*n+bi];
+      for(unsigned int m=0; m<row.size(); ++m) {
+        ierr = MatSetValue(A, block_size*global_n_idx + bi, row[m].n, row[m].val, ADD_VALUES); CHKERRXX(ierr);
+      }
+    }
   }
 
   /* assemble the matrix */
@@ -1536,7 +1593,7 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_negative_laplace_rhsvec()
 
 
 
-double my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const
+void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n,vector<double>& vals) const
 {
   PetscErrorCode ierr;
 
@@ -1796,10 +1853,12 @@ double my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_
 #endif
     {
       std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: not enough points found." << std::endl;
-      double retval = sol_voro_p[ni[0]];
+      for (int i=0; i<block_size; i++) {
+        vals[i] = sol_voro_p[block_size*ni[0] + i];
+      }
       ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
       ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
-      return retval;
+      return;
     }
 
 #ifdef P4_TO_P8
@@ -1809,12 +1868,18 @@ double my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_
 #endif
       std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: point is double !" << std::endl;
 
-    double f0 = sol_voro_p[ni[0]];
-    double f1 = sol_voro_p[ni[1]];
-    double f2 = sol_voro_p[ni[2]];
+    vector<double> f0(block_size), f1(block_size), f2(block_size);
 #ifdef P4_TO_P8
-    double f3 = sol_voro_p[ni[3]];
+    vector<double> f3(block_size);
 #endif
+    for (int i=0; i<block_size; i++) {
+      f0[i] = sol_voro_p[block_size*ni[0]+i];
+      f1[i] = sol_voro_p[block_size*ni[1]+i];
+      f2[i] = sol_voro_p[block_size*ni[2]+i];
+#ifdef P4_TO_P8
+      f3[i] = sol_voro_p[block_size*ni[3]+i];
+#endif
+    }
 
 #ifdef P4_TO_P8
     double det = ( -( p1.x*p2.y*p3.z + p2.x*p3.y*p1.z + p3.x*p1.y*p2.z - p3.x*p2.y*p1.z - p2.x*p1.y*p3.z - p1.x*p3.y*p2.z )
@@ -1877,21 +1942,27 @@ double my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_
     double b32 = -( p0.x*p1.y*p3.z + p1.x*p3.y*p0.z + p3.x*p0.y*p1.z - p0.x*p3.y*p1.z - p1.x*p0.y*p3.z - p3.x*p1.y*p0.z );
     double b33 =  ( p0.x*p1.y*p2.z + p1.x*p2.y*p0.z + p2.x*p0.y*p1.z - p0.x*p2.y*p1.z - p1.x*p0.y*p2.z - p2.x*p1.y*p0.z );
 
-    double c0 = (b00*f0 + b01*f1 + b02*f2 + b03*f3) / det;
-    double c1 = (b10*f0 + b11*f1 + b12*f2 + b13*f3) / det;
-    double c2 = (b20*f0 + b21*f1 + b22*f2 + b23*f3) / det;
-    double c3 = (b30*f0 + b31*f1 + b32*f2 + b33*f3) / det;
+    double c0, c1, c2, c3;
+    for (int i=0; i<block_size; i++) {
+      c0 = (b00*f0[i] + b01*f1[i] + b02*f2[i] + b03*f3[i]) / det;
+      c1 = (b10*f0[i] + b11*f1[i] + b12*f2[i] + b13*f3[i]) / det;
+      c2 = (b20*f0[i] + b21*f1[i] + b22*f2[i] + b23*f3[i]) / det;
+      c3 = (b30*f0[i] + b31*f1[i] + b32*f2[i] + b33*f3[i]) / det;
 
-    return c0*pn.x + c1*pn.y + c2*pn.z + c3;
+      vals[i] = c0*pn.x + c1*pn.y + c2*pn.z + c3;
+    }
+
 
 #else
 
-    double c0 = ( (p1.y* 1- 1*p2.y)*f0 + ( 1*p2.y-p0.y* 1)*f1 + (p0.y* 1- 1*p1.y)*f2 ) / det;
-    double c1 = ( ( 1*p2.x-p1.x* 1)*f0 + (p0.x* 1- 1*p2.x)*f1 + ( 1*p1.x-p0.x* 1)*f2 ) / det;
-    double c2 = ( (p1.x*p2.y-p2.x*p1.y)*f0 + (p2.x*p0.y-p0.x*p2.y)*f1 + (p0.x*p1.y-p1.x*p0.y)*f2 ) / det;
+    double c0, c1, c2;
+    for (int i=0; i<block_size; i++) {
+      c0 = ( (p1.y* 1- 1*p2.y)*f0[i] + ( 1*p2.y-p0.y* 1)*f1[i] + (p0.y* 1- 1*p1.y)*f2[i] ) / det;
+      c1 = ( ( 1*p2.x-p1.x* 1)*f0[i] + (p0.x* 1- 1*p2.x)*f1[i] + ( 1*p1.x-p0.x* 1)*f2[i] ) / det;
+      c2 = ( (p1.x*p2.y-p2.x*p1.y)*f0[i] + (p2.x*p0.y-p0.x*p2.y)*f1[i] + (p0.x*p1.y-p1.x*p0.y)*f2[i] ) / det;
 
-    return c0*pn.x + c1*pn.y + c2;
-
+      vals[i] = c0*pn.x + c1*pn.y + c2;
+    }
 #endif
 }
 
@@ -1977,8 +2048,6 @@ void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
 }
-
-
 
 void my_p4est_poisson_jump_voronoi_block_t::write_stats(const char *path) const
 {

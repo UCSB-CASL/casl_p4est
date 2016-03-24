@@ -53,6 +53,7 @@ class my_p4est_poisson_jump_voronoi_block_t
 #endif
   } added_point_t;
 
+  int block_size;
   const my_p4est_node_neighbors_t *ngbd_n;
   const my_p4est_cell_neighbors_t *ngbd_c;
 
@@ -110,15 +111,14 @@ class my_p4est_poisson_jump_voronoi_block_t
   vector<my_p4est_interpolation_nodes_t> rhs_m;
   vector<my_p4est_interpolation_nodes_t> rhs_p;
 
-  int block_size;
 
 #ifdef P4_TO_P8
   typedef CF_3 cf_t;
 #else
   typedef CF_2 cf_t;
 #endif
-  vector<vector<cf_t*>> mu_m, mu_p;
-  vector<cf_t*> add, u_jump, mu_grad_u_jump;
+  vector<vector<cf_t*>> mu_m, mu_p, add;
+  vector<cf_t*> u_jump, mu_grad_u_jump;
 
   // PETSc objects
   Mat A;
@@ -135,6 +135,9 @@ class my_p4est_poisson_jump_voronoi_block_t
   my_p4est_poisson_jump_voronoi_block_t& operator=(const my_p4est_poisson_jump_voronoi_block_t& other);
 
   PetscErrorCode VecCreateGhostVoronoiRhs();
+
+  void inverse(const double** mue, double** mue_inv);
+  void matmult(const double** mue_1, const double **mue_2, double **mue);
 
 public:
   void compute_voronoi_points();
