@@ -111,7 +111,6 @@ class my_p4est_poisson_jump_voronoi_block_t
   vector<my_p4est_interpolation_nodes_t> rhs_m;
   vector<my_p4est_interpolation_nodes_t> rhs_p;
 
-
 #ifdef P4_TO_P8
   typedef CF_3 cf_t;
 #else
@@ -136,8 +135,8 @@ class my_p4est_poisson_jump_voronoi_block_t
 
   PetscErrorCode VecCreateGhostVoronoiRhs();
 
-  void inverse(const double** mue, double** mue_inv);
-  void matmult(const double** mue_1, const double **mue_2, double **mue);
+  void inverse(double** mue, double** mue_inv);
+  void matmult(double** mue_1, double **mue_2, double **mue);
 
 public:
   void compute_voronoi_points();
@@ -155,21 +154,21 @@ public:
 
   void set_phi(Vec phi);
 
-  void set_rhs(Vec* rhs_m, Vec* rhs_p);
+  void set_rhs(Vec rhs_m[], Vec rhs_p[]);
 
-  void set_diagonal(Vec* add);
+  void set_diagonal(vector<vector<cf_t*>> &add);
 
 #ifdef P4_TO_P8
-  void set_bc(BoundaryConditions3D* bc);
+  void set_bc(BoundaryConditions3D bc[]);
 #else
-  void set_bc(BoundaryConditions2D* bc);
+  void set_bc(BoundaryConditions2D bc[]);
 #endif
 
-  void set_mu(Vec* mu_m, Vec* mu_p);
+  void set_mu(vector<vector<cf_t*>> &mu_m, vector<vector<cf_t*> >& mu_p);
 
-  void set_u_jump(Vec* u_jump);
+  void set_u_jump(vector<cf_t*> &u_jump);
 
-  void set_mu_grad_u_jump(Vec* mu_grad_u_jump);
+  void set_mu_grad_u_jump(vector<cf_t*> &mu_grad_u_jump);
 
   inline bool get_matrix_has_nullspace(void) const { return matrix_has_nullspace; }
 
@@ -177,10 +176,10 @@ public:
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
 
-  void solve(Vec* solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+  void solve(Vec solution[], bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 
   void interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n, vector<double>& vals) const;
-  void interpolate_solution_from_voronoi_to_tree(Vec* solution) const;
+  void interpolate_solution_from_voronoi_to_tree(Vec solution[]) const;
 
   void write_stats(const char *path) const;
 
