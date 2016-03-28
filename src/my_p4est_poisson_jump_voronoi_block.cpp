@@ -37,6 +37,8 @@ my_p4est_poisson_jump_voronoi_block_t::my_p4est_poisson_jump_voronoi_block_t(
     phi(NULL), rhs(NULL), sol_voro(NULL),
     voro_global_offset(p4est->mpisize),
     interp_phi(node_neighbors),
+    rhs_m(block_size, new my_p4est_interpolation_nodes_t(node_neighbors)),
+    rhs_p(block_size, new my_p4est_interpolation_nodes_t(node_neighbors)),
     A(PETSC_NULL), A_null_space(PETSC_NULL), ksp(PETSC_NULL),
     is_voronoi_partition_constructed(false), is_matrix_computed(false), matrix_has_nullspace(false)
 {
@@ -80,6 +82,10 @@ my_p4est_poisson_jump_voronoi_block_t::~my_p4est_poisson_jump_voronoi_block_t()
   if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr); }
   if(ksp          != PETSC_NULL) { ierr = KSPDestroy(ksp);                   CHKERRXX(ierr); }
   if(rhs          != PETSC_NULL) { ierr = VecDestroy(rhs);                   CHKERRXX(ierr); }
+  for (int i=0; i<block_size; i++) {
+    delete rhs_m[i];
+    delete rhs_p[i];
+  }
 }
 
 
@@ -108,14 +114,21 @@ PetscErrorCode my_p4est_poisson_jump_voronoi_block_t::VecCreateGhostVoronoiRhs()
 
 void my_p4est_poisson_jump_voronoi_block_t::inverse(double** mue, double** mue_inv)
 {
-  if (block_size != 2)
-    throw std::invalid_argument("The block solver currently only works with 2x2 system\n");
+  if (block_size == 1) {
+    mue_inv[0][0] = 1.0 / mue[0][0];
+    return;
 
-  double det = mue[0][0]*mue[1][1] - mue[0][1]*mue[1][0];
-  mue_inv[0][0] =  mue[1][1]/det;
-  mue_inv[0][1] = -mue[0][1]/det;
-  mue_inv[1][0] = -mue[1][0]/det;
-  mue_inv[1][1] =  mue[1][1]/det;
+  } else if (block_size == 2) {
+    double det = mue[0][0]*mue[1][1] - mue[0][1]*mue[1][0];
+    mue_inv[0][0] =  mue[1][1]/det;
+    mue_inv[0][1] = -mue[0][1]/det;
+    mue_inv[1][0] = -mue[1][0]/det;
+    mue_inv[1][1] =  mue[1][1]/det;
+
+    return;
+  } else {
+    throw std::invalid_argument("The block solver currently only works with 2x2 system\n");
+  }
 }
 
 void my_p4est_poisson_jump_voronoi_block_t::matmult(double **mue_1, double **mue_2, double **mue)
@@ -138,8 +151,8 @@ void my_p4est_poisson_jump_voronoi_block_t::set_phi(Vec phi)
 void my_p4est_poisson_jump_voronoi_block_t::set_rhs(Vec rhs_m[], Vec rhs_p[])
 {
   for (int i = 0; i<block_size; i++) {
-    this->rhs_m[i].set_input(rhs_m[i], linear);
-    this->rhs_p[i].set_input(rhs_p[i], linear);
+    this->rhs_m[i]->set_input(rhs_m[i], linear);
+    this->rhs_p[i]->set_input(rhs_p[i], linear);
   }
 }
 
@@ -148,11 +161,7 @@ void my_p4est_poisson_jump_voronoi_block_t::set_diagonal(vector<vector<cf_t*>>& 
   this->add = add;
 }
 
-#ifdef P4_TO_P8
-void my_p4est_poisson_jump_nodes_voronoi_t::set_bc(BoundaryConditions3D bc[])
-#else
-void my_p4est_poisson_jump_voronoi_block_t::set_bc(BoundaryConditions2D bc[])
-#endif
+void my_p4est_poisson_jump_voronoi_block_t::set_bc(vector<bc_t> &bc)
 {
   this->bc = bc;
   is_matrix_computed = false;
@@ -179,8 +188,6 @@ void my_p4est_poisson_jump_voronoi_block_t::solve(Vec solution[], bool use_nonze
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
-  if(bc == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
-
   for (int i=0; i<block_size; i++) {
     PetscInt sol_size;
     ierr = VecGetLocalSize(solution[i], &sol_size); CHKERRXX(ierr);
@@ -224,7 +231,8 @@ void my_p4est_poisson_jump_voronoi_block_t::solve(Vec solution[], bool use_nonze
     is_matrix_computed = true;
     ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   } else {
-    setup_negative_laplace_rhsvec();
+    // setup_negative_laplace_rhsvec();
+    setup_linear_system();
     ierr = KSPSetOperators(ksp, A, A, SAME_PRECONDITIONER);  CHKERRXX(ierr);
   }
 
@@ -1256,15 +1264,15 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
       // compute rhs
       if(phi_n<0) {
   #ifdef P4_TO_P8
-        rhs_p[block_size*n+bi] = this->rhs_m[bi](pc.x, pc.y, pc.z) * volume;
+        rhs_p[block_size*n+bi] = (*this->rhs_m[bi])(pc.x, pc.y, pc.z) * volume;
   #else
-        rhs_p[block_size*n+bi] = this->rhs_m[bi](pc.x, pc.y) * volume;
+        rhs_p[block_size*n+bi] = (*this->rhs_m[bi])(pc.x, pc.y) * volume;
   #endif
       } else {
   #ifdef P4_TO_P8
-        rhs_p[block_size*n+bi] = this->rhs_p[bi](pc.x, pc.y, pc.z) * volume;
+        rhs_p[block_size*n+bi] = (*this->rhs_p[bi])(pc.x, pc.y, pc.z) * volume;
   #else
-        rhs_p[block_size*n+bi] = this->rhs_p[bi](pc.x, pc.y) * volume;
+        rhs_p[block_size*n+bi] = (*this->rhs_p[bi])(pc.x, pc.y) * volume;
   #endif
       }
 

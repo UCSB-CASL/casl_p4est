@@ -101,23 +101,20 @@ class my_p4est_poisson_jump_voronoi_block_t
    */
   std::vector<p4est_locidx_t> voro_ghost_local_num;
 
-#ifdef P4_TO_P8
-  BoundaryConditions3D *bc;
-#else
-  BoundaryConditions2D *bc;
-#endif
-
   my_p4est_interpolation_nodes_t interp_phi;
-  vector<my_p4est_interpolation_nodes_t> rhs_m;
-  vector<my_p4est_interpolation_nodes_t> rhs_p;
+  vector<my_p4est_interpolation_nodes_t*> rhs_m;
+  vector<my_p4est_interpolation_nodes_t*> rhs_p;
 
 #ifdef P4_TO_P8
   typedef CF_3 cf_t;
+  typedef BoundaryConditions3D bc_t;
 #else
   typedef CF_2 cf_t;
+  typedef BoundaryConditions2D bc_t;
 #endif
   vector<vector<cf_t*>> mu_m, mu_p, add;
   vector<cf_t*> u_jump, mu_grad_u_jump;
+  vector<bc_t> bc;
 
   // PETSc objects
   Mat A;
@@ -147,7 +144,7 @@ public:
 #endif
   void print_voronoi_VTK(const char* path) const;
   void setup_linear_system();
-  void setup_negative_laplace_rhsvec();
+//  void setup_negative_laplace_rhsvec();
 
   my_p4est_poisson_jump_voronoi_block_t(int block_size, const my_p4est_node_neighbors_t *node_neighbors, const my_p4est_cell_neighbors_t *cell_neighbors);
   ~my_p4est_poisson_jump_voronoi_block_t();
@@ -158,11 +155,7 @@ public:
 
   void set_diagonal(vector<vector<cf_t*>> &add);
 
-#ifdef P4_TO_P8
-  void set_bc(BoundaryConditions3D bc[]);
-#else
-  void set_bc(BoundaryConditions2D bc[]);
-#endif
+  void set_bc(vector<bc_t>& bc);
 
   void set_mu(vector<vector<cf_t*>> &mu_m, vector<vector<cf_t*> >& mu_p);
 
