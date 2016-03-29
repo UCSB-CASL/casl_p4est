@@ -112,18 +112,18 @@ PetscErrorCode my_p4est_poisson_jump_voronoi_block_t::VecCreateGhostVoronoiRhs()
   return ierr;
 }
 
-void my_p4est_poisson_jump_voronoi_block_t::inverse(double** mue, double** mue_inv)
+void my_p4est_poisson_jump_voronoi_block_t::inverse(double* mue, double* mue_inv)
 {
   if (block_size == 1) {
-    mue_inv[0][0] = 1.0 / mue[0][0];
+    mue_inv[0] = 1.0 / mue[0];
     return;
 
   } else if (block_size == 2) {
-    double det = mue[0][0]*mue[1][1] - mue[0][1]*mue[1][0];
-    mue_inv[0][0] =  mue[1][1]/det;
-    mue_inv[0][1] = -mue[0][1]/det;
-    mue_inv[1][0] = -mue[1][0]/det;
-    mue_inv[1][1] =  mue[1][1]/det;
+    double det = mue[0]*mue[3] - mue[1]*mue[2];
+    mue_inv[0] =  mue[3]/det;
+    mue_inv[1] = -mue[1]/det;
+    mue_inv[2] = -mue[2]/det;
+    mue_inv[3] =  mue[0]/det;
 
     return;
   } else {
@@ -131,12 +131,12 @@ void my_p4est_poisson_jump_voronoi_block_t::inverse(double** mue, double** mue_i
   }
 }
 
-void my_p4est_poisson_jump_voronoi_block_t::matmult(double **mue_1, double **mue_2, double **mue)
+void my_p4est_poisson_jump_voronoi_block_t::matmult(double* mue_1, double* mue_2, double* mue)
 {
   for (int i=0; i<block_size; i++) {
     for (int j=0; j<block_size; j++) {
       for (int k=0; k<block_size; k++) {
-        mue[i][j] = mue_1[i][k]*mue_2[k][j];
+        mue[i*block_size + j] = mue_1[i*block_size+k]*mue_2[k*block_size+j];
       }
     }
   }
@@ -1310,9 +1310,9 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
             }
           }
 
-          inverse((double**)mue_tmp, (double**)mue_inv);
-          matmult((double**)mue_n, (double**)mue_inv, (double**)mue_tmp);
-          matmult((double**)mue_tmp, (double**)mue_l, (double**)mue_h);
+          inverse((double*)mue_tmp, (double*)mue_inv);
+          matmult((double*)mue_n,   (double*)mue_inv, (double*)mue_tmp);
+          matmult((double*)mue_tmp, (double*)mue_l,   (double*)mue_h);
 
           PetscInt global_l_idx;
 
@@ -1616,6 +1616,7 @@ void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to
           vals[i] = sol_voro_p[block_size*grid2voro[n][m] + i];
         }
         ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+        return;
       }
     }
 
@@ -1970,7 +1971,7 @@ void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to
 
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
 
-  vector<double *> solution_p;
+  double* solution_p[block_size];
   for (int i=0; i<block_size; i++){
     ierr = VecGetArray(solution[i], &solution_p[i]); CHKERRXX(ierr);
   }

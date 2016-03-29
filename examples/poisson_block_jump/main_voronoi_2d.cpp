@@ -1,4 +1,4 @@
-/* 
+/*
  * Title: poisson_block_jump
  * Description:
  * Author: Mohammad Mirzadeh
@@ -14,7 +14,7 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_macros.h>
-#include <src/my_p4est_poisson_jump_voronoi_block.h>
+#include <src/my_p4est_poisson_jump_nodes_voronoi.h>
 #else
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
@@ -24,7 +24,7 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_macros.h>
-#include <src/my_p8est_poisson_jump_voronoi_block.h>
+#include <src/my_p8est_poisson_jump_nodes_voronoi.h>
 #endif
 
 #include <src/Parser.h>
@@ -33,14 +33,14 @@
 using namespace std;
 
 int main(int argc, char** argv) {
-  
+
   // prepare parallel enviroment
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
   // stopwatch
   parStopWatch w;
-  w.start("Running example: poisson_block_jump");
+  w.start("Running example: poisson_voronoi_jump");
 
   // p4est variables
   p4est_t*              p4est;
@@ -129,75 +129,67 @@ int main(int argc, char** argv) {
   typedef CF_3 cf_t;
   typedef BoundaryConditions3D bc_t;
 #endif
+  constant_cf_t bc_wall_value(0);
 
-  int bs = 1;
-  vector<vector<cf_t*>> mue_m(bs, vector<cf_t*>(bs));
-  mue_m[0][0] = new constant_cf_t(1);
+  bc_t bc;
+  bc.setWallTypes(bc_wall_type);
+  bc.setWallValues(bc_wall_value);
 
-  vector<vector<cf_t*>> mue_p(bs, vector<cf_t*>(bs));
-  mue_p[0][0] = new constant_cf_t(3);
+  Vec rhs_m, rhs_p, mue_m, mue_p, jump_u, jump_du;
+  VecCreateGhostNodes(p4est, nodes, &rhs_m);
+  VecDuplicate(rhs_m, &rhs_p);
+  VecDuplicate(rhs_m, &mue_m);
+  VecDuplicate(rhs_m, &mue_p);
+  VecDuplicate(rhs_m, &jump_u);
+  VecDuplicate(rhs_m, &jump_du);
 
-  vector<vector<cf_t*>> add(bs, vector<cf_t*>(bs));
-  add[0][0] = new constant_cf_t(0);
+  Vec l;
+  VecGhostGetLocalForm(mue_m, &l);
+  VecSet(l, 1);
+  VecGhostRestoreLocalForm(mue_m, &l);
 
-  vector<cf_t*> jump_u(bs), jump_du(bs);
-  jump_u[0]  = new constant_cf_t(1);
-  jump_du[0] = new constant_cf_t(5);
+  VecGhostGetLocalForm(mue_p, &l);
+  VecSet(l, 3);
+  VecGhostRestoreLocalForm(mue_p, &l);
 
-  vector<cf_t*> bc_wall_values(bs);
-  bc_wall_values[0] = new constant_cf_t(0);
+  VecGhostGetLocalForm(jump_u, &l);
+  VecSet(l, 1);
+  VecGhostRestoreLocalForm(jump_u, &l);
 
-  vector<bc_t> bc(bs);
-  bc[0].setWallTypes(bc_wall_type);
-  bc[0].setWallValues(*bc_wall_values[0]);
+  VecGhostGetLocalForm(jump_du, &l);
+  VecSet(l, 5);
+  VecGhostRestoreLocalForm(jump_du, &l);
 
-  Vec rhs_m[bs], rhs_p[bs];
-  VecCreateGhostNodes(p4est, nodes, &rhs_m[0]);
-  VecCreateGhostNodes(p4est, nodes, &rhs_p[0]);
-
-  my_p4est_poisson_jump_voronoi_block_t jump_solver(bs, &node_neighbors, &cell_neighbors);
+  my_p4est_poisson_jump_nodes_voronoi_t jump_solver(&node_neighbors, &cell_neighbors);
   jump_solver.set_bc(bc);
-  jump_solver.set_diagonal(add);
   jump_solver.set_mu(mue_m, mue_p);
   jump_solver.set_u_jump(jump_u);
   jump_solver.set_mu_grad_u_jump(jump_du);
   jump_solver.set_phi(phi);
   jump_solver.set_rhs(rhs_m, rhs_p);
 
-  Vec solution[bs];
-  VecCreateGhostNodes(p4est, nodes, &solution[0]);
+  Vec solution;
+  VecCreateGhostNodes(p4est, nodes, &solution);
   jump_solver.solve(solution);
 
-  for (int i=0; i<bs; i++) {
-    delete jump_u[i];
-    delete jump_du[i];
-    delete bc_wall_values[i];
-
-    for (int j=0; j<bs; j++) {
-      delete mue_m[i][j];
-      delete mue_p[i][j];
-      delete add[i][j];
-    }
-  }
-
   // save the grid into vtk
-  double *solution_p[bs];
-  for (int i=0; i<bs; i++) {
-    VecGetArray(solution[i], &solution_p[i]);
-  }
+  double *solution_p;
+  VecGetArray(solution, &solution_p);
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
-                         1, 0, "poisson_block_jump",
-                         VTK_POINT_DATA, "sol 1", solution_p[0]);
+                         1, 0, "poisson_voronoi_jump",
+                         VTK_POINT_DATA, "sol 1", solution_p);
 
-  for (int i=0; i<bs; i++) {
-    VecRestoreArray(solution[i], &solution_p[i]);
-  }
-  for (int i=0; i<bs; i++) {
-    VecDestroy(solution[i]);
-    VecDestroy(rhs_p[i]);
-    VecDestroy(rhs_m[i]);
-  }
+  VecRestoreArray(solution, &solution_p);
+
+  VecDestroy(solution);
+  VecDestroy(rhs_p);
+  VecDestroy(rhs_m);
+  VecDestroy(mue_p);
+  VecDestroy(mue_m);
+  VecDestroy(jump_u);
+  VecDestroy(jump_du);
+
   VecDestroy(phi);
 
   // destroy the structures
@@ -208,4 +200,3 @@ int main(int argc, char** argv) {
 
   w.stop(); w.read_duration();
 }
-

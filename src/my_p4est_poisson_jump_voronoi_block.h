@@ -132,8 +132,8 @@ class my_p4est_poisson_jump_voronoi_block_t
 
   PetscErrorCode VecCreateGhostVoronoiRhs();
 
-  void inverse(double** mue, double** mue_inv);
-  void matmult(double** mue_1, double **mue_2, double **mue);
+  void inverse(double* mue, double* mue_inv);
+  void matmult(double* mue_1, double* mue_2, double* mue);
 
 public:
   void compute_voronoi_points();
