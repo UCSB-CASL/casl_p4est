@@ -15,12 +15,12 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_levelset.h>
+#include <src/my_p8est_level_set.h>
 #include <src/my_p8est_semi_lagrangian.h>
-#include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_poisson_nodes.h>
 #include <src/point3.h>
 #include "charging_linear_3d.h"
 #else
@@ -32,12 +32,12 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_interpolating_function.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_levelset.h>
+#include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian.h>
-#include <src/my_p4est_poisson_node_base.h>
+#include <src/my_p4est_poisson_nodes.h>
 #include <src/point2.h>
 #include "charging_linear_2d.h"
 #endif
@@ -45,7 +45,7 @@
 #include <src/ipm_logging.h>
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 #include <mpi.h>
 
 using namespace std;
@@ -377,7 +377,7 @@ int main (int argc, char* argv[]){
 		cmd.parse(argc, argv);
     cmd.print();
 
-    output_dir       = cmd.get<std::string>("output-dir");
+    output_dir       = cmd.get<std::string>("output-dir", ".");
     alpha = cmd.get("alpha", 1);
     beta  = cmd.get("beta", 0.02);
     const int lmin   = cmd.get("lmin", 3);
@@ -408,9 +408,9 @@ int main (int argc, char* argv[]){
     p4est_connectivity_t *connectivity;
     my_p4est_brick_t my_brick, *brick = &my_brick;
 #ifdef P4_TO_P8
-    connectivity = my_p4est_brick_new(nx, ny, nz, brick);
+    connectivity = my_p4est_brick_new(nx, ny, nz, 0, 1, 0, 1, 0, 1, brick, 0, 0, 0);
 #else
-    connectivity = my_p4est_brick_new(nx, ny, brick);
+    connectivity = my_p4est_brick_new(nx, ny, 0, 1, 0, 1, brick, 0, 0);
 #endif
     w2.stop(); w2.read_duration();
 
@@ -464,8 +464,10 @@ int main (int argc, char* argv[]){
       for (int it = 0; it<itmax; it++){
         my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
         my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
-        SemiLagrangian sl(&p4est, &nodes, &ghost, brick, &ngbd);
-        sl.update_p4est_second_order(vx_cf, vy_cf, vz_cf, 10*dx, phi);
+        my_p4est_semi_lagrangian_t sl(&p4est, &nodes, &ghost, brick, &ngbd);
+
+        const CF_3* vel[] = {&vx_cf, &vy_cf, &vz_cf};
+        sl.update_p4est(vel, 10*dx, phi);
       }
     }
     w2.stop(); w2.read_duration();
@@ -505,7 +507,7 @@ int main (int argc, char* argv[]){
     solver.set_phi(phi);
     solver.init();
 
-    for (int i=0; i<10000; i++){
+    for (int i=0; i<10; i++){
       ostringstream oss;
       oss << "solving iteration " << i;
       w2.start(oss.str());
@@ -701,7 +703,7 @@ void motion_under_curvature1(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes
 
       VecSet(phi, -1);
 
-      PoissonSolverNodeBase solver(&ngbd);
+      my_p4est_poisson_nodes_t solver(&ngbd);
       solver.set_bc(bc);
       solver.set_rhs(rhs);
       solver.set_phi(phi);
@@ -713,16 +715,16 @@ void motion_under_curvature1(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes
     ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD);       
     w.stop(); w.read_duration();
 
-    my_p4est_level_set ls(&ngbd);
+    my_p4est_level_set_t ls(&ngbd);
     ls.reinitialize_1st_order_time_2nd_order_space(phi_np1, 10);
 
     /* construct a new grid */
     w.start("update grid");
     p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
     p4est_np1->connectivity = p4est->connectivity;
-    InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, myb, &ngbd);
+    my_p4est_interpolation_nodes_t phi_interp(&ngbd);
 
-    phi_interp.set_input_parameters(phi_np1, quadratic);
+    phi_interp.set_input(phi_np1, quadratic);
 
     splitting_criteria_cf_t sp_np1(sp->min_lvl, sp->max_lvl, &phi_interp, sp->lip);
     p4est_np1->user_pointer = &sp_np1;
@@ -731,7 +733,7 @@ void motion_under_curvature1(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes
     my_p4est_refine(p4est_np1, P4EST_FALSE, refine_levelset_cf, NULL);
 
     // partition the new forest and create new nodes and ghost structures
-    my_p4est_partition(p4est_np1, NULL);
+    my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
     p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
@@ -740,25 +742,10 @@ void motion_under_curvature1(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi); CHKERRXX(ierr);
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
+    double xyz [P4EST_DIM];
     for (size_t n = 0; n<nodes_np1->indep_nodes.elem_count; n++) {
-      p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, n);
-      p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
-
-      p4est_topidx_t* t2v = p4est->connectivity->tree_to_vertex;
-      double *t2c = p4est->connectivity->vertices;
-      p4est_topidx_t tr_mm = t2v[P4EST_CHILDREN*tree_idx + 0];  //mm vertex of tree
-
-      double xyz [] =
-      {
-        node_x_fr_i(indep_node) + t2c[3 * tr_mm + 0],
-        node_y_fr_j(indep_node) + t2c[3 * tr_mm + 1]
-  #ifdef P4_TO_P8
-        ,
-        node_z_fr_k(indep_node) + t2c[3 * tr_mm + 2]
-  #endif
-      };
-
-      phi_interp.add_point_to_buffer(n, xyz);
+      node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+      phi_interp.add_point(n, xyz);
     }
     phi_interp.interpolate(phi_p);
 
@@ -943,9 +930,12 @@ void motion_under_curvature2(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes
       bc.setWallTypes(wall_bc_neumann);
       bc.setWallValues(zero_func);
 
-      VecSet(phi, -1);
+      Vec phi_l;
+      VecGhostGetLocalForm(phi, &phi_l);
+      VecSet(phi_l, -1);
+      VecGhostRestoreLocalForm(phi, &phi_l);
 
-      PoissonSolverNodeBase solver(&ngbd);
+      my_p4est_poisson_nodes_t solver(&ngbd);
       solver.set_bc(bc);
       solver.set_rhs(rhs);
       solver.set_phi(phi);
@@ -1040,7 +1030,7 @@ void motion_under_curvature3(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes
     // create hierarchy and node neighbors
     my_p4est_hierarchy_t hierarchy(p4est, ghost, myb);
     my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
-    my_p4est_level_set ls(&ngbd);
+    my_p4est_level_set_t ls(&ngbd);
     ls.advect_in_normal_direction(vn, phi);
     w.stop(); w.read_duration();
 
@@ -1155,7 +1145,7 @@ void motion_under_curvature3(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes
 
       VecSet(phi, -1);
 
-      PoissonSolverNodeBase solver(&ngbd);
+      my_p4est_poisson_nodes_t solver(&ngbd);
       solver.set_bc(bbc);
       solver.set_rhs(rhs);
       solver.set_phi(phi);
@@ -1174,9 +1164,9 @@ void motion_under_curvature3(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes
     w.start("update grid");
     p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
     p4est_np1->connectivity = p4est->connectivity;
-    InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, myb, &ngbd);
+    my_p4est_interpolation_nodes_t phi_interp(&ngbd);
 
-    phi_interp.set_input_parameters(phi_np1, quadratic);
+    phi_interp.set_input(phi_np1, quadratic);
 
     splitting_criteria_cf_t sp_np1(sp->min_lvl, sp->max_lvl, &phi_interp, 0.5*sp->lip);
     p4est_np1->user_pointer = &sp_np1;
@@ -1185,7 +1175,7 @@ void motion_under_curvature3(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes
     my_p4est_refine(p4est_np1, P4EST_FALSE, refine_levelset_cf, NULL);
 
     // partition the new forest and create new nodes and ghost structures
-    my_p4est_partition(p4est_np1, NULL);
+    my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
     p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
@@ -1194,25 +1184,10 @@ void motion_under_curvature3(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi); CHKERRXX(ierr);
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
+    double xyz[P4EST_DIM];
     for (size_t n = 0; n<nodes_np1->indep_nodes.elem_count; n++) {
-      p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, n);
-      p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
-
-      p4est_topidx_t* t2v = p4est->connectivity->tree_to_vertex;
-      double *t2c = p4est->connectivity->vertices;
-      p4est_topidx_t tr_mm = t2v[P4EST_CHILDREN*tree_idx + 0];  //mm vertex of tree
-
-      double xyz [] =
-      {
-        node_x_fr_i(indep_node) + t2c[3 * tr_mm + 0],
-        node_y_fr_j(indep_node) + t2c[3 * tr_mm + 1]
-  #ifdef P4_TO_P8
-        ,
-        node_z_fr_k(indep_node) + t2c[3 * tr_mm + 2]
-  #endif
-      };
-
-      phi_interp.add_point_to_buffer(n, xyz);
+      node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+      phi_interp.add_point(n, xyz);
     }
     phi_interp.interpolate(phi_p);
 
@@ -1248,7 +1223,7 @@ void construct_grid_with_reinitializatrion1(p4est_t* &p4est, p4est_ghost_t* &gho
   w.start("initial grid");
   for (int n=0; n<sp->max_lvl; n++){
     my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
-    my_p4est_partition(p4est, NULL);
+    my_p4est_partition(p4est, P4EST_TRUE, NULL);
   }
 
   // Create the ghost structure
@@ -1263,7 +1238,7 @@ void construct_grid_with_reinitializatrion1(p4est_t* &p4est, p4est_ghost_t* &gho
   my_p4est_node_neighbors_t ngbd(&hierarchy, nodes);
   ngbd.init_neighbors();
 
-  my_p4est_level_set ls(&ngbd);
+  my_p4est_level_set_t ls(&ngbd);
   ls.reinitialize_1st_order_time_2nd_order_space(phi);
   w.stop(); w.read_duration();
 
@@ -1285,7 +1260,7 @@ void construct_grid_with_reinitializatrion1(p4est_t* &p4est, p4est_ghost_t* &gho
 
   Vec phi_tmp;
   for (int l=0; l<=sp->max_lvl; l++){
-    my_p4est_partition(p4est_tmp, NULL);
+    my_p4est_partition(p4est_tmp, P4EST_TRUE, NULL);
 
     std::ostringstream oss;
     oss << "partial refinement of " << l << "/" << sp->max_lvl;
@@ -1294,36 +1269,21 @@ void construct_grid_with_reinitializatrion1(p4est_t* &p4est, p4est_ghost_t* &gho
     ghost_tmp = my_p4est_ghost_new(p4est_tmp, P4EST_CONNECT_FULL);
     nodes_tmp = my_p4est_nodes_new(p4est_tmp, ghost_tmp);
 
-    InterpolatingFunctionNodeBase interp(p4est, nodes, ghost, brick, &ngbd);
+    my_p4est_interpolation_nodes_t interp(&ngbd);
 #ifdef P4_TO_P8
-    interp.set_input_parameters(phi, quadratic_non_oscillatory, phi_xx, phi_yy, phi_zz);
+    interp.set_input(phi, phi_xx, phi_yy, phi_zz, quadratic_non_oscillatory);
 #else
-    interp.set_input_parameters(phi, quadratic_non_oscillatory, phi_xx, phi_yy);
+    interp.set_input(phi, phi_xx, phi_yy, quadratic_non_oscillatory);
 #endif
     double *phi_tmp_p;
     ierr = VecCreateGhostNodes(p4est_tmp, nodes_tmp, &phi_tmp); CHKERRXX(ierr);
     ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
 
     // interpolate form old grid
+    double xyz[P4EST_DIM];
     for (size_t n = 0; n<nodes_tmp->indep_nodes.elem_count; n++){
-      p4est_indep_t *indep_node = (p4est_indep_t*)sc_array_index(&nodes_tmp->indep_nodes, n);
-      p4est_topidx_t tree_idx = indep_node->p.piggy3.which_tree;
-
-      p4est_topidx_t* t2v = p4est_tmp->connectivity->tree_to_vertex;
-      double *t2c = p4est_tmp->connectivity->vertices;
-      p4est_topidx_t tr_mm = t2v[P4EST_CHILDREN*tree_idx + 0];  //mm vertex of tree
-
-      double xyz [] =
-      {
-        node_x_fr_i(indep_node) + t2c[3 * tr_mm + 0],
-        node_y_fr_j(indep_node) + t2c[3 * tr_mm + 1]
-  #ifdef P4_TO_P8
-        ,
-        node_z_fr_k(indep_node) + t2c[3 * tr_mm + 2]
-  #endif
-      };
-
-      interp.add_point_to_buffer(n, xyz);
+      node_xyz_fr_n(n, p4est_tmp, nodes_tmp, xyz);
+      interp.add_point(n, xyz);
     }
     interp.interpolate(phi_tmp_p);
 
@@ -1403,7 +1363,7 @@ void construct_grid_with_reinitializatrion2(p4est_t* &p4est, p4est_ghost_t* &gho
     my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
 
   for (int l=sp->min_lvl; l<=sp->max_lvl; l++){
-    my_p4est_partition(p4est, NULL);
+    my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
     std::ostringstream oss;
     oss << "partial refinement of " << l << "/" << sp->max_lvl;
@@ -1424,7 +1384,7 @@ void construct_grid_with_reinitializatrion2(p4est_t* &p4est, p4est_ghost_t* &gho
     sample_cf_on_nodes(p4est, nodes, *sp->phi, phi);
 
     // reinitialize level-set function on this grid
-    my_p4est_level_set ls(&ngbd);
+    my_p4est_level_set_t ls(&ngbd);
     ls.reinitialize_1st_order_time_2nd_order_space(phi);
 
     if (l == sp->max_lvl)
@@ -1487,7 +1447,7 @@ void construct_grid_with_reinitializatrion3(p4est_t* &p4est, p4est_ghost_t* &gho
     oss << "partial refinement of " << l+1 << "/" << sp->max_lvl;
     w.start(oss.str());
     my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
-    my_p4est_partition(p4est, NULL);
+    my_p4est_partition(p4est, P4EST_TRUE, NULL);
     w.stop(); w.read_duration();
   }
 
@@ -1501,7 +1461,7 @@ void construct_grid_with_reinitializatrion3(p4est_t* &p4est, p4est_ghost_t* &gho
   ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   sample_cf_on_nodes(p4est, nodes, *sp->phi, phi);
 
-  my_p4est_level_set ls(&ngbd);
+  my_p4est_level_set_t ls(&ngbd);
   ls.reinitialize_1st_order_time_2nd_order_space(phi);
 }
 
@@ -1520,7 +1480,7 @@ void motion_normal_direction(p8est_t *&p4est, p8est_ghost_t *&ghost, p8est_nodes
   my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
   node_neighbors.init_neighbors();
 
-  my_p4est_level_set level_set(&node_neighbors);
+  my_p4est_level_set_t level_set(&node_neighbors);
 
   level_set.advect_in_normal_direction(cf, phi);
   w.stop(); w.read_duration();
@@ -1530,8 +1490,8 @@ void motion_normal_direction(p8est_t *&p4est, p8est_ghost_t *&ghost, p8est_nodes
   w.stop(); w.read_duration();
 
   w.start("grid adjustment");
-  InterpolatingFunctionNodeBase phi_interp(p4est, nodes, ghost, brick, &node_neighbors);
-  phi_interp.set_input_parameters(phi, quadratic_non_oscillatory);
+  my_p4est_interpolation_nodes_t phi_interp(&node_neighbors);
+  phi_interp.set_input(phi, quadratic_non_oscillatory);
 
   // refine and coarsen new p4est
   p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
@@ -1542,7 +1502,7 @@ void motion_normal_direction(p8est_t *&p4est, p8est_ghost_t *&ghost, p8est_nodes
   my_p4est_refine(p4est_np1, P4EST_TRUE, refine_levelset_cf, NULL);
 
   // partition
-  my_p4est_partition(p4est_np1, NULL);
+  my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
 
   // recompute ghost and nodes
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
@@ -1552,30 +1512,10 @@ void motion_normal_direction(p8est_t *&p4est, p8est_ghost_t *&ghost, p8est_nodes
   Vec phi_np1;
   PetscErrorCode ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
 
-  for (size_t n=0; n<nodes_np1->indep_nodes.elem_count; n++)
-  {
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, n);
-    p4est_topidx_t tree_id = node->p.piggy3.which_tree;
-
-    p4est_topidx_t v_mm = connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-    double tree_xmin = connectivity->vertices[3*v_mm + 0];
-    double tree_ymin = connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = connectivity->vertices[3*v_mm + 2];
-#endif
-
-    double xyz [] =
-    {
-      node_x_fr_i(node) + tree_xmin,
-      node_y_fr_j(node) + tree_ymin
-#ifdef P4_TO_P8
-      ,
-      node_z_fr_k(node) + tree_zmin
-#endif
-    };
-
-    phi_interp.add_point_to_buffer(n, xyz);
+  double xyz[P4EST_DIM];
+  for (size_t n=0; n<nodes_np1->indep_nodes.elem_count; n++) {
+    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+    phi_interp.add_point(n, xyz);
   }
   phi_interp.interpolate(phi_np1);
 

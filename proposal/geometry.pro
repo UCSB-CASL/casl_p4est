@@ -3,7 +3,11 @@ CONFIG -= app_bundle
 CONFIG -= qt qui
 
 # ----------------------------- Set configs parameters  ----------------------------- #
-CONFIG += log
+CONFIG += 3d office
+
+QMAKE_CC=/usr/local/bin/mpicc
+QMAKE_CXX=/usr/local/bin/mpicxx
+QMAKE_LINK=/usr/local/bin/mpicxx
 
 CONFIG(stampede, stampede|office): {
     CONFIG += intel
@@ -32,21 +36,20 @@ CONFIG(stampede, stampede|office): {
 
 CONFIG(office, stampede|office): {
     CONFIG += gcc
-    CASL_P4EST = $(HOME)/casl_p4est
+    CASL_P4EST = $(HOME)/repos/parcasl
 
     # p4est
-    P4EST_INCLUDES_DEBUG = /usr/local/p4est/debug/include
-    P4EST_INCLUDES_RELEASE = /usr/local/p4est/release/include
-    P4EST_LIBS_DEBUG = -L/usr/local/p4est/debug/lib -lp4est -lsc
-    P4EST_LIBS_RELEASE = -L/usr/local/p4est/release/lib -lp4est -lsc
+    P4EST_INCLUDES_DEBUG = /usr/local/include
+    P4EST_INCLUDES_RELEASE = /usr/local/include
+    P4EST_LIBS_DEBUG = -L/usr/local/lib -lp4est -lsc
+    P4EST_LIBS_RELEASE = -L/usr/local/lib -lp4est -lsc
 
     # petsc
-    PETSC_INCLUDES_DEBUG = /usr/local/petsc/debug/include
-    PETSC_INCLUDES_RELEASE = /usr/local/petsc/release/include
-    PETSC_LIBS_DEBUG = -L/usr/local/petsc/debug/lib -Wl,-rpath,/usr/local/petsc/debug/lib -lpetsc
-    PETSC_LIBS_RELEASE = -L/usr/local/petsc/release/lib -Wl,-rpath,/usr/local/petsc/release/lib -lpetsc
+    PETSC_INCLUDES_DEBUG = /usr/local/include
+    PETSC_INCLUDES_RELEASE = /usr/local/include
+    PETSC_LIBS_DEBUG = -L/usr/local/lib -lpetsc
+    PETSC_LIBS_RELEASE = -L/usr/local/lib -lpetsc
 
-    INCLUDEPATH += /usr/local/mpich3/include
 }
 
 CONFIG(sc_notify): {
@@ -83,27 +86,28 @@ CONFIG(profile): {
 }
 SOURCES += \
 #    oxygen_2d.cpp \
-#    charging_linear_2d.cpp \
+    charging_linear_2d.cpp \
     geometry_2d.cpp\
     $$CASL_P4EST/src/my_p4est_utils.cpp\
     $$CASL_P4EST/src/my_p4est_refine_coarsen.cpp\
     $$CASL_P4EST/src/my_p4est_semi_lagrangian.cpp\
-    $$CASL_P4EST/src/my_p4est_levelset.cpp\
+    $$CASL_P4EST/src/my_p4est_level_set.cpp\
     $$CASL_P4EST/src/my_p4est_vtk.c \
     $$CASL_P4EST/src/my_p4est_tools.c\
     $$CASL_P4EST/src/my_p4est_nodes.c \
-    $$CASL_P4EST/src/my_p4est_interpolating_function.cpp \
+    $$CASL_P4EST/src/my_p4est_interpolation.cpp \
+    $$CASL_P4EST/src/my_p4est_interpolation_nodes.cpp \
     $$CASL_P4EST/src/cube2.cpp \
     $$CASL_P4EST/src/point2.cpp \
     $$CASL_P4EST/src/simplex2.cpp \
     $$CASL_P4EST/src/my_p4est_hierarchy.cpp \
     $$CASL_P4EST/src/my_p4est_node_neighbors.cpp \
     $$CASL_P4EST/src/my_p4est_quad_neighbor_nodes_of_node.cpp \
-    $$CASL_P4EST/src/my_p4est_poisson_node_base.cpp \
+    $$CASL_P4EST/src/my_p4est_poisson_nodes.cpp \
     $$CASL_P4EST/src/my_p4est_log_wrappers.c \
     $$CASL_P4EST/src/petsc_logging.cpp \
     $$CASL_P4EST/src/Parser.cpp \
-    $$CASL_P4EST/src/CASL_math.cpp
+    $$CASL_P4EST/src/math.cpp
 }
 
 CONFIG(3d, 2d|3d): {
@@ -114,16 +118,17 @@ CONFIG(profile):{
 }
 SOURCES += \
 #    oxygen_3d.cpp \
-#    charging_linear_3d.cpp \
+    charging_linear_3d.cpp \
     geometry_3d.cpp\
     $$CASL_P4EST/src/my_p8est_utils.cpp\
     $$CASL_P4EST/src/my_p8est_refine_coarsen.cpp\
     $$CASL_P4EST/src/my_p8est_vtk.c \
     $$CASL_P4EST/src/my_p8est_semi_lagrangian.cpp\
-    $$CASL_P4EST/src/my_p8est_levelset.cpp\
+    $$CASL_P4EST/src/my_p8est_level_set.cpp\
     $$CASL_P4EST/src/my_p8est_tools.c\
     $$CASL_P4EST/src/my_p8est_nodes.c \
-    $$CASL_P4EST/src/my_p8est_interpolating_function.cpp \
+    $$CASL_P4EST/src/my_p8est_interpolation.cpp \
+    $$CASL_P4EST/src/my_p8est_interpolation_nodes.cpp \
     $$CASL_P4EST/src/cube3.cpp \
     $$CASL_P4EST/src/point3.cpp \
     $$CASL_P4EST/src/cube2.cpp \
@@ -132,11 +137,11 @@ SOURCES += \
     $$CASL_P4EST/src/my_p8est_hierarchy.cpp \
     $$CASL_P4EST/src/my_p8est_node_neighbors.cpp \
     $$CASL_P4EST/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
-    $$CASL_P4EST/src/my_p8est_poisson_node_base.cpp \
+    $$CASL_P4EST/src/my_p8est_poisson_nodes.cpp \
     $$CASL_P4EST/src/my_p8est_log_wrappers.c \
     $$CASL_P4EST/src/petsc_logging.cpp \
     $$CASL_P4EST/src/Parser.cpp \
-    $$CASL_P4EST/src/CASL_math.cpp
+    $$CASL_P4EST/src/math.cpp
 }
 
 # ------------------------------- Compiler Options ------------------------------- #
@@ -145,10 +150,6 @@ CONFIG(profile):{
     QMAKE_CFLAGS += -g
     QMAKE_CXXFLAGS += -g
 } 
-
-QMAKE_CC = mpicc
-QMAKE_CXX = mpicxx
-QMAKE_LINK = mpicxx
 
 CONFIG(intel, intel|gcc):{
     QMAKE_CFLAGS_RELEASE += -fast -vec-report0
@@ -181,6 +182,3 @@ commit.commands = git co run/proposal; \
      git ci -a -m \"Automatic commit\"; 
 
 QMAKE_EXTRA_TARGETS += commit
-
-# -------------------------------- Print CONFIG -------------------------------- #
-message("Config options set by qmake:" $$CONFIG)

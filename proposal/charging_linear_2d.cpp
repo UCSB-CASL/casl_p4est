@@ -8,7 +8,7 @@ namespace proposal {
 Solver::Solver(p4est_t* p4est_, p4est_ghost_t *ghost_, p4est_nodes_t *nodes_, my_p4est_brick_t *brick_, my_p4est_node_neighbors_t *ngbd_)
   : p4est(p4est_), ghost(ghost_), nodes(nodes_), brick(brick_), ngbd(ngbd_),
     local_phi_dd(false),
-    G_interp(p4est, nodes, ghost, brick, ngbd),
+    G_interp(ngbd),
     psi_solver(ngbd)
 {
   ierr = VecCreateGhostNodes(p4est, nodes, &psi); CHKERRXX(ierr);
@@ -107,7 +107,7 @@ void Solver::solve()
   ierr = VecRestoreArray(G, &G_p);
 
   // construct an interpolating function
-  G_interp.set_input_parameters(G, linear);
+  G_interp.set_input(G, linear);
 
   psi_bc.setInterfaceType(ROBIN);
   psi_bc.setInterfaceValue(G_interp);
@@ -123,7 +123,7 @@ void Solver::solve()
   w.stop(); w.read_duration();
 
   w.start("extrapolation");
-  my_p4est_level_set ls(ngbd);
+  my_p4est_level_set_t ls(ngbd);
   ls.extend_Over_Interface_TVD(phi, psi, 20, 2);
 //  ls.extend_Over_Interface(phi, psi, 2, 10);
   w.stop(); w.read_duration();

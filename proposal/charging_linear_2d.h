@@ -6,23 +6,23 @@
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
-#include <src/my_p8est_interpolating_function.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_levelset.h>
-#include <src/my_p8est_poisson_node_base.h>
+#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_poisson_nodes.h>
 #else
 #include <p4est_bits.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
-#include <src/my_p4est_interpolating_function.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_levelset.h>
-#include <src/my_p4est_poisson_node_base.h>
+#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_poisson_nodes.h>
 #endif
 
 #include <src/petsc_compatibility.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 namespace proposal {
 
@@ -43,8 +43,8 @@ class Solver{
   PetscErrorCode ierr;
 
   Vec G, alpha;
-  InterpolatingFunctionNodeBase G_interp;
-  PoissonSolverNodeBase psi_solver;
+  my_p4est_interpolation_nodes_t G_interp;
+  my_p4est_poisson_nodes_t psi_solver;
 
 #ifdef P4_TO_P8
   BoundaryConditions3D psi_bc;
