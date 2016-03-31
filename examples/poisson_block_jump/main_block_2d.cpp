@@ -130,30 +130,47 @@ int main(int argc, char** argv) {
   typedef BoundaryConditions3D bc_t;
 #endif
 
-  int bs = 1;
+  int bs = 2;
   vector<vector<cf_t*>> mue_m(bs, vector<cf_t*>(bs));
-  mue_m[0][0] = new constant_cf_t(1);
+  mue_m[0][0] = new constant_cf_t(1.0);
+  mue_m[0][1] = new constant_cf_t(3.2);
+  mue_m[1][0] = new constant_cf_t(4.3);
+  mue_m[1][1] = new constant_cf_t(1.0);
 
   vector<vector<cf_t*>> mue_p(bs, vector<cf_t*>(bs));
-  mue_p[0][0] = new constant_cf_t(3);
+  mue_p[0][0] = new constant_cf_t(1.0);
+  mue_p[0][1] = new constant_cf_t(5.4);
+  mue_p[1][0] = new constant_cf_t(6.5);
+  mue_p[1][1] = new constant_cf_t(1.0);
 
   vector<vector<cf_t*>> add(bs, vector<cf_t*>(bs));
   add[0][0] = new constant_cf_t(0);
+  add[0][1] = new constant_cf_t(0);
+  add[1][0] = new constant_cf_t(0);
+  add[1][1] = new constant_cf_t(0);
 
   vector<cf_t*> jump_u(bs), jump_du(bs);
-  jump_u[0]  = new constant_cf_t(1);
-  jump_du[0] = new constant_cf_t(5);
+  jump_u[0]  = new constant_cf_t( 1.0);
+  jump_du[0] = new constant_cf_t( 2.0);
+  jump_u[1]  = new constant_cf_t( 1.0);
+  jump_du[1] = new constant_cf_t(-2.0);
 
   vector<cf_t*> bc_wall_values(bs);
   bc_wall_values[0] = new constant_cf_t(0);
+  bc_wall_values[1] = new constant_cf_t(0);
 
   vector<bc_t> bc(bs);
   bc[0].setWallTypes(bc_wall_type);
   bc[0].setWallValues(*bc_wall_values[0]);
 
+  bc[1].setWallTypes(bc_wall_type);
+  bc[1].setWallValues(*bc_wall_values[1]);
+
   Vec rhs_m[bs], rhs_p[bs];
-  VecCreateGhostNodes(p4est, nodes, &rhs_m[0]);
-  VecCreateGhostNodes(p4est, nodes, &rhs_p[0]);
+  for (int i=0; i<bs; i++) {
+    VecCreateGhostNodes(p4est, nodes, &rhs_m[i]);
+    VecCreateGhostNodes(p4est, nodes, &rhs_p[i]);
+  }
 
   my_p4est_poisson_jump_voronoi_block_t jump_solver(bs, &node_neighbors, &cell_neighbors);
   jump_solver.set_bc(bc);
@@ -165,7 +182,8 @@ int main(int argc, char** argv) {
   jump_solver.set_rhs(rhs_m, rhs_p);
 
   Vec solution[bs];
-  VecCreateGhostNodes(p4est, nodes, &solution[0]);
+  for (int i=0; i<bs; i++)
+    VecCreateGhostNodes(p4est, nodes, &solution[i]);
   jump_solver.solve(solution);
 
   for (int i=0; i<bs; i++) {
@@ -181,18 +199,22 @@ int main(int argc, char** argv) {
   }
 
   // save the grid into vtk
-  double *solution_p[bs];
-  for (int i=0; i<bs; i++) {
+  double *solution_p[bs], *phi_p;
+  for (int i=0; i<bs; i++)
     VecGetArray(solution[i], &solution_p[i]);
-  }
+  VecGetArray(phi, &phi_p);
+
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
-                         1, 0, "poisson_block_jump",
-                         VTK_POINT_DATA, "sol 1", solution_p[0]);
+                         bs+1, 0, "poisson_block_jump",
+                         VTK_POINT_DATA, "phi", phi_p,
+                         VTK_POINT_DATA, "sol 1", solution_p[0],
+                         VTK_POINT_DATA, "sol 2", solution_p[1]);
 
-  for (int i=0; i<bs; i++) {
+  for (int i=0; i<bs; i++)
     VecRestoreArray(solution[i], &solution_p[i]);
-  }
+  VecRestoreArray(phi, &phi_p);
+
   for (int i=0; i<bs; i++) {
     VecDestroy(solution[i]);
     VecDestroy(rhs_p[i]);

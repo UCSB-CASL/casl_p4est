@@ -37,8 +37,8 @@ my_p4est_poisson_jump_voronoi_block_t::my_p4est_poisson_jump_voronoi_block_t(
     phi(NULL), rhs(NULL), sol_voro(NULL),
     voro_global_offset(p4est->mpisize),
     interp_phi(node_neighbors),
-    rhs_m(block_size, new my_p4est_interpolation_nodes_t(node_neighbors)),
-    rhs_p(block_size, new my_p4est_interpolation_nodes_t(node_neighbors)),
+    rhs_m(block_size),
+    rhs_p(block_size),
     A(PETSC_NULL), A_null_space(PETSC_NULL), ksp(PETSC_NULL),
     is_voronoi_partition_constructed(false), is_matrix_computed(false), matrix_has_nullspace(false)
 {
@@ -135,8 +135,9 @@ void my_p4est_poisson_jump_voronoi_block_t::matmult(double* mue_1, double* mue_2
 {
   for (int i=0; i<block_size; i++) {
     for (int j=0; j<block_size; j++) {
+      mue[i*block_size+j] = 0;
       for (int k=0; k<block_size; k++) {
-        mue[i*block_size + j] = mue_1[i*block_size+k]*mue_2[k*block_size+j];
+        mue[i*block_size + j] += mue_1[i*block_size+k]*mue_2[k*block_size+j];
       }
     }
   }
@@ -151,7 +152,10 @@ void my_p4est_poisson_jump_voronoi_block_t::set_phi(Vec phi)
 void my_p4est_poisson_jump_voronoi_block_t::set_rhs(Vec rhs_m[], Vec rhs_p[])
 {
   for (int i = 0; i<block_size; i++) {
+    this->rhs_m[i] = new my_p4est_interpolation_nodes_t(ngbd_n);
     this->rhs_m[i]->set_input(rhs_m[i], linear);
+
+    this->rhs_p[i] = new my_p4est_interpolation_nodes_t(ngbd_n);
     this->rhs_p[i]->set_input(rhs_p[i], linear);
   }
 }
@@ -1162,7 +1166,7 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
   } entry_t;
 
   std::vector< std::vector<entry_t> > matrix_entries(block_size*num_local_voro);
-  std::vector<PetscInt> d_nnz(block_size*num_local_voro, 1), o_nnz(block_size*num_local_voro, 0);
+  std::vector<PetscInt> d_nnz(block_size*num_local_voro, block_size), o_nnz(block_size*num_local_voro, 0);
 
   for(unsigned int n=0; n<num_local_voro; ++n) {
     PetscInt global_n_idx = n+voro_global_offset[p4est->mpirank];
@@ -1316,15 +1320,15 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
 
           PetscInt global_l_idx;
 
-          for (int bj = 0; bj<block_size; bj++) {
+          if((unsigned int)(*points)[l].n<num_local_voro) {
+            global_l_idx = (*points)[l].n + voro_global_offset[p4est->mpirank];
+            d_nnz[block_size*n + bi] += block_size;
+          } else {
+            global_l_idx = voro_ghost_local_num[(*points)[l].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[l].n-num_local_voro]];
+            o_nnz[block_size*n + bi] += block_size;
+          }
 
-            if((unsigned int)(*points)[l].n<num_local_voro) {
-              global_l_idx = (*points)[l].n + voro_global_offset[p4est->mpirank];
-              d_nnz[block_size*n + bi]++;
-            } else {
-              global_l_idx = voro_ghost_local_num[(*points)[l].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[l].n-num_local_voro]];
-              o_nnz[block_size*n + bi]++;
-            }
+          for (int bj = 0; bj<block_size; bj++) {
 
             entry_t ent; ent.n = block_size*global_l_idx + bj; ent.val = -s*mue_h[bi][bj]/d;
             matrix_entries[block_size*n+bi][bj].val += s*mue_h[bi][bj]/d;

@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
   VecGhostRestoreLocalForm(mue_m, &l);
 
   VecGhostGetLocalForm(mue_p, &l);
-  VecSet(l, 3);
+  VecSet(l, 1);
   VecGhostRestoreLocalForm(mue_p, &l);
 
   VecGhostGetLocalForm(jump_u, &l);
@@ -157,7 +157,7 @@ int main(int argc, char** argv) {
   VecGhostRestoreLocalForm(jump_u, &l);
 
   VecGhostGetLocalForm(jump_du, &l);
-  VecSet(l, 5);
+  VecSet(l, 2);
   VecGhostRestoreLocalForm(jump_du, &l);
 
   my_p4est_poisson_jump_nodes_voronoi_t jump_solver(&node_neighbors, &cell_neighbors);
