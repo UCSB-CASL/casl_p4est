@@ -58,7 +58,18 @@ int main(int argc, char** argv) {
   // create the forest
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
-  // refine based on distance to a level-set
+  // define problem parameters
+  static double kp [][2] =
+  {
+    {2, 0},
+    {0, 1}
+  };
+
+  static double km [][2] =
+  {
+    {1, 0},
+    {0, 3}
+  };
 #ifdef P4_TO_P8
   struct:CF_3{
     double operator()(double x, double y, double z) const {
@@ -66,14 +77,120 @@ int main(int argc, char** argv) {
     }
   } circle;
 #else
-  struct:CF_2{
+  static struct:CF_2{
     double operator()(double x, double y) const {
       return 0.35 - sqrt(SQR(x) + SQR(y));
     }
   } circle;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return cos(x)*cos(y);
+    }
+
+    double dn(double x, double y) const {
+      return -(-x*sin(x)*cos(y)-y*cos(x)*sin(y))/0.35;
+    }
+
+    double laplace(double x, double y) const {
+      return -2*cos(x)*cos(y);
+    }
+  } sol_1_plus;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return x*x*x+y*y*y;
+    }
+
+    double dn(double x, double y) const {
+      return -(3*x*x*x+3*y*y*y)/0.35;
+    }
+
+    double laplace(double x, double y) const {
+      return 6*x+6*y;
+    }
+  } sol_2_plus;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return exp(x+y);
+    }
+
+    double dn(double x, double y) const {
+      return -(x+y)*exp(x+y)/0.35;
+    }
+
+    double laplace(double x, double y) const {
+      return 2*exp(x+y);
+    }
+  } sol_1_minus;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return sin(x)+sin(y);
+    }
+
+    double dn(double x, double y) const {
+      return -(x*cos(x)+y*cos(y))/0.35;
+    }
+
+    double laplace(double x, double y) const {
+      return -(sin(x)+sin(y));
+    }
+  } sol_2_minus;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return sol_1_plus(x,y) - sol_1_minus(x,y);
+    }
+  } jump_sol_1;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return sol_2_plus(x,y) - sol_2_minus(x,y);
+    }
+  } jump_sol_2;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return (kp[0][0]*sol_1_plus.dn(x,y)  + kp[0][1]*sol_2_plus.dn(x,y)) -
+             (km[0][0]*sol_1_minus.dn(x,y) + km[0][1]*sol_2_minus.dn(x,y));
+    }
+  } jump_grad_sol_1;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return (kp[1][0]*sol_1_plus.dn(x,y)  + kp[1][1]*sol_2_plus.dn(x,y)) -
+             (km[1][0]*sol_1_minus.dn(x,y) + km[1][1]*sol_2_minus.dn(x,y));
+    }
+  } jump_grad_sol_2;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return (kp[0][0]*sol_1_plus.laplace(x,y)+kp[0][1]*sol_2_plus.laplace(x,y));
+    }
+  } rhs_1_plus;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return (kp[1][0]*sol_1_plus.laplace(x,y)+kp[1][1]*sol_2_plus.laplace(x,y));
+    }
+  } rhs_2_plus;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return (km[0][0]*sol_1_minus.laplace(x,y)+km[0][1]*sol_2_minus.laplace(x,y));
+    }
+  } rhs_1_minus;
+
+  static struct:CF_2{
+    double operator()(double x, double y) const {
+      return (km[1][0]*sol_1_minus.laplace(x,y)+km[1][1]*sol_2_minus.laplace(x,y));
+    }
+  } rhs_2_minus;
 #endif
 
-  splitting_criteria_cf_t sp(3, 8, &circle);
+  splitting_criteria_cf_t sp(5, 8, &circle);
   p4est->user_pointer = &sp;
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
@@ -132,16 +249,16 @@ int main(int argc, char** argv) {
 
   int bs = 2;
   vector<vector<cf_t*>> mue_m(bs, vector<cf_t*>(bs));
-  mue_m[0][0] = new constant_cf_t(1.0);
-  mue_m[0][1] = new constant_cf_t(3.2);
-  mue_m[1][0] = new constant_cf_t(4.3);
-  mue_m[1][1] = new constant_cf_t(1.0);
+  mue_m[0][0] = new constant_cf_t(km[0][0]);
+  mue_m[0][1] = new constant_cf_t(km[0][1]);
+  mue_m[1][0] = new constant_cf_t(km[1][0]);
+  mue_m[1][1] = new constant_cf_t(km[1][1]);
 
   vector<vector<cf_t*>> mue_p(bs, vector<cf_t*>(bs));
-  mue_p[0][0] = new constant_cf_t(1.0);
-  mue_p[0][1] = new constant_cf_t(5.4);
-  mue_p[1][0] = new constant_cf_t(6.5);
-  mue_p[1][1] = new constant_cf_t(1.0);
+  mue_p[0][0] = new constant_cf_t(kp[0][0]);
+  mue_p[0][1] = new constant_cf_t(kp[0][1]);
+  mue_p[1][0] = new constant_cf_t(kp[1][0]);
+  mue_p[1][1] = new constant_cf_t(kp[1][1]);
 
   vector<vector<cf_t*>> add(bs, vector<cf_t*>(bs));
   add[0][0] = new constant_cf_t(0);
@@ -150,10 +267,10 @@ int main(int argc, char** argv) {
   add[1][1] = new constant_cf_t(0);
 
   vector<cf_t*> jump_u(bs), jump_du(bs);
-  jump_u[0]  = new constant_cf_t( 1.0);
-  jump_du[0] = new constant_cf_t( 2.0);
-  jump_u[1]  = new constant_cf_t( 1.0);
-  jump_du[1] = new constant_cf_t(-2.0);
+  jump_u[0]  = &jump_sol_1;
+  jump_du[0] = &jump_grad_sol_1;
+  jump_u[1]  = &jump_sol_2;
+  jump_du[1] = &jump_grad_sol_2;
 
   vector<cf_t*> bc_wall_values(bs);
   bc_wall_values[0] = new constant_cf_t(0);
@@ -161,16 +278,21 @@ int main(int argc, char** argv) {
 
   vector<bc_t> bc(bs);
   bc[0].setWallTypes(bc_wall_type);
-  bc[0].setWallValues(*bc_wall_values[0]);
+  bc[0].setWallValues(sol_1_minus);
 
   bc[1].setWallTypes(bc_wall_type);
-  bc[1].setWallValues(*bc_wall_values[1]);
+  bc[1].setWallValues(sol_2_minus);
 
   Vec rhs_m[bs], rhs_p[bs];
   for (int i=0; i<bs; i++) {
-    VecCreateGhostNodes(p4est, nodes, &rhs_m[i]);
+    VecCreateGhostNodes(p4est, nodes, &rhs_m[i]);   
     VecCreateGhostNodes(p4est, nodes, &rhs_p[i]);
   }
+
+  sample_cf_on_nodes(p4est, nodes, rhs_1_minus, rhs_m[0]);
+  sample_cf_on_nodes(p4est, nodes, rhs_2_minus, rhs_m[1]);
+  sample_cf_on_nodes(p4est, nodes, rhs_1_plus,  rhs_p[0]);
+  sample_cf_on_nodes(p4est, nodes, rhs_2_plus,  rhs_p[1]);
 
   my_p4est_poisson_jump_voronoi_block_t jump_solver(bs, &node_neighbors, &cell_neighbors);
   jump_solver.set_bc(bc);
@@ -187,10 +309,6 @@ int main(int argc, char** argv) {
   jump_solver.solve(solution);
 
   for (int i=0; i<bs; i++) {
-    delete jump_u[i];
-    delete jump_du[i];
-    delete bc_wall_values[i];
-
     for (int j=0; j<bs; j++) {
       delete mue_m[i][j];
       delete mue_p[i][j];
