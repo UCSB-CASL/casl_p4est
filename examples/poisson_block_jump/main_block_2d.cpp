@@ -61,14 +61,14 @@ int main(int argc, char** argv) {
   // define problem parameters
   static double kp [][2] =
   {
-    {2, 0},
-    {0, 1}
+    {2, 5},
+    {10, 1}
   };
 
   static double km [][2] =
   {
-    {1, 0},
-    {0, 3}
+    {1, 0.2},
+    {0.5, 3}
   };
 #ifdef P4_TO_P8
   struct:CF_3{
@@ -89,7 +89,8 @@ int main(int argc, char** argv) {
     }
 
     double dn(double x, double y) const {
-      return -(-x*sin(x)*cos(y)-y*cos(x)*sin(y))/0.35;
+      double r = sqrt(SQR(x)+SQR(y));
+      return -(-x*sin(x)*cos(y)-y*cos(x)*sin(y))/r;
     }
 
     double laplace(double x, double y) const {
@@ -103,7 +104,8 @@ int main(int argc, char** argv) {
     }
 
     double dn(double x, double y) const {
-      return -(3*x*x*x+3*y*y*y)/0.35;
+      double r = sqrt(SQR(x)+SQR(y));
+      return -(3*x*x*x+3*y*y*y)/r;
     }
 
     double laplace(double x, double y) const {
@@ -117,7 +119,8 @@ int main(int argc, char** argv) {
     }
 
     double dn(double x, double y) const {
-      return -(x+y)*exp(x+y)/0.35;
+      double r = sqrt(SQR(x)+SQR(y));
+      return -(x+y)*exp(x+y)/r;
     }
 
     double laplace(double x, double y) const {
@@ -131,7 +134,8 @@ int main(int argc, char** argv) {
     }
 
     double dn(double x, double y) const {
-      return -(x*cos(x)+y*cos(y))/0.35;
+      double r = sqrt(SQR(x)+SQR(y));
+      return -(x*cos(x)+y*cos(y))/r;
     }
 
     double laplace(double x, double y) const {
@@ -167,25 +171,25 @@ int main(int argc, char** argv) {
 
   static struct:CF_2{
     double operator()(double x, double y) const {
-      return (kp[0][0]*sol_1_plus.laplace(x,y)+kp[0][1]*sol_2_plus.laplace(x,y));
+      return -(kp[0][0]*sol_1_plus.laplace(x,y)+kp[0][1]*sol_2_plus.laplace(x,y));
     }
   } rhs_1_plus;
 
   static struct:CF_2{
     double operator()(double x, double y) const {
-      return (kp[1][0]*sol_1_plus.laplace(x,y)+kp[1][1]*sol_2_plus.laplace(x,y));
+      return -(kp[1][0]*sol_1_plus.laplace(x,y)+kp[1][1]*sol_2_plus.laplace(x,y));
     }
   } rhs_2_plus;
 
   static struct:CF_2{
     double operator()(double x, double y) const {
-      return (km[0][0]*sol_1_minus.laplace(x,y)+km[0][1]*sol_2_minus.laplace(x,y));
+      return -(km[0][0]*sol_1_minus.laplace(x,y)+km[0][1]*sol_2_minus.laplace(x,y));
     }
   } rhs_1_minus;
 
   static struct:CF_2{
     double operator()(double x, double y) const {
-      return (km[1][0]*sol_1_minus.laplace(x,y)+km[1][1]*sol_2_minus.laplace(x,y));
+      return -(km[1][0]*sol_1_minus.laplace(x,y)+km[1][1]*sol_2_minus.laplace(x,y));
     }
   } rhs_2_minus;
 #endif
@@ -271,10 +275,6 @@ int main(int argc, char** argv) {
   jump_du[0] = &jump_grad_sol_1;
   jump_u[1]  = &jump_sol_2;
   jump_du[1] = &jump_grad_sol_2;
-
-  vector<cf_t*> bc_wall_values(bs);
-  bc_wall_values[0] = new constant_cf_t(0);
-  bc_wall_values[1] = new constant_cf_t(0);
 
   vector<bc_t> bc(bs);
   bc[0].setWallTypes(bc_wall_type);
