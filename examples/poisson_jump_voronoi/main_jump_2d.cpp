@@ -59,12 +59,12 @@ int nz = 2;
 #endif
 
 double xmin = 0;
-double xmax = nx;
+double xmax = 3;
 double ymin = 0;
-double ymax = ny;
+double ymax = 3;
 #ifdef P4_TO_P8
 double zmin = 0;
-double zmax = nz;
+double zmax = 3;
 #endif
 
 bool save_vtk = false;

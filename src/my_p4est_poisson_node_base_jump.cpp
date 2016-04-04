@@ -2067,7 +2067,11 @@ void PoissonSolverNodeBaseJump::check_voronoi_partition() const
 
           if(ok==false)
           {
-            std::cout << p4est->mpirank << " found bad voronoi cell for point # " << n << " : " << (*points)[m].n << ", \t Centerd on : " << voro[n].get_Center_Point();
+#ifdef P4_TO_P8
+            std::cout << p4est->mpirank << " found bad voronoi cell for point # " << n << " : " << (*points)[m].n << ", \t surface = " << (*points)[m].s <<  ", \t Centered on : " << voro[n].get_Center_Point();
+#else
+            std::cout << p4est->mpirank << " found bad voronoi cell for point # " << n << " : " << (*points)[m].n << ", \t Centered on : " << voro[n].get_Center_Point();
+#endif
             nb_bad++;
           }
         }
