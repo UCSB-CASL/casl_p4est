@@ -48,9 +48,9 @@
 
 using namespace std;
 
-int lmin = 0;
-int lmax = 0;
-int nb_splits = 1;
+int lmin = 4;
+int lmax = 6;
+int nb_splits = 4;
 
 int nx = 2;
 int ny = 2;
@@ -58,10 +58,10 @@ int ny = 2;
 int nz = 2;
 #endif
 
-double xmin = 0;
+double xmin = -1;
 double xmax = 3;
-double ymin = 0;
-double ymax = 3;
+double ymin = -1;
+double ymax = 4;
 #ifdef P4_TO_P8
 double zmin = 0;
 double zmax = 3;

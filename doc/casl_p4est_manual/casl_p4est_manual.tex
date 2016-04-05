@@ -279,6 +279,43 @@ In \ttt{casl\_p4est}, the nodes are reorganized to match the quadrants organizat
 
 \subsection{Communications with \texttt{Petsc}}
 
+Most of the communication can be handled with the \ttt{Vec} data type provided by Petsc. The \ttt{Petsc} library is thoroughly documented online. A \ttt{Vec} is an array that can have a ghost chunk. A ghosted array can be created with the data located at the quadrants' center or at the nodes. The nodes code is
+\begin{Verbatim}[frame=single]
+Vec phi;
+VecCreateGhostNodes(p4est, nodes, &phi);
+\end{Verbatim}
+The actual data stored in the \ttt{Vec} can be accessed by
+\begin{Verbatim}[frame=single]
+double *phi;
+VecGetArray(phi, &phi_p);
+for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n)
+{
+  (do something with phi_p)
+}
+VecRestoreArray(phi, &phi_p);
+\end{Verbatim}
+In the previous code, the pointer \ttt{phi\_p} points to a contiguous array of the local part of the data stored in the \ttt{Vec}. \ttt{Petsc} does not guarantee that the local part and the ghosted part are stored in the same location, and therefore accessing the entire data - including the ghosted part - should be done after getting the local form of the \ttt{Vec}
+\begin{Verbatim}[frame=single]
+Vec phi_loc;
+double *phi_p;
+VecGhostGetLocalForm(phi, &phi_loc);
+VecGetArray(phi_loc, &phi_p);
+for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+{
+  (do something with phi_p)
+}
+VecRestoreArray(phi_loc, &phi_p);
+VecGhostRestoreLocalForm(phi, &phi_loc);
+\end{Verbatim}
+In many places in the library, the ghosted values are accessed without first accessing the local form of the \ttt{Vec}, this is a dangerous practice that has worked ... so far.
+
+The ghost values can be synchronized with the remote processes through the \ttt{Petsc} API, thus leading to the general communication layout
+\begin{Verbatim}[frame=single]
+{ do work for local values shared with other processes }
+VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD);
+{ do work for local values not shared with other processes }
+VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);
+\end{Verbatim}
 
 \subsection{Finite differences and local tree reconstruction}
 
