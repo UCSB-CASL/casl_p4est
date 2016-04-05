@@ -21,13 +21,19 @@
 
 class PoissonSolverNodeBaseJump
 {
-  typedef struct check_comm
+  typedef struct
+  {
+    double val;
+    PetscInt n;
+  } mat_entry_t;
+
+  typedef struct
   {
     unsigned int n;
     unsigned int k;
   } check_comm_t;
 
-  typedef struct voro_comm
+  typedef struct
   {
     p4est_locidx_t local_num;
     double x;
@@ -37,7 +43,7 @@ class PoissonSolverNodeBaseJump
 #endif
   } voro_comm_t;
 
-  typedef struct added_point
+  typedef struct
   {
     double x;
     double y;

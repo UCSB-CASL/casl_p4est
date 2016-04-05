@@ -1139,13 +1139,7 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
   double *rhs_p;
   ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
 
-  typedef struct entry
-  {
-    double val;
-    PetscInt n;
-  } entry_t;
-
-  std::vector< std::vector<entry_t> > matrix_entries(num_local_voro);
+  std::vector< std::vector<mat_entry_t> > matrix_entries(num_local_voro);
   std::vector<PetscInt> d_nnz(num_local_voro, 1), o_nnz(num_local_voro, 0);
 
   for(unsigned int n=0; n<num_local_voro; ++n)
@@ -1167,7 +1161,7 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 #endif
     {
       matrix_has_nullspace = false;
-      entry_t ent; ent.n = global_n_idx; ent.val = 1;
+      mat_entry_t ent; ent.n = global_n_idx; ent.val = 1;
       matrix_entries[n].push_back(ent);
 #ifdef P4_TO_P8
       rhs_p[n] = bc->wallValue(pc.x, pc.y, pc.z);
@@ -1231,7 +1225,7 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
 #endif
     if(add_n>EPS) matrix_has_nullspace = false;
 
-    entry_t ent; ent.n = global_n_idx; ent.val = voro.get_volume()*add_n;
+    mat_entry_t ent; ent.n = global_n_idx; ent.val = voro.get_volume()*add_n;
     matrix_entries[n].push_back(ent);
 
     for(unsigned int l=0; l<points->size(); ++l)
@@ -1278,7 +1272,7 @@ void PoissonSolverNodeBaseJump::setup_linear_system()
           o_nnz[n]++;
         }
 
-        entry_t ent; ent.n = global_l_idx; ent.val = -s*mu_harmonic/d;
+        mat_entry_t ent; ent.n = global_l_idx; ent.val = -s*mu_harmonic/d;
         matrix_entries[n][0].val += s*mu_harmonic/d;
         matrix_entries[n].push_back(ent);
 
