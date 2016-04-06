@@ -169,6 +169,8 @@ public:
 
   void one_step();
 
+  void compare_velocity_temperature_vs_concentration();
+
   void save_VTK(int iter);
 };
 

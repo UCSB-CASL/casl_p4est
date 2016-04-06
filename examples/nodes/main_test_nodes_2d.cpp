@@ -72,14 +72,14 @@ int lmax = 6;
 int nb_splits = 1;
 
 int nx = 2;
-int ny = 3;
+int ny = 2;
 #ifdef P4_TO_P8
 int nz = 1;
 #endif
 
 bool save_vtk = true;
 
-double mu = 1;
+double mu = 2;
 double add_diagonal = 0;
 
 /*
@@ -150,6 +150,15 @@ double u_exact(double x, double y, double z)
   }
 }
 
+class ROBIN_COEFF : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return x+y+z;
+  }
+} robin_coeff;
+
 class BCINTERFACEVAL : public CF_3
 {
 public:
@@ -157,7 +166,7 @@ public:
   {
     if(bc_itype==DIRICHLET)
       return u_exact(x,y,z);
-    else
+    else if(bc_itype==NEUMANN || bc_itype==ROBIN)
     {
       double dx, dy, dz;
       switch(interface_type)
@@ -180,17 +189,22 @@ public:
         throw std::invalid_argument("choose a valid interface type.");
       }
 
+      double alpha = (bc_itype==ROBIN ? robin_coeff(x,y,z) : 0);
       switch(test_number)
       {
       case 0:
-        return dx + dy + dz;
+        return dx + dy + dz + alpha*u_exact(x,y,z);
       case 1:
-        return 2*x*dx + 2*y*dy + 2*z*dz;
+        return 2*x*dx + 2*y*dy + 2*z*dz + alpha*u_exact(x,y,z);
       case 2:
-        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
+        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz + alpha*u_exact(x,y,z);
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
+    }
+    else
+    {
+      throw std::invalid_argument("unknown boundary condition type.");
     }
   }
 } bc_interface_val;
@@ -211,11 +225,12 @@ public:
   {
     if(bc_wall_type(x,y,z)==DIRICHLET)
       return u_exact(x,y,z);
-    else
+    else if(bc_wall_type(x,y,z)==NEUMANN)
     {
       double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
       double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
       double dz = 0; dz = fabs(z-zmin)<EPS ? -1 : (fabs(z-zmax)<EPS  ? 1 : 0);
+
       switch(test_number)
       {
       case 0:
@@ -227,6 +242,10 @@ public:
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
+    }
+    else
+    {
+      throw std::invalid_argument("unknown boundary condition type.");
     }
   }
 } bc_wall_val;
@@ -274,6 +293,16 @@ double u_exact(double x, double y)
   }
 }
 
+class ROBIN_COEFF : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    return 1;
+    return 4+x+y;
+  }
+} robin_coeff;
+
 class BCINTERFACEVAL : public CF_2
 {
 public:
@@ -281,7 +310,7 @@ public:
   {
     if(bc_itype==DIRICHLET)
       return u_exact(x,y);
-    else
+    else if(bc_itype==NEUMANN || bc_itype==ROBIN)
     {
       double dx, dy;
       switch(interface_type)
@@ -302,19 +331,24 @@ public:
         throw std::invalid_argument("choose a valid interface type.");
       }
 
+      double alpha = (bc_itype==ROBIN ? robin_coeff(x,y) : 0);
       switch(test_number)
       {
       case 0:
-        return dx + dy;
+        return dx + dy + alpha*u_exact(x,y);
       case 1:
-        return 2*x*dx + 2*y*dy;
+        return 2*x*dx + 2*y*dy + alpha*u_exact(x,y);
       case 2:
-        return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy;
+        return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy + alpha*u_exact(x,y);
       case 3:
-        return cos(x)*dx - sin(y)*dy;
+        return cos(x)*dx - sin(y)*dy + alpha*u_exact(x,y);
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
+    }
+    else
+    {
+      throw std::invalid_argument("unknown boundary condition type.");
     }
   }
 } bc_interface_val;
@@ -335,7 +369,7 @@ public:
   {
     if(bc_wall_type(x,y)==DIRICHLET)
       return u_exact(x,y);
-    else
+    else if(bc_wall_type(x,y)==NEUMANN)
     {
       double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
       double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
@@ -353,6 +387,10 @@ public:
         throw std::invalid_argument("Choose a valid test.");
       }
     }
+    else
+    {
+      throw std::invalid_argument("unknown boundary condition type.");
+    }
   }
 } bc_wall_val;
 
@@ -365,13 +403,13 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
               int compt)
 {
   PetscErrorCode ierr;
-#ifdef STAMPEDE
-  char *out_dir;
+  char *out_dir = NULL;
   out_dir = getenv("OUT_DIR");
-#else
-  char out_dir[10000];
-  sprintf(out_dir, "/home/fgibou/code/Output/p4est_test");
-#endif
+  if(out_dir==NULL)
+  {
+    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save visuals.\n"); CHKERRXX(ierr);
+    return;
+  }
 
   std::ostringstream oss;
 
@@ -679,10 +717,23 @@ int main (int argc, char* argv[])
     solver.set_bc(bc);
     solver.set_rhs(rhs);
 
+    Vec robin;
+    if(bc_itype==ROBIN || bc_wtype==ROBIN)
+    {
+      ierr = VecDuplicate(phi, &robin); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est, nodes, robin_coeff, robin);
+      solver.set_robin_coef(robin);
+    }
+
     Vec sol;
     ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);
 
     solver.solve(sol);
+
+    if(bc_itype==ROBIN || bc_wtype==ROBIN)
+    {
+      ierr = VecDestroy(robin);
+    }
 
     /* if all NEUMANN boundary conditions, shift solution */
     if(solver.get_matrix_has_nullspace())
