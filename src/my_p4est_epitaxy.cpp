@@ -25,6 +25,7 @@ my_p4est_epitaxy_t::my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd)
   ierr = VecSet(loc, 0); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(rho[0], &loc); CHKERRXX(ierr);
 
+  new_island = 0;
   alpha = 1;
   dx_dy_dz(p4est, dxyz);
   dt_n = MIN(dxyz[0],dxyz[1]);
@@ -81,59 +82,62 @@ void my_p4est_epitaxy_t::set_parameters(double D, double F, double alpha)
 
 void my_p4est_epitaxy_t::compute_velocity()
 {
-  Vec vtmp[2];
-  ierr = VecDuplicate(rho[0], &vtmp[0]); CHKERRXX(ierr);
-  ierr = VecDuplicate(rho[0], &vtmp[1]); CHKERRXX(ierr);
-
-  double *v_p[2];
-  quad_neighbor_nodes_of_node_t qnnn;
-
-  const double *rho_0, *rho_1;
-
-  my_p4est_level_set_t ls(ngbd);
-
-  for(unsigned int level=0; level<phi.size(); ++level)
+  if(v[0].size()>0)
   {
-    ierr = VecGetArray(vtmp[0], &v_p[0]); CHKERRXX(ierr);
-    ierr = VecGetArray(vtmp[1], &v_p[1]); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(rho[level  ], &rho_0); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(rho[level+1], &rho_1); CHKERRXX(ierr);
+    Vec vtmp[2];
+    ierr = VecDuplicate(v[0][0], &vtmp[0]); CHKERRXX(ierr);
+    ierr = VecDuplicate(v[1][0], &vtmp[1]); CHKERRXX(ierr);
 
-    for(size_t i=0; i<ngbd->get_layer_size(); ++i)
+    double *v_p[2];
+    quad_neighbor_nodes_of_node_t qnnn;
+
+    const double *rho_0, *rho_1;
+
+    my_p4est_level_set_t ls(ngbd);
+
+    for(unsigned int level=0; level<phi.size(); ++level)
     {
-      p4est_locidx_t n = ngbd->get_layer_node(i);
-      ngbd->get_neighbors(n, qnnn);
+      ierr = VecGetArray(vtmp[0], &v_p[0]); CHKERRXX(ierr);
+      ierr = VecGetArray(vtmp[1], &v_p[1]); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(rho[level  ], &rho_0); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(rho[level+1], &rho_1); CHKERRXX(ierr);
 
-      v_p[0][n] = D*(qnnn.dx_central(rho_0) - qnnn.dx_central(rho_1));
-      v_p[1][n] = D*(qnnn.dy_central(rho_0) - qnnn.dy_central(rho_1));
+      for(size_t i=0; i<ngbd->get_layer_size(); ++i)
+      {
+        p4est_locidx_t n = ngbd->get_layer_node(i);
+        ngbd->get_neighbors(n, qnnn);
+
+        v_p[0][n] = D*(qnnn.dx_central(rho_0) - qnnn.dx_central(rho_1));
+        v_p[1][n] = D*(qnnn.dy_central(rho_0) - qnnn.dy_central(rho_1));
+      }
+
+      ierr = VecGhostUpdateBegin(vtmp[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(vtmp[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      for(size_t i=0; i<ngbd->get_local_size(); ++i)
+      {
+        p4est_locidx_t n = ngbd->get_local_node(i);
+        ngbd->get_neighbors(n, qnnn);
+
+        v_p[0][n] = D*(qnnn.dx_central(rho_0) - qnnn.dx_central(rho_1));
+        v_p[1][n] = D*(qnnn.dy_central(rho_0) - qnnn.dy_central(rho_1));
+      }
+
+      ierr = VecGhostUpdateEnd(vtmp[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd(vtmp[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      ierr = VecRestoreArray(vtmp[0], &v_p[0]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vtmp[1], &v_p[1]); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(rho[level  ], &rho_0); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(rho[level+1], &rho_1); CHKERRXX(ierr);
+
+      ls.extend_from_interface_to_whole_domain_TVD(phi[level], vtmp[0], v[0][level]);
+      ls.extend_from_interface_to_whole_domain_TVD(phi[level], vtmp[1], v[1][level]);
     }
 
-    ierr = VecGhostUpdateBegin(vtmp[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(vtmp[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    for(size_t i=0; i<ngbd->get_local_size(); ++i)
-    {
-      p4est_locidx_t n = ngbd->get_local_node(i);
-      ngbd->get_neighbors(n, qnnn);
-
-      v_p[0][n] = D*(qnnn.dx_central(rho_0) - qnnn.dx_central(rho_1));
-      v_p[1][n] = D*(qnnn.dy_central(rho_0) - qnnn.dy_central(rho_1));
-    }
-
-    ierr = VecGhostUpdateEnd(vtmp[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(vtmp[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    ierr = VecRestoreArray(vtmp[0], &v_p[0]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vtmp[1], &v_p[1]); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(rho[level  ], &rho_0); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(rho[level+1], &rho_1); CHKERRXX(ierr);
-
-    ls.extend_from_interface_to_whole_domain_TVD(phi[level], vtmp[0], v[0][level]);
-    ls.extend_from_interface_to_whole_domain_TVD(phi[level], vtmp[1], v[1][level]);
+    ierr = VecDestroy(vtmp[0]); CHKERRXX(ierr);
+    ierr = VecDestroy(vtmp[1]); CHKERRXX(ierr);
   }
-
-  ierr = VecDestroy(vtmp[0]); CHKERRXX(ierr);
-  ierr = VecDestroy(vtmp[1]); CHKERRXX(ierr);
 }
 
 
@@ -150,7 +154,7 @@ void my_p4est_epitaxy_t::solve_rho()
     ierr = VecGetArray(rho_g, &rho_g_p); CHKERRXX(ierr);
     for(unsigned int n=0; n<nodes->indep_nodes.elem_count; ++n)
     {
-      rho_p[n] = rho_p[n] + dt_n*(F - 2*D*sigma1*rho_sqr_avg);
+      rho_p[n] = rho_p[n] + dt_n*(F - new_island*2*D*sigma1*rho_sqr_avg);
       rho_g_p[n] = rho_p[n];
     }
     ierr = VecRestoreArray(rho[0], &rho_p); CHKERRXX(ierr);
@@ -183,9 +187,9 @@ void my_p4est_epitaxy_t::solve_rho()
 
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
-        rhs_p[n] = rho_p[n] + dt_n*(F - 2* D*sigma1*rho_sqr_avg);
+        rhs_p[n] = rho_p[n] + dt_n*(F - new_island*2*D*sigma1*rho_sqr_avg);
 
-        phi_i_p[n] = -2*L;
+        phi_i_p[n] = -4*L;
         if(level<phi.size()) phi_i_p[n] = phi_p[level][n];
         if(level>0)          phi_i_p[n] = MAX(phi_i_p[n], -phi_p[level-1][n]);
       }
@@ -234,8 +238,31 @@ void my_p4est_epitaxy_t::solve_rho()
 
   double rho_max;
   VecMax(rho[0], NULL, &rho_max);
-  MPI_Allreduce(MPI_IN_PLACE, &rho_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
   ierr = PetscPrintf(p4est->mpicomm, "Maximum density = %e\n", rho_max); CHKERRXX(ierr);
+}
+
+
+
+void my_p4est_epitaxy_t::compute_dt()
+{
+  if(phi.size()!=0)
+  {
+    double vmax = 0;
+    double m, M;
+    for(unsigned int i=0; i<phi.size(); ++i)
+    {
+      ierr = VecMax(v[0][i], NULL, &M); CHKERRXX(ierr);
+      ierr = VecMin(v[0][i], NULL, &m); CHKERRXX(ierr);
+      vmax = MAX(vmax, fabs(M), fabs(m));
+
+      ierr = VecMax(v[1][i], NULL, &M); CHKERRXX(ierr);
+      ierr = VecMin(v[1][i], NULL, &m); CHKERRXX(ierr);
+      vmax = MAX(vmax, fabs(M), fabs(m));
+    }
+
+    dt_n = vmax<EPS ? dxyz[0] : MIN(dxyz[0],dxyz[1])/vmax;
+  }
+  ierr = PetscPrintf(p4est->mpicomm, "time step dt_n = %e\n", dt_n); CHKERRXX(ierr);
 }
 
 
@@ -245,14 +272,14 @@ void my_p4est_epitaxy_t::update_grid()
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
-
-  for(unsigned int level=0; level<phi.size(); ++level)
+  if(phi.size()>0)
   {
+    my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
+
     Vec velo[2];
-    velo[0] = v[0][level];
-    velo[1] = v[1][level];
-    sl.update_p4est(velo, dt_n, phi[level]);
+    velo[0] = v[0][0];
+    velo[1] = v[1][0];
+    sl.update_p4est(velo, dt_n, phi[0]);
   }
 
   /* interpolate the quantities on the new grid */
@@ -286,8 +313,8 @@ void my_p4est_epitaxy_t::update_grid()
   {
     ierr = VecDestroy(v[0][i]); CHKERRXX(ierr);
     ierr = VecDestroy(v[1][i]); CHKERRXX(ierr);
-    ierr = VecDuplicate(rho_g, &v[0][i]); CHKERRXX(ierr);
-    ierr = VecDuplicate(rho_g, &v[1][i]); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &v[0][i]); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &v[1][i]); CHKERRXX(ierr);
   }
 
   p4est_destroy(p4est);       p4est = p4est_np1;
@@ -332,6 +359,7 @@ void my_p4est_epitaxy_t::update_nucleation()
   ierr = VecRestoreArrayRead(rho_g, &rho_g_p); CHKERRXX(ierr);
 
   rho_sqr_avg = integrate_over_negative_domain(p4est, nodes, ones, rho_sqr)/(L*L);
+  std::cout << rho_sqr_avg << ", " << sigma1 << std::endl;
 
   double new_Nuc = Nuc + dt_n * D*sigma1*rho_sqr_avg;
   ierr = PetscPrintf(p4est->mpicomm, "Nucleation is now : %e\n", new_Nuc); CHKERRXX(ierr);
@@ -340,17 +368,94 @@ void my_p4est_epitaxy_t::update_nucleation()
   ierr = VecDestroy(ones); CHKERRXX(ierr);
 
   /* check for new island */
-  if(floor(Nuc) != floor(new_Nuc))
+  if(floor(Nuc*L*L) != floor(new_Nuc*L*L))
   {
     ierr = PetscPrintf(p4est->mpicomm, "Nucleating new island !\n"); CHKERRXX(ierr);
     if(phi.size()==0)
     {
+      Vec tmp;
+      ierr = VecDuplicate(rho_g, &tmp); CHKERRXX(ierr);
+      Vec loc;
+      ierr = VecGhostGetLocalForm(tmp, &loc); CHKERRXX(ierr);
+      ierr = VecSet(loc, 0); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(tmp, &loc); CHKERRXX(ierr);
+      rho.push_back(tmp);
 
+      /* select nucleation point */
+      double xc = ((double)rand()/RAND_MAX)*L;
+      double yc = ((double)rand()/RAND_MAX)*L;
+      double r = 4*dxyz[0];
+      phi.resize(1);
+      ierr = VecDuplicate(rho_g, &phi[0]); CHKERRXX(ierr);
+      double *phi_p, *rho_p, *rho_g_p;
+      ierr = VecGetArray(phi[0], &phi_p); CHKERRXX(ierr);
+      ierr = VecGetArray(rho[0], &rho_p); CHKERRXX(ierr);
+      ierr = VecGetArray(rho_g, &rho_g_p); CHKERRXX(ierr);
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+        double x = node_x_fr_n(n, p4est, nodes);
+        double y = node_y_fr_n(n, p4est, nodes);
+        phi_p[n] = -4*L;
+        for(int i=-1; i<2; ++i)
+          for(int j=-1; j<2; ++j)
+          {
+            phi_p[n] = MAX(phi_p[n], r-sqrt( SQR(x+i*(xyz_max[0]-xyz_min[0])-xc) + SQR(y+j*(xyz_max[1]-xyz_min[1])-yc) ) );
+          }
+        if(phi_p[n]>0)
+        {
+          rho_p[n] = 0;
+          rho_g_p[n] = 0;
+        }
+      }
+      ierr = VecRestoreArray(phi[0], &phi_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(rho[0], &rho_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(rho_g, &rho_g_p); CHKERRXX(ierr);
+
+      ierr = VecCreateGhostNodes(p4est, nodes, &tmp); CHKERRXX(ierr);
+      v[0].push_back(tmp);
+      ierr = VecCreateGhostNodes(p4est, nodes, &tmp); CHKERRXX(ierr);
+      v[1].push_back(tmp);
     }
     else
     {
+      /* find nucleation point */
+      my_p4est_interpolation_nodes_t interp(ngbd);
+      interp.set_input(phi[0], quadratic_non_oscillatory);
+      double r = 4*dxyz[0];
+      double xc, yc;
+      do{
+        xc = ((double)rand()/RAND_MAX)*L;
+        yc = ((double)rand()/RAND_MAX)*L;
+      } while(interp(xc,yc)>r);
 
+      double *phi_p, *rho_p, *rho_g_p;
+      ierr = VecGetArray(phi[0], &phi_p); CHKERRXX(ierr);
+      ierr = VecGetArray(rho[0], &rho_p); CHKERRXX(ierr);
+      ierr = VecGetArray(rho_g, &rho_g_p); CHKERRXX(ierr);
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+        double x = node_x_fr_n(n, p4est, nodes);
+        double y = node_y_fr_n(n, p4est, nodes);
+        for(int i=-1; i<2; ++i)
+          for(int j=-1; j<2; ++j)
+          {
+            phi_p[n] = MAX(phi_p[n], r-sqrt( SQR(x+i*(xyz_max[0]-xyz_min[0])-xc) + SQR(y+j*(xyz_max[1]-xyz_min[1])-yc) ) );
+            if(r-sqrt( SQR(x+i*(xyz_max[0]-xyz_min[0])-xc) + SQR(y+j*(xyz_max[1]-xyz_min[1])-yc) ) > 0)
+            {
+              rho_p[n] = 0;
+              rho_g_p[n] = 0;
+            }
+          }
+      }
+      ierr = VecRestoreArray(phi[0], &phi_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(rho[0], &rho_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(rho_g, &rho_g_p); CHKERRXX(ierr);
     }
+//    new_island = 1;
+  }
+  else
+  {
+    new_island = 0;
   }
 
   Nuc = new_Nuc;
@@ -360,8 +465,11 @@ void my_p4est_epitaxy_t::one_step()
 {
   solve_rho();
   compute_velocity();
-  update_grid();
   update_nucleation();
+
+  compute_dt();
+
+  update_grid();
 }
 
 
@@ -459,12 +567,11 @@ void my_p4est_epitaxy_t::save_vtk(int iter)
   interp.set_input(rho_g, linear);
   interp.interpolate(rho_g_vis);
 
-
   const double *phi_v_p, *rho_g_v_p;
   ierr = VecGetArrayRead(phi_vis  , &phi_v_p  ); CHKERRXX(ierr);
   ierr = VecGetArrayRead(rho_g_vis, &rho_g_v_p); CHKERRXX(ierr);
 
-  my_p4est_vtk_write_all(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 2, 0, name,
+  my_p4est_vtk_write_all(p4est_vis, nodes_vis, ghost_vis, P4EST_TRUE, P4EST_TRUE, 2, 0, name,
                          VTK_POINT_DATA, "phi", phi_v_p,
                          VTK_POINT_DATA, "rho", rho_g_v_p);
 

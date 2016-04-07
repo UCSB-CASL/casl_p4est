@@ -44,6 +44,7 @@ private:
   double sigma1;
   double Nuc;
   double L;
+  int new_island;
 
   double alpha;
   double rho_avg;
@@ -65,6 +66,8 @@ public:
   void compute_velocity();
 
   void solve_rho();
+
+  void compute_dt();
 
   void update_grid();
 
