@@ -43,17 +43,24 @@ private:
   double F;
   double sigma1;
   double Nuc;
+  double L;
 
   double alpha;
   double rho_avg;
   double rho_sqr_avg;
 
   double dxyz[P4EST_DIM];
+  double xyz_min[P4EST_DIM];
+  double xyz_max[P4EST_DIM];
 
 public:
   my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd);
 
   ~my_p4est_epitaxy_t();
+
+  void set_parameters(double D, double F, double alpha);
+
+  inline double get_dt() { return dt_n; }
 
   void compute_velocity();
 
@@ -65,7 +72,7 @@ public:
 
   void one_step();
 
-  void save_vtk();
+  void save_vtk(int iter);
 };
 
 
