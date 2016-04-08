@@ -34,6 +34,17 @@ int main(int argc, char **argv)
   bool save_vtk = cmd.get("save_vtk", 1);
   int save_every_n = cmd.get("save_every_n", 1);
 
+  if(0)
+  {
+    int i = 0;
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+    fflush(stdout);
+    while (0 == i)
+      sleep(5);
+  }
+
   /* create the p4est */
   my_p4est_brick_t brick;
   p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, 0, L, 0, L, &brick, 1, 1);

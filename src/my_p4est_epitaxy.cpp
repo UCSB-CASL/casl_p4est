@@ -361,7 +361,6 @@ void my_p4est_epitaxy_t::update_nucleation()
   ierr = VecRestoreArrayRead(rho_g, &rho_g_p); CHKERRXX(ierr);
 
   rho_sqr_avg = integrate_over_negative_domain(p4est, nodes, ones, rho_sqr)/(L*L);
-  std::cout << rho_sqr_avg << ", " << sigma1 << std::endl;
 
   double new_Nuc = Nuc + dt_n * D*sigma1*rho_sqr_avg;
   ierr = PetscPrintf(p4est->mpicomm, "Nucleation is now : %e\n", new_Nuc); CHKERRXX(ierr);
@@ -388,6 +387,7 @@ void my_p4est_epitaxy_t::update_nucleation()
     {
       my_p4est_interpolation_nodes_t interp(ngbd);
       interp.set_input(phi[0], quadratic_non_oscillatory);
+
       /* find the max value of rho */
       double rho_max = 0;
       const double *phi_p, *rho_g_p;
@@ -399,39 +399,41 @@ void my_p4est_epitaxy_t::update_nucleation()
           rho_max = MAX(rho_max, rho_g_p[n]);
       }
       int mpiret = MPI_Allreduce(MPI_IN_PLACE, &rho_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+      double phi_c;
 
+      /* find the nucleation point, maximum of (rho + perturbation) */
       do{
-        std::vector<double> comm(3*p4est->mpisize);
-        comm[3*p4est->mpirank] = 0;
+        std::vector<double> comm(4*p4est->mpisize);
+        comm[4*p4est->mpirank] = 0;
 
         for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
         {
           if(phi_p[n]<0)
           {
             double rho_perturb = rho_g_p[n] + (double)rand()/RAND_MAX * rho_max/20;
-            if(rho_perturb > comm[3*p4est->mpirank])
+            if(rho_perturb > comm[4*p4est->mpirank])
             {
-              comm[3*p4est->mpirank + 0] = rho_perturb;
-              comm[3*p4est->mpirank + 1] = node_x_fr_n(n, p4est, nodes);
-              comm[3*p4est->mpirank + 2] = node_y_fr_n(n, p4est, nodes);
+              comm[4*p4est->mpirank + 0] = rho_perturb;
+              comm[4*p4est->mpirank + 1] = node_x_fr_n(n, p4est, nodes);
+              comm[4*p4est->mpirank + 2] = node_y_fr_n(n, p4est, nodes);
+              comm[4*p4est->mpirank + 3] = phi_p[n];
             }
           }
         }
 
-        mpiret = MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &comm[0], 3, MPI_DOUBLE, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-        int tmp = comm[0], rank = 0;
+        mpiret = MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &comm[0], 4, MPI_DOUBLE, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+        int rank = 0;
         for(int p=1; p<p4est->mpisize; ++p)
         {
-          if(comm[3*p]>tmp)
-          {
-            tmp = comm[3*p];
+          if(comm[4*p]>comm[4*rank])
             rank = p;
-          }
         }
-        xc = comm[3*rank+1];
-        yc = comm[3*rank+2];
 
-      } while(interp(xc,yc)>r);
+        xc    = comm[4*rank+1];
+        yc    = comm[4*rank+2];
+        phi_c = comm[4*rank+3];
+      } while(phi_c>r);
 
       ierr = VecRestoreArrayRead(phi[0], &phi_p  ); CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(rho_g , &rho_g_p); CHKERRXX(ierr);
