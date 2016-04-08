@@ -9,6 +9,12 @@
 
 class coupled_solver_t
 {
+public:
+  struct parameters {
+    double alpha, beta, Ca, mue, eps, sigma;
+  };
+
+private:
   p4est_t* &p4est;
   p4est_ghost_t* &ghost;
   p4est_nodes_t* &nodes;
@@ -19,26 +25,39 @@ class coupled_solver_t
   p4est_connectivity_t *conn;
 #ifdef P4_TO_P8
   typedef CF_3 cf_t;
-  typedef WallBC3D bc_wall_t;
+  typedef WallBC3D wall_bc_t;
+  typedef BoundaryConditions3D bc_t;
 #else
   typedef CF_2 cf_t;
-  typedef WallBC2D bc_wall_t;
+  typedef WallBC2D wall_bc_t;
+  typedef BoundaryConditions2D bc_t;
 #endif
-  double viscosity_ratio, Ca;
-  CF_1 *Q;
-  cf_t *bc_wall_value;
-  bc_wall_t *bc_wall_type;
+  parameters params;
+  wall_bc_t *pressure_bc_type, *potential_bc_type;
+  cf_t *pressure_bc_val, *potential_bc_val;
+  const CF_1 *Q, *I;
 
-  double advect_interface(Vec& phi, Vec& press_m, Vec &press_p, double cfl, double dtmax);
-  void solve_fields(double t, Vec phi, Vec press_m, Vec press_p);
+  double advect_interface(Vec& phi,
+                          Vec& pressure_m,  Vec& pressure_p,
+                          Vec& potential_m, Vec& potential_p,
+                          double cfl, double dtmax);
+
+  void solve_fields(double t, Vec phi,
+                    Vec pressure_m,  Vec pressure_p,
+                    Vec potential_m, Vec potential_p);
 
 public:
   coupled_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick);
   ~coupled_solver_t();
 
-  void set_properties(double viscosity_ratio, double Ca, CF_1& Q);
-  void set_bc_wall(bc_wall_t& bc_wall_type, cf_t& bc_wall_value);
-  double solve_one_step(double t, Vec &phi, Vec &press_m, Vec &press_p, double cfl = 5, double dtmax = DBL_MAX);
+  void set_parameters(const parameters& p);
+  void set_injection_rates(const CF_1& Q, const CF_1& I);
+  void set_boundary_conditions(wall_bc_t& pressure_bc_type,  cf_t& pressure_bc_val,
+                               wall_bc_t& potential_bc_type, cf_t& potential_bc_val);
+  double solve_one_step(double t, Vec &phi,
+                        Vec &pressure_m,  Vec &pressure_p,
+                        Vec &potential_m, Vec &potential_p,
+                        double cfl = 5, double dtmax = DBL_MAX);
 };
 
 #endif // COUPLED_SOLVER_2D_H

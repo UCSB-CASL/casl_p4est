@@ -39,15 +39,18 @@ typedef WallBC2D wall_bc_t;
 
 static struct {
   int lmin, lmax, iter;
-  double lip, Ca, cfl, dts, dtmax, viscosity;
+  double lip, Ca, cfl, dts, dtmax;
+  double alpha, beta;
+  double mue, eps, sigma;
   double xmin[3], xmax[3];
   int ntr[3];
   string test, method;
 
-  cf_t *interface, *bc_wall_value;
-  CF_1 *Q;
-  wall_bc_t *bc_wall_type;
-} params;
+  cf_t *interface;
+  CF_1 *Q, *I;
+  wall_bc_t *pressure_bc_type, *potential_bc_type;
+  cf_t *pressure_bc_value, *potential_bc_value;
+} options;
 
 void set_parameters(int argc, char **argv) {
   // parse input parameters
@@ -60,7 +63,11 @@ void set_parameters(int argc, char **argv) {
   cmd.add_option("cfl", "the CFL number");
   cmd.add_option("dts", "dt for saving vtk files");
   cmd.add_option("dtmax", "max dt to use when solving");  
-  cmd.add_option("viscosity", "The viscosity ratio of inner to outer fluid");
+  cmd.add_option("mue", "The viscosity ratio of outer/inner");
+  cmd.add_option("eps", "The permittivity ratio of outer/inner");
+  cmd.add_option("sigma", "The conductivity ratio of outer/inner");
+  cmd.add_option("alpha", "The coupling strength between EO flow/Darcy flow");
+  cmd.add_option("beta", "The coupling strength between Ohmic current/Streaming current");
   cmd.add_option("method", "method for solving the jump equation");
   cmd.add_option("test", "Which test to run?, Options are:\n"
                          "\tcircle\n"
@@ -68,15 +75,15 @@ void set_parameters(int argc, char **argv) {
 
   cmd.parse(argc, argv);
 
-  params.test = cmd.get<string>("test", "FastShelley04_Fig12");
-  params.method = cmd.get<string>("method", "voronoi");
+  options.test = cmd.get<string>("test", "FastShelley04_Fig12");
+  options.method = cmd.get<string>("method", "voronoi");
 
   // set default values
-  params.ntr[0]  = params.ntr[1]  = params.ntr[2]  =  1;
-  params.xmin[0] = params.xmin[1] = params.xmin[2] = -1;
-  params.xmax[0] = params.xmax[1] = params.xmax[2] =  1;
+  options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
+  options.xmin[0] = options.xmin[1] = options.xmin[2] = -1;
+  options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
 
-  if (params.test == "circle") {
+  if (options.test == "circle") {
     // set interface
 #ifdef P4_TO_P8
 #else        
@@ -84,40 +91,63 @@ void set_parameters(int argc, char **argv) {
       double operator()(double t) const { return 1+t; }
     } Q;
 
+    static struct:CF_1{
+      double operator()(double t) const { return 1+t; }
+    } I;
+
     static struct:cf_t {
       double operator()(double x, double y) const {
         return 0.25 - sqrt(SQR(x)+SQR(y));
       }
-    } interface; interface.lip = params.lip;
+    } interface; interface.lip = options.lip;
 
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
-    } bc_wall_type;
+    } pressure_bc_type;
+
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
+    } potential_bc_type;
 
     static struct:cf_t{
       double operator()(double, double) const { return 0; }
-    } bc_wall_value;
+    } pressure_bc_value;
+
+    static struct:cf_t{
+      double operator()(double, double) const { return 0; }
+    } potential_bc_value;
 #endif
 
-    params.Q             = &Q;
-    params.interface     = &interface;
-    params.bc_wall_type  = &bc_wall_type;
-    params.bc_wall_value = &bc_wall_value;
-    params.dtmax         = 5e-3;
-    params.dts           = 1e-1;
-    params.Ca            = 250;
-    params.viscosity     = 1;
+    options.Q                  = &Q;
+    options.I                  = &I;
+    options.interface          = &interface;
+    options.pressure_bc_type   = &pressure_bc_type;
+    options.potential_bc_type  = &potential_bc_type;
+    options.pressure_bc_value  = &pressure_bc_value;
+    options.potential_bc_value = &potential_bc_value;
+    options.dtmax              = 5e-3;
+    options.dts                = 1e-1;
+    options.Ca                 = 250;
+    options.mue                = 1;
+    options.eps                = 1;
+    options.sigma              = 1;
+    options.alpha              = 1;
+    options.beta               = 1;
 
-  } else if (params.test == "FastShelley04_Fig12") {
+  } else if (options.test == "FastShelley04_Fig12") {
 
-    params.xmin[0] = params.xmin[1] = params.xmin[2] = -10;
-    params.xmax[0] = params.xmax[1] = params.xmax[2] =  10;
+    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10;
+    options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
 
 #ifdef P4_TO_P8
 #else
     static struct:CF_1{
       double operator()(double t) const { return 1+t; }
     } Q;
+
+    static struct:CF_1{
+      double operator()(double t) const { return 1+t; }
+    } I;
 
     static struct:cf_t{
       double operator()(double x, double y) const  {
@@ -126,12 +156,16 @@ void set_parameters(int argc, char **argv) {
 
         return 1.0+0.1*(cos(3*theta)+sin(2*theta)) - r;
       }
-    } interface; interface.lip = params.lip;
+    } interface; interface.lip = options.lip;
 
 #if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return NEUMANN; }
-    } bc_wall_type;
+    } pressure_bc_type;
+
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+    } potential_bc_type;
 
     static struct:cf_t{
       double operator()(double x, double y) const {
@@ -146,47 +180,84 @@ void set_parameters(int argc, char **argv) {
         else
           return 0;
       }
-    } bc_wall_value; bc_wall_value.t = 0;
+    } pressure_bc_value; pressure_bc_value.t = 0;
+
+    static struct:cf_t{
+      double operator()(double x, double y) const {
+        double theta = atan2(y,x);
+        double r     = sqrt(SQR(x)+SQR(y));
+        double ur    = -Q(t)/r;
+
+        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+          return x > 0 ? ur*cos(theta):-ur*cos(theta);
+        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+          return y > 0 ? ur*sin(theta):-ur*sin(theta);
+        else
+          return 0;
+      }
+    } potential_bc_value; potential_bc_value.t = 0;
 #endif
 #if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
-    } bc_wall_type;
+    } pressure_bc_type;
+
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
+    } potential_bc_type;
 
     static struct:cf_t{
       double operator()(double x, double y) const {
         double r = sqrt(SQR(x)+SQR(y));
         return -Q(t)/(2*PI) * log(r);
       }
-    } bc_wall_value; bc_wall_value.t = 0;
+    } pressure_bc_value; pressure_bc_value.t = 0;
+
+    static struct:cf_t{
+      double operator()(double x, double y) const {
+        double r = sqrt(SQR(x)+SQR(y));
+        return -Q(t)/(2*PI) * log(r);
+      }
+    } potential_bc_value; potential_bc_value.t = 0;
 #endif
 
 #endif
 
     // set parameters specific to this test
-    params.Q              = &Q;
-    params.interface      = &interface;
-    params.bc_wall_type   = &bc_wall_type;
-    params.bc_wall_value  = &bc_wall_value;
-    params.dtmax          = 5e-3;
-    params.dts            = 1e-1;
-    params.Ca             = 250;
-    params.viscosity      = 1;
+    options.Q                  = &Q;
+    options.I                  = &I;
+    options.interface          = &interface;
+    options.pressure_bc_type   = &pressure_bc_type;
+    options.potential_bc_type  = &potential_bc_type;
+    options.pressure_bc_value  = &pressure_bc_value;
+    options.potential_bc_value = &potential_bc_value;
+    options.dtmax              = 5e-3;
+    options.dts                = 1e-1;
+    options.Ca                 = 250;
+    options.mue                = 1;
+    options.eps                = 1;
+    options.sigma              = 1;
+    options.alpha              = 1;
+    options.beta               = 1;
 
   } else {
     throw std::invalid_argument("Unknown test");
   }
 
   // overwrite default values from stdin
-  params.lmin      = cmd.get("lmin", 5);
-  params.lmax      = cmd.get("lmax", 10);
-  params.iter      = cmd.get("iter", INT_MAX);
-  params.lip       = cmd.get("lip", 1.2);
-  params.Ca        = cmd.get("Ca", params.Ca);
-  params.cfl       = cmd.get("cfl", 5.0);
-  params.dts       = cmd.get("dts", params.dts);
-  params.dtmax     = cmd.get("dtmax", params.dtmax);
-  params.viscosity = cmd.get("viscosity", params.viscosity);
+  options.lmin      = cmd.get("lmin", 5);
+  options.lmax      = cmd.get("lmax", 10);
+  options.iter      = cmd.get("iter", INT_MAX);
+  options.lip       = cmd.get("lip", 1.2);
+  options.Ca        = cmd.get("Ca", options.Ca);
+  options.cfl       = cmd.get("cfl", 5.0);
+  options.dts       = cmd.get("dts", options.dts);
+  options.dtmax     = cmd.get("dtmax", options.dtmax);
+  options.mue       = cmd.get("mue", options.mue);
+  options.eps       = cmd.get("eps", options.eps);
+  options.sigma     = cmd.get("sigma", options.sigma);
+  options.alpha     = cmd.get("alpha", options.alpha);
+  options.beta      = cmd.get("beta", options.beta);
 }
 
 int main(int argc, char** argv) {
@@ -209,13 +280,13 @@ int main(int argc, char** argv) {
   // setup the parameters
   set_parameters(argc, argv);
 
-  conn = my_p4est_brick_new(params.ntr, params.xmin, params.xmax, &brick);
+  conn = my_p4est_brick_new(options.ntr, options.xmin, options.xmax, &brick);
 
   // create the forest
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
   // refine based on distance to a level-set
-  splitting_criteria_cf_t sp(params.lmin, params.lmax, params.interface, params.lip);
+  splitting_criteria_cf_t sp(options.lmin, options.lmax, options.interface, options.lip);
   p4est->user_pointer = &sp;
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
@@ -228,25 +299,41 @@ int main(int argc, char** argv) {
   // create node structure
   nodes = my_p4est_nodes_new(p4est, ghost);
 
-  // initialize variables
-  Vec phi, press_m, press_p;
+  // initialize variables: 0 --> minus, 1 --> plus
+  Vec phi, pressure[2], potential[2];
   VecCreateGhostNodes(p4est, nodes, &phi);
-  VecCreateGhostNodes(p4est, nodes, &press_m);
-  VecCreateGhostNodes(p4est, nodes, &press_p);
-  sample_cf_on_nodes(p4est, nodes, *params.interface, phi);
+  VecCreateGhostNodes(p4est, nodes, &pressure[0]);
+  VecCreateGhostNodes(p4est, nodes, &pressure[1]);
+  VecCreateGhostNodes(p4est, nodes, &potential[0]);
+  VecCreateGhostNodes(p4est, nodes, &potential[1]);
+  sample_cf_on_nodes(p4est, nodes, *options.interface, phi);
 
   // set up the solver
   coupled_solver_t solver(p4est, ghost, nodes, brick);
-  solver.set_properties(params.viscosity, params.Ca, *params.Q);
-  solver.set_bc_wall(*params.bc_wall_type, *params.bc_wall_value);
+  coupled_solver_t::parameters params = {
+    options.alpha,    // alpha
+    options.beta,     // beta
+    options.Ca,       // Ca
+    options.mue,      // mue
+    options.eps,      // eps
+    options.sigma,    // sigma
+  };
 
-  const char* folder = params.test.c_str();
+  solver.set_parameters(params);
+  solver.set_injection_rates(*options.Q, *options.I);
+  solver.set_boundary_conditions(*options.pressure_bc_type, *options.pressure_bc_value,
+                                 *options.potential_bc_type, *options.potential_bc_value);
+
+  const char* folder = options.test.c_str();
   mkdir(folder, 0755);
   char vtk_name[FILENAME_MAX];
 
   double dt = 0, t = 0;
-  for(int i=0; i<params.iter; i++) {
-    dt = solver.solve_one_step(t, phi, press_m, press_p, params.cfl, params.dtmax);
+  for(int i=0; i<options.iter; i++) {
+    dt = solver.solve_one_step(t, phi,
+                               pressure[0],  pressure[1],
+                               potential[0], potential[1],
+                               options.cfl, options.dtmax);
     t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -255,27 +342,36 @@ int main(int argc, char** argv) {
     PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", i, num_nodes, t, dt);
 
     // save vtk
-    double *phi_p, *press_m_p, *press_p_p;
+    double *phi_p, *pressure_p[2], *potential_p[2];
     VecGetArray(phi, &phi_p);
-    VecGetArray(press_m, &press_m_p);
-    VecGetArray(press_p, &press_p_p);
+    VecGetArray(pressure[0], &pressure_p[0]);
+    VecGetArray(pressure[1], &pressure_p[1]);
+    VecGetArray(potential[0], &potential_p[0]);
+    VecGetArray(potential[1], &potential_p[1]);
 
-    sprintf(vtk_name, "%s/%s_%dd.%04d", folder, params.method.c_str(), P4EST_DIM, i);
+    sprintf(vtk_name, "%s/%s_%dd.%04d", folder, options.method.c_str(), P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
-                           3, 0, vtk_name,
+                           5, 0, vtk_name,
                            VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "press_m", press_m_p,
-                           VTK_POINT_DATA, "press_p", press_p_p);
+                           VTK_POINT_DATA, "pressure_m", pressure_p[0],
+                           VTK_POINT_DATA, "pressure_p", pressure_p[1],
+                           VTK_POINT_DATA, "pressure_m", potential_p[0],
+                           VTK_POINT_DATA, "pressure_p", potential_p[1]);
+
     VecRestoreArray(phi, &phi_p);
-    VecRestoreArray(press_m, &press_m_p);
-    VecRestoreArray(press_p, &press_p_p);
+    VecRestoreArray(pressure[0], &pressure_p[0]);
+    VecRestoreArray(pressure[1], &pressure_p[1]);
+    VecRestoreArray(potential[0], &potential_p[0]);
+    VecRestoreArray(potential[1], &potential_p[1]);
   }
 
   // destroy vectors
   VecDestroy(phi);
-  VecDestroy(press_m);
-  VecDestroy(press_p);
+  VecDestroy(pressure[0]);
+  VecDestroy(pressure[1]);
+  VecDestroy(potential[0]);
+  VecDestroy(potential[1]);
 
   // destroy the structures
   p4est_nodes_destroy(nodes);
