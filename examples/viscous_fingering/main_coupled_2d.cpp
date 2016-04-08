@@ -354,10 +354,10 @@ int main(int argc, char** argv) {
                            P4EST_TRUE, P4EST_TRUE,
                            5, 0, vtk_name,
                            VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "pressure_m", pressure_p[0],
-                           VTK_POINT_DATA, "pressure_p", pressure_p[1],
-                           VTK_POINT_DATA, "pressure_m", potential_p[0],
-                           VTK_POINT_DATA, "pressure_p", potential_p[1]);
+                           VTK_POINT_DATA, "pressure_m",  pressure_p[0],
+                           VTK_POINT_DATA, "pressure_p",  pressure_p[1],
+                           VTK_POINT_DATA, "potential_m", potential_p[0],
+                           VTK_POINT_DATA, "potential_p", potential_p[1]);
 
     VecRestoreArray(phi, &phi_p);
     VecRestoreArray(pressure[0], &pressure_p[0]);

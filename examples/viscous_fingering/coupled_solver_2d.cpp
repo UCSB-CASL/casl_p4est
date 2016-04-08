@@ -180,12 +180,12 @@ double coupled_solver_t::advect_interface(Vec &phi,
   VecDestroy(pressure_p);
   VecDestroy(potential_m);
   VecDestroy(potential_p);
-  VecDuplicate(phi, &pressure_m);
-  VecDuplicate(phi, &pressure_p);
-  VecDuplicate(phi, &potential_m);
-  VecDuplicate(phi, &potential_p);
-
   foreach_dimension(dim) VecDestroy(vx[dim]);
+
+  VecCreateGhostNodes(p4est, nodes, &pressure_m);
+  VecCreateGhostNodes(p4est, nodes, &pressure_p);
+  VecCreateGhostNodes(p4est, nodes, &potential_m);
+  VecCreateGhostNodes(p4est, nodes, &potential_p);
 
   return dt;
 }
