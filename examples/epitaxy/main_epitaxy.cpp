@@ -27,8 +27,8 @@ int main(int argc, char **argv)
   int nx = cmd.get("nx", 2);
   int ny = cmd.get("ny", 2);
   double L = cmd.get("box_size", 180);
-  int lmin = cmd.get("lmin", 6);
-  int lmax = cmd.get("lmax", 6);
+  int lmin = cmd.get("lmin", 4);
+  int lmax = cmd.get("lmax", 7);
   double tf = cmd.get("tf", DBL_MAX);
 
   bool save_vtk = cmd.get("save_vtk", 1);
@@ -53,14 +53,20 @@ int main(int argc, char **argv)
   my_p4est_epitaxy_t epitaxy(ngbd);
   epitaxy.set_parameters(1e5, 1, 1);
 
-  double dt;
   double tn = 0;
   int iter = 0;
 
   while(tn<tf)
   {
-    dt = epitaxy.get_dt();
-    epitaxy.one_step();
+    if(iter!=0)
+    {
+      epitaxy.compute_dt();
+      epitaxy.update_grid();
+      epitaxy.update_nucleation();
+    }
+
+    epitaxy.solve_rho();
+    epitaxy.compute_velocity();
 
     if(save_vtk==true && iter%save_every_n==0)
     {
@@ -68,7 +74,7 @@ int main(int argc, char **argv)
     }
 
     iter++;
-    tn += dt;
+    tn += epitaxy.get_dt();
   }
 
   return 0;

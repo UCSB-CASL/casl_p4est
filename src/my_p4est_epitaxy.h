@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <src/types.h>
+#include <src/math.h>
 
 #include <src/my_p4est_tools.h>
 #include <p4est.h>
@@ -16,8 +17,31 @@ class my_p4est_epitaxy_t
 private:
   PetscErrorCode ierr;
 
+  class circle_t : public CF_2
+  {
+  private:
+    double xc, yc, r;
+    my_p4est_epitaxy_t *prnt;
+  public:
+    circle_t(double xc, double yc, double r, my_p4est_epitaxy_t *prnt) : xc(xc), yc(yc), r(r), prnt(prnt)
+    {
+      lip = 1.2;
+    }
+    double operator()(double x, double y) const
+    {
+      double d = -4*prnt->L;
+      for(int i=-1; i<2; ++i)
+        for(int j=-1; j<2; ++j)
+        {
+          d = MAX(d, r-sqrt( SQR(x+i*prnt->L-xc) + SQR(y+j*prnt->L-yc) ) );
+        }
+      return d;
+    }
+  };
+
   class ZERO : public CF_2
   {
+  public:
     double operator()(double, double) const
     {
       return 0;
@@ -72,8 +96,6 @@ public:
   void update_grid();
 
   void update_nucleation();
-
-  void one_step();
 
   void save_vtk(int iter);
 };
