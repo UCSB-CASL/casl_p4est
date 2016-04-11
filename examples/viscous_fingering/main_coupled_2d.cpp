@@ -324,8 +324,14 @@ int main(int argc, char** argv) {
   solver.set_boundary_conditions(*options.pressure_bc_type, *options.pressure_bc_value,
                                  *options.potential_bc_type, *options.potential_bc_value);
 
-  const char* folder = options.test.c_str();
-  mkdir(folder, 0755);
+  ostringstream folder;
+  folder << options.test << "/"
+         << "alpha_" << options.alpha
+         << "_beta_"  << options.beta
+         << "_mue_"   << options.mue
+         << "_eps_"   << options.eps
+         << "_sigma_" << options.sigma;
+  system(("mkdir -p " + folder.str()).c_str());
   char vtk_name[FILENAME_MAX];
 
   double dt = 0, t = 0;
@@ -349,7 +355,7 @@ int main(int argc, char** argv) {
     VecGetArray(potential[0], &potential_p[0]);
     VecGetArray(potential[1], &potential_p[1]);
 
-    sprintf(vtk_name, "%s/%s_%dd.%04d", folder, options.method.c_str(), P4EST_DIM, i);
+    sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            5, 0, vtk_name,
