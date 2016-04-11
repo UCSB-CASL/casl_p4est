@@ -76,10 +76,10 @@ double coupled_solver_t::advect_interface(Vec &phi,
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 
-    vx_p[0][n] = -(qnnn.dx_central(pressure_m_p) + params.alpha*qnnn.dx_central(potential_m_p));
-    vx_p[1][n] = -(qnnn.dy_central(pressure_m_p) + params.alpha*qnnn.dy_central(potential_m_p));
+    vx_p[0][n] = -(qnnn.dx_central(pressure_p_p) + params.alpha*qnnn.dx_central(potential_p_p));
+    vx_p[1][n] = -(qnnn.dy_central(pressure_p_p) + params.alpha*qnnn.dy_central(potential_p_p));
 #ifdef P4_TO_P8
-    vx_p[2][n] = -(qnnn.dz_central(pressure_m_p) + params.alpha*qnnn.dz_central(potential_m_p));
+    vx_p[2][n] = -(qnnn.dz_central(pressure_p_p) + params.alpha*qnnn.dz_central(potential_p_p));
 #endif
   }
   foreach_dimension(dim)
@@ -91,10 +91,10 @@ double coupled_solver_t::advect_interface(Vec &phi,
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 
-    vx_p[0][n] = -(qnnn.dx_central(pressure_m_p) + params.alpha*qnnn.dx_central(potential_m_p));
-    vx_p[1][n] = -(qnnn.dy_central(pressure_m_p) + params.alpha*qnnn.dy_central(potential_m_p));
+    vx_p[0][n] = -(qnnn.dx_central(pressure_p_p) + params.alpha*qnnn.dx_central(potential_p_p));
+    vx_p[1][n] = -(qnnn.dy_central(pressure_p_p) + params.alpha*qnnn.dy_central(potential_p_p));
 #ifdef P4_TO_P8
-    vx_p[2][n] = -(qnnn.dz_central(pressure_m_p) + params.alpha*qnnn.dz_central(potential_m_p));
+    vx_p[2][n] = -(qnnn.dz_central(pressure_p_p) + params.alpha*qnnn.dz_central(potential_p_p));
 #endif
   }
   foreach_dimension(dim)
@@ -167,8 +167,8 @@ double coupled_solver_t::advect_interface(Vec &phi,
   p4est_np1->user_pointer = sp;
   p4est_ghost_t* ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   p4est_nodes_t* nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, &neighbors);
 
+  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, &neighbors);
   sl.update_p4est(vx, dt, phi);
 
   // destroy old quantities and swap pointers
@@ -231,11 +231,11 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
-    double r = sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2]));
+    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])), 1e-6);
     pressure_star[n]  = ((*Q)(t)-params.alpha*(*I)(t))/(1-params.alpha*params.beta)/(4*PI*r);
     potential_star[n] = ((*I)(t)-params.beta*(*Q)(t))/(1-params.alpha*params.beta)/(4*PI*r);
 #else
-    double r = sqrt(SQR(x[0]) + SQR(x[1]));
+    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), 1e-6);
     pressure_star[n]  = ((*Q)(t)-params.alpha*(*I)(t))/(1-params.alpha*params.beta)/(2*PI)*log(r);
     potential_star[n] = ((*I)(t)-params.beta*(*Q)(t))/(1-params.alpha*params.beta)/(2*PI)*log(r);
 #endif
@@ -332,8 +332,8 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
 #endif
   constant_cf_t km[][2] =
   {
-    { constant_cf_t(1), constant_cf_t(params.alpha) },
-    { constant_cf_t(params.beta), constant_cf_t(1)  },
+    { constant_cf_t(1/params.mue), constant_cf_t(params.alpha*params.eps/params.mue) },
+    { constant_cf_t(params.beta*params.eps/params.mue), constant_cf_t(params.sigma)  },
   };
   vector<vector<cf_t*>> mue_m(2,vector<cf_t*>(2));
   mue_m[0][0] = &km[0][0];
@@ -343,8 +343,8 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
 
   constant_cf_t kp[][2] =
   {
-    { constant_cf_t(1/params.mue), constant_cf_t(params.alpha*params.eps/params.mue) },
-    { constant_cf_t(params.beta*params.eps/params.mue), constant_cf_t(params.sigma)  },
+    { constant_cf_t(1), constant_cf_t(params.alpha) },
+    { constant_cf_t(params.beta), constant_cf_t(1)  },
   };
   vector<vector<cf_t*>> mue_p(2,vector<cf_t*>(2));
   mue_p[0][0] = &kp[0][0];
