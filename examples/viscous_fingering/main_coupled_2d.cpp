@@ -216,7 +216,7 @@ void set_options(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double x, double y) const {
         double r = sqrt(SQR(x)+SQR(y));
-        return -Q(t)/(2*PI) * log(r);
+        return -I(t)/(2*PI) * log(r);
       }
     } potential_bc_value; potential_bc_value.t = 0;
 #endif

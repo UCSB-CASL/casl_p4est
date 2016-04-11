@@ -232,12 +232,12 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
     double r = MAX(sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])), 1e-6);
-    pressure_star[n]  = ((*Q)(t)-params.alpha*(*I)(t))/(1-params.alpha*params.beta)/(4*PI*r);
-    potential_star[n] = ((*I)(t)-params.beta*(*Q)(t))/(1-params.alpha*params.beta)/(4*PI*r);
+    pressure_star[n]  = ((*Q)(t)-params.alpha*(*I)(t))/(1.0-params.alpha*params.beta)/(4*PI*r);
+    potential_star[n] = ((*I)(t)-params.beta*(*Q)(t))/(1.0-params.alpha*params.beta)/(4*PI*r);
 #else
     double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), 1e-6);
-    pressure_star[n]  = ((*Q)(t)-params.alpha*(*I)(t))/(1-params.alpha*params.beta)/(2*PI)*log(r);
-    potential_star[n] = ((*I)(t)-params.beta*(*Q)(t))/(1-params.alpha*params.beta)/(2*PI)*log(r);
+    pressure_star[n]  = ((*Q)(t)-params.alpha*(*I)(t))/(1.0-params.alpha*params.beta)/(2*PI)*log(r);
+    potential_star[n] = ((*I)(t)-params.beta*(*Q)(t))/(1.0-params.alpha*params.beta)/(2*PI)*log(r);
 #endif
   }
 
@@ -247,7 +247,7 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   VecGetArray(jump[0], &jump_p[0]);
   VecGetArray(jump[1], &jump_p[1]);
   foreach_node(n, nodes) {
-    jump_p[0][n]  = pressure_star[n] - 1.0/params.Ca*kappa_p[n];
+    jump_p[0][n]  = pressure_star[n] - params.mue/params.Ca*kappa_p[n];
     jump_p[1][n]  = potential_star[n];
   }
   VecRestoreArray(jump[0], &jump_p[0]);
