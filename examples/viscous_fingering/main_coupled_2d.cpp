@@ -52,7 +52,7 @@ static struct {
   cf_t *pressure_bc_value, *potential_bc_value;
 } options;
 
-void set_parameters(int argc, char **argv) {
+void set_options(int argc, char **argv) {
   // parse input parameters
   cmdParser cmd;
   cmd.add_option("lmin", "min level");
@@ -278,7 +278,7 @@ int main(int argc, char** argv) {
   my_p4est_brick_t      brick;
 
   // setup the parameters
-  set_parameters(argc, argv);
+  set_options(argc, argv);
 
   conn = my_p4est_brick_new(options.ntr, options.xmin, options.xmax, &brick);
 
@@ -325,7 +325,7 @@ int main(int argc, char** argv) {
                                  *options.potential_bc_type, *options.potential_bc_value);
 
   ostringstream folder;
-  folder << options.test << "/"
+  folder << options.test << "/coupled/"
          << "alpha_" << options.alpha
          << "_beta_"  << options.beta
          << "_mue_"   << options.mue

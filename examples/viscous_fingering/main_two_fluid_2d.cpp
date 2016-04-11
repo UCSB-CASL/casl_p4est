@@ -47,9 +47,9 @@ static struct {
   cf_t *interface, *bc_wall_value;
   CF_1 *Q;
   wall_bc_t *bc_wall_type;
-} params;
+} options;
 
-void set_parameters(int argc, char **argv) {
+void set_options(int argc, char **argv) {
   // parse input parameters
   cmdParser cmd;
   cmd.add_option("lmin", "min level");
@@ -68,15 +68,15 @@ void set_parameters(int argc, char **argv) {
 
   cmd.parse(argc, argv);
 
-  params.test = cmd.get<string>("test", "FastShelley04_Fig12");
-  params.method = cmd.get<string>("method", "voronoi");
+  options.test = cmd.get<string>("test", "FastShelley04_Fig12");
+  options.method = cmd.get<string>("method", "voronoi");
 
   // set default values
-  params.ntr[0]  = params.ntr[1]  = params.ntr[2]  =  1;
-  params.xmin[0] = params.xmin[1] = params.xmin[2] = -1;
-  params.xmax[0] = params.xmax[1] = params.xmax[2] =  1;
+  options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
+  options.xmin[0] = options.xmin[1] = options.xmin[2] = -1;
+  options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
 
-  if (params.test == "circle") {
+  if (options.test == "circle") {
     // set interface
 #ifdef P4_TO_P8
 #else        
@@ -88,7 +88,7 @@ void set_parameters(int argc, char **argv) {
       double operator()(double x, double y) const {
         return 0.25 - sqrt(SQR(x)+SQR(y));
       }
-    } interface; interface.lip = params.lip;
+    } interface; interface.lip = options.lip;
 
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
@@ -99,19 +99,19 @@ void set_parameters(int argc, char **argv) {
     } bc_wall_value;
 #endif
 
-    params.Q             = &Q;
-    params.interface     = &interface;
-    params.bc_wall_type  = &bc_wall_type;
-    params.bc_wall_value = &bc_wall_value;
-    params.dtmax         = 5e-3;
-    params.dts           = 1e-1;
-    params.Ca            = 250;
-    params.viscosity     = 1;
+    options.Q             = &Q;
+    options.interface     = &interface;
+    options.bc_wall_type  = &bc_wall_type;
+    options.bc_wall_value = &bc_wall_value;
+    options.dtmax         = 5e-3;
+    options.dts           = 1e-1;
+    options.Ca            = 250;
+    options.viscosity     = 1;
 
-  } else if (params.test == "FastShelley04_Fig12") {
+  } else if (options.test == "FastShelley04_Fig12") {
 
-    params.xmin[0] = params.xmin[1] = params.xmin[2] = -10;
-    params.xmax[0] = params.xmax[1] = params.xmax[2] =  10;
+    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10;
+    options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
 
 #ifdef P4_TO_P8
 #else
@@ -126,7 +126,7 @@ void set_parameters(int argc, char **argv) {
 
         return 1.0+0.1*(cos(3*theta)+sin(2*theta)) - r;
       }
-    } interface; interface.lip = params.lip;
+    } interface; interface.lip = options.lip;
 
 #if 0
     static struct:wall_bc_t{
@@ -164,29 +164,29 @@ void set_parameters(int argc, char **argv) {
 #endif
 
     // set parameters specific to this test
-    params.Q              = &Q;
-    params.interface      = &interface;
-    params.bc_wall_type   = &bc_wall_type;
-    params.bc_wall_value  = &bc_wall_value;
-    params.dtmax          = 5e-3;
-    params.dts            = 1e-1;
-    params.Ca             = 250;
-    params.viscosity      = 1;
+    options.Q              = &Q;
+    options.interface      = &interface;
+    options.bc_wall_type   = &bc_wall_type;
+    options.bc_wall_value  = &bc_wall_value;
+    options.dtmax          = 5e-3;
+    options.dts            = 1e-1;
+    options.Ca             = 250;
+    options.viscosity      = 1;
 
   } else {
     throw std::invalid_argument("Unknown test");
   }
 
   // overwrite default values from stdin
-  params.lmin      = cmd.get("lmin", 5);
-  params.lmax      = cmd.get("lmax", 10);
-  params.iter      = cmd.get("iter", INT_MAX);
-  params.lip       = cmd.get("lip", 1.2);
-  params.Ca        = cmd.get("Ca", params.Ca);
-  params.cfl       = cmd.get("cfl", 5.0);
-  params.dts       = cmd.get("dts", params.dts);
-  params.dtmax     = cmd.get("dtmax", params.dtmax);
-  params.viscosity = cmd.get("viscosity", params.viscosity);
+  options.lmin      = cmd.get("lmin", 5);
+  options.lmax      = cmd.get("lmax", 10);
+  options.iter      = cmd.get("iter", INT_MAX);
+  options.lip       = cmd.get("lip", 1.2);
+  options.Ca        = cmd.get("Ca", options.Ca);
+  options.cfl       = cmd.get("cfl", 5.0);
+  options.dts       = cmd.get("dts", options.dts);
+  options.dtmax     = cmd.get("dtmax", options.dtmax);
+  options.viscosity = cmd.get("viscosity", options.viscosity);
 }
 
 int main(int argc, char** argv) {
@@ -207,15 +207,15 @@ int main(int argc, char** argv) {
   my_p4est_brick_t      brick;
 
   // setup the parameters
-  set_parameters(argc, argv);
+  set_options(argc, argv);
 
-  conn = my_p4est_brick_new(params.ntr, params.xmin, params.xmax, &brick);
+  conn = my_p4est_brick_new(options.ntr, options.xmin, options.xmax, &brick);
 
   // create the forest
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
   // refine based on distance to a level-set
-  splitting_criteria_cf_t sp(params.lmin, params.lmax, params.interface, params.lip);
+  splitting_criteria_cf_t sp(options.lmin, options.lmax, options.interface, options.lip);
   p4est->user_pointer = &sp;
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
@@ -233,20 +233,23 @@ int main(int argc, char** argv) {
   VecCreateGhostNodes(p4est, nodes, &phi);
   VecCreateGhostNodes(p4est, nodes, &press_m);
   VecCreateGhostNodes(p4est, nodes, &press_p);
-  sample_cf_on_nodes(p4est, nodes, *params.interface, phi);
+  sample_cf_on_nodes(p4est, nodes, *options.interface, phi);
 
   // set up the solver
   two_fluid_solver_t solver(p4est, ghost, nodes, brick);
-  solver.set_properties(params.viscosity, params.Ca, *params.Q);
-  solver.set_bc_wall(*params.bc_wall_type, *params.bc_wall_value);
+  solver.set_properties(options.viscosity, options.Ca, *options.Q);
+  solver.set_bc_wall(*options.bc_wall_type, *options.bc_wall_value);
 
-  const char* folder = params.test.c_str();
-  mkdir(folder, 0755);
+
+  ostringstream folder;
+  folder << options.test << "/two_fluid/"
+         << "mue_"   << options.viscosity;
+  system(("mkdir -p " + folder.str()).c_str());
   char vtk_name[FILENAME_MAX];
 
   double dt = 0, t = 0;
-  for(int i=0; i<params.iter; i++) {
-    dt = solver.solve_one_step(t, phi, press_m, press_p, params.cfl, params.dtmax, params.method);
+  for(int i=0; i<options.iter; i++) {
+    dt = solver.solve_one_step(t, phi, press_m, press_p, options.cfl, options.dtmax, options.method);
     t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -260,7 +263,7 @@ int main(int argc, char** argv) {
     VecGetArray(press_m, &press_m_p);
     VecGetArray(press_p, &press_p_p);
 
-    sprintf(vtk_name, "%s/%s_%dd.%04d", folder, params.method.c_str(), P4EST_DIM, i);
+    sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            3, 0, vtk_name,
