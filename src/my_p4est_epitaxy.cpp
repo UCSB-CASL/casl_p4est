@@ -369,7 +369,8 @@ void my_p4est_epitaxy_t::update_nucleation()
   ierr = VecDestroy(ones); CHKERRXX(ierr);
 
   /* check for new island */
-  if(floor(Nuc*L*L) != floor(new_Nuc*L*L))
+//  if(floor(Nuc*L*L) != floor(new_Nuc*L*L))
+  if(floor(Nuc) != floor(new_Nuc))
   {
     ierr = PetscPrintf(p4est->mpicomm, "Nucleating new island !\n"); CHKERRXX(ierr);
     double xc, yc;
