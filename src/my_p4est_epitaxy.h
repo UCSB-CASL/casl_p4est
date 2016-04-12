@@ -60,6 +60,7 @@ private:
 
   std::vector<Vec> phi;
   std::vector<Vec> rho;
+  std::vector<Vec> rho_np1;
   std::vector<Vec> v[2];
 
   double dt_n;
@@ -67,8 +68,10 @@ private:
   double F;
   double sigma1;
   double Nuc;
+  double Nuc_np1;
   double L;
   int new_island;
+  double island_nucleation_scaling;
 
   double alpha;
   double rho_avg;
@@ -87,15 +90,22 @@ public:
 
   inline double get_dt() { return dt_n; }
 
-  void compute_velocity();
+  inline p4est_t* get_p4est() { return p4est; }
 
-  void solve_rho();
+  void compute_velocity();
 
   void compute_dt();
 
   void update_grid();
 
+  void solve_rho();
+
   void update_nucleation();
+
+  void nucleate_new_island();
+
+  /* return true if the time step is fine, false otherwise */
+  bool check_time_step();
 
   void save_vtk(int iter);
 };

@@ -22,6 +22,7 @@ int main(int argc, char **argv)
   cmd.add_option("save_every_n", "save vtk every n iteration");
   cmd.add_option("tf", "final time");
   cmd.add_option("box_size", "set box_size");
+  cmd.add_option("D", "the diffusion coefficient, ");
   cmd.parse(argc, argv);
 
   int nx = cmd.get("nx", 2);
@@ -66,18 +67,27 @@ int main(int argc, char **argv)
 
   double tn = 0;
   int iter = 0;
+  PetscErrorCode ierr;
 
   while(tn<tf)
   {
+    p4est = epitaxy.get_p4est();
+    ierr = PetscPrintf(p4est->mpicomm, "###########################################\n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Iteration #%d, tn = %e\n", iter, tn); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "###########################################\n"); CHKERRXX(ierr);
     if(iter!=0)
     {
+      epitaxy.compute_velocity();
       epitaxy.compute_dt();
       epitaxy.update_grid();
-      epitaxy.update_nucleation();
+      epitaxy.nucleate_new_island();
     }
 
-    epitaxy.solve_rho();
-    epitaxy.compute_velocity();
+    do
+    {
+      epitaxy.solve_rho();
+      epitaxy.update_nucleation();
+    } while(!epitaxy.check_time_step());
 
     if(save_vtk==true && iter%save_every_n==0)
     {
