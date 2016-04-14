@@ -557,7 +557,7 @@ double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t 
 /*!
  * \brief area_in_negative_domain_in_one_quadrant
  */
-double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
+double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
 
 /*!
  * \brief area_in_negative_domain compute the area of the negative domain defined by phi
@@ -572,7 +572,7 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
 /*!
  * \brief integrate_over_interface_in_one_quadrant
  */
-double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.
@@ -584,6 +584,20 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief interface_length_in_one_quadrant
+ */
+double interface_length_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
+
+/*!
+ * \brief interface_length
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \return the length (or area in 3D) of the contour defined by phi
+ */
+double interface_length(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi);
 
 /*!
  * \brief is_node_xmWall checks if a node is on x^- domain boundary

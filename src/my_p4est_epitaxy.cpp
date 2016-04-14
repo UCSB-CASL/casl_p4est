@@ -1,6 +1,7 @@
 #include "my_p4est_epitaxy.h"
 
 #include <random>
+#include <stack>
 
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_level_set.h>
@@ -50,6 +51,7 @@ my_p4est_epitaxy_t::my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd)
   L = xyz_max[0]-xyz_min[0];
 
   island_nucleation_scaling = 1;
+//  island_nucleation_scaling = L*L;
 }
 
 
@@ -154,6 +156,184 @@ void my_p4est_epitaxy_t::compute_velocity()
 }
 
 
+void my_p4est_epitaxy_t::fill_island(const double *phi_p, std::vector<int> &color, int col, size_t n)
+{
+  std::stack<size_t> st;
+  st.push(n);
+  quad_neighbor_nodes_of_node_t qnnn;
+  while(!st.empty())
+  {
+    size_t k = st.top();
+    st.pop();
+    color[k] = col;
+    ngbd->get_neighbors(k, qnnn);
+    if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && color[qnnn.node_m00_mm]==0) st.push(qnnn.node_m00_mm);
+    if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && color[qnnn.node_m00_pm]==0) st.push(qnnn.node_m00_pm);
+    if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && color[qnnn.node_p00_mm]==0) st.push(qnnn.node_p00_mm);
+    if(qnnn.node_p00_pm<nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]>0 && color[qnnn.node_p00_pm]==0) st.push(qnnn.node_p00_pm);
+
+    if(qnnn.node_0m0_mm<nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]>0 && color[qnnn.node_0m0_mm]==0) st.push(qnnn.node_0m0_mm);
+    if(qnnn.node_0m0_pm<nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]>0 && color[qnnn.node_0m0_pm]==0) st.push(qnnn.node_0m0_pm);
+    if(qnnn.node_0p0_mm<nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]>0 && color[qnnn.node_0p0_mm]==0) st.push(qnnn.node_0p0_mm);
+    if(qnnn.node_0p0_pm<nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]>0 && color[qnnn.node_0p0_pm]==0) st.push(qnnn.node_0p0_pm);
+  }
+}
+
+
+void my_p4est_epitaxy_t::compute_average_islands_velocity()
+{
+  if(phi.size()==0)
+    return;
+
+  Vec phi_tmp;
+  ierr = VecDuplicate(rho_g, &phi_tmp); CHKERRXX(ierr);
+
+  Vec vn;
+  ierr = VecDuplicate(rho_g, &vn); CHKERRXX(ierr);
+
+  std::vector<int> color(nodes->num_owned_indeps);
+  my_p4est_level_set_t ls(ngbd);
+
+  for(unsigned int level=0; level<phi.size(); ++level)
+  {
+    int nb_col = 1;
+    std::fill(color.begin(), color.end(), 0);
+    const double *phi_p;
+    ierr = VecGetArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
+
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      if(phi_p[n]>0 && color[n]==0)
+      {
+        fill_island(phi_p, color, nb_col, n);
+        nb_col++;
+      }
+    }
+    ierr = VecRestoreArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
+
+    /* first compute the normal velocity for this level */
+    double *vn_p;
+    ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
+    double *v_p[2];
+    ierr = VecGetArray(v[0][level], &v_p[0]); CHKERRXX(ierr);
+    ierr = VecGetArray(v[1][level], &v_p[1]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
+    quad_neighbor_nodes_of_node_t qnnn;
+    for(size_t i=0; i<ngbd->get_layer_size(); ++i)
+    {
+      p4est_locidx_t n = ngbd->get_layer_node(i);
+      ngbd->get_neighbors(n, qnnn);
+      double nx = -qnnn.dx_central(phi_p);
+      double ny = -qnnn.dy_central(phi_p);
+      double norm = sqrt(nx*nx+ny*ny);
+      if(norm>EPS) { nx /= norm; ny /= norm; }
+      else         { nx = 0; ny = 0; }
+      vn_p[n] = v_p[0][n]*nx + v_p[1][n]*ny;
+    }
+    ierr = VecGhostUpdateBegin(vn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(size_t i=0; i<ngbd->get_local_size(); ++i)
+    {
+      p4est_locidx_t n = ngbd->get_local_node(i);
+      ngbd->get_neighbors(n, qnnn);
+      double nx = -qnnn.dx_central(phi_p);
+      double ny = -qnnn.dy_central(phi_p);
+      double norm = sqrt(nx*nx+ny*ny);
+      if(norm>EPS) { nx /= norm; ny /= norm; }
+      else         { nx = 0; ny = 0; }
+      vn_p[n] = v_p[0][n]*nx + v_p[1][n]*ny;
+    }
+    ierr = VecGhostUpdateEnd(vn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(vn, &vn_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(v[0][level], &v_p[0]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(v[1][level], &v_p[1]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
+
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &nb_col, 1, MPI_INT, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+    /* for each color/island, compute average velocity */
+    for(int col=1; col<nb_col; ++col)
+    {
+      /* first build level-set function */
+      double *phi_tmp_p;
+      ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+        phi_tmp_p[n] = color[n]==col ? -1 : 1;
+      }
+      ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+
+      ls.reinitialize_1st_order_time_2nd_order_space(phi_tmp);
+
+      /* compute the average normal velocity for this island */
+      double vn_avg = integrate_over_interface(p4est, nodes, phi_tmp, vn) / interface_length(p4est, nodes, phi_tmp);
+
+      /* set the velocity inside the corresponding island */
+      ierr = VecGetArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
+      ierr = VecGetArray(v[0][level], &v_p[0]); CHKERRXX(ierr);
+      ierr = VecGetArray(v[1][level], &v_p[1]); CHKERRXX(ierr);
+
+      for(size_t i=0; i<ngbd->get_layer_size(); ++i)
+      {
+        p4est_locidx_t n = ngbd->get_layer_node(i);
+        if(color[n]==col)
+        {
+          ngbd->get_neighbors(n, qnnn);
+          double nx = -qnnn.dx_central(phi_p);
+          double ny = -qnnn.dy_central(phi_p);
+          double norm = sqrt(nx*nx+ny*ny);
+          if(norm>EPS) { nx /= norm; ny /= norm; }
+          else         { nx = 0; ny = 0; }
+          v_p[0][n] = vn_avg*nx;
+          v_p[1][n] = vn_avg*ny;
+        }
+      }
+      ierr = VecGhostUpdateBegin(v[0][level], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(v[1][level], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      for(size_t i=0; i<ngbd->get_local_size(); ++i)
+      {
+        p4est_locidx_t n = ngbd->get_local_node(i);
+        if(color[n]==col)
+        {
+          ngbd->get_neighbors(n, qnnn);
+          double nx = -qnnn.dx_central(phi_p);
+          double ny = -qnnn.dy_central(phi_p);
+          double norm = sqrt(nx*nx+ny*ny);
+          if(norm>EPS) { nx /= norm; ny /= norm; }
+          else         { nx = 0; ny = 0; }
+          v_p[0][n] = vn_avg*nx;
+          v_p[1][n] = vn_avg*ny;
+        }
+      }
+      ierr = VecGhostUpdateEnd(v[0][level], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd(v[1][level], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      ierr = VecRestoreArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(v[0][level], &v_p[0]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(v[1][level], &v_p[1]); CHKERRXX(ierr);
+    }
+
+    /* Extend the velocity accross the interface for continuous velocity field */
+    double *phi_neg_p;
+    ierr = VecGetArray(phi[level], &phi_neg_p); CHKERRXX(ierr);
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      phi_neg_p[n] *= -1;
+    ierr = VecRestoreArray(phi[level], &phi_neg_p); CHKERRXX(ierr);
+
+    ls.extend_Over_Interface_TVD(phi[level], v[0][level], 20, 0);
+    ls.extend_Over_Interface_TVD(phi[level], v[1][level], 20, 0);
+
+    ierr = VecGetArray(phi[level], &phi_neg_p); CHKERRXX(ierr);
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      phi_neg_p[n] *= -1;
+    ierr = VecRestoreArray(phi[level], &phi_neg_p); CHKERRXX(ierr);
+  }
+
+  ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
+}
+
+
 
 void my_p4est_epitaxy_t::compute_dt()
 {
@@ -175,6 +355,7 @@ void my_p4est_epitaxy_t::compute_dt()
       ierr = VecMin(v[1][i], NULL, &m); CHKERRXX(ierr);
       vmax = MAX(vmax, fabs(M), fabs(m));
     }
+    ierr = PetscPrintf(p4est->mpicomm, "Maximum velocity = %e\n", vmax); CHKERRXX(ierr);
 
     if(vmax>EPS)
     {
@@ -305,8 +486,8 @@ void my_p4est_epitaxy_t::solve_rho()
 
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
-        rhs_p[n] = rho_p[n] + dt_n*(F - new_island*2*D*sigma1*rho_sqr_avg);
-//        rhs_p[n] = rho_p[n] + dt_n*(F - .01*new_island*2*D*sigma1*SQR(rho_p[n]));
+//        rhs_p[n] = rho_p[n] + dt_n*(F - new_island*2*D*sigma1*rho_sqr_avg);
+        rhs_p[n] = rho_p[n] + dt_n*(F - .1*new_island*2*D*sigma1*SQR(rho_p[n]));
 
         phi_i_p[n] = -4*L;
         if(level<phi.size()) phi_i_p[n] = phi_p[level][n];
@@ -332,17 +513,18 @@ void my_p4est_epitaxy_t::solve_rho()
       ls.extend_Over_Interface_TVD(phi_i, rho_np1[level]);
 
       double *rho_g_p;
+      const double *rho_np1_p;
       ierr = VecGetArray(rho_g, &rho_g_p); CHKERRXX(ierr);
       ierr = VecGetArray(phi_i, &phi_i_p); CHKERRXX(ierr);
-      ierr = VecGetArrayRead(rho_np1[level], &rho_p); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(rho_np1[level], &rho_np1_p); CHKERRXX(ierr);
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
         if(phi_i_p[n]<0)
-          rho_g_p[n] = rho_p[n];
+          rho_g_p[n] = rho_np1_p[n];
       }
       ierr = VecRestoreArray(rho_g, &rho_g_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(phi_i, &phi_i_p); CHKERRXX(ierr);
-      ierr = VecRestoreArrayRead(rho_np1[level], &rho_p); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(rho_np1[level], &rho_np1_p); CHKERRXX(ierr);
     }
 
     for(unsigned int i=0; i<phi.size(); ++i)
@@ -371,8 +553,8 @@ void my_p4est_epitaxy_t::update_nucleation()
   ierr = VecSet(loc, -1); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(ones, &loc); CHKERRXX(ierr);
 
-  rho_avg = integrate_over_negative_domain(p4est, nodes, ones, rho_g)/(L*L);
-  sigma1 = 4*PI/log((1/alpha)*rho_avg*D/F);
+  rho_avg_np1 = integrate_over_negative_domain(p4est, nodes, ones, rho_g)/(L*L);
+  sigma1_np1 = 4*PI/log((1/alpha)*rho_avg_np1*D/F);
 
   Vec rho_sqr;
   ierr = VecDuplicate(rho[0], &rho_sqr); CHKERRXX(ierr);
@@ -387,9 +569,9 @@ void my_p4est_epitaxy_t::update_nucleation()
   ierr = VecRestoreArray(rho_sqr, &rho_sqr_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(rho_g, &rho_g_p); CHKERRXX(ierr);
 
-  rho_sqr_avg = integrate_over_negative_domain(p4est, nodes, ones, rho_sqr)/(L*L);
+  rho_sqr_avg_np1 = integrate_over_negative_domain(p4est, nodes, ones, rho_sqr)/(L*L);
 
-  Nuc_np1 = Nuc + dt_n * D*sigma1*rho_sqr_avg;
+  Nuc_np1 = Nuc + dt_n * D*sigma1_np1*rho_sqr_avg_np1;
 
   ierr = VecDestroy(rho_sqr); CHKERRXX(ierr);
   ierr = VecDestroy(ones); CHKERRXX(ierr);
@@ -403,7 +585,7 @@ void my_p4est_epitaxy_t::nucleate_new_island()
   {
     ierr = PetscPrintf(p4est->mpicomm, "Nucleating new island !\n"); CHKERRXX(ierr);
     double xc, yc;
-    double r = 2*dxyz[0];
+    double r = 4*dxyz[0];
 
     /* first island created */
     if(phi.size()==0)
@@ -607,7 +789,11 @@ void my_p4est_epitaxy_t::nucleate_new_island()
   {
     ierr = VecDuplicate(rho_g, &rho_np1[i]); CHKERRXX(ierr);
   }
+
   Nuc = Nuc_np1;
+  sigma1 = sigma1_np1;
+  rho_sqr_avg = rho_sqr_avg_np1;
+  rho_avg = rho_avg_np1;
 }
 
 

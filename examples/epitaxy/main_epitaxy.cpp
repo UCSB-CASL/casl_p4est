@@ -78,6 +78,7 @@ int main(int argc, char **argv)
     if(iter!=0)
     {
       epitaxy.compute_velocity();
+      epitaxy.compute_average_islands_velocity();
       epitaxy.compute_dt();
       epitaxy.update_grid();
       epitaxy.nucleate_new_island();
@@ -96,6 +97,7 @@ int main(int argc, char **argv)
 
     iter++;
     tn += epitaxy.get_dt();
+//    if(iter==6) break;
   }
 
   return 0;

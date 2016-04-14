@@ -67,6 +67,7 @@ private:
   double D;
   double F;
   double sigma1;
+  double sigma1_np1;
   double Nuc;
   double Nuc_np1;
   double L;
@@ -75,11 +76,15 @@ private:
 
   double alpha;
   double rho_avg;
+  double rho_avg_np1;
   double rho_sqr_avg;
+  double rho_sqr_avg_np1;
 
   double dxyz[P4EST_DIM];
   double xyz_min[P4EST_DIM];
   double xyz_max[P4EST_DIM];
+
+  void fill_island(const double *phi_p, std::vector<int> &color, int col, size_t n);
 
 public:
   my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd);
@@ -93,6 +98,8 @@ public:
   inline p4est_t* get_p4est() { return p4est; }
 
   void compute_velocity();
+
+  void compute_average_islands_velocity();
 
   void compute_dt();
 
