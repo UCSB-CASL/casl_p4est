@@ -62,6 +62,8 @@ private:
   std::vector<Vec> rho;
   std::vector<Vec> rho_np1;
   std::vector<Vec> v[2];
+  std::vector<Vec> island_number;
+  std::vector<int> islands_per_level;
 
   double dt_n;
   double D;
@@ -84,7 +86,8 @@ private:
   double xyz_min[P4EST_DIM];
   double xyz_max[P4EST_DIM];
 
-  void fill_island(const double *phi_p, std::vector<int> &color, int col, size_t n);
+  /* return false if the island already exists in the boundary layer, true otherwise if it's a new island */
+  bool fill_island(const double *phi_p, double *island_number_p, int col, size_t n);
 
 public:
   my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd);
@@ -111,8 +114,24 @@ public:
 
   void nucleate_new_island();
 
-  /* return true if the time step is fine, false otherwise */
+  int compute_islands_numbers();
+
+  /*!
+   * \brief check_time_step
+   * \return true if the time step is fine, false otherwise
+   *    criteria for "time step is fine" are
+   *      - rho_g is positive everywhere
+   *      - no more than 1 island is to be nucleated
+   */
   bool check_time_step();
+
+  /*!
+   * \brief compute_coverate
+   * \return the fraction of the domain covered by islands
+   */
+  double compute_coverage();
+
+  void compute_statistics();
 
   void save_vtk(int iter);
 };

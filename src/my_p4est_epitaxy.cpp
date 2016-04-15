@@ -1,5 +1,6 @@
 #include "my_p4est_epitaxy.h"
 
+#include <time.h>
 #include <random>
 #include <stack>
 
@@ -156,27 +157,124 @@ void my_p4est_epitaxy_t::compute_velocity()
 }
 
 
-void my_p4est_epitaxy_t::fill_island(const double *phi_p, std::vector<int> &color, int col, size_t n)
+bool my_p4est_epitaxy_t::fill_island(const double *phi_p, double *island_number_p, int number, size_t n)
 {
   std::stack<size_t> st;
-  st.push(n);
   quad_neighbor_nodes_of_node_t qnnn;
+  int existing_number = number;
+
+  st.push(n);
   while(!st.empty())
   {
     size_t k = st.top();
     st.pop();
-    color[k] = col;
+    island_number_p[k] = number;
     ngbd->get_neighbors(k, qnnn);
-    if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && color[qnnn.node_m00_mm]==0) st.push(qnnn.node_m00_mm);
-    if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && color[qnnn.node_m00_pm]==0) st.push(qnnn.node_m00_pm);
-    if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && color[qnnn.node_p00_mm]==0) st.push(qnnn.node_p00_mm);
-    if(qnnn.node_p00_pm<nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]>0 && color[qnnn.node_p00_pm]==0) st.push(qnnn.node_p00_pm);
+    if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && island_number_p[qnnn.node_m00_mm]==0) st.push(qnnn.node_m00_mm);
+    if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && island_number_p[qnnn.node_m00_pm]==0) st.push(qnnn.node_m00_pm);
+    if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && island_number_p[qnnn.node_p00_mm]==0) st.push(qnnn.node_p00_mm);
+    if(qnnn.node_p00_pm<nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]>0 && island_number_p[qnnn.node_p00_pm]==0) st.push(qnnn.node_p00_pm);
 
-    if(qnnn.node_0m0_mm<nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]>0 && color[qnnn.node_0m0_mm]==0) st.push(qnnn.node_0m0_mm);
-    if(qnnn.node_0m0_pm<nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]>0 && color[qnnn.node_0m0_pm]==0) st.push(qnnn.node_0m0_pm);
-    if(qnnn.node_0p0_mm<nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]>0 && color[qnnn.node_0p0_mm]==0) st.push(qnnn.node_0p0_mm);
-    if(qnnn.node_0p0_pm<nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]>0 && color[qnnn.node_0p0_pm]==0) st.push(qnnn.node_0p0_pm);
+    if(qnnn.node_0m0_mm<nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]>0 && island_number_p[qnnn.node_0m0_mm]==0) st.push(qnnn.node_0m0_mm);
+    if(qnnn.node_0m0_pm<nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]>0 && island_number_p[qnnn.node_0m0_pm]==0) st.push(qnnn.node_0m0_pm);
+    if(qnnn.node_0p0_mm<nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]>0 && island_number_p[qnnn.node_0p0_mm]==0) st.push(qnnn.node_0p0_mm);
+    if(qnnn.node_0p0_pm<nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]>0 && island_number_p[qnnn.node_0p0_pm]==0) st.push(qnnn.node_0p0_pm);
+
+    /* check if island already exists */
+    if(qnnn.node_m00_mm>=nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && island_number_p[qnnn.node_m00_mm]!=0) existing_number = island_number_p[qnnn.node_m00_mm];
+    if(qnnn.node_m00_pm>=nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && island_number_p[qnnn.node_m00_pm]!=0) existing_number = island_number_p[qnnn.node_m00_pm];
+    if(qnnn.node_p00_mm>=nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && island_number_p[qnnn.node_p00_mm]!=0) existing_number = island_number_p[qnnn.node_p00_mm];
+    if(qnnn.node_p00_pm>=nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]>0 && island_number_p[qnnn.node_p00_pm]!=0) existing_number = island_number_p[qnnn.node_p00_pm];
+
+    if(qnnn.node_0m0_mm>=nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]>0 && island_number_p[qnnn.node_0m0_mm]!=0) existing_number = island_number_p[qnnn.node_0m0_mm];
+    if(qnnn.node_0m0_pm>=nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]>0 && island_number_p[qnnn.node_0m0_pm]!=0) existing_number = island_number_p[qnnn.node_0m0_pm];
+    if(qnnn.node_0p0_mm>=nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]>0 && island_number_p[qnnn.node_0p0_mm]!=0) existing_number = island_number_p[qnnn.node_0p0_mm];
+    if(qnnn.node_0p0_pm>=nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]>0 && island_number_p[qnnn.node_0p0_pm]!=0) existing_number = island_number_p[qnnn.node_0p0_pm];
   }
+
+  if(existing_number!=number)
+  {
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      if(island_number_p[n]==number)
+        island_number_p[n] = existing_number;
+    }
+    return false;
+  }
+  else
+    return true;
+}
+
+
+int my_p4est_epitaxy_t::compute_islands_numbers()
+{
+  int nb_islands = 0;
+  for(unsigned int level=0; level<phi.size(); ++level)
+  {
+    Vec loc;
+    ierr = VecGhostGetLocalForm(island_number[level], &loc); CHKERRXX(ierr);
+    ierr = VecSet(loc, 0); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(island_number[level], &loc); CHKERRXX(ierr);
+
+    const double *phi_p;
+    ierr = VecGetArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
+
+    double *island_number_p;
+    ierr = VecGetArray(island_number[level], &island_number_p); CHKERRXX(ierr);
+
+    for(int p=0; p<p4est->mpisize; ++p)
+    {
+      if(p==p4est->mpirank)
+      {
+        /* now count the local islands, starting with the shared nodes to sandwich communications */
+        for(size_t i=0; i<ngbd->get_layer_size(); ++i)
+        {
+          p4est_locidx_t n = ngbd->get_layer_node(i);
+          if(phi_p[n]>0 && island_number_p[n]==0)
+          {
+            if(fill_island(phi_p, island_number_p, nb_islands+1, n))
+              nb_islands++;
+          }
+        }
+      }
+      ierr = VecGhostUpdateBegin(island_number[level], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      if(p==p4est->mpirank)
+      {
+        for(size_t i=0; i<ngbd->get_local_size(); ++i)
+        {
+          p4est_locidx_t n = ngbd->get_local_node(i);
+          if(phi_p[n]>0 && island_number_p[n]==0)
+          {
+            if(fill_island(phi_p, island_number_p, nb_islands+1, n))
+              nb_islands++;
+          }
+        }
+      }
+      ierr = VecGhostUpdateEnd(island_number[level], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      int mpiret = MPI_Bcast(&nb_islands, 1, MPI_INT, p, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+//      /* update local shared island information coming from ghost nodes */
+//      if(p4est->mpirank>p)
+//      {
+//        for(size_t n=nodes->num_owned_indeps; n<nodes->indep_nodes.elem_count; ++n)
+//        {
+//          if(island_number_p[n]!=0 && ngbd->is_neighborhood_well_defined(n))
+//          {
+//            std::cout << "build !" << std::endl;
+//            fill_island(phi_p, island_number_p, island_number_p[n], n);
+//          }
+//        }
+//      }
+    }
+    ierr = VecRestoreArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(island_number[level], &island_number_p); CHKERRXX(ierr);
+
+    if(level==0) islands_per_level[level] = nb_islands;
+    else         islands_per_level[level] = nb_islands - islands_per_level[level-1];
+  }
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &nb_islands, 1, MPI_INT, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  return nb_islands;
 }
 
 
@@ -191,32 +289,17 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
   Vec vn;
   ierr = VecDuplicate(rho_g, &vn); CHKERRXX(ierr);
 
-  std::vector<int> color(nodes->num_owned_indeps);
   my_p4est_level_set_t ls(ngbd);
 
   for(unsigned int level=0; level<phi.size(); ++level)
   {
-    int nb_col = 1;
-    std::fill(color.begin(), color.end(), 0);
-    const double *phi_p;
-    ierr = VecGetArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
-
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    {
-      if(phi_p[n]>0 && color[n]==0)
-      {
-        fill_island(phi_p, color, nb_col, n);
-        nb_col++;
-      }
-    }
-    ierr = VecRestoreArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
-
     /* first compute the normal velocity for this level */
     double *vn_p;
     ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
     double *v_p[2];
     ierr = VecGetArray(v[0][level], &v_p[0]); CHKERRXX(ierr);
     ierr = VecGetArray(v[1][level], &v_p[1]); CHKERRXX(ierr);
+    const double *phi_p;
     ierr = VecGetArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
     quad_neighbor_nodes_of_node_t qnnn;
     for(size_t i=0; i<ngbd->get_layer_size(); ++i)
@@ -249,10 +332,11 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
     ierr = VecRestoreArray(v[1][level], &v_p[1]); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
 
-    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &nb_col, 1, MPI_INT, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
     /* for each color/island, compute average velocity */
-    for(int col=1; col<nb_col; ++col)
+    const double *island_number_p;
+    ierr = VecGetArrayRead(island_number[level], &island_number_p); CHKERRXX(ierr);
+
+    for(int island=1; island<islands_per_level[level]; ++island)
     {
       /* first build level-set function */
       double *phi_tmp_p;
@@ -260,7 +344,7 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
 
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
-        phi_tmp_p[n] = color[n]==col ? -1 : 1;
+        phi_tmp_p[n] = island_number_p[n]==island ? -1 : 1;
       }
       ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
 
@@ -277,7 +361,7 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
       for(size_t i=0; i<ngbd->get_layer_size(); ++i)
       {
         p4est_locidx_t n = ngbd->get_layer_node(i);
-        if(color[n]==col)
+        if(island_number_p[n]==island)
         {
           ngbd->get_neighbors(n, qnnn);
           double nx = -qnnn.dx_central(phi_p);
@@ -294,7 +378,7 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
       for(size_t i=0; i<ngbd->get_local_size(); ++i)
       {
         p4est_locidx_t n = ngbd->get_local_node(i);
-        if(color[n]==col)
+        if(island_number_p[n]==island)
         {
           ngbd->get_neighbors(n, qnnn);
           double nx = -qnnn.dx_central(phi_p);
@@ -313,6 +397,7 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
       ierr = VecRestoreArray(v[0][level], &v_p[0]); CHKERRXX(ierr);
       ierr = VecRestoreArray(v[1][level], &v_p[1]); CHKERRXX(ierr);
     }
+    ierr = VecRestoreArrayRead(island_number[level], &island_number_p); CHKERRXX(ierr);
 
     /* Extend the velocity accross the interface for continuous velocity field */
     double *phi_neg_p;
@@ -331,6 +416,7 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
   }
 
   ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
+  ierr = VecDestroy(vn); CHKERRXX(ierr);
 }
 
 
@@ -418,6 +504,12 @@ void my_p4est_epitaxy_t::update_grid()
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &v[1][i]); CHKERRXX(ierr);
   }
 
+  for(unsigned int i=0; i<island_number.size(); ++i)
+  {
+    ierr = VecDestroy(island_number[i]); CHKERRXX(ierr);
+    ierr = VecDuplicate(rho_g, &island_number[i]); CHKERRXX(ierr);
+  }
+
   p4est_destroy(p4est);       p4est = p4est_np1;
   p4est_ghost_destroy(ghost); ghost = ghost_np1;
   p4est_nodes_destroy(nodes); nodes = nodes_np1;
@@ -486,7 +578,7 @@ void my_p4est_epitaxy_t::solve_rho()
 
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
-//        rhs_p[n] = rho_p[n] + dt_n*(F - new_island*2*D*sigma1*rho_sqr_avg);
+//        rhs_p[n] = rho_p[n] + dt_n*(F - .1*new_island*2*D*sigma1*rho_sqr_avg);
         rhs_p[n] = rho_p[n] + dt_n*(F - .1*new_island*2*D*sigma1*SQR(rho_p[n]));
 
         phi_i_p[n] = -4*L;
@@ -605,7 +697,8 @@ void my_p4est_epitaxy_t::nucleate_new_island()
       ierr = VecGetArrayRead(phi[0], &phi_p  ); CHKERRXX(ierr);
       ierr = VecGetArrayRead(rho_g , &rho_g_p); CHKERRXX(ierr);
 
-      std::default_random_engine generator;
+//      std::default_random_engine generator(time(NULL));
+      std::default_random_engine generator(0);
       /* create a gaussian noise generator, constructor(mean, standard deviation) */
       std::normal_distribution<double> distribution(1,.1);
       double phi_c;
@@ -727,6 +820,10 @@ void my_p4est_epitaxy_t::nucleate_new_island()
       v[0].push_back(tmp);
       ierr = VecCreateGhostNodes(p4est_new, nodes_new, &tmp); CHKERRXX(ierr);
       v[1].push_back(tmp);
+
+      ierr = VecDuplicate(rho_g, &tmp); CHKERRXX(ierr);
+      island_number.push_back(tmp);
+      islands_per_level.resize(phi.size());
     }
     /* islands already exist at that level */
     else
@@ -767,6 +864,9 @@ void my_p4est_epitaxy_t::nucleate_new_island()
       ierr = VecCreateGhostNodes(p4est_new, nodes_new, &v[0][0]); CHKERRXX(ierr);
       ierr = VecDestroy(v[1][0]); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est_new, nodes_new, &v[1][0]); CHKERRXX(ierr);
+
+      ierr = VecDestroy(island_number[0]); CHKERRXX(ierr);
+      ierr = VecDuplicate(rho_g, &island_number[0]); CHKERRXX(ierr);
     }
 
     p4est_destroy(p4est);       p4est = p4est_new;
@@ -825,6 +925,75 @@ bool my_p4est_epitaxy_t::check_time_step()
 }
 
 
+double my_p4est_epitaxy_t::compute_coverage()
+{
+  if(phi.size()==0)
+    return 0;
+
+  double area = area_in_negative_domain(p4est, nodes, phi[0]);
+  return (L*L-area)/(L*L);
+}
+
+
+void my_p4est_epitaxy_t::compute_statistics()
+{
+  if(phi.size()==0)
+    return;
+
+  char *out_dir = NULL;
+  out_dir = getenv("OUT_DIR");
+  if(out_dir==NULL)
+  {
+    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to the desired path before saving the statistics for the simulation.\n"); CHKERRXX(ierr);
+    return;
+  }
+
+  char name[1000];
+  snprintf(name, 1000, "%s/stats.dat", out_dir);
+  FILE *fp = fopen(name, "a");
+  if(fp==NULL)
+    throw std::invalid_argument("Could not open file for statistics ...");
+
+  double theta = compute_coverage();
+
+//  my_p4est_level_set_t ls(ngbd);
+
+  Vec phi_tmp;
+  ierr = VecDuplicate(rho_g, &phi_tmp); CHKERRXX(ierr);
+
+  for(unsigned int level=0; level<phi.size(); ++level)
+  {
+    /* compute the area of each island */
+    const double *island_number_p;
+    ierr = VecGetArrayRead(island_number[level], &island_number_p); CHKERRXX(ierr);
+    for(int island=1; island<=islands_per_level[level]; ++island)
+    {
+      PetscPrintf(p4est->mpicomm, "checking stats for island %d\n", island);
+      /* first build level-set function */
+      double *phi_tmp_p;
+      ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+        phi_tmp_p[n] = island_number_p[n]==island ? -1 : 1;
+      }
+      ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+
+//      ls.reinitialize_1st_order_time_2nd_order_space(phi_tmp);
+
+      /* then compute the area of the island */
+      double area = area_in_negative_domain(p4est, nodes, phi_tmp);
+      if(p4est->mpirank==0)
+        fprintf(fp, "%e %e\n", theta, area);
+    }
+    ierr = VecRestoreArrayRead(island_number[level], &island_number_p); CHKERRXX(ierr);
+  }
+
+  fclose(fp);
+  ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
+}
+
+
 void my_p4est_epitaxy_t::save_vtk(int iter)
 {
   char *out_dir = NULL;
@@ -838,27 +1007,36 @@ void my_p4est_epitaxy_t::save_vtk(int iter)
   char name[1000];
   snprintf(name, 1000, "%s/vtu/epitaxy_%04d", out_dir, iter);
 
-  /* first build a level-set combining all levels */
+  /* first build a level-set and island number combining all levels */
   Vec phi_g;
   ierr = VecDuplicate(rho_g, &phi_g); CHKERRXX(ierr);
-  std::vector<const double *> phi_p(phi.size());
+  Vec island_number_g;
+  ierr = VecDuplicate(rho_g, &island_number_g); CHKERRXX(ierr);
+  std::vector<const double*> phi_p(phi.size());
+  std::vector<const double*> island_number_p(island_number.size());
   for(unsigned int i=0; i<phi.size(); ++i)
   {
     ierr = VecGetArrayRead(phi[i], &phi_p[i]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(island_number[i], &island_number_p[i]); CHKERRXX(ierr);
   }
-  double *phi_g_p;
+  double *phi_g_p, *island_number_g_p;
   ierr = VecGetArray(phi_g, &phi_g_p); CHKERRXX(ierr);
+  ierr = VecGetArray(island_number_g, &island_number_g_p); CHKERRXX(ierr);
   for(unsigned int n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
+    island_number_g_p[n] = 0;
     phi_g_p[n] = -2*L;
-    for(unsigned int i=0; i<phi.size(); ++i)
+    for(unsigned int level=0; level<phi.size(); ++level)
     {
-      phi_g_p[n] = (i%2==0 ? MAX(phi_g_p[n],phi_p[i][n]) : MIN(phi_g_p[n],phi_p[i][n]));
+      island_number_g_p[n] = MAX(island_number_g_p[n], island_number_p[level][n]);
+      phi_g_p[n] = (level%2==0 ? MAX(phi_g_p[n],phi_p[level][n]) : MIN(phi_g_p[n],phi_p[level][n]));
     }
   }
   ierr = VecRestoreArray(phi_g, &phi_g_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(island_number_g, &island_number_g_p); CHKERRXX(ierr);
   for(unsigned int i=0; i<phi.size(); ++i)
   {
+    ierr = VecRestoreArrayRead(island_number[i], &island_number_p[i]); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(phi[i], &phi_p[i]); CHKERRXX(ierr);
   }
 
@@ -913,22 +1091,30 @@ void my_p4est_epitaxy_t::save_vtk(int iter)
   }
   ierr = VecDestroy(phi_g); CHKERRXX(ierr);
 
+  Vec island_number_g_vis;
+  ierr = VecDuplicate(phi_vis, &island_number_g_vis); CHKERRXX(ierr);
+  interp.set_input(island_number_g, linear);
+  interp.interpolate(island_number_g_vis);
+  ierr = VecDestroy(island_number_g); CHKERRXX(ierr);
 
   Vec rho_g_vis;
   ierr = VecDuplicate(phi_vis, &rho_g_vis); CHKERRXX(ierr);
   interp.set_input(rho_g, linear);
   interp.interpolate(rho_g_vis);
 
-  const double *phi_v_p, *rho_g_v_p;
+  const double *phi_v_p, *rho_g_v_p, *island_number_g_v_p;
   ierr = VecGetArrayRead(phi_vis  , &phi_v_p  ); CHKERRXX(ierr);
   ierr = VecGetArrayRead(rho_g_vis, &rho_g_v_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(island_number_g_vis, &island_number_g_v_p); CHKERRXX(ierr);
 
-  my_p4est_vtk_write_all(p4est_vis, nodes_vis, ghost_vis, P4EST_TRUE, P4EST_TRUE, 2, 0, name,
+  my_p4est_vtk_write_all(p4est_vis, nodes_vis, ghost_vis, P4EST_TRUE, P4EST_TRUE, 3, 0, name,
                          VTK_POINT_DATA, "phi", phi_v_p,
-                         VTK_POINT_DATA, "rho", rho_g_v_p);
+                         VTK_POINT_DATA, "rho", rho_g_v_p,
+                         VTK_POINT_DATA, "island_number", island_number_g_v_p);
 
   ierr = VecRestoreArrayRead(phi_vis  , &phi_v_p  ); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(rho_g_vis, &rho_g_v_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(island_number_g_vis, &island_number_g_v_p); CHKERRXX(ierr);
 
   ierr = VecDestroy(rho_g_vis); CHKERRXX(ierr);
   ierr = VecDestroy(phi_vis); CHKERRXX(ierr);

@@ -16,18 +16,23 @@ int main(int argc, char **argv)
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
-  cmd.add_option("nx", "number of blox in x-dimension");
-  cmd.add_option("ny", "number of blox in y-dimension");
+  cmd.add_option("nx", "number of blox in x-dimension, default = 2");
+  cmd.add_option("ny", "number of blox in y-dimension, default = 2");
   cmd.add_option("save_vtk", "1 to save vtu files, 0 otherwise");
-  cmd.add_option("save_every_n", "save vtk every n iteration");
+  cmd.add_option("save_every_n", "save vtk every n iteration, default = 1");
   cmd.add_option("tf", "final time");
-  cmd.add_option("box_size", "set box_size");
-  cmd.add_option("D", "the diffusion coefficient, ");
+  cmd.add_option("box_size", "set box_size, default = 180");
+  cmd.add_option("D", "the diffusion coefficient, default = 1e5");
+  cmd.add_option("F", "the deposition flux, default = 1");
+  cmd.add_option("theta", "end the simulation when the coverage theta is reached, default = .2");
   cmd.parse(argc, argv);
 
   int nx = cmd.get("nx", 2);
   int ny = cmd.get("ny", 2);
   double L = cmd.get("box_size", 180);
+  double D = cmd.get("D", 1e5);
+  double F = cmd.get("F", 1);
+  double theta = cmd.get("theta", .2);
   int lmin = cmd.get("lmin", 4);
   int lmax = cmd.get("lmax", 7);
   double tf = cmd.get("tf", DBL_MAX);
@@ -63,17 +68,17 @@ int main(int argc, char **argv)
   my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
 
   my_p4est_epitaxy_t epitaxy(ngbd);
-  epitaxy.set_parameters(1e5, 1, 1);
+  epitaxy.set_parameters(D, F, 1.05);
 
   double tn = 0;
   int iter = 0;
   PetscErrorCode ierr;
 
-  while(tn<tf)
+  while(tn<tf && epitaxy.compute_coverage()<theta)
   {
     p4est = epitaxy.get_p4est();
     ierr = PetscPrintf(p4est->mpicomm, "###########################################\n"); CHKERRXX(ierr);
-    ierr = PetscPrintf(p4est->mpicomm, "Iteration #%d, tn = %e\n", iter, tn); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Iteration #%d, tn = %e, coverage theta = %2.1f%%\n", iter, tn, epitaxy.compute_coverage()*100); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est->mpicomm, "###########################################\n"); CHKERRXX(ierr);
     if(iter!=0)
     {
@@ -89,6 +94,7 @@ int main(int argc, char **argv)
       epitaxy.solve_rho();
       epitaxy.update_nucleation();
     } while(!epitaxy.check_time_step());
+    epitaxy.compute_islands_numbers();
 
     if(save_vtk==true && iter%save_every_n==0)
     {
@@ -97,8 +103,9 @@ int main(int argc, char **argv)
 
     iter++;
     tn += epitaxy.get_dt();
-//    if(iter==6) break;
   }
+
+  epitaxy.compute_statistics();
 
   return 0;
 }
