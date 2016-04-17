@@ -63,7 +63,7 @@ private:
   std::vector<Vec> rho_np1;
   std::vector<Vec> v[2];
   std::vector<Vec> island_number;
-  std::vector<int> islands_per_level;
+  std::vector<int> nb_islands_per_level;
 
   double dt_n;
   double D;
@@ -86,8 +86,15 @@ private:
   double xyz_min[P4EST_DIM];
   double xyz_max[P4EST_DIM];
 
-  /* return false if the island already exists in the boundary layer, true otherwise if it's a new island */
-  bool fill_island(const double *phi_p, double *island_number_p, int col, size_t n);
+  void fill_island(const double *phi_p, double *island_number_p, int col, p4est_locidx_t n);
+
+  void find_connected_ghost_islands(const double *phi_p, double *island_number_p, p4est_locidx_t n, std::vector<double> &connected, std::vector<bool> &visited);
+
+  template<typename T>
+  bool contains(const std::vector<T> &vec, const T& elem)
+  {
+    return find(vec.begin(), vec.end(), elem)!=vec.end();
+  }
 
 public:
   my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd);
@@ -114,7 +121,7 @@ public:
 
   void nucleate_new_island();
 
-  int compute_islands_numbers();
+  void compute_islands_numbers();
 
   /*!
    * \brief check_time_step

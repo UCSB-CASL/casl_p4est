@@ -62,9 +62,10 @@ my_p4est_epitaxy_t::~my_p4est_epitaxy_t()
 
   for(unsigned int i=0; i<phi.size(); ++i)
   {
-    if(phi[i]  !=NULL) { ierr = VecDestroy(phi[i]) ; CHKERRXX(ierr); }
-    if(v[0][i] !=NULL) { ierr = VecDestroy(v[0][i]); CHKERRXX(ierr); }
-    if(v[1][i] !=NULL) { ierr = VecDestroy(v[1][i]); CHKERRXX(ierr); }
+    if(island_number[i] != NULL) { ierr = VecDestroy(island_number[i]); CHKERRXX(ierr); }
+    if(phi[i]           != NULL) { ierr = VecDestroy(phi[i]) ; CHKERRXX(ierr); }
+    if(v[0][i]          != NULL) { ierr = VecDestroy(v[0][i]); CHKERRXX(ierr); }
+    if(v[1][i]          != NULL) { ierr = VecDestroy(v[1][i]); CHKERRXX(ierr); }
   }
 
   for(unsigned int i=0; i<rho.size(); ++i)
@@ -157,12 +158,11 @@ void my_p4est_epitaxy_t::compute_velocity()
 }
 
 
-bool my_p4est_epitaxy_t::fill_island(const double *phi_p, double *island_number_p, int number, size_t n)
+
+void my_p4est_epitaxy_t::fill_island(const double *phi_p, double *island_number_p, int number, p4est_locidx_t n)
 {
   std::stack<size_t> st;
   quad_neighbor_nodes_of_node_t qnnn;
-  int existing_number = number;
-
   st.push(n);
   while(!st.empty())
   {
@@ -170,51 +170,68 @@ bool my_p4est_epitaxy_t::fill_island(const double *phi_p, double *island_number_
     st.pop();
     island_number_p[k] = number;
     ngbd->get_neighbors(k, qnnn);
-    if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && island_number_p[qnnn.node_m00_mm]==0) st.push(qnnn.node_m00_mm);
-    if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && island_number_p[qnnn.node_m00_pm]==0) st.push(qnnn.node_m00_pm);
-    if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && island_number_p[qnnn.node_p00_mm]==0) st.push(qnnn.node_p00_mm);
-    if(qnnn.node_p00_pm<nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]>0 && island_number_p[qnnn.node_p00_pm]==0) st.push(qnnn.node_p00_pm);
+    if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && island_number_p[qnnn.node_m00_mm]<0) st.push(qnnn.node_m00_mm);
+    if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && island_number_p[qnnn.node_m00_pm]<0) st.push(qnnn.node_m00_pm);
+    if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && island_number_p[qnnn.node_p00_mm]<0) st.push(qnnn.node_p00_mm);
+    if(qnnn.node_p00_pm<nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]>0 && island_number_p[qnnn.node_p00_pm]<0) st.push(qnnn.node_p00_pm);
 
-    if(qnnn.node_0m0_mm<nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]>0 && island_number_p[qnnn.node_0m0_mm]==0) st.push(qnnn.node_0m0_mm);
-    if(qnnn.node_0m0_pm<nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]>0 && island_number_p[qnnn.node_0m0_pm]==0) st.push(qnnn.node_0m0_pm);
-    if(qnnn.node_0p0_mm<nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]>0 && island_number_p[qnnn.node_0p0_mm]==0) st.push(qnnn.node_0p0_mm);
-    if(qnnn.node_0p0_pm<nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]>0 && island_number_p[qnnn.node_0p0_pm]==0) st.push(qnnn.node_0p0_pm);
-
-    /* check if island already exists */
-    if(qnnn.node_m00_mm>=nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && island_number_p[qnnn.node_m00_mm]!=0) existing_number = island_number_p[qnnn.node_m00_mm];
-    if(qnnn.node_m00_pm>=nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && island_number_p[qnnn.node_m00_pm]!=0) existing_number = island_number_p[qnnn.node_m00_pm];
-    if(qnnn.node_p00_mm>=nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && island_number_p[qnnn.node_p00_mm]!=0) existing_number = island_number_p[qnnn.node_p00_mm];
-    if(qnnn.node_p00_pm>=nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]>0 && island_number_p[qnnn.node_p00_pm]!=0) existing_number = island_number_p[qnnn.node_p00_pm];
-
-    if(qnnn.node_0m0_mm>=nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]>0 && island_number_p[qnnn.node_0m0_mm]!=0) existing_number = island_number_p[qnnn.node_0m0_mm];
-    if(qnnn.node_0m0_pm>=nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]>0 && island_number_p[qnnn.node_0m0_pm]!=0) existing_number = island_number_p[qnnn.node_0m0_pm];
-    if(qnnn.node_0p0_mm>=nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]>0 && island_number_p[qnnn.node_0p0_mm]!=0) existing_number = island_number_p[qnnn.node_0p0_mm];
-    if(qnnn.node_0p0_pm>=nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]>0 && island_number_p[qnnn.node_0p0_pm]!=0) existing_number = island_number_p[qnnn.node_0p0_pm];
+    if(qnnn.node_0m0_mm<nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]>0 && island_number_p[qnnn.node_0m0_mm]<0) st.push(qnnn.node_0m0_mm);
+    if(qnnn.node_0m0_pm<nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]>0 && island_number_p[qnnn.node_0m0_pm]<0) st.push(qnnn.node_0m0_pm);
+    if(qnnn.node_0p0_mm<nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]>0 && island_number_p[qnnn.node_0p0_mm]<0) st.push(qnnn.node_0p0_mm);
+    if(qnnn.node_0p0_pm<nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]>0 && island_number_p[qnnn.node_0p0_pm]<0) st.push(qnnn.node_0p0_pm);
   }
-
-  if(existing_number!=number)
-  {
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    {
-      if(island_number_p[n]==number)
-        island_number_p[n] = existing_number;
-    }
-    return false;
-  }
-  else
-    return true;
 }
 
 
-int my_p4est_epitaxy_t::compute_islands_numbers()
+void my_p4est_epitaxy_t::find_connected_ghost_islands(const double *phi_p, double *island_number_p, p4est_locidx_t n, std::vector<double> &connected, std::vector<bool> &visited)
 {
-  int nb_islands = 0;
+  std::stack<size_t> st;
+  quad_neighbor_nodes_of_node_t qnnn;
+  st.push(n);
+  while(!st.empty())
+  {
+    size_t k = st.top();
+    st.pop();
+    visited[k] = true;
+    ngbd->get_neighbors(k, qnnn);
+    if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && !visited[qnnn.node_m00_mm]) st.push(qnnn.node_m00_mm);
+    if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && !visited[qnnn.node_m00_pm]) st.push(qnnn.node_m00_pm);
+    if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && !visited[qnnn.node_p00_mm]) st.push(qnnn.node_p00_mm);
+    if(qnnn.node_p00_pm<nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]>0 && !visited[qnnn.node_p00_pm]) st.push(qnnn.node_p00_pm);
+
+    if(qnnn.node_0m0_mm<nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]>0 && !visited[qnnn.node_0m0_mm]) st.push(qnnn.node_0m0_mm);
+    if(qnnn.node_0m0_pm<nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]>0 && !visited[qnnn.node_0m0_pm]) st.push(qnnn.node_0m0_pm);
+    if(qnnn.node_0p0_mm<nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]>0 && !visited[qnnn.node_0p0_mm]) st.push(qnnn.node_0p0_mm);
+    if(qnnn.node_0p0_pm<nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]>0 && !visited[qnnn.node_0p0_pm]) st.push(qnnn.node_0p0_pm);
+
+    /* check connected ghost island and add to list if new */
+    if(qnnn.node_m00_mm>=nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && !contains(connected, island_number_p[qnnn.node_m00_mm])) connected.push_back(island_number_p[qnnn.node_m00_mm]);
+    if(qnnn.node_m00_pm>=nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && !contains(connected, island_number_p[qnnn.node_m00_pm])) connected.push_back(island_number_p[qnnn.node_m00_pm]);
+    if(qnnn.node_p00_mm>=nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && !contains(connected, island_number_p[qnnn.node_p00_mm])) connected.push_back(island_number_p[qnnn.node_p00_mm]);
+    if(qnnn.node_p00_pm>=nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]>0 && !contains(connected, island_number_p[qnnn.node_p00_pm])) connected.push_back(island_number_p[qnnn.node_p00_pm]);
+
+    if(qnnn.node_0m0_mm>=nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]>0 && !contains(connected, island_number_p[qnnn.node_0m0_mm])) connected.push_back(island_number_p[qnnn.node_0m0_mm]);
+    if(qnnn.node_0m0_pm>=nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]>0 && !contains(connected, island_number_p[qnnn.node_0m0_pm])) connected.push_back(island_number_p[qnnn.node_0m0_pm]);
+    if(qnnn.node_0p0_mm>=nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]>0 && !contains(connected, island_number_p[qnnn.node_0p0_mm])) connected.push_back(island_number_p[qnnn.node_0p0_mm]);
+    if(qnnn.node_0p0_pm>=nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]>0 && !contains(connected, island_number_p[qnnn.node_0p0_pm])) connected.push_back(island_number_p[qnnn.node_0p0_pm]);
+  }
+}
+
+
+void my_p4est_epitaxy_t::compute_islands_numbers()
+{
+  int nb_islands_total = 0;
   for(unsigned int level=0; level<phi.size(); ++level)
   {
     Vec loc;
     ierr = VecGhostGetLocalForm(island_number[level], &loc); CHKERRXX(ierr);
-    ierr = VecSet(loc, 0); CHKERRXX(ierr);
+    ierr = VecSet(loc, -1); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(island_number[level], &loc); CHKERRXX(ierr);
+
+    /* first everyone compute the local numbers */
+    int proc_padding = 1e6;
+    std::vector<int> nb_islands(p4est->mpisize);
+    nb_islands[p4est->mpirank] = p4est->mpirank*proc_padding;
 
     const double *phi_p;
     ierr = VecGetArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
@@ -222,59 +239,134 @@ int my_p4est_epitaxy_t::compute_islands_numbers()
     double *island_number_p;
     ierr = VecGetArray(island_number[level], &island_number_p); CHKERRXX(ierr);
 
+    for(size_t i=0; i<ngbd->get_layer_size(); ++i)
+    {
+      p4est_locidx_t n = ngbd->get_layer_node(i);
+      if(phi_p[n]>0 && island_number_p[n]<0)
+      {
+        fill_island(phi_p, island_number_p, nb_islands[p4est->mpirank], n);
+        nb_islands[p4est->mpirank]++;
+      }
+    }
+    ierr = VecGhostUpdateBegin(island_number[level], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(size_t i=0; i<ngbd->get_local_size(); ++i)
+    {
+      p4est_locidx_t n = ngbd->get_local_node(i);
+      if(phi_p[n]>0 && island_number_p[n]<0)
+      {
+        fill_island(phi_p, island_number_p, nb_islands[p4est->mpirank], n);
+        nb_islands[p4est->mpirank]++;
+      }
+    }
+    ierr = VecGhostUpdateEnd(island_number[level], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* get remote number of islands to prepare graph communication structure */
+    int mpiret = MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &nb_islands[0], 1, MPI_INT, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+    /* compute offset for each process */
+    std::vector<int> proc_offset(p4est->mpisize+1);
+    proc_offset[0] = 0;
+    for(int p=0; p<p4est->mpisize; ++p)
+      proc_offset[p+1] = proc_offset[p] + (nb_islands[p]%proc_padding);
+
+    /* build a local graph with
+     *   - vertices = island number
+     *   - edges = connected islands
+     * in order to simplify the communications, the graph is stored as a full matrix. Given the sparsity, this can be optimized ...
+     */
+    int nb_islands_g = proc_offset[p4est->mpisize];
+    std::vector<int> graph(nb_islands_g*nb_islands_g, 0);
+    /* note that the only reason this is double and not int is that Petsc works with doubles, can't do Vec of int ... */
+    std::vector<double> connected;
+    std::vector<bool> visited(nodes->num_owned_indeps, false);
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      if(island_number_p[n]>=0 && !visited[n])
+      {
+        /* find the connected islands and add the connection information to the graph */
+        find_connected_ghost_islands(phi_p, island_number_p, n, connected, visited);
+        for(unsigned int i=0; i<connected.size(); ++i)
+        {
+          int local_id = proc_offset[p4est->mpirank]+static_cast<int>(island_number_p[n])%proc_padding;
+          int remote_id = proc_offset[static_cast<int>(connected[i])/proc_padding] + (static_cast<int>(connected[i])%proc_padding);
+          graph[nb_islands_g*local_id + remote_id] = 1;
+        }
+
+        connected.clear();
+      }
+    }
+
+    std::vector<int> rcvcounts(p4est->mpisize);
+    std::vector<int> displs(p4est->mpisize);
     for(int p=0; p<p4est->mpisize; ++p)
     {
-      if(p==p4est->mpirank)
-      {
-        /* now count the local islands, starting with the shared nodes to sandwich communications */
-        for(size_t i=0; i<ngbd->get_layer_size(); ++i)
-        {
-          p4est_locidx_t n = ngbd->get_layer_node(i);
-          if(phi_p[n]>0 && island_number_p[n]==0)
-          {
-            if(fill_island(phi_p, island_number_p, nb_islands+1, n))
-              nb_islands++;
-          }
-        }
-      }
-      ierr = VecGhostUpdateBegin(island_number[level], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      if(p==p4est->mpirank)
-      {
-        for(size_t i=0; i<ngbd->get_local_size(); ++i)
-        {
-          p4est_locidx_t n = ngbd->get_local_node(i);
-          if(phi_p[n]>0 && island_number_p[n]==0)
-          {
-            if(fill_island(phi_p, island_number_p, nb_islands+1, n))
-              nb_islands++;
-          }
-        }
-      }
-      ierr = VecGhostUpdateEnd(island_number[level], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      int mpiret = MPI_Bcast(&nb_islands, 1, MPI_INT, p, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-//      /* update local shared island information coming from ghost nodes */
-//      if(p4est->mpirank>p)
-//      {
-//        for(size_t n=nodes->num_owned_indeps; n<nodes->indep_nodes.elem_count; ++n)
-//        {
-//          if(island_number_p[n]!=0 && ngbd->is_neighborhood_well_defined(n))
-//          {
-//            std::cout << "build !" << std::endl;
-//            fill_island(phi_p, island_number_p, island_number_p[n], n);
-//          }
-//        }
-//      }
+      rcvcounts[p] = (nb_islands[p]%proc_padding) * nb_islands_g;
+      displs[p] = proc_offset[p]*nb_islands_g;
     }
+//    if(p4est->mpirank==0)
+//    {
+//      std::cout << "debug info : nb_islands = " << nb_islands_g << ", " << graph.size() << std::endl;
+//      for(int p=0; p<p4est->mpisize; ++p)
+//      {
+//        std::cout << nb_islands[p] << ", ";
+//      }
+//      std::cout << std::endl;
+//      for(int p=0; p<p4est->mpisize; ++p)
+//      {
+//        std::cout << rcvcounts[p] << ", ";
+//      }
+//      std::cout << std::endl;
+//      for(int p=0; p<p4est->mpisize; ++p)
+//      {
+//        std::cout << displs[p] << ", ";
+//      }
+//      std::cout << std::endl;
+//    }
+//    sleep(1);
+    mpiret = MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &graph[0], &rcvcounts[0], &displs[0], MPI_INT, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+    /* now we can color the graph connecting the islands, and thus obtain a unique numbering for all the islands */
+    std::vector<int> graph_numbering(nb_islands_g,-1);
+    std::stack<int> st;
+    nb_islands_per_level[level] = 0;
+    for(int i=0; i<nb_islands_g; ++i)
+    {
+      if(graph_numbering[i]==-1)
+      {
+        st.push(i);
+        while(!st.empty())
+        {
+          int k = st.top();
+          st.pop();
+          graph_numbering[k] = nb_islands_total;
+          for(int j=0; j<nb_islands_g; ++j)
+          {
+            int nj = k*nb_islands_g+j;
+            if(graph[nj] && graph_numbering[j]==-1)
+              st.push(j);
+          }
+        }
+        nb_islands_total++;
+        nb_islands_per_level[level]++;
+      }
+    }
+
+    /* and finally assign the correct number to the islands of this level */
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    {
+      if(island_number_p[n]>=0)
+      {
+        int index = proc_offset[static_cast<int>(island_number_p[n])/proc_padding] + (static_cast<int>(island_number_p[n])%proc_padding);
+        island_number_p[n] = graph_numbering[index];
+      }
+    }
+
     ierr = VecRestoreArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(island_number[level], &island_number_p); CHKERRXX(ierr);
-
-    if(level==0) islands_per_level[level] = nb_islands;
-    else         islands_per_level[level] = nb_islands - islands_per_level[level-1];
   }
 
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &nb_islands, 1, MPI_INT, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-  return nb_islands;
+  if(nb_islands_total!=floor(Nuc*island_nucleation_scaling))
+    throw std::runtime_error("The number of islands is inconsistent with the nucleation rate ...");
 }
 
 
@@ -336,7 +428,7 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
     const double *island_number_p;
     ierr = VecGetArrayRead(island_number[level], &island_number_p); CHKERRXX(ierr);
 
-    for(int island=1; island<islands_per_level[level]; ++island)
+    for(int island=0; island<nb_islands_per_level[level]; ++island)
     {
       /* first build level-set function */
       double *phi_tmp_p;
@@ -697,8 +789,7 @@ void my_p4est_epitaxy_t::nucleate_new_island()
       ierr = VecGetArrayRead(phi[0], &phi_p  ); CHKERRXX(ierr);
       ierr = VecGetArrayRead(rho_g , &rho_g_p); CHKERRXX(ierr);
 
-//      std::default_random_engine generator(time(NULL));
-      std::default_random_engine generator(0);
+      std::default_random_engine generator(time(NULL));
       /* create a gaussian noise generator, constructor(mean, standard deviation) */
       std::normal_distribution<double> distribution(1,.1);
       double phi_c;
@@ -823,7 +914,7 @@ void my_p4est_epitaxy_t::nucleate_new_island()
 
       ierr = VecDuplicate(rho_g, &tmp); CHKERRXX(ierr);
       island_number.push_back(tmp);
-      islands_per_level.resize(phi.size());
+      nb_islands_per_level.resize(phi.size());
     }
     /* islands already exist at that level */
     else
@@ -966,7 +1057,7 @@ void my_p4est_epitaxy_t::compute_statistics()
     /* compute the area of each island */
     const double *island_number_p;
     ierr = VecGetArrayRead(island_number[level], &island_number_p); CHKERRXX(ierr);
-    for(int island=1; island<=islands_per_level[level]; ++island)
+    for(int island=0; island<nb_islands_per_level[level]; ++island)
     {
       PetscPrintf(p4est->mpicomm, "checking stats for island %d\n", island);
       /* first build level-set function */
@@ -1024,7 +1115,7 @@ void my_p4est_epitaxy_t::save_vtk(int iter)
   ierr = VecGetArray(island_number_g, &island_number_g_p); CHKERRXX(ierr);
   for(unsigned int n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
-    island_number_g_p[n] = 0;
+    island_number_g_p[n] = -1;
     phi_g_p[n] = -2*L;
     for(unsigned int level=0; level<phi.size(); ++level)
     {
@@ -1116,6 +1207,7 @@ void my_p4est_epitaxy_t::save_vtk(int iter)
   ierr = VecRestoreArrayRead(rho_g_vis, &rho_g_v_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(island_number_g_vis, &island_number_g_v_p); CHKERRXX(ierr);
 
+  ierr = VecDestroy(island_number_g_vis); CHKERRXX(ierr);
   ierr = VecDestroy(rho_g_vis); CHKERRXX(ierr);
   ierr = VecDestroy(phi_vis); CHKERRXX(ierr);
   p4est_nodes_destroy(nodes_vis);
