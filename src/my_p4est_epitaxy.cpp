@@ -51,8 +51,8 @@ my_p4est_epitaxy_t::my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd)
 
   L = xyz_max[0]-xyz_min[0];
 
-  island_nucleation_scaling = 1;
-//  island_nucleation_scaling = L*L;
+//  island_nucleation_scaling = 1;
+  island_nucleation_scaling = L*L;
 
   srand(time(NULL));
 }
@@ -364,8 +364,8 @@ void my_p4est_epitaxy_t::compute_islands_numbers()
     ierr = VecRestoreArray(island_number[level], &island_number_p); CHKERRXX(ierr);
   }
 
-  if(nb_islands_total!=floor(Nuc*island_nucleation_scaling))
-    throw std::runtime_error("The number of islands is inconsistent with the nucleation rate ...");
+//  if(nb_islands_total!=floor(Nuc*island_nucleation_scaling))
+//    throw std::runtime_error("The number of islands is inconsistent with the nucleation rate ...");
 }
 
 
@@ -669,8 +669,8 @@ void my_p4est_epitaxy_t::solve_rho()
 
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
-//        rhs_p[n] = rho_p[n] + dt_n*(F - 1*new_island*2*D*sigma1*rho_sqr_avg);
-        rhs_p[n] = rho_p[n] + dt_n*(F - .1*new_island*2*D*sigma1*SQR(rho_p[n]));
+        rhs_p[n] = rho_p[n] + dt_n*(F - 1*new_island*2*D*sigma1*rho_sqr_avg);
+//        rhs_p[n] = rho_p[n] + dt_n*(F - .1*new_island*2*D*sigma1*SQR(rho_p[n]));
 
         phi_i_p[n] = -4*L;
         if(level<phi.size()) phi_i_p[n] = phi_p[level][n];
@@ -718,11 +718,6 @@ void my_p4est_epitaxy_t::solve_rho()
     ierr = VecDestroy(phi_i); CHKERRXX(ierr);
     ierr = VecDestroy(rhs); CHKERRXX(ierr);
   }
-
-
-  double rho_max;
-  VecMax(rho_np1[0], NULL, &rho_max);
-  ierr = PetscPrintf(p4est->mpicomm, "Maximum density = %e\n", rho_max); CHKERRXX(ierr);
 }
 
 
