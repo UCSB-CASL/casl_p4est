@@ -76,6 +76,7 @@ private:
   int new_island;
   double island_nucleation_scaling;
 
+  double lattice_spacing;
   double alpha;
   double rho_avg;
   double rho_avg_np1;
@@ -101,11 +102,13 @@ public:
 
   ~my_p4est_epitaxy_t();
 
-  void set_parameters(double D, double F, double alpha);
+  void set_parameters(double D, double F, double alpha, double lattice_spacing);
 
   inline double get_dt() { return dt_n; }
 
   inline p4est_t* get_p4est() { return p4est; }
+
+  inline double get_Nuc() { return Nuc; }
 
   void compute_velocity();
 

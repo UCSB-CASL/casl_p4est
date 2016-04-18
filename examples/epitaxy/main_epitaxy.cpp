@@ -24,7 +24,9 @@ int main(int argc, char **argv)
   cmd.add_option("box_size", "set box_size, default = 180");
   cmd.add_option("D", "the diffusion coefficient, default = 1e5");
   cmd.add_option("F", "the deposition flux, default = 1");
-  cmd.add_option("theta", "end the simulation when the coverage theta is reached, default = .2");
+  cmd.add_option("coverage", "end the simulation when the coverage theta is reached, default = .2");
+  cmd.add_option("save_stats", "compute statistics for the final state. 0 or 1, default = 0");
+  cmd.add_option("a", "set the lattice spacing, default = L/300");
   cmd.parse(argc, argv);
 
   int nx = cmd.get("nx", 2);
@@ -32,10 +34,12 @@ int main(int argc, char **argv)
   double L = cmd.get("box_size", 180);
   double D = cmd.get("D", 1e5);
   double F = cmd.get("F", 1);
-  double theta = cmd.get("theta", .2);
+  double coverage = cmd.get("coverage", .2);
   int lmin = cmd.get("lmin", 4);
   int lmax = cmd.get("lmax", 7);
   double tf = cmd.get("tf", DBL_MAX);
+  int save_stats = cmd.get("save_stats", 0);
+  double a = cmd.get("a", L/300.);
 
   bool save_vtk = cmd.get("save_vtk", 1);
   int save_every_n = cmd.get("save_every_n", 1);
@@ -68,13 +72,31 @@ int main(int argc, char **argv)
   my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
 
   my_p4est_epitaxy_t epitaxy(ngbd);
-  epitaxy.set_parameters(D, F, 1.05);
+  epitaxy.set_parameters(D, F, 1.05, a);
 
   double tn = 0;
   int iter = 0;
   PetscErrorCode ierr;
 
-  while(tn<tf && epitaxy.compute_coverage()<theta)
+  char *out_dir = NULL;
+  out_dir = getenv("OUT_DIR");
+  FILE *fp = NULL;
+  char name[1000];
+  if(out_dir == NULL)
+  {
+    ierr = PetscPrintf(p4est->mpicomm, "you need to set the environment variable OUT_DIR to save coverage vs. time information\n"); CHKERRXX(ierr);
+  }
+  else if(p4est->mpirank==0)
+  {
+    snprintf(name, 1000, "%s/%d-%d_DF_%1.2e.dat", out_dir, lmin, lmax, D/F);
+    fp = fopen(name, "w");
+    if(fp==NULL)
+      throw std::invalid_argument("could not open file for coverage vs. time output");
+    fclose(fp);
+  }
+
+
+  while(tn<tf && epitaxy.compute_coverage()<coverage)
   {
     p4est = epitaxy.get_p4est();
     ierr = PetscPrintf(p4est->mpicomm, "###########################################\n"); CHKERRXX(ierr);
@@ -101,11 +123,25 @@ int main(int argc, char **argv)
       epitaxy.save_vtk(iter/save_every_n);
     }
 
+    double coverage_n = epitaxy.compute_coverage();
+    p4est = epitaxy.get_p4est();
+    if(p4est->mpirank==0)
+    {
+      fp = fopen(name, "a");
+      if(fp==NULL)
+      {
+        throw std::invalid_argument("could not open file for coverage vs. time output");
+      }
+      fprintf(fp, "%.15e %.15e %.15e %.15e\n", tn, coverage_n, epitaxy.get_Nuc(), epitaxy.get_dt());
+      fclose(fp);
+    }
+
     iter++;
     tn += epitaxy.get_dt();
   }
 
-  epitaxy.compute_statistics();
+  if(save_stats==1)
+    epitaxy.compute_statistics();
 
   return 0;
 }

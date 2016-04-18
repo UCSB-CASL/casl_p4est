@@ -53,6 +53,8 @@ my_p4est_epitaxy_t::my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd)
 
   island_nucleation_scaling = 1;
 //  island_nucleation_scaling = L*L;
+
+  srand(time(NULL));
 }
 
 
@@ -84,11 +86,12 @@ my_p4est_epitaxy_t::~my_p4est_epitaxy_t()
 
 
 
-void my_p4est_epitaxy_t::set_parameters(double D, double F, double alpha)
+void my_p4est_epitaxy_t::set_parameters(double D, double F, double alpha, double lattice_spacing)
 {
   this->D = D;
   this->F = F;
   this->alpha = alpha;
+  this->lattice_spacing = lattice_spacing;
 }
 
 
@@ -120,10 +123,8 @@ void my_p4est_epitaxy_t::compute_velocity()
         p4est_locidx_t n = ngbd->get_layer_node(i);
         ngbd->get_neighbors(n, qnnn);
 
-        v_p[0][n] = -dxyz[0]*dxyz[1]*D*(qnnn.dx_central(rho_1) - qnnn.dx_central(rho_0));
-        v_p[1][n] = -dxyz[0]*dxyz[1]*D*(qnnn.dy_central(rho_1) - qnnn.dy_central(rho_0));
-//        v_p[0][n] = -D*(qnnn.dx_central(rho_1) - qnnn.dx_central(rho_0));
-//        v_p[1][n] = -D*(qnnn.dy_central(rho_1) - qnnn.dy_central(rho_0));
+        v_p[0][n] = -SQR(lattice_spacing)*D*(qnnn.dx_central(rho_1) - qnnn.dx_central(rho_0));
+        v_p[1][n] = -SQR(lattice_spacing)*D*(qnnn.dy_central(rho_1) - qnnn.dy_central(rho_0));
       }
 
       ierr = VecGhostUpdateBegin(vtmp[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -134,10 +135,8 @@ void my_p4est_epitaxy_t::compute_velocity()
         p4est_locidx_t n = ngbd->get_local_node(i);
         ngbd->get_neighbors(n, qnnn);
 
-        v_p[0][n] = -dxyz[0]*dxyz[1]*D*(qnnn.dx_central(rho_1) - qnnn.dx_central(rho_0));
-        v_p[1][n] = -dxyz[0]*dxyz[1]*D*(qnnn.dy_central(rho_1) - qnnn.dy_central(rho_0));
-//        v_p[0][n] = -D*(qnnn.dx_central(rho_1) - qnnn.dx_central(rho_0));
-//        v_p[1][n] = -D*(qnnn.dy_central(rho_1) - qnnn.dy_central(rho_0));
+        v_p[0][n] = -SQR(lattice_spacing)*D*(qnnn.dx_central(rho_1) - qnnn.dx_central(rho_0));
+        v_p[1][n] = -SQR(lattice_spacing)*D*(qnnn.dy_central(rho_1) - qnnn.dy_central(rho_0));
       }
 
       ierr = VecGhostUpdateEnd(vtmp[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -670,7 +669,7 @@ void my_p4est_epitaxy_t::solve_rho()
 
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
-//        rhs_p[n] = rho_p[n] + dt_n*(F - .1*new_island*2*D*sigma1*rho_sqr_avg);
+//        rhs_p[n] = rho_p[n] + dt_n*(F - 1*new_island*2*D*sigma1*rho_sqr_avg);
         rhs_p[n] = rho_p[n] + dt_n*(F - .1*new_island*2*D*sigma1*SQR(rho_p[n]));
 
         phi_i_p[n] = -4*L;
@@ -769,7 +768,8 @@ void my_p4est_epitaxy_t::nucleate_new_island()
   {
     ierr = PetscPrintf(p4est->mpicomm, "Nucleating new island !\n"); CHKERRXX(ierr);
     double xc, yc;
-    double r = 4*dxyz[0];
+    /* NOTE: the new islands are disks, in the articles they are squares ... */
+    double r = MAX(2*MIN(dxyz[0],dxyz[1]), sqrt(2/PI)*lattice_spacing);
 
     /* first island created */
     if(phi.size()==0)
@@ -1040,7 +1040,7 @@ void my_p4est_epitaxy_t::compute_statistics()
   }
 
   char name[1000];
-  snprintf(name, 1000, "%s/stats.dat", out_dir);
+  snprintf(name, 1000, "%s/stats2.dat", out_dir);
   FILE *fp = fopen(name, "a");
   if(fp==NULL)
     throw std::invalid_argument("Could not open file for statistics ...");
