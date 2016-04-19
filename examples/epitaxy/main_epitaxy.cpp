@@ -27,6 +27,7 @@ int main(int argc, char **argv)
   cmd.add_option("coverage", "end the simulation when the coverage theta is reached, default = .2");
   cmd.add_option("save_stats", "compute statistics for the final state. 0 or 1, default = 0");
   cmd.add_option("a", "set the lattice spacing, default = L/300");
+  cmd.add_option("one_level", "set to 1 to restrict the islands to one level only, default = 0");
   cmd.parse(argc, argv);
 
   int nx = cmd.get("nx", 2);
@@ -40,6 +41,7 @@ int main(int argc, char **argv)
   double tf = cmd.get("tf", DBL_MAX);
   int save_stats = cmd.get("save_stats", 0);
   double a = cmd.get("a", L/300.);
+  bool one_level_only = cmd.get("one_level", false);
 
   bool save_vtk = cmd.get("save_vtk", 1);
   int save_every_n = cmd.get("save_every_n", 1);
@@ -73,6 +75,7 @@ int main(int argc, char **argv)
 
   my_p4est_epitaxy_t epitaxy(ngbd);
   epitaxy.set_parameters(D, F, 1.05, a);
+  epitaxy.set_one_level_only(one_level_only);
 
   double tn = 0;
   int iter = 0;

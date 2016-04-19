@@ -102,6 +102,17 @@ public:
    * \note you need to update ngbd_n and hierarchy yourself !
    */
   void update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, Vec &phi, Vec *phi_xx=NULL);
+
+
+  /*!
+   * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with Euler along the characteristic.
+   *   The forest at time n is copied, and is then refined, coarsened and balance iteratively until convergence.
+   * \param v       the velocity fields. This is an array of size P4EST_DIM, each element is a vector with the list of velocities in the dimension
+   * \param dt      the time step
+   * \param phi     a vector of level set functions
+   * \note you need to update ngbd_n and hierarchy yourself !
+   */
+  void update_p4est(std::vector<Vec> *v, double dt, std::vector<Vec> &phi);
 };
 
 #endif // MY_P4EST_SEMI_LAGRANGIAN_H

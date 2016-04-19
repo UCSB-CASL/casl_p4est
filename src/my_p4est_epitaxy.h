@@ -56,6 +56,7 @@ private:
   my_p4est_hierarchy_t *hierarchy;
   my_p4est_node_neighbors_t *ngbd;
 
+  Vec phi_g;
   Vec rho_g;
 
   std::vector<Vec> phi;
@@ -64,6 +65,8 @@ private:
   std::vector<Vec> v[2];
   std::vector<Vec> island_number;
   std::vector<int> nb_islands_per_level;
+
+  int nb_levels_deleted;
 
   double dt_n;
   double D;
@@ -76,6 +79,7 @@ private:
   int new_island;
   double island_nucleation_scaling;
 
+  bool one_level_only;
   double lattice_spacing;
   double alpha;
   double rho_avg;
@@ -86,6 +90,8 @@ private:
   double dxyz[P4EST_DIM];
   double xyz_min[P4EST_DIM];
   double xyz_max[P4EST_DIM];
+
+  void compute_phi_g();
 
   void fill_island(const double *phi_p, double *island_number_p, int col, p4est_locidx_t n);
 
@@ -103,6 +109,8 @@ public:
   ~my_p4est_epitaxy_t();
 
   void set_parameters(double D, double F, double alpha, double lattice_spacing);
+
+  void set_one_level_only(bool val) { one_level_only = val; }
 
   inline double get_dt() { return dt_n; }
 

@@ -35,6 +35,7 @@ extern PetscLogEvent log_my_p4est_semi_lagrangian_advect_from_n_to_np1_2nd_order
 extern PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_CF2;
 extern PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_1st_order;
 extern PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_2nd_order;
+extern PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_multiple_phi;
 extern PetscLogEvent log_my_p4est_semi_lagrangian_grid_gen_iter[P4EST_MAXLEVEL];
 #endif
 #ifndef CASL_LOG_FLOPS
@@ -803,4 +804,168 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_2nd_order, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+
+void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, std::vector<Vec> &phi)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_multiple_phi, 0, 0, 0, 0); CHKERRXX(ierr);
+  P4EST_ASSERT(v.size()==phi.size());
+
+  Vec *vxx[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    vxx[dir] = new Vec[P4EST_DIM];
+    if(dir==0)
+    {
+      for(int dd=0; dd<P4EST_DIM; ++dd)
+      {
+        ierr = VecCreateGhostNodes(ngbd_n->p4est, ngbd_n->nodes, &vxx[dir][dd]); CHKERRXX(ierr);
+      }
+    }
+    else
+    {
+      for(int dd=0; dd<P4EST_DIM; ++dd)
+      {
+        ierr = VecDuplicate(vxx[0][dd], &vxx[dir][dd]); CHKERRXX(ierr);
+      }
+    }
+  }
+
+  Vec phi_xx[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecDuplicate(vxx[0][dir], &phi_xx[dir]); CHKERRXX(ierr);
+  }
+
+  Vec velo[P4EST_DIM];
+
+  /* initialize the new forest with uniform lmin */
+  splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est->user_pointer;
+  p4est_t *p4est_np1 = my_p4est_new(p4est->mpicomm, p4est->connectivity, 0, NULL, (void*)sp_old);
+  for(int lvl=0; lvl<sp_old->min_lvl; ++lvl)
+  {
+    my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+  }
+  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+  Vec phi_np1;
+  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+
+  /* update the new forest by advecting each level-set one after the other */
+  for(unsigned int i=0; i<phi.size(); ++i)
+  {
+    /* compute vx_xx, vx_yy */
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      velo[dir] = v[dir][i];
+#ifdef P4_TO_P8
+      ngbd_n->second_derivatives_central(v[dir][i], vxx[dir][0], vxx[dir][1], vxx[dir][2]);
+#else
+      ngbd_n->second_derivatives_central(v[dir][i], vxx[dir][0], vxx[dir][1]);
+#endif
+    }
+
+    /* compute phi_xx and phi_yy */
+#ifdef P4_TO_P8
+    ngbd_n->second_derivatives_central(phi[i], phi_xx[0], phi_xx[1], phi_xx[2]);
+#else
+    ngbd_n->second_derivatives_central(phi[i], phi_xx[0], phi_xx[1]);
+#endif
+
+    bool is_grid_changing = true;
+
+    int counter = 0;
+    while (is_grid_changing) {
+      ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
+
+      // advect from np1 to n to enable refinement
+      double* phi_np1_p;
+      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      advect_from_n_to_np1(dt, velo, vxx, phi[i], phi_xx,
+                           phi_np1_p, p4est_np1, nodes_np1);
+
+      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+      is_grid_changing = sp.coarsen(p4est_np1, nodes_np1, phi_np1_p);
+
+      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      if (is_grid_changing) {
+        my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+
+        // reset nodes, ghost, and phi
+        p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+        p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+        ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+      }
+
+      ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
+      counter++;
+    }
+  }
+
+
+  /* now update all the new level-sets with their new values */
+  for(unsigned int i=0; i<phi.size(); ++i)
+  {
+    /* compute vx_xx, vx_yy */
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      velo[dir] = v[dir][i];
+#ifdef P4_TO_P8
+      ngbd_n->second_derivatives_central(v[dir][i], vxx[dir][0], vxx[dir][1], vxx[dir][2]);
+#else
+      ngbd_n->second_derivatives_central(v[dir][i], vxx[dir][0], vxx[dir][1]);
+#endif
+    }
+
+    /* compute phi_xx and phi_yy */
+#ifdef P4_TO_P8
+    ngbd_n->second_derivatives_central(phi[i], phi_xx[0], phi_xx[1], phi_xx[2]);
+#else
+    ngbd_n->second_derivatives_central(phi[i], phi_xx[0], phi_xx[1]);
+#endif
+    double* phi_np1_p;
+    Vec tmp;
+    if(i==0) tmp = phi_np1;
+    else   { ierr = VecDuplicate(phi_np1, &tmp); CHKERRXX(ierr); }
+    ierr = VecGetArray(tmp, &phi_np1_p); CHKERRXX(ierr);
+
+    advect_from_n_to_np1(dt, velo, vxx, phi[i], phi_xx,
+                         phi_np1_p, p4est_np1, nodes_np1);
+
+    ierr = VecRestoreArray(tmp, &phi_np1_p); CHKERRXX(ierr);
+
+    ierr = VecDestroy(phi[i]); CHKERRXX(ierr);
+    phi[i] = tmp;
+  }
+
+  p4est_np1->user_pointer = p4est->user_pointer;
+
+  /* now that everything is updated, get rid of old stuff and swap them with new ones */
+  p4est_destroy(p4est);       p4est = *p_p4est = p4est_np1;
+  p4est_nodes_destroy(nodes); nodes = *p_nodes = nodes_np1;
+  p4est_ghost_destroy(ghost); ghost = *p_ghost = ghost_np1;
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    for(int dd=0; dd<P4EST_DIM; ++dd)
+    {
+      ierr = VecDestroy(vxx[dir][dd]); CHKERRXX(ierr);
+    }
+    delete[] vxx[dir];
+  }
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecDestroy(phi_xx[dir]); CHKERRXX(ierr);
+  }
+
+  ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_multiple_phi, 0, 0, 0, 0); CHKERRXX(ierr);
 }
