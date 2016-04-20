@@ -834,10 +834,10 @@ void my_p4est_epitaxy_t::nucleate_new_island()
       }
 
 //#if defined(COMET) || defined(STAMPEDE)
-			boost::mt19937 rng;
-			rng.seed(time(NULL));
-			boost::normal_distribution<> distribution(1,.1);
-			boost::variate_generator< boost::mt19937, boost::normal_distribution<> > dist(rng, distribution);
+      boost::mt19937 rng;
+      rng.seed(time(NULL));
+      boost::normal_distribution<> distribution(1,.02);
+      boost::variate_generator< boost::mt19937, boost::normal_distribution<> > dist(rng, distribution);
 //#else
 //      std::default_random_engine generator(time(NULL));
 //      /* create a gaussian noise generator, constructor(mean, standard deviation) */

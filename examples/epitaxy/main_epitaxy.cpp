@@ -95,10 +95,9 @@ int main(int argc, char **argv)
     fp = fopen(name, "w");
     if(fp==NULL)
       throw std::invalid_argument("could not open file for coverage vs. time output");
-    fprintf(fp, "%%time | coverage | Nuc | dt\n");
+    fprintf(fp, "%%time | coverage | Nuc | dt | nb_nodes\n");
     fclose(fp);
   }
-
 
   while(tn<tf && epitaxy.compute_coverage()<coverage)
   {
@@ -129,14 +128,21 @@ int main(int argc, char **argv)
 
     double coverage_n = epitaxy.compute_coverage();
     p4est = epitaxy.get_p4est();
+    nodes = epitaxy.get_nodes();
     if(p4est->mpirank==0)
     {
+      p4est_locidx_t nb_nodes_global = 0;
+      for(int r=0; r<p4est->mpisize; ++r)
+        nb_nodes_global += nodes->global_owned_indeps[r];
+
+      printf("The p4est has %d nodes.\n", nb_nodes_global);
+
       fp = fopen(name, "a");
       if(fp==NULL)
       {
         throw std::invalid_argument("could not open file for coverage vs. time output");
       }
-      fprintf(fp, "%.15e %.15e %.15e %.15e\n", tn, coverage_n, epitaxy.get_Nuc(), epitaxy.get_dt());
+      fprintf(fp, "%.15e %.15e %.15e %.15e %d\n", tn, coverage_n, epitaxy.get_Nuc(), epitaxy.get_dt(), nb_nodes_global);
       fclose(fp);
     }
 

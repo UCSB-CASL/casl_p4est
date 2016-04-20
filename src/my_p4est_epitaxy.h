@@ -116,6 +116,8 @@ public:
 
   inline p4est_t* get_p4est() { return p4est; }
 
+  inline p4est_nodes_t* get_nodes() { return nodes; }
+
   inline double get_Nuc() { return Nuc; }
 
   void compute_velocity();
