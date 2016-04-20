@@ -3,12 +3,12 @@
 #include <time.h>
 #include <stack>
 /* c++11 support for the "random" procedures is broken for some reason with icpc / gcc 4.4.7 or gcc 4.8.0 */
-#if defined(COMET) || defined(STAMPEDE)
+//#if defined(COMET) || defined(STAMPEDE)
 #include <boost/random.hpp>
 #include <boost/random/normal_distribution.hpp>
-#else
-#include <random>
-#endif
+//#else
+//#include <random>
+//#endif
 
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_level_set.h>
@@ -833,16 +833,16 @@ void my_p4est_epitaxy_t::nucleate_new_island()
         ierr = VecGetArrayRead(phi[i], &phi_p[i]); CHKERRXX(ierr);
       }
 
-#if defined(COMET) || defined(STAMPEDE)
+//#if defined(COMET) || defined(STAMPEDE)
 			boost::mt19937 rng;
 			rng.seed(time(NULL));
 			boost::normal_distribution<> distribution(1,.1);
 			boost::variate_generator< boost::mt19937, boost::normal_distribution<> > dist(rng, distribution);
-#else
-      std::default_random_engine generator(time(NULL));
-      /* create a gaussian noise generator, constructor(mean, standard deviation) */
-      std::normal_distribution<double> distribution(1,.1);
-#endif
+//#else
+//      std::default_random_engine generator(time(NULL));
+//      /* create a gaussian noise generator, constructor(mean, standard deviation) */
+//      std::normal_distribution<double> distribution(1,.1);
+//#endif
       double phi_c;
 
       /* find the nucleation point, maximum of (rho * gaussian_perturbation) */
@@ -854,11 +854,11 @@ void my_p4est_epitaxy_t::nucleate_new_island()
         {
           if(!one_level_only || phi_g_p[n]<0)
           {
-#if defined(COMET) || defined(STAMPEDE)
+//#if defined(COMET) || defined(STAMPEDE)
 						double rho_perturb = SQR(rho_g_p[n])*dist();
-#else
-            double rho_perturb = SQR(rho_g_p[n])*distribution(generator);
-#endif
+//#else
+//            double rho_perturb = SQR(rho_g_p[n])*distribution(generator);
+//#endif
 
             if(rho_perturb > comm[5*p4est->mpirank])
             {
