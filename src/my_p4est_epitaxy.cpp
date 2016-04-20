@@ -337,26 +337,7 @@ void my_p4est_epitaxy_t::compute_islands_numbers()
       rcvcounts[p] = (nb_islands[p]%proc_padding) * nb_islands_g;
       displs[p] = proc_offset[p]*nb_islands_g;
     }
-//    if(p4est->mpirank==0)
-//    {
-//      std::cout << "debug info : nb_islands = " << nb_islands_g << ", " << graph.size() << std::endl;
-//      for(int p=0; p<p4est->mpisize; ++p)
-//      {
-//        std::cout << nb_islands[p] << ", ";
-//      }
-//      std::cout << std::endl;
-//      for(int p=0; p<p4est->mpisize; ++p)
-//      {
-//        std::cout << rcvcounts[p] << ", ";
-//      }
-//      std::cout << std::endl;
-//      for(int p=0; p<p4est->mpisize; ++p)
-//      {
-//        std::cout << displs[p] << ", ";
-//      }
-//      std::cout << std::endl;
-//    }
-//    sleep(1);
+
     mpiret = MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &graph[0], &rcvcounts[0], &displs[0], MPI_INT, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
     /* now we can color the graph connecting the islands, and thus obtain a unique numbering for all the islands */
@@ -398,9 +379,6 @@ void my_p4est_epitaxy_t::compute_islands_numbers()
     ierr = VecRestoreArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(island_number[level], &island_number_p); CHKERRXX(ierr);
   }
-
-//  if(nb_islands_total!=floor(Nuc*island_nucleation_scaling))
-//    throw std::runtime_error("The number of islands is inconsistent with the nucleation rate ...");
 }
 
 
@@ -593,10 +571,6 @@ void my_p4est_epitaxy_t::update_grid()
     my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
 
     sl.update_p4est(v, dt_n, phi);
-//    Vec velo[2];
-//    velo[0] = v[0][0];
-//    velo[1] = v[1][0];
-//    sl.update_p4est(velo, dt_n, phi[0]);
 
     /* check if the lowest level disappeared, and remove the corresponding data if needed */
     double phi_min;
@@ -618,6 +592,8 @@ void my_p4est_epitaxy_t::update_grid()
       island_number.erase(island_number.begin());
 
       nb_islands_per_level.resize(phi.size());
+
+      nb_levels_deleted++;
     }
   }
 
@@ -731,6 +707,7 @@ void my_p4est_epitaxy_t::solve_rho()
       {
         rhs_p[n] = rho_p[n] + dt_n*(F - 1*new_island*2*D*sigma1*rho_sqr_avg);
 //        rhs_p[n] = rho_p[n] + dt_n*(F - .1*new_island*2*D*sigma1*SQR(rho_p[n]));
+//        rhs_p[n] = rho_p[n] + dt_n*(F - 2*D*sigma1*rho_sqr_avg);
 
         phi_i_p[n] = -4*L;
         if(level<phi.size()) phi_i_p[n] = phi_p[level][n];
@@ -828,8 +805,6 @@ void my_p4est_epitaxy_t::nucleate_new_island()
     /* the level of the new island */
     unsigned int level;
 
-//    r *= (4-phi.size())*5;
-
     /* first island created */
     if(phi.size()==0)
     {
@@ -837,7 +812,6 @@ void my_p4est_epitaxy_t::nucleate_new_island()
       xc = ((double)rand()/RAND_MAX)*L;
       yc = ((double)rand()/RAND_MAX)*L;
       level = 0;
-//      xc = yc = L/2;
     }
     /* islands already exist */
     else
@@ -868,14 +842,6 @@ void my_p4est_epitaxy_t::nucleate_new_island()
           if(!one_level_only || phi_g_p[n]<0)
           {
             double rho_perturb = SQR(rho_g_p[n])*distribution(generator);
-
-//            if(fabs(node_x_fr_n(n, p4est, nodes)-L/2)<EPS && fabs(node_y_fr_n(n, p4est, nodes)-L/2)<EPS)
-//            {
-//              rho_perturb = 1000;
-//              unsigned int l = 0;
-//              while(l<phi.size() && phi_p[l][n]>0) ++l;
-//              std::cout << "at center, level set is " << l << std::endl;
-//            }
 
             if(rho_perturb > comm[5*p4est->mpirank])
             {
