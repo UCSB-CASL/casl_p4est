@@ -21,18 +21,18 @@ int main(int argc, char **argv)
   cmd.add_option("save_vtk", "1 to save vtu files, 0 otherwise");
   cmd.add_option("save_every_n", "save vtk every n iteration, default = 1");
   cmd.add_option("tf", "final time");
-  cmd.add_option("box_size", "set box_size, default = 180");
+  cmd.add_option("L", "set box_size, default = 180");
   cmd.add_option("D", "the diffusion coefficient, default = 1e5");
   cmd.add_option("F", "the deposition flux, default = 1");
   cmd.add_option("coverage", "end the simulation when the coverage theta is reached, default = .2");
   cmd.add_option("save_stats", "compute statistics for the final state. 0 or 1, default = 0");
-  cmd.add_option("a", "set the lattice spacing, default = L/300");
+  cmd.add_option("a", "set the lattice spacing, default = 180/300 = .6");
   cmd.add_option("one_level", "set to 1 to restrict the islands to one level only, default = 0");
   cmd.parse(argc, argv);
 
   int nx = cmd.get("nx", 2);
   int ny = cmd.get("ny", 2);
-  double L = cmd.get("box_size", 180);
+  double L = cmd.get("L", 180);
   double D = cmd.get("D", 1e5);
   double F = cmd.get("F", 1);
   double coverage = cmd.get("coverage", .2);
@@ -40,8 +40,8 @@ int main(int argc, char **argv)
   int lmax = cmd.get("lmax", 7);
   double tf = cmd.get("tf", DBL_MAX);
   int save_stats = cmd.get("save_stats", 0);
-  double a = cmd.get("a", L/300.);
-  bool one_level_only = cmd.get("one_level", false);
+  double a = cmd.get("a", .6);
+  int one_level_only = cmd.get("one_level", 0);
 
   bool save_vtk = cmd.get("save_vtk", 1);
   int save_every_n = cmd.get("save_every_n", 1);
@@ -95,6 +95,7 @@ int main(int argc, char **argv)
     fp = fopen(name, "w");
     if(fp==NULL)
       throw std::invalid_argument("could not open file for coverage vs. time output");
+    fprintf(fp, "%%time | coverage | Nuc | dt\n");
     fclose(fp);
   }
 
