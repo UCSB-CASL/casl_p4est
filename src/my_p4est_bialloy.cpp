@@ -1057,9 +1057,9 @@ void my_p4est_bialloy_t::save_VTK(int iter)
 
     double xyz_min[P4EST_DIM];
     double xyz_max[P4EST_DIM];
-    for (short i=0; i<3; i++)
+    for (short i=0; i<P4EST_DIM; i++)
       xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
-    for (short i=0; i<3; i++)
+    for (short i=0; i<P4EST_DIM; i++)
       xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
 
 #ifdef P4_TO_P8
