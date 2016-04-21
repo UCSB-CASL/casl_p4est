@@ -811,7 +811,8 @@ void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, st
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_multiple_phi, 0, 0, 0, 0); CHKERRXX(ierr);
-  P4EST_ASSERT(v.size()==phi.size());
+  for(int i=0; i<P4EST_DIM; ++i)
+    P4EST_ASSERT(v[i].size()==phi.size());
 
   Vec *vxx[P4EST_DIM];
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -843,17 +844,9 @@ void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, st
 
   /* initialize the new forest with uniform lmin */
   splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est->user_pointer;
-  p4est_t *p4est_np1 = my_p4est_new(p4est->mpicomm, p4est->connectivity, 0, NULL, (void*)sp_old);
-  for(int lvl=0; lvl<sp_old->min_lvl; ++lvl)
-  {
-    my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);
-  }
-  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   Vec phi_np1;
-  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
 
   /* update the new forest by advecting each level-set one after the other */
   for(unsigned int i=0; i<phi.size(); ++i)
@@ -887,28 +880,31 @@ void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, st
       ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
       advect_from_n_to_np1(dt, velo, vxx, phi[i], phi_xx,
-                           phi_np1_p, p4est_np1, nodes_np1);
+                           phi_np1_p, p4est, nodes);
 
       splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-      is_grid_changing = sp.coarsen(p4est_np1, nodes_np1, phi_np1_p);
+      is_grid_changing = sp.refine(p4est, nodes, phi_np1_p);
 
       ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
       if (is_grid_changing) {
-        my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+        my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
         // reset nodes, ghost, and phi
-        p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-        p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+        p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+        p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
         ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
-        ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
       }
 
       ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
       counter++;
     }
   }
+  *p_p4est = p4est;
+  *p_nodes = nodes;
+  *p_ghost = ghost;
 
 
   /* now update all the new level-sets with their new values */
@@ -938,7 +934,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, st
     ierr = VecGetArray(tmp, &phi_np1_p); CHKERRXX(ierr);
 
     advect_from_n_to_np1(dt, velo, vxx, phi[i], phi_xx,
-                         phi_np1_p, p4est_np1, nodes_np1);
+                         phi_np1_p, p4est, nodes);
 
     ierr = VecRestoreArray(tmp, &phi_np1_p); CHKERRXX(ierr);
 
@@ -946,12 +942,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, st
     phi[i] = tmp;
   }
 
-  p4est_np1->user_pointer = p4est->user_pointer;
-
-  /* now that everything is updated, get rid of old stuff and swap them with new ones */
-  p4est_destroy(p4est);       p4est = *p_p4est = p4est_np1;
-  p4est_nodes_destroy(nodes); nodes = *p_nodes = nodes_np1;
-  p4est_ghost_destroy(ghost); ghost = *p_ghost = ghost_np1;
+  p4est->user_pointer = (void*)sp_old;
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {

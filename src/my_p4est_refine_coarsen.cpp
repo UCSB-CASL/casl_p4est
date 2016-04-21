@@ -558,7 +558,7 @@ function_end:
 }
 
 
-bool splitting_criteria_tag_t::coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi) {
+bool splitting_criteria_tag_t::refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi) {
 
   double f[P4EST_CHILDREN];
   for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {

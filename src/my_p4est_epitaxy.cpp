@@ -565,7 +565,15 @@ void my_p4est_epitaxy_t::compute_dt()
 
 void my_p4est_epitaxy_t::update_grid()
 {
-  p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
+
+//  p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
+  splitting_criteria_t* sp = (splitting_criteria_t*)p4est->user_pointer;
+  p4est_t *p4est_np1 = my_p4est_new(p4est->mpicomm, p4est->connectivity, 0, NULL, (void*)sp);
+  for(int lvl=0; lvl<sp->min_lvl; ++lvl)
+  {
+    my_p4est_refine(p4est_np1, P4EST_FALSE, refine_every_cell, NULL);
+    my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
+  }
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
