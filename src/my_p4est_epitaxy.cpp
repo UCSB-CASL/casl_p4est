@@ -565,8 +565,6 @@ void my_p4est_epitaxy_t::compute_dt()
 
 void my_p4est_epitaxy_t::update_grid()
 {
-
-//  p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
   splitting_criteria_t* sp = (splitting_criteria_t*)p4est->user_pointer;
   p4est_t *p4est_np1 = my_p4est_new(p4est->mpicomm, p4est->connectivity, 0, NULL, (void*)sp);
   for(int lvl=0; lvl<sp->min_lvl; ++lvl)

@@ -40,17 +40,17 @@ class my_p4est_semi_lagrangian_t
                             const CF_2 **v,
                           #endif
                             Vec phi_n, Vec *phi_xx_n,
-                            double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
+                            double *phi_np1);
 
   void advect_from_n_to_np1(double dt, Vec *v, Vec **vxx, Vec phi_n, Vec *phi_xx_n,
-                            double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
+                            double *phi_np1);
 
 
   void advect_from_n_to_np1(double dt_nm1, double dt_n,
                             Vec *vnm1, Vec **vxx_nm1,
                             Vec *vn  , Vec **vxx_n,
                             Vec phi_n, Vec *phi_xx_n,
-                            double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1);
+                            double *phi_np1);
 
 public:
   my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1, p4est_ghost_t **ghost_np1, my_p4est_brick_t *myb, my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1=NULL);
