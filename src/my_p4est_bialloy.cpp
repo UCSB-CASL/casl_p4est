@@ -993,6 +993,8 @@ void my_p4est_bialloy_t::one_step()
     iteration++;
   }
 
+  compare_velocity_temperature_vs_concentration();
+
   compute_velocity();
   compute_dt();
   update_grid();
@@ -1001,6 +1003,84 @@ void my_p4est_bialloy_t::one_step()
 }
 
 
+
+
+void my_p4est_bialloy_t::compare_velocity_temperature_vs_concentration()
+{
+  /* compute the normal velocity from the temperature field and compare with the one computed from the concentration */
+  Vec Tl, Ts;
+  ierr = VecDuplicate(phi, &Tl); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &Ts); CHKERRXX(ierr);
+
+  /* make copy of the temperature field */
+  Vec Tnp1_loc, Tl_loc, Ts_loc;
+  ierr = VecGhostGetLocalForm(Tl, &Tl_loc); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(Ts, &Ts_loc); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(temperature_np1, &Tnp1_loc); CHKERRXX(ierr);
+  ierr = VecCopy(Tnp1_loc, Tl_loc); CHKERRXX(ierr);
+  ierr = VecCopy(Tnp1_loc, Ts_loc); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(Tl, &Tl_loc); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(Ts, &Ts_loc); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(temperature_np1, &Tnp1_loc); CHKERRXX(ierr);
+
+  /* extend temperatures over interface */
+  my_p4est_level_set_t ls(ngbd);
+  ls.extend_Over_Interface_TVD(phi, Ts);
+
+  double *phi_p;
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    phi_p[n] *= -1;
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+  ls.extend_Over_Interface_TVD(phi, Tl);
+
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    phi_p[n] *= -1;
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+  /* compute normal velocity, vn = k/L [ dT/dn ]
+   * k is the thermal conductivity
+   * L is the latent heat
+   */
+  quad_neighbor_nodes_of_node_t qnnn;
+  const double *normal_p[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGetArrayRead(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+  }
+  double *Tl_p, *Ts_p;
+  double *vn_p;
+  ierr = VecGetArray(Tl, &Tl_p); CHKERRXX(ierr);
+  ierr = VecGetArray(Ts, &Ts_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(normal_velocity_np1, &vn_p); CHKERRXX(ierr);
+  double err = 0;
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    if(fabs(phi_p[n])<dxyz_min)
+    {
+      ngbd->get_neighbors(n, qnnn);
+      double dTl_dn = qnnn.dx_central(Tl_p)*normal_p[0][n] + qnnn.dy_central(Tl_p)*normal_p[1][n];
+      double dTs_dn = qnnn.dx_central(Ts_p)*normal_p[0][n] + qnnn.dy_central(Ts_p)*normal_p[1][n];
+      double vn = thermal_conductivity/latent_heat * (dTs_dn - dTl_dn);
+      err = MAX(err, fabs((vn-vn_p[n])/vn));
+    }
+  }
+
+  ierr = VecRestoreArray(normal_velocity_np1, &vn_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Tl, &Tl_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Ts, &Ts_p); CHKERRXX(ierr);
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecRestoreArrayRead(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+  }
+
+  MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+  ierr = PetscPrintf(p4est->mpicomm, "maximum difference between velocities = %e\n", err); CHKERRXX(ierr);
+}
 
 
 

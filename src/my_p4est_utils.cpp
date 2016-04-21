@@ -1423,6 +1423,10 @@ std::ostream& operator<< (std::ostream& os, BoundaryConditionType type)
     os << "Neumann";
     break;
 
+  case ROBIN:
+    os << "Robin";
+    break;
+
   case NOINTERFACE:
     os << "No-Interface";
     break;
@@ -1449,6 +1453,8 @@ std::istream& operator>> (std::istream& is, BoundaryConditionType& type)
     type = DIRICHLET;
   else if (str == "NEUMANN" || str == "Neumann" || str == "neumann")
     type = NEUMANN;
+  else if (str == "ROBIN" || str == "Robin" || str == "robin")
+    type = ROBIN;
   else if (str == "NOINTERFACE" || str == "Nointerface" || str == "No-Interface" || str == "nointerface" || str == "no-interface")
     type = NOINTERFACE;
   else if (str == "MIXED" || str == "Mixed" || str == "mixed")

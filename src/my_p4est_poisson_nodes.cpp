@@ -1124,7 +1124,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
           if (bc_->interfaceType() == ROBIN){
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           //---------------------------------------------------------------------
@@ -1175,7 +1175,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           if (bc_->interfaceType() == ROBIN){
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
@@ -1707,7 +1707,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
 
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
           if (bc_->interfaceType() == ROBIN){
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
@@ -1722,10 +1722,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
           rhs_p[n] *= volume_cut_cell;
-          if(bc_->interfaceType() == NEUMANN)
-            rhs_p[n] += mu_*integral_bc;
-          else
-            rhs_p[n] += integral_bc;
+          rhs_p[n] += mu_*integral_bc;
 
           rhs_p[n] /= w_000;
 #else
@@ -1745,7 +1742,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           if (bc_->interfaceType() == ROBIN){
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
@@ -1755,10 +1752,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
           rhs_p[n] *= volume_cut_cell;
-          if(bc_->interfaceType() == NEUMANN)
-            rhs_p[n] += mu_*integral_bc;
-          else
-            rhs_p[n] += integral_bc;
+          rhs_p[n] += mu_*integral_bc;
 
           rhs_p[n] /= w_000;
 #endif
@@ -2378,7 +2372,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
           if (bc_->interfaceType() == ROBIN){
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           //---------------------------------------------------------------------
@@ -2419,6 +2413,11 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
           double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
 
+//          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_mpm, dx, dy);
+//          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_pmm, P_ppm, dx, dy);
+//          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_pmm, dx, dy);
+//          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mpm, P_ppm, dx, dy);
+
           double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
           if(!is_node_xmWall(p4est, ni)) w_m00 += -mu_ * s_m00/dx_min;
           if(!is_node_xpWall(p4est, ni)) w_p00 += -mu_ * s_p00/dx_min;
@@ -2428,7 +2427,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           if (bc_->interfaceType() == ROBIN){
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
@@ -2964,7 +2963,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
 
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
           if (bc_->interfaceType() == ROBIN){
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
@@ -2979,10 +2978,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
           rhs_p[n] *= volume_cut_cell;
-          if(bc_->interfaceType() == NEUMANN)
-            rhs_p[n] += mu_*integral_bc;
-          else
-            rhs_p[n] += integral_bc;
+          rhs_p[n] += mu_*integral_bc;
 
           if (is_node_xmWall(p4est, ni)) rhs_p[n] += mu_*s_m00*bc_->wallValue(x_C, y_C, z_C);
           if (is_node_xpWall(p4est, ni)) rhs_p[n] += mu_*s_p00*bc_->wallValue(x_C, y_C, z_C);
@@ -3005,6 +3001,11 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
           double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
 
+//          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_mpm, dx, dy);
+//          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_pmm, P_ppm, dx, dy);
+//          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_pmm, dx, dy);
+//          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mpm, P_ppm, dx, dy);
+
           double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
           if(!is_node_xmWall(p4est, ni)) w_m00 += -mu_ * s_m00/dx_min;
           if(!is_node_xpWall(p4est, ni)) w_p00 += -mu_ * s_p00/dx_min;
@@ -3013,7 +3014,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           if (bc_->interfaceType() == ROBIN){
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
@@ -3024,10 +3025,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
           rhs_p[n] *= volume_cut_cell;
-          if(bc_->interfaceType() == NEUMANN)
-            rhs_p[n] += mu_*integral_bc;
-          else
-            rhs_p[n] += integral_bc;
+          rhs_p[n] += mu_*integral_bc;
 
           if (is_node_xmWall(p4est, ni)) rhs_p[n] += mu_*s_m00*bc_->wallValue(x_C, y_C);
           if (is_node_xpWall(p4est, ni)) rhs_p[n] += mu_*s_p00*bc_->wallValue(x_C, y_C);
@@ -3795,7 +3793,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
           if (bc_->interfaceType() == ROBIN){
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mue_000*robin_coef_p[n]*interface_area;
           }
 
           //---------------------------------------------------------------------
@@ -3841,7 +3839,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);          
           if (bc_->interfaceType() == ROBIN){
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mue_000*robin_coef_p[n]*interface_area;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
@@ -4408,7 +4406,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
           if (bc_->interfaceType() == ROBIN){
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mue_000*robin_coef_p[n]*interface_area;
           }
 
           OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
@@ -4423,7 +4421,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
           rhs_p[n] *= volume_cut_cell;
-          rhs_p[n] += integral_bc;
+          rhs_p[n] += mue_000*integral_bc;
           rhs_p[n] /= w_000;
 #else
           double fxx,fyy;
@@ -4443,7 +4441,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           if (bc_->interfaceType() == ROBIN){
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += robin_coef_p[n]*interface_area;
+            w_000 += mue_000*robin_coef_p[n]*interface_area;
           }
 
           QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
@@ -4453,7 +4451,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
           rhs_p[n] *= volume_cut_cell;
-          rhs_p[n] += integral_bc;
+          rhs_p[n] += mue_000*integral_bc;
           rhs_p[n] /= w_000;
 #endif
         } else {
