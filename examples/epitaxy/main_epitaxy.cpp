@@ -28,20 +28,24 @@ int main(int argc, char **argv)
   cmd.add_option("save_stats", "compute statistics for the final state. 0 or 1, default = 0");
   cmd.add_option("a", "set the lattice spacing, default = 180/300 = .6");
   cmd.add_option("one_level", "set to 1 to restrict the islands to one level only, default = 0");
+  cmd.add_option("bc", "the boundary condition for rho at the island, either dirichlet or robin, default = dirichlet");
+  cmd.add_option("barrier", "if robin bc, set the ration D'/D. ~1 -> dirichlet, <<1 -> steep islands. default = .5");
   cmd.parse(argc, argv);
 
   int nx = cmd.get("nx", 2);
   int ny = cmd.get("ny", 2);
+  int lmin = cmd.get("lmin", 4);
+  int lmax = cmd.get("lmax", 7);
+  int save_stats = cmd.get("save_stats", 0);
+  int one_level_only = cmd.get("one_level", 0);
+  BoundaryConditionType bc = cmd.get("bc", DIRICHLET);
   double L = cmd.get("L", 180);
   double D = cmd.get("D", 1e5);
   double F = cmd.get("F", 1);
-  double coverage = cmd.get("coverage", .2);
-  int lmin = cmd.get("lmin", 4);
-  int lmax = cmd.get("lmax", 7);
-  double tf = cmd.get("tf", DBL_MAX);
-  int save_stats = cmd.get("save_stats", 0);
   double a = cmd.get("a", .6);
-  int one_level_only = cmd.get("one_level", 0);
+  double tf = cmd.get("tf", DBL_MAX);
+  double coverage = cmd.get("coverage", .2);
+  double barrier = cmd.get("barrier", .5);
 
   bool save_vtk = cmd.get("save_vtk", 1);
   int save_every_n = cmd.get("save_every_n", 1);
@@ -74,7 +78,7 @@ int main(int argc, char **argv)
   my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
 
   my_p4est_epitaxy_t epitaxy(ngbd);
-  epitaxy.set_parameters(D, F, 1.05, a);
+  epitaxy.set_parameters(D, F, 1.05, a, bc, barrier);
   epitaxy.set_one_level_only(one_level_only);
 
   double tn = 0;
@@ -91,7 +95,7 @@ int main(int argc, char **argv)
   }
   else if(p4est->mpirank==0)
   {
-    snprintf(name, 1000, "%s/%d-%d_DF_%1.2e.dat", out_dir, lmin, lmax, D/F);
+    snprintf(name, 1000, "%s/%d-%d_DF_%1.2e_a%g.dat", out_dir, lmin, lmax, D/F, a);
     fp = fopen(name, "w");
     if(fp==NULL)
       throw std::invalid_argument("could not open file for coverage vs. time output");
@@ -119,7 +123,6 @@ int main(int argc, char **argv)
       epitaxy.solve_rho();
       epitaxy.update_nucleation();
     } while(!epitaxy.check_time_step());
-    epitaxy.compute_islands_numbers();
 
     if(save_vtk==true && iter%save_every_n==0)
     {

@@ -39,7 +39,7 @@ private:
     }
   };
 
-  class ZERO : public CF_2
+  class zero_t : public CF_2
   {
   public:
     double operator()(double, double) const
@@ -47,6 +47,18 @@ private:
       return 0;
     }
   } zero;
+
+  class constant_function_t : public CF_2
+  {
+  private:
+    double c;
+  public:
+    constant_function_t(double c) { this->c = c; }
+    double operator()(double, double) const
+    {
+      return c;
+    }
+  };
 
   my_p4est_brick_t *brick;
   p4est_t *p4est;
@@ -66,10 +78,20 @@ private:
   std::vector<Vec> island_number;
   std::vector<int> nb_islands_per_level;
 
+  Vec robin_coef;
+
   int nb_levels_deleted;
 
-  double dt_n;
   double D;
+  /*
+   * parameters for the robin boundary conditions, see Papac, Margeti, Gibou, Ratsch, Physical Review (2014)
+   * Dp = diffusion from edge to higher terrace, D' in the articles
+   * Dm = diffusion from edge to lower terrace, D'' in the articles
+   * Dcurl = the curly D in the article ...
+   */
+  double Dm, Dp, Dcurl, DE;
+
+  double dt_n;
   double F;
   double sigma1;
   double sigma1_np1;
@@ -87,9 +109,13 @@ private:
   double rho_sqr_avg;
   double rho_sqr_avg_np1;
 
+  BoundaryConditionType bc_type;
+  double barrier;
+
   double dxyz[P4EST_DIM];
   double xyz_min[P4EST_DIM];
   double xyz_max[P4EST_DIM];
+
 
   void compute_phi_g();
 
@@ -108,7 +134,7 @@ public:
 
   ~my_p4est_epitaxy_t();
 
-  void set_parameters(double D, double F, double alpha, double lattice_spacing);
+  void set_parameters(double D, double F, double alpha, double lattice_spacing, BoundaryConditionType bc_type, double barrier);
 
   void set_one_level_only(bool val) { one_level_only = val; }
 

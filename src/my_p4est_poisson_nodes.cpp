@@ -210,7 +210,7 @@ void my_p4est_poisson_nodes_t::preallocate_matrix()
 
   for (p4est_locidx_t n=0; n<num_owned_local; n++)
   {
-    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
+    const quad_neighbor_nodes_of_node_t& qnnn = node_neighbors_->get_neighbors(n);
 
     /*
      * Check for neighboring nodes:
@@ -514,7 +514,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
     double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
-    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
+    const quad_neighbor_nodes_of_node_t& qnnn = node_neighbors_->get_neighbors(n);
 
     double d_m00 = qnnn.d_m00;double d_p00 = qnnn.d_p00;
     double d_0m0 = qnnn.d_0m0;double d_0p0 = qnnn.d_0p0;
@@ -1271,7 +1271,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
     double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
-    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
+    const quad_neighbor_nodes_of_node_t& qnnn = node_neighbors_->get_neighbors(n);
 
     double d_m00 = qnnn.d_m00;double d_p00 = qnnn.d_p00;
     double d_0m0 = qnnn.d_0m0;double d_0p0 = qnnn.d_0p0;
@@ -1836,7 +1836,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
     double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
-    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
+    const quad_neighbor_nodes_of_node_t& qnnn = node_neighbors_->get_neighbors(n);
 
     double d_m00 = qnnn.d_m00;double d_p00 = qnnn.d_p00;
     double d_0m0 = qnnn.d_0m0;double d_0p0 = qnnn.d_0p0;
@@ -2539,7 +2539,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
     double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
-    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
+    const quad_neighbor_nodes_of_node_t& qnnn = node_neighbors_->get_neighbors(n);
 
     double d_m00 = qnnn.d_m00;double d_p00 = qnnn.d_p00;
     double d_0m0 = qnnn.d_0m0;double d_0p0 = qnnn.d_0p0;
@@ -3134,7 +3134,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
     double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
-    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
+    const quad_neighbor_nodes_of_node_t& qnnn = node_neighbors_->get_neighbors(n);
 
     double d_m00 = qnnn.d_m00;double d_p00 = qnnn.d_p00;
     double d_0m0 = qnnn.d_0m0;double d_0p0 = qnnn.d_0p0;
@@ -3974,7 +3974,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
     double z_C  = node_z_fr_n(n, p4est, nodes);
 #endif
 
-    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
+    const quad_neighbor_nodes_of_node_t& qnnn = node_neighbors_->get_neighbors(n);
 
     double d_m00 = qnnn.d_m00;double d_p00 = qnnn.d_p00;
     double d_0m0 = qnnn.d_0m0;double d_0p0 = qnnn.d_0p0;

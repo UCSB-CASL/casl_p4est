@@ -22,6 +22,8 @@ my_p4est_epitaxy_t::my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd)
     ghost(ngbd->ghost), nodes(ngbd->nodes), hierarchy(ngbd->hierarchy),
     ngbd(ngbd)
 {
+  ngbd->init_neighbors();
+
   double *v2c = p4est->connectivity->vertices;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
   p4est_topidx_t first_tree = 0, last_tree = p4est->trees->elem_count-1;
@@ -55,6 +57,13 @@ my_p4est_epitaxy_t::my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd)
   ierr = VecSet(loc, 0); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(rho[0], &loc); CHKERRXX(ierr);
 
+  if(bc_type==ROBIN)
+  {
+    ierr = VecDuplicate(rho_g, &robin_coef); CHKERRXX(ierr);
+  }
+  else
+    robin_coef = NULL;
+
   Nuc = 0;
   new_island = 0;
   alpha = 1.05;
@@ -75,6 +84,7 @@ my_p4est_epitaxy_t::~my_p4est_epitaxy_t()
 {
   if(rho_g !=NULL) { ierr = VecDestroy(rho_g); CHKERRXX(ierr); }
   if(phi_g !=NULL) { ierr = VecDestroy(phi_g); CHKERRXX(ierr); }
+  if(robin_coef != NULL) { ierr = VecDestroy(robin_coef); CHKERRXX(ierr); }
 
   for(unsigned int i=0; i<phi.size(); ++i)
   {
@@ -100,12 +110,19 @@ my_p4est_epitaxy_t::~my_p4est_epitaxy_t()
 
 
 
-void my_p4est_epitaxy_t::set_parameters(double D, double F, double alpha, double lattice_spacing)
+void my_p4est_epitaxy_t::set_parameters(double D, double F, double alpha, double lattice_spacing, BoundaryConditionType bc_type, double barrier)
 {
   this->D = D;
   this->F = F;
   this->alpha = alpha;
   this->lattice_spacing = lattice_spacing;
+  this->bc_type = bc_type;
+  this->barrier = barrier;
+
+  Dp = barrier*D;
+  Dm = 0.95*D;
+  Dcurl = 10;
+  DE = 1;
 }
 
 
@@ -146,7 +163,6 @@ void my_p4est_epitaxy_t::compute_velocity()
     ierr = VecDuplicate(v[1][0], &vtmp[1]); CHKERRXX(ierr);
 
     double *v_p[2];
-    quad_neighbor_nodes_of_node_t qnnn;
 
     const double *rho_0, *rho_1;
 
@@ -162,7 +178,7 @@ void my_p4est_epitaxy_t::compute_velocity()
       for(size_t i=0; i<ngbd->get_layer_size(); ++i)
       {
         p4est_locidx_t n = ngbd->get_layer_node(i);
-        ngbd->get_neighbors(n, qnnn);
+        const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
 
         v_p[0][n] = -SQR(lattice_spacing)*D*(qnnn.dx_central(rho_1) - qnnn.dx_central(rho_0));
         v_p[1][n] = -SQR(lattice_spacing)*D*(qnnn.dy_central(rho_1) - qnnn.dy_central(rho_0));
@@ -174,7 +190,7 @@ void my_p4est_epitaxy_t::compute_velocity()
       for(size_t i=0; i<ngbd->get_local_size(); ++i)
       {
         p4est_locidx_t n = ngbd->get_local_node(i);
-        ngbd->get_neighbors(n, qnnn);
+        const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
 
         v_p[0][n] = -SQR(lattice_spacing)*D*(qnnn.dx_central(rho_1) - qnnn.dx_central(rho_0));
         v_p[1][n] = -SQR(lattice_spacing)*D*(qnnn.dy_central(rho_1) - qnnn.dy_central(rho_0));
@@ -202,14 +218,13 @@ void my_p4est_epitaxy_t::compute_velocity()
 void my_p4est_epitaxy_t::fill_island(const double *phi_p, double *island_number_p, int number, p4est_locidx_t n)
 {
   std::stack<size_t> st;
-  quad_neighbor_nodes_of_node_t qnnn;
   st.push(n);
   while(!st.empty())
   {
     size_t k = st.top();
     st.pop();
     island_number_p[k] = number;
-    ngbd->get_neighbors(k, qnnn);
+    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
     if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && island_number_p[qnnn.node_m00_mm]<0) st.push(qnnn.node_m00_mm);
     if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && island_number_p[qnnn.node_m00_pm]<0) st.push(qnnn.node_m00_pm);
     if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && island_number_p[qnnn.node_p00_mm]<0) st.push(qnnn.node_p00_mm);
@@ -226,14 +241,13 @@ void my_p4est_epitaxy_t::fill_island(const double *phi_p, double *island_number_
 void my_p4est_epitaxy_t::find_connected_ghost_islands(const double *phi_p, double *island_number_p, p4est_locidx_t n, std::vector<double> &connected, std::vector<bool> &visited)
 {
   std::stack<size_t> st;
-  quad_neighbor_nodes_of_node_t qnnn;
   st.push(n);
   while(!st.empty())
   {
     size_t k = st.top();
     st.pop();
     visited[k] = true;
-    ngbd->get_neighbors(k, qnnn);
+    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[k];
     if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && !visited[qnnn.node_m00_mm]) st.push(qnnn.node_m00_mm);
     if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && !visited[qnnn.node_m00_pm]) st.push(qnnn.node_m00_pm);
     if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && !visited[qnnn.node_p00_mm]) st.push(qnnn.node_p00_mm);
@@ -399,6 +413,8 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
   Vec vn;
   ierr = VecDuplicate(rho_g, &vn); CHKERRXX(ierr);
 
+  compute_islands_numbers();
+
   my_p4est_level_set_t ls(ngbd);
 
   for(unsigned int level=0; level<phi.size(); ++level)
@@ -411,11 +427,10 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
     ierr = VecGetArray(v[1][level], &v_p[1]); CHKERRXX(ierr);
     const double *phi_p;
     ierr = VecGetArrayRead(phi[level], &phi_p); CHKERRXX(ierr);
-    quad_neighbor_nodes_of_node_t qnnn;
     for(size_t i=0; i<ngbd->get_layer_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_layer_node(i);
-      ngbd->get_neighbors(n, qnnn);
+      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
       double nx = -qnnn.dx_central(phi_p);
       double ny = -qnnn.dy_central(phi_p);
       double norm = sqrt(nx*nx+ny*ny);
@@ -427,7 +442,7 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
-      ngbd->get_neighbors(n, qnnn);
+      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
       double nx = -qnnn.dx_central(phi_p);
       double ny = -qnnn.dy_central(phi_p);
       double norm = sqrt(nx*nx+ny*ny);
@@ -473,7 +488,7 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
         p4est_locidx_t n = ngbd->get_layer_node(i);
         if(island_number_p[n]==island)
         {
-          ngbd->get_neighbors(n, qnnn);
+          const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
           double nx = -qnnn.dx_central(phi_p);
           double ny = -qnnn.dy_central(phi_p);
           double norm = sqrt(nx*nx+ny*ny);
@@ -490,7 +505,7 @@ void my_p4est_epitaxy_t::compute_average_islands_velocity()
         p4est_locidx_t n = ngbd->get_local_node(i);
         if(island_number_p[n]==island)
         {
-          ngbd->get_neighbors(n, qnnn);
+          const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
           double nx = -qnnn.dx_central(phi_p);
           double ny = -qnnn.dy_central(phi_p);
           double norm = sqrt(nx*nx+ny*ny);
@@ -648,6 +663,12 @@ void my_p4est_epitaxy_t::update_grid()
     ierr = VecDuplicate(rho_g, &island_number[i]); CHKERRXX(ierr);
   }
 
+  if(bc_type==ROBIN)
+  {
+    ierr = VecDestroy(robin_coef); CHKERRXX(ierr);
+    ierr = VecDuplicate(rho_g, &robin_coef); CHKERRXX(ierr);
+  }
+
   p4est_destroy(p4est);       p4est = p4est_np1;
   p4est_ghost_destroy(ghost); ghost = ghost_np1;
   p4est_nodes_destroy(nodes); nodes = nodes_np1;
@@ -730,16 +751,40 @@ void my_p4est_epitaxy_t::solve_rho()
       ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(phi_i, &phi_i_p); CHKERRXX(ierr);
 
-      BoundaryConditions2D bc;
-      bc.setInterfaceType(DIRICHLET);
-      bc.setInterfaceValue(zero);
-
       my_p4est_poisson_nodes_t solver(ngbd);
       solver.set_phi(phi_i);
-      solver.set_bc(bc);
       solver.set_diagonal(1);
       solver.set_mu(dt_n*D);
       solver.set_rhs(rhs);
+
+      BoundaryConditions2D bc;
+      if(bc_type==DIRICHLET)
+      {
+        bc.setInterfaceType(DIRICHLET);
+        bc.setInterfaceValue(zero);
+      }
+      else if(bc_type==ROBIN)
+      {
+        bc.setInterfaceType(ROBIN);
+        double *robin_coef_p;
+        ierr = VecGetArray(robin_coef, &robin_coef_p); CHKERRXX(ierr);
+        for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+        {
+//          double c0 = DE/(2*DE + (2*Dp/Dm + 1)*Dcurl);
+//          double c1 = (2*DE + (3*Dp/Dm +1)*Dcurl) / (2*DE + (4*Dp/Dm +2)*Dcurl);
+//          double Pe = F*L/DE;
+//          double rho_eq = pow(.5,2./3.) * pow(Pe,2./3.) * Dcurl/Dm * pow(c0,2./3.) * pow(c1,1./3.);
+
+//          bc.setInterfaceValue();
+
+          robin_coef_p[n] = Dp/(D-Dp);
+        }
+        ierr = VecRestoreArray(robin_coef, &robin_coef_p); CHKERRXX(ierr);
+      }
+      else
+        throw std::invalid_argument("invalid boundary condition type for rho. Choose either dirichlet or robin.");
+      solver.set_bc(bc);
+
       solver.solve(rho_np1[level]);
 
       ls.extend_Over_Interface_TVD(phi_i, rho_np1[level]);
@@ -1020,6 +1065,12 @@ void my_p4est_epitaxy_t::nucleate_new_island()
       ierr = VecRestoreArray(rho[level+1], &rho_p[1]); CHKERRXX(ierr);
     }
 
+    if(bc_type==ROBIN)
+    {
+      ierr = VecDestroy(robin_coef); CHKERRXX(ierr);
+      ierr = VecDuplicate(rho_g, &robin_coef); CHKERRXX(ierr);
+    }
+
     p4est_destroy(p4est);       p4est = p4est_new;
     p4est_ghost_destroy(ghost); ghost = ghost_new;
     p4est_nodes_destroy(nodes); nodes = nodes_new;
@@ -1108,6 +1159,8 @@ void my_p4est_epitaxy_t::compute_statistics()
   if(fp==NULL)
     throw std::invalid_argument("Could not open file for statistics ...");
 
+  compute_islands_numbers();
+
   double theta = compute_coverage();
 
 //  my_p4est_level_set_t ls(ngbd);
@@ -1162,6 +1215,7 @@ void my_p4est_epitaxy_t::save_vtk(int iter)
   snprintf(name, 1000, "%s/vtu/epitaxy_%04d", out_dir, iter);
 
   /* first build a level-set and island number combining all levels */
+  compute_islands_numbers();
   Vec island_number_g;
   ierr = VecDuplicate(rho_g, &island_number_g); CHKERRXX(ierr);
   std::vector<const double*> island_number_p(island_number.size());
