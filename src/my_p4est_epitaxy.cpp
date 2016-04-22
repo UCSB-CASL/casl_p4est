@@ -122,7 +122,12 @@ void my_p4est_epitaxy_t::set_parameters(double D, double F, double alpha, double
   Dp = barrier*D;
   Dm = 0.95*D;
   Dcurl = 10;
-  DE = 1;
+  DE = D;
+
+  double c0 = DE/(2*DE + (2*Dp/Dm + 1)*Dcurl);
+  double c1 = (2*DE + (3*Dp/Dm +1)*Dcurl) / (2*DE + (4*Dp/Dm +2)*Dcurl);
+  double Pe = F*L/DE;
+  rho_eq = pow(.5,2./3.) * pow(Pe,2./3.) * Dcurl/Dm * pow(c0,2./3.) * pow(c1,1./3.);
 }
 
 
@@ -224,7 +229,7 @@ void my_p4est_epitaxy_t::fill_island(const double *phi_p, double *island_number_
     size_t k = st.top();
     st.pop();
     island_number_p[k] = number;
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[k];
     if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]>0 && island_number_p[qnnn.node_m00_mm]<0) st.push(qnnn.node_m00_mm);
     if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]>0 && island_number_p[qnnn.node_m00_pm]<0) st.push(qnnn.node_m00_pm);
     if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]>0 && island_number_p[qnnn.node_p00_mm]<0) st.push(qnnn.node_p00_mm);
@@ -739,8 +744,7 @@ void my_p4est_epitaxy_t::solve_rho()
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
         rhs_p[n] = rho_p[n] + dt_n*(F - 1*new_island*2*D*sigma1*rho_sqr_avg);
-//        rhs_p[n] = rho_p[n] + dt_n*(F - .1*new_island*2*D*sigma1*SQR(rho_p[n]));
-//        rhs_p[n] = rho_p[n] + dt_n*(F - 2*D*sigma1*rho_sqr_avg);
+        //        rhs_p[n] = rho_p[n] + dt_n*(F - .1*new_island*2*D*sigma1*SQR(rho_p[n]));
 
         phi_i_p[n] = -4*L;
         if(level<phi.size()) phi_i_p[n] = phi_p[level][n];
@@ -758,34 +762,47 @@ void my_p4est_epitaxy_t::solve_rho()
       solver.set_rhs(rhs);
 
       BoundaryConditions2D bc;
+      bc.setInterfaceValue(zero);
       if(bc_type==DIRICHLET)
       {
         bc.setInterfaceType(DIRICHLET);
-        bc.setInterfaceValue(zero);
       }
       else if(bc_type==ROBIN)
       {
-        bc.setInterfaceType(ROBIN);
         double *robin_coef_p;
         ierr = VecGetArray(robin_coef, &robin_coef_p); CHKERRXX(ierr);
+        double Dn;
         for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
         {
-//          double c0 = DE/(2*DE + (2*Dp/Dm + 1)*Dcurl);
-//          double c1 = (2*DE + (3*Dp/Dm +1)*Dcurl) / (2*DE + (4*Dp/Dm +2)*Dcurl);
-//          double Pe = F*L/DE;
-//          double rho_eq = pow(.5,2./3.) * pow(Pe,2./3.) * Dcurl/Dm * pow(c0,2./3.) * pow(c1,1./3.);
 
-//          bc.setInterfaceValue();
+          if     (level==0)          Dn = Dm;
+          else if(level==phi.size()) Dn = Dp;
+          else                       Dn = fabs(phi_p[level-1][n])<fabs(phi_p[level  ][n]) ? Dp : Dm;
 
-          robin_coef_p[n] = Dp/(D-Dp);
+          robin_coef_p[n] = Dn/(D-Dn);
         }
         ierr = VecRestoreArray(robin_coef, &robin_coef_p); CHKERRXX(ierr);
+
+        bc.setInterfaceType(ROBIN);
+        solver.set_robin_coef(robin_coef);
       }
       else
         throw std::invalid_argument("invalid boundary condition type for rho. Choose either dirichlet or robin.");
       solver.set_bc(bc);
 
       solver.solve(rho_np1[level]);
+
+      /* shift the solution because b.c. is drho/dn + D'/(D-D') (rho - rho_eq) = 0 */
+      if(bc_type==ROBIN)
+      {
+        double *rho_np1_p;
+        ierr = VecGetArray(rho_np1[level], &rho_np1_p); CHKERRXX(ierr);
+        for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+        {
+          rho_np1_p[n] += rho_eq;
+        }
+        ierr = VecRestoreArray(rho_np1[level], &rho_np1_p); CHKERRXX(ierr);
+      }
 
       ls.extend_Over_Interface_TVD(phi_i, rho_np1[level]);
 
@@ -939,7 +956,7 @@ void my_p4est_epitaxy_t::nucleate_new_island()
         yc    = comm[5*rank+2];
         phi_c = comm[5*rank+3];
         level = comm[5*rank+4];
-      } while(fabs(phi_c)<r);
+      } while(fabs(phi_c)<1.2*r);
 
       ierr = VecRestoreArrayRead(phi_g, &phi_g_p  ); CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(rho_g , &rho_g_p); CHKERRXX(ierr);

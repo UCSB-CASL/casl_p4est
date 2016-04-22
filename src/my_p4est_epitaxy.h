@@ -48,18 +48,6 @@ private:
     }
   } zero;
 
-  class constant_function_t : public CF_2
-  {
-  private:
-    double c;
-  public:
-    constant_function_t(double c) { this->c = c; }
-    double operator()(double, double) const
-    {
-      return c;
-    }
-  };
-
   my_p4est_brick_t *brick;
   p4est_t *p4est;
   p4est_connectivity_t *connectivity;
@@ -86,10 +74,11 @@ private:
   /*
    * parameters for the robin boundary conditions, see Papac, Margeti, Gibou, Ratsch, Physical Review (2014)
    * Dp = diffusion from edge to higher terrace, D' in the articles
-   * Dm = diffusion from edge to lower terrace, D'' in the articles
+   * Dm = diffusion from edge to lower terrace, D" in the articles
    * Dcurl = the curly D in the article ...
    */
   double Dm, Dp, Dcurl, DE;
+  double rho_eq;
 
   double dt_n;
   double F;

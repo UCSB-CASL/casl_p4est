@@ -38,14 +38,14 @@ int main(int argc, char **argv)
   int lmax = cmd.get("lmax", 7);
   int save_stats = cmd.get("save_stats", 0);
   int one_level_only = cmd.get("one_level", 0);
-  BoundaryConditionType bc = cmd.get("bc", DIRICHLET);
   double L = cmd.get("L", 180);
   double D = cmd.get("D", 1e5);
   double F = cmd.get("F", 1);
   double a = cmd.get("a", .6);
   double tf = cmd.get("tf", DBL_MAX);
-  double coverage = cmd.get("coverage", .2);
-  double barrier = cmd.get("barrier", .5);
+  double coverage = cmd.get("coverage", 2);
+  double barrier = cmd.get("barrier", .2);
+  BoundaryConditionType bc = cmd.get("bc", ROBIN);
 
   bool save_vtk = cmd.get("save_vtk", 1);
   int save_every_n = cmd.get("save_every_n", 1);
@@ -95,7 +95,10 @@ int main(int argc, char **argv)
   }
   else if(p4est->mpirank==0)
   {
-    snprintf(name, 1000, "%s/%d-%d_DF_%1.2e_a%g.dat", out_dir, lmin, lmax, D/F, a);
+    if(bc==DIRICHLET)
+      snprintf(name, 1000, "%s/dirichlet_%d-%d_DF_%1.2e_a%g.dat", out_dir, lmin, lmax, D/F, a);
+    else
+      snprintf(name, 1000, "%s/robin_%d-%d_DF_%1.2e_a%g.dat", out_dir, lmin, lmax, D/F, a);
     fp = fopen(name, "w");
     if(fp==NULL)
       throw std::invalid_argument("could not open file for coverage vs. time output");
