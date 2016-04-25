@@ -916,7 +916,7 @@ void my_p4est_epitaxy_t::nucleate_new_island()
       /* find the nucleation point, maximum of (rho * gaussian_perturbation) */
       std::vector<double> comm(5*p4est->mpisize);
       do{
-        comm[4*p4est->mpirank] = 0;
+        comm[5*p4est->mpirank] = 0;
 
         for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
         {
