@@ -76,6 +76,7 @@ my_p4est_epitaxy_t::my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd)
 //  island_nucleation_scaling = 1;
   island_nucleation_scaling = L*L;
 
+//  srand(0);
   srand(time(NULL));
 }
 
@@ -280,6 +281,7 @@ void my_p4est_epitaxy_t::find_connected_ghost_islands(const double *phi_p, doubl
 void my_p4est_epitaxy_t::compute_islands_numbers()
 {
   int nb_islands_total = 0;
+  int proc_padding = 1e6;
   for(unsigned int level=0; level<phi.size(); ++level)
   {
     Vec loc;
@@ -288,7 +290,6 @@ void my_p4est_epitaxy_t::compute_islands_numbers()
     ierr = VecGhostRestoreLocalForm(island_number[level], &loc); CHKERRXX(ierr);
 
     /* first everyone compute the local numbers */
-    int proc_padding = 1e6;
     std::vector<int> nb_islands(p4est->mpisize);
     nb_islands[p4est->mpirank] = p4est->mpirank*proc_padding;
 
@@ -904,6 +905,7 @@ void my_p4est_epitaxy_t::nucleate_new_island()
 //#if defined(COMET) || defined(STAMPEDE)
       boost::mt19937 rng;
       rng.seed(time(NULL));
+//      rng.seed(0);
       boost::normal_distribution<> distribution(1,.02);
       boost::variate_generator< boost::mt19937, boost::normal_distribution<> > dist(rng, distribution);
 //#else
