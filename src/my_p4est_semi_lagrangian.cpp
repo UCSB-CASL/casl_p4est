@@ -278,7 +278,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
       node_x_fr_n(n, p4est, nodes) - 0.5*dt*v_tmp[0][n],
       node_y_fr_n(n, p4est, nodes) - 0.5*dt*v_tmp[1][n]
   #ifdef P4_TO_P8
-      , node_z_fr_n(n, p4est_np1, nodes_np1) - 0.5*dt*v_tmp[2][n]
+      , node_z_fr_n(n, p4est, nodes) - 0.5*dt*v_tmp[2][n]
   #endif
     };
 
@@ -311,7 +311,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
       node_x_fr_n(n, p4est, nodes) - dt*v_tmp[0][n],
       node_y_fr_n(n, p4est, nodes) - dt*v_tmp[1][n]
   #ifdef P4_TO_P8
-      , node_z_fr_n(n, p4est_np1, nodes_np1) - dt*v_tmp[2][n]
+      , node_z_fr_n(n, p4est, nodes) - dt*v_tmp[2][n]
   #endif
     };
 
@@ -381,7 +381,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
       node_y_fr_n(n, p4est, nodes) - .5*dt_n*v_tmp_n[1][n]
   #ifdef P4_TO_P8
       ,
-      node_z_fr_n(n, p4est_np1, nodes_np1) - .5*dt_n*v_tmp_n[2][n]
+      node_z_fr_n(n, p4est, nodes) - .5*dt_n*v_tmp_n[2][n]
   #endif
     };
 
@@ -435,7 +435,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
       node_y_fr_n(n, p4est, nodes) - dt_n*vy_star
   #ifdef P4_TO_P8
       ,
-      node_z_fr_n(n, p4est_np1, nodes_np1) - dt_n*vz_star
+      node_z_fr_n(n, p4est, nodes) - dt_n*vz_star
   #endif
     };
 

@@ -1122,9 +1122,11 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
           double w_00p = -mu_ * s_00p/dz_min;
 
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                           w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           //---------------------------------------------------------------------
@@ -1173,9 +1175,11 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
           double w_0m0 = -mu_ * s_0m0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                           w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
@@ -1708,15 +1712,23 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
           rhs_p[n] *= volume_cut_cell;
 
-          if (bc_->interfaceType() == ROBIN){
-            w_000 += mu_*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
+          if (bc_->interfaceType() == ROBIN)
+          {
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mu_*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
 
-            /* find the projection of (i,j,k) onto gamma for higher order correction */
-            double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
-            double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
-            double zp = z_C - phi_p[n]*qnnn.dz_central(phi_p);
-            double beta_proj = bc_->interfaceValue(xp,yp,zp);
-            rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double zp = z_C - phi_p[n]*qnnn.dz_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp,zp);
+              rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mu_*robin_coef_p[n]*interface_area;
+            }
           }
 
           OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
@@ -1751,14 +1763,22 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           rhs_p[n] *= volume_cut_cell;
 
-          if (bc_->interfaceType() == ROBIN){
-            w_000 += mu_*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
+          if (bc_->interfaceType() == ROBIN)
+          {
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
 
-            /* find the projection of (i,j,k) onto gamma for higher order correction */
-            double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
-            double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
-            double beta_proj = bc_->interfaceValue(xp,yp);
-            rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp);
+              rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mu_*robin_coef_p[n]*interface_area;
+            }
           }
 
           QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
@@ -2385,7 +2405,8 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           if(!is_node_zpWall(p4est, ni)) w_00p += -mu_ * s_00p/dz_min;
 
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
             w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
           }
@@ -2440,9 +2461,11 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           if(!is_node_ypWall(p4est, ni)) w_0p0 += -mu_ * s_0p0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                           w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
@@ -2979,15 +3002,23 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
           rhs_p[n] *= volume_cut_cell;
 
-          if (bc_->interfaceType() == ROBIN){
-            w_000 += mu_*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
+          if (bc_->interfaceType() == ROBIN)
+          {
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mu_*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
 
-            /* find the projection of (i,j,k) onto gamma for higher order correction */
-            double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
-            double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
-            double zp = z_C - phi_p[n]*qnnn.dz_central(phi_p);
-            double beta_proj = bc_->interfaceValue(xp,yp,zp);
-            rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double zp = z_C - phi_p[n]*qnnn.dz_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp,zp);
+              rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mu_*robin_coef_p[n]*interface_area;
+            }
           }
 
           OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
@@ -3038,14 +3069,22 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           rhs_p[n] *= volume_cut_cell;
 
-          if (bc_->interfaceType() == ROBIN){
-            w_000 += mu_*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
+          if (bc_->interfaceType() == ROBIN)
+          {
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
 
-            /* find the projection of (i,j,k) onto gamma for higher order correction */
-            double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
-            double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
-            double beta_proj = bc_->interfaceValue(xp,yp);
-            rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp);
+              rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mu_*robin_coef_p[n]*interface_area;
+            }
           }
 
           QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
@@ -3821,9 +3860,11 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           double w_00p = -mue_00p * s_00p/dz_min;
 
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                           w_000 += mue_000*robin_coef_p[n]*interface_area;
           }
 
           //---------------------------------------------------------------------
@@ -3867,9 +3908,11 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           double w_0m0 = -mue_0p0 * s_0m0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);          
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                           w_000 += mue_000*robin_coef_p[n]*interface_area;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
@@ -4437,14 +4480,21 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
           rhs_p[n] *= volume_cut_cell;
 
           if (bc_->interfaceType() == ROBIN){
-            w_000 += mue_000*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mue_000*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
 
-            /* find the projection of (i,j,k) onto gamma for higher order correction */
-            double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
-            double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
-            double zp = z_C - phi_p[n]*qnnn.dz_central(phi_p);
-            double beta_proj = bc_->interfaceValue(xp,yp,zp);
-            rhs_p[n] += mue_000*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double zp = z_C - phi_p[n]*qnnn.dz_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp,zp);
+              rhs_p[n] += mue_000*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mue_000*robin_coef_p[n]*interface_area;
+            }
           }
 
           OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
@@ -4478,14 +4528,22 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           rhs_p[n] *= volume_cut_cell;
 
-          if (bc_->interfaceType() == ROBIN){
-            w_000 += mue_000*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
+          if (bc_->interfaceType() == ROBIN)
+          {
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
 
-            /* find the projection of (i,j,k) onto gamma for higher order correction */
-            double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
-            double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
-            double beta_proj = bc_->interfaceValue(xp,yp);
-            rhs_p[n] += mue_000*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp);
+              rhs_p[n] += mue_000*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mue_000*robin_coef_p[n]*interface_area;
+            }
           }
 
           QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
