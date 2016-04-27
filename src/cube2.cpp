@@ -76,11 +76,40 @@ double Cube2::integrate_Over_Interface( const QuadValue& f, const QuadValue& lev
   {
     Point2 p0=p00; double f0=f00; double phi0=phi00;
     Point2 p2=p11; double f2=f11; double phi2=phi11;
-
     // triangle (P0,P1,P2) with values (F0,F1,F2), (Phi0,Phi1,Phi2)
     Point2   p1 = (n==0) ?   p01 :   p10;
     double   f1 = (n==0) ?   f01 :   f10;
     double phi1 = (n==0) ? phi01 : phi10;
+
+    if (0)
+    {
+      Point2 p_00(0.5*(x0+x1),0.5*(y0+y1));
+      double f_00 = 0.25*(f00+f01+f10+f11);
+      double l_00 = 0.25*(phi00+phi01+phi10+phi11);
+
+      Point2 p_mm(x0,y0); double f_mm = f00; double l_mm = phi00;
+      Point2 p_pm(x1,y0); double f_pm = f10; double l_pm = phi10;
+      Point2 p_mp(x0,y1); double f_mp = f01; double l_mp = phi01;
+      Point2 p_pp(x1,y1); double f_pp = f11; double l_pp = phi11;
+      switch (n) {
+      case 0:
+        p0    = p_00; p1  = p_mm; p2  = p_pm;
+        f0    = f_00; f1  = f_mm; f2  = f_pm;
+        phi0  = l_00; phi1= l_mm; phi2= l_pm; break;
+      case 1:
+        p0    = p_00; p1  = p_pm; p2  = p_pp;
+        f0    = f_00; f1  = f_pm; f2  = f_pp;
+        phi0  = l_00; phi1= l_pm; phi2= l_pp; break;
+      case 2:
+        p0    = p_00; p1  = p_pp; p2  = p_mp;
+        f0    = f_00; f1  = f_pp; f2  = f_mp;
+        phi0  = l_00; phi1= l_pp; phi2= l_mp; break;
+      case 3:
+        p0    = p_00; p1  = p_mp; p2  = p_mm;
+        f0    = f_00; f1  = f_mp; f2  = f_mm;
+        phi0  = l_00; phi1= l_mp; phi2= l_mm; break;
+      }
+    }
 
     // simple cases
     if(phi0<=0 && phi1<=0 && phi2<=0) continue;

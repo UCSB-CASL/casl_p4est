@@ -57,10 +57,10 @@
 #undef MIN
 #undef MAX
 
-double xmin = -1.0;
-double xmax =  1.0;
-double ymin = -1.0;
-double ymax =  1.0;
+double xmin = -1;
+double xmax =  1;
+double ymin = -1;
+double ymax =  1;
 #ifdef P4_TO_P8
 double zmin = -1;
 double zmax =  1;
@@ -68,9 +68,9 @@ double zmax =  1;
 
 using namespace std;
 
-int lmin = 4;
+int lmin = 4; // uniform grid for time being
 int lmax = 4;
-int nb_splits = 4;
+int nb_splits = 6;
 
 int nx = 1;
 int ny = 1;
@@ -80,25 +80,24 @@ int nz = 1;
 
 bool save_vtk = true;
 
-
 double mu = 1.0;
 double add_diagonal = 0;
-int n_test = 0;
 
 BoundaryConditionType bc_itype_0 = ROBIN;
 BoundaryConditionType bc_itype_1 = ROBIN;
 BoundaryConditionType bc_wtype = DIRICHLET;
 
-double scale = 1.0;
+double diag_add = 0;
 
 double r0 = 0.5;
-double r1 = 0.6;
+double r1 = 0.3;
 double r2 = 0.4;
-double d = 0.3;
+double r3 = 0.5;
+double d = 0.00;
 
-double theta = 0.7826;
+double theta = 0.979;
 #ifdef P4_TO_P8
-double phy = 0.523;
+double phy = 0.323;
 #endif
 
 double cosT = cos(theta);
@@ -141,55 +140,12 @@ public:
 #endif
 
 #ifdef P4_TO_P8
-class LEVEL_SET_1: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    return -(r1 - sqrt(SQR(x-xc_1) + SQR(y-yc_1)+SQR(z-zc_1)));
-  }
-} level_set_1;
-#else
-class LEVEL_SET_1: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    return -(r1 - sqrt(SQR(x-xc_1) + SQR(y-yc_1)));
-  }
-} level_set_1;
-#endif
-
-#ifdef P4_TO_P8
-class LEVEL_SET_2: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    return (r2 - sqrt(SQR(x-xc_2) + SQR(y-yc_2) + SQR(z-zc_2)));
-  }
-} level_set_2;
-#else
-class LEVEL_SET_2: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    return (r2 - sqrt(SQR(x-xc_2) + SQR(y-yc_2)));
-  }
-} level_set_2;
-#endif
-
-#ifdef P4_TO_P8
 class LEVEL_SET_TOT: public CF_3
 {
 public:
   double operator()(double x, double y, double z) const
   {
-//    return level_set_0(x,y,z);
-//    return min(level_set_0(x,y,z),level_set_1(x,y,z));
-//    return min(level_set_2(x,y,z),max(level_set_0(x,y,z),level_set_1(x,y,z)));
-    return max(level_set_2(x,y,z),min(level_set_0(x,y,z),level_set_1(x,y,z)));
+    return level_set_0(x,y,z);
   }
 } level_set_tot;
 #else
@@ -198,44 +154,10 @@ class LEVEL_SET_TOT: public CF_2
 public:
   double operator()(double x, double y) const
   {
-//    return level_set_0(x,y);
-//    return max(level_set_0(x,y),level_set_1(x,y));
-//    return min(level_set_2(x,y),max(level_set_0(x,y),level_set_1(x,y)));
-    return max(level_set_2(x,y),min(level_set_0(x,y),level_set_1(x,y)));
+    return level_set_0(x,y);
   }
 } level_set_tot;
 #endif
-
-#ifdef P4_TO_P8
-class LEVEL_SET_REF: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-//    return level_set_0(x,y,z);
-//    return min(level_set_0(x,y,z),level_set_1(x,y,z));
-//    return min(level_set_2(x,y,z),max(level_set_0(x,y,z),level_set_1(x,y,z)));
-    double a = max(level_set_2(x,y,z),min(level_set_0(x,y,z),level_set_1(x,y,z)));
-    if (a > 0) return a;
-    else return 0.0;
-  }
-} level_set_ref;
-#else
-class LEVEL_SET_REF: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-//    double a = level_set_0(x,y);
-//    double a = max(level_set_0(x,y),level_set_1(x,y));
-//    return min(level_set_2(x,y),max(level_set_0(x,y),level_set_1(x,y)));
-    double a = max(level_set_2(x,y),min(level_set_0(x,y),level_set_1(x,y)));
-    if (a > 0) return a;
-    else return 0.0;
-  }
-} level_set_ref;
-#endif
-
 
 
 #ifdef P4_TO_P8
@@ -261,58 +183,36 @@ public:
 #ifdef P4_TO_P8
 double u_exact(double x, double y, double z)
 {
-  switch (n_test){
-  case 0: return scale*(sin(x)+sin(y)+sin(z));
-  case 1: return scale*sin(x)*cos(y)*exp(z);
-  }
+  return sin(x)*cos(y)*exp(z)+2.0;
 }
 #else
 double u_exact(double x, double y)
 {
-  switch (n_test){
-  case 0: return scale*(sin(x)+sin(y));
-  case 1: return scale*(sin(x)*cos(y));
-  }
+  return sin(x)*cos(y);
 }
 #endif
 
 #ifdef P4_TO_P8
 double ux(double x, double y, double z)
 {
-  switch (n_test){
-  case 0: return scale*cos(x);
-  case 1: return scale*cos(x)*cos(y)*exp(z);
-  }
+  return cos(x)*cos(y)*exp(z);
 }
 double uy(double x, double y, double z)
 {
-  switch (n_test){
-  case 0: return scale*cos(y);
-  case 1: return -scale*sin(x)*sin(y)*exp(z);
-  }
+  return -sin(x)*sin(y)*exp(z);
 }
 double uz(double x, double y, double z)
 {
-  switch (n_test){
-  case 0: return scale*cos(z);
-  case 1: return scale*sin(x)*cos(y)*exp(z);
-  }
+  return sin(x)*cos(y)*exp(z);
 }
 #else
 double ux(double x, double y)
 {
-
-  switch (n_test){
-  case 0: return scale*cos(x);
-  case 1: return scale*cos(x)*cos(y);
-  }
+  return cos(x)*cos(y);
 }
 double uy(double x, double y)
 {
-  switch (n_test){
-  case 0: return scale*cos(y);
-  case 1: return -scale*sin(x)*sin(y);
-  }
+  return -sin(x)*sin(y);
 }
 #endif
 
@@ -320,68 +220,13 @@ double uy(double x, double y)
 #ifdef P4_TO_P8
 double kappa_0(double x, double y, double z)
 {
-//  return -0.4*sin(x)*cos(y)*cos(z);
-  return 1.0;
+  return 1.1;
 }
 #else
 double kappa_0(double x, double y)
 {
-  return 1.05*1.0e-0;
-//  return ((x-xc_0)+(y-yc_0))/r0;
+  return 1.1;
 }
-#endif
-
-#ifdef P4_TO_P8
-double kappa_1(double x, double y, double z)
-{
-//  return 0.7*sin(y)*cos(x)*cos(z);
-  return 0.0;
-}
-#else
-double kappa_1(double x, double y)
-{
-  return 0.85*1.0;
-//  return ((x-xc_1) + (y-yc_1))/r1;
-}
-#endif
-
-#ifdef P4_TO_P8
-double kappa_2(double x, double y, double z)
-{
-//  return -1.0*sin(z)*cos(y)*cos(x);
-  return 0.9;
-}
-#else
-double kappa_2(double x, double y)
-{
-  return 1.00;
-}
-#endif
-
-#ifdef P4_TO_P8
-class FORCE: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    switch (n_test){
-    case 0: return mu*u_exact(x,y,z) + add_diagonal*u_exact(x,y,z);
-    case 1: return mu*scale*sin(x)*cos(y)*exp(z) + add_diagonal*u_exact(x,y,z);
-    }
-  }
-} force;
-#else
-class FORCE: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    switch (n_test){
-    case 0: return mu*u_exact(x,y) + add_diagonal*u_exact(x,y);
-    case 1: return scale*2.0*mu*sin(x)*cos(y) + add_diagonal*u_exact(x,y);
-    }
-  }
-} force;
 #endif
 
 #ifdef P4_TO_P8
@@ -402,48 +247,6 @@ public:
     return  ((x-xc_0)*ux(x,y)+(y-yc_0)*uy(x,y))/sqrt(SQR(x-xc_0) + SQR(y-yc_0)) + kappa_0(x,y)*u_exact(x,y);
   }
 } bc_interface_val_0;
-#endif
-
-#ifdef P4_TO_P8
-class BCINTERFACEVAL_1 : public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-//    return ((x-xc_0)*ux(x,y,z) + (y-yc_0)*uy(x,y,z) + (z-zc_0)*uz(x,y,z))/sqrt(SQR(x-xc_0) + SQR(y-yc_0) + SQR(z-zc_0)) + kappa_1(x,y,z)*u_exact(x,y,z);
-    return ((x-xc_1)*ux(x,y,z) + (y-yc_1)*uy(x,y,z) + (z-zc_1)*uz(x,y,z))/sqrt(SQR(x-xc_1) + SQR(y-yc_1) + SQR(z-zc_1)) + kappa_1(x,y,z)*u_exact(x,y,z);
-  }
-} bc_interface_val_1;
-#else
-class BCINTERFACEVAL_1 : public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-//    return ((x-xc_0)*ux(x,y) + (y-yc_0)*uy(x,y))/sqrt(SQR(x-xc_0) + SQR(y-yc_0)) + kappa_1(x,y)*u_exact(x,y);
-    return ((x-xc_1)*ux(x,y) + (y-yc_1)*uy(x,y))/sqrt(SQR(x-xc_1) + SQR(y-yc_1)) + kappa_1(x,y)*u_exact(x,y);
-  }
-} bc_interface_val_1;
-#endif
-
-#ifdef P4_TO_P8
-class BCINTERFACEVAL_2 : public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    return -((x-xc_2)*ux(x,y,z) + (y-yc_2)*uy(x,y,z) + (z-zc_2)*uz(x,y,z))/sqrt(SQR(x-xc_2) + SQR(y-yc_2) + SQR(z-zc_2)) + kappa_2(x,y,z)*u_exact(x,y,z);
-  }
-} bc_interface_val_2;
-#else
-class BCINTERFACEVAL_2 : public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    return -((x-xc_2)*ux(x,y)+(y-yc_2)*uy(x,y))/sqrt(SQR(x-xc_2) + SQR(y-yc_2)) + kappa_2(x,y)*u_exact(x,y);
-  }
-} bc_interface_val_2;
 #endif
 
 #ifdef P4_TO_P8
@@ -497,7 +300,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   out_dir = getenv("OUT_DIR");
 #else
   char out_dir[10000];
-  sprintf(out_dir, OUTPUT_DIR);
+  sprintf(out_dir, "/home/dbochkov/Projects/output/nodes_mls");
 #endif
 
   std::ostringstream oss;
@@ -646,18 +449,14 @@ int main (int argc, char* argv[])
   double err_ex_n;
   double err_ex_nm1;
 
-  vector<double> level, h, error;
-
   for(int iter=0; iter<nb_splits; ++iter)
   {
-    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", 0, lmax+iter); CHKERRXX(ierr);
-//    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin, lmax+iter);
-//    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
+//    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin, lmax+iter); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
     p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
 
-    splitting_criteria_cf_t data(0, lmax+iter, &level_set_ref, 1.5);
-//    splitting_criteria_cf_t data(lmin, lmax+iter, &level_set_tot, 1.4);
-//    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot, 1.2);
+//    splitting_criteria_cf_t data(lmin, lmax+iter, &level_set_tot, 1.2);
+    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot, 1.2);
     p4est->user_pointer = (void*)(&data);
 
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -681,18 +480,6 @@ int main (int argc, char* argv[])
     sample_cf_on_nodes(p4est, nodes, level_set_0, phi.back());
     action.push_back(INTERSECTION);
     color.push_back(0);
-
-    phi.push_back(Vec());
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est, nodes, level_set_1, phi.back());
-    action.push_back(ADDITION);
-    color.push_back(1);
-
-    phi.push_back(Vec());
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est, nodes, level_set_2, phi.back());
-    action.push_back(INTERSECTION);
-    color.push_back(2);
 
     Vec phi_tot;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi_tot); CHKERRXX(ierr);
@@ -738,26 +525,6 @@ int main (int argc, char* argv[])
     bc.back().setInterfaceType(bc_itype_0);
     bc.back().setInterfaceValue(bc_interface_val_0);
 
-#ifdef P4_TO_P8
-    bc.push_back(BoundaryConditions3D());
-#else
-    bc.push_back(BoundaryConditions2D());
-#endif
-    bc.back().setWallTypes(bc_wall_type);
-    bc.back().setWallValues(bc_wall_val);
-    bc.back().setInterfaceType(bc_itype_0);
-    bc.back().setInterfaceValue(bc_interface_val_1);
-
-#ifdef P4_TO_P8
-    bc.push_back(BoundaryConditions3D());
-#else
-    bc.push_back(BoundaryConditions2D());
-#endif
-    bc.back().setWallTypes(bc_wall_type);
-    bc.back().setWallValues(bc_wall_val);
-    bc.back().setInterfaceType(bc_itype_0);
-    bc.back().setInterfaceValue(bc_interface_val_2);
-
     Vec rhs;
     ierr = VecCreateGhostNodes(p4est, nodes, &rhs); CHKERRXX(ierr);
     double *rhs_p;
@@ -769,9 +536,9 @@ int main (int argc, char* argv[])
       double y = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
       double z = node_z_fr_n(n, p4est, nodes);
-      rhs_p[n] = force(x,y,z);
+      rhs_p[n] = mu*sin(x)*cos(y)*exp(z);
 #else
-      rhs_p[n] = force(x,y);
+      rhs_p[n] = mu*2.0*sin(x)*cos(y);
 #endif
     }
 
@@ -798,67 +565,21 @@ int main (int argc, char* argv[])
 
     ierr = VecRestoreArray(kappa.back(), &kappa_p); CHKERRXX(ierr);
 
-    kappa.push_back(Vec());
-    ierr = VecCreateGhostNodes(p4est, nodes, &kappa.back()); CHKERRXX(ierr);
-    ierr = VecGetArray(kappa.back(), &kappa_p); CHKERRXX(ierr);
-
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    {
-      double x = node_x_fr_n(n, p4est, nodes);
-      double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-      double z = node_z_fr_n(n, p4est, nodes);
-      kappa_p[n] = kappa_1(x,y,z);
-#else
-      kappa_p[n] = kappa_1(x,y);
-#endif
-    }
-
-    ierr = VecRestoreArray(kappa.back(), &kappa_p); CHKERRXX(ierr);
-
-    kappa.push_back(Vec());
-    ierr = VecCreateGhostNodes(p4est, nodes, &kappa.back()); CHKERRXX(ierr);
-    ierr = VecGetArray(kappa.back(), &kappa_p); CHKERRXX(ierr);
-
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    {
-      double x = node_x_fr_n(n, p4est, nodes);
-      double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-      double z = node_z_fr_n(n, p4est, nodes);
-      kappa_p[n] = kappa_2(x,y,z);
-#else
-      kappa_p[n] = kappa_2(x,y);
-#endif
-    }
-
-    ierr = VecRestoreArray(kappa.back(), &kappa_p); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-    vector<CF_3*> phi_cf;
-#else
-    vector<CF_2*> phi_cf;
-#endif
-    phi_cf.push_back(&level_set_0);
-    phi_cf.push_back(&level_set_1);
-    phi_cf.push_back(&level_set_2);
 
     my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
+    solver.set_phi(&phi);
     solver.set_action(action);
     solver.set_color(color);
-    solver.set_phi(&phi);
     solver.set_diagonal(add_diagonal);
     solver.set_mu(mu);
     solver.set_bc(bc);
     solver.set_robin_coef(kappa);
     solver.set_rhs(rhs);
-    solver.set_force(force);
-    solver.set_phi_cf(phi_cf);
 
     Vec sol;
     ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);
 
-//    solver.construct_domain();
+    solver.construct_domain();
 
 //#ifdef P4_TO_P8
 //    vector<simplex3_mls_t *> simplices;
@@ -910,13 +631,10 @@ int main (int argc, char* argv[])
     double *err_p;
     ierr = VecGetArray(err_nodes, &err_p); CHKERRXX(ierr);
 
-//    ls.reinitialize_1st_order_time_2nd_order_space(phi_tot);
-//    ls.extend_Over_Interface_TVD(phi_tot, sol, 20);
-
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
-//      if (phi_p[n]<0.0*diag)
-      if (solver.is_inside(n))
+//      if (solver.is_inside(n))
+        if(phi_p[n]<0)
       {
         double x = node_x_fr_n(n, p4est, nodes);
         double y = node_y_fr_n(n, p4est, nodes);
@@ -942,10 +660,6 @@ int main (int argc, char* argv[])
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     ierr = PetscPrintf(p4est->mpicomm, "Error on nodes : %g, order = %g\n", err_n, log(err_nm1/err_n)/log(2)); CHKERRXX(ierr);
 
-    level.push_back(lmin+iter);
-    h.push_back(dx);
-    error.push_back(err_n);
-
 
     /* extrapolate the solution and check accuracy */
     double band = 4;
@@ -953,7 +667,7 @@ int main (int argc, char* argv[])
 
 //    ls.reinitialize_1st_order_time_2nd_order_space(phi_tot);
 
-//    ls.extend_Over_Interface_TVD(phi_tot, sol, 100);
+//    ls.extend_Over_Interface_TVD(phi_tot, sol, 20, 1);
 
     ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
     ierr = VecGetArrayRead(phi_tot, &phi_p); CHKERRXX(ierr);
@@ -988,14 +702,6 @@ int main (int argc, char* argv[])
       }
       else
         err_ex_p[n] = 0;
-
-      double x = node_x_fr_n(n, p4est, nodes);
-      double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-      double z = node_z_fr_n(n, p4est, nodes);
-      err_ex_p[n] = bc_interface_val_0(x,y,z);
-#endif
-      err_ex_p[n] = solver.node_volume(n);
     }
 
     ierr = VecRestoreArrayRead(phi_tot, &phi_p); CHKERRXX(ierr);
@@ -1011,7 +717,7 @@ int main (int argc, char* argv[])
 
     if(save_vtk)
     {
-      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff_, sol, err_nodes, err_ex, iter);
+      save_VTK(p4est, ghost, nodes, &brick, phi_tot, sol, err_nodes, err_ex, iter);
     }
 
     for (int i = 0; i < phi.size(); i++)    {ierr = VecDestroy(phi[i]); CHKERRXX(ierr);}
@@ -1031,13 +737,6 @@ int main (int argc, char* argv[])
   my_p4est_brick_destroy(connectivity, &brick);
 
   w.stop(); w.read_duration();
-
-  if (mpi->mpirank == 0)
-  {
-  Gnuplot graph;
-  print_Table("error", 0.0, level, h, "error", error, 1, &graph);
-  cin.get();
-  }
 
   return 0;
 }

@@ -219,8 +219,8 @@ void my_p4est_poisson_nodes_t::preallocate_matrix()
      * 3) If they do not exist, simply skip
      */
 
-    if (phi_p[n] > 2*diag_min)
-      continue;
+//    if (phi_p[n] > 4*diag_min)
+//      continue;
 
 #ifdef P4_TO_P8
     if (qnnn.d_m00_p0*qnnn.d_m00_0p != 0) // node_m00_mm will enter discretization
@@ -1793,6 +1793,8 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
 
 void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 {
+  node_loc.resize(nodes->num_owned_indeps, false);
+
   preallocate_matrix();
 
   // register for logging purpose
@@ -1924,8 +1926,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
       //---------------------------------------------------------------------
       // interface boundary
       //---------------------------------------------------------------------
-      if((ABS(phi_000)<eps && bc_->interfaceType() == DIRICHLET) ){
+//      if((ABS(phi_000)<0.5e-12 && (bc_->interfaceType() == DIRICHLET || bc_->interfaceType() == DIRICHLET_FVM)) ){
+      if((ABS(phi_000)<eps && (bc_->interfaceType() == DIRICHLET || bc_->interfaceType() == DIRICHLET_FVM)) ){
         ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
+        node_loc[n] = true;
 
         matrix_has_nullspace=false;
         continue;
@@ -1986,6 +1990,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
            (bc_->interfaceType() == ROBIN     && !is_ngbd_crossed_neumann ) ||
            bc_->interfaceType() == NOINTERFACE)
       {
+        node_loc[n] = true;
         double phixx_C = phi_xx_p[n];
         double phiyy_C = phi_yy_p[n];
 #ifdef P4_TO_P8
@@ -2310,21 +2315,27 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
       // then use finite volume method
       // only work if the mesh is uniform close to the interface
 
-      if (is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN) )
+      if (is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN || bc_->interfaceType() == DIRICHLET_FVM) )
       {
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
                            P_pmm, P_pmp, P_ppm, P_ppp);
+        cube.set_middlecut(0);
         double volume_cut_cell = cube.volume_In_Negative_Domain(phi_cube);
+        cube.set_middlecut(0);
         double interface_area  = cube.interface_Area_In_Cell(phi_cube);
 #else
         QuadValue phi_cube(P_mmm, P_mpm, P_pmm, P_ppm);
         double volume_cut_cell = cube.area_In_Negative_Domain(phi_cube);
         double interface_area  = cube.interface_Length_In_Cell(phi_cube);
+//        double dif = fabs(phi_000 - 0.25*(P_mmm+P_pmm+P_mpm+P_ppm));
+//        if (dif > 1.e-6)
+//          std::cout << "Here!\n";
 #endif
 
         if (volume_cut_cell>eps*eps)
         {
+          node_loc[n] = true;
 #ifdef P4_TO_P8
           PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? (qnnn.d_m00_0m==0 ? qnnn.node_m00_mm : qnnn.node_m00_mp)
                                                               : (qnnn.d_m00_0m==0 ? qnnn.node_m00_pm : qnnn.node_m00_pp) ];
@@ -2375,10 +2386,25 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           if(!is_node_zmWall(p4est, ni)) w_00m += -mu_ * s_00m/dz_min;
           if(!is_node_zpWall(p4est, ni)) w_00p += -mu_ * s_00p/dz_min;
 
+          double alpha = 0;
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
           if (bc_->interfaceType() == ROBIN){
-            if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += robin_coef_p[n]*interface_area;
+            OctValue alpha_value( bc_->interfaceCoeffValue(cube.x0, cube.y0, cube.z0),
+                                  bc_->interfaceCoeffValue(cube.x0, cube.y0, cube.z1),
+                                  bc_->interfaceCoeffValue(cube.x0, cube.y1, cube.z0),
+                                  bc_->interfaceCoeffValue(cube.x0, cube.y1, cube.z1),
+                                  bc_->interfaceCoeffValue(cube.x1, cube.y0, cube.z0),
+                                  bc_->interfaceCoeffValue(cube.x1, cube.y0, cube.z1),
+                                  bc_->interfaceCoeffValue(cube.x1, cube.y1, cube.z0),
+                                  bc_->interfaceCoeffValue(cube.x1, cube.y1, cube.z1));
+
+            alpha = cube.integrate_Over_Interface(alpha_value, phi_cube)/interface_area;
+
+            if (fabs(alpha) > 0) matrix_has_nullspace = false;
+            w_000 += mu_*alpha*interface_area/(1.0-alpha*phi_000);
+
+//            if (fabs(robin_coef_p[n]) > 0) matrix_has_nullspace = false;
+//            w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           //---------------------------------------------------------------------
@@ -2414,10 +2440,15 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           double dx = cube.x1 - cube.x0;
           double dy = cube.y1 - cube.y0;
 
-          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
-          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
-          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
-          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
+//          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
+//          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
+//          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
+//          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
+
+          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_mpm, dx_min, dy_min);
+          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_pmm, P_ppm, dx_min, dy_min);
+          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_pmm, dx_min, dy_min);
+          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mpm, P_ppm, dx_min, dy_min);
 
           double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
           if(!is_node_xmWall(p4est, ni)) w_m00 += -mu_ * s_m00/dx_min;
@@ -2425,10 +2456,37 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           if(!is_node_ymWall(p4est, ni)) w_0m0 += -mu_ * s_0m0/dy_min;
           if(!is_node_ypWall(p4est, ni)) w_0p0 += -mu_ * s_0p0/dy_min;
 
+          double dpdx = 0.5*(phi_p00-phi_m00)/dx_min;
+          double dpdy = 0.5*(phi_0p0-phi_0m0)/dy_min;
+          double dpdn = sqrt(dpdx*dpdx+dpdy*dpdy);
+          double dist = 1.0*phi_000/dpdn;
+
+          double alpha = 0;
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
-          if (bc_->interfaceType() == ROBIN){
-            if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += robin_coef_p[n]*interface_area;
+          double test = 0;
+          if (bc_->interfaceType() == ROBIN)
+          {
+            QuadValue alpha_value( bc_->interfaceCoeffValue(cube.x0, cube.y0),
+                                   bc_->interfaceCoeffValue(cube.x0, cube.y1),
+                                   bc_->interfaceCoeffValue(cube.x1, cube.y0),
+                                   bc_->interfaceCoeffValue(cube.x1, cube.y1));
+
+            alpha = cube.integrate_Over_Interface(alpha_value, phi_cube)/interface_area;
+
+            QuadValue factor_value( (1.-alpha*P_mmm*test),
+                                    (1.-alpha*P_mpm*test),
+                                    (1.-alpha*P_pmm*test),
+                                    (1.-alpha*P_ppm*test));
+
+            double factor = cube.integrate_Over_Interface(factor_value, phi_cube)/interface_area;
+
+//            w_000 += mu_*alpha*interface_area/(1.0-1.0*alpha*dist);
+            w_000 += mu_*alpha*factor*interface_area/(1.0-1.0*alpha*dist);
+            if (fabs(robin_coef_p[n]) > 0) matrix_has_nullspace = false;
+//            w_000 += mu_*robin_coef_p[n]*interface_area;//(1.0-robin_coef_p[n]*phi_000);
+          } else if (bc_->interfaceType() == DIRICHLET_FVM) {
+            w_000 += mu_*interface_area/(-1.0*dist);
+            matrix_has_nullspace = false;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
@@ -2578,7 +2636,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
       //---------------------------------------------------------------------
       // interface boundary
       //---------------------------------------------------------------------
-      if((ABS(phi_000)<eps && bc_->interfaceType() == DIRICHLET) ){
+      if((ABS(phi_000)<eps && (bc_->interfaceType() == DIRICHLET || bc_->interfaceType() == DIRICHLET_FVM)) ){
 #ifdef P4_TO_P8
         rhs_p[n] = bc_strength*bc_->interfaceValue(x_C,y_C,z_C);
 #else
@@ -2907,12 +2965,14 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
       // if ngbd is crossed and neumman BC
       // then use finite volume method
       // only work if the mesh is uniform close to the interface
-      if (is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN) )
+      if (is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN || bc_->interfaceType() == DIRICHLET_FVM) )
       {
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
                            P_pmm, P_pmp, P_ppm, P_ppp);
+        cube.set_middlecut(0);
         double volume_cut_cell = cube.volume_In_Negative_Domain(phi_cube);
+        cube.set_middlecut(0);
         double interface_area  = cube.interface_Area_In_Cell(phi_cube);
 #else
         QuadValue phi_cube(P_mmm, P_mpm, P_pmm, P_ppm);
@@ -2959,9 +3019,21 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           if(!is_node_zmWall(p4est, ni)) w_00m += -mu_ * s_00m/dz_min;
           if(!is_node_zpWall(p4est, ni)) w_00p += -mu_ * s_00p/dz_min;
 
+          double alpha = 0;
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
           if (bc_->interfaceType() == ROBIN){
-            w_000 += robin_coef_p[n]*interface_area;
+            OctValue alpha_value( bc_->interfaceCoeffValue(cube.x0, cube.y0, cube.z0),
+                                  bc_->interfaceCoeffValue(cube.x0, cube.y0, cube.z1),
+                                  bc_->interfaceCoeffValue(cube.x0, cube.y1, cube.z0),
+                                  bc_->interfaceCoeffValue(cube.x0, cube.y1, cube.z1),
+                                  bc_->interfaceCoeffValue(cube.x1, cube.y0, cube.z0),
+                                  bc_->interfaceCoeffValue(cube.x1, cube.y0, cube.z1),
+                                  bc_->interfaceCoeffValue(cube.x1, cube.y1, cube.z0),
+                                  bc_->interfaceCoeffValue(cube.x1, cube.y1, cube.z1));
+
+            alpha = cube.integrate_Over_Interface(alpha_value, phi_cube)/interface_area;
+            w_000 += mu_*alpha*interface_area/(1.0-alpha*phi_000);
+//            w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
@@ -2973,13 +3045,16 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
                              bc_->interfaceValue(cube.x1, cube.y1, cube.z0),
                              bc_->interfaceValue(cube.x1, cube.y1, cube.z1));
 
-          double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
+          cube.set_middlecut(0);
+          double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube)/(1.0-alpha*phi_000);
+//          double integral_bc = bc_->interfaceValue(x_C, y_C, z_C)*cube.interface_Area_In_Cell(phi_cube);
+          cube.set_middlecut(0);
 
           rhs_p[n] *= volume_cut_cell;
           if(bc_->interfaceType() == NEUMANN)
             rhs_p[n] += mu_*integral_bc;
           else
-            rhs_p[n] += integral_bc;
+            rhs_p[n] += mu_*integral_bc;
 
           if (is_node_xmWall(p4est, ni)) rhs_p[n] += mu_*s_m00*bc_->wallValue(x_C, y_C, z_C);
           if (is_node_xpWall(p4est, ni)) rhs_p[n] += mu_*s_p00*bc_->wallValue(x_C, y_C, z_C);
@@ -2997,10 +3072,15 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           double dx = cube.x1 - cube.x0;
           double dy = cube.y1 - cube.y0;
 
-          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
-          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
-          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
-          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
+//          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
+//          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
+//          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
+//          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
+
+          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_mpm, dx_min, dy_min);
+          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_pmm, P_ppm, dx_min, dy_min);
+          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_pmm, dx_min, dy_min);
+          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mpm, P_ppm, dx_min, dy_min);
 
           double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
           if(!is_node_xmWall(p4est, ni)) w_m00 += -mu_ * s_m00/dx_min;
@@ -3008,23 +3088,60 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           if(!is_node_ymWall(p4est, ni)) w_0m0 += -mu_ * s_0m0/dy_min;
           if(!is_node_ypWall(p4est, ni)) w_0p0 += -mu_ * s_0p0/dy_min;
 
+          double dpdx = 0.5*(phi_p00-phi_m00)/dx_min;
+          double dpdy = 0.5*(phi_0p0-phi_0m0)/dy_min;
+          double dpdn = sqrt(dpdx*dpdx+dpdy*dpdy);
+          double dist = 1.0*phi_000;
+
+          double test = 0;
+          double alpha = 0;
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
-          if (bc_->interfaceType() == ROBIN){
-            w_000 += robin_coef_p[n]*interface_area;
+          if (bc_->interfaceType() == ROBIN)
+          {
+            QuadValue alpha_value( bc_->interfaceCoeffValue(cube.x0, cube.y0),
+                                   bc_->interfaceCoeffValue(cube.x0, cube.y1),
+                                   bc_->interfaceCoeffValue(cube.x1, cube.y0),
+                                   bc_->interfaceCoeffValue(cube.x1, cube.y1));
+
+            alpha = cube.integrate_Over_Interface(alpha_value, phi_cube)/interface_area;
+//            alpha = robin_coef_p[n];
+
+            QuadValue factor_value( (1.-alpha*P_mmm*test),
+                                    (1.-alpha*P_mpm*test),
+                                    (1.-alpha*P_pmm*test),
+                                    (1.-alpha*P_ppm*test));
+
+            double factor = cube.integrate_Over_Interface(factor_value, phi_cube)/interface_area;
+//            factor = 1;
+
+//            w_000 += mu_*alpha*interface_area/(1.0-1.0*alpha*dist);
+            w_000 += mu_*alpha*factor*interface_area/(1.0-1.0*alpha*dist);
+//            w_000 += mu_*robin_coef_p[n]*interface_area;//(1.0-robin_coef_p[n]*phi_000);
+          } else if (bc_->interfaceType() == DIRICHLET_FVM) {
+            w_000 += mu_*interface_area/(-1.0*dist);
           }
 
-          QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
-                              bc_->interfaceValue(cube.x0, cube.y1),
-                              bc_->interfaceValue(cube.x1, cube.y0),
-                              bc_->interfaceValue(cube.x1, cube.y1));
-
-          double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
-
           rhs_p[n] *= volume_cut_cell;
-          if(bc_->interfaceType() == NEUMANN)
-            rhs_p[n] += mu_*integral_bc;
-          else
-            rhs_p[n] += integral_bc;
+
+          if (bc_->interfaceType() == ROBIN || bc_->interfaceType() == NEUMANN)
+          {
+            double g_add = 1.0*alpha*bc_->interfaceValue(x_C - 1.0*dist*dpdx, y_C - 1.0*dist*dpdy)/(1.0-alpha*dist);
+            QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0)+g_add*(phi_000-P_mmm*test),
+                                bc_->interfaceValue(cube.x0, cube.y1)+g_add*(phi_000-P_mpm*test),
+                                bc_->interfaceValue(cube.x1, cube.y0)+g_add*(phi_000-P_pmm*test),
+                                bc_->interfaceValue(cube.x1, cube.y1)+g_add*(phi_000-P_ppm*test));
+
+  //          double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube)/(1.0-robin_coef_p[n]*phi_000);
+            double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube)/(1.0-0.0*alpha*dist);
+  //          double integral_bc = bc_->interfaceValue(x_C, y_C)*interface_area;
+
+            if(bc_->interfaceType() == NEUMANN)
+              rhs_p[n] += mu_*integral_bc;
+            else
+              rhs_p[n] += mu_*integral_bc;
+          } else if (bc_->interfaceType() == DIRICHLET_FVM) {
+            rhs_p[n] += mu_*bc_->interfaceValue(x_C - 0.0*dist*dpdx/dpdn, y_C - 0.0*dist*dpdy/dpdn)*interface_area/(-1.0*dist);
+          }
 
           if (is_node_xmWall(p4est, ni)) rhs_p[n] += mu_*s_m00*bc_->wallValue(x_C, y_C);
           if (is_node_xpWall(p4est, ni)) rhs_p[n] += mu_*s_p00*bc_->wallValue(x_C, y_C);

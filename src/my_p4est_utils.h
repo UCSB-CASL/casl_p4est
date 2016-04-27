@@ -100,7 +100,8 @@ typedef enum {
   ROBIN,
   NOINTERFACE,
   MIXED,
-  IGNORE
+  IGNORE,
+  DIRICHLET_FVM
 } BoundaryConditionType;
 
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
@@ -198,6 +199,14 @@ public:
 #endif
     return p_InterfaceValue->operator ()(x,y);
   }
+
+  inline double interfaceCoeffValue(double x, double y) const
+  {
+#ifdef CASL_THROWS
+    if(p_InterfaceCoeff == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
+#endif
+    return p_InterfaceCoeff->operator ()(x,y);
+  }
 };
 
 class BoundaryConditions3D
@@ -278,6 +287,14 @@ public:
     if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
 #endif
     return p_InterfaceValue->operator ()(x,y,z);
+  }
+
+  inline double interfaceCoeffValue(double x, double y, double z) const
+  {
+#ifdef CASL_THROWS
+    if(p_InterfaceCoeff == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
+#endif
+    return p_InterfaceCoeff->operator ()(x,y,z);
   }
 };
 

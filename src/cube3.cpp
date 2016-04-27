@@ -5,6 +5,8 @@ Cube3::Cube3()
   x0 = x1 = 0.;
   y0 = y1 = 0.;
   z0 = z1 = 0.;
+  middlecut = false;
+  num_tet = 6;
 }
 
 Cube3::Cube3(double x0, double x1, double y0, double y1, double z0, double z1)
@@ -12,6 +14,8 @@ Cube3::Cube3(double x0, double x1, double y0, double y1, double z0, double z1)
   this->x0 = x0; this->x1 = x1;
   this->y0 = y0; this->y1 = y1;
   this->z0 = z0; this->z1 = z1;
+  middlecut = false;
+  num_tet = 6;
 }
 
 double Cube3::interface_Area_In_Cell( OctValue& level_set_values) const
@@ -53,44 +57,140 @@ double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
        ls_values.val110>=0 && ls_values.val111>=0 ) return 0;
 
   // iteration on each simplex in the middle cut triangulation
-  for(int n=0;n<5;n++)
+  for(int n=0;n<num_tet;n++)
   {
     // Tetrahedron (P0,P1,P2,P3)
     Point3   P0,  P1,  P2,   P3;
     double   F0,  F1,  F2,   F3;
     double Phi0,Phi1,Phi2,Phi3;
 
-    switch(n) {
-    case 0:
-      P0=              P000; P1=              P100; P2=              P010; P3=              P001;
-      F0=          f.val000; F1=          f.val100; F2=          f.val010; F3=          f.val001;
-      Phi0=ls_values.val000; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val001;
-      break;
-    case 1:
-      P0=              P110; P1=              P100; P2=              P010; P3=              P111;
-      F0=          f.val110; F1=          f.val100; F2=          f.val010; F3=          f.val111;
-      Phi0=ls_values.val110; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val111;
-      break;
-    case 2:
-      P0=              P101; P1=              P100; P2=              P111; P3=              P001;
-      F0=          f.val101; F1=          f.val100; F2=          f.val111; F3=          f.val001;
-      Phi0=ls_values.val101; Phi1=ls_values.val100; Phi2=ls_values.val111; Phi3=ls_values.val001;
-      break;
-    case 3:
-      P0=              P011; P1=              P111; P2=              P010; P3=              P001;
-      F0=          f.val011; F1=          f.val111; F2=          f.val010; F3=          f.val001;
-      Phi0=ls_values.val011; Phi1=ls_values.val111; Phi2=ls_values.val010; Phi3=ls_values.val001;
-      break;
-    case 4:
-      P0=              P111; P1=              P100; P2=              P010; P3=              P001;
-      F0=          f.val111; F1=          f.val100; F2=          f.val010; F3=          f.val001;
-      Phi0=ls_values.val111; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val001;
-      break;
-    default:
+    if (middlecut)
+    {
+      switch(n) {
+      case 0:
+        P0=              P000; P1=              P100; P2=              P010; P3=              P001;
+        F0=          f.val000; F1=          f.val100; F2=          f.val010; F3=          f.val001;
+        Phi0=ls_values.val000; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val001;
+        break;
+      case 1:
+        P0=              P110; P1=              P100; P2=              P010; P3=              P111;
+        F0=          f.val110; F1=          f.val100; F2=          f.val010; F3=          f.val111;
+        Phi0=ls_values.val110; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val111;
+        break;
+      case 2:
+        P0=              P101; P1=              P100; P2=              P111; P3=              P001;
+        F0=          f.val101; F1=          f.val100; F2=          f.val111; F3=          f.val001;
+        Phi0=ls_values.val101; Phi1=ls_values.val100; Phi2=ls_values.val111; Phi3=ls_values.val001;
+        break;
+      case 3:
+        P0=              P011; P1=              P111; P2=              P010; P3=              P001;
+        F0=          f.val011; F1=          f.val111; F2=          f.val010; F3=          f.val001;
+        Phi0=ls_values.val011; Phi1=ls_values.val111; Phi2=ls_values.val010; Phi3=ls_values.val001;
+        break;
+      case 4:
+        P0=              P111; P1=              P100; P2=              P010; P3=              P001;
+        F0=          f.val111; F1=          f.val100; F2=          f.val010; F3=          f.val001;
+        Phi0=ls_values.val111; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val001;
+        break;
+      default:
 #ifdef CASL_THROWS
-      throw std::runtime_error("[CASL_ERROR]: Cube3->integral: error.");
+        throw std::runtime_error("[CASL_ERROR]: Cube3->integral: error.");
 #endif
-      break;
+        break;
+      }
+//    } else if (symmetric) {
+
+//      switch(n) {
+//      // -x dir
+//      case 0:
+//        P0    = P_000;  P1    = P_m00;  P2    = P_mmm;  P3    = P_mpm;
+//        F0    = F_000;  F1    = F_m00;  F2    = F_mmm;  F3    = F_mpm;
+//        Phi0  = L_000;  Phi1  = L_m00;  Phi2  = L_mmm;  Phi3  = L_mpm;
+//      case 1:
+//        P0    = P_000;  P1    = P_m00;  P2    = P_mpm;  P3    = P_mpp;
+//        F0    = F_000;  F1    = F_m00;  F2    = F_mpm;  F3    = F_mpp;
+//        Phi0  = L_000;  Phi1  = L_m00;  Phi2  = L_mpm;  Phi3  = L_mpp;
+//      case 2:
+//        P0    = P_000;  P1    = P_m00;  P2    = P_mpp;  P3    = P_mmp;
+//        F0    = F_000;  F1    = F_m00;  F2    = F_mpp;  F3    = F_mmp;
+//        Phi0  = L_000;  Phi1  = L_m00;  Phi2  = L_mpp;  Phi3  = L_mmp;
+//      case 3:
+//        P0    = P_000;  P1    = P_m00;  P2    = P_mmp;  P3    = P_mmm;
+//        F0    = F_000;  F1    = F_m00;  F2    = F_mmp;  F3    = F_mmm;
+//        Phi0  = L_000;  Phi1  = L_m00;  Phi2  = L_mmp;  Phi3  = L_mmm;
+//      // +x dir
+//      case 0:
+//        P0    = P_000;  P1    = P_p00;  P2    = P_pmm;  P3    = P_ppm;
+//        F0    = F_000;  F1    = F_p00;  F2    = F_pmm;  F3    = F_ppm;
+//        Phi0  = L_000;  Phi1  = L_p00;  Phi2  = L_pmm;  Phi3  = L_ppm;
+//      case 1:
+//        P0    = P_000;  P1    = P_p00;  P2    = P_ppm;  P3    = P_ppp;
+//        F0    = F_000;  F1    = F_p00;  F2    = F_ppm;  F3    = F_ppp;
+//        Phi0  = L_000;  Phi1  = L_p00;  Phi2  = L_ppm;  Phi3  = L_ppp;
+//      case 2:
+//        P0    = P_000;  P1    = P_p00;  P2    = P_ppp;  P3    = P_pmp;
+//        F0    = F_000;  F1    = F_p00;  F2    = F_ppp;  F3    = F_pmp;
+//        Phi0  = L_000;  Phi1  = L_p00;  Phi2  = L_ppp;  Phi3  = L_pmp;
+//      case 3:
+//        P0    = P_000;  P1    = P_p00;  P2    = P_pmp;  P3    = P_pmm;
+//        F0    = F_000;  F1    = F_p00;  F2    = F_pmp;  F3    = F_pmm;
+//        Phi0  = L_000;  Phi1  = L_p00;  Phi2  = L_pmp;  Phi3  = L_pmm;
+//      // -y dir
+//      case 0:
+//        P0    = P_000;  P1    = P_0m0;  P2    = P_mmm;  P3    = P_pmm;
+//        F0    = F_000;  F1    = F_0m0;  F2    = F_mmm;  F3    = F_pmm;
+//        Phi0  = L_000;  Phi1  = L_0m0;  Phi2  = L_mmm;  Phi3  = L_pmm;
+//      case 1:
+//        P0    = P_000;  P1    = P_0m0;  P2    = P_pmm;  P3    = P_pmp;
+//        F0    = F_000;  F1    = F_0m0;  F2    = F_pmm;  F3    = F_pmp;
+//        Phi0  = L_000;  Phi1  = L_0m0;  Phi2  = L_pmm;  Phi3  = L_pmp;
+//      case 2:
+//        P0    = P_000;  P1    = P_0m0;  P2    = P_pmp;  P3    = P_mmp;
+//        F0    = F_000;  F1    = F_0m0;  F2    = F_pmp;  F3    = F_mmp;
+//        Phi0  = L_000;  Phi1  = L_0m0;  Phi2  = L_pmp;  Phi3  = L_mmp;
+//      case 3:
+//        P0    = P_000;  P1    = P_0m0;  P2    = P_mmp;  P3    = P_mmm;
+//        F0    = F_000;  F1    = F_0m0;  F2    = F_mmp;  F3    = F_mmm;
+//        Phi0  = L_000;  Phi1  = L_0m0;  Phi2  = L_mmp;  Phi3  = L_mmm;
+
+    } else {
+      switch(n) {
+      case 0:
+        P0=              P000; P1=              P100; P2=              P110; P3=              P111;
+        F0=          f.val000; F1=          f.val100; F2=          f.val110; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val100; Phi2=ls_values.val110; Phi3=ls_values.val111;
+        break;
+      case 1:
+        P0=              P000; P1=              P010; P2=              P110; P3=              P111;
+        F0=          f.val000; F1=          f.val010; F2=          f.val110; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val010; Phi2=ls_values.val110; Phi3=ls_values.val111;
+        break;
+      case 2:
+        P0=              P000; P1=              P100; P2=              P101; P3=              P111;
+        F0=          f.val000; F1=          f.val100; F2=          f.val101; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val100; Phi2=ls_values.val101; Phi3=ls_values.val111;
+        break;
+      case 3:
+        P0=              P000; P1=              P010; P2=              P011; P3=              P111;
+        F0=          f.val000; F1=          f.val010; F2=          f.val011; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val010; Phi2=ls_values.val011; Phi3=ls_values.val111;
+        break;
+      case 4:
+        P0=              P000; P1=              P001; P2=              P101; P3=              P111;
+        F0=          f.val000; F1=          f.val001; F2=          f.val101; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val001; Phi2=ls_values.val101; Phi3=ls_values.val111;
+        break;
+      case 5:
+        P0=              P000; P1=              P001; P2=              P011; P3=              P111;
+        F0=          f.val000; F1=          f.val001; F2=          f.val011; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val001; Phi2=ls_values.val011; Phi3=ls_values.val111;
+        break;
+      default:
+#ifdef CASL_THROWS
+        throw std::runtime_error("[CASL_ERROR]: Cube3->integral: error.");
+#endif
+        break;
+      }
     }
 
     // simple cases
@@ -108,6 +208,12 @@ double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
     if(Phi1>0 && Phi2<0) swap(Phi1,Phi2,F1,F2,P1,P2);
     if(Phi1>0 && Phi3<0) swap(Phi1,Phi3,F1,F3,P1,P3);
     if(Phi2>0 && Phi3<0) swap(Phi2,Phi3,F2,F3,P2,P3);
+//    if(Phi0>Phi1) swap(Phi0,Phi1,F0,F1,P0,P1);
+//    if(Phi1>Phi2) swap(Phi1,Phi2,F1,F2,P1,P2);
+//    if(Phi2>Phi3) swap(Phi2,Phi3,F2,F3,P2,P3);
+//    if(Phi0>Phi1) swap(Phi0,Phi1,F0,F1,P0,P1);
+//    if(Phi1>Phi2) swap(Phi1,Phi2,F1,F2,P1,P2);
+//    if(Phi0>Phi1) swap(Phi0,Phi1,F0,F1,P0,P1);
 
     // frustum of simplex (P0,P1,P2) cut by {Phi<=0}
     if(Phi0<=0 && Phi1>=0 && Phi2>=0 && Phi3>=0) // type -+++
@@ -188,46 +294,85 @@ double Cube3::integrate_Over_Interface(const OctValue &f, const OctValue &ls_val
   double sum=0;
 
   // iteration on each simplex in the middle cut triangulation
-  for(int n=0;n<5;n++)
+  for(int n=0;n<num_tet;n++)
   {
     // Tetrahedron (P0,P1,P2,P3)
     Point3   P0,  P1,  P2,   P3;
     double   F0,  F1,  F2,   F3;
     double Phi0,Phi1,Phi2,Phi3;
 
-    switch(n) {
-    case 0:
-      P0=              P000; P1=              P100; P2=              P010; P3=              P001;
-      F0=          f.val000; F1=          f.val100; F2=          f.val010; F3=          f.val001;
-      Phi0=ls_values.val000; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val001;
-      break;
-    case 1:
-      P0=              P110; P1=              P100; P2=              P010; P3=              P111;
-      F0=          f.val110; F1=          f.val100; F2=          f.val010; F3=          f.val111;
-      Phi0=ls_values.val110; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val111;
-      break;
-    case 2:
-      P0=              P101; P1=              P100; P2=              P111; P3=              P001;
-      F0=          f.val101; F1=          f.val100; F2=          f.val111; F3=          f.val001;
-      Phi0=ls_values.val101; Phi1=ls_values.val100; Phi2=ls_values.val111; Phi3=ls_values.val001;
-      break;
-    case 3:
-      P0=              P011; P1=              P111; P2=              P010; P3=              P001;
-      F0=          f.val011; F1=          f.val111; F2=          f.val010; F3=          f.val001;
-      Phi0=ls_values.val011; Phi1=ls_values.val111; Phi2=ls_values.val010; Phi3=ls_values.val001;
-      break;
-    case 4:
-      P0=              P111; P1=              P100; P2=              P010; P3=              P001;
-      F0=          f.val111; F1=          f.val100; F2=          f.val010; F3=          f.val001;
-      Phi0=ls_values.val111; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val001;
-      break;
-    default:
-
-
+    if (middlecut)
+    {
+      switch(n) {
+      case 0:
+        P0=              P000; P1=              P100; P2=              P010; P3=              P001;
+        F0=          f.val000; F1=          f.val100; F2=          f.val010; F3=          f.val001;
+        Phi0=ls_values.val000; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val001;
+        break;
+      case 1:
+        P0=              P110; P1=              P100; P2=              P010; P3=              P111;
+        F0=          f.val110; F1=          f.val100; F2=          f.val010; F3=          f.val111;
+        Phi0=ls_values.val110; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val111;
+        break;
+      case 2:
+        P0=              P101; P1=              P100; P2=              P111; P3=              P001;
+        F0=          f.val101; F1=          f.val100; F2=          f.val111; F3=          f.val001;
+        Phi0=ls_values.val101; Phi1=ls_values.val100; Phi2=ls_values.val111; Phi3=ls_values.val001;
+        break;
+      case 3:
+        P0=              P011; P1=              P111; P2=              P010; P3=              P001;
+        F0=          f.val011; F1=          f.val111; F2=          f.val010; F3=          f.val001;
+        Phi0=ls_values.val011; Phi1=ls_values.val111; Phi2=ls_values.val010; Phi3=ls_values.val001;
+        break;
+      case 4:
+        P0=              P111; P1=              P100; P2=              P010; P3=              P001;
+        F0=          f.val111; F1=          f.val100; F2=          f.val010; F3=          f.val001;
+        Phi0=ls_values.val111; Phi1=ls_values.val100; Phi2=ls_values.val010; Phi3=ls_values.val001;
+        break;
+      default:
 #ifdef CASL_THROWS
-      throw std::runtime_error("[CASL_ERROR]: Cube3->integral: error.");
+        throw std::runtime_error("[CASL_ERROR]: Cube3->integral: error.");
 #endif
-      break;
+        break;
+      }
+    } else {
+      switch(n) {
+      case 0:
+        P0=              P000; P1=              P100; P2=              P110; P3=              P111;
+        F0=          f.val000; F1=          f.val100; F2=          f.val110; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val100; Phi2=ls_values.val110; Phi3=ls_values.val111;
+        break;
+      case 1:
+        P0=              P000; P1=              P010; P2=              P110; P3=              P111;
+        F0=          f.val000; F1=          f.val010; F2=          f.val110; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val010; Phi2=ls_values.val110; Phi3=ls_values.val111;
+        break;
+      case 2:
+        P0=              P000; P1=              P100; P2=              P101; P3=              P111;
+        F0=          f.val000; F1=          f.val100; F2=          f.val101; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val100; Phi2=ls_values.val101; Phi3=ls_values.val111;
+        break;
+      case 3:
+        P0=              P000; P1=              P010; P2=              P011; P3=              P111;
+        F0=          f.val000; F1=          f.val010; F2=          f.val011; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val010; Phi2=ls_values.val011; Phi3=ls_values.val111;
+        break;
+      case 4:
+        P0=              P000; P1=              P001; P2=              P101; P3=              P111;
+        F0=          f.val000; F1=          f.val001; F2=          f.val101; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val001; Phi2=ls_values.val101; Phi3=ls_values.val111;
+        break;
+      case 5:
+        P0=              P000; P1=              P001; P2=              P011; P3=              P111;
+        F0=          f.val000; F1=          f.val001; F2=          f.val011; F3=          f.val111;
+        Phi0=ls_values.val000; Phi1=ls_values.val001; Phi2=ls_values.val011; Phi3=ls_values.val111;
+        break;
+      default:
+#ifdef CASL_THROWS
+        throw std::runtime_error("[CASL_ERROR]: Cube3->integral: error.");
+#endif
+        break;
+      }
     }
 
     // simple cases
@@ -261,6 +406,12 @@ double Cube3::integrate_Over_Interface(const OctValue &f, const OctValue &ls_val
     if(Phi1>0 && Phi2<0) swap(Phi1,Phi2,F1,F2,P1,P2);
     if(Phi1>0 && Phi3<0) swap(Phi1,Phi3,F1,F3,P1,P3);
     if(Phi2>0 && Phi3<0) swap(Phi2,Phi3,F2,F3,P2,P3);
+//    if(Phi0>Phi1) swap(Phi0,Phi1,F0,F1,P0,P1);
+//    if(Phi1>Phi2) swap(Phi1,Phi2,F1,F2,P1,P2);
+//    if(Phi2>Phi3) swap(Phi2,Phi3,F2,F3,P2,P3);
+//    if(Phi0>Phi1) swap(Phi0,Phi1,F0,F1,P0,P1);
+//    if(Phi1>Phi2) swap(Phi1,Phi2,F1,F2,P1,P2);
+//    if(Phi0>Phi1) swap(Phi0,Phi1,F0,F1,P0,P1);
 
     //
     if(Phi0<=0 && Phi1>=0 && Phi2>=0 && Phi3>=0) // type -+++

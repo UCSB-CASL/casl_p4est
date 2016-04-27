@@ -115,6 +115,8 @@ public:
 #endif
 
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+
+  std::vector<bool> node_loc;
 };
 
 #endif // MY_P4EST_POISSON_NODEs_H

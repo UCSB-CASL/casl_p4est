@@ -18,6 +18,7 @@
 #include <set>
 #include <time.h>
 #include <stdio.h>
+#include <math.h>
 
 // p4est Library
 #ifdef P4_TO_P8
@@ -67,9 +68,9 @@ double zmax =  1;
 
 using namespace std;
 
-int lmin = 3;
-int lmax = 5;
-int nb_splits = 1;
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 8;
 
 int nx = 1;
 int ny = 1;
@@ -80,20 +81,25 @@ int nz = 1;
 bool save_vtk = true;
 
 double mu = 1;
-double add_diagonal = 0;
+double add_diagonal = 1;
+
+double inside = -1.0;
 
 /*
  * 0 - circle
+ * 1 - flower
  */
 int interface_type = 0;
+double b = 3.0;
 
 /*
  *  ********* 2D *********
  * 0 - x+y
  * 1 - x*x + y*y
  * 2 - sin(x)*cos(y)
+ * 3 - exp(x*y)
  */
-int test_number = 0;
+int test_number = 2;
 
 BoundaryConditionType bc_itype = NEUMANN;
 BoundaryConditionType bc_wtype = DIRICHLET;
@@ -118,7 +124,7 @@ public:
     switch(interface_type)
     {
     case 0:
-      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+      return inside*(r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2)));
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -149,6 +155,15 @@ double u_exact(double x, double y, double z)
   }
 }
 
+class KAPPA : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return 1.0 + 0.5*sin(y)*cos(z)*sin(x);
+  }
+} kappa;
+
 class BCINTERFACEVAL : public CF_3
 {
 public:
@@ -170,9 +185,9 @@ public:
         }
         else
         {
-          dx = -(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
-          dy = -(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
-          dz = -(z - (zmax+zmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+          dx = -inside*(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+          dy = -inside*(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+          dz = -inside*(z - (zmax+zmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
         }
         break;
       default:
@@ -182,11 +197,11 @@ public:
       switch(test_number)
       {
       case 0:
-        return dx + dy + dz;
+        return dx + dy + dz + kappa(x,y,z)*u_exact(x,y,z);
       case 1:
-        return 2*x*dx + 2*y*dy + 2*z*dz;
+        return 2*x*dx + 2*y*dy + 2*z*dz + kappa(x,y,z)*u_exact(x,y,z);
       case 2:
-        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
+        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz + kappa(x,y,z)*u_exact(x,y,z);
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
@@ -240,7 +255,13 @@ public:
     switch(interface_type)
     {
     case 0:
-      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
+      return inside*(r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2)));
+    case 1:
+    {
+      double r = sqrt(SQR(x - 0.) + SQR(y - 0.));
+      if(r<1.e-3) r = 1.e-3;
+        return -inside*(r - r0 - (pow(y,5)+5.0*pow(x,4)*y-10.0*pow(x,2)*pow(y,3))/pow(r,5)/b);
+    }
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -266,17 +287,28 @@ double u_exact(double x, double y)
     return x*x + y*y;
   case 2:
     return sin(x)*cos(y);
+  case 3:
+    return exp(x*y);
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
 }
+
+class KAPPA : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    return 0.0;
+  }
+} kappa;
 
 class BCINTERFACEVAL : public CF_2
 {
 public:
   double operator()(double x, double y) const
   {
-    if(bc_itype==DIRICHLET)
+    if(bc_itype==DIRICHLET || bc_itype==DIRICHLET_FVM)
       return u_exact(x,y);
     else
     {
@@ -291,10 +323,34 @@ public:
         }
         else
         {
-          dx = -(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
-          dy = -(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
+          dx = -inside*(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
+          dy = -inside*(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
         }
         break;
+      case 1:
+      {
+        if(fabs(x-(xmax+xmin)/2)<EPS && fabs(y-(ymax+ymin)/2)<EPS)
+        {
+          dx = 0;
+          dy = 0;
+        }
+        else
+        {
+          double r = sqrt(SQR(x - 0.) + SQR(y - 0.));
+          dx = -1.0*inside*((x - 0.)*(1.0+5.0*(pow(y,5)+5.0*pow(x,4)*y-10.0*pow(x,2)*pow(y,3))/pow(r,6)/b)/r - (20.*pow(x,3)*y-20.*x*pow(y,3))/pow(r,5)/b);
+          dy = -1.0*inside*((y - 0.)*(1.0+5.0*(pow(y,5)+5.0*pow(x,4)*y-10.0*pow(x,2)*pow(y,3))/pow(r,6)/b)/r - (5.*pow(y,4)+5.*pow(x,4)-30.*pow(x*y,2))/pow(r,5)/b);
+//          dx = (x - 0.)/r*(1.0+5.0*(r-0.5)/r) - (20.*pow(x,3)*y-20.*x*pow(y,3))/pow(r,5)/b;
+//          dy = (y - 0.)/r*(1.0+5.0*(r-0.5)/r) - (5.*pow(y,4)+5.*pow(x,4)-30.*pow(x*y,2))/pow(r,5)/b;
+          double norm = sqrt(dx*dx+dy*dy);
+          if(fabs(dx)<EPS && fabs(dy)<EPS)
+          {
+            dx = 0; dy = 0;
+          } else {
+            dx = dx/norm;
+            dy = dy/norm;
+          }
+        }
+      } break;
       default:
         throw std::invalid_argument("choose a valid interface type.");
       }
@@ -302,11 +358,13 @@ public:
       switch(test_number)
       {
       case 0:
-        return dx + dy;
+        return dx + dy + kappa(x,y)*u_exact(x,y);
       case 1:
-        return 2*x*dx + 2*y*dy;
+        return 2*x*dx + 2*y*dy + kappa(x,y)*u_exact(x,y);
       case 2:
-        return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy;
+        return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy + kappa(x,y)*u_exact(x,y);
+      case 3:
+        return y*exp(x*y)*dx + x*exp(x*y)*dy + kappa(x,y)*u_exact(x,y);
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
@@ -363,7 +421,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   out_dir = getenv("OUT_DIR");
 #else
   char out_dir[10000];
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_navier_stokes");
+  sprintf(out_dir, "/home/dbochkov/Projects/output/nodes");
 #endif
 
   std::ostringstream oss;
@@ -552,14 +610,18 @@ int main (int argc, char* argv[])
     }
   }
 
+
+
   for(int iter=0; iter<nb_splits; ++iter)
   {
+//    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin, lmax+iter); CHKERRXX(ierr);
     ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
     p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
 
 //    srand(1);
 //    splitting_criteria_random_t data(2, 7, 1000, 10000);
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set, 1.2);
+//    splitting_criteria_cf_t data(lmin, lmax+iter, &level_set, 1.2);
+    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set, 6.2);
     p4est->user_pointer = (void*)(&data);
 
 //    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
@@ -574,6 +636,7 @@ int main (int argc, char* argv[])
 
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
     my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
+    ngbd_n.init_neighbors();
 
     Vec phi;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
@@ -582,7 +645,69 @@ int main (int argc, char* argv[])
     else
       sample_cf_on_nodes(p4est, nodes, level_set, phi);
 
+//    p4est_t       *p4est_aux;
+//    p4est_nodes_t *nodes_aux;
+//    p4est_ghost_t *ghost_aux;
+
+//    p4est_aux = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+//    splitting_criteria_cf_t data_aux(lmin+iter+2, lmax+iter+2, &level_set, 5.0);
+//    p4est_aux->user_pointer = (void*)(&data_aux);
+
+//    my_p4est_refine(p4est_aux, P4EST_TRUE, refine_levelset_cf, NULL);
+//    my_p4est_partition(p4est_aux, P4EST_FALSE, NULL);
+//    p4est_balance(p4est_aux, P4EST_CONNECT_FULL, NULL);
+//    my_p4est_partition(p4est_aux, P4EST_FALSE, NULL);
+
+//    ghost_aux = my_p4est_ghost_new(p4est_aux, P4EST_CONNECT_FULL);
+//    my_p4est_ghost_expand(p4est_aux, ghost_aux);
+//    nodes_aux = my_p4est_nodes_new(p4est_aux, ghost_aux);
+
+//    my_p4est_hierarchy_t hierarchy_aux(p4est_aux,ghost_aux, &brick);
+//    my_p4est_node_neighbors_t ngbd_n_aux(&hierarchy_aux,nodes_aux);
+//    ngbd_n_aux.init_neighbors();
+
+//    Vec phi_aux;
+//    ierr = VecCreateGhostNodes(p4est_aux, nodes_aux, &phi_aux); CHKERRXX(ierr);
+//    sample_cf_on_nodes(p4est_aux, nodes_aux, level_set, phi_aux);
+
+//    my_p4est_level_set_t ls_aux(&ngbd_n_aux);
+//    ls_aux.reinitialize_1st_order_time_2nd_order_space(phi_aux, 50);
+
+//    ierr = VecGhostUpdateBegin(phi_aux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd  (phi_aux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+//    my_p4est_interpolation_nodes_t phi_interp(&ngbd_n_aux);
+//    phi_interp.set_input(phi_aux,NULL,NULL,linear);
+
+//    Vec phi;
+//    ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
+//    double *phi_p_0;
+//    ierr = VecGetArray(phi, &phi_p_0); CHKERRXX(ierr);
+
+//    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+//    {
+//      double x = node_x_fr_n(n, p4est, nodes);
+//      double y = node_y_fr_n(n, p4est, nodes);
+//#ifdef P4_TO_P8
+//      double z = node_z_fr_n(n, p4est, nodes);
+//#endif
+//      phi_p_0[n] = phi_interp(x,y);
+//    }
+//    ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+//    ierr = VecRestoreArray(phi, &phi_p_0); CHKERRXX(ierr);
+
+//    ierr = VecDestroy(phi_aux); CHKERRXX(ierr);
+
+//    p4est_nodes_destroy(nodes_aux);
+//    p4est_ghost_destroy(ghost_aux);
+//    p4est_destroy      (p4est_aux);
+
     my_p4est_level_set_t ls(&ngbd_n);
+//    ls.reinitialize_1st_order_time_2nd_order_space(phi, 30);
+//    ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ls.perturb_level_set_function(phi, EPS);
 
     /* find dx and dy smallest */
@@ -615,6 +740,7 @@ int main (int argc, char* argv[])
     bc.setWallValues(bc_wall_val);
     bc.setInterfaceType(bc_itype);
     bc.setInterfaceValue(bc_interface_val);
+    bc.setInterfaceCoeff(kappa);
 
     Vec rhs;
     ierr = VecCreateGhostNodes(p4est, nodes, &rhs); CHKERRXX(ierr);
@@ -650,6 +776,9 @@ int main (int argc, char* argv[])
       case 2:
         rhs_p[n] = 2*mu*sin(x)*cos(y) + add_diagonal*u_exact(x,y);
         break;
+      case 3:
+        rhs_p[n] = -mu*(x*x+y*y)*exp(x*y) + add_diagonal*u_exact(x,y);
+        break;
 #endif
       default:
         throw std::invalid_argument("set rhs : unknown test number.");
@@ -658,12 +787,17 @@ int main (int argc, char* argv[])
 
     ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
+    Vec kappa_vec;
+    ierr = VecCreateGhostNodes(p4est, nodes, &kappa_vec); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, kappa, kappa_vec);
+
     my_p4est_poisson_nodes_t solver(&ngbd_n);
     solver.set_phi(phi);
     solver.set_diagonal(add_diagonal);
     solver.set_mu(mu);
     solver.set_bc(bc);
     solver.set_rhs(rhs);
+    solver.set_robin_coef(kappa_vec);
 
     Vec sol;
     ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);
@@ -701,7 +835,8 @@ int main (int argc, char* argv[])
 
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
-      if(bc_itype==NOINTERFACE || phi_p[n]<0)
+//      if(bc_itype==NOINTERFACE || phi_p[n]<0*diag)
+      if(solver.node_loc[n])
       {
         double x = node_x_fr_n(n, p4est, nodes);
         double y = node_y_fr_n(n, p4est, nodes);
@@ -710,8 +845,10 @@ int main (int argc, char* argv[])
         err_p[n] = fabs(sol_p[n] - u_exact(x,y,z));
 #else
         err_p[n] = fabs(sol_p[n] - u_exact(x,y));
+//        err_p[n] = fabs(sol_p[n] - 0.25*(u_exact(x-0.5*dx,y-0.5*dy)+u_exact(x+0.5*dx,y-0.5*dy)+u_exact(x-0.5*dx,y+0.5*dy)+u_exact(x+0.5*dx,y+0.5*dy)));
 #endif
         err_n = MAX(err_n, err_p[n]);
+//        err_p[n] = u_exact(x,y);
       }
       else
         err_p[n] = 0;
@@ -730,8 +867,8 @@ int main (int argc, char* argv[])
     /* extrapolate the solution and check accuracy */
     double band = 4;
 
-    if(bc_itype!=NOINTERFACE)
-      ls.extend_Over_Interface_TVD(phi, sol, 100);
+//    if(bc_itype!=NOINTERFACE)
+//      ls.extend_Over_Interface_TVD(phi, sol, 100);
 
     ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
