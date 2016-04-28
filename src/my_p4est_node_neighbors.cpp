@@ -2009,7 +2009,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fxx,
 
     if (f_size != fxx_size){
       std::ostringstream oss;
-      oss << "[ERROR]: Vectors must be of same size whe computing derivatives"
+      oss << "[ERROR]: Vectors must be of same size when computing derivatives"
           << " f_size = " << f_size << " fxx_size = " << fxx_size << std::endl;
 
       throw std::invalid_argument(oss.str());
@@ -2017,7 +2017,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fxx,
 
     if (f_size != fyy_size){
       std::ostringstream oss;
-      oss << "[ERROR]: Vectors must be of same size whe computing derivatives"
+      oss << "[ERROR]: Vectors must be of same size when computing derivatives"
           << " f_size = " << f_size << " fyy_size = " << fyy_size << std::endl;
 
       throw std::invalid_argument(oss.str());

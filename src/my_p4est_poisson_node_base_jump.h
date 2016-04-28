@@ -7,27 +7,33 @@
 #include <src/my_p8est_cell_neighbors.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_tools.h>
-#include <src/my_p8est_interpolating_function_host.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_utils.h>
 #include <src/voronoi3D.h>
 #else
 #include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_tools.h>
-#include <src/my_p4est_interpolating_function_host.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_utils.h>
 #include <src/voronoi2D.h>
 #endif
 
 class PoissonSolverNodeBaseJump
 {
-  typedef struct check_comm
+  typedef struct
+  {
+    double val;
+    PetscInt n;
+  } mat_entry_t;
+
+  typedef struct
   {
     unsigned int n;
     unsigned int k;
   } check_comm_t;
 
-  typedef struct voro_comm
+  typedef struct
   {
     p4est_locidx_t local_num;
     double x;
@@ -37,7 +43,7 @@ class PoissonSolverNodeBaseJump
 #endif
   } voro_comm_t;
 
-  typedef struct added_point
+  typedef struct
   {
     double x;
     double y;
@@ -133,16 +139,10 @@ class PoissonSolverNodeBaseJump
   p4est_ghost_t *ghost;
   p4est_nodes_t *nodes;
 
-  double xmin, xmax;
-  double ymin, ymax;
-#ifdef P4_TO_P8
-  double zmin, zmax;
-#endif
+  double xyz_min[P4EST_DIM];
+  double xyz_max[P4EST_DIM];
 
-  double dx_min, dy_min;
-#ifdef P4_TO_P8
-  double dz_min;
-#endif
+  double dxyz_min_[P4EST_DIM];
   double d_min;
   double diag_min;
 
@@ -177,9 +177,9 @@ class PoissonSolverNodeBaseJump
   BoundaryConditions2D *bc;
 #endif
 
-  InterpolatingFunctionNodeBaseHost interp_phi;
-  InterpolatingFunctionNodeBaseHost rhs_m;
-  InterpolatingFunctionNodeBaseHost rhs_p;
+  my_p4est_interpolation_nodes_t interp_phi;
+  my_p4est_interpolation_nodes_t rhs_m;
+  my_p4est_interpolation_nodes_t rhs_p;
 
   bool local_mu;
   bool local_add;

@@ -119,7 +119,8 @@ public:
   {
   }
 
-	bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
+  bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
+  bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
 };
 
 /*!

@@ -37,6 +37,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_semi_lagrangian_t;
   friend class my_p4est_bialloy_t;
   friend class my_p4est_navier_stokes_t;
+  friend class my_p4est_epitaxy_t;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information
@@ -120,7 +121,7 @@ public:
                                "'init_neighbors()' or consider calling 'get_neighbors()' to compute the neighbors on the fly.");
 
     if (is_qnnn_valid[n])
-      return neighbors.at(n);
+      return neighbors[n];
     else {
       std::ostringstream oss;
       oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
@@ -135,7 +136,7 @@ public:
     if (is_initialized) {
 #ifdef CASL_THROWS
       if (is_qnnn_valid[n])
-        return neighbors.at(n);
+        return neighbors[n];
       else {
         std::ostringstream oss;
         oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
@@ -146,22 +147,42 @@ public:
 #endif
     } else {
       quad_neighbor_nodes_of_node_t qnnn;
-      get_neighbors(n, qnnn);
+      bool err = construct_neighbors(n, qnnn);
+      if (err){
+        std::ostringstream oss;
+        oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
+        throw std::invalid_argument(oss.str().c_str());
+      }
       return qnnn;
     }
   }
 
   inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const {
+    if (is_initialized) {
 #ifdef CASL_THROWS
-    bool err = construct_neighbors(n, qnnn);
-    if (err){
-      std::ostringstream oss;
-      oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
-      throw std::invalid_argument(oss.str().c_str());
-    }
+      if (is_qnnn_valid[n])
+        qnnn = neighbors[n];
+      else {
+        std::ostringstream oss;
+        oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
+        throw std::invalid_argument(oss.str().c_str());
+      }
 #else
-    construct_neighbors(n, qnnn);
+      qnnn = neighbors[n];
 #endif
+    }
+    else {
+#ifdef CASL_THROWS
+      bool err = construct_neighbors(n, qnnn);
+      if (err){
+        std::ostringstream oss;
+        oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
+        throw std::invalid_argument(oss.str().c_str());
+      }
+#else
+      construct_neighbors(n, qnnn);
+#endif
+    }
   }
 
   /**
