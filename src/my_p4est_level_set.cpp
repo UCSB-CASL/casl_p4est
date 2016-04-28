@@ -1531,26 +1531,9 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
     if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-      p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-      double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-#endif
-
-      double xyz [] =
-      {
-        node_x_fr_n(node) + tree_xmin,
-        node_y_fr_n(node) + tree_ymin
-  #ifdef P4_TO_P8
-        ,
-        node_z_fr_n(node) + tree_zmin
-  #endif
-      };
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est, nodes, xyz);
 
 //      double xy1 [] = {xyz[0] - grad_phi.x*(phi[n]), xyz[1] - grad_phi.y*(phi[n])};
 //      double xy2 [] = {xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)};
@@ -1712,26 +1695,9 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
     if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-      p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-      double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-#endif
-
-      double xyz [] =
-      {
-        node_x_fr_n(node) + tree_xmin,
-        node_y_fr_n(node) + tree_ymin
-  #ifdef P4_TO_P8
-        ,
-        node_z_fr_n(node) + tree_zmin
-  #endif
-      };
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est, nodes, xyz);
 
       if(order>0 || bc_type==DIRICHLET){
         double xyz_ [] =
@@ -1928,26 +1894,9 @@ void my_p4est_level_set_t::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int
     if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-      p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-      double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-#endif
-
-      double xyz [] =
-      {
-        node_x_fr_n(node) + tree_xmin,
-        node_y_fr_n(node) + tree_ymin
-  #ifdef P4_TO_P8
-        ,
-        node_z_fr_n(node) + tree_zmin
-  #endif
-      };
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est, nodes, xyz);
 
       if(order>0){
         double xyz_ [] =
@@ -2099,26 +2048,9 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain( Vec phi_petsc,
     if(fabs(phi[n])<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-      p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
-      p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_id + 0];
-
-      double tree_xmin = p4est->connectivity->vertices[3*v_mm + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_mm + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_mm + 2];
-#endif
-
-      double xyz [] =
-      {
-        node_x_fr_n(node) + tree_xmin - grad_phi.x*phi[n],
-        node_y_fr_n(node) + tree_ymin - grad_phi.y*phi[n]
-  #ifdef P4_TO_P8
-        ,
-        node_z_fr_n(node) + tree_zmin - grad_phi.z*phi[n]
-  #endif
-      };
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est, nodes, xyz);
 
       interp.add_point(n, xyz);
 
