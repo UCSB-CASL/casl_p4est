@@ -31,6 +31,7 @@ extern PetscLogEvent log_my_p4est_poisson_nodes_solve;
 #endif
 #define bc_strength 1.0
 
+
 my_p4est_poisson_nodes_t::my_p4est_poisson_nodes_t(const my_p4est_node_neighbors_t *node_neighbors)
   : node_neighbors_(node_neighbors),
     p4est(node_neighbors->p4est), nodes(node_neighbors->nodes), ghost(node_neighbors->ghost), myb_(node_neighbors->myb),
@@ -359,11 +360,16 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
     set_phi(phi_);
   }
 
+  // a trick to avoid allocating zero RHS is to set it equal to solution. PETSc can handle this.
+  if (rhs_ == NULL)
+  {
+    rhs_ = solution;
+  }
+
   // set ksp type
   ierr = KSPSetType(ksp, ksp_type); CHKERRXX(ierr);  
   if (use_nonzero_initial_guess)
     ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
-  ierr = KSPSetFromOptions(ksp); CHKERRXX(ierr);
 
   /*
    * Here we set the matrix, ksp, and pc. If the matrix is not changed during
@@ -424,10 +430,10 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
      */
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
 
-//    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
-//    if (matrix_has_nullspace){
-//      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
-//    }
+    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
+    if (matrix_has_nullspace){
+      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
+    }
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
@@ -443,9 +449,22 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
     setup_negative_variable_coeff_laplace_rhsvec();
 
   // Solve the system
-  ierr = KSPSetTolerances(ksp, 1e-14, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
-  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
+  ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
+  ierr = KSPSetFromOptions(ksp); CHKERRXX(ierr);
+
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);  
+  MatNullSpace A_null;
+  if (matrix_has_nullspace) {
+    ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, NULL, &A_null); CHKERRXX(ierr);
+    ierr = MatSetNullSpace(A, A_null);
+
+    // For purely neumann problems GMRES is more robust
+    ierr = KSPSetType(ksp, KSPGMRES); CHKERRXX(ierr);
+  }
   ierr = KSPSolve(ksp, rhs_, solution); CHKERRXX(ierr);
+  if (matrix_has_nullspace) {
+    ierr = MatNullSpaceDestroy(A_null);
+  }
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_KSPSolve, ksp, rhs_, solution, 0); CHKERRXX(ierr);
 
   // update ghosts
@@ -1122,9 +1141,11 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
           double w_00p = -mu_ * s_00p/dz_min;
 
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mu_*robin_coef_p[n]*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                           w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           //---------------------------------------------------------------------
@@ -1173,9 +1194,11 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
           double w_0m0 = -mu_ * s_0m0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mu_*robin_coef_p[n]*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                           w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
@@ -1221,19 +1244,20 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
   // check for null space
   // FIXME: the return value should be checked for errors ...
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
-  if (matrix_has_nullspace) {
-    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
-    p4est_gloidx_t fixed_value_idx;
-    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
-    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
-      fixed_value_idx_l = -1;
-      fixed_value_idx_g = fixed_value_idx;
-    } else {
-      // reset the value
-      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
-    }
 
-  }
+//  if (matrix_has_nullspace) {
+//    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
+//    p4est_gloidx_t fixed_value_idx;
+//    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
+//    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
+//      fixed_value_idx_l = -1;
+//      fixed_value_idx_g = fixed_value_idx;
+//    } else {
+//      // reset the value
+//      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
+//    }
+
+//  }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1706,8 +1730,25 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
           double w_00p = -mu_ * s_00p/dz_min;
 
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
-          if (bc_->interfaceType() == ROBIN){
-            w_000 += mu_*robin_coef_p[n]*interface_area;
+          rhs_p[n] *= volume_cut_cell;
+
+          if (bc_->interfaceType() == ROBIN)
+          {
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mu_*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
+
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double zp = z_C - phi_p[n]*qnnn.dz_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp,zp);
+              rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mu_*robin_coef_p[n]*interface_area;
+            }
           }
 
           OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
@@ -1721,7 +1762,6 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
-          rhs_p[n] *= volume_cut_cell;
           rhs_p[n] += mu_*integral_bc;
 
           rhs_p[n] /= w_000;
@@ -1741,8 +1781,24 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
           double w_0m0 = -mu_ * s_0m0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
-          if (bc_->interfaceType() == ROBIN){
-            w_000 += mu_*robin_coef_p[n]*interface_area;
+          rhs_p[n] *= volume_cut_cell;
+
+          if (bc_->interfaceType() == ROBIN)
+          {
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp);
+              rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mu_*robin_coef_p[n]*interface_area;
+            }
           }
 
           QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
@@ -1751,7 +1807,6 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
                               bc_->interfaceValue(cube.x1, cube.y1));
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
-          rhs_p[n] *= volume_cut_cell;
           rhs_p[n] += mu_*integral_bc;
 
           rhs_p[n] /= w_000;
@@ -1763,9 +1818,9 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
     }
   }
 
-  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
-    rhs_p[fixed_value_idx_l] = 0;
-  }
+//  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
+//    rhs_p[fixed_value_idx_l] = 0;
+//  }
 
   // restore the pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -1787,7 +1842,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
 
 void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 {
-  preallocate_matrix();
+  preallocate_matrix(); 
 
   // register for logging purpose
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
@@ -2370,9 +2425,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           if(!is_node_zpWall(p4est, ni)) w_00p += -mu_ * s_00p/dz_min;
 
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mu_*robin_coef_p[n]*interface_area;
+            w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
           }
 
           //---------------------------------------------------------------------
@@ -2425,9 +2481,11 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           if(!is_node_ypWall(p4est, ni)) w_0p0 += -mu_ * s_0p0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mu_*robin_coef_p[n]*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                           w_000 += mu_*robin_coef_p[n]*interface_area;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
@@ -2473,19 +2531,19 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 
   // check for null space
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
-  if (matrix_has_nullspace) {
-    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
-    p4est_gloidx_t fixed_value_idx;
-    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
-    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
-      fixed_value_idx_l = -1;
-      fixed_value_idx_g = fixed_value_idx;
-      ierr = MatZeroRows(A, 0, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
-    } else {
-      // reset the value
-      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
-    }
-  }
+
+//  if (matrix_has_nullspace) {
+//    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
+//    p4est_gloidx_t fixed_value_idx;
+//    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
+//    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
+//      fixed_value_idx_l = -1;
+//      fixed_value_idx_g = fixed_value_idx;
+//    } else {
+//      // reset the value
+//      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
+//    }
+//  }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
@@ -2962,8 +3020,25 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           if(!is_node_zpWall(p4est, ni)) w_00p += -mu_ * s_00p/dz_min;
 
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
-          if (bc_->interfaceType() == ROBIN){
-            w_000 += mu_*robin_coef_p[n]*interface_area;
+          rhs_p[n] *= volume_cut_cell;
+
+          if (bc_->interfaceType() == ROBIN)
+          {
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mu_*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
+
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double zp = z_C - phi_p[n]*qnnn.dz_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp,zp);
+              rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mu_*robin_coef_p[n]*interface_area;
+            }
           }
 
           OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
@@ -2977,7 +3052,6 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
-          rhs_p[n] *= volume_cut_cell;
           rhs_p[n] += mu_*integral_bc;
 
           if (is_node_xmWall(p4est, ni)) rhs_p[n] += mu_*s_m00*bc_->wallValue(x_C, y_C, z_C);
@@ -3013,8 +3087,24 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           if(!is_node_ypWall(p4est, ni)) w_0p0 += -mu_ * s_0p0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
-          if (bc_->interfaceType() == ROBIN){
-            w_000 += mu_*robin_coef_p[n]*interface_area;
+          rhs_p[n] *= volume_cut_cell;
+
+          if (bc_->interfaceType() == ROBIN)
+          {
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mu_*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp);
+              rhs_p[n] += mu_*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mu_*robin_coef_p[n]*interface_area;
+            }
           }
 
           QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
@@ -3024,7 +3114,6 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
-          rhs_p[n] *= volume_cut_cell;
           rhs_p[n] += mu_*integral_bc;
 
           if (is_node_xmWall(p4est, ni)) rhs_p[n] += mu_*s_m00*bc_->wallValue(x_C, y_C);
@@ -3041,9 +3130,9 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
     }
   }
 
-  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
-    rhs_p[fixed_value_idx_l] = 0;
-  }
+//  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
+//    rhs_p[fixed_value_idx_l] = 0;
+//  }
 
 
   // restore the pointers
@@ -3124,7 +3213,6 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
     double w_p00_mm, w_p00_pm;
     double w_0m0_mm, w_0m0_pm;
     double w_0p0_mm, w_0p0_pm;
-    double w_000, w_m00, w_p00, w_0m0, w_0p0;
 #ifdef P4_TO_P8
     double d_m00_0m=qnnn.d_m00_0m; double d_m00_0p=qnnn.d_m00_0p;
     double d_p00_0m=qnnn.d_p00_0m; double d_p00_0p=qnnn.d_p00_0p;
@@ -3145,7 +3233,6 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
     double w_00p_mm, w_00p_pm;
     double w_00m_mp, w_00m_pp;
     double w_00p_mp, w_00p_pp;
-    double w_00m, w_00p;
 #endif
 
     p4est_locidx_t node_m00_mm=qnnn.node_m00_mm; p4est_locidx_t node_m00_pm=qnnn.node_m00_pm;
@@ -3193,115 +3280,17 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 
     PetscInt node_000_g = petsc_gloidx[qnnn.node_000];
 
-    if(is_node_Wall(p4est, ni))
+    if(is_node_Wall(p4est, ni) &&
+   #ifdef P4_TO_P8
+       bc_->wallType(x_C,y_C,z_C) == DIRICHLET
+   #else
+       bc_->wallType(x_C,y_C) == DIRICHLET
+   #endif
+       )
     {
-#ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == DIRICHLET)
-#else
-      if(bc_->wallType(x_C,y_C)     == DIRICHLET)
-#endif
-      {
-        // FIXME: get rid of bc_strength alltogether!
-        ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
-        if (phi_p[n]<0.) matrix_has_nullspace = false;
-        continue;
-      }
-      // FIXME: make the neumann on the boundary second-order accurate
-#ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == NEUMANN)
-#else
-      if(bc_->wallType(x_C,y_C)     == NEUMANN)
-#endif
-      {
-        if (is_node_xpWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_m00 = d_m00_0m == 0 ? ( d_m00_m0==0 ? node_m00_mm : node_m00_pm )
-                                               : ( d_m00_m0==0 ? node_m00_mp : node_m00_pp );
-#else
-          p4est_locidx_t n_m00 = d_m00_m0 == 0 ? node_m00_mm : node_m00_pm;
-#endif
-          PetscInt node_m00_g  = petsc_gloidx[n_m00];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_m00_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-
-        if (is_node_xmWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_p00 = d_p00_0m == 0 ? ( d_p00_m0 == 0 ? node_p00_mm : node_p00_pm )
-                                               : ( d_p00_m0 == 0 ? node_p00_mp : node_p00_pp );
-#else
-          p4est_locidx_t n_p00 = d_p00_m0 == 0 ? node_p00_mm : node_p00_pm;
-#endif
-          PetscInt node_p00_g  = petsc_gloidx[n_p00];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_p00_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-
-        if (is_node_ypWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_0m0 = d_0m0_0m == 0 ? ( d_0m0_m0 == 0 ? node_0m0_mm : node_0m0_pm )
-                                               : ( d_0m0_m0 == 0 ? node_0m0_mp : node_0m0_pp );
-#else
-          p4est_locidx_t n_0m0 = d_0m0_m0 == 0 ? node_0m0_mm : node_0m0_pm;
-#endif
-          PetscInt node_0m0_g  = petsc_gloidx[n_0m0];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_0m0_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-        if (is_node_ymWall(p4est, ni)){
-#ifdef P4_TO_P8
-          p4est_locidx_t n_0p0 = d_0p0_0m == 0 ? ( d_0p0_m0 == 0 ? node_0p0_mm : node_0p0_pm )
-                                               : ( d_0p0_m0 == 0 ? node_0p0_mp : node_0p0_pp );
-#else
-          p4est_locidx_t n_0p0 = d_0p0_m0 == 0 ? node_0p0_mm:node_0p0_pm;
-#endif
-          PetscInt node_0p0_g  = petsc_gloidx[n_0p0];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_0p0_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-#ifdef P4_TO_P8
-        if (is_node_zpWall(p4est, ni)){
-          p4est_locidx_t n_00m = d_00m_0m == 0 ? ( d_00m_m0 == 0 ? node_00m_mm : node_00m_pm )
-                                               : ( d_00m_m0 == 0 ? node_00m_mp : node_00m_pp );
-          PetscInt node_00m_g  = petsc_gloidx[n_00m];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_00m_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-
-        if (is_node_zmWall(p4est, ni)){
-          p4est_locidx_t n_00p = d_00p_0m == 0 ? ( d_00p_m0 == 0 ? node_00p_mm : node_00p_pm )
-                                               : ( d_00p_m0 == 0 ? node_00p_mp : node_00p_pp );
-          PetscInt node_00p_g  = petsc_gloidx[n_00p];
-
-          ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
-            ierr = MatSetValue(A, node_000_g, node_00p_g, -bc_strength*mue_p[n], ADD_VALUES); CHKERRXX(ierr);
-
-          continue;
-        }
-#endif
-      }
+      ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
+      if (phi_p[n]<0.) matrix_has_nullspace = false;
+      continue;
     } else {
       double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
       double mue_000, mue_p00, mue_m00, mue_0m0, mue_0p0;
@@ -3331,20 +3320,35 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 
       // TODO: This needs optimization
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_mmp = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_mpp = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
-      double P_pmp = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_ppp = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
+        Cube3 cube;
 #else
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min);
+        Cube2 cube;
 #endif
+        cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+        cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+        cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+        cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+#ifdef P4_TO_P8
+        cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+        cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+#endif
+
+#ifdef P4_TO_P8
+      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
+      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
+      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
+      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
+      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
+      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
+      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
+      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+#else
+      double P_mmm = phi_interp(cube.x0, cube.y0);
+      double P_mpm = phi_interp(cube.x0, cube.y1);
+      double P_pmm = phi_interp(cube.x1, cube.y0);
+      double P_ppm = phi_interp(cube.x1, cube.y1);
+#endif
+
 
 #ifdef P4_TO_P8
       bool is_one_positive = (P_mmm > 0 || P_pmm > 0 || P_mpm > 0 || P_ppm > 0 ||
@@ -3511,12 +3515,31 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         //---------------------------------------------------------------------
         // Shortley-Weller method, dimension by dimension
         //---------------------------------------------------------------------
-        w_m00 = -2.0*wi/d_m00/(d_m00+d_p00);
-        w_p00 = -2.0*wi/d_p00/(d_m00+d_p00);
-        w_0m0 = -2.0*wj/d_0m0/(d_0m0+d_0p0);
-        w_0p0 = -2.0*wj/d_0p0/(d_0m0+d_0p0);
-        w_00m = -2.0*wk/d_00m/(d_00m+d_00p);
-        w_00p = -2.0*wk/d_00p/(d_00m+d_00p);
+        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0, w_00m=0, w_00p=0;
+
+        if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
+        else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
+        else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
+
+        if(is_node_xpWall(p4est, ni))      w_m00 += -1.0/(d_m00*d_m00);
+        else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0/(d_p00*d_p00);
+        else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
+
+        if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0/(d_0p0*d_0p0);
+        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0/(d_0m0*d_0m0);
+        else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
+
+        if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0/(d_0m0*d_0m0);
+        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0/(d_0p0*d_0p0);
+        else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
+
+        if(is_node_zmWall(p4est, ni))      w_00p += -1.0/(d_00p*d_00p);
+        else if(is_node_zpWall(p4est, ni)) w_00m += -1.0/(d_00m*d_00m);
+        else                               w_00m += -2.0*wk/d_00m/(d_00m+d_00p);
+
+        if(is_node_zpWall(p4est, ni))      w_00m += -1.0/(d_00m*d_00m);
+        else if(is_node_zmWall(p4est, ni)) w_00p += -1.0/(d_00p*d_00p);
+        else                               w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
 
         if(!is_interface_m00) {
           w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
@@ -3588,10 +3611,23 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         //---------------------------------------------------------------------
         // Shortley-Weller method, dimension by dimension
         //---------------------------------------------------------------------
-        w_m00 = -2.0*wi/d_m00/(d_m00+d_p00);
-        w_p00 = -2.0*wi/d_p00/(d_m00+d_p00);
-        w_0m0 = -2.0*wj/d_0m0/(d_0m0+d_0p0);
-        w_0p0 = -2.0*wj/d_0p0/(d_0m0+d_0p0);
+        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
+
+        if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
+        else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
+        else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
+
+        if(is_node_xpWall(p4est, ni))      w_m00 += -1.0/(d_m00*d_m00);
+        else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0/(d_p00*d_p00);
+        else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
+
+        if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0/(d_0p0*d_0p0);
+        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0/(d_0m0*d_0m0);
+        else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
+
+        if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0/(d_0m0*d_0m0);
+        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0/(d_0p0*d_0p0);
+        else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
 
         //---------------------------------------------------------------------
         // addition to diagonal elements
@@ -3634,9 +3670,9 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         //---------------------------------------------------------------------
 
 #ifdef P4_TO_P8
-        w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
+        double w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
 #else
-        w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 );
+        double w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 );
 #endif
         w_m00 /= w_000; w_p00 /= w_000;
         w_0m0 /= w_000; w_0p0 /= w_000;
@@ -3791,9 +3827,11 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           double w_00p = -mue_00p * s_00p/dz_min;
 
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mue_000*robin_coef_p[n]*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                           w_000 += mue_000*robin_coef_p[n]*interface_area;
           }
 
           //---------------------------------------------------------------------
@@ -3837,9 +3875,11 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           double w_0m0 = -mue_0p0 * s_0m0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);          
-          if (bc_->interfaceType() == ROBIN){
+          if (bc_->interfaceType() == ROBIN)
+          {
             if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mue_000*robin_coef_p[n]*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                           w_000 += mue_000*robin_coef_p[n]*interface_area;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
@@ -3886,18 +3926,19 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
   // check for null space
   // FIXME: the return value should be checked for errors ...
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
-  if (matrix_has_nullspace) {
-    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
-    p4est_gloidx_t fixed_value_idx;
-    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
-    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
-      fixed_value_idx_l = -1;
-      fixed_value_idx_g = fixed_value_idx;
-    } else {
-      // reset the value
-      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
-    }
-  }
+
+//  if (matrix_has_nullspace) {
+//    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
+//    p4est_gloidx_t fixed_value_idx;
+//    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
+//    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
+//      fixed_value_idx_l = -1;
+//      fixed_value_idx_g = fixed_value_idx;
+//    } else {
+//      // reset the value
+//      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
+//    }
+//  }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
@@ -3971,71 +4012,20 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
     double d_00p_0m=qnnn.d_00p_0m; double d_00p_0p=qnnn.d_00p_0p;
 #endif
 
-    if(is_node_Wall(p4est, ni))
+    if(is_node_Wall(p4est, ni) &&
+   #ifdef P4_TO_P8
+       bc_->wallType(x_C,y_C,z_C) == DIRICHLET
+   #else
+       bc_->wallType(x_C,y_C) == DIRICHLET
+   #endif
+       )
     {
 #ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == DIRICHLET)
-      {
-        rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C);
+      rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C);
 #else
-      if(bc_->wallType(x_C,y_C)     == DIRICHLET)
-      {
-        rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C);
+      rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C);
 #endif
-        continue;
-      }
-#ifdef P4_TO_P8
-      if(bc_->wallType(x_C,y_C,z_C) == NEUMANN)
-#else
-      if(bc_->wallType(x_C,y_C)     == NEUMANN)
-#endif
-      {
-        if (is_node_xpWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_m00;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_m00;
-#endif
-          continue;
-        }
-
-        if (is_node_xmWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_p00;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_p00;
-#endif
-          continue;
-        }
-
-        if (is_node_ypWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_0m0;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_0m0;
-#endif
-          continue;
-        }
-        if (is_node_ymWall(p4est, ni)){
-#ifdef P4_TO_P8
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_0p0;
-#else
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C)*d_0p0;
-#endif
-          continue;
-        }
-#ifdef P4_TO_P8
-        if (is_node_zpWall(p4est, ni)){
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_00m;
-          continue;
-        }
-
-        if (is_node_zmWall(p4est, ni)){
-          rhs_p[n] = bc_strength*bc_->wallValue(x_C,y_C,z_C)*d_00p;
-          continue;
-        }
-#endif
-      }
+      continue;
     } else {
       double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
       double mue_000, mue_p00, mue_m00, mue_0m0, mue_0p0;
@@ -4066,20 +4056,35 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
 
       // TODO: This needs optimization
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C-0.5*dz_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C-0.5*dz_min);
-      double P_mmp = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_mpp = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
-      double P_pmp = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min, z_C+0.5*dz_min);
-      double P_ppp = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min, z_C+0.5*dz_min);
+        Cube3 cube;
 #else
-      double P_mmm = phi_interp(x_C-0.5*dx_min, y_C-0.5*dy_min);
-      double P_mpm = phi_interp(x_C-0.5*dx_min, y_C+0.5*dy_min);
-      double P_pmm = phi_interp(x_C+0.5*dx_min, y_C-0.5*dy_min);
-      double P_ppm = phi_interp(x_C+0.5*dx_min, y_C+0.5*dy_min);
+        Cube2 cube;
 #endif
+        cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+        cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+        cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+        cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+#ifdef P4_TO_P8
+        cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+        cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+#endif
+
+#ifdef P4_TO_P8
+      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
+      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
+      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
+      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
+      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
+      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
+      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
+      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+#else
+      double P_mmm = phi_interp(cube.x0, cube.y0);
+      double P_mpm = phi_interp(cube.x0, cube.y1);
+      double P_pmm = phi_interp(cube.x1, cube.y0);
+      double P_ppm = phi_interp(cube.x1, cube.y1);
+#endif
+
 
 #ifdef P4_TO_P8
       bool is_one_positive = (P_mmm > 0 || P_pmm > 0 || P_mpm > 0 || P_ppm > 0 ||
@@ -4296,13 +4301,42 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         //---------------------------------------------------------------------
         // Shortley-Weller method, dimension by dimension
         //---------------------------------------------------------------------
-        double w_m00 = -(mue_000 + mue_m00)*wi/d_m00/(d_m00+d_p00);
-        double w_p00 = -(mue_000 + mue_p00)*wi/d_p00/(d_m00+d_p00);
-        double w_0m0 = -(mue_000 + mue_0m0)*wj/d_0m0/(d_0m0+d_0p0);
-        double w_0p0 = -(mue_000 + mue_0p0)*wj/d_0p0/(d_0m0+d_0p0);
+        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
 #ifdef P4_TO_P8
-        double w_00m = -(mue_000 + mue_00m)*wk/d_00m/(d_00m+d_00p);
-        double w_00p = -(mue_000 + mue_00p)*wk/d_00p/(d_00m+d_00p);
+        double w_00m=0, w_00p=0;
+#endif
+        if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
+        else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
+        else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
+
+        if(is_node_xpWall(p4est, ni))      w_m00 += -1.0/(d_m00*d_m00);
+        else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0/(d_p00*d_p00);
+        else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
+
+        if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0/(d_0p0*d_0p0);
+        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0/(d_0m0*d_0m0);
+        else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
+
+        if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0/(d_0m0*d_0m0);
+        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0/(d_0p0*d_0p0);
+        else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
+
+#ifdef P4_TO_P8
+        if(is_node_zmWall(p4est, ni))      w_00p += -1.0/(d_00p*d_00p);
+        else if(is_node_zpWall(p4est, ni)) w_00m += -1.0/(d_00m*d_00m);
+        else                               w_00m += -2.0*wk/d_00m/(d_00m+d_00p);
+
+        if(is_node_zpWall(p4est, ni))      w_00m += -1.0/(d_00m*d_00m);
+        else if(is_node_zmWall(p4est, ni)) w_00p += -1.0/(d_00p*d_00p);
+        else                               w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
+#endif
+        w_m00 *= 0.5*(mue_000 + mue_m00);
+        w_p00 *= 0.5*(mue_000 + mue_p00);
+        w_0m0 *= 0.5*(mue_000 + mue_0m0);
+        w_0p0 *= 0.5*(mue_000 + mue_0p0);
+#ifdef P4_TO_P8
+        w_00m *= 0.5*(mue_000 + mue_00m);
+        w_00p *= 0.5*(mue_000 + mue_00p);
 #endif
 
         //---------------------------------------------------------------------
@@ -4404,9 +4438,24 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
           double w_00m = -0.5*(mue_000 + mue_00m)*s_00m/dz_min;
           double w_00p = -0.5*(mue_000 + mue_00p)*s_00p/dz_min;
           double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
+          rhs_p[n] *= volume_cut_cell;
+
           if (bc_->interfaceType() == ROBIN){
-            if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mue_000*robin_coef_p[n]*interface_area;
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mue_000*(robin_coef_p[n]/(1-phi_p[n]*robin_coef_p[n]))*interface_area;
+
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double zp = z_C - phi_p[n]*qnnn.dz_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp,zp);
+              rhs_p[n] += mue_000*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mue_000*robin_coef_p[n]*interface_area;
+            }
           }
 
           OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
@@ -4420,7 +4469,6 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
-          rhs_p[n] *= volume_cut_cell;
           rhs_p[n] += mue_000*integral_bc;
           rhs_p[n] /= w_000;
 #else
@@ -4439,9 +4487,24 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
           double w_0p0 = -0.5*(mue_000 + mue_0p0)*s_0p0/dy_min;
 
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
-          if (bc_->interfaceType() == ROBIN){
-            if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            w_000 += mue_000*robin_coef_p[n]*interface_area;
+          rhs_p[n] *= volume_cut_cell;
+
+          if (bc_->interfaceType() == ROBIN)
+          {
+            if(robin_coef_p[n]*phi_p[n]<1)
+            {
+              w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+
+              /* find the projection of (i,j,k) onto gamma for higher order correction */
+              double xp = x_C - phi_p[n]*qnnn.dx_central(phi_p);
+              double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
+              double beta_proj = bc_->interfaceValue(xp,yp);
+              rhs_p[n] += mue_000*robin_coef_p[n]*phi_p[n]/(1-robin_coef_p[n]*phi_p[n]) * interface_area*beta_proj;
+            }
+            else
+            {
+              w_000 += mue_000*robin_coef_p[n]*interface_area;
+            }
           }
 
           QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
@@ -4450,7 +4513,6 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
                               bc_->interfaceValue(cube.x1, cube.y1));
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
-          rhs_p[n] *= volume_cut_cell;
           rhs_p[n] += mue_000*integral_bc;
           rhs_p[n] /= w_000;
 #endif
@@ -4461,9 +4523,9 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
     }
   }
 
-  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
-    rhs_p[fixed_value_idx_l] = 0;
-  }
+//  if (matrix_has_nullspace && fixed_value_idx_l >= 0){
+//    rhs_p[fixed_value_idx_l] = 0;
+//  }
 
   // restore the pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);

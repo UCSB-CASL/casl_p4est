@@ -1,0 +1,856 @@
+Sat Oct 25 17:31:49 CDT 2014
+TACC: Starting up job 4340438
+TACC: Setting up parallel environment for MVAPICH2+mpispawn.
+TACC: Starting parallel tasks...
+Petsc version Petsc Release Version 3.4.4, Mar, 13, 2014 
+[WARNING]: option 'log_summary' does not exists in the database -- ignoring.
+ -------------------== CASL Options Database ==------------------- 
+ List of entered options:
+
+  -alpha 0.95
+  -lmax 9
+  -lmin 0
+  -output-dir /scratch/02032/mmirzade/3d_quad_interpolation/reduce/small/alpha_0.95_pre_1/n_256.N_16.4340438
+  -prefactor 1
+  -qmin 20000000
+  -repeat 10
+  -test 1
+ ----------------------------------------------------------------- 
+total time ... 
+git commit hash value = 7f54439 (7f54439d82d0f1f2fe8554539839d91d7f283715)
+mpisize = 256
+connectivity ... 
+connectivity ... done in 
+ 0.00025 secs. on process 0 [Note: only showing root's timings]
+
+brick_size = 1x1x1
+p4est generation ... 
+p4est generation ... done in 
+ 0.00021 secs. on process 0 [Note: only showing root's timings]
+
+refine ... 
+refine ... done in 
+ 4.99497 secs. on process 0 [Note: only showing root's timings]
+
+partition ... 
+partition ... done in 
+ 0.00044 secs. on process 0 [Note: only showing root's timings]
+
+ghost ... 
+ghost ... done in 
+ 0.07631 secs. on process 0 [Note: only showing root's timings]
+
+creating node structure ... 
+creating node structure ... done in 
+ 0.41159 secs. on process 0 [Note: only showing root's timings]
+
+gather statistics ... 
+% global_quads = 20507957 	 global_nodes = 33282261
+% mpi_rank local_node_size local_quad_size ghost_node_size ghost_quad_size
+   0,  126250,   80109, 20313,  6243
+   1,  113924,   80109, 17508,  5441
+   2,  126728,   80109, 24563,  8312
+   3,  121159,   80109, 27716, 10236
+   4,  127460,   80110, 22351,  7705
+   5,  141643,   80109, 32285, 11349
+   6,  138435,   80109, 28381,  9426
+   7,  120503,   80109, 25637,  8958
+   8,  114123,   80109, 18668,  5321
+   9,  117700,   80110, 23360,  7578
+  10,  134799,   80109, 35601, 13685
+  11,  130720,   80109, 36825, 13003
+  12,  118658,   80109, 26064,  9176
+  13,  128284,   80109, 25521,  8956
+  14,  135423,   80110, 33464, 12036
+  15,  132861,   80109, 39810, 14937
+  16,  123989,   80109, 24369,  8061
+  17,  127425,   80109, 27785,  9701
+  18,  123513,   80109, 26051,  9149
+  19,  131892,   80110, 32663, 11566
+  20,  119625,   80109, 13435,  3919
+  21,  122281,   80109, 20133,  6431
+  22,  131838,   80109, 33056, 12478
+  23,  125381,   80109, 22928,  8307
+  24,  131574,   80110, 34199, 11221
+  25,  123453,   80109, 27831,  9426
+  26,  117949,   80109, 19163,  6330
+  27,  135447,   80109, 36699, 12390
+  28,  131828,   80110, 33549, 12750
+  29,  127959,   80109, 31828, 11017
+  30,  125973,   80109, 33305, 12648
+  31,  117929,   80109, 25350,  8467
+  32,  121463,   80109, 34332, 12240
+  33,  119892,   80110, 24801,  8358
+  34,  114805,   80109, 27388,  9676
+  35,  117841,   80109, 33086, 13049
+  36,  115581,   80109, 26840, 10259
+  37,  122993,   80109, 25169,  8899
+  38,  127570,   80110, 30560, 10626
+  39,  136195,   80109, 31167, 11893
+  40,  117475,   80109, 28883, 11021
+  41,  129629,   80109, 26079,  9078
+  42,  134899,   80109, 32180, 11459
+  43,  136008,   80110, 33352, 12615
+  44,  121902,   80109, 27316, 10124
+  45,  126779,   80109, 29744, 11004
+  46,  137091,   80109, 29721, 10816
+  47,  129106,   80109, 24877,  7619
+  48,  136120,   80110, 29113, 10328
+  49,  134569,   80109, 24634,  7533
+  50,  137463,   80109, 19095,  5572
+  51,  142651,   80109, 27945,  8904
+  52,  133089,   80109, 23487,  7629
+  53,  142565,   80110, 25374,  8824
+  54,  134567,   80109, 26516,  9598
+  55,  126232,   80109, 22607,  7637
+  56,  130798,   80109, 26617,  8632
+  57,  136162,   80110, 25827,  9115
+  58,  142319,   80109, 44071, 16303
+  59,  136592,   80109, 20146,  6427
+  60,  138315,   80109, 18526,  5459
+  61,  158663,   80109, 54155, 22035
+  62,  141147,   80110, 47362, 16086
+  63,  147074,   80109, 35759, 12739
+  64,  136647,   80109, 26520,  9279
+  65,  136459,   80109, 39573, 13048
+  66,  142541,   80109, 25535,  8992
+  67,  124693,   80110, 22955,  7543
+  68,  135972,   80109, 33119, 11920
+  69,  134190,   80109, 25958,  8636
+  70,  140601,   80109, 19904,  6229
+  71,  143273,   80109, 30347, 10719
+  72,  134713,   80110, 23921,  7915
+  73,  162784,   80109, 37466, 13877
+  74,  165344,   80109, 25049,  8853
+  75,  170081,   80109, 44923, 16823
+  76,  141608,   80109, 60726, 21090
+  77,  137217,   80110, 21183,  6912
+  78,  143476,   80109, 26494,  8908
+  79,  129998,   80109, 22485,  7676
+  80,  145951,   80109, 20852,  6577
+  81,  142402,   80109, 22376,  6720
+  82,  148305,   80110, 25539,  9057
+  83,  140816,   80109, 15583,  4935
+  84,  144418,   80109, 16149,  6213
+  85,  134561,   80109, 28242,  8625
+  86,  134701,   80110, 29388,  9683
+  87,  133672,   80109, 20515,  6260
+  88,  154086,   80109, 32273, 12542
+  89,  147701,   80109, 32562, 11071
+  90,  135443,   80109, 19735,  6372
+  91,  144117,   80110, 29658, 11048
+  92,  159920,   80109, 28538, 11580
+  93,  114617,   80109, 19443,  5758
+  94,  130429,   80109, 34564, 12931
+  95,  121990,   80109, 30630, 11429
+  96,  122633,   80110, 28578, 10288
+  97,  111920,   80109, 21002,  6936
+  98,  120937,   80109, 23242,  7481
+  99,  118086,   80109, 25796,  9696
+ 100,  117114,   80109, 25662,  8292
+ 101,  125374,   80110, 31073, 11699
+ 102,  126751,   80109, 32043, 12509
+ 103,  120559,   80109, 20950,  7493
+ 104,  130584,   80109, 29173, 11071
+ 105,  126615,   80109, 27026,  9549
+ 106,  131194,   80110, 33809, 13540
+ 107,  127608,   80109, 29759,  9710
+ 108,  126075,   80109, 26985,  9729
+ 109,  138613,   80109, 38284, 14087
+ 110,  131192,   80109, 35592, 13391
+ 111,  114271,   80110, 17425,  5225
+ 112,  126383,   80109, 22497,  8108
+ 113,  113654,   80109, 23168,  8495
+ 114,  124035,   80109, 33669, 12992
+ 115,  130225,   80110, 33173, 12277
+ 116,  122159,   80109, 23438,  8126
+ 117,  117704,   80109, 27274,  9726
+ 118,  122652,   80109, 30105, 11574
+ 119,  128355,   80109, 28873, 10896
+ 120,  138566,   80110, 40306, 14807
+ 121,  147287,   80109, 33418, 12865
+ 122,  134937,   80109, 15552,  4842
+ 123,  159049,   80109, 47934, 18800
+ 124,  146370,   80109, 14140,  4678
+ 125,  120224,   80110, 29077,  9856
+ 126,  124389,   80109, 23087,  8459
+ 127,  125993,   80109, 24356,  9428
+ 128,  125624,   80109, 23476,  8573
+ 129,  142804,   80109, 32475, 13499
+ 130,  117757,   80110, 24625,  8519
+ 131,  124459,   80109, 28806, 10976
+ 132,  131135,   80109, 32261, 11923
+ 133,  124850,   80109, 30448, 10703
+ 134,  125672,   80109, 22908,  8070
+ 135,  121861,   80110, 22814,  8328
+ 136,  138164,   80109, 25818, 11098
+ 137,  122221,   80109, 25597,  9317
+ 138,  110295,   80109, 19411,  6387
+ 139,  120472,   80109, 33386, 12691
+ 140,  117309,   80110, 27438, 10731
+ 141,  129055,   80109, 28202,  9403
+ 142,  131741,   80109, 33150, 12460
+ 143,  123729,   80109, 26639,  9963
+ 144,  127611,   80110, 28896,  9838
+ 145,  122689,   80109, 23761,  9309
+ 146,  111811,   80109, 23030,  8952
+ 147,  127966,   80109, 26907, 10844
+ 148,  130082,   80109, 28347, 10333
+ 149,  132062,   80110, 38288, 15035
+ 150,  116396,   80109, 17595,  7249
+ 151,  114923,   80109, 23463,  8236
+ 152,  127739,   80109, 31684, 12461
+ 153,  121787,   80109, 28453, 10714
+ 154,  141147,   80110, 50360, 19751
+ 155,  115227,   80109, 23314,  8264
+ 156,  116340,   80109, 18132,  5756
+ 157,  118940,   80109, 27702, 10035
+ 158,  126092,   80109, 33258, 12852
+ 159,  123438,   80110, 24160,  9516
+ 160,  120249,   80109, 26576,  9100
+ 161,  124291,   80109, 22467,  8922
+ 162,  114297,   80109, 25734,  9267
+ 163,  139201,   80109, 40996, 17849
+ 164,  118607,   80110, 30402, 11625
+ 165,  120228,   80109, 19996,  7339
+ 166,  131336,   80109, 25294,  8380
+ 167,  117846,   80109, 24311,  7657
+ 168,  127327,   80109, 38298, 14230
+ 169,  123509,   80110, 21039,  7200
+ 170,  127919,   80109, 27277, 10876
+ 171,  129752,   80109, 18670,  6524
+ 172,  137985,   80109, 30255, 11373
+ 173,  131601,   80110, 26466,  8806
+ 174,  123021,   80109, 18140,  6654
+ 175,  142959,   80109, 12123,  4614
+ 176,  145144,   80109, 30917, 12592
+ 177,  131752,   80109, 31757, 12184
+ 178,  134010,   80110, 29205, 10856
+ 179,  127110,   80109, 28509, 10874
+ 180,  129995,   80109, 23140,  9677
+ 181,  126409,   80109, 24636,  9479
+ 182,  134187,   80109, 33521, 12882
+ 183,  131985,   80110, 29819, 11274
+ 184,  124917,   80109, 23364,  9147
+ 185,  126505,   80109, 20992,  7298
+ 186,  130992,   80109, 17174,  7196
+ 187,  136738,   80109, 17677,  7740
+ 188,  155176,   80110, 53491, 20383
+ 189,  143718,   80109, 36572, 11581
+ 190,  130749,   80109, 27416,  8591
+ 191,  116699,   80109, 19508,  6676
+ 192,  124637,   80109, 22117,  7778
+ 193,  119764,   80110, 13095,  4313
+ 194,  130226,   80109, 19143,  7479
+ 195,  128696,   80109, 22250,  7217
+ 196,  160451,   80109, 40702, 16283
+ 197,  154260,   80109, 42642, 15128
+ 198,  142147,   80110, 43374, 14896
+ 199,  114716,   80109, 22726,  8343
+ 200,  118199,   80109, 27595, 10460
+ 201,  115735,   80109, 31005, 11910
+ 202,  118356,   80110, 32315, 12528
+ 203,  116072,   80109, 29866, 11231
+ 204,  117576,   80109, 19329,  7878
+ 205,  123183,   80109, 25009,  9592
+ 206,  127300,   80109, 28583, 12277
+ 207,  109001,   80110, 21189,  8754
+ 208,  121119,   80109, 24219,  8667
+ 209,  112101,   80109, 19615,  6297
+ 210,  121806,   80109, 29654, 10783
+ 211,  118895,   80109, 24694,  9822
+ 212,  121693,   80110, 23548,  8867
+ 213,  134119,   80109, 18503,  6934
+ 214,  120693,   80109, 15599,  5467
+ 215,  132974,   80109, 24681, 11140
+ 216,  112285,   80109, 23556,  8772
+ 217,  118492,   80110, 25774, 10030
+ 218,  121737,   80109, 27707, 10940
+ 219,  129177,   80109, 20999,  8222
+ 220,  127615,   80109, 30430, 12443
+ 221,  120881,   80109, 21828,  9096
+ 222,  121880,   80110, 15598,  6756
+ 223,  117271,   80109, 19578,  8358
+ 224,  136748,   80109, 37758, 15008
+ 225,  140567,   80109, 25196,  8841
+ 226,  138303,   80109, 24499,  7637
+ 227,  137881,   80110, 37914, 13107
+ 228,  130967,   80109, 20840,  7021
+ 229,  134925,   80109, 23028,  8793
+ 230,  137055,   80109, 25270,  8914
+ 231,  121877,   80110, 26925,  8571
+ 232,  125055,   80109, 29673, 10479
+ 233,  135312,   80109, 30889, 11229
+ 234,  134382,   80109, 21414,  6575
+ 235,  135294,   80109, 24580,  9254
+ 236,  139034,   80110, 30610, 11479
+ 237,  130661,   80109, 16419,  5763
+ 238,  141406,   80109, 29234, 10808
+ 239,  132096,   80109, 24308,  8838
+ 240,  148022,   80109, 37895, 14640
+ 241,  136289,   80110, 22861,  7336
+ 242,  135535,   80109, 22109,  7168
+ 243,  147948,   80109, 27012, 11449
+ 244,  129717,   80109, 27667, 10106
+ 245,  128020,   80109, 27562,  9878
+ 246,  117840,   80110, 23500,  7875
+ 247,  131077,   80109, 29952, 12136
+ 248,  139090,   80109, 28902, 12637
+ 249,  123454,   80109,  7263,  3041
+ 250,  161770,   80109, 35508, 15684
+ 251,  149635,   80110, 39848, 16176
+ 252,  133185,   80109, 18969,  7974
+ 253,  127636,   80109, 18664,  7223
+ 254,  124199,   80109, 13806,  5857
+ 255,  128097,   80110,  5952,  3656
+gather statistics ... done in 
+ 0.20422 secs. on process 0 [Note: only showing root's timings]
+
+hierarchy and node neighbors ... 
+hierarchy and node neighbors ... done in 
+ 0.14305 secs. on process 0 [Note: only showing root's timings]
+
+computing random points ... 
+computing random points ... done in 
+ 0.00799 secs. on process 0 [Note: only showing root's timings]
+
+[0000] interpolation points = 80108 
+[0001] interpolation points = 80108 
+[0002] interpolation points = 80108 
+[0003] interpolation points = 80108 
+[0004] interpolation points = 80109 
+[0005] interpolation points = 80108 
+[0006] interpolation points = 80108 
+[0007] interpolation points = 80108 
+[0008] interpolation points = 80108 
+[0009] interpolation points = 80109 
+[0010] interpolation points = 80108 
+[0011] interpolation points = 80108 
+[0012] interpolation points = 80108 
+[0013] interpolation points = 80108 
+[0014] interpolation points = 80109 
+[0015] interpolation points = 80108 
+[0016] interpolation points = 80108 
+[0017] interpolation points = 80108 
+[0018] interpolation points = 80108 
+[0019] interpolation points = 80109 
+[0020] interpolation points = 80108 
+[0021] interpolation points = 80108 
+[0022] interpolation points = 80108 
+[0023] interpolation points = 80108 
+[0024] interpolation points = 80109 
+[0025] interpolation points = 80108 
+[0026] interpolation points = 80108 
+[0027] interpolation points = 80108 
+[0028] interpolation points = 80109 
+[0029] interpolation points = 80108 
+[0030] interpolation points = 80108 
+[0031] interpolation points = 80108 
+[0032] interpolation points = 80108 
+[0033] interpolation points = 80109 
+[0034] interpolation points = 80108 
+[0035] interpolation points = 80108 
+[0036] interpolation points = 80108 
+[0037] interpolation points = 80108 
+[0038] interpolation points = 80109 
+[0039] interpolation points = 80108 
+[0040] interpolation points = 80108 
+[0041] interpolation points = 80108 
+[0042] interpolation points = 80108 
+[0043] interpolation points = 80109 
+[0044] interpolation points = 80108 
+[0045] interpolation points = 80108 
+[0046] interpolation points = 80108 
+[0047] interpolation points = 80108 
+[0048] interpolation points = 80109 
+[0049] interpolation points = 80108 
+[0050] interpolation points = 80108 
+[0051] interpolation points = 80108 
+[0052] interpolation points = 80108 
+[0053] interpolation points = 80109 
+[0054] interpolation points = 80108 
+[0055] interpolation points = 80108 
+[0056] interpolation points = 80108 
+[0057] interpolation points = 80109 
+[0058] interpolation points = 80108 
+[0059] interpolation points = 80108 
+[0060] interpolation points = 80108 
+[0061] interpolation points = 80108 
+[0062] interpolation points = 80109 
+[0063] interpolation points = 80108 
+[0064] interpolation points = 80108 
+[0065] interpolation points = 80108 
+[0066] interpolation points = 80108 
+[0067] interpolation points = 80109 
+[0068] interpolation points = 80108 
+[0069] interpolation points = 80108 
+[0070] interpolation points = 80108 
+[0071] interpolation points = 80108 
+[0072] interpolation points = 80109 
+[0073] interpolation points = 80108 
+[0074] interpolation points = 80108 
+[0075] interpolation points = 80108 
+[0076] interpolation points = 80108 
+[0077] interpolation points = 80109 
+[0078] interpolation points = 80108 
+[0079] interpolation points = 80108 
+[0080] interpolation points = 80108 
+[0081] interpolation points = 80108 
+[0082] interpolation points = 80109 
+[0083] interpolation points = 80108 
+[0084] interpolation points = 80108 
+[0085] interpolation points = 80108 
+[0086] interpolation points = 80109 
+[0087] interpolation points = 80108 
+[0088] interpolation points = 80108 
+[0089] interpolation points = 80108 
+[0090] interpolation points = 80108 
+[0091] interpolation points = 80109 
+[0092] interpolation points = 80108 
+[0093] interpolation points = 80108 
+[0094] interpolation points = 80108 
+[0095] interpolation points = 80108 
+[0096] interpolation points = 80109 
+[0097] interpolation points = 80108 
+[0098] interpolation points = 80108 
+[0099] interpolation points = 80108 
+[0100] interpolation points = 80108 
+[0101] interpolation points = 80109 
+[0102] interpolation points = 80108 
+[0103] interpolation points = 80108 
+[0104] interpolation points = 80108 
+[0105] interpolation points = 80108 
+[0106] interpolation points = 80109 
+[0107] interpolation points = 80108 
+[0108] interpolation points = 80108 
+[0109] interpolation points = 80108 
+[0110] interpolation points = 80108 
+[0111] interpolation points = 80109 
+[0112] interpolation points = 80108 
+[0113] interpolation points = 80108 
+[0114] interpolation points = 80108 
+[0115] interpolation points = 80109 
+[0116] interpolation points = 80108 
+[0117] interpolation points = 80108 
+[0118] interpolation points = 80108 
+[0119] interpolation points = 80108 
+[0120] interpolation points = 80109 
+[0121] interpolation points = 80108 
+[0122] interpolation points = 80108 
+[0123] interpolation points = 80108 
+[0124] interpolation points = 80108 
+[0125] interpolation points = 80109 
+[0126] interpolation points = 80108 
+[0127] interpolation points = 80108 
+[0128] interpolation points = 80108 
+[0129] interpolation points = 80108 
+[0130] interpolation points = 80109 
+[0131] interpolation points = 80108 
+[0132] interpolation points = 80108 
+[0133] interpolation points = 80108 
+[0134] interpolation points = 80108 
+[0135] interpolation points = 80109 
+[0136] interpolation points = 80108 
+[0137] interpolation points = 80108 
+[0138] interpolation points = 80108 
+[0139] interpolation points = 80108 
+[0140] interpolation points = 80109 
+[0141] interpolation points = 80108 
+[0142] interpolation points = 80108 
+[0143] interpolation points = 80108 
+[0144] interpolation points = 80109 
+[0145] interpolation points = 80108 
+[0146] interpolation points = 80108 
+[0147] interpolation points = 80108 
+[0148] interpolation points = 80108 
+[0149] interpolation points = 80109 
+[0150] interpolation points = 80108 
+[0151] interpolation points = 80108 
+[0152] interpolation points = 80108 
+[0153] interpolation points = 80108 
+[0154] interpolation points = 80109 
+[0155] interpolation points = 80108 
+[0156] interpolation points = 80108 
+[0157] interpolation points = 80108 
+[0158] interpolation points = 80108 
+[0159] interpolation points = 80109 
+[0160] interpolation points = 80108 
+[0161] interpolation points = 80108 
+[0162] interpolation points = 80108 
+[0163] interpolation points = 80108 
+[0164] interpolation points = 80109 
+[0165] interpolation points = 80108 
+[0166] interpolation points = 80108 
+[0167] interpolation points = 80108 
+[0168] interpolation points = 80108 
+[0169] interpolation points = 80109 
+[0170] interpolation points = 80108 
+[0171] interpolation points = 80108 
+[0172] interpolation points = 80108 
+[0173] interpolation points = 80109 
+[0174] interpolation points = 80108 
+[0175] interpolation points = 80108 
+[0176] interpolation points = 80108 
+[0177] interpolation points = 80108 
+[0178] interpolation points = 80109 
+[0179] interpolation points = 80108 
+[0180] interpolation points = 80108 
+[0181] interpolation points = 80108 
+[0182] interpolation points = 80108 
+[0183] interpolation points = 80109 
+[0184] interpolation points = 80108 
+[0185] interpolation points = 80108 
+[0186] interpolation points = 80108 
+[0187] interpolation points = 80108 
+[0188] interpolation points = 80109 
+[0189] interpolation points = 80108 
+[0190] interpolation points = 80108 
+[0191] interpolation points = 80108 
+[0192] interpolation points = 80108 
+[0193] interpolation points = 80109 
+[0194] interpolation points = 80108 
+[0195] interpolation points = 80108 
+[0196] interpolation points = 80108 
+[0197] interpolation points = 80108 
+[0198] interpolation points = 80109 
+[0199] interpolation points = 80108 
+[0200] interpolation points = 80108 
+[0201] interpolation points = 80108 
+[0202] interpolation points = 80109 
+[0203] interpolation points = 80108 
+[0204] interpolation points = 80108 
+[0205] interpolation points = 80108 
+[0206] interpolation points = 80108 
+[0207] interpolation points = 80109 
+[0208] interpolation points = 80108 
+[0209] interpolation points = 80108 
+[0210] interpolation points = 80108 
+[0211] interpolation points = 80108 
+[0212] interpolation points = 80109 
+[0213] interpolation points = 80108 
+[0214] interpolation points = 80108 
+[0215] interpolation points = 80108 
+[0216] interpolation points = 80108 
+[0217] interpolation points = 80109 
+[0218] interpolation points = 80108 
+[0219] interpolation points = 80108 
+[0220] interpolation points = 80108 
+[0221] interpolation points = 80108 
+[0222] interpolation points = 80109 
+[0223] interpolation points = 80108 
+[0224] interpolation points = 80108 
+[0225] interpolation points = 80108 
+[0226] interpolation points = 80108 
+[0227] interpolation points = 80109 
+[0228] interpolation points = 80108 
+[0229] interpolation points = 80108 
+[0230] interpolation points = 80108 
+[0231] interpolation points = 80109 
+[0232] interpolation points = 80108 
+[0233] interpolation points = 80108 
+[0234] interpolation points = 80108 
+[0235] interpolation points = 80108 
+[0236] interpolation points = 80109 
+[0237] interpolation points = 80108 
+[0238] interpolation points = 80108 
+[0239] interpolation points = 80108 
+[0240] interpolation points = 80108 
+[0241] interpolation points = 80109 
+[0242] interpolation points = 80108 
+[0243] interpolation points = 80108 
+[0244] interpolation points = 80108 
+[0245] interpolation points = 80108 
+[0246] interpolation points = 80109 
+[0247] interpolation points = 80108 
+[0248] interpolation points = 80108 
+[0249] interpolation points = 80108 
+[0250] interpolation points = 80108 
+[0251] interpolation points = 80109 
+[0252] interpolation points = 80108 
+[0253] interpolation points = 80108 
+[0254] interpolation points = 80108 
+[0255] interpolation points = 80109 
+interpolation test ... 
+interpolation all ... 
+constructing interpolation ... 
+constructing interpolation ... done in 
+ 0.00000 secs. on process 0 [Note: only showing root's timings]
+
+adding points ... 
+adding points ... done in 
+ 0.03443 secs. on process 0 [Note: only showing root's timings]
+
+interpolating ... 
+interpolating ... done in 
+ 0.68163 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... done in 
+ 0.71642 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... 
+constructing interpolation ... 
+constructing interpolation ... done in 
+ 0.00000 secs. on process 0 [Note: only showing root's timings]
+
+adding points ... 
+adding points ... done in 
+ 0.03359 secs. on process 0 [Note: only showing root's timings]
+
+interpolating ... 
+interpolating ... done in 
+ 0.32834 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... done in 
+ 0.36228 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... 
+constructing interpolation ... 
+constructing interpolation ... done in 
+ 0.00000 secs. on process 0 [Note: only showing root's timings]
+
+adding points ... 
+adding points ... done in 
+ 0.03384 secs. on process 0 [Note: only showing root's timings]
+
+interpolating ... 
+interpolating ... done in 
+ 0.30292 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... done in 
+ 0.33714 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... 
+constructing interpolation ... 
+constructing interpolation ... done in 
+ 0.00000 secs. on process 0 [Note: only showing root's timings]
+
+adding points ... 
+adding points ... done in 
+ 0.03366 secs. on process 0 [Note: only showing root's timings]
+
+interpolating ... 
+interpolating ... done in 
+ 0.32706 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... done in 
+ 0.36109 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... 
+constructing interpolation ... 
+constructing interpolation ... done in 
+ 0.00000 secs. on process 0 [Note: only showing root's timings]
+
+adding points ... 
+adding points ... done in 
+ 0.03464 secs. on process 0 [Note: only showing root's timings]
+
+interpolating ... 
+interpolating ... done in 
+ 0.30409 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... done in 
+ 0.33910 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... 
+constructing interpolation ... 
+constructing interpolation ... done in 
+ 0.00000 secs. on process 0 [Note: only showing root's timings]
+
+adding points ... 
+adding points ... done in 
+ 0.03412 secs. on process 0 [Note: only showing root's timings]
+
+interpolating ... 
+interpolating ... done in 
+ 0.31053 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... done in 
+ 0.34501 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... 
+constructing interpolation ... 
+constructing interpolation ... done in 
+ 0.00000 secs. on process 0 [Note: only showing root's timings]
+
+adding points ... 
+adding points ... done in 
+ 0.03502 secs. on process 0 [Note: only showing root's timings]
+
+interpolating ... 
+interpolating ... done in 
+ 0.31228 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... done in 
+ 0.34767 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... 
+constructing interpolation ... 
+constructing interpolation ... done in 
+ 0.00000 secs. on process 0 [Note: only showing root's timings]
+
+adding points ... 
+adding points ... done in 
+ 0.03435 secs. on process 0 [Note: only showing root's timings]
+
+interpolating ... 
+interpolating ... done in 
+ 0.33712 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... done in 
+ 0.37183 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... 
+constructing interpolation ... 
+constructing interpolation ... done in 
+ 0.00000 secs. on process 0 [Note: only showing root's timings]
+
+adding points ... 
+adding points ... done in 
+ 0.03419 secs. on process 0 [Note: only showing root's timings]
+
+interpolating ... 
+interpolating ... done in 
+ 0.31294 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... done in 
+ 0.34748 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... 
+constructing interpolation ... 
+constructing interpolation ... done in 
+ 0.00000 secs. on process 0 [Note: only showing root's timings]
+
+adding points ... 
+adding points ... done in 
+ 0.03413 secs. on process 0 [Note: only showing root's timings]
+
+interpolating ... 
+interpolating ... done in 
+ 0.29961 secs. on process 0 [Note: only showing root's timings]
+
+interpolation all ... done in 
+ 0.33410 secs. on process 0 [Note: only showing root's timings]
+
+interpolation test ... done in 
+ 3.86328 secs. on process 0 [Note: only showing root's timings]
+
+total time ... done in 
+ 9.82558 secs. on process 0 [Note: only showing root's timings]
+
+************************************************************************************************************************
+***             WIDEN YOUR WINDOW TO 120 CHARACTERS.  Use 'enscript -r -fCourier9' to print this document            ***
+************************************************************************************************************************
+
+---------------------------------------------- PETSc Performance Summary: ----------------------------------------------
+
+./interpolation_3d on a sandybridge-cxx named c411-501.stampede.tacc.utexas.edu with 256 processors, by mmirzade Sat Oct 25 17:32:09 2014
+Using Petsc Release Version 3.4.4, Mar, 13, 2014 
+
+                         Max       Max/Min        Avg      Total 
+Time (sec):           9.858e+00      1.00002   9.858e+00
+Objects:              7.000e+00      1.00000   7.000e+00
+Flops:                0.000e+00      0.00000   0.000e+00  0.000e+00
+Flops/sec:            0.000e+00      0.00000   0.000e+00  0.000e+00
+MPI Messages:         3.990e+03      3.34732   2.020e+03  5.170e+05
+MPI Message Lengths:  3.689e+07      1.72122   1.549e+04  8.009e+09
+MPI Reductions:       1.000e+01      1.00000
+
+Flop counting convention: 1 flop = 1 real number operation of type (multiply/divide/add/subtract)
+                            e.g., VecAXPY() for real vectors of length N --> 2N flops
+                            and VecAXPY() for complex vectors of length N --> 8N flops
+
+Summary of Stages:   ----- Time ------  ----- Flops -----  --- Messages ---  -- Message Lengths --  -- Reductions --
+                        Avg     %Total     Avg     %Total   counts   %Total     Avg         %Total   counts   %Total 
+ 0:      Main Stage: 9.8576e+00 100.0%  0.0000e+00   0.0%  5.170e+05 100.0%  1.549e+04      100.0%  9.000e+00  90.0% 
+
+------------------------------------------------------------------------------------------------------------------------
+See the 'Profiling' chapter of the users' manual for details on interpreting output.
+Phase summary info:
+   Count: number of times phase was executed
+   Time and Flops: Max - maximum over all processors
+                   Ratio - ratio of maximum to minimum over all processors
+   Mess: number of messages sent
+   Avg. len: average message length (bytes)
+   Reduct: number of global reductions
+   Global: entire computation
+   Stage: stages of a computation. Set stages with PetscLogStagePush() and PetscLogStagePop().
+      %T - percent time in this phase         %f - percent flops in this phase
+      %M - percent messages in this phase     %L - percent message lengths in this phase
+      %R - percent reductions in this phase
+   Total Mflop/s: 10e-6 * (sum of flops over all processors)/(max time over all processors)
+------------------------------------------------------------------------------------------------------------------------
+Event                Count      Time (sec)     Flops                             --- Global ---  --- Stage ---   Total
+                   Max Ratio  Max     Ratio   Max  Ratio  Mess   Avg len Reduct  %T %f %M %L %R  %T %f %M %L %R Mflop/s
+------------------------------------------------------------------------------------------------------------------------
+
+--- Event Stage 0: Main Stage
+
+InterpolatingFunctionHost::interpolate                        10 1.0 3.5230e+00 1.0 0.00e+00 0.0 4.9e+05 1.6e+04 0.0e+00 35  0 95 97  0  35  0 95 97  0     0
+InterpolatingFunctionHost::process_local                   40050 1.0 9.0447e-02 1.3 0.00e+00 0.0 0.0e+00 0.0e+00 0.0e+00  1  0  0  0  0   1  0  0  0  0     0
+InterpolatingFunctionHost::process_queries                216978401.8 2.6509e+00 2.4 0.00e+00 0.0 2.5e+05 1.6e+04 0.0e+00 19  0 48 49  0  19  0 48 49  0     0
+InterpolatingFunctionHost::process_replies               304637620.6 1.6765e+00 7.1 0.00e+00 0.0 1.2e+05 1.3e+04 0.0e+00  9  0 24 19  0   9  0 24 19  0     0
+InterpolatingFunctionHost::all_reduce                         10 1.0 3.9194e-01 4.7 0.00e+00 0.0 0.0e+00 0.0e+00 0.0e+00  2  0  0  0  0   2  0  0  0  0     0
+my_p4est_hierarchy_t::init                                     1 1.0 1.5577e-02 1.5 0.00e+00 0.0 0.0e+00 0.0e+00 0.0e+00  0  0  0  0  0   0  0  0  0  0     0
+my_p4est_node_neighbors_t::init                                1 1.0 1.8411e-01 1.5 0.00e+00 0.0 0.0e+00 0.0e+00 0.0e+00  1  0  0  0  0   1  0  0  0  0     0
+my_p4est_nodes_new                                             1 1.0 4.2742e-01 1.1 0.00e+00 0.0 1.2e+04 1.6e+04 1.0e+00  4  0  2  2 10   4  0  2  2 11     0
+my_p4est_new                                                   1 1.0 3.0169e-0318.4 0.00e+00 0.0 0.0e+00 0.0e+00 0.0e+00  0  0  0  0  0   0  0  0  0  0     0
+my_p4est_ghost_new                                             1 1.0 8.5516e-02 1.4 0.00e+00 0.0 0.0e+00 0.0e+00 0.0e+00  1  0  0  0  0   1  0  0  0  0     0
+my_p4est_refine                                               65 1.0 6.9849e-01 8.1 0.00e+00 0.0 0.0e+00 0.0e+00 0.0e+00  7  0  0  0  0   7  0  0  0  0     0
+my_p4est_partition                                            66 1.0 1.6776e-01 1.1 0.00e+00 0.0 0.0e+00 0.0e+00 0.0e+00  2  0  0  0  0   2  0  0  0  0     0
+log_interpolation_all                                         10 1.0 3.8728e+00 1.0 0.00e+00 0.0 4.9e+05 1.6e+04 0.0e+00 39  0 95 97  0  39  0 95 97  0     0
+log_interpolation_add_points                                  10 1.0 4.0298e-01 1.2 0.00e+00 0.0 0.0e+00 0.0e+00 0.0e+00  4  0  0  0  0   4  0  0  0  0     0
+------------------------------------------------------------------------------------------------------------------------
+
+Memory usage is given in bytes:
+
+Object Type          Creations   Destructions     Memory  Descendants' Mem.
+Reports information only for process 0.
+
+--- Event Stage 0: Main Stage
+
+              Vector     2              2      1175528     0
+      Vector Scatter     1              1         1052     0
+           Index Set     2              2        82764     0
+   IS L to G Mapping     1              1          580     0
+              Viewer     1              0            0     0
+========================================================================================================================
+Average time to get PetscTime(): 9.53674e-08
+Average time for MPI_Barrier(): 1.54018e-05
+Average time for zero size MPI_Send(): 2.64868e-06
+#PETSc Option Table entries:
+-alpha 0.95
+-lmax 9
+-lmin 0
+-log_summary
+-output-dir /scratch/02032/mmirzade/3d_quad_interpolation/reduce/small/alpha_0.95_pre_1/n_256.N_16.4340438
+-prefactor 1
+-qmin 20000000
+-repeat 10
+-test 1
+#End of PETSc Option Table entries
+Compiled without FORTRAN kernels
+Compiled with full precision matrices (default)
+sizeof(short) 2 sizeof(int) 4 sizeof(long) 8 sizeof(void*) 8 sizeof(PetscScalar) 8 sizeof(PetscInt) 4
+Configure run at: Sat Apr 26 18:16:46 2014
+Configure options: --with-x=0 -with-pic --with-external-packages-dir=/opt/apps/intel13/mvapich2_1_9/petsc/3.4/externalpackages --with-mpi-compilers=1 --with-mpi-dir=/opt/apps/intel13/mvapich2/1.9 --with-clanguage=C++ --with-scalar-type=real --with-dynamic-loading=0 --with-shared-libraries=1 --with-matlab --with-matlab-dir=/work/apps/matlab/2013a --with-spai=1 --download-spai --with-hypre=1 --download-hypre --with-mumps=1 --download-mumps --with-scalapack=1 --download-scalapack --with-blacs=1 --download-blacs --with-spooles=1 --download-spooles --with-superlu=1 --download-superlu --with-superlu_dist=1 --download-superlu_dist --with-parmetis=1 --download-parmetis --with-metis=1 --download-metis --with-hdf5=1 --with-hdf5-dir=/opt/apps/intel13/mvapich2_1_9/phdf5/1.8.9 --with-debugging=no --with-blas-lapack-dir=/opt/apps/intel/13/composer_xe_2013.3.163/mkl/lib/intel64 --with-mpiexec=mpirun_rsh --COPTFLAGS= --CXXOPTFLAGS= --FOPTFLAGS=
+-----------------------------------------
+Libraries compiled on Sat Apr 26 18:16:46 2014 on build.stampede.tacc.utexas.edu 
+Machine characteristics: Linux-2.6.32-358.18.1.el6.x86_64-x86_64-with-centos-6.4-Final
+Using PETSc directory: /opt/apps/intel13/mvapich2_1_9/petsc/3.4
+Using PETSc arch: sandybridge-cxx
+-----------------------------------------
+
+Using C compiler: /opt/apps/intel13/mvapich2/1.9/bin/mpicxx  -wd1572    -fPIC   ${COPTFLAGS} ${CFLAGS}
+Using Fortran compiler: /opt/apps/intel13/mvapich2/1.9/bin/mpif90  -fPIC    ${FOPTFLAGS} ${FFLAGS} 
+-----------------------------------------
+
+Using include paths: -I/opt/apps/intel13/mvapich2_1_9/petsc/3.4/sandybridge-cxx/include -I/opt/apps/intel13/mvapich2_1_9/petsc/3.4/include -I/opt/apps/intel13/mvapich2_1_9/petsc/3.4/include -I/opt/apps/intel13/mvapich2_1_9/petsc/3.4/sandybridge-cxx/include -I/work/apps/matlab/2013a/extern/include -I/opt/apps/intel13/mvapich2_1_9/phdf5/1.8.9/include -I/opt/apps/intel13/mvapich2/1.9/include
+-----------------------------------------
+
+Using C linker: /opt/apps/intel13/mvapich2/1.9/bin/mpicxx
+Using Fortran linker: /opt/apps/intel13/mvapich2/1.9/bin/mpif90
+Using libraries: -Wl,-rpath,/opt/apps/intel13/mvapich2_1_9/petsc/3.4/sandybridge-cxx/lib -L/opt/apps/intel13/mvapich2_1_9/petsc/3.4/sandybridge-cxx/lib -lpetsc -Wl,-rpath,/opt/apps/intel13/mvapich2_1_9/petsc/3.4/sandybridge-cxx/lib -L/opt/apps/intel13/mvapich2_1_9/petsc/3.4/sandybridge-cxx/lib -lsuperlu_4.3 -lHYPRE -lspai -lsuperlu_dist_3.3 -lcmumps -ldmumps -lsmumps -lzmumps -lmumps_common -lpord -lscalapack -Wl,-rpath,/opt/apps/intel/13/composer_xe_2013.3.163/mkl/lib/intel64 -L/opt/apps/intel/13/composer_xe_2013.3.163/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -lpthread -lparmetis -lmetis -Wl,-rpath,/opt/apps/intel13/mvapich2_1_9/phdf5/1.8.9/lib -L/opt/apps/intel13/mvapich2_1_9/phdf5/1.8.9/lib -lhdf5_fortran -lhdf5_hl -lhdf5 -Wl,-rpath,/opt/ofed/lib64 -L/opt/ofed/lib64 -Wl,-rpath,/opt/apps/limic2/0.5.5/lib -L/opt/apps/limic2/0.5.5/lib -Wl,-rpath,/opt/apps/intel13/mvapich2/1.9/lib -L/opt/apps/intel13/mvapich2/1.9/lib -Wl,-rpath,/opt/apps/intel/13/composer_xe_2013.3.163/compiler/lib/intel64 -L/opt/apps/intel/13/composer_xe_2013.3.163/compiler/lib/intel64 -Wl,-rpath,/usr/lib/gcc/x86_64-redhat-linux/4.4.7 -L/usr/lib/gcc/x86_64-redhat-linux/4.4.7 -lmpichf90 -Wl,-rpath,/opt/apps/intel/13/composer_xe_2013.2.146/compiler/lib/intel64 -lifport -lifcore -lm -lm -lmpichcxx -ldl -lmpich -lopa -lmpl -libmad -lrdmacm -libumad -libverbs -lrt -llimic2 -lpthread -limf -lsvml -lirng -lipgo -ldecimal -lcilkrts -lstdc++ -lgcc_s -lirc -lirc_s -ldl 
+-----------------------------------------
+
+ 
+TACC: Shutdown complete. Exiting.

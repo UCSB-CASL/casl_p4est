@@ -58,7 +58,6 @@ private:
   int nc;
   vector<Voronoi3DPoint> points;
   double volume;
-  double scaling;
 
 public:
   /*!
@@ -97,14 +96,14 @@ public:
      * \brief set the point at the center of the partition
      * \param pc the coordinates of the point
      */
-  void set_Center_Point( int nc, Point3 &pc, double scaling=1 );
+  void set_Center_Point( int nc, Point3 &pc);
 
   /*!
      * \brief set the coordinates of the point at the center of the partition
      * \param x the first coordinate of the point
      * \param y the second coordinate of the point
      */
-  void set_Center_Point( int nc, double x, double y, double z, double scaling=1 );
+  void set_Center_Point( int nc, double x, double y, double z);
 
   /*!
      * \brief get the point at the center of the partition
@@ -124,8 +123,7 @@ public:
   /*!
      * \brief construct the voronoi parition around point pc using the neighborhood given in "points"
      */
-  void construct_Partition(double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
-                           bool periodic_x, bool periodic_y, bool periodic_z);
+  void construct_Partition(const double *xyz_min, const double *xyz_max, const bool *periodic);
 
   inline double get_volume() const { return this->volume; }
 
@@ -134,9 +132,8 @@ public:
      * \param voro the list of voronoi partitions to save
      * \param file_name the file in which the voronoi partition is to be saved
      */
-  static void print_VTK_Format( const vector<Voronoi3D>& voro, const char* file_name,
-                                double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
-                                bool periodic_x, bool periodic_y, bool periodic_z);
+  static void print_VTK_Format( const std::vector<Voronoi3D>& voro, const char* file_name,
+                                const double *xyz_min, const double *xyz_max, const bool *periodic);
 };
 
 #endif // CASL_VORONOI3D_H

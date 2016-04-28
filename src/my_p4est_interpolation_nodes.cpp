@@ -96,7 +96,7 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
   std::vector<p4est_quadrant_t> remote_matches;
   int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
   
-  if (rank_found == p4est->mpirank || (rank_found!=-1 && method==linear)) { // local quadrant
+  if (rank_found == p4est->mpirank || (rank_found!=-1 && (method==linear || use_precomputed_derivatives) )) { // local quadrant
     p4est_locidx_t quad_idx;
     if(rank_found==p4est->mpirank)
     {

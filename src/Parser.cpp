@@ -38,6 +38,7 @@ void cmdParser::parse(int argc, char* argv[])
 
     buffer.insert(std::make_pair(key, val));
   }
+  print();
 
   if (contains("help")){
     PetscPrintf(MPI_COMM_WORLD, "\n\n");

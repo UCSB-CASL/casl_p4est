@@ -66,17 +66,17 @@ public:
   void perturb_level_set_function( Vec phi_petsc, double epsilon );
 
   /* 2nd order in time, 1st order in space */
-  void reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
+  void reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration=50, double limit=DBL_MAX );
 
   /* 1st order in time, 2nd order in space */
-  void reinitialize_1st_order_time_2nd_order_space( Vec phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
+  void reinitialize_1st_order_time_2nd_order_space( Vec phi_petsc, int number_of_iteration=50, double limit=DBL_MAX );
 
   /* 1st order in time, 1st order in space */
-  void reinitialize_1st_order( Vec phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
+  void reinitialize_1st_order( Vec phi_petsc, int number_of_iteration=50, double limit=DBL_MAX );
 
   /* 2nd order in time, 2nd order in space */
   /* this has not be thoroughly tested ... use with caution. It's also disastrous in terms of MPI communications */
-  void reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration=20, double limit=DBL_MAX );
+  void reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration=50, double limit=DBL_MAX );
 
   /*!
    * \brief advect_in_normal_direction advects the level-set function in the normal direction using Godunov's scheme
@@ -101,9 +101,9 @@ public:
    * \return dt
    */
 #ifdef P4_TO_P8
-  double advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
+  double advect_in_normal_direction(const Vec vn, Vec phi, double dt_max = DBL_MAX, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
 #else
-  double advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx = NULL, Vec phi_yy = NULL);
+  double advect_in_normal_direction(const Vec vn, Vec phi, double dt_max = DBL_MAX, Vec phi_xx = NULL, Vec phi_yy = NULL);
 #endif
 
   /* extrapolate using geometrical extrapolation */

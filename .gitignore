@@ -8,8 +8,8 @@
 *.bin
 *.exe
 *.pro
-*.pro.user
-*.creator.user
+*.pro.user*
+*.creator.user*
 *~
 *.vt[uks]
 *.pvt[uks]
@@ -35,9 +35,14 @@ sync
 .rsync.exclude
 
 # What directories to ignore
-[Dd]ebug/
-[Rr]elease/
-[Oo]bjs/
-[Pp]roject[s]/
-[Bb]uild/
+*[Dd]ebug*
+*[Rr]elease*
+*[Oo]bjs*
+*[Pp]roject[s]*
+*[Bb]uild*
 
+*.orig
+*_BACKUP_*
+*_BASE_*
+*_LOCAL_*
+*_REMOTE_*

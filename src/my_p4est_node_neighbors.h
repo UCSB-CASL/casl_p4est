@@ -22,11 +22,21 @@
 #include <vector>
 #include <sstream>
 
+class async_computation_t {
+public:
+  virtual void foreach_local_node(p4est_locidx_t n) const = 0;
+  virtual void ghost_update_begin() const = 0;
+  virtual void ghost_update_end() const = 0;
+  ~async_computation_t () {}
+};
+
 class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_nodes_t;
   friend class my_p4est_poisson_cells_t;
   friend class my_p4est_poisson_nodes_voronoi_t;
-  friend class PoissonSolverNodeBaseJump;
+  friend class my_p4est_poisson_jump_nodes_voronoi_t;
+  friend class my_p4est_poisson_jump_voronoi_block_t;
+  friend class my_p4est_poisson_jump_nodes_extended_t;
   friend class my_p4est_interpolation_t;
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_cells_t;
@@ -37,6 +47,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_semi_lagrangian_t;
   friend class my_p4est_bialloy_t;
   friend class my_p4est_navier_stokes_t;
+  friend class my_p4est_epitaxy_t;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information
@@ -88,6 +99,36 @@ public:
     }
   }
 
+  /*!
+   * \brief get_hierarchy
+   * \return returns a const ptr to the hierarchy structure
+   */
+  inline const my_p4est_hierarchy_t* get_hierarchy() const { return hierarchy; }
+
+  /*!
+   * \brief get_p4est
+   * \return returns a const ptr to p4est structure
+   */
+  inline const p4est_t* get_p4est() const { return p4est; }
+
+  /*!
+   * \brief get_ghost
+   * \return returns a const ptr to ghost structure
+   */
+  inline const p4est_ghost_t* get_ghost() const { return ghost; }
+
+  /*!
+   * \brief get_nodes
+   * \return returns a const ptr to nodes structure
+   */
+  inline const p4est_nodes_t* get_nodes() const { return nodes; }
+
+  /*!
+   * \brief get_brick
+   * \return returns a const ptr to brick structure
+   */
+  inline const my_p4est_brick_t* get_brick() const { return myb; }
+
   inline size_t get_layer_size() const { return layer_nodes.size(); }
   inline size_t get_local_size() const { return local_nodes.size(); }
   inline p4est_locidx_t get_layer_node(size_t i) const {
@@ -112,6 +153,7 @@ public:
   void init_neighbors();
   void clear_neighbors();
   void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_);
+  void update(p4est_t* p4est, p4est_ghost_t* ghost, p4est_nodes_t* nodes);
   
   inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
 #ifdef CASL_THROWS
@@ -120,7 +162,7 @@ public:
                                "'init_neighbors()' or consider calling 'get_neighbors()' to compute the neighbors on the fly.");
 
     if (is_qnnn_valid[n])
-      return neighbors.at(n);
+      return neighbors[n];
     else {
       std::ostringstream oss;
       oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
@@ -135,7 +177,7 @@ public:
     if (is_initialized) {
 #ifdef CASL_THROWS
       if (is_qnnn_valid[n])
-        return neighbors.at(n);
+        return neighbors[n];
       else {
         std::ostringstream oss;
         oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
@@ -146,22 +188,55 @@ public:
 #endif
     } else {
       quad_neighbor_nodes_of_node_t qnnn;
-      get_neighbors(n, qnnn);
+      bool err = construct_neighbors(n, qnnn);
+      if (err){
+        std::ostringstream oss;
+        oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
+        throw std::invalid_argument(oss.str().c_str());
+      }
       return qnnn;
     }
   }
 
   inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const {
+    if (is_initialized) {
 #ifdef CASL_THROWS
-    bool err = construct_neighbors(n, qnnn);
-    if (err){
-      std::ostringstream oss;
-      oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
-      throw std::invalid_argument(oss.str().c_str());
-    }
+      if (is_qnnn_valid[n])
+        qnnn = neighbors[n];
+      else {
+        std::ostringstream oss;
+        oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
+        throw std::invalid_argument(oss.str().c_str());
+      }
 #else
-    construct_neighbors(n, qnnn);
+      qnnn = neighbors[n];
 #endif
+    }
+    else {
+#ifdef CASL_THROWS
+      bool err = construct_neighbors(n, qnnn);
+      if (err){
+        std::ostringstream oss;
+        oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
+        throw std::invalid_argument(oss.str().c_str());
+      }
+#else
+      construct_neighbors(n, qnnn);
+#endif
+    }
+  }
+
+  /*!
+   * \brief run_async_computation runs an asynchronous computation across processors by overlapping computation and communication
+   * \param async the abstract computation that needs to be run for each local node
+   */
+  inline void run_async_computation(const async_computation_t& async) const {
+    for (size_t i=0; i<layer_nodes.size(); i++)
+      async.foreach_local_node(layer_nodes[i]);
+    async.ghost_update_begin();
+    for (size_t i=0; i<local_nodes.size(); i++)
+      async.foreach_local_node(local_nodes[i]);
+    async.ghost_update_end();
   }
 
   /**
@@ -231,6 +306,26 @@ public:
 #else
   void second_derivatives_central(const Vec f, Vec fxx, Vec fyy) const;
 #endif
+
+  /*!
+   * \brief second_derivatives_central computes the second derivative
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fxx array of size P4EST_DIM of PETSc vectors to store all results in.
+   */
+  inline void second_derivatives_central(const Vec f, Vec fxx[P4EST_DIM]) {
+#ifdef P4_TO_P8
+    second_derivatives_central(f, fxx[0], fxx[1], fxx[2]);
+#else
+    second_derivatives_central(f, fxx[0], fxx[1]);
+#endif
+  }
+
+  /*!
+   * \brief first_derivatives_central computes the first derivatives using central difference
+   * \param [in]  f   PETSc vector storing the
+   * \param [out] fx  array of size P4EST_DIM of PETSc vectors to store
+   */
+  void first_derivatives_central(const Vec f, Vec fx[P4EST_DIM]) const;
 
 private:
 #ifdef P4_TO_P8

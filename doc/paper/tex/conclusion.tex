@@ -1,0 +1,17 @@
+%!TEX root = draft.tex
+\section{Conclusions}
+In this article we have presented parallel algorithms related to the level-set technology on adaptive Quadtree and Octree grids using a domain decomposition approach. These algorithms are implemented using a combination of \texttt{MPI} and the open-source \texttt{p4est} library. In order to preserve the unconditional stability property of the semi-Lagrangian scheme while enabling scalable computations, we introduced an asynchronous interpolation algorithm using non-blocking point-to-point communications, and demonstrated its scalability. 
+
+In particular we showed that the scalability of the semi-Lagrangian algorithm, depends on the CFL number. Great scalability is observed for intermediate CFL numbers, e.g. $\text{CFL}\sim10$. At higher CFL numbers, however, the departure points are potentially further dispersed across processors, which limits the scalability. This is because the domain decomposition technique used here is based on the Z-ordering of cells and does not take the velocity field information into account. A possible remedy for this problem could be assigning weights to cells based on some estimate of the grid structure after one step of the advection algorithm, e.g.\ by using a forward-in-time integration of grid points. Such an estimate could also reduce the number of semi-Lagrangian iterations. These ideas are postponed for further investigations. We have also presented a simple parallelization technique for the reinitialization algorithm based on the pseudo-time transient formulation. Both the semi-Lagrangian and the reinitialization algorithms show good scalability up to 4096 processors, the current limit of our account. 
+
+Finally, an application of these algorithms is presented in modeling the solidification process by solving a Stefan problem. This application clearly illustrates the applicability of our algorithms to complex multi-scale problems that cannot be treated practically using the domain decomposition techniques on uniform grids. We believe that our findings can serve as a basis to simulating a wide range of multi-scale and free boundary problems.
+
+\section*{Acknowledgment} 
+The funding for this project was provided by ONR N00014-11-1-0027.
+We would also like to thank the technical staff at the Texas Advanced Computing
+Center (TACC) and the developer community of PETSc library for their valuable
+suggestions during this project.
+The third author acknowledges support by the Hausdorff Center for Mathematics
+(HCM) at Bonn University,
+% and the Transregio 32 research collaborative, both
+an initiative funded by the German Research Foundation (DFG).

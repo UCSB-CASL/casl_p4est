@@ -1,9 +1,11 @@
 #ifdef P4_TO_P8
-#include "my_p8est_refine_coarsen.h"
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_utils.h>
 #include <p8est_bits.h>
 #include <p8est_algorithms.h>
 #else
-#include "my_p4est_refine_coarsen.h"
+#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_utils.h>
 #include <p4est_bits.h>
 #include <p4est_algorithms.h>
 #endif
@@ -468,19 +470,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
     // refinement based on distance
 		bool refine = false, coarsen = true;
-//		bool is_interface_crossing = 
-//#ifdef P4_TO_P8
-//    ( f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
-//      f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0 );
-//#else
-//    ( f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 );
-//#endif
-//
-//		if (is_interface_crossing && quad->level < max_lvl ) {
-//			quad->p.user_int = REFINE_QUADRANT;
-//			return true;
-//		}
-//
+
     for (short i = 0; i < P4EST_CHILDREN; i++) {
 			refine  = refine  || (fabs(f[i]) <= 0.5*lip*d && quad->level < max_lvl);
 			coarsen = coarsen && (fabs(f[i]) >= 1.0*lip*d && quad->level > min_lvl);
@@ -537,7 +527,43 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, const p4est_no
   }
 
   my_p4est_coarsen(p4est, P4EST_FALSE, splitting_criteria_tag_t::coarsen_fn, splitting_criteria_tag_t::init_fn);
-	my_p4est_refine (p4est, P4EST_FALSE, splitting_criteria_tag_t::refine_fn,  splitting_criteria_tag_t::init_fn);
+  my_p4est_refine (p4est, P4EST_FALSE, splitting_criteria_tag_t::refine_fn,  splitting_criteria_tag_t::init_fn);
+
+  int is_grid_changed = false;
+  for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
+    p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, it);
+    for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
+      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      if (quad->p.user_int == NEW_QUADRANT) {
+        is_grid_changed = true;
+        goto function_end;
+      }
+    }
+  }
+
+function_end:
+  MPI_Allreduce(MPI_IN_PLACE, &is_grid_changed, 1, MPI_INT, MPI_LOR, p4est->mpicomm);
+
+  return is_grid_changed;
+}
+
+
+bool splitting_criteria_tag_t::refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi) {
+
+  double f[P4EST_CHILDREN];
+  for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
+    p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, it);
+    for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
+      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      p4est_locidx_t qu_idx  = q + tree->quadrants_offset;
+
+      for (short i = 0; i<P4EST_CHILDREN; i++)
+        f[i] = phi[nodes->local_nodes[qu_idx*P4EST_CHILDREN + i]];
+      tag_quadrant(p4est, quad, it, f);
+    }
+  }
+
+  my_p4est_refine (p4est, P4EST_FALSE, splitting_criteria_tag_t::refine_fn,  splitting_criteria_tag_t::init_fn);
 
   int is_grid_changed = false;
   for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {

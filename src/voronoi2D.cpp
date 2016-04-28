@@ -231,6 +231,8 @@ void Voronoi2D::construct_Partition()
       }
     }
   }
+
+  compute_volume();
 }
 
 

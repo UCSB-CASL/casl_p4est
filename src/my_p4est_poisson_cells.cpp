@@ -250,6 +250,41 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
   PC pc;
   ierr = KSPGetPC(ksp, &pc); CHKERRXX(ierr);
   ierr = PCSetType(pc, pc_type); CHKERRXX(ierr);
+
+  /* If using hypre, we can make some adjustments here. The most important parameters to be set are:
+   * 1- Strong Threshold
+   * 2- Coarsennig Type
+   * 3- Truncation Factor
+   *
+   * Plerase refer to HYPRE manual for more information on the actual importance or check Mohammad Mirzadeh's
+   * summary of HYPRE papers! Also for a complete list of all the options that can be set from PETSc, one can
+   * consult the 'src/ksp/pc/impls/hypre.c' in the PETSc home directory.
+   */
+  if (!strcmp(pc_type, PCHYPRE)){
+    /* 1- Strong threshold:
+     * Between 0 to 1
+     * "0 "gives better convergence rate (in 3D).
+     * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
+    */
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.5"); CHKERRXX(ierr);
+
+    /* 2- Coarsening type
+     * Available Options:
+     * "CLJP","Ruge-Stueben","modifiedRuge-Stueben","Falgout", "PMIS", "HMIS". Falgout is usually the best.
+     */
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_coarsen_type", "Falgout"); CHKERRXX(ierr);
+
+    /* 3- Trancation factor
+     * Greater than zero.
+     * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
+     */
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
+
+    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
+    if (matrix_has_nullspace && !nullspace_use_fixed_point){
+      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
+    }
+  }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
   // Solve the system
@@ -808,9 +843,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_FALSE, 1, &null_space, &A_null_space); CHKERRXX(ierr);
 
       ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-    }
-    else
-    {
+      ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
+    } else {
       ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
       p4est_gloidx_t fixed_value_idx;
       MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
@@ -820,10 +854,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
         fixed_value_idx_l = -1;
         fixed_value_idx_g = fixed_value_idx;
         ierr = MatZeroRows(A, 0, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
-      }
-      else
+      } else {
       // reset the value
         ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
+      }
     }
   }
 
