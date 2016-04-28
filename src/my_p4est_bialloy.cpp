@@ -44,7 +44,7 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
   epsilon_c            = 2.7207e-5; /* cm.K     */
   epsilon_v            = 2.27e-2;   /* s.K.cm-1 */
 
-  dx_dy_dz(p4est, dxyz);
+  ::dxyz_min(p4est, dxyz);
 #ifdef P4_TO_P8
   dxyz_min = MIN(dxyz[0],dxyz[1],dxyz[2]);
   dxyz_max = MAX(dxyz[0],dxyz[1],dxyz[2]);

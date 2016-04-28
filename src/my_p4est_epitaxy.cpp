@@ -67,7 +67,7 @@ my_p4est_epitaxy_t::my_p4est_epitaxy_t(my_p4est_node_neighbors_t *ngbd)
   Nuc = 0;
   new_island = 0;
   alpha = 1.05;
-  dx_dy_dz(p4est, dxyz);
+  dxyz_min(p4est, dxyz);
 //  dt_n = MIN(dxyz[0],dxyz[1]);
   dt_n = 1e-3;
 
