@@ -80,7 +80,7 @@ int nz = 1;
 bool save_vtk = true;
 
 double mu = 2;
-double add_diagonal = 0;
+double add_diagonal = 1.4;
 
 /*
  * 0 - circle
@@ -94,7 +94,7 @@ int interface_type = 0;
  * 2 - sin(x)*cos(y)
  * 3 - sin(x) + cos(y)
  */
-int test_number = 0;
+int test_number = 2;
 
 BoundaryConditionType bc_itype = NEUMANN;
 BoundaryConditionType bc_wtype = DIRICHLET;
@@ -298,7 +298,7 @@ class ROBIN_COEFF : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return 1;
+//    return 1e5;
     return 4+x+y;
   }
 } robin_coeff;
@@ -509,8 +509,6 @@ int main (int argc, char* argv[])
                  3 - sin(x) + cos(y)");
 #endif
   cmd.parse(argc, argv);
-
-  cmd.print();
 
   lmin = cmd.get("lmin", lmin);
   lmax = cmd.get("lmax", lmax);

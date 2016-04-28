@@ -57,6 +57,7 @@ PetscLogEvent log_my_p4est_semi_lagrangian_advect_from_n_to_np1_2nd_order;
 PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_CF2;
 PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_1st_order;
 PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_2nd_order;
+PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_multiple_phi;
 PetscLogEvent log_my_p4est_semi_lagrangian_grid_gen_iter[P4EST_MAXLEVEL];
 
 // my_p4est_trajectory_of_point
@@ -185,6 +186,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_CF2            ", 0, &log_my_p4est_semi_lagrangian_update_p4est_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_1st_order      ", 0, &log_my_p4est_semi_lagrangian_update_p4est_1st_order); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_2nd_order      ", 0, &log_my_p4est_semi_lagrangian_update_p4est_2nd_order); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_multiple_phi   ", 0, &log_my_p4est_semi_lagrangian_update_p4est_multiple_phi); CHKERRXX(ierr);
   
 
   // my_p4est_trajectory_of_point

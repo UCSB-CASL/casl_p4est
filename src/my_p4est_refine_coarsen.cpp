@@ -537,7 +537,43 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, const p4est_no
   }
 
   my_p4est_coarsen(p4est, P4EST_FALSE, splitting_criteria_tag_t::coarsen_fn, splitting_criteria_tag_t::init_fn);
-	my_p4est_refine (p4est, P4EST_FALSE, splitting_criteria_tag_t::refine_fn,  splitting_criteria_tag_t::init_fn);
+  my_p4est_refine (p4est, P4EST_FALSE, splitting_criteria_tag_t::refine_fn,  splitting_criteria_tag_t::init_fn);
+
+  int is_grid_changed = false;
+  for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
+    p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, it);
+    for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
+      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      if (quad->p.user_int == NEW_QUADRANT) {
+        is_grid_changed = true;
+        goto function_end;
+      }
+    }
+  }
+
+function_end:
+  MPI_Allreduce(MPI_IN_PLACE, &is_grid_changed, 1, MPI_INT, MPI_LOR, p4est->mpicomm);
+
+  return is_grid_changed;
+}
+
+
+bool splitting_criteria_tag_t::refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi) {
+
+  double f[P4EST_CHILDREN];
+  for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
+    p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, it);
+    for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
+      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      p4est_locidx_t qu_idx  = q + tree->quadrants_offset;
+
+      for (short i = 0; i<P4EST_CHILDREN; i++)
+        f[i] = phi[nodes->local_nodes[qu_idx*P4EST_CHILDREN + i]];
+      tag_quadrant(p4est, quad, it, f);
+    }
+  }
+
+  my_p4est_refine (p4est, P4EST_FALSE, splitting_criteria_tag_t::refine_fn,  splitting_criteria_tag_t::init_fn);
 
   int is_grid_changed = false;
   for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
