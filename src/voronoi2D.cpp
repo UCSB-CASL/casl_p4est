@@ -375,6 +375,8 @@ void Voronoi2D::clip_Interface()
   if(partition.size()!=points.size() || phi_values.size()!=points.size())
     throw std::invalid_argument("[CASL_ERROR]: Voronoi2D->clip_Interface: error while clipping the interface.");
 #endif
+
+  compute_volume();
 }
 
 
