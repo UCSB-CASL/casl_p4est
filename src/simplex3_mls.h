@@ -54,6 +54,7 @@ public:
     int   c0, c1;     // colors
     bool  is_split;   // has the edge been split
     loc_t loc;        // location
+    double value;    // stored value at midpoint
 
     /* Child objects */
     int c_vtx01;        // splitting vertex
@@ -159,13 +160,19 @@ public:
   std::vector<tri3_t> tris;
   std::vector<tet3_t> tets;
 
+  std::vector<double> *phi;
+  std::vector<double> *phi_x;
+  std::vector<double> *phi_y;
+  std::vector<double> *phi_z;
+
 //  void construct_domain(std::vector<double> &p0,
 //                        std::vector<double> &p1,
 //                        std::vector<double> &p2,
 //                        std::vector<double> &p3,
 //                        std::vector<int> &action);
 
-  void do_action(int cn, action_t action, double p0, double p1, double p2, double p3);
+  void do_action(std::vector<double> *phi_, std::vector<double> *phi_x_, std::vector<double> *phi_y_, std::vector<double> *phi_z_,
+                 int cn, action_t action);
 //  void do_action(int num, Action action, CF_3 &func);
   void do_action_vtx(int n_vtx, int cn, action_t action);
   void do_action_edg(int n_edg, int cn, action_t action);
@@ -179,23 +186,27 @@ public:
   void interpolate_all(double &p0, double &p1, double &p2, double &p3);
   void interpolate_from_neighbors(int v);
   void interpolate_from_parent(int v);
+  void interpolate_from_parent(vtx3_t &v);
 
-  double integrate_over_domain(double f0, double f1, double f2, double f3);
-  double integrate_over_interface(int num, double f0, double f1, double f2, double f3);
-  double integrate_over_colored_interface(int num0, int num1, double f0, double f1, double f2, double f3);
-  double integrate_over_intersection(int num0, int num1, double f0, double f1, double f2, double f3);
-  double integrate_over_intersection(int num0, int num1, int num2, double f0, double f1, double f2, double f3);
-  double integrate_in_dir(int dir, double f0, double f1, double f2, double f3);
-
-  double measure_of_domain();
-  double measure_of_interface(int num);
-  double measure_of_colored_interface(int num0, int num1);
-  double measure_of_intersection(int num0, int num1);
-  double measure_in_dir(int dir);
+  double integrate_over_domain            (double f0, double f1, double f2, double f3);
+  double integrate_over_interface         (double f0, double f1, double f2, double f3, int num0);
+  double integrate_over_colored_interface (double f0, double f1, double f2, double f3, int num0, int num1);
+  double integrate_over_intersection      (double f0, double f1, double f2, double f3, int num0, int num1);
+  double integrate_over_intersection      (double f0, double f1, double f2, double f3, int num0, int num1, int num2);
+  double integrate_in_dir                 (double f0, double f1, double f2, double f3, int dir);
 
   double length (int vtx0, int vtx1);
   double area   (int vtx0, int vtx1, int vtx2);
   double volume (int vtx0, int vtx1, int vtx2, int vtx3);
+  double volume(vtx3_t &vtx0, vtx3_t &vtx1, vtx3_t &vtx2, vtx3_t &vtx3);
+
+  bool use_linear;
+  double find_intersection_linear   (int v0, int v1);
+  double find_intersection_quadratic(int v0, int v1);
+
+  double find_intersection_quadratic(int e);
+
+  void get_edge_coords(int e, double xyz[]);
 
   template<typename X>
   void swap(X &x, X &y)

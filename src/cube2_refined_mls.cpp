@@ -1,285 +1,457 @@
 #include "cube2_refined_mls.h"
 
-void cube2_refined_mls_t::construct_domain(int nx_, int ny_, double *phi, std::vector<action_t> &action, std::vector<int> &color)
+void cube2_refined_mls_t::construct_domain(int nx_, int ny_, int level)
 {
-  nx = nx_;
-  ny = ny_;
+  int n_phis = action->size();
 
-  n_cubes = nx*ny;
-  n_nodes = (nx+1)*(ny+1);
+  nx = nx_; ny = ny_;
 
-  v_mm = 0;
-  v_pm = nx;
-  v_mp = ny*(nx+1);
-  v_pp = (nx+1)*(ny+1)-1;
+  double dx = (x1-x0)/(double)(nx);
+  double dy = (y1-y0)/(double)(ny);
 
-  //std::vector<double> x_coord;
-  //std::vector<double> y_coord;
+  dx_min = dx/pow(2.,(double)(level+1));
+  dy_min = dy/pow(2.,(double)(level+1));
 
-  double dx = (x1-x0)/(double)(nx); //for (int i = 0; i < nx+1; i++) {x_coord.push_back(x0 + dx*(double)(i));}
-  double dy = (y1-y0)/(double)(ny); //for (int j = 0; j < ny+1; j++) {y_coord.push_back(y0 + dy*(double)(j));}
+  std::vector<double> x_coord(nx+1, 0.); for (int i = 0; i < nx+1; i++) {x_coord[i]=(x0 + dx*(double)(i));}
+  std::vector<double> y_coord(ny+1, 0.); for (int j = 0; j < ny+1; j++) {y_coord[j]=(y0 + dy*(double)(j));}
 
-  /* Split the cube into sub-cubes */
-  cubes.clear();
-  cubes.reserve(n_cubes);
+  // do initial splitting
+  nodes.reserve((nx+1)*(ny+1));
+  edges.reserve(nx*(ny+1)+(nx+1)*ny);
+  cubes.reserve(nx*ny);
 
-  int n_phi = action.size();
+  // create nodes
+  for (int j = 0; j < ny+1; j++)
+    for (int i = 0; i < nx+1; i++)
+      nodes.push_back(node_t(x_coord[i],y_coord[j]));
 
-  std::vector<double> phi_cube(n_phi*4, -1);
+  // create x-edges
+  for (int j = 0; j < ny; j++)
+    for (int i = 0; i < nx+1; i++)
+      edges.push_back(edge_t(j*(nx+1)+i, (j+1)*(nx+1)+i));
 
+  // create y-edges
+  for (int j = 0; j < ny+1; j++)
+    for (int i = 0; i < nx; i++)
+      edges.push_back(edge_t(j*(nx+1)+i, j*(nx+1)+i+1));
+
+  // create cubes
+  int n_xedges = ny*(nx+1);
   for (int j = 0; j < ny; j++)
     for (int i = 0; i < nx; i++)
+      cubes.push_back(cube_t(j*(nx+1) + i, j*(nx+1) + i+1, n_xedges + j*(nx+0) + i, n_xedges + (j+1)*(nx+0) + i));
+
+  // mark cubes next to walls
+  for (int j = 0; j < ny; j++)
+  {
+    int i = 0; cubes[j*nx+i].wall[0] = true;
+    i = nx-1;  cubes[j*nx+i].wall[1] = true;
+  }
+  for (int i = 0; i < nx; i++)
+  {
+    int j = 0; cubes[j*nx+i].wall[2] = true;
+    j = ny-1;  cubes[j*nx+i].wall[3] = true;
+  }
+
+  // do recursive refinement
+  n_nodes = 0;
+  n_cubes = 0;
+  n_leafs = nx*ny;
+
+  phi.resize    (n_phis, std::vector<double> ((nx+1)*(ny+1), -1.));
+  phi_x.resize  (n_phis, std::vector<double> ((nx+1)*(ny+1), 0.));
+  phi_y.resize  (n_phis, std::vector<double> ((nx+1)*(ny+1), 0.));
+  phi_xx.resize (n_phis, std::vector<double> ((nx+1)*(ny+1), 0.));
+  phi_yy.resize (n_phis, std::vector<double> ((nx+1)*(ny+1), 0.));
+
+//  phi.resize    (n_phis);
+//  phi_x.resize  (n_phis);
+//  phi_y.resize  (n_phis);
+//  phi_xx.resize (n_phis);
+//  phi_yy.resize (n_phis);
+
+  for (int l = -1; l < level; l++)
+  {
+    int n_new = cubes.size();
+
+    // check if no new cubes have been created
+    if (n_new == n_cubes) break;
+
+    if (l != -1)
     {
-      cubes.push_back(cube2_mls_t(0, dx, 0, dy));
-      for (int k = 0; k < n_phi; k++)
-      {
-        phi_cube[k*4 + 0] = phi[k*n_nodes + (j+0)*(nx+1) + i+0];
-        phi_cube[k*4 + 1] = phi[k*n_nodes + (j+0)*(nx+1) + i+1];
-        phi_cube[k*4 + 2] = phi[k*n_nodes + (j+1)*(nx+1) + i+0];
-        phi_cube[k*4 + 3] = phi[k*n_nodes + (j+1)*(nx+1) + i+1];
-      }
-      cubes.back().construct_domain(phi_cube.data(), action, color);
+      // loop through new cubes
+      for (int n = n_cubes; n < n_new; n++)
+        if (need_split(n))
+        {
+          split_cube(n);
+          n_leafs += N_CHILDREN-1;
+        }
+
+      n_cubes = n_new;
     }
 
-  bool all_out = true;
-  bool all_in = true;
-
-  for (int i = 0; i < n_cubes; i++)
-  {
-    all_out = all_out && (cubes[i].loc == OUT);
-    all_in  = all_in  && (cubes[i].loc == INS);
-  }
-
-  if (all_out) loc = OUT;
-  else if (all_in) loc = INS;
-  else loc = FCE;
-}
-
-double cube2_refined_mls_t::integrate_over_domain(double* f)
-{
-  double result = 0;
-
-  switch (loc)
-  {
-  case INS: result = (x1-x0)*(y1-y0)*(f[v_mm]+f[v_pm]+f[v_mp]+f[v_pp])/4.0;       break;
-  case OUT: result = 0.0;                                                         break;
-  case FCE:
-  {
-    double f_cube[4];
-    for (int j = 0; j < ny; j++)
-      for (int i = 0; i < nx; i++)
+    // interpolate LSF to new nodes
+    for (int q = 0; q < n_phis; q++)
+    {
+      phi[q].resize(nodes.size());
+      phi_x[q].resize(nodes.size());
+      phi_y[q].resize(nodes.size());
+      phi_xx[q].resize(nodes.size());
+      phi_yy[q].resize(nodes.size());
+      for (int i = n_nodes; i < nodes.size(); i++)
       {
-        f_cube[0] = f[(j+0)*(nx+1) + i+0];
-        f_cube[1] = f[(j+0)*(nx+1) + i+1];
-        f_cube[2] = f[(j+1)*(nx+1) + i+0];
-        f_cube[3] = f[(j+1)*(nx+1) + i+1];
-        result += cubes[j*(nx)+i].integrate_over_domain(f_cube);
+        if (phi_cf_in == NULL)
+        {
+          phi[q][i] = interp.quadratic(phi_in->at(q), phi_xx_in->at(q), phi_yy_in->at(q), nodes[i].x, nodes[i].y);
+          phi_x[q][i] = interp.linear(phi_x_in->at(q), nodes[i].x, nodes[i].y);
+          phi_y[q][i] = interp.linear(phi_y_in->at(q), nodes[i].x, nodes[i].y);
+          phi_xx[q][i] = interp.linear(phi_xx_in->at(q), nodes[i].x, nodes[i].y);
+          phi_yy[q][i] = interp.linear(phi_yy_in->at(q), nodes[i].x, nodes[i].y);
+        } else {
+          double phi_000 = (*phi_cf_in->at(q))(nodes[i].x, nodes[i].y);
+          double phi_m00 = (*phi_cf_in->at(q))(nodes[i].x-dx_min, nodes[i].y);
+          double phi_p00 = (*phi_cf_in->at(q))(nodes[i].x+dx_min, nodes[i].y);
+          double phi_0m0 = (*phi_cf_in->at(q))(nodes[i].x, nodes[i].y-dy_min);
+          double phi_0p0 = (*phi_cf_in->at(q))(nodes[i].x, nodes[i].y+dy_min);
+          phi[q][i] = phi_000;
+          phi_x[q][i] = 0.5*(phi_p00-phi_m00)/dx_min;
+          phi_y[q][i] = 0.5*(phi_0p0-phi_0m0)/dy_min;
+          phi_xx[q][i] = (phi_p00+phi_m00-2.0*phi_000)/dx_min/dx_min;
+          phi_yy[q][i] = (phi_0p0+phi_0m0-2.0*phi_000)/dy_min/dy_min;
+        }
       }
-  } break;
+    }
+
+    n_nodes = nodes.size();
   }
 
-  return result;
-}
+  n_cubes = cubes.size();
 
-double cube2_refined_mls_t::integrate_over_interface(double *f, int num)
-{
-  double result = 0;
+  leaf_to_node.resize(n_leafs*N_CHILDREN,-1);
+  get_cube.resize(n_leafs,-1);
 
-  if (loc == FCE)
+  int i = 0;
+  for (int n = 0; n < n_cubes; n++)
   {
-    double f_cube[4];
-    for (int j = 0; j < ny; j++)
-      for (int i = 0; i < nx; i++)
-      {
-        f_cube[0] = f[(j+0)*(nx+1) + i+0];
-        f_cube[1] = f[(j+0)*(nx+1) + i+1];
-        f_cube[2] = f[(j+1)*(nx+1) + i+0];
-        f_cube[3] = f[(j+1)*(nx+1) + i+1];
-        result += cubes[j*(nx)+i].integrate_over_interface(f_cube, num);
-      }
+    if (!cubes[n].is_split)
+    {
+      leaf_to_node[i*N_CHILDREN+0] = edges[cubes[n].e_m0].v0;
+      leaf_to_node[i*N_CHILDREN+1] = edges[cubes[n].e_p0].v0;
+      leaf_to_node[i*N_CHILDREN+2] = edges[cubes[n].e_m0].v1;
+      leaf_to_node[i*N_CHILDREN+3] = edges[cubes[n].e_p0].v1;
+      get_cube[i] = n;
+      i++;
+    }
   }
 
-  return result;
-}
 
-double cube2_refined_mls_t::integrate_over_colored_interface(double *f, int num0, int num1)
-{
-  double result = 0;
+  /* Split the cube into sub-cubes */
+  cubes_mls.clear();
+  cubes_mls.reserve(n_leafs);
 
-  if (loc == FCE)
+  std::vector<double> phi_cube    (N_CHILDREN*n_phis, -1.);
+  std::vector<double> phi_x_cube  (N_CHILDREN*n_phis, 0.);
+  std::vector<double> phi_y_cube  (N_CHILDREN*n_phis, 0.);
+  std::vector<double> phi_xx_cube (N_CHILDREN*n_phis, 0.);
+  std::vector<double> phi_yy_cube (N_CHILDREN*n_phis, 0.);
+
+  // reconstruct interfaces in leaf cubes
+  for (int n = 0; n < n_leafs; n++)
   {
-    double f_cube[4];
-    for (int j = 0; j < ny; j++)
-      for (int i = 0; i < nx; i++)
-      {
-        f_cube[0] = f[(j+0)*(nx+1) + i+0];
-        f_cube[1] = f[(j+0)*(nx+1) + i+1];
-        f_cube[2] = f[(j+1)*(nx+1) + i+0];
-        f_cube[3] = f[(j+1)*(nx+1) + i+1];
-        result += cubes[j*(nx)+i].integrate_over_colored_interface(f_cube, num0, num1);
-      }
-  }
+    // fetch corners of a cube
+    int v_mm = leaf_to_node[N_CHILDREN*n];
+    int v_pp = leaf_to_node[N_CHILDREN*n + N_CHILDREN-1];
 
-  return result;
+    // create a mls cube
+    cubes_mls.push_back(cube2_mls_t(nodes[v_mm].x, nodes[v_pp].x, nodes[v_mm].y, nodes[v_pp].y));
+
+    // fetch function values at the corners of a cube
+    for (int q = 0; q < n_phis; q++)
+      for (int d = 0; d < N_CHILDREN; d++)
+      {
+        phi_cube   [q*N_CHILDREN + d] = phi   [q][leaf_to_node[n*N_CHILDREN+d]];
+        phi_x_cube [q*N_CHILDREN + d] = phi_x [q][leaf_to_node[n*N_CHILDREN+d]];
+        phi_y_cube [q*N_CHILDREN + d] = phi_y [q][leaf_to_node[n*N_CHILDREN+d]];
+        phi_xx_cube[q*N_CHILDREN + d] = phi_xx[q][leaf_to_node[n*N_CHILDREN+d]];
+        phi_yy_cube[q*N_CHILDREN + d] = phi_yy[q][leaf_to_node[n*N_CHILDREN+d]];
+      }
+
+    cubes_mls.back().set_phi(phi_cube);
+    cubes_mls.back().set_phi_d(phi_x_cube, phi_y_cube);
+    cubes_mls.back().set_phi_dd(phi_xx_cube, phi_yy_cube);
+
+    cubes_mls.back().construct_domain(*action, *color);
+  }
 }
 
-double cube2_refined_mls_t::integrate_over_intersection(double *f, int num0, int num1)
+void cube2_refined_mls_t::sample_all(std::vector<double> &f, std::vector<double> &f_values)
 {
-  double result = 0;
-  if (loc == FCE && num_non_trivial > 1)
-  {
-    double f_cube[4];
-    for (int j = 0; j < ny; j++)
-      for (int i = 0; i < nx; i++)
-      {
-        f_cube[0] = f[(j+0)*(nx+1) + i+0];
-        f_cube[1] = f[(j+0)*(nx+1) + i+1];
-        f_cube[2] = f[(j+1)*(nx+1) + i+0];
-        f_cube[3] = f[(j+1)*(nx+1) + i+1];
-        result += cubes[j*(nx)+i].integrate_over_intersection(f_cube, num0, num1);
-      }
-  }
-  return result;
+  for (int i = 0; i < n_nodes; i++)
+    f_values[i] = interp.linear(f, nodes[i].x, nodes[i].y);
 }
 
-double cube2_refined_mls_t::integrate_in_dir(double *f, int dir)
+void cube2_refined_mls_t::sample_all(CF_2 &f, std::vector<double> &f_values)
 {
+  for (int i = 0; i < n_nodes; i++)
+    f_values[i] = f(nodes[i].x, nodes[i].y);
+}
+
+double cube2_refined_mls_t::perform(std::vector<double> &f, int type, int num0, int num1)
+{
+  std::vector<double> f_values(n_nodes,1);
+  sample_all(f, f_values);
+
   double result = 0;
   double f_cube[4];
-  switch (dir)
-  {
-  case 0:
-  {
-    int i = 0;
-    for (int j = 0; j < ny; j++)
-    {
-      f_cube[0] = f[(j+0)*(nx+1) + i+0];
-      f_cube[1] = f[(j+0)*(nx+1) + i+1];
-      f_cube[2] = f[(j+1)*(nx+1) + i+0];
-      f_cube[3] = f[(j+1)*(nx+1) + i+1];
-      result += cubes[j*(nx)+i].integrate_in_dir(f_cube, dir);
-    }
-    break;
-  }
-  case 1:
-  {
-    int i = nx-1;
-    for (int j = 0; j < ny; j++)
-    {
-      f_cube[0] = f[(j+0)*(nx+1) + i+0];
-      f_cube[1] = f[(j+0)*(nx+1) + i+1];
-      f_cube[2] = f[(j+1)*(nx+1) + i+0];
-      f_cube[3] = f[(j+1)*(nx+1) + i+1];
-      result += cubes[j*(nx)+i].integrate_in_dir(f_cube, dir);
-    }
-    break;
-  }
-  case 2:
-  {
-    int j = 0;
-    for (int i = 0; i < nx; i++)
-    {
-      f_cube[0] = f[(j+0)*(nx+1) + i+0];
-      f_cube[1] = f[(j+0)*(nx+1) + i+1];
-      f_cube[2] = f[(j+1)*(nx+1) + i+0];
-      f_cube[3] = f[(j+1)*(nx+1) + i+1];
-      result += cubes[j*(nx)+i].integrate_in_dir(f_cube, dir);
-    }
-    break;
-  }
-  case 3:
-  {
-    int j = ny-1;
-    for (int i = 0; i < nx; i++)
-    {
-      f_cube[0] = f[(j+0)*(nx+1) + i+0];
-      f_cube[1] = f[(j+0)*(nx+1) + i+1];
-      f_cube[2] = f[(j+1)*(nx+1) + i+0];
-      f_cube[3] = f[(j+1)*(nx+1) + i+1];
-      result += cubes[j*(nx)+i].integrate_in_dir(f_cube, dir);
-    }
-    break;
-  }
-  }
-  return result;
-}
 
-double cube2_refined_mls_t::measure_of_domain()
-{
-  double result = 0;
-
-  switch (loc)
+  for (int n = 0; n < n_leafs; n++)
   {
-  case INS: result = (x1-x0)*(y1-y0);     break;
-  case OUT: result = 0.0;                 break;
-  case FCE:
-    for (int j = 0; j < ny; j++)
-      for (int i = 0; i < nx; i++)
-        result += cubes[j*(nx)+i].measure_of_domain();
-    break;
+    // fetch function values at corners of a cube
+    for (int d = 0; d < N_CHILDREN; d++)
+      f_cube[d] = f_values[leaf_to_node[n*N_CHILDREN + d]];
+    switch (type) {
+    case 0: result += cubes_mls[n].integrate_over_domain            (f_cube); break;
+    case 1: result += cubes_mls[n].integrate_over_interface         (f_cube, num0); break;
+    case 2: result += cubes_mls[n].integrate_over_intersection      (f_cube, num0, num1); break;
+    case 3: result += cubes_mls[n].integrate_over_colored_interface (f_cube, num0, num1); break;
+    case 4: result += cubes_mls[n].integrate_in_non_cart_dir        (f_cube, num0); break;
+    }
   }
 
   return result;
 }
 
-double cube2_refined_mls_t::measure_of_interface(int num)
+double cube2_refined_mls_t::perform(CF_2 &f, int type, int num0, int num1)
 {
-  double result = 0;
+  std::vector<double> f_values(n_nodes,1);
+  sample_all(f, f_values);
 
-  if (loc == FCE)
-    for (int j = 0; j < ny; j++)
-      for (int i = 0; i < nx; i++)
-        result += cubes[j*(nx)+i].measure_of_interface(num);
+  double result = 0;
+  double f_cube[4];
+
+  for (int n = 0; n < n_leafs; n++)
+  {
+    // fetch function values at corners of a cube
+    for (int d = 0; d < N_CHILDREN; d++)
+      f_cube[d] = f_values[leaf_to_node[n*N_CHILDREN + d]];
+    switch (type) {
+    case 0: result += cubes_mls[n].integrate_over_domain            (f_cube); break;
+    case 1: result += cubes_mls[n].integrate_over_interface         (f_cube, num0); break;
+    case 2: result += cubes_mls[n].integrate_over_intersection      (f_cube, num0, num1); break;
+    case 3: result += cubes_mls[n].integrate_over_colored_interface (f_cube, num0, num1); break;
+    case 4: result += cubes_mls[n].integrate_in_non_cart_dir        (f_cube, num0); break;
+    }
+  }
 
   return result;
 }
 
-double cube2_refined_mls_t::measure_of_colored_interface(int num0, int num1)
+double cube2_refined_mls_t::perform(double f, int type, int num0, int num1)
 {
   double result = 0;
+  double f_cube[4] = {f,f,f,f};
 
-  if (loc == FCE)
-    for (int j = 0; j < ny; j++)
-      for (int i = 0; i < nx; i++)
-        result += cubes[j*(nx)+i].measure_of_colored_interface(num0, num1);
+  for (int n = 0; n < n_leafs; n++)
+  {
+    switch (type)
+    {
+    case 0: result += cubes_mls[n].integrate_over_domain            (f_cube); break;
+    case 1: result += cubes_mls[n].integrate_over_interface         (f_cube, num0); break;
+    case 2: result += cubes_mls[n].integrate_over_intersection      (f_cube, num0, num1); break;
+    case 3: result += cubes_mls[n].integrate_over_colored_interface (f_cube, num0, num1); break;
+    case 4: result += cubes_mls[n].integrate_in_non_cart_dir        (f_cube, num0); break;
+    }
+  }
 
   return result;
 }
 
-double cube2_refined_mls_t::measure_in_dir(int dir)
+double cube2_refined_mls_t::integrate_in_dir(std::vector<double> &f, int dir)
+{
+  std::vector<double> f_values(n_nodes,1);
+  sample_all(f, f_values);
+
+  double result = 0;
+  double f_cube[4];
+
+  for (int n = 0; n < n_leafs; n++)
+    if (cubes[get_cube[n]].wall[dir])
+    {
+      // fetch function values at corners of a cube
+      for (int d = 0; d < N_CHILDREN; d++)
+        f_cube[d] = f_values[leaf_to_node[n*N_CHILDREN + d]];
+      result += cubes_mls[n].integrate_in_dir(f_cube, dir);
+    }
+
+  return result;
+}
+
+double cube2_refined_mls_t::integrate_in_dir(CF_2 &f, int dir)
+{
+  std::vector<double> f_values(n_nodes,1);
+  sample_all(f, f_values);
+
+  double result = 0;
+  double f_cube[4];
+
+  for (int n = 0; n < n_leafs; n++)
+    if (cubes[get_cube[n]].wall[dir])
+    {
+      // fetch function values at corners of a cube
+      for (int d = 0; d < N_CHILDREN; d++)
+        f_cube[d] = f_values[leaf_to_node[n*N_CHILDREN + d]];
+      result += cubes_mls[n].integrate_in_dir(f_cube, dir);
+    }
+
+  return result;
+}
+
+double cube2_refined_mls_t::integrate_in_dir(double f, int dir)
 {
   double result = 0;
+  double f_cube[4] = {f,f,f,f};
 
-  switch (dir)
+  for (int n = 0; n < n_leafs; n++)
+    if (cubes[get_cube[n]].wall[dir])
+    {
+      result += cubes_mls[n].integrate_in_dir(f_cube, dir);
+    }
+
+  return result;
+}
+
+void cube2_refined_mls_t::split_edge(int n)
+{
+  // check if an edge has already been split
+  if (edges[n].is_split) return;
+
+  // mark that an edge is split
+  edges[n].is_split = true;
+
+  // fetch coordinates of nodes
+  double x_0 = nodes[edges[n].v0].x;  double y_0 = nodes[edges[n].v0].y;
+  double x_1 = nodes[edges[n].v1].x;  double y_1 = nodes[edges[n].v1].y;
+
+#ifdef CASL_THROWS
+  if (x_0 > x_1) throw std::invalid_argument("[CASL_ERROR]: ");
+  if (y_0 > y_1) throw std::invalid_argument("[CASL_ERROR]: ");
+#endif
+
+  // create the splitting node
+  nodes.push_back(node_t(0.5*(x_0+x_1), 0.5*(y_0+y_1)));
+  edges[n].v01 = nodes.size()-1;
+
+  // create child edges
+  edges.push_back(edge_t(edges[n].v0,  edges[n].v01)); edges[n].e0 = edges.size()-1;
+  edges.push_back(edge_t(edges[n].v01, edges[n].v1 )); edges[n].e1 = edges.size()-1;
+}
+
+void cube2_refined_mls_t::split_cube(int n)
+{
+  // check if a cube has already been split
+  if (cubes[n].is_split) return;
+
+  // mark that a cube is split
+  cubes[n].is_split = true;
+
+  // split edges
+  split_edge(cubes[n].e_m0);
+  split_edge(cubes[n].e_p0);
+  split_edge(cubes[n].e_0m);
+  split_edge(cubes[n].e_0p);
+
+  // fetch child elements of edges
+//  int v_mm = edges[cubes[n].e_0m].v0;
+//  int v_pm = edges[cubes[n].e_0m].v1;
+//  int v_mp = edges[cubes[n].e_0p].v0;
+//  int v_pp = edges[cubes[n].e_0p].v1;
+
+  int v_m0 = edges[cubes[n].e_m0].v01;
+  int v_p0 = edges[cubes[n].e_p0].v01;
+  int v_0m = edges[cubes[n].e_0m].v01;
+  int v_0p = edges[cubes[n].e_0p].v01;
+
+  int e_m0_0m = edges[cubes[n].e_m0].e0;
+  int e_m0_0p = edges[cubes[n].e_m0].e1;
+
+  int e_p0_0m = edges[cubes[n].e_p0].e0;
+  int e_p0_0p = edges[cubes[n].e_p0].e1;
+
+  int e_0m_m0 = edges[cubes[n].e_0m].e0;
+  int e_0m_p0 = edges[cubes[n].e_0m].e1;
+
+  int e_0p_m0 = edges[cubes[n].e_0p].e0;
+  int e_0p_p0 = edges[cubes[n].e_0p].e1;
+
+  node_t *n_m0 = &nodes[v_m0];
+  node_t *n_p0 = &nodes[v_p0];
+  node_t *n_0m = &nodes[v_0m];
+  node_t *n_0p = &nodes[v_0p];
+
+  edge_t *E_m0 = &edges[cubes[n].e_m0];
+  edge_t *E_p0 = &edges[cubes[n].e_p0];
+  edge_t *E_0m = &edges[cubes[n].e_0m];
+  edge_t *E_0p = &edges[cubes[n].e_0p];
+
+  // create central node
+  nodes.push_back(node_t(nodes[v_0p].x, nodes[v_p0].y)); int v_00 = nodes.size()-1;
+
+  // create internal child edges
+  edges.push_back(edge_t(v_m0,v_00)); int e_00_m0 = edges.size()-1;
+  edges.push_back(edge_t(v_00,v_p0)); int e_00_p0 = edges.size()-1;
+  edges.push_back(edge_t(v_0m,v_00)); int e_00_0m = edges.size()-1;
+  edges.push_back(edge_t(v_00,v_0p)); int e_00_0p = edges.size()-1;
+
+  bool wall[4] = {cubes[n].wall[0], cubes[n].wall[1], cubes[n].wall[2], cubes[n].wall[3]};
+
+  // create new cubes
+  cubes.push_back(cube_t(e_m0_0m, e_00_0m, e_0m_m0, e_00_m0)); cubes.back().wall[0] = wall[0]; cubes.back().wall[2] = wall[2];
+  cubes.push_back(cube_t(e_00_0m, e_p0_0m, e_0m_p0, e_00_p0)); cubes.back().wall[1] = wall[1]; cubes.back().wall[2] = wall[2];
+  cubes.push_back(cube_t(e_m0_0p, e_00_0p, e_00_m0, e_0p_m0)); cubes.back().wall[0] = wall[0]; cubes.back().wall[3] = wall[3];
+  cubes.push_back(cube_t(e_00_0p, e_p0_0p, e_00_p0, e_0p_p0)); cubes.back().wall[1] = wall[1]; cubes.back().wall[3] = wall[3];
+}
+
+bool cube2_refined_mls_t::need_split(int n)
+{
+  int v[N_CHILDREN];
+  bool all_negative, all_positive;
+
+  v[0] = edges[cubes[n].e_m0].v0;
+  v[1] = edges[cubes[n].e_p0].v0;
+  v[2] = edges[cubes[n].e_m0].v1;
+  v[3] = edges[cubes[n].e_p0].v1;
+
+  bool result = false;
+
+  for (int i = 0; i < action->size(); i++)
   {
-  case 0:
-  {
-    int i = 0;
-    for (int j = 0; j < ny; j++)
-      result += cubes[j*(nx)+i].measure_in_dir(dir);
-    break;
-  }
-  case 1:
-  {
-    int i = nx-1;
-    for (int j = 0; j < ny; j++)
-      result += cubes[j*(nx)+i].measure_in_dir(dir);
-     break;
-  }
-  case 2:
-  {
-    int j = 0;
-    for (int i = 0; i < nx; i++)
-      result += cubes[j*(nx)+i].measure_in_dir(dir);
-    break;
-  }
-  case 3:
-  {
-    int j = ny-1;
-    for (int i = 0; i < nx; i++)
-      result += cubes[j*(nx)+i].measure_in_dir(dir);
-    break;
-  }
+    all_negative = true;
+    all_positive = true;
+
+    for (int j = 0; j < N_CHILDREN; j++)
+    {
+      all_negative = (all_negative && (phi[i][v[j]] < 0.0));
+      all_positive = (all_positive && (phi[i][v[j]] > 0.0));
+    }
+
+    if (all_positive)
+    {
+      if (action->at(i) == INTERSECTION)
+      {
+        result = false;
+      }
+    }
+    else if (all_negative)
+    {
+      if (action->at(i) == ADDITION)
+      {
+        result = false;
+      }
+    }
+    else if (action->at(i) == INTERSECTION || action->at(i) == ADDITION)
+    {
+      result = true;
+    }
   }
 
   return result;

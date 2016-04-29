@@ -45,7 +45,6 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_poisson_nodes_mls.h>
 #include <src/my_p4est_interpolation_nodes.h>
-#include <src/my_p4est_integration_mls.h>
 #include <src/simplex2_mls_vtk.h>
 #endif
 
@@ -92,13 +91,15 @@ BoundaryConditionType bc_wtype = DIRICHLET;
 
 double scale = 1.0;
 
-double r0 = 0.526713;
-double r1 = -0.6145134;
-double r2 = -0.4315416;
+double r0 = .5;
+double r1 = -0.5145134;
+double r2 = -0.5315416;
 double r3 = -0.414;
 double d = 0.3410;
 
-double theta = 0.0826;
+double b = 3.0;
+
+double theta = 1.7826;
 #ifdef P4_TO_P8
 double phy = 0.523;
 #endif
@@ -122,7 +123,7 @@ double xc_3 = -d*cosT*cosP; double yc_3 = -d*sinT*cosP; double zc_3 = -d*sinP;
 #else
 double xc_0 = -d*sinT; double yc_0 =  d*cosT;
 double xc_1 =  d*sinT; double yc_1 = -d*cosT;
-double xc_2 =  2.*d*cosT; double yc_2 =  2.*d*sinT;
+double xc_2 =  1.*d*cosT; double yc_2 =  1.*d*sinT;
 double xc_3 = -d*cosT; double yc_3 = -d*sinT;
 #endif
 
@@ -141,64 +142,11 @@ class LEVEL_SET_0: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return -(r0 - sqrt(SQR(x-xc_0) + SQR(y-yc_0)));
+    double r = sqrt(SQR(x - 0.) + SQR(y - 0.));
+    if(r<1.e-3) r = 1.e-3;
+    return (r - r0 - (pow(y,5)+5.0*pow(x,4)*y-10.0*pow(x,2)*pow(y,3))/pow(r,5)/b);
   }
 } level_set_0;
-
-class LEVEL_SET_0_X: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_0) + SQR(y-yc_0));
-    if (r < EPS)  return 0;
-    else          return 0.*(x-xc_0)/r;
-  }
-} level_set_0_x;
-
-class LEVEL_SET_0_Y: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_0) + SQR(y-yc_0));
-    if (r < EPS)  return 0;
-    else          return 0.*(y-yc_0)/r;
-  }
-} level_set_0_y;
-
-class LEVEL_SET_0_XX: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_0) + SQR(y-yc_0));
-    if (r < EPS)  return 0;
-    else          return 0.*(y-yc_0)*(y-yc_0)/r/r/r;
-  }
-} level_set_0_xx;
-
-class LEVEL_SET_0_XY: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_0) + SQR(y-yc_0));
-    if (r < EPS)  return 0;
-    else          return -0.*(x-xc_0)*(y-yc_0)/r/r/r;
-  }
-} level_set_0_xy;
-
-class LEVEL_SET_0_YY: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_0) + SQR(y-yc_0));
-    if (r < EPS)  return 0;
-    else          return 0.*(x-xc_0)*(x-xc_0)/r/r/r;
-  }
-} level_set_0_yy;
 #endif
 
 #ifdef P4_TO_P8
@@ -219,61 +167,6 @@ public:
     return -(r1 - sqrt(SQR(x-xc_1) + SQR(y-yc_1)));
   }
 } level_set_1;
-
-class LEVEL_SET_1_X: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_1) + SQR(y-yc_1));
-    if (r < EPS)  return 0;
-    else          return 1.*(x-xc_1)/r;
-  }
-} level_set_1_x;
-
-class LEVEL_SET_1_Y: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_1) + SQR(y-yc_1));
-    if (r < EPS)  return 0;
-    else          return 1.*(y-yc_1)/r;
-  }
-} level_set_1_y;
-
-class LEVEL_SET_1_XX: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_1) + SQR(y-yc_1));
-    if (r < EPS)  return 0;
-    else          return 1.*(y-yc_1)*(y-yc_1)/r/r/r;
-  }
-} level_set_1_xx;
-
-class LEVEL_SET_1_XY: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_1) + SQR(y-yc_1));
-    if (r < EPS)  return 0;
-    else          return -1.*(x-xc_1)*(y-yc_1)/r/r/r;
-  }
-} level_set_1_xy;
-
-class LEVEL_SET_1_YY: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_1) + SQR(y-yc_1));
-    if (r < EPS)  return 0;
-    else          return 1.*(x-xc_1)*(x-xc_1)/r/r/r;
-  }
-} level_set_1_yy;
 #endif
 
 #ifdef P4_TO_P8
@@ -294,61 +187,6 @@ public:
     return (r2 - sqrt(SQR(x-xc_2) + SQR(y-yc_2)));
   }
 } level_set_2;
-
-class LEVEL_SET_2_X: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_2) + SQR(y-yc_2));
-    if (r < EPS)  return 0;
-    else          return -1.*(x-xc_2)/r;
-  }
-} level_set_2_x;
-
-class LEVEL_SET_2_Y: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_2) + SQR(y-yc_2));
-    if (r < EPS)  return 0;
-    else          return -1.*(y-yc_2)/r;
-  }
-} level_set_2_y;
-
-class LEVEL_SET_2_XX: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_2) + SQR(y-yc_2));
-    if (r < EPS)  return 0;
-    else          return -1.*(y-yc_2)*(y-yc_2)/r/r/r;
-  }
-} level_set_2_xx;
-
-class LEVEL_SET_2_XY: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_2) + SQR(y-yc_2));
-    if (r < EPS)  return 0;
-    else          return 1.*(x-xc_2)*(y-yc_2)/r/r/r;
-  }
-} level_set_2_xy;
-
-class LEVEL_SET_2_YY: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double r = sqrt(SQR(x-xc_2) + SQR(y-yc_2));
-    if (r < EPS)  return 0;
-    else          return -1.*(x-xc_2)*(x-xc_2)/r/r/r;
-  }
-} level_set_2_yy;
 #endif
 
 #ifdef P4_TO_P8
@@ -448,7 +286,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-    case 0: return scale*(sin(x)+sin(y));
+    case 0: return exp(x*y);
     case 1: return scale*(sin(x)*cos(y));
     }
   }
@@ -478,28 +316,21 @@ double uz(double x, double y, double z)
   }
 }
 #else
-class UX: public CF_2
+double ux(double x, double y)
 {
-public:
-  double operator()(double x, double y) const
-  {
-    switch (n_test){
-    case 0: return scale*cos(x);
-    case 1: return scale*cos(x)*cos(y);
-    }
+
+  switch (n_test){
+  case 0: return y*exp(x*y);
+  case 1: return scale*cos(x)*cos(y);
   }
-} ux;
-class UY: public CF_2
+}
+double uy(double x, double y)
 {
-public:
-  double operator()(double x, double y) const
-  {
-    switch (n_test){
-    case 0: return scale*cos(y);
-    case 1: return -scale*sin(x)*sin(y);
-    }
+  switch (n_test){
+  case 0: return x*exp(x*y);
+  case 1: return -scale*sin(x)*sin(y);
   }
-} uy;
+}
 #endif
 
 
@@ -585,7 +416,7 @@ class BCINTERFACEVAL_0 : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return  ((x-xc_0)*ux(x,y)+(y-yc_0)*uy(x,y))/sqrt(SQR(x-xc_0) + SQR(y-yc_0)) + kappa_0(x,y)*u_exact(x,y);
+    return  -((x-xc_0)*ux(x,y)+(y-yc_0)*uy(x,y))/sqrt(SQR(x-xc_0) + SQR(y-yc_0)) + kappa_0(x,y)*u_exact(x,y);
   }
 } bc_interface_val_0;
 #endif
@@ -672,6 +503,7 @@ public:
 } bc_wall_val;
 #endif
 
+
 void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_brick_t *brick,
               Vec phi, Vec sol, Vec err_nodes, Vec err_ex,
               int compt)
@@ -748,12 +580,6 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
 }
 
-
-
-double test_func(double x, double y)
-{
-  return level_set_0(x,y);
-}
 
 
 int main (int argc, char* argv[])
@@ -837,7 +663,7 @@ int main (int argc, char* argv[])
   double err_ex_n;
   double err_ex_nm1;
 
-  vector<double> level, h, error, error_in, error_all, error_tr, error_l1, error_ux, error_uy;
+  vector<double> level, h, error, error_in, error_all, error_tr;
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
@@ -848,7 +674,7 @@ int main (int argc, char* argv[])
 
 //    splitting_criteria_cf_t data(0, lmax+iter, &level_set_ref, 1.2);
 //    splitting_criteria_cf_t data(lmin, lmax+iter, &level_set_tot, 1.4);
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot, 1.4);
+    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot, 1.9);
     p4est->user_pointer = (void*)(&data);
 
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -917,6 +743,7 @@ int main (int argc, char* argv[])
     std::vector<BoundaryConditions3D> bc;
 #else
     std::vector<BoundaryConditions2D> bc;
+#endif
 
 #ifdef P4_TO_P8
     bc.push_back(BoundaryConditions3D());
@@ -927,7 +754,6 @@ int main (int argc, char* argv[])
     bc.back().setWallValues(bc_wall_val);
     bc.back().setInterfaceType(bc_itype_0);
     bc.back().setInterfaceValue(bc_interface_val_0);
-#endif
 
 #ifdef P4_TO_P8
     bc.push_back(BoundaryConditions3D());
@@ -1040,24 +866,6 @@ int main (int argc, char* argv[])
     phi_cf.push_back(&level_set_1);
     phi_cf.push_back(&level_set_2);
 
-#ifdef P4_TO_P8
-    vector<CF_3*> phixx_cf, phixy_cf, phiyy_cf;
-#else
-    vector<CF_2*> phixx_cf, phixy_cf, phiyy_cf;
-#endif
-    phixx_cf.push_back(&level_set_0_xx); phixy_cf.push_back(&level_set_0_xy); phiyy_cf.push_back(&level_set_0_yy);
-    phixx_cf.push_back(&level_set_1_xx); phixy_cf.push_back(&level_set_1_xy); phiyy_cf.push_back(&level_set_1_yy);
-    phixx_cf.push_back(&level_set_2_xx); phixy_cf.push_back(&level_set_2_xy); phiyy_cf.push_back(&level_set_2_yy);
-
-#ifdef P4_TO_P8
-    vector<CF_3*> phix_cf, phiy_cf;
-#else
-    vector<CF_2*> phix_cf, phiy_cf;
-#endif
-    phix_cf.push_back(&level_set_0_x); phiy_cf.push_back(&level_set_0_y);
-    phix_cf.push_back(&level_set_1_x); phiy_cf.push_back(&level_set_1_y);
-    phix_cf.push_back(&level_set_2_x); phiy_cf.push_back(&level_set_2_y);
-
     my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
     solver.set_action(action);
     solver.set_color(color);
@@ -1069,9 +877,6 @@ int main (int argc, char* argv[])
     solver.set_rhs(rhs);
     solver.set_force(force);
     solver.set_phi_cf(phi_cf);
-    solver.set_phid_cf(phix_cf, phiy_cf);
-    solver.set_phidd_cf(phixx_cf, phixy_cf, phiyy_cf);
-    solver.set_cube_refinement(1);
 
     Vec sol;
     ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);
@@ -1235,29 +1040,8 @@ int main (int argc, char* argv[])
 
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-    my_p4est_integration_mls_t integrator;
-    integrator.set_p4est(p4est, nodes);
-    integrator.set_phi(phi, action, color);
-    integrator.initialize();
-//    solver.calculate_trunc_error(u_exact);
-
-    error_l1.push_back(integrator.integrate_over_domain(err_nodes)/integrator.measure_of_domain());
-
-    Vec err_ux; ierr = VecCreateGhostNodes(p4est, nodes, &err_ux); CHKERRXX(ierr);
-    Vec err_uy; ierr = VecCreateGhostNodes(p4est, nodes, &err_uy); CHKERRXX(ierr);
-    Vec err_eq; ierr = VecCreateGhostNodes(p4est, nodes, &err_eq); CHKERRXX(ierr);
-    solver.calculate_gradient_error(sol, err_ux, err_uy, ux, uy);
-    solver.calculate_equation_error(sol, err_eq);
-
-    VecMax(err_ux, NULL, &err_ex_n);
-    error_ux.push_back(err_ex_n);
-    VecMax(err_uy, NULL, &err_ex_n);
-    error_uy.push_back(err_ex_n);
-//    error_tr.push_back(err_ex_n);
-
     err_ex_n = solver.calculate_trunc_error(u_exact);
     error_tr.push_back(err_ex_n);
-
     ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation : %g, order = %g\n", err_ex_n, log(err_ex_nm1/err_ex_n)/log(2)); CHKERRXX(ierr);
 
 
@@ -1273,10 +1057,6 @@ int main (int argc, char* argv[])
     ierr = VecDestroy(sol); CHKERRXX(ierr);
 
     ierr = VecDestroy(err_nodes); CHKERRXX(ierr);
-    ierr = VecDestroy(err_ex); CHKERRXX(ierr);
-    ierr = VecDestroy(err_ux); CHKERRXX(ierr);
-    ierr = VecDestroy(err_uy); CHKERRXX(ierr);
-    ierr = VecDestroy(err_eq); CHKERRXX(ierr);
 //    ierr = VecDestroy(err_ex); CHKERRXX(ierr);
 
     p4est_nodes_destroy(nodes);
@@ -1294,13 +1074,9 @@ int main (int argc, char* argv[])
   print_Table("error", 0.0, level, h, "error (all)", error_all, 1, &graph);
   print_Table("error", 0.0, level, h, "error (inside)", error, 2, &graph);
   print_Table("error", 0.0, level, h, "error (interior)", error_in, 3, &graph);
-  print_Table("error", 0.0, level, h, "error (truncation)", error_tr, 4, &graph);
-  print_Table("error", 0.0, level, h, "error (L1)", error_l1, 5, &graph);
 
-  Gnuplot graph_grad;
-  print_Table("error", 0.0, level, h, "error (ux)", error_ux, 1, &graph_grad);
-  print_Table("error", 0.0, level, h, "error (uy)", error_uy, 2, &graph_grad);
-
+  Gnuplot graph_tr;
+  print_Table("error", 0.0, level, h, "error (truncation)", error_tr, 1, &graph_tr);
   cin.get();
   }
 

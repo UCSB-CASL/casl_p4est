@@ -116,7 +116,11 @@ public:
   std::vector<edg2_t> edgs;
   std::vector<tri2_t> tris;
 
-  void do_action(int cn, action_t action, double p0, double p1, double p2);
+  std::vector<double> *phi;
+  std::vector<double> *phi_x;
+  std::vector<double> *phi_y;
+
+  void do_action(std::vector<double> *phi_, std::vector<double> *phi_x_, std::vector<double> *phi_y_, int cn, action_t action);
   void do_action_vtx(int n_vtx, int cn, action_t action);
   void do_action_edg(int n_edg, int cn, action_t action);
   void do_action_tri(int n_tri, int cn, action_t action);
@@ -126,19 +130,19 @@ public:
   void interpolate_all(double &p0, double &p1, double &p2);
   void interpolate_from_neighbors(int v);
 
-  double integrate_over_domain(double f0, double f1, double f2);
-  double integrate_over_interface(int num, double f0, double f1, double f2);
-  double integrate_over_colored_interface(int num0, int num1, double f0, double f1, double f2);
-  double integrate_over_intersection(int num0, int num1, double f0, double f1, double f2);
-  double integrate_in_dir(int dir, double f0, double f1, double f2);
-
-  double measure_of_domain();
-  double measure_of_interface(int num);
-  double measure_of_colored_interface(int num0, int num1);
-  double measure_in_dir(int dir);
+  double integrate_over_domain            (double f0, double f1, double f2);
+  double integrate_over_interface         (double f0, double f1, double f2, int num0);
+  double integrate_over_colored_interface (double f0, double f1, double f2, int num0, int num1);
+  double integrate_over_intersection      (double f0, double f1, double f2, int num0, int num1);
+  double integrate_in_dir                 (double f0, double f1, double f2, int dir);
+  double integrate_in_non_cart_dir        (double f0, double f1, double f2, int dir);
 
   double length (int vtx0, int vtx1);
   double area   (int vtx0, int vtx1, int vtx2);
+
+  bool use_linear;
+  double find_intersection_linear   (int v0, int v1);
+  double find_intersection_quadratic(int v0, int v1);
 
   template<typename X>
   void swap(X &x, X &y)

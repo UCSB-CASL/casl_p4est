@@ -37,7 +37,10 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
+#include <src/my_p4est_integration_quad_mls.h>
+#include <src/my_p4est_integration_refined_quad_mls.h>
 #include <src/simplex2_mls_vtk.h>
+#include <src/simplex2_quad_mls_vtk.h>
 #endif
 
 #include <tools/plotting.h>
@@ -51,12 +54,12 @@
 using namespace std;
 
 /* discretization */
-int lmin = 3;
-int lmax = 3;
+int lmin = 0;
+int lmax = 5;
 #ifdef P4_TO_P8
 int nb_splits = 4;
 #else
-int nb_splits = 9;
+int nb_splits = 7;
 #endif
 
 int nx = 1;
@@ -80,6 +83,7 @@ double zmax =  1;
 
 double r0 = 0.5;
 double d = 0.35;
+double H = 0.212431;
 
 double theta = 0.579;
 #ifdef P4_TO_P8
@@ -119,6 +123,39 @@ public:
     return -(r0 - sqrt(SQR(x-xc_0) + SQR(y-yc_0)));
   }
 } ls_circle_0;
+
+class LS_CIRCLE_0_XX: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    double r = sqrt(SQR(x-xc_0) + SQR(y-yc_0));
+    if (r < EPS)  return 0;
+    else          return 1.*(y-yc_0)*(y-yc_0)/r/r/r;
+  }
+} ls_circle_0_xx;
+
+class LS_CIRCLE_0_XY: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    double r = sqrt(SQR(x-xc_0) + SQR(y-yc_0));
+    if (r < EPS)  return 0;
+    else          return -1.*(x-xc_0)*(y-yc_0)/r/r/r;
+  }
+} ls_circle_0_xy;
+
+class LS_CIRCLE_0_YY: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    double r = sqrt(SQR(x-xc_0) + SQR(y-yc_0));
+    if (r < EPS)  return 0;
+    else          return 1.*(x-xc_0)*(x-xc_0)/r/r/r;
+  }
+} ls_circle_0_yy;
 #endif
 
 
@@ -137,9 +174,36 @@ class LS_CIRCLE_1: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return -(r0 - sqrt(SQR(x-xc_1) + SQR(y-yc_1)));
+    return xc_0-x-H;
   }
 } ls_circle_1;
+
+class LS_CIRCLE_1_XX: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    return 0;
+  }
+} ls_circle_1_xx;
+
+class LS_CIRCLE_1_XY: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    return 0;
+  }
+} ls_circle_1_xy;
+
+class LS_CIRCLE_1_YY: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    return 0;
+  }
+} ls_circle_1_yy;
 #endif
 
 #ifdef P4_TO_P8
@@ -159,8 +223,8 @@ class LS_REF: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    double a = min(ls_circle_0(x,y), ls_circle_1(x,y));
-    if (a < 0) a = 0;
+    double a = max(ls_circle_0(x,y), ls_circle_1(x,y));
+//    if (a < 0) a = 0;
     return a;
   }
 } ls_ref;
@@ -245,21 +309,21 @@ public:
     IXc1.push_back(1);
 #else
     // Auxiliary values
-    alpha = acos(d/r0);
+    alpha = acos(H/r0);
     double r_bar_A = 2.0*r0*sin(alpha)/alpha/3.0;
     double r_bar_B = r0*sin(alpha)/alpha;
 
     /* the whole domain */
-    ID = 2.0*PI*r0*r0 - 2.0*(alpha*r0*r0-d*sqrt(r0*r0-d*d));
+    ID = H*sqrt(r0*r0-H*H)+(PI-alpha)*r0*r0;
     IDr2 = 2.0*(0.5*PI*r0*r0*r0*r0 + PI*r0*r0*d*d) -
            (alpha*r0*r0*r0*r0 +
             2.0*alpha*r0*r0*d*(d-2.0*r_bar_A) -
             d*r0*r0*sqrt(r0*r0-d*d)/3.0);
     /* the whole boundary */
-    IB = 2.0*2.0*(PI-alpha)*r0;
+    IB = 2.0*(PI-alpha)*r0 + 2.0*sqrt(r0*r0-H*H);
     IBr2 = 2.0*(2.0*PI*r0*(r0*r0+d*d) - 2.0*alpha*r0*(r0*r0+d*d-2.0*r_bar_B*d));
     /* sub-boundaries */
-    ISB.push_back(2.0*(PI-alpha)*r0);
+    ISB.push_back(2.0*sqrt(r0*r0-H*H));
     ISBr2.push_back(2.0*PI*r0*(r0*r0+d*d) - 2.0*alpha*r0*(r0*r0+d*d-2.0*r_bar_B*d));
     ISB.push_back(2.0*(PI-alpha)*r0);
     ISBr2.push_back(2.0*PI*r0*(r0*r0+d*d) - 2.0*alpha*r0*(r0*r0+d*d-2.0*r_bar_B*d));
@@ -297,14 +361,20 @@ public:
 #ifdef P4_TO_P8
   vector<CF_3 *> LSF;
 #else
-  vector<CF_2 *> LSF;
+  vector<CF_2 *> LSF, LSFxx, LSFxy, LSFyy;
 #endif
   vector<action_t> action;
   vector<int> color;
   Geometry()
   {
+    LSF.push_back(&ls_circle_1); action.push_back(INTERSECTION); color.push_back(1);
+    LSFxx.push_back(&ls_circle_1_xx);
+    LSFxy.push_back(&ls_circle_1_xy);
+    LSFyy.push_back(&ls_circle_1_yy);
     LSF.push_back(&ls_circle_0); action.push_back(INTERSECTION); color.push_back(0);
-    LSF.push_back(&ls_circle_1); action.push_back(ADDITION); color.push_back(1);
+    LSFxx.push_back(&ls_circle_0_xx);
+    LSFxy.push_back(&ls_circle_0_xy);
+    LSFyy.push_back(&ls_circle_0_yy);
   }
 } geometry;
 
@@ -374,38 +444,62 @@ int main (int argc, char* argv[])
 
     /* level-set functions */
     vector<Vec> phi_vec;
+    vector<Vec> phixx_vec;
+    vector<Vec> phixy_vec;
+    vector<Vec> phiyy_vec;
 
     for (int i = 0; i < geometry.LSF.size(); i++)
     {
       phi_vec.push_back(Vec());
       ierr = VecCreateGhostNodes(p4est, nodes, &phi_vec[i]); CHKERRXX(ierr);
       sample_cf_on_nodes(p4est, nodes, *geometry.LSF[i], phi_vec[i]);
+
+      phixx_vec.push_back(Vec());
+      phixy_vec.push_back(Vec());
+      phiyy_vec.push_back(Vec());
+
+      ierr = VecCreateGhostNodes(p4est, nodes, &phixx_vec.back()); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &phixy_vec.back()); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &phiyy_vec.back()); CHKERRXX(ierr);
+
+      sample_cf_on_nodes(p4est, nodes, *geometry.LSFxx[i], phixx_vec.back());
+      sample_cf_on_nodes(p4est, nodes, *geometry.LSFxy[i], phixy_vec.back());
+      sample_cf_on_nodes(p4est, nodes, *geometry.LSFyy[i], phiyy_vec.back());
     }
 
-    my_p4est_integration_mls_t integration;
+//    my_p4est_integration_mls_t integration;
+//    integration.set_p4est(p4est, nodes);
+//    integration.set_phi(phi_vec, geometry.action, geometry.color);
+
+//    my_p4est_integration_quad_mls_t integration;
+//    integration.set_p4est(p4est, nodes);
+//    integration.set_phi(phi_vec, phixx_vec, phixy_vec, phiyy_vec, geometry.action, geometry.color);
+
+    my_p4est_integration_refined_quad_mls_t integration;
     integration.set_p4est(p4est, nodes);
-    integration.set_phi(phi_vec, geometry.action, geometry.color);
+    integration.set_refinement(1,1);
+    integration.set_phi(geometry.LSF, geometry.LSFxx, geometry.LSFxy, geometry.LSFyy, geometry.action, geometry.color);
 
-    integration.initialize();
+//    integration.initialize();
 
-#ifdef P4_TO_P8
-    vector<simplex3_mls_t *> simplices;
-    int n_sps = NTETS;
-#else
-    vector<simplex2_mls_t *> simplices;
-    int n_sps = 2;
-#endif
+//#ifdef P4_TO_P8
+//    vector<simplex3_mls_t *> simplices;
+//    int n_sps = NTETS;
+//#else
+//    vector<simplex2_mls_t *> simplices;
+//    int n_sps = 2;
+//#endif
 
-    for (int k = 0; k < integration.cubes.size(); k++)
-      if (integration.cubes[k].loc == FCE)
-        for (int l = 0; l < n_sps; l++)
-          simplices.push_back(&integration.cubes[k].simplex[l]);
+//    for (int k = 0; k < integration.cubes.size(); k++)
+//      if (integration.cubes[k].loc == FCE)
+//        for (int l = 0; l < n_sps; l++)
+//          simplices.push_back(&integration.cubes[k].simplex[l]);
 
-#ifdef P4_TO_P8
-    simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
-#else
-    simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
-#endif
+//#ifdef P4_TO_P8
+//    simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+//#else
+//    simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+//#endif
 
     /* Calculate and store results */
     if (exact.provided || iter < nb_splits-1)
@@ -414,39 +508,41 @@ int main (int argc, char* argv[])
       h.push_back((xmax-xmin)/pow(2.0,(double)(lmax+iter)));
 
       res_mlt.ID.push_back(integration.measure_of_domain    ());
-      res_mlt.IB.push_back(integration.measure_of_interface (-1));
+//      res_mlt.IB.push_back(integration.measure_of_interface (-1));
+      res_mlt.IB.push_back(0);
 
-      res_mlt.IDr2.push_back(integration.integrate_over_domain    (f_r2));
-      res_mlt.IBr2.push_back(integration.integrate_over_interface (f_r2, -1));
+//      res_mlt.IDr2.push_back(integration.integrate_over_domain    (f_r2));
+//      res_mlt.IBr2.push_back(integration.integrate_over_interface (f_r2, -1));
 
       for (int i = 0; i < exact.n_subs; i++)
       {
         res_mlt.ISB[i].push_back(integration.measure_of_interface(geometry.color[i]));
-        res_mlt.ISBr2[i].push_back(integration.integrate_over_interface(f_r2, geometry.color[i]));
+        res_mlt.IB.back() += res_mlt.ISB[i].back();
+//        res_mlt.ISBr2[i].push_back(integration.integrate_over_interface(f_r2, geometry.color[i]));
       }
 
-      for (int i = 0; i < exact.n_Xs; i++)
-      {
-        res_mlt.IXr2[i].push_back(integration.integrate_over_intersection(f_r2, exact.IXc0[i], exact.IXc1[i]));
-      }
+//      for (int i = 0; i < exact.n_Xs; i++)
+//      {
+//        res_mlt.IXr2[i].push_back(integration.integrate_over_intersection(f_r2, exact.IXc0[i], exact.IXc1[i]));
+//      }
     }
     else if (iter == nb_splits-1)
     {
       exact.ID    = (integration.measure_of_domain        ());
       exact.IB    = (integration.measure_of_interface     (-1));
-      exact.IDr2  = (integration.integrate_over_domain    (f_r2));
-      exact.IBr2  = (integration.integrate_over_interface (f_r2, -1));
+//      exact.IDr2  = (integration.integrate_over_domain    (f_r2));
+//      exact.IBr2  = (integration.integrate_over_interface (f_r2, -1));
 
       for (int i = 0; i < exact.n_subs; i++)
       {
         exact.ISB.push_back(integration.measure_of_interface(geometry.color[i]));
-        exact.ISBr2.push_back(integration.integrate_over_interface(f_r2, geometry.color[i]));
+//        exact.ISBr2.push_back(integration.integrate_over_interface(f_r2, geometry.color[i]));
       }
 
-      for (int i = 0; i < exact.n_Xs; i++)
-      {
-        exact.IXr2.push_back(integration.integrate_over_intersection(f_r2, exact.IXc0[i], exact.IXc1[i]));
-      }
+//      for (int i = 0; i < exact.n_Xs; i++)
+//      {
+//        exact.IXr2.push_back(integration.integrate_over_intersection(f_r2, exact.IXc0[i], exact.IXc1[i]));
+//      }
     }
 
     ierr = VecDestroy(f_r2); CHKERRXX(ierr);
@@ -459,57 +555,48 @@ int main (int argc, char* argv[])
     p4est_destroy      (p4est);
   }
 
-  std::vector<double> dom_3rd, ifc_3rd, level_3rd, h_3rd, IDr2_3rd, IBr2_3rd;
+//  std::vector<double> dom_3rd, ifc_3rd, level_3rd, h_3rd, IDr2_3rd, IBr2_3rd;
 
-//  dom_3rd.push_back(res_mlt.ID[0]);
-//  ifc_3rd.push_back(res_mlt.IB[0]);
-//  IDr2_3rd.push_back(res_mlt.IDr2[0]);
-//  IBr2_3rd.push_back(res_mlt.IBr2[0]);
-  for (int i = 1; i < res_mlt.IB.size(); i++)
-  {
-    dom_3rd.push_back((4.0*res_mlt.ID[i]-res_mlt.ID[i-1])/3.0);
-    ifc_3rd.push_back((4.0*res_mlt.IB[i]-res_mlt.IB[i-1])/3.0);
-    IDr2_3rd.push_back((4.0*res_mlt.IDr2[i]-res_mlt.IDr2[i-1])/3.0);
-    IBr2_3rd.push_back((4.0*res_mlt.IBr2[i]-res_mlt.IBr2[i-1])/3.0);
-//    double b = pow(2.0,i+1);
-//    dom_3rd.push_back((b*res_mlt.ID[i]-dom_3rd[i-1])/(b-1.));
-//    ifc_3rd.push_back((b*res_mlt.IB[i]-ifc_3rd[i-1])/(b-1.));
-//    IDr2_3rd.push_back((b*res_mlt.IDr2[i]-IDr2_3rd[i-1])/(b-1.));
-//    IBr2_3rd.push_back((b*res_mlt.IBr2[i]-IBr2_3rd[i-1])/(b-1.));
-    h_3rd.push_back(h[i]);
-    level_3rd.push_back(level[i]);
-  }
+//  for (int i = 1; i < res_mlt.IB.size(); i++)
+//  {
+//    dom_3rd.push_back((4.0*res_mlt.ID[i]-res_mlt.ID[i-1])/3.0);
+//    ifc_3rd.push_back((4.0*res_mlt.IB[i]-res_mlt.IB[i-1])/3.0);
+//    IDr2_3rd.push_back((4.0*res_mlt.IDr2[i]-res_mlt.IDr2[i-1])/3.0);
+//    IBr2_3rd.push_back((4.0*res_mlt.IBr2[i]-res_mlt.IBr2[i-1])/3.0);
+//    h_3rd.push_back(h[i]);
+//    level_3rd.push_back(level[i]);
+//  }
 
   Gnuplot plot_ID;
   print_Table("Domain", exact.ID, level, h, "MLT", res_mlt.ID, 1, &plot_ID);
-  print_Table("Domain", exact.ID, level_3rd, h_3rd, "MLT (diff)", dom_3rd, 2, &plot_ID);
+//  print_Table("Domain", exact.ID, level_3rd, h_3rd, "MLT (diff)", dom_3rd, 2, &plot_ID);
 
   Gnuplot plot_IB;
   print_Table("Interface", exact.IB, level, h, "MLT", res_mlt.IB, 1, &plot_IB);
-  print_Table("Interface", exact.IB, level_3rd, h_3rd, "MLT (diff)", ifc_3rd, 2, &plot_IB);
+//  print_Table("Interface", exact.IB, level_3rd, h_3rd, "MLT (diff)", ifc_3rd, 2, &plot_IB);
 
-  Gnuplot plot_IDr2;
-  print_Table("2nd moment of domain", exact.IDr2, level, h, "MLT", res_mlt.IDr2, 1, &plot_IDr2);
-  print_Table("2nd moment of domain", exact.IDr2, level_3rd, h_3rd, "MLT (diff)", IDr2_3rd, 2, &plot_IDr2);
+//  Gnuplot plot_IDr2;
+//  print_Table("2nd moment of domain", exact.IDr2, level, h, "MLT", res_mlt.IDr2, 1, &plot_IDr2);
+//  print_Table("2nd moment of domain", exact.IDr2, level_3rd, h_3rd, "MLT (diff)", IDr2_3rd, 2, &plot_IDr2);
 
-  Gnuplot plot_IBr2;
-  print_Table("2nd moment of interface", exact.IBr2, level, h, "MLT", res_mlt.IBr2, 1, &plot_IBr2);
-  print_Table("2nd moment of interface", exact.IBr2, level_3rd, h_3rd, "MLT (diff)", IBr2_3rd, 2, &plot_IBr2);
+//  Gnuplot plot_IBr2;
+//  print_Table("2nd moment of interface", exact.IBr2, level, h, "MLT", res_mlt.IBr2, 1, &plot_IBr2);
+//  print_Table("2nd moment of interface", exact.IBr2, level_3rd, h_3rd, "MLT (diff)", IBr2_3rd, 2, &plot_IBr2);
 
 //  Gnuplot graph;
 //  print_Table("3rd", exact.ID, level_3rd, h_3rd, "domain", dom_3rd, 1, &graph);
 //  print_Table("3rd", exact.IB, level_3rd, h_3rd, "inface", ifc_3rd, 2, &graph);
 
-//  vector<Gnuplot *> plot_ISB;
+  vector<Gnuplot *> plot_ISB;
 //  vector<Gnuplot *> plot_ISBr2;
-//  for (int i = 0; i < exact.n_subs; i++)
-//  {
-//    plot_ISB.push_back(new Gnuplot());
-//    print_Table("Interface #"+to_string(i), exact.ISB[i], level, h, "MLT", res_mlt.ISB[i], 2, plot_ISB[i]);
+  for (int i = 0; i < exact.n_subs; i++)
+  {
+    plot_ISB.push_back(new Gnuplot());
+    print_Table("Interface #"+to_string(i), exact.ISB[i], level, h, "MLT", res_mlt.ISB[i], 1, plot_ISB[i]);
 
 //    plot_ISBr2.push_back(new Gnuplot());
 //    print_Table("2nd moment of interface #"+to_string(i), exact.ISBr2[i], level, h, "MLT", res_mlt.ISBr2[i], 2, plot_ISBr2[i]);
-//  }
+  }
 
 //  vector<Gnuplot *> plot_IXr2;
 //  for (int i = 0; i < exact.n_Xs; i++)

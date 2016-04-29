@@ -10,6 +10,8 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_utils.h>
+#include <src/cube3_mls.h>
+#include <src/cube2_mls.h>
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
@@ -17,6 +19,8 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_utils.h>
+#include <src/cube3_mls.h>
+#include <src/cube2_mls.h>
 #endif
 
 #include <vector>
@@ -25,50 +29,6 @@
 class my_p4est_poisson_nodes_mls_t
 {
 //public:
-
-  struct quantity_t
-  {
-    double val;
-    double *vec_p;
-    Vec vec;
-#ifdef P4_TO_P8
-    CF_3 *cf;
-#else
-    CF_2 *cf;
-#endif
-    quantity_t() : val(0), vec(NULL), cf(NULL), vec_p(NULL) {}
-
-    void initialize()
-    {
-      if (cf == NULL && vec != NULL)
-      {
-        ierr = VecGetArray(vec, &vec_p); CHKERRXX(ierr);
-      }
-    }
-
-    void finalize()
-    {
-      if (vec_p != NULL)
-      {
-        ierr = VecRestoreArray(vec, &vec_p); CHKERRXX(ierr);
-        vec_p = NULL;
-      }
-    }
-
-#ifdef P4_TO_P8
-    double operator() (int n, double x, double y, double z)
-    {
-      if (cf != NULL)         {return (*cf)(x,y);}
-#else
-    double operator() (int n, double x, double y)
-    {
-      if (cf != NULL)         {return (*cf)(x,y);}
-#endif
-      else if (vec_p != NULL) {return vec_p[n];}
-      else                    {return val;}
-    }
-  };
-
   const my_p4est_node_neighbors_t *node_neighbors_;
 
   // p4est objects
@@ -79,6 +39,7 @@ class my_p4est_poisson_nodes_mls_t
 
   my_p4est_interpolation_nodes_t phi_interp;
 
+  bool    neumann_wall_first_order;
   double  mu_, diag_add_;
   bool    is_matrix_computed;
   int     matrix_has_nullspace;
@@ -87,34 +48,46 @@ class my_p4est_poisson_nodes_mls_t
   double  dz_min;
 #endif
 
+#ifdef P4_TO_P8
+  std::vector<BoundaryConditions3D> *bc_;
+#else
+  std::vector<BoundaryConditions2D> *bc_;
+#endif
+
   std::vector<PetscInt> global_node_offset;
   std::vector<PetscInt> petsc_gloidx;
 
-  quantity_t rhs, mu, wall_value;
-  std::vector<quantity_t> phi;
-  std::vector<quantity_t> interface_value, robin_coef;
-
-  // Interfaces
   std::vector<int>        *color_;
   std::vector<action_t>   *action_;
-  std::vector<BoundaryConditionType> *bc_types;
 
-  // Additional diagonal term
+#ifdef P4_TO_P8
+  CF_3 *force_;
+#else
+  CF_2 *force_;
+#endif
+
+#ifdef P4_TO_P8
+  std::vector<CF_3*>  *phi_cf_;
+#else
+  std::vector<CF_2*>  *phi_cf_;
+#endif
+
 
   // PETSc objects
   Mat A;
   p4est_gloidx_t fixed_value_idx_g;
   p4est_gloidx_t fixed_value_idx_l;
-  bool is_phi_d_owned, is_phi_dd_owned, is_mue_dd_owned;
-
-  std::vector<Vec> *phi_, *phi_x_, *phi_y_, *phi_xx_, *phi_yy_;
+  bool is_phi_dd_owned, is_mue_dd_owned;
+  Vec rhs_, add_, mue_, mue_xx_, mue_yy_;
+  std::vector<Vec> *phi_, *phi_xx_, *phi_yy_;
   std::vector<Vec> *robin_coef_;
+
+  std::vector<Vec> bc_vec;
 
   bool keep_scalling;
   Vec scalling;
-
 #ifdef P4_TO_P8
-  std::vector<Vec> *phi_z_, *phi_zz_;
+  std::vector<Vec> *phi_zz_;
   Vec mue_zz_;
 #endif
   KSP ksp;
@@ -122,8 +95,20 @@ class my_p4est_poisson_nodes_mls_t
 
   void preallocate_matrix();
 
+//  void setup_negative_laplace_matrix_neumann_wall_1st_order();
+//  void setup_negative_laplace_rhsvec_neumann_wall_1st_order();
+
+  void setup_negative_laplace_matrix();
+  void setup_negative_laplace_rhsvec();
+
+  void setup_negative_laplace_matrix_centroid_based();
+  void setup_negative_laplace_rhsvec_centroid_based();
+
   void setup_negative_laplace_matrix_non_sym();
   void setup_negative_laplace_rhsvec_non_sym();
+
+//  void setup_negative_variable_coeff_laplace_matrix();
+//  void setup_negative_variable_coeff_laplace_rhsvec();
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
@@ -131,32 +116,30 @@ class my_p4est_poisson_nodes_mls_t
 
 public:
 
-  Vec *phi_eff_;
+  Vec phi_eff_;
+
+  Vec trunc_error, exact_vec;
 
   enum node_loc_t {NODE_INS,NODE_DIR,NODE_MXI,NODE_MXO,NODE_NMN,NODE_OUT};
 
-  enum node_neighbor_t
-  {
-    nn_000 = -1,
-    nn_m00, nn_p00,nn_0m0,nn_0p0,
-#ifdef P4_TO_P8
-    nn_00m, nn_00p,
-#endif
-    nn_mm0, nn_pm0, nn_mp0, nn_pp0
-#ifdef P4_TO_P8
-    ,
-    nn_m0m, nn_p0m, nn_m0p, nn_p0p,
-    nn_0mm, nn_0pm, nn_0mp, nn_0pp,
-    nn_mmm, nn_pmm, nn_mpm, nn_ppm,
-    nn_mmp, nn_pmp, nn_mpp, nn_ppp
-#endif
-  };
+//#ifdef P4_TO_P8
+//  std::vector<cube3_mls_t> cubes;
+//#else
+//  std::vector<cube2_mls_t> cubes;
+//#endif
 
   std::vector<node_loc_t>  node_loc;
-
   my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *node_neighbors);
   ~my_p4est_poisson_nodes_mls_t();
 
+  // inlines setters
+  /* FIXME: shouldn't those be references instead of copies ? I guess Vec is just a pointer ... but still ?
+   * Mohammad: Vec is just a typedef to _p_Vec* so its merely a pointer under the hood.
+   * If you are only passing the vector to access its data its fine to pass it as 'Vec v'
+   * However, if 'v' is supposed to change itself, i.e. the the whole Vec object and not just its data
+   * then it should either be passed via reference, Vec& v, or pointer, Vec* v, just like
+   * any other object
+   */
 #ifdef P4_TO_P8
   void set_phi(std::vector<Vec> *phi, std::vector<Vec> *phi_xx = NULL, std::vector<Vec> *phi_yy = NULL, std::vector<Vec> *phi_zz = NULL);
 #else
@@ -201,6 +184,10 @@ public:
 
   inline bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
 
+  inline void set_first_order_neumann_wall( bool val ) { neumann_wall_first_order=val; }
+
+  void shift_to_exact_solution(Vec sol, Vec uex);
+
 #ifdef P4_TO_P8
   void set_mu(Vec mu, Vec mu_xx = NULL, Vec mu_yy = NULL, Vec mu_zz = NULL);
 #else
@@ -225,23 +212,12 @@ public:
   void find_centroid(bool &node_in, bool &altered, double &x, double &y, p4est_locidx_t n, double *vol = NULL);
 
   std::vector<double> node_vol;
-
   double calculate_trunc_error(CF_2 &exact);
   void calculate_gradient_error(Vec sol, Vec err_ux, Vec err_uy, CF_2 &ux, CF_2 &uy);
   void calculate_equation_error(Vec sol, Vec err_eq);
 
   int cube_refinement;
   void set_cube_refinement(int r) {cube_refinement = r;}
-
-  void set_phidd_cf(std::vector<CF_2 *> &phixx_cf, std::vector<CF_2 *> &phixy_cf, std::vector<CF_2 *> &phiyy_cf)
-  {
-    phixx_cf_ = &phixx_cf; phixy_cf_ = &phixy_cf; phiyy_cf_ = &phiyy_cf;
-  }
-
-  void set_phid_cf(std::vector<CF_2 *> &phix_cf, std::vector<CF_2 *> &phiy_cf)
-  {
-    phix_cf_ = &phix_cf; phiy_cf_ = &phiy_cf;
-  }
 };
 
 #endif // MY_P4EST_POISSON_NODES_MLS_H

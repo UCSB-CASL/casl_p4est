@@ -1,7 +1,10 @@
 #include "cube3_mls.h"
 
-void cube3_mls_t::construct_domain(double *phi, std::vector<action_t> &action, std::vector<int> &color)
+void cube3_mls_t::construct_domain(std::vector<action_t> &action, std::vector<int> &color)
 {
+  bool use_linear = false;
+  if (phi_x == NULL || phi_y == NULL || phi_z == NULL ||
+      phi_xx == NULL || phi_yy == NULL || phi_zz == NULL) use_linear = true;
   bool all_positive, all_negative;
 
   std::vector<int>      non_trivial;
@@ -17,8 +20,8 @@ void cube3_mls_t::construct_domain(double *phi, std::vector<action_t> &action, s
 
     for (int j = 0; j < 8; j++)
     {
-      all_negative = (all_negative && (phi[i*8+j] < 0.0));
-      all_positive = (all_positive && (phi[i*8+j] > 0.0));
+      all_negative = (all_negative && (phi->at(i*8+j) < 0.0));
+      all_positive = (all_positive && (phi->at(i*8+j) > 0.0));
     }
 
     if (all_positive)
@@ -42,8 +45,11 @@ void cube3_mls_t::construct_domain(double *phi, std::vector<action_t> &action, s
       }
       else if (action[i] == COLORATION && loc == FCE)
       {
-        for (int j = 0; j < color.size(); j++)
-          non_trivial_color[j] = color[i];
+        non_trivial.push_back(i);
+        non_trivial_action.push_back(action[i]);
+        non_trivial_color.push_back(color[i]);
+//        for (int j = 0; j < color.size(); j++)
+//          non_trivial_color[j] = color[i];
       }
     }
     else if (loc == FCE || (loc == INS && action[i] == INTERSECTION) || (loc == OUT && action[i] == ADDITION))
@@ -90,18 +96,108 @@ void cube3_mls_t::construct_domain(double *phi, std::vector<action_t> &action, s
 #endif
     // it doesn't make sense to do it for the MIDDLE_CUT triangulation
 
-    /* Apply non trivial actions to every simplices */
+    std::vector<double> phi_values(4,-1);
+    std::vector<double> phi_x_values(4,0);
+    std::vector<double> phi_y_values(4,0);
+    std::vector<double> phi_z_values(4,0);
+
+    /* Apply non trivial actions to every simplex */
     for (int j = 0; j < num_non_trivial; j++)
     {
       int s = non_trivial[j]*8;
-      simplex[0].do_action(non_trivial_color[j], non_trivial_action[j], phi[s+t0p0], phi[s+t0p1], phi[s+t0p2], phi[s+t0p3]);
-      simplex[1].do_action(non_trivial_color[j], non_trivial_action[j], phi[s+t1p0], phi[s+t1p1], phi[s+t1p2], phi[s+t1p3]);
-      simplex[2].do_action(non_trivial_color[j], non_trivial_action[j], phi[s+t2p0], phi[s+t2p1], phi[s+t2p2], phi[s+t2p3]);
-      simplex[3].do_action(non_trivial_color[j], non_trivial_action[j], phi[s+t3p0], phi[s+t3p1], phi[s+t3p2], phi[s+t3p3]);
-      simplex[4].do_action(non_trivial_color[j], non_trivial_action[j], phi[s+t4p0], phi[s+t4p1], phi[s+t4p2], phi[s+t4p3]);
+
+      for (int k = 0; k < NTETS; k++) // loop over simplices
+      {
+        int n_vtxs = simplex[k].vtxs.size();
+
+        if (use_linear)
+        {
+          phi_values.resize(n_vtxs);
+
+          switch (k) {
+          case 0: phi_values[0] = phi->at(s+t0p0); phi_values[1] = phi->at(s+t0p1); phi_values[2] = phi->at(s+t0p2); phi_values[3] = phi->at(s+t0p3); break;
+          case 1: phi_values[0] = phi->at(s+t1p0); phi_values[1] = phi->at(s+t1p1); phi_values[2] = phi->at(s+t1p2); phi_values[3] = phi->at(s+t1p3); break;
+          case 2: phi_values[0] = phi->at(s+t2p0); phi_values[1] = phi->at(s+t2p1); phi_values[2] = phi->at(s+t2p2); phi_values[3] = phi->at(s+t2p3); break;
+          case 3: phi_values[0] = phi->at(s+t3p0); phi_values[1] = phi->at(s+t3p1); phi_values[2] = phi->at(s+t3p2); phi_values[3] = phi->at(s+t3p3); break;
+          case 4: phi_values[0] = phi->at(s+t4p0); phi_values[1] = phi->at(s+t4p1); phi_values[2] = phi->at(s+t4p2); phi_values[3] = phi->at(s+t4p3); break;
 #ifdef CUBE3_MLS_KUHN
-      simplex[5].do_action(non_trivial_color[j], non_trivial_action[j], phi[s+t5p0], phi[s+t5p1], phi[s+t5p2], phi[s+t5p3]);
+          case 5: phi_values[0] = phi->at(s+t5p0); phi_values[1] = phi->at(s+t5p1); phi_values[2] = phi->at(s+t5p2); phi_values[3] = phi->at(s+t5p3); break;
 #endif
+          }
+
+          for (int i_vtx = 4; i_vtx < n_vtxs; i_vtx++)
+          {
+            phi_values[i_vtx] = interpolate_linear(&(phi->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
+          }
+
+          double xyz[3] = {0.,0.,0.};
+          for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
+            if (!simplex[k].edgs[i_edg].is_split)
+            {
+              simplex[k].get_edge_coords(i_edg,xyz);
+              simplex[k].edgs[i_edg].value = interpolate_linear(&(phi->data())[s], xyz[0], xyz[1], xyz[2]);
+            }
+
+          simplex[k].do_action(&phi_values, NULL, NULL, NULL, non_trivial_color[j], non_trivial_action[j]);
+
+        } else {
+          phi_values.resize(n_vtxs);
+          phi_x_values.resize(n_vtxs);
+          phi_y_values.resize(n_vtxs);
+          phi_z_values.resize(n_vtxs);
+
+          switch (k) {
+          case 0: phi_values[0] = phi->at(s+t0p0); phi_values[1] = phi->at(s+t0p1); phi_values[2] = phi->at(s+t0p2); phi_values[3] = phi->at(s+t0p3);
+            phi_x_values[0] = phi_x->at(s+t0p0); phi_x_values[1] = phi_x->at(s+t0p1); phi_x_values[2] = phi_x->at(s+t0p2); phi_x_values[3] = phi_x->at(s+t0p3);
+            phi_y_values[0] = phi_y->at(s+t0p0); phi_y_values[1] = phi_y->at(s+t0p1); phi_y_values[2] = phi_y->at(s+t0p2); phi_y_values[3] = phi_y->at(s+t0p3);
+            phi_z_values[0] = phi_z->at(s+t0p0); phi_z_values[1] = phi_z->at(s+t0p1); phi_z_values[2] = phi_z->at(s+t0p2); phi_z_values[3] = phi_z->at(s+t0p3); break;
+          case 1: phi_values[0] = phi->at(s+t1p0); phi_values[1] = phi->at(s+t1p1); phi_values[2] = phi->at(s+t1p2); phi_values[3] = phi->at(s+t1p3);
+            phi_x_values[0] = phi_x->at(s+t1p0); phi_x_values[1] = phi_x->at(s+t1p1); phi_x_values[2] = phi_x->at(s+t1p2); phi_x_values[3] = phi_x->at(s+t1p3);
+            phi_y_values[0] = phi_y->at(s+t1p0); phi_y_values[1] = phi_y->at(s+t1p1); phi_y_values[2] = phi_y->at(s+t1p2); phi_y_values[3] = phi_y->at(s+t1p3);
+            phi_z_values[0] = phi_z->at(s+t1p0); phi_z_values[1] = phi_z->at(s+t1p1); phi_z_values[2] = phi_z->at(s+t1p2); phi_z_values[3] = phi_z->at(s+t1p3); break;
+          case 2: phi_values[0] = phi->at(s+t2p0); phi_values[1] = phi->at(s+t2p1); phi_values[2] = phi->at(s+t2p2); phi_values[3] = phi->at(s+t2p3);
+            phi_x_values[0] = phi_x->at(s+t2p0); phi_x_values[1] = phi_x->at(s+t2p1); phi_x_values[2] = phi_x->at(s+t2p2); phi_x_values[3] = phi_x->at(s+t2p3);
+            phi_y_values[0] = phi_y->at(s+t2p0); phi_y_values[1] = phi_y->at(s+t2p1); phi_y_values[2] = phi_y->at(s+t2p2); phi_y_values[3] = phi_y->at(s+t2p3);
+            phi_z_values[0] = phi_z->at(s+t2p0); phi_z_values[1] = phi_z->at(s+t2p1); phi_z_values[2] = phi_z->at(s+t2p2); phi_z_values[3] = phi_z->at(s+t2p3); break;
+          case 3: phi_values[0] = phi->at(s+t3p0); phi_values[1] = phi->at(s+t3p1); phi_values[2] = phi->at(s+t3p2); phi_values[3] = phi->at(s+t3p3);
+            phi_x_values[0] = phi_x->at(s+t3p0); phi_x_values[1] = phi_x->at(s+t3p1); phi_x_values[2] = phi_x->at(s+t3p2); phi_x_values[3] = phi_x->at(s+t3p3);
+            phi_y_values[0] = phi_y->at(s+t3p0); phi_y_values[1] = phi_y->at(s+t3p1); phi_y_values[2] = phi_y->at(s+t3p2); phi_y_values[3] = phi_y->at(s+t3p3);
+            phi_z_values[0] = phi_z->at(s+t3p0); phi_z_values[1] = phi_z->at(s+t3p1); phi_z_values[2] = phi_z->at(s+t3p2); phi_z_values[3] = phi_z->at(s+t3p3); break;
+          case 4: phi_values[0] = phi->at(s+t4p0); phi_values[1] = phi->at(s+t4p1); phi_values[2] = phi->at(s+t4p2); phi_values[3] = phi->at(s+t4p3);
+            phi_x_values[0] = phi_x->at(s+t4p0); phi_x_values[1] = phi_x->at(s+t4p1); phi_x_values[2] = phi_x->at(s+t4p2); phi_x_values[3] = phi_x->at(s+t4p3);
+            phi_y_values[0] = phi_y->at(s+t4p0); phi_y_values[1] = phi_y->at(s+t4p1); phi_y_values[2] = phi_y->at(s+t4p2); phi_y_values[3] = phi_y->at(s+t4p3);
+            phi_z_values[0] = phi_z->at(s+t4p0); phi_z_values[1] = phi_z->at(s+t4p1); phi_z_values[2] = phi_z->at(s+t4p2); phi_z_values[3] = phi_z->at(s+t4p3); break;
+#ifdef CUBE3_MLS_KUHN
+          case 5: phi_values[0] = phi->at(s+t5p0); phi_values[1] = phi->at(s+t5p1); phi_values[2] = phi->at(s+t5p2); phi_values[3] = phi->at(s+t5p3);
+            phi_x_values[0] = phi_x->at(s+t5p0); phi_x_values[1] = phi_x->at(s+t5p1); phi_x_values[2] = phi_x->at(s+t5p2); phi_x_values[3] = phi_x->at(s+t5p3);
+            phi_y_values[0] = phi_y->at(s+t5p0); phi_y_values[1] = phi_y->at(s+t5p1); phi_y_values[2] = phi_y->at(s+t5p2); phi_y_values[3] = phi_y->at(s+t5p3);
+            phi_z_values[0] = phi_z->at(s+t5p0); phi_z_values[1] = phi_z->at(s+t5p1); phi_z_values[2] = phi_z->at(s+t5p2); phi_z_values[3] = phi_z->at(s+t5p3); break;
+#endif
+          }
+
+          for (int i_vtx = 4; i_vtx < n_vtxs; i_vtx++)
+          {
+            phi_x_values[i_vtx] = interpolate_linear(&(phi_x->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
+            phi_y_values[i_vtx] = interpolate_linear(&(phi_y->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
+            phi_z_values[i_vtx] = interpolate_linear(&(phi_z->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
+            phi_values[i_vtx] = interpolate_quadratic(&(phi->data())[s], &(phi_xx->data())[s], &(phi_yy->data())[s], &(phi_zz->data())[s],
+                                                      simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
+          }
+
+          double xyz[3] = {0.,0.,0.};
+          for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
+            if (!simplex[k].edgs[i_edg].is_split)
+            {
+              simplex[k].get_edge_coords(i_edg,xyz);
+              simplex[k].edgs[i_edg].value = interpolate_quadratic(&(phi->data())[s], &(phi_xx->data())[s], &(phi_yy->data())[s], &(phi_zz->data())[s],
+                                                                   xyz[0], xyz[1], xyz[2]);
+            }
+
+
+          simplex[k].do_action(&phi_values, &phi_x_values, &phi_y_values, &phi_z_values, non_trivial_color[j], non_trivial_action[j]);
+        }
+
+      }
     }
   }
 }
@@ -125,14 +221,14 @@ double cube3_mls_t::integrate_over_domain(double* f)
 double cube3_mls_t::integrate_over_interface(double *f, int num)
 {
   if (loc == FCE)
-    return simplex[0].integrate_over_interface(num, f[t0p0], f[t0p1], f[t0p2], f[t0p3]) +
-           simplex[1].integrate_over_interface(num, f[t1p0], f[t1p1], f[t1p2], f[t1p3]) +
-           simplex[2].integrate_over_interface(num, f[t2p0], f[t2p1], f[t2p2], f[t2p3]) +
-           simplex[3].integrate_over_interface(num, f[t3p0], f[t3p1], f[t3p2], f[t3p3]) +
+    return simplex[0].integrate_over_interface(f[t0p0], f[t0p1], f[t0p2], f[t0p3], num) +
+           simplex[1].integrate_over_interface(f[t1p0], f[t1p1], f[t1p2], f[t1p3], num) +
+           simplex[2].integrate_over_interface(f[t2p0], f[t2p1], f[t2p2], f[t2p3], num) +
+           simplex[3].integrate_over_interface(f[t3p0], f[t3p1], f[t3p2], f[t3p3], num) +
 #ifdef CUBE3_MLS_KUHN
-           simplex[5].integrate_over_interface(num, f[t5p0], f[t5p1], f[t5p2], f[t5p3]) +
+           simplex[5].integrate_over_interface(f[t5p0], f[t5p1], f[t5p2], f[t5p3], num) +
 #endif
-           simplex[4].integrate_over_interface(num, f[t4p0], f[t4p1], f[t4p2], f[t4p3]);
+           simplex[4].integrate_over_interface(f[t4p0], f[t4p1], f[t4p2], f[t4p3], num);
   else
     return 0.0;
 }
@@ -140,14 +236,14 @@ double cube3_mls_t::integrate_over_interface(double *f, int num)
 double cube3_mls_t::integrate_over_colored_interface(double *f, int num0, int num1)
 {
   if (loc == FCE)
-    return simplex[0].integrate_over_colored_interface(num0, num1, f[t0p0], f[t0p1], f[t0p2], f[t0p3]) +
-           simplex[1].integrate_over_colored_interface(num0, num1, f[t1p0], f[t1p1], f[t1p2], f[t1p3]) +
-           simplex[2].integrate_over_colored_interface(num0, num1, f[t2p0], f[t2p1], f[t2p2], f[t2p3]) +
-           simplex[3].integrate_over_colored_interface(num0, num1, f[t3p0], f[t3p1], f[t3p2], f[t3p3]) +
+    return simplex[0].integrate_over_colored_interface(f[t0p0], f[t0p1], f[t0p2], f[t0p3], num0, num1) +
+           simplex[1].integrate_over_colored_interface(f[t1p0], f[t1p1], f[t1p2], f[t1p3], num0, num1) +
+           simplex[2].integrate_over_colored_interface(f[t2p0], f[t2p1], f[t2p2], f[t2p3], num0, num1) +
+           simplex[3].integrate_over_colored_interface(f[t3p0], f[t3p1], f[t3p2], f[t3p3], num0, num1) +
 #ifdef CUBE3_MLS_KUHN
-           simplex[5].integrate_over_colored_interface(num0, num1, f[t5p0], f[t5p1], f[t5p2], f[t5p3]) +
+           simplex[5].integrate_over_colored_interface(f[t5p0], f[t5p1], f[t5p2], f[t5p3], num0, num1) +
 #endif
-           simplex[4].integrate_over_colored_interface(num0, num1, f[t4p0], f[t4p1], f[t4p2], f[t4p3]);
+           simplex[4].integrate_over_colored_interface(f[t4p0], f[t4p1], f[t4p2], f[t4p3], num0, num1);
   else
     return 0.0;
 }
@@ -155,14 +251,14 @@ double cube3_mls_t::integrate_over_colored_interface(double *f, int num0, int nu
 double cube3_mls_t::integrate_over_intersection(double *f, int num0, int num1)
 {
   if (loc == FCE && num_non_trivial > 1)
-    return simplex[0].integrate_over_intersection(num0, num1, f[t0p0], f[t0p1], f[t0p2], f[t0p3]) +
-           simplex[1].integrate_over_intersection(num0, num1, f[t1p0], f[t1p1], f[t1p2], f[t1p3]) +
-           simplex[2].integrate_over_intersection(num0, num1, f[t2p0], f[t2p1], f[t2p2], f[t2p3]) +
-           simplex[3].integrate_over_intersection(num0, num1, f[t3p0], f[t3p1], f[t3p2], f[t3p3]) +
+    return simplex[0].integrate_over_intersection(f[t0p0], f[t0p1], f[t0p2], f[t0p3], num0, num1) +
+           simplex[1].integrate_over_intersection(f[t1p0], f[t1p1], f[t1p2], f[t1p3], num0, num1) +
+           simplex[2].integrate_over_intersection(f[t2p0], f[t2p1], f[t2p2], f[t2p3], num0, num1) +
+           simplex[3].integrate_over_intersection(f[t3p0], f[t3p1], f[t3p2], f[t3p3], num0, num1) +
 #ifdef CUBE3_MLS_KUHN
-           simplex[5].integrate_over_intersection(num0, num1, f[t5p0], f[t5p1], f[t5p2], f[t5p3]) +
+           simplex[5].integrate_over_intersection(f[t5p0], f[t5p1], f[t5p2], f[t5p3], num0, num1) +
 #endif
-           simplex[4].integrate_over_intersection(num0, num1, f[t4p0], f[t4p1], f[t4p2], f[t4p3]);
+           simplex[4].integrate_over_intersection(f[t4p0], f[t4p1], f[t4p2], f[t4p3], num0, num1);
   else
     return 0.0;
 }
@@ -170,109 +266,162 @@ double cube3_mls_t::integrate_over_intersection(double *f, int num0, int num1)
 double cube3_mls_t::integrate_over_intersection(double *f, int num0, int num1, int num2)
 {
   if (loc == FCE && num_non_trivial > 2)
-    return simplex[0].integrate_over_intersection(num0, num1, num2, f[t0p0], f[t0p1], f[t0p2], f[t0p3]) +
-           simplex[1].integrate_over_intersection(num0, num1, num2, f[t1p0], f[t1p1], f[t1p2], f[t1p3]) +
-           simplex[2].integrate_over_intersection(num0, num1, num2, f[t2p0], f[t2p1], f[t2p2], f[t2p3]) +
-           simplex[3].integrate_over_intersection(num0, num1, num2, f[t3p0], f[t3p1], f[t3p2], f[t3p3]) +
+    return simplex[0].integrate_over_intersection(f[t0p0], f[t0p1], f[t0p2], f[t0p3], num0, num1, num2) +
+           simplex[1].integrate_over_intersection(f[t1p0], f[t1p1], f[t1p2], f[t1p3], num0, num1, num2) +
+           simplex[2].integrate_over_intersection(f[t2p0], f[t2p1], f[t2p2], f[t2p3], num0, num1, num2) +
+           simplex[3].integrate_over_intersection(f[t3p0], f[t3p1], f[t3p2], f[t3p3], num0, num1, num2) +
 #ifdef CUBE3_MLS_KUHN
-           simplex[5].integrate_over_intersection(num0, num1, num2, f[t5p0], f[t5p1], f[t5p2], f[t5p3]) +
+           simplex[5].integrate_over_intersection(f[t5p0], f[t5p1], f[t5p2], f[t5p3], num0, num1, num2) +
 #endif
-           simplex[4].integrate_over_intersection(num0, num1, num2, f[t4p0], f[t4p1], f[t4p2], f[t4p3]);
+           simplex[4].integrate_over_intersection(f[t4p0], f[t4p1], f[t4p2], f[t4p3], num0, num1, num2);
   else
     return 0.0;
 }
 
 double cube3_mls_t::integrate_in_dir(double *f, int dir)
 {
-  return simplex[0].integrate_in_dir(dir, f[t0p0], f[t0p1], f[t0p2], f[t0p3]) +
-         simplex[1].integrate_in_dir(dir, f[t1p0], f[t1p1], f[t1p2], f[t1p3]) +
-         simplex[2].integrate_in_dir(dir, f[t2p0], f[t2p1], f[t2p2], f[t2p3]) +
-         simplex[3].integrate_in_dir(dir, f[t3p0], f[t3p1], f[t3p2], f[t3p3]) +
+  return simplex[0].integrate_in_dir(f[t0p0], f[t0p1], f[t0p2], f[t0p3], dir) +
+         simplex[1].integrate_in_dir(f[t1p0], f[t1p1], f[t1p2], f[t1p3], dir) +
+         simplex[2].integrate_in_dir(f[t2p0], f[t2p1], f[t2p2], f[t2p3], dir) +
+         simplex[3].integrate_in_dir(f[t3p0], f[t3p1], f[t3p2], f[t3p3], dir) +
 #ifdef CUBE3_MLS_KUHN
-         simplex[5].integrate_in_dir(dir, f[t5p0], f[t5p1], f[t5p2], f[t5p3]) +
+         simplex[5].integrate_in_dir(f[t5p0], f[t5p1], f[t5p2], f[t5p3], dir) +
 #endif
-         simplex[4].integrate_in_dir(dir, f[t4p0], f[t4p1], f[t4p2], f[t4p3]);
+         simplex[4].integrate_in_dir(f[t4p0], f[t4p1], f[t4p2], f[t4p3], dir);
 }
 
-double cube3_mls_t::measure_of_domain()
+double cube3_mls_t::interpolate_linear(double *f, double x, double y, double z)
 {
-  switch (loc){
-  case INS: return (x1-x0)*(y1-y0)*(z1-z0);         break;
-  case OUT: return 0.0;                             break;
-  case FCE: return simplex[0].measure_of_domain()
-                 + simplex[1].measure_of_domain()
-                 + simplex[2].measure_of_domain()
-                 + simplex[3].measure_of_domain()
-          #ifdef CUBE3_MLS_KUHN
-                 + simplex[5].measure_of_domain()
-          #endif
-                 + simplex[4].measure_of_domain();  break;
-  }
+  double eps = 1.e-12;
+
+  // calculate relative distances to edges
+  double d_m00 = (x-x0)/(x1-x0);
+  if (d_m00 < 0.) d_m00 = 0.;
+  if (d_m00 > 1.) d_m00 = 1.;
+  double d_p00 = 1.-d_m00;
+
+  double d_0m0 = (y-y0)/(y1-y0);
+  if (d_0m0 < 0.) d_0m0 = 0.;
+  if (d_0m0 > 1.) d_0m0 = 1.;
+  double d_0p0 = 1.-d_0m0;
+
+  double d_00m = (z-z0)/(z1-z0);
+  if (d_00m < 0.) d_00m = 0.;
+  if (d_00m > 1.) d_00m = 1.;
+  double d_00p = 1.-d_00m;
+
+  // check if a point is a corner point
+  if (d_m00 < eps && d_0m0 < eps && d_00m < eps) return f[0];
+  if (d_p00 < eps && d_0m0 < eps && d_00m < eps) return f[1];
+  if (d_m00 < eps && d_0p0 < eps && d_00m < eps) return f[2];
+  if (d_p00 < eps && d_0p0 < eps && d_00m < eps) return f[3];
+  if (d_m00 < eps && d_0m0 < eps && d_00p < eps) return f[4];
+  if (d_p00 < eps && d_0m0 < eps && d_00p < eps) return f[5];
+  if (d_m00 < eps && d_0p0 < eps && d_00p < eps) return f[6];
+  if (d_p00 < eps && d_0p0 < eps && d_00p < eps) return f[7];
+
+  // do trilinear interpolation
+  double w_mmm = d_p00*d_0p0*d_00p;
+  double w_pmm = d_m00*d_0p0*d_00p;
+  double w_mpm = d_p00*d_0m0*d_00p;
+  double w_ppm = d_m00*d_0m0*d_00p;
+  double w_mmp = d_p00*d_0p0*d_00m;
+  double w_pmp = d_m00*d_0p0*d_00m;
+  double w_mpp = d_p00*d_0m0*d_00m;
+  double w_ppp = d_m00*d_0m0*d_00m;
+
+  return
+      w_mmm*f[0] +
+      w_pmm*f[1] +
+      w_mpm*f[2] +
+      w_ppm*f[3] +
+      w_mmp*f[4] +
+      w_pmp*f[5] +
+      w_mpp*f[6] +
+      w_ppp*f[7];
 }
 
-double cube3_mls_t::measure_of_interface(int num)
+double cube3_mls_t::interpolate_quadratic(double *f, double *fxx, double *fyy, double *fzz, double x, double y, double z)
 {
-  if (loc == FCE)
-    return simplex[0].measure_of_interface(num) +
-           simplex[1].measure_of_interface(num) +
-           simplex[2].measure_of_interface(num) +
-           simplex[3].measure_of_interface(num) +
-#ifdef CUBE3_MLS_KUHN
-           simplex[5].measure_of_interface(num) +
-#endif
-           simplex[4].measure_of_interface(num);
-  else
-    return 0.0;
-}
+  double eps = 1.e-12;
 
-double cube3_mls_t::measure_of_colored_interface(int num0, int num1)
-{
-  if (loc == FCE)
-    return simplex[0].measure_of_colored_interface(num0, num1) +
-           simplex[1].measure_of_colored_interface(num0, num1) +
-           simplex[2].measure_of_colored_interface(num0, num1) +
-           simplex[3].measure_of_colored_interface(num0, num1) +
-#ifdef CUBE3_MLS_KUHN
-           simplex[5].measure_of_colored_interface(num0, num1) +
-#endif
-           simplex[4].measure_of_colored_interface(num0, num1);
-  else
-    return 0.0;
-}
+  // calculate relative distances to edges
+  double d_m00 = (x-x0)/(x1-x0);
+  if (d_m00 < 0.) d_m00 = 0.;
+  if (d_m00 > 1.) d_m00 = 1.;
+  double d_p00 = 1.-d_m00;
 
-double cube3_mls_t::measure_of_intersection(int num0, int num1)
-{
-  if (loc == FCE && num_non_trivial > 1)
-    return simplex[0].measure_of_intersection(num0, num1) +
-           simplex[1].measure_of_intersection(num0, num1) +
-           simplex[2].measure_of_intersection(num0, num1) +
-           simplex[3].measure_of_intersection(num0, num1) +
-#ifdef CUBE3_MLS_KUHN
-           simplex[5].measure_of_intersection(num0, num1) +
-#endif
-           simplex[4].measure_of_intersection(num0, num1);
-  else
-    return 0.0;
-}
+  double d_0m0 = (y-y0)/(y1-y0);
+  if (d_0m0 < 0.) d_0m0 = 0.;
+  if (d_0m0 > 1.) d_0m0 = 1.;
+  double d_0p0 = 1.-d_0m0;
 
-double cube3_mls_t::measure_in_dir(int dir)
-{
-  switch (loc){
-  case OUT: return 0;
-  case INS:
-    switch (dir) {
-    case 0: case 1: return (y1-y0)*(z1-z0);
-    case 2: case 3: return (x1-x0)*(z1-z0);
-    case 4: case 5: return (x1-x0)*(y1-y0);
-    }
-  case FCE:
-  return simplex[0].measure_in_dir(dir) +
-         simplex[1].measure_in_dir(dir) +
-         simplex[2].measure_in_dir(dir) +
-         simplex[3].measure_in_dir(dir) +
-#ifdef CUBE3_MLS_KUHN
-         simplex[5].measure_in_dir(dir) +
-#endif
-         simplex[4].measure_in_dir(dir);
-  }
+  double d_00m = (z-z0)/(z1-z0);
+  if (d_00m < 0.) d_00m = 0.;
+  if (d_00m > 1.) d_00m = 1.;
+  double d_00p = 1.-d_00m;
+
+  // check if a point is a corner point
+  if (d_m00 < eps && d_0m0 < eps && d_00m < eps) return f[0];
+  if (d_p00 < eps && d_0m0 < eps && d_00m < eps) return f[1];
+  if (d_m00 < eps && d_0p0 < eps && d_00m < eps) return f[2];
+  if (d_p00 < eps && d_0p0 < eps && d_00m < eps) return f[3];
+  if (d_m00 < eps && d_0m0 < eps && d_00p < eps) return f[4];
+  if (d_p00 < eps && d_0m0 < eps && d_00p < eps) return f[5];
+  if (d_m00 < eps && d_0p0 < eps && d_00p < eps) return f[6];
+  if (d_p00 < eps && d_0p0 < eps && d_00p < eps) return f[7];
+
+  // do trilinear interpolation
+  double w_mmm = d_p00*d_0p0*d_00p;
+  double w_pmm = d_m00*d_0p0*d_00p;
+  double w_mpm = d_p00*d_0m0*d_00p;
+  double w_ppm = d_m00*d_0m0*d_00p;
+  double w_mmp = d_p00*d_0p0*d_00m;
+  double w_pmp = d_m00*d_0p0*d_00m;
+  double w_mpp = d_p00*d_0m0*d_00m;
+  double w_ppp = d_m00*d_0m0*d_00m;
+
+  double F =
+      w_mmm*f[0] +
+      w_pmm*f[1] +
+      w_mpm*f[2] +
+      w_ppm*f[3] +
+      w_mmp*f[4] +
+      w_pmp*f[5] +
+      w_mpp*f[6] +
+      w_ppp*f[7];
+
+  double Fxx =
+      w_mmm*fxx[0] +
+      w_pmm*fxx[1] +
+      w_mpm*fxx[2] +
+      w_ppm*fxx[3] +
+      w_mmp*fxx[4] +
+      w_pmp*fxx[5] +
+      w_mpp*fxx[6] +
+      w_ppp*fxx[7];
+
+  double Fyy =
+      w_mmm*fyy[0] +
+      w_pmm*fyy[1] +
+      w_mpm*fyy[2] +
+      w_ppm*fyy[3] +
+      w_mmp*fyy[4] +
+      w_pmp*fyy[5] +
+      w_mpp*fyy[6] +
+      w_ppp*fyy[7];
+
+  double Fzz =
+      w_mmm*fzz[0] +
+      w_pmm*fzz[1] +
+      w_mpm*fzz[2] +
+      w_ppm*fzz[3] +
+      w_mmp*fzz[4] +
+      w_pmp*fzz[5] +
+      w_mpp*fzz[6] +
+      w_ppp*fzz[7];
+
+  F -= 0.5*((x1-x0)*(x1-x0)*d_p00*d_m00*Fxx + (y1-y0)*(y1-y0)*d_0p0*d_0m0*Fyy + (z1-z0)*(z1-z0)*d_00p*d_00m*Fzz);
+
+  return F;
 }
