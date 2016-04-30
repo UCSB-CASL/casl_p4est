@@ -1108,6 +1108,20 @@ inline bool is_periodic(const p4est_t *p4est, int dir)
 }
 
 /*!
+ * \brief is_periodic checks if the forest is periodic in any direction
+ * \param p4est [in] the forest
+ * \return true if the forest is periodic, false otherwise
+ */
+inline bool is_periodic(const p4est_t *p4est)
+{
+#ifdef P4_TO_P8
+  return is_periodic(p4est, 0) || is_periodic(p4est, 1) || is_periodic(p4est, 2);
+#else
+  return is_periodic(p4est, 0) || is_periodic(p4est, 1);
+#endif
+}
+
+/*!
  * \brief find the owner rank of a ghost quadrant
  * \param ghost the ghost structure
  * \param ghost_idx the index of the ghost quadrant (between 0 and the number of ghost quadrants)
