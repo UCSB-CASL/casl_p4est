@@ -1,5 +1,5 @@
-#ifndef MY_P4EST_POISSON_NODEs_H
-#define MY_P4EST_POISSON_NODEs_H
+#ifndef MY_P4EST_POISSON_NODES_VORONOI_H
+#define MY_P4EST_POISSON_NODES_VORONOI_H
 
 #include <petsc.h>
 
@@ -96,4 +96,4 @@ public:
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 };
 
-#endif // MY_P4EST_POISSON_NODEs_H
+#endif // MY_P4EST_POISSON_NODES_VORONOI_H
