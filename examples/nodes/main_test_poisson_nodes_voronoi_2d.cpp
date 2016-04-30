@@ -69,7 +69,7 @@ using namespace std;
 
 int lmin = 3;
 int lmax = 6;
-int nb_splits = 1;
+int nb_splits = 3;
 
 int nx = 2;
 int ny = 2;
@@ -77,15 +77,12 @@ int ny = 2;
 int nz = 1;
 #endif
 
-bool save_vtk = true;
-
-double mu = 1;
-double add_diagonal = 0;
-
 /*
  * 0 - circle
+ * 1 - plane (horizontal)
+ * 2 - plane (vertical)
  */
-int interface_type = 0;
+int interface_type = 2;
 
 /*
  *  ********* 2D *********
@@ -93,10 +90,23 @@ int interface_type = 0;
  * 1 - x*x + y*y
  * 2 - sin(x)*cos(y)
  * 3 - sin(x) + cos(y)
+ * 4 - cos(r)
+ * 5 - sin(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin))
  */
-int test_number = 2;
+int test_number = 5;
 
-BoundaryConditionType bc_itype = DIRICHLET;
+int px = 0;
+int py = 1;
+#ifdef P4_TO_P8
+int pz = 0;
+#endif
+
+bool save_vtk = true;
+
+double mu = 1;
+double add_diagonal = 0;
+
+BoundaryConditionType bc_itype = NEUMANN;
 BoundaryConditionType bc_wtype = DIRICHLET;
 
 double diag_add = 0;
@@ -175,7 +185,7 @@ public:
       switch(interface_type)
       {
       case 0:
-        if(fabs(x-(xmax+xmin)/2)<EPS && fabs(y-(ymax+ymin)/2)<EPS && fabs(z-(zmax+zmin)/2)<EPS)
+        if(fabs(x-xc)<EPS && fabs(y-yc)<EPS && fabs(z-zc)<EPS)
         {
           dx = 0;
           dy = 0;
@@ -264,6 +274,10 @@ public:
     {
     case 0:
       return r0 - sqrt(SQR(x - xc) + SQR(y - yc));
+    case 1:
+      return -y+ymin+(ymax-ymin)/11;
+    case 2:
+      return -x+xmin+(xmax-xmin)/11;
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -294,6 +308,8 @@ double u_exact(double x, double y)
     return sin(x)+cos(y);
   case 4:
     return cos(r);
+  case 5:
+    return sin(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin));
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
@@ -333,6 +349,14 @@ public:
           dy = -(y - yc)/sqrt(SQR(x - xc) + SQR(y - yc));
         }
         break;
+      case 1:
+        dx =  0;
+        dy = -1;
+        break;
+      case 2:
+        dx = -1;
+        dy =  0;
+        break;
       default:
         throw std::invalid_argument("choose a valid interface type.");
       }
@@ -350,6 +374,8 @@ public:
         return cos(x)*dx - sin(y)*dy + alpha*u_exact(x,y);
       case 4:
         return sin(r0) + alpha*u_exact(x,y);
+      case 5:
+        return 2*PI/(xmax-xmin)*cos(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin))*dx - 2*PI/(ymax-ymin)*sin(2*PI*x/(xmax-xmin))*sin(2*PI*y/(ymax-ymin))*dy + alpha*u_exact(x,y);
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
@@ -394,6 +420,8 @@ public:
         return cos(x)*dx - sin(y)*dy;
       case 4:
         return -(x-xc)*sin(r)/r *dx - (y-yc)*sin(r)/r *dy;
+      case 5:
+        return 2*PI/(xmax-xmin)*cos(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin))*dx - 2*PI/(ymax-ymin)*sin(2*PI*x/(xmax-xmin))*sin(2*PI*y/(ymax-ymin))*dy;
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
@@ -410,7 +438,8 @@ public:
 
 
 void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes,
-              Vec phi, Vec sol, Vec err_nodes,
+              my_p4est_node_neighbors_t *ngbd, my_p4est_brick_t *brick,
+              Vec phi, Vec sol, Vec err,
               int compt)
 {
   PetscErrorCode ierr;
@@ -423,24 +452,108 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes,
   }
 
   std::ostringstream oss;
+  oss << out_dir << "/vtu/poisson_voronoi_" << compt;
 
-  oss << out_dir
-      << "/vtu/poisson_voronoi_" << compt;
+  /* if periodic, create non periodic forest for visualization */
+  my_p4est_brick_t brick_vis;
+  p4est_connectivity_t *connectivity_vis = NULL;
+  p4est_t *p4est_vis;
+  p4est_ghost_t *ghost_vis;
+  p4est_nodes_t *nodes_vis;
+  Vec phi_vis;
+  Vec sol_vis;
+  Vec err_vis;
+
+  if(is_periodic(p4est))
+  {
+    bool is_grid_changing = true;
+    splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est->user_pointer;
+    my_p4est_interpolation_nodes_t interp(ngbd);
+
+    double xyz_min[P4EST_DIM];
+    double xyz_max[P4EST_DIM];
+    xyz_min_max(p4est, xyz_min, xyz_max);
+
+#ifdef P4_TO_P8
+    connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], brick->nxyztrees[2], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], xyz_min[2], xyz_max[2], &brick_vis, 0, 0, 0);
+#else
+    connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], &brick_vis, 0, 0);
+#endif
+
+    p4est_vis = my_p4est_new(p4est->mpicomm, connectivity_vis, 0, NULL, NULL);
+    ghost_vis = my_p4est_ghost_new(p4est_vis, P4EST_CONNECT_FULL);
+    nodes_vis = my_p4est_nodes_new(p4est_vis, ghost_vis);
+    ierr = VecCreateGhostNodes(p4est_vis, nodes_vis, &phi_vis); CHKERRXX(ierr);
+
+    for(size_t n=0; n<nodes_vis->indep_nodes.elem_count; ++n)
+    {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est_vis, nodes_vis, xyz);
+      interp.add_point(n, xyz);
+    }
+    interp.set_input(phi, linear);
+    interp.interpolate(phi_vis);
+    double *phi_vis_p;
+
+    while(is_grid_changing)
+    {
+      ierr = VecGetArray(phi_vis, &phi_vis_p); CHKERRXX(ierr);
+      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+      is_grid_changing = sp.refine_and_coarsen(p4est_vis, nodes_vis, phi_vis_p);
+      ierr = VecRestoreArray(phi_vis, &phi_vis_p); CHKERRXX(ierr);
+
+      if(is_grid_changing)
+      {
+        my_p4est_partition(p4est_vis, P4EST_TRUE, NULL);
+        p4est_ghost_destroy(ghost_vis); ghost_vis = my_p4est_ghost_new(p4est_vis, P4EST_CONNECT_FULL);
+        p4est_nodes_destroy(nodes_vis); nodes_vis = my_p4est_nodes_new(p4est_vis, ghost_vis);
+        ierr = VecDestroy(phi_vis); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est_vis, nodes_vis, &phi_vis); CHKERRXX(ierr);
+
+        interp.clear();
+        for(size_t n=0; n<nodes_vis->indep_nodes.elem_count; ++n)
+        {
+          double xyz[P4EST_DIM];
+          node_xyz_fr_n(n, p4est_vis, nodes_vis, xyz);
+          interp.add_point(n, xyz);
+        }
+        interp.set_input(phi, linear);
+        interp.interpolate(phi_vis);
+      }
+    }
+
+    ierr = VecDuplicate(phi_vis, &sol_vis); CHKERRXX(ierr);
+    interp.set_input(sol, linear);
+    interp.interpolate(sol_vis);
+
+    ierr = VecDuplicate(phi_vis, &err_vis); CHKERRXX(ierr);
+    interp.set_input(err, linear);
+    interp.interpolate(err_vis);
+  }
+  else
+  {
+    p4est_vis = p4est;
+    ghost_vis = ghost;
+    nodes_vis = nodes;
+    phi_vis = phi;
+    sol_vis = sol;
+    err_vis = err;
+  }
 
   double *phi_p, *sol_p, *err_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
-  ierr = VecGetArray(err_nodes, &err_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_vis, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(sol_vis, &sol_p); CHKERRXX(ierr);
+  ierr = VecGetArray(err_vis, &err_p); CHKERRXX(ierr);
 
   /* save the size of the leaves */
   Vec leaf_level;
-  ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
+  ierr = VecCreateGhostCells(p4est_vis, ghost_vis, &leaf_level); CHKERRXX(ierr);
   double *l_p;
   ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
 
-  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est_vis->first_local_tree; tree_idx <= p4est_vis->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_vis->trees, tree_idx);
     for( size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
       const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
@@ -448,13 +561,13 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes,
     }
   }
 
-  for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
+  for(size_t q=0; q<ghost_vis->ghosts.elem_count; ++q)
   {
-    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost_vis->ghosts, q);
     l_p[p4est->local_num_quadrants+q] = quad->level;
   }
 
-  my_p4est_vtk_write_all(p4est, nodes, ghost,
+  my_p4est_vtk_write_all(p4est_vis, nodes_vis, ghost_vis,
                          P4EST_TRUE, P4EST_TRUE,
                          3, 1, oss.str().c_str(),
                          VTK_POINT_DATA, "phi", phi_p,
@@ -465,9 +578,20 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes,
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(err_nodes, &err_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_vis, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(sol_vis, &sol_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(err_vis, &err_p); CHKERRXX(ierr);
+
+  if(is_periodic(p4est))
+  {
+    ierr = VecDestroy(err_vis); CHKERRXX(ierr);
+    ierr = VecDestroy(sol_vis); CHKERRXX(ierr);
+    ierr = VecDestroy(phi_vis); CHKERRXX(ierr);
+    p4est_nodes_destroy(nodes_vis);
+    p4est_ghost_destroy(ghost_vis);
+    p4est_destroy(p4est_vis);
+    my_p4est_brick_destroy(connectivity_vis, &brick_vis);
+  }
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
 }
@@ -502,7 +626,9 @@ int main (int argc, char* argv[])
                  0 - x+y\n\
                  1 - x*x + y*y\n\
                  2 - sin(x)*cos(y)\n\
-                 3 - sin(x) + cos(y)");
+                 3 - sin(x) + cos(y)\n\
+                 4 - cos(r)\n\
+                 5 - sin(2*PI*x/(xmax-xmin))*cos(y)");
 #endif
   cmd.parse(argc, argv);
 
@@ -540,11 +666,11 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   connectivity = my_p4est_brick_new(nx, ny, nz,
                                     xmin, xmax, ymin, ymax, zmin, zmax,
-                                    &brick, 0, 0, 0);
+                                    &brick, px, py, pz);
 #else
   connectivity = my_p4est_brick_new(nx, ny,
                                     xmin, xmax, ymin, ymax,
-                                    &brick, 0, 0);
+                                    &brick, px, py);
 #endif
 
   p4est_t       *p4est;
@@ -634,22 +760,13 @@ int main (int argc, char* argv[])
     ls.perturb_level_set_function(phi, EPS);
 
     /* find dx and dy smallest */
-    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-    double xmin = p4est->connectivity->vertices[3*vm + 0];
-    double ymin = p4est->connectivity->vertices[3*vm + 1];
-    double xmax = p4est->connectivity->vertices[3*vp + 0];
-    double ymax = p4est->connectivity->vertices[3*vp + 1];
-    double dx = (xmax-xmin) / pow(2.,(double) data.max_lvl);
-    double dy = (ymax-ymin) / pow(2.,(double) data.max_lvl);
+    double dxyz[P4EST_DIM];
+    dxyz_min(p4est, dxyz);
 
 #ifdef P4_TO_P8
-    double zmin = p4est->connectivity->vertices[3*vm + 2];
-    double zmax = p4est->connectivity->vertices[3*vp + 2];
-    double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
-    double diag = sqrt(dx*dx + dy*dy + dz*dz);
+    double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]));
 #else
-    double diag = sqrt(dx*dx + dy*dy);
+    double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
 #endif
 
     /* TEST THE NODES FUNCTIONS */
@@ -704,6 +821,9 @@ int main (int argc, char* argv[])
         break;
       case 4:
         rhs_p[n] = fabs(r)<EPS ? 2*mu : mu*(sin(r)/r + cos(r)) + add_diagonal*u_exact(x,y);
+        break;
+      case 5:
+        rhs_p[n] = mu*( SQR(2*PI/(xmax-xmin))*sin(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin)) + SQR(2*PI/(ymax-ymin))*sin(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin)) ) + add_diagonal*u_exact(x,y);
         break;
 #endif
       default:
@@ -853,7 +973,7 @@ int main (int argc, char* argv[])
 
     if(save_vtk)
     {
-      save_VTK(p4est, ghost, nodes, phi, sol, err_nodes, iter);
+      save_VTK(p4est, ghost, nodes, &ngbd_n, &brick, phi, sol, err_nodes, iter);
     }
 
     ierr = VecDestroy(phi); CHKERRXX(ierr);

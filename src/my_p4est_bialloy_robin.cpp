@@ -552,6 +552,7 @@ void my_p4est_bialloy_t::solve_temperature()
         + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta))*kappa_p[n]/ml
         + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta))*normal_velocity_np1_p[n]/ml;
 #endif
+//    temperature_interface_tmp_p[n] = Tm;
   }
 
   ierr = VecRestoreArray(temperature_interface_tmp, &temperature_interface_tmp_p); CHKERRXX(ierr);
@@ -578,10 +579,11 @@ void my_p4est_bialloy_t::solve_temperature()
   ierr = VecGhostGetLocalForm(temperature_s_n, &src); CHKERRXX(ierr);
   ierr = VecGhostGetLocalForm(rhs , &out); CHKERRXX(ierr);
   ierr = VecCopy(src, out); CHKERRXX(ierr);
+//  VecSet(out, 0);
   ierr = VecGhostRestoreLocalForm(temperature_s_n, &src); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(rhs , &out); CHKERRXX(ierr);
 
-  my_p4est_poisson_nodes_voronoi_t solver_t(ngbd);
+  my_p4est_poisson_nodes_t solver_t(ngbd);
   solver_t.set_bc(bc_t);
   solver_t.set_mu(dt_n*thermal_diffusivity);
   solver_t.set_diagonal(1);
@@ -594,6 +596,7 @@ void my_p4est_bialloy_t::solve_temperature()
   ierr = VecGhostGetLocalForm(temperature_l_n, &src); CHKERRXX(ierr);
   ierr = VecGhostGetLocalForm(rhs , &out); CHKERRXX(ierr);
   ierr = VecCopy(src, out); CHKERRXX(ierr);
+//  VecSet(out, 0);
   ierr = VecGhostRestoreLocalForm(temperature_l_n, &src); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(rhs , &out); CHKERRXX(ierr);
 
@@ -615,6 +618,10 @@ void my_p4est_bialloy_t::solve_temperature()
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     phi_p[n] *= -1;
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+//  static int cpt = 0;
+//  save_VTK(cpt);
+//  cpt++;
 
   ierr = VecDestroy(temperature_interface); CHKERRXX(ierr);
 }

@@ -1225,6 +1225,14 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
       const std::vector<Voronoi2DPoint> *points;
       voro.get_Partition(partition);
       voro.get_Points(points);
+
+      /* perturb the point coordinates to differentiate adajent walls */
+      double x_pert = fabs(xyz_n[0]-xyz_min[0])<EPS ? xyz_n[0]+2*EPS : (fabs(xyz_n[0]-xyz_max[0])<EPS ? xyz_n[0]-2*EPS : xyz_n[0]);
+      double y_pert = fabs(xyz_n[1]-xyz_min[1])<EPS ? xyz_n[1]+2*EPS : (fabs(xyz_n[1]-xyz_max[1])<EPS ? xyz_n[1]-2*EPS : xyz_n[1]);
+  #ifdef P4_TO_P8
+      double z_pert = fabs(xyz_n[2]-xyz_min[2])<EPS ? xyz_n[2]+2*EPS : (fabs(xyz_n[2]-xyz_max[2])<EPS ? xyz_n[2]-2*EPS : xyz_n[2]);
+  #endif
+
       for(unsigned int m=0; m<partition->size(); m++)
       {
 #ifdef P4_TO_P8
@@ -1239,16 +1247,16 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
         {
         case WALL_m00:
 #ifdef P4_TO_P8
-          switch(bc->wallType(xyz_min[0], xyz_n[1], xyz_n[2]))
+          switch(bc->wallType(xyz_min[0], y_pert, z_pert))
 #else
-          switch(bc->wallType(xyz_min[0], xyz_n[1]))
+          switch(bc->wallType(xyz_min[0], y_pert))
 #endif
           {
           case NEUMANN:
 #ifdef P4_TO_P8
-            rhs_p[n] += mu*s*bc->wallValue(xyz_min[0], xyz_n[1], xyz_n[2]);
+            rhs_p[n] += mu*s*bc->wallValue(xyz_min[0], y_pert, z_pert);
 #else
-            rhs_p[n] += mu*s*bc->wallValue(xyz_min[0], xyz_n[1]);
+            rhs_p[n] += mu*s*bc->wallValue(xyz_min[0], y_pert);
 #endif
             break;
           default:
@@ -1258,16 +1266,16 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
 
         case WALL_p00:
 #ifdef P4_TO_P8
-          switch(bc->wallType(xyz_max[0], xyz_n[1], xyz_n[2]))
+          switch(bc->wallType(xyz_max[0], y_pert, z_pert))
 #else
-          switch(bc->wallType(xyz_max[0], xyz_n[1]))
+          switch(bc->wallType(xyz_max[0], y_pert))
 #endif
           {
           case NEUMANN:
 #ifdef P4_TO_P8
-            rhs_p[n] += mu*s*bc->wallValue(xyz_max[0], xyz_n[1], xyz_n[2]);
+            rhs_p[n] += mu*s*bc->wallValue(xyz_max[0], y_pert, z_pert);
 #else
-            rhs_p[n] += mu*s*bc->wallValue(xyz_max[0], xyz_n[1]);
+            rhs_p[n] += mu*s*bc->wallValue(xyz_max[0], y_pert);
 #endif
             break;
           default:
@@ -1277,16 +1285,17 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
 
         case WALL_0m0:
 #ifdef P4_TO_P8
-          switch(bc->wallType(xyz_n[0], xyz_min[1], xyz_n[2]))
+          switch(bc->wallType(x_pert, xyz_min[1], z_pert))
 #else
-          switch(bc->wallType(xyz_n[0], xyz_min[1]))
+          switch(bc->wallType(x_pert, xyz_min[1]))
 #endif
           {
           case NEUMANN:
+            std::cout << "asdasd" << std::endl;
 #ifdef P4_TO_P8
-            rhs_p[n] += mu*s*bc->wallValue(xyz_n[0], xyz_min[1], xyz_n[2]);
+            rhs_p[n] += mu*s*bc->wallValue(x_pert, xyz_min[1], z_pert);
 #else
-            rhs_p[n] += mu*s*bc->wallValue(xyz_n[0], xyz_min[1]);
+            rhs_p[n] += mu*s*bc->wallValue(x_pert, xyz_min[1]);
 #endif
             break;
           default:
@@ -1296,16 +1305,16 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
 
         case WALL_0p0:
 #ifdef P4_TO_P8
-          switch(bc->wallType(xyz_n[0], xyz_max[1], xyz_n[2]))
+          switch(bc->wallType(x_pert, xyz_max[1], z_pert))
 #else
-          switch(bc->wallType(xyz_n[0], xyz_max[1]))
+          switch(bc->wallType(x_pert, xyz_max[1]))
 #endif
           {
           case NEUMANN:
 #ifdef P4_TO_P8
-            rhs_p[n] += mu*s*bc->wallValue(xyz_n[0], xyz_max[1], xyz_n[2]);
+            rhs_p[n] += mu*s*bc->wallValue(x_pert, xyz_max[1], z_pert);
 #else
-            rhs_p[n] += mu*s*bc->wallValue(xyz_n[0], xyz_max[1]);
+            rhs_p[n] += mu*s*bc->wallValue(x_pert, xyz_max[1]);
 #endif
             break;
           default:
@@ -1315,10 +1324,10 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
 
 #ifdef P4_TO_P8
         case WALL_00m:
-          switch(bc->wallType(xyz_n[0], xyz_n[1], xyz_min[2]))
+          switch(bc->wallType(x_pert, y_pert, xyz_min[2]))
           {
           case NEUMANN:
-            rhs_p[n] += mu*s*bc->wallValue(xyz_n[0], xyz_n[1], xyz_min[2]);
+            rhs_p[n] += mu*s*bc->wallValue(x_pert, y_pert, xyz_min[2]);
             break;
           default:
             throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_nodes_voronoi_t: unknown boundary condition type.");
@@ -1326,10 +1335,10 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
           break;
 
         case WALL_00p:
-          switch(bc->wallType(xyz_n[0], xyz_n[1], xyz_max[2]))
+          switch(bc->wallType(x_pert, y_pert, xyz_max[2]))
           {
           case NEUMANN:
-            rhs_p[n] += mu*s*bc->wallValue(xyz_n[0], xyz_n[1], xyz_max[2]);
+            rhs_p[n] += mu*s*bc->wallValue(x_pert, y_pert, xyz_max[2]);
             break;
           default:
             throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_nodes_voronoi_t: unknown boundary condition type.");
@@ -1522,9 +1531,9 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
       //---------------------------------------------------------------------
       double w_000 = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p );
 
-      double eps_x = is_node_xmWall(p4est, ni) ? 2*EPS : (is_node_xpWall(p4est, ni) ? -2*EPS : 0);
-      double eps_y = is_node_ymWall(p4est, ni) ? 2*EPS : (is_node_ypWall(p4est, ni) ? -2*EPS : 0);
-      double eps_z = is_node_zmWall(p4est, ni) ? 2*EPS : (is_node_zpWall(p4est, ni) ? -2*EPS : 0);
+      double eps_x = fabs(xyz_n[0]-xyz_min[0])<EPS ? 2*EPS : (fabs(xyz_n[0]-xyz_max[0])<EPS ? -2*EPS : 0);
+      double eps_y = fabs(xyz_n[1]-xyz_min[1])<EPS ? 2*EPS : (fabs(xyz_n[1]-xyz_max[1])<EPS ? -2*EPS : 0);
+      double eps_z = fabs(xyz_n[2]-xyz_min[2])<EPS ? 2*EPS : (fabs(xyz_n[2]-xyz_max[2])<EPS ? -2*EPS : 0);
 
       //---------------------------------------------------------------------
       // add coefficients to the right hand side
@@ -1587,8 +1596,8 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
 
       double diag = add_p[n]-(w_m00+w_p00+w_0m0+w_0p0);
 
-      double eps_x = is_node_xmWall(p4est, ni) ? 2*EPS : (is_node_xpWall(p4est, ni) ? -2*EPS : 0);
-      double eps_y = is_node_ymWall(p4est, ni) ? 2*EPS : (is_node_ypWall(p4est, ni) ? -2*EPS : 0);
+      double eps_x = fabs(xyz_n[0]-xyz_min[0])<EPS ? 2*EPS : (fabs(xyz_n[0]-xyz_max[0])<EPS ? -2*EPS : 0);
+      double eps_y = fabs(xyz_n[1]-xyz_min[1])<EPS ? 2*EPS : (fabs(xyz_n[1]-xyz_max[1])<EPS ? -2*EPS : 0);
 
       if(is_node_xmWall(p4est, ni)) rhs_p[n] += 2.*mu*bc->wallValue(xyz_n[0], xyz_n[1]+eps_y) / d_p00;
       else if(is_interface_m00)     rhs_p[n] -= w_m00*val_interface_m00;

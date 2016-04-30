@@ -49,12 +49,12 @@
 #undef MAX
 
 int lmin = 4;
-int lmax = 7;
+int lmax = 6;
 int save_every_n_iteration = 1;
 
 using namespace std;
 
-bool save_velocity = true;
+bool save_velocity = false;
 bool save_vtk = true;
 
 #ifdef P4_TO_P8
@@ -568,17 +568,8 @@ int main (int argc, char* argv[])
   FILE *fich;
   char name[10000];
 
-#if defined(STAMPEDE) || defined(COMET)
   char *out_dir;
   out_dir = getenv("OUT_DIR");
-#else
-  char out_dir[1000];
-#ifdef P4_TO_P8
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/3d/velo");
-#else
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/2d/velo");
-#endif
-#endif
 
 #ifdef P4_TO_P8
   sprintf(name, "%s/velo_%dx%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, nx, ny, nz, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
@@ -592,6 +583,13 @@ int main (int argc, char* argv[])
     ierr = PetscFPrintf(mpi->mpicomm, fich, "%% time(s)      average interface velocity     max interface velocity\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi->mpicomm, fich); CHKERRXX(ierr);
   }
+
+  if(save_vtk && iteration%save_every_n_iteration == 0)
+  {
+    bas.save_VTK(iteration/save_every_n_iteration);
+  }
+
+  iteration++;
 
   while(tn<t_final)
   {
