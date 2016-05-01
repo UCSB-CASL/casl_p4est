@@ -583,7 +583,6 @@ void my_p4est_bialloy_t::solve_temperature()
   ierr = VecGhostGetLocalForm(temperature_s_n, &src); CHKERRXX(ierr);
   ierr = VecGhostGetLocalForm(rhs , &out); CHKERRXX(ierr);
   ierr = VecCopy(src, out); CHKERRXX(ierr);
-//  VecSet(out, 0);
   ierr = VecGhostRestoreLocalForm(temperature_s_n, &src); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(rhs , &out); CHKERRXX(ierr);
 
@@ -601,7 +600,6 @@ void my_p4est_bialloy_t::solve_temperature()
   ierr = VecGhostGetLocalForm(temperature_l_n, &src); CHKERRXX(ierr);
   ierr = VecGhostGetLocalForm(rhs , &out); CHKERRXX(ierr);
   ierr = VecCopy(src, out); CHKERRXX(ierr);
-//  VecSet(out, 0);
   ierr = VecGhostRestoreLocalForm(temperature_l_n, &src); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(rhs , &out); CHKERRXX(ierr);
 
@@ -625,10 +623,6 @@ void my_p4est_bialloy_t::solve_temperature()
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     phi_p[n] *= -1;
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-
-//  static int cpt = 0;
-//  save_VTK(cpt);
-//  cpt++;
 
   ierr = VecDestroy(temperature_interface); CHKERRXX(ierr);
 }
@@ -734,7 +728,7 @@ void my_p4est_bialloy_t::compute_dt()
 
 //  dt_n = 1 * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);
 //  dt_n = 1 * SQR(dxyz_min) * MIN(1/u_max, 1/cooling_velocity);
-  dt_n = .5 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+  dt_n = .5 * .25 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
   PetscPrintf(p4est->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e\n", u_max, vgamma_max, cooling_velocity);
 
 //  if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
@@ -744,6 +738,7 @@ void my_p4est_bialloy_t::compute_dt()
     dt_n = MIN(dt_n, 0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))));
     ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
   }
+//  dt_n = 1e-5;
   PetscPrintf(p4est->mpicomm, "dt = %e\n", dt_n);
 }
 
@@ -873,7 +868,7 @@ void my_p4est_bialloy_t::one_step()
     ierr = PetscPrintf(p4est->mpicomm, "Convergence iteration #%d, max_velo = %e, error = %e\n", iteration, vgamma_max, error); CHKERRXX(ierr);
     iteration++;
   }
-
+//  throw std::invalid_argument("");
 //  compare_velocity_temperature_vs_concentration();
 
   compute_velocity();
