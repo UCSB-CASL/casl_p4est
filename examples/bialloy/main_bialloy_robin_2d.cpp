@@ -526,12 +526,6 @@ int main (int argc, char* argv[])
   double dxyz[P4EST_DIM];
   dxyz_min(p4est, dxyz);
 
-#ifdef P4_TO_P8
-  double dt = 0.45*MIN(dxyz[0],dxyz[1],dxyz[2])/V;
-#else
-  double dt = 0.45*MIN(dxyz[0],dxyz[1])/V;
-#endif
-
   /* initialize the solver */
   my_p4est_bialloy_t bas(ngbd);
   bas.set_parameters(latent_heat, thermal_conductivity, lambda,
@@ -544,10 +538,17 @@ int main (int argc, char* argv[])
   bas.set_temperature(temperature);
   bas.set_concentration(cl);
   bas.set_normal_velocity(normal_velocity);
-  bas.set_dt(dt);
 
   bas.compute_velocity();
   bas.compute_dt();
+
+
+//#ifdef P4_TO_P8
+//  double dt = 0.45*MIN(dxyz[0],dxyz[1],dxyz[2])/V;
+//#else
+//  double dt = 0.45*MIN(dxyz[0],dxyz[1])/V;
+//#endif
+//  bas.set_dt(dt);
 
   // loop over time
   double tn = 0;
