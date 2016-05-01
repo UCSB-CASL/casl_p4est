@@ -9,7 +9,6 @@
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/cube2.h>
-#include <src/voronoi2D.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -142,6 +141,58 @@ my_p4est_poisson_nodes_voronoi_t::~my_p4est_poisson_nodes_voronoi_t()
   }
 }
 
+
+void my_p4est_poisson_nodes_voronoi_t::construct_voronoi_cell(Voronoi2D &voro, p4est_locidx_t n, double *phi_p)
+{
+  double xyz[P4EST_DIM];
+  node_xyz_fr_n(n, p4est, nodes, xyz);
+  voro.set_Center_Point(xyz[0], xyz[1]);
+
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+
+  for(int i=-1; i<2; i+=2)
+    for(int j=-1; j<2; j+=2)
+    {
+      ngbd->find_neighbor_cell_of_node(n, i, j, quad_idx, tree_idx);
+      if(quad_idx>=0)
+      {
+        for(int d=0; d<P4EST_CHILDREN; ++d)
+        {
+          p4est_locidx_t nd = nodes->local_nodes[quad_idx*P4EST_CHILDREN + d];
+          if(nd!=n)
+          {
+            double xnd = node_x_fr_n(nd, p4est, nodes);
+            double ynd = node_y_fr_n(nd, p4est, nodes);
+            if(phi_p[nd]<0) voro.push(nd, xnd, ynd);
+            else            voro.push(nd, xyz[0] - 2*(xyz[0]-xnd), xyz[1] - 2*(xyz[1]-ynd));
+          }
+        }
+      }
+    }
+
+  /* add the walls */
+  p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  if(is_node_xmWall(p4est,ni)) voro.push(WALL_m00, xyz[0]-EPS, xyz[1]);
+  if(is_node_xpWall(p4est,ni)) voro.push(WALL_p00, xyz[0]+EPS, xyz[1]);
+  if(is_node_ymWall(p4est,ni)) voro.push(WALL_0m0, xyz[0], xyz[1]-EPS);
+  if(is_node_ypWall(p4est,ni)) voro.push(WALL_0p0, xyz[0], xyz[1]+EPS);
+
+  voro.enforce_Periodicity(is_periodic(p4est,0), is_periodic(p4est,1), xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1]);
+  voro.construct_Partition();
+
+  const std::vector<Point2> *partition;
+  voro.get_Partition(partition);
+  std::vector<double> phi_values(partition->size());
+  for(unsigned int m=0; m<partition->size(); m++)
+  {
+    phi_values[m] = phi_interp((*partition)[m].x, (*partition)[m].y);
+  }
+  voro.set_Level_Set_Values(phi_values, phi_p[n]);
+  voro.clip_Interface();
+}
+
+
 void my_p4est_poisson_nodes_voronoi_t::preallocate_matrix()
 {  
   // enable logging for the preallocation
@@ -188,6 +239,9 @@ void my_p4est_poisson_nodes_voronoi_t::preallocate_matrix()
   for (p4est_locidx_t n=0; n<num_owned_local; n++)
   {
     const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(n, p4est, nodes, xyz);
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
 
     /*
      * Check for neighboring nodes:
@@ -196,7 +250,11 @@ void my_p4est_poisson_nodes_voronoi_t::preallocate_matrix()
      * 3) If they do not exist, simply skip
      */
 
-    if (phi_p[n] > 0)
+#ifdef P4_TO_P8
+    if( phi_p[n] > 0 || (is_node_Wall(p4est, ni) && bc->wallType(xyz[0],xyz[1],xyz[2])==DIRICHLET) )
+#else
+    if( phi_p[n] > 0 || (is_node_Wall(p4est, ni) && bc->wallType(xyz[0],xyz[1])==DIRICHLET) )
+#endif
       continue;
 
     double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
@@ -223,42 +281,8 @@ void my_p4est_poisson_nodes_voronoi_t::preallocate_matrix()
 
     if(is_interface && !bc->interfaceType()==DIRICHLET)
     {
-      double xyz_n[P4EST_DIM];
-      node_xyz_fr_n(n, p4est, nodes, xyz_n);
       Voronoi2D voro;
-      voro.set_Center_Point(xyz_n[0], xyz_n[1]);
-
-      p4est_locidx_t quad_idx;
-      p4est_topidx_t tree_idx;
-
-      for(int i=-1; i<2; i+=2)
-        for(int j=-1; j<2; j+=2)
-        {
-          ngbd->find_neighbor_cell_of_node(n, i, j, quad_idx, tree_idx);
-          for(int d=0; d<P4EST_CHILDREN; ++d)
-          {
-            p4est_locidx_t nd = nodes->local_nodes[quad_idx*P4EST_CHILDREN + d];
-            if(nd!=n)
-            {
-              double xnd = node_x_fr_n(nd, p4est, nodes);
-              double ynd = node_y_fr_n(nd, p4est, nodes);
-              if(phi_p[nd]<0) voro.push(nd, xnd, ynd);
-              else            voro.push(nd, xyz_n[0] - 2*(xyz_n[0]-xnd), xyz_n[1] - 2*(xyz_n[1]-ynd));
-            }
-          }
-        }
-      voro.enforce_Periodicity(is_periodic(p4est,0), is_periodic(p4est,1), xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1]);
-      voro.construct_Partition();
-
-      const std::vector<Point2> *partition;
-      voro.get_Partition(partition);
-      std::vector<double> phi_values(partition->size());
-      for(unsigned int m=0; m<partition->size(); m++)
-      {
-        phi_values[m] = phi_interp((*partition)[m].x, (*partition)[m].y);
-      }
-      voro.set_Level_Set_Values(phi_values, phi_000);
-      voro.clip_Interface();
+      construct_voronoi_cell(voro, n, phi_p);
 
       const std::vector<Voronoi2DPoint> *points;
       voro.get_Points(points);
@@ -509,6 +533,7 @@ void my_p4est_poisson_nodes_voronoi_t::solve(Vec solution, bool use_nonzero_init
 void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_matrix()
 {
   preallocate_matrix();
+//  std::vector<Voronoi2D> vorog(nodes->num_owned_indeps);
 
   // register for logging purpose
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_voronoi_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
@@ -641,47 +666,14 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_matrix()
     if(is_interface && !bc->interfaceType()==DIRICHLET)
     {
       Voronoi2D voro;
-      voro.set_Center_Point(xyz_n[0], xyz_n[1]);
-
-      p4est_locidx_t quad_idx;
-      p4est_topidx_t tree_idx;
-
-      for(int i=-1; i<2; i+=2)
-      {
-        for(int j=-1; j<2; j+=2)
-        {
-          ngbd->find_neighbor_cell_of_node(n, i, j, quad_idx, tree_idx);
-          for(int d=0; d<P4EST_CHILDREN; ++d)
-          {
-            p4est_locidx_t nd = nodes->local_nodes[quad_idx*P4EST_CHILDREN + d];
-            if(nd!=n)
-            {
-              double xnd = node_x_fr_n(nd, p4est, nodes);
-              double ynd = node_y_fr_n(nd, p4est, nodes);
-              if(phi_p[nd]<0) voro.push(nd, xnd, ynd);
-              else            voro.push(nd, xyz_n[0] - 2*(xyz_n[0]-xnd), xyz_n[1] - 2*(xyz_n[1]-ynd));
-            }
-          }
-        }
-      }
-
-      voro.enforce_Periodicity(is_periodic(p4est,0), is_periodic(p4est,1), xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1]);
-      voro.construct_Partition();
-
-      const std::vector<Point2> *partition;
-      voro.get_Partition(partition);
-      std::vector<double> phi_values(partition->size());
-      for(unsigned int m=0; m<partition->size(); m++)
-      {
-        phi_values[m] = phi_interp((*partition)[m].x, (*partition)[m].y);
-      }
-      voro.set_Level_Set_Values(phi_values, phi_000);
-      voro.clip_Interface();
+//      Voronoi2D &voro = vorog[n];
+      construct_voronoi_cell(voro, n, phi_p);
 
       /* now assemble the matrix */
       double volume = voro.get_volume();
       ierr = MatSetValue(A, node_000_g, node_000_g, add_p[n]*volume, ADD_VALUES); CHKERRXX(ierr);
 
+      const std::vector<Point2> *partition;
       const std::vector<Voronoi2DPoint> *points;
       voro.get_Partition(partition);
       voro.get_Points(points);
@@ -1066,6 +1058,17 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_matrix()
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_voronoi_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+
+//  static int cpt = 0;
+//  char *out_dir;
+//  out_dir = getenv("OUT_DIR");
+//  if(out_dir!=NULL)
+//  {
+//    char name[1000];
+//    snprintf(name, 1000, "%s/voro_%d.vtk", out_dir, cpt);
+//    Voronoi2D::print_VTK_Format(vorog, name);
+//    cpt++;
+//  }
 }
 
 
@@ -1183,45 +1186,13 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
     if(is_interface && !bc->interfaceType()==DIRICHLET)
     {
       Voronoi2D voro;
-      voro.set_Center_Point(xyz_n[0], xyz_n[1]);
-
-      p4est_locidx_t quad_idx;
-      p4est_topidx_t tree_idx;
-
-      for(int i=-1; i<2; i+=2)
-        for(int j=-1; j<2; j+=2)
-        {
-          ngbd->find_neighbor_cell_of_node(n, i, j, quad_idx, tree_idx);
-          for(int d=0; d<P4EST_CHILDREN; ++d)
-          {
-            p4est_locidx_t nd = nodes->local_nodes[quad_idx*P4EST_CHILDREN + d];
-            if(nd!=n)
-            {
-              double xnd = node_x_fr_n(nd, p4est, nodes);
-              double ynd = node_y_fr_n(nd, p4est, nodes);
-              if(phi_p[nd]<0) voro.push(nd, xnd, ynd);
-              else            voro.push(nd, xyz_n[0] - 2*(xyz_n[0]-xnd), xyz_n[1] - 2*(xyz_n[1]-ynd));
-            }
-          }
-        }
-
-      voro.enforce_Periodicity(is_periodic(p4est,0), is_periodic(p4est,1), xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1]);
-      voro.construct_Partition();
-
-      const std::vector<Point2> *partition;
-      voro.get_Partition(partition);
-      std::vector<double> phi_values(partition->size());
-      for(unsigned int m=0; m<partition->size(); m++)
-      {
-        phi_values[m] = phi_interp((*partition)[m].x, (*partition)[m].y);
-      }
-      voro.set_Level_Set_Values(phi_values, phi_000);
-      voro.clip_Interface();
+      construct_voronoi_cell(voro, n, phi_p);
 
       /* now update the right hand side */
       double volume = voro.get_volume();
       rhs_p[n] *= volume;
 
+      const std::vector<Point2> *partition;
       const std::vector<Voronoi2DPoint> *points;
       voro.get_Partition(partition);
       voro.get_Points(points);

@@ -82,7 +82,7 @@ int nz = 1;
  * 1 - plane (horizontal)
  * 2 - plane (vertical)
  */
-int interface_type = 2;
+int interface_type = 1;
 
 /*
  *  ********* 2D *********
@@ -96,7 +96,7 @@ int interface_type = 2;
 int test_number = 5;
 
 int px = 0;
-int py = 1;
+int py = 0;
 #ifdef P4_TO_P8
 int pz = 0;
 #endif
@@ -106,8 +106,8 @@ bool save_vtk = true;
 double mu = 1;
 double add_diagonal = 0;
 
-BoundaryConditionType bc_itype = NEUMANN;
-BoundaryConditionType bc_wtype = DIRICHLET;
+BoundaryConditionType bc_itype = ROBIN;
+BoundaryConditionType bc_wtype = NEUMANN;
 
 double diag_add = 0;
 

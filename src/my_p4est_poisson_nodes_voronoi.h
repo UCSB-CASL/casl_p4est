@@ -13,6 +13,7 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_utils.h>
+#include <src/voronoi2D.h>
 #endif
 
 class my_p4est_poisson_nodes_voronoi_t
@@ -50,6 +51,8 @@ class my_p4est_poisson_nodes_voronoi_t
   Vec robin_coef;
   KSP ksp;
   PetscErrorCode ierr;
+
+  void construct_voronoi_cell(Voronoi2D &voro, p4est_locidx_t n, double *phi_p);
 
   void preallocate_matrix();
 
