@@ -95,7 +95,7 @@ int interface_type = 1;
  */
 int test_number = 5;
 
-int px = 0;
+int px = 1;
 int py = 0;
 #ifdef P4_TO_P8
 int pz = 0;
@@ -104,7 +104,7 @@ int pz = 0;
 bool save_vtk = true;
 
 double mu = 1;
-double add_diagonal = 0;
+double add_diagonal = 1.3;
 
 BoundaryConditionType bc_itype = ROBIN;
 BoundaryConditionType bc_wtype = NEUMANN;

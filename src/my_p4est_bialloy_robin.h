@@ -88,7 +88,7 @@ private:
   Vec kappa;
 
   /* physical parameters */
-  double dt_nm1, dt_n;
+  double dt_n;
   double cooling_velocity;     /* V */
   double latent_heat;          /* L */
   double thermal_conductivity; /* k */
