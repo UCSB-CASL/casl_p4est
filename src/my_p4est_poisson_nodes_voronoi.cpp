@@ -1065,8 +1065,9 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_matrix()
 //  if(out_dir!=NULL)
 //  {
 //    char name[1000];
-//    snprintf(name, 1000, "%s/voro_%d.vtk", out_dir, cpt);
-//    Voronoi2D::print_VTK_Format(vorog, name);
+//    snprintf(name, 1000, "%s/voro_%d.vtk", out_dir, cpt/2);
+//    if(cpt%2==0)
+//      Voronoi2D::print_VTK_Format(vorog, name);
 //    cpt++;
 //  }
 }

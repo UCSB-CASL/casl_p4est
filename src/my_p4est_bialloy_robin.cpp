@@ -247,7 +247,6 @@ void my_p4est_bialloy_t::set_normal_velocity(Vec v)
 
 void my_p4est_bialloy_t::set_dt( double dt )
 {
-  dt_nm1 = dt;
   dt_n   = dt;
 }
 
@@ -397,7 +396,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     double dts_dn = qnnn.dx_central(temperature_s_np1_p)*normal_p[0][n] + qnnn.dy_central(temperature_s_np1_p)*normal_p[1][n];
 #endif
 
-    v_gamma_p[n] = -thermal_conductivity/latent_heat * (dts_dn - dtl_dn);
+    v_gamma_p[n] = thermal_conductivity/latent_heat * (dts_dn - dtl_dn);
   }
 
   ierr = VecGhostUpdateBegin(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -415,7 +414,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     double dts_dn = qnnn.dx_central(temperature_s_np1_p)*normal_p[0][n] + qnnn.dy_central(temperature_s_np1_p)*normal_p[1][n];
 #endif
 
-    v_gamma_p[n] = -thermal_conductivity/latent_heat * (dts_dn - dtl_dn);
+    v_gamma_p[n] = thermal_conductivity/latent_heat * (dts_dn - dtl_dn);
   }
 
   ierr = VecGhostUpdateEnd(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -472,10 +471,10 @@ void my_p4est_bialloy_t::compute_velocity()
     p4est_locidx_t n = ngbd->get_layer_node(i);
     const quad_neighbor_nodes_of_node_t &qnnn = ngbd->get_neighbors(n);
 
-    v_gamma_p[0][n] = -thermal_conductivity/latent_heat * (qnnn.dx_central(temperature_s_np1_p) - qnnn.dx_central(temperature_l_np1_p));
-    v_gamma_p[1][n] = -thermal_conductivity/latent_heat * (qnnn.dy_central(temperature_s_np1_p) - qnnn.dy_central(temperature_l_np1_p));
+    v_gamma_p[0][n] = thermal_conductivity/latent_heat * (qnnn.dx_central(temperature_s_np1_p) - qnnn.dx_central(temperature_l_np1_p));
+    v_gamma_p[1][n] = thermal_conductivity/latent_heat * (qnnn.dy_central(temperature_s_np1_p) - qnnn.dy_central(temperature_l_np1_p));
 #ifdef P4_TO_P8
-    v_gamma_p[2][n] = -thermal_conductivity/latent_heat * (qnnn.dz_central(temperature_s_np1_p) - qnnn.dz_central(temperature_l_np1_p));
+    v_gamma_p[2][n] = thermal_conductivity/latent_heat * (qnnn.dz_central(temperature_s_np1_p) - qnnn.dz_central(temperature_l_np1_p));
 #endif
   }
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -488,10 +487,10 @@ void my_p4est_bialloy_t::compute_velocity()
     p4est_locidx_t n = ngbd->get_local_node(i);
     const quad_neighbor_nodes_of_node_t &qnnn = ngbd->get_neighbors(n);
 
-    v_gamma_p[0][n] = -thermal_conductivity/latent_heat * (qnnn.dx_central(temperature_s_np1_p) - qnnn.dx_central(temperature_l_np1_p));
-    v_gamma_p[1][n] = -thermal_conductivity/latent_heat * (qnnn.dy_central(temperature_s_np1_p) - qnnn.dy_central(temperature_l_np1_p));
+    v_gamma_p[0][n] = thermal_conductivity/latent_heat * (qnnn.dx_central(temperature_s_np1_p) - qnnn.dx_central(temperature_l_np1_p));
+    v_gamma_p[1][n] = thermal_conductivity/latent_heat * (qnnn.dy_central(temperature_s_np1_p) - qnnn.dy_central(temperature_l_np1_p));
 #ifdef P4_TO_P8
-    v_gamma_p[2][n] = -thermal_conductivity/latent_heat * (qnnn.dz_central(temperature_s_np1_p) - qnnn.dz_central(temperature_l_np1_p));
+    v_gamma_p[2][n] = thermal_conductivity/latent_heat * (qnnn.dz_central(temperature_s_np1_p) - qnnn.dz_central(temperature_l_np1_p));
 #endif
   }
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -553,7 +552,12 @@ void my_p4est_bialloy_t::solve_temperature()
         + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta))*normal_velocity_np1_p[n]/ml;
 #endif
 //    temperature_interface_tmp_p[n] = Tm;
+//    temperature_interface_tmp_p[n] = 0;
   }
+
+//  double mm;
+//  VecMax(temperature_interface_tmp, NULL, &mm);
+//  std::cout << "Maximum is : " << mm << std::endl;
 
   ierr = VecRestoreArray(temperature_interface_tmp, &temperature_interface_tmp_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(kappa, &kappa_p); CHKERRXX(ierr);
@@ -584,6 +588,7 @@ void my_p4est_bialloy_t::solve_temperature()
   ierr = VecGhostRestoreLocalForm(rhs , &out); CHKERRXX(ierr);
 
   my_p4est_poisson_nodes_t solver_t(ngbd);
+  solver_t.set_phi(phi);
   solver_t.set_bc(bc_t);
   solver_t.set_mu(dt_n*thermal_diffusivity);
   solver_t.set_diagonal(1);
@@ -606,11 +611,13 @@ void my_p4est_bialloy_t::solve_temperature()
     phi_p[n] *= -1;
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
-  solver_t.set_bc(bc_t);
-  solver_t.set_mu(dt_n*thermal_diffusivity);
-  solver_t.set_diagonal(1);
-  solver_t.set_rhs(rhs);
-  solver_t.solve(temperature_l_np1);
+  my_p4est_poisson_nodes_t solver_tl(ngbd);
+  solver_tl.set_phi(phi);
+  solver_tl.set_bc(bc_t);
+  solver_tl.set_mu(dt_n*thermal_diffusivity);
+  solver_tl.set_diagonal(1);
+  solver_tl.set_rhs(rhs);
+  solver_tl.solve(temperature_l_np1);
 
   ls.extend_Over_Interface_TVD(phi, temperature_l_np1);
 
@@ -725,9 +732,9 @@ void my_p4est_bialloy_t::compute_dt()
   ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-  dt_nm1 = dt_n;
 //  dt_n = 1 * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);
-  dt_n = 1 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+//  dt_n = 1 * SQR(dxyz_min) * MIN(1/u_max, 1/cooling_velocity);
+  dt_n = .5 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
   PetscPrintf(p4est->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e\n", u_max, vgamma_max, cooling_velocity);
 
 //  if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))

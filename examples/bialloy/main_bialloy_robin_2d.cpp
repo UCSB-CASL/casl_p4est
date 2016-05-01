@@ -523,24 +523,13 @@ int main (int argc, char* argv[])
   ls.perturb_level_set_function(phi, EPS);
 
   /* set initial time step */
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2., (double) data.max_lvl);
-  double dy = (ymax-ymin) / pow(2., (double) data.max_lvl);
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
-#endif
+  double dxyz[P4EST_DIM];
+  dxyz_min(p4est, dxyz);
 
 #ifdef P4_TO_P8
-  double dt = 0.45*MIN(dx,dy,dz)/V;
+  double dt = 0.45*MIN(dxyz[0],dxyz[1],dxyz[2])/V;
 #else
-  double dt = 0.45*MIN(dx,dy)/V;
+  double dt = 0.45*MIN(dxyz[0],dxyz[1])/V;
 #endif
 
   /* initialize the solver */
