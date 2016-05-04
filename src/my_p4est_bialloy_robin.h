@@ -165,9 +165,13 @@ public:
 
   void compute_normal_and_curvature();
 
-  void compute_normal_velocity();
+  void compute_normal_velocity_from_temperature();
 
-  void compute_velocity();
+  void compute_normal_velocity_from_concentration();
+
+  void compute_velocity_from_temperature();
+
+  void compute_velocity_from_concentration();
 
   void solve_temperature();
 
@@ -179,7 +183,7 @@ public:
 
   void one_step();
 
-  void compare_velocity_temperature_vs_concentration();
+  void compare_normal_velocity_temperature_vs_concentration();
 
   void save_VTK(int iter);
 };

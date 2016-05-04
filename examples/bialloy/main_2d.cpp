@@ -50,11 +50,11 @@
 
 int lmin = 4;
 int lmax = 6;
-int save_every_n_iteration = 50;
+int save_every_n_iteration = 1;
 
 using namespace std;
 
-bool save_velocity = true;
+bool save_velocity = false;
 bool save_vtk = true;
 
 #ifdef P4_TO_P8

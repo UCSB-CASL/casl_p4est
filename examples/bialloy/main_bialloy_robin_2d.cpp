@@ -539,7 +539,8 @@ int main (int argc, char* argv[])
   bas.set_concentration(cl);
   bas.set_normal_velocity(normal_velocity);
 
-  bas.compute_velocity();
+  bas.compute_normal_velocity_from_temperature();
+  bas.compute_velocity_from_temperature();
   bas.compute_dt();
 
 

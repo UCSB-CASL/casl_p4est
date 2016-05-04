@@ -2655,9 +2655,9 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
     for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
     {
       p4est_locidx_t n = layer_nodes[n_map];
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
       if(phi_p[n] > -EPS)
       {
+        const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
         dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
 #ifdef P4_TO_P8
@@ -2734,9 +2734,9 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
     for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
     {
       p4est_locidx_t n = local_nodes[n_map];
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
       if(phi_p[n] > -EPS)
       {
+        const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
         dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
 #ifdef P4_TO_P8
