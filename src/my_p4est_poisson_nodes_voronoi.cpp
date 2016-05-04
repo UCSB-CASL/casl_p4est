@@ -707,13 +707,13 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_matrix()
             robin_coef_n = robin_coef_interp(xyz_n[0]-phi_p[n]*qnnn.dx_central(phi_p), xyz_n[1]-phi_p[n]*qnnn.dy_central(phi_p));
             if(1-robin_coef_n*phi_p[n]>0)
             {
-              if(add_p[n]*volume + mu*s*robin_coef_n/(1-robin_coef_n*phi_p[n]) < 0) std::cout << "my_p4est_poisson_nodes_voronoi_t - 2nd order - Warning ! negative diagonal coefficient !" << std::endl;
+//              if(add_p[n]*volume + mu*s*robin_coef_n/(1-robin_coef_n*phi_p[n]) < 0) std::cout << "my_p4est_poisson_nodes_voronoi_t - 2nd order - Warning ! negative diagonal coefficient !" << std::endl;
               ierr = MatSetValue(A, node_000_g, node_000_g, mu*s*robin_coef_n/(1-robin_coef_n*phi_p[n]), ADD_VALUES); CHKERRXX(ierr);
               if(robin_coef_n>0) matrix_has_nullspace = false;
             }
             else
             {
-              if(add_p[n]*volume + mu*s*robin_coef_p[n] < 0) std::cout << "my_p4est_poisson_nodes_voronoi_t - 1st order - Warning ! negative diagonal coefficient !" << std::endl;
+//              if(add_p[n]*volume + mu*s*robin_coef_p[n] < 0) std::cout << "my_p4est_poisson_nodes_voronoi_t - 1st order - Warning ! negative diagonal coefficient !" << std::endl;
               ierr = MatSetValue(A, node_000_g, node_000_g, mu*s*robin_coef_p[n], ADD_VALUES); CHKERRXX(ierr);
               if(robin_coef_p[n]>0) matrix_has_nullspace = false;
             }
@@ -1070,8 +1070,8 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_matrix()
 //  if(out_dir!=NULL)
 //  {
 //    char name[1000];
-//    snprintf(name, 1000, "%s/voro_%d.vtk", out_dir, cpt/2);
-//    if(cpt%2==0)
+//    snprintf(name, 1000, "%s/voro_%d.vtk", out_dir, cpt);
+////    if(cpt%2==0)
 //      Voronoi2D::print_VTK_Format(vorog, name);
 //    cpt++;
 //  }

@@ -69,7 +69,7 @@ using namespace std;
 
 int lmin = 3;
 int lmax = 6;
-int nb_splits = 3;
+int nb_splits = 5;
 
 int nx = 2;
 int ny = 2;
@@ -82,7 +82,7 @@ int nz = 1;
  * 1 - plane (horizontal)
  * 2 - plane (vertical)
  */
-int interface_type = 1;
+int interface_type = 0;
 
 /*
  *  ********* 2D *********
@@ -95,7 +95,7 @@ int interface_type = 1;
  */
 int test_number = 5;
 
-int px = 1;
+int px = 0;
 int py = 0;
 #ifdef P4_TO_P8
 int pz = 0;
@@ -103,11 +103,15 @@ int pz = 0;
 
 bool save_vtk = true;
 
-double mu = 1;
-double add_diagonal = 1.3;
+double mu = 3e-5;
+double add_diagonal = 0;
 
 BoundaryConditionType bc_itype = ROBIN;
-BoundaryConditionType bc_wtype = NEUMANN;
+//BoundaryConditionType bc_itype = NEUMANN;
+//BoundaryConditionType bc_itype = DIRICHLET;
+
+BoundaryConditionType bc_wtype = DIRICHLET;
+//BoundaryConditionType bc_wtype = NEUMANN;
 
 double diag_add = 0;
 
@@ -321,7 +325,7 @@ public:
   double operator()(double x, double y) const
   {
 //    return 1;
-    return 4+x+y;
+    return 3e5*SQR((4+x+y));
   }
 } robin_coef;
 
@@ -887,6 +891,9 @@ int main (int argc, char* argv[])
     double *err_p;
     ierr = VecGetArray(err_nodes, &err_p); CHKERRXX(ierr);
 
+    double err_bc = 0;
+    ls.extend_Over_Interface_TVD(phi, sol);
+
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
       if(bc_itype==NOINTERFACE || phi_p[n]<0)
@@ -900,10 +907,42 @@ int main (int argc, char* argv[])
         err_p[n] = fabs(sol_p[n] - u_exact(x,y));
 #endif
         err_n = MAX(err_n, err_p[n]);
+
+        /* check that boundary condition is satisfied */
+#ifdef P4_TO_P8
+        if(phi_p[n]>-MIN(dxyz[0],dxyz[1],dxyz[2]))
+#else
+        if(phi_p[n]>-MIN(dxyz[0],dxyz[1]))
+#endif
+        {
+          const quad_neighbor_nodes_of_node_t &qnnn = ngbd_n.get_neighbors(n);
+          double nx = qnnn.dx_central(phi_p);
+          double ny = qnnn.dy_central(phi_p);
+          double norm = sqrt(nx*nx + ny*ny);
+          if(norm>EPS) { nx /= norm; ny /= norm; }
+          else         { nx = 0; ny = 0; }
+          double du_dn = qnnn.dx_central(sol_p)*nx + qnnn.dy_central(sol_p)*ny;
+          switch(bc_itype)
+          {
+          case DIRICHLET:
+            err_bc = MAX(err_bc, fabs(sol_p[n] - bc_interface_val(x,y)));
+            break;
+          case NEUMANN:
+            err_bc = MAX(err_bc, fabs(du_dn - bc_interface_val(x,y)));
+            break;
+          case ROBIN:
+            err_bc = MAX(err_bc, fabs(du_dn + robin_coef(x,y)*sol_p[n] - bc_interface_val(x,y)));
+            break;
+          default:
+            throw std::invalid_argument("Unknown interface boundary condition.");
+          }
+
+        }
       }
       else
         err_p[n] = 0;
     }
+
     ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(sol, &sol_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_nodes, &err_p); CHKERRXX(ierr);
@@ -911,8 +950,11 @@ int main (int argc, char* argv[])
     ierr = VecGhostUpdateBegin(err_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (err_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_bc, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    ierr = PetscPrintf(p4est->mpicomm, "Error on the boundary condition : %e\n", err_bc); CHKERRXX(ierr);
+
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    ierr = PetscPrintf(p4est->mpicomm, "Error on nodes : %g, order = %g\n", err_n, log(err_nm1/err_n)/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Error on nodes : %e, order = %g\n", err_n, log(err_nm1/err_n)/log(2)); CHKERRXX(ierr);
 
 
     /* extrapolate the solution and check accuracy */

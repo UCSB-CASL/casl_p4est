@@ -4625,9 +4625,12 @@ void my_p4est_poisson_nodes_t::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
      */
 
     // Allocate memory for second derivaties
+    if(phi_xx_ != NULL) { ierr = VecDestroy(phi_xx_); CHKERRXX(ierr); }
+    if(phi_yy_ != NULL) { ierr = VecDestroy(phi_yy_); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
 #ifdef P4_TO_P8
+    if(phi_zz_ != NULL) { ierr = VecDestroy(phi_zz_); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
 #endif
 
