@@ -74,6 +74,7 @@ private:
 
   /* concentration */
   Vec cl_n, cl_np1;
+  Vec cl_gamma;
 
   /* velocity */
   Vec v_interface_n  [P4EST_DIM];
@@ -143,7 +144,7 @@ public:
               CF_2& bc_wall_value_cl);
 #endif
 
-  void set_temperature(Vec temperature);
+  void set_temperature(Vec temperature_l, Vec temperature_s);
 
   void set_concentration(Vec cl);
 
