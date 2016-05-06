@@ -83,7 +83,7 @@ double zmin = 0;
 double zmax = 1;
 #endif
 
-double box_size = 4e-2;//4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
 
 double rho;                  /* density                                    - kg.cm-3      */
@@ -93,7 +93,6 @@ double kp;                   /* partition coefficient                           
 double c0;                   /* initial concentration                      - at frac.     */
 double Tm;                   /* melting temperature                        - K            */
 double Dl;                   /* liquid concentration diffusion coefficient - cm2.s-1      */
-double Ds;                   /* solid concentration diffusion coefficient  - cm2.s-1      */
 double G;                    /* thermal gradient                           - k.cm-1       */
 double V;                    /* cooling velocity                           - cm.s-1       */
 double latent_heat;          /* L, latent heat                             - J.cm-3       */
@@ -120,7 +119,7 @@ void set_alloy_parameters()
     c0                   = 0.40831;        /* at frac.    */
     Tm                   = 1728;           /* K           */
     Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
-    Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
+//    Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
     G                    = 4e2;            /* k.cm-1      */
     V                    = 0.01;           /* cm.s-1      */
     latent_heat          = 2350;           /* J.cm-3      */
@@ -139,7 +138,7 @@ void set_alloy_parameters()
     c0             = 0.6;
     Tm             = 933;
     Dl             = 1e-4;
-    Ds             = 1e-13;
+//    Ds             = 1e-13;
     G              = 50;
     V              = 0.01; /* 1um = 10-4cm */
     latent_heat    = 898.8;
@@ -348,15 +347,27 @@ public:
   }
 } wall_bc_value_concentration_l;
 
-class InitialTemperature : public CF_2
+class InitialTemperatureL : public CF_2
 {
 public:
   double operator()(double x, double y) const
   {
-    if(LS(x,y)<0) return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
-    else          return LS(x,y)*G + c0*ml + Tm;
+//    return c0*ml+Tm;
+//    return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
+    return LS(x,y)*G + c0*ml + Tm;
   }
-} initial_temperature;
+} initial_temperature_l;
+
+class InitialTemperatureS : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+//    return c0*ml+Tm;
+    return LS(x,y)*G + c0*ml + Tm;
+//    return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
+  }
+} initial_temperature_s;
 
 class InitialConcentrationL : public CF_2
 {
@@ -459,11 +470,12 @@ int main (int argc, char* argv[])
   double G_orig = G;
   double V_orig = V;
 
+//  box_size = 1;
+//  Dl = 1;
   scaling = 1/box_size;
   rho                  /= (scaling*scaling*scaling);
   thermal_conductivity /= scaling;
   Dl                   *= (scaling*scaling);
-  Ds                   *= (scaling*scaling);
   G                    /= scaling;
   V                    *= scaling;
   latent_heat          /= (scaling*scaling*scaling);
@@ -503,14 +515,16 @@ int main (int argc, char* argv[])
   ngbd->init_neighbors();
 
   /* initialize the variables */
-  Vec phi, temperature, cl, normal_velocity;
+  Vec phi, temperature_l, temperature_s, cl, normal_velocity;
   ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &temperature    ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &temperature_l  ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &temperature_s  ); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &cl             ); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &normal_velocity); CHKERRXX(ierr);
 
   sample_cf_on_nodes(p4est, nodes, LS, phi);
-  sample_cf_on_nodes(p4est, nodes, initial_temperature, temperature);
+  sample_cf_on_nodes(p4est, nodes, initial_temperature_l, temperature_l);
+  sample_cf_on_nodes(p4est, nodes, initial_temperature_s, temperature_s);
   sample_cf_on_nodes(p4est, nodes, initial_concentration_l, cl);
 
   Vec tmp;
@@ -535,7 +549,7 @@ int main (int argc, char* argv[])
              wall_bc_type_concentration,
              wall_bc_value_temperature,
              wall_bc_value_concentration_l);
-  bas.set_temperature(temperature);
+  bas.set_temperature(temperature_l, temperature_s);
   bas.set_concentration(cl);
   bas.set_normal_velocity(normal_velocity);
 
