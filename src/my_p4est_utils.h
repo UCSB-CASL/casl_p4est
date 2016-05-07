@@ -1,6 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <src/math.h>
 #ifdef P4_TO_P8
 #include <p8est.h>
 #include <p8est_nodes.h>

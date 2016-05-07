@@ -68,23 +68,20 @@ char direction = 'y';
  */
 int alloy_type = 0;
 
-int nx = 2;
-int ny = 2;
-#ifdef P4_TO_P8
-int nz = 2;
-#endif
+double box_size = 4e-2;//4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double scaling = 1/box_size;
 
 double xmin = 0;
-double xmax = 1;
 double ymin = 0;
+double xmax = 1;
 double ymax = 1;
 #ifdef P4_TO_P8
 double zmin = 0;
 double zmax = 1;
+int n_xyz[] = {2, 2, 2};
+#else
+int n_xyz[] = {2, 2};
 #endif
-
-double box_size = 4e-2;//4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
-double scaling = 1/box_size;
 
 double rho;                  /* density                                    - kg.cm-3      */
 double heat_capacity;        /* c, heat capacity                           - J.kg-1.K-1   */
@@ -453,16 +450,17 @@ int main (int argc, char* argv[])
   save_vtk = cmd.get("save_vtk", save_vtk);
   save_velocity = cmd.get("save_velo", save_velocity);
 
-  nx = cmd.get("nx", nx);
-  ny = cmd.get("ny", ny);
+  int periodic[P4EST_DIM];
+  periodic[0] = cmd.get("px", (direction=='y' || direction=='z') ? 1 : 0);
+  periodic[1] = cmd.get("py", (direction=='x' || direction=='z') ? 1 : 0);
 #ifdef P4_TO_P8
-  nz = cmd.get("nz", nz);
+  periodic[2] = cmd.get("pz", (direction=='x' || direction=='y') ? 1 : 0);
 #endif
 
-  int px = cmd.get("px", 0);
-  int py = cmd.get("py", 0);
+  n_xyz[0] = cmd.get("nx", n_xyz[0]);
+  n_xyz[1] = cmd.get("ny", n_xyz[1]);
 #ifdef P4_TO_P8
-  int pz = cmd.get("pz", 0);
+  n_xyz[2] = cmd.get("nz", n_xyz[2]);
 #endif
 
 #ifdef P4_TO_P8
@@ -470,8 +468,6 @@ int main (int argc, char* argv[])
 #else
   direction = cmd.get("direction", 'y');
 #endif
-
-  cmd.print();
 
   if(0)
   {
@@ -519,15 +515,13 @@ int main (int argc, char* argv[])
   my_p4est_brick_t brick;
 
 #ifdef P4_TO_P8
-  int n_xyz [] = {nx, ny, nz};
-  double xyz_min [] = {0, 0, 0};
-  double xyz_max [] = {nx, ny, nz};
+  double xyz_min [] = {xmin, ymin, zmin};
+  double xyz_max [] = {xmax, ymax, zmax};
 #else
-  int n_xyz [] = {nx, ny};
-  double xyz_min [] = {0, 0};
-  double xyz_max [] = {nx, ny};
+  double xyz_min [] = {xmin, ymin};
+  double xyz_max [] = {xmax, ymax};
 #endif
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
   p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
   lmin = cmd.get("lmin", lmin);
@@ -618,9 +612,9 @@ int main (int argc, char* argv[])
   const char *out_dir = getenv("OUT_DIR");
   if (!out_dir) out_dir = ".";
 #ifdef P4_TO_P8
-  sprintf(name, "%s/velo_%dx%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, nx, ny, nz, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
+  sprintf(name, "%s/velo_%dx%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], n_xyz[2], latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #else
-  sprintf(name, "%s/velo_%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, nx, ny, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
+  sprintf(name, "%s/velo_%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #endif
 
   if(save_velocity)

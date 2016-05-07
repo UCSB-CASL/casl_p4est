@@ -910,9 +910,6 @@ void my_p4est_bialloy_t::update_grid()
     interp.interpolate(v_interface_n[dir]);
     ierr = VecDestroy(v_interface_np1[dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &v_interface_np1[dir]); CHKERRXX(ierr);
-  interp.set_input(w_interface_np1, quadratic_non_oscillatory);
-  interp.interpolate(w_interface_n);
-  ierr = VecDestroy(w_interface_np1); CHKERRXX(ierr);
   }
 
   Vec normal_velocity_n;
@@ -1083,10 +1080,15 @@ void my_p4est_bialloy_t::save_VTK(int iter)
 {
   const char* out_dir = getenv("OUT_DIR");
   if (!out_dir)
-    out_dir = "out_dir";
+  {
+    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
+    return;
+  }
   std::ostringstream command;
   command << "mkdir -p " << out_dir << "/vtu";
-  system(command.str().c_str());
+  int ret_sys = system(command.str().c_str());
+  if(ret_sys<0)
+    throw std::invalid_argument("my_p4est_bialloy_t::save_vtk could not create directory");
   
   char name[1000];
 #ifdef P4_TO_P8
@@ -1132,10 +1134,11 @@ void my_p4est_bialloy_t::save_VTK(int iter)
       xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
 
 #ifdef P4_TO_P8
-    connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], brick->nxyztrees[2], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], xyz_min[2], xyz_max[2], &brick_vis, 0, 0, 0);
+    int non_periodic[] = {0, 0, 0};
 #else
-    connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], &brick_vis, 0, 0);
+    int non_periodic[] = {0, 0};
 #endif
+    connectivity_vis = my_p4est_brick_new(brick->nxyztrees, xyz_min, xyz_max, brick, non_periodic);
 
     p4est_vis = my_p4est_new(p4est->mpicomm, connectivity_vis, 0, NULL, NULL);
     ghost_vis = my_p4est_ghost_new(p4est_vis, P4EST_CONNECT_FULL);

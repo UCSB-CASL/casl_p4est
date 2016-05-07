@@ -535,12 +535,14 @@ int main (int argc, char* argv[])
   int n_xyz [] = {nx, ny, nz};
   double xyz_min [] = {xmin, ymin, zmin};
   double xyz_max [] = {xmax, ymax, zmax};
+  int periodic[] = {0, 0, 0};
 #else
   int n_xyz [] = {nx, ny};
   double xyz_min [] = {xmin, ymin};
   double xyz_max [] = {xmax, ymax};
+  int periodic[] = {0, 0};
 #endif
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   p4est_t       *p4est;
   p4est_nodes_t *nodes;

@@ -5,13 +5,8 @@
 
 int main(int argc, char **argv)
 {
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
+  mpi_environment_t mpi;
+  mpi.init(argc, argv);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -28,7 +23,7 @@ int main(int argc, char **argv)
   cmd.add_option("save_stats", "compute statistics for the final state. 0 or 1, default = 0");
   cmd.add_option("a", "set the lattice spacing, default = 180/300 = .6");
   cmd.add_option("one_level", "set to 1 to restrict the islands to one level only, default = 0");
-  cmd.add_option("bc", "the boundary condition for rho at the island, either dirichlet or robin, default = dirichlet");
+  cmd.add_option("bc", "the boundary condition for rho at the island, either dirichlet or robin, default = robin");
   cmd.add_option("barrier", "if robin bc, set the ration D'/D. ~1 -> dirichlet, <<1 -> steep islands. default = .5");
   cmd.parse(argc, argv);
 
@@ -63,10 +58,14 @@ int main(int argc, char **argv)
 
   /* create the p4est */
   my_p4est_brick_t brick;
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, 0, L, 0, L, &brick, 1, 1);
+  int n_xyz[] = {nx, ny};
+  double xyz_min[] = {0, 0};
+  double xyz_max[] = {L, L};
+  int periodic[] = {1, 1};
+  p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   splitting_criteria_t data(lmin, lmax);
-  p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, (void*)(&data));
+  p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, (void*)(&data));
   for(int lvl=0; lvl<lmin; ++lvl)
   {
     my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);

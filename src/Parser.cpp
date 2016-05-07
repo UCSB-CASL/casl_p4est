@@ -52,8 +52,6 @@ void cmdParser::parse(int argc, char* argv[])
 
     exit(EXIT_SUCCESS);
   }
-
-  print();
 }
 
 void cmdParser::print(FILE *f){

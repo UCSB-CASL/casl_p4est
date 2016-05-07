@@ -46,7 +46,7 @@
 
 //#undef P4EST_VTK_COMPRESSION
 #define P4EST_VTK_DOUBLES
-#define P4EST_VTK_BINARY
+//#define P4EST_VTK_BINARY
 
 #ifndef P4EST_VTK_DOUBLES
 #define P4EST_VTK_FLOAT_NAME "Float32"
@@ -62,10 +62,10 @@
 #else
 #define P4EST_VTK_FORMAT_STRING "binary"
 
-#ifdef SC_CHECK_ABORT
-#undef SC_CHECK_ABORT
-#define SC_CHECK_ABORT(a,b) 0
-#endif
+//#ifdef SC_CHECK_ABORT
+//#undef SC_CHECK_ABORT
+//#define SC_CHECK_ABORT(a,b) 0
+//#endif
 
 static int
 my_p4est_vtk_write_binary (FILE * vtkfile, char *numeric_data,

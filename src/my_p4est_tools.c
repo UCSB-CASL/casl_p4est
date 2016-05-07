@@ -37,11 +37,7 @@ p4est_connectivity_t *
 my_p4est_brick_new (const int* n_xyz,
                     const double* xyz_min, const double* xyz_max,
                     my_p4est_brick_t * myb,
-#ifdef P4_TO_P8
-                    int periodic_a, int periodic_b, int periodic_c)
-#else
-                    int periodic_a, int periodic_b)
-#endif
+                    const int *periodic)
 {
   int                 i, j;
   int                 ii, jj;
@@ -57,10 +53,10 @@ my_p4est_brick_new (const int* n_xyz,
   p4est_connectivity_t *conn;
 
 #ifdef CASL_THROWS
-  if((periodic_a && n_xyz[0]==1) ||
-     (periodic_b && n_xyz[1]==1)
+  if((periodic[0] && n_xyz[0]==1) ||
+     (periodic[1] && n_xyz[1]==1)
    #ifdef P4_TO_P8
-     || (periodic_c && n_xyz[2]==1)
+     || (periodic[2] && n_xyz[2]==1)
    #endif
      )
   {
@@ -74,9 +70,9 @@ my_p4est_brick_new (const int* n_xyz,
   P4EST_ASSERT (0 < n_xyz[2]);
 #endif
 #ifdef P4_TO_P8
-  conn = p4est_connectivity_new_brick (n_xyz[0], n_xyz[1], n_xyz[2], periodic_a, periodic_b, periodic_c);
+  conn = p4est_connectivity_new_brick (n_xyz[0], n_xyz[1], n_xyz[2], periodic[0], periodic[1], periodic[2]);
 #else
-  conn = p4est_connectivity_new_brick (n_xyz[0], n_xyz[1], periodic_a, periodic_b);
+  conn = p4est_connectivity_new_brick (n_xyz[0], n_xyz[1], periodic[0], periodic[1]);
 #endif
   vv = conn->vertices;
   P4EST_ASSERT (vv != NULL);

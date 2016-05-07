@@ -601,7 +601,7 @@ void my_p4est_epitaxy_t::update_grid()
 
   if(phi.size()>0)
   {
-    my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
+    my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
 
     sl.update_p4est(v, dt_n, phi);
 
@@ -1261,7 +1261,8 @@ void my_p4est_epitaxy_t::save_vtk(int iter)
 
   /* since forest is periodic, need to build temporary non-periodic forest for visualization */
   my_p4est_brick_t brick_vis;
-  p4est_connectivity_t *connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], &brick_vis, 0, 0);
+  int non_periodic[] = {0, 0};
+  p4est_connectivity_t *connectivity_vis = my_p4est_brick_new(brick->nxyztrees, xyz_min, xyz_max, &brick_vis, non_periodic);
   p4est_t *p4est_vis = my_p4est_new(p4est->mpicomm, connectivity_vis, 0, NULL, NULL);
   p4est_ghost_t *ghost_vis = my_p4est_ghost_new(p4est_vis, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes_vis = my_p4est_nodes_new(p4est_vis, ghost_vis);

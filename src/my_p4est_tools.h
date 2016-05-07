@@ -58,11 +58,7 @@ my_p4est_brick_t;
 p4est_connectivity_t *my_p4est_brick_new (const int* n_xyz,
                                           const double* xyz_min, const double* xyz_max,
                                           my_p4est_brick_t * myb,
-#ifdef P4_TO_P8
-                                          int periodic_a, int periodic_b, int periodic_c);
-#else
-                                          int periodic_a, int periodic_b);
-
+                                          const int* periodic);
 
 /** Free a brick connectivity and tree lookup structure.
  * \param [in] conn     The connectivity will be destroyed.
