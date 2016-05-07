@@ -1,6 +1,0 @@
--I .
--I ../soft/include
--I ../soft/p4est-dev/debug/include
--I /opt/apps/intel13/mvapich2_1_9/petsc/3.5/sandybridge-cxx/include
--I /opt/apps/intel13/mvapich2_1_9/petsc/3.5/include
-

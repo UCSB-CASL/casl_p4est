@@ -162,6 +162,20 @@ double quad_neighbor_nodes_of_node_t::dy_central ( const double *f ) const
     return val;
 }
 
+void quad_neighbor_nodes_of_node_t::gradient(const double *f, double &fx, double &fy) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  double f_000, f_m00, f_p00, f_0m0, f_0p0;
+  ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, f_0m0, f_0p0);
+
+  fx = ((f_p00-f_000)/d_p00*d_m00 + (f_000-f_m00)/d_m00*d_p00)/(d_m00+d_p00);
+  fy = ((f_0p0-f_000)/d_0p0*d_0m0 + (f_000-f_0m0)/d_0m0*d_0p0)/(d_0m0+d_0p0);
+
+  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
 double quad_neighbor_nodes_of_node_t::dx_forward_linear ( const double *f ) const
 {
     PetscErrorCode ierr = PetscLogFlops(2); CHKERRXX(ierr);
@@ -190,6 +204,94 @@ double quad_neighbor_nodes_of_node_t::dy_backward_linear( const double *f ) cons
     return (f[node_000]-f_0m0_linear(f))/d_0m0;
 }
 
+double quad_neighbor_nodes_of_node_t::dx_backward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  double f_000, f_m00, f_p00;
+  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00);
+
+  double fxx_000 = ((f_p00-f_000)/d_p00 + (f_m00-f_000)/d_m00)*2.0/(d_m00+d_p00);
+  double fxx_m00 = dxx_central_on_m00(f, neighbors);
+
+  return (f_000-f_m00)/d_m00 + 0.5*d_m00*MINMOD(fxx_000,fxx_m00);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  double f_000, f_m00, f_p00;
+  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00);
+
+  double fxx_000 = ((f_p00-f_000)/d_p00 + (f_m00-f_000)/d_m00)*2.0/(d_m00+d_p00);
+  double fxx_p00 = dxx_central_on_p00(f, neighbors);
+
+  return (f_p00-f_000)/d_p00 - 0.5*d_p00*MINMOD(fxx_000,fxx_p00);
+}
+
+double quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  double f_000, f_0m0, f_0p0;
+  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0);
+
+  double fyy_000 = ((f_0p0-f_000)/d_0p0 + (f_0m0-f_000)/d_0m0)*2.0/(d_0m0+d_0p0);
+  double fyy_0m0 = dyy_central_on_0m0(f, neighbors);
+
+  return (f_000-f_0m0)/d_0m0 + 0.5*d_0m0*MINMOD(fyy_000,fyy_0m0);
+}
+
+double quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  double f_000, f_0m0, f_0p0;
+  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0);
+
+  double fyy_000 = ((f_0p0-f_000)/d_0p0 + (f_0m0-f_000)/d_0m0)*2.0/(d_0m0+d_0p0);
+  double fyy_0p0 = dyy_central_on_0p0(f, neighbors);
+
+  return (f_0p0-f_000)/d_0p0 - 0.5*d_0p0*MINMOD(fyy_000,fyy_0p0);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_backward_quadratic(const double *f, const double *fxx) const
+{
+  double f_000, f_m00, f_p00;
+  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00);
+
+  double fxx_000 = ((f_p00-f_000)/d_p00 + (f_m00-f_000)/d_m00)*2.0/(d_m00+d_p00);
+  double fxx_m00 = f_m00_linear(fxx);
+
+  return (f_000-f_m00)/d_m00 + 0.5*d_m00*MINMOD(fxx_000,fxx_m00);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f, const double *fxx) const
+{
+  double f_000, f_m00, f_p00;
+  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00);
+
+  double fxx_000 = ((f_p00-f_000)/d_p00 + (f_m00-f_000)/d_m00)*2.0/(d_m00+d_p00);
+  double fxx_p00 = f_p00_linear(fxx);
+
+  return (f_p00-f_000)/d_p00 - 0.5*d_p00*MINMOD(fxx_000,fxx_p00);
+}
+
+double quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f, const double *fyy) const
+{
+  double f_000, f_0m0, f_0p0;
+  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0);
+
+  double fyy_000 = ((f_0p0-f_000)/d_0p0 + (f_0m0-f_000)/d_0m0)*2.0/(d_0m0+d_0p0);
+  double fyy_0m0 = f_0m0_linear(fyy);
+
+  return (f_000-f_0m0)/d_0m0 + 0.5*d_0m0*MINMOD(fyy_000,fyy_0m0);
+}
+
+double quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f, const double *fyy) const
+{
+  double f_000, f_0m0, f_0p0;
+  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0);
+
+  double fyy_000 = ((f_0p0-f_000)/d_0p0 + (f_0m0-f_000)/d_0m0)*2.0/(d_0m0+d_0p0);
+  double fyy_0p0 = f_0p0_linear(fyy);
+
+  return (f_0p0-f_000)/d_0p0 - 0.5*d_0p0*MINMOD(fyy_000,fyy_0p0);
+}
+
 double quad_neighbor_nodes_of_node_t::dxx_central( const double *f ) const
 {
     PetscErrorCode ierr;
@@ -215,6 +317,20 @@ double quad_neighbor_nodes_of_node_t::dyy_central( const double *f ) const
     ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central, 0, 0, 0, 0); CHKERRXX(ierr);
 
     return val;
+}
+
+void quad_neighbor_nodes_of_node_t::laplace(const double *f, double &fxx, double &fyy) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  double f_000, f_m00, f_p00, f_0m0, f_0p0;
+  ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, f_0m0, f_0p0);
+
+  fxx = ((f_p00-f_000)/d_p00 + (f_m00-f_000)/d_m00)*2.0/(d_m00+d_p00);
+  fyy = ((f_0p0-f_000)/d_0p0 + (f_0m0-f_000)/d_0m0)*2.0/(d_0m0+d_0p0);
+
+  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 double quad_neighbor_nodes_of_node_t::dxx_central_on_m00(const double *f, const my_p4est_node_neighbors_t &neighbors) const

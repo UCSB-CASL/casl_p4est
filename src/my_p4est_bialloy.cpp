@@ -710,10 +710,6 @@ void my_p4est_bialloy_t::solve_temperature()
   ls.extend_Over_Interface_TVD(phi, t_interface);
 }
 
-
-
-
-
 void my_p4est_bialloy_t::solve_concentration()
 {
   /* initialize the boundary condition on the interface */
@@ -870,7 +866,7 @@ void my_p4est_bialloy_t::update_grid()
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
+  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
 
   /* bousouf update this for second order in time */
   sl.update_p4est(v_interface_np1, dt_n, phi);
@@ -914,6 +910,9 @@ void my_p4est_bialloy_t::update_grid()
     interp.interpolate(v_interface_n[dir]);
     ierr = VecDestroy(v_interface_np1[dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &v_interface_np1[dir]); CHKERRXX(ierr);
+  interp.set_input(w_interface_np1, quadratic_non_oscillatory);
+  interp.interpolate(w_interface_n);
+  ierr = VecDestroy(w_interface_np1); CHKERRXX(ierr);
   }
 
   Vec normal_velocity_n;
@@ -945,10 +944,6 @@ void my_p4est_bialloy_t::update_grid()
 
   compute_normal_and_curvature();
 }
-
-
-
-
 
 void my_p4est_bialloy_t::one_step()
 {
@@ -1086,25 +1081,19 @@ void my_p4est_bialloy_t::compare_velocity_temperature_vs_concentration()
 
 void my_p4est_bialloy_t::save_VTK(int iter)
 {
-#if defined(STAMPEDE) || defined(COMET)
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
-#else
-  char out_dir[1000];
-#ifdef P4_TO_P8
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/3d");
-#else
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/2d");
-#endif
-#endif
-
+  const char* out_dir = getenv("OUT_DIR");
+  if (!out_dir)
+    out_dir = "out_dir";
+  std::ostringstream command;
+  command << "mkdir -p " << out_dir << "/vtu";
+  system(command.str().c_str());
+  
   char name[1000];
 #ifdef P4_TO_P8
   sprintf(name, "%s/vtu/bialloy_%d_%dx%dx%d.%05d", out_dir, p4est->mpisize, brick->nxyztrees[0], brick->nxyztrees[1], brick->nxyztrees[2], iter);
 #else
   sprintf(name, "%s/vtu/bialloy_%d_%dx%d.%05d", out_dir, p4est->mpisize, brick->nxyztrees[0], brick->nxyztrees[1], iter);
 #endif
-
 
   /* if the domain is periodic, create a temporary tree without periodicity for visualization */
   bool periodic = false;

@@ -1,9 +1,11 @@
 #ifdef P4_TO_P8
-#include "my_p8est_refine_coarsen.h"
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_utils.h>
 #include <p8est_bits.h>
 #include <p8est_algorithms.h>
 #else
-#include "my_p4est_refine_coarsen.h"
+#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_utils.h>
 #include <p4est_bits.h>
 #include <p4est_algorithms.h>
 #endif
@@ -468,19 +470,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
     // refinement based on distance
 		bool refine = false, coarsen = true;
-//		bool is_interface_crossing = 
-//#ifdef P4_TO_P8
-//    ( f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
-//      f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0 );
-//#else
-//    ( f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 );
-//#endif
-//
-//		if (is_interface_crossing && quad->level < max_lvl ) {
-//			quad->p.user_int = REFINE_QUADRANT;
-//			return true;
-//		}
-//
+
     for (short i = 0; i < P4EST_CHILDREN; i++) {
 			refine  = refine  || (fabs(f[i]) <= 0.5*lip*d && quad->level < max_lvl);
 			coarsen = coarsen && (fabs(f[i]) >= 1.0*lip*d && quad->level > min_lvl);

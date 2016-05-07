@@ -10,6 +10,7 @@
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 
+#include <src/math.h>
 #include "petsc_compatibility.h"
 #include <petsclog.h>
 
@@ -82,11 +83,11 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order( std::vector<p
       // check if the node is near interface
       //---------------------------------------------------------------------
       if (    (p0_000*p0_m00<0) || (p0_000*p0_p00<0)
-           || (p0_000*p0_0m0<0) || (p0_000*p0_0p0<0)
-#ifdef P4_TO_P8
-           || (p0_000*p0_00m<0) || (p0_000*p0_00p<0)
-#endif
-           )
+              || (p0_000*p0_0m0<0) || (p0_000*p0_0p0<0)
+        #ifdef P4_TO_P8
+              || (p0_000*p0_00m<0) || (p0_000*p0_00p<0)
+        #endif
+              )
       {
         if(p0_000*p0_m00<0) { s_m00 = -interface_Location(-s_m00, 0, p0_m00, p0_000); p_m00 = 0; }
         if(p0_000*p0_p00<0) { s_p00 =  interface_Location( s_p00, 0, p0_p00, p0_000); p_p00 = 0; }
@@ -220,14 +221,14 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order( std::vector<p
 }
 
 void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map,
-                                                                  #ifdef P4_TO_P8
-                                                                  const double *dxx0, const double *dyy0, const double *dzz0,
-                                                                  const double *dxx,  const double *dyy,  const double *dzz,
-                                                                  #else
-                                                                  const double *dxx0, const double *dyy0,
-                                                                  const double *dxx,  const double *dyy,
-                                                                  #endif
-                                                                  double *p0, double *pn, double *pnp1, double limit )
+                                                                    #ifdef P4_TO_P8
+                                                                    const double *dxx0, const double *dyy0, const double *dzz0,
+                                                                    const double *dxx,  const double *dyy,  const double *dzz,
+                                                                    #else
+                                                                    const double *dxx0, const double *dyy0,
+                                                                    const double *dxx,  const double *dyy,
+                                                                    #endif
+                                                                    double *p0, double *pn, double *pnp1, double limit )
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_2nd_order, 0, 0, 0, 0);
@@ -236,10 +237,9 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
   {
     p4est_locidx_t n = map[n_map];
 
-    if(fabs(p0[n]) <= EPS)
+    if(fabs(p0[n]) < EPS) {
       pnp1[n] = 0;
-    else if(fabs(p0[n]) <= limit)
-    {      
+    } else if(fabs(p0[n]) <= limit) {
       const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
 
       double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
@@ -282,11 +282,11 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
       //---------------------------------------------------------------------
       // check if the node is near interface
       //---------------------------------------------------------------------
-      if (    (p0_000*p0_m00<0) || (p0_000*p0_p00<0)
-           || (p0_000*p0_0m0<0) || (p0_000*p0_0p0<0)
-#ifdef P4_TO_P8
-           || (p0_000*p0_00m<0) || (p0_000*p0_00p<0)
-#endif
+      if (  (p0_000*p0_m00<0) || (p0_000*p0_p00<0)
+         || (p0_000*p0_0m0<0) || (p0_000*p0_0p0<0)
+        #ifdef P4_TO_P8
+         || (p0_000*p0_00m<0) || (p0_000*p0_00p<0)
+        #endif
          )
       {
         double p0xx_000 = dxx0[n];
@@ -325,52 +325,15 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
       //---------------------------------------------------------------------
       // Neumann boundary condition on the walls
       //---------------------------------------------------------------------
-      /* first unclamp the node */
       p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
-      p4est_indep_t unclamped_node = *node;
-      p4est_node_unclamp((p4est_quadrant_t*)&unclamped_node);
 
-      /* wall in the x direction */
-      if(unclamped_node.x==0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
-        if(nb_tree_idx == tree_idx) { s_m00 = s_p00; p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
-      }
-      else if(unclamped_node.x==P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-        if(nb_tree_idx == tree_idx) { s_p00 = s_m00; p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
-      }
-
-      /* wall in the y direction */
-      if(unclamped_node.y==0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
-        if(nb_tree_idx == tree_idx) { s_0m0 = s_0p0; p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
-      }
-      else if(unclamped_node.y==P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
-        if(nb_tree_idx == tree_idx) { s_0p0 = s_0m0; p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
-      }
+      if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
+      if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
+      if (is_node_ymWall(p4est, node)) { s_0m0 = s_0p0; p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
+      if (is_node_ypWall(p4est, node)) { s_0p0 = s_0m0; p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
 #ifdef P4_TO_P8
-      /* wall in the z direction */
-      if(unclamped_node.z==0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00m];
-        if(nb_tree_idx == tree_idx) { s_00m = s_00p; p_00m = p_00p; }
-      }
-      else if(unclamped_node.z==P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00p];
-        if(nb_tree_idx == tree_idx) { s_00p = s_00m; p_00p = p_00m; }
-      }
+      if (is_node_zmWall(p4est, node)) { s_00m = s_00p; p_00m=p_00p; pzz_000 = pzz_00m = pzz_00p = 0; }
+      if (is_node_zpWall(p4est, node)) { s_00p = s_00m; p_00p=p_00m; pzz_000 = pzz_00m = pzz_00p = 0; }
 #endif
 
       //---------------------------------------------------------------------
@@ -381,7 +344,6 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
 #ifdef P4_TO_P8
       double pz_00p = (p_00p-p_000)/s_00p; double pz_00m = (p_000-p_00m)/s_00m;
 #endif
-
 
       //---------------------------------------------------------------------
       // Second Order One-Sided Differencing
@@ -406,8 +368,10 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
 #ifdef P4_TO_P8
       dt = MIN(dt,s_00m);
       dt = MIN(dt,s_00p);
+      dt /= 3.0;
+#else
+      dt /= 2.0;
 #endif
-      dt /= 2;
 
       if(sgn>0) {
         if(px_p00>0) px_p00 = 0;
@@ -449,11 +413,11 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
 }
 
 void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(std::vector<p4est_locidx_t> &map, const double* vn, double dt,
-                                                                  const double *dxx,  const double *dyy,
-                                                                  #ifdef P4_TO_P8
-                                                                  const double *dzz,
-                                                                  #endif
-                                                                  const double *pn, double *pnp1)
+                                                                    const double *dxx,  const double *dyy,
+                                                                    #ifdef P4_TO_P8
+                                                                    const double *dzz,
+                                                                    #endif
+                                                                    const double *pn, double *pnp1)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_1_iter, 0, 0, 0, 0);
@@ -807,7 +771,7 @@ void my_p4est_level_set_t::reinitialize_2nd_order( Vec phi_petsc, int number_of_
 
     /* update phi */
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-      phi[n] = .5 * (p1[n] + p2[n]);
+      phi[n] = .5 * (phi[n] + p2[n]);
   }
 
   /* restore arrays and destroy uneeded petsc objects */
@@ -906,7 +870,7 @@ void my_p4est_level_set_t::reinitialize_2nd_order_time_1st_order_space( Vec phi_
 
     /* update phi */
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-      phi[n] = .5 * (p1[n] + p2[n]);
+      phi[n] = .5 * (phi[n] + p2[n]);
   }
   IPMLogRegionEnd("reinit_2nd_1st");
 
@@ -1204,7 +1168,7 @@ double my_p4est_level_set_t::advect_in_normal_direction(const CF_2& vn, Vec phi,
   ierr = VecGhostUpdateEnd  (p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] = 0.5 * (p1_p[n] + p2_p[n]);
+    phi_p[n] = 0.5 * (phi_p[n] + p2_p[n]);
 
   /* restore arrays */
   ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
@@ -1235,9 +1199,9 @@ double my_p4est_level_set_t::advect_in_normal_direction(const CF_2& vn, Vec phi,
 }
 
 #ifdef P4_TO_P8
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx, Vec phi_yy, Vec phi_zz)
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, Vec phi_xx, Vec phi_yy)
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy)
 #endif
 {
   PetscErrorCode ierr;
@@ -1280,7 +1244,7 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, V
 #endif
 
   /* compute dt based on CFL condition */
-  double dt_local = DBL_MAX;
+  double dt_local = dt_max;
   double dt;
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
     
@@ -1361,7 +1325,7 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, V
   ierr = VecGhostUpdateEnd  (p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] = 0.5 * (p1_p[n] + p2_p[n]);
+    phi_p[n] = 0.5 * (phi_p[n] + p2_p[n]);
 
   /* restore arrays */
   ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
@@ -1477,9 +1441,9 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
 
       if(bc.interfaceType()==DIRICHLET)
 #ifdef P4_TO_P8
-      q0[n] = bc.interfaceValue(xyz[0] + grad_phi.x*phi[n], xyz[1] + grad_phi.y*phi[n], xyz[2] + grad_phi.z*phi[n]);
+        q0[n] = bc.interfaceValue(xyz[0] + grad_phi.x*phi[n], xyz[1] + grad_phi.y*phi[n], xyz[2] + grad_phi.z*phi[n]);
 #else
-      q0[n] = bc.interfaceValue(xyz[0] + grad_phi.x*phi[n], xyz[1] + grad_phi.y*phi[n]);
+        q0[n] = bc.interfaceValue(xyz[0] + grad_phi.x*phi[n], xyz[1] + grad_phi.y*phi[n]);
 #endif
 
       if(order >= 1 || (order==0 && bc.interfaceType()==NEUMANN))
@@ -1535,15 +1499,15 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est, nodes, xyz);
 
-//      double xy1 [] = {xyz[0] - grad_phi.x*(phi[n]), xyz[1] - grad_phi.y*(phi[n])};
-//      double xy2 [] = {xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)};
+      //      double xy1 [] = {xyz[0] - grad_phi.x*(phi[n]), xyz[1] - grad_phi.y*(phi[n])};
+      //      double xy2 [] = {xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)};
 
-//      q1[n] = 0.25*(
-//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
-//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
-//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
-//          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) );
-//      q2[n] = bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+3*diag), xyz[1] - grad_phi.y*(phi[n]+3*diag));
+      //      q1[n] = 0.25*(
+      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
+      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
+      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
+      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) );
+      //      q2[n] = bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+3*diag), xyz[1] - grad_phi.y*(phi[n]+3*diag));
 
       if(order==0)
       {
@@ -1558,15 +1522,15 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
         if(bc.interfaceType()==DIRICHLET)
         {
           double dif01 = (q1[n] - q0[n])/(2*diag - 0);
-//          double dif01 = (q1[n] - q0[n])/(sqrt(SQR(xy2[0]-xy1[0])+SQR(xy2[1]-xy1[1])) - 0);
+          //          double dif01 = (q1[n] - q0[n])/(sqrt(SQR(xy2[0]-xy1[0])+SQR(xy2[1]-xy1[1])) - 0);
           q[n] = q0[n] + (-phi[n] - 0) * dif01;
         }
         else /* interface Neumann */
         {
 #ifdef P4_TO_P8
-      double dif01 = -bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n]);
+          double dif01 = -bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n]);
 #else
-      double dif01 = -bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n]);
+          double dif01 = -bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n]);
 #endif
           q[n] = q1[n] + (-phi[n] - 2*diag) * dif01;
         }
@@ -1596,13 +1560,13 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
           double x = -phi[n];
           q[n] = a*x*x + b*x + c;
 
-//          double dif01 = (q2[n] - q1[n])/(diag);
-//#ifdef P4_TO_P8
-//          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n])) / (2*diag);
-//#else
-//          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n])) / (2*diag);
-//#endif
-//          q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
+          //          double dif01 = (q2[n] - q1[n])/(diag);
+          //#ifdef P4_TO_P8
+          //          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n])) / (2*diag);
+          //#else
+          //          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n])) / (2*diag);
+          //#endif
+          //          q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
         }
       }
 
@@ -1620,6 +1584,7 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
 
 void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditionType bc_type, Vec bc_vec, int order, int band_to_extend ) const
 {
+
 #ifdef CASL_THROWS
   if(bc_type==NOINTERFACE) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: no interface defined in the boundary condition ... needs to be dirichlet or neumann.");
   if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: invalid order. Choose 0, 1 or 2");
@@ -3328,26 +3293,26 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
 
 
 void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
-                                                                                  std::vector<double>& nx, std::vector<double>& ny,
-                                                                                  #ifdef P4_TO_P8
-                                                                                  std::vector<double>& nz,
-                                                                                  #endif
-                                                                                  double *q_out_p,
-                                                                                  double *q_p, double *qxx_p, double *qyy_p,
-                                                                                  #ifdef P4_TO_P8
-                                                                                  double *qzz_p,
-                                                                                  #endif
-                                                                                  std::vector<double>& qi_m00, std::vector<double>& qi_p00,
-                                                                                  std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
-                                                                                  #ifdef P4_TO_P8
-                                                                                  std::vector<double>& qi_00m, std::vector<double>& qi_00p,
-                                                                                  #endif
-                                                                                  std::vector<double>& s_m00 , std::vector<double>& s_p00,
-                                                                                  std::vector<double>& s_0m0 , std::vector<double>& s_0p0
-                                                                                  #ifdef P4_TO_P8
-                                                                                  , std::vector<double>& s_00m, std::vector<double>& s_00p
-                                                                                  #endif
-                                                                                  ) const
+                                                                                    std::vector<double>& nx, std::vector<double>& ny,
+                                                                                    #ifdef P4_TO_P8
+                                                                                    std::vector<double>& nz,
+                                                                                    #endif
+                                                                                    double *q_out_p,
+                                                                                    double *q_p, double *qxx_p, double *qyy_p,
+                                                                                    #ifdef P4_TO_P8
+                                                                                    double *qzz_p,
+                                                                                    #endif
+                                                                                    std::vector<double>& qi_m00, std::vector<double>& qi_p00,
+                                                                                    std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
+                                                                                    #ifdef P4_TO_P8
+                                                                                    std::vector<double>& qi_00m, std::vector<double>& qi_00p,
+                                                                                    #endif
+                                                                                    std::vector<double>& s_m00 , std::vector<double>& s_p00,
+                                                                                    std::vector<double>& s_0m0 , std::vector<double>& s_0p0
+                                                                                    #ifdef P4_TO_P8
+                                                                                    , std::vector<double>& s_00m, std::vector<double>& s_00p
+                                                                                    #endif
+                                                                                    ) const
 {
   for(size_t n_map=0; n_map<map.size(); ++n_map)
   {

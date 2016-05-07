@@ -99,11 +99,12 @@ struct quad_neighbor_nodes_of_node_t {
 #endif
 
 #ifdef P4_TO_P8
-  void laplace ( const double* f, double& fxx, double& fyy, double& fzz ) const;
   void gradient( const double* f, double& fx , double& fy , double& fz  ) const;
+#else
+  void gradient( const double* f, double& fx , double& fy  ) const;
 #endif
 
-  double dx_forward_linear ( const double *f ) const;
+  double dx_forward_linear ( const double *f ) const;  
   double dx_backward_linear( const double *f ) const;
   double dy_forward_linear ( const double *f ) const;
   double dy_backward_linear( const double *f ) const;
@@ -112,11 +113,35 @@ struct quad_neighbor_nodes_of_node_t {
   double dz_backward_linear( const double *f ) const;
 #endif
 
+  double dx_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
+  double dx_backward_quadratic( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
+  double dy_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
+  double dy_backward_quadratic( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
+#ifdef P4_TO_P8
+  double dz_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
+  double dz_backward_quadratic( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
+#endif
+
+  double dx_forward_quadratic ( const double *f, const double *fxx ) const;
+  double dx_backward_quadratic( const double *f, const double *fxx ) const;
+  double dy_forward_quadratic ( const double *f, const double *fyy ) const;
+  double dy_backward_quadratic( const double *f, const double *fyy ) const;
+#ifdef P4_TO_P8
+  double dz_forward_quadratic ( const double *f, const double *fzz ) const;
+  double dz_backward_quadratic( const double *f, const double *fzz ) const;
+#endif
+
   /* second-order derivatives */
   double dxx_central( const double *f ) const;
   double dyy_central( const double *f ) const;
 #ifdef P4_TO_P8
   double dzz_central( const double *f ) const;
+#endif
+
+#ifdef P4_TO_P8
+  void laplace ( const double* f, double& fxx, double& fyy, double& fzz ) const;
+#else
+  void laplace ( const double* f, double& fxx, double& fyy ) const;
 #endif
 
   double dxx_central_on_m00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
