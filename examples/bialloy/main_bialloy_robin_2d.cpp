@@ -68,19 +68,16 @@ char direction = 'y';
  */
 int alloy_type = 0;
 
-int nx = 2;
-int ny = 2;
-#ifdef P4_TO_P8
-int nz = 2;
-#endif
-
 double xmin = 0;
-double xmax = 1;
 double ymin = 0;
+double xmax = 1;
 double ymax = 1;
 #ifdef P4_TO_P8
 double zmin = 0;
 double zmax = 1;
+int n_xyz[] = {2, 2, 2};
+#else
+int n_xyz[] = {2, 2};
 #endif
 
 double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
@@ -384,11 +381,8 @@ public:
 
 int main (int argc, char* argv[])
 {
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
+  mpi_environment_t mpi;
+  mpi.init(argc, argv);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -425,16 +419,17 @@ int main (int argc, char* argv[])
   save_vtk = cmd.get("save_vtk", save_vtk);
   save_velocity = cmd.get("save_velo", save_velocity);
 
-  nx = cmd.get("nx", nx);
-  ny = cmd.get("ny", ny);
+  n_xyz[0] = cmd.get("nx", n_xyz[0]);
+  n_xyz[1] = cmd.get("ny", n_xyz[1]);
 #ifdef P4_TO_P8
-  nz = cmd.get("nz", nz);
+  n_xyz[2] = cmd.get("nz", n_xyz[2]);
 #endif
 
-  int px = cmd.get("px", 1);
-  int py = cmd.get("py", 0);
+  int periodic[P4EST_DIM];
+  periodic[0] = cmd.get("px", (direction=='y' || direction=='z') ? 1 : 0);
+  periodic[1] = cmd.get("py", (direction=='x' || direction=='z') ? 1 : 0);
 #ifdef P4_TO_P8
-  int pz = cmd.get("pz", 0);
+  periodic[2] = cmd.get("pz", (direction=='x' || direction=='y') ? 1 : 0);
 #endif
 
 #ifdef P4_TO_P8
@@ -486,17 +481,17 @@ int main (int argc, char* argv[])
   parStopWatch w1;
   w1.start("total time");
 
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
   /* create the p4est */
   my_p4est_brick_t brick;
 #ifdef P4_TO_P8
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, nz, 0, 1, 0, 1, 0, 1, &brick, px, py, pz);
+  double xyz_min [] = {xmin, ymin, zmin};
+  double xyz_max [] = {xmax, ymax, zmax};
 #else
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(nx, ny, 0, 1, 0, 1, &brick, px, py);
+  double xyz_min [] = {xmin, ymin};
+  double xyz_max [] = {xmax, ymax};
 #endif
-  p4est_t *p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+  p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
+  p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
   lmin = cmd.get("lmin", lmin);
   lmax = cmd.get("lmax", lmax);
@@ -575,18 +570,17 @@ int main (int argc, char* argv[])
 
   char *out_dir;
   out_dir = getenv("OUT_DIR");
-
 #ifdef P4_TO_P8
-  sprintf(name, "%s/velo_%dx%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, nx, ny, nz, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
+  sprintf(name, "%s/velo_%dx%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], n_xyz[2], latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #else
-  sprintf(name, "%s/velo_%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, nx, ny, latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
+  sprintf(name, "%s/velo_%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #endif
 
   if(save_velocity)
   {
-    ierr = PetscFOpen(mpi->mpicomm, name, "w", &fich); CHKERRXX(ierr);
-    ierr = PetscFPrintf(mpi->mpicomm, fich, "%% time(s)      average interface velocity     max interface velocity\n"); CHKERRXX(ierr);
-    ierr = PetscFClose(mpi->mpicomm, fich); CHKERRXX(ierr);
+    ierr = PetscFOpen(mpi.comm(), name, "w", &fich); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fich, "%% time(s)      average interface velocity     max interface velocity\n"); CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
   }
 
   if(save_vtk && iteration%save_every_n_iteration == 0)
@@ -598,7 +592,7 @@ int main (int argc, char* argv[])
 
   while(tn<t_final)
   {
-    ierr = PetscPrintf(mpi->mpicomm, "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
 
     bas.one_step();
 
@@ -630,10 +624,10 @@ int main (int argc, char* argv[])
 
       ierr = VecDestroy(ones); CHKERRXX(ierr);
 
-      ierr = PetscFOpen(mpi->mpicomm, name, "a", &fich); CHKERRXX(ierr);
-      PetscFPrintf(mpi->mpicomm, fich, "%e %e %e\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling);
-      ierr = PetscFClose(mpi->mpicomm, fich); CHKERRXX(ierr);
-      ierr = PetscPrintf(mpi->mpicomm, "saved velocity in %s\n", name); CHKERRXX(ierr);
+      ierr = PetscFOpen(mpi.comm(), name, "a", &fich); CHKERRXX(ierr);
+      PetscFPrintf(mpi.comm(), fich, "%e %e %e\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling);
+      ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "saved velocity in %s\n", name); CHKERRXX(ierr);
     }
 
 

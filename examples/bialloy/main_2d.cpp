@@ -513,7 +513,6 @@ int main (int argc, char* argv[])
 
   /* create the p4est */
   my_p4est_brick_t brick;
-
 #ifdef P4_TO_P8
   double xyz_min [] = {xmin, ymin, zmin};
   double xyz_max [] = {xmax, ymax, zmax};
