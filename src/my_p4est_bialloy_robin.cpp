@@ -956,7 +956,7 @@ void my_p4est_bialloy_t::update_grid()
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
+  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
 
   /* bousouf update this for second order in time */
   sl.update_p4est(v_interface_np1, dt_n, phi);
@@ -1276,10 +1276,11 @@ void my_p4est_bialloy_t::save_VTK(int iter)
     xyz_min_max(p4est, xyz_min, xyz_max);
 
 #ifdef P4_TO_P8
-    connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], brick->nxyztrees[2], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], xyz_min[2], xyz_max[2], &brick_vis, 0, 0, 0);
+    int non_periodic[] = {0, 0, 0};
 #else
-    connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], &brick_vis, 0, 0);
+    int non_periodic[] = {0, 0};
 #endif
+    connectivity_vis = my_p4est_brick_new(brick->nxyztrees, xyz_min, xyz_max, &brick_vis, non_periodic);
 
     p4est_vis = my_p4est_new(p4est->mpicomm, connectivity_vis, 0, NULL, NULL);
     ghost_vis = my_p4est_ghost_new(p4est_vis, P4EST_CONNECT_FULL);
