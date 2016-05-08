@@ -23,14 +23,14 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
   double Lf[n][n];
   for(int j=0; j<n; ++j)
   {
-    if(std::isnan(A.get_value(j,j))) return false;
+    if(isnan(A.get_value(j,j))) return false;
 
     Lf[j][j] = A.get_value(j,j);
     for(int k=0; k<j; ++k)
       Lf[j][j] -= SQR(Lf[j][k]);
 
     Lf[j][j] = sqrt(Lf[j][j]);
-    if(Lf[j][j]<EPS || std::isnan(Lf[j][j]) || std::isinf(Lf[j][j]))
+    if(Lf[j][j]<EPS || isnan(Lf[j][j]) || isinf(Lf[j][j]))
       return false;
 
     for(int i=j+1; i<n; ++i)

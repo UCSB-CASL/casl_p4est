@@ -58,7 +58,7 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order( std::vector<p
     else if(fabs(p0[n]) <= limit)
     {
       
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+      const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
 
       double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
       double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
@@ -240,7 +240,7 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
     if(fabs(p0[n]) < EPS) {
       pnp1[n] = 0;
     } else if(fabs(p0[n]) <= limit) {
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+      const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
 
       double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
       double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
@@ -426,7 +426,7 @@ void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(std::vector<
   {
     p4est_locidx_t n    = map[n_map];
     
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
 
     double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0;
 #ifdef P4_TO_P8
@@ -1085,7 +1085,7 @@ double my_p4est_level_set_t::advect_in_normal_direction(const CF_2& vn, Vec phi,
   std::vector<double> vn_vec(nodes->indep_nodes.elem_count);
   double *vn_p = &vn_vec[0];
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
 
     double xyzn[P4EST_DIM];
     node_xyz_fr_n(n, p4est, nodes, xyzn);
@@ -1248,7 +1248,7 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, d
   double dt;
   for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
     
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
 
     double s_p00 = fabs(qnnn.d_p00); double s_m00 = fabs(qnnn.d_m00);
     double s_0p0 = fabs(qnnn.d_0p0); double s_0m0 = fabs(qnnn.d_0m0);
@@ -1380,7 +1380,7 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
 
     phi_x[n] = qnnn.dx_central(phi);
     phi_y[n] = qnnn.dy_central(phi);
@@ -1604,7 +1604,7 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
 
     phi_x[n] = qnnn.dx_central(phi);
     phi_y[n] = qnnn.dy_central(phi);
@@ -1803,7 +1803,7 @@ void my_p4est_level_set_t::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
 
     phi_x[n] = qnnn.dx_central(phi);
     phi_y[n] = qnnn.dy_central(phi);
@@ -1997,7 +1997,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain( Vec phi_petsc,
   /* now buffer the interpolation points */
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
 
 #ifdef P4_TO_P8
     Point3 grad_phi;
@@ -2075,7 +2075,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
 #endif
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
     nx[n] = qnnn.dx_central(phi_p);
     ny[n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
@@ -2121,7 +2121,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
     for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
     {
       p4est_locidx_t n = layer_nodes[n_map];
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+      const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
       if(  phi_p[qnnn.node_000]<-EPS &&
      #ifdef P4_TO_P8
            ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
@@ -2188,7 +2188,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
     for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
     {
       p4est_locidx_t n = local_nodes[n_map];
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+      const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
       if(  phi_p[qnnn.node_000]<-EPS &&
      #ifdef P4_TO_P8
            ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
@@ -2273,7 +2273,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
     for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
     {
       p4est_locidx_t n = layer_nodes[n_map];
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+      const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
       if(  b_qn_well_defined_p[qnnn.node_000]==true &&
      #ifdef P4_TO_P8
            ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
@@ -2342,7 +2342,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
     for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
     {
       p4est_locidx_t n = local_nodes[n_map];
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+      const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
       if(  b_qn_well_defined_p[qnnn.node_000]==true &&
      #ifdef P4_TO_P8
            ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
@@ -2430,7 +2430,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
         p4est_locidx_t n = layer_nodes[n_map];
         if(!b_qnn_well_defined_p[n])
         {
-          const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+          const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
           double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
           dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
 #ifdef P4_TO_P8
@@ -2468,7 +2468,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
         p4est_locidx_t n = local_nodes[n_map];
         if(!b_qnn_well_defined_p[n])
         {
-          const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+          const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
           double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
           dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
 #ifdef P4_TO_P8
@@ -2529,7 +2529,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
         p4est_locidx_t n = layer_nodes[n_map];
         if(!b_qn_well_defined_p[n])
         {
-          const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+          const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
           double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
           dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
 #ifdef P4_TO_P8
@@ -2567,7 +2567,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
         p4est_locidx_t n = local_nodes[n_map];
         if(!b_qn_well_defined_p[n])
         {
-          const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+          const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
           double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
           dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
 #ifdef P4_TO_P8
@@ -2655,7 +2655,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
     for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
     {
       p4est_locidx_t n = layer_nodes[n_map];
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+      const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
       if(phi_p[n] > -EPS)
       {
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
@@ -2734,7 +2734,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
     for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
     {
       p4est_locidx_t n = local_nodes[n_map];
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+      const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
       if(phi_p[n] > -EPS)
       {
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
@@ -2867,7 +2867,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
 #endif
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
     nx[n] = qnnn.dx_central(phi_p);
     ny[n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
@@ -2908,7 +2908,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
 
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+      const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
       if(  phi_p[qnnn.node_000]<-EPS &&
      #ifdef P4_TO_P8
            ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
@@ -2992,7 +2992,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
 
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
-      const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+      const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
       if(  b_qn_well_defined_p[qnnn.node_000]==true &&
      #ifdef P4_TO_P8
            ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
@@ -3078,7 +3078,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
       {
         if(!b_qnn_well_defined_p[n])
         {
-          const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+          const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
           double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
           dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
 #ifdef P4_TO_P8
@@ -3128,7 +3128,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
       {
         if(!b_qn_well_defined_p[n])
         {
-          const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+          const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
           double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
           dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
 #ifdef P4_TO_P8
@@ -3203,7 +3203,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
     {
       if(phi_p[n] > -EPS)
       {
-        const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+        const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
         dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
 #ifdef P4_TO_P8
@@ -3317,7 +3317,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
   for(size_t n_map=0; n_map<map.size(); ++n_map)
   {
     p4est_locidx_t n = map[n_map];
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
     //---------------------------------------------------------------------
     // Neighborhood information
     //---------------------------------------------------------------------
@@ -3496,7 +3496,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
 #endif
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
     nx[n] = qnnn.dx_central(phi_p);
     ny[n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
@@ -3561,7 +3561,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+    const quad_neighbor_nodes_of_node_t& qnnn = ngbd->get_neighbors(n);
     double x = node_x_fr_n(n, p4est, nodes);
     double y = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
