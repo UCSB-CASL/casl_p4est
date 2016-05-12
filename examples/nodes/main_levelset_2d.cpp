@@ -1,9 +1,6 @@
 
 /*
- * Test the cell based p4est.
- * 1 - solve a face-based poisson equation on an irregular domain (circle)
- * 2 - interpolate from faces to nodes
- * 3 - extrapolate faces over interface
+ * Advect the level_set (initially a circle using a second-order semi-Lagrangian scheme.
  *
  * run the program with the -help flag to see the available options
  */
@@ -79,25 +76,12 @@ int nz = 1;
 
 bool save_vtk = true;
 
-double mu = 1;
-double add_diagonal = 0;
-
 /*
  * 0 - circle
  */
 int interface_type = 0;
 
-/*
- *  ********* 2D *********
- * 0 - x+y
- * 1 - x*x + y*y
- * 2 - sin(x)*cos(y)
- * 3 - sin(x) + cos(y)
- */
-int test_number = 0;
-
 BoundaryConditionType bc_itype = NEUMANN;
-BoundaryConditionType bc_wtype = DIRICHLET;
 
 double diag_add = 0;
 
@@ -135,101 +119,6 @@ public:
   }
 } no_interface_cf;
 
-double u_exact(double x, double y, double z)
-{
-  switch(test_number)
-  {
-  case 0:
-    return x+y+z;
-  case 1:
-    return x*x + y*y + z*z;
-  case 2:
-    return sin(x)*cos(y)*exp(z)+2;
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-class BCINTERFACEVAL : public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    if(bc_itype==DIRICHLET)
-      return u_exact(x,y,z);
-    else
-    {
-      double dx, dy, dz;
-      switch(interface_type)
-      {
-      case 0:
-        if(fabs(x-(xmax+xmin)/2)<EPS && fabs(y-(ymax+ymin)/2)<EPS && fabs(z-(zmax+zmin)/2)<EPS)
-        {
-          dx = 0;
-          dy = 0;
-          dz = 0;
-        }
-        else
-        {
-          dx = -(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
-          dy = -(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
-          dz = -(z - (zmax+zmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
-        }
-        break;
-      default:
-        throw std::invalid_argument("choose a valid interface type.");
-      }
-
-      switch(test_number)
-      {
-      case 0:
-        return dx + dy + dz;
-      case 1:
-        return 2*x*dx + 2*y*dy + 2*z*dz;
-      case 2:
-        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
-      default:
-        throw std::invalid_argument("Choose a valid test.");
-      }
-    }
-  }
-} bc_interface_val;
-
-class BCWALLTYPE : public WallBC3D
-{
-public:
-  BoundaryConditionType operator()(double, double, double) const
-  {
-    return bc_wtype;
-  }
-} bc_wall_type;
-
-class BCWALLVAL : public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    if(bc_wall_type(x,y,z)==DIRICHLET)
-      return u_exact(x,y,z);
-    else
-    {
-      double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
-      double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
-      double dz = 0; dz = fabs(z-zmin)<EPS ? -1 : (fabs(z-zmax)<EPS  ? 1 : 0);
-      switch(test_number)
-      {
-      case 0:
-        return dx + dy + dz;
-      case 1:
-        return 2*x*dx + 2*y*dy + 2*z*dz;
-      case 2:
-        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
-      default:
-        throw std::invalid_argument("Choose a valid test.");
-      }
-    }
-  }
-} bc_wall_val;
 
 #else
 
@@ -256,113 +145,12 @@ public:
     return -1;
   }
 } no_interface_cf;
-
-double u_exact(double x, double y)
-{
-  switch(test_number)
-  {
-  case 0:
-    return x+y;
-  case 1:
-    return x*x + y*y;
-  case 2:
-    return sin(x)*cos(y);
-  case 3:
-    return sin(x)+cos(y);
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-class BCINTERFACEVAL : public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    if(bc_itype==DIRICHLET)
-      return u_exact(x,y);
-    else
-    {
-      double dx, dy;
-      switch(interface_type)
-      {
-      case 0:
-        if(fabs(x-(xmax+xmin)/2)<EPS && fabs(y-(ymax+ymin)/2)<EPS)
-        {
-          dx = 0;
-          dy = 0;
-        }
-        else
-        {
-          dx = -(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
-          dy = -(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
-        }
-        break;
-      default:
-        throw std::invalid_argument("choose a valid interface type.");
-      }
-
-      switch(test_number)
-      {
-      case 0:
-        return dx + dy;
-      case 1:
-        return 2*x*dx + 2*y*dy;
-      case 2:
-        return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy;
-      case 3:
-        return cos(x)*dx - sin(y)*dy;
-      default:
-        throw std::invalid_argument("Choose a valid test.");
-      }
-    }
-  }
-} bc_interface_val;
-
-class BCWALLTYPE : public WallBC2D
-{
-public:
-  BoundaryConditionType operator()(double, double) const
-  {
-    return bc_wtype;
-  }
-} bc_wall_type;
-
-class BCWALLVAL : public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    if(bc_wall_type(x,y)==DIRICHLET)
-      return u_exact(x,y);
-    else
-    {
-      double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
-      double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
-      switch(test_number)
-      {
-      case 0:
-        return dx + dy;
-      case 1:
-        return 2*x*dx + 2*y*dy;
-      case 2:
-        return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy;
-      case 3:
-        return cos(x)*dx - sin(y)*dy;
-      default:
-        throw std::invalid_argument("Choose a valid test.");
-      }
-    }
-  }
-} bc_wall_val;
-
 #endif
 
 
-
 void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_brick_t *brick,
-              Vec phi, Vec sol, Vec err_nodes, Vec err_ex,
-              int compt)
+              Vec phi,
+              int split)
 {
   PetscErrorCode ierr;
 #ifdef STAMPEDE
@@ -370,13 +158,13 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   out_dir = getenv("OUT_DIR");
 #else
   char out_dir[10000];
-  sprintf(out_dir, "/home/fgibou/code/Output/p4est_test");
+  sprintf(out_dir, "/home/fgibou/code/Output/p4est_levelset");
 #endif
 
   std::ostringstream oss;
 
   oss << out_dir
-      << "/vtu/Poisson_nodes_"
+      << "/vtu/levelset_"
       << "proc="
       << p4est->mpisize << "_"
          << "brick="
@@ -386,15 +174,10 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
          "x" << brick->nxyztrees[2] <<
        #endif
          "_levels=(" <<lmin << "," << lmax << ")" <<
-         ".split=" << compt;
+         ".split=" << split;
 
-  double *phi_p, *sol_p, *err_p;
+  double *phi_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
-  ierr = VecGetArray(err_nodes, &err_p); CHKERRXX(ierr);
-
-  double *err_ex_p;
-  ierr = VecGetArray(err_ex, &err_ex_p); CHKERRXX(ierr);
 
   /* save the size of the leaves */
   Vec leaf_level;
@@ -420,21 +203,14 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
 
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
-                         4, 1, oss.str().c_str(),
+                         1, 1, oss.str().c_str(),
                          VTK_POINT_DATA, "phi", phi_p,
-                         VTK_POINT_DATA, "sol", sol_p,
-                         VTK_POINT_DATA, "err", err_p,
-                         VTK_POINT_DATA, "err_ex", err_ex_p,
                          VTK_CELL_DATA , "leaf_level", l_p);
 
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(err_nodes, &err_p); CHKERRXX(ierr);
-
-  ierr = VecRestoreArray(err_ex, &err_ex_p); CHKERRXX(ierr);
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
 }
@@ -444,7 +220,6 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
-  int mpiret;
   mpi_context_t mpi_context, *mpi = &mpi_context;
   mpi->mpicomm  = MPI_COMM_WORLD;
 
@@ -455,21 +230,8 @@ int main (int argc, char* argv[])
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
   cmd.add_option("nb_splits", "number of recursive splits");
-  cmd.add_option("bc_wtype", "type of boundary condition to use on the wall");
-  cmd.add_option("bc_itype", "type of boundary condition to use on the interface");
   cmd.add_option("save_vtk", "save the p4est in vtk format");
-#ifdef P4_TO_P8
-  cmd.add_option("test", "choose a test.\n\
-                 0 - x+y+z\n\
-                 1 - x*x + y*y + z*z\n\
-                 2 - sin(x)*cos(y)*exp(z)");
-#else
-  cmd.add_option("test", "choose a test.\n\
-                 0 - x+y\n\
-                 1 - x*x + y*y\n\
-                 2 - sin(x)*cos(y)\n\
-                 3 - sin(x) + cos(y)");
-#endif
+
   cmd.parse(argc, argv);
 
   cmd.print();
@@ -477,9 +239,7 @@ int main (int argc, char* argv[])
   lmin = cmd.get("lmin", lmin);
   lmax = cmd.get("lmax", lmax);
   nb_splits = cmd.get("nb_splits", nb_splits);
-  test_number = cmd.get("test", test_number);
 
-  bc_wtype = cmd.get("bc_wtype", bc_wtype);
   bc_itype = cmd.get("bc_itype", bc_itype);
 
   save_vtk = cmd.get("save_vtk", save_vtk);
@@ -489,17 +249,6 @@ int main (int argc, char* argv[])
 
   MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
   MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
-  if(0)
-  {
-    int i = 0;
-    char hostname[256];
-    gethostname(hostname, sizeof(hostname));
-    printf("PID %d on %s ready for attach\n", getpid(), hostname);
-    fflush(stdout);
-    while (0 == i)
-      sleep(5);
-  }
 
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
@@ -517,51 +266,6 @@ int main (int argc, char* argv[])
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
 
-  double err_n;
-  double err_nm1;
-
-  double err_ex_n;
-  double err_ex_nm1;
-
-  double avg_exa = 0;
-  if((bc_itype==NOINTERFACE || bc_itype==NEUMANN) && bc_wtype==NEUMANN)
-  {
-    if(bc_itype==NOINTERFACE)
-    {
-      switch(test_number)
-      {
-#ifdef P4_TO_P8
-      case 0: avg_exa = .5*xmax*ymax*zmax*(xmax+ymax+zmax) - .5*xmin*ymin*zmin*(xmin+ymin+zmin); break;
-      case 1: avg_exa = 1./3.*xmax*ymax*zmax*(xmax*xmax + ymax*ymax + zmax*zmax) - 1./3.*xmin*ymin*zmin*(xmin*xmin + ymin*ymin + zmin*zmin); break;
-      case 2: avg_exa = sin(ymax)*(1-cos(xmax))*(exp(zmax)-1) + 2.*xmax*ymax*zmax - sin(ymin)*(1-cos(xmin))*(exp(zmin)-1) + 2.*xmin*ymin*zmin; break;
-#else
-      case 0: avg_exa = .5*xmax*ymax*(xmax+ymax) - .5*xmin*ymin*(xmin+ymin); break;
-      case 1: avg_exa = 1./3.*xmax*ymax*(xmax*xmax + ymax*ymax) - 1./3.*xmin*ymin*(xmin*xmin + ymin*ymin); break;
-      case 2: avg_exa = sin(ymax)*(1-cos(xmax)) - sin(ymin)*(1-cos(xmin)); break;
-#endif
-      default: throw std::invalid_argument("invalid test number.");
-      }
-
-#ifdef P4_TO_P8
-      avg_exa /= (double)(xmax-xmin)*(ymax-ymin)*(zmax-zmin);
-#else
-      avg_exa /= (double)(xmax-xmin)*(ymax-ymin);
-#endif
-    }
-    else
-    {
-      switch(test_number)
-      {
-#ifndef P4_TO_P8
-      case 0: avg_exa = .5*xmax*ymax*(xmax+ymax) - .5*xmin*ymin*(xmin+ymin) - 2*PI*r0*r0; break;
-      case 1: avg_exa = 1./3.*xmax*ymax*(xmax*xmax + ymax*ymax) - 1./3.*xmin*ymin*(xmin*xmin + ymin*ymin) - PI*r0*r0*(SQR((xmax+xmin)/2) + SQR((ymax+ymin)/2) + r0*r0/2); break;
-#endif
-      default: throw std::invalid_argument("all neumann bc not implemented for this case.");
-      }
-
-      avg_exa /= (double)(xmax-xmin)*(ymax-ymin) - PI*r0*r0;
-    }
-  }
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
@@ -596,214 +300,16 @@ int main (int argc, char* argv[])
     my_p4est_level_set_t ls(&ngbd_n);
     ls.perturb_level_set_function(phi, EPS);
 
-    /* find dx and dy smallest */
-    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-    double xmin = p4est->connectivity->vertices[3*vm + 0];
-    double ymin = p4est->connectivity->vertices[3*vm + 1];
-    double xmax = p4est->connectivity->vertices[3*vp + 0];
-    double ymax = p4est->connectivity->vertices[3*vp + 1];
-    double dx = (xmax-xmin) / pow(2.,(double) data.max_lvl);
-    double dy = (ymax-ymin) / pow(2.,(double) data.max_lvl);
-
-#ifdef P4_TO_P8
-    double zmin = p4est->connectivity->vertices[3*vm + 2];
-    double zmax = p4est->connectivity->vertices[3*vp + 2];
-    double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
-    double diag = sqrt(dx*dx + dy*dy + dz*dz);
-#else
-    double diag = sqrt(dx*dx + dy*dy);
-#endif
-
-    /* TEST THE NODES FUNCTIONS */
-#ifdef P4_TO_P8
-    BoundaryConditions3D bc;
-#else
-    BoundaryConditions2D bc;
-#endif
-
-    bc.setWallTypes(bc_wall_type);
-    bc.setWallValues(bc_wall_val);
-    bc.setInterfaceType(bc_itype);
-    bc.setInterfaceValue(bc_interface_val);
-
-    Vec rhs;
-    ierr = VecCreateGhostNodes(p4est, nodes, &rhs); CHKERRXX(ierr);
-    double *rhs_p;
-    ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
-
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    {
-      double x = node_x_fr_n(n, p4est, nodes);
-      double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-      double z = node_z_fr_n(n, p4est, nodes);
-#endif
-      switch(test_number)
-      {
-#ifdef P4_TO_P8
-      case 0:
-        rhs_p[n] = mu*0 + add_diagonal*u_exact(x,y,z);
-        break;
-      case 1:
-        rhs_p[n] = -6*mu + add_diagonal*u_exact(x,y,z);
-        break;
-      case 2:
-        rhs_p[n] = mu*sin(x)*cos(y)*exp(z) + add_diagonal*u_exact(x,y,z);
-        break;
-#else
-      case 0:
-        rhs_p[n] = mu*0 + add_diagonal*u_exact(x,y);
-        break;
-      case 1:
-        rhs_p[n] = -4*mu + add_diagonal*u_exact(x,y);
-        break;
-      case 2:
-        rhs_p[n] = 2*mu*sin(x)*cos(y) + add_diagonal*u_exact(x,y);
-        break;
-      case 3:
-        rhs_p[n] = mu*u_exact(x,y) + add_diagonal*u_exact(x,y);
-        break;
-#endif
-      default:
-        throw std::invalid_argument("set rhs : unknown test number.");
-      }
-    }
-
-    ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
-
-    my_p4est_poisson_nodes_t solver(&ngbd_n);
-    solver.set_phi(phi);
-    solver.set_diagonal(add_diagonal);
-    solver.set_mu(mu);
-    solver.set_bc(bc);
-    solver.set_rhs(rhs);
-
-    Vec sol;
-    ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);
-
-    solver.solve(sol);
-
-    /* if all NEUMANN boundary conditions, shift solution */
-    if(solver.get_matrix_has_nullspace())
-    {
-      double avg_sol = integrate_over_interface(p4est, nodes, phi, sol)/area_in_negative_domain(p4est, nodes, phi);
-
-      double *sol_p;
-      ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
-
-      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-        sol_p[n] = sol_p[n] - avg_sol + avg_exa;
-
-      ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
-    }
-
-    /* check the error */
-    err_nm1 = err_n;
-    err_n = 0;
-
     const double *phi_p;
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
-
-    const double *sol_p;
-    ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
-
-    Vec err_nodes;
-    ierr = VecDuplicate(sol, &err_nodes); CHKERRXX(ierr);
-    double *err_p;
-    ierr = VecGetArray(err_nodes, &err_p); CHKERRXX(ierr);
-
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    {
-      if(bc_itype==NOINTERFACE || phi_p[n]<0)
-      {
-        double x = node_x_fr_n(n, p4est, nodes);
-        double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-        double z = node_z_fr_n(n, p4est, nodes);
-        err_p[n] = fabs(sol_p[n] - u_exact(x,y,z));
-#else
-        err_p[n] = fabs(sol_p[n] - u_exact(x,y));
-#endif
-        err_n = MAX(err_n, err_p[n]);
-      }
-      else
-        err_p[n] = 0;
-    }
     ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(sol, &sol_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(err_nodes, &err_p); CHKERRXX(ierr);
-
-    ierr = VecGhostUpdateBegin(err_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (err_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    ierr = PetscPrintf(p4est->mpicomm, "Error on nodes : %g, order = %g\n", err_n, log(err_nm1/err_n)/log(2)); CHKERRXX(ierr);
-
-
-    /* extrapolate the solution and check accuracy */
-    double band = 4;
-
-    if(bc_itype!=NOINTERFACE)
-      ls.extend_Over_Interface_TVD(phi, sol, 100);
-
-    ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
-
-    Vec err_ex;
-    ierr = VecDuplicate(sol, &err_ex); CHKERRXX(ierr);
-    double *err_ex_p;
-    ierr = VecGetArray(err_ex, &err_ex_p); CHKERRXX(ierr);
-
-    err_ex_nm1 = err_ex_n;
-    err_ex_n = 0;
-
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    {
-      if(phi_p[n]>0)
-      {
-        double x = node_x_fr_n(n, p4est, nodes);
-        double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-        double z = node_z_fr_n(n, p4est, nodes);
-        if(phi_p[n]<band*diag)
-          err_ex_p[n] = fabs(sol_p[n] - u_exact(x,y,z));
-#else
-        if(phi_p[n]<band*diag)
-          err_ex_p[n] = fabs(sol_p[n] - u_exact(x,y));
-#endif
-        else
-          err_ex_p[n] = 0;
-
-        err_ex_n = MAX(err_ex_n, err_ex_p[n]);
-      }
-      else
-        err_ex_p[n] = 0;
-    }
-
-    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(sol, &sol_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(err_ex, &err_ex_p); CHKERRXX(ierr);
-
-    ierr = VecGhostUpdateBegin(err_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (err_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation : %g, order = %g\n", err_ex_n, log(err_ex_nm1/err_ex_n)/log(2)); CHKERRXX(ierr);
-
 
     if(save_vtk)
     {
-      save_VTK(p4est, ghost, nodes, &brick, phi, sol, err_nodes, err_ex, iter);
+      save_VTK(p4est, ghost, nodes, &brick, phi, iter);
     }
 
     ierr = VecDestroy(phi); CHKERRXX(ierr);
-
-    ierr = VecDestroy(rhs); CHKERRXX(ierr);
-    ierr = VecDestroy(sol); CHKERRXX(ierr);
-
-    ierr = VecDestroy(err_nodes); CHKERRXX(ierr);
-    ierr = VecDestroy(err_ex); CHKERRXX(ierr);
 
     p4est_nodes_destroy(nodes);
     p4est_ghost_destroy(ghost);
