@@ -4,7 +4,7 @@
 #include <algorithm>
 
 #include <src/petsc_compatibility.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -899,7 +899,7 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_points()
 
 
 #ifdef P4_TO_P8
-void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n, Voronoi3D &voro) const
+void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n, Voronoi3D &voro) const
 #else
 void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n, Voronoi2D &voro) const
 #endif
@@ -942,7 +942,8 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
 #endif
 
 #ifdef P4_TO_P8
-  voro.set_Center_Point(n, pc, qh);
+  // FIXME: Is this correct? comprare to old voronoi solver
+  voro.set_Center_Point(n,pc);
 #else
   voro.set_Center_Point(pc);
 #endif
@@ -1142,7 +1143,10 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
 
   /* finally, construct the partition */
 #ifdef P4_TO_P8
-  voro.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
+  double xyz_min [] = {xmin, ymin, zmin};
+  double xyz_max [] = {xmax, ymax, zmax};
+  bool periodic []  = {false, false, false};
+  voro.construct_Partition(xyz_min, xyz_max, periodic);
 #else
   voro.construct_Partition();
 #endif

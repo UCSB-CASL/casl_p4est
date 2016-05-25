@@ -11,7 +11,7 @@
 #include <src/my_p8est_poisson_nodes.h>
 #include <src/my_p8est_poisson_jump_nodes_extended.h>
 #include <src/petsc_compatibility.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 using namespace std;
 
@@ -288,14 +288,15 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
   // split based on the SAS distance
   parStopWatch w;
   w.start("making intial tree");
-  splitting_criteria_threshold_cf_t sp_thr(sp->min_lvl, sp->max_lvl, -1.0*rp_, 1.5*rp_, this, sp->lip);
+//  splitting_criteria_threshold_cf_t sp_thr(sp->min_lvl, sp->max_lvl, -1.0*rp_, 1.5*rp_, this, sp->lip);
+  splitting_criteria_thresh_t sp_thr(sp->min_lvl, sp->max_lvl, this, 1.5*rp_);
   p4est->user_pointer = &sp_thr;
 
 	// refine and partition
 	// Note: Using recursive on large molecules causes the whole thing to be build in serial on 
 	// one processor which is obviously not scalable 
 	for (int l = 0; l<sp->max_lvl; l++){
-    my_p4est_refine(p4est, P4EST_FALSE, refine_threshold_cf, NULL);
+    my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_thresh, NULL);
     my_p4est_partition(p4est, P4EST_TRUE, NULL);
 	}
 

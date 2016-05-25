@@ -32,7 +32,7 @@
 #endif
 
 #include <src/Parser.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 #ifdef P4_TO_P8
 typedef CF_3 cf_t;
@@ -72,7 +72,8 @@ int main(int argc, char** argv) {
   const int n_xyz []      = {1, 1, 1};
   const double xyz_min [] = {0, 0, 0};
   const double xyz_max [] = {1, 1, 1};
-  conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  const int periodic []   = {0, 0, 0};
+  conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   // refine based on distance to a level-set
 #ifdef P4_TO_P8

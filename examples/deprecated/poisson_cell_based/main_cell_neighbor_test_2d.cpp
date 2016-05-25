@@ -30,7 +30,7 @@
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 p4est_bool_t
 refine_simple(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t* quad)

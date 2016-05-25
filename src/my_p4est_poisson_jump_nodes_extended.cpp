@@ -10,7 +10,7 @@
 #endif
 
 #include <src/petsc_compatibility.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS

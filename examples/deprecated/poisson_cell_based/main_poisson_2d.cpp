@@ -30,7 +30,7 @@
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 using namespace std;
 

@@ -24,7 +24,7 @@
 
 #include <sys/stat.h>
 #include <src/Parser.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 using namespace std;
 
@@ -44,6 +44,7 @@ static struct {
   double mue, eps, sigma;
   double xmin[3], xmax[3];
   int ntr[3];
+  int periodic[3];
   string test, method;
 
   cf_t *interface;
@@ -82,6 +83,7 @@ void set_options(int argc, char **argv) {
   options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
   options.xmin[0] = options.xmin[1] = options.xmin[2] = -1;
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
+  options.periodic[0] = options.periodic[1] = options.periodic[2] = 0;
 
   if (options.test == "circle") {
     // set interface
@@ -280,7 +282,7 @@ int main(int argc, char** argv) {
   // setup the parameters
   set_options(argc, argv);
 
-  conn = my_p4est_brick_new(options.ntr, options.xmin, options.xmax, &brick);
+  conn = my_p4est_brick_new(options.ntr, options.xmin, options.xmax, &brick, options.periodic);
 
   // create the forest
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);

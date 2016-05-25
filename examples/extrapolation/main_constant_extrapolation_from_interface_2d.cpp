@@ -44,14 +44,15 @@ int nb_splits = 0;
 //#define CONSTANT
 
 int n_xyz [] = {2, 2, 2};
-double xyz_min [] = {0, 0, 0};
-double xyz_max [] = {2, 2, 2};
+double xyz_min_ [] = {0, 0, 0};
+double xyz_max_ [] = {2, 2, 2};
+int periodic []    = {0, 0, 0};
 
-double x_center = (xyz_max[0]-xyz_min[0]) / 2.;
-double y_center = (xyz_max[1]-xyz_min[1]) / 2.;
+double x_center = (xyz_max_[0]-xyz_min_[0]) / 2.;
+double y_center = (xyz_max_[1]-xyz_min_[1]) / 2.;
 
 #ifdef P4_TO_P8
-double z_center = (xyz_max[2]-xyz_min[2]) / 2.;
+double z_center = (xyz_max_[2]-xyz_min_[2]) / 2.;
 #endif
 
 double r = .512092;
@@ -238,7 +239,7 @@ int main (int argc, char* argv[])
   /* Create the connectivity object */
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min_, xyz_max_, &brick, periodic);
 
   /* Now create the forest */
   p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);

@@ -12,7 +12,7 @@
 #include <src/my_p4est_macros.h>
 #endif
 
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 coupled_solver_t::coupled_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick)
   : p4est(p4est), ghost(ghost), nodes(nodes), brick(&brick)
@@ -391,7 +391,6 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
 
   // set up the solver
   my_p4est_cell_neighbors_t cell_neighbors(&hierarchy);
-  cell_neighbors.init_neighbors();
 
   my_p4est_poisson_jump_voronoi_block_t solver(2, &node_neighbors, &cell_neighbors);
   solver.set_phi(phi);

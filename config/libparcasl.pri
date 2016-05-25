@@ -29,11 +29,12 @@ SOURCES += \
   $$PARCASL/src/my_p4est_solve_lsqr.cpp \
   $$PARCASL/src/my_p4est_trajectory_of_point.cpp \
   $$PARCASL/src/my_p4est_utils.cpp \
+  $$PARCASL/src/my_p4est_epitaxy.cpp \
   $$PARCASL/src/my_p4est_log_wrappers.c \
   $$PARCASL/src/my_p4est_nodes.c \
   $$PARCASL/src/my_p4est_tools.c \
   $$PARCASL/src/my_p4est_vtk.c \
-  $$PARCASL/src/CASL_math.cpp \
+  $$PARCASL/src/math.cpp \
   $$PARCASL/src/Parser.cpp \
   $$PARCASL/src/cube2.cpp \
   $$PARCASL/src/matrix.cpp \
@@ -75,7 +76,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_nodes.c \
   $$PARCASL/src/my_p8est_tools.c \
   $$PARCASL/src/my_p8est_vtk.c \
-  $$PARCASL/src/CASL_math.cpp \
+  $$PARCASL/src/math.cpp \
   $$PARCASL/src/Parser.cpp \
   $$PARCASL/src/cube2.cpp \
   $$PARCASL/src/cube3.cpp \

@@ -198,11 +198,12 @@ int main (int argc, char* argv[])
   const int n_xyz [] = {nx, ny};
   const double xyz_min [] = {xmin, ymin};
   const double xyz_max [] = {xmax, ymax};
+  const int periodic [] = {0, 0};
 
   // Create the connectivity object
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   double dxyz_min[P4EST_DIM];
   dxyz_min[0] = (xmax-xmin)/nx/(1<<lmax);

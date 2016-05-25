@@ -22,7 +22,7 @@
 #include <src/my_p8est_cell_neighbors.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
-#include <src/my_p8est_poisson_node_base_jump.h>
+#include <src/my_p8est_poisson_jump_nodes_voronoi.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -35,7 +35,7 @@
 #include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
-#include <src/my_p4est_poisson_node_base_jump.h>
+#include <src/my_p4est_poisson_jump_nodes_voronoi.h>
 #endif
 
 #include <src/point3.h>
@@ -54,18 +54,14 @@ int nb_splits = 4;
 
 int nx = 2;
 int ny = 2;
-#ifdef P4_TO_P8
 int nz = 2;
-#endif
 
 double xmin = -1;
 double xmax = 3;
 double ymin = -1;
 double ymax = 4;
-#ifdef P4_TO_P8
 double zmin = 0;
 double zmax = 3;
-#endif
 
 bool save_vtk = false;
 bool save_voro = false;
@@ -858,7 +854,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
   bc.setWallTypes(bc_wall_type);
   bc.setWallValues(bc_wall_value);
 
-  PoissonSolverNodeBaseJump solver(ngbd_n, ngbd_c);
+  my_p4est_poisson_jump_nodes_voronoi_t solver(ngbd_n, ngbd_c);
   solver.set_phi(phi);
   solver.set_bc(bc);
   solver.set_mu(mu_m_, mu_p_);
@@ -914,11 +910,8 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
-  mpi_context_t mpi_context, *mpi = &mpi_context;
-  mpi->mpicomm  = MPI_COMM_WORLD;
-
-  Session mpi_session;
-  mpi_session.init(argc, argv, mpi->mpicomm);
+  mpi_environment_t mpi;
+  mpi.init(argc, argv);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -955,9 +948,6 @@ int main (int argc, char* argv[])
   parStopWatch w;
   w.start("total time");
 
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
-
   if(0)
   {
     int i = 0;
@@ -971,12 +961,13 @@ int main (int argc, char* argv[])
 
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-#ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, &brick, 0, 0, 0);
-#else
-  connectivity = my_p4est_brick_new(nx, ny, xmin, xmax, ymin, ymax, &brick, 0, 0);
-#endif
 
+  const int n_xyz []       = {nx, ny, nz};
+  const double xyz_min []  = {xmin, ymin, zmin};
+  const double xyz_max []  = {xmax, ymax, zmax};
+  const int periodic []    = {0, 0, 0};
+
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
   p4est_t       *p4est;
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
@@ -986,8 +977,8 @@ int main (int argc, char* argv[])
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
-    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
-    p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
+    ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
+    p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
     //    srand(1);
     //    splitting_criteria_random_t data(4, 6, 1000, 10000);

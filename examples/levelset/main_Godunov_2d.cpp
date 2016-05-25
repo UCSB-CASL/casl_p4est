@@ -135,7 +135,8 @@ int main (int argc, char* argv[]){
   int n_xyz [] = {2, 2, 2};
   double xyz_min [] = {0, 0, 0};
   double xyz_max [] = {2, 2, 2};
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  int periodic []   = {0, 0, 0};
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
   w2.stop(); w2.read_duration();
 
   // Now create the forest

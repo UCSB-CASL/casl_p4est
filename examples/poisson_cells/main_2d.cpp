@@ -498,8 +498,8 @@ int main (int argc, char* argv[])
   double xyz_min [] = {xmin, ymin};
   double xyz_max [] = {xmax, ymax};
 #endif
-
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  const int periodic []   = {0, 0, 0};
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   p4est_t       *p4est;
   p4est_nodes_t *nodes;
@@ -574,7 +574,6 @@ int main (int argc, char* argv[])
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
     my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
     my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
-    ngbd_c.init_neighbors();
 
     Vec phi;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);

@@ -11,7 +11,7 @@
 function create_pro() {
 cat > $1/$1.pro << EOF
 # --------------------------------------------------------------
-# qmake config file for example $1
+# qmake config file for the $1 example
 # --------------------------------------------------------------
 CONFIG += 2d
 
@@ -62,7 +62,7 @@ cat > $1/main_2d.cpp << EOF
 #endif
 
 #include <src/Parser.h>
-#include <src/CASL_math.h>
+#include <src/math.h>
 
 using namespace std;
 
