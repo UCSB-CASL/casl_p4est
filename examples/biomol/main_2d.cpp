@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
     // decide on the type and value of the boundary conditions
     const int lmin   = cmd.get("lmin", 0);
     const int lmax   = cmd.get("lmax", 8);
-    const string folder = cmd.get<string> ("input-dir", "../../mols");
+    const string folder = cmd.get<string> ("input-dir", "../mols");
     const string output_folder = cmd.get<string>("output-dir", "out_dir");
     const string pqr = cmd.get<string>("pqr", "1d65");
     const double lip = cmd.get("lip", 1.5);

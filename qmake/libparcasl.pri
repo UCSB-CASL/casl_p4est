@@ -1,4 +1,19 @@
 # --------------------------------------------------------------
+# load config files based on environment
+# --------------------------------------------------------------
+CONFIG(linux, linux|macx|stampede): {
+  include(linux.pri)
+}
+
+CONFIG(macx, linux|macx|stampede): {
+  include(macx.pri)
+}
+
+CONFIG(stampede, linux|macx|stampede): {
+  include(stampede.pri)
+}
+
+# --------------------------------------------------------------
 # list of all files in src to be built
 # --------------------------------------------------------------
 CONFIG(2d, 2d|3d): {
