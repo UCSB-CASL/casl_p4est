@@ -3,14 +3,34 @@
 # Use this script to create a bare minimum example 
 # 
 # Usage:
-#   ./create_example name [config]
+#   ./newexample name
 #
 
 # creates a .pro file 
 function create_pro() {
 cat > $1/$1.pro << EOF
-CONFIG += 2d $2
-include(../../config/libparcasl.pri)
+# --------------------------------------------------------------
+# This is a qmake script for generating makefiles. Please read
+# this short comment before changing this file. In particular,
+#
+#     *** DO NOT ADD SYSTEM DEPENDENT VARIABLES HERE ***
+#
+# Following build systems are supported:
+#   * macx (default)
+#   * linux
+#   * stampede
+#
+# To use either of these systems, please pass in the correct
+# value to qmake, e.g. to build for stamepde system:
+#   qmake example.pro CONFIG+="stampede"
+#
+#           *** DO NOT ADD BUILD CONFIG HERE ***
+#
+# Instead pass the variable in terminal or through project
+# settings in QtCreator IDE.
+# --------------------------------------------------------------
+CONFIG += 2d
+include(../../qmake/libparcasl.pri)
 
 CONFIG(2d, 2d|3d): {
   TARGET   = $1_2d
@@ -138,21 +158,14 @@ EOF
 }
 
 if [[ "$#" -ne 1 ]]; then
-    echo "useage: ./$(basename "$0") example [config]"
+    echo "useage: ./$(basename "$0") example"
 else
   name=$1
-  config=$2
-
-  # check if a config is set, if not set it to homebrew 
-  if [[ -z $config ]]; then
-    config="macx"
-  fi
-
 
   # create a new example only if one does not exist with the same name
   if [[ ! -e $name ]]; then
     mkdir $name
-    create_pro $name $config
+    create_pro $name
     create_main $name
   else
     echo "ERROR: Example '$name' already exists. Please choose another name."
