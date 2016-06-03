@@ -126,9 +126,10 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
 #endif          
         }
       } else {
+        quad_neighbor_nodes_of_node_t qnnn;
         for (short j = 0; j<P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
-          const quad_neighbor_nodes_of_node_t& qnnn = ngbd_n->get_neighbors(node_idx);
+          ngbd_n->get_neighbors(node_idx, qnnn);
 
           fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
           fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
@@ -268,10 +269,11 @@ double my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad,
     }
     else
     {
+      quad_neighbor_nodes_of_node_t qnnn;
       for (short j = 0; j<P4EST_CHILDREN; j++)
       {
         p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
-        const quad_neighbor_nodes_of_node_t& qnnn = ngbd_n->get_neighbors(node_idx);
+        ngbd_n->get_neighbors(node_idx, qnnn);
 
         fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
         fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);

@@ -374,6 +374,7 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_points()
 #ifdef P4_TO_P8
       Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p), (*ngbd_n).get_neighbors(n).dz_central(phi_p));
 #else
+      // FIXME: These kind of operations would be expensive if neighbors is not initialized!
       Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p));
 #endif
       dp /= dp.norm_L2();

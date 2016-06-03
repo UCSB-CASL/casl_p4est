@@ -286,7 +286,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   for(size_t i=0; i<ngbd->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_layer_node(i);
-    qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n, qnnn);
     normal_p[0][n] = qnnn.dx_central(phi_p);
     normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
@@ -311,7 +311,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   for(size_t i=0; i<ngbd->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_local_node(i);
-    qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n, qnnn);
     normal_p[0][n] = qnnn.dx_central(phi_p);
     normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
@@ -341,7 +341,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   for(size_t i=0; i<ngbd->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_layer_node(i);
-    qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n, qnnn);
 #ifdef P4_TO_P8
     kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/dxyz_max), -1/dxyz_max);
 #else
@@ -352,7 +352,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   for(size_t i=0; i<ngbd->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_local_node(i);
-    qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n, qnnn);
 #ifdef P4_TO_P8
     kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/dxyz_max), -1/dxyz_max);
 #else
@@ -399,7 +399,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     for(size_t i=0; i<ngbd->get_layer_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_layer_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
 #ifdef P4_TO_P8
       double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
@@ -414,7 +414,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
 #ifdef P4_TO_P8
       double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
@@ -433,7 +433,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     for(size_t i=0; i<ngbd->get_layer_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_layer_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
 #ifdef P4_TO_P8
       double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
@@ -446,7 +446,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
 #ifdef P4_TO_P8
       double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
@@ -513,7 +513,7 @@ void my_p4est_bialloy_t::compute_velocity()
     for(size_t i=0; i<ngbd->get_layer_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_layer_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
       v_gamma_p[0][n] = (qnnn.dx_central(cs_np1_p)*solute_diffusivity_s - qnnn.dx_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
       v_gamma_p[1][n] = (qnnn.dy_central(cs_np1_p)*solute_diffusivity_s - qnnn.dy_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
@@ -529,7 +529,7 @@ void my_p4est_bialloy_t::compute_velocity()
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
       v_gamma_p[0][n] = (qnnn.dx_central(cs_np1_p)*solute_diffusivity_s - qnnn.dx_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
       v_gamma_p[1][n] = (qnnn.dy_central(cs_np1_p)*solute_diffusivity_s - qnnn.dy_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
@@ -548,7 +548,7 @@ void my_p4est_bialloy_t::compute_velocity()
     for(size_t i=0; i<ngbd->get_layer_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_layer_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
       v_gamma_p[0][n] = -qnnn.dx_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
       v_gamma_p[1][n] = -qnnn.dy_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
@@ -564,7 +564,7 @@ void my_p4est_bialloy_t::compute_velocity()
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
       v_gamma_p[0][n] = -qnnn.dx_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
       v_gamma_p[1][n] = -qnnn.dy_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
@@ -613,7 +613,7 @@ void my_p4est_bialloy_t::solve_temperature()
   {
     rhs_p[n] = temperature_n_p[n];
 
-    qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n, qnnn);
 #ifdef P4_TO_P8
     qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p);
     if (p_000*p_m00<=0){
