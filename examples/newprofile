@@ -29,15 +29,12 @@ cat > $1.pro << EOF
 # Instead pass the variable in terminal or through project
 # settings in QtCreator IDE.
 # --------------------------------------------------------------
-CONFIG += 2d
 include(../../qmake/libparcasl.pri)
 
-CONFIG(2d, 2d|3d): {
+2d {
   TARGET   = $1_2d
   SOURCES += main_2d.cpp
-}
-
-CONFIG(3d, 2d|3d): {
+} 3d {
   TARGET   = $1_3d
   SOURCES += main_3d.cpp
 }
