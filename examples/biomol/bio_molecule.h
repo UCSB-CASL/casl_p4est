@@ -21,6 +21,7 @@ class BioMolecule: public CF_3
   std::vector<Atom> atoms;
 
   const mpi_environment_t& mpi;
+  const my_p4est_brick_t& myb;
   double xc_, yc_, zc_, s_, rmax_;
   double rp_;
 

@@ -31,11 +31,11 @@ ostream& operator << (ostream& os, Atom& atom) {
 }
 
 BioMolecule::BioMolecule(my_p4est_brick_t& brick, const mpi_environment_t &mpi)
-  : mpi(mpi), xc_(0.), yc_(0.), zc_(0.), rp_(1.4)
+  : mpi(mpi), myb(brick), xc_(0.), yc_(0.), zc_(0.), rp_(1.4)
 {
-  Dx_ = brick.nxyztrees[0];
-  Dy_ = brick.nxyztrees[1];
-  Dz_ = brick.nxyztrees[2];
+  Dx_ = brick.xyz_max[0] - brick.xyz_min[0];
+  Dy_ = brick.xyz_max[1] - brick.xyz_min[1];
+  Dz_ = brick.xyz_max[2] - brick.xyz_min[2];
 
   D_ = MIN(Dx_, MIN(Dy_, Dz_));
 }
@@ -94,7 +94,9 @@ void BioMolecule::read(const string &pqr) {
   L_ *= 2.5;
 
   // scale and recenter the molecule to middle
-  translate(0.5*Dx_, 0.5*Dy_, 0.5*Dz_);
+  translate(myb.xyz_min[0] + 0.5*Dx_,
+            myb.xyz_min[1] + 0.5*Dy_,
+            myb.xyz_min[2] + 0.5*Dz_);
   set_scale(0.25);
   partition_atoms();
 }
@@ -320,8 +322,8 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
   neighbors.init_neighbors();
   my_p4est_level_set_t ls(&neighbors);
 
-  int it = floor(4.0*rp_/ (D_/ (1<<sp->max_lvl)));
-  ls.reinitialize_2nd_order(phi, MAX(it, 20));
+//  int it = floor(4.0*rp_/ (D_/ (1<<sp->max_lvl)));
+  ls.reinitialize_2nd_order(phi, 20 /*MAX(it, 20)*/ );
   subtract_probe_radius(phi);
 
   /* construct a newby refining only close to the SES. We do this in a
