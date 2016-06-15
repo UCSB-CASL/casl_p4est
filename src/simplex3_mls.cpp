@@ -148,6 +148,8 @@ void simplex3_mls_t::do_action_edg(int n_edg, int cn, action_t action)
     }
     break;
   case 1: // -+
+//    edgs.reserve(edgs.size()+2);
+//    edg = &edgs[n_edg];
     /* split an edge */
     edg->is_split = true;
 
@@ -287,6 +289,9 @@ void simplex3_mls_t::do_action_tri(int n_tri, int cn, action_t action)
     break;
 
   case 1: // (-++)
+//    edgs.reserve(edgs.size()+2);
+//    tris.reserve(tris.size()+3);
+//    tri = &tris[n_tri];
     /* split a triangle */
     tri->is_split = true;
 
@@ -358,6 +363,9 @@ void simplex3_mls_t::do_action_tri(int n_tri, int cn, action_t action)
     break;
 
   case 2: // (--+)
+//    edgs.reserve(edgs.size()+2);
+//    tris.reserve(tris.size()+3);
+//    tri = &tris[n_tri];
     /* split a triangle */
     tri->is_split = true;
 
@@ -515,6 +523,9 @@ void simplex3_mls_t::do_action_tet(int n_tet, int cn, action_t action)
     break;
 
   case 1: /* (-+++) */
+//    tris.reserve(tris.size()+3);
+//    tets.reserve(tets.size()+4);
+//    tet = &tets[n_tet];
     /* split a tetrahedron */
     tet->is_split = true;
 
@@ -599,6 +610,9 @@ void simplex3_mls_t::do_action_tet(int n_tet, int cn, action_t action)
 
   case 2: // --++
   {
+//    tris.reserve(tris.size()+6);
+//    tets.reserve(tets.size()+6);
+//    tet = &tets[n_tet];
     /* split a tetrahedron */
     tet->is_split = true;
 
@@ -614,7 +628,7 @@ void simplex3_mls_t::do_action_tet(int n_tet, int cn, action_t action)
     interpolate_from_parent(vtx_aux0);
     interpolate_from_parent(vtx_aux1);
 
-    if (fabs(vtx_aux0.value) <= fabs(vtx_aux1.value) && 1 || 1)
+    if (fabs(vtx_aux0.value) <= fabs(vtx_aux1.value) && 1 || 0)
     {
       // new edge
       edgs.push_back(edg3_t(tet->c_vtx03, tet->c_vtx12));
@@ -798,6 +812,9 @@ void simplex3_mls_t::do_action_tet(int n_tet, int cn, action_t action)
     break;
   }
   case 3: // ---+
+//    tris.reserve(tris.size()+3);
+//    tets.reserve(tets.size()+4);
+//    tet = &tets[n_tet];
     /* split a tetrahedron */
     tet->is_split = true;
 

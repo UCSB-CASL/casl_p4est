@@ -55,7 +55,7 @@ public:
   double integrate_in_non_cart_dir        (double *f, int dir);
   double integrate_over_colored_interface (double *f, int num0, int num1);
 
-  double interpolate_bilinear(double *f, double x, double y);
+  double interpolate_linear(double *f, double x, double y);
   double interpolate_quadratic(double *f, double *fxx, double *fyy, double x, double y);
 };
 

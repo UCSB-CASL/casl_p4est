@@ -69,13 +69,22 @@ void my_p4est_integration_mls_t::initialize()
         for (int j = 0; j < P4EST_CHILDREN; j++)
           phi_values[i*P4EST_CHILDREN + j] = P[i][ q2n[ s + j ] ];
 
+      if (use_cube_refined)
+      {
 #ifdef P4_TO_P8
-      cubes.push_back(cube3_mls_t(x0, x1, y0, y1, z0, z1));
+        cubes_refined.push_back(cube3_refined_mls_t(x0, x1, y0, y1, z0, z1));
 #else
-      cubes.push_back(cube2_mls_t(x0, x1, y0, y1));
+        cubes_refined.push_back(cube2_refined_mls_t(x0, x1, y0, y1));
 #endif
+      } else {
+#ifdef P4_TO_P8
+        cubes.push_back(cube3_mls_t(x0, x1, y0, y1, z0, z1));
+#else
+        cubes.push_back(cube2_mls_t(x0, x1, y0, y1));
+        cubes.back().construct_domain(phi_values, phi_xx_values, phi_yy_values, *action, *color);
+#endif
+      }
 
-      cubes.back().construct_domain(phi_values, *action, *color);
     }
   }
 
@@ -127,6 +136,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, Vec f, int n0, i
 
       p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
       p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
+
       double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
       double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
       double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];

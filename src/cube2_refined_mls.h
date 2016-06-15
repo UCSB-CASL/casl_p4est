@@ -6,8 +6,6 @@
 #include "grid_interpolation2.h"
 #include "my_p4est_utils.h"
 
-#define N_CHILDREN 4
-
 class cube2_refined_mls_t
 {
   struct node_t {
@@ -44,6 +42,7 @@ class cube2_refined_mls_t
   };
 
 public:
+  static const int N_CHILDREN=4;
   double  x0, x1, y0, y1;
   loc_t   loc;
   int     n_cubes, n_nodes, n_leafs, nx, ny;

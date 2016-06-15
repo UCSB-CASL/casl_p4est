@@ -98,16 +98,16 @@ void cube3_refined_mls_t::construct_domain(int nx_, int ny_, int nz_, int level)
     for (int i = 0; i < nx; i++)
     {
       int j;
-      j = 0;    cubes[k*nx*ny + j*nx + i].wall[3] = true;
-      j = ny-1; cubes[k*nx*ny + j*nx + i].wall[4] = true;
+      j = 0;    cubes[k*nx*ny + j*nx + i].wall[2] = true;
+      j = ny-1; cubes[k*nx*ny + j*nx + i].wall[3] = true;
     }
 
   for (int j = 0; j < ny; j++)
     for (int i = 0; i < nx; i++)
     {
       int k;
-      k = 0;    cubes[k*nx*ny + j*nx + i].wall[3] = true;
-      k = nz-1; cubes[k*nx*ny + j*nx + i].wall[4] = true;
+      k = 0;    cubes[k*nx*ny + j*nx + i].wall[4] = true;
+      k = nz-1; cubes[k*nx*ny + j*nx + i].wall[5] = true;
     }
 
 
@@ -494,6 +494,8 @@ void cube3_refined_mls_t::split_edge(int n)
   // mark that an edge is split
   edges[n].is_split = true;
 
+//  edges.reserve(edges.size()+2);
+
   // fetch coordinates of nodes
   double x_0 = nodes[edges[n].v0].x; double y_0 = nodes[edges[n].v0].y; double z_0 = nodes[edges[n].v0].z;
   double x_1 = nodes[edges[n].v1].x; double y_1 = nodes[edges[n].v1].y; double z_1 = nodes[edges[n].v1].z;
@@ -526,6 +528,9 @@ void cube3_refined_mls_t::split_face(int n)
   split_edge(faces[n].e_p0);
   split_edge(faces[n].e_0m);
   split_edge(faces[n].e_0p);
+
+//  edges.reserve(edges.size()+4);
+//  faces.reserve(faces.size()+4);
 
   // fetch child elements of edges
   int v_mm = edges[faces[n].e_0m].v0;
@@ -593,6 +598,10 @@ void cube3_refined_mls_t::split_cube(int n)
   split_face(f_0p0);
   split_face(f_00m);
   split_face(f_00p);
+
+//  cubes.reserve(cubes.size()+N_CHILDREN);
+//  edges.reserve(cubes.size()+6);
+//  faces.reserve(faces.size()+12);
 
   // fetch sub-faces
   int f_m00_mm = faces[f_m00].f_mm;
@@ -694,16 +703,37 @@ void cube3_refined_mls_t::split_cube(int n)
 
   // create cubes
   cubes.push_back(cube_t(f_m00_mm, f_0mm, f_0m0_mm, f_m0m, f_00m_mm, f_mm0));
-  cubes.back().wall[0] = wall[0];
-  cubes.back().wall[2] = wall[2];
-  cubes.back().wall[4] = wall[4];
-  cubes.push_back(cube_t(f_0mm, f_p00_mm, f_0m0_pm, f_p0m, f_00m_pm, f_pm0)); cubes.back().wall[1] = wall[1];  cubes.back().wall[2] = wall[2];  cubes.back().wall[4] = wall[4];
-  cubes.push_back(cube_t(f_m00_pm, f_0pm, f_m0m, f_0p0_mm, f_00m_mp, f_mp0)); cubes.back().wall[0] = wall[0];  cubes.back().wall[3] = wall[3];  cubes.back().wall[4] = wall[4];
-  cubes.push_back(cube_t(f_0pm, f_p00_pm, f_p0m, f_0p0_pm, f_00m_pp, f_pp0)); cubes.back().wall[1] = wall[1];  cubes.back().wall[3] = wall[3];  cubes.back().wall[4] = wall[4];
-  cubes.push_back(cube_t(f_m00_mp, f_0mp, f_0m0_mp, f_m0p, f_mm0, f_00p_mm)); cubes.back().wall[0] = wall[0];  cubes.back().wall[2] = wall[2];  cubes.back().wall[5] = wall[5];
-  cubes.push_back(cube_t(f_0mp, f_p00_mp, f_0m0_pp, f_p0p, f_pm0, f_00p_pm)); cubes.back().wall[1] = wall[1];  cubes.back().wall[2] = wall[2];  cubes.back().wall[5] = wall[5];
-  cubes.push_back(cube_t(f_m00_pp, f_0pp, f_m0p, f_0p0_mp, f_mp0, f_00p_mp)); cubes.back().wall[0] = wall[0];  cubes.back().wall[3] = wall[3];  cubes.back().wall[5] = wall[5];
-  cubes.push_back(cube_t(f_0pp, f_p00_pp, f_p0p, f_0p0_pp, f_pp0, f_00p_pp)); cubes.back().wall[1] = wall[1];  cubes.back().wall[3] = wall[3];  cubes.back().wall[5] = wall[5];
+  cubes.back().wall[0] = cubes[n].wall[0];
+  cubes.back().wall[2] = cubes[n].wall[2];
+  cubes.back().wall[4] = cubes[n].wall[4];
+  cubes.push_back(cube_t(f_0mm, f_p00_mm, f_0m0_pm, f_p0m, f_00m_pm, f_pm0));
+  cubes.back().wall[1] = cubes[n].wall[1];
+  cubes.back().wall[2] = cubes[n].wall[2];
+  cubes.back().wall[4] = cubes[n].wall[4];
+  cubes.push_back(cube_t(f_m00_pm, f_0pm, f_m0m, f_0p0_mm, f_00m_mp, f_mp0));
+  cubes.back().wall[0] = cubes[n].wall[0];
+  cubes.back().wall[3] = cubes[n].wall[3];
+  cubes.back().wall[4] = cubes[n].wall[4];
+  cubes.push_back(cube_t(f_0pm, f_p00_pm, f_p0m, f_0p0_pm, f_00m_pp, f_pp0));
+  cubes.back().wall[1] = cubes[n].wall[1];
+  cubes.back().wall[3] = cubes[n].wall[3];
+  cubes.back().wall[4] = cubes[n].wall[4];
+  cubes.push_back(cube_t(f_m00_mp, f_0mp, f_0m0_mp, f_m0p, f_mm0, f_00p_mm));
+  cubes.back().wall[0] = cubes[n].wall[0];
+  cubes.back().wall[2] = cubes[n].wall[2];
+  cubes.back().wall[5] = cubes[n].wall[5];
+  cubes.push_back(cube_t(f_0mp, f_p00_mp, f_0m0_pp, f_p0p, f_pm0, f_00p_pm));
+  cubes.back().wall[1] = cubes[n].wall[1];
+  cubes.back().wall[2] = cubes[n].wall[2];
+  cubes.back().wall[5] = cubes[n].wall[5];
+  cubes.push_back(cube_t(f_m00_pp, f_0pp, f_m0p, f_0p0_mp, f_mp0, f_00p_mp));
+  cubes.back().wall[0] = cubes[n].wall[0];
+  cubes.back().wall[3] = cubes[n].wall[3];
+  cubes.back().wall[5] = cubes[n].wall[5];
+  cubes.push_back(cube_t(f_0pp, f_p00_pp, f_p0p, f_0p0_pp, f_pp0, f_00p_pp));
+  cubes.back().wall[1] = cubes[n].wall[1];
+  cubes.back().wall[3] = cubes[n].wall[3];
+  cubes.back().wall[5] = cubes[n].wall[5];
 }
 
 

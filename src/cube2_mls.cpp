@@ -115,7 +115,7 @@ void cube2_mls_t::construct_domain(std::vector<action_t> &action, std::vector<in
 
           for (int i_vtx = 3; i_vtx < n_vtxs; i_vtx++)
           {
-            phi_values[i_vtx] = interpolate_bilinear(&(phi->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y);
+            phi_values[i_vtx] = interpolate_linear(&(phi->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y);
           }
 
           simplex[k].do_action(&phi_values, NULL, NULL, non_trivial_color[j], non_trivial_action[j]);
@@ -141,10 +141,18 @@ void cube2_mls_t::construct_domain(std::vector<action_t> &action, std::vector<in
 
           for (int i_vtx = 3; i_vtx < n_vtxs; i_vtx++)
           {
-            phi_x_values[i_vtx] = interpolate_bilinear(&(phi_x->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y);
-            phi_y_values[i_vtx] = interpolate_bilinear(&(phi_y->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y);
+            phi_x_values[i_vtx] = interpolate_linear(&(phi_x->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y);
+            phi_y_values[i_vtx] = interpolate_linear(&(phi_y->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y);
             phi_values[i_vtx] = interpolate_quadratic(&(phi->data())[s], &(phi_xx->data())[s], &(phi_yy->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y);
           }
+
+          double xyz[2] = {0.,0.};
+          for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
+            if (!simplex[k].edgs[i_edg].is_split)
+            {
+              simplex[k].get_edge_coords(i_edg,xyz);
+              simplex[k].edgs[i_edg].value = interpolate_quadratic(&(phi->data())[s], &(phi_xx->data())[s], &(phi_yy->data())[s], xyz[0], xyz[1]);
+            }
 
           simplex[k].do_action(&phi_values, &phi_x_values, &phi_y_values, non_trivial_color[j], non_trivial_action[j]);
         }
@@ -221,7 +229,7 @@ double cube2_mls_t::integrate_in_non_cart_dir(double *f, int dir)
     return 0.0;
 }
 
-double cube2_mls_t::interpolate_bilinear(double *f, double x, double y)
+double cube2_mls_t::interpolate_linear(double *f, double x, double y)
 {
   double d_m00 = (x-x0)/(x1-x0);
   double d_p00 = (x1-x)/(x1-x0);

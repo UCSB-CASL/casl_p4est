@@ -6,11 +6,13 @@
 #include <p8est_nodes.h>
 //#include <p8est_ghost.h>
 #include "cube3_mls.h"
+#include "cube3_refined_mls.h"
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
 //#include <p4est_ghost.h>
 #include "cube2_mls.h"
+#include "cube2_refined_mls.h"
 #endif
 
 #include <src/petsc_logging.h>
@@ -29,27 +31,48 @@ public:
   p4est_t       *p4est;
   p4est_nodes_t *nodes;
 
+#ifdef P4_TO_P8
+  std::vector<CF_3 *>   *phi_cf;
+#else
+  std::vector<CF_2 *>   *phi_cf;
+#endif
   std::vector<Vec>      *phi;
+  std::vector<Vec>      *phi_xx, *phi_yy;
+#ifdef P4_TO_P8
+  std::vector<Vec>      *phi_zz;
+#endif
   std::vector<int>      *color;
   std::vector<action_t> *action;
 
+  bool use_cube_refined;
+  int level;
+
   bool initialized;
 
-#ifdef P4_TO_P8
-  std::vector<cube3_mls_t> cubes;
-#else
-  std::vector<cube2_mls_t> cubes;
-#endif
+//#ifdef P4_TO_P8
+//  std::vector<cube3_mls_t> cubes;
+//#else
+//  std::vector<cube2_mls_t> cubes;
+//#endif
 
 
   my_p4est_integration_mls_t()
-    : p4est(NULL), nodes(NULL), phi(NULL), color(NULL), action(NULL), initialized(false)
+    : p4est(NULL), nodes(NULL), phi(NULL), color(NULL), action(NULL), initialized(false), use_cube_refined(false)
   {}
 
   void initialize();
 
   void set_p4est  (p4est_t *p4est_, p4est_nodes_t *nodes_)                                {p4est = p4est_; nodes = nodes_;}
+
+#ifdef P4_TO_P8
+  void set_phi    (std::vector<Vec> &phi_, std::vector<Vec> &phi_xx_, std::vector<Vec> &phi_yy_, std::vector<Vec> &phi_zz_,
+                   std::vector<action_t> &action_, std::vector<int> &color_)  {phi = &phi_; action = &action_; color = &color_;}
+#else
   void set_phi    (std::vector<Vec> &phi_, std::vector<action_t> &action_, std::vector<int> &color_)  {phi = &phi_; action = &action_; color = &color_;}
+#endif
+
+  void set_use_cube_refined(int level_) {level = level_; use_cube_refined = true;}
+  void unset_use_cube_refined() {use_cube_refined = false;}
 
   double perform(int_type_t int_type, Vec f = NULL, int n0 = -1, int n1 = -1, int n2 = -1);
 

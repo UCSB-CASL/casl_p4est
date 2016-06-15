@@ -30,8 +30,8 @@
 using namespace std;
 
 /* discretization */
-int lmin = 0;
-int lmax = 0;
+int lmin = 1;
+int lmax = 6;
 #ifdef P4_TO_P8
 int nb_splits = 4;
 #else
@@ -44,7 +44,7 @@ int ny = 1;
 int nz = 1;
 #endif
 
-bool save_vtk = false;
+bool save_vtk = true;
 
 /* geometry */
 
@@ -57,7 +57,7 @@ double zmin = 0.;
 double zmax = 1.;
 #endif
 
-double r0 = 0.732121;
+double r0 = 0.232121;
 double d = 0.2;
 
 double theta = 0.579;
@@ -75,8 +75,7 @@ double sinP = sin(phy);
 #ifdef P4_TO_P8
 double xc_0 = 0.; double yc_0 =  0.; double zc_0 =  0.;
 #else
-double xc_0 = -d*sinT; double yc_0 =  d*cosT;
-double xc_1 =  d*sinT; double yc_1 = -d*cosT;
+double xc_0 = 0.; double yc_0 = 0.;
 #endif
 
 #ifdef P4_TO_P8
@@ -152,14 +151,15 @@ public:
     /* intersections */
 #else
     /* the whole domain */
-    ID = PI*r0*r0;
+    ID = 0.25*PI*r0*r0;
     IDr2 = 0.5*PI*r0*r0*r0*r0 + PI*r0*r0*d*d;
     /* the whole boundary */
-    IB = 2*PI*r0;
+    IB = 0.25*2*PI*r0;
     IBr2 = 2.0*PI*r0*(r0*r0+d*d);
     /* sub-boundaries */
-    ISB.push_back(2*PI*r0);
+    ISB.push_back(0.25*2*PI*r0);
     ISBr2.push_back(2.0*PI*r0*(r0*r0+d*d));
+    M_in_dir = r0;
     /* intersections */
 #endif
   }

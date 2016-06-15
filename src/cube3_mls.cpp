@@ -280,6 +280,18 @@ double cube3_mls_t::integrate_over_intersection(double *f, int num0, int num1, i
 
 double cube3_mls_t::integrate_in_dir(double *f, int dir)
 {
+  switch (loc){
+  case OUT: return 0;
+  case INS:
+    switch (dir) {
+    case 0: return (y1-y0)*(z1-z0)*0.25*(f[0]+f[2]+f[4]+f[6]);
+    case 1: return (y1-y0)*(z1-z0)*0.25*(f[1]+f[3]+f[5]+f[7]);
+    case 2: return (x1-x0)*(z1-z0)*0.25*(f[0]+f[1]+f[4]+f[5]);
+    case 3: return (x1-x0)*(z1-z0)*0.25*(f[2]+f[3]+f[6]+f[7]);
+    case 4: return (x1-x0)*(y1-y0)*0.25*(f[0]+f[1]+f[2]+f[3]);
+    case 5: return (x1-x0)*(y1-y0)*0.25*(f[4]+f[5]+f[6]+f[7]);
+    }
+  case FCE:
   return simplex[0].integrate_in_dir(f[t0p0], f[t0p1], f[t0p2], f[t0p3], dir) +
          simplex[1].integrate_in_dir(f[t1p0], f[t1p1], f[t1p2], f[t1p3], dir) +
          simplex[2].integrate_in_dir(f[t2p0], f[t2p1], f[t2p2], f[t2p3], dir) +
@@ -288,6 +300,7 @@ double cube3_mls_t::integrate_in_dir(double *f, int dir)
          simplex[5].integrate_in_dir(f[t5p0], f[t5p1], f[t5p2], f[t5p3], dir) +
 #endif
          simplex[4].integrate_in_dir(f[t4p0], f[t4p1], f[t4p2], f[t4p3], dir);
+  }
 }
 
 double cube3_mls_t::interpolate_linear(double *f, double x, double y, double z)

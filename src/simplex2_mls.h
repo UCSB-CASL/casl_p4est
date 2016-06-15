@@ -51,6 +51,7 @@ public:
     int   dir;        // to keep track of edges of a cube
                       // (-1 - inside; 0 - m0; 1 - p0; 2 - 0m; 3 - 0p;)
     int   p_lsf;      // # of lsf that created an edge
+    double value;     // stored value at midpoint
 
     /* Child objects */
     int c_vtx01;        // splitting vertex
@@ -143,6 +144,9 @@ public:
   bool use_linear;
   double find_intersection_linear   (int v0, int v1);
   double find_intersection_quadratic(int v0, int v1);
+
+  double find_intersection_quadratic(int e);
+  void get_edge_coords(int e, double xyz[]);
 
   template<typename X>
   void swap(X &x, X &y)

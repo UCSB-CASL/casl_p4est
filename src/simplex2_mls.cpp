@@ -655,6 +655,66 @@ double simplex2_mls_t::find_intersection_quadratic(int v0, int v1)
   return 1.-(x+0.5*l)/l;
 }
 
+double simplex2_mls_t::find_intersection_quadratic(int e)
+{
+  vtx2_t *vtx0 = &vtxs[edgs[e].vtx0];
+  vtx2_t *vtx1 = &vtxs[edgs[e].vtx1];
+  double nx = vtx1->x - vtx0->x;
+  double ny = vtx1->y - vtx0->y;
+  double l = sqrt(nx*nx+ny*ny);
+#ifdef CASL_THROWS
+  if(l < EPS) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
+#endif
+  nx /= l;
+  ny /= l;
+  double f0 = vtx0->value;
+  double f01 = edgs[e].value;
+  double f1 = vtx1->value;
+
+  if (fabs(f0)  < EPS) return (l-EPS)/l;
+  if (fabs(f01) < EPS) return 0.5;
+  if (fabs(f1)  < EPS) return (0.+EPS)/l;
+
+#ifdef CASL_THROWS
+  if(f0*f1 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
+#endif
+
+  double fdd = (f1+f0-2.*f01)/(0.25*l*l);
+//  double fdd = MINMOD(fdd0,fdd1); // take nonocillating fxx
+
+  double c2 = 0.5*fdd;                // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e
+  double c1 =     (f1-f0)/l;          //  the expansion of f at the center of (a,b)
+//  double c1 = 0.5*(fd1+fd0);          //  the expansion of f at the center of (a,b)
+//  double c1 = 0.25*(fd1+fd0)+0.5*(f1-f0)/l;          //  the expansion of f at the center of (a,b)
+  double c0 = f01;
+
+  double x;
+
+  if(fabs(c2)<EPS) x = -c0/c1;
+  else
+  {
+    if(f1<0) x = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
+    else     x = (-2.*c0)/(c1 + sqrt(c1*c1-4.*c2*c0));
+  }
+#ifdef CASL_THROWS
+  if (x < -0.5*l || x > 0.5*l) throw std::domain_error("[CASL_ERROR]: ");
+#endif
+
+  if (x < -0.5*l) return (l-EPS)/l;
+  if (x > 0.5*l) return (0.+EPS)/l;
+
+  return 1.-(x+0.5*l)/l;
+}
+
+void simplex2_mls_t::get_edge_coords(int e, double xyz[])
+{
+  vtx2_t *vtx0 = &vtxs[edgs[e].vtx0];
+  vtx2_t *vtx1 = &vtxs[edgs[e].vtx1];
+
+  xyz[0] = 0.5*(vtx0->x+vtx1->x);
+  xyz[1] = 0.5*(vtx0->y+vtx1->y);
+}
+
 //double simplex2_mls_t::find_intersection_brent(int v0, int v1)
 //{
 //#ifdef CASL_THROWS
