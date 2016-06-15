@@ -290,15 +290,26 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
   // split based on the SAS distance
   parStopWatch w;
   w.start("making intial tree");
-//  splitting_criteria_threshold_cf_t sp_thr(sp->min_lvl, sp->max_lvl, -1.0*rp_, 1.5*rp_, this, sp->lip);
-  splitting_criteria_thresh_t sp_thr(sp->min_lvl, sp->max_lvl, this, 1.5*rp_);
+//  class distance_mask_t: public CF_3{
+//    const BioMolecule& mol;
+//    double d;
+//  public:
+//    distance_mask_t(const BioMolecule* mol, double d): mol(*mol), d(d) {}
+//    double operator ()(double x, double y, double z) const {
+//      return d - fabs(mol(x,y,z));
+//    }
+//  };
+
+//  distance_mask_t mask(this, 1.5*rp_);
+//  splitting_criteria_thresh_t sp_thr(sp->min_lvl, sp->max_lvl, &mask, 0);
+  splitting_criteria_cf_t sp_thr(sp->min_lvl, sp->max_lvl, this, 3);
   p4est->user_pointer = &sp_thr;
 
 	// refine and partition
 	// Note: Using recursive on large molecules causes the whole thing to be build in serial on 
 	// one processor which is obviously not scalable 
 	for (int l = 0; l<sp->max_lvl; l++){
-    my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_thresh, NULL);
+    my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
     my_p4est_partition(p4est, P4EST_TRUE, NULL);
 	}
 

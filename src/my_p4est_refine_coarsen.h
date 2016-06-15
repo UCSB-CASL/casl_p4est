@@ -74,7 +74,7 @@ struct splitting_criteria_thresh_t : splitting_criteria_t {
 #else
   splitting_criteria_thresh_t(int min_lvl, int max_lvl, CF_2 *f, double thresh)
 #endif
-    :splitting_criteria_t(min_lvl, max_lvl, lip)
+    :splitting_criteria_t(min_lvl, max_lvl)
   {
     this->f = f;
     this->thresh = thresh;
