@@ -28,25 +28,34 @@ public:
 
   std::vector<simplex2_mls_t> simplex;
 
+  std::vector< std::vector<double> > *phi;
+  std::vector< std::vector<double> > *phi_xx;
+  std::vector< std::vector<double> > *phi_yy;
+
+  std::vector<action_t> *action;
+  std::vector<int>      *color;
+
   cube2_mls_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1.)
-    : x0(x0), x1(x1), y0(y0), y1(y1),
-      phi(NULL), phi_x(NULL), phi_y(NULL), phi_xx(NULL), phi_yy(NULL) {}
+    : x0(x0), x1(x1), y0(y0), y1(y1) {}
 
-  void construct_domain(std::vector<action_t> &action, std::vector<int> &color);
+  void set_phi(std::vector< std::vector<double> > &phi_, std::vector<action_t> &acn_, std::vector<int> &clr_)
+  {
+    phi     = &phi_; phi_xx = NULL; phi_yy = NULL;
+    action  = &acn_;
+    color   = &clr_;
+  }
 
-  std::vector<double> *phi;
-  std::vector<double> *phi_x;
-  std::vector<double> *phi_y;
-  std::vector<double> *phi_xx;
-  std::vector<double> *phi_yy;
+  void set_phi(std::vector< std::vector<double> > &phi_,
+               std::vector< std::vector<double> > &phi_xx_,
+               std::vector< std::vector<double> > &phi_yy_,
+               std::vector<action_t> &acn_, std::vector<int> &clr_)
+  {
+    phi     = &phi_; phi_xx = &phi_xx_; phi_yy = &phi_yy_;
+    action  = &acn_;
+    color   = &clr_;
+  }
 
-  void set_phi    (std::vector<double> &phi_)    {phi = &phi_;}
-  void set_phi_d  (std::vector<double> &phi_x_,
-                   std::vector<double> &phi_y_)  {phi_x = &phi_x_;
-                                                  phi_y = &phi_y_;}
-  void set_phi_dd (std::vector<double> &phi_xx_,
-                   std::vector<double> &phi_yy_) {phi_xx = &phi_xx_;
-                                                  phi_yy = &phi_yy_;}
+  void construct_domain();
 
   double integrate_over_domain            (double *f);
   double integrate_over_interface         (double *f, int num);

@@ -9,7 +9,7 @@
 
 #define CUBE3_MLS_KUHN
 #ifdef CUBE3_MLS_MIDDLECUT // Middle-cut triangulation
-#define NTETS 6
+#define NTETS 5
 // Tetrahedron #0
 #define t0p0 0
 #define t0p1 1
@@ -83,32 +83,38 @@ public:
 
   std::vector<simplex3_mls_t> simplex;
 
+  std::vector< std::vector<double> > *phi;
+  std::vector< std::vector<double> > *phi_xx;
+  std::vector< std::vector<double> > *phi_yy;
+  std::vector< std::vector<double> > *phi_zz;
+
+  std::vector<action_t> *action;
+  std::vector<int>      *color;
+
   cube3_mls_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
-    : x0(x0), y0(y0), z0(z0), x1(x1), y1(y1), z1(z1),
-      phi(NULL), phi_x(NULL), phi_y(NULL), phi_z(NULL),
-      phi_xx(NULL), phi_yy(NULL), phi_zz(NULL) {}
+    : x0(x0), y0(y0), z0(z0), x1(x1), y1(y1), z1(z1) {}
 
-  void construct_domain(std::vector<action_t> &action, std::vector<int> &color);
 
-  std::vector<double> *phi;
-  std::vector<double> *phi_x;
-  std::vector<double> *phi_y;
-  std::vector<double> *phi_z;
-  std::vector<double> *phi_xx;
-  std::vector<double> *phi_yy;
-  std::vector<double> *phi_zz;
+  void set_phi(std::vector< std::vector<double> > &phi_,
+               std::vector<action_t> &acn_, std::vector<int> &clr_)
+  {
+    phi     = &phi_; phi_xx = NULL; phi_yy = NULL; phi_zz = NULL;
+    action  = &acn_;
+    color   = &clr_;
+  }
 
-  void set_phi    (std::vector<double> &phi_)    {phi = &phi_;}
-  void set_phi_d  (std::vector<double> &phi_x_,
-                   std::vector<double> &phi_y_,
-                   std::vector<double> &phi_z_)  {phi_x = &phi_x_;
-                                                  phi_y = &phi_y_;
-                                                  phi_z = &phi_z_;}
-  void set_phi_dd (std::vector<double> &phi_xx_,
-                   std::vector<double> &phi_yy_,
-                   std::vector<double> &phi_zz_) {phi_xx = &phi_xx_;
-                                                  phi_yy = &phi_yy_;
-                                                  phi_zz = &phi_zz_;}
+  void set_phi(std::vector< std::vector<double> > &phi_,
+               std::vector< std::vector<double> > &phi_xx_,
+               std::vector< std::vector<double> > &phi_yy_,
+               std::vector< std::vector<double> > &phi_zz_,
+               std::vector<action_t> &acn_, std::vector<int> &clr_)
+  {
+    phi     = &phi_; phi_xx = &phi_xx_; phi_yy = &phi_yy_; phi_zz = &phi_zz_;
+    action  = &acn_;
+    color   = &clr_;
+  }
+
+  void construct_domain();
 
   double integrate_over_domain            (double *f);
   double integrate_over_interface         (double *f, int num);

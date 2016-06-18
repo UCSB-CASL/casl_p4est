@@ -6,61 +6,8 @@
 #include "grid_interpolation3.h"
 #include "my_p4est_utils.h"
 
-//#define N_CHILDREN 8
-
-
 class cube3_refined_mls_t
 {
-  struct node_t {
-    double  x, y, z;
-
-    node_t(double x, double y, double z) : x(x), y(y), z(z) {}
-  };
-
-  struct edge_t {
-    int   v0, v1;
-    bool  is_split;
-    int   e0, e1, v01;
-
-    edge_t(int v0, int v1) : v0(v0), v1(v1), is_split(false), e0(-1), e1(-1), v01(-1) {}
-  };
-
-  struct face_t {
-    int e_m0, e_p0, e_0m, e_0p;
-    int f_mm, f_pm, f_mp, f_pp;
-    int v_00;
-    int ce_m0, ce_p0, ce_0m, ce_0p;
-    bool is_split;
-    int level;
-
-    face_t(int e_m0_ = -1, int e_p0_ = -1, int e_0m_ = -1, int e_0p_ = -1)
-      : e_m0(e_m0_), e_p0(e_p0_), e_0m(e_0m_), e_0p(e_0p_), is_split(false),
-        f_mm(-1), f_pm(-1), f_mp(-1), f_pp(-1),
-        v_00(-1), ce_m0(-1), ce_p0(-1), ce_0m(-1), ce_0p(-1),
-        level(0) {}
-  };
-
-  struct cube_t {
-    bool  is_split;
-    bool  wall[6];
-    int f_m00, f_p00, f_0m0, f_0p0, f_00m, f_00p;
-    int level;
-
-    cube_t(int f_m00_ = -1, int f_p00_ = -1, int f_0m0_ = -1, int f_0p0_ = -1, int f_00m_ = -1, int f_00p_ = -1)
-    {
-      f_m00 = f_m00_;
-      f_p00 = f_p00_;
-      f_0m0 = f_0m0_;
-      f_0p0 = f_0p0_;
-      f_00m = f_00m_;
-      f_00p = f_00p_;
-      level = 0;
-      is_split = false;
-      for (int i = 0; i < N_FACES; i++) wall[i] = false;
-    }
-  };
-
-
 public:
   static const int N_CHILDREN = 8;
   static const int N_FACES = 6;
@@ -81,12 +28,6 @@ public:
   std::vector< std::vector<double> > *phi_zz_in;
   grid_interpolation3_t interp;
 
-  // quadtree structure
-  std::vector<node_t> nodes;
-  std::vector<edge_t> edges;
-  std::vector<face_t> faces;
-  std::vector<cube_t> cubes;
-
   std::vector<int> leaf_to_node;
   std::vector<int> get_cube;
 
@@ -98,6 +39,10 @@ public:
   std::vector< std::vector<double> > phi_xx;
   std::vector< std::vector<double> > phi_yy;
   std::vector< std::vector<double> > phi_zz;
+
+  std::vector<double> x_coord;
+  std::vector<double> y_coord;
+  std::vector<double> z_coord;
 
   // array
   std::vector<cube3_mls_t> cubes_mls;

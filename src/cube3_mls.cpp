@@ -1,10 +1,10 @@
 #include "cube3_mls.h"
 
-void cube3_mls_t::construct_domain(std::vector<action_t> &action, std::vector<int> &color)
+void cube3_mls_t::construct_domain()
 {
   bool use_linear = false;
-  if (phi_x == NULL || phi_y == NULL || phi_z == NULL ||
-      phi_xx == NULL || phi_yy == NULL || phi_zz == NULL) use_linear = true;
+  if (phi_xx == NULL || phi_yy == NULL || phi_zz == NULL) use_linear = true;
+
   bool all_positive, all_negative;
 
   std::vector<int>      non_trivial;
@@ -13,20 +13,20 @@ void cube3_mls_t::construct_domain(std::vector<action_t> &action, std::vector<in
 
   /* Eliminate unnecessary splitting */
   loc = INS;
-  for (int i = 0; i < action.size(); i++)
+  for (int i = 0; i < action->size(); i++)
   {
     all_negative = true;
     all_positive = true;
 
     for (int j = 0; j < 8; j++)
     {
-      all_negative = (all_negative && (phi->at(i*8+j) < 0.0));
-      all_positive = (all_positive && (phi->at(i*8+j) > 0.0));
+      all_negative = (all_negative && (phi->at(i)[j] < 0.0));
+      all_positive = (all_positive && (phi->at(i)[j] > 0.0));
     }
 
     if (all_positive)
     {
-      if (action[i] == INTERSECTION)
+      if (action->at(i) == INTERSECTION)
       {
         loc = OUT;
         non_trivial.clear();
@@ -36,28 +36,28 @@ void cube3_mls_t::construct_domain(std::vector<action_t> &action, std::vector<in
     }
     else if (all_negative)
     {
-      if (action[i] == ADDITION)
+      if (action->at(i) == ADDITION)
       {
         loc = INS;
         non_trivial.clear();
         non_trivial_action.clear();
         non_trivial_color.clear();
       }
-      else if (action[i] == COLORATION && loc == FCE)
+      else if (action->at(i) == COLORATION && loc == FCE)
       {
         non_trivial.push_back(i);
-        non_trivial_action.push_back(action[i]);
-        non_trivial_color.push_back(color[i]);
+        non_trivial_action.push_back(action->at(i));
+        non_trivial_color.push_back(color->at(i));
 //        for (int j = 0; j < color.size(); j++)
 //          non_trivial_color[j] = color[i];
       }
     }
-    else if (loc == FCE || (loc == INS && action[i] == INTERSECTION) || (loc == OUT && action[i] == ADDITION))
+    else if (loc == FCE || (loc == INS && action->at(i) == INTERSECTION) || (loc == OUT && action->at(i) == ADDITION))
     {
       loc = FCE;
       non_trivial.push_back(i);
-      non_trivial_action.push_back(action[i]);
-      non_trivial_color.push_back(color[i]);
+      non_trivial_action.push_back(action->at(i));
+      non_trivial_color.push_back(color->at(i));
     }
   }
 
@@ -96,107 +96,82 @@ void cube3_mls_t::construct_domain(std::vector<action_t> &action, std::vector<in
 #endif
     // it doesn't make sense to do it for the MIDDLE_CUT triangulation
 
-    std::vector<double> phi_values(4,-1);
-    std::vector<double> phi_x_values(4,0);
-    std::vector<double> phi_y_values(4,0);
-    std::vector<double> phi_z_values(4,0);
-
     /* Apply non trivial actions to every simplex */
     for (int j = 0; j < num_non_trivial; j++)
     {
-      int s = non_trivial[j]*8;
+      int i_phi = non_trivial[j];
+//      int s = non_trivial[j]*8;
 
       for (int k = 0; k < NTETS; k++) // loop over simplices
       {
         int n_vtxs = simplex[k].vtxs.size();
 
+        // fetch main nodes
+        switch (k) {
+        case 0: simplex[k].vtxs[0].value = phi->at(i_phi)[t0p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t0p1];
+                simplex[k].vtxs[2].value = phi->at(i_phi)[t0p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t0p3];
+          break;
+        case 1: simplex[k].vtxs[0].value = phi->at(i_phi)[t1p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t1p1];
+                simplex[k].vtxs[2].value = phi->at(i_phi)[t1p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t1p3];
+          break;
+        case 2: simplex[k].vtxs[0].value = phi->at(i_phi)[t2p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t2p1];
+                simplex[k].vtxs[2].value = phi->at(i_phi)[t2p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t2p3];
+          break;
+        case 3: simplex[k].vtxs[0].value = phi->at(i_phi)[t3p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t3p1];
+                simplex[k].vtxs[2].value = phi->at(i_phi)[t3p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t3p3];
+          break;
+        case 4: simplex[k].vtxs[0].value = phi->at(i_phi)[t4p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t4p1];
+                simplex[k].vtxs[2].value = phi->at(i_phi)[t4p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t4p3];
+          break;
+#ifdef CUBE3_MLS_KUHN
+        case 5: simplex[k].vtxs[0].value = phi->at(i_phi)[t5p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t5p1];
+                simplex[k].vtxs[2].value = phi->at(i_phi)[t5p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t5p3];
+          break;
+#endif
+        }
+
+        // interpolate to the rest of vertices
         if (use_linear)
         {
-          phi_values.resize(n_vtxs);
-
-          switch (k) {
-          case 0: phi_values[0] = phi->at(s+t0p0); phi_values[1] = phi->at(s+t0p1); phi_values[2] = phi->at(s+t0p2); phi_values[3] = phi->at(s+t0p3); break;
-          case 1: phi_values[0] = phi->at(s+t1p0); phi_values[1] = phi->at(s+t1p1); phi_values[2] = phi->at(s+t1p2); phi_values[3] = phi->at(s+t1p3); break;
-          case 2: phi_values[0] = phi->at(s+t2p0); phi_values[1] = phi->at(s+t2p1); phi_values[2] = phi->at(s+t2p2); phi_values[3] = phi->at(s+t2p3); break;
-          case 3: phi_values[0] = phi->at(s+t3p0); phi_values[1] = phi->at(s+t3p1); phi_values[2] = phi->at(s+t3p2); phi_values[3] = phi->at(s+t3p3); break;
-          case 4: phi_values[0] = phi->at(s+t4p0); phi_values[1] = phi->at(s+t4p1); phi_values[2] = phi->at(s+t4p2); phi_values[3] = phi->at(s+t4p3); break;
-#ifdef CUBE3_MLS_KUHN
-          case 5: phi_values[0] = phi->at(s+t5p0); phi_values[1] = phi->at(s+t5p1); phi_values[2] = phi->at(s+t5p2); phi_values[3] = phi->at(s+t5p3); break;
-#endif
-          }
-
+//          simplex[k].use_linear = false;
+          //vertices
           for (int i_vtx = 4; i_vtx < n_vtxs; i_vtx++)
-          {
-            phi_values[i_vtx] = interpolate_linear(&(phi->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
-          }
+            simplex[k].vtxs[i_vtx].value = interpolate_linear(phi->at(i_phi).data(),
+                                                              simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
 
+          // edges
           double xyz[3] = {0.,0.,0.};
           for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
             if (!simplex[k].edgs[i_edg].is_split)
             {
               simplex[k].get_edge_coords(i_edg,xyz);
-              simplex[k].edgs[i_edg].value = interpolate_linear(&(phi->data())[s], xyz[0], xyz[1], xyz[2]);
+              simplex[k].edgs[i_edg].value = interpolate_linear(phi->at(i_phi).data(), xyz[0], xyz[1], xyz[2]);
             }
-
-          simplex[k].do_action(&phi_values, NULL, NULL, NULL, non_trivial_color[j], non_trivial_action[j]);
-
         } else {
-          phi_values.resize(n_vtxs);
-          phi_x_values.resize(n_vtxs);
-          phi_y_values.resize(n_vtxs);
-          phi_z_values.resize(n_vtxs);
-
-          switch (k) {
-          case 0: phi_values[0] = phi->at(s+t0p0); phi_values[1] = phi->at(s+t0p1); phi_values[2] = phi->at(s+t0p2); phi_values[3] = phi->at(s+t0p3);
-            phi_x_values[0] = phi_x->at(s+t0p0); phi_x_values[1] = phi_x->at(s+t0p1); phi_x_values[2] = phi_x->at(s+t0p2); phi_x_values[3] = phi_x->at(s+t0p3);
-            phi_y_values[0] = phi_y->at(s+t0p0); phi_y_values[1] = phi_y->at(s+t0p1); phi_y_values[2] = phi_y->at(s+t0p2); phi_y_values[3] = phi_y->at(s+t0p3);
-            phi_z_values[0] = phi_z->at(s+t0p0); phi_z_values[1] = phi_z->at(s+t0p1); phi_z_values[2] = phi_z->at(s+t0p2); phi_z_values[3] = phi_z->at(s+t0p3); break;
-          case 1: phi_values[0] = phi->at(s+t1p0); phi_values[1] = phi->at(s+t1p1); phi_values[2] = phi->at(s+t1p2); phi_values[3] = phi->at(s+t1p3);
-            phi_x_values[0] = phi_x->at(s+t1p0); phi_x_values[1] = phi_x->at(s+t1p1); phi_x_values[2] = phi_x->at(s+t1p2); phi_x_values[3] = phi_x->at(s+t1p3);
-            phi_y_values[0] = phi_y->at(s+t1p0); phi_y_values[1] = phi_y->at(s+t1p1); phi_y_values[2] = phi_y->at(s+t1p2); phi_y_values[3] = phi_y->at(s+t1p3);
-            phi_z_values[0] = phi_z->at(s+t1p0); phi_z_values[1] = phi_z->at(s+t1p1); phi_z_values[2] = phi_z->at(s+t1p2); phi_z_values[3] = phi_z->at(s+t1p3); break;
-          case 2: phi_values[0] = phi->at(s+t2p0); phi_values[1] = phi->at(s+t2p1); phi_values[2] = phi->at(s+t2p2); phi_values[3] = phi->at(s+t2p3);
-            phi_x_values[0] = phi_x->at(s+t2p0); phi_x_values[1] = phi_x->at(s+t2p1); phi_x_values[2] = phi_x->at(s+t2p2); phi_x_values[3] = phi_x->at(s+t2p3);
-            phi_y_values[0] = phi_y->at(s+t2p0); phi_y_values[1] = phi_y->at(s+t2p1); phi_y_values[2] = phi_y->at(s+t2p2); phi_y_values[3] = phi_y->at(s+t2p3);
-            phi_z_values[0] = phi_z->at(s+t2p0); phi_z_values[1] = phi_z->at(s+t2p1); phi_z_values[2] = phi_z->at(s+t2p2); phi_z_values[3] = phi_z->at(s+t2p3); break;
-          case 3: phi_values[0] = phi->at(s+t3p0); phi_values[1] = phi->at(s+t3p1); phi_values[2] = phi->at(s+t3p2); phi_values[3] = phi->at(s+t3p3);
-            phi_x_values[0] = phi_x->at(s+t3p0); phi_x_values[1] = phi_x->at(s+t3p1); phi_x_values[2] = phi_x->at(s+t3p2); phi_x_values[3] = phi_x->at(s+t3p3);
-            phi_y_values[0] = phi_y->at(s+t3p0); phi_y_values[1] = phi_y->at(s+t3p1); phi_y_values[2] = phi_y->at(s+t3p2); phi_y_values[3] = phi_y->at(s+t3p3);
-            phi_z_values[0] = phi_z->at(s+t3p0); phi_z_values[1] = phi_z->at(s+t3p1); phi_z_values[2] = phi_z->at(s+t3p2); phi_z_values[3] = phi_z->at(s+t3p3); break;
-          case 4: phi_values[0] = phi->at(s+t4p0); phi_values[1] = phi->at(s+t4p1); phi_values[2] = phi->at(s+t4p2); phi_values[3] = phi->at(s+t4p3);
-            phi_x_values[0] = phi_x->at(s+t4p0); phi_x_values[1] = phi_x->at(s+t4p1); phi_x_values[2] = phi_x->at(s+t4p2); phi_x_values[3] = phi_x->at(s+t4p3);
-            phi_y_values[0] = phi_y->at(s+t4p0); phi_y_values[1] = phi_y->at(s+t4p1); phi_y_values[2] = phi_y->at(s+t4p2); phi_y_values[3] = phi_y->at(s+t4p3);
-            phi_z_values[0] = phi_z->at(s+t4p0); phi_z_values[1] = phi_z->at(s+t4p1); phi_z_values[2] = phi_z->at(s+t4p2); phi_z_values[3] = phi_z->at(s+t4p3); break;
-#ifdef CUBE3_MLS_KUHN
-          case 5: phi_values[0] = phi->at(s+t5p0); phi_values[1] = phi->at(s+t5p1); phi_values[2] = phi->at(s+t5p2); phi_values[3] = phi->at(s+t5p3);
-            phi_x_values[0] = phi_x->at(s+t5p0); phi_x_values[1] = phi_x->at(s+t5p1); phi_x_values[2] = phi_x->at(s+t5p2); phi_x_values[3] = phi_x->at(s+t5p3);
-            phi_y_values[0] = phi_y->at(s+t5p0); phi_y_values[1] = phi_y->at(s+t5p1); phi_y_values[2] = phi_y->at(s+t5p2); phi_y_values[3] = phi_y->at(s+t5p3);
-            phi_z_values[0] = phi_z->at(s+t5p0); phi_z_values[1] = phi_z->at(s+t5p1); phi_z_values[2] = phi_z->at(s+t5p2); phi_z_values[3] = phi_z->at(s+t5p3); break;
-#endif
-          }
-
+          //vertices
           for (int i_vtx = 4; i_vtx < n_vtxs; i_vtx++)
-          {
-            phi_x_values[i_vtx] = interpolate_linear(&(phi_x->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
-            phi_y_values[i_vtx] = interpolate_linear(&(phi_y->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
-            phi_z_values[i_vtx] = interpolate_linear(&(phi_z->data())[s], simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
-            phi_values[i_vtx] = interpolate_quadratic(&(phi->data())[s], &(phi_xx->data())[s], &(phi_yy->data())[s], &(phi_zz->data())[s],
-                                                      simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
-          }
-
+            simplex[k].vtxs[i_vtx].value = interpolate_quadratic(phi->at(i_phi).data(),
+                                                                 phi_xx->at(i_phi).data(),
+                                                                 phi_yy->at(i_phi).data(),
+                                                                 phi_zz->at(i_phi).data(),
+                                                                 simplex[k].vtxs[i_vtx].x,
+                                                                 simplex[k].vtxs[i_vtx].y,
+                                                                 simplex[k].vtxs[i_vtx].z);
+          // edges
           double xyz[3] = {0.,0.,0.};
           for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
             if (!simplex[k].edgs[i_edg].is_split)
             {
               simplex[k].get_edge_coords(i_edg,xyz);
-              simplex[k].edgs[i_edg].value = interpolate_quadratic(&(phi->data())[s], &(phi_xx->data())[s], &(phi_yy->data())[s], &(phi_zz->data())[s],
+              simplex[k].edgs[i_edg].value = interpolate_quadratic(phi->at(i_phi).data(),
+                                                                   phi_xx->at(i_phi).data(),
+                                                                   phi_yy->at(i_phi).data(),
+                                                                   phi_zz->at(i_phi).data(),
                                                                    xyz[0], xyz[1], xyz[2]);
             }
 
-
-          simplex[k].do_action(&phi_values, &phi_x_values, &phi_y_values, &phi_z_values, non_trivial_color[j], non_trivial_action[j]);
         }
-
+        simplex[k].do_action(non_trivial_color[j], non_trivial_action[j]);
       }
     }
   }

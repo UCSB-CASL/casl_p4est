@@ -54,8 +54,6 @@ public:
 
   // LSF by array of values
   std::vector< std::vector<double> > *phi_in;
-  std::vector< std::vector<double> > *phi_x_in;
-  std::vector< std::vector<double> > *phi_y_in;
   std::vector< std::vector<double> > *phi_xx_in;
   std::vector< std::vector<double> > *phi_yy_in;
   grid_interpolation2_t interp;
@@ -73,8 +71,6 @@ public:
   std::vector<int>      *color;
 
   std::vector< std::vector<double> > phi;
-  std::vector< std::vector<double> > phi_x;
-  std::vector< std::vector<double> > phi_y;
   std::vector< std::vector<double> > phi_xx;
   std::vector< std::vector<double> > phi_yy;
 
@@ -85,24 +81,56 @@ public:
     : x0(x0), x1(x1), y0(y0), y1(y1), phi_cf_in(NULL) {set_interpolation_grid(x0, x1, y0, y1, 1, 1);}
 
   // set LSF by function
-  void set_phi_cf (std::vector<CF_2 *> &phi_cf_) {phi_cf_in = &phi_cf_;}
+//  void set_phi_cf (std::vector<CF_2 *> &phi_cf_) {phi_cf_in = &phi_cf_;}
 
   // set interpolation parameters
   void set_interpolation_grid(double xm, double xp, double ym, double yp, int nx, int ny)
   {
     interp.initialize(xm, xp, ym, yp, nx, ny);
   }
-  void set_phi    (std::vector< std::vector<double> > &phi_)    {phi_in = &phi_;}
-  void set_phi_d  (std::vector< std::vector<double> > &phi_x_,
-                   std::vector< std::vector<double> > &phi_y_)  {phi_x_in = &phi_x_;
-                                                                 phi_y_in = &phi_y_;}
-  void set_phi_dd (std::vector< std::vector<double> > &phi_xx_,
-                   std::vector< std::vector<double> > &phi_yy_) {phi_xx_in = &phi_xx_;
-                                                                 phi_yy_in = &phi_yy_;}
+//  void set_phi    (std::vector< std::vector<double> > &phi_)    {phi_in = &phi_;}
+//  void set_phi_dd (std::vector< std::vector<double> > &phi_xx_,
+//                   std::vector< std::vector<double> > &phi_yy_) {phi_xx_in = &phi_xx_;
+//                                                                 phi_yy_in = &phi_yy_;}
 
-  // action and color
-  void set_action (std::vector<action_t>  &action_) {action = &action_;}
-  void set_color  (std::vector<int>       &color_)  {color = &color_;}
+//  // action and color
+//  void set_action (std::vector<action_t>  &action_) {action = &action_;}
+//  void set_color  (std::vector<int>       &color_)  {color = &color_;}
+
+  void set_phi(std::vector<CF_2 *> &phi_cf_,
+               std::vector<action_t> &action_,
+               std::vector<int> &color_)
+  {
+    phi_cf_in = &phi_cf_;
+    phi_xx_in = NULL;
+    phi_yy_in = NULL;
+    action    = &action_;
+    color     = &color_;
+  }
+
+  void set_phi(std::vector< std::vector<double> > &phi_,
+               std::vector<action_t> &action_,
+               std::vector<int> &color_)
+  {
+    phi_in    = &phi_;
+    phi_xx_in = NULL;
+    phi_yy_in = NULL;
+    action    = &action_;
+    color     = &color_;
+  }
+
+  void set_phi(std::vector< std::vector<double> > &phi_,
+               std::vector< std::vector<double> > &phi_xx_,
+               std::vector< std::vector<double> > &phi_yy_,
+               std::vector<action_t> &action_,
+               std::vector<int> &color_)
+  {
+    phi_in    = &phi_;
+    phi_xx_in = &phi_xx_;
+    phi_yy_in = &phi_yy_;
+    action    = &action_;
+    color     = &color_;
+  }
 
   void construct_domain(int nx_, int ny_, int level);
 

@@ -69,9 +69,10 @@ class my_p4est_poisson_nodes_mls_t
     }
   };
 
-  const my_p4est_node_neighbors_t *node_neighbors_;
 
   // p4est objects
+  const my_p4est_node_neighbors_t *node_neighbors_;
+
   p4est_t           *p4est;
   p4est_nodes_t     *nodes;
   p4est_ghost_t     *ghost;
@@ -90,8 +91,8 @@ class my_p4est_poisson_nodes_mls_t
   std::vector<PetscInt> global_node_offset;
   std::vector<PetscInt> petsc_gloidx;
 
-  quantity_t rhs, mu, wall_value;
-  std::vector<quantity_t> phi;
+  quantity_t force, mu, wall_value;
+  std::vector<quantity_t> phi, phi_xx, phi_yy, phi_zz;
   std::vector<quantity_t> interface_value, robin_coef;
 
   // Interfaces
@@ -105,18 +106,11 @@ class my_p4est_poisson_nodes_mls_t
   Mat A;
   p4est_gloidx_t fixed_value_idx_g;
   p4est_gloidx_t fixed_value_idx_l;
-  bool is_phi_d_owned, is_phi_dd_owned, is_mue_dd_owned;
-
-  std::vector<Vec> *phi_, *phi_x_, *phi_y_, *phi_xx_, *phi_yy_;
-  std::vector<Vec> *robin_coef_;
+  bool is_phi_dd_owned, is_mue_dd_owned;
 
   bool keep_scalling;
   Vec scalling;
 
-#ifdef P4_TO_P8
-  std::vector<Vec> *phi_z_, *phi_zz_;
-  Vec mue_zz_;
-#endif
   KSP ksp;
   PetscErrorCode ierr;
 

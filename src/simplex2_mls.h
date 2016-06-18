@@ -117,11 +117,7 @@ public:
   std::vector<edg2_t> edgs;
   std::vector<tri2_t> tris;
 
-  std::vector<double> *phi;
-  std::vector<double> *phi_x;
-  std::vector<double> *phi_y;
-
-  void do_action(std::vector<double> *phi_, std::vector<double> *phi_x_, std::vector<double> *phi_y_, int cn, action_t action);
+  void do_action(int cn, action_t action);
   void do_action_vtx(int n_vtx, int cn, action_t action);
   void do_action_edg(int n_edg, int cn, action_t action);
   void do_action_tri(int n_tri, int cn, action_t action);
@@ -143,8 +139,6 @@ public:
 
   bool use_linear;
   double find_intersection_linear   (int v0, int v1);
-  double find_intersection_quadratic(int v0, int v1);
-
   double find_intersection_quadratic(int e);
   void get_edge_coords(int e, double xyz[]);
 

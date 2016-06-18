@@ -36,11 +36,13 @@ public:
 #else
   std::vector<CF_2 *>   *phi_cf;
 #endif
+
   std::vector<Vec>      *phi;
   std::vector<Vec>      *phi_xx, *phi_yy;
 #ifdef P4_TO_P8
   std::vector<Vec>      *phi_zz;
 #endif
+
   std::vector<int>      *color;
   std::vector<action_t> *action;
 
@@ -49,11 +51,13 @@ public:
 
   bool initialized;
 
-//#ifdef P4_TO_P8
-//  std::vector<cube3_mls_t> cubes;
-//#else
-//  std::vector<cube2_mls_t> cubes;
-//#endif
+#ifdef P4_TO_P8
+  std::vector<cube3_mls_t> cubes;
+  std::vector<cube3_refined_mls_t> cubes_refined;
+#else
+  std::vector<cube2_mls_t> cubes;
+  std::vector<cube2_refined_mls_t> cubes_refined;
+#endif
 
 
   my_p4est_integration_mls_t()
@@ -65,10 +69,58 @@ public:
   void set_p4est  (p4est_t *p4est_, p4est_nodes_t *nodes_)                                {p4est = p4est_; nodes = nodes_;}
 
 #ifdef P4_TO_P8
-  void set_phi    (std::vector<Vec> &phi_, std::vector<Vec> &phi_xx_, std::vector<Vec> &phi_yy_, std::vector<Vec> &phi_zz_,
-                   std::vector<action_t> &action_, std::vector<int> &color_)  {phi = &phi_; action = &action_; color = &color_;}
+  void set_phi    (std::vector<CF_3 *> &phi_cf_,
+                   std::vector<action_t> &acn_, std::vector<int> &clr_)
+  {
+    phi_cf  = &phi_cf_; phi_xx = NULL; phi_yy = NULL; phi_zz = NULL;
+    action  = &acn_;
+    color   = &clr_;
+  }
+
+  void set_phi    (std::vector<Vec> &phi_,
+                   std::vector<action_t> &acn_, std::vector<int> &clr_)
+  {
+    phi     = &phi_; phi_xx = NULL; phi_yy = NULL; phi_zz = NULL; phi_cf  = NULL;
+    action  = &acn_;
+    color   = &clr_;
+  }
+
+  void set_phi    (std::vector<Vec> &phi_,
+                   std::vector<Vec> &phi_xx_,
+                   std::vector<Vec> &phi_yy_,
+                   std::vector<Vec> &phi_zz_,
+                   std::vector<action_t> &acn_, std::vector<int> &clr_)
+  {
+    phi     = &phi_; phi_xx = &phi_xx_; phi_yy = &phi_yy_; phi_zz = &phi_zz_; phi_cf  = NULL;
+    action  = &acn_;
+    color   = &clr_;
+  }
 #else
-  void set_phi    (std::vector<Vec> &phi_, std::vector<action_t> &action_, std::vector<int> &color_)  {phi = &phi_; action = &action_; color = &color_;}
+  void set_phi    (std::vector<CF_2 *> &phi_cf_,
+                   std::vector<action_t> &acn_, std::vector<int> &clr_)
+  {
+    phi_cf  = &phi_cf_; phi_xx = NULL; phi_yy = NULL;
+    action  = &acn_;
+    color   = &clr_;
+  }
+
+  void set_phi    (std::vector<Vec> &phi_,
+                   std::vector<action_t> &acn_, std::vector<int> &clr_)
+  {
+    phi     = &phi_; phi_xx = NULL; phi_yy = NULL; phi_cf = NULL;
+    action  = &acn_;
+    color   = &clr_;
+  }
+
+  void set_phi    (std::vector<Vec> &phi_,
+                   std::vector<Vec> &phi_xx_,
+                   std::vector<Vec> &phi_yy_,
+                   std::vector<action_t> &acn_, std::vector<int> &clr_)
+  {
+    phi     = &phi_; phi_xx = &phi_xx_; phi_yy = &phi_yy_; phi_cf = NULL;
+    action  = &acn_;
+    color   = &clr_;
+  }
 #endif
 
   void set_use_cube_refined(int level_) {level = level_; use_cube_refined = true;}

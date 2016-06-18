@@ -43,27 +43,11 @@ simplex3_mls_t::simplex3_mls_t(double x0, double y0, double z0,
   tris.push_back(tri3_t(0,1,2,3,1,0));
 
   tets.push_back(tet3_t(0,1,2,3,0,1,2,3));
+  use_linear = false;
 }
 
-void simplex3_mls_t::do_action(std::vector<double> *phi_, std::vector<double> *phi_x_, std::vector<double> *phi_y_, std::vector<double> *phi_z_,
-                               int cn, action_t action)
+void simplex3_mls_t::do_action(int cn, action_t action)
 {
-  phi = phi_;
-  phi_x = phi_x_;
-  phi_y = phi_y_;
-  phi_z = phi_z_;
-
-#ifdef CASL_THROWS
-  if(phi == NULL) throw std::invalid_argument("[CASL_ERROR]: Values of LSF are not provided.");
-#endif
-  for (int i = 0; i < vtxs.size(); i++)
-  {
-    vtxs[i].value = phi->at(i);
-  }
-
-  if (phi_x == NULL || phi_y == NULL || phi_z == NULL) use_linear = true;
-  else                                use_linear = false;
-
   /* Process elements */
   int n;
   n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, cn, action);
@@ -1189,76 +1173,6 @@ double simplex3_mls_t::find_intersection_linear(int v0, int v1)
   return 1.-(x+0.5*l)/l;
 }
 
-double simplex3_mls_t::find_intersection_quadratic(int v0, int v1)
-{
-#ifdef CASL_THROWS
-  if (phi_x == NULL) throw std::invalid_argument("[CASL_ERROR]: Values of x-derivative of LSF are not provided.");
-  if (phi_y == NULL) throw std::invalid_argument("[CASL_ERROR]: Values of y-derivative of LSF are not provided.");
-  if (phi_z == NULL) throw std::invalid_argument("[CASL_ERROR]: Values of z-derivative of LSF are not provided.");
-#endif
-
-  vtx3_t *vtx0 = &vtxs[v0];
-  vtx3_t *vtx1 = &vtxs[v1];
-  double nx = vtx1->x - vtx0->x;
-  double ny = vtx1->y - vtx0->y;
-  double nz = vtx1->z - vtx0->z;
-  double l = sqrt(nx*nx+ny*ny+nz*nz);
-#ifdef CASL_THROWS
-  if(l < EPS) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
-#endif
-  nx /= l;
-  ny /= l;
-  nz /= l;
-  double f0 = vtx0->value;  double fd0 = phi_x->at(v0)*nx + phi_y->at(v0)*ny + phi_z->at(v0)*nz;
-  double f1 = vtx1->value;  double fd1 = phi_x->at(v1)*nx + phi_y->at(v1)*ny + phi_z->at(v1)*nz;
-
-  if(fabs(f0)<EPS) return (l-EPS)/l;
-  if(fabs(f1)<EPS) return (0.+EPS)/l;
-
-#ifdef CASL_THROWS
-  if(f0*f1 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
-#endif
-
-  double fdd = 1.*(fd1-fd0)/l;
-//  double fdd = MINMOD(fdd0,fdd1); // take nonocillating fxx
-
-  double c2 = 0.5*fdd;                // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e
-  double c1 =     (f1-f0)/l;          //  the expansion of f at the center of (a,b)
-//  double c1 = 0.5*(fd1+fd0);          //  the expansion of f at the center of (a,b)
-//  double c1 = 0.25*(fd1+fd0)+0.5*(f1-f0)/l;          //  the expansion of f at the center of (a,b)
-  double c0 = 0.5*(f1+f0)-l*l/8.*fdd;
-
-  double x;
-
-  if(fabs(c2)<EPS) x = -c0/c1;
-  else
-  {
-    if(f1<0) x = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
-    else     x = (-2.*c0)/(c1 + sqrt(c1*c1-4.*c2*c0));
-  }
-//  if (x < -0.5*l || x > 0.5*l)
-//  {
-//    c1 =     (f1-f0)/l;          //  the expansion of f at the center of (a,b)
-////    c1 = 0.5*(fd1+fd0);          //  the expansion of f at the center of (a,b)
-
-//    if(fabs(c2)<EPS) x = -c0/c1;
-//    else
-//    {
-//      if(f1<0) x = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
-//      else     x = (-2.*c0)/(c1 + sqrt(c1*c1-4.*c2*c0));
-//    }
-//  }
-#ifdef CASL_THROWS
-  if (x < -0.5*l || x > 0.5*l) throw std::domain_error("[CASL_ERROR]: ");
-#endif
-
-
-  if (x < -0.5*l) return (l-EPS)/l;
-  if (x > 0.5*l) return (0.+EPS)/l;
-
-  return 1.-(x+0.5*l)/l;
-}
-
 double simplex3_mls_t::find_intersection_quadratic(int e)
 {
   vtx3_t *vtx0 = &vtxs[edgs[e].vtx0];
@@ -1286,12 +1200,9 @@ double simplex3_mls_t::find_intersection_quadratic(int e)
 #endif
 
   double fdd = (f1+f0-2.*f01)/(0.25*l*l);
-//  double fdd = MINMOD(fdd0,fdd1); // take nonocillating fxx
 
-  double c2 = 0.5*fdd;                // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e
-  double c1 =     (f1-f0)/l;          //  the expansion of f at the center of (a,b)
-//  double c1 = 0.5*(fd1+fd0);          //  the expansion of f at the center of (a,b)
-//  double c1 = 0.25*(fd1+fd0)+0.5*(f1-f0)/l;          //  the expansion of f at the center of (a,b)
+  double c2 = 0.5*fdd;   // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e
+  double c1 = (f1-f0)/l; //  the expansion of f at the center of (a,b)
   double c0 = f01;
 
   double x;
@@ -1306,8 +1217,8 @@ double simplex3_mls_t::find_intersection_quadratic(int e)
   if (x < -0.5*l || x > 0.5*l) throw std::domain_error("[CASL_ERROR]: ");
 #endif
 
-  if (x < -0.5*l) return (l-EPS)/l;
-  if (x > 0.5*l) return (0.+EPS)/l;
+//  if (x < -0.5*l) return (l-EPS)/l;
+//  if (x > 0.5*l) return (0.+EPS)/l;
 
   return 1.-(x+0.5*l)/l;
 }

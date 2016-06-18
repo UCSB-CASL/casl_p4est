@@ -9,6 +9,13 @@ double grid_interpolation3_t::linear(double *f, double x, double y, double z)
   if (x < xm-eps || x > xp+eps || y < ym-eps || y > yp+eps || z < zm-eps || z > zp+eps) throw std::invalid_argument("[CASL_ERROR]: Point of interpolation outside the grid.");
 #endif
 
+  if (fabs(x-xm) < eps) x = xm+eps;
+  if (fabs(y-ym) < eps) y = ym+eps;
+  if (fabs(z-zm) < eps) z = zm+eps;
+  if (fabs(x-xp) < eps) x = xp-eps;
+  if (fabs(y-yp) < eps) y = yp-eps;
+  if (fabs(z-zp) < eps) z = zp-eps;
+
   // find quad
   int i = std::floor((x-xm)/dx);
   int j = std::floor((y-ym)/dy);
@@ -70,6 +77,13 @@ double grid_interpolation3_t::quadratic(double *f, double *f_xx, double *f_yy, d
 #ifdef CASL_THROWS
   if (x < xm-eps || x > xp+eps || y < ym-eps || y > yp+eps || z < zm-eps || z > zp+eps) throw std::invalid_argument("[CASL_ERROR]: Point of interpolation outside the grid.");
 #endif
+
+  if (fabs(x-xm) < eps) x = xm+eps;
+  if (fabs(y-ym) < eps) y = ym+eps;
+  if (fabs(z-zm) < eps) z = zm+eps;
+  if (fabs(x-xp) < eps) x = xp-eps;
+  if (fabs(y-yp) < eps) y = yp-eps;
+  if (fabs(z-zp) < eps) z = zp-eps;
 
   // find quad
   int i = std::floor((x-xm)/dx);
@@ -152,6 +166,11 @@ double grid_interpolation3_t::quadratic(double *f, double *f_xx, double *f_yy, d
       w_ppp*f_zz[(k+1)*(nx+1)*(ny+1) + (j+1)*(nx+1) + (i+1)];
 
   F -= 0.5*(dx*dx*d_p00*d_m00*Fxx + dy*dy*d_0p0*d_0m0*Fyy + dz*dz*d_00p*d_00m*Fzz);
+
+#ifdef CASL_THROWS
+    if (F != F)
+      throw std::domain_error("[CASL_ERROR]: Error in interpolation.");
+#endif
 
   return F;
 }

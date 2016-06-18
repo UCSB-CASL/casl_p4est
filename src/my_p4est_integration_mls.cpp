@@ -26,13 +26,44 @@ void my_p4est_integration_mls_t::initialize()
 
   int n_phis = action->size();
 
-  double *phi_values = new double [P4EST_CHILDREN*n_phis];
+  std::vector< std::vector<double> > phi_values   (n_phis, std::vector<double> (P4EST_CHILDREN, -1.));
+  std::vector< std::vector<double> > phi_xx_values(n_phis, std::vector<double> (P4EST_CHILDREN, 0.));
+  std::vector< std::vector<double> > phi_yy_values(n_phis, std::vector<double> (P4EST_CHILDREN, 0.));
+#ifdef P4_TO_P8
+  std::vector< std::vector<double> > phi_zz_values(n_phis, std::vector<double> (P4EST_CHILDREN, 0.));
+#endif
 
-  double **P = new double* [n_phis];
-  for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
+  std::vector<double *> P(n_phis, NULL);
+  std::vector<double *> Pxx(n_phis, NULL);
+  std::vector<double *> Pyy(n_phis, NULL);
+#ifdef P4_TO_P8
+  std::vector<double *> Pzz(n_phis, NULL);
+#endif
 
-  cubes.clear();
-  cubes.reserve(p4est->local_num_quadrants);
+  bool only_linear = false;
+  if (phi_cf == NULL && (phi_xx == NULL || phi_yy == NULL)) only_linear = true;
+
+  if (phi_cf == NULL)
+  {
+    for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
+    if (!only_linear)
+    {
+      for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_xx->at(i), &Pxx[i]); CHKERRXX(ierr);}
+      for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_yy->at(i), &Pyy[i]); CHKERRXX(ierr);}
+#ifdef P4_TO_P8
+      for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_zz->at(i), &Pzz[i]); CHKERRXX(ierr);}
+#endif
+    }
+  }
+
+  if (use_cube_refined)
+  {
+    cubes_refined.clear();
+    cubes_refined.reserve(p4est->local_num_quadrants);
+  } else {
+    cubes.clear();
+    cubes.reserve(p4est->local_num_quadrants);
+  }
 
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
@@ -63,33 +94,124 @@ void my_p4est_integration_mls_t::initialize()
       double dz = (tree_zmax-tree_zmin)*dmin; double z0 = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  double z1 = z0 + dz;
 #endif
 
-      /* get values of level-set functions */
+      // get values of LSFs
       int s = quad_idx_forest*P4EST_CHILDREN;
-      for (int i = 0; i < n_phis; i++)
-        for (int j = 0; j < P4EST_CHILDREN; j++)
-          phi_values[i*P4EST_CHILDREN + j] = P[i][ q2n[ s + j ] ];
 
+      if (phi_cf == NULL)
+      {
+        for (int i = 0; i < n_phis; i++)
+          for (int j = 0; j < P4EST_CHILDREN; j++)
+            phi_values    [i][j] = P  [i][ q2n[ s + j ] ];
+
+        // get values of second derivatives of LSFs
+        if (!only_linear)
+          for (int i = 0; i < n_phis; i++)
+            for (int j = 0; j < P4EST_CHILDREN; j++)
+            {
+              phi_xx_values [i][j] = Pxx[i][ q2n[ s + j ] ];
+              phi_yy_values [i][j] = Pyy[i][ q2n[ s + j ] ];
+#ifdef P4_TO_P8
+              phi_zz_values [i][j] = Pzz[i][ q2n[ s + j ] ];
+#endif
+            }
+
+      } else {
+
+        double dx_min = 0.1*dx;
+        double dy_min = 0.1*dy;
+#ifdef P4_TO_P8
+        double dz_min = 0.1*dz;
+        double x_coord[P4EST_CHILDREN] = {x0, x1, x0, x1, x0, x1, x0, x1};
+        double y_coord[P4EST_CHILDREN] = {y0, y0, y1, y1, y0, y0, y1, y1};
+        double z_coord[P4EST_CHILDREN] = {z0, z0, z0, z0, z1, z1, z1, z1};
+#else
+        double x_coord[P4EST_CHILDREN] = {x0, x1, x0, x1};
+        double y_coord[P4EST_CHILDREN] = {y0, y1, y0, y1};
+#endif
+
+        for (int i = 0; i < n_phis; i++)
+          for (int j = 0; j < P4EST_CHILDREN; j++)
+          {
+#ifdef P4_TO_P8
+            double phi_000 = (*phi_cf->at(i))(x_coord[j], y_coord[j], z_coord[j]);
+            double phi_m00 = (*phi_cf->at(i))(x_coord[j]-dx_min, y_coord[j], z_coord[j]);
+            double phi_p00 = (*phi_cf->at(i))(x_coord[j]+dx_min, y_coord[j], z_coord[j]);
+            double phi_0m0 = (*phi_cf->at(i))(x_coord[j], y_coord[j]-dy_min, z_coord[j]);
+            double phi_0p0 = (*phi_cf->at(i))(x_coord[j], y_coord[j]+dy_min, z_coord[j]);
+            double phi_00m = (*phi_cf->at(i))(x_coord[j], y_coord[j], z_coord[j]-dz_min);
+            double phi_00p = (*phi_cf->at(i))(x_coord[j], y_coord[j], z_coord[j]+dz_min);
+            phi_zz_values[i][j] = (phi_00p+phi_00m-2.0*phi_000)/dz_min/dz_min;
+#else
+            double phi_000 = (*phi_cf->at(i))(x_coord[j], y_coord[j]);
+            double phi_m00 = (*phi_cf->at(i))(x_coord[j]-dx_min, y_coord[j]);
+            double phi_p00 = (*phi_cf->at(i))(x_coord[j]+dx_min, y_coord[j]);
+            double phi_0m0 = (*phi_cf->at(i))(x_coord[j], y_coord[j]-dy_min);
+            double phi_0p0 = (*phi_cf->at(i))(x_coord[j], y_coord[j]+dy_min);
+#endif
+
+            phi_values    [i][j] = phi_000;
+            phi_xx_values [i][j] = (phi_p00+phi_m00-2.0*phi_000)/dx_min/dx_min;
+            phi_yy_values [i][j] = (phi_0p0+phi_0m0-2.0*phi_000)/dy_min/dy_min;
+          }
+
+      }
+
+      // reconstruct interface
       if (use_cube_refined)
       {
+
 #ifdef P4_TO_P8
         cubes_refined.push_back(cube3_refined_mls_t(x0, x1, y0, y1, z0, z1));
 #else
         cubes_refined.push_back(cube2_refined_mls_t(x0, x1, y0, y1));
 #endif
+
+        if (phi_cf != NULL) cubes_refined.back().set_phi(*phi_cf, *action, *color);
+        if (only_linear)    cubes_refined.back().set_phi(phi_values, *action, *color);
+#ifdef P4_TO_P8
+        else                cubes_refined.back().set_phi(phi_values, phi_xx_values, phi_yy_values, phi_zz_values, *action, *color);
+#else
+        else                cubes_refined.back().set_phi(phi_values, phi_xx_values, phi_yy_values, *action, *color);
+#endif
+
+#ifdef P4_TO_P8
+        cubes_refined.back().construct_domain(1,1,1,level);
+#else
+        cubes_refined.back().construct_domain(1,1,level);
+#endif
+
       } else {
+
 #ifdef P4_TO_P8
         cubes.push_back(cube3_mls_t(x0, x1, y0, y1, z0, z1));
+
+        if (only_linear) cubes.back().set_phi(phi_values, *action, *color);
+        else             cubes.back().set_phi(phi_values, phi_xx_values, phi_yy_values, phi_zz_values, *action, *color);
 #else
         cubes.push_back(cube2_mls_t(x0, x1, y0, y1));
-        cubes.back().construct_domain(phi_values, phi_xx_values, phi_yy_values, *action, *color);
-#endif
-      }
 
+        if (only_linear) cubes.back().set_phi(phi_values, *action, *color);
+        else             cubes.back().set_phi(phi_values, phi_xx_values, phi_yy_values, *action, *color);
+#endif
+        cubes.back().construct_domain();
+
+      }
     }
   }
 
-  for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi->at(i), &P[i]); CHKERRXX(ierr);} delete[] P;
-  delete[] phi_values;
+  if (phi_cf == NULL)
+  {
+    for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
+
+    if (!only_linear)
+    {
+      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_xx->at(i), &Pxx[i]); CHKERRXX(ierr);}
+      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_yy->at(i), &Pyy[i]); CHKERRXX(ierr);}
+#ifdef P4_TO_P8
+      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_zz->at(i), &Pzz[i]); CHKERRXX(ierr);}
+#endif
+    }
+  }
 }
 
 double my_p4est_integration_mls_t::perform(int_type_t int_type, Vec f, int n0, int n1, int n2)
@@ -97,11 +219,10 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, Vec f, int n0, i
   PetscErrorCode ierr;
   double sum = 0.;
 
-  double fun_values[P4EST_CHILDREN];
+  std::vector<double> fun_values(P4EST_CHILDREN, 1.);
   double *F;
 
   if (f != NULL)  {ierr = VecGetArray(f, &F); CHKERRXX(ierr);}
-  else            {for (int i = 0; i < P4EST_CHILDREN; i++) fun_values[i] = 1.;}
 
   const p4est_locidx_t *q2n = nodes->local_nodes;
 
@@ -110,15 +231,31 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, Vec f, int n0, i
     for (p4est_topidx_t quad_idx = 0; quad_idx < p4est->local_num_quadrants; quad_idx++)
     {
       /* get values of a function to integrate */
-      if (f != NULL) {int s = quad_idx*P4EST_CHILDREN; for (int j = 0; j < P4EST_CHILDREN; j++) fun_values[j] = F[ q2n[ s + j ] ];}
+      if (f != NULL) {
+        int s = quad_idx*P4EST_CHILDREN;
+        for (int j = 0; j < P4EST_CHILDREN; j++)
+          fun_values[j] = F[ q2n[ s + j ] ];
+      }
 
-      switch (int_type){
-      case DOM: sum += cubes[quad_idx].integrate_over_domain      (fun_values);           break;
-      case FC1: sum += cubes[quad_idx].integrate_over_interface   (fun_values,n0);        break;
-      case FC2: sum += cubes[quad_idx].integrate_over_intersection(fun_values,n0,n1);     break;
+      if (use_cube_refined)
+      {
+        switch (int_type){
+        case DOM: sum += cubes_refined[quad_idx].integrate_over_domain      (fun_values);           break;
+        case FC1: sum += cubes_refined[quad_idx].integrate_over_interface   (fun_values,n0);        break;
+        case FC2: sum += cubes_refined[quad_idx].integrate_over_intersection(fun_values,n0,n1);     break;
 #ifdef P4_TO_P8
-      case FC3: sum += cubes[quad_idx].integrate_over_intersection(fun_values,n0,n1,n2);  break;
+        case FC3: sum += cubes_refined[quad_idx].integrate_over_intersection(fun_values,n0,n1,n2);  break;
 #endif
+        }
+      } else {
+        switch (int_type){
+        case DOM: sum += cubes[quad_idx].integrate_over_domain      (fun_values.data());           break;
+        case FC1: sum += cubes[quad_idx].integrate_over_interface   (fun_values.data(),n0);        break;
+        case FC2: sum += cubes[quad_idx].integrate_over_intersection(fun_values.data(),n0,n1);     break;
+#ifdef P4_TO_P8
+        case FC3: sum += cubes[quad_idx].integrate_over_intersection(fun_values.data(),n0,n1,n2);  break;
+#endif
+        }
       }
     }
   }
@@ -126,9 +263,35 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, Vec f, int n0, i
   {
     int n_phis = action->size();
 
-    double *phi_values = new double [P4EST_CHILDREN*n_phis];
+    std::vector< std::vector<double> > phi_values   (n_phis, std::vector<double> (P4EST_CHILDREN, -1.));
+    std::vector< std::vector<double> > phi_xx_values(n_phis, std::vector<double> (P4EST_CHILDREN, 0.));
+    std::vector< std::vector<double> > phi_yy_values(n_phis, std::vector<double> (P4EST_CHILDREN, 0.));
+  #ifdef P4_TO_P8
+    std::vector< std::vector<double> > phi_zz_values(n_phis, std::vector<double> (P4EST_CHILDREN, 0.));
+  #endif
 
-    double **P = new double* [n_phis]; for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
+    std::vector<double *> P(n_phis, NULL);
+    std::vector<double *> Pxx(n_phis, NULL);
+    std::vector<double *> Pyy(n_phis, NULL);
+  #ifdef P4_TO_P8
+    std::vector<double *> Pzz(n_phis, NULL);
+  #endif
+
+    bool only_linear = false;
+    if (phi_cf == NULL && (phi_xx == NULL || phi_yy == NULL)) only_linear = true;
+
+    if (phi_cf == NULL)
+    {
+      for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
+      if (!only_linear)
+      {
+        for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_xx->at(i), &Pxx[i]); CHKERRXX(ierr);}
+        for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_yy->at(i), &Pyy[i]); CHKERRXX(ierr);}
+  #ifdef P4_TO_P8
+        for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_zz->at(i), &Pzz[i]); CHKERRXX(ierr);}
+  #endif
+      }
+    }
 
     for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
     {
@@ -160,35 +323,144 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, Vec f, int n0, i
         double dz = (tree_zmax-tree_zmin)*dmin; double z0 = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  double z1 = z0 + dz;
 #endif
 
-        /* get values of level-set functions */
+        // get values of LSFs
         int s = quad_idx_forest*P4EST_CHILDREN;
-        for (int i = 0; i < n_phis; i++)
-          for (int j = 0; j < P4EST_CHILDREN; j++) phi_values[i*P4EST_CHILDREN + j] = P[i][ q2n[ s + j ] ];
 
-        /* get values of a function to integrate */
-        if (f != NULL) {int s = quad_idx_forest*P4EST_CHILDREN; for (int j = 0; j < P4EST_CHILDREN; j++) fun_values[j] = F[ q2n[ s + j ] ];}
+        if (phi_cf == NULL)
+        {
+          for (int i = 0; i < n_phis; i++)
+            for (int j = 0; j < P4EST_CHILDREN; j++)
+              phi_values    [i][j] = P  [i][ q2n[ s + j ] ];
 
+          if (!only_linear) // get values of second derivatives of LSFs
+            for (int i = 0; i < n_phis; i++)
+              for (int j = 0; j < P4EST_CHILDREN; j++)
+              {
+                phi_xx_values [i][j] = Pxx[i][ q2n[ s + j ] ];
+                phi_yy_values [i][j] = Pyy[i][ q2n[ s + j ] ];
 #ifdef P4_TO_P8
+                phi_zz_values [i][j] = Pzz[i][ q2n[ s + j ] ];
+#endif
+              }
+
+        } else {
+
+          double dx_min = 0.1*dx;
+          double dy_min = 0.1*dy;
+#ifdef P4_TO_P8
+          double dz_min = 0.1*dz;
+          double x_coord[P4EST_CHILDREN] = {x0, x1, x0, x1, x0, x1, x0, x1};
+          double y_coord[P4EST_CHILDREN] = {y0, y0, y1, y1, y0, y0, y1, y1};
+          double z_coord[P4EST_CHILDREN] = {z0, z0, z0, z0, z1, z1, z1, z1};
+#else
+          double x_coord[P4EST_CHILDREN] = {x0, x1, x0, x1};
+          double y_coord[P4EST_CHILDREN] = {y0, y1, y0, y1};
+#endif
+
+          for (int i = 0; i < n_phis; i++)
+            for (int j = 0; j < P4EST_CHILDREN; j++)
+            {
+#ifdef P4_TO_P8
+              double phi_000 = (*phi_cf->at(i))(x_coord[j], y_coord[j], z_coord[j]);
+              double phi_m00 = (*phi_cf->at(i))(x_coord[j]-dx_min, y_coord[j], z_coord[j]);
+              double phi_p00 = (*phi_cf->at(i))(x_coord[j]+dx_min, y_coord[j], z_coord[j]);
+              double phi_0m0 = (*phi_cf->at(i))(x_coord[j], y_coord[j]-dy_min, z_coord[j]);
+              double phi_0p0 = (*phi_cf->at(i))(x_coord[j], y_coord[j]+dy_min, z_coord[j]);
+              double phi_00m = (*phi_cf->at(i))(x_coord[j], y_coord[j], z_coord[j]-dz_min);
+              double phi_00p = (*phi_cf->at(i))(x_coord[j], y_coord[j], z_coord[j]+dz_min);
+              phi_zz_values[i][j] = (phi_00p+phi_00m-2.0*phi_000)/dz_min/dz_min;
+#else
+              double phi_000 = (*phi_cf->at(i))(x_coord[j], y_coord[j]);
+              double phi_m00 = (*phi_cf->at(i))(x_coord[j]-dx_min, y_coord[j]);
+              double phi_p00 = (*phi_cf->at(i))(x_coord[j]+dx_min, y_coord[j]);
+              double phi_0m0 = (*phi_cf->at(i))(x_coord[j], y_coord[j]-dy_min);
+              double phi_0p0 = (*phi_cf->at(i))(x_coord[j], y_coord[j]+dy_min);
+#endif
+              phi_values    [i][j] = phi_000;
+              phi_xx_values [i][j] = (phi_p00+phi_m00-2.0*phi_000)/dx_min/dx_min;
+              phi_yy_values [i][j] = (phi_0p0+phi_0m0-2.0*phi_000)/dy_min/dy_min;
+            }
+
+        }
+
+        // reconstruct interface
+#ifdef P4_TO_P8
+        cube3_refined_mls_t cube_refined(x0, x1, y0, y1, z0, z1);
         cube3_mls_t cube(x0, x1, y0, y1, z0, z1);
 #else
+        cube2_refined_mls_t cube_refined(x0, x1, y0, y1);
         cube2_mls_t cube(x0, x1, y0, y1);
 #endif
 
-        cube.construct_domain(phi_values, *action, *color);
-
-        switch (int_type){
-        case DOM: sum += cube.integrate_over_domain      (fun_values);          break;
-        case FC1: sum += cube.integrate_over_interface   (fun_values,n0);       break;
-        case FC2: sum += cube.integrate_over_intersection(fun_values,n0,n1);    break;
+        if (use_cube_refined)
+        {
+          if (phi_cf != NULL) cube_refined.set_phi(*phi_cf, *action, *color);
+          if (only_linear)    cube_refined.set_phi(phi_values, *action, *color);
 #ifdef P4_TO_P8
-        case FC3: sum += cube.integrate_over_intersection(fun_values,n0,n1,n2); break;
+          else                cube_refined.set_phi(phi_values, phi_xx_values, phi_yy_values, phi_zz_values, *action, *color);
+#else
+          else                cube_refined.set_phi(phi_values, phi_xx_values, phi_yy_values, *action, *color);
 #endif
+
+#ifdef P4_TO_P8
+          cube_refined.construct_domain(1,1,1,level);
+#else
+          cube_refined.construct_domain(1,1,level);
+#endif
+
+        } else {
+
+#ifdef P4_TO_P8
+          if (only_linear) cube.set_phi(phi_values, *action, *color);
+          else             cube.set_phi(phi_values, phi_xx_values, phi_yy_values, phi_zz_values, *action, *color);
+#else
+          if (only_linear) cube.set_phi(phi_values, *action, *color);
+          else             cube.set_phi(phi_values, phi_xx_values, phi_yy_values, *action, *color);
+#endif
+          cube.construct_domain();
+
         }
+
+        // integrate function
+        if (f != NULL) {
+          int s = quad_idx_forest*P4EST_CHILDREN;
+          for (int j = 0; j < P4EST_CHILDREN; j++)
+            fun_values[j] = F[ q2n[ s + j ] ];
+        }
+
+        if (use_cube_refined)
+        {
+          switch (int_type){
+          case DOM: sum += cube_refined.integrate_over_domain      (fun_values);           break;
+          case FC1: sum += cube_refined.integrate_over_interface   (fun_values,n0);        break;
+          case FC2: sum += cube_refined.integrate_over_intersection(fun_values,n0,n1);     break;
+  #ifdef P4_TO_P8
+          case FC3: sum += cube_refined.integrate_over_intersection(fun_values,n0,n1,n2);  break;
+  #endif
+          }
+        } else {
+          switch (int_type){
+          case DOM: sum += cube.integrate_over_domain      (fun_values.data());           break;
+          case FC1: sum += cube.integrate_over_interface   (fun_values.data(),n0);        break;
+          case FC2: sum += cube.integrate_over_intersection(fun_values.data(),n0,n1);     break;
+  #ifdef P4_TO_P8
+          case FC3: sum += cube.integrate_over_intersection(fun_values.data(),n0,n1,n2);  break;
+  #endif
+          }
+        }
+
       }
     }
 
-    for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi->at(i), &P[i]); CHKERRXX(ierr);} delete[] P;
-    delete[] phi_values;
+    if (phi_cf == NULL)
+    {
+      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
+      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_xx->at(i), &Pxx[i]); CHKERRXX(ierr);}
+      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_yy->at(i), &Pyy[i]); CHKERRXX(ierr);}
+  #ifdef P4_TO_P8
+      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_zz->at(i), &Pzz[i]); CHKERRXX(ierr);}
+  #endif
+    }
   }
 
   if (f != NULL)  {ierr = VecRestoreArray(f, &F); CHKERRXX(ierr);}

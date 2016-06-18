@@ -59,8 +59,6 @@ void cube2_refined_mls_t::construct_domain(int nx_, int ny_, int level)
   n_leafs = nx*ny;
 
   phi.resize    (n_phis, std::vector<double> ((nx+1)*(ny+1), -1.));
-  phi_x.resize  (n_phis, std::vector<double> ((nx+1)*(ny+1), 0.));
-  phi_y.resize  (n_phis, std::vector<double> ((nx+1)*(ny+1), 0.));
   phi_xx.resize (n_phis, std::vector<double> ((nx+1)*(ny+1), 0.));
   phi_yy.resize (n_phis, std::vector<double> ((nx+1)*(ny+1), 0.));
 
@@ -94,8 +92,6 @@ void cube2_refined_mls_t::construct_domain(int nx_, int ny_, int level)
     for (int q = 0; q < n_phis; q++)
     {
       phi[q].resize(nodes.size());
-      phi_x[q].resize(nodes.size());
-      phi_y[q].resize(nodes.size());
       phi_xx[q].resize(nodes.size());
       phi_yy[q].resize(nodes.size());
       for (int i = n_nodes; i < nodes.size(); i++)
@@ -103,8 +99,6 @@ void cube2_refined_mls_t::construct_domain(int nx_, int ny_, int level)
         if (phi_cf_in == NULL)
         {
           phi[q][i] = interp.quadratic(phi_in->at(q), phi_xx_in->at(q), phi_yy_in->at(q), nodes[i].x, nodes[i].y);
-          phi_x[q][i] = interp.linear(phi_x_in->at(q), nodes[i].x, nodes[i].y);
-          phi_y[q][i] = interp.linear(phi_y_in->at(q), nodes[i].x, nodes[i].y);
           phi_xx[q][i] = interp.linear(phi_xx_in->at(q), nodes[i].x, nodes[i].y);
           phi_yy[q][i] = interp.linear(phi_yy_in->at(q), nodes[i].x, nodes[i].y);
         } else {
@@ -114,8 +108,6 @@ void cube2_refined_mls_t::construct_domain(int nx_, int ny_, int level)
           double phi_0m0 = (*phi_cf_in->at(q))(nodes[i].x, nodes[i].y-dy_min);
           double phi_0p0 = (*phi_cf_in->at(q))(nodes[i].x, nodes[i].y+dy_min);
           phi[q][i] = phi_000;
-          phi_x[q][i] = 0.5*(phi_p00-phi_m00)/dx_min;
-          phi_y[q][i] = 0.5*(phi_0p0-phi_0m0)/dy_min;
           phi_xx[q][i] = (phi_p00+phi_m00-2.0*phi_000)/dx_min/dx_min;
           phi_yy[q][i] = (phi_0p0+phi_0m0-2.0*phi_000)/dy_min/dy_min;
         }
@@ -149,11 +141,13 @@ void cube2_refined_mls_t::construct_domain(int nx_, int ny_, int level)
   cubes_mls.clear();
   cubes_mls.reserve(n_leafs);
 
-  std::vector<double> phi_cube    (N_CHILDREN*n_phis, -1.);
-  std::vector<double> phi_x_cube  (N_CHILDREN*n_phis, 0.);
-  std::vector<double> phi_y_cube  (N_CHILDREN*n_phis, 0.);
-  std::vector<double> phi_xx_cube (N_CHILDREN*n_phis, 0.);
-  std::vector<double> phi_yy_cube (N_CHILDREN*n_phis, 0.);
+//  std::vector<double> phi_cube    (N_CHILDREN*n_phis, -1.);
+//  std::vector<double> phi_xx_cube (N_CHILDREN*n_phis, 0.);
+//  std::vector<double> phi_yy_cube (N_CHILDREN*n_phis, 0.);
+
+  std::vector< std::vector<double> > phi_cube    (n_phis, std::vector<double> (N_CHILDREN, -1.));
+  std::vector< std::vector<double> > phi_xx_cube (n_phis, std::vector<double> (N_CHILDREN, 0.));
+  std::vector< std::vector<double> > phi_yy_cube (n_phis, std::vector<double> (N_CHILDREN, 0.));
 
   // reconstruct interfaces in leaf cubes
   for (int n = 0; n < n_leafs; n++)
@@ -169,18 +163,13 @@ void cube2_refined_mls_t::construct_domain(int nx_, int ny_, int level)
     for (int q = 0; q < n_phis; q++)
       for (int d = 0; d < N_CHILDREN; d++)
       {
-        phi_cube   [q*N_CHILDREN + d] = phi   [q][leaf_to_node[n*N_CHILDREN+d]];
-        phi_x_cube [q*N_CHILDREN + d] = phi_x [q][leaf_to_node[n*N_CHILDREN+d]];
-        phi_y_cube [q*N_CHILDREN + d] = phi_y [q][leaf_to_node[n*N_CHILDREN+d]];
-        phi_xx_cube[q*N_CHILDREN + d] = phi_xx[q][leaf_to_node[n*N_CHILDREN+d]];
-        phi_yy_cube[q*N_CHILDREN + d] = phi_yy[q][leaf_to_node[n*N_CHILDREN+d]];
+        phi_cube   [q][d] = phi   [q][leaf_to_node[n*N_CHILDREN+d]];
+        phi_xx_cube[q][d] = phi_xx[q][leaf_to_node[n*N_CHILDREN+d]];
+        phi_yy_cube[q][d] = phi_yy[q][leaf_to_node[n*N_CHILDREN+d]];
       }
 
-    cubes_mls.back().set_phi(phi_cube);
-    cubes_mls.back().set_phi_d(phi_x_cube, phi_y_cube);
-    cubes_mls.back().set_phi_dd(phi_xx_cube, phi_yy_cube);
-
-    cubes_mls.back().construct_domain(*action, *color);
+    cubes_mls.back().set_phi(phi_cube, phi_xx_cube, phi_yy_cube, *action, *color);
+    cubes_mls.back().construct_domain();
   }
 }
 

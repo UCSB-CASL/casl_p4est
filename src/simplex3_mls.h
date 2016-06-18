@@ -153,36 +153,20 @@ public:
                  double x2, double y2, double z2,
                  double x3, double y3, double z3);
 
-//  double x[4], y[4], z[4];
-
   std::vector<vtx3_t> vtxs;
   std::vector<edg3_t> edgs;
   std::vector<tri3_t> tris;
   std::vector<tet3_t> tets;
 
-  std::vector<double> *phi;
-  std::vector<double> *phi_x;
-  std::vector<double> *phi_y;
-  std::vector<double> *phi_z;
 
-//  void construct_domain(std::vector<double> &p0,
-//                        std::vector<double> &p1,
-//                        std::vector<double> &p2,
-//                        std::vector<double> &p3,
-//                        std::vector<int> &action);
-
-  void do_action(std::vector<double> *phi_, std::vector<double> *phi_x_, std::vector<double> *phi_y_, std::vector<double> *phi_z_,
-                 int cn, action_t action);
-//  void do_action(int num, Action action, CF_3 &func);
+  void do_action(int cn, action_t action);
   void do_action_vtx(int n_vtx, int cn, action_t action);
   void do_action_edg(int n_edg, int cn, action_t action);
   void do_action_tri(int n_tri, int cn, action_t action);
   void do_action_tet(int n_tet, int cn, action_t action);
 
-//  Point3 find_intersection(Vtx3 &vtx0, Vtx3 &vtx1);
   bool need_swap(int v0, int v1);
 
-//  double interpolate_from_parent(Point3 &r, double f0, double f1, double f2, double f3);
   void interpolate_all(double &p0, double &p1, double &p2, double &p3);
   void interpolate_from_neighbors(int v);
   void interpolate_from_parent(int v);
@@ -202,8 +186,6 @@ public:
 
   bool use_linear;
   double find_intersection_linear   (int v0, int v1);
-  double find_intersection_quadratic(int v0, int v1);
-
   double find_intersection_quadratic(int e);
 
   void get_edge_coords(int e, double xyz[]);
@@ -229,7 +211,5 @@ public:
 #endif
 
 };
-
-//void write_simplex_geometry(std::vector<MLS_Simplex3 *> &simplices, std::string dir, int N);
 
 #endif // SIMPLEX3_MLS_H

@@ -31,9 +31,9 @@ using namespace std;
 
 /* discretization */
 int lmin = 1;
-int lmax = 6;
+int lmax = 4;
 #ifdef P4_TO_P8
-int nb_splits = 4;
+int nb_splits = 5;
 #else
 int nb_splits = 6;
 #endif
@@ -44,7 +44,7 @@ int ny = 1;
 int nz = 1;
 #endif
 
-bool save_vtk = true;
+bool save_vtk = false;
 
 /* geometry */
 
@@ -57,7 +57,7 @@ double zmin = 0.;
 double zmax = 1.;
 #endif
 
-double r0 = 0.232121;
+double r0 = 0.532121;
 double d = 0.2;
 
 double theta = 0.579;
@@ -228,12 +228,6 @@ int main (int argc, char* argv[])
 
     std::vector< std::vector<double> > phi_values   (n_phi, std::vector<double> (n_nodes,-1));
 
-    std::vector< std::vector<double> > phi_x_values (n_phi, std::vector<double> (n_nodes,0));
-    std::vector< std::vector<double> > phi_y_values (n_phi, std::vector<double> (n_nodes,0));
-#ifdef P4_TO_P8
-    std::vector< std::vector<double> > phi_z_values (n_phi, std::vector<double> (n_nodes,0));
-#endif
-
     std::vector< std::vector<double> > phi_xx_values(n_phi, std::vector<double> (n_nodes,0));
     std::vector< std::vector<double> > phi_yy_values(n_phi, std::vector<double> (n_nodes,0));
 #ifdef P4_TO_P8
@@ -289,40 +283,24 @@ int main (int argc, char* argv[])
 #endif
 
           phi_values    [n][idx] = phi_000;
-          phi_x_values  [n][idx] = 1.*0.5*(phi_p00-phi_m00)/dx_min;
-          phi_y_values  [n][idx] = 1.*0.5*(phi_0p0-phi_0m0)/dy_min;
           phi_xx_values [n][idx] = 1.*(phi_p00+phi_m00-2.0*phi_000)/dx_min/dx_min;
           phi_yy_values [n][idx] = 1.*(phi_0p0+phi_0m0-2.0*phi_000)/dy_min/dy_min;
 #ifdef P4_TO_P8
-          phi_z_values  [n][idx] = 1.*0.5*(phi_00p-phi_00m)/dz_min;
           phi_zz_values [n][idx] = 1.*(phi_00p+phi_00m-2.0*phi_000)/dz_min/dz_min;
 #endif
         }
 
 #ifdef P4_TO_P8
     cube3_refined_mls_t cube(xmin, xmax, ymin, ymax, zmin, zmax);
+    cube.set_interpolation_grid(xmin, xmax, ymin, ymax, zmin, zmax, mx, my, mz);
+    cube.set_phi(phi_values, phi_xx_values, phi_yy_values, phi_zz_values, geometry.action, geometry.color);
 #else
     cube2_refined_mls_t cube(xmin, xmax, ymin, ymax);
-#endif
-
-    cube.set_action(geometry.action);
-    cube.set_color(geometry.color);
-//    cube.set_phi_cf(geometry.LSF);
-
-#ifdef P4_TO_P8
-    cube.set_interpolation_grid(xmin, xmax, ymin, ymax, zmin, zmax, mx, my, mz);
-#else
     cube.set_interpolation_grid(xmin, xmax, ymin, ymax, mx, my);
+    cube.set_phi(phi_values, phi_xx_values, phi_yy_values, geometry.action, geometry.color);
 #endif
-    cube.set_phi(phi_values);
 
-#ifdef P4_TO_P8
-    cube.set_phi_d(phi_x_values, phi_y_values, phi_z_values);
-    cube.set_phi_dd(phi_xx_values, phi_yy_values, phi_zz_values);
-#else
-    cube.set_phi_d(phi_x_values, phi_y_values);
-    cube.set_phi_dd(phi_xx_values, phi_yy_values);
-#endif
+//    cube.set_phi(geometry.LSF, geometry.action, geometry.color);
 
 #ifdef P4_TO_P8
 //    cube.construct_domain(pow(2,lmin+iter), pow(2,lmin+iter), pow(2,lmin+iter), lmax-lmin);
