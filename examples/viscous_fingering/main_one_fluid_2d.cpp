@@ -29,7 +29,6 @@
 using namespace std;
 
 #ifdef P4_TO_P8
-#error "Not fully implemented!"
 typedef CF_3 cf_t;
 typedef WallBC3D wall_bc_t;
 #else
@@ -80,6 +79,31 @@ void set_parameters(int argc, char **argv) {
   if (params.test == "circle") {
     // set interface
 #ifdef P4_TO_P8
+    static struct:cf_t{
+      double operator()(double, double, double) const { return 1.0/params.Ca; }
+    } gamma;
+
+    static struct:cf_t{
+      double operator()(double, double, double) const { return 1.0; }
+    } K_D;
+
+    static struct:cf_t{
+      double operator()(double, double, double) const { return 1.0; }
+    } K_EO;
+
+    static struct:cf_t {
+      double operator()(double x, double y, double z) const {
+        return 0.25 - sqrt(SQR(x)+SQR(y)+SQR(z));
+      }
+    } interface; interface.lip = params.lip;
+
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
+    } bc_wall_type;
+
+    static struct:cf_t{
+      double operator()(double, double, double) const { return 0; }
+    } bc_wall_value;
 #else
     static struct:cf_t{
       double operator()(double, double) const { return 1.0/params.Ca; }
@@ -92,14 +116,6 @@ void set_parameters(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double, double) const { return 1.0; }
     } K_EO;
-
-    static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
-    } Q;
-
-    static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
-    } I;
 
     static struct:cf_t {
       double operator()(double x, double y) const {
@@ -115,6 +131,15 @@ void set_parameters(int argc, char **argv) {
       double operator()(double, double) const { return 0; }
     } bc_wall_value;
 #endif
+
+    static struct:CF_1{
+      double operator()(double t) const { return 1+t; }
+    } Q;
+
+    static struct:CF_1{
+      double operator()(double t) const { return 1+t; }
+    } I;
+
 
     params.gamma         = &gamma;
     params.K_D           = &K_D;
@@ -134,7 +159,64 @@ void set_parameters(int argc, char **argv) {
     params.xmax[0] = params.xmax[1] = params.xmax[2] =  10;
 
 #ifdef P4_TO_P8
-#else
+    static struct:cf_t{
+      double operator()(double, double, double) const { return 1.0/params.Ca; }
+    } gamma;
+
+    static struct:cf_t{
+      double operator()(double, double, double) const { return 1.0; }
+    } K_D;
+
+    static struct:cf_t{
+      double operator()(double, double, double) const { return 1.0; }
+    } K_EO;
+
+    static struct:cf_t{
+      double operator()(double x, double y, double z) const  {
+        double theta = atan2(y,x);
+        double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
+        double phi   = atan2(z,sqrt(SQR(x)+SQR(y)));
+
+        return 1.0+0.1*(cos(3*theta)+sin(2*theta))*pow(sin(2*phi),2) - r;
+      }
+    } interface; interface.lip = params.lip;
+
+#if 0
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
+    } bc_wall_type;
+
+    static struct:cf_t{
+      double operator()(double x, double y, double z) const {
+        double theta = atan2(y,x);
+        double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
+        double phi   = atan2(z,sqrt(SQR(x)+SQR(y)));
+        double ur    = -Q(t)/r/r;
+
+        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+          return x > 0 ? ur*cos(theta)*cos(phi):-ur*cos(theta)*cos(phi);
+        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+          return y > 0 ? ur*sin(theta)*cos(phi):-ur*sin(theta)*cos(phi);
+        else if (fabs(z-params.xmax[2]) < EPS || fabs(z - params.xmin[2]) < EPS)
+          return z > 0 ? ur*sin(phi):-ur*sin(phi);
+        else
+          return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+#endif // #if 0
+#if 1
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
+    } bc_wall_type;
+
+    static struct:cf_t{
+      double operator()(double x, double y, double z) const {
+        double r = sqrt(SQR(x)+SQR(y)+SQR(z));
+        return -(*params.Q)(t)/(4*PI*r);
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+#endif // #if 1
+#else // P4_TO_P8
     static struct:cf_t{
       double operator()(double, double) const { return 1.0/params.Ca; }
     } gamma;
@@ -146,14 +228,6 @@ void set_parameters(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double, double) const { return 1.0; }
     } K_EO;
-
-    static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
-    } Q;
-
-    static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
-    } I;
 
     static struct:cf_t{
       double operator()(double x, double y) const  {
@@ -183,7 +257,7 @@ void set_parameters(int argc, char **argv) {
           return 0;
       }
     } bc_wall_value; bc_wall_value.t = 0;
-#endif
+#endif // #if 0
 #if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
@@ -192,12 +266,19 @@ void set_parameters(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double x, double y) const {
         double r = sqrt(SQR(x)+SQR(y));
-        return -Q(t)/(2*PI) * log(r);
+        return -(*params.Q)(t)/(2*PI) * log(r);
       }
     } bc_wall_value; bc_wall_value.t = 0;
-#endif
+#endif // #if 1
+#endif // P4_TO_P8
 
-#endif
+    static struct:CF_1{
+      double operator()(double t) const { return 1+t; }
+    } Q;
+
+    static struct:CF_1{
+      double operator()(double t) const { return 1+t; }
+    } I;
 
     // set parameters specific to this test
     params.gamma         = &gamma;
