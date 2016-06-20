@@ -1626,7 +1626,8 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
     }
   }
 #endif
-      std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: point is double !" << std::endl;
+  // FIXME: What is this?
+  // std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: point is double !" << std::endl;
 
   /* now find the two voronoi points closest to the node */
   double phi_n = phi_p[n];

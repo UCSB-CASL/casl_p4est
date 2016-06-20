@@ -648,8 +648,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
 
   std::ostringstream oss;
 
-  oss << out_dir
-      << "/vtu/jump_"
+  oss << out_dir << "/jump_"
       << p4est->mpisize << "_"
       << brick->nxyztrees[0] << "x"
       << brick->nxyztrees[1] <<
@@ -889,7 +888,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
     if(save_voro)
     {
-      snprintf(out_path,1000, "%s/vtu/voronoi", out_dir);
+      snprintf(out_path,1000, "%s/voronoi", out_dir);
       solver.print_voronoi_VTK(out_path);
     }
   }
