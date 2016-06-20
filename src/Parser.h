@@ -69,7 +69,7 @@ public:
     T get(const std::string& key, const T& default_value)
     {
         if (options.find(key) == options.end())
-            return default_value;
+            throw std::runtime_error("[ERROR]: Option '" + key + "' was not found in option database.");
         else if (options.find(key) != options.end() && buffer.find(key) == buffer.end())
             return default_value;
         else

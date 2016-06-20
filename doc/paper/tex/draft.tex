@@ -1,0 +1,95 @@
+\documentclass[final]{elsarticle}
+%\usepackage[pdftex,breaklinks,linktocpage,pagebackref,hyperindex,hyperfigures]
+\usepackage{hyperref}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage[tmargin=1in,bmargin=1in,lmargin=1in,rmargin=1in]{geometry}
+\usepackage{subfigure}
+\usepackage{graphicx}
+\usepackage{latexsym}
+\usepackage{pdfsync}
+% \usepackage[boxed]{algorithm}
+\usepackage{algpseudocode}
+\usepackage{algorithm}
+% \usepackage{algorithmic}
+\usepackage{multirow}
+\usepackage{rotating}
+\usepackage{color}
+\usepackage{caption}
+\usepackage{url}
+\usepackage{tikz}
+\usepackage{diagbox}
+\usepackage{kpfonts}
+
+\DeclareSymbolFont{extraup}{U}{zavm}{m}{n}
+\DeclareMathSymbol{\varheart}{\mathalpha}{extraup}{86}
+\DeclareMathSymbol{\vardiamond}{\mathalpha}{extraup}{87}
+
+
+\hypersetup{
+    colorlinks=true,      		% false: boxed links; true: colored links
+    linkcolor=blue,       		% color of internal links
+    citecolor=blue,       		% color of links to bibliography
+    filecolor=black,      		% color of file links
+    urlcolor=red,       		% color of external links
+    pdffitwindow=true,
+    pdfpagelayout=SinglePage
+}
+
+% defining some new commands
+\newcommand{\etal}{\textit{et al.\ }}
+\newcommand{\mbf}[1]{\mathbf{#1}}
+\newcommand{\comment}[1]{\textcolor{red}{{#1}}}
+\newcommand{\mohammad}[1]{\textcolor{blue}{{Mohammad: #1}}}
+\newcommand{\tensor}[1]{\underline{\underline{\boldsymbol{#1}}}}
+\newcommand{\be}{\begin{equation}}
+\newcommand{\ee}{\end{equation}}
+\newcommand{\ben}{\begin{equation*}}
+\newcommand{\een}{\end{equation*}}
+\newcommand{\bea}{\begin{eqnarray}}
+\newcommand{\eea}{\end{eqnarray}}
+\newcommand{\bean}{\begin{eqnarray*}}
+\newcommand{\eean}{\end{eqnarray*}}
+\newcommand{\pd}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\pdn}[3]{\frac{\partial^#1 #2}{\partial #3^#1}}
+\newcommand{\noi}{\noindent}
+\newcommand{\ind}{\indent}
+\newcommand{\divg}[1]{\nabla \cdot \left(#1\right)}
+\newcommand{\ddivg}[1]{\nabla \cdot #1}
+\newcommand{\non}{\nonumber}
+\newcommand{\fcite}[1]{(\textcolor{blue}{cite: #1})}
+% \newcommand{\drawcircle}[2]{\protect  \tikz \protect \node[circle,draw,scale=#1,fill=#2] {};}
+% \newcommand{\drawsquare}[2]{\protect  \tikz \protect \node[rectangle,draw,scale=#1,fill=#2] {};}
+% \newcommand{\drawdiamond}[2]{\protect \tikz \protect \node[rectangle,draw,scale=#1,fill=#2,rotate=45] {};}
+\newcommand{\drawcircle}[1]{\textcolor{#1}{$\bullet$}}
+\newcommand{\drawsquare}[1]{\textcolor{#1}{$\blacksquare$}}
+\newcommand{\drawdiamond}[1]{\textcolor{#1}{$\vardiamond$}}
+\newtheorem{property}{Property}
+
+\begin{document}
+
+\title{Parallel Level-Set Methods on Adaptive Tree-Based Grids}
+
+\cortext[cor]{Corresponding author: m.mirzadeh@engineering.ucsb.edu}
+\address[MECHE]{Department of Mechanical Engineering, University of California, Santa Barbara, CA 93106-5070, United States.}
+\address[CS]{Department of Computer Science, University of California, Santa Barbara, CA 93106-5110, United States.}
+\address[UBONN]{Institute for Numerical Simulation, University of Bonn, 53115 Bonn, Germany.}
+
+\author[MECHE]{Mohammad Mirzadeh\corref{cor}} \author[MECHE]{Arthur Guittet} \author[UBONN] {Carsten Burstedde} \author[MECHE,CS]{Frederic Gibou}
+
+\input{abstract}
+\input{introduction}
+\input{levelset_method}
+\input{parallel_algorithms}
+\input{scaling_results}
+\input{applications}
+\input{conclusion}
+
+\section*{References}
+\bibliographystyle{plain}
+\addcontentsline{toc}{section}{\refname}
+\bibliography{casl,refs,bonn}
+
+\end{document}

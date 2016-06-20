@@ -2,13 +2,15 @@
 #include "my_p8est_utils.h"
 #include "my_p8est_tools.h"
 #include <p8est_connectivity.h>
-#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_macros.h>
 #include "cube3.h"
 #else
 #include "my_p4est_utils.h"
 #include "my_p4est_tools.h"
 #include <p4est_connectivity.h>
-#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_macros.h>
 #include "cube2.h"
 #endif
 
@@ -19,6 +21,7 @@
 #include <petsclog.h>
 #include <src/math.h>
 #include <src/petsc_compatibility.h>
+
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_TINY_EVENTS
@@ -854,6 +857,185 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
   return sum_global;
 }
 
+
+double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, double* phi_x[])
+{
+#ifdef CASL_THROWS
+  if(!phi_x)
+    throw std::invalid_argument("phi_x cannot be NULL when computing curvature.");
+#endif
+
+  // compute first derivatives
+  double dx = phi_x[0][qnnn.node_000];
+  double dy = phi_x[1][qnnn.node_000];
+#ifdef P4_TO_P8
+  double dz = phi_x[2][qnnn.node_000];
+#endif
+
+  // compute second derivatives
+  double dxx = qnnn.dxx_central(phi);
+  double dyy = qnnn.dyy_central(phi);
+  double dxy = qnnn.dy_central(phi_x[0]); // d/dy{d/dx}
+#ifdef P4_TO_P8
+  double dzz = qnnn.dzz_central(phi);
+  double dxz = qnnn.dz_central(phi_x[0]); // d/dz{d/dx}
+  double dyz = qnnn.dz_central(phi_x[1]); // d/dz{d/dy}
+#endif
+
+#ifdef P4_TO_P8
+  double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)+SQR(dz)));
+  double kappa = ((dyy+dzz)*SQR(dx) + (dxx+dzz)*SQR(dy) + (dxx+dyy)*SQR(dz) - 2*
+                   (dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / abs/abs/abs;
+#else
+  double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)));
+  double kappa = (dxx*SQR(dy) - 2*dy*dx*dxy + dyy*SQR(dx)) / abs/abs/abs;
+#endif
+  return kappa;
+}
+
+double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *normals[])
+{
+#ifdef CASL_THROWS
+  if(!normals)
+    throw std::invalid_argument("normals cannot be NULL when computing curvature.");
+#endif
+
+#ifdef P4_TO_P8
+  double kappa = qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]) + qnnn.dz_central(normals[2]);
+#else
+  double kappa = qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]);
+#endif
+
+  return kappa;
+}
+
+void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec phi_x[], Vec kappa)
+{
+#ifdef CASL_THROWS
+  if(!phi_x)
+    throw std::invalid_argument("phi_x cannot be NULL when computing curvature.");
+#endif
+
+  double *phi_p, *phi_x_p[P4EST_DIM], *kappa_p;
+  VecGetArray(phi, &phi_p);
+  VecGetArray(kappa, &kappa_p);
+  foreach_dimension(dim) VecGetArray(phi_x[dim], &phi_x_p[dim]);
+
+  // compute kappa on layer nodes
+  quad_neighbor_nodes_of_node_t qnnn;
+  for (size_t i=0; i<neighbors.get_layer_size(); ++i) {
+    p4est_locidx_t n = neighbors.get_layer_node(i);
+    neighbors.get_neighbors(n, qnnn);
+
+    kappa_p[n] = compute_mean_curvature(qnnn, phi_p, phi_x_p);
+  }
+
+  // initiate communication
+  VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
+
+  // compute on local nodes
+  for (size_t i=0; i<neighbors.get_local_size(); ++i) {
+    p4est_locidx_t n = neighbors.get_local_node(i);
+    neighbors.get_neighbors(n, qnnn);
+
+    kappa_p[n] = compute_mean_curvature(qnnn, phi_p, phi_x_p);
+  }
+
+  // finish communication
+  VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
+
+  VecRestoreArray(phi, &phi_p);
+  VecRestoreArray(kappa, &kappa_p);
+  foreach_dimension(dim) VecRestoreArray(phi_x[dim], &phi_x_p[dim]);
+}
+
+void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec normals[], Vec kappa)
+{
+#ifdef CASL_THROWS
+  if(!normals)
+    throw std::invalid_argument("normals cannot be NULL when computing curvature.");
+#endif
+
+  double *normals_p[P4EST_DIM], *kappa_p;
+  VecGetArray(kappa, &kappa_p);
+  foreach_dimension(dim) VecGetArray(normals[dim], &normals_p[dim]);
+
+  // compute kappa on layer nodes
+  quad_neighbor_nodes_of_node_t qnnn;
+  for (size_t i=0; i<neighbors.get_layer_size(); ++i) {
+    p4est_locidx_t n = neighbors.get_layer_node(i);
+    neighbors.get_neighbors(n, qnnn);
+
+    kappa_p[n] = compute_mean_curvature(qnnn, normals_p);
+  }
+
+  // initiate communication
+  VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
+
+  // compute on local nodes
+  for (size_t i=0; i<neighbors.get_local_size(); ++i) {
+    p4est_locidx_t n = neighbors.get_local_node(i);
+    neighbors.get_neighbors(n, qnnn);
+
+    kappa_p[n] = compute_mean_curvature(qnnn, normals_p);
+  }
+
+  // finish communication
+  VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
+
+  VecRestoreArray(kappa, &kappa_p);
+  foreach_dimension(dim) VecRestoreArray(normals[dim], &normals_p[dim]);
+}
+
+void compute_normals(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, double normals[])
+{
+#ifdef CASL_THROWS
+  if(!normals)
+    throw std::invalid_argument("normals array cannot be NULL.");
+#endif
+
+  normals[0] = qnnn.dx_central(phi);
+  normals[1] = qnnn.dy_central(phi);
+#ifdef P4_TO_P8
+  normals[2] = qnnn.dz_central(phi);
+  double abs = sqrt(SQR(normals[0]) + SQR(normals[1]) + SQR(normals[2]));
+#else
+  double abs = sqrt(SQR(normals[0]) + SQR(normals[1]));
+#endif
+  if (abs < EPS)
+    foreach_dimension(dim) normals[dim] = 0;
+  else
+    foreach_dimension(dim) normals[dim] /= abs;
+}
+
+void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec normals[])
+{
+#ifdef CASL_THROWS
+  if(!normals)
+    throw std::invalid_argument("normals array cannot be NULL.");
+#endif
+
+  neighbors.first_derivatives_central(phi, normals);
+  double *normals_p[P4EST_DIM];
+  foreach_dimension(dim) VecGetArray(normals[dim], &normals_p[dim]);
+
+  foreach_node(n, neighbors.get_nodes()) {
+#ifdef P4_TO_P8
+    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]) + SQR(normals_p[2][n]));
+#else
+    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]));
+#endif
+
+    if (abs < EPS) {
+      foreach_dimension(dim) normals_p[dim][n] = 0;
+    } else {
+      foreach_dimension(dim) normals_p[dim][n] /= abs;
+    }
+  }
+
+  foreach_dimension(dim) VecRestoreArray(normals[dim], &normals_p[dim]);
+}
+
 double interface_length_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi)
 {
 #ifdef P4_TO_P8
@@ -1263,6 +1445,56 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }
 
+#ifdef P4_TO_P8
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3* cf_array[], Vec f)
+#else
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2* cf_array[], Vec f)
+#endif
+{
+  double *f_p;
+  PetscInt bs;
+  PetscErrorCode ierr;
+  ierr = VecGetBlockSize(f, &bs); CHKERRXX(ierr);
+
+#ifdef CASL_THROWS
+  {
+    Vec local_form;
+    ierr = VecGhostGetLocalForm(f, &local_form); CHKERRXX(ierr);
+    PetscInt size;
+    ierr = VecGetSize(local_form, &size); CHKERRXX(ierr);
+    if (size != (PetscInt) nodes->indep_nodes.elem_count * bs){
+      std::ostringstream oss;
+      oss << "[ERROR]: size of the input vector must be equal to the total number of points x block_size."
+             "nodes->indep_nodes.elem_count = " << nodes->indep_nodes.elem_count
+          << " block_size = " << bs
+          << " VecSize = " << size << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+    ierr = VecGhostRestoreLocalForm(f, &local_form); CHKERRXX(ierr);
+  }
+#endif
+
+  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
+
+  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i) {
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(i, p4est, nodes, xyz);
+
+    for (PetscInt j = 0; j<bs; j++) {
+#ifdef P4_TO_P8
+      const CF_3& cf = *cf_array[j];
+      f_p[i*bs + j] = cf(xyz[0], xyz[1], xyz[2]);
+#else
+      const CF_2& cf = *cf_array[j];
+      f_p[i*bs + j] = cf(xyz[0], xyz[1]);
+#endif
+    }
+  }
+
+  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+}
+
 
 #ifdef P4_TO_P8
 void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f)
@@ -1363,24 +1595,24 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& 
 #endif
 
 #ifdef P4_TO_P8
-    f_p[quad_idx] = cf(x,y,z);
+      f_p[quad_idx] = cf(x,y,z);
 #else
-    f_p[quad_idx] = cf(x,y);
+      f_p[quad_idx] = cf(x,y);
 #endif
     }
   }
 
   // sample on ghost quadrants
   for (size_t q = 0; q < ghost->ghosts.elem_count; ++q)
-    {
-      const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
-      p4est_topidx_t tree_id  = quad->p.piggy3.which_tree;
-      p4est_locidx_t quad_idx = q + p4est->local_num_quadrants;
+  {
+    const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+    p4est_topidx_t tree_id  = quad->p.piggy3.which_tree;
+    p4est_locidx_t quad_idx = q + p4est->local_num_quadrants;
 
-      double x = quad_x_fr_q(quad_idx, tree_id, p4est, ghost);
-      double y = quad_y_fr_q(quad_idx, tree_id, p4est, ghost);
+    double x = quad_x_fr_q(quad_idx, tree_id, p4est, ghost);
+    double y = quad_y_fr_q(quad_idx, tree_id, p4est, ghost);
 #ifdef P4_TO_P8
-      double z = quad_z_fr_q(quad_idx, tree_id, p4est, ghost);
+    double z = quad_z_fr_q(quad_idx, tree_id, p4est, ghost);
 #endif
 
 #ifdef P4_TO_P8
@@ -1388,7 +1620,7 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& 
 #else
     f_p[quad_idx] = cf(x,y);
 #endif
-    }
+  }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }

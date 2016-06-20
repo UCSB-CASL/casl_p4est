@@ -286,7 +286,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   for(size_t i=0; i<ngbd->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_layer_node(i);
-    qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n, qnnn);
     normal_p[0][n] = qnnn.dx_central(phi_p);
     normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
@@ -311,7 +311,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   for(size_t i=0; i<ngbd->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_local_node(i);
-    qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n, qnnn);
     normal_p[0][n] = qnnn.dx_central(phi_p);
     normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
@@ -341,7 +341,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   for(size_t i=0; i<ngbd->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_layer_node(i);
-    qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n, qnnn);
 #ifdef P4_TO_P8
     kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/dxyz_max), -1/dxyz_max);
 #else
@@ -352,7 +352,7 @@ void my_p4est_bialloy_t::compute_normal_and_curvature()
   for(size_t i=0; i<ngbd->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd->get_local_node(i);
-    qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n, qnnn);
 #ifdef P4_TO_P8
     kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/dxyz_max), -1/dxyz_max);
 #else
@@ -399,7 +399,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     for(size_t i=0; i<ngbd->get_layer_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_layer_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
 #ifdef P4_TO_P8
       double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
@@ -414,7 +414,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
 #ifdef P4_TO_P8
       double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
@@ -433,7 +433,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     for(size_t i=0; i<ngbd->get_layer_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_layer_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
 #ifdef P4_TO_P8
       double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
@@ -446,7 +446,7 @@ void my_p4est_bialloy_t::compute_normal_velocity()
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
 #ifdef P4_TO_P8
       double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n] + qnnn.dz_central(cl_n_p)*normal_p[2][n];
@@ -513,7 +513,7 @@ void my_p4est_bialloy_t::compute_velocity()
     for(size_t i=0; i<ngbd->get_layer_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_layer_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
       v_gamma_p[0][n] = (qnnn.dx_central(cs_np1_p)*solute_diffusivity_s - qnnn.dx_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
       v_gamma_p[1][n] = (qnnn.dy_central(cs_np1_p)*solute_diffusivity_s - qnnn.dy_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
@@ -529,7 +529,7 @@ void my_p4est_bialloy_t::compute_velocity()
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
       v_gamma_p[0][n] = (qnnn.dx_central(cs_np1_p)*solute_diffusivity_s - qnnn.dx_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
       v_gamma_p[1][n] = (qnnn.dy_central(cs_np1_p)*solute_diffusivity_s - qnnn.dy_central(cl_np1_p)*solute_diffusivity_l) / (1-kp) / MAX(c_interface_p[n], 1e-7);
@@ -548,7 +548,7 @@ void my_p4est_bialloy_t::compute_velocity()
     for(size_t i=0; i<ngbd->get_layer_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_layer_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
       v_gamma_p[0][n] = -qnnn.dx_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
       v_gamma_p[1][n] = -qnnn.dy_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
@@ -564,7 +564,7 @@ void my_p4est_bialloy_t::compute_velocity()
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd->get_local_node(i);
-      qnnn = ngbd->get_neighbors(n);
+      ngbd->get_neighbors(n, qnnn);
 
       v_gamma_p[0][n] = -qnnn.dx_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
       v_gamma_p[1][n] = -qnnn.dy_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
@@ -613,7 +613,7 @@ void my_p4est_bialloy_t::solve_temperature()
   {
     rhs_p[n] = temperature_n_p[n];
 
-    qnnn = ngbd->get_neighbors(n);
+    ngbd->get_neighbors(n, qnnn);
 #ifdef P4_TO_P8
     qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p);
     if (p_000*p_m00<=0){
@@ -709,10 +709,6 @@ void my_p4est_bialloy_t::solve_temperature()
   my_p4est_level_set_t ls(ngbd);
   ls.extend_Over_Interface_TVD(phi, t_interface);
 }
-
-
-
-
 
 void my_p4est_bialloy_t::solve_concentration()
 {
@@ -870,7 +866,7 @@ void my_p4est_bialloy_t::update_grid()
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, brick, ngbd);
+  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
 
   /* bousouf update this for second order in time */
   sl.update_p4est(v_interface_np1, dt_n, phi);
@@ -945,10 +941,6 @@ void my_p4est_bialloy_t::update_grid()
 
   compute_normal_and_curvature();
 }
-
-
-
-
 
 void my_p4est_bialloy_t::one_step()
 {
@@ -1086,25 +1078,24 @@ void my_p4est_bialloy_t::compare_velocity_temperature_vs_concentration()
 
 void my_p4est_bialloy_t::save_VTK(int iter)
 {
-#if defined(STAMPEDE) || defined(COMET)
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
-#else
-  char out_dir[1000];
-#ifdef P4_TO_P8
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/3d");
-#else
-  sprintf(out_dir, "/home/guittet/code/Output/p4est_bialloy/2d");
-#endif
-#endif
-
+  const char* out_dir = getenv("OUT_DIR");
+  if (!out_dir)
+  {
+    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
+    return;
+  }
+  std::ostringstream command;
+  command << "mkdir -p " << out_dir << "/vtu";
+  int ret_sys = system(command.str().c_str());
+  if(ret_sys<0)
+    throw std::invalid_argument("my_p4est_bialloy_t::save_vtk could not create directory");
+  
   char name[1000];
 #ifdef P4_TO_P8
   sprintf(name, "%s/vtu/bialloy_%d_%dx%dx%d.%05d", out_dir, p4est->mpisize, brick->nxyztrees[0], brick->nxyztrees[1], brick->nxyztrees[2], iter);
 #else
   sprintf(name, "%s/vtu/bialloy_%d_%dx%d.%05d", out_dir, p4est->mpisize, brick->nxyztrees[0], brick->nxyztrees[1], iter);
 #endif
-
 
   /* if the domain is periodic, create a temporary tree without periodicity for visualization */
   bool periodic = false;
@@ -1143,10 +1134,11 @@ void my_p4est_bialloy_t::save_VTK(int iter)
       xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
 
 #ifdef P4_TO_P8
-    connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], brick->nxyztrees[2], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], xyz_min[2], xyz_max[2], &brick_vis, 0, 0, 0);
+    int non_periodic[] = {0, 0, 0};
 #else
-    connectivity_vis = my_p4est_brick_new(brick->nxyztrees[0], brick->nxyztrees[1], xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], &brick_vis, 0, 0);
+    int non_periodic[] = {0, 0};
 #endif
+    connectivity_vis = my_p4est_brick_new(brick->nxyztrees, xyz_min, xyz_max, brick, non_periodic);
 
     p4est_vis = my_p4est_new(p4est->mpicomm, connectivity_vis, 0, NULL, NULL);
     ghost_vis = my_p4est_ghost_new(p4est_vis, P4EST_CONNECT_FULL);
