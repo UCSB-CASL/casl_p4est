@@ -175,7 +175,7 @@ void set_parameters(int argc, char **argv) {
       double operator()(double x, double y, double z) const  {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double phi   = atan2(z,sqrt(SQR(x)+SQR(y)));
+        double phi   = acos(z/MAX(r,1E-12));
 
         return 1.0+0.1*(cos(3*theta)+sin(2*theta))*pow(sin(2*phi),2) - r;
       }
@@ -190,15 +190,15 @@ void set_parameters(int argc, char **argv) {
       double operator()(double x, double y, double z) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double phi   = atan2(z,sqrt(SQR(x)+SQR(y)));
+        double phi   = acos(z/MAX(r,1E-12));
         double ur    = -Q(t)/r/r;
 
         if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
-          return x > 0 ? ur*cos(theta)*cos(phi):-ur*cos(theta)*cos(phi);
+          return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
         else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
-          return y > 0 ? ur*sin(theta)*cos(phi):-ur*sin(theta)*cos(phi);
+          return y > 0 ? ur*sin(theta)*sin(phi):-ur*sin(theta)*sin(phi);
         else if (fabs(z-params.xmax[2]) < EPS || fabs(z - params.xmin[2]) < EPS)
-          return z > 0 ? ur*sin(phi):-ur*sin(phi);
+          return z > 0 ? ur*cos(phi):-ur*cos(phi);
         else
           return 0;
       }
