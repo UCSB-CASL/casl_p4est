@@ -318,7 +318,7 @@ int main(int argc, char** argv) {
 
   // stopwatch
   parStopWatch w;
-  w.start("Running example: viscous_fingering");
+  w.start("Running example: Ek_Fingering -- OneFluid Solver");
 
   // p4est variables
   p4est_t*              p4est;
@@ -362,8 +362,12 @@ int main(int argc, char** argv) {
   solver.set_properties(*params.K_D, *params.K_EO, *params.gamma);
   solver.set_bc_wall(*params.bc_wall_type, *params.bc_wall_value);
 
-  const char* folder = params.test.c_str();
-  mkdir(folder, 0755);
+  const char* outdir = getenv("OUT_DIR");
+  if (!outdir)
+    throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
+
+  const string folder = string(outdir) + string("/") + params.test;
+  mkdir(folder.c_str(), 0755);
   char vtk_name[FILENAME_MAX];
 
   double dt = 0, t = 0;
@@ -381,7 +385,7 @@ int main(int argc, char** argv) {
     VecGetArray(phi, &phi_p);
     VecGetArray(pressure, &pressure_p);
     VecGetArray(potential, &potential_p);
-    sprintf(vtk_name, "%s/%s_%dd.%04d", folder, params.method.c_str(), P4EST_DIM, i);
+    sprintf(vtk_name, "%s/%s_%dd.%04d", folder.c_str(), params.method.c_str(), P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            3, 0, vtk_name,

@@ -28,7 +28,8 @@ CONFIG(debug, debug|release): {
     INCLUDEPATH += \
         $$P4EST_INCLUDES_DEBUG \
         $$PETSC_INCLUDES_DEBUG \
-        $$VORO_INCLUDES_DEBUG
+        $$VORO_INCLUDES_DEBUG  \
+        $$BOOST_INCLUDE
 
     LIBS += \
         $$P4EST_LIBS_DEBUG \
@@ -42,7 +43,8 @@ CONFIG(release, debug|release): {
     INCLUDEPATH += \
         $$P4EST_INCLUDES_RELEASE \
         $$PETSC_INCLUDES_RELEASE \
-        $$VORO_INCLUDES_RELEASE
+        $$VORO_INCLUDES_RELEASE  \
+        $$BOOST_INCLUDE
 
     LIBS += \
         $$P4EST_LIBS_RELEASE \

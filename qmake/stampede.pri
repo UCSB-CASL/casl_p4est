@@ -20,6 +20,10 @@ VORO_INCLUDES_DEBUG   = $$(TACC_VORO_DIR)/include
 VORO_LIBS_RELEASE     = -L$$(TACC_VORO_DIR)/lib -lvoro++
 VORO_LIBS_DEBUG       = -L$$(TACC_VORO_DIR)/lib -lvoro++
 
+# Boost
+BOOST_INCLUDE = $$(TACC_BOOST_INC)
+BOOST_LIBS = $$(TACC_BOOST_LIB)
+
 QMAKE_CC=mpicc
 QMAKE_CXX=mpicxx
 QMAKE_LINK=mpicxx
