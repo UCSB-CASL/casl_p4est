@@ -181,7 +181,7 @@ void set_parameters(int argc, char **argv) {
       }
     } interface; interface.lip = params.lip;
 
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
     } bc_wall_type;
@@ -191,7 +191,7 @@ void set_parameters(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
-        double ur    = -Q(t)/r/r;
+        double ur    = -(*params.Q)(t)/r/r;
 
         if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
@@ -204,7 +204,7 @@ void set_parameters(int argc, char **argv) {
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 0
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
     } bc_wall_type;
@@ -212,7 +212,7 @@ void set_parameters(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double x, double y, double z) const {
         double r = sqrt(SQR(x)+SQR(y)+SQR(z));
-        return -(*params.Q)(t)/(4*PI*r);
+        return (*params.Q)(t)/(4*PI*r);
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 1
@@ -238,7 +238,7 @@ void set_parameters(int argc, char **argv) {
       }
     } interface; interface.lip = params.lip;
 
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
@@ -247,7 +247,7 @@ void set_parameters(int argc, char **argv) {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -Q(t)/r;
+        double ur    = -(*params.Q)(t)/r;
 
         if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta):-ur*cos(theta);
@@ -258,7 +258,7 @@ void set_parameters(int argc, char **argv) {
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 0
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
     } bc_wall_type;
