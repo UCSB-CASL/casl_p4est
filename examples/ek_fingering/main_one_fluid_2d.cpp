@@ -140,7 +140,6 @@ void set_parameters(int argc, char **argv) {
       double operator()(double t) const { return 1+t; }
     } I;
 
-
     params.gamma         = &gamma;
     params.K_D           = &K_D;
     params.K_EO          = &K_EO;
@@ -278,6 +277,129 @@ void set_parameters(int argc, char **argv) {
 
     static struct:CF_1{
       double operator()(double t) const { return 1+t; }
+    } I;
+
+    // set parameters specific to this test
+    params.gamma         = &gamma;
+    params.K_D           = &K_D;
+    params.K_EO          = &K_EO;
+    params.Q             = &Q;
+    params.I             = &I;
+    params.interface     = &interface;
+    params.bc_wall_type  = &bc_wall_type;
+    params.bc_wall_value = &bc_wall_value;
+    params.dtmax         = 5e-3;
+    params.dts           = 1e-1;
+    params.alpha         = 1;
+
+  } else if (params.test == "Flat") {
+
+    params.xmin[0] =  0; params.xmin[1] = params.xmin[2] = -1;
+    params.xmax[0] = 10; params.xmax[1] = params.xmax[2] =  1;
+    params.ntr[0]  = 10; params.ntr[1]  = params.ntr[2]  =  2;
+    params.periodic[0] = false; params.periodic[1] = params.periodic[2] = false; // periodic in y and z directions
+#ifdef P4_TO_P8
+    static struct:cf_t{
+      double operator()(double, double, double) const { return 1.0/params.Ca; }
+    } gamma;
+
+    static struct:cf_t{
+      double operator()(double, double, double) const { return 1.0; }
+    } K_D;
+
+    static struct:cf_t{
+      double operator()(double, double, double) const { return 1.0; }
+    } K_EO;
+
+    static struct:cf_t{
+      double operator()(double x, double, double) const  {
+        return x - 0.1;
+      }
+    } interface; interface.lip = params.lip;
+
+#if 1
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
+    } bc_wall_type;
+
+    static struct:cf_t{
+      double operator()(double x, double, double) const {
+        if (fabs(x - params.xmax[0]) < EPS)
+          return -(*params.Q)(t);
+        else
+          return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+#endif // #if 0
+#if 0
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
+    } bc_wall_type;
+
+    static struct:cf_t{
+      double operator()(double x, double, double) const {
+        if (fabs(x - params.xmax[0]) < EPS)
+          return -(*params.Q)(t)*(params.xmax[0]-params.xmin[0]);
+        else
+          return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+#endif // #if 1
+#else // P4_TO_P8
+    static struct:cf_t{
+      double operator()(double, double) const { return 1.0/params.Ca; }
+    } gamma;
+
+    static struct:cf_t{
+      double operator()(double, double) const { return 1.0; }
+    } K_D;
+
+    static struct:cf_t{
+      double operator()(double, double) const { return 1.0; }
+    } K_EO;
+
+    static struct:cf_t{
+      double operator()(double x, double) const  {
+        return x - 0.1;
+      }
+    } interface; interface.lip = params.lip;
+
+#if 1
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+    } bc_wall_type;
+
+    static struct:cf_t{
+      double operator()(double x, double) const {
+        if (fabs(x - params.xmax[0]) < EPS)
+          return -(*params.Q)(t);
+        else
+          return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+#endif // #if 0
+#if 0
+    static struct:wall_bc_t{
+      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
+    } bc_wall_type;
+
+    static struct:cf_t{
+      double operator()(double x, double) const {
+        if (fabs(x - params.xmax[0]) < EPS)
+          return -(*params.Q)(t)*(params.xmax[0]-params.xmin[0]);
+        else
+          return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+#endif // #if 1
+#endif // P4_TO_P8
+
+    static struct:CF_1{
+      double operator()(double) const { return 1; }
+    } Q;
+
+    static struct:CF_1{
+      double operator()(double) const { return 1; }
     } I;
 
     // set parameters specific to this test

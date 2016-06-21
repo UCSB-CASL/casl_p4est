@@ -416,6 +416,7 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
   }
 
   // solve for the potential
+  if (alpha > 0)
   {
     VecGetArray(bc_val, &bc_val_p);
     // Set the boundary condition
