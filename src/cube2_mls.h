@@ -16,8 +16,9 @@
 #define t1p1 2
 #define t1p2 3
 
-#include "simplex2_mls.h"
 #include "vector"
+#include "grid_interpolation2.h"
+#include "simplex2_mls.h"
 
 class cube2_mls_t
 {
@@ -32,11 +33,13 @@ public:
   std::vector< std::vector<double> > *phi_xx;
   std::vector< std::vector<double> > *phi_yy;
 
+  grid_interpolation2_t interp;
+
   std::vector<action_t> *action;
   std::vector<int>      *color;
 
   cube2_mls_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1.)
-    : x0(x0), x1(x1), y0(y0), y1(y1) {}
+    : x0(x0), x1(x1), y0(y0), y1(y1) {set_interpolation_grid(x0, x1, y0, y1, 1, 1);}
 
   void set_phi(std::vector< std::vector<double> > &phi_, std::vector<action_t> &acn_, std::vector<int> &clr_)
   {
@@ -53,6 +56,11 @@ public:
     phi     = &phi_; phi_xx = &phi_xx_; phi_yy = &phi_yy_;
     action  = &acn_;
     color   = &clr_;
+  }
+
+  void set_interpolation_grid(double xm, double xp, double ym, double yp, int nx, int ny)
+  {
+    interp.initialize(xm, xp, ym, yp, nx, ny);
   }
 
   void construct_domain();

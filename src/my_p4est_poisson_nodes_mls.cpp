@@ -332,8 +332,8 @@ void my_p4est_poisson_nodes_mls_t::compute_volumes()
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
   {
-    if (phi_eff.vec_p[n] > 1.5*diag_min) {node_vol.vec_p[n] = 0.; continue;}
-    if (phi_eff.vec_p[n] < 1.5*diag_min) {node_vol.vec_p[n] = 1.; continue;}
+    if (phi_eff.vec_p[n] >  1.0*diag_min) {node_vol.vec_p[n] = 0.; continue;}
+    if (phi_eff.vec_p[n] < -1.0*diag_min) {node_vol.vec_p[n] = 1.; continue;}
 
     double x_C  = node_x_fr_n(n, p4est, nodes);
     double y_C  = node_y_fr_n(n, p4est, nodes);
