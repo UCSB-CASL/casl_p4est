@@ -71,6 +71,13 @@ class my_p4est_poisson_nodes_mls_t
       else if (vec_p != NULL) {return vec_p[n];}
       else                    {return val;}
     }
+    
+    double get_value(int i, int n, double x, double y, double z)
+    {
+      if (cf != NULL)     {return (*cf)(x,y,z);}
+      if (vec_p != NULL)  {return vec_p[i][n];}
+      else                {return val[i];}
+    }
   };
 
   struct vec_quantity_t

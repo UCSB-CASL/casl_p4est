@@ -179,7 +179,7 @@ int main (int argc, char* argv[])
 //    integration.set_phi(phi_vec, geometry.action, geometry.color);
 //    integration.set_phi(geometry.LSF, geometry.action, geometry.color);
     integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, geometry.action, geometry.color);
-    integration.set_use_cube_refined(4);
+//    integration.set_use_cube_refined(4);
 
     integration.initialize();
 

@@ -144,44 +144,278 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   fixed_value_idx_g = global_node_offset[p4est->mpisize];
 
   // array to store types of nodes
-  node_loc.resize(nodes->num_owned_indeps);
+  ierr = VecCreateGhostNodes(p4est, nodes, node_vol); CHKERRXX(ierr);
+
+  double eps = 1E-9*d_min;
+
+#ifdef P4_TO_P8
+  double eps_dom = eps*eps*eps;
+  double eps_ifc = eps*eps;
+#else
+  double eps_dom = eps*eps;
+  double eps_ifc = eps;
+#endif
+
 }
 
 my_p4est_poisson_nodes_mls_t::~my_p4est_poisson_nodes_mls_t()
 {
   if (A             != NULL) {ierr = MatDestroy(A);                      CHKERRXX(ierr);}
   if (ksp           != NULL) {ierr = KSPDestroy(ksp);                    CHKERRXX(ierr);}
-  if (is_phi_dd_owned){
-    if (phi_xx_ != NULL){
-      for (int i = 0; i < phi_xx_->size(); i++) {ierr = VecDestroy(phi_xx_->at(i)); CHKERRXX(ierr);}
-      delete phi_xx_;
+  if (phi_dd_owned)
+  {
+    if (phi_xx != NULL)
+    {
+      for (int i = 0; i < n_phis; i++) {ierr = VecDestroy(phi_xx->at(i)); CHKERRXX(ierr);}
+      delete phi_xx;
     }
 
-    if (phi_yy_ != NULL){
-      for (int i = 0; i < phi_yy_->size(); i++) {ierr = VecDestroy(phi_yy_->at(i)); CHKERRXX(ierr);}
-      delete phi_yy_;
+    if (phi_yy_ != NULL)
+    {
+      for (int i = 0; i < n_phis; i++) {ierr = VecDestroy(phi_yy->at(i)); CHKERRXX(ierr);}
+      delete phi_yy;
     }
 
 #ifdef P4_TO_P8
-    if (phi_zz_ != NULL){
-      for (int i = 0; i < phi_zz_->size(); i++) {ierr = VecDestroy(phi_zz_->at(i)); CHKERRXX(ierr);}
-      delete phi_zz_;
+    if (phi_zz_ != NULL)
+    {
+      for (int i = 0; i < n_phis; i++) {ierr = VecDestroy(phi_zz->at(i)); CHKERRXX(ierr);}
+      delete phi_zz;
     }
 #endif
   }
 
-  if (is_mue_dd_owned){
-    if (mue_xx_     != NULL) {ierr = VecDestroy(mue_xx_);                CHKERRXX(ierr);}
-    if (mue_yy_     != NULL) {ierr = VecDestroy(mue_yy_);                CHKERRXX(ierr);}
-#ifdef P4_TO_P8
-    if (mue_zz_     != NULL) {ierr = VecDestroy(mue_zz_);                CHKERRXX(ierr);}
-#endif
-  }
+//  if (is_mue_dd_owned)
+//  {
+//    if (mue_xx_     != NULL) {ierr = VecDestroy(mue_xx_);                CHKERRXX(ierr);}
+//    if (mue_yy_     != NULL) {ierr = VecDestroy(mue_yy_);                CHKERRXX(ierr);}
+//#ifdef P4_TO_P8
+//    if (mue_zz_     != NULL) {ierr = VecDestroy(mue_zz_);                CHKERRXX(ierr);}
+//#endif
+//  }
 
-  if (scalling != NULL) {ierr = VecDestroy(scalling);                CHKERRXX(ierr);}
-  if (phi_eff_ != NULL) {ierr = VecDestroy(phi_eff_);                CHKERRXX(ierr);}
-  if (trunc_error != NULL) {ierr = VecDestroy(trunc_error);                CHKERRXX(ierr);}
+  if (scalling != NULL) {ierr = VecDestroy(scalling); CHKERRXX(ierr);}
+  if (phi_eff_owned)    {ierr = VecDestroy(phi_eff);  CHKERRXX(ierr);}
 }
+
+void my_p4est_poisson_nodes_mls_t::set_geometry(std::vector<Vec> &phi_,
+                                                std::vector<Vec> &phi_xx_,
+                                                std::vector<Vec> &phi_yy_,
+                                                std::vector<Vec> &phi_zz_,
+                                                std::vector<action_t> action_, std::vector<int> color_, Vec phi_eff_)
+{
+  phi = &phi_;
+  phi_xx = &phi_xx_;
+  phi_yy = &phi_yy_;
+  phi_zz = &phi_zz_;
+  action = &action_;
+  color = &color_;
+
+  if (phi_eff_ == NULL) compute_phi_eff();
+  else                  phi_eff = phi_eff_;
+
+  n_phis = action->size();
+}
+
+void my_p4est_poisson_nodes_mls_t::set_geometry(std::vector<Vec> &phi_,
+                                                std::vector<action_t> action_, std::vector<int> color_, Vec phi_eff_)
+{
+  phi = &phi_;
+  action = &action_;
+  color = &color_;
+
+  if (phi_eff_ == NULL) compute_phi_eff();
+  else                  phi_eff = phi_eff_;
+
+  compute_phi_dd();
+
+  n_phis = action->size();
+}
+
+void my_p4est_poisson_nodes_mls_t::compute_phi_eff()
+{
+  if (phi_eff != NULL) {ierr = VecDestroy(phi_eff); CHKERRXX(ierr);}
+  phi_eff = new Vec();
+  phi_eff_owned = true;
+
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_eff); CHKERRXX(ierr);
+
+  std::vector<double *>   phi_p(n_phis, NULL);
+  double                  *phi_eff_p;
+
+  for (int i = 0; i < n_phis; i++) {ierr = VecGetArray((*phi_)[i],  &phi_p[i]);  CHKERRXX(ierr);}
+                                    ierr = VecGetArray(phi_eff,     &phi_eff_p); CHKERRXX(ierr);
+
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
+  {
+    phi_eff_p[n] = -1.;
+
+    for (int i = 0; i < n_phis; i++)
+    {
+      switch (action->at(i))
+      {
+      case INTERSECTION:  phi_eff_p[n] = (phi_eff_p[n] > phi_p[i][n]) ? phi_eff_p[n] : phi_p[i][n]; break;
+      case ADDITION:      phi_eff_p[n] = (phi_eff_p[n] < phi_p[i][n]) ? phi_eff_p[n] : phi_p[i][n]; break;
+      case COLORATION:    /* do nothing */ break;
+      }
+    }
+  }
+
+  for (int i = 0; i < n_phi; i++) { ierr = VecRestoreArray((*phi_)[i], &phi_p[i]);  CHKERRXX(ierr);}
+                                    ierr = VecRestoreArray(phi_eff, &phi_eff_p); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(phi_eff, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (phi_eff, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+}
+
+void my_p4est_poisson_nodes_mls_t::compute_phi_dd()
+{
+  // Allocate memory for second derivaties
+  if (phi_xx != NULL && phi_dd_owned)
+  {
+    for (int i = 0; i < n_phis; i++) {ierr = VecDestroy(phi_xx->at(i)); CHKERRXX(ierr);}
+    delete phi_xx;
+  }
+  phi_xx = new std::vector<Vec> ();
+
+  if (phi_yy != NULL && phi_dd_owned)
+  {
+    for (int i = 0; i < n_phis; i++) {ierr = VecDestroy(phi_yy->at(i)); CHKERRXX(ierr);}
+    delete phi_yy;
+  }
+  phi_yy = new std::vector<Vec> ();
+
+#ifdef P4_TO_P8
+  if (phi_zz_ != NULL && phi_dd_owned)
+  {
+    for (int i = 0; i < n_phis; i++) {ierr = VecDestroy(phi_zz->at(i)); CHKERRXX(ierr);}
+    delete phi_zz;
+  }
+  phi_zz = new std::vector<Vec> ();
+#endif
+
+  for (unsigned int i = 0; i < n_phis; i++)
+  {
+    phi_xx->push_back(Vec()); ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx->at(i)); CHKERRXX(ierr);
+    phi_yy->push_back(Vec()); ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy->at(i)); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    phi_zz->push_back(Vec()); ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz->at(i)); CHKERRXX(ierr);
+#endif
+
+#ifdef P4_TO_P8
+    node_neighbors->second_derivatives_central(phi->at(i), phi_xx->at(i), phi_yy->at(i), phi_zz->at(i));
+#else
+    node_neighbors->second_derivatives_central(phi->at(i), phi_xx->at(i), phi_yy->at(i));
+#endif
+  }
+  phi_dd_owned = true;
+}
+
+void my_p4est_poisson_nodes_mls_t::compute_volumes()
+{
+  // TO FIX: doesn't work interface too close too walls
+  // TO FIX: also the grid should uniform at the interface
+
+  phi.initialize();
+  phi_xx.initialize();
+  phi_yy.initialize();
+  phi_zz.initialize();
+  phi_eff.initialize();
+
+  int n_nodes_max = 3*3*3;
+
+  std::vector< std::vector<double> > phi_cube(n_phis, std::vector<double> (n_nodes_max, -1));
+
+  std::vector< std::vector<double> > phi_xx_cube(n_phis, std::vector<double> (n_nodes_max, 0));
+  std::vector< std::vector<double> > phi_yy_cube(n_phis, std::vector<double> (n_nodes_max, 0));
+  std::vector< std::vector<double> > phi_zz_cube(n_phis, std::vector<double> (n_nodes_max, 0));
+
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
+  {
+    if (phi_eff.vec_p[n] > 1.5*diag_min) {node_vol.vec_p[n] = 0.; continue;}
+    if (phi_eff.vec_p[n] < 1.5*diag_min) {node_vol.vec_p[n] = 1.; continue;}
+
+    double x_C  = node_x_fr_n(n, p4est, nodes);
+    double y_C  = node_y_fr_n(n, p4est, nodes);
+#ifdef P4_TO_P8
+    double z_C  = node_z_fr_n(n, p4est, nodes);
+#endif
+
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+
+    bool xm_wall = is_node_xmWall(p4est, ni);
+    bool xp_wall = is_node_xpWall(p4est, ni);
+    bool ym_wall = is_node_ymWall(p4est, ni);
+    bool yp_wall = is_node_ypWall(p4est, ni);
+#ifdef P4_TO_P8
+    bool zm_wall = is_node_zmWall(p4est, ni);
+    bool zp_wall = is_node_zpWall(p4est, ni);
+#endif
+
+    double xm_grid = x_C, xp_grid = x_C, xm_cube = x_C, xp_cube = x_C; int nx_grid = 0;
+    double ym_grid = y_C, yp_grid = y_C, ym_cube = y_C, yp_cube = y_C; int ny_grid = 0;
+    double zm_grid = z_C, zp_grid = z_C, zm_cube = z_C, zp_cube = z_C; int nz_grid = 0;
+
+    if (!xm_wall) {xm_cube -= 0.5*dx_min; xm_grid -= dx_min; nx_grid++;}
+    if (!xp_wall) {xp_cube += 0.5*dx_min; xp_grid += dx_min; nx_grid++;}
+    if (!ym_wall) {ym_cube -= 0.5*dy_min; ym_grid -= dy_min; ny_grid++;}
+    if (!yp_wall) {yp_cube += 0.5*dy_min; yp_grid += dy_min; ny_grid++;}
+#ifdef P4_TO_P8
+    if (!zm_wall) {zm_cube -= 0.5*dz_min; zm_grid -= dz_min; nz_grid++;}
+    if (!zp_wall) {zp_cube += 0.5*dz_min; zp_grid += dz_min; nz_grid++;}
+#endif
+
+    cube2_refined_mls_t cube(xm_cube, xp_cube, ym_cube, yp_cube, zm_cube, zp_cube);
+
+    // find neighboring quadrants
+
+    // find neighboring nodes
+
+    for (int i_phi = 0; i_phi < n_phi; i_phi++){
+#ifdef P4_TO_P8
+//      phi_interp.set_input(*phi_[i_phi], *phi_xx_[i_phi], *phi_yy_[i_phi], *phi_zz_[i_phi], linear);
+//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmm] = phi_interp(cube.x0, cube.y0, cube.z0);
+//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmp] = phi_interp(cube.x0, cube.y0, cube.z1);
+//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpm] = phi_interp(cube.x0, cube.y1, cube.z0);
+//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpp] = phi_interp(cube.x0, cube.y1, cube.z1);
+//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmm] = phi_interp(cube.x1, cube.y0, cube.z0);
+//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmp] = phi_interp(cube.x1, cube.y0, cube.z1);
+//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppm] = phi_interp(cube.x1, cube.y1, cube.z0);
+//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppp] = phi_interp(cube.x1, cube.y1, cube.z1);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmm] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y0, cube.z0);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmp] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y0, cube.z1);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpm] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y1, cube.z0);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpp] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y1, cube.z1);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmm] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y0, cube.z0);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmp] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y0, cube.z1);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppm] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y1, cube.z0);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppp] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y1, cube.z1);
+#else
+//        phi_interp.set_input((*phi_)[i_phi], (*phi_xx_)[i_phi], (*phi_yy_)[i_phi], linear);
+//        phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmm] = phi_interp(cube.x0, cube.y0);
+//        phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpm] = phi_interp(cube.x0, cube.y1);
+//        phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmm] = phi_interp(cube.x1, cube.y0);
+//        phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppm] = phi_interp(cube.x1, cube.y1);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmm] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y0);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpm] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y1);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmm] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y0);
+      phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppm] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y1);
+      for (int i = 0; i < n_neighbors; i++)
+        if (neighbor_exist[i])
+        {
+          phi_cube[k]
+#endif
+    }
+
+    cube.set_phi(phi_cube, phi_xx_cube, phi_yy_cube, phi_zz_cube, *action, *color);
+    cube.set_interpolation_grid(xm_grid, xp_grid, ym_grid, yp_grid, zm_grid, zp_grid, nx_grid, ny_grid, nz_grid);
+    cube.construct_domain(1,1,1,cube_refinement);
+
+    node_vol.vec_p[n] = cube.measure_of_domain()/dx_min/dy_min/dz_min;
+
+  }
+}
+
 
 void my_p4est_poisson_nodes_mls_t::preallocate_matrix()
 {  
@@ -519,156 +753,44 @@ void my_p4est_poisson_nodes_mls_t::solve(Vec solution, bool use_nonzero_initial_
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 }
 
-#ifdef P4_TO_P8
-void my_p4est_poisson_nodes_mls_t::set_phi(std::vector<Vec> *phi, std::vector<Vec> *phi_xx, std::vector<Vec> *phi_yy, std::vector<Vec> *phi_zz)
-#else
-void my_p4est_poisson_nodes_mls_t::set_phi(std::vector<Vec> *phi, std::vector<Vec> *phi_xx, std::vector<Vec> *phi_yy)
-#endif
-{
-  phi_ = phi;
-  is_matrix_computed = false;
+//#ifdef P4_TO_P8
+//void my_p4est_poisson_nodes_mls_t::set_mu(Vec mue, Vec mue_xx, Vec mue_yy, Vec mue_zz)
+//#else
+//void my_p4est_poisson_nodes_mls_t::set_mu(Vec mue, Vec mue_xx, Vec mue_yy)
+//#endif
+//{
+//  mue_ = mue;
+//  is_matrix_computed = false;
 
-#ifdef P4_TO_P8
-  if (phi_xx != NULL && phi_yy != NULL && phi_zz != NULL)
-#else
-  if (phi_xx != NULL && phi_yy != NULL)
-#endif
-  {
-    phi_xx_ = phi_xx;
-    phi_yy_ = phi_yy;
-#ifdef P4_TO_P8
-    phi_zz_ = phi_zz;
-#endif
+//#ifdef P4_TO_P8
+//  if (mue_xx != NULL && mue_yy != NULL && mue_zz != NULL)
+//#else
+//  if (mue_xx != NULL && mue_yy != NULL)
+//#endif
+//  {
+//    mue_xx_ = mue_xx;
+//    mue_yy_ = mue_yy;
+//#ifdef P4_TO_P8
+//    mue_zz_ = mue_zz;
+//#endif
 
-    is_phi_dd_owned = false;
-  } else {
-    /*
-     * We have two options here:
-     * 1) Either compute phi_xx and phi_yy using the function that treats them
-     * as two regular functions
-     * or,
-     * 2) Use the function that uses one block vector and then copy stuff into
-     * these two vectors
-     *
-     * Case 1 requires less communications but case two inccuures additional copies
-     * Which one is faster? I don't know!
-     *
-     * TODO: Going with case 1 for the moment -- to be tested
-     */
+//    is_mue_dd_owned = false;
+//  } else {
+//    // Allocate memory for second derivaties
+//    ierr = VecCreateGhostNodes(p4est, nodes, &mue_xx_); CHKERRXX(ierr);
+//    ierr = VecCreateGhostNodes(p4est, nodes, &mue_yy_); CHKERRXX(ierr);
+//#ifdef P4_TO_P8
+//    ierr = VecCreateGhostNodes(p4est, nodes, &mue_zz_); CHKERRXX(ierr);
+//#endif
 
-    // Allocate memory for second derivaties
-    if (phi_xx_ != NULL && is_phi_dd_owned)
-    {
-      for (int i = 0; i < phi_xx_->size(); i++)
-        ierr = VecDestroy(phi_xx_->at(i)); CHKERRXX(ierr);
-      delete phi_xx_;
-    }
-    phi_xx_ = new std::vector<Vec>();
-
-    if (phi_yy_ != NULL && is_phi_dd_owned)
-    {
-      for (int i = 0; i < phi_yy_->size(); i++)
-        ierr = VecDestroy(phi_yy_->at(i)); CHKERRXX(ierr);
-      delete phi_yy_;
-    }
-    phi_yy_ = new std::vector<Vec>();
-
-#ifdef P4_TO_P8
-    if (phi_zz_ != NULL && is_phi_dd_owned)
-    {
-      for (int i = 0; i < phi_zz_->size(); i++)
-        ierr = VecDestroy(phi_zz_->at(i)); CHKERRXX(ierr);
-      delete phi_zz_;
-    }
-    phi_zz_ = new std::vector<Vec>();
-#endif
-    for (unsigned int i = 0; i < phi_->size(); i++)
-    {
-      phi_xx_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_->at(i)); CHKERRXX(ierr);
-      phi_yy_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_->at(i)); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      phi_zz_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_->at(i)); CHKERRXX(ierr);
-#endif
-
-#ifdef P4_TO_P8
-      node_neighbors_->second_derivatives_central(phi_->at(i), phi_xx_->at(i), phi_yy_->at(i), phi_zz_->at(i));
-#else
-      node_neighbors_->second_derivatives_central(phi_->at(i), phi_xx_->at(i), phi_yy_->at(i));
-#endif
-    }
-    is_phi_dd_owned = true;
-  }
-
-  // set up effective lsf
-  int n_phi = phi_->size();
-  ierr = VecCreateGhostNodes(p4est, nodes, &phi_eff_); CHKERRXX(ierr);
-
-  std::vector<double *>   phi_p(n_phi, NULL);
-  double                  *phi_eff_p;
-
-  for (int i = 0; i < n_phi; i++) { ierr = VecGetArray((*phi_)[i], &phi_p[i]);  CHKERRXX(ierr);}
-                                    ierr = VecGetArray(phi_eff_, &phi_eff_p); CHKERRXX(ierr);
-
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
-  {
-    phi_eff_p[n] = -1.;
-
-    for (int i = 0; i < n_phi; i++)
-    {
-      switch ((*action_)[i])
-      {
-      case INTERSECTION:  phi_eff_p[n] = (phi_eff_p[n] > phi_p[i][n]) ? phi_eff_p[n] : phi_p[i][n]; break;
-      case ADDITION:      phi_eff_p[n] = (phi_eff_p[n] < phi_p[i][n]) ? phi_eff_p[n] : phi_p[i][n]; break;
-      case COLORATION:    /* do nothing */ break;
-      }
-    }
-  }
-
-  for (int i = 0; i < n_phi; i++) { ierr = VecRestoreArray((*phi_)[i], &phi_p[i]);  CHKERRXX(ierr);}
-                                    ierr = VecRestoreArray(phi_eff_, &phi_eff_p); CHKERRXX(ierr);
-
-  ierr = VecGhostUpdateBegin(phi_eff_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (phi_eff_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-}
-
-#ifdef P4_TO_P8
-void my_p4est_poisson_nodes_mls_t::set_mu(Vec mue, Vec mue_xx, Vec mue_yy, Vec mue_zz)
-#else
-void my_p4est_poisson_nodes_mls_t::set_mu(Vec mue, Vec mue_xx, Vec mue_yy)
-#endif
-{
-  mue_ = mue;
-  is_matrix_computed = false;
-
-#ifdef P4_TO_P8
-  if (mue_xx != NULL && mue_yy != NULL && mue_zz != NULL)
-#else
-  if (mue_xx != NULL && mue_yy != NULL)
-#endif
-  {
-    mue_xx_ = mue_xx;
-    mue_yy_ = mue_yy;
-#ifdef P4_TO_P8
-    mue_zz_ = mue_zz;
-#endif
-
-    is_mue_dd_owned = false;
-  } else {
-    // Allocate memory for second derivaties
-    ierr = VecCreateGhostNodes(p4est, nodes, &mue_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est, nodes, &mue_yy_); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecCreateGhostNodes(p4est, nodes, &mue_zz_); CHKERRXX(ierr);
-#endif
-
-#ifdef P4_TO_P8
-    node_neighbors_->second_derivatives_central(mue_, mue_xx_, mue_yy_, mue_zz_);
-#else
-    node_neighbors_->second_derivatives_central(mue_, mue_xx_, mue_yy_);
-#endif
-    is_mue_dd_owned = true;
-  }
-}
+//#ifdef P4_TO_P8
+//    node_neighbors_->second_derivatives_central(mue_, mue_xx_, mue_yy_, mue_zz_);
+//#else
+//    node_neighbors_->second_derivatives_central(mue_, mue_xx_, mue_yy_);
+//#endif
+//    is_mue_dd_owned = true;
+//  }
+//}
 
 void my_p4est_poisson_nodes_mls_t::inv_mat3(double *in, double *out)
 {
@@ -698,122 +820,12 @@ void my_p4est_poisson_nodes_mls_t::inv_mat2(double *in, double *out)
   out[3] =  in[0]/det;
 }
 
-void my_p4est_poisson_nodes_mls_t::find_centroid(bool &node_in, bool &altered, double &x, double &y, p4est_locidx_t n, double *vol)
-{
-  double eps = 1E-9*d_min;
-#ifdef P4_TO_P8
-  double eps_dom = eps*eps*eps;
-  double eps_ifc = eps*eps;
-#else
-  double eps_dom = eps*eps;
-  double eps_ifc = eps;
-#endif
-
-  double alpha  = 0.0;
-  double beta   = 1.;
-  double gamma  = 1.0e-6;
-
-  double dom_measure_lim = alpha*dx_min*dy_min;
-
-  // tree information
-  p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-
-  //---------------------------------------------------------------------
-  // Information at neighboring nodes
-  //---------------------------------------------------------------------
-  double x_C  = node_x_fr_n(n, p4est, nodes);
-  double y_C  = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-  double z_C  = node_z_fr_n(n, p4est, nodes);
-#endif
-
-  cube2_refined_mls_t cube;
-
-  cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
-  cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
-  cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
-  cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
-
-#ifdef P4_TO_P8
-  cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
-  cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
-#endif
-
-  int n_phi = (*action_).size();
-  std::vector<double> phi_cube(P4EST_CHILDREN*n_phi, -1);
-
-  // find neighboring quadrants
-
-  // find neighboring nodes
-
-  if (phi_cf_ == NULL)
-  {
-  } else {
-    cube.set_phi_cf(*phi_cf_);
-    cube.set_action(*action_);
-    cube.set_color(*color_);
-  }
-  for (int i_phi = 0; i_phi < n_phi; i_phi++){
-#ifdef P4_TO_P8
-//      phi_interp.set_input(*phi_[i_phi], *phi_xx_[i_phi], *phi_yy_[i_phi], *phi_zz_[i_phi], linear);
-//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmm] = phi_interp(cube.x0, cube.y0, cube.z0);
-//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmp] = phi_interp(cube.x0, cube.y0, cube.z1);
-//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpm] = phi_interp(cube.x0, cube.y1, cube.z0);
-//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpp] = phi_interp(cube.x0, cube.y1, cube.z1);
-//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmm] = phi_interp(cube.x1, cube.y0, cube.z0);
-//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmp] = phi_interp(cube.x1, cube.y0, cube.z1);
-//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppm] = phi_interp(cube.x1, cube.y1, cube.z0);
-//      phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppp] = phi_interp(cube.x1, cube.y1, cube.z1);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmm] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y0, cube.z0);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmp] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y0, cube.z1);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpm] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y1, cube.z0);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpp] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y1, cube.z1);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmm] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y0, cube.z0);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmp] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y0, cube.z1);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppm] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y1, cube.z0);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppp] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y1, cube.z1);
-#else
-//        phi_interp.set_input((*phi_)[i_phi], (*phi_xx_)[i_phi], (*phi_yy_)[i_phi], linear);
-//        phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmm] = phi_interp(cube.x0, cube.y0);
-//        phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpm] = phi_interp(cube.x0, cube.y1);
-//        phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmm] = phi_interp(cube.x1, cube.y0);
-//        phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppm] = phi_interp(cube.x1, cube.y1);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_mmm] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y0);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_mpm] = (*(*phi_cf_)[i_phi])(cube.x0, cube.y1);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_pmm] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y0);
-    phi_cube[i_phi*P4EST_CHILDREN + dir::v_ppm] = (*(*phi_cf_)[i_phi])(cube.x1, cube.y1);
-#endif
-  }
-
-  cube.construct_domain(phi_cube.data(), *action_, *color_);
-
-  double ifc_measure = cube.measure_of_interface(-1);
-  double dom_measure = cube.measure_of_domain();
-  if (vol != NULL) *vol = dom_measure;
-
-//  if (cube.loc == OUT || (ifc_measure < eps_ifc && dom_measure < dom_measure_lim)) node_in = false;
-  if (cube.loc == OUT || (dom_measure < eps_dom)) node_in = false;
-  else node_in = true;
-
-  if (dom_measure < gamma*dx_min*dy_min) node_in = false;
-}
-
 void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_non_sym()
 {
   preallocate_matrix();
 
   // register for logging purpose
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
-
-//  double eps = 1E-6*d_min*d_min;
-  double eps = 1E-9*d_min;
-#ifdef P4_TO_P8
-  double eps_dom = eps*eps*eps;
-  double eps_ifc = eps*eps;
-#else
-  double eps_dom = eps*eps;
-  double eps_ifc = eps;
-#endif
 
 //  double *phi_p, *phi_xx_p, *phi_yy_p;
 //  ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -824,11 +836,10 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_non_sym()
 //  ierr = VecGetArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
 //#endif
 
-  int n_phi = phi.size(); // number of level set functions
 
-  for (int i = 0; i < n_phi; i++) phi[i].initialize();
+  for (int i = 0; i < n_phis; i++) phi[i].initialize();
 
-  std::vector<double *> phi_p(n_phi, NULL);
+  std::vector<double *> phi_p(n_phis, NULL);
   for (int i_phi = 0; i_phi < n_phi; i_phi++) {ierr = VecGetArray((*phi_)[i_phi], &phi_p[i_phi]); CHKERRXX(ierr);}
 
   double *add_p;
@@ -842,7 +853,7 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_non_sym()
     else                                  {robin_coef_p[i] = NULL;}
   }
 
-  std::vector<double> phi_cube(n_phi*P4EST_CHILDREN, -1);
+  std::vector<double> phi_cube(n_phis*P4EST_CHILDREN, -1);
 
   double *scalling_p;
   if (keep_scalling)
