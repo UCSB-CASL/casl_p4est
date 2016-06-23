@@ -33,7 +33,7 @@ using namespace std;
 static p4est_bool_t
 refine_periodic_test (p4est_t*, p4est_topidx_t, p4est_quadrant_t *quad) {
   p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
-  return quad->x + qh == P4EST_ROOT_LEN && quad->level < 3;
+  return quad->x + qh == P4EST_ROOT_LEN && quad->level < 0;
 }
 
 int main(int argc, char** argv) {
@@ -54,10 +54,10 @@ int main(int argc, char** argv) {
   my_p4est_brick_t      brick;
 
   // domain size information
-  const int n_xyz[]      = { 2,  2,  2};
+  const int n_xyz[]      = { 4,  4,  2};
   const double xyz_min[] = { 0,  0,  0};
   const double xyz_max[] = { 1,  1,  1};
-  const int periodic[]   = { 0,  0,  1};
+  const int periodic[]   = { 1,  1,  1};
   conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   // create the forest
@@ -72,6 +72,12 @@ int main(int argc, char** argv) {
 
   // create node structure
   nodes = my_p4est_nodes_new(p4est, ghost);
+
+  if (is_periodic(p4est, 0)) std::cout << "X Periodic" << std::endl;
+  if (is_periodic(p4est, 1)) std::cout << "Y Periodic" << std::endl;
+#ifdef P4_TO_P8
+  if (is_periodic(p4est, 2)) std::cout << "Z Periodic" << std::endl;
+#endif
 
   // save the grid into vtk
   my_p4est_vtk_write_all(p4est, nodes, ghost,

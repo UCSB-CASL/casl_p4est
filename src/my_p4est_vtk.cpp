@@ -46,7 +46,6 @@
 #include <petsclog.h>
 #include <sys/stat.h>
 
-
 //#undef P4EST_VTK_COMPRESSION
 #define P4EST_VTK_DOUBLES
 //#define P4EST_VTK_BINARY
@@ -96,6 +95,51 @@ extern PetscLogEvent log_my_p4est_vtk_write_all;
 #undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
+
+static inline bool is_tree_xpWall(p4est_t* p4est, p4est_topidx_t tr)
+{
+  p4est_topidx_t tr_xp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_p00];
+  return p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr + dir::v_pmm] !=
+      p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr_xp + dir::v_mmm];
+}
+
+static inline bool is_tree_xmWall(p4est_t* p4est, p4est_topidx_t tr)
+{
+  p4est_topidx_t tr_xm = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_m00];
+  return p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr + dir::v_mmm] !=
+      p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr_xm + dir::v_pmm];
+}
+
+static inline bool is_tree_ypWall(p4est_t* p4est, p4est_topidx_t tr)
+{
+  p4est_topidx_t tr_yp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_0p0];
+  return p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr + dir::v_mpm] !=
+      p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr_yp + dir::v_mmm];
+}
+
+static inline bool is_tree_ymWall(p4est_t* p4est, p4est_topidx_t tr)
+{
+  p4est_topidx_t tr_ym = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_0m0];
+  return p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr + dir::v_mmm] !=
+      p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr_ym + dir::v_mpm];
+}
+
+#ifdef P4_TO_P8
+inline bool is_tree_zpWall(p4est_t* p4est, p4est_topidx_t tr)
+{
+  p4est_topidx_t tr_zp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_00p];
+  return p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr + dir::v_mmp] !=
+      p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr_zp + dir::v_mmm];
+}
+
+inline bool is_tree_zmWall(p4est_t* p4est, p4est_topidx_t tr)
+{
+  p4est_topidx_t tr_zm = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_00m];
+  return p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr + dir::v_mmm] !=
+      p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr_zm + dir::v_mmp];
+}
+#endif
+
 
 void
 my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
@@ -230,7 +274,6 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   p4est_indep_t      *in;
   char                vtufilename[BUFSIZ];
   char                foldername[BUFSIZ];
-  int                is_periodic[3] = {0, 0, 0};
   FILE               *vtufile;
 
   SC_CHECK_ABORT (p4est->connectivity->num_vertices > 0,
@@ -246,37 +289,36 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
     Ntotal = Ncorners;
   }
 
-  // We need to account for any extra points if the grid is periodic
-  for (int dir=0; dir<P4EST_DIM; dir++) {
-    const int face = 2 * dir;
-    const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
-    is_periodic[dir] = !(p4est->connectivity->tree_to_tree[tfindex] == 0 &&
-                         p4est->connectivity->tree_to_face[tfindex] == face);
-  }
+  int periodic[] = {
+    is_periodic(p4est, 0),
+    is_periodic(p4est, 1),
+  #ifdef P4_TO_P8
+    is_periodic(p4est, 2)
+  #else
+    0
+  #endif
+  };
 
   int num_extra = 0;
   p4est_locidx_t *local_nodes = P4EST_ALLOC(p4est_locidx_t, Ncorners);
   memcpy(local_nodes, nodes->local_nodes, Ncorners*sizeof(p4est_locidx_t));
 
-  if (nodes != NULL && (is_periodic[0] || is_periodic[1] || is_periodic[2])) {
+  if (nodes != NULL && (periodic[0] || periodic[1] || periodic[2])) {
     std::cout << "here" << std::endl;
     // check for local quadrants
     for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++) {
       // check if the tree is on the wall
-      int is_wall[3] = {0, 0, 0};
-      if (tr == 1 || tr == 3) is_wall[0] = 1;
-      if (tr == 2 || tr == 3) is_wall[1] = 1;
-      //      p4est_topidx_t tr_xp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_p00];
-      //      p4est_topidx_t tr_yp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_0p0];
-      //#ifdef P4_TO_P8
-      //      p4est_topidx_t tr_zp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_00p];
-      //      int is_on_wall = tr_xp == tr || tr_yp == tr || tr_zp == tr;
-      //#else
-      //      int is_on_wall = tr_xp == tr || tr_yp == tr;
-      //#endif
-      //      std::cout << tr << "-->" << tr_xp << std::endl;
-      //      std::cout << std::boolalpha << (bool) is_on_wall << std::endl;
-      //      if (!is_on_wall) continue;
+      int wall[] = {
+        is_tree_xpWall(p4est, tr),
+        is_tree_ypWall(p4est, tr),
+  #ifdef P4_TO_P8
+        is_tree_zpWall(p4est, tr)
+  #else
+        0
+  #endif
+      };
+
+      if (!(wall[0] || wall[1] || wall[2])) continue;
 
       p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
       for (size_t q = 0; q < tree->quadrants.elem_count; q++) {
@@ -284,31 +326,34 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
         p4est_locidx_t quad_idx = tree->quadrants_offset + q;
         p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
 
-        // check if the quadrant is on the wall
-        if (is_wall[0] && quad->x + qh == P4EST_ROOT_LEN && is_periodic[0]) {
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_pmm] = indeps->elem_count + num_extra++;
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppm] = indeps->elem_count + num_extra++;
+        // Find all cells that are on the wall
+        if ((quad->x + qh == P4EST_ROOT_LEN && wall[0]) ||
+            (quad->y + qh == P4EST_ROOT_LEN && wall[1])
+    #ifdef P4_TO_P8
+            ||
+            (quad->z + qh == P4EST_ROOT_LEN && wall[2])
+    #endif
+            ) {
 #ifdef P4_TO_P8
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_pmp] = indeps->elem_count + num_extra++;
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppp] = indeps->elem_count + num_extra++;
+          for (int zi = 0; zi < 2; zi++)
 #endif
-        }
-        if (is_wall[1] && quad->y + qh == P4EST_ROOT_LEN && is_periodic[1]) {
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mpm] = indeps->elem_count + num_extra++;
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppm] = indeps->elem_count + num_extra++;
+            for (int yi = 0; yi < 2; yi++)
+              for (int xi = 0; xi < 2; xi++) {
 #ifdef P4_TO_P8
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mpp] = indeps->elem_count + num_extra++;
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppp] = indeps->elem_count + num_extra++;
+                p4est_locidx_t node_idx = quad_idx*P4EST_CHILDREN + 4*zi + 2*yi + xi;
+#else
+                p4est_locidx_t node_idx = quad_idx*P4EST_CHILDREN + 2*yi + xi;
 #endif
+                if ((quad->x + xi*qh == P4EST_ROOT_LEN && wall[0]) ||
+                    (quad->y + yi*qh == P4EST_ROOT_LEN && wall[1])
+    #ifdef P4_TO_P8
+                    ||
+                    (quad->z + zi*qh == P4EST_ROOT_LEN && wall[2])
+    #endif
+                    )
+                  local_nodes[node_idx] = indeps->elem_count + num_extra++;
+              }
         }
-#ifdef P4_TO_P8
-        if (quad->z + qh == P4EST_ROOT_LEN && is_periodic[2]) {
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mmp] = indeps->elem_count + num_extra++;
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_pmp] = indeps->elem_count + num_extra++;
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mpp] = indeps->elem_count + num_extra++;
-          local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppp] = indeps->elem_count + num_extra++;
-        }
-#endif
       }
     }
 
@@ -318,43 +363,40 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
       p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
       p4est_locidx_t quad_idx = nodes->num_local_quadrants + q;
 
-      // check if the tree is on the wall
       p4est_topidx_t tr = quad->p.piggy3.which_tree;
-      p4est_topidx_t tr_xp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_p00];
-      p4est_topidx_t tr_yp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_0p0];
-#ifdef P4_TO_P8
-      p4est_topidx_t tr_zp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_00p];
-      int is_on_wall = tr_xp == tr || tr_yp == tr || tr_zp == tr;
-#else
-      int is_on_wall = tr_xp == tr || tr_yp == tr;
-#endif
-      if (!is_on_wall) continue;
+      if (!(is_tree_xpWall(p4est, tr) || is_tree_ypWall(p4est, tr)
+      #ifdef P4_TO_P8
+            ||
+            is_tree_zpWall(p4est, tr)
+      #endif
+            )) continue;
 
-      // check if the quadrant is on the wall
-      if (quad->x + qh == P4EST_ROOT_LEN && is_periodic[0]) {
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_pmm] = indeps->elem_count + num_extra++;
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppm] = indeps->elem_count + num_extra++;
+      // Find all cells that are on the wall
+      if (quad->x + qh == P4EST_ROOT_LEN || quad->y + qh == P4EST_ROOT_LEN
+    #ifdef P4_TO_P8
+          ||
+          quad->z + qh == P4EST_ROOT_LEN
+    #endif
+          ) {
 #ifdef P4_TO_P8
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_pmp] = indeps->elem_count + num_extra++;
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppp] = indeps->elem_count + num_extra++;
+        for (int zi = 0; zi < 2; zi++)
 #endif
-      }
-      if (quad->y + qh == P4EST_ROOT_LEN && is_periodic[1]) {
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mpm] = indeps->elem_count + num_extra++;
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppm] = indeps->elem_count + num_extra++;
+          for (int yi = 0; yi < 2; yi++)
+            for (int xi = 0; xi < 2; xi++) {
 #ifdef P4_TO_P8
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mpp] = indeps->elem_count + num_extra++;
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppp] = indeps->elem_count + num_extra++;
+              p4est_locidx_t node_idx = quad_idx*P4EST_CHILDREN + 4*zi + 2*yi + xi;
+#else
+              p4est_locidx_t node_idx = quad_idx*P4EST_CHILDREN + 2*yi + xi;
 #endif
+              if (quad->x + xi*qh == P4EST_ROOT_LEN || quad->y + yi*qh == P4EST_ROOT_LEN
+    #ifdef P4_TO_P8
+                  ||
+                  quad->z + zi*qh == P4EST_ROOT_LEN
+    #endif
+                  )
+                local_nodes[node_idx] = indeps->elem_count + num_extra++;
+            }
       }
-#ifdef P4_TO_P8
-      if (quad->z + qh == P4EST_ROOT_LEN && is_periodic[2]) {
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mmp] = indeps->elem_count + num_extra++;
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_pmp] = indeps->elem_count + num_extra++;
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mpp] = indeps->elem_count + num_extra++;
-        local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppp] = indeps->elem_count + num_extra++;
-      }
-#endif
     }
 
     Ntotal += num_extra;
@@ -506,32 +548,25 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
     }
 
     // now add the extra nodes
-    if (is_periodic[0] || is_periodic[1] || is_periodic[2]) {
+    if (periodic[0] || periodic[1] || periodic[2]) {
       // check for local quadrants
       for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++) {
         // check if the tree is on the wall
-        int is_wall[3] = {0, 0, 0};
-        if (tr == 1 || tr == 3) is_wall[0] = 1;
-        if (tr == 2 || tr == 3) is_wall[1] = 1;
-        //        p4est_topidx_t tr_xp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_p00];
-        //        p4est_topidx_t tr_yp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_0p0];
-        //#ifdef P4_TO_P8
-        //        p4est_topidx_t tr_zp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_00p];
-        //        int is_on_wall = tr_xp == tr || tr_yp == tr || tr_zp == tr;
-        //#else
-        //        int is_on_wall = tr_xp == tr || tr_yp == tr;
-        //#endif
-        //        if (!is_on_wall) continue;
-        if (tr == 0) continue;
+        int wall[] = {
+          is_tree_xpWall(p4est, tr),
+          is_tree_ypWall(p4est, tr),
+    #ifdef P4_TO_P8
+          is_tree_zpWall(p4est, tr)
+    #else
+          0
+    #endif
+        };
+        if (!(wall[0] || wall[1] || wall[2])) continue;
 
         p4est_topidx_t vmin = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr];
         p4est_topidx_t vmax = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(tr+1) - 1];
         double* tr_min = p4est->connectivity->vertices + 3*vmin;
         double* tr_max = p4est->connectivity->vertices + 3*vmax;
-
-        std::cout << tr << std::endl;
-        std::cout << tr_min[0] << "," << tr_max[0] << std::endl;
-        std::cout << tr_min[1] << "," << tr_max[1] << std::endl;
 
         p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
         for (size_t q = 0; q < tree->quadrants.elem_count; q++) {
@@ -540,11 +575,11 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
           p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
 
           // apply periodic condition on the x-direction
-          if ((is_wall[0] && quad->x + qh == P4EST_ROOT_LEN) ||
-              (is_wall[1] && quad->y + qh == P4EST_ROOT_LEN)
+          if ((quad->x + qh == P4EST_ROOT_LEN && wall[0]) ||
+              (quad->y + qh == P4EST_ROOT_LEN && wall[1])
     #ifdef P4_TO_P8
               ||
-              (is_wall[2] && quad->z + qh == P4EST_ROOT_LEN)
+              (quad->z + qh == P4EST_ROOT_LEN && wall[2])
     #endif
               ) {
 #ifdef P4_TO_P8
@@ -557,15 +592,23 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 #else
                   p4est_locidx_t node_idx = local_nodes[quad_idx*P4EST_CHILDREN + 2*yi+xi];
 #endif
-                  float_data[3*node_idx+0] = intsize*(quad->x+xi*qh) * (tr_max[0]-tr_min[0]) + tr_min[0];
-                  float_data[3*node_idx+1] = intsize*(quad->y+yi*qh) * (tr_max[1]-tr_min[1]) + tr_min[1];
+                  if ((quad->x + xi*qh == P4EST_ROOT_LEN && wall[0]) ||
+                      (quad->y + yi*qh == P4EST_ROOT_LEN && wall[1])
+      #ifdef P4_TO_P8
+                      ||
+                      (quad->z + zi*qh == P4EST_ROOT_LEN && wall[2])
+      #endif
+                      ) {
+                    float_data[3*node_idx+0] = intsize*(quad->x+xi*qh) * (tr_max[0]-tr_min[0]) + tr_min[0];
+                    float_data[3*node_idx+1] = intsize*(quad->y+yi*qh) * (tr_max[1]-tr_min[1]) + tr_min[1];
 #ifdef P4_TO_P8
-                  float_data[3*node_idx+2] = intsize*(quad->z+zi*qh) * (tr_max[2]-tr_min[2]) + tr_min[2];
+                    float_data[3*node_idx+2] = intsize*(quad->z+zi*qh) * (tr_max[2]-tr_min[2]) + tr_min[2];
 #else
-                  float_data[3*local_nodes[node_idx]+2] = 0;
+                    float_data[3*node_idx+2] = 0;
 #endif
-                  std::cout << node_idx << ": " << float_data[3*node_idx] << ","
-                            << float_data[3*node_idx+1] << std::endl;
+                  }
+                  //                  std::cout << node_idx << ": " << float_data[3*node_idx] << ","
+                  //                            << float_data[3*node_idx+1] << std::endl;
                 }
           }
         }
