@@ -72,6 +72,7 @@
 #endif
 
 #include <vector>
+#include "grid_interpolation3.h"
 #include "simplex3_mls.h"
 
 class cube3_mls_t
@@ -88,12 +89,18 @@ public:
   std::vector< std::vector<double> > *phi_yy;
   std::vector< std::vector<double> > *phi_zz;
 
+  grid_interpolation3_t interp;
+
   std::vector<action_t> *action;
   std::vector<int>      *color;
 
   cube3_mls_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
-    : x0(x0), y0(y0), z0(z0), x1(x1), y1(y1), z1(z1) {}
+    : x0(x0), y0(y0), z0(z0), x1(x1), y1(y1), z1(z1) {set_interpolation_grid(x0, x1, y0, y1, z0, z1, 1, 1, 1);}
 
+  void set_interpolation_grid(double xm, double xp, double ym, double yp, double zm, double zp, int nx, int ny, int nz)
+  {
+    interp.initialize(xm, xp, ym, yp, zm, zp, nx, ny, nz);
+  }
 
   void set_phi(std::vector< std::vector<double> > &phi_,
                std::vector<action_t> &acn_, std::vector<int> &clr_)
@@ -116,15 +123,23 @@ public:
 
   void construct_domain();
 
-  double integrate_over_domain            (double *f);
-  double integrate_over_interface         (double *f, int num);
-  double integrate_over_colored_interface (double *f, int num0, int num1);
-  double integrate_over_intersection      (double *f, int num0, int num1);
-  double integrate_over_intersection      (double *f, int num0, int num1, int num2);
-  double integrate_in_dir                 (double *f, int dir);
+  double integrate_over_domain            (double *F);
+  double integrate_over_interface         (double *F, int num);
+  double integrate_over_colored_interface (double *F, int num0, int num1);
+  double integrate_over_intersection      (double *F, int num0, int num1);
+  double integrate_over_intersection      (double *F, int num0, int num1, int num2);
+  double integrate_in_dir                 (double *F, int dir);
 
-  double interpolate_linear(double *f, double x, double y, double z);
-  double interpolate_quadratic(double *f, double *fxx, double *fyy, double *fzz, double x, double y, double z);
+  double measure_of_domain            ()                    {double f[8] = {1.,1.,1.,1.,1.,1.,1.,1.}; return integrate_over_domain(f);}
+  double measure_of_interface         (int num)             {double f[8] = {1.,1.,1.,1.,1.,1.,1.,1.}; return integrate_over_interface(f, num);}
+  double measure_of_intersection      (int num0, int num1)  {double f[8] = {1.,1.,1.,1.,1.,1.,1.,1.}; return integrate_over_intersection(f, num0, num1);}
+  double measure_of_colored_interface (int num0, int num1)  {double f[8] = {1.,1.,1.,1.,1.,1.,1.,1.}; return integrate_over_colored_interface(f, num0, num1);}
+  double measure_in_dir               (int dir)             {double f[8] = {1.,1.,1.,1.,1.,1.,1.,1.}; return integrate_in_dir(f, dir);}
+
+  double interpolate_to_cube(double *in, double *out);
+
+//  double interpolate_linear(double *f, double x, double y, double z);
+//  double interpolate_quadratic(double *f, double *fxx, double *fyy, double *fzz, double x, double y, double z);
 
 };
 

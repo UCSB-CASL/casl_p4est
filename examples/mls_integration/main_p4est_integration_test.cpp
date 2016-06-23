@@ -56,7 +56,7 @@ int lmax = 3;
 #ifdef P4_TO_P8
 int nb_splits = 3;
 #else
-int nb_splits = 6;
+int nb_splits = 5;
 #endif
 
 int nx = 1;
@@ -178,13 +178,17 @@ int main (int argc, char* argv[])
     integration.set_p4est(p4est, nodes);
 //    integration.set_phi(phi_vec, geometry.action, geometry.color);
 //    integration.set_phi(geometry.LSF, geometry.action, geometry.color);
+#ifdef P4_TO_P8
     integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, geometry.action, geometry.color);
-//    integration.set_use_cube_refined(4);
+#else
+    integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, geometry.action, geometry.color);
+#endif
+//    integration.set_use_cube_refined(6);
 
-    integration.initialize();
 
     if (save_vtk)
     {
+      integration.initialize();
 #ifdef P4_TO_P8
       vector<simplex3_mls_t *> simplices;
       int n_sps = NTETS;

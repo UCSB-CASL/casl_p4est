@@ -9,6 +9,11 @@ double grid_interpolation2_t::linear(double *f, double x, double y)
   if (x < xm || x > xp || y < ym || y > yp) throw std::invalid_argument("[CASL_ERROR]: Point of interpolation outside the grid.");
 #endif
 
+  if (fabs(x-xm) < 0.1*eps) x = xm+0.1*eps;
+  if (fabs(y-ym) < 0.1*eps) y = ym+0.1*eps;
+  if (fabs(x-xp) < 0.1*eps) x = xp-0.1*eps;
+  if (fabs(y-yp) < 0.1*eps) y = yp-0.1*eps;
+
   // find quad
   int i = std::floor((x-xm)/dx);
   int j = std::floor((y-ym)/dy);
@@ -46,6 +51,11 @@ double grid_interpolation2_t::quadratic(double *f, double *f_xx, double *f_yy, d
 #ifdef CASL_THROWS
   if (x < xm || x > xp || y < ym || y > yp) throw std::invalid_argument("[CASL_ERROR]: Point of interpolation outside the grid.");
 #endif
+
+  if (fabs(x-xm) < 0.1*eps) x = xm+0.1*eps;
+  if (fabs(y-ym) < 0.1*eps) y = ym+0.1*eps;
+  if (fabs(x-xp) < 0.1*eps) x = xp-0.1*eps;
+  if (fabs(y-yp) < 0.1*eps) y = yp-0.1*eps;
 
   // find quad
   int i = std::floor((x-xm)/dx);

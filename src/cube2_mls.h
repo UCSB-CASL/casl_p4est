@@ -72,8 +72,14 @@ public:
   double integrate_in_non_cart_dir        (double *f, int dir);
   double integrate_over_colored_interface (double *f, int num0, int num1);
 
-  double interpolate_linear(double *f, double x, double y);
-  double interpolate_quadratic(double *f, double *fxx, double *fyy, double x, double y);
+  double measure_of_domain            ();
+  double measure_of_interface         (int num);
+  double measure_of_intersection      (int num0, int num1);
+  double measure_of_colored_interface (int num0, int num1);
+  double measure_in_dir               (int dir);
+
+//  double interpolate_linear(double *f, double x, double y);
+//  double interpolate_quadratic(double *f, double *fxx, double *fyy, double x, double y);
 };
 
 #endif // CUBE2_MLS_H

@@ -1,5 +1,5 @@
-#ifndef CUBE2_REFINED_MLS_H
-#define CUBE2_REFINED_MLS_H
+#ifndef CUBE3_REFINED_MLS_H
+#define CUBE3_REFINED_MLS_H
 
 #include "cube3_mls.h"
 #include "vector"
@@ -208,4 +208,4 @@ public:
   double measure_in_dir (int n0) {return integrate_in_dir(1.,n0);}
 };
 
-#endif // CUBE2_REFINED_MLS_H
+#endif // CUBE3_REFINED_MLS_H

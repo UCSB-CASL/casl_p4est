@@ -5,15 +5,16 @@
 #include <p8est.h>
 #include <p8est_nodes.h>
 //#include <p8est_ghost.h>
-#include "cube3_mls.h"
-#include "cube3_refined_mls.h"
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
 //#include <p4est_ghost.h>
+#endif
+
+#include "cube3_mls.h"
+#include "cube3_refined_mls.h"
 #include "cube2_mls.h"
 #include "cube2_refined_mls.h"
-#endif
 
 #include <src/petsc_logging.h>
 #include <src/petsc_compatibility.h>

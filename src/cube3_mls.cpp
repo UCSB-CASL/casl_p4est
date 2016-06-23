@@ -106,38 +106,12 @@ void cube3_mls_t::construct_domain()
       {
         int n_vtxs = simplex[k].vtxs.size();
 
-        // fetch main nodes
-        switch (k) {
-        case 0: simplex[k].vtxs[0].value = phi->at(i_phi)[t0p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t0p1];
-                simplex[k].vtxs[2].value = phi->at(i_phi)[t0p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t0p3];
-          break;
-        case 1: simplex[k].vtxs[0].value = phi->at(i_phi)[t1p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t1p1];
-                simplex[k].vtxs[2].value = phi->at(i_phi)[t1p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t1p3];
-          break;
-        case 2: simplex[k].vtxs[0].value = phi->at(i_phi)[t2p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t2p1];
-                simplex[k].vtxs[2].value = phi->at(i_phi)[t2p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t2p3];
-          break;
-        case 3: simplex[k].vtxs[0].value = phi->at(i_phi)[t3p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t3p1];
-                simplex[k].vtxs[2].value = phi->at(i_phi)[t3p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t3p3];
-          break;
-        case 4: simplex[k].vtxs[0].value = phi->at(i_phi)[t4p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t4p1];
-                simplex[k].vtxs[2].value = phi->at(i_phi)[t4p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t4p3];
-          break;
-#ifdef CUBE3_MLS_KUHN
-        case 5: simplex[k].vtxs[0].value = phi->at(i_phi)[t5p0]; simplex[k].vtxs[1].value = phi->at(i_phi)[t5p1];
-                simplex[k].vtxs[2].value = phi->at(i_phi)[t5p2]; simplex[k].vtxs[3].value = phi->at(i_phi)[t5p3];
-          break;
-#endif
-        }
-
-        // interpolate to the rest of vertices
         if (use_linear)
         {
-//          simplex[k].use_linear = false;
           //vertices
-          for (int i_vtx = 4; i_vtx < n_vtxs; i_vtx++)
-            simplex[k].vtxs[i_vtx].value = interpolate_linear(phi->at(i_phi).data(),
-                                                              simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
+          for (int i_vtx = 0; i_vtx < n_vtxs; i_vtx++)
+            simplex[k].vtxs[i_vtx].value = interp.linear(phi->at(i_phi).data(),
+                                                         simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
 
           // edges
           double xyz[3] = {0.,0.,0.};
@@ -145,29 +119,29 @@ void cube3_mls_t::construct_domain()
             if (!simplex[k].edgs[i_edg].is_split)
             {
               simplex[k].get_edge_coords(i_edg,xyz);
-              simplex[k].edgs[i_edg].value = interpolate_linear(phi->at(i_phi).data(), xyz[0], xyz[1], xyz[2]);
+              simplex[k].edgs[i_edg].value = interp.linear(phi->at(i_phi).data(), xyz[0], xyz[1], xyz[2]);
             }
         } else {
           //vertices
-          for (int i_vtx = 4; i_vtx < n_vtxs; i_vtx++)
-            simplex[k].vtxs[i_vtx].value = interpolate_quadratic(phi->at(i_phi).data(),
-                                                                 phi_xx->at(i_phi).data(),
-                                                                 phi_yy->at(i_phi).data(),
-                                                                 phi_zz->at(i_phi).data(),
-                                                                 simplex[k].vtxs[i_vtx].x,
-                                                                 simplex[k].vtxs[i_vtx].y,
-                                                                 simplex[k].vtxs[i_vtx].z);
+          for (int i_vtx = 0; i_vtx < n_vtxs; i_vtx++)
+            simplex[k].vtxs[i_vtx].value = interp.quadratic(phi->at(i_phi).data(),
+                                                            phi_xx->at(i_phi).data(),
+                                                            phi_yy->at(i_phi).data(),
+                                                            phi_zz->at(i_phi).data(),
+                                                            simplex[k].vtxs[i_vtx].x,
+                                                            simplex[k].vtxs[i_vtx].y,
+                                                            simplex[k].vtxs[i_vtx].z);
           // edges
           double xyz[3] = {0.,0.,0.};
           for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
             if (!simplex[k].edgs[i_edg].is_split)
             {
               simplex[k].get_edge_coords(i_edg,xyz);
-              simplex[k].edgs[i_edg].value = interpolate_quadratic(phi->at(i_phi).data(),
-                                                                   phi_xx->at(i_phi).data(),
-                                                                   phi_yy->at(i_phi).data(),
-                                                                   phi_zz->at(i_phi).data(),
-                                                                   xyz[0], xyz[1], xyz[2]);
+              simplex[k].edgs[i_edg].value = interp.quadratic(phi->at(i_phi).data(),
+                                                              phi_xx->at(i_phi).data(),
+                                                              phi_yy->at(i_phi).data(),
+                                                              phi_zz->at(i_phi).data(),
+                                                              xyz[0], xyz[1], xyz[2]);
             }
 
         }
@@ -177,25 +151,35 @@ void cube3_mls_t::construct_domain()
   }
 }
 
-double cube3_mls_t::integrate_over_domain(double* f)
+double cube3_mls_t::integrate_over_domain(double* F)
 {
   switch (loc){
-  case INS: return (x1-x0)*(y1-y0)*(z1-z0)*(f[0]+f[1]+f[2]+f[3]+f[4]+f[5]+f[6]+f[7])/8.0;   break;
+  case INS:
+  {
+    double f[8]; interpolate_to_cube(F, f);
+      return (x1-x0)*(y1-y0)*(z1-z0)*(f[0]+f[1]+f[2]+f[3]+f[4]+f[5]+f[6]+f[7])/8.0;
+  } break;
   case OUT: return 0.0;                                                                     break;
-  case FCE: return simplex[0].integrate_over_domain(f[t0p0], f[t0p1], f[t0p2], f[t0p3])
-                 + simplex[1].integrate_over_domain(f[t1p0], f[t1p1], f[t1p2], f[t1p3])
-                 + simplex[2].integrate_over_domain(f[t2p0], f[t2p1], f[t2p2], f[t2p3])
-                 + simplex[3].integrate_over_domain(f[t3p0], f[t3p1], f[t3p2], f[t3p3])
-          #ifdef CUBE3_MLS_KUHN
-                 + simplex[5].integrate_over_domain(f[t5p0], f[t5p1], f[t5p2], f[t5p3])
-          #endif
-                 + simplex[4].integrate_over_domain(f[t4p0], f[t4p1], f[t4p2], f[t4p3]);    break;
+  case FCE:
+  {
+    double f[8]; interpolate_to_cube(F, f);
+    return simplex[0].integrate_over_domain(f[t0p0], f[t0p1], f[t0p2], f[t0p3])
+        +  simplex[1].integrate_over_domain(f[t1p0], f[t1p1], f[t1p2], f[t1p3])
+        +  simplex[2].integrate_over_domain(f[t2p0], f[t2p1], f[t2p2], f[t2p3])
+        +  simplex[3].integrate_over_domain(f[t3p0], f[t3p1], f[t3p2], f[t3p3])
+    #ifdef CUBE3_MLS_KUHN
+        +  simplex[5].integrate_over_domain(f[t5p0], f[t5p1], f[t5p2], f[t5p3])
+    #endif
+        +  simplex[4].integrate_over_domain(f[t4p0], f[t4p1], f[t4p2], f[t4p3]);
+  } break;
   }
 }
 
-double cube3_mls_t::integrate_over_interface(double *f, int num)
+double cube3_mls_t::integrate_over_interface(double *F, int num)
 {
   if (loc == FCE)
+  {
+    double f[8]; interpolate_to_cube(F, f);
     return simplex[0].integrate_over_interface(f[t0p0], f[t0p1], f[t0p2], f[t0p3], num) +
            simplex[1].integrate_over_interface(f[t1p0], f[t1p1], f[t1p2], f[t1p3], num) +
            simplex[2].integrate_over_interface(f[t2p0], f[t2p1], f[t2p2], f[t2p3], num) +
@@ -204,13 +188,16 @@ double cube3_mls_t::integrate_over_interface(double *f, int num)
            simplex[5].integrate_over_interface(f[t5p0], f[t5p1], f[t5p2], f[t5p3], num) +
 #endif
            simplex[4].integrate_over_interface(f[t4p0], f[t4p1], f[t4p2], f[t4p3], num);
+  }
   else
     return 0.0;
 }
 
-double cube3_mls_t::integrate_over_colored_interface(double *f, int num0, int num1)
+double cube3_mls_t::integrate_over_colored_interface(double *F, int num0, int num1)
 {
   if (loc == FCE)
+  {
+    double f[8]; interpolate_to_cube(F, f);
     return simplex[0].integrate_over_colored_interface(f[t0p0], f[t0p1], f[t0p2], f[t0p3], num0, num1) +
            simplex[1].integrate_over_colored_interface(f[t1p0], f[t1p1], f[t1p2], f[t1p3], num0, num1) +
            simplex[2].integrate_over_colored_interface(f[t2p0], f[t2p1], f[t2p2], f[t2p3], num0, num1) +
@@ -219,13 +206,16 @@ double cube3_mls_t::integrate_over_colored_interface(double *f, int num0, int nu
            simplex[5].integrate_over_colored_interface(f[t5p0], f[t5p1], f[t5p2], f[t5p3], num0, num1) +
 #endif
            simplex[4].integrate_over_colored_interface(f[t4p0], f[t4p1], f[t4p2], f[t4p3], num0, num1);
+  }
   else
     return 0.0;
 }
 
-double cube3_mls_t::integrate_over_intersection(double *f, int num0, int num1)
+double cube3_mls_t::integrate_over_intersection(double *F, int num0, int num1)
 {
   if (loc == FCE && num_non_trivial > 1)
+  {
+    double f[8]; interpolate_to_cube(F, f);
     return simplex[0].integrate_over_intersection(f[t0p0], f[t0p1], f[t0p2], f[t0p3], num0, num1) +
            simplex[1].integrate_over_intersection(f[t1p0], f[t1p1], f[t1p2], f[t1p3], num0, num1) +
            simplex[2].integrate_over_intersection(f[t2p0], f[t2p1], f[t2p2], f[t2p3], num0, num1) +
@@ -234,13 +224,16 @@ double cube3_mls_t::integrate_over_intersection(double *f, int num0, int num1)
            simplex[5].integrate_over_intersection(f[t5p0], f[t5p1], f[t5p2], f[t5p3], num0, num1) +
 #endif
            simplex[4].integrate_over_intersection(f[t4p0], f[t4p1], f[t4p2], f[t4p3], num0, num1);
+  }
   else
     return 0.0;
 }
 
-double cube3_mls_t::integrate_over_intersection(double *f, int num0, int num1, int num2)
+double cube3_mls_t::integrate_over_intersection(double *F, int num0, int num1, int num2)
 {
   if (loc == FCE && num_non_trivial > 2)
+  {
+    double f[8]; interpolate_to_cube(F, f);
     return simplex[0].integrate_over_intersection(f[t0p0], f[t0p1], f[t0p2], f[t0p3], num0, num1, num2) +
            simplex[1].integrate_over_intersection(f[t1p0], f[t1p1], f[t1p2], f[t1p3], num0, num1, num2) +
            simplex[2].integrate_over_intersection(f[t2p0], f[t2p1], f[t2p2], f[t2p3], num0, num1, num2) +
@@ -249,15 +242,18 @@ double cube3_mls_t::integrate_over_intersection(double *f, int num0, int num1, i
            simplex[5].integrate_over_intersection(f[t5p0], f[t5p1], f[t5p2], f[t5p3], num0, num1, num2) +
 #endif
            simplex[4].integrate_over_intersection(f[t4p0], f[t4p1], f[t4p2], f[t4p3], num0, num1, num2);
+  }
   else
     return 0.0;
 }
 
-double cube3_mls_t::integrate_in_dir(double *f, int dir)
+double cube3_mls_t::integrate_in_dir(double *F, int dir)
 {
   switch (loc){
   case OUT: return 0;
   case INS:
+  {
+    double f[8]; interpolate_to_cube(F, f);
     switch (dir) {
     case 0: return (y1-y0)*(z1-z0)*0.25*(f[0]+f[2]+f[4]+f[6]);
     case 1: return (y1-y0)*(z1-z0)*0.25*(f[1]+f[3]+f[5]+f[7]);
@@ -266,150 +262,166 @@ double cube3_mls_t::integrate_in_dir(double *f, int dir)
     case 4: return (x1-x0)*(y1-y0)*0.25*(f[0]+f[1]+f[2]+f[3]);
     case 5: return (x1-x0)*(y1-y0)*0.25*(f[4]+f[5]+f[6]+f[7]);
     }
+  }
   case FCE:
-  return simplex[0].integrate_in_dir(f[t0p0], f[t0p1], f[t0p2], f[t0p3], dir) +
-         simplex[1].integrate_in_dir(f[t1p0], f[t1p1], f[t1p2], f[t1p3], dir) +
-         simplex[2].integrate_in_dir(f[t2p0], f[t2p1], f[t2p2], f[t2p3], dir) +
-         simplex[3].integrate_in_dir(f[t3p0], f[t3p1], f[t3p2], f[t3p3], dir) +
+  {
+    double f[8]; interpolate_to_cube(F, f);
+    return simplex[0].integrate_in_dir(f[t0p0], f[t0p1], f[t0p2], f[t0p3], dir) +
+           simplex[1].integrate_in_dir(f[t1p0], f[t1p1], f[t1p2], f[t1p3], dir) +
+           simplex[2].integrate_in_dir(f[t2p0], f[t2p1], f[t2p2], f[t2p3], dir) +
+           simplex[3].integrate_in_dir(f[t3p0], f[t3p1], f[t3p2], f[t3p3], dir) +
 #ifdef CUBE3_MLS_KUHN
-         simplex[5].integrate_in_dir(f[t5p0], f[t5p1], f[t5p2], f[t5p3], dir) +
+           simplex[5].integrate_in_dir(f[t5p0], f[t5p1], f[t5p2], f[t5p3], dir) +
 #endif
-         simplex[4].integrate_in_dir(f[t4p0], f[t4p1], f[t4p2], f[t4p3], dir);
+           simplex[4].integrate_in_dir(f[t4p0], f[t4p1], f[t4p2], f[t4p3], dir);
+  }
   }
 }
 
-double cube3_mls_t::interpolate_linear(double *f, double x, double y, double z)
+double cube3_mls_t::interpolate_to_cube(double *in, double *out)
 {
-  double eps = 1.e-12;
-
-  // calculate relative distances to edges
-  double d_m00 = (x-x0)/(x1-x0);
-  if (d_m00 < 0.) d_m00 = 0.;
-  if (d_m00 > 1.) d_m00 = 1.;
-  double d_p00 = 1.-d_m00;
-
-  double d_0m0 = (y-y0)/(y1-y0);
-  if (d_0m0 < 0.) d_0m0 = 0.;
-  if (d_0m0 > 1.) d_0m0 = 1.;
-  double d_0p0 = 1.-d_0m0;
-
-  double d_00m = (z-z0)/(z1-z0);
-  if (d_00m < 0.) d_00m = 0.;
-  if (d_00m > 1.) d_00m = 1.;
-  double d_00p = 1.-d_00m;
-
-  // check if a point is a corner point
-  if (d_m00 < eps && d_0m0 < eps && d_00m < eps) return f[0];
-  if (d_p00 < eps && d_0m0 < eps && d_00m < eps) return f[1];
-  if (d_m00 < eps && d_0p0 < eps && d_00m < eps) return f[2];
-  if (d_p00 < eps && d_0p0 < eps && d_00m < eps) return f[3];
-  if (d_m00 < eps && d_0m0 < eps && d_00p < eps) return f[4];
-  if (d_p00 < eps && d_0m0 < eps && d_00p < eps) return f[5];
-  if (d_m00 < eps && d_0p0 < eps && d_00p < eps) return f[6];
-  if (d_p00 < eps && d_0p0 < eps && d_00p < eps) return f[7];
-
-  // do trilinear interpolation
-  double w_mmm = d_p00*d_0p0*d_00p;
-  double w_pmm = d_m00*d_0p0*d_00p;
-  double w_mpm = d_p00*d_0m0*d_00p;
-  double w_ppm = d_m00*d_0m0*d_00p;
-  double w_mmp = d_p00*d_0p0*d_00m;
-  double w_pmp = d_m00*d_0p0*d_00m;
-  double w_mpp = d_p00*d_0m0*d_00m;
-  double w_ppp = d_m00*d_0m0*d_00m;
-
-  return
-      w_mmm*f[0] +
-      w_pmm*f[1] +
-      w_mpm*f[2] +
-      w_ppm*f[3] +
-      w_mmp*f[4] +
-      w_pmp*f[5] +
-      w_mpp*f[6] +
-      w_ppp*f[7];
+  out[0] = interp.linear(in, x0, y0, z0);
+  out[1] = interp.linear(in, x1, y0, z0);
+  out[2] = interp.linear(in, x0, y1, z0);
+  out[3] = interp.linear(in, x1, y1, z0);
+  out[4] = interp.linear(in, x0, y0, z1);
+  out[5] = interp.linear(in, x1, y0, z1);
+  out[6] = interp.linear(in, x0, y1, z1);
+  out[7] = interp.linear(in, x1, y1, z1);
 }
 
-double cube3_mls_t::interpolate_quadratic(double *f, double *fxx, double *fyy, double *fzz, double x, double y, double z)
-{
-  double eps = 1.e-12;
+//double cube3_mls_t::interpolate_linear(double *f, double x, double y, double z)
+//{
+//  double eps = 1.e-12;
 
-  // calculate relative distances to edges
-  double d_m00 = (x-x0)/(x1-x0);
-  if (d_m00 < 0.) d_m00 = 0.;
-  if (d_m00 > 1.) d_m00 = 1.;
-  double d_p00 = 1.-d_m00;
+//  // calculate relative distances to edges
+//  double d_m00 = (x-x0)/(x1-x0);
+//  if (d_m00 < 0.) d_m00 = 0.;
+//  if (d_m00 > 1.) d_m00 = 1.;
+//  double d_p00 = 1.-d_m00;
 
-  double d_0m0 = (y-y0)/(y1-y0);
-  if (d_0m0 < 0.) d_0m0 = 0.;
-  if (d_0m0 > 1.) d_0m0 = 1.;
-  double d_0p0 = 1.-d_0m0;
+//  double d_0m0 = (y-y0)/(y1-y0);
+//  if (d_0m0 < 0.) d_0m0 = 0.;
+//  if (d_0m0 > 1.) d_0m0 = 1.;
+//  double d_0p0 = 1.-d_0m0;
 
-  double d_00m = (z-z0)/(z1-z0);
-  if (d_00m < 0.) d_00m = 0.;
-  if (d_00m > 1.) d_00m = 1.;
-  double d_00p = 1.-d_00m;
+//  double d_00m = (z-z0)/(z1-z0);
+//  if (d_00m < 0.) d_00m = 0.;
+//  if (d_00m > 1.) d_00m = 1.;
+//  double d_00p = 1.-d_00m;
 
-  // check if a point is a corner point
-  if (d_m00 < eps && d_0m0 < eps && d_00m < eps) return f[0];
-  if (d_p00 < eps && d_0m0 < eps && d_00m < eps) return f[1];
-  if (d_m00 < eps && d_0p0 < eps && d_00m < eps) return f[2];
-  if (d_p00 < eps && d_0p0 < eps && d_00m < eps) return f[3];
-  if (d_m00 < eps && d_0m0 < eps && d_00p < eps) return f[4];
-  if (d_p00 < eps && d_0m0 < eps && d_00p < eps) return f[5];
-  if (d_m00 < eps && d_0p0 < eps && d_00p < eps) return f[6];
-  if (d_p00 < eps && d_0p0 < eps && d_00p < eps) return f[7];
+//  // check if a point is a corner point
+//  if (d_m00 < eps && d_0m0 < eps && d_00m < eps) return f[0];
+//  if (d_p00 < eps && d_0m0 < eps && d_00m < eps) return f[1];
+//  if (d_m00 < eps && d_0p0 < eps && d_00m < eps) return f[2];
+//  if (d_p00 < eps && d_0p0 < eps && d_00m < eps) return f[3];
+//  if (d_m00 < eps && d_0m0 < eps && d_00p < eps) return f[4];
+//  if (d_p00 < eps && d_0m0 < eps && d_00p < eps) return f[5];
+//  if (d_m00 < eps && d_0p0 < eps && d_00p < eps) return f[6];
+//  if (d_p00 < eps && d_0p0 < eps && d_00p < eps) return f[7];
 
-  // do trilinear interpolation
-  double w_mmm = d_p00*d_0p0*d_00p;
-  double w_pmm = d_m00*d_0p0*d_00p;
-  double w_mpm = d_p00*d_0m0*d_00p;
-  double w_ppm = d_m00*d_0m0*d_00p;
-  double w_mmp = d_p00*d_0p0*d_00m;
-  double w_pmp = d_m00*d_0p0*d_00m;
-  double w_mpp = d_p00*d_0m0*d_00m;
-  double w_ppp = d_m00*d_0m0*d_00m;
+//  // do trilinear interpolation
+//  double w_mmm = d_p00*d_0p0*d_00p;
+//  double w_pmm = d_m00*d_0p0*d_00p;
+//  double w_mpm = d_p00*d_0m0*d_00p;
+//  double w_ppm = d_m00*d_0m0*d_00p;
+//  double w_mmp = d_p00*d_0p0*d_00m;
+//  double w_pmp = d_m00*d_0p0*d_00m;
+//  double w_mpp = d_p00*d_0m0*d_00m;
+//  double w_ppp = d_m00*d_0m0*d_00m;
 
-  double F =
-      w_mmm*f[0] +
-      w_pmm*f[1] +
-      w_mpm*f[2] +
-      w_ppm*f[3] +
-      w_mmp*f[4] +
-      w_pmp*f[5] +
-      w_mpp*f[6] +
-      w_ppp*f[7];
+//  return
+//      w_mmm*f[0] +
+//      w_pmm*f[1] +
+//      w_mpm*f[2] +
+//      w_ppm*f[3] +
+//      w_mmp*f[4] +
+//      w_pmp*f[5] +
+//      w_mpp*f[6] +
+//      w_ppp*f[7];
+//}
 
-  double Fxx =
-      w_mmm*fxx[0] +
-      w_pmm*fxx[1] +
-      w_mpm*fxx[2] +
-      w_ppm*fxx[3] +
-      w_mmp*fxx[4] +
-      w_pmp*fxx[5] +
-      w_mpp*fxx[6] +
-      w_ppp*fxx[7];
+//double cube3_mls_t::interpolate_quadratic(double *f, double *fxx, double *fyy, double *fzz, double x, double y, double z)
+//{
+//  double eps = 1.e-12;
 
-  double Fyy =
-      w_mmm*fyy[0] +
-      w_pmm*fyy[1] +
-      w_mpm*fyy[2] +
-      w_ppm*fyy[3] +
-      w_mmp*fyy[4] +
-      w_pmp*fyy[5] +
-      w_mpp*fyy[6] +
-      w_ppp*fyy[7];
+//  // calculate relative distances to edges
+//  double d_m00 = (x-x0)/(x1-x0);
+//  if (d_m00 < 0.) d_m00 = 0.;
+//  if (d_m00 > 1.) d_m00 = 1.;
+//  double d_p00 = 1.-d_m00;
 
-  double Fzz =
-      w_mmm*fzz[0] +
-      w_pmm*fzz[1] +
-      w_mpm*fzz[2] +
-      w_ppm*fzz[3] +
-      w_mmp*fzz[4] +
-      w_pmp*fzz[5] +
-      w_mpp*fzz[6] +
-      w_ppp*fzz[7];
+//  double d_0m0 = (y-y0)/(y1-y0);
+//  if (d_0m0 < 0.) d_0m0 = 0.;
+//  if (d_0m0 > 1.) d_0m0 = 1.;
+//  double d_0p0 = 1.-d_0m0;
 
-  F -= 0.5*((x1-x0)*(x1-x0)*d_p00*d_m00*Fxx + (y1-y0)*(y1-y0)*d_0p0*d_0m0*Fyy + (z1-z0)*(z1-z0)*d_00p*d_00m*Fzz);
+//  double d_00m = (z-z0)/(z1-z0);
+//  if (d_00m < 0.) d_00m = 0.;
+//  if (d_00m > 1.) d_00m = 1.;
+//  double d_00p = 1.-d_00m;
 
-  return F;
-}
+//  // check if a point is a corner point
+//  if (d_m00 < eps && d_0m0 < eps && d_00m < eps) return f[0];
+//  if (d_p00 < eps && d_0m0 < eps && d_00m < eps) return f[1];
+//  if (d_m00 < eps && d_0p0 < eps && d_00m < eps) return f[2];
+//  if (d_p00 < eps && d_0p0 < eps && d_00m < eps) return f[3];
+//  if (d_m00 < eps && d_0m0 < eps && d_00p < eps) return f[4];
+//  if (d_p00 < eps && d_0m0 < eps && d_00p < eps) return f[5];
+//  if (d_m00 < eps && d_0p0 < eps && d_00p < eps) return f[6];
+//  if (d_p00 < eps && d_0p0 < eps && d_00p < eps) return f[7];
+
+//  // do trilinear interpolation
+//  double w_mmm = d_p00*d_0p0*d_00p;
+//  double w_pmm = d_m00*d_0p0*d_00p;
+//  double w_mpm = d_p00*d_0m0*d_00p;
+//  double w_ppm = d_m00*d_0m0*d_00p;
+//  double w_mmp = d_p00*d_0p0*d_00m;
+//  double w_pmp = d_m00*d_0p0*d_00m;
+//  double w_mpp = d_p00*d_0m0*d_00m;
+//  double w_ppp = d_m00*d_0m0*d_00m;
+
+//  double F =
+//      w_mmm*f[0] +
+//      w_pmm*f[1] +
+//      w_mpm*f[2] +
+//      w_ppm*f[3] +
+//      w_mmp*f[4] +
+//      w_pmp*f[5] +
+//      w_mpp*f[6] +
+//      w_ppp*f[7];
+
+//  double Fxx =
+//      w_mmm*fxx[0] +
+//      w_pmm*fxx[1] +
+//      w_mpm*fxx[2] +
+//      w_ppm*fxx[3] +
+//      w_mmp*fxx[4] +
+//      w_pmp*fxx[5] +
+//      w_mpp*fxx[6] +
+//      w_ppp*fxx[7];
+
+//  double Fyy =
+//      w_mmm*fyy[0] +
+//      w_pmm*fyy[1] +
+//      w_mpm*fyy[2] +
+//      w_ppm*fyy[3] +
+//      w_mmp*fyy[4] +
+//      w_pmp*fyy[5] +
+//      w_mpp*fyy[6] +
+//      w_ppp*fyy[7];
+
+//  double Fzz =
+//      w_mmm*fzz[0] +
+//      w_pmm*fzz[1] +
+//      w_mpm*fzz[2] +
+//      w_ppm*fzz[3] +
+//      w_mmp*fzz[4] +
+//      w_pmp*fzz[5] +
+//      w_mpp*fzz[6] +
+//      w_ppp*fzz[7];
+
+//  F -= 0.5*((x1-x0)*(x1-x0)*d_p00*d_m00*Fxx + (y1-y0)*(y1-y0)*d_0p0*d_0m0*Fyy + (z1-z0)*(z1-z0)*d_00p*d_00m*Fzz);
+
+//  return F;
+//}
