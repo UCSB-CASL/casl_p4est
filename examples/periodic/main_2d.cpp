@@ -33,7 +33,7 @@ using namespace std;
 static p4est_bool_t
 refine_periodic_test (p4est_t*, p4est_topidx_t, p4est_quadrant_t *quad) {
   p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
-  return quad->x + qh == P4EST_ROOT_LEN && quad->level < 0;
+  return quad->x + qh == P4EST_ROOT_LEN && quad->level < 3;
 }
 
 int main(int argc, char** argv) {
@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
   my_p4est_brick_t      brick;
 
   // domain size information
-  const int n_xyz[]      = { 4,  4,  2};
+  const int n_xyz[]      = { 1,  1,  1};
   const double xyz_min[] = { 0,  0,  0};
   const double xyz_max[] = { 1,  1,  1};
   const int periodic[]   = { 1,  1,  1};
@@ -80,15 +80,19 @@ int main(int argc, char** argv) {
 #endif
 
   // save the grid into vtk
-  my_p4est_vtk_write_all(p4est, nodes, ghost,
-                         P4EST_FALSE, P4EST_FALSE,
+  my_p4est_vtk_write_all(p4est, nodes, NULL,
+                         P4EST_TRUE, P4EST_TRUE,
                          0, 0, "periodic.1");
+
+  std::cout << mpi.rank() << ": After " << std::endl;
 
   // destroy the structures
   p4est_nodes_destroy(nodes);
   p4est_ghost_destroy(ghost);
   p4est_destroy      (p4est);
   my_p4est_brick_destroy(conn, &brick);
+
+  std::cout << mpi.rank() << ": After2 " << std::endl;
 
   w.stop(); w.read_duration();
 }
