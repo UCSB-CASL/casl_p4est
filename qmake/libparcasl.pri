@@ -48,7 +48,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_log_wrappers.c \
   $$PARCASL/src/my_p4est_nodes.c \
   $$PARCASL/src/my_p4est_tools.c \
-  $$PARCASL/src/my_p4est_vtk.c \
+  $$PARCASL/src/my_p4est_vtk.cpp \
   $$PARCASL/src/math.cpp \
   $$PARCASL/src/Parser.cpp \
   $$PARCASL/src/cube2.cpp \
@@ -90,7 +90,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_log_wrappers.c \
   $$PARCASL/src/my_p8est_nodes.c \
   $$PARCASL/src/my_p8est_tools.c \
-  $$PARCASL/src/my_p8est_vtk.c \
+  $$PARCASL/src/my_p8est_vtk.cpp \
   $$PARCASL/src/math.cpp \
   $$PARCASL/src/Parser.cpp \
   $$PARCASL/src/cube2.cpp \
