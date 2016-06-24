@@ -872,7 +872,8 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, p4est_gh
   P4EST_ASSERT(nodes != NULL);
   P4EST_ASSERT(ghost != NULL);
 
-  p4est_locidx_t NCells   = p4est->local_num_quadrants + ghost->ghosts.elem_count;
+  p4est_locidx_t NCells = p4est->local_num_quadrants;
+  if (ghost != NULL) NCells += ghost->ghosts.elem_count;
   p4est_locidx_t Ncorners = P4EST_CHILDREN*NCells;
   p4est_locidx_t Ntotal   = nodes->indep_nodes.elem_count;
 
