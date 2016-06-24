@@ -189,7 +189,7 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *gh
 
   /* now write the actual data */
 
-  retval = my_p4est_vtk_write_point_scalar (p4est, nodes, filename,
+  retval = my_p4est_vtk_write_point_scalar (p4est, nodes, ghost, filename,
                                             num_point_scalars, point_scalars, point_names, point_values);
   SC_CHECK_ABORT (!retval,
                   P4EST_STRING "_vtk: Error writing point scalars");
@@ -251,6 +251,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   p4est_tree_t       *tree;
   p4est_quadrant_t   *quad;
   p4est_indep_t      *in;
+  p4est_locidx_t     *local_nodes;
   char                vtufilename[BUFSIZ];
   char                foldername[BUFSIZ];
   FILE               *vtufile;
@@ -261,11 +262,13 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   P4EST_ASSERT (v != NULL && tree_to_vertex != NULL);
 
   if (nodes != NULL){
-    indeps = &nodes->indep_nodes;
-    Ntotal = indeps->elem_count;
+    indeps      = &nodes->indep_nodes;
+    Ntotal      = indeps->elem_count;
+    local_nodes = nodes->local_nodes;
   } else {
-    indeps = NULL;
-    Ntotal = Ncorners;
+    indeps      = NULL;
+    Ntotal      = Ncorners;
+    local_nodes = NULL;
   }
 
   int periodic[] = {
@@ -279,11 +282,10 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   };
 
   int num_extra = 0;
-  p4est_locidx_t *local_nodes = P4EST_ALLOC(p4est_locidx_t, Ncorners);
-  memcpy(local_nodes, nodes->local_nodes, Ncorners*sizeof(p4est_locidx_t));
-
   if (nodes != NULL && (periodic[0] || periodic[1] || periodic[2])) {
-    std::cout << "here" << std::endl;
+    local_nodes = P4EST_ALLOC(p4est_locidx_t, Ncorners);
+    memcpy(local_nodes, nodes->local_nodes, Ncorners*sizeof(p4est_locidx_t));
+
     // check for local quadrants
     for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++) {
       // check if the tree is on the wall
@@ -805,6 +807,9 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   }
   vtufile = NULL;
 
+  // deallocate local_nodes
+  if (local_nodes != NULL && local_nodes != nodes->local_nodes) P4EST_FREE(local_nodes);
+
   /* Only have the root write to the parallel vtk file */
   if (mpirank == 0) {
     char                pvtufilename[BUFSIZ];
@@ -851,22 +856,156 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 }
 
 int
-my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes,
+my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
                                  const char *filename,
                                  const int num, const char* list_name, const char **scalar_names, const double **values)
 {
   const int           mpirank = p4est->mpirank;
   int                 retval;
   p4est_locidx_t      il;
+  p4est_locidx_t       *local_nodes, *node_extra_map;
 #ifndef P4EST_VTK_ASCII
   P4EST_VTK_FLOAT_TYPE *float_data;
 #endif
   char                vtufilename[BUFSIZ];
   FILE               *vtufile;
-
-  p4est_locidx_t Ntotal;
   P4EST_ASSERT(nodes != NULL);
-  Ntotal = nodes->indep_nodes.elem_count;
+  P4EST_ASSERT(ghost != NULL);
+
+  p4est_locidx_t NCells   = p4est->local_num_quadrants + ghost->ghosts.elem_count;
+  p4est_locidx_t Ncorners = P4EST_CHILDREN*NCells;
+  p4est_locidx_t Ntotal   = nodes->indep_nodes.elem_count;
+
+  Ntotal      = nodes->indep_nodes.elem_count;
+  local_nodes = nodes->local_nodes;
+
+  int periodic[] = {
+    is_periodic(p4est, 0),
+    is_periodic(p4est, 1),
+  #ifdef P4_TO_P8
+    is_periodic(p4est, 2)
+  #else
+    0
+  #endif
+  };
+
+  int num_extra = 0;
+  if (periodic[0] || periodic[1] || periodic[2]) {
+    local_nodes = P4EST_ALLOC(p4est_locidx_t, Ncorners);
+    memcpy(local_nodes, nodes->local_nodes, Ncorners*sizeof(p4est_locidx_t));
+
+    // check for local quadrants
+    for (p4est_topidx_t tr = p4est->first_local_tree; tr <= p4est->last_local_tree; tr++) {
+      // check if the tree is on the wall
+      int wall[] = {
+        is_tree_xpWall(p4est, tr),
+        is_tree_ypWall(p4est, tr),
+  #ifdef P4_TO_P8
+        is_tree_zpWall(p4est, tr)
+  #else
+        0
+  #endif
+      };
+
+      if (!(wall[0] || wall[1] || wall[2])) continue;
+
+      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+      for (size_t q = 0; q < tree->quadrants.elem_count; q++) {
+        p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+        p4est_locidx_t quad_idx = tree->quadrants_offset + q;
+        p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
+
+        // Find all cells that are on the wall
+        if ((quad->x + qh == P4EST_ROOT_LEN && wall[0]) ||
+            (quad->y + qh == P4EST_ROOT_LEN && wall[1])
+    #ifdef P4_TO_P8
+            ||
+            (quad->z + qh == P4EST_ROOT_LEN && wall[2])
+    #endif
+            ) {
+#ifdef P4_TO_P8
+          for (int zi = 0; zi < 2; zi++)
+#endif
+            for (int yi = 0; yi < 2; yi++)
+              for (int xi = 0; xi < 2; xi++) {
+#ifdef P4_TO_P8
+                p4est_locidx_t vertex_idx = quad_idx*P4EST_CHILDREN + 4*zi + 2*yi + xi;
+#else
+                p4est_locidx_t vertex_idx = quad_idx*P4EST_CHILDREN + 2*yi + xi;
+#endif
+                if ((quad->x + xi*qh == P4EST_ROOT_LEN && wall[0]) ||
+                    (quad->y + yi*qh == P4EST_ROOT_LEN && wall[1])
+    #ifdef P4_TO_P8
+                    ||
+                    (quad->z + zi*qh == P4EST_ROOT_LEN && wall[2])
+    #endif
+                    )
+                  local_nodes[vertex_idx] = nodes->indep_nodes.elem_count + num_extra++;
+              }
+        }
+      }
+    }
+
+    // check ghost quadrants
+    if (ghost != NULL) {
+      for (size_t q = 0; q < ghost->ghosts.elem_count; q++) {
+        p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+        p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
+        p4est_locidx_t quad_idx = nodes->num_local_quadrants + q;
+
+        p4est_topidx_t tr = quad->p.piggy3.which_tree;
+        int wall[] = {
+          is_tree_xpWall(p4est, tr),
+          is_tree_ypWall(p4est, tr),
+  #ifdef P4_TO_P8
+          is_tree_zpWall(p4est, tr)
+  #else
+          0
+  #endif
+        };
+
+        if (!(wall[0] || wall[1] || wall[2])) continue;
+
+        // Find all cells that are on the wall
+        if ((quad->x + qh == P4EST_ROOT_LEN && wall[0]) ||
+            (quad->y + qh == P4EST_ROOT_LEN && wall[1])
+    #ifdef P4_TO_P8
+            ||
+            (quad->z + qh == P4EST_ROOT_LEN && wall[2])
+    #endif
+            ) {
+#ifdef P4_TO_P8
+          for (int zi = 0; zi < 2; zi++)
+#endif
+            for (int yi = 0; yi < 2; yi++)
+              for (int xi = 0; xi < 2; xi++) {
+#ifdef P4_TO_P8
+                p4est_locidx_t vertex_idx = quad_idx*P4EST_CHILDREN + 4*zi + 2*yi + xi;
+#else
+                p4est_locidx_t vertex_idx = quad_idx*P4EST_CHILDREN + 2*yi + xi;
+#endif
+                if ((quad->x + xi*qh == P4EST_ROOT_LEN && wall[0]) ||
+                    (quad->y + yi*qh == P4EST_ROOT_LEN && wall[1])
+    #ifdef P4_TO_P8
+                    ||
+                    (quad->z + zi*qh == P4EST_ROOT_LEN && wall[2])
+    #endif
+                    )
+                  local_nodes[vertex_idx] = nodes->indep_nodes.elem_count + num_extra++;
+              }
+        }
+      }
+    }
+    Ntotal += num_extra;
+  }
+
+  // create a mapping between new set of points (old+extra) and old
+  node_extra_map = P4EST_ALLOC(p4est_locidx_t, num_extra);
+  for (p4est_locidx_t i = 0; i<Ncorners; i++) {
+    if (local_nodes[i] >= (p4est_locidx_t) nodes->indep_nodes.elem_count) {
+      node_extra_map[local_nodes[i] - nodes->indep_nodes.elem_count] = nodes->local_nodes[i];
+    }
+  }
 
   /* Have each proc write to its own file */
   snprintf (vtufilename, BUFSIZ, "%s.vtu/%04d.vtu", filename, mpirank);
@@ -904,17 +1043,28 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes,
              P4EST_VTK_FLOAT_NAME, scalar_names[i], P4EST_VTK_FORMAT_STRING);
 
 #ifdef P4EST_VTK_ASCII
-    for (il = 0; il < Ntotal; ++il) {
+    for (il = 0; il < Ntotal - num_extra; ++il) {
 #ifdef P4EST_VTK_DOUBLES
       fprintf (vtufile, "     %24.16e\n", values[i][il]);
 #else
       fprintf (vtufile, "          %16.8e\n", values[i][il]);
 #endif
     }
+
+    for (il = 0; il < num_extra; ++il) {
+#ifdef P4EST_VTK_DOUBLES
+      fprintf (vtufile, "     %24.16e\n", values[i][node_extra_map[il]]);
+#else
+      fprintf (vtufile, "          %16.8e\n", values[i][node_extra_map[il]]);
+#endif
+    }
 #else
 
-    for (il = 0; il<(p4est_locidx_t)nodes->indep_nodes.elem_count; ++il)
+    // copy data
+    for (il = 0; il < Ntotal - num_extra; il++)
       float_data[il] = (P4EST_VTK_FLOAT_TYPE) values[i][il];
+    for (il = 0; il < num_extra; il++)
+      float_data[il+nodes->indep_nodes.elem_count] = (P4EST_VTK_FLOAT_TYPE) values[i][node_extra_map[il]];
 
     fprintf (vtufile, "          ");
     /* TODO: Don't allocate the full size of the array, only allocate
@@ -955,6 +1105,8 @@ my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes,
 #ifndef P4EST_VTK_ASCII
   P4EST_FREE (float_data);
 #endif
+  P4EST_FREE(node_extra_map);
+  if (local_nodes != nodes->local_nodes) P4EST_FREE(local_nodes);
 
   /* Only have the root write to the parallel vtk file */
   if (mpirank == 0) {
