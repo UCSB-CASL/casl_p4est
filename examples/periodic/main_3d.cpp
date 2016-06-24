@@ -1,2 +1,3 @@
 #include <src/my_p4est_to_p8est.h>
-#include "my_p4est_vtk.c"
+#include "main_2d.cpp"
+

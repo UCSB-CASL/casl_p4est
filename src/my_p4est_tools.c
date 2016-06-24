@@ -52,18 +52,18 @@ my_p4est_brick_new (const int* n_xyz,
   p4est_topidx_t      tt, vindex;
   p4est_connectivity_t *conn;
 
-#ifdef CASL_THROWS
-  if((periodic[0] && n_xyz[0]==1) ||
-     (periodic[1] && n_xyz[1]==1)
-   #ifdef P4_TO_P8
-     || (periodic[2] && n_xyz[2]==1)
-   #endif
-     )
-  {
-    fprintf(stderr, "[P4EST_ERROR]: You cannot use periodic boundaries with a macromesh of size 1.\n");
-    return NULL;
-  }
-#endif
+//#ifdef CASL_THROWS
+//  if((periodic[0] && n_xyz[0]==1) ||
+//     (periodic[1] && n_xyz[1]==1)
+//   #ifdef P4_TO_P8
+//     || (periodic[2] && n_xyz[2]==1)
+//   #endif
+//     )
+//  {
+//    fprintf(stderr, "[P4EST_ERROR]: You cannot use periodic boundaries with a macromesh of size 1.\n");
+//    return NULL;
+//  }
+//#endif
 
   P4EST_ASSERT (0 < n_xyz[0] && 0 < n_xyz[1]);
 #ifdef P4_TO_P8

@@ -29,8 +29,7 @@ cat > $1/$1.pro << EOF
 # Instead pass the variable in terminal or through project
 # settings in QtCreator IDE.
 # --------------------------------------------------------------
-include(../../qmake/libparcasl.pri)
-
+CONFIG += 2d
 include(../../qmake/libparcasl.pri)
 
 2d {
@@ -97,9 +96,10 @@ int main(int argc, char** argv) {
   my_p4est_brick_t      brick;
 
   // domain size information
-  const int n_xyz []      = {1, 1, 1};
-  const double xyz_min [] = {-1, -1, -1};
-  const double xyz_max [] = { 1,  1,  1};
+  const int n_xyz[]      = { 1,  1,  1};
+  const double xyz_min[] = {-1, -1, -1};
+  const double xyz_max[] = { 1,  1,  1};
+  const int periodic[]   = { 1,  1,  1};
   conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
 
   // create the forest
