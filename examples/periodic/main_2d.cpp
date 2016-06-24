@@ -31,10 +31,16 @@
 using namespace std;
 
 static p4est_bool_t
-refine_periodic_test (p4est_t*, p4est_topidx_t, p4est_quadrant_t *quad) {
+refine_periodic_wall (p4est_t*, p4est_topidx_t, p4est_quadrant_t *quad) {
   p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
   return quad->x + qh == P4EST_ROOT_LEN && quad->level < 5;
 }
+
+static p4est_bool_t
+refine_periodic_rand (p4est_t*, p4est_topidx_t, p4est_quadrant_t *quad) {
+  return rand()%P4EST_CHILDREN == 0 && quad->level < 5;
+}
+
 
 int main(int argc, char** argv) {
   
@@ -54,15 +60,17 @@ int main(int argc, char** argv) {
   my_p4est_brick_t      brick;
 
   // domain size information
-  const int n_xyz[]      = { 1,  1,  1};
+  const int n_xyz[]      = { 4,  4,  4};
   const double xyz_min[] = { 0,  0,  0};
   const double xyz_max[] = { 1,  1,  1};
-  const int periodic[]   = { 1,  0,  1};
+  const int periodic[]   = { 1,  1,  1};
   conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   // create the forest
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL); 
-  my_p4est_refine(p4est, P4EST_TRUE, refine_periodic_test, NULL);
+  for (int it = 0; it < 2; it++)
+    my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
+  my_p4est_refine(p4est, P4EST_TRUE, refine_periodic_rand, NULL);
 
   // partition the forest
   my_p4est_partition(p4est, P4EST_TRUE, NULL);
