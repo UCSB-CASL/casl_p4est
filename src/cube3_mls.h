@@ -130,11 +130,11 @@ public:
   double integrate_over_intersection      (double *F, int num0, int num1, int num2);
   double integrate_in_dir                 (double *F, int dir);
 
-  double measure_of_domain            ()                    {double f[8] = {1.,1.,1.,1.,1.,1.,1.,1.}; return integrate_over_domain(f);}
-  double measure_of_interface         (int num)             {double f[8] = {1.,1.,1.,1.,1.,1.,1.,1.}; return integrate_over_interface(f, num);}
-  double measure_of_intersection      (int num0, int num1)  {double f[8] = {1.,1.,1.,1.,1.,1.,1.,1.}; return integrate_over_intersection(f, num0, num1);}
-  double measure_of_colored_interface (int num0, int num1)  {double f[8] = {1.,1.,1.,1.,1.,1.,1.,1.}; return integrate_over_colored_interface(f, num0, num1);}
-  double measure_in_dir               (int dir)             {double f[8] = {1.,1.,1.,1.,1.,1.,1.,1.}; return integrate_in_dir(f, dir);}
+  double measure_of_domain            ();
+  double measure_of_interface         (int num);
+  double measure_of_intersection      (int num0, int num1);
+  double measure_of_colored_interface (int num0, int num1);
+  double measure_in_dir               (int dir);
 
   double interpolate_to_cube(double *in, double *out);
 

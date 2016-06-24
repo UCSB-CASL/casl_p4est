@@ -84,25 +84,6 @@ public:
       else if (vec_p != NULL) {return vec_p[n];}
       else                    {return val;}
     }
-
-    void sample_at_neighbors(int *neighbors, bool *neighbor_exists, double *output)
-    {
-      int q = 0;
-      for (int k = 0; k < N_NBRS_MAX; k++)
-        if (neighbor_exists[k])
-        {
-          output[q] = operator() (neighbors[k], x_nei[k], y_nei[k], z_nei[k]);
-          q++;
-        }
-    }
-
-    double interpolate(int nei_quad, double dxyz[])
-    {
-      if (vec == NULL) return val;
-      else
-      {
-      }
-    }
   };
 
   struct vec_quantity_t

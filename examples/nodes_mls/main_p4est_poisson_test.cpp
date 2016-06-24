@@ -83,9 +83,9 @@ int nz = 1;
 
 // GEOMETRY
 double r0 = 0.526713;
-double r1 = -0.6145134;
-double r2 = -0.4315416;
-double d = 0.2410;
+double r1 = -0.4145134;
+double r2 = -0.5315416;
+double d = 0.4410;
 
 double theta = 0.0826;
 #ifdef P4_TO_P8
@@ -279,7 +279,7 @@ public:
     case 1: return cos(x)*cos(y)*exp(z);
     }
   }
-}
+} ux;
 class UY: public CF_3
 {
 public:
@@ -290,7 +290,7 @@ public:
     case 1: return -sin(x)*sin(y)*exp(z);
     }
   }
-}
+} uy;
 class UZ: public CF_3
 {
 public:
@@ -301,7 +301,7 @@ public:
     case 1: return sin(x)*cos(y)*exp(z);
     }
   }
-}
+} uz;
 #else
 class UX: public CF_2
 {
@@ -718,6 +718,11 @@ int main (int argc, char* argv[])
     solver.bc_value.set(problem.bc_value);
     solver.bc_coeff.set(problem.bc_coeff);
     solver.compute_volumes();
+
+    double V;
+    VecSum(solver.node_vol, &V);
+
+    cout << fabs(V-4.0*PI*r0*r0*r0/3.0) << endl;
 
 //    Vec sol;
 //    ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
