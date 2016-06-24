@@ -75,6 +75,7 @@ void set_parameters(int argc, char **argv) {
   params.xmin[0] = params.xmin[1] = params.xmin[2] = -1;
   params.xmax[0] = params.xmax[1] = params.xmax[2] =  1;
   params.periodic[0] = params.periodic[1] = params.periodic[2] = 0;
+//  params.lmax = 3; params.lmax = 10;
 
   if (params.test == "circle") {
     // set interface
@@ -294,10 +295,12 @@ void set_parameters(int argc, char **argv) {
 
   } else if (params.test == "Flat") {
 
-    params.xmin[0] =  0; params.xmin[1] = params.xmin[2] = -1;
-    params.xmax[0] = 10; params.xmax[1] = params.xmax[2] =  1;
-    params.ntr[0]  = 10; params.ntr[1]  = params.ntr[2]  =  2;
-    params.periodic[0] = false; params.periodic[1] = params.periodic[2] = false; // periodic in y and z directions
+    params.xmin[0] =  0; params.xmin[1] = params.xmin[2] =  0;
+    params.xmax[0] = 1; params.xmax[1] = params.xmax[2] =  1;
+    params.ntr[0]  = 1; params.ntr[1]  = params.ntr[2]  =  1;
+    params.periodic[0] = false; params.periodic[1] = params.periodic[2] = true; // periodic in y and z directions
+    params.lmax = 2;
+    params.lmin = 2;
 #ifdef P4_TO_P8
     static struct:cf_t{
       double operator()(double, double, double) const { return 1.0/params.Ca; }
@@ -313,7 +316,7 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double, double) const  {
-        return x - 0.1;
+        return 0.1 - x;
       }
     } interface; interface.lip = params.lip;
 
@@ -360,7 +363,7 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double) const  {
-        return x - 0.1;
+        return 0.1-x;
       }
     } interface; interface.lip = params.lip;
 
@@ -371,7 +374,7 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double) const {
-        if (fabs(x - params.xmax[0]) < EPS)
+        if (fabs(x - params.xmax[0]) < EPS && fabs(x - params.xmin[0]) < EPS)
           return -(*params.Q)(t);
         else
           return 0;
@@ -385,10 +388,7 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double) const {
-        if (fabs(x - params.xmax[0]) < EPS)
-          return -(*params.Q)(t)*(params.xmax[0]-params.xmin[0]);
-        else
-          return 0;
+        return -(*params.Q)(t)*(x-params.xmin[0]);
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 1
@@ -413,15 +413,15 @@ void set_parameters(int argc, char **argv) {
     params.bc_wall_value = &bc_wall_value;
     params.dtmax         = 5e-3;
     params.dts           = 1e-1;
-    params.alpha         = 1;
+    params.alpha         = 0;
 
   } else {
     throw std::invalid_argument("Unknown test");
   }
 
   // overwrite default values from stdin
-  params.lmin   = cmd.get("lmin", 5);
-  params.lmax   = cmd.get("lmax", 10);
+  params.lmin   = cmd.get("lmin", params.lmin);
+  params.lmax   = cmd.get("lmax", params.lmax);
   params.iter   = cmd.get("iter", INT_MAX);
   params.lip    = cmd.get("lip", 1.2);
   params.Ca     = cmd.get("Ca", 250);
@@ -492,6 +492,8 @@ int main(int argc, char** argv) {
   mkdir(folder.c_str(), 0755);
   char vtk_name[FILENAME_MAX];
 
+  cout << (*params.bc_wall_value)(10, 0) << endl;
+  cout << (*params.bc_wall_type)(10, 0) << endl;
   double dt = 0, t = 0;
   for(int i=0; i<params.iter; i++) {
     dt = solver.solve_one_step(t, phi, pressure, potential, params.method, params.cfl, params.dtmax);
@@ -510,10 +512,11 @@ int main(int argc, char** argv) {
     sprintf(vtk_name, "%s/%s_%dd.%04d", folder.c_str(), params.method.c_str(), P4EST_DIM, i);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
-                           3, 0, vtk_name,
+//                           3, 0, vtk_name,
+                           2, 0, vtk_name,
                            VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "pressure", pressure_p,
-                           VTK_POINT_DATA, "potential", potential_p);
+//                           VTK_POINT_DATA, "potential", potential_p,
+                           VTK_POINT_DATA, "pressure", pressure_p);
     VecRestoreArray(phi, &phi_p);
     VecRestoreArray(pressure, &pressure_p);
     VecRestoreArray(potential, &potential_p);

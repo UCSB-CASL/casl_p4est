@@ -90,7 +90,8 @@ my_p4est_poisson_nodes_t::my_p4est_poisson_nodes_t(const my_p4est_node_neighbors
   splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
 
   // compute grid parameters
-  // NOTE: Assuming all trees are of the same size [0, 1]^d
+  // NOTE: Assuming all trees are of the same size. Must be generalized if different trees have
+  // different sizes
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
   double xmin = p4est->connectivity->vertices[3*vm + 0];
