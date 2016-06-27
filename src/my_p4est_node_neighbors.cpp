@@ -1190,6 +1190,10 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   p4est_qcoord_t y_perturb = node->y+j;
   p4est_qcoord_t z_perturb = node->z+k;
 
+  bool px = is_periodic(p4est, 0);
+  bool py = is_periodic(p4est, 1);
+  bool pz = is_periodic(p4est, 2);
+
   /* There are 26 special cases for a tree in 3D. These are:
    * 8  corners
    * 12 edges
@@ -1207,11 +1211,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1223,11 +1227,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1239,11 +1243,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = 1;
@@ -1255,11 +1259,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = 1;
@@ -1271,11 +1275,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1287,11 +1291,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1303,11 +1307,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = 1;
@@ -1319,11 +1323,11 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[3];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[2] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[1] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[2] == tmp_tree_idx[1]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = 1;
@@ -1341,9 +1345,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1354,9 +1358,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = P4EST_ROOT_LEN - 1;
@@ -1367,9 +1371,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = 1;
@@ -1380,9 +1384,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     y_perturb = 1;
@@ -1393,9 +1397,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     z_perturb = P4EST_ROOT_LEN - 1;
@@ -1406,9 +1410,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     z_perturb = P4EST_ROOT_LEN - 1;
@@ -1419,9 +1423,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
     z_perturb = 1;
@@ -1432,9 +1436,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
     z_perturb = 1;
@@ -1445,9 +1449,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = P4EST_ROOT_LEN - 1;
     z_perturb = P4EST_ROOT_LEN - 1;
@@ -1458,9 +1462,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00m]; // 00m
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = 1;
     z_perturb = P4EST_ROOT_LEN - 1;
@@ -1471,9 +1475,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = P4EST_ROOT_LEN - 1;
     z_perturb = 1;
@@ -1484,9 +1488,9 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[2];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = tmp_tree_idx[1] = connectivity->tree_to_tree[P4EST_FACES*tmp_tree_idx[0] + dir::f_00p]; // 00p
-    if(tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[1] == tmp_tree_idx[0]) { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = 1;
     z_perturb = 1;
@@ -1499,7 +1503,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_m00]; // m00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = P4EST_ROOT_LEN - 1;
   }
@@ -1509,7 +1513,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_p00]; // p00
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     x_perturb = 1;
   }
@@ -1519,7 +1523,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0m0]; // 0m0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = P4EST_ROOT_LEN - 1;
   }
@@ -1529,7 +1533,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_0p0]; // 0p0
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     y_perturb = 1;
   }
@@ -1539,7 +1543,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_00m]; // 00m
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     z_perturb = P4EST_ROOT_LEN - 1;
   }
@@ -1549,7 +1553,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   {
     p4est_topidx_t tmp_tree_idx[1];
     nb_tree_idx = tmp_tree_idx[0] = connectivity->tree_to_tree[P4EST_FACES*tree_idx        + dir::f_00p]; // 00p
-    if(tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!pz && tmp_tree_idx[0] == tree_idx)        { quad = NOT_A_VALID_QUADRANT; return; }
 
     z_perturb = 1;
   }
@@ -1583,40 +1587,43 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   p4est_qcoord_t x_perturb = node->x+i;
   p4est_qcoord_t y_perturb = node->y+j;
 
+  bool px = is_periodic(p4est, 0);
+  bool py = is_periodic(p4est, 1);
+
   /* first check the corners of the tree */
   if(node->x==0 && node->y==0 && i==-1 && j==-1)
   {
     p4est_topidx_t tmp_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 0];
-    if(tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tmp_tree_idx + 2];
-    if(nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = P4EST_ROOT_LEN - 1;
   }
   else if(node->x==P4EST_ROOT_LEN && node->y==0 && i== 1 && j==-1)
   {
     p4est_topidx_t tmp_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 1];
-    if(tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tmp_tree_idx + 2];
-    if(nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = 1;
     y_perturb = P4EST_ROOT_LEN - 1;
   }
   else if(node->x==0 && node->y==P4EST_ROOT_LEN && i==-1 && j== 1)
   {
     p4est_topidx_t tmp_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 0];
-    if(tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tmp_tree_idx + 3];
-    if(nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = P4EST_ROOT_LEN - 1;
     y_perturb = 1;
   }
   else if(node->x==P4EST_ROOT_LEN && node->y==P4EST_ROOT_LEN && i== 1 && j== 1)
   {
     p4est_topidx_t tmp_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 1];
-    if(tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && tmp_tree_idx == tree_idx)    { quad = NOT_A_VALID_QUADRANT; return; }
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tmp_tree_idx + 3];
-    if(nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && nb_tree_idx == tmp_tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = 1;
     y_perturb = 1;
   }
@@ -1625,25 +1632,25 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
   else if(node->x==0 && i==-1)
   {
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 0];
-    if(nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = P4EST_ROOT_LEN - 1;
   }
   else if(node->x==P4EST_ROOT_LEN && i==1)
   {
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 1];
-    if(nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!px && nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     x_perturb = 1;
   }
   else if(node->y==0 && j==-1)
   {
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 2];
-    if(nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     y_perturb = P4EST_ROOT_LEN - 1;
   }
   else if(node->y==P4EST_ROOT_LEN && j==1)
   {
     nb_tree_idx = connectivity->tree_to_tree[2*P4EST_DIM*tree_idx + 3];
-    if(nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
+    if(!py && nb_tree_idx == tree_idx) { quad = NOT_A_VALID_QUADRANT; return; }
     y_perturb = 1;
   }
 
