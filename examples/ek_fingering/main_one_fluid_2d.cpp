@@ -74,8 +74,8 @@ void set_parameters(int argc, char **argv) {
   params.ntr[0]  = params.ntr[1]  = params.ntr[2]  =  1;
   params.xmin[0] = params.xmin[1] = params.xmin[2] = -1;
   params.xmax[0] = params.xmax[1] = params.xmax[2] =  1;
-  params.periodic[0] = params.periodic[1] = params.periodic[2] = 0;
-//  params.lmax = 3; params.lmax = 10;
+  params.periodic[0] = params.periodic[1] = params.periodic[2] = false;
+  params.lmax = 3; params.lmax = 10;
 
   if (params.test == "circle") {
     // set interface
@@ -296,11 +296,11 @@ void set_parameters(int argc, char **argv) {
   } else if (params.test == "Flat") {
 
     params.xmin[0] =  0; params.xmin[1] = params.xmin[2] =  0;
-    params.xmax[0] = 1; params.xmax[1] = params.xmax[2] =  1;
-    params.ntr[0]  = 1; params.ntr[1]  = params.ntr[2]  =  1;
-    params.periodic[0] = false; params.periodic[1] = params.periodic[2] = true; // periodic in y and z directions
-    params.lmax = 2;
-    params.lmin = 2;
+    params.xmax[0] = 10; params.xmax[1] = params.xmax[2] =  1;
+    params.ntr[0]  = 10; params.ntr[1]  = params.ntr[2]  =  1;
+    // periodic in y and z directions
+    params.periodic[0] = false; params.periodic[1] = params.periodic[2] = true;
+    params.lmin = 2; params.lmax = 5;
 #ifdef P4_TO_P8
     static struct:cf_t{
       double operator()(double, double, double) const { return 1.0/params.Ca; }
@@ -367,7 +367,7 @@ void set_parameters(int argc, char **argv) {
       }
     } interface; interface.lip = params.lip;
 
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
@@ -381,7 +381,7 @@ void set_parameters(int argc, char **argv) {
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 0
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
     } bc_wall_type;
