@@ -31,6 +31,12 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   p4est_qcoord_t k_nb = quad->z + ( dir_z == -1 ? -size : ( dir_z == 1 ? size : 0) );
 #endif
 
+  bool px = is_periodic(p4est, 0);
+  bool py = is_periodic(p4est, 1);
+#ifdef P4_TO_P8
+  bool pz = is_periodic(p4est, 2);
+#endif
+
   /* check if quadrant is on a boundary */
 #ifdef P4_TO_P8
   if     (quad->x==0 && dir_x==-1 && quad->y==0 && dir_y==-1 && quad->z==0 && dir_z==-1)
@@ -128,36 +134,36 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   /* edges/corner directions */
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx    + dir::f_m00];
-    if(tmp_idx==tree_idx) return;
+    if(!px && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_0m0];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!py && nb_tree_idx==tmp_idx) return;
     i_nb = P4EST_ROOT_LEN - size;
     j_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y==0 && dir_y==-1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-    if(tmp_idx==tree_idx) return;
+    if(!px && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_0m0];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!py && nb_tree_idx==tmp_idx) return;
     i_nb = 0;
     j_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->x==0 && dir_x==-1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
-    if(tmp_idx==tree_idx) return;
+    if(!px && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_0p0];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!py && nb_tree_idx==tmp_idx) return;
     i_nb = P4EST_ROOT_LEN - size;
     j_nb = 0;
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-    if(tmp_idx==tree_idx) return;
+    if(!px && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_0p0];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!py && nb_tree_idx==tmp_idx) return;
     i_nb = 0;
     j_nb = 0;
   }
@@ -165,72 +171,72 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   else if(quad->x==0 && dir_x==-1 && quad->z==0 && dir_z==-1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
-    if(tmp_idx==tree_idx) return;
+    if(!px && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00m];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!pz && nb_tree_idx==tmp_idx) return;
     i_nb = P4EST_ROOT_LEN - size;
     k_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->z==0 && dir_z==-1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-    if(tmp_idx==tree_idx) return;
+    if(!px && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00m];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!pz && nb_tree_idx==tmp_idx) return;
     i_nb = 0;
     k_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->x==0 && dir_x==-1 && quad->z+size==P4EST_ROOT_LEN && dir_z==1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
-    if(tmp_idx==tree_idx) return;
+    if(!px && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00p];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!pz && nb_tree_idx==tmp_idx) return;
     i_nb = P4EST_ROOT_LEN - size;
     k_nb = 0;
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->z+size==P4EST_ROOT_LEN && dir_z==1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-    if(tmp_idx==tree_idx) return;
+    if(!px && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00p];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!pz && nb_tree_idx==tmp_idx) return;
     i_nb = 0;
     k_nb = 0;
   }
   else if(quad->y==0 && dir_y==-1 && quad->z==0 && dir_z==-1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
-    if(tmp_idx==tree_idx) return;
+    if(!py && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00m];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!pz && nb_tree_idx==tmp_idx) return;
     j_nb = P4EST_ROOT_LEN - size;
     k_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z==0 && dir_z==-1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
-    if(tmp_idx==tree_idx) return;
+    if(!py && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00m];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!pz && nb_tree_idx==tmp_idx) return;
     j_nb = 0;
     k_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->y==0 && dir_y==-1 && quad->z+size==P4EST_ROOT_LEN && dir_z==1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
-    if(tmp_idx==tree_idx) return;
+    if(!py && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00p];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!pz && nb_tree_idx==tmp_idx) return;
     j_nb = P4EST_ROOT_LEN - size;
     k_nb = 0;
   }
   else if(quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z+size==P4EST_ROOT_LEN && dir_z==1)
   {
     p4est_topidx_t tmp_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
-    if(tmp_idx==tree_idx) return;
+    if(!py && tmp_idx==tree_idx) return;
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tmp_idx + dir::f_00p];
-    if(nb_tree_idx==tmp_idx) return;
+    if(!pz && nb_tree_idx==tmp_idx) return;
     j_nb = 0;
     k_nb = 0;
   }
@@ -239,38 +245,38 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   else if(quad->x == 0 && dir_x == -1)
   {
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
-    if(nb_tree_idx == tree_idx) return;
+    if(!px && nb_tree_idx == tree_idx) return;
     i_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->x+size == P4EST_ROOT_LEN && dir_x == 1)
   {
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-    if(nb_tree_idx == tree_idx) return;
+    if(!px && nb_tree_idx == tree_idx) return;
     i_nb = 0;
   }
   else if(quad->y == 0 && dir_y == -1)
   {
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
-    if(nb_tree_idx == tree_idx) return;
+    if(!py && nb_tree_idx == tree_idx) return;
     j_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->y+size == P4EST_ROOT_LEN && dir_y == 1)
   {
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
-    if(nb_tree_idx == tree_idx) return;
+    if(!py && nb_tree_idx == tree_idx) return;
     j_nb = 0;
   }
 #ifdef P4_TO_P8
   else if(quad->z == 0 && dir_z == -1)
   {
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00m];
-    if(nb_tree_idx == tree_idx) return;
+    if(!pz && nb_tree_idx == tree_idx) return;
     k_nb = P4EST_ROOT_LEN - size;
   }
   else if(quad->z+size == P4EST_ROOT_LEN && dir_z == 1)
   {
     nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00p];
-    if(nb_tree_idx == tree_idx) return;
+    if(!pz && nb_tree_idx == tree_idx) return;
     k_nb = 0;
   }
 #endif
