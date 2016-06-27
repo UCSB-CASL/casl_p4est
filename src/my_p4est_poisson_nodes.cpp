@@ -361,10 +361,14 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
     set_phi(phi_);
   }
 
-  // a trick to avoid allocating zero RHS is to set it equal to solution. PETSc can handle this.
+  bool local_rhs = false;
   if (rhs_ == NULL)
   {
-    rhs_ = solution;
+    ierr = VecDuplicate(solution, &rhs_); CHKERRXX(ierr);
+    Vec rhs_local;
+    VecGhostGetLocalForm(rhs_, &rhs_local);
+    VecSet(rhs_local, 0);
+    VecGhostRestoreLocalForm(rhs_, &rhs_local);
   }
 
   // set ksp type
@@ -477,6 +481,10 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
   {
     ierr = VecDestroy(add_); CHKERRXX(ierr);
     add_ = NULL;
+  }
+  if(local_rhs)
+  {
+    ierr = VecDestroy(rhs_); CHKERRXX(ierr);
   }
   if(local_phi)
   {
