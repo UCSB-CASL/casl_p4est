@@ -157,6 +157,7 @@ void set_parameters(int argc, char **argv) {
 
     params.xmin[0] = params.xmin[1] = params.xmin[2] = -10;
     params.xmax[0] = params.xmax[1] = params.xmax[2] =  10;
+    params.method  = "semi_lagrangian";
 
 #ifdef P4_TO_P8
     static struct:cf_t{
@@ -295,12 +296,22 @@ void set_parameters(int argc, char **argv) {
 
   } else if (params.test == "Flat") {
 
-    params.xmin[0] =  0; params.xmin[1] = params.xmin[2] =  0;
-    params.xmax[0] = 10; params.xmax[1] = params.xmax[2] =  1;
-    params.ntr[0]  = 10; params.ntr[1]  = params.ntr[2]  =  1;
-    // periodic in y and z directions
-    params.periodic[0] = false; params.periodic[1] = params.periodic[2] = true;
-    params.lmin = 2; params.lmax = 5;
+    params.xmin[0]     =  0;
+    params.xmin[1]     = params.xmin[2] = 0;
+    params.xmax[0]     = 10;
+    params.xmax[1]     = params.xmax[2] = 1;
+    params.ntr[0]      = 10;
+    params.ntr[1]      = params.ntr[2] = 1;
+    params.periodic[0] = false;
+    params.periodic[1] = params.periodic[2] = true;
+    params.lmin        = 2;
+    params.lmax        = 5;
+    params.method      = "semi_lagrangian";
+    params.cfl         = 2;
+    params.dtmax       = 5e-3;
+    params.dts         = 1e-1;
+    params.alpha       = 0;
+
 #ifdef P4_TO_P8
     static struct:cf_t{
       double operator()(double, double, double) const { return 1.0/params.Ca; }
@@ -367,21 +378,21 @@ void set_parameters(int argc, char **argv) {
       }
     } interface; interface.lip = params.lip;
 
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
 
     static struct:cf_t{
       double operator()(double x, double) const {
-        if (fabs(x - params.xmax[0]) < EPS && fabs(x - params.xmin[0]) < EPS)
+        if (fabs(x - params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
           return -(*params.Q)(t);
         else
           return 0;
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 0
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
     } bc_wall_type;
@@ -410,10 +421,7 @@ void set_parameters(int argc, char **argv) {
     params.I             = &I;
     params.interface     = &interface;
     params.bc_wall_type  = &bc_wall_type;
-    params.bc_wall_value = &bc_wall_value;
-    params.dtmax         = 5e-3;
-    params.dts           = 1e-1;
-    params.alpha         = 0;
+    params.bc_wall_value = &bc_wall_value;    
 
   } else {
     throw std::invalid_argument("Unknown test");
@@ -425,10 +433,10 @@ void set_parameters(int argc, char **argv) {
   params.iter   = cmd.get("iter", INT_MAX);
   params.lip    = cmd.get("lip", 1.2);
   params.Ca     = cmd.get("Ca", 250);
-  params.cfl    = cmd.get("cfl", 5.0);
+  params.cfl    = cmd.get("cfl", params.cfl);
   params.dts    = cmd.get("dts", params.dts);
   params.dtmax  = cmd.get("dtmax", params.dtmax);
-  params.method = cmd.get<string>("method", "semi_lagrangian");
+  params.method = cmd.get("method", params.method);
   params.alpha  = cmd.get("alpha", params.alpha);
 }
 
@@ -492,8 +500,6 @@ int main(int argc, char** argv) {
   mkdir(folder.c_str(), 0755);
   char vtk_name[FILENAME_MAX];
 
-  cout << (*params.bc_wall_value)(10, 0) << endl;
-  cout << (*params.bc_wall_type)(10, 0) << endl;
   double dt = 0, t = 0;
   for(int i=0; i<params.iter; i++) {
     dt = solver.solve_one_step(t, phi, pressure, potential, params.method, params.cfl, params.dtmax);

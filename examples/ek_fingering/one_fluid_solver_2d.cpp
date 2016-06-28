@@ -291,7 +291,7 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, Vec
   VecGetArray(kappa, &kappa_p);
   VecGetArray(vn, &vn_p);
   foreach_node(n, nodes) {
-    if (fabs(phi_p[n]) < 2*diag) {
+    if (fabs(phi_p[n]) < cfl*diag) {
       vn_max  = MAX(vn_max, vn_p[n]);
       kvn_max = MAX(kvn_max, fabs(kappa_p[n]*vn_p[n]));
     }
@@ -300,11 +300,29 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, Vec
   VecRestoreArray(vn, &vn_p);
   VecDestroy(kappa);
 
-  double dt = MIN(cfl*dmin/vn_max, 1.0/kvn_max, dtmax);
-  MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+//  double dt = MIN(cfl*dmin/vn_max, 1.0/kvn_max, dtmax);
+  double dt_cfl = cfl*dmin/vn_max;
+  MPI_Allreduce(MPI_IN_PLACE, &dt_cfl, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+
+  // FIXME: This is stupid! Change the solver to take a single Ca
+  double Ca = DBL_MAX;
+  foreach_node (n,nodes) {
+    node_xyz_fr_n(n, p4est, nodes, x);
+    #ifdef P4_TO_P8
+      Ca = MIN(Ca, 1.0/(*gamma)(x[0], x[1], x[2]));
+    #else
+      Ca = MIN(Ca, 1.0/(*gamma)(x[0], x[1]));
+    #endif
+  }
+
+  double dt_max = MIN(dtmax, 0.5*Ca*dmin*dmin*dmin, dt_cfl);
+  MPI_Allreduce(MPI_IN_PLACE, &dt_max, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   // advect the level-set and update the grid
-  dt = ls.advect_in_normal_direction(vn, phi, dt);
+  double dt = 0;
+  while (dt < dt_cfl) {
+    dt += ls.advect_in_normal_direction(vn, phi, dt_max);
+  }
 
   p4est_t* p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
   p4est_np1->connectivity = conn;
@@ -348,6 +366,64 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
   my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
   neighbors.init_neighbors();
+
+  // smooth out the levelset function
+  {
+    my_p4est_poisson_nodes_t poisson(&neighbors);
+#ifdef P4_TO_P8
+    struct:WallBC3D {
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+    } bc_wall_type;
+
+    struct:CF_3 {
+      double operator()(double, double) const { return 0; }
+    } bc_wall_value;
+
+    BoundaryConditions3D bc;
+    bc.setWallTypes(bc_wall_type);
+    bc.setWallValues(bc_wall_value);
+#else
+    struct:WallBC2D {
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+    } bc_wall_type;
+
+    struct:CF_2 {
+      double operator()(double, double) const { return 0; }
+    } bc_wall_value;
+
+    BoundaryConditions2D bc;
+    bc.setWallTypes(bc_wall_type);
+    bc.setWallValues(bc_wall_value);
+#endif
+    poisson.set_bc(bc);
+
+    // set dt for smoothing
+    double dxyz[P4EST_DIM];
+    p4est_dxyz_min(p4est, dxyz);
+  #ifdef P4_TO_P8
+    double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
+  #else
+    double dmin = MIN(dxyz[0], dxyz[1]);
+  #endif
+    double dt = 2*dmin*dmin;
+
+    Vec rhs;
+    VecDuplicate(phi, &rhs);
+    double *rhs_p, *phi_p;
+    VecGetArray(phi, &phi_p);
+    VecGetArray(rhs, &rhs_p);
+    foreach_node (n, nodes) {
+      rhs_p[n] = phi_p[n]/dt;
+    }
+    VecRestoreArray(phi, &phi_p);
+    VecRestoreArray(rhs, &rhs_p);
+
+    poisson.set_diagonal(1.0/dt);
+    poisson.set_rhs(rhs);
+    poisson.solve(phi, /* nonzero_inital_guess = */ true);
+
+    VecDestroy(rhs);
+  }
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&neighbors);
@@ -480,22 +556,29 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
   VecDestroy(K);
 }
 
-
 double one_fluid_solver_t::solve_one_step(double t, Vec &phi, Vec &pressure, Vec& potential, const std::string& method, double cfl, double dtmax)
 {
   // advect the interface
   double dt;
-  if (method == "semi_lagrangian")
+  parStopWatch w;
+  if (method == "semi_lagrangian") {
+    w.start("Advecting usign semi-Lagrangian method");
     dt = advect_interface_semi_lagrangian(phi, pressure, potential, cfl, dtmax);
-  else if (method == "godunov")
+    w.stop(); w.read_duration();
+  } else if (method == "godunov") {
+    w.start("Advecting usign Godunov method");
     dt = advect_interface_godunov(phi, pressure, potential, cfl, dtmax);
-  else
+    w.stop(); w.read_duration();
+  } else {
     throw std::invalid_argument("invalid advection method. Valid options are:\n"
                                 "(a) semi_lagrangian, or\n"
                                 "(b) godunov.");
+  }
 
   // solve for the pressure
+  w.start("Solving for the field variables");
   solve_fields(t+dt,phi, pressure, potential);
+  w.stop(); w.read_duration();
 
   return dt;
 }
