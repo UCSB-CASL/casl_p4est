@@ -369,60 +369,36 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
 
   // smooth out the levelset function
   {
-    my_p4est_poisson_nodes_t poisson(&neighbors);
-#ifdef P4_TO_P8
-    struct:WallBC3D {
-      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
-    } bc_wall_type;
-
-    struct:CF_3 {
-      double operator()(double, double) const { return 0; }
-    } bc_wall_value;
-
-    BoundaryConditions3D bc;
-    bc.setWallTypes(bc_wall_type);
-    bc.setWallValues(bc_wall_value);
-#else
-    struct:WallBC2D {
-      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
-    } bc_wall_type;
-
-    struct:CF_2 {
-      double operator()(double, double) const { return 0; }
-    } bc_wall_value;
-
-    BoundaryConditions2D bc;
-    bc.setWallTypes(bc_wall_type);
-    bc.setWallValues(bc_wall_value);
-#endif
-    poisson.set_bc(bc);
-
-    // set dt for smoothing
     double dxyz[P4EST_DIM];
     p4est_dxyz_min(p4est, dxyz);
-  #ifdef P4_TO_P8
+    #ifdef P4_TO_P8
     double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
-  #else
+    #else
     double dmin = MIN(dxyz[0], dxyz[1]);
-  #endif
-    double dt = 2*dmin*dmin;
+    #endif
+    double dt = 0.25*dmin*dmin;
 
-    Vec rhs;
-    VecDuplicate(phi, &rhs);
-    double *rhs_p, *phi_p;
-    VecGetArray(phi, &phi_p);
-    VecGetArray(rhs, &rhs_p);
-    foreach_node (n, nodes) {
-      rhs_p[n] = phi_p[n]/dt;
+    Vec tmp;
+    VecDuplicate(phi, &tmp);
+    double *phi_p, *tmp_p;
+
+    quad_neighbor_nodes_of_node_t qnnn;
+    for (int it = 0; it < 6; it++) {
+      VecGetArray(phi, &phi_p);
+      VecGetArray(tmp, &tmp_p);
+
+      foreach_node (n, nodes) {
+        neighbors.get_neighbors(n, qnnn);
+        double fxx, fyy;
+        qnnn.laplace(phi_p, fxx, fyy);
+        tmp_p[n] = phi_p[n] + dt*(fxx+fyy);
+      }
+      VecRestoreArray(phi, &phi_p);
+      VecRestoreArray(tmp, &tmp_p);
+
+      VecCopy(tmp, phi);
     }
-    VecRestoreArray(phi, &phi_p);
-    VecRestoreArray(rhs, &rhs_p);
-
-    poisson.set_diagonal(1.0/dt);
-    poisson.set_rhs(rhs);
-    poisson.solve(phi, /* nonzero_inital_guess = */ true);
-
-    VecDestroy(rhs);
+    VecDestroy(tmp);
   }
 
   // reinitialize the levelset
