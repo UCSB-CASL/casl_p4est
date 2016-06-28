@@ -30,6 +30,8 @@ simplex2_mls_t::simplex2_mls_t(double x0, double y0,
   edgs.push_back(edg2_t(0,1));
 
   tris.push_back(tri2_t(0,1,2,0,1,2));
+
+  use_linear = false;
 }
 
 void simplex2_mls_t::do_action(int cn, action_t action)

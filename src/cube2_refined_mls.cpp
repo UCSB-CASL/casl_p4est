@@ -2,6 +2,15 @@
 
 void cube2_refined_mls_t::construct_domain(int nx_, int ny_, int level)
 {
+  // clean up everything
+  nodes.clear();
+  edges.clear();
+  cubes.clear();
+  cubes_mls.clear();
+
+  leaf_to_node.clear();
+  get_cube.clear();
+
   int n_phis = action->size();
 
   nx = nx_; ny = ny_;
@@ -179,6 +188,12 @@ void cube2_refined_mls_t::sample_all(std::vector<double> &f, std::vector<double>
     f_values[i] = interp.linear(f, nodes[i].x, nodes[i].y);
 }
 
+void cube2_refined_mls_t::sample_all(double *f, std::vector<double> &f_values)
+{
+  for (int i = 0; i < n_nodes; i++)
+    f_values[i] = interp.linear(f, nodes[i].x, nodes[i].y);
+}
+
 void cube2_refined_mls_t::sample_all(CF_2 &f, std::vector<double> &f_values)
 {
   for (int i = 0; i < n_nodes; i++)
@@ -186,6 +201,31 @@ void cube2_refined_mls_t::sample_all(CF_2 &f, std::vector<double> &f_values)
 }
 
 double cube2_refined_mls_t::perform(std::vector<double> &f, int type, int num0, int num1)
+{
+  std::vector<double> f_values(n_nodes,1);
+  sample_all(f, f_values);
+
+  double result = 0;
+  double f_cube[4];
+
+  for (int n = 0; n < n_leafs; n++)
+  {
+    // fetch function values at corners of a cube
+    for (int d = 0; d < N_CHILDREN; d++)
+      f_cube[d] = f_values[leaf_to_node[n*N_CHILDREN + d]];
+    switch (type) {
+    case 0: result += cubes_mls[n].integrate_over_domain            (f_cube); break;
+    case 1: result += cubes_mls[n].integrate_over_interface         (f_cube, num0); break;
+    case 2: result += cubes_mls[n].integrate_over_intersection      (f_cube, num0, num1); break;
+    case 3: result += cubes_mls[n].integrate_over_colored_interface (f_cube, num0, num1); break;
+    case 4: result += cubes_mls[n].integrate_in_non_cart_dir        (f_cube, num0); break;
+    }
+  }
+
+  return result;
+}
+
+double cube2_refined_mls_t::perform(double *f, int type, int num0, int num1)
 {
   std::vector<double> f_values(n_nodes,1);
   sample_all(f, f_values);

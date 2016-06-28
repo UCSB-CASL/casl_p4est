@@ -136,6 +136,8 @@ public:
   double integrate_over_intersection  (Vec f, int n0, int n1, int n2) {return perform(FC3,f,n0,n1,n2);}
   #endif
 
+  double integrate_everywhere         (Vec f);
+
   double measure_of_domain        ()                {return perform(DOM,NULL,-1,-1,-1);}
   double measure_of_interface     (int n0)          {return perform(FC1,NULL,n0,-1,-1);}
 #ifdef P4_TO_P8

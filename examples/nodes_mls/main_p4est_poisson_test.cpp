@@ -31,6 +31,7 @@
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_poisson_nodes_mls.h>
 #include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_integration_mls.h>
 #include <src/simplex3_mls_vtk.h>
 #else
 #include <p4est_bits.h>
@@ -71,9 +72,9 @@ double zmin = -1;
 double zmax =  1;
 #endif
 
-int lmin = 4;
+int lmin = 3;
 int lmax = 4;
-int nb_splits = 3;
+int nb_splits = 5;
 
 int nx = 1;
 int ny = 1;
@@ -81,15 +82,19 @@ int ny = 1;
 int nz = 1;
 #endif
 
-// GEOMETRY
-double r0 = 0.526713;
-double r1 = -0.4145134;
-double r2 = -0.5315416;
-double d = 0.4410;
+double mu = 1.;
+double diag_add = 0.;
+int n_test = 1;
 
-double theta = 0.0826;
+// GEOMETRY
+double r0 = 0.516713;
+double r1 = 0.5145134;
+double r2 = 0.4315416;
+double d = 0.23410;
+
+double theta = 0.4826;
 #ifdef P4_TO_P8
-double phy = 0.523;
+double phy = 0.323;
 #endif
 
 double cosT = cos(theta);
@@ -100,13 +105,12 @@ double sinP = sin(phy);
 #endif
 
 #ifdef P4_TO_P8
-//double xc_0 = -d*sinT*cosP; double yc_0 =  d*cosT*cosP; double zc_0 =  d*sinP;
-//double xc_1 =  d*sinT*cosP; double yc_1 = -d*cosT*cosP; double zc_1 = -d*sinP;
-//double xc_2 =  2.*d*cosT*cosP; double yc_2 =  2.*d*sinT*cosP; double zc_2 =  2.*d*sinP;
-//double xc_3 = -d*cosT*cosP; double yc_3 = -d*sinT*cosP; double zc_3 = -d*sinP;
-double xc_0 = 0, yc_0 = 0, zc_0 = 0;
+double xc_0 = -d*sinT*cosP; double yc_0 =  d*cosT*cosP; double zc_0 =  d*sinP;
 double xc_1 =  d*sinT*cosP; double yc_1 = -d*cosT*cosP; double zc_1 = -d*sinP;
-double xc_2 = 0.85, yc_2 = 0, zc_2 = 0;
+double xc_2 =  2.*d*cosT*cosP; double yc_2 =  2.*d*sinT*cosP; double zc_2 =  2.*d*sinP;
+//double xc_0 = 0, yc_0 = 0, zc_0 = 0;
+//double xc_1 =  d*sinT*cosP; double yc_1 = -d*cosT*cosP; double zc_1 = -d*sinP;
+//double xc_2 = 0.85, yc_2 = 0, zc_2 = 0;
 #else
 double xc_0 = -d*sinT; double yc_0 =  d*cosT;
 double xc_1 =  d*sinT; double yc_1 = -d*cosT;
@@ -236,10 +240,6 @@ public:
   }
 } geometry;
 
-double mu = 1.;
-double diag_add = 0.;
-int n_test = 0;
-
 // EXACT SOLUTION
 #ifdef P4_TO_P8
 class U_EXACT: public CF_3
@@ -339,7 +339,7 @@ public:
     case 1: return mu*sin(x)*cos(y)*exp(z) + diag_add*u_exact(x,y,z);
     }
   }
-} rhs;
+} rhs_cf;
 #else
 class RHS: public CF_2
 {
@@ -351,7 +351,7 @@ public:
     case 1: return 2.0*mu*sin(x)*cos(y) + diag_add*u_exact(x,y);
     }
   }
-} rhs;
+} rhs_cf;
 #endif
 
 // BC COEFFICIENTS
@@ -361,7 +361,7 @@ class KAPPA_0 : public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return 1.0;
+    return .0 + 1.0*sin(x)*cos(y)*exp(z);
   }
 } kappa_0;
 
@@ -370,7 +370,7 @@ class KAPPA_1 : public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return 1.0;
+    return .0 + 1.0*sin(y)*cos(x)*exp(z);
   }
 } kappa_1;
 
@@ -379,7 +379,7 @@ class KAPPA_2 : public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return 1.0;
+    return .0 + 1.0*sin(z)*cos(y)*exp(x);
   }
 } kappa_2;
 #else
@@ -388,7 +388,7 @@ class KAPPA_0 : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return 1.0;
+    return .0 + 1.0*sin(x)*cos(y);
   }
 } kappa_0;
 
@@ -397,7 +397,7 @@ class KAPPA_1 : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return 1.0;
+    return .0 + 1.0*cos(x)*sin(y);
   }
 } kappa_1;
 
@@ -406,7 +406,7 @@ class KAPPA_2 : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return 1.0;
+    return .0 + 1.0*(sin(x)+cos(y));
   }
 } kappa_2;
 #endif
@@ -568,6 +568,15 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
 }
 
+//struct poisson_error_t
+//{
+//  Vec vec;
+//  std::vector<double> max, L1;
+//  double err, err_m1;
+
+//  poisson_error_t () : vec(NULL), err(0.), err_m1(0.) {}
+//};
+
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
@@ -643,24 +652,26 @@ int main (int argc, char* argv[])
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
 
-  double err_n;
-  double err_nm1;
+  vector<double> level, h;
 
-  double err_ex_n;
-  double err_ex_nm1;
-
-  vector<double> level, h, error, error_in, error_all, error_tr, error_l1, error_grad;
+  vector<double> error_sl_arr, error_sl_l1_arr; double err_sl, err_sl_m1;
+  vector<double> error_tr_arr, error_tr_l1_arr; double err_tr, err_tr_m1;
+  vector<double> error_ux_arr, error_ux_l1_arr; double err_ux, err_ux_m1;
+  vector<double> error_uy_arr, error_uy_l1_arr; double err_uy, err_uy_m1;
+#ifdef P4_TO_P8
+  vector<double> error_uz_arr, error_uz_l1_arr; double err_uz, err_uz_m1;
+#endif
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
-//    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", 0, lmax+iter); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", 0, lmax+iter); CHKERRXX(ierr);
 //    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin, lmax+iter);
-    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
+//    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
     p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
 
-//    splitting_criteria_cf_t data(0, lmax+iter, &level_set_ref, 1.2);
+    splitting_criteria_cf_t data(0, lmax+iter, &level_set_ref, 1.4);
 //    splitting_criteria_cf_t data(lmin, lmax+iter, &level_set_tot, 1.4);
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot, 1.4);
+//    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot, 1.4);
     p4est->user_pointer = (void*)(&data);
 
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -674,16 +685,6 @@ int main (int argc, char* argv[])
 
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
     my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
-
-    // sample level-set functions
-    std::vector<Vec> phi;
-
-    for (int i = 0; i < geometry.phi_cf.size(); i++)
-    {
-      phi.push_back(Vec());
-      ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
-      sample_cf_on_nodes(p4est, nodes, *geometry.phi_cf[i], phi.back());
-    }
 
     my_p4est_level_set_t ls(&ngbd_n);
 
@@ -708,28 +709,142 @@ int main (int argc, char* argv[])
 
     /* TEST THE NODES FUNCTIONS */
 
+
+    // sample level-set functions
+    std::vector<Vec> phi;
+    for (int i = 0; i < geometry.phi_cf.size(); i++)
+    {
+      phi.push_back(Vec());
+      ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est, nodes, *geometry.phi_cf[i], phi.back());
+    }
+
+    std::vector<Vec> bc_value;
+    for (int i = 0; i < problem.bc_value.size(); i++)
+    {
+      bc_value.push_back(Vec());
+      ierr = VecCreateGhostNodes(p4est, nodes, &bc_value.back()); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est, nodes, *problem.bc_value[i], bc_value.back());
+    }
+
+    std::vector<Vec> bc_coeff;
+    for (int i = 0; i < problem.bc_coeff.size(); i++)
+    {
+      bc_coeff.push_back(Vec());
+      ierr = VecCreateGhostNodes(p4est, nodes, &bc_coeff.back()); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est, nodes, *problem.bc_coeff[i], bc_coeff.back());
+    }
+
+    Vec rhs;
+    ierr = VecCreateGhostNodes(p4est, nodes, &rhs); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, rhs_cf, rhs);
+
+    Vec u_exact_vec;
+    ierr = VecCreateGhostNodes(p4est, nodes, &u_exact_vec); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, u_exact, u_exact_vec);
+
+//    ierr = VecDestroy(rhs); CHKERRXX(ierr);
+//    ierr = VecDestroy(u_exact_vec); CHKERRXX(ierr);
+
     my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
     solver.set_geometry(phi, geometry.action, geometry.color);
     solver.mu.set(mu);
-    solver.rhs.set(rhs);
-    solver.wall_value.set(u_exact);
+    solver.set_rhs(rhs);
+    solver.wall_value.set(u_exact_vec);
     solver.set_bc_type(problem.bc_type);
     solver.diag_add.set(diag_add);
-    solver.bc_value.set(problem.bc_value);
-    solver.bc_coeff.set(problem.bc_coeff);
+    solver.set_bc_coeffs(bc_coeff);
+    solver.set_bc_values(bc_value);
+    solver.set_use_taylor_correction(1.0);
     solver.compute_volumes();
+    solver.set_keep_scalling(true);
+//    solver.set_cube_refinement(0);
 
-    double V;
-    VecSum(solver.node_vol, &V);
+    Vec sol; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
 
-    cout << fabs(V-4.0*PI*r0*r0*r0/3.0) << endl;
+    solver.solve(sol);
 
-//    Vec sol;
-//    ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
+//    // extrapolation
+//    Vec phi_tot;
+//    ierr = VecCreateGhostNodes(p4est, nodes, &phi_tot); CHKERRXX(ierr);
+//    sample_cf_on_nodes(p4est, nodes, level_set_tot, phi_tot);
+//    ls.reinitialize_1st_order_time_2nd_order_space(phi_tot);
+//    ls.extend_Over_Interface_TVD(phi_tot, sol, 20);
+//    ierr = VecDestroy(phi_tot); CHKERRXX(ierr);
 
-//    solver.solve(sol);
+    // create Vec's for errors
+    Vec error_sl; ierr = VecCreateGhostNodes(p4est, nodes, &error_sl); CHKERRXX(ierr);
+    Vec error_tr; ierr = VecCreateGhostNodes(p4est, nodes, &error_tr); CHKERRXX(ierr);
+    Vec error_ux; ierr = VecCreateGhostNodes(p4est, nodes, &error_ux); CHKERRXX(ierr);
+    Vec error_uy; ierr = VecCreateGhostNodes(p4est, nodes, &error_uy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    Vec error_uz; ierr = VecCreateGhostNodes(p4est, nodes, &error_uz); CHKERRXX(ierr);
+#endif
 
-//    /* if all NEUMANN boundary conditions, shift solution */
+    // compute errors
+    solver.compute_error_sl(u_exact, sol, error_sl);
+    solver.compute_error_tr(u_exact, error_tr);
+#ifdef P4_TO_P8
+    solver.compute_error_gr(ux, uy, uz, sol, error_ux, error_uy, error_uz);
+#else
+    solver.compute_error_gr(ux, uy, sol, error_ux, error_uy);
+#endif
+
+    // compute L-inf norm of errors
+    err_sl_m1 = err_sl; err_sl = 0.;
+    err_tr_m1 = err_tr; err_tr = 0.;
+    err_ux_m1 = err_ux; err_ux = 0.;
+    err_uy_m1 = err_uy; err_uy = 0.;
+#ifdef P4_TO_P8
+    err_uz_m1 = err_uz; err_uz = 0.;
+#endif
+
+    VecMax(error_sl, NULL, &err_sl); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_sl, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    VecMax(error_tr, NULL, &err_tr); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_tr, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    VecMax(error_ux, NULL, &err_ux); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ux, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    VecMax(error_uy, NULL, &err_uy); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_uy, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+#ifdef P4_TO_P8
+    VecMax(error_uz, NULL, &err_uz); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_uz, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+#endif
+
+    // compute L1 errors
+    my_p4est_integration_mls_t integrator;
+    integrator.set_p4est(p4est, nodes);
+#ifdef P4_TO_P8
+    integrator.set_phi(phi, *solver.phi_xx, *solver.phi_yy, *solver.phi_zz, geometry.action, geometry.color);
+#else
+    integrator.set_phi(phi, *solver.phi_xx, *solver.phi_yy, geometry.action, geometry.color);
+#endif
+//    integrator.initialize();
+    error_sl_l1_arr.push_back(integrator.integrate_everywhere(error_sl)/integrator.measure_of_domain());
+    error_tr_l1_arr.push_back(integrator.integrate_everywhere(error_tr)/integrator.measure_of_domain());
+    error_ux_l1_arr.push_back(integrator.integrate_everywhere(error_ux)/integrator.measure_of_domain());
+    error_uy_l1_arr.push_back(integrator.integrate_everywhere(error_uy)/integrator.measure_of_domain());
+#ifdef P4_TO_P8
+    error_uz_l1_arr.push_back(integrator.integrate_everywhere(error_uz)/integrator.measure_of_domain());
+#endif
+
+    // Store error values
+    level.push_back(lmin+iter);
+    h.push_back(dx);
+    error_sl_arr.push_back(err_sl);
+    error_tr_arr.push_back(err_tr);
+    error_ux_arr.push_back(err_ux);
+    error_uy_arr.push_back(err_uy);
+#ifdef P4_TO_P8
+    error_uz_arr.push_back(err_uz);
+#endif
+
+    // Print current errors
+    ierr = PetscPrintf(p4est->mpicomm, "Error (sl): %g, order = %g\n", err_sl, log(err_sl_m1/err_sl)/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Error (tr): %g, order = %g\n", err_tr, log(err_tr_m1/err_tr)/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Error (ux): %g, order = %g\n", err_ux, log(err_ux_m1/err_ux)/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Error (uy): %g, order = %g\n", err_uy, log(err_uy_m1/err_uy)/log(2)); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = PetscPrintf(p4est->mpicomm, "Error (uz): %g, order = %g\n", err_uz, log(err_uz_m1/err_uz)/log(2)); CHKERRXX(ierr);
+#endif
+
+    // if all NEUMANN boundary conditions, shift solution
 //    if(solver.get_matrix_has_nullspace())
 //    {
 //      double avg_sol = integrate_over_interface(p4est, nodes, phi, sol)/area_in_negative_domain(p4est, nodes, phi);
@@ -743,168 +858,28 @@ int main (int argc, char* argv[])
 //      ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
 //    }
 
-//    /* check the error */
-//    err_nm1 = err_n;
-//    err_n = 0;
-
-//    const double *phi_p;
-//    ierr = VecGetArrayRead(phi_tot, &phi_p); CHKERRXX(ierr);
-
-//    const double *sol_p;
-//    ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
-
-//    Vec err_nodes;
-//    ierr = VecDuplicate(sol, &err_nodes); CHKERRXX(ierr);
-//    double *err_p;
-//    ierr = VecGetArray(err_nodes, &err_p); CHKERRXX(ierr);
-
-////    ls.reinitialize_1st_order_time_2nd_order_space(phi_tot);
-////    ls.extend_Over_Interface_TVD(phi_tot, sol, 20);
-//    double err_in_n = 0;
-//    double err_all_n = 0;
-
-//    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//    {
-////      if (phi_p[n]<0.0*diag)
-//      if (solver.is_calc(n))
-//      {
-//        double x = node_x_fr_n(n, p4est, nodes);
-//        double y = node_y_fr_n(n, p4est, nodes);
-//        bool in, alt;
-//        solver.find_centroid(in, alt, x, y, n);
-//#ifdef P4_TO_P8
-//        double z = node_z_fr_n(n, p4est, nodes);
-//        err_p[n] = ABS(sol_p[n] - u_exact(x,y,z));
-//#else
-//        err_p[n] = ABS(sol_p[n] - u_exact(x,y));
-//#endif
-//        err_all_n = MAX(err_all_n, err_p[n]);
-//        if (phi_p[n] < 0.0) {err_n = MAX(err_n, err_p[n]);}
-//        if (solver.is_inside(n)) {err_in_n = MAX(err_in_n, err_p[n]);}
-////        err_p[n] = u_exact(x,y);
-//      }
-//      else
-//        err_p[n] = 0;
-//    }
-//    ierr = VecRestoreArrayRead(phi_tot, &phi_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArrayRead(sol, &sol_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(err_nodes, &err_p); CHKERRXX(ierr);
-
-//    ierr = VecGhostUpdateBegin(err_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd  (err_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_all_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_in_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-//    ierr = PetscPrintf(p4est->mpicomm, "Error on nodes : %g, order = %g\n", err_n, log(err_nm1/err_n)/log(2)); CHKERRXX(ierr);
-
-//    level.push_back(lmin+iter);
-//    h.push_back(dx);
-//    error.push_back(err_n);
-//    error_in.push_back(err_in_n);
-//    error_all.push_back(err_all_n);
-
-
-//    /* extrapolate the solution and check accuracy */
-//    double band = 4;
-////    const double *phi_p;
-
-////    ls.reinitialize_1st_order_time_2nd_order_space(phi_tot);
-
-////    ls.extend_Over_Interface_TVD(phi_tot, sol, 100);
-
-//    ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
-//    ierr = VecGetArrayRead(phi_tot, &phi_p); CHKERRXX(ierr);
-
-//    Vec err_ex;
-//    ierr = VecDuplicate(sol, &err_ex); CHKERRXX(ierr);
-//    double *err_ex_p;
-//    ierr = VecGetArray(err_ex, &err_ex_p); CHKERRXX(ierr);
-
-//    err_ex_nm1 = err_ex_n;
-//    err_ex_n = 0;
-
-//    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//    {
-//      if(phi_p[n]>0)
-////      if(!solver.is_inside(n))
-//      {
-//        double x = node_x_fr_n(n, p4est, nodes);
-//        double y = node_y_fr_n(n, p4est, nodes);
-//#ifdef P4_TO_P8
-//        double z = node_z_fr_n(n, p4est, nodes);
-//        if(phi_p[n]<band*diag)
-//          err_ex_p[n] = fabs(sol_p[n] - u_exact(x,y,z));
-//#else
-//        if(phi_p[n]<band*diag)
-//          err_ex_p[n] = fabs(sol_p[n] - u_exact(x,y));
-//#endif
-//        else
-//          err_ex_p[n] = 0;
-
-//        err_ex_n = MAX(err_ex_n, err_ex_p[n]);
-//      }
-//      else
-//        err_ex_p[n] = 0;
-
-////      double x = node_x_fr_n(n, p4est, nodes);
-////      double y = node_y_fr_n(n, p4est, nodes);
-////#ifdef P4_TO_P8
-////      double z = node_z_fr_n(n, p4est, nodes);
-////      err_ex_p[n] = bc_interface_val_0(x,y,z);
-////#endif
-////      err_ex_p[n] = solver.node_volume(n);
-//    }
-
-//    ierr = VecRestoreArrayRead(phi_tot, &phi_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArrayRead(sol, &sol_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(err_ex, &err_ex_p); CHKERRXX(ierr);
-
-//    ierr = VecGhostUpdateBegin(err_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd  (err_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-//    my_p4est_integration_mls_t integrator;
-//    integrator.set_p4est(p4est, nodes);
-//    integrator.set_phi(phi, action, color);
-//    integrator.initialize();
-////    solver.calculate_trunc_error(u_exact);
-
-//    error_l1.push_back(integrator.integrate_over_domain(err_nodes)/integrator.measure_of_domain());
-
-//    Vec err_ux; ierr = VecCreateGhostNodes(p4est, nodes, &err_ux); CHKERRXX(ierr);
-//    Vec err_uy; ierr = VecCreateGhostNodes(p4est, nodes, &err_uy); CHKERRXX(ierr);
-//    Vec err_eq; ierr = VecCreateGhostNodes(p4est, nodes, &err_eq); CHKERRXX(ierr);
-//    solver.calculate_gradient_error(sol, err_ux, err_uy, ux, uy);
-//    solver.calculate_equation_error(sol, err_eq);
-
-//    VecMax(err_ux, NULL, &err_ex_n);
-//    error_ux.push_back(err_ex_n);
-//    VecMax(err_uy, NULL, &err_ex_n);
-//    error_uy.push_back(err_ex_n);
-////    error_tr.push_back(err_ex_n);
-
-//    err_ex_n = solver.calculate_trunc_error(u_exact);
-//    error_tr.push_back(err_ex_n);
-
-//    ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation : %g, order = %g\n", err_ex_n, log(err_ex_nm1/err_ex_n)/log(2)); CHKERRXX(ierr);
-
-
-
-
-//    ierr = VecDestroy(sol); CHKERRXX(ierr);
-
-//    ierr = VecDestroy(err_nodes); CHKERRXX(ierr);
-//    ierr = VecDestroy(err_trunc); CHKERRXX(ierr);
-//    ierr = VecDestroy(err_ux); CHKERRXX(ierr);
-//    ierr = VecDestroy(err_uy); CHKERRXX(ierr);
-//    ierr = VecDestroy(err_grad); CHKERRXX(ierr);
-
     if(save_vtk)
     {
-      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff, solver.node_vol, phi[0], phi[1], phi[2], iter);
+      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff, sol, error_sl, error_tr, error_uz, iter);
     }
+
+    for (int i = 0; i < phi.size(); i++)
+    {
+      ierr = VecDestroy(phi[i]); CHKERRXX(ierr);
+      ierr = VecDestroy(bc_value[i]); CHKERRXX(ierr);
+      ierr = VecDestroy(bc_coeff[i]); CHKERRXX(ierr);
+    }
+
+    ierr = VecDestroy(sol); CHKERRXX(ierr);
+
+    // destroy Vec's with errors
+    ierr = VecDestroy(error_sl); CHKERRXX(ierr);
+    ierr = VecDestroy(error_tr); CHKERRXX(ierr);
+    ierr = VecDestroy(error_ux); CHKERRXX(ierr);
+    ierr = VecDestroy(error_uy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecDestroy(error_uz); CHKERRXX(ierr);
+#endif
 
     p4est_nodes_destroy(nodes);
     p4est_ghost_destroy(ghost);
@@ -915,21 +890,37 @@ int main (int argc, char* argv[])
 
   w.stop(); w.read_duration();
 
-//  if (mpi->mpirank == 0)
-//  {
-//  Gnuplot graph;
-//  print_Table("error", 0.0, level, h, "error (all)", error_all, 1, &graph);
-//  print_Table("error", 0.0, level, h, "error (inside)", error, 2, &graph);
-//  print_Table("error", 0.0, level, h, "error (interior)", error_in, 3, &graph);
-//  print_Table("error", 0.0, level, h, "error (truncation)", error_tr, 4, &graph);
-//  print_Table("error", 0.0, level, h, "error (L1)", error_l1, 5, &graph);
+  if (mpi->mpirank == 0)
+  {
+    Gnuplot graph;
+
+    print_Table("Error", 0.0, level, h, "err sl (max)", error_sl_arr,     1, &graph);
+    print_Table("Error", 0.0, level, h, "err sl (L1)",  error_sl_l1_arr,  2, &graph);
+
+    print_Table("Error", 0.0, level, h, "err tr (max)", error_tr_arr,     3, &graph);
+    print_Table("Error", 0.0, level, h, "err tr (L1)",  error_tr_l1_arr,  4, &graph);
+
+    Gnuplot graph_grad;
+
+    print_Table("Error", 0.0, level, h, "err ux (max)", error_ux_arr,     1, &graph_grad);
+    print_Table("Error", 0.0, level, h, "err ux (L1)",  error_ux_l1_arr,  2, &graph_grad);
+
+    print_Table("Error", 0.0, level, h, "err uy (max)", error_uy_arr,     3, &graph_grad);
+    print_Table("Error", 0.0, level, h, "err uy (L1)",  error_uy_l1_arr,  4, &graph_grad);
+#ifdef P4_TO_P8
+    print_Table("Error", 0.0, level, h, "err uz (max)", error_uz_arr,     5, &graph_grad);
+    print_Table("Error", 0.0, level, h, "err uz (L1)",  error_uz_l1_arr,  6, &graph_grad);
+#endif
+
+//  Gnuplot graph_geom;
+//  print_Table("error", 2.*PI*r0, level, h, "ifc", ifc_measure, 1, &graph_geom);
 
 //  Gnuplot graph_grad;
 //  print_Table("error", 0.0, level, h, "error (ux)", error_ux, 1, &graph_grad);
 //  print_Table("error", 0.0, level, h, "error (uy)", error_uy, 2, &graph_grad);
 
-//  cin.get();
-//  }
+    cin.get();
+  }
 
   return 0;
 }

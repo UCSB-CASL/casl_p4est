@@ -56,7 +56,7 @@ int lmax = 3;
 #ifdef P4_TO_P8
 int nb_splits = 3;
 #else
-int nb_splits = 5;
+int nb_splits = 6;
 #endif
 
 int nx = 1;
@@ -65,7 +65,7 @@ int ny = 1;
 int nz = 1;
 #endif
 
-bool save_vtk = false;
+bool save_vtk = true;
 
 //#include "geometry_one_circle.cpp"
 #include "geometry_two_circles_union.cpp"
@@ -183,7 +183,7 @@ int main (int argc, char* argv[])
 #else
     integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, geometry.action, geometry.color);
 #endif
-//    integration.set_use_cube_refined(6);
+//    integration.set_use_cube_refined(0);
 
 
     if (save_vtk)

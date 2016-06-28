@@ -472,3 +472,70 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, Vec f, int n0, i
 }
 
 
+double my_p4est_integration_mls_t::integrate_everywhere(Vec f)
+{
+  PetscErrorCode ierr;
+  double sum = 0.;
+
+  double *F;
+
+  if (f != NULL)  {ierr = VecGetArray(f, &F); CHKERRXX(ierr);}
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+
+    for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+    {
+      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+
+      p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+      p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
+
+      double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+      double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+      double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+      double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+#ifdef P4_TO_P8
+      double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+      double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+#endif
+
+      for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+      {
+        const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+
+        p4est_locidx_t quad_idx_forest = quad_idx + tree->quadrants_offset;
+
+        /* get location and size of a quadrant */
+        double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+        double dx = (tree_xmax-tree_xmin)*dmin; double x0 = (tree_xmax-tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;  double x1 = x0 + dx;
+        double dy = (tree_ymax-tree_ymin)*dmin; double y0 = (tree_ymax-tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;  double y1 = y0 + dy;
+#ifdef P4_TO_P8
+        double dz = (tree_zmax-tree_zmin)*dmin; double z0 = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  double z1 = z0 + dz;
+#endif
+
+        double tmp = 0;
+
+        // integrate function
+        if (f != NULL) {
+          int s = quad_idx_forest*P4EST_CHILDREN;
+          for (int j = 0; j < P4EST_CHILDREN; j++)
+            tmp += F[ q2n[ s + j ] ];
+        }
+
+#ifdef P4_TO_P8
+        sum += dx*dy*dz*tmp/(double)(P4EST_CHILDREN);
+#else
+        sum += dx*dy*tmp/(double)(P4EST_CHILDREN);
+#endif
+      }
+    }
+
+  if (f != NULL)  {ierr = VecRestoreArray(f, &F); CHKERRXX(ierr);}
+
+  /* compute global sum */
+  double sum_global;
+  ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+  return sum_global;
+}
+
+

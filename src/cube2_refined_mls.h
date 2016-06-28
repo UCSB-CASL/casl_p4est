@@ -139,10 +139,12 @@ public:
   bool need_split(int n);
 
   void sample_all(std::vector<double> &f, std::vector<double> &f_values);
+  void sample_all(double *f, std::vector<double> &f_values);
   void sample_all(CF_2 &f, std::vector<double> &f_values);
 
   // integration tools
   double perform(std::vector<double> &f, int type, int num0, int num1);
+  double perform(double *f, int type, int num0, int num1);
   double perform(CF_2 &f, int type, int num0, int num1);
   double perform(double f, int type, int num0, int num1);
 
@@ -151,6 +153,12 @@ public:
   double integrate_over_intersection      (std::vector<double> &f, int n0, int n1)  {return perform(f,2,n0,n1);}
   double integrate_over_colored_interface (std::vector<double> &f, int n0, int n1)  {return perform(f,3,n0,n1);}
   double integrate_in_non_cart_dir        (std::vector<double> &f, int n0)          {return perform(f,4,n0,-1);}
+
+  double integrate_over_domain            (double *f)                  {return perform(f,0,-1,-1);}
+  double integrate_over_interface         (double *f, int n0)          {return perform(f,1,n0,-1);}
+  double integrate_over_intersection      (double *f, int n0, int n1)  {return perform(f,2,n0,n1);}
+  double integrate_over_colored_interface (double *f, int n0, int n1)  {return perform(f,3,n0,n1);}
+  double integrate_in_non_cart_dir        (double *f, int n0)          {return perform(f,4,n0,-1);}
 
   double integrate_over_domain            (CF_2 &f)                  {return perform(f,0,-1,-1);}
   double integrate_over_interface         (CF_2 &f, int n0)          {return perform(f,1,n0,-1);}

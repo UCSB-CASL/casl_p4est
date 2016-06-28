@@ -27,6 +27,16 @@
 #include <src/cube3_refined_mls.h>
 #include <src/cube2_refined_mls.h>
 
+//class pointer_to_vec_t
+//{
+//  double *p;
+//  static PetscError ierr;
+
+//  pointer_to_vec_t(Vec vec) {ierr = VecGetArray(vec, &p);     CHKERRXX(ierr);}
+//  ~pointer_to_vec_t()       {ierr = VecRestoreArray(vec, &p); CHKERRXX(ierr);}
+
+//  double operator () (p4est_locidx_t n) {return p[n];}
+//};
 
 class my_p4est_poisson_nodes_mls_t
 {
@@ -36,19 +46,16 @@ public:
   struct quantity_t
   {
     double val;
-    double *vec_p;
     Vec vec;
-#ifdef P4_TO_P8
-    CF_3 *cf;
-#else
-    CF_2 *cf;
-#endif
-    quantity_t() : val(0), vec(NULL), cf(NULL), vec_p(NULL) {}
+    double *vec_p;
+    bool constant;
+
+    quantity_t() : val(0), vec(NULL), vec_p(NULL), constant(true) {}
 
     void initialize()
     {
       PetscErrorCode ierr;
-      if (cf == NULL && vec != NULL)
+      if (!constant)
       {
         ierr = VecGetArray(vec, &vec_p); CHKERRXX(ierr);
       }
@@ -57,118 +64,22 @@ public:
     void finalize()
     {
       PetscErrorCode ierr;
-      if (vec_p != NULL)
+      if (!constant)
       {
         ierr = VecRestoreArray(vec, &vec_p); CHKERRXX(ierr);
         vec_p = NULL;
       }
     }
 
-    inline void set(double &val_) {val = val_;}
-    inline void set(Vec    &vec_) {vec = vec_;}
-#ifdef P4_TO_P8
-    inline void set(CF_3   &cf_)  {cf  = &cf_;}
-#else
-    inline void set(CF_2   &cf_)  {cf  = &cf_;}
-#endif
+    inline void set(double val_) {val = val_; constant = true;}
+    inline void set(Vec    vec_) {vec = vec_; constant = false;}
 
-#ifdef P4_TO_P8
-    double operator() (int n, double &x, double &y, double &z)
+    double operator() (int n)
     {
-      if (cf != NULL)         {return (*cf)(x,y,z);}
-#else
-    double operator() (int n, double &x, double &y)
-    {
-      if (cf != NULL)         {return (*cf)(x,y);}
-#endif
-      else if (vec_p != NULL) {return vec_p[n];}
-      else                    {return val;}
-    }
-
-    void sample_at_neighbors(int *neighbors, bool *neighbor_exists, double *output)
-    {
-      int q = 0;
-      for (int k = 0; k < N_NBRS_MAX; k++)
-        if (neighbor_exists[k])
-        {
-          output[q] = operator() (neighbors[k], x_nei[k], y_nei[k], z_nei[k]);
-          q++;
-        }
-    }
-
-    double interpolate(int nei_quad, double dxyz[])
-    {
-      if (vec == NULL) return val;
-      else
-      {
-      }
+      if (constant) {return val;}
+      else          {return vec_p[n];}
     }
   };
-
-  struct vec_quantity_t
-  {
-    std::vector<double>   *val;
-    std::vector<Vec>      *vec;
-    std::vector<double *> vec_p;
-#ifdef P4_TO_P8
-    std::vector<CF_3 *>   *cf;
-#else
-    std::vector<CF_2 *>   *cf;
-#endif
-
-    vec_quantity_t() : val(NULL), vec(NULL), cf(NULL) {}
-
-    void initialize()
-    {
-      PetscErrorCode ierr;
-      if (cf == NULL || vec != NULL)
-      {
-        int N = vec->size();
-        vec_p.resize(N, NULL);
-        for (int i = 0; i < N; i++)
-        {
-          ierr = VecGetArray(vec->at(i), &vec_p[i]); CHKERRXX(ierr);
-        }
-      }
-    }
-
-    void finalize()
-    {
-      PetscErrorCode ierr;
-      if (cf == NULL || vec != NULL)
-      {
-        int N = vec->size();
-        for (int i = 0; i < N; i++)
-        {
-          ierr = VecRestoreArray(vec->at(i), &vec_p[i]); CHKERRXX(ierr);
-          vec_p[i] = NULL;
-        }
-      }
-    }
-
-    inline void set(std::vector<double> &val_) {val = &val_;}
-    inline void set(std::vector<Vec>    &vec_) {vec = &vec_;}
-#ifdef P4_TO_P8
-    inline void set(std::vector<CF_3 *> &cf_)  {cf  = &cf_;}
-#else
-    inline void set(std::vector<CF_2 *> &cf_)  {cf  = &cf_;}
-#endif
-
-
-#ifdef P4_TO_P8
-    double get_value(int i, int n, double &x, double &y, double &z)
-    {
-      if (cf != NULL)     {return (*cf->at(i))(x,y,z);}
-#else
-    double get_value(int i, int n, double &x, double &y)
-    {
-      if (cf != NULL)     {return (*cf->at(i))(x,y);}
-#endif
-      if (vec != NULL)  {return vec_p[i][n];}
-      else                {return val->at(i);}
-    }
-  };
-
 
   // p4est objects
   const my_p4est_node_neighbors_t *node_neighbors;
@@ -182,7 +93,7 @@ public:
 
   bool    is_matrix_computed;
   int     matrix_has_nullspace;
-  double  dx_min, dy_min, d_min, diag_min;
+  double  dx_min, dy_min, d_min, diag_min, vol_min;
 #ifdef P4_TO_P8
   double  dz_min;
 #endif
@@ -191,7 +102,8 @@ public:
   std::vector<PetscInt> petsc_gloidx;
 
   // Equation
-  quantity_t rhs, mu, wall_value, diag_add;
+  quantity_t mu, wall_value, diag_add;
+  Vec rhs;
 
   // Geometry
   std::vector<Vec> *phi, *phi_xx, *phi_yy, *phi_zz;
@@ -202,10 +114,11 @@ public:
   bool phi_eff_owned, phi_dd_owned;
   Vec node_vol;
 
+  double use_taylor_correction;
 
   // Interfaces
   std::vector<BoundaryConditionType> *bc_types;
-  vec_quantity_t bc_value, bc_coeff;
+  std::vector<quantity_t> bc_value, bc_coeff;
 
   // PETSc objects
   Mat A;
@@ -224,8 +137,8 @@ public:
 
   void preallocate_matrix();
 
-  void setup_negative_laplace_matrix_non_sym();
-  void setup_negative_laplace_rhsvec_non_sym();
+  void setup_negative_laplace_matrix_sym();
+  void setup_negative_laplace_rhsvec_sym();
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
@@ -256,6 +169,8 @@ public:
 #endif
   };
 
+  double eps_ifc, eps_dom;
+
 
 //public:
 
@@ -284,34 +199,82 @@ public:
   // set BCs
   void set_bc_type(std::vector<BoundaryConditionType> &bc_types_) {bc_types = &bc_types_;}
 
-  inline void set_keep_scalling(bool keep_scalling_)    {keep_scalling = keep_scalling_;}
+  void set_bc_values(std::vector<Vec> &bc_vecs)
+  {
+    bc_value.resize(bc_vecs.size());
+    for (int i = 0; i < bc_vecs.size(); i++)
+      bc_value[i].set(bc_vecs[i]);
+  }
+  void set_bc_values(std::vector<double> &bc_vals)
+  {
+    bc_value.resize(bc_vals.size());
+    for (int i = 0; i < bc_vals.size(); i++)
+      bc_value[i].set(bc_vals[i]);
+  }
 
-  inline void set_is_matrix_computed(bool is_matrix_computed)   {is_matrix_computed = is_matrix_computed; }
+  void set_bc_coeffs(std::vector<Vec> &bc_vecs)
+  {
+    bc_coeff.resize(bc_vecs.size());
+    for (int i = 0; i < bc_vecs.size(); i++)
+      bc_coeff[i].set(bc_vecs[i]);
+  }
+  void set_bc_coeffs(std::vector<double> &bc_vals)
+  {
+    bc_coeff.resize(bc_vals.size());
+    for (int i = 0; i < bc_vals.size(); i++)
+      bc_coeff[i].set(bc_vals[i]);
+  }
 
-  inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT)
+  void set_rhs(Vec &rhs_) {rhs = rhs_;}
+
+  void set_use_taylor_correction(double val) {use_taylor_correction = val;}
+
+  void set_keep_scalling(bool keep_scalling_)    {keep_scalling = keep_scalling_;}
+
+  void set_is_matrix_computed(bool is_matrix_computed)   {is_matrix_computed = is_matrix_computed; }
+
+  void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT)
   {
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
 
-  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
+  bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
 
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 
-  bool is_calc(int n) {if (node_loc[n] == NODE_INS || node_loc[n] == NODE_NMN) return true; else return false;}
-  bool is_inside(int n) {if (node_loc[n] == NODE_INS) return true; else return false;}
+  bool is_calc(int n) {
+    if (node_loc[n] == NODE_INS || node_loc[n] == NODE_NMN) return true;
+    else return false;
+  }
+
+  bool is_inside(int n) {
+    if (node_loc[n] == NODE_INS) return true;
+    else return false;
+  }
 
   void inv_mat2(double *in, double *out);
   void inv_mat3(double *in, double *out);
 
-  void find_centroid(bool &node_in, bool &altered, double &x, double &y, p4est_locidx_t n, double *vol = NULL);
-
-  double calculate_trunc_error(CF_2 &exact);
-  void calculate_gradient_error(Vec sol, Vec err_ux, Vec err_uy, CF_2 &ux, CF_2 &uy);
-  void calculate_equation_error(Vec sol, Vec err_eq);
-
   int cube_refinement;
   void set_cube_refinement(int r) {cube_refinement = r;}
 
+  void find_projection(double *phi_p, p4est_locidx_t *neighbors, double dxyz_pr[], double &dist_pr);
+
+  void sample_vec_at_neighbors(double *in_p, int *neighbors, bool *neighbor_exists, double *output);
+  void sample_vec_at_neighbors(double *in_p, int *neighbors, bool *neighbor_exists, std::vector<double> &output);
+  void sample_qty_at_neighbors(quantity_t &qty, int *neighbors, bool *neighbor_exists, double *output);
+
+  void get_all_neighbors(p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists);
+
+#ifdef P4_TO_P8
+  void compute_error_sl(CF_3 &exact_cf, Vec sol, Vec err);
+  void compute_error_tr(CF_3 &exact_cf, Vec error);
+  void compute_error_gr(CF_3 &ux_cf, CF_3 &uy_cf, CF_3 &uz_cf, Vec sol, Vec err_ux, Vec err_uy, Vec err_uz);
+#else
+  void compute_error_sl(CF_2 &exact_cf, Vec sol, Vec err);
+  void compute_error_tr(CF_2 &exact_cf, Vec error);
+  void compute_error_gr(CF_2 &ux_cf, CF_2 &uy_cf, Vec sol, Vec err_ux, Vec err_uy);
+#endif
 };
 
 #endif // MY_P4EST_POISSON_NODES_MLS_H

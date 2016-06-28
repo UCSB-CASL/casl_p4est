@@ -31,12 +31,12 @@ public:
   double linear(double *f, double x, double y);
   double quadratic(double *f, double *f_xx, double *f_yy, double x, double y);
 
-  double linear(std::vector<double> &f, double x, double y)
+  inline double linear(std::vector<double> &f, double x, double y)
   {
     return linear(f.data(), x, y);
   }
 
-  double quadratic(std::vector<double> &f, std::vector<double> &f_xx, std::vector<double> &f_yy, double x, double y)
+  inline double quadratic(std::vector<double> &f, std::vector<double> &f_xx, std::vector<double> &f_yy, double x, double y)
   {
     return quadratic(f.data(), f_xx.data(), f_yy.data(), x, y);
   }
