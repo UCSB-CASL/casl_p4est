@@ -158,6 +158,11 @@ void set_parameters(int argc, char **argv) {
     params.xmin[0] = params.xmin[1] = params.xmin[2] = -10;
     params.xmax[0] = params.xmax[1] = params.xmax[2] =  10;
     params.method  = "semi_lagrangian";
+    params.cfl     = 2;
+    params.dtmax   = 5e-3;
+    params.dts     = 1e-1;
+    params.alpha   = 0;
+
 
 #ifdef P4_TO_P8
     static struct:cf_t{
@@ -290,9 +295,6 @@ void set_parameters(int argc, char **argv) {
     params.interface     = &interface;
     params.bc_wall_type  = &bc_wall_type;
     params.bc_wall_value = &bc_wall_value;
-    params.dtmax         = 5e-3;
-    params.dts           = 1e-1;
-    params.alpha         = 1;
 
   } else if (params.test == "Flat") {
 
@@ -326,8 +328,8 @@ void set_parameters(int argc, char **argv) {
     } K_EO;
 
     static struct:cf_t{
-      double operator()(double x, double, double) const  {
-        return 0.1 - x;
+      double operator()(double x, double y, double z) const  {
+        return 0.1 + 0.01*cos(2*PI*y*4)*cos(2*PI*z*4) - x;
       }
     } interface; interface.lip = params.lip;
 
@@ -373,8 +375,8 @@ void set_parameters(int argc, char **argv) {
     } K_EO;
 
     static struct:cf_t{
-      double operator()(double x, double) const  {
-        return 0.1-x;
+      double operator()(double x, double y) const  {
+        return 0.1 + 0.05*cos(2*PI*y*4) - x;
       }
     } interface; interface.lip = params.lip;
 
