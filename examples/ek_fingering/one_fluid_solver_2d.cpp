@@ -103,7 +103,7 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
 #endif
   }
   foreach_dimension(dim)
-      VecGhostUpdateEnd(vx_tmp[dim], INSERT_VALUES, SCATTER_FORWARD);
+      VecGhostUpdateEnd(vx_tmp[dim], INSERT_VALUES, SCATTER_FORWARD);  
 
   // restore pointers
   foreach_dimension(dim) VecRestoreArray(vx_tmp[dim], &vx_p[dim]);
@@ -118,6 +118,53 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
     ls.extend_from_interface_to_whole_domain_TVD(phi, vx_tmp[dim], vx[dim]);
     VecDestroy(vx_tmp[dim]);
   }
+
+  // smooth out the velocity field
+  foreach_dimension (dim) VecGetArray(vx[dim], &vx_p[dim]);
+  {
+    double dxyz[P4EST_DIM];
+    p4est_dxyz_min(p4est, dxyz);
+#ifdef P4_TO_P8
+    double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
+#else
+    double dmin = MIN(dxyz[0], dxyz[1]);
+#endif
+    double dt = 0.25*dmin*dmin;
+
+    Vec tmp;
+    VecDuplicate(phi, &tmp);
+    double *tmp_p;
+
+    quad_neighbor_nodes_of_node_t qnnn;
+    VecGetArray(tmp, &tmp_p);
+
+    // vx
+    int itmax = 0;
+    for (int it = 0; it < itmax; it++) {
+      foreach_node (n, nodes) {
+        neighbors.get_neighbors(n, qnnn);
+        double fxx, fyy;
+        qnnn.laplace(vx_p[0], fxx, fyy);
+        tmp_p[n] = vx_p[0][n] + dt*(fxx+fyy);
+      }
+      VecCopy(tmp, vx[0]);
+    }
+
+    // vy
+    for (int it = 0; it < itmax; it++) {
+      foreach_node (n, nodes) {
+        neighbors.get_neighbors(n, qnnn);
+        double fxx, fyy;
+        qnnn.laplace(vx_p[1], fxx, fyy);
+        tmp_p[n] = vx_p[1][n] + dt*(fxx+fyy);
+      }
+      VecCopy(tmp, vx[1]);
+    }
+
+    VecRestoreArray(tmp, &tmp_p);
+    VecDestroy(tmp);
+  }
+  foreach_dimension (dim) VecRestoreArray(vx[dim], &vx_p[dim]);
 
   // compute curvature
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
@@ -163,6 +210,7 @@ double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &press
 
   double dt = MIN(cfl*dmin/vn_max, 1.0/kvn_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+  dt = 250 * dmin*dmin*dmin * 0.5;
 
   // advect the level-set and update the grid
   p4est_t* p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
@@ -371,11 +419,11 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
   {
     double dxyz[P4EST_DIM];
     p4est_dxyz_min(p4est, dxyz);
-    #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
-    #else
+#else
     double dmin = MIN(dxyz[0], dxyz[1]);
-    #endif
+#endif
     double dt = 0.25*dmin*dmin;
 
     Vec tmp;
@@ -383,7 +431,8 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
     double *phi_p, *tmp_p;
 
     quad_neighbor_nodes_of_node_t qnnn;
-    for (int it = 0; it < 6; it++) {
+    int itmax = 0;
+    for (int it = 0; it < itmax; it++) {
       VecGetArray(phi, &phi_p);
       VecGetArray(tmp, &tmp_p);
 
@@ -435,6 +484,38 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
     bc_val_p[n] = kappa*(*gamma)(x[0], x[1]);
 #endif
   }
+
+  // smooth out the boundary condition
+  {
+    double dxyz[P4EST_DIM];
+    p4est_dxyz_min(p4est, dxyz);
+#ifdef P4_TO_P8
+    double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
+#else
+    double dmin = MIN(dxyz[0], dxyz[1]);
+#endif
+    double dt = 0.25*dmin*dmin;
+
+    Vec tmp;
+    VecDuplicate(phi, &tmp);
+    double *tmp_p;
+
+    quad_neighbor_nodes_of_node_t qnnn;
+    VecGetArray(tmp, &tmp_p);
+    int itmax = 0;
+    for (int it = 0; it < itmax; it++) {
+      foreach_node (n, nodes) {
+        neighbors.get_neighbors(n, qnnn);
+        double fxx, fyy;
+        qnnn.laplace(bc_val_p, fxx, fyy);
+        tmp_p[n] = bc_val_p[n] + dt*(fxx+fyy);
+      }
+      VecCopy(tmp, bc_val);
+    }
+    VecRestoreArray(tmp, &tmp_p);
+    VecDestroy(tmp);
+  }
+
   VecRestoreArray(bc_val, &bc_val_p);
 
   Vec K;
