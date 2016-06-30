@@ -198,7 +198,7 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double y, double z) const {
-        double theta = atan2(y,x) - params.rot*PI/180;
+        double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
         double ur    = -(*params.Q)(t)/r/r;
@@ -241,7 +241,7 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double y) const  {
-        double theta = atan2(y,x);
+        double theta = atan2(y,x) - params.rot*PI/180;
         double r     = sqrt(SQR(x)+SQR(y));
 
         return 1.0+0.1*(cos(3*theta)+sin(2*theta)) - r;
