@@ -32,7 +32,7 @@
 #endif
 
 #include <src/Parser.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 #ifdef P4_TO_P8
 typedef CF_3 cf_t;

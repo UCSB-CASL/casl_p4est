@@ -1,4 +1,4 @@
-#include "math.h"
+#include <src/casl_math.h>
 #include <petsclog.h>
 
 #ifndef CASL_LOG_FLOPS

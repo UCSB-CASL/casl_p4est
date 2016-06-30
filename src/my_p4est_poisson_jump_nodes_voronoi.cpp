@@ -4,7 +4,7 @@
 #include <algorithm>
 
 #include <src/petsc_compatibility.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS

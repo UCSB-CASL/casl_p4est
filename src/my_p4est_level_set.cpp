@@ -10,7 +10,7 @@
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 
-#include <src/math.h>
+#include <src/casl_math.h>
 #include "petsc_compatibility.h"
 #include <petsclog.h>
 

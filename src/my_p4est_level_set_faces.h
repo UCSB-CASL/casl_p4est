@@ -16,7 +16,7 @@
 
 #include <vector>
 #include <src/ipm_logging.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 class my_p4est_level_set_faces_t
 {

@@ -2,7 +2,7 @@
 #define MY_P4EST_SIMPLEX2_H
 
 #include <src/point2.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 #include <src/my_p4est_utils.h>
 #include <math.h>
 

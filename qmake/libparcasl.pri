@@ -49,7 +49,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_nodes.c \
   $$PARCASL/src/my_p4est_tools.c \
   $$PARCASL/src/my_p4est_vtk.cpp \
-  $$PARCASL/src/math.cpp \
+  $$PARCASL/src/casl_math.cpp \
   $$PARCASL/src/Parser.cpp \
   $$PARCASL/src/cube2.cpp \
   $$PARCASL/src/matrix.cpp \
@@ -91,7 +91,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_nodes.c \
   $$PARCASL/src/my_p8est_tools.c \
   $$PARCASL/src/my_p8est_vtk.cpp \
-  $$PARCASL/src/math.cpp \
+  $$PARCASL/src/casl_math.cpp \
   $$PARCASL/src/Parser.cpp \
   $$PARCASL/src/cube2.cpp \
   $$PARCASL/src/cube3.cpp \

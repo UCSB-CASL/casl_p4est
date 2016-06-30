@@ -18,7 +18,7 @@
 #include <src/my_p4est_level_set.h>
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 #include "bio_molecule.h"
 

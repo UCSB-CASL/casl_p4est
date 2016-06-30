@@ -12,7 +12,7 @@
 #include <src/my_p4est_macros.h>
 #endif
 
-#include <src/math.h>
+#include <src/casl_math.h>
 
 coupled_solver_t::coupled_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick)
   : p4est(p4est), ghost(ghost), nodes(nodes), brick(&brick)

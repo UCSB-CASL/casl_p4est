@@ -11,7 +11,7 @@
 #endif
 
 #include <src/petsc_compatibility.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 #include <sc_notify.h>
 #include <mpi.h>
 #include <src/ipm_logging.h>

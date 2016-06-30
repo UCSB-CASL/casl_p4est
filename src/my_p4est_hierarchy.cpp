@@ -10,7 +10,7 @@
 #include "petsc_compatibility.h"
 
 #include <src/types.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 #include <stdexcept>
 #include <sstream>

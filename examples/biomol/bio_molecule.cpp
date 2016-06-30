@@ -11,7 +11,7 @@
 #include <src/my_p8est_poisson_nodes.h>
 #include <src/my_p8est_poisson_jump_nodes_extended.h>
 #include <src/petsc_compatibility.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 using namespace std;
 
