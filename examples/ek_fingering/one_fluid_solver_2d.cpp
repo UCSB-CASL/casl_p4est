@@ -371,6 +371,8 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, Vec
 
   double dt = ls.advect_in_normal_direction(vn, phi, dt_cfl);
 
+  VecDestroy(vn);
+
   p4est_t* p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
   p4est_np1->connectivity = conn;
   p4est_np1->user_pointer = sp;
@@ -501,14 +503,11 @@ double one_fluid_solver_t::advect_interface_normal(Vec &phi, Vec &pressure, Vec&
     VecDestroy(normal[dim]);
   }
 
-  VecRestoreArray(vn, &vn_p);
-
   // compute dt based on cfl number and curavture
   double vn_max = 1; // minmum vn_max to be used when computing dt.
   double kvn_max = 0;
   double *kappa_p;
   VecGetArray(kappa, &kappa_p);
-  VecGetArray(vn, &vn_p);
   foreach_node(n, nodes) {
     if (fabs(phi_p[n]) < cfl*diag) {
       vn_max  = MAX(vn_max, vn_p[n]);
@@ -523,6 +522,7 @@ double one_fluid_solver_t::advect_interface_normal(Vec &phi, Vec &pressure, Vec&
   MPI_Allreduce(MPI_IN_PLACE, &dt_cfl, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   double dt = ls.advect_in_normal_direction(vn, phi, dt_cfl);
+  VecDestroy(vn);
 
   p4est_t* p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
   p4est_np1->connectivity = conn;
