@@ -42,6 +42,7 @@ static struct {
   double xmin[3], xmax[3];
   int ntr[3];
   int periodic[3];
+  double rot;
   string method, test;
 
   cf_t *interface, *bc_wall_value, *K_D, *K_EO, *gamma;
@@ -62,9 +63,10 @@ void set_parameters(int argc, char **argv) {
   cmd.add_option("dtmax", "max dt to use when solving");
   cmd.add_option("method", "choose advection method");
   cmd.add_option("alpha", "EO coupling strength");
+  cmd.add_option("rot", "the angle to rotate the initial boundary");
   cmd.add_option("test", "Which test to run?, Options are:"
-                         "circle\n"
-                         "FastShelley04_Fig12\n");
+      "circle\n"
+      "FastShelley04_Fig12\n");
 
   cmd.parse(argc, argv);
 
@@ -76,6 +78,7 @@ void set_parameters(int argc, char **argv) {
   params.xmax[0] = params.xmax[1] = params.xmax[2] =  1;
   params.periodic[0] = params.periodic[1] = params.periodic[2] = false;
   params.lmax = 3; params.lmax = 10;
+  params.rot  = 0;
 
   if (params.test == "circle") {
     // set interface
@@ -155,9 +158,10 @@ void set_parameters(int argc, char **argv) {
 
   } else if (params.test == "FastShelley04_Fig12") {
 
-    params.xmin[0] = params.xmin[1] = params.xmin[2] = -10;
-    params.xmax[0] = params.xmax[1] = params.xmax[2] =  10;
-    params.method  = "semi_lagrangian";
+    params.xmin[0] = params.xmin[1] = params.xmin[2] = -100;
+    params.xmax[0] = params.xmax[1] = params.xmax[2] =  100;
+    params.ntr[0]  = params.ntr[1]  = params.ntr[2]  = 10;
+    params.method  = "normal";
     params.cfl     = 2;
     params.dtmax   = 5e-3;
     params.dts     = 1e-1;
@@ -179,7 +183,7 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double y, double z) const  {
-        double theta = atan2(y,x);
+        double theta = atan2(y,x) - params.rot*PI/180;
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
 
@@ -194,7 +198,7 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double y, double z) const {
-        double theta = atan2(y,x);
+        double theta = atan2(y,x) - params.rot*PI/180;
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
         double ur    = -(*params.Q)(t)/r/r;
@@ -440,6 +444,7 @@ void set_parameters(int argc, char **argv) {
   params.dtmax  = cmd.get("dtmax", params.dtmax);
   params.method = cmd.get("method", params.method);
   params.alpha  = cmd.get("alpha", params.alpha);
+  params.rot    = cmd.get("rot", params.rot);
 }
 
 int main(int argc, char** argv) {
@@ -503,6 +508,7 @@ int main(int argc, char** argv) {
   char vtk_name[FILENAME_MAX];
 
   double dt = 0, t = 0;
+  int is = 0;
   for(int i=0; i<params.iter; i++) {
     dt = solver.solve_one_step(t, phi, pressure, potential, params.method, params.cfl, params.dtmax);
     t += dt;
@@ -513,21 +519,24 @@ int main(int argc, char** argv) {
     PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", i, num_nodes, t, dt);
 
     // save vtk
-    double *phi_p, *pressure_p, *potential_p;
-    VecGetArray(phi, &phi_p);
-    VecGetArray(pressure, &pressure_p);
-    VecGetArray(potential, &potential_p);
-    sprintf(vtk_name, "%s/%s_%dd.%04d", folder.c_str(), params.method.c_str(), P4EST_DIM, i);
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_TRUE, P4EST_TRUE,
-//                           3, 0, vtk_name,
-                           2, 0, vtk_name,
-                           VTK_POINT_DATA, "phi", phi_p,
-//                           VTK_POINT_DATA, "potential", potential_p,
-                           VTK_POINT_DATA, "pressure", pressure_p);
-    VecRestoreArray(phi, &phi_p);
-    VecRestoreArray(pressure, &pressure_p);
-    VecRestoreArray(potential, &potential_p);
+    if (t >= is*params.dts) {
+      double *phi_p, *pressure_p, *potential_p;
+      VecGetArray(phi, &phi_p);
+      VecGetArray(pressure, &pressure_p);
+      VecGetArray(potential, &potential_p);
+      sprintf(vtk_name, "%s/%s_%dd.%04d", folder.c_str(), params.method.c_str(), P4EST_DIM, is);
+      my_p4est_vtk_write_all(p4est, nodes, ghost,
+          P4EST_TRUE, P4EST_TRUE,
+          //                           3, 0, vtk_name,
+          2, 0, vtk_name,
+          VTK_POINT_DATA, "phi", phi_p,
+          //                           VTK_POINT_DATA, "potential", potential_p,
+          VTK_POINT_DATA, "pressure", pressure_p);
+      VecRestoreArray(phi, &phi_p);
+      VecRestoreArray(pressure, &pressure_p);
+      VecRestoreArray(potential, &potential_p);
+      is++;
+    }
   }
 
   // destroy vectors
