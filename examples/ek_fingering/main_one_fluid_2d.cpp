@@ -248,7 +248,7 @@ void set_parameters(int argc, char **argv) {
       }
     } interface; interface.lip = params.lip;
 
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
@@ -268,7 +268,7 @@ void set_parameters(int argc, char **argv) {
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 0
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
     } bc_wall_type;

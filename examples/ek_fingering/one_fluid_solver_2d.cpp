@@ -537,25 +537,36 @@ double one_fluid_solver_t::advect_interface_normal(Vec &phi, Vec &pressure, Vec&
   p4est_nodes_t* nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   // transfer data from old grid to new
-  Vec phi_np1;
+  Vec phi_np1, pressure_np1, potential_np1;
   VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1);
+  VecDuplicate(phi_np1, &pressure_np1);
+  VecDuplicate(phi_np1, &potential_np1);
 
-  my_p4est_interpolation_nodes_t phi_i(&neighbors);
-  phi_i.set_input(phi, quadratic_non_oscillatory);
+  // create an interpolation function between two grids
+  my_p4est_interpolation_nodes_t grid_interp(&neighbors);  
   foreach_node(n, nodes_np1) {
     node_xyz_fr_n(n, p4est_np1, nodes_np1, x);
-    phi_i.add_point(n,x);
+    grid_interp.add_point(n,x);
   }
-  phi_i.interpolate(phi_np1);
+
+  // interpolate variables
+  grid_interp.set_input(phi, quadratic_non_oscillatory);
+  grid_interp.interpolate(phi_np1);
+
+  grid_interp.set_input(pressure, quadratic_non_oscillatory);
+  grid_interp.interpolate(pressure_np1);
+
+  grid_interp.set_input(potential, quadratic_non_oscillatory);
+  grid_interp.interpolate(potential_np1);
 
   // destroy old quantities and swap pointers
   p4est_destroy(p4est);       p4est = p4est_np1;
   p4est_nodes_destroy(nodes); nodes = nodes_np1;
   p4est_ghost_destroy(ghost); ghost = ghost_np1;
 
-  VecDestroy(phi); phi = phi_np1;
-  VecDestroy(pressure); VecDuplicate(phi, &pressure);
-  VecDestroy(potential); VecDuplicate(phi, &potential);
+  VecDestroy(phi);        phi       = phi_np1;
+  VecDestroy(pressure);   pressure  = pressure_np1;
+  VecDestroy(potential);  potential = potential_np1;
 
   return dt;
 }
@@ -626,17 +637,25 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
   VecGetArray(bc_val, &bc_val_p);
 
   double x[P4EST_DIM];
-  //  double diag_min = p4est_diag_min(p4est);
+  double diag_min = p4est_diag_min(p4est);
+  double *phi_p;
+  VecGetArray(phi, &phi_p);
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
-    double kappa = bc_val_p[n];
+    if (fabs(phi_p[n]) < 10*diag_min) {
+      double kappa = bc_val_p[n];
 //    kappa = CLAMP(kappa, -1.0/(2.0*diag_min), 1.0/(2.0*diag_min));
 #ifdef P4_TO_P8
-    bc_val_p[n] = kappa*(*gamma)(x[0], x[1], x[2]);
+      bc_val_p[n] = kappa*(*gamma)(x[0], x[1], x[2]);
 #else
-    bc_val_p[n] = kappa*(*gamma)(x[0], x[1]);
+      bc_val_p[n] = kappa*(*gamma)(x[0], x[1]);
 #endif
+    } else {
+      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), 0.1);
+      bc_val_p[n] = -(*Q)(t)/(2*PI) * log(r);
+    }
   }
+  VecRestoreArray(phi, &phi_p);
 
   // smooth out the boundary condition
   if (0)
@@ -676,6 +695,21 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
   VecCreateGhostNodes(p4est, nodes, &K);
   // solve for pressure
   {
+    // define a new levelset for the outer ring boundary
+    Vec phi_ring;
+    VecDuplicate(phi, &phi_ring);
+    double *phi_ring_p;
+    VecGetArray(phi_ring, &phi_ring_p);
+    VecGetArray(phi, &phi_p);
+    double xyz_max[P4EST_DIM];
+    p4est_xyz_max(p4est, xyz_max);
+    foreach_node (n, nodes) {
+      node_xyz_fr_n(n, p4est, nodes, x);
+      phi_ring_p[n] = MAX(phi_p[n], sqrt(SQR(x[0]) + SQR(x[1])) - 0.99*xyz_max[0]);
+    }
+    VecRestoreArray(phi, &phi_p);
+    VecRestoreArray(phi_ring, &phi_ring_p);
+
     // Set the boundary conditions
     my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
     p_interface_value.set_input(bc_val, linear);
@@ -692,14 +726,21 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
     bc_wall_value->t = t;
 
     my_p4est_poisson_nodes_t poisson(&neighbors);
-    poisson.set_phi(phi);
+    poisson.set_phi(phi_ring);
     poisson.set_bc(bc);
 //    sample_cf_on_nodes(p4est, nodes, *K_D, K);
 //    poisson.set_mu(K);
     poisson.set_mu(1.0);
-    poisson.solve(pressure);
+    poisson.solve(pressure, true);
 
-    ls.extend_Over_Interface_TVD(phi, pressure);
+    ls.extend_Over_Interface_TVD(phi_ring, pressure);    
+    // Vec l1,l2;
+    // VecGhostGetLocalForm(pressure, &l1);
+    // VecGhostGetLocalForm(bc_val, &l2);
+    // VecCopy(l2, l1);
+    // VecGhostRestoreLocalForm(pressure, &l1);
+    // VecGhostRestoreLocalForm(bc_val, &l2);
+    VecDestroy(phi_ring);
   }
 
   // solve for the potential
@@ -744,7 +785,7 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
 //    sample_cf_on_nodes(p4est, nodes, *K_EO, K);
 //    poisson.set_mu(K);
     poisson.set_mu(1.0);
-    poisson.solve(potential);
+    poisson.solve(potential, true);
 
     ls.extend_Over_Interface_TVD(phi, potential);
 
