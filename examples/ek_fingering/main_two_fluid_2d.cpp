@@ -251,6 +251,7 @@ void set_options(int argc, char **argv) {
   options.dts       = cmd.get("dts",       options.dts);
   options.dtmax     = cmd.get("dtmax",     options.dtmax);
   options.viscosity = cmd.get("viscosity", options.viscosity);
+  options.method    = cmd.get("method",    options.method);
 }
 
 int main(int argc, char** argv) {

@@ -225,7 +225,7 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
 
   // jump in solution
   foreach_node(n, nodes) {
-    jump_p_p[n]  = viscosity_ratio*pstar[n] - 1.0/Ca*kappa_p[n];
+    jump_p_p[n]  = -viscosity_ratio*pstar[n] - 1.0/Ca*kappa_p[n];
   }
   VecRestoreArray(jump_p, &jump_p_p);
   VecRestoreArray(kappa, &kappa_p);
@@ -241,9 +241,9 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
     neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
+    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*normal_p[0][n] - qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
-    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
 
     jump_dp_p[n] *= -1;
@@ -255,9 +255,9 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
     neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
+    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*normal_p[0][n] - qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
-    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
 
     jump_dp_p[n] *= -1;
@@ -290,7 +290,7 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
   jump_solver.set_bc(bc);
   jump_solver.set_jump(jump_p_interp, jump_dp_interp);
   jump_solver.set_phi(phi);
-  jump_solver.set_mue(1.0/MAX(viscosity_ratio, EPS), 1.0);
+  jump_solver.set_mue(1.0, 1.0/MAX(viscosity_ratio, EPS));
 
   Vec sol;
   VecCreateGhostNodesBlock(p4est, nodes, 2, &sol);
@@ -303,8 +303,8 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
   VecGetArray(sol, &sol_p);
 
   foreach_node(n, nodes) {
-    press_m_p[n] = sol_p[2*n+0];
-    press_p_p[n] = sol_p[2*n+1] - viscosity_ratio*pstar[n];
+    press_m_p[n] = sol_p[2*n+0] - viscosity_ratio*pstar[n];
+    press_p_p[n] = sol_p[2*n+1];
   }
 
   VecRestoreArray(sol, &sol_p);
