@@ -64,10 +64,10 @@ double two_fluid_solver_t::advect_interface(Vec &phi, Vec &press_m, Vec& press_p
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 
-    vx_p[0][n] = -qnnn.dx_central(press_m_p);
-    vx_p[1][n] = -qnnn.dy_central(press_m_p);
+    vx_p[0][n] = -qnnn.dx_central(press_p_p);
+    vx_p[1][n] = -qnnn.dy_central(press_p_p);
 #ifdef P4_TO_P8
-    vx_p[2][n] = -qnnn.dz_central(press_m_p);
+    vx_p[2][n] = -qnnn.dz_central(press_p_p);
 #endif
   }
   foreach_dimension(dim)
@@ -79,10 +79,10 @@ double two_fluid_solver_t::advect_interface(Vec &phi, Vec &press_m, Vec& press_p
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 
-    vx_p[0][n] = -qnnn.dx_central(press_m_p);
-    vx_p[1][n] = -qnnn.dy_central(press_m_p);
+    vx_p[0][n] = -qnnn.dx_central(press_p_p);
+    vx_p[1][n] = -qnnn.dy_central(press_p_p);
 #ifdef P4_TO_P8
-    vx_p[2][n] = -qnnn.dz_central(press_m_p);
+    vx_p[2][n] = -qnnn.dz_central(press_p_p);
 #endif
   }
   foreach_dimension(dim)
@@ -369,21 +369,22 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   // compute the singular part
   std::vector<double> pstar(nodes->indep_nodes.elem_count);
   double *normal_p[P4EST_DIM];
+  double diag_min = p4est_diag_min(p4est);
 
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
-    double r = sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2]));
+    double r = MAX(diag_min, sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])));
     pstar[n] = (*Q)(t)/(4*PI*r);
 #else
-    double r = sqrt(SQR(x[0]) + SQR(x[1]));
+    double r = MAX(diag_min, sqrt(SQR(x[0]) + SQR(x[1])));
     pstar[n] = (*Q)(t)/(2*PI)*log(r);
 #endif
   }
 
   // jump in solution
   foreach_node(n, nodes) {
-    jump_p_p[n]  = viscosity_ratio*pstar[n] - 1.0/Ca*kappa_p[n];
+    jump_p_p[n]  = -viscosity_ratio*pstar[n] - 1.0/Ca*kappa_p[n];
   }
   VecRestoreArray(jump_p, &jump_p_p);
   VecRestoreArray(kappa, &kappa_p);
@@ -399,9 +400,9 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     node_neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
+    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*normal_p[0][n] - qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
-    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
   }
   VecGhostUpdateBegin(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
@@ -411,9 +412,9 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     node_neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n] = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
+    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*normal_p[0][n] - qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
-    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
   }
   VecGhostUpdateEnd(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
@@ -442,11 +443,11 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     VecGhostRestoreLocalForm(rhs_p, &l);
 
     VecGhostGetLocalForm(mue_m, &l);
-    VecSet(l, 1.0);
+    VecSet(l, 1.0/MAX(viscosity_ratio, EPS));
     VecGhostRestoreLocalForm(mue_m, &l);
 
     VecGhostGetLocalForm(mue_p, &l);
-    VecSet(l, 1.0/MAX(viscosity_ratio, EPS));
+    VecSet(l, 1.0);
     VecGhostRestoreLocalForm(mue_p, &l);
   }
 
@@ -470,7 +471,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   jump_solver.set_mu_grad_u_jump(jump_dp);
   jump_solver.set_rhs(rhs_m, rhs_p);
 
-  jump_solver.solve(press_m);
+  jump_solver.solve(press_p);
 
   VecDestroy(rhs_m);
   VecDestroy(rhs_p);
@@ -484,8 +485,9 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   VecGetArray(press_m, &press_m_p);
   VecGetArray(press_p, &press_p_p);
 
+  // add the singular part to the inside solution
   foreach_node(n, nodes) {
-    press_p_p[n] = press_m_p[n] - viscosity_ratio*pstar[n];
+    press_m_p[n] = press_p_p[n] - viscosity_ratio*pstar[n];
   }
 
   // extend solutions

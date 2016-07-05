@@ -167,7 +167,6 @@ void set_parameters(int argc, char **argv) {
     params.dts     = 1e-1;
     params.alpha   = 0;
 
-
 #ifdef P4_TO_P8
     static struct:cf_t{
       double operator()(double, double, double) const { return 1.0/params.Ca; }

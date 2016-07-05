@@ -17,9 +17,11 @@
 #ifndef P4_TO_P8
 #include "two_fluid_solver_2d.h"
 #include <src/my_p4est_vtk.h>
+#include <src/my_p4est_macros.h>
 #else
-#include "two_fluid_solver_2d.h"
-#include <src/my_p4est_vtk.h>
+#include "two_fluid_solver_3d.h"
+#include <src/my_p8est_vtk.h>
+#include <src/my_p8est_macros.h>
 #endif
 
 #include <sys/stat.h>
@@ -75,7 +77,7 @@ void set_options(int argc, char **argv) {
   options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
   options.xmin[0] = options.xmin[1] = options.xmin[2] = -1;
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
-  options.periodic[0] = options.periodic[1] = options.periodic[2] = 0;
+  options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
 
   if (options.test == "circle") {
     // set interface
@@ -123,8 +125,18 @@ void set_options(int argc, char **argv) {
 
   } else if (options.test == "FastShelley04_Fig12") {
 
-    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10;
-    options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
+    options.xmin[0]   = options.xmin[1] = options.xmin[2] = -100;
+    options.xmax[0]   = options.xmax[1] = options.xmax[2] =  100;
+    options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 10;
+    options.method    = "voronoi";
+    options.lmin      = 2;
+    options.lmax      = 10;
+    options.lip       = 1.2;
+    options.cfl       = 2;
+    options.dtmax     = 5e-3;
+    options.dts       = 1e-1;
+    options.Ca        = 250;
+    options.viscosity = 1e-2;
 
 #ifdef P4_TO_P8
     static struct:cf_t{
@@ -133,7 +145,7 @@ void set_options(int argc, char **argv) {
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
 
-        return 1.0+0.1*(cos(3*theta)+sin(2*theta))*pow(sin(2*phi),2) - r;
+        return r - ( 1.0+0.1*(cos(3*theta)+sin(2*theta))*pow(sin(2*phi),2) );
       }
     } interface; interface.lip = options.lip;
 
@@ -178,7 +190,7 @@ void set_options(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
 
-        return 1.0+0.1*(cos(3*theta)+sin(2*theta)) - r;
+        return r - ( 1.0+0.1*(cos(3*theta)+sin(2*theta)) );
       }
     } interface; interface.lip = options.lip;
 
@@ -224,24 +236,20 @@ void set_options(int argc, char **argv) {
     options.interface      = &interface;
     options.bc_wall_type   = &bc_wall_type;
     options.bc_wall_value  = &bc_wall_value;
-    options.dtmax          = 5e-3;
-    options.dts            = 1e-1;
-    options.Ca             = 250;
-    options.viscosity      = 1;
 
   } else {
     throw std::invalid_argument("Unknown test");
   }
 
   // overwrite default values from stdin
-  options.lmin      = cmd.get("lmin", 5);
-  options.lmax      = cmd.get("lmax", 10);
-  options.iter      = cmd.get("iter", INT_MAX);
-  options.lip       = cmd.get("lip", 1.2);
-  options.Ca        = cmd.get("Ca", options.Ca);
-  options.cfl       = cmd.get("cfl", 5.0);
-  options.dts       = cmd.get("dts", options.dts);
-  options.dtmax     = cmd.get("dtmax", options.dtmax);
+  options.lmin      = cmd.get("lmin",      options.lmin);
+  options.lmax      = cmd.get("lmax",      options.lmax);
+  options.iter      = cmd.get("iter",      INT_MAX);
+  options.lip       = cmd.get("lip",       options.lip);
+  options.Ca        = cmd.get("Ca",        options.Ca);
+  options.cfl       = cmd.get("cfl",       options.cfl);
+  options.dts       = cmd.get("dts",       options.dts);
+  options.dtmax     = cmd.get("dtmax",     options.dtmax);
   options.viscosity = cmd.get("viscosity", options.viscosity);
 }
 
@@ -297,13 +305,17 @@ int main(int argc, char** argv) {
   solver.set_bc_wall(*options.bc_wall_type, *options.bc_wall_value);
 
 
+  const char* outdir = getenv("OUT_DIR");
+  if (!outdir)
+    throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
+
   ostringstream folder;
-  folder << options.test << "/two_fluid/"
-         << "mue_"   << options.viscosity;
+  folder << outdir << "/two_fluid/mue_" << options.viscosity;
   system(("mkdir -p " + folder.str()).c_str());
   char vtk_name[FILENAME_MAX];
 
   double dt = 0, t = 0;
+  int is = 0;
   for(int i=0; i<options.iter; i++) {
     dt = solver.solve_one_step(t, phi, press_m, press_p, options.cfl, options.dtmax, options.method);
     t += dt;
@@ -313,22 +325,33 @@ int main(int argc, char** argv) {
       num_nodes += nodes->global_owned_indeps[r];
     PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", i, num_nodes, t, dt);
 
-    // save vtk
-    double *phi_p, *press_m_p, *press_p_p;
-    VecGetArray(phi, &phi_p);
-    VecGetArray(press_m, &press_m_p);
-    VecGetArray(press_p, &press_p_p);
 
-    sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM, i);
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_TRUE, P4EST_TRUE,
-                           3, 0, vtk_name,
-                           VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "press_m", press_m_p,
-                           VTK_POINT_DATA, "press_p", press_p_p);
-    VecRestoreArray(phi, &phi_p);
-    VecRestoreArray(press_m, &press_m_p);
-    VecRestoreArray(press_p, &press_p_p);
+    if (t >= is*options.dts) {
+      // save vtk
+      double *phi_p, *press_m_p, *press_p_p;
+      VecGetArray(phi, &phi_p);
+      VecGetArray(press_m, &press_m_p);
+      VecGetArray(press_p, &press_p_p);
+
+      sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM, is);
+      PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
+      my_p4est_vtk_write_all(p4est, nodes, ghost,
+                             P4EST_TRUE, P4EST_TRUE,
+                             3, 0, vtk_name,
+                             VTK_POINT_DATA, "phi", phi_p,
+                             VTK_POINT_DATA, "press_m", press_m_p,
+                             VTK_POINT_DATA, "press_p", press_p_p);
+      VecRestoreArray(phi, &phi_p);
+      foreach_node (n,nodes) {
+        if (isnan(press_m_p[n])) cout << "nan in p^- for n = " << n << endl;
+        if (isnan(press_p_p[n])) cout << "nan in p^+ for n = " << n << endl;
+      }
+
+      VecRestoreArray(press_m, &press_m_p);
+      VecRestoreArray(press_p, &press_p_p);
+
+      is++;
+    }
   }
 
   // destroy vectors
