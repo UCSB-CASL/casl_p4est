@@ -10,6 +10,7 @@
 *.pro
 *.pro.user*
 *.creator.user*
+CMakeLists.txt.user
 *~
 *.vt[uks]
 *.pvt[uks]
@@ -41,6 +42,8 @@ sync
 *[Pp]roject[s]*
 *[Bb]uild*
 *[Xx]code*
+Default/
+
 *.orig
 *_BACKUP_*
 *_BASE_*
