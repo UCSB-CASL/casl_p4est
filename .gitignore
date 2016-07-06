@@ -34,6 +34,7 @@ CMakeLists.txt.user
 *.blg
 sync
 .rsync.exclude
+Info.plist
 
 # What directories to ignore
 *[Dd]ebug*
