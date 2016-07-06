@@ -22,6 +22,7 @@
 #include <src/my_p4est_vtk.h>
 #endif
 
+#include <limits>
 #include <sys/stat.h>
 #include <src/Parser.h>
 #include <src/casl_math.h>
@@ -40,7 +41,7 @@ static struct {
   int lmin, lmax, iter;
   double lip, Ca, cfl, dts, dtmax;
   double alpha, beta;
-  double mue, eps, sigma;
+  double M, S, R;
   double xmin[3], xmax[3];
   int ntr[3];
   int periodic[3];
@@ -63,9 +64,9 @@ void set_options(int argc, char **argv) {
   cmd.add_option("cfl", "the CFL number");
   cmd.add_option("dts", "dt for saving vtk files");
   cmd.add_option("dtmax", "max dt to use when solving");  
-  cmd.add_option("mue", "The viscosity ratio of outer/inner");
-  cmd.add_option("eps", "The permittivity ratio of outer/inner");
-  cmd.add_option("sigma", "The conductivity ratio of outer/inner");
+  cmd.add_option("M", "The viscosity ratio of outer/inner");
+  cmd.add_option("S", "The permittivity ratio of outer/inner");
+  cmd.add_option("R", "The conductivity ratio of outer/inner");
   cmd.add_option("alpha", "The coupling strength between EO flow/Darcy flow");
   cmd.add_option("beta", "The coupling strength between Ohmic current/Streaming current");
   cmd.add_option("method", "method for solving the jump equation");
@@ -82,7 +83,8 @@ void set_options(int argc, char **argv) {
   options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
   options.xmin[0] = options.xmin[1] = options.xmin[2] = -1;
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
-  options.periodic[0] = options.periodic[1] = options.periodic[2] = 0;
+  options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
+  options.iter = numeric_limits<int>::max();
 
   if (options.test == "circle") {
     // set interface
@@ -149,16 +151,30 @@ void set_options(int argc, char **argv) {
     options.dtmax              = 5e-3;
     options.dts                = 1e-1;
     options.Ca                 = 250;
-    options.mue                = 1;
-    options.eps                = 1;
-    options.sigma              = 1;
+    options.M                  = 1;
+    options.S                  = 1;
+    options.R                  = 1;
     options.alpha              = 1;
     options.beta               = 1;
 
   } else if (options.test == "FastShelley04_Fig12") {
 
-    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10;
-    options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
+    options.xmin[0]   = options.xmin[1] = options.xmin[2] = -100;
+    options.xmax[0]   = options.xmax[1] = options.xmax[2] =  100;
+    options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 10;
+    options.method    = "voronoi";
+    options.lmin      = 2;
+    options.lmax      = 10;
+    options.lip       = 1.2;
+    options.cfl       = 2;
+    options.dtmax     = 5e-3;
+    options.dts       = 1e-1;
+    options.Ca        = 250;
+    options.M         = 1;
+    options.S         = 1;
+    options.R         = 1;
+    options.alpha     = 0;
+    options.beta      = 0;
 
 #ifdef P4_TO_P8
     static struct:cf_t{
@@ -167,7 +183,7 @@ void set_options(int argc, char **argv) {
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
 
-        return 1.0+0.1*(cos(3*theta)+sin(2*theta))*pow(sin(2*phi),2) - r;
+        return r - ( 1.0+0.1*(cos(3*theta)+sin(2*theta))*pow(sin(2*phi),2) );
       }
     } interface; interface.lip = options.lip;
 
@@ -245,7 +261,7 @@ void set_options(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
 
-        return 1.0+0.1*(cos(3*theta)+sin(2*theta)) - r;
+        return r - ( 1.0+0.1*(cos(3*theta)+sin(2*theta)) );
       }
     } interface; interface.lip = options.lip;
 
@@ -328,33 +344,25 @@ void set_options(int argc, char **argv) {
     options.potential_bc_type  = &potential_bc_type;
     options.pressure_bc_value  = &pressure_bc_value;
     options.potential_bc_value = &potential_bc_value;
-    options.dtmax              = 5e-3;
-    options.dts                = 1e-1;
-    options.Ca                 = 250;
-    options.mue                = 1;
-    options.eps                = 1;
-    options.sigma              = 1;
-    options.alpha              = 1;
-    options.beta               = 1;
 
   } else {
     throw std::invalid_argument("Unknown test");
   }
 
   // overwrite default values from stdin
-  options.lmin      = cmd.get("lmin", 5);
-  options.lmax      = cmd.get("lmax", 10);
-  options.iter      = cmd.get("iter", INT_MAX);
-  options.lip       = cmd.get("lip", 1.2);
-  options.Ca        = cmd.get("Ca", options.Ca);
-  options.cfl       = cmd.get("cfl", 5.0);
-  options.dts       = cmd.get("dts", options.dts);
-  options.dtmax     = cmd.get("dtmax", options.dtmax);
-  options.mue       = cmd.get("mue", options.mue);
-  options.eps       = cmd.get("eps", options.eps);
-  options.sigma     = cmd.get("sigma", options.sigma);
-  options.alpha     = cmd.get("alpha", options.alpha);
-  options.beta      = cmd.get("beta", options.beta);
+  options.lmin  = cmd.get("lmin",  options.lmin);
+  options.lmax  = cmd.get("lmax",  options.lmax);
+  options.iter  = cmd.get("iter",  options.iter);
+  options.lip   = cmd.get("lip",   options.lip);
+  options.Ca    = cmd.get("Ca",    options.Ca);
+  options.cfl   = cmd.get("cfl",   options.cfl);
+  options.dts   = cmd.get("dts",   options.dts);
+  options.dtmax = cmd.get("dtmax", options.dtmax);
+  options.M     = cmd.get("M",     options.M);
+  options.S     = cmd.get("S",     options.S);
+  options.R     = cmd.get("R",     options.R);
+  options.alpha = cmd.get("alpha", options.alpha);
+  options.beta  = cmd.get("beta",  options.beta);
 }
 
 int main(int argc, char** argv) {
@@ -411,9 +419,9 @@ int main(int argc, char** argv) {
     options.alpha,    // alpha
     options.beta,     // beta
     options.Ca,       // Ca
-    options.mue,      // mue
-    options.eps,      // eps
-    options.sigma,    // sigma
+    options.M,        // M
+    options.S,        // S
+    options.R,        // R
   };
 
   solver.set_parameters(params);
@@ -421,17 +429,23 @@ int main(int argc, char** argv) {
   solver.set_boundary_conditions(*options.pressure_bc_type, *options.pressure_bc_value,
                                  *options.potential_bc_type, *options.potential_bc_value);
 
+  const char* outdir = getenv("OUT_DIR");
+  if (!outdir)
+    throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
+
   ostringstream folder;
-  folder << options.test << "/coupled/"
+  folder << outdir << "/coupled/" << options.test << "/"
          << "alpha_" << options.alpha
          << "_beta_"  << options.beta
-         << "_mue_"   << options.mue
-         << "_eps_"   << options.eps
-         << "_sigma_" << options.sigma;
-  system(("mkdir -p " + folder.str()).c_str());
+         << "_mue_"   << options.M
+         << "_eps_"   << options.S
+         << "_sigma_" << options.R;
+  if (mpi.rank() == 0) system(("mkdir -p " + folder.str()).c_str());
+  MPI_Barrier(mpi.comm());
   char vtk_name[FILENAME_MAX];
 
   double dt = 0, t = 0;
+  int is = 0;
   for(int i=0; i<options.iter; i++) {
     dt = solver.solve_one_step(t, phi,
                                pressure[0],  pressure[1],
@@ -445,28 +459,32 @@ int main(int argc, char** argv) {
     PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", i, num_nodes, t, dt);
 
     // save vtk
-    double *phi_p, *pressure_p[2], *potential_p[2];
-    VecGetArray(phi, &phi_p);
-    VecGetArray(pressure[0], &pressure_p[0]);
-    VecGetArray(pressure[1], &pressure_p[1]);
-    VecGetArray(potential[0], &potential_p[0]);
-    VecGetArray(potential[1], &potential_p[1]);
+    if (t >= is*options.dts) {
+      double *phi_p, *pressure_p[2], *potential_p[2];
+      VecGetArray(phi, &phi_p);
+      VecGetArray(pressure[0], &pressure_p[0]);
+      VecGetArray(pressure[1], &pressure_p[1]);
+      VecGetArray(potential[0], &potential_p[0]);
+      VecGetArray(potential[1], &potential_p[1]);
 
-    sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM, i);
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_TRUE, P4EST_TRUE,
-                           5, 0, vtk_name,
-                           VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "pressure_m",  pressure_p[0],
-                           VTK_POINT_DATA, "pressure_p",  pressure_p[1],
-                           VTK_POINT_DATA, "potential_m", potential_p[0],
-                           VTK_POINT_DATA, "potential_p", potential_p[1]);
+      sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM,
+              is++);
+      PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
+      my_p4est_vtk_write_all(p4est, nodes, ghost,
+                             P4EST_TRUE, P4EST_TRUE,
+                             5, 0, vtk_name,
+                             VTK_POINT_DATA, "phi", phi_p,
+                             VTK_POINT_DATA, "pressure_m",  pressure_p[0],
+                             VTK_POINT_DATA, "pressure_p",  pressure_p[1],
+                             VTK_POINT_DATA, "potential_m", potential_p[0],
+                             VTK_POINT_DATA, "potential_p", potential_p[1]);
 
-    VecRestoreArray(phi, &phi_p);
-    VecRestoreArray(pressure[0], &pressure_p[0]);
-    VecRestoreArray(pressure[1], &pressure_p[1]);
-    VecRestoreArray(potential[0], &potential_p[0]);
-    VecRestoreArray(potential[1], &potential_p[1]);
+      VecRestoreArray(phi, &phi_p);
+      VecRestoreArray(pressure[0], &pressure_p[0]);
+      VecRestoreArray(pressure[1], &pressure_p[1]);
+      VecRestoreArray(potential[0], &potential_p[0]);
+      VecRestoreArray(potential[1], &potential_p[1]);
+    }
   }
 
   // destroy vectors

@@ -40,7 +40,7 @@ typedef WallBC2D wall_bc_t;
 
 static struct {
   int lmin, lmax, iter;
-  double lip, Ca, cfl, dts, dtmax, viscosity;
+  double lip, Ca, cfl, dts, dtmax, M;
   double xmin[3], xmax[3];
   int ntr[3];
   int periodic[3];
@@ -62,7 +62,7 @@ void set_options(int argc, char **argv) {
   cmd.add_option("cfl", "the CFL number");
   cmd.add_option("dts", "dt for saving vtk files");
   cmd.add_option("dtmax", "max dt to use when solving");  
-  cmd.add_option("viscosity", "The viscosity ratio of inner to outer fluid");
+  cmd.add_option("M", "The viscosity ratio of inner to outer fluid");
   cmd.add_option("method", "method for solving the jump equation");
   cmd.add_option("test", "Which test to run?, Options are:\n"
                          "\tcircle\n"
@@ -121,7 +121,7 @@ void set_options(int argc, char **argv) {
     options.dtmax         = 5e-3;
     options.dts           = 1e-1;
     options.Ca            = 250;
-    options.viscosity     = 1;
+    options.M             = 1;
 
   } else if (options.test == "FastShelley04_Fig12") {
 
@@ -136,7 +136,7 @@ void set_options(int argc, char **argv) {
     options.dtmax     = 5e-3;
     options.dts       = 1e-1;
     options.Ca        = 250;
-    options.viscosity = 1e-2;
+    options.M         = 1;
 
 #ifdef P4_TO_P8
     static struct:cf_t{
@@ -250,7 +250,7 @@ void set_options(int argc, char **argv) {
   options.cfl       = cmd.get("cfl",       options.cfl);
   options.dts       = cmd.get("dts",       options.dts);
   options.dtmax     = cmd.get("dtmax",     options.dtmax);
-  options.viscosity = cmd.get("viscosity", options.viscosity);
+  options.M         = cmd.get("M",         options.M);
   options.method    = cmd.get("method",    options.method);
 }
 
@@ -302,7 +302,7 @@ int main(int argc, char** argv) {
 
   // set up the solver
   two_fluid_solver_t solver(p4est, ghost, nodes, brick);
-  solver.set_properties(options.viscosity, options.Ca, *options.Q);
+  solver.set_properties(options.M, options.Ca, *options.Q);
   solver.set_bc_wall(*options.bc_wall_type, *options.bc_wall_value);
 
 
@@ -311,14 +311,16 @@ int main(int argc, char** argv) {
     throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
 
   ostringstream folder;
-  folder << outdir << "/two_fluid/mue_" << options.viscosity;
-  system(("mkdir -p " + folder.str()).c_str());
+  folder << outdir << "/two_fluid/" << options.test << "/mue_" << options.M;
+  if (mpi.rank() == 0) system(("mkdir -p " + folder.str()).c_str());
+  MPI_Barrier(mpi.comm());
   char vtk_name[FILENAME_MAX];
 
   double dt = 0, t = 0;
   int is = 0;
   for(int i=0; i<options.iter; i++) {
-    dt = solver.solve_one_step(t, phi, press_m, press_p, options.cfl, options.dtmax, options.method);
+    dt = solver.solve_one_step(t, phi, press_m, press_p,
+                               options.cfl, options.dtmax, options.method);
     t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -334,7 +336,8 @@ int main(int argc, char** argv) {
       VecGetArray(press_m, &press_m_p);
       VecGetArray(press_p, &press_p_p);
 
-      sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM, is);
+      sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM,
+              is++);
       PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
@@ -350,8 +353,6 @@ int main(int argc, char** argv) {
 
       VecRestoreArray(press_m, &press_m_p);
       VecRestoreArray(press_p, &press_p_p);
-
-      is++;
     }
   }
 
