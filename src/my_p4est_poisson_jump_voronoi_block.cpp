@@ -2,6 +2,7 @@
 #include <src/my_p4est_refine_coarsen.h>
 
 #include <algorithm>
+#include <cassert>
 
 #include <src/petsc_compatibility.h>
 #include <src/casl_math.h>
@@ -1737,12 +1738,15 @@ void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to
                   ni[1]=grid2voro[n_idx][m]; di[1]=d;
                 }
               }
+            } else {
+              throw std::runtime_error("Found rank = -1 in voronoi interpolaiton. This should not happen. SHIT SHIT SHIT");
             }
           }
         }
       }
     }
 
+    assert(ni[0] != UINT_MAX && ni[1] != UINT_MAX);
 #ifdef P4_TO_P8
     Point3 p0(voro_points[ni[0]]);
     Point3 p1(voro_points[ni[1]]);
@@ -1794,12 +1798,15 @@ void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to
                   ni[2]=grid2voro[n_idx][m]; di[2]=d;
                 }
               }
+            } else {
+              throw std::runtime_error("Found rank = -1 in voronoi interpolaiton. This should not happen. SHIT SHIT SHIT");
             }
           }
         }
       }
     }
 
+    assert(ni[2] != UINT_MAX);
 #ifdef P4_TO_P8
     Point3 p2(voro_points[ni[2]]);
 #else
@@ -1842,12 +1849,15 @@ void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to
                   ni[3]=grid2voro[n_idx][m]; di[3]=d;
                 }
               }
+            } else {
+              throw std::runtime_error("Found rank = -1 in voronoi interpolaiton. This should not happen. SHIT SHIT SHIT");
             }
           }
         }
       }
     }
 
+    assert(ni[3] != UINT_MAX);
     Point3 p3(voro_points[ni[3]]);
 #endif
 

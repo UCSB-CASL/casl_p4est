@@ -254,7 +254,7 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   VecGetArray(jump[0], &jump_p[0]);
   VecGetArray(jump[1], &jump_p[1]);
   foreach_node(n, nodes) {
-    jump_p[0][n]  = -pressure_star[n] - 1/params.Ca*kappa_p[n];
+    jump_p[0][n]  = -1/params.Ca*kappa_p[n] - pressure_star[n];
     jump_p[1][n]  = -potential_star[n];
   }
   VecRestoreArray(jump[0], &jump_p[0]);
