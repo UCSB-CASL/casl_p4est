@@ -58,15 +58,19 @@ CSRCS += my_p4est_vtk.c \
 	my_p4est_tools.c \
 	my_p4est_nodes.c 
 
-# Cluster setting
+# Cluster setting; may set one of these to YES.
 TACC_CLUSTER = NO
+BGQ_CLUSTER = NO
 
 # What build type to use? __MUST__ either be 'debug' or 'release'
 BUILD_TYPE = release
 
 # compiler options:
-# CXX_COMPILER_TYPE: This variable is used to set correct flags for the compiler; it can be GNU (for g++) or INTEL (for icpc)
-# CXX_USE_MPI_COMPILER: This variable is used to determine whether MPI should be used
+# CXX_COMPILER_TYPE:
+#   This variable is used to set correct flags for the compiler;
+#   it can be GNU (for g++), INTEL (for icpc), or BGQ.
+# CXX_USE_MPI_COMPILER:
+#   This variable is used to determine whether MPI should be used
 CXX_COMPILER_TYPE    = GNU
 CXX_DEFINES          = -DCASL_THROWS -DCASL_LOG_EVENTS
 CXX_EXTRA_FLAGS      = 

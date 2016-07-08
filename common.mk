@@ -7,11 +7,18 @@ ifeq ($(TACC_CLUSTER), YES)
 		PETSC_INCLUDE = -I$(PETSC_DIR)include -I$(PETSC_DIR)$(PETSC_ARCH)/include 
 	endif
 else
+ifeq ($(BGQ_CLUSTER), YES)
+	# assume petsc 3.6 is used
+	include $(PETSC_DIR)/lib/petsc/conf/variables
+	include $(PETSC_DIR)/lib/petsc/conf/rules
+	PETSC_INCLUDE = -I$(PETSC_DIR)/include
+else
 	include $(PETSC_DIR)/conf/variables
 	include $(PETSC_DIR)/conf/rules
 	ifeq ($(PETSC_INCLUDE),)
 		PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/$(PETSC_ARCH)/include 
 	endif
+endif
 endif
 
 
@@ -23,17 +30,30 @@ INCLUDE_FLAGS += -I$(P4EST_DIR)/include
 P4EST_LIBS = -L$(P4EST_DIR)/lib -lp4est -lsc
 LINK_LIBS += $(P4EST_LIBS)
 
-# Flags
+# Compilers and flags
+#
+ifeq ($(BGQ_CLUSTER), YES)
+# This bracket is for Blue Gene/Q systems
+# Compilers: choosing the reentrant version; drop the _r if not needed
+MPICC = mpixlc_r
+MPICXX = mpixlcxx_r
+CXX_ARCH_FLAGS      = -qarch=qp -qtune=qp
+CXX_FLAGS_debug     = -O0
+CXX_WARN_FLAGS_ON   =
+CXX_WARN_FLAGS_OFF  =
+else
+MPICC  = mpicc
+MPICXX = mpicxx
 CXX_ARCH_FLAGS      = -m64
 CXX_FLAGS_debug     = -O0 -g
-CXX_FLAGS_OPT_GNU   = -O3 -march=native
-CXX_FLAGS_OPT_INTEL = -O3 -xHOST -ip
 CXX_WARN_FLAGS_ON   = -W -Wall -Wextra 
 CXX_WARN_FLAGS_OFF  = -w
+endif
+CXX_FLAGS_OPT_GNU   = -O3 -march=native
+CXX_FLAGS_OPT_INTEL = -O3 -xHOST -ip
+CXX_FLAGS_OPT_BGQ   = -O3 -qstrict
 
 # configure 
-MPICXX = mpicxx
-MPICC  = mpicc
 
 CXX_FULL_PATH = `which $(MPICXX)`
 
@@ -47,6 +67,9 @@ else
 	ifeq ($(CXX_COMPILER_TYPE), INTEL)
 		CXX_FLAGS += $(CXX_FLAGS_OPT_INTEL)
 	endif
+	ifeq ($(CXX_COMPILER_TYPE), BGQ)
+		CXX_FLAGS += $(CXX_FLAGS_OPT_BGQ)
+	endif
 endif
 
 ifeq ($(WITH_DEBUG_SYMBOLS), YES)
@@ -59,6 +82,9 @@ ifeq ($(WITH_OPENMP), YES)
 	endif
 	ifeq ($(CXX_COMPILER_TYPE), INTEL)
 		CXX_FLAGS += -openmp
+	endif
+	ifeq ($(CXX_COMPILER_TYPE), BGQ)
+		CXX_FLAGS += -qsmp=omp -qthreaded
 	endif
 endif
 
