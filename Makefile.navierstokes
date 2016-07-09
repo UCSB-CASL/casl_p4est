@@ -1,0 +1,175 @@
+####### Compiler, tools and options
+
+build = 3d
+debug = 0
+log = 0
+
+ifeq ($(build),2d)
+	OBJDIR = .obj_2d
+	TARGET = p4est_navier_stokes_2d
+else
+	OBJDIR = .obj_3d
+	TARGET = p4est_navier_stokes_3d
+endif
+
+ifeq ($(debug),1)
+	CFLAGS += -g
+	CXXFLAGS += -g
+	P4EST_ARCH = debug
+else
+	P4EST_ARCH = release
+endif
+
+ifeq ($(log),1)
+	CFLAGS += -DCASL_LOG_EVENTS
+	CXXFLAGS += -DCASL_LOG_EVENTS
+endif
+
+#P4EST_DIR=/work/02673/guittet/softwares/build/p4est_mvapich2/release
+P4EST_DIR=/work/02673/guittet/softwares/build/p4est_git/$(P4EST_ARCH)
+
+# p4est
+INCPATH += -I$(P4EST_DIR)/include
+LIBS += -Wl,-rpath,$(P4EST_DIR)/lib -L$(P4EST_DIR)/lib -lp4est -lsc
+
+# petsc
+INCPATH += -I$(PETSC_DIR)/include -I$(PETSC_DIR)/sandybridge-cxx/include
+LIBS += -Wl,-rpath,$(PETSC_DIR)/sandybridge-cxx/lib -L$(PETSC_DIR)/sandybridge-cxx/lib -lpetsc
+
+# casl p4est
+CASL_P4EST = /work/02673/guittet/code/casl_p4est
+INCPATH += -I$(CASL_P4EST)
+
+# casl library
+CASL_DIR =/work/02673/guittet/code/casl_library
+
+CFLAGS += -DSTAMPEDE
+CXXFLAGS += -DSTAMPEDE
+
+CC = @echo compiling $< && mpicc
+CXX = @echo compiling $< && mpic++
+LINK = @echo linking $@ && mpic++
+
+vpath %.c   $(CASL_P4EST)/src
+vpath %.cpp $(CASL_P4EST)/src
+vpath %.cpp $(CASL_P4EST)/examples/navier_stokes
+
+####### Files
+ifeq ($(build),2d)
+	INCPATH += -I$(CASL_DIR)
+	SOURCES += \
+    $(CASL_P4EST)/examples/navier_stokes/main_navier_stokes_2d.cpp \
+    $(CASL_P4EST)/src/my_p4est_utils.cpp \
+    $(CASL_P4EST)/src/my_p4est_refine_coarsen.cpp \
+    $(CASL_P4EST)/src/my_p4est_vtk.c \
+    $(CASL_P4EST)/src/my_p4est_tools.c\
+    $(CASL_P4EST)/src/my_p4est_nodes.c \
+    $(CASL_P4EST)/src/my_p4est_interpolation.cpp \
+    $(CASL_P4EST)/src/my_p4est_interpolation_nodes.cpp \
+    $(CASL_P4EST)/src/my_p4est_interpolation_cells.cpp \
+    $(CASL_P4EST)/src/my_p4est_interpolation_faces.cpp \
+    $(CASL_P4EST)/src/my_p4est_level_set.cpp \
+    $(CASL_P4EST)/src/my_p4est_level_set_cells.cpp \
+    $(CASL_P4EST)/src/my_p4est_level_set_faces.cpp \
+    $(CASL_P4EST)/src/cube2.cpp \
+    $(CASL_P4EST)/src/point2.cpp \
+    $(CASL_P4EST)/src/simplex2.cpp \
+    $(CASL_P4EST)/src/voronoi2D.cpp \
+    $(CASL_P4EST)/src/matrix.cpp \
+    $(CASL_P4EST)/src/my_p4est_solve_lsqr.cpp \
+    $(CASL_P4EST)/src/my_p4est_hierarchy.cpp \
+    $(CASL_P4EST)/src/my_p4est_cell_neighbors.cpp \
+    $(CASL_P4EST)/src/my_p4est_node_neighbors.cpp \
+    $(CASL_P4EST)/src/my_p4est_quad_neighbor_nodes_of_node.cpp \
+    $(CASL_P4EST)/src/my_p4est_log_wrappers.c \
+    $(CASL_P4EST)/src/petsc_logging.cpp \
+    $(CASL_P4EST)/src/Parser.cpp \
+    $(CASL_P4EST)/src/math.cpp \
+    $(CASL_P4EST)/src/my_p4est_faces.cpp \
+    $(CASL_P4EST)/src/my_p4est_poisson_cells.cpp \
+    $(CASL_P4EST)/src/my_p4est_poisson_faces.cpp \
+    $(CASL_P4EST)/src/my_p4est_trajectory_of_point.cpp \
+    $(CASL_P4EST)/src/my_p4est_navier_stokes.cpp
+
+	# CASL_Library files
+	SOURCES += \
+		$(CASL_DIR)/lib/tools/CASL_math.cpp \
+		$(CASL_DIR)/lib/tools/CASL_types.cpp \
+		$(CASL_DIR)/lib/geometry/Point2.cpp \
+		$(CASL_DIR)/lib/geometry/Cube2.cpp \
+		$(CASL_DIR)/lib/geometry/Simplex2.cpp \
+		$(CASL_DIR)/lib/arrays/ArrayV.cpp \
+		$(CASL_DIR)/lib/algebra/MatrixFull.cpp \
+		$(CASL_DIR)/lib/algebra/SparseMatrix.cpp \
+		$(CASL_DIR)/lib/algebra/SparseMatrix_CRS.cpp \
+		$(CASL_DIR)/lib/algebra/Cholesky.cpp \
+		$(CASL_DIR)/lib/amr/QuadCell.cpp \
+		$(CASL_DIR)/lib/amr/QuadTree.cpp \
+		$(CASL_DIR)/lib/amr/QuadNgbdNodesOfNode.cpp \
+		$(CASL_DIR)/lib/tools/QuadTreeToolbox.cpp \
+		$(CASL_DIR)/lib/tools/QuadraticInterpolationOnQuadTree.cpp
+
+else
+
+		LIBS += -L/work/02673/guittet/softwares/build/voro++/lib -lvoro++
+		INCPATH += -I/work/02673/guittet/softwares/build/voro++/include/voro++
+#    $$CASL_P4EST/examples/navier_stokes/main_navier_stokes_scaling_3d.cpp
+#    $$CASL_P4EST/examples/faces/main_timing_faces_3d.cpp
+	SOURCES += \
+    $(CASL_P4EST)/examples/navier_stokes/main_navier_stokes_3d.cpp \
+    $(CASL_P4EST)/src/my_p8est_utils.cpp \
+    $(CASL_P4EST)/src/my_p8est_refine_coarsen.cpp \
+    $(CASL_P4EST)/src/my_p8est_vtk.c \
+    $(CASL_P4EST)/src/my_p8est_tools.c\
+    $(CASL_P4EST)/src/my_p8est_nodes.c \
+    $(CASL_P4EST)/src/my_p8est_interpolation.cpp \
+    $(CASL_P4EST)/src/my_p8est_interpolation_nodes.cpp \
+    $(CASL_P4EST)/src/my_p8est_interpolation_cells.cpp \
+    $(CASL_P4EST)/src/my_p8est_interpolation_faces.cpp \
+    $(CASL_P4EST)/src/my_p8est_level_set.cpp \
+    $(CASL_P4EST)/src/my_p8est_level_set_cells.cpp \
+    $(CASL_P4EST)/src/my_p8est_level_set_faces.cpp \
+    $(CASL_P4EST)/src/cube2.cpp \
+    $(CASL_P4EST)/src/cube3.cpp \
+    $(CASL_P4EST)/src/point2.cpp \
+    $(CASL_P4EST)/src/point3.cpp \
+    $(CASL_P4EST)/src/simplex2.cpp \
+    $(CASL_P4EST)/src/voronoi3D.cpp \
+    $(CASL_P4EST)/src/matrix.cpp \
+    $(CASL_P4EST)/src/my_p8est_solve_lsqr.cpp \
+    $(CASL_P4EST)/src/my_p8est_hierarchy.cpp \
+    $(CASL_P4EST)/src/my_p8est_cell_neighbors.cpp \
+    $(CASL_P4EST)/src/my_p8est_node_neighbors.cpp \
+    $(CASL_P4EST)/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
+    $(CASL_P4EST)/src/my_p8est_log_wrappers.c \
+    $(CASL_P4EST)/src/petsc_logging.cpp \
+    $(CASL_P4EST)/src/Parser.cpp \
+    $(CASL_P4EST)/src/math.cpp \
+    $(CASL_P4EST)/src/my_p8est_faces.cpp \
+    $(CASL_P4EST)/src/my_p8est_poisson_cells.cpp \
+    $(CASL_P4EST)/src/my_p8est_poisson_faces.cpp \
+    $(CASL_P4EST)/src/my_p8est_trajectory_of_point.cpp \
+    $(CASL_P4EST)/src/my_p8est_navier_stokes.cpp
+endif
+
+STRIP_SRC = $(notdir $(SOURCES))
+OBJECTS = $(patsubst %.cpp, $(OBJDIR)/%.o, $(filter %.cpp, $(STRIP_SRC)))	$(patsubst %.c, $(OBJDIR)/%.o, $(filter %.c, $(STRIP_SRC)))
+
+####### Implicit rules
+
+$(OBJDIR)/%.o: %.cpp
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o "$@" "$<"
+
+$(OBJDIR)/%.o: %.c
+	$(CC) -c $(CFLAGS) $(INCPATH) -o "$@" "$<"
+
+####### Build rules
+
+#all: $(SOURCES) $(TARGET)
+all: $(TARGET)
+
+$(TARGET):  $(OBJECTS)
+	$(LINK) -o $(TARGET) $(OBJECTS) $(LIBS) $(LFLAGS)
+
+clean: 
+	rm -rf $(OBJDIR)/*.o $(TARGET)
