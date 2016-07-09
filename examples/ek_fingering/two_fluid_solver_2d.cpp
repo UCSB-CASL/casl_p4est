@@ -15,6 +15,7 @@
 #endif
 
 #include <src/casl_math.h>
+#include <cassert>
 
 two_fluid_solver_t::two_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick)
   : p4est(p4est), ghost(ghost), nodes(nodes), brick(&brick)
@@ -207,6 +208,7 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
   VecGetArray(jump_dp, &jump_dp_p);
 
   double x[P4EST_DIM];
+  double diag_min = p4est_diag_min(p4est);
 
   // compute the singular part
   std::vector<double> pstar(nodes->indep_nodes.elem_count);
@@ -215,10 +217,10 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
-    double r = sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2]));
+    double r = MAX(diag_min, sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])));
     pstar[n] = (*Q)(t)/(4*PI*r);
 #else
-    double r = sqrt(SQR(x[0]) + SQR(x[1]));
+    double r = MAX(diag_min, sqrt(SQR(x[0]) + SQR(x[1])));
     pstar[n] = (*Q)(t)/(2*PI)*log(r);
 #endif
   }
@@ -484,6 +486,8 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   // add the singular part to the inside solution
   foreach_node(n, nodes) {
     press_m_p[n] = press_p_p[n] - viscosity_ratio*pstar[n];
+    assert(!isnan(press_p_p[n]) && !isinf(press_p_p[n]));
+    assert(!isnan(press_m_p[n]) && !isinf(press_m_p[n]));
   }
 
   // extend solutions
