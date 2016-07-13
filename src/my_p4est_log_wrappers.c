@@ -23,6 +23,7 @@ extern PetscLogEvent log_my_p4est_copy;
 extern PetscLogEvent log_my_p4est_refine;
 extern PetscLogEvent log_my_p4est_coarsen;
 extern PetscLogEvent log_my_p4est_partition;
+extern PetscLogEvent log_my_p4est_balance;
 extern PetscLogEvent log_my_sc_notify;
 extern PetscLogEvent log_my_sc_notify_allgather;
 #endif
@@ -114,6 +115,17 @@ my_p4est_partition(p4est_t *p4est, int allow_for_coarsening, p4est_weight_t weig
 #endif  
 IPMLogRegionEnd("p4est_partition");
   ierr = PetscLogEventEnd(log_my_p4est_partition, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void
+my_p4est_balance(p4est_t *p4est, p4est_connect_type_t btype, p4est_init_t init_fn)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_balance, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionBegin("p4est_balance");
+  p4est_balance(p4est, btype, init_fn);
+  IPMLogRegionEnd("p4est_balance");
+  ierr = PetscLogEventEnd(log_my_p4est_balance, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void

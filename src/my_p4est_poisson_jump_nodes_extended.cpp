@@ -19,10 +19,10 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
-extern PetscLogEvent log_PoissonSolverNodeBase_matrix_preallocation;
-extern PetscLogEvent log_PoissonSolverNodeBase_matrix_setup;
-extern PetscLogEvent log_PoissonSolverNodeBase_rhsvec_setup;
-extern PetscLogEvent log_PoissonSolverNodeBase_solve;
+extern PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_matrix_preallocation;
+extern PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_setup_linear_system;
+extern PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_rhsvec_setup;
+extern PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_solve;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -248,7 +248,7 @@ void my_p4est_poisson_jump_nodes_extended_t::preallocate_matrix()
   //  MatSetOption(A, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
 
   // enable logging for the preallocation
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJumpExtended_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 
   PetscInt num_owned_global = 2 * global_node_offset[p4est->mpisize];
   PetscInt num_owned_local  = 2 * (PetscInt)(nodes->num_owned_indeps);
@@ -311,12 +311,12 @@ void my_p4est_poisson_jump_nodes_extended_t::preallocate_matrix()
   ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
   ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJumpExtended_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJumpExtended_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
   if(bc_ == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
@@ -462,7 +462,7 @@ void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzer
     rhs_ = NULL;
   }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJumpExtended_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 }
 
 
@@ -471,7 +471,7 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
   preallocate_matrix();
 
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJumpExtended_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -1099,13 +1099,13 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
 //    }
 //  }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJumpExtended_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_rhsvec()
 {
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJumpExtended_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *rhs_p;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -1484,7 +1484,7 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_rhsvec()
   ierr = VecRestoreArray(add_,    &add_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(rhs_,    &phi_p   ); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJumpExtended_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
 }
 
 #ifdef P4_TO_P8

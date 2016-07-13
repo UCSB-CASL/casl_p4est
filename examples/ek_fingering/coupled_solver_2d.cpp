@@ -171,11 +171,26 @@ double coupled_solver_t::advect_interface(Vec &phi,
   my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, &neighbors);
   sl.update_p4est(vx, dt, phi);
 
-  // destroy old quantities and swap pointers
-  p4est_destroy(p4est);       p4est = p4est_np1;
-  p4est_nodes_destroy(nodes); nodes = nodes_np1;
+  /*
+   * Since the voronoi solver requires two layers ghost cells, we need to expand the ghost layer
+   * and copy the date to the new vector that has room for extra ghost points
+   */
+  // destroy old data structures and create new ones
+  p4est_destroy(p4est); p4est = p4est_np1;
   p4est_ghost_destroy(ghost); ghost = ghost_np1;
+  my_p4est_ghost_expand(p4est, ghost);
+  p4est_nodes_destroy(nodes_np1);
+  p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
+  // copy data
+  Vec phi_np1 = phi;
+  VecCreateGhostNodes(p4est, nodes, &phi);
+  VecCopy(phi_np1, phi);
+  VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD);
+  VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);
+
+  // free memeory
+  VecDestroy(phi_np1);
   VecDestroy(pressure_m);
   VecDestroy(pressure_p);
   VecDestroy(potential_m);
