@@ -45,10 +45,11 @@ static struct {
   double xmin[3], xmax[3];
   int ntr[3];
   int periodic[3];
-  string test, method;
+  string test, method, prefix;
 
   cf_t *interface;
   CF_1 *Q, *I;
+  double is;
   wall_bc_t *pressure_bc_type, *potential_bc_type;
   cf_t *pressure_bc_value, *potential_bc_value;
 } options;
@@ -73,11 +74,13 @@ void set_options(int argc, char **argv) {
   cmd.add_option("test", "Which test to run?, Options are:\n"
                          "\tcircle\n"
                          "\tFastShelley04_Fig12\n");
-
+  cmd.add_option("prefix", "set the prefix to be prefixed ot filenames");
+  cmd.add_option("is", "the sign of the injection rate for the current");
   cmd.parse(argc, argv);
 
   options.test = cmd.get<string>("test", "FastShelley04_Fig12");
   options.method = cmd.get<string>("method", "voronoi");
+  options.prefix = cmd.get<string>("prefix","");
 
   // set default values
   options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
@@ -85,6 +88,7 @@ void set_options(int argc, char **argv) {
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
   options.iter = numeric_limits<int>::max();
+  options.is = 1;
 
   if (options.test == "circle") {
     // set interface
@@ -138,7 +142,7 @@ void set_options(int argc, char **argv) {
     } Q;
 
     static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
+      double operator()(double t) const { return SIGN(options.is)*(1+t); }
     } I;
 
     options.Q                  = &Q;
@@ -333,7 +337,7 @@ void set_options(int argc, char **argv) {
     } Q;
 
     static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
+      double operator()(double t) const { return SIGN(options.is)*(1+t); }
     } I;
 
     // set parameters specific to this test
@@ -363,6 +367,7 @@ void set_options(int argc, char **argv) {
   options.R     = cmd.get("R",     options.R);
   options.alpha = cmd.get("alpha", options.alpha);
   options.beta  = cmd.get("beta",  options.beta);
+  options.is    = cmd.get("is",    options.is);
 }
 
 int main(int argc, char** argv) {
@@ -373,7 +378,9 @@ int main(int argc, char** argv) {
 
   // stopwatch
   parStopWatch w;
-  w.start("Running example: viscous_fingering");
+  PetscPrintf(mpi.comm(), "GIT commit %s -- %s\n", GIT_COMMIT_HASH_SHORT, GIT_COMMIT_HASH_LONG);
+
+  w.start("Running example: coupled_solver");
 
   // p4est variables
   p4est_t*              p4est;
@@ -385,6 +392,32 @@ int main(int argc, char** argv) {
   // setup the parameters
   set_options(argc, argv);
 
+  // compute the stability limit values and print them
+  double A = options.alpha,
+         B = options.beta,
+         M = options.M,
+         R = options.R,
+         S = options.S;
+  double F = (M*((1-M)*(1+R)+2*A*SIGN(options.is)*(S-1))+A*B*(SQR(M)-SQR(S)))/(M*(1+M)*(1+R)-A*B*SQR(M+S)),
+         G = (M*(1+R)-A*B*(M+SQR(S)))/(M*(1+M)*(1+R)-A*B*SQR(M+S));
+   
+  bool c1  = A*B < 1,
+       c2  = A*B*SQR(S)/R/M < 1;
+
+  {
+    std::ostringstream oss;
+    oss << "The problem should be ";
+    if (F<0)
+      oss << "stable";
+    else
+      oss << "*UN*stable";
+    oss << " --> F = " << F << " and G = " << G << "\n";
+    oss << std::boolalpha << "A*B < 1? " << c1 << " A*B*S^2/R/M < 1? " << c2 << std::endl; 
+    PetscPrintf(mpi.comm(), oss.str().c_str());
+    
+    if (!c1 || !c2)
+      throw std::invalid_argument("Thermodynamic relations are not satisfied!");
+  }
   conn = my_p4est_brick_new(options.ntr, options.xmin, options.xmax, &brick, options.periodic);
 
   // create the forest
@@ -434,12 +467,22 @@ int main(int argc, char** argv) {
     throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
 
   ostringstream folder;
-  folder << outdir << "/coupled/" << options.test << "/"
-         << "alpha_" << options.alpha
-         << "_beta_"  << options.beta
-         << "_mue_"   << options.M
-         << "_eps_"   << options.S
-         << "_sigma_" << options.R;
+  folder << outdir << "/coupled/" 
+         << options.test << "/" << options.prefix << "_";
+  if (F < 0)
+    folder << "Stable_";
+  else
+    folder << "Unstable_"; 
+  if (options.is < 0)
+    folder << "counter_flow_";
+  else
+    folder << "co_flow_";
+
+  folder << "A_"  << options.alpha
+         << "_B_" << options.beta
+         << "_M_" << options.M
+         << "_S_" << options.S
+         << "_R_" << options.R;
   if (mpi.rank() == 0) system(("mkdir -p " + folder.str()).c_str());
   MPI_Barrier(mpi.comm());
   char vtk_name[FILENAME_MAX];
