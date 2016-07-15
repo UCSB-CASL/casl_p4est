@@ -149,7 +149,7 @@ void set_options(int argc, char **argv) {
       }
     } interface; interface.lip = options.lip;
 
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
     } bc_wall_type;
@@ -159,20 +159,20 @@ void set_options(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
-        double ur    = -(*options.Q)(t)/r/r;
+        double ur    = -(*options.Q)(t)/(4*PI*r*r);
 
-        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
-        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
           return y > 0 ? ur*sin(theta)*sin(phi):-ur*sin(theta)*sin(phi);
-        else if (fabs(z-params.xmax[2]) < EPS || fabs(z - params.xmin[2]) < EPS)
+        else if (fabs(z-options.xmax[2]) < EPS || fabs(z - options.xmin[2]) < EPS)
           return z > 0 ? ur*cos(phi):-ur*cos(phi);
         else
           return 0;
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 0
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
     } bc_wall_type;
@@ -180,7 +180,7 @@ void set_options(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double x, double y, double z) const {
         double r = sqrt(SQR(x)+SQR(y)+SQR(z));
-        return -(*options.Q)(t)/(4*PI*r);
+        return (*options.Q)(t)/(4*PI*r);
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 1
@@ -194,7 +194,7 @@ void set_options(int argc, char **argv) {
       }
     } interface; interface.lip = options.lip;
 
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
@@ -203,18 +203,18 @@ void set_options(int argc, char **argv) {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(*options.Q)(t)/r;
+        double ur    = -(*options.Q)(t)/(2*PI*r);
 
-        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta):-ur*cos(theta);
-        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
           return y > 0 ? ur*sin(theta):-ur*sin(theta);
         else
           return 0;
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 0
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
     } bc_wall_type;
@@ -347,8 +347,8 @@ int main(int argc, char** argv) {
                              VTK_POINT_DATA, "press_p", press_p_p);
       VecRestoreArray(phi, &phi_p);
       foreach_node (n,nodes) {
-        if (isnan(press_m_p[n])) cout << "nan in p^- for n = " << n << endl;
-        if (isnan(press_p_p[n])) cout << "nan in p^+ for n = " << n << endl;
+        if (std::isnan(press_m_p[n])) cout << "nan in p^- for n = " << n << endl;
+        if (std::isnan(press_p_p[n])) cout << "nan in p^+ for n = " << n << endl;
       }
 
       VecRestoreArray(press_m, &press_m_p);
