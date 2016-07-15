@@ -191,7 +191,7 @@ void set_options(int argc, char **argv) {
       }
     } interface; interface.lip = options.lip;
 
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
     } pressure_bc_type;
@@ -205,13 +205,13 @@ void set_options(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
-        double ur    = -Q(t)/r/r;
+        double ur    = -Q(t)/(4*PI*r*r);
 
-        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
-        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
           return y > 0 ? ur*sin(theta)*sin(phi):-ur*sin(theta)*sin(phi);
-        else if (fabs(z-params.xmax[2]) < EPS || fabs(z - params.xmin[2]) < EPS)
+        else if (fabs(z-options.xmax[2]) < EPS || fabs(z - options.xmin[2]) < EPS)
           return z > 0 ? ur*cos(phi):-ur*cos(phi);
         else
           return 0;
@@ -223,20 +223,20 @@ void set_options(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
-        double ur    = -I(t)/r/r;
+        double ur    = -I(t)/(4*PI*r*r);
 
-        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
-        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
           return y > 0 ? ur*sin(theta)*sin(phi):-ur*sin(theta)*sin(phi);
-        else if (fabs(z-params.xmax[2]) < EPS || fabs(z - params.xmin[2]) < EPS)
+        else if (fabs(z-options.xmax[2]) < EPS || fabs(z - options.xmin[2]) < EPS)
           return z > 0 ? ur*cos(phi):-ur*cos(phi);
         else
           return 0;
       }
     } potential_bc_value; potential_bc_value.t = 0;
 #endif // #if 0
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
     } pressure_bc_type;
@@ -248,14 +248,16 @@ void set_options(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double x, double y, double z) const {
         double r = sqrt(SQR(x)+SQR(y)+SQR(z));
-        return -(*options.Q)(t)/(4*PI*r);
+        double f = 1.0/(4*PI*(1-options.alpha*options.beta));
+        return -(options.alpha*(*options.I)(t)-(*options.Q)(t))*f/r;
       }
     } pressure_bc_value; pressure_bc_value.t = 0;
 
     static struct:cf_t{
       double operator()(double x, double y, double z) const {
         double r = sqrt(SQR(x)+SQR(y)+SQR(z));
-        return -(*options.I)(t)/(4*PI*r);
+        double f = 1.0/(4*PI*(1-options.alpha*options.beta));
+        return -(options.beta*(*options.Q)(t)-(*options.I)(t))*f/r;
       }
     } potential_bc_value; potential_bc_value.t = 0;
 #endif // #if 1
@@ -269,7 +271,7 @@ void set_options(int argc, char **argv) {
       }
     } interface; interface.lip = options.lip;
 
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } pressure_bc_type;
@@ -282,11 +284,11 @@ void set_options(int argc, char **argv) {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(*options.Q)(t)/r;
+        double ur    = -(*options.Q)(t)/(2*PI*r);
 
-        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta):-ur*cos(theta);
-        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
           return y > 0 ? ur*sin(theta):-ur*sin(theta);
         else
           return 0;
@@ -297,18 +299,18 @@ void set_options(int argc, char **argv) {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(*options.I)(t)/r;
+        double ur    = -(*options.I)(t)/(2*PI*r);
 
-        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta):-ur*cos(theta);
-        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
           return y > 0 ? ur*sin(theta):-ur*sin(theta);
         else
           return 0;
       }
     } potential_bc_value; potential_bc_value.t = 0;
 #endif // #if 0
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
     } pressure_bc_type;
@@ -320,14 +322,16 @@ void set_options(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double x, double y) const {
         double r = sqrt(SQR(x)+SQR(y));
-        return -(*options.Q)(t)/(2*PI) * log(r);
+        double f = 1.0/(2*PI*(1-options.alpha*options.beta));
+        return (options.alpha*(*options.I)(t)-(*options.Q)(t))*f*log(r);
       }
     } pressure_bc_value; pressure_bc_value.t = 0;
 
     static struct:cf_t{
       double operator()(double x, double y) const {
         double r = sqrt(SQR(x)+SQR(y));
-        return -(*options.I)(t)/(2*PI) * log(r);
+        double f = 1.0/(2*PI*(1-options.alpha*options.beta));
+        return (options.beta*(*options.Q)(t)-(*options.I)(t))*f*log(r);
       }
     } potential_bc_value; potential_bc_value.t = 0;
 #endif // #if 1
@@ -448,7 +452,7 @@ int main(int argc, char** argv) {
 
   // set up the solver
   coupled_solver_t solver(p4est, ghost, nodes, brick);
-  coupled_solver_t::parameters params = {
+  coupled_solver_t::parameters parameters = {
     options.alpha,    // alpha
     options.beta,     // beta
     options.Ca,       // Ca
@@ -457,7 +461,7 @@ int main(int argc, char** argv) {
     options.R,        // R
   };
 
-  solver.set_parameters(params);
+  solver.set_parameters(parameters);
   solver.set_injection_rates(*options.Q, *options.I);
   solver.set_boundary_conditions(*options.pressure_bc_type, *options.pressure_bc_value,
                                  *options.potential_bc_type, *options.potential_bc_value);
