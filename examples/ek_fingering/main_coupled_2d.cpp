@@ -191,7 +191,7 @@ void set_options(int argc, char **argv) {
       }
     } interface; interface.lip = options.lip;
 
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
     } pressure_bc_type;
@@ -205,7 +205,8 @@ void set_options(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
-        double ur    = -Q(t)/(4*PI*r*r);
+        double f     = 1.0/(4*PI*(1-options.alpha*options.beta));
+        double ur    = -((*options.Q)(t)-options.alpha*(*options.I)(t))/SQR(r)*f;
 
         if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
@@ -223,7 +224,8 @@ void set_options(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
-        double ur    = -I(t)/(4*PI*r*r);
+        double f     = 1.0/(4*PI*(1-options.alpha*options.beta));
+        double ur    = -((*options.I)(t)-options.beta*(*options.Q)(t))/SQR(r)*f;
 
         if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
@@ -236,7 +238,7 @@ void set_options(int argc, char **argv) {
       }
     } potential_bc_value; potential_bc_value.t = 0;
 #endif // #if 0
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
     } pressure_bc_type;
@@ -284,7 +286,8 @@ void set_options(int argc, char **argv) {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(*options.Q)(t)/(2*PI*r);
+        double f     = 1.0/(2*PI*(1-options.alpha*options.beta));
+        double ur    = (options.alpha*(*options.I)(t)-(*options.Q)(t))/r*f;
 
         if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta):-ur*cos(theta);
@@ -299,7 +302,8 @@ void set_options(int argc, char **argv) {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(*options.I)(t)/(2*PI*r);
+        double f     = 1.0/(2*PI*(1-options.alpha*options.beta));
+        double ur    = (options.beta*(*options.Q)(t)-(*options.I)(t))/r*f;
 
         if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta):-ur*cos(theta);
