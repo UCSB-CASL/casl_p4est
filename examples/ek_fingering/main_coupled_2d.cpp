@@ -46,6 +46,8 @@ static struct {
   int ntr[3];
   int periodic[3];
   string test, method, prefix;
+  BoundaryConditionType bcw;
+
 
   cf_t *interface;
   CF_1 *Q, *I;
@@ -76,11 +78,13 @@ void set_options(int argc, char **argv) {
                          "\tFastShelley04_Fig12\n");
   cmd.add_option("prefix", "set the prefix to be prefixed ot filenames");
   cmd.add_option("is", "the sign of the injection rate for the current");
+  cmd.add_option("bcw", "bc type on the wall");
   cmd.parse(argc, argv);
 
   options.test = cmd.get<string>("test", "FastShelley04_Fig12");
   options.method = cmd.get<string>("method", "voronoi");
   options.prefix = cmd.get<string>("prefix","");
+  options.bcw    = cmd.get("bcw", DIRICHLET);
 
   // set default values
   options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
@@ -273,13 +277,12 @@ void set_options(int argc, char **argv) {
       }
     } interface; interface.lip = options.lip;
 
-#if 1
     static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+      BoundaryConditionType operator()(double, double) const { return options.bcw; }
     } pressure_bc_type;
 
     static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+      BoundaryConditionType operator()(double, double) const { return options.bcw; }
     } potential_bc_type;
 
     static struct:cf_t{
@@ -287,14 +290,21 @@ void set_options(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
         double f     = 1.0/(2*PI*(1-options.alpha*options.beta));
-        double ur    = (options.alpha*(*options.I)(t)-(*options.Q)(t))/r*f;
-
-        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-          return x > 0 ? ur*cos(theta):-ur*cos(theta);
-        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-          return y > 0 ? ur*sin(theta):-ur*sin(theta);
-        else
-          return 0;
+        // double ur    = (options.alpha*(*options.I)(t)-(*options.Q)(t))/r*f;
+        double ur    = -(*options.Q)(t)/(2*PI*r);    
+    
+        if (options.bcw == NEUMANN) {
+          if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
+            return x > 0 ? ur*cos(theta):-ur*cos(theta);
+          else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
+            return y > 0 ? ur*sin(theta):-ur*sin(theta);
+          else
+            return 0;
+        } else if (options.bcw == DIRICHLET) {
+          return (options.alpha*(*options.I)(t)-(*options.Q)(t))*f*log(r);
+        } else {
+          throw std::runtime_error("Invalid boundary condition type for the walls");
+        }
       }
     } pressure_bc_value; pressure_bc_value.t = 0;
 
@@ -303,42 +313,23 @@ void set_options(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
         double f     = 1.0/(2*PI*(1-options.alpha*options.beta));
-        double ur    = (options.beta*(*options.Q)(t)-(*options.I)(t))/r*f;
+        // double ur    = (options.beta*(*options.Q)(t)-(*options.I)(t))/r*f;
+        double ur    = -(*options.I)(t)/(2*PI*r);
 
-        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-          return x > 0 ? ur*cos(theta):-ur*cos(theta);
-        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-          return y > 0 ? ur*sin(theta):-ur*sin(theta);
-        else
-          return 0;
+        if (options.bcw == NEUMANN) {
+          if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
+            return x > 0 ? ur*cos(theta):-ur*cos(theta);
+          else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
+            return y > 0 ? ur*sin(theta):-ur*sin(theta);
+          else
+            return 0;
+        } else if (options.bcw == DIRICHLET) {
+          return (options.beta*(*options.Q)(t)-(*options.I)(t))*f*log(r);
+        } else {
+          throw std::runtime_error("Invalid boundary condition type for the walls");
+        }
       }
     } potential_bc_value; potential_bc_value.t = 0;
-#endif // #if 0
-#if 0
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
-    } pressure_bc_type;
-
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
-    } potential_bc_type;
-
-    static struct:cf_t{
-      double operator()(double x, double y) const {
-        double r = sqrt(SQR(x)+SQR(y));
-        double f = 1.0/(2*PI*(1-options.alpha*options.beta));
-        return (options.alpha*(*options.I)(t)-(*options.Q)(t))*f*log(r);
-      }
-    } pressure_bc_value; pressure_bc_value.t = 0;
-
-    static struct:cf_t{
-      double operator()(double x, double y) const {
-        double r = sqrt(SQR(x)+SQR(y));
-        double f = 1.0/(2*PI*(1-options.alpha*options.beta));
-        return (options.beta*(*options.Q)(t)-(*options.I)(t))*f*log(r);
-      }
-    } potential_bc_value; potential_bc_value.t = 0;
-#endif // #if 1
 #endif // P4_TO_P8
     static struct:CF_1{
       double operator()(double t) const { return 1+t; }
