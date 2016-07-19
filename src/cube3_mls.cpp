@@ -30,11 +30,11 @@ void cube3_mls_t::construct_domain()
 
     for (int j = 0; j < 8; j++)
     {
-      all_negative = (all_negative && (F[j] < 0.0));
-      all_positive = (all_positive && (F[j] > 0.0));
+      all_negative = (all_negative && (F[j] < 0.));
+      all_positive = (all_positive && (F[j] > 0.));
     }
 
-    if (all_positive)
+    if (all_positive&&1)
     {
       if (action->at(i) == INTERSECTION)
       {
@@ -44,7 +44,7 @@ void cube3_mls_t::construct_domain()
         non_trivial_color.clear();
       }
     }
-    else if (all_negative)
+    else if (all_negative&&1)
     {
       if (action->at(i) == ADDITION)
       {

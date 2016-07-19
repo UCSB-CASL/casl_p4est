@@ -11,9 +11,11 @@ class grid_interpolation2_t
   double xm, ym, xp, yp;
   double dx, dy;
 
+  double eps;
+
 public:
 
-  grid_interpolation2_t(double xm = 0., double xp = 1., double ym = 0., double yp = 1., int nx = 1, int ny = 1)
+  grid_interpolation2_t(double xm = 0., double xp = 1., double ym = 0., double yp = 1., int nx = 1, int ny = 1) : eps(1.0E-15)
   {
     initialize(xm, xp, ym, yp, nx, ny);
   }
@@ -43,6 +45,7 @@ public:
 
   int total_nodes() {return (nx+1)*(ny+1);}
 
+  void set_eps(double eps_in) {eps = eps_in;}
 };
 
 #endif // GRID_INTERPOLATION2_H

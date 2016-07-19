@@ -72,9 +72,9 @@ double zmin = -1;
 double zmax =  1;
 #endif
 
-int lmin = 3;
+int lmin = 4;
 int lmax = 4;
-int nb_splits = 5;
+int nb_splits = 7;
 
 int nx = 1;
 int ny = 1;
@@ -87,12 +87,23 @@ double diag_add = 0.;
 int n_test = 1;
 
 // GEOMETRY
-double r0 = 0.516713;
-double r1 = 0.5145134;
-double r2 = 0.4315416;
-double d = 0.23410;
+#ifdef P4_TO_P8
+double r0 = 0.957;
+double r1 = -0.454;
+double r2 = -0.431;
+double r3 = -0.333;
+double d = 0.00234;
+#else
+double r0 = 110.597;
+double r1 = -0.7945134;
+//double r2 = -0.4315416;
+double r2 = 0.597;
+double r3 = -0.333;
+double d = 0.;
+//double d = 0.23410;
+#endif
 
-double theta = 0.4826;
+double theta = 0.6826;
 #ifdef P4_TO_P8
 double phy = 0.323;
 #endif
@@ -105,16 +116,18 @@ double sinP = sin(phy);
 #endif
 
 #ifdef P4_TO_P8
-double xc_0 = -d*sinT*cosP; double yc_0 =  d*cosT*cosP; double zc_0 =  d*sinP;
-double xc_1 =  d*sinT*cosP; double yc_1 = -d*cosT*cosP; double zc_1 = -d*sinP;
+double xc_0 = -1.*d*sinT*cosP; double yc_0 =  1.*d*cosT*cosP; double zc_0 =  1.*d*sinP;
+double xc_1 =  1.*d*sinT*cosP; double yc_1 = -1.*d*cosT*cosP; double zc_1 = -1.*d*sinP;
 double xc_2 =  2.*d*cosT*cosP; double yc_2 =  2.*d*sinT*cosP; double zc_2 =  2.*d*sinP;
-//double xc_0 = 0, yc_0 = 0, zc_0 = 0;
-//double xc_1 =  d*sinT*cosP; double yc_1 = -d*cosT*cosP; double zc_1 = -d*sinP;
-//double xc_2 = 0.85, yc_2 = 0, zc_2 = 0;
+//double xc_2 =  5.*d*sinT*cosP; double yc_2 = -2.*d*cosT*cosP; double zc_2 = -1.*d*sinP;
+double xc_3 = -4.*d*sinT*cosP; double yc_3 =  2.*d*cosT*cosP; double zc_3 =  1.*d*sinP;
 #else
-double xc_0 = -d*sinT; double yc_0 =  d*cosT;
-double xc_1 =  d*sinT; double yc_1 = -d*cosT;
-double xc_2 =  2.*d*cosT; double yc_2 =  2.*d*sinT;
+//double xc_0 = -1.*d*sinT; double yc_0 =  1.*d*cosT;
+double xc_0 = 0.13; double yc_0 =  0.11;
+double xc_1 =  1.*d*sinT; double yc_1 = -1.*d*cosT;
+double xc_2 =  0.14; double yc_2 =  0.11;
+//double xc_2 =  2.*d*cosT; double yc_2 =  2.*d*sinT;
+double xc_3 = -4.*d*sinT; double yc_3 =  2.*d*cosT;
 #endif
 
 #ifdef P4_TO_P8
@@ -178,6 +191,26 @@ public:
 #endif
 
 #ifdef P4_TO_P8
+class LEVEL_SET_3: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return -(r3 - sqrt(SQR(x-xc_3) + SQR(y-yc_3) + SQR(z-zc_3)));
+  }
+} level_set_3;
+#else
+class LEVEL_SET_3: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    return -(r3 - sqrt(SQR(x-xc_3) + SQR(y-yc_3)));
+  }
+} level_set_3;
+#endif
+
+#ifdef P4_TO_P8
 class LEVEL_SET_TOT: public CF_3
 {
 public:
@@ -237,6 +270,7 @@ public:
     phi_cf.push_back(&level_set_0); action.push_back(INTERSECTION); color.push_back(color.size());
     phi_cf.push_back(&level_set_1); action.push_back(ADDITION);     color.push_back(color.size());
     phi_cf.push_back(&level_set_2); action.push_back(INTERSECTION); color.push_back(color.size());
+    phi_cf.push_back(&level_set_3); action.push_back(COLORATION);   color.push_back(color.size());
   }
 } geometry;
 
@@ -325,6 +359,17 @@ public:
     }
   }
 } uy;
+class UXY: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    switch (n_test){
+    case 0: return 0;
+    case 1: return -cos(x)*sin(y);
+    }
+  }
+} uxy;
 #endif
 
 // RHS
@@ -361,7 +406,7 @@ class KAPPA_0 : public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return .0 + 1.0*sin(x)*cos(y)*exp(z);
+    return 1.0 + .0*sin(x)*cos(y)*cos(z);
   }
 } kappa_0;
 
@@ -370,7 +415,7 @@ class KAPPA_1 : public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return .0 + 1.0*sin(y)*cos(x)*exp(z);
+    return .0 + 1.0*sin(y)*cos(x)*cos(z);
   }
 } kappa_1;
 
@@ -379,16 +424,25 @@ class KAPPA_2 : public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return .0 + 1.0*sin(z)*cos(y)*exp(x);
+    return .0 + 1.0*sin(z)*cos(y)*cos(x);
   }
 } kappa_2;
+
+class KAPPA_3 : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return .0 + 1.0*sin(z)*cos(y)*sin(x);
+  }
+} kappa_3;
 #else
 class KAPPA_0 : public CF_2
 {
 public:
   double operator()(double x, double y) const
   {
-    return .0 + 1.0*sin(x)*cos(y);
+    return 1.0 + .0*sin(x)*cos(y);
   }
 } kappa_0;
 
@@ -406,9 +460,18 @@ class KAPPA_2 : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return .0 + 1.0*(sin(x)+cos(y));
+    return 1.0 + .0*(sin(x)*sin(y));
   }
 } kappa_2;
+
+class KAPPA_3 : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    return .0 + 1.0*(cos(x)*cos(y));
+  }
+} kappa_3;
 #endif
 
 // BC VALUES
@@ -439,6 +502,15 @@ public:
     return -((x-xc_2)*ux(x,y,z) + (y-yc_2)*uy(x,y,z) + (z-zc_2)*uz(x,y,z))/sqrt(SQR(x-xc_2) + SQR(y-yc_2) + SQR(z-zc_2)) + kappa_2(x,y,z)*u_exact(x,y,z);
   }
 } bc_value_2;
+
+class BC_VALUE_3 : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return ((x-xc_0)*ux(x,y,z)+(y-yc_0)*uy(x,y,z)+(z-zc_0)*uz(x,y,z))/sqrt(SQR(x-xc_0) + SQR(y-yc_0) + SQR(z-zc_0)) + kappa_3(x,y,z)*u_exact(x,y,z);
+  }
+} bc_value_3;
 #else
 class BC_VALUE_0 : public CF_2
 {
@@ -466,25 +538,35 @@ public:
     return -((x-xc_2)*ux(x,y)+(y-yc_2)*uy(x,y))/sqrt(SQR(x-xc_2) + SQR(y-yc_2)) + kappa_2(x,y)*u_exact(x,y);
   }
 } bc_value_2;
+
+class BC_VALUE_3 : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    return ((x-xc_0)*ux(x,y)+(y-yc_0)*uy(x,y))/sqrt(SQR(x-xc_0) + SQR(y-yc_0)) + kappa_3(x,y)*u_exact(x,y);
+  }
+} bc_value_3;
 #endif
 
 class Problem {
 public:
 
 #ifdef P4_TO_P8
-  std::vector<CF_3 *> bc_value;
-  std::vector<CF_3 *> bc_coeff;
+  std::vector<CF_3 *> bc_values;
+  std::vector<CF_3 *> bc_coeffs;
 #else
-  std::vector<CF_2 *> bc_value;
-  std::vector<CF_2 *> bc_coeff;
+  std::vector<CF_2 *> bc_values;
+  std::vector<CF_2 *> bc_coeffs;
 #endif
   std::vector<BoundaryConditionType> bc_type;
 
   Problem()
   {
-    bc_type.push_back(ROBIN); bc_value.push_back(&bc_value_0); bc_coeff.push_back(&kappa_0);
-    bc_type.push_back(ROBIN); bc_value.push_back(&bc_value_1); bc_coeff.push_back(&kappa_1);
-    bc_type.push_back(ROBIN); bc_value.push_back(&bc_value_2); bc_coeff.push_back(&kappa_2);
+    bc_type.push_back(ROBIN); bc_values.push_back(&bc_value_0); bc_coeffs.push_back(&kappa_0);
+    bc_type.push_back(ROBIN); bc_values.push_back(&bc_value_1); bc_coeffs.push_back(&kappa_1);
+    bc_type.push_back(ROBIN); bc_values.push_back(&bc_value_2); bc_coeffs.push_back(&kappa_2);
+    bc_type.push_back(ROBIN); bc_values.push_back(&bc_value_3); bc_coeffs.push_back(&kappa_3);
   }
 } problem;
 
@@ -661,17 +743,18 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   vector<double> error_uz_arr, error_uz_l1_arr; double err_uz, err_uz_m1;
 #endif
+//  vector<double> error_uxy_arr, error_uxy_l1_arr; double err_uxy, err_uxy_m1;
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
-    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", 0, lmax+iter); CHKERRXX(ierr);
+//    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", 0, lmax+iter); CHKERRXX(ierr);
 //    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin, lmax+iter);
-//    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi->mpicomm, "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
     p4est = my_p4est_new(mpi->mpicomm, connectivity, 0, NULL, NULL);
 
-    splitting_criteria_cf_t data(0, lmax+iter, &level_set_ref, 1.4);
+//    splitting_criteria_cf_t data(0, lmax+iter, &level_set_ref, 1.4);
 //    splitting_criteria_cf_t data(lmin, lmax+iter, &level_set_tot, 1.4);
-//    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot, 1.4);
+    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot, 1.2);
     p4est->user_pointer = (void*)(&data);
 
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -719,20 +802,20 @@ int main (int argc, char* argv[])
       sample_cf_on_nodes(p4est, nodes, *geometry.phi_cf[i], phi.back());
     }
 
-    std::vector<Vec> bc_value;
-    for (int i = 0; i < problem.bc_value.size(); i++)
+    std::vector<Vec> bc_values;
+    for (int i = 0; i < problem.bc_values.size(); i++)
     {
-      bc_value.push_back(Vec());
-      ierr = VecCreateGhostNodes(p4est, nodes, &bc_value.back()); CHKERRXX(ierr);
-      sample_cf_on_nodes(p4est, nodes, *problem.bc_value[i], bc_value.back());
+      bc_values.push_back(Vec());
+      ierr = VecCreateGhostNodes(p4est, nodes, &bc_values.back()); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est, nodes, *problem.bc_values[i], bc_values.back());
     }
 
-    std::vector<Vec> bc_coeff;
-    for (int i = 0; i < problem.bc_coeff.size(); i++)
+    std::vector<Vec> bc_coeffs;
+    for (int i = 0; i < problem.bc_coeffs.size(); i++)
     {
-      bc_coeff.push_back(Vec());
-      ierr = VecCreateGhostNodes(p4est, nodes, &bc_coeff.back()); CHKERRXX(ierr);
-      sample_cf_on_nodes(p4est, nodes, *problem.bc_coeff[i], bc_coeff.back());
+      bc_coeffs.push_back(Vec());
+      ierr = VecCreateGhostNodes(p4est, nodes, &bc_coeffs.back()); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est, nodes, *problem.bc_coeffs[i], bc_coeffs.back());
     }
 
     Vec rhs;
@@ -748,14 +831,14 @@ int main (int argc, char* argv[])
 
     my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
     solver.set_geometry(phi, geometry.action, geometry.color);
-    solver.mu.set(mu);
+    solver.set_mu(mu);
     solver.set_rhs(rhs);
     solver.wall_value.set(u_exact_vec);
     solver.set_bc_type(problem.bc_type);
-    solver.diag_add.set(diag_add);
-    solver.set_bc_coeffs(bc_coeff);
-    solver.set_bc_values(bc_value);
-    solver.set_use_taylor_correction(1.0);
+    solver.set_diag_add(diag_add);
+    solver.set_bc_coeffs(bc_coeffs);
+    solver.set_bc_values(bc_values);
+    solver.set_use_taylor_correction(false);
     solver.compute_volumes();
     solver.set_keep_scalling(true);
 //    solver.set_cube_refinement(0);
@@ -781,6 +864,8 @@ int main (int argc, char* argv[])
     Vec error_uz; ierr = VecCreateGhostNodes(p4est, nodes, &error_uz); CHKERRXX(ierr);
 #endif
 
+//    Vec error_uxy; ierr = VecCreateGhostNodes(p4est, nodes, &error_uxy); CHKERRXX(ierr);
+
     // compute errors
     solver.compute_error_sl(u_exact, sol, error_sl);
     solver.compute_error_tr(u_exact, error_tr);
@@ -789,6 +874,8 @@ int main (int argc, char* argv[])
 #else
     solver.compute_error_gr(ux, uy, sol, error_ux, error_uy);
 #endif
+
+//    solver.compute_error_xy(uxy, sol, error_uxy);
 
     // compute L-inf norm of errors
     err_sl_m1 = err_sl; err_sl = 0.;
@@ -799,6 +886,8 @@ int main (int argc, char* argv[])
     err_uz_m1 = err_uz; err_uz = 0.;
 #endif
 
+//    err_uxy_m1 = err_uxy; err_uxy = 0.;
+
     VecMax(error_sl, NULL, &err_sl); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_sl, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     VecMax(error_tr, NULL, &err_tr); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_tr, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     VecMax(error_ux, NULL, &err_ux); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ux, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
@@ -806,6 +895,8 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     VecMax(error_uz, NULL, &err_uz); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_uz, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 #endif
+
+//    VecMax(error_uxy, NULL, &err_uxy); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_uxy, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
     // compute L1 errors
     my_p4est_integration_mls_t integrator;
@@ -826,7 +917,7 @@ int main (int argc, char* argv[])
 
     // Store error values
     level.push_back(lmin+iter);
-    h.push_back(dx);
+    h.push_back(dx*pow(2.,(double) data.max_lvl - data.min_lvl));
     error_sl_arr.push_back(err_sl);
     error_tr_arr.push_back(err_tr);
     error_ux_arr.push_back(err_ux);
@@ -834,6 +925,8 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     error_uz_arr.push_back(err_uz);
 #endif
+
+//    error_uxy_arr.push_back(err_uxy);
 
     // Print current errors
     ierr = PetscPrintf(p4est->mpicomm, "Error (sl): %g, order = %g\n", err_sl, log(err_sl_m1/err_sl)/log(2)); CHKERRXX(ierr);
@@ -843,6 +936,8 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     ierr = PetscPrintf(p4est->mpicomm, "Error (uz): %g, order = %g\n", err_uz, log(err_uz_m1/err_uz)/log(2)); CHKERRXX(ierr);
 #endif
+
+//    ierr = PetscPrintf(p4est->mpicomm, "Error (uxy): %g, order = %g\n", err_ux, log(err_uxy_m1/err_uxy)/log(2)); CHKERRXX(ierr);
 
     // if all NEUMANN boundary conditions, shift solution
 //    if(solver.get_matrix_has_nullspace())
@@ -860,14 +955,37 @@ int main (int argc, char* argv[])
 
     if(save_vtk)
     {
-      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff, sol, error_sl, error_tr, error_uz, iter);
+      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff, sol, error_sl, error_tr, phi[3], iter);
+    }
+
+    if (save_vtk)
+    {
+      integrator.initialize();
+#ifdef P4_TO_P8
+      vector<simplex3_mls_t *> simplices;
+      int n_sps = NTETS;
+#else
+      vector<simplex2_mls_t *> simplices;
+      int n_sps = 2;
+#endif
+
+      for (int k = 0; k < integrator.cubes.size(); k++)
+        if (integrator.cubes[k].loc == FCE)
+          for (int l = 0; l < n_sps; l++)
+            simplices.push_back(&integrator.cubes[k].simplex[l]);
+
+#ifdef P4_TO_P8
+      simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+#else
+      simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+#endif
     }
 
     for (int i = 0; i < phi.size(); i++)
     {
       ierr = VecDestroy(phi[i]); CHKERRXX(ierr);
-      ierr = VecDestroy(bc_value[i]); CHKERRXX(ierr);
-      ierr = VecDestroy(bc_coeff[i]); CHKERRXX(ierr);
+      ierr = VecDestroy(bc_values[i]); CHKERRXX(ierr);
+      ierr = VecDestroy(bc_coeffs[i]); CHKERRXX(ierr);
     }
 
     ierr = VecDestroy(sol); CHKERRXX(ierr);
@@ -880,6 +998,8 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     ierr = VecDestroy(error_uz); CHKERRXX(ierr);
 #endif
+
+//    ierr = VecDestroy(error_uxy); CHKERRXX(ierr);
 
     p4est_nodes_destroy(nodes);
     p4est_ghost_destroy(ghost);
@@ -897,8 +1017,8 @@ int main (int argc, char* argv[])
     print_Table("Error", 0.0, level, h, "err sl (max)", error_sl_arr,     1, &graph);
     print_Table("Error", 0.0, level, h, "err sl (L1)",  error_sl_l1_arr,  2, &graph);
 
-    print_Table("Error", 0.0, level, h, "err tr (max)", error_tr_arr,     3, &graph);
-    print_Table("Error", 0.0, level, h, "err tr (L1)",  error_tr_l1_arr,  4, &graph);
+    print_Table("Solution error", 0.0, level, h, "err tr (max)", error_tr_arr,     3, &graph);
+//    print_Table("Error", 0.0, level, h, "err tr (L1)",  error_tr_l1_arr,  4, &graph);
 
     Gnuplot graph_grad;
 
@@ -906,11 +1026,13 @@ int main (int argc, char* argv[])
     print_Table("Error", 0.0, level, h, "err ux (L1)",  error_ux_l1_arr,  2, &graph_grad);
 
     print_Table("Error", 0.0, level, h, "err uy (max)", error_uy_arr,     3, &graph_grad);
-    print_Table("Error", 0.0, level, h, "err uy (L1)",  error_uy_l1_arr,  4, &graph_grad);
+    print_Table("Error in gradients", 0.0, level, h, "err uy (L1)",  error_uy_l1_arr,  4, &graph_grad);
 #ifdef P4_TO_P8
     print_Table("Error", 0.0, level, h, "err uz (max)", error_uz_arr,     5, &graph_grad);
     print_Table("Error", 0.0, level, h, "err uz (L1)",  error_uz_l1_arr,  6, &graph_grad);
 #endif
+
+//    print_Table("Error", 0.0, level, h, "err uxy (max)", error_uxy_arr,     5, &graph_grad);
 
 //  Gnuplot graph_geom;
 //  print_Table("error", 2.*PI*r0, level, h, "ifc", ifc_measure, 1, &graph_geom);

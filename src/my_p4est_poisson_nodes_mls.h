@@ -41,7 +41,7 @@
 class my_p4est_poisson_nodes_mls_t
 {
 public:
-  enum node_loc_t {NODE_INS,NODE_NMN,NODE_OUT};
+  enum node_loc_t {NODE_INS, NODE_NMN, NODE_OUT};
 
   struct quantity_t
   {
@@ -114,11 +114,11 @@ public:
   bool phi_eff_owned, phi_dd_owned;
   Vec node_vol;
 
-  double use_taylor_correction;
+  bool use_taylor_correction;
 
   // Interfaces
   std::vector<BoundaryConditionType> *bc_types;
-  std::vector<quantity_t> bc_value, bc_coeff;
+  std::vector<quantity_t> bc_values, bc_coeffs;
 
   // PETSc objects
   Mat A;
@@ -201,33 +201,42 @@ public:
 
   void set_bc_values(std::vector<Vec> &bc_vecs)
   {
-    bc_value.resize(bc_vecs.size());
+    bc_values.resize(bc_vecs.size());
     for (int i = 0; i < bc_vecs.size(); i++)
-      bc_value[i].set(bc_vecs[i]);
+      bc_values[i].set(bc_vecs[i]);
   }
   void set_bc_values(std::vector<double> &bc_vals)
   {
-    bc_value.resize(bc_vals.size());
+    bc_values.resize(bc_vals.size());
     for (int i = 0; i < bc_vals.size(); i++)
-      bc_value[i].set(bc_vals[i]);
+      bc_values[i].set(bc_vals[i]);
   }
 
   void set_bc_coeffs(std::vector<Vec> &bc_vecs)
   {
-    bc_coeff.resize(bc_vecs.size());
+    bc_coeffs.resize(bc_vecs.size());
     for (int i = 0; i < bc_vecs.size(); i++)
-      bc_coeff[i].set(bc_vecs[i]);
+      bc_coeffs[i].set(bc_vecs[i]);
   }
   void set_bc_coeffs(std::vector<double> &bc_vals)
   {
-    bc_coeff.resize(bc_vals.size());
+    bc_coeffs.resize(bc_vals.size());
     for (int i = 0; i < bc_vals.size(); i++)
-      bc_coeff[i].set(bc_vals[i]);
+      bc_coeffs[i].set(bc_vals[i]);
   }
+
+  void set_diag_add(double val) { diag_add.set(val); }
+  void set_diag_add(Vec val)    { diag_add.set(val); }
+
+  void set_mu(double val) { mu.set(val); }
+  void set_mu(Vec val)    { mu.set(val); }
+
+  void set_wall_value(double val) { wall_value.set(val); }
+  void set_wall_value(Vec val)    { wall_value.set(val); }
 
   void set_rhs(Vec &rhs_) {rhs = rhs_;}
 
-  void set_use_taylor_correction(double val) {use_taylor_correction = val;}
+  void set_use_taylor_correction(bool val) {use_taylor_correction = val;}
 
   void set_keep_scalling(bool keep_scalling_)    {keep_scalling = keep_scalling_;}
 
@@ -258,7 +267,7 @@ public:
   int cube_refinement;
   void set_cube_refinement(int r) {cube_refinement = r;}
 
-  void find_projection(double *phi_p, p4est_locidx_t *neighbors, double dxyz_pr[], double &dist_pr);
+  void find_projection(double *phi_p, p4est_locidx_t *neighbors, bool *neighbor_exists, double dxyz_pr[], double &dist_pr);
 
   void sample_vec_at_neighbors(double *in_p, int *neighbors, bool *neighbor_exists, double *output);
   void sample_vec_at_neighbors(double *in_p, int *neighbors, bool *neighbor_exists, std::vector<double> &output);
@@ -274,7 +283,11 @@ public:
   void compute_error_sl(CF_2 &exact_cf, Vec sol, Vec err);
   void compute_error_tr(CF_2 &exact_cf, Vec error);
   void compute_error_gr(CF_2 &ux_cf, CF_2 &uy_cf, Vec sol, Vec err_ux, Vec err_uy);
+//  void compute_error_xy(CF_2 &uxy_cf, Vec sol, Vec err_uxy);
 #endif
+
+  double interpolate_near_node_linear   (double *in_p, p4est_locidx_t *nei_quads, bool *nei_quad_exists, double x, double y, double z);
+  double interpolate_near_node_quadratic(double *in_p, double *inxx_p, double *inyy_p, double *inzz_p, p4est_locidx_t *nei_quads, bool *nei_quad_exists, double x, double y, double z);
 };
 
 #endif // MY_P4EST_POISSON_NODES_MLS_H

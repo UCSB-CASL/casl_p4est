@@ -37,6 +37,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_bialloy_t;
   friend class my_p4est_navier_stokes_t;
   friend class my_p4est_poisson_nodes_mls_t;
+  friend class my_p4est_interpolation_nodes_local_t;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information

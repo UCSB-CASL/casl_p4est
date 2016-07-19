@@ -612,7 +612,7 @@ void simplex3_mls_t::do_action_tet(int n_tet, int cn, action_t action)
     interpolate_from_parent(vtx_aux0);
     interpolate_from_parent(vtx_aux1);
 
-    if (fabs(vtx_aux0.value) <= fabs(vtx_aux1.value) && 1 || 0)
+    if (fabs(vtx_aux0.value) <= fabs(vtx_aux1.value) && 1 || 1)
     {
       // new edge
       edgs.push_back(edg3_t(tet->c_vtx03, tet->c_vtx12));
