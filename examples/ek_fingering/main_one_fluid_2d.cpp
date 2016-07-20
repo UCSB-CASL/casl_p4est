@@ -83,7 +83,7 @@ void set_parameters(int argc, char **argv) {
   options.xmin[0] = options.xmin[1] = options.xmin[2] = -1;
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
-  options.lmax = 3; options.lmax = 10;
+  options.lmin = 3; options.lmax = 10;
   options.rot  = 0;
   options.method = "semi_lagrangian";
 
@@ -156,22 +156,35 @@ void set_parameters(int argc, char **argv) {
     } interface; interface.lip = options.lip;
     options.interface = &interface;
 
-    static struct:WallBC2D{
-      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+//    static struct:WallBC2D{
+//      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+//    } bc_wall_type;
+
+//    static struct:CF_2{
+//      double operator()(double x, double y) const {
+//        double theta = atan2(y,x);
+//        double r     = sqrt(SQR(x)+SQR(y));
+//        double ur    = -(*options.Q)(t)/(2*PI*r);
+
+//        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
+//          return x > 0 ? ur*cos(theta):-ur*cos(theta);
+//        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
+//          return y > 0 ? ur*sin(theta):-ur*sin(theta);
+//        else
+//          return 0;
+//      }
+//    } bc_wall_value; bc_wall_value.t = 0;
+
+    static struct:WallBC2D {
+      BoundaryConditionType operator()(double, double) const {
+        return DIRICHLET;
+      }
     } bc_wall_type;
 
-    static struct:CF_2{
+    static struct:CF_2 {
       double operator()(double x, double y) const {
-        double theta = atan2(y,x);
-        double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(*options.Q)(t)/(2*PI*r);
-
-        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-          return x > 0 ? ur*cos(theta):-ur*cos(theta);
-        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-          return y > 0 ? ur*sin(theta):-ur*sin(theta);
-        else
-          return 0;
+        double r = sqrt(SQR(x)+SQR(y));
+        return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
       }
     } bc_wall_value; bc_wall_value.t = 0;
 
@@ -489,8 +502,6 @@ int main(int argc, char** argv) {
       VecRestoreArray(potential, &potential_p);
       is++;
     }
-
-    cout << options.Ca << "\t " << (*options.gamma)(0,0) << endl;
 
     // save the error if this is a modal analysis
     if (options.test == "circle") {

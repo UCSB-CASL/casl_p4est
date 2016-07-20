@@ -1,18 +1,20 @@
 
-dt = 5e-3;
-it = 1000 - 2;
+dt = 1e-4;
+it = 5;
 modes = 0:20;
-prefix = '/Users/mohammad/repos/parcasl/examples/ek_fingering/Release/';
+% prefix = '/Users/mohammad/repos/parcasl/examples/ek_fingering/Release/';
+prefix = '/Users/mohammad/repos/casl/examples/viscous_fingering/Release';
 % path = strcat(prefix,'two_fluid/circle/mue_0.01');
-path = strcat(prefix,'one_fluid/circle');
+% path = strcat(prefix,'one_fluid/circle');
+path = prefix;
 
 close all;
 styles = {'bo', 'rs', 'm<', 'k>'};
 s = 1;
 figure(1); hold on;
-for lmax=10:10
+for lmax=11:11
     sigma = zeros(1,length(modes));
-    for m=10:10
+    for m=0:20
         file_base = sprintf('%s/err_%d_%d', path, lmax, m);
         
         err_nm2 = load(strcat(file_base,sprintf('_%d.txt',it-2)));
@@ -60,7 +62,7 @@ legend(gca, {'$l_{max} = 9$','$l_{max} = 10$','$l_{max} = 11$','$l_{max} = 12$',
     'Theory'}, 'fontsize', 14, 'location', 'southwest', ...
     'interpreter', 'latex');
 shg;
-ylim([-15 5]);
+ylim([-14 6]);
 xlim([0, 20]);
 print -depsc2 -f1 -r300 modal
 
