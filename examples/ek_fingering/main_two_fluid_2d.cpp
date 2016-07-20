@@ -16,10 +16,12 @@
 
 #ifndef P4_TO_P8
 #include "two_fluid_solver_2d.h"
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_macros.h>
 #else
 #include "two_fluid_solver_3d.h"
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_macros.h>
 #endif
@@ -44,6 +46,8 @@ static struct {
   double xmin[3], xmax[3];
   int ntr[3];
   int periodic[3];
+  int mode;
+  double eps;
   string test, method;
 
   cf_t *interface, *bc_wall_value;
@@ -64,6 +68,8 @@ void set_options(int argc, char **argv) {
   cmd.add_option("dtmax", "max dt to use when solving");  
   cmd.add_option("M", "The viscosity ratio of inner to outer fluid");
   cmd.add_option("method", "method for solving the jump equation");
+  cmd.add_option("mode", "perturbation mode used for analysis");
+  cmd.add_option("eps", "perturbation amplitude to be added to the interface");
   cmd.add_option("test", "Which test to run?, Options are:\n"
                          "\tcircle\n"
                          "\tFastShelley04_Fig12\n");
@@ -79,49 +85,60 @@ void set_options(int argc, char **argv) {
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
 
+  options.lip  = 1.2;
+  options.cfl  = 2;
+  options.iter = numeric_limits<int>::max();
+
   if (options.test == "circle") {
     // set interface
-#ifdef P4_TO_P8
-    static struct:cf_t {
-      double operator()(double x, double y, double z) const {
-        return 0.25 - sqrt(SQR(x)+SQR(y)+SQR(z));
+    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10;
+    options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
+    options.lmax    = 10;
+    options.lmin    = 4;
+    options.iter    = 7;
+    options.dtmax   = 1e-3;
+    options.dts     = 0;
+    options.Ca      = 250;
+    options.M       = 1;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const  {
+        double theta = atan2(y,x);
+        double r = 1+options.eps*cos(options.mode*theta);
+        return sqrt(SQR(x)+SQR(y)) - r;
       }
     } interface; interface.lip = options.lip;
+    options.interface = &interface;
 
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
+    static struct:WallBC2D{
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
 
-    static struct:cf_t{
-      double operator()(double, double, double) const { return 0; }
-    } bc_wall_value;
-#else        
-    static struct:cf_t {
-      double operator()(double x, double y) const {
-        return 0.25 - sqrt(SQR(x)+SQR(y));
-      }
-    } interface; interface.lip = options.lip;
-
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double, double) const { return 0; }
-    } bc_wall_value;
-#endif
     static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
+      double operator()(double t) const { return 1.0 + t; }
     } Q;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const {
+        double theta = atan2(y,x);
+        double r     = sqrt(SQR(x)+SQR(y));
+        double ur    = -(*options.Q)(t)/(2*PI*r);
+
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
+          return x > 0 ? ur*cos(theta):-ur*cos(theta);
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
+          return y > 0 ? ur*sin(theta):-ur*sin(theta);
+        else
+          return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
 
     options.Q             = &Q;
     options.interface     = &interface;
     options.bc_wall_type  = &bc_wall_type;
     options.bc_wall_value = &bc_wall_value;
-    options.dtmax         = 5e-3;
-    options.dts           = 1e-1;
-    options.Ca            = 250;
-    options.M             = 1;
+    options.mode          = cmd.get("mode", 0);
+    options.eps           = cmd.get("eps", 1e-3);
 
   } else if (options.test == "FastShelley04_Fig12") {
 
@@ -131,8 +148,6 @@ void set_options(int argc, char **argv) {
     options.method    = "voronoi";
     options.lmin      = 2;
     options.lmax      = 10;
-    options.lip       = 1.2;
-    options.cfl       = 2;
     options.dtmax     = 5e-3;
     options.dts       = 1e-1;
     options.Ca        = 250;
@@ -244,14 +259,14 @@ void set_options(int argc, char **argv) {
   // overwrite default values from stdin
   options.lmin      = cmd.get("lmin",      options.lmin);
   options.lmax      = cmd.get("lmax",      options.lmax);
-  options.iter      = cmd.get("iter",      INT_MAX);
+  options.iter      = cmd.get("iter",      options.iter);
   options.lip       = cmd.get("lip",       options.lip);
   options.Ca        = cmd.get("Ca",        options.Ca);
   options.cfl       = cmd.get("cfl",       options.cfl);
   options.dts       = cmd.get("dts",       options.dts);
   options.dtmax     = cmd.get("dtmax",     options.dtmax);
   options.M         = cmd.get("M",         options.M);
-  options.method    = cmd.get("method",    options.method);
+  options.method    = cmd.get("method",    options.method);  
 }
 
 int main(int argc, char** argv) {
@@ -328,7 +343,6 @@ int main(int argc, char** argv) {
       num_nodes += nodes->global_owned_indeps[r];
     PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", i, num_nodes, t, dt);
 
-
     if (t >= is*options.dts) {
       // save vtk
       double *phi_p, *press_m_p, *press_p_p;
@@ -353,6 +367,41 @@ int main(int argc, char** argv) {
 
       VecRestoreArray(press_m, &press_m_p);
       VecRestoreArray(press_p, &press_p_p);
+    }
+
+    // save the error if this is a modal analysis
+    if (options.test == "circle") {
+      my_p4est_hierarchy_t h(p4est, ghost, &brick);
+      my_p4est_node_neighbors_t ngbd(&h, nodes);
+      ngbd.init_neighbors();
+
+      my_p4est_interpolation_nodes_t interp(&ngbd);
+      interp.set_input(phi, quadratic_non_oscillatory);
+
+      // we only ask the root to compute the interpolation
+      int ntheta = mpi.rank() == 0 ? 3600:0;
+      vector<double> err(ntheta);
+      for (int n=0; n<ntheta; n++) {
+        double r = 1+t;
+        double theta = 2*PI*n/ntheta;
+        double x[] = {r*cos(theta), r*sin(theta)};
+        interp.add_point(n, x);
+      }
+      interp.interpolate(err.data());
+
+      if (mpi.rank() == 0) {
+        ostringstream filename;
+        filename << folder.str() << "/err_" << options.lmax
+                 << "_" << options.mode
+                 << "_" << i << ".txt";
+        FILE *file = fopen(filename.str().c_str(), "w");
+        fprintf(file, "%% theta \t err\n");
+        for (int n = 0; n<ntheta; n++) {
+          double theta = 2*PI*n/ntheta;
+          fprintf(file, "%1.6f % -1.12e\n", theta, err[n]);
+        }
+        fclose(file);
+      }
     }
   }
 

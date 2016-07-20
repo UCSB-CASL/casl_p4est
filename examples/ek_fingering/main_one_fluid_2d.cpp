@@ -16,10 +16,12 @@
 
 #ifndef P4_TO_P8
 #include "one_fluid_solver_2d.h"
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_vtk.h>
 #else
-#include "one_fluid_solver_2d.h"
-#include <src/my_p4est_vtk.h>
+#include "one_fluid_solver_3d.h"
+#include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_vtk.h>
 #endif
 
 #include <sys/stat.h>
@@ -37,18 +39,20 @@ typedef WallBC2D wall_bc_t;
 #endif
 
 static struct {
-  int lmin, lmax, iter;
+  int lmin, lmax, itmax;
   double lip, Ca, cfl, dts, dtmax, alpha;
   double xmin[3], xmax[3];
   int ntr[3];
   int periodic[3];
   double rot;
+  double eps;
+  int mode;
   string method, test;
 
   cf_t *interface, *bc_wall_value, *K_D, *K_EO, *gamma;
   CF_1 *Q, *I;
   wall_bc_t *bc_wall_type;
-} params;
+} options;
 
 void set_parameters(int argc, char **argv) {
   // parse input parameters
@@ -57,34 +61,39 @@ void set_parameters(int argc, char **argv) {
   cmd.add_option("lmax", "max level");
   cmd.add_option("lip", "Lipschitz constant used for grid generation");
   cmd.add_option("Ca", "the capillary number");
-  cmd.add_option("iter", "number of iterations");
+  cmd.add_option("itmax", "number of iterations");
   cmd.add_option("cfl", "the CFL number");
   cmd.add_option("dts", "dt for saving vtk files");
   cmd.add_option("dtmax", "max dt to use when solving");
   cmd.add_option("method", "choose advection method");
   cmd.add_option("alpha", "EO coupling strength");
   cmd.add_option("rot", "the angle to rotate the initial boundary");
+  cmd.add_option("mode", "perturbation mode used for analysis");
+  cmd.add_option("eps", "perturbation amplitude to be added to the interface");
   cmd.add_option("test", "Which test to run?, Options are:"
       "circle\n"
       "FastShelley04_Fig12\n");
 
   cmd.parse(argc, argv);
 
-  params.test = cmd.get<string>("test", "FastShelley04_Fig12");
+  options.test = cmd.get<string>("test", "FastShelley04_Fig12");
 
   // set default values
-  params.ntr[0]  = params.ntr[1]  = params.ntr[2]  =  1;
-  params.xmin[0] = params.xmin[1] = params.xmin[2] = -1;
-  params.xmax[0] = params.xmax[1] = params.xmax[2] =  1;
-  params.periodic[0] = params.periodic[1] = params.periodic[2] = false;
-  params.lmax = 3; params.lmax = 10;
-  params.rot  = 0;
+  options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
+  options.xmin[0] = options.xmin[1] = options.xmin[2] = -1;
+  options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
+  options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
+  options.lmax = 3; options.lmax = 10;
+  options.rot  = 0;
+  options.method = "semi_lagrangian";
 
-  if (params.test == "circle") {
-    // set interface
+  options.lip  = 1.2;
+  options.cfl  = 2;
+  options.itmax = numeric_limits<int>::max();
+
 #ifdef P4_TO_P8
     static struct:cf_t{
-      double operator()(double, double, double) const { return 1.0/params.Ca; }
+      double operator()(double, double, double) const { return 1.0/options.Ca; }
     } gamma;
 
     static struct:cf_t{
@@ -94,101 +103,102 @@ void set_parameters(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double, double, double) const { return 1.0; }
     } K_EO;
-
-    static struct:cf_t {
-      double operator()(double x, double y, double z) const {
-        return 0.25 - sqrt(SQR(x)+SQR(y)+SQR(z));
-      }
-    } interface; interface.lip = params.lip;
-
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double, double, double) const { return 0; }
-    } bc_wall_value;
 #else
-    static struct:cf_t{
-      double operator()(double, double) const { return 1.0/params.Ca; }
-    } gamma;
+  static struct:cf_t{
+    double operator()(double, double) const { return 1.0/options.Ca; }
+  } gamma;
 
-    static struct:cf_t{
-      double operator()(double, double) const { return 1.0; }
-    } K_D;
+  static struct:cf_t{
+    double operator()(double, double) const { return 1.0; }
+  } K_D;
 
-    static struct:cf_t{
-      double operator()(double, double) const { return 1.0; }
-    } K_EO;
-
-    static struct:cf_t {
-      double operator()(double x, double y) const {
-        return 0.25 - sqrt(SQR(x)+SQR(y));
-      }
-    } interface; interface.lip = params.lip;
-
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double, double) const { return 0; }
-    } bc_wall_value;
+  static struct:cf_t{
+    double operator()(double, double) const { return 1.0; }
+  } K_EO;
 #endif
 
-    static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
-    } Q;
+  static struct:CF_1{
+    double operator()(double t) const { return 1.0 + t; }
+  } Q;
 
-    static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
-    } I;
+  static struct:CF_1{
+    double operator()(double t) const { return 1.0 + t; }
+  } I;
 
-    params.gamma         = &gamma;
-    params.K_D           = &K_D;
-    params.K_EO          = &K_EO;
-    params.Q             = &Q;
-    params.I             = &I;
-    params.interface     = &interface;
-    params.bc_wall_type  = &bc_wall_type;
-    params.bc_wall_value = &bc_wall_value;
-    params.dtmax         = 5e-3;
-    params.dts           = 1e-1;
-    params.alpha         = 0;
+  options.K_D   = &K_D;
+  options.K_EO  = &K_EO;
+  options.gamma = &gamma;
+  options.Q     = &Q;
+  options.I     = &I;
+  options.Ca    = 250;
 
-  } else if (params.test == "FastShelley04_Fig12") {
+  if (options.test == "circle") {
+    // set interface
+    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10;
+    options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
+    options.lmax    = 10;
+    options.lmin    = 4;
+    options.itmax   = 10;
+    options.dtmax   = 1e-3;
+    options.dts     = 0;
+    options.Ca      = 250;
+    options.alpha   = 0;
+    options.mode    = cmd.get("mode", 0);
+    options.eps     = cmd.get("eps", 1e-3);
+    options.method  = "semi_lagrangian";
 
-    params.xmin[0] = params.xmin[1] = params.xmin[2] = -100;
-    params.xmax[0] = params.xmax[1] = params.xmax[2] =  100;
-    params.ntr[0]  = params.ntr[1]  = params.ntr[2]  = 10;
-    params.method  = "normal";
-    params.cfl     = 2;
-    params.dtmax   = 5e-3;
-    params.dts     = 1e-1;
-    params.alpha   = 0;
+    static struct:CF_2{
+      double operator()(double x, double y) const  {
+        double theta = atan2(y,x);
+        double r = 1+options.eps*cos(options.mode*theta);
+        return r - sqrt(SQR(x)+SQR(y));
+      }
+    } interface; interface.lip = options.lip;
+    options.interface = &interface;
+
+    static struct:WallBC2D{
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+    } bc_wall_type;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const {
+        double theta = atan2(y,x);
+        double r     = sqrt(SQR(x)+SQR(y));
+        double ur    = -(*options.Q)(t)/(2*PI*r);
+
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
+          return x > 0 ? ur*cos(theta):-ur*cos(theta);
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
+          return y > 0 ? ur*sin(theta):-ur*sin(theta);
+        else
+          return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+
+    options.interface     = &interface;
+    options.bc_wall_type  = &bc_wall_type;
+    options.bc_wall_value = &bc_wall_value;
+
+  } else if (options.test == "FastShelley04_Fig12") {
+
+    options.xmin[0] = options.xmin[1] = options.xmin[2] = -100;
+    options.xmax[0] = options.xmax[1] = options.xmax[2] =  100;
+    options.ntr[0]  = options.ntr[1]  = options.ntr[2]  = 10;
+    options.cfl     = 2;
+    options.dtmax   = 5e-3;
+    options.dts     = 1e-1;
+    options.alpha   = 0;
 
 #ifdef P4_TO_P8
     static struct:cf_t{
-      double operator()(double, double, double) const { return 1.0/params.Ca; }
-    } gamma;
-
-    static struct:cf_t{
-      double operator()(double, double, double) const { return 1.0; }
-    } K_D;
-
-    static struct:cf_t{
-      double operator()(double, double, double) const { return 1.0; }
-    } K_EO;
-
-    static struct:cf_t{
       double operator()(double x, double y, double z) const  {
-        double theta = atan2(y,x) - params.rot*PI/180;
+        double theta = atan2(y,x) - options.rot*PI/180;
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
 
         return 1.0+0.1*(cos(3*theta)+sin(2*theta))*pow(sin(2*phi),2) - r;
       }
-    } interface; interface.lip = params.lip;
+    } interface; interface.lip = options.lip;
 
 #if 1
     static struct:wall_bc_t{
@@ -200,13 +210,13 @@ void set_parameters(int argc, char **argv) {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
         double phi   = acos(z/MAX(r,1E-12));
-        double ur    = -(*params.Q)(t)/r/r;
+        double ur    = -(*options.Q)(t)/(4*PI*r*r);
 
-        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
-        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
           return y > 0 ? ur*sin(theta)*sin(phi):-ur*sin(theta)*sin(phi);
-        else if (fabs(z-params.xmax[2]) < EPS || fabs(z - params.xmin[2]) < EPS)
+        else if (fabs(z-options.xmax[2]) < EPS || fabs(z - options.xmin[2]) < EPS)
           return z > 0 ? ur*cos(phi):-ur*cos(phi);
         else
           return 0;
@@ -221,31 +231,19 @@ void set_parameters(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double x, double y, double z) const {
         double r = sqrt(SQR(x)+SQR(y)+SQR(z));
-        return (*params.Q)(t)/(4*PI*r);
+        return (*options.Q)(t)/(4*PI*r);
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 1
 #else // P4_TO_P8
     static struct:cf_t{
-      double operator()(double, double) const { return 1.0/params.Ca; }
-    } gamma;
-
-    static struct:cf_t{
-      double operator()(double, double) const { return 1.0; }
-    } K_D;
-
-    static struct:cf_t{
-      double operator()(double, double) const { return 1.0; }
-    } K_EO;
-
-    static struct:cf_t{
       double operator()(double x, double y) const  {
-        double theta = atan2(y,x) - params.rot*PI/180;
+        double theta = atan2(y,x) - options.rot*PI/180;
         double r     = sqrt(SQR(x)+SQR(y));
 
         return 1.0+0.1*(cos(3*theta)+sin(2*theta)) - r;
       }
-    } interface; interface.lip = params.lip;
+    } interface; interface.lip = options.lip;
 
 #if 0
     static struct:wall_bc_t{
@@ -256,11 +254,11 @@ void set_parameters(int argc, char **argv) {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(*params.Q)(t)/r;
+        double ur    = -(*options.Q)(t)/(2*PI*r);
 
-        if (fabs(x-params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta):-ur*cos(theta);
-        else if (fabs(y-params.xmax[1]) < EPS || fabs(y - params.xmin[1]) < EPS)
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
           return y > 0 ? ur*sin(theta):-ur*sin(theta);
         else
           return 0;
@@ -275,66 +273,41 @@ void set_parameters(int argc, char **argv) {
     static struct:cf_t{
       double operator()(double x, double y) const {
         double r = sqrt(SQR(x)+SQR(y));
-        return -(*params.Q)(t)/(2*PI) * log(r);
+        return -(*options.Q)(t)/(2*PI) * log(r);
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 1
 #endif // P4_TO_P8
 
-    static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
-    } Q;
-
-    static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
-    } I;
-
     // set parameters specific to this test
-    params.gamma         = &gamma;
-    params.K_D           = &K_D;
-    params.K_EO          = &K_EO;
-    params.Q             = &Q;
-    params.I             = &I;
-    params.interface     = &interface;
-    params.bc_wall_type  = &bc_wall_type;
-    params.bc_wall_value = &bc_wall_value;
+    options.interface     = &interface;
+    options.bc_wall_type  = &bc_wall_type;
+    options.bc_wall_value = &bc_wall_value;
 
-  } else if (params.test == "Flat") {
+  } else if (options.test == "Flat") {
 
-    params.xmin[0]     =  0;
-    params.xmin[1]     = params.xmin[2] = 0;
-    params.xmax[0]     = 10;
-    params.xmax[1]     = params.xmax[2] = 1;
-    params.ntr[0]      = 10;
-    params.ntr[1]      = params.ntr[2] = 1;
-    params.periodic[0] = false;
-    params.periodic[1] = params.periodic[2] = true;
-    params.lmin        = 2;
-    params.lmax        = 5;
-    params.method      = "semi_lagrangian";
-    params.cfl         = 2;
-    params.dtmax       = 5e-3;
-    params.dts         = 1e-1;
-    params.alpha       = 0;
+    options.xmin[0]     =  0;
+    options.xmin[1]     = options.xmin[2] = 0;
+    options.xmax[0]     = 10;
+    options.xmax[1]     = options.xmax[2] = 1;
+    options.ntr[0]      = 10;
+    options.ntr[1]      = options.ntr[2] = 1;
+    options.periodic[0] = false;
+    options.periodic[1] = options.periodic[2] = true;
+    options.lmin        = 2;
+    options.lmax        = 5;
+    options.method      = "semi_lagrangian";
+    options.cfl         = 2;
+    options.dtmax       = 5e-3;
+    options.dts         = 1e-1;
+    options.alpha       = 0;
 
 #ifdef P4_TO_P8
-    static struct:cf_t{
-      double operator()(double, double, double) const { return 1.0/params.Ca; }
-    } gamma;
-
-    static struct:cf_t{
-      double operator()(double, double, double) const { return 1.0; }
-    } K_D;
-
-    static struct:cf_t{
-      double operator()(double, double, double) const { return 1.0; }
-    } K_EO;
-
     static struct:cf_t{
       double operator()(double x, double y, double z) const  {
         return 0.1 + 0.01*cos(2*PI*y*4)*cos(2*PI*z*4) - x;
       }
-    } interface; interface.lip = params.lip;
+    } interface; interface.lip = options.lip;
 
 #if 1
     static struct:wall_bc_t{
@@ -343,8 +316,8 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double, double) const {
-        if (fabs(x - params.xmax[0]) < EPS)
-          return -(*params.Q)(t);
+        if (fabs(x - options.xmax[0]) < EPS)
+          return -(*options.Q)(t);
         else
           return 0;
       }
@@ -357,8 +330,8 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double, double) const {
-        if (fabs(x - params.xmax[0]) < EPS)
-          return -(*params.Q)(t)*(params.xmax[0]-params.xmin[0]);
+        if (fabs(x - options.xmax[0]) < EPS)
+          return -(*options.Q)(t)*(options.xmax[0]-options.xmin[0]);
         else
           return 0;
       }
@@ -366,22 +339,10 @@ void set_parameters(int argc, char **argv) {
 #endif // #if 1
 #else // P4_TO_P8
     static struct:cf_t{
-      double operator()(double, double) const { return 1.0/params.Ca; }
-    } gamma;
-
-    static struct:cf_t{
-      double operator()(double, double) const { return 1.0; }
-    } K_D;
-
-    static struct:cf_t{
-      double operator()(double, double) const { return 1.0; }
-    } K_EO;
-
-    static struct:cf_t{
       double operator()(double x, double y) const  {
         return 0.1 + 0.05*cos(2*PI*y*4) - x;
       }
-    } interface; interface.lip = params.lip;
+    } interface; interface.lip = options.lip;
 
 #if 1
     static struct:wall_bc_t{
@@ -390,8 +351,8 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double) const {
-        if (fabs(x - params.xmax[0]) < EPS || fabs(x - params.xmin[0]) < EPS)
-          return -(*params.Q)(t);
+        if (fabs(x - options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
+          return -(*options.Q)(t);
         else
           return 0;
       }
@@ -404,46 +365,32 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double x, double) const {
-        return -(*params.Q)(t)*(x-params.xmin[0]);
+        return -(*options.Q)(t)*(x-options.xmin[0]);
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 1
 #endif // P4_TO_P8
 
-    static struct:CF_1{
-      double operator()(double) const { return 1; }
-    } Q;
-
-    static struct:CF_1{
-      double operator()(double) const { return 1; }
-    } I;
-
     // set parameters specific to this test
-    params.gamma         = &gamma;
-    params.K_D           = &K_D;
-    params.K_EO          = &K_EO;
-    params.Q             = &Q;
-    params.I             = &I;
-    params.interface     = &interface;
-    params.bc_wall_type  = &bc_wall_type;
-    params.bc_wall_value = &bc_wall_value;    
+    options.interface     = &interface;
+    options.bc_wall_type  = &bc_wall_type;
+    options.bc_wall_value = &bc_wall_value;
 
   } else {
     throw std::invalid_argument("Unknown test");
   }
 
   // overwrite default values from stdin
-  params.lmin   = cmd.get("lmin", params.lmin);
-  params.lmax   = cmd.get("lmax", params.lmax);
-  params.iter   = cmd.get("iter", INT_MAX);
-  params.lip    = cmd.get("lip", 1.2);
-  params.Ca     = cmd.get("Ca", 250);
-  params.cfl    = cmd.get("cfl", params.cfl);
-  params.dts    = cmd.get("dts", params.dts);
-  params.dtmax  = cmd.get("dtmax", params.dtmax);
-  params.method = cmd.get("method", params.method);
-  params.alpha  = cmd.get("alpha", params.alpha);
-  params.rot    = cmd.get("rot", params.rot);
+  options.lmin   = cmd.get("lmin", options.lmin);
+  options.lmax   = cmd.get("lmax", options.lmax);
+  options.cfl    = cmd.get("cfl", options.cfl);
+  options.dts    = cmd.get("dts", options.dts);
+  options.dtmax  = cmd.get("dtmax", options.dtmax);
+  options.method = cmd.get("method", options.method);
+  options.alpha  = cmd.get("alpha", options.alpha);
+  options.rot    = cmd.get("rot", options.rot);
+  options.itmax  = cmd.get("itmax", options.itmax);
+  options.Ca     = cmd.get("Ca", options.Ca);
 }
 
 int main(int argc, char** argv) {
@@ -466,13 +413,13 @@ int main(int argc, char** argv) {
   // setup the parameters
   set_parameters(argc, argv);
 
-  conn = my_p4est_brick_new(params.ntr, params.xmin, params.xmax, &brick, params.periodic);
+  conn = my_p4est_brick_new(options.ntr, options.xmin, options.xmax, &brick, options.periodic);
 
   // create the forest
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
   // refine based on distance to a level-set
-  splitting_criteria_cf_t sp(params.lmin, params.lmax, params.interface, params.lip);
+  splitting_criteria_cf_t sp(options.lmin, options.lmax, options.interface, options.lip);
   p4est->user_pointer = &sp;
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
@@ -490,26 +437,31 @@ int main(int argc, char** argv) {
   VecCreateGhostNodes(p4est, nodes, &phi);
   VecCreateGhostNodes(p4est, nodes, &pressure);
   VecCreateGhostNodes(p4est, nodes, &potential);
-  sample_cf_on_nodes(p4est, nodes, *params.interface, phi);
+  sample_cf_on_nodes(p4est, nodes, *options.interface, phi);
 
   // set up the solver
   one_fluid_solver_t solver(p4est, ghost, nodes, brick);
-  solver.set_injection_rates(*params.Q, *params.I, params.alpha);
-  solver.set_properties(*params.K_D, *params.K_EO, *params.gamma);
-  solver.set_bc_wall(*params.bc_wall_type, *params.bc_wall_value);
+  solver.set_injection_rates(*options.Q, *options.I, options.alpha);
+  solver.set_properties(*options.K_D, *options.K_EO, *options.gamma);
+  solver.set_bc_wall(*options.bc_wall_type, *options.bc_wall_value);
 
   const char* outdir = getenv("OUT_DIR");
   if (!outdir)
     throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
 
-  const string folder = string(outdir) + string("/") + params.test;
-  mkdir(folder.c_str(), 0755);
+  const string folder = string(outdir) + string("/one_fluid/") + options.test;
+  ostringstream command;
+  command << "mkdir -p " << folder;
+  if (mpi.rank() == 0)
+    system(command.str().c_str());
+  MPI_Barrier(mpi.comm());
+
   char vtk_name[FILENAME_MAX];
 
   double dt = 0, t = 0;
   int is = 0;
-  for(int i=0; i<params.iter; i++) {
-    dt = solver.solve_one_step(t, phi, pressure, potential, params.method, params.cfl, params.dtmax);
+  for(int i=0; i<options.itmax; i++) {
+    dt = solver.solve_one_step(t, phi, pressure, potential, options.method, options.cfl, options.dtmax);
     t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -518,12 +470,13 @@ int main(int argc, char** argv) {
     PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", i, num_nodes, t, dt);
 
     // save vtk
-    if (t >= is*params.dts) {
+    if (t >= is*options.dts) {
       double *phi_p, *pressure_p, *potential_p;
       VecGetArray(phi, &phi_p);
       VecGetArray(pressure, &pressure_p);
       VecGetArray(potential, &potential_p);
-      sprintf(vtk_name, "%s/%s_%dd.%04d", folder.c_str(), params.method.c_str(), P4EST_DIM, is);
+      sprintf(vtk_name, "%s/%s_%dd.%04d", folder.c_str(), options.method.c_str(), P4EST_DIM, is);
+      PetscPrintf(mpi.comm(), "Saving file %s\n", vtk_name);
       my_p4est_vtk_write_all(p4est, nodes, ghost,
           P4EST_TRUE, P4EST_TRUE,
           //                           3, 0, vtk_name,
@@ -535,6 +488,44 @@ int main(int argc, char** argv) {
       VecRestoreArray(pressure, &pressure_p);
       VecRestoreArray(potential, &potential_p);
       is++;
+    }
+
+    cout << options.Ca << "\t " << (*options.gamma)(0,0) << endl;
+
+    // save the error if this is a modal analysis
+    if (options.test == "circle") {
+      my_p4est_hierarchy_t h(p4est, ghost, &brick);
+      my_p4est_node_neighbors_t ngbd(&h, nodes);
+      ngbd.init_neighbors();
+
+      my_p4est_interpolation_nodes_t interp(&ngbd);
+      interp.set_input(phi, quadratic);
+
+      // we only ask the root to compute the interpolation
+      int ntheta = mpi.rank() == 0 ? 3600:0;
+      vector<double> err(ntheta);
+      for (int n=0; n<ntheta; n++) {
+        double r = 1+t;
+        double theta = 2*PI*n/ntheta;
+        double x[] = {r*cos(theta), r*sin(theta)};
+        interp.add_point(n, x);
+      }
+      interp.interpolate(err.data());
+
+      if (mpi.rank() == 0) {
+        ostringstream filename;
+        filename << folder << "/err_" << options.lmax
+                 << "_" << options.mode
+                 << "_" << i << ".txt";
+        PetscPrintf(mpi.comm(), "Saving file %s\n", filename.str().c_str());
+        FILE *file = fopen(filename.str().c_str(), "w");
+        fprintf(file, "%% theta \t err\n");
+        for (int n = 0; n<ntheta; n++) {
+          double theta = 2*PI*n/ntheta;
+          fprintf(file, "%1.6f % -1.12e\n", theta, err[n]);
+        }
+        fclose(file);
+      }
     }
   }
 

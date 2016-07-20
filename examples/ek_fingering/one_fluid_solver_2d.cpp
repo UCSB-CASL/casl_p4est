@@ -1118,21 +1118,21 @@ double one_fluid_solver_t::solve_one_step(double t, Vec &phi, Vec &pressure, Vec
   double dt;
   parStopWatch w;
   if (method == "semi_lagrangian") {
-    w.start("Advecting usign semi-Lagrangian method");
+//    w.start("Advecting usign semi-Lagrangian method");
     dt = advect_interface_semi_lagrangian(phi, pressure, potential, cfl, dtmax);
-    w.stop(); w.read_duration();
+//    w.stop(); w.read_duration();
   } else if (method == "godunov") {
-    w.start("Advecting usign Godunov method");
+//    w.start("Advecting usign Godunov method");
     dt = advect_interface_godunov(phi, pressure, potential, cfl, dtmax);
-    w.stop(); w.read_duration();
+//    w.stop(); w.read_duration();
   } else if (method == "normal") {
-    w.start("Advecting usign normal-velocity method");
+//    w.start("Advecting usign normal-velocity method");
     dt = advect_interface_normal(phi, pressure, potential, cfl, dtmax);
-    w.stop(); w.read_duration();
+//    w.stop(); w.read_duration();
   } else if (method == "diagonal") {
-    w.start("Advecting usign diagonal-velocity method");
+//    w.start("Advecting usign diagonal-velocity method");
     dt = advect_interface_diagonal(phi, pressure, potential, cfl, dtmax);
-    w.stop(); w.read_duration();
+//    w.stop(); w.read_duration();
   } else {
     throw std::invalid_argument("invalid advection method. Valid options are:\n"
                                 " (a) semi_lagrangian,\n"
@@ -1141,9 +1141,9 @@ double one_fluid_solver_t::solve_one_step(double t, Vec &phi, Vec &pressure, Vec
   }
 
   // solve for the pressure
-  w.start("Solving for the field variables");
+//  w.start("Solving for the field variables");
   solve_fields(t+dt,phi, pressure, potential);
-  w.stop(); w.read_duration();
+//  w.stop(); w.read_duration();
 
   return dt;
 }
