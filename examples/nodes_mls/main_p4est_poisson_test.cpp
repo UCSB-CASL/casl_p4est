@@ -73,8 +73,8 @@ double zmax =  1;
 #endif
 
 int lmin = 4;
-int lmax = 4;
-int nb_splits = 7;
+int lmax = 6;
+int nb_splits = 4;
 
 int nx = 1;
 int ny = 1;
@@ -88,19 +88,19 @@ int n_test = 1;
 
 // GEOMETRY
 #ifdef P4_TO_P8
-double r0 = 0.957;
-double r1 = -0.454;
-double r2 = -0.431;
+double r0 = 0.757;
+double r1 = 0.754;
+double r2 = 0.431;
 double r3 = -0.333;
-double d = 0.00234;
+double d = 0.234;
 #else
-double r0 = 110.597;
-double r1 = -0.7945134;
+double r0 = 0.787;
+double r1 = 0.7945134;
 //double r2 = -0.4315416;
-double r2 = 0.597;
+double r2 = 0.497;
 double r3 = -0.333;
-double d = 0.;
-//double d = 0.23410;
+//double d = 0.;
+double d = 0.23410;
 #endif
 
 double theta = 0.6826;
@@ -122,11 +122,11 @@ double xc_2 =  2.*d*cosT*cosP; double yc_2 =  2.*d*sinT*cosP; double zc_2 =  2.*
 //double xc_2 =  5.*d*sinT*cosP; double yc_2 = -2.*d*cosT*cosP; double zc_2 = -1.*d*sinP;
 double xc_3 = -4.*d*sinT*cosP; double yc_3 =  2.*d*cosT*cosP; double zc_3 =  1.*d*sinP;
 #else
-//double xc_0 = -1.*d*sinT; double yc_0 =  1.*d*cosT;
-double xc_0 = 0.13; double yc_0 =  0.11;
+double xc_0 = -1.*d*sinT; double yc_0 =  1.*d*cosT;
+//double xc_0 = 0.13; double yc_0 =  0.11;
 double xc_1 =  1.*d*sinT; double yc_1 = -1.*d*cosT;
-double xc_2 =  0.14; double yc_2 =  0.11;
-//double xc_2 =  2.*d*cosT; double yc_2 =  2.*d*sinT;
+double xc_2 =  2.*d*cosT; double yc_2 =  2.*d*sinT;
+//double xc_2 =  0.14; double yc_2 =  0.11;
 double xc_3 = -4.*d*sinT; double yc_3 =  2.*d*cosT;
 #endif
 
@@ -754,7 +754,7 @@ int main (int argc, char* argv[])
 
 //    splitting_criteria_cf_t data(0, lmax+iter, &level_set_ref, 1.4);
 //    splitting_criteria_cf_t data(lmin, lmax+iter, &level_set_tot, 1.4);
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot, 1.2);
+    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot, 1.0);
     p4est->user_pointer = (void*)(&data);
 
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -838,7 +838,7 @@ int main (int argc, char* argv[])
     solver.set_diag_add(diag_add);
     solver.set_bc_coeffs(bc_coeffs);
     solver.set_bc_values(bc_values);
-    solver.set_use_taylor_correction(false);
+    solver.set_use_taylor_correction(true);
     solver.compute_volumes();
     solver.set_keep_scalling(true);
 //    solver.set_cube_refinement(0);
@@ -955,7 +955,7 @@ int main (int argc, char* argv[])
 
     if(save_vtk)
     {
-      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff, sol, error_sl, error_tr, phi[3], iter);
+      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff, sol, error_sl, error_tr, error_ux, iter);
     }
 
     if (save_vtk)

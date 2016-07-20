@@ -9,6 +9,7 @@
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_interpolation_nodes_local.h>
 #include <src/my_p8est_utils.h>
 #else
 #include <p4est.h>
@@ -16,6 +17,7 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_interpolation_nodes_local.h>
 #include <src/my_p4est_utils.h>
 #endif
 
@@ -90,6 +92,7 @@ public:
   my_p4est_brick_t  *myb_;
 
   my_p4est_interpolation_nodes_t phi_interp;
+  my_p4est_interpolation_nodes_local_t interp_local;
 
   bool    is_matrix_computed;
   int     matrix_has_nullspace;
@@ -268,6 +271,7 @@ public:
   void set_cube_refinement(int r) {cube_refinement = r;}
 
   void find_projection(double *phi_p, p4est_locidx_t *neighbors, bool *neighbor_exists, double dxyz_pr[], double &dist_pr);
+  void find_projection(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr);
 
   void sample_vec_at_neighbors(double *in_p, int *neighbors, bool *neighbor_exists, double *output);
   void sample_vec_at_neighbors(double *in_p, int *neighbors, bool *neighbor_exists, std::vector<double> &output);

@@ -80,6 +80,7 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
 
   // find to which quadrant the point belongs to
   short which_quadrant = -1;
+  short current_level = 0;
   bool is_point_in_quadrant;
 
   for (short i_quad = 0; i_quad < P4EST_CHILDREN; ++i_quad)
@@ -93,15 +94,17 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
         if (xyz[i] > xyz_quad_max[i_quad*P4EST_DIM + i]+0.1*eps) { is_point_in_quadrant = false; break; }
       }
 
-      if (is_point_in_quadrant && level_of_quad[i_quad] > level_of_quad[which_quadrant])
+      if (is_point_in_quadrant && level_of_quad[i_quad] > current_level)
+      {
         which_quadrant = i_quad;
+        current_level = level_of_quad[i_quad];
+      }
     }
   
   if (which_quadrant == -1)
     throw std::invalid_argument("[ERROR]: Point does not belong to any neighbouring quadrant.");
 
   // get pointers to inputs if necessary
-  const double *tmp;
   if (is_input_in_vec)
   {
     ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);

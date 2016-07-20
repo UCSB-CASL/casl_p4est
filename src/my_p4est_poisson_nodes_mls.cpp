@@ -37,7 +37,7 @@ extern PetscLogEvent log_my_p4est_poisson_nodes_solve;
 my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *node_neighbors)
   : node_neighbors(node_neighbors),
     p4est(node_neighbors->p4est), nodes(node_neighbors->nodes), ghost(node_neighbors->ghost), myb_(node_neighbors->myb),
-    phi_interp(node_neighbors),
+    phi_interp(node_neighbors), interp_local(node_neighbors),
     is_matrix_computed(false), matrix_has_nullspace(false),
     A(NULL), rhs(NULL),
     node_vol(NULL),
@@ -384,6 +384,11 @@ void my_p4est_poisson_nodes_mls_t::compute_volumes()
   bool neighbor_exists[N_NBRS_MAX];
   p4est_locidx_t neighbors[N_NBRS_MAX];
 
+  double x_grid[3], y_grid[3];
+#ifdef P4_TO_P8
+  double z_grid[3];
+#endif
+
   //---------------------------------------------------------------------
   // main loop over nodes
   //---------------------------------------------------------------------
@@ -427,23 +432,71 @@ void my_p4est_poisson_nodes_mls_t::compute_volumes()
     // count neighbors
     get_all_neighbors(n, neighbors, neighbor_exists);
 
+    for (short i = 0; i < nx_grid+1; i++) x_grid[i] = xm_grid + (double)(i)*dx_min;
+    for (short i = 0; i < ny_grid+1; i++) y_grid[i] = ym_grid + (double)(i)*dy_min;
+#ifdef P4_TO_P8
+    for (short i = 0; i < nz_grid+1; i++) z_grid[i] = zm_grid + (double)(i)*dz_min;
+#endif
+
+    interp_local.initialize(n);
+
     double phi_eff_n = phi_eff_p[n];
 
     // fetch values of LSF
     for (int i_phi = 0; i_phi < n_phis; i_phi++)
     {
-      int k = 0;
-      for (int i = 0; i < N_NBRS_MAX; i++)
-        if (neighbor_exists[i])
-        {
-          phi_cube[i_phi][k] = phi_p[i_phi][neighbors[i]];
-          phi_xx_cube[i_phi][k] = phi_xx_p[i_phi][neighbors[i]];
-          phi_yy_cube[i_phi][k] = phi_yy_p[i_phi][neighbors[i]];
 #ifdef P4_TO_P8
-          phi_zz_cube[i_phi][k] = phi_zz_p[i_phi][neighbors[i]];
+        interp_local.set_input(phi_p[i_phi], phi_xx_p[i_phi], phi_yy_p[i_phi], phi_zz_p[i_phi], quadratic);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+
+        interp_local.set_input(phi_xx_p[i_phi], linear);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_xx_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+
+        interp_local.set_input(phi_yy_p[i_phi], linear);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_yy_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+
+        interp_local.set_input(phi_zz_p[i_phi], linear);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_zz_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+#else
+        interp_local.set_input(phi_p[i_phi], phi_xx_p[i_phi], phi_yy_p[i_phi], quadratic);
+        for (short j = 0; j < ny_grid+1; j++)
+          for (short i = 0; i < nx_grid+1; i++)
+            phi_cube[i_phi][i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
+
+        interp_local.set_input(phi_xx_p[i_phi], linear);
+        for (short j = 0; j < ny_grid+1; j++)
+          for (short i = 0; i < nx_grid+1; i++)
+            phi_xx_cube[i_phi][i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
+
+        interp_local.set_input(phi_yy_p[i_phi], linear);
+        for (short j = 0; j < ny_grid+1; j++)
+          for (short i = 0; i < nx_grid+1; i++)
+            phi_yy_cube[i_phi][i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
 #endif
-          k++;
-        }
+//      int k = 0;
+//      for (int i = 0; i < N_NBRS_MAX; i++)
+//        if (neighbor_exists[i])
+//        {
+//          phi_cube[i_phi][k] = phi_p[i_phi][neighbors[i]];
+//          phi_xx_cube[i_phi][k] = phi_xx_p[i_phi][neighbors[i]];
+//          phi_yy_cube[i_phi][k] = phi_yy_p[i_phi][neighbors[i]];
+//#ifdef P4_TO_P8
+//          phi_zz_cube[i_phi][k] = phi_zz_p[i_phi][neighbors[i]];
+//#endif
+//          k++;
+//        }
     }
 
     cube.x0 = xm_cube; cube.x1 = xp_cube;
@@ -915,6 +968,11 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
   double measure_of_cut_cell;
   double mu_avg, bc_coeff_avg;
 
+  double x_grid[3], y_grid[3];
+#ifdef P4_TO_P8
+  double z_grid[3];
+#endif
+
   node_loc.resize(nodes->num_owned_indeps, NODE_INS);
 
   //---------------------------------------------------------------------
@@ -922,8 +980,8 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
   //---------------------------------------------------------------------
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++)
   {
-    if      (phi_eff_p[n] >  1.0*diag_min)  node_loc[n] = NODE_OUT;
-    else if (phi_eff_p[n] < -1.0*diag_min)  node_loc[n] = NODE_INS;
+    if      (phi_eff_p[n] >  2.0*diag_min)  node_loc[n] = NODE_OUT;
+    else if (phi_eff_p[n] < -2.0*diag_min)  node_loc[n] = NODE_INS;
     else                                    node_loc[n] = NODE_NMN;
 
     double x_C  = node_x_fr_n(n, p4est, nodes);
@@ -1014,17 +1072,65 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
 #endif
 
       // count neighbors
-      get_all_neighbors(n, neighbors, neighbor_exists);
+//      get_all_neighbors(n, neighbors, neighbor_exists);
+
+      for (short i = 0; i < nx_grid+1; i++) x_grid[i] = xm_grid + (double)(i)*dx_min;
+      for (short i = 0; i < ny_grid+1; i++) y_grid[i] = ym_grid + (double)(i)*dy_min;
+#ifdef P4_TO_P8
+      for (short i = 0; i < nz_grid+1; i++) z_grid[i] = zm_grid + (double)(i)*dz_min;
+#endif
+
+      interp_local.initialize(n);
 
       // fetch values of LSF
       for (int i_phi = 0; i_phi < n_phis; i_phi++)
       {
-        sample_vec_at_neighbors(phi_p[i_phi], neighbors, neighbor_exists, phi_cube[i_phi]);
-        sample_vec_at_neighbors(phi_xx_p[i_phi], neighbors, neighbor_exists, phi_xx_cube[i_phi]);
-        sample_vec_at_neighbors(phi_yy_p[i_phi], neighbors, neighbor_exists, phi_yy_cube[i_phi]);
 #ifdef P4_TO_P8
-        sample_vec_at_neighbors(phi_zz_p[i_phi], neighbors, neighbor_exists, phi_zz_cube[i_phi]);
+        interp_local.set_input(phi_p[i_phi], phi_xx_p[i_phi], phi_yy_p[i_phi], phi_zz_p[i_phi], quadratic);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+
+        interp_local.set_input(phi_xx_p[i_phi], linear);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_xx_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+
+        interp_local.set_input(phi_yy_p[i_phi], linear);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_yy_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+
+        interp_local.set_input(phi_zz_p[i_phi], linear);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_zz_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+#else
+        interp_local.set_input(phi_p[i_phi], phi_xx_p[i_phi], phi_yy_p[i_phi], quadratic);
+        for (short j = 0; j < ny_grid+1; j++)
+          for (short i = 0; i < nx_grid+1; i++)
+            phi_cube[i_phi][i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
+
+        interp_local.set_input(phi_xx_p[i_phi], linear);
+        for (short j = 0; j < ny_grid+1; j++)
+          for (short i = 0; i < nx_grid+1; i++)
+            phi_xx_cube[i_phi][i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
+
+        interp_local.set_input(phi_yy_p[i_phi], linear);
+        for (short j = 0; j < ny_grid+1; j++)
+          for (short i = 0; i < nx_grid+1; i++)
+            phi_yy_cube[i_phi][i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
 #endif
+//        sample_vec_at_neighbors(phi_p[i_phi], neighbors, neighbor_exists, phi_cube[i_phi]);
+//        sample_vec_at_neighbors(phi_xx_p[i_phi], neighbors, neighbor_exists, phi_xx_cube[i_phi]);
+//        sample_vec_at_neighbors(phi_yy_p[i_phi], neighbors, neighbor_exists, phi_yy_cube[i_phi]);
+//#ifdef P4_TO_P8
+//        sample_vec_at_neighbors(phi_zz_p[i_phi], neighbors, neighbor_exists, phi_zz_cube[i_phi]);
+//#endif
       }
 
       cube.x0 = xm_cube; cube.x1 = xp_cube;
@@ -1349,29 +1455,52 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
                 measure_of_iface = cube.measure_of_colored_interface(j,i);
                 if (measure_of_iface > eps_ifc)
                 {
-                  find_projection(phi_p[j], neighbors, neighbor_exists, dxyz_pr, dist);
+//                  find_projection(phi_p[j], neighbors, neighbor_exists, dxyz_pr, dist);
+                  find_projection(phi_p[j], qnnn, dxyz_pr, dist);
 
                   if (mu.constant) mu_avg = mu.val;
                   else
                   {
-                    sample_vec_at_neighbors(mu.vec_p, neighbors, neighbor_exists, integrand);
+                    interp_local.set_input(mu.vec_p, linear);
 #ifdef P4_TO_P8
-                    mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+                    mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
 #else
-                    mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+                    mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
 #endif
                   }
 
                   if (bc_coeffs[i].constant) bc_coeff_avg = bc_coeffs[i].val;
                   else
                   {
-                    sample_vec_at_neighbors(bc_coeffs[i].vec_p, neighbors, neighbor_exists, integrand);
+                    interp_local.set_input(bc_coeffs[i].vec_p, linear);
 #ifdef P4_TO_P8
-                    bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+                    bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
 #else
-                    bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+                    bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
 #endif
                   }
+
+//                  if (mu.constant) mu_avg = mu.val;
+//                  else
+//                  {
+//                    sample_vec_at_neighbors(mu.vec_p, neighbors, neighbor_exists, integrand);
+//#ifdef P4_TO_P8
+//                    mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+//#else
+//                    mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+//#endif
+//                  }
+
+//                  if (bc_coeffs[i].constant) bc_coeff_avg = bc_coeffs[i].val;
+//                  else
+//                  {
+//                    sample_vec_at_neighbors(bc_coeffs[i].vec_p, neighbors, neighbor_exists, integrand);
+//#ifdef P4_TO_P8
+//                    bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+//#else
+//                    bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+//#endif
+//                  }
 
                   if (use_taylor_correction) { w_000 += mu_avg*bc_coeff_avg*measure_of_iface/(mu_avg-bc_coeff_avg*dist); }
                   else                       { w_000 += bc_coeff_avg*measure_of_iface; }
@@ -1382,29 +1511,52 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
 
             } else {
 
-              find_projection(phi_p[i], neighbors, neighbor_exists, dxyz_pr, dist);
+//              find_projection(phi_p[i], neighbors, neighbor_exists, dxyz_pr, dist);
+              find_projection(phi_p[i], qnnn, dxyz_pr, dist);
 
               if (mu.constant) mu_avg = mu.val;
               else
               {
-                sample_vec_at_neighbors(mu.vec_p, neighbors, neighbor_exists, integrand);
+                interp_local.set_input(mu.vec_p, linear);
 #ifdef P4_TO_P8
-                mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+                mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
 #else
-                mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+                mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
 #endif
               }
 
               if (bc_coeffs[i].constant) bc_coeff_avg = bc_coeffs[i].val;
               else
               {
-                sample_vec_at_neighbors(bc_coeffs[i].vec_p, neighbors, neighbor_exists, integrand);
+                interp_local.set_input(bc_coeffs[i].vec_p, linear);
 #ifdef P4_TO_P8
-                bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+                bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
 #else
-                bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+                bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
 #endif
               }
+
+//              if (mu.constant) mu_avg = mu.val;
+//              else
+//              {
+//                sample_vec_at_neighbors(mu.vec_p, neighbors, neighbor_exists, integrand);
+//#ifdef P4_TO_P8
+//                mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+//#else
+//                mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+//#endif
+//              }
+
+//              if (bc_coeffs[i].constant) bc_coeff_avg = bc_coeffs[i].val;
+//              else
+//              {
+//                sample_vec_at_neighbors(bc_coeffs[i].vec_p, neighbors, neighbor_exists, integrand);
+//#ifdef P4_TO_P8
+//                bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+//#else
+//                bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+//#endif
+//              }
 
               if (use_taylor_correction) { w_000 += mu_avg*bc_coeff_avg*measure_of_iface/(mu_avg-bc_coeff_avg*dist); }
               else                       { w_000 += bc_coeff_avg*measure_of_iface; }
@@ -1672,6 +1824,13 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
   double measure_of_cut_cell;
   double mu_avg, bc_value_avg, bc_coeff_avg;
 
+  double x_grid[3], y_grid[3];
+  int nx_grid, ny_grid;
+#ifdef P4_TO_P8
+  double z_grid[3];
+  int nz_grid;
+#endif
+
   //---------------------------------------------------------------------
   // main loop over nodes
   //---------------------------------------------------------------------
@@ -1731,10 +1890,10 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
 #endif
 
       // fetch dimensions of the cube and underlying interpolation grid
-      double xm_grid = x_C, xp_grid = x_C, xm_cube = x_C, xp_cube = x_C; int nx_grid = 0;
-      double ym_grid = y_C, yp_grid = y_C, ym_cube = y_C, yp_cube = y_C; int ny_grid = 0;
+      double xm_grid = x_C, xp_grid = x_C, xm_cube = x_C, xp_cube = x_C; nx_grid = 0;
+      double ym_grid = y_C, yp_grid = y_C, ym_cube = y_C, yp_cube = y_C; ny_grid = 0;
 #ifdef P4_TO_P8
-      double zm_grid = z_C, zp_grid = z_C, zm_cube = z_C, zp_cube = z_C; int nz_grid = 0;
+      double zm_grid = z_C, zp_grid = z_C, zm_cube = z_C, zp_cube = z_C; nz_grid = 0;
 #endif
 
       if (!xm_wall) {xm_cube -= 0.5*dx_min; xm_grid -= dx_min; nx_grid++;}
@@ -1747,17 +1906,65 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
 #endif
 
       // count neighbors
-      get_all_neighbors(n, neighbors, neighbor_exists);
+//      get_all_neighbors(n, neighbors, neighbor_exists);
+
+      interp_local.initialize(n);
+
+      for (short i = 0; i < nx_grid+1; i++) x_grid[i] = xm_grid + (double)(i)*dx_min;
+      for (short i = 0; i < ny_grid+1; i++) y_grid[i] = ym_grid + (double)(i)*dy_min;
+#ifdef P4_TO_P8
+      for (short i = 0; i < nz_grid+1; i++) z_grid[i] = zm_grid + (double)(i)*dz_min;
+#endif
 
       // fetch values of LSF
       for (int i_phi = 0; i_phi < n_phis; i_phi++)
       {
-        sample_vec_at_neighbors(phi_p[i_phi], neighbors, neighbor_exists, phi_cube[i_phi]);
-        sample_vec_at_neighbors(phi_xx_p[i_phi], neighbors, neighbor_exists, phi_xx_cube[i_phi]);
-        sample_vec_at_neighbors(phi_yy_p[i_phi], neighbors, neighbor_exists, phi_yy_cube[i_phi]);
 #ifdef P4_TO_P8
-        sample_vec_at_neighbors(phi_zz_p[i_phi], neighbors, neighbor_exists, phi_zz_cube[i_phi]);
+        interp_local.set_input(phi_p[i_phi], phi_xx_p[i_phi], phi_yy_p[i_phi], phi_zz_p[i_phi], quadratic);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+
+        interp_local.set_input(phi_xx_p[i_phi], linear);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_xx_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+
+        interp_local.set_input(phi_yy_p[i_phi], linear);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_yy_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+
+        interp_local.set_input(phi_zz_p[i_phi], linear);
+        for (short k = 0; k < nz_grid+1; k++)
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              phi_zz_cube[i_phi][i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+#else
+        interp_local.set_input(phi_p[i_phi], phi_xx_p[i_phi], phi_yy_p[i_phi], quadratic);
+        for (short j = 0; j < ny_grid+1; j++)
+          for (short i = 0; i < nx_grid+1; i++)
+            phi_cube[i_phi][i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
+
+        interp_local.set_input(phi_xx_p[i_phi], linear);
+        for (short j = 0; j < ny_grid+1; j++)
+          for (short i = 0; i < nx_grid+1; i++)
+            phi_xx_cube[i_phi][i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
+
+        interp_local.set_input(phi_yy_p[i_phi], linear);
+        for (short j = 0; j < ny_grid+1; j++)
+          for (short i = 0; i < nx_grid+1; i++)
+            phi_yy_cube[i_phi][i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
 #endif
+//        sample_vec_at_neighbors(phi_p[i_phi], neighbors, neighbor_exists, phi_cube[i_phi]);
+//        sample_vec_at_neighbors(phi_xx_p[i_phi], neighbors, neighbor_exists, phi_xx_cube[i_phi]);
+//        sample_vec_at_neighbors(phi_yy_p[i_phi], neighbors, neighbor_exists, phi_yy_cube[i_phi]);
+//#ifdef P4_TO_P8
+//        sample_vec_at_neighbors(phi_zz_p[i_phi], neighbors, neighbor_exists, phi_zz_cube[i_phi]);
+//#endif
       }
 
       cube.x0 = xm_cube; cube.x1 = xp_cube;
@@ -1856,28 +2063,29 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
                 measure_of_iface = cube.measure_of_colored_interface(j,i_phi);
                 if (measure_of_iface > eps_ifc)
                 {
-                  find_projection(phi_p[j], neighbors, neighbor_exists, dxyz_pr, dist);
+//                  find_projection(phi_p[j], neighbors, neighbor_exists, dxyz_pr, dist);
+                  find_projection(phi_p[j], qnnn, dxyz_pr, dist);
 
                   if (mu.constant) mu_avg = mu.val;
                   else
                   {
-                    sample_vec_at_neighbors(mu.vec_p, neighbors, neighbor_exists, integrand);
-#ifdef P4_TO_P8
-                    mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-#else
-                    mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-#endif
+                    interp_local.set_input(mu.vec_p, linear);
+    #ifdef P4_TO_P8
+                    mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+    #else
+                    mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+    #endif
                   }
 
                   if (bc_coeffs[i_phi].constant) bc_coeff_avg = bc_coeffs[i_phi].val;
                   else
                   {
-                    sample_vec_at_neighbors(bc_coeffs[i_phi].vec_p, neighbors, neighbor_exists, integrand);
-#ifdef P4_TO_P8
-                    bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-#else
-                    bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-#endif
+                    interp_local.set_input(bc_coeffs[i_phi].vec_p, linear);
+    #ifdef P4_TO_P8
+                    bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+    #else
+                    bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+    #endif
                   }
 
                   sample_qty_at_neighbors(bc_values[i_phi], neighbors, neighbor_exists, integrand);
@@ -1899,45 +2107,59 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
               // FIX COLORATION CASE
             } else {
 
-              find_projection(phi_p[i_phi], neighbors, neighbor_exists, dxyz_pr, dist);
+//              find_projection(phi_p[i_phi], neighbors, neighbor_exists, dxyz_pr, dist);
+              find_projection(phi_p[i_phi], qnnn, dxyz_pr, dist);
 
               if (mu.constant) mu_avg = mu.val;
               else
               {
-                sample_vec_at_neighbors(mu.vec_p, neighbors, neighbor_exists, integrand);
+                interp_local.set_input(mu.vec_p, linear);
 #ifdef P4_TO_P8
-                mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+                mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
 #else
-                mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+                mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
 #endif
               }
 
               if (bc_coeffs[i_phi].constant) bc_coeff_avg = bc_coeffs[i_phi].val;
               else
               {
-                sample_vec_at_neighbors(bc_coeffs[i_phi].vec_p, neighbors, neighbor_exists, integrand);
+                interp_local.set_input(bc_coeffs[i_phi].vec_p, linear);
 #ifdef P4_TO_P8
-                bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+                bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
 #else
-                bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+                bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
 #endif
               }
 
-              sample_qty_at_neighbors(bc_values[i_phi], neighbors, neighbor_exists, integrand);
+//              sample_qty_at_neighbors(bc_values[i_phi], neighbors, neighbor_exists, integrand);
+
+              if (bc_values[i_phi].constant) integral_bc = bc_values[i_phi].val*measure_of_iface;
+              else
+              {
+                interp_local.set_input(bc_values[i_phi].vec_p, linear);
+#ifdef P4_TO_P8
+                for (short k = 0; k < nz_grid+1; k++)
+                  for (short j = 0; j < ny_grid+1; j++)
+                    for (short i = 0; i < nx_grid+1; i++)
+                      integrand[i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
+#else
+                for (short j = 0; j < ny_grid+1; j++)
+                  for (short i = 0; i < nx_grid+1; i++)
+                    integrand[i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
+#endif
+                integral_bc = cube.integrate_over_interface(integrand, i_phi);
+              }
 
 #ifdef P4_TO_P8
-              bc_value_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+              bc_value_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
 #else
-              bc_value_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+              bc_value_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
 #endif
-              bc_value_avg = cube.integrate_over_interface(integrand, i_phi)/measure_of_iface;
+//              bc_value_avg = cube.integrate_over_interface(integrand, i_phi)/measure_of_iface;
 
-              if (use_taylor_correction)
-                for (int k = 0; k < N_NBRS_MAX; k++)
-                  integrand[k] -= use_taylor_correction*bc_coeff_avg*bc_value_avg*dist/(bc_coeff_avg*dist-mu_avg);
 
-              integral_bc = cube.integrate_over_interface(integrand, i_phi);
-//              integral_bc = measure_of_iface*bc_values[i_phi].vec_p[n];
+              if (use_taylor_correction) integral_bc -= measure_of_iface*bc_coeff_avg*bc_value_avg*dist/(bc_coeff_avg*dist-mu_avg);
             }
 
             rhs_p[n] += integral_bc;
@@ -2244,6 +2466,61 @@ void my_p4est_poisson_nodes_mls_t::find_projection(double *phi_p, p4est_locidx_t
 #endif
 
   dist_pr = phi_p[neighbors[nn_000]]/phi_d;
+
+  dxyz_pr[0] = - dist_pr*phi_x;
+  dxyz_pr[1] = - dist_pr*phi_y;
+#ifdef P4_TO_P8
+  dxyz_pr[2] = - dist_pr*phi_z;
+#endif
+}
+
+void my_p4est_poisson_nodes_mls_t::find_projection(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr)
+{
+  // find projection point
+  double phi_x = 0., phi_y = 0.;
+#ifdef P4_TO_P8
+  double phi_z = 0;
+#endif
+
+  p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, qnnn.node_000);
+
+  // check if the node is a wall node
+  bool xm_wall = is_node_xmWall(p4est, ni);
+  bool xp_wall = is_node_xpWall(p4est, ni);
+  bool ym_wall = is_node_ymWall(p4est, ni);
+  bool yp_wall = is_node_ypWall(p4est, ni);
+#ifdef P4_TO_P8
+  bool zm_wall = is_node_zmWall(p4est, ni);
+  bool zp_wall = is_node_zpWall(p4est, ni);
+#endif
+
+  if (!xm_wall && !xp_wall) phi_x = qnnn.dx_central(phi_p);
+  else if (!xm_wall)        phi_x = qnnn.dx_backward_linear(phi_p);
+  else if (!xp_wall)        phi_x = qnnn.dx_forward_linear(phi_p);
+
+  if (!ym_wall && !yp_wall) phi_y = qnnn.dy_central(phi_p);
+  else if (!ym_wall)        phi_y = qnnn.dy_backward_linear(phi_p);
+  else if (!yp_wall)        phi_y = qnnn.dy_forward_linear(phi_p);
+
+#ifdef P4_TO_P8
+  if (!zm_wall && !zp_wall) phi_z = qnnn.dz_central(phi_p);
+  else if (!zm_wall)        phi_z = qnnn.dz_backward_linear(phi_p);
+  else if (!zp_wall)        phi_z = qnnn.dz_forward_linear(phi_p);
+#endif
+
+#ifdef P4_TO_P8
+  double phi_d = sqrt(SQR(phi_x)+SQR(phi_y)+SQR(phi_z));
+#else
+  double phi_d = sqrt(SQR(phi_x)+SQR(phi_y));
+#endif
+
+  phi_x /= phi_d;
+  phi_y /= phi_d;
+#ifdef P4_TO_P8
+  phi_z /= phi_d;
+#endif
+
+  dist_pr = phi_p[qnnn.node_000]/phi_d;
 
   dxyz_pr[0] = - dist_pr*phi_x;
   dxyz_pr[1] = - dist_pr*phi_y;
@@ -2700,21 +2977,21 @@ void my_p4est_poisson_nodes_mls_t::compute_error_gr(CF_2 &ux_cf, CF_2 &uy_cf, Ve
 
         err_ux_p[n] = fabs(qnnn.dx_central(sol_p) - ux_exact);
 
-      } else if (node_vol_p[neighbors[nn_m00]] > eps_dom) { // using backward differences
+//      } else if (node_vol_p[neighbors[nn_m00]] > eps_dom) { // using backward differences
 
-        get_all_neighbors(neighbors[nn_m00], neighbors_of_n, neighbor_exists);
-        if (node_vol_p[neighbors_of_n[nn_m00]] > eps_dom)
-          err_ux_p[n] = fabs((1.5*sol_p[n] - 2.0*sol_p[neighbors[nn_m00]] + 0.5*sol_p[neighbors_of_n[nn_m00]])/dx_min - ux_exact);
-        else
-          err_ux_p[n] = 0.;
+//        get_all_neighbors(neighbors[nn_m00], neighbors_of_n, neighbor_exists);
+//        if (node_vol_p[neighbors_of_n[nn_m00]] > eps_dom)
+//          err_ux_p[n] = fabs((1.5*sol_p[n] - 2.0*sol_p[neighbors[nn_m00]] + 0.5*sol_p[neighbors_of_n[nn_m00]])/dx_min - ux_exact);
+//        else
+//          err_ux_p[n] = 0.;
 
-      } else if (node_vol_p[neighbors[nn_p00]] > eps_dom) { // using forward differences
+//      } else if (node_vol_p[neighbors[nn_p00]] > eps_dom) { // using forward differences
 
-        get_all_neighbors(neighbors[nn_p00], neighbors_of_n, neighbor_exists);
-        if (node_vol_p[neighbors_of_n[nn_p00]] > eps_dom)
-          err_ux_p[n] = fabs((- 1.5*sol_p[n] + 2.0*sol_p[neighbors[nn_p00]] - 0.5*sol_p[neighbors_of_n[nn_p00]])/dx_min - ux_exact);
-        else
-          err_ux_p[n] = 0.;
+//        get_all_neighbors(neighbors[nn_p00], neighbors_of_n, neighbor_exists);
+//        if (node_vol_p[neighbors_of_n[nn_p00]] > eps_dom)
+//          err_ux_p[n] = fabs((- 1.5*sol_p[n] + 2.0*sol_p[neighbors[nn_p00]] - 0.5*sol_p[neighbors_of_n[nn_p00]])/dx_min - ux_exact);
+//        else
+//          err_ux_p[n] = 0.;
 
       } else err_ux_p[n] = 0.;
 
@@ -2723,21 +3000,21 @@ void my_p4est_poisson_nodes_mls_t::compute_error_gr(CF_2 &ux_cf, CF_2 &uy_cf, Ve
 
         err_uy_p[n] = fabs(qnnn.dy_central(sol_p) - uy_exact);
 
-      } else if (node_vol_p[neighbors[nn_0m0]] > eps_dom) { // using backward differences
+//      } else if (node_vol_p[neighbors[nn_0m0]] > eps_dom) { // using backward differences
 
-        get_all_neighbors(neighbors[nn_0m0], neighbors_of_n, neighbor_exists);
-        if (node_vol_p[neighbors_of_n[nn_0m0]] > eps_dom)
-          err_uy_p[n] = fabs((1.5*sol_p[n] - 2.0*sol_p[neighbors[nn_0m0]] + 0.5*sol_p[neighbors_of_n[nn_0m0]])/dy_min - uy_exact);
-        else
-          err_uy_p[n] = 0.;
+//        get_all_neighbors(neighbors[nn_0m0], neighbors_of_n, neighbor_exists);
+//        if (node_vol_p[neighbors_of_n[nn_0m0]] > eps_dom)
+//          err_uy_p[n] = fabs((1.5*sol_p[n] - 2.0*sol_p[neighbors[nn_0m0]] + 0.5*sol_p[neighbors_of_n[nn_0m0]])/dy_min - uy_exact);
+//        else
+//          err_uy_p[n] = 0.;
 
-      } else if (node_vol_p[neighbors[nn_0p0]] > eps_dom) { // using forward differences
+//      } else if (node_vol_p[neighbors[nn_0p0]] > eps_dom) { // using forward differences
 
-        get_all_neighbors(neighbors[nn_0p0], neighbors_of_n, neighbor_exists);
-        if (node_vol_p[neighbors_of_n[nn_0p0]] > eps_dom)
-          err_uy_p[n] = fabs((- 1.5*sol_p[n] + 2.0*sol_p[neighbors[nn_0p0]] - 0.5*sol_p[neighbors_of_n[nn_0p0]])/dy_min - uy_exact);
-        else
-          err_uy_p[n] = 0.;
+//        get_all_neighbors(neighbors[nn_0p0], neighbors_of_n, neighbor_exists);
+//        if (node_vol_p[neighbors_of_n[nn_0p0]] > eps_dom)
+//          err_uy_p[n] = fabs((- 1.5*sol_p[n] + 2.0*sol_p[neighbors[nn_0p0]] - 0.5*sol_p[neighbors_of_n[nn_0p0]])/dy_min - uy_exact);
+//        else
+//          err_uy_p[n] = 0.;
 
       } else err_uy_p[n] = 0;
 
