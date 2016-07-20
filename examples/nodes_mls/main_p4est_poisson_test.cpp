@@ -61,7 +61,7 @@
 
 using namespace std;
 
-bool save_vtk = true;
+bool save_vtk = false;
 
 double xmin = -1.0;
 double xmax =  1.0;
@@ -73,8 +73,8 @@ double zmax =  1;
 #endif
 
 int lmin = 4;
-int lmax = 6;
-int nb_splits = 4;
+int lmax = 5;
+int nb_splits = 3;
 
 int nx = 1;
 int ny = 1;
@@ -88,14 +88,14 @@ int n_test = 1;
 
 // GEOMETRY
 #ifdef P4_TO_P8
-double r0 = 0.757;
-double r1 = 0.754;
-double r2 = 0.431;
+double r0 = 0.957;
+double r1 = 0.854;
+double r2 = 0.631;
 double r3 = -0.333;
 double d = 0.234;
 #else
-double r0 = 0.787;
-double r1 = 0.7945134;
+double r0 = 0.987;
+double r1 = 0.8945134;
 //double r2 = -0.4315416;
 double r2 = 0.497;
 double r3 = -0.333;

@@ -973,6 +973,8 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
   double z_grid[3];
 #endif
 
+  bool enforce_dirichlet_at_wall;
+
   node_loc.resize(nodes->num_owned_indeps, NODE_INS);
 
   //---------------------------------------------------------------------
@@ -1153,6 +1155,16 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
 
       if (cube.measure_of_domain() < eps_dom) node_loc[n] = NODE_OUT;
       if (cube.measure_of_interface(-1) < eps_ifc && cube.measure_of_domain() > 0.5*vol_min) node_loc[n] = NODE_INS;
+
+      enforce_dirichlet_at_wall = false;
+      if      (xm_wall && cube.measure_in_dir(dir::f_m00) > eps_ifc) enforce_dirichlet_at_wall = true;
+      else if (xp_wall && cube.measure_in_dir(dir::f_p00) > eps_ifc) enforce_dirichlet_at_wall = true;
+      else if (ym_wall && cube.measure_in_dir(dir::f_0m0) > eps_ifc) enforce_dirichlet_at_wall = true;
+      else if (yp_wall && cube.measure_in_dir(dir::f_0p0) > eps_ifc) enforce_dirichlet_at_wall = true;
+#ifdef P4_TO_P8
+      else if (zm_wall && cube.measure_in_dir(dir::f_00m) > eps_ifc) enforce_dirichlet_at_wall = true;
+      else if (zp_wall && cube.measure_in_dir(dir::f_00p) > eps_ifc) enforce_dirichlet_at_wall = true;
+#endif
     }
 
 //    std::vector<double> phi_000(n_phi, 0), phi_p00(n_phi, 0), phi_m00(n_phi, 0), phi_0m0(n_phi, 0), phi_0p0(n_phi, 0);
@@ -1169,7 +1181,7 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
 //#endif
 //    }
 
-    if(is_node_Wall(p4est, ni) && node_loc[n] != NODE_NMN && node_loc[n] != NODE_OUT)
+    if (is_node_Wall(p4est, ni) && (enforce_dirichlet_at_wall || node_loc[n] == NODE_INS))
     {
       ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
       if (is_inside(n)) matrix_has_nullspace = false;
@@ -1831,6 +1843,8 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
   int nz_grid;
 #endif
 
+  bool enforce_dirichlet_at_wall;
+
   //---------------------------------------------------------------------
   // main loop over nodes
   //---------------------------------------------------------------------
@@ -1984,6 +1998,15 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
 #endif
 
       cube.construct_domain();
+      enforce_dirichlet_at_wall = false;
+      if      (xm_wall && cube.measure_in_dir(dir::f_m00) > eps_ifc) enforce_dirichlet_at_wall = true;
+      else if (xp_wall && cube.measure_in_dir(dir::f_p00) > eps_ifc) enforce_dirichlet_at_wall = true;
+      else if (ym_wall && cube.measure_in_dir(dir::f_0m0) > eps_ifc) enforce_dirichlet_at_wall = true;
+      else if (yp_wall && cube.measure_in_dir(dir::f_0p0) > eps_ifc) enforce_dirichlet_at_wall = true;
+#ifdef P4_TO_P8
+      else if (zm_wall && cube.measure_in_dir(dir::f_00m) > eps_ifc) enforce_dirichlet_at_wall = true;
+      else if (zp_wall && cube.measure_in_dir(dir::f_00p) > eps_ifc) enforce_dirichlet_at_wall = true;
+#endif
     }
 
 //    std::vector<double> phi_000(n_phi, 0), phi_p00(n_phi, 0), phi_m00(n_phi, 0), phi_0m0(n_phi, 0), phi_0p0(n_phi, 0);
@@ -2000,7 +2023,7 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
 //#endif
 //    }
 
-    if(is_node_Wall(p4est, ni) && node_loc[n] != NODE_NMN && node_loc[n] != NODE_OUT)
+    if (is_node_Wall(p4est, ni) && (enforce_dirichlet_at_wall || node_loc[n] == NODE_INS))
     {
       rhs_p[n] = wall_value(n);
       continue;
