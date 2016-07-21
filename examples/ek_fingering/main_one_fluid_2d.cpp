@@ -134,7 +134,7 @@ void set_parameters(int argc, char **argv) {
 
   if (options.test == "circle") {
     // set interface
-    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10;
+    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10 + EPS;
     options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
     options.lmax    = 10;
     options.lmin    = 4;
@@ -144,7 +144,7 @@ void set_parameters(int argc, char **argv) {
     options.Ca      = 250;
     options.alpha   = 0;
     options.mode    = cmd.get("mode", 0);
-    options.eps     = cmd.get("eps", 1e-3);
+    options.eps     = cmd.get("eps", 1e-2);
     options.method  = "semi_lagrangian";
 
     static struct:CF_2{
@@ -462,7 +462,8 @@ int main(int argc, char** argv) {
   if (!outdir)
     throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
 
-  const string folder = string(outdir) + string("/one_fluid/") + options.test;
+  const string folder = string(outdir) + string("/one_fluid/")
+                        + options.test + string("/") + options.method;
   ostringstream command;
   command << "mkdir -p " << folder;
   if (mpi.rank() == 0)
@@ -473,7 +474,7 @@ int main(int argc, char** argv) {
 
   double dt = 0, t = 0;
   int is = 0;
-  for(int i=0; i<options.itmax; i++) {
+  for(int i=0; i<=options.itmax; i++) {
     dt = solver.solve_one_step(t, phi, pressure, potential, options.method, options.cfl, options.dtmax);
     t += dt;
 
@@ -528,7 +529,7 @@ int main(int argc, char** argv) {
         filename << folder << "/err_" << options.lmax
                  << "_" << options.mode
                  << "_" << i << ".txt";
-        PetscPrintf(mpi.comm(), "Saving file %s\n", filename.str().c_str());
+//        PetscPrintf(mpi.comm(), "Saving file %s\n", filename.str().c_str());
         FILE *file = fopen(filename.str().c_str(), "w");
         fprintf(file, "%% theta \t err\n");
         for (int n = 0; n<ntheta; n++) {

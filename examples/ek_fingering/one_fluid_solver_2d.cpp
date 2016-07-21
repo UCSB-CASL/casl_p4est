@@ -920,7 +920,7 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&neighbors);
-  ls.reinitialize_2nd_order(phi);
+//  ls.reinitialize_2nd_order(phi);
 //  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
@@ -941,57 +941,57 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
   VecGetArray(bc_val, &bc_val_p);
 
   double x[P4EST_DIM];
-  double diag_min = p4est_diag_min(p4est);
+//  double diag_min = p4est_diag_min(p4est);
   double *phi_p;
   VecGetArray(phi, &phi_p);
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
-    if (fabs(phi_p[n]) < 10*diag_min) {
-      double kappa = bc_val_p[n];
+//    if (fabs(phi_p[n]) < 10*diag_min) {
+    double kappa = bc_val_p[n];
 //    kappa = CLAMP(kappa, -1.0/(2.0*diag_min), 1.0/(2.0*diag_min));
 #ifdef P4_TO_P8
-      bc_val_p[n] = kappa*(*gamma)(x[0], x[1], x[2]);
+    bc_val_p[n] = kappa*(*gamma)(x[0], x[1], x[2]);
 #else
-      bc_val_p[n] = kappa*(*gamma)(x[0], x[1]);
+    bc_val_p[n] = kappa*(*gamma)(x[0], x[1]);
 #endif
-    } else {
-      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), 0.1);
-      bc_val_p[n] = -(*Q)(t)/(2*PI) * log(r);
-    }
+//    } else {
+//      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), 0.1);
+//      bc_val_p[n] = -(*Q)(t)/(2*PI) * log(r);
+//    }
   }
   VecRestoreArray(phi, &phi_p);
 
   // smooth out the boundary condition
-  if (0)
-  {
-    double dxyz[P4EST_DIM];
-    p4est_dxyz_min(p4est, dxyz);
-#ifdef P4_TO_P8
-    double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
-#else
-    double dmin = MIN(dxyz[0], dxyz[1]);
-#endif
-    double dt = 0.25*dmin*dmin;
+//  if (0)
+//  {
+//    double dxyz[P4EST_DIM];
+//    p4est_dxyz_min(p4est, dxyz);
+//#ifdef P4_TO_P8
+//    double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
+//#else
+//    double dmin = MIN(dxyz[0], dxyz[1]);
+//#endif
+//    double dt = 0.25*dmin*dmin;
 
-    Vec tmp;
-    VecDuplicate(phi, &tmp);
-    double *tmp_p;
+//    Vec tmp;
+//    VecDuplicate(phi, &tmp);
+//    double *tmp_p;
 
-    quad_neighbor_nodes_of_node_t qnnn;
-    VecGetArray(tmp, &tmp_p);
-    int itmax = 10;
-    for (int it = 0; it < itmax; it++) {
-      foreach_node (n, nodes) {
-        neighbors.get_neighbors(n, qnnn);
-        double fxx, fyy;
-        qnnn.laplace(bc_val_p, fxx, fyy);
-        tmp_p[n] = bc_val_p[n] + dt*(fxx+fyy);
-      }
-      VecCopy(tmp, bc_val);
-    }
-    VecRestoreArray(tmp, &tmp_p);
-    VecDestroy(tmp);
-  }
+//    quad_neighbor_nodes_of_node_t qnnn;
+//    VecGetArray(tmp, &tmp_p);
+//    int itmax = 10;
+//    for (int it = 0; it < itmax; it++) {
+//      foreach_node (n, nodes) {
+//        neighbors.get_neighbors(n, qnnn);
+//        double fxx, fyy;
+//        qnnn.laplace(bc_val_p, fxx, fyy);
+//        tmp_p[n] = bc_val_p[n] + dt*(fxx+fyy);
+//      }
+//      VecCopy(tmp, bc_val);
+//    }
+//    VecRestoreArray(tmp, &tmp_p);
+//    VecDestroy(tmp);
+//  }
 
   VecRestoreArray(bc_val, &bc_val_p);
 
@@ -1000,23 +1000,23 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
   // solve for pressure
   {
     // define a new levelset for the outer ring boundary
-    Vec phi_ring;
-    VecDuplicate(phi, &phi_ring);
-    double *phi_ring_p;
-    VecGetArray(phi_ring, &phi_ring_p);
-    VecGetArray(phi, &phi_p);
-    double xyz_max[P4EST_DIM];
-    p4est_xyz_max(p4est, xyz_max);
-    foreach_node (n, nodes) {
-      node_xyz_fr_n(n, p4est, nodes, x);
-      phi_ring_p[n] = MAX(phi_p[n], sqrt(SQR(x[0]) + SQR(x[1])) - 0.99*xyz_max[0]);
-    }
-    VecRestoreArray(phi, &phi_p);
-    VecRestoreArray(phi_ring, &phi_ring_p);
+//    Vec phi_ring;
+//    VecDuplicate(phi, &phi_ring);
+//    double *phi_ring_p;
+//    VecGetArray(phi_ring, &phi_ring_p);
+//    VecGetArray(phi, &phi_p);
+//    double xyz_max[P4EST_DIM];
+//    p4est_xyz_max(p4est, xyz_max);
+//    foreach_node (n, nodes) {
+//      node_xyz_fr_n(n, p4est, nodes, x);
+//      phi_ring_p[n] = MAX(phi_p[n], sqrt(SQR(x[0]) + SQR(x[1])) - 0.99*xyz_max[0]);
+//    }
+//    VecRestoreArray(phi, &phi_p);
+//    VecRestoreArray(phi_ring, &phi_ring_p);
 
     // Set the boundary conditions
     my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
-    p_interface_value.set_input(bc_val, linear);
+    p_interface_value.set_input(bc_val, quadratic);
 
 #ifdef P4_TO_P8
     BoundaryConditions3D bc;
@@ -1030,21 +1030,22 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
     bc_wall_value->t = t;
 
     my_p4est_poisson_nodes_t poisson(&neighbors);
-    poisson.set_phi(phi_ring);
+    poisson.set_phi(phi);
     poisson.set_bc(bc);
 //    sample_cf_on_nodes(p4est, nodes, *K_D, K);
 //    poisson.set_mu(K);
     poisson.set_mu(1.0);
     poisson.solve(pressure, true);
 
-    ls.extend_Over_Interface_TVD(phi_ring, pressure);    
+//    ls.extend_Over_Interface_TVD(phi_ring, pressure);
+    ls.extend_Over_Interface_TVD(phi, pressure);
     // Vec l1,l2;
     // VecGhostGetLocalForm(pressure, &l1);
     // VecGhostGetLocalForm(bc_val, &l2);
     // VecCopy(l2, l1);
     // VecGhostRestoreLocalForm(pressure, &l1);
     // VecGhostRestoreLocalForm(bc_val, &l2);
-    VecDestroy(phi_ring);
+//    VecDestroy(phi_ring);
   }
 
   // solve for the potential

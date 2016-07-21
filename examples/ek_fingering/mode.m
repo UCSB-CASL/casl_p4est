@@ -1,19 +1,18 @@
 
-dt = 1e-4;
+dt = 1e-5;
 it = 5;
 modes = 0:20;
 % prefix = '/Users/mohammad/repos/parcasl/examples/ek_fingering/Release/';
+% path = strcat(prefix,'one_fluid/circle/normal');
 prefix = '/Users/mohammad/repos/casl/examples/viscous_fingering/Release';
-% path = strcat(prefix,'two_fluid/circle/mue_0.01');
-% path = strcat(prefix,'one_fluid/circle');
 path = prefix;
 
-close all;
 styles = {'bo', 'rs', 'm<', 'k>'};
 s = 1;
 figure(1); hold on;
-for lmax=11:11
-    sigma = zeros(1,length(modes));
+sigma = zeros(3,length(modes));
+for lmax=[10]    
+    if lmax == 13 dt = 1e-5; end
     for m=0:20
         file_base = sprintf('%s/err_%d_%d', path, lmax, m);
         
@@ -33,7 +32,7 @@ for lmax=11:11
 %         derr = (fft_n - fft_nm1)/dt;
 
     %     s = mean(derr./fft_n);
-        sigma(m+1) = derr(m+1)/fft_n(m+1);
+        sigma(s,m+1) = derr(m+1)/fft_n(m+1);
                 
     % 
     %     figure(2+m);
@@ -44,13 +43,14 @@ for lmax=11:11
     %     modes = 0:25;
     %     stem(modes, abs(fft_n(modes+1)), 'linewidth', 1.5);
     end
-    plot(0:20,sigma,styles{s});
+    plot(0:20,sigma(s,:),styles{s});
     s = s + 1;
 end
 %%
 m = linspace(0,20);
 M = 0.;
 Ca = 250;
+sigma_ex=-1+modes*(1-M)/(1+M)+(modes).*(1-modes.^2)/(1+M)/Ca;
 plot(m,-1+m*(1-M)/(1+M)+m.*(1-m.^2)/(1+M)/Ca, 'k-', 'linewidth',2); shg
 
 axis square;
@@ -58,7 +58,7 @@ set(gca, 'fontsize', 14);
 xlabel('$m$', 'fontsize', 18, 'interpreter', 'latex');
 ylabel('$\sigma_m$', 'fontsize', 18, 'interpreter', 'latex');
 
-legend(gca, {'$l_{max} = 9$','$l_{max} = 10$','$l_{max} = 11$','$l_{max} = 12$', ...
+legend(gca, {'$l_{max} = 10$','$l_{max} = 11$','$l_{max} = 12$','$l_{max} = 13$', ...
     'Theory'}, 'fontsize', 14, 'location', 'southwest', ...
     'interpreter', 'latex');
 shg;
