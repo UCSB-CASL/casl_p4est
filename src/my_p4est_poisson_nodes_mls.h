@@ -47,17 +47,24 @@ public:
 
   struct quantity_t
   {
-    double val;
+    bool is_constant;
+    double constant;
+
+    bool is_vec;
     Vec vec;
     double *vec_p;
-    bool constant;
 
-    quantity_t() : val(0), vec(NULL), vec_p(NULL), constant(true) {}
+    bool is_cf;
+    CF_2 *cf;
+
+    quantity_t() : constant(0), is_constant(true),
+      vec(NULL), vec_p(NULL), is_vec(false),
+      cf(NULL), is_cf(false) {}
 
     void initialize()
     {
       PetscErrorCode ierr;
-      if (!constant)
+      if (is_vec)
       {
         ierr = VecGetArray(vec, &vec_p); CHKERRXX(ierr);
       }
@@ -66,21 +73,22 @@ public:
     void finalize()
     {
       PetscErrorCode ierr;
-      if (!constant)
+      if (is_vec)
       {
         ierr = VecRestoreArray(vec, &vec_p); CHKERRXX(ierr);
         vec_p = NULL;
       }
     }
 
-    inline void set(double val_) {val = val_; constant = true;}
-    inline void set(Vec    vec_) {vec = vec_; constant = false;}
+    void set(double val_) {constant = val_; is_constant = true; is_vec = false; is_cf = false;}
+    void set(Vec    vec_) {vec = vec_;      is_constant = false; is_vec = true; is_cf = false;}
+    void set(CF_2   &cf_) {cf = &cf_;       is_constant = false; is_vec = false; is_cf = true;}
 
-    double operator() (int n)
-    {
-      if (constant) {return val;}
-      else          {return vec_p[n];}
-    }
+//    double operator() (int n)
+//    {
+//      if (constant) {return val;}
+//      else          {return vec_p[n];}
+//    }
   };
 
   // p4est objects
@@ -174,6 +182,8 @@ public:
 
   double eps_ifc, eps_dom;
 
+  bool kink_special_treatment;
+
 
 //public:
 
@@ -245,6 +255,8 @@ public:
 
   void set_is_matrix_computed(bool is_matrix_computed)   {is_matrix_computed = is_matrix_computed; }
 
+  void set_kinks_treatment(bool in) {kink_special_treatment = in;}
+
   void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT)
   {
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
@@ -273,9 +285,15 @@ public:
   void find_projection(double *phi_p, p4est_locidx_t *neighbors, bool *neighbor_exists, double dxyz_pr[], double &dist_pr);
   void find_projection(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr);
 
+  void compute_normal(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[]);
+
   void sample_vec_at_neighbors(double *in_p, int *neighbors, bool *neighbor_exists, double *output);
   void sample_vec_at_neighbors(double *in_p, int *neighbors, bool *neighbor_exists, std::vector<double> &output);
   void sample_qty_at_neighbors(quantity_t &qty, int *neighbors, bool *neighbor_exists, double *output);
+
+  double sample_qty(quantity_t &qty, double *xyz);
+  double sample_qty(quantity_t &qty, p4est_locidx_t n);
+  double sample_qty(quantity_t &qty, p4est_locidx_t n, double *xyz);
 
   void get_all_neighbors(p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists);
 

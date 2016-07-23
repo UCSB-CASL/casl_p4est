@@ -61,7 +61,7 @@
 
 using namespace std;
 
-bool save_vtk = false;
+bool save_vtk = true;
 
 double xmin = -1.0;
 double xmax =  1.0;
@@ -73,8 +73,8 @@ double zmax =  1;
 #endif
 
 int lmin = 4;
-int lmax = 5;
-int nb_splits = 3;
+int lmax = 4;
+int nb_splits = 6;
 
 int nx = 1;
 int ny = 1;
@@ -94,10 +94,10 @@ double r2 = 0.631;
 double r3 = -0.333;
 double d = 0.234;
 #else
-double r0 = 0.987;
-double r1 = 0.8945134;
+double r0 = 0.587;
+double r1 = 0.5945134;
 //double r2 = -0.4315416;
-double r2 = 0.497;
+double r2 = 0.397;
 double r3 = -0.333;
 //double d = 0.;
 double d = 0.23410;
@@ -442,7 +442,7 @@ class KAPPA_0 : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return 1.0 + .0*sin(x)*cos(y);
+    return .0 + 1.0*sin(x)*cos(y);
   }
 } kappa_0;
 
@@ -460,7 +460,7 @@ class KAPPA_2 : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return 1.0 + .0*(sin(x)*sin(y));
+    return .0 + 1.0*(sin(x)*sin(y));
   }
 } kappa_2;
 
@@ -841,6 +841,7 @@ int main (int argc, char* argv[])
     solver.set_use_taylor_correction(true);
     solver.compute_volumes();
     solver.set_keep_scalling(true);
+    solver.set_kinks_treatment(true);
 //    solver.set_cube_refinement(0);
 
     Vec sol; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);

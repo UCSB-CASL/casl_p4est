@@ -42,7 +42,8 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
     A(NULL), rhs(NULL),
     node_vol(NULL),
     phi_dd_owned(false), phi_xx(NULL), phi_yy(NULL), phi_zz(NULL),
-    keep_scalling(true), scalling(NULL), phi_eff(NULL), cube_refinement(0)
+    keep_scalling(true), scalling(NULL), phi_eff(NULL), cube_refinement(0),
+    kink_special_treatment(false)
   #ifdef P4_TO_P8
   #endif
 {
@@ -943,7 +944,10 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
   mu.initialize();
   diag_add.initialize();
   for (int i = 0; i < n_phis; i++)
+  {
     bc_coeffs[i].initialize();
+    bc_values[i].initialize();
+  }
 
   //---------------------------------------------------------------------
   // some additional variables
@@ -963,15 +967,21 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
 
   double integrand[N_NBRS_MAX];
   double dxyz_pr[P4EST_DIM];
+  double xyz_pr[P4EST_DIM];
+  double xyz_c[P4EST_DIM];
+  double xyz_isxn[P4EST_DIM];
   double dist;
   double measure_of_iface;
   double measure_of_cut_cell;
   double mu_avg, bc_coeff_avg;
 
   double x_grid[3], y_grid[3];
+  int nx_grid, ny_grid;
 #ifdef P4_TO_P8
   double z_grid[3];
+  int nz_grid;
 #endif
+
 
   bool enforce_dirichlet_at_wall;
 
@@ -986,10 +996,10 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
     else if (phi_eff_p[n] < -2.0*diag_min)  node_loc[n] = NODE_INS;
     else                                    node_loc[n] = NODE_NMN;
 
-    double x_C  = node_x_fr_n(n, p4est, nodes);
-    double y_C  = node_y_fr_n(n, p4est, nodes);
+    double x_C  = node_x_fr_n(n, p4est, nodes); xyz_c[0] = x_C;
+    double y_C  = node_y_fr_n(n, p4est, nodes); xyz_c[1] = y_C;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_n(n, p4est, nodes);
+    double z_C  = node_z_fr_n(n, p4est, nodes); xyz_c[2] = z_C;
 #endif
 
     //---------------------------------------------------------------------
@@ -1058,10 +1068,14 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
 #endif
 
       // fetch dimensions of the cube and underlying interpolation grid
-      double xm_grid = x_C, xp_grid = x_C, xm_cube = x_C, xp_cube = x_C; int nx_grid = 0;
-      double ym_grid = y_C, yp_grid = y_C, ym_cube = y_C, yp_cube = y_C; int ny_grid = 0;
+      /* at this moment a cube uses values of functions at nodes of computational grid for interpolation, reasons:
+       * 1) to avoid double interpolation (first from nodes to vertices of a cube and then from vertices of the cube to points inside the cube)
+       * 2) this would be very helpful if the procedure to remove small volume cells by Voronoi partition is to be implemented later
+       */
+      double xm_grid = x_C, xp_grid = x_C, xm_cube = x_C, xp_cube = x_C; nx_grid = 0;
+      double ym_grid = y_C, yp_grid = y_C, ym_cube = y_C, yp_cube = y_C; ny_grid = 0;
 #ifdef P4_TO_P8
-      double zm_grid = z_C, zp_grid = z_C, zm_cube = z_C, zp_cube = z_C; int nz_grid = 0;
+      double zm_grid = z_C, zp_grid = z_C, zm_cube = z_C, zp_cube = z_C; nz_grid = 0;
 #endif
 
       if (!xm_wall) {xm_cube -= 0.5*dx_min; xm_grid -= dx_min; nx_grid++;}
@@ -1084,7 +1098,12 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
 
       interp_local.initialize(n);
 
-      // fetch values of LSF
+      // fetch values of LSF for the small uniform grid that is used by a cube for interpolation
+      /* Looks terrible! In fact, most of the values are values at real nodes (so no interpolation),
+       * only for missing nodes, when a neighboring quadrant has a smaller level, interpolation takes places.
+       * Another option would be just to fetch values from pointers to vecs, but it might be potentially dangerous
+       * (in case of a not_quite_uniform grid next to interface)
+       */
       for (int i_phi = 0; i_phi < n_phis; i_phi++)
       {
 #ifdef P4_TO_P8
@@ -1388,16 +1407,16 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
         double weight_on_Dxx = 1.0 - d_0m0_m0*d_0m0_p0/d_0m0/(d_0m0+d_0p0) - d_0p0_m0*d_0p0_p0/d_0p0/(d_0m0+d_0p0);
 
         // FIX THIS FOR VARIABLE mu
-        w_m00 *= weight_on_Dxx*mu.val;
-        w_p00 *= weight_on_Dxx*mu.val;
-        w_0m0 *= weight_on_Dyy*mu.val;
-        w_0p0 *= weight_on_Dyy*mu.val;
+        w_m00 *= weight_on_Dxx*mu.constant;
+        w_p00 *= weight_on_Dxx*mu.constant;
+        w_0m0 *= weight_on_Dyy*mu.constant;
+        w_0p0 *= weight_on_Dyy*mu.constant;
 
         //---------------------------------------------------------------------
         // diag scaling
         //---------------------------------------------------------------------
 
-        double w_000 = diag_add(n)-(w_m00+w_p00+w_0m0+w_0p0);
+        double w_000 = sample_qty(diag_add, n, xyz_c)-(w_m00+w_p00+w_0m0+w_0p0);
         w_m00 /= w_000;
         w_p00 /= w_000;
         w_0m0 /= w_000;
@@ -1442,7 +1461,7 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
 #endif
 
         if (keep_scalling) scalling_p[n] = w_000;
-        if (diag_add(n) > 0) matrix_has_nullspace = false;
+        if (sample_qty(diag_add, n, xyz_c)> 0) matrix_has_nullspace = false;
         continue;
 
       } break;
@@ -1452,67 +1471,142 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
         measure_of_cut_cell = cube.measure_of_domain();
 
         double w_000 = 0.;
+
         //---------------------------------------------------------------------
         // contribution through interfaces
         //---------------------------------------------------------------------
-        for (int i = 0; i < n_phis; i++)
+
+        // count interfaces
+        std::vector<int> present_ifaces;
+        bool is_there_kink = false;
+        for (int i_phi = 0; i_phi < n_phis; i_phi++)
         {
-          measure_of_iface = cube.measure_of_interface(i);
-          if (bc_types->at(i) == ROBIN && measure_of_iface > eps_ifc)
+          measure_of_iface = cube.measure_of_interface(i_phi);
+          if (bc_types->at(i_phi) == ROBIN && measure_of_iface > eps_ifc)
           {
-            if (action->at(i) == COLORATION)
-            {
-              for (int j = 0; j < i; j++) // loop over possible parental LSFs
+            if (present_ifaces.size() > 0 and action->at(i_phi) != COLORATION) is_there_kink = true;
+            present_ifaces.push_back(i_phi);
+          }
+        }
+
+        int num_ifaces = present_ifaces.size();
+
+        // check if there is really a kink
+        for (short j = 0; j < ny_grid+1; j++)
+          for (short i = 0; i < nx_grid+1; i++)
+            integrand[i + j*(nx_grid+1)] = 1.;
+
+        int i0 = present_ifaces[0];
+        int i1 = present_ifaces[1];
+        double num_isxns = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+
+        if (num_isxns < 0.99) {is_there_kink = false;}
+
+
+        if (is_there_kink && kink_special_treatment && num_ifaces == 2)
+        {
+          int i0 = present_ifaces[0];
+          int i1 = present_ifaces[1];
+
+//          // check if there is really a kink
+//          for (short j = 0; j < ny_grid+1; j++)
+//            for (short i = 0; i < nx_grid+1; i++)
+//              integrand[i + j*(nx_grid+1)] = 1;
+//          double num_isxns = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+
+//          if (num_isxns < 1.0) {is_there_kink = false; break;}
+
+          double n0[2] = {0,0}, n1[2] = {0,0};
+          double kappa[2] = {0,0}, g[2] = {0,0};
+          double a_coeff[2] = {0,0}, b_coeff[2] = {0,0};
+
+          // calculate normals to interfaces
+          compute_normal(phi_p[i0], qnnn, n0);
+          compute_normal(phi_p[i1], qnnn, n1);
+
+          // get coordinates of the intersection
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              integrand[i + j*(nx_grid+1)] = x_grid[i];
+          xyz_isxn[0] = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              integrand[i + j*(nx_grid+1)] = y_grid[j];
+          xyz_isxn[1] = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+
+          // sample robin coeff at the intersection
+          kappa[0] = sample_qty(bc_coeffs[i0], xyz_isxn);
+          kappa[1] = sample_qty(bc_coeffs[i1], xyz_isxn);
+
+          // sample g at the intersection
+          g[0] = sample_qty(bc_values[i0], xyz_isxn);
+          g[1] = sample_qty(bc_values[i1], xyz_isxn);
+
+          // solve matrix and find coefficients
+          double N_mat[4] = {n0[0], n0[1], n1[0], n1[1]};
+          double N_inv_mat[4];
+
+          inv_mat2(N_mat, N_inv_mat);
+
+          for (int i = 0; i < 2; i++){
+            a_coeff[i] = N_inv_mat[i*2 + 0]*kappa[0] + N_inv_mat[i*2 + 1]*kappa[1];
+            b_coeff[i] = N_inv_mat[i*2 + 0]*g[0]     + N_inv_mat[i*2 + 1]*g[1];
+          }
+
+          // compute integrals
+          for (short i_present_iface = 0; i_present_iface < present_ifaces.size(); ++i_present_iface)
+          {
+            int i_phi = present_ifaces[i_present_iface];
+
+            for (short j = 0; j < ny_grid+1; j++)
+              for (short i = 0; i < nx_grid+1; i++)
               {
-                measure_of_iface = cube.measure_of_colored_interface(j,i);
+                double xyz[P4EST_DIM] = {x_grid[i], y_grid[j]};
+                integrand[i + j*(nx_grid+1)] = sample_qty(bc_coeffs[i_phi], xyz)
+                    *(1.0 - a_coeff[0]*(x_grid[i]-x_C) - a_coeff[1]*(y_grid[j]-y_C));
+              }
+
+            w_000 += cube.integrate_over_interface(integrand, color->at(i_phi));
+
+          }
+
+        }
+
+        if (!is_there_kink || !kink_special_treatment) {
+
+          /* In case of COLORATION we need some correction:
+           * A LSF that is used for COLORATION doesn't give any information about geometrical properties of interfaces.
+           * To find such quantites as the distance to an interface or the projection point
+           * one has to refer to a LSF that WAS colorated (not the colorating LSF).
+           * That's why in case of COLORATION we loop through all LSFs,
+           * which the colorating LSF could colorate.
+           */
+          for (int i_present_iface = 0; i_present_iface < present_ifaces.size(); i_present_iface++)
+          {
+            short i_phi = present_ifaces[i_present_iface];
+            if (bc_types->at(i_phi) == ROBIN)
+            {
+              int num_iterations;
+
+              if (action->at(i_phi) == COLORATION)  num_iterations = i_phi;
+              else                                  num_iterations = 1;
+
+              for (int j_phi = 0; j_phi < num_iterations; j_phi++)
+              {
+                if (action->at(i_phi) == COLORATION)  measure_of_iface = cube.measure_of_colored_interface(j_phi, i_phi);
+                else                                  measure_of_iface = cube.measure_of_interface(i_phi);
+
                 if (measure_of_iface > eps_ifc)
                 {
-//                  find_projection(phi_p[j], neighbors, neighbor_exists, dxyz_pr, dist);
-                  find_projection(phi_p[j], qnnn, dxyz_pr, dist);
+                  if (action->at(i_phi) == COLORATION)  find_projection(phi_p[j_phi], qnnn, dxyz_pr, dist);
+                  else                                  find_projection(phi_p[i_phi], qnnn, dxyz_pr, dist);
 
-                  if (mu.constant) mu_avg = mu.val;
-                  else
-                  {
-                    interp_local.set_input(mu.vec_p, linear);
-#ifdef P4_TO_P8
-                    mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-#else
-                    mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-#endif
-                  }
+                  for (short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
+                    xyz_pr[i_dim] = xyz_c[i_dim] + dxyz_pr[i_dim];
 
-                  if (bc_coeffs[i].constant) bc_coeff_avg = bc_coeffs[i].val;
-                  else
-                  {
-                    interp_local.set_input(bc_coeffs[i].vec_p, linear);
-#ifdef P4_TO_P8
-                    bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-#else
-                    bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-#endif
-                  }
-
-//                  if (mu.constant) mu_avg = mu.val;
-//                  else
-//                  {
-//                    sample_vec_at_neighbors(mu.vec_p, neighbors, neighbor_exists, integrand);
-//#ifdef P4_TO_P8
-//                    mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-//#else
-//                    mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-//#endif
-//                  }
-
-//                  if (bc_coeffs[i].constant) bc_coeff_avg = bc_coeffs[i].val;
-//                  else
-//                  {
-//                    sample_vec_at_neighbors(bc_coeffs[i].vec_p, neighbors, neighbor_exists, integrand);
-//#ifdef P4_TO_P8
-//                    bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-//#else
-//                    bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-//#endif
-//                  }
+                  mu_avg       = sample_qty(mu,               xyz_pr);
+                  bc_coeff_avg = sample_qty(bc_coeffs[i_phi], xyz_pr);
 
                   if (use_taylor_correction) { w_000 += mu_avg*bc_coeff_avg*measure_of_iface/(mu_avg-bc_coeff_avg*dist); }
                   else                       { w_000 += bc_coeff_avg*measure_of_iface; }
@@ -1520,63 +1614,10 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
                   if (fabs(bc_coeff_avg) > 0) matrix_has_nullspace = false;
                 }
               }
-
-            } else {
-
-//              find_projection(phi_p[i], neighbors, neighbor_exists, dxyz_pr, dist);
-              find_projection(phi_p[i], qnnn, dxyz_pr, dist);
-
-              if (mu.constant) mu_avg = mu.val;
-              else
-              {
-                interp_local.set_input(mu.vec_p, linear);
-#ifdef P4_TO_P8
-                mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-#else
-                mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-#endif
-              }
-
-              if (bc_coeffs[i].constant) bc_coeff_avg = bc_coeffs[i].val;
-              else
-              {
-                interp_local.set_input(bc_coeffs[i].vec_p, linear);
-#ifdef P4_TO_P8
-                bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-#else
-                bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-#endif
-              }
-
-//              if (mu.constant) mu_avg = mu.val;
-//              else
-//              {
-//                sample_vec_at_neighbors(mu.vec_p, neighbors, neighbor_exists, integrand);
-//#ifdef P4_TO_P8
-//                mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-//#else
-//                mu_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-//#endif
-//              }
-
-//              if (bc_coeffs[i].constant) bc_coeff_avg = bc_coeffs[i].val;
-//              else
-//              {
-//                sample_vec_at_neighbors(bc_coeffs[i].vec_p, neighbors, neighbor_exists, integrand);
-//#ifdef P4_TO_P8
-//                bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-//#else
-//                bc_coeff_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-//#endif
-//              }
-
-              if (use_taylor_correction) { w_000 += mu_avg*bc_coeff_avg*measure_of_iface/(mu_avg-bc_coeff_avg*dist); }
-              else                       { w_000 += bc_coeff_avg*measure_of_iface; }
-
-              if (fabs(bc_coeff_avg) > 0) matrix_has_nullspace = false;
             }
           }
         }
+
 
         //---------------------------------------------------------------------
         // contribution through cell faces
@@ -1595,52 +1636,19 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
         double w_00m=0, w_00p=0;
 #endif
 
-        double mu_m00, mu_p00;
-        double mu_0m0, mu_0p0;
+        if(!is_node_xmWall(p4est, ni)) w_m00 += -mu.constant * s_m00/dx_min;
+        if(!is_node_xpWall(p4est, ni)) w_p00 += -mu.constant * s_p00/dx_min;
+        if(!is_node_ymWall(p4est, ni)) w_0m0 += -mu.constant * s_0m0/dy_min;
+        if(!is_node_ypWall(p4est, ni)) w_0p0 += -mu.constant * s_0p0/dy_min;
 #ifdef P4_TO_P8
-        double mu_00m, mu_00p;
+        if(!is_node_zmWall(p4est, ni)) w_00m += -mu.constant * s_00m/dz_min;
+        if(!is_node_zpWall(p4est, ni)) w_00p += -mu.constant * s_00p/dz_min;
 #endif
 
-        if (mu.constant)
-        {
-          mu_m00 = mu.val;
-          mu_p00 = mu.val;
-          mu_0m0 = mu.val;
-          mu_0p0 = mu.val;
 #ifdef P4_TO_P8
-          mu_00m = mu.val;
-          mu_00p = mu.val;
-#endif
-        } else {
-          sample_vec_at_neighbors(mu.vec_p, neighbors, neighbor_exists, integrand);
-#ifdef P4_TO_P8
-          mu_m00 = cube.interp.linear(integrand, x_C - 0.5*dx_min, y_C, z_C);
-          mu_p00 = cube.interp.linear(integrand, x_C + 0.5*dx_min, y_C, z_C);
-          mu_0m0 = cube.interp.linear(integrand, x_C, y_C - 0.5*dy_min, z_C);
-          mu_0p0 = cube.interp.linear(integrand, x_C, y_C + 0.5*dy_min, z_C);
-          mu_00m = cube.interp.linear(integrand, x_C, y_C, z_C - 0.5*dz_min);
-          mu_00p = cube.interp.linear(integrand, x_C, y_C, z_C + 0.5*dz_min);
+        w_000 += sample_qty(diag_add, n, xyz_c)*measure_of_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
 #else
-          mu_m00 = cube.interp.linear(integrand, x_C - 0.5*dx_min, y_C);
-          mu_p00 = cube.interp.linear(integrand, x_C + 0.5*dx_min, y_C);
-          mu_0m0 = cube.interp.linear(integrand, x_C, y_C - 0.5*dy_min);
-          mu_0p0 = cube.interp.linear(integrand, x_C, y_C + 0.5*dy_min);
-#endif
-        }
-
-        if(!is_node_xmWall(p4est, ni)) w_m00 += -mu_m00 * s_m00/dx_min;
-        if(!is_node_xpWall(p4est, ni)) w_p00 += -mu_p00 * s_p00/dx_min;
-        if(!is_node_ymWall(p4est, ni)) w_0m0 += -mu_0m0 * s_0m0/dy_min;
-        if(!is_node_ypWall(p4est, ni)) w_0p0 += -mu_0p0 * s_0p0/dy_min;
-#ifdef P4_TO_P8
-        if(!is_node_zmWall(p4est, ni)) w_00m += -mu_00m * s_00m/dz_min;
-        if(!is_node_zpWall(p4est, ni)) w_00p += -mu_00p * s_00p/dz_min;
-#endif
-
-#ifdef P4_TO_P8
-        w_000 += diag_add(n)*measure_of_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
-#else
-        w_000 += diag_add(n)*measure_of_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0);
+        w_000 += sample_qty(diag_add, n, xyz_c)*measure_of_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0);
 #endif
 
         //---------------------------------------------------------------------
@@ -1689,7 +1697,7 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
         if(ABS(w_00p) > EPS) {ierr = MatSetValue(A, node_000_g, node_00p_g, w_00p, ADD_VALUES); CHKERRXX(ierr);}
 #endif
 
-        if (diag_add(n) > 0) matrix_has_nullspace = false;
+        if (sample_qty(diag_add, n, xyz_c) > 0) matrix_has_nullspace = false;
         if (keep_scalling) scalling_p[n] = w_000;
 
       } break;
@@ -1713,7 +1721,10 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
   mu.finalize();
   diag_add.finalize();
   for (int i = 0; i < n_phis; i++)
+  {
     bc_coeffs[i].finalize();
+    bc_values[i].finalize();
+  }
 
   //---------------------------------------------------------------------
   // close access to LSFs
@@ -1831,6 +1842,9 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
 
   double integrand[N_NBRS_MAX];
   double dxyz_pr[P4EST_DIM];
+  double xyz_pr[P4EST_DIM];
+  double xyz_c[P4EST_DIM];
+  double xyz_isxn[P4EST_DIM];
   double dist;
   double measure_of_iface;
   double measure_of_cut_cell;
@@ -1850,10 +1864,10 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
   //---------------------------------------------------------------------
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
   {
-    double x_C  = node_x_fr_n(n, p4est, nodes);
-    double y_C  = node_y_fr_n(n, p4est, nodes);
+    double x_C  = node_x_fr_n(n, p4est, nodes); xyz_c[0] = x_C;
+    double y_C  = node_y_fr_n(n, p4est, nodes); xyz_c[1] = y_C;
 #ifdef P4_TO_P8
-    double z_C  = node_z_fr_n(n, p4est, nodes);
+    double z_C  = node_z_fr_n(n, p4est, nodes); xyz_c[2] = z_C;
 #endif
 
     //---------------------------------------------------------------------
@@ -2025,176 +2039,214 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
 
     if (is_node_Wall(p4est, ni) && (enforce_dirichlet_at_wall || node_loc[n] == NODE_INS))
     {
-      rhs_p[n] = wall_value(n);
+      rhs_p[n] = sample_qty(wall_value, n, xyz_c);
       continue;
     } else {
 
       switch (node_loc[n])
       {
-
-      case NODE_OUT:
-      {
-        rhs_p[n] = 0.;
-        break;
-      }
-
-      case NODE_INS:
-      {
-        double w_000;
-        if (keep_scalling)
+        case NODE_OUT:
         {
-          w_000 = scalling_p[n];
-        } else {
-          // TODO: past stuff from matrix
-#ifdef P4_TO_P8
-#else
-#endif
-        }
-        rhs_p[n] /= w_000;
-      } break;
+          rhs_p[n] = 0.;
+        } break;
 
-      case NODE_NMN:
-      {
-        measure_of_cut_cell = cube.measure_of_domain();
-
-        // LHS
-        double w_000 = 0;
-
-        if (keep_scalling) {
-          w_000 = scalling_p[n];
-        } else {
-          // TODO: copy-past stuff from matrix
-#ifdef P4_TO_P8
-#else
-#endif
-        }
-
-        // RHS
-        rhs_p[n] *= measure_of_cut_cell;
-
-        for (int i_phi = 0; i_phi < n_phis; i_phi++)
+        case NODE_INS:
         {
-          measure_of_iface = cube.measure_of_interface(i_phi);
-          if (measure_of_iface > eps_ifc)
+          double w_000;
+          if (keep_scalling)
           {
-            double integral_bc = 0;
+            w_000 = scalling_p[n];
+          } else {
+            // TODO: past stuff from matrix
+#ifdef P4_TO_P8
+#else
+#endif
+          }
+          rhs_p[n] /= w_000;
+        } break;
 
-            if (action->at(i_phi) == COLORATION)
+        case NODE_NMN:
+        {
+          measure_of_cut_cell = cube.measure_of_domain();
+
+          // LHS
+          double w_000 = 0;
+
+          if (keep_scalling) {
+            w_000 = scalling_p[n];
+          } else {
+            // TODO: copy-past stuff from matrix
+#ifdef P4_TO_P8
+#else
+#endif
+          }
+
+          // RHS
+          rhs_p[n] *= measure_of_cut_cell;
+
+          // count interfaces
+          std::vector<int> present_ifaces;
+          bool is_there_kink = false;
+          for (int i_phi = 0; i_phi < n_phis; i_phi++)
+          {
+            measure_of_iface = cube.measure_of_interface(i_phi);
+            if (bc_types->at(i_phi) == ROBIN && measure_of_iface > eps_ifc)
             {
-              for (int j = 0; j < i_phi; j++) // loop over possible parental LSFs
-              {
-                measure_of_iface = cube.measure_of_colored_interface(j,i_phi);
-                if (measure_of_iface > eps_ifc)
-                {
-//                  find_projection(phi_p[j], neighbors, neighbor_exists, dxyz_pr, dist);
-                  find_projection(phi_p[j], qnnn, dxyz_pr, dist);
+              if (present_ifaces.size() > 0 and action->at(i_phi) != COLORATION) is_there_kink = true;
+              present_ifaces.push_back(i_phi);
+            }
+          }
 
-                  if (mu.constant) mu_avg = mu.val;
-                  else
-                  {
-                    interp_local.set_input(mu.vec_p, linear);
-    #ifdef P4_TO_P8
-                    mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-    #else
-                    mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-    #endif
-                  }
+          int num_ifaces = present_ifaces.size();
 
-                  if (bc_coeffs[i_phi].constant) bc_coeff_avg = bc_coeffs[i_phi].val;
-                  else
-                  {
-                    interp_local.set_input(bc_coeffs[i_phi].vec_p, linear);
-    #ifdef P4_TO_P8
-                    bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-    #else
-                    bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-    #endif
-                  }
-
-                  sample_qty_at_neighbors(bc_values[i_phi], neighbors, neighbor_exists, integrand);
-
+          // Neumann term
+          for (int i_present_iface = 0; i_present_iface < present_ifaces.size(); i_present_iface++)
+          {
+            short i_phi = present_ifaces[i_present_iface];
+            if (bc_types->at(i_phi) == ROBIN)
 #ifdef P4_TO_P8
-                  bc_value_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-#else
-                  bc_value_avg = cube.interp.linear(integrand, x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+              for (short k = 0; k < nz_grid+1; k++)
 #endif
-                  bc_value_avg = cube.integrate_over_interface(integrand, i_phi)/measure_of_iface;
-
-                  if (use_taylor_correction)
-                    for (int k = 0; k < N_NBRS_MAX; k++)
-                      integrand[k] -= bc_coeff_avg*bc_value_avg*dist/(bc_coeff_avg*dist-mu_avg);
-
-                  integral_bc += cube.integrate_over_interface(integrand, i_phi);
-                }
-              }
-              // FIX COLORATION CASE
-            } else {
-
-//              find_projection(phi_p[i_phi], neighbors, neighbor_exists, dxyz_pr, dist);
-              find_projection(phi_p[i_phi], qnnn, dxyz_pr, dist);
-
-              if (mu.constant) mu_avg = mu.val;
-              else
-              {
-                interp_local.set_input(mu.vec_p, linear);
-#ifdef P4_TO_P8
-                mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-#else
-                mu_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-#endif
-              }
-
-              if (bc_coeffs[i_phi].constant) bc_coeff_avg = bc_coeffs[i_phi].val;
-              else
-              {
-                interp_local.set_input(bc_coeffs[i_phi].vec_p, linear);
-#ifdef P4_TO_P8
-                bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
-#else
-                bc_coeff_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
-#endif
-              }
-
-//              sample_qty_at_neighbors(bc_values[i_phi], neighbors, neighbor_exists, integrand);
-
-              if (bc_values[i_phi].constant) integral_bc = bc_values[i_phi].val*measure_of_iface;
-              else
-              {
-                interp_local.set_input(bc_values[i_phi].vec_p, linear);
-#ifdef P4_TO_P8
-                for (short k = 0; k < nz_grid+1; k++)
-                  for (short j = 0; j < ny_grid+1; j++)
-                    for (short i = 0; i < nx_grid+1; i++)
-                      integrand[i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j], z_grid[k]);
-#else
                 for (short j = 0; j < ny_grid+1; j++)
                   for (short i = 0; i < nx_grid+1; i++)
-                    integrand[i + j*(nx_grid+1)] = interp_local.interpolate(x_grid[i], y_grid[j]);
-#endif
-                integral_bc = cube.integrate_over_interface(integrand, i_phi);
-              }
-
+                  {
 #ifdef P4_TO_P8
-              bc_value_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1], z_C + dxyz_pr[2]);
+                    double xyz[P4EST_DIM] = {x_grid[i], y_grid[j], z_grid[k]};
+                    int p = i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1);
 #else
-              bc_value_avg = interp_local.interpolate(x_C + dxyz_pr[0], y_C + dxyz_pr[1]);
+                    double xyz[P4EST_DIM] = {x_grid[i], y_grid[j]};
+                    int p = i + j*(nx_grid+1);
 #endif
-//              bc_value_avg = cube.integrate_over_interface(integrand, i_phi)/measure_of_iface;
+                    integrand[p] = sample_qty(bc_values[i_phi], xyz);
+                  }
+            rhs_p[n] += cube.integrate_over_interface(integrand, color->at(i_phi));
+          }
+
+          // check if there is really a kink
+          for (short j = 0; j < ny_grid+1; j++)
+            for (short i = 0; i < nx_grid+1; i++)
+              integrand[i + j*(nx_grid+1)] = 1.;
+
+          int i0 = present_ifaces[0];
+          int i1 = present_ifaces[1];
+          double num_isxns = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+
+          if (num_isxns < 0.99) {is_there_kink = false;}
+
+          // Robin term
+          if (is_there_kink && kink_special_treatment && num_ifaces == 2)
+          {
+            int i0 = present_ifaces[0];
+            int i1 = present_ifaces[1];
 
 
-              if (use_taylor_correction) integral_bc -= measure_of_iface*bc_coeff_avg*bc_value_avg*dist/(bc_coeff_avg*dist-mu_avg);
+            double n0[2] = {0,0}, n1[2] = {0,0};
+            double kappa[2] = {0,0}, g[2] = {0,0};
+            double a_coeff[2] = {0,0}, b_coeff[2] = {0,0};
+
+            // calculate normals to interfaces
+            compute_normal(phi_p[i0], qnnn, n0);
+            compute_normal(phi_p[i1], qnnn, n1);
+
+            // get coordinates of the intersection
+            for (short j = 0; j < ny_grid+1; j++)
+              for (short i = 0; i < nx_grid+1; i++)
+                integrand[i + j*(nx_grid+1)] = x_grid[i];
+            xyz_isxn[0] = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+
+            for (short j = 0; j < ny_grid+1; j++)
+              for (short i = 0; i < nx_grid+1; i++)
+                integrand[i + j*(nx_grid+1)] = y_grid[j];
+            xyz_isxn[1] = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+
+            // sample robin coeff at the intersection
+            kappa[0] = sample_qty(bc_coeffs[i0], xyz_isxn);
+            kappa[1] = sample_qty(bc_coeffs[i1], xyz_isxn);
+
+            // sample g at the intersection
+            g[0] = sample_qty(bc_values[i0], xyz_isxn);
+            g[1] = sample_qty(bc_values[i1], xyz_isxn);
+
+            // solve matrix and find coefficients
+            double N_mat[4] = {n0[0], n0[1], n1[0], n1[1]};
+            double N_inv_mat[4];
+
+            inv_mat2(N_mat, N_inv_mat);
+
+            for (int i = 0; i < 2; i++){
+              a_coeff[i] = N_inv_mat[i*2 + 0]*kappa[0] + N_inv_mat[i*2 + 1]*kappa[1];
+              b_coeff[i] = N_inv_mat[i*2 + 0]*g[0]     + N_inv_mat[i*2 + 1]*g[1];
             }
 
-            rhs_p[n] += integral_bc;
+            // compute integrals
+            for (short i_present_iface = 0; i_present_iface < present_ifaces.size(); ++i_present_iface)
+            {
+              int i_phi = present_ifaces[i_present_iface];
+
+              for (short j = 0; j < ny_grid+1; j++)
+                for (short i = 0; i < nx_grid+1; i++)
+                {
+                  double xyz[P4EST_DIM] = {x_grid[i], y_grid[j]};
+                  integrand[i + j*(nx_grid+1)] = sample_qty(bc_coeffs[i_phi], xyz)
+                      *(b_coeff[0]*(x_grid[i]-x_C) + b_coeff[1]*(y_grid[j]-y_C));
+                }
+
+              rhs_p[n] -= cube.integrate_over_interface(integrand, color->at(i_phi));
+            }
           }
-        }
 
-        rhs_p[n] /= w_000;
-      } break;
-      }
+          if (use_taylor_correction && (!is_there_kink || !kink_special_treatment)) {
 
-    }
-  }
+            /* In case of COLORATION we need some correction:
+             * A LSF that is used for COLORATION doesn't give any information about geometrical properties of interfaces.
+             * To find such quantites as the distance to an interface or the projection point
+             * one has to refer to a LSF that WAS colorated (not the colorating LSF).
+             * That's why in case of COLORATION we loop through all LSFs,
+             * which the colorating LSF could colorate.
+             */
+
+            for (int i_present_iface = 0; i_present_iface < present_ifaces.size(); i_present_iface++)
+            {
+              short i_phi = present_ifaces[i_present_iface];
+              if (bc_types->at(i_phi) == ROBIN)
+              {
+                int num_iterations;
+
+                if (action->at(i_phi) == COLORATION)  num_iterations = i_phi;
+                else                                  num_iterations = 1;
+
+                for (int j_phi = 0; j_phi < num_iterations; j_phi++)
+                {
+                  if (action->at(i_phi) == COLORATION)  measure_of_iface = cube.measure_of_colored_interface(j_phi, i_phi);
+                  else                                  measure_of_iface = cube.measure_of_interface(i_phi);
+
+                  if (measure_of_iface > eps_ifc)
+                  {
+                    if (action->at(i_phi) == COLORATION)  find_projection(phi_p[j_phi], qnnn, dxyz_pr, dist);
+                    else                                  find_projection(phi_p[i_phi], qnnn, dxyz_pr, dist);
+
+                    for (short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
+                      xyz_pr[i_dim] = xyz_c[i_dim] + dxyz_pr[i_dim];
+
+                    mu_avg       = sample_qty(mu,               xyz_pr);
+                    bc_coeff_avg = sample_qty(bc_coeffs[i_phi], xyz_pr);
+                    bc_value_avg = sample_qty(bc_values[i_phi], xyz_pr);
+
+                    rhs_p[n] -= measure_of_iface*bc_coeff_avg*bc_value_avg*dist/(bc_coeff_avg*dist-mu_avg);
+                  }
+                }
+              }
+            }
+
+          } // if for Robin term
+
+          rhs_p[n] /= w_000;
+
+        } break; // case NODE_NMN
+
+      } // end of switch
+    } // if a node is on wall
+  } // loop over nodes
 
   if (matrix_has_nullspace && fixed_value_idx_l >= 0){
     rhs_p[fixed_value_idx_l] = 0;
@@ -2552,6 +2604,47 @@ void my_p4est_poisson_nodes_mls_t::find_projection(const double *phi_p, const qu
 #endif
 }
 
+void my_p4est_poisson_nodes_mls_t::compute_normal(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[])
+{
+  p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, qnnn.node_000);
+
+  // check if the node is a wall node
+  bool xm_wall = is_node_xmWall(p4est, ni);
+  bool xp_wall = is_node_xpWall(p4est, ni);
+  bool ym_wall = is_node_ymWall(p4est, ni);
+  bool yp_wall = is_node_ypWall(p4est, ni);
+#ifdef P4_TO_P8
+  bool zm_wall = is_node_zmWall(p4est, ni);
+  bool zp_wall = is_node_zpWall(p4est, ni);
+#endif
+
+  if (!xm_wall && !xp_wall) n[0] = qnnn.dx_central        (phi_p);
+  else if (!xm_wall)        n[0] = qnnn.dx_backward_linear(phi_p);
+  else if (!xp_wall)        n[0] = qnnn.dx_forward_linear (phi_p);
+
+  if (!ym_wall && !yp_wall) n[1] = qnnn.dy_central        (phi_p);
+  else if (!ym_wall)        n[1] = qnnn.dy_backward_linear(phi_p);
+  else if (!yp_wall)        n[1] = qnnn.dy_forward_linear (phi_p);
+
+#ifdef P4_TO_P8
+  if (!zm_wall && !zp_wall) n[2] = qnnn.dz_central        (phi_p);
+  else if (!zm_wall)        n[2] = qnnn.dz_backward_linear(phi_p);
+  else if (!zp_wall)        n[2] = qnnn.dz_forward_linear (phi_p);
+#endif
+
+#ifdef P4_TO_P8
+  double phi_d = sqrt(SQR(n[0])+SQR(n[1])+SQR(n[2]));
+#else
+  double phi_d = sqrt(SQR(n[0])+SQR(n[1]));
+#endif
+
+  n[0] /= phi_d;
+  n[1] /= phi_d;
+#ifdef P4_TO_P8
+  n[2] /= phi_d;
+#endif
+}
+
 //int my_p4est_poisson_nodes_mls_t::which_quad(double *dxyz[])
 //{
 //#ifdef P4_TO_P8
@@ -2589,12 +2682,53 @@ void my_p4est_poisson_nodes_mls_t::sample_qty_at_neighbors(quantity_t &qty, int 
 {
   if (qty.constant) {
     for (int i = 0; i < N_NBRS_MAX; i++)
-      output[i] = qty.val;
+      output[i] = qty.constant;
   } else {
     int j = 0;
     for (int i = 0; i < N_NBRS_MAX; i++)
       if (neighbor_exists[i]) {output[j] = qty.vec_p[neighbors[i]]; j++;}
   }
+}
+
+double my_p4est_poisson_nodes_mls_t::sample_qty(quantity_t &qty, double *xyz)
+{
+  /* interp_local must be initialized for the node at hand before calling this function! */
+  if (qty.is_constant) {
+    return qty.constant;
+  } else if (qty.is_vec) {
+    interp_local.set_input(qty.vec_p, linear);
+#ifdef P4_TO_P8
+    return interp_local.interpolate(xyz[0], xyz[1], xyz[2]);
+#else
+    return interp_local.interpolate(xyz[0], xyz[1]);
+#endif
+  } else if (qty.is_cf) {
+#ifdef P4_TO_P8
+    return (*qty.cf)(xyz[0], xyz[1], xyz[2]);
+#else
+    return (*qty.cf)(xyz[0], xyz[1]);
+#endif
+  }
+}
+
+double my_p4est_poisson_nodes_mls_t::sample_qty(quantity_t &qty, p4est_locidx_t n)
+{
+  /* It does not work with cf quantities ATM */
+  if (qty.is_constant) return qty.constant;
+  else if (qty.is_vec) return qty.vec_p[n];
+}
+
+double my_p4est_poisson_nodes_mls_t::sample_qty(quantity_t &qty, p4est_locidx_t n, double *xyz)
+{
+  if (qty.is_constant) return qty.constant;
+  else if (qty.is_vec) return qty.vec_p[n];
+  else if (qty.is_cf) {
+  #ifdef P4_TO_P8
+      return (*qty.cf)(xyz[0], xyz[1], xyz[2]);
+  #else
+      return (*qty.cf)(xyz[0], xyz[1]);
+  #endif
+    }
 }
 
 void my_p4est_poisson_nodes_mls_t::get_all_neighbors(p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists)
