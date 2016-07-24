@@ -2,16 +2,16 @@
 dt = 1e-5;
 it = 5;
 modes = 0:20;
-% prefix = '/Users/mohammad/repos/parcasl/examples/ek_fingering/Release/';
-% path = strcat(prefix,'one_fluid/circle/normal');
-prefix = '/Users/mohammad/repos/casl/examples/viscous_fingering/Release';
-path = prefix;
+prefix = '/Users/mohammad/repos/parcasl/examples/ek_fingering/Release/';
+path = strcat(prefix,'one_fluid/circle/semi_lagrangian/2p');
+% prefix = '/Users/mohammad/repos/casl/examples/viscous_fingering/Release';
+% path = prefix;
 
 styles = {'bo', 'rs', 'm<', 'k>'};
 s = 1;
 figure(1); hold on;
 sigma = zeros(3,length(modes));
-for lmax=[10]    
+for lmax=[11]    
     if lmax == 13 dt = 1e-5; end
     for m=0:20
         file_base = sprintf('%s/err_%d_%d', path, lmax, m);

@@ -137,56 +137,57 @@ void set_parameters(int argc, char **argv) {
     options.xmin[0] = options.xmin[1] = options.xmin[2] = -10 + EPS;
     options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
     options.lmax    = 10;
-    options.lmin    = 4;
+    options.lmin    = 5;
     options.itmax   = 10;
     options.dtmax   = 1e-3;
-    options.dts     = 0;
+    options.dts     = 1e-1;
     options.Ca      = 250;
     options.alpha   = 0;
     options.mode    = cmd.get("mode", 0);
-    options.eps     = cmd.get("eps", 1e-2);
+    options.eps     = cmd.get("eps", 5e-3);
     options.method  = "semi_lagrangian";
+    options.lip     = cmd.get("lip", options.lip);
 
     static struct:CF_2{
       double operator()(double x, double y) const  {
-        double theta = atan2(y,x);
-        double r = 1+options.eps*cos(options.mode*theta);
-        return r - sqrt(SQR(x)+SQR(y));
+        double theta = atan2(y,x);// - M_PI/180 * 45;
+        double r     = sqrt(SQR(x)+SQR(y));
+        return 1+options.eps*cos(options.mode*theta) - r;
       }
     } interface; interface.lip = options.lip;
     options.interface = &interface;
 
-//    static struct:WallBC2D{
-//      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
-//    } bc_wall_type;
-
-//    static struct:CF_2{
-//      double operator()(double x, double y) const {
-//        double theta = atan2(y,x);
-//        double r     = sqrt(SQR(x)+SQR(y));
-//        double ur    = -(*options.Q)(t)/(2*PI*r);
-
-//        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-//          return x > 0 ? ur*cos(theta):-ur*cos(theta);
-//        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-//          return y > 0 ? ur*sin(theta):-ur*sin(theta);
-//        else
-//          return 0;
-//      }
-//    } bc_wall_value; bc_wall_value.t = 0;
-
-    static struct:WallBC2D {
-      BoundaryConditionType operator()(double, double) const {
-        return DIRICHLET;
-      }
+    static struct:WallBC2D{
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
 
-    static struct:CF_2 {
+    static struct:CF_2{
       double operator()(double x, double y) const {
-        double r = sqrt(SQR(x)+SQR(y));
-        return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
+        double theta = atan2(y,x);
+        double r     = sqrt(SQR(x)+SQR(y));
+        double ur    = -(*options.Q)(t)/(r);
+
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
+          return x > 0 ? ur*cos(theta):-ur*cos(theta);
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
+          return y > 0 ? ur*sin(theta):-ur*sin(theta);
+        else
+          return 0;
       }
     } bc_wall_value; bc_wall_value.t = 0;
+
+//    static struct:WallBC2D {
+//      BoundaryConditionType operator()(double, double) const {
+//        return DIRICHLET;
+//      }
+//    } bc_wall_type;
+
+//    static struct:CF_2 {
+//      double operator()(double x, double y) const {
+//        double r = sqrt(SQR(x)+SQR(y));
+//        return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
+//      }
+//    } bc_wall_value; bc_wall_value.t = 0;
 
     options.interface     = &interface;
     options.bc_wall_type  = &bc_wall_type;
@@ -462,8 +463,10 @@ int main(int argc, char** argv) {
   if (!outdir)
     throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
 
-  const string folder = string(outdir) + string("/one_fluid/")
-                        + options.test + string("/") + options.method;
+  ostringstream oss;
+  oss << outdir << "/one_fluid/" << options.test << "/" << options.method
+      << "/" << mpi.size() << "p";
+  const string folder = oss.str();
   ostringstream command;
   command << "mkdir -p " << folder;
   if (mpi.rank() == 0)
@@ -472,36 +475,44 @@ int main(int argc, char** argv) {
 
   char vtk_name[FILENAME_MAX];
 
+  {
+    double *phi_p, *pressure_p;
+    VecGetArray(phi, &phi_p);
+    VecGetArray(pressure, &pressure_p);
+    sprintf(vtk_name, "%s/%s_%dd.%04d", folder.c_str(), options.method.c_str(), P4EST_DIM, 0);
+    PetscPrintf(mpi.comm(), "Saving file %s\n", vtk_name);
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE, 2, 0, vtk_name,
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "pressure", pressure_p);
+    VecRestoreArray(phi, &phi_p);
+    VecRestoreArray(pressure, &pressure_p);
+  }
+
   double dt = 0, t = 0;
-  int is = 0;
-  for(int i=0; i<=options.itmax; i++) {
+  int is = 1, it = 0;
+  do {
     dt = solver.solve_one_step(t, phi, pressure, potential, options.method, options.cfl, options.dtmax);
-    t += dt;
+    it++; t += dt;
 
     p4est_gloidx_t num_nodes = 0;
     for (int r = 0; r<mpi.size(); r++)
       num_nodes += nodes->global_owned_indeps[r];
-    PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", i, num_nodes, t, dt);
+    PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", it, num_nodes, t, dt);
 
     // save vtk
     if (t >= is*options.dts) {
-      double *phi_p, *pressure_p, *potential_p;
+      double *phi_p, *pressure_p;
       VecGetArray(phi, &phi_p);
       VecGetArray(pressure, &pressure_p);
-      VecGetArray(potential, &potential_p);
-      sprintf(vtk_name, "%s/%s_%dd.%04d", folder.c_str(), options.method.c_str(), P4EST_DIM, is);
+      sprintf(vtk_name, "%s/%s_%dd.%04d", folder.c_str(), options.method.c_str(), P4EST_DIM, ++is);
       PetscPrintf(mpi.comm(), "Saving file %s\n", vtk_name);
       my_p4est_vtk_write_all(p4est, nodes, ghost,
-          P4EST_TRUE, P4EST_TRUE,
-          //                           3, 0, vtk_name,
-          2, 0, vtk_name,
-          VTK_POINT_DATA, "phi", phi_p,
-          //                           VTK_POINT_DATA, "potential", potential_p,
-          VTK_POINT_DATA, "pressure", pressure_p);
+                             P4EST_TRUE, P4EST_TRUE, 2, 0, vtk_name,
+                             VTK_POINT_DATA, "phi", phi_p,
+                             VTK_POINT_DATA, "pressure", pressure_p);
       VecRestoreArray(phi, &phi_p);
       VecRestoreArray(pressure, &pressure_p);
-      VecRestoreArray(potential, &potential_p);
-      is++;
     }
 
     // save the error if this is a modal analysis
@@ -526,10 +537,10 @@ int main(int argc, char** argv) {
 
       if (mpi.rank() == 0) {
         ostringstream filename;
-        filename << folder << "/err_" << options.lmax
+        filename << folder
+                 << "/err_" << options.lmax
                  << "_" << options.mode
-                 << "_" << i << ".txt";
-//        PetscPrintf(mpi.comm(), "Saving file %s\n", filename.str().c_str());
+                 << "_" << it << ".txt";
         FILE *file = fopen(filename.str().c_str(), "w");
         fprintf(file, "%% theta \t err\n");
         for (int n = 0; n<ntheta; n++) {
@@ -539,7 +550,7 @@ int main(int argc, char** argv) {
         fclose(file);
       }
     }
-  }
+  } while (it < options.itmax);
 
   // destroy vectors
   VecDestroy(phi);

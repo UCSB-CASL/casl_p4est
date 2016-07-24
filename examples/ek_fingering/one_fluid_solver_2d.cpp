@@ -1016,7 +1016,12 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
 
     // Set the boundary conditions
     my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
-    p_interface_value.set_input(bc_val, quadratic);
+
+    Vec Fxx, Fyy;
+    VecCreateGhostNodes(p4est, nodes, &Fxx);
+    VecCreateGhostNodes(p4est, nodes, &Fyy);
+    neighbors.second_derivatives_central(bc_val, Fxx, Fyy);
+    p_interface_value.set_input(bc_val, Fxx, Fyy, quadratic);
 
 #ifdef P4_TO_P8
     BoundaryConditions3D bc;
@@ -1035,7 +1040,7 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
 //    sample_cf_on_nodes(p4est, nodes, *K_D, K);
 //    poisson.set_mu(K);
     poisson.set_mu(1.0);
-    poisson.solve(pressure, true);
+    poisson.solve(pressure);
 
 //    ls.extend_Over_Interface_TVD(phi_ring, pressure);
     ls.extend_Over_Interface_TVD(phi, pressure);
@@ -1046,67 +1051,70 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
     // VecGhostRestoreLocalForm(pressure, &l1);
     // VecGhostRestoreLocalForm(bc_val, &l2);
 //    VecDestroy(phi_ring);
+
+    VecDestroy(Fxx);
+    VecDestroy(Fyy);
   }
 
   // solve for the potential
-  if (alpha > 0)
-  {
-    VecGetArray(bc_val, &bc_val_p);
-    // Set the boundary condition
-    double x[P4EST_DIM];
-    foreach_node(n, nodes) {
-      node_xyz_fr_n(n, p4est, nodes, x);
-#ifdef P4_TO_P8
-      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])), EPS);
-      bc_val_p[n] = (*I)(t)/(4*PI*r);
-#else
-      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), EPS);
-      bc_val_p[n] = (*I)(t)/(2*PI) * log(r);
-#endif
-    }
+//  if (alpha > 0)
+//  {
+//    VecGetArray(bc_val, &bc_val_p);
+//    // Set the boundary condition
+//    double x[P4EST_DIM];
+//    foreach_node(n, nodes) {
+//      node_xyz_fr_n(n, p4est, nodes, x);
+//#ifdef P4_TO_P8
+//      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])), EPS);
+//      bc_val_p[n] = (*I)(t)/(4*PI*r);
+//#else
+//      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), EPS);
+//      bc_val_p[n] = (*I)(t)/(2*PI) * log(r);
+//#endif
+//    }
 
-    my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
-    p_interface_value.set_input(bc_val, linear);
+//    my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
+//    p_interface_value.set_input(bc_val, linear);
 
-#ifdef P4_TO_P8
-    BoundaryConditions3D bc;
-#else
-    BoundaryConditions2D bc;
-#endif
-    bc.setInterfaceType(DIRICHLET);
-    bc.setInterfaceValue(p_interface_value);
-    bc.setWallTypes(*bc_wall_type);
-    bc.setWallValues(*bc_wall_value);
-    bc_wall_value->t = t;
+//#ifdef P4_TO_P8
+//    BoundaryConditions3D bc;
+//#else
+//    BoundaryConditions2D bc;
+//#endif
+//    bc.setInterfaceType(DIRICHLET);
+//    bc.setInterfaceValue(p_interface_value);
+//    bc.setWallTypes(*bc_wall_type);
+//    bc.setWallValues(*bc_wall_value);
+//    bc_wall_value->t = t;
 
-    // invert the domain
-    Vec phi_l;
-    VecGhostGetLocalForm(phi, &phi_l);
-    VecScale(phi_l, -1);
+//    // invert the domain
+//    Vec phi_l;
+//    VecGhostGetLocalForm(phi, &phi_l);
+//    VecScale(phi_l, -1);
 
-    my_p4est_poisson_nodes_t poisson(&neighbors);
-    poisson.set_phi(phi);
-    poisson.set_bc(bc);
-//    sample_cf_on_nodes(p4est, nodes, *K_EO, K);
-//    poisson.set_mu(K);
-    poisson.set_mu(1.0);
-    poisson.solve(potential, true);
+//    my_p4est_poisson_nodes_t poisson(&neighbors);
+//    poisson.set_phi(phi);
+//    poisson.set_bc(bc);
+////    sample_cf_on_nodes(p4est, nodes, *K_EO, K);
+////    poisson.set_mu(K);
+//    poisson.set_mu(1.0);
+//    poisson.solve(potential, true);
 
-    ls.extend_Over_Interface_TVD(phi, potential);
+//    ls.extend_Over_Interface_TVD(phi, potential);
 
-    VecScale(phi_l, -1);
-    VecGhostRestoreLocalForm(phi, &phi_l);
+//    VecScale(phi_l, -1);
+//    VecGhostRestoreLocalForm(phi, &phi_l);
 
-    // add the regular and singular parts
-    double *potential_p;
-    VecGetArray(potential, &potential_p);
-    foreach_node(n, nodes) {
-      potential_p[n] -= bc_val_p[n];
-    }
+//    // add the regular and singular parts
+//    double *potential_p;
+//    VecGetArray(potential, &potential_p);
+//    foreach_node(n, nodes) {
+//      potential_p[n] -= bc_val_p[n];
+//    }
 
-    VecRestoreArray(bc_val, &bc_val_p);
-    VecRestoreArray(potential, &potential_p);
-  }
+//    VecRestoreArray(bc_val, &bc_val_p);
+//    VecRestoreArray(potential, &potential_p);
+//  }
 
   // destroy uneeded objects
   VecDestroy(bc_val);

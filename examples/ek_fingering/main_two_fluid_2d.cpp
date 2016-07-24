@@ -91,21 +91,25 @@ void set_options(int argc, char **argv) {
 
   if (options.test == "circle") {
     // set interface
-    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10;
+    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10 + EPS;
     options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
     options.lmax    = 10;
-    options.lmin    = 4;
-    options.iter    = 7;
+    options.lmin    = 5;
+    options.iter    = 10;
     options.dtmax   = 1e-3;
-    options.dts     = 0;
+    options.dts     = 1e-1;
     options.Ca      = 250;
+    options.mode    = cmd.get("mode", 0);
+    options.eps     = cmd.get("eps", 5e-3);
+    options.method  = "semi_lagrangian";
+    options.lip     = cmd.get("lip", options.lip);
     options.M       = 1;
 
     static struct:CF_2{
       double operator()(double x, double y) const  {
-        double theta = atan2(y,x);
-        double r = 1+options.eps*cos(options.mode*theta);
-        return sqrt(SQR(x)+SQR(y)) - r;
+        double theta = atan2(y,x);// - M_PI/180 * 45;
+        double r     = sqrt(SQR(x)+SQR(y));
+        return r - (1+options.eps*cos(options.mode*theta));
       }
     } interface; interface.lip = options.lip;
     options.interface = &interface;
@@ -133,12 +137,24 @@ void set_options(int argc, char **argv) {
       }
     } bc_wall_value; bc_wall_value.t = 0;
 
+//    static struct:WallBC2D {
+//      BoundaryConditionType operator()(double, double) const {
+//        return DIRICHLET;
+//      }
+//    } bc_wall_type;
+
+//    static struct:CF_2 {
+//      double operator()(double x, double y) const {
+//        double r = sqrt(SQR(x)+SQR(y));
+//        return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
+//      }
+//    } bc_wall_value; bc_wall_value.t = 0;
+
+
     options.Q             = &Q;
     options.interface     = &interface;
     options.bc_wall_type  = &bc_wall_type;
     options.bc_wall_value = &bc_wall_value;
-    options.mode          = cmd.get("mode", 0);
-    options.eps           = cmd.get("eps", 1e-3);
 
   } else if (options.test == "FastShelley04_Fig12") {
 
@@ -326,22 +342,43 @@ int main(int argc, char** argv) {
     throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
 
   ostringstream folder;
-  folder << outdir << "/two_fluid/" << options.test << "/mue_" << options.M;
+  folder << outdir << "/two_fluid/" << options.test
+         << "/mue_" << options.M
+         << "/" << mpi.size() << "p";
+
   if (mpi.rank() == 0) system(("mkdir -p " + folder.str()).c_str());
   MPI_Barrier(mpi.comm());
   char vtk_name[FILENAME_MAX];
 
+  {
+    double *phi_p, *press_m_p, *press_p_p;
+    VecGetArray(phi, &phi_p);
+    VecGetArray(press_m, &press_m_p);
+    VecGetArray(press_p, &press_p_p);
+
+    sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM, 0);
+    PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE,
+                           3, 0, vtk_name,
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "press_m", press_m_p,
+                           VTK_POINT_DATA, "press_p", press_p_p);
+    VecRestoreArray(phi, &phi_p);
+  }
+
+
   double dt = 0, t = 0;
-  int is = 0;
-  for(int i=0; i<options.iter; i++) {
+  int is = 1, it = 0;
+  do {
     dt = solver.solve_one_step(t, phi, press_m, press_p,
                                options.cfl, options.dtmax, options.method);
-    t += dt;
+    it++; t += dt;
 
     p4est_gloidx_t num_nodes = 0;
     for (int r = 0; r<mpi.size(); r++)
       num_nodes += nodes->global_owned_indeps[r];
-    PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", i, num_nodes, t, dt);
+    PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", it, num_nodes, t, dt);
 
     if (t >= is*options.dts) {
       // save vtk
@@ -393,7 +430,7 @@ int main(int argc, char** argv) {
         ostringstream filename;
         filename << folder.str() << "/err_" << options.lmax
                  << "_" << options.mode
-                 << "_" << i << ".txt";
+                 << "_" << it << ".txt";
         FILE *file = fopen(filename.str().c_str(), "w");
         fprintf(file, "%% theta \t err\n");
         for (int n = 0; n<ntheta; n++) {
@@ -403,7 +440,7 @@ int main(int argc, char** argv) {
         fclose(file);
       }
     }
-  }
+  } while (it < options.iter);
 
   // destroy vectors
   VecDestroy(phi);
