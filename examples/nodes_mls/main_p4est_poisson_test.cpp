@@ -72,9 +72,15 @@ double zmin = -1;
 double zmax =  1;
 #endif
 
+#ifdef P4_TO_P8
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 3;
+#else
 int lmin = 4;
 int lmax = 4;
 int nb_splits = 6;
+#endif
 
 int nx = 1;
 int ny = 1;
@@ -88,8 +94,8 @@ int n_test = 1;
 
 // GEOMETRY
 #ifdef P4_TO_P8
-double r0 = 0.957;
-double r1 = 0.854;
+double r0 = 0.757;
+double r1 = 0.754;
 double r2 = 0.631;
 double r3 = -0.333;
 double d = 0.234;
@@ -118,7 +124,7 @@ double sinP = sin(phy);
 #ifdef P4_TO_P8
 double xc_0 = -1.*d*sinT*cosP; double yc_0 =  1.*d*cosT*cosP; double zc_0 =  1.*d*sinP;
 double xc_1 =  1.*d*sinT*cosP; double yc_1 = -1.*d*cosT*cosP; double zc_1 = -1.*d*sinP;
-double xc_2 =  2.*d*cosT*cosP; double yc_2 =  2.*d*sinT*cosP; double zc_2 =  2.*d*sinP;
+double xc_2 =  3.*d*cosT*cosP; double yc_2 =  3.*d*sinT*cosP; double zc_2 =  3.*d*sinP;
 //double xc_2 =  5.*d*sinT*cosP; double yc_2 = -2.*d*cosT*cosP; double zc_2 = -1.*d*sinP;
 double xc_3 = -4.*d*sinT*cosP; double yc_3 =  2.*d*cosT*cosP; double zc_3 =  1.*d*sinP;
 #else
@@ -415,7 +421,7 @@ class KAPPA_1 : public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return .0 + 1.0*sin(y)*cos(x)*cos(z);
+    return 1.0 + .0*sin(y)*cos(x)*cos(z);
   }
 } kappa_1;
 
@@ -424,7 +430,7 @@ class KAPPA_2 : public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return .0 + 1.0*sin(z)*cos(y)*cos(x);
+    return 1.0 + .0*sin(z)*cos(y)*cos(x);
   }
 } kappa_2;
 
@@ -433,7 +439,7 @@ class KAPPA_3 : public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return .0 + 1.0*sin(z)*cos(y)*sin(x);
+    return 1.0 + .0*sin(z)*cos(y)*sin(x);
   }
 } kappa_3;
 #else
@@ -956,7 +962,7 @@ int main (int argc, char* argv[])
 
     if(save_vtk)
     {
-      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff, sol, error_sl, error_tr, error_ux, iter);
+      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff, sol, error_sl, error_tr, phi[2], iter);
     }
 
     if (save_vtk)

@@ -7,13 +7,15 @@
 
 class grid_interpolation2_t
 {
+public:
   int nx, ny;
   double xm, ym, xp, yp;
   double dx, dy;
 
+  std::vector<double> x, y;
+
   double eps;
 
-public:
 
   grid_interpolation2_t(double xm = 0., double xp = 1., double ym = 0., double yp = 1., int nx = 1, int ny = 1) : eps(1.0E-15)
   {
@@ -28,6 +30,9 @@ public:
 
     dx = (xp-xm)/(double)(nx);
     dy = (yp-ym)/(double)(ny);
+
+    x.resize(nx+1); for (short i = 0; i < nx+1; i++) x[i] = xm+(double)(i)*dx;
+    y.resize(ny+1); for (short i = 0; i < ny+1; i++) y[i] = ym+(double)(i)*dy;
   }
 
   double linear(double *f, double x, double y);

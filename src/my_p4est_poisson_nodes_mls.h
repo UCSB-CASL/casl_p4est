@@ -55,7 +55,11 @@ public:
     double *vec_p;
 
     bool is_cf;
+#ifdef P4_TO_P8
+    CF_3 *cf;
+#else
     CF_2 *cf;
+#endif
 
     quantity_t() : constant(0), is_constant(true),
       vec(NULL), vec_p(NULL), is_vec(false),
@@ -82,7 +86,11 @@ public:
 
     void set(double val_) {constant = val_; is_constant = true; is_vec = false; is_cf = false;}
     void set(Vec    vec_) {vec = vec_;      is_constant = false; is_vec = true; is_cf = false;}
+#ifdef P4_TO_P8
+    void set(CF_3   &cf_) {cf = &cf_;       is_constant = false; is_vec = false; is_cf = true;}
+#else
     void set(CF_2   &cf_) {cf = &cf_;       is_constant = false; is_vec = false; is_cf = true;}
+#endif
 
 //    double operator() (int n)
 //    {
@@ -308,8 +316,21 @@ public:
 //  void compute_error_xy(CF_2 &uxy_cf, Vec sol, Vec err_uxy);
 #endif
 
-  double interpolate_near_node_linear   (double *in_p, p4est_locidx_t *nei_quads, bool *nei_quad_exists, double x, double y, double z);
-  double interpolate_near_node_quadratic(double *in_p, double *inxx_p, double *inyy_p, double *inzz_p, p4est_locidx_t *nei_quads, bool *nei_quad_exists, double x, double y, double z);
+//  double interpolate_near_node_linear   (double *in_p, p4est_locidx_t *nei_quads, bool *nei_quad_exists, double x, double y, double z);
+//  double interpolate_near_node_quadratic(double *in_p, double *inxx_p, double *inyy_p, double *inzz_p, p4est_locidx_t *nei_quads, bool *nei_quad_exists, double x, double y, double z);
+
+#ifdef P4_TO_P8
+  double sample_qty_on_uni_grid(grid_interpolation3_t &grid, double *output, quantity_t &qty);
+#else
+  double sample_qty_on_uni_grid(grid_interpolation2_t &grid, double *output, quantity_t &qty);
+#endif
+
+#ifdef P4_TO_P8
+  double compute_qty_avg_over_iface(cube3_mls_t &cube, int color, quantity_t &qty);
+#else
+  double compute_qty_avg_over_iface(cube2_mls_t &cube, int color, quantity_t &qty);
+#endif
+
 };
 
 #endif // MY_P4EST_POISSON_NODES_MLS_H

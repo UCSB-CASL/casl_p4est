@@ -1280,14 +1280,14 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
         else                               w_00p += -2./d_00p/(d_00m+d_00p);
 
         // FIX FOR VARIABLE mu
-        w_m00 *= wi * mu.val; w_p00 *= wi * mu.val;
-        w_0m0 *= wj * mu.val; w_0p0 *= wj * mu.val;
-        w_00m *= wk * mu.val; w_00p *= wk * mu.val;
+        w_m00 *= wi * mu.constant; w_p00 *= wi * mu.constant;
+        w_0m0 *= wj * mu.constant; w_0p0 *= wj * mu.constant;
+        w_00m *= wk * mu.constant; w_00p *= wk * mu.constant;
 
         //---------------------------------------------------------------------
         // diag scaling
         //---------------------------------------------------------------------
-        double w_000 = diag_add(n) - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p );
+        double w_000 = sample_qty(diag_add, n, xyz_c) - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p );
         w_m00 /= w_000; w_p00 /= w_000;
         w_0m0 /= w_000; w_0p0 /= w_000;
         w_00m /= w_000; w_00p /= w_000;
@@ -1489,69 +1489,78 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
           }
         }
 
-        int num_ifaces = present_ifaces.size();
+        short num_ifaces = present_ifaces.size();
 
-        // check if there is really a kink
-        for (short j = 0; j < ny_grid+1; j++)
-          for (short i = 0; i < nx_grid+1; i++)
-            integrand[i + j*(nx_grid+1)] = 1.;
-
-        int i0 = present_ifaces[0];
-        int i1 = present_ifaces[1];
-        double num_isxns = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
-
-        if (num_isxns < 0.99) {is_there_kink = false;}
-
-
-        if (is_there_kink && kink_special_treatment && num_ifaces == 2)
+        // special treatment for kinks
+        if (is_there_kink && kink_special_treatment && num_ifaces > 1)
         {
-          int i0 = present_ifaces[0];
-          int i1 = present_ifaces[1];
+          double N_mat[P4EST_DIM*P4EST_DIM];
+#ifdef P4_TO_P8
+          /* TO FIX (case of > 3 interfaces in 3D):
+           * Should be N_mat[P4EST_DIM*num_normals],
+           * where num_normals = max(P4EST_DIM, num_ifaces);
+           */
+#endif
 
-//          // check if there is really a kink
-//          for (short j = 0; j < ny_grid+1; j++)
-//            for (short i = 0; i < nx_grid+1; i++)
-//              integrand[i + j*(nx_grid+1)] = 1;
-//          double num_isxns = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
-
-//          if (num_isxns < 1.0) {is_there_kink = false; break;}
-
-          double n0[2] = {0,0}, n1[2] = {0,0};
-          double kappa[2] = {0,0}, g[2] = {0,0};
-          double a_coeff[2] = {0,0}, b_coeff[2] = {0,0};
+          double bc_coeffs_avg[P4EST_DIM];
+          double bc_values_avg[P4EST_DIM];
+          double a_coeff[P4EST_DIM];
+          double b_coeff[P4EST_DIM];
 
           // calculate normals to interfaces
-          compute_normal(phi_p[i0], qnnn, n0);
-          compute_normal(phi_p[i1], qnnn, n1);
+          for (short i_ifc = 0; i_ifc < num_ifaces; ++i_ifc)
+            compute_normal(phi_p[present_ifaces[i_ifc]], qnnn, &N_mat[i_ifc*P4EST_DIM]);
 
-          // get coordinates of the intersection
-          for (short j = 0; j < ny_grid+1; j++)
-            for (short i = 0; i < nx_grid+1; i++)
-              integrand[i + j*(nx_grid+1)] = x_grid[i];
-          xyz_isxn[0] = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+#ifdef P4_TO_P8
+          /* an ad-hoc: in case of an intersection of 2 interfaces in 3D
+           * we choose the third direction to be perpendicular to the first two
+           * and set du/dn = 0 (i.e., u = const) along this third direction
+           */
+          if (num_ifaces == 2)
+          {
+            N_mat[2*P4EST_DIM + 0] = N_mat[0*P4EST_DIM + 1]*N_mat[1*P4EST_DIM + 2] - N_mat[0*P4EST_DIM + 2]*N_mat[1*P4EST_DIM + 1];
+            N_mat[2*P4EST_DIM + 1] = N_mat[0*P4EST_DIM + 2]*N_mat[1*P4EST_DIM + 0] - N_mat[0*P4EST_DIM + 0]*N_mat[1*P4EST_DIM + 2];
+            N_mat[2*P4EST_DIM + 2] = N_mat[0*P4EST_DIM + 0]*N_mat[1*P4EST_DIM + 1] - N_mat[0*P4EST_DIM + 1]*N_mat[1*P4EST_DIM + 0];
 
-          for (short j = 0; j < ny_grid+1; j++)
-            for (short i = 0; i < nx_grid+1; i++)
-              integrand[i + j*(nx_grid+1)] = y_grid[j];
-          xyz_isxn[1] = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+            double norm = sqrt(SQR(N_mat[2*P4EST_DIM + 0]) + SQR(N_mat[2*P4EST_DIM + 1]) + SQR(N_mat[2*P4EST_DIM + 2]));
+            N_mat[2*P4EST_DIM + 0] /= norm;
+            N_mat[2*P4EST_DIM + 1] /= norm;
+            N_mat[2*P4EST_DIM + 2] /= norm;
 
-          // sample robin coeff at the intersection
-          kappa[0] = sample_qty(bc_coeffs[i0], xyz_isxn);
-          kappa[1] = sample_qty(bc_coeffs[i1], xyz_isxn);
+            bc_coeffs_avg[3] = 0;
+            bc_values_avg[3] = 0;
+          }
+#endif
 
-          // sample g at the intersection
-          g[0] = sample_qty(bc_values[i0], xyz_isxn);
-          g[1] = sample_qty(bc_values[i1], xyz_isxn);
+          // estimate bc_coeffs and bc_values at the interfaces
+          for (short i_ifc = 0; i_ifc < num_ifaces; ++i_ifc)
+          {
+            short i_phi = present_ifaces[i_ifc];
+            bc_coeffs_avg[i_ifc]  = compute_qty_avg_over_iface(cube, color->at(i_phi), bc_coeffs[i_phi]);
+            bc_values_avg[i_ifc]  = compute_qty_avg_over_iface(cube, color->at(i_phi), bc_values[i_phi]);
+          }
 
-          // solve matrix and find coefficients
-          double N_mat[4] = {n0[0], n0[1], n1[0], n1[1]};
-          double N_inv_mat[4];
-
+          // solve matrix
+          double N_inv_mat[P4EST_DIM*P4EST_DIM];
+#ifdef P4_TO_P8
+          /* TO FIX (case of > 3 interfaces in 3D):
+           * one should solve an overdetermined matrix N by the least-squares approach
+           */
+          inv_mat3(N_mat, N_inv_mat);
+#else
           inv_mat2(N_mat, N_inv_mat);
+#endif
 
-          for (int i = 0; i < 2; i++){
-            a_coeff[i] = N_inv_mat[i*2 + 0]*kappa[0] + N_inv_mat[i*2 + 1]*kappa[1];
-            b_coeff[i] = N_inv_mat[i*2 + 0]*g[0]     + N_inv_mat[i*2 + 1]*g[1];
+          // calculate coefficients in Taylor series of u
+          for (short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
+          {
+            a_coeff[i_dim] = 0;
+            b_coeff[i_dim] = 0;
+            for (short j_dim = 0; j_dim < P4EST_DIM; j_dim++)
+            {
+              a_coeff[i_dim] += N_inv_mat[i_dim*P4EST_DIM + j_dim]*bc_coeffs_avg[j_dim];
+              b_coeff[i_dim] += N_inv_mat[i_dim*P4EST_DIM + j_dim]*bc_values_avg[j_dim];
+            }
           }
 
           // compute integrals
@@ -1559,20 +1568,30 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_matrix_sym()
           {
             int i_phi = present_ifaces[i_present_iface];
 
+#ifdef P4_TO_P8
+            for (short k = 0; k < nz_grid+1; k++)
+#endif
             for (short j = 0; j < ny_grid+1; j++)
               for (short i = 0; i < nx_grid+1; i++)
               {
+#ifdef P4_TO_P8
+                double xyz[P4EST_DIM] = {x_grid[i], y_grid[j], z_grid[k]};
+                integrand[i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)]  = sample_qty(bc_coeffs[i_phi], xyz)
+                    *(1.0 - a_coeff[0]*(x_grid[i]-x_C) - a_coeff[1]*(y_grid[j]-y_C) - a_coeff[2]*(z_grid[k]-z_C));
+#else
                 double xyz[P4EST_DIM] = {x_grid[i], y_grid[j]};
-                integrand[i + j*(nx_grid+1)] = sample_qty(bc_coeffs[i_phi], xyz)
+                integrand[i + j*(nx_grid+1)]  = sample_qty(bc_coeffs[i_phi], xyz)
                     *(1.0 - a_coeff[0]*(x_grid[i]-x_C) - a_coeff[1]*(y_grid[j]-y_C));
+#endif
               }
 
             w_000 += cube.integrate_over_interface(integrand, color->at(i_phi));
 
           }
 
-        }
+        } // if (is_there_kink && kink_special_treatment && num_ifaces > 1)
 
+        // cells without kinks
         if (!is_there_kink || !kink_special_treatment) {
 
           /* In case of COLORATION we need some correction:
@@ -2122,74 +2141,100 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_laplace_rhsvec_sym()
             rhs_p[n] += cube.integrate_over_interface(integrand, color->at(i_phi));
           }
 
-          // check if there is really a kink
-          for (short j = 0; j < ny_grid+1; j++)
-            for (short i = 0; i < nx_grid+1; i++)
-              integrand[i + j*(nx_grid+1)] = 1.;
-
-          int i0 = present_ifaces[0];
-          int i1 = present_ifaces[1];
-          double num_isxns = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
-
-          if (num_isxns < 0.99) {is_there_kink = false;}
-
           // Robin term
           if (is_there_kink && kink_special_treatment && num_ifaces == 2)
           {
-            int i0 = present_ifaces[0];
-            int i1 = present_ifaces[1];
+            double N_mat[P4EST_DIM*P4EST_DIM];
+#ifdef P4_TO_P8
+            /* TO FIX (case of > 3 interfaces in 3D):
+           * Should be N_mat[P4EST_DIM*num_normals],
+           * where num_normals = max(P4EST_DIM, num_ifaces);
+           */
+#endif
 
-
-            double n0[2] = {0,0}, n1[2] = {0,0};
-            double kappa[2] = {0,0}, g[2] = {0,0};
-            double a_coeff[2] = {0,0}, b_coeff[2] = {0,0};
+            double bc_coeffs_avg[P4EST_DIM];
+            double bc_values_avg[P4EST_DIM];
+            double a_coeff[P4EST_DIM];
+            double b_coeff[P4EST_DIM];
 
             // calculate normals to interfaces
-            compute_normal(phi_p[i0], qnnn, n0);
-            compute_normal(phi_p[i1], qnnn, n1);
+            for (short i_ifc = 0; i_ifc < num_ifaces; ++i_ifc)
+              compute_normal(phi_p[present_ifaces[i_ifc]], qnnn, &N_mat[i_ifc*P4EST_DIM]);
 
-            // get coordinates of the intersection
-            for (short j = 0; j < ny_grid+1; j++)
-              for (short i = 0; i < nx_grid+1; i++)
-                integrand[i + j*(nx_grid+1)] = x_grid[i];
-            xyz_isxn[0] = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+#ifdef P4_TO_P8
+            /* an ad-hoc: in case of an intersection of 2 interfaces in 3D
+           * we choose the third direction to be perpendicular to the first two
+           * and set du/dn = 0 (i.e., u = const) along this third direction
+           */
+            if (num_ifaces == 2)
+            {
+              N_mat[2*P4EST_DIM + 0] = N_mat[0*P4EST_DIM + 1]*N_mat[1*P4EST_DIM + 2] - N_mat[0*P4EST_DIM + 2]*N_mat[1*P4EST_DIM + 1];
+              N_mat[2*P4EST_DIM + 1] = N_mat[0*P4EST_DIM + 2]*N_mat[1*P4EST_DIM + 0] - N_mat[0*P4EST_DIM + 0]*N_mat[1*P4EST_DIM + 2];
+              N_mat[2*P4EST_DIM + 2] = N_mat[0*P4EST_DIM + 0]*N_mat[1*P4EST_DIM + 1] - N_mat[0*P4EST_DIM + 1]*N_mat[1*P4EST_DIM + 0];
 
-            for (short j = 0; j < ny_grid+1; j++)
-              for (short i = 0; i < nx_grid+1; i++)
-                integrand[i + j*(nx_grid+1)] = y_grid[j];
-            xyz_isxn[1] = cube.integrate_over_intersection(integrand, color->at(i0), color->at(i1));
+              double norm = sqrt(SQR(N_mat[2*P4EST_DIM + 0]) + SQR(N_mat[2*P4EST_DIM + 1]) + SQR(N_mat[2*P4EST_DIM + 2]));
+              N_mat[2*P4EST_DIM + 0] /= norm;
+              N_mat[2*P4EST_DIM + 1] /= norm;
+              N_mat[2*P4EST_DIM + 2] /= norm;
 
-            // sample robin coeff at the intersection
-            kappa[0] = sample_qty(bc_coeffs[i0], xyz_isxn);
-            kappa[1] = sample_qty(bc_coeffs[i1], xyz_isxn);
-
-            // sample g at the intersection
-            g[0] = sample_qty(bc_values[i0], xyz_isxn);
-            g[1] = sample_qty(bc_values[i1], xyz_isxn);
-
-            // solve matrix and find coefficients
-            double N_mat[4] = {n0[0], n0[1], n1[0], n1[1]};
-            double N_inv_mat[4];
-
-            inv_mat2(N_mat, N_inv_mat);
-
-            for (int i = 0; i < 2; i++){
-              a_coeff[i] = N_inv_mat[i*2 + 0]*kappa[0] + N_inv_mat[i*2 + 1]*kappa[1];
-              b_coeff[i] = N_inv_mat[i*2 + 0]*g[0]     + N_inv_mat[i*2 + 1]*g[1];
+              bc_coeffs_avg[3] = 0;
+              bc_values_avg[3] = 0;
             }
+#endif
+
+            // estimate bc_coeffs and bc_values at the interfaces
+            for (short i_ifc = 0; i_ifc < num_ifaces; ++i_ifc)
+            {
+              short i_phi = present_ifaces[i_ifc];
+              bc_coeffs_avg[i_ifc]  = compute_qty_avg_over_iface(cube, color->at(i_phi), bc_coeffs[i_phi]);
+              bc_values_avg[i_ifc]  = compute_qty_avg_over_iface(cube, color->at(i_phi), bc_values[i_phi]);
+            }
+
+            // solve matrix
+            double N_inv_mat[P4EST_DIM*P4EST_DIM];
+#ifdef P4_TO_P8
+            /* TO FIX (case of > 3 interfaces in 3D):
+           * one should solve an overdetermined matrix N by the least-squares approach
+           */
+            inv_mat3(N_mat, N_inv_mat);
+#else
+            inv_mat2(N_mat, N_inv_mat);
+#endif
+
+            // calculate coefficients in Taylor series of u
+            for (short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
+            {
+              a_coeff[i_dim] = 0;
+              b_coeff[i_dim] = 0;
+              for (short j_dim = 0; j_dim < P4EST_DIM; j_dim++)
+              {
+                a_coeff[i_dim] += N_inv_mat[i_dim*P4EST_DIM + j_dim]*bc_coeffs_avg[j_dim];
+                b_coeff[i_dim] += N_inv_mat[i_dim*P4EST_DIM + j_dim]*bc_values_avg[j_dim];
+              }
+            }
+
 
             // compute integrals
             for (short i_present_iface = 0; i_present_iface < present_ifaces.size(); ++i_present_iface)
             {
               int i_phi = present_ifaces[i_present_iface];
 
-              for (short j = 0; j < ny_grid+1; j++)
-                for (short i = 0; i < nx_grid+1; i++)
-                {
-                  double xyz[P4EST_DIM] = {x_grid[i], y_grid[j]};
-                  integrand[i + j*(nx_grid+1)] = sample_qty(bc_coeffs[i_phi], xyz)
-                      *(b_coeff[0]*(x_grid[i]-x_C) + b_coeff[1]*(y_grid[j]-y_C));
-                }
+#ifdef P4_TO_P8
+            for (short k = 0; k < nz_grid+1; k++)
+#endif
+            for (short j = 0; j < ny_grid+1; j++)
+              for (short i = 0; i < nx_grid+1; i++)
+              {
+#ifdef P4_TO_P8
+                double xyz[P4EST_DIM] = {x_grid[i], y_grid[j], z_grid[k]};
+                integrand[i + j*(nx_grid+1) + k*(nx_grid+1)*(ny_grid+1)]  = sample_qty(bc_coeffs[i_phi], xyz)
+                    *(b_coeff[0]*(x_grid[i]-x_C) + b_coeff[1]*(y_grid[j]-y_C) + b_coeff[2]*(z_grid[k]-z_C));
+#else
+                double xyz[P4EST_DIM] = {x_grid[i], y_grid[j]};
+                integrand[i + j*(nx_grid+1)]  = sample_qty(bc_coeffs[i_phi], xyz)
+                    *(b_coeff[0]*(x_grid[i]-x_C) + b_coeff[1]*(y_grid[j]-y_C));
+#endif
+              }
 
               rhs_p[n] -= cube.integrate_over_interface(integrand, color->at(i_phi));
             }
@@ -3313,3 +3358,45 @@ void my_p4est_poisson_nodes_mls_t::compute_error_gr(CF_2 &ux_cf, CF_2 &uy_cf, Ve
 //      which_quad = dir::v_ppm;
 //  }
 //}
+
+#ifdef P4_TO_P8
+double my_p4est_poisson_nodes_mls_t::compute_qty_avg_over_iface(cube3_mls_t &cube, int color, quantity_t &qty)
+#else
+double my_p4est_poisson_nodes_mls_t::compute_qty_avg_over_iface(cube2_mls_t &cube, int color, quantity_t &qty)
+#endif
+{
+  static double integrand[N_NBRS_MAX];
+  if (qty.is_constant) return qty.constant;
+  else if (qty.is_vec)
+  {
+    sample_qty_on_uni_grid(cube.interp, integrand, qty);
+    return cube.integrate_over_interface(integrand, color)/cube.measure_of_interface(color);
+  }
+}
+
+#ifdef P4_TO_P8
+double my_p4est_poisson_nodes_mls_t::sample_qty_on_uni_grid(grid_interpolation3_t &grid, double *output, quantity_t &qty)
+#else
+double my_p4est_poisson_nodes_mls_t::sample_qty_on_uni_grid(grid_interpolation2_t &grid, double *output, quantity_t &qty)
+#endif
+{
+  double xyz[P4EST_DIM];
+  short p;
+
+#ifdef P4_TO_P8
+  for (short k = 0; k < grid.nz+1; k++)
+#endif
+    for (short j = 0; j < grid.nx+1; j++)
+      for (short i = 0; i < grid.ny+1; i++)
+      {
+        xyz[0] = grid.x[i];
+        xyz[1] = grid.y[j];
+        p = i + j*(grid.nx+1);
+#ifdef P4_TO_P8
+        xyz[2] = grid.z[k];
+        p += k*(grid.nx+1)*(grid.ny+1);
+#endif
+        output[p] = sample_qty(qty, xyz);
+      }
+
+}

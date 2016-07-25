@@ -7,13 +7,15 @@
 
 class grid_interpolation3_t
 {
+public:
+
   int nx, ny, nz;
   double xm, xp, ym, yp, zm, zp;
   double dx, dy, dz;
 
-  double eps;
+  std::vector<double> x, y, z;
 
-public:
+  double eps;
 
   grid_interpolation3_t(double xm = 0., double xp = 1.,
                         double ym = 0., double yp = 1.,
@@ -36,6 +38,10 @@ public:
     dx = (xp-xm)/(double)(nx);
     dy = (yp-ym)/(double)(ny);
     dz = (zp-zm)/(double)(nz);
+
+    x.resize(nx+1); for (short i = 0; i < nx+1; i++) x[i] = xm+(double)(i)*dx;
+    y.resize(ny+1); for (short i = 0; i < ny+1; i++) y[i] = ym+(double)(i)*dy;
+    z.resize(nz+1); for (short i = 0; i < nz+1; i++) z[i] = zm+(double)(i)*dz;
   }
 
   double linear(double *f, double x, double y, double z);
