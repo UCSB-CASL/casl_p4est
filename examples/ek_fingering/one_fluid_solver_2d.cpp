@@ -920,7 +920,7 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&neighbors);
-  ls.reinitialize_2nd_order(phi);
+//  ls.reinitialize_2nd_order(phi);
 //  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
@@ -941,57 +941,57 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
   VecGetArray(bc_val, &bc_val_p);
 
   double x[P4EST_DIM];
-  double diag_min = p4est_diag_min(p4est);
+//  double diag_min = p4est_diag_min(p4est);
   double *phi_p;
   VecGetArray(phi, &phi_p);
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
-    if (fabs(phi_p[n]) < 10*diag_min) {
-      double kappa = bc_val_p[n];
+//    if (fabs(phi_p[n]) < 10*diag_min) {
+    double kappa = bc_val_p[n];
 //    kappa = CLAMP(kappa, -1.0/(2.0*diag_min), 1.0/(2.0*diag_min));
 #ifdef P4_TO_P8
-      bc_val_p[n] = kappa*(*gamma)(x[0], x[1], x[2]);
+    bc_val_p[n] = kappa*(*gamma)(x[0], x[1], x[2]);
 #else
-      bc_val_p[n] = kappa*(*gamma)(x[0], x[1]);
+    bc_val_p[n] = kappa*(*gamma)(x[0], x[1]);
 #endif
-    } else {
-      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), 0.1);
-      bc_val_p[n] = -(*Q)(t)/(2*PI) * log(r);
-    }
+//    } else {
+//      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), 0.1);
+//      bc_val_p[n] = -(*Q)(t)/(2*PI) * log(r);
+//    }
   }
   VecRestoreArray(phi, &phi_p);
 
   // smooth out the boundary condition
-  if (0)
-  {
-    double dxyz[P4EST_DIM];
-    p4est_dxyz_min(p4est, dxyz);
-#ifdef P4_TO_P8
-    double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
-#else
-    double dmin = MIN(dxyz[0], dxyz[1]);
-#endif
-    double dt = 0.25*dmin*dmin;
+//  if (0)
+//  {
+//    double dxyz[P4EST_DIM];
+//    p4est_dxyz_min(p4est, dxyz);
+//#ifdef P4_TO_P8
+//    double dmin = MIN(dxyz[0], MIN(dxyz[1], dxyz[2]));
+//#else
+//    double dmin = MIN(dxyz[0], dxyz[1]);
+//#endif
+//    double dt = 0.25*dmin*dmin;
 
-    Vec tmp;
-    VecDuplicate(phi, &tmp);
-    double *tmp_p;
+//    Vec tmp;
+//    VecDuplicate(phi, &tmp);
+//    double *tmp_p;
 
-    quad_neighbor_nodes_of_node_t qnnn;
-    VecGetArray(tmp, &tmp_p);
-    int itmax = 10;
-    for (int it = 0; it < itmax; it++) {
-      foreach_node (n, nodes) {
-        neighbors.get_neighbors(n, qnnn);
-        double fxx, fyy;
-        qnnn.laplace(bc_val_p, fxx, fyy);
-        tmp_p[n] = bc_val_p[n] + dt*(fxx+fyy);
-      }
-      VecCopy(tmp, bc_val);
-    }
-    VecRestoreArray(tmp, &tmp_p);
-    VecDestroy(tmp);
-  }
+//    quad_neighbor_nodes_of_node_t qnnn;
+//    VecGetArray(tmp, &tmp_p);
+//    int itmax = 10;
+//    for (int it = 0; it < itmax; it++) {
+//      foreach_node (n, nodes) {
+//        neighbors.get_neighbors(n, qnnn);
+//        double fxx, fyy;
+//        qnnn.laplace(bc_val_p, fxx, fyy);
+//        tmp_p[n] = bc_val_p[n] + dt*(fxx+fyy);
+//      }
+//      VecCopy(tmp, bc_val);
+//    }
+//    VecRestoreArray(tmp, &tmp_p);
+//    VecDestroy(tmp);
+//  }
 
   VecRestoreArray(bc_val, &bc_val_p);
 
@@ -1000,23 +1000,28 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
   // solve for pressure
   {
     // define a new levelset for the outer ring boundary
-    Vec phi_ring;
-    VecDuplicate(phi, &phi_ring);
-    double *phi_ring_p;
-    VecGetArray(phi_ring, &phi_ring_p);
-    VecGetArray(phi, &phi_p);
-    double xyz_max[P4EST_DIM];
-    p4est_xyz_max(p4est, xyz_max);
-    foreach_node (n, nodes) {
-      node_xyz_fr_n(n, p4est, nodes, x);
-      phi_ring_p[n] = MAX(phi_p[n], sqrt(SQR(x[0]) + SQR(x[1])) - 0.99*xyz_max[0]);
-    }
-    VecRestoreArray(phi, &phi_p);
-    VecRestoreArray(phi_ring, &phi_ring_p);
+//    Vec phi_ring;
+//    VecDuplicate(phi, &phi_ring);
+//    double *phi_ring_p;
+//    VecGetArray(phi_ring, &phi_ring_p);
+//    VecGetArray(phi, &phi_p);
+//    double xyz_max[P4EST_DIM];
+//    p4est_xyz_max(p4est, xyz_max);
+//    foreach_node (n, nodes) {
+//      node_xyz_fr_n(n, p4est, nodes, x);
+//      phi_ring_p[n] = MAX(phi_p[n], sqrt(SQR(x[0]) + SQR(x[1])) - 0.99*xyz_max[0]);
+//    }
+//    VecRestoreArray(phi, &phi_p);
+//    VecRestoreArray(phi_ring, &phi_ring_p);
 
     // Set the boundary conditions
     my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
-    p_interface_value.set_input(bc_val, linear);
+
+    Vec Fxx, Fyy;
+    VecCreateGhostNodes(p4est, nodes, &Fxx);
+    VecCreateGhostNodes(p4est, nodes, &Fyy);
+    neighbors.second_derivatives_central(bc_val, Fxx, Fyy);
+    p_interface_value.set_input(bc_val, Fxx, Fyy, quadratic);
 
 #ifdef P4_TO_P8
     BoundaryConditions3D bc;
@@ -1030,82 +1035,86 @@ void one_fluid_solver_t::solve_fields(double t, Vec phi, Vec pressure, Vec poten
     bc_wall_value->t = t;
 
     my_p4est_poisson_nodes_t poisson(&neighbors);
-    poisson.set_phi(phi_ring);
+    poisson.set_phi(phi);
     poisson.set_bc(bc);
 //    sample_cf_on_nodes(p4est, nodes, *K_D, K);
 //    poisson.set_mu(K);
     poisson.set_mu(1.0);
-    poisson.solve(pressure, true);
+    poisson.solve(pressure);
 
-    ls.extend_Over_Interface_TVD(phi_ring, pressure);    
+//    ls.extend_Over_Interface_TVD(phi_ring, pressure);
+    ls.extend_Over_Interface_TVD(phi, pressure);
     // Vec l1,l2;
     // VecGhostGetLocalForm(pressure, &l1);
     // VecGhostGetLocalForm(bc_val, &l2);
     // VecCopy(l2, l1);
     // VecGhostRestoreLocalForm(pressure, &l1);
     // VecGhostRestoreLocalForm(bc_val, &l2);
-    VecDestroy(phi_ring);
+//    VecDestroy(phi_ring);
+
+    VecDestroy(Fxx);
+    VecDestroy(Fyy);
   }
 
   // solve for the potential
-  if (alpha > 0)
-  {
-    VecGetArray(bc_val, &bc_val_p);
-    // Set the boundary condition
-    double x[P4EST_DIM];
-    foreach_node(n, nodes) {
-      node_xyz_fr_n(n, p4est, nodes, x);
-#ifdef P4_TO_P8
-      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])), EPS);
-      bc_val_p[n] = (*I)(t)/(4*PI*r);
-#else
-      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), EPS);
-      bc_val_p[n] = (*I)(t)/(2*PI) * log(r);
-#endif
-    }
+//  if (alpha > 0)
+//  {
+//    VecGetArray(bc_val, &bc_val_p);
+//    // Set the boundary condition
+//    double x[P4EST_DIM];
+//    foreach_node(n, nodes) {
+//      node_xyz_fr_n(n, p4est, nodes, x);
+//#ifdef P4_TO_P8
+//      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])), EPS);
+//      bc_val_p[n] = (*I)(t)/(4*PI*r);
+//#else
+//      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), EPS);
+//      bc_val_p[n] = (*I)(t)/(2*PI) * log(r);
+//#endif
+//    }
 
-    my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
-    p_interface_value.set_input(bc_val, linear);
+//    my_p4est_interpolation_nodes_t p_interface_value(&neighbors);
+//    p_interface_value.set_input(bc_val, linear);
 
-#ifdef P4_TO_P8
-    BoundaryConditions3D bc;
-#else
-    BoundaryConditions2D bc;
-#endif
-    bc.setInterfaceType(DIRICHLET);
-    bc.setInterfaceValue(p_interface_value);
-    bc.setWallTypes(*bc_wall_type);
-    bc.setWallValues(*bc_wall_value);
-    bc_wall_value->t = t;
+//#ifdef P4_TO_P8
+//    BoundaryConditions3D bc;
+//#else
+//    BoundaryConditions2D bc;
+//#endif
+//    bc.setInterfaceType(DIRICHLET);
+//    bc.setInterfaceValue(p_interface_value);
+//    bc.setWallTypes(*bc_wall_type);
+//    bc.setWallValues(*bc_wall_value);
+//    bc_wall_value->t = t;
 
-    // invert the domain
-    Vec phi_l;
-    VecGhostGetLocalForm(phi, &phi_l);
-    VecScale(phi_l, -1);
+//    // invert the domain
+//    Vec phi_l;
+//    VecGhostGetLocalForm(phi, &phi_l);
+//    VecScale(phi_l, -1);
 
-    my_p4est_poisson_nodes_t poisson(&neighbors);
-    poisson.set_phi(phi);
-    poisson.set_bc(bc);
-//    sample_cf_on_nodes(p4est, nodes, *K_EO, K);
-//    poisson.set_mu(K);
-    poisson.set_mu(1.0);
-    poisson.solve(potential, true);
+//    my_p4est_poisson_nodes_t poisson(&neighbors);
+//    poisson.set_phi(phi);
+//    poisson.set_bc(bc);
+////    sample_cf_on_nodes(p4est, nodes, *K_EO, K);
+////    poisson.set_mu(K);
+//    poisson.set_mu(1.0);
+//    poisson.solve(potential, true);
 
-    ls.extend_Over_Interface_TVD(phi, potential);
+//    ls.extend_Over_Interface_TVD(phi, potential);
 
-    VecScale(phi_l, -1);
-    VecGhostRestoreLocalForm(phi, &phi_l);
+//    VecScale(phi_l, -1);
+//    VecGhostRestoreLocalForm(phi, &phi_l);
 
-    // add the regular and singular parts
-    double *potential_p;
-    VecGetArray(potential, &potential_p);
-    foreach_node(n, nodes) {
-      potential_p[n] -= bc_val_p[n];
-    }
+//    // add the regular and singular parts
+//    double *potential_p;
+//    VecGetArray(potential, &potential_p);
+//    foreach_node(n, nodes) {
+//      potential_p[n] -= bc_val_p[n];
+//    }
 
-    VecRestoreArray(bc_val, &bc_val_p);
-    VecRestoreArray(potential, &potential_p);
-  }
+//    VecRestoreArray(bc_val, &bc_val_p);
+//    VecRestoreArray(potential, &potential_p);
+//  }
 
   // destroy uneeded objects
   VecDestroy(bc_val);
@@ -1118,21 +1127,21 @@ double one_fluid_solver_t::solve_one_step(double t, Vec &phi, Vec &pressure, Vec
   double dt;
   parStopWatch w;
   if (method == "semi_lagrangian") {
-    w.start("Advecting usign semi-Lagrangian method");
+//    w.start("Advecting usign semi-Lagrangian method");
     dt = advect_interface_semi_lagrangian(phi, pressure, potential, cfl, dtmax);
-    w.stop(); w.read_duration();
+//    w.stop(); w.read_duration();
   } else if (method == "godunov") {
-    w.start("Advecting usign Godunov method");
+//    w.start("Advecting usign Godunov method");
     dt = advect_interface_godunov(phi, pressure, potential, cfl, dtmax);
-    w.stop(); w.read_duration();
+//    w.stop(); w.read_duration();
   } else if (method == "normal") {
-    w.start("Advecting usign normal-velocity method");
+//    w.start("Advecting usign normal-velocity method");
     dt = advect_interface_normal(phi, pressure, potential, cfl, dtmax);
-    w.stop(); w.read_duration();
+//    w.stop(); w.read_duration();
   } else if (method == "diagonal") {
-    w.start("Advecting usign diagonal-velocity method");
+//    w.start("Advecting usign diagonal-velocity method");
     dt = advect_interface_diagonal(phi, pressure, potential, cfl, dtmax);
-    w.stop(); w.read_duration();
+//    w.stop(); w.read_duration();
   } else {
     throw std::invalid_argument("invalid advection method. Valid options are:\n"
                                 " (a) semi_lagrangian,\n"
@@ -1141,9 +1150,9 @@ double one_fluid_solver_t::solve_one_step(double t, Vec &phi, Vec &pressure, Vec
   }
 
   // solve for the pressure
-  w.start("Solving for the field variables");
+//  w.start("Solving for the field variables");
   solve_fields(t+dt,phi, pressure, potential);
-  w.stop(); w.read_duration();
+//  w.stop(); w.read_duration();
 
   return dt;
 }

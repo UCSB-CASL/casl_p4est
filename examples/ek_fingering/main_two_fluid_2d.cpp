@@ -16,10 +16,12 @@
 
 #ifndef P4_TO_P8
 #include "two_fluid_solver_2d.h"
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_macros.h>
 #else
 #include "two_fluid_solver_3d.h"
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_macros.h>
 #endif
@@ -44,6 +46,8 @@ static struct {
   double xmin[3], xmax[3];
   int ntr[3];
   int periodic[3];
+  int mode;
+  double eps;
   string test, method;
 
   cf_t *interface, *bc_wall_value;
@@ -64,6 +68,8 @@ void set_options(int argc, char **argv) {
   cmd.add_option("dtmax", "max dt to use when solving");  
   cmd.add_option("M", "The viscosity ratio of inner to outer fluid");
   cmd.add_option("method", "method for solving the jump equation");
+  cmd.add_option("mode", "perturbation mode used for analysis");
+  cmd.add_option("eps", "perturbation amplitude to be added to the interface");
   cmd.add_option("test", "Which test to run?, Options are:\n"
                          "\tcircle\n"
                          "\tFastShelley04_Fig12\n");
@@ -79,49 +85,76 @@ void set_options(int argc, char **argv) {
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
 
+  options.lip  = 1.2;
+  options.cfl  = 2;
+  options.iter = numeric_limits<int>::max();
+
   if (options.test == "circle") {
     // set interface
-#ifdef P4_TO_P8
-    static struct:cf_t {
-      double operator()(double x, double y, double z) const {
-        return 0.25 - sqrt(SQR(x)+SQR(y)+SQR(z));
+    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10 + EPS;
+    options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
+    options.lmax    = 10;
+    options.lmin    = 5;
+    options.iter    = 10;
+    options.dtmax   = 1e-3;
+    options.dts     = 1e-1;
+    options.Ca      = 250;
+    options.mode    = cmd.get("mode", 0);
+    options.eps     = cmd.get("eps", 5e-3);
+    options.method  = "semi_lagrangian";
+    options.lip     = cmd.get("lip", options.lip);
+    options.M       = 1;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const  {
+        double theta = atan2(y,x);// - M_PI/180 * 45;
+        double r     = sqrt(SQR(x)+SQR(y));
+        return r - (1+options.eps*cos(options.mode*theta));
       }
     } interface; interface.lip = options.lip;
+    options.interface = &interface;
 
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
+    static struct:WallBC2D{
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
 
-    static struct:cf_t{
-      double operator()(double, double, double) const { return 0; }
-    } bc_wall_value;
-#else        
-    static struct:cf_t {
-      double operator()(double x, double y) const {
-        return 0.25 - sqrt(SQR(x)+SQR(y));
-      }
-    } interface; interface.lip = options.lip;
-
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double, double) const { return 0; }
-    } bc_wall_value;
-#endif
     static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
+      double operator()(double t) const { return 1.0 + t; }
     } Q;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const {
+        double theta = atan2(y,x);
+        double r     = sqrt(SQR(x)+SQR(y));
+        double ur    = -(*options.Q)(t)/(r);
+
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
+          return x > 0 ? ur*cos(theta):-ur*cos(theta);
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
+          return y > 0 ? ur*sin(theta):-ur*sin(theta);
+        else
+          return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+
+//    static struct:WallBC2D {
+//      BoundaryConditionType operator()(double, double) const {
+//        return DIRICHLET;
+//      }
+//    } bc_wall_type;
+
+//    static struct:CF_2 {
+//      double operator()(double x, double y) const {
+//        double r = sqrt(SQR(x)+SQR(y));
+//        return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
+//      }
+//    } bc_wall_value; bc_wall_value.t = 0;
+
 
     options.Q             = &Q;
     options.interface     = &interface;
     options.bc_wall_type  = &bc_wall_type;
     options.bc_wall_value = &bc_wall_value;
-    options.dtmax         = 5e-3;
-    options.dts           = 1e-1;
-    options.Ca            = 250;
-    options.M             = 1;
 
   } else if (options.test == "FastShelley04_Fig12") {
 
@@ -131,8 +164,6 @@ void set_options(int argc, char **argv) {
     options.method    = "voronoi";
     options.lmin      = 2;
     options.lmax      = 10;
-    options.lip       = 1.2;
-    options.cfl       = 2;
     options.dtmax     = 5e-3;
     options.dts       = 1e-1;
     options.Ca        = 250;
@@ -244,14 +275,14 @@ void set_options(int argc, char **argv) {
   // overwrite default values from stdin
   options.lmin      = cmd.get("lmin",      options.lmin);
   options.lmax      = cmd.get("lmax",      options.lmax);
-  options.iter      = cmd.get("iter",      INT_MAX);
+  options.iter      = cmd.get("iter",      options.iter);
   options.lip       = cmd.get("lip",       options.lip);
   options.Ca        = cmd.get("Ca",        options.Ca);
   options.cfl       = cmd.get("cfl",       options.cfl);
   options.dts       = cmd.get("dts",       options.dts);
   options.dtmax     = cmd.get("dtmax",     options.dtmax);
   options.M         = cmd.get("M",         options.M);
-  options.method    = cmd.get("method",    options.method);
+  options.method    = cmd.get("method",    options.method);  
 }
 
 int main(int argc, char** argv) {
@@ -311,23 +342,43 @@ int main(int argc, char** argv) {
     throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
 
   ostringstream folder;
-  folder << outdir << "/two_fluid/" << options.test << "/mue_" << options.M;
+  folder << outdir << "/two_fluid/" << options.test
+         << "/mue_" << options.M
+         << "/" << mpi.size() << "p";
+
   if (mpi.rank() == 0) system(("mkdir -p " + folder.str()).c_str());
   MPI_Barrier(mpi.comm());
   char vtk_name[FILENAME_MAX];
 
+  {
+    double *phi_p, *press_m_p, *press_p_p;
+    VecGetArray(phi, &phi_p);
+    VecGetArray(press_m, &press_m_p);
+    VecGetArray(press_p, &press_p_p);
+
+    sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM, 0);
+    PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
+                           P4EST_TRUE, P4EST_TRUE,
+                           3, 0, vtk_name,
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "press_m", press_m_p,
+                           VTK_POINT_DATA, "press_p", press_p_p);
+    VecRestoreArray(phi, &phi_p);
+  }
+
+
   double dt = 0, t = 0;
-  int is = 0;
-  for(int i=0; i<options.iter; i++) {
+  int is = 1, it = 0;
+  do {
     dt = solver.solve_one_step(t, phi, press_m, press_p,
                                options.cfl, options.dtmax, options.method);
-    t += dt;
+    it++; t += dt;
 
     p4est_gloidx_t num_nodes = 0;
     for (int r = 0; r<mpi.size(); r++)
       num_nodes += nodes->global_owned_indeps[r];
-    PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", i, num_nodes, t, dt);
-
+    PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", it, num_nodes, t, dt);
 
     if (t >= is*options.dts) {
       // save vtk
@@ -354,7 +405,42 @@ int main(int argc, char** argv) {
       VecRestoreArray(press_m, &press_m_p);
       VecRestoreArray(press_p, &press_p_p);
     }
-  }
+
+    // save the error if this is a modal analysis
+    if (options.test == "circle") {
+      my_p4est_hierarchy_t h(p4est, ghost, &brick);
+      my_p4est_node_neighbors_t ngbd(&h, nodes);
+      ngbd.init_neighbors();
+
+      my_p4est_interpolation_nodes_t interp(&ngbd);
+      interp.set_input(phi, quadratic_non_oscillatory);
+
+      // we only ask the root to compute the interpolation
+      int ntheta = mpi.rank() == 0 ? 3600:0;
+      vector<double> err(ntheta);
+      for (int n=0; n<ntheta; n++) {
+        double r = 1+t;
+        double theta = 2*PI*n/ntheta;
+        double x[] = {r*cos(theta), r*sin(theta)};
+        interp.add_point(n, x);
+      }
+      interp.interpolate(err.data());
+
+      if (mpi.rank() == 0) {
+        ostringstream filename;
+        filename << folder.str() << "/err_" << options.lmax
+                 << "_" << options.mode
+                 << "_" << it << ".txt";
+        FILE *file = fopen(filename.str().c_str(), "w");
+        fprintf(file, "%% theta \t err\n");
+        for (int n = 0; n<ntheta; n++) {
+          double theta = 2*PI*n/ntheta;
+          fprintf(file, "%1.6f % -1.12e\n", theta, err[n]);
+        }
+        fclose(file);
+      }
+    }
+  } while (it < options.iter);
 
   // destroy vectors
   VecDestroy(phi);

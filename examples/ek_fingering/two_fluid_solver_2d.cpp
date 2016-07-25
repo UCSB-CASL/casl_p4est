@@ -218,8 +218,8 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&neighbors);
-  ls.reinitialize_2nd_order(phi);
-  ls.perturb_level_set_function(phi, EPS);
+//  ls.reinitialize_2nd_order(phi);
+//  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
@@ -373,8 +373,8 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&node_neighbors);
-  ls.reinitialize_2nd_order(phi);
-  ls.perturb_level_set_function(phi, EPS);
+//  ls.reinitialize_2nd_order(phi);
+//  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
