@@ -271,6 +271,11 @@ void my_p4est_poisson_jump_voronoi_block_t::solve(Vec solution[], bool use_nonze
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
+
+    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
+    if (matrix_has_nullspace){
+      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
+    }
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
