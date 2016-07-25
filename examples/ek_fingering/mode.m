@@ -3,7 +3,8 @@ dt = 1e-5;
 it = 5;
 modes = 0:20;
 prefix = '/Users/mohammad/repos/parcasl/examples/ek_fingering/Release/';
-path = strcat(prefix,'one_fluid/circle/semi_lagrangian/2p');
+path = strcat(prefix,'two_fluid/circle/mue_0.2/2p');
+% path = strcat(prefix,'one_fluid/circle/semi_lagrangian/2p');
 % prefix = '/Users/mohammad/repos/casl/examples/viscous_fingering/Release';
 % path = prefix;
 
@@ -11,7 +12,7 @@ styles = {'bo', 'rs', 'm<', 'k>'};
 s = 1;
 figure(1); hold on;
 sigma = zeros(3,length(modes));
-for lmax=[11]    
+for lmax=[10,11,12]    
     if lmax == 13 dt = 1e-5; end
     for m=0:20
         file_base = sprintf('%s/err_%d_%d', path, lmax, m);
@@ -48,7 +49,7 @@ for lmax=[11]
 end
 %%
 m = linspace(0,20);
-M = 0.;
+M = 0.2;
 Ca = 250;
 sigma_ex=-1+modes*(1-M)/(1+M)+(modes).*(1-modes.^2)/(1+M)/Ca;
 plot(m,-1+m*(1-M)/(1+M)+m.*(1-m.^2)/(1+M)/Ca, 'k-', 'linewidth',2); shg

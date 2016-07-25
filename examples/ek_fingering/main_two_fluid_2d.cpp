@@ -126,7 +126,7 @@ void set_options(int argc, char **argv) {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(*options.Q)(t)/(2*PI*r);
+        double ur    = -(*options.Q)(t)/(r);
 
         if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
           return x > 0 ? ur*cos(theta):-ur*cos(theta);
