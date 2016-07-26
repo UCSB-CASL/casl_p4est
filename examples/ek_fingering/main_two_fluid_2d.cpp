@@ -114,41 +114,41 @@ void set_options(int argc, char **argv) {
     } interface; interface.lip = options.lip;
     options.interface = &interface;
 
-    static struct:WallBC2D{
-      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
-    } bc_wall_type;
-
     static struct:CF_1{
-      double operator()(double t) const { return 1.0 + t; }
+      double operator()(double t) const { return 2*PI*(1.0 + t); }
     } Q;
 
-    static struct:CF_2{
-      double operator()(double x, double y) const {
-        double theta = atan2(y,x);
-        double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(*options.Q)(t)/(r);
+    // static struct:WallBC2D{
+    //   BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+    // } bc_wall_type;
 
-        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-          return x > 0 ? ur*cos(theta):-ur*cos(theta);
-        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-          return y > 0 ? ur*sin(theta):-ur*sin(theta);
-        else
-          return 0;
-      }
-    } bc_wall_value; bc_wall_value.t = 0;
+    // static struct:CF_2{
+    //   double operator()(double x, double y) const {
+    //     double theta = atan2(y,x);
+    //     double r     = sqrt(SQR(x)+SQR(y));
+    //     double ur    = -(*options.Q)(t)/(r);
 
-//    static struct:WallBC2D {
-//      BoundaryConditionType operator()(double, double) const {
-//        return DIRICHLET;
-//      }
-//    } bc_wall_type;
+    //     if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
+    //       return x > 0 ? ur*cos(theta):-ur*cos(theta);
+    //     else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
+    //       return y > 0 ? ur*sin(theta):-ur*sin(theta);
+    //     else
+    //       return 0;
+    //   }
+    // } bc_wall_value; bc_wall_value.t = 0;
 
-//    static struct:CF_2 {
-//      double operator()(double x, double y) const {
-//        double r = sqrt(SQR(x)+SQR(y));
-//        return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
-//      }
-//    } bc_wall_value; bc_wall_value.t = 0;
+   static struct:WallBC2D {
+     BoundaryConditionType operator()(double, double) const {
+       return DIRICHLET;
+     }
+   } bc_wall_type;
+
+   static struct:CF_2 {
+     double operator()(double x, double y) const {
+       double r = sqrt(SQR(x)+SQR(y));
+       return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
+     }
+   } bc_wall_value; bc_wall_value.t = 0;
 
 
     options.Q             = &Q;
