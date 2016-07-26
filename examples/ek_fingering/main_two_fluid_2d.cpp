@@ -86,7 +86,7 @@ void set_options(int argc, char **argv) {
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
 
   options.lip  = 1.2;
-  options.cfl  = 2;
+  options.cfl  = 1;
   options.iter = numeric_limits<int>::max();
 
   if (options.test == "circle") {
@@ -413,7 +413,7 @@ int main(int argc, char** argv) {
       ngbd.init_neighbors();
 
       my_p4est_interpolation_nodes_t interp(&ngbd);
-      interp.set_input(phi, quadratic_non_oscillatory);
+      interp.set_input(phi, quadratic);
 
       // we only ask the root to compute the interpolation
       int ntheta = mpi.rank() == 0 ? 3600:0;

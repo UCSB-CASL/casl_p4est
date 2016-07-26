@@ -216,8 +216,8 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&node_neighbors);
-  ls.reinitialize_2nd_order(phi);
-  ls.perturb_level_set_function(phi, EPS);
+//  ls.reinitialize_2nd_order(phi);
+//  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
