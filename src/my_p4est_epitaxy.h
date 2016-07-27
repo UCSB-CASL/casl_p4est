@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <src/types.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 #include <src/my_p4est_tools.h>
 #include <p4est.h>

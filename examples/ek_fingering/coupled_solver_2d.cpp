@@ -12,7 +12,7 @@
 #include <src/my_p4est_macros.h>
 #endif
 
-#include <src/math.h>
+#include <src/casl_math.h>
 
 coupled_solver_t::coupled_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick)
   : p4est(p4est), ghost(ghost), nodes(nodes), brick(&brick)
@@ -171,11 +171,26 @@ double coupled_solver_t::advect_interface(Vec &phi,
   my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, &neighbors);
   sl.update_p4est(vx, dt, phi);
 
-  // destroy old quantities and swap pointers
-  p4est_destroy(p4est);       p4est = p4est_np1;
-  p4est_nodes_destroy(nodes); nodes = nodes_np1;
+  /*
+   * Since the voronoi solver requires two layers ghost cells, we need to expand the ghost layer
+   * and copy the date to the new vector that has room for extra ghost points
+   */
+  // destroy old data structures and create new ones
+  p4est_destroy(p4est); p4est = p4est_np1;
   p4est_ghost_destroy(ghost); ghost = ghost_np1;
+  my_p4est_ghost_expand(p4est, ghost);
+  p4est_nodes_destroy(nodes_np1);
+  p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
+  // copy data
+  Vec phi_np1 = phi;
+  VecCreateGhostNodes(p4est, nodes, &phi);
+  VecCopy(phi_np1, phi);
+  VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD);
+  VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);
+
+  // free memeory
+  VecDestroy(phi_np1);
   VecDestroy(pressure_m);
   VecDestroy(pressure_p);
   VecDestroy(potential_m);
@@ -201,8 +216,8 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&node_neighbors);
-  ls.reinitialize_2nd_order(phi);
-  ls.perturb_level_set_function(phi, EPS);
+//  ls.reinitialize_2nd_order(phi);
+//  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
@@ -227,17 +242,24 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   vector<double> pressure_star(nodes->indep_nodes.elem_count);
   vector<double> potential_star(nodes->indep_nodes.elem_count);
 
-  double x[P4EST_DIM];
+  double A = params.alpha,
+      B = params.beta,
+      R = params.R,
+      M = params.M,
+      S = params.S;
+  double prefactor = M/(R*M - A*B*SQR(S));
+
+  double x[P4EST_DIM], diag_min = p4est_diag_min(p4est);
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
-    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])), 1e-6);
-    pressure_star[n]  = ((*Q)(t)-params.alpha*(*I)(t))/(1.0-params.alpha*params.beta)/(4*PI*r);
-    potential_star[n] = ((*I)(t)-params.beta*(*Q)(t))/(1.0-params.alpha*params.beta)/(4*PI*r);
+    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])), daig_min);
+    pressure_star[n]  = prefactor*(R*M*(*Q)(t)-A*S*(*I)(t))/(4*PI*r);
+    potential_star[n] = prefactor*(    (*I)(t)-B*S*(*Q)(t))/(4*PI*r);
 #else
-    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), 1e-6);
-    pressure_star[n]  = ((*Q)(t)-params.alpha*(*I)(t))/(1.0-params.alpha*params.beta)/(2*PI)*log(r);
-    potential_star[n] = ((*I)(t)-params.beta*(*Q)(t))/(1.0-params.alpha*params.beta)/(2*PI)*log(r);
+    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), diag_min);
+    pressure_star[n]  = prefactor*(R*M*(*Q)(t)-A*S*(*I)(t))/(2*PI)*log(r);
+    potential_star[n] = prefactor*(    (*I)(t)-B*S*(*Q)(t))/(2*PI)*log(r);
 #endif
   }
 
@@ -247,8 +269,8 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   VecGetArray(jump[0], &jump_p[0]);
   VecGetArray(jump[1], &jump_p[1]);
   foreach_node(n, nodes) {
-    jump_p[0][n]  = pressure_star[n] - params.mue/params.Ca*kappa_p[n];
-    jump_p[1][n]  = potential_star[n];
+    jump_p[0][n]  = -1/params.Ca*kappa_p[n] - pressure_star[n];
+    jump_p[1][n]  = -potential_star[n];
   }
   VecRestoreArray(jump[0], &jump_p[0]);
   VecRestoreArray(jump[1], &jump_p[1]);
@@ -271,16 +293,23 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
     p4est_locidx_t n = node_neighbors.get_layer_node(i);
     node_neighbors.get_neighbors(n, qnnn);
 
-    jump_grad_p[0][n]  = normal_p[0][n]*(qnnn.dx_central(pressure_star_p) + params.alpha*qnnn.dx_central(potential_star_p)) +
-                         normal_p[1][n]*(qnnn.dy_central(pressure_star_p) + params.alpha*qnnn.dy_central(potential_star_p));
+    // TODO: This can be simplifies since it involves K*inv(K) multipications
+    jump_grad_p[0][n]  = -1/M*normal_p[0][n]*(qnnn.dx_central(pressure_star_p) +
+                                              qnnn.dx_central(potential_star_p)*A*S) +
+                         -1/M*normal_p[1][n]*(qnnn.dy_central(pressure_star_p) +
+                                              qnnn.dy_central(potential_star_p)*A*S);
 #ifdef P4_TO_P8
-    jump_grad_p[0][n] += normal_p[2][n]*(qnnn.dz_central(pressure_star_p) + params.alpha*qnnn.dz_central(potential_star_p));
+    jump_grad_p[0][n] += -1/M*normal_p[2][n]*(qnnn.dz_central(pressure_star_p) +
+                                              qnnn.dz_central(potential_star_p)*A*S);
 #endif
 
-    jump_grad_p[1][n]  = normal_p[0][n]*(params.beta*qnnn.dx_central(pressure_star_p) + qnnn.dx_central(potential_star_p)) +
-                         normal_p[1][n]*(params.beta*qnnn.dy_central(pressure_star_p) + qnnn.dy_central(potential_star_p));
+    jump_grad_p[1][n]  = -1/M*normal_p[0][n]*(qnnn.dx_central(pressure_star_p)*B*S +
+                                              qnnn.dx_central(potential_star_p)*R*M) +
+                         -1/M*normal_p[1][n]*(qnnn.dy_central(pressure_star_p)*B*S +
+                                              qnnn.dy_central(potential_star_p)*R*M);
 #ifdef P4_TO_P8
-    jump_grad_p[1][n] += normal_p[2][n]*(params.beta*qnnn.dz_central(pressure_star_p) + qnnn.dz_central(potential_star_p));
+    jump_grad_p[1][n] += -1/M*normal_p[2][n]*(qnnn.dz_central(pressure_star_p)*B*S +
+                                              qnnn.dz_central(potential_star_p)*R*M);
 #endif
   }
   VecGhostUpdateBegin(jump_grad[0], INSERT_VALUES, SCATTER_FORWARD);
@@ -290,16 +319,23 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
     p4est_locidx_t n = node_neighbors.get_local_node(i);
     node_neighbors.get_neighbors(n, qnnn);
 
-    jump_grad_p[0][n]  = normal_p[0][n]*(qnnn.dx_central(pressure_star_p) + params.alpha*qnnn.dx_central(potential_star_p)) +
-                         normal_p[1][n]*(qnnn.dy_central(pressure_star_p) + params.alpha*qnnn.dy_central(potential_star_p));
+    // TODO: This can be simplifies since it involves K*inv(K) multipications
+    jump_grad_p[0][n]  = -1/M*normal_p[0][n]*(qnnn.dx_central(pressure_star_p) +
+                                              qnnn.dx_central(potential_star_p)*A*S) +
+                         -1/M*normal_p[1][n]*(qnnn.dy_central(pressure_star_p) +
+                                              qnnn.dy_central(potential_star_p)*A*S);
 #ifdef P4_TO_P8
-    jump_grad_p[0][n] += normal_p[2][n]*(qnnn.dz_central(pressure_star_p) + params.alpha*qnnn.dz_central(potential_star_p));
+    jump_grad_p[0][n] += -1/M*normal_p[2][n]*(qnnn.dz_central(pressure_star_p) +
+                                              qnnn.dz_central(potential_star_p)*A*S);
 #endif
 
-    jump_grad_p[1][n]  = normal_p[0][n]*(params.beta*qnnn.dx_central(pressure_star_p) + qnnn.dx_central(potential_star_p)) +
-                         normal_p[1][n]*(params.beta*qnnn.dy_central(pressure_star_p) + qnnn.dy_central(potential_star_p));
+    jump_grad_p[1][n]  = -1/M*normal_p[0][n]*(qnnn.dx_central(pressure_star_p)*B*S +
+                                              qnnn.dx_central(potential_star_p)*R*M) +
+                         -1/M*normal_p[1][n]*(qnnn.dy_central(pressure_star_p)*B*S +
+                                              qnnn.dy_central(potential_star_p)*R*M);
 #ifdef P4_TO_P8
-    jump_grad_p[1][n] += normal_p[2][n]*(params.beta*qnnn.dz_central(pressure_star_p) + qnnn.dz_central(potential_star_p));
+    jump_grad_p[1][n] += -1/M*normal_p[2][n]*(qnnn.dz_central(pressure_star_p)*B*S +
+                                              qnnn.dz_central(potential_star_p)*R*M);
 #endif
   }
   VecGhostUpdateEnd(jump_grad[0], INSERT_VALUES, SCATTER_FORWARD);
@@ -332,8 +368,8 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
 #endif
   constant_cf_t km[][2] =
   {
-    { constant_cf_t(1/params.mue), constant_cf_t(params.alpha*params.eps/params.mue) },
-    { constant_cf_t(params.beta*params.eps/params.mue), constant_cf_t(params.sigma)  },
+    { constant_cf_t(1/M),   constant_cf_t(A*S/M) },
+    { constant_cf_t(B*S/M), constant_cf_t(R)     },
   };
   vector<vector<cf_t*>> mue_m(2,vector<cf_t*>(2));
   mue_m[0][0] = &km[0][0];
@@ -343,8 +379,8 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
 
   constant_cf_t kp[][2] =
   {
-    { constant_cf_t(1), constant_cf_t(params.alpha) },
-    { constant_cf_t(params.beta), constant_cf_t(1)  },
+    { constant_cf_t(1), constant_cf_t(A) },
+    { constant_cf_t(B), constant_cf_t(1) },
   };
   vector<vector<cf_t*>> mue_p(2,vector<cf_t*>(2));
   mue_p[0][0] = &kp[0][0];
@@ -401,7 +437,7 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   solver.set_mu_grad_u_jump(jump_du);
   solver.set_rhs(rhs_m, rhs_p);
 
-  Vec solutions [] = {pressure_m, potential_m};
+  Vec solutions [] = {pressure_p, potential_p};
   solver.solve(solutions);
 
   VecDestroy(rhs_m[0]);
@@ -422,8 +458,8 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   VecGetArray(potential_p, &potential_p_p);
 
   foreach_node(n, nodes) {
-    pressure_p_p[n]  = pressure_m_p[n] - pressure_star[n];
-    potential_p_p[n] = potential_m_p[n] - pressure_star[n];
+    pressure_m_p[n]  = pressure_p_p[n] - pressure_star[n];
+    potential_m_p[n] = potential_p_p[n] - pressure_star[n];
   }
 
   // extend solutions

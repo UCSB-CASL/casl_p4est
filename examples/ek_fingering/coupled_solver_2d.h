@@ -11,7 +11,7 @@ class coupled_solver_t
 {
 public:
   struct parameters {
-    double alpha, beta, Ca, mue, eps, sigma;
+    double alpha, beta, Ca, M, S, R;
   };
 
 private:
