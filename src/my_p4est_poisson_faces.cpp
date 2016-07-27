@@ -1,15 +1,17 @@
 #ifdef P4_TO_P8
 #include "my_p8est_poisson_faces.h"
 #include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_interpolation_faces.h>
 #include <src/cube2.h>
 #include <src/cube3.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_interpolation_faces.h>
 #include "my_p4est_poisson_faces.h"
 #endif
 
 #include <src/petsc_compatibility.h>
-#include <src/CASL_math.h>
+#include <src/casl_math.h>
 #include <vector>
 
 // logging variables -- defined in src/petsc_logging.cpp
@@ -38,7 +40,8 @@ my_p4est_poisson_faces_t::my_p4est_poisson_faces_t(const my_p4est_faces_t *faces
     #ifdef P4_TO_P8
     rhs_w(NULL),
     #endif
-    A(PETSC_NULL), A_null_space(PETSC_NULL), ksp(PETSC_NULL)
+    bc(NULL), dxyz_hodge(NULL),
+    A(PETSC_NULL), A_null_space(PETSC_NULL), null_space(PETSC_NULL), ksp(PETSC_NULL)
 {
   PetscErrorCode ierr;
 
@@ -46,29 +49,8 @@ my_p4est_poisson_faces_t::my_p4est_poisson_faces_t(const my_p4est_faces_t *faces
   ierr = KSPCreate(p4est->mpicomm, &ksp); CHKERRXX(ierr);
   ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
 
-  /* find dx and dy smallest */
-  splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  xmin = p4est->connectivity->vertices[3*vm + 0];
-  xmax = p4est->connectivity->vertices[3*vp + 0];
-  ymin = p4est->connectivity->vertices[3*vm + 1];
-  ymax = p4est->connectivity->vertices[3*vp + 1];
-  dx_min = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  dy_min = (ymax-ymin) / pow(2.,(double) data->max_lvl);
-#ifdef P4_TO_P8
-  zmin = p4est->connectivity->vertices[3*vm + 2];
-  zmax = p4est->connectivity->vertices[3*vp + 2];
-  dz_min = (zmax-zmin) / pow(2.,(double) data->max_lvl);
-#endif
-
-  vp = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1];
-  xmax = p4est->connectivity->vertices[3*vp + 0];
-  ymax = p4est->connectivity->vertices[3*vp + 1];
-#ifdef P4_TO_P8
-  zmax = p4est->connectivity->vertices[3*vp + 2];
-#endif
-
+  xyz_min_max(p4est, xyz_min, xyz_max);
+  dxyz_min(p4est, dxyz);
   compute_partition_on_the_fly = false;
   mu = 1;
   diag_add = 0;
@@ -78,7 +60,8 @@ my_p4est_poisson_faces_t::my_p4est_poisson_faces_t(const my_p4est_faces_t *faces
 my_p4est_poisson_faces_t::~my_p4est_poisson_faces_t()
 {
   PetscErrorCode ierr;
-  if(A!=NULL)                    { ierr = MatDestroy(A);                     CHKERRXX(ierr); }
+  if(A!=PETSC_NULL)              { ierr = MatDestroy(A);                     CHKERRXX(ierr); }
+  if(null_space!=PETSC_NULL)     { ierr = VecDestroy(null_space);            CHKERRXX(ierr); }
   if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr); }
   if(ksp!=PETSC_NULL)            { ierr = KSPDestroy(ksp);                   CHKERRXX(ierr); }
 }
@@ -170,12 +153,14 @@ void my_p4est_poisson_faces_t::set_mu(double mu)
 
 
 #ifdef P4_TO_P8
-void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions3D *bc)
+void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined)
 #else
-void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions2D *bc)
+void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined)
 #endif
 {
   this->bc = bc;
+  this->dxyz_hodge = dxyz_hodge;
+  this->face_is_well_defined = face_is_well_defined;
 }
 
 
@@ -249,6 +234,9 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
 
+  const PetscScalar *face_is_well_defined_p;
+  ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+
   int dir_m = 2*dir;
   int dir_p = 2*dir+1;
 
@@ -261,11 +249,11 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   double xtmp = p4est->connectivity->vertices[3*vp + 0];
   double ytmp = p4est->connectivity->vertices[3*vp + 1];
   double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  double dx = (xtmp-xmin) * dmin;
-  double dy = (ytmp-ymin) * dmin;
+  double dx = (xtmp-xyz_min[0]) * dmin;
+  double dy = (ytmp-xyz_min[1]) * dmin;
 #ifdef P4_TO_P8
   double ztmp = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (ztmp-zmin) * dmin;
+  double dz = (ztmp-xyz_min[2]) * dmin;
 #endif
 
   double x = faces->x_fr_f(f_idx, dir);
@@ -274,18 +262,14 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
   double z = faces->z_fr_f(f_idx, dir);
 #endif
 
-#ifdef P4_TO_P8
-  double phi_c = interp_phi(x,y,z);
-#else
-  double phi_c = interp_phi(x,y);
-#endif
   /* far in the positive domain */
-#ifdef P4_TO_P8
-  if(phi_c > 2*MAX(dx_min,dy_min,dz_min))
-#else
-  if(phi_c > 2*MAX(dx_min,dy_min))
-#endif
-     { ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr); return; }
+  if(!face_is_well_defined_p[f_idx])
+  {
+    ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
+    return;
+  }
+  ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
 
   p4est_locidx_t qm_idx=-1, qp_idx=-1;
   p4est_topidx_t tm_idx=-1, tp_idx=-1;
@@ -415,7 +399,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 #endif
 
   /* check for uniform case, if so build voronoi partition by hand */
-  if(1 && qm.level==qp.level &&
+  if(qm.level==qp.level &&
      (ngbd_p_m0.size()==1 && ngbd_m_m0.size()==1 && ngbd_m_m0[0].level==qm.level && ngbd_p_m0[0].level==qp.level &&
       faces->q2f(ngbd_m_m0[0].p.piggy3.local_num,2*dir)!=NO_VELOCITY && faces->q2f(ngbd_p_m0[0].p.piggy3.local_num,2*dir+1)!=NO_VELOCITY) &&
      (ngbd_p_p0.size()==1 && ngbd_m_p0.size()==1 && ngbd_m_p0[0].level==qm.level && ngbd_p_p0[0].level==qp.level &&
@@ -756,11 +740,12 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
     }
 
 #ifdef P4_TO_P8
-    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-    double xmax_ = p4est->connectivity->vertices[3*vp + 0];
-    double ymax_ = p4est->connectivity->vertices[3*vp + 1];
-    double zmax_ = p4est->connectivity->vertices[3*vp + 2];
-    voro_tmp.construct_Partition(xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
+//    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+//    double xyz_max[0]_ = p4est->connectivity->vertices[3*vp + 0];
+//    double xyz_max[1]_ = p4est->connectivity->vertices[3*vp + 1];
+//    double xyz_max[2]_ = p4est->connectivity->vertices[3*vp + 2];
+    bool periodic[] = {0, 0, 0};
+    voro_tmp.construct_Partition(xyz_min, xyz_max, periodic);
 #else
     voro_tmp.construct_Partition();
     voro_tmp.compute_volume();
@@ -794,8 +779,8 @@ void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(p4est_locidx_t f_idx,
           int k   = mod(m+i            ,partition->size());
           int tmp = mod(k+(i==-1? -1:1),partition->size());
           Point2 dir = (*partition)[tmp]-(*partition)[k];
-          double lambda = (xmin - (*partition)[k].x)/dir.x;
-          (*partition)[k].x = xmin;
+          double lambda = (xyz_min[0] - (*partition)[k].x)/dir.x;
+          (*partition)[k].x = xyz_min[0];
           (*partition)[k].y = (*partition)[k].y + lambda*dir.y;
         }
       }
@@ -807,8 +792,8 @@ void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(p4est_locidx_t f_idx,
           int k   = mod(m+i            ,partition->size());
           int tmp = mod(k+(i==-1? -1:1),partition->size());
           Point2 dir = (*partition)[tmp]-(*partition)[k];
-          double lambda = (xmax - (*partition)[k].x)/dir.x;
-          (*partition)[k].x = xmax;
+          double lambda = (xyz_max[0] - (*partition)[k].x)/dir.x;
+          (*partition)[k].x = xyz_max[0];
           (*partition)[k].y = (*partition)[k].y + lambda*dir.y;
         }
       }
@@ -825,9 +810,9 @@ void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(p4est_locidx_t f_idx,
           int k   = mod(m+i            ,partition->size());
           int tmp = mod(k+(i==-1? -1:1),partition->size());
           Point2 dir = (*partition)[tmp]-(*partition)[k];
-          double lambda = (ymin - (*partition)[k].y)/dir.y;
+          double lambda = (xyz_min[1] - (*partition)[k].y)/dir.y;
           (*partition)[k].x = (*partition)[k].x + lambda*dir.x;
-          (*partition)[k].y = ymin;
+          (*partition)[k].y = xyz_min[1];
         }
       }
 
@@ -838,9 +823,9 @@ void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(p4est_locidx_t f_idx,
           int k   = mod(m+i            ,partition->size());
           int tmp = mod(k+(i==-1? -1:1),partition->size());
           Point2 dir = (*partition)[tmp]-(*partition)[k];
-          double lambda = (ymax - (*partition)[k].y)/dir.y;
+          double lambda = (xyz_max[1] - (*partition)[k].y)/dir.y;
           (*partition)[k].x = (*partition)[k].x + lambda*dir.x;
-          (*partition)[k].y = ymax;
+          (*partition)[k].y = xyz_max[1];
         }
       }
     }
@@ -855,7 +840,7 @@ void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(p4est_locidx_t f_idx,
     is_pos = is_pos || phi_values[m]>0;
   }
 
-  // clip the voronoi partition with the interface
+  /* clip the voronoi partition with the interface */
   if(is_pos)
   {
     double x = faces->x_fr_f(f_idx, dir);
@@ -915,12 +900,12 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
 
 #ifdef P4_TO_P8
     if(bc[dir].interfaceType()==NOINTERFACE ||
-       (bc[dir].interfaceType()==DIRICHLET && phi_c<0.5*MIN(dx_min,dy_min,dz_min)) ||
-       (bc[dir].interfaceType()==NEUMANN   && phi_c<2*MAX(dx_min,dy_min,dz_min)) )
+       (bc[dir].interfaceType()==DIRICHLET && phi_c<0.5*MIN(dxyz[0],dxyz[1],dxyz[2])) ||
+       (bc[dir].interfaceType()==NEUMANN   && phi_c<2*MAX(dxyz[0],dxyz[1],dxyz[2])) )
 #else
     if(bc[dir].interfaceType()==NOINTERFACE ||
-       (bc[dir].interfaceType()==DIRICHLET && phi_c<0.5*MIN(dx_min,dy_min)) ||
-       (bc[dir].interfaceType()==NEUMANN   && phi_c<2*MAX(dx_min,dy_min)) )
+       (bc[dir].interfaceType()==DIRICHLET && phi_c<0.5*MIN(dxyz[0],dxyz[1])) ||
+       (bc[dir].interfaceType()==NEUMANN   && phi_c<2*MAX(dxyz[0],dxyz[1])) )
 #endif
     {
       compute_voronoi_cell(f_idx, dir);
@@ -973,11 +958,25 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   int dir_m = 2*dir;
   int dir_p = 2*dir+1;
 
+  const PetscScalar *face_is_well_defined_p;
+  ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+
   double *rhs_p;
   ierr = VecGetArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
 
+  ierr = VecDestroy(null_space); CHKERRXX(ierr);
+  ierr = VecDuplicate(rhs[dir], &null_space); CHKERRXX(ierr);
+  double *null_space_p;
+  ierr = VecGetArray(null_space, &null_space_p); CHKERRXX(ierr);
+
+  std::vector<double> bc_coeffs;
+  std::vector<p4est_locidx_t> bc_index;
+  my_p4est_interpolation_faces_t interp_dxyz_hodge(ngbd_n, faces);
+  interp_dxyz_hodge.set_input(dxyz_hodge[dir], dir, 1, face_is_well_defined[dir]);
+
   for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
   {
+    null_space_p[f_idx] = 1;
     p4est_gloidx_t f_idx_g = f_idx + proc_offset[dir][p4est->mpirank];
 
     faces->f2q(f_idx, dir, quad_idx, tree_idx);
@@ -997,14 +996,11 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     double phi_c = interp_phi(x,y);
 #endif
     /* far in the positive domain */
-  #ifdef P4_TO_P8
-    if(phi_c > 2*MAX(dx_min,dy_min,dz_min))
-  #else
-    if(phi_c > 2*MAX(dx_min,dy_min))
-  #endif
+    if(!face_is_well_defined_p[f_idx])
     {
       ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
       rhs_p[f_idx] = 0;
+      null_space_p[f_idx] = 0;
       continue;
     }
 
@@ -1053,9 +1049,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       matrix_has_nullspace[dir] = false;
       ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-      rhs_p[f_idx] = bc[dir].wallValue(x,y,z);
+      rhs_p[f_idx] = bc[dir].wallValue(x,y,z) + interp_dxyz_hodge(x,y,z);
 #else
-      rhs_p[f_idx] = bc[dir].wallValue(x,y);
+      rhs_p[f_idx] = bc[dir].wallValue(x,y) + interp_dxyz_hodge(x,y);
 #endif
       continue;
     }
@@ -1069,9 +1065,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       matrix_has_nullspace[dir] = false;
       ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-      rhs_p[f_idx] = bc[dir].wallValue(x,y,z);
+      rhs_p[f_idx] = bc[dir].wallValue(x,y,z) + interp_dxyz_hodge(x,y,z);
 #else
-      rhs_p[f_idx] = bc[dir].wallValue(x,y);
+      rhs_p[f_idx] = bc[dir].wallValue(x,y) + interp_dxyz_hodge(x,y);
 #endif
       continue;
     }
@@ -1116,9 +1112,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
      * close to interface and dirichlet => finite differences
      */
 #ifdef P4_TO_P8
-    if(bc[dir].interfaceType()==DIRICHLET && phi_c>-2*MAX(dx_min,dy_min,dz_min))
+    if(bc[dir].interfaceType()==DIRICHLET && phi_c>-2*MAX(dxyz[0],dxyz[1],dxyz[2]))
 #else
-    if(bc[dir].interfaceType()==DIRICHLET && phi_c>-2*MAX(dx_min,dy_min))
+    if(bc[dir].interfaceType()==DIRICHLET && phi_c>-2*MAX(dxyz[0],dxyz[1]))
 #endif
     {
       if(fabs(phi_c) < EPS)
@@ -1126,10 +1122,16 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
+        double xyz_[] = {x, y, z};
         rhs_p[f_idx] = bc[dir].interfaceValue(x,y,z);
+        interp_dxyz_hodge.add_point(bc_index.size(), xyz_);
 #else
+        double xyz_[] = {x, y};
         rhs_p[f_idx] = bc[dir].interfaceValue(x,y);
+        interp_dxyz_hodge.add_point(bc_index.size(), xyz_);
 #endif
+        bc_index.push_back(f_idx);
+        bc_coeffs.push_back(1);
         matrix_has_nullspace[dir] = false;
         continue;
       }
@@ -1138,22 +1140,23 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       {
         ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
         rhs_p[f_idx] = 0;
+        null_space_p[f_idx] = 0;
         continue;
       }
 
       double phi[P4EST_FACES];
 #ifdef P4_TO_P8
-      phi[dir::f_m00] = interp_phi(x-dx_min, y, z);
-      phi[dir::f_p00] = interp_phi(x+dx_min, y, z);
-      phi[dir::f_0m0] = interp_phi(x, y-dy_min, z);
-      phi[dir::f_0p0] = interp_phi(x, y+dy_min, z);
-      phi[dir::f_00m] = interp_phi(x, y, z-dz_min);
-      phi[dir::f_00p] = interp_phi(x, y, z+dz_min);
+      phi[dir::f_m00] = interp_phi(x-dxyz[0], y, z);
+      phi[dir::f_p00] = interp_phi(x+dxyz[0], y, z);
+      phi[dir::f_0m0] = interp_phi(x, y-dxyz[1], z);
+      phi[dir::f_0p0] = interp_phi(x, y+dxyz[1], z);
+      phi[dir::f_00m] = interp_phi(x, y, z-dxyz[2]);
+      phi[dir::f_00p] = interp_phi(x, y, z+dxyz[2]);
 #else
-      phi[dir::f_m00] = interp_phi(x-dx_min, y);
-      phi[dir::f_p00] = interp_phi(x+dx_min, y);
-      phi[dir::f_0m0] = interp_phi(x, y-dy_min);
-      phi[dir::f_0p0] = interp_phi(x, y+dy_min);
+      phi[dir::f_m00] = interp_phi(x-dxyz[0], y);
+      phi[dir::f_p00] = interp_phi(x+dxyz[0], y);
+      phi[dir::f_0m0] = interp_phi(x, y-dxyz[1]);
+      phi[dir::f_0p0] = interp_phi(x, y+dxyz[1]);
 #endif
 
       bool is_interface = false;
@@ -1178,35 +1181,36 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           matrix_has_nullspace[dir] = false;
 
         double d_[P4EST_FACES];
-        d_[dir::f_m00] = dx_min;
-        d_[dir::f_p00] = dx_min;
-        d_[dir::f_0m0] = dy_min;
-        d_[dir::f_0p0] = dy_min;
+        d_[dir::f_m00] = wall[dir::f_m00] ? x-xyz_min[0] : dxyz[0];
+        d_[dir::f_p00] = wall[dir::f_p00] ? xyz_max[0]-x : dxyz[0];
+        d_[dir::f_0m0] = wall[dir::f_0m0] ? y-xyz_min[1] : dxyz[1];
+        d_[dir::f_0p0] = wall[dir::f_0p0] ? xyz_max[1]-y : dxyz[1];
 #ifdef P4_TO_P8
-        d_[dir::f_00m] = dz_min;
-        d_[dir::f_00p] = dz_min;
+        d_[dir::f_00m] = wall[dir::f_00m] ? z-xyz_min[2] : dxyz[2];
+        d_[dir::f_00p] = wall[dir::f_00p] ? xyz_max[2]-z : dxyz[2];
 #endif
 
+        double theta[P4EST_FACES];
         for(int f=0; f<P4EST_FACES; ++f)
         {
           if(is_interface[f]) {
-            double theta = interface_Location(0, d_[f], phi_c, phi[f]);
-            theta = MAX(EPS, MIN(d_[f], theta));
-            d_[f] = theta;
+            theta[f] = interface_Location(0, d_[f], phi_c, phi[f]);
+            theta[f] = MAX(EPS, MIN(d_[f], theta[f]));
+            d_[f] = theta[f];
             switch(f)
             {
 #ifdef P4_TO_P8
-            case dir::f_m00: val_interface[f] = bc[dir].interfaceValue(x - theta, y, z); break;
-            case dir::f_p00: val_interface[f] = bc[dir].interfaceValue(x + theta, y, z); break;
-            case dir::f_0m0: val_interface[f] = bc[dir].interfaceValue(x, y - theta, z); break;
-            case dir::f_0p0: val_interface[f] = bc[dir].interfaceValue(x, y + theta, z); break;
-            case dir::f_00m: val_interface[f] = bc[dir].interfaceValue(x, y, z - theta); break;
-            case dir::f_00p: val_interface[f] = bc[dir].interfaceValue(x, y, z + theta); break;
+            case dir::f_m00: val_interface[f] = bc[dir].interfaceValue(x - theta[f], y, z); break;
+            case dir::f_p00: val_interface[f] = bc[dir].interfaceValue(x + theta[f], y, z); break;
+            case dir::f_0m0: val_interface[f] = bc[dir].interfaceValue(x, y - theta[f], z); break;
+            case dir::f_0p0: val_interface[f] = bc[dir].interfaceValue(x, y + theta[f], z); break;
+            case dir::f_00m: val_interface[f] = bc[dir].interfaceValue(x, y, z - theta[f]); break;
+            case dir::f_00p: val_interface[f] = bc[dir].interfaceValue(x, y, z + theta[f]); break;
 #else
-            case dir::f_m00: val_interface[f] = bc[dir].interfaceValue(x - theta, y); break;
-            case dir::f_p00: val_interface[f] = bc[dir].interfaceValue(x + theta, y); break;
-            case dir::f_0m0: val_interface[f] = bc[dir].interfaceValue(x, y - theta); break;
-            case dir::f_0p0: val_interface[f] = bc[dir].interfaceValue(x, y + theta); break;
+            case dir::f_m00: val_interface[f] = bc[dir].interfaceValue(x - theta[f], y); break;
+            case dir::f_p00: val_interface[f] = bc[dir].interfaceValue(x + theta[f], y); break;
+            case dir::f_0m0: val_interface[f] = bc[dir].interfaceValue(x, y - theta[f]); break;
+            case dir::f_0p0: val_interface[f] = bc[dir].interfaceValue(x, y + theta[f]); break;
 #endif
             }
 
@@ -1220,7 +1224,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         double diag = diag_add;
         for(int f=0; f<P4EST_FACES; ++f)
         {
-          coeff[f] = -2*mu/d_[f]/(d_[f/2]+d_[f/2+1]);
+          int ff = f%2==0 ? f+1 : f-1;
+          coeff[f] = -2*mu/d_[f]/(d_[f]+d_[ff]);
           diag -= coeff[f];
         }
 
@@ -1242,7 +1247,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         for(int f=0; f<P4EST_FACES; ++f)
         {
           /* this is the cartesian direction for which the linear system is assembled.
-           * the treatment is different, for example x-velocity is ON the x-walls
+           * the treatment is different, for example x-velocity can be ON the x-walls
            */
           if(f/2==dir)
           {
@@ -1256,11 +1261,22 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
                 ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff[f], ADD_VALUES); CHKERRXX(ierr);
               }
               else
-                rhs_p[f_idx] -= coeff[f] * val_interface[f];
+              {
+                rhs_p[f_idx] -= coeff[f] * val_interface[f_op];
+                double xyz_[P4EST_DIM];
+                xyz_[0] = (f_op==dir::f_m00 ? x-theta[f_op] : (f_op==dir::f_p00 ? x+theta[f_op] : x));
+                xyz_[1] = (f_op==dir::f_0m0 ? y-theta[f_op] : (f_op==dir::f_0p0 ? y+theta[f_op] : y));
 #ifdef P4_TO_P8
-              rhs_p[f_idx] -= coeff[f] * (d_[f/2]+d_[f/2+1]) * bc[dir].wallValue(x,y,z);
+                xyz_[2] = (f_op==dir::f_00m ? z-theta[f_op] : (f_op==dir::f_00p ? z+theta[f_op] : z));
+#endif
+                interp_dxyz_hodge.add_point(bc_index.size(),xyz_);
+                bc_index.push_back(f_idx);
+                bc_coeffs.push_back(-coeff[f]);
+              }
+#ifdef P4_TO_P8
+              rhs_p[f_idx] -= coeff[f] * (d_[f]+d_[f_op]) * (bc[dir].wallValue(x,y,z) + interp_dxyz_hodge(x,y,z));
 #else
-              rhs_p[f_idx] -= coeff[f] * (d_[f/2]+d_[f/2+1]) * bc[dir].wallValue(x,y);
+              rhs_p[f_idx] -= coeff[f] * (d_[f]+d_[f_op]) * (bc[dir].wallValue(x,y) + interp_dxyz_hodge(x,y));
 #endif
             }
             else if(!is_interface[f])
@@ -1270,7 +1286,18 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
               ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff[f], ADD_VALUES); CHKERRXX(ierr);
             }
             else
+            {
               rhs_p[f_idx] -= coeff[f]*val_interface[f];
+              double xyz_[P4EST_DIM];
+              xyz_[0] = (f==dir::f_m00 ? x-theta[f] : (f==dir::f_p00 ? x+theta[f] : x));
+              xyz_[1] = (f==dir::f_0m0 ? y-theta[f] : (f==dir::f_0p0 ? y+theta[f] : y));
+#ifdef P4_TO_P8
+              xyz_[2] = (f==dir::f_00m ? z-theta[f] : (f==dir::f_00p ? z+theta[f] : z));
+#endif
+              interp_dxyz_hodge.add_point(bc_index.size(),xyz_);
+              bc_index.push_back(f_idx);
+              bc_coeffs.push_back(-coeff[f]);
+            }
           }
           else /* if the direction f is not the direction in which the linear system is being assembled */
           {
@@ -1282,45 +1309,45 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
               {
 #ifdef P4_TO_P8
               case dir::f_m00:
-                bc_w_type = bc[dir].wallType(xmin,y,z);
-                bc_w_value = bc[dir].wallValue(xmin,y,z);
+                bc_w_type = bc[dir].wallType(xyz_min[0],y,z);
+                bc_w_value = bc[dir].wallValue(xyz_min[0],y,z) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(xyz_min[0],y,z) : 0);
                 break;
               case dir::f_p00:
-                bc_w_type = bc[dir].wallType(xmax,y,z);
-                bc_w_value = bc[dir].wallValue(xmax,y,z);
+                bc_w_type = bc[dir].wallType(xyz_max[0],y,z);
+                bc_w_value = bc[dir].wallValue(xyz_max[0],y,z) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(xyz_max[0],y,z) : 0);
                 break;
               case dir::f_0m0:
-                bc_w_type = bc[dir].wallType(x,ymin,z);
-                bc_w_value = bc[dir].wallValue(x,ymin,z);
+                bc_w_type = bc[dir].wallType(x,xyz_min[1],z);
+                bc_w_value = bc[dir].wallValue(x,xyz_min[1],z) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,xyz_min[1],z) : 0);
                 break;
               case dir::f_0p0:
-                bc_w_type = bc[dir].wallType(x,ymax,z);
-                bc_w_value = bc[dir].wallValue(x,ymax,z);
+                bc_w_type = bc[dir].wallType(x,xyz_max[1],z);
+                bc_w_value = bc[dir].wallValue(x,xyz_max[1],z) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,xyz_max[1],z) : 0);
                 break;
               case dir::f_00m:
-                bc_w_type = bc[dir].wallType(x,y,zmin);
-                bc_w_value = bc[dir].wallValue(x,y,zmin);
+                bc_w_type = bc[dir].wallType(x,y,xyz_min[2]);
+                bc_w_value = bc[dir].wallValue(x,y,xyz_min[2]) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,y,xyz_min[2]) : 0);
                 break;
               case dir::f_00p:
-                bc_w_type = bc[dir].wallType(x,y,zmax);
-                bc_w_value = bc[dir].wallValue(x,y,zmax);
+                bc_w_type = bc[dir].wallType(x,y,xyz_max[2]);
+                bc_w_value = bc[dir].wallValue(x,y,xyz_max[2]) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,y,xyz_max[2]) : 0);
                 break;
 #else
               case dir::f_m00:
-                bc_w_type = bc[dir].wallType(xmin,y);
-                bc_w_value = bc[dir].wallValue(xmin,y);
+                bc_w_type = bc[dir].wallType(xyz_min[0],y);
+                bc_w_value = bc[dir].wallValue(xyz_min[0],y) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(xyz_min[0],y) : 0);
                 break;
               case dir::f_p00:
-                bc_w_type = bc[dir].wallType(xmax,y);
-                bc_w_value = bc[dir].wallValue(xmax,y);
+                bc_w_type = bc[dir].wallType(xyz_max[0],y);
+                bc_w_value = bc[dir].wallValue(xyz_max[0],y) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(xyz_max[0],y) : 0);
                 break;
               case dir::f_0m0:
-                bc_w_type = bc[dir].wallType(x,ymin);
-                bc_w_value = bc[dir].wallValue(x,ymin);
+                bc_w_type = bc[dir].wallType(x,xyz_min[1]);
+                bc_w_value = bc[dir].wallValue(x,xyz_min[1]) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,xyz_min[1]) : 0);
                 break;
               case dir::f_0p0:
-                bc_w_type = bc[dir].wallType(x,ymax);
-                bc_w_value = bc[dir].wallValue(x,ymax);
+                bc_w_type = bc[dir].wallType(x,xyz_max[1]);
+                bc_w_value = bc[dir].wallValue(x,xyz_max[1]) + (bc_w_type==DIRICHLET ? interp_dxyz_hodge(x,xyz_max[1]) : 0);
                 break;
 #endif
               }
@@ -1352,7 +1379,19 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
               else                 f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_m), dir);
               ierr = MatSetValue(A, f_idx_g, f_tmp_g, coeff[f], ADD_VALUES); CHKERRXX(ierr);
             }
-            else rhs_p[f_idx] -= coeff[f]*val_interface[f];
+            else
+            {
+              rhs_p[f_idx] -= coeff[f]*val_interface[f];
+              double xyz_[P4EST_DIM];
+              xyz_[0] = (f==dir::f_m00 ? x-theta[f] : (f==dir::f_p00 ? x+theta[f] : x));
+              xyz_[1] = (f==dir::f_0m0 ? y-theta[f] : (f==dir::f_0p0 ? y+theta[f] : y));
+#ifdef P4_TO_P8
+              xyz_[2] = (f==dir::f_00m ? z-theta[f] : (f==dir::f_00p ? z+theta[f] : z));
+#endif
+              interp_dxyz_hodge.add_point(bc_index.size(),xyz_);
+              bc_index.push_back(f_idx);
+              bc_coeffs.push_back(-coeff[f]);
+            }
           }
         } /* end of going through P4EST_FACES to assemble the system with finite differences */
 
@@ -1366,18 +1405,18 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
      * since cutting the voronoi cells in 3D with voro++ to have a nice level set is a nightmare ...
      * In 2D, cutting the partition is easy ... so Neumann interface is handled in the bulk case
      */
-    if(bc[dir].interfaceType()==NEUMANN && phi_c>-2*MAX(dx_min, dy_min, dz_min))
+    if(bc[dir].interfaceType()==NEUMANN && phi_c>-2*MAX(dxyz[0], dxyz[1], dxyz[2]))
     {
       Cube3 c3;
       OctValue op;
       OctValue iv;
 
-      c3.x0 = (dir==dir::x && qm_idx==-1) ? x : x-dx_min/2;
-      c3.x1 = (dir==dir::x && qp_idx==-1) ? x : x+dx_min/2;
-      c3.y0 = (dir==dir::y && qm_idx==-1) ? y : y-dy_min/2;
-      c3.y1 = (dir==dir::y && qp_idx==-1) ? y : y+dy_min/2;
-      c3.z0 = (dir==dir::z && qm_idx==-1) ? z : z-dz_min/2;
-      c3.z1 = (dir==dir::z && qp_idx==-1) ? z : z+dz_min/2;
+      c3.x0 = (dir==dir::x && qm_idx==-1) ? x : x-dxyz[0]/2;
+      c3.x1 = (dir==dir::x && qp_idx==-1) ? x : x+dxyz[0]/2;
+      c3.y0 = (dir==dir::y && qm_idx==-1) ? y : y-dxyz[1]/2;
+      c3.y1 = (dir==dir::y && qp_idx==-1) ? y : y+dxyz[1]/2;
+      c3.z0 = (dir==dir::z && qm_idx==-1) ? z : z-dxyz[2]/2;
+      c3.z1 = (dir==dir::z && qp_idx==-1) ? z : z+dxyz[2]/2;
 
       iv.val000 = bc[dir].interfaceValue(c3.x0, c3.y0, c3.z0);
       iv.val001 = bc[dir].interfaceValue(c3.x0, c3.y0, c3.z1);
@@ -1409,6 +1448,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       {
         ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
         rhs_p[f_idx] = 0;
+        null_space_p[f_idx] = 0;
         continue;
       }
 
@@ -1433,7 +1473,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         double s_m00 = c2.area_In_Negative_Domain(qp);
 
         if(wall[dir::f_m00])
-          rhs_p[f_idx] += mu * s_m00 * bc[dir].wallValue(xmin, y, z);
+          rhs_p[f_idx] += mu * s_m00 * bc[dir].wallValue(xyz_min[0], y, z);
         else
         {
           p4est_gloidx_t f_tmp_g;
@@ -1446,8 +1486,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
             if(quad_idx==qm_idx) f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p), dir);
             else                 f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_m), dir);
           }
-          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_m00/dx_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_m00/dx_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_m00/dxyz[0], ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_m00/dxyz[0], ADD_VALUES); CHKERRXX(ierr);
         }
 
         /* p00 */
@@ -1459,7 +1499,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         double s_p00 = c2.area_In_Negative_Domain(qp);
 
         if(wall[dir::f_p00])
-          rhs_p[f_idx] += mu * s_p00 * bc[dir].wallValue(xmax, y, z);
+          rhs_p[f_idx] += mu * s_p00 * bc[dir].wallValue(xyz_max[0], y, z);
         else
         {
           p4est_gloidx_t f_tmp_g;
@@ -1472,8 +1512,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
             if(quad_idx==qm_idx) f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p), dir);
             else                 f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_m), dir);
           }
-          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_p00/dx_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_p00/dx_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_p00/dxyz[0], ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_p00/dxyz[0], ADD_VALUES); CHKERRXX(ierr);
         }
 
 
@@ -1488,7 +1528,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         double s_0m0 = c2.area_In_Negative_Domain(qp);
 
         if(wall[dir::f_0m0])
-          rhs_p[f_idx] += mu * s_0m0 * bc[dir].wallValue(x, ymin, z);
+          rhs_p[f_idx] += mu * s_0m0 * bc[dir].wallValue(x, xyz_min[1], z);
         else
         {
           p4est_gloidx_t f_tmp_g;
@@ -1501,8 +1541,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
             if(quad_idx==qm_idx) f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p), dir);
             else                 f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_m), dir);
           }
-          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_0m0/dy_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_0m0/dy_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_0m0/dxyz[1], ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_0m0/dxyz[1], ADD_VALUES); CHKERRXX(ierr);
         }
 
 
@@ -1515,7 +1555,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         double s_0p0 = c2.area_In_Negative_Domain(qp);
 
         if(wall[dir::f_0p0])
-          rhs_p[f_idx] += mu * s_0p0 * bc[dir].wallValue(x, ymax, z);
+          rhs_p[f_idx] += mu * s_0p0 * bc[dir].wallValue(x, xyz_max[1], z);
         else
         {
           p4est_gloidx_t f_tmp_g;
@@ -1528,8 +1568,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
             if(quad_idx==qm_idx) f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p), dir);
             else                 f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_m), dir);
           }
-          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_0p0/dy_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_0p0/dy_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_0p0/dxyz[1], ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_0p0/dxyz[1], ADD_VALUES); CHKERRXX(ierr);
         }
 
 
@@ -1544,7 +1584,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         double s_00m = c2.area_In_Negative_Domain(qp);
 
         if(wall[dir::f_00m])
-          rhs_p[f_idx] += mu * s_00m * bc[dir].wallValue(x, y, zmin);
+          rhs_p[f_idx] += mu * s_00m * bc[dir].wallValue(x, y, xyz_min[2]);
         else
         {
           p4est_gloidx_t f_tmp_g;
@@ -1557,8 +1597,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
             if(quad_idx==qm_idx) f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p), dir);
             else                 f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_m), dir);
           }
-          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_00m/dz_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_00m/dz_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_00m/dxyz[2], ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_00m/dxyz[2], ADD_VALUES); CHKERRXX(ierr);
         }
 
 
@@ -1571,7 +1611,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         double s_00p = c2.area_In_Negative_Domain(qp);
 
         if(wall[dir::f_00p])
-          rhs_p[f_idx] += mu * s_00p * bc[dir].wallValue(x, y, zmax);
+          rhs_p[f_idx] += mu * s_00p * bc[dir].wallValue(x, y, xyz_max[2]);
         else
         {
           p4est_gloidx_t f_tmp_g;
@@ -1584,8 +1624,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
             if(quad_idx==qm_idx) f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p), dir);
             else                 f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_m), dir);
           }
-          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_00p/dz_min, ADD_VALUES); CHKERRXX(ierr);
-          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_00p/dz_min, ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s_00p/dxyz[2], ADD_VALUES); CHKERRXX(ierr);
+          ierr = MatSetValue(A, f_idx_g, f_tmp_g,-mu*s_00p/dxyz[2], ADD_VALUES); CHKERRXX(ierr);
         }
 
         continue;
@@ -1604,6 +1644,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     {
       ierr = MatSetValue(A, f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr);
       rhs_p[f_idx] = 0;
+      null_space_p[f_idx] = 0;
       continue;
     }
 #endif
@@ -1629,17 +1670,17 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     switch(dir)
     {
     case dir::x:
-      if(fabs(x-xmin)<EPS) x_pert = xmin+2*EPS;
-      if(fabs(x-xmax)<EPS) x_pert = xmax-2*EPS;
+      if(fabs(x-xyz_min[0])<EPS) x_pert = xyz_min[0]+2*EPS;
+      if(fabs(x-xyz_max[0])<EPS) x_pert = xyz_max[0]-2*EPS;
       break;
     case dir::y:
-      if(fabs(y-ymin)<EPS) y_pert = ymin+2*EPS;
-      if(fabs(y-ymax)<EPS) y_pert = ymax-2*EPS;
+      if(fabs(y-xyz_min[1])<EPS) y_pert = xyz_min[1]+2*EPS;
+      if(fabs(y-xyz_max[1])<EPS) y_pert = xyz_max[1]-2*EPS;
       break;
 #ifdef P4_TO_P8
     case dir::z:
-      if(fabs(z-zmin)<EPS) z_pert = zmin+2*EPS;
-      if(fabs(z-zmax)<EPS) z_pert = zmax-2*EPS;
+      if(fabs(z-xyz_min[2])<EPS) z_pert = xyz_min[2]+2*EPS;
+      if(fabs(z-xyz_max[2])<EPS) z_pert = xyz_max[2]-2*EPS;
       break;
 #endif
     }
@@ -1660,9 +1701,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       {
       case WALL_m00:
 #ifdef P4_TO_P8
-        switch(bc[dir].wallType(xmin,y_pert,z_pert))
+        switch(bc[dir].wallType(xyz_min[0],y_pert,z_pert))
 #else
-        switch(bc[dir].wallType(xmin,y_pert))
+        switch(bc[dir].wallType(xyz_min[0],y_pert))
 #endif
         {
         case DIRICHLET:
@@ -1672,16 +1713,16 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xmin,y_pert,z) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(xyz_min[0],y_pert,z_pert) + interp_dxyz_hodge(xyz_min[0],y_pert,z_pert)) / d;
 #else
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xmin,y_pert) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(xyz_min[0],y_pert) + interp_dxyz_hodge(xyz_min[0],y_pert)) / d;
 #endif
           break;
         case NEUMANN:
 #ifdef P4_TO_P8
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xmin,y_pert,z_pert);
+          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xyz_min[0],y_pert,z_pert);
 #else
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xmin,y_pert);
+          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xyz_min[0],y_pert);
 #endif
           break;
         default:
@@ -1693,9 +1734,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 
       case WALL_p00:
 #ifdef P4_TO_P8
-        switch(bc[dir].wallType(xmax,y_pert,z_pert))
+        switch(bc[dir].wallType(xyz_max[0],y_pert,z_pert))
 #else
-        switch(bc[dir].wallType(xmax,y_pert))
+        switch(bc[dir].wallType(xyz_max[0],y_pert))
 #endif
         {
         case DIRICHLET:
@@ -1705,16 +1746,16 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xmax,y_pert,z_pert) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(xyz_max[0],y_pert,z_pert) + interp_dxyz_hodge(xyz_max[0],y_pert,z_pert)) / d;
 #else
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xmax,y_pert) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(xyz_max[0],y_pert) + interp_dxyz_hodge(xyz_max[0],y_pert)) / d;
 #endif
           break;
         case NEUMANN:
 #ifdef P4_TO_P8
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xmax,y_pert,z_pert);
+          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xyz_max[0],y_pert,z_pert);
 #else
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xmax,y_pert);
+          rhs_p[f_idx] += mu*s*bc[dir].wallValue(xyz_max[0],y_pert);
 #endif
           break;
         default:
@@ -1724,9 +1765,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 
       case WALL_0m0:
 #ifdef P4_TO_P8
-        switch(bc[dir].wallType(x_pert,ymin,z_pert))
+        switch(bc[dir].wallType(x_pert,xyz_min[1],z_pert))
 #else
-        switch(bc[dir].wallType(x_pert,ymin))
+        switch(bc[dir].wallType(x_pert,xyz_min[1]))
 #endif
         {
         case DIRICHLET:
@@ -1736,16 +1777,16 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,ymin,z_pert) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(x_pert,xyz_min[1],z_pert) + interp_dxyz_hodge(x_pert,xyz_min[1],z_pert)) / d;
 #else
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,ymin) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(x_pert,xyz_min[1]) + interp_dxyz_hodge(x_pert,xyz_min[1])) / d;
 #endif
           break;
         case NEUMANN:
 #ifdef P4_TO_P8
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,ymin,z_pert);
+          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,xyz_min[1],z_pert);
 #else
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,ymin);
+          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,xyz_min[1]);
 #endif
           break;
         default:
@@ -1755,9 +1796,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 
       case WALL_0p0:
 #ifdef P4_TO_P8
-        switch(bc[dir].wallType(x_pert,ymax,z_pert))
+        switch(bc[dir].wallType(x_pert,xyz_max[1],z_pert))
 #else
-        switch(bc[dir].wallType(x_pert,ymax))
+        switch(bc[dir].wallType(x_pert,xyz_max[1]))
 #endif
         {
         case DIRICHLET:
@@ -1767,16 +1808,16 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,ymax,z_pert) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(x_pert,xyz_max[1],z_pert) + interp_dxyz_hodge(x_pert,xyz_max[1],z_pert)) / d;
 #else
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,ymax) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(x_pert,xyz_max[1]) + interp_dxyz_hodge(x_pert,xyz_max[1])) / d;
 #endif
           break;
         case NEUMANN:
 #ifdef P4_TO_P8
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,ymax,z_pert);
+          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,xyz_max[1],z_pert);
 #else
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,ymax);
+          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,xyz_max[1]);
 #endif
           break;
         default:
@@ -1786,7 +1827,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 
 #ifdef P4_TO_P8
       case WALL_00m:
-        switch(bc[dir].wallType(x_pert,y_pert,zmin))
+        switch(bc[dir].wallType(x_pert,y_pert,xyz_min[2]))
         {
         case DIRICHLET:
           if(dir==dir::z)
@@ -1794,10 +1835,10 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,y_pert,zmin) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(x_pert,y_pert,xyz_min[2]) + interp_dxyz_hodge(x_pert,y_pert,xyz_min[2])) / d;
           break;
         case NEUMANN:
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,y_pert,zmin);
+          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,y_pert,xyz_min[2]);
           break;
         default:
           throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
@@ -1805,7 +1846,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         break;
 
       case WALL_00p:
-        switch(bc[dir].wallType(x_pert,y,zmax))
+        switch(bc[dir].wallType(x_pert,y,xyz_max[2]))
         {
         case DIRICHLET:
           if(dir==dir::z)
@@ -1813,11 +1854,11 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           matrix_has_nullspace[dir] = false;
           d /= 2;
           ierr = MatSetValue(A, f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,y_pert,zmax) / d;
+          rhs_p[f_idx] += mu*s*(bc[dir].wallValue(x_pert,y_pert,xyz_max[2]) + interp_dxyz_hodge(x_pert,y_pert,xyz_max[2])) / d;
           break;
         case NEUMANN:
           /* nothing to do for the matrix */
-          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,y_pert,zmax);
+          rhs_p[f_idx] += mu*s*bc[dir].wallValue(x_pert,y_pert,xyz_max[2]);
           break;
         default:
           throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
@@ -1851,23 +1892,65 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     }
   }
 
+  ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+
+  /* complete the right hand side with correct boundary condition: bc_v + grad(dxyz_hodge) */
+  if(bc[dir].interfaceType()==DIRICHLET)
+  {
+    std::vector<double> bc_val(bc_index.size());
+    interp_dxyz_hodge.interpolate(bc_val.data());
+    interp_dxyz_hodge.clear();
+    for(unsigned int n=0; n<bc_index.size(); ++n)
+      rhs_p[bc_index[n]] += bc_coeffs[n]*bc_val[n];
+    bc_val.clear();
+    bc_index.clear();
+    bc_coeffs.clear();
+  }
+
+  ierr = VecRestoreArray(null_space, &null_space_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
 
   /* Assemble the matrix */
   ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
-  ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+  ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+
+
+//  if(dir==1)
+//  {
+//    PetscViewer view;
+//    char name[1000];
+//    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/mat_p4est_%d.m", p4est->mpisize);
+//    ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
+//    ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//    ierr = MatView(A, view); CHKERRXX(ierr);
+
+//    sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/rhs_p4est_%d.m", p4est->mpisize);
+//    ierr = PetscViewerASCIIOpen(p4est->mpicomm, name, &view); CHKERRXX(ierr);
+//    ierr = PetscViewerSetFormat(view, PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+//    VecView(rhs[dir], view);
+
+//    PetscViewerSetFormat(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_ASCII_MATLAB);
+//    MatView(A, PETSC_VIEWER_STDOUT_WORLD);
+//    PetscViewerSetFormat(PETSC_VIEWER_STDOUT_WORLD, PETSC_VIEWER_ASCII_MATLAB);
+//    VecView(rhs[dir], PETSC_VIEWER_STDOUT_WORLD);
+//  }
 
   /* take care of the nullspace if needed */
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace[dir], 1, MPI_INT, MPI_LAND, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   if(matrix_has_nullspace[dir])
   {
-    if(A_null_space == PETSC_NULL)
-    {
-      ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
-    }
+    ierr = VecGhostUpdateBegin(null_space, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (null_space, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    double norm;
+    ierr = VecNormalize(null_space, &norm); CHKERRXX(ierr);
+
+    ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_FALSE, 1, &null_space, &A_null_space); CHKERRXX(ierr);
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
     ierr = MatNullSpaceRemove(A_null_space, rhs[dir], NULL); CHKERRXX(ierr);
+    ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr);
   }
+  ierr = VecDestroy(null_space); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
 }
@@ -1883,7 +1966,8 @@ void my_p4est_poisson_faces_t::print_partition_VTK(const char *file)
   else
   {
 #ifdef P4_TO_P8
-    Voronoi3D::print_VTK_Format(voro, file, xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
+    bool periodic[] = {0, 0, 0};
+    Voronoi3D::print_VTK_Format(voro, file, xyz_min, xyz_max, periodic);
 #else
     Voronoi2D::print_VTK_Format(voro, file);
 #endif

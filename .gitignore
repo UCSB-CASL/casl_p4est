@@ -8,8 +8,9 @@
 *.bin
 *.exe
 *.pro
-*.pro.user
-*.creator.user
+*.pro.user*
+*.creator.user*
+CMakeLists.txt.user
 *~
 *.vt[uks]
 *.pvt[uks]
@@ -33,11 +34,19 @@
 *.blg
 sync
 .rsync.exclude
+Info.plist
 
 # What directories to ignore
-[Dd]ebug/
-[Rr]elease/
-[Oo]bjs/
-[Pp]roject[s]/
-[Bb]uild/
+*[Dd]ebug*
+*[Rr]elease*
+*[Oo]bjs*
+*[Pp]roject[s]*
+*[Bb]uild*
+*[Xx]code*
+Default/
 
+*.orig
+*_BACKUP_*
+*_BASE_*
+*_LOCAL_*
+*_REMOTE_*

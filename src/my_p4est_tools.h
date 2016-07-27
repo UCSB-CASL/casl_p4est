@@ -42,25 +42,23 @@ extern              "C"
 typedef struct
 {
   int                 nxyztrees[3];
+  double              xyz_min[3], xyz_max[3];
   p4est_topidx_t     *nxyz_to_treeid;
 }
 my_p4est_brick_t;
 
-/** Create a brick connectivity and tree lookup structure.
- * \param [in] nxtrees  Number of trees in x dimension.
- * \param [in] nytrees  Number of trees in y dimension.
- * \param [in,out] myb  Additional brick information will be populated.
- * \return              The brick connectivity structure.
+/*!
+ * \brief my_p4est_brick_new creates a new connectivity structure based on the brick type
+ * \param n_xyz pointer to an array of type int[P4EST_DIM], setting the number of trees in each direction
+ * \param xyz_min pointer to an array of type double[P4EST_DIM], setting the coordinate of the lower, left, back point
+ * \param xyz_max pointer to an array of type double[P4EST_DIM], setting the coordinate of the upper, right, front point
+ * \param myb pointer to the brick data structure
+ * \return
  */
-#ifdef P4_TO_P8
-p4est_connectivity_t *my_p4est_brick_new (int nxtrees, int nytrees, int nztrees,
-                                          double xmin, double xmax, double ymin, double ymax, double zmin, double zmax,
-                                          my_p4est_brick_t * myb);
-#else
-p4est_connectivity_t *my_p4est_brick_new (int nxtrees, int nytrees,
-                                          double xmin, double xmax, double ymin, double ymax,
-                                          my_p4est_brick_t * myb);
-#endif
+p4est_connectivity_t *my_p4est_brick_new (const int* n_xyz,
+                                          const double* xyz_min, const double* xyz_max,
+                                          my_p4est_brick_t * myb,
+                                          const int* periodic);
 
 /** Free a brick connectivity and tree lookup structure.
  * \param [in] conn     The connectivity will be destroyed.

@@ -4,7 +4,7 @@
 #include "my_p4est_interpolation_nodes.h"
 #endif
 
-#include "CASL_math.h"
+#include "math.h"
 
 
 my_p4est_interpolation_nodes_t::my_p4est_interpolation_nodes_t(const my_p4est_node_neighbors_t* ngbd_n)
@@ -66,8 +66,8 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
 
   // clip to bounding box
   for (short i=0; i<P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
+    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
+    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
   }
   
   const double *Fi_p;
@@ -96,7 +96,7 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
   std::vector<p4est_quadrant_t> remote_matches;
   int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
   
-  if (rank_found == p4est->mpirank || (rank_found!=-1 && method==linear)) { // local quadrant
+  if (rank_found == p4est->mpirank || (rank_found!=-1 && (method==linear || use_precomputed_derivatives) )) { // local quadrant
     p4est_locidx_t quad_idx;
     if(rank_found==p4est->mpirank)
     {
@@ -126,9 +126,10 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
 #endif          
         }
       } else {
+        quad_neighbor_nodes_of_node_t qnnn;
         for (short j = 0; j<P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
-          const quad_neighbor_nodes_of_node_t& qnnn = ngbd_n->get_neighbors(node_idx);
+          ngbd_n->get_neighbors(node_idx, qnnn);
 
           fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
           fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
@@ -150,13 +151,24 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
 #endif
     }
 
+    double xyz_q[P4EST_DIM];
+    quad_xyz_fr_q(quad_idx, best_match.p.piggy3.which_tree, p4est, ghost, xyz_q);
+
+    double xyz_p[P4EST_DIM];
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      xyz_p[dir] = xyz[dir];
+      if     (is_periodic(p4est,dir) && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
+      else if(is_periodic(p4est,dir) && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
+    }
+
     double value=0;
     if (method == linear) {
-      value = linear_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, xyz);
+      value = linear_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, xyz_p);
     } else if (method == quadratic) {
-      value = quadratic_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz);
+      value = quadratic_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p);
     } else if (method == quadratic_non_oscillatory) {
-      value = quadratic_non_oscillatory_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz);
+      value = quadratic_non_oscillatory_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p);
     }
 
     return value;
@@ -172,16 +184,23 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
     }
 
     std::ostringstream oss;
-    oss << "[ERROR]: Point (" << x << "," << y <<
+    oss << "\n[ERROR]: Point (" << x << "," << y <<
        #ifdef P4_TO_P8
            "," << z <<
        #endif
-           ") is not locally owned by processor. "
-           << p4est->mpirank;
+           ") is not locally owned by processor "
+        << p4est->mpirank << ". ";
     if (rank_found != -1) {
-      oss << "Remote owner's rank = " << rank_found << std::endl;
+      oss << "Only processor " << rank_found
+          << " can perform the interpolation locally. ";
+      if (method != linear) {
+        oss << "If this point is on the processor boundary, or within the ghost layer, "
+               "try using 'linear' interpolation or alternatively precompute the "
+               "second derivatives if using 'quadratic'' interpolations." << std::endl;
+      }
     } else {
-      oss << "Possible remote owners are = ";
+      oss << "Could not find appropriate remote owner. "
+             "Possible matches are = ";
       for (size_t i = 0; i<remote_matches.size() - 1; i++) {
         oss << remote_matches[i].p.piggy1.owner_rank << ", ";
       }
@@ -208,7 +227,19 @@ double my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad,
     f[j] = Fi_p[node_idx];
   }
 
-  // compute derivatives
+  /* enforce periodicity if necessary */
+  double xyz_q[P4EST_DIM];
+  quad_xyz_fr_q(quad_idx, quad.p.piggy3.which_tree, p4est, ghost, xyz_q);
+
+  double xyz_p[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    xyz_p[dir] = xyz[dir];
+    if     (is_periodic(p4est,dir) && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
+    else if(is_periodic(p4est,dir) && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
+  }
+
+  /* compute derivatives */
   if (method == quadratic || method == quadratic_non_oscillatory)
   {
     double fdd[P4EST_CHILDREN*P4EST_DIM];
@@ -245,10 +276,11 @@ double my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad,
     }
     else
     {
+      quad_neighbor_nodes_of_node_t qnnn;
       for (short j = 0; j<P4EST_CHILDREN; j++)
       {
         p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
-        const quad_neighbor_nodes_of_node_t& qnnn = ngbd_n->get_neighbors(node_idx);
+        ngbd_n->get_neighbors(node_idx, qnnn);
 
         fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
         fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
@@ -259,10 +291,10 @@ double my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad,
     }
     ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 
-    if(method==quadratic) return quadratic_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz);
-    else  return quadratic_non_oscillatory_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz);
+    if(method==quadratic) return quadratic_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
+    else  return quadratic_non_oscillatory_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
   }
   ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 
-  return linear_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, xyz);
+  return linear_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, xyz_p);
 }

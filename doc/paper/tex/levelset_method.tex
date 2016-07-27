@@ -1,0 +1,25 @@
+%!TEX root = draft.tex
+\section{The level-set method}\label{sec:levelset method}
+The level-set method, introduced in \cite{Osher;Sethian:88:Fronts-Propagating-w}, is an implicit framework for tracking interfaces that undergo complicated topological changes. In this framework, an interface is represented by the zero contour of a higher dimensional function, e.g.\ a curve in two spatial dimensions can be described as $\Gamma = \{(x,y) | \phi(x,y) = 0\}$, where $\phi(x,y)$ is the level-set function. The evolution of the curve under a velocity field $\underline{\mbf{u}}$ is then obtained by solving the level-set equation:
+\be
+\phi_t + \underline{\mbf{u}} \cdot \underline{\nabla} \phi = 0.
+\label{eq:ls}
+\ee
+When the velocity field does not depend on the level-set function itself, equation \eqref{eq:ls} can be solved using the semi-Lagrangian method. An important advantage of the semi-Lagrangian method over the regular finite difference method is its unconditional stability that allows for arbitrarily large time steps. This is particularly important when using adaptive grids since higher grid resolutions translate into impractically small time steps.
+
+In general, an infinite number of level-set functions can describe the same
+zero contour and thus the same interface.
+However, it is desirable to choose a function with the signed distance property
+$|\underline{\nabla} \phi| = 1$. As detailed in section \ref{sec:introduction},
+we solve the pseudo-time transient reinitialization equation
+\cite{Sussman;Smereka;Osher:94:A-Level-Set-Approach,
+Osher;Fedkiw:01:Level-Set-Methods:-A} to achieve this property,
+\be
+\phi_\tau + S(\phi_0)\left(\lvert \underline{\nabla} \phi \rvert - 1\right) = 0,
+\label{eq:reinitialization}
+\ee
+where $\tau$ is a pseudo time step, $\phi_0$ is any level-set function that correctly describes the interface location and $S(\phi_0)$ is an approximation of the sign function. Here, we do not go into the details of the sequential algorithms for solving equations \eqref{eq:ls} and \eqref{eq:reinitialization}.
+Instead, we note that the parallel algorithms presented in section \ref{sec:parallel
+algorithms} are based on the sequential methods presented earlier in
+\cite{Min;Gibou:07:A-second-order-accur} and refer the interested reader to the
+aforementioned articles and references therein for more details.

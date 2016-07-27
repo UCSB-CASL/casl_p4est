@@ -30,7 +30,7 @@ protected:
   const my_p4est_brick_t *myb;
   Vec Fi;
 
-  double xyz_min[3], xyz_max[3];
+  double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
   PetscErrorCode ierr;
   int mpiret;
 

@@ -1,8 +1,8 @@
-#ifndef __SIMPLEX2_H__
-#define __SIMPLEX2_H__
+#ifndef MY_P4EST_SIMPLEX2_H
+#define MY_P4EST_SIMPLEX2_H
 
 #include <src/point2.h>
-#include <src/CASL_math.h>
+#include <src/casl_math.h>
 #include <src/my_p4est_utils.h>
 #include <math.h>
 
@@ -123,4 +123,4 @@ public:
   double integrate_Over_Interface( const CF_2& f, double p0, double p1, double p2);
 };
 
-#endif // __SIMPLEX2_H__
+#endif // MY_P4EST_SIMPLEX2_H

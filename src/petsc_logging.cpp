@@ -17,6 +17,12 @@ PetscLogEvent log_PoissonSolverNodeBasedJump_compute_voronoi_points;
 PetscLogEvent log_PoissonSolverNodeBasedJump_compute_voronoi_cell;
 PetscLogEvent log_PoissonSolverNodeBasedJump_interpolate_to_tree;
 
+PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_matrix_preallocation;
+PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_setup_linear_system;
+PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_rhsvec_setup;
+PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_KSPSolve;
+PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_solve;
+
 // my_p4est_poisson_nodes_t
 PetscLogEvent log_my_p4est_poisson_nodes_matrix_preallocation;
 PetscLogEvent log_my_p4est_poisson_nodes_matrix_setup;
@@ -57,6 +63,7 @@ PetscLogEvent log_my_p4est_semi_lagrangian_advect_from_n_to_np1_2nd_order;
 PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_CF2;
 PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_1st_order;
 PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_2nd_order;
+PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_multiple_phi;
 PetscLogEvent log_my_p4est_semi_lagrangian_grid_gen_iter[P4EST_MAXLEVEL];
 
 // my_p4est_trajectory_of_point
@@ -113,6 +120,7 @@ PetscLogEvent log_my_p4est_node_neighbors_t;
 PetscLogEvent log_my_p4est_node_neighbors_t_dxx_central;
 PetscLogEvent log_my_p4est_node_neighbors_t_dyy_central;
 PetscLogEvent log_my_p4est_node_neighbors_t_dzz_central;
+PetscLogEvent log_my_p4est_node_neighbors_t_1st_derivatives_central;
 PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central;
 PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central_block;
 
@@ -130,6 +138,7 @@ PetscLogEvent log_my_p4est_ghost_expand;
 PetscLogEvent log_my_p4est_refine;
 PetscLogEvent log_my_p4est_coarsen;
 PetscLogEvent log_my_p4est_partition;
+PetscLogEvent log_my_p4est_balance;
 PetscLogEvent log_my_sc_notify;
 PetscLogEvent log_my_sc_notify_allgather;
 
@@ -145,6 +154,12 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::compute_voronoi_points      ", 0, &log_PoissonSolverNodeBasedJump_compute_voronoi_points); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::compute_voronoi_cell        ", 0, &log_PoissonSolverNodeBasedJump_compute_voronoi_cell); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("PoissonSolverNodeBasedJump::interpolate_to_tree         ", 0, &log_PoissonSolverNodeBasedJump_interpolate_to_tree); CHKERRXX(ierr);
+
+  // PoissonSolverNodeBaseJumpExtended
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJumpExt::matrix_preallocation     ", 0, &log_PoissonSolverNodeBasedJumpExtended_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJumpExt::setup_linear_system      ", 0, &log_PoissonSolverNodeBasedJumpExtended_setup_linear_system); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJumpExt::rhsvec_setup             ", 0, &log_PoissonSolverNodeBasedJumpExtended_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("PoissonSolverNodeBasedJumpExt::solve                    ", 0, &log_PoissonSolverNodeBasedJumpExtended_solve); CHKERRXX(ierr);
 
   // my_p4est_poisson_nodes_t
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::matrix_preallocation            ", 0, &log_my_p4est_poisson_nodes_matrix_preallocation); CHKERRXX(ierr);
@@ -185,6 +200,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_CF2            ", 0, &log_my_p4est_semi_lagrangian_update_p4est_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_1st_order      ", 0, &log_my_p4est_semi_lagrangian_update_p4est_1st_order); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_2nd_order      ", 0, &log_my_p4est_semi_lagrangian_update_p4est_2nd_order); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_multiple_phi   ", 0, &log_my_p4est_semi_lagrangian_update_p4est_multiple_phi); CHKERRXX(ierr);
   
 
   // my_p4est_trajectory_of_point
@@ -194,7 +210,7 @@ void register_petsc_logs()
 
 	for (short i = 0; i < P4EST_MAXLEVEL; i++) {
 		char logname [128]; 
-    sprintf(logname,"my_p4est_semi_lagrangian_t::grid_gen_iter_%02d                        ", i);
+    sprintf(logname,"my_p4est_semi_lagrangian_t::grid_gen_iter_%02d            ", i);
     ierr = PetscLogEventRegister(logname, 0, &log_my_p4est_semi_lagrangian_grid_gen_iter[i]); CHKERRXX(ierr);
 	}
   // my_p4est_level_set
@@ -249,6 +265,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::dxx_central                  ", 0, &log_my_p4est_node_neighbors_t_dxx_central); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::dyy_central                  ", 0, &log_my_p4est_node_neighbors_t_dyy_central); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::dzz_central                  ", 0, &log_my_p4est_node_neighbors_t_dzz_central); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::1st_derivatives_cent         ", 0, &log_my_p4est_node_neighbors_t_1st_derivatives_central); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::2nd_derivatives_cent         ", 0, &log_my_p4est_node_neighbors_t_2nd_derivatives_central); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::2nd_derivatives_cent_block   ", 0, &log_my_p4est_node_neighbors_t_2nd_derivatives_central_block); CHKERRXX(ierr);
 
@@ -262,6 +279,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_refine                                         ", 0, &log_my_p4est_refine); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_coarsen                                        ", 0, &log_my_p4est_coarsen); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_partition                                      ", 0, &log_my_p4est_partition); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_balance                                        ", 0, &log_my_p4est_balance); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_sc_notify                                            ", 0, &log_my_sc_notify); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_sc_notify_allgather                                  ", 0, &log_my_sc_notify_allgather); CHKERRXX(ierr);
 }

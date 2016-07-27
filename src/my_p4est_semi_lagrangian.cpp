@@ -11,7 +11,7 @@
 #endif
 
 #include <src/petsc_compatibility.h>
-#include <src/CASL_math.h>
+#include <src/casl_math.h>
 #include <sc_notify.h>
 #include <mpi.h>
 #include <src/ipm_logging.h>
@@ -35,6 +35,7 @@ extern PetscLogEvent log_my_p4est_semi_lagrangian_advect_from_n_to_np1_2nd_order
 extern PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_CF2;
 extern PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_1st_order;
 extern PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_2nd_order;
+extern PetscLogEvent log_my_p4est_semi_lagrangian_update_p4est_multiple_phi;
 extern PetscLogEvent log_my_p4est_semi_lagrangian_grid_gen_iter[P4EST_MAXLEVEL];
 #endif
 #ifndef CASL_LOG_FLOPS
@@ -42,11 +43,10 @@ extern PetscLogEvent log_my_p4est_semi_lagrangian_grid_gen_iter[P4EST_MAXLEVEL];
 #define PetscLogFlops(n) 0
 #endif
 
-my_p4est_semi_lagrangian_t::my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1, p4est_ghost_t **ghost_np1, my_p4est_brick_t *myb, my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1)
+my_p4est_semi_lagrangian_t::my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1, p4est_ghost_t **ghost_np1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1)
   : p_p4est(p4est_np1), p4est(*p4est_np1),
     p_nodes(nodes_np1), nodes(*nodes_np1),
     p_ghost(ghost_np1), ghost(*ghost_np1),
-    myb(myb),
     ngbd_n(ngbd_n),
     ngbd_nm1(ngbd_nm1),
     hierarchy(ngbd_n->hierarchy)
@@ -173,39 +173,56 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt,
                                                       const CF_2 **v,
                                                       #endif
                                                       Vec phi_n, Vec *phi_xx_n,
-                                                      double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1)
+                                                      double *phi_np1)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_advect_from_n_to_np1_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
 
   my_p4est_interpolation_nodes_t interp(ngbd_n);
 
-  for (size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
     double xyz[P4EST_DIM];
-    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+    node_xyz_fr_n(n, p4est, nodes, xyz);
 
     /* find the departure node via backtracing */
+    double xyz_star[] =
+    {
 #ifdef P4_TO_P8
-    double x_star = xyz[0] - 0.5*dt*(*v[0])(xyz[0], xyz[1], xyz[2]);
-    double y_star = xyz[1] - 0.5*dt*(*v[1])(xyz[0], xyz[1], xyz[2]);
-    double z_star = xyz[2] - 0.5*dt*(*v[2])(xyz[0], xyz[1], xyz[2]);
+    xyz[0] - 0.5*dt*(*v[0])(xyz[0], xyz[1], xyz[2]),
+    xyz[1] - 0.5*dt*(*v[1])(xyz[0], xyz[1], xyz[2]),
+    xyz[2] - 0.5*dt*(*v[2])(xyz[0], xyz[1], xyz[2])
 #else
-    double x_star = xyz[0] - 0.5*dt*(*v[0])(xyz[0], xyz[1]);
-    double y_star = xyz[1] - 0.5*dt*(*v[1])(xyz[0], xyz[1]);
+    xyz[0] - 0.5*dt*(*v[0])(xyz[0], xyz[1]),
+    xyz[1] - 0.5*dt*(*v[1])(xyz[0], xyz[1])
 #endif
+    };
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (is_periodic(p4est,dir) && xyz_star[dir]<xyz_min[dir]) xyz_star[dir] += xyz_max[dir]-xyz_min[dir];
+      else if (is_periodic(p4est,dir) && xyz_star[dir]>xyz_max[dir]) xyz_star[dir] -= xyz_max[dir]-xyz_min[dir];
+      else                                                           xyz_star[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_star[dir]));
+    }
 
     double xyz_d[] =
     {
   #ifdef P4_TO_P8
-      xyz[0] - dt*(*v[0])(x_star, y_star, z_star),
-      xyz[1] - dt*(*v[1])(x_star, y_star, z_star),
-      xyz[2] - dt*(*v[2])(x_star, y_star, z_star)
+      xyz[0] - dt*(*v[0])(xyz_star[0], xyz_star[1], xyz_star[2]),
+      xyz[1] - dt*(*v[1])(xyz_star[0], xyz_star[1], xyz_star[2]),
+      xyz[2] - dt*(*v[2])(xyz_star[0], xyz_star[1], xyz_star[2])
   #else
-      xyz[0] - dt*(*v[0])(x_star, y_star),
-      xyz[1] - dt*(*v[1])(x_star, y_star)
+      xyz[0] - dt*(*v[0])(xyz_star[0], xyz_star[1]),
+      xyz[1] - dt*(*v[1])(xyz_star[0], xyz_star[1])
   #endif
     };
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (is_periodic(p4est,dir) && xyz_d[dir]<xyz_min[dir]) xyz_d[dir] += xyz_max[dir]-xyz_min[dir];
+      else if (is_periodic(p4est,dir) && xyz_d[dir]>xyz_max[dir]) xyz_d[dir] -= xyz_max[dir]-xyz_min[dir];
+      else                                                        xyz_d[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_d[dir]));
+    }
 
     /* Buffer the point for interpolation */
     interp.add_point(n, xyz_d);
@@ -223,7 +240,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt,
 
 
 void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **vxx, Vec phi_n, Vec *phi_xx_n,
-                                                      double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1)
+                                                      double *phi_np1)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -232,16 +249,16 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
 
   /* find vnp1 */
   std::vector<double> v_tmp[P4EST_DIM];
-  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
     double xyz[P4EST_DIM];
-    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+    node_xyz_fr_n(n, p4est, nodes, xyz);
     interp.add_point(n, xyz);
   }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    v_tmp[dir].resize(nodes_np1->indep_nodes.elem_count);
+    v_tmp[dir].resize(nodes->indep_nodes.elem_count);
 #ifdef P4_TO_P8
     interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], quadratic);
 #else
@@ -252,17 +269,24 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   interp.clear();
 
   /* now find v_star */
-  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
     /* Find initial xy points */
     double xyz_star[] =
     {
-      node_x_fr_n(n, p4est_np1, nodes_np1) - 0.5*dt*v_tmp[0][n],
-      node_y_fr_n(n, p4est_np1, nodes_np1) - 0.5*dt*v_tmp[1][n]
+      node_x_fr_n(n, p4est, nodes) - 0.5*dt*v_tmp[0][n],
+      node_y_fr_n(n, p4est, nodes) - 0.5*dt*v_tmp[1][n]
   #ifdef P4_TO_P8
-      , node_z_fr_n(n, p4est_np1, nodes_np1) - 0.5*dt*v_tmp[2][n]
+      , node_z_fr_n(n, p4est, nodes) - 0.5*dt*v_tmp[2][n]
   #endif
     };
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (is_periodic(p4est,dir) && xyz_star[dir]<xyz_min[dir]) xyz_star[dir] += xyz_max[dir]-xyz_min[dir];
+      else if (is_periodic(p4est,dir) && xyz_star[dir]>xyz_max[dir]) xyz_star[dir] -= xyz_max[dir]-xyz_min[dir];
+      else                                                           xyz_star[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_star[dir]));
+    }
 
     interp.add_point(n, xyz_star);
   }
@@ -279,16 +303,23 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   interp.clear();
 
   /* finally, find the backtracing value */
-  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
     double xyz_d[] =
     {
-      node_x_fr_n(n, p4est_np1, nodes_np1) - dt*v_tmp[0][n],
-      node_y_fr_n(n, p4est_np1, nodes_np1) - dt*v_tmp[1][n]
+      node_x_fr_n(n, p4est, nodes) - dt*v_tmp[0][n],
+      node_y_fr_n(n, p4est, nodes) - dt*v_tmp[1][n]
   #ifdef P4_TO_P8
-      , node_z_fr_n(n, p4est_np1, nodes_np1) - dt*v_tmp[2][n]
+      , node_z_fr_n(n, p4est, nodes) - dt*v_tmp[2][n]
   #endif
     };
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (is_periodic(p4est,dir) && xyz_d[dir]<xyz_min[dir]) xyz_d[dir] += xyz_max[dir]-xyz_min[dir];
+      else if (is_periodic(p4est,dir) && xyz_d[dir]>xyz_max[dir]) xyz_d[dir] -= xyz_max[dir]-xyz_min[dir];
+      else                                                        xyz_d[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_d[dir]));
+    }
 
     interp.add_point(n, xyz_d);
   }
@@ -308,7 +339,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
                                                       Vec *vnm1, Vec **vxx_nm1,
                                                       Vec *vn  , Vec **vxx_n,
                                                       Vec phi_n, Vec *phi_xx_n,
-                                                      double *phi_np1, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1)
+                                                      double *phi_np1)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_advect_from_n_to_np1_2nd_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -320,16 +351,16 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
   std::vector<double> v_tmp_n  [P4EST_DIM];
 
   /* find the velocity field at time np1 */
-  for (size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
     double xyz[P4EST_DIM];
-    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+    node_xyz_fr_n(n, p4est, nodes, xyz);
     interp_n.add_point(n, xyz);
   }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    v_tmp_n[dir].resize(nodes_np1->indep_nodes.elem_count);
+    v_tmp_n[dir].resize(nodes->indep_nodes.elem_count);
 
 #ifdef P4_TO_P8
     interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], quadratic);
@@ -341,17 +372,24 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
   interp_n.clear();
 
   /* now find x_star */
-  for (size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
     double xyz_star[] =
     {
-      node_x_fr_n(n, p4est_np1, nodes_np1) - .5*dt_n*v_tmp_n[0][n],
-      node_y_fr_n(n, p4est_np1, nodes_np1) - .5*dt_n*v_tmp_n[1][n]
+      node_x_fr_n(n, p4est, nodes) - .5*dt_n*v_tmp_n[0][n],
+      node_y_fr_n(n, p4est, nodes) - .5*dt_n*v_tmp_n[1][n]
   #ifdef P4_TO_P8
       ,
-      node_z_fr_n(n, p4est_np1, nodes_np1) - .5*dt_n*v_tmp_n[2][n]
+      node_z_fr_n(n, p4est, nodes) - .5*dt_n*v_tmp_n[2][n]
   #endif
     };
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (is_periodic(p4est,dir) && xyz_star[dir]<xyz_min[dir]) xyz_star[dir] += xyz_max[dir]-xyz_min[dir];
+      else if (is_periodic(p4est,dir) && xyz_star[dir]>xyz_max[dir]) xyz_star[dir] -= xyz_max[dir]-xyz_min[dir];
+      else                                                  xyz_star[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_star[dir]));
+    }
 
     interp_n  .add_point(n, xyz_star);
     interp_nm1.add_point(n, xyz_star);
@@ -360,7 +398,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
   /* interpolate vnm1 */
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    v_tmp_nm1[dir].resize(nodes_np1->indep_nodes.elem_count);
+    v_tmp_nm1[dir].resize(nodes->indep_nodes.elem_count);
 
 #ifdef P4_TO_P8
     interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], vxx_nm1[dir][2], quadratic);
@@ -382,7 +420,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
 
   /* finally, find the backtracing value */
   /* find the departure node via backtracing */
-  for (size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
     double vx_star = (1 + 0.5*dt_n/dt_nm1)*v_tmp_n[0][n] - 0.5*dt_n/dt_nm1 * v_tmp_nm1[0][n];
     double vy_star = (1 + 0.5*dt_n/dt_nm1)*v_tmp_n[1][n] - 0.5*dt_n/dt_nm1 * v_tmp_nm1[1][n];
@@ -390,17 +428,24 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     double vz_star = (1 + 0.5*dt_n/dt_nm1)*v_tmp_n[2][n] - 0.5*dt_n/dt_nm1 * v_tmp_nm1[2][n];
 #endif
 
-    double xyz_departure[] =
+    double xyz_d[] =
     {
-      node_x_fr_n(n, p4est_np1, nodes_np1) - dt_n*vx_star,
-      node_y_fr_n(n, p4est_np1, nodes_np1) - dt_n*vy_star
+      node_x_fr_n(n, p4est, nodes) - dt_n*vx_star,
+      node_y_fr_n(n, p4est, nodes) - dt_n*vy_star
   #ifdef P4_TO_P8
       ,
-      node_z_fr_n(n, p4est_np1, nodes_np1) - dt_n*vz_star
+      node_z_fr_n(n, p4est, nodes) - dt_n*vz_star
   #endif
     };
 
-    interp_n.add_point(n, xyz_departure);
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      if      (is_periodic(p4est,dir) && xyz_d[dir]<xyz_min[dir]) xyz_d[dir] += xyz_max[dir]-xyz_min[dir];
+      else if (is_periodic(p4est,dir) && xyz_d[dir]>xyz_max[dir]) xyz_d[dir] -= xyz_max[dir]-xyz_min[dir];
+      else                                               xyz_d[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_d[dir]));
+    }
+
+    interp_n.add_point(n, xyz_d);
   }
 
 #ifdef P4_TO_P8
@@ -440,13 +485,12 @@ void my_p4est_semi_lagrangian_t::update_p4est(const CF_2 **v, double dt, Vec &ph
     local_derivatives = true;
   }
 
-  p4est_t       *p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
-  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-  Vec phi_np1;
-  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+  /* save the old splitting criteria information */
+  splitting_criteria_t* sp_old = (splitting_criteria_t*)ngbd_n->p4est->user_pointer;
 
-  splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est->user_pointer;
+  Vec phi_np1;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+
   bool is_grid_changing = true;
 
   int counter = 0;
@@ -457,36 +501,32 @@ void my_p4est_semi_lagrangian_t::update_p4est(const CF_2 **v, double dt, Vec &ph
     double* phi_np1_p;
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
-    advect_from_n_to_np1(dt, v, phi, phi_xx, phi_np1_p, p4est_np1, nodes_np1);
+    advect_from_n_to_np1(dt, v, phi, phi_xx, phi_np1_p);
 
     splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est_np1, nodes_np1, phi_np1_p);
+    is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_p);
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
     if (is_grid_changing) {
-      my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+      my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
       // reset nodes, ghost, and phi
-      p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-      p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+      p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
       ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
-      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
     }
 
     ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
     counter++;
   }
 
-  p4est_np1->user_pointer = p4est->user_pointer;
-
-  /* now that everything is updated, get rid of old stuff and swap them with new ones */
-  p4est_destroy(p4est);       p4est = *p_p4est = p4est_np1;
-  p4est_nodes_destroy(nodes); nodes = *p_nodes = nodes_np1;
-  p4est_ghost_destroy(ghost); ghost = *p_ghost = ghost_np1;
-  hierarchy->update(p4est, ghost);
-  ngbd_n->update(hierarchy, nodes);
+  p4est->user_pointer = p4est->user_pointer;
+  *p_p4est = p4est;
+  *p_nodes = nodes;
+  *p_ghost = ghost;
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
@@ -497,7 +537,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(const CF_2 **v, double dt, Vec &ph
     {
       ierr = VecDestroy(phi_xx[dir]); CHKERRXX(ierr);
     }
-    delete phi_xx;
+    delete[] phi_xx;
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -554,13 +594,12 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     local_derivatives = true;
   }
 
-  p4est_t       *p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
-  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-  Vec phi_np1;
-  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+  /* save the old splitting criteria information */
+  splitting_criteria_t* sp_old = (splitting_criteria_t*)ngbd_n->p4est->user_pointer;
 
-  splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est->user_pointer;
+  Vec phi_np1;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+
   bool is_grid_changing = true;
 
   int counter = 0;
@@ -571,35 +610,32 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     double* phi_np1_p;
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
-    advect_from_n_to_np1(dt, v, vxx, phi, phi_xx,
-                         phi_np1_p, p4est_np1, nodes_np1);
+    advect_from_n_to_np1(dt, v, vxx, phi, phi_xx, phi_np1_p);
 
     splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est_np1, nodes_np1, phi_np1_p);
+    is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_p);
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
     if (is_grid_changing) {
-      my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+      my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
       // reset nodes, ghost, and phi
-      p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-      p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+      p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
       ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
-      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
     }
 
     ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
     counter++;
   }
 
-  p4est_np1->user_pointer = p4est->user_pointer;
-
-  /* now that everything is updated, get rid of old stuff and swap them with new ones */
-  p4est_destroy(p4est);       p4est = *p_p4est = p4est_np1;
-  p4est_nodes_destroy(nodes); nodes = *p_nodes = nodes_np1;
-  p4est_ghost_destroy(ghost); ghost = *p_ghost = ghost_np1;
+  p4est->user_pointer = (void*) sp_old;
+  *p_p4est = p4est;
+  *p_nodes = nodes;
+  *p_ghost = ghost;
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
@@ -610,7 +646,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     {
       ierr = VecDestroy(vxx[dir][dd]); CHKERRXX(ierr);
     }
-    delete vxx[dir];
+    delete[] vxx[dir];
   }
 
   if (local_derivatives)
@@ -619,7 +655,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     {
       ierr = VecDestroy(phi_xx[dir]); CHKERRXX(ierr);
     }
-    delete phi_xx;
+    delete[] phi_xx;
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -683,13 +719,12 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
     local_derivatives = true;
   }
 
-  p4est_t       *p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
-  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-  Vec phi_np1;
-  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+  /* save the old splitting criteria information */
+  splitting_criteria_t* sp_old = (splitting_criteria_t*)ngbd_n->p4est->user_pointer;
 
-  splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est->user_pointer;
+  Vec phi_np1;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+
   bool is_grid_changing = true;
 
   int counter = 0;
@@ -704,34 +739,32 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
                          vnm1, vxx_nm1,
                          vn, vxx_n,
                          phi, phi_xx,
-                         phi_np1_p, p4est_np1, nodes_np1);
+                         phi_np1_p);
 
     splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est_np1, nodes_np1, phi_np1_p);
+    is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_p);
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
     if (is_grid_changing) {
-      my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+      my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
       // reset nodes, ghost, and phi
-      p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-      p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+      p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
       ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
-      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
     }
 
     ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
     counter++;
   }
 
-  p4est_np1->user_pointer = p4est->user_pointer;
-
-  /* now that everything is updated, get rid of old stuff and swap them with new ones */
-  p4est_destroy(p4est);       p4est = *p_p4est = p4est_np1;
-  p4est_nodes_destroy(nodes); nodes = *p_nodes = nodes_np1;
-  p4est_ghost_destroy(ghost); ghost = *p_ghost = ghost_np1;
+  p4est->user_pointer = (void*) sp_old;
+  *p_p4est = p4est;
+  *p_nodes = nodes;
+  *p_ghost = ghost;
 
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
@@ -743,8 +776,8 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
       ierr = VecDestroy(vxx_nm1[dir][dd]); CHKERRXX(ierr);
       ierr = VecDestroy(vxx_n  [dir][dd]); CHKERRXX(ierr);
     }
-    delete vxx_nm1[dir];
-    delete vxx_n  [dir];
+    delete[] vxx_nm1[dir];
+    delete[] vxx_n  [dir];
   }
 
 
@@ -754,8 +787,162 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
     {
       ierr = VecDestroy(phi_xx[dir]); CHKERRXX(ierr);
     }
-    delete phi_xx;
+    delete[] phi_xx;
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_2nd_order, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+
+void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, std::vector<Vec> &phi)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_multiple_phi, 0, 0, 0, 0); CHKERRXX(ierr);
+  for(int i=0; i<P4EST_DIM; ++i)
+    P4EST_ASSERT(v[i].size()==phi.size());
+
+  Vec *vxx[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    vxx[dir] = new Vec[P4EST_DIM];
+    if(dir==0)
+    {
+      for(int dd=0; dd<P4EST_DIM; ++dd)
+      {
+        ierr = VecCreateGhostNodes(ngbd_n->p4est, ngbd_n->nodes, &vxx[dir][dd]); CHKERRXX(ierr);
+      }
+    }
+    else
+    {
+      for(int dd=0; dd<P4EST_DIM; ++dd)
+      {
+        ierr = VecDuplicate(vxx[0][dd], &vxx[dir][dd]); CHKERRXX(ierr);
+      }
+    }
+  }
+
+  Vec phi_xx[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecDuplicate(vxx[0][dir], &phi_xx[dir]); CHKERRXX(ierr);
+  }
+
+  Vec velo[P4EST_DIM];
+
+  /* save the old splitting criteria information */
+  splitting_criteria_t* sp_old = (splitting_criteria_t*)ngbd_n->p4est->user_pointer;
+
+  Vec phi_np1;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+
+  /* update the new forest by advecting each level-set one after the other */
+  for(unsigned int i=0; i<phi.size(); ++i)
+  {
+    /* compute vx_xx, vx_yy */
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      velo[dir] = v[dir][i];
+#ifdef P4_TO_P8
+      ngbd_n->second_derivatives_central(v[dir][i], vxx[dir][0], vxx[dir][1], vxx[dir][2]);
+#else
+      ngbd_n->second_derivatives_central(v[dir][i], vxx[dir][0], vxx[dir][1]);
+#endif
+    }
+
+    /* compute phi_xx and phi_yy */
+#ifdef P4_TO_P8
+    ngbd_n->second_derivatives_central(phi[i], phi_xx[0], phi_xx[1], phi_xx[2]);
+#else
+    ngbd_n->second_derivatives_central(phi[i], phi_xx[0], phi_xx[1]);
+#endif
+
+    bool is_grid_changing = true;
+
+    int counter = 0;
+    while (is_grid_changing) {
+      ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
+
+      // advect from np1 to n to enable refinement
+      double* phi_np1_p;
+      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      advect_from_n_to_np1(dt, velo, vxx, phi[i], phi_xx, phi_np1_p);
+
+      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+      is_grid_changing = sp.refine(p4est, nodes, phi_np1_p);
+
+      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      if (is_grid_changing) {
+        my_p4est_partition(p4est, P4EST_TRUE, NULL);
+
+        // reset nodes, ghost, and phi
+        p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+        p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
+
+        ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+      }
+
+      ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
+      counter++;
+    }
+  }
+
+  p4est->user_pointer = (void*) sp_old;
+  *p_p4est = p4est;
+  *p_nodes = nodes;
+  *p_ghost = ghost;
+
+  /* now update all the new level-sets with their new values */
+  for(unsigned int i=0; i<phi.size(); ++i)
+  {
+    /* compute vx_xx, vx_yy */
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      velo[dir] = v[dir][i];
+#ifdef P4_TO_P8
+      ngbd_n->second_derivatives_central(v[dir][i], vxx[dir][0], vxx[dir][1], vxx[dir][2]);
+#else
+      ngbd_n->second_derivatives_central(v[dir][i], vxx[dir][0], vxx[dir][1]);
+#endif
+    }
+
+    /* compute phi_xx and phi_yy */
+#ifdef P4_TO_P8
+    ngbd_n->second_derivatives_central(phi[i], phi_xx[0], phi_xx[1], phi_xx[2]);
+#else
+    ngbd_n->second_derivatives_central(phi[i], phi_xx[0], phi_xx[1]);
+#endif
+    double* phi_np1_p;
+    Vec tmp;
+    if(i==0) tmp = phi_np1;
+    else   { ierr = VecDuplicate(phi_np1, &tmp); CHKERRXX(ierr); }
+    ierr = VecGetArray(tmp, &phi_np1_p); CHKERRXX(ierr);
+
+    advect_from_n_to_np1(dt, velo, vxx, phi[i], phi_xx, phi_np1_p);
+
+    ierr = VecRestoreArray(tmp, &phi_np1_p); CHKERRXX(ierr);
+
+    ierr = VecDestroy(phi[i]); CHKERRXX(ierr);
+    phi[i] = tmp;
+  }
+
+  p4est->user_pointer = (void*)sp_old;
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    for(int dd=0; dd<P4EST_DIM; ++dd)
+    {
+      ierr = VecDestroy(vxx[dir][dd]); CHKERRXX(ierr);
+    }
+    delete[] vxx[dir];
+  }
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecDestroy(phi_xx[dir]); CHKERRXX(ierr);
+  }
+
+  ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_multiple_phi, 0, 0, 0, 0); CHKERRXX(ierr);
 }

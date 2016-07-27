@@ -4,7 +4,7 @@
 #ifdef P4_TO_P8
 #include <p8est.h>
 #include <p8est_ghost.h>
-#include <src/CASL_math.h>
+#include <src/casl_math.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_cell_neighbors.h>
@@ -12,7 +12,7 @@
 #else
 #include <p4est.h>
 #include <p4est_ghost.h>
-#include <src/CASL_math.h>
+#include <src/casl_math.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_cell_neighbors.h>
@@ -158,12 +158,12 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                p4est_locidx_t node_idx, Vec f, int dir,
-                               Vec face_is_well_defined=NULL, BoundaryConditions3D *bc=NULL);
+                               Vec face_is_well_defined=NULL, int order=2, BoundaryConditions3D *bc=NULL);
 #else
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                p4est_locidx_t node_idx, Vec f, int dir,
-                               Vec face_is_well_defined=NULL, BoundaryConditions2D *bc=NULL);
+                               Vec face_is_well_defined=NULL, int order=2, BoundaryConditions2D *bc=NULL);
 #endif
 
 #endif /* MY_P4EST_FACES_H */

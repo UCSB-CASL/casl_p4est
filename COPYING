@@ -1,3 +1,10 @@
-The files src/my_p4est_* fall under the same license as p4est (i.e., GPL >= 2).
-Anybody who edits these files please place a line here as follows:
- * The code by <name> in src/my_p4est_* is in the public domain.
+Some of the files in `src/` fall under the same license as p4est (i.e., GPL >= 2).
+ 
+* The code by Carsten Burstedde in src/my_p4est_nodes.c is in the public domain.
+* The code by Carsten Burstedde in src/my_p4est_nodes.h is in the public domain.
+* The code by Carsten Burstedde in src/my_p8est_nodes.c is in the public domain.
+* The code by Carsten Burstedde in src/my_p8est_nodes.h is in the public domain.
+* The code by Mohammad Mirzadeh in src/my_p4est_vtk.cpp is in the public domain.
+* The code by Mohammad Mirzadeh in src/my_p4est_vtk.cpp is in the public domain.
+* The code by Mohammad Mirzadeh in src/my_p8est_vtk.h is in the public domain.
+* The code by Mohammad Mirzadeh in src/my_p8est_vtk.h is in the public domain.
