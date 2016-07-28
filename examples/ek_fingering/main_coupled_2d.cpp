@@ -79,8 +79,8 @@ void set_options(int argc, char **argv) {
   cmd.add_option("mode", "perturbation mode used for analysis");
   cmd.add_option("eps", "perturbation amplitude to be added to the interface");
   cmd.add_option("test", "Which test to run?, Options are:\n"
-                         "\tcircle\n"
-                         "\tFastShelley04_Fig12\n");
+      "\tcircle\n"
+      "\tFastShelley04_Fig12\n");
   cmd.add_option("prefix", "set the prefix to be prefixed ot filenames");
   cmd.add_option("bcw", "bc type on the wall");
   cmd.parse(argc, argv);
@@ -160,7 +160,7 @@ void set_options(int argc, char **argv) {
         } else if (options.bcw == DIRICHLET) {
           double f = 1.0/(2*PI*(1-options.A*options.B));
           return (options.A*(*options.I)(t)-(*options.Q)(t))*f*log(r);
-         // return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
+          // return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
         } else {
           throw std::runtime_error("Invalid boundary condition type for the walls");
         }
@@ -183,7 +183,7 @@ void set_options(int argc, char **argv) {
         } else if (options.bcw == DIRICHLET) {
           double f = 1.0/(2*PI*(1-options.A*options.B));
           return (options.B*(*options.Q)(t)-(*options.I)(t))*f*log(r);
-       //   return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
+          //   return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
         } else {
           throw std::runtime_error("Invalid boundary condition type for the walls");
         }
@@ -205,16 +205,16 @@ void set_options(int argc, char **argv) {
     options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 10;
     options.lmin      = 2;
     options.lmax      = 10;
-    options.lip       = 1.2;
-    options.cfl       = 2;
-    options.dtmax     = 5e-3;
+    options.lip       = 10;
+    options.cfl       = 1;
+    options.dtmax     = 1e-3;
     options.dts       = 1e-1;
     options.Ca        = 250;
-    options.M         = 1;
+    options.M         = 1e-2;
     options.S         = 1;
     options.R         = 1;
-    options.A     = 0;
-    options.B      = 0;
+    options.A         = 0;
+    options.B         = 0;
 
 #ifdef P4_TO_P8
     static struct:cf_t{
@@ -299,8 +299,8 @@ void set_options(int argc, char **argv) {
       }
     } potential_bc_value; potential_bc_value.t = 0;
 #endif // #if 1
-#else
-    static struct:cf_t{
+#else // 2D
+    static struct:cf_t {
       double operator()(double x, double y) const  {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
@@ -309,23 +309,29 @@ void set_options(int argc, char **argv) {
       }
     } interface; interface.lip = options.lip;
 
-    static struct:wall_bc_t{
+    static struct:CF_1 {
+      double operator()(double t) const { return 2*PI*(1+t); }
+    } Q;
+
+    static struct:CF_1 {
+      double operator()(double t) const { return SIGN(options.A)*2*PI*(1+t); }
+    } I;
+
+    static struct:wall_bc_t {
       BoundaryConditionType operator()(double, double) const { return options.bcw; }
     } pressure_bc_type;
 
-    static struct:wall_bc_t{
+    static struct:wall_bc_t {
       BoundaryConditionType operator()(double, double) const { return options.bcw; }
     } potential_bc_type;
 
-    static struct:cf_t{
+    static struct:cf_t {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double f     = 1.0/(2*PI*(1-options.A*options.B));
-        // double ur    = (options.alpha*(*options.I)(t)-(*options.Q)(t))/r*f;
-        double ur    = -(*options.Q)(t)/(2*PI*r);    
-    
+
         if (options.bcw == NEUMANN) {
+          double ur = -(*options.Q)(t)/(2*PI*r);
           if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
             return x > 0 ? ur*cos(theta):-ur*cos(theta);
           else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
@@ -333,6 +339,7 @@ void set_options(int argc, char **argv) {
           else
             return 0;
         } else if (options.bcw == DIRICHLET) {
+          double f = 1.0/(2*PI*(1-options.A*options.B));
           return (options.A*(*options.I)(t)-(*options.Q)(t))*f*log(r);
         } else {
           throw std::runtime_error("Invalid boundary condition type for the walls");
@@ -340,15 +347,13 @@ void set_options(int argc, char **argv) {
       }
     } pressure_bc_value; pressure_bc_value.t = 0;
 
-    static struct:cf_t{
+    static struct:cf_t {
       double operator()(double x, double y) const {
         double theta = atan2(y,x);
         double r     = sqrt(SQR(x)+SQR(y));
-        double f     = 1.0/(2*PI*(1-options.A*options.B));
-        // double ur    = (options.beta*(*options.Q)(t)-(*options.I)(t))/r*f;
-        double ur    = -(*options.I)(t)/(2*PI*r);
 
         if (options.bcw == NEUMANN) {
+          double ur = -(*options.I)(t)/(2*PI*r);
           if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
             return x > 0 ? ur*cos(theta):-ur*cos(theta);
           else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
@@ -356,20 +361,15 @@ void set_options(int argc, char **argv) {
           else
             return 0;
         } else if (options.bcw == DIRICHLET) {
+          double f = 1.0/(2*PI*(1-options.A*options.B));
           return (options.B*(*options.Q)(t)-(*options.I)(t))*f*log(r);
         } else {
           throw std::runtime_error("Invalid boundary condition type for the walls");
         }
       }
     } potential_bc_value; potential_bc_value.t = 0;
-#endif // P4_TO_P8
-    static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
-    } Q;
 
-    static struct:CF_1{
-      double operator()(double t) const { return SIGN(options.A)*(1+t); }
-    } I;
+#endif // P4_TO_P8
 
     // set parameters specific to this test
     options.Q                  = &Q;
@@ -430,7 +430,7 @@ int main(int argc, char** argv) {
          S = options.S;
   double F = (M*((1-M)*(1+R)+2*A*(S-1))+fabs(A*B)*(SQR(M)-SQR(S)))/(M*(1+M)*(1+R)-fabs(A*B)*SQR(M+S)),
          G = (M*(1+R)-fabs(A*B)*(M+SQR(S)))/(M*(1+M)*(1+R)-fabs(A*B)*SQR(M+S));
-   
+
   bool c1  = A*B < 1,
        c2  = A*B*SQR(S)/R/M < 1;
 
@@ -444,7 +444,7 @@ int main(int argc, char** argv) {
     oss << " --> F = " << F << " and G = " << G << "\n";
     oss << std::boolalpha << "A*B < 1? " << c1 << " A*B*S^2/R/M < 1? " << c2 << std::endl; 
     PetscPrintf(mpi.comm(), oss.str().c_str());
-    
+
     if (!c1 || !c2)
       throw std::invalid_argument("Thermodynamic relations are not satisfied!");
   }
@@ -490,7 +490,7 @@ int main(int argc, char** argv) {
   solver.set_parameters(parameters);
   solver.set_injection_rates(*options.Q, *options.I);
   solver.set_boundary_conditions(*options.pressure_bc_type, *options.pressure_bc_value,
-                                 *options.potential_bc_type, *options.potential_bc_value);
+      *options.potential_bc_type, *options.potential_bc_value);
 
   const char* outdir = getenv("OUT_DIR");
   if (!outdir)
@@ -498,14 +498,14 @@ int main(int argc, char** argv) {
 
   ostringstream folder;
   folder << outdir << "/coupled/" 
-         << options.test << "/" << options.prefix << "_"
-         << options.bcw << "_F_" << F << "_G_" << G;
+    << options.test << "/" << options.prefix << "_"
+    << options.bcw << "_F_" << F << "_G_" << G;
 
   folder << "_A_" << options.A
-         << "_B_" << options.B
-         << "_M_" << options.M
-         << "_S_" << options.S
-         << "_R_" << options.R;
+    << "_B_" << options.B
+    << "_M_" << options.M
+    << "_S_" << options.S
+    << "_R_" << options.R;
   if (mpi.rank() == 0) system(("mkdir -p " + folder.str()).c_str());
   MPI_Barrier(mpi.comm());
   char vtk_name[FILENAME_MAX];
@@ -519,13 +519,13 @@ int main(int argc, char** argv) {
     VecGetArray(potential[1], &potential_p[1]);
 
     sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), "coupled", P4EST_DIM,
-            0);
+        0);
     PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_TRUE, P4EST_TRUE,
-                           5, 0, vtk_name,
-                           VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "pressure_m",  pressure_p[0],
+        P4EST_TRUE, P4EST_TRUE,
+        5, 0, vtk_name,
+        VTK_POINT_DATA, "phi", phi_p,
+        VTK_POINT_DATA, "pressure_m",  pressure_p[0],
         VTK_POINT_DATA, "pressure_p",  pressure_p[1],
         VTK_POINT_DATA, "potential_m", potential_p[0],
         VTK_POINT_DATA, "potential_p", potential_p[1]);
@@ -537,13 +537,22 @@ int main(int argc, char** argv) {
     VecRestoreArray(potential[1], &potential_p[1]);
   }
 
+  // reinitialize the levelset once at the begining
+  {
+    my_p4est_hierarchy_t h(p4est, ghost, &brick);
+    my_p4est_node_neighbors_t ngbd(&h, nodes);
+    ngbd.init_neighbors();
+
+    my_p4est_level_set_t ls(&ngbd);
+    ls.reinitialize_2nd_order(phi);
+  }
   double dt = 0, t = 0;
   int is = 1, it = 0;
   do {
     dt = solver.solve_one_step(t, phi,
-                               pressure[0],  pressure[1],
-                               potential[0], potential[1],
-                               options.cfl, options.dtmax);
+        pressure[0],  pressure[1],
+        potential[0], potential[1],
+        options.cfl, options.dtmax);
     it++; t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -554,6 +563,10 @@ int main(int argc, char** argv) {
     // save vtk
     if (t >= is*options.dts) {
       // reinitialize the solution before writing it
+      // do it every 5 saves
+      // FIXME: This should really depend on the how far the solution has
+      // advanced
+      if (is % 5 == 1)
       {
         my_p4est_hierarchy_t h(p4est, ghost, &brick);
         my_p4est_node_neighbors_t ngbd(&h, nodes);
@@ -571,16 +584,16 @@ int main(int argc, char** argv) {
       VecGetArray(potential[1], &potential_p[1]);
 
       sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), "coupled", P4EST_DIM,
-              is++);
+          is++);
       PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
       my_p4est_vtk_write_all(p4est, nodes, ghost,
-                             P4EST_TRUE, P4EST_TRUE,
-                             5, 0, vtk_name,
-                             VTK_POINT_DATA, "phi", phi_p,
-                             VTK_POINT_DATA, "pressure_m",  pressure_p[0],
-                             VTK_POINT_DATA, "pressure_p",  pressure_p[1],
-                             VTK_POINT_DATA, "potential_m", potential_p[0],
-                             VTK_POINT_DATA, "potential_p", potential_p[1]);
+          P4EST_TRUE, P4EST_TRUE,
+          5, 0, vtk_name,
+          VTK_POINT_DATA, "phi", phi_p,
+          VTK_POINT_DATA, "pressure_m",  pressure_p[0],
+          VTK_POINT_DATA, "pressure_p",  pressure_p[1],
+          VTK_POINT_DATA, "potential_m", potential_p[0],
+          VTK_POINT_DATA, "potential_p", potential_p[1]);
 
       VecRestoreArray(phi, &phi_p);
       VecRestoreArray(pressure[0], &pressure_p[0]);
@@ -612,8 +625,8 @@ int main(int argc, char** argv) {
       if (mpi.rank() == 0) {
         ostringstream filename;
         filename << folder.str() << "/err_" << options.lmax
-                 << "_" << options.mode
-                 << "_" << it << ".txt";
+          << "_" << options.mode
+          << "_" << it << ".txt";
         FILE *file = fopen(filename.str().c_str(), "w");
         fprintf(file, "%% theta \t err\n");
         for (int n = 0; n<ntheta; n++) {
