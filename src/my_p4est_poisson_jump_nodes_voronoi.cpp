@@ -2,9 +2,10 @@
 #include <src/my_p4est_refine_coarsen.h>
 
 #include <algorithm>
+#include <cassert>
 
 #include <src/petsc_compatibility.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -229,6 +230,13 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
     setup_linear_system();
 //    ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
 
+//    int static counter = 0;
+//    if (counter++ == 166) {
+//      std::ostringstream vtkname;
+//      vtkname << "voro166." << p4est->mpisize;
+//      print_voronoi_VTK(vtkname.str().c_str());
+//    }
+
     is_matrix_computed = true;
     ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   } else {
@@ -269,6 +277,10 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
+    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
+    if (matrix_has_nullspace){
+      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
+    }
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
@@ -298,6 +310,38 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
 
   /* interpolate the solution back onto the original mesh */
   interpolate_solution_from_voronoi_to_tree(solution);
+
+//  static int counter = 0;
+//  if (counter == 0 || counter == 165 || counter == 166) {
+//    PetscPrintf(p4est->mpicomm, "Saving matrix to file %d\n", counter);
+//    PetscViewer view;
+//    char objname[100];
+
+//    sprintf(objname, "A_%d", p4est->mpisize);
+//    PetscObjectSetName((PetscObject)A, objname);
+
+//    sprintf(objname, "b_%d", p4est->mpisize);
+//    PetscObjectSetName((PetscObject)rhs, objname);
+
+//    sprintf(objname, "voro_%d", p4est->mpisize);
+//    PetscObjectSetName((PetscObject)sol_voro, objname);
+
+//    sprintf(objname, "sol_%d", p4est->mpisize);
+//    PetscObjectSetName((PetscObject)solution, objname);
+
+//    char name[PATH_MAX];
+//    sprintf(name, "petsc_%d_%d.m", counter, p4est->mpisize);
+//    PetscViewerASCIIOpen(p4est->mpicomm, name, &view);
+//    PetscViewerPushFormat(view, PETSC_VIEWER_ASCII_MATLAB);
+
+//    MatView(A, view);
+//    VecView(rhs, view);
+//    VecView(sol_voro, view);
+//    VecView(solution, view);
+
+//    PetscViewerDestroy(view);
+//  }
+//  counter++;
 
   ierr = VecDestroy(sol_voro); CHKERRXX(ierr);
 
@@ -1200,6 +1244,13 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
 #endif
     voro.get_Points(points);
 
+//    if (points->size() <= 1) {
+//      PetscPrintf(p4est->mpicomm, "[%2d] Voronoi node %d has %d points\n", p4est->mpirank, n, points->size());
+//      PetscSynchronizedPrintf(p4est->mpicomm, "[%2d] Voronoi node %d has %d points\n", p4est->mpirank, n, points->size());
+//    }
+//    PetscSynchronizedFlush(p4est->mpicomm, stdout);
+//    MPI_Barrier(p4est->mpicomm);
+
 #ifdef P4_TO_P8
     double phi_n = interp_phi(pc.x, pc.y, pc.z);
 #else
@@ -1680,12 +1731,15 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
                 ni[1]=grid2voro[n_idx][m]; di[1]=d;
               }
             }
+          } else {
+            throw std::runtime_error("Found rank = -1 in voronoi interpolaiton. This should not happen. SHIT SHIT SHIT");
           }
         }
       }
     }
   }
 
+  assert(ni[0] != UINT_MAX && ni[1] != UINT_MAX);
 #ifdef P4_TO_P8
   Point3 p0(voro_points[ni[0]]);
   Point3 p1(voro_points[ni[1]]);
@@ -1737,12 +1791,15 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
                 ni[2]=grid2voro[n_idx][m]; di[2]=d;
               }
             }
+          } else {
+            throw std::runtime_error("Found rank = -1 in voronoi interpolaiton. This should not happen. SHIT SHIT SHIT");
           }
         }
       }
     }
   }
 
+  assert(ni[2] != UINT_MAX);
 #ifdef P4_TO_P8
   Point3 p2(voro_points[ni[2]]);
 #else
@@ -1785,12 +1842,15 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
                 ni[3]=grid2voro[n_idx][m]; di[3]=d;
               }
             }
+          } else {
+            throw std::runtime_error("Found rank = -1 in voronoi interpolaiton. This should not happen. SHIT SHIT SHIT");
           }
         }
       }
     }
   }
 
+  assert(ni[3] != UINT_MAX);
   Point3 p3(voro_points[ni[3]]);
 #endif
 
@@ -1914,7 +1974,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_to
 
   /* for debugging, compute the error on the voronoi mesh */
   // bousouf
-  if(1)
+  if(0)
   {
     double *sol_voro_p;
     ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
@@ -2032,9 +2092,9 @@ void my_p4est_poisson_jump_nodes_voronoi_t::print_voronoi_VTK(const char* path) 
 
 #ifdef P4_TO_P8
   bool periodic[P4EST_DIM] = {false, false, false};
-  // Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
+//  Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
 #else
-  // Voronoi2D::print_VTK_Format(voro, name);
+//  Voronoi2D::print_VTK_Format(voro, name);
 #endif
 }
 

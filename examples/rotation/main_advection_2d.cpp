@@ -15,7 +15,7 @@
 #endif
 
 #include <src/Parser.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 #ifndef GIT_COMMIT_HASH_SHORT
 #define GIT_COMMIT_HASH_SHORT "unknown"

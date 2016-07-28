@@ -19,7 +19,7 @@
 #include <set>
 #include <sstream>
 #include <petsclog.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 #include <src/petsc_compatibility.h>
 
 

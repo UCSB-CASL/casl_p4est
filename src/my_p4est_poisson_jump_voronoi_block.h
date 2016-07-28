@@ -69,6 +69,9 @@ class my_p4est_poisson_jump_voronoi_block_t
   double zmin, zmax;
 #endif
 
+  double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
+  double dxyz_min_[P4EST_DIM];
+
   double dx_min, dy_min;
 #ifdef P4_TO_P8
   double dz_min;

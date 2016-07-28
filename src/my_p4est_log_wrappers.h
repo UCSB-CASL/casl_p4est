@@ -41,6 +41,9 @@ void
 my_p4est_partition(p4est_t *p4est, int allow_for_coarsening, p4est_weight_t weight_fn);
 
 void
+my_p4est_balance(p4est_t *p4est, p4est_connect_type_t btype, p4est_init_t init_fn);
+
+void
 my_sc_notify(int *receivers, int num_receivers,
              int *senders, int *num_senders,
              MPI_Comm mpicomm);

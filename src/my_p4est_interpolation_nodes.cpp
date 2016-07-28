@@ -184,16 +184,23 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
     }
 
     std::ostringstream oss;
-    oss << "[ERROR]: Point (" << x << "," << y <<
+    oss << "\n[ERROR]: Point (" << x << "," << y <<
        #ifdef P4_TO_P8
            "," << z <<
        #endif
-           ") is not locally owned by processor. "
-           << p4est->mpirank;
+           ") is not locally owned by processor "
+        << p4est->mpirank << ". ";
     if (rank_found != -1) {
-      oss << "Remote owner's rank = " << rank_found << std::endl;
+      oss << "Only processor " << rank_found
+          << " can perform the interpolation locally. ";
+      if (method != linear) {
+        oss << "If this point is on the processor boundary, or within the ghost layer, "
+               "try using 'linear' interpolation or alternatively precompute the "
+               "second derivatives if using 'quadratic'' interpolations." << std::endl;
+      }
     } else {
-      oss << "Possible remote owners are = ";
+      oss << "Could not find appropriate remote owner. "
+             "Possible matches are = ";
       for (size_t i = 0; i<remote_matches.size() - 1; i++) {
         oss << remote_matches[i].p.piggy1.owner_rank << ", ";
       }

@@ -14,7 +14,8 @@
 #include <src/my_p4est_macros.h>
 #endif
 
-#include <src/math.h>
+#include <src/casl_math.h>
+#include <cassert>
 
 two_fluid_solver_t::two_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick)
   : p4est(p4est), ghost(ghost), nodes(nodes), brick(&brick)
@@ -64,10 +65,10 @@ double two_fluid_solver_t::advect_interface(Vec &phi, Vec &press_m, Vec& press_p
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 
-    vx_p[0][n] = -qnnn.dx_central(press_m_p);
-    vx_p[1][n] = -qnnn.dy_central(press_m_p);
+    vx_p[0][n] = -qnnn.dx_central(press_p_p);
+    vx_p[1][n] = -qnnn.dy_central(press_p_p);
 #ifdef P4_TO_P8
-    vx_p[2][n] = -qnnn.dz_central(press_m_p);
+    vx_p[2][n] = -qnnn.dz_central(press_p_p);
 #endif
   }
   foreach_dimension(dim)
@@ -79,10 +80,10 @@ double two_fluid_solver_t::advect_interface(Vec &phi, Vec &press_m, Vec& press_p
     neighbors.get_neighbors(n, qnnn);
     node_xyz_fr_n(n, p4est, nodes, x);
 
-    vx_p[0][n] = -qnnn.dx_central(press_m_p);
-    vx_p[1][n] = -qnnn.dy_central(press_m_p);
+    vx_p[0][n] = -qnnn.dx_central(press_p_p);
+    vx_p[1][n] = -qnnn.dy_central(press_p_p);
 #ifdef P4_TO_P8
-    vx_p[2][n] = -qnnn.dz_central(press_m_p);
+    vx_p[2][n] = -qnnn.dz_central(press_p_p);
 #endif
   }
   foreach_dimension(dim)
@@ -157,15 +158,51 @@ double two_fluid_solver_t::advect_interface(Vec &phi, Vec &press_m, Vec& press_p
 
   sl.update_p4est(vx, dt, phi);
 
-  // destroy old quantities and swap pointers
-  p4est_destroy(p4est);       p4est = p4est_np1;
-  p4est_nodes_destroy(nodes); nodes = nodes_np1;
+  /*
+   * Since the voronoi solver requires two layers ghost cells, we need to expand the ghost layer
+   * and copy the date to the new vector that has room for extra ghost points
+   */
+  // destroy old data structures and create new ones
+  p4est_destroy(p4est); p4est = p4est_np1;
   p4est_ghost_destroy(ghost); ghost = ghost_np1;
+  my_p4est_ghost_expand(p4est, ghost);
+  p4est_nodes_destroy(nodes_np1);
+  p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
-  VecDestroy(press_m);
-  VecDestroy(press_p);
-  VecDuplicate(phi, &press_m);
-  VecDuplicate(phi, &press_p);
+  // copy data
+  Vec phi_np1 = phi;
+  VecCreateGhostNodes(p4est, nodes, &phi);
+  VecCopy(phi_np1, phi);
+  VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD);
+  VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);
+
+  // copy stuff
+//  p4est_destroy(p4est); p4est = my_p4est_copy(p4est_np1, false);
+//  p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+//  my_p4est_ghost_expand(p4est, ghost);
+//  p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
+
+//  Vec phi_np1 = phi;
+//  VecCreateGhostNodes(p4est, nodes, &phi);
+//  my_p4est_hierarchy_t h_np1(p4est_np1, ghost_np1, brick);
+//  my_p4est_node_neighbors_t ng_np1(&h_np1, nodes_np1);
+//  ng_np1.init_neighbors();
+//  my_p4est_interpolation_nodes_t interp_np1(&ng_np1);
+//  foreach_node(n, nodes) {
+//    node_xyz_fr_n(n, p4est, nodes, x);
+//    interp_np1.add_point(n, x);
+//  }
+
+//  interp_np1.set_input(phi_np1, quadratic_non_oscillatory);
+//  interp_np1.interpolate(phi);
+//  p4est_destroy(p4est_np1);
+//  p4est_nodes_destroy(nodes_np1);
+//  p4est_ghost_destroy(ghost_np1);
+
+  // destroy old stuff
+  VecDestroy(phi_np1);
+  VecDestroy(press_m); VecDuplicate(phi, &press_m);
+  VecDestroy(press_p); VecDuplicate(phi, &press_p);
 
   foreach_dimension(dim) VecDestroy(vx[dim]);
 
@@ -181,8 +218,8 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&neighbors);
-  ls.reinitialize_2nd_order(phi);
-  ls.perturb_level_set_function(phi, EPS);
+//  ls.reinitialize_2nd_order(phi);
+//  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
@@ -207,6 +244,7 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
   VecGetArray(jump_dp, &jump_dp_p);
 
   double x[P4EST_DIM];
+  double diag_min = p4est_diag_min(p4est);
 
   // compute the singular part
   std::vector<double> pstar(nodes->indep_nodes.elem_count);
@@ -215,17 +253,17 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
-    double r = sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2]));
+    double r = MAX(diag_min, sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])));
     pstar[n] = (*Q)(t)/(4*PI*r);
 #else
-    double r = sqrt(SQR(x[0]) + SQR(x[1]));
+    double r = MAX(diag_min, sqrt(SQR(x[0]) + SQR(x[1])));
     pstar[n] = (*Q)(t)/(2*PI)*log(r);
 #endif
   }
 
   // jump in solution
   foreach_node(n, nodes) {
-    jump_p_p[n]  = viscosity_ratio*pstar[n] - 1.0/Ca*kappa_p[n];
+    jump_p_p[n]  = -1/Ca*kappa_p[n] - viscosity_ratio*pstar[n];
   }
   VecRestoreArray(jump_p, &jump_p_p);
   VecRestoreArray(kappa, &kappa_p);
@@ -241,12 +279,10 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
     neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
+    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*normal_p[0][n] - qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
-    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
-
-    jump_dp_p[n] *= -1;
   }
   VecGhostUpdateBegin(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
 
@@ -255,12 +291,10 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
     neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
+    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*normal_p[0][n] - qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
-    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
-
-    jump_dp_p[n] *= -1;
   }
   VecGhostUpdateEnd(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
   VecRestoreArray(jump_dp, &jump_dp_p);
@@ -290,7 +324,7 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
   jump_solver.set_bc(bc);
   jump_solver.set_jump(jump_p_interp, jump_dp_interp);
   jump_solver.set_phi(phi);
-  jump_solver.set_mue(1.0/MAX(viscosity_ratio, EPS), 1.0);
+  jump_solver.set_mue(1.0, 1.0/MAX(viscosity_ratio, EPS));
 
   Vec sol;
   VecCreateGhostNodesBlock(p4est, nodes, 2, &sol);
@@ -303,8 +337,8 @@ void two_fluid_solver_t::solve_fields_extended(double t, Vec phi, Vec press_m, V
   VecGetArray(sol, &sol_p);
 
   foreach_node(n, nodes) {
-    press_m_p[n] = sol_p[2*n+0];
-    press_p_p[n] = sol_p[2*n+1] - viscosity_ratio*pstar[n];
+    press_m_p[n] = sol_p[2*n+0] - viscosity_ratio*pstar[n];
+    press_p_p[n] = sol_p[2*n+1];
   }
 
   VecRestoreArray(sol, &sol_p);
@@ -339,8 +373,8 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 
   // reinitialize the levelset
   my_p4est_level_set_t ls(&node_neighbors);
-  ls.reinitialize_2nd_order(phi);
-  ls.perturb_level_set_function(phi, EPS);
+//  ls.reinitialize_2nd_order(phi);
+//  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
@@ -369,21 +403,22 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   // compute the singular part
   std::vector<double> pstar(nodes->indep_nodes.elem_count);
   double *normal_p[P4EST_DIM];
+  double diag_min = p4est_diag_min(p4est);
 
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
 #ifdef P4_TO_P8
-    double r = sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2]));
+    double r = MAX(diag_min, sqrt(SQR(x[0]) + SQR(x[1]) + SQR(x[2])));
     pstar[n] = (*Q)(t)/(4*PI*r);
 #else
-    double r = sqrt(SQR(x[0]) + SQR(x[1]));
+    double r = MAX(diag_min, sqrt(SQR(x[0]) + SQR(x[1])));
     pstar[n] = (*Q)(t)/(2*PI)*log(r);
 #endif
   }
 
   // jump in solution
   foreach_node(n, nodes) {
-    jump_p_p[n]  = viscosity_ratio*pstar[n] - 1.0/Ca*kappa_p[n];
+    jump_p_p[n]  = -1/Ca*kappa_p[n] - viscosity_ratio*pstar[n];
   }
   VecRestoreArray(jump_p, &jump_p_p);
   VecRestoreArray(kappa, &kappa_p);
@@ -399,9 +434,9 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     node_neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n]  = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
+    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*normal_p[0][n] - qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
-    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
   }
   VecGhostUpdateBegin(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
@@ -411,9 +446,9 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     node_neighbors.get_neighbors(n, qnnn);
 
     double *pstar_p = pstar.data();
-    jump_dp_p[n] = qnnn.dx_central(pstar_p)*normal_p[0][n] + qnnn.dy_central(pstar_p)*normal_p[1][n];
+    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*normal_p[0][n] - qnnn.dy_central(pstar_p)*normal_p[1][n];
 #ifdef P4_TO_P8
-    jump_dp_p[n] += qnnn.dz_central(pstar_p)*normal_p[2][n];
+    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*normal_p[2][n];
 #endif
   }
   VecGhostUpdateEnd(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
@@ -442,11 +477,11 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     VecGhostRestoreLocalForm(rhs_p, &l);
 
     VecGhostGetLocalForm(mue_m, &l);
-    VecSet(l, 1.0);
+    VecSet(l, 1.0/MAX(viscosity_ratio, EPS));
     VecGhostRestoreLocalForm(mue_m, &l);
 
     VecGhostGetLocalForm(mue_p, &l);
-    VecSet(l, 1.0/MAX(viscosity_ratio, EPS));
+    VecSet(l, 1.0);
     VecGhostRestoreLocalForm(mue_p, &l);
   }
 
@@ -470,7 +505,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   jump_solver.set_mu_grad_u_jump(jump_dp);
   jump_solver.set_rhs(rhs_m, rhs_p);
 
-  jump_solver.solve(press_m);
+  jump_solver.solve(press_p);
 
   VecDestroy(rhs_m);
   VecDestroy(rhs_p);
@@ -484,8 +519,11 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   VecGetArray(press_m, &press_m_p);
   VecGetArray(press_p, &press_p_p);
 
+  // add the singular part to the inside solution
   foreach_node(n, nodes) {
-    press_p_p[n] = press_m_p[n] - viscosity_ratio*pstar[n];
+    press_m_p[n] = press_p_p[n] - viscosity_ratio*pstar[n];
+    assert(!isnan(press_p_p[n]) && !isinf(press_p_p[n]));
+    assert(!isnan(press_m_p[n]) && !isinf(press_m_p[n]));
   }
 
   // extend solutions
@@ -511,6 +549,14 @@ double two_fluid_solver_t:: solve_one_step(double t, Vec &phi, Vec &press_m, Vec
   // advect the interface
   double dt;
   dt = advect_interface(phi, press_m, press_p, cfl, dtmax);
+
+  // save the grid
+//  int static counter = 0;
+//  if (counter++ == 166) {
+//    std::ostringstream vtkname;
+//    vtkname << "grid166." << p4est->mpisize;
+//    my_p4est_vtk_write_all(p4est, nodes, ghost, 1, 0, 0, 0, vtkname.str().c_str());
+//  }
 
   // solve for the pressure
   if (method == "extended")

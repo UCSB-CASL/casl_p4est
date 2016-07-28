@@ -6,7 +6,7 @@
 #include <src/my_p4est_vtk.h>
 #endif
 
-#include <src/math.h>
+#include <src/casl_math.h>
 
 #include "petsc_compatibility.h"
 #include <src/my_p4est_log_wrappers.h>

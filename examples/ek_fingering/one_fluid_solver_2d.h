@@ -32,6 +32,8 @@ class one_fluid_solver_t
 
   double advect_interface_semi_lagrangian(Vec& phi, Vec& pressure, Vec &potential, double cfl, double dtmax);
   double advect_interface_godunov(Vec& phi, Vec& pressure, Vec& potential, double cfl, double dtmax);
+  double advect_interface_normal(Vec& phi, Vec& pressure, Vec& potential, double cfl, double dtmax);
+  double advect_interface_diagonal(Vec& phi, Vec& pressure, Vec& potential, double cfl, double dtmax);
   void solve_fields(double t, Vec phi, Vec pressure, Vec potential);
 
 public:

@@ -10,6 +10,7 @@
 *.pro
 *.pro.user*
 *.creator.user*
+CMakeLists.txt.user
 *~
 *.vt[uks]
 *.pvt[uks]
@@ -33,6 +34,7 @@
 *.blg
 sync
 .rsync.exclude
+Info.plist
 
 # What directories to ignore
 *[Dd]ebug*
@@ -40,6 +42,8 @@ sync
 *[Oo]bjs*
 *[Pp]roject[s]*
 *[Bb]uild*
+*[Xx]code*
+Default/
 
 *.orig
 *_BACKUP_*

@@ -4,7 +4,7 @@
 #include <vector>
 #include <iostream>
 
-#include <src/math.h>
+#include <src/casl_math.h>
 
 using std::vector;
 

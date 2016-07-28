@@ -7,7 +7,7 @@
 #include "my_p4est_utils.h"
 #endif
 #include <petsclog.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops

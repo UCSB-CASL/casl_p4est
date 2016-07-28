@@ -10,7 +10,7 @@
 #endif
 
 #include <src/petsc_compatibility.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -369,6 +369,7 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
     VecGhostGetLocalForm(rhs_, &rhs_local);
     VecSet(rhs_local, 0);
     VecGhostRestoreLocalForm(rhs_, &rhs_local);
+    local_rhs = true;
   }
 
   // set ksp type

@@ -574,7 +574,7 @@ void Voronoi2D::print_VTK_Format( const vector<Voronoi2D>& voro, std::string fil
 
   for(unsigned int n=0; n<voro.size(); ++n)
     for(unsigned int m=0; m<voro[n].partition.size(); ++m)
-      fprintf(fp, "%e\t %e\t 0.0\n", voro[n].partition[m].x, voro[n].partition[m].y);
+      fprintf(fp, "%1.16e\t %1.16e\t 0.0\n", voro[n].partition[m].x, voro[n].partition[m].y);
 
   fprintf(fp, "POLYGONS %d %d\n", nb_polygons, nb_vertices+nb_polygons);
   int compt = 0;
@@ -607,7 +607,7 @@ void Voronoi2D::print_VTK_Format( const vector<Voronoi2D> &voro, const vector<do
 
   for(unsigned int n=0; n<voro.size(); ++n)
     if(voro[n].partition.size()!=0)
-      fprintf(fp, "%e\n", f[n]);
+      fprintf(fp, "%1.16e\n", f[n]);
 
   fclose(fp);
 }
@@ -626,7 +626,7 @@ void Voronoi2D::print_VTK_Format( const vector<Voronoi2D> &voro, const vector<do
 
   for(unsigned int n=0; n<voro.size(); ++n)
     if(voro[n].partition.size()!=0)
-      fprintf(fp, "%e\t %e\n", u[n], v[n]);
+      fprintf(fp, "%1.16e\t %1.16e\n", u[n], v[n]);
 
   fclose(fp);
 }
