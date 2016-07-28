@@ -78,6 +78,12 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
   double xyz [] = { x, y };
 #endif
 
+  // clip to bounding box
+  for (short i=0; i<P4EST_DIM; i++){
+    if (xyz[i] > xyz_max[i]) xyz[i] = is_periodic(p4est,i) ? xyz[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
+    if (xyz[i] < xyz_min[i]) xyz[i] = is_periodic(p4est,i) ? xyz[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
+  }
+
   // find to which quadrant the point belongs to
   short which_quadrant = -1;
   short current_level = 0;
@@ -168,15 +174,15 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
 
   if (method == linear) {
 #ifdef P4_TO_P8
-    value = interp.linear(f, x, y, z);
+    value = interp.linear(f, xyz[0], xyz[1], xyz[2]);
 #else
-    value = interp.linear(f, x, y);
+    value = interp.linear(f, xyz[0], xyz[1]);
 #endif
   } else if (method == quadratic) {
 #ifdef P4_TO_P8
-    value = interp.quadratic(f, fxx, fyy, fzz,  x, y, z);
+    value = interp.quadratic(f, fxx, fyy, fzz,  xyz[0], xyz[1], xyz[2]);
 #else
-    value = interp.quadratic(f, fxx, fyy,       x, y);
+    value = interp.quadratic(f, fxx, fyy,       xyz[0], xyz[1]);
 #endif
   }
 

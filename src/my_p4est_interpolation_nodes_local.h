@@ -22,6 +22,10 @@ public:
   p4est_t       *p4est;
   const my_p4est_node_neighbors_t *node_neighbors;
 
+  // dimensions of computational box
+  double xyz_min[P4EST_DIM];
+  double xyz_max[P4EST_DIM];
+
   // interpolation input (either as Vec's or pointers)
   bool is_input_in_vec;
 
@@ -75,7 +79,19 @@ public:
       Fzz(NULL), Fzz_p(NULL),
       #endif
       method(linear), eps(1.0E-15)
-  {}
+  {
+    // compute domain sizes
+    double *v2c = p4est->connectivity->vertices;
+    p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+    p4est_topidx_t first_tree = 0, last_tree = p4est->trees->elem_count-1;
+    p4est_topidx_t first_vertex = 0, last_vertex = P4EST_CHILDREN - 1;
+
+    for (short i=0; i<P4EST_DIM; i++)
+    {
+      xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
+      xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
+    }
+  }
 
   // initialize interpolator
   void initialize(p4est_locidx_t n);

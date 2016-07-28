@@ -7,7 +7,7 @@
 #endif
 
 #include <src/petsc_compatibility.h>
-#include <src/CASL_math.h>
+#include <src/casl_math.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -596,7 +596,7 @@ void my_p4est_poisson_nodes_mls_t::preallocate_matrix()
      * 3) If they do not exist, simply skip
      */
 
-    if (phi_eff_p[n] > 1.5*diag_min)
+    if (phi_eff_p[n] > 2.5*diag_min)
       continue;
 
 //    if (node_loc[n] == NODE_OUT || node_loc[n] == NODE_MXO) continue;
@@ -3155,6 +3155,9 @@ void my_p4est_poisson_nodes_mls_t::compute_error_gr(CF_2 &ux_cf, CF_2 &uy_cf, Ve
     double uy_exact = uy_cf(x_C, y_C);
 #endif
 
+    bool nm1_available;
+    bool np1_available;
+
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors->get_neighbors(n);
 
     if (node_loc[n] == NODE_OUT || node_vol_p[n] < .0e-1*vol_min)
@@ -3175,7 +3178,10 @@ void my_p4est_poisson_nodes_mls_t::compute_error_gr(CF_2 &ux_cf, CF_2 &uy_cf, Ve
       get_all_neighbors(n, neighbors, neighbor_exists);
 
       // compute x-component
-      if (node_vol_p[neighbors[nn_m00]] > eps_dom && node_vol_p[neighbors[nn_p00]] > eps_dom) { // using central differences
+      if (neighbor_exists[nn_m00]) nm1_available = node_vol_p[neighbors[nn_m00]] > eps_dom; else nm1_available = false;
+      if (neighbor_exists[nn_p00]) np1_available = node_vol_p[neighbors[nn_p00]] > eps_dom; else np1_available = false;
+
+      if (nm1_available && np1_available) { // using central differences
 
         err_ux_p[n] = fabs(qnnn.dx_central(sol_p) - ux_exact);
 
@@ -3198,7 +3204,10 @@ void my_p4est_poisson_nodes_mls_t::compute_error_gr(CF_2 &ux_cf, CF_2 &uy_cf, Ve
       } else err_ux_p[n] = 0.;
 
       // compute y-component
-      if (node_vol_p[neighbors[nn_0m0]] > eps_dom && node_vol_p[neighbors[nn_0p0]] > eps_dom) { // using central differences
+      if (neighbor_exists[nn_0m0]) nm1_available = node_vol_p[neighbors[nn_0m0]] > eps_dom; else nm1_available = false;
+      if (neighbor_exists[nn_0p0]) np1_available = node_vol_p[neighbors[nn_0p0]] > eps_dom; else np1_available = false;
+
+      if (nm1_available && np1_available) { // using central differences
 
         err_uy_p[n] = fabs(qnnn.dy_central(sol_p) - uy_exact);
 
@@ -3222,7 +3231,10 @@ void my_p4est_poisson_nodes_mls_t::compute_error_gr(CF_2 &ux_cf, CF_2 &uy_cf, Ve
 
 #ifdef P4_TO_P8
       // compute z-component
-      if (node_vol_p[neighbors[nn_00m]] > eps_dom && node_vol_p[neighbors[nn_00p]] > eps_dom) { // using central differences
+      if (neighbor_exists[nn_00m]) nm1_available = node_vol_p[neighbors[nn_00m]] > eps_dom; else nm1_available = false;
+      if (neighbor_exists[nn_00p]) np1_available = node_vol_p[neighbors[nn_00p]] > eps_dom; else np1_available = false;
+
+      if (nm1_available && np1_available) { // using central differences
 
         err_uz_p[n] = fabs(qnnn.dz_central(sol_p) - uz_exact);
 

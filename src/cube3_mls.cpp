@@ -34,46 +34,95 @@ void cube3_mls_t::construct_domain()
       all_positive = (all_positive && (F[j] > 0.));
     }
 
-    if (all_positive&&1)
+//    if (all_positive&&1)
+//    {
+//      if (action->at(i) == INTERSECTION)
+//      {
+//        loc = OUT;
+//        non_trivial.clear();
+//        non_trivial_action.clear();
+//        non_trivial_color.clear();
+//      }
+//    }
+//    else if (all_negative&&1)
+//    {
+//      if (action->at(i) == ADDITION)
+//      {
+//        loc = INS;
+//        non_trivial.clear();
+//        non_trivial_action.clear();
+//        non_trivial_color.clear();
+//      }
+//      else if (action->at(i) == COLORATION && loc == FCE)
+//      {
+//        non_trivial.push_back(i);
+//        non_trivial_action.push_back(action->at(i));
+//        non_trivial_color.push_back(color->at(i));
+////        for (int j = 0; j < color.size(); j++)
+////          non_trivial_color[j] = color[i];
+//      }
+//    }
+//    else if (loc == FCE || (loc == INS && action->at(i) == INTERSECTION) || (loc == OUT && action->at(i) == ADDITION))
+//    {
+//      loc = FCE;
+//      non_trivial.push_back(i);
+//      non_trivial_action.push_back(action->at(i));
+//      non_trivial_color.push_back(color->at(i));
+//    }
+
+//    if (all_positive && action->at(i) == INTERSECTION)
+//    {
+//      loc = OUT;
+//      non_trivial.push_back(i);
+//      non_trivial_action.push_back(action->at(i));
+//      non_trivial_color.push_back(color->at(i));
+//    }
+//    if (all_negative && action->at(i) == ADDITION)
+//    {
+//      loc = INS;
+//      non_trivial.push_back(i);
+//      non_trivial_action.push_back(action->at(i));
+//      non_trivial_color.push_back(color->at(i));
+//    }
+//    if (all_negative && action->at(i) == COLORATION)
+//    {
+//      non_trivial.push_back(i);
+//      non_trivial_action.push_back(action->at(i));
+//      non_trivial_color.push_back(color->at(i));
+//    }
+
+
+//    if (!all_negative && !all_positive)
+//    {
+//      if (loc == INS && action->at(i) == INTERSECTION)  loc = FCE;
+//      if (loc == OUT && action->at(i) == ADDITION)      loc = FCE;
+//      non_trivial.push_back(i);
+//      non_trivial_action.push_back(action->at(i));
+//      non_trivial_color.push_back(color->at(i));
+//    }
+
+    non_trivial.push_back(i);
+    non_trivial_action.push_back(action->at(i));
+    non_trivial_color.push_back(color->at(i));
+
+    if (all_positive && action->at(i) == INTERSECTION)
     {
-      if (action->at(i) == INTERSECTION)
-      {
-        loc = OUT;
-        non_trivial.clear();
-        non_trivial_action.clear();
-        non_trivial_color.clear();
-      }
+      loc = OUT;
     }
-    else if (all_negative&&1)
+    else if (all_negative && action->at(i) == ADDITION)
     {
-      if (action->at(i) == ADDITION)
-      {
-        loc = INS;
-        non_trivial.clear();
-        non_trivial_action.clear();
-        non_trivial_color.clear();
-      }
-      else if (action->at(i) == COLORATION && loc == FCE)
-      {
-        non_trivial.push_back(i);
-        non_trivial_action.push_back(action->at(i));
-        non_trivial_color.push_back(color->at(i));
-//        for (int j = 0; j < color.size(); j++)
-//          non_trivial_color[j] = color[i];
-      }
+      loc = INS;
     }
-    else if (loc == FCE || (loc == INS && action->at(i) == INTERSECTION) || (loc == OUT && action->at(i) == ADDITION))
+    else if ((loc == INS && action->at(i) == INTERSECTION) || (loc == OUT && action->at(i) == ADDITION))
     {
       loc = FCE;
-      non_trivial.push_back(i);
-      non_trivial_action.push_back(action->at(i));
-      non_trivial_color.push_back(color->at(i));
     }
+
   }
 
   num_non_trivial = non_trivial.size();
 
-  if (num_non_trivial > 0)
+  if (num_non_trivial > 0 && loc==FCE)
   {
 
     if (non_trivial_action[0] == ADDITION) // the first action is always has to be INTERSECTION

@@ -1,5 +1,5 @@
 #include "simplex2_mls.h"
-#include "CASL_math.h"
+#include "casl_math.h"
 
 #define EPS 1.0e-20
 
