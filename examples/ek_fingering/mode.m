@@ -2,17 +2,19 @@
 dt = 1e-5;
 it = 5;
 modes = 0:20;
-A = 5;
-B = 0;
-M = 0.01;
+A = 10;
+B = 0.0;
+M = 10;
 R = 9;
-S = 0.01;
+S = 10;
+abs(A*B) < 1
+abs(A*B*S^2/R/M) < 1
 F = @(A,B,M,R,S) (M*((1-M)*(1+R)+2*A*(S-1))+abs(A*B)*(M^2-S^2))/(M*(1+M)*(1+R)-abs(A*B)*(M+S)^2);
 G = @(A,B,M,R,S) (M*(1+R)-abs(A*B)*(M+S^2))/(M*(1+M)*(1+R)-abs(A*B)*(M+S)^2);
-prefix = '/Users/mohammad/repos/parcasl/examples/ek_fingering/Release';
-% prefix = '/mnt/server/code/parcasl/examples/ek_fingering/release';
-path = sprintf('%s/coupled/circle/_Unstable_co_flow_A_5_B_0_M_0.01_S_0.01_R_9',prefix);
-% path = sprintf('%s/two_fluid/circle/mue_%1.0f/2p',prefix,M);
+% prefix = '/Users/mohammad/repos/parcasl/examples/ek_fingering/Release';
+prefix = '/mnt/server/code/parcasl/examples/ek_fingering/release';
+path = sprintf('%s/coupled/circle/_Dirichlet_F_0.818182_G_0.0909091_A_10_B_0_M_10_S_10_R_9',prefix);
+% path = sprintf('%s/two_fluid/circle/mue_%1.0f/8p',prefix,M);
 % path = strcat(prefix,'one_fluid/circle/semi_lagrangian/2p');
 % prefix = '/Users/mohammad/repos/casl/examples/viscous_fingering/Release';
 % path = prefix;
@@ -22,7 +24,7 @@ mcolor  ={'b','r','m','k'};
 s = 1;
 figure(1); hold on;
 sigma = zeros(3,length(modes));
-for lmax=[10:10]    
+for lmax=[10:12]    
     if lmax == 13 dt = 1e-5; end
     for m=0:20
         file_base = sprintf('%s/err_%d_%d', path, lmax, m);
@@ -59,6 +61,14 @@ for lmax=[10:10]
     s = s + 1;
 end
 %%
+% A = 10;
+% B = 0.0;
+% M = 10;
+% R = 9;
+% S = 10;
+% abs(A*B) < 1
+% abs(A*B*S^2/R/M) < 1
+% 
 m = linspace(0,20);
 Ca = 250;
 plot(m,-1+m*F(A,B,M,R,S)+m.*(1-m.^2)*G(A,B,M,R,S)/Ca, 'k-', 'linewidth',2); shg

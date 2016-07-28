@@ -18,11 +18,13 @@
 #include "two_fluid_solver_2d.h"
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_vtk.h>
+#include <src/my_p4est_level_set.h>
 #include <src/my_p4est_macros.h>
 #else
 #include "two_fluid_solver_3d.h"
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_vtk.h>
+#include <src/my_p8est_level_set.h>
 #include <src/my_p8est_macros.h>
 #endif
 
@@ -381,6 +383,16 @@ int main(int argc, char** argv) {
     PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", it, num_nodes, t, dt);
 
     if (t >= is*options.dts) {
+      // reinitialize the solution before writing it
+      {
+        my_p4est_hierarchy_t h(p4est, ghost, &brick);
+        my_p4est_node_neighbors_t ngbd(&h, nodes);
+        ngbd.init_neighbors();
+
+        my_p4est_level_set_t ls(&ngbd);
+        ls.reinitialize_2nd_order(phi);
+      }
+
       // save vtk
       double *phi_p, *press_m_p, *press_p_p;
       VecGetArray(phi, &phi_p);

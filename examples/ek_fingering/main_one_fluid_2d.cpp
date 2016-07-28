@@ -17,10 +17,12 @@
 #ifndef P4_TO_P8
 #include "one_fluid_solver_2d.h"
 #include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_level_set.h>
 #include <src/my_p4est_vtk.h>
 #else
 #include "one_fluid_solver_3d.h"
 #include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_level_set.h>
 #include <src/my_p8est_vtk.h>
 #endif
 
@@ -502,6 +504,16 @@ int main(int argc, char** argv) {
 
     // save vtk
     if (t >= is*options.dts) {
+      // reinitialize the solution before writing it
+      {
+        my_p4est_hierarchy_t h(p4est, ghost, &brick);
+        my_p4est_node_neighbors_t ngbd(&h, nodes);
+        ngbd.init_neighbors();
+
+        my_p4est_level_set_t ls(&ngbd);
+        ls.reinitialize_2nd_order(phi);
+      }
+
       double *phi_p, *pressure_p;
       VecGetArray(phi, &phi_p);
       VecGetArray(pressure, &pressure_p);
