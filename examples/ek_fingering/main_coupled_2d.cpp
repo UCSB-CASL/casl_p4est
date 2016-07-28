@@ -158,6 +158,7 @@ void set_options(int argc, char **argv) {
         } else if (options.bcw == DIRICHLET) {
           double f = 1.0/(2*PI*(1-options.A*options.B));
           return (options.A*(*options.I)(t)-(*options.Q)(t))*f*log(r);
+         // return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
         } else {
           throw std::runtime_error("Invalid boundary condition type for the walls");
         }
@@ -180,6 +181,7 @@ void set_options(int argc, char **argv) {
         } else if (options.bcw == DIRICHLET) {
           double f = 1.0/(2*PI*(1-options.A*options.B));
           return (options.B*(*options.Q)(t)-(*options.I)(t))*f*log(r);
+       //   return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
         } else {
           throw std::runtime_error("Invalid boundary condition type for the walls");
         }
@@ -494,17 +496,10 @@ int main(int argc, char** argv) {
 
   ostringstream folder;
   folder << outdir << "/coupled/" 
-         << options.test << "/" << options.prefix << "_";
-  if (F < 0)
-    folder << "Stable_";
-  else
-    folder << "Unstable_"; 
-  if (options.A < 0)
-    folder << "counter_flow_";
-  else
-    folder << "co_flow_";
+         << options.test << "/" << options.prefix << "_"
+         << options.bcw << "_F_" << F << "_G_" << G;
 
-  folder << "A_"  << options.A
+  folder << "_A_" << options.A
          << "_B_" << options.B
          << "_M_" << options.M
          << "_S_" << options.S

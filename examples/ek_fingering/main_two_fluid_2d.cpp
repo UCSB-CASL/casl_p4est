@@ -71,8 +71,8 @@ void set_options(int argc, char **argv) {
   cmd.add_option("mode", "perturbation mode used for analysis");
   cmd.add_option("eps", "perturbation amplitude to be added to the interface");
   cmd.add_option("test", "Which test to run?, Options are:\n"
-                         "\tcircle\n"
-                         "\tFastShelley04_Fig12\n");
+      "\tcircle\n"
+      "\tFastShelley04_Fig12\n");
 
   cmd.parse(argc, argv);
 
@@ -118,38 +118,38 @@ void set_options(int argc, char **argv) {
       double operator()(double t) const { return 2*PI*(1.0 + t); }
     } Q;
 
-    // static struct:WallBC2D{
-    //   BoundaryConditionType operator()(double, double) const { return NEUMANN; }
-    // } bc_wall_type;
+    static struct:WallBC2D{
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
+    } bc_wall_type;
 
-    // static struct:CF_2{
-    //   double operator()(double x, double y) const {
-    //     double theta = atan2(y,x);
-    //     double r     = sqrt(SQR(x)+SQR(y));
-    //     double ur    = -(*options.Q)(t)/(r);
+    static struct:CF_2{
+      double operator()(double x, double y) const {
+        double theta = atan2(y,x);
+        double r     = sqrt(SQR(x)+SQR(y));
+        double ur    = -(*options.Q)(t)/(2*PI*r);
 
-    //     if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-    //       return x > 0 ? ur*cos(theta):-ur*cos(theta);
-    //     else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-    //       return y > 0 ? ur*sin(theta):-ur*sin(theta);
-    //     else
-    //       return 0;
-    //   }
-    // } bc_wall_value; bc_wall_value.t = 0;
-
-   static struct:WallBC2D {
-     BoundaryConditionType operator()(double, double) const {
+        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
+          return x > 0 ? ur*cos(theta):-ur*cos(theta);
+        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
+          return y > 0 ? ur*sin(theta):-ur*sin(theta);
+        else
+          return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+    /*
+       static struct:WallBC2D {
+       BoundaryConditionType operator()(double, double) const {
        return DIRICHLET;
-     }
-   } bc_wall_type;
+       }
+       } bc_wall_type;
 
-   static struct:CF_2 {
-     double operator()(double x, double y) const {
+       static struct:CF_2 {
+       double operator()(double x, double y) const {
        double r = sqrt(SQR(x)+SQR(y));
        return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
-     }
-   } bc_wall_value; bc_wall_value.t = 0;
-
+       }
+       } bc_wall_value; bc_wall_value.t = 0;
+     */
 
     options.Q             = &Q;
     options.interface     = &interface;
@@ -343,8 +343,8 @@ int main(int argc, char** argv) {
 
   ostringstream folder;
   folder << outdir << "/two_fluid/" << options.test
-         << "/mue_" << options.M
-         << "/" << mpi.size() << "p";
+    << "/mue_" << options.M
+    << "/" << mpi.size() << "p";
 
   if (mpi.rank() == 0) system(("mkdir -p " + folder.str()).c_str());
   MPI_Barrier(mpi.comm());
@@ -359,11 +359,11 @@ int main(int argc, char** argv) {
     sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM, 0);
     PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_TRUE, P4EST_TRUE,
-                           3, 0, vtk_name,
-                           VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "press_m", press_m_p,
-                           VTK_POINT_DATA, "press_p", press_p_p);
+        P4EST_TRUE, P4EST_TRUE,
+        3, 0, vtk_name,
+        VTK_POINT_DATA, "phi", phi_p,
+        VTK_POINT_DATA, "press_m", press_m_p,
+        VTK_POINT_DATA, "press_p", press_p_p);
     VecRestoreArray(phi, &phi_p);
   }
 
@@ -372,7 +372,7 @@ int main(int argc, char** argv) {
   int is = 1, it = 0;
   do {
     dt = solver.solve_one_step(t, phi, press_m, press_p,
-                               options.cfl, options.dtmax, options.method);
+        options.cfl, options.dtmax, options.method);
     it++; t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -388,14 +388,14 @@ int main(int argc, char** argv) {
       VecGetArray(press_p, &press_p_p);
 
       sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), options.method.c_str(), P4EST_DIM,
-              is++);
+          is++);
       PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
       my_p4est_vtk_write_all(p4est, nodes, ghost,
-                             P4EST_TRUE, P4EST_TRUE,
-                             3, 0, vtk_name,
-                             VTK_POINT_DATA, "phi", phi_p,
-                             VTK_POINT_DATA, "press_m", press_m_p,
-                             VTK_POINT_DATA, "press_p", press_p_p);
+          P4EST_TRUE, P4EST_TRUE,
+          3, 0, vtk_name,
+          VTK_POINT_DATA, "phi", phi_p,
+          VTK_POINT_DATA, "press_m", press_m_p,
+          VTK_POINT_DATA, "press_p", press_p_p);
       VecRestoreArray(phi, &phi_p);
       foreach_node (n,nodes) {
         if (std::isnan(press_m_p[n])) cout << "nan in p^- for n = " << n << endl;
@@ -429,8 +429,8 @@ int main(int argc, char** argv) {
       if (mpi.rank() == 0) {
         ostringstream filename;
         filename << folder.str() << "/err_" << options.lmax
-                 << "_" << options.mode
-                 << "_" << it << ".txt";
+          << "_" << options.mode
+          << "_" << it << ".txt";
         FILE *file = fopen(filename.str().c_str(), "w");
         fprintf(file, "%% theta \t err\n");
         for (int n = 0; n<ntheta; n++) {

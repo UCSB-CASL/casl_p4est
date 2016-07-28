@@ -1354,11 +1354,11 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
 
               // mue_tmp = mue_h * mue_l^{-1} = mue_n * mue_inv * mue_l * mue_l{-1} = mue_n * mue_inv
 #ifdef P4_TO_P8
-              rhs_p[block_size*n+bi] += s*mue_h[bi][bj]/d * SIGN(phi_n) * (*u_jump[bi])(p_ln.x, p_ln.y, p_ln.z);
-              rhs_p[block_size*n+bi] -= mue_tmp[bi][bj] * s/2 * (*mu_grad_u_jump[bi])(p_ln.x, p_ln.y, p_ln.z);
+              rhs_p[block_size*n+bi] += s*mue_h[bi][bj]/d * SIGN(phi_n) * (*u_jump[bj])(p_ln.x, p_ln.y, p_ln.z);
+              rhs_p[block_size*n+bi] -= mue_tmp[bi][bj] * s/2 * (*mu_grad_u_jump[bj])(p_ln.x, p_ln.y, p_ln.z);
 #else
-              rhs_p[block_size*n+bi] += s*mue_h[bi][bj]/d * SIGN(phi_n) * (*u_jump[bi])(p_ln.x, p_ln.y);
-              rhs_p[block_size*n+bi] -= mue_tmp[bi][bj] * s/2 * (*mu_grad_u_jump[bi])(p_ln.x, p_ln.y);
+              rhs_p[block_size*n+bi] += s*mue_h[bi][bj]/d * SIGN(phi_n) * (*u_jump[bj])(p_ln.x, p_ln.y);
+              rhs_p[block_size*n+bi] -= mue_tmp[bi][bj] * s/2 * (*mu_grad_u_jump[bj])(p_ln.x, p_ln.y);
 #endif
             }
 
@@ -1437,7 +1437,7 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
       ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
     }
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-    ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
+    //ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
 //    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
   }
 
