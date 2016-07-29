@@ -44,7 +44,7 @@ typedef WallBC2D wall_bc_t;
 #endif
 
 static struct {
-  int lmin, lmax, iter;
+  int lmin, lmax, iter, it_reinit;
   double lip, Ca, cfl, dts, dtmax;
   double A, B;
   double M, S, R;
@@ -70,6 +70,7 @@ void set_options(int argc, char **argv) {
   cmd.add_option("lip", "Lipschitz constant used for grid generation");
   cmd.add_option("Ca", "the capillary number");
   cmd.add_option("iter", "number of iterations");
+  cmd.add_option("it_reinit", "number of ierations before reinit");
   cmd.add_option("cfl", "the CFL number");
   cmd.add_option("dts", "dt for saving vtk files");
   cmd.add_option("dtmax", "max dt to use when solving");  
@@ -100,6 +101,7 @@ void set_options(int argc, char **argv) {
 
   options.lip = 1.2;
   options.cfl = 1;
+  options.it_reinit = 10;
 
   if (options.test == "circle") {
     // set interface
@@ -116,6 +118,7 @@ void set_options(int argc, char **argv) {
     options.R       = 1;
     options.A       = 0;
     options.B       = 0;
+    options.it_reinit = options.iter;
 
     options.mode    = cmd.get("mode", 0);
     options.eps     = cmd.get("eps", 1e-2);
@@ -217,6 +220,7 @@ void set_options(int argc, char **argv) {
     options.R         = 1;
     options.A         = 0;
     options.B         = 0;
+    options.it_reinit = 10;
 
 #ifdef P4_TO_P8
     static struct:cf_t{
@@ -400,6 +404,7 @@ void set_options(int argc, char **argv) {
   options.R     = cmd.get("R",     options.R);
   options.A     = cmd.get("A",     options.A);
   options.B     = cmd.get("B",     options.B);
+  options.it_reinit  = cmd.get("iter",  options.it_reinit);
 }
 
 int main(int argc, char** argv) {
@@ -562,70 +567,70 @@ int main(int argc, char** argv) {
       num_nodes += nodes->global_owned_indeps[r];
     PetscPrintf(mpi.comm(), "it = %04d n = %6d t = %1.5f dt = %1.5e\n", it, num_nodes, t, dt);
 
+    // reinitialize the solution before writing it
+    // do it every 5 saves
+    // FIXME: This should really depend on the how far the solution has
+    // advanced
+    if (it % options.it_reinit == 0) {
+      PetscPrintf(mpi.comm(), "Reinitalizing ... ");
+
+      my_p4est_hierarchy_t h(p4est, ghost, &brick);
+      my_p4est_node_neighbors_t ngbd(&h, nodes);
+      ngbd.init_neighbors();
+
+      my_p4est_level_set_t ls(&ngbd);
+      ls.reinitialize_2nd_order(phi);
+
+      // create a new grid and interpolate the data onto it
+      p4est_t* p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
+      splitting_criteria_tag_t tag(options.lmin, options.lmax, options.lip);
+
+      double *phi_p;
+      VecGetArray(phi, &phi_p);
+      tag.refine_and_coarsen(p4est_np1, nodes, phi_p);
+      VecRestoreArray(phi, &phi_p);
+
+      my_p4est_partition(p4est, P4EST_TRUE, NULL);
+      p4est_ghost_t* ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+      my_p4est_ghost_expand(p4est_np1, ghost_np1);
+      p4est_nodes_t* nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+      Vec phi_np1, pressure_np1[2], potential_np1[2];
+
+      VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1);
+      VecDuplicate(phi_np1, &pressure_np1[0]);
+      VecDuplicate(phi_np1, &pressure_np1[1]);
+      VecDuplicate(phi_np1, &potential_np1[0]);
+      VecDuplicate(phi_np1, &potential_np1[1]);
+
+      my_p4est_interpolation_nodes_t interp(&ngbd);
+      double x[P4EST_DIM];
+      foreach_node (n, nodes_np1) {
+        node_xyz_fr_n(n, p4est_np1, nodes_np1, x);
+        interp.add_point(n, x);
+      }
+      interp.set_input(phi, quadratic); interp.interpolate(phi_np1);
+      interp.set_input(pressure[0], quadratic); interp.interpolate(pressure_np1[0]);
+      interp.set_input(pressure[1], quadratic); interp.interpolate(pressure_np1[1]);
+      interp.set_input(potential[0], quadratic); interp.interpolate(potential_np1[0]);
+      interp.set_input(potential[1], quadratic); interp.interpolate(potential_np1[1]);
+
+      // Destroy old data
+      VecDestroy(phi); phi = phi_np1;
+      VecDestroy(pressure[0]); pressure[0] = pressure_np1[0];
+      VecDestroy(pressure[1]); pressure[1] = pressure_np1[1];
+      VecDestroy(potential[0]); potential[0] = potential_np1[0];
+      VecDestroy(potential[1]); potential[1] = potential_np1[1];
+
+      p4est_destroy(p4est); p4est = p4est_np1;
+      p4est_ghost_destroy(ghost); ghost = ghost_np1;
+      p4est_nodes_destroy(nodes); nodes = nodes_np1;
+
+      PetscPrintf(mpi.comm(), "done!\n");
+    }
+
     // save vtk
     if (t >= is*options.dts) {
-      // reinitialize the solution before writing it
-      // do it every 5 saves
-      // FIXME: This should really depend on the how far the solution has
-      // advanced
-      if (is % 1 == 0) {
-        PetscPrintf(mpi.comm(), "Reinitalizing ... ");
-
-        my_p4est_hierarchy_t h(p4est, ghost, &brick);
-        my_p4est_node_neighbors_t ngbd(&h, nodes);
-        ngbd.init_neighbors();
-
-        my_p4est_level_set_t ls(&ngbd);
-        ls.reinitialize_2nd_order(phi);
-
-        // create a new grid and interpolate the data onto it
-        p4est_t* p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
-        splitting_criteria_tag_t tag(options.lmin, options.lmax, options.lip);
-
-        double *phi_p;
-        VecGetArray(phi, &phi_p);
-        tag.refine_and_coarsen(p4est_np1, nodes, phi_p);
-        VecRestoreArray(phi, &phi_p);
-
-        my_p4est_partition(p4est, P4EST_TRUE, NULL);
-        p4est_ghost_t* ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-        my_p4est_ghost_expand(p4est_np1, ghost_np1);
-        p4est_nodes_t* nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-
-        Vec phi_np1, pressure_np1[2], potential_np1[2];
-
-        VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1);
-        VecDuplicate(phi_np1, &pressure_np1[0]);
-        VecDuplicate(phi_np1, &pressure_np1[1]);
-        VecDuplicate(phi_np1, &potential_np1[0]);
-        VecDuplicate(phi_np1, &potential_np1[1]);
-
-        my_p4est_interpolation_nodes_t interp(&ngbd);
-        double x[P4EST_DIM];
-        foreach_node (n, nodes_np1) {
-          node_xyz_fr_n(n, p4est_np1, nodes_np1, x);
-          interp.add_point(n, x);
-        }
-        interp.set_input(phi, quadratic); interp.interpolate(phi_np1);
-        interp.set_input(pressure[0], quadratic); interp.interpolate(pressure_np1[0]);
-        interp.set_input(pressure[1], quadratic); interp.interpolate(pressure_np1[1]);
-        interp.set_input(potential[0], quadratic); interp.interpolate(potential_np1[0]);
-        interp.set_input(potential[1], quadratic); interp.interpolate(potential_np1[1]);
-
-        // Destroy old data
-        VecDestroy(phi); phi = phi_np1;
-        VecDestroy(pressure[0]); pressure[0] = pressure_np1[0];
-        VecDestroy(pressure[1]); pressure[1] = pressure_np1[1];
-        VecDestroy(potential[0]); potential[0] = potential_np1[0];
-        VecDestroy(potential[1]); potential[1] = potential_np1[1];
-
-        p4est_destroy(p4est); p4est = p4est_np1;
-        p4est_ghost_destroy(ghost); ghost = ghost_np1;
-        p4est_nodes_destroy(nodes); nodes = nodes_np1;
-
-        PetscPrintf(mpi.comm(), "done!\n");
-      }
-
       double *phi_p, *pressure_p[2], *potential_p[2];
       VecGetArray(phi, &phi_p);
       VecGetArray(pressure[0], &pressure_p[0]);
