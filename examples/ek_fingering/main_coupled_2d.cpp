@@ -19,11 +19,13 @@
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_vtk.h>
+#include <src/my_p4est_macros.h>
 #else
 #include "coupled_solver_3d.h"
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_vtk.h>
+#include <src/my_p8est_macros.h>
 #endif
 
 #include <limits>
@@ -200,10 +202,10 @@ void set_options(int argc, char **argv) {
 
   } else if (options.test == "FastShelley04_Fig12") {
 
-    options.xmin[0]   = options.xmin[1] = options.xmin[2] = -100;
-    options.xmax[0]   = options.xmax[1] = options.xmax[2] =  100;
-    options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 10;
-    options.lmin      = 2;
+    options.xmin[0]   = options.xmin[1] = options.xmin[2] = -10 + EPS;
+    options.xmax[0]   = options.xmax[1] = options.xmax[2] =  10;
+    options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 1;
+    options.lmin      = 5;
     options.lmax      = 10;
     options.lip       = 10;
     options.cfl       = 1;
@@ -558,7 +560,7 @@ int main(int argc, char** argv) {
     p4est_gloidx_t num_nodes = 0;
     for (int r = 0; r<mpi.size(); r++)
       num_nodes += nodes->global_owned_indeps[r];
-    PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", it, num_nodes, t, dt);
+    PetscPrintf(mpi.comm(), "it = %04d n = %6d t = %1.5f dt = %1.5e\n", it, num_nodes, t, dt);
 
     // save vtk
     if (t >= is*options.dts) {
@@ -566,14 +568,62 @@ int main(int argc, char** argv) {
       // do it every 5 saves
       // FIXME: This should really depend on the how far the solution has
       // advanced
-      if (is % 5 == 1)
-      {
+      if (is % 1 == 0) {
+        PetscPrintf(mpi.comm(), "Reinitalizing ... ");
+
         my_p4est_hierarchy_t h(p4est, ghost, &brick);
         my_p4est_node_neighbors_t ngbd(&h, nodes);
         ngbd.init_neighbors();
 
         my_p4est_level_set_t ls(&ngbd);
         ls.reinitialize_2nd_order(phi);
+
+        // create a new grid and interpolate the data onto it
+        p4est_t* p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
+        splitting_criteria_tag_t tag(options.lmin, options.lmax, options.lip);
+
+        double *phi_p;
+        VecGetArray(phi, &phi_p);
+        tag.refine_and_coarsen(p4est_np1, nodes, phi_p);
+        VecRestoreArray(phi, &phi_p);
+
+        my_p4est_partition(p4est, P4EST_TRUE, NULL);
+        p4est_ghost_t* ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+        my_p4est_ghost_expand(p4est_np1, ghost_np1);
+        p4est_nodes_t* nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+        Vec phi_np1, pressure_np1[2], potential_np1[2];
+
+        VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1);
+        VecDuplicate(phi_np1, &pressure_np1[0]);
+        VecDuplicate(phi_np1, &pressure_np1[1]);
+        VecDuplicate(phi_np1, &potential_np1[0]);
+        VecDuplicate(phi_np1, &potential_np1[1]);
+
+        my_p4est_interpolation_nodes_t interp(&ngbd);
+        double x[P4EST_DIM];
+        foreach_node (n, nodes_np1) {
+          node_xyz_fr_n(n, p4est_np1, nodes_np1, x);
+          interp.add_point(n, x);
+        }
+        interp.set_input(phi, quadratic); interp.interpolate(phi_np1);
+        interp.set_input(pressure[0], quadratic); interp.interpolate(pressure_np1[0]);
+        interp.set_input(pressure[1], quadratic); interp.interpolate(pressure_np1[1]);
+        interp.set_input(potential[0], quadratic); interp.interpolate(potential_np1[0]);
+        interp.set_input(potential[1], quadratic); interp.interpolate(potential_np1[1]);
+
+        // Destroy old data
+        VecDestroy(phi); phi = phi_np1;
+        VecDestroy(pressure[0]); pressure[0] = pressure_np1[0];
+        VecDestroy(pressure[1]); pressure[1] = pressure_np1[1];
+        VecDestroy(potential[0]); potential[0] = potential_np1[0];
+        VecDestroy(potential[1]); potential[1] = potential_np1[1];
+
+        p4est_destroy(p4est); p4est = p4est_np1;
+        p4est_ghost_destroy(ghost); ghost = ghost_np1;
+        p4est_nodes_destroy(nodes); nodes = nodes_np1;
+
+        PetscPrintf(mpi.comm(), "done!\n");
       }
 
       double *phi_p, *pressure_p[2], *potential_p[2];
