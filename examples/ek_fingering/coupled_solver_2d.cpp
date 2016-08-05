@@ -459,7 +459,7 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
 
   foreach_node(n, nodes) {
     pressure_m_p[n]  = pressure_p_p[n] - pressure_star[n];
-    potential_m_p[n] = potential_p_p[n] - pressure_star[n];
+    potential_m_p[n] = potential_p_p[n] - potential_star[n];
   }
 
   // extend solutions

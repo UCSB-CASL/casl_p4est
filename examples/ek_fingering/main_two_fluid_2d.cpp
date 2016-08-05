@@ -160,16 +160,17 @@ void set_options(int argc, char **argv) {
 
   } else if (options.test == "FastShelley04_Fig12") {
 
-    options.xmin[0]   = options.xmin[1] = options.xmin[2] = -100;
-    options.xmax[0]   = options.xmax[1] = options.xmax[2] =  100;
-    options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 10;
+    options.xmin[0]   = options.xmin[1] = options.xmin[2] = -10 + EPS;
+    options.xmax[0]   = options.xmax[1] = options.xmax[2] =  10;
+    options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 1;
     options.method    = "voronoi";
-    options.lmin      = 2;
+    options.lmin      = 5;
     options.lmax      = 10;
     options.dtmax     = 5e-3;
     options.dts       = 1e-1;
     options.Ca        = 250;
-    options.M         = 1;
+    options.M         = 1e-8;
+    options.lip       = 30;
 
 #ifdef P4_TO_P8
     static struct:cf_t{
@@ -227,7 +228,7 @@ void set_options(int argc, char **argv) {
       }
     } interface; interface.lip = options.lip;
 
-#if 1
+#if 0
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
@@ -247,7 +248,7 @@ void set_options(int argc, char **argv) {
       }
     } bc_wall_value; bc_wall_value.t = 0;
 #endif // #if 0
-#if 0
+#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
     } bc_wall_type;
@@ -261,7 +262,7 @@ void set_options(int argc, char **argv) {
 #endif // #if 1
 #endif // P4_TO_P8
     static struct:CF_1{
-      double operator()(double t) const { return 1+t; }
+      double operator()(double t) const { return 2*PI*(1+t); }
     } Q;
 
     // set parameters specific to this test
@@ -382,18 +383,21 @@ int main(int argc, char** argv) {
       num_nodes += nodes->global_owned_indeps[r];
     PetscPrintf(mpi.comm(), "i = %04d n = %6d t = %1.5f dt = %1.5e\n", it, num_nodes, t, dt);
 
-    if (t >= is*options.dts) {
-      // reinitialize the solution before writing it
-      {
+     // reinitialize the solution before writing it
+      if (it % 10 == 0){
+        PetscPrintf(mpi.comm(), "Reinitializing ...");
         my_p4est_hierarchy_t h(p4est, ghost, &brick);
         my_p4est_node_neighbors_t ngbd(&h, nodes);
         ngbd.init_neighbors();
 
         my_p4est_level_set_t ls(&ngbd);
         ls.reinitialize_2nd_order(phi);
+        PetscPrintf(mpi.comm(),"done!\n");
       }
 
-      // save vtk
+  
+    if (t >= is*options.dts) {
+     // save vtk
       double *phi_p, *press_m_p, *press_p_p;
       VecGetArray(phi, &phi_p);
       VecGetArray(press_m, &press_m_p);
