@@ -1,8 +1,9 @@
 ####### Compiler, tools and options
 
 build = 3d
-debug = 0
+debug = 1
 log = 0
+stampede = 0
 
 ifeq ($(build),2d)
 	OBJDIR = .obj_2d
@@ -12,12 +13,38 @@ else
 	TARGET = p4est_navier_stokes_3d
 endif
 
-ifeq ($(debug),1)
-	CFLAGS += -g
-	CXXFLAGS += -g
-	P4EST_ARCH = debug
+# only set these variables if P4EST_DIR is not defined in the environment
+ifeq ($(origin P4EST_DIR), undefined)
+
+	CFLAGS_DEBUG = -g -O0
+	CFLAGS_OPTIM = -O2
+
+	ifeq ($(debug),1)
+		CFLAGS += $(CFLAGS_DEBUG) 
+		CXXFLAGS += $(CFLAGS_DEBUG) 
+		P4EST_ARCH = debug
+	else
+		CFLAGS += $(CFLAGS_OPTIM)
+		CXXFLAGS += $(CFLAGS_OPTIM)
+		P4EST_ARCH = release
+	endif
+
+	#P4EST_DIR=/work/02673/guittet/softwares/build/p4est_mvapich2/release
+	P4EST_DIR=/work/02673/guittet/softwares/build/p4est_git/$(P4EST_ARCH)
+
+	# p4est
+	INCPATH += -I$(P4EST_DIR)/include
+	LIBS += -Wl,-rpath,$(P4EST_DIR)/lib -L$(P4EST_DIR)/lib -lp4est -lsc
+
 else
-	P4EST_ARCH = release
+	#echo "Use installed p4est from $(P4EST_DIR)"
+
+	include $(P4EST_DIR)/etc/Makefile.p4est.mk
+	CFLAGS += $(SC_CFLAGS)
+	CXXFLAGS += $(SC_CFLAGS)
+
+	INCPATH += $(P4EST_CPPFLAGS)
+	LIBS += $(P4EST_LIBS)
 endif
 
 ifeq ($(log),1)
@@ -25,30 +52,47 @@ ifeq ($(log),1)
 	CXXFLAGS += -DCASL_LOG_EVENTS
 endif
 
-#P4EST_DIR=/work/02673/guittet/softwares/build/p4est_mvapich2/release
-P4EST_DIR=/work/02673/guittet/softwares/build/p4est_git/$(P4EST_ARCH)
-
-# p4est
-INCPATH += -I$(P4EST_DIR)/include
-LIBS += -Wl,-rpath,$(P4EST_DIR)/lib -L$(P4EST_DIR)/lib -lp4est -lsc
-
 # petsc
-INCPATH += -I$(PETSC_DIR)/include -I$(PETSC_DIR)/sandybridge-cxx/include
-LIBS += -Wl,-rpath,$(PETSC_DIR)/sandybridge-cxx/lib -L$(PETSC_DIR)/sandybridge-cxx/lib -lpetsc
+#INCPATH += -I$(PETSC_DIR)/include -I$(PETSC_DIR)/sandybridge-cxx/include
+#LIBS += -Wl,-rpath,$(PETSC_DIR)/sandybridge-cxx/lib -L$(PETSC_DIR)/sandybridge-cxx/lib -lpetsc
+INCPATH += -I$(PETSC_DIR)/include
+LIBS += -Wl,-rpath,$(PETSC_DIR)/lib -L$(PETSC_DIR)/lib -lpetsc
 
 # casl p4est
-CASL_P4EST = /work/02673/guittet/code/casl_p4est
+ifeq ($(origin CASL_P4EST), undefined)
+	CASL_P4EST = /work/02673/guittet/code/casl_p4est
+endif
 INCPATH += -I$(CASL_P4EST)
 
-# casl library
+# casl library -- it seems this is outdated and only referenced in 2D
 CASL_DIR =/work/02673/guittet/code/casl_library
 
-CFLAGS += -DSTAMPEDE
-CXXFLAGS += -DSTAMPEDE
+# Voro++
+ifeq ($(origin VOROPP_DIR), undefined)
+	LIBS += -L/work/02673/guittet/softwares/build/voro++/lib -lvoro++
+	INCPATH += -I/work/02673/guittet/softwares/build/voro++/include/voro++
+else
+	#echo "Use installed Voro++ library from $(VOROPP_DIR)"
 
-CC = @echo compiling $< && mpicc
-CXX = @echo compiling $< && mpic++
-LINK = @echo linking $@ && mpic++
+	LIBS += -L$(VOROPP_DIR)/lib -lvoro++
+	INCPATH += -I$(VOROPP_DIR)/include/voro++
+endif
+
+# extra flags for the Stampede computer
+ifeq ($(stampede),1)
+	CFLAGS += -DSTAMPEDE
+	CXXFLAGS += -DSTAMPEDE
+endif
+
+ifeq ($(debug), 0)
+	CC = @echo compiling $< && mpicc
+	CXX = @echo compiling $< && mpicxx
+	LINK = @echo linking $@ && mpicxx
+else
+	CC = mpicc
+	CXX = mpicxx
+	LINK = mpicxx
+endif
 
 vpath %.c   $(CASL_P4EST)/src
 vpath %.cpp $(CASL_P4EST)/src
@@ -111,8 +155,8 @@ ifeq ($(build),2d)
 
 else
 
-		LIBS += -L/work/02673/guittet/softwares/build/voro++/lib -lvoro++
-		INCPATH += -I/work/02673/guittet/softwares/build/voro++/include/voro++
+#		LIBS += -L/work/02673/guittet/softwares/build/voro++/lib -lvoro++
+#		INCPATH += -I/work/02673/guittet/softwares/build/voro++/include/voro++
 #    $$CASL_P4EST/examples/navier_stokes/main_navier_stokes_scaling_3d.cpp
 #    $$CASL_P4EST/examples/faces/main_timing_faces_3d.cpp
 	SOURCES += \
