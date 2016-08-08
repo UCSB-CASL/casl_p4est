@@ -5,6 +5,9 @@ debug = 1
 log = 0
 stampede = 0
 
+# hack to pass NULL as first parameter to PetscOptionsSetValue
+petscoptions = 1
+
 ifeq ($(build),2d)
 	OBJDIR = .obj_2d
 	TARGET = p4est_navier_stokes_2d
@@ -82,6 +85,11 @@ endif
 ifeq ($(stampede),1)
 	CFLAGS += -DSTAMPEDE
 	CXXFLAGS += -DSTAMPEDE
+endif
+
+ifeq ($(petscoptions), 1)
+	CFLAGS += -DCASL_PETSC_OPTIONS
+	CXXFLAGS += -DCASL_PETSC_OPTIONS
 endif
 
 ifeq ($(debug), 0)
