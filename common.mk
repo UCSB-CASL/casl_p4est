@@ -1,8 +1,8 @@
 # Configure PETSc
 ifeq ($(TACC_CLUSTER), YES)
 	PETSC_DIR = $(TACC_PETSC_DIR)
-	include $(PETSC_DIR)conf/variables
-	include $(PETSC_DIR)conf/rules
+	include $(PETSC_DIR)/conf/variables
+	include $(PETSC_DIR)/conf/rules
 	ifeq ($(PETSC_INCLUDE),)
 		PETSC_INCLUDE = -I$(PETSC_DIR)include -I$(PETSC_DIR)$(PETSC_ARCH)/include 
 	endif
