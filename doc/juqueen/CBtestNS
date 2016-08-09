@@ -1,0 +1,21 @@
+# @ job_name = CBtestNS
+# @ comment = "Test Job to figure out Juqueen for casl_p4est"
+# @ output = $(job_name).$(jobid).out
+# @ error = $(job_name).$(jobid).err
+# @ environment = COPY_ALL
+# @ wall_clock_limit = 00:30:00
+# @ notification = always
+# @ notify_user = burstedde@ins.uni-bonn.de
+# @ job_type = bluegene
+# @ bg_size = 32
+# @ queue
+
+export OUT_DIR="$WORK/casl_p4est/CBtestNS"
+mkdir -p "$OUT_DIR/vtu"
+
+cd "$OUT_DIR"
+export OMP_NUM_THREADS=1
+runjob --ranks-per-node 16 --np 64 : \
+/home/myhome/casl_p4est/build/p4est_navier_stokes_3d                      \
+        -lmin 4 -lmax 7 -test 2 -save_vtk 0 -save_every_n 20              \
+        -Re 500 -thresh 0.005 -n_times_dt 5 -tf 200 -sl_order 2
