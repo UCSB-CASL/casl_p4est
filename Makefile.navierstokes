@@ -4,11 +4,18 @@ build = 3d
 debug = 1
 log = 0
 stampede = 0
+juqueen = 1
 
-# hack to pass NULL as first parameter to PetscOptionsSetValue
-petscoptions = 1
+# On JUQUEEN it is important to module load petsc/3.6.0_downloads_O3strict.
+#            It is also advised to compile p4est and export P4EST_DIR accordingly,
+#            since this provides the BGQ-specific compiler flags from the p4est build.
+#            Export CASL_P4EST to point to the casl_p4est source directory.
 
-ifeq ($(build),2d)
+# hack to pass NULL as first parameter to PetscOptionsSetValue if set to 1
+# to use the JUQUEEN petsc version 3.6 this must be 0
+petscoptions = 0
+
+ifeq ($(build), 2d)
 	OBJDIR = .obj_2d
 	TARGET = p4est_navier_stokes_2d
 else
@@ -43,11 +50,11 @@ else
 	#echo "Use installed p4est from $(P4EST_DIR)"
 
 	include $(P4EST_DIR)/etc/Makefile.p4est.mk
-	CFLAGS += $(SC_CFLAGS)
-	CXXFLAGS += $(SC_CFLAGS)
+	CFLAGS += $(P4EST_CFLAGS)
+	CXXFLAGS += $(P4EST_CFLAGS)
 
 	INCPATH += $(P4EST_CPPFLAGS)
-	LIBS += $(P4EST_LIBS)
+	LIBS += $(P4EST_LDFLAGS) $(P4EST_LIBS)
 endif
 
 ifeq ($(log),1)
@@ -56,10 +63,17 @@ ifeq ($(log),1)
 endif
 
 # petsc
-#INCPATH += -I$(PETSC_DIR)/include -I$(PETSC_DIR)/sandybridge-cxx/include
-#LIBS += -Wl,-rpath,$(PETSC_DIR)/sandybridge-cxx/lib -L$(PETSC_DIR)/sandybridge-cxx/lib -lpetsc
-INCPATH += -I$(PETSC_DIR)/include
-LIBS += -Wl,-rpath,$(PETSC_DIR)/lib -L$(PETSC_DIR)/lib -lpetsc
+ifeq ($(juqueen), 0)
+	#INCPATH += -I$(PETSC_DIR)/include -I$(PETSC_DIR)/sandybridge-cxx/include
+	#LIBS += -Wl,-rpath,$(PETSC_DIR)/sandybridge-cxx/lib -L$(PETSC_DIR)/sandybridge-cxx/lib -lpetsc
+	INCPATH += -I$(PETSC_DIR)/include
+	LIBS += -Wl,-rpath,$(PETSC_DIR)/lib -L$(PETSC_DIR)/lib -lpetsc
+else
+	include $(PETSC_DIR)/lib/petsc/conf/variables
+	include $(PETSC_DIR)/lib/petsc/conf/rules
+	INCPATH += $(PETSC_CC_INCLUDES)
+	LIBS += $(PETSC_LIB)
+endif
 
 # casl p4est
 ifeq ($(origin CASL_P4EST), undefined)
@@ -82,7 +96,7 @@ else
 endif
 
 # extra flags for the Stampede computer
-ifeq ($(stampede),1)
+ifeq ($(stampede), 1)
 	CFLAGS += -DSTAMPEDE
 	CXXFLAGS += -DSTAMPEDE
 endif
@@ -92,14 +106,21 @@ ifeq ($(petscoptions), 1)
 	CXXFLAGS += -DCASL_PETSC_OPTIONS
 endif
 
-ifeq ($(debug), 0)
-	CC = @echo compiling $< && mpicc
-	CXX = @echo compiling $< && mpicxx
-	LINK = @echo linking $@ && mpicxx
+ifeq ($(juqueen), 0)
+	ifeq ($(debug), 0)
+		CC = @echo compiling $< && mpicc
+		CXX = @echo compiling $< && mpicxx
+		LINK = @echo linking $@ && mpicxx
+	else
+		CC = mpicc
+		CXX = mpicxx
+		LINK = mpicxx
+	endif
 else
-	CC = mpicc
-	CXX = mpicxx
-	LINK = mpicxx
+	INCPATH += -DCASL_JUQUEEN
+	CC = mpixlc_r
+	CXX = mpixlcxx_r
+	LINK = mpixlcxx_r
 endif
 
 vpath %.c   $(CASL_P4EST)/src
@@ -223,5 +244,5 @@ all: $(TARGET)
 $(TARGET):  $(OBJECTS)
 	$(LINK) -o $(TARGET) $(OBJECTS) $(LIBS) $(LFLAGS)
 
-clean: 
-	rm -rf $(OBJDIR)/*.o $(TARGET)
+#clean: 
+#	rm -rf $(OBJDIR)/*.o $(TARGET)
