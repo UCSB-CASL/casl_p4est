@@ -17,7 +17,7 @@
 
 // Logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
-#undef  PetscLogEventBegintig
+#undef  PetscLogEventBegin
 #undef  PetscLogEventEnd
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
