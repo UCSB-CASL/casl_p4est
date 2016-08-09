@@ -193,8 +193,8 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("log_trajectory_from_np1_to_nm1_faces                    ", 0, &log_trajectory_from_np1_to_nm1_faces); CHKERRXX(ierr);
 
 	for (short i = 0; i < P4EST_MAXLEVEL; i++) {
-		char logname [128]; 
-    sprintf(logname,"my_p4est_semi_lagrangian_t::grid_gen_iter_%02d                        ", i);
+		char logname [BUFSIZ];
+    snprintf(logname, BUFSIZ, "my_p4est_semi_lagrangian_t::grid_gen_iter_%02d                        ", i);
     ierr = PetscLogEventRegister(logname, 0, &log_my_p4est_semi_lagrangian_grid_gen_iter[i]); CHKERRXX(ierr);
 	}
   // my_p4est_level_set

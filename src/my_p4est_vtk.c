@@ -745,11 +745,11 @@ my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_ghost_t *ghost,
 
   char rank_tree_name[BUFSIZ]; rank_tree_name[0]='\0';
   if (write_rank && write_tree)
-    sprintf(rank_tree_name, "proc_rank, tree_idx, ");
+    snprintf(rank_tree_name, BUFSIZ, "%s", "proc_rank, tree_idx, ");
   else if (write_rank)
-    sprintf(rank_tree_name, "proc_rank, ");
+    snprintf(rank_tree_name, BUFSIZ, "%s", "proc_rank, ");
   else if (write_tree)
-    sprintf(rank_tree_name, "tree_idx, ");
+    snprintf(rank_tree_name, BUFSIZ, "%s", "tree_idx, ");
 
   /* Cell Data */
   fprintf (vtufile, "      <CellData");
@@ -1098,9 +1098,9 @@ my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
 
 void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost)
 {
-  char csvname[1024], vtkname[1024];
-  sprintf(csvname, "ghost_layer_%04d.csv", p4est->mpirank);
-  sprintf(vtkname, "ghost_layer_%04d.vtk", p4est->mpirank);
+  char csvname[BUFSIZ], vtkname[BUFSIZ];
+  snprintf(csvname, BUFSIZ, "ghost_layer_%04d.csv", p4est->mpirank);
+  snprintf(vtkname, BUFSIZ, "ghost_layer_%04d.vtk", p4est->mpirank);
 
   FILE *csv = fopen(csvname, "w");
   FILE *vtk = fopen(vtkname, "w");

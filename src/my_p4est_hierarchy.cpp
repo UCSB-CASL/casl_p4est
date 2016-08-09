@@ -158,8 +158,8 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
   p4est_connectivity_t* connectivity = p4est->connectivity;
 
   /* filename */
-  char vtkname[1024];
-  sprintf(vtkname, "%s_%04d.vtk", filename, p4est->mpirank);
+  char vtkname[BUFSIZ];
+  snprintf(vtkname, BUFSIZ, "%s_%04d.vtk", filename, p4est->mpirank);
 
   FILE *vtk = fopen(vtkname, "w");
 

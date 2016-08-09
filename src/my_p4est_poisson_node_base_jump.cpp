@@ -2050,8 +2050,8 @@ void PoissonSolverNodeBaseJump::print_voronoi_VTK(const char* path) const
   for(unsigned int n=0; n<num_local_voro; ++n)
     compute_voronoi_cell(n, voro[n]);
 
-  char name[1000];
-  sprintf(name, "%s_%d.vtk", path, p4est->mpirank);
+  char name[BUFSIZ];
+  snprintf(name, BUFSIZ, "%s_%d.vtk", path, p4est->mpirank);
 
 #ifdef P4_TO_P8
 //  Voronoi3D::print_VTK_Format(voro, name, xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
