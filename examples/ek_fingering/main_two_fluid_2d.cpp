@@ -1,4 +1,4 @@
-/* 
+/*
  * Title: viscous_fingering
  * Description:
  * Solves the viscous fingering problem in a one-fluid configuration, i.e. we solve
@@ -67,13 +67,14 @@ void set_options(int argc, char **argv) {
   cmd.add_option("iter", "number of iterations");
   cmd.add_option("cfl", "the CFL number");
   cmd.add_option("dts", "dt for saving vtk files");
-  cmd.add_option("dtmax", "max dt to use when solving");  
+  cmd.add_option("dtmax", "max dt to use when solving");
   cmd.add_option("M", "The viscosity ratio of inner to outer fluid");
   cmd.add_option("method", "method for solving the jump equation");
   cmd.add_option("mode", "perturbation mode used for analysis");
   cmd.add_option("eps", "perturbation amplitude to be added to the interface");
   cmd.add_option("test", "Which test to run?, Options are:\n"
       "\tcircle\n"
+      "\tflat\n"
       "\tFastShelley04_Fig12\n");
 
   cmd.parse(argc, argv);
@@ -103,7 +104,6 @@ void set_options(int argc, char **argv) {
     options.Ca      = 250;
     options.mode    = cmd.get("mode", 0);
     options.eps     = cmd.get("eps", 5e-3);
-    options.method  = "semi_lagrangian";
     options.lip     = cmd.get("lip", options.lip);
     options.M       = 1;
 
@@ -136,6 +136,71 @@ void set_options(int argc, char **argv) {
           return y > 0 ? ur*sin(theta):-ur*sin(theta);
         else
           return 0;
+      }
+    } bc_wall_value; bc_wall_value.t = 0;
+    /*
+       static struct:WallBC2D {
+       BoundaryConditionType operator()(double, double) const {
+       return DIRICHLET;
+       }
+       } bc_wall_type;
+
+       static struct:CF_2 {
+       double operator()(double x, double y) const {
+       double r = sqrt(SQR(x)+SQR(y));
+       return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
+       }
+       } bc_wall_value; bc_wall_value.t = 0;
+     */
+
+    options.Q             = &Q;
+    options.interface     = &interface;
+    options.bc_wall_type  = &bc_wall_type;
+    options.bc_wall_value = &bc_wall_value;
+
+  } else if (options.test == "flat") {
+    // set interface
+    options.xmin[0] = -5 + EPS; options.xmin[1] = options.xmin[2] = -0.5;
+    options.xmax[0] =  5;       options.xmax[1] = options.xmax[2] =  0.5;
+    options.ntr[0]  = 10; options.ntr[1] = options.ntr[2] = 1;
+    options.periodic[0] = false; options.periodic[1] = options.periodic[2] = false;
+    options.lmax    = 7;
+    options.lmin    = 2;
+    options.iter    = 10;
+    options.dtmax   = 1e-3;
+    options.dts     = 1e-1;
+    options.Ca      = 250;
+    options.mode    = cmd.get("mode", 0);
+    options.eps     = cmd.get("eps", 5e-3);
+    options.lip     = cmd.get("lip", options.lip);
+    options.M       = 1;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const  {
+        return x-options.eps*cos(2*M_PI*options.mode*y);
+      }
+    } interface; interface.lip = options.lip;
+    options.interface = &interface;
+
+    static struct:CF_1{
+      double operator()(double) const { return 0; }
+    } Q;
+
+    static struct:WallBC2D{
+      BoundaryConditionType operator()(double x, double y) const {
+        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
+          return NEUMANN;
+        else
+          return NEUMANN;
+      }
+    } bc_wall_type;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const {
+        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
+          return 0;
+        else
+          return x > 0 ? -1.0:1.0/options.M;
       }
     } bc_wall_value; bc_wall_value.t = 0;
     /*
@@ -285,7 +350,7 @@ void set_options(int argc, char **argv) {
   options.dts       = cmd.get("dts",       options.dts);
   options.dtmax     = cmd.get("dtmax",     options.dtmax);
   options.M         = cmd.get("M",         options.M);
-  options.method    = cmd.get("method",    options.method);  
+  options.method    = cmd.get("method",    options.method);
 }
 
 int main(int argc, char** argv) {
@@ -370,7 +435,6 @@ int main(int argc, char** argv) {
     VecRestoreArray(phi, &phi_p);
   }
 
-
   double dt = 0, t = 0;
   int is = 1, it = 0;
   do {
@@ -395,7 +459,7 @@ int main(int argc, char** argv) {
         PetscPrintf(mpi.comm(),"done!\n");
       }
 
-  
+
     if (t >= is*options.dts) {
      // save vtk
       double *phi_p, *press_m_p, *press_p_p;
@@ -456,6 +520,39 @@ int main(int argc, char** argv) {
         fclose(file);
       }
     }
+
+    if (options.test == "flat") {
+      my_p4est_hierarchy_t h(p4est, ghost, &brick);
+      my_p4est_node_neighbors_t ngbd(&h, nodes);
+      ngbd.init_neighbors();
+
+      my_p4est_interpolation_nodes_t interp(&ngbd);
+      interp.set_input(phi, quadratic);
+
+      // we only ask the root to compute the interpolation
+      int ntheta = mpi.rank() == 0 ? 3600:0;
+      vector<double> err(ntheta);
+      for (int n=0; n<ntheta; n++) {
+        double x[] = {t, options.xmin[1] + (options.xmax[1]-options.xmin[1])/ntheta};
+        interp.add_point(n, x);
+      }
+      interp.interpolate(err.data());
+
+      if (mpi.rank() == 0) {
+        ostringstream filename;
+        filename << folder.str() << "/err_" << options.lmax
+          << "_" << options.mode
+          << "_" << it << ".txt";
+        FILE *file = fopen(filename.str().c_str(), "w");
+        fprintf(file, "%% theta \t err\n");
+        for (int n = 0; n<ntheta; n++) {
+          double y = options.xmin[1] + (options.xmax[1]-options.xmin[1])/ntheta;
+          fprintf(file, "%1.6f % -1.12e\n", y, err[n]);
+        }
+        fclose(file);
+      }
+    }
+
   } while (it < options.iter);
 
   // destroy vectors
@@ -471,4 +568,3 @@ int main(int argc, char** argv) {
 
   w.stop(); w.read_duration();
 }
-

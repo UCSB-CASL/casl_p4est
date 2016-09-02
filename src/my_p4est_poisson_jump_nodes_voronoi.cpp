@@ -244,6 +244,10 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
     ierr = KSPSetOperators(ksp, A, A, SAME_PRECONDITIONER);  CHKERRXX(ierr);
   }
 
+  // PetscSynchronizedPrintf(p4est->mpicomm, "[%2d] null? %d\n", p4est->mpirank, matrix_has_nullspace);
+  // PetscSynchronizedFlush(p4est->mpicomm, stdout);
+
+
   // set pc type
   PC pc;
   ierr = KSPGetPC(ksp, &pc); CHKERRXX(ierr);
@@ -285,15 +289,15 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
   /* set the nullspace */
-  if (matrix_has_nullspace){
-    // PETSc removed the KSPSetNullSpace in 3.6.0 ... Use MatSetNullSpace instead
-#if PETSC_VERSION_GE(3,6,0)
-    ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-//    ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
-#else
-    ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
-#endif
-  }
+//   if (matrix_has_nullspace){
+//     // PETSc removed the KSPSetNullSpace in 3.6.0 ... Use MatSetNullSpace instead
+// #if PETSC_VERSION_GE(3,6,0)
+//     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+// //    ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
+// #else
+//     ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
+// #endif
+//   }
 
   /* Solve the system */
   ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
@@ -1426,7 +1430,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
       ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
     }
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-//    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+    // ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
   }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
@@ -1582,9 +1586,10 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_negative_laplace_rhsvec()
   }
 
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
-
-  if (matrix_has_nullspace)
-    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+  //
+  // if (matrix_has_nullspace) {
+  //   ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+  // }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_rhsvec_setup, rhs, 0, 0, 0); CHKERRXX(ierr);
 }
