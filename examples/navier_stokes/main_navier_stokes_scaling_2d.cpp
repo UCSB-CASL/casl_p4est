@@ -569,7 +569,7 @@ int main (int argc, char* argv[])
 
     my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
     ns.set_phi(phi);
-    ns.set_parameters(mu, rho, uniform_band, threshold_split_cell, n_times_dt);
+    ns.set_parameters(mu, rho, 2, uniform_band, threshold_split_cell, n_times_dt);
     ns.set_external_forces(external_forces);
     ns.set_velocities(vnm1, vn);
     ns.set_bc(bc_v, &bc_p);
