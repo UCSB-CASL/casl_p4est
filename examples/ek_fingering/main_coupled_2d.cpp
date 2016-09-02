@@ -45,7 +45,7 @@ typedef WallBC2D wall_bc_t;
 
 static struct {
   int lmin, lmax, iter, it_reinit;
-  double lip, Ca, cfl, dts, dtmax;
+  double lip, Ca, cfl, dts, dtmax, L, rot;
   double A, B;
   double M, S, R;
   double xmin[3], xmax[3];
@@ -74,6 +74,8 @@ void set_options(int argc, char **argv) {
   cmd.add_option("cfl", "the CFL number");
   cmd.add_option("dts", "dt for saving vtk files");
   cmd.add_option("dtmax", "max dt to use when solving");  
+  cmd.add_option("L", "domain length");
+  cmd.add_option("rot", "angle to rotate the interface about");
   cmd.add_option("M", "The viscosity ratio of outer/inner");
   cmd.add_option("S", "The permittivity ratio of outer/inner");
   cmd.add_option("R", "The conductivity ratio of outer/inner");
@@ -102,11 +104,13 @@ void set_options(int argc, char **argv) {
   options.lip = 1.2;
   options.cfl = 1;
   options.it_reinit = 10;
+  options.L = cmd.get("L", 10);
+  options.rot = cmd.get("rot", 0);
 
   if (options.test == "circle") {
     // set interface
-    options.xmin[0] = options.xmin[1] = options.xmin[2] = -10 + EPS;
-    options.xmax[0] = options.xmax[1] = options.xmax[2] =  10;
+    options.xmin[0] = options.xmin[1] = options.xmin[2] = -options.L + EPS;
+    options.xmax[0] = options.xmax[1] = options.xmax[2] =  options.L;
     options.lmax    = 10;
     options.lmin    = 5;
     options.iter    = 10;
@@ -134,7 +138,7 @@ void set_options(int argc, char **argv) {
 
     static struct:CF_2{
       double operator()(double x, double y) const  {
-        double theta = atan2(y,x);// - M_PI/180 * 45;
+        double theta = atan2(y,x) - options.rot * PI/180;
         double r     = sqrt(SQR(x)+SQR(y));
         return r - (1+options.eps*cos(options.mode*theta));
       }
@@ -205,8 +209,8 @@ void set_options(int argc, char **argv) {
 
   } else if (options.test == "FastShelley04_Fig12") {
 
-    options.xmin[0]   = options.xmin[1] = options.xmin[2] = -10 + EPS;
-    options.xmax[0]   = options.xmax[1] = options.xmax[2] =  10;
+    options.xmin[0]   = options.xmin[1] = options.xmin[2] = -options.L + EPS;
+    options.xmax[0]   = options.xmax[1] = options.xmax[2] =  options.L;
     options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 1;
     options.lmin      = 5;
     options.lmax      = 10;
@@ -308,7 +312,7 @@ void set_options(int argc, char **argv) {
 #else // 2D
     static struct:cf_t {
       double operator()(double x, double y) const  {
-        double theta = atan2(y,x);
+        double theta = atan2(y,x) - options.rot * PI/180;
         double r     = sqrt(SQR(x)+SQR(y));
 
         return r - ( 1.0+0.1*(cos(3*theta)+sin(2*theta)) );
@@ -404,7 +408,7 @@ void set_options(int argc, char **argv) {
   options.R     = cmd.get("R",     options.R);
   options.A     = cmd.get("A",     options.A);
   options.B     = cmd.get("B",     options.B);
-  options.it_reinit  = cmd.get("iter",  options.it_reinit);
+  options.it_reinit  = cmd.get("it_reinit",  options.it_reinit);
 }
 
 int main(int argc, char** argv) {
@@ -525,8 +529,8 @@ int main(int argc, char** argv) {
     VecGetArray(potential[0], &potential_p[0]);
     VecGetArray(potential[1], &potential_p[1]);
 
-    sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), "coupled", P4EST_DIM,
-        0);
+    sprintf(vtk_name, "%s/coupled_%d_%d_%f.%04d", folder.str().c_str(),
+            options.lmin, options.lmax, options.lip, 0);
     PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
         P4EST_TRUE, P4EST_TRUE,
@@ -580,7 +584,7 @@ int main(int argc, char** argv) {
 
       my_p4est_level_set_t ls(&ngbd);
       ls.reinitialize_2nd_order(phi);
-
+/*
       // create a new grid and interpolate the data onto it
       p4est_t* p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
       splitting_criteria_tag_t tag(options.lmin, options.lmax, options.lip);
@@ -625,7 +629,7 @@ int main(int argc, char** argv) {
       p4est_destroy(p4est); p4est = p4est_np1;
       p4est_ghost_destroy(ghost); ghost = ghost_np1;
       p4est_nodes_destroy(nodes); nodes = nodes_np1;
-
+*/
       PetscPrintf(mpi.comm(), "done!\n");
     }
 
@@ -638,8 +642,9 @@ int main(int argc, char** argv) {
       VecGetArray(potential[0], &potential_p[0]);
       VecGetArray(potential[1], &potential_p[1]);
 
-      sprintf(vtk_name, "%s/%s_%dd.%04d", folder.str().c_str(), "coupled", P4EST_DIM,
-          is++);
+      sprintf(vtk_name, "%s/coupled_%d_%d_%f.%04d", folder.str().c_str(),
+              options.lmin, options.lmax, options.lip,
+              is++);
       PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
       my_p4est_vtk_write_all(p4est, nodes, ghost,
           P4EST_TRUE, P4EST_TRUE,
