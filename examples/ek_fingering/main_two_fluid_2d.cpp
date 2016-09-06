@@ -97,12 +97,12 @@ void set_options(int argc, char **argv) {
   options.lip  = 1.2;
   options.cfl  = 1;
   options.it_reinit = 10;
-  options.L = cmd.get("L", 10);
   options.rot = cmd.get("rot", 0);
   options.iter = numeric_limits<int>::max();
 
   if (options.test == "circle") {
     // set interface
+    options.L = cmd.get("L", 10);
     options.xmin[0] = options.xmin[1] = options.xmin[2] = -options.L + EPS;
     options.xmax[0] = options.xmax[1] = options.xmax[2] =  options.L;
     options.lmax    = 10;
@@ -178,9 +178,10 @@ void set_options(int argc, char **argv) {
 
   } else if (options.test == "flat") {
     // set interface
-    options.xmin[0] = -5 + EPS; options.xmin[1] = options.xmin[2] = -0.5;
-    options.xmax[0] =  5;       options.xmax[1] = options.xmax[2] =  0.5;
-    options.ntr[0]  = 10; options.ntr[1] = options.ntr[2] = 1;
+    options.L = cmd.get("L", 5);
+    options.xmin[0] = -options.L + EPS; options.xmin[1] = options.xmin[2] = -0.5;
+    options.xmax[0] =  options.L;       options.xmax[1] = options.xmax[2] =  0.5;
+    options.ntr[0]  = 2*options.L; options.ntr[1] = options.ntr[2] = 1;
     options.periodic[0] = false; options.periodic[1] = options.periodic[2] = false;
     options.lmax    = 7;
     options.lmin    = 2;
@@ -209,7 +210,7 @@ void set_options(int argc, char **argv) {
         if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
           return NEUMANN;
         else
-          return NEUMANN;
+          return x > 0 ? NEUMANN:DIRICHLET;
       }
     } bc_wall_type;
 
@@ -218,7 +219,7 @@ void set_options(int argc, char **argv) {
         if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
           return 0;
         else
-          return x > 0 ? -1.0:1.0/options.M;
+          return x > 0 ? -1.0:0;
       }
     } bc_wall_value; bc_wall_value.t = 0;
     /*
@@ -242,7 +243,7 @@ void set_options(int argc, char **argv) {
     options.bc_wall_value = &bc_wall_value;
 
   } else if (options.test == "FastShelley04_Fig12") {
-
+    options.L = cmd.get("L", 10);
     options.xmin[0]   = options.xmin[1] = options.xmin[2] = -options.L + EPS;
     options.xmax[0]   = options.xmax[1] = options.xmax[2] =  options.L;
     options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 1;
@@ -436,7 +437,7 @@ int main(int argc, char** argv) {
     VecGetArray(press_m, &press_m_p);
     VecGetArray(press_p, &press_p_p);
 
-    sprintf(vtk_name, "%s/two_fluid_%d_%d_%f.%04d", folder.str().c_str(),
+    sprintf(vtk_name, "%s/two_fluid_%d_%d_%1.1f.%04d", folder.str().c_str(),
             options.lmin, options.lmax, options.lip, 0);
     PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
@@ -481,7 +482,7 @@ int main(int argc, char** argv) {
       VecGetArray(press_m, &press_m_p);
       VecGetArray(press_p, &press_p_p);
 
-      sprintf(vtk_name, "%s/two_fluid_%d_%d_%f.%04d", folder.str().c_str(),
+      sprintf(vtk_name, "%s/two_fluid_%d_%d_%1.1f.%04d", folder.str().c_str(),
               options.lmin, options.lmax, options.lip,
               is++);
       PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);

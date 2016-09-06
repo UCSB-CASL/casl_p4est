@@ -2099,7 +2099,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::print_voronoi_VTK(const char* path) 
   bool periodic[P4EST_DIM] = {false, false, false};
 //  Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
 #else
-//  Voronoi2D::print_VTK_Format(voro, name);
+  Voronoi2D::print_VTK_Format(voro, name);
 #endif
 }
 
