@@ -1183,9 +1183,11 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
 
   /* finally, construct the partition */
 #ifdef P4_TO_P8
-  bool periodic[] = {false, false, false};
+  bool periodic[] = {is_periodic(p4est, 0), is_periodic(p4est, 1), is_periodic(p4est, 2)};
   voro.construct_Partition(xyz_min, xyz_max, periodic);
 #else
+  voro.enforce_Periodicity(is_periodic(p4est, 0), is_periodic(p4est, 1),
+                           xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1]);
   voro.construct_Partition();
 #endif
 

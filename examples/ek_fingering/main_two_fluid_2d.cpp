@@ -182,7 +182,7 @@ void set_options(int argc, char **argv) {
     options.xmin[0] = -options.L*PI; options.xmin[1] = options.xmin[2] = -PI;
     options.xmax[0] =  options.L*PI; options.xmax[1] = options.xmax[2] =  PI;
     options.ntr[0]  = options.L; options.ntr[1] = options.ntr[2] = 1;
-    options.periodic[0] = false; options.periodic[1] = options.periodic[2] = false;
+    options.periodic[0] = false; options.periodic[1] = options.periodic[2] = true;
     options.lmax    = 7;
     options.lmin    = 2;
     options.iter    = 10;

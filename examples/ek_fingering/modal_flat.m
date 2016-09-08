@@ -22,7 +22,7 @@ mcolor  ={'b','r','m','k'};
 s = 1;
 figure(1); hold on;
 sigma = zeros(3,length(modes));
-for lmax=[9:10]    
+for lmax=[7:10]    
     for m=0:20
         file_base = sprintf('%s/err_%d_%d', path, lmax, m);
         
