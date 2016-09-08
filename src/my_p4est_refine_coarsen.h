@@ -131,6 +131,23 @@ public:
   bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
 };
 
+struct splitting_criteria_grad_t: public splitting_criteria_t {
+#ifdef P4_TO_P8
+  CF_3* cf;
+#else
+  CF_2* cf;
+#endif
+  double fmax, tol;
+#ifdef P4_TO_P8
+
+  splitting_criteria_grad_t(int min_lvl, int max_lvl, CF_3* cf, double fmax, double tol = 1e-2)
+#else
+  splitting_criteria_grad_t(int min_lvl, int max_lvl, CF_2* cf, double fmax, double tol = 1e-2)
+#endif
+  : splitting_criteria_t(min_lvl, max_lvl), cf(cf), fmax(fmax), tol(tol)
+  {}
+};
+
 /*!
  * \brief refine_levelset_cf refine based on distance to a cf levelset
  * \param p4est       [in] forest object to consider
@@ -230,5 +247,25 @@ refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadran
  */
 p4est_bool_t
 coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+/*!
+ * \brief refine_grad_cf refinement based on gradient indicator
+ * \param p4est
+ * \param which_tree
+ * \param quad
+ * \return
+ */
+p4est_bool_t
+refine_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+/*!
+ * \brief coarsen_grad_cf coarsening based on gradient indicator
+ * \param p4est
+ * \param which_tree
+ * \param quad
+ * \return
+ */
+p4est_bool_t
+coarsen_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
 #endif // REFINE_COARSEN_H

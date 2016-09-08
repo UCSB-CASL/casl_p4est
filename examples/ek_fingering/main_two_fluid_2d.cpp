@@ -179,9 +179,9 @@ void set_options(int argc, char **argv) {
   } else if (options.test == "flat") {
     // set interface
     options.L = cmd.get("L", 5);
-    options.xmin[0] = -options.L + EPS; options.xmin[1] = options.xmin[2] = -0.5;
-    options.xmax[0] =  options.L;       options.xmax[1] = options.xmax[2] =  0.5;
-    options.ntr[0]  = 2*options.L; options.ntr[1] = options.ntr[2] = 1;
+    options.xmin[0] = -options.L*PI; options.xmin[1] = options.xmin[2] = -PI;
+    options.xmax[0] =  options.L*PI; options.xmax[1] = options.xmax[2] =  PI;
+    options.ntr[0]  = options.L; options.ntr[1] = options.ntr[2] = 1;
     options.periodic[0] = false; options.periodic[1] = options.periodic[2] = false;
     options.lmax    = 7;
     options.lmin    = 2;
@@ -192,11 +192,11 @@ void set_options(int argc, char **argv) {
     options.mode    = cmd.get("mode", 0);
     options.eps     = cmd.get("eps", 5e-3);
     options.lip     = cmd.get("lip", options.lip);
-    options.M       = 1;
+    options.M       = 1e-4;
 
     static struct:CF_2{
       double operator()(double x, double y) const  {
-        return x-options.eps*cos(2*M_PI*options.mode*y);
+        return EPS+x-options.eps*cos(options.mode*y);
       }
     } interface; interface.lip = options.lip;
     options.interface = &interface;
@@ -219,7 +219,7 @@ void set_options(int argc, char **argv) {
         if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
           return 0;
         else
-          return x > 0 ? -1.0:0;
+          return x > 0 ? -1:0;
       }
     } bc_wall_value; bc_wall_value.t = 0;
     /*
@@ -364,6 +364,7 @@ void set_options(int argc, char **argv) {
   options.dtmax     = cmd.get("dtmax",     options.dtmax);
   options.M         = cmd.get("M",         options.M);
   options.method    = cmd.get("method",    options.method);
+  options.it_reinit = cmd.get("it_reinit", options.it_reinit);
 }
 
 int main(int argc, char** argv) {
@@ -408,8 +409,8 @@ int main(int argc, char** argv) {
   // initialize variables
   Vec phi, press_m, press_p;
   VecCreateGhostNodes(p4est, nodes, &phi);
-  VecCreateGhostNodes(p4est, nodes, &press_m);
-  VecCreateGhostNodes(p4est, nodes, &press_p);
+  VecCreateGhostNodes(p4est, nodes, &press_m); VecSet(press_m, 0);
+  VecCreateGhostNodes(p4est, nodes, &press_p); VecSet(press_p, 0);
   sample_cf_on_nodes(p4est, nodes, *options.interface, phi);
 
   // set up the solver
@@ -432,6 +433,18 @@ int main(int argc, char** argv) {
   char vtk_name[FILENAME_MAX];
 
   {
+//    PetscPrintf(mpi.comm(), "Reinitalizing ... ");
+
+//    my_p4est_hierarchy_t h(p4est, ghost, &brick);
+//    my_p4est_node_neighbors_t ngbd(&h, nodes);
+//    ngbd.init_neighbors();
+
+//    my_p4est_level_set_t ls(&ngbd);
+//    ls.reinitialize_2nd_order(phi);
+//    ls.perturb_level_set_function(phi, EPS);
+
+//    PetscPrintf(mpi.comm(), "done!\n");
+
     double *phi_p, *press_m_p, *press_p_p;
     VecGetArray(phi, &phi_p);
     VecGetArray(press_m, &press_m_p);
@@ -549,7 +562,7 @@ int main(int argc, char** argv) {
       int ntheta = mpi.rank() == 0 ? 3600:0;
       vector<double> err(ntheta);
       for (int n=0; n<ntheta; n++) {
-        double x[] = {t, options.xmin[1] + (options.xmax[1]-options.xmin[1])/ntheta};
+        double x[] = {t, options.xmin[1] + n*(options.xmax[1]-options.xmin[1])/ntheta};
         interp.add_point(n, x);
       }
       interp.interpolate(err.data());
@@ -562,7 +575,7 @@ int main(int argc, char** argv) {
         FILE *file = fopen(filename.str().c_str(), "w");
         fprintf(file, "%% theta \t err\n");
         for (int n = 0; n<ntheta; n++) {
-          double y = options.xmin[1] + (options.xmax[1]-options.xmin[1])/ntheta;
+          double y = options.xmin[1] + n*(options.xmax[1]-options.xmin[1])/ntheta;
           fprintf(file, "%1.6f % -1.12e\n", y, err[n]);
         }
         fclose(file);

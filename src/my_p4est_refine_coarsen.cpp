@@ -583,3 +583,52 @@ function_end:
   return is_grid_changed;
 }
 
+p4est_bool_t
+refine_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  (void) which_tree;
+
+  splitting_criteria_grad_t *sp = (splitting_criteria_grad_t*)p4est->user_pointer;
+  if (quad->level < sp->min_lvl)
+    return P4EST_TRUE;
+  else if (quad->level >= sp->max_lvl)
+    return P4EST_FALSE;
+  else
+  {
+#ifdef P4_TO_P8
+    CF_3& cf = *sp->cf;
+#else
+    CF_2& cf = *sp->cf;
+#endif
+
+    double x[P4EST_DIM], dx[P4EST_DIM];
+    quad_xyz(p4est, quad, x);
+    dxyz_quad(p4est, quad, dx);
+
+#ifdef P4_TO_P8
+    double fx = (cf(x[0] + 0.5*dx[0], x[1], x[2]) - cf(x[0] - 0.5*dx[0], x[1], x[2]))/dx[0];
+    double fy = (cf(x[0], x[1] + 0.5*dx[1], x[2]) - cf(x[0], x[1] - 0.5*dx[1], x[2]))/dx[1];
+    double fz = (cf(x[0], x[1], x[2] + 0.5*dx[2]) - cf(x[0], x[1], x[2] - 0.5*dx[2]))/dx[2];
+
+    return MIN(dx[0], dx[1], dx[2]) * sqrt(SQR(fx)+SQR(fy)+SQR(fz))/sp->fmax > sp->tol;
+#else
+    double f[] = {
+      cf(x[0] - 0.5*dx[0], x[1] - 0.5*dx[1]),
+      cf(x[0] + 0.5*dx[0], x[1] - 0.5*dx[1]),
+      cf(x[0] - 0.5*dx[0], x[1] + 0.5*dx[1]),
+      cf(x[0] + 0.5*dx[0], x[1] + 0.5*dx[1]),
+    };
+    double fx = 0.5*((f[1]+f[3]) - (f[0]+f[2]))/dx[0];
+    double fy = 0.5*((f[2]+f[3]) - (f[0]+f[1]))/dx[1];
+    return (MIN(dx[0], dx[1])*sqrt(SQR(fx)+SQR(fy))/sp->fmax) >= sp->tol;
+//    double diag = sqrt(dx[0]*dx[0] + dx[1]*dx[1]);
+//    double fx1 = (f[1] - f[0])/dx[0];
+//    double fy1 = (f[3] - f[2])/dx[1];
+//    double fx2 = (f[3] - f[0])/diag;
+//    double fy2 = (f[2] - f[1])/diag;
+
+//    return (MIN(dx[0], dx[1])*0.5*(sqrt(SQR(fx1)+SQR(fy1))+sqrt(SQR(fx2)+SQR(fy2)))/sp->fmax) >= sp->tol;
+#endif
+  }
+}
+

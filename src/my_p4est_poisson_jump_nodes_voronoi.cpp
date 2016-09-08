@@ -674,7 +674,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
       else if(xyz1[0]> qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
       else if(xyz1[0]> qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
-
+      assert(node != -1);
       grid2voro[node].push_back(voro_points.size());
 #ifdef P4_TO_P8
       Point3 p(xyz1[0], xyz1[1], xyz1[2]);
@@ -726,6 +726,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
       else if(xyz2[0]> qx && xyz2[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
 
+      assert(node != -1);
       grid2voro[node].push_back(voro_points.size());
 #ifdef P4_TO_P8
       Point3 p(xyz2[0], xyz2[1], xyz2[2]);
@@ -912,6 +913,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         else if(xyz[0]> qx && xyz[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
 
+        assert(node != -1);
         grid2voro[node].push_back(voro_points.size());
 #ifdef P4_TO_P8
         Point3 p(xyz[0], xyz[1], xyz[2]);

@@ -12,6 +12,7 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_macros.h>
+#include <src/my_p4est_vtk.h>
 #endif
 
 #include <src/casl_math.h>
@@ -507,7 +508,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 
   jump_solver.solve(press_p);
 
-  jump_solver.print_voronoi_VTK("voro");
+//  jump_solver.print_voronoi_VTK("voro");
 
   VecDestroy(rhs_m);
   VecDestroy(rhs_p);
