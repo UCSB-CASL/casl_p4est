@@ -311,7 +311,6 @@ void my_p4est_poisson_jump_voronoi_block_t::solve(Vec solution[], bool use_nonze
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 }
 
-
 void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_points()
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_compute_voronoi_points, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -910,6 +909,247 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
 #else
 void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n, Voronoi2D &voro) const
 #endif
+//{
+//  PetscErrorCode ierr;
+//  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
+
+//  /* find the cell to which this point belongs */
+//#ifdef P4_TO_P8
+//  Point3 pc;
+//#else
+//  Point2 pc;
+//#endif
+//  pc = voro_points[n];
+
+//  double xyz [] =
+//  {
+//    pc.x,
+//    pc.y
+//  #ifdef P4_TO_P8
+//    , pc.z
+//  #endif
+//  };
+//  p4est_quadrant_t quad;
+//  std::vector<p4est_quadrant_t> remote_matches;
+//  int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
+
+//  /* check if the point is exactly a node */
+//  p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
+//  p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+//  p4est_locidx_t quad_idx;
+//#ifdef CASL_THROWS
+//  if(rank_found==-1)
+//    throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_jump_nodes_voronoi_t->compute_voronoi_mesh: found remote quadrant.");
+//#endif
+//  if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+//  else                           quad_idx = quad.p.piggy3.local_num + p4est->local_num_quadrants;
+
+//  double qh[P4EST_DIM];
+//  dxyz_quad(p4est, &quad, qh);
+
+//  double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+//  double qy = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+//#ifdef P4_TO_P8
+//  double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+//#endif
+
+//#ifdef P4_TO_P8
+//  voro.set_Center_Point(n, pc);
+//#else
+//  voro.set_Center_Point(pc);
+//#endif
+
+//  std::vector<p4est_locidx_t> ngbd_quads;
+
+//  /* if exactly on a grid node */
+//  if( (fabs(xyz[0]-(qx-qh[0]/2))<EPS || fabs(xyz[0]-(qx+qh[0]/2))<EPS) &&
+//      (fabs(xyz[1]-(qy-qh[1]/2))<EPS || fabs(xyz[1]-(qy+qh[1]/2))<EPS)
+//    #ifdef P4_TO_P8
+//      && (fabs(xyz[2]-(qz-qh[2]/2))<EPS || fabs(xyz[2]-(qz+qh[2]/2))<EPS)
+//    #endif
+//      )
+//  {
+//#ifdef P4_TO_P8
+//    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<EPS ?
+//          (fabs(xyz[1]-(qy-qh[1]/2))<EPS ?
+//            (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_mmm : dir::v_mmp)
+//        : (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_mpm : dir::v_mpp) )
+//        : (fabs(xyz[1]-(qy-qh[1]/2))<EPS ?
+//        (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_pmm : dir::v_pmp)
+//        : (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_ppm : dir::v_ppp) ) );
+//#else
+//    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<EPS ?
+//          (fabs(xyz[1]-(qy-qh[1]/2))<EPS ? dir::v_mmm : dir::v_mpm)
+//        : (fabs(xyz[1]-(qy-qh[1]/2))<EPS ? dir::v_pmm : dir::v_ppm) );
+//#endif
+//    p4est_locidx_t node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir];
+
+//    p4est_locidx_t quad_idx;
+
+//    std::vector<p4est_quadrant_t> tmp;
+//#ifdef P4_TO_P8
+//    for(char i=-1; i<=1; i+=2)
+//    {
+//      for(char j=-1; j<=1; j+=2)
+//      {
+//        for(char k=-1; k<=1; k+=2)
+//        {
+//          ngbd_n->find_neighbor_cell_of_node(node,  i,  j, k, quad_idx, tree_idx);
+//          if(quad_idx>=0)
+//          {
+//            ngbd_quads.push_back(quad_idx);
+//            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0, 0);
+//            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j, 0);
+//            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, 0, k);
+//            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j, 0);
+//            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0, k);
+//            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j, k);
+//            for(unsigned int m=0; m<tmp.size(); ++m)
+//              ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+//            tmp.clear();
+//          }
+//        }
+//      }
+//    }
+//#else
+//    for(char i=-1; i<=1; i+=2)
+//    {
+//      for(char j=-1; j<=1; j+=2)
+//      {
+//        ngbd_n->find_neighbor_cell_of_node(node,  i,  j, quad_idx, tree_idx);
+//        if(quad_idx>=0)
+//        {
+//          ngbd_quads.push_back(quad_idx);
+//          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0);
+//          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j);
+//          for(unsigned int m=0; m<tmp.size(); ++m)
+//            ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+//          tmp.clear();
+//        }
+//      }
+//    }
+//#endif
+//  }
+//  /* the voronoi point is not a grid node */
+//  else
+//  {
+//    ngbd_quads.push_back(quad_idx);
+
+//    std::vector<p4est_quadrant_t> tmp;
+//#ifdef P4_TO_P8
+//    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, -1,  0,  0);
+//    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  1,  0,  0);
+//    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  0,  1,  0);
+//    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  0, -1,  0);
+//    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  0,  0, -1);
+//    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  0,  0,  1);
+//#else
+//    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, -1,  0);
+//    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  1,  0);
+//    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  0,  1);
+//    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  0, -1);
+//#endif
+
+//    for(unsigned int m=0; m<tmp.size(); ++m)
+//      ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+
+//    p4est_locidx_t n_idx;
+//    p4est_locidx_t q_idx;
+//    p4est_topidx_t t_idx;
+//#ifdef P4_TO_P8
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mmm];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx, -1, -1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mpm];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx, -1,  1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_pmm];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx,  1, -1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_ppm];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx,  1,  1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mmp];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx, -1, -1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mpp];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx, -1,  1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_pmp];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx,  1, -1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_ppp];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx,  1,  1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//#else
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mmm];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx, -1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mpm];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx, -1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_pmm];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx,  1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_ppm];
+//    ngbd_n->find_neighbor_cell_of_node(n_idx,  1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
+//#endif
+
+//    std::vector<p4est_quadrant_t> tmp2;
+//    for(unsigned int k=0; k<tmp.size(); ++k)
+//    {
+//#ifdef P4_TO_P8
+//      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree, -1,  0,  0);
+//      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  1,  0,  0);
+//      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0, -1,  0);
+//      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  1,  0);
+//      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  0, -1);
+//      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  0,  1);
+//#else
+//      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree, -1,  0);
+//      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  1,  0);
+//      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0, -1);
+//      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  1);
+//#endif
+//      for(unsigned int l=0; l<tmp2.size(); ++l)
+//        ngbd_quads.push_back(tmp2[l].p.piggy3.local_num);
+//      tmp2.clear();
+//    }
+//  }
+
+//  /* now create the list of nodes */
+//  for(unsigned int k=0; k<ngbd_quads.size(); ++k)
+//  {
+//    for(int dir=0; dir<P4EST_CHILDREN; ++dir)
+//    {
+//      p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
+//      for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
+//      {
+//        if(grid2voro[n_idx][m] != n)
+//        {
+//#ifdef P4_TO_P8
+//          Point3 pm = voro_points[grid2voro[n_idx][m]];
+//          voro.push(grid2voro[n_idx][m], pm.x, pm.y, pm.z);
+//#else
+//          Point2 pm = voro_points[grid2voro[n_idx][m]];
+//          voro.push(grid2voro[n_idx][m], pm.x, pm.y);
+//#endif
+//        }
+//      }
+//    }
+//  }
+
+//  /* add the walls */
+//#ifndef P4_TO_P8
+//  if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xyz_min[0])), pc.y );
+//  if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xyz_max[0]-pc.x)), pc.y );
+//  if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX(EPS, 2*(pc.y-xyz_min[1])));
+//  if(is_quad_ypWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0p0, pc.x, pc.y+MAX(EPS, 2*(xyz_max[1]-pc.y)));
+//#endif
+
+//  /* finally, construct the partition */
+//#ifdef P4_TO_P8
+//  bool periodic[] = {is_periodic(p4est, 0), is_periodic(p4est, 1), is_periodic(p4est, 2)};
+//  voro.construct_Partition(xyz_min, xyz_max, periodic);
+//#else
+//  voro.enforce_Periodicity(is_periodic(p4est, 0), is_periodic(p4est, 1),
+//                           xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1]);
+//  voro.construct_Partition();
+//#endif
+
+//  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
+//}
+
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1152,9 +1392,11 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
 #ifdef P4_TO_P8
   double xyz_min [] = {xmin, ymin, zmin};
   double xyz_max [] = {xmax, ymax, zmax};
-  bool periodic []  = {false, false, false};
+  bool periodic[] = {is_periodic(p4est, 0), is_periodic(p4est, 1), is_periodic(p4est, 2)};
   voro.construct_Partition(xyz_min, xyz_max, periodic);
 #else
+  voro.enforce_Periodicity(is_periodic(p4est, 0), is_periodic(p4est, 1),
+                           xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1]);
   voro.construct_Partition();
 #endif
 

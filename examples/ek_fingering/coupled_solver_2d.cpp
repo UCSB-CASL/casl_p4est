@@ -440,6 +440,8 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   Vec solutions [] = {pressure_p, potential_p};
   solver.solve(solutions);
 
+//  solver.print_voronoi_VTK("coupled_voro");
+
   VecDestroy(rhs_m[0]);
   VecDestroy(rhs_p[0]);
   VecDestroy(rhs_m[1]);

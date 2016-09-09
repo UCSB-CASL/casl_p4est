@@ -433,17 +433,17 @@ int main(int argc, char** argv) {
   char vtk_name[FILENAME_MAX];
 
   {
-//    PetscPrintf(mpi.comm(), "Reinitalizing ... ");
+    PetscPrintf(mpi.comm(), "Reinitalizing ... ");
 
-//    my_p4est_hierarchy_t h(p4est, ghost, &brick);
-//    my_p4est_node_neighbors_t ngbd(&h, nodes);
-//    ngbd.init_neighbors();
+    my_p4est_hierarchy_t h(p4est, ghost, &brick);
+    my_p4est_node_neighbors_t ngbd(&h, nodes);
+    ngbd.init_neighbors();
 
-//    my_p4est_level_set_t ls(&ngbd);
-//    ls.reinitialize_2nd_order(phi);
-//    ls.perturb_level_set_function(phi, EPS);
+    my_p4est_level_set_t ls(&ngbd);
+    ls.reinitialize_2nd_order(phi);
+    ls.perturb_level_set_function(phi, EPS);
 
-//    PetscPrintf(mpi.comm(), "done!\n");
+    PetscPrintf(mpi.comm(), "done!\n");
 
     double *phi_p, *press_m_p, *press_p_p;
     VecGetArray(phi, &phi_p);

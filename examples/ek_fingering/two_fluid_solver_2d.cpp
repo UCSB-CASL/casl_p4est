@@ -508,7 +508,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 
   jump_solver.solve(press_p);
 
-//  jump_solver.print_voronoi_VTK("voro");
+//  jump_solver.print_voronoi_VTK("two_fluid_voro");
 
   VecDestroy(rhs_m);
   VecDestroy(rhs_p);

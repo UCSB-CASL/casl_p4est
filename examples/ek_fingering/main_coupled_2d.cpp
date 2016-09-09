@@ -84,8 +84,9 @@ void set_options(int argc, char **argv) {
   cmd.add_option("mode", "perturbation mode used for analysis");
   cmd.add_option("eps", "perturbation amplitude to be added to the interface");
   cmd.add_option("test", "Which test to run?, Options are:\n"
-      "\tcircle\n"
-      "\tFastShelley04_Fig12\n");
+                         "\tcircle\n"
+                         "\tflat\n"
+                         "\tFastShelley04_Fig12\n");
   cmd.add_option("prefix", "set the prefix to be prefixed ot filenames");
   cmd.add_option("bcw", "bc type on the wall");
   cmd.parse(argc, argv);
@@ -206,6 +207,148 @@ void set_options(int argc, char **argv) {
     options.potential_bc_type  = &potential_bc_type;
     options.pressure_bc_value  = &pressure_bc_value;
     options.potential_bc_value = &potential_bc_value;
+
+  } else if (options.test == "flat") {
+    // set interface
+    options.L = cmd.get("L", 5);
+    options.xmin[0] = -options.L*PI; options.xmin[1] = options.xmin[2] = -PI;
+    options.xmax[0] =  options.L*PI; options.xmax[1] = options.xmax[2] =  PI;
+    options.ntr[0]  = options.L; options.ntr[1] = options.ntr[2] = 1;
+    options.periodic[0] = false; options.periodic[1] = options.periodic[2] = true;
+
+    options.lmax    = 7;
+    options.lmin    = 2;
+    options.iter    = 10;
+    options.dtmax   = 1e-5;
+    options.dts     = 1e-1;
+    options.Ca      = 250;
+    options.M       = 1e-2;
+    options.S       = 1;
+    options.R       = 1;
+    options.A       = 0;
+    options.B       = 0;
+    options.it_reinit = options.iter;
+
+    options.mode    = cmd.get("mode", 0);
+    options.eps     = cmd.get("eps", 1e-2);
+    options.lip     = cmd.get("lip", 10);
+
+    static struct:CF_2{
+      double operator()(double x, double y) const  {
+        return EPS+x-options.eps*cos(options.mode*y);
+      }
+    } interface; interface.lip = options.lip;
+    options.interface = &interface;
+
+    static struct:CF_1{
+      double operator()(double) const { return 0; }
+    } zero_source;
+
+    static struct:WallBC2D{
+      BoundaryConditionType operator()(double x, double y) const {
+        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
+          return NEUMANN;
+        else
+          return x > 0 ? NEUMANN:DIRICHLET;
+      }
+    } bc_wall_type;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const {
+        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
+          return 0;
+        else
+          return x > 0 ? -1:0;
+      }
+    } pressure_bc_value; pressure_bc_value.t = 0;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const {
+        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
+          return 0;
+        else
+          return x > 0 ? -SIGN(options.A):0;
+      }
+    } potential_bc_value; potential_bc_value.t = 0;
+
+    options.Q                  = &zero_source;
+    options.I                  = &zero_source;
+    options.interface          = &interface;
+    options.pressure_bc_type   = &bc_wall_type;
+    options.potential_bc_type  = &bc_wall_type;
+    options.pressure_bc_value  = &pressure_bc_value;
+    options.potential_bc_value = &potential_bc_value;
+
+  }else if (options.test == "flatrun") {
+    // set interface
+    options.L = cmd.get("L", 5);
+    options.xmin[0] = -1; options.xmin[1] = options.xmin[2] = -PI;
+    options.xmax[0] =  2*options.L*PI; options.xmax[1] = options.xmax[2] =  PI;
+    options.ntr[0]  = options.L; options.ntr[1] = options.ntr[2] = 1;
+    options.periodic[0] = false; options.periodic[1] = options.periodic[2] = true;
+
+    options.lmax    = 8;
+    options.lmin    = 2;
+    options.iter    = 1000;
+    options.dtmax   = 1e-3;
+    options.dts     = 1e-1;
+    options.Ca      = 250;
+    options.M       = 1e-2;
+    options.S       = 1;
+    options.R       = 1;
+    options.A       = 0;
+    options.B       = 0;
+    options.it_reinit = cmd.get("it_reinit", 15);
+
+    options.mode    = cmd.get("mode", 6);
+    options.eps     = cmd.get("eps", 1e-2);
+    options.lip     = cmd.get("lip", 5);
+
+    static struct:CF_2{
+      double operator()(double x, double y) const  {
+        return EPS+x-options.eps*cos(options.mode*y);
+      }
+    } interface; interface.lip = options.lip;
+    options.interface = &interface;
+
+    static struct:CF_1{
+      double operator()(double) const { return 0; }
+    } zero_source;
+
+    static struct:WallBC2D{
+      BoundaryConditionType operator()(double x, double y) const {
+        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
+          return NEUMANN;
+        else
+          return x > 0 ? NEUMANN:DIRICHLET;
+      }
+    } bc_wall_type;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const {
+        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
+          return 0;
+        else
+          return x > 0 ? -1:0;
+      }
+    } pressure_bc_value; pressure_bc_value.t = 0;
+
+    static struct:CF_2{
+      double operator()(double x, double y) const {
+        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
+          return 0;
+        else
+          return x > 0 ? -SIGN(options.A):0;
+      }
+    } potential_bc_value; potential_bc_value.t = 0;
+
+    options.Q                  = &zero_source;
+    options.I                  = &zero_source;
+    options.interface          = &interface;
+    options.pressure_bc_type   = &bc_wall_type;
+    options.potential_bc_type  = &bc_wall_type;
+    options.pressure_bc_value  = &potential_bc_value;
+    options.potential_bc_value = &pressure_bc_value;
 
   } else if (options.test == "FastShelley04_Fig12") {
 
@@ -481,10 +624,10 @@ int main(int argc, char** argv) {
   // initialize variables: 0 --> minus, 1 --> plus
   Vec phi, pressure[2], potential[2];
   VecCreateGhostNodes(p4est, nodes, &phi);
-  VecCreateGhostNodes(p4est, nodes, &pressure[0]);
-  VecCreateGhostNodes(p4est, nodes, &pressure[1]);
-  VecCreateGhostNodes(p4est, nodes, &potential[0]);
-  VecCreateGhostNodes(p4est, nodes, &potential[1]);
+  VecCreateGhostNodes(p4est, nodes, &pressure[0]); VecSet(pressure[0], 0);
+  VecCreateGhostNodes(p4est, nodes, &pressure[1]); VecSet(pressure[1], 0);
+  VecCreateGhostNodes(p4est, nodes, &potential[0]); VecSet(potential[0], 0);
+  VecCreateGhostNodes(p4est, nodes, &potential[1]); VecSet(potential[1], 0);
   sample_cf_on_nodes(p4est, nodes, *options.interface, phi);
 
   // set up the solver
@@ -522,6 +665,18 @@ int main(int argc, char** argv) {
   char vtk_name[FILENAME_MAX];
 
   {
+    PetscPrintf(mpi.comm(), "Reinitalizing ... ");
+
+    my_p4est_hierarchy_t h(p4est, ghost, &brick);
+    my_p4est_node_neighbors_t ngbd(&h, nodes);
+    ngbd.init_neighbors();
+
+    my_p4est_level_set_t ls(&ngbd);
+    ls.reinitialize_2nd_order(phi);
+    ls.perturb_level_set_function(phi, EPS);
+
+    PetscPrintf(mpi.comm(), "done!\n");
+
     double *phi_p, *pressure_p[2], *potential_p[2];
     VecGetArray(phi, &phi_p);
     VecGetArray(pressure[0], &pressure_p[0]);
@@ -529,7 +684,7 @@ int main(int argc, char** argv) {
     VecGetArray(potential[0], &potential_p[0]);
     VecGetArray(potential[1], &potential_p[1]);
 
-    sprintf(vtk_name, "%s/coupled_%d_%d_%f.%04d", folder.str().c_str(),
+    sprintf(vtk_name, "%s/coupled_%d_%d_%g.%04d", folder.str().c_str(),
             options.lmin, options.lmax, options.lip, 0);
     PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
@@ -584,6 +739,7 @@ int main(int argc, char** argv) {
 
       my_p4est_level_set_t ls(&ngbd);
       ls.reinitialize_2nd_order(phi);
+      ls.perturb_level_set_function(phi, EPS);
 /*
       // create a new grid and interpolate the data onto it
       p4est_t* p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
@@ -642,7 +798,7 @@ int main(int argc, char** argv) {
       VecGetArray(potential[0], &potential_p[0]);
       VecGetArray(potential[1], &potential_p[1]);
 
-      sprintf(vtk_name, "%s/coupled_%d_%d_%f.%04d", folder.str().c_str(),
+      sprintf(vtk_name, "%s/coupled_%d_%d_%g.%04d", folder.str().c_str(),
               options.lmin, options.lmax, options.lip,
               is++);
       PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
@@ -692,6 +848,38 @@ int main(int argc, char** argv) {
         for (int n = 0; n<ntheta; n++) {
           double theta = 2*PI*n/ntheta;
           fprintf(file, "%1.6f % -1.12e\n", theta, err[n]);
+        }
+        fclose(file);
+      }
+    }
+
+    if (options.test == "flat") {
+      my_p4est_hierarchy_t h(p4est, ghost, &brick);
+      my_p4est_node_neighbors_t ngbd(&h, nodes);
+      ngbd.init_neighbors();
+
+      my_p4est_interpolation_nodes_t interp(&ngbd);
+      interp.set_input(phi, quadratic);
+
+      // we only ask the root to compute the interpolation
+      int ntheta = mpi.rank() == 0 ? 3600:0;
+      vector<double> err(ntheta);
+      for (int n=0; n<ntheta; n++) {
+        double x[] = {t, options.xmin[1] + n*(options.xmax[1]-options.xmin[1])/ntheta};
+        interp.add_point(n, x);
+      }
+      interp.interpolate(err.data());
+
+      if (mpi.rank() == 0) {
+        ostringstream filename;
+        filename << folder.str() << "/err_" << options.lmax
+          << "_" << options.mode
+          << "_" << it << ".txt";
+        FILE *file = fopen(filename.str().c_str(), "w");
+        fprintf(file, "%% theta \t err\n");
+        for (int n = 0; n<ntheta; n++) {
+          double y = options.xmin[1] + n*(options.xmax[1]-options.xmin[1])/ntheta;
+          fprintf(file, "%1.6f % -1.12e\n", y, err[n]);
         }
         fclose(file);
       }

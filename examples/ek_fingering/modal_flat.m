@@ -2,18 +2,18 @@
 dt = 1e-5;
 it = 5;
 modes = 0:20;
-A = 0;
-B = 0.0;
-M = 0.1;
-R = 9;
-S = 10;
+A = -2;
+B = 0.01;
+M = 0.01;
+R = 10;
+S = 2;
 abs(A*B) < 1
 abs(A*B*S^2/R/M) < 1
 F = @(A,B,M,R,S) (M*((1-M)*(1+R)+2*A*(S-1))+abs(A*B)*(M^2-S^2))/(M*(1+M)*(1+R)-abs(A*B)*(M+S)^2);
 G = @(A,B,M,R,S) (M*(1+R)-abs(A*B)*(M+S^2))/(M*(1+M)*(1+R)-abs(A*B)*(M+S)^2);
 prefix = '/Users/mohammad/repos/parcasl/examples/ek_fingering/Release';
 % prefix = '/mnt/server/code/parcasl/examples/ek_fingering/release';
-path = sprintf('%s/two_fluid/flat/mue_0.1/2p',prefix);
+path = sprintf('%s/coupled/flat/_Dirichlet_F_-0.366295_G_0.983563_A_-2_B_0.01_M_0.01_S_2_R_10',prefix);
 % prefix = '/Users/mohammad/repos/casl/examples/viscous_fingering/Release';
 % path = prefix;
 
@@ -22,11 +22,14 @@ mcolor  ={'b','r','m','k'};
 s = 1;
 figure(1); hold on;
 sigma = zeros(3,length(modes));
-for lmax=[7:10]    
+for lmax=[9]    
     for m=0:20
         file_base = sprintf('%s/err_%d_%d', path, lmax, m);
-        
-        err_nm2 = load(strcat(file_base,sprintf('_%d.txt',it-2)));
+        try
+            err_nm2 = load(strcat(file_base,sprintf('_%d.txt',it-2)));
+        catch
+            continue
+        end
 %         fft_nm2 = abs(fft(err_nm2(:,2) - mean(err_nm2(:,2))));
         fft_nm2 = abs(fft(err_nm2(:,2)));
 
@@ -60,14 +63,7 @@ for lmax=[7:10]
     s = s + 1;
 end
 %%
-A = 0;
-B = 0.;
-M = 0.1;
-R = 10;
-S = 10;
-% abs(A*B) < 1
-% abs(A*B*S^2/R/M) < 1
-% 
+
 m = linspace(0,20);
 Ca = 250;
 plot(m,m*F(A,B,M,R,S)+m.*(-m.^2)*G(A,B,M,R,S)/Ca, 'k-', 'linewidth',2); shg
