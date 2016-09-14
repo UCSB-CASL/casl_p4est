@@ -51,6 +51,7 @@ static struct {
   int mode;
   double eps;
   string test, method;
+  bool modal_analysis;
   BoundaryConditionType bcw;
 
   cf_t *interface, *bc_wall_value;
@@ -77,16 +78,18 @@ void set_options(int argc, char **argv) {
   cmd.add_option("mode", "perturbation mode used for analysis");
   cmd.add_option("eps", "perturbation amplitude to be added to the interface");
   cmd.add_option("bcw", "bc type on the wall");
+  cmd.add_option("modal", "is this a modal analysis?");
   cmd.add_option("test", "Which test to run?, Options are:\n"
-      "\tcircle\n"
-      "\tflat\n"
-      "\tFastShelley04_Fig12\n");
+                         "\tcircle\n"
+                         "\tflat\n"
+                         "\tFastShelley\n");
 
   cmd.parse(argc, argv);
 
   options.test = cmd.get<string>("test", "FastShelley04_Fig12");
   options.method = cmd.get<string>("method", "voronoi");
   options.bcw    = cmd.get("bcw", DIRICHLET);
+  options.modal_analysis = cmd.contains("modal");
 
   // set default values
   options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
@@ -112,9 +115,9 @@ void set_options(int argc, char **argv) {
     options.dts     = 1e-1;
     options.Ca      = 250;
     options.mode    = cmd.get("mode", 0);
-    options.eps     = cmd.get("eps", 1e-2);
+    options.eps     = cmd.get("eps", 5e-3);
     options.lip     = cmd.get("lip", options.lip);
-    options.M       = 1;
+    options.M       = 1e-2;
     options.it_reinit = options.iter;
 
     static struct:CF_2{
@@ -156,20 +159,6 @@ void set_options(int argc, char **argv) {
         }
       }
     } bc_wall_value; bc_wall_value.t = 0;
-    /*
-       static struct:WallBC2D {
-       BoundaryConditionType operator()(double, double) const {
-       return DIRICHLET;
-       }
-       } bc_wall_type;
-
-       static struct:CF_2 {
-       double operator()(double x, double y) const {
-       double r = sqrt(SQR(x)+SQR(y));
-       return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
-       }
-       } bc_wall_value; bc_wall_value.t = 0;
-     */
 
     options.Q             = &Q;
     options.interface     = &interface;
@@ -179,20 +168,26 @@ void set_options(int argc, char **argv) {
   } else if (options.test == "flat") {
     // set interface
     options.L = cmd.get("L", 5);
-    options.xmin[0] = -options.L*PI; options.xmin[1] = options.xmin[2] = -PI;
-    options.xmax[0] =  options.L*PI; options.xmax[1] = options.xmax[2] =  PI;
+    if (options.modal_analysis) {
+      options.xmin[0] = -options.L*PI; options.xmin[1] = options.xmin[2] = -PI;
+      options.xmax[0] =  options.L*PI; options.xmax[1] = options.xmax[2] =  PI;
+      options.iter    = 10;
+    } else {
+      options.xmin[0] = -1; options.xmin[1] = options.xmin[2] = -PI;
+      options.xmax[0] =  2*options.L*PI-1; options.xmax[1] = options.xmax[2] =  PI;
+    }
+
     options.ntr[0]  = options.L; options.ntr[1] = options.ntr[2] = 1;
     options.periodic[0] = false; options.periodic[1] = options.periodic[2] = true;
     options.lmax    = 7;
     options.lmin    = 2;
-    options.iter    = 10;
     options.dtmax   = 1e-3;
     options.dts     = 1e-1;
     options.Ca      = 250;
     options.mode    = cmd.get("mode", 0);
     options.eps     = cmd.get("eps", 5e-3);
     options.lip     = cmd.get("lip", options.lip);
-    options.M       = 1e-4;
+    options.M       = 1e-2;
 
     static struct:CF_2{
       double operator()(double x, double y) const  {
@@ -222,27 +217,13 @@ void set_options(int argc, char **argv) {
           return x > 0 ? -1:0;
       }
     } bc_wall_value; bc_wall_value.t = 0;
-    /*
-       static struct:WallBC2D {
-       BoundaryConditionType operator()(double, double) const {
-       return DIRICHLET;
-       }
-       } bc_wall_type;
-
-       static struct:CF_2 {
-       double operator()(double x, double y) const {
-       double r = sqrt(SQR(x)+SQR(y));
-       return - ( 1.0/(options.Ca*(1+t)) + (1+t) * log(r/(1+t)) );
-       }
-       } bc_wall_value; bc_wall_value.t = 0;
-     */
 
     options.Q             = &Q;
     options.interface     = &interface;
     options.bc_wall_type  = &bc_wall_type;
     options.bc_wall_value = &bc_wall_value;
 
-  } else if (options.test == "FastShelley04_Fig12") {
+  } else if (options.test == "FastShelley") {
     options.L = cmd.get("L", 10);
     options.xmin[0]   = options.xmin[1] = options.xmin[2] = -options.L + EPS;
     options.xmax[0]   = options.xmax[1] = options.xmax[2] =  options.L;
@@ -424,7 +405,8 @@ int main(int argc, char** argv) {
     throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
 
   ostringstream folder;
-  folder << outdir << "/two_fluid/" << options.test
+  folder << outdir << "/two_fluid" << (options.modal_analysis ? "/modal_":"/")
+         << options.test
          << "/mue_" << options.M
          << "/" << mpi.size() << "p";
 
@@ -487,9 +469,10 @@ int main(int argc, char** argv) {
 
       PetscPrintf(mpi.comm(), "done!\n");
     }
+
     if (t >= is*options.dts) {
 
-     // save vtk
+      // save vtk
       double *phi_p, *press_m_p, *press_p_p;
       VecGetArray(phi, &phi_p);
       VecGetArray(press_m, &press_m_p);
@@ -516,69 +499,75 @@ int main(int argc, char** argv) {
     }
 
     // save the error if this is a modal analysis
-    if (options.test == "circle") {
-      my_p4est_hierarchy_t h(p4est, ghost, &brick);
-      my_p4est_node_neighbors_t ngbd(&h, nodes);
-      ngbd.init_neighbors();
+    if (options.modal_analysis) {
+      if (options.test == "circle") {
+        my_p4est_hierarchy_t h(p4est, ghost, &brick);
+        my_p4est_node_neighbors_t ngbd(&h, nodes);
+        ngbd.init_neighbors();
 
-      my_p4est_interpolation_nodes_t interp(&ngbd);
-      interp.set_input(phi, quadratic);
+        my_p4est_interpolation_nodes_t interp(&ngbd);
+        interp.set_input(phi, quadratic);
 
-      // we only ask the root to compute the interpolation
-      int ntheta = mpi.rank() == 0 ? 3600:0;
-      vector<double> err(ntheta);
-      for (int n=0; n<ntheta; n++) {
-        double r = 1+t;
-        double theta = 2*PI*n/ntheta;
-        double x[] = {r*cos(theta), r*sin(theta)};
-        interp.add_point(n, x);
-      }
-      interp.interpolate(err.data());
-
-      if (mpi.rank() == 0) {
-        ostringstream filename;
-        filename << folder.str() << "/err_" << options.lmax
-                 << "_" << options.mode
-                 << "_" << it << ".txt";
-        FILE *file = fopen(filename.str().c_str(), "w");
-        fprintf(file, "%% theta \t err\n");
-        for (int n = 0; n<ntheta; n++) {
+        // we only ask the root to compute the interpolation
+        int ntheta = mpi.rank() == 0 ? 3600:0;
+        vector<double> err(ntheta);
+        for (int n=0; n<ntheta; n++) {
+          double r = 1+t;
           double theta = 2*PI*n/ntheta;
-          fprintf(file, "%1.6f % -1.12e\n", theta, err[n]);
+          double x[] = {r*cos(theta), r*sin(theta)};
+          interp.add_point(n, x);
         }
-        fclose(file);
-      }
-    }
+        interp.interpolate(err.data());
 
-    if (options.test == "flat") {
-      my_p4est_hierarchy_t h(p4est, ghost, &brick);
-      my_p4est_node_neighbors_t ngbd(&h, nodes);
-      ngbd.init_neighbors();
-
-      my_p4est_interpolation_nodes_t interp(&ngbd);
-      interp.set_input(phi, quadratic);
-
-      // we only ask the root to compute the interpolation
-      int ntheta = mpi.rank() == 0 ? 3600:0;
-      vector<double> err(ntheta);
-      for (int n=0; n<ntheta; n++) {
-        double x[] = {t, options.xmin[1] + n*(options.xmax[1]-options.xmin[1])/ntheta};
-        interp.add_point(n, x);
-      }
-      interp.interpolate(err.data());
-
-      if (mpi.rank() == 0) {
-        ostringstream filename;
-        filename << folder.str() << "/err_" << options.lmax
-          << "_" << options.mode
-          << "_" << it << ".txt";
-        FILE *file = fopen(filename.str().c_str(), "w");
-        fprintf(file, "%% theta \t err\n");
-        for (int n = 0; n<ntheta; n++) {
-          double y = options.xmin[1] + n*(options.xmax[1]-options.xmin[1])/ntheta;
-          fprintf(file, "%1.6f % -1.12e\n", y, err[n]);
+        if (mpi.rank() == 0) {
+          ostringstream filename;
+          filename << folder.str() << "/err_" << options.lmax
+                   << "_" << options.mode
+                   << "_" << it << ".txt";
+          FILE *file = fopen(filename.str().c_str(), "w");
+          fprintf(file, "%% theta \t err\n");
+          for (int n = 0; n<ntheta; n++) {
+            double theta = 2*PI*n/ntheta;
+            fprintf(file, "%1.6f % -1.12e\n", theta, err[n]);
+          }
+          fclose(file);
         }
-        fclose(file);
+      } else if (options.test == "flat") {
+        my_p4est_hierarchy_t h(p4est, ghost, &brick);
+        my_p4est_node_neighbors_t ngbd(&h, nodes);
+        ngbd.init_neighbors();
+
+        my_p4est_interpolation_nodes_t interp(&ngbd);
+        interp.set_input(phi, quadratic);
+
+        // we only ask the root to compute the interpolation
+        int ntheta = mpi.rank() == 0 ? 3600:0;
+        vector<double> err(ntheta);
+        for (int n=0; n<ntheta; n++) {
+          double x[] = {t, options.xmin[1] + n*(options.xmax[1]-options.xmin[1])/ntheta};
+          interp.add_point(n, x);
+        }
+        interp.interpolate(err.data());
+
+        if (mpi.rank() == 0) {
+          ostringstream filename;
+          filename << folder.str() << "/err_" << options.lmax
+                   << "_" << options.mode
+                   << "_" << it << ".txt";
+          FILE *file = fopen(filename.str().c_str(), "w");
+          fprintf(file, "%% theta \t err\n");
+          for (int n = 0; n<ntheta; n++) {
+            double y = options.xmin[1] + n*(options.xmax[1]-options.xmin[1])/ntheta;
+            fprintf(file, "%1.6f % -1.12e\n", y, err[n]);
+          }
+          fclose(file);
+        }
+      } else {
+        ostringstream oss;
+        oss << "Test " << options.test << " does not have any modal analysis. "
+            << "Consider removing '-moda' flag or run with a test which supports modal analysis"
+            << endl;
+        throw invalid_argument(oss.str());
       }
     }
 
