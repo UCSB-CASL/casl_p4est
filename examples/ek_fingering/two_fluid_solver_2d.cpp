@@ -13,6 +13,7 @@
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_vtk.h>
+#include <src/my_p4est_poisson_nodes.h>
 #endif
 
 #include <src/casl_math.h>
@@ -38,6 +39,164 @@ void two_fluid_solver_t::set_bc_wall(bc_wall_t &bc_wall_type, cf_t &bc_wall_valu
 {
   this->bc_wall_type  = &bc_wall_type;
   this->bc_wall_value = &bc_wall_value;
+}
+
+
+double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec& press_p, double cfl, double dtmax)
+{
+  // compute neighborhood information
+  my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
+  my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
+  neighbors.init_neighbors();
+
+  // compute curvature
+  Vec kappa, kappa_tmp, normal[P4EST_DIM];
+  VecDuplicate(phi, &kappa);
+  VecDuplicate(phi, &kappa_tmp);
+  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
+  compute_normals(neighbors, phi, normal);
+  compute_mean_curvature(neighbors, normal, kappa_tmp);
+
+  my_p4est_level_set_t ls(&neighbors);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
+  VecDestroy(kappa_tmp);
+
+  double *n_p[P4EST_DIM];
+  foreach_dimension(dim) VecGetArray(normal[dim], &n_p[dim]);
+
+  // compute interface velocity
+  Vec vn_tmp;
+  double *vn_p, *press_p_p, *press_m_p, *phi_p;
+  VecCreateGhostNodes(p4est, nodes, &vn_tmp);
+  VecGetArray(vn_tmp, &vn_p);
+  VecGetArray(press_m, &press_m_p);
+  VecGetArray(press_p, &press_p_p);
+  VecGetArray(phi, &phi_p);
+
+  // compute on the layer nodes
+  quad_neighbor_nodes_of_node_t qnnn;
+  double x[P4EST_DIM];
+  for (size_t i=0; i<neighbors.get_layer_size(); i++){
+    p4est_locidx_t n = neighbors.get_layer_node(i);
+    neighbors.get_neighbors(n, qnnn);
+    node_xyz_fr_n(n, p4est, nodes, x);
+
+    vn_p[n]  = -qnnn.dx_central(press_p_p)*n_p[0][n];
+    vn_p[n] += -qnnn.dy_central(press_p_p)*n_p[1][n];
+#ifdef P4_TO_P8
+    vn_p[n] += -qnnn.dz_central(press_p_p)*n_p[2][n];
+#endif
+  }
+  VecGhostUpdateBegin(vn_tmp, INSERT_VALUES, SCATTER_FORWARD);
+
+
+  // compute on the local nodes
+  for (size_t i=0; i<neighbors.get_local_size(); i++){
+    p4est_locidx_t n = neighbors.get_local_node(i);
+    neighbors.get_neighbors(n, qnnn);
+    node_xyz_fr_n(n, p4est, nodes, x);
+
+    vn_p[n]  = -qnnn.dx_central(press_p_p)*n_p[0][n];
+    vn_p[n] += -qnnn.dy_central(press_p_p)*n_p[1][n];
+#ifdef P4_TO_P8
+    vn_p[n] += -qnnn.dz_central(press_p_p)*n_p[2][n];
+#endif
+  }
+  VecGhostUpdateEnd(vn_tmp, INSERT_VALUES, SCATTER_FORWARD);
+
+  foreach_dimension(dim) {
+    VecDestroy(normal[dim]);
+  }
+
+  // restore pointers
+  VecRestoreArray(vn_tmp, &vn_p);
+  VecRestoreArray(press_m, &press_m_p);
+  VecRestoreArray(press_p, &press_p_p);
+
+  // constant extend the velocities from interface to the entire domain
+  Vec vn;
+  VecDuplicate(vn_tmp, &vn);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, vn_tmp, vn);
+  VecDestroy(vn_tmp);
+
+  // compute dt based on cfl number and curavture
+  double dxyz[P4EST_DIM];
+  p4est_dxyz_min(p4est, dxyz);
+#ifdef P4_TO_P8
+  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]));
+  double dmin = MIN(dxyz[0], dxyz[1], dxyz[2]);
+#else
+  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
+  double dmin = MIN(dxyz[0], dxyz[1]);
+#endif
+
+  double vn_max = 1; // minmum vn_max to be used when computing dt.
+  double kvn_max = 0;
+  double *kappa_p;
+  VecGetArray(vn, &vn_p);
+  VecGetArray(kappa, &kappa_p);
+  foreach_node(n, nodes) {
+//    vn_p[n] = 1;
+    if (fabs(phi_p[n]) < 2*diag) {
+      vn_max  = MAX(vn_max, vn_p[n]);
+      kvn_max = MAX(kvn_max, fabs(kappa_p[n]*vn_p[n]));
+    }
+  }
+  VecRestoreArray(kappa, &kappa_p);
+  VecDestroy(kappa);
+
+  double dt = MIN(cfl*dmin/vn_max, 1.0/kvn_max, dtmax);
+  MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+
+  dt = ls.advect_in_normal_direction(vn, phi, dt);
+
+  VecDestroy(vn);
+
+  p4est_t* p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
+  p4est_np1->connectivity = conn;
+  p4est_np1->user_pointer = sp;
+
+  splitting_criteria_tag_t sp_tag(sp->min_lvl, sp->max_lvl, sp->lip);
+  sp_tag.refine_and_coarsen(p4est_np1, nodes, phi_p);
+
+  // partition and compute new strutures
+  my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+  p4est_ghost_t* ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  p4est_nodes_t* nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+  // transfer data from old grid to new
+  Vec phi_np1, press_p_np1, press_m_np1;
+  VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1);
+  VecDuplicate(phi_np1, &press_p_np1);
+  VecDuplicate(phi_np1, &press_m_np1);
+
+  // create an interpolation function between two grids
+  my_p4est_interpolation_nodes_t grid_interp(&neighbors);
+  foreach_node(n, nodes_np1) {
+    node_xyz_fr_n(n, p4est_np1, nodes_np1, x);
+    grid_interp.add_point(n,x);
+  }
+
+  // interpolate variables
+  grid_interp.set_input(phi, quadratic_non_oscillatory);
+  grid_interp.interpolate(phi_np1);
+
+  grid_interp.set_input(press_p, quadratic_non_oscillatory);
+  grid_interp.interpolate(press_p_np1);
+
+  grid_interp.set_input(press_m, quadratic_non_oscillatory);
+  grid_interp.interpolate(press_m_np1);
+
+  // destroy old quantities and swap pointers
+  p4est_destroy(p4est);       p4est = p4est_np1;
+  p4est_nodes_destroy(nodes); nodes = nodes_np1;
+  p4est_ghost_destroy(ghost); ghost = ghost_np1;
+
+  VecDestroy(phi);     phi     = phi_np1;
+  VecDestroy(press_p); press_p = press_p_np1;
+  VecDestroy(press_m); press_m = press_m_np1;
+
+  return dt;
 }
 
 double two_fluid_solver_t::advect_interface(Vec &phi, Vec &press_m, Vec& press_p, double cfl, double dtmax)
@@ -101,6 +260,9 @@ double two_fluid_solver_t::advect_interface(Vec &phi, Vec &press_m, Vec& press_p
   foreach_dimension (dim) {
     VecDuplicate(vx_tmp[dim], &vx[dim]);
     ls.extend_from_interface_to_whole_domain_TVD(phi, vx_tmp[dim], vx[dim]);
+//    VecCopy(vx_tmp[dim], vx[dim]);
+//    VecGhostUpdateBegin(vx[dim], INSERT_VALUES, SCATTER_FORWARD);
+//    VecGhostUpdateEnd(vx[dim], INSERT_VALUES, SCATTER_FORWARD);
     VecDestroy(vx_tmp[dim]);
   }
 
@@ -376,6 +538,29 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   my_p4est_level_set_t ls(&node_neighbors);
 //  ls.reinitialize_2nd_order(phi);
 //  ls.perturb_level_set_function(phi, EPS);
+  // filter curvature
+//  {
+//    Vec rhs;
+//    VecDuplicate(phi, &rhs);
+//    VecCopy(phi, rhs);
+//    my_p4est_poisson_nodes_t poisson(&node_neighbors);
+//    my_p4est_interpolation_nodes_t bc_value(&node_neighbors);
+//    bc_value.set_input(phi, linear);
+//    struct:WallBC2D {
+//      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
+//    } bc_type;
+//    BoundaryConditions2D bc;
+//    bc.setWallTypes(bc_type);
+//    bc.setWallValues(bc_value);
+
+//    double h = 2*p4est_diag_min(p4est);
+//    VecScale(rhs, 1.0/h);
+//    poisson.set_diagonal(1.0/h);
+//    poisson.set_rhs(rhs);
+//    poisson.set_bc(bc);
+
+//    poisson.solve(phi, true);
+//  }
 
   // compute the curvature. we store it in the boundary condition vector to save space
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
@@ -383,7 +568,16 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   VecDuplicate(phi, &kappa_tmp);
   foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
   compute_normals(node_neighbors, phi, normal);
-  compute_mean_curvature(node_neighbors, normal, kappa_tmp);
+  {
+    Vec phi_x[P4EST_DIM];
+    VecCreateGhostNodes(p4est, nodes, &phi_x[0]);
+    VecCreateGhostNodes(p4est, nodes, &phi_x[1]);
+    node_neighbors.first_derivatives_central(phi, phi_x);
+    compute_mean_curvature(node_neighbors, phi, phi_x, kappa_tmp);
+    VecDestroy(phi_x[0]);
+    VecDestroy(phi_x[1]);
+  }
+//  compute_mean_curvature(node_neighbors, normal, kappa_tmp);
 
   // extend curvature from interface to the entire domain
   ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
@@ -551,7 +745,7 @@ double two_fluid_solver_t:: solve_one_step(double t, Vec &phi, Vec &press_m, Vec
 {
   // advect the interface
   double dt;
-  dt = advect_interface(phi, press_m, press_p, cfl, dtmax);
+  dt = advect_interface_godunov(phi, press_m, press_p, cfl, dtmax);
 
   // save the grid
 //  int static counter = 0;

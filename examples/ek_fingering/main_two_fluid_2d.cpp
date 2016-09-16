@@ -130,7 +130,7 @@ void set_options(int argc, char **argv) {
     options.interface = &interface;
 
     static struct:CF_1{
-      double operator()(double t) const { return 2*PI*(1.0 + t); }
+      double operator()(double t) const { return 2*PI*(1.0 + t)/5; }
     } Q;
 
     static struct:WallBC2D{
@@ -454,7 +454,7 @@ int main(int argc, char** argv) {
     p4est_gloidx_t num_nodes = 0;
     for (int r = 0; r<mpi.size(); r++)
       num_nodes += nodes->global_owned_indeps[r];
-    PetscPrintf(mpi.comm(), "it = %04d n = %6d t = %1.5f dt = %1.5e\n", it, num_nodes, t, dt);
+    PetscPrintf(mpi.comm(), "it = %04d n = %6d t = %1.5f dt = %1.5e\n", it, num_nodes, t, dt);    
 
     // reinitialize the solution before writing it
     if (it % options.it_reinit == 0){
@@ -464,8 +464,43 @@ int main(int argc, char** argv) {
       my_p4est_node_neighbors_t ngbd(&h, nodes);
       ngbd.init_neighbors();
 
+      if (options.test == "circle" && 0) {
+        Vec phi_tmp;
+        VecDuplicate(phi, &phi_tmp);
+        double *phi_p, *phi_tmp_p;
+        VecGetArray(phi, &phi_p);
+        VecGetArray(phi_tmp, &phi_tmp_p);
+        foreach_node(n,nodes) phi_tmp_p[n] = phi_p[n];
+
+        my_p4est_interpolation_nodes_t interp(&ngbd);
+        interp.set_input(phi, quadratic_non_oscillatory);
+
+        double x[P4EST_DIM];
+        vector<double> buff(nodes->indep_nodes.elem_count, 0);
+        for (int m = 1; m < options.mode; m++) {
+          double s = m*2*PI/(double)options.mode;
+          foreach_node (n, nodes) {
+            node_xyz_fr_n(n, p4est, nodes, x);
+            double r = sqrt(SQR(x[0])+SQR(x[1]));
+            double t = atan2(x[1], x[0]);
+
+            x[0] = r*cos(t+s);
+            x[1] = r*sin(t+s);
+            interp.add_point(n, x);
+          }
+          interp.interpolate(buff.data());
+          foreach_node(n, nodes) phi_tmp_p[n] += buff[n];
+        }
+
+        foreach_node(n, nodes) phi_p[n] = phi_tmp_p[n]/options.mode;
+        VecRestoreArray(phi, &phi_p);
+        VecRestoreArray(phi_tmp, &phi_tmp_p);
+        VecDestroy(phi_tmp);
+      }
+
       my_p4est_level_set_t ls(&ngbd);
       ls.reinitialize_2nd_order(phi);
+      ls.perturb_level_set_function(phi, 1e-8);
 
       PetscPrintf(mpi.comm(), "done!\n");
     }
