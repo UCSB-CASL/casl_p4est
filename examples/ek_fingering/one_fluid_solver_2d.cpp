@@ -19,9 +19,23 @@ one_fluid_solver_t::one_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p
 {
   sp   = (splitting_criteria_t*) p4est->user_pointer;
   conn = p4est->connectivity;
+
+  VecCreateGhostNodes(p4est, nodes, &kappa);
+  foreach_dimension (dim) {
+    VecDuplicate(kappa, &nx[dim]);
+    VecDuplicate(kappa, &n1[dim]);
+  }
+  VecDuplicate(kappa, &un);
 }
 
-one_fluid_solver_t::~one_fluid_solver_t() {}
+one_fluid_solver_t::~one_fluid_solver_t() {
+  VecDestroy(kappa);
+  foreach_dimension (dim) {
+    VecDestroy(nx[dim]);
+    VecDestroy(n1[dim]);
+  }
+  VecDestroy(un);
+}
 
 void one_fluid_solver_t::set_properties(cf_t &K_D, cf_t &K_EO, cf_t &gamma)
 {  
@@ -41,6 +55,135 @@ void one_fluid_solver_t::set_bc_wall(bc_wall_t &bc_wall_type, cf_t &bc_wall_valu
 {
   this->bc_wall_type  = &bc_wall_type;
   this->bc_wall_value = &bc_wall_value;
+}
+
+void one_fluid_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_neighbors_t& neighbors, Vec &phi)
+{
+  VecDestroy(kappa); VecDuplicate(phi, &kappa);
+  foreach_dimension(dim) {
+    VecDestroy(nx[dim]); VecDuplicate(phi, &nx[dim]);
+    VecDestroy(n1[dim]); VecDuplicate(phi, &n1[dim]);
+  }
+  Vec kappa_tmp;
+  VecDuplicate(kappa, &kappa_tmp);
+
+  double dx[P4EST_DIM];
+  p4est_dxyz_min(p4est, dx);
+  double diag = sqrt(SQR(dx[0]) + SQR(dx[1]));
+
+  double *kappa_p, *phi_p, *nx_p[P4EST_DIM], *n1_p[P4EST_DIM];
+  VecGetArray(kappa_tmp, &kappa_p);
+  VecGetArray(phi, &phi_p);
+  foreach_dimension (dim) {
+    VecGetArray(nx[dim], &nx_p[dim]);
+    VecGetArray(n1[dim], &n1_p[dim]);
+  }
+
+  my_p4est_interpolation_nodes_t interp(&neighbors);
+  interp.set_input(phi, quadratic);
+
+  double f[3][3];
+  double x[P4EST_DIM];
+  foreach_node (n, nodes) {
+    if (fabs(phi_p[n]) < 30*diag) {
+      node_xyz_fr_n(n, p4est, nodes, x);
+      for (short i = 0; i < 3; i++)
+        for (short j = 0; j < 3; j++)
+          f[i][j] = interp(x[0]+(i-1)*dx[0],x[1]+(j-1)*dx[1]);
+
+      const int i = 1, j = 1;
+      double fx  = (f[i+1][j]-f[i-1][j])/(2*dx[0]);
+      double fy  = (f[i][j+1]-f[i][j-1])/(2*dx[1]);
+      double fxx = (f[i+1][j]-2*f[i][j]+f[i-1][j])/(dx[0]*dx[0]);
+      double fyy = (f[i][j+1]-2*f[i][j]+f[i][j-1])/(dx[1]*dx[1]);
+      double fxy = (f[i+1][j+1]+f[i-1][j-1]-f[i+1][j-1]-f[i-1][j+1])/(4*dx[0]*dx[1]);
+
+      double fn  = MAX(sqrt(fx*fx+fy*fy), EPS);
+      kappa_p[n] = (SQR(fy)*fxx-2*fx*fy*fxy+SQR(fx)*fyy)/std::pow(fn,3);
+
+      nx_p[0][n] = fx/fn;
+      nx_p[1][n] = fy/fn;
+
+      double f1  = (f[i+1][j+1]-f[i-1][j-1])/(2*diag);
+      double f2  = (f[i-1][j+1]-f[i+1][j-1])/(2*diag);
+      fn         = MAX(sqrt(f1*f1+f2*f2), EPS);
+      n1_p[0][n] = f1/fn;
+      n1_p[1][n] = f2/fn;
+    }
+  }
+
+  VecRestoreArray(kappa_tmp, &kappa_p);
+  VecRestoreArray(phi, &phi_p);
+  foreach_dimension (dim) {
+    VecRestoreArray(nx[dim], &nx_p[dim]);
+    VecRestoreArray(n1[dim], &n1_p[dim]);
+  }
+
+  // extend curvature
+  my_p4est_level_set_t ls(&neighbors);
+  ls.extend_from_interface_to_whole_domain(phi, kappa_tmp, kappa);
+
+  VecDestroy(kappa_tmp);
+}
+
+void one_fluid_solver_t::compute_normal_velocity(my_p4est_node_neighbors_t& neighbors, Vec& phi, Vec &pressure) {
+  VecDestroy(un); VecDuplicate(pressure, &un);
+
+  double dx[P4EST_DIM];
+  p4est_dxyz_min(p4est, dx);
+  double diag = sqrt(SQR(dx[0]) + SQR(dx[1]));
+
+  Vec un_tmp;
+  VecDuplicate(un, &un_tmp);
+
+  double *phi_p, *pressure_p, *nx_p[P4EST_DIM], *n1_p[P4EST_DIM], *un_p;
+  VecGetArray(un_tmp, &un_p);
+  VecGetArray(phi, &phi_p);
+  VecGetArray(pressure, &pressure_p);
+  foreach_dimension (dim) {
+    VecGetArray(nx[dim], &nx_p[dim]);
+    VecGetArray(n1[dim], &n1_p[dim]);
+  }
+
+  my_p4est_interpolation_nodes_t interp(&neighbors);
+  interp.set_input(pressure, quadratic);
+
+  double f[3][3];
+  double x[P4EST_DIM];
+  foreach_node (n, nodes) {
+    if (fabs(phi_p[n]) < 30*diag) {
+      node_xyz_fr_n(n, p4est, nodes, x);
+      for (short i = 0; i < 3; i++) {
+        for (short j = 0; j < 3; j++) {
+          f[i][j] = interp(x[0]+(i-1)*dx[0], x[1]+(j-1)*dx[1]);
+        }
+      }
+
+      const int i = 1, j = 1;
+
+      double fx  = (f[i+1][j]-f[i-1][j])/(2*dx[0]);
+      double fy  = (f[i][j+1]-f[i][j-1])/(2*dx[1]);
+      double f1  = (f[i+1][j+1]-f[i-1][j-1])/(2*diag);
+      double f2  = (f[i-1][j+1]-f[i+1][j-1])/(2*diag);
+
+      double kd  = (*K_D)(x[0], x[1]);
+      un_p[n] = -kd*(nx_p[0][n]*fx + nx_p[1][n]*fy + n1_p[0][n]*f1 + n1_p[1][n]*f2)/2.0;
+    }
+  }
+
+  VecRestoreArray(un_tmp, &un_p);
+  VecRestoreArray(phi, &phi_p);
+  VecRestoreArray(pressure, &pressure_p);
+  foreach_dimension (dim) {
+    VecRestoreArray(nx[dim], &nx_p[dim]);
+    VecRestoreArray(n1[dim], &n1_p[dim]);
+  }
+
+  // constant extend the velocities from interface to the entire domain
+  my_p4est_level_set_t ls(&neighbors);
+  ls.extend_from_interface_to_whole_domain(phi, un_tmp, un);
+
+  VecDestroy(un_tmp);
 }
 
 double one_fluid_solver_t::advect_interface_semi_lagrangian(Vec &phi, Vec &pressure, Vec& potential, double cfl, double dtmax)
@@ -262,14 +405,17 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, Vec
   my_p4est_level_set_t ls(&neighbors);
 
   // compute normal and curvature
-  Vec kappa, kappa_tmp, normal[P4EST_DIM];
-  VecDuplicate(phi, &kappa);
-  VecDuplicate(phi, &kappa_tmp);
-  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
-  compute_normals(neighbors, phi, normal);
-  compute_mean_curvature(neighbors, normal, kappa_tmp);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
-  VecDestroy(kappa_tmp);
+  compute_normal_and_curvature_diagonal(neighbors, phi);
+  compute_normal_velocity(neighbors, phi, pressure);
+
+//  Vec kappa, kappa_tmp, normal[P4EST_DIM];
+//  VecDuplicate(phi, &kappa);
+//  VecDuplicate(phi, &kappa_tmp);
+//  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
+//  compute_normals(neighbors, phi, normal);
+//  compute_mean_curvature(neighbors, normal, kappa_tmp);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
+//  VecDestroy(kappa_tmp);
 
   // grid information
   double dxyz[P4EST_DIM];
@@ -282,98 +428,99 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, Vec
   double dmin = MIN(dxyz[0], dxyz[1]);
 #endif
 
-  double *phi_p, *n_p[P4EST_DIM];
+  double *phi_p, *nx_p[P4EST_DIM];
   VecGetArray(phi, &phi_p);
-  foreach_dimension (dim) VecGetArray(normal[dim], &n_p[dim]);
+  foreach_dimension (dim) VecGetArray(nx[dim], &nx_p[dim]);
 
   // compute interface velocity
-  Vec vn_tmp;
-  VecCreateGhostNodes(p4est, nodes, &vn_tmp);
-  double *vn_p, *pressure_p, *potential_p;
-  VecGetArray(vn_tmp, &vn_p);
+//  Vec vn_tmp;
+//  VecCreateGhostNodes(p4est, nodes, &vn_tmp);
+
+  double *un_p, *pressure_p, *potential_p;
+//  VecGetArray(vn_tmp, &un_p);
   VecGetArray(pressure, &pressure_p);
   VecGetArray(potential, &potential_p);
 
   // compute on the layer nodes
-  quad_neighbor_nodes_of_node_t qnnn;
-  double x[P4EST_DIM];
-  for (size_t i=0; i<neighbors.get_layer_size(); i++){
-    p4est_locidx_t n = neighbors.get_layer_node(i);
-    neighbors.get_neighbors(n, qnnn);
-    node_xyz_fr_n(n, p4est, nodes, x);
-#ifdef P4_TO_P8
-    double kd  = (*K_D)(x[0], x[1], x[2]);
-    double keo = (*K_EO)(x[0], x[1], x[2]);
-#else
-    double kd  = (*K_D)(x[0], x[1]);
-    double keo = (*K_D)(x[0], x[1]);
-#endif
+//  quad_neighbor_nodes_of_node_t qnnn;
+//  double x[P4EST_DIM];
+//  for (size_t i=0; i<neighbors.get_layer_size(); i++){
+//    p4est_locidx_t n = neighbors.get_layer_node(i);
+//    neighbors.get_neighbors(n, qnnn);
+//    node_xyz_fr_n(n, p4est, nodes, x);
+//#ifdef P4_TO_P8
+//    double kd  = (*K_D)(x[0], x[1], x[2]);
+//    double keo = (*K_EO)(x[0], x[1], x[2]);
+//#else
+//    double kd  = (*K_D)(x[0], x[1]);
+//    double keo = (*K_D)(x[0], x[1]);
+//#endif
 
-    vn_p[n]  = -kd*qnnn.dx_central(pressure_p)*n_p[0][n] - alpha*keo*qnnn.dx_central(potential_p)*n_p[0][n];
-    vn_p[n] += -kd*qnnn.dy_central(pressure_p)*n_p[1][n] - alpha*keo*qnnn.dy_central(potential_p)*n_p[1][n];
-#ifdef P4_TO_P8
-    vn_p[n] += -kd*qnnn.dz_central(pressure_p)*n_p[2][n] - alpha*keo*qnnn.dz_central(potential_p)*n_p[2][n];
-#endif
-  }
-  VecGhostUpdateBegin(vn_tmp, INSERT_VALUES, SCATTER_FORWARD);
+//    vn_p[n]  = -kd*qnnn.dx_central(pressure_p)*nx_p[0][n] - alpha*keo*qnnn.dx_central(potential_p)*nx_p[0][n];
+//    vn_p[n] += -kd*qnnn.dy_central(pressure_p)*nx_p[1][n] - alpha*keo*qnnn.dy_central(potential_p)*nx_p[1][n];
+//#ifdef P4_TO_P8
+//    vn_p[n] += -kd*qnnn.dz_central(pressure_p)*nx_p[2][n] - alpha*keo*qnnn.dz_central(potential_p)*nx_p[2][n];
+//#endif
+//  }
+//  VecGhostUpdateBegin(vn_tmp, INSERT_VALUES, SCATTER_FORWARD);
 
-  // compute on the local nodes
-  for (size_t i=0; i<neighbors.get_local_size(); i++){
-    p4est_locidx_t n = neighbors.get_local_node(i);
-    neighbors.get_neighbors(n, qnnn);
-    node_xyz_fr_n(n, p4est, nodes, x);
+//  // compute on the local nodes
+//  for (size_t i=0; i<neighbors.get_local_size(); i++){
+//    p4est_locidx_t n = neighbors.get_local_node(i);
+//    neighbors.get_neighbors(n, qnnn);
+//    node_xyz_fr_n(n, p4est, nodes, x);
 
-#ifdef P4_TO_P8
-    double kd  = (*K_D)(x[0], x[1], x[2]);
-    double keo = (*K_EO)(x[0], x[1], x[2]);
-#else
-    double kd  = (*K_D)(x[0], x[1]);
-    double keo = (*K_D)(x[0], x[1]);
-#endif
+//#ifdef P4_TO_P8
+//    double kd  = (*K_D)(x[0], x[1], x[2]);
+//    double keo = (*K_EO)(x[0], x[1], x[2]);
+//#else
+//    double kd  = (*K_D)(x[0], x[1]);
+//    double keo = (*K_D)(x[0], x[1]);
+//#endif
 
-    vn_p[n]  = -kd*qnnn.dx_central(pressure_p)*n_p[0][n] - alpha*keo*qnnn.dx_central(potential_p)*n_p[0][n];
-    vn_p[n] += -kd*qnnn.dy_central(pressure_p)*n_p[1][n] - alpha*keo*qnnn.dy_central(potential_p)*n_p[1][n];
-#ifdef P4_TO_P8
-    vn_p[n] += -kd*qnnn.dz_central(pressure_p)*n_p[2][n] - alpha*keo*qnnn.dz_central(potential_p)*n_p[2][n];
-#endif
-  }
+//    vn_p[n]  = -kd*qnnn.dx_central(pressure_p)*nx_p[0][n] - alpha*keo*qnnn.dx_central(potential_p)*nx_p[0][n];
+//    vn_p[n] += -kd*qnnn.dy_central(pressure_p)*nx_p[1][n] - alpha*keo*qnnn.dy_central(potential_p)*nx_p[1][n];
+//#ifdef P4_TO_P8
+//    vn_p[n] += -kd*qnnn.dz_central(pressure_p)*nx_p[2][n] - alpha*keo*qnnn.dz_central(potential_p)*nx_p[2][n];
+//#endif
+//  }
 
-  VecGhostUpdateEnd(vn_tmp, INSERT_VALUES, SCATTER_FORWARD);
-  foreach_dimension(dim) {
-    VecRestoreArray(normal[dim], &n_p[dim]);
-    VecDestroy(normal[dim]);
-  }
-  VecRestoreArray(vn_tmp, &vn_p);
-  VecRestoreArray(pressure, &pressure_p);
+//  VecGhostUpdateEnd(vn_tmp, INSERT_VALUES, SCATTER_FORWARD);
+//  foreach_dimension(dim) {
+//    VecRestoreArray(normal[dim], &nx_p[dim]);
+//    VecDestroy(normal[dim]);
+//  }
+//  VecRestoreArray(vn_tmp, &vn_p);
+//  VecRestoreArray(pressure, &pressure_p);
 
-  // constant extend the normal velocity from interface to the entire domain
-  Vec vn;
-  VecDuplicate(vn_tmp, &vn);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, vn_tmp, vn);
-  VecDestroy(vn_tmp);
+//  // constant extend the normal velocity from interface to the entire domain
+//  Vec vn;
+//  VecDuplicate(vn_tmp, &vn);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi, vn_tmp, vn);
+//  VecDestroy(vn_tmp);
 
   // compute dt based on cfl number and curavture
-  double vn_max = 1; // minmum vn_max to be used when computing dt.
-  double kvn_max = 0;
+  double un_max = 1; // minmum vn_max to be used when computing dt.
+  double kun_max = 0;
   double *kappa_p;
   VecGetArray(kappa, &kappa_p);
-  VecGetArray(vn, &vn_p);
+  VecGetArray(un, &un_p);
   foreach_node(n, nodes) {
     if (fabs(phi_p[n]) < cfl*diag) {
-      vn_max  = MAX(vn_max, vn_p[n]);
-      kvn_max = MAX(kvn_max, fabs(kappa_p[n]*vn_p[n]));
+      un_max  = MAX(un_max, un_p[n]);
+      kun_max = MAX(kun_max, fabs(kappa_p[n]*un_p[n]));
     }
   }
   VecRestoreArray(kappa, &kappa_p);
-  VecRestoreArray(vn, &vn_p);
+  VecRestoreArray(un, &un_p);
   VecDestroy(kappa);
 
-  double dt_cfl = MIN(cfl*dmin/vn_max, 1.0/kvn_max, dtmax);
+  double dt_cfl = MIN(cfl*dmin/un_max, 1.0/kun_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt_cfl, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
-  double dt = ls.advect_in_normal_direction(vn, phi, dt_cfl);
+  double dt = ls.advect_in_normal_direction(un, phi, dt_cfl);
 
-  VecDestroy(vn);
+//  VecDestroy(vn);
 
   p4est_t* p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
   p4est_np1->connectivity = conn;
@@ -395,6 +542,7 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, Vec
 
   // create an interpolation function between two grids
   my_p4est_interpolation_nodes_t grid_interp(&neighbors);  
+  double x[P4EST_DIM];
   foreach_node(n, nodes_np1) {
     node_xyz_fr_n(n, p4est_np1, nodes_np1, x);
     grid_interp.add_point(n,x);

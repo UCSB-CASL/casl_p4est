@@ -80,11 +80,11 @@ void set_parameters(int argc, char **argv) {
   cmd.add_option("it_reinit", "number of iterations before calling one reinitialization step");
   cmd.add_option("test", "Which test to run?, Options are:"
       "circle\n"
-      "FastShelley04_Fig12\n");
+      "FastShelley\n");
 
   cmd.parse(argc, argv);
 
-  options.test = cmd.get<string>("test", "FastShelley04_Fig12");
+  options.test = cmd.get<string>("test", "FastShelley");
   options.bcw  = cmd.get("bcw", DIRICHLET);
   options.modal = cmd.contains("modal");
   options.alpha = 0;
@@ -132,11 +132,11 @@ void set_parameters(int argc, char **argv) {
 #endif
 
   static struct:CF_1{
-    double operator()(double t) const { return 2*PI*(1.0 + t)/5; }
+    double operator()(double t) const { return 2*PI*(1.0 + t); }
   } Q;
 
   static struct:CF_1{
-    double operator()(double t) const { return 2*PI*(1.0 + t)/5; }
+    double operator()(double t) const { return 2*PI*(1.0 + t); }
   } I;
 
   options.K_D   = &K_D;
@@ -165,7 +165,7 @@ void set_parameters(int argc, char **argv) {
 
     static struct:CF_2{
       double operator()(double x, double y) const  {
-        double theta = atan2(y,x) - M_PI/180 * 45;
+        double theta = atan2(y,x) - M_PI/180 * options.rot;
         double r     = sqrt(SQR(x)+SQR(y));
         return 1+options.eps*cos(options.mode*theta) - r;
       }
@@ -195,7 +195,7 @@ void set_parameters(int argc, char **argv) {
     options.bc_wall_type  = &bc_wall_type;
     options.bc_wall_value = &bc_wall_value;
 
-  } else if (options.test == "FastShelley04_Fig12") {
+  } else if (options.test == "FastShelley") {
 
     options.xmin[0] = options.xmin[1] = options.xmin[2] = -options.L + EPS;
     options.xmax[0] = options.xmax[1] = options.xmax[2] =  options.L;
