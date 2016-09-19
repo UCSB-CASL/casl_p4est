@@ -51,7 +51,7 @@ static struct {
   int mode;
   double eps;
   string test, method;
-  bool modal_analysis;
+  bool modal;
   BoundaryConditionType bcw;
 
   cf_t *interface, *bc_wall_value;
@@ -86,10 +86,10 @@ void set_options(int argc, char **argv) {
 
   cmd.parse(argc, argv);
 
-  options.test = cmd.get<string>("test", "FastShelley04_Fig12");
+  options.test = cmd.get<string>("test", "FastShelley");
   options.method = cmd.get<string>("method", "voronoi");
   options.bcw    = cmd.get("bcw", DIRICHLET);
-  options.modal_analysis = cmd.contains("modal");
+  options.modal = cmd.contains("modal");
 
   // set default values
   options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
@@ -110,13 +110,13 @@ void set_options(int argc, char **argv) {
     options.xmax[0] = options.xmax[1] = options.xmax[2] =  options.L;
     options.lmax    = 10;
     options.lmin    = 5;
-    options.iter    = 10;
+    if (options.modal) options.iter = 10;
     options.dtmax   = 1e-3;
     options.dts     = 1e-1;
     options.Ca      = 250;
-    options.mode    = cmd.get("mode", 0);
-    options.eps     = cmd.get("eps", 5e-3);
-    options.lip     = cmd.get("lip", options.lip);
+    options.mode    = cmd.get("mode", 5);
+    options.eps     = cmd.get("eps", 1e-1);
+    options.lip     = cmd.get("lip", 5);
     options.M       = 1e-2;
     options.it_reinit = options.iter;
 
@@ -130,7 +130,7 @@ void set_options(int argc, char **argv) {
     options.interface = &interface;
 
     static struct:CF_1{
-      double operator()(double t) const { return 2*PI*(1.0 + t)/5; }
+      double operator()(double t) const { return 2*PI*(1.0 + t); }
     } Q;
 
     static struct:WallBC2D{
@@ -168,7 +168,7 @@ void set_options(int argc, char **argv) {
   } else if (options.test == "flat") {
     // set interface
     options.L = cmd.get("L", 5);
-    if (options.modal_analysis) {
+    if (options.modal) {
       options.xmin[0] = -options.L*PI; options.xmin[1] = options.xmin[2] = -PI;
       options.xmax[0] =  options.L*PI; options.xmax[1] = options.xmax[2] =  PI;
       options.iter    = 10;
@@ -184,9 +184,9 @@ void set_options(int argc, char **argv) {
     options.dtmax   = 1e-3;
     options.dts     = 1e-1;
     options.Ca      = 250;
-    options.mode    = cmd.get("mode", 0);
-    options.eps     = cmd.get("eps", 5e-3);
-    options.lip     = cmd.get("lip", options.lip);
+    options.mode    = cmd.get("mode", 5);
+    options.eps     = cmd.get("eps", 1e-1);
+    options.lip     = cmd.get("lip", 5);
     options.M       = 1e-2;
 
     static struct:CF_2{
@@ -228,7 +228,6 @@ void set_options(int argc, char **argv) {
     options.xmin[0]   = options.xmin[1] = options.xmin[2] = -options.L + EPS;
     options.xmax[0]   = options.xmax[1] = options.xmax[2] =  options.L;
     options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 1;
-    options.method    = "voronoi";
     options.lmin      = 5;
     options.lmax      = 10;
     options.dtmax     = 5e-3;
@@ -405,7 +404,7 @@ int main(int argc, char** argv) {
     throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
 
   ostringstream folder;
-  folder << outdir << "/two_fluid" << (options.modal_analysis ? "/modal_":"/")
+  folder << outdir << "/two_fluid" << (options.modal ? "/modal_":"/")
          << options.test
          << "/mue_" << options.M
          << "/" << mpi.size() << "p";
@@ -432,8 +431,14 @@ int main(int argc, char** argv) {
     VecGetArray(press_m, &press_m_p);
     VecGetArray(press_p, &press_p_p);
 
-    sprintf(vtk_name, "%s/two_fluid_%d_%d_%1.1f.%04d", folder.str().c_str(),
-            options.lmin, options.lmax, options.lip, 0);
+    if (options.test == "circle" || options.test == "flat") {
+      sprintf(vtk_name, "%s/mode_%d_%d_%d_%1.1f.%04d", folder.str().c_str(),
+              options.mode, options.lmin, options.lmax, options.lip, 0);
+    } else {
+      sprintf(vtk_name, "%s/%d_%d_%1.1f.%04d", folder.str().c_str(),
+              options.lmin, options.lmax, options.lip, 0);
+    }
+
     PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
@@ -513,9 +518,13 @@ int main(int argc, char** argv) {
       VecGetArray(press_m, &press_m_p);
       VecGetArray(press_p, &press_p_p);
 
-      sprintf(vtk_name, "%s/two_fluid_%d_%d_%1.1f.%04d", folder.str().c_str(),
-              options.lmin, options.lmax, options.lip,
-              is++);
+      if (options.test == "circle" || options.test == "flat") {
+        sprintf(vtk_name, "%s/mode_%d_%d_%d_%1.1f.%04d", folder.str().c_str(),
+                options.mode, options.lmin, options.lmax, options.lip, is++);
+      } else {
+        sprintf(vtk_name, "%s/%d_%d_%1.1f.%04d", folder.str().c_str(),
+                options.lmin, options.lmax, options.lip, is++);
+      }
       PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
@@ -534,7 +543,7 @@ int main(int argc, char** argv) {
     }
 
     // save the error if this is a modal analysis
-    if (options.modal_analysis) {
+    if (options.modal) {
       if (options.test == "circle") {
         my_p4est_hierarchy_t h(p4est, ghost, &brick);
         my_p4est_node_neighbors_t ngbd(&h, nodes);

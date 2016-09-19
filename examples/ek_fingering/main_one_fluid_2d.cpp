@@ -498,8 +498,13 @@ int main(int argc, char** argv) {
     double *phi_p, *pressure_p;
     VecGetArray(phi, &phi_p);
     VecGetArray(pressure, &pressure_p);
-    sprintf(vtk_name, "%s/one_fluid_%d_%d_%g.%04d", folder.c_str(),
-            options.lmin, options.lmax, options.lip, 0);
+    if (options.test == "circle" || options.test == "flat") {
+      sprintf(vtk_name, "%s/mode_%d_%d_%d_%1.1f.%04d", folder.str().c_str(),
+              options.mode, options.lmin, options.lmax, options.lip, 0);
+    } else {
+      sprintf(vtk_name, "%s/%d_%d_%1.1f.%04d", folder.str().c_str(),
+              options.lmin, options.lmax, options.lip, 0);
+    }
     PetscPrintf(mpi.comm(), "Saving file %s\n", vtk_name);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE, 2, 0, vtk_name,
@@ -541,8 +546,13 @@ int main(int argc, char** argv) {
       double *phi_p, *pressure_p;
       VecGetArray(phi, &phi_p);
       VecGetArray(pressure, &pressure_p);
-      sprintf(vtk_name, "%s/one_fluid_%d_%d_%g.%04d", folder.c_str(),
-              options.lmin, options.lmax, options.lip, is++);
+      if (options.test == "circle" || options.test == "flat") {
+        sprintf(vtk_name, "%s/mode_%d_%d_%d_%1.1f.%04d", folder.str().c_str(),
+                options.mode, options.lmin, options.lmax, options.lip, is++);
+      } else {
+        sprintf(vtk_name, "%s/%d_%d_%1.1f.%04d", folder.str().c_str(),
+                options.lmin, options.lmax, options.lip, is++);
+      }
       PetscPrintf(mpi.comm(), "Saving file %s\n", vtk_name);
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE, 2, 0, vtk_name,

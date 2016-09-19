@@ -29,10 +29,14 @@ class two_fluid_solver_t
   cf_t *bc_wall_value;
   bc_wall_t *bc_wall_type;
 
+  Vec kappa, nx[P4EST_DIM], n1[P4EST_DIM], un;
+
   double advect_interface(Vec& phi, Vec& press_m, Vec &press_p, double cfl, double dtmax);
   double advect_interface_godunov(Vec& phi, Vec& press_m, Vec& press_p, double cfl, double dtmax);
   void solve_fields_extended(double t, Vec phi, Vec press_m, Vec press_p);
   void solve_fields_voronoi(double t, Vec phi, Vec press_m, Vec press_p);
+  void compute_normal_and_curvature_diagonal(my_p4est_node_neighbors_t& neighbors, Vec& phi);
+  void compute_normal_velocity_diagonal(my_p4est_node_neighbors_t& neighbors, Vec& phi, Vec &pressure);
 
 public:
   two_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick);

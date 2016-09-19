@@ -28,7 +28,8 @@ one_fluid_solver_t::one_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p
   VecDuplicate(kappa, &un);
 }
 
-one_fluid_solver_t::~one_fluid_solver_t() {
+one_fluid_solver_t::~one_fluid_solver_t()
+{
   VecDestroy(kappa);
   foreach_dimension (dim) {
     VecDestroy(nx[dim]);
@@ -126,7 +127,7 @@ void one_fluid_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_nei
   VecDestroy(kappa_tmp);
 }
 
-void one_fluid_solver_t::compute_normal_velocity(my_p4est_node_neighbors_t& neighbors, Vec& phi, Vec &pressure) {
+void one_fluid_solver_t::compute_normal_velocity_diagonal(my_p4est_node_neighbors_t& neighbors, Vec& phi, Vec &pressure) {
   VecDestroy(un); VecDuplicate(pressure, &un);
 
   double dx[P4EST_DIM];
