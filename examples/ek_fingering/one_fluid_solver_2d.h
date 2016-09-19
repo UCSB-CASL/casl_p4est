@@ -33,7 +33,7 @@ class one_fluid_solver_t
   Vec kappa, nx[P4EST_DIM], n1[P4EST_DIM], un;
 
   void compute_normal_and_curvature_diagonal(my_p4est_node_neighbors_t& neighbors, Vec& phi);
-  void compute_normal_velocity(my_p4est_node_neighbors_t& neighbors, Vec& phi, Vec& pressure);
+  void compute_normal_velocity_diagonal(my_p4est_node_neighbors_t& neighbors, Vec& phi, Vec& pressure);
 
   double advect_interface_semi_lagrangian(Vec& phi, Vec& pressure, Vec &potential, double cfl, double dtmax);
   double advect_interface_godunov(Vec& phi, Vec& pressure, Vec& potential, double cfl, double dtmax);

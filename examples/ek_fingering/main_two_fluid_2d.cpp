@@ -118,7 +118,7 @@ void set_options(int argc, char **argv) {
     options.eps     = cmd.get("eps", 1e-1);
     options.lip     = cmd.get("lip", 5);
     options.M       = 1e-2;
-    options.it_reinit = options.iter;
+    options.it_reinit = 50;
 
     static struct:CF_2{
       double operator()(double x, double y) const  {

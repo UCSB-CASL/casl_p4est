@@ -407,7 +407,7 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure, Vec
 
   // compute normal and curvature
   compute_normal_and_curvature_diagonal(neighbors, phi);
-  compute_normal_velocity(neighbors, phi, pressure);
+  compute_normal_velocity_diagonal(neighbors, phi, pressure);
 
 //  Vec kappa, kappa_tmp, normal[P4EST_DIM];
 //  VecDuplicate(phi, &kappa);

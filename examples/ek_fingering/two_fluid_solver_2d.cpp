@@ -711,25 +711,25 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 //  }
 
   // compute the curvature. we store it in the boundary condition vector to save space
-//  Vec kappa, kappa_tmp, normal[P4EST_DIM];
-//  VecDuplicate(phi, &kappa);
-//  VecDuplicate(phi, &kappa_tmp);
-//  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
-//  compute_normals(node_neighbors, phi, normal);
-//  {
-//    Vec phi_x[P4EST_DIM];
-//    VecCreateGhostNodes(p4est, nodes, &phi_x[0]);
-//    VecCreateGhostNodes(p4est, nodes, &phi_x[1]);
-//    node_neighbors.first_derivatives_central(phi, phi_x);
-//    compute_mean_curvature(node_neighbors, phi, phi_x, kappa_tmp);
-//    VecDestroy(phi_x[0]);
-//    VecDestroy(phi_x[1]);
-//  }
-//  compute_mean_curvature(node_neighbors, normal, kappa_tmp);
+  Vec kappa, kappa_tmp, normal[P4EST_DIM];
+  VecDuplicate(phi, &kappa);
+  VecDuplicate(phi, &kappa_tmp);
+  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
+  compute_normals(node_neighbors, phi, normal);
+  {
+    Vec phi_x[P4EST_DIM];
+    VecCreateGhostNodes(p4est, nodes, &phi_x[0]);
+    VecCreateGhostNodes(p4est, nodes, &phi_x[1]);
+    node_neighbors.first_derivatives_central(phi, phi_x);
+    compute_mean_curvature(node_neighbors, phi, phi_x, kappa_tmp);
+    VecDestroy(phi_x[0]);
+    VecDestroy(phi_x[1]);
+  }
+  compute_mean_curvature(node_neighbors, normal, kappa_tmp);
 
-  // extend curvature from interface to the entire domain
-//  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
-//  VecDestroy(kappa_tmp);
+//   extend curvature from interface to the entire domain
+  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
+  VecDestroy(kappa_tmp);
 
   // compute the boundary condition for the pressure.
   Vec jump_p, jump_dp;
@@ -770,7 +770,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   // jump in the flux is a bit more involved
   // FIXME: change the definiton of normal in the jump solver to remain consistent
   quad_neighbor_nodes_of_node_t qnnn;
-  foreach_dimension(dim) VecGetArray(nx[dim], &nx_p[dim]);
+  foreach_dimension(dim) VecGetArray(normal[dim], &nx_p[dim]);
 
   for (size_t i = 0; i<node_neighbors.get_layer_size(); i++) {
     p4est_locidx_t n = node_neighbors.get_layer_node(i);
@@ -799,8 +799,8 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 
   // destroy normals
   foreach_dimension(dim) {
-    VecRestoreArray(nx[dim], &nx_p[dim]);
-//    VecDestroy(normal[dim]);
+    VecRestoreArray(normal[dim], &nx_p[dim]);
+    VecDestroy(normal[dim]);
   }
 
   // solve the pressure jump problem
@@ -886,7 +886,38 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   ls.extend_Over_Interface_TVD(phi, press_p);
 
   VecScale(phi_l, -1);
-  VecGhostRestoreLocalForm(phi, &phi_l);
+  VecGhostRestoreLocalForm(phi, &phi_l); 
+
+//  {
+//    my_p4est_poisson_nodes_t poisson(&node_neighbors);
+//    my_p4est_interpolation_nodes_t interp(&node_neighbors);
+//    interp.set_input(press_p, quadratic);
+
+//    struct:WallBC2D {
+//      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
+//    } wall_type;
+//    BoundaryConditions2D bc;
+//    bc.setInterfaceType(DIRICHLET);
+//    bc.setInterfaceValue(interp);
+//    bc.setWallTypes(wall_type);
+//    bc.setWallValues(interp);
+
+//    poisson.set_bc(bc);
+//    poisson.set_phi(phi);
+////    Vec sol;
+////    Vec rhs;
+////    VecDuplicate(press_p, &sol);
+////    VecDuplicate(press_p, &rhs);
+////    VecSet(rhs, 0);
+////    poisson.set_rhs(rhs);
+////    poisson.set_mu(1);
+//    poisson.solve(press_p, true);
+////    VecCopy(sol, press_p);
+
+////    VecDestroy(sol);
+////    VecDestroy(rhs);
+//    ls.extend_Over_Interface_TVD(phi, press_p);
+//  }
 }
 
 double two_fluid_solver_t:: solve_one_step(double t, Vec &phi, Vec &press_m, Vec& press_p, double cfl, double dtmax, std::string method)

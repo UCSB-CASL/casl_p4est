@@ -161,7 +161,8 @@ void set_parameters(int argc, char **argv) {
     options.mode    = cmd.get("mode", 5);
     options.eps     = cmd.get("eps", 1e-1);
     options.method  = "semi_lagrangian";
-    options.lip     = 10;
+    options.lip     = 5;
+    options.it_reinit = 50;
 
     static struct:CF_2{
       double operator()(double x, double y) const  {
@@ -499,10 +500,10 @@ int main(int argc, char** argv) {
     VecGetArray(phi, &phi_p);
     VecGetArray(pressure, &pressure_p);
     if (options.test == "circle" || options.test == "flat") {
-      sprintf(vtk_name, "%s/mode_%d_%d_%d_%1.1f.%04d", folder.str().c_str(),
+      sprintf(vtk_name, "%s/mode_%d_%d_%d_%1.1f.%04d", folder.c_str(),
               options.mode, options.lmin, options.lmax, options.lip, 0);
     } else {
-      sprintf(vtk_name, "%s/%d_%d_%1.1f.%04d", folder.str().c_str(),
+      sprintf(vtk_name, "%s/%d_%d_%1.1f.%04d", folder.c_str(),
               options.lmin, options.lmax, options.lip, 0);
     }
     PetscPrintf(mpi.comm(), "Saving file %s\n", vtk_name);
@@ -547,10 +548,10 @@ int main(int argc, char** argv) {
       VecGetArray(phi, &phi_p);
       VecGetArray(pressure, &pressure_p);
       if (options.test == "circle" || options.test == "flat") {
-        sprintf(vtk_name, "%s/mode_%d_%d_%d_%1.1f.%04d", folder.str().c_str(),
+        sprintf(vtk_name, "%s/mode_%d_%d_%d_%1.1f.%04d", folder.c_str(),
                 options.mode, options.lmin, options.lmax, options.lip, is++);
       } else {
-        sprintf(vtk_name, "%s/%d_%d_%1.1f.%04d", folder.str().c_str(),
+        sprintf(vtk_name, "%s/%d_%d_%1.1f.%04d", folder.c_str(),
                 options.lmin, options.lmax, options.lip, is++);
       }
       PetscPrintf(mpi.comm(), "Saving file %s\n", vtk_name);
