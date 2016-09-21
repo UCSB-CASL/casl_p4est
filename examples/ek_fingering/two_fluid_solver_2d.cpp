@@ -882,9 +882,11 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   Vec phi_l;
   VecGhostGetLocalForm(phi, &phi_l);
   VecScale(phi_l, -1);
+  VecShift(phi_l, diag_min);
 
   ls.extend_Over_Interface_TVD(phi, press_p);
 
+  VecShift(phi_l, -diag_min);
   VecScale(phi_l, -1);
   VecGhostRestoreLocalForm(phi, &phi_l); 
 
