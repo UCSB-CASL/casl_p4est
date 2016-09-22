@@ -97,9 +97,13 @@ void set_options(int argc, char **argv) {
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
 
-  options.lip  = 1.2;
-  options.cfl  = 1;
+  options.lip       = 5;
+  options.cfl       = 1;
   options.it_reinit = 10;
+  options.dtmax     = 1e-3;
+  options.dts       = 1e-1;
+  options.Ca        = 250;
+  options.M         = 1e-2;
   options.rot = cmd.get("rot", 0);
   options.iter = numeric_limits<int>::max();
 
@@ -111,14 +115,9 @@ void set_options(int argc, char **argv) {
     options.lmax    = 10;
     options.lmin    = 5;
     if (options.modal) options.iter = 10;
-    options.dtmax   = 1e-3;
-    options.dts     = 1e-1;
-    options.Ca      = 250;
     options.mode    = cmd.get("mode", 5);
     options.eps     = cmd.get("eps", 1e-1);
     options.lip     = cmd.get("lip", 5);
-    options.M       = 1e-2;
-    options.it_reinit = 50;
 
     static struct:CF_2{
       double operator()(double x, double y) const  {
@@ -181,13 +180,9 @@ void set_options(int argc, char **argv) {
     options.periodic[0] = false; options.periodic[1] = options.periodic[2] = true;
     options.lmax    = 7;
     options.lmin    = 2;
-    options.dtmax   = 1e-3;
-    options.dts     = 1e-1;
-    options.Ca      = 250;
     options.mode    = cmd.get("mode", 5);
     options.eps     = cmd.get("eps", 1e-1);
     options.lip     = cmd.get("lip", 5);
-    options.M       = 1e-2;
 
     static struct:CF_2{
       double operator()(double x, double y) const  {
@@ -230,10 +225,6 @@ void set_options(int argc, char **argv) {
     options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 1;
     options.lmin      = 5;
     options.lmax      = 10;
-    options.dtmax     = 5e-3;
-    options.dts       = 1e-1;
-    options.Ca        = 250;
-    options.M         = 1e-4;
 
     static struct:CF_1{
       double operator()(double t) const { return 2*PI*(1+t); }
@@ -429,7 +420,7 @@ int main(int argc, char** argv) {
     double *phi_p, *press_m_p, *press_p_p;
     VecGetArray(phi, &phi_p);
     VecGetArray(press_m, &press_m_p);
-    VecGetArray(press_p, &press_p_p);
+    VecGetArray(press_p, &press_p_p);    
 
     if (options.test == "circle" || options.test == "flat") {
       sprintf(vtk_name, "%s/mode_%d_%d_%d_%1.1f.%04d", folder.str().c_str(),

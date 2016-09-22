@@ -145,11 +145,16 @@ void two_fluid_solver_t::compute_normal_velocity_diagonal(my_p4est_node_neighbor
   }
 
   my_p4est_interpolation_nodes_t interp(&neighbors);
-  interp.set_input(pressure, quadratic);
+  Vec Fxx[P4EST_DIM];
+  VecCreateGhostNodes(p4est, nodes, &Fxx[0]);
+  VecCreateGhostNodes(p4est, nodes, &Fxx[1]);
+  neighbors.second_derivatives_central(pressure, Fxx);
+  interp.set_input(pressure, Fxx[0], Fxx[1], quadratic);
 
   double f[3][3];
   double x[P4EST_DIM];
-  foreach_node (n, nodes) {
+
+  auto compute_normal_velocity = [&](int n) {
     if (fabs(phi_p[n]) < 30*diag) {
       node_xyz_fr_n(n, p4est, nodes, x);
       for (short i = 0; i < 3; i++) {
@@ -165,11 +170,24 @@ void two_fluid_solver_t::compute_normal_velocity_diagonal(my_p4est_node_neighbor
       double f1  = (f[i+1][j+1]-f[i-1][j-1])/(2*diag);
       double f2  = (f[i-1][j+1]-f[i+1][j-1])/(2*diag);
 
-      un_p[n] = -(nx_p[0][n]*fx + nx_p[1][n]*fy + n1_p[0][n]*f1 + n1_p[1][n]*f2)/2.0;
+      return -(nx_p[0][n]*fx + nx_p[1][n]*fy + n1_p[0][n]*f1 + n1_p[1][n]*f2)/2.0;
     }
-  }
+  };
 
+  for (size_t i = 0; i < neighbors.get_layer_size(); i++) {
+    int n = neighbors.get_layer_node(i);
+    un_p[n] = compute_normal_velocity(n);
+  }
   VecRestoreArray(un_tmp, &un_p);
+  VecGhostUpdateBegin(un_tmp, INSERT_VALUES, SCATTER_FORWARD);
+  VecGetArray(un_tmp, &un_p);
+  for (size_t i = 0; i < neighbors.get_local_size(); i++) {
+    int n = neighbors.get_local_node(i);
+    un_p[n] = compute_normal_velocity(n);
+  }
+  VecRestoreArray(un_tmp, &un_p);
+  VecGhostUpdateEnd(un_tmp, INSERT_VALUES, SCATTER_FORWARD);
+
   VecRestoreArray(phi, &phi_p);
   VecRestoreArray(pressure, &pressure_p);
   foreach_dimension (dim) {
@@ -875,19 +893,21 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   VecRestoreArray(press_m, &press_m_p);
   VecRestoreArray(press_p, &press_p_p);
 
-  // (-) --> (+)
-  ls.extend_Over_Interface_TVD(phi, press_m);
-
-  // (+) --> (-)
   Vec phi_l;
   VecGhostGetLocalForm(phi, &phi_l);
+
+  // (-) --> (+)
+  VecShift(phi_l, diag_min);
+  ls.extend_Over_Interface_TVD(phi, press_m);
+  VecShift(phi_l, -diag_min);
+
+  // (+) --> (-)
   VecScale(phi_l, -1);
   VecShift(phi_l, diag_min);
-
   ls.extend_Over_Interface_TVD(phi, press_p);
-
   VecShift(phi_l, -diag_min);
   VecScale(phi_l, -1);
+
   VecGhostRestoreLocalForm(phi, &phi_l); 
 
 //  {

@@ -470,19 +470,23 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   VecRestoreArray(potential_m, &potential_m_p);
   VecRestoreArray(potential_p, &potential_p_p);
 
-  // (-) --> (+)
-  ls.extend_Over_Interface_TVD(phi, pressure_m);
-  ls.extend_Over_Interface_TVD(phi, potential_m);
-
-  // (+) --> (-)
   Vec phi_l;
   VecGhostGetLocalForm(phi, &phi_l);
-  VecScale(phi_l, -1);
 
+  // (-) --> (+)
+  VecShift(phi_l, diag_min);
+  ls.extend_Over_Interface_TVD(phi, pressure_m);
+  ls.extend_Over_Interface_TVD(phi, potential_m);
+  VecShift(phi_l, -diag_min);
+
+  // (+) --> (-)
+  VecScale(phi_l, -1);
+  VecShift(phi_l, diag_min);
   ls.extend_Over_Interface_TVD(phi, pressure_p);
   ls.extend_Over_Interface_TVD(phi, potential_p);
-
+  VecShift(phi_l, -diag_min);
   VecScale(phi_l, -1);
+
   VecGhostRestoreLocalForm(phi, &phi_l);
 }
 
