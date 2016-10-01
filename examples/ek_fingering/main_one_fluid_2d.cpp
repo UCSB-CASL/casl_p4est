@@ -29,6 +29,7 @@
 #include <sys/stat.h>
 #include <src/Parser.h>
 #include <src/casl_math.h>
+#include <memory>
 
 using namespace std;
 
@@ -96,7 +97,7 @@ void set_parameters(int argc, char **argv) {
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
   options.lmin = 3; options.lmax = 10;
   options.rot  = 0;
-  options.method = "semi_lagrangian";
+  options.method = "godunov";
 
   options.lip  = 1.2;
   options.cfl  = 1;
@@ -317,7 +318,7 @@ void set_parameters(int argc, char **argv) {
     options.bc_wall_type  = &bc_wall_type;
     options.bc_wall_value = &bc_wall_value;
 
-  } else if (options.test == "Flat") {
+  } else if (options.test == "flat") {
 
     options.xmin[0]     =  0;
     options.xmin[1]     = options.xmin[2] = 0;
@@ -472,11 +473,26 @@ int main(int argc, char** argv) {
   VecCreateGhostNodes(p4est, nodes, &potential);
   sample_cf_on_nodes(p4est, nodes, *options.interface, phi);
 
-  // set up the solver
-  one_fluid_solver_t solver(p4est, ghost, nodes, brick);
-  solver.set_injection_rates(*options.Q, *options.I, options.alpha);
-  solver.set_properties(*options.K_D, *options.K_EO, *options.gamma);
-  solver.set_bc_wall(*options.bc_wall_type, *options.bc_wall_value);
+  {
+    PetscPrintf(mpi.comm(), "Reinitalizing ... ");
+
+    my_p4est_hierarchy_t h(p4est, ghost, &brick);
+    my_p4est_node_neighbors_t ngbd(&h, nodes);
+    ngbd.init_neighbors();
+
+    my_p4est_level_set_t ls(&ngbd);
+    ls.reinitialize_2nd_order(phi);
+    ls.perturb_level_set_function(phi, 1e-8);
+
+    PetscPrintf(mpi.comm(), "done!\n");
+  }
+
+  // set up the solver  
+  auto solver = new one_fluid_solver_t (p4est, ghost, nodes, brick);
+
+  solver->set_properties(*options.K_D, *options.K_EO, *options.gamma);
+  solver->set_bc_wall(*options.bc_wall_type, *options.bc_wall_value);
+  solver->set_integration(options.method, options.cfl, options.dtmax);
 
   const char* outdir = getenv("OUT_DIR");
   if (!outdir)
@@ -518,7 +534,7 @@ int main(int argc, char** argv) {
   double dt = 0, t = 0;
   int is = 1, it = 0;
   do {
-    dt = solver.solve_one_step(t, phi, pressure, potential, options.method, options.cfl, options.dtmax);
+    dt = solver->solve_one_step(t, phi, pressure);
     it++; t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -608,6 +624,8 @@ int main(int argc, char** argv) {
   VecDestroy(phi);
   VecDestroy(pressure);
   VecDestroy(potential);
+
+  delete solver;
 
   // destroy the structures
   p4est_nodes_destroy(nodes);

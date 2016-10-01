@@ -467,6 +467,7 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
     // For purely neumann problems GMRES is more robust
     ierr = KSPSetType(ksp, KSPGMRES); CHKERRXX(ierr);
   }
+
   ierr = KSPSolve(ksp, rhs_, solution); CHKERRXX(ierr);
   if (matrix_has_nullspace) {
     ierr = MatNullSpaceDestroy(A_null);

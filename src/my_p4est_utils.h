@@ -299,12 +299,28 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
 double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
+ * \brief VecGhostCopy  copy a ghosted vector, i.e. dst <- src
+ * \param src [in]  the source vector
+ * \param dst [out] the destination vector
+ * \return error code
+ */
+PetscErrorCode VecGhostCopy(Vec src, Vec dst);
+
+/*!
  * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the nodes based on p4est node ordering
  * \param p4est [in]  the forest
  * \param nodes [in]  the nodes numbering data structure
  * \param v     [out] PETSc vector type
  */
 PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
+
+/*!
+ * \brief VecGhostSet Sets a ghost vector to a value
+ * \param x [in,out]  the vector
+ * \param v [in]      the value to set
+ * \return error code
+ */
+PetscErrorCode VecGhostSet(Vec x, double v);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes

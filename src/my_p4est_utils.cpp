@@ -429,6 +429,32 @@ PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nod
   return ierr;
 }
 
+PetscErrorCode VecGhostCopy(Vec src, Vec dst)
+{
+  PetscErrorCode ierr;
+
+  Vec src_l, dst_l;
+  ierr = VecGhostGetLocalForm(src, &src_l); CHKERRQ(ierr);
+  ierr = VecGhostGetLocalForm(dst, &dst_l); CHKERRQ(ierr);
+  ierr = VecCopy(src_l, dst_l); CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(src, &src_l); CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(dst, &dst_l); CHKERRQ(ierr);
+
+  return 0;
+}
+
+PetscErrorCode VecGhostSet(Vec x, double v)
+{
+  PetscErrorCode ierr;
+  Vec x_l;
+
+  ierr = VecGhostGetLocalForm(x, &x_l); CHKERRQ(ierr);
+  ierr = VecSet(x, v); CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(x, &x_l); CHKERRQ(ierr);
+
+  return 0;
+}
+
 PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v)
 {
   PetscErrorCode ierr = 0;
