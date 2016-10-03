@@ -86,12 +86,13 @@ void set_options(int argc, char **argv) {
   cmd.add_option("test", "Which test to run?, Options are:\n"
                          "\tcircle\n"
                          "\tflat\n"
-                         "\tFastShelley04_Fig12\n");
+                         "\tFastShelley\n");
+
   cmd.add_option("prefix", "set the prefix to be prefixed ot filenames");
   cmd.add_option("bcw", "bc type on the wall");
   cmd.parse(argc, argv);
 
-  options.test = cmd.get<string>("test", "FastShelley04_Fig12");
+  options.test = cmd.get<string>("test", "FastShelley");
   options.prefix = cmd.get<string>("prefix","");
   options.bcw    = cmd.get("bcw", DIRICHLET);
 
@@ -102,7 +103,7 @@ void set_options(int argc, char **argv) {
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
   options.iter = numeric_limits<int>::max();
 
-  options.lip = 1.2;
+  options.lip = 5;
   options.cfl = 1;
   options.it_reinit = 10;
   options.L = cmd.get("L", 10);
@@ -350,7 +351,7 @@ void set_options(int argc, char **argv) {
     options.pressure_bc_value  = &potential_bc_value;
     options.potential_bc_value = &pressure_bc_value;
 
-  } else if (options.test == "FastShelley04_Fig12") {
+  } else if (options.test == "FastShelley") {
 
     options.xmin[0]   = options.xmin[1] = options.xmin[2] = -options.L + EPS;
     options.xmax[0]   = options.xmax[1] = options.xmax[2] =  options.L;
