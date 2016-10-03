@@ -385,9 +385,9 @@ int main(int argc, char** argv) {
   sample_cf_on_nodes(p4est, nodes, *options.interface, phi);
 
   // set up the solver
-  two_fluid_solver_t solver(p4est, ghost, nodes, brick);
-  solver.set_properties(options.M, options.Ca, *options.Q);
-  solver.set_bc_wall(*options.bc_wall_type, *options.bc_wall_value);
+  auto solver = new two_fluid_solver_t(p4est, ghost, nodes, brick);
+  solver->set_properties(options.M, options.Ca, *options.Q);
+  solver->set_bc_wall(*options.bc_wall_type, *options.bc_wall_value);
 
 
   const char* outdir = getenv("OUT_DIR");
@@ -443,8 +443,8 @@ int main(int argc, char** argv) {
   double dt = 0, t = 0;
   int is = 1, it = 0;
   do {
-    dt = solver.solve_one_step(t, phi, press_m, press_p,
-                               options.cfl, options.dtmax, options.method);
+    dt = solver->solve_one_step(t, phi, press_m, press_p,
+                                options.cfl, options.dtmax, options.method);
     it++; t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -607,6 +607,8 @@ int main(int argc, char** argv) {
     }
 
   } while (it < options.iter);
+
+  delete solver;
 
   // destroy vectors
   VecDestroy(phi);

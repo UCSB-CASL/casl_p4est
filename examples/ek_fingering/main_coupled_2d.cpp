@@ -73,7 +73,7 @@ void set_options(int argc, char **argv) {
   cmd.add_option("it_reinit", "number of ierations before reinit");
   cmd.add_option("cfl", "the CFL number");
   cmd.add_option("dts", "dt for saving vtk files");
-  cmd.add_option("dtmax", "max dt to use when solving");  
+  cmd.add_option("dtmax", "max dt to use when solving");
   cmd.add_option("L", "domain length");
   cmd.add_option("rot", "angle to rotate the interface about");
   cmd.add_option("M", "The viscosity ratio of outer/inner");
@@ -579,15 +579,15 @@ int main(int argc, char** argv) {
 
   // compute the stability limit values and print them
   double A = options.A,
-         B = options.B,
-         M = options.M,
-         R = options.R,
-         S = options.S;
+      B = options.B,
+      M = options.M,
+      R = options.R,
+      S = options.S;
   double F = (M*((1-M)*(1+R)+2*A*(S-1))+fabs(A*B)*(SQR(M)-SQR(S)))/(M*(1+M)*(1+R)-fabs(A*B)*SQR(M+S)),
-         G = (M*(1+R)-fabs(A*B)*(M+SQR(S)))/(M*(1+M)*(1+R)-fabs(A*B)*SQR(M+S));
+      G = (M*(1+R)-fabs(A*B)*(M+SQR(S)))/(M*(1+M)*(1+R)-fabs(A*B)*SQR(M+S));
 
   bool c1  = A*B < 1,
-       c2  = A*B*SQR(S)/R/M < 1;
+      c2  = A*B*SQR(S)/R/M < 1;
 
   {
     std::ostringstream oss;
@@ -597,7 +597,7 @@ int main(int argc, char** argv) {
     else
       oss << "*UN*stable";
     oss << " --> F = " << F << " and G = " << G << "\n";
-    oss << std::boolalpha << "A*B < 1? " << c1 << " A*B*S^2/R/M < 1? " << c2 << std::endl; 
+    oss << std::boolalpha << "A*B < 1? " << c1 << " A*B*S^2/R/M < 1? " << c2 << std::endl;
     PetscPrintf(mpi.comm(), oss.str().c_str());
 
     if (!c1 || !c2)
@@ -632,7 +632,7 @@ int main(int argc, char** argv) {
   sample_cf_on_nodes(p4est, nodes, *options.interface, phi);
 
   // set up the solver
-  coupled_solver_t solver(p4est, ghost, nodes, brick);
+  auto solver = new coupled_solver_t(p4est, ghost, nodes, brick);
   coupled_solver_t::parameters parameters = {
     fabs(options.A),  // alpha
     fabs(options.B),  // beta
@@ -642,25 +642,25 @@ int main(int argc, char** argv) {
     options.R,        // R
   };
 
-  solver.set_parameters(parameters);
-  solver.set_injection_rates(*options.Q, *options.I);
-  solver.set_boundary_conditions(*options.pressure_bc_type, *options.pressure_bc_value,
-      *options.potential_bc_type, *options.potential_bc_value);
+  solver->set_parameters(parameters);
+  solver->set_injection_rates(*options.Q, *options.I);
+  solver->set_boundary_conditions(*options.pressure_bc_type, *options.pressure_bc_value,
+                                  *options.potential_bc_type, *options.potential_bc_value);
 
   const char* outdir = getenv("OUT_DIR");
   if (!outdir)
     throw std::runtime_error("You must set the $OUT_DIR enviroment variable");
 
   ostringstream folder;
-  folder << outdir << "/coupled/" 
-    << options.test << "/" << options.prefix << "_"
-    << options.bcw << "_F_" << F << "_G_" << G;
+  folder << outdir << "/coupled/"
+         << options.test << "/" << options.prefix << "_"
+         << options.bcw << "_F_" << F << "_G_" << G;
 
   folder << "_A_" << options.A
-    << "_B_" << options.B
-    << "_M_" << options.M
-    << "_S_" << options.S
-    << "_R_" << options.R;
+         << "_B_" << options.B
+         << "_M_" << options.M
+         << "_S_" << options.S
+         << "_R_" << options.R;
   if (mpi.rank() == 0) system(("mkdir -p " + folder.str()).c_str());
   MPI_Barrier(mpi.comm());
   char vtk_name[FILENAME_MAX];
@@ -689,10 +689,10 @@ int main(int argc, char** argv) {
             options.lmin, options.lmax, options.lip, 0);
     PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
     my_p4est_vtk_write_all(p4est, nodes, ghost,
-        P4EST_TRUE, P4EST_TRUE,
-        5, 0, vtk_name,
-        VTK_POINT_DATA, "phi", phi_p,
-        VTK_POINT_DATA, "pressure_m",  pressure_p[0],
+                           P4EST_TRUE, P4EST_TRUE,
+                           5, 0, vtk_name,
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "pressure_m",  pressure_p[0],
         VTK_POINT_DATA, "pressure_p",  pressure_p[1],
         VTK_POINT_DATA, "potential_m", potential_p[0],
         VTK_POINT_DATA, "potential_p", potential_p[1]);
@@ -716,10 +716,10 @@ int main(int argc, char** argv) {
   double dt = 0, t = 0;
   int is = 1, it = 0;
   do {
-    dt = solver.solve_one_step(t, phi,
-        pressure[0],  pressure[1],
-        potential[0], potential[1],
-        options.cfl, options.dtmax);
+    dt = solver->solve_one_step(t, phi,
+                                pressure[0],  pressure[1],
+                                potential[0], potential[1],
+                                options.cfl, options.dtmax);
     it++; t += dt;
 
     p4est_gloidx_t num_nodes = 0;
@@ -741,52 +741,7 @@ int main(int argc, char** argv) {
       my_p4est_level_set_t ls(&ngbd);
       ls.reinitialize_2nd_order(phi);
       ls.perturb_level_set_function(phi, EPS);
-/*
-      // create a new grid and interpolate the data onto it
-      p4est_t* p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
-      splitting_criteria_tag_t tag(options.lmin, options.lmax, options.lip);
 
-      double *phi_p;
-      VecGetArray(phi, &phi_p);
-      tag.refine_and_coarsen(p4est_np1, nodes, phi_p);
-      VecRestoreArray(phi, &phi_p);
-
-      my_p4est_partition(p4est, P4EST_TRUE, NULL);
-      p4est_ghost_t* ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-      my_p4est_ghost_expand(p4est_np1, ghost_np1);
-      p4est_nodes_t* nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-
-      Vec phi_np1, pressure_np1[2], potential_np1[2];
-
-      VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1);
-      VecDuplicate(phi_np1, &pressure_np1[0]);
-      VecDuplicate(phi_np1, &pressure_np1[1]);
-      VecDuplicate(phi_np1, &potential_np1[0]);
-      VecDuplicate(phi_np1, &potential_np1[1]);
-
-      my_p4est_interpolation_nodes_t interp(&ngbd);
-      double x[P4EST_DIM];
-      foreach_node (n, nodes_np1) {
-        node_xyz_fr_n(n, p4est_np1, nodes_np1, x);
-        interp.add_point(n, x);
-      }
-      interp.set_input(phi, quadratic); interp.interpolate(phi_np1);
-      interp.set_input(pressure[0], quadratic); interp.interpolate(pressure_np1[0]);
-      interp.set_input(pressure[1], quadratic); interp.interpolate(pressure_np1[1]);
-      interp.set_input(potential[0], quadratic); interp.interpolate(potential_np1[0]);
-      interp.set_input(potential[1], quadratic); interp.interpolate(potential_np1[1]);
-
-      // Destroy old data
-      VecDestroy(phi); phi = phi_np1;
-      VecDestroy(pressure[0]); pressure[0] = pressure_np1[0];
-      VecDestroy(pressure[1]); pressure[1] = pressure_np1[1];
-      VecDestroy(potential[0]); potential[0] = potential_np1[0];
-      VecDestroy(potential[1]); potential[1] = potential_np1[1];
-
-      p4est_destroy(p4est); p4est = p4est_np1;
-      p4est_ghost_destroy(ghost); ghost = ghost_np1;
-      p4est_nodes_destroy(nodes); nodes = nodes_np1;
-*/
       PetscPrintf(mpi.comm(), "done!\n");
     }
 
@@ -804,10 +759,10 @@ int main(int argc, char** argv) {
               is++);
       PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
       my_p4est_vtk_write_all(p4est, nodes, ghost,
-          P4EST_TRUE, P4EST_TRUE,
-          5, 0, vtk_name,
-          VTK_POINT_DATA, "phi", phi_p,
-          VTK_POINT_DATA, "pressure_m",  pressure_p[0],
+                             P4EST_TRUE, P4EST_TRUE,
+                             5, 0, vtk_name,
+                             VTK_POINT_DATA, "phi", phi_p,
+                             VTK_POINT_DATA, "pressure_m",  pressure_p[0],
           VTK_POINT_DATA, "pressure_p",  pressure_p[1],
           VTK_POINT_DATA, "potential_m", potential_p[0],
           VTK_POINT_DATA, "potential_p", potential_p[1]);
@@ -842,8 +797,8 @@ int main(int argc, char** argv) {
       if (mpi.rank() == 0) {
         ostringstream filename;
         filename << folder.str() << "/err_" << options.lmax
-          << "_" << options.mode
-          << "_" << it << ".txt";
+                 << "_" << options.mode
+                 << "_" << it << ".txt";
         FILE *file = fopen(filename.str().c_str(), "w");
         fprintf(file, "%% theta \t err\n");
         for (int n = 0; n<ntheta; n++) {
@@ -874,8 +829,8 @@ int main(int argc, char** argv) {
       if (mpi.rank() == 0) {
         ostringstream filename;
         filename << folder.str() << "/err_" << options.lmax
-          << "_" << options.mode
-          << "_" << it << ".txt";
+                 << "_" << options.mode
+                 << "_" << it << ".txt";
         FILE *file = fopen(filename.str().c_str(), "w");
         fprintf(file, "%% theta \t err\n");
         for (int n = 0; n<ntheta; n++) {
@@ -886,6 +841,8 @@ int main(int argc, char** argv) {
       }
     }
   } while (it < options.iter);
+
+  delete solver;
 
   // destroy vectors
   VecDestroy(phi);

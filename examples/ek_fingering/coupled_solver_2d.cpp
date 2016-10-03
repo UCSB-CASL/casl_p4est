@@ -60,7 +60,6 @@ coupled_solver_t::~coupled_solver_t() {
   VecDestroy(pressure_p_nm1);
   VecDestroy(potential_m_nm1);
   VecDestroy(potential_p_nm1);
-
 }
 
 void coupled_solver_t::set_parameters(const parameters& p)
@@ -114,7 +113,7 @@ void coupled_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_neigh
   double f[3][3];
   double x[P4EST_DIM];
   foreach_local_node (n, nodes) {
-    if (fabs(phi_p[n]) < 15*diag) {
+    if (fabs(phi_p[n]) < 30*diag) {
       node_xyz_fr_n(n, p4est, nodes, x);
       for (short i = 0; i < 3; i++)
         for (short j = 0; j < 3; j++)
@@ -200,7 +199,7 @@ void coupled_solver_t::compute_normal_velocity_diagonal(my_p4est_node_neighbors_
   double f[3][3], g[3][3];
   double x[P4EST_DIM];
   auto compute_velocity = [&](int n) -> double {
-    if (fabs(phi_p[n]) < 15*diag) {
+    if (fabs(phi_p[n]) < 30*diag) {
       node_xyz_fr_n(n, p4est, nodes, x);
       for (short i = 0; i < 3; i++) {
         for (short j = 0; j < 3; j++) {
@@ -468,7 +467,6 @@ double coupled_solver_t::advect_interface_godunov(Vec &phi,
   }
   VecRestoreArray(kappa, &kappa_p);
   VecRestoreArray(un, &un_p);
-  VecDestroy(kappa);
 
   double dt = MIN(cfl*dmin/un_max, 1.0/kun_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
@@ -515,7 +513,6 @@ double coupled_solver_t::advect_interface_godunov(Vec &phi,
 
     VecDestroy(un_np1);
   }
-
 
   p4est_t* p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
   p4est_np1->connectivity = conn;

@@ -31,6 +31,18 @@ two_fluid_solver_t::two_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p
     VecDuplicate(kappa, &n1[dim]);
   }
   VecDuplicate(kappa, &un);
+
+  p4est_nm1 = my_p4est_copy(p4est, 0);
+  p4est_nm1->connectivity = conn;
+  ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
+  nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
+
+  dt_nm1 = 0;
+  VecCreateGhostNodes(p4est_nm1, nodes_nm1, &phi_nm1);
+  VecCreateGhostNodes(p4est_nm1, nodes_nm1, &press_m_nm1);
+  VecCreateGhostNodes(p4est_nm1, nodes_nm1, &press_p_nm1);
+
+  VecDuplicate(phi_nm1, &un_nm1);
 }
 
 two_fluid_solver_t::~two_fluid_solver_t()
@@ -40,7 +52,16 @@ two_fluid_solver_t::~two_fluid_solver_t()
     VecDestroy(nx[dim]);
     VecDestroy(n1[dim]);
   }
+  VecDestroy(un_nm1);
   VecDestroy(un);
+
+  p4est_nodes_destroy(nodes_nm1);
+  p4est_ghost_destroy(ghost_nm1);
+  p4est_destroy(p4est_nm1);
+
+  VecDestroy(phi_nm1);
+  VecDestroy(press_m_nm1);
+  VecDestroy(press_p_nm1);
 }
 
 void two_fluid_solver_t::set_properties(double viscosity_ratio, double Ca, CF_1& Q)
@@ -79,11 +100,14 @@ void two_fluid_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_nei
   }
 
   my_p4est_interpolation_nodes_t interp(&neighbors);
-  interp.set_input(phi, quadratic);
+  Vec fxx[P4EST_DIM];
+  foreach_dimension (dim) VecCreateGhostNodes(p4est, nodes, &fxx[dim]);
+  neighbors.second_derivatives_central(phi, fxx);
+  interp.set_input(phi, fxx[0], fxx[1], quadratic);
 
   double f[3][3];
   double x[P4EST_DIM];
-  foreach_node (n, nodes) {
+  foreach_local_node (n, nodes) {
     if (fabs(phi_p[n]) < 30*diag) {
       node_xyz_fr_n(n, p4est, nodes, x);
       for (short i = 0; i < 3; i++)
@@ -111,11 +135,24 @@ void two_fluid_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_nei
     }
   }
 
+  foreach_dimension (dim) VecDestroy(fxx[dim]);
+
   VecRestoreArray(kappa_tmp, &kappa_p);
   VecRestoreArray(phi, &phi_p);
   foreach_dimension (dim) {
     VecRestoreArray(nx[dim], &nx_p[dim]);
     VecRestoreArray(n1[dim], &n1_p[dim]);
+  }
+
+  VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
+  VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
+
+  foreach_dimension (dim) {
+    VecGhostUpdateBegin(nx[dim], INSERT_VALUES, SCATTER_FORWARD);
+    VecGhostUpdateEnd(nx[dim], INSERT_VALUES, SCATTER_FORWARD);
+
+    VecGhostUpdateBegin(n1[dim], INSERT_VALUES, SCATTER_FORWARD);
+    VecGhostUpdateEnd(n1[dim], INSERT_VALUES, SCATTER_FORWARD);
   }
 
   // extend curvature
@@ -126,8 +163,6 @@ void two_fluid_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_nei
 }
 
 void two_fluid_solver_t::compute_normal_velocity_diagonal(my_p4est_node_neighbors_t& neighbors, Vec& phi, Vec &pressure) {
-  VecDestroy(un); VecDuplicate(pressure, &un);
-
   double dx[P4EST_DIM];
   p4est_dxyz_min(p4est, dx);
   double diag = sqrt(SQR(dx[0]) + SQR(dx[1]));
@@ -144,17 +179,16 @@ void two_fluid_solver_t::compute_normal_velocity_diagonal(my_p4est_node_neighbor
     VecGetArray(n1[dim], &n1_p[dim]);
   }
 
-  my_p4est_interpolation_nodes_t interp(&neighbors);
   Vec Fxx[P4EST_DIM];
-  VecCreateGhostNodes(p4est, nodes, &Fxx[0]);
-  VecCreateGhostNodes(p4est, nodes, &Fxx[1]);
+  foreach_dimension (dim) VecCreateGhostNodes(p4est, nodes, &Fxx[dim]);
   neighbors.second_derivatives_central(pressure, Fxx);
+
+  my_p4est_interpolation_nodes_t interp(&neighbors);
   interp.set_input(pressure, Fxx[0], Fxx[1], quadratic);
 
   double f[3][3];
   double x[P4EST_DIM];
-
-  auto compute_normal_velocity = [&](int n) {
+  auto compute_velocity = [&](int n) -> double {
     if (fabs(phi_p[n]) < 30*diag) {
       node_xyz_fr_n(n, p4est, nodes, x);
       for (short i = 0; i < 3; i++) {
@@ -170,23 +204,28 @@ void two_fluid_solver_t::compute_normal_velocity_diagonal(my_p4est_node_neighbor
       double f1  = (f[i+1][j+1]-f[i-1][j-1])/(2*diag);
       double f2  = (f[i-1][j+1]-f[i+1][j-1])/(2*diag);
 
-      return -(nx_p[0][n]*fx + nx_p[1][n]*fy + n1_p[0][n]*f1 + n1_p[1][n]*f2)/2.0;
+      return -(nx_p[0][n]*fx + nx_p[1][n]*fy +
+               n1_p[0][n]*f1 + n1_p[1][n]*f2)/2.0;
+    } else {
+      return 0;
     }
   };
 
   for (size_t i = 0; i < neighbors.get_layer_size(); i++) {
     int n = neighbors.get_layer_node(i);
-    un_p[n] = compute_normal_velocity(n);
+    un_p[n] = compute_velocity(n);
   }
-  VecRestoreArray(un_tmp, &un_p);
   VecGhostUpdateBegin(un_tmp, INSERT_VALUES, SCATTER_FORWARD);
-  VecGetArray(un_tmp, &un_p);
+
   for (size_t i = 0; i < neighbors.get_local_size(); i++) {
     int n = neighbors.get_local_node(i);
-    un_p[n] = compute_normal_velocity(n);
+    un_p[n] = compute_velocity(n);
   }
-  VecRestoreArray(un_tmp, &un_p);
   VecGhostUpdateEnd(un_tmp, INSERT_VALUES, SCATTER_FORWARD);
+
+  VecRestoreArray(un_tmp, &un_p);
+
+  foreach_dimension (dim) VecDestroy(Fxx[dim]);
 
   VecRestoreArray(phi, &phi_p);
   VecRestoreArray(pressure, &pressure_p);
@@ -209,80 +248,10 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
   my_p4est_hierarchy_t hierarchy(p4est, ghost, brick);
   my_p4est_node_neighbors_t neighbors(&hierarchy, nodes);
   neighbors.init_neighbors();
-  my_p4est_level_set_t ls(&neighbors);
 
   // compute normal and curvature
   compute_normal_and_curvature_diagonal(neighbors, phi);
   compute_normal_velocity_diagonal(neighbors, phi, press_p);
-
-//  // compute curvature
-//  Vec kappa, kappa_tmp, normal[P4EST_DIM];
-//  VecDuplicate(phi, &kappa);
-//  VecDuplicate(phi, &kappa_tmp);
-//  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
-//  compute_normals(neighbors, phi, normal);
-//  compute_mean_curvature(neighbors, normal, kappa_tmp);
-
-//  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
-//  VecDestroy(kappa_tmp);
-
-//  double *n_p[P4EST_DIM];
-//  foreach_dimension(dim) VecGetArray(normal[dim], &n_p[dim]);
-
-  // compute interface velocity
-//  Vec vn_tmp;
-//  double *vn_p, *press_p_p, *press_m_p, *phi_p;
-//  VecCreateGhostNodes(p4est, nodes, &vn_tmp);
-//  VecGetArray(vn_tmp, &vn_p);
-//  VecGetArray(press_m, &press_m_p);
-//  VecGetArray(press_p, &press_p_p);
-//  VecGetArray(phi, &phi_p);
-
-//  // compute on the layer nodes
-//  quad_neighbor_nodes_of_node_t qnnn;
-//  double x[P4EST_DIM];
-//  for (size_t i=0; i<neighbors.get_layer_size(); i++){
-//    p4est_locidx_t n = neighbors.get_layer_node(i);
-//    neighbors.get_neighbors(n, qnnn);
-//    node_xyz_fr_n(n, p4est, nodes, x);
-
-//    vn_p[n]  = -qnnn.dx_central(press_p_p)*n_p[0][n];
-//    vn_p[n] += -qnnn.dy_central(press_p_p)*n_p[1][n];
-//#ifdef P4_TO_P8
-//    vn_p[n] += -qnnn.dz_central(press_p_p)*n_p[2][n];
-//#endif
-//  }
-//  VecGhostUpdateBegin(vn_tmp, INSERT_VALUES, SCATTER_FORWARD);
-
-
-//  // compute on the local nodes
-//  for (size_t i=0; i<neighbors.get_local_size(); i++){
-//    p4est_locidx_t n = neighbors.get_local_node(i);
-//    neighbors.get_neighbors(n, qnnn);
-//    node_xyz_fr_n(n, p4est, nodes, x);
-
-//    vn_p[n]  = -qnnn.dx_central(press_p_p)*n_p[0][n];
-//    vn_p[n] += -qnnn.dy_central(press_p_p)*n_p[1][n];
-//#ifdef P4_TO_P8
-//    vn_p[n] += -qnnn.dz_central(press_p_p)*n_p[2][n];
-//#endif
-//  }
-//  VecGhostUpdateEnd(vn_tmp, INSERT_VALUES, SCATTER_FORWARD);
-
-//  foreach_dimension(dim) {
-//    VecDestroy(normal[dim]);
-//  }
-
-//  // restore pointers
-//  VecRestoreArray(vn_tmp, &vn_p);
-//  VecRestoreArray(press_m, &press_m_p);
-//  VecRestoreArray(press_p, &press_p_p);
-
-//  // constant extend the velocities from interface to the entire domain
-//  Vec vn;
-//  VecDuplicate(vn_tmp, &vn);
-//  ls.extend_from_interface_to_whole_domain_TVD(phi, vn_tmp, vn);
-//  VecDestroy(vn_tmp);
 
   // compute dt based on cfl number and curavture
   double dxyz[P4EST_DIM];
@@ -308,14 +277,52 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
     }
   }
   VecRestoreArray(kappa, &kappa_p);
-//  VecDestroy(kappa);
 
   double dt = MIN(cfl*dmin/un_max, 1.0/kon_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
-  dt = ls.advect_in_normal_direction(un, phi, dt);
+  my_p4est_level_set_t ls(&neighbors);
+  static bool first_iteration = true;
+  if (first_iteration) {
+    dt = ls.advect_in_normal_direction(un, phi, dt);
+  } else {
+    // compute an approximation to un_np1 using extrapolation
+    Vec un_np1;
+    VecCreateGhostNodes(p4est_nm1, nodes_nm1, &un_np1);
+    my_p4est_hierarchy_t h(p4est_nm1, ghost_nm1, brick);
+    my_p4est_node_neighbors_t ngbd_nm1(&h, nodes_nm1);
+    ngbd_nm1.init_neighbors();
 
-//  VecDestroy(vn);
+    Vec fxx[P4EST_DIM];
+    foreach_dimension (dim) VecCreateGhostNodes(p4est_nm1, nodes_nm1, &fxx[dim]);
+    ngbd_nm1.second_derivatives_central(un_nm1, fxx);
+
+    my_p4est_interpolation_nodes_t interp_nm1(&ngbd_nm1);
+    interp_nm1.set_input(un_nm1, fxx[0], fxx[1], quadratic);
+
+    double x[P4EST_DIM];
+    foreach_node (n, nodes) {
+      node_xyz_fr_n(n, p4est, nodes, x);
+      interp_nm1.add_point(n, x);
+    }
+    interp_nm1.interpolate(un_np1);
+
+    foreach_dimension (dim) VecDestroy(fxx[dim]);
+
+    double *un_p, *un_np1_p;
+    VecGetArray(un, &un_p);
+    VecGetArray(un_np1, &un_np1_p);
+    foreach_node (n, nodes) {
+      un_np1_p[n] = un_p[n] + (un_p[n] - un_np1_p[n]) * dt/dt_nm1;
+    }
+
+    VecRestoreArray(un, &un_p);
+    VecRestoreArray(un_np1, &un_np1_p);
+
+    dt = ls.advect_in_normal_direction(un, un_np1, phi, dt);
+
+    VecDestroy(un_np1);
+  }
 
   p4est_t* p4est_np1 = my_p4est_copy(p4est, P4EST_FALSE);
   p4est_np1->connectivity = conn;
@@ -330,10 +337,8 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
   p4est_nodes_t* nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   // transfer data from old grid to new
-  Vec phi_np1, press_p_np1, press_m_np1;
+  Vec phi_np1;
   VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1);
-  VecDuplicate(phi_np1, &press_p_np1);
-  VecDuplicate(phi_np1, &press_m_np1);
 
   // create an interpolation function between two grids
   my_p4est_interpolation_nodes_t grid_interp(&neighbors);
@@ -347,20 +352,24 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
   grid_interp.set_input(phi, quadratic_non_oscillatory);
   grid_interp.interpolate(phi_np1);
 
-  grid_interp.set_input(press_p, quadratic_non_oscillatory);
-  grid_interp.interpolate(press_p_np1);
+  // n --> nm1
+  p4est_destroy(p4est_nm1); p4est_nm1 = p4est;
+  p4est_ghost_destroy(ghost_nm1); ghost_nm1 = ghost;
+  p4est_nodes_destroy(nodes_nm1); nodes_nm1 = nodes;
+  VecDestroy(phi_nm1); phi_nm1 = phi;
+  VecDestroy(un_nm1); un_nm1 = un;
+  VecDestroy(press_m_nm1); press_m_nm1 = press_m;
+  VecDestroy(press_p_nm1); press_p_nm1 = press_p;
+  dt_nm1 = dt;
 
-  grid_interp.set_input(press_m, quadratic_non_oscillatory);
-  grid_interp.interpolate(press_m_np1);
-
-  // destroy old quantities and swap pointers
-  p4est_destroy(p4est);       p4est = p4est_np1;
-  p4est_nodes_destroy(nodes); nodes = nodes_np1;
-  p4est_ghost_destroy(ghost); ghost = ghost_np1;
-
-  VecDestroy(phi);     phi     = phi_np1;
-  VecDestroy(press_p); press_p = press_p_np1;
-  VecDestroy(press_m); press_m = press_m_np1;
+  // np1 --> n
+  p4est = p4est_np1;
+  ghost = ghost_np1;
+  nodes = nodes_np1;
+  phi = phi_np1;
+  VecDuplicate(phi, &un);
+  VecCreateGhostNodes(p4est, nodes, &press_m);
+  VecCreateGhostNodes(p4est, nodes, &press_p);
 
   return dt;
 }
@@ -504,29 +513,6 @@ double two_fluid_solver_t::advect_interface(Vec &phi, Vec &press_m, Vec& press_p
   VecCopy(phi_np1, phi);
   VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD);
   VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);
-
-  // copy stuff
-//  p4est_destroy(p4est); p4est = my_p4est_copy(p4est_np1, false);
-//  p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-//  my_p4est_ghost_expand(p4est, ghost);
-//  p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
-
-//  Vec phi_np1 = phi;
-//  VecCreateGhostNodes(p4est, nodes, &phi);
-//  my_p4est_hierarchy_t h_np1(p4est_np1, ghost_np1, brick);
-//  my_p4est_node_neighbors_t ng_np1(&h_np1, nodes_np1);
-//  ng_np1.init_neighbors();
-//  my_p4est_interpolation_nodes_t interp_np1(&ng_np1);
-//  foreach_node(n, nodes) {
-//    node_xyz_fr_n(n, p4est, nodes, x);
-//    interp_np1.add_point(n, x);
-//  }
-
-//  interp_np1.set_input(phi_np1, quadratic_non_oscillatory);
-//  interp_np1.interpolate(phi);
-//  p4est_destroy(p4est_np1);
-//  p4est_nodes_destroy(nodes_np1);
-//  p4est_ghost_destroy(ghost_np1);
 
   // destroy old stuff
   VecDestroy(phi_np1);
@@ -704,29 +690,6 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   my_p4est_level_set_t ls(&node_neighbors);
 //  ls.reinitialize_2nd_order(phi);
 //  ls.perturb_level_set_function(phi, EPS);
-  // filter curvature
-//  {
-//    Vec rhs;
-//    VecDuplicate(phi, &rhs);
-//    VecCopy(phi, rhs);
-//    my_p4est_poisson_nodes_t poisson(&node_neighbors);
-//    my_p4est_interpolation_nodes_t bc_value(&node_neighbors);
-//    bc_value.set_input(phi, linear);
-//    struct:WallBC2D {
-//      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
-//    } bc_type;
-//    BoundaryConditions2D bc;
-//    bc.setWallTypes(bc_type);
-//    bc.setWallValues(bc_value);
-
-//    double h = 2*p4est_diag_min(p4est);
-//    VecScale(rhs, 1.0/h);
-//    poisson.set_diagonal(1.0/h);
-//    poisson.set_rhs(rhs);
-//    poisson.set_bc(bc);
-
-//    poisson.solve(phi, true);
-//  }
 
   // compute the curvature. we store it in the boundary condition vector to save space
   Vec kappa, kappa_tmp, normal[P4EST_DIM];
@@ -909,37 +872,6 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   VecScale(phi_l, -1);
 
   VecGhostRestoreLocalForm(phi, &phi_l); 
-
-//  {
-//    my_p4est_poisson_nodes_t poisson(&node_neighbors);
-//    my_p4est_interpolation_nodes_t interp(&node_neighbors);
-//    interp.set_input(press_p, quadratic);
-
-//    struct:WallBC2D {
-//      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
-//    } wall_type;
-//    BoundaryConditions2D bc;
-//    bc.setInterfaceType(DIRICHLET);
-//    bc.setInterfaceValue(interp);
-//    bc.setWallTypes(wall_type);
-//    bc.setWallValues(interp);
-
-//    poisson.set_bc(bc);
-//    poisson.set_phi(phi);
-////    Vec sol;
-////    Vec rhs;
-////    VecDuplicate(press_p, &sol);
-////    VecDuplicate(press_p, &rhs);
-////    VecSet(rhs, 0);
-////    poisson.set_rhs(rhs);
-////    poisson.set_mu(1);
-//    poisson.solve(press_p, true);
-////    VecCopy(sol, press_p);
-
-////    VecDestroy(sol);
-////    VecDestroy(rhs);
-//    ls.extend_Over_Interface_TVD(phi, press_p);
-//  }
 }
 
 double two_fluid_solver_t:: solve_one_step(double t, Vec &phi, Vec &press_m, Vec& press_p, double cfl, double dtmax, std::string method)
@@ -949,12 +881,6 @@ double two_fluid_solver_t:: solve_one_step(double t, Vec &phi, Vec &press_m, Vec
   dt = advect_interface_godunov(phi, press_m, press_p, cfl, dtmax);
 
   // save the grid
-//  int static counter = 0;
-//  if (counter++ == 166) {
-//    std::ostringstream vtkname;
-//    vtkname << "grid166." << p4est->mpisize;
-//    my_p4est_vtk_write_all(p4est, nodes, ghost, 1, 0, 0, 0, vtkname.str().c_str());
-//  }
 
   // solve for the pressure
   if (method == "extended")

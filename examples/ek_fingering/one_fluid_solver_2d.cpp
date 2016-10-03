@@ -201,7 +201,7 @@ void one_fluid_solver_t::compute_normal_velocity_diagonal(my_p4est_node_neighbor
   double f[3][3];
   double x[P4EST_DIM];  
   auto compute_velocity = [&](int n) -> double {
-    if (fabs(phi_p[n]) < 15*diag) {
+    if (fabs(phi_p[n]) < 30*diag) {
       node_xyz_fr_n(n, p4est, nodes, x);
       for (short i = 0; i < 3; i++) {
         for (short j = 0; j < 3; j++) {
