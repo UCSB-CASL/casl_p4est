@@ -582,8 +582,6 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure)
     dt = ls.advect_in_normal_direction(un, phi, dt);
   } else {
     // compute an approximation to un_np1 using extrapolation
-    Vec un_np1;
-    VecCreateGhostNodes(p4est_nm1, nodes_nm1, &un_np1);
     my_p4est_hierarchy_t h(p4est_nm1, ghost_nm1, brick);
     my_p4est_node_neighbors_t ngbd_nm1(&h, nodes_nm1);
     ngbd_nm1.init_neighbors();
@@ -596,6 +594,9 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure)
     interp_nm1.set_input(un_nm1, fxx[0], fxx[1], quadratic);
 
     double x[P4EST_DIM];
+    Vec un_np1;
+    VecCreateGhostNodes(p4est, nodes, &un_np1);
+
     foreach_node (n, nodes) {
       node_xyz_fr_n(n, p4est, nodes, x);
       interp_nm1.add_point(n, x);
