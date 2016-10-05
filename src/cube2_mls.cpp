@@ -2,7 +2,7 @@
 
 void cube2_mls_t::construct_domain()
 {
-  bool use_linear = false;
+  bool use_linear = true;
   if (phi_xx == NULL || phi_yy == NULL) use_linear = true;
 
   bool all_positive, all_negative;
@@ -15,63 +15,88 @@ void cube2_mls_t::construct_domain()
 
   /* Eliminate unnecessary splitting */
   loc = INS;
-  double F[4];
+//  double F[4];
+  double *F;
   for (int i = 0; i < action->size(); i++)
   {
     all_negative = true;
     all_positive = true;
 
-    F[0] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), x0, y0);
-    F[1] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), x1, y0);
-    F[2] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), x0, y1);
-    F[3] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), x1, y1);
+//    F[0] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), x0, y0);
+//    F[1] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), x1, y0);
+//    F[2] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), x0, y1);
+//    F[3] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), x1, y1);
 
-    for (int j = 0; j < 4; j++)
+//    for (int j = 0; j < 4; j++)
+//    {
+//      all_negative = (all_negative && (F[j] < 0.0));
+//      all_positive = (all_positive && (F[j] > 0.0));
+//    }
+
+    F = phi->at(i).data();
+
+    for (int j = 0; j < interp.total_nodes(); j++)
     {
-      all_negative = (all_negative && (F[j] < 0.0));
-      all_positive = (all_positive && (F[j] > 0.0));
+      all_negative = (all_negative && (F[j] < 0.));
+      all_positive = (all_positive && (F[j] > 0.));
     }
+
+//    if (all_positive)
+//    {
+//      if (action->at(i) == INTERSECTION)
+//      {
+//        loc = OUT;
+//        non_trivial.clear();
+//        non_trivial_action.clear();
+//        non_trivial_color.clear();
+//      }
+//    }
+//    else if (all_negative)
+//    {
+//      if (action->at(i) == ADDITION)
+//      {
+//        loc = INS;
+//        non_trivial.clear();
+//        non_trivial_action.clear();
+//        non_trivial_color.clear();
+//      }
+//      else if (action->at(i) == COLORATION && loc == FCE)
+//      {
+////        for (int j = 0; j < color.size(); j++)
+////          non_trivial_color[j] = color[i];
+//        non_trivial.push_back(i);
+//        non_trivial_action.push_back(action->at(i));
+//        non_trivial_color.push_back(color->at(i));
+//      }
+//    }
+//    else if (loc == FCE || (loc == INS && action->at(i) == INTERSECTION) || (loc == OUT && action->at(i) == ADDITION))
+//    {
+//      loc = FCE;
+//      non_trivial.push_back(i);
+//      non_trivial_action.push_back(action->at(i));
+//      non_trivial_color.push_back(color->at(i));
+//    }
+    non_trivial.push_back(i);
+    non_trivial_action.push_back(action->at(i));
+    non_trivial_color.push_back(color->at(i));
 
     if (all_positive)
     {
-      if (action->at(i) == INTERSECTION)
-      {
-        loc = OUT;
-        non_trivial.clear();
-        non_trivial_action.clear();
-        non_trivial_color.clear();
-      }
+      if (action->at(i) == INTERSECTION) loc = OUT;
     }
     else if (all_negative)
     {
-      if (action->at(i) == ADDITION)
-      {
-        loc = INS;
-        non_trivial.clear();
-        non_trivial_action.clear();
-        non_trivial_color.clear();
-      }
-      else if (action->at(i) == COLORATION && loc == FCE)
-      {
-//        for (int j = 0; j < color.size(); j++)
-//          non_trivial_color[j] = color[i];
-        non_trivial.push_back(i);
-        non_trivial_action.push_back(action->at(i));
-        non_trivial_color.push_back(color->at(i));
-      }
+      if (action->at(i) == ADDITION) loc = INS;
     }
-    else if (loc == FCE || (loc == INS && action->at(i) == INTERSECTION) || (loc == OUT && action->at(i) == ADDITION))
+    else if ((loc == INS && action->at(i) == INTERSECTION) || (loc == OUT && action->at(i) == ADDITION))
     {
       loc = FCE;
-      non_trivial.push_back(i);
-      non_trivial_action.push_back(action->at(i));
-      non_trivial_color.push_back(color->at(i));
     }
   }
 
   num_non_trivial = non_trivial.size();
 
-  if (num_non_trivial > 0)
+  if (num_non_trivial > 0 && loc == FCE)
   {
     if (non_trivial_action[0] == ADDITION) // the first action always has to be INTERSECTION
       non_trivial_action[0] = INTERSECTION;
@@ -87,6 +112,9 @@ void cube2_mls_t::construct_domain()
     // TODO: mark appropriate edges for integrate_in_dir
     simplex[0].edgs[0].dir = 1; simplex[0].edgs[2].dir = 2;
     simplex[1].edgs[0].dir = 3; simplex[1].edgs[2].dir = 0;
+
+    double xyz[2] = {0.,0.};
+    double val0, val1;
 
     /* Apply non trivial actions to every simplex */
     for (int j = 0; j < num_non_trivial; j++)
@@ -106,12 +134,17 @@ void cube2_mls_t::construct_domain()
             simplex[k].vtxs[i_vtx].value = interp.linear(phi->at(i_phi).data(), simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y);
 
           // edges
-          double xyz[2] = {0.,0.};
           for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
             if (!simplex[k].edgs[i_edg].is_split)
             {
-              simplex[k].get_edge_coords(i_edg,xyz);
-              simplex[k].edgs[i_edg].value = interp.linear(phi->at(i_phi).data(), xyz[0], xyz[1]);
+              val0 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx0].value;
+              val1 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx1].value;
+
+              if (val0*val1 < 0.0)
+              {
+                simplex[k].get_edge_coords(i_edg,xyz);
+                simplex[k].edgs[i_edg].value = interp.linear(phi->at(i_phi).data(), xyz[0], xyz[1]);
+              }
             }
         } else {
           // vertices
@@ -123,15 +156,20 @@ void cube2_mls_t::construct_domain()
                                                             simplex[k].vtxs[i_vtx].y);
 
           // edges
-          double xyz[2] = {0.,0.};
           for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
             if (!simplex[k].edgs[i_edg].is_split)
             {
-              simplex[k].get_edge_coords(i_edg,xyz);
-              simplex[k].edgs[i_edg].value = interp.quadratic(phi->at(i_phi).data(),
-                                                              phi_xx->at(i_phi).data(),
-                                                              phi_yy->at(i_phi).data(),
-                                                              xyz[0], xyz[1]);
+              val0 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx0].value;
+              val1 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx1].value;
+
+              if (val0*val1 < 0.0)
+              {
+                simplex[k].get_edge_coords(i_edg,xyz);
+                simplex[k].edgs[i_edg].value = interp.quadratic(phi->at(i_phi).data(),
+                                                                phi_xx->at(i_phi).data(),
+                                                                phi_yy->at(i_phi).data(),
+                                                                xyz[0], xyz[1]);
+              }
             }
         }
         simplex[k].do_action(non_trivial_color[j], non_trivial_action[j]);

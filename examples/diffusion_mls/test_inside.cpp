@@ -1,6 +1,6 @@
 #include "shapes.h"
 
-bool save_vtk = false;
+bool save_vtk = true;
 bool display_error = false;
 
 double xmin = -1;
@@ -13,11 +13,11 @@ double zmax =  1;
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 4;
+int nb_splits = 3;
 #else
-int lmin = 10;
-int lmax = 12;
-int nb_splits = 1;
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 4;
 #endif
 
 int nx = 1;
@@ -217,7 +217,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
+    case 0: return sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z)*exp(-t);
     }
   }
 } u_exact;
@@ -228,10 +228,58 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-    case 0: return (sin(PI*x+phase_x)*sin(PI*y+phase_y));
+    case 0: return (sin(PI*x+phase_x)*sin(PI*y+phase_y))*exp(-t);
     }
   }
 } u_exact;
+#endif
+
+#ifdef P4_TO_P8
+class LAP_U: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch (n_test){
+    case 0: return -3.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z)*exp(-t);
+    }
+  }
+} lap_u;
+#else
+class LAP_U: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    switch (n_test){
+    case 0: return -2.0*PI*PI*(sin(PI*x+phase_x)*sin(PI*y+phase_y))*exp(-t);
+    }
+  }
+} lap_u;
+#endif
+
+#ifdef P4_TO_P8
+class UT: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch (n_test){
+    case 0: return -sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z)*exp(-t);
+    }
+  }
+} ut;
+#else
+class UT: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    switch (n_test){
+    case 0: return -(sin(PI*x+phase_x)*sin(PI*y+phase_y))*exp(-t);
+    }
+  }
+} ut;
 #endif
 
 // EXACT DERIVATIVES
@@ -242,7 +290,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
+    case 0: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z)*exp(-t);
     }
   }
 } ux;
@@ -252,7 +300,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y)*sin(PI*z+phase_z);
+    case 0: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y)*sin(PI*z+phase_z)*exp(-t);
     }
   }
 } uy;
@@ -262,7 +310,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*cos(PI*z+phase_z);
+    case 0: return PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*cos(PI*z+phase_z)*exp(-t);
     }
   }
 } uz;
@@ -273,7 +321,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-      case 0: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y);
+      case 0: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y)*exp(-t);
     }
   }
 } ux;
@@ -283,7 +331,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-      case 0: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y);
+      case 0: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y)*exp(-t);
     }
   }
 } uy;
@@ -376,7 +424,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return 0;
+    case 0: return 0.0;
     }
   }
 } diag_add_cf;
@@ -387,7 +435,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-    case 0: return x*y+exp(y)*sin(x);
+    case 0: return 0.0;
     }
   }
 } diag_add_cf;
@@ -401,7 +449,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return mu_cf(x,y,z)*3.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z) + diag_add_cf(x,y,z)*u_exact(x,y,z)
+    case 0: return ut(x,y,z) - mu_cf(x,y,z)*lap_u(x,y,z) + diag_add_cf(x,y,z)*u_exact(x,y,z)
                     - mux(x,y,z)*ux(x,y,z) - muy(x,y,z)*uy(x,y,z) - muz(x,y,z)*uz(x,y,z);
     }
   }
@@ -413,7 +461,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-    case 0: return mu_cf(x,y)*2.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y) + diag_add_cf(x,y)*u_exact(x,y)
+    case 0: return ut(x,y) - mu_cf(x,y)*lap_u(x,y) + diag_add_cf(x,y)*u_exact(x,y)
                     - mux(x,y)*ux(x,y) - muy(x,y)*uy(x,y);
     }
   }

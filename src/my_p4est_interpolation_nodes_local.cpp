@@ -11,6 +11,7 @@ void my_p4est_interpolation_nodes_local_t::initialize(p4est_locidx_t n)
   {
     quad_idx[i_quad] = NOT_A_VALID_QUADRANT;
     tree_idx[i_quad] = -1;
+    level_of_quad[i_quad] = -2;
   }
 
   // find neighboring quadrants
@@ -49,9 +50,21 @@ void my_p4est_interpolation_nodes_local_t::initialize(p4est_locidx_t n)
       double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
   #endif
 
-      p4est_locidx_t quad_idx_tree = quad_idx[i_quad] - tree->quadrants_offset;
+      p4est_quadrant_t *quad;
 
-      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx_tree);
+      if(quad_idx[i_quad] < p4est->local_num_quadrants)
+      {
+//        tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx[i_quad]);
+        quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx[i_quad]-tree->quadrants_offset);
+      }
+      else /* in the ghost layer */
+      {
+        quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx[i_quad]-p4est->local_num_quadrants);
+      }
+
+//      p4est_locidx_t quad_idx_tree = quad_idx[i_quad] - tree->quadrants_offset;
+
+//      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx_tree);
 
       level_of_quad[i_quad] = quad->level;
       double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
@@ -108,7 +121,15 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
     }
   
   if (which_quadrant == -1)
+  {
+    for (short i_quad = 0; i_quad < P4EST_CHILDREN; ++i_quad)
+    {
+
+      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx[i_quad]);
+      std::cout << tree_idx[i_quad] << " : " << quad_idx[i_quad]- tree->quadrants_offset << " : " << level_of_quad[i_quad] << " : " << tree->quadrants.elem_count << std::endl;
+    }
     throw std::invalid_argument("[ERROR]: Point does not belong to any neighbouring quadrant.");
+  }
 
   // get pointers to inputs if necessary
   if (is_input_in_vec)

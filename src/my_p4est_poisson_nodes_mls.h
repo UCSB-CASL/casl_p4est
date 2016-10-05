@@ -147,6 +147,7 @@ public:
 
   bool keep_scalling;
   Vec scalling;
+  bool reusing_matrix;
 
   KSP ksp;
   PetscErrorCode ierr;
@@ -158,6 +159,10 @@ public:
 
   void setup_negative_laplace_matrix_sym();
   void setup_negative_laplace_rhsvec_sym();
+
+  void setup_negative_variable_coeff_laplace_matrix_sym();
+  void setup_negative_variable_coeff_laplace_rhsvec_sym();
+
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
@@ -273,6 +278,9 @@ public:
   bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
 
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+
+  void solve_linear_system(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 
   bool is_calc(int n) {
     if (node_loc[n] == NODE_INS || node_loc[n] == NODE_NMN) return true;

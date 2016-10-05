@@ -279,7 +279,7 @@ int main (int argc, char* argv[])
       phi.push_back(Vec());
       ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
       sample_cf_on_nodes(p4est, nodes, *problem.phi_cf[i], phi.back());
-//      ls.reinitialize_1st_order_time_2nd_order_space(phi.back(),10);
+      ls.reinitialize_1st_order_time_2nd_order_space(phi.back(),10);
     }
 
     std::vector<Vec> bc_values;
@@ -302,10 +302,6 @@ int main (int argc, char* argv[])
     ierr = VecCreateGhostNodes(p4est, nodes, &rhs); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, rhs_cf, rhs);
 
-    Vec u_exact_vec;
-    ierr = VecCreateGhostNodes(p4est, nodes, &u_exact_vec); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est, nodes, u_exact, u_exact_vec);
-
     Vec mu;
     ierr = VecCreateGhostNodes(p4est, nodes, &mu); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, mu_cf, mu);
@@ -316,26 +312,116 @@ int main (int argc, char* argv[])
 
 //    ierr = VecDestroy(rhs); CHKERRXX(ierr);
 //    ierr = VecDestroy(u_exact_vec); CHKERRXX(ierr);
+
+    // Time discretization
+    double time_min = 0.0;
+    double time_max = 0.5;
+    int nt = pow(2, lmin+iter);
+    double dt = (time_max - time_min) / (double)(nt-1);
+
+    double time = 0;
+    u_exact.t = time;
+    lap_u.t   = time;
+    ux.t      = time;
+    uy.t      = time;
+#ifdef P4_TO_P8
+    uz.t      = time;
+#endif
+    ut.t      = time;
+
     cout << "Starting a solver\n";
     my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
     solver.set_geometry(phi, problem.action, problem.color);
     solver.set_mu(mu);
     solver.set_rhs(rhs);
-    solver.wall_value.set(u_exact_vec);
+    solver.wall_value.set(0.0);
     solver.set_bc_type(problem.bc_type);
-    solver.set_diag_add(diag_add);
+    solver.set_diag_add(2.0/dt);
     solver.set_bc_coeffs(bc_coeffs);
     solver.set_bc_values(bc_values);
-    solver.set_use_taylor_correction(false);
+    solver.set_use_taylor_correction(true);
     solver.set_keep_scalling(true);
-    solver.set_kinks_treatment(false);
+    solver.set_kinks_treatment(true);
 
     solver.compute_volumes();
 //    solver.set_cube_refinement(0);
 
+    // Initial condition
+    u_exact.t = 0;
     Vec sol; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, u_exact, sol);
 
-    solver.solve(sol);
+    // Auxiliary vector for correcting RHS
+    Vec add_to_rhs;
+    ierr = VecCreateGhostNodes(p4est, nodes, &add_to_rhs); CHKERRXX(ierr);
+    Vec rhs_old;
+    ierr = VecCreateGhostNodes(p4est, nodes, &rhs_old); CHKERRXX(ierr);
+
+    solver.reusing_matrix = false;
+
+    solver.setup_negative_variable_coeff_laplace_matrix_sym();
+
+    for (int i_time = 1; i_time < nt; i_time++)
+    {
+      // Advance time
+      time += dt;
+
+      // Set correct time for analytical functions
+      u_exact.t = time - 0.5*dt;
+      lap_u.t   = time - 0.5*dt;
+      ux.t      = time - 0.5*dt;
+      uy.t      = time - 0.5*dt;
+#ifdef P4_TO_P8
+      uz.t      = time - 0.5*dt;
+#endif
+      ut.t      = time - 0.5*dt;
+
+      // Calculate force at (t_n + dt/2)
+      sample_cf_on_nodes(p4est, nodes, rhs_cf, rhs);
+      solver.set_rhs(rhs);
+
+      // Calculate BCs at (t_n + dt/2)
+      for (int i = 0; i < problem.bc_values.size(); i++)
+      {
+        sample_cf_on_nodes(p4est, nodes, *problem.bc_values[i], bc_values.at(i));
+      }
+      solver.set_bc_values(bc_values);
+
+      // Correct RHS
+      ierr = VecPointwiseMult(add_to_rhs, solver.node_vol, sol);          CHKERRXX(ierr);
+      ierr = VecPointwiseDivide(add_to_rhs, add_to_rhs, solver.scalling); CHKERRXX(ierr);
+      if (i_time == 1)
+      {
+        ierr = VecScale(add_to_rhs, -4.0/dt);                               CHKERRXX(ierr);
+        ierr = MatMultAdd(solver.A, sol, add_to_rhs, add_to_rhs);           CHKERRXX(ierr);
+      }
+      else
+      {
+        ierr = VecAYPX(add_to_rhs, -4.0/dt, rhs_old); CHKERRXX(ierr);
+      }
+
+      // Calculate RHS as for Poisson eqn
+      solver.setup_negative_variable_coeff_laplace_rhsvec_sym();
+      ierr = VecAXPBY(solver.rhs, -1.0, 2.0, add_to_rhs);                 CHKERRXX(ierr);
+      VecCopy(solver.rhs, rhs_old);
+
+      // Solve linear system
+      solver.solve_linear_system(sol, false);
+    }
+
+    // Set time in analytical functions to the end time
+    u_exact.t = time;
+    ux.t = time;
+    uy.t = time;
+#ifdef P4_TO_P8
+    uz.t = time;
+#endif
+
+    Vec u_exact_vec;
+    ierr = VecCreateGhostNodes(p4est, nodes, &u_exact_vec); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, u_exact, u_exact_vec);
+
+//    solver.solve(sol);
 //    cin.get();
 
 //    // extrapolation
@@ -462,7 +548,7 @@ int main (int argc, char* argv[])
 
     if(save_vtk)
     {
-      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff, sol, error_sl, error_tr, error_ux, iter);
+      save_VTK(p4est, ghost, nodes, &brick, solver.phi_eff, sol, error_sl, solver.rhs, error_ux, iter);
     }
 
     // destroy Vec's with errors
@@ -505,6 +591,8 @@ int main (int argc, char* argv[])
     ierr = VecDestroy(rhs);         CHKERRXX(ierr);
     ierr = VecDestroy(diag_add);    CHKERRXX(ierr);
     ierr = VecDestroy(u_exact_vec); CHKERRXX(ierr);
+    ierr = VecDestroy(add_to_rhs); CHKERRXX(ierr);
+    ierr = VecDestroy(rhs_old); CHKERRXX(ierr);
 
 //    ierr = VecDestroy(error_uxy); CHKERRXX(ierr);
 

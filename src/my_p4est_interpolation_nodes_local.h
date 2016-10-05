@@ -20,6 +20,8 @@ public:
   // p4est info
   p4est_nodes_t *nodes;
   p4est_t       *p4est;
+  p4est_ghost_t *ghost;
+
   const my_p4est_node_neighbors_t *node_neighbors;
 
   // dimensions of computational box
@@ -73,7 +75,7 @@ public:
   double eps;
 
   my_p4est_interpolation_nodes_local_t(const my_p4est_node_neighbors_t* ngbd_n)
-    : nodes(ngbd_n->nodes), node_neighbors(ngbd_n), p4est(ngbd_n->p4est),
+    : nodes(ngbd_n->nodes), node_neighbors(ngbd_n), p4est(ngbd_n->p4est), ghost(ngbd_n->ghost),
       Fxx(NULL), Fxx_p(NULL), Fyy(NULL), Fyy_p(NULL),
       #ifdef P4_TO_P8
       Fzz(NULL), Fzz_p(NULL),

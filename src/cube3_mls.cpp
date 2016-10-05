@@ -13,22 +13,31 @@ void cube3_mls_t::construct_domain()
 
   /* Eliminate unnecessary splitting */
   loc = INS;
-  double F[8];
+//  double F[8];
+  double *F;
   for (int i = 0; i < action->size(); i++)
   {
     all_negative = true;
     all_positive = true;
 
-    F[0] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x0, y0, z0);
-    F[1] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x1, y0, z0);
-    F[2] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x0, y1, z0);
-    F[3] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x1, y1, z0);
-    F[4] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x0, y0, z1);
-    F[5] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x1, y0, z1);
-    F[6] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x0, y1, z1);
-    F[7] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x1, y1, z1);
+//    F[0] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x0, y0, z0);
+//    F[1] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x1, y0, z0);
+//    F[2] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x0, y1, z0);
+//    F[3] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x1, y1, z0);
+//    F[4] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x0, y0, z1);
+//    F[5] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x1, y0, z1);
+//    F[6] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x0, y1, z1);
+//    F[7] = interp.quadratic(phi->at(i).data(), phi_xx->at(i).data(), phi_yy->at(i).data(), phi_zz->at(i).data(), x1, y1, z1);
 
-    for (int j = 0; j < 8; j++)
+//    for (int j = 0; j < 8; j++)
+//    {
+//      all_negative = (all_negative && (F[j] < 0.));
+//      all_positive = (all_positive && (F[j] > 0.));
+//    }
+
+    F = phi->at(i).data();
+
+    for (int j = 0; j < interp.total_nodes(); j++)
     {
       all_negative = (all_negative && (F[j] < 0.));
       all_positive = (all_positive && (F[j] > 0.));
@@ -105,13 +114,39 @@ void cube3_mls_t::construct_domain()
     non_trivial_action.push_back(action->at(i));
     non_trivial_color.push_back(color->at(i));
 
-    if (all_positive && action->at(i) == INTERSECTION)
+//    if (all_positive && action->at(i) == INTERSECTION)
+//    {
+//      loc = OUT;
+//    }
+//    else if (all_negative && action->at(i) == ADDITION)
+//    {
+//      loc = INS;
+//    }
+//    else if ((loc == INS && action->at(i) == INTERSECTION) || (loc == OUT && action->at(i) == ADDITION))
+//    {
+//      loc = FCE;
+//    }
+
+//    if (all_positive)
+//    {
+//      if (action->at(i) == INTERSECTION) loc = OUT;
+//    }
+//    else if (all_negative)
+//    {
+//      if (action->at(i) == ADDITION) loc = INS;
+//    }
+//    else if ((loc == INS && action->at(i) == INTERSECTION) || (loc == OUT && action->at(i) == ADDITION))
+//    {
+//      loc = FCE;
+//    }
+//    loc = FCE;
+    if (all_positive)
     {
-      loc = OUT;
+      if (action->at(i) == INTERSECTION) loc = OUT;
     }
-    else if (all_negative && action->at(i) == ADDITION)
+    else if (all_negative)
     {
-      loc = INS;
+      if (action->at(i) == ADDITION) loc = INS;
     }
     else if ((loc == INS && action->at(i) == INTERSECTION) || (loc == OUT && action->at(i) == ADDITION))
     {
@@ -160,6 +195,8 @@ void cube3_mls_t::construct_domain()
     {
       int i_phi = non_trivial[j];
 //      int s = non_trivial[j]*8;
+      double xyz[3] = {0.,0.,0.};
+      double val0, val1;
 
       for (int k = 0; k < NTETS; k++) // loop over simplices
       {
@@ -173,12 +210,17 @@ void cube3_mls_t::construct_domain()
                                                          simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
 
           // edges
-          double xyz[3] = {0.,0.,0.};
           for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
             if (!simplex[k].edgs[i_edg].is_split)
             {
-              simplex[k].get_edge_coords(i_edg,xyz);
-              simplex[k].edgs[i_edg].value = interp.linear(phi->at(i_phi).data(), xyz[0], xyz[1], xyz[2]);
+              val0 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx0].value;
+              val1 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx1].value;
+
+              if (val0*val1 < 0.0)
+              {
+                simplex[k].get_edge_coords(i_edg,xyz);
+                simplex[k].edgs[i_edg].value = interp.linear(phi->at(i_phi).data(), xyz[0], xyz[1], xyz[2]);
+              }
             }
         } else {
           //vertices
@@ -191,16 +233,21 @@ void cube3_mls_t::construct_domain()
                                                             simplex[k].vtxs[i_vtx].y,
                                                             simplex[k].vtxs[i_vtx].z);
           // edges
-          double xyz[3] = {0.,0.,0.};
           for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
             if (!simplex[k].edgs[i_edg].is_split)
             {
-              simplex[k].get_edge_coords(i_edg,xyz);
-              simplex[k].edgs[i_edg].value = interp.quadratic(phi->at(i_phi).data(),
-                                                              phi_xx->at(i_phi).data(),
-                                                              phi_yy->at(i_phi).data(),
-                                                              phi_zz->at(i_phi).data(),
-                                                              xyz[0], xyz[1], xyz[2]);
+              val0 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx0].value;
+              val1 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx1].value;
+
+//              if (val0*val1 < 0.0)
+              {
+                simplex[k].get_edge_coords(i_edg,xyz);
+                simplex[k].edgs[i_edg].value = interp.quadratic(phi->at(i_phi).data(),
+                                                                phi_xx->at(i_phi).data(),
+                                                                phi_yy->at(i_phi).data(),
+                                                                phi_zz->at(i_phi).data(),
+                                                                xyz[0], xyz[1], xyz[2]);
+              }
             }
 
         }
