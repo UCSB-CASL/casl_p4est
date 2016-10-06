@@ -13,6 +13,7 @@
 #endif
 
 #include <src/casl_math.h>
+#include <cassert>
 
 coupled_solver_t::coupled_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, my_p4est_brick_t& brick)
   : p4est(p4est), ghost(ghost), nodes(nodes), brick(&brick)
@@ -30,6 +31,7 @@ coupled_solver_t::coupled_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p4est
   p4est_nm1 = my_p4est_copy(p4est, 0);
   p4est_nm1->connectivity = conn;
   ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
   nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
 
   dt_nm1 = 0;
@@ -525,6 +527,7 @@ double coupled_solver_t::advect_interface_godunov(Vec &phi,
   // partition and compute new strutures
   my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
   p4est_ghost_t* ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_np1, ghost_np1);
   p4est_nodes_t* nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   // transfer data from old grid to new
@@ -584,16 +587,18 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
 //  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
-  Vec kappa, kappa_tmp, normal[P4EST_DIM];
-  VecDuplicate(phi, &kappa);
-  VecDuplicate(phi, &kappa_tmp);
-  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
-  compute_normals(node_neighbors, phi, normal);
-  compute_mean_curvature(node_neighbors, normal, kappa_tmp);
+//  Vec kappa, kappa_tmp, normal[P4EST_DIM];
+//  VecDuplicate(phi, &kappa);
+//  VecDuplicate(phi, &kappa_tmp);
+//  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
+//  compute_normals(node_neighbors, phi, normal);
+//  compute_mean_curvature(node_neighbors, normal, kappa_tmp);
 
-  // extend curvature from interface to the entire domain
-  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
-  VecDestroy(kappa_tmp);
+//  // extend curvature from interface to the entire domain
+//  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
+//  VecDestroy(kappa_tmp);
+
+  compute_normal_and_curvature_diagonal(node_neighbors, phi);
 
   // compute the boundary condition for the pressure.
   Vec jump[2], jump_grad[2];
@@ -639,13 +644,13 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   VecRestoreArray(jump[0], &jump_p[0]);
   VecRestoreArray(jump[1], &jump_p[1]);
   VecRestoreArray(kappa, &kappa_p);
-  VecDestroy(kappa);
+//  VecDestroy(kappa);
 
   // jump in the flux is a bit more involved
   // FIXME: change the definiton of normal in the jump solver to remain consistent
   quad_neighbor_nodes_of_node_t qnnn;
   double *normal_p[P4EST_DIM];
-  foreach_dimension(dim) VecGetArray(normal[dim], &normal_p[dim]);
+  foreach_dimension(dim) VecGetArray(nx[dim], &normal_p[dim]);
 
   double *pressure_star_p  = pressure_star.data();
   double *potential_star_p = potential_star.data();
@@ -710,8 +715,8 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
 
   // destroy normals
   foreach_dimension(dim) {
-    VecRestoreArray(normal[dim], &normal_p[dim]);
-    VecDestroy(normal[dim]);
+    VecRestoreArray(nx[dim], &normal_p[dim]);
+//    VecDestroy(normal[dim]);
   }
 
   // solve the pressure jump problem
@@ -804,8 +809,6 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   Vec solutions [] = {pressure_p, potential_p};
   solver.solve(solutions);
 
-//  solver.print_voronoi_VTK("coupled_voro");
-
   VecDestroy(rhs_m[0]);
   VecDestroy(rhs_p[0]);
   VecDestroy(rhs_m[1]);
@@ -826,6 +829,11 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   foreach_node(n, nodes) {
     pressure_m_p[n]  = pressure_p_p[n] - pressure_star[n];
     potential_m_p[n] = potential_p_p[n] - potential_star[n];
+
+    assert(!isnan(pressure_p_p[n])  && !isinf(pressure_p_p[n]));
+    assert(!isnan(pressure_m_p[n])  && !isinf(pressure_m_p[n]));
+    assert(!isnan(potential_p_p[n]) && !isinf(potential_p_p[n]));
+    assert(!isnan(potential_m_p[n]) && !isinf(potential_m_p[n]));
   }
 
   // extend solutions

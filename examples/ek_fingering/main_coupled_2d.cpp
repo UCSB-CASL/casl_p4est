@@ -92,43 +92,41 @@ void set_options(int argc, char **argv) {
   cmd.add_option("bcw", "bc type on the wall");
   cmd.parse(argc, argv);
 
-  options.test = cmd.get<string>("test", "FastShelley");
-  options.prefix = cmd.get<string>("prefix","");
-  options.bcw    = cmd.get("bcw", DIRICHLET);
 
   // set default values
   options.ntr[0]  = options.ntr[1]  = options.ntr[2]  =  1;
   options.xmin[0] = options.xmin[1] = options.xmin[2] = -1;
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
-  options.iter = numeric_limits<int>::max();
 
-  options.lip = 5;
-  options.cfl = 1;
-  options.it_reinit = 10;
-  options.L = cmd.get("L", 10);
-  options.rot = cmd.get("rot", 0);
+  options.test      = cmd.get("test", string("FastShelley"));
+  options.prefix    = cmd.get("prefix", string(""));
+  options.bcw       = cmd.get("bcw", DIRICHLET);
+  options.it_reinit = cmd.get("it_reinit", 50);
+  options.lmin      = cmd.get("lmin", 5);
+  options.lmax      = cmd.get("lmax", 10);
+  options.iter      = cmd.get("iter", numeric_limits<int>::max());
+  options.lip       = cmd.get("lip", 5.0);
+  options.Ca        = cmd.get("Ca", 250.0);
+  options.cfl       = cmd.get("cfl", 1.0);
+  options.dts       = cmd.get("dts", 1e-1);
+  options.dtmax     = cmd.get("dtmax", 1e-3);
+  options.M         = cmd.get("M", 1e-2);
+  options.S         = cmd.get("S", 1.0);
+  options.R         = cmd.get("R", 1.0);
+  options.A         = cmd.get("A", 0.0);
+  options.B         = cmd.get("B", 0.0);
+  options.L         = cmd.get("L", 10.0);
+  options.rot       = cmd.get("rot", 0.0);
+  options.it_reinit = cmd.get("it_reinit", 50);
 
   if (options.test == "circle") {
     // set interface
     options.xmin[0] = options.xmin[1] = options.xmin[2] = -options.L + EPS;
     options.xmax[0] = options.xmax[1] = options.xmax[2] =  options.L;
-    options.lmax    = 10;
-    options.lmin    = 5;
-    options.iter    = 10;
-    options.dtmax   = 1e-3;
-    options.dts     = 1e-1;
-    options.Ca      = 250;
-    options.M       = 1;
-    options.S       = 1;
-    options.R       = 1;
-    options.A       = 0;
-    options.B       = 0;
-    options.it_reinit = options.iter;
 
-    options.mode    = cmd.get("mode", 0);
-    options.eps     = cmd.get("eps", 1e-2);
-    options.lip     = cmd.get("lip", 10);
+    options.mode = cmd.get("mode", 5);
+    options.eps  = cmd.get("eps", 1e-2);
 
     static struct:CF_1{
       double operator()(double t) const { return 2*PI*(1+t); }
@@ -217,22 +215,10 @@ void set_options(int argc, char **argv) {
     options.ntr[0]  = options.L; options.ntr[1] = options.ntr[2] = 1;
     options.periodic[0] = false; options.periodic[1] = options.periodic[2] = true;
 
-    options.lmax    = 7;
-    options.lmin    = 2;
-    options.iter    = 10;
-    options.dtmax   = 1e-5;
-    options.dts     = 1e-1;
-    options.Ca      = 250;
-    options.M       = 1e-2;
-    options.S       = 1;
-    options.R       = 1;
-    options.A       = 0;
-    options.B       = 0;
-    options.it_reinit = options.iter;
-
-    options.mode    = cmd.get("mode", 0);
-    options.eps     = cmd.get("eps", 1e-2);
-    options.lip     = cmd.get("lip", 10);
+    options.lmax = 7;
+    options.lmin = 2;
+    options.mode = cmd.get("mode", 5);
+    options.eps  = cmd.get("eps", 1e-2);
 
     static struct:CF_2{
       double operator()(double x, double y) const  {
@@ -280,180 +266,14 @@ void set_options(int argc, char **argv) {
     options.pressure_bc_value  = &pressure_bc_value;
     options.potential_bc_value = &potential_bc_value;
 
-  }else if (options.test == "flatrun") {
-    // set interface
-    options.L = cmd.get("L", 5);
-    options.xmin[0] = -1; options.xmin[1] = options.xmin[2] = -PI;
-    options.xmax[0] =  2*options.L*PI; options.xmax[1] = options.xmax[2] =  PI;
-    options.ntr[0]  = options.L; options.ntr[1] = options.ntr[2] = 1;
-    options.periodic[0] = false; options.periodic[1] = options.periodic[2] = true;
-
-    options.lmax    = 8;
-    options.lmin    = 2;
-    options.iter    = 1000;
-    options.dtmax   = 1e-3;
-    options.dts     = 1e-1;
-    options.Ca      = 250;
-    options.M       = 1e-2;
-    options.S       = 1;
-    options.R       = 1;
-    options.A       = 0;
-    options.B       = 0;
-    options.it_reinit = cmd.get("it_reinit", 15);
-
-    options.mode    = cmd.get("mode", 6);
-    options.eps     = cmd.get("eps", 1e-2);
-    options.lip     = cmd.get("lip", 5);
-
-    static struct:CF_2{
-      double operator()(double x, double y) const  {
-        return EPS+x-options.eps*cos(options.mode*y);
-      }
-    } interface; interface.lip = options.lip;
-    options.interface = &interface;
-
-    static struct:CF_1{
-      double operator()(double) const { return 0; }
-    } zero_source;
-
-    static struct:WallBC2D{
-      BoundaryConditionType operator()(double x, double y) const {
-        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
-          return NEUMANN;
-        else
-          return x > 0 ? NEUMANN:DIRICHLET;
-      }
-    } bc_wall_type;
-
-    static struct:CF_2{
-      double operator()(double x, double y) const {
-        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
-          return 0;
-        else
-          return x > 0 ? -1:0;
-      }
-    } pressure_bc_value; pressure_bc_value.t = 0;
-
-    static struct:CF_2{
-      double operator()(double x, double y) const {
-        if (fabs(y - options.xmin[1]) < EPS || fabs(y - options.xmax[1]) < EPS)
-          return 0;
-        else
-          return x > 0 ? -SIGN(options.A):0;
-      }
-    } potential_bc_value; potential_bc_value.t = 0;
-
-    options.Q                  = &zero_source;
-    options.I                  = &zero_source;
-    options.interface          = &interface;
-    options.pressure_bc_type   = &bc_wall_type;
-    options.potential_bc_type  = &bc_wall_type;
-    options.pressure_bc_value  = &potential_bc_value;
-    options.potential_bc_value = &pressure_bc_value;
-
   } else if (options.test == "FastShelley") {
 
-    options.xmin[0]   = options.xmin[1] = options.xmin[2] = -options.L + EPS;
-    options.xmax[0]   = options.xmax[1] = options.xmax[2] =  options.L;
-    options.ntr[0]    = options.ntr[1]  = options.ntr[2]  = 1;
-    options.lmin      = 5;
-    options.lmax      = 10;
-    options.lip       = 10;
-    options.cfl       = 1;
-    options.dtmax     = 1e-3;
-    options.dts       = 1e-1;
-    options.Ca        = 250;
-    options.M         = 1e-2;
-    options.S         = 1;
-    options.R         = 1;
-    options.A         = 0;
-    options.B         = 0;
-    options.it_reinit = 10;
+    options.xmin[0] = options.xmin[1] = options.xmin[2] = -options.L + EPS;
+    options.xmax[0] = options.xmax[1] = options.xmax[2] =  options.L;
+    options.ntr[0]  = options.ntr[1]  = options.ntr[2]  = 1;
+    options.lmin    = 5;
+    options.lmax    = 10;
 
-#ifdef P4_TO_P8
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const  {
-        double theta = atan2(y,x);
-        double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double phi   = acos(z/MAX(r,1E-12));
-
-        return r - ( 1.0+0.1*(cos(3*theta)+sin(2*theta))*pow(sin(2*phi),2) );
-      }
-    } interface; interface.lip = options.lip;
-
-#if 0
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
-    } pressure_bc_type;
-
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
-    } potential_bc_type;
-
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const {
-        double theta = atan2(y,x);
-        double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double phi   = acos(z/MAX(r,1E-12));
-        double f     = 1.0/(4*PI*(1-options.alpha*options.beta));
-        double ur    = -((*options.Q)(t)-options.alpha*(*options.I)(t))/SQR(r)*f;
-
-        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-          return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
-        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-          return y > 0 ? ur*sin(theta)*sin(phi):-ur*sin(theta)*sin(phi);
-        else if (fabs(z-options.xmax[2]) < EPS || fabs(z - options.xmin[2]) < EPS)
-          return z > 0 ? ur*cos(phi):-ur*cos(phi);
-        else
-          return 0;
-      }
-    } pressure_bc_value; pressure_bc_value.t = 0;
-
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const {
-        double theta = atan2(y,x);
-        double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double phi   = acos(z/MAX(r,1E-12));
-        double f     = 1.0/(4*PI*(1-options.alpha*options.beta));
-        double ur    = -((*options.I)(t)-options.beta*(*options.Q)(t))/SQR(r)*f;
-
-        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-          return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
-        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-          return y > 0 ? ur*sin(theta)*sin(phi):-ur*sin(theta)*sin(phi);
-        else if (fabs(z-options.xmax[2]) < EPS || fabs(z - options.xmin[2]) < EPS)
-          return z > 0 ? ur*cos(phi):-ur*cos(phi);
-        else
-          return 0;
-      }
-    } potential_bc_value; potential_bc_value.t = 0;
-#endif // #if 0
-#if 1
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
-    } pressure_bc_type;
-
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
-    } potential_bc_type;
-
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const {
-        double r = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double f = 1.0/(4*PI*(1-options.alpha*options.beta));
-        return -(options.alpha*(*options.I)(t)-(*options.Q)(t))*f/r;
-      }
-    } pressure_bc_value; pressure_bc_value.t = 0;
-
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const {
-        double r = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double f = 1.0/(4*PI*(1-options.alpha*options.beta));
-        return -(options.beta*(*options.Q)(t)-(*options.I)(t))*f/r;
-      }
-    } potential_bc_value; potential_bc_value.t = 0;
-#endif // #if 1
-#else // 2D
     static struct:cf_t {
       double operator()(double x, double y) const  {
         double theta = atan2(y,x) - options.rot * PI/180;
@@ -523,8 +343,6 @@ void set_options(int argc, char **argv) {
       }
     } potential_bc_value; potential_bc_value.t = 0;
 
-#endif // P4_TO_P8
-
     // set parameters specific to this test
     options.Q                  = &Q;
     options.I                  = &I;
@@ -537,22 +355,6 @@ void set_options(int argc, char **argv) {
   } else {
     throw std::invalid_argument("Unknown test");
   }
-
-  // overwrite default values from stdin
-  options.lmin  = cmd.get("lmin",  options.lmin);
-  options.lmax  = cmd.get("lmax",  options.lmax);
-  options.iter  = cmd.get("iter",  options.iter);
-  options.lip   = cmd.get("lip",   options.lip);
-  options.Ca    = cmd.get("Ca",    options.Ca);
-  options.cfl   = cmd.get("cfl",   options.cfl);
-  options.dts   = cmd.get("dts",   options.dts);
-  options.dtmax = cmd.get("dtmax", options.dtmax);
-  options.M     = cmd.get("M",     options.M);
-  options.S     = cmd.get("S",     options.S);
-  options.R     = cmd.get("R",     options.R);
-  options.A     = cmd.get("A",     options.A);
-  options.B     = cmd.get("B",     options.B);
-  options.it_reinit  = cmd.get("it_reinit",  options.it_reinit);
 }
 
 int main(int argc, char** argv) {
@@ -618,6 +420,7 @@ int main(int argc, char** argv) {
 
   // create ghost layer
   ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est, ghost);
 
   // create node structure
   nodes = my_p4est_nodes_new(p4est, ghost);

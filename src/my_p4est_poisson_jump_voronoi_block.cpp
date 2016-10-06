@@ -40,7 +40,7 @@ my_p4est_poisson_jump_voronoi_block_t::my_p4est_poisson_jump_voronoi_block_t(
     interp_phi(node_neighbors),
     rhs_m(block_size),
     rhs_p(block_size),
-    A(PETSC_NULL), A_null_space(PETSC_NULL), ksp(PETSC_NULL),
+    A(PETSC_NULL), A_null_space(PETSC_NULL), null_basis(block_size), ksp(PETSC_NULL),
     is_voronoi_partition_constructed(false), is_matrix_computed(false), matrix_has_nullspace(false)
 {
   // set up the KSP solver
@@ -77,7 +77,12 @@ my_p4est_poisson_jump_voronoi_block_t::my_p4est_poisson_jump_voronoi_block_t(
 my_p4est_poisson_jump_voronoi_block_t::~my_p4est_poisson_jump_voronoi_block_t()
 {
   if(A            != PETSC_NULL) { ierr = MatDestroy(A);                     CHKERRXX(ierr); }
-  if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr); }
+  if(A_null_space != PETSC_NULL) {
+    ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr);
+    for (int i = 0; i < block_size; i++) {
+      ierr = VecDestroy(null_basis[i]); CHKERRXX(ierr);
+    }
+  }
   if(ksp          != PETSC_NULL) { ierr = KSPDestroy(ksp);                   CHKERRXX(ierr); }
   if(rhs          != PETSC_NULL) { ierr = VecDestroy(rhs);                   CHKERRXX(ierr); }
   for (int i=0; i<block_size; i++) {
@@ -87,7 +92,7 @@ my_p4est_poisson_jump_voronoi_block_t::~my_p4est_poisson_jump_voronoi_block_t()
 }
 
 
-PetscErrorCode my_p4est_poisson_jump_voronoi_block_t::VecCreateGhostVoronoiRhs()
+PetscErrorCode my_p4est_poisson_jump_voronoi_block_t::VecCreateGhostVoronoi(Vec& v)
 {
   PetscErrorCode ierr = 0;
   PetscInt num_local = num_local_voro;
@@ -100,12 +105,12 @@ PetscErrorCode my_p4est_poisson_jump_voronoi_block_t::VecCreateGhostVoronoiRhs()
     ghost_voro[i] = voro_ghost_local_num[i] + voro_global_offset[voro_ghost_rank[i]];
   }
 
-  if(rhs!=PETSC_NULL) VecDestroy(rhs);
+  if(v != PETSC_NULL) VecDestroy(v);
 
   ierr = VecCreateGhostBlock(p4est->mpicomm,
                              block_size, block_size*num_local_voro, block_size*num_global,
-                             ghost_voro.size(), (const PetscInt*)&ghost_voro[0], &rhs); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(rhs); CHKERRQ(ierr);
+                             ghost_voro.size(), (const PetscInt*)&ghost_voro[0], &v); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(v); CHKERRQ(ierr);
 
   return ierr;
 }
@@ -280,15 +285,15 @@ void my_p4est_poisson_jump_voronoi_block_t::solve(Vec solution[], bool use_nonze
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
   /* set the nullspace */
-  if (matrix_has_nullspace){
-    // PETSc removed the KSPSetNullSpace in 3.6.0 ... Use MatSetNullSpace instead
-#if PETSC_VERSION_GE(3,6,0)
-    ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-//    ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
-#else
-    ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
-#endif
-  }
+//  if (matrix_has_nullspace){
+//    // PETSc removed the KSPSetNullSpace in 3.6.0 ... Use MatSetNullSpace instead
+//#if PETSC_VERSION_GE(3,6,0)
+//    ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+////    ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
+//#else
+//    ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
+//#endif
+//  }
 
   /* Solve the system */
   ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
@@ -896,7 +901,7 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_points()
   send_to.clear();
   recv_fr.clear();
 
-  ierr = VecCreateGhostVoronoiRhs(); CHKERRXX(ierr);
+  ierr = VecCreateGhostVoronoi(rhs); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_compute_voronoi_points, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1674,13 +1679,26 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
   MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
   if (matrix_has_nullspace)
   {
-    if (A_null_space == NULL)
-    {
-      ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
+    if (A_null_space == PETSC_NULL)
+    {      
+      for (int i = 0; i < block_size; i++) {
+        ierr = VecCreate(p4est->mpicomm, &null_basis[i]); CHKERRXX(ierr);
+        ierr = VecSetSizes(null_basis[i], block_size*num_owned_local, block_size*num_owned_global); CHKERRXX(ierr);
+        ierr = VecSetFromOptions(null_basis[i]); CHKERRXX(ierr);
+        ierr = VecSet(null_basis[i], 0); CHKERRXX(ierr);
+
+        double *val;
+        ierr = VecGetArray(null_basis[i], &val); CHKERRXX(ierr);
+        for (int n = 0; n < num_owned_local; n++) {
+          val[block_size*n+i] = 1.0/sqrt((double)num_owned_global);
+        }
+        ierr = VecRestoreArray(null_basis[i], &val); CHKERRXX(ierr);
+      }
+
+      ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_FALSE, block_size, null_basis.data(), &A_null_space); CHKERRXX(ierr);
     }
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-    //ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
-//    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
   }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);

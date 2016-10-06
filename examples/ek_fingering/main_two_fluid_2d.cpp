@@ -99,7 +99,7 @@ void set_options(int argc, char **argv) {
 
   options.lip       = 5;
   options.cfl       = 1;
-  options.it_reinit = 10;
+  options.it_reinit = 50;
   options.dtmax     = 1e-3;
   options.dts       = 1e-1;
   options.Ca        = 250;
@@ -230,53 +230,6 @@ void set_options(int argc, char **argv) {
       double operator()(double t) const { return 2*PI*(1+t); }
     } Q;
 
-#ifdef P4_TO_P8
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const  {
-        double theta = atan2(y,x);
-        double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double phi   = acos(z/MAX(r,1E-12));
-
-        return r - ( 1.0+0.1*(cos(3*theta)+sin(2*theta))*pow(sin(2*phi),2) );
-      }
-    } interface; interface.lip = options.lip;
-
-#if 1
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const {
-        double theta = atan2(y,x);
-        double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double phi   = acos(z/MAX(r,1E-12));
-        double ur    = -(*options.Q)(t)/(4*PI*r*r);
-
-        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-          return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
-        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-          return y > 0 ? ur*sin(theta)*sin(phi):-ur*sin(theta)*sin(phi);
-        else if (fabs(z-options.xmax[2]) < EPS || fabs(z - options.xmin[2]) < EPS)
-          return z > 0 ? ur*cos(phi):-ur*cos(phi);
-        else
-          return 0;
-      }
-    } bc_wall_value; bc_wall_value.t = 0;
-#endif // #if 0
-#if 0
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const {
-        double r = sqrt(SQR(x)+SQR(y)+SQR(z));
-        return (*options.Q)(t)/(4*PI*r);
-      }
-    } bc_wall_value; bc_wall_value.t = 0;
-#endif // #if 1
-#else // 2D
     static struct:cf_t{
       double operator()(double x, double y) const  {
         double theta = atan2(y,x) - options.rot * PI/180;
@@ -311,8 +264,6 @@ void set_options(int argc, char **argv) {
         }
       }
     } bc_wall_value; bc_wall_value.t = 0;
-
-#endif // P4_TO_P8
 
     // set parameters specific to this test
     options.Q              = &Q;

@@ -122,6 +122,7 @@ class my_p4est_poisson_jump_voronoi_block_t
   // PETSc objects
   Mat A;
   MatNullSpace A_null_space;
+  vector<Vec> null_basis;
   KSP ksp;
   PetscErrorCode ierr;
 
@@ -133,7 +134,7 @@ class my_p4est_poisson_jump_voronoi_block_t
   my_p4est_poisson_jump_voronoi_block_t(const my_p4est_poisson_jump_voronoi_block_t& other);
   my_p4est_poisson_jump_voronoi_block_t& operator=(const my_p4est_poisson_jump_voronoi_block_t& other);
 
-  PetscErrorCode VecCreateGhostVoronoiRhs();
+  PetscErrorCode VecCreateGhostVoronoi(Vec& v);
 
   void inverse(double* mue, double* mue_inv);
   void matmult(double* mue_1, double* mue_2, double* mue);

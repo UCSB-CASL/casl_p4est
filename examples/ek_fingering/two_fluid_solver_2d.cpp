@@ -755,7 +755,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 
   // jump in the flux is a bit more involved
   // FIXME: change the definiton of normal in the jump solver to remain consistent
-  quad_neighbor_nodes_of_node_t qnnn;
+//  quad_neighbor_nodes_of_node_t qnnn;
   foreach_dimension(dim) VecGetArray(nx[dim], &nx_p[dim]);
 
   for (size_t i = 0; i<node_neighbors.get_layer_size(); i++) {

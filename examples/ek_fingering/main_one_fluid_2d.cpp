@@ -95,14 +95,14 @@ void set_parameters(int argc, char **argv) {
   options.xmin[0] = options.xmin[1] = options.xmin[2] = -1;
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
-  options.lmin = 3; options.lmax = 10;
+  options.lmin = 5; options.lmax = 10;
   options.rot  = 0;
   options.method = "godunov";
 
-  options.lip  = 1.2;
+  options.lip  = 5;
   options.cfl  = 1;
   options.iter = numeric_limits<int>::max();
-  options.it_reinit = cmd.get("it_reinit", 10);
+  options.it_reinit = cmd.get("it_reinit", 50);
   options.L = cmd.get("L", 10);
   options.rot = cmd.get("rot", 0);
 
