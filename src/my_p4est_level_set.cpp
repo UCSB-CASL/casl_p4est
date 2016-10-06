@@ -1203,9 +1203,9 @@ double my_p4est_level_set_t::advect_in_normal_direction(const CF_2& vn, Vec phi,
 }
 
 #ifdef P4_TO_P8
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy, Vec phi_zz)
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, double dt, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy)
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, double dt, Vec phi_xx, Vec phi_yy)
 #endif
 {
   PetscErrorCode ierr;
@@ -1246,30 +1246,6 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, d
   double *phi_zz_p;
   ierr = VecGetArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
 #endif
-
-  /* compute dt based on CFL condition */
-  double dt_local = dt_max;
-  double dt;
-  quad_neighbor_nodes_of_node_t qnnn;
-  for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
-    
-    ngbd->get_neighbors(n, qnnn);
-
-    double s_p00 = fabs(qnnn.d_p00); double s_m00 = fabs(qnnn.d_m00);
-    double s_0p0 = fabs(qnnn.d_0p0); double s_0m0 = fabs(qnnn.d_0m0);
-#ifdef P4_TO_P8
-    double s_00p = fabs(qnnn.d_00p); double s_00m = fabs(qnnn.d_00m);
-#endif
-#ifdef P4_TO_P8
-    double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0), MIN(s_00p, s_00m));
-#else
-    double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0));
-#endif
-
-    /* choose CFL = 0.8 ... just for fun! */
-    dt_local = MIN(dt_local, 0.8*fabs(s_min/vn_p[n]));
-  }
-  MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   Vec p1, p2;
   double *p1_p, *p2_p;

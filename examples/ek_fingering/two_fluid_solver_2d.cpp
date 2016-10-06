@@ -266,7 +266,7 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
 #endif
 
   double un_max = 1; // minmum vn_max to be used when computing dt.
-  double kon_max = 0;
+//  double kon_max = 0;
   double *kappa_p, *un_p, *phi_p;
   VecGetArray(un, &un_p);
   VecGetArray(kappa, &kappa_p);
@@ -274,12 +274,12 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
   foreach_node(n, nodes) {
     if (fabs(phi_p[n]) < 2*diag) {
       un_max  = MAX(un_max, un_p[n]);
-      kon_max = MAX(kon_max, fabs(kappa_p[n]*un_p[n]));
+//      kon_max = MAX(kon_max, fabs(kappa_p[n]*un_p[n]));
     }
   }
   VecRestoreArray(kappa, &kappa_p);
 
-  double dt = MIN(cfl*dmin/un_max, 1.0/kon_max, dtmax);
+  double dt = MIN(cfl*dmin/un_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   my_p4est_level_set_t ls(&neighbors);
@@ -768,7 +768,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 //    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*nx_p[2][n];
 //#endif
     node_xyz_fr_n(n, p4est, nodes, x);
-    double r = sqrt(SQR(x[0]) + SQR(x[1]));
+    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), diag_min);
     jump_dp_p[n] = -(*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
   }
   VecGhostUpdateBegin(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
@@ -784,7 +784,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 //#endif
 
     node_xyz_fr_n(n, p4est, nodes, x);
-    double r = sqrt(SQR(x[0]) + SQR(x[1]));
+    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), diag_min);
     jump_dp_p[n] = -(*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
 
   }

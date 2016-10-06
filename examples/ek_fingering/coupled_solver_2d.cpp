@@ -457,20 +457,20 @@ double coupled_solver_t::advect_interface_godunov(Vec &phi,
 
   // compute dt based on cfl number and curavture
   double un_max = 1; // minmum vn_max to be used when computing dt.
-  double kun_max = 0;
+//  double kun_max = 0;
   double *kappa_p;
   VecGetArray(kappa, &kappa_p);
   VecGetArray(un, &un_p);
   foreach_node(n, nodes) {
     if (fabs(phi_p[n]) < cfl*diag) {
       un_max  = MAX(un_max, un_p[n]);
-      kun_max = MAX(kun_max, fabs(kappa_p[n]*un_p[n]));
+//      kun_max = MAX(kun_max, fabs(kappa_p[n]*un_p[n]));
     }
   }
   VecRestoreArray(kappa, &kappa_p);
   VecRestoreArray(un, &un_p);
 
-  double dt = MIN(cfl*dmin/un_max, 1.0/kun_max, dtmax);
+  double dt = MIN(cfl*dmin/un_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   my_p4est_level_set_t ls(&neighbors);
