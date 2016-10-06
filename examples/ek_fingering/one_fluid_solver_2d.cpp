@@ -560,21 +560,21 @@ double one_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &pressure)
 
   // compute dt based on cfl number and curavture
   double un_max = 1; // minmum vn_max to be used when computing dt.
-  double kun_max = 0;
+//  double kun_max = 0;
   double *kappa_p;
   VecGetArray(kappa, &kappa_p);
   VecGetArray(un, &un_p);
   foreach_node(n, nodes) {
     if (fabs(phi_p[n]) < cfl*diag) {
       un_max  = MAX(un_max, un_p[n]);
-      kun_max = MAX(kun_max, fabs(kappa_p[n]*un_p[n]));
+//      kun_max = MAX(kun_max, fabs(kappa_p[n]*un_p[n]));
     }
   }
   VecRestoreArray(kappa, &kappa_p);
   VecRestoreArray(un, &un_p);
   VecDestroy(kappa);
 
-  double dt = MIN(cfl*dmin/un_max, 1.0/kun_max, dtmax);
+  double dt = MIN(cfl*dmin/un_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
   static bool first_iteration = true;
@@ -1139,18 +1139,12 @@ void one_fluid_solver_t::solve_field(double t, Vec phi, Vec pressure)
   VecGetArray(phi, &phi_p);
   foreach_node(n, nodes) {
     node_xyz_fr_n(n, p4est, nodes, x);
-//    if (fabs(phi_p[n]) < 10*diag_min) {
     double kappa = bc_val_p[n];
-//    kappa = CLAMP(kappa, -1.0/(2.0*diag_min), 1.0/(2.0*diag_min));
 #ifdef P4_TO_P8
     bc_val_p[n] = kappa*(*gamma)(x[0], x[1], x[2]);
 #else
     bc_val_p[n] = kappa*(*gamma)(x[0], x[1]);
 #endif
-//    } else {
-//      double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), 0.1);
-//      bc_val_p[n] = -(*Q)(t)/(2*PI) * log(r);
-//    }
   }
   VecRestoreArray(phi, &phi_p);
 

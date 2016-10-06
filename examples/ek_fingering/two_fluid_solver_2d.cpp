@@ -104,7 +104,7 @@ void two_fluid_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_nei
   Vec fxx[P4EST_DIM];
   foreach_dimension (dim) VecCreateGhostNodes(p4est, nodes, &fxx[dim]);
   neighbors.second_derivatives_central(phi, fxx);
-  interp.set_input(phi, fxx[0], fxx[1], quadratic);
+  interp.set_input(phi, fxx[0], fxx[1], quadratic_non_oscillatory);
 
   double f[3][3];
   double x[P4EST_DIM];
@@ -133,6 +133,10 @@ void two_fluid_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_nei
       fn         = MAX(sqrt(f1*f1+f2*f2), EPS);
       n1_p[0][n] = f1/fn;
       n1_p[1][n] = f2/fn;
+    } else {
+      kappa_p[n] = 0;
+      nx_p[0][n] = nx_p[1][n] = 0;
+      n1_p[0][n] = n1_p[1][n] = 0;
     }
   }
 
@@ -145,8 +149,8 @@ void two_fluid_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_nei
     VecRestoreArray(n1[dim], &n1_p[dim]);
   }
 
-  VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
-  VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
+  VecGhostUpdateBegin(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
+  VecGhostUpdateEnd(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
 
   foreach_dimension (dim) {
     VecGhostUpdateBegin(nx[dim], INSERT_VALUES, SCATTER_FORWARD);
@@ -251,7 +255,7 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
   neighbors.init_neighbors();
 
   // compute normal and curvature
-  compute_normal_and_curvature_diagonal(neighbors, phi);
+//  compute_normal_and_curvature_diagonal(neighbors, phi);
   compute_normal_velocity_diagonal(neighbors, phi, press_p);
 
   // compute dt based on cfl number and curavture
@@ -267,9 +271,9 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
 
   double un_max = 1; // minmum vn_max to be used when computing dt.
 //  double kon_max = 0;
-  double *kappa_p, *un_p, *phi_p;
+  double /**kappa_p,*/ *un_p, *phi_p;
   VecGetArray(un, &un_p);
-  VecGetArray(kappa, &kappa_p);
+//  VecGetArray(kappa, &kappa_p);
   VecGetArray(phi, &phi_p);
   foreach_node(n, nodes) {
     if (fabs(phi_p[n]) < 2*diag) {
@@ -277,7 +281,7 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
 //      kon_max = MAX(kon_max, fabs(kappa_p[n]*un_p[n]));
     }
   }
-  VecRestoreArray(kappa, &kappa_p);
+//  VecRestoreArray(kappa, &kappa_p);
 
   double dt = MIN(cfl*dmin/un_max, dtmax);
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
@@ -297,7 +301,7 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
     ngbd_nm1.second_derivatives_central(un_nm1, fxx);
 
     my_p4est_interpolation_nodes_t interp_nm1(&ngbd_nm1);
-    interp_nm1.set_input(un_nm1, fxx[0], fxx[1], quadratic);
+    interp_nm1.set_input(un_nm1, fxx[0], fxx[1], quadratic_non_oscillatory);
 
     Vec un_np1;
     VecCreateGhostNodes(p4est, nodes, &un_np1);
@@ -755,9 +759,10 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 
   // jump in the flux is a bit more involved
   // FIXME: change the definiton of normal in the jump solver to remain consistent
-//  quad_neighbor_nodes_of_node_t qnnn;
+//  auto normal = nx;
   foreach_dimension(dim) VecGetArray(nx[dim], &nx_p[dim]);
 
+//  quad_neighbor_nodes_of_node_t qnnn;
   for (size_t i = 0; i<node_neighbors.get_layer_size(); i++) {
     p4est_locidx_t n = node_neighbors.get_layer_node(i);
 //    node_neighbors.get_neighbors(n, qnnn);
@@ -767,6 +772,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 //#ifdef P4_TO_P8
 //    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*nx_p[2][n];
 //#endif
+
     node_xyz_fr_n(n, p4est, nodes, x);
     double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), diag_min);
     jump_dp_p[n] = -(*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
@@ -786,10 +792,9 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
     node_xyz_fr_n(n, p4est, nodes, x);
     double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), diag_min);
     jump_dp_p[n] = -(*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
-
   }
-  VecGhostUpdateEnd(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
   VecRestoreArray(jump_dp, &jump_dp_p);
+  VecGhostUpdateEnd(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
 
   // destroy normals
 //  foreach_dimension(dim) {
@@ -871,15 +876,16 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   VecGhostGetLocalForm(phi, &phi_l);
 
   // (-) --> (+)
-  VecShift(phi_l, diag_min);
+  double s = diag_min;
+  VecShift(phi_l, s);
   ls.extend_Over_Interface_TVD(phi, press_m);
-  VecShift(phi_l, -diag_min);
+  VecShift(phi_l, -s);
 
   // (+) --> (-)
   VecScale(phi_l, -1);
-  VecShift(phi_l, diag_min);
+  VecShift(phi_l, s);
   ls.extend_Over_Interface_TVD(phi, press_p);
-  VecShift(phi_l, -diag_min);
+  VecShift(phi_l, -s);
   VecScale(phi_l, -1);
 
   VecGhostRestoreLocalForm(phi, &phi_l); 

@@ -462,7 +462,8 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
   MatNullSpace A_null;
   if (matrix_has_nullspace) {
     ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, NULL, &A_null); CHKERRXX(ierr);
-    ierr = MatSetNullSpace(A, A_null);
+    ierr = MatSetNullSpace(A, A_null); CHKERRXX(ierr);
+    ierr = MatNullSpaceRemove(A_null, rhs_, NULL); CHKERRXX(ierr);
 
     // For purely neumann problems GMRES is more robust
     ierr = KSPSetType(ksp, KSPGMRES); CHKERRXX(ierr);

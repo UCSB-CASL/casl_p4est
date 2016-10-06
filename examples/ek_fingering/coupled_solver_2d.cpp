@@ -139,6 +139,10 @@ void coupled_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_neigh
       fn         = MAX(sqrt(f1*f1+f2*f2), EPS);
       n1_p[0][n] = f1/fn;
       n1_p[1][n] = f2/fn;
+    } else {
+      kappa_p[n] = 0;
+      nx_p[0][n] = nx_p[1][n] = 0;
+      n1_p[0][n] = n1_p[1][n] = 0;
     }
   }
 
@@ -151,8 +155,8 @@ void coupled_solver_t::compute_normal_and_curvature_diagonal(my_p4est_node_neigh
     VecRestoreArray(n1[dim], &n1_p[dim]);
   }
 
-  VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
-  VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
+  VecGhostUpdateBegin(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
+  VecGhostUpdateEnd(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
 
   foreach_dimension (dim) {
     VecGhostUpdateBegin(nx[dim], INSERT_VALUES, SCATTER_FORWARD);
@@ -195,8 +199,8 @@ void coupled_solver_t::compute_normal_velocity_diagonal(my_p4est_node_neighbors_
   neighbors.second_derivatives_central(potential, Gxx);
 
   my_p4est_interpolation_nodes_t pressure_interp(&neighbors), potential_interp(&neighbors);
-  pressure_interp.set_input(pressure, Fxx[0], Fxx[1], quadratic);
-  potential_interp.set_input(potential, Gxx[0], Gxx[1], quadratic);
+  pressure_interp.set_input(pressure, Fxx[0], Fxx[1], quadratic_non_oscillatory);
+  potential_interp.set_input(potential, Gxx[0], Gxx[1], quadratic_non_oscillatory);
 
   double f[3][3], g[3][3];
   double x[P4EST_DIM];
@@ -435,7 +439,7 @@ double coupled_solver_t::advect_interface_godunov(Vec &phi,
   neighbors.init_neighbors();
 
   // compute normal and curvature
-  compute_normal_and_curvature_diagonal(neighbors, phi);
+//  compute_normal_and_curvature_diagonal(neighbors, phi);
   compute_normal_velocity_diagonal(neighbors, phi, pressure_p, potential_p);
 
   // grid information
@@ -458,8 +462,8 @@ double coupled_solver_t::advect_interface_godunov(Vec &phi,
   // compute dt based on cfl number and curavture
   double un_max = 1; // minmum vn_max to be used when computing dt.
 //  double kun_max = 0;
-  double *kappa_p;
-  VecGetArray(kappa, &kappa_p);
+//  double *kappa_p;
+//  VecGetArray(kappa, &kappa_p);
   VecGetArray(un, &un_p);
   foreach_node(n, nodes) {
     if (fabs(phi_p[n]) < cfl*diag) {
@@ -467,7 +471,7 @@ double coupled_solver_t::advect_interface_godunov(Vec &phi,
 //      kun_max = MAX(kun_max, fabs(kappa_p[n]*un_p[n]));
     }
   }
-  VecRestoreArray(kappa, &kappa_p);
+//  VecRestoreArray(kappa, &kappa_p);
   VecRestoreArray(un, &un_p);
 
   double dt = MIN(cfl*dmin/un_max, dtmax);
@@ -488,7 +492,7 @@ double coupled_solver_t::advect_interface_godunov(Vec &phi,
     ngbd_nm1.second_derivatives_central(un_nm1, fxx);
 
     my_p4est_interpolation_nodes_t interp_nm1(&ngbd_nm1);
-    interp_nm1.set_input(un_nm1, fxx[0], fxx[1], quadratic);
+    interp_nm1.set_input(un_nm1, fxx[0], fxx[1], quadratic_non_oscillatory);
 
     double x[P4EST_DIM];
     Vec un_np1;
@@ -846,17 +850,18 @@ void coupled_solver_t::solve_fields(double t, Vec phi,
   VecGhostGetLocalForm(phi, &phi_l);
 
   // (-) --> (+)
-  VecShift(phi_l, diag_min);
+  double s = diag_min;
+  VecShift(phi_l, s);
   ls.extend_Over_Interface_TVD(phi, pressure_m);
   ls.extend_Over_Interface_TVD(phi, potential_m);
-  VecShift(phi_l, -diag_min);
+  VecShift(phi_l, -s);
 
   // (+) --> (-)
   VecScale(phi_l, -1);
-  VecShift(phi_l, diag_min);
+  VecShift(phi_l, s);
   ls.extend_Over_Interface_TVD(phi, pressure_p);
   ls.extend_Over_Interface_TVD(phi, potential_p);
-  VecShift(phi_l, -diag_min);
+  VecShift(phi_l, -s);
   VecScale(phi_l, -1);
 
   VecGhostRestoreLocalForm(phi, &phi_l);

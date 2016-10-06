@@ -95,16 +95,19 @@ void set_parameters(int argc, char **argv) {
   options.xmin[0] = options.xmin[1] = options.xmin[2] = -1;
   options.xmax[0] = options.xmax[1] = options.xmax[2] =  1;
   options.periodic[0] = options.periodic[1] = options.periodic[2] = false;
-  options.lmin = 5; options.lmax = 10;
-  options.rot  = 0;
-  options.method = "godunov";
 
-  options.lip  = 5;
-  options.cfl  = 1;
-  options.iter = numeric_limits<int>::max();
+  options.method    = cmd.get("method", string("godunov"));
+  options.iter      = cmd.get("iter", numeric_limits<int>::max());
   options.it_reinit = cmd.get("it_reinit", 50);
-  options.L = cmd.get("L", 10);
-  options.rot = cmd.get("rot", 0);
+  options.L         = cmd.get("L", 10.);
+  options.lmin      = cmd.get("lmin", 5);
+  options.lmax      = cmd.get("lmax", 10);
+  options.cfl       = cmd.get("cfl", 1.0);
+  options.dts       = cmd.get("dts", 1e-1);
+  options.dtmax     = cmd.get("dtmax", 1e-3);
+  options.Ca        = cmd.get("Ca", 250.);
+  options.lip       = cmd.get("lip", 5.);
+  options.rot       = cmd.get("rot", 0);
 
 #ifdef P4_TO_P8
     static struct:cf_t{
@@ -202,58 +205,8 @@ void set_parameters(int argc, char **argv) {
     options.xmin[0] = options.xmin[1] = options.xmin[2] = -options.L + EPS;
     options.xmax[0] = options.xmax[1] = options.xmax[2] =  options.L;
     options.ntr[0]  = options.ntr[1]  = options.ntr[2]  = 1;
-    options.cfl     = 1;
-    options.lip     = 10;
-    options.dtmax   = 5e-3;
-    options.dts     = 1e-1;
 
-#ifdef P4_TO_P8
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const  {
-        double theta = atan2(y,x) - options.rot*PI/180;
-        double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double phi   = acos(z/MAX(r,1E-12));
 
-        return 1.0+0.1*(cos(3*theta)+sin(2*theta))*pow(sin(2*phi),2) - r;
-      }
-    } interface; interface.lip = options.lip;
-
-#if 1
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const {
-        double theta = atan2(y,x);
-        double r     = sqrt(SQR(x)+SQR(y)+SQR(z));
-        double phi   = acos(z/MAX(r,1E-12));
-        double ur    = -(*options.Q)(t)/(4*PI*r*r);
-
-        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-          return x > 0 ? ur*cos(theta)*sin(phi):-ur*cos(theta)*sin(phi);
-        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-          return y > 0 ? ur*sin(theta)*sin(phi):-ur*sin(theta)*sin(phi);
-        else if (fabs(z-options.xmax[2]) < EPS || fabs(z - options.xmin[2]) < EPS)
-          return z > 0 ? ur*cos(phi):-ur*cos(phi);
-        else
-          return 0;
-      }
-    } bc_wall_value; bc_wall_value.t = 0;
-#endif // #if 0
-#if 0
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const {
-        double r = sqrt(SQR(x)+SQR(y)+SQR(z));
-        return (*options.Q)(t)/(4*PI*r);
-      }
-    } bc_wall_value; bc_wall_value.t = 0;
-#endif // #if 1
-#else // P4_TO_P8
     static struct:cf_t{
       double operator()(double x, double y) const  {
         double theta = atan2(y,x) - options.rot*PI/180;
@@ -263,27 +216,6 @@ void set_parameters(int argc, char **argv) {
       }
     } interface; interface.lip = options.lip;
 
-#if 0
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double x, double y) const {
-        double theta = atan2(y,x);
-        double r     = sqrt(SQR(x)+SQR(y));
-        double ur    = -(*options.Q)(t)/(2*PI*r);
-
-        if (fabs(x-options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-          return x > 0 ? ur*cos(theta):-ur*cos(theta);
-        else if (fabs(y-options.xmax[1]) < EPS || fabs(y - options.xmin[1]) < EPS)
-          return y > 0 ? ur*sin(theta):-ur*sin(theta);
-        else
-          return 0;
-      }
-    } bc_wall_value; bc_wall_value.t = 0;
-#endif // #if 0
-#if 1
     static struct:wall_bc_t{
       BoundaryConditionType operator()(double, double) const { return options.bcw; }
     } bc_wall_type;
@@ -310,8 +242,6 @@ void set_parameters(int argc, char **argv) {
         }
       }
     } bc_wall_value; bc_wall_value.t = 0;
-#endif // #if 1
-#endif // P4_TO_P8
 
     // set parameters specific to this test
     options.interface     = &interface;
