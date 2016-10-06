@@ -255,7 +255,7 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
   neighbors.init_neighbors();
 
   // compute normal and curvature
-//  compute_normal_and_curvature_diagonal(neighbors, phi);
+  compute_normal_and_curvature_diagonal(neighbors, phi);
   compute_normal_velocity_diagonal(neighbors, phi, press_p);
 
   // compute dt based on cfl number and curavture
@@ -699,27 +699,25 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 //  ls.perturb_level_set_function(phi, EPS);
 
   // compute the curvature. we store it in the boundary condition vector to save space
-//  Vec kappa, kappa_tmp, normal[P4EST_DIM];
-//  VecDuplicate(phi, &kappa);
-//  VecDuplicate(phi, &kappa_tmp);
-//  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
-//  compute_normals(node_neighbors, phi, normal);
-//  {
-//    Vec phi_x[P4EST_DIM];
-//    VecCreateGhostNodes(p4est, nodes, &phi_x[0]);
-//    VecCreateGhostNodes(p4est, nodes, &phi_x[1]);
-//    node_neighbors.first_derivatives_central(phi, phi_x);
-//    compute_mean_curvature(node_neighbors, phi, phi_x, kappa_tmp);
-//    VecDestroy(phi_x[0]);
-//    VecDestroy(phi_x[1]);
-//  }
-//  compute_mean_curvature(node_neighbors, normal, kappa_tmp);
+  Vec kappa, kappa_tmp, normal[P4EST_DIM];
+  VecDuplicate(phi, &kappa);
+  VecDuplicate(phi, &kappa_tmp);
+  foreach_dimension(dim) VecCreateGhostNodes(p4est, nodes, &normal[dim]);
+  compute_normals(node_neighbors, phi, normal);
+  {
+    Vec phi_x[P4EST_DIM];
+    VecCreateGhostNodes(p4est, nodes, &phi_x[0]);
+    VecCreateGhostNodes(p4est, nodes, &phi_x[1]);
+    node_neighbors.first_derivatives_central(phi, phi_x);
+    compute_mean_curvature(node_neighbors, phi, phi_x, kappa_tmp);
+    VecDestroy(phi_x[0]);
+    VecDestroy(phi_x[1]);
+  }
+  compute_mean_curvature(node_neighbors, normal, kappa_tmp);
 
-////   extend curvature from interface to the entire domain
-//  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
-//  VecDestroy(kappa_tmp);
-
-  compute_normal_and_curvature_diagonal(node_neighbors, phi);
+//   extend curvature from interface to the entire domain
+  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
+  VecDestroy(kappa_tmp);
 
   // compute the boundary condition for the pressure.
   Vec jump_p, jump_dp;
@@ -755,52 +753,52 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   }
   VecRestoreArray(jump_p, &jump_p_p);
   VecRestoreArray(kappa, &kappa_p);
-//  VecDestroy(kappa);
+  VecDestroy(kappa);
 
   // jump in the flux is a bit more involved
   // FIXME: change the definiton of normal in the jump solver to remain consistent
 //  auto normal = nx;
-  foreach_dimension(dim) VecGetArray(nx[dim], &nx_p[dim]);
+  foreach_dimension(dim) VecGetArray(normal[dim], &nx_p[dim]);
 
-//  quad_neighbor_nodes_of_node_t qnnn;
+  quad_neighbor_nodes_of_node_t qnnn;
   for (size_t i = 0; i<node_neighbors.get_layer_size(); i++) {
     p4est_locidx_t n = node_neighbors.get_layer_node(i);
-//    node_neighbors.get_neighbors(n, qnnn);
+    node_neighbors.get_neighbors(n, qnnn);
 
-//    double *pstar_p = pstar.data();
-//    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*nx_p[0][n] - qnnn.dy_central(pstar_p)*nx_p[1][n];
-//#ifdef P4_TO_P8
-//    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*nx_p[2][n];
-//#endif
+    double *pstar_p = pstar.data();
+    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*nx_p[0][n] - qnnn.dy_central(pstar_p)*nx_p[1][n];
+#ifdef P4_TO_P8
+    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*nx_p[2][n];
+#endif
 
-    node_xyz_fr_n(n, p4est, nodes, x);
-    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), diag_min);
-    jump_dp_p[n] = -(*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
+//    node_xyz_fr_n(n, p4est, nodes, x);
+//    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), diag_min);
+//    jump_dp_p[n] = -(*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
   }
   VecGhostUpdateBegin(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
 
   for (size_t i = 0; i<node_neighbors.get_local_size(); i++) {
     p4est_locidx_t n = node_neighbors.get_local_node(i);
-//    node_neighbors.get_neighbors(n, qnnn);
+    node_neighbors.get_neighbors(n, qnnn);
 
-//    double *pstar_p = pstar.data();
-//    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*nx_p[0][n] - qnnn.dy_central(pstar_p)*nx_p[1][n];
-//#ifdef P4_TO_P8
-//    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*nx_p[2][n];
-//#endif
+    double *pstar_p = pstar.data();
+    jump_dp_p[n]  = -qnnn.dx_central(pstar_p)*nx_p[0][n] - qnnn.dy_central(pstar_p)*nx_p[1][n];
+#ifdef P4_TO_P8
+    jump_dp_p[n] += -qnnn.dz_central(pstar_p)*nx_p[2][n];
+#endif
 
-    node_xyz_fr_n(n, p4est, nodes, x);
-    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), diag_min);
-    jump_dp_p[n] = -(*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
+//    node_xyz_fr_n(n, p4est, nodes, x);
+//    double r = MAX(sqrt(SQR(x[0]) + SQR(x[1])), diag_min);
+//    jump_dp_p[n] = -(*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
   }
   VecRestoreArray(jump_dp, &jump_dp_p);
   VecGhostUpdateEnd(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
 
   // destroy normals
-//  foreach_dimension(dim) {
-//    VecRestoreArray(normal[dim], &nx_p[dim]);
-//    VecDestroy(normal[dim]);
-//  }
+  foreach_dimension(dim) {
+    VecRestoreArray(normal[dim], &nx_p[dim]);
+    VecDestroy(normal[dim]);
+  }
 
   // solve the pressure jump problem
   Vec rhs_p, rhs_m, mue_m, mue_p;
