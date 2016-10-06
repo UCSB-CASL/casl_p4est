@@ -431,7 +431,7 @@ int main(int argc, char** argv) {
     }
 
     PetscPrintf(mpi.comm(), "Saving %s\n", vtk_name);
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
+    my_p4est_vtk_write_all(p4est, nodes, 0,
                            P4EST_TRUE, P4EST_TRUE,
                            3, 0, vtk_name,
                            VTK_POINT_DATA, "phi", phi_p,

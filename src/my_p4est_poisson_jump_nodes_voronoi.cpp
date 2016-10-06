@@ -230,13 +230,6 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
     setup_linear_system();
 //    ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
 
-//    int static counter = 0;
-//    if (counter++ == 166) {
-//      std::ostringstream vtkname;
-//      vtkname << "voro166." << p4est->mpisize;
-//      print_voronoi_VTK(vtkname.str().c_str());
-//    }
-
     is_matrix_computed = true;
     ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   } else {
@@ -246,7 +239,6 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
 
   // PetscSynchronizedPrintf(p4est->mpicomm, "[%2d] null? %d\n", p4est->mpirank, matrix_has_nullspace);
   // PetscSynchronizedFlush(p4est->mpicomm, stdout);
-
 
   // set pc type
   PC pc;
@@ -289,15 +281,15 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
   /* set the nullspace */
-   if (matrix_has_nullspace){
+//   if (matrix_has_nullspace){
      // PETSc removed the KSPSetNullSpace in 3.6.0 ... Use MatSetNullSpace instead
- #if PETSC_VERSION_GE(3,6,0)
-     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
- //    ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
- #else
-     ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
- #endif
-   }
+// #if PETSC_VERSION_GE(3,6,0)
+//     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+//     ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
+// #else
+//     ierr = KSPSetNullSpace(ksp, A_null_space); CHKERRXX(ierr);
+// #endif
+//   }
 
   /* Solve the system */
   ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
@@ -1252,13 +1244,6 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
 #endif
     voro.get_Points(points);
 
-//    if (points->size() <= 1) {
-//      PetscPrintf(p4est->mpicomm, "[%2d] Voronoi node %d has %d points\n", p4est->mpirank, n, points->size());
-//      PetscSynchronizedPrintf(p4est->mpicomm, "[%2d] Voronoi node %d has %d points\n", p4est->mpirank, n, points->size());
-//    }
-//    PetscSynchronizedFlush(p4est->mpicomm, stdout);
-//    MPI_Barrier(p4est->mpicomm);
-
 #ifdef P4_TO_P8
     double phi_n = interp_phi(pc.x, pc.y, pc.z);
 #else
@@ -1434,7 +1419,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
       ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
     }
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-    // ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
   }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
@@ -1590,10 +1575,10 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_negative_laplace_rhsvec()
   }
 
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
-  //
-  // if (matrix_has_nullspace) {
-  //   ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
-  // }
+
+   if (matrix_has_nullspace) {
+     ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
+   }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_rhsvec_setup, rhs, 0, 0, 0); CHKERRXX(ierr);
 }

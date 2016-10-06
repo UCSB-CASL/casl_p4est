@@ -767,7 +767,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 //#endif
     node_xyz_fr_n(n, p4est, nodes, x);
     double r = sqrt(SQR(x[0]) + SQR(x[1]));
-    jump_dp_p[n] = (*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
+    jump_dp_p[n] = -(*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
   }
   VecGhostUpdateBegin(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
 
@@ -783,7 +783,7 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
 
     node_xyz_fr_n(n, p4est, nodes, x);
     double r = sqrt(SQR(x[0]) + SQR(x[1]));
-    jump_dp_p[n] = (*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
+    jump_dp_p[n] = -(*Q)(t)/(2*PI)*(x[0]*nx_p[0][n] + x[1]*nx_p[1][n])/SQR(r);
 
   }
   VecGhostUpdateEnd(jump_dp, INSERT_VALUES, SCATTER_FORWARD);
