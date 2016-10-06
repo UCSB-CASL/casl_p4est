@@ -35,6 +35,7 @@ two_fluid_solver_t::two_fluid_solver_t(p4est_t* &p4est, p4est_ghost_t* &ghost, p
   p4est_nm1 = my_p4est_copy(p4est, 0);
   p4est_nm1->connectivity = conn;
   ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
   nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
 
   dt_nm1 = 0;
@@ -335,6 +336,7 @@ double two_fluid_solver_t::advect_interface_godunov(Vec &phi, Vec &press_m, Vec&
   // partition and compute new strutures
   my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
   p4est_ghost_t* ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_np1, ghost_np1);
   p4est_nodes_t* nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   // transfer data from old grid to new
@@ -841,8 +843,6 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   jump_solver.set_rhs(rhs_m, rhs_p);
 
   jump_solver.solve(press_p);
-
-//  jump_solver.print_voronoi_VTK("two_fluid_voro");
 
   VecDestroy(rhs_m);
   VecDestroy(rhs_p);

@@ -373,6 +373,7 @@ int main(int argc, char** argv) {
 
   // create ghost layer
   ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est, ghost);
 
   // create node structure
   nodes = my_p4est_nodes_new(p4est, ghost);
