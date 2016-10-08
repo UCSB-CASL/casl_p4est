@@ -2,7 +2,7 @@
 
 void cube2_mls_t::construct_domain()
 {
-  bool use_linear = true;
+  bool use_linear = false;
   if (phi_xx == NULL || phi_yy == NULL) use_linear = true;
 
   bool all_positive, all_negative;

@@ -15,9 +15,9 @@ int lmin = 4;
 int lmax = 4;
 int nb_splits = 3;
 #else
-int lmin = 5;
-int lmax = 7;
-int nb_splits = 3;
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 4;
 #endif
 
 int nx = 1;
@@ -31,15 +31,15 @@ const int periodic[] = {0, 0, 0};
 
 // GEOMETRY
 #ifdef P4_TO_P8
-double r0 =  0.7;
-double r1 =  0.5;
-double r2 =  0.6;
-double r3 =  0.6;
+double r0 =  0.6;
+double r1 =  0.3;
+double r2 =  0.7;
+double r3 =  0.5;
 double d  =  0.25;
 #else
-double r0 =  0.53;
+double r0 =  0.6;
 double r1 =  0.4;
-double r2 =  0.61;
+double r2 =  0.7;
 double r3 =  0.5;
 double d  =  0.25;
 #endif
@@ -59,31 +59,21 @@ double xc2 =  1.*d*sinT0; double yc2 = -1.*d*cosT0;
 double xc3 =  3.*d*cosT0; double yc3 =  3.*d*sinT0;
 #endif
 
-double beta0 = 0.1; double inside0 =  1;
-double beta1 = 0.1; double inside1 =  1;
-double beta2 = 0.1; double inside2 =  1;
-double beta3 = 0.13; double inside3 = -1;
-
-double alpha0 = 0.3*PI;
-double alpha1 = 0.1*PI;
-double alpha2 = -0.14*PI;
-double alpha3 = 0.3*PI;
-
-double lx0 = 1, ly0 = 1, lz0 = 1;
-double lx1 = -1, ly1 = 1, lz1 = 1;
-double lx2 = 1, ly2 = -1, lz2 = 1;
-double lx3 = 1, ly3 = 1, lz3 = -1;
+double beta0 = 0.04; double inside0 =  1;
+double beta1 = 0.04; double inside1 =  1;
+double beta2 = 0.04; double inside2 =  1;
+double beta3 = 0.04; double inside3 = -1;
 
 #ifdef P4_TO_P8
-flower_shaped_domain_t domain0(r0, xc0, yc0, zc0, beta0, inside0, lx0, ly0, lz0, alpha0);
-flower_shaped_domain_t domain1(r1, xc1, yc1, zc1, beta1, inside1, lx1, ly1, lz1, alpha1);
-flower_shaped_domain_t domain2(r2, xc2, yc2, zc2, beta2, inside2, lx2, ly2, lz2, alpha2);
-flower_shaped_domain_t domain3(r3, xc3, yc3, zc3, beta3, inside3, lx3, ly3, lz3, alpha3);
+flower_shaped_domain_t domain0(r0, xc0, yc0, zc0, beta0, inside0);
+flower_shaped_domain_t domain1(r1, xc1, yc1, zc1, beta1, inside1);
+flower_shaped_domain_t domain2(r2, xc2, yc2, zc2, beta2, inside2);
+flower_shaped_domain_t domain3(r3, xc3, yc3, zc3, beta3, inside3);
 #else
-flower_shaped_domain_t domain0(r0, xc0, yc0, beta0, inside0, alpha0);
-flower_shaped_domain_t domain1(r1, xc1, yc1, beta1, inside1, alpha1);
-flower_shaped_domain_t domain2(r2, xc2, yc2, beta2, inside2, alpha2);
-flower_shaped_domain_t domain3(r3, xc3, yc3, beta3, inside3, alpha3);
+flower_shaped_domain_t domain0(r0, xc0, yc0, beta0, inside0);
+flower_shaped_domain_t domain1(r1, xc1, yc1, beta1, inside1);
+flower_shaped_domain_t domain2(r2, xc2, yc2, beta2, inside2);
+flower_shaped_domain_t domain3(r3, xc3, yc3, beta3, inside3);
 #endif
 
 // cut corners
@@ -227,7 +217,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
+    case 0: return sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z)*exp(-t);
     }
   }
 } u_exact;
@@ -238,10 +228,58 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-    case 0: return (sin(PI*x+phase_x)*sin(PI*y+phase_y));
+    case 0: return (sin(PI*x+phase_x)*sin(PI*y+phase_y))*exp(-t);
     }
   }
 } u_exact;
+#endif
+
+#ifdef P4_TO_P8
+class LAP_U: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch (n_test){
+    case 0: return -3.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z)*exp(-t);
+    }
+  }
+} lap_u;
+#else
+class LAP_U: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    switch (n_test){
+    case 0: return -2.0*PI*PI*(sin(PI*x+phase_x)*sin(PI*y+phase_y))*exp(-t);
+    }
+  }
+} lap_u;
+#endif
+
+#ifdef P4_TO_P8
+class UT: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch (n_test){
+    case 0: return -sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z)*exp(-t);
+    }
+  }
+} ut;
+#else
+class UT: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    switch (n_test){
+    case 0: return -(sin(PI*x+phase_x)*sin(PI*y+phase_y))*exp(-t);
+    }
+  }
+} ut;
 #endif
 
 // EXACT DERIVATIVES
@@ -252,7 +290,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
+    case 0: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z)*exp(-t);
     }
   }
 } ux;
@@ -262,7 +300,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y)*sin(PI*z+phase_z);
+    case 0: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y)*sin(PI*z+phase_z)*exp(-t);
     }
   }
 } uy;
@@ -272,7 +310,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*cos(PI*z+phase_z);
+    case 0: return PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*cos(PI*z+phase_z)*exp(-t);
     }
   }
 } uz;
@@ -283,7 +321,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-      case 0: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y);
+      case 0: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y)*exp(-t);
     }
   }
 } ux;
@@ -293,7 +331,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-      case 0: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y);
+      case 0: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y)*exp(-t);
     }
   }
 } uy;
@@ -386,7 +424,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return 0;
+    case 0: return 0.0;
     }
   }
 } diag_add_cf;
@@ -397,7 +435,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-    case 0: return x*y+exp(y)*sin(x);
+    case 0: return 0.0;
     }
   }
 } diag_add_cf;
@@ -411,7 +449,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return mu_cf(x,y,z)*3.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z) + diag_add_cf(x,y,z)*u_exact(x,y,z)
+    case 0: return ut(x,y,z) - mu_cf(x,y,z)*lap_u(x,y,z) + diag_add_cf(x,y,z)*u_exact(x,y,z)
                     - mux(x,y,z)*ux(x,y,z) - muy(x,y,z)*uy(x,y,z) - muz(x,y,z)*uz(x,y,z);
     }
   }
@@ -423,7 +461,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-    case 0: return mu_cf(x,y)*2.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y) + diag_add_cf(x,y)*u_exact(x,y)
+    case 0: return ut(x,y) - mu_cf(x,y)*lap_u(x,y) + diag_add_cf(x,y)*u_exact(x,y)
                     - mux(x,y)*ux(x,y) - muy(x,y)*uy(x,y);
     }
   }

@@ -326,9 +326,9 @@ int main (int argc, char* argv[])
     solver.set_diag_add(diag_add);
     solver.set_bc_coeffs(bc_coeffs);
     solver.set_bc_values(bc_values);
-    solver.set_use_taylor_correction(false);
+    solver.set_use_taylor_correction(true);
     solver.set_keep_scalling(true);
-    solver.set_kinks_treatment(false);
+    solver.set_kinks_treatment(true);
 
     solver.compute_volumes();
 //    solver.set_cube_refinement(0);

@@ -1,10 +1,10 @@
 /* discretization */
-int lmin = 4;
-int lmax = 4;
+int lmin = 3;
+int lmax = 3;
 #ifdef P4_TO_P8
-int nb_splits = 4;
+int nb_splits = 3;
 #else
-int nb_splits = 6;
+int nb_splits = 9;
 #endif
 
 int nx = 1;
@@ -287,7 +287,7 @@ public:
     IXc0.push_back(0);
     IXc1.push_back(1);
 #ifdef P4_TO_P8
-    IX.push_back(PI*(r0*r0-d0*d0)); IXr2.push_back(PI*(r0*r0-d0*d0)*(r0*r0+R0*R0+2.*r0d0);
+    IX.push_back(PI*(r0*r0-d0*d0)); IXr2.push_back(PI*(r0*r0-d0*d0)*(r0*r0+R0*R0+2.*r0d0));
 #else
     IX.push_back(2.0*(xc_0+d0x)); IXr2.push_back(2.0*(yc_0+d0y));
 #endif

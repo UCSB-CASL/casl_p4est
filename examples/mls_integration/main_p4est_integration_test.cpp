@@ -251,9 +251,9 @@ int main (int argc, char* argv[])
 #else
       simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
 #endif
+      save_VTK(p4est, ghost, nodes, &brick, phi_vec[0], iter);
     }
 
-    save_VTK(p4est, ghost, nodes, &brick, phi_vec[0], iter);
 
     /* Calculate and store results */
     if (exact.provided || iter < nb_splits-1)
@@ -319,67 +319,92 @@ int main (int argc, char* argv[])
     p4est_destroy      (p4est);
   }
 
-  Gnuplot plot_ID;
-  print_Table("Domain", exact.ID, level, h, "MLT", res_mlt.ID, 2, &plot_ID);
-
-//  Gnuplot plot_IB;
-//  print_Table("Interface", exact.IB, level, h, "MLT", res_mlt.IB, 2, &plot_IB);
-
-  Gnuplot plot_IDr2;
-  print_Table("2nd moment of domain", exact.IDr2, level, h, "MLT", res_mlt.IDr2, 2, &plot_IDr2);
-
-//  Gnuplot plot_IBr2;
-//  print_Table("2nd moment of interface", exact.IBr2, level, h, "MLT", res_mlt.IBr2, 2, &plot_IBr2);
-
-  vector<Gnuplot *> plot_ISB;
-  vector<Gnuplot *> plot_ISBr2;
-  for (int i = 0; i < exact.n_subs; i++)
+  if (mpi.rank() == -1)
   {
-    plot_ISB.push_back(new Gnuplot());
-    print_Table("Interface #"+to_string(i), exact.ISB[i], level, h, "MLT", res_mlt.ISB[i], 2, plot_ISB[i]);
+    Gnuplot plot_ID;
+    print_Table("Domain", exact.ID, level, h, "MLT", res_mlt.ID, 2, &plot_ID);
 
-    plot_ISBr2.push_back(new Gnuplot());
-    print_Table("2nd moment of interface #"+to_string(i), exact.ISBr2[i], level, h, "MLT", res_mlt.ISBr2[i], 2, plot_ISBr2[i]);
-  }
+    //  Gnuplot plot_IB;
+    //  print_Table("Interface", exact.IB, level, h, "MLT", res_mlt.IB, 2, &plot_IB);
 
-  vector<Gnuplot *> plot_IXr2;
-  for (int i = 0; i < exact.n_Xs; i++)
-  {
-    plot_IXr2.push_back(new Gnuplot());
-    print_Table("Intersection of #"+to_string(exact.IXc0[i])+" and #"+to_string(exact.IXc1[i]), exact.IX[i], level, h, "MLT", res_mlt.IX[i], 1, plot_IXr2[i]);
-    print_Table("Intersection of #"+to_string(exact.IXc0[i])+" and #"+to_string(exact.IXc1[i]), exact.IXr2[i], level, h, "MLT", res_mlt.IXr2[i], 2, plot_IXr2[i]);
+    Gnuplot plot_IDr2;
+    print_Table("2nd moment of domain", exact.IDr2, level, h, "MLT", res_mlt.IDr2, 2, &plot_IDr2);
+
+    //  Gnuplot plot_IBr2;
+    //  print_Table("2nd moment of interface", exact.IBr2, level, h, "MLT", res_mlt.IBr2, 2, &plot_IBr2);
+
+    vector<Gnuplot *> plot_ISB;
+    vector<Gnuplot *> plot_ISBr2;
+    for (int i = 0; i < exact.n_subs; i++)
+    {
+      plot_ISB.push_back(new Gnuplot());
+      print_Table("Interface #"+to_string(i), exact.ISB[i], level, h, "MLT", res_mlt.ISB[i], 2, plot_ISB[i]);
+
+      plot_ISBr2.push_back(new Gnuplot());
+      print_Table("2nd moment of interface #"+to_string(i), exact.ISBr2[i], level, h, "MLT", res_mlt.ISBr2[i], 2, plot_ISBr2[i]);
+    }
+
+    vector<Gnuplot *> plot_IXr2;
+    for (int i = 0; i < exact.n_Xs; i++)
+    {
+      plot_IXr2.push_back(new Gnuplot());
+      print_Table("Intersection of #"+to_string(exact.IXc0[i])+" and #"+to_string(exact.IXc1[i]), exact.IX[i], level, h, "MLT", res_mlt.IX[i], 1, plot_IXr2[i]);
+      print_Table("Intersection of #"+to_string(exact.IXc0[i])+" and #"+to_string(exact.IXc1[i]), exact.IXr2[i], level, h, "MLT", res_mlt.IXr2[i], 2, plot_IXr2[i]);
+    }
+
+//    // print short table
+//    for (int i = 0; i < h.size(); i++)
+//    {
+//      cout << h[i] << ", "
+//           << fabs(res_mlt.ID[i]-exact.ID) << ", "
+//           << fabs(res_mlt.IDr2[i]-exact.IDr2) << ", "
+//           << fabs(res_mlt.ISB[0][i]-exact.ISB[0]) << ", "
+//           << fabs(res_mlt.ISBr2[0][i]-exact.ISBr2[0]) << ", "
+//           << fabs(res_mlt.ISB[1][i]-exact.ISB[1]) << ", "
+//           << fabs(res_mlt.ISBr2[1][i]-exact.ISBr2[1]) <<  ", "
+//           << fabs(res_mlt.IX[0][i]-exact.IX[0]) <<  ", "
+//           << fabs(res_mlt.IXr2[0][i]-exact.IXr2[0]) << ";" << endl;
+//    }
+//    cout.precision(32);
+//    for (int i = 0; i < h.size(); i++)
+//    {
+//      cout << h[i] << ", "
+//           << res_mlt.ID[i] << ", "
+//           << res_mlt.IDr2[i] << ", "
+//           << res_mlt.ISB[0][i] << ", "
+//           << res_mlt.ISBr2[0][i] << ", "
+//           << res_mlt.ISB[1][i] << ", "
+//           << res_mlt.ISBr2[1][i] <<  ", "
+//           << res_mlt.IX[0][i] <<  ", "
+//           << res_mlt.IXr2[0][i] << ";" << endl;
+//    }
+//    // print names
+//    cout << "string('$I_{\Omega}$');"
+//         << "string('$I_{\Omega}^{[\mathbf{r}^2]}$');"
+//         << "string('$I_{\Gamma_1}$');"
+//         << "string('$I_{\Gamma_1}$^{[\mathbf{r}^2]}$');"
+//         << "string('$I_{\Gamma_2}$');"
+//         << "string('$I_{\Gamma_2}$^{[\mathbf{r}^2]}$');"
+//         << "string('$I_{\Gamma_1 \cap \Gamma_2}^{[x]}$');"
+//         << "string('$I_{\Gamma_1 \cap \Gamma_2}^{[y]}$');\n";
+    std::cin.get();
+
+
+    for (int i = 0; i < exact.n_subs; i++)
+    {
+      delete plot_ISB[i];
+      delete plot_ISBr2[i];
+    }
+
+    for (int i = 0; i < exact.n_Xs; i++)
+    {
+      delete plot_IXr2[i];
+    }
   }
 
   my_p4est_brick_destroy(connectivity, &brick);
 
   w.stop(); w.read_duration();
-
-  // print short table
-  for (int i = 0; i < h.size(); i++)
-  {
-    cout << h[i] << " "
-         << fabs(res_mlt.ID[i]-exact.ID) << " "
-         << fabs(res_mlt.IDr2[i]-exact.IDr2) << " "
-         << fabs(res_mlt.ISB[0][i]-exact.ISB[0]) << " "
-         << fabs(res_mlt.ISBr2[0][i]-exact.ISBr2[0]) << " "
-         << fabs(res_mlt.ISB[1][i]-exact.ISB[1]) << " "
-         << fabs(res_mlt.ISBr2[1][i]-exact.ISBr2[1]) <<  " "
-         << fabs(res_mlt.IX[0][i]-exact.IX[0]) <<  " "
-         << fabs(res_mlt.IXr2[0][i]-exact.IXr2[0]) << endl;
-  }
-  std::cin.get();
-
-  for (int i = 0; i < exact.n_subs; i++)
-  {
-    delete plot_ISB[i];
-    delete plot_ISBr2[i];
-  }
-
-  for (int i = 0; i < exact.n_Xs; i++)
-  {
-    delete plot_IXr2[i];
-  }
-
 
   return 0;
 }
