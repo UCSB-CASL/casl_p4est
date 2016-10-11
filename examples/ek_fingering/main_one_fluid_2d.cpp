@@ -250,90 +250,31 @@ void set_parameters(int argc, char **argv) {
 
   } else if (options.test == "flat") {
 
-    options.xmin[0]     =  0;
-    options.xmin[1]     = options.xmin[2] = 0;
-    options.xmax[0]     = 10;
-    options.xmax[1]     = options.xmax[2] = 1;
-    options.ntr[0]      = 10;
-    options.ntr[1]      = options.ntr[2] = 1;
-    options.periodic[0] = false;
-    options.periodic[1] = options.periodic[2] = true;
-    options.lmin        = 2;
-    options.lmax        = 5;
-    options.method      = "semi_lagrangian";
-    options.cfl         = 2;
-    options.dtmax       = 5e-3;
-    options.dts         = 1e-1;
-    options.alpha       = 0;
+    options.xmin[0] = -1; options.xmin[1] = options.xmin[2] = -PI;
+    options.xmax[0] =  2*options.L*PI-1; options.xmax[1] = options.xmax[2] =  PI;
+    options.ntr[0]  = options.L; options.ntr[1] = options.ntr[2] = 1;
+    options.periodic[0] = false; options.periodic[1] = options.periodic[2] = true;
 
-#ifdef P4_TO_P8
-    static struct:cf_t{
-      double operator()(double x, double y, double z) const  {
-        return 0.1 + 0.01*cos(2*PI*y*4)*cos(2*PI*z*4) - x;
-      }
-    } interface; interface.lip = options.lip;
+    options.lmin = 3;
+    options.lmax = 8;
 
-#if 1
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return NEUMANN; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double x, double, double) const {
-        if (fabs(x - options.xmax[0]) < EPS)
-          return -(*options.Q)(t);
-        else
-          return 0;
-      }
-    } bc_wall_value; bc_wall_value.t = 0;
-#endif // #if 0
-#if 0
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double x, double, double) const {
-        if (fabs(x - options.xmax[0]) < EPS)
-          return -(*options.Q)(t)*(options.xmax[0]-options.xmin[0]);
-        else
-          return 0;
-      }
-    } bc_wall_value; bc_wall_value.t = 0;
-#endif // #if 1
-#else // P4_TO_P8
     static struct:cf_t{
       double operator()(double x, double y) const  {
-        return 0.1 + 0.05*cos(2*PI*y*4) - x;
+        (void) y;
+        return EPS - x;
+//        return 0.1*(cos(3*y)+sin(2*y)) - x;
       }
     } interface; interface.lip = options.lip;
 
-#if 1
     static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double) const { return options.bcw; }
+      BoundaryConditionType operator()(double, double) const { return NEUMANN; }
     } bc_wall_type;
 
     static struct:cf_t{
-      double operator()(double x, double) const {
-        if (fabs(x - options.xmax[0]) < EPS || fabs(x - options.xmin[0]) < EPS)
-          return -(*options.Q)(t);
-        else
-          return 0;
+      double operator()(double, double) const {
+        return -(*options.Q)(t)/(2*PI);
       }
     } bc_wall_value; bc_wall_value.t = 0;
-#endif // #if 0
-#if 0
-    static struct:wall_bc_t{
-      BoundaryConditionType operator()(double, double) const { return DIRICHLET; }
-    } bc_wall_type;
-
-    static struct:cf_t{
-      double operator()(double x, double) const {
-        return -(*options.Q)(t)*(x-options.xmin[0]);
-      }
-    } bc_wall_value; bc_wall_value.t = 0;
-#endif // #if 1
-#endif // P4_TO_P8
 
     // set parameters specific to this test
     options.interface     = &interface;
