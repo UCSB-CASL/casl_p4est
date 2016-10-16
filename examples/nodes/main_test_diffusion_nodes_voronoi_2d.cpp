@@ -103,9 +103,9 @@ int pz = 0;
 
 bool save_vtk = true;
 
-double mu = 3e-5;
+double mu = 3e-6;
 //double mu = 1.1;
-double add_diagonal = 0.0;
+double add_diagonal = 1.0;
 
 BoundaryConditionType bc_itype = ROBIN;
 //BoundaryConditionType bc_itype = NEUMANN;
@@ -799,52 +799,52 @@ int main (int argc, char* argv[])
     double *rhs_p;
     ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
 
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    {
-      double x = node_x_fr_n(n, p4est, nodes);
-      double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-      double z = node_z_fr_n(n, p4est, nodes);
-#endif
-      double r = sqrt(SQR(x-xc)+SQR(y-yc));
-      switch(test_number)
-      {
-#ifdef P4_TO_P8
-      case 0:
-        rhs_p[n] = mu*0 + add_diagonal*u_exact(x,y,z);
-        break;
-      case 1:
-        rhs_p[n] = -6*mu + add_diagonal*u_exact(x,y,z);
-        break;
-      case 2:
-        rhs_p[n] = mu*sin(x)*cos(y)*exp(z) + add_diagonal*u_exact(x,y,z);
-        break;
-#else
-      case 0:
-        rhs_p[n] = mu*0 + add_diagonal*u_exact(x,y);
-        break;
-      case 1:
-        rhs_p[n] = -4*mu + add_diagonal*u_exact(x,y);
-        break;
-      case 2:
-        rhs_p[n] = 2*mu*sin(x)*cos(y) + add_diagonal*u_exact(x,y);
-        break;
-      case 3:
-        rhs_p[n] = mu*u_exact(x,y) + add_diagonal*u_exact(x,y);
-        break;
-      case 4:
-        rhs_p[n] = fabs(r)<EPS ? 2*mu : mu*(sin(r)/r + cos(r)) + add_diagonal*u_exact(x,y);
-        break;
-      case 5:
-        rhs_p[n] = mu*( SQR(2*PI/(xmax-xmin))*sin(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin)) + SQR(2*PI/(ymax-ymin))*sin(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin)) ) + add_diagonal*u_exact(x,y);
-        break;
-#endif
-      default:
-        throw std::invalid_argument("set rhs : unknown test number.");
-      }
-    }
+//    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+//    {
+//      double x = node_x_fr_n(n, p4est, nodes);
+//      double y = node_y_fr_n(n, p4est, nodes);
+//#ifdef P4_TO_P8
+//      double z = node_z_fr_n(n, p4est, nodes);
+//#endif
+//      double r = sqrt(SQR(x-xc)+SQR(y-yc));
+//      switch(test_number)
+//      {
+//#ifdef P4_TO_P8
+//      case 0:
+//        rhs_p[n] = mu*0 + add_diagonal*u_exact(x,y,z);
+//        break;
+//      case 1:
+//        rhs_p[n] = -6*mu + add_diagonal*u_exact(x,y,z);
+//        break;
+//      case 2:
+//        rhs_p[n] = mu*sin(x)*cos(y)*exp(z) + add_diagonal*u_exact(x,y,z);
+//        break;
+//#else
+//      case 0:
+//        rhs_p[n] = mu*0 + add_diagonal*u_exact(x,y);
+//        break;
+//      case 1:
+//        rhs_p[n] = -4*mu + add_diagonal*u_exact(x,y);
+//        break;
+//      case 2:
+//        rhs_p[n] = 2*mu*sin(x)*cos(y) + add_diagonal*u_exact(x,y);
+//        break;
+//      case 3:
+//        rhs_p[n] = mu*u_exact(x,y) + add_diagonal*u_exact(x,y);
+//        break;
+//      case 4:
+//        rhs_p[n] = fabs(r)<EPS ? 2*mu : mu*(sin(r)/r + cos(r)) + add_diagonal*u_exact(x,y);
+//        break;
+//      case 5:
+//        rhs_p[n] = mu*( SQR(2*PI/(xmax-xmin))*sin(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin)) + SQR(2*PI/(ymax-ymin))*sin(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin)) ) + add_diagonal*u_exact(x,y);
+//        break;
+//#endif
+//      default:
+//        throw std::invalid_argument("set rhs : unknown test number.");
+//      }
+//    }
 
-    ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
     my_p4est_poisson_nodes_voronoi_t solver(&ngbd_n);
     solver.set_phi(phi);
@@ -860,6 +860,22 @@ int main (int argc, char* argv[])
       sample_cf_on_nodes(p4est, nodes, robin_coef, robin);
       solver.set_robin_coef(robin);
     }
+
+
+
+    double time = 0;
+    double time_min = 0;
+    double time_max = 1;
+
+    int nt = pow(2, iter+lmax);
+    double dt = (time_max-time_min)/nt;
+
+    bc_wall_val.t = time;
+    bc_interface_val.t = time;
+
+    for (int i_time = 0; i_time < n_time; i_time++)
+    {
+
 
     Vec sol;
     ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);

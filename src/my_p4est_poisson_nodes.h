@@ -25,6 +25,7 @@ class my_p4est_poisson_nodes_t
   p4est_ghost_t *ghost;
   my_p4est_brick_t *myb_;
   my_p4est_interpolation_nodes_t phi_interp;
+  my_p4est_interpolation_nodes_t robin_coef_interp;
 
   bool neumann_wall_first_order;
   double mu_, diag_add_;
@@ -95,7 +96,8 @@ public:
 #else
   inline void set_bc(BoundaryConditions2D& bc) {bc_       = &bc;          is_matrix_computed = false;}
 #endif
-  inline void set_robin_coef(Vec robin_coef)   {robin_coef_ = robin_coef; is_matrix_computed = false;}
+  inline void set_robin_coef(Vec robin_coef)   {robin_coef_ = robin_coef; is_matrix_computed = false;
+                                                robin_coef_interp.set_input(robin_coef, linear);}
   inline void set_mu(double mu)                {mu_       = mu;           is_matrix_computed = false;}
   inline void set_is_matrix_computed(bool is_matrix_computed) { this->is_matrix_computed = is_matrix_computed; }
   inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT) {

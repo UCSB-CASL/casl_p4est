@@ -1,5 +1,5 @@
-#ifndef MY_P4EST_BIALLOY_H
-#define MY_P4EST_BIALLOY_H
+#ifndef MY_P4EST_MULTIALLOY_H
+#define MY_P4EST_MULTIALLOY_H
 
 #include <src/types.h>
 #include <src/math.h>
@@ -10,6 +10,7 @@
 #include <p8est_ghost.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_poisson_nodes.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #else
 #include <src/my_p4est_tools.h>
@@ -17,11 +18,13 @@
 #include <p4est_ghost.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_poisson_nodes.h>
+#include <src/my_p4est_poisson_nodes_voronoi.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #endif
 
 
-class my_p4est_bialloy_t
+class my_p4est_multialloy_t
 {
 private:
 
@@ -49,10 +52,14 @@ private:
 
 #ifdef P4_TO_P8
   BoundaryConditions3D bc_t;
+  BoundaryConditions3D bc_cs;
   BoundaryConditions3D bc_cl;
 #else
   BoundaryConditions2D bc_t;
+  BoundaryConditions2D bc_cs;
   BoundaryConditions2D bc_cl;
+  BoundaryConditions2D bc_cs_sec;
+  BoundaryConditions2D bc_cl_sec;
 #endif
 
   /* grid */
@@ -69,12 +76,16 @@ private:
   double dxyz_close_interface;
 
   /* temperature */
-  Vec temperature_l_n, temperature_l_np1;
-  Vec temperature_s_n, temperature_s_np1;
+  Vec temperature_n, temperature_np1;
+  Vec t_interface;
 
   /* concentration */
+  Vec cs_n, cs_np1;
   Vec cl_n, cl_np1;
-  Vec cl_gamma;
+  Vec cs_sec_n, cs_sec_np1;
+  Vec cl_sec_n, cl_sec_np1;
+  Vec c_interface;
+  Vec c_sec_interface;
 
   /* velocity */
   Vec v_interface_n  [P4EST_DIM];
@@ -89,12 +100,13 @@ private:
   Vec kappa;
 
   /* physical parameters */
-  double dt_n;
+  double dt_nm1, dt_n;
   double cooling_velocity;     /* V */
   double latent_heat;          /* L */
   double thermal_conductivity; /* k */
   double thermal_diffusivity;  /* lambda, dT/dt = lambda Laplace(T) */
   double solute_diffusivity_l; /* Dl, dCl/dt = Dl Laplace(Cl) */
+  double solute_diffusivity_s; /* Ds, dCs/dt = Ds Laplace(Cl) */
   double kp;                   /* partition coefficient */
   double c0;                   /* initial concentration */
   double ml;                   /* liquidus slope */
@@ -102,6 +114,12 @@ private:
   double epsilon_anisotropy;   /* anisotropy coefficient */
   double epsilon_c;            /* curvature undercooling coefficient */
   double epsilon_v;            /* kinetic undercooling coefficient */
+
+  double solute_diffusivity_l_sec; /* Dl, dCl/dt = Dl Laplace(Cl) */
+  double solute_diffusivity_s_sec; /* Ds, dCs/dt = Ds Laplace(Cl) */
+  double kp_sec;                   /* partition coefficient */
+  double c0_sec;                   /* initial concentration */
+  double ml_sec;                   /* liquidus slope */
 
   bool solve_concentration_solid;
 
@@ -112,14 +130,15 @@ private:
 
 public:
 
-  my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd);
+  my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
 
-  ~my_p4est_bialloy_t();
+  ~my_p4est_multialloy_t();
 
   void set_parameters( double latent_heat,
                        double thermal_conductivity,
                        double thermal_diffusivity,
                        double solute_diffusivity_l,
+                       double solute_diffusivity_s,
                        double cooling_velocity,
                        double kp,
                        double c0,
@@ -128,7 +147,12 @@ public:
                        double epsilon_anisotropy,
                        double epsilon_c,
                        double epsilon_v,
-                       double scaling);
+                       double scaling,
+                       double solute_diffusivity_l_sec,
+                       double solute_diffusivity_s_sec,
+                       double kp_sec,
+                       double c0_sec,
+                       double ml_sec);
 
   void set_phi(Vec phi);
 
@@ -136,17 +160,21 @@ public:
   void set_bc(WallBC3D& bc_wall_type_t,
               WallBC3D& bc_wall_type_c,
               CF_3& bc_wall_value_t,
+              CF_3& bc_wall_value_cs,
               CF_3& bc_wall_value_cl);
 #else
   void set_bc(WallBC2D& bc_wall_type_t,
               WallBC2D& bc_wall_type_c,
               CF_2& bc_wall_value_t,
-              CF_2& bc_wall_value_cl);
+              CF_2& bc_wall_value_cs,
+              CF_2& bc_wall_value_cl,
+              CF_2& bc_wall_value_cs_sec,
+              CF_2& bc_wall_value_cl_sec);
 #endif
 
-  void set_temperature(Vec temperature_l, Vec temperature_s);
+  void set_temperature(Vec temperature);
 
-  void set_concentration(Vec cl);
+  void set_concentration(Vec cl, Vec cs, Vec cl_sec, Vec cs_sec);
 
   void set_normal_velocity(Vec v);
 
@@ -166,21 +194,15 @@ public:
 
   void compute_normal_and_curvature();
 
-  void compute_normal_velocity_from_temperature();
+  void compute_normal_velocity();
 
-  void compute_normal_velocity_from_concentration();
-
-  void compute_velocity_from_temperature();
-
-  void compute_velocity_from_concentration();
+  void compute_velocity();
 
   void solve_temperature();
 
   void solve_concentration();
 
-  void solve_temperature_old();
-
-  void solve_concentration_old();
+  void solve_concentration_sec();
 
   void compute_dt();
 
@@ -188,10 +210,10 @@ public:
 
   void one_step();
 
-  void compare_normal_velocity_temperature_vs_concentration();
+  void compare_velocity_temperature_vs_concentration();
 
   void save_VTK(int iter);
 };
 
 
-#endif /* MY_P4EST_BIALLOY_H */
+#endif /* MY_P4EST_MULTIALLOY_H */

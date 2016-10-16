@@ -7,6 +7,12 @@
  * same functions are logged properly
  */
 
+PetscLogEvent log_my_p4est_poisson_nodes_voronoi_matrix_preallocation;
+PetscLogEvent log_my_p4est_poisson_nodes_voronoi_matrix_setup;
+PetscLogEvent log_my_p4est_poisson_nodes_voronoi_rhsvec_setup;
+PetscLogEvent log_my_p4est_poisson_nodes_voronoi_KSPSolve;
+PetscLogEvent log_my_p4est_poisson_nodes_voronoi_solve;
+
 // PoissonSolverNodeBaseJump
 PetscLogEvent log_PoissonSolverNodeBasedJump_matrix_preallocation;
 PetscLogEvent log_PoissonSolverNodeBasedJump_setup_linear_system;

@@ -37,7 +37,7 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_poisson_nodes.h>
-#include <src/my_p4est_bialloy.h>
+#include <src/my_p4est_multialloy.h>
 #endif
 
 #include <src/point3.h>
@@ -48,8 +48,8 @@
 #undef MIN
 #undef MAX
 
-int lmin = 3;
-int lmax = 10;
+int lmin = 4;
+int lmax = 9;
 int save_every_n_iteration = 100;
 
 using namespace std;
@@ -68,7 +68,8 @@ char direction = 'y';
  */
 int alloy_type = 0;
 
-double box_size = 4e-2;//4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 5e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+//double box_size = 5e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
 
 double xmin = 0;
@@ -101,20 +102,27 @@ double eps_c;                /* curvature undercooling coefficient         - cm.
 double eps_v;                /* kinetic undercooling coefficient           - s.K.cm-1     */
 double eps_anisotropy;       /* anisotropy coefficient                                    */
 
+/* second admixture */
+double Ds_sec;
+double Dl_sec;
+double ml_sec;
+double c0_sec;
+double kp_sec;
+
 //double t_final = 1000*ny/V;
-double t_final = 10;
+double t_final = 500;
 
 void set_alloy_parameters()
 {
   switch(alloy_type)
   {
   case 0:
-    /* those are the default parameters for NiCu */
+    /* those are the default parameters for Ni-0.25831at%Cu-0.15at%Cu = Ni-0.40831at%Cu */
     rho                  = 8.88e-3;        /* kg.cm-3    */
     heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
     ml                   =-357;            /* K / at frac. - liquidous slope */
     kp                   = 0.86;           /* partition coefficient */
-    c0                   = 0.40831;        /* at frac.    */
+    c0                   = 0.25831;        /* at frac.    */
     Tm                   = 1728;           /* K           */
     Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
     Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
@@ -126,29 +134,45 @@ void set_alloy_parameters()
     eps_c                = 2.7207e-5;
     eps_v                = 2.27e-2;
     eps_anisotropy       = 0.05;
+
+//    box_size = 4e-2;
+
+    Dl_sec = 1e-5;
+    Ds_sec = 1e-13;
+    ml_sec =-357;
+    c0_sec = 0.15;
+    kp_sec = 0.86001;
+
     break;
   case 1:
-    /* experimental AlCu parameters */
-    rho            = 2.8e-3;
-    heat_capacity  = 1221.6;
-    ml             = -652.9;
-    kp             = 0.15;
-    c0             = 0.6;
-    Tm             = 933;
-    Dl             = 1e-4;
-    Ds             = 1e-13;
-    G              = 50;
-    V              = 0.01; /* 1um = 10-4cm */
-    latent_heat    = 898.8;
-    lambda         = 0.84;
-    thermal_conductivity =  lambda*rho*heat_capacity;
+    /* experimental Ni-Al-Ta parameters */
+    rho            = 7.365e-3;  /* kg.cm-3    */
+    heat_capacity  = 660;       /* J.kg-1.K-1 */
+    ml             =-255;       /* K / wt frac. - liquidous slope */
+    kp             = 0.48;      /* partition coefficient */
+    c0             = 0.152;     /* wt frac.    */
+    Tm             = 1754;      /* K           */
+    Dl             = 5e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
+    Ds             = 1e-13;     /* cm2.s-1 - solid concentration diffusion coefficient */
+    G              = 20;        /* K.cm-1      */
+    V              = 0.01;      /* cm.s-1      */
+    latent_heat    = 2136;      /* J.cm-3      */
+    thermal_conductivity =  0.8; /* W.cm-1.K-1  */
+    lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
     eps_c          = 2.7207e-5;
     eps_v          = 2.27e-2;
     eps_anisotropy = 0.05;
+
+//    box_size = 5e-1;
+
+    Dl_sec = 5e-5;
+    Ds_sec = 1e-13;
+    ml_sec =-517;
+    c0_sec = 0.058;
+    kp_sec = 0.54;
     break;
   }
 }
-
 
 
 #ifdef P4_TO_P8
@@ -378,16 +402,6 @@ public:
   }
 } wall_bc_value_concentration_l;
 
-class InitialTemperature : public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    if(LS(x,y)<0) return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
-    else          return LS(x,y)*G + c0*ml + Tm;
-  }
-} initial_temperature;
-
 class InitialConcentrationS : public CF_2
 {
 public:
@@ -405,6 +419,63 @@ public:
     return c0;
   }
 } initial_concentration_l;
+
+/* third component */
+
+class WallBCValueConcentrationS_sec : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    if (wall_bc_type_concentration(x,y)==NEUMANN)
+      return 0;
+    else
+      return kp_sec * c0_sec;
+  }
+} wall_bc_value_concentration_s_sec;
+
+class WallBCValueConcentrationL_sec : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    if (wall_bc_type_concentration(x,y)==NEUMANN)
+      return 0;
+    else
+      return c0_sec;
+  }
+} wall_bc_value_concentration_l_sec;
+
+
+class InitialConcentrationS_sec : public CF_2
+{
+public:
+  double operator()(double , double ) const
+  {
+    return kp_sec * c0_sec;
+  }
+} initial_concentration_s_sec;
+
+class InitialConcentrationL_sec : public CF_2
+{
+public:
+  double operator()(double , double ) const
+  {
+    return c0_sec;
+  }
+} initial_concentration_l_sec;
+
+class InitialTemperature : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+//    if(LS(x,y)<0) return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
+//    else          return LS(x,y)*G + c0*ml + Tm;
+    if(LS(x,y)<0) return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_l(x,y)*ml + initial_concentration_l_sec(x,y)*ml_sec + Tm;
+    else          return LS(x,y)*G                                      + initial_concentration_l(x,y)*ml + initial_concentration_l_sec(x,y)*ml_sec + Tm;
+  }
+} initial_temperature;
 
 #endif
 
@@ -432,12 +503,12 @@ int main (int argc, char* argv[])
   cmd.add_option("save_velo", "1 to save velocity of the interface, 0 otherwise");
   cmd.add_option("save_every_n", "save vtk every n iteration");
   cmd.add_option("write_stats", "write the statistics about the p4est");
-	cmd.add_option("tf", "final time");
+  cmd.add_option("tf", "final time");
   cmd.add_option("L", "set latent heat");
   cmd.add_option("G", "set heat gradient");
   cmd.add_option("V", "set velocity");
   cmd.add_option("box_size", "set box_size");
-  cmd.add_option("alloy", "choose the type of alloy. Default is 0.\n  0 - NiCu\n  1 - AlCu");
+  cmd.add_option("alloy", "choose the type of alloy. Default is 0.\n  0 - NiCuCu\n  1 - NiAlTa");
   cmd.add_option("direction", "direction of the crystal growth x/y");
   cmd.add_option("Dl", "set the concentration diffusion coefficient in the liquid phase");
   cmd.add_option("eps_c", "set the curvature undercooling coefficient");
@@ -489,6 +560,7 @@ int main (int argc, char* argv[])
   V = cmd.get("V", V);
   box_size = cmd.get("box_size", box_size);
   Dl = cmd.get("Dl", Dl);
+  Dl_sec = cmd.get("Dl", Dl);
   eps_c = cmd.get("eps_c", eps_c);
   eps_v = cmd.get("eps_v", eps_v);
 
@@ -507,6 +579,9 @@ int main (int argc, char* argv[])
   eps_c                *= scaling;
   eps_v                /= scaling;
   lambda                = thermal_conductivity/(rho*heat_capacity);
+
+  Dl_sec               *= (scaling*scaling);
+  Ds_sec               *= (scaling*scaling);
 
   parStopWatch w1;
   w1.start("total time");
@@ -552,6 +627,13 @@ int main (int argc, char* argv[])
   sample_cf_on_nodes(p4est, nodes, initial_concentration_l, cl);
   sample_cf_on_nodes(p4est, nodes, initial_concentration_s, cs);
 
+  Vec cl_sec, cs_sec;
+  ierr = VecDuplicate(phi, &cl_sec         ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &cs_sec         ); CHKERRXX(ierr);
+
+  sample_cf_on_nodes(p4est, nodes, initial_concentration_l_sec, cl_sec);
+  sample_cf_on_nodes(p4est, nodes, initial_concentration_s_sec, cs_sec);
+
   Vec tmp;
   ierr = VecGhostGetLocalForm(normal_velocity, &tmp); CHKERRXX(ierr);
   ierr = VecSet(tmp, V); CHKERRXX(ierr);
@@ -583,17 +665,20 @@ int main (int argc, char* argv[])
 #endif
 
   /* initialize the solver */
-  my_p4est_bialloy_t bas(ngbd);
+  my_p4est_multialloy_t bas(ngbd);
   bas.set_parameters(latent_heat, thermal_conductivity, lambda,
-                     Dl, Ds, V, kp, c0, ml, Tm, eps_anisotropy, eps_c, eps_v, scaling);
+                     Dl, Ds, V, kp, c0, ml, Tm, eps_anisotropy, eps_c, eps_v, scaling,
+                     Dl_sec, Ds_sec, kp_sec, c0_sec, ml_sec);
   bas.set_phi(phi);
   bas.set_bc(wall_bc_type_temperature,
              wall_bc_type_concentration,
              wall_bc_value_temperature,
              wall_bc_value_concentration_s,
-             wall_bc_value_concentration_l);
+             wall_bc_value_concentration_l,
+             wall_bc_value_concentration_s_sec,
+             wall_bc_value_concentration_l_sec);
   bas.set_temperature(temperature);
-  bas.set_concentration(cl, cs);
+  bas.set_concentration(cl, cs, cl_sec, cs_sec);
   bas.set_normal_velocity(normal_velocity);
   bas.set_dt(dt);
 
@@ -625,12 +710,6 @@ int main (int argc, char* argv[])
 
   while(tn<t_final)
   {
-
-    if(save_vtk && iteration%save_every_n_iteration == 0)
-    {
-      bas.save_VTK(iteration/save_every_n_iteration);
-    }
-
     ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
 
     bas.one_step();
@@ -674,7 +753,6 @@ int main (int argc, char* argv[])
           nb_nodes_global += nodes->global_owned_indeps[r];
 
         std::cout << "The p4est has " << nb_nodes_global << " nodes." << std::endl;
-        std::cout << "The p4est has " << nodes->num_owned_indeps << " nodes." << std::endl;
       }
 
       Vec ones;
@@ -691,6 +769,12 @@ int main (int argc, char* argv[])
       PetscFPrintf(mpi.comm(), fich, "%e %e %e\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling);
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi.comm(), "saved velocity in %s\n", name); CHKERRXX(ierr);
+    }
+
+
+    if(save_vtk && iteration%save_every_n_iteration == 0)
+    {
+      bas.save_VTK(iteration/save_every_n_iteration);
     }
 
     iteration++;

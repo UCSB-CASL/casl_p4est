@@ -671,6 +671,13 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_matrix()
 
       /* now assemble the matrix */
       double volume = voro.get_volume();
+
+      if (volume < eps*eps)
+      {
+        ierr = MatSetValue(A, node_000_g, node_000_g, 1., ADD_VALUES); CHKERRXX(ierr);
+        continue;
+      }
+
       ierr = MatSetValue(A, node_000_g, node_000_g, add_p[n]*volume, ADD_VALUES); CHKERRXX(ierr);
       if(add_p[n]>0) matrix_has_nullspace = false;
 
@@ -692,13 +699,13 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_matrix()
 
         switch((*points)[m].n)
         {
-        case WALL_m00:
-        case WALL_p00:
-        case WALL_0m0:
-        case WALL_0p0:
+        case WALL_m00:break;
+        case WALL_p00:break;
+        case WALL_0m0:break;
+        case WALL_0p0:break;
 #ifdef P4_TO_P8
-        case WALL_00m:
-        case WALL_00p:
+        case WALL_00m:break;
+        case WALL_00p:break;
 #endif
         case INTERFACE:
           switch(bc->interfaceType())
@@ -709,13 +716,13 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_matrix()
             {
 //              if(add_p[n]*volume + mu*s*robin_coef_n/(1-robin_coef_n*phi_p[n]) < 0) std::cout << "my_p4est_poisson_nodes_voronoi_t - 2nd order - Warning ! negative diagonal coefficient !" << std::endl;
               ierr = MatSetValue(A, node_000_g, node_000_g, mu*s*robin_coef_n/(1-robin_coef_n*phi_p[n]), ADD_VALUES); CHKERRXX(ierr);
-              if(robin_coef_n>0) matrix_has_nullspace = false;
+              if(fabs(robin_coef_n)>0) matrix_has_nullspace = false;
             }
             else
             {
 //              if(add_p[n]*volume + mu*s*robin_coef_p[n] < 0) std::cout << "my_p4est_poisson_nodes_voronoi_t - 1st order - Warning ! negative diagonal coefficient !" << std::endl;
               ierr = MatSetValue(A, node_000_g, node_000_g, mu*s*robin_coef_p[n], ADD_VALUES); CHKERRXX(ierr);
-              if(robin_coef_p[n]>0) matrix_has_nullspace = false;
+              if(fabs(robin_coef_p[n])>0) matrix_has_nullspace = false;
             }
             break;
           default:
@@ -1197,6 +1204,11 @@ void my_p4est_poisson_nodes_voronoi_t::setup_negative_laplace_rhsvec()
       /* now update the right hand side */
       double volume = voro.get_volume();
       rhs_p[n] *= volume;
+
+      if (volume < eps*eps)
+      {
+        rhs_p[n] = 0; continue;
+      }
 
       const std::vector<Point2> *partition;
       const std::vector<Voronoi2DPoint> *points;
