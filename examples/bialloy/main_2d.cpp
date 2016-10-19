@@ -50,7 +50,7 @@
 
 int lmin = 3;
 int lmax = 10;
-int save_every_n_iteration = 100;
+int save_every_n_iteration = 10;
 
 using namespace std;
 
@@ -674,7 +674,6 @@ int main (int argc, char* argv[])
           nb_nodes_global += nodes->global_owned_indeps[r];
 
         std::cout << "The p4est has " << nb_nodes_global << " nodes." << std::endl;
-        std::cout << "The p4est has " << nodes->num_owned_indeps << " nodes." << std::endl;
       }
 
       Vec ones;

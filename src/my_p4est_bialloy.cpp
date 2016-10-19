@@ -844,16 +844,22 @@ void my_p4est_bialloy_t::compute_dt()
   dt_nm1 = dt_n;
 //  dt_n = 1 * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);
 //  dt_n = 1 * dxyz_min / MAX(u_max,1e-7);
-  dt_n = .5 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+  dt_n = .25 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
   PetscPrintf(p4est->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e\n", u_max, vgamma_max, cooling_velocity);
 
-//  if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
-  if(0 && dt_n>0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))))
-  {
-//    dt_n = MIN(dt_n, 0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max));
-    dt_n = MIN(dt_n, 0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))));
-    ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
-  }
+////  if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
+//  if(0&dt_n>0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))))
+//  {
+////    dt_n = MIN(dt_n, 0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max));
+//    dt_n = MIN(dt_n, 0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))));
+//    ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
+//  }
+
+    if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
+    {
+      dt_n = MIN(dt_n, 0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max));
+      ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
+    }
   PetscPrintf(p4est->mpicomm, "dt = %e\n", dt_n);
 }
 
