@@ -2,6 +2,8 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
+#include <iterator>
 
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_level_set.h>
@@ -14,9 +16,6 @@
 #include <src/casl_math.h>
 
 using namespace std;
-
-#define MAX_BLOCK_SIZE 32
-//#define FAST_SURFACE_COMPUTATION
 
 istream& operator >> (istream& is, Atom& atom) {
   string ignore [4];
@@ -31,7 +30,7 @@ ostream& operator << (ostream& os, Atom& atom) {
 }
 
 BioMolecule::BioMolecule(my_p4est_brick_t& brick, const mpi_environment_t &mpi)
-  : mpi(mpi), myb(brick), xc_(0.), yc_(0.), zc_(0.), rp_(1.4)
+  : mpi(mpi), myb(brick), xc_(0.), yc_(0.), zc_(0.), rp_(1.4), atom_tree(brick,rp_), fast_gen(true), tree_built(false)
 {
   Dx_ = brick.xyz_max[0] - brick.xyz_min[0];
   Dy_ = brick.xyz_max[1] - brick.xyz_min[1];
@@ -98,13 +97,16 @@ void BioMolecule::read(const string &pqr) {
             myb.xyz_min[1] + 0.5*Dy_,
             myb.xyz_min[2] + 0.5*Dz_);
   set_scale(0.25);
-  partition_atoms();
+
+  if(fast_gen)
+      use_fast_surface_generation();
+  else
+      use_brute_force_surface_generation();
+
+
 }
 
 void BioMolecule::translate(double xc, double yc, double zc) {
-
-  is_partitioned = false;
-
   // move the atoms to the new location
   for (size_t i = 0; i<atoms.size(); i++){
     atoms[i].x += (xc - xc_);
@@ -118,7 +120,6 @@ void BioMolecule::translate(double xc, double yc, double zc) {
 }
 
 void BioMolecule::set_scale(double s) {
-  is_partitioned = false;
 
   // reset the position of atoms
   s_ = s*D_/L_;
@@ -136,61 +137,67 @@ void BioMolecule::set_scale(double s) {
 
   rp_ *= s_;
   L_  *= s_;
+
+
+  atom_tree.set_probe_radius(rp_);
+  atom_tree.set_max_atom_radius(rmax_);
 }
 
 double BioMolecule::get_scale() const {
   return s_;
 }
+int BioMolecule::get_number_of_atoms() const {
+  return atoms.size();
+}
 
-void BioMolecule::partition_atoms(){
-#ifdef FAST_SURFACE_COMPUTATION
-  if (is_partitioned) return;
+void BioMolecule::reduce_to_single_atom()
+{
+    std::vector<Atom> atoms_new;
 
-  int N = MIN((int)floor(L_/rmax_), MAX_BLOCK_SIZE); // to ensure locality
+    atoms_new.push_back(atoms[0]);
+    atoms = atoms_new;
 
-  double d = L_/N;
-  double xmin = xc_ - 0.5*L_;
-  double ymin = yc_ - 0.5*L_;
-  double zmin = zc_ - 0.5*L_;
+}
 
-  cell2atom.resize(N*N*N);
-  cell_buffer.resize((N+1)*(N+1)*(N+1));
 
-  for (size_t i = 0; i<atoms.size(); i++) {
-    const Atom& a = atoms[i];
-    int ci = floor((a.x-xmin) / d);
-    int cj = floor((a.y-ymin) / d);
-    int ck = floor((a.z-zmin) / d);
+void BioMolecule::use_fast_surface_generation()
+{
+    fast_gen = true;
+    atom_tree.build_tree(atoms, myb);
+    tree_built = true;
 
-    int cell_idx = N*N*ck + N*cj + ci;
-    cell2atom[cell_idx].push_back(i);
-  }
+}
 
-  // update buffer values
-  for (int ck = 0; ck <= N; ck++){
-    double z = ck*d + zmin;
-    for (int cj = 0; cj <= N; cj++) {
-      double y = cj*d + ymin;
-      for (int ci = 0; ci <= N; ci++) {
-        double x = ci*d + xmin;
-        int idx = (N+1)*(N+1)*ck + (N+1)*cj + ci;
+void BioMolecule::use_brute_force_surface_generation()
+{
+    fast_gen = false;
+    atom_tree.clear_tree();
+}
 
-        const Atom& a = atoms[0];
-        cell_buffer[idx] = rp_ + a.r - sqrt(SQR(x - a.x) + SQR(y - a.y) + SQR(z - a.z));
-        for (size_t m = 1; m<atoms.size(); m++){
-          const Atom& a = atoms[m];
-          cell_buffer[idx] = MAX(cell_buffer[idx], rp_ + a.r - sqrt(SQR(x - a.x) + SQR(y - a.y) + SQR(z - a.z)));
-        }
-      }
+void BioMolecule::atoms_queried_per_node(p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t *&ghost, my_p4est_brick_t &brick, Vec &atom_count)
+{
+
+    PetscErrorCode ierr = VecCreateGhostNodes(p4est, nodes, &atom_count); CHKERRXX(ierr);
+    double *atom_count_p;
+
+    ierr = VecGetArray(atom_count, &atom_count_p); CHKERRXX(ierr);
+
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++) {
+      double xyz [P4EST_DIM];
+      node_xyz_fr_n(i, p4est, nodes, xyz);
+
+      atom_count_p[i] = atom_tree.num_atoms_queried(xyz[0], xyz[1], xyz[2]);
     }
-  }
 
-  is_partitioned = true;
-#endif
+    ierr = VecRestoreArray(atom_count, &atom_count_p); CHKERRXX(ierr);
+
+
+
 }
 
 void BioMolecule::set_probe_radius(double rp) {
   rp_ = s_*rp;
+  atom_tree.set_probe_radius(rp_);
 }
 
 void BioMolecule::subtract_probe_radius(Vec phi) {
@@ -203,82 +210,18 @@ void BioMolecule::subtract_probe_radius(Vec phi) {
 double BioMolecule::operator ()(double x, double y, double z) const {
   double phi = -DBL_MAX;
 
-#ifdef FAST_SURFACE_COMPUTATION
-  // find the cell index for the point
-  int N = MIN((int)floor(L_/rmax_), MAX_BLOCK_SIZE);
-  double d = L_/N;
-  double xmin = xc_ - 0.5*L_;
-  double ymin = yc_ - 0.5*L_;
-  double zmin = zc_ - 0.5*L_;
-
-  int ci = floor((x-xmin) / d);
-  int cj = floor((y-ymin) / d);
-  int ck = floor((z-zmin) / d);
-
-  if (ci < 0)        ci = 0;
-  else if (ci > N-1) ci = N-1;
-  if (cj < 0)        cj = 0;
-  else if (cj > N-1) cj = N-1;
-  if (ck < 0)        ck = 0;
-  else if (ck > N-1) ck = N-1;
-
-  bool is_phi_computed = false;
-  for (int k = ck-1; k <= ck+1; k++){
-    if (k<0 || k>=N) continue;
-
-    for (int j = cj-1; j <= cj+1; j++){
-      if (j<0 || j>=N) continue;
-
-      for (int i = ci-1; i <= ci+1; i++){
-        if (i<0 || i>=N) continue;
-
-        int cell_idx = N*N*k + N*j + i;
-        const vector<int>& mapping = cell2atom[cell_idx];
-
-        for (size_t m = 0; m < mapping.size(); m++) {
-          const Atom& a = atoms[mapping[m]];
-          phi = MAX(phi, a.r + rp_ - sqrt(SQR(x - a.x) + SQR(y - a.y) + SQR(z - a.z)));
-          is_phi_computed = true;
-        }
-      }
-    }
-  }
-
-  if (!is_phi_computed) {
-    double s [] = {(x-xmin)/d - ci, (ci+1) - (x-xmin)/d, (y-ymin)/d - cj, (cj+1) - (y-ymin)/d, (z-zmin)/d - ck, (ck+1) - (z-zmin)/d};
-    bool is_outside_box = false;
-    for (int i=0; i<2*P4EST_DIM; i++){
-      if (s[i] < 0)      {s[i] = 0; is_outside_box = true;}
-      else if (s[i] > 1) {s[i] = 1; is_outside_box = true;}
-    }
-    double w [] = {s[1]*s[3]*s[5],
-                   s[0]*s[3]*s[5],
-                   s[1]*s[2]*s[5],
-                   s[0]*s[2]*s[5],
-                   s[1]*s[3]*s[4],
-                   s[0]*s[3]*s[4],
-                   s[1]*s[2]*s[4],
-                   s[0]*s[2]*s[4]};
-
-    int idx = (N+1)*(N+1)*ck + (N+1)*cj + ci;
-    phi = w[0]*cell_buffer[idx] +
-          w[1]*cell_buffer[idx + 1] +
-          w[2]*cell_buffer[idx + (N+1)] +
-          w[3]*cell_buffer[idx + (N+1) + 1] +
-          w[4]*cell_buffer[idx + (N+1)*(N+1)] +
-          w[5]*cell_buffer[idx + (N+1)*(N+1) + 1] +
-          w[6]*cell_buffer[idx + (N+1)*(N+1) + N+1] +
-          w[7]*cell_buffer[idx + (N+1)*(N+1) + N+1 + 1];
-
-    if (is_outside_box)
-      phi -= sqrt(SQR(x - (ci+0.5)*d - xmin) + SQR(y - (cj+0.5)*d - ymin) + SQR(z - (ck+0.5)*d - zmin));
-  }
-#else
+if(fast_gen)
+{
+    phi=atom_tree.dist_from_surface(x,y,z);
+}
+else
+{
   for (size_t m = 0; m < atoms.size(); m++) {
     const Atom& a = atoms[m];
     phi = MAX(phi, a.r + rp_ - sqrt(SQR(x - a.x) + SQR(y - a.y) + SQR(z - a.z)));
   }
-#endif
+}
+
   return phi;
 }
 
@@ -289,31 +232,18 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
 
   // split based on the SAS distance
   parStopWatch w;
-  w.start("making intial tree");
-//  class distance_mask_t: public CF_3{
-//    const BioMolecule& mol;
-//    double d;
-//  public:
-//    distance_mask_t(const BioMolecule* mol, double d): mol(*mol), d(d) {}
-//    double operator ()(double x, double y, double z) const {
-//      return d - fabs(mol(x,y,z));
-//    }
-//  };
 
-//  distance_mask_t mask(this, 1.5*rp_);
-//  splitting_criteria_thresh_t sp_thr(sp->min_lvl, sp->max_lvl, &mask, 0);
   splitting_criteria_cf_t sp_thr(sp->min_lvl, sp->max_lvl, this, 3);
   p4est->user_pointer = &sp_thr;
 
-	// refine and partition
-	// Note: Using recursive on large molecules causes the whole thing to be build in serial on 
-	// one processor which is obviously not scalable 
-	for (int l = 0; l<sp->max_lvl; l++){
+    // refine and partition
+    // Note: Using recursive on large molecules causes the whole thing to be build in serial on
+    // one processor which is obviously not scalable
+    for (int l = 0; l<sp->max_lvl; l++){
     my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
     my_p4est_partition(p4est, P4EST_TRUE, NULL);
-	}
-
-  PetscPrintf(p4est->mpicomm, "num of global quadrants = %ld\n", p4est->global_num_quadrants);
+    //cout<<l<<" "<<p4est->local_num_quadrants<<endl;
+    }
 
   // create the ghost layer
   ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
@@ -324,7 +254,7 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
   // calculate the SAS on
   PetscErrorCode ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   sample_cf_on_nodes(p4est, nodes, *this, phi);
-  w.stop(); w.read_duration();
+  //w.stop(); w.read_duration();
 
 
   // subtract off the probe radius to get SES
@@ -357,7 +287,7 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
     double *phi_tmp_p;
     ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
 
-    for (size_t i = 0; i<nodes_tmp->indep_nodes.elem_count; i++) {      
+    for (size_t i = 0; i<nodes_tmp->indep_nodes.elem_count; i++) {
       double xyz [P4EST_DIM];
       node_xyz_fr_n(i, p4est_tmp, nodes_tmp, xyz);
 
@@ -365,6 +295,7 @@ void BioMolecule::construct_SES_by_reinitialization(p4est_t* &p4est, p4est_nodes
     }
     phi_interp.set_input(phi, linear);
     phi_interp.interpolate(phi_tmp);
+
 
     /* dont do the final refinement */
     if (l == sp->max_lvl) break;
