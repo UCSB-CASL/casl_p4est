@@ -82,6 +82,7 @@ public:
   void set_phi(Vec phi);
   void solve_linear(Vec& psi_molecule, Vec &psi_electrolyte);
   void solve_nonlinear(Vec& psi_molecule, Vec &psi_electrolyte, int itmax = 10, double tol = 1e-6);
+  void solve_nonlinear_voronoi(Vec& psi_molecule, Vec &psi_electrolyte, int itmax = 10, double tol = 1e-6);
 };
 
 #endif // BIO_MOLECULE_H
