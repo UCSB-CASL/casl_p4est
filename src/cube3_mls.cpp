@@ -2,8 +2,8 @@
 
 void cube3_mls_t::construct_domain()
 {
-  bool use_linear = false;
-  if (phi_xx == NULL || phi_yy == NULL || phi_zz == NULL) use_linear = true;
+//  bool use_linear = false;
+//  if (phi_xx == NULL || phi_yy == NULL || phi_zz == NULL) use_linear = true;
 
   bool all_positive, all_negative;
 
@@ -15,7 +15,7 @@ void cube3_mls_t::construct_domain()
   loc = INS;
 //  double F[8];
   double *F;
-  for (int i = 0; i < action->size(); i++)
+  for (unsigned int i = 0; i < action->size(); i++)
   {
     all_negative = true;
     all_positive = true;
@@ -170,13 +170,13 @@ void cube3_mls_t::construct_domain()
     /* Split a cube into 5 simplices */
     simplex.clear();
     simplex.reserve(NTETS);
-    simplex.push_back(simplex3_mls_t(x[t0p0],y[t0p0],z[t0p0], x[t0p1],y[t0p1],z[t0p1], x[t0p2],y[t0p2],z[t0p2], x[t0p3],y[t0p3],z[t0p3]));
-    simplex.push_back(simplex3_mls_t(x[t1p0],y[t1p0],z[t1p0], x[t1p1],y[t1p1],z[t1p1], x[t1p2],y[t1p2],z[t1p2], x[t1p3],y[t1p3],z[t1p3]));
-    simplex.push_back(simplex3_mls_t(x[t2p0],y[t2p0],z[t2p0], x[t2p1],y[t2p1],z[t2p1], x[t2p2],y[t2p2],z[t2p2], x[t2p3],y[t2p3],z[t2p3]));
-    simplex.push_back(simplex3_mls_t(x[t3p0],y[t3p0],z[t3p0], x[t3p1],y[t3p1],z[t3p1], x[t3p2],y[t3p2],z[t3p2], x[t3p3],y[t3p3],z[t3p3]));
-    simplex.push_back(simplex3_mls_t(x[t4p0],y[t4p0],z[t4p0], x[t4p1],y[t4p1],z[t4p1], x[t4p2],y[t4p2],z[t4p2], x[t4p3],y[t4p3],z[t4p3]));
+    simplex.push_back(simplex3_mls_t(x[t0p0],y[t0p0],z[t0p0], x[t0p1],y[t0p1],z[t0p1], x[t0p2],y[t0p2],z[t0p2], x[t0p3],y[t0p3],z[t0p3])); simplex.back().set_use_linear(use_linear);
+    simplex.push_back(simplex3_mls_t(x[t1p0],y[t1p0],z[t1p0], x[t1p1],y[t1p1],z[t1p1], x[t1p2],y[t1p2],z[t1p2], x[t1p3],y[t1p3],z[t1p3])); simplex.back().set_use_linear(use_linear);
+    simplex.push_back(simplex3_mls_t(x[t2p0],y[t2p0],z[t2p0], x[t2p1],y[t2p1],z[t2p1], x[t2p2],y[t2p2],z[t2p2], x[t2p3],y[t2p3],z[t2p3])); simplex.back().set_use_linear(use_linear);
+    simplex.push_back(simplex3_mls_t(x[t3p0],y[t3p0],z[t3p0], x[t3p1],y[t3p1],z[t3p1], x[t3p2],y[t3p2],z[t3p2], x[t3p3],y[t3p3],z[t3p3])); simplex.back().set_use_linear(use_linear);
+    simplex.push_back(simplex3_mls_t(x[t4p0],y[t4p0],z[t4p0], x[t4p1],y[t4p1],z[t4p1], x[t4p2],y[t4p2],z[t4p2], x[t4p3],y[t4p3],z[t4p3])); simplex.back().set_use_linear(use_linear);
 #ifdef CUBE3_MLS_KUHN
-    simplex.push_back(simplex3_mls_t(x[t5p0],y[t5p0],z[t5p0], x[t5p1],y[t5p1],z[t5p1], x[t5p2],y[t5p2],z[t5p2], x[t5p3],y[t5p3],z[t5p3]));
+    simplex.push_back(simplex3_mls_t(x[t5p0],y[t5p0],z[t5p0], x[t5p1],y[t5p1],z[t5p1], x[t5p2],y[t5p2],z[t5p2], x[t5p3],y[t5p3],z[t5p3])); simplex.back().set_use_linear(use_linear);
 #endif
 
     // TODO: mark appropriate edges for integrate_in_dir
@@ -210,18 +210,18 @@ void cube3_mls_t::construct_domain()
                                                          simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y, simplex[k].vtxs[i_vtx].z);
 
           // edges
-          for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
-            if (!simplex[k].edgs[i_edg].is_split)
-            {
-              val0 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx0].value;
-              val1 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx1].value;
+//          for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
+//            if (!simplex[k].edgs[i_edg].is_split)
+//            {
+//              val0 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx0].value;
+//              val1 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx1].value;
 
-              if (val0*val1 < 0.0)
-              {
-                simplex[k].get_edge_coords(i_edg,xyz);
-                simplex[k].edgs[i_edg].value = interp.linear(phi->at(i_phi).data(), xyz[0], xyz[1], xyz[2]);
-              }
-            }
+//              if (val0*val1 < 0.0)
+//              {
+//                simplex[k].get_edge_coords(i_edg,xyz);
+//                simplex[k].edgs[i_edg].value = interp.linear(phi->at(i_phi).data(), xyz[0], xyz[1], xyz[2]);
+//              }
+//            }
         } else {
           //vertices
           for (int i_vtx = 0; i_vtx < n_vtxs; i_vtx++)
@@ -233,13 +233,13 @@ void cube3_mls_t::construct_domain()
                                                             simplex[k].vtxs[i_vtx].y,
                                                             simplex[k].vtxs[i_vtx].z);
           // edges
-          for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
+          for (unsigned int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
             if (!simplex[k].edgs[i_edg].is_split)
             {
               val0 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx0].value;
               val1 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx1].value;
 
-//              if (val0*val1 < 0.0)
+              if (val0*val1 <= 0.0)
               {
                 simplex[k].get_edge_coords(i_edg,xyz);
                 simplex[k].edgs[i_edg].value = interp.quadratic(phi->at(i_phi).data(),
@@ -265,7 +265,7 @@ double cube3_mls_t::integrate_over_domain(double* F)
     double f[8]; interpolate_to_cube(F, f);
       return (x1-x0)*(y1-y0)*(z1-z0)*(f[0]+f[1]+f[2]+f[3]+f[4]+f[5]+f[6]+f[7])/8.0;
   } break;
-  case OUT: return 0.0;                                                                     break;
+  case OUT: return 0.0; break;
   case FCE:
   {
     double f[8]; interpolate_to_cube(F, f);
@@ -278,7 +278,17 @@ double cube3_mls_t::integrate_over_domain(double* F)
     #endif
         +  simplex[4].integrate_over_domain(f[t4p0], f[t4p1], f[t4p2], f[t4p3]);
   } break;
+    default:
+#ifdef CASL_THROWS
+      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+      return 0;
   }
+
+#ifdef CASL_THROWS
+  throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+  return 0;
 }
 
 double cube3_mls_t::integrate_over_interface(double *F, int num)
@@ -381,10 +391,15 @@ double cube3_mls_t::integrate_in_dir(double *F, int dir)
 #endif
            simplex[4].integrate_in_dir(f[t4p0], f[t4p1], f[t4p2], f[t4p3], dir);
   }
+    default:
+#ifdef CASL_THROWS
+      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+      return 0;
   }
 }
 
-double cube3_mls_t::interpolate_to_cube(double *in, double *out)
+void cube3_mls_t::interpolate_to_cube(double *in, double *out)
 {
   out[0] = interp.linear(in, x0, y0, z0);
   out[1] = interp.linear(in, x1, y0, z0);
@@ -416,6 +431,11 @@ double cube3_mls_t::measure_of_domain()
     #endif
         +  simplex[4].integrate_over_domain(1.,1.,1.,1.);
   } break;
+    default:
+#ifdef CASL_THROWS
+      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+      return 0;
   }
 }
 
@@ -496,6 +516,11 @@ double cube3_mls_t::measure_in_dir(int dir)
 #endif
            simplex[4].integrate_in_dir(1.,1.,1.,1., dir);
   }
+    default:
+#ifdef CASL_THROWS
+      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+      return 0;
   }
 }
 

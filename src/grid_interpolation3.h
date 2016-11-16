@@ -20,7 +20,7 @@ public:
   grid_interpolation3_t(double xm = 0., double xp = 1.,
                         double ym = 0., double yp = 1.,
                         double zm = 0., double zp = 1.,
-                        int nx = 1, int ny = 1, int nz = 1) : eps(1.0E-15)
+                        int nx = 1, int ny = 1, int nz = 1) : eps(1.0E-14)
   {
     initialize(xm, xp, ym, yp, zm, zp, nx, ny, nz);
   }

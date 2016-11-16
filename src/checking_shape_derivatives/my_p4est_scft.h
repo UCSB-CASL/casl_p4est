@@ -104,6 +104,7 @@ public:
   std::vector<Vec> kappa;
 
   Vec energy_shape_deriv;
+  Vec energy_shape_deriv_alt;
   Vec contact_term_of_energy_shape_deriv;
 
   /* Poisson solver */
@@ -115,6 +116,8 @@ public:
   int ns_total;
   int fns_adaptive;
   std::vector<double> ds_list, ds_adaptive;
+
+  std::vector<Vec> f_a, f_b, g_a, g_b;
 
 //public:
   my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd);
@@ -143,7 +146,7 @@ public:
 
   double integrate_in_time(int start, int end, double *integrand);
 
-  void diffusion_step(my_p4est_poisson_nodes_mls_t *solver, Vec &sol, Vec &sol_nm1, double ds_local);
+  void diffusion_step(my_p4est_poisson_nodes_mls_t *solver, Vec &sol, Vec &sol_nm1, double ds_local, int is, bool forward);
 
   void save_VTK(int compt);
 
@@ -159,16 +162,19 @@ public:
   double compute_rho_a(double *integrand);
   double compute_rho_b(double *integrand);
 
-  void compute_normal_and_curvature();
-
   void compute_energy_shape_derivative(int phi_idx);
-  void compute_energy_shape_derivative_contact_term(int phi0_idx, int phi1_idx);
-
+  void compute_energy_shape_derivative_alt(int phi_idx);
+  void compute_normal_and_curvature();
+  void compute_contact_term_of_energy_shape_derivative(int phi0_idx, int phi1_idx);
   double compute_change_in_energy(int phi_idx, Vec norm_velo, double dt);
-  double compute_change_in_energy_contact_term(int phi0_idx, int phi1_idx, Vec norm_velo, double dt);
-
+  double compute_change_in_energy_alt(int phi_idx, Vec norm_velo, double dt);
   void update_grid(Vec normal_velo, int surf_idx, double dt);
 
+
+  void set_force_and_bc(CF_2& f_a_cf, CF_2& f_b_cf, CF_2& g_a_cf, CF_2& g_b_cf);
+  void set_ic(CF_2& u_exact);
+
+  void set_exact_solutions(CF_2& qf_cf, CF_2& qb_cf);
 
   void save_VTK_q(int compt);
 

@@ -17,7 +17,7 @@ public:
   double eps;
 
 
-  grid_interpolation2_t(double xm = 0., double xp = 1., double ym = 0., double yp = 1., int nx = 1, int ny = 1) : eps(1.0E-15)
+  grid_interpolation2_t(double xm = 0., double xp = 1., double ym = 0., double yp = 1., int nx = 1, int ny = 1) : eps(1.0E-14)
   {
     initialize(xm, xp, ym, yp, nx, ny);
   }

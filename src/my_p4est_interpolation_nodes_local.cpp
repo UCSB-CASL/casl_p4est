@@ -60,6 +60,7 @@ void my_p4est_interpolation_nodes_local_t::initialize(p4est_locidx_t n)
       else /* in the ghost layer */
       {
         quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx[i_quad]-p4est->local_num_quadrants);
+        /* TODO: make sure that a ghost quadrant and a tree are consistent */
       }
 
 //      p4est_locidx_t quad_idx_tree = quad_idx[i_quad] - tree->quadrants_offset;

@@ -67,7 +67,7 @@ public:
 
   void initialize();
 
-  void set_p4est  (p4est_t *p4est_, p4est_nodes_t *nodes_)                                {p4est = p4est_; nodes = nodes_;}
+  void set_p4est  (p4est_t *p4est_, p4est_nodes_t *nodes_) {p4est = p4est_; nodes = nodes_;}
 
 #ifdef P4_TO_P8
   void set_phi    (std::vector<CF_3 *> &phi_cf_,

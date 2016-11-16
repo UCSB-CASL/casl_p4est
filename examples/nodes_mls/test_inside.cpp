@@ -17,7 +17,7 @@ int nb_splits = 3;
 #else
 int lmin = 5;
 int lmax = 7;
-int nb_splits = 3;
+int nb_splits = 6;
 #endif
 
 int nx = 1;
@@ -38,7 +38,7 @@ double r3 =  0.6;
 double d  =  0.25;
 #else
 double r0 =  0.53;
-double r1 =  0.4;
+double r1 =  -0.4;
 double r2 =  0.61;
 double r3 =  0.5;
 double d  =  0.25;
@@ -297,6 +297,27 @@ public:
     }
   }
 } uy;
+
+class UXX: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    switch (n_test){
+      case 0: return -PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y);
+    }
+  }
+} uxx;
+class UYY: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    switch (n_test){
+      case 0: return -PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y);
+    }
+  }
+} uyy;
 #endif
 
 // Diffusion coefficient
@@ -397,7 +418,8 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-    case 0: return x*y+exp(y)*sin(x);
+        case 0: return 0;
+//    case 0: return x*y+exp(y)*sin(x);
     }
   }
 } diag_add_cf;
@@ -606,6 +628,63 @@ public:
       }
     }
     return phi_total;
+  }
+};
+
+#ifdef P4_TO_P8
+class level_set_tot_diff_t : public CF_3
+#else
+class level_set_tot_diff_t : public CF_2
+#endif
+{
+#ifdef P4_TO_P8
+  std::vector<CF_3 *>   *phi_cf;
+#else
+  std::vector<CF_2 *>   *phi_cf;
+#endif
+  std::vector<action_t> *action;
+  std::vector<int>      *color;
+  double epsilon;
+
+public:
+
+#ifdef P4_TO_P8
+  level_set_tot_diff_t(std::vector<CF_3 *> *phi_cf, std::vector<action_t> *action, std::vector<int> *color, double epsilon) :
+#else
+  level_set_tot_diff_t(std::vector<CF_2 *> *phi_cf, std::vector<action_t> *action, std::vector<int> *color, double epsilon) :
+#endif
+    phi_cf(phi_cf), action(action), color(color), epsilon(epsilon) {}
+
+#ifdef P4_TO_P8
+  double operator()(double x, double y, double z) const
+#else
+  double operator()(double x, double y) const
+#endif
+  {
+    double phi_total = -10;
+    double phi_current = -10;
+    for (short i = 0; i < color->size(); ++i)
+    {
+      if (action->at(i) == INTERSECTION)
+      {
+#ifdef P4_TO_P8
+        phi_current = (*phi_cf->at(i))(x,y,z);
+#else
+        phi_current = (*phi_cf->at(i))(x,y);
+#endif
+        phi_total = 0.5*(phi_total+phi_current+sqrt(SQR(phi_total-phi_current)+epsilon));
+//        if (phi_current > phi_total) phi_total = phi_current;
+      } else if (action->at(i) == ADDITION) {
+#ifdef P4_TO_P8
+        phi_current = (*phi_cf->at(i))(x,y,z);
+#else
+        phi_current = (*phi_cf->at(i))(x,y);
+#endif
+        phi_total = 0.5*(phi_total+phi_current-(sqrt(SQR(phi_total-phi_current)+epsilon)-epsilon/sqrt(SQR(phi_total-phi_current)+epsilon)));
+//        if (phi_current < phi_total) phi_total = phi_current;
+      }
+    }
+    return phi_total;//+epsilon;
   }
 };
 

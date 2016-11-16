@@ -21,6 +21,8 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 class simplex3_mls_t
 {
 public:
+  double eps;
+
   struct vtx3_t // vertex
   {
     /* Structure and properties */
@@ -203,6 +205,8 @@ public:
       else      f = -epsilon;
     }
   }
+
+  void set_use_linear(bool val) { use_linear = val; }
 
 #ifdef CASL_THROWS
   bool tri_is_ok(int v0, int v1, int v2, int e0, int e1, int e2);

@@ -1,13 +1,15 @@
 #include "simplex2_mls.h"
 #include "casl_math.h"
 
-#define EPS 1.0e-20
-
 simplex2_mls_t::simplex2_mls_t()
 {
   vtxs.reserve(8);
   edgs.reserve(27);
   tris.reserve(20);
+
+  use_linear = true;
+
+  eps = 1.0e-15;
 }
 
 simplex2_mls_t::simplex2_mls_t(double x0, double y0,
@@ -31,7 +33,9 @@ simplex2_mls_t::simplex2_mls_t(double x0, double y0,
 
   tris.push_back(tri2_t(0,1,2,0,1,2));
 
-  use_linear = false;
+  use_linear = true;
+
+  eps = 1.0e-15;
 }
 
 void simplex2_mls_t::do_action(int cn, action_t action)
@@ -47,7 +51,7 @@ void simplex2_mls_t::do_action_vtx(int n_vtx, int cn, action_t action)
 {
   vtx2_t *vtx = &vtxs[n_vtx];
 
-  perturb(vtx->value, EPS);
+  perturb(vtx->value, eps);
 
   switch (action){
   case INTERSECTION:  if (vtx->value > 0)                                      vtx->set(OUT, -1, -1);  break;
@@ -139,6 +143,10 @@ void simplex2_mls_t::do_action_edg(int n_edg, int cn, action_t action)
       case OUT: c_vtx01->set(OUT, -1, -1); c_edg0->set(OUT, -1); c_edg1->set(OUT, -1); break;
       case INS: c_vtx01->set(FCE, cn, -1); c_edg0->set(INS, -1); c_edg1->set(OUT, -1); break;
       case FCE: c_vtx01->set(PNT, c0, cn); c_edg0->set(FCE, c0); c_edg1->set(OUT, -1); if (c0==cn)  c_vtx01->set(FCE, c0, -1);  break;
+        default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
       }
       break;
     case ADDITION:
@@ -146,6 +154,10 @@ void simplex2_mls_t::do_action_edg(int n_edg, int cn, action_t action)
       case OUT: c_vtx01->set(FCE, cn, -1); c_edg0->set(INS, -1); c_edg1->set(OUT, -1); break;
       case INS: c_vtx01->set(INS, -1, -1); c_edg0->set(INS, -1); c_edg1->set(INS, -1); break;
       case FCE: c_vtx01->set(PNT, c0, cn); c_edg0->set(INS, -1); c_edg1->set(FCE, c0); if (c0==cn)  c_vtx01->set(FCE, c0, -1);  break;
+        default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
       }
       break;
     case COLORATION:
@@ -153,6 +165,10 @@ void simplex2_mls_t::do_action_edg(int n_edg, int cn, action_t action)
       case OUT: c_vtx01->set(OUT, -1, -1); c_edg0->set(OUT, -1); c_edg1->set(OUT, -1); break;
       case INS: c_vtx01->set(INS, -1, -1); c_edg0->set(INS, -1); c_edg1->set(INS, -1); break;
       case FCE: c_vtx01->set(PNT, c0, cn); c_edg0->set(FCE, cn); c_edg1->set(FCE, c0); if (c0==cn)  c_vtx01->set(FCE, c0, -1);  break;
+        default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
       }
       break;
     }
@@ -195,7 +211,10 @@ void simplex2_mls_t::do_action_tri(int n_tri, int cn, action_t action)
   if (tri->vtx0 != edgs[tri->edg1].vtx0 || tri->vtx0 != edgs[tri->edg2].vtx0 ||
       tri->vtx1 != edgs[tri->edg0].vtx0 || tri->vtx1 != edgs[tri->edg2].vtx1 ||
       tri->vtx2 != edgs[tri->edg0].vtx1 || tri->vtx2 != edgs[tri->edg1].vtx1)
+  {
+    std::cout << vtxs[tri->vtx0].value << " : " << vtxs[tri->vtx1].value << " : " << vtxs[tri->vtx2].value << std::endl;
     throw std::domain_error("[CASL_ERROR]: Vertices of a triangle and edges do not coincide after sorting.");
+  }
 
   /* check whether appropriate edges have been splitted */
   int e0_type_expect, e1_type_expect, e2_type_expect;
@@ -286,16 +305,28 @@ void simplex2_mls_t::do_action_tri(int n_tri, int cn, action_t action)
       switch (tri->loc){
       case OUT: c_edg0->set(OUT, -1); c_edg1->set(OUT, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
       case INS: c_edg0->set(FCE, cn); c_edg1->set(OUT, -1); c_tri0->set(INS); c_tri1->set(OUT); c_tri2->set(OUT); break;
+        default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
       } break;
     case ADDITION:
       switch (tri->loc){
       case OUT: c_edg0->set(FCE, cn); c_edg1->set(OUT, -1); c_tri0->set(INS); c_tri1->set(OUT); c_tri2->set(OUT); break;
       case INS: c_edg0->set(INS, -1); c_edg1->set(INS, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
+        default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
       } break;
     case COLORATION:
       switch (tri->loc){
       case OUT: c_edg0->set(OUT, -1); c_edg1->set(OUT, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
       case INS: c_edg0->set(INS, -1); c_edg1->set(INS, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
+        default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
       } break;
     }
     break;
@@ -354,16 +385,28 @@ void simplex2_mls_t::do_action_tri(int n_tri, int cn, action_t action)
       switch (tri->loc){
       case OUT: c_edg0->set(OUT, -1); c_edg1->set(OUT, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
       case INS: c_edg0->set(INS, -1); c_edg1->set(FCE, cn); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(OUT); break;
+        default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
       } break;
     case ADDITION:
       switch (tri->loc){
       case OUT: c_edg0->set(INS, -1); c_edg1->set(FCE, cn); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(OUT); break;
       case INS: c_edg0->set(INS, -1); c_edg1->set(INS, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
+        default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
       } break;
     case COLORATION:
       switch (tri->loc){
       case OUT: c_edg0->set(OUT, -1); c_edg1->set(OUT, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
       case INS: c_edg0->set(INS, -1); c_edg1->set(INS, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
+        default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
       } break;
     }
     break;
@@ -385,7 +428,7 @@ void simplex2_mls_t::do_action_tri(int n_tri, int cn, action_t action)
 bool simplex2_mls_t::need_swap(int v0, int v1)
 {
   double dif = vtxs[v0].value - vtxs[v1].value;
-  if (fabs(dif) < EPS){ // if values are too close, sort vertices by their numbers
+  if (fabs(dif) < eps){ // if values are too close, sort vertices by their numbers
     if (v0 > v1) return true;
     else         return false;
   } else if (dif > 0.0){ // otherwise sort by values
@@ -417,7 +460,7 @@ double simplex2_mls_t::integrate_over_domain(double f0, double f1, double f2)
   double result = 0.0;
 
   /* integrate over triangles */
-  for (int i = 0; i < tris.size(); i++)
+  for (unsigned int i = 0; i < tris.size(); i++)
   {
     tri2_t *t = &tris[i];
     if (!t->is_split && t->loc == INS)
@@ -440,7 +483,7 @@ double simplex2_mls_t::integrate_over_interface(double f0, double f1, double f2,
   double result = 0.0;
 
   /* integrate over edges */
-  for (int i = 0; i < edgs.size(); i++)
+  for (unsigned int i = 0; i < edgs.size(); i++)
   {
     edg2_t *e = &edgs[i];
     if (!e->is_split && e->loc == FCE)
@@ -460,7 +503,7 @@ double simplex2_mls_t::integrate_over_colored_interface(double f0, double f1, do
   double result = 0.0;
 
   /* integrate over edges */
-  for (int i = 0; i < edgs.size(); i++)
+  for (unsigned int i = 0; i < edgs.size(); i++)
   {
     edg2_t *e = &edgs[i];
     if (!e->is_split && e->loc == FCE)
@@ -478,7 +521,7 @@ double simplex2_mls_t::integrate_over_intersection(double f0, double f1, double 
 
   interpolate_all(f0, f1, f2);
 
-  for (int i = 0; i < vtxs.size(); i++)
+  for (unsigned int i = 0; i < vtxs.size(); i++)
   {
     vtx2_t *v = &vtxs[i];
     if (v->loc == PNT)
@@ -502,7 +545,7 @@ double simplex2_mls_t::integrate_in_dir(double f0, double f1, double f2, int dir
   double result = 0.0;
 
   /* integrate over edges */
-  for (int i = 0; i < edgs.size(); i++)
+  for (unsigned int i = 0; i < edgs.size(); i++)
   {
     edg2_t *e = &edgs[i];
     if (!e->is_split && e->loc == INS)
@@ -521,7 +564,7 @@ double simplex2_mls_t::integrate_in_non_cart_dir(double f0, double f1, double f2
   double result = 0.0;
 
   /* integrate over edges */
-  for (int i = 0; i < edgs.size(); i++)
+  for (unsigned int i = 0; i < edgs.size(); i++)
   {
     edg2_t *e = &edgs[i];
     if (!e->is_split && (e->loc == INS || e->loc == FCE))
@@ -544,7 +587,7 @@ void simplex2_mls_t::interpolate_all(double &p0, double &p1, double &p2)
   vtxs[1].value = p1;
   vtxs[2].value = p2;
 
-  for (int i = 3; i < vtxs.size(); i++)
+  for (unsigned int i = 3; i < vtxs.size(); i++)
   {
     interpolate_from_neighbors(i);
   }
@@ -558,13 +601,13 @@ double simplex2_mls_t::find_intersection_linear(int v0, int v1)
   double ny = vtx1->y - vtx0->y;
   double l = sqrt(nx*nx+ny*ny);
 #ifdef CASL_THROWS
-  if(l < EPS) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
+  if(l < eps) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
 #endif
   double f0 = vtx0->value;
   double f1 = vtx1->value;
 
-  if(fabs(f0)<EPS) return 0.+EPS;
-  if(fabs(f1)<EPS) return l-EPS;
+  if(fabs(f0)<eps) return 0.+eps;
+  if(fabs(f1)<eps) return l-eps;
 
 #ifdef CASL_THROWS
   if(f0*f1 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
@@ -590,15 +633,15 @@ double simplex2_mls_t::find_intersection_quadratic(int e)
   double ny = vtx1->y - vtx0->y;
   double l = sqrt(nx*nx+ny*ny);
 #ifdef CASL_THROWS
-  if(l < EPS) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
+  if(l < eps) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
 #endif
   double f0 = vtx0->value;
   double f01 = edgs[e].value;
   double f1 = vtx1->value;
 
-  if (fabs(f0)  < EPS) return (l-EPS)/l;
-  if (fabs(f01) < EPS) return 0.5;
-  if (fabs(f1)  < EPS) return (0.+EPS)/l;
+  if (fabs(f0)  < eps) return (l-eps)/l;
+  if (fabs(f01) < eps) return 0.5;
+  if (fabs(f1)  < eps) return (0.+eps)/l;
 
 #ifdef CASL_THROWS
   if(f0*f1 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
@@ -612,7 +655,7 @@ double simplex2_mls_t::find_intersection_quadratic(int e)
 
   double x;
 
-  if(fabs(c2)<EPS) x = -c0/c1;
+  if(fabs(c2)<eps) x = -c0/c1;
   else
   {
     if(f1<0) x = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
@@ -622,8 +665,8 @@ double simplex2_mls_t::find_intersection_quadratic(int e)
   if (x < -0.5*l || x > 0.5*l) throw std::domain_error("[CASL_ERROR]: ");
 #endif
 
-  if (x < -0.5*l) return (l-EPS)/l;
-  if (x > 0.5*l) return (0.+EPS)/l;
+  if (x < -0.5*l) return (l-eps)/l;
+  if (x > 0.5*l) return (0.+eps)/l;
 
   return 1.-(x+0.5*l)/l;
 }
@@ -680,11 +723,11 @@ void simplex2_mls_t::get_edge_coords(int e, double xyz[])
 
 //  bool mflag = true;
 
-//  while (fabs(f_b) > EPS && fabs(r_a-r_b) > tol)
+//  while (fabs(f_b) > eps && fabs(r_a-r_b) > tol)
 //  {
 //    f_c = phi_cf(x0 + r_c*(x1-x0), y0 + r_c*(y1-y0));
 
-//    if (fabs(f_a-f_c) > EPS && fabs(f_b-f_c) > EPS)
+//    if (fabs(f_a-f_c) > eps && fabs(f_b-f_c) > eps)
 //    {
 //      r_s = r_a*f_b*f_c/(f_a-f_b)/(f_a-f_c) +
 //            r_b*f_c*f_a/(f_b-f_c)/(f_b-f_a) +

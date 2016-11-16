@@ -50,6 +50,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_nodes_mls_t;
   friend class my_p4est_interpolation_nodes_local_t;
   friend class my_p4est_integration_mls_t;
+  friend class my_p4est_scft_t;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information

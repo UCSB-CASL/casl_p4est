@@ -2,8 +2,8 @@
 
 void cube2_mls_t::construct_domain()
 {
-  bool use_linear = false;
-  if (phi_xx == NULL || phi_yy == NULL) use_linear = true;
+//  use_linear = false;
+//  if (phi_xx == NULL || phi_yy == NULL) use_linear = true;
 
   bool all_positive, all_negative;
 
@@ -17,7 +17,7 @@ void cube2_mls_t::construct_domain()
   loc = INS;
 //  double F[4];
   double *F;
-  for (int i = 0; i < action->size(); i++)
+  for (unsigned int i = 0; i < action->size(); i++)
   {
     all_negative = true;
     all_positive = true;
@@ -106,8 +106,8 @@ void cube2_mls_t::construct_domain()
 
     simplex.clear();
     simplex.reserve(2);
-    simplex.push_back(simplex2_mls_t(x[t0p0], y[t0p0], x[t0p1], y[t0p1], x[t0p2], y[t0p2]));
-    simplex.push_back(simplex2_mls_t(x[t1p0], y[t1p0], x[t1p1], y[t1p1], x[t1p2], y[t1p2]));
+    simplex.push_back(simplex2_mls_t(x[t0p0], y[t0p0], x[t0p1], y[t0p1], x[t0p2], y[t0p2])); simplex.back().set_use_linear(use_linear);
+    simplex.push_back(simplex2_mls_t(x[t1p0], y[t1p0], x[t1p1], y[t1p1], x[t1p2], y[t1p2])); simplex.back().set_use_linear(use_linear);
 
     // TODO: mark appropriate edges for integrate_in_dir
     simplex[0].edgs[0].dir = 1; simplex[0].edgs[2].dir = 2;
@@ -124,31 +124,33 @@ void cube2_mls_t::construct_domain()
 
       for (int k = 0; k < 2; k++) // loop over simplices
       {
-        int n_vtxs = simplex[k].vtxs.size();
+        unsigned int n_vtxs = simplex[k].vtxs.size();
 
         // interpolate to the rest of vertices
         if (use_linear)
         {
           // vertices
-          for (int i_vtx = 0; i_vtx < n_vtxs; i_vtx++)
+          for (unsigned int i_vtx = 0; i_vtx < n_vtxs; i_vtx++)
+          {
             simplex[k].vtxs[i_vtx].value = interp.linear(phi->at(i_phi).data(), simplex[k].vtxs[i_vtx].x, simplex[k].vtxs[i_vtx].y);
+          }
 
-          // edges
-          for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
-            if (!simplex[k].edgs[i_edg].is_split)
-            {
-              val0 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx0].value;
-              val1 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx1].value;
+//          // edges
+//          for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
+//            if (!simplex[k].edgs[i_edg].is_split)
+//            {
+//              val0 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx0].value;
+//              val1 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx1].value;
 
-              if (val0*val1 < 0.0)
-              {
-                simplex[k].get_edge_coords(i_edg,xyz);
-                simplex[k].edgs[i_edg].value = interp.linear(phi->at(i_phi).data(), xyz[0], xyz[1]);
-              }
-            }
+//              if (val0*val1 < 0.0)
+//              {
+//                simplex[k].get_edge_coords(i_edg,xyz);
+//                simplex[k].edgs[i_edg].value = interp.linear(phi->at(i_phi).data(), xyz[0], xyz[1]);
+//              }
+//            }
         } else {
           // vertices
-          for (int i_vtx = 0; i_vtx < n_vtxs; i_vtx++)
+          for (unsigned int i_vtx = 0; i_vtx < n_vtxs; i_vtx++)
             simplex[k].vtxs[i_vtx].value = interp.quadratic(phi->at(i_phi).data(),
                                                             phi_xx->at(i_phi).data(),
                                                             phi_yy->at(i_phi).data(),
@@ -156,13 +158,13 @@ void cube2_mls_t::construct_domain()
                                                             simplex[k].vtxs[i_vtx].y);
 
           // edges
-          for (int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
+          for (unsigned int i_edg = 0; i_edg < simplex[k].edgs.size(); i_edg++)
             if (!simplex[k].edgs[i_edg].is_split)
             {
               val0 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx0].value;
               val1 = simplex[k].vtxs[simplex[k].edgs[i_edg].vtx1].value;
 
-              if (val0*val1 < 0.0)
+              if (val0*val1 <= 0.0)
               {
                 simplex[k].get_edge_coords(i_edg,xyz);
                 simplex[k].edgs[i_edg].value = interp.quadratic(phi->at(i_phi).data(),
@@ -204,6 +206,11 @@ double cube2_mls_t::integrate_over_domain(double* f)
          + simplex[1].integrate_over_domain(F[t1p0], F[t1p1], F[t1p2]);
 
   } break;
+    default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+      return 0.;
   }
 }
 
@@ -284,7 +291,16 @@ double cube2_mls_t::integrate_in_dir(double *f, int dir)
     return simplex[0].integrate_in_dir(F[t0p0], F[t0p1], F[t0p2], dir)
          + simplex[1].integrate_in_dir(F[t1p0], F[t1p1], F[t1p2], dir);
   } break;
+    default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+      return 0.;
   }
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+  return 0.;
 }
 
 double cube2_mls_t::measure_of_domain()
@@ -301,6 +317,11 @@ double cube2_mls_t::measure_of_domain()
          + simplex[1].integrate_over_domain(1., 1., 1.);
 
   } break;
+    default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+      return 0.;
   }
 }
 
@@ -356,7 +377,16 @@ double cube2_mls_t::measure_in_dir(int dir)
     return simplex[0].integrate_in_dir(1.,1.,1., dir)
          + simplex[1].integrate_in_dir(1.,1.,1., dir);
   } break;
+    default:
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+      return 0.;
   }
+#ifdef CASL_THROWS
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+  return 0.;
 }
 
 double cube2_mls_t::integrate_in_non_cart_dir(double *f, int dir)

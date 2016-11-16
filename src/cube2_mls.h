@@ -26,6 +26,7 @@ public:
   double  x0, x1, y0, y1;
   loc_t   loc;
   int     num_non_trivial;
+  bool    use_linear;
 
   std::vector<simplex2_mls_t> simplex;
 
@@ -39,13 +40,14 @@ public:
   std::vector<int>      *color;
 
   cube2_mls_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1.)
-    : x0(x0), x1(x1), y0(y0), y1(y1) {set_interpolation_grid(x0, x1, y0, y1, 1, 1);}
+    : x0(x0), x1(x1), y0(y0), y1(y1), use_linear(false) {set_interpolation_grid(x0, x1, y0, y1, 1, 1);}
 
   void set_phi(std::vector< std::vector<double> > &phi_, std::vector<action_t> &acn_, std::vector<int> &clr_)
   {
     phi     = &phi_; phi_xx = NULL; phi_yy = NULL;
     action  = &acn_;
     color   = &clr_;
+    use_linear = true;
   }
 
   void set_phi(std::vector< std::vector<double> > &phi_,
@@ -56,6 +58,7 @@ public:
     phi     = &phi_; phi_xx = &phi_xx_; phi_yy = &phi_yy_;
     action  = &acn_;
     color   = &clr_;
+    use_linear = false;
   }
 
   void set_interpolation_grid(double xm, double xp, double ym, double yp, int nx, int ny)
@@ -77,6 +80,8 @@ public:
   double measure_of_intersection      (int num0, int num1);
   double measure_of_colored_interface (int num0, int num1);
   double measure_in_dir               (int dir);
+
+  void set_use_linear(bool val) { use_linear = val; }
 
 //  double interpolate_linear(double *f, double x, double y);
 //  double interpolate_quadratic(double *f, double *fxx, double *fyy, double x, double y);

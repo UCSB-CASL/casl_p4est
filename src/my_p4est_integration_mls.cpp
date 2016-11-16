@@ -330,7 +330,10 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, Vec f, int n0, i
         {
           for (int i = 0; i < n_phis; i++)
             for (int j = 0; j < P4EST_CHILDREN; j++)
+            {
               phi_values    [i][j] = P  [i][ q2n[ s + j ] ];
+              if (phi_values[i][j] != phi_values[i][j]) std::cout << phi_values[i][j] << std::endl;
+            }
 
           if (!only_linear) // get values of second derivatives of LSFs
             for (int i = 0; i < n_phis; i++)
@@ -390,6 +393,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, Vec f, int n0, i
 #else
         cube2_refined_mls_t cube_refined(x0, x1, y0, y1);
         cube2_mls_t cube(x0, x1, y0, y1);
+//        cube.set_interpolation_grid(x0, x1, y0, y1, 1, 1);
 #endif
 
         if (use_cube_refined)
@@ -455,18 +459,22 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, Vec f, int n0, i
     if (phi_cf == NULL)
     {
       for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
-      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_xx->at(i), &Pxx[i]); CHKERRXX(ierr);}
-      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_yy->at(i), &Pyy[i]); CHKERRXX(ierr);}
-  #ifdef P4_TO_P8
-      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_zz->at(i), &Pzz[i]); CHKERRXX(ierr);}
-  #endif
+      if (!only_linear)
+      {
+        for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_xx->at(i), &Pxx[i]); CHKERRXX(ierr);}
+        for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_yy->at(i), &Pyy[i]); CHKERRXX(ierr);}
+#ifdef P4_TO_P8
+        for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_zz->at(i), &Pzz[i]); CHKERRXX(ierr);}
+#endif
+      }
     }
+
   }
 
   if (f != NULL)  {ierr = VecRestoreArray(f, &F); CHKERRXX(ierr);}
 
   /* compute global sum */
-  double sum_global;
+  double sum_global = 0;
   ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum_global;
 }

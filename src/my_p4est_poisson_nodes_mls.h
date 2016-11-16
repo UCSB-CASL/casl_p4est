@@ -148,6 +148,9 @@ public:
   bool keep_scalling;
   Vec scalling;
   bool reusing_matrix;
+  bool update_ghost_after_solving;
+
+  void set_update_ghost_after_solving(bool val) {update_ghost_after_solving = val;}
 
   KSP ksp;
   PetscErrorCode ierr;

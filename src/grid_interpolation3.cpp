@@ -7,12 +7,12 @@ double grid_interpolation3_t::linear(double *f, double x, double y, double z)
   if (x < xm-0.1*eps || x > xp+0.1*eps || y < ym-0.1*eps || y > yp+0.1*eps || z < zm-0.1*eps || z > zp+0.1*eps) throw std::invalid_argument("[CASL_ERROR]: Point of interpolation outside the grid.");
 #endif
 
-  if (fabs(x-xm) < 0.1*eps) x = xm+0.1*eps;
-  if (fabs(y-ym) < 0.1*eps) y = ym+0.1*eps;
-  if (fabs(z-zm) < 0.1*eps) z = zm+0.1*eps;
-  if (fabs(x-xp) < 0.1*eps) x = xp-0.1*eps;
-  if (fabs(y-yp) < 0.1*eps) y = yp-0.1*eps;
-  if (fabs(z-zp) < 0.1*eps) z = zp-0.1*eps;
+  if (fabs(x-xm) < 0.1*eps) x = xm+0.5*eps;
+  if (fabs(y-ym) < 0.1*eps) y = ym+0.5*eps;
+  if (fabs(z-zm) < 0.1*eps) z = zm+0.5*eps;
+  if (fabs(x-xp) < 0.1*eps) x = xp-0.5*eps;
+  if (fabs(y-yp) < 0.1*eps) y = yp-0.5*eps;
+  if (fabs(z-zp) < 0.1*eps) z = zp-0.5*eps;
 
   // find quad
   int i = std::floor((x-xm)/dx);
@@ -55,7 +55,7 @@ double grid_interpolation3_t::linear(double *f, double x, double y, double z)
   double w_mpp = d_p00*d_0m0*d_00m;
   double w_ppp = d_m00*d_0m0*d_00m;
 
-  return
+  double F =
       w_mmm*f[(k+0)*(nx+1)*(ny+1) + (j+0)*(nx+1) + (i+0)] +
       w_pmm*f[(k+0)*(nx+1)*(ny+1) + (j+0)*(nx+1) + (i+1)] +
       w_mpm*f[(k+0)*(nx+1)*(ny+1) + (j+1)*(nx+1) + (i+0)] +
@@ -64,6 +64,13 @@ double grid_interpolation3_t::linear(double *f, double x, double y, double z)
       w_pmp*f[(k+1)*(nx+1)*(ny+1) + (j+0)*(nx+1) + (i+1)] +
       w_mpp*f[(k+1)*(nx+1)*(ny+1) + (j+1)*(nx+1) + (i+0)] +
       w_ppp*f[(k+1)*(nx+1)*(ny+1) + (j+1)*(nx+1) + (i+1)];
+
+#ifdef CASL_THROWS
+    if (F != F)
+      throw std::domain_error("[CASL_ERROR]: Interpolation result is nan.");
+#endif
+
+    return F;
 }
 
 double grid_interpolation3_t::quadratic(double *f, double *f_xx, double *f_yy, double *f_zz,
@@ -74,12 +81,12 @@ double grid_interpolation3_t::quadratic(double *f, double *f_xx, double *f_yy, d
   if (x < xm-0.1*eps || x > xp+0.1*eps || y < ym-0.1*eps || y > yp+0.1*eps || z < zm-0.1*eps || z > zp+0.1*eps) throw std::invalid_argument("[CASL_ERROR]: Point of interpolation outside the grid.");
 #endif
 
-  if (fabs(x-xm) < 0.1*eps) x = xm+0.1*eps;
-  if (fabs(y-ym) < 0.1*eps) y = ym+0.1*eps;
-  if (fabs(z-zm) < 0.1*eps) z = zm+0.1*eps;
-  if (fabs(x-xp) < 0.1*eps) x = xp-0.1*eps;
-  if (fabs(y-yp) < 0.1*eps) y = yp-0.1*eps;
-  if (fabs(z-zp) < 0.1*eps) z = zp-0.1*eps;
+  if (fabs(x-xm) < 0.1*eps) x = xm+0.5*eps;
+  if (fabs(y-ym) < 0.1*eps) y = ym+0.5*eps;
+  if (fabs(z-zm) < 0.1*eps) z = zm+0.5*eps;
+  if (fabs(x-xp) < 0.1*eps) x = xp-0.5*eps;
+  if (fabs(y-yp) < 0.1*eps) y = yp-0.5*eps;
+  if (fabs(z-zp) < 0.1*eps) z = zp-0.5*eps;
 
   // find quad
   int i = std::floor((x-xm)/dx);
@@ -165,7 +172,7 @@ double grid_interpolation3_t::quadratic(double *f, double *f_xx, double *f_yy, d
 
 #ifdef CASL_THROWS
     if (F != F)
-      throw std::domain_error("[CASL_ERROR]: Error in interpolation.");
+      throw std::domain_error("[CASL_ERROR]: Interpolation result is nan.");
 #endif
 
   return F;

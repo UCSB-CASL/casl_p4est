@@ -43,7 +43,7 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
     node_vol(NULL),
     phi_dd_owned(false), phi_xx(NULL), phi_yy(NULL), phi_zz(NULL),
     keep_scalling(true), scalling(NULL), phi_eff(NULL), cube_refinement(0),
-    kink_special_treatment(false)
+    kink_special_treatment(true), use_taylor_correction(true), update_ghost_after_solving(true)
   #ifdef P4_TO_P8
   #endif
 {
@@ -252,7 +252,7 @@ void my_p4est_poisson_nodes_mls_t::compute_phi_eff()
   for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi->at(i),  &phi_p[i]);  CHKERRXX(ierr);}
                                     ierr = VecGetArray(phi_eff,     &phi_eff_p); CHKERRXX(ierr);
 
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n) // loop over nodes
   {
     phi_eff_p[n] = -10.;
 
@@ -270,8 +270,8 @@ void my_p4est_poisson_nodes_mls_t::compute_phi_eff()
   for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi->at(i), &phi_p[i]);  CHKERRXX(ierr);}
                                     ierr = VecRestoreArray(phi_eff, &phi_eff_p); CHKERRXX(ierr);
 
-  ierr = VecGhostUpdateBegin(phi_eff, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (phi_eff, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateBegin(phi_eff, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd  (phi_eff, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_mls_t::compute_phi_dd()
@@ -624,7 +624,6 @@ void my_p4est_poisson_nodes_mls_t::preallocate_matrix()
   double *phi_eff_p;
   ierr = VecGetArray(phi_eff, &phi_eff_p); CHKERRXX(ierr);
 
-  std::cout << "Calculate neighbors\n";
   for (p4est_locidx_t n=0; n<num_owned_local; n++)
   {
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors->get_neighbors(n);
@@ -735,7 +734,6 @@ void my_p4est_poisson_nodes_mls_t::preallocate_matrix()
 
   ierr = VecRestoreArray(phi_eff, &phi_eff_p); CHKERRXX(ierr);
 
-  std::cout << "Start matrix memory allocation\n";
   ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
   ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 
@@ -1011,8 +1009,11 @@ void my_p4est_poisson_nodes_mls_t::solve_linear_system(Vec solution, bool use_no
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_KSPSolve, ksp, rhs, solution, 0); CHKERRXX(ierr);
 
   // update ghosts
-  ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if (update_ghost_after_solving)
+  {
+    ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 }
