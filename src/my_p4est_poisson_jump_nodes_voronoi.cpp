@@ -308,7 +308,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
 
   double res;
   ierr = KSPGetResidualNorm(ksp, &res);
-  ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system ... residual = %f\n", res); CHKERRXX(ierr);
+  //ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system ... residual = %f\n", res); CHKERRXX(ierr);
 
   /* update ghosts */
   ierr = VecGhostUpdateBegin(sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
