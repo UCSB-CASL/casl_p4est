@@ -50,6 +50,7 @@ public:
   void remove_internal_cavities(p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost, my_p4est_brick_t& brick, Vec& phi);
   double operator()(double x, double y, double z) const;
   void reduce_to_single_atom();
+  void atoms_per_node(p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t *&ghost, my_p4est_brick_t &brick, Vec &atom_count);
   void use_fast_surface_generation();
   void use_brute_force_surface_generation();
   void atoms_queried_per_node(p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t *&ghost, my_p4est_brick_t &brick, Vec &atom_count);

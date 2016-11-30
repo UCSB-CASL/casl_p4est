@@ -159,6 +159,25 @@ void BioMolecule::reduce_to_single_atom()
 
 }
 
+void BioMolecule::atoms_per_node(p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t *&ghost, my_p4est_brick_t &brick, Vec &atom_count)
+{
+    PetscErrorCode ierr = VecCreateGhostNodes(p4est, nodes, &atom_count); CHKERRXX(ierr);
+
+    double *atom_count_p;
+
+    ierr = VecGetArray(atom_count, &atom_count_p); CHKERRXX(ierr);
+
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++) {
+        double xyz [P4EST_DIM];
+        node_xyz_fr_n(i, p4est, nodes, xyz);
+        int cell_index = atom_tree.find_smallest_cell_containing_point(xyz[0], xyz[1], xyz[2]);
+        atom_count_p[i] = atom_tree.cells[cell_index].atoms.size();
+    }
+
+    ierr = VecRestoreArray(atom_count, &atom_count_p); CHKERRXX(ierr);
+}
+
+
 
 void BioMolecule::use_fast_surface_generation()
 {

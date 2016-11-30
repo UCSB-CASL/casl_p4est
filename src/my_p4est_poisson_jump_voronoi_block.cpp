@@ -260,19 +260,19 @@ void my_p4est_poisson_jump_voronoi_block_t::solve(Vec solution[], bool use_nonze
      * "0 "gives better convergence rate (in 3D).
      * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
     */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.5"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue(NULL, "-pc_hypre_boomeramg_strong_threshold", "0.5"); CHKERRXX(ierr);
 
     /* 2- Coarsening type
      * Available Options:
      * "CLJP","Ruge-Stueben","modifiedRuge-Stueben","Falgout", "PMIS", "HMIS". Falgout is usually the best.
      */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_coarsen_type", "Falgout"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue(NULL, "-pc_hypre_boomeramg_coarsen_type", "Falgout"); CHKERRXX(ierr);
 
     /* 3- Trancation factor
      * Greater than zero.
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue(NULL, "-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 

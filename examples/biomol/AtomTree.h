@@ -63,6 +63,8 @@ struct ATNode{
 
 class AtomTree{
 
+    public:
+
     std::unordered_map<int, int> cell_table;
     std::unordered_map<int, int> node_table;
     std::vector<Atom> total_atoms;
@@ -82,7 +84,7 @@ class AtomTree{
     double max_ar;
     double rmax;
 
-public:
+
     AtomTree(my_p4est_brick_t &brick_,double rp_): brick(brick_), rp(rp_){}
     void build_tree(const std::vector<Atom> &atoms, const my_p4est_brick_t &brick);
     void clear_tree();
