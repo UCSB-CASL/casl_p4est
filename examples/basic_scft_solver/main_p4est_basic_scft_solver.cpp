@@ -306,7 +306,7 @@ int main (int argc, char* argv[])
   my_p4est_scft_t scft(ngbd);
 
   scft.set_geometry(phi, action);
-  scft.set_parameters(f, XN, ns, 1, 10);
+  scft.set_parameters(f, XN, ns);
   scft.set_surface_tensions(gamma_a, gamma_b, gamma_air_cf);
   scft.set_potentials(mu_m, mu_p);
   scft.set_densities(rho_a, rho_b);
@@ -504,7 +504,7 @@ int main (int argc, char* argv[])
         my_p4est_scft_t scft_aux(ngbd_aux);
 
         scft_aux.set_geometry(phi_aux, action);
-        scft_aux.set_parameters(f, XN, ns, 1, 1);
+        scft_aux.set_parameters(f, XN, ns);
         scft_aux.set_surface_tensions(gamma_a, gamma_b, gamma_air_cf);
         scft_aux.set_potentials(mu_m_aux, mu_p_aux);
         scft_aux.set_densities(rho_a_aux, rho_b_aux);

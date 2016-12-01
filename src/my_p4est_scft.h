@@ -80,7 +80,7 @@ public:
   Vec force_p, force_m;
   double force_p_avg, force_m_avg;
 
-  std::vector<Vec> exp_w_a, exp_w_b;
+  Vec exp_w_a, exp_w_b;
 
   Vec rhs, rhs_old, add_to_rhs;
 
@@ -104,24 +104,19 @@ public:
   std::vector<Vec> kappa;
 
   Vec energy_shape_deriv;
-  Vec contact_term_of_energy_shape_deriv;
+  Vec energy_shape_deriv_contact_term;
+
+  double dt_energy;
 
   /* Poisson solver */
-  std::vector<my_p4est_poisson_nodes_mls_t *> solver_a, solver_b;
-
-  /* Adaptive discretization in time */
-  int num_of_refinements;
-  int degree_of_refinement;
-  int ns_total;
-  int fns_adaptive;
-  std::vector<double> ds_list, ds_adaptive;
+  my_p4est_poisson_nodes_mls_t *solver_a, *solver_b;
 
 //public:
   my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd);
   ~my_p4est_scft_t();
 
   void set_geometry(std::vector<Vec>& in_phi, std::vector<action_t> &in_action);
-  void set_parameters(double in_f, double in_XN, int in_ns, int in_num_of_refinements, int in_degree_of_refinement);
+  void set_parameters(double in_f, double in_XN, int in_ns);
   void set_surface_tensions(std::vector<CF_2 *>& in_gamma_a, std::vector<CF_2 *>& in_gamma_b, CF_2 &in_gamma_air)
   {
     gamma_a = &in_gamma_a; gamma_b = &in_gamma_b; gamma_air = &in_gamma_air;
@@ -143,7 +138,7 @@ public:
 
   double integrate_in_time(int start, int end, double *integrand);
 
-  void diffusion_step(my_p4est_poisson_nodes_mls_t *solver, Vec &sol, Vec &sol_nm1, double ds_local);
+  void diffusion_step(my_p4est_poisson_nodes_mls_t *solver, Vec &sol, Vec &sol_nm1);
 
   void save_VTK(int compt);
 
@@ -155,6 +150,7 @@ public:
 
   double integrate_over_domain_fast(Vec f);
   double integrate_over_domain_fast_squared(Vec f);
+  double integrate_over_domain_fast_two(Vec f0, Vec f1);
 
   double compute_rho_a(double *integrand);
   double compute_rho_b(double *integrand);
@@ -171,6 +167,44 @@ public:
 
 
   void save_VTK_q(int compt);
+
+  /* Density Optimization */
+
+  Vec lam_m, lam_p, lam_a, lam_b;
+
+  std::vector<Vec> lam_fwd, lam_bwd;
+
+  Vec density_shape_grad;
+
+  Vec force_lam_m, force_lam_p;
+
+  Vec rho_lam_a, rho_lam_b;
+
+  Vec mu_t;
+
+  double force_lam_p_avg, force_lam_m_avg;
+
+  double cost_func;
+
+  double lam_0;
+
+  double dt_density;
+
+  void DO_initialize(CF_2 &mu_target_cf);
+  void DO_initialize_fields();
+  void DO_solve_for_propogators();
+  void DO_diffusion_step(my_p4est_poisson_nodes_mls_t *solver, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &lam);
+  void DO_compute_densities();
+  void DO_update_potentials();
+  void DO_compute_shape_derivative(int phi_idx);
+  double DO_compute_cost_functional();
+  double DO_compute_change_in_functional(int phi_idx, Vec norm_velo, double dt);
+  void DO_save_VTK(int compt);
+  void DO_save_VTK_before_moving(int compt);
+
+  double DO_get_cost_func() { return cost_func; }
+  double DO_get_pressure_force() { return force_lam_p_avg; }
+  double DO_get_exchange_force() { return force_lam_m_avg; }
 
 };
 

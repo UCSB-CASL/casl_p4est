@@ -1,6 +1,6 @@
 #include "shapes.h"
 
-bool save_vtk = true;
+bool save_vtk = false;
 bool display_error = false;
 
 double xmin = -1;
@@ -13,11 +13,11 @@ double zmax =  1;
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 3;
+int nb_splits = 4;
 #else
 int lmin = 5;
-int lmax = 7;
-int nb_splits = 3;
+int lmax = 5;
+int nb_splits = 6;
 #endif
 
 int nx = 1;
@@ -70,9 +70,9 @@ double alpha2 = -0.14*PI;
 double alpha3 = 0.3*PI;
 
 double lx0 = 1, ly0 = 1, lz0 = 1;
-double lx1 = -1, ly1 = 1, lz1 = 1;
-double lx2 = 1, ly2 = -1, lz2 = 1;
-double lx3 = 1, ly3 = 1, lz3 = -1;
+double lx1 =-1, ly1 = 1, lz1 = 1;
+double lx2 = 1, ly2 =-1, lz2 = 1;
+double lx3 = 1, ly3 = 1, lz3 =-1;
 
 #ifdef P4_TO_P8
 flower_shaped_domain_t domain0(r0, xc0, yc0, zc0, beta0, inside0, lx0, ly0, lz0, alpha0);
@@ -216,9 +216,9 @@ public:
 // EXACT SOLUTION
 int n_test = 0;
 
-double phase_x =  0.13;
-double phase_y =  1.55;
-double phase_z =  0.7;
+double phase_x =  0.0;
+double phase_y =  0.5*PI;
+double phase_z =  0.13*PI;
 
 #ifdef P4_TO_P8
 class U_EXACT: public CF_3
@@ -328,7 +328,8 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return 1;
+//    case 0: return 1;
+        case 0: return 1+(0.2*sin(x)+0.3*cos(y))*z;
     }
   }
 } mu_cf;
@@ -352,7 +353,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return 0;
+    case 0: return 0.2*cos(x)*z;
     }
   }
 } mux;
@@ -362,7 +363,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return 0;
+    case 0: return -0.3*sin(y)*z;
     }
   }
 } muy;
@@ -372,7 +373,7 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return 0;
+    case 0: return (0.2*sin(x)+0.3*cos(y));
     }
   }
 } muz;
@@ -407,7 +408,8 @@ public:
   double operator()(double x, double y, double z) const
   {
     switch (n_test){
-    case 0: return 0;
+        case 0: return x*x*cos(y)+z;
+//    case 0: return 0;
     }
   }
 } diag_add_cf;
@@ -418,7 +420,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (n_test){
-        case 0: return 0;
+        case 0: return x*x*cos(y);
 //    case 0: return x*y+exp(y)*sin(x);
     }
   }
@@ -472,15 +474,15 @@ public:
 
 // BC COEFFICIENTS
 #ifdef P4_TO_P8
-inline double kappa0(double x, double y, double z) { return 1.0 + .0*sin(x)*cos(y)*sin(z+0.33*PI);} double_to_cf_t bc_coeff0(&kappa0);
-inline double kappa1(double x, double y, double z) { return 1.0 + .0*sin(x)*cos(y)*sin(z+0.33*PI);} double_to_cf_t bc_coeff1(&kappa1);
-inline double kappa2(double x, double y, double z) { return 1.0 + .0*sin(x)*cos(y)*sin(z+0.33*PI);} double_to_cf_t bc_coeff2(&kappa2);
-inline double kappa3(double x, double y, double z) { return 1.0 + .0*sin(x)*cos(y)*sin(z+0.33*PI);} double_to_cf_t bc_coeff3(&kappa3);
+inline double kappa0(double x, double y, double z) { return log(2.0+x)*(z*z+y);} double_to_cf_t bc_coeff0(&kappa0);
+inline double kappa1(double x, double y, double z) { return -.7;} double_to_cf_t bc_coeff1(&kappa1);
+inline double kappa2(double x, double y, double z) { return 0.33*sin(x+z)*y;} double_to_cf_t bc_coeff2(&kappa2);
+inline double kappa3(double x, double y, double z) { return 0.49*x;} double_to_cf_t bc_coeff3(&kappa3);
 #else
-inline double kappa0(double x, double y) { return .0 + 1.0*sin(x)*cos(y);} double_to_cf_t bc_coeff0(&kappa0);
-inline double kappa1(double x, double y) { return 1.0 + .0*sin(x)*cos(y);} double_to_cf_t bc_coeff1(&kappa1);
-inline double kappa2(double x, double y) { return .0 + 1.0*cos(x)*sin(y);} double_to_cf_t bc_coeff2(&kappa2);
-inline double kappa3(double x, double y) { return 1.0 + .0*sin(x)*cos(y);} double_to_cf_t bc_coeff3(&kappa3);
+inline double kappa0(double x, double y) { return log(2.0+x)*y*y;} double_to_cf_t bc_coeff0(&kappa0);
+inline double kappa1(double x, double y) { return -.7;} double_to_cf_t bc_coeff1(&kappa1);
+inline double kappa2(double x, double y) { return 0.33*sin(x+y);} double_to_cf_t bc_coeff2(&kappa2);
+inline double kappa3(double x, double y) { return 0.49*x;} double_to_cf_t bc_coeff3(&kappa3);
 #endif
 
 // BC VALUES
