@@ -158,7 +158,7 @@ void my_p4est_poisson_jump_voronoi_block_t::set_rhs(Vec rhs_m[], Vec rhs_p[])
   }
 }
 
-void my_p4est_poisson_jump_voronoi_block_t::set_diagonal(vector<vector<cf_t*>>& add)
+void my_p4est_poisson_jump_voronoi_block_t::set_diagonal(vector<vector<cf_t*> >& add)
 {
   this->add = add;
 }
@@ -169,7 +169,7 @@ void my_p4est_poisson_jump_voronoi_block_t::set_bc(vector<bc_t> &bc)
   is_matrix_computed = false;
 }
 
-void my_p4est_poisson_jump_voronoi_block_t::set_mu(vector<vector<cf_t*>>& mu_m, vector<vector<cf_t*>> &mu_p)
+void my_p4est_poisson_jump_voronoi_block_t::set_mu(vector<vector<cf_t*> >& mu_m, vector<vector<cf_t*> > &mu_p)
 {
   this->mu_m = mu_m;
   this->mu_p = mu_p;
@@ -293,11 +293,18 @@ void my_p4est_poisson_jump_voronoi_block_t::solve(Vec solution[], bool use_nonze
   /* Solve the system */
   ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
 
-//  ierr = PetscPrintf(p4est->mpicomm, "Solving linear system ...\n"); CHKERRXX(ierr);
+  double res;
+  ierr = KSPGetResidualNorm(ksp, &res); CHKERRXX(ierr);
+
+
+   ierr = PetscPrintf(p4est->mpicomm, "Solving linear system. Residual: %f \n", res); CHKERRXX(ierr);
+  //ierr = PetscPrintf(p4est->mpicomm, "Solving linear system ...\n"); CHKERRXX(ierr);
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs, sol_voro); CHKERRXX(ierr);
   ierr = PetscLogEventEnd  (log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
-//  ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system.\n"); CHKERRXX(ierr);
+  //ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system.\n"); CHKERRXX(ierr);
+  ierr = KSPGetResidualNorm(ksp, &res); CHKERRXX(ierr);
+   ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system. Residual: %f \n", res); CHKERRXX(ierr);
 
   /* update ghosts */
   ierr = VecGhostUpdateBegin(sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

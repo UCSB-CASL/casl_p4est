@@ -12,6 +12,8 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_poisson_nodes.h>
 #include <src/my_p8est_poisson_jump_nodes_extended.h>
+#include <src/my_p8est_poisson_jump_nodes_voronoi.h>
+#include <src/my_p8est_cell_neighbors.h>
 #include <src/petsc_compatibility.h>
 #include <src/casl_math.h>
 
@@ -38,6 +40,14 @@ BioMolecule::BioMolecule(my_p4est_brick_t& brick, const mpi_environment_t &mpi)
 
   D_ = MIN(Dx_, MIN(Dy_, Dz_));
 }
+
+class constant_cf_t:public CF_3{
+  double c;
+public:
+  constant_cf_t(double c): c(c) {}
+  double operator()(double, double, double) const { return c; }
+};
+
 
 void BioMolecule::read(const string &pqr) {
 
@@ -209,8 +219,6 @@ void BioMolecule::atoms_queried_per_node(p4est_t* &p4est, p4est_nodes_t* &nodes,
     }
 
     ierr = VecRestoreArray(atom_count, &atom_count_p); CHKERRXX(ierr);
-
-
 
 }
 
@@ -798,6 +806,7 @@ void BioMoleculeSolver::solve_nonlinear(Vec &psi_molecule, Vec& psi_electrolyte,
     jump_p[i] = -(nx*qnnn.dx_central(psi_bar_p) +
                   ny*qnnn.dy_central(psi_bar_p) +
                   nz*qnnn.dz_central(psi_bar_p));
+
   }
   ierr = VecGhostUpdateBegin(jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -870,7 +879,7 @@ void BioMoleculeSolver::solve_nonlinear(Vec &psi_molecule, Vec& psi_electrolyte,
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
       phi_p[i] = -phi_p[i];
 
-    PetscPrintf(p4est->mpicomm, "It = %2d \t err = %1.5e\n", it, err);
+    //PetscPrintf(p4est->mpicomm, "It = %2d \t err = %1.5e\n", it, err);
   }
 
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
@@ -888,6 +897,179 @@ void BioMoleculeSolver::solve_nonlinear(Vec &psi_molecule, Vec& psi_electrolyte,
   // destroy temporary solution
   ierr = VecDestroy(add); CHKERRXX(ierr);
   ierr = VecDestroy(jump); CHKERRXX(ierr);
+  ierr = VecDestroy(psi); CHKERRXX(ierr);
+  ierr = VecDestroy(psi_bar); CHKERRXX(ierr);
+}
+
+
+
+void BioMoleculeSolver:: solve_nonlinear_voronoi(Vec &psi_molecule, Vec& psi_electrolyte, int itmax, double tol)
+{
+  PetscErrorCode ierr;
+
+  // better off to initialize the neighbors
+  neighbors.init_neighbors();
+  solve_singular_part();
+
+
+  Vec psi, add, jump_sol, jump_flux, mu_m, mu_p, rhs_m, rhs_p;
+
+  ierr = VecDuplicate(phi, &add); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &jump_sol); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &jump_flux); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &mu_m); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &mu_p); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &psi); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &rhs_m); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &rhs_p); CHKERRXX(ierr);
+
+  double *psi_p, *phi_p, *add_p, *jump_flux_p, *psi_bar_p, *rhs_m_p, *rhs_p_p;
+
+  // separate solutions
+  double *psi_mol_p, *psi_elec_p;
+  ierr = VecDuplicate(phi, &psi_molecule); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &psi_electrolyte); CHKERRXX(ierr);
+  ierr = VecGetArray(psi_molecule, &psi_mol_p); CHKERRXX(ierr);
+  ierr = VecGetArray(psi_electrolyte, &psi_elec_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi,             &phi_p); CHKERRXX(ierr);
+
+  int it = 0;
+  double err = 1 + tol;
+  double kappa_sqr = SQR(1.0/edl);
+
+  for (size_t i = 0; i < nodes->indep_nodes.elem_count; i++) {
+    psi_mol_p[i] = psi_elec_p[i] = 0;
+  }
+
+
+  //calculate the jump
+  ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
+  ierr = VecGetArray(jump_flux,    &jump_flux_p); CHKERRXX(ierr);
+  for (p4est_locidx_t i = 0; i < nodes->num_owned_indeps; i++) {
+    psi_mol_p[i] = psi_elec_p[i] = 0;
+
+    // compute the jump
+    // TODO: do the layering thingy!
+    const quad_neighbor_nodes_of_node_t& qnnn = neighbors[i];
+    double nx = qnnn.dx_central(phi_p);
+    double ny = qnnn.dy_central(phi_p);
+    double nz = qnnn.dz_central(phi_p);
+    double abs = MAX(sqrt(SQR(nx) + SQR(ny) + SQR(nz)), EPS);
+    nx /= abs; ny /= abs; nz /= abs;
+
+    jump_flux_p[i] = -(nx*qnnn.dx_central(psi_bar_p) +
+                       ny*qnnn.dy_central(psi_bar_p) +
+                       nz*qnnn.dz_central(psi_bar_p));
+  }
+  ierr = VecGhostUpdateBegin(jump_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(jump_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(psi_bar,         &psi_bar_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(jump_flux,    &jump_flux_p); CHKERRXX(ierr);
+  ierr = VecScale(jump_flux, -1.);
+
+
+  struct:CF_3{
+    double operator()(double, double, double) const { return 0; }
+  } jump_sol_;
+
+  struct:CF_3{
+    double operator()(double, double, double) const { return 0; }
+  } bc_wall_value_;
+
+  struct:WallBC3D {
+    BoundaryConditionType operator()(double, double, double) const { return DIRICHLET; }
+  } bc_wall_type;
+
+
+  BoundaryConditions3D bc;
+  bc.setWallTypes(bc_wall_type);
+  bc.setWallValues(bc_wall_value_);
+
+  constant_cf_t mue_plus_cf(mue_p), mue_minus_cf(mue_m);
+  sample_cf_on_nodes(p4est, nodes, mue_minus_cf, mu_m);
+  sample_cf_on_nodes(p4est, nodes, mue_plus_cf, mu_p);
+
+
+  my_p4est_level_set_t ls(&neighbors);
+  while (it++ < itmax && err > tol) {
+      my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
+      my_p4est_cell_neighbors_t cell_neighbors(&hierarchy);
+      my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
+      my_p4est_poisson_jump_nodes_voronoi_t solver(&node_neighbors, &cell_neighbors);
+
+
+      ierr = VecGetArray(add,     &add_p); CHKERRXX(ierr);
+      ierr = VecGetArray(rhs_m,    &rhs_m_p); CHKERRXX(ierr);
+      ierr = VecGetArray(rhs_p,    &rhs_p_p); CHKERRXX(ierr);
+      ierr = VecGetArray(psi,    &psi_p); CHKERRXX(ierr);
+
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++){
+        rhs_m_p[i] = 0;
+        rhs_p_p[i] = -kappa_sqr*sinh(psi_elec_p[i]) + kappa_sqr*psi_elec_p[i]*cosh(psi_elec_p[i]);
+        add_p[i]   = phi_p[i]<=0 ? 0 : kappa_sqr*cosh(psi_p[i]);
+
+    }
+    ierr = VecRestoreArray(rhs_m,           &rhs_m_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(rhs_p,           &rhs_p_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(add,             &add_p); CHKERRXX(ierr);
+
+    sample_cf_on_nodes(p4est, nodes, jump_sol_, jump_sol);
+
+    solver.set_phi(phi);
+    solver.set_bc(bc);
+    solver.set_mu(mu_m, mu_p);
+    solver.set_u_jump(jump_sol);
+    solver.set_mu_grad_u_jump(jump_flux);
+    solver.set_diagonal(add);
+    solver.set_rhs(rhs_m, rhs_p);
+    solver.solve(psi);
+
+
+    err = 0;
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++) {
+      if (phi_p[i] < 0)
+        err = MAX(err, fabs(psi_mol_p[i]  - psi_p[i]));
+      else
+        err = MAX(err, fabs(psi_elec_p[i] - psi_p[i]));
+    }
+    MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+
+    // reset solutions
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++) {
+      psi_mol_p[i]  = (phi_p[i] <= 0) ? psi_p[i] : 0;
+      psi_elec_p[i] = (phi_p[i] <= 0) ? 0: psi_p[i];
+    }
+
+    // extend solutions
+    ls.extend_Over_Interface_TVD(phi, psi_molecule, 10);
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+      phi_p[i] = -phi_p[i];
+    ls.extend_Over_Interface_TVD(phi, psi_electrolyte, 10);
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+      phi_p[i] = -phi_p[i];
+
+   // PetscPrintf(p4est->mpicomm, "It = %2d \t err = %1.5e\n", it, err);
+    ierr = VecRestoreArray(psi,             &psi_p); CHKERRXX(ierr);
+  }
+
+  for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+    phi_p[i] = -phi_p[i];
+
+  // restore pointers
+  ierr = VecRestoreArray(phi,             &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(psi_molecule,    &psi_mol_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(psi_electrolyte, &psi_elec_p); CHKERRXX(ierr);
+
+
+  // destroy temporary solution
+  ierr = VecDestroy(add); CHKERRXX(ierr);
+  ierr = VecDestroy(jump_flux); CHKERRXX(ierr);
+  ierr = VecDestroy(jump_sol); CHKERRXX(ierr);
+  ierr = VecDestroy(rhs_m); CHKERRXX(ierr);
+  ierr = VecDestroy(rhs_p); CHKERRXX(ierr);
+  ierr = VecDestroy(mu_m); CHKERRXX(ierr);
+  ierr = VecDestroy(mu_p); CHKERRXX(ierr);
   ierr = VecDestroy(psi); CHKERRXX(ierr);
   ierr = VecDestroy(psi_bar); CHKERRXX(ierr);
 }

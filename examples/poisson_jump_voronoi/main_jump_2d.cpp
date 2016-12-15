@@ -774,7 +774,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
   ierr = VecDuplicate(phi, &u_jump_); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &mu_grad_u_jump_); CHKERRXX(ierr);
 
-  sample_cf_on_nodes(p4est, nodes, mu_m, mu_m_);
+  sample_cf_on_nodes(p4est, nodes, mu_m, mu_m_ );
   sample_cf_on_nodes(p4est, nodes, mu_p, mu_p_);
   sample_cf_on_nodes(p4est, nodes, u_jump, u_jump_);
   sample_cf_on_nodes(p4est, nodes, mu_grad_u_jump, mu_grad_u_jump_);
