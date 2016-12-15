@@ -381,7 +381,7 @@ void AtomTree::print_VTK_format( std::string file_name, double time ) const
     fprintf(outFile,"CELL_TYPES %d \n",num_of_leaf_cells);
     for (int n=0; n<num_of_leaf_cells; n++)
         fprintf(outFile,"%d \n",12);
-    fprintf(outFile,"POINT_DATA %d \n",nodes.size());
+    //fprintf(outFile,"POINT_DATA %d \n",nodes.size());
     fprintf(outFile,"CELL_DATA %d \n",num_of_leaf_cells);
     fclose (outFile);
 }

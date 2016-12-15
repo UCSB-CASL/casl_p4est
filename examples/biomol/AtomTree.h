@@ -102,6 +102,7 @@ class AtomTree{
      }
     void set_probe_radius(double rp_);
     void set_max_atom_radius(double rmax_);
+    void print_atom_count_per_cell( std::string file_name) const;
 
 
 
@@ -163,7 +164,7 @@ private:
     void set_atoms_belonging_to_cell(ATCell &cell, const std::vector<Atom> &atoms);
     //double dist_from_surface(double x, double y, double z);
 
-    void print_atom_count_per_cell( std::string file_name) const;
+
 
     void print_VTK_format( std::string file_name, double time=DBL_MIN) const;
 
