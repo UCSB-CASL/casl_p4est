@@ -2,16 +2,16 @@
 int lmin = 3;
 int lmax = 3;
 #ifdef P4_TO_P8
-int nb_splits = 3;
+int nb_splits = 7;
 #else
-int nb_splits = 9;
+int nb_splits = 10;
 #endif
 
 int nx = 1;
 int ny = 1;
 int nz = 1;
 
-bool save_vtk = true;
+bool save_vtk = false;
 
 /* geometry */
 
@@ -73,7 +73,7 @@ class LS_CIRCLE_1: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return -(r1 - sqrt(SQR(x-xc_1) + SQR(y-yc_1) + SQR(z-zc_1)));
+    return (r1 - sqrt(SQR(x-xc_1) + SQR(y-yc_1) + SQR(z-zc_1)));
   }
 } ls_circle_1;
 #else
@@ -82,7 +82,7 @@ class LS_CIRCLE_1: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return -(r1 - sqrt(SQR(x-xc_1) + SQR(y-yc_1)));
+    return (r1 - sqrt(SQR(x-xc_1) + SQR(y-yc_1)));
   }
 } ls_circle_1;
 #endif
@@ -93,7 +93,7 @@ class LS_REF: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    double a = min(ls_circle_0(x,y,z), ls_circle_1(x,y,z));
+    double a = max(ls_circle_0(x,y,z), ls_circle_1(x,y,z));
     if (a < 0) a = 0;
     return a;
   }
@@ -104,7 +104,7 @@ class LS_REF: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    double a = min(ls_circle_0(x,y), ls_circle_1(x,y));
+    double a = max(ls_circle_0(x,y), ls_circle_1(x,y));
     if (a < 0) a = 0;
     return a;
   }
@@ -278,16 +278,16 @@ public:
     double mu_seg_1 = 2.0*alpha_1*r1; double mi_seg_1 = 2.0*alpha_1*r1*(r1*r1+R1*R1+2.0*r1d1*r1*sin(alpha_1)/alpha_1/d1);
 #endif
 
-    ID   = mu_sph_0+mu_sph_1 -mu_sec_0-mu_sec_1 +mu_tri_0+mu_tri_1;
-    IDr2 = mi_sph_0+mi_sph_1 -mi_sec_0-mi_sec_1 +mi_tri_0+mi_tri_1;
+    ID   = mu_sph_0 -mu_sec_0 +mu_tri_0 -mu_sec_1+mu_tri_1;
+    IDr2 = mi_sph_0 -mi_sec_0 +mi_tri_0 -mi_sec_1+mi_tri_1;
 
     ISB.push_back(mu_bnd_0-mu_seg_0); ISBr2.push_back(mi_bnd_0-mi_seg_0);
-    ISB.push_back(mu_bnd_1-mu_seg_1); ISBr2.push_back(mi_bnd_1-mi_seg_1);
+    ISB.push_back(mu_seg_1); ISBr2.push_back(mi_seg_1);
 
     IXc0.push_back(0);
     IXc1.push_back(1);
 #ifdef P4_TO_P8
-    IX.push_back(PI*(r0*r0-d0*d0)); IXr2.push_back(PI*(r0*r0-d0*d0)*(r0*r0+R0*R0+2.*r0d0));
+    IX.push_back(2.0*PI*sqrt(r0*r0-d0*d0)); IXr2.push_back(2.0*PI*sqrt(r0*r0-d0*d0)*(r0*r0+R0*R0+2.*r0d0));
 #else
     IX.push_back(2.0*(xc_0+d0x)); IXr2.push_back(2.0*(yc_0+d0y));
 #endif
@@ -307,8 +307,13 @@ public:
   Geometry()
   {
     LSF.push_back(&ls_circle_0); action.push_back(INTERSECTION); color.push_back(0);
-    LSF.push_back(&ls_circle_1); action.push_back(ADDITION); color.push_back(1);
+    LSF.push_back(&ls_circle_1); action.push_back(INTERSECTION); color.push_back(1);
+#ifdef P4_TO_P8
+    std::cout << "Level-set 0: " << xc_0 << ", " << yc_0 << ", " << zc_0 << endl;
+    std::cout << "Level-set 1: " << xc_1 << ", " << yc_1 << ", " << zc_1 << endl;
+#else
     std::cout << "Level-set 0: " << xc_0 << ", " << yc_0 << endl;
     std::cout << "Level-set 1: " << xc_1 << ", " << yc_1 << endl;
+#endif
   }
 } geometry;

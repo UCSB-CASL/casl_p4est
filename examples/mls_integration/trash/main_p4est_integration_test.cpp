@@ -51,7 +51,10 @@
 using namespace std;
 
 //#include "geometry_one_circle.cpp"
-#include "geometry_two_circles_union.cpp"
+//#include "geometry_two_circles_union.cpp"
+//#include "geometry_two_circles_intersection.cpp"
+//#include "geometry_two_circles_coloration.cpp"
+#include "geometry_four_flowers.cpp"
 
 class Result
 {
@@ -166,7 +169,7 @@ int main (int argc, char* argv[])
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
     p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &ls_circle_0, 1.2);
+    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &ls_ref, 1.2);
     p4est->user_pointer = (void*)(&data);
 
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -222,10 +225,15 @@ int main (int argc, char* argv[])
     integration.set_p4est(p4est, nodes);
 //    integration.set_phi(phi_vec, geometry.action, geometry.color);
 //    integration.set_phi(geometry.LSF, geometry.action, geometry.color);
+//#ifdef P4_TO_P8
+//    integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, geometry.action, geometry.color);
+//#else
+//    integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, geometry.action, geometry.color);
+//#endif
 #ifdef P4_TO_P8
-    integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, geometry.action, geometry.color);
+    integration.set_phi(phi_vec, geometry.action, geometry.color);
 #else
-    integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, geometry.action, geometry.color);
+    integration.set_phi(phi_vec, geometry.action, geometry.color);
 #endif
 //    integration.set_use_cube_refined(0);
 
@@ -319,7 +327,7 @@ int main (int argc, char* argv[])
     p4est_destroy      (p4est);
   }
 
-  if (mpi.rank() == -1)
+  if (mpi.rank() == 0)
   {
     Gnuplot plot_ID;
     print_Table("Domain", exact.ID, level, h, "MLT", res_mlt.ID, 2, &plot_ID);
@@ -370,13 +378,15 @@ int main (int argc, char* argv[])
 //    {
 //      cout << h[i] << ", "
 //           << res_mlt.ID[i] << ", "
-//           << res_mlt.IDr2[i] << ", "
-//           << res_mlt.ISB[0][i] << ", "
-//           << res_mlt.ISBr2[0][i] << ", "
-//           << res_mlt.ISB[1][i] << ", "
-//           << res_mlt.ISBr2[1][i] <<  ", "
-//           << res_mlt.IX[0][i] <<  ", "
-//           << res_mlt.IXr2[0][i] << ";" << endl;
+//           << res_mlt.IDr2[i] << ", ";
+
+//      for (int j = 0; j < exact.n_subs; j++)
+//      cout << res_mlt.ISB[j][i] << ", "
+//           << res_mlt.ISBr2[j][i] << ", ";
+
+//      for (int j = 0; j < exact.n_Xs; j++)
+//      cout << res_mlt.IX[j][i] <<  ", "
+//           << res_mlt.IXr2[j][i] << ";" << endl;
 //    }
 //    // print names
 //    cout << "string('$I_{\Omega}$');"
@@ -387,7 +397,7 @@ int main (int argc, char* argv[])
 //         << "string('$I_{\Gamma_2}$^{[\mathbf{r}^2]}$');"
 //         << "string('$I_{\Gamma_1 \cap \Gamma_2}^{[x]}$');"
 //         << "string('$I_{\Gamma_1 \cap \Gamma_2}^{[y]}$');\n";
-    std::cin.get();
+//    std::cin.get();
 
 
     for (int i = 0; i < exact.n_subs; i++)

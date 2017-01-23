@@ -28,11 +28,6 @@ extern PetscLogEvent log_my_p4est_poisson_nodes_solve;
 #endif
 #define bc_strength 1.0
 
-#ifdef P4_TO_P8
-#define N_NBRS_MAX 27
-#else
-#define N_NBRS_MAX 9
-#endif
 
 my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *node_neighbors)
   : node_neighbors(node_neighbors),
@@ -4001,7 +3996,17 @@ void my_p4est_poisson_nodes_mls_t::setup_negative_variable_coeff_laplace_rhsvec_
 #endif
                     integrand[p] = sample_qty(bc_values[i_phi], xyz);
                   }
+
             rhs_p[n] += cube.integrate_over_interface(integrand, color->at(i_phi));
+
+//            find_projection(phi_p[i_present_iface], qnnn, dxyz_pr, dist);
+
+//            for (short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
+//              xyz_pr[i_dim] = xyz_c[i_dim] + dxyz_pr[i_dim];
+
+//            bc_value_avg = sample_qty(bc_values[i_present_iface], xyz_pr);
+
+//            rhs_p[n] += cube.measure_of_interface(color->at(i_present_iface))*bc_value_avg;
           }
 
           // Robin term
@@ -5268,8 +5273,8 @@ double my_p4est_poisson_nodes_mls_t::sample_qty_on_uni_grid(grid_interpolation2_
 #ifdef P4_TO_P8
   for (short k = 0; k < grid.nz+1; k++)
 #endif
-    for (short j = 0; j < grid.nx+1; j++)
-      for (short i = 0; i < grid.ny+1; i++)
+    for (short j = 0; j < grid.ny+1; j++)
+      for (short i = 0; i < grid.nx+1; i++)
       {
         xyz[0] = grid.x[i];
         xyz[1] = grid.y[j];

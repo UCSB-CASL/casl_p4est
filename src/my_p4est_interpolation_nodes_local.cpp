@@ -12,6 +12,13 @@ void my_p4est_interpolation_nodes_local_t::initialize(p4est_locidx_t n)
     quad_idx[i_quad] = NOT_A_VALID_QUADRANT;
     tree_idx[i_quad] = -1;
     level_of_quad[i_quad] = -2;
+
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      xyz_quad_min[i_quad*P4EST_DIM + dim] = 0.0;
+      xyz_quad_max[i_quad*P4EST_DIM + dim] = 0.0;
+    }
+
   }
 
   // find neighboring quadrants
@@ -123,11 +130,27 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
   
   if (which_quadrant == -1)
   {
+    std::cout << xyz[0] << ", " << xyz[1]
+                       #ifdef P4_TO_P8
+                        << ", " << xyz[2]
+                       #endif
+              << std::endl;
+
     for (short i_quad = 0; i_quad < P4EST_CHILDREN; ++i_quad)
     {
 
       p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx[i_quad]);
-      std::cout << tree_idx[i_quad] << " : " << quad_idx[i_quad]- tree->quadrants_offset << " : " << level_of_quad[i_quad] << " : " << tree->quadrants.elem_count << std::endl;
+      std::cout << tree_idx[i_quad] << " : " << quad_idx[i_quad]- tree->quadrants_offset << " : " << level_of_quad[i_quad] << " : " << tree->quadrants.elem_count << " : "
+                << xyz_quad_min[i_quad*P4EST_DIM + 0] << ", " << xyz_quad_min[i_quad*P4EST_DIM + 1]
+             #ifdef P4_TO_P8
+                << ", " << xyz_quad_min[i_quad*P4EST_DIM + 2]
+             #endif
+                << " : "
+                << xyz_quad_max[i_quad*P4EST_DIM + 0] << ", " << xyz_quad_max[i_quad*P4EST_DIM + 1]
+             #ifdef P4_TO_P8
+                << ", " << xyz_quad_max[i_quad*P4EST_DIM + 2]
+             #endif
+                << std::endl;
     }
     throw std::invalid_argument("[ERROR]: Point does not belong to any neighbouring quadrant.");
   }

@@ -7,7 +7,7 @@ simplex3_mls_t::simplex3_mls_t()
   tris.reserve(20);
   tets.reserve(6);
 
-  eps = 1.0e-15;
+  eps = 1.0e-13;
 }
 
 simplex3_mls_t::simplex3_mls_t(double x0, double y0, double z0,
@@ -45,11 +45,12 @@ simplex3_mls_t::simplex3_mls_t(double x0, double y0, double z0,
   tets.push_back(tet3_t(0,1,2,3,0,1,2,3));
 
   use_linear = true;
-  eps = 1.0e-15;
+  eps = 1.0e-13;
 }
 
 void simplex3_mls_t::do_action(int cn, action_t action)
 {
+  eps /= 2.2;
   /* Process elements */
   int n;
   n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, cn, action);
@@ -971,10 +972,11 @@ void simplex3_mls_t::do_action_tet(int n_tet, int cn, action_t action)
 bool simplex3_mls_t::need_swap(int v0, int v1)
 {
   double dif = vtxs[v0].value - vtxs[v1].value;
-  if (fabs(dif) < eps){ // if values are too close, sort vertices by their numbers
-    if (v0 > v1) return true;
-    else         return false;
-  } else if (dif > 0.0){ // otherwise sort by values
+//  if (fabs(dif) < 0.8*eps){ // if values are too close, sort vertices by their numbers
+//    if (v0 > v1) return true;
+//    else         return false;
+//  } else
+    if (dif > 0.0){ // otherwise sort by values
     return true;
   } else {
     return false;
@@ -1220,7 +1222,7 @@ double simplex3_mls_t::find_intersection_linear(int v0, int v1)
   double nz = vtx1->z - vtx0->z;
   double l = sqrt(nx*nx+ny*ny+nz*nz);
 #ifdef CASL_THROWS
-  if(l < eps) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
+  if(l < 0.8*eps) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
 #endif
   nx /= l;
   ny /= l;
@@ -1228,8 +1230,8 @@ double simplex3_mls_t::find_intersection_linear(int v0, int v1)
   double f0 = vtx0->value;
   double f1 = vtx1->value;
 
-  if(fabs(f0)<eps) return 0.+eps;
-  if(fabs(f1)<eps) return l-eps;
+  if(fabs(f0)<0.8*eps) return 0.+0.8*eps;
+  if(fabs(f1)<0.8*eps) return l-0.8*eps;
 
 #ifdef CASL_THROWS
   if(f0*f1 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
@@ -1256,7 +1258,7 @@ double simplex3_mls_t::find_intersection_quadratic(int e)
   double nz = vtx1->z - vtx0->z;
   double l = sqrt(nx*nx+ny*ny+nz*nz);
 #ifdef CASL_THROWS
-  if(l < eps) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
+  if(l < 0.8*eps) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
 #endif
   nx /= l;
   ny /= l;
@@ -1265,9 +1267,9 @@ double simplex3_mls_t::find_intersection_quadratic(int e)
   double f01 = edgs[e].value;
   double f1 = vtx1->value;
 
-  if (fabs(f0)  < eps) return (l-eps)/l;
-  if (fabs(f01) < eps) return 0.5;
-  if (fabs(f1)  < eps) return (0.+eps)/l;
+  if (fabs(f0)  < 0.8*eps) return (l-0.8*eps)/l;
+  if (fabs(f01) < 0.8*eps) return 0.5;
+  if (fabs(f1)  < 0.8*eps) return (0.+0.8*eps)/l;
 
 #ifdef CASL_THROWS
   if(f0*f1 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");

@@ -29,6 +29,37 @@
 #include <src/cube3_refined_mls.h>
 #include <src/cube2_refined_mls.h>
 
+#ifdef P4_TO_P8
+#define N_NBRS_MAX 27
+#else
+#define N_NBRS_MAX 9
+#endif
+
+enum node_neighbor_t
+{
+#ifdef P4_TO_P8
+  // zm plane
+  nn_mmm = 0, nn_0mm, nn_pmm,
+  nn_m0m, nn_00m, nn_p0m,
+  nn_mpm, nn_0pm, nn_ppm,
+
+  // z0 plane
+  nn_mm0, nn_0m0, nn_pm0,
+  nn_m00, nn_000, nn_p00,
+  nn_mp0, nn_0p0, nn_pp0,
+
+  // zp plane
+  nn_mmp, nn_0mp, nn_pmp,
+  nn_m0p, nn_00p, nn_p0p,
+  nn_mpp, nn_0pp, nn_ppp
+
+#else
+  nn_mm0 = 0, nn_0m0, nn_pm0,
+  nn_m00, nn_000, nn_p00,
+  nn_mp0, nn_0p0, nn_pp0
+#endif
+};
+
 //class pointer_to_vec_t
 //{
 //  double *p;
@@ -171,30 +202,6 @@ public:
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
   my_p4est_poisson_nodes_mls_t& operator=(const my_p4est_poisson_nodes_mls_t& other);
 
-  enum node_neighbor_t
-  {
-#ifdef P4_TO_P8
-    // zm plane
-    nn_mmm = 0, nn_0mm, nn_pmm,
-    nn_m0m, nn_00m, nn_p0m,
-    nn_mpm, nn_0pm, nn_ppm,
-
-    // z0 plane
-    nn_mm0, nn_0m0, nn_pm0,
-    nn_m00, nn_000, nn_p00,
-    nn_mp0, nn_0p0, nn_pp0,
-
-    // zp plane
-    nn_mmp, nn_0mp, nn_pmp,
-    nn_m0p, nn_00p, nn_p0p,
-    nn_mpp, nn_0pp, nn_ppp
-
-#else
-    nn_mm0 = 0, nn_0m0, nn_pm0,
-    nn_m00, nn_000, nn_p00,
-    nn_mp0, nn_0p0, nn_pp0
-#endif
-  };
 
   double eps_ifc, eps_dom;
 
