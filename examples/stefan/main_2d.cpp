@@ -52,9 +52,7 @@ int test_number = 0;
 
 double xmin, xmax;
 double ymin, ymax;
-#ifdef P4_TO_P8
 double zmin, zmax;
-#endif
 
 // logging variables
 PetscLogEvent log_compute_curvature;
@@ -718,9 +716,7 @@ int main (int argc, char* argv[])
   splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
 
   int nx, ny;
-#ifdef P4_TO_P8
   int nz;
-#endif
   double tf;
 
   switch(test_number)
@@ -740,16 +736,12 @@ int main (int argc, char* argv[])
   // Create the connectivity object
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-#ifdef P4_TO_P8
+
   int n_xyz [] = {nx, ny, nz};
   double xyz_min [] = {xmin, ymin, zmin};
   double xyz_max [] = {xmax, ymax, zmax};
-#else
-  int n_xyz [] = {nx, ny};
-  double xyz_min [] = {xmin, ymin};
-  double xyz_max [] = {xmax, ymax};
-#endif
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  int periodic []   = {0, 0, 0};
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   double dxyz_min[P4EST_DIM];
   dxyz_min[0] = (xmax-xmin)/nx/(1<<lmax);

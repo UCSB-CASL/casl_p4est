@@ -126,9 +126,10 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
 #endif          
         }
       } else {
+        quad_neighbor_nodes_of_node_t qnnn;
         for (short j = 0; j<P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
-          const quad_neighbor_nodes_of_node_t& qnnn = ngbd_n->get_neighbors(node_idx);
+          ngbd_n->get_neighbors(node_idx, qnnn);
 
           fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
           fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);
@@ -183,16 +184,23 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
     }
 
     std::ostringstream oss;
-    oss << "[ERROR]: Point (" << x << "," << y <<
+    oss << "\n[ERROR]: Point (" << x << "," << y <<
        #ifdef P4_TO_P8
            "," << z <<
        #endif
-           ") is not locally owned by processor. "
-           << p4est->mpirank;
+           ") is not locally owned by processor "
+        << p4est->mpirank << ". ";
     if (rank_found != -1) {
-      oss << "Remote owner's rank = " << rank_found << std::endl;
+      oss << "Only processor " << rank_found
+          << " can perform the interpolation locally. ";
+      if (method != linear) {
+        oss << "If this point is on the processor boundary, or within the ghost layer, "
+               "try using 'linear' interpolation or alternatively precompute the "
+               "second derivatives if using 'quadratic'' interpolations." << std::endl;
+      }
     } else {
-      oss << "Possible remote owners are = ";
+      oss << "Could not find appropriate remote owner. "
+             "Possible matches are = ";
       for (size_t i = 0; i<remote_matches.size() - 1; i++) {
         oss << remote_matches[i].p.piggy1.owner_rank << ", ";
       }
@@ -268,10 +276,11 @@ double my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad,
     }
     else
     {
+      quad_neighbor_nodes_of_node_t qnnn;
       for (short j = 0; j<P4EST_CHILDREN; j++)
       {
         p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
-        const quad_neighbor_nodes_of_node_t& qnnn = ngbd_n->get_neighbors(node_idx);
+        ngbd_n->get_neighbors(node_idx, qnnn);
 
         fdd[j*P4EST_DIM + 0] = qnnn.dxx_central(Fi_p);
         fdd[j*P4EST_DIM + 1] = qnnn.dyy_central(Fi_p);

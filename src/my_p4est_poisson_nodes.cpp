@@ -10,7 +10,7 @@
 #endif
 
 #include <src/petsc_compatibility.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -90,7 +90,8 @@ my_p4est_poisson_nodes_t::my_p4est_poisson_nodes_t(const my_p4est_node_neighbors
   splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
 
   // compute grid parameters
-  // NOTE: Assuming all trees are of the same size [0, 1]^d
+  // NOTE: Assuming all trees are of the same size. Must be generalized if different trees have
+  // different sizes
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
   double xmin = p4est->connectivity->vertices[3*vm + 0];
@@ -360,10 +361,15 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
     set_phi(phi_);
   }
 
-  // a trick to avoid allocating zero RHS is to set it equal to solution. PETSc can handle this.
+  bool local_rhs = false;
   if (rhs_ == NULL)
   {
-    rhs_ = solution;
+    ierr = VecDuplicate(solution, &rhs_); CHKERRXX(ierr);
+    Vec rhs_local;
+    VecGhostGetLocalForm(rhs_, &rhs_local);
+    VecSet(rhs_local, 0);
+    VecGhostRestoreLocalForm(rhs_, &rhs_local);
+    local_rhs = true;
   }
 
   // set ksp type
@@ -416,23 +422,23 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
      * "0 "gives better convergence rate (in 3D).
      * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
     */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.5"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue(NULL, "-pc_hypre_boomeramg_strong_threshold", "0.5"); CHKERRXX(ierr);
 
     /* 2- Coarsening type
      * Available Options:
      * "CLJP","Ruge-Stueben","modifiedRuge-Stueben","Falgout", "PMIS", "HMIS". Falgout is usually the best.
      */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_coarsen_type", "Falgout"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue(NULL, "-pc_hypre_boomeramg_coarsen_type", "Falgout"); CHKERRXX(ierr);
 
     /* 3- Trancation factor
      * Greater than zero.
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue(NULL, "-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
 
     // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
     if (matrix_has_nullspace){
-      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
+      ierr = PetscOptionsSetValue(NULL, "-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
     }
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
@@ -476,6 +482,10 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
   {
     ierr = VecDestroy(add_); CHKERRXX(ierr);
     add_ = NULL;
+  }
+  if(local_rhs)
+  {
+    ierr = VecDestroy(rhs_); CHKERRXX(ierr);
   }
   if(local_phi)
   {

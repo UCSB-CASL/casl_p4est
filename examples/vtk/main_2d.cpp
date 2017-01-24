@@ -20,9 +20,11 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_utils.h>
 #endif
+
 #include <src/petsc_compatibility.h>
-#include <src/CASL_math.h>
+#include <src/casl_math.h>
 
 using namespace std;
 
@@ -72,12 +74,12 @@ int main (int argc, char* argv[]){
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 
-#ifdef P4_TO_P8
-  connectivity = my_p4est_brick_new(2, 2, 2,
-                                    0, 2, 0, 2, 0, 2, &brick);
-#else
-  connectivity = my_p4est_brick_new(2, 2, 0, 2, 0, 2, &brick);
-#endif
+  const int n_xyz[]      = {1, 1, 1};
+  const double xyz_min[] = {-1, -1, -1};
+  const double xyz_max[] = {1, 1, 1};
+  const int periodic[]   = {0, 0, 0};
+
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
   w2.stop(); w2.read_duration();
 
   // Now create the forest

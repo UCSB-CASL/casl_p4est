@@ -232,7 +232,8 @@ int main (int argc, char* argv[])
   double xyz_min [] = {xmin, ymin};
   double xyz_max [] = {xmax, ymax};
 #endif
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  const int periodic []   = {0, 0, 0};
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
 	for(int iter=0; iter<repeat; ++iter)
 	{

@@ -28,13 +28,9 @@ class my_p4est_poisson_faces_t
 
   vector<p4est_gloidx_t> proc_offset[P4EST_DIM];
 
-  double xmin, xmax;
-  double ymin, ymax;
-  double dx_min, dy_min;
-#ifdef P4_TO_P8
-  double dz_min;
-  double zmin, zmax;
-#endif
+  double xyz_min[P4EST_DIM];
+  double xyz_max[P4EST_DIM];
+  double dxyz[P4EST_DIM];
 
   my_p4est_interpolation_nodes_t interp_phi;
   Vec phi;

@@ -25,7 +25,7 @@
 
 #undef MIN
 #undef MAX
-#include <src/CASL_math.h>
+#include <src/casl_math.h>
 
 #include <src/my_p4est_hierarchy.h>
 #include <src/my_p4est_cell_neighbors.h>

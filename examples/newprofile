@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+# Use this script to generate a pro file for an existing example
+# 
+# Usage:
+#   ./newprofile name
+#
+
+# creates a .pro file 
+function create_pro() {
+cat > $1.pro << EOF
+# --------------------------------------------------------------
+# This is a qmake script for generating makefiles. Please read
+# this short comment before changing this file. 
+#
+# Following build systems are supported:
+#   * macx (default)
+#   * linux
+#   * stampede
+#
+# To use either of these systems, you can pass in the correct
+# value to qmake, e.g. to build for stamepde system:
+#   qmake example.pro CONFIG+="stampede"
+#
+# You can also modify the CONFIG variable below, but remember
+# that doing so will prevent you from using the same script on
+# different systems.
+#
+#   *** PLEASE DO NOT ADD YOUR CONFIG SCRIPT TO REPOSITORY ***
+#
+# --------------------------------------------------------------
+CONFIG += 2d
+include(../../qmake/libparcasl.pri)
+
+2d {
+  TARGET   = $1_2d
+  SOURCES += main_2d.cpp
+} 3d {
+  TARGET   = $1_3d
+  SOURCES += main_3d.cpp
+}
+
+EOF
+}
+
+if [[ "$#" -ne 1 ]]; then
+    echo "useage: ./$(basename "$0") example"
+else
+  name=$1
+
+  # create a new example only if one does not exist with the same name
+  if [[ -e $name ]]; then
+    cd $name
+    if [[ ! -e $name.pro ]]; then
+      create_pro $name
+    else
+      echo "ERROR: Profile '$name.pro' already exists. Please choose another name."
+      exit 1
+    fi
+  else
+    echo "ERROR: Example '$name' does not exist. Please choose an existing example."
+    exit 1
+  fi  
+fi

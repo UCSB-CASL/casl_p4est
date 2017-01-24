@@ -1245,8 +1245,7 @@ void check_velocity_cavity(mpi_environment_t& mpi, my_p4est_navier_stokes_t *ns,
     char *out_dir;
     out_dir = getenv("OUT_DIR");
     if (!out_dir) {
-      out_dir = "out_dir";
-      mkdir (out_dir, 0755);
+      throw std::invalid_argument("You need to set the environment variable OUT_DIR to save the error on the velocity for the driven cavity test");
     }
     if     (test_number==2) sprintf(name, "%s/2d/driven_cavity/cavity_velocity_%d-%d_%dx%d_Re%g_ntimesdt%g.dat", out_dir, data->min_lvl, data->max_lvl, nx, ny, Re, n_times_dt);
     else if(test_number==3) sprintf(name, "%s/2d/driven_cavity_hole/cavity_hole_velocity_%d-%d_%dx%d_Re%g_ntimesdt%g.dat", out_dir, data->min_lvl, data->max_lvl, nx, ny, Re, n_times_dt);
@@ -1271,12 +1270,8 @@ void check_velocity_cavity(mpi_environment_t& mpi, my_p4est_navier_stokes_t *ns,
 
 int main (int argc, char* argv[])
 {
-  PetscErrorCode ierr;
   mpi_environment_t mpi;
   mpi.init(argc, argv);
-
-  MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
-  MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -1295,6 +1290,7 @@ int main (int argc, char* argv[])
   cmd.add_option("thresh", "the threshold used for the refinement criteria");
   cmd.add_option("save_vtk", "save the p4est in vtk format");
   cmd.add_option("save_every_n", "export images every n iterations");
+  cmd.add_option("save_forces", "save the forces");
   cmd.add_option("smoke", "0 - no smoke, 1 - with smoke");
   cmd.add_option("smoke_thresh", "threshold for smoke refinement");
   cmd.add_option("refine_with_smoke", "refine the grid with the smoke density and threshold smoke_thresh");
@@ -1325,7 +1321,6 @@ int main (int argc, char* argv[])
                  9 - rotating cylinder\n");
 #endif
   cmd.parse(argc, argv);
-  cmd.print();
 
   int sl_order = cmd.get("sl_order", 2);
   int nb_splits = cmd.get("nb_splits", 0);
@@ -1334,6 +1329,7 @@ int main (int argc, char* argv[])
   double n_times_dt = cmd.get("n_times_dt", 1.);
   double threshold_split_cell = cmd.get("thresh", 0.1);
   bool save_vtk = cmd.get("save_vtk", false);
+  bool save_forces = cmd.get("save_forces", 1);
   int save_every_n = cmd.get("save_every_n", 1);
   test_number = cmd.get("test", 1);
 
@@ -1392,7 +1388,7 @@ int main (int argc, char* argv[])
   if(test_number==6)
   {
 //    naca = new NACA_SAMPLED(naca_number, naca_length, naca_angle);
-    naca = new NACA_CASL(mpi->mpicomm, naca_number, naca_length, naca_angle);
+    naca = new NACA_CASL(mpi.comm(), naca_number, naca_length, naca_angle);
   }
 #endif
 
@@ -1420,6 +1416,7 @@ int main (int argc, char* argv[])
   uniform_band = cmd.get("uniform_band", uniform_band);
   uniform_band /= dxmin;
 
+  PetscErrorCode ierr;
 #ifdef P4_TO_P8
   ierr = PetscPrintf(mpi.comm(), "Parameters : mu = %g, rho = %g, grid is %dx%dx%d\n", mu, rho, nx, ny, nz); CHKERRXX(ierr);
 #else
@@ -1437,12 +1434,14 @@ int main (int argc, char* argv[])
   int n_xyz [] = {nx, ny, nz};
   double xyz_min [] = {xmin, ymin, zmin};
   double xyz_max [] = {xmax, ymax, zmax};
+  int periodic[] = {0, 0, 0};
 #else
   int n_xyz [] = {nx, ny};
   double xyz_min [] = {xmin, ymin};
   double xyz_max [] = {xmax, ymax};
+  int periodic[] = {0, 0};
 #endif
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   p4est_t *p4est_nm1 = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
   splitting_criteria_cf_t data(lmin, lmax, &level_set, 1.2);
@@ -1590,16 +1589,15 @@ int main (int argc, char* argv[])
   char file_forces[1000];
 
   const char *out_dir = getenv("OUT_DIR");
-  if (!out_dir){
-    out_dir = "out_dir";
-    mkdir(out_dir, 0755);
+  if (!out_dir && (save_vtk || save_forces)){
+    throw std::invalid_argument("You need to set the environment variable OUT_DIR if you want to save the visuals or the forces");
   }
 
 #ifdef P4_TO_P8
   if(test_number==2 || test_number==5)
   {
-    if     (test_number==2) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, nz, Re, threshold_split_cell, n_times_dt, sl_order);
-    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_sphere_%d-%d_%dx%dx%d_thresh_%g_Re_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, nz, threshold_split_cell, Re, sl_order);
+    if     (test_number==2) sprintf(file_forces, "%s/3d/forces_karman_%d-%d_%dx%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, nz, Re, threshold_split_cell, n_times_dt, sl_order);
+    else if(test_number==5) sprintf(file_forces, "%s/3d/forces_oscillating_sphere_%d-%d_%dx%dx%d_thresh_%g_Re_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, nz, threshold_split_cell, Re, sl_order);
 
     ierr = PetscPrintf(mpi.comm(), "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
     if(!mpi.rank())
@@ -1615,9 +1613,9 @@ int main (int argc, char* argv[])
 #else
   if(test_number==4 || test_number==5 || test_number==6)
   {
-    if     (test_number==4) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
-    else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
-    else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
+    if     (test_number==4) sprintf(file_forces, "%s/2d/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
+    else if(test_number==5) sprintf(file_forces, "%s/2d/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
+    else if(test_number==6) sprintf(file_forces, "%s/2d/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
     
     ierr = PetscPrintf(mpi.comm(), "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
     if(!mpi.rank())
@@ -1714,11 +1712,11 @@ int main (int argc, char* argv[])
             err_hodge = max(err_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
         }
       }
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi->mpicomm); SC_CHECK_MPI(mpiret);
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
       ierr = VecRestoreArrayRead(hodge_old, &ho); CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(hodge_new, &hn); CHKERRXX(ierr);
 
-      ierr = PetscPrintf(mpi->mpicomm, "hodge iteration #%d, error = %e\n", iter_hodge, err_hodge); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, error = %e\n", iter_hodge, err_hodge); CHKERRXX(ierr);
       iter_hodge++;
     }
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
@@ -1786,7 +1784,6 @@ int main (int argc, char* argv[])
 #endif
       default: throw std::invalid_argument("choose a valid test.");
       }
-#endif
 
       ns.save_vtk(name);
 

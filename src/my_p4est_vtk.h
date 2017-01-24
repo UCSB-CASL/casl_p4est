@@ -117,7 +117,7 @@ int                 my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *n
  * \return          This returns 0 if no error and -1 if there is an error.
  */
 
-int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes,
+int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t* ghost,
                                                      const char *filename,
                                                      const int num, const char *list_name, const char **scalar_names,
                                                      const double **values);

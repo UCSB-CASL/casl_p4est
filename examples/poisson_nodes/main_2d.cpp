@@ -60,10 +60,8 @@ double xmin = -1;
 double xmax =  1;
 double ymin = -1;
 double ymax =  1;
-#ifdef P4_TO_P8
 double zmin = -1;
 double zmax =  1;
-#endif
 
 using namespace std;
 
@@ -73,9 +71,7 @@ int nb_splits = 1;
 
 int nx = 2;
 int ny = 2;
-#ifdef P4_TO_P8
 int nz = 1;
-#endif
 
 bool save_vtk = true;
 
@@ -531,17 +527,11 @@ int main (int argc, char* argv[])
 
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-#ifdef P4_TO_P8
-  int n_xyz [] = {nx, ny, nz};
-  double xyz_min [] = {xmin, ymin, zmin};
-  double xyz_max [] = {xmax, ymax, zmax};
-  int periodic[] = {0, 0, 0};
-#else
-  int n_xyz [] = {nx, ny};
-  double xyz_min [] = {xmin, ymin};
-  double xyz_max [] = {xmax, ymax};
-  int periodic[] = {0, 0};
-#endif
+
+  const int n_xyz[] = {nx, ny, nz};
+  const double xyz_min[] = {xmin, ymin, zmin};
+  const double xyz_max[] = {xmax, ymax, zmax};
+  const int periodic[] = {0, 0, 0};
   connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   p4est_t       *p4est;

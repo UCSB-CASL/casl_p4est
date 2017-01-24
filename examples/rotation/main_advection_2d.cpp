@@ -15,7 +15,7 @@
 #endif
 
 #include <src/Parser.h>
-#include <src/CASL_math.h>
+#include <src/casl_math.h>
 
 #ifndef GIT_COMMIT_HASH_SHORT
 #define GIT_COMMIT_HASH_SHORT "unknown"
@@ -30,11 +30,8 @@ double xmin = 0;
 double xmax = 1;
 double ymin = 0;
 double ymax = 1;
-#ifdef P4_TO_P8
 double zmin = 0;
 double zmax = 1;
-#endif
-
 
 #ifdef P4_TO_P8
 struct LEVEL_SET : CF_3
@@ -136,8 +133,6 @@ struct V1 : CF_2
 } v1;
 #endif
 
-
-
 void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, Vec phi, const char *name)
 {
   PetscErrorCode ierr;
@@ -195,18 +190,14 @@ int main(int argc, char ** argv)
   cmd.add_option("nb_splits", "number of split for convergence monitoring");
   cmd.add_option("nx", "number of trees in x direction");
   cmd.add_option("ny", "number of trees in y direction");
-#ifdef P4_TO_P8
   cmd.add_option("nz", "number of trees in z direction");
-#endif
 
   cmd.parse(argc, argv);
   cmd.print();
 
   int nx = cmd.get("nx", 1);
   int ny = cmd.get("ny", 1);
-#ifdef P4_TO_P8
   int nz = cmd.get("nz", 1);
-#endif
 
   int lmin = cmd.get("lmin", 0);
   int lmax = cmd.get("lmax", 5);
@@ -216,17 +207,13 @@ int main(int argc, char ** argv)
 
   my_p4est_brick_t brick;
   p4est_connectivity_t *connectivity;
-#ifdef P4_TO_P8
+
   int n_xyz [] = {nx, ny, nz};
   double xyz_min [] = {xmin, ymin, zmin};
   double xyz_max [] = {xmax, ymax, zmax};
-#else
-  int n_xyz [] = {nx, ny, 1};
-  double xyz_min [] = {xmin, ymin, 0};
-  double xyz_max [] = {xmax, ymax, 0};
-#endif
+  int periodic []   = {0, 0, 0};
 
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max,&brick);
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
   double err_nm1 = 0;
   double err_n   = 0;
   double mass_loss_nm1 = 0;

@@ -338,6 +338,7 @@ double quad_neighbor_nodes_of_node_t::dxx_central_on_m00(const double *f, const 
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dxx_central_m00, 0, 0, 0, 0); CHKERRXX(ierr);
 
+  // FIXME: These kind of operations would be expensive if neighbors is not initialized!
   double fxx_m00_mm = 0, fxx_m00_pm = 0;
   if (d_m00_p0 != 0) { fxx_m00_mm = neighbors.get_neighbors(node_m00_mm).dxx_central(f); }
   if (d_m00_m0 != 0) { fxx_m00_pm = neighbors.get_neighbors(node_m00_pm).dxx_central(f); }

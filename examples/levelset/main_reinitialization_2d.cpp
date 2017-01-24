@@ -29,7 +29,7 @@
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
-#include <src/CASL_math.h>
+#include <src/casl_math.h>
 
 using namespace std;
 
@@ -84,8 +84,9 @@ int main (int argc, char* argv[]){
     int n_xyz [] = {1, 1, 1};
     double xyz_min [] = {-1, -1, -1};
     double xyz_max [] = { 1,  1,  1};
+    int periodic []   = {0, 0, 0};
 
-    connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+    connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
     /* Now create the forest */
     p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);

@@ -19,7 +19,7 @@
 #include <set>
 #include <sstream>
 #include <petsclog.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 #include <src/petsc_compatibility.h>
 
 
@@ -1114,6 +1114,8 @@ double interface_length(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec ph
 
 bool is_node_xmWall(const p4est_t *p4est, const p4est_indep_t *ni)
 {
+  if (is_periodic(p4est, 0)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
@@ -1127,6 +1129,8 @@ bool is_node_xmWall(const p4est_t *p4est, const p4est_indep_t *ni)
 
 bool is_node_xpWall(const p4est_t *p4est, const p4est_indep_t *ni)
 {
+  if (is_periodic(p4est, 0)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
@@ -1140,6 +1144,8 @@ bool is_node_xpWall(const p4est_t *p4est, const p4est_indep_t *ni)
 
 bool is_node_ymWall(const p4est_t *p4est, const p4est_indep_t *ni)
 {
+  if (is_periodic(p4est, 1)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
@@ -1153,6 +1159,8 @@ bool is_node_ymWall(const p4est_t *p4est, const p4est_indep_t *ni)
 
 bool is_node_ypWall(const p4est_t *p4est, const p4est_indep_t *ni)
 {
+  if (is_periodic(p4est, 1)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
@@ -1167,6 +1175,8 @@ bool is_node_ypWall(const p4est_t *p4est, const p4est_indep_t *ni)
 #ifdef P4_TO_P8
 bool is_node_zmWall(const p4est_t *p4est, const p4est_indep_t *ni)
 {
+  if (is_periodic(p4est, 2)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
@@ -1180,6 +1190,8 @@ bool is_node_zmWall(const p4est_t *p4est, const p4est_indep_t *ni)
 
 bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni)
 {
+  if (is_periodic(p4est, 2)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_topidx_t tr_it = ni->p.piggy3.which_tree;
 
@@ -1206,6 +1218,8 @@ bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni)
 
 bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
+  if (is_periodic(p4est, 0)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
 
   if (t2t[P4EST_FACES*tr_it + dir::f_m00] != tr_it)
@@ -1218,6 +1232,8 @@ bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
 
 bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
+  if (is_periodic(p4est, 0)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_qcoord_t qh = P4EST_QUADRANT_LEN(qi->level);
 
@@ -1231,6 +1247,8 @@ bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
 
 bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
+  if (is_periodic(p4est, 1)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
 
   if (t2t[P4EST_FACES*tr_it + dir::f_0m0] != tr_it)
@@ -1243,6 +1261,8 @@ bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
 
 bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
+  if (is_periodic(p4est, 1)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_qcoord_t qh = P4EST_QUADRANT_LEN(qi->level);
 
@@ -1257,6 +1277,8 @@ bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
 #ifdef P4_TO_P8
 bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
+  if (is_periodic(p4est, 2)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
 
   if (t2t[P4EST_FACES*tr_it + dir::f_00m] != tr_it)
@@ -1269,6 +1291,8 @@ bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
 
 bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
+  if (is_periodic(p4est, 2)) return false;
+
   const p4est_topidx_t *t2t = p4est->connectivity->tree_to_tree;
   p4est_qcoord_t qh = P4EST_QUADRANT_LEN(qi->level);
 
