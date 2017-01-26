@@ -61,6 +61,9 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
     v_interface_np1[dir] = NULL;
     normal[dir] = NULL;
   }
+
+  dt_method = 0;
+  velocity_tol = 1.e-5;
 }
 
 
@@ -842,9 +845,15 @@ void my_p4est_bialloy_t::compute_dt()
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
   dt_nm1 = dt_n;
-//  dt_n = 1 * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+  switch (dt_method) {
+    case 0: dt_n = 1. * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+      break;
+    case 1: dt_n = 0.2 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+      break;
+  }
+//  dt_n = 1. * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);
 //  dt_n = 1 * dxyz_min / MAX(u_max,1e-7);
-  dt_n = .25 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+//  dt_n = .25 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
   PetscPrintf(p4est->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e\n", u_max, vgamma_max, cooling_velocity);
 
 ////  if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
@@ -855,11 +864,11 @@ void my_p4est_bialloy_t::compute_dt()
 //    ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
 //  }
 
-    if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
-    {
-      dt_n = MIN(dt_n, 0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max));
-      ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
-    }
+//    if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
+//    {
+//      dt_n = MIN(dt_n, 0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max));
+//      ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
+//    }
   PetscPrintf(p4est->mpicomm, "dt = %e\n", dt_n);
 }
 
@@ -1127,6 +1136,8 @@ void my_p4est_bialloy_t::save_VTK(int iter)
   Vec kappa_vis;
 
   double *phi_vis_p;
+
+  periodic = false; // no need to create a temporary tree anymore
 
   if(periodic)
   {

@@ -48,9 +48,9 @@
 #undef MIN
 #undef MAX
 
-int lmin = 4;
-int lmax = 9;
-int save_every_n_iteration = 100;
+int lmin = 5;
+int lmax = 11;
+int save_every_n_iteration = 10;
 
 using namespace std;
 
@@ -68,7 +68,7 @@ char direction = 'y';
  */
 int alloy_type = 0;
 
-double box_size = 5e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 //double box_size = 5e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
 
@@ -79,9 +79,9 @@ double ymax = 1;
 #ifdef P4_TO_P8
 double zmin = 0;
 double zmax = 1;
-int n_xyz[] = {2, 2, 2};
+int n_xyz[] = {1, 1, 1};
 #else
-int n_xyz[] = {2, 2};
+int n_xyz[] = {1, 1};
 #endif
 
 double rho;                  /* density                                    - kg.cm-3      */
@@ -111,6 +111,9 @@ double kp_sec;
 
 //double t_final = 1000*ny/V;
 double t_final = 500;
+
+int dt_method = 0;
+double velocity_tol = 1.e-5;
 
 void set_alloy_parameters()
 {
@@ -513,6 +516,10 @@ int main (int argc, char* argv[])
   cmd.add_option("Dl", "set the concentration diffusion coefficient in the liquid phase");
   cmd.add_option("eps_c", "set the curvature undercooling coefficient");
   cmd.add_option("eps_v", "set the kinetic undercooling coefficient");
+
+  cmd.add_option("dt_method", "dt_method");
+  cmd.add_option("velocity_tol", "velocity_tol");
+
   cmd.parse(argc, argv);
 
   alloy_type = cmd.get("alloy", alloy_type);
@@ -563,6 +570,9 @@ int main (int argc, char* argv[])
   Dl_sec = cmd.get("Dl", Dl);
   eps_c = cmd.get("eps_c", eps_c);
   eps_v = cmd.get("eps_v", eps_v);
+
+  dt_method = cmd.get("dt_method", dt_method);
+  velocity_tol = cmd.get("velocity_tol", velocity_tol);
 
   double latent_heat_orig = latent_heat;
   double G_orig = G;
@@ -681,6 +691,8 @@ int main (int argc, char* argv[])
   bas.set_concentration(cl, cs, cl_sec, cs_sec);
   bas.set_normal_velocity(normal_velocity);
   bas.set_dt(dt);
+  bas.set_dt_method(dt_method);
+  bas.set_velocity_tol(velocity_tol);
 
   bas.compute_velocity();
   bas.compute_dt();
@@ -698,7 +710,7 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   sprintf(name, "%s/velo_%dx%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], n_xyz[2], latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #else
-  sprintf(name, "%s/velo_%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
+  sprintf(name, "%s/velo_%dx%d_L_%g_G_%g_V_%g_box_%g_dt_method_%d_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], latent_heat_orig, G_orig, V_orig, box_size, dt_method, lmin, lmax);
 #endif
 
   if(save_velocity)

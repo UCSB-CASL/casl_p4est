@@ -2,7 +2,7 @@
 #define MY_P4EST_MULTIALLOY_H
 
 #include <src/types.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_tools.h>
@@ -128,6 +128,10 @@ private:
   bool matrices_are_constructed;
   Vec rhs;
 
+  int dt_method;
+
+  double velocity_tol;
+
 public:
 
   my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -191,6 +195,10 @@ public:
   inline double get_max_interface_velocity() { return vgamma_max; }
 
   void set_dt( double dt );
+
+  void set_dt_method (int val) {dt_method = val;}
+
+  void set_velocity_tol (double val) {velocity_tol = val;}
 
   void compute_normal_and_curvature();
 

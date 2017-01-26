@@ -68,6 +68,9 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
     v_interface_np1[dir] = NULL;
     normal[dir] = NULL;
   }
+
+  dt_method = 0;
+  velocity_tol = 1.e-5;
 }
 
 
@@ -1006,19 +1009,24 @@ void my_p4est_multialloy_t::compute_dt()
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
   dt_nm1 = dt_n;
-//  dt_n = 1 * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+  switch (dt_method) {
+    case 0: dt_n = 1. * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+      break;
+    case 1: dt_n = 0.2 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+      break;
+  }
 //  dt_n = 1 * dxyz_min / MAX(u_max,1e-7);
-  dt_n = 0.5 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+//  dt_n = 0.1 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
 //  dt_n = 0.5 * dxyz_min / u_max;
   PetscPrintf(p4est->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e\n", u_max, vgamma_max, cooling_velocity);
 
 //  if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
-  if(0 && dt_n>0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))))
-  {
+//  if(0 && dt_n>0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))))
+//  {
 //    dt_n = MIN(dt_n, 0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max));
-    dt_n = MIN(dt_n, 0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))));
-    ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
-  }
+//    dt_n = MIN(dt_n, 0.5/(MAX(u_max,vgamma_max)*MAX(kappa_max,1/(100*dxyz_min))));
+//    ierr = PetscPrintf(p4est->mpicomm, "KAPPA LIMITING TIME STEP\n"); CHKERRXX(ierr);
+//  }
   PetscPrintf(p4est->mpicomm, "dt = %e\n", dt_n);
 }
 
@@ -1127,69 +1135,153 @@ void my_p4est_multialloy_t::update_grid()
   compute_normal_and_curvature();
 }
 
+//void my_p4est_multialloy_t::one_step()
+//{
+//  Vec normal_velocity_tmp;
+//  ierr = VecDuplicate(phi, &normal_velocity_tmp); CHKERRXX(ierr);
+
+//  Vec normal_velocity_cl;
+//  ierr = VecDuplicate(phi, &normal_velocity_cl); CHKERRXX(ierr);
+
+//  double *normal_velocity_tmp_p, *phi_p, *normal_velocity_np1_p;
+//  double error = 1;
+//  int iteration = 0;
+//  matrices_are_constructed = false;
+
+//  double error_cl = 1;
+//  int iteration_cl = 0;
+
+//  while(error>1e-5 && iteration<100)
+//  {
+//    Vec src, out;
+//    ierr = VecGhostGetLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
+//    ierr = VecGhostGetLocalForm(normal_velocity_tmp                , &out); CHKERRXX(ierr);
+//    ierr = VecCopy(src, out); CHKERRXX(ierr);
+//    ierr = VecGhostRestoreLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
+//    ierr = VecGhostRestoreLocalForm(normal_velocity_tmp                , &out); CHKERRXX(ierr);
+
+//    solve_temperature();
+
+//    error_cl = 1;
+//    iteration_cl = 0;
+//    while (error_cl > 1e-2 && iteration_cl < 100)
+//    {
+//      ierr = VecGhostGetLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
+//      ierr = VecGhostGetLocalForm(normal_velocity_cl , &out); CHKERRXX(ierr);
+//      ierr = VecCopy(src, out); CHKERRXX(ierr);
+//      ierr = VecGhostRestoreLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
+//      ierr = VecGhostRestoreLocalForm(normal_velocity_cl , &out); CHKERRXX(ierr);
+
+//      solve_concentration_sec();
+//      solve_concentration();
+//      compute_normal_velocity();
+
+//      double *normal_velocity_cl_p;
+//      ierr = VecGetArray(normal_velocity_cl, &normal_velocity_cl_p); CHKERRXX(ierr);
+//      ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+//      ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+//      error_cl = 0;
+//      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+//      {
+//        if(fabs(phi_p[n]) < dxyz_close_interface)
+//          error_cl = MAX(error_cl, fabs(normal_velocity_cl_p[n]-normal_velocity_np1_p[n]));
+//      }
+//      ierr = VecRestoreArray(normal_velocity_cl, &normal_velocity_cl_p); CHKERRXX(ierr);
+//      ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+//      ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+
+//      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_cl, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+//      error_cl /= MAX(vgamma_max,1e-8);
+
+//      ierr = PetscPrintf(p4est->mpicomm, "\t Convergence sub-iteration #%d, max_velo = %e, error_cl = %e\n", iteration_cl, vgamma_max, error_cl); CHKERRXX(ierr);
+
+//      iteration_cl++;
+//    }
+
+
+//    ierr = VecGetArray(normal_velocity_tmp, &normal_velocity_tmp_p); CHKERRXX(ierr);
+//    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+//    ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+//    error = 0;
+//    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+//    {
+//      if(fabs(phi_p[n]) < dxyz_close_interface)
+//        error = MAX(error,fabs(normal_velocity_tmp_p[n]-normal_velocity_np1_p[n]));
+//    }
+//    ierr = VecRestoreArray(normal_velocity_tmp, &normal_velocity_tmp_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+
+//    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &error, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+//    error /= MAX(vgamma_max,1e-8);
+
+//    matrices_are_constructed = true;
+//    ierr = PetscPrintf(p4est->mpicomm, "Convergence iteration #%d, max_velo = %e, error = %e\n", iteration, vgamma_max, error); CHKERRXX(ierr);
+//    iteration++;
+//  }
+
+//  compare_velocity_temperature_vs_concentration();
+
+//  compute_velocity();
+//  compute_dt();
+//  update_grid();
+
+//  ierr = VecDestroy(normal_velocity_tmp); CHKERRXX(ierr);
+//  ierr = VecDestroy(normal_velocity_cl); CHKERRXX(ierr);
+//}
+
 void my_p4est_multialloy_t::one_step()
 {
   Vec normal_velocity_tmp;
   ierr = VecDuplicate(phi, &normal_velocity_tmp); CHKERRXX(ierr);
 
-  Vec normal_velocity_cl;
-  ierr = VecDuplicate(phi, &normal_velocity_cl); CHKERRXX(ierr);
+//  Vec normal_velocity_np1_tmp;
+//  ierr = VecDuplicate(phi, &normal_velocity_np1_tmp); CHKERRXX(ierr);
 
-  double *normal_velocity_tmp_p, *phi_p, *normal_velocity_np1_p;
+  double *normal_velocity_tmp_p, *phi_p, *normal_velocity_np1_p, *normal_velocity_np1_tmp_p;
   double error = 1;
   int iteration = 0;
   matrices_are_constructed = false;
 
-  double error_cl = 1;
-  int iteration_cl = 0;
-
-  while(error>1e-5 && iteration<100)
+  while(error>velocity_tol && iteration<100)
   {
     Vec src, out;
     ierr = VecGhostGetLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(normal_velocity_tmp                , &out); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(normal_velocity_tmp, &out); CHKERRXX(ierr);
     ierr = VecCopy(src, out); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(normal_velocity_tmp                , &out); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(normal_velocity_tmp, &out); CHKERRXX(ierr);
 
     solve_temperature();
 
-    error_cl = 1;
-    iteration_cl = 0;
-    while (error_cl > 1e-2 && iteration_cl < 100)
-    {
-      ierr = VecGhostGetLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
-      ierr = VecGhostGetLocalForm(normal_velocity_cl , &out); CHKERRXX(ierr);
-      ierr = VecCopy(src, out); CHKERRXX(ierr);
-      ierr = VecGhostRestoreLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
-      ierr = VecGhostRestoreLocalForm(normal_velocity_cl , &out); CHKERRXX(ierr);
+    // compute velocity 2-robin 1-dirichlet
+    solve_concentration_sec();
+    solve_concentration();
+    compute_normal_velocity();
 
-      solve_concentration_sec();
-      solve_concentration();
-      compute_normal_velocity();
+//    // save velocity
+//    ierr = VecGhostGetLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
+//    ierr = VecGhostGetLocalForm(normal_velocity_np1_tmp, &out); CHKERRXX(ierr);
+//    ierr = VecCopy(src, out); CHKERRXX(ierr);
+//    ierr = VecGhostRestoreLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
+//    ierr = VecGhostRestoreLocalForm(normal_velocity_np1_tmp, &out); CHKERRXX(ierr);
 
-      double *normal_velocity_cl_p;
-      ierr = VecGetArray(normal_velocity_cl, &normal_velocity_cl_p); CHKERRXX(ierr);
-      ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-      ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
-      error_cl = 0;
-      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-      {
-        if(fabs(phi_p[n]) < dxyz_close_interface)
-          error_cl = MAX(error_cl, fabs(normal_velocity_cl_p[n]-normal_velocity_np1_p[n]));
-      }
-      ierr = VecRestoreArray(normal_velocity_cl, &normal_velocity_cl_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+//    // swap concentrations
 
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_cl, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-      error_cl /= MAX(vgamma_max,1e-8);
+//    // compute velocity 1-robin 2-dirichlet
+//    solve_concentration_sec();
+//    solve_concentration();
+//    compute_normal_velocity();
 
-      ierr = PetscPrintf(p4est->mpicomm, "\t Convergence sub-iteration #%d, max_velo = %e, error_cl = %e\n", iteration_cl, vgamma_max, error_cl); CHKERRXX(ierr);
+//    // compute average velocity
 
-      iteration_cl++;
-    }
+//    ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+//    ierr = VecGetArray(normal_velocity_np1_tmp, &normal_velocity_np1_tmp_p); CHKERRXX(ierr);
 
+//    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+//    {
+//      normal_velocity_np1_p[n] = 0.5*(normal_velocity_np1_p[n]+normal_velocity_np1_tmp_p[n]);
+//    }
 
     ierr = VecGetArray(normal_velocity_tmp, &normal_velocity_tmp_p); CHKERRXX(ierr);
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
@@ -1219,7 +1311,6 @@ void my_p4est_multialloy_t::one_step()
   update_grid();
 
   ierr = VecDestroy(normal_velocity_tmp); CHKERRXX(ierr);
-  ierr = VecDestroy(normal_velocity_cl); CHKERRXX(ierr);
 }
 
 
@@ -1347,6 +1438,10 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   Vec kappa_vis;
 
   double *phi_vis_p;
+
+  periodic = false; // no need to create a temporary tree anymore
+
+  // TODO: get rid of creating temporary grid altogether
 
   if(periodic)
   {
