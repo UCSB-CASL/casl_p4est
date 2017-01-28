@@ -132,6 +132,10 @@ private:
 
   double velocity_tol;
 
+  bool first_step;
+
+  double cfl_number;
+
 public:
 
   my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -199,6 +203,8 @@ public:
   void set_dt_method (int val) {dt_method = val;}
 
   void set_velocity_tol (double val) {velocity_tol = val;}
+
+  void set_cfl (double val) {cfl_number = val;}
 
   void compute_normal_and_curvature();
 

@@ -64,6 +64,7 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
 
   dt_method = 0;
   velocity_tol = 1.e-5;
+  cfl_number = 0.5;
 }
 
 
@@ -848,7 +849,7 @@ void my_p4est_bialloy_t::compute_dt()
   switch (dt_method) {
     case 0: dt_n = 1. * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);
       break;
-    case 1: dt_n = 0.2 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+    case 1: dt_n = cfl_number * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
       break;
   }
 //  dt_n = 1. * sqrt(dxyz_min)*dxyz_min * MIN(1/u_max, 1/cooling_velocity);

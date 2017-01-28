@@ -52,6 +52,8 @@ int lmin = 5;
 int lmax = 11;
 int save_every_n_iteration = 10;
 
+double lip = 1.5;
+
 using namespace std;
 
 bool save_velocity = true;
@@ -62,6 +64,8 @@ char direction = 'z';
 #else
 char direction = 'y';
 #endif
+
+double termination_length = 0.8;
 
 /* 0 - NiCu
  * 1 - AlCu
@@ -112,8 +116,10 @@ double kp_sec;
 //double t_final = 1000*ny/V;
 double t_final = 500;
 
-int dt_method = 0;
+int dt_method = 1;
 double velocity_tol = 1.e-5;
+
+double cfl_number = 0.05;
 
 void set_alloy_parameters()
 {
@@ -125,11 +131,12 @@ void set_alloy_parameters()
     heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
     ml                   =-357;            /* K / at frac. - liquidous slope */
     kp                   = 0.86;           /* partition coefficient */
-    c0                   = 0.25831;        /* at frac.    */
+//    c0                   = 0.40731;        /* at frac.    */
+    c0                   = 0.2;        /* at frac.    */
     Tm                   = 1728;           /* K           */
     Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
     Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
-    G                    = 4e2;            /* k.cm-1      */
+    G                    = 2e3;            /* k.cm-1      */
     V                    = 0.01;           /* cm.s-1      */
     latent_heat          = 2350;           /* J.cm-3      */
     thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
@@ -143,8 +150,8 @@ void set_alloy_parameters()
     Dl_sec = 1e-5;
     Ds_sec = 1e-13;
     ml_sec =-357;
-    c0_sec = 0.15;
-    kp_sec = 0.86001;
+    c0_sec = 0.2;
+    kp_sec = 0.86;
 
     break;
   case 1:
@@ -517,8 +524,12 @@ int main (int argc, char* argv[])
   cmd.add_option("eps_c", "set the curvature undercooling coefficient");
   cmd.add_option("eps_v", "set the kinetic undercooling coefficient");
 
-  cmd.add_option("dt_method", "dt_method");
-  cmd.add_option("velocity_tol", "velocity_tol");
+  cmd.add_option("dt_method", "type of time step: 1 - simple CFL, 0 - CFL multiplied by sqrt(dx)");
+  cmd.add_option("velocity_tol", "error tolerance for internal iterations");
+  cmd.add_option("termination_length", "defines when a run will be stopped (fraction of box length, from 0 to 1)");
+  cmd.add_option("lip", "set the lipschitz constant");
+  cmd.add_option("cfl_number", "cfl_number");
+
 
   cmd.parse(argc, argv);
 
@@ -573,6 +584,9 @@ int main (int argc, char* argv[])
 
   dt_method = cmd.get("dt_method", dt_method);
   velocity_tol = cmd.get("velocity_tol", velocity_tol);
+  termination_length = cmd.get("termination_length", termination_length);
+  cfl_number = cmd.get("cfl_number", cfl_number);
+
 
   double latent_heat_orig = latent_heat;
   double G_orig = G;
@@ -610,8 +624,9 @@ int main (int argc, char* argv[])
 
   lmin = cmd.get("lmin", lmin);
   lmax = cmd.get("lmax", lmax);
+  lip = cmd.get("lip", lip);
 
-  splitting_criteria_cf_t data(lmin, lmax, &LS, 1.2);
+  splitting_criteria_cf_t data(lmin, lmax, &LS, lip);
 
   p4est->user_pointer = (void*)(&data);
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -693,6 +708,7 @@ int main (int argc, char* argv[])
   bas.set_dt(dt);
   bas.set_dt_method(dt_method);
   bas.set_velocity_tol(velocity_tol);
+  bas.set_cfl(cfl_number);
 
   bas.compute_velocity();
   bas.compute_dt();
@@ -700,7 +716,6 @@ int main (int argc, char* argv[])
   // loop over time
   double tn = 0;
   int iteration = 0;
-
 
   FILE *fich;
   char name[10000];
@@ -716,41 +731,20 @@ int main (int argc, char* argv[])
   if(save_velocity)
   {
     ierr = PetscFOpen(mpi.comm(), name, "w", &fich); CHKERRXX(ierr);
-    ierr = PetscFPrintf(mpi.comm(), fich, "%% time(s)      average interface velocity     max interface velocity\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fich, "time average_interface_velocity max_interface_velocity interface_length solid_phase_area\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
   }
 
-  while(tn<t_final)
+  bool keep_going = true;
+  while(keep_going)
   {
     ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
 
     bas.one_step();
 
-    if(0)
-    {
-      MPI_Barrier(mpi.comm());
-
-      p4est = bas.get_p4est();
-      nodes = bas.get_nodes();
-      phi = bas.get_phi();
-      const double *phi_p;
-      ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
-      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-      {
-        double xyz[P4EST_DIM];
-        node_xyz_fr_n(n, p4est, nodes, xyz);
-        if(fabs(xyz[0]-xmax)<EPS && phi_p[n]>0 && phi_p[n]<dx)
-        {
-          std::cout << "found it : (" << xyz[0] << ", " << xyz[1] << ") = " << phi_p[n] << std::endl;
-        }
-      }
-      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-
-      MPI_Barrier(mpi.comm());
-    }
-
     tn += bas.get_dt();
 
+    // save velocity, lenght of interface and area of solid phase in time
     if(save_velocity && iteration%save_every_n_iteration == 0)
     {
       p4est = bas.get_p4est();
@@ -758,39 +752,71 @@ int main (int argc, char* argv[])
       phi = bas.get_phi();
       normal_velocity = bas.get_normal_velocity();
 
-      if(p4est->mpirank==0)
-      {
-        p4est_locidx_t nb_nodes_global = 0;
-        for(int r=0; r<p4est->mpisize; ++r)
-          nb_nodes_global += nodes->global_owned_indeps[r];
-
-        std::cout << "The p4est has " << nb_nodes_global << " nodes." << std::endl;
-      }
-
       Vec ones;
       ierr = VecDuplicate(phi, &ones); CHKERRXX(ierr);
       ierr = VecGhostGetLocalForm(ones, &tmp); CHKERRXX(ierr);
       ierr = VecSet(tmp, 1.); CHKERRXX(ierr);
       ierr = VecGhostRestoreLocalForm(ones, &tmp); CHKERRXX(ierr);
 
-      double avg_velo = integrate_over_interface(p4est, nodes, phi, normal_velocity) / integrate_over_interface(p4est, nodes, phi, ones);
+      // calculate the length of the interface and solid phase area
+      double interface_length = integrate_over_interface(p4est, nodes, phi, ones);
+      double solid_phase_area = integrate_over_negative_domain(p4est, nodes, phi, ones);
+
+      double avg_velo = integrate_over_interface(p4est, nodes, phi, normal_velocity) / interface_length;
 
       ierr = VecDestroy(ones); CHKERRXX(ierr);
 
       ierr = PetscFOpen(mpi.comm(), name, "a", &fich); CHKERRXX(ierr);
-      PetscFPrintf(mpi.comm(), fich, "%e %e %e\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling);
+      PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling, interface_length, solid_phase_area);
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi.comm(), "saved velocity in %s\n", name); CHKERRXX(ierr);
     }
 
-
+    // save field data
     if(save_vtk && iteration%save_every_n_iteration == 0)
     {
       bas.save_VTK(iteration/save_every_n_iteration);
     }
 
+    // check if the solid phase has reached the termination length
+    if(save_velocity && iteration%save_every_n_iteration == 0)
+    {
+      int end_of_run = 0;
+      const double *phi_p;
+      ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+      {
+        if (phi_p[n] < 0)
+        {
+          double xyz[P4EST_DIM];
+          node_xyz_fr_n(n, p4est, nodes, xyz);
+
+          if (direction=='x')
+          {
+            if ((xyz[0] - xmin)/(xmax-xmin) > termination_length)
+              end_of_run = 1;
+          }
+          else if (direction=='y')
+          {
+            if ((xyz[1] - ymin)/(ymax-ymin) > termination_length)
+              end_of_run = 1;
+          }
+#ifdef P4_TO_P8
+          else if (direction=='z')
+          {
+            if ((xyz[2] - zmin)/(zmax-zmin) > termination_length)
+              end_of_run = 1;
+          }
+#endif
+        }
+      }
+      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &end_of_run, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+      keep_going = (end_of_run == 0);
+    }
+
     iteration++;
-//    if(iteration==264) break;
   }
 
   w1.stop(); w1.read_duration();
