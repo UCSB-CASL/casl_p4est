@@ -48,8 +48,8 @@
 #undef MIN
 #undef MAX
 
-int lmin = 4;
-int lmax = 6;
+int lmin = 6;
+int lmax = 8;
 int save_every_n_iteration = 1;
 
 using namespace std;
@@ -75,9 +75,9 @@ double ymax = 1;
 #ifdef P4_TO_P8
 double zmin = 0;
 double zmax = 1;
-int n_xyz[] = {2, 2, 2};
+int n_xyz[] = {1, 1, 1};
 #else
-int n_xyz[] = {2, 2};
+int n_xyz[] = {1, 1};
 #endif
 
 double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
@@ -111,7 +111,9 @@ void set_alloy_parameters()
     /* those are the default parameters for NiCu */
     rho                  = 8.88e-3;        /* kg.cm-3    */
     heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
-    ml                   =-357;            /* K / at frac. - liquidous slope */
+//    ml                   =-357;            /* K / at frac. - liquidous slope */
+    ml                   =-1.;            /* K / at frac. - liquidous slope */
+//    kp                   = 0.86;           /* partition coefficient */
     kp                   = 0.86;           /* partition coefficient */
     c0                   = 0.40831;        /* at frac.    */
     Tm                   = 1728;           /* K           */
@@ -268,8 +270,8 @@ public:
 
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
-    if(direction=='x') return x - 0.1;
-    else               return y - 0.1;
+    if(direction=='x') return x - 0.095703125001;
+    else               return y - 0.095703125001;
   }
 } LS;
 
@@ -496,7 +498,7 @@ int main (int argc, char* argv[])
   lmin = cmd.get("lmin", lmin);
   lmax = cmd.get("lmax", lmax);
 
-  splitting_criteria_cf_t data(lmin, lmax, &LS, 2.2);
+  splitting_criteria_cf_t data(lmin, lmax, &LS, 5.2);
 
   p4est->user_pointer = (void*)(&data);
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -556,7 +558,7 @@ int main (int argc, char* argv[])
 //#ifdef P4_TO_P8
 //  double dt = 0.45*MIN(dxyz[0],dxyz[1],dxyz[2])/V;
 //#else
-//  double dt = 0.45*MIN(dxyz[0],dxyz[1])/V;
+//  double dt = 0.0045*MIN(dxyz[0],dxyz[1])/V;
 //#endif
 //  bas.set_dt(dt);
 

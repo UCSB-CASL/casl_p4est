@@ -2,7 +2,7 @@
 #define MY_P4EST_BIALLOY_H
 
 #include <src/types.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_tools.h>

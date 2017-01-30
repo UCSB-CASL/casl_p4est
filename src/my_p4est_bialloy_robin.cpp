@@ -377,8 +377,8 @@ void my_p4est_bialloy_t::compute_normal_velocity_from_temperature()
   ierr = VecDuplicate(normal_velocity_np1, &v_gamma); CHKERRXX(ierr);
 
 //  double vgamma_min = -1;
-  double lambda = 0.01;
-//  double lambda = 1.0;
+//  double lambda = 0.01;
+  double lambda = 1.0;
 
   my_p4est_level_set_t ls(ngbd);
 //  while (vgamma_min <= 0.0)
@@ -734,7 +734,7 @@ void my_p4est_bialloy_t::solve_temperature()
         + epsilon_v*(1-15*epsilon_anisotropy*.5*(cos(4*theta_xz)+cos(4*theta_yz)))*normal_velocity_np1_p[n];
 #else
     double theta = atan2(normal_p[1][n], normal_p[0][n]);
-    temperature_interface_tmp_p[n] = Tm + ml*cl_gamma_p[n];
+    temperature_interface_tmp_p[n] = Tm + ml*(cl_gamma_p[n]);
 //        + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta))*kappa_p[n]/ml
 //        + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta))*normal_velocity_np1_p[n]/ml;
 #endif
@@ -859,6 +859,7 @@ void my_p4est_bialloy_t::solve_concentration()
   ierr = VecGhostRestoreLocalForm(rhs , &out); CHKERRXX(ierr);
 
 
+//  my_p4est_poisson_nodes_t solver_c(ngbd);
   my_p4est_poisson_nodes_voronoi_t solver_c(ngbd);
   solver_c.set_phi(phi);
   solver_c.set_bc(bc_cl);
@@ -950,23 +951,32 @@ void my_p4est_bialloy_t::compute_dt()
   double u_max = 0;
   const double *v_interface_np1_p;
   ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
-  for(int dir=0; dir<P4EST_DIM; ++dir)
+//  for(int dir=0; dir<P4EST_DIM; ++dir)
+//  {
+//    ierr = VecGetArrayRead(v_interface_np1[dir], &v_interface_np1_p); CHKERRXX(ierr);
+//    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+//    {
+//      if(fabs(phi_p[n]) < dxyz_close_interface)
+//        u_max = MAX(u_max, fabs(v_interface_np1_p[n]));
+//    }
+//    ierr = VecRestoreArrayRead(v_interface_np1[dir], &v_interface_np1_p); CHKERRXX(ierr);
+//  }
   {
-    ierr = VecGetArrayRead(v_interface_np1[dir], &v_interface_np1_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(normal_velocity_np1, &v_interface_np1_p); CHKERRXX(ierr);
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
       if(fabs(phi_p[n]) < dxyz_close_interface)
         u_max = MAX(u_max, fabs(v_interface_np1_p[n]));
     }
-    ierr = VecRestoreArrayRead(v_interface_np1[dir], &v_interface_np1_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(normal_velocity_np1, &v_interface_np1_p); CHKERRXX(ierr);
   }
   ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
 //  dt_n = 1. * sqrt(dxyz_min)*dxyz_min * MIN(1./u_max, 1./cooling_velocity);
-//  dt_n = 0.5 * sqrt(dxyz_min)*dxyz_min * MIN(1./u_max, 1./cooling_velocity);
-//  dt_n = 1 * SQR(dxyz_min) * MIN(1/u_max, 1/cooling_velocity);
-  dt_n = .5 * .25 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+//  dt_n = 0.01 * sqrt(dxyz_min)*dxyz_min * MIN(1./u_max, 1./cooling_velocity);
+  dt_n = 0.8 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+//  dt_n = .5 * .25 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
   PetscPrintf(p4est->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e\n", u_max, vgamma_max, cooling_velocity);
 
 //  if(dt_n>0.5/MAX(1e-7, MAX(u_max,vgamma_max)*kappa_max))
@@ -1103,8 +1113,11 @@ void my_p4est_bialloy_t::one_step()
     ierr = VecGhostRestoreLocalForm(normal_velocity_tmp, &out); CHKERRXX(ierr);
 
     solve_concentration();
+//    compare_normal_velocity_temperature_vs_concentration();
     solve_temperature();
     compute_normal_velocity_from_temperature();
+//    compute_dt();
+
 
 //    double error_cl = 1;
 //    int iteration_cl = 0;
