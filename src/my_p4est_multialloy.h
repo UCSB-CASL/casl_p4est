@@ -136,6 +136,11 @@ private:
 
   double cfl_number;
 
+  Vec temperature_multiplier;
+  Vec concentration_multiplier;
+
+  double functional;
+
 public:
 
   my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -227,6 +232,9 @@ public:
   void compare_velocity_temperature_vs_concentration();
 
   void save_VTK(int iter);
+
+  void solve_temperature_multiplier();
+  void solve_concentration_multiplier();
 };
 
 

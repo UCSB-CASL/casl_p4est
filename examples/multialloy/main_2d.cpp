@@ -49,8 +49,8 @@
 #undef MAX
 
 int lmin = 5;
-int lmax = 11;
-int save_every_n_iteration = 10;
+int lmax = 10;
+int save_every_n_iteration = 1;
 
 double lip = 1.5;
 
@@ -117,9 +117,9 @@ double kp_sec;
 double t_final = 500;
 
 int dt_method = 1;
-double velocity_tol = 1.e-5;
+double velocity_tol = 1.e-9;
 
-double cfl_number = 0.05;
+double cfl_number = 0.2;
 
 void set_alloy_parameters()
 {
@@ -132,7 +132,7 @@ void set_alloy_parameters()
     ml                   =-357;            /* K / at frac. - liquidous slope */
     kp                   = 0.86;           /* partition coefficient */
 //    c0                   = 0.40731;        /* at frac.    */
-    c0                   = 0.2;        /* at frac.    */
+    c0                   = 0.0;        /* at frac.    */
     Tm                   = 1728;           /* K           */
     Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
     Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
@@ -150,8 +150,9 @@ void set_alloy_parameters()
     Dl_sec = 1e-5;
     Ds_sec = 1e-13;
     ml_sec =-357;
-    c0_sec = 0.2;
+    c0_sec = 0.4;
     kp_sec = 0.86;
+//    kp_sec = 1.;
 
     break;
   case 1:
@@ -325,7 +326,7 @@ public:
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
     if(direction=='x') return x - 0.1;
-    else               return y - 0.1 + 0.00*cos(16*PI*(x-0.5));
+    else               return y - 0.1 + 0.00*cos(32*PI*(x-0.5));
   }
 } LS;
 

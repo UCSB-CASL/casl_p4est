@@ -2526,6 +2526,40 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
         }
       }
+
+      if (!is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN) && phi_000<0.)
+      {
+        ierr = MatSetValue(A, node_000_g, node_000_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+        PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? (qnnn.d_m00_0m==0 ? qnnn.node_m00_mm : qnnn.node_m00_mp)
+                                                            : (qnnn.d_m00_0m==0 ? qnnn.node_m00_pm : qnnn.node_m00_pp) ];
+        PetscInt node_p00_g = petsc_gloidx[qnnn.d_p00_m0==0 ? (qnnn.d_p00_0m==0 ? qnnn.node_p00_mm : qnnn.node_p00_mp)
+                                                            : (qnnn.d_p00_0m==0 ? qnnn.node_p00_pm : qnnn.node_p00_pp) ];
+        PetscInt node_0m0_g = petsc_gloidx[qnnn.d_0m0_m0==0 ? (qnnn.d_0m0_0m==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_mp)
+                                                            : (qnnn.d_0m0_0m==0 ? qnnn.node_0m0_pm : qnnn.node_0m0_pp) ];
+        PetscInt node_0p0_g = petsc_gloidx[qnnn.d_0p0_m0==0 ? (qnnn.d_0p0_0m==0 ? qnnn.node_0p0_mm : qnnn.node_0p0_mp)
+                                                            : (qnnn.d_0p0_0m==0 ? qnnn.node_0p0_pm : qnnn.node_0p0_pp) ];
+        PetscInt node_00m_g = petsc_gloidx[qnnn.d_00m_m0==0 ? (qnnn.d_00m_0m==0 ? qnnn.node_00m_mm : qnnn.node_00m_mp)
+                                                            : (qnnn.d_00m_0m==0 ? qnnn.node_00m_pm : qnnn.node_00m_pp) ];
+        PetscInt node_00p_g = petsc_gloidx[qnnn.d_00p_m0==0 ? (qnnn.d_00p_0m==0 ? qnnn.node_00p_mm : qnnn.node_00p_mp)
+                                                            : (qnnn.d_00p_0m==0 ? qnnn.node_00p_pm : qnnn.node_00p_pp) ];
+#else
+        PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm];
+        PetscInt node_p00_g = petsc_gloidx[qnnn.d_p00_m0==0 ? qnnn.node_p00_mm : qnnn.node_p00_pm];
+        PetscInt node_0m0_g = petsc_gloidx[qnnn.d_0m0_m0==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_pm];
+        PetscInt node_0p0_g = petsc_gloidx[qnnn.d_0p0_m0==0 ? qnnn.node_0p0_mm : qnnn.node_0p0_pm];
+#endif
+
+        if (phi_m00 < 0.)      { ierr = MatSetValue(A, node_000_g, node_m00_g, 1./(1.+robin_coef_p[n]*d_m00),  ADD_VALUES); CHKERRXX(ierr); }
+        else if (phi_p00 < 0.) { ierr = MatSetValue(A, node_000_g, node_p00_g, 1./(1.+robin_coef_p[n]*d_p00),  ADD_VALUES); CHKERRXX(ierr); }
+        else if (phi_0m0 < 0.) { ierr = MatSetValue(A, node_000_g, node_0m0_g, 1./(1.+robin_coef_p[n]*d_0m0),  ADD_VALUES); CHKERRXX(ierr); }
+        else if (phi_0p0 < 0.) { ierr = MatSetValue(A, node_000_g, node_0p0_g, 1./(1.+robin_coef_p[n]*d_0p0),  ADD_VALUES); CHKERRXX(ierr); }
+#ifdef P4_TO_P8
+        else if (phi_00m < 0.) { ierr = MatSetValue(A, node_000_g, node_00m_g, 1./(1.+robin_coef_p[n]*d_00m),  ADD_VALUES); CHKERRXX(ierr); }
+        else if (phi_00p < 0.) { ierr = MatSetValue(A, node_000_g, node_00p_g, 1./(1.+robin_coef_p[n]*d_00p),  ADD_VALUES); CHKERRXX(ierr); }
+#endif
+      }
     }
   }
 
@@ -3153,6 +3187,24 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
         } else {
           rhs_p[n] = 0.;
         }
+      }
+
+      if (!is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN) && phi_000<0.)
+      {
+#ifdef P4_TO_P8
+        double iface_value = bc_->interfaceValue(x_C, y_C, z_C);
+#else
+        double iface_value = bc_->interfaceValue(x_C, y_C);
+#endif
+
+        if (phi_m00 < 0.)      { rhs_p[n] = iface_value*d_m00/(1.+robin_coef_p[n]*d_m00); }
+        else if (phi_p00 < 0.) { rhs_p[n] = iface_value*d_p00/(1.+robin_coef_p[n]*d_p00); }
+        else if (phi_0m0 < 0.) { rhs_p[n] = iface_value*d_0m0/(1.+robin_coef_p[n]*d_0m0); }
+        else if (phi_0p0 < 0.) { rhs_p[n] = iface_value*d_0p0/(1.+robin_coef_p[n]*d_0p0); }
+#ifdef P4_TO_P8
+        else if (phi_00m < 0.) { rhs_p[n] = iface_value*d_00m/(1.+robin_coef_p[n]*d_00m); }
+        else if (phi_00p < 0.) { rhs_p[n] = iface_value*d_00p/(1.+robin_coef_p[n]*d_00p); }
+#endif
       }
     }
   }
