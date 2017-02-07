@@ -50,17 +50,22 @@ using namespace std;
 
 int test = 7;
 
+
+
 /* 0 or 1 */
 int implicit = 1;
 /* order 1, 2 or 3. If choosing 3, implicit only */
 int order = 1;
+
 
 /* number of cells in x and y dimensions */
 int x_cells = 10;
 int y_cells = 10;
 int z_cells = 10;
 /* number of random cells for case 7 */
-int nb_cells = test==7 ? 10 : x_cells*y_cells*z_cells;
+int nb_cells = test==7 ? 1000 : x_cells*y_cells*z_cells;
+/* number of cells in x and y dimensions */
+
 /* cell radius */
 double r0 = test==5 ? 46e-6 : (test==6 ? 53e-6 : 50e-6);
 double ellipse = test<5 ? 1 : (test==5 ? 1.225878312944962 : 1.250835468987754);
@@ -68,16 +73,26 @@ double a = test<5 ? r0 : (test==5 ? r0*ellipse : r0/ellipse);
 double b = test<5 ? r0 : (test==5 ? r0*ellipse : r0/ellipse);
 double c = test<5 ? r0 : (test==5 ? r0/ellipse : r0*ellipse);
 
-double xmin = test<4 ? -2*x_cells*r0 : -1e-3;
-double xmax = test<4 ?  2*x_cells*r0 :  1e-3;
-double ymin = test<4 ? -2*y_cells*r0 : -1e-3;
-double ymax = test<4 ?  2*y_cells*r0 :  1e-3;
-double zmin = test<4 ? -2*z_cells*r0 : -1e-3;
-double zmax = test<4 ?  2*z_cells*r0 :  1e-3;
+//double xmin = test<4 ? -2*x_cells*r0 : -1e-3;
+//double xmax = test<4 ?  2*x_cells*r0 :  1e-3;
+//double ymin = test<4 ? -2*y_cells*r0 : -1e-3;
+//double ymax = test<4 ?  2*y_cells*r0 :  1e-3;
+//double zmin = test<4 ? -2*z_cells*r0 : -1e-3;
+//double zmax = test<4 ?  2*z_cells*r0 :  1e-3;
+
+double xmin = test<4 ? -2*x_cells*r0 : -1e-3*pow(nb_cells/100, 1./3.);
+double xmax = test<4 ?  2*x_cells*r0 :  1e-3*pow(nb_cells/100, 1./3.);
+double ymin = test<4 ? -2*y_cells*r0 : -1e-3*pow(nb_cells/100, 1./3.);
+double ymax = test<4 ?  2*y_cells*r0 :  1e-3*pow(nb_cells/100, 1./3.);
+double zmin = test<4 ? -2*z_cells*r0 : -1e-3*pow(nb_cells/100, 1./3.);
+double zmax = test<4 ?  2*z_cells*r0 :  1e-3*pow(nb_cells/100, 1./3.);
+
+
+
 
 
 int lmin = 5;
-int lmax = 8;
+int lmax = 7;
 int nb_splits = 1;
 
 double dt_scale = 40;
@@ -134,11 +149,10 @@ public:
             radii.resize(nb_cells);
             ex.resize(nb_cells);
             theta.resize(nb_cells);
-            unsigned int seed = time(NULL);//1;
+            unsigned int seed = time(NULL);
             srand(seed);
             printf("The random seed is %u\n", seed);
             fflush(stdout);
-
             for(int n=0; n<nb_cells; ++n)
             {
                 bool too_close;
