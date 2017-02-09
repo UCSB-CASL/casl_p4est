@@ -151,7 +151,7 @@ void set_alloy_parameters()
     Dl_sec = 1e-5;
     Ds_sec = 1e-13;
     ml_sec =-357;
-    c0_sec = 0.4;
+    c0_sec = 0.40731;
     kp_sec = 0.86;
 //    kp_sec = 1.;
 

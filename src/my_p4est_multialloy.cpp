@@ -2541,9 +2541,9 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   my_p4est_vtk_write_all(  p4est_vis, nodes_vis, NULL,
                            P4EST_TRUE, P4EST_TRUE,
                          #ifdef P4_TO_P8
-                           12, 1, name,
+                           6, 1, name,
                          #else
-                           10, 1, name,
+                           6, 1, name,
                          #endif
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "temperature", temperature_p,
@@ -2551,16 +2551,16 @@ void my_p4est_multialloy_t::save_VTK(int iter)
                            VTK_POINT_DATA, "concentration_sec", cl_sec_p,
                            VTK_POINT_DATA, "un", normal_velocity_np1_p,
                            VTK_POINT_DATA, "kappa", kappa_p,
-                           VTK_POINT_DATA, "normal_x", normal_p[0],
-                           VTK_POINT_DATA, "normal_y", normal_p[1],
-    #ifdef P4_TO_P8
-                           VTK_POINT_DATA, "normal_z", normal_p[2],
-    #endif
-      VTK_POINT_DATA, "velo_x", velo_p[0],
-      VTK_POINT_DATA, "velo_y", velo_p[1],
-    #ifdef P4_TO_P8
-      VTK_POINT_DATA, "velo_z", velo_p[2],
-    #endif
+//                           VTK_POINT_DATA, "normal_x", normal_p[0],
+//                           VTK_POINT_DATA, "normal_y", normal_p[1],
+//    #ifdef P4_TO_P8
+//                           VTK_POINT_DATA, "normal_z", normal_p[2],
+//    #endif
+//      VTK_POINT_DATA, "velo_x", velo_p[0],
+//      VTK_POINT_DATA, "velo_y", velo_p[1],
+//    #ifdef P4_TO_P8
+//      VTK_POINT_DATA, "velo_z", velo_p[2],
+//    #endif
                            VTK_CELL_DATA , "leaf_level", l_p);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
