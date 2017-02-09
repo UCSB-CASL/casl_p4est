@@ -40,7 +40,7 @@
 #include <src/point3.h>
 #include <src/my_p8est_level_set.h>
 #endif
-
+#include "nearpt3/nearpt3.cc"
 #include <src/Parser.h>
 #include <src/math.h>
 
@@ -63,7 +63,7 @@ int x_cells = 10;
 int y_cells = 10;
 int z_cells = 10;
 /* number of random cells for case 7 */
-int nb_cells = test==7 ? 1000 : x_cells*y_cells*z_cells;
+int nb_cells = test==7 ? 100 : x_cells*y_cells*z_cells;
 /* number of cells in x and y dimensions */
 
 /* cell radius */
@@ -153,25 +153,80 @@ public:
             srand(seed);
             printf("The random seed is %u\n", seed);
             fflush(stdout);
+            //            for(int n=0; n<nb_cells; ++n)
+            //            {
+            //                bool too_close;
+            //                do
+            //                {
+            //                    Point3 p3((xmax-xmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8), (ymax-ymin)/4 * (1.6*((double)rand()/RAND_MAX)-.8), (zmax-zmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8));
+            //                    centers[n].x = p3.x;
+            //                    centers[n].y = p3.y;
+            //                    centers[n].z = p3.z;
+
+            //                    too_close = false;
+            //                    for(int m=0; m<n-1; ++m)
+            //                        too_close = ( too_close || (centers[n]-centers[m]).norm_L2() < 3*r0 );
+
+            //                } while(too_close);
+
+            std::vector<std::array<double,3> > v;
+            std::array<double,3> p;
+            p[0] = (xmax-xmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
+            p[1] = (ymax-ymin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
+            p[2] = (zmax-zmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
+
+            int nfixpts;
+
+
             for(int n=0; n<nb_cells; ++n)
             {
                 bool too_close;
+                int closestpt;
+                too_close = true;
+                v.push_back(p);
+                nfixpts = v.size();
+                double mindist;
+                nearpt3::ng_factor = 0.5;
+                nearpt3::Grid_T<double> *g = nearpt3::Preprocess(nfixpts, &v[0]);
                 do
                 {
-                    Point3 p3((xmax-xmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8), (ymax-ymin)/4 * (1.6*((double)rand()/RAND_MAX)-.8), (zmax-zmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8));
-                    centers[n].x = p3.x;
-                    centers[n].y = p3.y;
-                    centers[n].z = p3.z;
 
-                    too_close = false;
-                    for(int m=0; m<n-1; ++m)
-                        too_close = ( too_close || (centers[n]-centers[m]).norm_L2() < 3*r0 );
+                    p[0] = (xmax-xmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
+                    p[1] = (ymax-ymin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
+                    p[2] = (zmax-zmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
 
-                } while(too_close);
+                    closestpt = nearpt3::Query(g, p);
+                    mindist = sqrt(SQR(p[0]-v[closestpt][0])+ SQR(p[1]-v[closestpt][1])+SQR(p[2]-v[closestpt][2]));
+                    too_close = (mindist < 3*r0 );
+
+                }while(too_close);
+
             }
+
+
+
+
+//            int counter =0;
+//            for(int n=0; n<nb_cells; ++n)
+//               {
+//                for(int m=n+1; m<nb_cells; ++m)
+//                {
+//                    if(sqrt(SQR(v[n][0]-v[m][0])+ SQR(v[n][1]-v[m][1])+SQR(v[n][2]-v[m][2])) < 3*r0)
+//                    {
+//                        counter += 1;
+//                    }
+//                }
+//            }
+//            printf("counter=%d", counter);
+
+
+
 
             for(int n=0; n<nb_cells; ++n)
             {
+                centers[n].x = v[n][0];
+                centers[n].y = v[n][1];
+                centers[n].z = v[n][2];
                 radii[n] = r0 + 1e-6*(6*((double)rand()/RAND_MAX) - 3);
                 ex[n].x = 1 + .4*(double)rand()/RAND_MAX - .2;
                 ex[n].y = 1 + .4*(double)rand()/RAND_MAX - .2;
@@ -180,6 +235,7 @@ public:
                 theta[n].y = PI*(double)rand()/RAND_MAX;
                 theta[n].z = PI*(double)rand()/RAND_MAX;
             }
+
             printf("Done initializing random cells\n");
             fflush(stdout);
 
