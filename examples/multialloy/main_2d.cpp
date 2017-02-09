@@ -48,8 +48,8 @@
 #undef MIN
 #undef MAX
 
-int lmin = 5;
-int lmax = 10;
+int lmin = 6;
+int lmax = 11;
 int save_every_n_iteration = 1;
 
 double lip = 1.5;
@@ -117,9 +117,9 @@ double kp_sec;
 double t_final = 500;
 
 int dt_method = 1;
-double velocity_tol = 1.e-9;
+double velocity_tol = 1.e-8;
 
-double cfl_number = 0.2;
+double cfl_number = 0.3;
 
 void set_alloy_parameters()
 {
@@ -131,6 +131,7 @@ void set_alloy_parameters()
     heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
     ml                   =-357;            /* K / at frac. - liquidous slope */
     kp                   = 0.86;           /* partition coefficient */
+//    kp                   = 1.0;           /* partition coefficient */
 //    c0                   = 0.40731;        /* at frac.    */
     c0                   = 0.0;        /* at frac.    */
     Tm                   = 1728;           /* K           */
@@ -326,7 +327,7 @@ public:
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
     if(direction=='x') return x - 0.1;
-    else               return y - 0.1 + 0.00*cos(32*PI*(x-0.5));
+    else               return y - 0.1 + 0.000*cos(pow(2,lmax-3)*PI*(x-0.50007));
   }
 } LS;
 
@@ -779,6 +780,7 @@ int main (int argc, char* argv[])
       bas.save_VTK(iteration/save_every_n_iteration);
     }
 
+
     // check if the solid phase has reached the termination length
     if(save_velocity && iteration%save_every_n_iteration == 0)
     {
@@ -817,6 +819,7 @@ int main (int argc, char* argv[])
       keep_going = (end_of_run == 0);
     }
 
+    bas.update_grid();
     iteration++;
   }
 

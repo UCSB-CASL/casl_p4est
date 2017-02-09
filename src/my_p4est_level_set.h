@@ -125,6 +125,9 @@ public:
   /* extend a quantity over the interface with the TVD algorithm */
   void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2) const;
 
+  /* extend a quantity over the interface with the TVD algorithm using mask*/
+  void extend_Over_Interface_TVD(Vec phi, Vec mask, Vec q, int iterations=20, int order=2) const;
+
   void extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations=20, int order=2) const;
 
   void extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,

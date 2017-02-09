@@ -111,8 +111,8 @@ void set_alloy_parameters()
     /* those are the default parameters for NiCu */
     rho                  = 8.88e-3;        /* kg.cm-3    */
     heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
-//    ml                   =-357;            /* K / at frac. - liquidous slope */
-    ml                   =-1.;            /* K / at frac. - liquidous slope */
+    ml                   =-357;            /* K / at frac. - liquidous slope */
+//    ml                   =-1.;            /* K / at frac. - liquidous slope */
 //    kp                   = 0.86;           /* partition coefficient */
     kp                   = 0.86;           /* partition coefficient */
     c0                   = 0.40831;        /* at frac.    */
@@ -124,6 +124,7 @@ void set_alloy_parameters()
     latent_heat          = 2350;           /* J.cm-3      */
     thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
     lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+//    lambda               = 1e-3; /* cm2.s-1  thermal diffusivity */
     eps_c                = 2.7207e-5;
     eps_v                = 2.27e-2;
     eps_anisotropy       = 0.05;

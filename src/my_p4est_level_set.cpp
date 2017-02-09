@@ -3545,7 +3545,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
   const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    q_p[n] = fabs(phi_p[n])<5.*dl ? qi_p[n] : 0;
+    q_p[n] = fabs(phi_p[n])<1.5*dl ? qi_p[n] : 0;
 
   // first initialize the quantities at the interface (instead of doing it each time in the loop ...)
   std::vector<double> qi_m00(nodes->num_owned_indeps);
@@ -3853,4 +3853,824 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
 #endif
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
+}
+
+
+
+
+
+
+
+
+void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, int iterations, int order) const
+{
+#ifdef CASL_THROWS
+  if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: my_p4est_level_set_t->extend_Over_Interface_TVD: order must be 0, 1 or 2.");
+#endif
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
+
+  double *mask_p;
+  ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
+
+  double *phi_p;
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
+  Vec qn, qnn;
+  double *q_p, *qn_p, *qnn_p;
+  Vec b_qn_well_defined;
+  Vec b_qnn_well_defined;
+  double *b_qn_well_defined_p;
+  double *b_qnn_well_defined_p;
+
+  Vec tmp, tmp_loc;
+  Vec qnn_loc, qn_loc, q_loc;
+  ierr = VecDuplicate(phi, &tmp); CHKERRXX(ierr);
+  double *tmp_p;
+
+  /* init the neighborhood information if needed */
+  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
+   * at the end of this function if they were not initialized beforehand ?
+   */
+  ngbd->init_neighbors();
+
+  /* compute the normals */
+  std::vector<double> nx(nodes->num_owned_indeps);
+  std::vector<double> ny(nodes->num_owned_indeps);
+#ifdef P4_TO_P8
+  std::vector<double> nz(nodes->num_owned_indeps);
+#endif
+
+  quad_neighbor_nodes_of_node_t qnnn;
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    ngbd->get_neighbors(n, qnnn);
+    nx[n] = qnnn.dx_central(phi_p);
+    ny[n] = qnnn.dy_central(phi_p);
+#ifdef P4_TO_P8
+    nz[n] = qnnn.dz_central(phi_p);
+    double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n] + nz[n]*nz[n]);
+#else
+    double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
+#endif
+
+		if(norm>EPS)
+		{
+			nx[n] /= norm;
+			ny[n] /= norm;
+#ifdef P4_TO_P8
+			nz[n] /= norm;
+#endif
+		}
+		else
+		{
+			nx[n] = 0;
+			ny[n] = 0;
+#ifdef P4_TO_P8
+			nz[n] = 0;
+#endif
+                }
+  }
+
+  ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
+
+  /* initialize qn */
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+
+  if(order >=1 )
+  {
+    ierr = VecCreateGhostNodes(p4est, nodes, &qn); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &b_qn_well_defined); CHKERRXX(ierr);
+
+    ierr = VecGetArray(qn, &qn_p); CHKERRXX(ierr);
+    ierr = VecGetArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
+
+    /* first do the layer nodes */
+    for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
+    {
+      p4est_locidx_t n = layer_nodes[n_map];
+      ngbd->get_neighbors(n, qnnn);
+      if(  mask_p[qnnn.node_000]<-EPS &&
+     #ifdef P4_TO_P8
+           ( mask_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( mask_p[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( mask_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( mask_p[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+
+           ( mask_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( mask_p[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( mask_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( mask_p[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+
+           ( mask_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+
+           ( mask_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+
+           ( mask_p[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( mask_p[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( mask_p[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( mask_p[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+
+           ( mask_p[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( mask_p[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( mask_p[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( mask_p[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
+     #else
+           ( mask_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( mask_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( mask_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( mask_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( mask_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( mask_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
+     #endif
+           )
+      {
+        b_qn_well_defined_p[n] = true;
+        qn_p[n] = ( nx[n]*qnnn.dx_central(q_p) +
+                    ny[n]*qnnn.dy_central(q_p)
+            #ifdef P4_TO_P8
+                    + nz[n]*qnnn.dz_central(q_p)
+            #endif
+                    );
+      }
+      else
+      {
+        b_qn_well_defined_p[n] = false;
+        qn_p[n] = 0;
+      }
+    }
+
+    /* initiate the communication */
+    ierr = VecGhostUpdateBegin(b_qn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(qn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* now process the local nodes */
+    for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
+    {
+      p4est_locidx_t n = local_nodes[n_map];
+      ngbd->get_neighbors(n, qnnn);
+      if(  mask_p[qnnn.node_000]<-EPS &&
+     #ifdef P4_TO_P8
+           ( mask_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( mask_p[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( mask_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( mask_p[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+
+           ( mask_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( mask_p[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( mask_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( mask_p[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+
+           ( mask_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+
+           ( mask_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+
+           ( mask_p[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( mask_p[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( mask_p[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( mask_p[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+
+           ( mask_p[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( mask_p[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( mask_p[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( mask_p[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
+     #else
+           ( mask_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( mask_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( mask_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( mask_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( mask_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( mask_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
+     #endif
+           )
+      {
+        b_qn_well_defined_p[n] = true;
+        qn_p[n] = ( nx[n]*qnnn.dx_central(q_p) +
+                    ny[n]*qnnn.dy_central(q_p)
+            #ifdef P4_TO_P8
+                    + nz[n]*qnnn.dz_central(q_p)
+            #endif
+                    );
+      }
+      else
+      {
+        b_qn_well_defined_p[n] = false;
+        qn_p[n] = 0;
+      }
+    }
+
+    /* end update communication */
+    ierr = VecGhostUpdateEnd  (b_qn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (qn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(qn, &qn_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
+  }
+
+  ierr = VecRestoreArray(q, &q_p); CHKERRXX(ierr);
+
+  /* initialize qnn */
+  if(order == 2)
+  {
+    ierr = VecDuplicate(qn, &qnn); CHKERRXX(ierr);
+    ierr = VecDuplicate(b_qn_well_defined, &b_qnn_well_defined); CHKERRXX(ierr);
+
+    ierr = VecGetArray(qn , &qn_p ); CHKERRXX(ierr);
+    ierr = VecGetArray(qnn, &qnn_p); CHKERRXX(ierr);
+
+    ierr = VecGetArray(b_qn_well_defined , &b_qn_well_defined_p ); CHKERRXX(ierr);
+    ierr = VecGetArray(b_qnn_well_defined, &b_qnn_well_defined_p); CHKERRXX(ierr);
+
+    /* first do the layer nodes */
+    for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
+    {
+      p4est_locidx_t n = layer_nodes[n_map];
+      ngbd->get_neighbors(n, qnnn);
+      if(  b_qn_well_defined_p[qnnn.node_000]==true &&
+     #ifdef P4_TO_P8
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+
+           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+
+           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
+     #else
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS)
+     #endif
+           )
+
+
+      {
+        b_qnn_well_defined_p[n] = true;
+        qnn_p[n] = ( nx[n]*qnnn.dx_central(qn_p) +
+                     ny[n]*qnnn.dy_central(qn_p)
+             #ifdef P4_TO_P8
+                     + nz[n]*qnnn.dz_central(qn_p)
+             #endif
+                     );
+      }
+      else
+      {
+        b_qnn_well_defined_p[n] = false;
+        qnn_p[n] = 0;
+      }
+    }
+
+    /* initiate the communication */
+    ierr = VecGhostUpdateBegin(b_qnn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(qnn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* now process the local nodes */
+    for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
+    {
+      p4est_locidx_t n = local_nodes[n_map];
+      ngbd->get_neighbors(n, qnnn);
+      if(  b_qn_well_defined_p[qnnn.node_000]==true &&
+     #ifdef P4_TO_P8
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+
+           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+
+           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
+     #else
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS)
+     #endif
+           )
+
+
+      {
+        b_qnn_well_defined_p[n] = true;
+        qnn_p[n] = ( nx[n]*qnnn.dx_central(qn_p) +
+                     ny[n]*qnnn.dy_central(qn_p)
+             #ifdef P4_TO_P8
+                     + nz[n]*qnnn.dz_central(qn_p)
+             #endif
+                     );
+      }
+      else
+      {
+        b_qnn_well_defined_p[n] = false;
+        qnn_p[n] = 0;
+      }
+    }
+
+    /* end update communication */
+    ierr = VecGhostUpdateEnd  (b_qnn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (qnn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(qn , &qn_p ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(qnn, &qnn_p); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(b_qn_well_defined , &b_qn_well_defined_p ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(b_qnn_well_defined, &b_qnn_well_defined_p); CHKERRXX(ierr);
+  }
+
+  /* extrapolate qnn */
+  if(order==2)
+  {
+    ierr = VecGetArray(b_qnn_well_defined, &b_qnn_well_defined_p); CHKERRXX(ierr);
+
+    for(int it=0; it<iterations; ++it)
+    {
+      ierr = VecGetArray(qnn, &qnn_p); CHKERRXX(ierr);
+      ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
+
+      /* first do the layer nodes */
+      for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
+      {
+        p4est_locidx_t n = layer_nodes[n_map];
+        if(!b_qnn_well_defined_p[n])
+        {
+          ngbd->get_neighbors(n, qnnn);
+          double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
+          dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
+#ifdef P4_TO_P8
+          dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
+          dt /= 3;
+#else
+          dt /= 2;
+#endif
+
+          /* first order one sided derivative */
+          double qnnx = nx[n]>0 ? (qnn_p[n] - qnnn.f_m00_linear(qnn_p)) / qnnn.d_m00
+                                : (qnnn.f_p00_linear(qnn_p) - qnn_p[n]) / qnnn.d_p00;
+          double qnny = ny[n]>0 ? (qnn_p[n] - qnnn.f_0m0_linear(qnn_p)) / qnnn.d_0m0
+                                : (qnnn.f_0p0_linear(qnn_p) - qnn_p[n]) / qnnn.d_0p0;
+#ifdef P4_TO_P8
+          double qnnz = nz[n]>0 ? (qnn_p[n] - qnnn.f_00m_linear(qnn_p)) / qnnn.d_00m
+                                : (qnnn.f_00p_linear(qnn_p) - qnn_p[n]) / qnnn.d_00p;
+#endif
+          tmp_p[n] = qnn_p[n] - dt*( nx[n]*qnnx + ny[n]*qnny
+                           #ifdef P4_TO_P8
+                                     + nz[n]*qnnz
+                           #endif
+                                     );
+        }
+        else
+          tmp_p[n] = qnn_p[n];
+      }
+
+      /* initiate the communication */
+      ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      /* now process the local nodes */
+      for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
+      {
+        p4est_locidx_t n = local_nodes[n_map];
+        if(!b_qnn_well_defined_p[n])
+        {
+          ngbd->get_neighbors(n, qnnn);
+          double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
+          dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
+#ifdef P4_TO_P8
+          dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
+          dt /= 3;
+#else
+          dt /= 2;
+#endif
+
+          /* first order one sided derivative */
+          double qnnx = nx[n]>0 ? (qnn_p[n] - qnnn.f_m00_linear(qnn_p)) / qnnn.d_m00
+                                : (qnnn.f_p00_linear(qnn_p) - qnn_p[n]) / qnnn.d_p00;
+          double qnny = ny[n]>0 ? (qnn_p[n] - qnnn.f_0m0_linear(qnn_p)) / qnnn.d_0m0
+                                : (qnnn.f_0p0_linear(qnn_p) - qnn_p[n]) / qnnn.d_0p0;
+#ifdef P4_TO_P8
+          double qnnz = nz[n]>0 ? (qnn_p[n] - qnnn.f_00m_linear(qnn_p)) / qnnn.d_00m
+                                : (qnnn.f_00p_linear(qnn_p) - qnn_p[n]) / qnnn.d_00p;
+#endif
+          tmp_p[n] = qnn_p[n] - dt*( nx[n]*qnnx + ny[n]*qnny
+                           #ifdef P4_TO_P8
+                                     + nz[n]*qnnz
+                           #endif
+                                     );
+        }
+        else
+          tmp_p[n] = qnn_p[n];
+      }
+
+      /* end update communication */
+      ierr = VecGhostUpdateEnd  (tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(qnn, &qnn_p); CHKERRXX(ierr);
+
+      ierr = VecGhostGetLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(qnn, &qnn_loc); CHKERRXX(ierr);
+      ierr = VecCopy(tmp_loc, qnn_loc); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(qnn, &qnn_loc); CHKERRXX(ierr);
+    }
+    ierr = VecRestoreArray(b_qnn_well_defined, &b_qnn_well_defined_p); CHKERRXX(ierr);
+  }
+
+  /* extrapolate qn */
+  if(order>=1)
+  {
+    if(order==2) ierr = VecGetArray(qnn, &qnn_p); CHKERRXX(ierr);
+    ierr = VecGetArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
+
+    for(int it=0; it<iterations; ++it)
+    {
+      ierr = VecGetArray(qn , &qn_p ); CHKERRXX(ierr);
+      ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
+
+      /* first do the layer nodes */
+      for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
+      {
+        p4est_locidx_t n = layer_nodes[n_map];
+        if(!b_qn_well_defined_p[n])
+        {
+          ngbd->get_neighbors(n, qnnn);
+          double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
+          dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
+#ifdef P4_TO_P8
+          dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
+          dt /= 3;
+#else
+          dt /= 2;
+#endif
+
+          /* first order one sided derivative */
+          double qnx = nx[n]>0 ? (qn_p[n] - qnnn.f_m00_linear(qn_p)) / qnnn.d_m00
+                               : (qnnn.f_p00_linear(qn_p) - qn_p[n]) / qnnn.d_p00;
+          double qny = ny[n]>0 ? (qn_p[n] - qnnn.f_0m0_linear(qn_p)) / qnnn.d_0m0
+                               : (qnnn.f_0p0_linear(qn_p) - qn_p[n]) / qnnn.d_0p0;
+#ifdef P4_TO_P8
+          double qnz = nz[n]>0 ? (qn_p[n] - qnnn.f_00m_linear(qn_p)) / qnnn.d_00m
+                               : (qnnn.f_00p_linear(qn_p) - qn_p[n]) / qnnn.d_00p;
+#endif
+          tmp_p[n] = qn_p[n] - dt*( nx[n]*qnx + ny[n]*qny
+                          #ifdef P4_TO_P8
+                                    + nz[n]*qnz
+                          #endif
+                                    ) + (order==2 ? dt*qnn_p[n] : 0);
+        }
+        else
+          tmp_p[n] = qn_p[n];
+      }
+
+      /* initiate the communication */
+      ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      /* now process the local nodes */
+      for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
+      {
+        p4est_locidx_t n = local_nodes[n_map];
+        if(!b_qn_well_defined_p[n])
+        {
+          ngbd->get_neighbors(n, qnnn);
+          double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
+          dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
+#ifdef P4_TO_P8
+          dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
+          dt /= 3;
+#else
+          dt /= 2;
+#endif
+
+          /* first order one sided derivative */
+          double qnx = nx[n]>0 ? (qn_p[n] - qnnn.f_m00_linear(qn_p)) / qnnn.d_m00
+                               : (qnnn.f_p00_linear(qn_p) - qn_p[n]) / qnnn.d_p00;
+          double qny = ny[n]>0 ? (qn_p[n] - qnnn.f_0m0_linear(qn_p)) / qnnn.d_0m0
+                               : (qnnn.f_0p0_linear(qn_p) - qn_p[n]) / qnnn.d_0p0;
+#ifdef P4_TO_P8
+          double qnz = nz[n]>0 ? (qn_p[n] - qnnn.f_00m_linear(qn_p)) / qnnn.d_00m
+                               : (qnnn.f_00p_linear(qn_p) - qn_p[n]) / qnnn.d_00p;
+#endif
+          tmp_p[n] = qn_p[n] - dt*( nx[n]*qnx + ny[n]*qny
+                          #ifdef P4_TO_P8
+                                    + nz[n]*qnz
+                          #endif
+                                    ) + (order==2 ? dt*qnn_p[n] : 0);
+        }
+        else
+          tmp_p[n] = qn_p[n];
+      }
+
+      /* end update communication */
+      ierr = VecGhostUpdateEnd  (tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      ierr = VecRestoreArray(qn , &qn_p ); CHKERRXX(ierr);
+      ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
+
+      ierr = VecGhostGetLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(qn , &qn_loc ); CHKERRXX(ierr);
+      ierr = VecCopy(tmp_loc, qn_loc); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(qn , &qn_loc ); CHKERRXX(ierr);
+    }
+
+    ierr = VecRestoreArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
+
+    if(order==2)
+    {
+      ierr = VecRestoreArray(qnn, &qnn_p); CHKERRXX(ierr);
+      ierr = VecDestroy(qnn); CHKERRXX(ierr);
+    }
+  }
+
+  if(order>=1) { ierr = VecDestroy(b_qn_well_defined ); CHKERRXX(ierr); }
+  if(order==2) { ierr = VecDestroy(b_qnn_well_defined); CHKERRXX(ierr); }
+
+  /* extrapolate q */
+  Vec qxx, qyy;
+  double *qxx_p, *qyy_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  Vec qzz;
+  double *qzz_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &qzz); CHKERRXX(ierr);
+#endif
+
+  if(order>=1) { ierr = VecGetArray(qn, &qn_p); CHKERRXX(ierr); }
+
+  for(int it=0; it<iterations; ++it)
+  {
+#ifdef P4_TO_P8
+    ngbd->second_derivatives_central(q, qxx, qyy, qzz);
+#else
+    ngbd->second_derivatives_central(q, qxx, qyy);
+#endif
+
+    ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
+    ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
+#endif
+
+    ierr = VecGetArray(q  , &q_p  ); CHKERRXX(ierr);
+    ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
+
+    /* first do the layer nodes */
+    for(size_t n_map=0; n_map<layer_nodes.size(); ++n_map)
+    {
+      p4est_locidx_t n = layer_nodes[n_map];
+      ngbd->get_neighbors(n, qnnn);
+      if(mask_p[n] > -EPS)
+      {
+        const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
+        double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
+        dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
+#ifdef P4_TO_P8
+        dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
+        dt /= 3;
+#else
+        dt /= 2;
+#endif
+
+        /* first order one sided derivatives */
+        double qx = nx[n]>0 ? (q_p[n] - qnnn.f_m00_linear(q_p)) / qnnn.d_m00
+                            : (qnnn.f_p00_linear(q_p) - q_p[n]) / qnnn.d_p00;
+        double qy = ny[n]>0 ? (q_p[n] - qnnn.f_0m0_linear(q_p)) / qnnn.d_0m0
+                            : (qnnn.f_0p0_linear(q_p) - q_p[n]) / qnnn.d_0p0;
+#ifdef P4_TO_P8
+        double qz = nz[n]>0 ? (q_p[n] - qnnn.f_00m_linear(q_p)) / qnnn.d_00m
+                            : (qnnn.f_00p_linear(q_p) - q_p[n]) / qnnn.d_00p;
+#endif
+
+        /* second order derivatives */
+        double qxx_m00 = qnnn.f_m00_linear(qxx_p);
+        double qxx_p00 = qnnn.f_p00_linear(qxx_p);
+        double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
+        double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
+#ifdef P4_TO_P8
+        double qzz_00m = qnnn.f_00m_linear(qzz_p);
+        double qzz_00p = qnnn.f_00p_linear(qzz_p);
+#endif
+
+        /* minmod operation */
+        qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
+        qxx_p00 = qxx_p[n]*qxx_p00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_p00) ? qxx_p[n] : qxx_p00);
+        qyy_0m0 = qyy_p[n]*qyy_0m0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0m0) ? qyy_p[n] : qyy_0m0);
+        qyy_0p0 = qyy_p[n]*qyy_0p0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0p0) ? qyy_p[n] : qyy_0p0);
+#ifdef P4_TO_P8
+        qzz_00m = qzz_p[n]*qzz_00m<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
+        qzz_00p = qzz_p[n]*qzz_00p<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
+#endif
+
+        if(nx[n]<0) qx -= .5*qnnn.d_p00*qxx_p00;
+        else        qx += .5*qnnn.d_m00*qxx_m00;
+        if(ny[n]<0) qy -= .5*qnnn.d_0p0*qyy_0p0;
+        else        qy += .5*qnnn.d_0m0*qyy_0m0;
+#ifdef P4_TO_P8
+        if(nz[n]<0) qz -= .5*qnnn.d_00p*qzz_00p;
+        else        qz += .5*qnnn.d_00m*qzz_00m;
+#endif
+
+//#ifdef P4_TO_P8
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
+//          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
+//                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p) +
+//                      qnnn.f_00m_linear(q_p) + qnnn.f_00p_linear(q_p))/6.;
+//#else
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
+//          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
+//                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p))/4.;
+//#endif
+//        else
+          tmp_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
+                         #ifdef P4_TO_P8
+                                   + nz[n]*qz
+                         #endif
+                                   ) + (order>=1 ? dt*qn_p[n] : 0);
+      }
+      else
+        tmp_p[n] = q_p[n];
+    }
+
+    /* initiate the communication */
+    ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* now process the local nodes */
+    for(size_t n_map=0; n_map<local_nodes.size(); ++n_map)
+    {
+      p4est_locidx_t n = local_nodes[n_map];
+      ngbd->get_neighbors(n, qnnn);
+      if(mask_p[n] > -EPS)
+      {
+        double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
+        dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
+#ifdef P4_TO_P8
+        dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
+        dt /= 3;
+#else
+        dt /= 2;
+#endif
+
+        /* first order one sided derivatives */
+        double qx = nx[n]>0 ? (q_p[n] - qnnn.f_m00_linear(q_p)) / qnnn.d_m00
+                            : (qnnn.f_p00_linear(q_p) - q_p[n]) / qnnn.d_p00;
+        double qy = ny[n]>0 ? (q_p[n] - qnnn.f_0m0_linear(q_p)) / qnnn.d_0m0
+                            : (qnnn.f_0p0_linear(q_p) - q_p[n]) / qnnn.d_0p0;
+#ifdef P4_TO_P8
+        double qz = nz[n]>0 ? (q_p[n] - qnnn.f_00m_linear(q_p)) / qnnn.d_00m
+                            : (qnnn.f_00p_linear(q_p) - q_p[n]) / qnnn.d_00p;
+#endif
+
+        /* second order derivatives */
+        double qxx_m00 = qnnn.f_m00_linear(qxx_p);
+        double qxx_p00 = qnnn.f_p00_linear(qxx_p);
+        double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
+        double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
+#ifdef P4_TO_P8
+        double qzz_00m = qnnn.f_00m_linear(qzz_p);
+        double qzz_00p = qnnn.f_00p_linear(qzz_p);
+#endif
+
+        /* minmod operation */
+        qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
+        qxx_p00 = qxx_p[n]*qxx_p00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_p00) ? qxx_p[n] : qxx_p00);
+        qyy_0m0 = qyy_p[n]*qyy_0m0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0m0) ? qyy_p[n] : qyy_0m0);
+        qyy_0p0 = qyy_p[n]*qyy_0p0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0p0) ? qyy_p[n] : qyy_0p0);
+#ifdef P4_TO_P8
+        qzz_00m = qzz_p[n]*qzz_00m<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
+        qzz_00p = qzz_p[n]*qzz_00p<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
+#endif
+
+        if(nx[n]<0) qx -= .5*qnnn.d_p00*qxx_p00;
+        else        qx += .5*qnnn.d_m00*qxx_m00;
+        if(ny[n]<0) qy -= .5*qnnn.d_0p0*qyy_0p0;
+        else        qy += .5*qnnn.d_0m0*qyy_0m0;
+#ifdef P4_TO_P8
+        if(nz[n]<0) qz -= .5*qnnn.d_00p*qzz_00p;
+        else        qz += .5*qnnn.d_00m*qzz_00m;
+#endif
+
+//#ifdef P4_TO_P8
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
+//          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
+//                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p) +
+//                      qnnn.f_00m_linear(q_p) + qnnn.f_00p_linear(q_p))/6.;
+//#else
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
+//          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
+//                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p))/4.;
+//#endif
+//        else
+          tmp_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
+                         #ifdef P4_TO_P8
+                                   + nz[n]*qz
+                         #endif
+                                   ) + (order>=1 ? dt*qn_p[n] : 0);
+      }
+      else
+        tmp_p[n] = q_p[n];
+    }
+
+    /* end update communication */
+    ierr = VecGhostUpdateEnd  (tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr);
+#endif
+    ierr = VecRestoreArray(q  , &q_p  ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
+
+    ierr = VecGhostGetLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(q  , &q_loc  ); CHKERRXX(ierr);
+    ierr = VecCopy(tmp_loc, q_loc); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(tmp, &tmp_loc); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(q  , &q_loc  ); CHKERRXX(ierr);
+  }
+
+  if(order>=1)
+  {
+    ierr = VecRestoreArray(qn, &qn_p); CHKERRXX(ierr);
+    ierr = VecDestroy(qn); CHKERRXX(ierr);
+  }
+
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
+
+  ierr = VecDestroy(qxx); CHKERRXX(ierr);
+  ierr = VecDestroy(qyy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecDestroy(qzz); CHKERRXX(ierr);
+#endif
+
+  ierr = VecDestroy(tmp); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }

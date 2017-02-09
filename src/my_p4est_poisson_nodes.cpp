@@ -42,7 +42,8 @@ my_p4est_poisson_nodes_t::my_p4est_poisson_nodes_t(const my_p4est_node_neighbors
     bc_(NULL), A(NULL),
     is_phi_dd_owned(false), is_mue_dd_owned(false),
     rhs_(NULL), phi_(NULL), add_(NULL), mue_(NULL),
-    phi_xx_(NULL), phi_yy_(NULL), mue_xx_(NULL), mue_yy_(NULL), robin_coef_(NULL)
+    phi_xx_(NULL), phi_yy_(NULL), mue_xx_(NULL), mue_yy_(NULL), robin_coef_(NULL),
+    mask(NULL)
   #ifdef P4_TO_P8
     ,
     phi_zz_(NULL), mue_zz_(NULL)
@@ -165,6 +166,8 @@ my_p4est_poisson_nodes_t::~my_p4est_poisson_nodes_t()
     if (mue_zz_     != NULL) ierr = VecDestroy(mue_zz_);                CHKERRXX(ierr);
 #endif
   }
+
+  if (mask != NULL) { ierr = VecDestroy(mask); CHKERRXX(ierr); }
 }
 
 void my_p4est_poisson_nodes_t::preallocate_matrix()
@@ -1859,6 +1862,12 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 
   double eps = 1E-6*d_min*d_min;
 
+  if (mask != NULL) { ierr = VecDestroy(mask); CHKERRXX(ierr); }
+  ierr = VecDuplicate(phi_, &mask); CHKERRXX(ierr);
+
+  double *mask_p;
+  ierr = VecGetArray(mask,    &mask_p  ); CHKERRXX(ierr);
+
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *robin_coef_p = NULL;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
   ierr = VecGetArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
@@ -1874,6 +1883,8 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
   {    
+    mask_p[n] = 1.;
+
     // tree information
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
 
@@ -1967,6 +1978,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
     {
       ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
       if (phi_p[n]<0.) matrix_has_nullspace = false;
+      if (phi_p[n]<0.) mask_p[n] = -1.;
       continue;
     } else {
       double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
@@ -1985,7 +1997,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
       //---------------------------------------------------------------------
       if((ABS(phi_000)<eps && bc_->interfaceType() == DIRICHLET) ){
         ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
-
+        mask_p[n] = -1.;
         matrix_has_nullspace=false;
         continue;
       }
@@ -2015,10 +2027,20 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
       double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
       double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
 #else
-      double P_mmm = phi_interp(cube.x0, cube.y0);
-      double P_mpm = phi_interp(cube.x0, cube.y1);
-      double P_pmm = phi_interp(cube.x1, cube.y0);
-      double P_ppm = phi_interp(cube.x1, cube.y1);
+//        double P_mmm = phi_interp(cube.x0, cube.y0);
+//        double P_mpm = phi_interp(cube.x0, cube.y1);
+//        double P_pmm = phi_interp(cube.x1, cube.y0);
+//        double P_ppm = phi_interp(cube.x1, cube.y1);
+
+        double P_000 = phi_000;
+        double P_mm0 = phi_interp(cube.x0, cube.y0);
+        double P_mp0 = phi_interp(cube.x0, cube.y1);
+        double P_pm0 = phi_interp(cube.x1, cube.y0);
+        double P_pp0 = phi_interp(cube.x1, cube.y1);
+        double P_m00 = phi_interp(cube.x0, y_C);
+        double P_p00 = phi_interp(cube.x1, y_C);
+        double P_0m0 = phi_interp(x_C, cube.y0);
+        double P_0p0 = phi_interp(x_C, cube.y1);
 #endif
 
 #ifdef P4_TO_P8
@@ -2029,11 +2051,20 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 
       bool is_ngbd_crossed_neumann = is_one_negative && is_one_positive;
 #else
-      bool is_ngbd_crossed_neumann = ( P_mmm*P_mpm<0 || P_mpm*P_ppm<0 || P_ppm*P_pmm<0 || P_pmm*P_mmm<0 );
+        bool is_one_positive = (P_000 > 0 ||
+                                P_m00 > 0 || P_p00 > 0 || P_0m0 > 0 || P_0p0 > 0 ||
+                                P_mm0 > 0 || P_pm0 > 0 || P_mp0 > 0 || P_pp0 > 0);
+        bool is_one_negative = (P_000 < 0 ||
+                                P_m00 < 0 || P_p00 < 0 || P_0m0 < 0 || P_0p0 < 0 ||
+                                P_mm0 < 0 || P_pm0 < 0 || P_mp0 < 0 || P_pp0 < 0);
+
+        bool is_ngbd_crossed_neumann = is_one_negative && is_one_positive;
+
+//      bool is_ngbd_crossed_neumann = ( P_mmm*P_mpm<0 || P_mpm*P_ppm<0 || P_ppm*P_pmm<0 || P_pmm*P_mmm<0 );
 #endif
 
       // far away from the interface
-      if(phi_000>0. &&  (!is_ngbd_crossed_neumann || bc_->interfaceType() == DIRICHLET )){
+      if(phi_000>0. &&  ((!is_ngbd_crossed_neumann && is_one_positive) || bc_->interfaceType() == DIRICHLET )){
         ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
         continue;
       }
@@ -2045,6 +2076,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
            (bc_->interfaceType() == ROBIN     && !is_ngbd_crossed_neumann ) ||
            bc_->interfaceType() == NOINTERFACE)
       {
+        mask_p[n] = -1.;
         double phixx_C = phi_xx_p[n];
         double phiyy_C = phi_yy_p[n];
 #ifdef P4_TO_P8
@@ -2377,13 +2409,45 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
         double volume_cut_cell = cube.volume_In_Negative_Domain(phi_cube);
         double interface_area  = cube.interface_Area_In_Cell(phi_cube);
 #else
-        QuadValue phi_cube(P_mmm, P_mpm, P_pmm, P_ppm);
-        double volume_cut_cell = cube.area_In_Negative_Domain(phi_cube);
-        double interface_area  = cube.interface_Length_In_Cell(phi_cube);
+        /* using four cubes instead of one:
+         * mm0 m00 0m0 000
+         * mp0 0p0 m00 000
+         * pm0 0m0 p00 000
+         * pp0 p00 0p0 000
+         */
+
+        double x0 = x_C, xm = cube.x0, xp = cube.x1;
+        double y0 = y_C, ym = cube.y0, yp = cube.y1;
+
+        double volume_cut_cell = 0.;
+        double interface_area  = 0.;
+        QuadValue phi_cube;
+        for (short i = 0; i < P4EST_CHILDREN; ++i)
+        {
+          switch (i) {
+            case 0: phi_cube.val00 = P_mm0; phi_cube.val01 = P_m00; phi_cube.val10 = P_0m0; phi_cube.val11 = P_000; break;
+            case 1: phi_cube.val00 = P_mp0; phi_cube.val01 = P_0p0; phi_cube.val10 = P_m00; phi_cube.val11 = P_000; break;
+            case 2: phi_cube.val00 = P_pm0; phi_cube.val01 = P_0m0; phi_cube.val10 = P_p00; phi_cube.val11 = P_000; break;
+            case 3: phi_cube.val00 = P_pp0; phi_cube.val01 = P_p00; phi_cube.val10 = P_0p0; phi_cube.val11 = P_000; break;
+          }
+
+          switch (i) {
+            case 0: case 2: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dx_min; cube.y1 = 0.5*dy_min; break;
+            case 1: case 3: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dy_min; cube.y1 = 0.5*dx_min; break;
+          }
+
+          volume_cut_cell += cube.area_In_Negative_Domain(phi_cube);
+          interface_area  += cube.interface_Length_In_Cell(phi_cube);
+        }
+
+//        QuadValue phi_cube(P_mmm, P_mpm, P_pmm, P_ppm);
+//        double volume_cut_cell = cube.area_In_Negative_Domain(phi_cube);
+//        double interface_area  = cube.interface_Length_In_Cell(phi_cube);
 #endif
 
         if (volume_cut_cell>eps*eps)
         {
+          if (phi_000 < 0.9*diag_min) mask_p[n] = -1.;
 #ifdef P4_TO_P8
           PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? (qnnn.d_m00_0m==0 ? qnnn.node_m00_mm : qnnn.node_m00_mp)
                                                               : (qnnn.d_m00_0m==0 ? qnnn.node_m00_pm : qnnn.node_m00_pp) ];
@@ -2471,18 +2535,33 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           fxx = phi_xx_p[n];
           fyy = phi_yy_p[n];
 
-          double dx = cube.x1 - cube.x0;
-          double dy = cube.y1 - cube.y0;
+//          double dx = cube.x1 - cube.x0;
+//          double dy = cube.y1 - cube.y0;
 
-          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
-          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
-          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
-          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
+//          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
+//          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
+//          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
+//          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
 
 //          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_mpm, dx, dy);
 //          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_pmm, P_ppm, dx, dy);
 //          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_pmm, dx, dy);
 //          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mpm, P_ppm, dx, dy);
+
+          double dx = dx_min;
+          double dy = dy_min;
+
+          double s_m00 = 0.5 * dy * (fraction_Interval_Covered_By_Irregular_Domain(P_m00, P_mm0, dx, dy) +
+                                     fraction_Interval_Covered_By_Irregular_Domain(P_m00, P_mp0, dx, dy));
+
+          double s_p00 = 0.5 * dy * (fraction_Interval_Covered_By_Irregular_Domain(P_p00, P_pm0, dx, dy) +
+                                     fraction_Interval_Covered_By_Irregular_Domain(P_p00, P_pp0, dx, dy));
+
+          double s_0m0 = 0.5 * dx * (fraction_Interval_Covered_By_Irregular_Domain(P_0m0, P_mm0, dx, dy) +
+                                     fraction_Interval_Covered_By_Irregular_Domain(P_0m0, P_pm0, dx, dy));
+
+          double s_0p0 = 0.5 * dx * (fraction_Interval_Covered_By_Irregular_Domain(P_0p0, P_mp0, dx, dy) +
+                                     fraction_Interval_Covered_By_Irregular_Domain(P_0p0, P_pp0, dx, dy));
 
           double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
           if(!is_node_xmWall(p4est, ni)) w_m00 += -mu_ * s_m00/dx_min;
@@ -2527,7 +2606,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
         }
       }
 
-      if (!is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN) && phi_000<0.)
+      if (!is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN) && phi_000<0. && is_one_positive)
       {
         ierr = MatSetValue(A, node_000_g, node_000_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
 
@@ -2567,6 +2646,12 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
   ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
   ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
 
+
+  ierr = VecRestoreArray(mask,    &mask_p  ); CHKERRXX(ierr);
+
+  // update ghosts
+  ierr = VecGhostUpdateBegin(mask, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(mask, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // restore pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -2723,10 +2808,20 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
       double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
       double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
 #else
-      double P_mmm = phi_interp(cube.x0, cube.y0);
-      double P_mpm = phi_interp(cube.x0, cube.y1);
-      double P_pmm = phi_interp(cube.x1, cube.y0);
-      double P_ppm = phi_interp(cube.x1, cube.y1);
+//        double P_mmm = phi_interp(cube.x0, cube.y0);
+//        double P_mpm = phi_interp(cube.x0, cube.y1);
+//        double P_pmm = phi_interp(cube.x1, cube.y0);
+//        double P_ppm = phi_interp(cube.x1, cube.y1);
+
+      double P_000 = phi_000;
+      double P_mm0 = phi_interp(cube.x0, cube.y0);
+      double P_mp0 = phi_interp(cube.x0, cube.y1);
+      double P_pm0 = phi_interp(cube.x1, cube.y0);
+      double P_pp0 = phi_interp(cube.x1, cube.y1);
+      double P_m00 = phi_interp(cube.x0, y_C);
+      double P_p00 = phi_interp(cube.x1, y_C);
+      double P_0m0 = phi_interp(x_C, cube.y0);
+      double P_0p0 = phi_interp(x_C, cube.y1);
 #endif
 
 #ifdef P4_TO_P8
@@ -2737,11 +2832,19 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
 
       bool is_ngbd_crossed_neumann = is_one_negative && is_one_positive;
 #else
-      bool is_ngbd_crossed_neumann = ( P_mmm*P_mpm<0 || P_mpm*P_ppm<0 || P_ppm*P_pmm<0 || P_pmm*P_mmm<0 );
+      bool is_one_positive = (P_000 > 0 ||
+                              P_m00 > 0 || P_p00 > 0 || P_0m0 > 0 || P_0p0 > 0 ||
+                              P_mm0 > 0 || P_pm0 > 0 || P_mp0 > 0 || P_pp0 > 0);
+      bool is_one_negative = (P_000 < 0 ||
+                              P_m00 < 0 || P_p00 < 0 || P_0m0 < 0 || P_0p0 < 0 ||
+                              P_mm0 < 0 || P_pm0 < 0 || P_mp0 < 0 || P_pp0 < 0);
+
+      bool is_ngbd_crossed_neumann = is_one_negative && is_one_positive;
+//      bool is_ngbd_crossed_neumann = ( P_mmm*P_mpm<0 || P_mpm*P_ppm<0 || P_ppm*P_pmm<0 || P_pmm*P_mmm<0 );
 #endif
 
       // far away from the interface
-      if(phi_000>0. &&  (!is_ngbd_crossed_neumann || bc_->interfaceType() == DIRICHLET )){
+      if(phi_000>0. &&  ( (!is_ngbd_crossed_neumann && is_one_positive) || bc_->interfaceType() == DIRICHLET )){
         if(bc_->interfaceType()==DIRICHLET)
 #ifdef P4_TO_P8
           rhs_p[n] = bc_strength*bc_->interfaceValue(x_C,y_C,z_C);
@@ -3026,9 +3129,33 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
         double volume_cut_cell = cube.volume_In_Negative_Domain(phi_cube);
         double interface_area  = cube.interface_Area_In_Cell(phi_cube);
 #else
-        QuadValue phi_cube(P_mmm, P_mpm, P_pmm, P_ppm);
-        double volume_cut_cell = cube.area_In_Negative_Domain(phi_cube);
-        double interface_area  = cube.interface_Length_In_Cell(phi_cube);
+        double x0 = x_C, xm = cube.x0, xp = cube.x1;
+        double y0 = y_C, ym = cube.y0, yp = cube.y1;
+
+//        QuadValue phi_cube(P_mmm, P_mpm, P_pmm, P_ppm);
+//        double volume_cut_cell = cube.area_In_Negative_Domain(phi_cube);
+//        double interface_area  = cube.interface_Length_In_Cell(phi_cube);
+
+        double volume_cut_cell = 0.;
+        double interface_area  = 0.;
+        QuadValue phi_cube;
+        for (short i = 0; i < P4EST_CHILDREN; ++i)
+        {
+          switch (i) {
+            case 0: phi_cube.val00 = P_mm0; phi_cube.val01 = P_m00; phi_cube.val10 = P_0m0; phi_cube.val11 = P_000; break;
+            case 1: phi_cube.val00 = P_mp0; phi_cube.val01 = P_0p0; phi_cube.val10 = P_m00; phi_cube.val11 = P_000; break;
+            case 2: phi_cube.val00 = P_pm0; phi_cube.val01 = P_0m0; phi_cube.val10 = P_p00; phi_cube.val11 = P_000; break;
+            case 3: phi_cube.val00 = P_pp0; phi_cube.val01 = P_p00; phi_cube.val10 = P_0p0; phi_cube.val11 = P_000; break;
+          }
+
+          switch (i) {
+            case 0: case 2: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dx_min; cube.y1 = 0.5*dy_min; break;
+            case 1: case 3: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dy_min; cube.y1 = 0.5*dx_min; break;
+          }
+
+          volume_cut_cell += cube.area_In_Negative_Domain(phi_cube);
+          interface_area  += cube.interface_Length_In_Cell(phi_cube);
+        }
 #endif
 
         if (volume_cut_cell>eps*eps)
@@ -3118,15 +3245,30 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           fxx = phi_xx_p[n];
           fyy = phi_yy_p[n];
 
-          double dx = cube.x1 - cube.x0;
-          double dy = cube.y1 - cube.y0;
+//          double dx = cube.x1 - cube.x0;
+//          double dy = cube.y1 - cube.y0;
 
-          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
-          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
-          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
-          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
+//          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
+//          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
+//          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx);
+//          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx);
 
-//          double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_mpm, dx, dy);
+          double dx = dx_min;
+          double dy = dy_min;
+
+          double s_m00 = 0.5 * dy * (fraction_Interval_Covered_By_Irregular_Domain(P_m00, P_mm0, dx, dy) +
+                                     fraction_Interval_Covered_By_Irregular_Domain(P_m00, P_mp0, dx, dy));
+
+          double s_p00 = 0.5 * dy * (fraction_Interval_Covered_By_Irregular_Domain(P_p00, P_pm0, dx, dy) +
+                                     fraction_Interval_Covered_By_Irregular_Domain(P_p00, P_pp0, dx, dy));
+
+          double s_0m0 = 0.5 * dx * (fraction_Interval_Covered_By_Irregular_Domain(P_0m0, P_mm0, dx, dy) +
+                                     fraction_Interval_Covered_By_Irregular_Domain(P_0m0, P_pm0, dx, dy));
+
+          double s_0p0 = 0.5 * dx * (fraction_Interval_Covered_By_Irregular_Domain(P_0p0, P_mp0, dx, dy) +
+                                     fraction_Interval_Covered_By_Irregular_Domain(P_0p0, P_pp0, dx, dy));
+
+
 //          double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain(P_pmm, P_ppm, dx, dy);
 //          double s_0m0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_pmm, dx, dy);
 //          double s_0p0 = dx * fraction_Interval_Covered_By_Irregular_Domain(P_mpm, P_ppm, dx, dy);
@@ -3168,12 +3310,39 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
 //            }
           }
 
-          QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
-                              bc_->interfaceValue(cube.x0, cube.y1),
-                              bc_->interfaceValue(cube.x1, cube.y0),
-                              bc_->interfaceValue(cube.x1, cube.y1));
 
-          double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
+          QuadValue bc_value;
+          double integral_bc = 0;
+          for (short i = 0; i < P4EST_CHILDREN; ++i)
+          {
+            switch (i) {
+              case 0: phi_cube.val00 = P_mm0; phi_cube.val01 = P_m00; phi_cube.val10 = P_0m0; phi_cube.val11 = P_000; break;
+              case 1: phi_cube.val00 = P_mp0; phi_cube.val01 = P_0p0; phi_cube.val10 = P_m00; phi_cube.val11 = P_000; break;
+              case 2: phi_cube.val00 = P_pm0; phi_cube.val01 = P_0m0; phi_cube.val10 = P_p00; phi_cube.val11 = P_000; break;
+              case 3: phi_cube.val00 = P_pp0; phi_cube.val01 = P_p00; phi_cube.val10 = P_0p0; phi_cube.val11 = P_000; break;
+            }
+
+            switch (i) {
+              case 0: bc_value.val00 = bc_->interfaceValue(xm,ym); bc_value.val01 = bc_->interfaceValue(xm,y0); bc_value.val10 = bc_->interfaceValue(x0,ym); bc_value.val11 = bc_->interfaceValue(x0,y0); break;
+              case 1: bc_value.val00 = bc_->interfaceValue(xm,yp); bc_value.val01 = bc_->interfaceValue(x0,yp); bc_value.val10 = bc_->interfaceValue(xm,y0); bc_value.val11 = bc_->interfaceValue(x0,y0); break;
+              case 2: bc_value.val00 = bc_->interfaceValue(xp,ym); bc_value.val01 = bc_->interfaceValue(x0,ym); bc_value.val10 = bc_->interfaceValue(xp,y0); bc_value.val11 = bc_->interfaceValue(x0,y0); break;
+              case 3: bc_value.val00 = bc_->interfaceValue(xp,yp); bc_value.val01 = bc_->interfaceValue(xp,y0); bc_value.val10 = bc_->interfaceValue(x0,yp); bc_value.val11 = bc_->interfaceValue(x0,y0); break;
+            }
+
+            switch (i) {
+              case 0: case 2: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dx_min; cube.y1 = 0.5*dy_min; break;
+              case 1: case 3: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dy_min; cube.y1 = 0.5*dx_min; break;
+            }
+
+            integral_bc += cube.integrate_Over_Interface(bc_value, phi_cube);
+          }
+
+//          QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
+//                              bc_->interfaceValue(cube.x0, cube.y1),
+//                              bc_->interfaceValue(cube.x1, cube.y0),
+//                              bc_->interfaceValue(cube.x1, cube.y1));
+
+//          double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
           rhs_p[n] += mu_*integral_bc;
 
@@ -3189,7 +3358,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
         }
       }
 
-      if (!is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN) && phi_000<0.)
+      if (!is_ngbd_crossed_neumann && (bc_->interfaceType() == NEUMANN || bc_->interfaceType() == ROBIN) && phi_000<0. && is_one_positive)
       {
 #ifdef P4_TO_P8
         double iface_value = bc_->interfaceValue(x_C, y_C, z_C);

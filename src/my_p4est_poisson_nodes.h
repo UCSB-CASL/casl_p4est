@@ -56,6 +56,8 @@ class my_p4est_poisson_nodes_t
   KSP ksp;
   PetscErrorCode ierr;
 
+  Vec mask;
+
   void preallocate_matrix();
 
   void setup_negative_laplace_matrix_neumann_wall_1st_order();
@@ -117,6 +119,8 @@ public:
 #endif
 
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+
+  Vec get_mask() { return mask; }
 };
 
 #endif // MY_P4EST_POISSON_NODES_H

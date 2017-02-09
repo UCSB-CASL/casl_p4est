@@ -841,15 +841,41 @@ void my_p4est_bialloy_t::solve_concentration()
   ierr = VecGetArray(robin_coef, &robin_coef_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
+  my_p4est_level_set_t ls(ngbd);
+
+
+//  Vec cl_interface_old;
+//  Vec bc_value;
+//  ierr = VecDuplicate(phi, &cl_interface_old); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi, &bc_value); CHKERRXX(ierr);
+
+//  ls.extend_from_interface_to_whole_domain_TVD(phi, cl_n, cl_interface_old);
+
+//  double *bc_value_p;
+//  const double *cl_interface_old_p;
+//  ierr = VecGetArray(bc_value, &bc_value_p); CHKERRXX(ierr);
+//  ierr = VecGetArrayRead(cl_interface_old, &cl_interface_old_p); CHKERRXX(ierr);
+
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
 //    robin_coef_p[n] = -cooling_velocity*(1-kp)/solute_diffusivity_l;
     robin_coef_p[n] = -normal_velocity_np1_p[n]*(1-kp)/solute_diffusivity_l;
 //    robin_coef_p[n] = -1.0;
+
+//    robin_coef_p[n] = 0.0;
+//    bc_value_p[n] = normal_velocity_np1_p[n]*(1-kp)/solute_diffusivity_l * cl_interface_old_p[n];
   }
+
+//  ierr = VecRestoreArray(bc_value, &bc_value_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(cl_interface_old, &cl_interface_old_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(robin_coef, &robin_coef_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+
+//  my_p4est_interpolation_nodes_t bc_value_cl(ngbd);
+//  bc_value_cl.set_input(bc_value, linear);
+
+//  bc_cl.setInterfaceValue(bc_value_cl);
 
   Vec src, out;
   ierr = VecGhostGetLocalForm(cl_n, &src); CHKERRXX(ierr);
@@ -869,7 +895,6 @@ void my_p4est_bialloy_t::solve_concentration()
   solver_c.set_robin_coef(robin_coef);
   solver_c.solve(cl_np1);
 
-  my_p4est_level_set_t ls(ngbd);
   ls.extend_Over_Interface_TVD(phi, cl_np1);
 
   double err_bc = 0;
@@ -920,6 +945,11 @@ void my_p4est_bialloy_t::solve_concentration()
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
   ls.extend_from_interface_to_whole_domain_TVD(phi, cl_np1, cl_gamma);
+
+
+//  ierr = VecDestroy(cl_interface_old); CHKERRXX(ierr);
+//  ierr = VecDestroy(bc_value); CHKERRXX(ierr);
+
 }
 
 
@@ -1112,10 +1142,10 @@ void my_p4est_bialloy_t::one_step()
     ierr = VecGhostRestoreLocalForm(normal_velocity_np1, &src); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(normal_velocity_tmp, &out); CHKERRXX(ierr);
 
-    solve_concentration();
 //    compare_normal_velocity_temperature_vs_concentration();
     solve_temperature();
     compute_normal_velocity_from_temperature();
+    solve_concentration();
 //    compute_dt();
 
 

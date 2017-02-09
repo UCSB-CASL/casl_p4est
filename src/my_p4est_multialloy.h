@@ -74,6 +74,7 @@ private:
   double dxyz[P4EST_DIM];
   double dxyz_max, dxyz_min;
   double dxyz_close_interface;
+  double diag;
 
   /* temperature */
   Vec temperature_n, temperature_np1;
@@ -140,6 +141,10 @@ private:
   Vec concentration_multiplier;
 
   double functional;
+
+  int order_of_extension;
+
+  bool use_more_points_for_extension;
 
 public:
 
@@ -216,6 +221,7 @@ public:
   void compute_normal_velocity();
 
   void compute_velocity();
+  void compute_velocity_from_temperature();
 
   void solve_temperature();
 

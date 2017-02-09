@@ -44,6 +44,7 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
+#include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_poisson_nodes_voronoi.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #endif
@@ -68,11 +69,11 @@ double zmax =  1;
 using namespace std;
 
 int lmin = 4;
-int lmax = 4;
+int lmax = 7;
 int nb_splits = 5;
 
-int nx = 2;
-int ny = 2;
+int nx = 1;
+int ny = 1;
 #ifdef P4_TO_P8
 int nz = 1;
 #endif
@@ -651,7 +652,7 @@ int main (int argc, char* argv[])
 
   save_vtk = cmd.get("save_vtk", save_vtk);
 
-  bool check_extrapolations = cmd.get("check_extrapolations", 0);
+  bool check_extrapolations = cmd.get("check_extrapolations", 1);
 
   parStopWatch w;
   w.start("total time");
@@ -846,7 +847,8 @@ int main (int argc, char* argv[])
 
     ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
-    my_p4est_poisson_nodes_voronoi_t solver(&ngbd_n);
+//    my_p4est_poisson_nodes_voronoi_t solver(&ngbd_n);
+    my_p4est_poisson_nodes_t solver(&ngbd_n);
     solver.set_phi(phi);
     solver.set_diagonal(add_diagonal);
     solver.set_mu(mu);
@@ -971,8 +973,11 @@ int main (int argc, char* argv[])
 
     if(check_extrapolations)
     {
+      Vec mask = solver.get_mask();
+
       if(bc_itype!=NOINTERFACE)
-        ls.extend_Over_Interface_TVD(phi, sol, 100);
+//        ls.extend_Over_Interface_TVD(phi, mask, sol, 100, 2);
+        ls.extend_Over_Interface_TVD(phi, sol, 100, 2);
 
       ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
       ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
