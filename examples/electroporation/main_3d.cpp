@@ -48,7 +48,7 @@ using namespace std;
 
 
 
-int test = 7;
+int test = 6;
 
 
 
@@ -63,7 +63,7 @@ int x_cells = 10;
 int y_cells = 10;
 int z_cells = 10;
 /* number of random cells for case 7 */
-int nb_cells = test==7 ? 100 : x_cells*y_cells*z_cells;
+int nb_cells = test==7 ? 1000 : x_cells*y_cells*z_cells;
 /* number of cells in x and y dimensions */
 
 /* cell radius */
@@ -80,12 +80,12 @@ double c = test<5 ? r0 : (test==5 ? r0/ellipse : r0*ellipse);
 //double zmin = test<4 ? -2*z_cells*r0 : -1e-3;
 //double zmax = test<4 ?  2*z_cells*r0 :  1e-3;
 
-double xmin = test<4 ? -2*x_cells*r0 : -1e-3*pow(nb_cells/100, 1./3.);
-double xmax = test<4 ?  2*x_cells*r0 :  1e-3*pow(nb_cells/100, 1./3.);
-double ymin = test<4 ? -2*y_cells*r0 : -1e-3*pow(nb_cells/100, 1./3.);
-double ymax = test<4 ?  2*y_cells*r0 :  1e-3*pow(nb_cells/100, 1./3.);
-double zmin = test<4 ? -2*z_cells*r0 : -1e-3*pow(nb_cells/100, 1./3.);
-double zmax = test<4 ?  2*z_cells*r0 :  1e-3*pow(nb_cells/100, 1./3.);
+double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : -4*x_cells*r0);
+double xmax = test<4 ?  2*x_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  :  4*x_cells*r0);
+double ymin = test<4 ? -2*y_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : -4*y_cells*r0);
+double ymax = test<4 ?  2*y_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  :  4*y_cells*r0);
+double zmin = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : -4*z_cells*r0);
+double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  :  4*z_cells*r0);
 
 
 
@@ -153,22 +153,6 @@ public:
             srand(seed);
             printf("The random seed is %u\n", seed);
             fflush(stdout);
-            //            for(int n=0; n<nb_cells; ++n)
-            //            {
-            //                bool too_close;
-            //                do
-            //                {
-            //                    Point3 p3((xmax-xmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8), (ymax-ymin)/4 * (1.6*((double)rand()/RAND_MAX)-.8), (zmax-zmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8));
-            //                    centers[n].x = p3.x;
-            //                    centers[n].y = p3.y;
-            //                    centers[n].z = p3.z;
-
-            //                    too_close = false;
-            //                    for(int m=0; m<n-1; ++m)
-            //                        too_close = ( too_close || (centers[n]-centers[m]).norm_L2() < 3*r0 );
-
-            //                } while(too_close);
-
             std::vector<std::array<double,3> > v;
             std::array<double,3> p;
             p[0] = (xmax-xmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
@@ -186,7 +170,7 @@ public:
                 v.push_back(p);
                 nfixpts = v.size();
                 double mindist;
-                nearpt3::ng_factor = 0.5;
+                nearpt3::ng_factor = 0.1;
                 nearpt3::Grid_T<double> *g = nearpt3::Preprocess(nfixpts, &v[0]);
                 do
                 {
@@ -203,26 +187,7 @@ public:
 
             }
 
-
-
-
-//            int counter =0;
-//            for(int n=0; n<nb_cells; ++n)
-//               {
-//                for(int m=n+1; m<nb_cells; ++m)
-//                {
-//                    if(sqrt(SQR(v[n][0]-v[m][0])+ SQR(v[n][1]-v[m][1])+SQR(v[n][2]-v[m][2])) < 3*r0)
-//                    {
-//                        counter += 1;
-//                    }
-//                }
-//            }
-//            printf("counter=%d", counter);
-
-
-
-
-            for(int n=0; n<nb_cells; ++n)
+           for(int n=0; n<nb_cells; ++n)
             {
                 centers[n].x = v[n][0];
                 centers[n].y = v[n][1];
@@ -247,9 +212,9 @@ public:
         double d = DBL_MAX;
 
         double xm, ym, zm; xm=ym=zm=-.5e-3;
-        double dx = 1e-3/(x_cells+1);
-        double dy = 1e-3/(y_cells+1);
-        double dz = 1e-3/(z_cells+1);
+        double dx = xmax/(x_cells+1);
+        double dy = ymax/(y_cells+1);
+        double dz = zmax/(z_cells+1);
         double x_tmp, y_tmp, z_tmp;
         double x0, y0, z0;
 
