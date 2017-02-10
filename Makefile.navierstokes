@@ -4,7 +4,7 @@ build = 3d
 debug = 1
 log = 0
 stampede = 0
-juqueen = 1
+juqueen = 0
 
 # On JUQUEEN it is important to module load petsc/3.6.0_downloads_O3strict.
 #            It is also advised to compile p4est and export P4EST_DIR accordingly,
@@ -13,7 +13,7 @@ juqueen = 1
 
 # hack to pass NULL as first parameter to PetscOptionsSetValue if set to 1
 # to use the JUQUEEN petsc version 3.6 this must be 0
-petscoptions = 0
+petscoptions = 1
 
 ifeq ($(build), 2d)
 	OBJDIR = .obj_2d
