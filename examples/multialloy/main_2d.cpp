@@ -48,8 +48,8 @@
 #undef MIN
 #undef MAX
 
-int lmin = 6;
-int lmax = 11;
+int lmin = 5;
+int lmax = 10;
 int save_every_n_iteration = 1;
 
 double lip = 1.5;
@@ -137,13 +137,15 @@ void set_alloy_parameters()
     Tm                   = 1728;           /* K           */
     Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
     Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
-    G                    = 2e3;            /* k.cm-1      */
+    G                    = 4e2;            /* k.cm-1      */
     V                    = 0.01;           /* cm.s-1      */
     latent_heat          = 2350;           /* J.cm-3      */
     thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
     lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
     eps_c                = 2.7207e-5;
     eps_v                = 2.27e-2;
+//    eps_c                = 0.0;
+//    eps_v                = 0.0;
     eps_anisotropy       = 0.05;
 
 //    box_size = 4e-2;
@@ -327,7 +329,7 @@ public:
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
     if(direction=='x') return x - 0.1;
-    else               return y - 0.1 + 0.000*cos(pow(2,lmax-3)*PI*(x-0.50007));
+    else               return y - 0.1 + 0.00*cos(pow(2,lmax-4)*PI*(x-0.50007));
   }
 } LS;
 

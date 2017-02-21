@@ -37,7 +37,8 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_poisson_nodes.h>
-#include <src/my_p4est_bialloy_robin.h>
+#include <src/my_p4est_bialloy_robin_gradient.h>
+//#include <src/my_p4est_bialloy_robin.h>
 #endif
 
 #include <src/point3.h>
@@ -49,7 +50,7 @@
 #undef MAX
 
 int lmin = 6;
-int lmax = 8;
+int lmax = 9;
 int save_every_n_iteration = 1;
 
 using namespace std;
@@ -113,7 +114,7 @@ void set_alloy_parameters()
     heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
     ml                   =-357;            /* K / at frac. - liquidous slope */
 //    ml                   =-1.;            /* K / at frac. - liquidous slope */
-//    kp                   = 0.86;           /* partition coefficient */
+//    kp                   = 1.00;           /* partition coefficient */
     kp                   = 0.86;           /* partition coefficient */
     c0                   = 0.40831;        /* at frac.    */
     Tm                   = 1728;           /* K           */
@@ -271,8 +272,8 @@ public:
 
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
-    if(direction=='x') return x - 0.095703125001;
-    else               return y - 0.095703125001;
+    if(direction=='x') return x - 0.1;
+    else               return y - 0.1;
   }
 } LS;
 
@@ -573,7 +574,7 @@ int main (int argc, char* argv[])
 
   char *out_dir;
   out_dir = getenv("OUT_DIR");
-//  char out_dir[] = "/home/dbochkov/Outputs/bialloy_robi";
+//  char out_dir[] = "/home/dbochkov/Outputs/bialloy_robin/";
 #ifdef P4_TO_P8
   sprintf(name, "%s/velo_%dx%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], n_xyz[2], latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #else
