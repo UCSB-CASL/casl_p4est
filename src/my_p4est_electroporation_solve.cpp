@@ -293,11 +293,30 @@ void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_init
     {
         matrix_has_nullspace = true;
 
-//            ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
+        //            ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
         setup_linear_system();
-//            ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
+        //            ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
 
         is_matrix_computed = true;
+
+
+
+
+//        //PAM2
+//        Vec min;
+//        VecDuplicate(rhs, &min);
+//        MatGetRowMaxAbs(A, min, NULL);
+//        //VecView(max, PETSC_VIEWER_STDOUT_WORLD);
+//        PetscReal val;
+//        ierr = VecMax(min,NULL,&val); CHKERRXX(ierr);
+//        ierr = PetscPrintf(PETSC_COMM_WORLD, "maximum matrix element after: %g\n", (double)val); CHKERRXX(ierr);
+
+
+
+
+
+
+
         ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
     } else {
         setup_negative_laplace_rhsvec();
@@ -1201,10 +1220,10 @@ void my_p4est_electroporation_solve_t::compute_voronoi_cell(unsigned int n, Voro
 
     /* finally, construct the partition */
 #ifdef P4_TO_P8
-    double xyz_min [] = {xyz_min[0], xyz_min[1], xyz_min[2]};
-    double xyz_max [] = {xyz_max[0], xyz_max[1], xyz_max[2]};
-//    double xyz_min [] = {xmin, ymin, zmin};
-//    double xyz_max [] = {xmax, ymax, zmax};
+    const double xyz_min [3] = {xyz_min[0], xyz_min[1], xyz_min[2]};
+    const double xyz_max [3] = {xyz_max[0], xyz_max[1], xyz_max[2]};
+    //    double xyz_min [] = {xmin, ymin, zmin};
+    //    double xyz_max [] = {xmax, ymax, zmax};
     bool periodic[] = {false, false, false};
     voro.construct_Partition(xyz_min, xyz_max, periodic);
 #else
@@ -1312,11 +1331,11 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 
 
 #ifndef P4_TO_P8
-//        voro.compute_volume();
+        //        voro.compute_volume();
 #endif
-//        double volume = voro.get_volume();
+        //        double volume = voro.get_volume();
 
-//        rhs_p[n] *= volume;
+        //        rhs_p[n] *= volume;
 
 #ifdef P4_TO_P8
         double add_n = (*add)(pc.x, pc.y, pc.z);
@@ -1326,8 +1345,8 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 
         if(add_n>EPS) matrix_has_nullspace = false;
 
-//        mat_entry_t ent; ent.n = global_n_idx; ent.val = volume*add_n;
-//        matrix_entries[n].push_back(ent);
+        //        mat_entry_t ent; ent.n = global_n_idx; ent.val = volume*add_n;
+        //        matrix_entries[n].push_back(ent);
 
         for(unsigned int l=0; l<points->size(); ++l)
         {
@@ -1338,7 +1357,9 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
             double s = ((*partition)[k]-(*partition)[l]).norm_L2();
 #endif
 
-
+            /* desperate fix: avoid 0s in the diagonal entries of the matrix because of roundoff error at high resolutions beyond level 8 */
+            if(s<1e-300)
+                s=1e-300;
 
             if((*points)[l].n>=0)
             {
@@ -1442,7 +1463,7 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                         case 1:
                             /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n = d u_n+1/d n */
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
-//                            vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
+                            //                            vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
                             vi = 0.5*(interp_vn_n(pc.x, pc.y, pc.z) + interp_vn_n(pl.x, pl.y, pl.z));
 #else
@@ -1453,7 +1474,7 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                         case 2:
                             /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n = d u_n+1/d n */
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
-//                            vi = .5*2./3.*((2-dt*Smn/Cm)*(vn_n_p[n]+vn_n_p[(*points)[l].n]) - .5*(vnm1_n_p[n]+vnm1_n_p[(*points)[l].n]));
+                            //                            vi = .5*2./3.*((2-dt*Smn/Cm)*(vn_n_p[n]+vn_n_p[(*points)[l].n]) - .5*(vnm1_n_p[n]+vnm1_n_p[(*points)[l].n]));
 #ifdef P4_TO_P8
                             vi = .5*2./3.*((2-dt*Smn/Cm)*(interp_vn_n(pc.x, pc.y, pc.z)+interp_vn_n(pl.x, pl.y, pl.z)) - .5*(interp_vnm1_n(pc.x, pc.y, pc.z)+interp_vnm1_n(pl.x, pl.y, pl.z)));
 #else
@@ -1472,8 +1493,8 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                         {
                         case 1:
                             /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
-//                            if(phi_l>0)
-//                               PetscPrintf(p4est->mpicomm, "mu_n %g\n", sigma_l);
+                            //                            if(phi_l>0)
+                            //                               PetscPrintf(p4est->mpicomm, "mu_n %g\n", sigma_l);
 
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(Cm+dt*Smn));
 
@@ -1484,7 +1505,7 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                             vi = 0.5*(interp_vn_n(pc.x, pc.y) + interp_vn_n(pl.x, pl.y));
 #endif
                             //PAM
-//                            PetscPrintf(p4est->mpicomm, "mu_n %g\n", interp_vn_n(pl.x, pl.y));
+                            //                            PetscPrintf(p4est->mpicomm, "mu_n %g\n", interp_vn_n(pl.x, pl.y));
 
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (Cm+dt*Smn);
                             break;
@@ -1522,7 +1543,7 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                 }
                 else
                 {
-                     sigma_disc = sigma_n;
+                    sigma_disc = sigma_n;
                 }
 
                 mat_entry_t ent1; ent1.n = global_n_idx; ent1.val = +s*sigma_disc/d;
@@ -1559,31 +1580,31 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 
 
 
-//                if     ((*points)[l].n==WALL_m00)
-//                {
-//                    if(bc->wallType(xyz_min[0],pc.y)==DIRICHLET) rhs_p[n] = bc->wallValue(xyz_min[0],pc.y)*s*sigma_n/(pc.x-xyz_min[0]);
-//                    else                                  rhs_p[n] += bc->wallValue(xyz_min[0],pc.y)*s*sigma_n;
-//                }
-//                else if((*points)[l].n==WALL_p00)
-//                {
-//                    if(bc->wallType(xyz_max[0],pc.y)==DIRICHLET) rhs_p[n] = bc->wallValue(xyz_max[0],pc.y)*s*sigma_n/(xyz_max[0]-pc.x);
-//                    else                                  rhs_p[n] += bc->wallValue(xyz_max[0],pc.y)*s*sigma_n;
-//                }
-//                else if((*points)[l].n==WALL_0m0)
-//                {
-//                    if(bc->wallType(pc.x,xyz_min[1])==DIRICHLET) rhs_p[n] = bc->wallValue(pc.x,xyz_min[1])*s*sigma_n/(pc.y-xyz_min[1]);
-//                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_min[1])*s*sigma_n;
-//                }
-//                else if((*points)[l].n==WALL_0p0)
-//                {
-//                    if(bc->wallType(pc.x,xyz_max[1])==DIRICHLET) rhs_p[n] = bc->wallValue(pc.x,xyz_max[1])*s*sigma_n/(xyz_max[1]-pc.y);
-//                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_max[1])*s*sigma_n;
-//                }
+                //                if     ((*points)[l].n==WALL_m00)
+                //                {
+                //                    if(bc->wallType(xyz_min[0],pc.y)==DIRICHLET) rhs_p[n] = bc->wallValue(xyz_min[0],pc.y)*s*sigma_n/(pc.x-xyz_min[0]);
+                //                    else                                  rhs_p[n] += bc->wallValue(xyz_min[0],pc.y)*s*sigma_n;
+                //                }
+                //                else if((*points)[l].n==WALL_p00)
+                //                {
+                //                    if(bc->wallType(xyz_max[0],pc.y)==DIRICHLET) rhs_p[n] = bc->wallValue(xyz_max[0],pc.y)*s*sigma_n/(xyz_max[0]-pc.x);
+                //                    else                                  rhs_p[n] += bc->wallValue(xyz_max[0],pc.y)*s*sigma_n;
+                //                }
+                //                else if((*points)[l].n==WALL_0m0)
+                //                {
+                //                    if(bc->wallType(pc.x,xyz_min[1])==DIRICHLET) rhs_p[n] = bc->wallValue(pc.x,xyz_min[1])*s*sigma_n/(pc.y-xyz_min[1]);
+                //                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_min[1])*s*sigma_n;
+                //                }
+                //                else if((*points)[l].n==WALL_0p0)
+                //                {
+                //                    if(bc->wallType(pc.x,xyz_max[1])==DIRICHLET) rhs_p[n] = bc->wallValue(pc.x,xyz_max[1])*s*sigma_n/(xyz_max[1]-pc.y);
+                //                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_max[1])*s*sigma_n;
+                //                }
 
 
 
 
-//                /* walls */
+                /* walls */
 //                if     ((*points)[l].n==WALL_m00 && bc->wallType(xyz_min[0],pc.y)==DIRICHLET)
 //                {
 //                    matrix_has_nullspace = false;
@@ -1644,6 +1665,19 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
     /* assemble the matrix */
     ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
     ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+
+
+
+//    //PAM3
+//    Vec min;
+//    VecDuplicate(rhs, &min);
+//    MatGetRowMaxAbs(A, min, NULL);
+//    //VecView(max, PETSC_VIEWER_STDOUT_WORLD);
+//    PetscReal val;
+//    ierr = VecMax(min,NULL,&val); CHKERRXX(ierr);
+//    ierr = PetscPrintf(PETSC_COMM_WORLD, "maximum matrix element before: %g\n", (double)val); CHKERRXX(ierr);
+
+
 
     /* check for null space */
     MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
@@ -1808,7 +1842,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                         case 1:
                             /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n = d u_n+1/d n */
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
-//                            vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
+                            //                            vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
                             vi = 0.5*(interp_vn_n(pc.x, pc.y, pc.z) + interp_vn_n(pl.x, pl.y, pl.z));
 #else
@@ -1819,7 +1853,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                         case 2:
                             /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n = d u_n+1/d n */
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
-//                            vi = .5*2./3.*((2-dt*Smn/Cm)*(vn_n_p[n]+vn_n_p[(*points)[l].n]) - .5*(vnm1_n_p[n]+vnm1_n_p[(*points)[l].n]));
+                            //                            vi = .5*2./3.*((2-dt*Smn/Cm)*(vn_n_p[n]+vn_n_p[(*points)[l].n]) - .5*(vnm1_n_p[n]+vnm1_n_p[(*points)[l].n]));
 #ifdef P4_TO_P8
                             vi = .5*2./3.*((2-dt*Smn/Cm)*(interp_vn_n(pc.x, pc.y, pc.z)+interp_vn_n(pl.x, pl.y, pl.z)) - .5*(interp_vnm1_n(pc.x, pc.y, pc.z)+interp_vnm1_n(pl.x, pl.y, pl.z)));
 #else
@@ -1850,7 +1884,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                         case 2:
                             /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(1.5*Cm+dt*Smn));
-//                            vi = .5*(2*vn_n_p[n] - .5*vnm1_n_p[n] + 2*vn_n_p[(*points)[l].n] - .5*vnm1_n_p[(*points)[l].n]);
+                            //                            vi = .5*(2*vn_n_p[n] - .5*vnm1_n_p[n] + 2*vn_n_p[(*points)[l].n] - .5*vnm1_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
                             vi = .5*(2*interp_vn_n(pc.x, pc.y, pc.z) - .5*interp_vnm1_n(pc.x, pc.y, pc.z) + 2*interp_vn_n(pl.x, pl.y, pl.z) - .5*interp_vnm1_n(pl.x, pl.y, pl.z));
 #else
@@ -1861,7 +1895,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                         case 3:
                             /* (11/6*[u]_n+1 - 3*[u]_n + 3/2*[u]_n-1 - 1/3*[u]_n-2)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(11./6.*Cm+dt*Smn));
-//                            vi = .5*(3*vn_n_p[n] - 3./2.*vnm1_n_p[n] + 1./3.*vnm2_n_p[n] + 3*vn_n_p[(*points)[l].n] - 3./2.*vnm1_n_p[(*points)[l].n] + 1./3.*vnm2_n_p[(*points)[l].n]);
+                            //                            vi = .5*(3*vn_n_p[n] - 3./2.*vnm1_n_p[n] + 1./3.*vnm2_n_p[n] + 3*vn_n_p[(*points)[l].n] - 3./2.*vnm1_n_p[(*points)[l].n] + 1./3.*vnm2_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
                             vi = .5*(3*interp_vn_n(pc.x,pc.y,pc.z) - 3./2.*interp_vnm1_n(pc.x,pc.y,pc.z) + 1./3.*interp_vnm2_n(pc.x,pc.y,pc.z) + 3*interp_vn_n(pl.x,pl.y,pl.z) - 3./2.*interp_vnm1_n(pl.x,pl.y,pl.z) + 1./3.*interp_vnm2_n(pl.x,pl.y,pl.z));
 #else
@@ -1904,26 +1938,26 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
 
 #endif
 
-//                if     ((*points)[l].n==WALL_m00)
-//                {
-//                    if(bc->wallType(xyz_min[0],pc.y)==DIRICHLET) rhs_p[n] += bc->wallValue(xyz_min[0],pc.y)*s*sigma_n/(pc.x-xyz_min[0]);
-//                    else                                  rhs_p[n] += bc->wallValue(xyz_min[0],pc.y)*s*sigma_n;
-//                }
-//                else if((*points)[l].n==WALL_p00)
-//                {
-//                    if(bc->wallType(xyz_max[0],pc.y)==DIRICHLET) rhs_p[n] += bc->wallValue(xyz_max[0],pc.y)*s*sigma_n/(xyz_max[0]-pc.x);
-//                    else                                  rhs_p[n] += bc->wallValue(xyz_max[0],pc.y)*s*sigma_n;
-//                }
-//                else if((*points)[l].n==WALL_0m0)
-//                {
-//                    if(bc->wallType(pc.x,xyz_min[1])==DIRICHLET) rhs_p[n] += bc->wallValue(pc.x,xyz_min[1])*s*sigma_n/(pc.y-xyz_min[1]);
-//                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_min[1])*s*sigma_n;
-//                }
-//                else if((*points)[l].n==WALL_0p0)
-//                {
-//                    if(bc->wallType(pc.x,xyz_max[1])==DIRICHLET) rhs_p[n] += bc->wallValue(pc.x,xyz_max[1])*s*sigma_n/(xyz_max[1]-pc.y);
-//                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_max[1])*s*sigma_n;
-//                }
+                //                if     ((*points)[l].n==WALL_m00)
+                //                {
+                //                    if(bc->wallType(xyz_min[0],pc.y)==DIRICHLET) rhs_p[n] += bc->wallValue(xyz_min[0],pc.y)*s*sigma_n/(pc.x-xyz_min[0]);
+                //                    else                                  rhs_p[n] += bc->wallValue(xyz_min[0],pc.y)*s*sigma_n;
+                //                }
+                //                else if((*points)[l].n==WALL_p00)
+                //                {
+                //                    if(bc->wallType(xyz_max[0],pc.y)==DIRICHLET) rhs_p[n] += bc->wallValue(xyz_max[0],pc.y)*s*sigma_n/(xyz_max[0]-pc.x);
+                //                    else                                  rhs_p[n] += bc->wallValue(xyz_max[0],pc.y)*s*sigma_n;
+                //                }
+                //                else if((*points)[l].n==WALL_0m0)
+                //                {
+                //                    if(bc->wallType(pc.x,xyz_min[1])==DIRICHLET) rhs_p[n] += bc->wallValue(pc.x,xyz_min[1])*s*sigma_n/(pc.y-xyz_min[1]);
+                //                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_min[1])*s*sigma_n;
+                //                }
+                //                else if((*points)[l].n==WALL_0p0)
+                //                {
+                //                    if(bc->wallType(pc.x,xyz_max[1])==DIRICHLET) rhs_p[n] += bc->wallValue(pc.x,xyz_max[1])*s*sigma_n/(xyz_max[1]-pc.y);
+                //                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_max[1])*s*sigma_n;
+                //                }
             }
         }
     }

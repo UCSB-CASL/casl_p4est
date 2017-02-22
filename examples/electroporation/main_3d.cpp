@@ -38,6 +38,7 @@
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_poisson_jump_nodes_voronoi.h>
 #include <src/point3.h>
+#include <src/voronoi3D.h>
 #include <src/my_p8est_level_set.h>
 #endif
 #include "nearpt3/nearpt3.cc"
@@ -48,7 +49,7 @@ using namespace std;
 
 
 
-int test = 6;
+int test = 7;
 
 
 
@@ -63,7 +64,7 @@ int x_cells = 10;
 int y_cells = 10;
 int z_cells = 10;
 /* number of random cells for case 7 */
-int nb_cells = test==7 ? 1000 : x_cells*y_cells*z_cells;
+int nb_cells = test==7 ? 10 : x_cells*y_cells*z_cells;
 /* number of cells in x and y dimensions */
 
 /* cell radius */
@@ -92,7 +93,7 @@ double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0 
 
 
 int lmin = 5;
-int lmax = 7;
+int lmax = 10;
 int nb_splits = 1;
 
 double dt_scale = 40;
@@ -145,6 +146,8 @@ public:
         lip=1.2;
         if(test==7)
         {
+//            mpi_environment_t &mpi;
+//            mpi.rank();
             centers.resize(nb_cells);
             radii.resize(nb_cells);
             ex.resize(nb_cells);
@@ -155,9 +158,9 @@ public:
             fflush(stdout);
             std::vector<std::array<double,3> > v;
             std::array<double,3> p;
-            p[0] = (xmax-xmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
-            p[1] = (ymax-ymin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
-            p[2] = (zmax-zmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
+            p[0] = (xmax-xmin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
+            p[1] = (ymax-ymin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
+            p[2] = (zmax-zmin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
 
             int nfixpts;
 
@@ -175,9 +178,9 @@ public:
                 do
                 {
 
-                    p[0] = (xmax-xmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
-                    p[1] = (ymax-ymin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
-                    p[2] = (zmax-zmin)/4 * (1.6*((double)rand()/RAND_MAX)-.8);
+                    p[0] = (xmax-xmin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
+                    p[1] = (ymax-ymin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
+                    p[2] = (zmax-zmin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
 
                     closestpt = nearpt3::Query(g, p);
                     mindist = sqrt(SQR(p[0]-v[closestpt][0])+ SQR(p[1]-v[closestpt][1])+SQR(p[2]-v[closestpt][2]));
@@ -211,7 +214,7 @@ public:
     {
         double d = DBL_MAX;
 
-        double xm, ym, zm; xm=ym=zm=-.5e-3;
+        double xm, ym, zm; xm=xmin; ym=ymin; zm=zmin;
         double dx = xmax/(x_cells+1);
         double dy = ymax/(y_cells+1);
         double dz = zmax/(z_cells+1);
@@ -1028,6 +1031,12 @@ int main(int argc, char** argv) {
 
         ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+repeat, lmax+repeat); CHKERRXX(ierr);
 
+
+
+
+
+
+
         // create the forest
         p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
@@ -1035,10 +1044,10 @@ int main(int argc, char** argv) {
         splitting_criteria_cf_t sp(lmin+repeat, lmax+repeat, &level_set, 1.2);
 
         p4est->user_pointer = &sp;
-        for(int i=0; i<lmax; ++i)
+        for(int i=0; i<lmax; i++)
         {
             my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
-            my_p4est_partition(p4est, P4EST_FALSE, NULL);
+            my_p4est_partition(p4est, P4EST_TRUE, NULL);
         }
 
 
@@ -1049,6 +1058,7 @@ int main(int argc, char** argv) {
         // create ghost layer at time nm1
         ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
         my_p4est_ghost_expand(p4est, ghost);
+//        my_p4est_ghost_expand(p4est, ghost);
         // create node structure at time nm1
         nodes = my_p4est_nodes_new(p4est, ghost);
 
