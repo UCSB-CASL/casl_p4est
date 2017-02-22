@@ -23,6 +23,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
     normal_velocity_np1(NULL),
     phi(NULL),
     kappa(NULL), rhs(NULL),
+    tl(NULL), ts(NULL),
   #ifdef P4_TO_P8
     theta_xz(NULL), theta_yz(NUL)
   #else
@@ -85,6 +86,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
 
   use_more_points_for_extension = true;
   use_quadratic_form = false;
+  temperature_interpolation_simple = false;
 
 
   ierr = VecCreateGhostNodes(p4est, nodes, &temperature_multiplier); CHKERRXX(ierr);
@@ -1085,21 +1087,30 @@ void my_p4est_multialloy_t::solve_temperature()
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n) {phi_p[n] *= -1;}
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
+  if (tl != NULL) { ierr = VecDestroy(tl); CHKERRXX(ierr); } tl = tl_tmp;
+  if (ts != NULL) { ierr = VecDestroy(ts); CHKERRXX(ierr); } ts = ts_tmp;
+
   // take average
+  Vec tavg;
+  ierr = VecDuplicate(phi, &tavg); CHKERRXX(ierr);
+
+  double *tavg_p;
+  ierr = VecGetArray(tavg, &tavg_p); CHKERRXX(ierr);
   ierr = VecGetArray(ts_tmp, &ts_tmp_p); CHKERRXX(ierr);
   ierr = VecGetArray(tl_tmp, &tl_tmp_p); CHKERRXX(ierr);
 
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    ts_tmp_p[n] = 0.5*(ts_tmp_p[n]+tl_tmp_p[n]);
+    tavg_p[n] = 0.5*(ts_tmp_p[n]+tl_tmp_p[n]);
 
+  ierr = VecRestoreArray(tavg, &tavg_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(ts_tmp, &ts_tmp_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(tl_tmp, &tl_tmp_p); CHKERRXX(ierr);
 
   // extend average from interface
-  ls.extend_from_interface_to_whole_domain_TVD(phi, ts_tmp, t_interface);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, tavg, t_interface);
 
-  ierr = VecDestroy(ts_tmp); CHKERRXX(ierr);
-  ierr = VecDestroy(tl_tmp); CHKERRXX(ierr);
+  ierr = VecDestroy(tavg); CHKERRXX(ierr);
+
   ierr = VecDestroy(mask_s); CHKERRXX(ierr);
   ierr = VecDestroy(mask_l); CHKERRXX(ierr);
 }
@@ -1842,8 +1853,43 @@ void my_p4est_multialloy_t::update_grid()
 
   ierr = VecDestroy(temperature_n); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &temperature_n); CHKERRXX(ierr);
-  interp.set_input(temperature_np1, quadratic_non_oscillatory);
-  interp.interpolate(temperature_n);
+
+  if (temperature_interpolation_simple)
+  {
+    interp.set_input(temperature_np1, quadratic_non_oscillatory);
+    interp.interpolate(temperature_n);
+
+  } else {
+
+    Vec tl_tmp; ierr = VecDuplicate(phi, &tl_tmp); CHKERRXX(ierr);
+    interp.set_input(tl, quadratic_non_oscillatory);
+    interp.interpolate(tl_tmp);
+
+    Vec ts_tmp; ierr = VecDuplicate(phi, &ts_tmp); CHKERRXX(ierr);
+    interp.set_input(ts, quadratic_non_oscillatory);
+    interp.interpolate(ts_tmp);
+
+    double *phi_p, *tl_tmp_p, *ts_tmp_p, *t_p;
+    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecGetArray(tl_tmp, &tl_tmp_p); CHKERRXX(ierr);
+    ierr = VecGetArray(ts_tmp, &ts_tmp_p); CHKERRXX(ierr);
+    ierr = VecGetArray(temperature_n, &t_p); CHKERRXX(ierr);
+
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    {
+      if (phi_p[n] < 0.)  t_p[n] = ts_tmp_p[n];
+      else                t_p[n] = tl_tmp_p[n];
+    }
+
+    ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(tl_tmp, &tl_tmp_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(ts_tmp, &ts_tmp_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(temperature_n, &t_p); CHKERRXX(ierr);
+
+    ierr = VecDestroy(tl_tmp); CHKERRXX(ierr);
+    ierr = VecDestroy(ts_tmp); CHKERRXX(ierr);
+  }
+
   ierr = VecDestroy(temperature_np1); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &temperature_np1); CHKERRXX(ierr);
 
@@ -2266,6 +2312,14 @@ void my_p4est_multialloy_t::one_step()
   compute_velocity();
   compute_normal_velocity();
 //  compute_velocity_from_temperature();
+
+
+//  for (short i = 0; i < 3; i++)
+//    for(int dir=0; dir<P4EST_DIM; ++dir)
+//    {
+//      smooth_velocity(v_interface_np1[dir]);
+//    }
+
   compute_dt();
 //  update_grid();
 
@@ -2273,6 +2327,106 @@ void my_p4est_multialloy_t::one_step()
   ierr = VecDestroy(integrand); CHKERRXX(ierr);
 
   first_step = false;
+}
+
+void my_p4est_multialloy_t::smooth_velocity(Vec input)
+{
+  Vec output;
+  ierr = VecDuplicate(phi, &output); CHKERRXX(ierr);
+
+  ierr = VecSet(output, 0.0); CHKERRXX(ierr);
+
+  double *input_ptr, *output_ptr;
+  ierr = VecGetArray(input, &input_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(output, &output_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+
+  /* loop through ghosts */
+  for (p4est_locidx_t ghost_idx = 0; ghost_idx < ghost->ghosts.elem_count; ++ghost_idx)
+  {
+    // get a ghost quadrant
+    p4est_quadrant_t* quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, ghost_idx);
+
+    // do only finest quadrant that are near interface
+    if (quad->level == data->max_lvl)
+    {
+      p4est_locidx_t offset = (p4est->local_num_quadrants + ghost_idx)*P4EST_CHILDREN;
+
+      // calculate average in the cell
+      double average = 0;
+      for (int child_idx = 0; child_idx < P4EST_CHILDREN; child_idx++)
+      {
+        p4est_locidx_t node_idx = q2n[offset + child_idx];
+        average += input_ptr[node_idx];
+      }
+
+      average /= (double) P4EST_CHILDREN;
+      average /= (double) P4EST_CHILDREN;
+
+      /* loop through nodes of a quadrant and put weights on those nodes, which are local */
+      for (int child_idx = 0; child_idx < P4EST_CHILDREN; child_idx++)
+      {
+        p4est_locidx_t node_idx = q2n[offset + child_idx];
+        if (node_idx < nodes->num_owned_indeps)
+          output_ptr[node_idx] += average;
+      }
+    }
+  }
+
+
+//  std::cout << "here?\n";
+  /* loop through local quadrants */
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+
+      // do only finest quadrant that are near interface
+      if (quad->level == data->max_lvl)
+      {
+        p4est_locidx_t quad_idx_forest = quad_idx + tree->quadrants_offset;
+        p4est_locidx_t offset = quad_idx_forest*P4EST_CHILDREN;
+
+        // calculate average in the cell
+        double average = 0;
+        for (int child_idx = 0; child_idx < P4EST_CHILDREN; child_idx++)
+        {
+          p4est_locidx_t node_idx = q2n[offset + child_idx];
+          average += input_ptr[node_idx];
+        }
+
+        average /= (double) P4EST_CHILDREN;
+        average /= (double) P4EST_CHILDREN;
+
+        /* loop through nodes of a quadrant and put weights on those nodes, which are local */
+        for (int child_idx = 0; child_idx < P4EST_CHILDREN; child_idx++)
+        {
+          p4est_locidx_t node_idx = q2n[offset + child_idx];
+          if (node_idx < nodes->num_owned_indeps)
+            output_ptr[node_idx] += average;
+        }
+      }
+    }
+  }
+
+  ierr = VecRestoreArray(input, &input_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(output, &output_ptr); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(output, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(output, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+
+  my_p4est_level_set_t ls(ngbd);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, output, input);
+
+  ierr = VecDestroy(output); CHKERRXX(ierr);
 }
 
 void my_p4est_multialloy_t::adjust_velocity()

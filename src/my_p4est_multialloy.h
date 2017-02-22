@@ -155,6 +155,9 @@ private:
   Vec theta;
 #endif
 
+  Vec ts, tl;
+  bool temperature_interpolation_simple;
+
 public:
 
   my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -252,6 +255,7 @@ public:
   void solve_concentration_multiplier();
 
   void adjust_velocity();
+  void smooth_velocity(Vec input);
 };
 
 
