@@ -48,8 +48,8 @@
 #undef MIN
 #undef MAX
 
-int lmin = 5;
-int lmax = 10;
+int lmin = 6;
+int lmax = 9;
 int save_every_n_iteration = 1;
 
 double lip = 1.5;
@@ -137,7 +137,7 @@ void set_alloy_parameters()
     Tm                   = 1728;           /* K           */
     Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
     Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
-    G                    = 4e2;            /* k.cm-1      */
+    G                    = 20e2;            /* k.cm-1      */
     V                    = 0.01;           /* cm.s-1      */
     latent_heat          = 2350;           /* J.cm-3      */
     thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */

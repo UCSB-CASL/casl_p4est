@@ -82,11 +82,11 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   velocity_tol = 1.e-5;
   first_step = true;
   cfl_number = 0.5;
-  order_of_extension = 1;
+  order_of_extension = 2;
 
   use_more_points_for_extension = true;
   use_quadratic_form = false;
-  temperature_interpolation_simple = false;
+  temperature_interpolation_simple = true;
 
 
   ierr = VecCreateGhostNodes(p4est, nodes, &temperature_multiplier); CHKERRXX(ierr);
@@ -1940,6 +1940,13 @@ void my_p4est_multialloy_t::update_grid()
   ierr = VecDestroy(normal_velocity_np1); CHKERRXX(ierr);
   normal_velocity_np1 = normal_velocity_n;
 
+//  Vec kappa_n;
+//  ierr = VecDuplicate(phi, &kappa_n); CHKERRXX(ierr);
+//  interp.set_input(kappa, quadratic_non_oscillatory);
+//  interp.interpolate(kappa_n);
+//  ierr = VecDestroy(kappa); CHKERRXX(ierr);
+//  kappa = kappa_n;
+
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &rhs); CHKERRXX(ierr);
 
@@ -1978,19 +1985,25 @@ void my_p4est_multialloy_t::update_grid()
   ngbd->update(hierarchy, nodes);
 
   /* help interface to not get stuck at grid nodes */
-
   double fraction = 0.01;
-  double *phi_p;
+  double *phi_p, *normal_velocity_np1_p;
 
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
-    if (phi_p[n] > 0. && phi_p[n] < fraction*dxyz_min)
-      phi_p[n] *= -1;
+    if (fabs(phi_p[n]) < fraction*dxyz_min)
+    {
+      if (normal_velocity_np1_p[n] > 0. && phi_p[n] > 0) phi_p[n] =-EPS;
+      if (normal_velocity_np1_p[n] < 0. && phi_p[n] < 0) phi_p[n] = EPS;
+    }
+//    if (phi_p[n] > 0. && phi_p[n] < fraction*dxyz_min)
+//      phi_p[n] *= -1;
   }
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
   /* reinitialize and perturb phi */
   my_p4est_level_set_t ls(ngbd);
