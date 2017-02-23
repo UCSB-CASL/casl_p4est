@@ -82,6 +82,8 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
 //  temperature_interface = NULL;
 
   first_time = true;
+
+  order_of_extension = 1;
 }
 
 
@@ -877,7 +879,7 @@ void my_p4est_bialloy_t::solve_temperature()
   solver_t.solve(temperature_s_np1);
 
   my_p4est_level_set_t ls(ngbd);
-  ls.extend_Over_Interface_TVD(phi, temperature_s_np1);
+  ls.extend_Over_Interface_TVD(phi, temperature_s_np1, 20, order_of_extension);
 
   /* solve temperature in liquid phase */
   ierr = VecGhostGetLocalForm(temperature_l_n, &src); CHKERRXX(ierr);
@@ -899,7 +901,7 @@ void my_p4est_bialloy_t::solve_temperature()
   solver_t.set_rhs(rhs);
   solver_t.solve(temperature_l_np1);
 
-  ls.extend_Over_Interface_TVD(phi, temperature_l_np1);
+  ls.extend_Over_Interface_TVD(phi, temperature_l_np1, 20, order_of_extension);
 
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
@@ -953,7 +955,7 @@ void my_p4est_bialloy_t::solve_temperature_multiplier()
   ierr = VecRestoreArrayRead(kappa, &kappa_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(cl_gamma, &cl_gamma_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(cl_multiplier, &cl_multiplier_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(cl_multiplier, &cl_multiplier_p); CHKERRXX(ierr);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -989,7 +991,7 @@ void my_p4est_bialloy_t::solve_temperature_multiplier()
   solver_t.set_rhs(rhs);
   solver_t.solve(ts_multiplier);
 
-  ls.extend_Over_Interface_TVD(phi, ts_multiplier);
+  ls.extend_Over_Interface_TVD(phi, ts_multiplier, 20, order_of_extension);
 
   double *phi_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
@@ -1009,7 +1011,7 @@ void my_p4est_bialloy_t::solve_temperature_multiplier()
   solver_t.set_rhs(rhs);
   solver_t.solve(tl_multiplier);
 
-  ls.extend_Over_Interface_TVD(phi, tl_multiplier);
+  ls.extend_Over_Interface_TVD(phi, tl_multiplier, 20, order_of_extension);
 
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
@@ -1097,7 +1099,7 @@ void my_p4est_bialloy_t::solve_concentration()
   solver_c.set_robin_coef(robin_coef);
   solver_c.solve(cl_np1);
 
-  ls.extend_Over_Interface_TVD(phi, cl_np1);
+  ls.extend_Over_Interface_TVD(phi, cl_np1, 20, order_of_extension);
 
   double err_bc = 0;
   const double *normal_p[P4EST_DIM];
@@ -1233,7 +1235,7 @@ void my_p4est_bialloy_t::solve_concentration_multiplier()
   solver_c.solve(c_mult_tmp);
 
   my_p4est_level_set_t ls(ngbd);
-  ls.extend_Over_Interface_TVD(phi, c_mult_tmp);
+  ls.extend_Over_Interface_TVD(phi, c_mult_tmp, 20, order_of_extension);
 
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)

@@ -38,6 +38,7 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_multialloy.h>
+//#include <src/my_p4est_multialloy_var2.h>
 #endif
 
 #include <src/point3.h>
@@ -133,7 +134,7 @@ void set_alloy_parameters()
     kp                   = 0.86;           /* partition coefficient */
 //    kp                   = 1.0;           /* partition coefficient */
 //    c0                   = 0.40731;        /* at frac.    */
-    c0                   = 0.0;        /* at frac.    */
+    c0                   = 0.2;        /* at frac.    */
     Tm                   = 1728;           /* K           */
     Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
     Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
@@ -153,7 +154,7 @@ void set_alloy_parameters()
     Dl_sec = 1e-5;
     Ds_sec = 1e-13;
     ml_sec =-357;
-    c0_sec = 0.40731;
+    c0_sec = 0.2;
     kp_sec = 0.86;
 //    kp_sec = 1.;
 

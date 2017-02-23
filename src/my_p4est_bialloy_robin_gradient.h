@@ -139,6 +139,8 @@ private:
   double delta_t_gamma_max;
   bool first_time;
 
+  int order_of_extension;
+
 public:
 
   my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd);

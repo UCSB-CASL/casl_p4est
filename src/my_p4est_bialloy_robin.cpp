@@ -57,6 +57,8 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
 #endif
   dxyz_close_interface = 4*dxyz_min;
 
+  order_of_extension = 1;
+
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -785,7 +787,7 @@ void my_p4est_bialloy_t::solve_temperature()
   solver_t.set_rhs(rhs);
   solver_t.solve(temperature_s_np1);
 
-  ls.extend_Over_Interface_TVD(phi, temperature_s_np1);
+  ls.extend_Over_Interface_TVD(phi, temperature_s_np1, 20, order_of_extension);
 
   /* solve temperature in liquid phase */
   ierr = VecGhostGetLocalForm(temperature_l_n, &src); CHKERRXX(ierr);
@@ -807,7 +809,7 @@ void my_p4est_bialloy_t::solve_temperature()
   solver_t.set_rhs(rhs);
   solver_t.solve(temperature_l_np1);
 
-  ls.extend_Over_Interface_TVD(phi, temperature_l_np1);
+  ls.extend_Over_Interface_TVD(phi, temperature_l_np1, 20, order_of_extension);
 
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
@@ -885,8 +887,8 @@ void my_p4est_bialloy_t::solve_concentration()
   ierr = VecGhostRestoreLocalForm(rhs , &out); CHKERRXX(ierr);
 
 
-//  my_p4est_poisson_nodes_t solver_c(ngbd);
-  my_p4est_poisson_nodes_voronoi_t solver_c(ngbd);
+  my_p4est_poisson_nodes_t solver_c(ngbd);
+//  my_p4est_poisson_nodes_voronoi_t solver_c(ngbd);
   solver_c.set_phi(phi);
   solver_c.set_bc(bc_cl);
   solver_c.set_mu(dt_n*solute_diffusivity_l);
@@ -895,7 +897,7 @@ void my_p4est_bialloy_t::solve_concentration()
   solver_c.set_robin_coef(robin_coef);
   solver_c.solve(cl_np1);
 
-  ls.extend_Over_Interface_TVD(phi, cl_np1);
+  ls.extend_Over_Interface_TVD(phi, cl_np1, 20, order_of_extension);
 
   double err_bc = 0;
   const double *normal_p[P4EST_DIM];
