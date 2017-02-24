@@ -49,8 +49,8 @@
 #undef MIN
 #undef MAX
 
-int lmin = 6;
-int lmax = 9;
+int lmin = 5;
+int lmax = 11;
 int save_every_n_iteration = 1;
 
 double lip = 1.5;
@@ -73,7 +73,7 @@ double termination_length = 0.8;
  */
 int alloy_type = 0;
 
-double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 2e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 //double box_size = 5e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
 
@@ -134,11 +134,11 @@ void set_alloy_parameters()
     kp                   = 0.86;           /* partition coefficient */
 //    kp                   = 1.0;           /* partition coefficient */
 //    c0                   = 0.40731;        /* at frac.    */
-    c0                   = 0.2;        /* at frac.    */
+    c0                   = 0.0;        /* at frac.    */
     Tm                   = 1728;           /* K           */
     Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
     Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
-    G                    = 20e2;            /* k.cm-1      */
+    G                    = 100e2;            /* k.cm-1      */
     V                    = 0.01;           /* cm.s-1      */
     latent_heat          = 2350;           /* J.cm-3      */
     thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
@@ -154,7 +154,7 @@ void set_alloy_parameters()
     Dl_sec = 1e-5;
     Ds_sec = 1e-13;
     ml_sec =-357;
-    c0_sec = 0.2;
+    c0_sec = 0.4;
     kp_sec = 0.86;
 //    kp_sec = 1.;
 
