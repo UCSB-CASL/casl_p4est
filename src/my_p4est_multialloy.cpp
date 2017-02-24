@@ -83,6 +83,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   first_step = true;
   cfl_number = 0.5;
   order_of_extension = 2;
+  phi_thresh = 0.001;
 
   use_more_points_for_extension = true;
   use_quadratic_form = false;
@@ -1985,7 +1986,6 @@ void my_p4est_multialloy_t::update_grid()
   ngbd->update(hierarchy, nodes);
 
   /* help interface to not get stuck at grid nodes */
-  double fraction = 0.01;
   double kappa_thresh = -1.0/dxyz_min/8.;
   double *phi_p, *normal_velocity_np1_p, *kappa_p;
 
@@ -1997,7 +1997,7 @@ void my_p4est_multialloy_t::update_grid()
   double p_000, p_m00, p_p00, p_0m0, p_0p0;
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
-    if (phi_p[n] > 0. && phi_p[n] < fraction*dxyz_min && kappa_p[n] < kappa_thresh)
+    if (phi_p[n] > 0. && phi_p[n] < phi_thresh*dxyz_min && kappa_p[n] < kappa_thresh)
       phi_p[n] *= -1;
   }
 

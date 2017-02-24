@@ -158,6 +158,8 @@ private:
   Vec ts, tl;
   bool temperature_interpolation_simple;
 
+  double phi_thresh;
+
 public:
 
   my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -227,6 +229,8 @@ public:
   void set_velocity_tol (double val) {velocity_tol = val;}
 
   void set_cfl (double val) {cfl_number = val;}
+
+  void set_phi_thresh (double val) {phi_thresh = val;}
 
   void compute_normal_and_curvature();
 

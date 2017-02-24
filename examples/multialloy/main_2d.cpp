@@ -121,6 +121,7 @@ int dt_method = 1;
 double velocity_tol = 1.e-8;
 
 double cfl_number = 0.3;
+double phi_thresh = 0.001;
 
 void set_alloy_parameters()
 {
@@ -534,6 +535,7 @@ int main (int argc, char* argv[])
   cmd.add_option("termination_length", "defines when a run will be stopped (fraction of box length, from 0 to 1)");
   cmd.add_option("lip", "set the lipschitz constant");
   cmd.add_option("cfl_number", "cfl_number");
+  cmd.add_option("phi_thresh", "phi_thresh");
 
 
   cmd.parse(argc, argv);
@@ -591,6 +593,7 @@ int main (int argc, char* argv[])
   velocity_tol = cmd.get("velocity_tol", velocity_tol);
   termination_length = cmd.get("termination_length", termination_length);
   cfl_number = cmd.get("cfl_number", cfl_number);
+  phi_thresh = cmd.get("phi_thresh", phi_thresh);
 
 
   double latent_heat_orig = latent_heat;
