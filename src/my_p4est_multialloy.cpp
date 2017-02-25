@@ -84,6 +84,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   cfl_number = 0.5;
   order_of_extension = 2;
   phi_thresh = 0.001;
+  zero_negative_velocity = true;
 
   use_more_points_for_extension = true;
   use_quadratic_form = false;
@@ -590,6 +591,7 @@ void my_p4est_multialloy_t::compute_normal_velocity()
       double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n];
 #endif
       v_gamma_p[n] = -dcl_dn*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      if (zero_negative_velocity)
       if (v_gamma_p[n] < 0) v_gamma_p[n] = 0;
     }
     ierr = VecGhostUpdateBegin(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -604,6 +606,7 @@ void my_p4est_multialloy_t::compute_normal_velocity()
       double dcl_dn = qnnn.dx_central(cl_n_p)*normal_p[0][n] + qnnn.dy_central(cl_n_p)*normal_p[1][n];
 #endif
       v_gamma_p[n] = -dcl_dn*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
+      if (zero_negative_velocity)
       if (v_gamma_p[n] < 0) v_gamma_p[n] = 0;
     }
     ierr = VecGhostUpdateEnd(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -718,6 +721,8 @@ void my_p4est_multialloy_t::compute_velocity()
 #ifdef P4_TO_P8
       v_gamma_p[2][n] = -qnnn.dz_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #endif
+
+      if (zero_negative_velocity)
       if (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n] < 0)
       {
         v_gamma_p[0][n] = 0;
@@ -739,6 +744,8 @@ void my_p4est_multialloy_t::compute_velocity()
 #ifdef P4_TO_P8
       v_gamma_p[2][n] = -qnnn.dz_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #endif
+
+      if (zero_negative_velocity)
       if (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n] < 0)
       {
         v_gamma_p[0][n] = 0;
@@ -759,7 +766,7 @@ void my_p4est_multialloy_t::compute_velocity()
 
   for (short dim = 0; dim < P4EST_DIM; ++dim)
   {
-    ierr = VecGetArray(normal[dim], &normal_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(normal[dim], &normal_p[dim]); CHKERRXX(ierr);
   }
 
   my_p4est_level_set_t ls(ngbd);

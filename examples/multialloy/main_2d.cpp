@@ -73,7 +73,7 @@ double termination_length = 0.8;
  */
 int alloy_type = 0;
 
-double box_size = 2e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 //double box_size = 5e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
 
@@ -121,7 +121,8 @@ int dt_method = 1;
 double velocity_tol = 1.e-8;
 
 double cfl_number = 0.3;
-double phi_thresh = 0.001;
+double phi_thresh = 0.0001;
+double zero_negative_velocity = true;
 
 void set_alloy_parameters()
 {
@@ -139,7 +140,7 @@ void set_alloy_parameters()
     Tm                   = 1728;           /* K           */
     Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
     Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
-    G                    = 100e2;            /* k.cm-1      */
+    G                    = 4e2;            /* k.cm-1      */
     V                    = 0.01;           /* cm.s-1      */
     latent_heat          = 2350;           /* J.cm-3      */
     thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
@@ -536,6 +537,7 @@ int main (int argc, char* argv[])
   cmd.add_option("lip", "set the lipschitz constant");
   cmd.add_option("cfl_number", "cfl_number");
   cmd.add_option("phi_thresh", "phi_thresh");
+  cmd.add_option("zero_negative_velocity", "zero_negative_velocity");
 
 
   cmd.parse(argc, argv);
@@ -594,6 +596,7 @@ int main (int argc, char* argv[])
   termination_length = cmd.get("termination_length", termination_length);
   cfl_number = cmd.get("cfl_number", cfl_number);
   phi_thresh = cmd.get("phi_thresh", phi_thresh);
+  zero_negative_velocity = cmd.get("zero_negative_velocity", zero_negative_velocity);
 
 
   double latent_heat_orig = latent_heat;
@@ -714,9 +717,12 @@ int main (int argc, char* argv[])
   bas.set_concentration(cl, cs, cl_sec, cs_sec);
   bas.set_normal_velocity(normal_velocity);
   bas.set_dt(dt);
+
   bas.set_dt_method(dt_method);
   bas.set_velocity_tol(velocity_tol);
   bas.set_cfl(cfl_number);
+  bas.set_phi_thresh(phi_thresh);
+  bas.set_zero_negative_velocity(zero_negative_velocity);
 
   bas.compute_velocity();
   bas.compute_dt();

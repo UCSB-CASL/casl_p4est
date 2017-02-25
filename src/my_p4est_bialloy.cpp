@@ -64,7 +64,9 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
 
   dt_method = 0;
   velocity_tol = 1.e-5;
-  cfl_number = 0.5;
+  cfl_number = 0.3;
+  phi_thresh = 0.001;
+  zero_negative_velocity = true;
 }
 
 
@@ -509,6 +511,12 @@ void my_p4est_bialloy_t::compute_velocity()
   ierr = VecGetArray(cl_np1, &cl_np1_p); CHKERRXX(ierr);
   ierr = VecGetArray(c_interface, &c_interface_p); CHKERRXX(ierr);
 
+  double *normal_p[P4EST_DIM];
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecGetArray(normal[dim], &normal_p[dim]); CHKERRXX(ierr);
+  }
+
   quad_neighbor_nodes_of_node_t qnnn;
   if(solve_concentration_solid)
   {
@@ -559,6 +567,13 @@ void my_p4est_bialloy_t::compute_velocity()
 #ifdef P4_TO_P8
       v_gamma_p[2][n] = -qnnn.dz_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #endif
+
+      if (zero_negative_velocity)
+      if (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n] < 0)
+      {
+        v_gamma_p[0][n] = 0;
+        v_gamma_p[1][n] = 0;
+      }
     }
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
@@ -575,6 +590,13 @@ void my_p4est_bialloy_t::compute_velocity()
 #ifdef P4_TO_P8
       v_gamma_p[2][n] = -qnnn.dz_central(cl_np1_p)*solute_diffusivity_l / (1-kp) / MAX(c_interface_p[n], 1e-7);
 #endif
+
+      if (zero_negative_velocity)
+      if (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n] < 0)
+      {
+        v_gamma_p[0][n] = 0;
+        v_gamma_p[1][n] = 0;
+      }
     }
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
@@ -584,6 +606,11 @@ void my_p4est_bialloy_t::compute_velocity()
 
   ierr = VecRestoreArray(cl_np1, &cl_np1_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(c_interface, &c_interface_p); CHKERRXX(ierr);
+
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecRestoreArray(normal[dim], &normal_p[dim]); CHKERRXX(ierr);
+  }
 
   my_p4est_level_set_t ls(ngbd);
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -936,6 +963,13 @@ void my_p4est_bialloy_t::update_grid()
   ierr = VecDestroy(normal_velocity_np1); CHKERRXX(ierr);
   normal_velocity_np1 = normal_velocity_n;
 
+  Vec kappa_n;
+  ierr = VecDuplicate(phi, &kappa_n); CHKERRXX(ierr);
+  interp.set_input(kappa, quadratic_non_oscillatory);
+  interp.interpolate(kappa_n);
+  ierr = VecDestroy(kappa); CHKERRXX(ierr);
+  kappa = kappa_n;
+
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &rhs); CHKERRXX(ierr);
 
@@ -950,6 +984,23 @@ void my_p4est_bialloy_t::update_grid()
   p4est_nodes_destroy(nodes); nodes = nodes_np1;
   hierarchy->update(p4est, ghost);
   ngbd->update(hierarchy, nodes);
+
+
+  /* help interface to not get stuck at grid nodes */
+  double kappa_thresh = -1.0/dxyz_min/8.;
+  double *phi_p, *kappa_p;
+
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
+
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  {
+    if (phi_p[n] > 0. && phi_p[n] < phi_thresh*dxyz_min && kappa_p[n] < kappa_thresh)
+      phi_p[n] *= -1;
+  }
+
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
 
   /* reinitialize and perturb phi */
   my_p4est_level_set_t ls(ngbd);

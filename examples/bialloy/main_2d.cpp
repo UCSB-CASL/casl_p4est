@@ -48,7 +48,7 @@
 #undef MIN
 #undef MAX
 
-int lmin = 6;
+int lmin = 5;
 int lmax = 11;
 int save_every_n_iteration = 10;
 
@@ -111,7 +111,9 @@ double t_final = 10;
 int dt_method = 1;
 double velocity_tol = 1.e-5;
 
-double cfl_number = 0.5;
+double cfl_number = 0.3;
+double phi_thresh = 0.01;
+bool zero_negative_velocity = true;
 
 void set_alloy_parameters()
 {
@@ -459,6 +461,8 @@ int main (int argc, char* argv[])
   cmd.add_option("termination_length", "defines when a run will be stopped (fraction of box length, from 0 to 1)");
   cmd.add_option("lip", "set the lipschitz constant");
   cmd.add_option("cfl_number", "cfl_number");
+  cmd.add_option("phi_thresh", "phi_thresh");
+  cmd.add_option("zero_negative_velocity", "zero_negative_velocity");
 
   cmd.parse(argc, argv);
 
@@ -514,6 +518,8 @@ int main (int argc, char* argv[])
   velocity_tol = cmd.get("velocity_tol", velocity_tol);
   termination_length = cmd.get("termination_length", termination_length);
   cfl_number = cmd.get("cfl_number", cfl_number);
+  phi_thresh = cmd.get("phi_thresh", phi_thresh);
+  zero_negative_velocity = cmd.get("zero_negative_velocity", zero_negative_velocity);
 
   double latent_heat_orig = latent_heat;
   double G_orig = G;
@@ -550,7 +556,7 @@ int main (int argc, char* argv[])
   lmax = cmd.get("lmax", lmax);
   lip = cmd.get("lip", lip);
 
-  splitting_criteria_cf_t data(lmin, lmax, &LS, 1.2);
+  splitting_criteria_cf_t data(lmin, lmax, &LS, lip);
 
   p4est->user_pointer = (void*)(&data);
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -620,9 +626,12 @@ int main (int argc, char* argv[])
   bas.set_concentration(cl, cs);
   bas.set_normal_velocity(normal_velocity);
   bas.set_dt(dt);
+
   bas.set_dt_method(dt_method);
   bas.set_velocity_tol(velocity_tol);
   bas.set_cfl(cfl_number);
+  bas.set_phi_thresh(phi_thresh);
+  bas.set_zero_negative_velocity(zero_negative_velocity);
 
   bas.compute_velocity();
   bas.compute_dt();

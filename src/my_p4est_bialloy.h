@@ -102,6 +102,10 @@ private:
 
   double cfl_number;
 
+  double phi_thresh;
+
+  bool zero_negative_velocity;
+
 public:
 
   my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -159,11 +163,11 @@ public:
 
   void set_dt( double dt );
 
-  void set_dt_method (int val) {dt_method = val;}
-
-  void set_velocity_tol (double val) {velocity_tol = val;}
-
-  void set_cfl (double val) {cfl_number = val;}
+  void set_dt_method    (int val)    {dt_method     = val;}
+  void set_velocity_tol (double val) {velocity_tol  = val;}
+  void set_cfl          (double val) {cfl_number    = val;}
+  void set_phi_thresh   (double val) {phi_thresh    = val;}
+  void set_zero_negative_velocity (bool val) {zero_negative_velocity = val;}
 
   void compute_normal_and_curvature();
 
