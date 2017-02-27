@@ -49,8 +49,8 @@
 #undef MAX
 
 int lmin = 5;
-int lmax = 11;
-int save_every_n_iteration = 10;
+int lmax = 9;
+int save_every_n_iteration = 1;
 
 double lip = 1.5;
 

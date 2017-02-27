@@ -2447,7 +2447,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 
         if (volume_cut_cell>eps*eps)
         {
-          if (phi_000 < 0.9*diag_min) mask_p[n] = -1.;
+//          if (phi_000 < 0.5*diag_min) mask_p[n] = -1.;
 #ifdef P4_TO_P8
           PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? (qnnn.d_m00_0m==0 ? qnnn.node_m00_mm : qnnn.node_m00_mp)
                                                               : (qnnn.d_m00_0m==0 ? qnnn.node_m00_pm : qnnn.node_m00_pp) ];
@@ -2525,6 +2525,8 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           if(ABS(w_00p) > EPS) {ierr = MatSetValue(A, node_000_g, node_00p_g, w_00p, ADD_VALUES); CHKERRXX(ierr);}
 
 #else
+
+          if (volume_cut_cell > 0.02*dx_min*dy_min) mask_p[n] = -1.;
 
           PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm];
           PetscInt node_p00_g = petsc_gloidx[qnnn.d_p00_m0==0 ? qnnn.node_p00_mm : qnnn.node_p00_pm];

@@ -3388,12 +3388,18 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
     double qxx_00m, qxx_00p;
     double qyy_00m, qyy_00p;
     double qzz_000, qzz_m00, qzz_p00, qzz_0m0, qzz_0p0, qzz_00m, qzz_00p;
+    if (use_second_derivatives_extend_from_interface)
+    {
     qnnn.ngbd_with_quadratic_interpolation(qxx_p, qxx_000, qxx_m00, qxx_p00, qxx_0m0, qxx_0p0, qxx_00m, qxx_00p);
     qnnn.ngbd_with_quadratic_interpolation(qyy_p, qyy_000, qyy_m00, qyy_p00, qyy_0m0, qyy_0p0, qyy_00m, qyy_00p);
     qnnn.ngbd_with_quadratic_interpolation(qzz_p, qzz_000, qzz_m00, qzz_p00, qzz_0m0, qzz_0p0, qzz_00m, qzz_00p);
+    }
 #else
+    if (use_second_derivatives_extend_from_interface)
+    {
     qnnn.ngbd_with_quadratic_interpolation(qxx_p, qxx_000, qxx_m00, qxx_p00, qxx_0m0, qxx_0p0);
     qnnn.ngbd_with_quadratic_interpolation(qyy_p, qyy_000, qyy_m00, qyy_p00, qyy_0m0, qyy_0p0);
+    }
 #endif
 
     //---------------------------------------------------------------------
@@ -3418,14 +3424,27 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
     //---------------------------------------------------------------------
     // Second order accurate One-Sided Differecing
     //---------------------------------------------------------------------
-    double qxm = (q_000-q_m00)/s_m00_ + 0.5*s_m00_*MINMOD(qxx_m00, qxx_000);
-    double qxp = (q_p00-q_000)/s_p00_ - 0.5*s_p00_*MINMOD(qxx_p00, qxx_000);
-    double qym = (q_000-q_0m0)/s_0m0_ + 0.5*s_0m0_*MINMOD(qyy_0m0, qyy_000);
-    double qyp = (q_0p0-q_000)/s_0p0_ - 0.5*s_0p0_*MINMOD(qyy_0p0, qyy_000);
+
+    double qxm = (q_000-q_m00)/s_m00_;
+    double qxp = (q_p00-q_000)/s_p00_;
+    double qym = (q_000-q_0m0)/s_0m0_;
+    double qyp = (q_0p0-q_000)/s_0p0_;
 #ifdef P4_TO_P8
-    double qzm = (q_000-q_00m)/s_00m_ + 0.5*s_00m_*MINMOD(qzz_00m, qzz_000);
-    double qzp = (q_00p-q_000)/s_00p_ - 0.5*s_00p_*MINMOD(qzz_00p, qzz_000);
+    double qzm = (q_000-q_00m)/s_00m_;
+    double qzp = (q_00p-q_000)/s_00p_;
 #endif
+
+    if (use_second_derivatives_extend_from_interface)
+    {
+      qxm += 0.5*s_m00_*MINMOD(qxx_m00, qxx_000);
+      qxp -= 0.5*s_p00_*MINMOD(qxx_p00, qxx_000);
+      qym += 0.5*s_0m0_*MINMOD(qyy_0m0, qyy_000);
+      qyp -= 0.5*s_0p0_*MINMOD(qyy_0p0, qyy_000);
+#ifdef P4_TO_P8
+      qzm += 0.5*s_00m_*MINMOD(qzz_00m, qzz_000);
+      qzp -= 0.5*s_00p_*MINMOD(qzz_00p, qzz_000);
+#endif
+    }
 
     //---------------------------------------------------------------------
     // Upwind Scheme
@@ -3449,8 +3468,11 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
 }
 
 
-void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec qi, Vec q, int iterations ) const
+void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec qi, Vec q, int iterations, int order)
 {
+  if (order == 2) use_second_derivatives_extend_from_interface = true;
+  else            use_second_derivatives_extend_from_interface = false;
+
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
 

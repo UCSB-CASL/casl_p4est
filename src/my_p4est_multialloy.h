@@ -143,6 +143,7 @@ private:
   double functional;
 
   int order_of_extension;
+  int order_of_extension_from_interface;
 
   bool use_more_points_for_extension;
   bool use_quadratic_form;
@@ -161,6 +162,9 @@ private:
   double phi_thresh;
 
   bool zero_negative_velocity;
+  bool use_fd_scheme_for_temperature;
+
+  int num_of_iterations_per_step;
 
 public:
 
@@ -231,6 +235,8 @@ public:
   void set_cfl          (double val) {cfl_number    = val;}
   void set_phi_thresh   (double val) {phi_thresh    = val;}
   void set_zero_negative_velocity (bool val) {zero_negative_velocity = val;}
+
+  void set_num_of_iterations_per_step (int val) {num_of_iterations_per_step = val;}
 
   void compute_normal_and_curvature();
 

@@ -50,7 +50,7 @@
 #undef MAX
 
 int lmin = 5;
-int lmax = 11;
+int lmax = 9;
 int save_every_n_iteration = 1;
 
 double lip = 1.5;
@@ -121,8 +121,9 @@ int dt_method = 1;
 double velocity_tol = 1.e-8;
 
 double cfl_number = 0.3;
-double phi_thresh = 0.0001;
+double phi_thresh = 0.01;
 double zero_negative_velocity = true;
+int num_of_iters_per_step = 5;
 
 void set_alloy_parameters()
 {
@@ -538,6 +539,7 @@ int main (int argc, char* argv[])
   cmd.add_option("cfl_number", "cfl_number");
   cmd.add_option("phi_thresh", "phi_thresh");
   cmd.add_option("zero_negative_velocity", "zero_negative_velocity");
+  cmd.add_option("num_of_iters_per_step", "num_of_iters_per_step");
 
 
   cmd.parse(argc, argv);
@@ -597,6 +599,7 @@ int main (int argc, char* argv[])
   cfl_number = cmd.get("cfl_number", cfl_number);
   phi_thresh = cmd.get("phi_thresh", phi_thresh);
   zero_negative_velocity = cmd.get("zero_negative_velocity", zero_negative_velocity);
+  num_of_iters_per_step = cmd.get("num_of_iters_per_step", num_of_iters_per_step);
 
 
   double latent_heat_orig = latent_heat;
@@ -723,6 +726,7 @@ int main (int argc, char* argv[])
   bas.set_cfl(cfl_number);
   bas.set_phi_thresh(phi_thresh);
   bas.set_zero_negative_velocity(zero_negative_velocity);
+  bas.set_num_of_iterations_per_step(num_of_iters_per_step);
 
   bas.compute_velocity();
   bas.compute_dt();

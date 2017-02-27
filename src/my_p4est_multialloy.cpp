@@ -5,11 +5,13 @@
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_semi_lagrangian.h>
+#include <src/cube3.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian.h>
+#include <src/cube2.h>
 #endif
 
 
@@ -82,13 +84,16 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   velocity_tol = 1.e-5;
   first_step = true;
   cfl_number = 0.5;
-  order_of_extension = 2;
+  order_of_extension = 1;
+  order_of_extension_from_interface = 1;
   phi_thresh = 0.001;
   zero_negative_velocity = true;
+  num_of_iterations_per_step = 5;
 
   use_more_points_for_extension = true;
   use_quadratic_form = false;
   temperature_interpolation_simple = true;
+  use_fd_scheme_for_temperature = false;
 
 
   ierr = VecCreateGhostNodes(p4est, nodes, &temperature_multiplier); CHKERRXX(ierr);
@@ -466,7 +471,7 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
   }
 
   my_p4est_level_set_t ls(ngbd);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa, 20, order_of_extension_from_interface);
   ierr = VecDestroy(kappa_tmp); CHKERRXX(ierr);
 
   /* angle between normal and direction of growth */
@@ -508,13 +513,13 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
 #ifdef P4_TO_P8
   ierr = VecRestoreArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(theta_yz_tmp, &theta_yz_tmp_p); CHKERRXX(ierr);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, theta_xz_tmp, theta_xz);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, theta_yz_tmp, theta_yz);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, theta_xz_tmp, theta_xz, 20, order_of_extension_from_interface);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, theta_yz_tmp, theta_yz, 20, order_of_extension_from_interface);
   ierr = VecDestroy(theta_xz_tmp); CHKERRXX(ierr);
   ierr = VecDestroy(theta_yz_tmp); CHKERRXX(ierr);
 #else
   ierr = VecRestoreArray(theta_tmp, &theta_tmp_p); CHKERRXX(ierr);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, theta_tmp, theta);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, theta_tmp, theta, 20, order_of_extension_from_interface);
   ierr = VecDestroy(theta_tmp); CHKERRXX(ierr);
 #endif
 
@@ -625,7 +630,7 @@ void my_p4est_multialloy_t::compute_normal_velocity()
   ierr = VecRestoreArray(v_gamma, &v_gamma_p); CHKERRXX(ierr);
 
   my_p4est_level_set_t ls(ngbd);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma, normal_velocity_np1);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma, normal_velocity_np1, 20, order_of_extension_from_interface);
 
   ierr = VecDestroy(v_gamma); CHKERRXX(ierr);
 
@@ -773,7 +778,7 @@ void my_p4est_multialloy_t::compute_velocity()
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecRestoreArray(v_gamma[dir], &v_gamma_p[dir]); CHKERRXX(ierr);
-    ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma[dir], v_interface_np1[dir]);
+    ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma[dir], v_interface_np1[dir], 20, order_of_extension_from_interface);
     ierr = VecDestroy(v_gamma[dir]); CHKERRXX(ierr);
   }
 }
@@ -867,7 +872,7 @@ void my_p4est_multialloy_t::compute_velocity_from_temperature()
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecRestoreArray(v_gamma[dir], &v_gamma_p[dir]); CHKERRXX(ierr);
-    ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma[dir], v_interface_np1[dir]);
+    ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma[dir], v_interface_np1[dir], 20, order_of_extension_from_interface);
     ierr = VecDestroy(v_gamma[dir]); CHKERRXX(ierr);
   }
 
@@ -901,80 +906,243 @@ void my_p4est_multialloy_t::solve_temperature()
 //  normal_velo_cf.set_input(normal_velocity_np1, linear);
 
   quad_neighbor_nodes_of_node_t qnnn;
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-  {
-    rhs_p[n] = temperature_n_p[n];
 
-    qnnn = ngbd->get_neighbors(n);
+  if (use_fd_scheme_for_temperature)
+  {
+
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      rhs_p[n] = temperature_n_p[n];
+
+      qnnn = ngbd->get_neighbors(n);
 #ifdef P4_TO_P8
-    qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p);
-    if (p_000*p_m00<=0){
-      p4est_locidx_t neigh;
-      if     (qnnn.d_m00_m0==0 && qnnn.d_m00_0m==0) neigh = qnnn.node_m00_mm;
-      else if(qnnn.d_m00_m0==0 && qnnn.d_m00_0p==0) neigh = qnnn.node_m00_mp;
-      else if(qnnn.d_m00_p0==0 && qnnn.d_m00_0m==0) neigh = qnnn.node_m00_pm;
-      else                                          neigh = qnnn.node_m00_pp;
-      rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[0]) * scaling_jump;
-    }
-    if (p_000*p_p00<=0){
-      p4est_locidx_t neigh;
-      if     (qnnn.d_p00_m0==0 && qnnn.d_p00_0m==0) neigh = qnnn.node_p00_mm;
-      else if(qnnn.d_p00_m0==0 && qnnn.d_p00_0p==0) neigh = qnnn.node_p00_mp;
-      else if(qnnn.d_p00_p0==0 && qnnn.d_p00_0m==0) neigh = qnnn.node_p00_pm;
-      else                                          neigh = qnnn.node_p00_pp;
-      rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[0]) * scaling_jump;
-    }
-    if (p_000*p_0m0<=0){
-      p4est_locidx_t neigh;
-      if     (qnnn.d_0m0_m0==0 && qnnn.d_0m0_0m==0) neigh = qnnn.node_0m0_mm;
-      else if(qnnn.d_0m0_m0==0 && qnnn.d_0m0_0p==0) neigh = qnnn.node_0m0_mp;
-      else if(qnnn.d_0m0_p0==0 && qnnn.d_0m0_0m==0) neigh = qnnn.node_0m0_pm;
-      else                                          neigh = qnnn.node_0m0_pp;
-      rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[1]) * scaling_jump;
-    }
-    if (p_000*p_0p0<=0){
-      p4est_locidx_t neigh;
-      if     (qnnn.d_0p0_m0==0 && qnnn.d_0p0_0m==0) neigh = qnnn.node_0p0_mm;
-      else if(qnnn.d_0p0_m0==0 && qnnn.d_0p0_0p==0) neigh = qnnn.node_0p0_mp;
-      else if(qnnn.d_0p0_p0==0 && qnnn.d_0p0_0m==0) neigh = qnnn.node_0p0_pm;
-      else                                          neigh = qnnn.node_0p0_pp;
-      rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[1]) * scaling_jump;
-    }
-    if (p_000*p_00m<=0){
-      p4est_locidx_t neigh;
-      if     (qnnn.d_00m_m0==0 && qnnn.d_00m_0m==0) neigh = qnnn.node_00m_mm;
-      else if(qnnn.d_00m_m0==0 && qnnn.d_00m_0p==0) neigh = qnnn.node_00m_mp;
-      else if(qnnn.d_00m_p0==0 && qnnn.d_00m_0m==0) neigh = qnnn.node_00m_pm;
-      else                                          neigh = qnnn.node_00m_pp;
-      rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[2]) * scaling_jump;
-    }
-    if (p_000*p_00p<=0){
-      p4est_locidx_t neigh;
-      if     (qnnn.d_00p_m0==0 && qnnn.d_00p_0m==0) neigh = qnnn.node_00p_mm;
-      else if(qnnn.d_00p_m0==0 && qnnn.d_00p_0p==0) neigh = qnnn.node_00p_mp;
-      else if(qnnn.d_00p_p0==0 && qnnn.d_00p_0m==0) neigh = qnnn.node_00p_pm;
-      else                                          neigh = qnnn.node_00p_pp;
-      rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[2]) * scaling_jump;
-    }
+      qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p);
+      if (p_000*p_m00<=0){
+        p4est_locidx_t neigh;
+        if     (qnnn.d_m00_m0==0 && qnnn.d_m00_0m==0) neigh = qnnn.node_m00_mm;
+        else if(qnnn.d_m00_m0==0 && qnnn.d_m00_0p==0) neigh = qnnn.node_m00_mp;
+        else if(qnnn.d_m00_p0==0 && qnnn.d_m00_0m==0) neigh = qnnn.node_m00_pm;
+        else                                          neigh = qnnn.node_m00_pp;
+        rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[0]) * scaling_jump;
+      }
+      if (p_000*p_p00<=0){
+        p4est_locidx_t neigh;
+        if     (qnnn.d_p00_m0==0 && qnnn.d_p00_0m==0) neigh = qnnn.node_p00_mm;
+        else if(qnnn.d_p00_m0==0 && qnnn.d_p00_0p==0) neigh = qnnn.node_p00_mp;
+        else if(qnnn.d_p00_p0==0 && qnnn.d_p00_0m==0) neigh = qnnn.node_p00_pm;
+        else                                          neigh = qnnn.node_p00_pp;
+        rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[0]) * scaling_jump;
+      }
+      if (p_000*p_0m0<=0){
+        p4est_locidx_t neigh;
+        if     (qnnn.d_0m0_m0==0 && qnnn.d_0m0_0m==0) neigh = qnnn.node_0m0_mm;
+        else if(qnnn.d_0m0_m0==0 && qnnn.d_0m0_0p==0) neigh = qnnn.node_0m0_mp;
+        else if(qnnn.d_0m0_p0==0 && qnnn.d_0m0_0m==0) neigh = qnnn.node_0m0_pm;
+        else                                          neigh = qnnn.node_0m0_pp;
+        rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[1]) * scaling_jump;
+      }
+      if (p_000*p_0p0<=0){
+        p4est_locidx_t neigh;
+        if     (qnnn.d_0p0_m0==0 && qnnn.d_0p0_0m==0) neigh = qnnn.node_0p0_mm;
+        else if(qnnn.d_0p0_m0==0 && qnnn.d_0p0_0p==0) neigh = qnnn.node_0p0_mp;
+        else if(qnnn.d_0p0_p0==0 && qnnn.d_0p0_0m==0) neigh = qnnn.node_0p0_pm;
+        else                                          neigh = qnnn.node_0p0_pp;
+        rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[1]) * scaling_jump;
+      }
+      if (p_000*p_00m<=0){
+        p4est_locidx_t neigh;
+        if     (qnnn.d_00m_m0==0 && qnnn.d_00m_0m==0) neigh = qnnn.node_00m_mm;
+        else if(qnnn.d_00m_m0==0 && qnnn.d_00m_0p==0) neigh = qnnn.node_00m_mp;
+        else if(qnnn.d_00m_p0==0 && qnnn.d_00m_0m==0) neigh = qnnn.node_00m_pm;
+        else                                          neigh = qnnn.node_00m_pp;
+        rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[2]) * scaling_jump;
+      }
+      if (p_000*p_00p<=0){
+        p4est_locidx_t neigh;
+        if     (qnnn.d_00p_m0==0 && qnnn.d_00p_0m==0) neigh = qnnn.node_00p_mm;
+        else if(qnnn.d_00p_m0==0 && qnnn.d_00p_0p==0) neigh = qnnn.node_00p_mp;
+        else if(qnnn.d_00p_p0==0 && qnnn.d_00p_0m==0) neigh = qnnn.node_00p_pm;
+        else                                          neigh = qnnn.node_00p_pp;
+        rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[2]) * scaling_jump;
+      }
 #else
-    qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0);
-    if (p_000*p_m00<=0){
-      p4est_locidx_t neigh = (qnnn.d_m00_m0==0) ? qnnn.node_m00_mm : qnnn.node_m00_pm;
-      rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[0]) * scaling_jump;
-    }
-    if (p_000*p_p00<=0){
-      p4est_locidx_t neigh = (qnnn.d_p00_m0==0) ? qnnn.node_p00_mm : qnnn.node_p00_pm;
-      rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[0]) * scaling_jump;
-    }
-    if (p_000*p_0m0<=0){
-      p4est_locidx_t neigh = (qnnn.d_0m0_m0==0) ? qnnn.node_0m0_mm : qnnn.node_0m0_pm;
-      rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[1]) * scaling_jump;
-    }
-    if (p_000*p_0p0<=0){
-      p4est_locidx_t neigh = (qnnn.d_0p0_m0==0) ? qnnn.node_0p0_mm : qnnn.node_0p0_pm;
-      rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[1]) * scaling_jump;
-    }
+      qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0);
+      if (p_000*p_m00<=0){
+        p4est_locidx_t neigh = (qnnn.d_m00_m0==0) ? qnnn.node_m00_mm : qnnn.node_m00_pm;
+        rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[0]) * scaling_jump;
+      }
+      if (p_000*p_p00<=0){
+        p4est_locidx_t neigh = (qnnn.d_p00_m0==0) ? qnnn.node_p00_mm : qnnn.node_p00_pm;
+        rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[0]) * scaling_jump;
+      }
+      if (p_000*p_0m0<=0){
+        p4est_locidx_t neigh = (qnnn.d_0m0_m0==0) ? qnnn.node_0m0_mm : qnnn.node_0m0_pm;
+        rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[1]) * scaling_jump;
+      }
+      if (p_000*p_0p0<=0){
+        p4est_locidx_t neigh = (qnnn.d_0p0_m0==0) ? qnnn.node_0p0_mm : qnnn.node_0p0_pm;
+        rhs_p[n] += fabs(phi_p[neigh]) * normal_velocity_np1_p[neigh] / SQR(dxyz[1]) * scaling_jump;
+      }
 #endif
+    }
+
+  } else {
+
+    my_p4est_interpolation_nodes_t phi_interp(ngbd);
+    phi_interp.set_input(phi, linear);
+
+    my_p4est_interpolation_nodes_t v_gamma_interp(ngbd);
+    v_gamma_interp.set_input(normal_velocity_np1, linear);
+
+    double mu = dt_n*thermal_diffusivity;
+    double jump_coeff = latent_heat/thermal_conductivity;
+
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      double x = node_x_fr_n(n, p4est, nodes);
+      double y = node_y_fr_n(n, p4est, nodes);
+#ifdef P4_TO_P8
+      double z = node_z_fr_n(n, p4est, nodes);
+#endif
+
+      if (fabs(phi_p[n]) > 3.*dxyz_min)
+      {
+        rhs_p[n] = temperature_n_p[n];
+      } else {
+
+        double xm = x - 0.5*dxyz[0];
+        double xp = x + 0.5*dxyz[0];
+        double ym = y - 0.5*dxyz[1];
+        double yp = y + 0.5*dxyz[1];
+#ifdef P4_TO_P8
+        double zm = z - 0.5*dxyz[2];
+        double zp = z + 0.5*dxyz[2];
+#endif
+        double P_000 = phi_p[n];
+        double P_mm0 = phi_interp(xm, ym);
+        double P_mp0 = phi_interp(xm, yp);
+        double P_pm0 = phi_interp(xp, ym);
+        double P_pp0 = phi_interp(xp, yp);
+        double P_m00 = phi_interp(xm, y );
+        double P_p00 = phi_interp(xp, y );
+        double P_0m0 = phi_interp(x , ym);
+        double P_0p0 = phi_interp(x , yp);
+
+        bool is_one_positive = (P_000 > 0 ||
+                                P_m00 > 0 || P_p00 > 0 || P_0m0 > 0 || P_0p0 > 0 ||
+                                P_mm0 > 0 || P_pm0 > 0 || P_mp0 > 0 || P_pp0 > 0);
+        bool is_one_negative = (P_000 < 0 ||
+                                P_m00 < 0 || P_p00 < 0 || P_0m0 < 0 || P_0p0 < 0 ||
+                                P_mm0 < 0 || P_pm0 < 0 || P_mp0 < 0 || P_pp0 < 0);
+
+        bool is_ngbd_crossed_neumann = is_one_negative && is_one_positive;
+
+        qnnn = ngbd->get_neighbors(n);
+
+        qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0);
+
+        is_one_positive = (p_000 > 0 || p_m00 > 0 || p_p00 > 0 || p_0m0 > 0 || p_0p0 > 0);
+        is_one_negative = (p_000 < 0 || p_m00 < 0 || p_p00 < 0 || p_0m0 < 0 || p_0p0 < 0);
+
+        bool is_ngbd_crossed_dirichlet = is_one_negative && is_one_positive;
+
+        if (is_ngbd_crossed_neumann || is_ngbd_crossed_dirichlet)
+        {
+
+#ifdef P4_TO_P8
+          Cube3 cube;
+#else
+          Cube2 cube;
+#endif
+          double volume_m = 0.;
+          double interface_area  = 0.;
+          double integral_bc = 0;
+          QuadValue phi_cube;
+          QuadValue bc_value;
+          for (short i = 0; i < P4EST_CHILDREN; ++i)
+          {
+            switch (i) {
+              case 0: phi_cube.val00 = P_mm0; phi_cube.val01 = P_m00; phi_cube.val10 = P_0m0; phi_cube.val11 = P_000; break;
+              case 1: phi_cube.val00 = P_mp0; phi_cube.val01 = P_0p0; phi_cube.val10 = P_m00; phi_cube.val11 = P_000; break;
+              case 2: phi_cube.val00 = P_pm0; phi_cube.val01 = P_0m0; phi_cube.val10 = P_p00; phi_cube.val11 = P_000; break;
+              case 3: phi_cube.val00 = P_pp0; phi_cube.val01 = P_p00; phi_cube.val10 = P_0p0; phi_cube.val11 = P_000; break;
+            }
+
+            switch (i) {
+              case 0: case 2: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dxyz[0]; cube.y1 = 0.5*dxyz[1]; break;
+              case 1: case 3: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dxyz[1]; cube.y1 = 0.5*dxyz[0]; break;
+            }
+
+            switch (i) {
+              case 0: bc_value.val00 = v_gamma_interp(xm,ym); bc_value.val01 = v_gamma_interp(xm,y ); bc_value.val10 = v_gamma_interp(x ,ym); bc_value.val11 = v_gamma_interp(x,y); break;
+              case 1: bc_value.val00 = v_gamma_interp(xm,yp); bc_value.val01 = v_gamma_interp(x ,yp); bc_value.val10 = v_gamma_interp(xm,y ); bc_value.val11 = v_gamma_interp(x,y); break;
+              case 2: bc_value.val00 = v_gamma_interp(xp,ym); bc_value.val01 = v_gamma_interp(x ,ym); bc_value.val10 = v_gamma_interp(xp,y ); bc_value.val11 = v_gamma_interp(x,y); break;
+              case 3: bc_value.val00 = v_gamma_interp(xp,yp); bc_value.val01 = v_gamma_interp(xp,y ); bc_value.val10 = v_gamma_interp(x ,yp); bc_value.val11 = v_gamma_interp(x,y); break;
+            }
+
+            volume_m        += cube.area_In_Negative_Domain(phi_cube);
+            interface_area  += cube.interface_Length_In_Cell(phi_cube);
+            integral_bc     += cube.integrate_Over_Interface(bc_value, phi_cube);
+          }
+          integral_bc *= latent_heat/thermal_conductivity;
+
+          double volume = dxyz[0]*dxyz[1];
+          double volume_p = volume - volume_m;
+
+          double sm_m00 = 0.5 * dxyz[1] * (fraction_Interval_Covered_By_Irregular_Domain(P_m00, P_mm0, dxyz[0], dxyz[1]) +
+                                      fraction_Interval_Covered_By_Irregular_Domain(P_m00, P_mp0, dxyz[0], dxyz[1]));
+
+          double sm_p00 = 0.5 * dxyz[1] * (fraction_Interval_Covered_By_Irregular_Domain(P_p00, P_pm0, dxyz[0], dxyz[1]) +
+                                      fraction_Interval_Covered_By_Irregular_Domain(P_p00, P_pp0, dxyz[0], dxyz[1]));
+
+          double sm_0m0 = 0.5 * dxyz[0] * (fraction_Interval_Covered_By_Irregular_Domain(P_0m0, P_mm0, dxyz[0], dxyz[1]) +
+                                      fraction_Interval_Covered_By_Irregular_Domain(P_0m0, P_pm0, dxyz[0], dxyz[1]));
+
+          double sm_0p0 = 0.5 * dxyz[0] * (fraction_Interval_Covered_By_Irregular_Domain(P_0p0, P_mp0, dxyz[0], dxyz[1]) +
+                                      fraction_Interval_Covered_By_Irregular_Domain(P_0p0, P_pp0, dxyz[0], dxyz[1]));
+
+          double sp_m00 = dxyz[1] - sm_m00;
+          double sp_p00 = dxyz[1] - sm_p00;
+          double sp_0m0 = dxyz[0] - sm_0m0;
+          double sp_0p0 = dxyz[0] - sm_0p0;
+
+          rhs_p[n] = temperature_n_p[n]*volume + mu*integral_bc;
+
+          if (phi_p[n] < 0)
+            rhs_p[n] -= (fabs(phi_p[n]) * jump_coeff*normal_velocity_np1_p[n])
+              *( volume_p + mu*((sp_m00+sp_p00)/dxyz[0] + (sp_0m0+sp_0p0)/dxyz[1]));
+          else
+            rhs_p[n] -= (fabs(phi_p[n]) * jump_coeff*normal_velocity_np1_p[n])
+              *( volume_m + mu*((sm_m00+sm_p00)/dxyz[0] + (sm_0m0+sm_0p0)/dxyz[1]));
+
+  #ifdef P4_TO_P8
+  #else
+          p4est_locidx_t neigh;
+
+          neigh = (qnnn.d_m00_m0==0) ? qnnn.node_m00_mm : qnnn.node_m00_pm;
+          if (p_m00 < 0)  rhs_p[n] += mu*sp_m00/dxyz[0]*(fabs(phi_p[neigh]) * jump_coeff*normal_velocity_np1_p[neigh]);
+          else            rhs_p[n] += mu*sm_m00/dxyz[0]*(fabs(phi_p[neigh]) * jump_coeff*normal_velocity_np1_p[neigh]);
+
+          neigh = (qnnn.d_p00_m0==0) ? qnnn.node_p00_mm : qnnn.node_p00_pm;
+          if (p_p00 < 0)  rhs_p[n] += mu*sp_p00/dxyz[0]*(fabs(phi_p[neigh]) * jump_coeff*normal_velocity_np1_p[neigh]);
+          else            rhs_p[n] += mu*sm_p00/dxyz[0]*(fabs(phi_p[neigh]) * jump_coeff*normal_velocity_np1_p[neigh]);
+
+          neigh = (qnnn.d_0m0_m0==0) ? qnnn.node_0m0_mm : qnnn.node_0m0_pm;
+          if (p_0m0 < 0)  rhs_p[n] += mu*sp_0m0/dxyz[1]*(fabs(phi_p[neigh]) * jump_coeff*normal_velocity_np1_p[neigh]);
+          else            rhs_p[n] += mu*sm_0m0/dxyz[1]*(fabs(phi_p[neigh]) * jump_coeff*normal_velocity_np1_p[neigh]);
+
+          neigh = (qnnn.d_0p0_m0==0) ? qnnn.node_0p0_mm : qnnn.node_0p0_pm;
+          if (p_0p0 < 0)  rhs_p[n] += mu*sp_0p0/dxyz[1]*(fabs(phi_p[neigh]) * jump_coeff*normal_velocity_np1_p[neigh]);
+          else            rhs_p[n] += mu*sm_0p0/dxyz[1]*(fabs(phi_p[neigh]) * jump_coeff*normal_velocity_np1_p[neigh]);
+
+          rhs_p[n] /= volume;
+  #endif
+        } else {
+          rhs_p[n] = temperature_n_p[n];
+        }
+      }
+    }
+
   }
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
@@ -1115,7 +1283,7 @@ void my_p4est_multialloy_t::solve_temperature()
   ierr = VecRestoreArray(tl_tmp, &tl_tmp_p); CHKERRXX(ierr);
 
   // extend average from interface
-  ls.extend_from_interface_to_whole_domain_TVD(phi, tavg, t_interface);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, tavg, t_interface, 20, order_of_extension_from_interface);
 
   ierr = VecDestroy(tavg); CHKERRXX(ierr);
 
@@ -1146,68 +1314,223 @@ void my_p4est_multialloy_t::solve_temperature_multiplier()
 #endif
 
   quad_neighbor_nodes_of_node_t qnnn;
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  if (use_fd_scheme_for_temperature)
   {
-    rhs_p[n] = 0;
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      rhs_p[n] = 0;
 
-    qnnn = ngbd->get_neighbors(n);
+      qnnn = ngbd->get_neighbors(n);
 #ifdef P4_TO_P8
 #else
-    qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0);
-    if (use_quadratic_form)
+      qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0);
+      if (use_quadratic_form)
+      {
+        if (p_000*p_m00<=0){
+          p4est_locidx_t neigh = (qnnn.d_m00_m0==0) ? qnnn.node_m00_mm : qnnn.node_m00_pm;
+          double jump = - 2.0/thermal_diffusivity *
+              (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
+               + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
+               + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
+          rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[0]) * scaling_jump;
+        }
+        if (p_000*p_p00<=0){
+          p4est_locidx_t neigh = (qnnn.d_p00_m0==0) ? qnnn.node_p00_mm : qnnn.node_p00_pm;
+          double jump = - 2.0/thermal_diffusivity *
+              (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
+               + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
+               + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
+          rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[0]) * scaling_jump;
+        }
+        if (p_000*p_0m0<=0){
+          p4est_locidx_t neigh = (qnnn.d_0m0_m0==0) ? qnnn.node_0m0_mm : qnnn.node_0m0_pm;
+          double jump = - 2.0/thermal_diffusivity *
+              (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
+               + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
+               + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
+          rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[1]) * scaling_jump;
+        }
+        if (p_000*p_0p0<=0){
+          p4est_locidx_t neigh = (qnnn.d_0p0_m0==0) ? qnnn.node_0p0_mm : qnnn.node_0p0_pm;
+          double jump = - 2.0/thermal_diffusivity *
+              (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
+               + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
+               + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
+          rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[1]) * scaling_jump;
+        }
+      } else {
+        double jump = -1.0/thermal_diffusivity;
+        if (p_000*p_m00<=0){
+          p4est_locidx_t neigh = (qnnn.d_m00_m0==0) ? qnnn.node_m00_mm : qnnn.node_m00_pm;
+          rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[0]) * scaling_jump;
+        }
+        if (p_000*p_p00<=0){
+          p4est_locidx_t neigh = (qnnn.d_p00_m0==0) ? qnnn.node_p00_mm : qnnn.node_p00_pm;
+          rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[0]) * scaling_jump;
+        }
+        if (p_000*p_0m0<=0){
+          p4est_locidx_t neigh = (qnnn.d_0m0_m0==0) ? qnnn.node_0m0_mm : qnnn.node_0m0_pm;
+          rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[1]) * scaling_jump;
+        }
+        if (p_000*p_0p0<=0){
+          p4est_locidx_t neigh = (qnnn.d_0p0_m0==0) ? qnnn.node_0p0_mm : qnnn.node_0p0_pm;
+          rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[1]) * scaling_jump;
+        }
+      }
+#endif
+    }
+  } else {
+
+
+    my_p4est_interpolation_nodes_t phi_interp(ngbd);
+    phi_interp.set_input(phi, linear);
+
+    my_p4est_interpolation_nodes_t v_gamma_interp(ngbd);
+    v_gamma_interp.set_input(normal_velocity_np1, linear);
+
+    double mu = dt_n*thermal_diffusivity;
+    double jump_coeff = latent_heat/thermal_conductivity;
+
+    double jump = -1.0/thermal_diffusivity;
+
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
-      if (p_000*p_m00<=0){
-        p4est_locidx_t neigh = (qnnn.d_m00_m0==0) ? qnnn.node_m00_mm : qnnn.node_m00_pm;
-        double jump = - 2.0/thermal_diffusivity *
-            (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
-             + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
-             + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
-        rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[0]) * scaling_jump;
-      }
-      if (p_000*p_p00<=0){
-        p4est_locidx_t neigh = (qnnn.d_p00_m0==0) ? qnnn.node_p00_mm : qnnn.node_p00_pm;
-        double jump = - 2.0/thermal_diffusivity *
-            (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
-             + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
-             + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
-        rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[0]) * scaling_jump;
-      }
-      if (p_000*p_0m0<=0){
-        p4est_locidx_t neigh = (qnnn.d_0m0_m0==0) ? qnnn.node_0m0_mm : qnnn.node_0m0_pm;
-        double jump = - 2.0/thermal_diffusivity *
-            (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
-             + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
-             + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
-        rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[1]) * scaling_jump;
-      }
-      if (p_000*p_0p0<=0){
-        p4est_locidx_t neigh = (qnnn.d_0p0_m0==0) ? qnnn.node_0p0_mm : qnnn.node_0p0_pm;
-        double jump = - 2.0/thermal_diffusivity *
-            (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
-             + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
-             + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
-        rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[1]) * scaling_jump;
-      }
-    } else {
-      double jump = -1.0/thermal_diffusivity;
-      if (p_000*p_m00<=0){
-        p4est_locidx_t neigh = (qnnn.d_m00_m0==0) ? qnnn.node_m00_mm : qnnn.node_m00_pm;
-        rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[0]) * scaling_jump;
-      }
-      if (p_000*p_p00<=0){
-        p4est_locidx_t neigh = (qnnn.d_p00_m0==0) ? qnnn.node_p00_mm : qnnn.node_p00_pm;
-        rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[0]) * scaling_jump;
-      }
-      if (p_000*p_0m0<=0){
-        p4est_locidx_t neigh = (qnnn.d_0m0_m0==0) ? qnnn.node_0m0_mm : qnnn.node_0m0_pm;
-        rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[1]) * scaling_jump;
-      }
-      if (p_000*p_0p0<=0){
-        p4est_locidx_t neigh = (qnnn.d_0p0_m0==0) ? qnnn.node_0p0_mm : qnnn.node_0p0_pm;
-        rhs_p[n] += fabs(phi_p[neigh]) * jump / SQR(dxyz[1]) * scaling_jump;
+      double x = node_x_fr_n(n, p4est, nodes);
+      double y = node_y_fr_n(n, p4est, nodes);
+#ifdef P4_TO_P8
+      double z = node_z_fr_n(n, p4est, nodes);
+#endif
+
+      if (fabs(phi_p[n]) > 3.*dxyz_min)
+      {
+        rhs_p[n] = 0.0;
+      } else {
+
+        double xm = x - 0.5*dxyz[0];
+        double xp = x + 0.5*dxyz[0];
+        double ym = y - 0.5*dxyz[1];
+        double yp = y + 0.5*dxyz[1];
+#ifdef P4_TO_P8
+        double zm = z - 0.5*dxyz[2];
+        double zp = z + 0.5*dxyz[2];
+#endif
+        double P_000 = phi_p[n];
+        double P_mm0 = phi_interp(xm, ym);
+        double P_mp0 = phi_interp(xm, yp);
+        double P_pm0 = phi_interp(xp, ym);
+        double P_pp0 = phi_interp(xp, yp);
+        double P_m00 = phi_interp(xm, y );
+        double P_p00 = phi_interp(xp, y );
+        double P_0m0 = phi_interp(x , ym);
+        double P_0p0 = phi_interp(x , yp);
+
+        bool is_one_positive = (P_000 > 0 ||
+                                P_m00 > 0 || P_p00 > 0 || P_0m0 > 0 || P_0p0 > 0 ||
+                                P_mm0 > 0 || P_pm0 > 0 || P_mp0 > 0 || P_pp0 > 0);
+        bool is_one_negative = (P_000 < 0 ||
+                                P_m00 < 0 || P_p00 < 0 || P_0m0 < 0 || P_0p0 < 0 ||
+                                P_mm0 < 0 || P_pm0 < 0 || P_mp0 < 0 || P_pp0 < 0);
+
+        bool is_ngbd_crossed_neumann = is_one_negative && is_one_positive;
+
+        qnnn = ngbd->get_neighbors(n);
+
+        qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0);
+
+        is_one_positive = (p_000 > 0 || p_m00 > 0 || p_p00 > 0 || p_0m0 > 0 || p_0p0 > 0);
+        is_one_negative = (p_000 < 0 || p_m00 < 0 || p_p00 < 0 || p_0m0 < 0 || p_0p0 < 0);
+
+        bool is_ngbd_crossed_dirichlet = is_one_negative && is_one_positive;
+
+        if (is_ngbd_crossed_neumann || is_ngbd_crossed_dirichlet)
+        {
+
+#ifdef P4_TO_P8
+          Cube3 cube;
+#else
+          Cube2 cube;
+#endif
+          double volume_m = 0.;
+          double interface_area  = 0.;
+          double integral_bc = 0;
+          QuadValue phi_cube;
+          for (short i = 0; i < P4EST_CHILDREN; ++i)
+          {
+            switch (i) {
+              case 0: phi_cube.val00 = P_mm0; phi_cube.val01 = P_m00; phi_cube.val10 = P_0m0; phi_cube.val11 = P_000; break;
+              case 1: phi_cube.val00 = P_mp0; phi_cube.val01 = P_0p0; phi_cube.val10 = P_m00; phi_cube.val11 = P_000; break;
+              case 2: phi_cube.val00 = P_pm0; phi_cube.val01 = P_0m0; phi_cube.val10 = P_p00; phi_cube.val11 = P_000; break;
+              case 3: phi_cube.val00 = P_pp0; phi_cube.val01 = P_p00; phi_cube.val10 = P_0p0; phi_cube.val11 = P_000; break;
+            }
+
+            switch (i) {
+              case 0: case 2: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dxyz[0]; cube.y1 = 0.5*dxyz[1]; break;
+              case 1: case 3: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dxyz[1]; cube.y1 = 0.5*dxyz[0]; break;
+            }
+
+            volume_m        += cube.area_In_Negative_Domain(phi_cube);
+            interface_area  += cube.interface_Length_In_Cell(phi_cube);
+          }
+
+          integral_bc = -1.0/thermal_diffusivity*interface_area;
+
+          double volume = dxyz[0]*dxyz[1];
+          double volume_p = volume - volume_m;
+
+          double sm_m00 = 0.5 * dxyz[1] * (fraction_Interval_Covered_By_Irregular_Domain(P_m00, P_mm0, dxyz[0], dxyz[1]) +
+                                      fraction_Interval_Covered_By_Irregular_Domain(P_m00, P_mp0, dxyz[0], dxyz[1]));
+
+          double sm_p00 = 0.5 * dxyz[1] * (fraction_Interval_Covered_By_Irregular_Domain(P_p00, P_pm0, dxyz[0], dxyz[1]) +
+                                      fraction_Interval_Covered_By_Irregular_Domain(P_p00, P_pp0, dxyz[0], dxyz[1]));
+
+          double sm_0m0 = 0.5 * dxyz[0] * (fraction_Interval_Covered_By_Irregular_Domain(P_0m0, P_mm0, dxyz[0], dxyz[1]) +
+                                      fraction_Interval_Covered_By_Irregular_Domain(P_0m0, P_pm0, dxyz[0], dxyz[1]));
+
+          double sm_0p0 = 0.5 * dxyz[0] * (fraction_Interval_Covered_By_Irregular_Domain(P_0p0, P_mp0, dxyz[0], dxyz[1]) +
+                                      fraction_Interval_Covered_By_Irregular_Domain(P_0p0, P_pp0, dxyz[0], dxyz[1]));
+
+          double sp_m00 = dxyz[1] - sm_m00;
+          double sp_p00 = dxyz[1] - sm_p00;
+          double sp_0m0 = dxyz[0] - sm_0m0;
+          double sp_0p0 = dxyz[0] - sm_0p0;
+
+          rhs_p[n] = mu*integral_bc;
+
+          if (phi_p[n] < 0)
+            rhs_p[n] -= (fabs(phi_p[n]) * jump)
+              *( volume_p + mu*((sp_m00+sp_p00)/dxyz[0] + (sp_0m0+sp_0p0)/dxyz[1]));
+          else
+            rhs_p[n] -= (fabs(phi_p[n]) * jump)
+              *( volume_m + mu*((sm_m00+sm_p00)/dxyz[0] + (sm_0m0+sm_0p0)/dxyz[1]));
+
+  #ifdef P4_TO_P8
+  #else
+          p4est_locidx_t neigh;
+
+          neigh = (qnnn.d_m00_m0==0) ? qnnn.node_m00_mm : qnnn.node_m00_pm;
+          if (p_m00 < 0)  rhs_p[n] += mu*sp_m00/dxyz[0]*(fabs(phi_p[neigh]) * jump);
+          else            rhs_p[n] += mu*sm_m00/dxyz[0]*(fabs(phi_p[neigh]) * jump);
+
+          neigh = (qnnn.d_p00_m0==0) ? qnnn.node_p00_mm : qnnn.node_p00_pm;
+          if (p_p00 < 0)  rhs_p[n] += mu*sp_p00/dxyz[0]*(fabs(phi_p[neigh]) * jump);
+          else            rhs_p[n] += mu*sm_p00/dxyz[0]*(fabs(phi_p[neigh]) * jump);
+
+          neigh = (qnnn.d_0m0_m0==0) ? qnnn.node_0m0_mm : qnnn.node_0m0_pm;
+          if (p_0m0 < 0)  rhs_p[n] += mu*sp_0m0/dxyz[1]*(fabs(phi_p[neigh]) * jump);
+          else            rhs_p[n] += mu*sm_0m0/dxyz[1]*(fabs(phi_p[neigh]) * jump);
+
+          neigh = (qnnn.d_0p0_m0==0) ? qnnn.node_0p0_mm : qnnn.node_0p0_pm;
+          if (p_0p0 < 0)  rhs_p[n] += mu*sp_0p0/dxyz[1]*(fabs(phi_p[neigh]) * jump);
+          else            rhs_p[n] += mu*sm_0p0/dxyz[1]*(fabs(phi_p[neigh]) * jump);
+
+          rhs_p[n] /= volume;
+  #endif
+        } else {
+          rhs_p[n] = 0.0;
+        }
       }
     }
-#endif
+
   }
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
@@ -1378,7 +1701,7 @@ void my_p4est_multialloy_t::solve_temperature_multiplier()
   ierr = VecRestoreArray(tl_tmp, &tl_tmp_p); CHKERRXX(ierr);
 
   // extend average from interface
-  ls.extend_from_interface_to_whole_domain_TVD(phi, ts_tmp, temperature_multiplier);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, ts_tmp, temperature_multiplier, 20, order_of_extension_from_interface);
 
   ierr = VecDestroy(ts_tmp); CHKERRXX(ierr);
   ierr = VecDestroy(tl_tmp); CHKERRXX(ierr);
@@ -1496,7 +1819,7 @@ void my_p4est_multialloy_t::solve_concentration()
   ierr = VecRestoreArray(c_sec_interface, &c_sec_interface_p); CHKERRXX(ierr);
 
   my_p4est_level_set_t ls(ngbd);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, c_interface_tmp, c_interface);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, c_interface_tmp, c_interface, 20, order_of_extension_from_interface);
 
   my_p4est_interpolation_nodes_t interface_value_c(ngbd);
   interface_value_c.set_input(c_interface, linear);
@@ -1591,7 +1914,7 @@ void my_p4est_multialloy_t::solve_concentration_sec()
 
   Vec mask = solver_c.get_mask();
 
-  if (use_more_points_for_extension)
+  if (use_more_points_for_extension || 1)
     ls.extend_Over_Interface_TVD(phi, mask, cl_sec_np1, 20, order_of_extension);
   else
     ls.extend_Over_Interface_TVD(phi, cl_sec_np1, 20, order_of_extension);
@@ -1644,7 +1967,7 @@ void my_p4est_multialloy_t::solve_concentration_sec()
     phi_p[n] *= -1;
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
-  ls.extend_from_interface_to_whole_domain_TVD(phi, cl_sec_np1, c_sec_interface);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, cl_sec_np1, c_sec_interface, 20, order_of_extension_from_interface);
 }
 
 
@@ -1737,7 +2060,7 @@ void my_p4est_multialloy_t::solve_concentration_multiplier()
 
   Vec mask = solver_c.get_mask();
 
-  if (use_more_points_for_extension)
+  if (use_more_points_for_extension || 1)
     ls.extend_Over_Interface_TVD(phi, mask, c_mult_tmp, 20, order_of_extension);
   else
     ls.extend_Over_Interface_TVD(phi, c_mult_tmp, 20, order_of_extension);
@@ -1752,7 +2075,7 @@ void my_p4est_multialloy_t::solve_concentration_multiplier()
     phi_p[n] *= -1;
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
-  ls.extend_from_interface_to_whole_domain_TVD(phi, c_mult_tmp, concentration_multiplier);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, c_mult_tmp, concentration_multiplier, 20, order_of_extension_from_interface);
 
   ierr = VecDestroy(c_mult_tmp); CHKERRXX(ierr);
 }
@@ -2247,7 +2570,7 @@ void my_p4est_multialloy_t::one_step()
 //  ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
 
-  while(error>velocity_tol && iteration<3)
+  while(error>velocity_tol && iteration<num_of_iterations_per_step)
 //  while(error_bc>velocity_tol && iteration<30)
   {
 //    save_VTK(iteration);
@@ -2259,7 +2582,7 @@ void my_p4est_multialloy_t::one_step()
     ierr = VecGhostRestoreLocalForm(normal_velocity_tmp, &out); CHKERRXX(ierr);
 
     my_p4est_level_set_t ls(ngbd);
-    ls.extend_from_interface_to_whole_domain_TVD(phi, normal_velocity_tmp, normal_velocity_np1);
+    ls.extend_from_interface_to_whole_domain_TVD(phi, normal_velocity_tmp, normal_velocity_np1, 20, order_of_extension_from_interface);
 
     /* solve for concentration and temperature */
     solve_temperature();
@@ -2462,7 +2785,7 @@ void my_p4est_multialloy_t::smooth_velocity(Vec input)
 
 
   my_p4est_level_set_t ls(ngbd);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, output, input);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, output, input, 20, order_of_extension_from_interface);
 
   ierr = VecDestroy(output); CHKERRXX(ierr);
 }

@@ -105,6 +105,9 @@ private:
   double phi_thresh;
 
   bool zero_negative_velocity;
+  bool use_fd_scheme_for_temperature;
+  bool use_more_points_for_extension;
+  int order_of_extension;
 
 public:
 
