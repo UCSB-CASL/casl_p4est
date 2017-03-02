@@ -166,6 +166,8 @@ private:
 
   int num_of_iterations_per_step;
 
+  Vec phi_smooth;
+
 public:
 
   my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -265,7 +267,10 @@ public:
   void solve_concentration_multiplier();
 
   void adjust_velocity();
-  void smooth_velocity(Vec input);
+  void smooth_velocity(Vec &input);
+
+  void invert_phi(Vec input);
+  void copy_ghosted_vec(Vec input, Vec output);
 };
 
 

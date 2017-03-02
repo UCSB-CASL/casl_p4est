@@ -2689,15 +2689,33 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
                             : (qnnn.f_00p_linear(q_p) - q_p[n]) / qnnn.d_00p;
 #endif
 
+        /* DANIIL: in case when the function is called with order = 0 or 1,
+         * does it make sense to use second derivatives?
+         * For example, in situation when a Poisson solver produces
+         * non-convergent second derivatives, I'd want to extend my solution
+         * without using second order derivatives */
+
         /* second order derivatives */
-        double qxx_m00 = qnnn.f_m00_linear(qxx_p);
-        double qxx_p00 = qnnn.f_p00_linear(qxx_p);
-        double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
-        double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
+        double qxx_m00 = 0.0;
+        double qxx_p00 = 0.0;
+        double qyy_0m0 = 0.0;
+        double qyy_0p0 = 0.0;
 #ifdef P4_TO_P8
-        double qzz_00m = qnnn.f_00m_linear(qzz_p);
-        double qzz_00p = qnnn.f_00p_linear(qzz_p);
+        double qzz_00m = 0.0;
+        double qzz_00p = 0.0;
 #endif
+
+        if (order == 2)
+        {
+          qxx_m00 = qnnn.f_m00_linear(qxx_p);
+          qxx_p00 = qnnn.f_p00_linear(qxx_p);
+          qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
+          qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
+#ifdef P4_TO_P8
+          qzz_00m = qnnn.f_00m_linear(qzz_p);
+          qzz_00p = qnnn.f_00p_linear(qzz_p);
+#endif
+        }
 
         /* minmod operation */
         qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
@@ -2769,14 +2787,26 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
 #endif
 
         /* second order derivatives */
-        double qxx_m00 = qnnn.f_m00_linear(qxx_p);
-        double qxx_p00 = qnnn.f_p00_linear(qxx_p);
-        double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
-        double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
+        double qxx_m00 = 0.0;
+        double qxx_p00 = 0.0;
+        double qyy_0m0 = 0.0;
+        double qyy_0p0 = 0.0;
 #ifdef P4_TO_P8
-        double qzz_00m = qnnn.f_00m_linear(qzz_p);
-        double qzz_00p = qnnn.f_00p_linear(qzz_p);
+        double qzz_00m = 0.0;
+        double qzz_00p = 0.0;
 #endif
+
+        if (order == 2)
+        {
+          qxx_m00 = qnnn.f_m00_linear(qxx_p);
+          qxx_p00 = qnnn.f_p00_linear(qxx_p);
+          qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
+          qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
+#ifdef P4_TO_P8
+          qzz_00m = qnnn.f_00m_linear(qzz_p);
+          qzz_00p = qnnn.f_00p_linear(qzz_p);
+#endif
+        }
 
         /* minmod operation */
         qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
@@ -4590,14 +4620,26 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
 #endif
 
         /* second order derivatives */
-        double qxx_m00 = qnnn.f_m00_linear(qxx_p);
-        double qxx_p00 = qnnn.f_p00_linear(qxx_p);
-        double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
-        double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
+        double qxx_m00 = 0.0;
+        double qxx_p00 = 0.0;
+        double qyy_0m0 = 0.0;
+        double qyy_0p0 = 0.0;
 #ifdef P4_TO_P8
-        double qzz_00m = qnnn.f_00m_linear(qzz_p);
-        double qzz_00p = qnnn.f_00p_linear(qzz_p);
+        double qzz_00m = 0.0;
+        double qzz_00p = 0.0;
 #endif
+
+        if (order == 2)
+        {
+          qxx_m00 = qnnn.f_m00_linear(qxx_p);
+          qxx_p00 = qnnn.f_p00_linear(qxx_p);
+          qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
+          qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
+#ifdef P4_TO_P8
+          qzz_00m = qnnn.f_00m_linear(qzz_p);
+          qzz_00p = qnnn.f_00p_linear(qzz_p);
+#endif
+        }
 
         /* minmod operation */
         qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
@@ -4669,14 +4711,26 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
 #endif
 
         /* second order derivatives */
-        double qxx_m00 = qnnn.f_m00_linear(qxx_p);
-        double qxx_p00 = qnnn.f_p00_linear(qxx_p);
-        double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
-        double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
+        double qxx_m00 = 0.0;
+        double qxx_p00 = 0.0;
+        double qyy_0m0 = 0.0;
+        double qyy_0p0 = 0.0;
 #ifdef P4_TO_P8
-        double qzz_00m = qnnn.f_00m_linear(qzz_p);
-        double qzz_00p = qnnn.f_00p_linear(qzz_p);
+        double qzz_00m = 0.0;
+        double qzz_00p = 0.0;
 #endif
+
+        if (order == 2)
+        {
+          qxx_m00 = qnnn.f_m00_linear(qxx_p);
+          qxx_p00 = qnnn.f_p00_linear(qxx_p);
+          qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
+          qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
+#ifdef P4_TO_P8
+          qzz_00m = qnnn.f_00m_linear(qzz_p);
+          qzz_00p = qnnn.f_00p_linear(qzz_p);
+#endif
+        }
 
         /* minmod operation */
         qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);

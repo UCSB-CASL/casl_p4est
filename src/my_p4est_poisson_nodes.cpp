@@ -2526,7 +2526,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 
 #else
 
-          if (volume_cut_cell > 0.02*dx_min*dy_min) mask_p[n] = -1.;
+          if (volume_cut_cell > 0.01*dx_min*dy_min) mask_p[n] = -1.;
 
           PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm];
           PetscInt node_p00_g = petsc_gloidx[qnnn.d_p00_m0==0 ? qnnn.node_p00_mm : qnnn.node_p00_pm];

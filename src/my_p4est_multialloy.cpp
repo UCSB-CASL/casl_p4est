@@ -26,6 +26,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
     phi(NULL),
     kappa(NULL), rhs(NULL),
     tl(NULL), ts(NULL),
+    phi_smooth(NULL),
   #ifdef P4_TO_P8
     theta_xz(NULL), theta_yz(NUL)
   #else
@@ -136,6 +137,8 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
 
   if(rhs!=NULL) { ierr = VecDestroy(rhs); CHKERRXX(ierr); }
 
+  if(phi_smooth!=NULL) { ierr = VecDestroy(phi_smooth); CHKERRXX(ierr); }
+
 
   ierr = VecDestroy(temperature_multiplier);   CHKERRXX(ierr);
   ierr = VecDestroy(concentration_multiplier);   CHKERRXX(ierr);
@@ -208,6 +211,17 @@ void my_p4est_multialloy_t::set_phi(Vec phi)
   compute_normal_and_curvature();
 
   ierr = VecDuplicate(phi, &rhs); CHKERRXX(ierr);
+
+
+  ierr = VecDuplicate(phi, &phi_smooth); CHKERRXX(ierr);
+
+  copy_ghosted_vec(phi, phi_smooth);
+
+//  for (short i = 0; i < 0; i++)
+//    smooth_velocity(phi_smooth);
+
+//  my_p4est_level_set_t ls(ngbd);
+//  ls.reinitialize_1st_order_time_2nd_order_space(phi_smooth);
 }
 
 
@@ -1245,23 +1259,21 @@ void my_p4est_multialloy_t::solve_temperature()
   my_p4est_level_set_t ls(ngbd);
 
   if (use_more_points_for_extension)
-    ls.extend_Over_Interface_TVD(phi, mask_s, ts_tmp, 20, order_of_extension);
+    ls.extend_Over_Interface_TVD(phi_smooth, mask_s, ts_tmp, 20, order_of_extension);
   else
     ls.extend_Over_Interface_TVD(phi, ts_tmp, 20, order_of_extension);
 
   // extend from liquid to solid
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n) {phi_p[n] *= -1;}
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  invert_phi(phi);
+  invert_phi(phi_smooth);
 
   if (use_more_points_for_extension)
-    ls.extend_Over_Interface_TVD(phi, mask_l, tl_tmp, 20, order_of_extension);
+    ls.extend_Over_Interface_TVD(phi_smooth, mask_l, tl_tmp, 20, order_of_extension);
   else
     ls.extend_Over_Interface_TVD(phi, tl_tmp, 20, order_of_extension);
 
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n) {phi_p[n] *= -1;}
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  invert_phi(phi);
+  invert_phi(phi_smooth);
 
   if (tl != NULL) { ierr = VecDestroy(tl); CHKERRXX(ierr); } tl = tl_tmp;
   if (ts != NULL) { ierr = VecDestroy(ts); CHKERRXX(ierr); } ts = ts_tmp;
@@ -1388,6 +1400,24 @@ void my_p4est_multialloy_t::solve_temperature_multiplier()
     my_p4est_interpolation_nodes_t v_gamma_interp(ngbd);
     v_gamma_interp.set_input(normal_velocity_np1, linear);
 
+    Vec jump_vec; double *jump_vec_p;
+    ierr = VecDuplicate(phi, &jump_vec); CHKERRXX(ierr);
+
+    ierr = VecGetArray(jump_vec, &jump_vec_p); CHKERRXX(ierr);
+
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    {
+      jump_vec_p[n] = - 2.0/thermal_diffusivity *
+          (t_interface_p[n] - Tm - ml_sec*c_interface_p[n]
+           + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[n]))*kappa_p[n]
+           + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[n]))*normal_velocity_np1_p[n]);
+    }
+
+    ierr = VecRestoreArray(jump_vec, &jump_vec_p); CHKERRXX(ierr);
+
+    my_p4est_interpolation_nodes_t jump_interp(ngbd);
+    jump_interp.set_input(jump_vec, linear);
+
     double mu = dt_n*thermal_diffusivity;
     double jump_coeff = latent_heat/thermal_conductivity;
 
@@ -1453,7 +1483,7 @@ void my_p4est_multialloy_t::solve_temperature_multiplier()
           double volume_m = 0.;
           double interface_area  = 0.;
           double integral_bc = 0;
-          QuadValue phi_cube;
+          QuadValue phi_cube, bc_value;
           for (short i = 0; i < P4EST_CHILDREN; ++i)
           {
             switch (i) {
@@ -1468,11 +1498,21 @@ void my_p4est_multialloy_t::solve_temperature_multiplier()
               case 1: case 3: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dxyz[1]; cube.y1 = 0.5*dxyz[0]; break;
             }
 
+            switch (i) {
+              case 0: bc_value.val00 = jump_interp(xm,ym); bc_value.val01 = jump_interp(xm,y ); bc_value.val10 = jump_interp(x ,ym); bc_value.val11 = jump_interp(x,y); break;
+              case 1: bc_value.val00 = jump_interp(xm,yp); bc_value.val01 = jump_interp(x ,yp); bc_value.val10 = jump_interp(xm,y ); bc_value.val11 = jump_interp(x,y); break;
+              case 2: bc_value.val00 = jump_interp(xp,ym); bc_value.val01 = jump_interp(x ,ym); bc_value.val10 = jump_interp(xp,y ); bc_value.val11 = jump_interp(x,y); break;
+              case 3: bc_value.val00 = jump_interp(xp,yp); bc_value.val01 = jump_interp(xp,y ); bc_value.val10 = jump_interp(x ,yp); bc_value.val11 = jump_interp(x,y); break;
+            }
+
+
             volume_m        += cube.area_In_Negative_Domain(phi_cube);
             interface_area  += cube.interface_Length_In_Cell(phi_cube);
+            integral_bc     += cube.integrate_Over_Interface(bc_value, phi_cube);
           }
 
-          integral_bc = -1.0/thermal_diffusivity*interface_area;
+          if (!use_quadratic_form)
+            integral_bc = -1.0/thermal_diffusivity*interface_area;
 
           double volume = dxyz[0]*dxyz[1];
           double volume_p = volume - volume_m;
@@ -1496,6 +1536,12 @@ void my_p4est_multialloy_t::solve_temperature_multiplier()
 
           rhs_p[n] = mu*integral_bc;
 
+          if (use_quadratic_form)
+            jump = - 2.0/thermal_diffusivity *
+                (t_interface_p[n] - Tm - ml_sec*c_interface_p[n]
+                 + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[n]))*kappa_p[n]
+                 + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[n]))*normal_velocity_np1_p[n]);
+
           if (phi_p[n] < 0)
             rhs_p[n] -= (fabs(phi_p[n]) * jump)
               *( volume_p + mu*((sp_m00+sp_p00)/dxyz[0] + (sp_0m0+sp_0p0)/dxyz[1]));
@@ -1508,18 +1554,46 @@ void my_p4est_multialloy_t::solve_temperature_multiplier()
           p4est_locidx_t neigh;
 
           neigh = (qnnn.d_m00_m0==0) ? qnnn.node_m00_mm : qnnn.node_m00_pm;
+
+          if (use_quadratic_form)
+            jump = - 2.0/thermal_diffusivity *
+                (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
+                 + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
+                 + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
+
           if (p_m00 < 0)  rhs_p[n] += mu*sp_m00/dxyz[0]*(fabs(phi_p[neigh]) * jump);
           else            rhs_p[n] += mu*sm_m00/dxyz[0]*(fabs(phi_p[neigh]) * jump);
 
           neigh = (qnnn.d_p00_m0==0) ? qnnn.node_p00_mm : qnnn.node_p00_pm;
+
+          if (use_quadratic_form)
+            jump = - 2.0/thermal_diffusivity *
+                (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
+                 + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
+                 + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
+
           if (p_p00 < 0)  rhs_p[n] += mu*sp_p00/dxyz[0]*(fabs(phi_p[neigh]) * jump);
           else            rhs_p[n] += mu*sm_p00/dxyz[0]*(fabs(phi_p[neigh]) * jump);
 
           neigh = (qnnn.d_0m0_m0==0) ? qnnn.node_0m0_mm : qnnn.node_0m0_pm;
+
+          if (use_quadratic_form)
+            jump = - 2.0/thermal_diffusivity *
+                (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
+                 + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
+                 + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
+
           if (p_0m0 < 0)  rhs_p[n] += mu*sp_0m0/dxyz[1]*(fabs(phi_p[neigh]) * jump);
           else            rhs_p[n] += mu*sm_0m0/dxyz[1]*(fabs(phi_p[neigh]) * jump);
 
           neigh = (qnnn.d_0p0_m0==0) ? qnnn.node_0p0_mm : qnnn.node_0p0_pm;
+
+          if (use_quadratic_form)
+            jump = - 2.0/thermal_diffusivity *
+                (t_interface_p[neigh] - Tm - ml_sec*c_interface_p[neigh]
+                 + epsilon_c*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*kappa_p[neigh]
+                 + epsilon_v*(1-15*epsilon_anisotropy*cos(4*theta_p[neigh]))*normal_velocity_np1_p[neigh]);
+
           if (p_0p0 < 0)  rhs_p[n] += mu*sp_0p0/dxyz[1]*(fabs(phi_p[neigh]) * jump);
           else            rhs_p[n] += mu*sm_0p0/dxyz[1]*(fabs(phi_p[neigh]) * jump);
 
@@ -1530,6 +1604,8 @@ void my_p4est_multialloy_t::solve_temperature_multiplier()
         }
       }
     }
+
+    ierr = VecDestroy(jump_vec); CHKERRXX(ierr);
 
   }
 
@@ -1672,23 +1748,21 @@ void my_p4est_multialloy_t::solve_temperature_multiplier()
 
   my_p4est_level_set_t ls(ngbd);
   if (use_more_points_for_extension)
-    ls.extend_Over_Interface_TVD(phi, mask_s, ts_tmp, 20, order_of_extension);
+    ls.extend_Over_Interface_TVD(phi_smooth, mask_s, ts_tmp, 20, order_of_extension);
   else
     ls.extend_Over_Interface_TVD(phi, ts_tmp, 20, order_of_extension);
 
   // extend from liquid to solid
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n) {phi_p[n] *= -1;}
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  invert_phi(phi);
+  invert_phi(phi_smooth);
 
   if (use_more_points_for_extension)
-    ls.extend_Over_Interface_TVD(phi, mask_l, tl_tmp, 20, order_of_extension);
+    ls.extend_Over_Interface_TVD(phi_smooth, mask_l, tl_tmp, 20, order_of_extension);
   else
     ls.extend_Over_Interface_TVD(phi, tl_tmp, 20, order_of_extension);
 
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n) {phi_p[n] *= -1;}
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  invert_phi(phi);
+  invert_phi(phi_smooth);
 
   // take average
   ierr = VecGetArray(ts_tmp, &ts_tmp_p); CHKERRXX(ierr);
@@ -1866,14 +1940,12 @@ void my_p4est_multialloy_t::solve_concentration()
 
 
 
-
 void my_p4est_multialloy_t::solve_concentration_sec()
 {
   double *phi_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] *= -1;
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+  invert_phi(phi);
+  invert_phi(phi_smooth);
 
   Vec robin_coef;
   ierr = VecDuplicate(phi, &robin_coef); CHKERRXX(ierr);
@@ -1914,8 +1986,18 @@ void my_p4est_multialloy_t::solve_concentration_sec()
 
   Vec mask = solver_c.get_mask();
 
-  if (use_more_points_for_extension || 1)
-    ls.extend_Over_Interface_TVD(phi, mask, cl_sec_np1, 20, order_of_extension);
+//  Vec tmp;
+
+//  ierr = VecDuplicate(phi, &tmp); CHKERRXX(ierr);
+
+//  ierr = VecGhostGetLocalForm(phi, &src); CHKERRXX(ierr);
+//  ierr = VecGhostGetLocalForm(tmp, &out); CHKERRXX(ierr);
+//  ierr = VecCopy(src, out); CHKERRXX(ierr);
+//  ierr = VecGhostRestoreLocalForm(phi, &src); CHKERRXX(ierr);
+//  ierr = VecGhostRestoreLocalForm(tmp, &out); CHKERRXX(ierr);
+
+  if (use_more_points_for_extension)
+    ls.extend_Over_Interface_TVD(phi_smooth, mask, cl_sec_np1, 20, order_of_extension);
   else
     ls.extend_Over_Interface_TVD(phi, cl_sec_np1, 20, order_of_extension);
 
@@ -1962,10 +2044,8 @@ void my_p4est_multialloy_t::solve_concentration_sec()
 //  ierr = PetscPrintf(p4est->mpicomm, "Error on Robin boundary condition for cl_np1 : %e\n", err_bc); CHKERRXX(ierr);
 
 
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] *= -1;
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  invert_phi(phi);
+  invert_phi(phi_smooth);
 
   ls.extend_from_interface_to_whole_domain_TVD(phi, cl_sec_np1, c_sec_interface, 20, order_of_extension_from_interface);
 }
@@ -1977,10 +2057,8 @@ void my_p4est_multialloy_t::solve_concentration_sec()
 void my_p4est_multialloy_t::solve_concentration_multiplier()
 {
   double *phi_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] *= -1;
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  invert_phi(phi);
+  invert_phi(phi_smooth);
 
   Vec robin_coef;
   ierr = VecDuplicate(phi, &robin_coef); CHKERRXX(ierr);
@@ -2060,8 +2138,8 @@ void my_p4est_multialloy_t::solve_concentration_multiplier()
 
   Vec mask = solver_c.get_mask();
 
-  if (use_more_points_for_extension || 1)
-    ls.extend_Over_Interface_TVD(phi, mask, c_mult_tmp, 20, order_of_extension);
+  if (use_more_points_for_extension)
+    ls.extend_Over_Interface_TVD(phi_smooth, mask, c_mult_tmp, 20, order_of_extension);
   else
     ls.extend_Over_Interface_TVD(phi, c_mult_tmp, 20, order_of_extension);
 
@@ -2070,10 +2148,8 @@ void my_p4est_multialloy_t::solve_concentration_multiplier()
   ierr = VecDestroy(robin_coef); CHKERRXX(ierr);
   ierr = VecDestroy(interface_value); CHKERRXX(ierr);
 
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] *= -1;
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  invert_phi(phi);
+  invert_phi(phi_smooth);
 
   ls.extend_from_interface_to_whole_domain_TVD(phi, c_mult_tmp, concentration_multiplier, 20, order_of_extension_from_interface);
 
@@ -2353,12 +2429,30 @@ void my_p4est_multialloy_t::update_grid()
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
+
+
   /* reinitialize and perturb phi */
   my_p4est_level_set_t ls(ngbd);
   ls.reinitialize_1st_order_time_2nd_order_space(phi);
 //  ls.perturb_level_set_function(phi, EPS);
 
   compute_normal_and_curvature();
+
+  /* create a smoothed version of level set function (for extension) */
+  ierr = VecDestroy(phi_smooth); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &phi_smooth); CHKERRXX(ierr);
+
+  Vec src, out;
+  ierr = VecGhostGetLocalForm(phi, &src); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(phi_smooth, &out); CHKERRXX(ierr);
+  ierr = VecCopy(src, out); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(phi, &src); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(phi_smooth, &out); CHKERRXX(ierr);
+
+  for (short i = 0; i < 4; i++)
+    smooth_velocity(phi_smooth);
+
+  ls.reinitialize_1st_order_time_2nd_order_space(phi_smooth);
 }
 
 //void my_p4est_multialloy_t::one_step()
@@ -2569,9 +2663,10 @@ void my_p4est_multialloy_t::one_step()
 //  }
 //  ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
+  if (!use_quadratic_form)
+    solve_temperature_multiplier();
 
   while(error>velocity_tol && iteration<num_of_iterations_per_step)
-//  while(error_bc>velocity_tol && iteration<30)
   {
 //    save_VTK(iteration);
     Vec src, out;
@@ -2633,17 +2728,17 @@ void my_p4est_multialloy_t::one_step()
     ierr = PetscPrintf(p4est->mpicomm, "Convergence iteration #%d, error on bc = %e, erron on bc (L2) = %e\n", iteration, error_bc, error_bc_l2); CHKERRXX(ierr);
 
     /* adjust velocity */
+    if (iteration != num_of_iterations_per_step-1)
+    {
+      solve_concentration_multiplier();
+      if (use_quadratic_form)
+        solve_temperature_multiplier();
 
-    solve_temperature_multiplier();
-    solve_concentration_multiplier();
-
-    adjust_velocity();
+      adjust_velocity();
+    }
     iteration++;
 
   }
-
-  solve_temperature();
-  solve_concentration_sec();
 
 //  compute_normal_velocity();
 //  compare_velocity_temperature_vs_concentration();
@@ -2690,12 +2785,19 @@ void my_p4est_multialloy_t::one_step()
   first_step = false;
 }
 
-void my_p4est_multialloy_t::smooth_velocity(Vec input)
+void my_p4est_multialloy_t::smooth_velocity(Vec &input)
 {
   Vec output;
   ierr = VecDuplicate(phi, &output); CHKERRXX(ierr);
 
-  ierr = VecSet(output, 0.0); CHKERRXX(ierr);
+  Vec src, out;
+  ierr = VecGhostGetLocalForm(input, &src); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecCopy(src, out); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input, &src); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+
+//  ierr = VecSet(output, 0.0); CHKERRXX(ierr);
 
   double *input_ptr, *output_ptr;
   ierr = VecGetArray(input, &input_ptr); CHKERRXX(ierr);
@@ -2784,11 +2886,43 @@ void my_p4est_multialloy_t::smooth_velocity(Vec input)
   ierr = VecGhostUpdateEnd(output, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
 
-  my_p4est_level_set_t ls(ngbd);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, output, input, 20, order_of_extension_from_interface);
+//  my_p4est_level_set_t ls(ngbd);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi, output, input, 20, order_of_extension_from_interface);
 
-  ierr = VecDestroy(output); CHKERRXX(ierr);
+//  ierr = VecDestroy(output); CHKERRXX(ierr);
+
+  ierr = VecDestroy(input); CHKERRXX(ierr);
+  input = output;
 }
+
+
+//void my_p4est_multialloy_t::smooth_phi(Vec q)
+//{
+
+//  Vec qxx, qyy;
+//  double *qxx_p, *qyy_p;
+//  ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr);
+//  ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr);
+//#ifdef P4_TO_P8
+//  Vec qzz;
+//  double *qzz_p;
+//  ierr = VecCreateGhostNodes(p4est, nodes, &qzz); CHKERRXX(ierr);
+//#endif
+
+//#ifdef P4_TO_P8
+//    ngbd->second_derivatives_central(q, qxx, qyy, qzz);
+//#else
+//    ngbd->second_derivatives_central(q, qxx, qyy);
+//#endif
+
+//    ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
+//    ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
+//#ifdef P4_TO_P8
+//    ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
+//#endif
+
+//    ierr = VecGetArray(q  , &q_p  ); CHKERRXX(ierr);
+//}
 
 void my_p4est_multialloy_t::adjust_velocity()
 {
@@ -3354,9 +3488,10 @@ void my_p4est_multialloy_t::save_VTK(int iter)
     kappa_vis = kappa;
   }
 
-  const double *phi_p, *temperature_p, *cl_p, *cl_sec_p;
+  const double *phi_p, *temperature_p, *cl_p, *cl_sec_p, *phi_smooth_p;
   double *normal_velocity_np1_p;
   ierr = VecGetArrayRead(phi_vis, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi_smooth, &phi_smooth_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(temperature_vis, &temperature_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(cl_vis, &cl_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(cl_sec_vis, &cl_sec_p); CHKERRXX(ierr);
@@ -3408,11 +3543,12 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   my_p4est_vtk_write_all(  p4est_vis, nodes_vis, NULL,
                            P4EST_TRUE, P4EST_TRUE,
                          #ifdef P4_TO_P8
-                           7, 1, name,
+                           8, 1, name,
                          #else
-                           7, 1, name,
+                           8, 1, name,
                          #endif
                            VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "phi_smooth", phi_smooth_p,
                            VTK_POINT_DATA, "temperature", temperature_p,
                            VTK_POINT_DATA, "concentration", cl_p,
                            VTK_POINT_DATA, "concentration_sec", cl_sec_p,
@@ -3453,6 +3589,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(phi_vis, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(phi_smooth, &phi_smooth_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(temperature_vis, &temperature_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(cl_vis, &cl_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(cl_sec_vis, &cl_sec_p); CHKERRXX(ierr);
@@ -3474,4 +3611,26 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   }
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", name);
+}
+
+void my_p4est_multialloy_t::invert_phi(Vec input)
+{
+  double *phi_p;
+
+  ierr = VecGetArray(input, &phi_p); CHKERRXX(ierr);
+
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    phi_p[n] *= -1;
+
+  ierr = VecRestoreArray(input, &phi_p); CHKERRXX(ierr);
+}
+
+void my_p4est_multialloy_t::copy_ghosted_vec(Vec input, Vec output)
+{
+  Vec src, out;
+  ierr = VecGhostGetLocalForm(input, &src); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecCopy(src, out); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input, &src); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
 }

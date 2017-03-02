@@ -50,7 +50,7 @@
 #undef MAX
 
 int lmin = 5;
-int lmax = 9;
+int lmax = 10;
 int save_every_n_iteration = 1;
 
 double lip = 1.5;
@@ -120,10 +120,10 @@ double t_final = 500;
 int dt_method = 1;
 double velocity_tol = 1.e-8;
 
-double cfl_number = 0.3;
-double phi_thresh = 0.01;
+double cfl_number = 0.1;
+double phi_thresh = 0.001;
 double zero_negative_velocity = true;
-int num_of_iters_per_step = 5;
+int num_of_iters_per_step = 6;
 
 void set_alloy_parameters()
 {
@@ -333,7 +333,7 @@ public:
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
     if(direction=='x') return x - 0.1;
-    else               return y - 0.1 + 0.00*cos(pow(2,lmax-4)*PI*(x-0.50007));
+    else               return y - 0.1 + 0.000*cos(pow(2,lmax)*PI*(x-0.50007));
   }
 } LS;
 

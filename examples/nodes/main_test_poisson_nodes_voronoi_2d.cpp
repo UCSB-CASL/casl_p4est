@@ -903,7 +903,7 @@ int main (int argc, char* argv[])
     ierr = VecGetArray(err_nodes, &err_p); CHKERRXX(ierr);
 
     double err_bc = 0;
-    ls.extend_Over_Interface_TVD(phi, sol);
+    ls.extend_Over_Interface_TVD(phi, sol, 20, 2);
 
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
@@ -969,15 +969,15 @@ int main (int argc, char* argv[])
 
 
     /* extrapolate the solution and check accuracy */
-    double band = 4;
+    double band = 2;
 
     if(check_extrapolations)
     {
       Vec mask = solver.get_mask();
 
       if(bc_itype!=NOINTERFACE)
-//        ls.extend_Over_Interface_TVD(phi, mask, sol, 100, 2);
-        ls.extend_Over_Interface_TVD(phi, sol, 100, 2);
+        ls.extend_Over_Interface_TVD(phi, mask, sol, 100, 1);
+//        ls.extend_Over_Interface_TVD(phi, sol, 100, 1);
 
       ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
       ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
