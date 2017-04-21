@@ -116,7 +116,7 @@ void set_alloy_parameters()
 //    ml                   =-1.;            /* K / at frac. - liquidous slope */
 //    kp                   = 1.00;           /* partition coefficient */
     kp                   = 0.86;           /* partition coefficient */
-    c0                   = 0.40831;        /* at frac.    */
+    c0                   = 0.40;        /* at frac.    */
     Tm                   = 1728;           /* K           */
     Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
 //    Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
@@ -482,6 +482,10 @@ int main (int argc, char* argv[])
   eps_v                /= scaling;
   lambda                = thermal_conductivity/(rho*heat_capacity);
 
+  cout << lambda <<endl;
+  cout << Dl <<endl;
+
+
   parStopWatch w1;
   w1.start("total time");
 
@@ -528,8 +532,8 @@ int main (int argc, char* argv[])
 
   Vec tmp;
   ierr = VecGhostGetLocalForm(normal_velocity, &tmp); CHKERRXX(ierr);
-//  ierr = VecSet(tmp, V); CHKERRXX(ierr);
-  ierr = VecSet(tmp, 1.412111e-02); CHKERRXX(ierr);
+  ierr = VecSet(tmp, V); CHKERRXX(ierr);
+//  ierr = VecSet(tmp, 1.412111e-02); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(normal_velocity, &tmp); CHKERRXX(ierr);
 
   /* perturb level set */

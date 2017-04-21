@@ -68,9 +68,9 @@ double zmax =  1;
 
 using namespace std;
 
-int lmin = 4;
-int lmax = 7;
-int nb_splits = 5;
+int lmin = 8;
+int lmax = 12;
+int nb_splits = 1;
 
 int nx = 1;
 int ny = 1;
@@ -94,7 +94,7 @@ int interface_type = 0;
  * 4 - cos(r)
  * 5 - sin(2*PI*x/(xmax-xmin))*cos(2*PI*y/(ymax-ymin))
  */
-int test_number = 5;
+int test_number = 2;
 
 int px = 0;
 int py = 0;
@@ -102,11 +102,11 @@ int py = 0;
 int pz = 0;
 #endif
 
-bool save_vtk = true;
+bool save_vtk = false;
 
-double mu = 3e-5;
-//double mu = 1.1;
-double add_diagonal = 0.0;
+//double mu = 3e-5;
+double mu = 1.0;
+double add_diagonal = 1.0;
 
 BoundaryConditionType bc_itype = ROBIN;
 //BoundaryConditionType bc_itype = NEUMANN;
@@ -115,15 +115,15 @@ BoundaryConditionType bc_itype = ROBIN;
 BoundaryConditionType bc_wtype = DIRICHLET;
 //BoundaryConditionType bc_wtype = NEUMANN;
 
-double diag_add = 0;
+double diag_add = 1.0;
 
 double xc = (xmax+xmin)/2;
 double yc = (ymax+ymin)/2;
 #ifdef P4_TO_P8
 double zc = (zmax+zmin)/2;
-double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
+double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4.111;
 #else
-double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
+double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4.111;
 #endif
 
 
@@ -326,7 +326,7 @@ class ROBIN_COEFF : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return -5.0;
+    return 1.0;
 //    return 3e5*SQR((4+x+y));
   }
 } robin_coef;
@@ -848,6 +848,7 @@ int main (int argc, char* argv[])
     ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
 //    my_p4est_poisson_nodes_voronoi_t solver(&ngbd_n);
+
     my_p4est_poisson_nodes_t solver(&ngbd_n);
     solver.set_phi(phi);
     solver.set_diagonal(add_diagonal);
@@ -866,7 +867,10 @@ int main (int argc, char* argv[])
     Vec sol;
     ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);
 
-    solver.solve(sol);
+    solver.solve(sol,0,KSPBCGS,PCSOR);
+//    solver.solve(sol,0,KSPBCGS,PCHYPRE);
+
+//    w1.stop(); w1.read_duration();
 
     if(bc_itype==ROBIN || bc_wtype==ROBIN)
     {
@@ -903,7 +907,9 @@ int main (int argc, char* argv[])
     ierr = VecGetArray(err_nodes, &err_p); CHKERRXX(ierr);
 
     double err_bc = 0;
-    ls.extend_Over_Interface_TVD(phi, sol, 20, 2);
+    Vec mask = solver.get_mask();
+    ls.extend_Over_Interface_TVD(phi, mask, sol, 100, 2);
+//    ls.extend_Over_Interface_TVD(phi, sol, 100, 2);
 
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
@@ -973,10 +979,9 @@ int main (int argc, char* argv[])
 
     if(check_extrapolations)
     {
-      Vec mask = solver.get_mask();
 
-      if(bc_itype!=NOINTERFACE)
-        ls.extend_Over_Interface_TVD(phi, mask, sol, 100, 1);
+//      if(bc_itype!=NOINTERFACE)
+//        ls.extend_Over_Interface_TVD(phi, mask, sol, 20, 1);
 //        ls.extend_Over_Interface_TVD(phi, sol, 100, 1);
 
       ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);

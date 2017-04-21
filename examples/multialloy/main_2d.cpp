@@ -37,7 +37,8 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_poisson_nodes.h>
-#include <src/my_p4est_multialloy.h>
+//#include <src/my_p4est_multialloy.h>
+#include <src/my_p4est_multialloy_without_extension.h>
 //#include <src/my_p4est_multialloy_var2.h>
 #endif
 
@@ -50,8 +51,8 @@
 #undef MAX
 
 int lmin = 5;
-int lmax = 10;
-int save_every_n_iteration = 1;
+int lmax = 11;
+int save_every_n_iteration = 50;
 
 double lip = 1.5;
 
@@ -66,7 +67,7 @@ char direction = 'z';
 char direction = 'y';
 #endif
 
-double termination_length = 0.8;
+double termination_length = 0.7;
 
 /* 0 - NiCu
  * 1 - AlCu
@@ -121,9 +122,9 @@ int dt_method = 1;
 double velocity_tol = 1.e-8;
 
 double cfl_number = 0.1;
-double phi_thresh = 0.001;
+double phi_thresh = 0.000;
 double zero_negative_velocity = true;
-int num_of_iters_per_step = 6;
+int num_of_iters_per_step = 5;
 
 void set_alloy_parameters()
 {
@@ -678,10 +679,6 @@ int main (int argc, char* argv[])
   ierr = VecSet(tmp, V); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(normal_velocity, &tmp); CHKERRXX(ierr);
 
-  /* perturb level set */
-  my_p4est_level_set_t ls(ngbd);
-  ls.perturb_level_set_function(phi, EPS);
-
   /* set initial time step */
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
@@ -702,6 +699,27 @@ int main (int argc, char* argv[])
 #else
   double dt = 0.45*MIN(dx,dy)/V;
 #endif
+
+//  double *phi_p;
+//  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
+//  srand(mpi.rank());
+
+//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+//  {
+//    phi_p[n] += 0.1*dx*(double)(rand()%1000)/1000.;
+//  }
+
+//  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+//  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+
+  /* perturb level set */
+  my_p4est_level_set_t ls(ngbd);
+  ls.reinitialize_1st_order_time_2nd_order_space(phi);
+  ls.perturb_level_set_function(phi, EPS);
 
   /* initialize the solver */
   my_p4est_multialloy_t bas(ngbd);
@@ -755,6 +773,7 @@ int main (int argc, char* argv[])
 
   bool keep_going = true;
   while(keep_going)
+//  while (iteration < 20)
   {
     ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
 

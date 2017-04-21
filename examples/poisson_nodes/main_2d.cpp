@@ -65,18 +65,18 @@ double zmax =  1;
 
 using namespace std;
 
-int lmin = 3;
-int lmax = 6;
+int lmin = 9;
+int lmax = 9;
 int nb_splits = 1;
 
-int nx = 2;
-int ny = 2;
+int nx = 1;
+int ny = 1;
 int nz = 1;
 
 bool save_vtk = true;
 
-double mu = 2;
-double add_diagonal = 1.4;
+double mu = 1e-5;
+double add_diagonal = 1.0;
 
 /*
  * 0 - circle
@@ -92,15 +92,15 @@ int interface_type = 0;
  */
 int test_number = 2;
 
-BoundaryConditionType bc_itype = NEUMANN;
+BoundaryConditionType bc_itype = ROBIN;
 BoundaryConditionType bc_wtype = DIRICHLET;
 
 double diag_add = 0;
 
 #ifdef P4_TO_P8
-double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
+double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4.111;
 #else
-double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
+double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4.111;
 #endif
 
 
@@ -711,7 +711,8 @@ int main (int argc, char* argv[])
     Vec sol;
     ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);
 
-    solver.solve(sol);
+//    solver.solve(sol, 0, KSPBCGS, PCHYPRE);
+    solver.solve(sol, 0, KSPBCGS, PCSOR);
 
     if(bc_itype==ROBIN || bc_wtype==ROBIN)
     {
@@ -779,7 +780,7 @@ int main (int argc, char* argv[])
     double band = 4;
 
     if(bc_itype!=NOINTERFACE)
-      ls.extend_Over_Interface_TVD(phi, sol, 100);
+      ls.extend_Over_Interface_TVD(phi, sol, 20);
 
     ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);

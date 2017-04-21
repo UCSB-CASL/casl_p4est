@@ -57,6 +57,10 @@ class my_p4est_poisson_nodes_t
   PetscErrorCode ierr;
 
   Vec mask;
+  Vec scalling;
+  bool keep_scalling;
+
+  bool variable_mu;
 
   void preallocate_matrix();
 
@@ -118,7 +122,8 @@ public:
   void set_mu(Vec mu, Vec mu_xx = NULL, Vec mu_yy = NULL);
 #endif
 
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 
   Vec get_mask() { return mask; }
 };

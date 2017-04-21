@@ -120,6 +120,8 @@ PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central_0p0;
 PetscLogEvent log_quad_neighbor_nodes_of_node_t_dzz_central;
 PetscLogEvent log_quad_neighbor_nodes_of_node_t_dzz_central_00m;
 PetscLogEvent log_quad_neighbor_nodes_of_node_t_dzz_central_00p;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_gradient;
+PetscLogEvent log_quad_neighbor_nodes_of_node_t_laplace;
 
 // my_p4est_node_neighbors_t
 PetscLogEvent log_my_p4est_node_neighbors_t;
@@ -172,6 +174,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::matrix_setup                    ", 0, &log_my_p4est_poisson_nodes_matrix_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::rhsvec_setup                    ", 0, &log_my_p4est_poisson_nodes_rhsvec_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::solve                           ", 0, &log_my_p4est_poisson_nodes_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes::KSPSolve                        ", 0, &log_my_p4est_poisson_nodes_KSPSolve); CHKERRXX(ierr);
 
   // my_p4est_poisson_cells_t
   ierr = PetscLogEventRegister("my_p4est_poisson_cells::matrix_preallocation            ", 0, &log_my_p4est_poisson_cells_matrix_preallocation); CHKERRXX(ierr);
@@ -265,6 +268,8 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dzz_central              ", 0, &log_quad_neighbor_nodes_of_node_t_dzz_central); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dzz_central_00m          ", 0, &log_quad_neighbor_nodes_of_node_t_dzz_central_00m); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::dzz_central_00p          ", 0, &log_quad_neighbor_nodes_of_node_t_dzz_central_00p); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::gradient                 ", 0, &log_quad_neighbor_nodes_of_node_t_gradient); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("quad_neighbor_nodes_of_node_t::laplace                  ", 0, &log_quad_neighbor_nodes_of_node_t_laplace); CHKERRXX(ierr);
 
   // my_p4est_node_neighbors_t
   ierr = PetscLogEventRegister("my_p4est_node_neighbors_t::init                         ", 0, &log_my_p4est_node_neighbors_t); CHKERRXX(ierr);

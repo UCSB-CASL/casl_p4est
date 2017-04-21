@@ -25,6 +25,7 @@ class my_p4est_level_set_t {
   my_p4est_node_neighbors_t *ngbd;
 
   bool use_second_derivatives_extend_from_interface;
+  bool use_second_derivatives;
 
 #ifdef P4_TO_P8
   void compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc) const;
@@ -53,7 +54,8 @@ class my_p4est_level_set_t {
                                                 const double *pn, double *pnp1);
 public:
   my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_ )
-    : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_)
+    : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
+      use_second_derivatives(true), use_second_derivatives_extend_from_interface(true)
   {}
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {
@@ -154,6 +156,10 @@ public:
                                                               #endif
                                                                 ) const;
   void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20 , int order = 2);
+
+  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec phi_smooth, Vec q_interface, Vec q, int iterations=20 , int order = 2);
+
+  void set_use_second_derivatives(bool val) {use_second_derivatives = val;}
 };
 
 #endif // MY_P4EST_LEVELSET_H

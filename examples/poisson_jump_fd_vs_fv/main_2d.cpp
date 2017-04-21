@@ -67,9 +67,9 @@ double zmax =  1;
 
 using namespace std;
 
-int lmin = 4;
-int lmax = 4;
-int nb_splits = 6;
+int lmin = 9;
+int lmax = 9;
+int nb_splits = 1;
 
 int nx = 1;
 int ny = 1;
@@ -672,6 +672,24 @@ int main (int argc, char* argv[])
 
           if (phii_p[n] < 0) rhs_p[n] = force_m(x,y);
           else               rhs_p[n] = force_p(x,y);
+
+          double xm = x - 0.5*dxyz[0];
+          double xp = x + 0.5*dxyz[0];
+          double ym = y - 0.5*dxyz[1];
+          double yp = y + 0.5*dxyz[1];
+  #ifdef P4_TO_P8
+          double zm = z - 0.5*dxyz[2];
+          double zp = z + 0.5*dxyz[2];
+  #endif
+          double P_000 = phii_p[n];
+          double P_mm0 = phi_interp(xm, ym);
+          double P_mp0 = phi_interp(xm, yp);
+          double P_pm0 = phi_interp(xp, ym);
+          double P_pp0 = phi_interp(xp, yp);
+          double P_m00 = phi_interp(xm, y );
+          double P_p00 = phi_interp(xp, y );
+          double P_0m0 = phi_interp(x , ym);
+          double P_0p0 = phi_interp(x , yp);
 
         } else {
 

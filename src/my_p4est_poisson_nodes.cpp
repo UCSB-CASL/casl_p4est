@@ -31,6 +31,12 @@ extern PetscLogEvent log_my_p4est_poisson_nodes_solve;
 #endif
 #define bc_strength 1.0
 
+#ifdef P4_TO_P8
+#define 3_IN_D 27
+#else
+#define 3_IN_D 9
+#endif
+
 
 my_p4est_poisson_nodes_t::my_p4est_poisson_nodes_t(const my_p4est_node_neighbors_t *node_neighbors)
   : node_neighbors_(node_neighbors),
@@ -385,6 +391,8 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
    * successive solves, we will reuse the same preconditioner, otherwise we
    * have to recompute the preconditioner
    */
+//  parStopWatch w1;
+//  w1.start("matrix assembly");
   if (!is_matrix_computed)
   {
     matrix_has_nullspace = true;
@@ -404,6 +412,7 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
   } else {
     ierr = KSPSetOperators(ksp, A, A, SAME_PRECONDITIONER);  CHKERRXX(ierr);
   }
+//  w1.stop(); w1.read_duration();
 
   // set pc type
   PC pc;
@@ -447,6 +456,7 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
   // setup rhs
+//  w1.start("rhs assembly");
   if (mue_ == NULL)
   {
     if(neumann_wall_first_order)
@@ -456,6 +466,7 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
   }
   else
     setup_negative_variable_coeff_laplace_rhsvec();
+//  w1.stop(); w1.read_duration();
 
   // Solve the system
   ierr = KSPSetTolerances(ksp, 1e-16, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
@@ -470,7 +481,10 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
     // For purely neumann problems GMRES is more robust
     ierr = KSPSetType(ksp, KSPGMRES); CHKERRXX(ierr);
   }
+
+//  w1.start("solving");
   ierr = KSPSolve(ksp, rhs_, solution); CHKERRXX(ierr);
+//  w1.stop(); w1.read_duration();
   if (matrix_has_nullspace) {
     ierr = MatNullSpaceDestroy(A_null);
   }
@@ -2033,14 +2047,28 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 //        double P_ppm = phi_interp(cube.x1, cube.y1);
 
         double P_000 = phi_000;
-        double P_mm0 = phi_interp(cube.x0, cube.y0);
-        double P_mp0 = phi_interp(cube.x0, cube.y1);
-        double P_pm0 = phi_interp(cube.x1, cube.y0);
-        double P_pp0 = phi_interp(cube.x1, cube.y1);
-        double P_m00 = phi_interp(cube.x0, y_C);
-        double P_p00 = phi_interp(cube.x1, y_C);
-        double P_0m0 = phi_interp(x_C, cube.y0);
-        double P_0p0 = phi_interp(x_C, cube.y1);
+        double P_mm0 = phi_000;
+        double P_mp0 = phi_000;
+        double P_pm0 = phi_000;
+        double P_pp0 = phi_000;
+        double P_m00 = phi_000;
+        double P_p00 = phi_000;
+        double P_0m0 = phi_000;
+        double P_0p0 = phi_000;
+
+//        if (fabs(phi_000) < 2.*diag_min)
+        {
+          P_000 = phi_000;
+          P_mm0 = phi_interp(cube.x0, cube.y0);
+          P_mp0 = phi_interp(cube.x0, cube.y1);
+          P_pm0 = phi_interp(cube.x1, cube.y0);
+          P_pp0 = phi_interp(cube.x1, cube.y1);
+          P_m00 = phi_interp(cube.x0, y_C);
+          P_p00 = phi_interp(cube.x1, y_C);
+          P_0m0 = phi_interp(x_C, cube.y0);
+          P_0p0 = phi_interp(x_C, cube.y1);
+        }
+
 #endif
 
 #ifdef P4_TO_P8
@@ -2525,8 +2553,9 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           if(ABS(w_00p) > EPS) {ierr = MatSetValue(A, node_000_g, node_00p_g, w_00p, ADD_VALUES); CHKERRXX(ierr);}
 
 #else
+          mask_p[n] = -1.;
 
-          if (volume_cut_cell > 0.01*dx_min*dy_min) mask_p[n] = -1.;
+//          if (volume_cut_cell > 0.2*dx_min*dy_min) mask_p[n] = -1.;
 
           PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm];
           PetscInt node_p00_g = petsc_gloidx[qnnn.d_p00_m0==0 ? qnnn.node_p00_mm : qnnn.node_p00_pm];
@@ -2578,6 +2607,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
             double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
 
             double robin_coef_n = robin_coef_interp(xp, yp);
+//            double robin_coef_n = robin_coef_p[n];
 
             if (fabs(robin_coef_n) > 0) matrix_has_nullspace = false;
             w_000 += mu_*(robin_coef_n/(1.-robin_coef_n*phi_p[n]))*interface_area;
@@ -2815,15 +2845,28 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
 //        double P_pmm = phi_interp(cube.x1, cube.y0);
 //        double P_ppm = phi_interp(cube.x1, cube.y1);
 
-      double P_000 = phi_000;
-      double P_mm0 = phi_interp(cube.x0, cube.y0);
-      double P_mp0 = phi_interp(cube.x0, cube.y1);
-      double P_pm0 = phi_interp(cube.x1, cube.y0);
-      double P_pp0 = phi_interp(cube.x1, cube.y1);
-      double P_m00 = phi_interp(cube.x0, y_C);
-      double P_p00 = phi_interp(cube.x1, y_C);
-      double P_0m0 = phi_interp(x_C, cube.y0);
-      double P_0p0 = phi_interp(x_C, cube.y1);
+        double P_000 = phi_000;
+        double P_mm0 = phi_000;
+        double P_mp0 = phi_000;
+        double P_pm0 = phi_000;
+        double P_pp0 = phi_000;
+        double P_m00 = phi_000;
+        double P_p00 = phi_000;
+        double P_0m0 = phi_000;
+        double P_0p0 = phi_000;
+
+        if (fabs(phi_000) < 2.*diag_min)
+        {
+          P_000 = phi_000;
+          P_mm0 = phi_interp(cube.x0, cube.y0);
+          P_mp0 = phi_interp(cube.x0, cube.y1);
+          P_pm0 = phi_interp(cube.x1, cube.y0);
+          P_pp0 = phi_interp(cube.x1, cube.y1);
+          P_m00 = phi_interp(cube.x0, y_C);
+          P_p00 = phi_interp(cube.x1, y_C);
+          P_0m0 = phi_interp(x_C, cube.y0);
+          P_0p0 = phi_interp(x_C, cube.y1);
+        }
 #endif
 
 #ifdef P4_TO_P8
@@ -3284,6 +3327,7 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);
           rhs_p[n] *= volume_cut_cell;
 
+          double integral_bc = 0;
           if (bc_->interfaceType() == ROBIN)
           {
             /* find the projection of (i,j,k) onto gamma for higher order correction */
@@ -3291,10 +3335,14 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
             double yp = y_C - phi_p[n]*qnnn.dy_central(phi_p);
 
             double robin_coef_n = robin_coef_interp(xp, yp);
+//            double robin_coef_n = robin_coef_p[n];
             double beta_proj = bc_->interfaceValue(xp,yp);
 
             w_000 += mu_*(robin_coef_n/(1.-robin_coef_n*phi_p[n]))*interface_area;
             rhs_p[n] += mu_*robin_coef_n*phi_p[n]/(1.-robin_coef_n*phi_p[n]) * interface_area*beta_proj;
+
+//            integral_bc = interface_area*beta_proj;
+//            rhs_p[n] += mu_*integral_bc;
 
 //            if(robin_coef_p[n]*phi_p[n]<1)
 //            {
@@ -3314,7 +3362,6 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
 
 
           QuadValue bc_value;
-          double integral_bc = 0;
           for (short i = 0; i < P4EST_CHILDREN; ++i)
           {
             switch (i) {
@@ -3406,28 +3453,66 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
   // register for logging purpose
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 
+#ifdef P4_TO_P8
+  double eps = 1E-6*d_min*d_min*d_min;
+#else
   double eps = 1E-6*d_min*d_min;
+#endif
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *robin_coef_p = NULL;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
   ierr = VecGetArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
   ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
-
-  double *mue_p, *mue_xx_p, *mue_yy_p;
-  ierr = VecGetArray(mue_,    &mue_p   ); CHKERRXX(ierr);
-  ierr = VecGetArray(mue_xx_, &mue_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(mue_yy_, &mue_yy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
   double *phi_zz_p;
   ierr = VecGetArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
-
-  double *mue_zz_p;
-  ierr = VecGetArray(mue_zz_, &mue_zz_p); CHKERRXX(ierr);
 #endif
+
+  double *mue_p=NULL, *mue_xx_p=NULL, *mue_yy_p=NULL, *mue_zz_p=NULL;
+  if (variable_mu)
+  {
+    ierr = VecGetArray(mue_,    &mue_p   ); CHKERRXX(ierr);
+    ierr = VecGetArray(mue_xx_, &mue_xx_p); CHKERRXX(ierr);
+    ierr = VecGetArray(mue_yy_, &mue_yy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(mue_zz_, &mue_zz_p); CHKERRXX(ierr);
+#endif
+  }
+
   ierr = VecGetArray(add_,    &add_p   ); CHKERRXX(ierr);
   if (robin_coef_) {
     ierr = VecGetArray(robin_coef_, &robin_coef_p); CHKERRXX(ierr);
   }
+
+  double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
+  double mue_000, mue_p00, mue_m00, mue_0m0, mue_0p0;
+
+#ifdef P4_TO_P8
+  double phi_00m, phi_00p;
+  double mue_00m, mue_00p;
+#endif
+
+  /* Daniil: while working on solidification of alloys I came to realize
+   * that due to very irregular structure of solidification fronts (where
+   * there constantly exist nodes, which belong to one phase but the vertices
+   * of their dual cells belong to the other phase. In such cases simple dual
+   * cells consisting of 2 (6 in 3D) simplices don't capture such complex
+   * topologies. To aleviate this issue I added an option to use a more detailed
+   * dual cells consisting of 8 (48 in 3D) simplices. Clearly, it might increase
+   * the computational cost quite significantly, but oh well...
+   */
+
+  // data for refined cells
+  double xyz_cube[P4EST_DIM][3_IN_D];
+  double phi_cube[3_IN_D];
+  double val_cube[3_IN_D];
+
+  for (short k = 0; k < 3; ++k)
+    for (short j = 0; j < 3; ++j)
+      for (short i = 0; i < 3; ++i)
+      {
+        xyz[dir][k*9+j*3+i];
+      }
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
   {
@@ -3530,32 +3615,127 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 
     PetscInt node_000_g = petsc_gloidx[qnnn.node_000];
 
-    if(is_node_Wall(p4est, ni) &&
-   #ifdef P4_TO_P8
-       bc_->wallType(x_C,y_C,z_C) == DIRICHLET
-   #else
-       bc_->wallType(x_C,y_C) == DIRICHLET
-   #endif
-       )
+    if(is_node_Wall(p4est, ni))
     {
-      ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
-      if (phi_p[n]<0.) matrix_has_nullspace = false;
-      continue;
-    } else {
-      double phi_000, phi_p00, phi_m00, phi_0m0, phi_0p0;
-      double mue_000, mue_p00, mue_m00, mue_0m0, mue_0p0;
-
 #ifdef P4_TO_P8
-      double phi_00m, phi_00p;
-      double mue_00m, mue_00p;
+      if(bc_->wallType(x_C,y_C,z_C) == DIRICHLET)
+#else
+      if(bc_->wallType(x_C,y_C)     == DIRICHLET)
 #endif
+      {
+        ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
+        if (phi_p[n]<0.) matrix_has_nullspace = false;
+        continue;
+      }
 
+      // In case if you want first order neumann at walls. Why is it still a thing anyway?
+      if (neumann_wall_first_order)
+      {
+#ifdef P4_TO_P8
+        if(bc_->wallType(x_C,y_C,z_C) == NEUMANN)
+#else
+        if(bc_->wallType(x_C,y_C)     == NEUMANN)
+#endif
+        {
+          if (is_node_xpWall(p4est, ni)){
+#ifdef P4_TO_P8
+            p4est_locidx_t n_m00 = d_m00_0m == 0 ? ( d_m00_m0==0 ? node_m00_mm : node_m00_pm )
+                                                 : ( d_m00_m0==0 ? node_m00_mp : node_m00_pp );
+#else
+            p4est_locidx_t n_m00 = d_m00_m0 == 0 ? node_m00_mm : node_m00_pm;
+#endif
+            PetscInt node_m00_g  = petsc_gloidx[n_m00];
+
+            ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+
+            if (phi_p[n] < diag_min)
+              ierr = MatSetValue(A, node_000_g, node_m00_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
+
+            continue;
+          }
+
+          if (is_node_xmWall(p4est, ni)){
+#ifdef P4_TO_P8
+            p4est_locidx_t n_p00 = d_p00_0m == 0 ? ( d_p00_m0 == 0 ? node_p00_mm : node_p00_pm )
+                                                 : ( d_p00_m0 == 0 ? node_p00_mp : node_p00_pp );
+#else
+            p4est_locidx_t n_p00 = d_p00_m0 == 0 ? node_p00_mm : node_p00_pm;
+#endif
+            PetscInt node_p00_g  = petsc_gloidx[n_p00];
+
+            ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+            if (phi_p[n] < diag_min)
+              ierr = MatSetValue(A, node_000_g, node_p00_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
+
+            continue;
+          }
+
+          if (is_node_ypWall(p4est, ni)){
+#ifdef P4_TO_P8
+            p4est_locidx_t n_0m0 = d_0m0_0m == 0 ? ( d_0m0_m0 == 0 ? node_0m0_mm : node_0m0_pm )
+                                                 : ( d_0m0_m0 == 0 ? node_0m0_mp : node_0m0_pp );
+#else
+            p4est_locidx_t n_0m0 = d_0m0_m0 == 0 ? node_0m0_mm : node_0m0_pm;
+#endif
+            PetscInt node_0m0_g  = petsc_gloidx[n_0m0];
+
+            ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+            if (phi_p[n] < diag_min)
+              ierr = MatSetValue(A, node_000_g, node_0m0_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
+
+            continue;
+          }
+          if (is_node_ymWall(p4est, ni)){
+#ifdef P4_TO_P8
+            p4est_locidx_t n_0p0 = d_0p0_0m == 0 ? ( d_0p0_m0 == 0 ? node_0p0_mm : node_0p0_pm )
+                                                 : ( d_0p0_m0 == 0 ? node_0p0_mp : node_0p0_pp );
+#else
+            p4est_locidx_t n_0p0 = d_0p0_m0 == 0 ? node_0p0_mm:node_0p0_pm;
+#endif
+            PetscInt node_0p0_g  = petsc_gloidx[n_0p0];
+
+            ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+            if (phi_p[n] < diag_min)
+              ierr = MatSetValue(A, node_000_g, node_0p0_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
+
+            continue;
+          }
+#ifdef P4_TO_P8
+          if (is_node_zpWall(p4est, ni)){
+            p4est_locidx_t n_00m = d_00m_0m == 0 ? ( d_00m_m0 == 0 ? node_00m_mm : node_00m_pm )
+                                                 : ( d_00m_m0 == 0 ? node_00m_mp : node_00m_pp );
+            PetscInt node_00m_g  = petsc_gloidx[n_00m];
+
+            ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+            if (phi_p[n] < diag_min)
+              ierr = MatSetValue(A, node_000_g, node_00m_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
+
+            continue;
+          }
+
+          if (is_node_zmWall(p4est, ni)){
+            p4est_locidx_t n_00p = d_00p_0m == 0 ? ( d_00p_m0 == 0 ? node_00p_mm : node_00p_pm )
+                                                 : ( d_00p_m0 == 0 ? node_00p_mp : node_00p_pp );
+            PetscInt node_00p_g  = petsc_gloidx[n_00p];
+
+            ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+            if (phi_p[n] < diag_min)
+              ierr = MatSetValue(A, node_000_g, node_00p_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
+
+            continue;
+          }
+#endif
+        }
+      }
+    } else {
 #ifdef P4_TO_P8
       qnnn.ngbd_with_quadratic_interpolation(phi_p, phi_000, phi_m00, phi_p00, phi_0m0, phi_0p0, phi_00m, phi_00p);
-      qnnn.ngbd_with_quadratic_interpolation(mue_p, mue_000, mue_m00, mue_p00, mue_0m0, mue_0p0, mue_00m, mue_00p);
+      if (variable_mu)
+        qnnn.ngbd_with_quadratic_interpolation(mue_p, mue_000, mue_m00, mue_p00, mue_0m0, mue_0p0, mue_00m, mue_00p);
 #else
       qnnn.ngbd_with_quadratic_interpolation(phi_p, phi_000, phi_m00, phi_p00, phi_0m0, phi_0p0);
-      qnnn.ngbd_with_quadratic_interpolation(mue_p, mue_000, mue_m00, mue_p00, mue_0m0, mue_0p0);
+      if (variable_mu)
+        qnnn.ngbd_with_quadratic_interpolation(mue_p, mue_000, mue_m00, mue_p00, mue_0m0, mue_0p0);
 #endif
 
       //---------------------------------------------------------------------
@@ -3598,6 +3778,26 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
       double P_pmm = phi_interp(cube.x1, cube.y0);
       double P_ppm = phi_interp(cube.x1, cube.y1);
 #endif
+
+      // interpolate values to the dual cell
+      bool is_ngbd_crossed_neumann = false;
+      bool is_one_positive = false;
+      bool is_one_negative = false;
+
+      if (fabs(phi_000) < 2.*diag)
+      {
+        for (short p = 0; p < 3_IN_D; ++p)
+        {
+#ifdef P4_TO_P8
+          phi_cube[p] = phi_interp(xyz_cube[0][p], xyz_cube[1][p], xyz_cube[2][p]);
+#else
+          phi_cube[p] = phi_interp(xyz_cube[0][p], xyz_cube[1][p]);
+#endif
+          if (phi_cube[p] > 0) is_one_positive = true;
+          else                 is_one_negative = true;
+        }
+        is_ngbd_crossed_neumann = is_one_negative && is_one_positive;
+      }
 
 
 #ifdef P4_TO_P8
@@ -3656,9 +3856,13 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           d_m00_0m = d_m00_0p = 0;
 #endif
 
-          double mxx_000 = mue_xx_p[n];
-          double mxx_m00 = qnnn.f_m00_linear(mue_xx_p);
-          mue_m00 = mue_000*(1-theta_m00/d_m00) + mue_m00*theta_m00/d_m00 + 0.5*theta_m00*(theta_m00-d_m00)*MINMOD(mxx_m00,mxx_000);
+          if (variable_mu) {
+            double mxx_000 = mue_xx_p[n];
+            double mxx_m00 = qnnn.f_m00_linear(mue_xx_p);
+            mue_m00 = mue_000*(1-theta_m00/d_m00) + mue_m00*theta_m00/d_m00 + 0.5*theta_m00*(theta_m00-d_m00)*MINMOD(mxx_m00,mxx_000);
+          } else {
+            mue_m00 = mu_;
+          }
 
           d_m00 = theta_m00;
         }
@@ -3671,9 +3875,13 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           d_p00_0m = d_p00_0p = 0;
 #endif
 
-          double mxx_000 = mue_xx_p[n];
-          double mxx_p00 = qnnn.f_p00_linear(mue_xx_p);
-          mue_p00 = mue_000*(1-theta_p00/d_p00) + mue_p00*theta_p00/d_p00 + 0.5*theta_p00*(theta_p00-d_p00)*MINMOD(mxx_p00,mxx_000);
+          if (variable_mu) {
+            double mxx_000 = mue_xx_p[n];
+            double mxx_p00 = qnnn.f_p00_linear(mue_xx_p);
+            mue_p00 = mue_000*(1-theta_p00/d_p00) + mue_p00*theta_p00/d_p00 + 0.5*theta_p00*(theta_p00-d_p00)*MINMOD(mxx_p00,mxx_000);
+          } else {
+            mue_p00 = mu_;
+          }
 
           d_p00 = theta_p00;
         }
@@ -3686,9 +3894,13 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           d_0m0_0m = d_0m0_0p = 0;
 #endif
 
-          double myy_000 = mue_yy_p[n];
-          double myy_0m0 = qnnn.f_0m0_linear(mue_yy_p);
-          mue_0m0 = mue_000*(1-theta_0m0/d_0m0) + mue_0m0*theta_0m0/d_0m0 + 0.5*theta_0m0*(theta_0m0-d_0m0)*MINMOD(myy_0m0,myy_000);
+          if (variable_mu) {
+            double myy_000 = mue_yy_p[n];
+            double myy_0m0 = qnnn.f_0m0_linear(mue_yy_p);
+            mue_0m0 = mue_000*(1-theta_0m0/d_0m0) + mue_0m0*theta_0m0/d_0m0 + 0.5*theta_0m0*(theta_0m0-d_0m0)*MINMOD(myy_0m0,myy_000);
+          } else {
+            mue_0m0 = mu_;
+          }
 
           d_0m0 = theta_0m0;
         }
@@ -3701,9 +3913,13 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           d_0p0_0m = d_0p0_0p = 0;
 #endif
 
-          double myy_000 = mue_yy_p[n];
-          double myy_0p0 = qnnn.f_0p0_linear(mue_yy_p);
-          mue_0p0 = mue_000*(1-theta_0p0/d_0p0) + mue_0p0*theta_0p0/d_0p0 + 0.5*theta_0p0*(theta_0p0-d_0p0)*MINMOD(myy_0p0,myy_000);
+          if (variable_mu) {
+            double myy_000 = mue_yy_p[n];
+            double myy_0p0 = qnnn.f_0p0_linear(mue_yy_p);
+            mue_0p0 = mue_000*(1-theta_0p0/d_0p0) + mue_0p0*theta_0p0/d_0p0 + 0.5*theta_0p0*(theta_0p0-d_0p0)*MINMOD(myy_0p0,myy_000);
+          } else {
+            mue_0p0 = mu_;
+          }
 
           d_0p0 = theta_0p0;
         }
@@ -3714,9 +3930,13 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           if (theta_00m<eps) theta_00m = eps; if (theta_00m>d_00m) theta_00m = d_00m;
           d_00m_m0 = d_00m_p0 = d_00m_0m = d_00m_0p = 0;
 
-          double mzz_000 = mue_zz_p[n];
-          double mzz_00m = qnnn.f_00m_linear(mue_zz_p);
-          mue_00m = mue_000*(1-theta_00m/d_00m) + mue_00m*theta_00m/d_00m + 0.5*theta_00m*(theta_00m-d_00m)*MINMOD(mzz_00m,mzz_000);
+          if (variable_mu) {
+            double mzz_000 = mue_zz_p[n];
+            double mzz_00m = qnnn.f_00m_linear(mue_zz_p);
+            mue_00m = mue_000*(1-theta_00m/d_00m) + mue_00m*theta_00m/d_00m + 0.5*theta_00m*(theta_00m-d_00m)*MINMOD(mzz_00m,mzz_000);
+          } else {
+            mue_00m = mu_;
+          }
 
           d_00m = theta_00m;
         }
@@ -3726,9 +3946,13 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           if (theta_00p<eps) theta_00p = eps; if (theta_00p>d_00p) theta_00p = d_00p;
           d_00p_m0 = d_00p_p0 = d_00p_0m = d_00p_0p = 0;
 
-          double mzz_000 = mue_zz_p[n];
-          double mzz_00p = qnnn.f_00p_linear(mue_zz_p);
-          mue_00p = mue_000*(1-theta_00p/d_00p) + mue_00p*theta_00p/d_00p + 0.5*theta_00p*(theta_00p-d_00p)*MINMOD(mzz_00p,mzz_000);
+          if (variable_mu) {
+            double mzz_000 = mue_zz_p[n];
+            double mzz_00p = qnnn.f_00p_linear(mue_zz_p);
+            mue_00p = mue_000*(1-theta_00p/d_00p) + mue_00p*theta_00p/d_00p + 0.5*theta_00p*(theta_00p-d_00p)*MINMOD(mzz_00p,mzz_000);
+          } else {
+            mue_00p = mu_;
+          }
 
           d_00p = theta_00p;
         }
@@ -3767,6 +3991,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         //---------------------------------------------------------------------
         double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0, w_00m=0, w_00p=0;
 
+        // if node is at wall, what's below will apply Neumann BC
         if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
         else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
         else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
@@ -3791,64 +4016,130 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         else if(is_node_zmWall(p4est, ni)) w_00p += -1.0/(d_00p*d_00p);
         else                               w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
 
-        if(!is_interface_m00) {
-          w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-          w_m00_mp = 0.5*(mue_000 + mue_p[node_m00_mp])*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-          w_m00_pm = 0.5*(mue_000 + mue_p[node_m00_pm])*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-          w_m00_pp = 0.5*(mue_000 + mue_p[node_m00_pp])*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-          w_m00 = w_m00_mm + w_m00_mp + w_m00_pm + w_m00_pp;
-        } else {
-          w_m00 *= 0.5*(mue_000 + mue_m00);
-        }
+        if (variable_mu) {
 
-        if(!is_interface_p00) {
-          w_p00_mm = 0.5*(mue_000 + mue_p[node_p00_mm])*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-          w_p00_mp = 0.5*(mue_000 + mue_p[node_p00_mp])*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-          w_p00_pm = 0.5*(mue_000 + mue_p[node_p00_pm])*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-          w_p00_pp = 0.5*(mue_000 + mue_p[node_p00_pp])*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-          w_p00 = w_p00_mm + w_p00_mp + w_p00_pm + w_p00_pp;
-        } else {
-          w_p00 *= 0.5*(mue_000 + mue_p00);
-        }
+          if(!is_interface_m00) {
+            w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+            w_m00_mp = 0.5*(mue_000 + mue_p[node_m00_mp])*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+            w_m00_pm = 0.5*(mue_000 + mue_p[node_m00_pm])*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+            w_m00_pp = 0.5*(mue_000 + mue_p[node_m00_pp])*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+            w_m00 = w_m00_mm + w_m00_mp + w_m00_pm + w_m00_pp;
+          } else {
+            w_m00 *= 0.5*(mue_000 + mue_m00);
+          }
 
-        if(!is_interface_0m0) {
-          w_0m0_mm = 0.5*(mue_000 + mue_p[node_0m0_mm])*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-          w_0m0_mp = 0.5*(mue_000 + mue_p[node_0m0_mp])*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-          w_0m0_pm = 0.5*(mue_000 + mue_p[node_0m0_pm])*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-          w_0m0_pp = 0.5*(mue_000 + mue_p[node_0m0_pp])*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-          w_0m0 = w_0m0_mm + w_0m0_mp + w_0m0_pm + w_0m0_pp;
-        } else {
-          w_0m0 *= 0.5*(mue_000 + mue_0m0);
-        }
+          if(!is_interface_p00) {
+            w_p00_mm = 0.5*(mue_000 + mue_p[node_p00_mm])*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+            w_p00_mp = 0.5*(mue_000 + mue_p[node_p00_mp])*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+            w_p00_pm = 0.5*(mue_000 + mue_p[node_p00_pm])*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+            w_p00_pp = 0.5*(mue_000 + mue_p[node_p00_pp])*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+            w_p00 = w_p00_mm + w_p00_mp + w_p00_pm + w_p00_pp;
+          } else {
+            w_p00 *= 0.5*(mue_000 + mue_p00);
+          }
 
-        if(!is_interface_0p0) {
-          w_0p0_mm = 0.5*(mue_000 + mue_p[node_0p0_mm])*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-          w_0p0_mp = 0.5*(mue_000 + mue_p[node_0p0_mp])*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-          w_0p0_pm = 0.5*(mue_000 + mue_p[node_0p0_pm])*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-          w_0p0_pp = 0.5*(mue_000 + mue_p[node_0p0_pp])*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-          w_0p0 = w_0p0_mm + w_0p0_mp + w_0p0_pm + w_0p0_pp;
-        } else {
-          w_0p0 *= 0.5*(mue_000 + mue_0p0);
-        }
+          if(!is_interface_0m0) {
+            w_0m0_mm = 0.5*(mue_000 + mue_p[node_0m0_mm])*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+            w_0m0_mp = 0.5*(mue_000 + mue_p[node_0m0_mp])*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+            w_0m0_pm = 0.5*(mue_000 + mue_p[node_0m0_pm])*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+            w_0m0_pp = 0.5*(mue_000 + mue_p[node_0m0_pp])*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+            w_0m0 = w_0m0_mm + w_0m0_mp + w_0m0_pm + w_0m0_pp;
+          } else {
+            w_0m0 *= 0.5*(mue_000 + mue_0m0);
+          }
 
-        if(!is_interface_00m) {
-          w_00m_mm = 0.5*(mue_000 + mue_p[node_00m_mm])*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-          w_00m_mp = 0.5*(mue_000 + mue_p[node_00m_mp])*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-          w_00m_pm = 0.5*(mue_000 + mue_p[node_00m_pm])*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-          w_00m_pp = 0.5*(mue_000 + mue_p[node_00m_pp])*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-          w_00m = w_00m_mm + w_00m_mp + w_00m_pm + w_00m_pp;
-        } else {
-          w_00m *= 0.5*(mue_000 + mue_00m);
-        }
+          if(!is_interface_0p0) {
+            w_0p0_mm = 0.5*(mue_000 + mue_p[node_0p0_mm])*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+            w_0p0_mp = 0.5*(mue_000 + mue_p[node_0p0_mp])*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+            w_0p0_pm = 0.5*(mue_000 + mue_p[node_0p0_pm])*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+            w_0p0_pp = 0.5*(mue_000 + mue_p[node_0p0_pp])*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+            w_0p0 = w_0p0_mm + w_0p0_mp + w_0p0_pm + w_0p0_pp;
+          } else {
+            w_0p0 *= 0.5*(mue_000 + mue_0p0);
+          }
 
-        if(!is_interface_00p) {
-          w_00p_mm = 0.5*(mue_000 + mue_p[node_00p_mm])*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-          w_00p_mp = 0.5*(mue_000 + mue_p[node_00p_mp])*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-          w_00p_pm = 0.5*(mue_000 + mue_p[node_00p_pm])*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-          w_00p_pp = 0.5*(mue_000 + mue_p[node_00p_pp])*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-          w_00p = w_00p_mm + w_00p_mp + w_00p_pm + w_00p_pp;
+          if(!is_interface_00m) {
+            w_00m_mm = 0.5*(mue_000 + mue_p[node_00m_mm])*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+            w_00m_mp = 0.5*(mue_000 + mue_p[node_00m_mp])*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+            w_00m_pm = 0.5*(mue_000 + mue_p[node_00m_pm])*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+            w_00m_pp = 0.5*(mue_000 + mue_p[node_00m_pp])*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+            w_00m = w_00m_mm + w_00m_mp + w_00m_pm + w_00m_pp;
+          } else {
+            w_00m *= 0.5*(mue_000 + mue_00m);
+          }
+
+          if(!is_interface_00p) {
+            w_00p_mm = 0.5*(mue_000 + mue_p[node_00p_mm])*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+            w_00p_mp = 0.5*(mue_000 + mue_p[node_00p_mp])*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+            w_00p_pm = 0.5*(mue_000 + mue_p[node_00p_pm])*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+            w_00p_pp = 0.5*(mue_000 + mue_p[node_00p_pp])*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+            w_00p = w_00p_mm + w_00p_mp + w_00p_pm + w_00p_pp;
+          } else {
+            w_00p *= 0.5*(mue_000 + mue_00p);
+          }
+
         } else {
-          w_00p *= 0.5*(mue_000 + mue_00p);
+
+          if(!is_interface_m00) {
+            w_m00_mm = mu_*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+            w_m00_mp = mu_*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+            w_m00_pm = mu_*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+            w_m00_pp = mu_*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+            w_m00 = w_m00_mm + w_m00_mp + w_m00_pm + w_m00_pp;
+          } else {
+            w_m00 *= mu_;
+          }
+
+          if(!is_interface_p00) {
+            w_p00_mm = mu_*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+            w_p00_mp = mu_*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+            w_p00_pm = mu_*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+            w_p00_pp = mu_*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+            w_p00 = w_p00_mm + w_p00_mp + w_p00_pm + w_p00_pp;
+          } else {
+            w_p00 *= mu_;
+          }
+
+          if(!is_interface_0m0) {
+            w_0m0_mm = mu_*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+            w_0m0_mp = mu_*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+            w_0m0_pm = mu_*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+            w_0m0_pp = mu_*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+            w_0m0 = w_0m0_mm + w_0m0_mp + w_0m0_pm + w_0m0_pp;
+          } else {
+            w_0m0 *= mu_;
+          }
+
+          if(!is_interface_0p0) {
+            w_0p0_mm = mu_*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+            w_0p0_mp = mu_*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+            w_0p0_pm = mu_*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+            w_0p0_pp = mu_*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+            w_0p0 = w_0p0_mm + w_0p0_mp + w_0p0_pm + w_0p0_pp;
+          } else {
+            w_0p0 *= mu_;
+          }
+
+          if(!is_interface_00m) {
+            w_00m_mm = mu_*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+            w_00m_mp = mu_*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+            w_00m_pm = mu_*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+            w_00m_pp = mu_*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+            w_00m = w_00m_mm + w_00m_mp + w_00m_pm + w_00m_pp;
+          } else {
+            w_00m *= mu_;
+          }
+
+          if(!is_interface_00p) {
+            w_00p_mm = mu_*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+            w_00p_mp = mu_*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+            w_00p_pm = mu_*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+            w_00p_pp = mu_*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+            w_00p = w_00p_mm + w_00p_mp + w_00p_pm + w_00p_pp;
+          } else {
+            w_00p *= mu_;
+          }
+
         }
 #else
         //---------------------------------------------------------------------
@@ -3863,6 +4154,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         //---------------------------------------------------------------------
         double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
 
+        // if node is at wall, what's below will apply Neumann BC
         if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
         else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
         else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
@@ -3882,36 +4174,74 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         //---------------------------------------------------------------------
         // addition to diagonal elements
         //---------------------------------------------------------------------
-        if(!is_interface_m00) {
-          w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0/(d_m00_m0+d_m00_p0);
-          w_m00_pm = 0.5*(mue_000 + mue_p[node_m00_pm])*w_m00*d_m00_m0/(d_m00_m0+d_m00_p0);
-          w_m00 = w_m00_mm + w_m00_pm;
-        } else {
-          w_m00 *= 0.5*(mue_000 + mue_m00);
-        }
+        if (variable_mu) {
 
-        if(!is_interface_p00) {
-          w_p00_mm = 0.5*(mue_000 + mue_p[node_p00_mm])*w_p00*d_p00_p0/(d_p00_m0+d_p00_p0);
-          w_p00_pm = 0.5*(mue_000 + mue_p[node_p00_pm])*w_p00*d_p00_m0/(d_p00_m0+d_p00_p0);
-          w_p00    = w_p00_mm + w_p00_pm;
-        } else {
-          w_p00 *= 0.5*(mue_000 + mue_p00);
-        }
+          if(!is_interface_m00) {
+            w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0/(d_m00_m0+d_m00_p0);
+            w_m00_pm = 0.5*(mue_000 + mue_p[node_m00_pm])*w_m00*d_m00_m0/(d_m00_m0+d_m00_p0);
+            w_m00 = w_m00_mm + w_m00_pm;
+          } else {
+            w_m00 *= 0.5*(mue_000 + mue_m00);
+          }
 
-        if(!is_interface_0m0) {
-          w_0m0_mm = 0.5*(mue_000 + mue_p[node_0m0_mm])*w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0);
-          w_0m0_pm = 0.5*(mue_000 + mue_p[node_0m0_pm])*w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0);
-          w_0m0 = w_0m0_mm + w_0m0_pm;
-        } else {
-          w_0m0 *= 0.5*(mue_000 + mue_0m0);
-        }
+          if(!is_interface_p00) {
+            w_p00_mm = 0.5*(mue_000 + mue_p[node_p00_mm])*w_p00*d_p00_p0/(d_p00_m0+d_p00_p0);
+            w_p00_pm = 0.5*(mue_000 + mue_p[node_p00_pm])*w_p00*d_p00_m0/(d_p00_m0+d_p00_p0);
+            w_p00    = w_p00_mm + w_p00_pm;
+          } else {
+            w_p00 *= 0.5*(mue_000 + mue_p00);
+          }
 
-        if(!is_interface_0p0) {
-          w_0p0_mm = 0.5*(mue_000 + mue_p[node_0p0_mm])*w_0p0*d_0p0_p0/(d_0p0_m0+d_0p0_p0);
-          w_0p0_pm = 0.5*(mue_000 + mue_p[node_0p0_pm])*w_0p0*d_0p0_m0/(d_0p0_m0+d_0p0_p0);
-          w_0p0 = w_0p0_mm + w_0p0_pm;
+          if(!is_interface_0m0) {
+            w_0m0_mm = 0.5*(mue_000 + mue_p[node_0m0_mm])*w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0);
+            w_0m0_pm = 0.5*(mue_000 + mue_p[node_0m0_pm])*w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0);
+            w_0m0 = w_0m0_mm + w_0m0_pm;
+          } else {
+            w_0m0 *= 0.5*(mue_000 + mue_0m0);
+          }
+
+          if(!is_interface_0p0) {
+            w_0p0_mm = 0.5*(mue_000 + mue_p[node_0p0_mm])*w_0p0*d_0p0_p0/(d_0p0_m0+d_0p0_p0);
+            w_0p0_pm = 0.5*(mue_000 + mue_p[node_0p0_pm])*w_0p0*d_0p0_m0/(d_0p0_m0+d_0p0_p0);
+            w_0p0 = w_0p0_mm + w_0p0_pm;
+          } else {
+            w_0p0 *= 0.5*(mue_000 + mue_0p0);
+          }
+
         } else {
-          w_0p0 *= 0.5*(mue_000 + mue_0p0);
+
+          if(!is_interface_m00) {
+            w_m00_mm = mu_*w_m00*d_m00_p0/(d_m00_m0+d_m00_p0);
+            w_m00_pm = mu_*w_m00*d_m00_m0/(d_m00_m0+d_m00_p0);
+            w_m00 = w_m00_mm + w_m00_pm;
+          } else {
+            w_m00 *= mu_;
+          }
+
+          if(!is_interface_p00) {
+            w_p00_mm = mu_*w_p00*d_p00_p0/(d_p00_m0+d_p00_p0);
+            w_p00_pm = mu_*w_p00*d_p00_m0/(d_p00_m0+d_p00_p0);
+            w_p00    = w_p00_mm + w_p00_pm;
+          } else {
+            w_p00 *= mu_;
+          }
+
+          if(!is_interface_0m0) {
+            w_0m0_mm = mu_*w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0);
+            w_0m0_pm = mu_*w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0);
+            w_0m0 = w_0m0_mm + w_0m0_pm;
+          } else {
+            w_0m0 *= mu_;
+          }
+
+          if(!is_interface_0p0) {
+            w_0p0_mm = mu_*w_0p0*d_0p0_p0/(d_0p0_m0+d_0p0_p0);
+            w_0p0_pm = mu_*w_0p0*d_0p0_m0/(d_0p0_m0+d_0p0_p0);
+            w_0p0 = w_0p0_mm + w_0p0_pm;
+          } else {
+            w_0p0 *= mu_;
+          }
+
         }
 #endif
 
@@ -3929,6 +4259,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 #ifdef P4_TO_P8
         w_00m /= w_000; w_00p /= w_000;
 #endif
+        if (keep_scalling) scalling_p[n] = w_000;
 
         //---------------------------------------------------------------------
         // add coefficients in the matrix
@@ -3940,53 +4271,53 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         ierr = MatSetValue(A, node_000_g, node_000_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
         if(!is_interface_m00) {
           // FIXME: chaneg the direct comparison to a tolerance
-          if (w_m00_mm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_m00_mm], w_m00_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_m00_pm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_m00_pm], w_m00_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_m00_mm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_m00_mm], w_m00_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_m00_pm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_m00_pm], w_m00_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #ifdef P4_TO_P8
-          if (w_m00_mp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_m00_mp], w_m00_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_m00_pp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_m00_pp], w_m00_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_m00_mp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_m00_mp], w_m00_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_m00_pp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_m00_pp], w_m00_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #endif
         }
 
         if(!is_interface_p00) {
-          if (w_p00_mm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_p00_mm], w_p00_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_p00_pm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_p00_pm], w_p00_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_p00_mm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_p00_mm], w_p00_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_p00_pm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_p00_pm], w_p00_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #ifdef P4_TO_P8
-          if (w_p00_mp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_p00_mp], w_p00_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_p00_pp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_p00_pp], w_p00_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_p00_mp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_p00_mp], w_p00_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_p00_pp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_p00_pp], w_p00_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #endif
         }
 
         if(!is_interface_0m0) {
-          if (w_0m0_mm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0m0_mm], w_0m0_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_0m0_pm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0m0_pm], w_0m0_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_0m0_mm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0m0_mm], w_0m0_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_0m0_pm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0m0_pm], w_0m0_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #ifdef P4_TO_P8
-          if (w_0m0_mp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0m0_mp], w_0m0_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_0m0_pp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0m0_pp], w_0m0_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_0m0_mp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0m0_mp], w_0m0_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_0m0_pp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0m0_pp], w_0m0_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #endif
         }
 
         if(!is_interface_0p0) {
-          if (w_0p0_mm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0p0_mm], w_0p0_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_0p0_pm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0p0_pm], w_0p0_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_0p0_mm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0p0_mm], w_0p0_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_0p0_pm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0p0_pm], w_0p0_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #ifdef P4_TO_P8
-          if (w_0p0_mp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0p0_mp], w_0p0_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_0p0_pp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0p0_pp], w_0p0_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_0p0_mp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0p0_mp], w_0p0_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_0p0_pp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0p0_pp], w_0p0_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #endif
         }
 #ifdef P4_TO_P8
         if(!is_interface_00m) {
-          if (w_00m_mm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00m_mm], w_00m_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_00m_pm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00m_pm], w_00m_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_00m_mp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00m_mp], w_00m_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_00m_pp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00m_pp], w_00m_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_00m_mm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00m_mm], w_00m_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_00m_pm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00m_pm], w_00m_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_00m_mp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00m_mp], w_00m_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_00m_pp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00m_pp], w_00m_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
         }
 
         if(!is_interface_00p) {
-          if (w_00p_mm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00p_mm], w_00p_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_00p_pm != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00p_pm], w_00p_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_00p_mp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00p_mp], w_00p_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-          if (w_00p_pp != 0) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00p_pp], w_00p_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_00p_mm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00p_mm], w_00p_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_00p_pm) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00p_pm], w_00p_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_00p_mp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00p_mp], w_00p_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_00p_pp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00p_pp], w_00p_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
         }
 #endif
 
@@ -4014,33 +4345,82 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         cube.z0 = z_C-0.5*dz_min;
         cube.z1 = z_C+0.5*dz_min;
 #endif
+
+        double volume_cut_cell = 0.;
+        double interface_area  = 0.;
+
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
                            P_pmm, P_pmp, P_ppm, P_ppp);
-        double volume_cut_cell = cube.volume_In_Negative_Domain(phi_cube);
-        double interface_area  = cube.interface_Area_In_Cell(phi_cube);
+
+        if (use_refined_cube)
+        {
+          for (short i = 0; i < P4EST_CHILDREN; ++i)
+          {
+            switch (i) {
+              case 0: phi_cube.val00 = P_mm0; phi_cube.val01 = P_m00; phi_cube.val10 = P_0m0; phi_cube.val11 = P_000;
+                       break;
+              case 1: phi_cube.val00 = P_mp0; phi_cube.val01 = P_0p0; phi_cube.val10 = P_m00; phi_cube.val11 = P_000; break;
+              case 2: phi_cube.val00 = P_pm0; phi_cube.val01 = P_0m0; phi_cube.val10 = P_p00; phi_cube.val11 = P_000; break;
+              case 3: phi_cube.val00 = P_pp0; phi_cube.val01 = P_p00; phi_cube.val10 = P_0p0; phi_cube.val11 = P_000; break;
+            }
+
+            switch (i) {
+              case 0: case 2: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dx_min; cube.y1 = 0.5*dy_min; break;
+              case 1: case 3: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dy_min; cube.y1 = 0.5*dx_min; break;
+            }
+
+            volume_cut_cell += cube.area_In_Negative_Domain(phi_cube);
+            interface_area  += cube.interface_Length_In_Cell(phi_cube);
+          }
+        } else {
+          volume_cut_cell = cube.volume_In_Negative_Domain(phi_cube);
+          interface_area  = cube.interface_Area_In_Cell(phi_cube);
+        }
 #else
         QuadValue phi_cube(P_mmm, P_mpm, P_pmm, P_ppm);
-        double volume_cut_cell = cube.area_In_Negative_Domain(phi_cube);
-        double interface_area  = cube.interface_Length_In_Cell(phi_cube);
+
+        if (use_refined_cube)
+        {
+          for (short i = 0; i < P4EST_CHILDREN; ++i)
+          {
+            switch (i) {
+              case 0: phi_cube.val00 = P_mmm; phi_cube.val01 = P_m0m; phi_cube.val10 = P_0mm; phi_cube.val11 = P_00m; break;
+              case 1: phi_cube.val00 = P_mpm; phi_cube.val01 = P_0pm; phi_cube.val10 = P_m0m; phi_cube.val11 = P_00m; break;
+              case 2: phi_cube.val00 = P_pmm; phi_cube.val01 = P_0mm; phi_cube.val10 = P_p0m; phi_cube.val11 = P_00m; break;
+              case 3: phi_cube.val00 = P_ppm; phi_cube.val01 = P_p0m; phi_cube.val10 = P_0pm; phi_cube.val11 = P_00m; break;
+            }
+
+            switch (i) {
+              case 0: case 2: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dx_min; cube.y1 = 0.5*dy_min; break;
+              case 1: case 3: cube.x0 = 0.; cube.y0 = 0.; cube.x1 = 0.5*dy_min; cube.y1 = 0.5*dx_min; break;
+            }
+
+            volume_cut_cell += cube.area_In_Negative_Domain(phi_cube);
+            interface_area  += cube.interface_Length_In_Cell(phi_cube);
+          }
+        } else {
+          volume_cut_cell = cube.area_In_Negative_Domain(phi_cube);
+          interface_area  = cube.interface_Length_In_Cell(phi_cube);
+        }
 #endif
 
         if (volume_cut_cell>eps*eps)
         {
+
 #ifdef P4_TO_P8
-          p4est_locidx_t quad_mmm_idx, quad_ppp_idx;
-          p4est_topidx_t tree_mmm_idx, tree_ppp_idx;
-
-          node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx);
-
-          PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpp]];
-          PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmp]];
-          PetscInt node_00m_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_ppm]];
-
-          PetscInt node_p00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_pmm]];
-          PetscInt node_0p0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mpm]];
-          PetscInt node_00p_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mmp]];
+          PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? (qnnn.d_m00_0m==0 ? qnnn.node_m00_mm : qnnn.node_m00_mp)
+                                                              : (qnnn.d_m00_0m==0 ? qnnn.node_m00_pm : qnnn.node_m00_pp) ];
+          PetscInt node_p00_g = petsc_gloidx[qnnn.d_p00_m0==0 ? (qnnn.d_p00_0m==0 ? qnnn.node_p00_mm : qnnn.node_p00_mp)
+                                                              : (qnnn.d_p00_0m==0 ? qnnn.node_p00_pm : qnnn.node_p00_pp) ];
+          PetscInt node_0m0_g = petsc_gloidx[qnnn.d_0m0_m0==0 ? (qnnn.d_0m0_0m==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_mp)
+                                                              : (qnnn.d_0m0_0m==0 ? qnnn.node_0m0_pm : qnnn.node_0m0_pp) ];
+          PetscInt node_0p0_g = petsc_gloidx[qnnn.d_0p0_m0==0 ? (qnnn.d_0p0_0m==0 ? qnnn.node_0p0_mm : qnnn.node_0p0_mp)
+                                                              : (qnnn.d_0p0_0m==0 ? qnnn.node_0p0_pm : qnnn.node_0p0_pp) ];
+          PetscInt node_00m_g = petsc_gloidx[qnnn.d_00m_m0==0 ? (qnnn.d_00m_0m==0 ? qnnn.node_00m_mm : qnnn.node_00m_mp)
+                                                              : (qnnn.d_00m_0m==0 ? qnnn.node_00m_pm : qnnn.node_00m_pp) ];
+          PetscInt node_00p_g = petsc_gloidx[qnnn.d_00p_m0==0 ? (qnnn.d_00p_0m==0 ? qnnn.node_00p_mm : qnnn.node_00p_mp)
+                                                              : (qnnn.d_00p_0m==0 ? qnnn.node_00p_pm : qnnn.node_00p_pp) ];
 
           Cube2 c2;
           QuadValue qv;
@@ -4068,80 +4448,87 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
           qv.val00 = P_mmp;    qv.val01 = P_mpp;    qv.val10 = P_pmp;    qv.val11 = P_ppp;
           double s_00p = c2.area_In_Negative_Domain(qv);
+#else
+          PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm];
+          PetscInt node_p00_g = petsc_gloidx[qnnn.d_p00_m0==0 ? qnnn.node_p00_mm : qnnn.node_p00_pm];
+          PetscInt node_0m0_g = petsc_gloidx[qnnn.d_0m0_m0==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_pm];
+          PetscInt node_0p0_g = petsc_gloidx[qnnn.d_0p0_m0==0 ? qnnn.node_0p0_mm : qnnn.node_0p0_pm];
 
-          double w_m00 = -mue_m00 * s_m00/dx_min;
-          double w_p00 = -mue_p00 * s_p00/dx_min;
-          double w_0m0 = -mue_0m0 * s_0m0/dy_min;
-          double w_0p0 = -mue_0p0 * s_0p0/dy_min;
-          double w_00m = -mue_00m * s_00m/dz_min;
-          double w_00p = -mue_00p * s_00p/dz_min;
+//          double fxx,fyy;
+//          fxx = phi_xx_p[n];
+//          fyy = phi_yy_p[n];
 
-          double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
-          if (bc_->interfaceType() == ROBIN)
+          if (use_refined_cube)
           {
-            if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
-            else                           w_000 += mue_000*robin_coef_p[n]*interface_area;
+            s_m00 = 0.5 * dy_min * (fraction_Interval_Covered_By_Irregular_Domain(P_m0m, P_mmm, dx_min, dy_min) +
+                                    fraction_Interval_Covered_By_Irregular_Domain(P_m0m, P_mpm, dx_min, dy_min));
+
+            s_p00 = 0.5 * dy_min * (fraction_Interval_Covered_By_Irregular_Domain(P_p0m, P_pmm, dx_min, dy_min) +
+                                    fraction_Interval_Covered_By_Irregular_Domain(P_p0m, P_ppm, dx_min, dy_min));
+
+            s_0m0 = 0.5 * dx_min * (fraction_Interval_Covered_By_Irregular_Domain(P_0mm, P_mmm, dx_min, dy_min) +
+                                    fraction_Interval_Covered_By_Irregular_Domain(P_0mm, P_pmm, dx_min, dy_min));
+
+            s_0p0 = 0.5 * dx_min * (fraction_Interval_Covered_By_Irregular_Domain(P_0pm, P_mpm, dx_min, dy_min) +
+                                    fraction_Interval_Covered_By_Irregular_Domain(P_0pm, P_ppm, dx_min, dy_min));
+          } else {
+            // for consistency let's do linear
+            s_0m0 = dx_min * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_pmm, dx_min, dy_min);
+            s_0p0 = dx_min * fraction_Interval_Covered_By_Irregular_Domain(P_mpm, P_ppm, dx_min, dy_min);
+            s_m00 = dy_min * fraction_Interval_Covered_By_Irregular_Domain(P_mmm, P_mpm, dx_min, dy_min);
+            s_p00 = dy_min * fraction_Interval_Covered_By_Irregular_Domain(P_pmm, P_ppm, dx_min, dy_min);
+
+//            s_0m0 = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx_min);
+//            s_0p0 = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx_min);
+//            s_m00 = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy_min);
+//            s_p00 = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy_min);
           }
 
-          //---------------------------------------------------------------------
-          // diag scaling
-          //---------------------------------------------------------------------
-          w_m00 /= w_000; w_p00 /= w_000;
-          w_0m0 /= w_000; w_0p0 /= w_000;
-          w_00m /= w_000; w_00p /= w_000;
+#endif
 
-          ierr = MatSetValue(A, node_000_g, node_000_g, 1.0,   ADD_VALUES); CHKERRXX(ierr);
-          if(ABS(w_m00) > EPS) {ierr = MatSetValue(A, node_000_g, node_m00_g, w_m00, ADD_VALUES); CHKERRXX(ierr);}
-          if(ABS(w_p00) > EPS) {ierr = MatSetValue(A, node_000_g, node_p00_g, w_p00, ADD_VALUES); CHKERRXX(ierr);}
-          if(ABS(w_0m0) > EPS) {ierr = MatSetValue(A, node_000_g, node_0m0_g, w_0m0, ADD_VALUES); CHKERRXX(ierr);}
-          if(ABS(w_0p0) > EPS) {ierr = MatSetValue(A, node_000_g, node_0p0_g, w_0p0, ADD_VALUES); CHKERRXX(ierr);}
-          if(ABS(w_00m) > EPS) {ierr = MatSetValue(A, node_000_g, node_00m_g, w_00m, ADD_VALUES); CHKERRXX(ierr);}
-          if(ABS(w_00p) > EPS) {ierr = MatSetValue(A, node_000_g, node_00p_g, w_00p, ADD_VALUES); CHKERRXX(ierr);}
-#else
-          p4est_locidx_t quad_mmm_idx, quad_ppm_idx;
-          p4est_topidx_t tree_mmm_idx, tree_ppm_idx;
-
-          node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, quad_mmm_idx, tree_mmm_idx);
-          node_neighbors_->find_neighbor_cell_of_node(n,  1,  1, quad_ppm_idx, tree_ppm_idx);
-
-          PetscInt node_m00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm]];
-          PetscInt node_0m0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm]];
-          PetscInt node_p00_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmm]];
-          PetscInt node_0p0_g = petsc_gloidx[nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpm]];
-
-          double fxx,fyy;
-          fxx = phi_xx_p[n];
-          fyy = phi_yy_p[n];
-
-          double s_0m0 = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_pmm, fxx, fxx, dx_min);
-          double s_0p0 = dx_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mpm, P_ppm, fxx, fxx, dx_min);
-          double s_m00 = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy_min);
-          double s_p00 = dy_min * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy_min);
+          /* the code above should return:
+           * volume_cut_cell
+           * interface_area
+           * s_m00, s_p00, ...
+           */
 
           double w_m00 = -mue_m00 * s_m00/dx_min;
           double w_p00 = -mue_p00 * s_p00/dx_min;
           double w_0p0 = -mue_0m0 * s_0p0/dy_min;
           double w_0m0 = -mue_0p0 * s_0m0/dy_min;
+#ifdef P4_TO_P8
+          double w_00m = -mue_00m * s_00m/dz_min;
+          double w_00p = -mue_00p * s_00p/dz_min;
+#endif
 
-          double w_000 = add_p[n]*volume_cut_cell-(w_m00+w_p00+w_0m0+w_0p0);          
+#ifdef P4_TO_P8
+          double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
+#else
+          double w_000 = add_p[n]*volume_cut_cell - (w_m00 + w_p00 + w_0m0 + w_0p0);
+#endif
           if (bc_->interfaceType() == ROBIN)
           {
-            if (robin_coef_p[n] > 0) matrix_has_nullspace = false;
-            if(robin_coef_p[n]*phi_p[n]<1) w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
-            else                           w_000 += mue_000*robin_coef_p[n]*interface_area;
+            if (fabs(robin_coef_p[n]) > 0) matrix_has_nullspace = false;
+            if (robin_coef_p[n]*phi_p[n] < 1) w_000 += mue_000*(robin_coef_p[n]/(1-robin_coef_p[n]*phi_p[n]))*interface_area;
+            else                              w_000 += mue_000*robin_coef_p[n]*interface_area;
           }
 
           w_m00 /= w_000; w_p00 /= w_000;
           w_0m0 /= w_000; w_0p0 /= w_000;
+#ifdef P4_TO_P8
+          w_00m /= w_000; w_00p /= w_000;
+#endif
 
           ierr = MatSetValue(A, node_000_g, node_000_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
           if (ABS(w_m00) > EPS) {ierr = MatSetValue(A, node_000_g, node_m00_g, w_m00,  ADD_VALUES); CHKERRXX(ierr);}
           if (ABS(w_p00) > EPS) {ierr = MatSetValue(A, node_000_g, node_p00_g, w_p00,  ADD_VALUES); CHKERRXX(ierr);}
           if (ABS(w_0m0) > EPS) {ierr = MatSetValue(A, node_000_g, node_0m0_g, w_0m0,  ADD_VALUES); CHKERRXX(ierr);}
           if (ABS(w_0p0) > EPS) {ierr = MatSetValue(A, node_000_g, node_0p0_g, w_0p0,  ADD_VALUES); CHKERRXX(ierr);}
-
+#ifdef P4_TO_P8
+          if (ABS(w_00m) > EPS) {ierr = MatSetValue(A, node_000_g, node_00m_g, w_00m, ADD_VALUES); CHKERRXX(ierr);}
+          if (ABS(w_00p) > EPS) {ierr = MatSetValue(A, node_000_g, node_00p_g, w_00p, ADD_VALUES); CHKERRXX(ierr);}
 #endif
+
 
           if(add_p[n] > 0) matrix_has_nullspace = false;
 
@@ -4154,20 +4541,24 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 
   // Assemble the matrix
   ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
-  ierr = MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+  ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
 
   // restore pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
-
-  ierr = VecRestoreArray(mue_,    &mue_p   ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(mue_xx_, &mue_xx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(mue_yy_, &mue_yy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
   ierr = VecRestoreArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(mue_zz_, &mue_zz_p); CHKERRXX(ierr);
 #endif
+
+  if (variable_mu) {
+    ierr = VecRestoreArray(mue_,    &mue_p   ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mue_xx_, &mue_xx_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mue_yy_, &mue_yy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(mue_zz_, &mue_zz_p); CHKERRXX(ierr);
+#endif
+  }
   ierr = VecRestoreArray(add_,    &add_p   ); CHKERRXX(ierr);
   if (robin_coef_) {
     ierr = VecRestoreArray(robin_coef_, &robin_coef_p); CHKERRXX(ierr);
@@ -4199,7 +4590,11 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
   // register for logging purpose
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
+#ifdef P4_TO_P8
+  double eps = 1E-6*d_min*d_min*d_min;
+#else
   double eps = 1E-6*d_min*d_min;
+#endif
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *rhs_p, *robin_coef_p = NULL;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);

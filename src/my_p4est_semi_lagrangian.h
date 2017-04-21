@@ -51,6 +51,8 @@ class my_p4est_semi_lagrangian_t
                             Vec phi_n, Vec *phi_xx_n,
                             double *phi_np1);
 
+  bool use_second_derivatives;
+
 public:
   my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1, p4est_ghost_t **ghost_np1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1=NULL);
 
@@ -111,6 +113,8 @@ public:
    * \note you need to update ngbd_n and hierarchy yourself !
    */
   void update_p4est(std::vector<Vec> *v, double dt, std::vector<Vec> &phi);
+
+  void set_use_second_derivatives(bool val) {use_second_derivatives = val;}
 };
 
 #endif // MY_P4EST_SEMI_LAGRANGIAN_H

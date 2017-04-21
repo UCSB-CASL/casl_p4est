@@ -20,6 +20,8 @@ extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dxx_central_m00;
 extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dxx_central_p00;
 extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central_0m0;
 extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central_0p0;
+extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_gradient;
+extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_laplace;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef  PetscLogFlops

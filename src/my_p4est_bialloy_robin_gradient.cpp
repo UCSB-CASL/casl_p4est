@@ -84,6 +84,7 @@ my_p4est_bialloy_t::my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd)
   first_time = true;
 
   order_of_extension = 1;
+  coeff_v = 0./cooling_velocity;
 }
 
 
@@ -540,11 +541,16 @@ void my_p4est_bialloy_t::evolve_interface_temperature()
   ierr = VecGetArrayRead(ts_multiplier, &ts_multiplier_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(cl_gamma, &cl_gamma_p); CHKERRXX(ierr);
 
+  double *normal_velocity_np1_p;
+  ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+
   double *v_gamma_p;
   ierr = VecGetArray(v_gamma, &v_gamma_p); CHKERRXX(ierr);
 
   double *temperature_interface_p;
   ierr = VecGetArray(temperature_interface, &temperature_interface_p); CHKERRXX(ierr);
+
+  double denom_max = 0;
 
   for(size_t i=0; i<ngbd->get_layer_size(); ++i)
   {
@@ -561,9 +567,12 @@ void my_p4est_bialloy_t::evolve_interface_temperature()
 
 //    v_gamma_p[n] = - SQR(temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]) / (2.0*(temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]) +  thermal_diffusivity * (dts_dn - dtl_dn));
     v_gamma_p[n] = - (temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]) / (1.0 +  thermal_diffusivity * (dts_dn - dtl_dn));
+//    v_gamma_p[n] = - (temperature_interface_p[n] - Tm - ml*cl_gamma_p[n])
+//        / (1.0 + coeff_v*SQR(normal_velocity_np1_p[n]) +  thermal_diffusivity * (dts_dn - dtl_dn))*(1.0 + coeff_v*SQR(normal_velocity_np1_p[n]));
 //    v_gamma_p[n] = - (temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]) / (thermal_diffusivity * (dts_dn - dtl_dn));
 //    v_gamma_p[n] = - (1.0 +  thermal_diffusivity * (dts_dn - dtl_dn));
 //    v_gamma_p[n] = - (2.0*(temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]) +  thermal_diffusivity * (dts_dn - dtl_dn));
+    denom_max = MAX(denom_max,fabs((1.0 +  thermal_diffusivity * (dts_dn - dtl_dn))));
   }
 
   ierr = VecGhostUpdateBegin(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -584,15 +593,23 @@ void my_p4est_bialloy_t::evolve_interface_temperature()
 
 //    v_gamma_p[n] = - SQR(temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]) / (2.0*(temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]) +  thermal_diffusivity * (dts_dn - dtl_dn));
     v_gamma_p[n] = - (temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]) / (1.0 +  thermal_diffusivity * (dts_dn - dtl_dn));
+//    v_gamma_p[n] = - (temperature_interface_p[n] - Tm - ml*cl_gamma_p[n])
+//        / (1.0 + coeff_v*SQR(normal_velocity_np1_p[n]) +  thermal_diffusivity * (dts_dn - dtl_dn))*(1.0 + coeff_v*SQR(normal_velocity_np1_p[n]));
 //    v_gamma_p[n] = - (temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]) / (thermal_diffusivity * (dts_dn - dtl_dn));
 //    v_gamma_p[n] = - (temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]);
 //    v_gamma_p[n] = - (1.0 +  thermal_diffusivity * (dts_dn - dtl_dn));
 //    v_gamma_p[n] = - (2.0*(temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]) +  thermal_diffusivity * (dts_dn - dtl_dn));
+    denom_max = MAX(denom_max,fabs((1.0 +  thermal_diffusivity * (dts_dn - dtl_dn))));
   }
   VecRestoreArray(phi, &phii_p);
 
+//  std::cout << solute_diffusivity_l << std::endl;
+//  std::cout << thermal_diffusivity << std::endl;
+//  std::cout << denom_max << std::endl;
+
   ierr = VecGhostUpdateEnd(v_gamma, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
+  ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(v_gamma, &v_gamma_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(temperature_interface, &temperature_interface_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(tl_multiplier, &tl_multiplier_p); CHKERRXX(ierr);
@@ -604,9 +621,11 @@ void my_p4est_bialloy_t::evolve_interface_temperature()
     ierr = VecRestoreArrayRead(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
   }
 
-  ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma, delta_temperature_interface);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi, v_gamma, delta_temperature_interface);
+//  ierr = VecDestroy(v_gamma); CHKERRXX(ierr);
 
-  ierr = VecDestroy(v_gamma); CHKERRXX(ierr);
+  ierr = VecDestroy(delta_temperature_interface); CHKERRXX(ierr);
+  delta_temperature_interface = v_gamma;
 
   /* compute maximum normal velocity for convergence of v_gamma scaling */
   delta_t_gamma_max = 0;
@@ -937,6 +956,9 @@ void my_p4est_bialloy_t::solve_temperature_multiplier()
   ierr = VecGetArrayRead(cl_gamma, &cl_gamma_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(cl_multiplier, &cl_multiplier_p); CHKERRXX(ierr);
 
+  const double *temperature_interface_p;
+  ierr = VecGetArrayRead(temperature_interface, &temperature_interface_p); CHKERRXX(ierr);
+
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
 #ifdef P4_TO_P8
@@ -947,10 +969,12 @@ void my_p4est_bialloy_t::solve_temperature_multiplier()
         - epsilon_v*(1-15*epsilon_anisotropy*.5*(cos(4*theta_xz)+cos(4*theta_yz)))*normal_velocity_np1_p[n];
 #else
     double theta = atan2(normal_p[1][n], normal_p[0][n]);
-    temperature_interface_tmp_p[n] = - thermal_conductivity*(1.-kp)*cl_gamma_p[n]*cl_multiplier_p[n]/latent_heat/thermal_diffusivity;
+    temperature_interface_tmp_p[n] = - thermal_conductivity*(1.-kp)*cl_gamma_p[n]*cl_multiplier_p[n]/latent_heat/thermal_diffusivity
+        + coeff_v*2*normal_velocity_np1_p[n]*(temperature_interface_p[n] - Tm - ml*cl_gamma_p[n]);
 #endif
   }
 
+  ierr = VecRestoreArrayRead(temperature_interface, &temperature_interface_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(temperature_interface_tmp, &temperature_interface_tmp_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(kappa, &kappa_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
@@ -1303,7 +1327,7 @@ void my_p4est_bialloy_t::compute_dt()
 
 //  dt_n = 1. * sqrt(dxyz_min)*dxyz_min * MIN(1./u_max, 1./cooling_velocity);
 //  dt_n = 0.01 * sqrt(dxyz_min)*dxyz_min * MIN(1./u_max, 1./cooling_velocity);
-  dt_n = 0.8 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
+  dt_n = 0.1 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
 //  dt_n = .5 * .25 * dxyz_min * MIN(1/u_max, 1/cooling_velocity);
   PetscPrintf(p4est->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e\n", u_max, vgamma_max, cooling_velocity);
 
@@ -1525,7 +1549,7 @@ void my_p4est_bialloy_t::one_step()
   ierr = VecDuplicate(phi, &integrand); CHKERRXX(ierr);
   double functional = 0;
 
-  while(error>1e-5 && iteration<1000)
+  while(error>1e-5 && iteration<1000 ||1)
   {
     save_VTK(iteration);
     Vec src, out;

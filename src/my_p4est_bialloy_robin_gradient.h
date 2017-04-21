@@ -141,6 +141,8 @@ private:
 
   int order_of_extension;
 
+  double coeff_v;
+
 public:
 
   my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd);

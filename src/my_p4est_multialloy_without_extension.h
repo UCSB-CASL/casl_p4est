@@ -174,6 +174,8 @@ private:
 
   interpolation_method interpolation_between_grids;
 
+  Vec cell_is_crossed;
+
 public:
 
   my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -280,7 +282,26 @@ public:
   void smooth_velocity(Vec &input);
 
   void invert_phi(Vec input);
-  void copy_ghosted_vec(Vec input, Vec output);
+
+  inline double eps_c(double theta)
+  {
+    return epsilon_c*(1.0-15.0*epsilon_anisotropy*cos(4.0*theta));
+  }
+
+  inline double eps_v(double theta)
+  {
+    return epsilon_v*(1.0-15.0*epsilon_anisotropy*cos(4.0*theta));
+  }
+
+  inline void copy_ghosted_vec(Vec input, Vec output)
+  {
+    Vec src, out;
+    ierr = VecGhostGetLocalForm(input, &src); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(output, &out); CHKERRXX(ierr);
+    ierr = VecCopy(src, out); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(input, &src); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  }
 };
 
 
