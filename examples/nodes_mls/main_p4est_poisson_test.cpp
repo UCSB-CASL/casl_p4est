@@ -86,7 +86,7 @@ int lmax = 4;
 int nb_splits = 7;
 #endif
 
-const int periodic[3] = {0, 0, 0};
+const int periodic[3] = {1, 1, 1};
 const int n_xyz[3] = {1, 1, 1};
 //const double p_xyz_min[3] = {-1, -1, -1};
 //const double p_xyz_max[3] = {1, 1, 1};
@@ -102,10 +102,10 @@ const double p_xyz_max[3] = {2, 2, 2};
  * 7412
  */
 
-int n_geometry = 6;
-int n_test = 0;
-int n_mu = 0;
-int n_diag_add = 0;
+int n_geometry = 2;
+int n_test = 2;
+int n_mu = 1;
+int n_diag_add = 1;
 
 bool reinitialize_lsfs = true;
 
@@ -775,8 +775,7 @@ int main (int argc, char* argv[])
 
     solver.solve(sol);
 
-    my_p4est_integration_mls_t integrator;
-    integrator.set_p4est(p4est, nodes);
+    my_p4est_integration_mls_t integrator(p4est, nodes);
 #ifdef P4_TO_P8
     integrator.set_phi(phi, *solver.phi_xx, *solver.phi_yy, *solver.phi_zz, action, color);
 #else
@@ -793,10 +792,10 @@ int main (int argc, char* argv[])
       int n_sps = 2;
 #endif
 
-      for (int k = 0; k < integrator.cubes.size(); k++)
-        if (integrator.cubes[k].loc == FCE)
+      for (int k = 0; k < integrator.cubes_linear.size(); k++)
+        if (integrator.cubes_linear[k].loc == FCE)
           for (int l = 0; l < n_sps; l++)
-            simplices.push_back(&integrator.cubes[k].simplex[l]);
+            simplices.push_back(&integrator.cubes_linear[k].simplex[l]);
 
 #ifdef P4_TO_P8
       simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));

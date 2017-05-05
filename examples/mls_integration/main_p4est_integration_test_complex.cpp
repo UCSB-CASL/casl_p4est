@@ -45,6 +45,7 @@
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 
+#include "geometry_one_circle.h"
 #include "geometry_two_circles_union.h"
 #include "geometry_two_circles_intersection.h"
 #include "geometry_rose.h"
@@ -59,12 +60,12 @@
 using namespace std;
 
 /* grid and discretization */
-int lmin = 3;
-int lmax = 3;
+int lmin = 5;
+int lmax = 9;
 #ifdef P4_TO_P8
 int nb_splits = 4;
 #else
-int nb_splits = 9;
+int nb_splits = 7;
 #endif
 
 const int n_xyz[] = {1, 1, 1};
@@ -73,10 +74,10 @@ const int periodic[] = {0, 0, 0};
 const double p_xyz_min[] = {-1, -1, -1};
 const double p_xyz_max[] = {+1, +1, +1};
 
-bool save_vtk = true;
+bool save_vtk = false;
 
 // function to integrate
-int func_num = 3;
+int func_num = 0;
 
 #ifdef P4_TO_P8
 class func_t: public CF_3
@@ -114,14 +115,17 @@ public:
  * 2 - coloration with two circles
  * 3 - four flower-shaped domains
  * 4 - rose-like domain
+ * 5 - one circle
  */
-int geometry_num = 3;
+int geometry_num = 5;
 
 geometry_two_circles_union_t        geometry_two_circles_union;
 geometry_two_circles_intersection_t geometry_two_circles_intersection;
 geometry_two_circles_coloration_t   geometry_two_circles_coloration;
 geometry_four_flowers_t             geometry_four_flowers;
 geometry_rose_t                     geometry_rose;
+geometry_one_circle_t               geometry_one_circle;
+
 
 int num_of_domains;
 #ifdef P4_TO_P8
@@ -159,7 +163,7 @@ class result_t
 public:
   vector<double> ID, IB;
   vector< vector<double> > ISB, IX, IX3;
-} result;
+} result, result_quadratic;
 
 void set_parameters()
 {
@@ -251,6 +255,23 @@ void set_parameters()
         exact.IX3c1      = geometry_rose.IX3c1;
         exact.IX3c2      = geometry_rose.IX3c2;
       } break;
+    case 5:
+      {
+        LSF     = &geometry_one_circle.LSF;
+        action  = &geometry_one_circle.action;
+        color   = &geometry_one_circle.color;
+
+        num_of_domains  = geometry_one_circle.n_subs;
+        exact.n_subs    = geometry_one_circle.n_subs;
+        exact.n_Xs      = geometry_one_circle.n_Xs;
+        exact.IXc0      = geometry_one_circle.IXc0;
+        exact.IXc1      = geometry_one_circle.IXc1;
+
+        exact.n_X3s      = geometry_one_circle.n_X3s;
+        exact.IX3c0      = geometry_one_circle.IX3c0;
+        exact.IX3c1      = geometry_one_circle.IX3c1;
+        exact.IX3c2      = geometry_one_circle.IX3c2;
+      } break;
   }
 
   exact.provided = false;
@@ -277,6 +298,12 @@ void set_parameters()
           exact.IX  = geometry_two_circles_coloration.exact0.IX;
           exact.provided = true;
         } break;
+      case 5: {
+          exact.ID  = geometry_one_circle.exact0.ID;
+          exact.ISB = geometry_one_circle.exact0.ISB;
+          exact.IX  = geometry_one_circle.exact0.IX;
+          exact.provided = true;
+        } break;
     }
   else if (func_num == 1)
     switch (geometry_num)
@@ -299,6 +326,12 @@ void set_parameters()
           exact.IX  = geometry_two_circles_coloration.exact1.IX;
           exact.provided = true;
         } break;
+      case 5: {
+          exact.ID  = geometry_one_circle.exact1.ID;
+          exact.ISB = geometry_one_circle.exact1.ISB;
+          exact.IX  = geometry_one_circle.exact1.IX;
+          exact.provided = true;
+        } break;
     }
 
   // prepare arrays for numerical results
@@ -318,6 +351,25 @@ void set_parameters()
   for (int i = 0; i < exact.n_X3s; i++)
   {
     result.IX3.push_back(vector<double>());
+  }
+
+  // prepare arrays for numerical results
+  result_quadratic.ISB.clear();
+  for (int i = 0; i < exact.n_subs; i++)
+  {
+    result_quadratic.ISB.push_back(vector<double>());
+  }
+
+  result_quadratic.IX.clear();
+  for (int i = 0; i < exact.n_Xs; i++)
+  {
+    result_quadratic.IX.push_back(vector<double>());
+  }
+
+  result_quadratic.IX3.clear();
+  for (int i = 0; i < exact.n_X3s; i++)
+  {
+    result_quadratic.IX3.push_back(vector<double>());
   }
 }
 
@@ -431,6 +483,16 @@ int main (int argc, char* argv[])
     ierr = VecCreateGhostNodes(p4est, nodes, &func_vec); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, func, func_vec);
 
+    Vec fdd[P4EST_DIM];
+
+    for (short dir = 0; dir < P4EST_DIM; ++dir)
+    {
+      ierr = VecCreateGhostNodes(p4est, nodes, &fdd[dir]); CHKERRXX(ierr);
+    }
+
+    ngbd_n.second_derivatives_central(func_vec, fdd);
+
+
     my_p4est_level_set_t ls(&ngbd_n);
 
     /* level-set functions */
@@ -448,9 +510,9 @@ int main (int argc, char* argv[])
       phi_zz_vec.push_back(Vec());  ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_vec[i]); CHKERRXX(ierr);
 #endif
 
-      ls.reinitialize_1st_order_time_2nd_order_space(phi_vec.back());
-
       sample_cf_on_nodes(p4est, nodes, *LSF->at(i), phi_vec[i]);
+
+//      ls.reinitialize_1st_order_time_2nd_order_space(phi_vec.back());
 
 #ifdef P4_TO_P8
       ngbd_n.second_derivatives_central(phi_vec[i], phi_xx_vec[i], phi_yy_vec[i], phi_zz_vec[i]);
@@ -463,8 +525,8 @@ int main (int argc, char* argv[])
     ierr = VecCreateGhostNodes(p4est, nodes, &phi_tot); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, ls_tot, phi_tot);
 
-    my_p4est_integration_mls_t integration;
-    integration.set_p4est(p4est, nodes);
+    my_p4est_integration_mls_t integration(p4est, nodes);
+
 //    integration.set_phi(phi_vec, geometry.action, geometry.color);
 //    integration.set_phi(geometry.LSF, geometry.action, geometry.color);
 //#ifdef P4_TO_P8
@@ -479,6 +541,15 @@ int main (int argc, char* argv[])
 #endif
 //    integration.set_use_cube_refined(0);
 
+    my_p4est_integration_mls_t integration_quadratic(p4est, nodes);
+
+#ifdef P4_TO_P8
+    integration_quadratic.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, *action, *color);
+#else
+    integration_quadratic.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, *action, *color);
+#endif
+
+
 
     if (save_vtk)
     {
@@ -491,10 +562,10 @@ int main (int argc, char* argv[])
       int n_sps = 2;
 #endif
 
-      for (int k = 0; k < integration.cubes.size(); k++)
-        if (integration.cubes[k].loc == FCE)
+      for (int k = 0; k < integration.cubes_linear.size(); k++)
+        if (integration.cubes_linear[k].loc == FCE)
           for (int l = 0; l < n_sps; l++)
-            simplices.push_back(&integration.cubes[k].simplex[l]);
+            simplices.push_back(&integration.cubes_linear[k].simplex[l]);
 
 #ifdef P4_TO_P8
       simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
@@ -512,45 +583,60 @@ int main (int argc, char* argv[])
       h.push_back((p_xyz_max[0]-p_xyz_min[0])/pow(2.0,(double)(lmax+iter)));
 
       result.ID.push_back(integration.integrate_over_domain(func_vec));
+      result_quadratic.ID.push_back(integration_quadratic.integrate_over_domain(func_vec, fdd));
 
       for (int i = 0; i < exact.n_subs; i++)
-        result.ISB[i].push_back(integration.integrate_over_interface(func_vec, color->at(i)));
+      {
+        result.ISB[i].push_back(integration.integrate_over_interface(color->at(i), func_vec));
+        result_quadratic.ISB[i].push_back(integration_quadratic.integrate_over_interface(color->at(i), func_vec, fdd));
+      }
 
       for (int i = 0; i < exact.n_Xs; i++)
+      {
 #ifdef P4_TO_P8
-        result.IX[i].push_back(integration.integrate_over_intersection(func_vec, exact.IXc0[i], exact.IXc1[i]));
+        result.IX[i].push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
 #else
-        result.IX[i].push_back(integration.integrate_over_intersection(func_vec, exact.IXc0[i], exact.IXc1[i]));
+        result.IX[i].push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
+        result_quadratic.IX[i].push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
+      }
 #endif
 
 #ifdef P4_TO_P8
       for (int i = 0; i < exact.n_X3s; i++)
 //        double val = integration.integrate_over_intersection(func_vec, exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i]);
-        result.IX3[i].push_back(integration.integrate_over_intersection(func_vec, exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i]));
+        result.IX3[i].push_back(integration.integrate_over_intersection(exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i], func_vec));
 #endif
     }
     else if (iter == nb_splits-1)
     {
-      exact.ID  = (integration.integrate_over_domain(func_vec));
+//      exact.ID  = (integration.integrate_over_domain(func_vec));
+      exact.ID  = (integration_quadratic.integrate_over_domain(func_vec, fdd));
 
       for (int i = 0; i < exact.n_subs; i++)
-        exact.ISB.push_back(integration.integrate_over_interface(func_vec, color->at(i)));
+//        exact.ISB.push_back(integration.integrate_over_interface(color->at(i), func_vec));
+        exact.ISB.push_back(integration_quadratic.integrate_over_interface(color->at(i), func_vec, fdd));
 
       for (int i = 0; i < exact.n_Xs; i++)
 #ifdef P4_TO_P8
-        exact.IX.push_back(integration.integrate_over_intersection(func_vec, exact.IXc0[i], exact.IXc1[i]));
+        exact.IX.push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
 #else
-        exact.IX.push_back(integration.integrate_over_intersection(func_vec, exact.IXc0[i], exact.IXc1[i]));
+//        exact.IX.push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
+        exact.IX.push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
 #endif
 
 #ifdef P4_TO_P8
       for (int i = 0; i < exact.n_X3s; i++)
-        exact.IX3.push_back(integration.integrate_over_intersection(func_vec, exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i]));
+        exact.IX3.push_back(integration.integrate_over_intersection(exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i], func_vec));
 #endif
     }
 
     ierr = VecDestroy(func_vec); CHKERRXX(ierr);
     ierr = VecDestroy(phi_tot); CHKERRXX(ierr);
+
+    for (short dir = 0; dir < P4EST_DIM; ++dir)
+    {
+      ierr = VecDestroy(fdd[dir]); CHKERRXX(ierr);
+    }
 
     for (int i = 0; i < phi_vec.size(); i++)
     {
@@ -594,6 +680,31 @@ int main (int argc, char* argv[])
     for (int i = 0; i < exact.n_X3s; i++)
     {
       print_Table("Convergence", exact.IX3[i], level, h, "X of #"+to_string(exact.IX3c0[i])+" and #"+to_string(exact.IX3c1[i])+" and #"+to_string(exact.IX3c2[i]), result.IX3[i], plot_color, &plot);
+      plot_color++;
+    }
+#endif
+
+    plot_color = 1;
+    print_Table("Convergence", exact.ID, level, h, "Domain", result_quadratic.ID, 1, &plot);
+    plot_color++;
+
+    for (int i = 0; i < exact.n_subs; i++)
+    {
+      print_Table("Convergence", exact.ISB[i], level, h, "Sub-boundary #"+to_string(i), result_quadratic.ISB[i], plot_color, &plot);
+      plot_color++;
+    }
+
+    for (int i = 0; i < exact.n_Xs; i++)
+    {
+      print_Table("Convergence", exact.IX[i], level, h, "X of #"+to_string(exact.IXc0[i])+" and #"+to_string(exact.IXc1[i]), result_quadratic.IX[i], plot_color, &plot);
+      plot_color++;
+    }
+
+
+#ifdef P4_TO_P8
+    for (int i = 0; i < exact.n_X3s; i++)
+    {
+      print_Table("Convergence", exact.IX3[i], level, h, "X of #"+to_string(exact.IX3c0[i])+" and #"+to_string(exact.IX3c1[i])+" and #"+to_string(exact.IX3c2[i]), result_quadratic.IX3[i], plot_color, &plot);
       plot_color++;
     }
 #endif
