@@ -4149,7 +4149,6 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
   std::vector<double> qi_00p(nodes->num_owned_indeps);
   std::vector<double> s_00m(nodes->num_owned_indeps);
   std::vector<double> s_00p(nodes->num_owned_indeps);
-  if (use_second_derivatives_extend_from_interface)
 
   my_p4est_interpolation_nodes_t interp_m00(ngbd); interp_m00.set_input(qi, qxx, qyy, qzz, q_interpolation);
   my_p4est_interpolation_nodes_t interp_p00(ngbd); interp_p00.set_input(qi, qxx, qyy, qzz, q_interpolation);

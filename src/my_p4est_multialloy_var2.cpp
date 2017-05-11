@@ -12,7 +12,23 @@
 #include <src/my_p4est_semi_lagrangian.h>
 #endif
 
-
+// logging variables -- defined in src/petsc_logging.cpp
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_multialloy_temperature_matrix_setup;
+extern PetscLogEvent log_my_p4est_multialloy_temperature_solve;
+extern PetscLogEvent log_my_p4est_multialloy_concentration_matrix_setup;
+extern PetscLogEvent log_my_p4est_multialloy_concentration_solve;
+extern PetscLogEvent log_my_p4est_multialloy_update_grid;
+#endif
+#ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops
+#define PetscLogFlops(n) 0
+#endif
 
 
 my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
@@ -2315,13 +2331,11 @@ void my_p4est_multialloy_t::one_step()
 //  while(error_bc_l2>velocity_tol && iteration <= num_of_iterations_per_step)
   {
     /* solve for concentration and temperature */
-//    ierr = PetscPrintf(p4est->mpicomm, "Concentration\n"); CHKERRXX(ierr);
-    solve_concentration();
+    solve_concentration_dirichlet(0);
     compute_normal_velocity();
-//    ierr = PetscPrintf(p4est->mpicomm, "Temperature\n"); CHKERRXX(ierr);
     solve_temperature();
-//    ierr = PetscPrintf(p4est->mpicomm, "Concentration_sec\n"); CHKERRXX(ierr);
-    solve_concentration_sec();
+    for (short i = 1; i < num_of_cmpts; ++i)
+      solve_concentration_robin(i);
 
     /* calculate bc error */
     double *integrand_p, *t_interface_p, *c_interface_p, *c_sec_interface_p, *kappa_p, *theta_p, *bc_error_p;
@@ -2372,45 +2386,24 @@ void my_p4est_multialloy_t::one_step()
     keep_going = iteration <= num_of_iterations_per_step && error_bc_l2 > velocity_tol;
 
     /* adjust interface concentration */
-    if (keep_going)// adjust_interface_concentration(true);
-    if      ((iteration+1)%3 ==0) adjust_interface_concentration(true);
-    else
-    {
-//      if (iteration%3 == 0)
+    if (keep_going)
+      if ((iteration+1)%3 ==0) adjust_interface_concentration(true);
+      else
       {
-//        ierr = PetscPrintf(p4est->mpicomm, "Concentration_sec_multiplier\n"); CHKERRXX(ierr);
-        solve_concentration_sec_multiplier();
-//        ierr = PetscPrintf(p4est->mpicomm, "Concentration_multiplier\n"); CHKERRXX(ierr);
-        solve_concentration_multiplier();
+        for (short i = 1; i < num_of_cmpts; ++i)
+          solve_concentration_robin_multiplier(i);
+        solve_concentration_dirichlet_multiplier(0);
+        adjust_interface_concentration(false);
       }
-      adjust_interface_concentration(false);
-    }
 
     iteration++;
   }
 
-//  solve_concentration();
-//  compute_normal_velocity();
-//  solve_temperature();
-//  solve_concentration_sec();
-
   compute_velocity();
-
-//  for (short i = 0; i < 3; i++)
-//    for(int dir=0; dir<P4EST_DIM; ++dir)
-//    {
-//      smooth_velocity(v_interface_np1[dir]);
-//    }
-
   compute_dt();
 
   ierr = VecDestroy(normal_velocity_tmp); CHKERRXX(ierr);
   ierr = VecDestroy(integrand); CHKERRXX(ierr);
-
-  first_step = false;
-
-  w1.stop(); w1.read_duration();
-
 }
 
 void my_p4est_multialloy_t::smooth_velocity(Vec input)
@@ -2852,6 +2845,45 @@ void my_p4est_multialloy_t::adjust_velocity()
 
 void my_p4est_multialloy_t::adjust_interface_concentration(bool use_simple)
 {
+  // TODO: do interpolation without using second derivatives (note, that all quantites have to be sampled along grid lines)
+
+  double xyz_n[P4EST_DIM];
+  double xyz[P4EST_DIM];
+
+  double dxyz[2*P4EST_DIM] = {-1., 0., 1., 0., 0.,-1., 0., 1.};
+
+  for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+  {
+    if (!pointwise_c_gamma[n].size())
+    {
+      node_xyz_fr_n(n, p4est, nodes, xyz_n);
+
+      for (short k = 0; k < pointwise_c_gamma[n].size(); ++k)
+      {
+        interface_point_t *pnt = pointwise_c_gamma[n][k];
+        // find coordinates of the interface point
+        for (short i = 0; i < P4EST_DIM; ++i) xyz[i] = xyz_n[i] + pnt->dist*dxyz[2*pnt->dir+i];
+
+        // sample all quatities at the interface point
+        double theta  = local_interp(theta_p, theta_dd_p, xyz, quadratic);
+        double kappa  = local_interp(kappa_p, kappa_dd_p, xyz, quadratic);
+        double vn     = local_interp(normal_velocity_np1_p, normal_velocity_np1_dd_p, xyz, quadratic);
+        double temp   = local_interp(temperature_np1_p, temperature_np1_dd_p, xyz, quadratic);
+        double c_term = 0;
+        for (short i = 1; i < P4EST_DIM; ++i) c_term += ml[i]*local_interp(cl_np1_p[i], cl_np1_dd_p[i], xyz, quadratic)/ml[0];
+
+        double c_mult_n = local_interp(c_mult_n_p, c_mult_n_dd_p, xyz, quadratic);
+        double c_mult = local_interp(c_mult_p, c_mult_dd_p, xyz, quadratic);
+
+        double c_old = pointwise_c_gamma[n][2*P4EST_DIM + dir];
+
+        // update value at the interface point
+        pointwise_c_gamma[n][2*P4EST_DIM + dir] -= (c_old + c_term - (temp-Tm)/ml[0] - (eps_c(theta)*kappa + eps_v(theta)*vn)/ml[0])
+            / (1. + solute_diffusivity_l[0]*c_mult_n - (1-kp[0])*vn*c_mult);
+      }
+    }
+  }
+
   if (use_simple)
   {
 
@@ -3360,4 +3392,27 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   }
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", name);
+}
+
+void my_p4est_multialloy_t::create_vector_of_interface_points()
+{
+  pointwise_c_gamma.clear();
+
+  pointwise_c_gamma.resize(nodes->num_owned_indeps, std::vector<double> (0,0));
+
+  double p_000, p_m00, p_p00, p_0m0, p_0p0;
+#ifdef P4_TO_P8
+  double p_00m, p_00p;
+#endif
+
+  quad_neighbor_nodes_of_node_t qnnn;
+  for (p4est_locidx_t n; n < nodes->num_owned_indeps; ++n);
+  {
+    ngbd->get_neighbors(n, qnnn);
+#ifdef P4_TO_P8
+    qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p);
+#else
+    qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0);
+#endif
+
 }

@@ -63,12 +63,12 @@ private:
 #endif
 
   /* grid */
-  my_p4est_brick_t *brick;
-  p4est_connectivity_t *connectivity;
-  p4est_t *p4est;
-  p4est_ghost_t *ghost;
-  p4est_nodes_t *nodes;
-  my_p4est_hierarchy_t *hierarchy;
+  my_p4est_brick_t          *brick;
+  p4est_connectivity_t      *connectivity;
+  p4est_t                   *p4est;
+  p4est_ghost_t             *ghost;
+  p4est_nodes_t             *nodes;
+  my_p4est_hierarchy_t      *hierarchy;
   my_p4est_node_neighbors_t *ngbd;
 
   double dxyz[P4EST_DIM];
@@ -80,7 +80,7 @@ private:
   Vec temperature_n, temperature_np1;
   Vec t_interface;
 
-  /* concentration */
+  /* concentrations */
   Vec cs_n, cs_np1;
   Vec cl_n, cl_np1;
   Vec cs_sec_n, cs_sec_np1;
@@ -159,6 +159,15 @@ private:
 
   Vec ts, tl;
   bool temperature_interpolation_simple;
+
+  std::vector< std::vector<interface_point_t> > pointwise_c_gamma;
+
+  struct interface_point_t
+  {
+    int dir;
+    double dist;
+    double value;
+  };
 
 public:
 

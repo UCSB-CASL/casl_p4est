@@ -5,10 +5,12 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_node_neighbors.h>
+#include <src/grid_interpolation3.h>
 #else
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_node_neighbors.h>
+#include <src/grid_interpolation2.h>
 #endif
 
 class my_p4est_interpolation_nodes_local_t

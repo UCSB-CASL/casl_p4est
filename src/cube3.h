@@ -103,5 +103,7 @@ public:
 
 
     double integrate_Over_Interface(const OctValue &f, const OctValue &level_set_values ) const;
+
+    double integrate_Over_Interface(const CF_3 &f, const OctValue &level_set_values ) const;
 };
 #endif // MY_P4EST_CUBE3_H

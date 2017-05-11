@@ -150,6 +150,13 @@ PetscLogEvent log_my_p4est_balance;
 PetscLogEvent log_my_sc_notify;
 PetscLogEvent log_my_sc_notify_allgather;
 
+// multialloy
+PetscLogEvent log_my_p4est_multialloy_temperature_matrix_setup;
+PetscLogEvent log_my_p4est_multialloy_temperature_solve;
+PetscLogEvent log_my_p4est_multialloy_concentration_matrix_setup;
+PetscLogEvent log_my_p4est_multialloy_concentration_solve;
+PetscLogEvent log_my_p4est_multialloy_update_grid;
+
 void register_petsc_logs()
 {
   PetscErrorCode ierr;
@@ -293,4 +300,11 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_balance                                        ", 0, &log_my_p4est_balance); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_sc_notify                                            ", 0, &log_my_sc_notify); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_sc_notify_allgather                                  ", 0, &log_my_sc_notify_allgather); CHKERRXX(ierr);
+
+  // multialloy
+  ierr = PetscLogEventRegister("my_p4est_multialloy_temperature_matrix_setup            ", 0, &log_my_p4est_multialloy_temperature_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy_temperature_solve                   ", 0, &log_my_p4est_multialloy_temperature_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy_concentration_matrix_setup          ", 0, &log_my_p4est_multialloy_concentration_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy_concentration_solve                 ", 0, &log_my_p4est_multialloy_concentration_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy_update_grid                         ", 0, &log_my_p4est_multialloy_update_grid); CHKERRXX(ierr);
 }

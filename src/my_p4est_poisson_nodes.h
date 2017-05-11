@@ -17,6 +17,7 @@
 
 class my_p4est_poisson_nodes_t
 {
+  static const int cube_refinement = 1;
   const my_p4est_node_neighbors_t *node_neighbors_;
 
   // p4est objects
@@ -25,12 +26,13 @@ class my_p4est_poisson_nodes_t
   p4est_ghost_t *ghost;
   my_p4est_brick_t *myb_;
   my_p4est_interpolation_nodes_t phi_interp;
-  my_p4est_interpolation_nodes_t robin_coef_interp;
+//  my_p4est_interpolation_nodes_t robin_coef_interp;
 
   bool neumann_wall_first_order;
   double mu_, diag_add_;
   bool is_matrix_computed;
   int matrix_has_nullspace;
+  double dxyz_m[P4EST_DIM];
   double dx_min, dy_min, d_min, diag_min;
 #ifdef P4_TO_P8
   double dz_min;
@@ -49,7 +51,7 @@ class my_p4est_poisson_nodes_t
   p4est_gloidx_t fixed_value_idx_l;
   bool is_phi_dd_owned, is_mue_dd_owned;
   Vec rhs_, phi_, add_, mue_, phi_xx_, phi_yy_, mue_xx_, mue_yy_;
-  Vec robin_coef_;
+//  Vec robin_coef_;
 #ifdef P4_TO_P8
   Vec phi_zz_, mue_zz_;
 #endif
@@ -57,18 +59,17 @@ class my_p4est_poisson_nodes_t
   PetscErrorCode ierr;
 
   Vec mask;
-  Vec scalling;
+  std::vector<double> scalling;
   bool keep_scalling;
 
   bool variable_mu;
+  bool use_refined_cube;
+
+  bool use_pointwise_dirichlet;
+
+  bool new_pc;
 
   void preallocate_matrix();
-
-  void setup_negative_laplace_matrix_neumann_wall_1st_order();
-  void setup_negative_laplace_rhsvec_neumann_wall_1st_order();
-
-  void setup_negative_laplace_matrix();
-  void setup_negative_laplace_rhsvec();
 
   void setup_negative_variable_coeff_laplace_matrix();
   void setup_negative_variable_coeff_laplace_rhsvec();
@@ -102,9 +103,9 @@ public:
 #else
   inline void set_bc(BoundaryConditions2D& bc) {bc_       = &bc;          is_matrix_computed = false;}
 #endif
-  inline void set_robin_coef(Vec robin_coef)   {robin_coef_ = robin_coef; is_matrix_computed = false;
-                                                robin_coef_interp.set_input(robin_coef, linear);}
-  inline void set_mu(double mu)                {mu_       = mu;           is_matrix_computed = false;}
+//  inline void set_robin_coef(Vec robin_coef)   {robin_coef_ = robin_coef; is_matrix_computed = false;
+//                                                robin_coef_interp.set_input(robin_coef, linear);}
+  inline void set_mu(double mu)                {mu_       = mu;           is_matrix_computed = false; variable_mu = false;}
   inline void set_is_matrix_computed(bool is_matrix_computed) { this->is_matrix_computed = is_matrix_computed; }
   inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT) {
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
@@ -113,6 +114,10 @@ public:
   inline bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
 
   inline void set_first_order_neumann_wall( bool val ) { neumann_wall_first_order=val; }
+
+  inline void set_use_refined_cube( bool val ) { use_refined_cube=val; }
+
+  inline void set_use_pointwise_dirichlet( bool val ) { use_pointwise_dirichlet=val; }
 
   void shift_to_exact_solution(Vec sol, Vec uex);
 
@@ -125,7 +130,43 @@ public:
 //  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 
+  void assemble_matrix(Vec solution);
+
   Vec get_mask() { return mask; }
+
+  struct interface_point_t {
+    short dir;
+    double dist;
+    double value;
+    interface_point_t(double dir_, double dist_) {dir = dir_; dist = dist_;}
+  };
+
+  std::vector<std::vector<interface_point_t>> pointwise_bc;
+
+  inline void get_xyz_interface_point(p4est_locidx_t n, short i, double *xyz)
+  {
+    node_xyz_fr_n(n, p4est, nodes, xyz);
+    short  dir  = pointwise_bc[n][i].dir;
+    double dist = pointwise_bc[n][i].dist;
+
+    switch (dir) {
+      case 0: xyz[0] -= dist; break;
+      case 1: xyz[0] += dist; break;
+      case 2: xyz[1] -= dist; break;
+      case 3: xyz[1] += dist; break;
+#ifdef P4_TO_P8
+      case 4: xyz[2] -= dist; break;
+      case 5: xyz[2] += dist; break;
+#endif
+    }
+  }
+
+  inline void set_interface_point_value(p4est_locidx_t n, short i, double val)
+  {
+    pointwise_bc[n][i].value = val;
+  }
+
+  void assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2& jump_un, CF_2& rhs_m, CF_2& rhs_p);
 };
 
 #endif // MY_P4EST_POISSON_NODES_H

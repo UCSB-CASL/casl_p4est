@@ -68,9 +68,9 @@ double zmax =  1;
 
 using namespace std;
 
-int lmin = 8;
-int lmax = 12;
-int nb_splits = 1;
+int lmin = 5;
+int lmax = 5;
+int nb_splits = 5;
 
 int nx = 1;
 int ny = 1;
@@ -102,20 +102,21 @@ int py = 0;
 int pz = 0;
 #endif
 
-bool save_vtk = false;
+bool save_vtk = true;
 
 //double mu = 3e-5;
 double mu = 1.0;
-double add_diagonal = 1.0;
+double add_diagonal = 0.0;
 
 BoundaryConditionType bc_itype = ROBIN;
 //BoundaryConditionType bc_itype = NEUMANN;
 //BoundaryConditionType bc_itype = DIRICHLET;
+//BoundaryConditionType bc_itype = NOINTERFACE;
 
 BoundaryConditionType bc_wtype = DIRICHLET;
 //BoundaryConditionType bc_wtype = NEUMANN;
 
-double diag_add = 1.0;
+double diag_add = 0.0;
 
 double xc = (xmax+xmin)/2;
 double yc = (ymax+ymin)/2;
@@ -326,6 +327,7 @@ class ROBIN_COEFF : public CF_2
 public:
   double operator()(double x, double y) const
   {
+//    return x+y;
     return 1.0;
 //    return 3e5*SQR((4+x+y));
   }
@@ -772,6 +774,7 @@ int main (int argc, char* argv[])
 
     my_p4est_level_set_t ls(&ngbd_n);
     ls.perturb_level_set_function(phi, EPS);
+//    ls.reinitialize_1st_order_time_2nd_order_space(phi);
 
     /* find dx and dy smallest */
     double dxyz[P4EST_DIM];
@@ -794,6 +797,7 @@ int main (int argc, char* argv[])
     bc.setWallValues(bc_wall_val);
     bc.setInterfaceType(bc_itype);
     bc.setInterfaceValue(bc_interface_val);
+    bc.setRobinCoef(robin_coef);
 
     Vec rhs;
     ierr = VecCreateGhostNodes(p4est, nodes, &rhs); CHKERRXX(ierr);
@@ -855,26 +859,28 @@ int main (int argc, char* argv[])
     solver.set_mu(mu);
     solver.set_bc(bc);
     solver.set_rhs(rhs);
+    solver.set_first_order_neumann_wall(false);
+    solver.set_use_refined_cube(true);
 
     Vec robin;
-    if(bc_itype==ROBIN || bc_wtype==ROBIN)
-    {
-      ierr = VecDuplicate(phi, &robin); CHKERRXX(ierr);
-      sample_cf_on_nodes(p4est, nodes, robin_coef, robin);
-      solver.set_robin_coef(robin);
-    }
+//    if(bc_itype==ROBIN || bc_wtype==ROBIN)
+//    {
+//      ierr = VecDuplicate(phi, &robin); CHKERRXX(ierr);
+//      sample_cf_on_nodes(p4est, nodes, robin_coef, robin);
+//      solver.set_robin_coef(robin);
+//    }
 
     Vec sol;
     ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);
 
-    solver.solve(sol,0,KSPBCGS,PCSOR);
-//    solver.solve(sol,0,KSPBCGS,PCHYPRE);
+//    solver.solve(sol,0,KSPBCGS,PCSOR);
+    solver.solve(sol,0,KSPBCGS,PCHYPRE);
 
 //    w1.stop(); w1.read_duration();
 
     if(bc_itype==ROBIN || bc_wtype==ROBIN)
     {
-      ierr = VecDestroy(robin);
+//      ierr = VecDestroy(robin);
     }
 
     /* if all NEUMANN boundary conditions, shift solution */
@@ -908,8 +914,8 @@ int main (int argc, char* argv[])
 
     double err_bc = 0;
     Vec mask = solver.get_mask();
-    ls.extend_Over_Interface_TVD(phi, mask, sol, 100, 2);
-//    ls.extend_Over_Interface_TVD(phi, sol, 100, 2);
+//    ls.extend_Over_Interface_TVD(phi, mask, sol, 100, 2);
+    ls.extend_Over_Interface_TVD(phi, sol, 100, 2);
 
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
