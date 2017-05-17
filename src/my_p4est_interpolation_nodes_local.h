@@ -99,19 +99,19 @@ public:
   void initialize(p4est_locidx_t n);
 
   // set input as Vec's
-  void set_input(Vec Fi_in, interpolation_method method_in)
+  inline void set_input(Vec Fi_in, interpolation_method method_in)
   {
     Fi = Fi_in; method = method_in; is_input_in_vec = true;
   }
 
 #ifdef P4_TO_P8
-  void set_input(Vec Fi_in, Vec Fxx_in, Vec Fyy_in, Vec Fzz_in, interpolation_method method_in)
+  inline void set_input(Vec Fi_in, Vec Fxx_in, Vec Fyy_in, Vec Fzz_in, interpolation_method method_in)
   {
     Fi = Fi_in; Fxx = Fxx_in; Fyy = Fyy_in; Fzz = Fzz_in;
     method = method_in; is_input_in_vec = true;
   }
 #else
-  void set_input(Vec Fi_in, Vec Fxx_in, Vec Fyy_in, interpolation_method method_in)
+  inline void set_input(Vec Fi_in, Vec Fxx_in, Vec Fyy_in, interpolation_method method_in)
   {
     Fi = Fi_in; Fxx = Fxx_in; Fyy = Fyy_in;
     method = method_in; is_input_in_vec = true;
@@ -119,25 +119,34 @@ public:
 #endif
 
   // set input as pointers
-  void set_input(double* Fi_p_in, interpolation_method method_in)
+  inline void set_input(double* Fi_p_in, interpolation_method method_in)
   {
     Fi_p = Fi_p_in;
     method = method_in; is_input_in_vec = false;
   }
 
 #ifdef P4_TO_P8
-  void set_input(double* Fi_p_in, double* Fxx_p_in, double* Fyy_p_in, double* Fzz_p_in, interpolation_method method_in)
+  inline void set_input(double* Fi_p_in, double* Fxx_p_in, double* Fyy_p_in, double* Fzz_p_in, interpolation_method method_in)
   {
     Fi_p = Fi_p_in; Fxx_p = Fxx_p_in; Fyy_p = Fyy_p_in; Fzz_p = Fzz_p_in;
     method = method_in; is_input_in_vec = false;
   }
 #else
-  void set_input(double* Fi_p_in, double* Fxx_p_in, double* Fyy_p_in, interpolation_method method_in)
+  inline void set_input(double* Fi_p_in, double* Fxx_p_in, double* Fyy_p_in, interpolation_method method_in)
   {
     Fi_p = Fi_p_in; Fxx_p = Fxx_p_in; Fyy_p = Fyy_p_in;
     method = method_in; is_input_in_vec = false;
   }
 #endif
+
+  inline void set_input(double* Fi_p_in, double* Fdd_p_in[P4EST_DIM], interpolation_method method_in)
+  {
+#ifdef P4_TO_P8
+    set_input(Fi_p_in, Fdd_p_in[0], Fdd_p_in[1], Fdd_p_in[2], method_in);
+#else
+    set_input(Fi_p_in, Fdd_p_in[0], Fdd_p_in[1], method_in);
+#endif
+  }
 
   // interpolation method
 #ifdef P4_TO_P8
@@ -145,6 +154,15 @@ public:
 #else
   double interpolate(double x, double y);
 #endif
+
+  inline double interpolate(double* xyz)
+  {
+#ifdef P4_TO_P8
+    return interpolate(xyz[0], xyz[1], xyz[2]);
+#else
+    return interpolate(xyz[0], xyz[1]);
+#endif
+  }
 
   void set_eps(double eps_in) {eps = eps_in; interp.set_eps(eps_in);}
 };

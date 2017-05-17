@@ -193,6 +193,7 @@ int main(int argc, char ** argv)
   cmd.add_option("ny", "number of trees in y direction");
   cmd.add_option("nz", "number of trees in z direction");
   cmd.add_option("dt_save", "time interval for saving vtk");
+  cmd.add_option("save_hierarchy", "export hierarchy");
 
   cmd.parse(argc, argv);
   cmd.print();
@@ -202,10 +203,11 @@ int main(int argc, char ** argv)
   int nz = cmd.get("nz", 1);
 
   int lmin = cmd.get("lmin", 2);
-  int lmax = cmd.get("lmax", 7);
+  int lmax = cmd.get("lmax", 8);
   int nb_splits = cmd.get("nb_splits", 1);
   double tf = cmd.get("tf", 1);
   bool save_vtk = cmd.get("save_vtk", 1);
+  bool save_hierarchy = cmd.get("save_hierarchy", 1);
   double dt_save = cmd.get("dt_save", 0.1);
 
   my_p4est_brick_t brick;
@@ -230,6 +232,7 @@ int main(int argc, char ** argv)
 #endif
 
   system((std::string("mkdir -p ")+out_dir+std::string("/vtu")).c_str());
+  system((std::string("mkdir -p ")+out_dir+std::string("/hierarchy")).c_str());
 
   for(int repeat=0; repeat<nb_splits; ++repeat)
   {
@@ -291,6 +294,16 @@ int main(int argc, char ** argv)
 #endif
     save_VTK(p4est, ghost, nodes, phi, name);
 
+    if (save_hierarchy)
+    {
+#ifdef P4_TO_P8
+      sprintf(name, "%s/hierarchy/vortex_%dx%dx%d_%d-%d_0", out_dir, nx, ny, nz, lmin, lmax+repeat);
+#else
+      sprintf(name, "%s/hierarchy/vortex_%dx%d_%d-%d_0", out_dir, nx, ny, lmin, lmax+repeat);
+#endif
+      hierarchy->write_vtk(name);
+    }
+
     iter ++;
 
     while(tn<tf)
@@ -344,6 +357,16 @@ int main(int argc, char ** argv)
 #endif
     save_VTK(p4est, ghost, nodes, phi, name);
 
+    if (save_hierarchy)
+    {
+#ifdef P4_TO_P8
+      sprintf(name, "%s/hierarchy/vortex_%dx%dx%d_%d-%d_1", out_dir, nx, ny, nz, lmin, lmax+repeat);
+#else
+      sprintf(name, "%s/hierarchy/vortex_%dx%d_%d-%d_1", out_dir, nx, ny, lmin, lmax+repeat);
+#endif
+      hierarchy->write_vtk(name);
+    }
+
     dtn = dt;
 
     while(tn>0)
@@ -375,6 +398,16 @@ int main(int argc, char ** argv)
         sprintf(name, "%s/vtu/step_vortex_%dx%d_%d-%d_%05d", out_dir, nx, ny, lmin, lmax+repeat, iter/save_every_n);
 #endif
         save_VTK(p4est, ghost, nodes, phi, name);
+
+//        if (save_hierarchy)
+//        {
+//#ifdef P4_TO_P8
+//          sprintf(name, "%s/hierarchy/step_vortex_%dx%dx%d_%d-%d_%05d", out_dir, nx, ny, nz, lmin, lmax+repeat, iter/save_every_n);
+//#else
+//          sprintf(name, "%s/hierarchy/step_vortex_%dx%d_%d-%d_%05d", out_dir, nx, ny, lmin, lmax+repeat, iter/save_every_n);
+//#endif
+//          hierarchy->write_vtk(name);
+//        }
       }
 
       tn -= dtn;

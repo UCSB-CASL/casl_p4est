@@ -2248,6 +2248,19 @@ void my_p4est_multialloy_t::update_grid()
 
 void my_p4est_multialloy_t::one_step()
 {
+  my_p4est_poisson_nodes_multialloy_t poisson_multialloy(ngbd);
+
+  poisson_multialloy.set_phi(phi, phi_xx, phi_yy);
+  poisson_multialloy.set_parameters(num_comps, dt, thermal_diffusivity, thermal_conductivity, latent_heat, Tm, solute_diffusivity, kp, ml);
+  poisson_multialloy.set_kin_undercool(kin_undercool_cf);
+  poisson_multialloy.set_GT(GT_cf);
+
+  poisson_multialloy.set_rhs(temperature_n, concentration_n);
+  poisson_multialloy.set_bc(bc_t, bc_c);
+  poisson_multialloy.set_tolerance(bc_tolerance, max_iterations);
+
+  poisson_multialloy.solve(temperature_np1, concentration_np1, bc_error, bc_error_max);
+
   parStopWatch w1;
   w1.start("iteration time");
 

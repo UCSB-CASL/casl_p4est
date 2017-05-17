@@ -79,6 +79,7 @@ class CF_2
 {
 public:
   double lip, t;
+  double value(double *xyz) {return this->operator ()(xyz[0], xyz[1]);}
   virtual double operator()(double x, double y) const=0 ;
   virtual ~CF_2() {}
 };
@@ -87,7 +88,8 @@ class CF_3
 {
 public:
   double lip, t;
-  virtual double operator()(double x, double y,double z) const=0 ;
+  double value(double *xyz) {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
+  virtual double operator()(double x, double y, double z) const=0 ;
   virtual ~CF_3() {}
 };
 
@@ -174,6 +176,10 @@ public:
 
   inline const CF_2& getInterfaceValue(){
     return *p_InterfaceValue;
+  }
+
+  inline const CF_2& getWallValue(){
+    return *p_WallValue;
   }
 
   inline const CF_2& getRobinCoef(){

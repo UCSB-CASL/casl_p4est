@@ -243,8 +243,9 @@ void my_p4est_poisson_nodes_t::preallocate_matrix()
      * 3) If they do not exist, simply skip
      */
 
-    if (phi_p[n] > 2*diag_min)
-      continue;
+    if (!bc_->interfaceType() == NOINTERFACE)
+      if (phi_p[n] > 2*diag_min)
+        continue;
 
 #ifdef P4_TO_P8
     if (qnnn.d_m00_p0*qnnn.d_m00_0p != 0) // node_m00_mm will enter discretization
@@ -710,7 +711,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
       if(bc_->wallType(xyz_C) == DIRICHLET)
       {
         ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
-        if (phi_p[n]<0.) matrix_has_nullspace = false;
+        if (phi_p[n]<0. || bc_->interfaceType() == NOINTERFACE) matrix_has_nullspace = false;
         continue;
       }
 
@@ -728,7 +729,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
-          if (phi_p[n] < diag_min)
+          if (phi_p[n] < diag_min || bc_->interfaceType() == NOINTERFACE)
             ierr = MatSetValue(A, node_000_g, node_m00_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
@@ -744,7 +745,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           PetscInt node_p00_g  = petsc_gloidx[n_p00];
 
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
+          if (phi_p[n] < diag_min || bc_->interfaceType() == NOINTERFACE)
             ierr = MatSetValue(A, node_000_g, node_p00_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
@@ -760,7 +761,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           PetscInt node_0m0_g  = petsc_gloidx[n_0m0];
 
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
+          if (phi_p[n] < diag_min || bc_->interfaceType() == NOINTERFACE)
             ierr = MatSetValue(A, node_000_g, node_0m0_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
@@ -775,7 +776,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           PetscInt node_0p0_g  = petsc_gloidx[n_0p0];
 
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
+          if (phi_p[n] < diag_min || bc_->interfaceType() == NOINTERFACE)
             ierr = MatSetValue(A, node_000_g, node_0p0_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
@@ -787,7 +788,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           PetscInt node_00m_g  = petsc_gloidx[n_00m];
 
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
+          if (phi_p[n] < diag_min || bc_->interfaceType() == NOINTERFACE)
             ierr = MatSetValue(A, node_000_g, node_00m_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
@@ -799,7 +800,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           PetscInt node_00p_g  = petsc_gloidx[n_00p];
 
           ierr = MatSetValue(A, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
-          if (phi_p[n] < diag_min)
+          if (phi_p[n] < diag_min || bc_->interfaceType() == NOINTERFACE)
             ierr = MatSetValue(A, node_000_g, node_00p_g, -bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
           continue;
@@ -909,7 +910,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
       bool is_ngbd_crossed_neumann = is_one_negative && is_one_positive;
 
       // far away from the interface
-      if(phi_000>0. &&  (!is_ngbd_crossed_neumann || bc_->interfaceType() == DIRICHLET )){
+      if(phi_000>0. &&  (!is_ngbd_crossed_neumann || bc_->interfaceType() == DIRICHLET ) && (bc_->interfaceType() != NOINTERFACE)){
         ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
         continue;
       }
@@ -1974,7 +1975,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
       bool is_ngbd_crossed_neumann = is_one_negative && is_one_positive;
 
       // far away from the interface
-      if(phi_000>0. &&  (!is_ngbd_crossed_neumann || bc_->interfaceType() == DIRICHLET ) && !(bc_->interfaceType() == NOINTERFACE)){
+      if(phi_000>0. &&  (!is_ngbd_crossed_neumann || bc_->interfaceType() == DIRICHLET ) && (bc_->interfaceType() != NOINTERFACE)){
         if(bc_->interfaceType()==DIRICHLET)
           rhs_p[n] = bc_strength*bc_->interfaceValue(xyz_C);
         else
@@ -2892,9 +2893,10 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
 #endif
 
     if (phi_p[n] > 2.*diag_min)
-      rhs_out_p[n] = rhs_p(xyz_C[0], xyz_C[1]);
-    else if (phi_p[n] < 2.*diag_min)
-      rhs_out_p[n] = rhs_m(xyz_C[0], xyz_C[1]);
+
+      rhs_out_p[n] += rhs_p(xyz_C[0], xyz_C[1]);
+    else if (phi_p[n] < -2.*diag_min)
+      rhs_out_p[n] += rhs_m(xyz_C[0], xyz_C[1]);
     else {
 
       //---------------------------------------------------------------------
@@ -2975,14 +2977,16 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
       bool is_ngbd_crossed_neumann = is_one_negative && is_one_positive;
 
       if (!is_ngbd_crossed_neumann)
-        if (phi_p[n] > 0.)  rhs_out_p[n] = rhs_p(xyz_C[0], xyz_C[1]);
-        else                rhs_out_p[n] = rhs_m(xyz_C[0], xyz_C[1]);
-      else {
+      {
+        if (phi_p[n] > 0.)  rhs_out_p[n] += rhs_p(xyz_C[0], xyz_C[1]);
+        else                rhs_out_p[n] += rhs_m(xyz_C[0], xyz_C[1]);
+      } else {
 
         const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
 
         double volume_cut_cell = 0.;
         double interface_area  = 0.;
+        double integral_bc     = 0.;
 
 #ifdef P4_TO_P8
         p4est_locidx_t n_m00 = qnnn.d_m00_m0==0 ? (qnnn.d_m00_0m==0 ? qnnn.node_m00_mm : qnnn.node_m00_mp)
@@ -3022,6 +3026,7 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
 
               volume_cut_cell += cube.area_In_Negative_Domain(phi_cube);
               interface_area  += cube.interface_Length_In_Cell(phi_cube);
+              integral_bc += cube.integrate_Over_Interface(jump_un, phi_cube);
             }
 #else
         p4est_locidx_t n_m00 = qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm;
@@ -3046,6 +3051,7 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
 
             volume_cut_cell += cube.area_In_Negative_Domain(phi_cube);
             interface_area  += cube.interface_Length_In_Cell(phi_cube);
+            integral_bc += cube.integrate_Over_Interface(jump_un, phi_cube);
           }
 
 #endif
@@ -3152,43 +3158,6 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
         double s_00p_m = s_00p, s_00p_p = (fv_zmax-fv_zmin) - s_00p;
 #endif
 
-        double integral_bc = 0;
-#ifdef P4_TO_P8
-        for (short k = 0; k < fv_size_z; ++k)
-          for (short j = 0; j < fv_size_y; ++j)
-            for (short i = 0; i < fv_size_x; ++i)
-            {
-              cube.x0 = fv_x[i]; cube.x1 = fv_x[i+1];
-              cube.y0 = fv_y[j]; cube.y1 = fv_y[j+1];
-              cube.z0 = fv_z[k]; cube.z1 = fv_z[k+1];
-
-              phi_cube.val000 = phi_fv[(k+0)*fv_nx*fv_ny + (j+0)*fv_nx + (i+0)];
-              phi_cube.val100 = phi_fv[(k+0)*fv_nx*fv_ny + (j+0)*fv_nx + (i+1)];
-              phi_cube.val010 = phi_fv[(k+0)*fv_nx*fv_ny + (j+1)*fv_nx + (i+0)];
-              phi_cube.val110 = phi_fv[(k+0)*fv_nx*fv_ny + (j+1)*fv_nx + (i+1)];
-              phi_cube.val001 = phi_fv[(k+1)*fv_nx*fv_ny + (j+0)*fv_nx + (i+0)];
-              phi_cube.val101 = phi_fv[(k+1)*fv_nx*fv_ny + (j+0)*fv_nx + (i+1)];
-              phi_cube.val011 = phi_fv[(k+1)*fv_nx*fv_ny + (j+1)*fv_nx + (i+0)];
-              phi_cube.val111 = phi_fv[(k+1)*fv_nx*fv_ny + (j+1)*fv_nx + (i+1)];
-
-              integral_bc += cube.integrate_Over_Interface(jump_un, phi_cube);
-            }
-#else
-        for (short j = 0; j < fv_size_y; ++j)
-          for (short i = 0; i < fv_size_x; ++i)
-          {
-            cube.x0 = fv_x[i]; cube.x1 = fv_x[i+1];
-            cube.y0 = fv_y[j]; cube.y1 = fv_y[j+1];
-
-            phi_cube.val00 = phi_fv[(j+0)*fv_nx + (i+0)];
-            phi_cube.val10 = phi_fv[(j+0)*fv_nx + (i+1)];
-            phi_cube.val01 = phi_fv[(j+1)*fv_nx + (i+0)];
-            phi_cube.val11 = phi_fv[(j+1)*fv_nx + (i+1)];
-
-            integral_bc += cube.integrate_Over_Interface(jump_un, phi_cube);
-          }
-#endif
-
         double xyz_p[P4EST_DIM];
         double normal[P4EST_DIM];
 
@@ -3215,30 +3184,28 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
         double rhs_m_val = rhs_m(xyz_p[0],xyz_p[1]);
         double rhs_p_val = rhs_p(xyz_p[0],xyz_p[1]);
 
-        rhs_out_p[n] = (rhs_m_val*volume_cut_cell_m + rhs_p_val*volume_cut_cell_p + mu_*integral_bc)/volume_full_cell;
+        rhs_out_p[n] += (rhs_m_val*volume_cut_cell_m + rhs_p_val*volume_cut_cell_p + mu_*integral_bc)/volume_full_cell;
 
         if (phi_p[n] < 0.) {
-          rhs_out_p[n] -= (fabs(phi_p[n])*beta_proj - alpha_proj)*(add_p[n]*volume_cut_cell_p + mu_*((s_m00_p+s_p00_p)/dx_min+(s_0m0_p+s_0p0_p)/dy_min))/volume_full_cell;
-          rhs_out_p[n_m00] += mu_*s_m00_p*(fabs(phi_p[n])*beta_proj - alpha_proj)/dx_min/volume_full_cell;
-          rhs_out_p[n_p00] += mu_*s_p00_p*(fabs(phi_p[n])*beta_proj - alpha_proj)/dx_min/volume_full_cell;
-          rhs_out_p[n_0m0] += mu_*s_0m0_p*(fabs(phi_p[n])*beta_proj - alpha_proj)/dy_min/volume_full_cell;
-          rhs_out_p[n_0p0] += mu_*s_0p0_p*(fabs(phi_p[n])*beta_proj - alpha_proj)/dy_min/volume_full_cell;
+          double factor = (fabs(phi_p[n])*beta_proj - alpha_proj)/volume_full_cell;
+
+          rhs_out_p[n] -= factor*(add_p[n]*volume_cut_cell_p + mu_*((s_m00_p+s_p00_p)/dx_min+(s_0m0_p+s_0p0_p)/dy_min));
+          rhs_out_p[n_m00] += mu_*s_m00_p*factor/dx_min;
+          rhs_out_p[n_p00] += mu_*s_p00_p*factor/dx_min;
+          rhs_out_p[n_0m0] += mu_*s_0m0_p*factor/dy_min;
+          rhs_out_p[n_0p0] += mu_*s_0p0_p*factor/dy_min;
         } else {
-          rhs_out_p[n] -= (fabs(phi_p[n])*beta_proj + alpha_proj)*(add_p[n]*volume_cut_cell_m + mu_*((s_m00_m+s_p00_m)/dx_min+(s_0m0_m+s_0p0_m)/dy_min))/volume_full_cell;
-          rhs_out_p[n_m00] += mu_*s_m00_m*(fabs(phi_p[n])*beta_proj + alpha_proj)/dx_min/volume_full_cell;
-          rhs_out_p[n_p00] += mu_*s_p00_m*(fabs(phi_p[n])*beta_proj + alpha_proj)/dx_min/volume_full_cell;
-          rhs_out_p[n_0m0] += mu_*s_0m0_m*(fabs(phi_p[n])*beta_proj + alpha_proj)/dy_min/volume_full_cell;
-          rhs_out_p[n_0p0] += mu_*s_0p0_m*(fabs(phi_p[n])*beta_proj + alpha_proj)/dy_min/volume_full_cell;
+          double factor = (fabs(phi_p[n])*beta_proj + alpha_proj)/volume_full_cell;
+
+          rhs_out_p[n] -= factor*(add_p[n]*volume_cut_cell_m + mu_*((s_m00_m+s_p00_m)/dx_min+(s_0m0_m+s_0p0_m)/dy_min));
+          rhs_out_p[n_m00] += mu_*s_m00_m*factor/dx_min;
+          rhs_out_p[n_p00] += mu_*s_p00_m*factor/dx_min;
+          rhs_out_p[n_0m0] += mu_*s_0m0_m*factor/dy_min;
+          rhs_out_p[n_0p0] += mu_*s_0p0_m*factor/dy_min;
         }
-
       }
-
-
-
-
     }
   }
-
 
   // restore pointers
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -3260,7 +3227,7 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
   }
 
   // update ghosts
-  ierr = VecGhostUpdateBegin(rhs_out, ADD_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(rhs_out, ADD_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(rhs_out, ADD_VALUES, SCATTER_REVERSE); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(rhs_out, ADD_VALUES, SCATTER_REVERSE); CHKERRXX(ierr);
 
 }

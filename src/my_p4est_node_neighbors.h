@@ -50,6 +50,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_multialloy_t;
   friend class my_p4est_navier_stokes_t;
   friend class my_p4est_epitaxy_t;
+  friend class my_p4est_poisson_nodes_multialloy_t;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information

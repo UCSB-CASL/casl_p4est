@@ -724,7 +724,7 @@ int main (int argc, char* argv[])
     solver.set_bc(bc);
     solver.set_rhs(rhs);
     solver.set_use_refined_cube(false);
-    solver.set_use_pointwise_dirichlet(true);
+    solver.set_use_pointwise_dirichlet(false);
 //    solver.set_use_pointwise_dirichlet(false);
 
     Vec robin;
@@ -738,18 +738,18 @@ int main (int argc, char* argv[])
     Vec sol;
     ierr = VecDuplicate(rhs, &sol); CHKERRXX(ierr);
 
-    solver.assemble_matrix(sol);
+//    solver.assemble_matrix(sol);
 
-    double xyz[P4EST_DIM];
-    for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-    {
-      for (short i = 0; i < solver.pointwise_bc[n].size(); ++i)
-      {
-        solver.get_xyz_interface_point(n, i, xyz);
-        double value = u_exact(xyz[0], xyz[1]);
-        solver.set_interface_point_value(n, i, value);
-      }
-    }
+//    double xyz[P4EST_DIM];
+//    for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+//    {
+//      for (short i = 0; i < solver.pointwise_bc[n].size(); ++i)
+//      {
+//        solver.get_xyz_interface_point(n, i, xyz);
+//        double value = u_exact(xyz[0], xyz[1]);
+//        solver.set_interface_point_value(n, i, value);
+//      }
+//    }
 
     solver.solve(sol, 0, KSPBCGS, PCHYPRE);
 //    solver.solve(sol, 0, KSPBCGS, PCSOR);
