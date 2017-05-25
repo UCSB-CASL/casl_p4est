@@ -127,7 +127,7 @@ public:
   void extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend=INT_MAX) const;
 
   /* extend a quantity over the interface with the TVD algorithm */
-  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2) const;
+  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL) const;
 
   /* extend a quantity over the interface with the TVD algorithm using mask*/
   void extend_Over_Interface_TVD(Vec phi, Vec mask, Vec q, int iterations=20, int order=2) const;

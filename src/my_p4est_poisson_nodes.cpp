@@ -824,8 +824,13 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
       //---------------------------------------------------------------------
       // interface boundary
       //---------------------------------------------------------------------
-      if((ABS(phi_000)<eps && bc_->interfaceType() == DIRICHLET) ){
+      if((ABS(phi_000)<EPS && bc_->interfaceType() == DIRICHLET) ){
         ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
+
+        if (use_pointwise_dirichlet)
+          pointwise_bc[n].push_back(interface_point_t(0, EPS));
+
+        std::cout << "Happened: " << x_C << " " << y_C << "\n";
 
         matrix_has_nullspace=false;
         continue;
@@ -1652,7 +1657,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 
             // FIX this for variable mu
 
-            if (robin_coef_proj*phi_p[n] < 1.)
+            if (robin_coef_proj*phi_p[n] < 1. || 1)
             {
               w_000 += mue_000*(robin_coef_proj/(1.-phi_p[n]*robin_coef_proj))*interface_area;
 
@@ -1858,6 +1863,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
     if(is_node_Wall(p4est, ni))
     {
       if(bc_->wallType(xyz_C) == DIRICHLET) {
+//        double val = bc_strength*bc_->wallValue(xyz_C);
         rhs_p[n] = bc_strength*bc_->wallValue(xyz_C);
         continue;
       }
@@ -1890,8 +1896,11 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
       //---------------------------------------------------------------------
       // interface boundary
       //---------------------------------------------------------------------
-      if((ABS(phi_000)<eps && bc_->interfaceType() == DIRICHLET) ){
-        rhs_p[n] = bc_strength*bc_->interfaceValue(xyz_C);
+      if((ABS(phi_000)<EPS && bc_->interfaceType() == DIRICHLET) ){
+        if (use_pointwise_dirichlet)
+          rhs_p[n] = pointwise_bc[n][0].value;
+        else
+          rhs_p[n] = bc_strength*bc_->interfaceValue(xyz_C);
         continue;
       }
 
@@ -2519,7 +2528,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
             if (fabs(robin_coef_proj) > 0) matrix_has_nullspace = false;
 
             // FIX this for variable mu
-            if (robin_coef_proj*phi_p[n] < 1.)
+            if (robin_coef_proj*phi_p[n] < 1. || 1)
             {
               w_000 += mue_000*(robin_coef_proj/(1.-phi_p[n]*robin_coef_proj))*interface_area;
 
@@ -2818,7 +2827,8 @@ void my_p4est_poisson_nodes_t::assemble_matrix(Vec solution)
   }
 }
 
-void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2& jump_un, CF_2& rhs_m, CF_2& rhs_p)
+//void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2& jump_un, CF_2& rhs_m, CF_2& rhs_p)
+void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u, CF_2& jump_un, Vec rhs_m_in, Vec rhs_p_in)
 {
 
   // set local add if none was given
@@ -2828,6 +2838,22 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
     local_add = true;
     ierr = VecCreateSeq(PETSC_COMM_SELF, nodes->num_owned_indeps, &add_); CHKERRXX(ierr);
     ierr = VecSet(add_, diag_add_); CHKERRXX(ierr);
+  }
+
+  bool local_rhs = false;
+  Vec rhs_m, rhs_p;
+  if(rhs_m_in == NULL && rhs_p_in == NULL)
+  {
+    local_rhs = true;
+    ierr = VecCreateGhostNodes(p4est, nodes, &rhs_m); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &rhs_p); CHKERRXX(ierr);
+//    ierr = VecCreateSeq(PETSC_COMM_SELF, nodes->num_owned_indeps, &rhs_m); CHKERRXX(ierr);
+//    ierr = VecCreateSeq(PETSC_COMM_SELF, nodes->num_owned_indeps, &rhs_p); CHKERRXX(ierr);
+    ierr = VecSet(rhs_m, 0); CHKERRXX(ierr);
+    ierr = VecSet(rhs_p, 0); CHKERRXX(ierr);
+  } else {
+    rhs_m = rhs_m_in;
+    rhs_p = rhs_p_in;
   }
 
   if(phi_ == NULL)
@@ -2846,6 +2872,9 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
 #endif
 
   ierr = VecGetArray(add_,    &add_p   ); CHKERRXX(ierr);
+
+  double *rhs_m_p; ierr = VecGetArray(rhs_m, &rhs_m_p); CHKERRXX(ierr);
+  double *rhs_p_p; ierr = VecGetArray(rhs_p, &rhs_p_p); CHKERRXX(ierr);
 
   double *rhs_out_p;
   ierr = VecGetArray(rhs_out, &rhs_out_p); CHKERRXX(ierr);
@@ -2885,7 +2914,9 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
   {
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+
     node_xyz_fr_n(n, p4est, nodes, xyz_C);
+
     double x_C  = xyz_C[0];
     double y_C  = xyz_C[1];
 #ifdef P4_TO_P8
@@ -2894,9 +2925,14 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
 
     if (phi_p[n] > 2.*diag_min)
 
-      rhs_out_p[n] += rhs_p(xyz_C[0], xyz_C[1]);
+      rhs_out_p[n] += rhs_p_p[n];
+//    rhs_out_p[n] += rhs_p(xyz_C[0], xyz_C[1]);
+
     else if (phi_p[n] < -2.*diag_min)
-      rhs_out_p[n] += rhs_m(xyz_C[0], xyz_C[1]);
+
+      rhs_out_p[n] += rhs_m_p[n];
+//    rhs_out_p[n] += rhs_p(xyz_C[0], xyz_C[1]);
+
     else {
 
       //---------------------------------------------------------------------
@@ -2978,8 +3014,10 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
 
       if (!is_ngbd_crossed_neumann)
       {
-        if (phi_p[n] > 0.)  rhs_out_p[n] += rhs_p(xyz_C[0], xyz_C[1]);
-        else                rhs_out_p[n] += rhs_m(xyz_C[0], xyz_C[1]);
+        if (phi_p[n] > 0.)  rhs_out_p[n] += rhs_p_p[n];
+        else                rhs_out_p[n] += rhs_m_p[n];
+//        if (phi_p[n] > 0.)  rhs_out_p[n] += rhs_p(xyz_C[0], xyz_C[1]);
+//        else                rhs_out_p[n] += rhs_m(xyz_C[0], xyz_C[1]);
       } else {
 
         const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
@@ -3181,8 +3219,10 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
         double alpha_proj = jump_u(xyz_p[0],xyz_p[1]);
         double beta_proj = jump_un(xyz_p[0],xyz_p[1]);
 
-        double rhs_m_val = rhs_m(xyz_p[0],xyz_p[1]);
-        double rhs_p_val = rhs_p(xyz_p[0],xyz_p[1]);
+//        double rhs_m_val = rhs_m(xyz_p[0],xyz_p[1]);
+//        double rhs_p_val = rhs_p(xyz_p[0],xyz_p[1]);
+        double rhs_m_val = rhs_m_p[n];
+        double rhs_p_val = rhs_p_p[n];
 
         rhs_out_p[n] += (rhs_m_val*volume_cut_cell_m + rhs_p_val*volume_cut_cell_p + mu_*integral_bc)/volume_full_cell;
 
@@ -3219,12 +3259,22 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2
 
   ierr = VecRestoreArray(rhs_out, &rhs_out_p   ); CHKERRXX(ierr);
 
+  ierr = VecRestoreArray(rhs_m, &rhs_m_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(rhs_p, &rhs_p_p); CHKERRXX(ierr);
+
   // get rid of local stuff
   if(local_add)
   {
     ierr = VecDestroy(add_); CHKERRXX(ierr);
     add_ = NULL;
   }
+
+  if(local_rhs)
+  {
+    ierr = VecDestroy(rhs_m); CHKERRXX(ierr);
+    ierr = VecDestroy(rhs_p); CHKERRXX(ierr);
+  }
+
 
   // update ghosts
   ierr = VecGhostUpdateBegin(rhs_out, ADD_VALUES, SCATTER_REVERSE); CHKERRXX(ierr);

@@ -2081,7 +2081,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain( Vec phi_petsc,
 }
 
 
-void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterations, int order) const
+void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterations, int order, Vec normal[]) const
 {
 #ifdef CASL_THROWS
   if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: my_p4est_level_set_t->extend_Over_Interface_TVD: order must be 0, 1 or 2.");
@@ -2111,6 +2111,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
   ngbd->init_neighbors();
 
   /* compute the normals */
+  double *normal_p[P4EST_DIM];
+
+  if (normal != NULL)
+    for (short dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArray(normal[dim], &normal_p[dim]); CHKERRXX(ierr);
+    }
+
   std::vector<double> nx(nodes->num_owned_indeps);
   std::vector<double> ny(nodes->num_owned_indeps);
 #ifdef P4_TO_P8
@@ -2118,35 +2125,51 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec q, int iterat
 #endif
 
   quad_neighbor_nodes_of_node_t qnnn;
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-  {
-    ngbd->get_neighbors(n, qnnn);
-    nx[n] = qnnn.dx_central(phi_p);
-    ny[n] = qnnn.dy_central(phi_p);
+  if (normal != NULL) {
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      nx[n] = normal_p[0][n];
+      ny[n] = normal_p[1][n];
 #ifdef P4_TO_P8
-    nz[n] = qnnn.dz_central(phi_p);
-    double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n] + nz[n]*nz[n]);
+      nz[n] = normal_p[2][n];
+#endif
+    }
+  } else {
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      ngbd->get_neighbors(n, qnnn);
+      nx[n] = qnnn.dx_central(phi_p);
+      ny[n] = qnnn.dy_central(phi_p);
+#ifdef P4_TO_P8
+      nz[n] = qnnn.dz_central(phi_p);
+      double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n] + nz[n]*nz[n]);
 #else
-    double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
+      double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
 #endif
 
-		if(norm>EPS)
-		{
-			nx[n] /= norm;
-			ny[n] /= norm;
+      if(norm>EPS)
+      {
+        nx[n] /= norm;
+        ny[n] /= norm;
 #ifdef P4_TO_P8
-			nz[n] /= norm;
+        nz[n] /= norm;
 #endif
-		}
-		else
-		{
-			nx[n] = 0;
-			ny[n] = 0;
+      }
+      else
+      {
+        nx[n] = 0;
+        ny[n] = 0;
 #ifdef P4_TO_P8
-			nz[n] = 0;
+        nz[n] = 0;
 #endif
-		}
+      }
+    }
   }
+
+  if (normal != NULL)
+    for (short dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArray(normal[dim], &normal_p[dim]); CHKERRXX(ierr);
+    }
 
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
@@ -3730,9 +3753,9 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
 #endif
 
     if(p_000*p_m00<0){
-      s_m00[n] = interface_Location(0, s_m00_, p_000, p_m00);
-//      s_m00[n] =-interface_Location_With_Second_Order_Derivative(-s_m00_,   0,p_m00,p_000,pxx_m00,pxx_000);
-//      s_m00[n] = MAX(s_m00[n],EPS);
+//      s_m00[n] = interface_Location(0, s_m00_, p_000, p_m00);
+      s_m00[n] =-interface_Location_With_Second_Order_Derivative(-s_m00_,   0,p_m00,p_000,pxx_m00,pxx_000);
+      s_m00[n] = MAX(s_m00[n],EPS);
       double xyz[] = { x-s_m00[n], y
                  #ifdef P4_TO_P8
                        , z
@@ -3745,9 +3768,9 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
       s_m00[n] = s_m00_;
     }
     if(p_000*p_p00<0) {
-      s_p00[n] = interface_Location(0, s_p00_, p_000, p_p00);
-//      s_p00[n] = interface_Location_With_Second_Order_Derivative(    0,s_p00_,p_000,p_p00,pxx_000,pxx_p00);
-//      s_p00[n] = MAX(s_p00[n],EPS);
+//      s_p00[n] = interface_Location(0, s_p00_, p_000, p_p00);
+      s_p00[n] = interface_Location_With_Second_Order_Derivative(    0,s_p00_,p_000,p_p00,pxx_000,pxx_p00);
+      s_p00[n] = MAX(s_p00[n],EPS);
       double xyz[] = { x+s_p00[n], y
                  #ifdef P4_TO_P8
                        , z
@@ -3760,9 +3783,9 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
       s_p00[n] = s_p00_;
     }
     if(p_000*p_0m0<0) {
-      s_0m0[n] = interface_Location(0, s_0m0_, p_000, p_0m0);
-//      s_0m0[n] =-interface_Location_With_Second_Order_Derivative(-s_0m0_,   0,p_0m0,p_000,pyy_0m0,pyy_000);
-//      s_0m0[n] = MAX(s_0m0[n],EPS);
+//      s_0m0[n] = interface_Location(0, s_0m0_, p_000, p_0m0);
+      s_0m0[n] =-interface_Location_With_Second_Order_Derivative(-s_0m0_,   0,p_0m0,p_000,pyy_0m0,pyy_000);
+      s_0m0[n] = MAX(s_0m0[n],EPS);
       double xyz[] = { x, y-s_0m0[n]
                  #ifdef P4_TO_P8
                        , z
@@ -3775,9 +3798,9 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
       s_0m0[n] = s_0m0_;
     }
     if(p_000*p_0p0<0){
-      s_0p0[n] = interface_Location(0, s_0p0_, p_000, p_0p0);
-//      s_0p0[n] = interface_Location_With_Second_Order_Derivative(    0,s_0p0_,p_000,p_0p0,pyy_000,pyy_0p0);
-//      s_0p0[n] = MAX(s_0p0[n],EPS);
+//      s_0p0[n] = interface_Location(0, s_0p0_, p_000, p_0p0);
+      s_0p0[n] = interface_Location_With_Second_Order_Derivative(    0,s_0p0_,p_000,p_0p0,pyy_000,pyy_0p0);
+      s_0p0[n] = MAX(s_0p0[n],EPS);
       double xyz[] = { x, y+s_0p0[n]
                  #ifdef P4_TO_P8
                        , z
@@ -3791,9 +3814,9 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
     }
 #ifdef P4_TO_P8
     if(p_000*p_00m<0) {
-      s_00m[n] = interface_Location(0, s_00m_, p_000, p_00m);
-//      s_00m[n] =-interface_Location_With_Second_Order_Derivative(-s_00m_,   0,p_00m,p_000,pzz_00m,pzz_000);
-//      s_00m[n] = MAX(s_00m[n],EPS);
+//      s_00m[n] = interface_Location(0, s_00m_, p_000, p_00m);
+      s_00m[n] =-interface_Location_With_Second_Order_Derivative(-s_00m_,   0,p_00m,p_000,pzz_00m,pzz_000);
+      s_00m[n] = MAX(s_00m[n],EPS);
       double xyz[] = { x, y, z-s_00m[n]};
       interp_00m.add_point(n, xyz);
     }
@@ -3802,9 +3825,9 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
       s_00m[n] = s_00m_;
     }
     if(p_000*p_00p<0) {
-      s_00p[n] = interface_Location(0, s_00p_, p_000, p_00p);
-//      s_00p[n] = interface_Location_With_Second_Order_Derivative(    0,s_00p_,p_000,p_00p,pzz_000,pzz_00p);
-//      s_00p[n] = MAX(s_00p[n],EPS);
+//      s_00p[n] = interface_Location(0, s_00p_, p_000, p_00p);
+      s_00p[n] = interface_Location_With_Second_Order_Derivative(    0,s_00p_,p_000,p_00p,pzz_000,pzz_00p);
+      s_00p[n] = MAX(s_00p[n],EPS);
       double xyz[] = { x, y, z+s_00p[n] };
       interp_00p.add_point(n, xyz);
     }

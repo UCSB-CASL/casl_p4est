@@ -203,7 +203,7 @@ int main(int argc, char ** argv)
   int nz = cmd.get("nz", 1);
 
   int lmin = cmd.get("lmin", 2);
-  int lmax = cmd.get("lmax", 8);
+  int lmax = cmd.get("lmax", 12);
   int nb_splits = cmd.get("nb_splits", 1);
   double tf = cmd.get("tf", 1);
   bool save_vtk = cmd.get("save_vtk", 1);
