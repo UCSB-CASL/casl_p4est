@@ -146,6 +146,7 @@ private:
   int pin_every_n_steps_;
   double bc_tolerance_;
   int max_iterations_;
+  double phi_thresh_;
 
   interpolation_method interpolation_between_grids_;
 
@@ -300,8 +301,9 @@ public:
   inline void set_cfl (double val) {cfl_number_ = val;}
 
   inline void set_bc_tolerance (double bc_tolerance) { bc_tolerance_ = bc_tolerance; }
-  inline void set_pin_every_n_steps (double pin_every_n_steps) { pin_every_n_steps_ = pin_every_n_steps; }
-  inline void set_max_iterations (double max_iterations) { max_iterations_ = max_iterations; }
+  inline void set_pin_every_n_steps (int pin_every_n_steps) { pin_every_n_steps_ = pin_every_n_steps; }
+  inline void set_max_iterations (int max_iterations) { max_iterations_ = max_iterations; }
+  inline void set_phi_thresh (int phi_thresh) { phi_thresh_ = phi_thresh; }
 
   void compute_normal_and_curvature();
   void compute_velocity();

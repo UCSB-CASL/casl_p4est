@@ -82,6 +82,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   pin_every_n_steps_ = 100;
   bc_tolerance_ = 1.e-8;
   max_iterations_ = 50;
+  phi_thresh_ = 0.001;
 
   interpolation_between_grids_ = quadratic;
 }
@@ -238,10 +239,15 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
   {
     p4est_locidx_t n = ngbd_->get_layer_node(i);
     qnnn = ngbd_->get_neighbors(n);
+//#ifdef P4_TO_P8
+//    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1./dxyz_max_), -1./dxyz_max_);
+//#else
+//    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1./dxyz_max_), -1./dxyz_max_);
+//#endif
 #ifdef P4_TO_P8
-    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1./dxyz_max_), -1./dxyz_max_);
+    kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]);
 #else
-    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1./dxyz_max_), -1./dxyz_max_);
+    kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
 #endif
   }
   ierr = VecGhostUpdateBegin(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
@@ -249,11 +255,16 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
   {
     p4est_locidx_t n = ngbd_->get_local_node(i);
     qnnn = ngbd_->get_neighbors(n);
-#ifdef P4_TO_P8
-    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1./dxyz_max_), -1./dxyz_max_);
-#else
-    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1./dxyz_max_), -1./dxyz_max_);
-#endif
+//#ifdef P4_TO_P8
+//    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1./dxyz_max_), -1./dxyz_max_);
+//#else
+//    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1./dxyz_max_), -1./dxyz_max_);
+//#endif
+    #ifdef P4_TO_P8
+        kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]);
+    #else
+        kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+    #endif
   }
   ierr = VecGhostUpdateEnd(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
   ierr = VecRestoreArray(kappa_tmp, &kappa_p); CHKERRXX(ierr);
@@ -304,7 +315,7 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
     theta_xz_tmp_p[n] = atan2(normal_p[2][n], normal_p[0][n]);
     theta_yz_tmp_p[n] = atan2(normal_p[2][n], normal_p[1][n]);
 #else
-    theta_tmp_p[n] = atan2(normal_p[1][n], normal_p[0][n]);
+    theta_tmp_p[n] = atan2(-normal_p[1][n], -normal_p[0][n]);
 #endif
   }
 
@@ -692,12 +703,12 @@ void my_p4est_multialloy_t::update_grid()
 //  ierr = VecDestroy(normal_velocity_np1); CHKERRXX(ierr);
 //  normal_velocity_np1 = normal_velocity_n;
 
-//  Vec kappa_n;
-//  ierr = VecDuplicate(phi, &kappa_n); CHKERRXX(ierr);
-//  interp.set_input(kappa, quadratic_non_oscillatory);
-//  interp.interpolate(kappa_n);
-//  ierr = VecDestroy(kappa); CHKERRXX(ierr);
-//  kappa = kappa_n;
+  Vec kappa_n;
+  ierr = VecDuplicate(phi_, &kappa_n); CHKERRXX(ierr);
+  interp.set_input(kappa_, quadratic_non_oscillatory);
+  interp.interpolate(kappa_n);
+  ierr = VecDestroy(kappa_); CHKERRXX(ierr);
+  kappa_ = kappa_n;
 
   p4est_destroy(p4est_);       p4est_ = p4est_np1;
   p4est_ghost_destroy(ghost_); ghost_ = ghost_np1;
@@ -705,22 +716,37 @@ void my_p4est_multialloy_t::update_grid()
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
 
-  /* help interface to not get stuck at grid nodes */
-  double fraction = 0.0000;
-  double *phi_p, *normal_velocity_np1_p;
+//  /* help interface to not get stuck at grid nodes */
+//  double kappa_thresh = 1.0/dxyz_min_/100.;
+//  double *phi_p, *normal_velocity_np1_p, *kappa_p;
+
+//  ierr = VecGetArray(phi_, &phi_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(kappa_, &kappa_p); CHKERRXX(ierr);
+
+//  for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n)
+//  {
+//    if (phi_p[n] < 0. && phi_p[n] > -phi_thresh_*dxyz_min_ && kappa_p[n] > kappa_thresh)
+//      phi_p[n] *= -1.;
+//  }
+
+//  ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(kappa_, &kappa_p); CHKERRXX(ierr);
+
+//  double fraction = 0.0000;
+//  double *phi_p, *normal_velocity_np1_p;
 
 //  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 //  ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
 
 //  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
 //  {
-////    if (fabs(phi_p[n]) < fraction*dxyz_min)
-////    {
-////      if (normal_velocity_np1_p[n] > 0. && phi_p[n] > 0) phi_p[n] =-EPS;
-////      if (normal_velocity_np1_p[n] < 0. && phi_p[n] < 0) phi_p[n] = EPS;
-////    }
-//    if (phi_p[n] > 0. && phi_p[n] < fraction*dxyz_min)
-//      phi_p[n] *= -1;
+//    if (fabs(phi_p[n]) < fraction*dxyz_min)
+//    {
+//      if (normal_velocity_np1_p[n] > 0. && phi_p[n] > 0) phi_p[n] *= -1.;
+//      if (normal_velocity_np1_p[n] < 0. && phi_p[n] < 0) phi_p[n] *= -1.;
+//    }
+////    if (phi_p[n] > 0. && phi_p[n] < fraction*dxyz_min)
+////      phi_p[n] *= -1;
 //  }
 
 //  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
@@ -1098,6 +1124,9 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   const double *kappa_p;
   ierr = VecGetArrayRead(kappa_, &kappa_p); CHKERRXX(ierr);
 
+  const double *theta_p;
+  ierr = VecGetArrayRead(theta_, &theta_p); CHKERRXX(ierr);
+
   const double *bc_error_p;
   ierr = VecGetArrayRead(bc_error_, &bc_error_p); CHKERRXX(ierr);
 
@@ -1130,9 +1159,9 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   my_p4est_vtk_write_all(  p4est_, nodes_, ghost_,
                            P4EST_TRUE, P4EST_TRUE,
                          #ifdef P4_TO_P8
-                           7, 1, name,
+                           8, 1, name,
                          #else
-                           7, 1, name,
+                           8, 1, name,
                          #endif
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "t", t_p,
@@ -1140,6 +1169,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
                            VTK_POINT_DATA, "c1", c1_p,
                            VTK_POINT_DATA, "un", normal_velocity_np1_p,
                            VTK_POINT_DATA, "kappa", kappa_p,
+                           VTK_POINT_DATA, "theta", theta_p,
                            VTK_POINT_DATA, "bc_error", bc_error_p,
                            VTK_CELL_DATA , "leaf_level", l_p);
 
@@ -1156,6 +1186,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   ierr = VecRestoreArrayRead(c0_np1_, &c0_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(c1_np1_, &c1_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(kappa_, &kappa_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(theta_, &theta_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
 
   PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);

@@ -50,17 +50,17 @@
 #undef MIN
 #undef MAX
 
-int lmin = 5;
-int lmax = 10;
+int lmin = 6;
+int lmax = 11;
 int save_every_n_iteration = 50;
 
 double bc_tolerance = 1.e-8;
 
 double cfl_number = 0.1;
-double phi_thresh = 0.000;
+double phi_thresh = 0.01;
 double zero_negative_velocity = true;
 int max_iterations = 50;
-int pin_every_n_steps = 100;
+int pin_every_n_steps = 3;
 
 
 double lip = 1.5;
@@ -139,9 +139,10 @@ void set_alloy_parameters()
     lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
     eps_c                = 2.7207e-5;
     eps_v                = 2.27e-2;
+    eps_anisotropy       = 0.05;
 //    eps_c                = 0.0;
 //    eps_v                = 0.0;
-    eps_anisotropy       = 0.05;
+//    eps_anisotropy       = 0.01;
 
 //    box_size = 4e-2;
 
@@ -741,7 +742,7 @@ int main (int argc, char* argv[])
   bas.set_max_iterations(max_iterations);
   bas.set_pin_every_n_steps(pin_every_n_steps);
   bas.set_cfl(cfl_number);
-//  bas.set_phi_thresh(phi_thresh);
+  bas.set_phi_thresh(phi_thresh);
 //  bas.set_zero_negative_velocity(zero_negative_velocity);
 //  bas.set_num_of_iterations_per_step(num_of_iters_per_step);
 

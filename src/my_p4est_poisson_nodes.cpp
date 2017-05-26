@@ -568,6 +568,11 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
   double mue_00m, mue_00p;
 #endif
 
+  if (mask != NULL) { ierr = VecDestroy(mask); CHKERRXX(ierr); }
+  ierr = VecDuplicate(phi_, &mask); CHKERRXX(ierr);
+  double *mask_p;
+  ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
+
   if (!variable_mu) {
     mue_000 = mu_; mue_p00 = mu_; mue_m00 = mu_; mue_0m0 = mu_; mue_0p0 = mu_;
 #ifdef P4_TO_P8
@@ -606,6 +611,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++) // loop over nodes
   {
+    mask_p[n] = -1;
     // tree information
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
 
@@ -830,8 +836,6 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         if (use_pointwise_dirichlet)
           pointwise_bc[n].push_back(interface_point_t(0, EPS));
 
-        std::cout << "Happened: " << x_C << " " << y_C << "\n";
-
         matrix_has_nullspace=false;
         continue;
       }
@@ -917,6 +921,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
       // far away from the interface
       if(phi_000>0. &&  (!is_ngbd_crossed_neumann || bc_->interfaceType() == DIRICHLET ) && (bc_->interfaceType() != NOINTERFACE)){
         ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
+        mask_p[n] = 1;
         continue;
       }
 
@@ -1579,6 +1584,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
               s_00p += c2.area_In_Negative_Domain(qv);
             }
 #else
+          if (volume_cut_cell < 0.3*dx_min*dy_min) mask_p[n] = 1;
+
           PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm];
           PetscInt node_p00_g = petsc_gloidx[qnnn.d_p00_m0==0 ? qnnn.node_p00_mm : qnnn.node_p00_pm];
           PetscInt node_0m0_g = petsc_gloidx[qnnn.d_0m0_m0==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_pm];
@@ -1690,6 +1697,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           if(add_p[n] > 0) matrix_has_nullspace = false;
 
         } else {
+          mask_p[n] = 1;
           ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);          
         }
       }
@@ -1701,6 +1709,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
   ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
 
   // restore pointers
+  ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateBegin(mask, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd(mask, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);

@@ -770,7 +770,10 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
 
   is_c1_matrix_computed_ = true;
 
+  Vec mask = solver_c1->get_mask();
+
   my_p4est_level_set_t ls(node_neighbors_);
+//  ls.extend_Over_Interface_TVD(phi_.vec, mask, c1_.vec, 20, 2);
   ls.extend_Over_Interface_TVD(phi_.vec, c1_.vec, 20, 2, normal_.vec);
 
   node_neighbors_->second_derivatives_central(c1_.vec, c1_dd_.vec);
@@ -805,7 +808,10 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c1()
 
   is_c1_matrix_computed_ = true;
 
+  Vec mask = solver_c1->get_mask();
+
   my_p4est_level_set_t ls(node_neighbors_);
+//  ls.extend_Over_Interface_TVD(phi_.vec, mask, psi_c1_.vec, 20, 2);
   ls.extend_Over_Interface_TVD(phi_.vec, psi_c1_.vec, 20, 2, normal_.vec);
 
   node_neighbors_->second_derivatives_central(psi_c1_.vec, psi_c1_dd_.vec);

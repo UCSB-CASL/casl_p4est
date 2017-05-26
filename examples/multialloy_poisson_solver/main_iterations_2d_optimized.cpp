@@ -762,8 +762,8 @@ class c0_guess_t : public CF_2
 public:
   double operator()(double x, double y) const
   {
-//    return 1.;
-    return c0_exact(x,y);
+    return 1.;
+//    return c0_exact(x,y);
 //    return c0_exact(x,y) + 0.1;
   }
 } c0_guess;
@@ -877,6 +877,8 @@ int main (int argc, char* argv[])
 //  double err_ex_n;
 //  double err_ex_nm1;
 
+  vector<double> h, e_v, e_t, e_c0, e_c1;
+
   for(int iter=0; iter<nb_splits; ++iter)
   {
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
@@ -929,13 +931,13 @@ int main (int argc, char* argv[])
 #endif
 
     // compute dt
-    dt = cfl_number*diag/V;
+//    dt = cfl_number*diag/V;
 
     /* Initialize LSF */
     Vec phi;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, phi_cf, phi);
-    ls.reinitialize_1st_order_time_2nd_order_space(phi);
+//    ls.reinitialize_1st_order_time_2nd_order_space(phi);
 //    ls.perturb_level_set_function(phi, EPS);
 
     Vec phi_dd[P4EST_DIM];
@@ -1299,6 +1301,12 @@ int main (int argc, char* argv[])
     ierr = PetscPrintf(p4est->mpicomm, "Error in C0 on nodes : %g, order = %g\n", err_c0_n, log(err_c0_nm1/err_c0_n)/log(2)); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est->mpicomm, "Error in C1 on nodes : %g, order = %g\n", err_c1_n, log(err_c1_nm1/err_c1_n)/log(2)); CHKERRXX(ierr);
 
+    h.push_back(dx);
+    e_v.push_back(err_vn_n);
+    e_t.push_back(err_t_n);
+    e_c0.push_back(err_c0_n);
+    e_c1.push_back(err_c1_n);
+
     //-------------------------------------------------------------------------------------------
     // Save output
     //-------------------------------------------------------------------------------------------
@@ -1434,6 +1442,12 @@ int main (int argc, char* argv[])
     p4est_nodes_destroy(nodes);
     p4est_ghost_destroy(ghost);
     p4est_destroy      (p4est);
+  }
+
+  if (mpi.rank() == 0)
+  {
+    for (int i = 0; i < h.size(); ++i)
+      std::cout << h[i] << " " << e_v[i] << " " << e_t[i] << " " << e_c0[i] << " " << e_c1[i] << "\n";
   }
 
   my_p4est_brick_destroy(connectivity, &brick);
