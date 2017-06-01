@@ -28,12 +28,8 @@ void my_p4est_integration_mls_t::initialize()
 
   int n_phis = action->size();
 
-  int n_nodes = linear_integration ? P4EST_CHILDREN : pow(3, P4EST_DIM);
-
-  double P_interpolation[P4EST_CHILDREN];
-  double Pdd_interpolation[P4EST_CHILDREN*P4EST_DIM];
-
-  std::vector< std::vector<double> > phi_values   (n_phis, std::vector<double> (n_nodes));
+  std::vector< std::vector<double> > P_interpolation(n_phis, std::vector<double> (P4EST_CHILDREN, -10.));
+  std::vector< std::vector<double> > Pdd_interpolation(n_phis, std::vector<double> (P4EST_CHILDREN*P4EST_DIM, 0.));
 
   std::vector<double *> P(n_phis, NULL);
   std::vector<double *> Pxx(n_phis, NULL);
@@ -99,50 +95,32 @@ void my_p4est_integration_mls_t::initialize()
       // get values of LSFs
       int s = quad_idx_forest*P4EST_CHILDREN;
 
-      if (linear_integration)
-      {
-        for (int i = 0; i < n_phis; i++)
-          for (int j = 0; j < n_nodes; j++)
-            phi_values[i][j] = P[i][ q2n[ s + j ] ];
-
-      } else {
-
-        x_node[0] = x0; x_node[1] = 0.5*(x0+x1); x_node[2] = x1;
-        y_node[0] = y0; y_node[1] = 0.5*(y0+y1); y_node[2] = y1;
+      std::vector< quadrant_interp_t > phi_interp;
 #ifdef P4_TO_P8
-        z_node[0] = z0; z_node[1] = 0.5*(z0+z1); z_node[2] = z1;
+      std::vector< CF_3 *> phi_interp_cf(n_phis, NULL);
+#else
+      std::vector< CF_2 *> phi_interp_cf(n_phis, NULL);
 #endif
 
-        for (short p = 0; p < n_phis; ++p)
-        {
 
-          for (short j = 0; j < P4EST_CHILDREN; ++j)
+      for (short p = 0; p < n_phis; ++p)
+      {
+        for (short j = 0; j < P4EST_CHILDREN; ++j)
+        {
+          P_interpolation[p][j] = P[p][ q2n[ s + j ] ];
+
+          if (!linear_integration)
           {
-            P_interpolation[j] = P[p][ q2n[ s + j ] ];
-            Pdd_interpolation[j*P4EST_DIM+0] = Pxx[p][ q2n[ s + j ] ];
-            Pdd_interpolation[j*P4EST_DIM+1] = Pyy[p][ q2n[ s + j ] ];
+            Pdd_interpolation[p][j*P4EST_DIM+0] = Pxx[p][ q2n[ s + j ] ];
+            Pdd_interpolation[p][j*P4EST_DIM+1] = Pyy[p][ q2n[ s + j ] ];
 #ifdef P4_TO_P8
-            Pdd_interpolation[j*P4EST_DIM+2] = Pzz[p][ q2n[ s + j ] ];
+            Pdd_interpolation[p][j*P4EST_DIM+2] = Pzz[p][ q2n[ s + j ] ];
 #endif
           }
-
-          int m = 0;
-#ifdef P4_TO_P8
-          for (short k = 0; k < 3; k++)
-#endif
-            for (short j = 0; j < 3; j++)
-              for (short i = 0; i < 3; i++)
-              {
-#ifdef P4_TO_P8
-                double xyz_node[P4EST_DIM] = {x_node[i], y_node[j], z_node[k]};
-#else
-                double xyz_node[P4EST_DIM] = {x_node[i], y_node[j]};
-#endif
-//                phi_values[p][m] = quadratic_non_oscillatory_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
-                phi_values[p][m] = quadratic_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
-                ++m;
-              }
         }
+        if (linear_integration) phi_interp.push_back(quadrant_interp_t(p4est, tree_idx, quad, linear,    &P_interpolation[p]));
+        else                    phi_interp.push_back(quadrant_interp_t(p4est, tree_idx, quad, quadratic, &P_interpolation[p], &Pdd_interpolation[p]));
+        phi_interp_cf[p] = &phi_interp[p];
       }
 
       // reconstruct interface
@@ -153,8 +131,7 @@ void my_p4est_integration_mls_t::initialize()
 #else
         cubes_linear.push_back(cube2_mls_t(x0, x1, y0, y1));
 #endif
-        cubes_linear.back().set_phi(phi_values, *action, *color);
-        cubes_linear.back().construct_domain();
+        cubes_quadratic.back().construct_domain(phi_interp_cf, *action, *color);
 
       } else {
 
@@ -163,7 +140,7 @@ void my_p4est_integration_mls_t::initialize()
 #else
         cubes_quadratic.push_back(cube2_mls_quadratic_t(x0, x1, y0, y1));
 #endif
-        cubes_quadratic.back().construct_domain(phi_values, *action, *color);
+        cubes_quadratic.back().construct_domain(phi_interp_cf, *action, *color);
       }
     }
   }
@@ -185,12 +162,14 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
   PetscErrorCode ierr;
   double sum = 0.;
 
-  int n_nodes = linear_integration ? P4EST_CHILDREN : pow(3, P4EST_DIM);
+  int n_phis = action->size();
 
-  double P_interpolation[P4EST_CHILDREN];
-  double Pdd_interpolation[P4EST_CHILDREN*P4EST_DIM];
+  std::vector< std::vector<double> > P_interpolation(n_phis, std::vector<double> (P4EST_CHILDREN, -10.));
+  std::vector< std::vector<double> > Pdd_interpolation(n_phis, std::vector<double> (P4EST_CHILDREN*P4EST_DIM, 0.));
 
-  std::vector<double> fun_values(n_nodes, 1.);
+  std::vector<double> F_interpolation(P4EST_CHILDREN, 1);
+  std::vector<double> Fdd_interpolation(P4EST_CHILDREN*P4EST_DIM, 0);
+
   double *F;
   std::vector<double *> Fdd(P4EST_DIM, NULL);
 
@@ -243,70 +222,44 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
 
         // integrate function
         int s = quad_idx_forest*P4EST_CHILDREN;
+
         if (f != NULL)
-          if (linear_integration)
+        {
+          for (short j = 0; j < P4EST_CHILDREN; ++j)
           {
-            for (int j = 0; j < n_nodes; j++)
-              fun_values[j] = F[ q2n[ s + j ] ];
-          } else {
+            F_interpolation[j] = F[ q2n[ s + j ] ];
+          }
 
-            x_node[0] = x0; x_node[1] = 0.5*(x0+x1); x_node[2] = x1;
-            y_node[0] = y0; y_node[1] = 0.5*(y0+y1); y_node[2] = y1;
-  #ifdef P4_TO_P8
-            z_node[0] = z0; z_node[1] = 0.5*(z0+z1); z_node[2] = z1;
-  #endif
-
+          if (fdd != NULL)
             for (short j = 0; j < P4EST_CHILDREN; ++j)
             {
-              P_interpolation[j] = F[ q2n[ s + j ] ];
+              Fdd_interpolation[j*P4EST_DIM+0] = Fdd[0][ q2n[ s + j ] ];
+              Fdd_interpolation[j*P4EST_DIM+1] = Fdd[1][ q2n[ s + j ] ];
+#ifdef P4_TO_P8
+              Fdd_interpolation[j*P4EST_DIM+2] = Fdd[2][ q2n[ s + j ] ];
+#endif
             }
+        }
 
-            if (fdd != NULL)
-              for (short j = 0; j < P4EST_CHILDREN; ++j)
-              {
-                Pdd_interpolation[j*P4EST_DIM+0] = Fdd[0][ q2n[ s + j ] ];
-                Pdd_interpolation[j*P4EST_DIM+1] = Fdd[1][ q2n[ s + j ] ];
-#ifdef P4_TO_P8
-                Pdd_interpolation[j*P4EST_DIM+2] = Fdd[2][ q2n[ s + j ] ];
-#endif
-              }
-
-            int m = 0;
-#ifdef P4_TO_P8
-            for (short k = 0; k < 3; k++)
-#endif
-              for (short j = 0; j < 3; j++)
-                for (short i = 0; i < 3; i++)
-                {
-#ifdef P4_TO_P8
-                  double xyz_node[P4EST_DIM] = {x_node[i], y_node[j], z_node[k]};
-#else
-                  double xyz_node[P4EST_DIM] = {x_node[i], y_node[j]};
-#endif
-                  if (fdd != NULL)  fun_values[m] = quadratic_non_oscillatory_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
-                  else              fun_values[m] = linear_interpolation                   (p4est, tree_idx, *quad, P_interpolation, xyz_node);
-                  ++m;
-                }
-
-          }
+        quadrant_interp_t f_interp(p4est, tree_idx, quad, quadratic, &F_interpolation, &Fdd_interpolation);
 
         if (linear_integration)
         {
           switch (int_type){
-            case DOM: sum += cubes_linear[quad_idx].integrate_over_domain      (fun_values.data());           break;
-            case FC1: sum += cubes_linear[quad_idx].integrate_over_interface   (fun_values.data(),n0);        break;
-            case FC2: sum += cubes_linear[quad_idx].integrate_over_intersection(fun_values.data(),n0,n1);     break;
+            case DOM: sum += cubes_linear[quad_idx].integrate_over_domain      (f_interp);           break;
+            case FC1: sum += cubes_linear[quad_idx].integrate_over_interface   (f_interp,n0);        break;
+            case FC2: sum += cubes_linear[quad_idx].integrate_over_intersection(f_interp,n0,n1);     break;
 #ifdef P4_TO_P8
-            case FC3: sum += cubes_linear[quad_idx].integrate_over_intersection(fun_values.data(),n0,n1,n2);  break;
+            case FC3: sum += cubes_linear[quad_idx].integrate_over_intersection(f_interp,n0,n1,n2);  break;
 #endif
           }
         } else {
           switch (int_type){
-            case DOM: sum += cubes_quadratic[quad_idx].integrate_over_domain      (fun_values);           break;
-            case FC1: sum += cubes_quadratic[quad_idx].integrate_over_interface   (fun_values,n0);        break;
-            case FC2: sum += cubes_quadratic[quad_idx].integrate_over_intersection(fun_values,n0,n1);     break;
+            case DOM: sum += cubes_quadratic[quad_idx].integrate_over_domain      (f_interp);           break;
+            case FC1: sum += cubes_quadratic[quad_idx].integrate_over_interface   (f_interp,n0);        break;
+            case FC2: sum += cubes_quadratic[quad_idx].integrate_over_intersection(f_interp,n0,n1);     break;
 #ifdef P4_TO_P8
-            case FC3: sum += cubes_quadratic[quad_idx].integrate_over_intersection(fun_values,n0,n1,n2);  break;
+            case FC3: sum += cubes_quadratic[quad_idx].integrate_over_intersection(f_interp,n0,n1,n2);  break;
 #endif
           }
         }
@@ -315,12 +268,6 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
     }
 
   } else {
-
-    int n_phis = action->size();
-
-//    std::vector< std::vector<double> > test (10, std::vector<double> (10,-1));
-
-    std::vector< std::vector<double> > phi_values   (n_phis, std::vector<double> (n_nodes, -1.));
 
     std::vector<double *> P(n_phis, NULL);
     std::vector<double *> Pxx(n_phis, NULL);
@@ -372,53 +319,35 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
         // get values of LSFs
         int s = quad_idx_forest*P4EST_CHILDREN;
 
-        if (linear_integration)
-        {
-          for (int i = 0; i < n_phis; i++)
-            for (int j = 0; j < n_nodes; j++)
-              phi_values[i][j] = P[i][ q2n[ s + j ] ];
-
-        } else {
-
-          x_node[0] = x0; x_node[1] = 0.5*(x0+x1); x_node[2] = x1;
-          y_node[0] = y0; y_node[1] = 0.5*(y0+y1); y_node[2] = y1;
+        std::vector< quadrant_interp_t > phi_interp;
 #ifdef P4_TO_P8
-          z_node[0] = z0; z_node[1] = 0.5*(z0+z1); z_node[2] = z1;
-#endif
-
-          for (short p = 0; p < n_phis; ++p)
-          {
-
-            for (short j = 0; j < P4EST_CHILDREN; ++j)
-            {
-              P_interpolation[j] = P[p][ q2n[ s + j ] ];
-              Pdd_interpolation[j*P4EST_DIM+0] = Pxx[p][ q2n[ s + j ] ];
-              Pdd_interpolation[j*P4EST_DIM+1] = Pyy[p][ q2n[ s + j ] ];
-  #ifdef P4_TO_P8
-              Pdd_interpolation[j*P4EST_DIM+2] = Pzz[p][ q2n[ s + j ] ];
-  #endif
-            }
-
-            int m = 0;
-#ifdef P4_TO_P8
-            for (short k = 0; k < 3; k++)
-#endif
-              for (short j = 0; j < 3; j++)
-                for (short i = 0; i < 3; i++)
-                {
-#ifdef P4_TO_P8
-                  double xyz_node[P4EST_DIM] = {x_node[i], y_node[j], z_node[k]};
+        std::vector< CF_3 *> phi_interp_cf(n_phis, NULL);
 #else
-                  double xyz_node[P4EST_DIM] = {x_node[i], y_node[j]};
+        std::vector< CF_2 *> phi_interp_cf(n_phis, NULL);
 #endif
-//                  phi_values[p][m] = quadratic_non_oscillatory_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
-                  phi_values[p][m] = quadratic_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
-//                  phi_values[p][m] = linear_interpolation(p4est, tree_idx, *quad, P_interpolation, xyz_node);
-                  ++m;
-                }
-          }
-        }
 
+        for (short p = 0; p < n_phis; ++p)
+        {
+          for (short j = 0; j < P4EST_CHILDREN; ++j)
+          {
+            P_interpolation[p][j] = P[p][ q2n[ s + j ] ];
+
+            if (!linear_integration)
+            {
+              Pdd_interpolation[p][j*P4EST_DIM+0] = Pxx[p][ q2n[ s + j ] ];
+              Pdd_interpolation[p][j*P4EST_DIM+1] = Pyy[p][ q2n[ s + j ] ];
+#ifdef P4_TO_P8
+              Pdd_interpolation[p][j*P4EST_DIM+2] = Pzz[p][ q2n[ s + j ] ];
+#endif
+            }
+          }
+          if (linear_integration) phi_interp.push_back(quadrant_interp_t(p4est, tree_idx, quad, linear,    &P_interpolation[p]));
+          else                    phi_interp.push_back(quadrant_interp_t(p4est, tree_idx, quad, quadratic, &P_interpolation[p], &Pdd_interpolation[p]));
+        }
+        for (short p = 0; p < n_phis; ++p)
+        {
+          phi_interp_cf[p] = &phi_interp[p];
+        }
 
 #ifdef P4_TO_P8
         cube3_mls_t           cube_linear   (x0, x1, y0, y1, z0, z1);
@@ -427,78 +356,52 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
         cube2_mls_t           cube_linear   (x0, x1, y0, y1);
         cube2_mls_quadratic_t cube_quadratic(x0, x1, y0, y1);
 #endif
-
         // reconstruct interface
         if (linear_integration)
         {
-          cube_linear.set_phi(phi_values, *action, *color);
-          cube_linear.construct_domain();
+          cube_linear.construct_domain(phi_interp_cf, *action, *color);
         } else {
-          cube_quadratic.construct_domain(phi_values, *action, *color);
+          cube_quadratic.construct_domain(phi_interp_cf, *action, *color);
         }
 
         // integrate function
         if (f != NULL)
-          if (linear_integration)
+        {
+          for (short j = 0; j < P4EST_CHILDREN; ++j)
           {
-            int s = quad_idx_forest*P4EST_CHILDREN;
-            for (int j = 0; j < n_nodes; j++)
-              fun_values[j] = F[ q2n[ s + j ] ];
-          } else {
+            F_interpolation[j] = F[ q2n[ s + j ] ];
+          }
 
+          if (fdd != NULL)
             for (short j = 0; j < P4EST_CHILDREN; ++j)
             {
-              P_interpolation[j] = F[ q2n[ s + j ] ];
+              Fdd_interpolation[j*P4EST_DIM+0] = Fdd[0][ q2n[ s + j ] ];
+              Fdd_interpolation[j*P4EST_DIM+1] = Fdd[1][ q2n[ s + j ] ];
+#ifdef P4_TO_P8
+              Fdd_interpolation[j*P4EST_DIM+2] = Fdd[2][ q2n[ s + j ] ];
+#endif
             }
+        }
 
-            if (fdd != NULL)
-              for (short j = 0; j < P4EST_CHILDREN; ++j)
-              {
-                Pdd_interpolation[j*P4EST_DIM+0] = Fdd[0][ q2n[ s + j ] ];
-                Pdd_interpolation[j*P4EST_DIM+1] = Fdd[1][ q2n[ s + j ] ];
-#ifdef P4_TO_P8
-                Pdd_interpolation[j*P4EST_DIM+2] = Fdd[2][ q2n[ s + j ] ];
-#endif
-              }
-
-            int m = 0;
-#ifdef P4_TO_P8
-            for (short k = 0; k < 3; k++)
-#endif
-              for (short j = 0; j < 3; j++)
-                for (short i = 0; i < 3; i++)
-                {
-#ifdef P4_TO_P8
-                  double xyz_node[P4EST_DIM] = {x_node[i], y_node[j], z_node[k]};
-#else
-                  double xyz_node[P4EST_DIM] = {x_node[i], y_node[j]};
-#endif
-                  if (fdd != NULL)
-//                    fun_values[m] = quadratic_non_oscillatory_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
-                    fun_values[m] = quadratic_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
-                  else              fun_values[m] = linear_interpolation                   (p4est, tree_idx, *quad, P_interpolation, xyz_node);
-                  ++m;
-                }
-
-          }
+        quadrant_interp_t f_interp(p4est, tree_idx, quad, quadratic, &F_interpolation, &Fdd_interpolation);
 
         if (linear_integration)
         {
           switch (int_type){
-            case DOM: sum += cube_linear.integrate_over_domain      (fun_values.data());           break;
-            case FC1: sum += cube_linear.integrate_over_interface   (fun_values.data(),n0);        break;
-            case FC2: sum += cube_linear.integrate_over_intersection(fun_values.data(),n0,n1);     break;
+            case DOM: sum += cube_linear.integrate_over_domain      (f_interp);           break;
+            case FC1: sum += cube_linear.integrate_over_interface   (f_interp,n0);        break;
+            case FC2: sum += cube_linear.integrate_over_intersection(f_interp,n0,n1);     break;
 #ifdef P4_TO_P8
-            case FC3: sum += cube_linear.integrate_over_intersection(fun_values.data(),n0,n1,n2);  break;
+            case FC3: sum += cube_linear.integrate_over_intersection(f_interp,n0,n1,n2);  break;
 #endif
           }
         } else {
           switch (int_type){
-            case DOM: sum += cube_quadratic.integrate_over_domain      (fun_values);           break;
-            case FC1: sum += cube_quadratic.integrate_over_interface   (fun_values,n0);        break;
-            case FC2: sum += cube_quadratic.integrate_over_intersection(fun_values,n0,n1);     break;
+            case DOM: sum += cube_quadratic.integrate_over_domain      (f_interp);           break;
+            case FC1: sum += cube_quadratic.integrate_over_interface   (f_interp,n0);        break;
+            case FC2: sum += cube_quadratic.integrate_over_intersection(f_interp,n0,n1);     break;
 #ifdef P4_TO_P8
-            case FC3: sum += cube_quadratic.integrate_over_intersection(fun_values,n0,n1,n2);  break;
+            case FC3: sum += cube_quadratic.integrate_over_intersection(f_interp,n0,n1,n2);  break;
 #endif
           }
         }

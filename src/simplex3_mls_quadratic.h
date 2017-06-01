@@ -11,7 +11,11 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 #include <vector>
 #include <stdexcept>
 #include <iostream>
+#ifdef P4_TO_P8
+#include <src/my_p8est_utils.h>
+#else
 #include <src/my_p4est_utils.h>
+#endif
 
 class simplex3_mls_quadratic_t
 {
@@ -20,10 +24,6 @@ public:
 
   const static int nodes_per_tri = 6;
   const static int nodes_per_tet = 10;
-
-  std::vector<CF_3 *> *phi_cf;
-
-  void set_phi_cf(std::vector<CF_3 *>& phi_cf_) { phi_cf = &phi_cf_; }
 
   struct vtx3_t // vertex
   {
@@ -41,7 +41,7 @@ public:
     int p_edg; // parent edge
 #endif
 
-    vtx3_t(double x = 0.0, double y = 0.0, double z = 0.0)
+    vtx3_t(double x, double y, double z)
       : x(x), y(y), z(z), c0(-1), c1(-1), c2(-1), value(0.0), loc(INS), is_recycled(false)
 #ifdef CASL_THROWS
       , n_vtx0(-1), n_vtx1(-1), ratio(1.0),
@@ -71,15 +71,22 @@ public:
     int p_edg, p_tri, p_tet;  // parental objects
 #endif
 
-    edg3_t(int v0 = -1, int v1 = -1, int v2 = -1)
+    edg3_t(int v0, int v1, int v2)
       : vtx0(v0), vtx1(v1), vtx2(v2), c0(-1), c1(-1), is_split(false), loc(INS)
 #ifdef CASL_THROWS
-      , c_vtx_x(-1), c_edg0(-1), c_edg1(-1),
+      , c_vtx_x(-11), c_edg0(-12), c_edg1(-13),
         type(-1), p_edg(-1), p_tri(-1), p_tet(-1)
 #endif
-    {}
+    {
+      if (vtx0 < 0 || vtx1 < 0 || vtx2 < 0)
+        throw std::domain_error("[CASL_ERROR]: Invalid edge.");
+    }
 
-    void set(loc_t loc_, int c0_, int c1_) {loc = loc_; c0 = c0_; c1 = c1_;}
+    void set(loc_t loc_, int c0_, int c1_) {
+      loc = loc_; c0 = c0_; c1 = c1_;
+      if (vtx0 < 0 || vtx1 < 0 || vtx2 < 0)
+        throw std::domain_error("[CASL_ERROR]: Invalid edge.");
+    }
   };
 
   struct tri3_t  // triangle
@@ -103,19 +110,28 @@ public:
     int p_tri, p_tet;
 #endif
 
-    tri3_t(int v0 = -1, int v1 = -1, int v2 = -1,
-           int e0 = -1, int e1 = -1, int e2 = -1)
+    tri3_t(int v0, int v1, int v2,
+           int e0, int e1, int e2)
       : vtx0(v0), vtx1(v1), vtx2(v2),
         edg0(e0), edg1(e1), edg2(e2),
         c(-1), loc(INS), is_split(false), dir(-1), p_lsf(-1)
 #ifdef CASL_THROWS
-      , c_vtx01(-1), c_vtx02(-1), c_vtx12(-1),
-        c_edg0(-1), c_edg1(-1), c_edg2(-1),
-        c_tri0(-1), c_tri1(-1), c_tri2(-1), c_tri3(-1),
+      , c_vtx01(-21), c_vtx02(-22), c_vtx12(-23),
+        c_edg0(-24), c_edg1(-25), c_edg2(-26),
+        c_tri0(-27), c_tri1(-28), c_tri2(-29), c_tri3(-20),
         type(-1), p_tri(-1), p_tet(-1)
 #endif
-    {}
-    void set(loc_t loc_, int c_) {loc = loc_; c = c_;}
+    {
+      if (vtx0 < 0 || vtx1 < 0 || vtx2 < 0 ||
+          edg0 < 0 || edg1 < 0 || edg2 < 0)
+        throw std::domain_error("[CASL_ERROR]: Invalid triangle.");
+    }
+    void set(loc_t loc_, int c_) {
+      loc = loc_; c = c_;
+      if (vtx0 < 0 || vtx1 < 0 || vtx2 < 0 ||
+          edg0 < 0 || edg1 < 0 || edg2 < 0)
+        throw std::domain_error("[CASL_ERROR]: Invalid triangle.");
+    }
   };
 
   struct tet3_t // tetrahedron
@@ -137,20 +153,29 @@ public:
     int p_tet;
 #endif
 
-    tet3_t(int v0 = -1, int v1 = -1, int v2 = -1, int v3 = -1,
-           int t0 = -1, int t1 = -1, int t2 = -1, int t3 = -1)
+    tet3_t(int v0, int v1, int v2, int v3,
+           int t0, int t1, int t2, int t3)
       : vtx0(v0), vtx1(v1), vtx2(v2), vtx3(v3),
         tri0(t0), tri1(t1), tri2(t2), tri3(t3),
         loc(INS), is_split(false)
 #ifdef CASL_THROWS
-      , c_vtx01(-1), c_vtx02(-1), c_vtx03(-1), c_vtx12(-1), c_vtx13(-1), c_vtx23(-1),
-        c_tri0(-1), c_tri1(-1), c_tri2(-1), c_tri3(-1), c_tri4(-1), c_tri5(-1),
-        c_tet0(-1), c_tet1(-1), c_tet2(-1), c_tet3(-1), c_tet4(-1), c_tet5(-1),
+      , c_vtx01(-30), c_vtx02(-31), c_vtx03(-32), c_vtx12(-33), c_vtx13(-34), c_vtx23(-35),
+        c_tri0(-36), c_tri1(-37), c_tri2(-38), c_tri3(-39), c_tri4(-40), c_tri5(-41),
+        c_tet0(-42), c_tet1(-43), c_tet2(-44), c_tet3(-45), c_tet4(-46), c_tet5(-47),
         type(-1), p_tet(-1)
 #endif
-    {}
+    {
+      if (vtx0 < 0 || vtx1 < 0 || vtx2 < 0 || vtx3 < 0 ||
+          tri0 < 0 || tri1 < 0 || tri2 < 0 || tri3 < 0)
+        throw std::domain_error("[CASL_ERROR]: Invalid tetrahedron.");
+    }
 
-    void set(loc_t loc_) {loc = loc_;}
+    void set(loc_t loc_) {
+      loc = loc_;
+      if (vtx0 < 0 || vtx1 < 0 || vtx2 < 0 || vtx3 < 0 ||
+          tri0 < 0 || tri1 < 0 || tri2 < 0 || tri3 < 0)
+        throw std::domain_error("[CASL_ERROR]: Invalid tetrahedron.");
+    }
   };
 
   simplex3_mls_quadratic_t();
@@ -170,8 +195,7 @@ public:
   std::vector<tri3_t> tris;
   std::vector<tet3_t> tets;
 
-
-  void construct_domain(std::vector<std::vector<double> > &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
   void do_action_vtx(int n_vtx, int cn, action_t action);
   void do_action_edg(int n_edg, int cn, action_t action);
   void do_action_tri(int n_tri, int cn, action_t action);
@@ -192,12 +216,12 @@ public:
 //  void interpolate_from_parent(int v);
 //  void interpolate_from_parent(vtx3_t &v);
 
-  double integrate_over_domain            (std::vector<double> &f);
-  double integrate_over_interface         (std::vector<double> &f, int num0);
-  double integrate_over_colored_interface (std::vector<double> &f, int num0, int num1);
-  double integrate_over_intersection      (std::vector<double> &f, int num0, int num1);
-  double integrate_over_intersection      (std::vector<double> &f, int num0, int num1, int num2);
-  double integrate_in_dir                 (std::vector<double> &f, int dir);
+  double integrate_over_domain            (CF_3 &f);
+  double integrate_over_interface         (CF_3 &f, int num0);
+  double integrate_over_colored_interface (CF_3 &f, int num0, int num1);
+  double integrate_over_intersection      (CF_3 &f, int num0, int num1);
+  double integrate_over_intersection      (CF_3 &f, int num0, int num1, int num2);
+  double integrate_in_dir                 (CF_3 &f, int dir);
 
   double jacobian_edg(int n_edg, double a);
   double jacobian_tri(int n_tri, double *ab);

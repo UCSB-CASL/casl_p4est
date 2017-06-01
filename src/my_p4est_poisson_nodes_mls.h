@@ -26,8 +26,8 @@
 #include <src/cube3_mls.h>
 #include <src/cube2_mls.h>
 
-#include <src/cube3_refined_mls.h>
-#include <src/cube2_refined_mls.h>
+#include <src/cube3_mls_quadratic.h>
+#include <src/cube2_mls_quadratic.h>
 
 #ifdef P4_TO_P8
 #define N_NBRS_MAX 27

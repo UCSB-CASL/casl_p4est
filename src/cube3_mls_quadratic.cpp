@@ -1,10 +1,14 @@
 #include "cube3_mls_quadratic.h"
 
-void cube3_mls_quadratic_t::construct_domain(std::vector< std::vector<double> > &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+void cube3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
   bool all_positive, all_negative;
 
   num_of_lsfs = phi.size();
+
+  double xc = .5*(x0+x1);
+  double yc = .5*(y0+y1);
+  double zc = .5*(z0+z1);
 
 #ifdef CASL_THROWS
   if (num_of_lsfs != acn.size() || num_of_lsfs != clr.size())
@@ -13,41 +17,40 @@ void cube3_mls_quadratic_t::construct_domain(std::vector< std::vector<double> > 
 
   /* Eliminate unnecessary splitting */
   loc = INS;
-  double *F;
-  for (unsigned int i = 0; i < num_of_lsfs; i++)
+  for (unsigned int p = 0; p < num_of_lsfs; p++)
   {
     all_negative = true;
     all_positive = true;
 
-    F = phi[i].data();
+    double x[3] = { x0, xc, x1 };
+    double y[3] = { y0, yc, y1 };
+    double z[3] = { z0, zc, z1 };
 
-    for (int j = 0; j < n_nodes; j++)
-    {
-      all_negative = (all_negative && (F[j] < 0.));
-      all_positive = (all_positive && (F[j] > 0.));
-    }
+    for (short k = 0; k < 3; ++k)
+      for (short j = 0; j < 3; ++j)
+        for (short i = 0; i < 3; ++i)
+        {
+          double value = (*phi[p]) ( x[i], y[j], z[k] );
+          all_negative = (all_negative && (value < 0.));
+          all_positive = (all_positive && (value > 0.));
+        }
 
     if (all_positive)
     {
-      if (acn[i] == INTERSECTION) loc = OUT;
+      if (acn[p] == INTERSECTION) loc = OUT;
     }
     else if (all_negative)
     {
-      if (acn[i] == ADDITION) loc = INS;
+      if (acn[p] == ADDITION) loc = INS;
     }
-    else if ((loc == INS && acn[i] == INTERSECTION) || (loc == OUT && acn[i] == ADDITION))
+    else if ((loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
     {
       loc = FCE;
     }
-
   }
 
   if (loc == FCE)
   {
-    double xc = .5*(x0+x1);
-    double yc = .5*(y0+y1);
-    double zc = .5*(z0+z1);
-
     double x[27] = { x0, xc, x1, x0, xc, x1, x0, xc, x1,
                      x0, xc, x1, x0, xc, x1, x0, xc, x1,
                      x0, xc, x1, x0, xc, x1, x0, xc, x1 };
@@ -137,83 +140,42 @@ void cube3_mls_quadratic_t::construct_domain(std::vector< std::vector<double> > 
     simplex[4].tris[0].dir = 5; simplex[4].tris[3].dir = 2;
     simplex[5].tris[0].dir = 5; simplex[5].tris[3].dir = 0;
 
-
-    std::vector< std::vector<double> > phi_s0(num_of_lsfs, std::vector<double> (n_nodes_simplex, -1));
-    std::vector< std::vector<double> > phi_s1(num_of_lsfs, std::vector<double> (n_nodes_simplex, -1));
-    std::vector< std::vector<double> > phi_s2(num_of_lsfs, std::vector<double> (n_nodes_simplex, -1));
-    std::vector< std::vector<double> > phi_s3(num_of_lsfs, std::vector<double> (n_nodes_simplex, -1));
-    std::vector< std::vector<double> > phi_s4(num_of_lsfs, std::vector<double> (n_nodes_simplex, -1));
-    std::vector< std::vector<double> > phi_s5(num_of_lsfs, std::vector<double> (n_nodes_simplex, -1));
-
-    for (short i = 0; i < num_of_lsfs; ++i)
-    {
-      phi_s0[i][0] = phi[i][t0p0];     phi_s1[i][0] = phi[i][t1p0];     phi_s2[i][0] = phi[i][t2p0];     phi_s3[i][0] = phi[i][t3p0];     phi_s4[i][0] = phi[i][t4p0];     phi_s5[i][0] = phi[i][t5p0];
-      phi_s0[i][1] = phi[i][t0p1];     phi_s1[i][1] = phi[i][t1p1];     phi_s2[i][1] = phi[i][t2p1];     phi_s3[i][1] = phi[i][t3p1];     phi_s4[i][1] = phi[i][t4p1];     phi_s5[i][1] = phi[i][t5p1];
-      phi_s0[i][2] = phi[i][t0p2];     phi_s1[i][2] = phi[i][t1p2];     phi_s2[i][2] = phi[i][t2p2];     phi_s3[i][2] = phi[i][t3p2];     phi_s4[i][2] = phi[i][t4p2];     phi_s5[i][2] = phi[i][t5p2];
-      phi_s0[i][3] = phi[i][t0p3];     phi_s1[i][3] = phi[i][t1p3];     phi_s2[i][3] = phi[i][t2p3];     phi_s3[i][3] = phi[i][t3p3];     phi_s4[i][3] = phi[i][t4p3];     phi_s5[i][3] = phi[i][t5p3];
-      phi_s0[i][4] = phi[i][t0p4];     phi_s1[i][4] = phi[i][t1p4];     phi_s2[i][4] = phi[i][t2p4];     phi_s3[i][4] = phi[i][t3p4];     phi_s4[i][4] = phi[i][t4p4];     phi_s5[i][4] = phi[i][t5p4];
-      phi_s0[i][5] = phi[i][t0p5];     phi_s1[i][5] = phi[i][t1p5];     phi_s2[i][5] = phi[i][t2p5];     phi_s3[i][5] = phi[i][t3p5];     phi_s4[i][5] = phi[i][t4p5];     phi_s5[i][5] = phi[i][t5p5];
-      phi_s0[i][6] = phi[i][t0p6];     phi_s1[i][6] = phi[i][t1p6];     phi_s2[i][6] = phi[i][t2p6];     phi_s3[i][6] = phi[i][t3p6];     phi_s4[i][6] = phi[i][t4p6];     phi_s5[i][6] = phi[i][t5p6];
-      phi_s0[i][7] = phi[i][t0p7];     phi_s1[i][7] = phi[i][t1p7];     phi_s2[i][7] = phi[i][t2p7];     phi_s3[i][7] = phi[i][t3p7];     phi_s4[i][7] = phi[i][t4p7];     phi_s5[i][7] = phi[i][t5p7];
-      phi_s0[i][8] = phi[i][t0p8];     phi_s1[i][8] = phi[i][t1p8];     phi_s2[i][8] = phi[i][t2p8];     phi_s3[i][8] = phi[i][t3p8];     phi_s4[i][8] = phi[i][t4p8];     phi_s5[i][8] = phi[i][t5p8];
-      phi_s0[i][9] = phi[i][t0p9];     phi_s1[i][9] = phi[i][t1p9];     phi_s2[i][9] = phi[i][t2p9];     phi_s3[i][9] = phi[i][t3p9];     phi_s4[i][9] = phi[i][t4p9];     phi_s5[i][9] = phi[i][t5p9];
-    }
-
-    simplex[0].construct_domain(phi_s0, acn, clr);
-    simplex[1].construct_domain(phi_s1, acn, clr);
-    simplex[2].construct_domain(phi_s2, acn, clr);
-    simplex[3].construct_domain(phi_s3, acn, clr);
-    simplex[4].construct_domain(phi_s4, acn, clr);
-    simplex[5].construct_domain(phi_s5, acn, clr);
+    simplex[0].construct_domain(phi, acn, clr);
+    simplex[1].construct_domain(phi, acn, clr);
+    simplex[2].construct_domain(phi, acn, clr);
+    simplex[3].construct_domain(phi, acn, clr);
+    simplex[4].construct_domain(phi, acn, clr);
+    simplex[5].construct_domain(phi, acn, clr);
   }
 }
 
-double cube3_mls_quadratic_t::integrate_over_domain(std::vector<double> &f)
+double cube3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 {
   switch (loc){
     case INS:
       {
         double alpha = 1./sqrt(3.);
 
-        double F0 = interpolate_quad(f, -alpha, -alpha, -alpha);
-        double F1 = interpolate_quad(f,  alpha, -alpha, -alpha);
-        double F2 = interpolate_quad(f, -alpha,  alpha, -alpha);
-        double F3 = interpolate_quad(f,  alpha,  alpha, -alpha);
-        double F4 = interpolate_quad(f, -alpha, -alpha,  alpha);
-        double F5 = interpolate_quad(f,  alpha, -alpha,  alpha);
-        double F6 = interpolate_quad(f, -alpha,  alpha,  alpha);
-        double F7 = interpolate_quad(f,  alpha,  alpha,  alpha);
+        double F0 = f( x0+.5*(-alpha+1.)*(x1-x0), y0+.5*(-alpha+1.)*(y1-y0), z0+.5*(-alpha+1.)*(z1-z0) );
+        double F1 = f( x0+.5*( alpha+1.)*(x1-x0), y0+.5*(-alpha+1.)*(y1-y0), z0+.5*(-alpha+1.)*(z1-z0) );
+        double F2 = f( x0+.5*(-alpha+1.)*(x1-x0), y0+.5*( alpha+1.)*(y1-y0), z0+.5*(-alpha+1.)*(z1-z0) );
+        double F3 = f( x0+.5*( alpha+1.)*(x1-x0), y0+.5*( alpha+1.)*(y1-y0), z0+.5*(-alpha+1.)*(z1-z0) );
+        double F4 = f( x0+.5*(-alpha+1.)*(x1-x0), y0+.5*(-alpha+1.)*(y1-y0), z0+.5*( alpha+1.)*(z1-z0) );
+        double F5 = f( x0+.5*( alpha+1.)*(x1-x0), y0+.5*(-alpha+1.)*(y1-y0), z0+.5*( alpha+1.)*(z1-z0) );
+        double F6 = f( x0+.5*(-alpha+1.)*(x1-x0), y0+.5*( alpha+1.)*(y1-y0), z0+.5*( alpha+1.)*(z1-z0) );
+        double F7 = f( x0+.5*( alpha+1.)*(x1-x0), y0+.5*( alpha+1.)*(y1-y0), z0+.5*( alpha+1.)*(z1-z0) );
 
         return (x1-x0)*(y1-y0)*(z1-z0)*(F0+F1+F2+F3+F4+F5+F6+F7)/8.0;
       } break;
     case OUT: return 0.0; break;
     case FCE:
       {
-        std::vector<double> F_s0(n_nodes_simplex, 1);
-        std::vector<double> F_s1(n_nodes_simplex, 1);
-        std::vector<double> F_s2(n_nodes_simplex, 1);
-        std::vector<double> F_s3(n_nodes_simplex, 1);
-        std::vector<double> F_s4(n_nodes_simplex, 1);
-        std::vector<double> F_s5(n_nodes_simplex, 1);
-
-        F_s0[0] = f[t0p0];    F_s1[0] = f[t1p0];    F_s2[0] = f[t2p0];    F_s3[0] = f[t3p0];    F_s4[0] = f[t4p0];    F_s5[0] = f[t5p0];
-        F_s0[1] = f[t0p1];    F_s1[1] = f[t1p1];    F_s2[1] = f[t2p1];    F_s3[1] = f[t3p1];    F_s4[1] = f[t4p1];    F_s5[1] = f[t5p1];
-        F_s0[2] = f[t0p2];    F_s1[2] = f[t1p2];    F_s2[2] = f[t2p2];    F_s3[2] = f[t3p2];    F_s4[2] = f[t4p2];    F_s5[2] = f[t5p2];
-        F_s0[3] = f[t0p3];    F_s1[3] = f[t1p3];    F_s2[3] = f[t2p3];    F_s3[3] = f[t3p3];    F_s4[3] = f[t4p3];    F_s5[3] = f[t5p3];
-        F_s0[4] = f[t0p4];    F_s1[4] = f[t1p4];    F_s2[4] = f[t2p4];    F_s3[4] = f[t3p4];    F_s4[4] = f[t4p4];    F_s5[4] = f[t5p4];
-        F_s0[5] = f[t0p5];    F_s1[5] = f[t1p5];    F_s2[5] = f[t2p5];    F_s3[5] = f[t3p5];    F_s4[5] = f[t4p5];    F_s5[5] = f[t5p5];
-        F_s0[6] = f[t0p6];    F_s1[6] = f[t1p6];    F_s2[6] = f[t2p6];    F_s3[6] = f[t3p6];    F_s4[6] = f[t4p6];    F_s5[6] = f[t5p6];
-        F_s0[7] = f[t0p7];    F_s1[7] = f[t1p7];    F_s2[7] = f[t2p7];    F_s3[7] = f[t3p7];    F_s4[7] = f[t4p7];    F_s5[7] = f[t5p7];
-        F_s0[8] = f[t0p8];    F_s1[8] = f[t1p8];    F_s2[8] = f[t2p8];    F_s3[8] = f[t3p8];    F_s4[8] = f[t4p8];    F_s5[8] = f[t5p8];
-        F_s0[9] = f[t0p9];    F_s1[9] = f[t1p9];    F_s2[9] = f[t2p9];    F_s3[9] = f[t3p9];    F_s4[9] = f[t4p9];    F_s5[9] = f[t5p9];
-
-//        return 0.;
-        return simplex[0].integrate_over_domain(F_s0)
-             + simplex[1].integrate_over_domain(F_s1)
-             + simplex[2].integrate_over_domain(F_s2)
-             + simplex[3].integrate_over_domain(F_s3)
-             + simplex[4].integrate_over_domain(F_s4)
-             + simplex[5].integrate_over_domain(F_s5);
+        return simplex[0].integrate_over_domain(f)
+             + simplex[1].integrate_over_domain(f)
+             + simplex[2].integrate_over_domain(f)
+             + simplex[3].integrate_over_domain(f)
+             + simplex[4].integrate_over_domain(f)
+             + simplex[5].integrate_over_domain(f);
       } break;
     default:
 #ifdef CASL_THROWS
@@ -228,139 +190,67 @@ double cube3_mls_quadratic_t::integrate_over_domain(std::vector<double> &f)
   return 0;
 }
 
-double cube3_mls_quadratic_t::integrate_over_interface(std::vector<double> &f, int num)
+double cube3_mls_quadratic_t::integrate_over_interface(CF_3& f, int num)
 {
   if (loc == FCE)
   {
-    std::vector<double> F_s0(n_nodes_simplex, 1);
-    std::vector<double> F_s1(n_nodes_simplex, 1);
-    std::vector<double> F_s2(n_nodes_simplex, 1);
-    std::vector<double> F_s3(n_nodes_simplex, 1);
-    std::vector<double> F_s4(n_nodes_simplex, 1);
-    std::vector<double> F_s5(n_nodes_simplex, 1);
-
-    F_s0[0] = f[t0p0];    F_s1[0] = f[t1p0];    F_s2[0] = f[t2p0];    F_s3[0] = f[t3p0];    F_s4[0] = f[t4p0];    F_s5[0] = f[t5p0];
-    F_s0[1] = f[t0p1];    F_s1[1] = f[t1p1];    F_s2[1] = f[t2p1];    F_s3[1] = f[t3p1];    F_s4[1] = f[t4p1];    F_s5[1] = f[t5p1];
-    F_s0[2] = f[t0p2];    F_s1[2] = f[t1p2];    F_s2[2] = f[t2p2];    F_s3[2] = f[t3p2];    F_s4[2] = f[t4p2];    F_s5[2] = f[t5p2];
-    F_s0[3] = f[t0p3];    F_s1[3] = f[t1p3];    F_s2[3] = f[t2p3];    F_s3[3] = f[t3p3];    F_s4[3] = f[t4p3];    F_s5[3] = f[t5p3];
-    F_s0[4] = f[t0p4];    F_s1[4] = f[t1p4];    F_s2[4] = f[t2p4];    F_s3[4] = f[t3p4];    F_s4[4] = f[t4p4];    F_s5[4] = f[t5p4];
-    F_s0[5] = f[t0p5];    F_s1[5] = f[t1p5];    F_s2[5] = f[t2p5];    F_s3[5] = f[t3p5];    F_s4[5] = f[t4p5];    F_s5[5] = f[t5p5];
-    F_s0[6] = f[t0p6];    F_s1[6] = f[t1p6];    F_s2[6] = f[t2p6];    F_s3[6] = f[t3p6];    F_s4[6] = f[t4p6];    F_s5[6] = f[t5p6];
-    F_s0[7] = f[t0p7];    F_s1[7] = f[t1p7];    F_s2[7] = f[t2p7];    F_s3[7] = f[t3p7];    F_s4[7] = f[t4p7];    F_s5[7] = f[t5p7];
-    F_s0[8] = f[t0p8];    F_s1[8] = f[t1p8];    F_s2[8] = f[t2p8];    F_s3[8] = f[t3p8];    F_s4[8] = f[t4p8];    F_s5[8] = f[t5p8];
-    F_s0[9] = f[t0p9];    F_s1[9] = f[t1p9];    F_s2[9] = f[t2p9];    F_s3[9] = f[t3p9];    F_s4[9] = f[t4p9];    F_s5[9] = f[t5p9];
-
-    return simplex[0].integrate_over_interface(F_s0, num)
-         + simplex[1].integrate_over_interface(F_s1, num)
-         + simplex[2].integrate_over_interface(F_s2, num)
-         + simplex[3].integrate_over_interface(F_s3, num)
-         + simplex[4].integrate_over_interface(F_s4, num)
-         + simplex[5].integrate_over_interface(F_s5, num);
+    return simplex[0].integrate_over_interface(f, num)
+         + simplex[1].integrate_over_interface(f, num)
+         + simplex[2].integrate_over_interface(f, num)
+         + simplex[3].integrate_over_interface(f, num)
+         + simplex[4].integrate_over_interface(f, num)
+         + simplex[5].integrate_over_interface(f, num);
   }
   else
     return 0.0;
 }
 
-double cube3_mls_quadratic_t::integrate_over_colored_interface(std::vector<double> &f, int num0, int num1)
+double cube3_mls_quadratic_t::integrate_over_colored_interface(CF_3 &f, int num0, int num1)
 {
   if (loc == FCE)
   {
-    std::vector<double> F_s0(n_nodes_simplex, 1);
-    std::vector<double> F_s1(n_nodes_simplex, 1);
-    std::vector<double> F_s2(n_nodes_simplex, 1);
-    std::vector<double> F_s3(n_nodes_simplex, 1);
-    std::vector<double> F_s4(n_nodes_simplex, 1);
-    std::vector<double> F_s5(n_nodes_simplex, 1);
-
-    F_s0[0] = f[t0p0];    F_s1[0] = f[t1p0];    F_s2[0] = f[t2p0];    F_s3[0] = f[t3p0];    F_s4[0] = f[t4p0];    F_s5[0] = f[t5p0];
-    F_s0[1] = f[t0p1];    F_s1[1] = f[t1p1];    F_s2[1] = f[t2p1];    F_s3[1] = f[t3p1];    F_s4[1] = f[t4p1];    F_s5[1] = f[t5p1];
-    F_s0[2] = f[t0p2];    F_s1[2] = f[t1p2];    F_s2[2] = f[t2p2];    F_s3[2] = f[t3p2];    F_s4[2] = f[t4p2];    F_s5[2] = f[t5p2];
-    F_s0[3] = f[t0p3];    F_s1[3] = f[t1p3];    F_s2[3] = f[t2p3];    F_s3[3] = f[t3p3];    F_s4[3] = f[t4p3];    F_s5[3] = f[t5p3];
-    F_s0[4] = f[t0p4];    F_s1[4] = f[t1p4];    F_s2[4] = f[t2p4];    F_s3[4] = f[t3p4];    F_s4[4] = f[t4p4];    F_s5[4] = f[t5p4];
-    F_s0[5] = f[t0p5];    F_s1[5] = f[t1p5];    F_s2[5] = f[t2p5];    F_s3[5] = f[t3p5];    F_s4[5] = f[t4p5];    F_s5[5] = f[t5p5];
-    F_s0[6] = f[t0p6];    F_s1[6] = f[t1p6];    F_s2[6] = f[t2p6];    F_s3[6] = f[t3p6];    F_s4[6] = f[t4p6];    F_s5[6] = f[t5p6];
-    F_s0[7] = f[t0p7];    F_s1[7] = f[t1p7];    F_s2[7] = f[t2p7];    F_s3[7] = f[t3p7];    F_s4[7] = f[t4p7];    F_s5[7] = f[t5p7];
-    F_s0[8] = f[t0p8];    F_s1[8] = f[t1p8];    F_s2[8] = f[t2p8];    F_s3[8] = f[t3p8];    F_s4[8] = f[t4p8];    F_s5[8] = f[t5p8];
-    F_s0[9] = f[t0p9];    F_s1[9] = f[t1p9];    F_s2[9] = f[t2p9];    F_s3[9] = f[t3p9];    F_s4[9] = f[t4p9];    F_s5[9] = f[t5p9];
-
-    return simplex[0].integrate_over_colored_interface(F_s0, num0, num1)
-         + simplex[1].integrate_over_colored_interface(F_s1, num0, num1)
-         + simplex[2].integrate_over_colored_interface(F_s2, num0, num1)
-         + simplex[3].integrate_over_colored_interface(F_s3, num0, num1)
-         + simplex[4].integrate_over_colored_interface(F_s4, num0, num1)
-         + simplex[5].integrate_over_colored_interface(F_s5, num0, num1);
+    return simplex[0].integrate_over_colored_interface(f, num0, num1)
+         + simplex[1].integrate_over_colored_interface(f, num0, num1)
+         + simplex[2].integrate_over_colored_interface(f, num0, num1)
+         + simplex[3].integrate_over_colored_interface(f, num0, num1)
+         + simplex[4].integrate_over_colored_interface(f, num0, num1)
+         + simplex[5].integrate_over_colored_interface(f, num0, num1);
   }
   else
     return 0.0;
 }
 
-double cube3_mls_quadratic_t::integrate_over_intersection(std::vector<double> &f, int num0, int num1)
+double cube3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, int num1)
 {
   if (loc == FCE && num_of_lsfs > 1)
   {
-    std::vector<double> F_s0(n_nodes_simplex, 1);
-    std::vector<double> F_s1(n_nodes_simplex, 1);
-    std::vector<double> F_s2(n_nodes_simplex, 1);
-    std::vector<double> F_s3(n_nodes_simplex, 1);
-    std::vector<double> F_s4(n_nodes_simplex, 1);
-    std::vector<double> F_s5(n_nodes_simplex, 1);
-
-    F_s0[0] = f[t0p0];    F_s1[0] = f[t1p0];    F_s2[0] = f[t2p0];    F_s3[0] = f[t3p0];    F_s4[0] = f[t4p0];    F_s5[0] = f[t5p0];
-    F_s0[1] = f[t0p1];    F_s1[1] = f[t1p1];    F_s2[1] = f[t2p1];    F_s3[1] = f[t3p1];    F_s4[1] = f[t4p1];    F_s5[1] = f[t5p1];
-    F_s0[2] = f[t0p2];    F_s1[2] = f[t1p2];    F_s2[2] = f[t2p2];    F_s3[2] = f[t3p2];    F_s4[2] = f[t4p2];    F_s5[2] = f[t5p2];
-    F_s0[3] = f[t0p3];    F_s1[3] = f[t1p3];    F_s2[3] = f[t2p3];    F_s3[3] = f[t3p3];    F_s4[3] = f[t4p3];    F_s5[3] = f[t5p3];
-    F_s0[4] = f[t0p4];    F_s1[4] = f[t1p4];    F_s2[4] = f[t2p4];    F_s3[4] = f[t3p4];    F_s4[4] = f[t4p4];    F_s5[4] = f[t5p4];
-    F_s0[5] = f[t0p5];    F_s1[5] = f[t1p5];    F_s2[5] = f[t2p5];    F_s3[5] = f[t3p5];    F_s4[5] = f[t4p5];    F_s5[5] = f[t5p5];
-    F_s0[6] = f[t0p6];    F_s1[6] = f[t1p6];    F_s2[6] = f[t2p6];    F_s3[6] = f[t3p6];    F_s4[6] = f[t4p6];    F_s5[6] = f[t5p6];
-    F_s0[7] = f[t0p7];    F_s1[7] = f[t1p7];    F_s2[7] = f[t2p7];    F_s3[7] = f[t3p7];    F_s4[7] = f[t4p7];    F_s5[7] = f[t5p7];
-    F_s0[8] = f[t0p8];    F_s1[8] = f[t1p8];    F_s2[8] = f[t2p8];    F_s3[8] = f[t3p8];    F_s4[8] = f[t4p8];    F_s5[8] = f[t5p8];
-    F_s0[9] = f[t0p9];    F_s1[9] = f[t1p9];    F_s2[9] = f[t2p9];    F_s3[9] = f[t3p9];    F_s4[9] = f[t4p9];    F_s5[9] = f[t5p9];
-
-    return simplex[0].integrate_over_intersection(F_s0, num0, num1)
-         + simplex[1].integrate_over_intersection(F_s1, num0, num1)
-         + simplex[2].integrate_over_intersection(F_s2, num0, num1)
-         + simplex[3].integrate_over_intersection(F_s3, num0, num1)
-         + simplex[4].integrate_over_intersection(F_s4, num0, num1)
-         + simplex[5].integrate_over_intersection(F_s5, num0, num1);
+    return simplex[0].integrate_over_intersection(f, num0, num1)
+         + simplex[1].integrate_over_intersection(f, num0, num1)
+         + simplex[2].integrate_over_intersection(f, num0, num1)
+         + simplex[3].integrate_over_intersection(f, num0, num1)
+         + simplex[4].integrate_over_intersection(f, num0, num1)
+         + simplex[5].integrate_over_intersection(f, num0, num1);
   }
   else
     return 0.0;
 }
 
-double cube3_mls_quadratic_t::integrate_over_intersection(std::vector<double> &f, int num0, int num1, int num2)
+double cube3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, int num1, int num2)
 {
   if (loc == FCE && num_of_lsfs > 2)
   {
-    std::vector<double> F_s0(n_nodes_simplex, 1);
-    std::vector<double> F_s1(n_nodes_simplex, 1);
-    std::vector<double> F_s2(n_nodes_simplex, 1);
-    std::vector<double> F_s3(n_nodes_simplex, 1);
-    std::vector<double> F_s4(n_nodes_simplex, 1);
-    std::vector<double> F_s5(n_nodes_simplex, 1);
-
-    F_s0[0] = f[t0p0];    F_s1[0] = f[t1p0];    F_s2[0] = f[t2p0];    F_s3[0] = f[t3p0];    F_s4[0] = f[t4p0];    F_s5[0] = f[t5p0];
-    F_s0[1] = f[t0p1];    F_s1[1] = f[t1p1];    F_s2[1] = f[t2p1];    F_s3[1] = f[t3p1];    F_s4[1] = f[t4p1];    F_s5[1] = f[t5p1];
-    F_s0[2] = f[t0p2];    F_s1[2] = f[t1p2];    F_s2[2] = f[t2p2];    F_s3[2] = f[t3p2];    F_s4[2] = f[t4p2];    F_s5[2] = f[t5p2];
-    F_s0[3] = f[t0p3];    F_s1[3] = f[t1p3];    F_s2[3] = f[t2p3];    F_s3[3] = f[t3p3];    F_s4[3] = f[t4p3];    F_s5[3] = f[t5p3];
-    F_s0[4] = f[t0p4];    F_s1[4] = f[t1p4];    F_s2[4] = f[t2p4];    F_s3[4] = f[t3p4];    F_s4[4] = f[t4p4];    F_s5[4] = f[t5p4];
-    F_s0[5] = f[t0p5];    F_s1[5] = f[t1p5];    F_s2[5] = f[t2p5];    F_s3[5] = f[t3p5];    F_s4[5] = f[t4p5];    F_s5[5] = f[t5p5];
-    F_s0[6] = f[t0p6];    F_s1[6] = f[t1p6];    F_s2[6] = f[t2p6];    F_s3[6] = f[t3p6];    F_s4[6] = f[t4p6];    F_s5[6] = f[t5p6];
-    F_s0[7] = f[t0p7];    F_s1[7] = f[t1p7];    F_s2[7] = f[t2p7];    F_s3[7] = f[t3p7];    F_s4[7] = f[t4p7];    F_s5[7] = f[t5p7];
-    F_s0[8] = f[t0p8];    F_s1[8] = f[t1p8];    F_s2[8] = f[t2p8];    F_s3[8] = f[t3p8];    F_s4[8] = f[t4p8];    F_s5[8] = f[t5p8];
-    F_s0[9] = f[t0p9];    F_s1[9] = f[t1p9];    F_s2[9] = f[t2p9];    F_s3[9] = f[t3p9];    F_s4[9] = f[t4p9];    F_s5[9] = f[t5p9];
-
-    return simplex[0].integrate_over_intersection(F_s0, num0, num1, num2)
-         + simplex[1].integrate_over_intersection(F_s1, num0, num1, num2)
-         + simplex[2].integrate_over_intersection(F_s2, num0, num1, num2)
-         + simplex[3].integrate_over_intersection(F_s3, num0, num1, num2)
-         + simplex[4].integrate_over_intersection(F_s4, num0, num1, num2)
-         + simplex[5].integrate_over_intersection(F_s5, num0, num1, num2);
+    return simplex[0].integrate_over_intersection(f, num0, num1, num2)
+         + simplex[1].integrate_over_intersection(f, num0, num1, num2)
+         + simplex[2].integrate_over_intersection(f, num0, num1, num2)
+         + simplex[3].integrate_over_intersection(f, num0, num1, num2)
+         + simplex[4].integrate_over_intersection(f, num0, num1, num2)
+         + simplex[5].integrate_over_intersection(f, num0, num1, num2);
   }
   else
     return 0.0;
 }
 
-double cube3_mls_quadratic_t::integrate_in_dir(std::vector<double> &f, int dir)
+double cube3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
 {
   switch (loc){
     case OUT: return 0;
@@ -371,65 +261,53 @@ double cube3_mls_quadratic_t::integrate_in_dir(std::vector<double> &f, int dir)
 
         switch (dir) {
           case 0: s = (y1-y0)*(z1-z0);
-            F0 = interpolate_quad(f, -1., -alpha, -alpha);
-            F1 = interpolate_quad(f, -1.,  alpha, -alpha);
-            F2 = interpolate_quad(f, -1., -alpha,  alpha);
-            F3 = interpolate_quad(f, -1.,  alpha,  alpha); break;
+            F0 = f( x0, y0+.5*(-alpha+1.)*(y1-y0), z0+.5*(-alpha+1.)*(z1-z0) );
+            F1 = f( x0, y0+.5*( alpha+1.)*(y1-y0), z0+.5*(-alpha+1.)*(z1-z0) );
+            F2 = f( x0, y0+.5*(-alpha+1.)*(y1-y0), z0+.5*( alpha+1.)*(z1-z0) );
+            F3 = f( x0, y0+.5*( alpha+1.)*(y1-y0), z0+.5*( alpha+1.)*(z1-z0) );
+            break;
           case 1: s = (y1-y0)*(z1-z0);
-            F0 = interpolate_quad(f,  1., -alpha, -alpha);
-            F1 = interpolate_quad(f,  1.,  alpha, -alpha);
-            F2 = interpolate_quad(f,  1., -alpha,  alpha);
-            F3 = interpolate_quad(f,  1.,  alpha,  alpha); break;
+            F0 = f( x1, y0+.5*(-alpha+1.)*(y1-y0), z0+.5*(-alpha+1.)*(z1-z0) );
+            F1 = f( x1, y0+.5*( alpha+1.)*(y1-y0), z0+.5*(-alpha+1.)*(z1-z0) );
+            F2 = f( x1, y0+.5*(-alpha+1.)*(y1-y0), z0+.5*( alpha+1.)*(z1-z0) );
+            F3 = f( x1, y0+.5*( alpha+1.)*(y1-y0), z0+.5*( alpha+1.)*(z1-z0) );
+            break;
           case 2: s = (x1-x0)*(z1-z0);
-            F0 = interpolate_quad(f, -alpha, -1., -alpha);
-            F1 = interpolate_quad(f,  alpha, -1., -alpha);
-            F2 = interpolate_quad(f, -alpha, -1.,  alpha);
-            F3 = interpolate_quad(f,  alpha, -1.,  alpha); break;
+            F0 = f( x0+.5*(-alpha+1.)*(x1-x0), y0, z0+.5*(-alpha+1.)*(z1-z0) );
+            F1 = f( x0+.5*( alpha+1.)*(x1-x0), y0, z0+.5*(-alpha+1.)*(z1-z0) );
+            F2 = f( x0+.5*(-alpha+1.)*(x1-x0), y0, z0+.5*( alpha+1.)*(z1-z0) );
+            F3 = f( x0+.5*( alpha+1.)*(x1-x0), y0, z0+.5*( alpha+1.)*(z1-z0) );
+            break;
           case 3: s = (x1-x0)*(z1-z0);
-            F0 = interpolate_quad(f, -alpha,  1., -alpha);
-            F1 = interpolate_quad(f,  alpha,  1., -alpha);
-            F2 = interpolate_quad(f, -alpha,  1.,  alpha);
-            F3 = interpolate_quad(f,  alpha,  1.,  alpha); break;
+            F0 = f( x0+.5*(-alpha+1.)*(x1-x0), y1, z0+.5*(-alpha+1.)*(z1-z0) );
+            F1 = f( x0+.5*( alpha+1.)*(x1-x0), y1, z0+.5*(-alpha+1.)*(z1-z0) );
+            F2 = f( x0+.5*(-alpha+1.)*(x1-x0), y1, z0+.5*( alpha+1.)*(z1-z0) );
+            F3 = f( x0+.5*( alpha+1.)*(x1-x0), y1, z0+.5*( alpha+1.)*(z1-z0) );
+            break;
           case 4: s = (x1-x0)*(y1-y0);
-            F0 = interpolate_quad(f, -alpha, -alpha, -1.);
-            F1 = interpolate_quad(f,  alpha, -alpha, -1.);
-            F2 = interpolate_quad(f, -alpha,  alpha, -1.);
-            F3 = interpolate_quad(f,  alpha,  alpha, -1.); break;
+            F0 = f( x0+.5*(-alpha+1.)*(x1-x0), y0+.5*(-alpha+1.)*(y1-y0), z0 );
+            F1 = f( x0+.5*( alpha+1.)*(x1-x0), y0+.5*(-alpha+1.)*(y1-y0), z0 );
+            F2 = f( x0+.5*(-alpha+1.)*(x1-x0), y0+.5*( alpha+1.)*(y1-y0), z0 );
+            F3 = f( x0+.5*( alpha+1.)*(x1-x0), y0+.5*( alpha+1.)*(y1-y0), z0 );
+            break;
           case 5: s = (x1-x0)*(y1-y0);
-            F0 = interpolate_quad(f, -alpha, -alpha,  1.);
-            F1 = interpolate_quad(f,  alpha, -alpha,  1.);
-            F2 = interpolate_quad(f, -alpha,  alpha,  1.);
-            F3 = interpolate_quad(f,  alpha,  alpha,  1.); break;
+            F0 = f( x0+.5*(-alpha+1.)*(x1-x0), y0+.5*(-alpha+1.)*(y1-y0), z1 );
+            F1 = f( x0+.5*( alpha+1.)*(x1-x0), y0+.5*(-alpha+1.)*(y1-y0), z1 );
+            F2 = f( x0+.5*(-alpha+1.)*(x1-x0), y0+.5*( alpha+1.)*(y1-y0), z1 );
+            F3 = f( x0+.5*( alpha+1.)*(x1-x0), y0+.5*( alpha+1.)*(y1-y0), z1 );
+            break;
         }
 
         return 0.25*s*(F0+F1+F2+F3);
       }
     case FCE:
       {
-        std::vector<double> F_s0(n_nodes_simplex, 1);
-        std::vector<double> F_s1(n_nodes_simplex, 1);
-        std::vector<double> F_s2(n_nodes_simplex, 1);
-        std::vector<double> F_s3(n_nodes_simplex, 1);
-        std::vector<double> F_s4(n_nodes_simplex, 1);
-        std::vector<double> F_s5(n_nodes_simplex, 1);
-
-        F_s0[0] = f[t0p0];    F_s1[0] = f[t1p0];    F_s2[0] = f[t2p0];    F_s3[0] = f[t3p0];    F_s4[0] = f[t4p0];    F_s5[0] = f[t5p0];
-        F_s0[1] = f[t0p1];    F_s1[1] = f[t1p1];    F_s2[1] = f[t2p1];    F_s3[1] = f[t3p1];    F_s4[1] = f[t4p1];    F_s5[1] = f[t5p1];
-        F_s0[2] = f[t0p2];    F_s1[2] = f[t1p2];    F_s2[2] = f[t2p2];    F_s3[2] = f[t3p2];    F_s4[2] = f[t4p2];    F_s5[2] = f[t5p2];
-        F_s0[3] = f[t0p3];    F_s1[3] = f[t1p3];    F_s2[3] = f[t2p3];    F_s3[3] = f[t3p3];    F_s4[3] = f[t4p3];    F_s5[3] = f[t5p3];
-        F_s0[4] = f[t0p4];    F_s1[4] = f[t1p4];    F_s2[4] = f[t2p4];    F_s3[4] = f[t3p4];    F_s4[4] = f[t4p4];    F_s5[4] = f[t5p4];
-        F_s0[5] = f[t0p5];    F_s1[5] = f[t1p5];    F_s2[5] = f[t2p5];    F_s3[5] = f[t3p5];    F_s4[5] = f[t4p5];    F_s5[5] = f[t5p5];
-        F_s0[6] = f[t0p6];    F_s1[6] = f[t1p6];    F_s2[6] = f[t2p6];    F_s3[6] = f[t3p6];    F_s4[6] = f[t4p6];    F_s5[6] = f[t5p6];
-        F_s0[7] = f[t0p7];    F_s1[7] = f[t1p7];    F_s2[7] = f[t2p7];    F_s3[7] = f[t3p7];    F_s4[7] = f[t4p7];    F_s5[7] = f[t5p7];
-        F_s0[8] = f[t0p8];    F_s1[8] = f[t1p8];    F_s2[8] = f[t2p8];    F_s3[8] = f[t3p8];    F_s4[8] = f[t4p8];    F_s5[8] = f[t5p8];
-        F_s0[9] = f[t0p9];    F_s1[9] = f[t1p9];    F_s2[9] = f[t2p9];    F_s3[9] = f[t3p9];    F_s4[9] = f[t4p9];    F_s5[9] = f[t5p9];
-
-        return simplex[0].integrate_in_dir(F_s0, dir)
-             + simplex[1].integrate_in_dir(F_s1, dir)
-             + simplex[2].integrate_in_dir(F_s2, dir)
-             + simplex[3].integrate_in_dir(F_s3, dir)
-             + simplex[4].integrate_in_dir(F_s4, dir)
-             + simplex[5].integrate_in_dir(F_s5, dir);
+        return simplex[0].integrate_in_dir(f, dir)
+             + simplex[1].integrate_in_dir(f, dir)
+             + simplex[2].integrate_in_dir(f, dir)
+             + simplex[3].integrate_in_dir(f, dir)
+             + simplex[4].integrate_in_dir(f, dir)
+             + simplex[5].integrate_in_dir(f, dir);
       }
     default:
 #ifdef CASL_THROWS
@@ -485,117 +363,117 @@ double cube3_mls_quadratic_t::interpolate_quad(std::vector<double> f, double X, 
 }
 
 
-double cube3_mls_quadratic_t::measure_of_domain()
-{
-  switch (loc){
-    case INS:
-      {
-        return (x1-x0)*(y1-y0)*(z1-z0);
-      } break;
-    case OUT: return 0.0; break;
-    case FCE:
-      {
-        std::vector<double> F(n_nodes_simplex, 1);
+//double cube3_mls_quadratic_t::measure_of_domain()
+//{
+//  switch (loc){
+//    case INS:
+//      {
+//        return (x1-x0)*(y1-y0)*(z1-z0);
+//      } break;
+//    case OUT: return 0.0; break;
+//    case FCE:
+//      {
+//        std::vector<double> F(n_nodes_simplex, 1);
 
-        return simplex[0].integrate_over_domain(F)
-            +  simplex[1].integrate_over_domain(F)
-            +  simplex[2].integrate_over_domain(F)
-            +  simplex[3].integrate_over_domain(F)
-            +  simplex[4].integrate_over_domain(F)
-            +  simplex[5].integrate_over_domain(F);
-      } break;
-    default:
-#ifdef CASL_THROWS
-      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
-#endif
-      return 0;
-  }
-}
+//        return simplex[0].integrate_over_domain(F)
+//            +  simplex[1].integrate_over_domain(F)
+//            +  simplex[2].integrate_over_domain(F)
+//            +  simplex[3].integrate_over_domain(F)
+//            +  simplex[4].integrate_over_domain(F)
+//            +  simplex[5].integrate_over_domain(F);
+//      } break;
+//    default:
+//#ifdef CASL_THROWS
+//      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+//#endif
+//      return 0;
+//  }
+//}
 
-double cube3_mls_quadratic_t::measure_of_interface(int num)
-{
-  if (loc == FCE)
-  {
-    std::vector<double> F(n_nodes_simplex, 1);
+//double cube3_mls_quadratic_t::measure_of_interface(int num)
+//{
+//  if (loc == FCE)
+//  {
+//    std::vector<double> F(n_nodes_simplex, 1);
 
-    return simplex[0].integrate_over_interface(F, num) +
-           simplex[1].integrate_over_interface(F, num) +
-           simplex[2].integrate_over_interface(F, num) +
-           simplex[3].integrate_over_interface(F, num) +
-           simplex[4].integrate_over_interface(F, num) +
-           simplex[5].integrate_over_interface(F, num);
-  }
-  else
-    return 0.0;
-}
+//    return simplex[0].integrate_over_interface(F, num) +
+//           simplex[1].integrate_over_interface(F, num) +
+//           simplex[2].integrate_over_interface(F, num) +
+//           simplex[3].integrate_over_interface(F, num) +
+//           simplex[4].integrate_over_interface(F, num) +
+//           simplex[5].integrate_over_interface(F, num);
+//  }
+//  else
+//    return 0.0;
+//}
 
-double cube3_mls_quadratic_t::measure_of_colored_interface(int num0, int num1)
-{
-  if (loc == FCE)
-  {
-    std::vector<double> F(n_nodes_simplex, 1);
+//double cube3_mls_quadratic_t::measure_of_colored_interface(int num0, int num1)
+//{
+//  if (loc == FCE)
+//  {
+//    std::vector<double> F(n_nodes_simplex, 1);
 
-    return simplex[0].integrate_over_colored_interface(F, num0, num1) +
-           simplex[1].integrate_over_colored_interface(F, num0, num1) +
-           simplex[2].integrate_over_colored_interface(F, num0, num1) +
-           simplex[3].integrate_over_colored_interface(F, num0, num1) +
-           simplex[5].integrate_over_colored_interface(F, num0, num1) +
-           simplex[4].integrate_over_colored_interface(F, num0, num1);
-  }
-  else
-    return 0.0;
-}
+//    return simplex[0].integrate_over_colored_interface(F, num0, num1) +
+//           simplex[1].integrate_over_colored_interface(F, num0, num1) +
+//           simplex[2].integrate_over_colored_interface(F, num0, num1) +
+//           simplex[3].integrate_over_colored_interface(F, num0, num1) +
+//           simplex[5].integrate_over_colored_interface(F, num0, num1) +
+//           simplex[4].integrate_over_colored_interface(F, num0, num1);
+//  }
+//  else
+//    return 0.0;
+//}
 
-double cube3_mls_quadratic_t::measure_of_intersection(int num0, int num1)
-{
-  if (loc == FCE && num_of_lsfs > 1)
-  {
-    std::vector<double> F(n_nodes_simplex, 1);
+//double cube3_mls_quadratic_t::measure_of_intersection(int num0, int num1)
+//{
+//  if (loc == FCE && num_of_lsfs > 1)
+//  {
+//    std::vector<double> F(n_nodes_simplex, 1);
 
-    return simplex[0].integrate_over_intersection(F, num0, num1) +
-           simplex[1].integrate_over_intersection(F, num0, num1) +
-           simplex[2].integrate_over_intersection(F, num0, num1) +
-           simplex[3].integrate_over_intersection(F, num0, num1) +
-           simplex[4].integrate_over_intersection(F, num0, num1) +
-           simplex[5].integrate_over_intersection(F, num0, num1);
-  }
-  else
-    return 0.0;
-}
+//    return simplex[0].integrate_over_intersection(F, num0, num1) +
+//           simplex[1].integrate_over_intersection(F, num0, num1) +
+//           simplex[2].integrate_over_intersection(F, num0, num1) +
+//           simplex[3].integrate_over_intersection(F, num0, num1) +
+//           simplex[4].integrate_over_intersection(F, num0, num1) +
+//           simplex[5].integrate_over_intersection(F, num0, num1);
+//  }
+//  else
+//    return 0.0;
+//}
 
-double cube3_mls_quadratic_t::measure_in_dir(int dir)
-{
-  switch (loc){
-    case OUT: return 0;
-    case INS:
-      {
-        switch (dir) {
-          case 0: return (y1-y0)*(z1-z0);
-          case 1: return (y1-y0)*(z1-z0);
-          case 2: return (x1-x0)*(z1-z0);
-          case 3: return (x1-x0)*(z1-z0);
-          case 4: return (x1-x0)*(y1-y0);
-          case 5: return (x1-x0)*(y1-y0);
-        }
-      }
-    case FCE:
-      {
-        std::vector<double> F(n_nodes_simplex, 1);
+//double cube3_mls_quadratic_t::measure_in_dir(int dir)
+//{
+//  switch (loc){
+//    case OUT: return 0;
+//    case INS:
+//      {
+//        switch (dir) {
+//          case 0: return (y1-y0)*(z1-z0);
+//          case 1: return (y1-y0)*(z1-z0);
+//          case 2: return (x1-x0)*(z1-z0);
+//          case 3: return (x1-x0)*(z1-z0);
+//          case 4: return (x1-x0)*(y1-y0);
+//          case 5: return (x1-x0)*(y1-y0);
+//        }
+//      }
+//    case FCE:
+//      {
+//        std::vector<double> F(n_nodes_simplex, 1);
 
-        return simplex[0].integrate_in_dir(F, dir) +
-               simplex[1].integrate_in_dir(F, dir) +
-               simplex[2].integrate_in_dir(F, dir) +
-               simplex[3].integrate_in_dir(F, dir) +
-               simplex[4].integrate_in_dir(F, dir) +
-               simplex[5].integrate_in_dir(F, dir);
-      }
-    default:
-#ifdef CASL_THROWS
-      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
-#endif
-      return 0;
-  }
-}
+//        return simplex[0].integrate_in_dir(F, dir) +
+//               simplex[1].integrate_in_dir(F, dir) +
+//               simplex[2].integrate_in_dir(F, dir) +
+//               simplex[3].integrate_in_dir(F, dir) +
+//               simplex[4].integrate_in_dir(F, dir) +
+//               simplex[5].integrate_in_dir(F, dir);
+//      }
+//    default:
+//#ifdef CASL_THROWS
+//      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+//#endif
+//      return 0;
+//  }
+//}
 
 //double cube3_mls_quadratic_t::interpolate_linear(double *f, double x, double y, double z)
 //{

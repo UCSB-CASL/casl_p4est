@@ -1,5 +1,9 @@
 #include "simplex3_mls_quadratic.h"
 
+
+//--------------------------------------------------
+// Constructors
+//--------------------------------------------------
 simplex3_mls_quadratic_t::simplex3_mls_quadratic_t()
 {
   vtxs.reserve(8);
@@ -23,7 +27,7 @@ simplex3_mls_quadratic_t::simplex3_mls_quadratic_t(double x0, double y0, double 
 {
   if (1) // usually there will be only one cut
   {
-    vtxs.reserve(8);
+    vtxs.reserve(20);
     edgs.reserve(27);
     tris.reserve(20);
     tets.reserve(6);
@@ -89,27 +93,33 @@ simplex3_mls_quadratic_t::simplex3_mls_quadratic_t(double x0, double y0, double 
 //--------------------------------------------------
 // Constructing domain
 //--------------------------------------------------
-void simplex3_mls_quadratic_t::construct_domain(std::vector<std::vector<double> > &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
   // clear data
 //  vtxs.clear();
 //  edgs.clear();
 //  tris.clear();
+  bool needs_refinement = true;
+  int last_vtxs_size = 0;
 
   // loop over LSFs
   for (short phi_idx = 0; phi_idx < phi.size(); ++phi_idx)
   {
-    bool needs_refinement = true;
-    int last_vtxs_size = 0;
+    needs_refinement = true;
+    last_vtxs_size = 0;
+
     while (needs_refinement)
     {
       // interpolate to all vertices
       for (int i = last_vtxs_size; i < vtxs.size(); ++i)
         if (!vtxs[i].is_recycled)
         {
-          double xyz[3] = { vtxs[i].x, vtxs[i].y, vtxs[i].z };
-          vtxs[i].value = interpolate_from_parent(phi[phi_idx], xyz);
-          vtxs[i].value = interpolate_from_parent(phi[phi_idx], xyz);
+//          double value = (*phi[phi_idx]) ( vtxs[i].x, vtxs[i].y, vtxs[i].z );
+//          if (fabs(value) < eps)
+//          {
+//            std::cout << "Here!\n";
+//          }
+          vtxs[i].value = (*phi[phi_idx]) ( vtxs[i].x, vtxs[i].y, vtxs[i].z );
           perturb(vtxs[i].value, eps);
         }
 
@@ -177,6 +187,14 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<std::vector<double> 
 }
 
 
+
+
+
+
+
+//--------------------------------------------------
+// Splitting
+//--------------------------------------------------
 void simplex3_mls_quadratic_t::do_action_vtx(int n_vtx, int cn, action_t action)
 {
   vtx3_t *vtx = &vtxs[n_vtx];
@@ -586,6 +604,9 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
     c_tri0 = &tris[tri->c_tri0];  c_tri0->dir = tri->dir; c_tri0->p_lsf = tri->p_lsf;
     c_tri1 = &tris[tri->c_tri1];  c_tri1->dir = tri->dir; c_tri1->p_lsf = tri->p_lsf;
     c_tri2 = &tris[tri->c_tri2];  c_tri2->dir = tri->dir; c_tri2->p_lsf = tri->p_lsf;
+
+    vtx_u0 = &vtxs[u0];
+    vtx_u1 = &vtxs[u1];
 
 #ifdef CASL_THROWS
     if (!tri_is_ok(tri->c_tri0) || !tri_is_ok(tri->c_tri1) || !tri_is_ok(tri->c_tri2))
@@ -1678,6 +1699,13 @@ void simplex3_mls_quadratic_t::refine_tri(int n_tri)
   int n_tri2 = tris.size()-2;
   int n_tri3 = tris.size()-1;
 
+#ifdef CASL_THROWS
+  tri_is_ok(n_tri0);
+  tri_is_ok(n_tri1);
+  tri_is_ok(n_tri2);
+  tri_is_ok(n_tri3);
+#endif
+
   tri->c_edg0 = n_edg0;
   tri->c_edg1 = n_edg1;
   tri->c_edg2 = n_edg2;
@@ -1821,6 +1849,27 @@ void simplex3_mls_quadratic_t::refine_tet(int n_tet)
   tets[n_tet6].set(loc);
   tets[n_tet7].set(loc);
 
+
+#ifdef CASL_THROWS
+  tri_is_ok(cf0);
+  tri_is_ok(cf1);
+  tri_is_ok(cf2);
+  tri_is_ok(cf3);
+  tri_is_ok(cf4);
+  tri_is_ok(cf5);
+  tri_is_ok(cf6);
+  tri_is_ok(cf7);
+
+  tet_is_ok(n_tet0);
+  tet_is_ok(n_tet1);
+  tet_is_ok(n_tet2);
+  tet_is_ok(n_tet3);
+  tet_is_ok(n_tet4);
+  tet_is_ok(n_tet5);
+  tet_is_ok(n_tet6);
+  tet_is_ok(n_tet7);
+#endif
+
 }
 
 
@@ -1830,7 +1879,7 @@ void simplex3_mls_quadratic_t::refine_tet(int n_tet)
 //--------------------------------------------------
 // Integration
 //--------------------------------------------------
-double simplex3_mls_quadratic_t::integrate_over_domain(std::vector<double> &f)
+double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 {
   double result = 0.0;
   double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
@@ -1850,12 +1899,12 @@ double simplex3_mls_quadratic_t::integrate_over_domain(std::vector<double> &f)
   for (unsigned int i = 0; i < tets.size(); i++)
     if (!tets[i].is_split && tets[i].loc == INS)
     {
-      tet3_t *tet = &tets[i];
+//      tet3_t *tet = &tets[i];
 
-      mapping_tet(xyz, i, abc0); f0 = interpolate_from_parent(f, xyz);
-      mapping_tet(xyz, i, abc1); f1 = interpolate_from_parent(f, xyz);
-      mapping_tet(xyz, i, abc2); f2 = interpolate_from_parent(f, xyz);
-      mapping_tet(xyz, i, abc3); f3 = interpolate_from_parent(f, xyz);
+      mapping_tet(xyz, i, abc0); f0 = f( xyz[0], xyz[1], xyz[2] );
+      mapping_tet(xyz, i, abc1); f1 = f( xyz[0], xyz[1], xyz[2] );
+      mapping_tet(xyz, i, abc2); f2 = f( xyz[0], xyz[1], xyz[2] );
+      mapping_tet(xyz, i, abc3); f3 = f( xyz[0], xyz[1], xyz[2] );
 
       w0 = .25*jacobian_tet(i, abc0);
       w1 = .25*jacobian_tet(i, abc1);
@@ -2042,7 +2091,7 @@ double simplex3_mls_quadratic_t::integrate_over_domain(std::vector<double> &f)
 //  return result/6.;
 //}
 
-double simplex3_mls_quadratic_t::integrate_over_interface(std::vector<double> &f, int num)
+double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 {
   bool integrate_specific = (num != -1);
 
@@ -2066,10 +2115,10 @@ double simplex3_mls_quadratic_t::integrate_over_interface(std::vector<double> &f
           || (integrate_specific && t->c == num))
       {
         // map quadrature points into real space and interpolate integrand
-        mapping_tri(xyz, i, ab0); f0 = interpolate_from_parent(f, xyz);
-        mapping_tri(xyz, i, ab1); f1 = interpolate_from_parent(f, xyz);
-        mapping_tri(xyz, i, ab2); f2 = interpolate_from_parent(f, xyz);
-        mapping_tri(xyz, i, ab3); f3 = interpolate_from_parent(f, xyz);
+        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab3); f3 = f( xyz[0], xyz[1], xyz[2] );
 
         // scale weights by Jacobian
         w0 =-27.*jacobian_tri(i, ab0);
@@ -2120,7 +2169,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(std::vector<double> &f
 //  return result/18.;
 //}
 
-double simplex3_mls_quadratic_t::integrate_over_colored_interface(std::vector<double> &f, int num0, int num1)
+double simplex3_mls_quadratic_t::integrate_over_colored_interface(CF_3 &f, int num0, int num1)
 {
   double result = 0.0;
   double w0 = 0, w1 = 0, w2 = 0;
@@ -2140,9 +2189,9 @@ double simplex3_mls_quadratic_t::integrate_over_colored_interface(std::vector<do
       if (t->p_lsf == num0 && t->c == num1)
       {
         // map quadrature points into real space and interpolate integrand
-        mapping_tri(xyz, i, ab0); f0 = interpolate_from_parent(f, xyz);
-        mapping_tri(xyz, i, ab1); f1 = interpolate_from_parent(f, xyz);
-        mapping_tri(xyz, i, ab2); f2 = interpolate_from_parent(f, xyz);
+        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
 
         // scale weights by Jacobian
         w0 = jacobian_tri(i, ab0)/6.;
@@ -2194,7 +2243,7 @@ double simplex3_mls_quadratic_t::integrate_over_colored_interface(std::vector<do
 //  return result;
 //}
 
-double simplex3_mls_quadratic_t::integrate_over_intersection(std::vector<double> &f, int num0, int num1)
+double simplex3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, int num1)
 {
   bool integrate_specific = (num0 != -1 && num1 != -1);
 //  double result = 0.0;
@@ -2251,9 +2300,9 @@ double simplex3_mls_quadratic_t::integrate_over_intersection(std::vector<double>
                && (e->c0 == num1 || e->c1 == num1)) )
       {
         // map quadrature points into real space and interpolate integrand
-        mapping_edg(xyz, i, a0); f0 = interpolate_from_parent(f, xyz);
-        mapping_edg(xyz, i, a1); f1 = interpolate_from_parent(f, xyz);
-        mapping_edg(xyz, i, a2); f2 = interpolate_from_parent(f, xyz);
+        mapping_edg(xyz, i, a0); f0 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_edg(xyz, i, a1); f1 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_edg(xyz, i, a2); f2 = f( xyz[0], xyz[1], xyz[2] );
 
         // scale weights by Jacobian
         w0 = 5.*jacobian_edg(i, a0);
@@ -2267,7 +2316,7 @@ double simplex3_mls_quadratic_t::integrate_over_intersection(std::vector<double>
   return result/18.;
 }
 
-double simplex3_mls_quadratic_t::integrate_over_intersection(std::vector<double> &f, int num0, int num1, int num2)
+double simplex3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, int num1, int num2)
 {
   double result = 0.0;
   bool integrate_specific = (num0 != -1 && num1 != -1 && num2 != -1);
@@ -2282,15 +2331,14 @@ double simplex3_mls_quadratic_t::integrate_over_intersection(std::vector<double>
                && (v->c0 == num1 || v->c1 == num1 || v->c2 == num1)
                && (v->c0 == num2 || v->c1 == num2 || v->c2 == num2)) )
       {
-        double xyz[3] = { v->x, v->y, v->z };
-        result += interpolate_from_parent(f, xyz);
+        result += f( v->x, v->y, v->z );
       }
   }
 
   return result;
 }
 
-double simplex3_mls_quadratic_t::integrate_in_dir(std::vector<double> &f, int dir)
+double simplex3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
 {
   double result = 0.0;
   double w0 = 0, w1 = 0, w2 = 0;
@@ -2310,9 +2358,9 @@ double simplex3_mls_quadratic_t::integrate_in_dir(std::vector<double> &f, int di
       if (t->dir == dir)
       {
         // map quadrature points into real space and interpolate integrand
-        mapping_tri(xyz, i, ab0); f0 = interpolate_from_parent(f, xyz);
-        mapping_tri(xyz, i, ab1); f1 = interpolate_from_parent(f, xyz);
-        mapping_tri(xyz, i, ab2); f2 = interpolate_from_parent(f, xyz);
+        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
 
         // scale weights by Jacobian
         w0 = jacobian_tri(i, ab0)/6.;
@@ -2591,22 +2639,30 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
   result = result && (tri->vtx0 == tet->vtx1 || tri->vtx1 == tet->vtx1 || tri->vtx2 == tet->vtx1)
                   && (tri->vtx0 == tet->vtx2 || tri->vtx1 == tet->vtx2 || tri->vtx2 == tet->vtx2)
                   && (tri->vtx0 == tet->vtx3 || tri->vtx1 == tet->vtx3 || tri->vtx2 == tet->vtx3);
+  if (!result)
+    throw std::domain_error("[CASL_ERROR]: While splitting a tetrahedron one of child tetrahedra is not consistent.");
 
   tri = &tris[tet->tri1];
   result = result && (tri->vtx0 == tet->vtx0 || tri->vtx1 == tet->vtx0 || tri->vtx2 == tet->vtx0)
                   && (tri->vtx0 == tet->vtx2 || tri->vtx1 == tet->vtx2 || tri->vtx2 == tet->vtx2)
                   && (tri->vtx0 == tet->vtx3 || tri->vtx1 == tet->vtx3 || tri->vtx2 == tet->vtx3);
+  if (!result)
+    throw std::domain_error("[CASL_ERROR]: While splitting a tetrahedron one of child tetrahedra is not consistent.");
 
   tri = &tris[tet->tri2];
   result = result && (tri->vtx0 == tet->vtx1 || tri->vtx1 == tet->vtx1 || tri->vtx2 == tet->vtx1)
                   && (tri->vtx0 == tet->vtx0 || tri->vtx1 == tet->vtx0 || tri->vtx2 == tet->vtx0)
                   && (tri->vtx0 == tet->vtx3 || tri->vtx1 == tet->vtx3 || tri->vtx2 == tet->vtx3);
+  if (!result)
+    throw std::domain_error("[CASL_ERROR]: While splitting a tetrahedron one of child tetrahedra is not consistent.");
 
   tri = &tris[tet->tri3];
   result = result && (tri->vtx0 == tet->vtx1 || tri->vtx1 == tet->vtx1 || tri->vtx2 == tet->vtx1)
                   && (tri->vtx0 == tet->vtx2 || tri->vtx1 == tet->vtx2 || tri->vtx2 == tet->vtx2)
                   && (tri->vtx0 == tet->vtx0 || tri->vtx1 == tet->vtx0 || tri->vtx2 == tet->vtx0);
 
+  if (!result)
+    throw std::domain_error("[CASL_ERROR]: While splitting a tetrahedron one of child tetrahedra is not consistent.");
   return result;
 }
 #endif

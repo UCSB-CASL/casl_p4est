@@ -11,6 +11,11 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 #include <vector>
 #include <stdexcept>
 #include <iostream>
+#ifdef P4_TO_P8
+#include <src/my_p8est_utils.h>
+#else
+#include <src/my_p4est_utils.h>
+#endif
 
 class simplex2_mls_quadratic_t
 {
@@ -134,7 +139,7 @@ public:
   std::vector<edg2_t> edgs;
   std::vector<tri2_t> tris;
 
-  void construct_domain(std::vector< std::vector<double> > &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 
   //--------------------------------------------------
   // Splitting
@@ -158,11 +163,11 @@ public:
   //--------------------------------------------------
   // Integration
   //--------------------------------------------------
-  double integrate_over_domain            (std::vector<double> &f);
-  double integrate_over_interface         (std::vector<double> &f, int num0);
-  double integrate_over_colored_interface (std::vector<double> &f, int num0, int num1);
-  double integrate_over_intersection      (std::vector<double> &f, int num0, int num1);
-  double integrate_in_dir                 (std::vector<double> &f, int dir);
+  double integrate_over_domain            (CF_2 &f);
+  double integrate_over_interface         (CF_2 &f, int num0);
+  double integrate_over_colored_interface (CF_2 &f, int num0, int num1);
+  double integrate_over_intersection      (CF_2 &f, int num0, int num1);
+  double integrate_in_dir                 (CF_2 &f, int dir);
 
   double jacobian_edg(int n_edg, double a);
   double jacobian_tri(int n_edg, double a, double b);

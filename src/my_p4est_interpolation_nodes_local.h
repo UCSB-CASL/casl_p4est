@@ -13,7 +13,11 @@
 #include <src/grid_interpolation2.h>
 #endif
 
-class my_p4est_interpolation_nodes_local_t
+#ifdef P4_TO_P8
+class my_p4est_interpolation_nodes_local_t : public CF_3
+#else
+class my_p4est_interpolation_nodes_local_t : public CF_2
+#endif
 {
 //private:
 public:
@@ -142,8 +146,18 @@ public:
   // interpolation method
 #ifdef P4_TO_P8
   double interpolate(double x, double y, double z);
+//  inline double operator () (double x, double y, double z);
+  inline double operator () (double x, double y, double z)
+  {
+    return interpolate(x,y,z);
+  }
 #else
   double interpolate(double x, double y);
+//  inline double operator () (double x, double y);
+  inline double operator () (double x, double y)
+  {
+    return interpolate(x,y);
+  }
 #endif
 
   void set_eps(double eps_in) {eps = eps_in; interp.set_eps(eps_in);}

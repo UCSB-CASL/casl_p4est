@@ -38,13 +38,39 @@ simplex2_mls_t::simplex2_mls_t(double x0, double y0,
   eps = 1.0e-15;
 }
 
-void simplex2_mls_t::do_action(int cn, action_t action)
+
+
+
+//--------------------------------------------------
+// Constructing domain
+//--------------------------------------------------
+void simplex2_mls_t::construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
-  /* Process elements */
-  int n;
-  n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, cn, action);
-  n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, cn, action);
-  n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, cn, action);
+  double xyz[3];
+  // loop over LSFs
+  for (short phi_idx = 0; phi_idx < phi.size(); ++phi_idx)
+  {
+    // interpolate to all vertices
+    for (int i = 0; i < vtxs.size(); ++i)
+      {
+        vtxs[i].value = (*phi[phi_idx]) ( vtxs[i].x, vtxs[i].y );
+        perturb(vtxs[i].value, eps);
+      }
+
+    for (int i = 0; i < edgs.size(); ++i)
+      if (!edgs[i].is_split)
+      {
+        edg2_t *e = &edgs[i];
+        get_edge_coords(i, xyz);
+        e->value = (*phi[phi_idx]) ( xyz[0], xyz[1] );
+      }
+
+    // split all elements
+    int n;
+    n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, clr[phi_idx], acn[phi_idx]);
+    n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
+    n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
+  }
 }
 
 void simplex2_mls_t::do_action_vtx(int n_vtx, int cn, action_t action)
@@ -452,10 +478,10 @@ double simplex2_mls_t::area(int vtx0, int vtx1, int vtx2)
   return 0.5*fabs(x01*y02-y01*x02);
 }
 
-double simplex2_mls_t::integrate_over_domain(double f0, double f1, double f2)
+double simplex2_mls_t::integrate_over_domain(CF_2 &f)
 {
   /* interpolate function values to vertices */
-  interpolate_all(f0, f1, f2);
+  interpolate_all(f);
 
   double result = 0.0;
 
@@ -473,12 +499,12 @@ double simplex2_mls_t::integrate_over_domain(double f0, double f1, double f2)
   return result;
 }
 
-double simplex2_mls_t::integrate_over_interface(double f0, double f1, double f2, int num)
+double simplex2_mls_t::integrate_over_interface(CF_2 &f, int num)
 {
   bool integrate_specific = (num != -1);
 
   /* interpolate function values to vertices */
-  interpolate_all(f0, f1, f2);
+  interpolate_all(f);
 
   double result = 0.0;
 
@@ -495,10 +521,10 @@ double simplex2_mls_t::integrate_over_interface(double f0, double f1, double f2,
 }
 
 // integrate over colored interfaces (num0 - parental lsf, num1 - coloring lsf)
-double simplex2_mls_t::integrate_over_colored_interface(double f0, double f1, double f2, int num0, int num1)
+double simplex2_mls_t::integrate_over_colored_interface(CF_2 &f, int num0, int num1)
 {
   /* interpolate function values to vertices */
-  interpolate_all(f0, f1, f2);
+  interpolate_all(f);
 
   double result = 0.0;
 
@@ -514,12 +540,12 @@ double simplex2_mls_t::integrate_over_colored_interface(double f0, double f1, do
   return result;
 }
 
-double simplex2_mls_t::integrate_over_intersection(double f0, double f1, double f2, int num0, int num1)
+double simplex2_mls_t::integrate_over_intersection(CF_2 &f, int num0, int num1)
 {
   double result = 0.0;
   bool integrate_specific = (num0 != -1 && num1 != -1);
 
-  interpolate_all(f0, f1, f2);
+  interpolate_all(f);
 
   for (unsigned int i = 0; i < vtxs.size(); i++)
   {
@@ -537,10 +563,10 @@ double simplex2_mls_t::integrate_over_intersection(double f0, double f1, double 
   return result;
 }
 
-double simplex2_mls_t::integrate_in_dir(double f0, double f1, double f2, int dir)
+double simplex2_mls_t::integrate_in_dir(CF_2 &f, int dir)
 {
   /* interpolate function values to vertices */
-  interpolate_all(f0, f1, f2);
+  interpolate_all(f);
 
   double result = 0.0;
 
@@ -556,24 +582,24 @@ double simplex2_mls_t::integrate_in_dir(double f0, double f1, double f2, int dir
   return result;
 }
 
-double simplex2_mls_t::integrate_in_non_cart_dir(double f0, double f1, double f2, int num)
-{
-  /* interpolate function values to vertices */
-  interpolate_all(f0, f1, f2);
+//double simplex2_mls_t::integrate_in_non_cart_dir(double f0, double f1, double f2, int num)
+//{
+//  /* interpolate function values to vertices */
+//  interpolate_all(f0, f1, f2);
 
-  double result = 0.0;
+//  double result = 0.0;
 
-  /* integrate over edges */
-  for (unsigned int i = 0; i < edgs.size(); i++)
-  {
-    edg2_t *e = &edgs[i];
-    if (!e->is_split && (e->loc == INS || e->loc == FCE))
-      if (e->p_lsf == num)
-        result += length(e->vtx0, e->vtx1)*(vtxs[e->vtx0].value + vtxs[e->vtx1].value)/2.0;
-  }
+//  /* integrate over edges */
+//  for (unsigned int i = 0; i < edgs.size(); i++)
+//  {
+//    edg2_t *e = &edgs[i];
+//    if (!e->is_split && (e->loc == INS || e->loc == FCE))
+//      if (e->p_lsf == num)
+//        result += length(e->vtx0, e->vtx1)*(vtxs[e->vtx0].value + vtxs[e->vtx1].value)/2.0;
+//  }
 
-  return result;
-}
+//  return result;
+//}
 
 void simplex2_mls_t::interpolate_from_neighbors(int v)
 {
@@ -581,16 +607,9 @@ void simplex2_mls_t::interpolate_from_neighbors(int v)
   vtx->value = vtx->ratio*vtxs[vtx->n_vtx0].value + (1.0-vtx->ratio)*vtxs[vtx->n_vtx1].value;
 }
 
-void simplex2_mls_t::interpolate_all(double &p0, double &p1, double &p2)
+void simplex2_mls_t::interpolate_all(CF_2 &f)
 {
-  vtxs[0].value = p0;
-  vtxs[1].value = p1;
-  vtxs[2].value = p2;
-
-  for (unsigned int i = 3; i < vtxs.size(); i++)
-  {
-    interpolate_from_neighbors(i);
-  }
+  for (unsigned int i = 0; i < vtxs.size(); i++) vtxs[i].value = f(vtxs[i].x, vtxs[i].y);
 }
 
 double simplex2_mls_t::find_intersection_linear(int v0, int v1)

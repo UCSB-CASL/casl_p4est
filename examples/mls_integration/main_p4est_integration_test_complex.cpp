@@ -69,8 +69,10 @@ int nb_splits = 8;
 #else
 int lmin = 5;
 int lmax = 5;
-int nb_splits = 9;
+int nb_splits = 10;
 #endif
+
+bool reinitialize_level_set = 1;
 
 const int n_xyz[] = {1, 1, 1};
 const int periodic[] = {0, 0, 0};
@@ -121,7 +123,7 @@ public:
  * 4 - rose-like domain
  * 5 - one circle
  */
-int geometry_num = 0;
+int geometry_num = 5;
 
 geometry_two_circles_union_t        geometry_two_circles_union;
 geometry_two_circles_intersection_t geometry_two_circles_intersection;
@@ -519,7 +521,8 @@ int main (int argc, char* argv[])
 
       sample_cf_on_nodes(p4est, nodes, *LSF->at(i), phi_vec[i]);
 
-//      ls.reinitialize_1st_order_time_2nd_order_space(phi_vec.back());
+      if (reinitialize_level_set)
+        ls.reinitialize_1st_order_time_2nd_order_space(phi_vec.back());
 
 #ifdef P4_TO_P8
       ngbd_n.second_derivatives_central(phi_vec[i], phi_xx_vec[i], phi_yy_vec[i], phi_zz_vec[i]);

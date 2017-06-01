@@ -9,6 +9,7 @@
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
+#include <src/my_p4est_utils.h>
 #include "cube2_mls.h"
 #include "cube2_mls_quadratic.h"
 #endif
@@ -20,6 +21,7 @@
 
 class my_p4est_integration_mls_t
 {
+  std::vector< quadrant_interp_t > phi_interp_;
 public:
   enum int_type_t {DOM, FC1, FC2, FC3};
 

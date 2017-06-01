@@ -72,76 +72,47 @@
 #endif
 
 #include <vector>
-#include "grid_interpolation3.h"
 #include "simplex3_mls.h"
+#ifdef P4_TO_P8
+#include <src/my_p8est_utils.h>
+#else
+#include <src/my_p4est_utils.h>
+#endif
 
 class cube3_mls_t
 {
 public:
+  const static int n_nodes = 8;
+  const static int n_nodes_simplex = 4;
+
   double  x0, x1, y0, y1, z0, z1;
   loc_t   loc;
-  int     num_non_trivial;
-  bool    use_linear;
+  int     num_of_lsfs;
 
   std::vector<simplex3_mls_t> simplex;
 
-  std::vector< std::vector<double> > *phi;
-  std::vector< std::vector<double> > *phi_xx;
-  std::vector< std::vector<double> > *phi_yy;
-  std::vector< std::vector<double> > *phi_zz;
-
-  grid_interpolation3_t interp;
-
-  std::vector<action_t> *action;
-  std::vector<int>      *color;
 
   cube3_mls_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
-    : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1), use_linear(true) {set_interpolation_grid(x0, x1, y0, y1, z0, z1, 1, 1, 1);}
+    : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1) {}
 
-  void set_interpolation_grid(double xm, double xp, double ym, double yp, double zm, double zp, int nx, int ny, int nz)
-  {
-    interp.initialize(xm, xp, ym, yp, zm, zp, nx, ny, nz);
-  }
+  void construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 
-  void set_phi(std::vector< std::vector<double> > &phi_,
-               std::vector<action_t> &acn_, std::vector<int> &clr_)
-  {
-    phi     = &phi_; phi_xx = NULL; phi_yy = NULL; phi_zz = NULL;
-    action  = &acn_;
-    color   = &clr_;
-    use_linear = true;
-  }
+  double integrate_over_domain            (CF_3& f);
+  double integrate_over_interface         (CF_3& f, int num);
+  double integrate_over_colored_interface (CF_3& f, int num0, int num1);
+  double integrate_over_intersection      (CF_3& f, int num0, int num1);
+  double integrate_over_intersection      (CF_3& f, int num0, int num1, int num2);
+  double integrate_in_dir                 (CF_3& f, int dir);
 
-  void set_phi(std::vector< std::vector<double> > &phi_,
-               std::vector< std::vector<double> > &phi_xx_,
-               std::vector< std::vector<double> > &phi_yy_,
-               std::vector< std::vector<double> > &phi_zz_,
-               std::vector<action_t> &acn_, std::vector<int> &clr_)
-  {
-    phi     = &phi_; phi_xx = &phi_xx_; phi_yy = &phi_yy_; phi_zz = &phi_zz_;
-    action  = &acn_;
-    color   = &clr_;
-    use_linear = false;
-  }
+//  double measure_of_domain            ();
+//  double measure_of_interface         (int num);
+//  double measure_of_intersection      (int num0, int num1);
+//  double measure_of_colored_interface (int num0, int num1);
+//  double measure_in_dir               (int dir);
 
-  void construct_domain();
+//  void interpolate_to_cube(double *in, double *out);
 
-  double integrate_over_domain            (double *F);
-  double integrate_over_interface         (double *F, int num);
-  double integrate_over_colored_interface (double *F, int num0, int num1);
-  double integrate_over_intersection      (double *F, int num0, int num1);
-  double integrate_over_intersection      (double *F, int num0, int num1, int num2);
-  double integrate_in_dir                 (double *F, int dir);
-
-  double measure_of_domain            ();
-  double measure_of_interface         (int num);
-  double measure_of_intersection      (int num0, int num1);
-  double measure_of_colored_interface (int num0, int num1);
-  double measure_in_dir               (int dir);
-
-  void interpolate_to_cube(double *in, double *out);
-
-  void set_use_linear(bool val) { use_linear = val; }
+//  void set_use_linear(bool val) { use_linear = val; }
 
 //  double interpolate_linear(double *f, double x, double y, double z);
 //  double interpolate_quadratic(double *f, double *fxx, double *fyy, double *fzz, double x, double y, double z);

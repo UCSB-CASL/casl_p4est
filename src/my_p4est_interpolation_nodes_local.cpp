@@ -233,3 +233,15 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
 
   return value;
 }
+
+//#ifdef P4_TO_P8
+//double my_p4est_interpolation_nodes_local_t::operator() (double x, double y, double z)
+//{
+//  return interpolate(x,y,z);
+//}
+//#else
+//double my_p4est_interpolation_nodes_local_t::operator() (double x, double y)
+//{
+//  return interpolate(x,y);
+//}
+//#endif

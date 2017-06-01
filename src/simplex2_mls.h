@@ -11,10 +11,17 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 #include <vector>
 #include <stdexcept>
 #include <iostream>
+#ifdef P4_TO_P8
+#include <src/my_p8est_utils.h>
+#else
+#include <src/my_p4est_utils.h>
+#endif
 
 class simplex2_mls_t
 {
 public:
+
+  const static int nodes_per_tri = 3;
 
   double eps;
 
@@ -120,22 +127,28 @@ public:
   std::vector<edg2_t> edgs;
   std::vector<tri2_t> tris;
 
-  void do_action(int cn, action_t action);
+  void construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+
+  //--------------------------------------------------
+  // Splitting
+  //--------------------------------------------------
   void do_action_vtx(int n_vtx, int cn, action_t action);
   void do_action_edg(int n_edg, int cn, action_t action);
   void do_action_tri(int n_tri, int cn, action_t action);
 
   bool need_swap(int v0, int v1);
 
-  void interpolate_all(double &p0, double &p1, double &p2);
+  void interpolate_all(CF_2 &f);
   void interpolate_from_neighbors(int v);
 
-  double integrate_over_domain            (double f0, double f1, double f2);
-  double integrate_over_interface         (double f0, double f1, double f2, int num0);
-  double integrate_over_colored_interface (double f0, double f1, double f2, int num0, int num1);
-  double integrate_over_intersection      (double f0, double f1, double f2, int num0, int num1);
-  double integrate_in_dir                 (double f0, double f1, double f2, int dir);
-  double integrate_in_non_cart_dir        (double f0, double f1, double f2, int dir);
+  //--------------------------------------------------
+  // Integration
+  //--------------------------------------------------
+  double integrate_over_domain            (CF_2 &f);
+  double integrate_over_interface         (CF_2 &f, int num0);
+  double integrate_over_colored_interface (CF_2 &f, int num0, int num1);
+  double integrate_over_intersection      (CF_2 &f, int num0, int num1);
+  double integrate_in_dir                 (CF_2 &f, int dir);
 
   double length (int vtx0, int vtx1);
   double area   (int vtx0, int vtx1, int vtx2);

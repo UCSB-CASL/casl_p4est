@@ -11,7 +11,7 @@ simplex2_mls_quadratic_t::simplex2_mls_quadratic_t()
   edgs.reserve(27);
   tris.reserve(20);
 
-  eps = 1.0e-20;
+  eps = 1.0e-15;
 }
 
 simplex2_mls_quadratic_t::simplex2_mls_quadratic_t(double x0, double y0,
@@ -47,7 +47,7 @@ simplex2_mls_quadratic_t::simplex2_mls_quadratic_t(double x0, double y0,
 
   tris.push_back(tri2_t(0,1,2,0,1,2));
 
-  eps = 1.0e-20;
+  eps = 1.0e-15;
 }
 
 
@@ -56,7 +56,7 @@ simplex2_mls_quadratic_t::simplex2_mls_quadratic_t(double x0, double y0,
 //--------------------------------------------------
 // Constructing domain
 //--------------------------------------------------
-void simplex2_mls_quadratic_t::construct_domain(std::vector<std::vector<double> > &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+void simplex2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
   // clear data
 //  vtxs.clear();
@@ -74,7 +74,7 @@ void simplex2_mls_quadratic_t::construct_domain(std::vector<std::vector<double> 
       for (int i = last_vtxs_size; i < vtxs.size(); ++i)
         if (!vtxs[i].is_recycled)
         {
-          vtxs[i].value = interpolate_from_parent(phi[phi_idx], vtxs[i].x, vtxs[i].y);
+          vtxs[i].value = (*phi[phi_idx]) ( vtxs[i].x, vtxs[i].y );
           perturb(vtxs[i].value, eps);
         }
 
@@ -109,6 +109,21 @@ void simplex2_mls_quadratic_t::construct_domain(std::vector<std::vector<double> 
     n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, clr[phi_idx], acn[phi_idx]);
     n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
     n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
+  }
+
+  // sort everything before integration
+  for (int i = 0; i < edgs.size(); i++)
+  {
+    edg2_t *edg = &edgs[i];
+    if (need_swap(edg->vtx0, edg->vtx2)) { swap(edg->vtx0, edg->vtx2); }
+  }
+
+  for (int i = 0; i < tris.size(); i++)
+  {
+    tri2_t *tri = &tris[i];
+    if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); }
+    if (need_swap(tri->vtx1, tri->vtx2)) { swap(tri->vtx1, tri->vtx2); swap(tri->edg1, tri->edg2); }
+    if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); }
   }
 }
 
@@ -955,7 +970,7 @@ void simplex2_mls_quadratic_t::refine_tri(int n_tri)
 //  return result;
 //}
 
-double simplex2_mls_quadratic_t::integrate_over_domain(std::vector<double> &f)
+double simplex2_mls_quadratic_t::integrate_over_domain(CF_2 &f)
 {
   double result = 0.0;
   double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
@@ -975,26 +990,26 @@ double simplex2_mls_quadratic_t::integrate_over_domain(std::vector<double> &f)
     if (!t->is_split && t->loc == INS)
     {
       // map quadrature points into real space and interpolate integrand
-      mapping_tri(x, y, i, a0, b0); f0 = interpolate_from_parent(f, x, y);
-      mapping_tri(x, y, i, a1, b1); f1 = interpolate_from_parent(f, x, y);
-      mapping_tri(x, y, i, a2, b2); f2 = interpolate_from_parent(f, x, y);
-      mapping_tri(x, y, i, a3, b3); f3 = interpolate_from_parent(f, x, y);
+      mapping_tri(x, y, i, a0, b0); f0 = f( x, y );
+      mapping_tri(x, y, i, a1, b1); f1 = f( x, y );
+      mapping_tri(x, y, i, a2, b2); f2 = f( x, y );
+      mapping_tri(x, y, i, a3, b3); f3 = f( x, y );
 
       // scale weights by Jacobian
-      w0 =-27./48.*jacobian_tri(i, a0, b0)/2.;
-      w1 = 25./48.*jacobian_tri(i, a1, b1)/2.;
-      w2 = 25./48.*jacobian_tri(i, a2, b2)/2.;
-      w3 = 25./48.*jacobian_tri(i, a3, b3)/2.;
+      w0 =-27.*jacobian_tri(i, a0, b0);
+      w1 = 25.*jacobian_tri(i, a1, b1);
+      w2 = 25.*jacobian_tri(i, a2, b2);
+      w3 = 25.*jacobian_tri(i, a3, b3);
 
       result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
 //      result += area(t->vtx0, t->vtx1, t->vtx2);
     }
   }
 
-  return result;
+  return result/96.;
 }
 
-double simplex2_mls_quadratic_t::integrate_over_interface(std::vector<double> &f, int num)
+double simplex2_mls_quadratic_t::integrate_over_interface(CF_2 &f, int num)
 {
   bool integrate_specific = (num != -1);
 
@@ -1015,8 +1030,8 @@ double simplex2_mls_quadratic_t::integrate_over_interface(std::vector<double> &f
       if ((!integrate_specific && e->c0 >= 0) || (integrate_specific && e->c0 == num))
       {
         // map quadrature points into real space and interpolate integrand
-        mapping_edg(x, y, i, a0); f0 = interpolate_from_parent(f, x, y);
-        mapping_edg(x, y, i, a1); f1 = interpolate_from_parent(f, x, y);
+        mapping_edg(x, y, i, a0); f0 = f( x, y );
+        mapping_edg(x, y, i, a1); f1 = f( x, y );
 
         // scale weights by Jacobian
         w0 = jacobian_edg(i, a0)/2.;
@@ -1064,7 +1079,7 @@ double simplex2_mls_quadratic_t::integrate_over_interface(std::vector<double> &f
 }
 
 // integrate over colored interfaces (num0 - parental lsf, num1 - coloring lsf)
-double simplex2_mls_quadratic_t::integrate_over_colored_interface(std::vector<double> &f, int num0, int num1)
+double simplex2_mls_quadratic_t::integrate_over_colored_interface(CF_2 &f, int num0, int num1)
 {
   double result = 0.0;
   double w0 = 0, w1 = 0;
@@ -1083,8 +1098,8 @@ double simplex2_mls_quadratic_t::integrate_over_colored_interface(std::vector<do
       if (e->p_lsf == num0 && e->c0 == num1)
       {
         // map quadrature points into real space and interpolate integrand
-        mapping_edg(x, y, i, a0); f0 = interpolate_from_parent(f, x, y);
-        mapping_edg(x, y, i, a1); f1 = interpolate_from_parent(f, x, y);
+        mapping_edg(x, y, i, a0); f0 = f( x, y );
+        mapping_edg(x, y, i, a1); f1 = f( x, y );
 
         // scale weights by Jacobian
         w0 = jacobian_edg(i, a0)/2.;
@@ -1097,7 +1112,7 @@ double simplex2_mls_quadratic_t::integrate_over_colored_interface(std::vector<do
   return result;
 }
 
-double simplex2_mls_quadratic_t::integrate_over_intersection(std::vector<double> &f, int num0, int num1)
+double simplex2_mls_quadratic_t::integrate_over_intersection(CF_2 &f, int num0, int num1)
 {
   double result = 0.0;
   bool integrate_specific = (num0 != -1 && num1 != -1);
@@ -1111,14 +1126,14 @@ double simplex2_mls_quadratic_t::integrate_over_intersection(std::vector<double>
                && (v->c0 == num0 || v->c1 == num0)
                && (v->c0 == num1 || v->c1 == num1)) )
       {
-        result += interpolate_from_parent(f, v->x, v->y);
+        result += f( v->x, v->y );
       }
   }
 
   return result;
 }
 
-double simplex2_mls_quadratic_t::integrate_in_dir(std::vector<double> &f, int dir)
+double simplex2_mls_quadratic_t::integrate_in_dir(CF_2 &f, int dir)
 {
   double result = 0.0;
   double w0 = 0, w1 = 0;
@@ -1137,8 +1152,8 @@ double simplex2_mls_quadratic_t::integrate_in_dir(std::vector<double> &f, int di
       if (e->dir == dir)
       {
         // map quadrature points into real space and interpolate integrand
-        mapping_edg(x, y, i, a0); f0 = interpolate_from_parent(f, x, y);
-        mapping_edg(x, y, i, a1); f1 = interpolate_from_parent(f, x, y);
+        mapping_edg(x, y, i, a0); f0 = f( x, y );
+        mapping_edg(x, y, i, a1); f1 = f( x, y );
 
         // scale weights by Jacobian
         w0 = jacobian_edg(i, a0)/2.;

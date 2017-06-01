@@ -242,6 +242,11 @@
 
 #include <vector>
 #include "simplex3_mls_quadratic.h"
+#ifdef P4_TO_P8
+#include <src/my_p8est_utils.h>
+#else
+#include <src/my_p4est_utils.h>
+#endif
 
 class cube3_mls_quadratic_t
 {
@@ -259,20 +264,20 @@ public:
   cube3_mls_quadratic_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
     : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1) {}
 
-  void construct_domain(std::vector< std::vector<double> > &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 
-  double integrate_over_domain            (std::vector<double> &f);
-  double integrate_over_interface         (std::vector<double> &f, int num);
-  double integrate_over_colored_interface (std::vector<double> &f, int num0, int num1);
-  double integrate_over_intersection      (std::vector<double> &f, int num0, int num1);
-  double integrate_over_intersection      (std::vector<double> &f, int num0, int num1, int num2);
-  double integrate_in_dir                 (std::vector<double> &f, int dir);
+  double integrate_over_domain            (CF_3& f);
+  double integrate_over_interface         (CF_3& f, int num);
+  double integrate_over_colored_interface (CF_3& f, int num0, int num1);
+  double integrate_over_intersection      (CF_3& f, int num0, int num1);
+  double integrate_over_intersection      (CF_3& f, int num0, int num1, int num2);
+  double integrate_in_dir                 (CF_3& f, int dir);
 
-  double measure_of_domain            ();
-  double measure_of_interface         (int num);
-  double measure_of_intersection      (int num0, int num1);
-  double measure_of_colored_interface (int num0, int num1);
-  double measure_in_dir               (int dir);
+//  double measure_of_domain            ();
+//  double measure_of_interface         (int num);
+//  double measure_of_intersection      (int num0, int num1);
+//  double measure_of_colored_interface (int num0, int num1);
+//  double measure_in_dir               (int dir);
 
 //  void interpolate_to_cube(double *in, double *out);
 

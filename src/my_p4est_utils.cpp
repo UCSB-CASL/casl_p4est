@@ -1753,3 +1753,26 @@ std::istream& operator>> (std::istream& is, BoundaryConditionType& type)
 
   return is;
 }
+
+#ifdef P4_TO_P8
+double quadrant_interp_t::operator()(double x, double y, double z) const
+{
+  double xyz_node[P4EST_DIM] = { x, y, z};
+#else
+double quadrant_interp_t::operator()(double x, double y) const
+{
+  double xyz_node[P4EST_DIM] = { x, y };
+#endif
+
+#ifdef CASL_THROWS
+  if (F_ == NULL) throw std::invalid_argument("[CASL_ERROR]: Values are not provided for interpolation.");
+  if (Fdd_ == NULL && (method_ == quadratic || method_ == quadratic_non_oscillatory) ) throw std::invalid_argument("[CASL_ERROR]: Second order derivatives are not provided for quadratic interpolation.");
+#endif
+
+  switch (method_)
+  {
+    case linear:                    return linear_interpolation                   (p4est_, tree_idx_, *quad_, F_->data(),               xyz_node); break;
+    case quadratic:                 return quadratic_interpolation                (p4est_, tree_idx_, *quad_, F_->data(), Fdd_->data(), xyz_node); break;
+    case quadratic_non_oscillatory: return quadratic_non_oscillatory_interpolation(p4est_, tree_idx_, *quad_, F_->data(), Fdd_->data(), xyz_node); break;
+  }
+}

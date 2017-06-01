@@ -1340,4 +1340,66 @@ public:
   }
 };
 
+/*!
+ * \brief prodives a CF_2/CF_3 interface to interpolation on quadrants
+ */
+
+#ifdef P4_TO_P8
+class quadrant_interp_t : public CF_3
+#else
+class quadrant_interp_t : public CF_2
+#endif
+{
+  p4est_t *p4est_;
+  p4est_topidx_t tree_idx_;
+  const p4est_quadrant_t *quad_;
+  std::vector<double> *F_;
+  std::vector<double> *Fdd_;
+  interpolation_method method_;
+
+public:
+  quadrant_interp_t(p4est_t *p4est, p4est_topidx_t tree_idx, const p4est_quadrant_t *quad, interpolation_method method, std::vector<double> *F, std::vector<double> *Fdd = NULL)
+    : p4est_(p4est), tree_idx_(tree_idx), quad_(quad), method_(method), F_(F), Fdd_(Fdd) {}
+
+  void reinit(p4est_t *p4est, p4est_topidx_t tree_idx, p4est_quadrant_t *quad, interpolation_method method, std::vector<double> *F, std::vector<double> *Fdd = NULL)
+  {
+    p4est_ = p4est;
+    tree_idx_ = tree_idx;
+    quad_ = quad;
+    method_ = method;
+    F_ = F;
+    Fdd_ = Fdd;
+  }
+
+#ifdef P4_TO_P8
+  double operator()(double x, double y, double z) const;
+#else
+  double operator()(double x, double y) const;
+#endif
+
+//#ifdef P4_TO_P8
+//  double operator()(double x, double y, double z) const
+//  {
+//    double xyz_node[P4EST_DIM] = { x, y, z};
+//#else
+//  double operator()(double x, double y) const
+//  {
+//    double xyz_node[P4EST_DIM] = { x, y };
+//#endif
+
+//#ifdef CASL_THROWS
+//    if (F_ == NULL) throw std::invalid_argument("[CASL_ERROR]: Values are not provided for interpolation.");
+//    if (Fdd_ == NULL && (method_ == quadratic || method_ == quadratic_non_oscillatory) ) throw std::invalid_argument("[CASL_ERROR]: Second order derivatives are not provided for quadratic interpolation.");
+//#endif
+
+//    switch (method_)
+//    {
+//      case linear:                    return linear_interpolation                   (p4est_, tree_idx_, *quad_, F_, xyz_node); break;
+//      case quadratic:                 return quadratic_interpolation                (p4est_, tree_idx_, *quad_, F_, Fdd_, xyz_node); break;
+//      case quadratic_non_oscillatory: return quadratic_non_oscillatory_interpolation(p4est_, tree_idx_, *quad_, F_, Fdd_, xyz_node); break;
+//    }
+//  }
+};
+
+
 #endif // UTILS_H

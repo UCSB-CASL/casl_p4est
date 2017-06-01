@@ -12,6 +12,11 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 #include <vector>
 #include <stdexcept>
 #include <iostream>
+#ifdef P4_TO_P8
+#include <src/my_p8est_utils.h>
+#else
+#include <src/my_p4est_utils.h>
+#endif
 //#include <string>
 //#include <fstream>
 //#include <tools/plotting.h>
@@ -22,6 +27,9 @@ class simplex3_mls_t
 {
 public:
   double eps;
+
+  const static int nodes_per_tri = 3;
+  const static int nodes_per_tet = 4;
 
   struct vtx3_t // vertex
   {
@@ -160,8 +168,8 @@ public:
   std::vector<tri3_t> tris;
   std::vector<tet3_t> tets;
 
-
-  void do_action(int cn, action_t action);
+  void construct_domain(std::vector< CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+//  void do_action(int cn, action_t action);
   void do_action_vtx(int n_vtx, int cn, action_t action);
   void do_action_edg(int n_edg, int cn, action_t action);
   void do_action_tri(int n_tri, int cn, action_t action);
@@ -169,17 +177,17 @@ public:
 
   bool need_swap(int v0, int v1);
 
-  void interpolate_all(double &p0, double &p1, double &p2, double &p3);
+  void interpolate_all(CF_3 &f);
   void interpolate_from_neighbors(int v);
   void interpolate_from_parent(int v);
   void interpolate_from_parent(vtx3_t &v);
 
-  double integrate_over_domain            (double f0, double f1, double f2, double f3);
-  double integrate_over_interface         (double f0, double f1, double f2, double f3, int num0);
-  double integrate_over_colored_interface (double f0, double f1, double f2, double f3, int num0, int num1);
-  double integrate_over_intersection      (double f0, double f1, double f2, double f3, int num0, int num1);
-  double integrate_over_intersection      (double f0, double f1, double f2, double f3, int num0, int num1, int num2);
-  double integrate_in_dir                 (double f0, double f1, double f2, double f3, int dir);
+  double integrate_over_domain            (CF_3 &f);
+  double integrate_over_interface         (CF_3 &f, int num0);
+  double integrate_over_colored_interface (CF_3 &f, int num0, int num1);
+  double integrate_over_intersection      (CF_3 &f, int num0, int num1);
+  double integrate_over_intersection      (CF_3 &f, int num0, int num1, int num2);
+  double integrate_in_dir                 (CF_3 &f, int dir);
 
   double length (int vtx0, int vtx1);
   double area   (int vtx0, int vtx1, int vtx2);
