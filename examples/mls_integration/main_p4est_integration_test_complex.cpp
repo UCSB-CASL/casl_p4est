@@ -24,6 +24,7 @@
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
 #include <src/simplex3_mls_vtk.h>
+#include <src/simplex3_mls_quadratic_vtk.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -38,6 +39,7 @@
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
 #include <src/simplex2_mls_vtk.h>
+//#include <src/simplex2_mls_quadratic_vtk.h>
 #endif
 
 #include <tools/plotting.h>
@@ -60,19 +62,21 @@
 using namespace std;
 
 /* grid and discretization */
-int lmin = 5;
-int lmax = 9;
 #ifdef P4_TO_P8
-int nb_splits = 4;
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 8;
 #else
-int nb_splits = 7;
+int lmin = 5;
+int lmax = 5;
+int nb_splits = 9;
 #endif
 
 const int n_xyz[] = {1, 1, 1};
 const int periodic[] = {0, 0, 0};
 
 const double p_xyz_min[] = {-1, -1, -1};
-const double p_xyz_max[] = {+1, +1, +1};
+const double p_xyz_max[] = { 1,  1,  1};
 
 bool save_vtk = false;
 
@@ -117,7 +121,7 @@ public:
  * 4 - rose-like domain
  * 5 - one circle
  */
-int geometry_num = 5;
+int geometry_num = 0;
 
 geometry_two_circles_union_t        geometry_two_circles_union;
 geometry_two_circles_intersection_t geometry_two_circles_intersection;
@@ -458,12 +462,15 @@ int main (int argc, char* argv[])
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
 
+  std::vector<double> phi_integr;
+  std::vector<double> phi_integr_quadratic;
   for(int iter=0; iter<nb_splits; ++iter)
   {
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
     p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, LSF->at(0), 1.2);
+    splitting_criteria_cf_t data(0, lmax+iter, &ls_tot, 1.2);
+//    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &ls_tot, 1.2);
     p4est->user_pointer = (void*)(&data);
 
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -575,8 +582,42 @@ int main (int argc, char* argv[])
       save_VTK(p4est, ghost, nodes, &brick, phi_vec, phi_tot, iter);
     }
 
+#ifdef P4_TO_P8
+    if (save_vtk)
+    {
+      integration_quadratic.initialize();
+#ifdef P4_TO_P8
+      vector<simplex3_mls_quadratic_t *> simplices;
+      int n_sps = NUM_TETS;
+#else
+      vector<simplex3_mls_quadratic_t *> simplices;
+      int n_sps = 2;
+#endif
+
+      for (int k = 0; k < integration_quadratic.cubes_quadratic.size(); k++)
+        if (integration_quadratic.cubes_quadratic[k].loc == FCE)
+          for (int l = 0; l < n_sps; l++)
+            simplices.push_back(&integration_quadratic.cubes_quadratic[k].simplex[l]);
+
+#ifdef P4_TO_P8
+      simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter+1000));
+#else
+      simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter+1000));
+#endif
+    }
+#endif
+
 
     /* Calculate and store results */
+
+#ifdef P4_TO_P8
+    Vec phi_dd[P4EST_DIM] = { phi_xx_vec[0], phi_yy_vec[0], phi_zz_vec[0] };
+#else
+    Vec phi_dd[P4EST_DIM] = { phi_xx_vec[0], phi_yy_vec[0] };
+#endif
+//    phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd)/integration_quadratic.integrate_over_interface(0, func_vec, fdd));
+//    phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd));
+
     if (exact.provided || iter < nb_splits-1)
     {
       level.push_back(lmax+iter);
@@ -595,11 +636,12 @@ int main (int argc, char* argv[])
       {
 #ifdef P4_TO_P8
         result.IX[i].push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
+        result_quadratic.IX[i].push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
 #else
         result.IX[i].push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
         result_quadratic.IX[i].push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
-      }
 #endif
+      }
 
 #ifdef P4_TO_P8
       for (int i = 0; i < exact.n_X3s; i++)
@@ -684,8 +726,8 @@ int main (int argc, char* argv[])
     }
 #endif
 
-    plot_color = 1;
-    print_Table("Convergence", exact.ID, level, h, "Domain", result_quadratic.ID, 1, &plot);
+//    plot_color = 1;
+    print_Table("Convergence", exact.ID, level, h, "Domain", result_quadratic.ID, plot_color, &plot);
     plot_color++;
 
     for (int i = 0; i < exact.n_subs; i++)
@@ -693,6 +735,12 @@ int main (int argc, char* argv[])
       print_Table("Convergence", exact.ISB[i], level, h, "Sub-boundary #"+to_string(i), result_quadratic.ISB[i], plot_color, &plot);
       plot_color++;
     }
+
+//    for (int i = 0; i < result_quadratic.ISB[0].size(); ++i)
+//      result_quadratic.ISB[0][i] += result_quadratic.ISB[1][i];
+
+//    print_Table("Convergence", exact.ISB[0]+exact.ISB[1], level, h, "Total Boundary", result_quadratic.ISB[0], plot_color, &plot);
+//    plot_color++;
 
     for (int i = 0; i < exact.n_Xs; i++)
     {
@@ -708,6 +756,8 @@ int main (int argc, char* argv[])
       plot_color++;
     }
 #endif
+
+//    print_Table("Convergence", 0, level, h, "phi_integr", phi_integr, plot_color, &plot);
 
     // print all errors in compact form for plotting in matlab
     // step sizes

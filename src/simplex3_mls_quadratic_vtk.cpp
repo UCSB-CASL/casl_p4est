@@ -1,12 +1,12 @@
-#include "simplex3_mls_vtk.h"
+#include "simplex3_mls_quadratic_vtk.h"
 
 using namespace std;
 
-void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& simplices, string dir, string suffix)
+void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls_quadratic_t *> &simplices, string dir, string suffix)
 {
   vector<int> n_vtxs, n_vtxs_shift;
   vector<int> n_edgs, n_tris, n_tets;
-  simplex3_mls_t *s;
+  simplex3_mls_quadratic_t *s;
   int n_vtxs_tot = 0;
   int n_edgs_tot = 0;
   int n_tris_tot = 0;
@@ -31,7 +31,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   /* write vertices */
 
-  string vtxs_vtu = dir + "vtxs_3d_" + suffix + ".vtu";
+  string vtxs_vtu = dir + "vtxs_3d_quadratic_" + suffix + ".vtu";
 
   ofs.open(vtxs_vtu.c_str());
 
@@ -125,7 +125,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   /* write edges */
 
-  string edgs_vtu = dir + "edgs_3d_" + suffix +".vtu";
+  string edgs_vtu = dir + "edgs_3d_quadratic_" + suffix +".vtu";
   ofs.open(edgs_vtu.c_str());
 
   ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl
@@ -228,7 +228,8 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
       if (!s->edgs[j].is_split)
       {
         ofs << n_vtxs_shift[i] + s->edgs[j].vtx0 << " "
-            << n_vtxs_shift[i] + s->edgs[j].vtx1 << " ";
+            << n_vtxs_shift[i] + s->edgs[j].vtx1 << " "
+            << n_vtxs_shift[i] + s->edgs[j].vtx2 << " ";
       }
     }
     ofs << endl;
@@ -239,7 +240,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   for (int i = 0; i < n_edgs_tot; i++)
   {
-    ofs << 2*(i+1) << " ";
+    ofs << 3*(i+1) << " ";
   }
   ofs << endl;
 
@@ -248,7 +249,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   for (int i = 0; i < n_edgs_tot; i++)
   {
-    ofs << 3 << " ";
+    ofs << 21 << " ";
   }
   ofs << endl;
 
@@ -262,7 +263,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   /* write triangles */
 
-  string tris_vtu = dir + "tris_3d_" + suffix +".vtu";
+  string tris_vtu = dir + "tris_3d_quadratic_" + suffix +".vtu";
   ofs.open(tris_vtu.c_str());
 
   ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl
@@ -350,9 +351,13 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
     {
       if (!s->tris[j].is_split)
       {
+        simplex3_mls_quadratic_t::tri3_t *tri = &s->tris[j];
         ofs << n_vtxs_shift[i] + s->tris[j].vtx0 << " "
             << n_vtxs_shift[i] + s->tris[j].vtx1 << " "
-            << n_vtxs_shift[i] + s->tris[j].vtx2 << " ";
+            << n_vtxs_shift[i] + s->tris[j].vtx2 << " "
+            << n_vtxs_shift[i] + s->edgs[tri->edg2].vtx1 << " "
+            << n_vtxs_shift[i] + s->edgs[tri->edg0].vtx1 << " "
+            << n_vtxs_shift[i] + s->edgs[tri->edg1].vtx1 << " ";
       }
     }
     ofs << endl;
@@ -363,7 +368,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   for (int i = 0; i < n_tris_tot; i++)
   {
-    ofs << 3*(i+1) << " ";
+    ofs << 6*(i+1) << " ";
   }
   ofs << endl;
 
@@ -372,7 +377,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   for (int i = 0; i < n_tris_tot; i++)
   {
-    ofs << 5 << " ";
+    ofs << 22 << " ";
   }
   ofs << endl;
 
@@ -386,7 +391,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   /* write tetrahedra */
 
-  string tets_vtu = dir + "tets_3d_" + suffix +".vtu";
+  string tets_vtu = dir + "tets_3d_quadratic_" + suffix +".vtu";
   ofs.open(tets_vtu.c_str());
 
   ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl

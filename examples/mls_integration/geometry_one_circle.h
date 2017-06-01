@@ -45,10 +45,10 @@ public:
 
   geometry_one_circle_t()
   {
-    double r0 = 0.711;
-    double d = 0.35;
+    double r0 = 0.814;
+    double d = 0.133;
 
-    double theta = 0.779;
+    double theta = 0.379;
 #ifdef P4_TO_P8
     double phy = 0.312;
 #endif

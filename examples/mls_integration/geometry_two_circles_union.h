@@ -48,7 +48,7 @@ public:
   {
     double r0 = 0.711;
     double r1 = 0.639;
-    double d = 0.35;
+    double d = 0.253;
 
     double theta = 0.779;
 #ifdef P4_TO_P8

@@ -58,7 +58,7 @@ void cube2_mls_quadratic_t::construct_domain(std::vector< std::vector<double> > 
     simplex.push_back(simplex2_mls_quadratic_t(x[t1p0], y[t1p0], x[t1p1], y[t1p1], x[t1p2], y[t1p2],
                                                x[t1p3], y[t1p3], x[t1p4], y[t1p4], x[t1p5], y[t1p5]));// simplex.back().set_use_linear(use_linear);
 
-    // TODO: mark appropriate edges for integrate_in_dir
+    // mark appropriate edges for integrate_in_dir
     simplex[0].edgs[0].dir = 1; simplex[0].edgs[2].dir = 2;
     simplex[1].edgs[0].dir = 3; simplex[1].edgs[2].dir = 0;
 

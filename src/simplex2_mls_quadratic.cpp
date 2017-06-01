@@ -92,6 +92,8 @@ void simplex2_mls_quadratic_t::construct_domain(std::vector<std::vector<double> 
           }
         }
 
+      last_vtxs_size = vtxs.size();
+
       // refine if necessary
       if (needs_refinement)
       {
@@ -100,7 +102,6 @@ void simplex2_mls_quadratic_t::construct_domain(std::vector<std::vector<double> 
         n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
       }
 
-      last_vtxs_size = vtxs.size();
     }
 
     // split all elements
@@ -186,9 +187,9 @@ void simplex2_mls_quadratic_t::do_action_edg(int n_edg, int cn, action_t action)
     mapping_edg(xm, ym, n_edg, .5*a);
     mapping_edg(xp, yp, n_edg, a + .5*(1.-a));
 
-    double x_0 = vtxs[edg->vtx0].x, y_0 = vtxs[edg->vtx0].y;
-    double x_1 = vtxs[edg->vtx1].x, y_1 = vtxs[edg->vtx1].y;
-    double x_2 = vtxs[edg->vtx2].x, y_2 = vtxs[edg->vtx2].y;
+//    double x_0 = vtxs[edg->vtx0].x, y_0 = vtxs[edg->vtx0].y;
+//    double x_1 = vtxs[edg->vtx1].x, y_1 = vtxs[edg->vtx1].y;
+//    double x_2 = vtxs[edg->vtx2].x, y_2 = vtxs[edg->vtx2].y;
 
     // create new vertices
     vtxs.push_back(vtx2_t(xm,ym)); int n_vtx_0x = vtxs.size()-1;
@@ -833,11 +834,16 @@ void simplex2_mls_quadratic_t::refine_edg(int n_edg)
   loc_t loc = edg->loc;
   int c = edg->c0;
 
+  int dir = edg->dir;
+
   vtxs[n_vtx01].set(loc, c, -1);
   vtxs[n_vtx12].set(loc, c, -1);
 
   edgs[edg->c_edg0].set(loc, c);
   edgs[edg->c_edg1].set(loc, c);
+
+  edgs[edg->c_edg0].dir = dir;
+  edgs[edg->c_edg1].dir = dir;
 }
 
 void simplex2_mls_quadratic_t::refine_tri(int n_tri)
@@ -992,45 +998,14 @@ double simplex2_mls_quadratic_t::integrate_over_interface(std::vector<double> &f
 {
   bool integrate_specific = (num != -1);
 
-//  double result = 0.0;
-//  double w0 = 0, w1 = 0;
-//  double f0 = 0, f1 = 0;
-//  double x,y;
-
-//  // quadrature points
-//  double a0 = .5*(1.-1./sqrt(3.));
-//  double a1 = .5*(1.+1./sqrt(3.));
-
-//  /* integrate over edges */
-//  for (unsigned int i = 0; i < edgs.size(); i++)
-//  {
-//    edg2_t *e = &edgs[i];
-//    if (!e->is_split && e->loc == FCE)
-//      if ((!integrate_specific && e->c0 >= 0) || (integrate_specific && e->c0 == num))
-//      {
-//        // map quadrature points into real space and interpolate integrand
-//        mapping_edg(x, y, i, a0); f0 = interpolate_from_parent(f, x, y);
-//        mapping_edg(x, y, i, a1); f1 = interpolate_from_parent(f, x, y);
-
-//        // scale weights by Jacobian
-//        w0 = jacobian_edg(i, a0)/2.;
-//        w1 = jacobian_edg(i, a1)/2.;
-
-//        result += w0*f0 + w1*f1;
-//      }
-//  }
-
-//  return result;
-
   double result = 0.0;
-  double w0 = 0, w1 = 0, w2 = 0;
-  double f0 = 0, f1 = 0, f2 = 0;
+  double w0 = 0, w1 = 0;
+  double f0 = 0, f1 = 0;
   double x,y;
 
   // quadrature points
-  double a0 = .5*(1.-sqrt(.6));
-  double a1 = .5;
-  double a2 = .5*(1.+sqrt(.6));
+  double a0 = .5*(1.-1./sqrt(3.));
+  double a1 = .5*(1.+1./sqrt(3.));
 
   /* integrate over edges */
   for (unsigned int i = 0; i < edgs.size(); i++)
@@ -1042,18 +1017,50 @@ double simplex2_mls_quadratic_t::integrate_over_interface(std::vector<double> &f
         // map quadrature points into real space and interpolate integrand
         mapping_edg(x, y, i, a0); f0 = interpolate_from_parent(f, x, y);
         mapping_edg(x, y, i, a1); f1 = interpolate_from_parent(f, x, y);
-        mapping_edg(x, y, i, a2); f2 = interpolate_from_parent(f, x, y);
 
         // scale weights by Jacobian
-        w0 = 5./9.*jacobian_edg(i, a0)/2.;
-        w1 = 8./9.*jacobian_edg(i, a1)/2.;
-        w2 = 5./9.*jacobian_edg(i, a2)/2.;
+        w0 = jacobian_edg(i, a0)/2.;
+        w1 = jacobian_edg(i, a1)/2.;
 
-        result += w0*f0 + w1*f1+w2*f2;
+        result += w0*f0 + w1*f1;
+//        result += (fabs(f0)+fabs(f1));
       }
   }
 
   return result;
+
+//  double result = 0.0;
+//  double w0 = 0, w1 = 0, w2 = 0;
+//  double f0 = 0, f1 = 0, f2 = 0;
+//  double x,y;
+
+//  // quadrature points
+//  double a0 = .5*(1.-sqrt(.6));
+//  double a1 = .5;
+//  double a2 = .5*(1.+sqrt(.6));
+
+//  /* integrate over edges */
+//  for (unsigned int i = 0; i < edgs.size(); i++)
+//  {
+//    edg2_t *e = &edgs[i];
+//    if (!e->is_split && e->loc == FCE)
+//      if ((!integrate_specific && e->c0 >= 0) || (integrate_specific && e->c0 == num))
+//      {
+//        // map quadrature points into real space and interpolate integrand
+//        mapping_edg(x, y, i, a0); f0 = interpolate_from_parent(f, x, y);
+//        mapping_edg(x, y, i, a1); f1 = interpolate_from_parent(f, x, y);
+//        mapping_edg(x, y, i, a2); f2 = interpolate_from_parent(f, x, y);
+
+//        // scale weights by Jacobian
+//        w0 = 5./9.*jacobian_edg(i, a0)/2.;
+//        w1 = 8./9.*jacobian_edg(i, a1)/2.;
+//        w2 = 5./9.*jacobian_edg(i, a2)/2.;
+
+//        result += w0*f0 + w1*f1+w2*f2;
+//      }
+//  }
+
+//  return result;
 }
 
 // integrate over colored interfaces (num0 - parental lsf, num1 - coloring lsf)

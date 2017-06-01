@@ -75,8 +75,8 @@ double interface_Location_With_Second_Order_Derivative(double    a, double    b,
   if(fa*fb >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
 #endif
 
-  //     double fxx = 0.5*(fxxa+fxxb);
-  double fxx = MINMOD(fxxa,fxxb); // take nonocillating fxx
+       double fxx = 0.5*(fxxa+fxxb);
+//  double fxx = MINMOD(fxxa,fxxb); // take nonocillating fxx
   double h   = b-a;
 
   double c2 = 0.5*fxx;                // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e

@@ -1,5 +1,290 @@
-#ifndef CUBE3_MLS_H
-#define CUBE3_MLS_H
+#ifndef CUBE3_MLS_QUADRATIC_H
+#define CUBE3_MLS_QUADRATIC_H
+
+/*
+ *            18----------21----------24
+ *            /|          /|          /|
+ *           / |         / |         / |
+ *          /  |        /  |        /  |
+ *        19----------22----------25   |
+ *        /|   |      /|   |      /|   |
+ *       / |   9-----/-|--12-----/-|--15
+ *      /  |  /|    /  |  /|    /  |  /|
+ *    20----------23----------26   | / |
+ *     |   |/  |   |   |/  |   |   |/  |
+ *     |  10-------|--13-------|--16   |
+ *     |  /|   |   |  /|   |   |  /|   |
+ *     | / |   0---|-/-|---3---|-/-|---6
+ *     |/  |  /    |/  |  /    |/  |  /
+ *    11----------14----------17   | /
+ *     |   |/      |   |/      |   |/
+ *     |   1-------|---4-------|---7
+ *     |  /        |  /        |  /
+ *     | /         | /         | /
+ *     |/          |/          |/
+ *     2-----------5-----------8
+ *
+ */
+
+#define NUM_TETS 6
+// Tetrahedron #0
+
+/*
+ *             o-----------o-----------o
+ *            /|          /|          /|
+ *           / |         / |         / |
+ *          /  |        /  |        /  |
+ *         o-----------o-----------o   |
+ *        /|   |      /|   |      /|   |
+ *       / |   o-----/-|---o-----/-|---o
+ *      /  |  /|    /  |  /|    /  |  /|
+ *     o-----------o----------26   | / |
+ *     |   |/  |   |   |/  |   |   |/  |
+ *     |   o-------|--13-------|---o   |
+ *     |  /|   |   |  /|   |   |  /|   |
+ *     | / |   0---|-/-|---o---|-/-|---o
+ *     |/  |  /    |/  |  /    |/  |  /
+ *     o----------14----------17   | /
+ *     |   |/      |   |/      |   |/
+ *     |   1-------|---4-------|---o
+ *     |  /        |  /        |  /
+ *     | /         | /         | /
+ *     |/          |/          |/
+ *     2-----------5-----------8
+ *
+ */
+#define t0p0 0
+#define t0p1 2
+#define t0p2 8
+#define t0p3 26
+#define t0p4 1
+#define t0p5 5
+#define t0p6 4
+#define t0p7 13
+#define t0p8 14
+#define t0p9 17
+// Tetrahedron #1
+/*
+ *             *-----------*-----------*
+ *            /|          /|          /|
+ *           / |         / |         / |
+ *          /  |        /  |        /  |
+ *         *-----------*-----------*   |
+ *        /|   |      /|   |      /|   |
+ *       / |   *-----/-|---*-----/-|---*
+ *      /  |  /|    /  |  /|    /  |  /|
+ *     *-----------*----------26   | / |
+ *     |   |/  |   |   |/  |   |   |/  |
+ *     |   *-------|--13-------|--16   |
+ *     |  /|   |   |  /|   |   |  /|   |
+ *     | / |   0---|-/-|---3---|-/-|---6
+ *     |/  |  /    |/  |  /    |/  |  /
+ *     *-----------*----------17   | /
+ *     |   |/      |   |/      |   |/
+ *     |   *-------|---4-------|---7
+ *     |  /        |  /        |  /
+ *     | /         | /         | /
+ *     |/          |/          |/
+ *     *-----------*-----------8
+ *
+ */
+#define t1p0 0
+#define t1p1 8
+#define t1p2 6
+#define t1p3 26
+#define t1p4 4
+#define t1p5 7
+#define t1p6 3
+#define t1p7 13
+#define t1p8 17
+#define t1p9 16
+// Tetrahedron #2
+
+/*
+ *             *-----------*-----------*
+ *            /|          /|          /|
+ *           / |         / |         / |
+ *          /  |        /  |        /  |
+ *         *-----------*-----------*   |
+ *        /|   |      /|   |      /|   |
+ *       / |   *-----/-|---*-----/-|---*
+ *      /  |  /|    /  |  /|    /  |  /|
+ *    20----------23----------26   | / |
+ *     |   |/  |   |   |/  |   |   |/  |
+ *     |  10-------|--13-------|---*   |
+ *     |  /|   |   |  /|   |   |  /|   |
+ *     | / |   0---|-/-|---*---|-/-|---*
+ *     |/  |  /    |/  |  /    |/  |  /
+ *    11----------14-----------*   | /
+ *     |   |/      |   |/      |   |/
+ *     |   1-------|---*-------|---*
+ *     |  /        |  /        |  /
+ *     | /         | /         | /
+ *     |/          |/          |/
+ *     2-----------*-----------*
+ *
+ */
+#define t2p0 0
+#define t2p1 20
+#define t2p2 2
+#define t2p3 26
+#define t2p4 10
+#define t2p5 11
+#define t2p6 1
+#define t2p7 13
+#define t2p8 23
+#define t2p9 14
+// Tetrahedron #3
+/*
+ *             *-----------*----------24
+ *            /|          /|          /|
+ *           / |         / |         / |
+ *          /  |        /  |        /  |
+ *         *-----------*----------25   |
+ *        /|   |      /|   |      /|   |
+ *       / |   *-----/-|--12-----/-|--15
+ *      /  |  /|    /  |  /|    /  |  /|
+ *     *-----------*----------26   | / |
+ *     |   |/  |   |   |/  |   |   |/  |
+ *     |   *-------|--13-------|--16   |
+ *     |  /|   |   |  /|   |   |  /|   |
+ *     | / |   0---|-/-|---3---|-/-|---6
+ *     |/  |  /    |/  |  /    |/  |  /
+ *     *-----------*-----------*   | /
+ *     |   |/      |   |/      |   |/
+ *     |   *-------|---*-------|---*
+ *     |  /        |  /        |  /
+ *     | /         | /         | /
+ *     |/          |/          |/
+ *     *-----------*-----------*
+ *
+ */
+#define t3p0 0
+#define t3p1 6
+#define t3p2 24
+#define t3p3 26
+#define t3p4 3
+#define t3p5 15
+#define t3p6 12
+#define t3p7 13
+#define t3p8 16
+#define t3p9 25
+// Tetrahedron #4
+/*
+ *            18-----------*-----------*
+ *            /|          /|          /|
+ *           / |         / |         / |
+ *          /  |        /  |        /  |
+ *        19----------22-----------*   |
+ *        /|   |      /|   |      /|   |
+ *       / |   9-----/-|---*-----/-|---*
+ *      /  |  /|    /  |  /|    /  |  /|
+ *    20----------23----------26   | / |
+ *     |   |/  |   |   |/  |   |   |/  |
+ *     |  10-------|--13-------|---*   |
+ *     |  /|   |   |  /|   |   |  /|   |
+ *     | / |   0---|-/-|---*---|-/-|---*
+ *     |/  |  /    |/  |  /    |/  |  /
+ *     *-----------*-----------*   | /
+ *     |   |/      |   |/      |   |/
+ *     |   *-------|---*-------|---*
+ *     |  /        |  /        |  /
+ *     | /         | /         | /
+ *     |/          |/          |/
+ *     *-----------*-----------*
+ *
+ */
+#define t4p0 0
+#define t4p1 18
+#define t4p2 20
+#define t4p3 26
+#define t4p4 9
+#define t4p5 19
+#define t4p6 10
+#define t4p7 13
+#define t4p8 22
+#define t4p9 23
+// Tetrahedron #5
+/*
+ *            18----------21----------24
+ *            /|          /|          /|
+ *           / |         / |         / |
+ *          /  |        /  |        /  |
+ *         *----------22----------25   |
+ *        /|   |      /|   |      /|   |
+ *       / |   9-----/-|--12-----/-|---*
+ *      /  |  /|    /  |  /|    /  |  /|
+ *     *-----------*----------26   | / |
+ *     |   |/  |   |   |/  |   |   |/  |
+ *     |   *-------|--13-------|---*   |
+ *     |  /|   |   |  /|   |   |  /|   |
+ *     | / |   0---|-/-|---*---|-/-|---*
+ *     |/  |  /    |/  |  /    |/  |  /
+ *     *-----------*-----------*   | /
+ *     |   |/      |   |/      |   |/
+ *     |   *-------|---*-------|---*
+ *     |  /        |  /        |  /
+ *     | /         | /         | /
+ *     |/          |/          |/
+ *     *-----------*-----------*
+ *
+ */
+#define t5p0 0
+#define t5p1 24
+#define t5p2 18
+#define t5p3 26
+#define t5p4 12
+#define t5p5 21
+#define t5p6 9
+#define t5p7 13
+#define t5p8 25
+#define t5p9 22
+
+#include <vector>
+#include "simplex3_mls_quadratic.h"
+
+class cube3_mls_quadratic_t
+{
+public:
+  const static int n_nodes = 27;
+  const static int n_nodes_simplex = 10;
+
+  double  x0, x1, y0, y1, z0, z1;
+  loc_t   loc;
+  int     num_of_lsfs;
+//  bool    use_linear;
+
+  std::vector<simplex3_mls_quadratic_t> simplex;
+
+  cube3_mls_quadratic_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
+    : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1) {}
+
+  void construct_domain(std::vector< std::vector<double> > &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+
+  double integrate_over_domain            (std::vector<double> &f);
+  double integrate_over_interface         (std::vector<double> &f, int num);
+  double integrate_over_colored_interface (std::vector<double> &f, int num0, int num1);
+  double integrate_over_intersection      (std::vector<double> &f, int num0, int num1);
+  double integrate_over_intersection      (std::vector<double> &f, int num0, int num1, int num2);
+  double integrate_in_dir                 (std::vector<double> &f, int dir);
+
+  double measure_of_domain            ();
+  double measure_of_interface         (int num);
+  double measure_of_intersection      (int num0, int num1);
+  double measure_of_colored_interface (int num0, int num1);
+  double measure_in_dir               (int dir);
+
+//  void interpolate_to_cube(double *in, double *out);
+
+  double interpolate_quad(std::vector<double> f, double X, double Y, double Z);
+
+//  void set_use_linear(bool val) { use_linear = val; }
+
+//  double interpolate_linear(double *f, double x, double y, double z);
+//  double interpolate_quadratic(double *f, double *fxx, double *fyy, double *fzz, double x, double y, double z);
+
+};
+
 
 /* Splitting of a cube into tetrahedra
  *
@@ -29,6 +314,7 @@
  *
  */
 
+
 /*
  *             o-----------o-----------o
  *            /|          /|          /|
@@ -54,145 +340,31 @@
  *
  */
 
-#define CUBE3_MLS_KUHN
-#ifdef CUBE3_MLS_MIDDLECUT // Middle-cut triangulation
-#define NTETS 5
-// Tetrahedron #0
-#define t0p0 0
-#define t0p1 1
-#define t0p2 2
-#define t0p3 4
-// Tetrahedron #1
-#define t1p0 1
-#define t1p1 2
-#define t1p2 3
-#define t1p3 7
-// Tetrahedron #2
-#define t2p0 1
-#define t2p1 2
-#define t2p2 4
-#define t2p3 7
-// Tetrahedron #3
-#define t3p0 1
-#define t3p1 4
-#define t3p2 5
-#define t3p3 7
-// Tetrahedron #4
-#define t4p0 2
-#define t4p1 4
-#define t4p2 6
-#define t4p3 7
-#endif
 
-#ifdef CUBE3_MLS_KUHN // Kuhn triangulation
-#define NTETS 6
-// Tetrahedron #0
-#define t0p0 0
-#define t0p1 1
-#define t0p2 3
-#define t0p3 7
-// Tetrahedron #1
-#define t1p0 0
-#define t1p1 2
-#define t1p2 3
-#define t1p3 7
-// Tetrahedron #2
-#define t2p0 0
-#define t2p1 1
-#define t2p2 5
-#define t2p3 7
-// Tetrahedron #3
-#define t3p0 0
-#define t3p1 2
-#define t3p2 6
-#define t3p3 7
-// Tetrahedron #4
-#define t4p0 0
-#define t4p1 4
-#define t4p2 5
-#define t4p3 7
-// Tetrahedron #5
-#define t5p0 0
-#define t5p1 4
-#define t5p2 6
-#define t5p3 7
-#endif
 
-#include <vector>
-#include "grid_interpolation3.h"
-#include "simplex3_mls.h"
+/*
+ *            24----------25----------26
+ *            /|          /|          /|
+ *           / |         / |         / |
+ *          /  |        /  |        /  |
+ *        21----------22----------23   |
+ *        /|   |      /|   |      /|   |
+ *       / |  15-----/-|--16-----/-|--17
+ *      /  |  /|    /  |  /|    /  |  /|
+ *    18----------19----------20   | / |
+ *     |   |/  |   |   |/  |   |   |/  |
+ *     |  12-------|--13-------|--14   |
+ *     |  /|   |   |  /|   |   |  /|   |
+ *     | / |   6---|-/-|---7---|-/-|---8
+ *     |/  |  /    |/  |  /    |/  |  /
+ *     9----------10----------11   | /
+ *     |   |/      |   |/      |   |/
+ *     |   3-------|---4-------|---5
+ *     |  /        |  /        |  /
+ *     | /         | /         | /
+ *     |/          |/          |/
+ *     0-----------1-----------2
+ *
+ */
 
-class cube3_mls_t
-{
-public:
-  double  x0, x1, y0, y1, z0, z1;
-  loc_t   loc;
-  int     num_non_trivial;
-  bool    use_linear;
-
-  std::vector<simplex3_mls_t> simplex;
-
-  std::vector< std::vector<double> > *phi;
-  std::vector< std::vector<double> > *phi_xx;
-  std::vector< std::vector<double> > *phi_yy;
-  std::vector< std::vector<double> > *phi_zz;
-
-  grid_interpolation3_t interp;
-
-  std::vector<action_t> *action;
-  std::vector<int>      *color;
-
-  cube3_mls_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
-    : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1), use_linear(true) {set_interpolation_grid(x0, x1, y0, y1, z0, z1, 1, 1, 1);}
-
-  void set_interpolation_grid(double xm, double xp, double ym, double yp, double zm, double zp, int nx, int ny, int nz)
-  {
-    interp.initialize(xm, xp, ym, yp, zm, zp, nx, ny, nz);
-  }
-
-  void set_phi(std::vector< std::vector<double> > &phi_,
-               std::vector<action_t> &acn_, std::vector<int> &clr_)
-  {
-    phi     = &phi_; phi_xx = NULL; phi_yy = NULL; phi_zz = NULL;
-    action  = &acn_;
-    color   = &clr_;
-    use_linear = true;
-  }
-
-  void set_phi(std::vector< std::vector<double> > &phi_,
-               std::vector< std::vector<double> > &phi_xx_,
-               std::vector< std::vector<double> > &phi_yy_,
-               std::vector< std::vector<double> > &phi_zz_,
-               std::vector<action_t> &acn_, std::vector<int> &clr_)
-  {
-    phi     = &phi_; phi_xx = &phi_xx_; phi_yy = &phi_yy_; phi_zz = &phi_zz_;
-    action  = &acn_;
-    color   = &clr_;
-    use_linear = false;
-  }
-
-  void construct_domain();
-
-  double integrate_over_domain            (double *F);
-  double integrate_over_interface         (double *F, int num);
-  double integrate_over_colored_interface (double *F, int num0, int num1);
-  double integrate_over_intersection      (double *F, int num0, int num1);
-  double integrate_over_intersection      (double *F, int num0, int num1, int num2);
-  double integrate_in_dir                 (double *F, int dir);
-
-  double measure_of_domain            ();
-  double measure_of_interface         (int num);
-  double measure_of_intersection      (int num0, int num1);
-  double measure_of_colored_interface (int num0, int num1);
-  double measure_in_dir               (int dir);
-
-  void interpolate_to_cube(double *in, double *out);
-
-  void set_use_linear(bool val) { use_linear = val; }
-
-//  double interpolate_linear(double *f, double x, double y, double z);
-//  double interpolate_quadratic(double *f, double *fxx, double *fyy, double *fzz, double x, double y, double z);
-
-};
-
-#endif // CUBE3_MLS_H
+#endif // CUBE3_MLS_QUADRATIC_H

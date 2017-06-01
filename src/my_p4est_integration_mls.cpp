@@ -138,7 +138,8 @@ void my_p4est_integration_mls_t::initialize()
 #else
                 double xyz_node[P4EST_DIM] = {x_node[i], y_node[j]};
 #endif
-                phi_values[p][m] = quadratic_non_oscillatory_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
+//                phi_values[p][m] = quadratic_non_oscillatory_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
+                phi_values[p][m] = quadratic_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
                 ++m;
               }
         }
@@ -412,6 +413,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
 #endif
 //                  phi_values[p][m] = quadratic_non_oscillatory_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
                   phi_values[p][m] = quadratic_interpolation(p4est, tree_idx, *quad, P_interpolation, Pdd_interpolation, xyz_node);
+//                  phi_values[p][m] = linear_interpolation(p4est, tree_idx, *quad, P_interpolation, xyz_node);
                   ++m;
                 }
           }
