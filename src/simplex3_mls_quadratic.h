@@ -25,6 +25,12 @@ public:
   const static int nodes_per_tri = 6;
   const static int nodes_per_tet = 10;
 
+  std::vector<CF_3 *> *phi_;
+
+  double max_dist_error_;
+
+  double diag;
+
   struct vtx3_t // vertex
   {
     /* Structure and properties */
@@ -100,6 +106,12 @@ public:
     int   dir;              // to keep track of faces of a cube
     int   p_lsf;            // parent level-set function
 
+    /* some stuff for better reconstruction */
+    double g_vtx01[3], g_vtx12[3], g_vtx02[3]; // midpoints in normal direction
+    double ab01[2], ab12[2], ab02[2];
+    bool is_curved;
+
+
     /* Child objects */
     int c_vtx01, c_vtx02, c_vtx12;  // vertices
     int c_edg0,  c_edg1,  c_edg2;   // edges
@@ -114,7 +126,8 @@ public:
            int e0, int e1, int e2)
       : vtx0(v0), vtx1(v1), vtx2(v2),
         edg0(e0), edg1(e1), edg2(e2),
-        c(-1), loc(INS), is_split(false), dir(-1), p_lsf(-1)
+        c(-1), loc(INS), is_split(false), dir(-1), p_lsf(-1),
+        is_curved(false)
 #ifdef CASL_THROWS
       , c_vtx01(-21), c_vtx02(-22), c_vtx12(-23),
         c_edg0(-24), c_edg1(-25), c_edg2(-26),
@@ -231,8 +244,8 @@ public:
   void mapping_tri(double* xyz, int n_tri, double* ab);
   void mapping_tet(double *xyz, int n_tet, double* abc);
 
-  double interpolate_from_parent(std::vector<double> &f, double* xyz);
-  void inv_mat3(double *in, double *out);
+//  double interpolate_from_parent(std::vector<double> &f, double* xyz);
+//  void inv_mat3(double *in, double *out);
 
 //  double length (int vtx0, int vtx1);
 //  double area   (int vtx0, int vtx1, int vtx2);
@@ -245,10 +258,26 @@ public:
 
 //  void get_edge_coords(int e, double xyz[]);
 
+  void construct_proper_mapping(int tri_idx, int phi_idx);
+  double find_root(double phi, double phi_n, double phi_nn);
+  double interpolate_from_parent(std::vector<double> &f, double* xyz);
+  void inv_mat3(double *in, double *out);
+  double interpolate_from_parent_with_derivatives(double* xyz, double normal[3], double &F, double &Fn, double &Fnn);
+  double interpolate_from_parent_with_derivatives(double* xyz, double &F, double &Fn, double &Fnn, double *normal);
+  void deform_edge_in_normal_dir(int n_edg);
+  void invert_mapping_tri(int tri_idx, double xyz[3], double ab[2]);
+
   template<typename X>
   void swap(X &x, X &y)
   {
     X tmp;
+    tmp = x; x = y; y = tmp;
+  }
+
+  template<typename X>
+  void swap(X *x, X *y)
+  {
+    X *tmp;
     tmp = x; x = y; y = tmp;
   }
 

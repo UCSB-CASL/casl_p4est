@@ -65,7 +65,7 @@ using namespace std;
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 8;
+int nb_splits = 5;
 #else
 int lmin = 5;
 int lmax = 5;
@@ -123,7 +123,7 @@ public:
  * 4 - rose-like domain
  * 5 - one circle
  */
-int geometry_num = 5;
+int geometry_num = 0;
 
 geometry_two_circles_union_t        geometry_two_circles_union;
 geometry_two_circles_intersection_t geometry_two_circles_intersection;
@@ -619,7 +619,7 @@ int main (int argc, char* argv[])
     Vec phi_dd[P4EST_DIM] = { phi_xx_vec[0], phi_yy_vec[0] };
 #endif
 //    phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd)/integration_quadratic.integrate_over_interface(0, func_vec, fdd));
-//    phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd));
+    phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd));
 
     if (exact.provided || iter < nb_splits-1)
     {
@@ -760,7 +760,7 @@ int main (int argc, char* argv[])
     }
 #endif
 
-//    print_Table("Convergence", 0, level, h, "phi_integr", phi_integr, plot_color, &plot);
+    print_Table("Convergence", 0, level, h, "phi_integr", phi_integr, plot_color, &plot);
 
     // print all errors in compact form for plotting in matlab
     // step sizes

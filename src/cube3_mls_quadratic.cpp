@@ -194,6 +194,13 @@ double cube3_mls_quadratic_t::integrate_over_interface(CF_3& f, int num)
 {
   if (loc == FCE)
   {
+//    double f0 = simplex[0].integrate_over_interface(f, num);
+//    double f1 = simplex[1].integrate_over_interface(f, num);
+//    double f2 = simplex[2].integrate_over_interface(f, num);
+//    double f3 = simplex[3].integrate_over_interface(f, num);
+//    double f4 = simplex[4].integrate_over_interface(f, num);
+//    double f5 = simplex[5].integrate_over_interface(f, num);
+//    return MAX(f0, f1, MAX(f2, f3, MAX(f4, f5)));
     return simplex[0].integrate_over_interface(f, num)
          + simplex[1].integrate_over_interface(f, num)
          + simplex[2].integrate_over_interface(f, num)

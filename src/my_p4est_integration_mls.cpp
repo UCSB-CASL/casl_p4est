@@ -389,6 +389,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
         {
           switch (int_type){
             case DOM: sum += cube_linear.integrate_over_domain      (f_interp);           break;
+//            case FC1: sum = MAX(sum, cube_linear.integrate_over_interface   (f_interp,n0));        break;
             case FC1: sum += cube_linear.integrate_over_interface   (f_interp,n0);        break;
             case FC2: sum += cube_linear.integrate_over_intersection(f_interp,n0,n1);     break;
 #ifdef P4_TO_P8
@@ -431,6 +432,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
   /* compute global sum */
   double sum_global = 0;
   ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+//  ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
   return sum_global;
 }
 

@@ -85,6 +85,8 @@ simplex3_mls_quadratic_t::simplex3_mls_quadratic_t(double x0, double y0, double 
 
 //  use_linear = true;
   eps = 1.0e-15;
+
+  diag = MAX(fabs(x0-x1), fabs(y0-y1), fabs(z0-z1));
 }
 
 
@@ -101,6 +103,8 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
 //  tris.clear();
   bool needs_refinement = true;
   int last_vtxs_size = 0;
+
+  phi_ = &phi;
 
   // loop over LSFs
   for (short phi_idx = 0; phi_idx < phi.size(); ++phi_idx)
@@ -159,6 +163,12 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
     n = tets.size(); for (int i = 0; i < n; i++) do_action_tet(i, clr[phi_idx], acn[phi_idx]);
   }
 
+
+    int n;
+    n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
+    n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
+    n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
+
   // sort everything before integration
   for (int i = 0; i < edgs.size(); i++)
   {
@@ -169,9 +179,9 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
   for (int i = 0; i < tris.size(); i++)
   {
     tri3_t *tri = &tris[i];
-    if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); }
-    if (need_swap(tri->vtx1, tri->vtx2)) { swap(tri->vtx1, tri->vtx2); swap(tri->edg1, tri->edg2); }
-    if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); }
+    if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); swap(tri->c_vtx12, tri->c_vtx02); swap(tri->ab12, tri->ab02); }
+    if (need_swap(tri->vtx1, tri->vtx2)) { swap(tri->vtx1, tri->vtx2); swap(tri->edg1, tri->edg2); swap(tri->c_vtx02, tri->c_vtx01); swap(tri->ab02, tri->ab01); }
+    if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); swap(tri->c_vtx12, tri->c_vtx02); swap(tri->ab12, tri->ab02); }
   }
 
   for (int i = 0; i < tets.size(); i++)
@@ -184,6 +194,14 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
     if (need_swap(tet->vtx1, tet->vtx2)) { swap(tet->vtx1, tet->vtx2); swap(tet->tri1, tet->tri2); }
     if (need_swap(tet->vtx0, tet->vtx1)) { swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1); }
   }
+
+
+//  for (int i = 0; i < edgs.size(); i++)
+//  {
+//    edg3_t *edg = &edgs[i];
+//    if (edg->loc == FCE)
+//      deform_edge_in_normal_dir(i);
+//  }
 }
 
 
@@ -764,6 +782,8 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
     tet->c_tri1 = tris.size()-2;
     tet->c_tri2 = tris.size()-1;
 
+//    construct_proper_mapping(tet->c_tri0, -1);
+
     tri0 = &tris[tet->tri0];
     tri1 = &tris[tet->tri1];
     tri2 = &tris[tet->tri2];
@@ -918,6 +938,9 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
     tet->c_tet3 = n_tets-3;
     tet->c_tet4 = n_tets-2;
     tet->c_tet5 = n_tets-1;
+
+//    construct_proper_mapping(tet->c_tri2, -1);
+//    construct_proper_mapping(tet->c_tri3, -1);
 
     /* apply rules */
     vtx3_t *c_vtx = &vtxs[vn];
@@ -1076,6 +1099,8 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
     tet->c_tet1 = n_tets-3;
     tet->c_tet2 = n_tets-2;
     tet->c_tet3 = n_tets-1;
+
+//    construct_proper_mapping(tet->c_tri2, -1);
 
     /* apply rules */
     c_tri0 = &tris[tet->c_tri0];
@@ -1879,91 +1904,91 @@ void simplex3_mls_quadratic_t::refine_tet(int n_tet)
 //--------------------------------------------------
 // Integration
 //--------------------------------------------------
-double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
-{
-  double result = 0.0;
-  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
-  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
-  double xyz[3];
-
-  // quadrature points
-  double alph = (5.+3.*sqrt(5.))/20.;
-  double beta = (5.-   sqrt(5.))/20.;
-
-  double abc0[3] = { beta, beta, beta };
-  double abc1[3] = { alph, beta, beta };
-  double abc2[3] = { beta, alph, beta };
-  double abc3[3] = { beta, beta, alph };
-
-  /* integrate over tetrahedra */
-  for (unsigned int i = 0; i < tets.size(); i++)
-    if (!tets[i].is_split && tets[i].loc == INS)
-    {
-//      tet3_t *tet = &tets[i];
-
-      mapping_tet(xyz, i, abc0); f0 = f( xyz[0], xyz[1], xyz[2] );
-      mapping_tet(xyz, i, abc1); f1 = f( xyz[0], xyz[1], xyz[2] );
-      mapping_tet(xyz, i, abc2); f2 = f( xyz[0], xyz[1], xyz[2] );
-      mapping_tet(xyz, i, abc3); f3 = f( xyz[0], xyz[1], xyz[2] );
-
-      w0 = .25*jacobian_tet(i, abc0);
-      w1 = .25*jacobian_tet(i, abc1);
-      w2 = .25*jacobian_tet(i, abc2);
-      w3 = .25*jacobian_tet(i, abc3);
-
-      result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
-//      result += volume(s->vtx0, s->vtx1, s->vtx2, s->vtx3);
-    }
-
-  return result*0.5/3.;
-}
-
-//double simplex3_mls_quadratic_t::integrate_over_domain(std::vector<double> &f)
+//double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 //{
 //  double result = 0.0;
-//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0, w4 = 0;
-//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0, f4 = 0;
+//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
+//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
 //  double xyz[3];
 
 //  // quadrature points
 //  double alph = (5.+3.*sqrt(5.))/20.;
 //  double beta = (5.-   sqrt(5.))/20.;
 
-//  double abc0[3] = { 0.25, 0.25, 0.25 };
-//  double abc1[3] = { 0.5, 1./6., 1./6. };
-//  double abc2[3] = { 1./6., 0.5, 1./6. };
-//  double abc3[3] = { 1./6., 1./6., 0.5 };
-//  double abc4[3] = { 1./6., 1./6., 1./6. };
-
-//  double V = 0.5/3.;
+//  double abc0[3] = { beta, beta, beta };
+//  double abc1[3] = { alph, beta, beta };
+//  double abc2[3] = { beta, alph, beta };
+//  double abc3[3] = { beta, beta, alph };
 
 //  /* integrate over tetrahedra */
 //  for (unsigned int i = 0; i < tets.size(); i++)
 //    if (!tets[i].is_split && tets[i].loc == INS)
 //    {
-//      tet3_t *s = &tets[i];
+////      tet3_t *tet = &tets[i];
 
-//      mapping_tet(xyz, i, abc0); f0 = interpolate_from_parent(f, xyz);
-//      mapping_tet(xyz, i, abc1); f1 = interpolate_from_parent(f, xyz);
-//      mapping_tet(xyz, i, abc2); f2 = interpolate_from_parent(f, xyz);
-//      mapping_tet(xyz, i, abc3); f3 = interpolate_from_parent(f, xyz);
-//      mapping_tet(xyz, i, abc4); f4 = interpolate_from_parent(f, xyz);
+//      mapping_tet(xyz, i, abc0); f0 = f( xyz[0], xyz[1], xyz[2] );
+//      mapping_tet(xyz, i, abc1); f1 = f( xyz[0], xyz[1], xyz[2] );
+//      mapping_tet(xyz, i, abc2); f2 = f( xyz[0], xyz[1], xyz[2] );
+//      mapping_tet(xyz, i, abc3); f3 = f( xyz[0], xyz[1], xyz[2] );
 
-//      w0 = -.8*jacobian_tet(i, abc0);
-//      w1 = .45*jacobian_tet(i, abc1);
-//      w2 = .45*jacobian_tet(i, abc2);
-//      w3 = .45*jacobian_tet(i, abc3);
-//      w4 = .45*jacobian_tet(i, abc4);
+//      w0 = .25*jacobian_tet(i, abc0);
+//      w1 = .25*jacobian_tet(i, abc1);
+//      w2 = .25*jacobian_tet(i, abc2);
+//      w3 = .25*jacobian_tet(i, abc3);
 
-//      result += (w0*f0 + w1*f1 + w2*f2 + w3*f3 + w4*f4);
+//      result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
 ////      result += volume(s->vtx0, s->vtx1, s->vtx2, s->vtx3);
 //    }
 
-//  return result*V;
+//  return result*0.5/3.;
 //}
 
+double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
+{
+  double result = 0.0;
+  double w0 = 0, w1 = 0, w2 = 0, w3 = 0, w4 = 0;
+  double f0 = 0, f1 = 0, f2 = 0, f3 = 0, f4 = 0;
+  double xyz[3];
 
-//double simplex3_mls_quadratic_t::integrate_over_interface(std::vector<double> &f, int num)
+  // quadrature points
+  double alph = (5.+3.*sqrt(5.))/20.;
+  double beta = (5.-   sqrt(5.))/20.;
+
+  double abc0[3] = { 0.25, 0.25, 0.25 };
+  double abc1[3] = { 0.5, 1./6., 1./6. };
+  double abc2[3] = { 1./6., 0.5, 1./6. };
+  double abc3[3] = { 1./6., 1./6., 0.5 };
+  double abc4[3] = { 1./6., 1./6., 1./6. };
+
+  double V = 0.5/3.;
+
+  /* integrate over tetrahedra */
+  for (unsigned int i = 0; i < tets.size(); i++)
+    if (!tets[i].is_split && tets[i].loc == INS)
+    {
+      tet3_t *s = &tets[i];
+
+      mapping_tet(xyz, i, abc0); f0 = f( xyz[0], xyz[1], xyz[2] );
+      mapping_tet(xyz, i, abc1); f1 = f( xyz[0], xyz[1], xyz[2] );
+      mapping_tet(xyz, i, abc2); f2 = f( xyz[0], xyz[1], xyz[2] );
+      mapping_tet(xyz, i, abc3); f3 = f( xyz[0], xyz[1], xyz[2] );
+      mapping_tet(xyz, i, abc4); f4 = f( xyz[0], xyz[1], xyz[2] );
+
+      w0 = -.8*jacobian_tet(i, abc0);
+      w1 = .45*jacobian_tet(i, abc1);
+      w2 = .45*jacobian_tet(i, abc2);
+      w3 = .45*jacobian_tet(i, abc3);
+      w4 = .45*jacobian_tet(i, abc4);
+
+      result += (w0*f0 + w1*f1 + w2*f2 + w3*f3 + w4*f4);
+//      result += volume(s->vtx0, s->vtx1, s->vtx2, s->vtx3);
+    }
+
+  return result*V;
+}
+
+
+//double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //{
 //  bool integrate_specific = (num != -1);
 
@@ -1985,10 +2010,11 @@ double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 //      if (!integrate_specific
 //          || (integrate_specific && t->c == num))
 //      {
+//        construct_proper_mapping(i, -1);
 //        // map quadrature points into real space and interpolate integrand
-//        mapping_tri(xyz, i, ab0); f0 = interpolate_from_parent(f, xyz);
-//        mapping_tri(xyz, i, ab1); f1 = interpolate_from_parent(f, xyz);
-//        mapping_tri(xyz, i, ab2); f2 = interpolate_from_parent(f, xyz);
+//        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
 
 ////        xyz[0] = vtxs[edgs[t->edg1].vtx1].x;
 ////        xyz[1] = vtxs[edgs[t->edg1].vtx1].y;
@@ -2091,21 +2117,88 @@ double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 //  return result/6.;
 //}
 
+//double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
+//{
+//  bool integrate_specific = (num != -1);
+
+//  double result = 0.0;
+//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
+//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
+//  double xyz[3];
+
+//  // quadrature points
+//  double ab0[2] = { 1./3., 1./3. };
+//  double ab1[2] = { .2, .6 };
+//  double ab2[2] = { .2, .2 };
+//  double ab3[2] = { .6, .2 };
+
+//  max_dist_error_ = 0;
+//  /* integrate over triangles */
+//  for (unsigned int i = 0; i < tris.size(); i++)
+//  {
+//    tri3_t *t = &tris[i];
+//    if (!t->is_split && t->loc == FCE)
+//      if (!integrate_specific
+//          || (integrate_specific && t->c == num))
+//      {
+////        construct_proper_mapping(i, -1);
+//        // map quadrature points into real space and interpolate integrand
+//        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab3); f3 = f( xyz[0], xyz[1], xyz[2] );
+
+//        // scale weights by Jacobian
+//        w0 =-27.*jacobian_tri(i, ab0);
+//        w1 = 25.*jacobian_tri(i, ab1);
+//        w2 = 25.*jacobian_tri(i, ab2);
+//        w3 = 25.*jacobian_tri(i, ab3);
+
+//        result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
+////        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
+////        result = MAX(MAX(result, fabs(f0), fabs(f1)), fabs(f2), fabs(f3));
+
+////        mapping_tri(xyz, i, t->ab01); f0 = f( xyz[0], xyz[1], xyz[2] );
+////        mapping_tri(xyz, i, t->ab12); f1 = f( xyz[0], xyz[1], xyz[2] );
+////        mapping_tri(xyz, i, t->ab02); f2 = f( xyz[0], xyz[1], xyz[2] );
+////        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
+
+//      }
+//  }
+
+////  std::cout << max_dist_error_ << std::endl;
+////  return max_dist_error_;
+//  return result/96.;
+//}
+
 double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 {
   bool integrate_specific = (num != -1);
 
   double result = 0.0;
-  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
-  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
+  double w0 = 0, w1 = 0, w2 = 0, w3 = 0, w4 = 0, w5 = 0, w6 = 0;
+  double f0 = 0, f1 = 0, f2 = 0, f3 = 0, f4 = 0, f5 = 0, f6 = 0;
   double xyz[3];
 
   // quadrature points
-  double ab0[2] = { 1./3., 1./3. };
-  double ab1[2] = { .2, .6 };
-  double ab2[2] = { .2, .2 };
-  double ab3[2] = { .6, .2 };
+//  double ab0[2] = { .0, .0 };
+//  double ab1[2] = { .5, .0 };
+//  double ab2[2] = { 1., .0 };
+//  double ab3[2] = { .5, .5 };
+//  double ab4[2] = { .0, 1. };
+//  double ab5[2] = { .0, .5 };
+//  double ab6[2] = { 1./3., 1./3. };
 
+  double ab0[2] = { 0.33333333333333333, 0.33333333333333333 };
+  double ab1[2] = { 0.79742698535308720, 0.10128650732345633 };
+  double ab2[2] = { 0.10128650732345633, 0.79742698535308720 };
+  double ab3[2] = { 0.10128650732345633, 0.10128650732345633 };
+  double ab4[2] = { 0.05971587178976981, 0.47014206410511505 };
+  double ab5[2] = { 0.47014206410511505, 0.05971587178976981 };
+  double ab6[2] = { 0.47014206410511505, 0.47014206410511505 };
+
+
+  max_dist_error_ = 0;
   /* integrate over triangles */
   for (unsigned int i = 0; i < tris.size(); i++)
   {
@@ -2114,25 +2207,148 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
       if (!integrate_specific
           || (integrate_specific && t->c == num))
       {
+        construct_proper_mapping(i, -1);
         // map quadrature points into real space and interpolate integrand
         mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
         mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
         mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
         mapping_tri(xyz, i, ab3); f3 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab4); f4 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab5); f5 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab6); f6 = f( xyz[0], xyz[1], xyz[2] );
 
         // scale weights by Jacobian
-        w0 =-27.*jacobian_tri(i, ab0);
-        w1 = 25.*jacobian_tri(i, ab1);
-        w2 = 25.*jacobian_tri(i, ab2);
-        w3 = 25.*jacobian_tri(i, ab3);
+        w0 = 0.22500000000000000;
+        w1 = 0.12593918054482717;
+        w2 = 0.12593918054482717;
+        w3 = 0.12593918054482717;
+        w4 = 0.13239415278850616;
+        w5 = 0.13239415278850616;
+        w6 = 0.13239415278850616;
 
-        result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
+        w0 *= jacobian_tri(i, ab0);
+        w1 *= jacobian_tri(i, ab1);
+        w2 *= jacobian_tri(i, ab2);
+        w3 *= jacobian_tri(i, ab3);
+        w4 *= jacobian_tri(i, ab4);
+        w5 *= jacobian_tri(i, ab5);
+        w6 *= jacobian_tri(i, ab6);
+
+        result += w0*f0 + w1*f1 + w2*f2 + w3*f3 + w4*f4 + w5*f5 + w6*f6;
 //        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
+//        result = MAX(MAX(result, fabs(f0), fabs(f1)), fabs(f2), fabs(f3));
+
+//        mapping_tri(xyz, i, t->ab01); f0 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, t->ab12); f1 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, t->ab02); f2 = f( xyz[0], xyz[1], xyz[2] );
+//        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
+
       }
   }
 
-  return result/96.;
+//  std::cout << max_dist_error_ << std::endl;
+//  return max_dist_error_;
+  return 0.5*result;
 }
+
+//double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
+//{
+//  bool integrate_specific = (num != -1);
+
+//  double result = 0.0;
+//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0, w4 = 0, w5 = 0, w6 = 0;
+//  double w7 = 0, w8 = 0, w9 = 0, w10 = 0, w11 = 0, w12 = 0;
+//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0, f4 = 0, f5 = 0, f6 = 0;
+//  double f7 = 0, f8 = 0, f9 = 0, f10 = 0, f11 = 0, f12 = 0;
+//  double xyz[3];
+
+//  // quadrature points
+//  double ab0[2] = { 0.333333333333333,  0.333333333333333 };
+//  double ab1[2] = { 0.479308067841923,  0.260345966079038 };
+//  double ab2[2] = { 0.260345966079038,  0.479308067841923 };
+//  double ab3[2] = { 0.260345966079038,  0.260345966079038 };
+//  double ab4[2] = { 0.869739794195568,  0.065130102902216 };
+//  double ab5[2] = { 0.065130102902216,  0.869739794195568 };
+//  double ab6[2] = { 0.065130102902216,  0.065130102902216 };
+//  double ab7[2] = { 0.638444188569809,  0.312865496004875 };
+//  double ab8[2] = { 0.638444188569809,  0.048690315425316 };
+//  double ab9[2] = { 0.312865496004875,  0.638444188569809 };
+//  double ab10[2] = { 0.312865496004875,  0.048690315425316 };
+//  double ab11[2] = { 0.048690315425316,  0.638444188569809 };
+//  double ab12[2] = { 0.048690315425316,  0.312865496004875 };
+
+
+//  max_dist_error_ = 0;
+//  /* integrate over triangles */
+//  for (unsigned int i = 0; i < tris.size(); i++)
+//  {
+//    tri3_t *t = &tris[i];
+//    if (!t->is_split && t->loc == FCE)
+//      if (!integrate_specific
+//          || (integrate_specific && t->c == num))
+//      {
+//        construct_proper_mapping(i, -1);
+//        // map quadrature points into real space and interpolate integrand
+//        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab3); f3 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab4); f4 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab5); f5 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab6); f6 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab7); f7 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab8); f8 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab9); f9 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab10); f10 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab11); f11 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab12); f12 = f( xyz[0], xyz[1], xyz[2] );
+
+//        // scale weights by Jacobian
+//        w0 = -0.149570044467670;
+//        w1 =  0.175615257433204;
+//        w2 =  0.175615257433204;
+//        w3 =  0.175615257433204;
+//        w4 =  0.053347235608839;
+//        w5 =  0.053347235608839;
+//        w6 =  0.053347235608839;
+//        w7 =  0.077113760890257;
+//        w8 =  0.077113760890257;
+//        w9 =  0.077113760890257;
+//        w10 =  0.077113760890257;
+//        w11 =  0.077113760890257;
+//        w12 =  0.077113760890257;
+
+//        w0 *= jacobian_tri(i, ab0);
+//        w1 *= jacobian_tri(i, ab1);
+//        w2 *= jacobian_tri(i, ab2);
+//        w3 *= jacobian_tri(i, ab3);
+//        w4 *= jacobian_tri(i, ab4);
+//        w5 *= jacobian_tri(i, ab5);
+//        w6 *= jacobian_tri(i, ab6);
+//        w7 *= jacobian_tri(i, ab7);
+//        w8 *= jacobian_tri(i, ab8);
+//        w9 *= jacobian_tri(i, ab9);
+//        w10 *= jacobian_tri(i, ab10);
+//        w11 *= jacobian_tri(i, ab11);
+//        w12 *= jacobian_tri(i, ab12);
+
+//        result += w0*f0 + w1*f1 + w2*f2 + w3*f3 + w4*f4 + w5*f5 + w6*f6
+//            + w7*f7 + w8*f8 + w9*f9 + w10*f10 + w11*f11 + w12*f12;
+////        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
+////        result = MAX(MAX(result, fabs(f0), fabs(f1)), fabs(f2), fabs(f3));
+
+////        mapping_tri(xyz, i, t->ab01); f0 = f( xyz[0], xyz[1], xyz[2] );
+////        mapping_tri(xyz, i, t->ab12); f1 = f( xyz[0], xyz[1], xyz[2] );
+////        mapping_tri(xyz, i, t->ab02); f2 = f( xyz[0], xyz[1], xyz[2] );
+////        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
+
+//      }
+//  }
+
+////  std::cout << max_dist_error_ << std::endl;
+////  return max_dist_error_;
+//  return 0.5*result;
+//}
 
 //double simplex3_mls_quadratic_t::integrate_over_interface(std::vector<double> &f, int num)
 //{
@@ -2399,21 +2615,77 @@ double simplex3_mls_quadratic_t::jacobian_tri(int n_tri, double *ab)
 {
   tri3_t *tri = &tris[n_tri];
 
-  double a = ab[0];
-  double b = ab[1];
+  if (tri->is_curved) { // if triangle is curved, then use the two-stage mapping
+    // first, map a reference element into a 2D triangle on the surface
+    double a = ab[0];
+    double b = ab[1];
 
-  double Na[6] = {-3.+4.*a+4.*b,  4.*a-1.,  0,        4.-8.*a-4.*b, 4.*b, -4.*b         };
-  double Nb[6] = {-3.+4.*a+4.*b,  0,        4.*b-1., -4.*a,         4.*a,  4.-4.*a-8.*b };
+    double N_2d[nodes_per_tri]  = {(1.-a-b)*(1.-2.*a-2.*b),  a*(2.*a-1.),  b*(2.*b-1.),  4.*a*(1.-a-b),  4.*a*b, 4.*b*(1.-a-b)};
+    double Na_2d[nodes_per_tri] = {-3.+4.*a+4.*b,  4.*a-1.,  0,        4.-8.*a-4.*b, 4.*b, -4.*b         };
+    double Nb_2d[nodes_per_tri] = {-3.+4.*a+4.*b,  0,        4.*b-1., -4.*a,         4.*a,  4.-4.*a-8.*b };
 
-  double X1 = vtxs[tri->vtx0].x*Na[0] + vtxs[tri->vtx1].x*Na[1] + vtxs[tri->vtx2].x*Na[2] + vtxs[edgs[tri->edg2].vtx1].x*Na[3] + vtxs[edgs[tri->edg0].vtx1].x*Na[4] + vtxs[edgs[tri->edg1].vtx1].x*Na[5];
-  double Y1 = vtxs[tri->vtx0].y*Na[0] + vtxs[tri->vtx1].y*Na[1] + vtxs[tri->vtx2].y*Na[2] + vtxs[edgs[tri->edg2].vtx1].y*Na[3] + vtxs[edgs[tri->edg0].vtx1].y*Na[4] + vtxs[edgs[tri->edg1].vtx1].y*Na[5];
-  double Z1 = vtxs[tri->vtx0].z*Na[0] + vtxs[tri->vtx1].z*Na[1] + vtxs[tri->vtx2].z*Na[2] + vtxs[edgs[tri->edg2].vtx1].z*Na[3] + vtxs[edgs[tri->edg0].vtx1].z*Na[4] + vtxs[edgs[tri->edg1].vtx1].z*Na[5];
+    double A[nodes_per_tri] = { 0, 1, 0, tri->ab01[0], tri->ab12[0], tri->ab02[0] };
+    double B[nodes_per_tri] = { 0, 0, 1, tri->ab01[1], tri->ab12[1], tri->ab02[1] };
 
-  double X2 = vtxs[tri->vtx0].x*Nb[0] + vtxs[tri->vtx1].x*Nb[1] + vtxs[tri->vtx2].x*Nb[2] + vtxs[edgs[tri->edg2].vtx1].x*Nb[3] + vtxs[edgs[tri->edg0].vtx1].x*Nb[4] + vtxs[edgs[tri->edg1].vtx1].x*Nb[5];
-  double Y2 = vtxs[tri->vtx0].y*Nb[0] + vtxs[tri->vtx1].y*Nb[1] + vtxs[tri->vtx2].y*Nb[2] + vtxs[edgs[tri->edg2].vtx1].y*Nb[3] + vtxs[edgs[tri->edg0].vtx1].y*Nb[4] + vtxs[edgs[tri->edg1].vtx1].y*Nb[5];
-  double Z2 = vtxs[tri->vtx0].z*Nb[0] + vtxs[tri->vtx1].z*Nb[1] + vtxs[tri->vtx2].z*Nb[2] + vtxs[edgs[tri->edg2].vtx1].z*Nb[3] + vtxs[edgs[tri->edg0].vtx1].z*Nb[4] + vtxs[edgs[tri->edg1].vtx1].z*Nb[5];
+    double Aa = 0, Ba = 0;
+    double Ab = 0, Bb = 0;
 
-  return sqrt((X1*X1+Y1*Y1+Z1*Z1)*(X2*X2+Y2*Y2+Z2*Z2) - pow(X1*X2+Y1*Y2+Z1*Z2,2.));
+    a = 0;
+    b = 0;
+
+    for (int i = 0; i < nodes_per_tri; ++i)
+    {
+      a += A[i]*N_2d[i];   Aa += A[i]*Na_2d[i];   Ba += B[i]*Na_2d[i];
+      b += B[i]*N_2d[i];   Ab += A[i]*Nb_2d[i];   Bb += B[i]*Nb_2d[i];
+    }
+
+    double jacobian_2d = fabs(Aa*Bb-Ab*Ba);
+
+    // second, map the 2d surface triangle into 3D
+//    a = ab[0];
+//    b = ab[1];
+
+    double Na[nodes_per_tri] = {-3.+4.*a+4.*b,  4.*a-1.,  0,        4.-8.*a-4.*b, 4.*b, -4.*b         };
+    double Nb[nodes_per_tri] = {-3.+4.*a+4.*b,  0,        4.*b-1., -4.*a,         4.*a,  4.-4.*a-8.*b };
+
+    int nv0 = tri->vtx0;
+    int nv1 = tri->vtx1;
+    int nv2 = tri->vtx2;
+
+    double X[nodes_per_tri] = { vtxs[nv0].x, vtxs[nv1].x, vtxs[nv2].x, tri->g_vtx01[0], tri->g_vtx12[0], tri->g_vtx02[0] };
+    double Y[nodes_per_tri] = { vtxs[nv0].y, vtxs[nv1].y, vtxs[nv2].y, tri->g_vtx01[1], tri->g_vtx12[1], tri->g_vtx02[1] };
+    double Z[nodes_per_tri] = { vtxs[nv0].z, vtxs[nv1].z, vtxs[nv2].z, tri->g_vtx01[2], tri->g_vtx12[2], tri->g_vtx02[2] };
+
+    double Xa = 0, Ya = 0, Za = 0;
+    double Xb = 0, Yb = 0, Zb = 0;
+
+    for (int i = 0; i < nodes_per_tri; ++i)
+    {
+      Xa += X[i]*Na[i];   Ya += Y[i]*Na[i];   Za += Z[i]*Na[i];
+      Xb += X[i]*Nb[i];   Yb += Y[i]*Nb[i];   Zb += Z[i]*Nb[i];
+    }
+
+//    return 1.*sqrt((Xa*Xa+Ya*Ya+Za*Za)*(Xb*Xb+Yb*Yb+Zb*Zb) - pow(Xa*Xb+Ya*Yb+Za*Zb, 2.));
+    return jacobian_2d*sqrt((Xa*Xa+Ya*Ya+Za*Za)*(Xb*Xb+Yb*Yb+Zb*Zb) - pow(Xa*Xb+Ya*Yb+Za*Zb, 2.));
+
+  } else { // if triangle is not curved, then a one-stage mapping suffies
+
+    double a = ab[0];
+    double b = ab[1];
+
+    double Na[6] = {-3.+4.*a+4.*b,  4.*a-1.,  0,        4.-8.*a-4.*b, 4.*b, -4.*b         };
+    double Nb[6] = {-3.+4.*a+4.*b,  0,        4.*b-1., -4.*a,         4.*a,  4.-4.*a-8.*b };
+
+    double X1 = vtxs[tri->vtx0].x*Na[0] + vtxs[tri->vtx1].x*Na[1] + vtxs[tri->vtx2].x*Na[2] + vtxs[edgs[tri->edg2].vtx1].x*Na[3] + vtxs[edgs[tri->edg0].vtx1].x*Na[4] + vtxs[edgs[tri->edg1].vtx1].x*Na[5];
+    double Y1 = vtxs[tri->vtx0].y*Na[0] + vtxs[tri->vtx1].y*Na[1] + vtxs[tri->vtx2].y*Na[2] + vtxs[edgs[tri->edg2].vtx1].y*Na[3] + vtxs[edgs[tri->edg0].vtx1].y*Na[4] + vtxs[edgs[tri->edg1].vtx1].y*Na[5];
+    double Z1 = vtxs[tri->vtx0].z*Na[0] + vtxs[tri->vtx1].z*Na[1] + vtxs[tri->vtx2].z*Na[2] + vtxs[edgs[tri->edg2].vtx1].z*Na[3] + vtxs[edgs[tri->edg0].vtx1].z*Na[4] + vtxs[edgs[tri->edg1].vtx1].z*Na[5];
+
+    double X2 = vtxs[tri->vtx0].x*Nb[0] + vtxs[tri->vtx1].x*Nb[1] + vtxs[tri->vtx2].x*Nb[2] + vtxs[edgs[tri->edg2].vtx1].x*Nb[3] + vtxs[edgs[tri->edg0].vtx1].x*Nb[4] + vtxs[edgs[tri->edg1].vtx1].x*Nb[5];
+    double Y2 = vtxs[tri->vtx0].y*Nb[0] + vtxs[tri->vtx1].y*Nb[1] + vtxs[tri->vtx2].y*Nb[2] + vtxs[edgs[tri->edg2].vtx1].y*Nb[3] + vtxs[edgs[tri->edg0].vtx1].y*Nb[4] + vtxs[edgs[tri->edg1].vtx1].y*Nb[5];
+    double Z2 = vtxs[tri->vtx0].z*Nb[0] + vtxs[tri->vtx1].z*Nb[1] + vtxs[tri->vtx2].z*Nb[2] + vtxs[edgs[tri->edg2].vtx1].z*Nb[3] + vtxs[edgs[tri->edg0].vtx1].z*Nb[4] + vtxs[edgs[tri->edg1].vtx1].z*Nb[5];
+
+    return sqrt((X1*X1+Y1*Y1+Z1*Z1)*(X2*X2+Y2*Y2+Z2*Z2) - pow(X1*X2+Y1*Y2+Z1*Z2,2.));
+  }
 }
 
 double simplex3_mls_quadratic_t::jacobian_tet(int n_tet, double *abc)
@@ -2468,60 +2740,60 @@ double simplex3_mls_quadratic_t::jacobian_tet(int n_tet, double *abc)
 
 
 
-//--------------------------------------------------
-// Interpolation
-//--------------------------------------------------
-double simplex3_mls_quadratic_t::interpolate_from_parent(std::vector<double> &f, double* xyz)
-{
-  // map real point to reference element
-  vtx3_t *v0 = &vtxs[0];
-  vtx3_t *v1 = &vtxs[1];
-  vtx3_t *v2 = &vtxs[2];
-  vtx3_t *v3 = &vtxs[3];
+////--------------------------------------------------
+//// Interpolation
+////--------------------------------------------------
+//double simplex3_mls_quadratic_t::interpolate_from_parent(std::vector<double> &f, double* xyz)
+//{
+//  // map real point to reference element
+//  vtx3_t *v0 = &vtxs[0];
+//  vtx3_t *v1 = &vtxs[1];
+//  vtx3_t *v2 = &vtxs[2];
+//  vtx3_t *v3 = &vtxs[3];
 
-  double A[9], A_inv[9], D[3];
-  A[3*0+0] = v1->x - v0->x; A[3*0+1] = v2->x - v0->x; A[3*0+2] = v3->x - v0->x; D[0] = xyz[0] - v0->x;
-  A[3*1+0] = v1->y - v0->y; A[3*1+1] = v2->y - v0->y; A[3*1+2] = v3->y - v0->y; D[1] = xyz[1] - v0->y;
-  A[3*2+0] = v1->z - v0->z; A[3*2+1] = v2->z - v0->z; A[3*2+2] = v3->z - v0->z; D[2] = xyz[2] - v0->z;
+//  double A[9], A_inv[9], D[3];
+//  A[3*0+0] = v1->x - v0->x; A[3*0+1] = v2->x - v0->x; A[3*0+2] = v3->x - v0->x; D[0] = xyz[0] - v0->x;
+//  A[3*1+0] = v1->y - v0->y; A[3*1+1] = v2->y - v0->y; A[3*1+2] = v3->y - v0->y; D[1] = xyz[1] - v0->y;
+//  A[3*2+0] = v1->z - v0->z; A[3*2+1] = v2->z - v0->z; A[3*2+2] = v3->z - v0->z; D[2] = xyz[2] - v0->z;
 
-  inv_mat3(A, A_inv);
+//  inv_mat3(A, A_inv);
 
-  double a = A_inv[3*0+0]*D[0] + A_inv[3*0+1]*D[1] + A_inv[3*0+2]*D[2];
-  double b = A_inv[3*1+0]*D[0] + A_inv[3*1+1]*D[1] + A_inv[3*1+2]*D[2];
-  double c = A_inv[3*2+0]*D[0] + A_inv[3*2+1]*D[1] + A_inv[3*2+2]*D[2];
+//  double a = A_inv[3*0+0]*D[0] + A_inv[3*0+1]*D[1] + A_inv[3*0+2]*D[2];
+//  double b = A_inv[3*1+0]*D[0] + A_inv[3*1+1]*D[1] + A_inv[3*1+2]*D[2];
+//  double c = A_inv[3*2+0]*D[0] + A_inv[3*2+1]*D[1] + A_inv[3*2+2]*D[2];
 
-  // compute nodal functions
-  double d = 1.-a-b-c;
-  double N[nodes_per_tet]  = { d*(2.*d-1.), a*(2.*a-1.), b*(2.*b-1.), c*(2.*c-1.), 4.*d*a, 4.*a*b, 4.*b*d, 4.*d*c, 4.*a*c, 4.*b*c };
+//  // compute nodal functions
+//  double d = 1.-a-b-c;
+//  double N[nodes_per_tet]  = { d*(2.*d-1.), a*(2.*a-1.), b*(2.*b-1.), c*(2.*c-1.), 4.*d*a, 4.*a*b, 4.*b*d, 4.*d*c, 4.*a*c, 4.*b*c };
 
-  double result = 0;
+//  double result = 0;
 
-  for (short i = 0; i < nodes_per_tet; ++i)
-  {
-    result += N[i]*f[i];
-  }
+//  for (short i = 0; i < nodes_per_tet; ++i)
+//  {
+//    result += N[i]*f[i];
+//  }
 
-  return result;
-}
+//  return result;
+//}
 
-void simplex3_mls_quadratic_t::inv_mat3(double *in, double *out)
-{
-  double det = in[3*0+0]*(in[3*1+1]*in[3*2+2] - in[3*2+1]*in[3*1+2]) -
-               in[3*0+1]*(in[3*1+0]*in[3*2+2] - in[3*1+2]*in[3*2+0]) +
-               in[3*0+2]*(in[3*1+0]*in[3*2+1] - in[3*2+0]*in[3*1+1]);
+//void simplex3_mls_quadratic_t::inv_mat3(double *in, double *out)
+//{
+//  double det = in[3*0+0]*(in[3*1+1]*in[3*2+2] - in[3*2+1]*in[3*1+2]) -
+//               in[3*0+1]*(in[3*1+0]*in[3*2+2] - in[3*1+2]*in[3*2+0]) +
+//               in[3*0+2]*(in[3*1+0]*in[3*2+1] - in[3*2+0]*in[3*1+1]);
 
-  out[3*0+0] = (in[3*1+1]*in[3*2+2] - in[3*2+1]*in[3*1+2])/det;
-  out[3*0+1] = (in[3*0+2]*in[3*2+1] - in[3*2+2]*in[3*0+1])/det;
-  out[3*0+2] = (in[3*0+1]*in[3*1+2] - in[3*1+1]*in[3*0+2])/det;
+//  out[3*0+0] = (in[3*1+1]*in[3*2+2] - in[3*2+1]*in[3*1+2])/det;
+//  out[3*0+1] = (in[3*0+2]*in[3*2+1] - in[3*2+2]*in[3*0+1])/det;
+//  out[3*0+2] = (in[3*0+1]*in[3*1+2] - in[3*1+1]*in[3*0+2])/det;
 
-  out[3*1+0] = (in[3*1+2]*in[3*2+0] - in[3*2+2]*in[3*1+0])/det;
-  out[3*1+1] = (in[3*0+0]*in[3*2+2] - in[3*2+0]*in[3*0+2])/det;
-  out[3*1+2] = (in[3*0+2]*in[3*1+0] - in[3*1+2]*in[3*0+0])/det;
+//  out[3*1+0] = (in[3*1+2]*in[3*2+0] - in[3*2+2]*in[3*1+0])/det;
+//  out[3*1+1] = (in[3*0+0]*in[3*2+2] - in[3*2+0]*in[3*0+2])/det;
+//  out[3*1+2] = (in[3*0+2]*in[3*1+0] - in[3*1+2]*in[3*0+0])/det;
 
-  out[3*2+0] = (in[3*1+0]*in[3*2+1] - in[3*2+0]*in[3*1+1])/det;
-  out[3*2+1] = (in[3*0+1]*in[3*2+0] - in[3*2+1]*in[3*0+0])/det;
-  out[3*2+2] = (in[3*0+0]*in[3*1+1] - in[3*1+0]*in[3*0+1])/det;
-}
+//  out[3*2+0] = (in[3*1+0]*in[3*2+1] - in[3*2+0]*in[3*1+1])/det;
+//  out[3*2+1] = (in[3*0+1]*in[3*2+0] - in[3*2+1]*in[3*0+0])/det;
+//  out[3*2+2] = (in[3*0+0]*in[3*1+1] - in[3*1+0]*in[3*0+1])/det;
+//}
 
 
 
@@ -2551,21 +2823,67 @@ void simplex3_mls_quadratic_t::mapping_tri(double* xyz, int n_tri, double* ab)
 {
   tri3_t *tri = &tris[n_tri];
 
-  double a = ab[0];
-  double b = ab[1];
+  if (tri->is_curved) { // if a triangle is curved, then use the two-stage mapping
+    // first, map a reference element into a 2D triangle on the surface
+    double a = ab[0];
+    double b = ab[1];
 
-  double N[nodes_per_tri]  = {(1.-a-b)*(1.-2.*a-2.*b),  a*(2.*a-1.),  b*(2.*b-1.),  4.*a*(1.-a-b),  4.*a*b, 4.*b*(1.-a-b)};
+    double N_2d[nodes_per_tri]  = {(1.-a-b)*(1.-2.*a-2.*b),  a*(2.*a-1.),  b*(2.*b-1.),  4.*a*(1.-a-b),  4.*a*b, 4.*b*(1.-a-b)};
 
-  int nv0 = tri->vtx0;
-  int nv1 = tri->vtx1;
-  int nv2 = tri->vtx2;
-  int nv3 = edgs[tri->edg2].vtx1;
-  int nv4 = edgs[tri->edg0].vtx1;
-  int nv5 = edgs[tri->edg1].vtx1;
+    double A[nodes_per_tri] = { 0, 1, 0, tri->ab01[0], tri->ab12[0], tri->ab02[0] };
+    double B[nodes_per_tri] = { 0, 0, 1, tri->ab01[1], tri->ab12[1], tri->ab02[1] };
 
-  xyz[0] = vtxs[nv0].x * N[0] + vtxs[nv1].x * N[1] + vtxs[nv2].x * N[2] + vtxs[nv3].x * N[3] + vtxs[nv4].x * N[4] + vtxs[nv5].x * N[5];
-  xyz[1] = vtxs[nv0].y * N[0] + vtxs[nv1].y * N[1] + vtxs[nv2].y * N[2] + vtxs[nv3].y * N[3] + vtxs[nv4].y * N[4] + vtxs[nv5].y * N[5];
-  xyz[2] = vtxs[nv0].z * N[0] + vtxs[nv1].z * N[1] + vtxs[nv2].z * N[2] + vtxs[nv3].z * N[3] + vtxs[nv4].z * N[4] + vtxs[nv5].z * N[5];
+    a = 0;
+    b = 0;
+
+    for (int i = 0; i < nodes_per_tri; ++i)
+    {
+      a += A[i]*N_2d[i];
+      b += B[i]*N_2d[i];
+    }
+
+//    a = ab[0];
+//    b = ab[1];
+
+    // second, map the 2d surface triangle into 3D
+    double N[nodes_per_tri]  = {(1.-a-b)*(1.-2.*a-2.*b),  a*(2.*a-1.),  b*(2.*b-1.),  4.*a*(1.-a-b),  4.*a*b, 4.*b*(1.-a-b)};
+
+    int nv0 = tri->vtx0;
+    int nv1 = tri->vtx1;
+    int nv2 = tri->vtx2;
+
+    double X[nodes_per_tri] = { vtxs[nv0].x, vtxs[nv1].x, vtxs[nv2].x, tri->g_vtx01[0], tri->g_vtx12[0], tri->g_vtx02[0] };
+    double Y[nodes_per_tri] = { vtxs[nv0].y, vtxs[nv1].y, vtxs[nv2].y, tri->g_vtx01[1], tri->g_vtx12[1], tri->g_vtx02[1] };
+    double Z[nodes_per_tri] = { vtxs[nv0].z, vtxs[nv1].z, vtxs[nv2].z, tri->g_vtx01[2], tri->g_vtx12[2], tri->g_vtx02[2] };
+
+    xyz[0] = 0;
+    xyz[1] = 0;
+    xyz[2] = 0;
+
+    for (int i = 0; i < nodes_per_tri; ++i)
+    {
+      xyz[0] += X[i]*N[i];
+      xyz[1] += Y[i]*N[i];
+      xyz[2] += Z[i]*N[i];
+    }
+
+  } else { // if a triangle is not curved, then a one-stage mapping suffies
+    double a = ab[0];
+    double b = ab[1];
+
+    double N[nodes_per_tri]  = {(1.-a-b)*(1.-2.*a-2.*b),  a*(2.*a-1.),  b*(2.*b-1.),  4.*a*(1.-a-b),  4.*a*b, 4.*b*(1.-a-b)};
+
+    int nv0 = tri->vtx0;
+    int nv1 = tri->vtx1;
+    int nv2 = tri->vtx2;
+    int nv3 = edgs[tri->edg2].vtx1;
+    int nv4 = edgs[tri->edg0].vtx1;
+    int nv5 = edgs[tri->edg1].vtx1;
+
+    xyz[0] = vtxs[nv0].x * N[0] + vtxs[nv1].x * N[1] + vtxs[nv2].x * N[2] + vtxs[nv3].x * N[3] + vtxs[nv4].x * N[4] + vtxs[nv5].x * N[5];
+    xyz[1] = vtxs[nv0].y * N[0] + vtxs[nv1].y * N[1] + vtxs[nv2].y * N[2] + vtxs[nv3].y * N[3] + vtxs[nv4].y * N[4] + vtxs[nv5].y * N[5];
+    xyz[2] = vtxs[nv0].z * N[0] + vtxs[nv1].z * N[1] + vtxs[nv2].z * N[2] + vtxs[nv3].z * N[3] + vtxs[nv4].z * N[4] + vtxs[nv5].z * N[5];
+  }
 }
 
 void simplex3_mls_quadratic_t::mapping_tet(double *xyz, int n_tet, double* abc)
@@ -2608,6 +2926,264 @@ void simplex3_mls_quadratic_t::mapping_tet(double *xyz, int n_tet, double* abc)
     xyz[1] += N[i]*vtxs[nv[i]].y;
     xyz[2] += N[i]*vtxs[nv[i]].z;
   }
+}
+
+double simplex3_mls_quadratic_t::find_root(double phi, double phi_n, double phi_nn)
+{
+  double c2 = 0.5*phi_nn;      // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e
+  double c1 = phi_n;   // the expansion of f at the center of (0,1)
+  double c0 = phi;
+
+  double x;
+
+  if (fabs(c2) < eps) { x = -c0/c1; }
+  else
+  {
+//    if (c1<0) x = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
+//    else      x = (-2.*c0)/(c1 + sqrt(c1*c1-4.*c2*c0));
+
+    double alpha1 = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
+    double alpha2 = (-2.*c0)/(c1 + sqrt(c1*c1-4.*c2*c0));
+
+    if (fabs(alpha1)>fabs(alpha2)) x = alpha2;
+    else x = alpha1;
+  }
+//#ifdef CASL_THROWS
+//  if (x < -0.5 || x > 0.5)
+//  {
+//    throw std::domain_error("[CASL_ERROR]: ");
+//  }
+//#endif
+
+//  if (x <-0.5) return eps;
+//  if (x > 0.5) return 1.-eps;
+
+  return x;
+}
+
+
+void simplex3_mls_quadratic_t::construct_proper_mapping(int tri_idx, int phi_idx)
+{
+  tri3_t *tri = &tris[tri_idx];
+
+//  tri->is_curved = true;
+  tri->is_curved = false;
+
+  int v0 = tri->vtx0;
+  int v1 = tri->vtx1;
+  int v2 = tri->vtx2;
+
+  /* find normal to triangle */
+  double t01[3] = { vtxs[v1].x - vtxs[v0].x, vtxs[v1].y - vtxs[v0].y, vtxs[v1].z - vtxs[v0].z };
+  double t02[3] = { vtxs[v2].x - vtxs[v0].x, vtxs[v2].y - vtxs[v0].y, vtxs[v2].z - vtxs[v0].z };
+
+  double normal[3] = { t01[1]*t02[2] - t01[2]*t02[1],
+                       t01[2]*t02[0] - t01[0]*t02[2],
+                       t01[0]*t02[1] - t01[1]*t02[0] };
+
+  double norm = sqrt(pow(normal[0], 2.) + pow(normal[1], 2.) + pow(normal[2], 2.));
+
+  normal[0] /= norm;
+  normal[1] /= norm;
+  normal[2] /= norm;
+
+  /* deform edges in normal direction */
+  double xyz_start[3];
+//  double xyz_f[3];
+  double phi_value, phi_n_value, phi_nn_value;
+  double phi_fwd;
+  double phi_bwd;
+  int u0, u1;
+  double d;
+
+  double shift = 0.5;
+
+  // point 01
+  u0 = v0;
+  u1 = v1;
+
+  xyz_start[0] = .5*(vtxs[u0].x+vtxs[u1].x);
+  xyz_start[1] = .5*(vtxs[u0].y+vtxs[u1].y);
+  xyz_start[2] = .5*(vtxs[u0].z+vtxs[u1].z);
+
+  interpolate_from_parent_with_derivatives(xyz_start, normal, phi_value, phi_n_value, phi_nn_value);
+//  interpolate_from_parent_with_derivatives(xyz_start, phi_value, phi_n_value, phi_nn_value, normal);
+
+//  phi_value = (*phi_->at(0))(xyz_start[0], xyz_start[1], xyz_start[2]);
+//  phi_fwd = (*phi_->at(0))(xyz_start[0] + shift*diag*normal[0], xyz_start[1] + shift*diag*normal[1], xyz_start[2] + shift*diag*normal[2]);
+//  phi_bwd = (*phi_->at(0))(xyz_start[0] - shift*diag*normal[0], xyz_start[1] - shift*diag*normal[1], xyz_start[2] - shift*diag*normal[2]);
+//  phi_n_value = (phi_fwd-phi_bwd)/diag;
+//  phi_nn_value = (phi_fwd - 2.*phi_value + phi_bwd)/diag/diag;
+//  phi_nn_value = 0;
+
+  d = find_root(phi_value, phi_n_value, phi_nn_value);
+
+//  d = 0;
+
+  tri->g_vtx01[0] = xyz_start[0] + d*normal[0];
+  tri->g_vtx01[1] = xyz_start[1] + d*normal[1];
+  tri->g_vtx01[2] = xyz_start[2] + d*normal[2];
+
+//  tri->g_vtx01[0] = vtxs[edgs[tri->edg2].vtx1].x;
+//  tri->g_vtx01[1] = vtxs[edgs[tri->edg2].vtx1].y;
+//  tri->g_vtx01[2] = vtxs[edgs[tri->edg2].vtx1].z;
+
+  // point 12
+  u0 = v1;
+  u1 = v2;
+
+  xyz_start[0] = .5*(vtxs[u0].x+vtxs[u1].x);
+  xyz_start[1] = .5*(vtxs[u0].y+vtxs[u1].y);
+  xyz_start[2] = .5*(vtxs[u0].z+vtxs[u1].z);
+
+  interpolate_from_parent_with_derivatives(xyz_start, normal, phi_value, phi_n_value, phi_nn_value);
+//  interpolate_from_parent_with_derivatives(xyz_start, phi_value, phi_n_value, phi_nn_value, normal);
+
+//  phi_value = (*phi_->at(0))(xyz_start[0], xyz_start[1], xyz_start[2]);
+//  phi_fwd = (*phi_->at(0))(xyz_start[0] + shift*diag*normal[0], xyz_start[1] + shift*diag*normal[1], xyz_start[2] + shift*diag*normal[2]);
+//  phi_bwd = (*phi_->at(0))(xyz_start[0] - shift*diag*normal[0], xyz_start[1] - shift*diag*normal[1], xyz_start[2] - shift*diag*normal[2]);
+//  phi_n_value = (phi_fwd-phi_bwd)/diag;
+//  phi_nn_value = (phi_fwd - 2.*phi_value + phi_bwd)/diag/diag;
+//  phi_nn_value = 0;
+
+  d = find_root(phi_value, phi_n_value, phi_nn_value);
+
+//  d = 0;
+
+  tri->g_vtx12[0] = xyz_start[0] + d*normal[0];
+  tri->g_vtx12[1] = xyz_start[1] + d*normal[1];
+  tri->g_vtx12[2] = xyz_start[2] + d*normal[2];
+
+//  tri->g_vtx12[0] = vtxs[edgs[tri->edg0].vtx1].x;
+//  tri->g_vtx12[1] = vtxs[edgs[tri->edg0].vtx1].y;
+//  tri->g_vtx12[2] = vtxs[edgs[tri->edg0].vtx1].z;
+
+  // point 20
+  u0 = v2;
+  u1 = v0;
+
+  xyz_start[0] = .5*(vtxs[u0].x+vtxs[u1].x);
+  xyz_start[1] = .5*(vtxs[u0].y+vtxs[u1].y);
+  xyz_start[2] = .5*(vtxs[u0].z+vtxs[u1].z);
+
+  interpolate_from_parent_with_derivatives(xyz_start, normal, phi_value, phi_n_value, phi_nn_value);
+//  interpolate_from_parent_with_derivatives(xyz_start, phi_value, phi_n_value, phi_nn_value, normal);
+
+//  phi_value = (*phi_->at(0))(xyz_start[0], xyz_start[1], xyz_start[2]);
+//  phi_fwd = (*phi_->at(0))(xyz_start[0] + shift*diag*normal[0], xyz_start[1] + shift*diag*normal[1], xyz_start[2] + shift*diag*normal[2]);
+//  phi_bwd = (*phi_->at(0))(xyz_start[0] - shift*diag*normal[0], xyz_start[1] - shift*diag*normal[1], xyz_start[2] - shift*diag*normal[2]);
+//  phi_n_value = (phi_fwd-phi_bwd)/diag;
+//  phi_nn_value = (phi_fwd - 2.*phi_value + phi_bwd)/diag/diag;
+//  phi_nn_value = 0;
+
+  d = find_root(phi_value, phi_n_value, phi_nn_value);
+
+//  d = 0;
+
+  tri->g_vtx02[0] = xyz_start[0] + d*normal[0];
+  tri->g_vtx02[1] = xyz_start[1] + d*normal[1];
+  tri->g_vtx02[2] = xyz_start[2] + d*normal[2];
+
+//  tri->g_vtx02[0] = vtxs[edgs[tri->edg1].vtx1].x;
+//  tri->g_vtx02[1] = vtxs[edgs[tri->edg1].vtx1].y;
+//  tri->g_vtx02[2] = vtxs[edgs[tri->edg1].vtx1].z;
+
+
+//  normal[0] = t01[1]*t02[2] - t01[2]*t02[1];
+//  normal[1] = t01[2]*t02[0] - t01[0]*t02[2];
+//  normal[2] = t01[0]*t02[1] - t01[1]*t02[0];
+
+//  norm = sqrt(pow(normal[0], 2.) + pow(normal[1], 2.) + pow(normal[2], 2.));
+
+//  normal[0] /= norm;
+//  normal[1] /= norm;
+//  normal[2] /= norm;
+
+  /* find projections of old midpoints onto triangle's plane */
+  vtx3_t *vtx0 = &vtxs[v0];
+  vtx3_t *vtx1 = &vtxs[v1];
+  vtx3_t *vtx2 = &vtxs[v2];
+
+  double A[9], A_inv[9], D[3];
+  A[3*0+0] = vtx1->x - vtx0->x; A[3*0+1] = vtx2->x - vtx0->x; A[3*0+2] = normal[0];
+  A[3*1+0] = vtx1->y - vtx0->y; A[3*1+1] = vtx2->y - vtx0->y; A[3*1+2] = normal[1];
+  A[3*2+0] = vtx1->z - vtx0->z; A[3*2+1] = vtx2->z - vtx0->z; A[3*2+2] = normal[2];
+
+  inv_mat3(A, A_inv);
+  double xyz_test[3];
+  double xyz_target[3];
+
+  int u = edgs[tri->edg0].vtx1;
+
+  D[0] = vtxs[u].x - vtx0->x;
+  D[1] = vtxs[u].y - vtx0->y;
+  D[2] = vtxs[u].z - vtx0->z;
+
+  tri->ab12[0] = A_inv[3*0+0]*D[0] + A_inv[3*0+1]*D[1] + A_inv[3*0+2]*D[2];
+  tri->ab12[1] = A_inv[3*1+0]*D[0] + A_inv[3*1+1]*D[1] + A_inv[3*1+2]*D[2];
+//  tri->ab12[0] = 0.5;
+//  tri->ab12[1] = 0.5;
+//  tri->ab12[2] = A_inv[3*2+0]*D[0] + A_inv[3*2+1]*D[1] + A_inv[3*2+2]*D[2];
+
+//  xyz_target[0] = vtxs[u].x;
+//  xyz_target[1] = vtxs[u].y;
+//  xyz_target[2] = vtxs[u].z;
+
+//  invert_mapping_tri(tri_idx, xyz_target, tri->ab12);
+
+  u = edgs[tri->edg1].vtx1;
+
+  D[0] = vtxs[u].x - vtx0->x;
+  D[1] = vtxs[u].y - vtx0->y;
+  D[2] = vtxs[u].z - vtx0->z;
+
+  tri->ab02[0] = A_inv[3*0+0]*D[0] + A_inv[3*0+1]*D[1] + A_inv[3*0+2]*D[2];
+  tri->ab02[1] = A_inv[3*1+0]*D[0] + A_inv[3*1+1]*D[1] + A_inv[3*1+2]*D[2];
+//  tri->ab02[0] = 0.0;
+//  tri->ab02[1] = 0.5;
+//  tri->ab02[2] = A_inv[3*2+0]*D[0] + A_inv[3*2+1]*D[1] + A_inv[3*2+2]*D[2];
+
+//  xyz_target[0] = vtxs[u].x;
+//  xyz_target[1] = vtxs[u].y;
+//  xyz_target[2] = vtxs[u].z;
+
+//  invert_mapping_tri(tri_idx, xyz_target, tri->ab02);
+
+  u = edgs[tri->edg2].vtx1;
+
+  D[0] = vtxs[u].x - vtx0->x;
+  D[1] = vtxs[u].y - vtx0->y;
+  D[2] = vtxs[u].z - vtx0->z;
+
+  tri->ab01[0] = A_inv[3*0+0]*D[0] + A_inv[3*0+1]*D[1] + A_inv[3*0+2]*D[2];
+  tri->ab01[1] = A_inv[3*1+0]*D[0] + A_inv[3*1+1]*D[1] + A_inv[3*1+2]*D[2];
+//  tri->ab01[0] = 0.5;
+//  tri->ab01[1] = 0.0;
+//  tri->ab01[2] = A_inv[3*2+0]*D[0] + A_inv[3*2+1]*D[1] + A_inv[3*2+2]*D[2];
+
+//  xyz_target[0] = vtxs[u].x;
+//  xyz_target[1] = vtxs[u].y;
+//  xyz_target[2] = vtxs[u].z;
+
+//  invert_mapping_tri(tri_idx, xyz_target, tri->ab01);
+
+//  double dist_error = 0;
+
+//  u = edgs[tri->edg0].vtx1;
+//  mapping_tri(xyz_test, tri_idx, tri->ab12);
+//  dist_error = sqrt(pow(xyz_test[0] - vtxs[u].x, 2.) + pow(xyz_test[1] - vtxs[u].y, 2.) + pow(xyz_test[2] - vtxs[u].z, 2.));
+//  max_dist_error_ = MAX(dist_error, max_dist_error_);
+
+//  u = edgs[tri->edg1].vtx1;
+//  mapping_tri(xyz_test, tri_idx, tri->ab02);
+//  dist_error = sqrt(pow(xyz_test[0] - vtxs[u].x, 2.) + pow(xyz_test[1] - vtxs[u].y, 2.) + pow(xyz_test[2] - vtxs[u].z, 2.));
+//  max_dist_error_ = MAX(dist_error, max_dist_error_);
+
+//  u = edgs[tri->edg2].vtx1;
+//  mapping_tri(xyz_test, tri_idx, tri->ab01);
+//  dist_error = sqrt(pow(xyz_test[0] - vtxs[u].x, 2.) + pow(xyz_test[1] - vtxs[u].y, 2.) + pow(xyz_test[2] - vtxs[u].z, 2.));
+//  max_dist_error_ = MAX(dist_error, max_dist_error_);
+
 }
 
 #ifdef CASL_THROWS
@@ -2854,3 +3430,484 @@ double simplex3_mls_quadratic_t::volume(vtx3_t &vtx0, vtx3_t &vtx1, vtx3_t &vtx2
 
   return fabs(vol/6.);
 }
+
+
+
+
+
+//--------------------------------------------------
+// Interpolation
+//--------------------------------------------------
+double simplex3_mls_quadratic_t::interpolate_from_parent(std::vector<double> &f, double* xyz)
+{
+  // map real point to reference element
+  vtx3_t *v0 = &vtxs[0];
+  vtx3_t *v1 = &vtxs[1];
+  vtx3_t *v2 = &vtxs[2];
+  vtx3_t *v3 = &vtxs[3];
+
+  double A[9], A_inv[9], D[3];
+  A[3*0+0] = v1->x - v0->x; A[3*0+1] = v2->x - v0->x; A[3*0+2] = v3->x - v0->x; D[0] = xyz[0] - v0->x;
+  A[3*1+0] = v1->y - v0->y; A[3*1+1] = v2->y - v0->y; A[3*1+2] = v3->y - v0->y; D[1] = xyz[1] - v0->y;
+  A[3*2+0] = v1->z - v0->z; A[3*2+1] = v2->z - v0->z; A[3*2+2] = v3->z - v0->z; D[2] = xyz[2] - v0->z;
+
+  inv_mat3(A, A_inv);
+
+  double a = A_inv[3*0+0]*D[0] + A_inv[3*0+1]*D[1] + A_inv[3*0+2]*D[2];
+  double b = A_inv[3*1+0]*D[0] + A_inv[3*1+1]*D[1] + A_inv[3*1+2]*D[2];
+  double c = A_inv[3*2+0]*D[0] + A_inv[3*2+1]*D[1] + A_inv[3*2+2]*D[2];
+
+  // compute nodal functions
+  double d = 1.-a-b-c;
+  double N[nodes_per_tet]  = { d*(2.*d-1.), a*(2.*a-1.), b*(2.*b-1.), c*(2.*c-1.), 4.*d*a, 4.*a*b, 4.*b*d, 4.*d*c, 4.*a*c, 4.*b*c };
+
+  double result = 0;
+
+  for (short i = 0; i < nodes_per_tet; ++i)
+  {
+    result += N[i]*f[i];
+  }
+
+  return result;
+}
+
+void simplex3_mls_quadratic_t::inv_mat3(double *in, double *out)
+{
+  double det = in[3*0+0]*(in[3*1+1]*in[3*2+2] - in[3*2+1]*in[3*1+2]) -
+               in[3*0+1]*(in[3*1+0]*in[3*2+2] - in[3*1+2]*in[3*2+0]) +
+               in[3*0+2]*(in[3*1+0]*in[3*2+1] - in[3*2+0]*in[3*1+1]);
+
+  out[3*0+0] = (in[3*1+1]*in[3*2+2] - in[3*2+1]*in[3*1+2])/det;
+  out[3*0+1] = (in[3*0+2]*in[3*2+1] - in[3*2+2]*in[3*0+1])/det;
+  out[3*0+2] = (in[3*0+1]*in[3*1+2] - in[3*1+1]*in[3*0+2])/det;
+
+  out[3*1+0] = (in[3*1+2]*in[3*2+0] - in[3*2+2]*in[3*1+0])/det;
+  out[3*1+1] = (in[3*0+0]*in[3*2+2] - in[3*2+0]*in[3*0+2])/det;
+  out[3*1+2] = (in[3*0+2]*in[3*1+0] - in[3*1+2]*in[3*0+0])/det;
+
+  out[3*2+0] = (in[3*1+0]*in[3*2+1] - in[3*2+0]*in[3*1+1])/det;
+  out[3*2+1] = (in[3*0+1]*in[3*2+0] - in[3*2+1]*in[3*0+0])/det;
+  out[3*2+2] = (in[3*0+0]*in[3*1+1] - in[3*1+0]*in[3*0+1])/det;
+}
+
+
+double simplex3_mls_quadratic_t::interpolate_from_parent_with_derivatives(double* xyz, double normal[3], double &F, double &Fn, double &Fnn)
+{
+  tet3_t *tet = &tets[0];
+
+  // get coordinates of intersection points
+  int e01 = tris[tet->tri3].edg2;
+  int e02 = tris[tet->tri3].edg1;
+  int e03 = tris[tet->tri1].edg1;
+  int e12 = tris[tet->tri0].edg2;
+  int e23 = tris[tet->tri0].edg0;
+  int e13 = tris[tet->tri0].edg1;
+
+  std::vector<int> nv(nodes_per_tet, -1);
+
+  nv[0] = tet->vtx0;
+  nv[1] = tet->vtx1;
+  nv[2] = tet->vtx2;
+  nv[3] = tet->vtx3;
+  nv[4] = edgs[e01].vtx1;
+  nv[5] = edgs[e12].vtx1;
+  nv[6] = edgs[e02].vtx1;
+  nv[7] = edgs[e03].vtx1;
+  nv[8] = edgs[e13].vtx1;
+  nv[9] = edgs[e23].vtx1;
+
+  // map real point to reference element
+  vtx3_t *v0 = &vtxs[nv[0]];
+  vtx3_t *v1 = &vtxs[nv[1]];
+  vtx3_t *v2 = &vtxs[nv[2]];
+  vtx3_t *v3 = &vtxs[nv[3]];
+
+  double A[9], A_inv[9], D[3];
+  A[3*0+0] = v1->x - v0->x; A[3*0+1] = v2->x - v0->x; A[3*0+2] = v3->x - v0->x; D[0] = xyz[0] - v0->x;
+  A[3*1+0] = v1->y - v0->y; A[3*1+1] = v2->y - v0->y; A[3*1+2] = v3->y - v0->y; D[1] = xyz[1] - v0->y;
+  A[3*2+0] = v1->z - v0->z; A[3*2+1] = v2->z - v0->z; A[3*2+2] = v3->z - v0->z; D[2] = xyz[2] - v0->z;
+
+  inv_mat3(A, A_inv);
+
+  double a = A_inv[3*0+0]*D[0] + A_inv[3*0+1]*D[1] + A_inv[3*0+2]*D[2];
+  double b = A_inv[3*1+0]*D[0] + A_inv[3*1+1]*D[1] + A_inv[3*1+2]*D[2];
+  double c = A_inv[3*2+0]*D[0] + A_inv[3*2+1]*D[1] + A_inv[3*2+2]*D[2];
+
+  // compute nodal functions
+  double d = 1.-a-b-c;
+  double N[nodes_per_tet]  = { d*(2.*d-1.), a*(2.*a-1.), b*(2.*b-1.), c*(2.*c-1.), 4.*d*a, 4.*a*b, 4.*b*d, 4.*d*c, 4.*a*c, 4.*b*c };
+
+  double Na[nodes_per_tet] = { -3.+4.*a+4.*b+4.*c,   4.*a-1., 0.,      0.,       4.*(1.-2.*a-b-c), 4.*b, -4.*b,             -4.*c,             4.*c, 0. };
+  double Nb[nodes_per_tet] = { -3.+4.*a+4.*b+4.*c,   0.,      4.*b-1., 0.,      -4.*a,             4.*a,  4.*(1.-a-2.*b-c), -4.*c,             0.,   4.*c };
+  double Nc[nodes_per_tet] = { -3.+4.*a+4.*b+4.*c,   0.,      0.,      4.*c-1., -4.*a,             0.,   -4.*b,              4.*(1.-a-b-2.*c), 4.*a, 4.*b };
+
+  double Naa[nodes_per_tet] = { 4, 4, 0, 0,-8, 0, 0, 0, 0, 0 };
+  double Nbb[nodes_per_tet] = { 4, 0, 4, 0, 0, 0,-8, 0, 0, 0 };
+  double Ncc[nodes_per_tet] = { 4, 0, 0, 4, 0, 0, 0,-8, 0, 0 };
+  double Nab[nodes_per_tet] = { 4, 0, 0, 0,-4, 4,-4, 0, 0, 0 };
+  double Nbc[nodes_per_tet] = { 4, 0, 0, 0, 0, 0,-4,-4, 0, 4 };
+  double Nca[nodes_per_tet] = { 4, 0, 0, 0,-4, 0, 0,-4, 4, 0 };
+
+  double Fa = 0, Fb = 0, Fc = 0, Faa = 0, Fbb = 0, Fcc = 0, Fab = 0, Fbc = 0, Fca = 0;
+  F = 0;
+  double f;
+  for (short i = 0; i < nodes_per_tet; ++i)
+  {
+    f = vtxs[nv[i]].value;
+
+    F   += f*N[i];
+
+    Fa  += f*Na[i];
+    Fb  += f*Nb[i];
+    Fc  += f*Nc[i];
+
+    Faa += f*Naa[i];
+    Fbb += f*Nbb[i];
+    Fcc += f*Ncc[i];
+
+    Fab += f*Nab[i];
+    Fbc += f*Nbc[i];
+    Fca += f*Nca[i];
+  }
+
+  double Fx = Fa*A_inv[3*0+0] + Fb*A_inv[3*1+0] + Fc*A_inv[3*2+0];
+  double Fy = Fa*A_inv[3*0+1] + Fb*A_inv[3*1+1] + Fc*A_inv[3*2+1];
+  double Fz = Fa*A_inv[3*0+2] + Fb*A_inv[3*1+2] + Fc*A_inv[3*2+2];
+
+  int alph, beta;
+
+  alph = 0; beta = 0;
+  double Fxx = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+             + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+             + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+             + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+             + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+             + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  alph = 1; beta = 1;
+  double Fyy = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  alph = 2; beta = 2;
+  double Fzz = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  alph = 0; beta = 1;
+  double Fxy = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  alph = 1; beta = 2;
+  double Fyz = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  alph = 2; beta = 0;
+  double Fzx = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  double nx = normal[0];
+  double ny = normal[1];
+  double nz = normal[2];
+
+  Fn  = Fx*nx + Fy*ny + Fz*nz;
+  Fnn = Fxx*nx*nx + Fyy*ny*ny + Fzz*nz*nz + 2.*Fxy*nx*ny + 2.*Fyz*ny*nz + 2.*Fzx*nz*nx;
+}
+
+
+double simplex3_mls_quadratic_t::interpolate_from_parent_with_derivatives(double* xyz, double &F, double &Fn, double &Fnn, double *normal)
+{
+  tet3_t *tet = &tets[0];
+
+  // get coordinates of intersection points
+  int e01 = tris[tet->tri3].edg2;
+  int e02 = tris[tet->tri3].edg1;
+  int e03 = tris[tet->tri1].edg1;
+  int e12 = tris[tet->tri0].edg2;
+  int e23 = tris[tet->tri0].edg0;
+  int e13 = tris[tet->tri0].edg1;
+
+  std::vector<int> nv(nodes_per_tet, -1);
+
+  nv[0] = tet->vtx0;
+  nv[1] = tet->vtx1;
+  nv[2] = tet->vtx2;
+  nv[3] = tet->vtx3;
+  nv[4] = edgs[e01].vtx1;
+  nv[5] = edgs[e12].vtx1;
+  nv[6] = edgs[e02].vtx1;
+  nv[7] = edgs[e03].vtx1;
+  nv[8] = edgs[e13].vtx1;
+  nv[9] = edgs[e23].vtx1;
+
+  // map real point to reference element
+  vtx3_t *v0 = &vtxs[nv[0]];
+  vtx3_t *v1 = &vtxs[nv[1]];
+  vtx3_t *v2 = &vtxs[nv[2]];
+  vtx3_t *v3 = &vtxs[nv[3]];
+
+  double A[9], A_inv[9], D[3];
+  A[3*0+0] = v1->x - v0->x; A[3*0+1] = v2->x - v0->x; A[3*0+2] = v3->x - v0->x; D[0] = xyz[0] - v0->x;
+  A[3*1+0] = v1->y - v0->y; A[3*1+1] = v2->y - v0->y; A[3*1+2] = v3->y - v0->y; D[1] = xyz[1] - v0->y;
+  A[3*2+0] = v1->z - v0->z; A[3*2+1] = v2->z - v0->z; A[3*2+2] = v3->z - v0->z; D[2] = xyz[2] - v0->z;
+
+  inv_mat3(A, A_inv);
+
+  double a = A_inv[3*0+0]*D[0] + A_inv[3*0+1]*D[1] + A_inv[3*0+2]*D[2];
+  double b = A_inv[3*1+0]*D[0] + A_inv[3*1+1]*D[1] + A_inv[3*1+2]*D[2];
+  double c = A_inv[3*2+0]*D[0] + A_inv[3*2+1]*D[1] + A_inv[3*2+2]*D[2];
+
+  // compute nodal functions
+  double d = 1.-a-b-c;
+  double N[nodes_per_tet]  = { d*(2.*d-1.), a*(2.*a-1.), b*(2.*b-1.), c*(2.*c-1.), 4.*d*a, 4.*a*b, 4.*b*d, 4.*d*c, 4.*a*c, 4.*b*c };
+
+  double Na[nodes_per_tet] = { -3.+4.*a+4.*b+4.*c,   4.*a-1., 0.,      0.,       4.*(1.-2.*a-b-c), 4.*b, -4.*b,             -4.*c,             4.*c, 0. };
+  double Nb[nodes_per_tet] = { -3.+4.*a+4.*b+4.*c,   0.,      4.*b-1., 0.,      -4.*a,             4.*a,  4.*(1.-a-2.*b-c), -4.*c,             0.,   4.*c };
+  double Nc[nodes_per_tet] = { -3.+4.*a+4.*b+4.*c,   0.,      0.,      4.*c-1., -4.*a,             0.,   -4.*b,              4.*(1.-a-b-2.*c), 4.*a, 4.*b };
+
+  double Naa[nodes_per_tet] = { 4, 4, 0, 0,-8, 0, 0, 0, 0, 0 };
+  double Nbb[nodes_per_tet] = { 4, 0, 4, 0, 0, 0,-8, 0, 0, 0 };
+  double Ncc[nodes_per_tet] = { 4, 0, 0, 4, 0, 0, 0,-8, 0, 0 };
+  double Nab[nodes_per_tet] = { 4, 0, 0, 0,-4, 4,-4, 0, 0, 0 };
+  double Nbc[nodes_per_tet] = { 4, 0, 0, 0, 0, 0,-4,-4, 0, 4 };
+  double Nca[nodes_per_tet] = { 4, 0, 0, 0,-4, 0, 0,-4, 4, 0 };
+
+  double Fa = 0, Fb = 0, Fc = 0, Faa = 0, Fbb = 0, Fcc = 0, Fab = 0, Fbc = 0, Fca = 0;
+  F = 0;
+  double f;
+  for (short i = 0; i < nodes_per_tet; ++i)
+  {
+    f = vtxs[nv[i]].value;
+
+    F   += f*N[i];
+
+    Fa  += f*Na[i];
+    Fb  += f*Nb[i];
+    Fc  += f*Nc[i];
+
+    Faa += f*Naa[i];
+    Fbb += f*Nbb[i];
+    Fcc += f*Ncc[i];
+
+    Fab += f*Nab[i];
+    Fbc += f*Nbc[i];
+    Fca += f*Nca[i];
+  }
+
+  double Fx = Fa*A_inv[3*0+0] + Fb*A_inv[3*1+0] + Fc*A_inv[3*2+0];
+  double Fy = Fa*A_inv[3*0+1] + Fb*A_inv[3*1+1] + Fc*A_inv[3*2+1];
+  double Fz = Fa*A_inv[3*0+2] + Fb*A_inv[3*1+2] + Fc*A_inv[3*2+2];
+
+  double norm = sqrt(Fx*Fx + Fy*Fy + Fz*Fz);
+
+  normal[0] = Fx/norm;
+  normal[1] = Fy/norm;
+  normal[2] = Fz/norm;
+
+  int alph, beta;
+
+  alph = 0; beta = 0;
+  double Fxx = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      +        Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      +        Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      +        Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      +        Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      +        Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  alph = 1; beta = 1;
+  double Fyy = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  alph = 2; beta = 2;
+  double Fzz = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  alph = 0; beta = 1;
+  double Fxy = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  alph = 1; beta = 2;
+  double Fyz = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  alph = 2; beta = 0;
+  double Fzx = Faa*A_inv[3*0+alph]*A_inv[3*0+beta]
+      + Fbb*A_inv[3*1+alph]*A_inv[3*1+beta]
+      + Fcc*A_inv[3*2+alph]*A_inv[3*2+beta]
+      + Fab*(A_inv[3*0+alph]*A_inv[3*1+beta] + A_inv[3*1+alph]*A_inv[3*0+beta])
+      + Fbc*(A_inv[3*1+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*1+beta])
+      + Fca*(A_inv[3*0+alph]*A_inv[3*2+beta] + A_inv[3*2+alph]*A_inv[3*0+beta]);
+
+  double nx = normal[0];
+  double ny = normal[1];
+  double nz = normal[2];
+
+  Fn  = Fx*nx + Fy*ny + Fz*nz;
+  Fnn = Fxx*nx*nx + Fyy*ny*ny + Fzz*nz*nz + 2.*Fxy*nx*ny + 2.*Fyz*ny*nz + 2.*Fzx*nz*nx;
+}
+
+
+void simplex3_mls_quadratic_t::deform_edge_in_normal_dir(int n_edg)
+{
+  edg3_t *edg = &edgs[n_edg];
+
+  double xyz_start[3] = { .5*(vtxs[edg->vtx0].x + vtxs[edg->vtx2].x),
+                          .5*(vtxs[edg->vtx0].y + vtxs[edg->vtx2].y),
+                          .5*(vtxs[edg->vtx0].z + vtxs[edg->vtx2].z) };
+
+  double phi_value;
+  double phi_n_value;
+  double phi_nn_value;
+  double normal[3];
+
+  interpolate_from_parent_with_derivatives(xyz_start, phi_value, phi_n_value, phi_nn_value, normal);
+
+  double d = find_root(phi_value, phi_n_value, phi_nn_value);
+
+  vtxs[edg->vtx1].x = xyz_start[0] + d*normal[0];
+  vtxs[edg->vtx1].y = xyz_start[1] + d*normal[1];
+  vtxs[edg->vtx1].z = xyz_start[2] + d*normal[2];
+}
+
+void simplex3_mls_quadratic_t::invert_mapping_tri(int tri_idx, double xyz[3], double ab[2])
+{
+  tri3_t *tri = &tris[tri_idx];
+
+  double a = ab[0];
+  double b = ab[1];
+
+  int nv0 = tri->vtx0;
+  int nv1 = tri->vtx1;
+  int nv2 = tri->vtx2;
+
+  double X[nodes_per_tri] = { vtxs[nv0].x, vtxs[nv1].x, vtxs[nv2].x, tri->g_vtx01[0], tri->g_vtx12[0], tri->g_vtx02[0] };
+  double Y[nodes_per_tri] = { vtxs[nv0].y, vtxs[nv1].y, vtxs[nv2].y, tri->g_vtx01[1], tri->g_vtx12[1], tri->g_vtx02[1] };
+  double Z[nodes_per_tri] = { vtxs[nv0].z, vtxs[nv1].z, vtxs[nv2].z, tri->g_vtx01[2], tri->g_vtx12[2], tri->g_vtx02[2] };
+
+  double tolerance = 1.e-15;
+  double error = 1.;
+  int max_iterations = 1000;
+  int iteration = 0;
+  double error_nm1 = 2.;
+
+  double xyz_g[3];
+  double Xa, Ya, Za;
+  double Xb, Yb, Zb;
+
+  double Xaa, Yaa, Zaa;
+  double Xab, Yab, Zab;
+  double Xbb, Ybb, Zbb;
+
+  while (error > tolerance && iteration < max_iterations)
+  {
+    double N[nodes_per_tri]  = {(1.-a-b)*(1.-2.*a-2.*b),  a*(2.*a-1.),  b*(2.*b-1.),  4.*a*(1.-a-b),  4.*a*b, 4.*b*(1.-a-b)};
+    double Na[nodes_per_tri] = {-3.+4.*a+4.*b,            4.*a-1.,      0,            4.-8.*a-4.*b,   4.*b,  -4.*b};
+    double Nb[nodes_per_tri] = {-3.+4.*a+4.*b,            0,            4.*b-1.,     -4.*a,           4.*a,   4.-4.*a-8.*b};
+    double Naa[nodes_per_tri] = {4, 4, 0,-8, 0, 0};
+    double Nab[nodes_per_tri] = {4, 0, 0,-4, 4,-4};
+    double Nbb[nodes_per_tri] = {4, 0, 4, 0, 0,-8};
+
+    xyz_g[0] = 0;
+    xyz_g[1] = 0;
+    xyz_g[2] = 0;
+
+    Xa = 0; Ya = 0; Za = 0;
+    Xb = 0; Yb = 0; Zb = 0;
+
+    Xaa = 0; Yaa = 0; Zaa = 0;
+    Xab = 0; Yab = 0; Zab = 0;
+    Xbb = 0; Ybb = 0; Zbb = 0;
+
+    for (int i = 0; i < nodes_per_tri; ++i)
+    {
+      xyz_g[0] += X[i]*N[i];
+      xyz_g[1] += Y[i]*N[i];
+      xyz_g[2] += Z[i]*N[i];
+
+      Xa += X[i]*Na[i];   Ya += Y[i]*Na[i];   Za += Z[i]*Na[i];
+      Xb += X[i]*Nb[i];   Yb += Y[i]*Nb[i];   Zb += Z[i]*Nb[i];
+
+      Xaa += X[i]*Naa[i];   Yaa += Y[i]*Naa[i];   Zaa += Z[i]*Naa[i];
+      Xab += X[i]*Nab[i];   Yab += Y[i]*Nab[i];   Zab += Z[i]*Nab[i];
+      Xbb += X[i]*Nbb[i];   Ybb += Y[i]*Nbb[i];   Zbb += Z[i]*Nbb[i];
+    }
+    error_nm1 = error;
+    error = sqrt(pow(xyz_g[0]-xyz[0], 2.) + pow(xyz_g[1]-xyz[1], 2.) + pow(xyz_g[2]-xyz[2],2.));
+
+//    if (error_nm1 < error)
+//      std::cout << error_nm1 << " " << error << std::endl;
+
+    if (error > tolerance)
+    {
+      double Fa = 2.*( (xyz_g[0]-xyz[0])*Xa + (xyz_g[1]-xyz[1])*Ya + (xyz_g[2]-xyz[2])*Za );
+      double Fb = 2.*( (xyz_g[0]-xyz[0])*Xb + (xyz_g[1]-xyz[1])*Yb + (xyz_g[2]-xyz[2])*Zb );
+
+      double Faa = 2.*( Xa*Xa + Ya*Ya + Za*Za + (xyz_g[0]-xyz[0])*Xaa + (xyz_g[1]-xyz[1])*Yaa + (xyz_g[2]-xyz[2])*Zaa );
+      double Fab = 2.*( Xa*Xb + Ya*Yb + Za*Zb + (xyz_g[0]-xyz[0])*Xab + (xyz_g[1]-xyz[1])*Yab + (xyz_g[2]-xyz[2])*Zab );
+      double Fbb = 2.*( Xb*Xb + Yb*Yb + Zb*Zb + (xyz_g[0]-xyz[0])*Xbb + (xyz_g[1]-xyz[1])*Ybb + (xyz_g[2]-xyz[2])*Zbb );
+
+      double na = Fa;
+      double nb = Fb;
+
+      double norm = sqrt(na*na + nb*nb);
+
+      na /= norm;
+      nb /= norm;
+
+      double Fn  = Fa*na + Fb*nb;
+      double Fnn = Faa*na*na + 2.*Fab*na*nb + Fbb*nb*nb;
+
+      double alpha = - Fn/Fnn;
+
+      a += alpha*na;
+      b += alpha*nb;
+
+//      std::cout << "Iteration " << iteration << ": " << alpha*na << " " << alpha*nb << " " << error << std::endl;
+    }
+
+    iteration++;
+
+  }
+
+
+  ab[0] = a;
+  ab[1] = b;
+}
+
+
+
+
