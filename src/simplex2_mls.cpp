@@ -9,7 +9,7 @@ simplex2_mls_t::simplex2_mls_t()
 
   use_linear = true;
 
-  eps = 1.0e-15;
+  eps = 1.0e-13;
 }
 
 simplex2_mls_t::simplex2_mls_t(double x0, double y0,
@@ -35,7 +35,7 @@ simplex2_mls_t::simplex2_mls_t(double x0, double y0,
 
   use_linear = true;
 
-  eps = 1.0e-15;
+  eps = 1.0e-13;
 }
 
 
@@ -70,6 +70,8 @@ void simplex2_mls_t::construct_domain(std::vector<CF_2 *> &phi, std::vector<acti
     n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, clr[phi_idx], acn[phi_idx]);
     n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
     n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
+
+    eps *= 0.5;
   }
 }
 
@@ -453,14 +455,24 @@ void simplex2_mls_t::do_action_tri(int n_tri, int cn, action_t action)
 
 bool simplex2_mls_t::need_swap(int v0, int v1)
 {
-  double dif = vtxs[v0].value - vtxs[v1].value;
-  if (fabs(dif) < eps){ // if values are too close, sort vertices by their numbers
+//  double dif = vtxs[v0].value - vtxs[v1].value;
+//  if (fabs(dif) < eps){ // if values are too close, sort vertices by their numbers
+//    if (v0 > v1) return true;
+//    else         return false;
+//  } else if (dif > 0.0){ // otherwise sort by values
+//    return true;
+//  } else {
+//    return false;
+//  }
+
+  if (vtxs[v0].value > vtxs[v1].value)
+    return true;
+  else if (vtxs[v0].value < vtxs[v1].value)
+    return false;
+  else
+  {
     if (v0 > v1) return true;
     else         return false;
-  } else if (dif > 0.0){ // otherwise sort by values
-    return true;
-  } else {
-    return false;
   }
 }
 
@@ -625,8 +637,8 @@ double simplex2_mls_t::find_intersection_linear(int v0, int v1)
   double f0 = vtx0->value;
   double f1 = vtx1->value;
 
-  if(fabs(f0)<eps) return 0.+eps;
-  if(fabs(f1)<eps) return l-eps;
+  if(fabs(f0)<.8*eps) return 0.+.8*eps;
+  if(fabs(f1)<.8*eps) return l-.8*eps;
 
 #ifdef CASL_THROWS
   if(f0*f1 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
@@ -658,9 +670,9 @@ double simplex2_mls_t::find_intersection_quadratic(int e)
   double f01 = edgs[e].value;
   double f1 = vtx1->value;
 
-  if (fabs(f0)  < eps) return (l-eps)/l;
-  if (fabs(f01) < eps) return 0.5;
-  if (fabs(f1)  < eps) return (0.+eps)/l;
+  if (fabs(f0)  < .8*eps) return (l-.8*eps)/l;
+  if (fabs(f01) < .8*eps) return 0.5;
+  if (fabs(f1)  < .8*eps) return (0.+.8*eps)/l;
 
 #ifdef CASL_THROWS
   if(f0*f1 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
@@ -684,8 +696,8 @@ double simplex2_mls_t::find_intersection_quadratic(int e)
   if (x < -0.5*l || x > 0.5*l) throw std::domain_error("[CASL_ERROR]: ");
 #endif
 
-  if (x < -0.5*l) return (l-eps)/l;
-  if (x > 0.5*l) return (0.+eps)/l;
+  if (x < -0.5*l) return (l-.8*eps)/l;
+  if (x > 0.5*l) return (0.+.8*eps)/l;
 
   return 1.-(x+0.5*l)/l;
 }

@@ -35,12 +35,18 @@
  * 0
  *
  */
+//#define t1p0 0
+//#define t1p1 8
+//#define t1p2 6
+//#define t1p3 4
+//#define t1p4 7
+//#define t1p5 3
 #define t1p0 0
-#define t1p1 8
-#define t1p2 6
-#define t1p3 4
+#define t1p1 6
+#define t1p2 8
+#define t1p3 3
 #define t1p4 7
-#define t1p5 3
+#define t1p5 4
 
 #include "vector"
 #include "simplex2_mls_quadratic.h"

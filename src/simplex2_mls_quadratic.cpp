@@ -11,7 +11,7 @@ simplex2_mls_quadratic_t::simplex2_mls_quadratic_t()
   edgs.reserve(27);
   tris.reserve(20);
 
-  eps = 1.0e-15;
+  eps = 1.0e-13;
 }
 
 simplex2_mls_quadratic_t::simplex2_mls_quadratic_t(double x0, double y0,
@@ -47,7 +47,7 @@ simplex2_mls_quadratic_t::simplex2_mls_quadratic_t(double x0, double y0,
 
   tris.push_back(tri2_t(0,1,2,0,1,2));
 
-  eps = 1.0e-15;
+  eps = 1.0e-13;
 }
 
 
@@ -109,6 +109,8 @@ void simplex2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::v
     n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, clr[phi_idx], acn[phi_idx]);
     n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
     n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
+
+    eps *= 0.5;
   }
 
   // sort everything before integration
@@ -619,9 +621,9 @@ double simplex2_mls_quadratic_t::find_intersection_quadratic(int e)
   double f1 = vtxs[edgs[e].vtx1].value;
   double f2 = vtxs[edgs[e].vtx2].value;
 
-  if (fabs(f0) < eps) return eps;
-  if (fabs(f1) < eps) return 0.5;
-  if (fabs(f2) < eps) return 1.-eps;
+  if (fabs(f0) < .8*eps) return .8*eps;
+  if (fabs(f1) < .8*eps) return 0.5;
+  if (fabs(f2) < .8*eps) return 1.-.8*eps;
 
 #ifdef CASL_THROWS
   if(f0*f2 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
@@ -649,8 +651,8 @@ double simplex2_mls_quadratic_t::find_intersection_quadratic(int e)
   }
 #endif
 
-  if (x <-0.5) return eps;
-  if (x > 0.5) return 1.-eps;
+  if (x <-0.5) return .8*eps;
+  if (x > 0.5) return 1.-.8*eps;
 
   return .5+x;
 }
@@ -786,14 +788,24 @@ void simplex2_mls_quadratic_t::find_middle_node(double &x_out, double &y_out, do
 
 bool simplex2_mls_quadratic_t::need_swap(int v0, int v1)
 {
-  double dif = vtxs[v0].value - vtxs[v1].value;
-  if (fabs(dif) < eps){ // if values are too close, sort vertices by their numbers
+//  double dif = vtxs[v0].value - vtxs[v1].value;
+//  if (fabs(dif) < eps){ // if values are too close, sort vertices by their numbers
+//    if (v0 > v1) return true;
+//    else         return false;
+//  } else if (dif > 0.0){ // otherwise sort by values
+//    return true;
+//  } else {
+//    return false;
+//  }
+
+  if (vtxs[v0].value > vtxs[v1].value)
+    return true;
+  else if (vtxs[v0].value < vtxs[v1].value)
+    return false;
+  else
+  {
     if (v0 > v1) return true;
     else         return false;
-  } else if (dif > 0.0){ // otherwise sort by values
-    return true;
-  } else {
-    return false;
   }
 }
 

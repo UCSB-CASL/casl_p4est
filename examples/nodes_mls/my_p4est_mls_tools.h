@@ -107,7 +107,7 @@ public:
 #else
         phi_current = (*phi_cf->at(i))(x,y);
 #endif
-        phi_total = 0.5*(phi_total+phi_current-(sqrt(SQR(phi_total-phi_current)+epsilon)-epsilon/sqrt(SQR(phi_total-phi_current)+epsilon)));
+        phi_total = 0.5*(phi_total+phi_current-(sqrt(SQR(phi_total-phi_current)+epsilon)-(epsilon)/sqrt(SQR(phi_total-phi_current)+epsilon)));
 //        if (phi_current < phi_total) phi_total = phi_current;
       }
     }

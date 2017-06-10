@@ -79,6 +79,7 @@ class CF_2
 {
 public:
   double lip, t;
+  double value(double *xyz) {return this->operator ()(xyz[0], xyz[1]);}
   virtual double operator()(double x, double y) const=0 ;
   virtual ~CF_2() {}
 };
@@ -87,7 +88,8 @@ class CF_3
 {
 public:
   double lip, t;
-  virtual double operator()(double x, double y,double z) const=0 ;
+  double value(double *xyz) {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
+  virtual double operator()(double x, double y, double z) const=0 ;
   virtual ~CF_3() {}
 };
 
@@ -135,7 +137,7 @@ private:
 
   const CF_2 *p_WallValue;
   const CF_2 *p_InterfaceValue;
-  const CF_2 *p_InterfaceCoeff; // constant in Robin BC
+  const CF_2 *p_RobinCoef;
 
 public:
   BoundaryConditions2D()
@@ -144,7 +146,7 @@ public:
     p_WallValue = NULL;
     InterfaceType_ = NOINTERFACE;
     p_InterfaceValue = NULL;
-    p_InterfaceCoeff = NULL;
+    p_RobinCoef = NULL;
   }
 
   inline void setWallTypes( const WallBC2D& w )
@@ -169,16 +171,20 @@ public:
     p_InterfaceValue = &in;
   }
 
+  inline void setRobinCoef(const CF_2& in){
+    p_RobinCoef = &in;
+  }
+
   inline const CF_2& getInterfaceValue(){
     return *p_InterfaceValue;
   }
 
-  inline void setInterfaceCoeff(const CF_2& in){
-    p_InterfaceCoeff = &in;
+  inline const CF_2& getWallValue(){
+    return *p_WallValue;
   }
 
-  inline const CF_2& getInterfaceCoeff(){
-    return *p_InterfaceCoeff;
+  inline const CF_2& getRobinCoef(){
+    return *p_RobinCoef;
   }
 
   inline BoundaryConditionType wallType( double x, double y ) const
@@ -207,12 +213,45 @@ public:
     return p_InterfaceValue->operator ()(x,y);
   }
 
-  inline double interfaceCoeffValue(double x, double y) const
+  inline double robinCoef(double x, double y) const
   {
 #ifdef CASL_THROWS
-    if(p_InterfaceCoeff == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
+    if(p_RobinCoef == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the Robin coef has not been set on the interface.");
 #endif
-    return p_InterfaceCoeff->operator ()(x,y);
+    return p_RobinCoef->operator ()(x,y);
+  }
+
+  // using double *xyz
+  inline BoundaryConditionType wallType( double *xyz ) const
+  {
+#ifdef CASL_THROWS
+    if(WallType_ == NULL) throw std::invalid_argument("[CASL_ERROR]: The type of boundary conditions has not been set on the walls.");
+#endif
+    return (*WallType_)(xyz[0],xyz[1]);
+  }
+
+  inline double wallValue( double *xyz) const
+  {
+#ifdef CASL_THROWS
+    if(p_WallValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the walls.");
+#endif
+    return p_WallValue->operator ()(xyz[0],xyz[1]);
+  }
+
+  inline double interfaceValue( double *xyz) const
+  {
+#ifdef CASL_THROWS
+    if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
+#endif
+    return p_InterfaceValue->operator ()(xyz[0],xyz[1]);
+  }
+
+  inline double robinCoef( double *xyz) const
+  {
+#ifdef CASL_THROWS
+    if(p_RobinCoef == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the Robin coef has not been set on the interface.");
+#endif
+    return p_RobinCoef->operator ()(xyz[0],xyz[1]);
   }
 };
 
@@ -224,7 +263,7 @@ private:
 
   const CF_3 *p_WallValue;
   const CF_3 *p_InterfaceValue;
-  const CF_3 *p_InterfaceCoeff; // constant in Robin BC
+  const CF_3 *p_RobinCoef;
 
 public:
   BoundaryConditions3D()
@@ -233,7 +272,7 @@ public:
     p_WallValue = NULL;
     InterfaceType_ = NOINTERFACE;
     p_InterfaceValue = NULL;
-    p_InterfaceCoeff = NULL;
+    p_RobinCoef = NULL;
   }
 
   inline void setWallTypes( const WallBC3D& w )
@@ -258,16 +297,16 @@ public:
     p_InterfaceValue = &in;
   }
 
+  inline void setRobinCoef(const CF_3& in){
+    p_RobinCoef = &in;
+  }
+
   inline const CF_3& getInterfaceValue(){
     return *p_InterfaceValue;
   }
 
-  inline void setInterfaceCoeff(const CF_3& in){
-    p_InterfaceCoeff = &in;
-  }
-
-  inline const CF_3& getInterfaceCoeff(){
-    return *p_InterfaceCoeff;
+  inline const CF_3& getRobinCoef(){
+    return *p_RobinCoef;
   }
 
   inline BoundaryConditionType wallType( double x, double y, double z ) const
@@ -296,12 +335,45 @@ public:
     return p_InterfaceValue->operator ()(x,y,z);
   }
 
-  inline double interfaceCoeffValue(double x, double y, double z) const
+  inline double robinCoef(double x, double y, double z) const
   {
 #ifdef CASL_THROWS
-    if(p_InterfaceCoeff == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
+    if(p_RobinCoef == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the Robin coef has not been set on the interface.");
 #endif
-    return p_InterfaceCoeff->operator ()(x,y,z);
+    return p_RobinCoef->operator ()(x,y,z);
+  }
+
+  // using double *xyz
+  inline BoundaryConditionType wallType( double *xyz ) const
+  {
+#ifdef CASL_THROWS
+    if(WallType_ == NULL) throw std::invalid_argument("[CASL_ERROR]: The type of boundary conditions has not been set on the walls.");
+#endif
+    return (*WallType_)(xyz[0],xyz[1],xyz[2]);
+  }
+
+  inline double wallValue(double *xyz) const
+  {
+#ifdef CASL_THROWS
+    if(p_WallValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the walls.");
+#endif
+    return p_WallValue->operator ()(xyz[0],xyz[1],xyz[2]);
+  }
+
+  inline double interfaceValue(double *xyz) const
+  {
+#ifdef CASL_THROWS
+    if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
+#endif
+    return p_InterfaceValue->operator ()(xyz[0],xyz[1],xyz[2]);
+  }
+
+  inline double robinCoef( double *xyz) const
+  {
+#ifdef CASL_THROWS
+    if(p_RobinCoef == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the Robin coef has not been set on the interface.");
+#endif
+    return p_RobinCoef->operator ()(xyz[0],xyz[1],xyz[2]);
   }
 };
 

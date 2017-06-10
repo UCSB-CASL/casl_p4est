@@ -65,7 +65,7 @@ using namespace std;
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 5;
+int nb_splits = 8;
 #else
 int lmin = 5;
 int lmax = 5;
@@ -123,7 +123,7 @@ public:
  * 4 - rose-like domain
  * 5 - one circle
  */
-int geometry_num = 0;
+int geometry_num = 1;
 
 geometry_two_circles_union_t        geometry_two_circles_union;
 geometry_two_circles_intersection_t geometry_two_circles_intersection;

@@ -11,7 +11,7 @@ simplex3_mls_quadratic_t::simplex3_mls_quadratic_t()
   tris.reserve(20);
   tets.reserve(6);
 
-  eps = 1.0e-15;
+  eps = 1.0e-13;
 }
 
 simplex3_mls_quadratic_t::simplex3_mls_quadratic_t(double x0, double y0, double z0,
@@ -84,7 +84,7 @@ simplex3_mls_quadratic_t::simplex3_mls_quadratic_t(double x0, double y0, double 
   tets.push_back(tet3_t(0,1,2,3,0,1,2,3));
 
 //  use_linear = true;
-  eps = 1.0e-15;
+  eps = 1.0e-13;
 
   diag = MAX(fabs(x0-x1), fabs(y0-y1), fabs(z0-z1));
 }
@@ -161,13 +161,15 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
     n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
     n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
     n = tets.size(); for (int i = 0; i < n; i++) do_action_tet(i, clr[phi_idx], acn[phi_idx]);
+
+    eps *= 0.5;
   }
 
 
-    int n;
-    n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
-    n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
-    n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
+//    int n;
+//    n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
+//    n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
+//    n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
 
   // sort everything before integration
   for (int i = 0; i < edgs.size(); i++)
@@ -396,7 +398,10 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
   if (tri->vtx0 != edgs[tri->edg1].vtx0 || tri->vtx0 != edgs[tri->edg2].vtx0 ||
       tri->vtx1 != edgs[tri->edg0].vtx0 || tri->vtx1 != edgs[tri->edg2].vtx2 ||
       tri->vtx2 != edgs[tri->edg0].vtx2 || tri->vtx2 != edgs[tri->edg1].vtx2)
+  {
+    std::cout << vtxs[tri->vtx0].value << " " << vtxs[tri->vtx1].value << " " << vtxs[tri->vtx2].value << std::endl;
     throw std::domain_error("[CASL_ERROR]: Vertices of a triangle and edges do not coincide after sorting.");
+  }
 
   /* check whether appropriate edges have been splitted */
   int e0_type_expect, e1_type_expect, e2_type_expect;
@@ -1192,9 +1197,9 @@ double simplex3_mls_quadratic_t::find_intersection_quadratic(int e)
   double f1 = vtxs[edgs[e].vtx1].value;
   double f2 = vtxs[edgs[e].vtx2].value;
 
-  if (fabs(f0) < eps) return eps;
-  if (fabs(f1) < eps) return 0.5;
-  if (fabs(f2) < eps) return 1.-eps;
+  if (fabs(f0) < .8*eps) return .8*eps;
+  if (fabs(f1) < .8*eps) return 0.5;
+  if (fabs(f2) < .8*eps) return 1.-.8*eps;
 
 #ifdef CASL_THROWS
   if(f0*f2 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
@@ -1222,8 +1227,8 @@ double simplex3_mls_quadratic_t::find_intersection_quadratic(int e)
   }
 #endif
 
-  if (x <-0.5) return eps;
-  if (x > 0.5) return 1.-eps;
+  if (x <-0.5) return .8*eps;
+  if (x > 0.5) return 1.-.8*eps;
 
   return .5+x;
 }
@@ -1295,6 +1300,8 @@ void simplex3_mls_quadratic_t::find_middle_node(double &x_out, double &y_out, do
     if (fabs(alpha1)>fabs(alpha2)) alpha = alpha2;
     else alpha = alpha1;
   }
+
+//  alpha = 0;
 
   x_out = 0.5*(x0+x1) + alpha*nx;
   y_out = 0.5*(y0+y1) + alpha*ny;
@@ -1600,14 +1607,25 @@ void simplex3_mls_quadratic_t::find_middle_node_tet(double abc_out[3], int n_tet
 
 bool simplex3_mls_quadratic_t::need_swap(int v0, int v1)
 {
-  double dif = vtxs[v0].value - vtxs[v1].value;
-  if (fabs(dif) < eps){ // if values are too close, sort vertices by their numbers
+//  double dif = vtxs[v0].value - vtxs[v1].value;
+//  if (dif > 0.)
+//  if (fabs(dif) < .8*eps){ // if values are too close, sort vertices by their numbers
+//    if (v0 > v1) return true;
+//    else         return false;
+//  } else if (dif > 0.0){ // otherwise sort by values
+//    return true;
+//  } else {
+//    return false;
+//  }
+
+  if (vtxs[v0].value > vtxs[v1].value)
+    return true;
+  else if (vtxs[v0].value < vtxs[v1].value)
+    return false;
+  else
+  {
     if (v0 > v1) return true;
     else         return false;
-  } else if (dif > 0.0){ // otherwise sort by values
-    return true;
-  } else {
-    return false;
   }
 }
 
@@ -1984,6 +2002,11 @@ double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 //      result += volume(s->vtx0, s->vtx1, s->vtx2, s->vtx3);
     }
 
+#ifdef CASL_THROWS
+  if (result != result)
+    throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+
   return result*V;
 }
 
@@ -2248,6 +2271,12 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 
 //  std::cout << max_dist_error_ << std::endl;
 //  return max_dist_error_;
+
+#ifdef CASL_THROWS
+  if (result != result)
+    throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+
   return 0.5*result;
 }
 
@@ -2666,7 +2695,14 @@ double simplex3_mls_quadratic_t::jacobian_tri(int n_tri, double *ab)
     }
 
 //    return 1.*sqrt((Xa*Xa+Ya*Ya+Za*Za)*(Xb*Xb+Yb*Yb+Zb*Zb) - pow(Xa*Xb+Ya*Yb+Za*Zb, 2.));
-    return jacobian_2d*sqrt((Xa*Xa+Ya*Ya+Za*Za)*(Xb*Xb+Yb*Yb+Zb*Zb) - pow(Xa*Xb+Ya*Yb+Za*Zb, 2.));
+    double result = jacobian_2d*sqrt((Xa*Xa+Ya*Ya+Za*Za)*(Xb*Xb+Yb*Yb+Zb*Zb) - pow(Xa*Xb+Ya*Yb+Za*Zb, 2.));
+
+#ifdef CASL_THROWS
+    if (result != result)
+      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+
+    return result;
 
   } else { // if triangle is not curved, then a one-stage mapping suffies
 
@@ -2684,7 +2720,37 @@ double simplex3_mls_quadratic_t::jacobian_tri(int n_tri, double *ab)
     double Y2 = vtxs[tri->vtx0].y*Nb[0] + vtxs[tri->vtx1].y*Nb[1] + vtxs[tri->vtx2].y*Nb[2] + vtxs[edgs[tri->edg2].vtx1].y*Nb[3] + vtxs[edgs[tri->edg0].vtx1].y*Nb[4] + vtxs[edgs[tri->edg1].vtx1].y*Nb[5];
     double Z2 = vtxs[tri->vtx0].z*Nb[0] + vtxs[tri->vtx1].z*Nb[1] + vtxs[tri->vtx2].z*Nb[2] + vtxs[edgs[tri->edg2].vtx1].z*Nb[3] + vtxs[edgs[tri->edg0].vtx1].z*Nb[4] + vtxs[edgs[tri->edg1].vtx1].z*Nb[5];
 
-    return sqrt((X1*X1+Y1*Y1+Z1*Z1)*(X2*X2+Y2*Y2+Z2*Z2) - pow(X1*X2+Y1*Y2+Z1*Z2,2.));
+//    double xyz0[3] = { vtxs[tri->vtx0].x, vtxs[tri->vtx0].y, vtxs[tri->vtx0].z };
+//    double xyz1[3] = { vtxs[tri->vtx1].x, vtxs[tri->vtx1].y, vtxs[tri->vtx1].z };
+//    double xyz2[3] = { vtxs[tri->vtx2].x, vtxs[tri->vtx2].y, vtxs[tri->vtx2].z };
+
+//    double xyz3[3] = { vtxs[edgs[tri->edg2].vtx1].x, vtxs[edgs[tri->edg2].vtx1].y, vtxs[edgs[tri->edg2].vtx1].z };
+//    double xyz4[3] = { vtxs[edgs[tri->edg0].vtx1].x, vtxs[edgs[tri->edg0].vtx1].y, vtxs[edgs[tri->edg0].vtx1].z };
+//    double xyz5[3] = { vtxs[edgs[tri->edg1].vtx1].x, vtxs[edgs[tri->edg1].vtx1].y, vtxs[edgs[tri->edg1].vtx1].z };
+
+//    xyz3[0] -= .5*(xyz0[0]+xyz1[0]);
+//    xyz3[1] -= .5*(xyz0[1]+xyz1[1]);
+//    xyz3[2] -= .5*(xyz0[2]+xyz1[2]);
+
+//    xyz4[0] -= .5*(xyz1[0]+xyz2[0]);
+//    xyz4[1] -= .5*(xyz1[1]+xyz2[1]);
+//    xyz4[2] -= .5*(xyz1[2]+xyz2[2]);
+
+//    xyz5[0] -= .5*(xyz0[0]+xyz2[0]);
+//    xyz5[1] -= .5*(xyz0[1]+xyz2[1]);
+//    xyz5[2] -= .5*(xyz0[2]+xyz2[2]);
+
+//    double jac = ((X1*X1+Y1*Y1+Z1*Z1)*(X2*X2+Y2*Y2+Z2*Z2) - pow(X1*X2+Y1*Y2+Z1*Z2,2.));
+
+    //
+    double result = sqrt(fabs((X1*X1+Y1*Y1+Z1*Z1)*(X2*X2+Y2*Y2+Z2*Z2) - pow(X1*X2+Y1*Y2+Z1*Z2,2.)));
+
+#ifdef CASL_THROWS
+    if (result != result)
+      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+
+    return result;
   }
 }
 

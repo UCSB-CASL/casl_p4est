@@ -81,6 +81,8 @@ void simplex3_mls_t::construct_domain(std::vector<CF_3 *> &phi, std::vector<acti
     n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
     n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
     n = tets.size(); for (int i = 0; i < n; i++) do_action_tet(i, clr[phi_idx], acn[phi_idx]);
+
+    eps *= 0.5;
   }
 }
 
@@ -250,7 +252,13 @@ void simplex3_mls_t::do_action_tri(int n_tri, int cn, action_t action)
   if (tri->vtx0 != edgs[tri->edg1].vtx0 || tri->vtx0 != edgs[tri->edg2].vtx0 ||
       tri->vtx1 != edgs[tri->edg0].vtx0 || tri->vtx1 != edgs[tri->edg2].vtx1 ||
       tri->vtx2 != edgs[tri->edg0].vtx1 || tri->vtx2 != edgs[tri->edg1].vtx1)
+  {
+    std::cout << vtxs[tri->vtx0].value << " " << vtxs[tri->vtx1].value << " " << vtxs[tri->vtx2].value << std::endl;
+    std::cout << vtxs[tri->vtx0].value - vtxs[tri->vtx1].value << " "
+              << vtxs[tri->vtx1].value - vtxs[tri->vtx2].value << " "
+              << vtxs[tri->vtx2].value - vtxs[tri->vtx0].value << std::endl;
     throw std::domain_error("[CASL_ERROR]: Vertices of a triangle and edges do not coincide after sorting.");
+  }
 
   /* check whether appropriate edges have been splitted */
   int e0_type_expect, e1_type_expect, e2_type_expect;
@@ -969,14 +977,36 @@ void simplex3_mls_t::do_action_tet(int n_tet, int cn, action_t action)
 
 bool simplex3_mls_t::need_swap(int v0, int v1)
 {
-  double dif = vtxs[v0].value - vtxs[v1].value;
-  if (fabs(dif) < eps){ // if values are too close, sort vertices by their numbers
+//  double dif = vtxs[v0].value - vtxs[v1].value;
+//  if (fabs(dif) < .8*eps){ // if values are too close, sort vertices by their numbers
+//    if (v0 > v1) return true;
+//    else         return false;
+//  } else if (dif > 0.0){ // otherwise sort by values
+//    return true;
+//  } else {
+//    return false;
+//  }
+
+//  double diff = vtxs[v0].value - vtxs[v1].value;
+//  if (diff > 0.)
+//  {
+//    return true;
+//  } else {
+//    if (fabs(diff) > .8*eps)
+//      return false;
+//    else
+//      if (v0 > v1) return true;
+//      else         return false;
+//  }
+
+  if (vtxs[v0].value > vtxs[v1].value)
+    return true;
+  else if (vtxs[v0].value < vtxs[v1].value)
+    return false;
+  else
+  {
     if (v0 > v1) return true;
     else         return false;
-  } else if (dif > 0.0){ // otherwise sort by values
-    return true;
-  } else {
-    return false;
   }
 }
 

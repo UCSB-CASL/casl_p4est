@@ -86,12 +86,25 @@ void my_p4est_interpolation_nodes_local_t::initialize(p4est_locidx_t n)
 }
 
 #ifdef P4_TO_P8
-double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y, double z)
+double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y, double z) const
 #else
-double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
+double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y) const
 #endif
 {
   PetscErrorCode ierr;
+
+  const double *Fi_p_;
+  const double *Fxx_p_, *Fyy_p_;
+#ifdef P4_TO_P8
+  const double *Fzz_p_;
+#endif
+
+  double f  [P4EST_CHILDREN];
+  double fxx[P4EST_CHILDREN];
+  double fyy[P4EST_CHILDREN];
+#ifdef P4_TO_P8
+  double fzz[P4EST_CHILDREN];
+#endif
 
 #ifdef P4_TO_P8
   double xyz [] = { x, y, z };
@@ -158,14 +171,27 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
   // get pointers to inputs if necessary
   if (is_input_in_vec)
   {
-    ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(Fi, &Fi_p_); CHKERRXX(ierr);
 
     if (method == quadratic || method == quadratic_non_oscillatory)
     {
-      ierr = VecGetArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
-      ierr = VecGetArrayRead(Fyy, &Fyy_p); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(Fxx, &Fxx_p_); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(Fyy, &Fyy_p_); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-      ierr = VecGetArrayRead(Fzz, &Fzz_p); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(Fzz, &Fzz_p_); CHKERRXX(ierr);
+#endif
+    }
+
+  } else {
+
+    Fi_p_ = Fi_p;
+
+    if (method == quadratic || method == quadratic_non_oscillatory)
+    {
+      Fxx_p_ = Fxx_p;
+      Fyy_p_ = Fyy_p;
+#ifdef P4_TO_P8
+      Fzz_p_ = Fzz_p;
 #endif
     }
   }
@@ -175,7 +201,7 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
   for (short i = 0; i<P4EST_CHILDREN; i++)
   {
     p4est_locidx_t node_idx = nodes->local_nodes[node_offset + i];
-    f[i] = Fi_p[node_idx];
+    f[i] = Fi_p_[node_idx];
   }
 
   if (method == quadratic || method == quadratic_non_oscillatory)
@@ -184,10 +210,10 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
     {
       p4est_locidx_t node_idx = nodes->local_nodes[node_offset + j];
 
-      fxx[j] = Fxx_p[node_idx];
-      fyy[j] = Fyy_p[node_idx];
+      fxx[j] = Fxx_p_[node_idx];
+      fyy[j] = Fyy_p_[node_idx];
 #ifdef P4_TO_P8
-      fzz[j] = Fzz_p[node_idx];
+      fzz[j] = Fzz_p_[node_idx];
 #endif
     }
   }
@@ -195,13 +221,13 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
   // restore arrays
   if (is_input_in_vec)
   {
-    ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(Fi, &Fi_p_); CHKERRXX(ierr);
 
     if (method == quadratic || method == quadratic_non_oscillatory) {
-      ierr = VecRestoreArrayRead(Fxx, &Fxx_p); CHKERRXX(ierr);
-      ierr = VecRestoreArrayRead(Fyy, &Fyy_p); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(Fxx, &Fxx_p_); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(Fyy, &Fyy_p_); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-      ierr = VecRestoreArrayRead(Fzz, &Fzz_p); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(Fzz, &Fzz_p_); CHKERRXX(ierr);
 #endif
     }
   }
@@ -209,27 +235,141 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
   double value=0;
 
 
-  interp.initialize(xyz_quad_min[which_quadrant*P4EST_DIM + 0], xyz_quad_max[which_quadrant*P4EST_DIM + 0],
-                    xyz_quad_min[which_quadrant*P4EST_DIM + 1], xyz_quad_max[which_quadrant*P4EST_DIM + 1],
-                    #ifdef P4_TO_P8
-                    xyz_quad_min[which_quadrant*P4EST_DIM + 2], xyz_quad_max[which_quadrant*P4EST_DIM + 2],
-                    1,
-                    #endif
-                    1,1);
+//  interp.initialize(xyz_quad_min[which_quadrant*P4EST_DIM + 0], xyz_quad_max[which_quadrant*P4EST_DIM + 0],
+//                    xyz_quad_min[which_quadrant*P4EST_DIM + 1], xyz_quad_max[which_quadrant*P4EST_DIM + 1],
+//                    #ifdef P4_TO_P8
+//                    xyz_quad_min[which_quadrant*P4EST_DIM + 2], xyz_quad_max[which_quadrant*P4EST_DIM + 2],
+//                    1,
+//                    #endif
+//                    1,1);
 
   if (method == linear) {
-#ifdef P4_TO_P8
-    value = interp.linear(f, xyz[0], xyz[1], xyz[2]);
-#else
-    value = interp.linear(f, xyz[0], xyz[1]);
-#endif
+    value = this->linear_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, xyz);
   } else if (method == quadratic) {
 #ifdef P4_TO_P8
-    value = interp.quadratic(f, fxx, fyy, fzz,  xyz[0], xyz[1], xyz[2]);
+    value = this->quadratic_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, fxx, fyy, fzz, xyz);
 #else
-    value = interp.quadratic(f, fxx, fyy,       xyz[0], xyz[1]);
+    value = this->quadratic_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, fxx, fyy, xyz);
 #endif
   }
+
+  return value;
+}
+
+#ifdef P4_TO_P8
+double my_p4est_interpolation_nodes_local_t::quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const
+#else
+double my_p4est_interpolation_nodes_local_t::quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const
+#endif
+{
+  double dx = (xyz_quad_max[0] - xyz_quad_min[0]);
+  double dy = (xyz_quad_max[1] - xyz_quad_min[1]);
+#ifdef P4_TO_P8
+  double dz = (xyz_quad_max[2] - xyz_quad_min[2]);
+#endif
+
+  double d_m00 = (xyz_global[0] - xyz_quad_min[0])/dx;
+  double d_p00 = 1.-d_m00;
+  double d_0m0 = (xyz_global[1] - xyz_quad_min[1])/dy;
+  double d_0p0 = 1.-d_0m0;
+#ifdef P4_TO_P8
+  double d_00m = (xyz_global[2] - xyz_quad_min[2])/dz;
+  double d_00p = 1.-d_00m;
+#endif
+
+#ifdef P4_TO_P8
+  double w_xyz[] =
+  {
+    d_p00*d_0p0*d_00p,
+    d_m00*d_0p0*d_00p,
+    d_p00*d_0m0*d_00p,
+    d_m00*d_0m0*d_00p,
+    d_p00*d_0p0*d_00m,
+    d_m00*d_0p0*d_00m,
+    d_p00*d_0m0*d_00m,
+    d_m00*d_0m0*d_00m
+  };
+#else
+  double w_xyz[] =
+  {
+    d_p00*d_0p0,
+    d_m00*d_0p0,
+    d_p00*d_0m0,
+    d_m00*d_0m0
+  };
+#endif
+
+
+#ifdef P4_TO_P8
+  double fdd[P4EST_DIM] = { 0, 0, 0 };
+#else
+  double fdd[P4EST_DIM] = { 0, 0 };
+#endif
+
+  for (short j=0; j<P4EST_CHILDREN; j++)
+  {
+    fdd[0] += Fxx[j] * w_xyz[j];
+    fdd[1] += Fyy[j] * w_xyz[j];
+#ifdef P4_TO_P8
+    fdd[2] += Fzz[j] * w_xyz[j];
+#endif
+  }
+
+  double value = 0;
+  for (short j = 0; j<P4EST_CHILDREN; j++)
+    value += F[j]*w_xyz[j];
+
+#ifdef P4_TO_P8
+  value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1] + dy*dy*d_00p*d_00m*fdd[2]);
+#else
+  value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1]);
+#endif
+
+  return value;
+}
+
+double my_p4est_interpolation_nodes_local_t::linear_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *xyz_global) const
+{
+  double dx = (xyz_quad_max[0] - xyz_quad_min[0]);
+  double dy = (xyz_quad_max[1] - xyz_quad_min[1]);
+#ifdef P4_TO_P8
+  double dz = (xyz_quad_max[2] - xyz_quad_min[2]);
+#endif
+
+  double d_m00 = (xyz_quad_max[0] - xyz_global[0])/dx;
+  double d_p00 = 1.-d_m00;
+  double d_0m0 = (xyz_quad_max[1] - xyz_global[1])/dy;
+  double d_0p0 = 1.-d_0m0;
+#ifdef P4_TO_P8
+  double d_00m = (xyz_quad_max[2] - xyz_global[2])/dz;
+  double d_00p = 1.-d_00m;
+#endif
+
+#ifdef P4_TO_P8
+  double w_xyz[] =
+  {
+    d_p00*d_0p0*d_00p,
+    d_m00*d_0p0*d_00p,
+    d_p00*d_0m0*d_00p,
+    d_m00*d_0m0*d_00p,
+    d_p00*d_0p0*d_00m,
+    d_m00*d_0p0*d_00m,
+    d_p00*d_0m0*d_00m,
+    d_m00*d_0m0*d_00m
+  };
+#else
+  double w_xyz[] =
+  {
+    d_p00*d_0p0,
+    d_m00*d_0p0,
+    d_p00*d_0m0,
+    d_m00*d_0m0
+  };
+#endif
+
+  double value = 0;
+  for (short j = 0; j<P4EST_CHILDREN; j++)
+    value += F[j]*w_xyz[j];
 
   return value;
 }
@@ -244,4 +384,19 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y)
 //{
 //  return interpolate(x,y);
 //}
+//#endif
+
+
+//#ifdef P4_TO_P8
+//  double my_p4est_interpolation_nodes_local_t::operator () (double x, double y, double z) const
+//  {
+//    return interpolate(x,y,z);
+//  }
+//#else
+//  double my_p4est_interpolation_nodes_local_t::operator() (double x, double y) const
+//  {
+//    double r = interpolate(x,y);
+////    return interpolate(x,y);
+//    return 0;
+//  }
 //#endif

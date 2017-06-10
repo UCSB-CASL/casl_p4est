@@ -170,12 +170,17 @@ double cube3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
     case OUT: return 0.0; break;
     case FCE:
       {
-        return simplex[0].integrate_over_domain(f)
+        double result = simplex[0].integrate_over_domain(f)
              + simplex[1].integrate_over_domain(f)
              + simplex[2].integrate_over_domain(f)
              + simplex[3].integrate_over_domain(f)
              + simplex[4].integrate_over_domain(f)
              + simplex[5].integrate_over_domain(f);
+#ifdef CASL_THROWS
+        if (result != result)
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+        return result;
       } break;
     default:
 #ifdef CASL_THROWS
@@ -201,12 +206,17 @@ double cube3_mls_quadratic_t::integrate_over_interface(CF_3& f, int num)
 //    double f4 = simplex[4].integrate_over_interface(f, num);
 //    double f5 = simplex[5].integrate_over_interface(f, num);
 //    return MAX(f0, f1, MAX(f2, f3, MAX(f4, f5)));
-    return simplex[0].integrate_over_interface(f, num)
+    double result = simplex[0].integrate_over_interface(f, num)
          + simplex[1].integrate_over_interface(f, num)
          + simplex[2].integrate_over_interface(f, num)
          + simplex[3].integrate_over_interface(f, num)
          + simplex[4].integrate_over_interface(f, num)
          + simplex[5].integrate_over_interface(f, num);
+#ifdef CASL_THROWS
+        if (result != result)
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+        return result;
   }
   else
     return 0.0;
@@ -216,12 +226,18 @@ double cube3_mls_quadratic_t::integrate_over_colored_interface(CF_3 &f, int num0
 {
   if (loc == FCE)
   {
-    return simplex[0].integrate_over_colored_interface(f, num0, num1)
+    double result = simplex[0].integrate_over_colored_interface(f, num0, num1)
          + simplex[1].integrate_over_colored_interface(f, num0, num1)
          + simplex[2].integrate_over_colored_interface(f, num0, num1)
          + simplex[3].integrate_over_colored_interface(f, num0, num1)
          + simplex[4].integrate_over_colored_interface(f, num0, num1)
          + simplex[5].integrate_over_colored_interface(f, num0, num1);
+
+#ifdef CASL_THROWS
+        if (result != result)
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+        return result;
   }
   else
     return 0.0;
@@ -231,12 +247,18 @@ double cube3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, int
 {
   if (loc == FCE && num_of_lsfs > 1)
   {
-    return simplex[0].integrate_over_intersection(f, num0, num1)
+    double result = simplex[0].integrate_over_intersection(f, num0, num1)
          + simplex[1].integrate_over_intersection(f, num0, num1)
          + simplex[2].integrate_over_intersection(f, num0, num1)
          + simplex[3].integrate_over_intersection(f, num0, num1)
          + simplex[4].integrate_over_intersection(f, num0, num1)
          + simplex[5].integrate_over_intersection(f, num0, num1);
+
+#ifdef CASL_THROWS
+        if (result != result)
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+        return result;
   }
   else
     return 0.0;
@@ -246,12 +268,18 @@ double cube3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, int
 {
   if (loc == FCE && num_of_lsfs > 2)
   {
-    return simplex[0].integrate_over_intersection(f, num0, num1, num2)
+    double result = simplex[0].integrate_over_intersection(f, num0, num1, num2)
          + simplex[1].integrate_over_intersection(f, num0, num1, num2)
          + simplex[2].integrate_over_intersection(f, num0, num1, num2)
          + simplex[3].integrate_over_intersection(f, num0, num1, num2)
          + simplex[4].integrate_over_intersection(f, num0, num1, num2)
          + simplex[5].integrate_over_intersection(f, num0, num1, num2);
+
+#ifdef CASL_THROWS
+        if (result != result)
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+        return result;
   }
   else
     return 0.0;
@@ -309,12 +337,17 @@ double cube3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
       }
     case FCE:
       {
-        return simplex[0].integrate_in_dir(f, dir)
-             + simplex[1].integrate_in_dir(f, dir)
-             + simplex[2].integrate_in_dir(f, dir)
-             + simplex[3].integrate_in_dir(f, dir)
-             + simplex[4].integrate_in_dir(f, dir)
-             + simplex[5].integrate_in_dir(f, dir);
+        double result = ( simplex[0].integrate_in_dir(f, dir) +
+            simplex[1].integrate_in_dir(f, dir) +
+            simplex[2].integrate_in_dir(f, dir) +
+            simplex[3].integrate_in_dir(f, dir) +
+            simplex[4].integrate_in_dir(f, dir) +
+            simplex[5].integrate_in_dir(f, dir) );
+#ifdef CASL_THROWS
+        if (result != result)
+          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+        return result;
       }
     default:
 #ifdef CASL_THROWS

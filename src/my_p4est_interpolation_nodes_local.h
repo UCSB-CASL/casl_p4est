@@ -47,12 +47,12 @@ public:
 #endif
 
   // local values of input
-  double f  [P4EST_CHILDREN];
-  double fxx[P4EST_CHILDREN];
-  double fyy[P4EST_CHILDREN];
-#ifdef P4_TO_P8
-  double fzz[P4EST_CHILDREN];
-#endif
+//  double f  [P4EST_CHILDREN];
+//  double fxx[P4EST_CHILDREN];
+//  double fyy[P4EST_CHILDREN];
+//#ifdef P4_TO_P8
+//  double fzz[P4EST_CHILDREN];
+//#endif
 
 #ifdef P4_TO_P8
   grid_interpolation3_t interp;
@@ -80,9 +80,13 @@ public:
 
   my_p4est_interpolation_nodes_local_t(const my_p4est_node_neighbors_t* ngbd_n)
     : nodes(ngbd_n->nodes), node_neighbors(ngbd_n), p4est(ngbd_n->p4est), ghost(ngbd_n->ghost),
-      Fxx(NULL), Fxx_p(NULL), Fyy(NULL), Fyy_p(NULL),
+      Fxx(NULL),
+      Fyy(NULL),
+      Fxx_p(NULL),
+      Fyy_p(NULL),
       #ifdef P4_TO_P8
-      Fzz(NULL), Fzz_p(NULL),
+      Fzz(NULL),
+      Fzz_p(NULL),
       #endif
       method(linear), eps(1.0E-15)
   {
@@ -143,24 +147,47 @@ public:
   }
 #endif
 
+#ifdef P4_TO_P8
+  double quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const;
+#else
+  double quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const;
+#endif
+
+  double linear_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *xyz_global) const;
+
   // interpolation method
 #ifdef P4_TO_P8
-  double interpolate(double x, double y, double z);
+  double interpolate(double x, double y, double z) const;
 //  inline double operator () (double x, double y, double z);
-  inline double operator () (double x, double y, double z)
+  double operator () (double x, double y, double z) const
   {
     return interpolate(x,y,z);
   }
 #else
-  double interpolate(double x, double y);
+  double interpolate(double x, double y) const;
 //  inline double operator () (double x, double y);
-  inline double operator () (double x, double y)
+  inline double operator () (double x, double y) const
   {
     return interpolate(x,y);
   }
 #endif
 
-  void set_eps(double eps_in) {eps = eps_in; interp.set_eps(eps_in);}
-};
+  inline void set_eps(double eps_in) {eps = eps_in; interp.set_eps(eps_in);}
 
+  inline void copy_init(my_p4est_interpolation_nodes_local_t &other)
+  {
+    for (short i = 0; i < P4EST_CHILDREN; ++i)
+    {
+      quad_idx[i] = other.quad_idx[i];
+      tree_idx[i] = other.tree_idx[i];
+      level_of_quad[i] = other.level_of_quad[i];
+    }
+
+    for (short i = 0; i < P4EST_DIM*P4EST_CHILDREN; ++i)
+    {
+      xyz_quad_min[i] = other.xyz_quad_min[i];
+      xyz_quad_max[i] = other.xyz_quad_max[i];
+    }
+  }
+};
 #endif /* MY_P4EST_INTERPOLATION_NODES_LOCAL */

@@ -4,24 +4,16 @@
 #include <petsc.h>
 
 #ifdef P4_TO_P8
-#include <p8est.h>
-#include <p8est_nodes.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_interpolation_nodes.h>
-#include <src/my_p8est_interpolation_nodes_local.h>
 #include <src/my_p8est_utils.h>
 #else
-#include <p4est.h>
-#include <p4est_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_interpolation_nodes.h>
-#include <src/my_p4est_interpolation_nodes_local.h>
 #include <src/my_p4est_utils.h>
 #endif
-
-#include <vector>
 
 #include <src/cube3_mls.h>
 #include <src/cube2_mls.h>
@@ -29,326 +21,471 @@
 #include <src/cube3_mls_quadratic.h>
 #include <src/cube2_mls_quadratic.h>
 
-#ifdef P4_TO_P8
-#define N_NBRS_MAX 27
-#else
-#define N_NBRS_MAX 9
-#endif
-
-enum node_neighbor_t
-{
-#ifdef P4_TO_P8
-  // zm plane
-  nn_mmm = 0, nn_0mm, nn_pmm,
-  nn_m0m, nn_00m, nn_p0m,
-  nn_mpm, nn_0pm, nn_ppm,
-
-  // z0 plane
-  nn_mm0, nn_0m0, nn_pm0,
-  nn_m00, nn_000, nn_p00,
-  nn_mp0, nn_0p0, nn_pp0,
-
-  // zp plane
-  nn_mmp, nn_0mp, nn_pmp,
-  nn_m0p, nn_00p, nn_p0p,
-  nn_mpp, nn_0pp, nn_ppp
-
-#else
-  nn_mm0 = 0, nn_0m0, nn_pm0,
-  nn_m00, nn_000, nn_p00,
-  nn_mp0, nn_0p0, nn_pp0
-#endif
-};
-
-//class pointer_to_vec_t
-//{
-//  double *p;
-//  static PetscError ierr;
-
-//  pointer_to_vec_t(Vec vec) {ierr = VecGetArray(vec, &p);     CHKERRXX(ierr);}
-//  ~pointer_to_vec_t()       {ierr = VecRestoreArray(vec, &p); CHKERRXX(ierr);}
-
-//  double operator () (p4est_locidx_t n) {return p[n];}
-//};
-
 class my_p4est_poisson_nodes_mls_t
 {
-public:
-  enum node_loc_t {NODE_INS, NODE_NMN, NODE_OUT};
-
-  struct quantity_t
+#ifdef P4_TO_P8
+  class unity_cf_t: public CF_3
   {
-    bool is_constant;
-    double constant;
-
-    bool is_vec;
-    Vec vec;
-    double *vec_p;
-
-    bool is_cf;
-#ifdef P4_TO_P8
-    CF_3 *cf;
+  public:
+    double operator()(double x, double y, double z) const
+    {
+      return 1.;
+    }
+  } unity_cf_;
 #else
-    CF_2 *cf;
+  class unity_cf_t: public CF_2
+  {
+  public:
+    double operator()(double x, double y) const
+    {
+      return 1.;
+    }
+  } unity_cf_;
 #endif
 
-    quantity_t() : constant(0), is_constant(true),
-      vec(NULL), vec_p(NULL), is_vec(false),
-      cf(NULL), is_cf(false) {}
-
-    void initialize()
-    {
-      PetscErrorCode ierr;
-      if (is_vec)
-      {
-        ierr = VecGetArray(vec, &vec_p); CHKERRXX(ierr);
-      }
-    }
-
-    void finalize()
-    {
-      PetscErrorCode ierr;
-      if (is_vec)
-      {
-        ierr = VecRestoreArray(vec, &vec_p); CHKERRXX(ierr);
-        vec_p = NULL;
-      }
-    }
-
-    void set(double val_) {constant = val_; is_constant = true; is_vec = false; is_cf = false;}
-    void set(Vec    vec_) {vec = vec_;      is_constant = false; is_vec = true; is_cf = false;}
 #ifdef P4_TO_P8
-    void set(CF_3   &cf_) {cf = &cf_;       is_constant = false; is_vec = false; is_cf = true;}
+  class taylor_expansion_const_term_t: public CF_3
+  {
+    double *b_;
+    CF_3 *alpha_;
+    double *xyz_;
+  public:
+    inline void set(CF_3 &alpha, double *b, double *xyz)
+    {
+      alpha_ = &alpha; b_ = b; xyz_ = xyz;
+    }
+    double operator()(double x, double y, double z) const
+    {
+      return (*alpha_)(x,y,z)*(b_[0]*(x-xyz_[0]) + b_[1]*(y-xyz_[1]) + b_[2]*(z-xyz_[2]));
+    }
+  } taylor_expansion_const_term_;
 #else
-    void set(CF_2   &cf_) {cf = &cf_;       is_constant = false; is_vec = false; is_cf = true;}
+  class taylor_expansion_const_term_t: public CF_2
+  {
+    double *b_;
+    CF_2 *alpha_;
+    double *xyz_;
+  public:
+    inline void set(CF_2 &alpha, double *b, double *xyz)
+    {
+      alpha_ = &alpha; b_ = b; xyz_ = xyz;
+    }
+    double operator()(double x, double y) const
+    {
+      return (*alpha_)(x,y)*(b_[0]*(x-xyz_[0]) + b_[1]*(y-xyz_[1]));
+    }
+  } taylor_expansion_const_term_;
 #endif
 
-//    double operator() (int n)
-//    {
-//      if (constant) {return val;}
-//      else          {return vec_p[n];}
-//    }
-  };
+#ifdef P4_TO_P8
+  class taylor_expansion_coeff_term_t: public CF_3
+  {
+    double *a_;
+    CF_3 *alpha_;
+    double *xyz_;
+  public:
+    inline void set(CF_3 &alpha, double *a, double *xyz)
+    {
+      alpha_ = &alpha; a_ = a; xyz_ = xyz;
+    }
+    double operator()(double x, double y, double z) const
+    {
+      return (*alpha_)(x,y,z)*(1. - a_[0]*(x-xyz_[0]) - a_[1]*(y-xyz_[1]) - a_[2]*(z-xyz_[2]));
+    }
+  } taylor_expansion_coeff_term_;
+#else
+  class taylor_expansion_coeff_term_t: public CF_2
+  {
+    double *a_;
+    CF_2 *alpha_;
+    double *xyz_;
+  public:
+    inline void set(CF_2 &alpha, double *a, double *xyz)
+    {
+      alpha_ = &alpha; a_ = a; xyz_ = xyz;
+    }
+    double operator()(double x, double y) const
+    {
+      return (*alpha_)(x,y)*(1. - a_[0]*(x-xyz_[0]) - a_[1]*(y-xyz_[1]));
+    }
+  } taylor_expansion_coeff_term_;
+#endif
+
+  static const bool use_refined_cube_ = 0;
+  static const int cube_refinement_ = 1;
+  const my_p4est_node_neighbors_t *node_neighbors_;
 
   // p4est objects
-  const my_p4est_node_neighbors_t *node_neighbors;
-
-  p4est_t           *p4est;
-  p4est_nodes_t     *nodes;
-  p4est_ghost_t     *ghost;
+  p4est_t           *p4est_;
+  p4est_nodes_t     *nodes_;
+  p4est_ghost_t     *ghost_;
   my_p4est_brick_t  *myb_;
 
-  my_p4est_interpolation_nodes_t phi_interp;
-  my_p4est_interpolation_nodes_local_t interp_local;
-
-  bool    is_matrix_computed;
-  int     matrix_has_nullspace;
-  double  dx_min, dy_min, d_min, diag_min, vol_min;
-#ifdef P4_TO_P8
-  double  dz_min;
-#endif
-
-  std::vector<PetscInt> global_node_offset;
-  std::vector<PetscInt> petsc_gloidx;
-
-  // Equation
-  quantity_t mu, wall_value, diag_add;
-  Vec rhs;
+  // PETSc objects
+  Mat A_;
+  p4est_gloidx_t fixed_value_idx_g_;
+  p4est_gloidx_t fixed_value_idx_l_;
+  KSP ksp_;
+  PetscErrorCode ierr;
+  std::vector<PetscInt> global_node_offset_;
+  std::vector<PetscInt> petsc_gloidx_;
 
   // Geometry
-  std::vector<Vec> *phi, *phi_xx, *phi_yy, *phi_zz;
-  std::vector<int>        *color;
-  std::vector<action_t>   *action;
-  Vec phi_eff;
-  int n_phis;
-  bool phi_eff_owned, phi_dd_owned;
-  Vec node_vol;
+  std::vector<Vec> *phi_, *phi_xx_, *phi_yy_, *phi_zz_;
+  std::vector<int>        *color_;
+  std::vector<action_t>   *action_;
+  Vec phi_eff_;
+  int num_interfaces_;
+  bool is_phi_eff_owned_, is_phi_dd_owned_;
+  Vec node_vol_;
 
-  bool use_taylor_correction;
+  double dxyz_m_[P4EST_DIM];
+  double dx_min_, dy_min_, d_min_, diag_min_;
+#ifdef P4_TO_P8
+  double dz_min_;
+#endif
 
-  // Interfaces
-  std::vector<BoundaryConditionType> *bc_types;
-  std::vector<quantity_t> bc_values, bc_coeffs;
+  // Equation
+  double mu_, diag_add_scalar_;
+  Vec diag_add_;
+  Vec rhs_;
+  Vec mue_;
+  Vec mue_xx_, mue_yy_, mue_zz_;
 
-  // PETSc objects
-  Mat A;
-  Vec RHS;
-  p4est_gloidx_t fixed_value_idx_g;
-  p4est_gloidx_t fixed_value_idx_l;
+  bool variable_mu_;
+  bool is_mue_dd_owned_;
 
-  bool keep_scalling;
-  Vec scalling;
-  bool reusing_matrix;
-  bool update_ghost_after_solving;
+  // Some flags
+  bool is_matrix_computed_;
+  int matrix_has_nullspace_;
+  bool use_pointwise_dirichlet_;
+  bool new_pc_;
+  bool update_ghost_after_solving_;
+  bool use_taylor_correction_;
+  bool kink_special_treatment_;
 
-  void set_update_ghost_after_solving(bool val) {update_ghost_after_solving = val;}
+  // Bondary conditions
+  bool neumann_wall_first_order_;
 
-  KSP ksp;
-  PetscErrorCode ierr;
+#ifdef P4_TO_P8
+  WallBC3D *bc_wall_type_;
+  CF_3     *bc_wall_value_;
 
-  // type of nodes
-  std::vector<node_loc_t>  node_loc;
+  std::vector< BoundaryConditionType > *bc_interface_type_;
+  std::vector< CF_3 *> *bc_interface_value_;
+  std::vector< CF_3 *> *bc_interface_coeff_;
+#else
+  WallBC2D *bc_wall_type_;
+  CF_2     *bc_wall_value_;
+
+  std::vector< BoundaryConditionType > *bc_interface_type_;
+  std::vector< CF_2 *> *bc_interface_value_;
+  std::vector< CF_2 *> *bc_interface_coeff_;
+#endif
+
+  Vec mask_;
+  std::vector<double> scalling_;
+  bool keep_scalling_;
+
+  double eps_ifc_, eps_dom_;
+
+  enum discretization_scheme_t { FDM, FVM } discretization_scheme_;
 
   void preallocate_matrix();
 
-  void setup_negative_laplace_matrix_sym();
-  void setup_negative_laplace_rhsvec_sym();
-
-  void setup_negative_variable_coeff_laplace_matrix_sym();
-  void setup_negative_variable_coeff_laplace_rhsvec_sym();
-
+  void setup_linear_system_(bool setup_matrix, bool setup_rhs);
+//  void setup_negative_variable_coeff_laplace_matrix_();
+//  void setup_negative_variable_coeff_laplace_rhsvec_();
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
   my_p4est_poisson_nodes_mls_t& operator=(const my_p4est_poisson_nodes_mls_t& other);
 
-
-  double eps_ifc, eps_dom;
-
-  bool kink_special_treatment;
-
-
-//public:
-
-
+public:
   my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *node_neighbors);
   ~my_p4est_poisson_nodes_mls_t();
 
   // set geometry
-  void set_geometry(std::vector<Vec> &phi_,
-                    std::vector<Vec> &phi_xx_,
-                    std::vector<Vec> &phi_yy_,
-                    #ifdef P4_TO_P8
-                    std::vector<Vec> &phi_zz_,
-                    #endif
-                    std::vector<action_t> &action_, std::vector<int> &color_,
-                    Vec phi_eff_ = NULL);
+  inline void set_geometry(int num_interfaces,
+                           std::vector<action_t> *action, std::vector<int> *color,
+                           std::vector<Vec> *phi,
+                           std::vector<Vec> *phi_xx = NULL,
+                           std::vector<Vec> *phi_yy = NULL,
+                         #ifdef P4_TO_P8
+                           std::vector<Vec> *phi_zz = NULL,
+                         #endif
+                           Vec phi_eff = NULL)
+  {
+    num_interfaces_ = num_interfaces;
+    action_  = action;
+    color_   = color;
+    phi_     = phi;
 
-  void set_geometry(std::vector<Vec> &phi_,
-                    std::vector<action_t> &action_, std::vector<int> &color_,
-                    Vec phi_eff_ = NULL);
+    if (phi_xx != NULL &&
+    #ifdef P4_TO_P8
+        phi_zz != NULL &&
+    #endif
+        phi_yy != NULL)
+    {
+      phi_xx_  = phi_xx;
+      phi_yy_  = phi_yy;
+#ifdef P4_TO_P8
+      phi_zz_  = phi_zz;
+#endif
+      is_phi_dd_owned_ = false;
+    } else {
+      compute_phi_dd_();
+      is_phi_dd_owned_ = true;
+    }
 
-  void compute_phi_eff();
-  void compute_phi_dd();
-  void compute_volumes();
+    if (phi_eff != NULL)
+      phi_eff_ = phi_eff;
+    else
+      compute_phi_eff_();
+
+#ifdef CASL_THROWS
+    if (num_interfaces_ > 0)
+      if (action_->size() != num_interfaces_ ||
+          color_->size()  != num_interfaces_ ||
+          phi_->size()    != num_interfaces_ ||
+          phi_xx_->size() != num_interfaces_ ||
+    #ifdef P4_TO_P8
+          phi_zz_->size() != num_interfaces_ ||
+    #endif
+          phi_yy_->size() != num_interfaces_ )
+        throw std::invalid_argument("[CASL_ERROR]: invalid geometry");
+#endif
+
+  }
+
+
+//  void set_geometry(std::vector<Vec> &phi,
+//                    std::vector<action_t> &action, std::vector<int> &color,
+//                    Vec phi_eff = NULL);
+
+  void compute_phi_eff_();
+  void compute_phi_dd_();
 
   // set BCs
-  void set_bc_type(std::vector<BoundaryConditionType> &bc_types_) {bc_types = &bc_types_;}
+#ifdef P4_TO_P8
+  inline void set_bc_wall_type(WallBC3D &wall_type) { bc_wall_type_ = &wall_type;}
+  inline void set_bc_wall_value(CF_3 &wall_value)   { bc_wall_value_ = &wall_value; }
+  inline void set_bc_interface_type (std::vector<BoundaryConditionType> &bc_interface_type)  { bc_interface_type_  = &bc_interface_type;  is_matrix_computed_ = false; }
+  inline void set_bc_interface_value(std::vector< CF_3 *> &bc_interface_value)               { bc_interface_value_ = &bc_interface_value; is_matrix_computed_ = false; }
+  inline void set_bc_interface_coeff(std::vector< CF_3 *> &bc_interface_coeff)               { bc_interface_coeff_ = &bc_interface_coeff; is_matrix_computed_ = false; }
+#else
+  inline void set_bc_wall_type(WallBC2D &wall_type) { bc_wall_type_ = &wall_type;}
+  inline void set_bc_wall_value(CF_2 &wall_value)   { bc_wall_value_ = &wall_value; }
+  inline void set_bc_interface_type (std::vector<BoundaryConditionType> &bc_interface_type)  { bc_interface_type_  = &bc_interface_type;  is_matrix_computed_ = false; }
+  inline void set_bc_interface_value(std::vector< CF_2 *> &bc_interface_value)               { bc_interface_value_ = &bc_interface_value; is_matrix_computed_ = false; }
+  inline void set_bc_interface_coeff(std::vector< CF_2 *> &bc_interface_coeff)               { bc_interface_coeff_ = &bc_interface_coeff; is_matrix_computed_ = false; }
+#endif
 
-  void set_bc_values(std::vector<Vec> &bc_vecs)
+  inline void set_diag_add(double diag_add_scalar) { diag_add_scalar_  = diag_add_scalar; is_matrix_computed_ = false; }
+  inline void set_diag_add(Vec diag_add)           { diag_add_         = diag_add;        is_matrix_computed_ = false; }
+
+  inline void set_mu(double mu) { mu_ = mu; variable_mu_ = false; }
+
+#ifdef P4_TO_P8
+  void set_mu(Vec mue, Vec mue_xx = NULL, Vec mue_yy = NULL, Vec mue_zz = NULL)
+#else
+  void set_mu(Vec mue, Vec mue_xx = NULL, Vec mue_yy = NULL)
+#endif
   {
-    bc_values.resize(bc_vecs.size());
-    for (int i = 0; i < bc_vecs.size(); i++)
-      bc_values[i].set(bc_vecs[i]);
-  }
-  void set_bc_values(std::vector<double> &bc_vals)
-  {
-    bc_values.resize(bc_vals.size());
-    for (int i = 0; i < bc_vals.size(); i++)
-      bc_values[i].set(bc_vals[i]);
-  }
+    mue_ = mue;
 
-  void set_bc_coeffs(std::vector<Vec> &bc_vecs)
-  {
-    bc_coeffs.resize(bc_vecs.size());
-    for (int i = 0; i < bc_vecs.size(); i++)
-      bc_coeffs[i].set(bc_vecs[i]);
-  }
-  void set_bc_coeffs(std::vector<double> &bc_vals)
-  {
-    bc_coeffs.resize(bc_vals.size());
-    for (int i = 0; i < bc_vals.size(); i++)
-      bc_coeffs[i].set(bc_vals[i]);
-  }
+    if (mue_xx != NULL &&
+    #ifdef P4_TO_P8
+        mue_zz != NULL &&
+    #endif
+        mue_yy != NULL)
+    {
+      mue_xx_ = mue_xx;
+      mue_yy_ = mue_yy;
+#ifdef P4_TO_P8
+      mue_zz_ = mue_zz;
+#endif
+      is_mue_dd_owned_ = false;
+    } else {
+      compute_mue_dd_();
+      is_mue_dd_owned_ = true;
+    }
 
-  void set_diag_add(double val) { diag_add.set(val); }
-  void set_diag_add(Vec val)    { diag_add.set(val); }
-
-  void set_mu(double val) { mu.set(val); }
-  void set_mu(Vec val)    { mu.set(val); }
-
-  void set_wall_value(double val) { wall_value.set(val); }
-  void set_wall_value(Vec val)    { wall_value.set(val); }
-
-  void set_rhs(Vec &rhs_) {rhs = rhs_;}
-
-  void set_use_taylor_correction(bool val) {use_taylor_correction = val;}
-
-  void set_keep_scalling(bool keep_scalling_)    {keep_scalling = keep_scalling_;}
-
-  void set_is_matrix_computed(bool is_matrix_computed)   {is_matrix_computed = is_matrix_computed; }
-
-  void set_kinks_treatment(bool in) {kink_special_treatment = in;}
-
-  void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT)
-  {
-    ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
+    is_matrix_computed_ = false;
   }
 
-  bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
+  void compute_mue_dd_();
 
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  inline void set_rhs(Vec rhs) { rhs_ = rhs; }
+
+  inline void set_is_matrix_computed(bool is_matrix_computed) { is_matrix_computed_ = is_matrix_computed; }
+
+  inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT) {
+    ierr = KSPSetTolerances(ksp_, rtol, atol, dtol, itmax); CHKERRXX(ierr);
+  }
+
+  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
+
+  inline void set_first_order_neumann_wall(bool value) { neumann_wall_first_order_  = value; }
+  inline void set_use_pointwise_dirichlet (bool value) { use_pointwise_dirichlet_   = value; }
+  inline void set_use_taylor_correction   (bool value) { use_taylor_correction_     = value; }
+  inline void set_keep_scalling           (bool value) { keep_scalling_             = value; }
+  inline void set_kink_treatment          (bool value) { kink_special_treatment_    = value; }
+
+  void inv_mat2_(double *in, double *out);
+  void inv_mat3_(double *in, double *out);
+
+//  void find_projection_(double *phi_p, p4est_locidx_t *neighbors, bool *neighbor_exists, double dxyz_pr[], double &dist_pr);
+  void find_projection_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr);
+
+  void compute_normal_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[]);
+
+  void get_all_neighbors_(p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists);
+
 //  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 
-  void solve_linear_system(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  void assemble_matrix(Vec solution);
 
-  bool is_calc(int n) {
-    if (node_loc[n] == NODE_INS || node_loc[n] == NODE_NMN) return true;
-    else return false;
+  inline Vec get_mask() { return mask_; }
+
+  inline void get_phi_dd(std::vector<Vec> **phi_dd)
+  {
+    phi_dd[0] = phi_xx_;
+    phi_dd[1] = phi_yy_;
+#ifdef P4_TO_P8
+    phi_dd[2] = phi_zz_;
+#endif
   }
 
-  bool is_inside(int n) {
-    if (node_loc[n] == NODE_INS) return true;
-    else return false;
+  inline Vec get_phi_eff() { return phi_eff_; }
+
+  inline Mat get_matrix() { return A_; }
+
+  inline std::vector<double>* get_scalling() { return &scalling_; }
+
+  inline void assemble_rhs_only() { setup_linear_system_(false, true); }
+
+
+  //---------------------------------------------------------------------------------
+  // some stuff for pointwise dirichlet
+  //---------------------------------------------------------------------------------
+
+  struct interface_point_t {
+    short dir;
+    double dist;
+    double value;
+    interface_point_t(double dir_, double dist_) {dir = dir_; dist = dist_;}
+  };
+
+  std::vector< std::vector<interface_point_t> > pointwise_bc_;
+
+  inline void get_xyz_interface_point(p4est_locidx_t n, short i, double *xyz)
+  {
+    node_xyz_fr_n(n, p4est_, nodes_, xyz);
+    short  dir  = pointwise_bc_[n][i].dir;
+    double dist = pointwise_bc_[n][i].dist;
+
+    switch (dir) {
+      case 0: xyz[0] -= dist; break;
+      case 1: xyz[0] += dist; break;
+      case 2: xyz[1] -= dist; break;
+      case 3: xyz[1] += dist; break;
+#ifdef P4_TO_P8
+      case 4: xyz[2] -= dist; break;
+      case 5: xyz[2] += dist; break;
+#endif
+    }
   }
 
-  void inv_mat2(double *in, double *out);
-  void inv_mat3(double *in, double *out);
+  inline void set_interface_point_value(p4est_locidx_t n, short i, double val)
+  {
+    pointwise_bc_[n][i].value = val;
+  }
 
-  int cube_refinement;
-  void set_cube_refinement(int r) {cube_refinement = r;}
+  inline double get_interface_point_value(p4est_locidx_t n, short i)
+  {
+    return pointwise_bc_[n][i].value;
+  }
 
-  void find_projection(double *phi_p, p4est_locidx_t *neighbors, bool *neighbor_exists, double dxyz_pr[], double &dist_pr);
-  void find_projection(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr);
+  // linear interpolation of a Vec at an interface point
+  inline double interpolate_at_interface_point(p4est_locidx_t n, short i, double *ptr)
+  {
+    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
 
-  void compute_normal(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[]);
+    short  dir  = pointwise_bc_[n][i].dir;
+    double dist = pointwise_bc_[n][i].dist;
 
-  void sample_vec_at_neighbors(double *in_p, int *neighbors, bool *neighbor_exists, double *output);
-  void sample_vec_at_neighbors(double *in_p, int *neighbors, bool *neighbor_exists, std::vector<double> &output);
-  void sample_qty_at_neighbors(quantity_t &qty, int *neighbors, bool *neighbor_exists, double *output);
-
-  double sample_qty(quantity_t &qty, double *xyz);
-  double sample_qty(quantity_t &qty, p4est_locidx_t n);
-  double sample_qty(quantity_t &qty, p4est_locidx_t n, double *xyz);
-
-  void get_all_neighbors(p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists);
-
+    p4est_locidx_t neigh;
+    double h;
+    switch (dir) {
 #ifdef P4_TO_P8
-  void compute_error_sl(CF_3 &exact_cf, Vec sol, Vec err);
-  void compute_error_tr(CF_3 &exact_cf, Vec error);
-  void compute_error_gr(CF_3 &ux_cf, CF_3 &uy_cf, CF_3 &uz_cf, Vec sol, Vec err_ux, Vec err_uy, Vec err_uz);
+      case 0: neigh = qnnn.d_m00_m0==0 ? (qnnn.d_m00_0m==0 ? qnnn.node_m00_mm : qnnn.node_m00_mp)
+                                       : (qnnn.d_m00_0m==0 ? qnnn.node_m00_pm : qnnn.node_m00_pp); h = dx_min_; break;
+      case 1: neigh = qnnn.d_p00_m0==0 ? (qnnn.d_p00_0m==0 ? qnnn.node_p00_mm : qnnn.node_p00_mp)
+                                       : (qnnn.d_p00_0m==0 ? qnnn.node_p00_pm : qnnn.node_p00_pp); h = dx_min_; break;
+      case 2: neigh = qnnn.d_0m0_m0==0 ? (qnnn.d_0m0_0m==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_mp)
+                                       : (qnnn.d_0m0_0m==0 ? qnnn.node_0m0_pm : qnnn.node_0m0_pp); h = dy_min_; break;
+      case 3: neigh = qnnn.d_0p0_m0==0 ? (qnnn.d_0p0_0m==0 ? qnnn.node_0p0_mm : qnnn.node_0p0_mp)
+                                       : (qnnn.d_0p0_0m==0 ? qnnn.node_0p0_pm : qnnn.node_0p0_pp); h = dy_min_; break;
+      case 4: neigh = qnnn.d_00m_m0==0 ? (qnnn.d_00m_0m==0 ? qnnn.node_00m_mm : qnnn.node_00m_mp)
+                                       : (qnnn.d_00m_0m==0 ? qnnn.node_00m_pm : qnnn.node_00m_pp); h = dz_min_; break;
+      case 5: neigh = qnnn.d_00p_m0==0 ? (qnnn.d_00p_0m==0 ? qnnn.node_00p_mm : qnnn.node_00p_mp)
+                                       : (qnnn.d_00p_0m==0 ? qnnn.node_00p_pm : qnnn.node_00p_pp); h = dz_min_; break;
 #else
-  void compute_error_sl(CF_2 &exact_cf, Vec sol, Vec err);
-  void compute_error_tr(CF_2 &exact_cf, Vec error);
-  void compute_error_gr(CF_2 &ux_cf, CF_2 &uy_cf, Vec sol, Vec err_ux, Vec err_uy);
-//  void compute_error_xy(CF_2 &uxy_cf, Vec sol, Vec err_uxy);
+      case 0: neigh = qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm; h = dx_min_; break;
+      case 1: neigh = qnnn.d_p00_m0==0 ? qnnn.node_p00_mm : qnnn.node_p00_pm; h = dx_min_; break;
+      case 2: neigh = qnnn.d_0m0_m0==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_pm; h = dy_min_; break;
+      case 3: neigh = qnnn.d_0p0_m0==0 ? qnnn.node_0p0_mm : qnnn.node_0p0_pm; h = dy_min_; break;
 #endif
+    }
 
-//  double interpolate_near_node_linear   (double *in_p, p4est_locidx_t *nei_quads, bool *nei_quad_exists, double x, double y, double z);
-//  double interpolate_near_node_quadratic(double *in_p, double *inxx_p, double *inyy_p, double *inzz_p, p4est_locidx_t *nei_quads, bool *nei_quad_exists, double x, double y, double z);
+    return (ptr[n]*(h-dist) + ptr[neigh]*dist)/h;
+  }
 
+  // quadratic interpolation of a Vec at an interface point
+  inline double interpolate_at_interface_point(p4est_locidx_t n, short i, double *ptr, double *ptr_dd[P4EST_DIM])
+  {
+    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
+
+    short  dir  = pointwise_bc_[n][i].dir;
+    double dist = pointwise_bc_[n][i].dist;
+
+    p4est_locidx_t neigh;
+    double h;
+    short dim =0;
+    switch (dir) {
 #ifdef P4_TO_P8
-  double sample_qty_on_uni_grid(grid_interpolation3_t &grid, double *output, quantity_t &qty);
+      case 0: neigh = qnnn.d_m00_m0==0 ? (qnnn.d_m00_0m==0 ? qnnn.node_m00_mm : qnnn.node_m00_mp)
+                                       : (qnnn.d_m00_0m==0 ? qnnn.node_m00_pm : qnnn.node_m00_pp); h = dx_min_; dim = 0; break;
+      case 1: neigh = qnnn.d_p00_m0==0 ? (qnnn.d_p00_0m==0 ? qnnn.node_p00_mm : qnnn.node_p00_mp)
+                                       : (qnnn.d_p00_0m==0 ? qnnn.node_p00_pm : qnnn.node_p00_pp); h = dx_min_; dim = 0; break;
+      case 2: neigh = qnnn.d_0m0_m0==0 ? (qnnn.d_0m0_0m==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_mp)
+                                       : (qnnn.d_0m0_0m==0 ? qnnn.node_0m0_pm : qnnn.node_0m0_pp); h = dy_min_; dim = 1; break;
+      case 3: neigh = qnnn.d_0p0_m0==0 ? (qnnn.d_0p0_0m==0 ? qnnn.node_0p0_mm : qnnn.node_0p0_mp)
+                                       : (qnnn.d_0p0_0m==0 ? qnnn.node_0p0_pm : qnnn.node_0p0_pp); h = dy_min_; dim = 1; break;
+      case 4: neigh = qnnn.d_00m_m0==0 ? (qnnn.d_00m_0m==0 ? qnnn.node_00m_mm : qnnn.node_00m_mp)
+                                       : (qnnn.d_00m_0m==0 ? qnnn.node_00m_pm : qnnn.node_00m_pp); h = dz_min_; dim = 2; break;
+      case 5: neigh = qnnn.d_00p_m0==0 ? (qnnn.d_00p_0m==0 ? qnnn.node_00p_mm : qnnn.node_00p_mp)
+                                       : (qnnn.d_00p_0m==0 ? qnnn.node_00p_pm : qnnn.node_00p_pp); h = dz_min_; dim = 2; break;
 #else
-  double sample_qty_on_uni_grid(grid_interpolation2_t &grid, double *output, quantity_t &qty);
+      case 0: neigh = qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm; h = dx_min_; dim = 0; break;
+      case 1: neigh = qnnn.d_p00_m0==0 ? qnnn.node_p00_mm : qnnn.node_p00_pm; h = dx_min_; dim = 0; break;
+      case 2: neigh = qnnn.d_0m0_m0==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_pm; h = dy_min_; dim = 1; break;
+      case 3: neigh = qnnn.d_0p0_m0==0 ? qnnn.node_0p0_mm : qnnn.node_0p0_pm; h = dy_min_; dim = 1; break;
 #endif
+    }
 
-#ifdef P4_TO_P8
-  double compute_qty_avg_over_iface(cube3_mls_t &cube, int color, quantity_t &qty);
-#else
-  double compute_qty_avg_over_iface(cube2_mls_t &cube, int color, quantity_t &qty);
-#endif
+    double p_dd = .5*(ptr_dd[dim][n] + ptr_dd[dim][neigh]);
+    double p0 = ptr[n];
+    double p1 = ptr[neigh];
 
+    return .5*(p0+p1) + (p1-p0)*(dist/h-.5) + .5*p_dd*(dist*dist-dist*h);
+  }
+
+  // assemble RHS for Poisson equation with jump conditions and continuous and constant mu
+//  void assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2& jump_un, CF_2& rhs_m, CF_2& rhs_p);
+  void assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u, CF_2& jump_un, Vec rhs_m_in = NULL, Vec rhs_p_in = NULL);
 };
 
 #endif // MY_P4EST_POISSON_NODES_MLS_H
