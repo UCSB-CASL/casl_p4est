@@ -61,6 +61,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
+//          return 0.;
           return 1.0;
       }
   } bc_coeff_0;
@@ -69,6 +70,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
+//          return 0.;
           return sin(x+y)*cos(x-y);
       }
   } bc_coeff_1;

@@ -44,7 +44,7 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
-        return .0;
+        return 1.0;
       }
   } bc_coeff_0;
 #else
@@ -52,7 +52,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
-        return .0;
+        return 1.0;
       }
   } bc_coeff_0;
 #endif

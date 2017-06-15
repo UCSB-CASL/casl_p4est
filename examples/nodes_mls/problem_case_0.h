@@ -97,6 +97,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
+//        return 0.5;
           return x-y + (x+y)*(x+y);
       }
   } bc_coeff_2;

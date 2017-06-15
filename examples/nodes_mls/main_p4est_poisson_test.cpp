@@ -30,6 +30,7 @@
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_poisson_nodes_mls.h>
+#include <src/my_p8est_poisson_nodes_mls_sc.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
 #include <src/simplex3_mls_vtk.h>
@@ -46,6 +47,7 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_poisson_nodes_mls.h>
+#include <src/my_p4est_poisson_nodes_mls_sc.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
 #include <src/simplex2_mls_vtk.h>
@@ -103,7 +105,7 @@ const double p_xyz_max[3] = {1, 1, 1};
  * 7412
  */
 
-int n_geometry = 0;
+int n_geometry = 2;
 int n_test = 0;
 int n_mu = 0;
 int n_diag_add = 0;
@@ -777,7 +779,8 @@ int main (int argc, char* argv[])
 //    ierr = VecDestroy(u_exact_vec); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est->mpicomm, "Starting a solver\n"); CHKERRXX(ierr);
 
-    my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
+//    my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
+    my_p4est_poisson_nodes_mls_sc_t solver(&ngbd_n);
 //    solver.set_geometry(0, NULL, NULL, NULL);
     solver.set_geometry(num_surfaces, &action, &color, &phi);
     solver.set_mu(mu);
@@ -1013,7 +1016,7 @@ int main (int argc, char* argv[])
     // calculate extrapolation error
     //----------------------------------------------------------------------------------------------
     // smoothed LSF
-//    level_set_smooth_t level_set_smooth_cf(&phi_cf, &action, &color, 54.*dxyz_max*dxyz_max);
+//    level_set_smooth_t level_set_smooth_cf(&phi_cf, &action, &color, 25.*dxyz_max*dxyz_max);
     level_set_smooth_t level_set_smooth_cf(&phi_cf, &action, &color, 64.*dxyz_max*dxyz_max);
 //    level_set_smooth_t level_set_smooth_cf(&phi_cf, &action, &color, 0.1*dxyz_max);
 //    level_set_smooth_t level_set_smooth_cf(&phi_cf, &action, &color, 0.0025);
@@ -1025,7 +1028,7 @@ int main (int argc, char* argv[])
     ls.reinitialize_1st_order_time_2nd_order_space(phi_smooth);
     ls.reinitialize_1st_order_time_2nd_order_space(phi_eff);
 
-    double band = 2.0;
+    double band = 3.0;
 
     // copy solution into a new Vec
     Vec sol_ex; double *sol_ex_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol_ex); CHKERRXX(ierr);
@@ -1042,7 +1045,7 @@ int main (int argc, char* argv[])
     // extend
 //    ls.extend_Over_Interface_TVD(phi_smooth, sol_ex, 100); CHKERRXX(ierr);
 //    ls.extend_Over_Interface_TVD(phi_eff, sol_ex, 100); CHKERRXX(ierr);
-    ls.extend_Over_Interface_TVD(phi_smooth, mask, sol_ex, 100); CHKERRXX(ierr);
+    ls.extend_Over_Interface_TVD(phi_smooth, mask, sol_ex, 100, 2); CHKERRXX(ierr);
 //    ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, sol_ex, 100); CHKERRXX(ierr);
 
     // calculate error
@@ -1052,10 +1055,11 @@ int main (int argc, char* argv[])
 
     double *phi_eff_ptr;
     ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
 
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
-//      if (!solver.is_calc(n) && phi_smooth_ptr[n] < band*dxyz_max)
+//      if (mask_ptr[n] > 0. && phi_smooth_ptr[n] < band*dxyz_max)
       if (mask_ptr[n] > 0. && phi_eff_ptr[n] < band*dxyz_max)
       {
         double xyz[P4EST_DIM];
@@ -1074,6 +1078,7 @@ int main (int argc, char* argv[])
     ierr = VecRestoreArray(vec_error_ex, &vec_error_ex_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
 
     ierr = VecGhostUpdateBegin(vec_error_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (vec_error_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1081,85 +1086,164 @@ int main (int argc, char* argv[])
     //----------------------------------------------------------------------------------------------
     // calculate error of Laplacian
     //----------------------------------------------------------------------------------------------
-    Vec vec_uxx; double *vec_uxx_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_uxx); CHKERRXX(ierr);
-    Vec vec_uyy; double *vec_uyy_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_uyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    Vec vec_uzz; double *vec_uzz_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_uzz); CHKERRXX(ierr);
-    ngbd_n.second_derivatives_central(sol_ex, vec_uxx, vec_uyy, vec_uzz); CHKERRXX(ierr);
-#else
-    ngbd_n.second_derivatives_central(sol_ex, vec_uxx, vec_uyy); CHKERRXX(ierr);
-#endif
-
-    double phi_shift = diag;
-
-    ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
-    for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
-    {
-      phi_eff_ptr[i] += phi_shift;
-    }
-    ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
-
-//    ls.extend_Over_Interface_TVD(phi_smooth, vec_uxx); CHKERRXX(ierr);
-//    ls.extend_Over_Interface_TVD(phi_smooth, vec_uyy); CHKERRXX(ierr);
-//#ifdef P4_TO_P8
-//    ls.extend_Over_Interface_TVD(phi_smooth, vec_uzz); CHKERRXX(ierr);
-//#endif
-
-    ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, vec_uxx, 100); CHKERRXX(ierr);
-    ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, vec_uyy, 100); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, vec_uzz, 100); CHKERRXX(ierr);
-#endif
-
-    ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
-    for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
-    {
-      phi_eff_ptr[i] -= phi_shift;
-    }
-    ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
-
-    ierr = VecGetArray(vec_error_dd, &vec_error_dd_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(vec_uxx, &vec_uxx_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(vec_uyy, &vec_uyy_ptr); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(vec_uzz, &vec_uzz_ptr); CHKERRXX(ierr);
-#endif
-
+    ierr = VecGetArray(sol, &sol_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(vec_error_dd, &vec_error_dd_ptr); CHKERRXX(ierr);
 
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
     {
-      if (mask_ptr[n] < 0)
-      {
-        double xyz[P4EST_DIM];
-        node_xyz_fr_n(n, p4est, nodes, xyz);
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est, nodes, xyz);
+
 #ifdef P4_TO_P8
-        vec_error_dd_ptr[n] = ABS(vec_uxx_ptr[n] + vec_uyy_ptr[n] + vec_uzz_ptr[n] - lap_u_cf(xyz[0],xyz[1],xyz[2]));
+      double udd_exact = lap_u_cf(xyz[0], xyz[1], xyz[2]);
 #else
-        vec_error_dd_ptr[n] = ABS(vec_uxx_ptr[n] + vec_uyy_ptr[n] - lap_u_cf(xyz[0],xyz[1]));
+      double udd_exact = lap_u_cf(xyz[0], xyz[1]);
 #endif
-      }
-      else
+
+      ngbd_n.get_neighbors(n, qnnn);
+      if ( mask_ptr[qnnn.node_000]<-EPS &&
+     #ifdef P4_TO_P8
+           ( mask_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( mask_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+
+           ( mask_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( mask_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+
+           ( mask_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( mask_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+
+           ( mask_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( mask_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+
+           ( mask_ptr[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( mask_ptr[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+
+           ( mask_ptr[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( mask_ptr[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( mask_ptr[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
+     #else
+           ( mask_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( mask_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( mask_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( mask_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( mask_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( mask_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( mask_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( mask_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
+     #endif
+           )
+      {
+        double uxx = qnnn.dxx_central(sol_ptr);
+        double uyy = qnnn.dyy_central(sol_ptr);
+#ifdef P4_TO_P8
+        double uzz = qnnn.dzz_central(sol_ptr);
+        vec_error_dd_ptr[n] = fabs(udd_exact-uxx-uyy-uzz);
+#else
+        vec_error_dd_ptr[n] = fabs(udd_exact-uxx-uyy);
+#endif
+      } else {
         vec_error_dd_ptr[n] = 0;
+      }
     }
 
+    ierr = VecRestoreArray(sol, &sol_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
-
     ierr = VecRestoreArray(vec_error_dd, &vec_error_dd_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vec_uxx, &vec_uxx_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vec_uyy, &vec_uyy_ptr); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(vec_uzz, &vec_uzz_ptr); CHKERRXX(ierr);
-#endif
-
-    ierr = VecDestroy(vec_uxx); CHKERRXX(ierr);
-    ierr = VecDestroy(vec_uyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecDestroy(vec_uzz); CHKERRXX(ierr);
-#endif
 
     ierr = VecGhostUpdateBegin(vec_error_dd, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (vec_error_dd, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+//    Vec vec_uxx; double *vec_uxx_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_uxx); CHKERRXX(ierr);
+//    Vec vec_uyy; double *vec_uyy_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_uyy); CHKERRXX(ierr);
+//#ifdef P4_TO_P8
+//    Vec vec_uzz; double *vec_uzz_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_uzz); CHKERRXX(ierr);
+//    ngbd_n.second_derivatives_central(sol_ex, vec_uxx, vec_uyy, vec_uzz); CHKERRXX(ierr);
+//#else
+//    ngbd_n.second_derivatives_central(sol_ex, vec_uxx, vec_uyy); CHKERRXX(ierr);
+//#endif
+
+////    double phi_shift = 0*diag;
+
+////    ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+////    for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
+////    {
+////      phi_eff_ptr[i] += phi_shift;
+////    }
+////    ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+
+//////    ls.extend_Over_Interface_TVD(phi_smooth, vec_uxx); CHKERRXX(ierr);
+//////    ls.extend_Over_Interface_TVD(phi_smooth, vec_uyy); CHKERRXX(ierr);
+//////#ifdef P4_TO_P8
+//////    ls.extend_Over_Interface_TVD(phi_smooth, vec_uzz); CHKERRXX(ierr);
+//////#endif
+
+////    ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, vec_uxx, 20); CHKERRXX(ierr);
+////    ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, vec_uyy, 20); CHKERRXX(ierr);
+////#ifdef P4_TO_P8
+////    ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, vec_uzz, 20); CHKERRXX(ierr);
+////#endif
+
+////    ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+////    for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
+////    {
+////      phi_eff_ptr[i] -= phi_shift;
+////    }
+////    ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+
+//    ierr = VecGetArray(vec_error_dd, &vec_error_dd_ptr); CHKERRXX(ierr);
+//    ierr = VecGetArray(vec_uxx, &vec_uxx_ptr); CHKERRXX(ierr);
+//    ierr = VecGetArray(vec_uyy, &vec_uyy_ptr); CHKERRXX(ierr);
+//#ifdef P4_TO_P8
+//    ierr = VecGetArray(vec_uzz, &vec_uzz_ptr); CHKERRXX(ierr);
+//#endif
+
+//    ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
+
+//    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+//    {
+//      if (mask_ptr[n] < 0)
+//      {
+//        double xyz[P4EST_DIM];
+//        node_xyz_fr_n(n, p4est, nodes, xyz);
+//#ifdef P4_TO_P8
+//        vec_error_dd_ptr[n] = ABS(vec_uxx_ptr[n] + vec_uyy_ptr[n] + vec_uzz_ptr[n] - lap_u_cf(xyz[0],xyz[1],xyz[2]));
+//#else
+//        vec_error_dd_ptr[n] = ABS(vec_uxx_ptr[n] + vec_uyy_ptr[n] - lap_u_cf(xyz[0],xyz[1]));
+//#endif
+//      }
+//      else
+//        vec_error_dd_ptr[n] = 0;
+//    }
+
+//    ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
+
+//    ierr = VecRestoreArray(vec_error_dd, &vec_error_dd_ptr); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(vec_uxx, &vec_uxx_ptr); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(vec_uyy, &vec_uyy_ptr); CHKERRXX(ierr);
+//#ifdef P4_TO_P8
+//    ierr = VecRestoreArray(vec_uzz, &vec_uzz_ptr); CHKERRXX(ierr);
+//#endif
+
+//    ierr = VecDestroy(vec_uxx); CHKERRXX(ierr);
+//    ierr = VecDestroy(vec_uyy); CHKERRXX(ierr);
+//#ifdef P4_TO_P8
+//    ierr = VecDestroy(vec_uzz); CHKERRXX(ierr);
+//#endif
+
+//    ierr = VecGhostUpdateBegin(vec_error_dd, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd  (vec_error_dd, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
 //    //----------------------------------------------------------------------------------------------
 //    // calculate error of gradient after extension

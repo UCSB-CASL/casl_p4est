@@ -43,34 +43,36 @@ public:
 #ifdef P4_TO_P8
   class bc_coeff_0_t : public CF_3 {
   public:
-      double operator()(double x, double y, double z) const
-      {
-          return cos(x+y)*sin(x-y)*exp(z);
-      }
+    double operator()(double x, double y, double z) const
+    {
+      return cos(x+y)*sin(x-y)*exp(z);
+    }
   } bc_coeff_0;
 
   class bc_coeff_1_t : public CF_3 {
   public:
-      double operator()(double x, double y, double z) const
-      {
-          return sin(x+y)*cos(x-y)*log(z+4.);
-      }
+    double operator()(double x, double y, double z) const
+    {
+      return sin(x+y)*cos(x-y)*log(z+4.);
+    }
   } bc_coeff_1;
 #else
   class bc_coeff_0_t : public CF_2 {
   public:
-      double operator()(double x, double y) const
-      {
-          return sin(x-y)*cos(x+y);
-      }
+    double operator()(double x, double y) const
+    {
+//      return 0.;
+      return sin(x-y)*cos(x+y);
+    }
   } bc_coeff_0;
 
   class bc_coeff_1_t : public CF_2 {
   public:
-      double operator()(double x, double y) const
-      {
-          return sin(x+y)*cos(x-y);
-      }
+    double operator()(double x, double y) const
+    {
+//      return 0.;
+      return sin(x+y)*cos(x-y);
+    }
   } bc_coeff_1;
 #endif
 
