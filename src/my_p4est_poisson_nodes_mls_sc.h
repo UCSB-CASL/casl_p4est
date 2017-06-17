@@ -21,9 +21,11 @@
 #include <src/cube3_mls_quadratic.h>
 #include <src/cube2_mls_quadratic.h>
 
+#define USE_QUADRATIC_CUBES
+
 class my_p4est_poisson_nodes_mls_sc_t
 {
-  static const bool use_refined_cube_ = 0;
+  static const bool use_refined_cube_ = 1;
   static const int cube_refinement_ = 1;
   static const int num_neighbors_max_ = pow(3, P4EST_DIM);
 
@@ -267,6 +269,25 @@ class my_p4est_poisson_nodes_mls_sc_t
       return (*alpha_)(x,y)*(y-xyz_[1]);
     }
   } bc_coeff_times_delta_y_;
+#endif
+
+
+
+#ifdef P4_TO_P8
+  class bc_coeff_times_delta_z_t: public CF_3
+  {
+    CF_3 *alpha_;
+    double *xyz_;
+  public:
+    inline void set(CF_3 &alpha, double *xyz)
+    {
+      alpha_ = &alpha; xyz_ = xyz;
+    }
+    double operator()(double x, double y, double z) const
+    {
+      return (*alpha_)(x,y,z)*(z-xyz_[2]);
+    }
+  } bc_coeff_times_delta_z_;
 #endif
 
   const my_p4est_node_neighbors_t *node_neighbors_;

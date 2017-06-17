@@ -111,7 +111,7 @@ class my_p4est_poisson_nodes_mls_t
   } taylor_expansion_coeff_term_;
 #endif
 
-  static const bool use_refined_cube_ = 0;
+  static const bool use_refined_cube_ = 1;
   static const int cube_refinement_ = 1;
   const my_p4est_node_neighbors_t *node_neighbors_;
 

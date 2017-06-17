@@ -34,6 +34,7 @@
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
 #include <src/simplex3_mls_vtk.h>
+#include <src/simplex3_mls_quadratic_vtk.h>
 #include <src/my_p8est_semi_lagrangian.h>
 #else
 #include <p4est_bits.h>
@@ -69,6 +70,9 @@
 #include "problem_case_5.h" // two circles coloration (naive)
 #include "problem_case_6.h" // one flower
 #include "problem_case_7.h" // three flowers
+#include "problem_case_8.h" // half-space
+#include "problem_case_9.h" // angle
+#include "problem_case_10.h" // angle
 
 
 #undef MIN
@@ -80,8 +84,8 @@ bool save_vtk = true;
 
 #ifdef P4_TO_P8
 int lmin = 4;
-int lmax = 7;
-int nb_splits = 3;
+int lmax = 4;
+int nb_splits = 4;
 #else
 int lmin = 5;
 int lmax = 5;
@@ -105,10 +109,10 @@ const double p_xyz_max[3] = {1, 1, 1};
  * 7412
  */
 
-int n_geometry = 2;
+int n_geometry = 0;
 int n_test = 0;
 int n_mu = 0;
-int n_diag_add = 0;
+int n_diag_add = 1;
 
 bool reinitialize_lsfs = false;
 
@@ -433,6 +437,9 @@ problem_case_4_t problem_case_4;
 problem_case_5_t problem_case_5;
 problem_case_6_t problem_case_6;
 problem_case_7_t problem_case_7;
+problem_case_8_t problem_case_8;
+problem_case_9_t problem_case_9;
+problem_case_10_t problem_case_10;
 
 void set_parameters()
 {
@@ -533,6 +540,42 @@ void set_parameters()
         bc_coeffs_cf  = problem_case_7.bc_coeffs_cf;
         action        = problem_case_7.action;
         color         = problem_case_7.color;
+      } break;
+    case 8:
+      {
+        phi_cf        = problem_case_8.phi_cf;
+        phi_x_cf      = problem_case_8.phi_x_cf;
+        phi_y_cf      = problem_case_8.phi_y_cf;
+#ifdef P4_TO_P8
+        phi_z_cf      = problem_case_8.phi_z_cf;
+#endif
+        bc_coeffs_cf  = problem_case_8.bc_coeffs_cf;
+        action        = problem_case_8.action;
+        color         = problem_case_8.color;
+      } break;
+    case 9:
+      {
+        phi_cf        = problem_case_9.phi_cf;
+        phi_x_cf      = problem_case_9.phi_x_cf;
+        phi_y_cf      = problem_case_9.phi_y_cf;
+#ifdef P4_TO_P8
+        phi_z_cf      = problem_case_9.phi_z_cf;
+#endif
+        bc_coeffs_cf  = problem_case_9.bc_coeffs_cf;
+        action        = problem_case_9.action;
+        color         = problem_case_9.color;
+      } break;
+    case 10:
+      {
+        phi_cf        = problem_case_10.phi_cf;
+        phi_x_cf      = problem_case_10.phi_x_cf;
+        phi_y_cf      = problem_case_10.phi_y_cf;
+#ifdef P4_TO_P8
+        phi_z_cf      = problem_case_10.phi_z_cf;
+#endif
+        bc_coeffs_cf  = problem_case_10.bc_coeffs_cf;
+        action        = problem_case_10.action;
+        color         = problem_case_10.color;
       } break;
   }
 }
@@ -695,17 +738,20 @@ int main (int argc, char* argv[])
 //    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
     for (int i = 0; i < iter; ++i)
+    {
       my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
+      my_p4est_partition(p4est, P4EST_FALSE, NULL);
+    }
 
     splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot_cf, 1.4);
     p4est->user_pointer = (void*)(&data);
 
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+//    my_p4est_partition(p4est, P4EST_FALSE, NULL);
 //    p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+//    my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
     ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-    my_p4est_ghost_expand(p4est, ghost);
+//    my_p4est_ghost_expand(p4est, ghost);
     nodes = my_p4est_nodes_new(p4est, ghost);
 
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
@@ -814,34 +860,60 @@ int main (int argc, char* argv[])
 
     my_p4est_integration_mls_t integrator(p4est, nodes);
 #ifdef P4_TO_P8
+    integrator.set_phi(phi, action, color);
+#else
+    integrator.set_phi(phi, action, color);
+#endif
+//    if (save_vtk)
+//    {
+//      integrator.initialize();
+//#ifdef P4_TO_P8
+//      vector<simplex3_mls_t *> simplices;
+//      int n_sps = NTETS;
+//#else
+//      vector<simplex2_mls_t *> simplices;
+//      int n_sps = 2;
+//#endif
+
+//      for (int k = 0; k < integrator.cubes_linear.size(); k++)
+//        if (integrator.cubes_linear[k].loc == FCE)
+//          for (int l = 0; l < n_sps; l++)
+//            simplices.push_back(&integrator.cubes_linear[k].simplex[l]);
+
+//#ifdef P4_TO_P8
+//      simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+//#else
+//      simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+//#endif
+//    }
+
+//#ifdef P4_TO_P8
 //    integrator.set_phi(phi, *phi_dd[0], *phi_dd[1], *phi_dd[2], action, color);
-    integrator.set_phi(phi, action, color);
-#else
+//#else
 //    integrator.set_phi(phi, *phi_dd[0], *phi_dd[1], action, color);
-    integrator.set_phi(phi, action, color);
-#endif
-    if (save_vtk)
-    {
-      integrator.initialize();
-#ifdef P4_TO_P8
-      vector<simplex3_mls_t *> simplices;
-      int n_sps = NTETS;
-#else
-      vector<simplex2_mls_t *> simplices;
-      int n_sps = 2;
-#endif
+//#endif
+//    if (save_vtk)
+//    {
+//      integrator.initialize();
+//#ifdef P4_TO_P8
+//      vector<simplex3_mls_quadratic_t *> simplices;
+//      int n_sps = NTETS;
+//#else
+//      vector<simplex2_mls_t *> simplices;
+//      int n_sps = 2;
+//#endif
 
-      for (int k = 0; k < integrator.cubes_linear.size(); k++)
-        if (integrator.cubes_linear[k].loc == FCE)
-          for (int l = 0; l < n_sps; l++)
-            simplices.push_back(&integrator.cubes_linear[k].simplex[l]);
+//      for (int k = 0; k < integrator.cubes_quadratic.size(); k++)
+//        if (integrator.cubes_quadratic[k].loc == FCE)
+//          for (int l = 0; l < n_sps; l++)
+//            simplices.push_back(&integrator.cubes_quadratic[k].simplex[l]);
 
-#ifdef P4_TO_P8
-      simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
-#else
-      simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
-#endif
-    }
+//#ifdef P4_TO_P8
+//      simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+//#else
+//      simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+//#endif
+//    }
 
     /* calculate errors */
     Vec vec_error_sl; double *vec_error_sl_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_sl); CHKERRXX(ierr);
@@ -907,8 +979,9 @@ int main (int argc, char* argv[])
       double uy_exact = uy_cf(xyz[0], xyz[1]);
 #endif
 
+      p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
       ngbd_n.get_neighbors(n, qnnn);
-      if ( mask_ptr[qnnn.node_000]<-EPS &&
+      if ( mask_ptr[qnnn.node_000]<-EPS && !is_node_Wall(p4est, ni) &&
      #ifdef P4_TO_P8
            ( mask_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
            ( mask_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
@@ -1045,7 +1118,7 @@ int main (int argc, char* argv[])
     // extend
 //    ls.extend_Over_Interface_TVD(phi_smooth, sol_ex, 100); CHKERRXX(ierr);
 //    ls.extend_Over_Interface_TVD(phi_eff, sol_ex, 100); CHKERRXX(ierr);
-    ls.extend_Over_Interface_TVD(phi_smooth, mask, sol_ex, 100, 2); CHKERRXX(ierr);
+//    ls.extend_Over_Interface_TVD(phi_smooth, mask, sol_ex, 100, 2); CHKERRXX(ierr);
 //    ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, sol_ex, 100); CHKERRXX(ierr);
 
     // calculate error
@@ -1101,8 +1174,9 @@ int main (int argc, char* argv[])
       double udd_exact = lap_u_cf(xyz[0], xyz[1]);
 #endif
 
+      p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
       ngbd_n.get_neighbors(n, qnnn);
-      if ( mask_ptr[qnnn.node_000]<-EPS &&
+      if ( mask_ptr[qnnn.node_000]<-EPS && !is_node_Wall(p4est, ni) &&
      #ifdef P4_TO_P8
            ( mask_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
            ( mask_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
