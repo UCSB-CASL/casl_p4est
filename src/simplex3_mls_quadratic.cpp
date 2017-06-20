@@ -2274,7 +2274,13 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 
 #ifdef CASL_THROWS
   if (result != result)
-    throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+  {
+    std::cout << w0 << " " << w1 << " " << w2 << " " << w3 << " " << w4 << " " << w5 << " " << w6 << std::endl;
+    std::cout << f0 << " " << f1 << " " << f2 << " " << f3 << " " << f4 << " " << f5 << " " << f6 << std::endl;
+
+    std::cout << &f <<std::endl;
+    throw std::domain_error("[CASL_ERROR]: Something went wrong during surface integration.");
+  }
 #endif
 
   return 0.5*result;

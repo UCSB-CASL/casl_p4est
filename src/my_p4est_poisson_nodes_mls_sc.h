@@ -26,7 +26,7 @@
 class my_p4est_poisson_nodes_mls_sc_t
 {
   static const bool use_refined_cube_ = 1;
-  static const int cube_refinement_ = 1;
+  static const int cube_refinement_ = 4;
   static const int num_neighbors_max_ = pow(3, P4EST_DIM);
 
   enum node_neighbor_t
@@ -374,6 +374,7 @@ class my_p4est_poisson_nodes_mls_sc_t
   void compute_phi_eff_();
   void compute_phi_dd_();
   void compute_mue_dd_();
+  double compute_weights_through_face(double A, double B, bool *neighbors_exists_2d, double *weights_2d, double theta);
 
   void preallocate_matrix();
 

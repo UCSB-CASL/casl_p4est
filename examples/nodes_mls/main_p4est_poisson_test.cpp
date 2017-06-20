@@ -95,7 +95,7 @@ int nb_splits = 6;
 //const int periodic[3] = {1, 1, 1};
 const int periodic[3] = {0, 0, 0};
 const int n_xyz[3] = {1, 1, 1};
-const double p_xyz_min[3] = {-1, -1, -1};
+const double p_xyz_min[3] = {-1.0012349, -1.0012349, -1.0012349};
 const double p_xyz_max[3] = {1, 1, 1};
 //const double p_xyz_min[3] = {-2, -2, -2};
 //const double p_xyz_max[3] = {2, 2, 2};
@@ -109,10 +109,10 @@ const double p_xyz_max[3] = {1, 1, 1};
  * 7412
  */
 
-int n_geometry = 0;
+int n_geometry = 1;
 int n_test = 0;
 int n_mu = 0;
-int n_diag_add = 1;
+int n_diag_add = 0;
 
 bool reinitialize_lsfs = false;
 

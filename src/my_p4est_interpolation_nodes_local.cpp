@@ -325,6 +325,9 @@ double my_p4est_interpolation_nodes_local_t::quadratic_interpolation(const doubl
   value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1]);
 #endif
 
+  if (value != value)
+    throw std::domain_error("[CASL_ERROR]: interpolation result is nan");
+
   return value;
 }
 
@@ -370,6 +373,9 @@ double my_p4est_interpolation_nodes_local_t::linear_interpolation(const double *
   double value = 0;
   for (short j = 0; j<P4EST_CHILDREN; j++)
     value += F[j]*w_xyz[j];
+
+  if (value != value)
+    throw std::domain_error("[CASL_ERROR]: interpolation result is nan");
 
   return value;
 }
