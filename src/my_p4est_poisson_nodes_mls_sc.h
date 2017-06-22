@@ -26,16 +26,16 @@
 class my_p4est_poisson_nodes_mls_sc_t
 {
   static const bool use_refined_cube_ = 1;
-  static const int cube_refinement_ = 4;
+  static const int cube_refinement_ = 2;
   static const int num_neighbors_max_ = pow(3, P4EST_DIM);
 
   enum node_neighbor_t
   {
   #ifdef P4_TO_P8
     // zm plane
-    nn_mmm = 0, nn_0mm, nn_pmm,
-    nn_m0m, nn_00m, nn_p0m,
-    nn_mpm, nn_0pm, nn_ppm,
+    nn_mmm = 0, nn_0mm = 1, nn_pmm = 2,
+    nn_m0m = 3, nn_00m = 4, nn_p0m = 5,
+    nn_mpm = 6, nn_0pm = 7, nn_ppm = 8,
 
     // z0 plane
     nn_mm0, nn_0m0, nn_pm0,
@@ -290,6 +290,47 @@ class my_p4est_poisson_nodes_mls_sc_t
   } bc_coeff_times_delta_z_;
 #endif
 
+#ifdef P4_TO_P8
+  class restriction_to_yz_t : public CF_2
+  {
+    CF_3 *f_;
+    double x_;
+  public:
+    restriction_to_yz_t(CF_3 *f, double x) : x_(x), f_(f) {}
+
+    inline double operator()(double y, double z) const
+    {
+      return f_->operator ()(x_, y, z);
+    }
+  };
+
+  class restriction_to_zx_t : public CF_2
+  {
+    CF_3 *f_;
+    double y_;
+  public:
+    restriction_to_zx_t(CF_3 *f, double y) : y_(y), f_(f) {}
+
+    inline double operator()(double z, double x) const
+    {
+      return f_->operator ()(x, y_, z);
+    }
+  };
+
+  class restriction_to_xy_t : public CF_2
+  {
+    CF_3 *f_;
+    double z_;
+  public:
+    restriction_to_xy_t(CF_3 *f, double z) : z_(z), f_(f) {}
+
+    inline double operator()(double x, double y) const
+    {
+      return f_->operator ()(x, y, z_);
+    }
+  };
+#endif
+
   const my_p4est_node_neighbors_t *node_neighbors_;
 
   // p4est objects
@@ -385,6 +426,12 @@ class my_p4est_poisson_nodes_mls_sc_t
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_poisson_nodes_mls_sc_t& other);
   my_p4est_poisson_nodes_mls_sc_t& operator=(const my_p4est_poisson_nodes_mls_sc_t& other);
+
+  bool find_x_derivative(bool *neighbors_exist, double *weights);
+  bool find_y_derivative(bool *neighbors_exist, double *weights);
+#ifdef P4_TO_P8
+  bool find_z_derivative(bool *neighbors_exist, double *weights);
+#endif
 
 public:
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_node_neighbors_t *node_neighbors);

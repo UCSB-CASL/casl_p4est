@@ -320,7 +320,7 @@ double my_p4est_interpolation_nodes_local_t::quadratic_interpolation(const doubl
     value += F[j]*w_xyz[j];
 
 #ifdef P4_TO_P8
-  value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1] + dy*dy*d_00p*d_00m*fdd[2]);
+  value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1] + dz*dz*d_00p*d_00m*fdd[2]);
 #else
   value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1]);
 #endif
@@ -339,12 +339,12 @@ double my_p4est_interpolation_nodes_local_t::linear_interpolation(const double *
   double dz = (xyz_quad_max[2] - xyz_quad_min[2]);
 #endif
 
-  double d_m00 = (xyz_quad_max[0] - xyz_global[0])/dx;
+  double d_m00 = (xyz_global[0] - xyz_quad_min[0])/dx;
   double d_p00 = 1.-d_m00;
-  double d_0m0 = (xyz_quad_max[1] - xyz_global[1])/dy;
+  double d_0m0 = (xyz_global[1] - xyz_quad_min[1])/dy;
   double d_0p0 = 1.-d_0m0;
 #ifdef P4_TO_P8
-  double d_00m = (xyz_quad_max[2] - xyz_global[2])/dz;
+  double d_00m = (xyz_global[2] - xyz_quad_min[2])/dz;
   double d_00p = 1.-d_00m;
 #endif
 

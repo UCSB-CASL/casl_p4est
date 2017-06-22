@@ -106,6 +106,11 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
 
   phi_ = &phi;
 
+      int n;
+      n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
+      n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
+      n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
+
   // loop over LSFs
   for (short phi_idx = 0; phi_idx < phi.size(); ++phi_idx)
   {
@@ -1922,93 +1927,93 @@ void simplex3_mls_quadratic_t::refine_tet(int n_tet)
 //--------------------------------------------------
 // Integration
 //--------------------------------------------------
-//double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
-//{
-//  double result = 0.0;
-//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
-//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
-//  double xyz[3];
-
-//  // quadrature points
-//  double alph = (5.+3.*sqrt(5.))/20.;
-//  double beta = (5.-   sqrt(5.))/20.;
-
-//  double abc0[3] = { beta, beta, beta };
-//  double abc1[3] = { alph, beta, beta };
-//  double abc2[3] = { beta, alph, beta };
-//  double abc3[3] = { beta, beta, alph };
-
-//  /* integrate over tetrahedra */
-//  for (unsigned int i = 0; i < tets.size(); i++)
-//    if (!tets[i].is_split && tets[i].loc == INS)
-//    {
-////      tet3_t *tet = &tets[i];
-
-//      mapping_tet(xyz, i, abc0); f0 = f( xyz[0], xyz[1], xyz[2] );
-//      mapping_tet(xyz, i, abc1); f1 = f( xyz[0], xyz[1], xyz[2] );
-//      mapping_tet(xyz, i, abc2); f2 = f( xyz[0], xyz[1], xyz[2] );
-//      mapping_tet(xyz, i, abc3); f3 = f( xyz[0], xyz[1], xyz[2] );
-
-//      w0 = .25*jacobian_tet(i, abc0);
-//      w1 = .25*jacobian_tet(i, abc1);
-//      w2 = .25*jacobian_tet(i, abc2);
-//      w3 = .25*jacobian_tet(i, abc3);
-
-//      result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
-////      result += volume(s->vtx0, s->vtx1, s->vtx2, s->vtx3);
-//    }
-
-//  return result*0.5/3.;
-//}
-
 double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 {
   double result = 0.0;
-  double w0 = 0, w1 = 0, w2 = 0, w3 = 0, w4 = 0;
-  double f0 = 0, f1 = 0, f2 = 0, f3 = 0, f4 = 0;
+  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
+  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
   double xyz[3];
 
   // quadrature points
   double alph = (5.+3.*sqrt(5.))/20.;
   double beta = (5.-   sqrt(5.))/20.;
 
-  double abc0[3] = { 0.25, 0.25, 0.25 };
-  double abc1[3] = { 0.5, 1./6., 1./6. };
-  double abc2[3] = { 1./6., 0.5, 1./6. };
-  double abc3[3] = { 1./6., 1./6., 0.5 };
-  double abc4[3] = { 1./6., 1./6., 1./6. };
-
-  double V = 0.5/3.;
+  double abc0[3] = { beta, beta, beta };
+  double abc1[3] = { alph, beta, beta };
+  double abc2[3] = { beta, alph, beta };
+  double abc3[3] = { beta, beta, alph };
 
   /* integrate over tetrahedra */
   for (unsigned int i = 0; i < tets.size(); i++)
     if (!tets[i].is_split && tets[i].loc == INS)
     {
-      tet3_t *s = &tets[i];
+//      tet3_t *tet = &tets[i];
 
       mapping_tet(xyz, i, abc0); f0 = f( xyz[0], xyz[1], xyz[2] );
       mapping_tet(xyz, i, abc1); f1 = f( xyz[0], xyz[1], xyz[2] );
       mapping_tet(xyz, i, abc2); f2 = f( xyz[0], xyz[1], xyz[2] );
       mapping_tet(xyz, i, abc3); f3 = f( xyz[0], xyz[1], xyz[2] );
-      mapping_tet(xyz, i, abc4); f4 = f( xyz[0], xyz[1], xyz[2] );
 
-      w0 = -.8*jacobian_tet(i, abc0);
-      w1 = .45*jacobian_tet(i, abc1);
-      w2 = .45*jacobian_tet(i, abc2);
-      w3 = .45*jacobian_tet(i, abc3);
-      w4 = .45*jacobian_tet(i, abc4);
+      w0 = .25*jacobian_tet(i, abc0);
+      w1 = .25*jacobian_tet(i, abc1);
+      w2 = .25*jacobian_tet(i, abc2);
+      w3 = .25*jacobian_tet(i, abc3);
 
-      result += (w0*f0 + w1*f1 + w2*f2 + w3*f3 + w4*f4);
+      result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
 //      result += volume(s->vtx0, s->vtx1, s->vtx2, s->vtx3);
     }
 
-#ifdef CASL_THROWS
-  if (result != result)
-    throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
-#endif
-
-  return result*V;
+  return result*0.5/3.;
 }
+
+//double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
+//{
+//  double result = 0.0;
+//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0, w4 = 0;
+//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0, f4 = 0;
+//  double xyz[3];
+
+//  // quadrature points
+//  double alph = (5.+3.*sqrt(5.))/20.;
+//  double beta = (5.-   sqrt(5.))/20.;
+
+//  double abc0[3] = { 0.25, 0.25, 0.25 };
+//  double abc1[3] = { 0.5, 1./6., 1./6. };
+//  double abc2[3] = { 1./6., 0.5, 1./6. };
+//  double abc3[3] = { 1./6., 1./6., 0.5 };
+//  double abc4[3] = { 1./6., 1./6., 1./6. };
+
+//  double V = 0.5/3.;
+
+//  /* integrate over tetrahedra */
+//  for (unsigned int i = 0; i < tets.size(); i++)
+//    if (!tets[i].is_split && tets[i].loc == INS)
+//    {
+//      tet3_t *s = &tets[i];
+
+//      mapping_tet(xyz, i, abc0); f0 = f( xyz[0], xyz[1], xyz[2] );
+//      mapping_tet(xyz, i, abc1); f1 = f( xyz[0], xyz[1], xyz[2] );
+//      mapping_tet(xyz, i, abc2); f2 = f( xyz[0], xyz[1], xyz[2] );
+//      mapping_tet(xyz, i, abc3); f3 = f( xyz[0], xyz[1], xyz[2] );
+//      mapping_tet(xyz, i, abc4); f4 = f( xyz[0], xyz[1], xyz[2] );
+
+//      w0 = -.8*jacobian_tet(i, abc0);
+//      w1 = .45*jacobian_tet(i, abc1);
+//      w2 = .45*jacobian_tet(i, abc2);
+//      w3 = .45*jacobian_tet(i, abc3);
+//      w4 = .45*jacobian_tet(i, abc4);
+
+//      result += (w0*f0 + w1*f1 + w2*f2 + w3*f3 + w4*f4);
+////      result += volume(s->vtx0, s->vtx1, s->vtx2, s->vtx3);
+//    }
+
+//#ifdef CASL_THROWS
+//  if (result != result)
+//    throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+//#endif
+
+//  return result*V;
+//}
 
 
 //double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
@@ -2140,86 +2145,20 @@ double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 //  return result/6.;
 //}
 
-//double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
-//{
-//  bool integrate_specific = (num != -1);
-
-//  double result = 0.0;
-//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
-//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
-//  double xyz[3];
-
-//  // quadrature points
-//  double ab0[2] = { 1./3., 1./3. };
-//  double ab1[2] = { .2, .6 };
-//  double ab2[2] = { .2, .2 };
-//  double ab3[2] = { .6, .2 };
-
-//  max_dist_error_ = 0;
-//  /* integrate over triangles */
-//  for (unsigned int i = 0; i < tris.size(); i++)
-//  {
-//    tri3_t *t = &tris[i];
-//    if (!t->is_split && t->loc == FCE)
-//      if (!integrate_specific
-//          || (integrate_specific && t->c == num))
-//      {
-////        construct_proper_mapping(i, -1);
-//        // map quadrature points into real space and interpolate integrand
-//        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_tri(xyz, i, ab3); f3 = f( xyz[0], xyz[1], xyz[2] );
-
-//        // scale weights by Jacobian
-//        w0 =-27.*jacobian_tri(i, ab0);
-//        w1 = 25.*jacobian_tri(i, ab1);
-//        w2 = 25.*jacobian_tri(i, ab2);
-//        w3 = 25.*jacobian_tri(i, ab3);
-
-//        result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
-////        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
-////        result = MAX(MAX(result, fabs(f0), fabs(f1)), fabs(f2), fabs(f3));
-
-////        mapping_tri(xyz, i, t->ab01); f0 = f( xyz[0], xyz[1], xyz[2] );
-////        mapping_tri(xyz, i, t->ab12); f1 = f( xyz[0], xyz[1], xyz[2] );
-////        mapping_tri(xyz, i, t->ab02); f2 = f( xyz[0], xyz[1], xyz[2] );
-////        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
-
-//      }
-//  }
-
-////  std::cout << max_dist_error_ << std::endl;
-////  return max_dist_error_;
-//  return result/96.;
-//}
-
 double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 {
   bool integrate_specific = (num != -1);
 
   double result = 0.0;
-  double w0 = 0, w1 = 0, w2 = 0, w3 = 0, w4 = 0, w5 = 0, w6 = 0;
-  double f0 = 0, f1 = 0, f2 = 0, f3 = 0, f4 = 0, f5 = 0, f6 = 0;
+  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
+  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
   double xyz[3];
 
   // quadrature points
-//  double ab0[2] = { .0, .0 };
-//  double ab1[2] = { .5, .0 };
-//  double ab2[2] = { 1., .0 };
-//  double ab3[2] = { .5, .5 };
-//  double ab4[2] = { .0, 1. };
-//  double ab5[2] = { .0, .5 };
-//  double ab6[2] = { 1./3., 1./3. };
-
-  double ab0[2] = { 0.33333333333333333, 0.33333333333333333 };
-  double ab1[2] = { 0.79742698535308720, 0.10128650732345633 };
-  double ab2[2] = { 0.10128650732345633, 0.79742698535308720 };
-  double ab3[2] = { 0.10128650732345633, 0.10128650732345633 };
-  double ab4[2] = { 0.05971587178976981, 0.47014206410511505 };
-  double ab5[2] = { 0.47014206410511505, 0.05971587178976981 };
-  double ab6[2] = { 0.47014206410511505, 0.47014206410511505 };
-
+  double ab0[2] = { 1./3., 1./3. };
+  double ab1[2] = { .2, .6 };
+  double ab2[2] = { .2, .2 };
+  double ab3[2] = { .6, .2 };
 
   max_dist_error_ = 0;
   /* integrate over triangles */
@@ -2230,34 +2169,20 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
       if (!integrate_specific
           || (integrate_specific && t->c == num))
       {
-        construct_proper_mapping(i, -1);
+//        construct_proper_mapping(i, -1);
         // map quadrature points into real space and interpolate integrand
         mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
         mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
         mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
         mapping_tri(xyz, i, ab3); f3 = f( xyz[0], xyz[1], xyz[2] );
-        mapping_tri(xyz, i, ab4); f4 = f( xyz[0], xyz[1], xyz[2] );
-        mapping_tri(xyz, i, ab5); f5 = f( xyz[0], xyz[1], xyz[2] );
-        mapping_tri(xyz, i, ab6); f6 = f( xyz[0], xyz[1], xyz[2] );
 
         // scale weights by Jacobian
-        w0 = 0.22500000000000000;
-        w1 = 0.12593918054482717;
-        w2 = 0.12593918054482717;
-        w3 = 0.12593918054482717;
-        w4 = 0.13239415278850616;
-        w5 = 0.13239415278850616;
-        w6 = 0.13239415278850616;
+        w0 =-27.*jacobian_tri(i, ab0);
+        w1 = 25.*jacobian_tri(i, ab1);
+        w2 = 25.*jacobian_tri(i, ab2);
+        w3 = 25.*jacobian_tri(i, ab3);
 
-        w0 *= jacobian_tri(i, ab0);
-        w1 *= jacobian_tri(i, ab1);
-        w2 *= jacobian_tri(i, ab2);
-        w3 *= jacobian_tri(i, ab3);
-        w4 *= jacobian_tri(i, ab4);
-        w5 *= jacobian_tri(i, ab5);
-        w6 *= jacobian_tri(i, ab6);
-
-        result += w0*f0 + w1*f1 + w2*f2 + w3*f3 + w4*f4 + w5*f5 + w6*f6;
+        result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
 //        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
 //        result = MAX(MAX(result, fabs(f0), fabs(f1)), fabs(f2), fabs(f3));
 
@@ -2271,20 +2196,100 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 
 //  std::cout << max_dist_error_ << std::endl;
 //  return max_dist_error_;
-
-#ifdef CASL_THROWS
-  if (result != result)
-  {
-    std::cout << w0 << " " << w1 << " " << w2 << " " << w3 << " " << w4 << " " << w5 << " " << w6 << std::endl;
-    std::cout << f0 << " " << f1 << " " << f2 << " " << f3 << " " << f4 << " " << f5 << " " << f6 << std::endl;
-
-    std::cout << &f <<std::endl;
-    throw std::domain_error("[CASL_ERROR]: Something went wrong during surface integration.");
-  }
-#endif
-
-  return 0.5*result;
+  return result/96.;
 }
+
+//double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
+//{
+//  bool integrate_specific = (num != -1);
+
+//  double result = 0.0;
+//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0, w4 = 0, w5 = 0, w6 = 0;
+//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0, f4 = 0, f5 = 0, f6 = 0;
+//  double xyz[3];
+
+//  // quadrature points
+////  double ab0[2] = { .0, .0 };
+////  double ab1[2] = { .5, .0 };
+////  double ab2[2] = { 1., .0 };
+////  double ab3[2] = { .5, .5 };
+////  double ab4[2] = { .0, 1. };
+////  double ab5[2] = { .0, .5 };
+////  double ab6[2] = { 1./3., 1./3. };
+
+//  double ab0[2] = { 0.33333333333333333, 0.33333333333333333 };
+//  double ab1[2] = { 0.79742698535308720, 0.10128650732345633 };
+//  double ab2[2] = { 0.10128650732345633, 0.79742698535308720 };
+//  double ab3[2] = { 0.10128650732345633, 0.10128650732345633 };
+//  double ab4[2] = { 0.05971587178976981, 0.47014206410511505 };
+//  double ab5[2] = { 0.47014206410511505, 0.05971587178976981 };
+//  double ab6[2] = { 0.47014206410511505, 0.47014206410511505 };
+
+
+//  max_dist_error_ = 0;
+//  /* integrate over triangles */
+//  for (unsigned int i = 0; i < tris.size(); i++)
+//  {
+//    tri3_t *t = &tris[i];
+//    if (!t->is_split && t->loc == FCE)
+//      if (!integrate_specific
+//          || (integrate_specific && t->c == num))
+//      {
+//        construct_proper_mapping(i, -1);
+//        // map quadrature points into real space and interpolate integrand
+//        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab3); f3 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab4); f4 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab5); f5 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab6); f6 = f( xyz[0], xyz[1], xyz[2] );
+
+//        // scale weights by Jacobian
+//        w0 = 0.22500000000000000;
+//        w1 = 0.12593918054482717;
+//        w2 = 0.12593918054482717;
+//        w3 = 0.12593918054482717;
+//        w4 = 0.13239415278850616;
+//        w5 = 0.13239415278850616;
+//        w6 = 0.13239415278850616;
+
+//        w0 *= jacobian_tri(i, ab0);
+//        w1 *= jacobian_tri(i, ab1);
+//        w2 *= jacobian_tri(i, ab2);
+//        w3 *= jacobian_tri(i, ab3);
+//        w4 *= jacobian_tri(i, ab4);
+//        w5 *= jacobian_tri(i, ab5);
+//        w6 *= jacobian_tri(i, ab6);
+
+//        result += w0*f0 + w1*f1 + w2*f2 + w3*f3 + w4*f4 + w5*f5 + w6*f6;
+////        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
+////        result = MAX(MAX(result, fabs(f0), fabs(f1)), fabs(f2), fabs(f3));
+
+////        mapping_tri(xyz, i, t->ab01); f0 = f( xyz[0], xyz[1], xyz[2] );
+////        mapping_tri(xyz, i, t->ab12); f1 = f( xyz[0], xyz[1], xyz[2] );
+////        mapping_tri(xyz, i, t->ab02); f2 = f( xyz[0], xyz[1], xyz[2] );
+////        result += fabs(f0)+fabs(f1)+fabs(f2)+fabs(f3);
+
+//      }
+//  }
+
+//  std::cout << max_dist_error_ << std::endl;
+//  return max_dist_error_;
+
+//#ifdef CASL_THROWS
+//  if (result != result)
+//  {
+//    std::cout << w0 << " " << w1 << " " << w2 << " " << w3 << " " << w4 << " " << w5 << " " << w6 << std::endl;
+//    std::cout << f0 << " " << f1 << " " << f2 << " " << f3 << " " << f4 << " " << f5 << " " << f6 << std::endl;
+
+//    std::cout << &f <<std::endl;
+//    throw std::domain_error("[CASL_ERROR]: Something went wrong during surface integration.");
+//  }
+//#endif
+
+//  return 0.5*result;
+//}
 
 //double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //{

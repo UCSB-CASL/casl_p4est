@@ -21,6 +21,8 @@
 #include <src/cube3_mls_quadratic.h>
 #include <src/cube2_mls_quadratic.h>
 
+//#define USE_QUADRATIC_CUBES
+
 class my_p4est_poisson_nodes_mls_t
 {
 #ifdef P4_TO_P8

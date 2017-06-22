@@ -45,6 +45,7 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
+//        return 0.;
           return 1.0;
       }
   } bc_coeff_0;
@@ -53,6 +54,7 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
+//        return 0.;
           return sin(x+y)*cos(x-y)*log(z+4.);
       }
   } bc_coeff_1;

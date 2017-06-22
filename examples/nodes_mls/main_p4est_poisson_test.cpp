@@ -80,7 +80,7 @@
 
 using namespace std;
 
-bool save_vtk = true;
+bool save_vtk = 0;
 
 #ifdef P4_TO_P8
 int lmin = 4;
@@ -95,7 +95,7 @@ int nb_splits = 6;
 //const int periodic[3] = {1, 1, 1};
 const int periodic[3] = {0, 0, 0};
 const int n_xyz[3] = {1, 1, 1};
-const double p_xyz_min[3] = {-1.0012349, -1.0012349, -1.0012349};
+const double p_xyz_min[3] = {-1, -1, -1};
 const double p_xyz_max[3] = {1, 1, 1};
 //const double p_xyz_min[3] = {-2, -2, -2};
 //const double p_xyz_max[3] = {2, 2, 2};

@@ -776,10 +776,15 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
   for (int i = 0; i < num_interfaces_; ++i)
   {
     phi_interp_local[i] = new my_p4est_interpolation_nodes_local_t (node_neighbors_);
+//#ifdef P4_TO_P8
+//    phi_interp_local[i]->set_input(phi_p[i], phi_xx_p[i], phi_yy_p[i], phi_zz_p[i], quadratic);
+//#else
+//    phi_interp_local[i]->set_input(phi_p[i], phi_xx_p[i], phi_yy_p[i], quadratic);
+//#endif
 #ifdef P4_TO_P8
-    phi_interp_local[i]->set_input(phi_p[i], phi_xx_p[i], phi_yy_p[i], phi_zz_p[i], quadratic);
+    phi_interp_local[i]->set_input(phi_p[i], phi_xx_p[i], phi_yy_p[i], phi_zz_p[i], linear);
 #else
-    phi_interp_local[i]->set_input(phi_p[i], phi_xx_p[i], phi_yy_p[i], quadratic);
+    phi_interp_local[i]->set_input(phi_p[i], phi_xx_p[i], phi_yy_p[i], linear);
 #endif
   }
 
@@ -2046,18 +2051,19 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
         double interface_area  = 0.;
         double integral_bc = 0.;
 
-
+#ifdef USE_QUADRATIC_CUBES
+#ifdef P4_TO_P8
+        std::vector<cube3_mls_quadratic_t *> cubes(fv_size_x*fv_size_y*fv_size_z, NULL);
+#else
+        std::vector<cube2_mls_quadratic_t *> cubes(fv_size_x*fv_size_y, NULL);
+#endif
+#else
 #ifdef P4_TO_P8
         std::vector<cube3_mls_t *> cubes(fv_size_x*fv_size_y*fv_size_z, NULL);
 #else
         std::vector<cube2_mls_t *> cubes(fv_size_x*fv_size_y, NULL);
 #endif
-
-//#ifdef P4_TO_P8
-//        std::vector<cube3_mls_quadratic_t *> cubes(fv_size_x*fv_size_y*fv_size_z, NULL);
-//#else
-//        std::vector<cube2_mls_quadratic_t *> cubes(fv_size_x*fv_size_y, NULL);
-//#endif
+#endif
 
 #ifdef P4_TO_P8
         for (short k = 0; k < fv_size_z; ++k)
@@ -2065,6 +2071,16 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
           for (short j = 0; j < fv_size_y; ++j)
             for (short i = 0; i < fv_size_x; ++i)
             {
+
+#ifdef USE_QUADRATIC_CUBES
+#ifdef P4_TO_P8
+              int idx = k*fv_size_x*fv_size_y + j*fv_size_x + i;
+              cubes[idx] = new cube3_mls_quadratic_t ( fv_x[i], fv_x[i+1], fv_y[j], fv_y[j+1], fv_z[k], fv_z[k+1] );
+#else
+              int idx = j*fv_size_x + i;
+              cubes[idx] = new cube2_mls_quadratic_t ( fv_x[i], fv_x[i+1], fv_y[j], fv_y[j+1] );
+#endif
+#else
 #ifdef P4_TO_P8
               int idx = k*fv_size_x*fv_size_y + j*fv_size_x + i;
               cubes[idx] = new cube3_mls_t ( fv_x[i], fv_x[i+1], fv_y[j], fv_y[j+1], fv_z[k], fv_z[k+1] );
@@ -2072,14 +2088,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
               int idx = j*fv_size_x + i;
               cubes[idx] = new cube2_mls_t ( fv_x[i], fv_x[i+1], fv_y[j], fv_y[j+1] );
 #endif
-
-//#ifdef P4_TO_P8
-//              int idx = k*fv_size_x*fv_size_y + j*fv_size_x + i;
-//              cubes[idx] = new cube3_mls_quadratic_t ( fv_x[i], fv_x[i+1], fv_y[j], fv_y[j+1], fv_z[k], fv_z[k+1] );
-//#else
-//              int idx = j*fv_size_x + i;
-//              cubes[idx] = new cube2_mls_quadratic_t ( fv_x[i], fv_x[i+1], fv_y[j], fv_y[j+1] );
-//#endif
+#endif
 
               cubes[idx]->construct_domain(phi_interp_local_cf, *action_, *color_);
 
@@ -2250,8 +2259,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
               N_mat[2*P4EST_DIM + 1] /= norm;
               N_mat[2*P4EST_DIM + 2] /= norm;
 
-              bc_interface_coeff_avg[3] = 0;
-              bc_interface_value_avg[3] = 0;
+              bc_interface_coeff_avg[2] = 0;
+              bc_interface_value_avg[2] = 0;
             }
 #endif
 
