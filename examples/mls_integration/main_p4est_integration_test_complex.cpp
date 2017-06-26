@@ -65,14 +65,14 @@ using namespace std;
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 8;
+int nb_splits = 5;
 #else
 int lmin = 5;
 int lmax = 5;
 int nb_splits = 10;
 #endif
 
-bool reinitialize_level_set = 1;
+bool reinitialize_level_set = 0;
 
 const int n_xyz[] = {1, 1, 1};
 const int periodic[] = {0, 0, 0};
@@ -123,7 +123,7 @@ public:
  * 4 - rose-like domain
  * 5 - one circle
  */
-int geometry_num = 1;
+int geometry_num = 5;
 
 geometry_two_circles_union_t        geometry_two_circles_union;
 geometry_two_circles_intersection_t geometry_two_circles_intersection;

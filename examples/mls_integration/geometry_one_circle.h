@@ -53,7 +53,7 @@ public:
 //    double phy = 0.312;
 //#endif
 
-    double r0 = 0.711;
+//    double r0 = 0.711;
     double r1 = 0.639;
     double d = 0.35;
 
@@ -69,12 +69,13 @@ public:
     double sinP = sin(phy);
 #endif
 
-#ifdef P4_TO_P8
-    double xc_0 = round((-d*sinT*cosP-0.02)*100.)/100.; double yc_0 = round(( d*cosT*cosP-0.07)*100.)/100.; double zc_0 = round(( d*sinP-0.03)*100.)/100.;
-#else
-    double xc_0 = round((-d*sinT+0.08)*100.)/100.; double yc_0 = round(( d*cosT-0.07)*100.)/100.;
-#endif
+//#ifdef P4_TO_P8
+//    double xc_0 = round((-d*sinT*cosP-0.02)*100.)/100.; double yc_0 = round(( d*cosT*cosP-0.07)*100.)/100.; double zc_0 = round(( d*sinP-0.03)*100.)/100.;
+//#else
+//    double xc_0 = round((-d*sinT+0.08)*100.)/100.; double yc_0 = round(( d*cosT-0.07)*100.)/100.;
+//#endif
 
+    double r0 = 0.5, xc_0 = 0.08, yc_0 = 0.01, zc_0 = 0.03;
 #ifdef P4_TO_P8
     domain0.set_params(r0, xc_0, yc_0, zc_0);
 #else

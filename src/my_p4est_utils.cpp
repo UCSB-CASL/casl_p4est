@@ -233,15 +233,15 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
   double qzmin = quad_z_fr_k(&quad);
 #endif
 
-//#ifdef CASL_THROWS
-//  if(x<qxmin-qh/10 || x>qxmin+qh+qh/10 || y<qymin-qh/10 || y>qymin+qh+qh/10)
-//  {
-//    std::cout << x << ", " << qxmin << ", " << qxmin+qh << std::endl;
-//    std::cout << y << ", " << qymin << ", " << qymin+qh << std::endl;
-//    std::cout << y-qymin << std::endl;
-//    throw std::invalid_argument("quadratic_interpolation: the point is not inside the quadrant.");
-//  }
-//#endif
+#ifdef CASL_THROWS
+  if(x<qxmin-qh/10 || x>qxmin+qh+qh/10 || y<qymin-qh/10 || y>qymin+qh+qh/10)
+  {
+    std::cout << x << ", " << qxmin << ", " << qxmin+qh << std::endl;
+    std::cout << y << ", " << qymin << ", " << qymin+qh << std::endl;
+    std::cout << y-qymin << std::endl;
+    throw std::invalid_argument("quadratic_interpolation: the point is not inside the quadrant.");
+  }
+#endif
 
   x = (x-qxmin) / qh;
   y = (y-qymin) / qh;

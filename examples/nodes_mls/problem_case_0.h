@@ -58,6 +58,7 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
+//        return 0.0;
           return 0.5;
       }
   } bc_coeff_1;
@@ -66,6 +67,7 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
+        return 0.0;
 //        return 2.6;
           return x-y + (x+y)*(x+y);
       }
@@ -75,7 +77,8 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
-        return -1.1;
+        return 0.0;
+//        return -1.1;
           return x+y;
       }
   } bc_coeff_3;

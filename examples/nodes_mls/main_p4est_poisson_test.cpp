@@ -80,16 +80,16 @@
 
 using namespace std;
 
-bool save_vtk = 0;
+bool save_vtk = 1;
 
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 4;
+int nb_splits = 5;
 #else
 int lmin = 5;
 int lmax = 5;
-int nb_splits = 6;
+int nb_splits = 5;
 #endif
 
 //const int periodic[3] = {1, 1, 1};
@@ -109,12 +109,12 @@ const double p_xyz_max[3] = {1, 1, 1};
  * 7412
  */
 
-int n_geometry = 1;
+int n_geometry = 0;
 int n_test = 0;
 int n_mu = 0;
 int n_diag_add = 0;
 
-bool reinitialize_lsfs = false;
+bool reinitialize_lsfs = 0;
 
 
 // EXACT SOLUTION
@@ -1659,7 +1659,6 @@ int main (int argc, char* argv[])
       cout << fabs(error_gr_l1_arr[i]);
     }
     cout <<  ";" << endl;
-
 
     cin.get();
   }

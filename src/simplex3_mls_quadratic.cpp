@@ -106,10 +106,14 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
 
   phi_ = &phi;
 
-      int n;
-      n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
-      n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
-      n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
+//      int n;
+//      n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
+//      n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
+//      n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
+
+//      n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
+//      n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
+//      n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
 
   // loop over LSFs
   for (short phi_idx = 0; phi_idx < phi.size(); ++phi_idx)
@@ -2274,19 +2278,19 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //      }
 //  }
 
-//  std::cout << max_dist_error_ << std::endl;
-//  return max_dist_error_;
+////  std::cout << max_dist_error_ << std::endl;
+////  return max_dist_error_;
 
-//#ifdef CASL_THROWS
-//  if (result != result)
-//  {
-//    std::cout << w0 << " " << w1 << " " << w2 << " " << w3 << " " << w4 << " " << w5 << " " << w6 << std::endl;
-//    std::cout << f0 << " " << f1 << " " << f2 << " " << f3 << " " << f4 << " " << f5 << " " << f6 << std::endl;
+////#ifdef CASL_THROWS
+////  if (result != result)
+////  {
+////    std::cout << w0 << " " << w1 << " " << w2 << " " << w3 << " " << w4 << " " << w5 << " " << w6 << std::endl;
+////    std::cout << f0 << " " << f1 << " " << f2 << " " << f3 << " " << f4 << " " << f5 << " " << f6 << std::endl;
 
-//    std::cout << &f <<std::endl;
-//    throw std::domain_error("[CASL_ERROR]: Something went wrong during surface integration.");
-//  }
-//#endif
+////    std::cout << &f <<std::endl;
+////    throw std::domain_error("[CASL_ERROR]: Something went wrong during surface integration.");
+////  }
+////#endif
 
 //  return 0.5*result;
 //}
@@ -2327,7 +2331,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //      if (!integrate_specific
 //          || (integrate_specific && t->c == num))
 //      {
-//        construct_proper_mapping(i, -1);
+////        construct_proper_mapping(i, -1);
 //        // map quadrature points into real space and interpolate integrand
 //        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
 //        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
@@ -2594,17 +2598,55 @@ double simplex3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, 
   return result;
 }
 
+//double simplex3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
+//{
+//  double result = 0.0;
+//  double w0 = 0, w1 = 0, w2 = 0;
+//  double f0 = 0, f1 = 0, f2 = 0;
+//  double xyz[3];
+
+//  // quadrature points
+//  double ab0[2] = { 1./6., 1./6. };
+//  double ab1[2] = { 2./3., 1./6. };
+//  double ab2[2] = { 1./6., 2./3. };
+
+//  /* integrate over triangles */
+//  for (unsigned int i = 0; i < tris.size(); i++)
+//  {
+//    tri3_t *t = &tris[i];
+//    if (!t->is_split && t->loc == INS)
+//      if (t->dir == dir)
+//      {
+//        // map quadrature points into real space and interpolate integrand
+//        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
+//        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
+
+//        // scale weights by Jacobian
+//        w0 = jacobian_tri(i, ab0)/6.;
+//        w1 = jacobian_tri(i, ab1)/6.;
+//        w2 = jacobian_tri(i, ab2)/6.;
+
+//        result += w0*f0 + w1*f1 + w2*f2;
+//      }
+//  }
+
+//  return result;
+//}
+
+
 double simplex3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
 {
   double result = 0.0;
-  double w0 = 0, w1 = 0, w2 = 0;
-  double f0 = 0, f1 = 0, f2 = 0;
+  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
+  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
   double xyz[3];
 
   // quadrature points
-  double ab0[2] = { 1./6., 1./6. };
-  double ab1[2] = { 2./3., 1./6. };
-  double ab2[2] = { 1./6., 2./3. };
+  double ab0[2] = { 1./3., 1./3. };
+  double ab1[2] = { .2, .6 };
+  double ab2[2] = { .2, .2 };
+  double ab3[2] = { .6, .2 };
 
   /* integrate over triangles */
   for (unsigned int i = 0; i < tris.size(); i++)
@@ -2617,20 +2659,21 @@ double simplex3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
         mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
         mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
         mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
+        mapping_tri(xyz, i, ab3); f3 = f( xyz[0], xyz[1], xyz[2] );
+
 
         // scale weights by Jacobian
-        w0 = jacobian_tri(i, ab0)/6.;
-        w1 = jacobian_tri(i, ab1)/6.;
-        w2 = jacobian_tri(i, ab2)/6.;
+        w0 =-27.*jacobian_tri(i, ab0);
+        w1 = 25.*jacobian_tri(i, ab1);
+        w2 = 25.*jacobian_tri(i, ab2);
+        w3 = 25.*jacobian_tri(i, ab3);
 
-        result += w0*f0 + w1*f1 + w2*f2;
+        result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
       }
   }
 
-  return result;
+  return result/96.;
 }
-
-
 
 
 

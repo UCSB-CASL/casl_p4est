@@ -25,8 +25,8 @@
 
 class my_p4est_poisson_nodes_mls_sc_t
 {
-  static const bool use_refined_cube_ = 1;
-  static const int cube_refinement_ = 2;
+  static const bool use_refined_cube_ = 0;
+  static const int cube_refinement_ = 1;
   static const int num_neighbors_max_ = pow(3, P4EST_DIM);
 
   enum node_neighbor_t
@@ -415,7 +415,10 @@ class my_p4est_poisson_nodes_mls_sc_t
   void compute_phi_eff_();
   void compute_phi_dd_();
   void compute_mue_dd_();
-  double compute_weights_through_face(double A, double B, bool *neighbors_exists_2d, double *weights_2d, double theta);
+
+#ifdef P4_TO_P8
+  double compute_weights_through_face(double A, double B, bool *neighbors_exists_2d, double *weights_2d, double theta, bool *map_2d);
+#endif
 
   void preallocate_matrix();
 
@@ -427,10 +430,10 @@ class my_p4est_poisson_nodes_mls_sc_t
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_poisson_nodes_mls_sc_t& other);
   my_p4est_poisson_nodes_mls_sc_t& operator=(const my_p4est_poisson_nodes_mls_sc_t& other);
 
-  bool find_x_derivative(bool *neighbors_exist, double *weights);
-  bool find_y_derivative(bool *neighbors_exist, double *weights);
+  bool find_x_derivative(bool *neighbors_exist, double *weights, bool *map);
+  bool find_y_derivative(bool *neighbors_exist, double *weights, bool *map);
 #ifdef P4_TO_P8
-  bool find_z_derivative(bool *neighbors_exist, double *weights);
+  bool find_z_derivative(bool *neighbors_exist, double *weights, bool *map);
 #endif
 
 public:
@@ -544,6 +547,8 @@ public:
     }
 
     is_matrix_computed_ = false;
+
+    variable_mu_ = true;
   }
 
 
