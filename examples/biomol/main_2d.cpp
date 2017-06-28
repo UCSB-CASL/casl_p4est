@@ -33,18 +33,18 @@ int main(int argc, char *argv[]) {
     cmdParser cmd;
     cmd.add_option("lmin", "the min level of the tree");
     cmd.add_option("lmax", "the max level of the tree");
-    cmd.add_option("lip", "Lipchitz constant for the levelset");
-    cmd.add_option("pqr", "path to the pqr file");
+    cmd.add_option("lip",  "Lipchitz constant for the levelset");
+    cmd.add_option("pqr",  "path to the pqr file");
     cmd.add_option("input-dir", "folder in which pqr files are located");
     cmd.add_option("output-dir", "folder to save the results in");
     cmd.parse(argc, argv);
 
     // decide on the type and value of the boundary conditions
     const int lmin   = cmd.get("lmin", 5);
-    const int lmax   = cmd.get("lmax", 10);
-    const string folder = cmd.get<string> ("input-dir", "../mols");
-    const string output_folder = cmd.get<string>("output-dir", "out_dir");
-    const string pqr = cmd.get<string>("pqr", "1d65");
+    const int lmax   = cmd.get("lmax", 8);
+    const string folder = cmd.get<string> ("input-dir", "/home/egan/workspace/projects/biomol/mols");
+    const string pqr = cmd.get<string>("pqr", "1fss");
+    const string output_folder = cmd.get<string>("output-dir", "/home/egan/workspace/projects/biomol/output/"+pqr);
     const double lip = cmd.get("lip", 1.5);
 
     parStopWatch w1, w2;
@@ -61,15 +61,24 @@ int main(int argc, char *argv[]) {
     connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
     w2.start("reading pqr molecule");
-    BioMolecule mol(brick, mpi);
-    mol.read(folder + "/" + pqr + ".pqr");
-    mol.set_probe_radius(1.4);
+    BioMolecule mol(brick, mpi, true);
+    mol.read_center_and_scale(folder + "/" + pqr + ".pqr", 0.2);
+    PetscPrintf(mpi.comm(), "global number of atoms = %7ld \n", mol.get_number_of_atoms());
     w2.stop(); w2.read_duration();
 
     /* create the p4est */
     p4est_t *p4est = p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
     splitting_criteria_t split(lmin, lmax, lip);
     p4est->user_pointer = (void*)(&split);
+
+    /* construct the atom tree */
+    w2.start("constructing the atom tree");
+    mol.use_brute_force_SAS = false;
+    mol.set_probe_radius(p4est, 1.4);
+    mol.set_interface_resolution(p4est);
+    mol.construct_atom_tree(p4est);
+    w2.stop(); w2.read_duration();
+
 
     p4est_nodes_t *nodes;
     p4est_ghost_t *ghost;
@@ -114,9 +123,10 @@ int main(int argc, char *argv[]) {
     ierr = VecGetArray(psi_mol,  &psi_mol_p);  CHKERRXX(ierr);
     ierr = VecGetArray(psi_elec, &psi_elec_p); CHKERRXX(ierr);
 
+
     mkdir(output_folder.c_str(), 0755);
     ostringstream oss; oss << output_folder + "/" + pqr;
-    my_p4est_vtk_write_all(p4est, nodes, NULL,
+    my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
                            3, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_p,
