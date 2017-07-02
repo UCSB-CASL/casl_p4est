@@ -36,6 +36,7 @@
 #include <src/simplex3_mls_vtk.h>
 #include <src/simplex3_mls_quadratic_vtk.h>
 #include <src/my_p8est_semi_lagrangian.h>
+#include <src/my_p8est_tools_mls.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -53,6 +54,7 @@
 #include <src/my_p4est_integration_mls.h>
 #include <src/simplex2_mls_vtk.h>
 #include <src/my_p4est_semi_lagrangian.h>
+#include <src/my_p4est_tools_mls.h>
 #endif
 
 #include <src/point3.h>
@@ -61,7 +63,6 @@
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 
-#include "my_p4est_mls_tools.h"
 #include "problem_case_0.h" // triangle (tetrahedron)
 #include "problem_case_1.h" // two circles union
 #include "problem_case_2.h" // two circles intersection
@@ -80,12 +81,12 @@
 
 using namespace std;
 
-bool save_vtk = 1;
+bool save_vtk = 0;
 
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 5;
+int nb_splits = 4;
 #else
 int lmin = 5;
 int lmax = 5;
@@ -109,7 +110,7 @@ const double p_xyz_max[3] = {1, 1, 1};
  * 7412
  */
 
-int n_geometry = 0;
+int n_geometry = 7;
 int n_test = 0;
 int n_mu = 0;
 int n_diag_add = 0;
@@ -118,164 +119,7 @@ bool reinitialize_lsfs = 0;
 
 
 // EXACT SOLUTION
-double phase_x =  0.13;
-double phase_y =  1.55;
-double phase_z =  0.7;
-#ifdef P4_TO_P8
-class u_cf_t: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    switch (n_test){
-      case 0: return sin(x)*cos(y)*exp(z);
-      case 1: return 0.5*log(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
-      case 2: return log((x+y+3.)/(y+z+3.))*sin(x+0.5*y+0.7*z);
-      case 3: return exp(x+z-y*y)*(y+cos(x-z));
-      case 4: return sin(x+0.3*y)*cos(x-0.7*y)*exp(z) + 3.*log(sqrt(x*x+y*y+z*z+0.5));
-      case 10: return sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
-    }
-  }
-} u_cf;
-#else
-class u_cf_t: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    switch (n_test){
-      case 0: return sin(x)*cos(y);
-      case 1: return 0.5*log( pow(x+0.8*y, 2.)+(x-0.7*y)+4.0 );
-      case 2: return log((0.7*x+3.0)/(y+3.0))*sin(x+0.5*y);
-      case 3: return exp(x-y*y)*(y+cos(x));
-      case 4: return sin(x+0.3*y)*cos(x-0.7*y) + 3.*log(sqrt(x*x+y*y+0.5));
-      case 10: return (sin(PI*x+phase_x)*sin(PI*y+phase_y));
-    }
-  }
-} u_cf;
-#endif
-
-// EXACT DERIVATIVES
-#ifdef P4_TO_P8
-class ux_cf_t: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    switch (n_test){
-      case 0: return cos(x)*cos(y)*exp(z);
-      case 1: return 0.5*(1.+2.*(x-0.7*y-0.9*z))/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
-      case 2: return log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)/(x+y+3.);
-      case 3: return exp(x+z-y*y)*(y+cos(x-z)-sin(x-z));
-      case 4: return ( cos(x+0.3*y)*cos(x-0.7*y) - sin(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*x/(x*x+y*y+z*z+0.5);
-    case 10: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
-    }
-  }
-} ux_cf;
-class uy_cf_t: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    switch (n_test){
-      case 0: return -sin(x)*sin(y)*exp(z);
-      case 1: return 0.5*(0.5-1.4*(x-0.7*y-0.9*z))/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
-      case 2: return 0.5*log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)*(1.0/(x+y+3.)-1.0/(y+z+3.));
-      case 3: return exp(x+z-y*y)*(1.0 - 2.*y*(y+cos(x-z)));
-      case 4: return ( 0.3*cos(x+0.3*y)*cos(x-0.7*y) + 0.7*sin(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*y/(x*x+y*y+z*z+0.5);
-    case 10: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y)*sin(PI*z+phase_z);
-    }
-  }
-} uy_cf;
-class uz_cf_t: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    switch (n_test){
-      case 0: return sin(x)*cos(y)*exp(z);
-      case 1: return 0.5*(-0.3-1.8*(x-0.7*y-0.9*z))/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
-      case 2: return 0.7*log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)*(-1.0/(y+z+3.));
-      case 3: return exp(x+z-y*y)*(y+cos(x-z)+sin(x-z));
-      case 4: return cos(x-0.7*y)*sin(x+0.3*y)*exp(z) + 3.*z/(x*x+y*y+z*z+0.5);
-    case 10: return PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*cos(PI*z+phase_z);
-    }
-  }
-} uz_cf;
-class lap_u_cf_t: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    switch (n_test){
-      case 0: return -1.0*sin(x)*cos(y)*exp(z);
-      case 1: return 2.3/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.))
-            -0.5*( pow(1.+2.*(x-0.7*y-0.9*z),2.) + pow(0.5-1.4*(x-0.7*y-0.9*z),2.) + pow(-0.3-1.8*(x-0.7*y-0.9*z),2.) )/pow((x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.)), 2.);
-      case 2: return ( -1.74*log((x+y+3.)/(y+z+3.)) - 2./pow(x+y+3.,2.) + 2./pow(y+z+3.,2.) )*sin(x+0.5*y+0.7*z)
-            + ( 3./(x+y+3.) - 2.4/(y+z+3.) )*cos(x+0.5*y+0.7*z);
-      case 3: return exp(x+z-y*y)*(-4.*y-2.*cos(x-z)+4.*y*y*(y+cos(x-z)));
-      case 4: return -1.58*( sin(x+0.3*y)*cos(x-0.7*y) + cos(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*(x*x+y*y+z*z+1.5)/pow(x*x+y*y+z*z+0.5, 2.);
-    case 10: return -3.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
-    }
-  }
-} lap_u_cf;
-#else
-class ux_cf_t: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    switch (n_test){
-      case 0: return cos(x)*cos(y);
-      case 1: return (x+0.8*y+0.5)/( pow(x+0.8*y, 2.)+(x-0.7*y)+4.0 );
-      case 2: return ( 0.7/(0.7*x+3.) )*sin(x+0.5*y)
-            + ( log(0.7*x+3.)-log(y+3.) )*cos(x+0.5*y);
-      case 3: return exp(x-y*y)*(y+cos(x)-sin(x));
-      case 4: return cos(x+0.3*y)*cos(x-0.7*y) - sin(x+0.3*y)*sin(x-0.7*y)
-            + 3.*x/(x*x+y*y+0.5);
-      case 10: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y);
-    }
-  }
-} ux_cf;
-class uy_cf_t: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    switch (n_test){
-      case 0: return -sin(x)*sin(y);
-      case 1: return (0.8*x+0.64*y-0.35)/( pow(x+0.8*y, 2.)+(x-0.7*y)+4.0 );
-      case 2: return ( - 1./(y+3.) )*sin(x+0.5*y)
-            + 0.5*( log(0.7*x+3.)-log(y+3.) )*cos(x+0.5*y);
-      case 3: return exp(x-y*y)*(1.-2.*y*(y+cos(x)));
-      case 4: return 0.3*cos(x+0.3*y)*cos(x-0.7*y) + 0.7*sin(x+0.3*y)*sin(x-0.7*y)
-        + 3.*y/(x*x+y*y+0.5);
-      case 10: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y);
-    }
-  }
-} uy_cf;
-
-class lap_u_cf_t: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    switch (n_test){
-      case 0: return -2.0*sin(x)*cos(y);
-      case 1: {
-        double C = (x+0.8*y)*(x+0.8*y)+(x-0.7*y)+4.0;
-        return 1.64/C - ( pow(2.0*(x+0.8*y)+1.0, 2.0) + pow(1.6*(x+0.8*y)-0.7, 2.0) )/2.0/C/C;
-      }
-      case 2: return ( 1./pow(y+3., 2.) - 0.49/pow(0.7*x+3., 2.) - 1.25*(log(0.7*x+3.)-log(y+3.)) )*sin(x+0.5*y)
-            + ( 1.4/(0.7*x+3.) - 1./(y+3.) )*cos(x+0.5*y);
-      case 3: return exp(x-y*y)*(y-2.*sin(x)) - 2.*exp(x-y*y)*(y*(3.-2.*y*y)+(1.-2.*y*y)*cos(x));
-      case 4: return -2.58*sin(x+0.3*y)*cos(x-0.7*y) - 1.58*cos(x+0.3*y)*sin(x-0.7*y)
-        + 3./pow(x*x+y*y+0.5, 2.);
-      case 10: return -2.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y);
-    }
-  }
-} lap_u_cf;
-#endif
+#include "exact_solutions.h"
 
 // Diffusion coefficient
 #ifdef P4_TO_P8
@@ -737,6 +581,7 @@ int main (int argc, char* argv[])
 
 //    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
     for (int i = 0; i < iter; ++i)
     {
       my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
@@ -1118,7 +963,7 @@ int main (int argc, char* argv[])
     // extend
 //    ls.extend_Over_Interface_TVD(phi_smooth, sol_ex, 100); CHKERRXX(ierr);
 //    ls.extend_Over_Interface_TVD(phi_eff, sol_ex, 100); CHKERRXX(ierr);
-//    ls.extend_Over_Interface_TVD(phi_smooth, mask, sol_ex, 100, 2); CHKERRXX(ierr);
+    ls.extend_Over_Interface_TVD(phi_smooth, mask, sol_ex, 100, 2); CHKERRXX(ierr);
 //    ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, sol_ex, 100); CHKERRXX(ierr);
 
     // calculate error

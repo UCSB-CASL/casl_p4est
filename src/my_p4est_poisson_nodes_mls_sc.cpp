@@ -178,7 +178,7 @@ my_p4est_poisson_nodes_mls_sc_t::~my_p4est_poisson_nodes_mls_sc_t()
 #endif
   }
 
-  if (node_vol_ != NULL) {ierr = VecDestroy(node_vol_); CHKERRXX(ierr);}
+  if (volumes_ != NULL) {ierr = VecDestroy(volumes_); CHKERRXX(ierr);}
   if (is_phi_eff_owned_)    {ierr = VecDestroy(phi_eff_);  CHKERRXX(ierr);}
 }
 
@@ -558,7 +558,8 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
      * Available Options:
      * "CLJP","Ruge-Stueben","modifiedRuge-Stueben","Falgout", "PMIS", "HMIS". Falgout is usually the best.
      */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_coarsen_type", "Falgout"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_coarsen_type", "CLJP"); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_coarsen_type", "Falgout"); CHKERRXX(ierr);
 
     /* 3- Trancation factor
      * Greater than zero.
@@ -4222,8 +4223,8 @@ double my_p4est_poisson_nodes_mls_sc_t::compute_weights_through_face(double A, d
   }
 
   if (full_fallback)
-//    return 5;
-    return -1;
+    return 5;
+//    return -1;
   else if (semi_fallback)
     return -1;
 //    return 2;

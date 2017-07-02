@@ -25,8 +25,8 @@
 
 class my_p4est_poisson_nodes_mls_sc_t
 {
-  static const bool use_refined_cube_ = 0;
-  static const int cube_refinement_ = 1;
+  static const bool use_refined_cube_ = 1;
+  static const int cube_refinement_ = 4;
   static const int num_neighbors_max_ = pow(3, P4EST_DIM);
 
   enum node_neighbor_t
@@ -580,6 +580,7 @@ public:
 
 //  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
 
   void assemble_matrix(Vec solution);
 
