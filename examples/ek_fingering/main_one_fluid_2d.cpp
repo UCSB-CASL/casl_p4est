@@ -250,13 +250,15 @@ void set_parameters(int argc, char **argv) {
 
   } else if (options.test == "flat") {
 
-    options.xmin[0] = -1; options.xmin[1] = options.xmin[2] = -PI;
-    options.xmax[0] =  2*options.L*PI-1; options.xmax[1] = options.xmax[2] =  PI;
+    double s = 4*PI;
+    options.xmin[0] = -1; options.xmin[1] = options.xmin[2] = -0.5*s;
+    options.xmax[0] =  s*options.L-1; options.xmax[1] = options.xmax[2] =  0.5*s;
     options.ntr[0]  = options.L; options.ntr[1] = options.ntr[2] = 1;
     options.periodic[0] = false; options.periodic[1] = options.periodic[2] = true;
 
     options.lmin = 3;
-    options.lmax = 8;
+    options.lmax = 7 + (int)(log(s)/log(2.0));
+    options.Ca   = 250;
 
     static struct:cf_t{
       double operator()(double x, double y) const  {
@@ -272,7 +274,7 @@ void set_parameters(int argc, char **argv) {
 
     static struct:cf_t{
       double operator()(double, double) const {
-        return -(*options.Q)(t)/(2*PI);
+        return -(1+t);
       }
     } bc_wall_value; bc_wall_value.t = 0;
 

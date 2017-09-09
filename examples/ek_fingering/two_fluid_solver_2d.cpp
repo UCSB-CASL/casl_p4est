@@ -876,13 +876,13 @@ void two_fluid_solver_t::solve_fields_voronoi(double t, Vec phi, Vec press_m, Ve
   // (-) --> (+)
   double s = diag_min;
   VecShift(phi_l, s);
-  ls.extend_Over_Interface_TVD(phi, press_m);
+  ls.extend_Over_Interface_TVD(phi, press_m, 100);
   VecShift(phi_l, -s);
 
   // (+) --> (-)
   VecScale(phi_l, -1);
   VecShift(phi_l, s);
-  ls.extend_Over_Interface_TVD(phi, press_p);
+  ls.extend_Over_Interface_TVD(phi, press_p, 100);
   VecShift(phi_l, -s);
   VecScale(phi_l, -1);
 

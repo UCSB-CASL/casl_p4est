@@ -178,8 +178,8 @@ void set_options(int argc, char **argv) {
 
     options.ntr[0]  = options.L; options.ntr[1] = options.ntr[2] = 1;
     options.periodic[0] = false; options.periodic[1] = options.periodic[2] = true;
-    options.lmax    = 7;
-    options.lmin    = 2;
+    options.lmax    = 8;
+    options.lmin    = 3;
     options.mode    = cmd.get("mode", 5);
     options.eps     = cmd.get("eps", 1e-1);
     options.lip     = cmd.get("lip", 5);

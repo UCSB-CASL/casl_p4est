@@ -35,9 +35,15 @@ QMAKE_CC=mpicc
 QMAKE_CXX=mpicxx
 QMAKE_LINK=mpicxx
 
-QMAKE_CXXFLAGS += -std=c++11
-QMAKE_CCFLAGS  += -std=c++11
-QMAKE_LFAGS    += -std=c++11
+QMAKE_CXXFLAGS += -std=c++11 -Wall
+QMAKE_CCFLAGS  += -std=c++11 -Wall
+QMAKE_LFAGS    += -std=c++11 -Wall
 
+release {
+  OPT_FLAGS = -xHost -O3 -no-prec-div -ip -fp-model fast=2
+  QMAKE_CCFLAGS += $$OPT_FLAGS
+  QMAKE_CXXFLAGS += $$OPT_FLAGS
+  QMAKE_LFLAGS += $$OPT_FLAGS
+}
 include(common.pri)
 
