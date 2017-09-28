@@ -73,7 +73,7 @@
 #include "problem_case_7.h" // three flowers
 #include "problem_case_8.h" // half-space
 #include "problem_case_9.h" // angle
-#include "problem_case_10.h" // angle
+#include "problem_case_10.h" // angle 3d
 
 
 #undef MIN
@@ -81,16 +81,19 @@
 
 using namespace std;
 
-bool save_vtk = 0;
+bool save_vtk = 1;
 
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 4;
-#else
-int lmin = 5;
-int lmax = 5;
 int nb_splits = 5;
+//int lmin = 7;
+//int lmax = 7;
+//int nb_splits = 1;
+#else
+int lmin = 6;
+int lmax = 6;
+int nb_splits = 6;
 #endif
 
 //const int periodic[3] = {1, 1, 1};
@@ -111,11 +114,19 @@ const double p_xyz_max[3] = {1, 1, 1};
  */
 
 int n_geometry = 7;
-int n_test = 0;
-int n_mu = 0;
-int n_diag_add = 0;
+int n_test = 4;
+int n_mu = 1;
+int n_diag_add = 2;
+//int n_test = 4;
+//int n_mu = 1;
+//int n_diag_add = 2;
 
 bool reinitialize_lsfs = 0;
+bool plot_convergence = 1;
+bool save_domain_reconstruction = 0;
+bool do_extension = 0;
+
+bool sc_scheme = 1;
 
 
 // EXACT SOLUTION
@@ -509,37 +520,43 @@ int main (int argc, char* argv[])
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
-//  cmdParser cmd;
-//  cmd.add_option("lmin", "min level of the tree");
-//  cmd.add_option("lmax", "max level of the tree");
-//  cmd.add_option("nb_splits", "number of recursive splits");
+  cmdParser cmd;
+  cmd.add_option("lmin", "min level of the tree");
+  cmd.add_option("lmax", "max level of the tree");
+  cmd.add_option("nb_splits", "number of recursive splits");
 //  cmd.add_option("bc_wtype", "type of boundary condition to use on the wall");
 //  cmd.add_option("bc_itype", "type of boundary condition to use on the interface");
-//  cmd.add_option("save_vtk", "save the p4est in vtk format");
-//#ifdef P4_TO_P8
-//  cmd.add_option("test", "choose a test.\n\
-//                 0 - x+y+z\n\
-//                 1 - x*x + y*y + z*z\n\
-//                 2 - sin(x)*cos(y)*exp(z)");
-//#else
-//  cmd.add_option("test", "choose a test.\n\
-//                 0 - x+y\n\
-//                 1 - x*x + y*y\n\
-//                 2 - sin(x)*cos(y)");
-//#endif
-//  cmd.parse(argc, argv);
+  cmd.add_option("save_vtk", "save the p4est in vtk format");
+  cmd.add_option("reinit", "reinitialize level-set function");
+  cmd.add_option("n_test", "test function");
+  cmd.add_option("n_geometry", "geometry");
+  cmd.add_option("n_mu", "diffusion coefficient");
+  cmd.add_option("n_diag_add", "additional diagonal term");
+  cmd.add_option("plot_convergence", "show convergence plots");
+  cmd.add_option("save_domain_reconstruction", "save reconstruction of domain (works only in serial!)");
+  cmd.add_option("do_extension", "extend solution after solving");
+  cmd.add_option("sc_scheme", "use super convergent scheme");
+  cmd.parse(argc, argv);
 
-//  cmd.print();
+  cmd.print();
 
-//  lmin = cmd.get("lmin", lmin);
-//  lmax = cmd.get("lmax", lmax);
-//  nb_splits = cmd.get("nb_splits", nb_splits);
-//  test_number = cmd.get("test", test_number);
+  lmin = cmd.get("lmin", lmin);
+  lmax = cmd.get("lmax", lmax);
+  nb_splits = cmd.get("nb_splits", nb_splits);
+  reinitialize_lsfs = cmd.get("reinit", reinitialize_lsfs);
+  n_test = cmd.get("n_test", n_test);
+  n_geometry = cmd.get("n_geometry", n_geometry);
+  n_mu = cmd.get("n_mu", n_mu);
+  plot_convergence = cmd.get("plot_convergence", plot_convergence);
+  save_domain_reconstruction = cmd.get("save_domain_reconstruction", save_domain_reconstruction);
+  do_extension = cmd.get("do_extension", do_extension);
+  sc_scheme = cmd.get("sc_scheme", sc_scheme);
+
 
 //  bc_wtype = cmd.get("bc_wtype", bc_wtype);
 //  bc_itype = cmd.get("bc_itype", bc_itype);
 
-//  save_vtk = cmd.get("save_vtk", save_vtk);
+  save_vtk = cmd.get("save_vtk", save_vtk);
 
   set_parameters();
 
@@ -670,38 +687,73 @@ int main (int argc, char* argv[])
 //    ierr = VecDestroy(u_exact_vec); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est->mpicomm, "Starting a solver\n"); CHKERRXX(ierr);
 
-//    my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
-    my_p4est_poisson_nodes_mls_sc_t solver(&ngbd_n);
-//    solver.set_geometry(0, NULL, NULL, NULL);
-    solver.set_geometry(num_surfaces, &action, &color, &phi);
-    solver.set_mu(mu);
-    solver.set_rhs(rhs);
-
-    solver.set_bc_wall_value(u_cf);
-    solver.set_bc_wall_type(bc_wall_type);
-    solver.set_bc_interface_type(bc_interface_type);
-    solver.set_bc_interface_coeff(bc_coeffs_cf);
-    solver.set_bc_interface_value(bc_interface_value);
-
-    solver.set_diag_add(diag_add);
-
-    solver.set_use_taylor_correction(1);
-    solver.set_keep_scalling(true);
-    solver.set_kink_treatment(1);
-
-//    solver.compute_volumes();
-
-//    ierr = PetscPrintf(p4est->mpicomm, "Here\n"); CHKERRXX(ierr);
-
     Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
-
-    solver.solve(sol);
-
     std::vector<Vec> *phi_dd[P4EST_DIM];
-    solver.get_phi_dd(phi_dd);
 
-    Vec phi_eff = solver.get_phi_eff();
-    Vec mask = solver.get_mask();
+    Vec phi_eff ;
+    Vec mask;
+
+    Mat A;
+    std::vector<double> *scalling;
+
+    my_p4est_poisson_nodes_mls_sc_t solver_sc(&ngbd_n);
+    my_p4est_poisson_nodes_mls_t    solver(&ngbd_n);
+
+    if (sc_scheme)
+    {
+      solver_sc.set_geometry(num_surfaces, &action, &color, &phi);
+      solver_sc.set_mu(mu);
+      solver_sc.set_rhs(rhs);
+
+      solver_sc.set_bc_wall_value(u_cf);
+      solver_sc.set_bc_wall_type(bc_wall_type);
+      solver_sc.set_bc_interface_type(bc_interface_type);
+      solver_sc.set_bc_interface_coeff(bc_coeffs_cf);
+      solver_sc.set_bc_interface_value(bc_interface_value);
+
+      solver_sc.set_diag_add(diag_add);
+
+      solver_sc.set_use_taylor_correction(1);
+      solver_sc.set_keep_scalling(true);
+      solver_sc.set_kink_treatment(1);
+
+      solver_sc.solve(sol);
+
+      solver_sc.get_phi_dd(phi_dd);
+
+      phi_eff   = solver_sc.get_phi_eff();
+      mask      = solver_sc.get_mask();
+      A         = solver_sc.get_matrix();
+      scalling  = solver_sc.get_scalling();
+
+    } else {
+
+      solver.set_geometry(num_surfaces, &action, &color, &phi);
+      solver.set_mu(mu);
+      solver.set_rhs(rhs);
+
+      solver.set_bc_wall_value(u_cf);
+      solver.set_bc_wall_type(bc_wall_type);
+      solver.set_bc_interface_type(bc_interface_type);
+      solver.set_bc_interface_coeff(bc_coeffs_cf);
+      solver.set_bc_interface_value(bc_interface_value);
+
+      solver.set_diag_add(diag_add);
+
+      solver.set_use_taylor_correction(1);
+      solver.set_keep_scalling(true);
+      solver.set_kink_treatment(1);
+
+      solver.solve(sol);
+
+      solver.get_phi_dd(phi_dd);
+
+      phi_eff = solver.get_phi_eff();
+      mask = solver.get_mask();
+      A = solver.get_matrix();
+      scalling = solver.get_scalling();
+    }
+
 
     my_p4est_integration_mls_t integrator(p4est, nodes);
 #ifdef P4_TO_P8
@@ -709,28 +761,40 @@ int main (int argc, char* argv[])
 #else
     integrator.set_phi(phi, action, color);
 #endif
-//    if (save_vtk)
-//    {
-//      integrator.initialize();
-//#ifdef P4_TO_P8
-//      vector<simplex3_mls_t *> simplices;
-//      int n_sps = NTETS;
-//#else
-//      vector<simplex2_mls_t *> simplices;
-//      int n_sps = 2;
-//#endif
+    if (save_vtk && save_domain_reconstruction)
+    {
+      const char* out_dir = getenv("OUT_DIR");
+      if (!out_dir)
+      {
+        ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
+        return -1;
+      }
+      std::ostringstream command;
+      command << "mkdir -p " << out_dir;
+      int ret_sys = system(command.str().c_str());
+      if (ret_sys<0)
+        throw std::invalid_argument("could not create directory");
 
-//      for (int k = 0; k < integrator.cubes_linear.size(); k++)
-//        if (integrator.cubes_linear[k].loc == FCE)
-//          for (int l = 0; l < n_sps; l++)
-//            simplices.push_back(&integrator.cubes_linear[k].simplex[l]);
+      integrator.initialize();
+#ifdef P4_TO_P8
+      vector<simplex3_mls_t *> simplices;
+      int n_sps = NTETS;
+#else
+      vector<simplex2_mls_t *> simplices;
+      int n_sps = 2;
+#endif
 
-//#ifdef P4_TO_P8
-//      simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
-//#else
-//      simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
-//#endif
-//    }
+      for (int k = 0; k < integrator.cubes_linear.size(); k++)
+        if (integrator.cubes_linear[k].loc == FCE)
+          for (int l = 0; l < n_sps; l++)
+            simplices.push_back(&integrator.cubes_linear[k].simplex[l]);
+
+#ifdef P4_TO_P8
+      simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(out_dir), to_string(iter));
+#else
+      simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(out_dir), to_string(iter));
+#endif
+    }
 
 //#ifdef P4_TO_P8
 //    integrator.set_phi(phi, *phi_dd[0], *phi_dd[1], *phi_dd[2], action, color);
@@ -893,16 +957,12 @@ int main (int argc, char* argv[])
     //----------------------------------------------------------------------------------------------
     // calculate truncation error
     //----------------------------------------------------------------------------------------------
-    sample_cf_on_nodes(p4est, nodes, rhs_cf, rhs);
-    solver.set_rhs(rhs);
-    solver.assemble_rhs_only();
+//    sample_cf_on_nodes(p4est, nodes, rhs_cf, rhs);
+//    solver.set_rhs(rhs);
+//    solver.assemble_rhs_only();
     Vec vec_u_exact; ierr = VecCreateGhostNodes(p4est, nodes, &vec_u_exact);   CHKERRXX(ierr);
 
     sample_cf_on_nodes(p4est, nodes, u_cf, vec_u_exact);
-
-    Mat A = solver.get_matrix();
-
-    std::vector<double> *scalling = solver.get_scalling();
 
     ierr = MatMult(A, vec_u_exact, vec_error_tr); CHKERRXX(ierr);
 
@@ -943,8 +1003,12 @@ int main (int argc, char* argv[])
     double *phi_smooth_ptr;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi_smooth); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, level_set_smooth_cf, phi_smooth);
-    ls.reinitialize_1st_order_time_2nd_order_space(phi_smooth);
-    ls.reinitialize_1st_order_time_2nd_order_space(phi_eff);
+
+    if (do_extension)
+    {
+      ls.reinitialize_1st_order_time_2nd_order_space(phi_smooth);
+      ls.reinitialize_1st_order_time_2nd_order_space(phi_eff);
+    }
 
     double band = 3.0;
 
@@ -963,7 +1027,8 @@ int main (int argc, char* argv[])
     // extend
 //    ls.extend_Over_Interface_TVD(phi_smooth, sol_ex, 100); CHKERRXX(ierr);
 //    ls.extend_Over_Interface_TVD(phi_eff, sol_ex, 100); CHKERRXX(ierr);
-    ls.extend_Over_Interface_TVD(phi_smooth, mask, sol_ex, 100, 2); CHKERRXX(ierr);
+    if (do_extension)
+      ls.extend_Over_Interface_TVD(phi_smooth, mask, sol_ex, 100, 2); CHKERRXX(ierr);
 //    ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, sol_ex, 100); CHKERRXX(ierr);
 
     // calculate error
@@ -1300,13 +1365,25 @@ int main (int argc, char* argv[])
 
     if(save_vtk)
     {
-#ifdef STAMPEDE
-      char *out_dir;
-      out_dir = getenv("OUT_DIR");
-#else
-      char out_dir[10000];
-      sprintf(out_dir, OUTPUT_DIR);
-#endif
+//#ifdef STAMPEDE
+//      char *out_dir;
+//      out_dir = getenv("OUT_DIR");
+//#else
+//      char out_dir[10000];
+//      sprintf(out_dir, OUTPUT_DIR);
+//#endif
+
+      const char* out_dir = getenv("OUT_DIR");
+      if (!out_dir)
+      {
+        ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
+        return -1;
+      }
+      std::ostringstream command;
+      command << "mkdir -p " << out_dir << "/vtu";
+      int ret_sys = system(command.str().c_str());
+      if (ret_sys<0)
+        throw std::invalid_argument("could not create directory");
 
       std::ostringstream oss;
 
@@ -1319,22 +1396,6 @@ int main (int argc, char* argv[])
              "x" << brick.nxyztrees[2] <<
            #endif
              "." << iter;
-
-      /* mask for solution */
-//      Vec mask; double *mask_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &mask); CHKERRXX(ierr);
-
-//      ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
-
-//      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//      {
-//        if (solver.is_calc(n))  mask_ptr[n] = 1;
-//        else                    mask_ptr[n] = 0;
-//      }
-
-//      ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
-
-//      ierr = VecGhostUpdateBegin(mask, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//      ierr = VecGhostUpdateEnd  (mask, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
       /* save the size of the leaves */
       Vec leaf_level;
@@ -1419,8 +1480,6 @@ int main (int argc, char* argv[])
     for (int i = 0; i < phi.size(); i++)
     {
       ierr = VecDestroy(phi[i]);        CHKERRXX(ierr);
-//      ierr = VecDestroy(bc_values[i]);  CHKERRXX(ierr);
-//      ierr = VecDestroy(bc_coeffs[i]);  CHKERRXX(ierr);
     }
 
 
@@ -1444,68 +1503,31 @@ int main (int argc, char* argv[])
 
   w.stop(); w.read_duration();
 
-  if (mpi.rank() == 0)
+  if (mpi.rank() == 0 && plot_convergence)
   {
     Gnuplot graph;
 
-    print_Table("Error", 0.0, level, h, "err sl (max)", error_sl_arr,     1, &graph);
-    print_Table("Error", 0.0, level, h, "err sl (L1)",  error_sl_l1_arr,  2, &graph);
+    print_Table("Convergence", 0.0, level, h, "err sl", error_sl_arr, 1, &graph);
+    print_Table("Convergence", 0.0, level, h, "err gr", error_gr_arr, 2, &graph);
+    print_Table("Convergence", 0.0, level, h, "err tr", error_tr_arr, 3, &graph);
+    print_Table("Convergence", 0.0, level, h, "err dd", error_dd_arr, 4, &graph);
 
-    print_Table("Solution error", 0.0, level, h, "err tr (max)", error_tr_arr,     3, &graph);
-    print_Table("Solution error", 0.0, level, h, "err ex (max)", error_ex_arr,     4, &graph);
-    print_Table("Solution error", 0.0, level, h, "err dd (max)", error_dd_arr,     5, &graph);
-//    print_Table("Error", 0.0, level, h, "err tr (L1)",  error_tr_l1_arr,  4, &graph);
-
-    Gnuplot graph_grad;
-
-    print_Table("Error", 0.0, level, h, "err gr (max)", error_gr_arr,     1, &graph_grad);
-    print_Table("Error", 0.0, level, h, "err gr (L1)",  error_gr_l1_arr,  2, &graph_grad);
-
-    print_Table("Error", 0.0, level, h, "err ge (max)", error_ge_arr,     3, &graph_grad);
-    print_Table("Error", 0.0, level, h, "err ge (L1)",  error_ge_l1_arr,  4, &graph_grad);
-
-    // print all errors in compact form for plotting in matlab
-    // step sizes
-    for (int i = 0; i < h.size(); i++)
-    {
-      if (i != 0) cout << ", ";
-      cout << h[i];
-    }
-    cout <<  ";" << endl;
-
-    // Sol L-inf
-    for (int i = 0; i < h.size(); i++)
-    {
-      if (i != 0) cout << ", ";
-      cout << fabs(error_sl_arr[i]);
-    }
-    cout <<  ";" << endl;
-
-    // Sol L-1
-    for (int i = 0; i < h.size(); i++)
-    {
-      if (i != 0) cout << ", ";
-      cout << fabs(error_sl_l1_arr[i]);
-    }
-    cout <<  ";" << endl;
-
-    // Grad L-inf
-    for (int i = 0; i < h.size(); i++)
-    {
-      if (i != 0) cout << ", ";
-      cout << fabs(error_gr_arr[i]);
-    }
-    cout <<  ";" << endl;
-
-    // Grad L-1
-    for (int i = 0; i < h.size(); i++)
-    {
-      if (i != 0) cout << ", ";
-      cout << fabs(error_gr_l1_arr[i]);
-    }
-    cout <<  ";" << endl;
+//    print_Table("Convergence", 0.0, level, h, "err ex (max)", error_ex_arr,     4, &graph);
 
     cin.get();
+  }
+
+
+  if (mpi.rank() == 0)
+  {
+    // print all errors in compact form for plotting in matlab
+    cout << "h";    for (int i = 0; i < h.size(); i++) { cout << ", " << h[i]; }   cout <<  ";" << endl;
+
+    cout << "sl";   for (int i = 0; i < h.size(); i++) { cout << ", " << fabs(error_sl_arr[i]); }   cout <<  ";" << endl;
+    cout << "ex";   for (int i = 0; i < h.size(); i++) { cout << ", " << fabs(error_ex_arr[i]); }   cout <<  ";" << endl;
+    cout << "gr";   for (int i = 0; i < h.size(); i++) { cout << ", " << fabs(error_gr_arr[i]); }   cout <<  ";" << endl;
+    cout << "dd";   for (int i = 0; i < h.size(); i++) { cout << ", " << fabs(error_dd_arr[i]); }   cout <<  ";" << endl;
+    cout << "tr";   for (int i = 0; i < h.size(); i++) { cout << ", " << fabs(error_tr_arr[i]); }   cout <<  ";" << endl;
   }
 
   return 0;

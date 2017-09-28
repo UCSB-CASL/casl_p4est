@@ -1332,6 +1332,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
           }
 
           // check if any Dirichlet interface crosses ngbd
+          // THIS IS NOT CORRECT, FIX THIS
           for (short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
           {
             if (bc_interface_type_->at(phi_idx) == DIRICHLET)

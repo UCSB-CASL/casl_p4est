@@ -31,7 +31,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   /* write vertices */
 
-  string vtxs_vtu = dir + "vtxs_3d_" + suffix + ".vtu";
+  string vtxs_vtu = dir + "/vtxs_3d_" + suffix + ".vtu";
 
   ofs.open(vtxs_vtu.c_str());
 
@@ -125,7 +125,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   /* write edges */
 
-  string edgs_vtu = dir + "edgs_3d_" + suffix +".vtu";
+  string edgs_vtu = dir + "/edgs_3d_" + suffix +".vtu";
   ofs.open(edgs_vtu.c_str());
 
   ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl
@@ -262,7 +262,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   /* write triangles */
 
-  string tris_vtu = dir + "tris_3d_" + suffix +".vtu";
+  string tris_vtu = dir + "/tris_3d_" + suffix +".vtu";
   ofs.open(tris_vtu.c_str());
 
   ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl
@@ -386,7 +386,7 @@ void simplex3_mls_vtk::write_simplex_geometry(std::vector<simplex3_mls_t *>& sim
 
   /* write tetrahedra */
 
-  string tets_vtu = dir + "tets_3d_" + suffix +".vtu";
+  string tets_vtu = dir + "/tets_3d_" + suffix +".vtu";
   ofs.open(tets_vtu.c_str());
 
   ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl

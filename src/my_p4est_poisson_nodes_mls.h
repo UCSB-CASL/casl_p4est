@@ -314,6 +314,7 @@ public:
       is_mue_dd_owned_ = true;
     }
 
+    variable_mu_ = true;
     is_matrix_computed_ = false;
   }
 

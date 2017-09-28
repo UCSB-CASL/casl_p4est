@@ -1743,7 +1743,7 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
         wr_000 = diag_add_value -(wr_m00 + wr_p00 + wr_0m0 + wr_0p0);
 #endif
 
-        if (0)
+        if (1)
         {
           if (is_interface_m00) { wg_000 += wr_m00*(d_m00-theta_m00)/d_m00; wg_m00 += wr_m00*theta_m00/d_m00; }
           if (is_interface_p00) { wg_000 += wr_p00*(d_p00-theta_p00)/d_p00; wg_p00 += wr_p00*theta_p00/d_p00; }
@@ -2562,8 +2562,8 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
             neighbors_exist_m[i] = neighbors_exist_m[i] && (volumes_p[neighbors[i]] > eps_dom_);
           }
 
-              double theta = EPS;
-//        double theta = 10;
+//              double theta = EPS;
+        double theta = 10;
 
         // face m00
         if (s_m00_m/full_sx > interface_rel_thresh)
@@ -2864,40 +2864,40 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
 
         double add_to_rhs = 0;
 
-//        if (phi_eff_000 < 0)
-//        {
-//          w_m[nn_m00] -= w_m[nn_000]*wr_m00/wr_000;
-//          w_m[nn_p00] -= w_m[nn_000]*wr_p00/wr_000;
-//          w_m[nn_0m0] -= w_m[nn_000]*wr_0m0/wr_000;
-//          w_m[nn_0p0] -= w_m[nn_000]*wr_0p0/wr_000;
+        if (phi_eff_000 < 0)
+        {
+          w_m[nn_m00] -= w_m[nn_000]*wr_m00/wr_000;
+          w_m[nn_p00] -= w_m[nn_000]*wr_p00/wr_000;
+          w_m[nn_0m0] -= w_m[nn_000]*wr_0m0/wr_000;
+          w_m[nn_0p0] -= w_m[nn_000]*wr_0p0/wr_000;
 
-//          w_p[nn_000] -= w_m[nn_000]*wg_000/wr_000;
-//          w_p[nn_m00] -= w_m[nn_000]*wg_m00/wr_000;
-//          w_p[nn_p00] -= w_m[nn_000]*wg_p00/wr_000;
-//          w_p[nn_0m0] -= w_m[nn_000]*wg_0m0/wr_000;
-//          w_p[nn_0p0] -= w_m[nn_000]*wg_0p0/wr_000;
+          w_p[nn_000] -= w_m[nn_000]*wg_000/wr_000;
+          w_p[nn_m00] -= w_m[nn_000]*wg_m00/wr_000;
+          w_p[nn_p00] -= w_m[nn_000]*wg_p00/wr_000;
+          w_p[nn_0m0] -= w_m[nn_000]*wg_0m0/wr_000;
+          w_p[nn_0p0] -= w_m[nn_000]*wg_0p0/wr_000;
 
-//          add_to_rhs = -w_m[nn_000]*rhs_fd;
+          add_to_rhs = -w_m[nn_000]*rhs_fd;
 
-//          w_m[nn_000] = 0.;
-//        }
-//        else
-//        {
-//          w_p[nn_m00] -= w_p[nn_000]*wr_m00/wr_000;
-//          w_p[nn_p00] -= w_p[nn_000]*wr_p00/wr_000;
-//          w_p[nn_0m0] -= w_p[nn_000]*wr_0m0/wr_000;
-//          w_p[nn_0p0] -= w_p[nn_000]*wr_0p0/wr_000;
+          w_m[nn_000] = 0.;
+        }
+        else
+        {
+          w_p[nn_m00] -= w_p[nn_000]*wr_m00/wr_000;
+          w_p[nn_p00] -= w_p[nn_000]*wr_p00/wr_000;
+          w_p[nn_0m0] -= w_p[nn_000]*wr_0m0/wr_000;
+          w_p[nn_0p0] -= w_p[nn_000]*wr_0p0/wr_000;
 
-//          w_m[nn_000] -= w_p[nn_000]*wg_000/wr_000;
-//          w_m[nn_m00] -= w_p[nn_000]*wg_m00/wr_000;
-//          w_m[nn_p00] -= w_p[nn_000]*wg_p00/wr_000;
-//          w_m[nn_0m0] -= w_p[nn_000]*wg_0m0/wr_000;
-//          w_m[nn_0p0] -= w_p[nn_000]*wg_0p0/wr_000;
+          w_m[nn_000] -= w_p[nn_000]*wg_000/wr_000;
+          w_m[nn_m00] -= w_p[nn_000]*wg_m00/wr_000;
+          w_m[nn_p00] -= w_p[nn_000]*wg_p00/wr_000;
+          w_m[nn_0m0] -= w_p[nn_000]*wg_0m0/wr_000;
+          w_m[nn_0p0] -= w_p[nn_000]*wg_0p0/wr_000;
 
-//          add_to_rhs = -w_p[nn_000]*rhs_fd;
+          add_to_rhs = -w_p[nn_000]*rhs_fd;
 
-//          w_p[nn_000] = 0.;
-//        }
+          w_p[nn_000] = 0.;
+        }
 
 //        int shift    = phi_eff_000 <= 0 ? 0 : 1;
         int shift    = phi_eff_000 <= 0 ? 1 : 0;

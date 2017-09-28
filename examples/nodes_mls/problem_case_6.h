@@ -44,9 +44,9 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
-        return sin(x+y)*cos(x-y)*log(z+4.);
-        return 0.0;
-//        return 1.0;
+//        return sin(x+y)*cos(x-y)*log(z+4.);
+//        return 0.0;
+        return 1.0;
       }
   } bc_coeff_0;
 #else
@@ -62,9 +62,13 @@ public:
   problem_case_6_t()
   {
 #ifdef P4_TO_P8
-    double r0 = 0.5, xc0 = 0.08, yc0 = 0.01, zc0 = 0.03;
+//    double r0 = 0.5, xc0 = 0.08, yc0 = 0.01, zc0 = 0.03;
 
-    domain0.set_params(r0, xc0, yc0, zc0, 0.0, -1);
+//    domain0.set_params(r0, xc0, yc0, zc0, 0.0, -1);
+
+    double r0 = 0.71, xc0 = 0.08, yc0 = 0.01, zc0 = 0.03;
+
+    domain0.set_params(r0, xc0, yc0, zc0, 0.0, 1);
 #else
     double r0 = 0.5, xc0 = 0.3, yc0 = -0.2;
 

@@ -22,6 +22,8 @@ class simplex3_mls_quadratic_t
 public:
   double eps;
 
+  bool not_pure;
+
   const static int nodes_per_tri = 6;
   const static int nodes_per_tet = 10;
 
@@ -248,7 +250,7 @@ public:
 //  void inv_mat3(double *in, double *out);
 
 //  double length (int vtx0, int vtx1);
-//  double area   (int vtx0, int vtx1, int vtx2);
+  double area   (int vtx0, int vtx1, int vtx2);
   double volume (int vtx0, int vtx1, int vtx2, int vtx3);
   double volume(vtx3_t &vtx0, vtx3_t &vtx1, vtx3_t &vtx2, vtx3_t &vtx3);
 
@@ -287,6 +289,8 @@ public:
       else      f = -epsilon;
     }
   }
+
+  bool invalid_reconstruction;
 
 //  void set_use_linear(bool val) { use_linear = val; }
 //  void set_use_linear(bool val) { use_linear = true; }

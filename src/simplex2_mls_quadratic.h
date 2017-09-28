@@ -192,6 +192,8 @@ public:
   }
   double area(int vtx0, int vtx1, int vtx2);
 
+  bool invalid_reconstruction;
+
 #ifdef CASL_THROWS
   bool tri_is_ok(int v0, int v1, int v2, int e0, int e1, int e2);
   bool tri_is_ok(int t);

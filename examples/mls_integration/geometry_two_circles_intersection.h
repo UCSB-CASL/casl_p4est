@@ -46,48 +46,62 @@ public:
 
   geometry_two_circles_intersection_t()
   {
-    double r0 = 0.711;
-    double r1 = 0.639;
-    double d = 0.35;
+//    double r0 = 0.711;
+//    double r1 = 0.639;
+//    double d = 0.35;
 
-    double theta = 0.779;
-#ifdef P4_TO_P8
-    double phy = 0.312;
-#endif
+//    double theta = 0.779;
+//#ifdef P4_TO_P8
+//    double phy = 0.312;
+//#endif
 
-    double cosT = cos(theta);
-    double sinT = sin(theta);
-#ifdef P4_TO_P8
-    double cosP = cos(phy);
-    double sinP = sin(phy);
-#endif
+//    double cosT = cos(theta);
+//    double sinT = sin(theta);
+//#ifdef P4_TO_P8
+//    double cosP = cos(phy);
+//    double sinP = sin(phy);
+//#endif
+
+//#ifdef P4_TO_P8
+//    double xc_0 = round((-d*sinT*cosP-0.02)*100.)/100.; double yc_0 = round(( d*cosT*cosP-0.07)*100.)/100.; double zc_0 = round(( d*sinP-0.03)*100.)/100.;
+//    double xc_1 = round(( d*sinT*cosP-0.02)*100.)/100.; double yc_1 = round((-d*cosT*cosP-0.07)*100.)/100.; double zc_1 = round((-d*sinP-0.03)*100.)/100.;
+//#else
+//    double xc_0 = round((-d*sinT+0.08)*100.)/100.; double yc_0 = round(( d*cosT-0.07)*100.)/100.;
+//    double xc_1 = round(( d*sinT+0.08)*100.)/100.; double yc_1 = round((-d*cosT-0.07)*100.)/100.;
+//#endif
+
+//#ifdef P4_TO_P8
+//    domain0.set_params(r0, xc_0, yc_0, zc_0);
+//    domain1.set_params(r1, xc_1, yc_1, zc_1, 0.0, -1.0);
+//#else
+//    domain0.set_params(r0, xc_0, yc_0);
+//    domain1.set_params(r1, xc_1, yc_1, 0.0, -1.0);
+//#endif
 
 #ifdef P4_TO_P8
-    double xc_0 = round((-d*sinT*cosP-0.02)*100.)/100.; double yc_0 = round(( d*cosT*cosP-0.07)*100.)/100.; double zc_0 = round(( d*sinP-0.03)*100.)/100.;
-    double xc_1 = round(( d*sinT*cosP-0.02)*100.)/100.; double yc_1 = round((-d*cosT*cosP-0.07)*100.)/100.; double zc_1 = round((-d*sinP-0.03)*100.)/100.;
-#else
-    double xc_0 = round((-d*sinT+0.08)*100.)/100.; double yc_0 = round(( d*cosT-0.07)*100.)/100.;
-    double xc_1 = round(( d*sinT+0.08)*100.)/100.; double yc_1 = round((-d*cosT-0.07)*100.)/100.;
-#endif
+    double r0 = 0.86, xc_0 = 0.08, yc_0 = 0.11, zc_0 = 0.03;
+    double r1 = 0.83, xc_1 =-0.51, yc_1 =-0.46, zc_1 =-0.63;
 
-#ifdef P4_TO_P8
     domain0.set_params(r0, xc_0, yc_0, zc_0);
-    domain1.set_params(r1, xc_1, yc_1, zc_1, 0.0, -1.0);
+    domain1.set_params(r1, xc_1, yc_1, zc_1, 0, -1);
 #else
+    double r0 = 0.84, xc_0 = 0.03, yc_0 = 0.04;
+    double r1 = 0.63, xc_1 =-0.42, yc_1 =-0.37;
+
     domain0.set_params(r0, xc_0, yc_0);
-    domain1.set_params(r1, xc_1, yc_1, 0.0, -1.0);
+    domain1.set_params(r1, xc_1, yc_1, 0, -1);
 #endif
 
     LSF.push_back(&domain0.phi); action.push_back(INTERSECTION); color.push_back(0);
     LSF.push_back(&domain1.phi); action.push_back(INTERSECTION); color.push_back(1);
 
-#ifdef P4_TO_P8
-    std::cout << "Level-set 0: " << xc_0 << ", " << yc_0 << ", " << zc_0 << std::endl;
-    std::cout << "Level-set 1: " << xc_1 << ", " << yc_1 << ", " << zc_1 << std::endl;
-#else
-    std::cout << "Level-set 0: " << xc_0 << ", " << yc_0 << std::endl;
-    std::cout << "Level-set 1: " << xc_1 << ", " << yc_1 << std::endl;
-#endif
+//#ifdef P4_TO_P8
+//    std::cout << "Level-set 0: " << xc_0 << ", " << yc_0 << ", " << zc_0 << std::endl;
+//    std::cout << "Level-set 1: " << xc_1 << ", " << yc_1 << ", " << zc_1 << std::endl;
+//#else
+//    std::cout << "Level-set 0: " << xc_0 << ", " << yc_0 << std::endl;
+//    std::cout << "Level-set 1: " << xc_1 << ", " << yc_1 << std::endl;
+//#endif
 
     n_subs = 2;
     n_Xs = 1;

@@ -67,9 +67,9 @@ int lmin = 4;
 int lmax = 4;
 int nb_splits = 5;
 #else
-int lmin = 5;
-int lmax = 5;
-int nb_splits = 10;
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 8;
 #endif
 
 bool reinitialize_level_set = 0;
@@ -80,7 +80,7 @@ const int periodic[] = {0, 0, 0};
 const double p_xyz_min[] = {-1, -1, -1};
 const double p_xyz_max[] = { 1,  1,  1};
 
-bool save_vtk = false;
+bool save_vtk = 0;
 
 // function to integrate
 int func_num = 0;
@@ -123,7 +123,7 @@ public:
  * 4 - rose-like domain
  * 5 - one circle
  */
-int geometry_num = 5;
+int geometry_num = 0;
 
 geometry_two_circles_union_t        geometry_two_circles_union;
 geometry_two_circles_intersection_t geometry_two_circles_intersection;
@@ -472,6 +472,8 @@ int main (int argc, char* argv[])
     p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
     splitting_criteria_cf_t data(0, lmax+iter, &ls_tot, 1.2);
+    if (func_num != 0)
+      data.min_lvl = lmin+iter;
 //    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &ls_tot, 1.2);
     p4est->user_pointer = (void*)(&data);
 
@@ -593,7 +595,7 @@ int main (int argc, char* argv[])
       vector<simplex3_mls_quadratic_t *> simplices;
       int n_sps = NUM_TETS;
 #else
-      vector<simplex3_mls_quadratic_t *> simplices;
+      vector<simplex2_mls_quadratic_t *> simplices;
       int n_sps = 2;
 #endif
 
@@ -605,7 +607,7 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
       simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter+1000));
 #else
-      simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter+1000));
+      simplex2_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter+1000));
 #endif
     }
 #endif
@@ -699,6 +701,8 @@ int main (int argc, char* argv[])
     p4est_destroy      (p4est);
   }
 
+
+  w.stop(); w.read_duration();
   // make a plot
   int plot_color = 1;
   if (mpi.rank() == 0)
@@ -764,42 +768,38 @@ int main (int argc, char* argv[])
 
     // print all errors in compact form for plotting in matlab
     // step sizes
-    for (int i = 0; i < h.size(); i++)
-    {
-      if (i != 0) cout << ", ";
-      cout << h[i];
-    }
-    cout <<  ";" << endl;
+      cout << "h"; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << h[i]; } cout <<  ";" << endl;
 
     // domain
-    for (int i = 0; i < h.size(); i++)
-    {
-      if (i != 0) cout << ", ";
-      cout << fabs(result.ID[i]-exact.ID);
-    }
-    cout <<  ";" << endl;
+      cout << "dom"; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result.ID[i]-exact.ID); } cout <<  ";" << endl;
 
     // sub-boundaries
-    for (int j = 0; j < exact.n_subs; j++)
-    {
-      for (int i = 0; i < h.size(); i++)
-      {
-        if (i != 0) cout << ", ";
-        cout << fabs(result.ISB[j][i]-exact.ISB[j]);
-      }
-      cout <<  ";" << endl;
+    for (int j = 0; j < exact.n_subs; j++) {
+      cout << "ifc" << j; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result.ISB[j][i]-exact.ISB[j]); } cout <<  ";" << endl;
     }
 
     // X of 2 sub-boundaries
-    for (int j = 0; j < exact.n_Xs; j++)
-    {
-      for (int i = 0; i < h.size(); i++)
-      {
-        if (i != 0) cout << ", ";
-        cout << fabs(result.IX[j][i]-exact.IX[j]);
-      }
-      cout <<  ";" << endl;
+    for (int j = 0; j < exact.n_Xs; j++) {
+      cout << exact.IXc0[j] << "x" << exact.IXc1[j]; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result.IX[j][i]-exact.IX[j]); } cout <<  ";" << endl;
     }
+
+    // print all errors in compact form for plotting in matlab
+    // step sizes
+      cout << "h"; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << h[i]; } cout <<  ";" << endl;
+
+    // domain
+      cout << "dom"; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result_quadratic.ID[i]-exact.ID); } cout <<  ";" << endl;
+
+    // sub-boundaries
+    for (int j = 0; j < exact.n_subs; j++) {
+      cout << "ifc" << j; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result_quadratic.ISB[j][i]-exact.ISB[j]); } cout <<  ";" << endl;
+    }
+
+    // X of 2 sub-boundaries
+    for (int j = 0; j < exact.n_Xs; j++) {
+      cout << exact.IXc0[j] << "x" << exact.IXc1[j]; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result_quadratic.IX[j][i]-exact.IX[j]); } cout <<  ";" << endl;
+    }
+
 
 #ifdef P4_TO_P8
     // X of 3 sub-boundaries
@@ -831,8 +831,6 @@ int main (int argc, char* argv[])
   }
 
   my_p4est_brick_destroy(connectivity, &brick);
-
-  w.stop(); w.read_duration();
 
   return 0;
 }

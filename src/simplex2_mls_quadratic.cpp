@@ -58,57 +58,88 @@ simplex2_mls_quadratic_t::simplex2_mls_quadratic_t(double x0, double y0,
 //--------------------------------------------------
 void simplex2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
-  // clear data
-//  vtxs.clear();
-//  edgs.clear();
-//  tris.clear();
-
   // loop over LSFs
   for (short phi_idx = 0; phi_idx < phi.size(); ++phi_idx)
   {
-    bool needs_refinement = true;
     int last_vtxs_size = 0;
-    while (needs_refinement)
+    invalid_reconstruction = true;
+
+    int refine_level = 0;
+    while (invalid_reconstruction)
     {
-      // interpolate to all vertices
-      for (int i = last_vtxs_size; i < vtxs.size(); ++i)
-        if (!vtxs[i].is_recycled)
-        {
-          vtxs[i].value = (*phi[phi_idx]) ( vtxs[i].x, vtxs[i].y );
-          perturb(vtxs[i].value, eps);
-        }
+      bool needs_refinement = true;
 
-      // check validity of data on each edge
-      needs_refinement = false;
-      for (int i = 0; i < edgs.size(); ++i)
-        if (!edgs[i].is_split)
-        {
-          edg2_t *e = &edgs[i];
-          if (vtxs[e->vtx1].value < 0 && vtxs[e->vtx0].value > 0 && vtxs[e->vtx2].value > 0 ||
-              vtxs[e->vtx1].value > 0 && vtxs[e->vtx0].value < 0 && vtxs[e->vtx2].value < 0)
-          {
-            needs_refinement = true;
-            break;
-          }
-        }
-
-      last_vtxs_size = vtxs.size();
-
-      // refine if necessary
-      if (needs_refinement)
+      while (needs_refinement)
       {
-        int n;
-        n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
-        n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
+        // interpolate to all vertices
+        for (int i = last_vtxs_size; i < vtxs.size(); ++i)
+          if (!vtxs[i].is_recycled)
+          {
+            vtxs[i].value = (*phi[phi_idx]) ( vtxs[i].x, vtxs[i].y );
+            perturb(vtxs[i].value, eps);
+          }
+
+        // check validity of data on each edge
+        needs_refinement = false;
+        for (int i = 0; i < edgs.size(); ++i)
+          if (!edgs[i].is_split)
+          {
+            edg2_t *e = &edgs[i];
+            if (vtxs[e->vtx1].value < 0 && vtxs[e->vtx0].value > 0 && vtxs[e->vtx2].value > 0 ||
+                vtxs[e->vtx1].value > 0 && vtxs[e->vtx0].value < 0 && vtxs[e->vtx2].value < 0)
+            {
+              needs_refinement = true;
+              break;
+            }
+          }
+
+        last_vtxs_size = vtxs.size();
+
+        // refine if necessary
+        if (needs_refinement)
+        {
+          int n;
+          n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
+          n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
+          refine_level++;
+        }
+
       }
 
-    }
+      invalid_reconstruction = false;
 
-    // split all elements
-    int n;
-    n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, clr[phi_idx], acn[phi_idx]);
-    n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
-    n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
+      std::vector<vtx2_t> vtx_tmp = vtxs;
+      std::vector<edg2_t> edg_tmp = edgs;
+      std::vector<tri2_t> tri_tmp = tris;
+
+      int n;
+      n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, clr[phi_idx], acn[phi_idx]);
+      n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
+      n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
+
+//      invalid_reconstruction = false;
+      if (invalid_reconstruction && refine_level < 4)
+      {
+//        std::cout << "invalid reconstruction, level " << refine_level << "\n";
+        vtxs = vtx_tmp;
+        edgs = edg_tmp;
+        tris = tri_tmp;
+
+        n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
+        n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
+        refine_level++;
+      } else {
+        if (invalid_reconstruction) std::cout << "Cannot resolve invalid geometry\n";
+        invalid_reconstruction = false;
+      }
+
+//      // split all elements
+//      int n;
+//      n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, clr[phi_idx], acn[phi_idx]);
+//      n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
+//      n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
+
+    }
 
     eps *= 0.5;
   }
@@ -373,6 +404,23 @@ void simplex2_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
     double a_u0, b_u0;
     find_middle_node(a_u0, b_u0, 0, edgs[tri->edg1].a, edgs[tri->edg2].a, 0, n_tri);
 
+    if (b_u0 > 1. - a_u0/edgs[tri->edg2].a)
+    {
+      invalid_reconstruction = true;
+
+      double zeta0 = 1. - .5 - .5*edgs[tri->edg1].a;
+      double zeta1 = 1. - a_u0/edgs[tri->edg2].a - b_u0;
+      double ratio = (zeta0-eps)/(zeta0-zeta1);
+
+      a_u0 = .5*edgs[tri->edg2].a + ratio*(a_u0 - .5*edgs[tri->edg2].a);
+      b_u0 = .5*edgs[tri->edg1].a + ratio*(b_u0 - .5*edgs[tri->edg1].a);
+    }
+
+    if (b_u0 > 1. - a_u0/edgs[tri->edg2].a)
+    {
+      std::cout << "Intersecting edges: " << .5*edgs[tri->edg2].a << " " << .5*edgs[tri->edg1].a << " " << a_u0 << " " << b_u0 << "\n";
+    }
+
 //     DEBUGGING: check if linear reconstruction works
 //    a_u0 = 0.5*edgs[tri->edg2].a;
 //    b_u0 = 0.5*edgs[tri->edg1].a;
@@ -488,6 +536,24 @@ void simplex2_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
     // vertex along interface
     double a_u1, b_u1;
     find_middle_node(a_u1, b_u1, 1.-edgs[tri->edg0].a, edgs[tri->edg0].a, 0, edgs[tri->edg1].a, n_tri);
+
+    if (b_u1 < a_u1*edgs[tri->edg0].a/(1.-edgs[tri->edg0].a))
+    {
+      invalid_reconstruction = true;
+      double ab_u1_orig[2] = {.5*(1.-edgs[tri->edg0].a), .5*(edgs[tri->edg0].a + edgs[tri->edg1].a)};
+
+      double zeta0 = ab_u1_orig[1] - ab_u1_orig[0]*edgs[tri->edg0].a/(1.-edgs[tri->edg0].a);
+      double zeta1 = b_u1 - a_u1*edgs[tri->edg0].a/(1.-edgs[tri->edg0].a);
+      double ratio = (zeta0-eps)/(zeta0-zeta1);
+
+      a_u1 = .5*(1.-edgs[tri->edg0].a) + ratio*(a_u1 - .5*(1.-edgs[tri->edg0].a));
+      b_u1 = .5*(edgs[tri->edg0].a+edgs[tri->edg1].a) + ratio*(b_u1 - .5*(edgs[tri->edg0].a+edgs[tri->edg1].a));
+    }
+
+    if (b_u1 < a_u1*edgs[tri->edg0].a/(1.-edgs[tri->edg0].a))
+    {
+      std::cout << "Intersecting edges: " << .5*(1.-edgs[tri->edg0].a) << " " << .5*(edgs[tri->edg0].a+edgs[tri->edg1].a) << " " << a_u1 << " " << b_u1 << "\n";
+    }
 
     // DEBUGGING: check if linear reconstruction works
 //    a_u1 = 0.5*(1.-edgs[tri->edg0].a);
@@ -721,6 +787,23 @@ void simplex2_mls_quadratic_t::find_middle_node(double &x_out, double &y_out, do
 
   x_out = 0.5*(x0+x1) + alpha*nx;
   y_out = 0.5*(y0+y1) + alpha*ny;
+
+  while (x_out + y_out > 1. || x_out < 0. || y_out < 0.)
+  {
+//    invalid_reconstruction = true;
+    if (x_out < 0.) alpha = (.5*(x0+x1)-eps)/(.5*(x0+x1)-x_out)*alpha;
+    else if (y_out < 0.) alpha = (.5*(y0+y1)-eps)/(.5*(y0+y1)-y_out)*alpha;
+    else if (1.-x_out-y_out < 0.) alpha = (1.-.5*(x0+x1)-.5*(y0+y1)-eps)/(1. -.5*(x0+x1)-.5*(y0+y1)-(1.-x_out-y_out))*alpha;
+
+    x_out = 0.5*(x0+x1) + alpha*nx;
+    y_out = 0.5*(y0+y1) + alpha*ny;
+
+    std::cout << "Here!\n";
+  }
+
+  if (y_out > 1.-x_out || x_out < 0. || y_out < 0.) {
+    std::cout << "Warning: point is outside of a triangle! (" << .5*(x0+x1) << " " << .5*(y0+y1) << " " << x_out << " " << y_out << ")\n";
+  }
 
 }
 
@@ -982,6 +1065,45 @@ void simplex2_mls_quadratic_t::refine_tri(int n_tri)
 //  return result;
 //}
 
+//double simplex2_mls_quadratic_t::integrate_over_domain(CF_2 &f)
+//{
+//  double result = 0.0;
+//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
+//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
+//  double x,y;
+
+//  // quadrature points, order 3
+//  double a0 = 1./3., b0 = 1./3.;
+//  double a1 = 0.2, b1 = 0.6;
+//  double a2 = 0.2, b2 = 0.2;
+//  double a3 = 0.6, b3 = 0.2;
+
+//  /* integrate over triangles */
+//  for (unsigned int i = 0; i < tris.size(); i++)
+//  {
+//    tri2_t *t = &tris[i];
+//    if (!t->is_split && t->loc == INS)
+//    {
+//      // map quadrature points into real space and interpolate integrand
+//      mapping_tri(x, y, i, a0, b0); f0 = f( x, y );
+//      mapping_tri(x, y, i, a1, b1); f1 = f( x, y );
+//      mapping_tri(x, y, i, a2, b2); f2 = f( x, y );
+//      mapping_tri(x, y, i, a3, b3); f3 = f( x, y );
+
+//      // scale weights by Jacobian
+//      w0 =-27.*jacobian_tri(i, a0, b0);
+//      w1 = 25.*jacobian_tri(i, a1, b1);
+//      w2 = 25.*jacobian_tri(i, a2, b2);
+//      w3 = 25.*jacobian_tri(i, a3, b3);
+
+//      result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
+////      result += area(t->vtx0, t->vtx1, t->vtx2);
+//    }
+//  }
+
+//  return result/96.;
+//}
+
 double simplex2_mls_quadratic_t::integrate_over_domain(CF_2 &f)
 {
   double result = 0.0;
@@ -989,11 +1111,10 @@ double simplex2_mls_quadratic_t::integrate_over_domain(CF_2 &f)
   double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
   double x,y;
 
-  // quadrature points
-  double a0 = 1./3., b0 = 1./3.;
-  double a1 = 0.2, b1 = 0.6;
-  double a2 = 0.2, b2 = 0.2;
-  double a3 = 0.6, b3 = 0.2;
+  // quadrature points, degree 2
+  double a0 = .0, b0 = .5;
+  double a1 = .5, b1 = .0;
+  double a2 = .5, b2 = .5;
 
   /* integrate over triangles */
   for (unsigned int i = 0; i < tris.size(); i++)
@@ -1005,20 +1126,17 @@ double simplex2_mls_quadratic_t::integrate_over_domain(CF_2 &f)
       mapping_tri(x, y, i, a0, b0); f0 = f( x, y );
       mapping_tri(x, y, i, a1, b1); f1 = f( x, y );
       mapping_tri(x, y, i, a2, b2); f2 = f( x, y );
-      mapping_tri(x, y, i, a3, b3); f3 = f( x, y );
 
       // scale weights by Jacobian
-      w0 =-27.*jacobian_tri(i, a0, b0);
-      w1 = 25.*jacobian_tri(i, a1, b1);
-      w2 = 25.*jacobian_tri(i, a2, b2);
-      w3 = 25.*jacobian_tri(i, a3, b3);
+      w0 = jacobian_tri(i, a0, b0);
+      w1 = jacobian_tri(i, a1, b1);
+      w2 = jacobian_tri(i, a2, b2);
 
       result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
-//      result += area(t->vtx0, t->vtx1, t->vtx2);
     }
   }
 
-  return result/96.;
+  return result/6.;
 }
 
 double simplex2_mls_quadratic_t::integrate_over_interface(CF_2 &f, int num)
@@ -1026,13 +1144,14 @@ double simplex2_mls_quadratic_t::integrate_over_interface(CF_2 &f, int num)
   bool integrate_specific = (num != -1);
 
   double result = 0.0;
-  double w0 = 0, w1 = 0;
-  double f0 = 0, f1 = 0;
+  double w0 = 0, w1 = 0, w2 = 0;
+  double f0 = 0, f1 = 0, f2 = 0;
   double x,y;
 
   // quadrature points
-  double a0 = .5*(1.-1./sqrt(3.));
-  double a1 = .5*(1.+1./sqrt(3.));
+  double a0 = 0.;
+  double a1 = .5;
+  double a2 = 1.;
 
   /* integrate over edges */
   for (unsigned int i = 0; i < edgs.size(); i++)
@@ -1044,27 +1163,32 @@ double simplex2_mls_quadratic_t::integrate_over_interface(CF_2 &f, int num)
         // map quadrature points into real space and interpolate integrand
         mapping_edg(x, y, i, a0); f0 = f( x, y );
         mapping_edg(x, y, i, a1); f1 = f( x, y );
+        mapping_edg(x, y, i, a2); f2 = f( x, y );
 
         // scale weights by Jacobian
-        w0 = jacobian_edg(i, a0)/2.;
-        w1 = jacobian_edg(i, a1)/2.;
+        w0 = jacobian_edg(i, a0);
+        w1 = jacobian_edg(i, a1)*4.;
+        w2 = jacobian_edg(i, a2);
 
-        result += w0*f0 + w1*f1;
-//        result += (fabs(f0)+fabs(f1));
+        result += w0*f0 + w1*f1 + w2*f2;
       }
   }
 
-  return result;
+  return result/6.;
+}
+
+//double simplex2_mls_quadratic_t::integrate_over_interface(CF_2 &f, int num)
+//{
+//  bool integrate_specific = (num != -1);
 
 //  double result = 0.0;
-//  double w0 = 0, w1 = 0, w2 = 0;
-//  double f0 = 0, f1 = 0, f2 = 0;
+//  double w0 = 0, w1 = 0;
+//  double f0 = 0, f1 = 0;
 //  double x,y;
 
-//  // quadrature points
-//  double a0 = .5*(1.-sqrt(.6));
-//  double a1 = .5;
-//  double a2 = .5*(1.+sqrt(.6));
+//  // quadrature points, order 3
+//  double a0 = .5*(1.-1./sqrt(3.));
+//  double a1 = .5*(1.+1./sqrt(3.));
 
 //  /* integrate over edges */
 //  for (unsigned int i = 0; i < edgs.size(); i++)
@@ -1074,33 +1198,100 @@ double simplex2_mls_quadratic_t::integrate_over_interface(CF_2 &f, int num)
 //      if ((!integrate_specific && e->c0 >= 0) || (integrate_specific && e->c0 == num))
 //      {
 //        // map quadrature points into real space and interpolate integrand
-//        mapping_edg(x, y, i, a0); f0 = interpolate_from_parent(f, x, y);
-//        mapping_edg(x, y, i, a1); f1 = interpolate_from_parent(f, x, y);
-//        mapping_edg(x, y, i, a2); f2 = interpolate_from_parent(f, x, y);
+//        mapping_edg(x, y, i, a0); f0 = f( x, y );
+//        mapping_edg(x, y, i, a1); f1 = f( x, y );
 
 //        // scale weights by Jacobian
-//        w0 = 5./9.*jacobian_edg(i, a0)/2.;
-//        w1 = 8./9.*jacobian_edg(i, a1)/2.;
-//        w2 = 5./9.*jacobian_edg(i, a2)/2.;
+//        w0 = jacobian_edg(i, a0)/2.;
+//        w1 = jacobian_edg(i, a1)/2.;
 
-//        result += w0*f0 + w1*f1+w2*f2;
+//        result += w0*f0 + w1*f1;
+////        result += (fabs(f0)+fabs(f1));
 //      }
 //  }
 
 //  return result;
-}
+
+////  double result = 0.0;
+////  double w0 = 0, w1 = 0, w2 = 0;
+////  double f0 = 0, f1 = 0, f2 = 0;
+////  double x,y;
+
+////  // quadrature points
+////  double a0 = .5*(1.-sqrt(.6));
+////  double a1 = .5;
+////  double a2 = .5*(1.+sqrt(.6));
+
+////  /* integrate over edges */
+////  for (unsigned int i = 0; i < edgs.size(); i++)
+////  {
+////    edg2_t *e = &edgs[i];
+////    if (!e->is_split && e->loc == FCE)
+////      if ((!integrate_specific && e->c0 >= 0) || (integrate_specific && e->c0 == num))
+////      {
+////        // map quadrature points into real space and interpolate integrand
+////        mapping_edg(x, y, i, a0); f0 = interpolate_from_parent(f, x, y);
+////        mapping_edg(x, y, i, a1); f1 = interpolate_from_parent(f, x, y);
+////        mapping_edg(x, y, i, a2); f2 = interpolate_from_parent(f, x, y);
+
+////        // scale weights by Jacobian
+////        w0 = 5./9.*jacobian_edg(i, a0)/2.;
+////        w1 = 8./9.*jacobian_edg(i, a1)/2.;
+////        w2 = 5./9.*jacobian_edg(i, a2)/2.;
+
+////        result += w0*f0 + w1*f1+w2*f2;
+////      }
+////  }
+
+////  return result;
+//}
+
+//// integrate over colored interfaces (num0 - parental lsf, num1 - coloring lsf)
+//double simplex2_mls_quadratic_t::integrate_over_colored_interface(CF_2 &f, int num0, int num1)
+//{
+//  double result = 0.0;
+//  double w0 = 0, w1 = 0;
+//  double f0 = 0, f1 = 0;
+//  double x,y;
+
+//  // quadrature points
+//  double a0 = .5*(1.-1./sqrt(3.));
+//  double a1 = .5*(1.+1./sqrt(3.));
+
+//  /* integrate over edges */
+//  for (unsigned int i = 0; i < edgs.size(); i++)
+//  {
+//    edg2_t *e = &edgs[i];
+//    if (!e->is_split && e->loc == FCE)
+//      if (e->p_lsf == num0 && e->c0 == num1)
+//      {
+//        // map quadrature points into real space and interpolate integrand
+//        mapping_edg(x, y, i, a0); f0 = f( x, y );
+//        mapping_edg(x, y, i, a1); f1 = f( x, y );
+
+//        // scale weights by Jacobian
+//        w0 = jacobian_edg(i, a0)/2.;
+//        w1 = jacobian_edg(i, a1)/2.;
+
+//        result += w0*f0 + w1*f1;
+//      }
+//  }
+
+//  return result;
+//}
 
 // integrate over colored interfaces (num0 - parental lsf, num1 - coloring lsf)
 double simplex2_mls_quadratic_t::integrate_over_colored_interface(CF_2 &f, int num0, int num1)
 {
   double result = 0.0;
-  double w0 = 0, w1 = 0;
-  double f0 = 0, f1 = 0;
+  double w0 = 0, w1 = 0, w2 = 0;
+  double f0 = 0, f1 = 0, f2 = 0;
   double x,y;
 
   // quadrature points
-  double a0 = .5*(1.-1./sqrt(3.));
-  double a1 = .5*(1.+1./sqrt(3.));
+  double a0 = 0.;
+  double a1 = .5;
+  double a2 = 1.;
 
   /* integrate over edges */
   for (unsigned int i = 0; i < edgs.size(); i++)
@@ -1112,16 +1303,18 @@ double simplex2_mls_quadratic_t::integrate_over_colored_interface(CF_2 &f, int n
         // map quadrature points into real space and interpolate integrand
         mapping_edg(x, y, i, a0); f0 = f( x, y );
         mapping_edg(x, y, i, a1); f1 = f( x, y );
+        mapping_edg(x, y, i, a2); f2 = f( x, y );
 
         // scale weights by Jacobian
-        w0 = jacobian_edg(i, a0)/2.;
-        w1 = jacobian_edg(i, a1)/2.;
+        w0 = jacobian_edg(i, a0);
+        w1 = jacobian_edg(i, a1)*4.;
+        w2 = jacobian_edg(i, a2);
 
-        result += w0*f0 + w1*f1;
+        result += w0*f0 + w1*f1 + w2*f2;
       }
   }
 
-  return result;
+  return result/6.;
 }
 
 double simplex2_mls_quadratic_t::integrate_over_intersection(CF_2 &f, int num0, int num1)
@@ -1145,16 +1338,50 @@ double simplex2_mls_quadratic_t::integrate_over_intersection(CF_2 &f, int num0, 
   return result;
 }
 
+//double simplex2_mls_quadratic_t::integrate_in_dir(CF_2 &f, int dir)
+//{
+//  double result = 0.0;
+//  double w0 = 0, w1 = 0;
+//  double f0 = 0, f1 = 0;
+//  double x,y;
+
+//  // quadrature points
+//  double a0 = .5*(1.-1./sqrt(3.));
+//  double a1 = .5*(1.+1./sqrt(3.));
+
+//  /* integrate over edges */
+//  for (unsigned int i = 0; i < edgs.size(); i++)
+//  {
+//    edg2_t *e = &edgs[i];
+//    if (!e->is_split && e->loc == INS)
+//      if (e->dir == dir)
+//      {
+//        // map quadrature points into real space and interpolate integrand
+//        mapping_edg(x, y, i, a0); f0 = f( x, y );
+//        mapping_edg(x, y, i, a1); f1 = f( x, y );
+
+//        // scale weights by Jacobian
+//        w0 = jacobian_edg(i, a0)/2.;
+//        w1 = jacobian_edg(i, a1)/2.;
+
+//        result += w0*f0 + w1*f1;
+//      }
+//  }
+
+//  return result;
+//}
+
 double simplex2_mls_quadratic_t::integrate_in_dir(CF_2 &f, int dir)
 {
   double result = 0.0;
-  double w0 = 0, w1 = 0;
-  double f0 = 0, f1 = 0;
+  double w0 = 0, w1 = 0, w2 = 0;
+  double f0 = 0, f1 = 0, f2 = 0;
   double x,y;
 
   // quadrature points
-  double a0 = .5*(1.-1./sqrt(3.));
-  double a1 = .5*(1.+1./sqrt(3.));
+  double a0 = 0.;
+  double a1 = .5;
+  double a2 = 1.;
 
   /* integrate over edges */
   for (unsigned int i = 0; i < edgs.size(); i++)
@@ -1166,17 +1393,20 @@ double simplex2_mls_quadratic_t::integrate_in_dir(CF_2 &f, int dir)
         // map quadrature points into real space and interpolate integrand
         mapping_edg(x, y, i, a0); f0 = f( x, y );
         mapping_edg(x, y, i, a1); f1 = f( x, y );
+        mapping_edg(x, y, i, a2); f2 = f( x, y );
 
         // scale weights by Jacobian
-        w0 = jacobian_edg(i, a0)/2.;
-        w1 = jacobian_edg(i, a1)/2.;
+        w0 = jacobian_edg(i, a0);
+        w1 = jacobian_edg(i, a1)*4.;
+        w2 = jacobian_edg(i, a2);
 
-        result += w0*f0 + w1*f1;
+        result += w0*f0 + w1*f1 + w2*f2;
       }
   }
 
-  return result;
+  return result/6.;
 }
+
 
 
 
@@ -1327,6 +1557,21 @@ double simplex2_mls_quadratic_t::area(int vtx0, int vtx1, int vtx2)
 
   return 0.5*fabs(x01*y02-y01*x02);
 }
+
+//void simplex2_mls_quadratic_t::accept_reconstruction()
+//{
+//  int n;
+//  n = edgs.size(); for (int i = 0; i < n; i++) if (!edgs[i].is_split && edgs[i].to_split) edgs[i].is_split = true;
+//  n = tris.size(); for (int i = 0; i < n; i++) if (!tris[i].is_split && tris[i].to_split) tris[i].is_split = true;
+//}
+
+//void simplex2_mls_quadratic_t::discard_reconstruction()
+//{
+//  int n;
+//  n = edgs.size(); for (int i = 0; i < n; i++) if (!edgs[i].is_split && edgs[i].to_split) edgs[i].to_split = false;
+//  n = tris.size(); for (int i = 0; i < n; i++) if (!tris[i].is_split && tris[i].to_split) tris[i].to_split = false;
+//}
+
 
 
 

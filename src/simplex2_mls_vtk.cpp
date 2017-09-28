@@ -28,7 +28,7 @@ void simplex2_mls_vtk::write_simplex_geometry(vector<simplex2_mls_t *>& simplice
   ofstream ofs;
 
   /* write vertices */
-  string vtxs_vtu = dir + "vtxs_2d_" + suffix + ".vtu";
+  string vtxs_vtu = dir + "/vtxs_2d_" + suffix + ".vtu";
 
   ofs.open(vtxs_vtu.c_str());
 
@@ -121,7 +121,7 @@ void simplex2_mls_vtk::write_simplex_geometry(vector<simplex2_mls_t *>& simplice
   ofs.close();
 
   /* write edges */
-  string edgs_vtu = dir + "edgs_2d_" + suffix +".vtu";
+  string edgs_vtu = dir + "/edgs_2d_" + suffix +".vtu";
   ofs.open(edgs_vtu.c_str());
 
   ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl
@@ -241,7 +241,7 @@ void simplex2_mls_vtk::write_simplex_geometry(vector<simplex2_mls_t *>& simplice
   ofs.close();
 
   /* write triangles */
-  string tris_vtu = dir + "tris_2d_" + suffix +".vtu";
+  string tris_vtu = dir + "/tris_2d_" + suffix +".vtu";
   ofs.open(tris_vtu.c_str());
 
   ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl

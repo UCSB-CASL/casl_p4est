@@ -93,7 +93,7 @@ int num_test_diag_term_p = 0;
 int num_test_mu_m = 0;
 int num_test_mu_p = 0;
 
-int num_test_um = 0;
+int num_test_um = 1;
 int num_test_up = 0;
 
 #ifdef P4_TO_P8
