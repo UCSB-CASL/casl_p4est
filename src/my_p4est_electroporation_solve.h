@@ -151,7 +151,6 @@ class my_p4est_electroporation_solve_t
   double dxyz_min_[P4EST_DIM];
   double d_min;
   double diag_min;
-  Vec vn_n, vnm1_n, vnm2_n, Sm_n;
   Vec phi;
   Vec rhs;
   Vec sol_voro;
@@ -190,41 +189,36 @@ class my_p4est_electroporation_solve_t
   my_p4est_interpolation_nodes_t rhs_m;
   my_p4est_interpolation_nodes_t rhs_p;
 
-  my_p4est_interpolation_nodes_t interp_vn_n;
-  my_p4est_interpolation_nodes_t interp_vnm1_n;
-  my_p4est_interpolation_nodes_t interp_vnm2_n;
-  my_p4est_interpolation_nodes_t interp_Sm_n;
+
   bool local_mu;
   bool local_add;
   bool local_u_jump;
   bool local_mu_grad_u_jump;
   bool local_vn;
+  bool local_vnm1;
+  bool local_vnm2;
+  bool local_Sm;
+
 #ifdef P4_TO_P8
   CF_3 *mu_m, *mu_p;
   CF_3 *add;
   CF_3 *u_jump;
   CF_3 *mu_grad_u_jump;
-  CF_3 *sigma;
   CF_3 *vn;
-  CF_1 *beta_0;
-  CF_1 *beta_1;
+  CF_3 *vnm1;
+  CF_3 *vnm2;
+  CF_3 *sigma;
 #else
   CF_2 *mu_m, *mu_p;
   CF_2 *add;
   CF_2 *u_jump;
   CF_2 *mu_grad_u_jump;
-  CF_2 *sigma;
   CF_2 *vn;
-  CF_1 *beta_0;
-  CF_1 *beta_1;
-
+  CF_2 *vnm1;
+  CF_2 *vnm2;
+  CF_2 *sigma;
 #endif
-  Vec X0_n, X0_np1;
 
-  Vec X1_n, X1_np1;
-
-  Vec X0;
-  Vec X1;
 
   int order;
   int implicit;
@@ -268,10 +262,6 @@ public:
 
   void set_Sm(Vec Sm_n);
 
-  void set_X0(Vec X0_in);
-
-  void set_X1(Vec X1_in);
-
   void set_phi(Vec phi);
 
   void set_rhs(Vec rhs_m, Vec rhs_p);
@@ -300,16 +290,6 @@ public:
   }
 #endif
 
-
-  void set_beta_0(CF_1 &beta_0_in)
-  {
-      beta_0 = &beta_0_in;
-  }
-
-  void set_beta_1(CF_1 &beta_1_in)
-  {
-      beta_1 = &beta_1_in;
-  }
 
 
 

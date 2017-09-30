@@ -45,55 +45,65 @@
 #include <src/Parser.h>
 #include <src/math.h>
 
+
+#include "Halton/halton.cpp"
+
 using namespace std;
 
 
 
-int test = 7;
+int test = 8;
 
+double cellDensity = 0.001;   // only if test = 8
+double half_period = 5e-7;  // frequency = 1/(2*half_period) : 5e-7 [s] = 10 [MHz]
+double boxSide = 1e-3;      // only if test = 8
 
-
+double frequency = 1/(2*half_period)/1e6;
 /* 0 or 1 */
 int implicit = 1;
 /* order 1, 2 or 3. If choosing 3, implicit only */
 int order = 1;
 
 
-/* number of cells in x and y dimensions */
-int x_cells = 10;
-int y_cells = 10;
-int z_cells = 10;
-/* number of random cells for case 7 */
-int nb_cells = test==7 ? 10 : x_cells*y_cells*z_cells;
-/* number of cells in x and y dimensions */
 
 /* cell radius */
-double r0 = test==5 ? 46e-6 : (test==6 ? 53e-6 : 50e-6);
+double r0 = test==5 ? 46e-6 : (test==6 ? 53e-6 : (test==8 ? 7e-6 :50e-6));
 double ellipse = test<5 ? 1 : (test==5 ? 1.225878312944962 : 1.250835468987754);
 double a = test<5 ? r0 : (test==5 ? r0*ellipse : r0/ellipse);
 double b = test<5 ? r0 : (test==5 ? r0*ellipse : r0/ellipse);
 double c = test<5 ? r0 : (test==5 ? r0/ellipse : r0*ellipse);
 
-//double xmin = test<4 ? -2*x_cells*r0 : -1e-3;
-//double xmax = test<4 ?  2*x_cells*r0 :  1e-3;
-//double ymin = test<4 ? -2*y_cells*r0 : -1e-3;
-//double ymax = test<4 ?  2*y_cells*r0 :  1e-3;
-//double zmin = test<4 ? -2*z_cells*r0 : -1e-3;
-//double zmax = test<4 ?  2*z_cells*r0 :  1e-3;
 
-double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : -4*x_cells*r0);
-double xmax = test<4 ?  2*x_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  :  4*x_cells*r0);
-double ymin = test<4 ? -2*y_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : -4*y_cells*r0);
-double ymax = test<4 ?  2*y_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  :  4*y_cells*r0);
-double zmin = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : -4*z_cells*r0);
-double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  :  4*z_cells*r0);
+double boxVolume = boxSide*boxSide*boxSide;
+double coeff = 1.;
+double cellVolume = 4*PI*(coeff*r0)*(coeff*r0)*(coeff*r0)/3;
+// 30 is the safety coefficient to avoid too-close cells corresponding to a minimum radius of ~3*r0
 
 
 
+/* number of cells in x and y dimensions */
+int x_cells = 2;
+int y_cells = 2;
+int z_cells = 2;
+/* number of random cells */
+int nb_cells = test==7 ? 10 : (test==8 ? int (cellDensity*boxVolume/cellVolume) : x_cells*y_cells*z_cells);
+/* number of cells in x and y dimensions */
 
 
-int lmin = 5;
-int lmax = 10;
+double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : (test == 8 ? -boxSide/2 : -4*x_cells*r0));
+double xmax = test<4 ?  2*x_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : (test == 8 ?  boxSide/2 :  4*x_cells*r0));
+double ymin = test<4 ? -2*y_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : (test == 8 ? -boxSide/2 : -4*y_cells*r0));
+double ymax = test<4 ?  2*y_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : (test == 8 ?  boxSide/2 :  4*y_cells*r0));
+double zmin = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : (test == 8 ? -boxSide/2 : -4*z_cells*r0));
+double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : (test == 8 ?  boxSide/2 :  4*z_cells*r0));
+
+
+
+
+
+
+int lmin = 2;
+int lmax = 8;
 int nb_splits = 1;
 
 double dt_scale = 40;
@@ -132,6 +142,12 @@ int save_every_n = 1;
 bool save_voro = true;
 bool save_stats = true;
 bool check_partition = false;
+bool save_impedance = true;
+
+
+
+
+
 
 class LevelSet : public CF_3
 {
@@ -140,11 +156,13 @@ public:
     vector<Point3> centers;
     vector<Point3> ex;
     vector<Point3> theta;
+    double cellVolumes = 0;
+    double density = 0;
 
     LevelSet()
     {
         lip=1.2;
-        if(test==7)
+        if(test==7 || test==8)
         {
 //            mpi_environment_t &mpi;
 //            mpi.rank();
@@ -155,12 +173,15 @@ public:
             unsigned int seed = time(NULL);
             srand(seed);
             printf("The random seed is %u\n", seed);
+            printf("number of cells is %u\n", nb_cells);
             fflush(stdout);
             std::vector<std::array<double,3> > v;
             std::array<double,3> p;
-            p[0] = (xmax-xmin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
-            p[1] = (ymax-ymin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
-            p[2] = (zmax-zmin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
+/*
+
+            p[0] = (xmax-xmin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
+            p[1] = (ymax-ymin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
+            p[2] = (zmax-zmin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
 
             int nfixpts;
 
@@ -178,9 +199,10 @@ public:
                 do
                 {
 
-                    p[0] = (xmax-xmin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
-                    p[1] = (ymax-ymin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
-                    p[2] = (zmax-zmin)/2 * (1.6*((double)rand()/RAND_MAX)-.8);
+
+                    p[0] = (xmax-xmin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
+                    p[1] = (ymax-ymin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
+                    p[2] = (zmax-zmin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
 
                     closestpt = nearpt3::Query(g, p);
                     mindist = sqrt(SQR(p[0]-v[closestpt][0])+ SQR(p[1]-v[closestpt][1])+SQR(p[2]-v[closestpt][2]));
@@ -189,6 +211,47 @@ public:
                 }while(too_close);
 
             }
+*/
+            double *r;
+            int halton_counter = 0;
+            r = halton(halton_counter,3);
+            p[0] = 0.99*(xmax-xmin)*(r[0] - 0.5);
+            p[1] = 0.99*(ymax-ymin)*(r[1] - 0.5);
+            p[2] = 0.99*(zmax-zmin)*(r[2] - 0.5);
+
+            halton_counter++;
+            v.push_back(p);
+            int progress = 0;
+
+            do
+            {
+
+                r = halton(halton_counter,3);
+                p[0] = 0.99*(xmax-xmin)*(r[0] - 0.5);
+                p[1] = 0.99*(ymax-ymin)*(r[1] - 0.5);
+                p[2] = 0.99*(zmax-zmin)*(r[2] - 0.5);
+
+                halton_counter++;
+
+
+            bool far_enough = true;
+            for(int ii=0;ii<v.size();++ii){
+                double mindist = sqrt(SQR(p[0]-v[ii][0])+ SQR(p[1]-v[ii][1])+SQR(p[2]-v[ii][2]));
+                if(mindist<1.4*r0){
+                        far_enough = false;
+                        break;
+
+               }
+            }
+            if(far_enough){
+                v.push_back(p);
+                if(v.size()%((int) nb_cells/10) == 0){
+                    progress += 10;
+                    printf("Cell Placement is in Progress. Currently at: %d \%\n", progress);
+            }
+            }
+            }while(v.size()<nb_cells);
+
 
            for(int n=0; n<nb_cells; ++n)
             {
@@ -202,9 +265,11 @@ public:
                 theta[n].x = PI*(double)rand()/RAND_MAX;
                 theta[n].y = PI*(double)rand()/RAND_MAX;
                 theta[n].z = PI*(double)rand()/RAND_MAX;
+                cellVolumes += 4*PI*radii[n]*radii[n]*radii[n]/3;
             }
 
-            printf("Done initializing random cells\n");
+            density = cellVolumes/boxVolume;
+            printf( "Done initializing random cells. The Cell volume density is = %g\n", density);
             fflush(stdout);
 
         }
@@ -241,6 +306,28 @@ public:
                         d = MIN(d, sqrt(SQR((x-(xm+(i+1)*dx))*r0/a) + SQR((y-(ym+(j+1)*dy))*r0/b) + SQR((z-(zm+(k+1)*dz))*r0/c)) - r0);
             return d;
         case 7:
+            for(int n=0; n<nb_cells; ++n)
+            {
+                x0 = x - centers[n].x;
+                y0 = y - centers[n].y;
+                z0 = z - centers[n].z;
+
+                x_tmp = x0;
+                y_tmp = cos(theta[n].x)*y0 - sin(theta[n].x)*z0;
+                z_tmp = sin(theta[n].x)*y0 + cos(theta[n].x)*z0;
+
+                x0 = cos(theta[n].y)*x_tmp - sin(theta[n].y)*z_tmp;
+                y0 = y_tmp;
+                z0 = sin(theta[n].y)*x_tmp + cos(theta[n].y)*z_tmp;
+
+                x_tmp = cos(theta[n].z)*x0 - sin(theta[n].z)*y0;
+                y_tmp = sin(theta[n].z)*x0 + cos(theta[n].z)*y0;
+                z_tmp = z0;
+
+                d = MIN(d, sqrt(SQR(x_tmp/ex[n].x) + SQR(y_tmp/ex[n].y) + SQR(z_tmp/ex[n].z)) - radii[n]);
+            }
+            return d;
+        case 8:
             for(int n=0; n<nb_cells; ++n)
             {
                 x0 = x - centers[n].x;
@@ -307,6 +394,16 @@ double u_exact(double x, double y, double z, double t, bool phi_is_pos)
     //throw std::invalid_argument("Unknown exact solution for this test");
 }
 
+//PAM: square pulse to be asked from Claire
+double pulse(double tn)
+{
+    int cycle = int(tn/half_period);
+    if(cycle%2 == 0)
+        return E;
+    else
+        return -E;
+}
+
 double v_exact(double x, double y, double z, double tn)
 {
     double theta = atan2(sqrt(x*x+y*y),z);
@@ -344,7 +441,10 @@ struct BCWALLTYPE : WallBC3D
         case 6:
         case 7:
             if(ABS(z-zmin)<EPS || ABS(z-zmax)<EPS) return DIRICHLET;
-            else                                           return NEUMANN;
+            else                                   return NEUMANN;
+        case 8:
+            if(ABS(z-zmin)<EPS || ABS(z-zmax)<EPS) return DIRICHLET;
+            else                                   return NEUMANN;
         default: throw std::invalid_argument("Choose a valid test.");
         }
     }
@@ -359,7 +459,7 @@ struct BCWALLVALUE : CF_3
         case 1:
             return u_exact(x,y,z,0,true);
         case 2:
-            return u_exact(x,y,z,tn+dt,true);
+            return u_exact(x,y,z,t,true);
         case 3:
         case 4:
         case 5:
@@ -367,6 +467,10 @@ struct BCWALLVALUE : CF_3
         case 7:
             if(ABS(z-zmin)<EPS) return E;
             if(ABS(z-zmax)<EPS) return 0;
+            return 0;
+        case 8:
+            if(ABS(z-zmax)<EPS) return  pulse(t);
+            if(ABS(z-zmin)<EPS) return -pulse(t);
             return 0;
         default: throw std::invalid_argument("Choose a valid test.");
         }
@@ -642,11 +746,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
 
     solver.set_sigma(sigma_in);
-    solver.set_beta_0(beta_0_in);
-    solver.set_beta_1(beta_1_in);
     solver.set_Sm(Sm);
-    solver.set_X0(X0);
-    solver.set_X1(X1);
     solver.set_parameters(implicit, order, dt, test, SL, tau_ep, tau_res, tau_perm, S0, S1, tn);
     solver.t = tn+dt;
     solver.dt = dt;
@@ -742,6 +842,21 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         ierr = VecCopy(u_minus_ext_l, vn_l); CHKERRXX(ierr);
         VecGhostRestoreLocalForm(u_minus_ext, &u_minus_ext_l);
         VecGhostRestoreLocalForm(vn, &vn_l);
+        ierr = VecDestroy(u_plus_ext); CHKERRXX(ierr);
+        ierr = VecDestroy(u_minus_ext); CHKERRXX(ierr);
+
+        Vec vn_ext, vn_ext_l;
+        ierr = VecDuplicate(vn,&vn_ext); CHKERRXX(ierr);
+        ls.extend_from_interface_to_whole_domain_TVD(phi, vn, vn_ext);   // fix this!
+
+        VecGhostGetLocalForm(vn_ext, &vn_ext_l);
+        VecGhostGetLocalForm(vn, &vn_l);
+        ierr = VecCopy(vn_ext_l, vn_l); CHKERRXX(ierr);
+        VecGhostRestoreLocalForm(vn_ext, &vn_ext_l);
+        VecGhostRestoreLocalForm(vn, &vn_l);
+        ierr = VecDestroy(vn_ext); CHKERRXX(ierr);
+
+
 
 
         //      check jump
@@ -886,6 +1001,9 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     ierr = VecDestroy(mu_p_); CHKERRXX(ierr);
     ierr = VecDestroy(u_jump_); CHKERRXX(ierr);
     ierr = VecDestroy(mu_grad_u_jump_); CHKERRXX(ierr);
+    ierr = VecDestroy(X_0_v); CHKERRXX(ierr);
+    ierr = VecDestroy(X_1_v); CHKERRXX(ierr);
+
 }
 
 
@@ -1021,9 +1139,10 @@ int main(int argc, char** argv) {
     my_p4est_brick_t      brick;
 
     // domain size information
-    const int n_xyz []      = {1, 1, 1};
+    const int n_xyz []      = {2, 2, 2};
     const double xyz_min [] = {xmin, ymin, zmin}; //{-1, -1, -1};
     const double xyz_max [] = {xmax, ymax, zmax}; //{ 1,  1,  1};
+
     int periodic[] = {0, 0, 0};
     conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
     for(int repeat=0; repeat<nb_splits; ++repeat)
@@ -1094,18 +1213,21 @@ int main(int argc, char** argv) {
         ls.perturb_level_set_function(phi, EPS);
 
         /* set initial time step *//* find dx and dy smallest */
-        p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+       /* p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
         p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
         double xmin = p4est->connectivity->vertices[3*vm + 0];
         double ymin = p4est->connectivity->vertices[3*vm + 1];
         double xmax = p4est->connectivity->vertices[3*vp + 0];
         double ymax = p4est->connectivity->vertices[3*vp + 1];
+        */
         double dx = (xmax-xmin) / pow(2., (double) sp.max_lvl);
         double dy = (ymax-ymin) / pow(2., (double) sp.max_lvl);
 #ifdef P4_TO_P8
-        double zmin = p4est->connectivity->vertices[3*vm + 2];
-        double zmax = p4est->connectivity->vertices[3*vp + 2];
+        //PetscPrintf(p4est->mpicomm, "22: zmax=%g, zmin=%g\n", zmax, zmin);
+        //double zmin = p4est->connectivity->vertices[3*vm + 2];
+        //double zmax = p4est->connectivity->vertices[3*vp + 2];
         double dz = (zmax-zmin) / pow(2.,(double) sp.max_lvl);
+        //PetscPrintf(p4est->mpicomm, "3: xmin=%g, xmax=%g, ymin=%g, ymax=%g, zmin=%g, zmax=%g\n", xmin, xmax, ymin, ymax, zmin, zmax);
 #endif
 
 #ifdef P4_TO_P8
@@ -1175,36 +1297,114 @@ int main(int argc, char** argv) {
 
 
         Vec sol;
+        Vec err;
+        ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
+        ierr = VecDuplicate(phi, &sol); CHKERRXX(ierr);
+
+        Vec electrodes_phi, impedance_integrand;
+        ierr = VecDuplicate(phi, &electrodes_phi); CHKERRXX(ierr);
+        ierr = VecDuplicate(phi, &impedance_integrand); CHKERRXX(ierr);
+        save_VTK(p4est, ghost, nodes, &brick, phi, sol, err, -1, X0, X1, Sm, vn);
         while(tn<tf)
         {
             ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
-            ierr = VecDuplicate(phi, &sol); CHKERRXX(ierr);
             solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2);
 
-            /* compute the error on the tree*/
 
-            Vec err;
-            ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
-            double *err_p, *sol_p, *phi_p;
+
+
+            /* compute the error on the tree*/
+            double *err_p, *sol_p, *phi_p, *Ephi_p, *EInt_p;
             ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
             ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
             ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+            ierr = VecGetArray(electrodes_phi, &Ephi_p); CHKERRXX(ierr);
+            ierr = VecGetArray(impedance_integrand, &EInt_p); CHKERRXX(ierr);
             err_nm1 = err_n;
             err_n = 0;
+
             for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
             {
+
                 double x = node_x_fr_n(n, p4est, nodes);
                 double y = node_y_fr_n(n, p4est, nodes);
                 double z = node_z_fr_n(n, p4est, nodes);
                 err_p[n] = fabs(u_exact(x,y,z, tn, phi_p[n]>0) - sol_p[n]);
                 err_n = max(err_n, err_p[n]);
+
+                // a level-set just to represent the electrode surfaces for integration purposes
+
+                if(z>0)
+                    Ephi_p[n] = z - zmax + EPS;
+                else
+                    Ephi_p[n] = -(z - zmin - EPS);
             }
 
-            MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-            PetscPrintf(p4est->mpicomm, "Iter %d maximum error on solution: %g, \t order : %g\n", iteration, err_n, log(err_nm1/err_n)/log(2));
+
+            for(size_t i=0; i<ngbd_n.get_layer_size(); ++i)
+            {
+                p4est_locidx_t n = ngbd_n.get_layer_node(i);
+                quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
+                double normal_drv_potential = qnnn.dz_central(sol_p);
+                if(normal_drv_potential>0)
+                    EInt_p[n] = sol_p[n]/normal_drv_potential;
+                else
+                    EInt_p[n] = 0;
+            }
+            ierr = VecGhostUpdateBegin(impedance_integrand, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+            for(size_t i=0; i<ngbd_n.get_local_size(); ++i)
+               {
+                 p4est_locidx_t n = ngbd_n.get_local_node(i);
+                 quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
+                 double normal_drv_potential = qnnn.dz_central(sol_p);
+                 if(normal_drv_potential>0)
+                    EInt_p[n] = sol_p[n]/normal_drv_potential;
+                 else
+                    EInt_p[n] = 0;
+             }
+            ierr = VecGhostUpdateEnd(impedance_integrand, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
             ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(electrodes_phi, &Ephi_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(impedance_integrand, &EInt_p); CHKERRXX(ierr);
+
+            MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+            PetscPrintf(p4est->mpicomm, "Iter %d maximum error on solution: %g, \t order : %g\n", iteration, err_n, log(err_nm1/err_n)/log(2));
+
+
+            double impedance = integrate_over_interface(p4est, nodes, electrodes_phi, impedance_integrand);
+            PetscPrintf(p4est->mpicomm,"impedance is %g\n.", impedance);
+
+            if(save_impedance){
+                char *out_dir = NULL;
+                out_dir = getenv("OUT_DIR");
+                if(out_dir==NULL)
+                {
+                    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save stats\n"); CHKERRXX(ierr);
+                }
+                else
+                {
+                    char out_path_Z[1000];
+                    sprintf(out_path_Z, "%s/impedance.dat", out_dir);
+                    if(p4est->mpirank==0)
+                    {
+                        if(iteration ==0){
+                            FILE *f = fopen(out_path_Z, "w");
+                            fprintf(f, "time [s], \t impedance [Ohm], \t frequency [MHz] %g\n", frequency);
+                            fprintf(f, "%g \t %g\n", tn+dt, impedance);
+                            fclose(f);
+                        }
+                        else{
+                            FILE *f = fopen(out_path_Z, "a");
+                            fprintf(f, "%g \t %g\n", tn+dt, impedance);
+                            fclose(f);
+                        }
+
+                    }
+                }
+            }
 
             if(save_vtk && iteration%save_every_n == 0)
             {

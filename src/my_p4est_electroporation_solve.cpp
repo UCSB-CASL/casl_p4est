@@ -37,21 +37,15 @@ my_p4est_electroporation_solve_t::my_p4est_electroporation_solve_t(const my_p4es
                                                                    const my_p4est_cell_neighbors_t *cell_neighbors)
     : ngbd_n(node_neighbors),  ngbd_c(cell_neighbors), myb(node_neighbors->myb),
       p4est(node_neighbors->p4est), ghost(node_neighbors->ghost), nodes(node_neighbors->nodes),
-      X0_n(NULL), X0_np1(NULL),
-      X1_n(NULL), X1_np1(NULL),
-      phi(NULL), rhs(NULL), sol_voro(NULL), vn_n(NULL), vnm1_n(NULL), vnm2_n(NULL), Sm_n(NULL),
+      phi(NULL), rhs(NULL), sol_voro(NULL),
       voro_global_offset(p4est->mpisize),
       interp_phi(node_neighbors),
-      interp_vn_n(node_neighbors),
-      interp_vnm1_n(node_neighbors),
-      interp_vnm2_n(node_neighbors),
-      interp_Sm_n(node_neighbors),
       rhs_m(node_neighbors),
       rhs_p(node_neighbors),
       local_mu(false), local_add(false),
-      local_u_jump(false), local_mu_grad_u_jump(false),
+      local_u_jump(false), local_mu_grad_u_jump(false),local_vn(false), local_vnm1(false), local_vnm2(false), local_Sm(false),
       mu_m(&mu_constant), mu_p(&mu_constant), add(&add_constant),
-      u_jump(&zero), mu_grad_u_jump(&zero), vn(&zero),
+      u_jump(&zero), mu_grad_u_jump(&zero), vn(&zero), vnm1(&zero), vnm2(&zero), sigma(&zero),
       A(PETSC_NULL), A_null_space(PETSC_NULL), ksp(PETSC_NULL),
       is_voronoi_partition_constructed(false), is_matrix_computed(false), matrix_has_nullspace(false)
 {
@@ -79,6 +73,10 @@ my_p4est_electroporation_solve_t::~my_p4est_electroporation_solve_t()
     if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr); }
     if(ksp          != PETSC_NULL) { ierr = KSPDestroy(ksp);                   CHKERRXX(ierr); }
     if(rhs          != PETSC_NULL) { ierr = VecDestroy(rhs);                   CHKERRXX(ierr); }
+    if(local_vn)            { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(vn); }
+    if(local_Sm)            { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(sigma); }
+    if(local_vnm1)            { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(vnm1); }
+    if(local_vnm2)            { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(vnm2); }
     if(local_mu)             { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_m); delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_p); }
     if(local_add)            { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(add); }
     if(local_u_jump)         { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(u_jump); }
@@ -112,7 +110,6 @@ void my_p4est_electroporation_solve_t::set_parameters(int implicit_in, int order
     implicit = implicit_in;
     order = order_in;
     dt = dt_in;
-    //    Cm = Cm_in;
     test = test_in;
     SL = SL_in;
     tau_ep = tau_ep_in;
@@ -123,31 +120,15 @@ void my_p4est_electroporation_solve_t::set_parameters(int implicit_in, int order
     t = tn_in;
 }
 
-void my_p4est_electroporation_solve_t::set_Sm(Vec Sm_n)
+void my_p4est_electroporation_solve_t::set_Sm(Vec sigma)
 {
-    this->Sm_n = Sm_n;
-    interp_Sm_n.set_input(Sm_n, linear);
+    if(local_Sm) delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->sigma);
+    my_p4est_interpolation_nodes_t *tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
+    tmp->set_input(sigma, linear);
+    this->sigma = tmp;
+    local_Sm = true;
 }
 
-
-
-void my_p4est_electroporation_solve_t::set_X0(Vec X0_in)
-{
-
-    X0_n = X0_in;
-
-
-
-}
-
-void my_p4est_electroporation_solve_t::set_X1(Vec X1_in)
-{
-
-    X1_n = X1_in;
-
-
-
-}
 
 void my_p4est_electroporation_solve_t::set_phi(Vec phi)
 {
@@ -162,22 +143,31 @@ void my_p4est_electroporation_solve_t::set_rhs(Vec rhs_m, Vec rhs_p)
     this->rhs_p.set_input(rhs_p, linear);
 }
 
-void my_p4est_electroporation_solve_t::set_vn(Vec vn_n)
+void my_p4est_electroporation_solve_t::set_vn(Vec vn)
 {
-    this->vn_n = vn_n;
-    interp_vn_n.set_input(vn_n, linear);
+    if(local_vn) delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->vn);
+    my_p4est_interpolation_nodes_t *tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
+    tmp->set_input(vn, linear);
+    this->vn = tmp;
+    local_vn = true;
 }
 
-void my_p4est_electroporation_solve_t::set_vnm1(Vec vnm1_n)
+void my_p4est_electroporation_solve_t::set_vnm1(Vec vnm1)
 {
-    this->vnm1_n = vnm1_n;
-    interp_vnm1_n.set_input(vnm1_n, linear);
+    if(local_vnm1) delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->vnm1);
+    my_p4est_interpolation_nodes_t *tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
+    tmp->set_input(vnm1, linear);
+    this->vnm1 = tmp;
+    local_vnm1 = true;
 }
 
-void my_p4est_electroporation_solve_t::set_vnm2(Vec vnm2_n)
+void my_p4est_electroporation_solve_t::set_vnm2(Vec vnm2)
 {
-    this->vnm2_n = vnm2_n;
-    interp_vnm2_n.set_input(vnm2_n, linear);
+    if(local_vnm2) delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->vnm2);
+    my_p4est_interpolation_nodes_t *tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
+    tmp->set_input(vnm2, linear);
+    this->vnm2 = tmp;
+    local_vnm2 = true;
 }
 
 void my_p4est_electroporation_solve_t::set_diagonal(double add)
@@ -1337,13 +1327,13 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 
         //        rhs_p[n] *= volume;
 
-#ifdef P4_TO_P8
-        double add_n = (*add)(pc.x, pc.y, pc.z);
-#else
-        double add_n = (*add)(pc.x, pc.y);
-#endif
+//#ifdef P4_TO_P8
+//        double add_n = (*add)(pc.x, pc.y, pc.z);
+//#else
+//        double add_n = (*add)(pc.x, pc.y);
+//#endif
 
-        if(add_n>EPS) matrix_has_nullspace = false;
+//        if(add_n>EPS) matrix_has_nullspace = false;
 
         //        mat_entry_t ent; ent.n = global_n_idx; ent.val = volume*add_n;
         //        matrix_entries[n].push_back(ent);
@@ -1358,9 +1348,11 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 #endif
 
             /* desperate fix: avoid 0s in the diagonal entries of the matrix because of roundoff error at high resolutions beyond level 8 */
-            if(s<1e-300)
-                s=1e-300;
-
+            if(s<1e-100)
+            {
+                //PetscPrintf(p4est->mpicomm, "s %g\n", s);
+                s=1e-100;
+            }
             if((*points)[l].n>=0)
             {
                 /* regular point */
@@ -1381,8 +1373,6 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                 if(phi_l<0) mu_l = (*mu_m)(pl.x, pl.y);
                 else        mu_l = (*mu_p)(pl.x, pl.y);
 #endif
-
-                double mu_harmonic = 2*mu_n*mu_l/(mu_n + mu_l);
 
                 PetscInt global_l_idx;
                 if((unsigned int)(*points)[l].n<num_local_voro)
@@ -1406,15 +1396,12 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 #ifdef P4_TO_P8
                     Point3 p_ln = (pc+pl)/2;
                     double sigma_l = sigma->operator ()(pl.x,pl.y,pl.z);
-                    double Smn = 0.5*(interp_Sm_n(pc.x, pc.y, pc.z) + interp_Sm_n(pl.x, pl.y, pl.z));
+                    double Smn = 0.5*((*sigma)(pc.x, pc.y, pc.z) + (*sigma)(pl.x, pl.y, pl.z));
 #else
                     Point2 p_ln = (pc+pl)/2;
                     double sigma_l = sigma->operator ()(pl.x,pl.y);
-                    double Smn = 0.5*(interp_Sm_n(pc.x, pc.y) + interp_Sm_n(pl.x, pl.y));
-
-
+                    double Smn = 0.5*((*sigma)(pc.x, pc.y) + (*sigma)(pl.x, pl.y));
 #endif
-
 
                     if(implicit==0)
                     {
@@ -1465,9 +1452,9 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
                             //                            vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
-                            vi = 0.5*(interp_vn_n(pc.x, pc.y, pc.z) + interp_vn_n(pl.x, pl.y, pl.z));
+                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
 #else
-                            vi = 0.5*(interp_vn_n(pc.x, pc.y) + interp_vn_n(pl.x, pl.y));
+                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
 #endif
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi * (1-dt*Smn/Cm);
                             break;
@@ -1476,9 +1463,9 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
                             //                            vi = .5*2./3.*((2-dt*Smn/Cm)*(vn_n_p[n]+vn_n_p[(*points)[l].n]) - .5*(vnm1_n_p[n]+vnm1_n_p[(*points)[l].n]));
 #ifdef P4_TO_P8
-                            vi = .5*2./3.*((2-dt*Smn/Cm)*(interp_vn_n(pc.x, pc.y, pc.z)+interp_vn_n(pl.x, pl.y, pl.z)) - .5*(interp_vnm1_n(pc.x, pc.y, pc.z)+interp_vnm1_n(pl.x, pl.y, pl.z)));
+                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y, pc.z)+(*vn)(pl.x, pl.y, pl.z)) - .5*((*vnm1)(pc.x, pc.y, pc.z)+(*vnm1)(pl.x, pl.y, pl.z)));
 #else
-                            vi = .5*2./3.*((2-dt*Smn/Cm)*(interp_vn_n(pc.x, pc.y)+interp_vn_n(pl.x, pl.y)) - .5*(interp_vnm1_n(pc.x, pc.y)+interp_vnm1_n(pl.x, pl.y)));
+                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y)+(*vn)(pl.x, pl.y)) - .5*((*vnm1)(pc.x, pc.y)+(*vnm1)(pl.x, pl.y)));
 #endif
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi;
 
@@ -1500,12 +1487,12 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 
                             //vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
-                            vi = 0.5*(interp_vn_n(pc.x, pc.y, pc.z) + interp_vn_n(pl.x, pl.y, pl.z));
+                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
 #else
-                            vi = 0.5*(interp_vn_n(pc.x, pc.y) + interp_vn_n(pl.x, pl.y));
+                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
 #endif
                             //PAM
-                            //                            PetscPrintf(p4est->mpicomm, "mu_n %g\n", interp_vn_n(pl.x, pl.y));
+                            //                            PetscPrintf(p4est->mpicomm, "mu_n %g\n", (*vn)(pl.x, pl.y));
 
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (Cm+dt*Smn);
                             break;
@@ -1514,9 +1501,9 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(1.5*Cm+dt*Smn));
                             //vi = .5*(2*vn_n_p[n] - .5*vnm1_n_p[n] + 2*vn_n_p[(*points)[l].n] - .5*vnm1_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
-                            vi = .5*(2*interp_vn_n(pc.x, pc.y, pc.z) - .5*interp_vnm1_n(pc.x, pc.y, pc.z) + 2*interp_vn_n(pl.x, pl.y, pl.z) - .5*interp_vnm1_n(pl.x, pl.y, pl.z));
+                            vi = .5*(2*(*vn)(pc.x, pc.y, pc.z) - .5*(*vnm1)(pc.x, pc.y, pc.z) + 2*(*vn)(pl.x, pl.y, pl.z) - .5*(*vnm1)(pl.x, pl.y, pl.z));
 #else
-                            vi = .5*(2*interp_vn_n(pc.x, pc.y) - .5*interp_vnm1_n(pc.x, pc.y) + 2*interp_vn_n(pl.x, pl.y) - .5*interp_vnm1_n(pl.x, pl.y));
+                            vi = .5*(2*(*vn)(pc.x, pc.y) - .5*(*vnm1)(pc.x, pc.y) + 2*(*vn)(pl.x, pl.y) - .5*(*vnm1)(pl.x, pl.y));
 #endif
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (1.5*Cm+dt*Smn);
                             break;
@@ -1525,9 +1512,9 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(11./6.*Cm+dt*Smn));
                             //vi = .5*(3*vn_n_p[n] - 3./2.*vnm1_n_p[n] + 1./3.*vnm2_n_p[n] + 3*vn_n_p[(*points)[l].n] - 3./2.*vnm1_n_p[(*points)[l].n] + 1./3.*vnm2_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
-                            vi = .5*(3*interp_vn_n(pc.x,pc.y,pc.z) - 3./2.*interp_vnm1_n(pc.x,pc.y,pc.z) + 1./3.*interp_vnm2_n(pc.x,pc.y,pc.z) + 3*interp_vn_n(pl.x,pl.y,pl.z) - 3./2.*interp_vnm1_n(pl.x,pl.y,pl.z) + 1./3.*interp_vnm2_n(pl.x,pl.y,pl.z));
+                            vi = .5*(3*(*vn)(pc.x,pc.y,pc.z) - 3./2.*(*vnm1)(pc.x,pc.y,pc.z) + 1./3.*(*vnm2)(pc.x,pc.y,pc.z) + 3*(*vn)(pl.x,pl.y,pl.z) - 3./2.*(*vnm1)(pl.x,pl.y,pl.z) + 1./3.*(*vnm2)(pl.x,pl.y,pl.z));
 #else
-                            vi = .5*(3*interp_vn_n(pc.x,pc.y) - 3./2.*interp_vnm1_n(pc.x,pc.y) + 1./3.*interp_vnm2_n(pc.x,pc.y) + 3*interp_vn_n(pl.x,pl.y) - 3./2.*interp_vnm1_n(pl.x,pl.y) + 1./3.*interp_vnm2_n(pl.x,pl.y));
+                            vi = .5*(3*(*vn)(pc.x,pc.y) - 3./2.*(*vnm1)(pc.x,pc.y) + 1./3.*(*vnm2)(pc.x,pc.y) + 3*(*vn)(pl.x,pl.y) - 3./2.*(*vnm1)(pl.x,pl.y) + 1./3.*(*vnm2)(pl.x,pl.y));
 #endif
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (11./6.*Cm+dt*Smn);
 
@@ -1636,6 +1623,7 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
     }
 
     ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
+
 
     PetscInt num_owned_global = voro_global_offset[p4est->mpisize];
     PetscInt num_owned_local  = (PetscInt) num_local_voro;
@@ -1802,12 +1790,11 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                 if(phi_n*phi_l<0)
                 {
 
-                    double *Sm_n_p;
-                    ierr = VecGetArray(Sm_n, &Sm_n_p); CHKERRXX(ierr);
+
 #ifdef P4_TO_P8
-                    double Smn = 0.5*(interp_Sm_n(pc.x, pc.y,pc.z) + interp_Sm_n(pl.x, pl.y,pl.z));
+                    double Smn = 0.5*((*sigma)(pc.x, pc.y,pc.z) + (*sigma)(pl.x, pl.y,pl.z));
 #else
-                    double Smn = 0.5*(interp_Sm_n(pc.x, pc.y) + interp_Sm_n(pl.x, pl.y));
+                    double Smn = 0.5*((*sigma)(pc.x, pc.y) + (*sigma)(pl.x, pl.y));
 #endif
                     double mu_l;
 #ifdef P4_TO_P8
@@ -1820,7 +1807,6 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                     Point2 p_ln = (pc+pl)/2;
 #endif
 
-                    double mu_harmonic = 2*mu_n*mu_l/(mu_n + mu_l);
 #ifdef P4_TO_P8
                     double sigma_l = sigma->operator ()(pl.x,pl.y,pl.z);
 #else
@@ -1831,10 +1817,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
 
 
                     double sigma_tmp, vi;
-                    double *vn_n_p, *vnm1_n_p, *vnm2_n_p;
-                    ierr = VecGetArray(vn_n, &vn_n_p); CHKERRXX(ierr);
-                    ierr = VecGetArray(vnm1_n, &vnm1_n_p); CHKERRXX(ierr);
-                    ierr = VecGetArray(vnm2_n, &vnm2_n_p); CHKERRXX(ierr);
+
                     if(implicit==0)
                     {
                         switch(order)
@@ -1844,9 +1827,9 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
                             //                            vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
-                            vi = 0.5*(interp_vn_n(pc.x, pc.y, pc.z) + interp_vn_n(pl.x, pl.y, pl.z));
+                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
 #else
-                            vi = 0.5*(interp_vn_n(pc.x, pc.y) + interp_vn_n(pl.x, pl.y));
+                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
 #endif
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi * (1-dt*Smn/Cm);
                             break;
@@ -1855,9 +1838,9 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
                             //                            vi = .5*2./3.*((2-dt*Smn/Cm)*(vn_n_p[n]+vn_n_p[(*points)[l].n]) - .5*(vnm1_n_p[n]+vnm1_n_p[(*points)[l].n]));
 #ifdef P4_TO_P8
-                            vi = .5*2./3.*((2-dt*Smn/Cm)*(interp_vn_n(pc.x, pc.y, pc.z)+interp_vn_n(pl.x, pl.y, pl.z)) - .5*(interp_vnm1_n(pc.x, pc.y, pc.z)+interp_vnm1_n(pl.x, pl.y, pl.z)));
+                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y, pc.z)+(*vn)(pl.x, pl.y, pl.z)) - .5*((*vnm1)(pc.x, pc.y, pc.z)+(*vnm1)(pl.x, pl.y, pl.z)));
 #else
-                            vi = .5*2./3.*((2-dt*Smn/Cm)*(interp_vn_n(pc.x, pc.y)+interp_vn_n(pl.x, pl.y)) - .5*(interp_vnm1_n(pc.x, pc.y)+interp_vnm1_n(pl.x, pl.y)));
+                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y)+(*vn)(pl.x, pl.y)) - .5*((*vnm1)(pc.x, pc.y)+(*vnm1)(pl.x, pl.y)));
 #endif
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi;
 
@@ -1875,9 +1858,9 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(Cm+dt*Smn));
                             //vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
-                            vi = 0.5*(interp_vn_n(pc.x, pc.y, pc.z) + interp_vn_n(pl.x, pl.y, pl.z));
+                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
 #else
-                            vi = 0.5*(interp_vn_n(pc.x, pc.y) + interp_vn_n(pl.x, pl.y));
+                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
 #endif
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (Cm+dt*Smn);
                             break;
@@ -1886,9 +1869,9 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(1.5*Cm+dt*Smn));
                             //                            vi = .5*(2*vn_n_p[n] - .5*vnm1_n_p[n] + 2*vn_n_p[(*points)[l].n] - .5*vnm1_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
-                            vi = .5*(2*interp_vn_n(pc.x, pc.y, pc.z) - .5*interp_vnm1_n(pc.x, pc.y, pc.z) + 2*interp_vn_n(pl.x, pl.y, pl.z) - .5*interp_vnm1_n(pl.x, pl.y, pl.z));
+                            vi = .5*(2*(*vn)(pc.x, pc.y, pc.z) - .5*(*vnm1)(pc.x, pc.y, pc.z) + 2*(*vn)(pl.x, pl.y, pl.z) - .5*(*vnm1)(pl.x, pl.y, pl.z));
 #else
-                            vi = .5*(2*interp_vn_n(pc.x, pc.y) - .5*interp_vnm1_n(pc.x, pc.y) + 2*interp_vn_n(pl.x, pl.y) - .5*interp_vnm1_n(pl.x, pl.y));
+                            vi = .5*(2*(*vn)(pc.x, pc.y) - .5*(*vnm1)(pc.x, pc.y) + 2*(*vn)(pl.x, pl.y) - .5*(*vnm1)(pl.x, pl.y));
 #endif
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (1.5*Cm+dt*Smn);
                             break;
@@ -1897,9 +1880,9 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(11./6.*Cm+dt*Smn));
                             //                            vi = .5*(3*vn_n_p[n] - 3./2.*vnm1_n_p[n] + 1./3.*vnm2_n_p[n] + 3*vn_n_p[(*points)[l].n] - 3./2.*vnm1_n_p[(*points)[l].n] + 1./3.*vnm2_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
-                            vi = .5*(3*interp_vn_n(pc.x,pc.y,pc.z) - 3./2.*interp_vnm1_n(pc.x,pc.y,pc.z) + 1./3.*interp_vnm2_n(pc.x,pc.y,pc.z) + 3*interp_vn_n(pl.x,pl.y,pl.z) - 3./2.*interp_vnm1_n(pl.x,pl.y,pl.z) + 1./3.*interp_vnm2_n(pl.x,pl.y,pl.z));
+                            vi = .5*(3*(*vn)(pc.x,pc.y,pc.z) - 3./2.*(*vnm1)(pc.x,pc.y,pc.z) + 1./3.*(*vnm2)(pc.x,pc.y,pc.z) + 3*(*vn)(pl.x,pl.y,pl.z) - 3./2.*(*vnm1)(pl.x,pl.y,pl.z) + 1./3.*(*vnm2)(pl.x,pl.y,pl.z));
 #else
-                            vi = .5*(3*interp_vn_n(pc.x,pc.y) - 3./2.*interp_vnm1_n(pc.x,pc.y) + 1./3.*interp_vnm2_n(pc.x,pc.y) + 3*interp_vn_n(pl.x,pl.y) - 3./2.*interp_vnm1_n(pl.x,pl.y) + 1./3.*interp_vnm2_n(pl.x,pl.y));
+                            vi = .5*(3*(*vn)(pc.x,pc.y) - 3./2.*(*vnm1)(pc.x,pc.y) + 1./3.*(*vnm2)(pc.x,pc.y) + 3*(*vn)(pl.x,pl.y) - 3./2.*(*vnm1)(pl.x,pl.y) + 1./3.*(*vnm2)(pl.x,pl.y));
 #endif
                             rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (11./6.*Cm+dt*Smn);
                             break;
@@ -1907,10 +1890,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                             throw std::invalid_argument("Unknown order ...");
                         }
                     }
-                    ierr = VecRestoreArray(vn_n, &vn_n_p); CHKERRXX(ierr);
-                    ierr = VecRestoreArray(vnm1_n, &vnm1_n_p); CHKERRXX(ierr);
-                    ierr = VecRestoreArray(vnm2_n, &vnm2_n_p); CHKERRXX(ierr);
-                    ierr = VecRestoreArray(Sm_n, &Sm_n_p); CHKERRXX(ierr);
+
 
                 }
             }
