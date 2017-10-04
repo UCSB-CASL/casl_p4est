@@ -52,9 +52,9 @@ using namespace std;
 
 
 
-int test = 8;
+int test = 9;
 
-double cellDensity = 0.001;   // only if test = 8
+double cellDensity = 0.001;   // only if test = 8 || 9, maximum possible density is 0.24
 double half_period = 5e-7;  // frequency = 1/(2*half_period) : 5e-7 [s] = 10 [MHz]
 double boxSide = 1e-3;      // only if test = 8
 
@@ -67,7 +67,7 @@ int order = 1;
 
 
 /* cell radius */
-double r0 = test==5 ? 46e-6 : (test==6 ? 53e-6 : (test==8 ? 7e-6 :50e-6));
+double r0 = test==5 ? 46e-6 : (test==6 ? 53e-6 : ((test==8 || test==9) ? 7e-6 :50e-6));
 double ellipse = test<5 ? 1 : (test==5 ? 1.225878312944962 : 1.250835468987754);
 double a = test<5 ? r0 : (test==5 ? r0*ellipse : r0/ellipse);
 double b = test<5 ? r0 : (test==5 ? r0*ellipse : r0/ellipse);
@@ -82,27 +82,27 @@ double cellVolume = 4*PI*(coeff*r0)*(coeff*r0)*(coeff*r0)/3;
 
 
 /* number of cells in x and y dimensions */
-int x_cells = 2;
-int y_cells = 2;
-int z_cells = 2;
+int x_cells = 1;
+int y_cells = 1;
+int z_cells = 1;
 /* number of random cells */
-int nb_cells = test==7 ? 10 : (test==8 ? int (cellDensity*boxVolume/cellVolume) : x_cells*y_cells*z_cells);
+int nb_cells = test==7 ? 2 : ((test==8 || test==9) ? int (cellDensity*boxVolume/cellVolume) : x_cells*y_cells*z_cells);
 /* number of cells in x and y dimensions */
 
 
-double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : (test == 8 ? -boxSide/2 : -4*x_cells*r0));
-double xmax = test<4 ?  2*x_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : (test == 8 ?  boxSide/2 :  4*x_cells*r0));
-double ymin = test<4 ? -2*y_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : (test == 8 ? -boxSide/2 : -4*y_cells*r0));
-double ymax = test<4 ?  2*y_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : (test == 8 ?  boxSide/2 :  4*y_cells*r0));
-double zmin = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : (test == 8 ? -boxSide/2 : -4*z_cells*r0));
-double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : (test == 8 ?  boxSide/2 :  4*z_cells*r0));
+double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ? -boxSide/2 : -4*x_cells*r0));
+double xmax = test<4 ?  2*x_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ?  boxSide/2 :  4*x_cells*r0));
+double ymin = test<4 ? -2*y_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ? -boxSide/2 : -4*y_cells*r0));
+double ymax = test<4 ?  2*y_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ?  boxSide/2 :  4*y_cells*r0));
+double zmin = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ? -boxSide/2 : -4*z_cells*r0));
+double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ?  boxSide/2 :  4*z_cells*r0));
 
 
 
 
 
 
-int lmin = 2;
+int lmin = 1;
 int lmax = 8;
 int nb_splits = 1;
 
@@ -143,7 +143,7 @@ bool save_voro = true;
 bool save_stats = true;
 bool check_partition = false;
 bool save_impedance = true;
-
+bool save_hierarchy = true;
 
 
 
@@ -162,10 +162,8 @@ public:
     LevelSet()
     {
         lip=1.2;
-        if(test==7 || test==8)
+        if(test==7 || test==8 || test==9)
         {
-//            mpi_environment_t &mpi;
-//            mpi.rank();
             centers.resize(nb_cells);
             radii.resize(nb_cells);
             ex.resize(nb_cells);
@@ -177,48 +175,29 @@ public:
             fflush(stdout);
             std::vector<std::array<double,3> > v;
             std::array<double,3> p;
-/*
+            double Radius=0;
+            double azimuth = 0;
+            double polar =0;
 
-            p[0] = (xmax-xmin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
-            p[1] = (ymax-ymin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
-            p[2] = (zmax-zmin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
-
-            int nfixpts;
-
-
-            for(int n=0; n<nb_cells; ++n)
-            {
-                bool too_close;
-                int closestpt;
-                too_close = true;
-                v.push_back(p);
-                nfixpts = v.size();
-                double mindist;
-                nearpt3::ng_factor = 0.1;
-                nearpt3::Grid_T<double> *g = nearpt3::Preprocess(nfixpts, &v[0]);
-                do
-                {
-
-
-                    p[0] = (xmax-xmin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
-                    p[1] = (ymax-ymin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
-                    p[2] = (zmax-zmin)/2 * (1.9*((double)rand()/RAND_MAX)-.95);
-
-                    closestpt = nearpt3::Query(g, p);
-                    mindist = sqrt(SQR(p[0]-v[closestpt][0])+ SQR(p[1]-v[closestpt][1])+SQR(p[2]-v[closestpt][2]));
-                    too_close = (mindist < 3*r0 );
-
-                }while(too_close);
-
-            }
-*/
             double *r;
             int halton_counter = 0;
             r = halton(halton_counter,3);
-            p[0] = 0.99*(xmax-xmin)*(r[0] - 0.5);
-            p[1] = 0.99*(ymax-ymin)*(r[1] - 0.5);
-            p[2] = 0.99*(zmax-zmin)*(r[2] - 0.5);
 
+            if(test==9){
+                double azimuth = 0;
+                double polar = 0;
+                Radius = 0.49*(xmax-xmin)*r[0];
+                azimuth = 2*PI*r[1];
+                polar = PI*r[2];
+
+                p[0] = Radius*sin(polar)*cos(azimuth);
+                p[1] = Radius*sin(polar)*sin(azimuth);
+                p[2] = Radius*cos(polar);
+            } else {
+                p[0] = 0.99*(xmax-xmin)*(r[0] - 0.5);
+                p[1] = 0.99*(ymax-ymin)*(r[1] - 0.5);
+                p[2] = 0.99*(zmax-zmin)*(r[2] - 0.5);
+            }
             halton_counter++;
             v.push_back(p);
             int progress = 0;
@@ -227,33 +206,44 @@ public:
             {
 
                 r = halton(halton_counter,3);
-                p[0] = 0.99*(xmax-xmin)*(r[0] - 0.5);
-                p[1] = 0.99*(ymax-ymin)*(r[1] - 0.5);
-                p[2] = 0.99*(zmax-zmin)*(r[2] - 0.5);
 
+                if(test==9){
+                    double azimuth = 0;
+                    double polar = 0;
+                    Radius = 0.49*(xmax-xmin)*r[0];
+                    azimuth = 2*PI*r[1];
+                    polar = PI*r[2];
+
+                    p[0] = Radius*sin(polar)*cos(azimuth);
+                    p[1] = Radius*sin(polar)*sin(azimuth);
+                    p[2] = Radius*cos(polar);
+                } else {
+                    p[0] = 0.99*(xmax-xmin)*(r[0] - 0.5);
+                    p[1] = 0.99*(ymax-ymin)*(r[1] - 0.5);
+                    p[2] = 0.99*(zmax-zmin)*(r[2] - 0.5);
+                }
                 halton_counter++;
-
-
-            bool far_enough = true;
-            for(int ii=0;ii<v.size();++ii){
-                double mindist = sqrt(SQR(p[0]-v[ii][0])+ SQR(p[1]-v[ii][1])+SQR(p[2]-v[ii][2]));
-                if(mindist<1.4*r0){
+                bool far_enough = true;
+                for(int ii=0;ii<v.size();++ii){
+                    double mindist = sqrt(SQR(p[0]-v[ii][0])+ SQR(p[1]-v[ii][1])+SQR(p[2]-v[ii][2]));
+                    if(mindist<3*r0){
                         far_enough = false;
                         break;
 
-               }
-            }
-            if(far_enough){
-                v.push_back(p);
-                if(v.size()%((int) nb_cells/10) == 0){
-                    progress += 10;
-                    printf("Cell Placement is in Progress. Currently at: %d \%\n", progress);
-            }
-            }
+                    }
+                }
+                if(far_enough){
+                    v.push_back(p);
+                    cellVolumes += 4*PI*(2*r0)*(2*r0)*(2*r0)/3;
+                    if(v.size()%((int) nb_cells/10) == 0){
+                        progress += 10;
+                        printf("Cell Placement is in Progress. Currently at: %d \%\n", progress);
+                    }
+                }
             }while(v.size()<nb_cells);
 
-
-           for(int n=0; n<nb_cells; ++n)
+            cellVolumes = 0;
+            for(int n=0; n<nb_cells; ++n)
             {
                 centers[n].x = v[n][0];
                 centers[n].y = v[n][1];
@@ -349,6 +339,28 @@ public:
                 d = MIN(d, sqrt(SQR(x_tmp/ex[n].x) + SQR(y_tmp/ex[n].y) + SQR(z_tmp/ex[n].z)) - radii[n]);
             }
             return d;
+        case 9:
+            for(int n=0; n<nb_cells; ++n)
+            {
+                x0 = x - centers[n].x;
+                y0 = y - centers[n].y;
+                z0 = z - centers[n].z;
+
+                x_tmp = x0;
+                y_tmp = cos(theta[n].x)*y0 - sin(theta[n].x)*z0;
+                z_tmp = sin(theta[n].x)*y0 + cos(theta[n].x)*z0;
+
+                x0 = cos(theta[n].y)*x_tmp - sin(theta[n].y)*z_tmp;
+                y0 = y_tmp;
+                z0 = sin(theta[n].y)*x_tmp + cos(theta[n].y)*z_tmp;
+
+                x_tmp = cos(theta[n].z)*x0 - sin(theta[n].z)*y0;
+                y_tmp = sin(theta[n].z)*x0 + cos(theta[n].z)*y0;
+                z_tmp = z0;
+
+                d = MIN(d, sqrt(SQR(x_tmp/ex[n].x) + SQR(y_tmp/ex[n].y) + SQR(z_tmp/ex[n].z)) - radii[n]);
+            }
+            return d;
         default: throw std::invalid_argument("Choose a valid test.");
         }
     }
@@ -390,8 +402,6 @@ double u_exact(double x, double y, double z, double t, bool phi_is_pos)
     }
     else
         return 0;
-
-    //throw std::invalid_argument("Unknown exact solution for this test");
 }
 
 //PAM: square pulse to be asked from Claire
@@ -445,6 +455,9 @@ struct BCWALLTYPE : WallBC3D
         case 8:
             if(ABS(z-zmin)<EPS || ABS(z-zmax)<EPS) return DIRICHLET;
             else                                   return NEUMANN;
+        case 9:
+            if(ABS(z-zmin)<EPS || ABS(z-zmax)<EPS) return DIRICHLET;
+            else                                   return NEUMANN;
         default: throw std::invalid_argument("Choose a valid test.");
         }
     }
@@ -469,6 +482,10 @@ struct BCWALLVALUE : CF_3
             if(ABS(z-zmax)<EPS) return 0;
             return 0;
         case 8:
+            if(ABS(z-zmax)<EPS) return  pulse(t);
+            if(ABS(z-zmin)<EPS) return -pulse(t);
+            return 0;
+        case 9:
             if(ABS(z-zmax)<EPS) return  pulse(t);
             if(ABS(z-zmin)<EPS) return -pulse(t);
             return 0;
@@ -1177,7 +1194,7 @@ int main(int argc, char** argv) {
         // create ghost layer at time nm1
         ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
         my_p4est_ghost_expand(p4est, ghost);
-//        my_p4est_ghost_expand(p4est, ghost);
+        //        my_p4est_ghost_expand(p4est, ghost);
         // create node structure at time nm1
         nodes = my_p4est_nodes_new(p4est, ghost);
 
@@ -1191,7 +1208,10 @@ int main(int argc, char** argv) {
 
         my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
 
-
+        if(save_hierarchy){
+            hierarchy.write_vtk("hierarchy");
+            PetscPrintf(p4est->mpicomm, "Hierarchy structure saved to current directory. \n");
+        }
 
         my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
         my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
@@ -1213,7 +1233,7 @@ int main(int argc, char** argv) {
         ls.perturb_level_set_function(phi, EPS);
 
         /* set initial time step *//* find dx and dy smallest */
-       /* p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+        /* p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
         p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
         double xmin = p4est->connectivity->vertices[3*vm + 0];
         double ymin = p4est->connectivity->vertices[3*vm + 1];
@@ -1353,15 +1373,15 @@ int main(int argc, char** argv) {
             }
             ierr = VecGhostUpdateBegin(impedance_integrand, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
             for(size_t i=0; i<ngbd_n.get_local_size(); ++i)
-               {
-                 p4est_locidx_t n = ngbd_n.get_local_node(i);
-                 quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
-                 double normal_drv_potential = qnnn.dz_central(sol_p);
-                 if(normal_drv_potential>0)
+            {
+                p4est_locidx_t n = ngbd_n.get_local_node(i);
+                quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
+                double normal_drv_potential = qnnn.dz_central(sol_p);
+                if(normal_drv_potential>0)
                     EInt_p[n] = sol_p[n]/normal_drv_potential;
-                 else
+                else
                     EInt_p[n] = 0;
-             }
+            }
             ierr = VecGhostUpdateEnd(impedance_integrand, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
             ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
