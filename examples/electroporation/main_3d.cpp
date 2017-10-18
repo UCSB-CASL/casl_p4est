@@ -104,7 +104,7 @@ double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0 
 
 
 int lmin = 3;
-int lmax = 6;
+int lmax = 7;
 int nb_splits = 1;
 
 double dt_scale = 400;
@@ -761,9 +761,6 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     solver.set_parameters(implicit, order, dt, test, SL, tau_ep, tau_res, tau_perm, S0, S1, tn);
     solver.dt = dt;
     solver.Cm = Cm;
-    solver.set_vnm1(vnm1);
-    solver.set_vn(vn);
-    solver.set_vnm2(vnm2);
     solver.set_phi(phi);
     solver.set_bc(bc);
     solver.set_mu(mu_m_, mu_p_);
@@ -790,6 +787,9 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     convergence_Sm = 0;
     do
     {
+        solver.set_vnm1(vnm1);
+        solver.set_vnm2(vnm2);
+        solver.set_vn(vn);
         solver.solve(sol);
         if(order>2)
         {
@@ -865,7 +865,10 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         solver.set_X0(X0);
         solver.set_X1(X1);
         solver.compute_electroporation(X0, X1, Sm, vn);
-
+        ls.extend_from_interface_to_whole_domain_TVD(phi, vn, vn);
+        ls.extend_from_interface_to_whole_domain_TVD(phi, Sm, Sm);
+        ls.extend_from_interface_to_whole_domain_TVD(phi, X0, X0);
+        ls.extend_from_interface_to_whole_domain_TVD(phi, X1, X1);
         // compute X and Sm
         if(test==1)
         {
