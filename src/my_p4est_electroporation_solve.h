@@ -155,6 +155,9 @@ class my_p4est_electroporation_solve_t
   Vec rhs;
   Vec sol_voro;
   Vec vn_voro;
+  Vec X0_voro;
+  Vec X1_voro;
+  Vec Sm_voro;
   unsigned int num_local_voro;
 #ifdef P4_TO_P8
   std::vector<Point3> voro_points;
@@ -199,6 +202,8 @@ class my_p4est_electroporation_solve_t
   bool local_vnm1;
   bool local_vnm2;
   bool local_Sm;
+  bool local_X0;
+  bool local_X1;
 
 #ifdef P4_TO_P8
   CF_3 *mu_m, *mu_p;
@@ -208,7 +213,9 @@ class my_p4est_electroporation_solve_t
   CF_3 *vn;
   CF_3 *vnm1;
   CF_3 *vnm2;
-  CF_3 *sigma;
+  CF_3 *Smm;
+  CF_3 *X0;
+  CF_3 *X1;
 #else
   CF_2 *mu_m, *mu_p;
   CF_2 *add;
@@ -217,9 +224,12 @@ class my_p4est_electroporation_solve_t
   CF_2 *vn;
   CF_2 *vnm1;
   CF_2 *vnm2;
-  CF_2 *sigma;
+  CF_2 *Smm;
+  CF_2 *X0;
+  CF_2 *X1;
 #endif
-
+  CF_1 *beta_0;
+  CF_1 *beta_1;
 
   int order;
   int implicit;
@@ -269,6 +279,10 @@ public:
 
   void set_vn(Vec vn_n);
 
+  void set_X0(Vec X0);
+
+  void set_X1(Vec X1);
+
   void set_vnm1(Vec vnm1_n);
 
   void set_vnm2(Vec vnm2_n);
@@ -279,21 +293,13 @@ public:
 
 #ifdef P4_TO_P8
   void set_bc(BoundaryConditions3D& bc);
-  void set_sigma(CF_3 &sigma_in)
-  {
-      sigma = &sigma_in;
-  }
 #else
   void set_bc(BoundaryConditions2D& bc);
-  void set_sigma(CF_2 &sigma_in)
-  {
-      sigma = &sigma_in;
-  }
 #endif
 
+ void set_beta0(CF_1& beta_0_in);
 
-
-
+ void set_beta1(CF_1& beta_1_in);
 
   void set_mu(double mu);
 
@@ -308,8 +314,12 @@ public:
   inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT) {
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
-  void solve(Vec solution, Vec vn_tree, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
-  void compute_jump(Vec vn_voro);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+
+//  void compute_jump(Vec vn_voro);
+
+  void compute_electroporation(Vec X0, Vec X1, Vec Sm, Vec vn);
+
   double interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const;
   void interpolate_solution_from_voronoi_to_tree(Vec solution) const;
 

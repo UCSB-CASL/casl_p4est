@@ -103,11 +103,11 @@ double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0 
 
 
 
-int lmin = 2;
-int lmax = 9;
+int lmin = 3;
+int lmax = 6;
 int nb_splits = 1;
 
-double dt_scale = 40;
+double dt_scale = 400;
 
 double tn;
 double tf = 5e-6;
@@ -174,8 +174,8 @@ public:
             printf("The random seed is %u\n", seed);
             printf("number of cells is %u\n", nb_cells);
             fflush(stdout);
-            std::vector<array<double,3> > v;
-            array<double,3> p;
+            std::vector<std::array<double,3> > v;
+            std::array<double,3> p;
             double Radius=0;
             double azimuth = 0;
             double polar =0;
@@ -445,7 +445,8 @@ struct BCWALLTYPE : WallBC3D
         case 1:
             return DIRICHLET;
         case 2:
-            return DIRICHLET;
+            if(ABS(z-zmin)<EPS || ABS(z-zmax)<EPS) return DIRICHLET;
+            else                                   return NEUMANN;
         case 3:
         case 4:
         case 5:
@@ -473,7 +474,9 @@ struct BCWALLVALUE : CF_3
         case 1:
             return u_exact(x,y,z,0,true);
         case 2:
-            return u_exact(x,y,z,t,true);
+            if(ABS(z-zmin)<EPS) return E;
+            if(ABS(z-zmax)<EPS) return 0;
+            return 0;
         case 3:
         case 4:
         case 5:
@@ -734,14 +737,8 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     ierr = VecGetArray(rhs_p, &rhs_p_p); CHKERRXX(ierr);
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     {
-        double x = node_x_fr_n(n, p4est, nodes);
-        double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-        double z = node_z_fr_n(n, p4est, nodes);
-#endif
         rhs_m_p[n] = 0;
         rhs_p_p[n] = 0;
-
     }
     ierr = VecRestoreArray(rhs_m, &rhs_m_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(rhs_p, &rhs_p_p); CHKERRXX(ierr);
@@ -759,14 +756,9 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     my_p4est_electroporation_solve_t solver(ngbd_n, ngbd_c);
 
 
-
-
-
-
-    solver.set_sigma(sigma_in);
+    //solver.set_sigma(sigma_in);
     solver.set_Sm(Sm);
     solver.set_parameters(implicit, order, dt, test, SL, tau_ep, tau_res, tau_perm, S0, S1, tn);
-    solver.t = tn;
     solver.dt = dt;
     solver.Cm = Cm;
     solver.set_vnm1(vnm1);
@@ -775,39 +767,30 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     solver.set_phi(phi);
     solver.set_bc(bc);
     solver.set_mu(mu_m_, mu_p_);
-    //    solver.set_u_jump(vn);
-    //    solver.set_u_jump(u_jump_);
-    solver.set_mu_grad_u_jump(mu_grad_u_jump_);
     solver.set_rhs(rhs_m, rhs_p);
-    //    solver.set_tolerances(1e-6);
+    solver.set_beta0(beta_0_in);
+    solver.set_beta1(beta_1_in);
 
-    Vec X_0_v, X_1_v, l, l0, l1;
-    ierr = VecDuplicate(phi, &X_0_v); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &X_1_v); CHKERRXX(ierr);
+    //    Vec X_0_v, X_1_v, l, l0, l1;
+    //    ierr = VecDuplicate(phi, &X_0_v); CHKERRXX(ierr);
+    //    ierr = VecDuplicate(phi, &X_1_v); CHKERRXX(ierr);
 
-    ierr = VecGhostGetLocalForm(X_0_v, &l); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(X0, &l0); CHKERRXX(ierr);
-    ierr = VecCopy(l0, l); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(X_0_v, &l); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(X0, &l0); CHKERRXX(ierr);
+    //    ierr = VecGhostGetLocalForm(X_0_v, &l); CHKERRXX(ierr);
+    //    ierr = VecGhostGetLocalForm(X0, &l0); CHKERRXX(ierr);
+    //    ierr = VecCopy(l0, l); CHKERRXX(ierr);
+    //    ierr = VecGhostRestoreLocalForm(X_0_v, &l); CHKERRXX(ierr);
+    //    ierr = VecGhostRestoreLocalForm(X0, &l0); CHKERRXX(ierr);
 
-    ierr = VecGhostGetLocalForm(X_1_v, &l); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(X1, &l1); CHKERRXX(ierr);
-    ierr = VecCopy(l1, l); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(X_1_v, &l); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(X1, &l1); CHKERRXX(ierr);
+    //    ierr = VecGhostGetLocalForm(X_1_v, &l); CHKERRXX(ierr);
+    //    ierr = VecGhostGetLocalForm(X1, &l1); CHKERRXX(ierr);
+    //    ierr = VecCopy(l1, l); CHKERRXX(ierr);
+    //    ierr = VecGhostRestoreLocalForm(X_1_v, &l); CHKERRXX(ierr);
+    //    ierr = VecGhostRestoreLocalForm(X1, &l1); CHKERRXX(ierr);
     double convergence_Sm;
     convergence_Sm = 0;
-    Vec vn_new;
-    VecDuplicate(vn, &vn_new);
     do
     {
-
-        solver.solve(sol, vn_new);
-	//double vn_max=0;
-	//VecMax(vn_new, NULL, &vn_max);
-	//std::cout<<"VORONI max jump is "<<vn_max<<std::endl;
-
+        solver.solve(sol);
         if(order>2)
         {
             Vec vnm2_l, vnm1_l;
@@ -827,16 +810,10 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
             VecGhostRestoreLocalForm(vn, &vn_l);
         }
 
-	Vec vn_old, vn_new_l;
-        VecGhostGetLocalForm(vn_new, &vn_new_l);
-        VecGhostGetLocalForm(vn, &vn_old);
-        ierr = VecCopy(vn_new_l, vn_old); CHKERRXX(ierr);
-        VecGhostRestoreLocalForm(vn_new, &vn_new_l);
-        VecGhostRestoreLocalForm(vn, &vn_old);
-	
-        // compute jump
+        /////////////
+/*        // compute jump
         // make 2 other copies of the solution vector
-/*        Vec u_plus_ext, u_minus_ext, u_plus_ext_l, u_minus_ext_l, sol_l;
+        Vec u_plus_ext, u_minus_ext, u_plus_ext_l, u_minus_ext_l, sol_l;
         ierr = VecDuplicate(sol, &u_plus_ext); CHKERRXX(ierr);
         ierr = VecDuplicate(sol, &u_minus_ext); CHKERRXX(ierr);
         VecGhostGetLocalForm(sol, &sol_l);
@@ -848,47 +825,49 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         VecGhostRestoreLocalForm(u_plus_ext, &u_plus_ext_l);
         VecGhostRestoreLocalForm(u_minus_ext, &u_minus_ext_l);
 
-	// project solutions onto the interface
-	double *phi_p;
-	VecGetArray(phi, &phi_p);
-        ls.extend_Over_Interface_TVD(phi, u_plus_ext);
-	for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-      		phi_p[i] = -phi_p[i];
-        ls.extend_Over_Interface_TVD(phi, u_minus_ext);
+        // project solutions onto the interface
+        double *phi_p;
+        VecGetArray(phi, &phi_p);
+        ls.extend_Over_Interface(phi, u_plus_ext, 2, 10);
         for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-      		phi_p[i] = -phi_p[i];
-	VecRestoreArray(phi, &phi_p);
+            phi_p[i] = -phi_p[i];
+        ls.extend_Over_Interface(phi, u_minus_ext, 2, 10);
+        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+            phi_p[i] = -phi_p[i];
+        VecRestoreArray(phi, &phi_p);
 
-	Vec u_plus_cte, u_minus_cte;
-	ierr = VecDuplicate(u_plus_ext,&u_plus_cte); CHKERRXX(ierr);
-        ls.extend_from_interface_to_whole_domain_TVD(phi, u_plus_ext, u_plus_cte);   
-	ierr = VecDuplicate(u_minus_ext,&u_minus_cte); CHKERRXX(ierr);
+        Vec u_plus_cte, u_minus_cte;
+        ierr = VecDuplicate(u_plus_ext,&u_plus_cte); CHKERRXX(ierr);
+        ls.extend_from_interface_to_whole_domain_TVD(phi, u_plus_ext, u_plus_cte);
+        ierr = VecDuplicate(u_minus_ext,&u_minus_cte); CHKERRXX(ierr);
         ls.extend_from_interface_to_whole_domain_TVD(phi, u_minus_ext, u_minus_cte);
 
-
-
-
-	// subtract the projected vectors, on the interface it is the jump.
-  	double *vn_p, *u_minus_cte_p, *u_plus_cte_p;
-	VecGetArray(u_minus_cte, &u_minus_cte_p);
-	VecGetArray(u_plus_cte, &u_plus_cte_p);
-	VecGetArray(vn, &vn_p);
+        // subtract the projected vectors, on the interface it is the jump.
+        double *vn_p, *u_minus_cte_p, *u_plus_cte_p;
+        VecGetArray(u_minus_cte, &u_minus_cte_p);
+        VecGetArray(u_plus_cte, &u_plus_cte_p);
+        VecGetArray(vn, &vn_p);
         for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
-	{
-		vn_p[n] = u_minus_cte_p[n] - u_plus_cte_p[n];
-	}
+        {
+            vn_p[n] = u_plus_cte_p[n] - u_minus_cte_p[n];
+        }
         VecRestoreArray(vn, &vn_p);
         VecRestoreArray(u_minus_cte, &u_minus_cte_p);
         VecRestoreArray(u_plus_cte, &u_plus_cte_p);
         ierr = VecDestroy(u_plus_ext); CHKERRXX(ierr);
         ierr = VecDestroy(u_minus_ext); CHKERRXX(ierr);
-	ierr = VecDestroy(u_plus_cte); CHKERRXX(ierr);
+        ierr = VecDestroy(u_plus_cte); CHKERRXX(ierr);
         ierr = VecDestroy(u_minus_cte); CHKERRXX(ierr);
 */
+        ////////////
 
+        solver.set_Sm(Sm);
+        solver.set_X0(X0);
+        solver.set_X1(X1);
+        solver.compute_electroporation(X0, X1, Sm, vn);
 
         // compute X and Sm
-        if(test==1 || test==2 )
+        if(test==1)
         {
             Vec l;
             ierr = VecGhostGetLocalForm(Sm, &l); CHKERRXX(ierr);
@@ -904,52 +883,54 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
             ierr = VecGhostRestoreLocalForm(X1, &l); CHKERRXX(ierr);
             convergence_Sm = 1e-4;
         }
-        else
-        {
-            double *vn_n_p, *Sm_n_p, *X0_np1, *X1_np1;
-            ierr = VecGetArray(Sm, &Sm_n_p); CHKERRXX(ierr);
-            ierr = VecGetArray(vn, &vn_n_p); CHKERRXX(ierr);
 
-            ierr = VecGetArray(X0, &X0_np1); CHKERRXX(ierr);
-            ierr = VecGetArray(X1, &X1_np1); CHKERRXX(ierr);
-
-            double *X_0_v_p, *X_1_v_p;
-            ierr = VecGetArray(X_0_v, &X_0_v_p); CHKERRXX(ierr);
-            ierr = VecGetArray(X_1_v, &X_1_v_p); CHKERRXX(ierr);
-            for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
-            {
-                X_0_v_p[n] = X0_np1[n] + dt*((beta_0_in(vn_n_p[n]) - X_0_v_p[n])/tau_ep);
-                X_1_v_p[n] = X1_np1[n] + dt*MAX( (beta_1_in(X_0_v_p[n])-X_1_v_p[n])/tau_perm, (beta_1_in(X_0_v_p[n])-X_1_v_p[n])/tau_res );
-
-
-                convergence_Sm = MAX(convergence_Sm, ABS(Sm_n_p[n] - (SL + S0*X_0_v_p[n] + S1*X_1_v_p[n])) );
-
-                Sm_n_p[n] = SL + S0*X_0_v_p[n] + S1*X_1_v_p[n];
-
-            }
-
-
-            ierr = VecRestoreArray(Sm, &Sm_n_p); CHKERRXX(ierr);
-            ierr = VecRestoreArray(X0,&X0_np1); CHKERRXX(ierr);
-            ierr = VecRestoreArray(X1,&X1_np1); CHKERRXX(ierr);
-            ierr = VecRestoreArray(vn, &vn_n_p); CHKERRXX(ierr);
-            ierr = VecRestoreArray(X_0_v, &X_0_v_p); CHKERRXX(ierr);
-            ierr = VecRestoreArray(X_1_v, &X_1_v_p); CHKERRXX(ierr);
-
-            ierr = VecGhostGetLocalForm(X_0_v, &l); CHKERRXX(ierr);
-            ierr = VecGhostGetLocalForm(X0, &l0); CHKERRXX(ierr);
-            ierr = VecCopy(l, l0); CHKERRXX(ierr);
-            ierr = VecGhostRestoreLocalForm(X_0_v, &l); CHKERRXX(ierr);
-            ierr = VecGhostRestoreLocalForm(X0, &l0); CHKERRXX(ierr);
-
-            ierr = VecGhostGetLocalForm(X_1_v, &l); CHKERRXX(ierr);
-            ierr = VecGhostGetLocalForm(X1, &l1); CHKERRXX(ierr);
-            ierr = VecCopy(l, l1); CHKERRXX(ierr);
-            ierr = VecGhostRestoreLocalForm(X_1_v, &l); CHKERRXX(ierr);
-            ierr = VecGhostRestoreLocalForm(X1, &l1); CHKERRXX(ierr);
-
-        }
     }while(0 && convergence_Sm>1e-3);
+    //        else
+    //        {
+    //            double *vn_n_p, *Sm_n_p, *X0_np1, *X1_np1;
+    //            ierr = VecGetArray(Sm, &Sm_n_p); CHKERRXX(ierr);
+    //            ierr = VecGetArray(vn, &vn_n_p); CHKERRXX(ierr);
+
+    //            ierr = VecGetArray(X0, &X0_np1); CHKERRXX(ierr);
+    //            ierr = VecGetArray(X1, &X1_np1); CHKERRXX(ierr);
+
+    //            double *X_0_v_p, *X_1_v_p;
+    //            ierr = VecGetArray(X_0_v, &X_0_v_p); CHKERRXX(ierr);
+    //            ierr = VecGetArray(X_1_v, &X_1_v_p); CHKERRXX(ierr);
+    //            for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
+    //            {
+    //                X_0_v_p[n] = X0_np1[n] + dt*((beta_0_in(vn_n_p[n]) - X_0_v_p[n])/tau_ep);
+    //                X_1_v_p[n] = X1_np1[n] + dt*MAX( (beta_1_in(X_0_v_p[n])-X_1_v_p[n])/tau_perm, (beta_1_in(X_0_v_p[n])-X_1_v_p[n])/tau_res );
+
+
+    //                convergence_Sm = MAX(convergence_Sm, ABS(Sm_n_p[n] - (SL + S0*X_0_v_p[n] + S1*X_1_v_p[n])) );
+
+    //                Sm_n_p[n] = SL + S0*X_0_v_p[n] + S1*X_1_v_p[n];
+
+    //            }
+
+
+    //            ierr = VecRestoreArray(Sm, &Sm_n_p); CHKERRXX(ierr);
+    //            ierr = VecRestoreArray(X0,&X0_np1); CHKERRXX(ierr);
+    //            ierr = VecRestoreArray(X1,&X1_np1); CHKERRXX(ierr);
+    //            ierr = VecRestoreArray(vn, &vn_n_p); CHKERRXX(ierr);
+    //            ierr = VecRestoreArray(X_0_v, &X_0_v_p); CHKERRXX(ierr);
+    //            ierr = VecRestoreArray(X_1_v, &X_1_v_p); CHKERRXX(ierr);
+
+    //            ierr = VecGhostGetLocalForm(X_0_v, &l); CHKERRXX(ierr);
+    //            ierr = VecGhostGetLocalForm(X0, &l0); CHKERRXX(ierr);
+    //            ierr = VecCopy(l, l0); CHKERRXX(ierr);
+    //            ierr = VecGhostRestoreLocalForm(X_0_v, &l); CHKERRXX(ierr);
+    //            ierr = VecGhostRestoreLocalForm(X0, &l0); CHKERRXX(ierr);
+
+    //            ierr = VecGhostGetLocalForm(X_1_v, &l); CHKERRXX(ierr);
+    //            ierr = VecGhostGetLocalForm(X1, &l1); CHKERRXX(ierr);
+    //            ierr = VecCopy(l, l1); CHKERRXX(ierr);
+    //            ierr = VecGhostRestoreLocalForm(X_1_v, &l); CHKERRXX(ierr);
+    //            ierr = VecGhostRestoreLocalForm(X1, &l1); CHKERRXX(ierr);
+
+    //    }
+    //}while(0 && convergence_Sm>1e-3);
 
 
 
@@ -989,9 +970,9 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     ierr = VecDestroy(mu_p_); CHKERRXX(ierr);
     ierr = VecDestroy(u_jump_); CHKERRXX(ierr);
     ierr = VecDestroy(mu_grad_u_jump_); CHKERRXX(ierr);
-    ierr = VecDestroy(X_0_v); CHKERRXX(ierr);
-    ierr = VecDestroy(X_1_v); CHKERRXX(ierr);
-    VecDestroy(vn_new);
+//    ierr = VecDestroy(X_0_v); CHKERRXX(ierr);
+//    ierr = VecDestroy(X_1_v); CHKERRXX(ierr);
+//    VecDestroy(vn_new);
 }
 
 
@@ -1073,9 +1054,9 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
         l_p[p4est->local_num_quadrants+q] = quad->level;
     }
 
-    PetscReal val;
-    ierr = VecMax(vn,NULL,&val); CHKERRXX(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD, "maximum jump is: %g\n", (double)val); CHKERRXX(ierr);
+    //    PetscReal val;
+    //    ierr = VecMax(vn,NULL,&val); CHKERRXX(ierr);
+    //    ierr = PetscPrintf(PETSC_COMM_WORLD, "maximum jump is: %g\n", (double)val); CHKERRXX(ierr);
 
 
     my_p4est_vtk_write_all(p4est, nodes, ghost,
@@ -1220,14 +1201,14 @@ int main(int argc, char** argv) {
         double dz = (zmax-zmin) / pow(2.,(double) sp.max_lvl);
         //PetscPrintf(p4est->mpicomm, "3: xmin=%g, xmax=%g, ymin=%g, ymax=%g, zmin=%g, zmax=%g\n", xmin, xmax, ymin, ymax, zmin, zmax);
 #endif
-	double diag = sqrt(dx*dx + dy*dy + dz*dz);
+        double diag = sqrt(dx*dx + dy*dy + dz*dz);
 #ifdef P4_TO_P8
         double dt = MIN(dx,dy,dz)/dt_scale;
 #else
         double dt = MIN(dx,dy)/dt_scale;
 
 #endif
-	dt = 9.77e-8;		//PAM: just for convergence test
+        dt = 5e-9;		//PAM: just for convergence test
         printf("initial dt=%g \n", dt);
 
 
@@ -1294,39 +1275,43 @@ int main(int argc, char** argv) {
         Vec electrodes_phi, impedance_integrand, intensity;
         ierr = VecDuplicate(phi, &electrodes_phi); CHKERRXX(ierr);
         ierr = VecDuplicate(phi, &impedance_integrand); CHKERRXX(ierr);
-	ierr = VecDuplicate(phi, &intensity); CHKERRXX(ierr);
+        ierr = VecDuplicate(phi, &intensity); CHKERRXX(ierr);
         save_VTK(p4est, ghost, nodes, &brick, phi, sol, err, -1, X0, X1, Sm, vn);
-	clock_t begin = clock();
-	my_p4est_interpolation_nodes_t interp_n(&ngbd_n);
+        clock_t begin = clock();
+        //my_p4est_interpolation_nodes_t interp_n(&ngbd_n);
 
         while (tn<tf)
         {
             ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
             solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2);
-	    //interp_n.set_input(vn, quadratic);
-	    //double xyz_np[3] = {0,0,1.2*R1};
-	    //interp_n.add_point(0, xyz_np);   
-	    double u_Npole;
-	    VecMax(vn, NULL, &u_Npole);
-	    //interp_n.interpolate(&u_Npole);
-	 /* compute the error on the tree*/
+            //interp_n.set_input(vn, quadratic);
+            //double xyz_np[3] = {0,0,0.99*R1};
+            //interp_n.add_point(0, xyz_np);
+            double u_Npole = 0;
+            //interp_n.interpolate(&u_Npole);
+            /* compute the error on the tree*/
             double *err_p, *sol_p, *phi_p, *Ephi_p, *EInt_p, *vn_p, *intensity_p;
             ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
             ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
             ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
             ierr = VecGetArray(electrodes_phi, &Ephi_p); CHKERRXX(ierr);
             ierr = VecGetArray(impedance_integrand, &EInt_p); CHKERRXX(ierr);
-	    ierr = VecGetArray(intensity, &intensity_p); CHKERRXX(ierr);
-	    ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
+            ierr = VecGetArray(intensity, &intensity_p); CHKERRXX(ierr);
+            ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
             err_nm1 = err_n;
             err_n = 0;
-            
-	    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+            double z_last = 0;
+            for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
             {
                 double x = node_x_fr_n(n, p4est, nodes);
                 double y = node_y_fr_n(n, p4est, nodes);
                 double z = node_z_fr_n(n, p4est, nodes);
 
+                if(fabs(z-R1)<fabs(z_last-R1))
+                {
+                    z_last =z;
+                    u_Npole = vn_p[n];
+                }
                 err_p[n] = fabs(u_exact(x,y,z, tn, phi_p[n]>0) - sol_p[n]);
                 err_n = max(err_n, err_p[n]);
                 // a level-set just to represent the electrode surfaces for integration purposes
@@ -1336,15 +1321,15 @@ int main(int argc, char** argv) {
                     Ephi_p[n] = -(z - zmin - EPS);
             }
 
-	   
-	    
-	    // computing the impedance vector
+            MPI_Allreduce(MPI_IN_PLACE, &u_Npole, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+            MPI_Allreduce(MPI_IN_PLACE, &z_last, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+            // computing the impedance vector
             for(size_t i=0; i<ngbd_n.get_layer_size(); ++i)
             {
                 p4est_locidx_t n = ngbd_n.get_layer_node(i);
                 quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
                 double normal_drv_potential = qnnn.dz_central(sol_p);
-		intensity_p[n] = sigma_e*normal_drv_potential;
+                intensity_p[n] = sigma_e*normal_drv_potential;
                 if(normal_drv_potential>0)
                     EInt_p[n] = sol_p[n]/normal_drv_potential;
                 else
@@ -1356,16 +1341,16 @@ int main(int argc, char** argv) {
                 p4est_locidx_t n = ngbd_n.get_local_node(i);
                 quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
                 double normal_drv_potential = qnnn.dz_central(sol_p);
-		intensity_p[n] = sigma_e*normal_drv_potential;
+                intensity_p[n] = sigma_e*normal_drv_potential;
                 if(normal_drv_potential>0)
                     EInt_p[n] = sol_p[n]/normal_drv_potential;
                 else
                     EInt_p[n] = 0;
             }
             ierr = VecGhostUpdateEnd(impedance_integrand, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-	    
-	    // Computing the intensity vector
-	    for(size_t i=0; i<ngbd_n.get_layer_size(); ++i)
+
+            // Computing the intensity vector
+            for(size_t i=0; i<ngbd_n.get_layer_size(); ++i)
             {
                 p4est_locidx_t n = ngbd_n.get_layer_node(i);
                 quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
@@ -1382,22 +1367,22 @@ int main(int argc, char** argv) {
             }
             ierr = VecGhostUpdateEnd(intensity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-	    ierr = VecRestoreArray(vn, &vn_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(vn, &vn_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(electrodes_phi, &Ephi_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(impedance_integrand, &EInt_p); CHKERRXX(ierr);
-	    ierr = VecRestoreArray(intensity, &intensity_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(intensity, &intensity_p); CHKERRXX(ierr);
 
             MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-            PetscPrintf(p4est->mpicomm, "Iter %d maximum error on solution: %g, \t order : %g\n", iteration, err_n, log(err_nm1/err_n)/log(2));
+            //            PetscPrintf(p4est->mpicomm, "Iter %d maximum error on solution: %g, \t order : %g\n", iteration, err_n, log(err_nm1/err_n)/log(2));
 
             double impedance = integrate_over_interface(p4est, nodes, electrodes_phi, impedance_integrand);
             double PulseIntensity = integrate_over_interface(p4est, nodes, electrodes_phi, intensity);
-	    PetscPrintf(p4est->mpicomm,"impedance is %g, Pulse Intensity is %g, north pole TMP is %g\n.", impedance, PulseIntensity, u_Npole);
+            PetscPrintf(p4est->mpicomm,"impedance is %g, Pulse Intensity is %g, on the TREE mesh the north pole TMP is %g, the North Pole z = %g\n.", impedance, PulseIntensity, u_Npole, z_last);
 
-	   
+
 
             if(save_impedance){
                 char *out_dir = NULL;
@@ -1435,7 +1420,7 @@ int main(int argc, char** argv) {
             tn += dt;
             iteration++;
         }
-	clock_t end = clock();
+        clock_t end = clock();
         double elapsed_secs_tmp = double(end - begin) / CLOCKS_PER_SEC;
         PetscPrintf(p4est->mpicomm, "\n###########################################\n\n");
         PetscPrintf(p4est->mpicomm, "\n########################################### TIMING DONE! elapsed time is:%g\n", elapsed_secs_tmp);
