@@ -37,7 +37,7 @@ my_p4est_electroporation_solve_t::my_p4est_electroporation_solve_t(const my_p4es
                                                                    const my_p4est_cell_neighbors_t *cell_neighbors)
     : ngbd_n(node_neighbors),  ngbd_c(cell_neighbors), myb(node_neighbors->myb),
       p4est(node_neighbors->p4est), ghost(node_neighbors->ghost), nodes(node_neighbors->nodes),
-      phi(NULL), rhs(NULL), sol_voro(NULL),
+      phi(NULL), rhs(NULL), sol_voro(NULL), vn_voro(NULL),
       voro_global_offset(p4est->mpisize),
       interp_phi(node_neighbors),
       rhs_m(node_neighbors),
@@ -240,7 +240,7 @@ void my_p4est_electroporation_solve_t::set_mu_grad_u_jump(Vec mu_grad_u_jump)
 }
 
 
-void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
+void my_p4est_electroporation_solve_t::solve(Vec solution, Vec vn_tree, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
     ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 
@@ -269,9 +269,9 @@ void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_init
     if(!is_voronoi_partition_constructed)
     {
         is_voronoi_partition_constructed = true;
-        //    ierr = PetscPrintf(p4est->mpicomm, "Computing voronoi points ...\n"); CHKERRXX(ierr);
+            ierr = PetscPrintf(p4est->mpicomm, "Computing voronoi points ...\n"); CHKERRXX(ierr);
         compute_voronoi_points();
-        //    ierr = PetscPrintf(p4est->mpicomm, "Done computing voronoi points.\n"); CHKERRXX(ierr);
+            ierr = PetscPrintf(p4est->mpicomm, "Done computing voronoi points.\n"); CHKERRXX(ierr);
     }
 
     /*
@@ -283,9 +283,9 @@ void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_init
     {
         matrix_has_nullspace = true;
 
-        //            ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
+        ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
         setup_linear_system();
-        //            ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
+        ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
 
         is_matrix_computed = true;
 
@@ -363,11 +363,11 @@ void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_init
     /* Solve the system */
     ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
 
-    //  ierr = PetscPrintf(p4est->mpicomm, "Solving linear system ...\n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Solving linear system ...\n"); CHKERRXX(ierr);
     ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
     ierr = KSPSolve(ksp, rhs, sol_voro); CHKERRXX(ierr);
     ierr = PetscLogEventEnd  (log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
-    //  ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system.\n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system.\n"); CHKERRXX(ierr);
 
     /* update ghosts */
     ierr = VecGhostUpdateBegin(sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -375,8 +375,19 @@ void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_init
 
     /* interpolate the solution back onto the original mesh */
     interpolate_solution_from_voronoi_to_tree(solution);
+    Vec vn_voro;
+    ierr = VecDuplicate(sol_voro, &vn_voro); CHKERRXX(ierr);
+    compute_jump(vn_voro);
+    Vec l0, l;
+    ierr = VecGhostGetLocalForm(sol_voro, &l); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(vn_voro, &l0); CHKERRXX(ierr);
+    ierr = VecCopy(l0, l); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(sol_voro, &l); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(vn_voro, &l0); CHKERRXX(ierr);
 
+    interpolate_solution_from_voronoi_to_tree(vn_tree);
     ierr = VecDestroy(sol_voro); CHKERRXX(ierr);
+    ierr = VecDestroy(vn_voro); CHKERRXX(ierr);
 
     ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 }
@@ -1223,7 +1234,95 @@ void my_p4est_electroporation_solve_t::compute_voronoi_cell(unsigned int n, Voro
     ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
+void my_p4est_electroporation_solve_t::compute_jump(Vec vn_voro)
+{
+    double *sol_voro_p, *vn_voro_p;
+    ierr = VecGetArray(vn_voro, &vn_voro_p); CHKERRXX(ierr);
+    ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
 
+    std::vector<PetscInt> d_nnz(num_local_voro, 1), o_nnz(num_local_voro, 0);
+
+    for(unsigned int n=0; n<num_local_voro; ++n)
+    {
+       	PetscInt global_n_idx = n+voro_global_offset[p4est->mpirank];
+#ifdef P4_TO_P8
+        Point3 pc = voro_points[n];
+#else
+        Point2 pc = voro_points[n];
+#endif
+#ifdef P4_TO_P8
+        Voronoi3D voro;
+#else
+        Voronoi2D voro;
+#endif
+        compute_voronoi_cell(n, voro);
+
+#ifdef P4_TO_P8
+        const std::vector<Voronoi3DPoint> *points;
+#else
+        const std::vector<Point2> *partition;
+        const std::vector<Voronoi2DPoint> *points;
+        voro.get_Partition(partition);
+#endif
+        voro.get_Points(points);
+#ifdef P4_TO_P8
+        double phi_n = interp_phi(pc.x, pc.y, pc.z);
+#else
+        double phi_n = interp_phi(pc.x, pc.y);
+#endif
+        for(unsigned int l=0; l<points->size(); ++l)
+        {
+#ifdef P4_TO_P8
+            double s = (*points)[l].s;
+#else
+            int k = (l+partition->size()-1) % partition->size();
+            double s = ((*partition)[k]-(*partition)[l]).norm_L2();
+#endif
+            /* desperate fix: avoid 0s in the diagonal entries of the matrix because of roundoff error at high resolutions beyond level 8 */
+            if(s<1e-20)
+                  s=1e-20;
+                
+            if((*points)[l].n>=0)
+            {
+            /* regular point */
+#ifdef P4_TO_P8
+                Point3 pl = (*points)[l].p;
+                double phi_l = interp_phi(pl.x, pl.y, pl.z);
+#else
+                Point2 pl = (*points)[l].p;
+                double phi_l = interp_phi(pl.x, pl.y);
+#endif
+                double d = (pc - pl).norm_L2();
+		PetscInt global_l_idx;
+                if((unsigned int)(*points)[l].n<num_local_voro)
+                {
+                    global_l_idx = (*points)[l].n + voro_global_offset[p4est->mpirank];
+                    d_nnz[n]++;
+                }
+                else
+                {
+                    global_l_idx = voro_ghost_local_num[(*points)[l].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[l].n-num_local_voro]];
+                    o_nnz[n]++;
+                }
+		if(phi_n*phi_l<0)
+                {
+		    if(phi_l>0)
+                    	vn_voro_p[n] = sol_voro_p[(*points)[l].n] - sol_voro_p[n];
+		    else
+			vn_voro_p[n] = sol_voro_p[n] - sol_voro_p[(*points)[l].n];
+		}
+	}
+    }
+  }
+  ierr = VecRestoreArray(vn_voro, &vn_voro_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+
+/* update ghosts */
+  ierr = VecGhostUpdateBegin(vn_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (vn_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+
+}
 
 void my_p4est_electroporation_solve_t::setup_linear_system()
 {
@@ -1348,10 +1447,10 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 #endif
 
             /* desperate fix: avoid 0s in the diagonal entries of the matrix because of roundoff error at high resolutions beyond level 8 */
-            if(s<1e-100)
+            if(s<1e-20)
             {
                 //PetscPrintf(p4est->mpicomm, "s %g\n", s);
-                s=1e-100;
+                s=1e-20;
             }
             if((*points)[l].n>=0)
             {
@@ -1524,9 +1623,6 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                         }
                     }
 
-
-
-
                 }
                 else
                 {
@@ -1624,7 +1720,6 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 
     ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
-
     PetscInt num_owned_global = voro_global_offset[p4est->mpisize];
     PetscInt num_owned_local  = (PetscInt) num_local_voro;
 
@@ -1689,7 +1784,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
 
     double *rhs_p;
     ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
-
+    
     for(unsigned int n=0; n<num_local_voro; ++n)
     {
 #ifdef P4_TO_P8
@@ -1890,6 +1985,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                             throw std::invalid_argument("Unknown order ...");
                         }
                     }
+		  
 
 
                 }
@@ -1943,7 +2039,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
     }
 
     ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
-
+   
     if (matrix_has_nullspace)
         ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
 

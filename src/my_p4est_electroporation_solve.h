@@ -154,6 +154,7 @@ class my_p4est_electroporation_solve_t
   Vec phi;
   Vec rhs;
   Vec sol_voro;
+  Vec vn_voro;
   unsigned int num_local_voro;
 #ifdef P4_TO_P8
   std::vector<Point3> voro_points;
@@ -307,8 +308,8 @@ public:
   inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT) {
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
-
+  void solve(Vec solution, Vec vn_tree, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+  void compute_jump(Vec vn_voro);
   double interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const;
   void interpolate_solution_from_voronoi_to_tree(Vec solution) const;
 
