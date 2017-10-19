@@ -316,7 +316,19 @@ public:
   }
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 
-//  void compute_jump(Vec vn_voro);
+  void compute_jump(Vec vn_voro);
+
+#ifdef P4_TO_P8
+double extend_over_interface_Voronoi(Voronoi3D voro, unsigned int n0, unsigned int n1);
+#else
+double extend_over_interface_Voronoi(Voronoi2D voro, unsigned int n0, unsigned int n1);
+#endif
+
+#ifdef P4_TO_P8
+double interpolate_Voronoi_at_point(Point3 location);
+#else
+double interpolate_Voronoi_at_point(Point2 location);
+#endif
 
   void compute_electroporation(Vec X0, Vec X1, Vec Sm, Vec vn);
 
