@@ -1283,40 +1283,39 @@ void my_p4est_electroporation_solve_t::compute_jump(Vec vn_voro)
 #else
         double phi_n = interp_phi(pc.x, pc.y);
 #endif
-        for(unsigned int l=0; l<points->size(); ++l)
-        {
 
-            if((*points)[l].n>=0)
+        // only sweep through each pair of Voronoi points ONCE by looking at nodes on one side of the interfaces.
+        if(phi_n>0)
+        {
+            for(unsigned int l=0; l<points->size(); ++l)
             {
-                /* regular point */
+
+                if((*points)[l].n>=0)
+                {
+                    /* regular point */
 #ifdef P4_TO_P8
-                Point3 pl = (*points)[l].p;
-                double phi_l = interp_phi(pl.x, pl.y, pl.z);
+                    Point3 pl = (*points)[l].p;
+                    double phi_l = interp_phi(pl.x, pl.y, pl.z);
 #else
-                Point2 pl = (*points)[l].p;
-                double phi_l = interp_phi(pl.x, pl.y);
+                    Point2 pl = (*points)[l].p;
+                    double phi_l = interp_phi(pl.x, pl.y);
 #endif
 
-                if(phi_n*phi_l<0)
-                {
-                    int n0 = n;
-                    int n1 = (*points)[l].n;
-                    // extend from ex/in-terior to in/ex-terior on Voronoi mesh
-                    double u0 = extend_over_interface_Voronoi(voro, n0, n1);
-                    double u1 = extend_over_interface_Voronoi(voro, n1, n0);
-                    double v0, v1;
-                    if(phi_n>0)
+                    if(phi_n*phi_l<0)
                     {
+                        int n0 = n;
+                        int n1 = (*points)[l].n;
+                        // extend from ex/in-terior to in/ex-terior on Voronoi mesh
+                        double u0 = extend_over_interface_Voronoi(voro, n0, n1);
+                        double u1 = extend_over_interface_Voronoi(voro, n1, n0);
+                        // compute the two approximations to jump around the interface
+                        double v0, v1;
                         v0 = sol_voro_p[n] - u0;
                         v1 = u1 - sol_voro_p[(*points)[l].n];
+                        // assign the average jump to both the Voronoi points across the interface
+                        vn_voro_p[n] = 0.5*(v0 + v1);
+                        vn_voro_p[(*points)[l].n] = 0.5*(v0 + v1);
                     }
-                    else
-                    {
-                        v0 = u0 - sol_voro_p[n];
-                        v1 = sol_voro_p[(*points)[l].n] - u1;
-                    }
-                    vn_voro_p[n] = 0.5*(v0 + v1);
-                    vn_voro_p[(*points)[l].n] = 0.5*(v0 + v1);
                 }
             }
         }
@@ -1335,35 +1334,28 @@ double my_p4est_electroporation_solve_t::extend_over_interface_Voronoi(Voronoi3D
 double my_p4est_electroporation_solve_t::extend_over_interface_Voronoi(Voronoi2D voro, unsigned int n0, unsigned int n1)
 #endif
 {
+    // extends the solution from voronoi nodes downstream from "n1"  crossing over the interface to the voronoi node "n0".
 #ifdef P4_TO_P8
     Point3 pc= voro[n0].get_Center_Point();
     Point3 norm = voro[n1].get_Center_Point() - voro[n0].get_Center_Point();
-    double d0 = norm.norm_L2();
-    double diag = 5*d0/2;
-    norm = norm.normalize();
-    double p1 = sol_voro_p[n1];
-    double d1 = 0;
-    double d2 = diag;
-    Point3 tmp = pc + norm*(d0 + diag);
-    double p2 = interpolate_Voronoi_at_point(tmp);
-    double d3 = 2*diag;
-    tmp = pc + norm*(d0 + 2*diag);
-    double p3 = interpolate_Voronoi_at_point(tmp);
-    double dif01 = (p2-p1)/(d2-d1);
-    double dif12 = (p3-p2)/(d3-d2);
-    double dif012 = (dif12-dif01)/(d3-d1);
-
-    return p1 + (-d0-d1)*dif01 + (-d0-d1)*(-d0-d2)*dif012;
 #else
     Point2 pc= voro[n0].get_Center_Point();
     Point2 norm = voro[n1].get_Center_Point() - voro[n0].get_Center_Point();
+#endif
     double d0 = norm.norm_L2();
     double diag = 5*d0/2;
     norm = norm.normalize();
+    double *sol_voro_p;
+    ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
     double p1 = sol_voro_p[n1];
+    ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
     double d1 = 0;
     double d2 = diag;
+#ifdef P4_TO_P8
+    Point3 tmp = pc + norm*(d0 + diag);
+#else
     Point2 tmp = pc + norm*(d0 + diag);
+#endif
     double p2 = interpolate_Voronoi_at_point(tmp);
     double d3 = 2*diag;
     tmp = pc + norm*(d0 + 2*diag);
@@ -1373,7 +1365,6 @@ double my_p4est_electroporation_solve_t::extend_over_interface_Voronoi(Voronoi2D
     double dif012 = (dif12-dif01)/(d3-d1);
 
     return p1 + (-d0-d1)*dif01 + (-d0-d1)*(-d0-d2)*dif012;
-#endif
 }
 
 #ifdef P4_TO_P8
