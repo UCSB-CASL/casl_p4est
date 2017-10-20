@@ -103,8 +103,8 @@ double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0 
 
 
 
-int lmin = 3;
-int lmax = 7;
+int lmin = 2;
+int lmax = 5;
 int nb_splits = 1;
 
 double dt_scale = 400;
@@ -859,7 +859,6 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         ierr = VecDestroy(u_plus_cte); CHKERRXX(ierr);
         ierr = VecDestroy(u_minus_cte); CHKERRXX(ierr);
 */
-        ////////////
 
         solver.set_Sm(Sm);
         solver.set_X0(X0);
