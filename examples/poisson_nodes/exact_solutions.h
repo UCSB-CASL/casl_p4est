@@ -31,7 +31,6 @@ public:
       case 3: return exp(x-y*y)*(y+cos(x));
       case 4: return sin(x+0.3*y)*cos(x-0.7*y) + 3.*log(sqrt(x*x+y*y+0.5));
       case 10: return (sin(PI*x+phase_x)*sin(PI*y+phase_y));
-      case 5: return sin(y)*cos(x);
     }
   }
 } u_cf;
@@ -116,7 +115,6 @@ public:
       case 4: return cos(x+0.3*y)*cos(x-0.7*y) - sin(x+0.3*y)*sin(x-0.7*y)
             + 3.*x/(x*x+y*y+0.5);
       case 10: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y);
-      case 5: return -sin(y)*sin(x);
     }
   }
 } ux_cf;
@@ -134,7 +132,6 @@ public:
       case 4: return 0.3*cos(x+0.3*y)*cos(x-0.7*y) + 0.7*sin(x+0.3*y)*sin(x-0.7*y)
         + 3.*y/(x*x+y*y+0.5);
       case 10: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y);
-      case 5: return cos(x)*cos(y);
     }
   }
 } uy_cf;
@@ -156,7 +153,6 @@ public:
       case 4: return -2.58*sin(x+0.3*y)*cos(x-0.7*y) - 1.58*cos(x+0.3*y)*sin(x-0.7*y)
         + 3./pow(x*x+y*y+0.5, 2.);
       case 10: return -2.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y);
-      case 5: return -2.0*sin(y)*cos(x);
     }
   }
 } lap_u_cf;

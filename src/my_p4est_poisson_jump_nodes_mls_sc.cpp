@@ -141,8 +141,10 @@ my_p4est_poisson_jump_nodes_mls_sc_t::my_p4est_poisson_jump_nodes_mls_sc_t(const
 //  eps_ifc_ = eps;
 //#endif
 
-  eps_dom_ = 1.e-15;
+  eps_dom_ = 1.e-13;
   eps_ifc_ = 1.e-13;
+
+  use_sc_scheme_ = false;
 }
 
 my_p4est_poisson_jump_nodes_mls_sc_t::~my_p4est_poisson_jump_nodes_mls_sc_t()
@@ -486,26 +488,29 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::preallocate_matrix()
         }
 
 
-      bool is_interface_m00 = phi_p[n]*phi_p[neighbors[nn_m00]] < 0;
-      bool is_interface_p00 = phi_p[n]*phi_p[neighbors[nn_p00]] < 0;
-      bool is_interface_0m0 = phi_p[n]*phi_p[neighbors[nn_0m0]] < 0;
-      bool is_interface_0p0 = phi_p[n]*phi_p[neighbors[nn_0p0]] < 0;
+      if (use_sc_scheme_)
+      {
+        bool is_interface_m00 = phi_p[n]*phi_p[neighbors[nn_m00]] < 0;
+        bool is_interface_p00 = phi_p[n]*phi_p[neighbors[nn_p00]] < 0;
+        bool is_interface_0m0 = phi_p[n]*phi_p[neighbors[nn_0m0]] < 0;
+        bool is_interface_0p0 = phi_p[n]*phi_p[neighbors[nn_0p0]] < 0;
 #ifdef P4_TO_P8
-      bool is_interface_00m = phi_p[n]*phi_p[neighbors[nn_00m]] < 0;
-      bool is_interface_00p = phi_p[n]*phi_p[neighbors[nn_00p]] < 0;
+        bool is_interface_00m = phi_p[n]*phi_p[neighbors[nn_00m]] < 0;
+        bool is_interface_00p = phi_p[n]*phi_p[neighbors[nn_00p]] < 0;
 #endif
 
-      p4est_locidx_t neighbors_of_nei[num_neighbors_max_];
-      bool neighbors_of_nei_exist[num_neighbors_max_];
+        p4est_locidx_t neighbors_of_nei[num_neighbors_max_];
+        bool neighbors_of_nei_exist[num_neighbors_max_];
 
-      if (is_interface_m00) { get_all_neighbors_(neighbors[nn_m00], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_m00] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
-      if (is_interface_p00) { get_all_neighbors_(neighbors[nn_p00], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_p00] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
-      if (is_interface_0m0) { get_all_neighbors_(neighbors[nn_0m0], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_0m0] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
-      if (is_interface_0p0) { get_all_neighbors_(neighbors[nn_0p0], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_0p0] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
+        if (is_interface_m00) { get_all_neighbors_(neighbors[nn_m00], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_m00] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
+        if (is_interface_p00) { get_all_neighbors_(neighbors[nn_p00], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_p00] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
+        if (is_interface_0m0) { get_all_neighbors_(neighbors[nn_0m0], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_0m0] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
+        if (is_interface_0p0) { get_all_neighbors_(neighbors[nn_0p0], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_0p0] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
 #ifdef P4_TO_P8
-      if (is_interface_00m) { get_all_neighbors_(neighbors[nn_00m], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_00m] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
-      if (is_interface_00p) { get_all_neighbors_(neighbors[nn_00p], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_00p] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
+        if (is_interface_00m) { get_all_neighbors_(neighbors[nn_00m], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_00m] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
+        if (is_interface_00p) { get_all_neighbors_(neighbors[nn_00p], neighbors_of_nei, neighbors_of_nei_exist); if (neighbors_of_nei[nn_00p] < nodes_->num_owned_indeps) { d_nnz[2*n+1] += 1; d_nnz[2*n] += 1; } else { o_nnz[2*n+1] += 1; o_nnz[2*n] += 1; } }
 #endif
+      }
 
     }
   }
@@ -689,6 +694,32 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::solve(Vec sol_m, Vec sol_p, bool use_
     ierr = PetscOptionsSetValue("-pc_gamg_sym_graph", "true"); CHKERRXX(ierr);
   }
 
+  if (!strcmp(pc_type, PCASM))
+  {
+//    ierr = PetscOptionsSetValue("-pc_asm_blocks", "1000"); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_asm_overlap", "0"); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_asm_type", "restrict"); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_asm_local_type", "additive"); CHKERRXX(ierr);
+
+    ierr = PetscOptionsSetValue("-sub_pc_type", "ilu"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-sub_pc_factor_levels", "3"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-sub_ksp_type", "preonly"); CHKERRXX(ierr);
+  }
+
+  if (!strcmp(pc_type, PCGASM))
+  {
+//    ierr = PetscOptionsSetValue("-pc_asm_blocks", "100"); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_asm_overlap", "0"); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_asm_type", "restrict"); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_asm_local_type", "additive"); CHKERRXX(ierr);
+
+    ierr = PetscOptionsSetValue("-sub_pc_type", "ilu"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-sub_pc_factor_levels", "5"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-sub_ksp_type", "preonly"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-sub_pc_factor_diagonal_fill", "true"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-sub_pc_factor_nonzeros_along_diagonal", "true"); CHKERRXX(ierr);
+  }
+
 
 //  if (!strcmp(ksp_type, KSPGMRES))
 //  {
@@ -815,8 +846,9 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
   double eps = 1E-6*d_min_*d_min_;
 //#endif
 
-  double domain_rel_thresh = eps*eps;
-  double interface_rel_thresh = eps_ifc_;//0*eps;
+  double domain_rel_thresh = 1.e-13;
+  double interface_rel_thresh = 1.e-13;//0*eps;
+//  double interface_rel_thresh = eps_ifc_;//0*eps;
 
   //---------------------------------------------------------------------
   // get access to LSFs
@@ -1705,13 +1737,13 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
 //        && more_than_half_face_00m
 //        && more_than_half_face_00p
 
-        if (phi_eff_000*phi_eff_p[neighbors[nn_m00]] < 0) { is_interface_m00 = true; theta_m00 = find_interface_location_mls(n, neighbors[nn_m00], d_m00, phi_p, phi_xx_p); }
-        if (phi_eff_000*phi_eff_p[neighbors[nn_p00]] < 0) { is_interface_p00 = true; theta_p00 = find_interface_location_mls(n, neighbors[nn_p00], d_p00, phi_p, phi_xx_p); }
-        if (phi_eff_000*phi_eff_p[neighbors[nn_0m0]] < 0) { is_interface_0m0 = true; theta_0m0 = find_interface_location_mls(n, neighbors[nn_0m0], d_0m0, phi_p, phi_yy_p); }
-        if (phi_eff_000*phi_eff_p[neighbors[nn_0p0]] < 0) { is_interface_0p0 = true; theta_0p0 = find_interface_location_mls(n, neighbors[nn_0p0], d_0p0, phi_p, phi_yy_p); }
+        if (phi_eff_000*phi_eff_p[neighbors[nn_m00]] < 0) { is_interface_m00 = true; theta_m00 = find_interface_location_mls(n, neighbors[nn_m00], d_m00, phi_p, phi_xx_p); if (theta_m00 < eps) theta_m00 = eps; }
+        if (phi_eff_000*phi_eff_p[neighbors[nn_p00]] < 0) { is_interface_p00 = true; theta_p00 = find_interface_location_mls(n, neighbors[nn_p00], d_p00, phi_p, phi_xx_p); if (theta_p00 < eps) theta_p00 = eps; }
+        if (phi_eff_000*phi_eff_p[neighbors[nn_0m0]] < 0) { is_interface_0m0 = true; theta_0m0 = find_interface_location_mls(n, neighbors[nn_0m0], d_0m0, phi_p, phi_yy_p); if (theta_0m0 < eps) theta_0m0 = eps; }
+        if (phi_eff_000*phi_eff_p[neighbors[nn_0p0]] < 0) { is_interface_0p0 = true; theta_0p0 = find_interface_location_mls(n, neighbors[nn_0p0], d_0p0, phi_p, phi_yy_p); if (theta_0p0 < eps) theta_0p0 = eps; }
 #ifdef P4_TO_P8
-        if (phi_eff_000*phi_eff_p[neighbors[nn_00m]] < 0) { is_interface_00m = true; theta_00m = find_interface_location_mls(n, neighbors[nn_00m], d_00m, phi_p, phi_zz_p); }
-        if (phi_eff_000*phi_eff_p[neighbors[nn_00p]] < 0) { is_interface_00p = true; theta_00p = find_interface_location_mls(n, neighbors[nn_00p], d_00p, phi_p, phi_zz_p); }
+        if (phi_eff_000*phi_eff_p[neighbors[nn_00m]] < 0) { is_interface_00m = true; theta_00m = find_interface_location_mls(n, neighbors[nn_00m], d_00m, phi_p, phi_zz_p); if (theta_00m < eps) theta_00m = eps; }
+        if (phi_eff_000*phi_eff_p[neighbors[nn_00p]] < 0) { is_interface_00p = true; theta_00p = find_interface_location_mls(n, neighbors[nn_00p], d_00p, phi_p, phi_zz_p); if (theta_00p < eps) theta_00p = eps; }
 #endif
 
         double diag_add_value = phi_eff_000 < 0 ? diag_add_m_ptr[n] : diag_add_p_ptr[n];
@@ -1743,7 +1775,7 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
         wr_000 = diag_add_value -(wr_m00 + wr_p00 + wr_0m0 + wr_0p0);
 #endif
 
-        if (1)
+        if (!use_sc_scheme_)
         {
           if (is_interface_m00) { wg_000 += wr_m00*(d_m00-theta_m00)/d_m00; wg_m00 += wr_m00*theta_m00/d_m00; }
           if (is_interface_p00) { wg_000 += wr_p00*(d_p00-theta_p00)/d_p00; wg_p00 += wr_p00*theta_p00/d_p00; }
@@ -1808,29 +1840,32 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
 #endif
 
 
-          p4est_locidx_t neighbors_of_nei[num_neighbors_max_];
-          bool neighbors_of_nei_exist[num_neighbors_max_];
+          if (use_sc_scheme_)
+          {
+            p4est_locidx_t neighbors_of_nei[num_neighbors_max_];
+            bool neighbors_of_nei_exist[num_neighbors_max_];
 
-          p4est_locidx_t node_M00, node_P00, node_0M0, node_0P0, node_00M, node_00P;
+            p4est_locidx_t node_M00, node_P00, node_0M0, node_0P0, node_00M, node_00P;
 
-          if (is_interface_m00) { get_all_neighbors_(neighbors[nn_m00], neighbors_of_nei, neighbors_of_nei_exist); node_M00 = neighbors_of_nei[nn_m00]; }
-          if (is_interface_p00) { get_all_neighbors_(neighbors[nn_p00], neighbors_of_nei, neighbors_of_nei_exist); node_P00 = neighbors_of_nei[nn_p00]; }
-          if (is_interface_0m0) { get_all_neighbors_(neighbors[nn_0m0], neighbors_of_nei, neighbors_of_nei_exist); node_0M0 = neighbors_of_nei[nn_0m0]; }
-          if (is_interface_0p0) { get_all_neighbors_(neighbors[nn_0p0], neighbors_of_nei, neighbors_of_nei_exist); node_0P0 = neighbors_of_nei[nn_0p0]; }
+            if (is_interface_m00) { get_all_neighbors_(neighbors[nn_m00], neighbors_of_nei, neighbors_of_nei_exist); node_M00 = neighbors_of_nei[nn_m00]; }
+            if (is_interface_p00) { get_all_neighbors_(neighbors[nn_p00], neighbors_of_nei, neighbors_of_nei_exist); node_P00 = neighbors_of_nei[nn_p00]; }
+            if (is_interface_0m0) { get_all_neighbors_(neighbors[nn_0m0], neighbors_of_nei, neighbors_of_nei_exist); node_0M0 = neighbors_of_nei[nn_0m0]; }
+            if (is_interface_0p0) { get_all_neighbors_(neighbors[nn_0p0], neighbors_of_nei, neighbors_of_nei_exist); node_0P0 = neighbors_of_nei[nn_0p0]; }
 #ifdef P4_TO_P8
-          if (is_interface_00m) { get_all_neighbors_(neighbors[nn_00m], neighbors_of_nei, neighbors_of_nei_exist); node_00M = neighbors_of_nei[nn_00m]; }
-          if (is_interface_00p) { get_all_neighbors_(neighbors[nn_00p], neighbors_of_nei, neighbors_of_nei_exist); node_00P = neighbors_of_nei[nn_00p]; }
+            if (is_interface_00m) { get_all_neighbors_(neighbors[nn_00m], neighbors_of_nei, neighbors_of_nei_exist); node_00M = neighbors_of_nei[nn_00m]; }
+            if (is_interface_00p) { get_all_neighbors_(neighbors[nn_00p], neighbors_of_nei, neighbors_of_nei_exist); node_00P = neighbors_of_nei[nn_00p]; }
 #endif
 
 
-          if (fabs(wg_M00/wr_000) > EPS && is_interface_m00) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_M00] + shift_g, wg_M00/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
-          if (fabs(wg_P00/wr_000) > EPS && is_interface_p00) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_P00] + shift_g, wg_P00/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
-          if (fabs(wg_0M0/wr_000) > EPS && is_interface_0m0) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_0M0] + shift_g, wg_0M0/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
-          if (fabs(wg_0P0/wr_000) > EPS && is_interface_0p0) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_0P0] + shift_g, wg_0P0/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
+            if (fabs(wg_M00/wr_000) > EPS && is_interface_m00) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_M00] + shift_g, wg_M00/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
+            if (fabs(wg_P00/wr_000) > EPS && is_interface_p00) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_P00] + shift_g, wg_P00/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
+            if (fabs(wg_0M0/wr_000) > EPS && is_interface_0m0) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_0M0] + shift_g, wg_0M0/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
+            if (fabs(wg_0P0/wr_000) > EPS && is_interface_0p0) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_0P0] + shift_g, wg_0P0/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
 #ifdef P4_TO_P8
-          if (fabs(wg_00M/wr_000) > EPS && is_interface_00m) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_00M] + shift_g, wg_00M/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
-          if (fabs(wg_00P/wr_000) > EPS && is_interface_00p) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_00P] + shift_g, wg_00P/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
+            if (fabs(wg_00M/wr_000) > EPS && is_interface_00m) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_00M] + shift_g, wg_00M/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
+            if (fabs(wg_00P/wr_000) > EPS && is_interface_00p) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[node_00P] + shift_g, wg_00P/wr_000,  ADD_VALUES); CHKERRXX(ierr); }
 #endif
+          }
 
 //          if (fabs(wr_m00/wg_000) > EPS && !is_interface_m00 && neighbors_exist_m[nn_m00]) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[neighbors[nn_m00]] + shift_r, wr_m00/wg_000,  ADD_VALUES); CHKERRXX(ierr); }
 //          if (fabs(wr_p00/wg_000) > EPS && !is_interface_p00 && neighbors_exist_m[nn_p00]) { ierr = MatSetValue(A_, 2*node_000_g + shift, 2*petsc_gloidx_[neighbors[nn_p00]] + shift_r, wr_p00/wg_000,  ADD_VALUES); CHKERRXX(ierr); }
@@ -1946,7 +1981,7 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
           }
 
         double theta = EPS;
-        //          double theta = 10;
+        if (!use_sc_scheme_) theta = 10;
 
         // face m00
         if (s_m00_m/full_sx > interface_rel_thresh)
@@ -2562,8 +2597,8 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
             neighbors_exist_m[i] = neighbors_exist_m[i] && (volumes_p[neighbors[i]] > eps_dom_);
           }
 
-//              double theta = EPS;
-        double theta = 10;
+        double theta = EPS;
+        if (!use_sc_scheme_) theta = 10;
 
         // face m00
         if (s_m00_m/full_sx > interface_rel_thresh)
@@ -2864,40 +2899,40 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
 
         double add_to_rhs = 0;
 
-        if (phi_eff_000 < 0)
-        {
-          w_m[nn_m00] -= w_m[nn_000]*wr_m00/wr_000;
-          w_m[nn_p00] -= w_m[nn_000]*wr_p00/wr_000;
-          w_m[nn_0m0] -= w_m[nn_000]*wr_0m0/wr_000;
-          w_m[nn_0p0] -= w_m[nn_000]*wr_0p0/wr_000;
+//        if (phi_eff_000 < 0)
+//        {
+//          w_m[nn_m00] -= w_m[nn_000]*wr_m00/wr_000;
+//          w_m[nn_p00] -= w_m[nn_000]*wr_p00/wr_000;
+//          w_m[nn_0m0] -= w_m[nn_000]*wr_0m0/wr_000;
+//          w_m[nn_0p0] -= w_m[nn_000]*wr_0p0/wr_000;
 
-          w_p[nn_000] -= w_m[nn_000]*wg_000/wr_000;
-          w_p[nn_m00] -= w_m[nn_000]*wg_m00/wr_000;
-          w_p[nn_p00] -= w_m[nn_000]*wg_p00/wr_000;
-          w_p[nn_0m0] -= w_m[nn_000]*wg_0m0/wr_000;
-          w_p[nn_0p0] -= w_m[nn_000]*wg_0p0/wr_000;
+//          w_p[nn_000] -= w_m[nn_000]*wg_000/wr_000;
+//          w_p[nn_m00] -= w_m[nn_000]*wg_m00/wr_000;
+//          w_p[nn_p00] -= w_m[nn_000]*wg_p00/wr_000;
+//          w_p[nn_0m0] -= w_m[nn_000]*wg_0m0/wr_000;
+//          w_p[nn_0p0] -= w_m[nn_000]*wg_0p0/wr_000;
 
-          add_to_rhs = -w_m[nn_000]*rhs_fd;
+//          add_to_rhs = -w_m[nn_000]*rhs_fd;
 
-          w_m[nn_000] = 0.;
-        }
-        else
-        {
-          w_p[nn_m00] -= w_p[nn_000]*wr_m00/wr_000;
-          w_p[nn_p00] -= w_p[nn_000]*wr_p00/wr_000;
-          w_p[nn_0m0] -= w_p[nn_000]*wr_0m0/wr_000;
-          w_p[nn_0p0] -= w_p[nn_000]*wr_0p0/wr_000;
+//          w_m[nn_000] = 0.;
+//        }
+//        else
+//        {
+//          w_p[nn_m00] -= w_p[nn_000]*wr_m00/wr_000;
+//          w_p[nn_p00] -= w_p[nn_000]*wr_p00/wr_000;
+//          w_p[nn_0m0] -= w_p[nn_000]*wr_0m0/wr_000;
+//          w_p[nn_0p0] -= w_p[nn_000]*wr_0p0/wr_000;
 
-          w_m[nn_000] -= w_p[nn_000]*wg_000/wr_000;
-          w_m[nn_m00] -= w_p[nn_000]*wg_m00/wr_000;
-          w_m[nn_p00] -= w_p[nn_000]*wg_p00/wr_000;
-          w_m[nn_0m0] -= w_p[nn_000]*wg_0m0/wr_000;
-          w_m[nn_0p0] -= w_p[nn_000]*wg_0p0/wr_000;
+//          w_m[nn_000] -= w_p[nn_000]*wg_000/wr_000;
+//          w_m[nn_m00] -= w_p[nn_000]*wg_m00/wr_000;
+//          w_m[nn_p00] -= w_p[nn_000]*wg_p00/wr_000;
+//          w_m[nn_0m0] -= w_p[nn_000]*wg_0m0/wr_000;
+//          w_m[nn_0p0] -= w_p[nn_000]*wg_0p0/wr_000;
 
-          add_to_rhs = -w_p[nn_000]*rhs_fd;
+//          add_to_rhs = -w_p[nn_000]*rhs_fd;
 
-          w_p[nn_000] = 0.;
-        }
+//          w_p[nn_000] = 0.;
+//        }
 
 //        int shift    = phi_eff_000 <= 0 ? 0 : 1;
         int shift    = phi_eff_000 <= 0 ? 1 : 0;
@@ -2916,6 +2951,9 @@ void my_p4est_poisson_jump_nodes_mls_sc_t::setup_linear_system_(bool setup_matri
 //            if (neighbors_exist_p[i]) w_p[i] /= w_000;
             w_m[i] /= w_000;
             w_p[i] /= w_000;
+
+            if (w_m[i] != w_m[i]) { std::cout << "w_m = " << w_m[i] << " w_000 = " << w_000 << " v_m = " << volume_cut_cell_m << " v_p = " << volume_cut_cell_p <<"\n"; throw; }
+            if (w_p[i] != w_p[i]) { std::cout << "w_p = " << w_p[i] << " w_000 = " << w_000 << "\n"; throw; }
           }
 
 //          phi_eff_000 <= 0 ? w_m[nn_000] = 1. : w_p[nn_000] = 1.;
@@ -4297,6 +4335,7 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
 //    map_2d[nn_0pm] = true; weights_2d[nn_0pm] =(1.-a)*    b ;
 //    map_2d[nn_ppm] = true; weights_2d[nn_ppm] =    a *    b ;
 //  }
+
   else if (A <= 0 && B <= 0 && B <= A &&
            neighbors_exists_2d[nn_0mm] &&
            neighbors_exists_2d[nn_mmm] )
@@ -4304,7 +4343,6 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
     map_2d[nn_00m] = true; weights_2d[nn_00m] = (1.-b);
     map_2d[nn_0mm] = true; weights_2d[nn_0mm] = b-a;
     map_2d[nn_mmm] = true; weights_2d[nn_mmm] = a;
-//    semi_fallback = true;
   }
   else if (A <= 0 && B <= 0 && B >= A &&
            neighbors_exists_2d[nn_m0m] &&
@@ -4313,7 +4351,6 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
     map_2d[nn_00m] = true; weights_2d[nn_00m] = (1.-a);
     map_2d[nn_m0m] = true; weights_2d[nn_m0m] = a-b;
     map_2d[nn_mmm] = true; weights_2d[nn_mmm] = b;
-//    semi_fallback = true;
   }
   else if (A >= 0 && B <= 0 && B <= -A &&
            neighbors_exists_2d[nn_0mm] &&
@@ -4322,7 +4359,6 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
     map_2d[nn_00m] = true; weights_2d[nn_00m] = (1.-b);
     map_2d[nn_0mm] = true; weights_2d[nn_0mm] = b-a;
     map_2d[nn_pmm] = true; weights_2d[nn_pmm] = a;
-//    semi_fallback = true;
   }
   else if (A >= 0 && B <= 0 && B >= -A &&
            neighbors_exists_2d[nn_p0m] &&
@@ -4331,7 +4367,6 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
     map_2d[nn_00m] = true; weights_2d[nn_00m] = (1.-a);
     map_2d[nn_p0m] = true; weights_2d[nn_p0m] = a-b;
     map_2d[nn_pmm] = true; weights_2d[nn_pmm] = b;
-//    semi_fallback = true;
   }
   else if (A <= 0 && B >= 0 && B <= -A &&
            neighbors_exists_2d[nn_m0m] &&
@@ -4340,7 +4375,6 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
     map_2d[nn_00m] = true; weights_2d[nn_00m] = (1.-a);
     map_2d[nn_m0m] = true; weights_2d[nn_m0m] = a-b;
     map_2d[nn_mpm] = true; weights_2d[nn_mpm] = b;
-//    semi_fallback = true;
   }
   else if (A <= 0 && B >= 0 && B >= -A &&
            neighbors_exists_2d[nn_0pm] &&
@@ -4349,7 +4383,6 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
     map_2d[nn_00m] = true; weights_2d[nn_00m] = (1.-b);
     map_2d[nn_0pm] = true; weights_2d[nn_0pm] = b-a;
     map_2d[nn_mpm] = true; weights_2d[nn_mpm] = a;
-//    semi_fallback = true;
   }
   else if (A >= 0 && B >= 0 && B <= A &&
            neighbors_exists_2d[nn_p0m] &&
@@ -4358,7 +4391,6 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
     map_2d[nn_00m] = true; weights_2d[nn_00m] = (1.-a);
     map_2d[nn_p0m] = true; weights_2d[nn_p0m] = a-b;
     map_2d[nn_ppm] = true; weights_2d[nn_ppm] = b;
-//    semi_fallback = true;
   }
   else if (A >= 0 && B >= 0 && B >= A &&
            neighbors_exists_2d[nn_0pm] &&
@@ -4367,13 +4399,14 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
     map_2d[nn_00m] = true; weights_2d[nn_00m] = (1.-b);
     map_2d[nn_0pm] = true; weights_2d[nn_0pm] = b-a;
     map_2d[nn_ppm] = true; weights_2d[nn_ppm] = a;
-//    semi_fallback = true;
   }
+
+
   else if (A <= 0 && B <= 0 &&
            neighbors_exists_2d[nn_m0m] &&
            neighbors_exists_2d[nn_0mm] )
   {
-    map_2d[nn_00m] = true; weights_2d[nn_00m] = 1.-a-b;
+    map_2d[nn_00m] = true; weights_2d[nn_00m] = 1.-b-a;
     map_2d[nn_m0m] = true; weights_2d[nn_m0m] = a;
     map_2d[nn_0mm] = true; weights_2d[nn_0mm] = b;
   }
@@ -4416,7 +4449,7 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
            neighbors_exists_2d[nn_mmm] )
   {
     map_2d[nn_00m] = true; weights_2d[nn_00m] = (1.+A);
-    map_2d[nn_m0m] = true; weights_2d[nn_m0m] = -A+b;
+    map_2d[nn_m0m] = true; weights_2d[nn_m0m] = -A+B;
     map_2d[nn_mmm] = true; weights_2d[nn_mmm] = -B;
     semi_fallback = true;
   }
@@ -4468,6 +4501,7 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
     map_2d[nn_ppm] = true; weights_2d[nn_ppm] = A;
     semi_fallback = true;
   }
+
   else if (neighbors_exists_2d[nn_m0m] &&
            neighbors_exists_2d[nn_0mm] )
   {
@@ -4499,6 +4533,32 @@ double my_p4est_poisson_jump_nodes_mls_sc_t::compute_weights_through_face(double
     map_2d[nn_p0m] = true; weights_2d[nn_p0m] = A;
     map_2d[nn_0pm] = true; weights_2d[nn_0pm] = B;
     semi_fallback = true;
+  }
+
+
+  else if (A <= 0 && neighbors_exists_2d[nn_m0m] )
+  {
+    map_2d[nn_00m] = true; weights_2d[nn_00m] = 1.-a;
+    map_2d[nn_m0m] = true; weights_2d[nn_m0m] = a;
+    full_fallback = true;
+  }
+  else if (B <= 0 && neighbors_exists_2d[nn_0mm] )
+  {
+    map_2d[nn_00m] = true; weights_2d[nn_00m] = 1.-b;
+    map_2d[nn_0mm] = true; weights_2d[nn_0mm] = b;
+    full_fallback = true;
+  }
+  else if (B >= 0 && neighbors_exists_2d[nn_0pm] )
+  {
+    map_2d[nn_00m] = true; weights_2d[nn_00m] = 1.-b;
+    map_2d[nn_0pm] = true; weights_2d[nn_0pm] = b;
+    full_fallback = true;
+  }
+  else if (A >= 0 && neighbors_exists_2d[nn_p0m] )
+  {
+    map_2d[nn_00m] = true; weights_2d[nn_00m] = 1.-a;
+    map_2d[nn_p0m] = true; weights_2d[nn_p0m] = a;
+    full_fallback = true;
   }
 
   else

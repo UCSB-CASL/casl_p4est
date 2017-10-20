@@ -21,6 +21,8 @@ public:
       case 2: return log((x+y+3.)/(y+z+3.))*sin(x+0.5*y+0.7*z);
       case 3: return exp(x+z-y*y)*(y+cos(x-z));
       case 4: return sin(x+0.3*y)*cos(x-0.7*y)*exp(z) + 3.*log(sqrt(x*x+y*y+z*z+0.5));
+      case 5: return exp(z);
+      case 6: return cos(x)*sin(y);
       case 10: return sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
     }
   }
@@ -37,7 +39,26 @@ public:
       case 2: return log((0.7*x+3.0)/(y+3.0))*sin(x+0.5*y);
       case 3: return exp(x-y*y)*(y+cos(x));
       case 4: return sin(x+0.3*y)*cos(x-0.7*y) + 3.*log(sqrt(x*x+y*y+0.5));
+      case 5: return exp(x);
+      case 6:
+        {
+          double p = mu_p_cf(x,y)/mu_m_cf(x,y);
+          double r = sqrt(x*x+y*y);
+          double r0 = 0.5+EPS;
+          return ( x*(p+1.) - x*(p-1.)*r0*r0/r/r )/( p+1.+r0*r0*(p-1.) );
+        }
+      case 7:
+        {
+          double p = mu_p_cf(x,y)/mu_m_cf(x,y);
+          double r = sqrt(x*x+y*y);
+          if (r < EPS) r = EPS;
+          double r0 = 0.5+EPS;
+          return 2.*x/( p+1.+r0*r0*(p-1.) );
+        }
+      case 8: return 1;
+      case 9: { double r2 = x*x+y*y; if (r2 < EPS) r2 = EPS; return 1+log(2.*sqrt(r2)); }
       case 10: return (sin(PI*x+phase_x)*sin(PI*y+phase_y));
+      case 11: return cos(x)*sin(y);
     }
   }
 } u_m_cf;
@@ -56,6 +77,8 @@ public:
       case 2: return log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)/(x+y+3.);
       case 3: return exp(x+z-y*y)*(y+cos(x-z)-sin(x-z));
       case 4: return ( cos(x+0.3*y)*cos(x-0.7*y) - sin(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*x/(x*x+y*y+z*z+0.5);
+      case 5: return 0;
+      case 6: return -sin(x)*sin(y);
     case 10: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
     }
   }
@@ -72,6 +95,8 @@ public:
       case 2: return 0.5*log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)*(1.0/(x+y+3.)-1.0/(y+z+3.));
       case 3: return exp(x+z-y*y)*(1.0 - 2.*y*(y+cos(x-z)));
       case 4: return ( 0.3*cos(x+0.3*y)*cos(x-0.7*y) + 0.7*sin(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*y/(x*x+y*y+z*z+0.5);
+      case 5: return 0;
+      case 6: return cos(x)*cos(y);
     case 10: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y)*sin(PI*z+phase_z);
     }
   }
@@ -88,6 +113,8 @@ public:
       case 2: return 0.7*log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)*(-1.0/(y+z+3.));
       case 3: return exp(x+z-y*y)*(y+cos(x-z)+sin(x-z));
       case 4: return cos(x-0.7*y)*sin(x+0.3*y)*exp(z) + 3.*z/(x*x+y*y+z*z+0.5);
+      case 5: return exp(z);
+      case 6: return 0;
     case 10: return PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*cos(PI*z+phase_z);
     }
   }
@@ -106,6 +133,8 @@ public:
             + ( 3./(x+y+3.) - 2.4/(y+z+3.) )*cos(x+0.5*y+0.7*z);
       case 3: return exp(x+z-y*y)*(-4.*y-2.*cos(x-z)+4.*y*y*(y+cos(x-z)));
       case 4: return -1.58*( sin(x+0.3*y)*cos(x-0.7*y) + cos(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*(x*x+y*y+z*z+1.5)/pow(x*x+y*y+z*z+0.5, 2.);
+      case 5: return exp(z);
+      case 6: return -2.*cos(x)*sin(y);
     case 10: return -3.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
     }
   }
@@ -124,7 +153,26 @@ public:
       case 3: return exp(x-y*y)*(y+cos(x)-sin(x));
       case 4: return cos(x+0.3*y)*cos(x-0.7*y) - sin(x+0.3*y)*sin(x-0.7*y)
             + 3.*x/(x*x+y*y+0.5);
+      case 5: return exp(x);
+      case 6:
+        {
+          double p = mu_p_cf(x,y)/mu_m_cf(x,y);
+          double r = sqrt(x*x+y*y);
+          if (r < EPS) r = EPS;
+          double r0 = 0.5+EPS;
+          return ( p+1.-r0*r0*(p-1.)*(y*y-x*x)/pow(r,4.) )/( p+1.+r0*r0*(p-1.) );
+        }
+      case 7:
+        {
+          double p = mu_p_cf(x,y)/mu_m_cf(x,y);
+          double r = sqrt(x*x+y*y);
+          double r0 = 0.5+EPS;
+          return 2./( p+1.+r0*r0*(p-1.) );
+        }
+      case 8: return 0;
+      case 9: { double r2 = x*x+y*y; if (r2 < EPS) r2 = EPS; return x/r2; }
       case 10: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y);
+      case 11: return -sin(x)*sin(y);
     }
   }
 } ux_m_cf;
@@ -142,7 +190,23 @@ public:
       case 3: return exp(x-y*y)*(1.-2.*y*(y+cos(x)));
       case 4: return 0.3*cos(x+0.3*y)*cos(x-0.7*y) + 0.7*sin(x+0.3*y)*sin(x-0.7*y)
         + 3.*y/(x*x+y*y+0.5);
+      case 5: return 0;
+      case 6:
+        {
+          double p = mu_p_cf(x,y)/mu_m_cf(x,y);
+          double r = sqrt(x*x+y*y);
+          if (r < EPS) r = EPS;
+          double r0 = 0.5+EPS;
+          return ( (p-1.)*r0*r0*2.*x*y/pow(r,4.) )/( p+1.+r0*r0*(p-1.) );
+        }
+      case 7:
+        {
+          return 0;
+        }
+      case 8: return 0;
+      case 9: { double r2 = x*x+y*y; if (r2 < EPS) r2 = EPS; return y/r2; }
       case 10: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y);
+      case 11: return cos(x)*cos(y);
     }
   }
 } uy_m_cf;
@@ -163,7 +227,13 @@ public:
       case 3: return exp(x-y*y)*(y-2.*sin(x)) - 2.*exp(x-y*y)*(y*(3.-2.*y*y)+(1.-2.*y*y)*cos(x));
       case 4: return -2.58*sin(x+0.3*y)*cos(x-0.7*y) - 1.58*cos(x+0.3*y)*sin(x-0.7*y)
         + 3./pow(x*x+y*y+0.5, 2.);
+      case 5: return exp(x);
+      case 6: return 0;
+      case 7: return 0;
+      case 8: return 0;
+      case 9: return 0;
       case 10: return -2.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y);
+      case 11: return -2.*cos(x)*sin(y);
     }
   }
 } lap_u_m_cf;
@@ -187,6 +257,8 @@ public:
       case 2: return log((x+y+3.)/(y+z+3.))*sin(x+0.5*y+0.7*z);
       case 3: return exp(x+z-y*y)*(y+cos(x-z));
       case 4: return sin(x+0.3*y)*cos(x-0.7*y)*exp(z) + 3.*log(sqrt(x*x+y*y+z*z+0.5));
+      case 5: return exp(z);
+      case 6: return cos(x)*sin(y);
       case 10: return sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
     }
   }
@@ -203,7 +275,27 @@ public:
       case 2: return log((0.7*x+3.0)/(y+3.0))*sin(x+0.5*y);
       case 3: return exp(x-y*y)*(y+cos(x));
       case 4: return sin(x+0.3*y)*cos(x-0.7*y) + 3.*log(sqrt(x*x+y*y+0.5));
+      case 5: return exp(x);
+      case 6:
+        {
+          double p = mu_p_cf(x,y)/mu_m_cf(x,y);
+          double r = sqrt(x*x+y*y);
+          if (r < EPS) r = EPS;
+          double r0 = 0.5+EPS;
+          return ( x*(p+1.) - x*(p-1.)*r0*r0/r/r )/( p+1.+r0*r0*(p-1.) );
+//          return x;
+        }
+      case 7:
+        {
+          double p = mu_p_cf(x,y)/mu_m_cf(x,y);
+          double r = sqrt(x*x+y*y);
+          double r0 = 0.5+EPS;
+          return 2.*x/( p+1.+r0*r0*(p-1.) );
+        }
+      case 8: return 1;
+      case 9: { double r2 = x*x+y*y; if (r2 < EPS) r2 = EPS; return 1+log(2.*sqrt(r2)); }
       case 10: return (sin(PI*x+phase_x)*sin(PI*y+phase_y));
+      case 11: return cos(x)*sin(y);
     }
   }
 } u_p_cf;
@@ -222,6 +314,8 @@ public:
       case 2: return log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)/(x+y+3.);
       case 3: return exp(x+z-y*y)*(y+cos(x-z)-sin(x-z));
       case 4: return ( cos(x+0.3*y)*cos(x-0.7*y) - sin(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*x/(x*x+y*y+z*z+0.5);
+      case 5: return 0;
+      case 6: return -sin(x)*sin(y);
     case 10: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
     }
   }
@@ -238,6 +332,8 @@ public:
       case 2: return 0.5*log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)*(1.0/(x+y+3.)-1.0/(y+z+3.));
       case 3: return exp(x+z-y*y)*(1.0 - 2.*y*(y+cos(x-z)));
       case 4: return ( 0.3*cos(x+0.3*y)*cos(x-0.7*y) + 0.7*sin(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*y/(x*x+y*y+z*z+0.5);
+      case 5: return 0;
+      case 6: return cos(x)*cos(y);
     case 10: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y)*sin(PI*z+phase_z);
     }
   }
@@ -254,6 +350,8 @@ public:
       case 2: return 0.7*log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)*(-1.0/(y+z+3.));
       case 3: return exp(x+z-y*y)*(y+cos(x-z)+sin(x-z));
       case 4: return cos(x-0.7*y)*sin(x+0.3*y)*exp(z) + 3.*z/(x*x+y*y+z*z+0.5);
+      case 5: return exp(z);
+      case 6: return 0;
     case 10: return PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*cos(PI*z+phase_z);
     }
   }
@@ -272,7 +370,9 @@ public:
             + ( 3./(x+y+3.) - 2.4/(y+z+3.) )*cos(x+0.5*y+0.7*z);
       case 3: return exp(x+z-y*y)*(-4.*y-2.*cos(x-z)+4.*y*y*(y+cos(x-z)));
       case 4: return -1.58*( sin(x+0.3*y)*cos(x-0.7*y) + cos(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*(x*x+y*y+z*z+1.5)/pow(x*x+y*y+z*z+0.5, 2.);
-    case 10: return -3.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
+      case 5: return exp(z);
+      case 6: return -2.*cos(x)*sin(y);
+      case 10: return -3.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y)*sin(PI*z+phase_z);
     }
   }
 } lap_u_p_cf;
@@ -290,7 +390,27 @@ public:
       case 3: return exp(x-y*y)*(y+cos(x)-sin(x));
       case 4: return cos(x+0.3*y)*cos(x-0.7*y) - sin(x+0.3*y)*sin(x-0.7*y)
             + 3.*x/(x*x+y*y+0.5);
+      case 5: return exp(x);
+      case 6:
+        {
+          double p = mu_p_cf(x,y)/mu_m_cf(x,y);
+          double r = sqrt(x*x+y*y);
+          if (r < EPS) r = EPS;
+          double r0 = 0.5+EPS;
+          return ( p+1.-r0*r0*(p-1.)*(y*y-x*x)/pow(r,4.) )/( p+1.+r0*r0*(p-1.) );
+//          return 1;
+        }
+      case 7:
+        {
+          double p = mu_p_cf(x,y)/mu_m_cf(x,y);
+          double r = sqrt(x*x+y*y);
+          double r0 = 0.5+EPS;
+          return 2./( p+1.+r0*r0*(p-1.) );
+        }
+      case 8: return 0;
+      case 9: { double r2 = x*x+y*y; if (r2 < EPS) r2 = EPS; return x/r2; }
       case 10: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y);
+      case 11: return -sin(x)*sin(y);
     }
   }
 } ux_p_cf;
@@ -308,7 +428,24 @@ public:
       case 3: return exp(x-y*y)*(1.-2.*y*(y+cos(x)));
       case 4: return 0.3*cos(x+0.3*y)*cos(x-0.7*y) + 0.7*sin(x+0.3*y)*sin(x-0.7*y)
         + 3.*y/(x*x+y*y+0.5);
+      case 5: return 0;
+      case 6:
+        {
+          double p = mu_p_cf(x,y)/mu_m_cf(x,y);
+          double r = sqrt(x*x+y*y);
+          if (r < EPS) r = EPS;
+          double r0 = 0.5+EPS;
+          return ( (p-1.)*r0*r0*2.*x*y/pow(r,4.) )/( p+1.+r0*r0*(p-1.) );
+//          return 0;
+        }
+      case 7:
+        {
+          return 0;
+        }
+      case 8: return 0;
+      case 9: { double r2 = x*x+y*y; if (r2 < EPS) r2 = EPS; return y/r2; }
       case 10: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y);
+      case 11: return cos(x)*cos(y);
     }
   }
 } uy_p_cf;
@@ -329,7 +466,13 @@ public:
       case 3: return exp(x-y*y)*(y-2.*sin(x)) - 2.*exp(x-y*y)*(y*(3.-2.*y*y)+(1.-2.*y*y)*cos(x));
       case 4: return -2.58*sin(x+0.3*y)*cos(x-0.7*y) - 1.58*cos(x+0.3*y)*sin(x-0.7*y)
         + 3./pow(x*x+y*y+0.5, 2.);
+      case 5: return exp(x);
+      case 6: return 0;
+      case 7: return 0;
+      case 8: return 0;
+      case 9: return 0;
       case 10: return -2.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y);
+      case 11: return -2.*cos(x)*sin(y);
     }
   }
 } lap_u_p_cf;

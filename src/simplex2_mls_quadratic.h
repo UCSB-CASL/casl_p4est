@@ -194,6 +194,8 @@ public:
 
   bool invalid_reconstruction;
 
+  double distance(double x0, double y0, double x1, double y1, double x2, double y2);
+
 #ifdef CASL_THROWS
   bool tri_is_ok(int v0, int v1, int v2, int e0, int e1, int e2);
   bool tri_is_ok(int t);

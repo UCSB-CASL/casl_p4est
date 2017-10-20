@@ -1,5 +1,5 @@
-#ifndef PROBEM_CASE_6_H
-#define PROBEM_CASE_6_H
+#ifndef PROBEM_CASE_0_H
+#define PROBEM_CASE_0_H
 #include <vector>
 
 #ifdef P4_TO_P8
@@ -12,7 +12,7 @@
 #include <src/my_p4est_shapes.h>
 #endif
 
-class problem_case_6_t
+class problem_case_0_t
 {
 public:
 
@@ -54,13 +54,12 @@ public:
   public:
       double operator()(double x, double y) const
       {
-//        return 0.0;
         return 1.0;
       }
   } bc_coeff_0;
 #endif
 
-  problem_case_6_t()
+  problem_case_0_t()
   {
 #ifdef P4_TO_P8
 //    double r0 = 0.5, xc0 = 0.08, yc0 = 0.01, zc0 = 0.03;
@@ -96,4 +95,4 @@ public:
 
 };
 
-#endif // PROBEM_CASE_6_H
+#endif // PROBEM_CASE_0_H

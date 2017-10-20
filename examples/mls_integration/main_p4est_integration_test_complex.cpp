@@ -39,7 +39,7 @@
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
 #include <src/simplex2_mls_vtk.h>
-//#include <src/simplex2_mls_quadratic_vtk.h>
+#include <src/simplex2_mls_quadratic_vtk.h>
 #endif
 
 #include <tools/plotting.h>
@@ -65,11 +65,18 @@ using namespace std;
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 5;
+int nb_splits = 3;
+int nb_splits_per_split = 1;
+int nx_shifts = 10;
+int ny_shifts = 10;
+int nz_shifts = 10;
 #else
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 8;
+int nb_splits = 1;
+int nb_splits_per_split = 1;
+int nx_shifts = 30;
+int ny_shifts = 30;
 #endif
 
 bool reinitialize_level_set = 0;
@@ -77,10 +84,10 @@ bool reinitialize_level_set = 0;
 const int n_xyz[] = {1, 1, 1};
 const int periodic[] = {0, 0, 0};
 
-const double p_xyz_min[] = {-1, -1, -1};
-const double p_xyz_max[] = { 1,  1,  1};
+const double p_xyz_min[] = {-1.2, -1.2, -1.2};
+const double p_xyz_max[] = { 1.0,  1.0,  1.0};
 
-bool save_vtk = 0;
+bool save_vtk = 1;
 
 // function to integrate
 int func_num = 0;
@@ -458,7 +465,6 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 
-  connectivity = my_p4est_brick_new(n_xyz, p_xyz_min, p_xyz_max, &brick, periodic);
 
   p4est_t       *p4est;
   p4est_nodes_t *nodes;
@@ -466,239 +472,315 @@ int main (int argc, char* argv[])
 
   std::vector<double> phi_integr;
   std::vector<double> phi_integr_quadratic;
+
   for(int iter=0; iter<nb_splits; ++iter)
   {
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
-    p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-    splitting_criteria_cf_t data(0, lmax+iter, &ls_tot, 1.2);
-    if (func_num != 0)
-      data.min_lvl = lmin+iter;
-//    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &ls_tot, 1.2);
-    p4est->user_pointer = (void*)(&data);
-
-    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);
-    p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);
-
-    ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-    my_p4est_ghost_expand(p4est, ghost);
-    nodes = my_p4est_nodes_new(p4est, ghost);
-
-    my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
-    my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
-
-    /* function to integrate */
-    Vec func_vec;
-    ierr = VecCreateGhostNodes(p4est, nodes, &func_vec); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est, nodes, func, func_vec);
-
-    Vec fdd[P4EST_DIM];
-
-    for (short dir = 0; dir < P4EST_DIM; ++dir)
+    for (int sub_iter = 0; sub_iter < nb_splits_per_split; ++sub_iter)
     {
-      ierr = VecCreateGhostNodes(p4est, nodes, &fdd[dir]); CHKERRXX(ierr);
-    }
 
-    ngbd_n.second_derivatives_central(func_vec, fdd);
+      ierr = PetscPrintf(mpi.comm(), "\t Sub split %d \n", sub_iter); CHKERRXX(ierr);
 
+      double p_xyz_min_alt[3];
+      double p_xyz_max_alt[3];
+      int l_inc = 0;
 
-    my_p4est_level_set_t ls(&ngbd_n);
+      if (sub_iter == 0)
+      {
+        p_xyz_min_alt[0] = p_xyz_min[0]; p_xyz_max_alt[0] = p_xyz_max[0];
+        p_xyz_min_alt[1] = p_xyz_min[1]; p_xyz_max_alt[1] = p_xyz_max[1];
+        p_xyz_min_alt[2] = p_xyz_min[2]; p_xyz_max_alt[2] = p_xyz_max[2];
+      } else {
+        l_inc = 1;
+        double scale = (double) (nb_splits_per_split-sub_iter) / (double) nb_splits_per_split;
+        p_xyz_min_alt[0] = p_xyz_min[0] - .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]); p_xyz_max_alt[0] = p_xyz_max[0] + .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]);
+        p_xyz_min_alt[1] = p_xyz_min[1] - .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]); p_xyz_max_alt[1] = p_xyz_max[1] + .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]);
+        p_xyz_min_alt[2] = p_xyz_min[2] - .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]); p_xyz_max_alt[2] = p_xyz_max[2] + .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]);
+      }
 
-    /* level-set functions */
-    vector<Vec> phi_vec, phi_xx_vec, phi_yy_vec;
+      double dxyz[3] = { (p_xyz_max[0]-p_xyz_min[0])/pow(2., (double) lmax+iter+l_inc),
+                         (p_xyz_max[1]-p_xyz_min[1])/pow(2., (double) lmax+iter+l_inc),
+                         (p_xyz_max[2]-p_xyz_min[2])/pow(2., (double) lmax+iter+l_inc) };
+
+      double p_xyz_min_shift[3];
+      double p_xyz_max_shift[3];
+
 #ifdef P4_TO_P8
-    vector<Vec> phi_zz_vec;
+      for (int k = 0; k < nz_shifts; ++k)
+      {
+        p_xyz_min_shift[2] = p_xyz_min_alt[2] + (double) (k) / (double) (nz_shifts) * dxyz[2];
+        p_xyz_max_shift[2] = p_xyz_max_alt[2] + (double) (k) / (double) (nz_shifts) * dxyz[2];
+#endif
+        for (int j = 0; j < ny_shifts; ++j)
+        {
+          p_xyz_min_shift[1] = p_xyz_min_alt[1] + (double) (j) / (double) (ny_shifts) * dxyz[1];
+          p_xyz_max_shift[1] = p_xyz_max_alt[1] + (double) (j) / (double) (ny_shifts) * dxyz[1];
+          for (int i = 0; i < nx_shifts; ++i)
+          {
+            p_xyz_min_shift[0] = p_xyz_min_alt[0] + (double) (i) / (double) (nx_shifts) * dxyz[0];
+            p_xyz_max_shift[0] = p_xyz_max_alt[0] + (double) (i) / (double) (nx_shifts) * dxyz[0];
+
+            connectivity = my_p4est_brick_new(n_xyz, p_xyz_min_shift, p_xyz_max_shift, &brick, periodic);
+
+            p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+
+            splitting_criteria_cf_t data(0, lmax+iter+l_inc, &ls_tot, 1.2);
+            if (func_num != 0)
+              data.min_lvl = lmin+iter+l_inc;
+            p4est->user_pointer = (void*)(&data);
+
+            my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+            my_p4est_partition(p4est, P4EST_FALSE, NULL);
+            p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+            my_p4est_partition(p4est, P4EST_FALSE, NULL);
+
+            ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+//            my_p4est_ghost_expand(p4est, ghost);
+            nodes = my_p4est_nodes_new(p4est, ghost);
+
+            my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
+            my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
+
+            /* function to integrate */
+            Vec func_vec;
+            ierr = VecCreateGhostNodes(p4est, nodes, &func_vec); CHKERRXX(ierr);
+            sample_cf_on_nodes(p4est, nodes, func, func_vec);
+
+            Vec fdd[P4EST_DIM];
+
+            for (short dir = 0; dir < P4EST_DIM; ++dir)
+            {
+              ierr = VecCreateGhostNodes(p4est, nodes, &fdd[dir]); CHKERRXX(ierr);
+            }
+
+            ngbd_n.second_derivatives_central(func_vec, fdd);
+
+
+            my_p4est_level_set_t ls(&ngbd_n);
+
+            /* level-set functions */
+            vector<Vec> phi_vec, phi_xx_vec, phi_yy_vec;
+#ifdef P4_TO_P8
+            vector<Vec> phi_zz_vec;
 #endif
 
-    for (int i = 0; i < num_of_domains; i++)
-    {
-      phi_vec.push_back(Vec());     ierr = VecCreateGhostNodes(p4est, nodes, &phi_vec[i]); CHKERRXX(ierr);
-      phi_xx_vec.push_back(Vec());  ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_vec[i]); CHKERRXX(ierr);
-      phi_yy_vec.push_back(Vec());  ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_vec[i]); CHKERRXX(ierr);
+            for (int i = 0; i < num_of_domains; i++)
+            {
+              phi_vec.push_back(Vec());     ierr = VecCreateGhostNodes(p4est, nodes, &phi_vec[i]); CHKERRXX(ierr);
+              phi_xx_vec.push_back(Vec());  ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_vec[i]); CHKERRXX(ierr);
+              phi_yy_vec.push_back(Vec());  ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_vec[i]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-      phi_zz_vec.push_back(Vec());  ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_vec[i]); CHKERRXX(ierr);
+              phi_zz_vec.push_back(Vec());  ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_vec[i]); CHKERRXX(ierr);
 #endif
 
-      sample_cf_on_nodes(p4est, nodes, *LSF->at(i), phi_vec[i]);
+              sample_cf_on_nodes(p4est, nodes, *LSF->at(i), phi_vec[i]);
 
-      if (reinitialize_level_set)
-        ls.reinitialize_1st_order_time_2nd_order_space(phi_vec.back());
+              if (reinitialize_level_set)
+                ls.reinitialize_1st_order_time_2nd_order_space(phi_vec.back());
 
 #ifdef P4_TO_P8
-      ngbd_n.second_derivatives_central(phi_vec[i], phi_xx_vec[i], phi_yy_vec[i], phi_zz_vec[i]);
+              ngbd_n.second_derivatives_central(phi_vec[i], phi_xx_vec[i], phi_yy_vec[i], phi_zz_vec[i]);
 #else
-      ngbd_n.second_derivatives_central(phi_vec[i], phi_xx_vec[i], phi_yy_vec[i]);
+              ngbd_n.second_derivatives_central(phi_vec[i], phi_xx_vec[i], phi_yy_vec[i]);
 #endif
-    }
+            }
 
-    Vec phi_tot;
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_tot); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est, nodes, ls_tot, phi_tot);
+            Vec phi_tot;
+            ierr = VecCreateGhostNodes(p4est, nodes, &phi_tot); CHKERRXX(ierr);
+            sample_cf_on_nodes(p4est, nodes, ls_tot, phi_tot);
 
-    my_p4est_integration_mls_t integration(p4est, nodes);
+            my_p4est_integration_mls_t integration(p4est, nodes);
 
-//    integration.set_phi(phi_vec, geometry.action, geometry.color);
-//    integration.set_phi(geometry.LSF, geometry.action, geometry.color);
-//#ifdef P4_TO_P8
-//    integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, *action, *color);
-//#else
-//    integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, *action, *color);
+            //    integration.set_phi(phi_vec, geometry.action, geometry.color);
+            //    integration.set_phi(geometry.LSF, geometry.action, geometry.color);
+            //#ifdef P4_TO_P8
+            //    integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, *action, *color);
+            //#else
+            //    integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, *action, *color);
+            //#endif
+#ifdef P4_TO_P8
+            integration.set_phi(phi_vec, *action, *color);
+#else
+            integration.set_phi(phi_vec, *action, *color);
+#endif
+            //    integration.set_use_cube_refined(0);
+
+            my_p4est_integration_mls_t integration_quadratic(p4est, nodes);
+
+#ifdef P4_TO_P8
+            integration_quadratic.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, *action, *color);
+#else
+            integration_quadratic.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, *action, *color);
+#endif
+
+            if (save_vtk)
+            {
+              integration.initialize();
+#ifdef P4_TO_P8
+              vector<simplex3_mls_t *> simplices;
+              int n_sps = NTETS;
+#else
+              vector<simplex2_mls_t *> simplices;
+              int n_sps = 2;
+#endif
+
+              for (int k = 0; k < integration.cubes_linear.size(); k++)
+                if (integration.cubes_linear[k].loc == FCE)
+                  for (int l = 0; l < n_sps; l++)
+                    simplices.push_back(&integration.cubes_linear[k].simplex[l]);
+
+
+#ifdef P4_TO_P8
+              int file_num = iter*nx_shifts*ny_shifts*nz_shifts + k*nx_shifts*ny_shifts + j*nx_shifts+i;
+#else
+              int file_num = iter*nx_shifts*ny_shifts + j*nx_shifts+i;
+#endif
+
+#ifdef P4_TO_P8
+              simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(file_num));
+#else
+              simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(file_num));
+#endif
+              save_VTK(p4est, ghost, nodes, &brick, phi_vec, phi_tot, iter);
+            }
+
+            //#ifdef P4_TO_P8
+            if (save_vtk)
+            {
+              integration_quadratic.initialize();
+#ifdef P4_TO_P8
+              vector<simplex3_mls_quadratic_t *> simplices;
+              int n_sps = NUM_TETS;
+#else
+              vector<simplex2_mls_quadratic_t *> simplices;
+              int n_sps = 2;
+#endif
+
+#ifdef P4_TO_P8
+              int file_num = iter*nx_shifts*ny_shifts*nz_shifts + k*nx_shifts*ny_shifts + j*nx_shifts+i;
+#else
+              int file_num = iter*nx_shifts*ny_shifts + j*nx_shifts+i;
+#endif
+
+              for (int k = 0; k < integration_quadratic.cubes_quadratic.size(); k++)
+                if (integration_quadratic.cubes_quadratic[k].loc == FCE)
+                  for (int l = 0; l < n_sps; l++)
+                    simplices.push_back(&integration_quadratic.cubes_quadratic[k].simplex[l]);
+
+#ifdef P4_TO_P8
+              simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(file_num));
+#else
+              simplex2_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(file_num));
+#endif
+              PetscPrintf(p4est->mpicomm, "VTK saved %d\n", file_num);
+
+            }
 //#endif
+
+
+      /* Calculate and store results */
+
 #ifdef P4_TO_P8
-    integration.set_phi(phi_vec, *action, *color);
+            Vec phi_dd[P4EST_DIM] = { phi_xx_vec[0], phi_yy_vec[0], phi_zz_vec[0] };
 #else
-    integration.set_phi(phi_vec, *action, *color);
+            Vec phi_dd[P4EST_DIM] = { phi_xx_vec[0], phi_yy_vec[0] };
 #endif
-//    integration.set_use_cube_refined(0);
+            //    phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd)/integration_quadratic.integrate_over_interface(0, func_vec, fdd));
+            phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd));
 
-    my_p4est_integration_mls_t integration_quadratic(p4est, nodes);
+            if (exact.provided || iter < nb_splits-1)
+            {
+              level.push_back(lmax+iter);
+//                      h.push_back((p_xyz_max_alt[0]-p_xyz_min_alt[0])/pow(2.0,(double)(lmax+iter+l_inc)));
+//                      h.push_back(iter*nb_splits_per_split + sub_iter);
 
 #ifdef P4_TO_P8
-    integration_quadratic.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, *action, *color);
+              h.push_back(iter*nx_shifts*ny_shifts*nz_shifts + k*nx_shifts*ny_shifts + j*nx_shifts+i);
 #else
-    integration_quadratic.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, *action, *color);
+              h.push_back(iter*nx_shifts*ny_shifts + j*nx_shifts+i);
 #endif
 
+              result.ID.push_back(integration.integrate_over_domain(func_vec));
+              result_quadratic.ID.push_back(integration_quadratic.integrate_over_domain(func_vec, fdd));
 
+              for (int i = 0; i < exact.n_subs; i++)
+              {
+                result.ISB[i].push_back(integration.integrate_over_interface(color->at(i), func_vec));
+                result_quadratic.ISB[i].push_back(integration_quadratic.integrate_over_interface(color->at(i), func_vec, fdd));
+              }
 
-    if (save_vtk)
-    {
-      integration.initialize();
+              for (int i = 0; i < exact.n_Xs; i++)
+              {
 #ifdef P4_TO_P8
-      vector<simplex3_mls_t *> simplices;
-      int n_sps = NTETS;
+                result.IX[i].push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
+                result_quadratic.IX[i].push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
 #else
-      vector<simplex2_mls_t *> simplices;
-      int n_sps = 2;
+                result.IX[i].push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
+                result_quadratic.IX[i].push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
 #endif
-
-      for (int k = 0; k < integration.cubes_linear.size(); k++)
-        if (integration.cubes_linear[k].loc == FCE)
-          for (int l = 0; l < n_sps; l++)
-            simplices.push_back(&integration.cubes_linear[k].simplex[l]);
+              }
 
 #ifdef P4_TO_P8
-      simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+              for (int i = 0; i < exact.n_X3s; i++)
+                //        double val = integration.integrate_over_intersection(func_vec, exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i]);
+                result.IX3[i].push_back(integration.integrate_over_intersection(exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i], func_vec));
+#endif
+            }
+            else if (iter == nb_splits-1)
+            {
+              //      exact.ID  = (integration.integrate_over_domain(func_vec));
+              exact.ID  = (integration_quadratic.integrate_over_domain(func_vec, fdd));
+
+              for (int i = 0; i < exact.n_subs; i++)
+                //        exact.ISB.push_back(integration.integrate_over_interface(color->at(i), func_vec));
+                exact.ISB.push_back(integration_quadratic.integrate_over_interface(color->at(i), func_vec, fdd));
+
+              for (int i = 0; i < exact.n_Xs; i++)
+#ifdef P4_TO_P8
+                exact.IX.push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
 #else
-      simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+                //        exact.IX.push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
+                exact.IX.push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
 #endif
-      save_VTK(p4est, ghost, nodes, &brick, phi_vec, phi_tot, iter);
-    }
 
 #ifdef P4_TO_P8
-    if (save_vtk)
-    {
-      integration_quadratic.initialize();
+              for (int i = 0; i < exact.n_X3s; i++)
+                exact.IX3.push_back(integration.integrate_over_intersection(exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i], func_vec));
+#endif
+            }
+
+            ierr = VecDestroy(func_vec); CHKERRXX(ierr);
+            ierr = VecDestroy(phi_tot); CHKERRXX(ierr);
+
+            for (short dir = 0; dir < P4EST_DIM; ++dir)
+            {
+              ierr = VecDestroy(fdd[dir]); CHKERRXX(ierr);
+            }
+
+            for (int i = 0; i < phi_vec.size(); i++)
+            {
+              ierr = VecDestroy(phi_vec[i]); CHKERRXX(ierr);
+              ierr = VecDestroy(phi_xx_vec[i]); CHKERRXX(ierr);
+              ierr = VecDestroy(phi_yy_vec[i]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-      vector<simplex3_mls_quadratic_t *> simplices;
-      int n_sps = NUM_TETS;
-#else
-      vector<simplex2_mls_quadratic_t *> simplices;
-      int n_sps = 2;
+              ierr = VecDestroy(phi_zz_vec[i]); CHKERRXX(ierr);
 #endif
+            }
+            phi_vec.clear();
 
-      for (int k = 0; k < integration_quadratic.cubes_quadratic.size(); k++)
-        if (integration_quadratic.cubes_quadratic[k].loc == FCE)
-          for (int l = 0; l < n_sps; l++)
-            simplices.push_back(&integration_quadratic.cubes_quadratic[k].simplex[l]);
+            p4est_nodes_destroy(nodes);
+            p4est_ghost_destroy(ghost);
+            p4est_destroy      (p4est);
 
+            my_p4est_brick_destroy(connectivity, &brick);
+
+          }
+        }
 #ifdef P4_TO_P8
-      simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter+1000));
-#else
-      simplex2_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter+1000));
-#endif
-    }
-#endif
-
-
-    /* Calculate and store results */
-
-#ifdef P4_TO_P8
-    Vec phi_dd[P4EST_DIM] = { phi_xx_vec[0], phi_yy_vec[0], phi_zz_vec[0] };
-#else
-    Vec phi_dd[P4EST_DIM] = { phi_xx_vec[0], phi_yy_vec[0] };
-#endif
-//    phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd)/integration_quadratic.integrate_over_interface(0, func_vec, fdd));
-    phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd));
-
-    if (exact.provided || iter < nb_splits-1)
-    {
-      level.push_back(lmax+iter);
-      h.push_back((p_xyz_max[0]-p_xyz_min[0])/pow(2.0,(double)(lmax+iter)));
-
-      result.ID.push_back(integration.integrate_over_domain(func_vec));
-      result_quadratic.ID.push_back(integration_quadratic.integrate_over_domain(func_vec, fdd));
-
-      for (int i = 0; i < exact.n_subs; i++)
-      {
-        result.ISB[i].push_back(integration.integrate_over_interface(color->at(i), func_vec));
-        result_quadratic.ISB[i].push_back(integration_quadratic.integrate_over_interface(color->at(i), func_vec, fdd));
       }
-
-      for (int i = 0; i < exact.n_Xs; i++)
-      {
-#ifdef P4_TO_P8
-        result.IX[i].push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
-        result_quadratic.IX[i].push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
-#else
-        result.IX[i].push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
-        result_quadratic.IX[i].push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
-#endif
-      }
-
-#ifdef P4_TO_P8
-      for (int i = 0; i < exact.n_X3s; i++)
-//        double val = integration.integrate_over_intersection(func_vec, exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i]);
-        result.IX3[i].push_back(integration.integrate_over_intersection(exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i], func_vec));
 #endif
     }
-    else if (iter == nb_splits-1)
-    {
-//      exact.ID  = (integration.integrate_over_domain(func_vec));
-      exact.ID  = (integration_quadratic.integrate_over_domain(func_vec, fdd));
-
-      for (int i = 0; i < exact.n_subs; i++)
-//        exact.ISB.push_back(integration.integrate_over_interface(color->at(i), func_vec));
-        exact.ISB.push_back(integration_quadratic.integrate_over_interface(color->at(i), func_vec, fdd));
-
-      for (int i = 0; i < exact.n_Xs; i++)
-#ifdef P4_TO_P8
-        exact.IX.push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
-#else
-//        exact.IX.push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
-        exact.IX.push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
-#endif
-
-#ifdef P4_TO_P8
-      for (int i = 0; i < exact.n_X3s; i++)
-        exact.IX3.push_back(integration.integrate_over_intersection(exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i], func_vec));
-#endif
-    }
-
-    ierr = VecDestroy(func_vec); CHKERRXX(ierr);
-    ierr = VecDestroy(phi_tot); CHKERRXX(ierr);
-
-    for (short dir = 0; dir < P4EST_DIM; ++dir)
-    {
-      ierr = VecDestroy(fdd[dir]); CHKERRXX(ierr);
-    }
-
-    for (int i = 0; i < phi_vec.size(); i++)
-    {
-      ierr = VecDestroy(phi_vec[i]); CHKERRXX(ierr);
-      ierr = VecDestroy(phi_xx_vec[i]); CHKERRXX(ierr);
-      ierr = VecDestroy(phi_yy_vec[i]); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecDestroy(phi_zz_vec[i]); CHKERRXX(ierr);
-#endif
-    }
-    phi_vec.clear();
-
-    p4est_nodes_destroy(nodes);
-    p4est_ghost_destroy(ghost);
-    p4est_destroy      (p4est);
   }
 
 
@@ -764,7 +846,7 @@ int main (int argc, char* argv[])
     }
 #endif
 
-    print_Table("Convergence", 0, level, h, "phi_integr", phi_integr, plot_color, &plot);
+//    print_Table("Convergence", 0, level, h, "phi_integr", phi_integr, plot_color, &plot);
 
     // print all errors in compact form for plotting in matlab
     // step sizes
@@ -829,8 +911,6 @@ int main (int argc, char* argv[])
 //    }
     std::cin.get();
   }
-
-  my_p4est_brick_destroy(connectivity, &brick);
 
   return 0;
 }

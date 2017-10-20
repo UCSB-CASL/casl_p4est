@@ -398,7 +398,9 @@ public:
 
   void get_all_neighbors_(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists);
 
-  void solve(Vec sol_m, Vec sol_p, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
+//  void solve(Vec sol_m, Vec sol_p, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
+  void solve(Vec sol_m, Vec sol_p, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCGASM);
+//  void solve(Vec sol_m, Vec sol_p, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPGMRES, PCType pc_type = PCASM);
 //  void solve(Vec sol_m, Vec sol_p, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 //  void solve(Vec sol_m, Vec sol_p, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPGMRES, PCType pc_type = PCJACOBI);
 //  void solve(Vec sol_m, Vec sol_p, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPFGMRES, PCType pc_type = PCEXOTIC);
@@ -427,6 +429,9 @@ public:
   inline std::vector<double>* get_scalling() { return &scalling_; }
 
   inline void assemble_rhs_only() { setup_linear_system_(false, true); }
+
+  bool use_sc_scheme_;
+  inline void set_use_sc_scheme(bool value) { use_sc_scheme_ = value; }
 
 };
 

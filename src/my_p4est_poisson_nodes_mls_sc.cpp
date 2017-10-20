@@ -573,7 +573,17 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
       ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
     }
   }
+
+  if (!strcmp(pc_type, PCASM))
+  {
+    ierr = PetscOptionsSetValue("-sub_pc_type", "ilu"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-sub_pc_factor_levels", "3"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-sub_ksp_type", "preonly"); CHKERRXX(ierr);
+  }
+
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
+
+
 
   // setup rhs
 //  setup_negative_variable_coeff_laplace_rhsvec_();
@@ -676,8 +686,8 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 //#endif
 
 //  double domain_rel_thresh = eps*eps;
-  double domain_rel_thresh = 1.e-12;
-  double interface_rel_thresh = 1.e-12;//0*eps;
+  double domain_rel_thresh = 1.e-15;
+  double interface_rel_thresh = 1.e-15;//0*eps;
 //  double interface_rel_thresh = 0*EPS;//0*eps;
 
   //---------------------------------------------------------------------
@@ -2193,6 +2203,10 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
           if (volume_cut_cell/full_cell_volume < domain_rel_thresh)//domain_rel_thresh)
             mask_p[n] = 1;
           else mask_p[n] = -1;
+
+          if (volume_cut_cell/full_cell_volume < domain_rel_thresh)
+            mask_p[n] = 1;
+//          else mask_p[n] = -1;
         }
 
         if (volume_cut_cell/full_cell_volume > domain_rel_thresh)//domain_rel_thresh)
@@ -2674,37 +2688,49 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
           // face m00
           if (s_m00/full_sx > interface_rel_thresh)
           {
-            double mu_val = mu_;
-            if (variable_mu_)
-              mu_val = interp_local.interpolate(fv_xmin, y_C + y_m00);
 
-//            mu_val = mue_000;
-            double flux = mu_val * s_m00/dx_min_;
-            double ratio = fabs(y_m00)/dy_min_;
-
-            if (y_m00/full_sx < -theta && neighbors_exist[nn_mm0] && neighbors_exist[nn_0m0]) {
-
-              w[nn_000] += (1. - ratio) * flux;
-              w[nn_m00] -= (1. - ratio) * flux;
-              w[nn_0m0] += ratio * flux;
-              w[nn_mm0] -= ratio * flux;
-
-            } else if (y_m00/full_sx > theta && neighbors_exist[nn_mp0] && neighbors_exist[nn_0p0]) {
-
-              w[nn_000] += (1. - ratio) * flux;
-              w[nn_m00] -= (1. - ratio) * flux;
-              w[nn_0p0] += ratio * flux;
-              w[nn_mp0] -= ratio * flux;
-
+            if (!neighbors_exist[nn_m00])
+            {
+              std::cout << "Warning: neighbor doesn't exist in the xm-direction."
+                        << " Own number: " << n
+                        << " Nei number: " << neighbors[nn_m00]
+                        << " Own volume: " << volumes_p[neighbors[nn_000]]
+                        << " Nei volume: " << volumes_p[neighbors[nn_m00]]
+                        << " Face Area:" << s_m00/full_sx << "\n";
             } else {
 
-              w[nn_000] += flux;
-              w[nn_m00] -= flux;
+              double mu_val = mu_;
+              if (variable_mu_)
+                mu_val = interp_local.interpolate(fv_xmin, y_C + y_m00);
 
-              if (ratio > theta && setup_matrix)
-              {
-                mask_p[n] = 1;
-                std::cout << "Fallback fluxes\n";
+              //            mu_val = mue_000;
+              double flux = mu_val * s_m00/dx_min_;
+              double ratio = fabs(y_m00)/dy_min_;
+
+              if (y_m00/full_sx < -theta && neighbors_exist[nn_mm0] && neighbors_exist[nn_0m0]) {
+
+                w[nn_000] += (1. - ratio) * flux;
+                w[nn_m00] -= (1. - ratio) * flux;
+                w[nn_0m0] += ratio * flux;
+                w[nn_mm0] -= ratio * flux;
+
+              } else if (y_m00/full_sx > theta && neighbors_exist[nn_mp0] && neighbors_exist[nn_0p0]) {
+
+                w[nn_000] += (1. - ratio) * flux;
+                w[nn_m00] -= (1. - ratio) * flux;
+                w[nn_0p0] += ratio * flux;
+                w[nn_mp0] -= ratio * flux;
+
+              } else {
+
+                w[nn_000] += flux;
+                w[nn_m00] -= flux;
+
+                if (ratio > theta && setup_matrix)
+                {
+//                  mask_p[n] = 10;
+                  std::cout << "Fallback fluxes\n";
+                }
               }
             }
           }
@@ -2712,77 +2738,102 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
           // face p00
           if (s_p00/full_sx > interface_rel_thresh)
           {
-            double mu_val = mu_;
-            if (variable_mu_)
-              mu_val = interp_local.interpolate(fv_xmax, y_C + y_p00);
 
-//            mu_val = mue_000;
-            double flux = mu_val * s_p00/dx_min_;
-            double ratio = fabs(y_p00)/dy_min_;
-
-            if (y_p00/full_sx < -theta && neighbors_exist[nn_pm0] && neighbors_exist[nn_0m0]) {
-
-              w[nn_000] += (1. - ratio) * flux;
-              w[nn_p00] -= (1. - ratio) * flux;
-              w[nn_0m0] += ratio * flux;
-              w[nn_pm0] -= ratio * flux;
-
-            } else if (y_p00/full_sx > theta && neighbors_exist[nn_pp0] && neighbors_exist[nn_0p0]) {
-
-              w[nn_000] += (1. - ratio) * flux;
-              w[nn_p00] -= (1. - ratio) * flux;
-              w[nn_0p0] += ratio * flux;
-              w[nn_pp0] -= ratio * flux;
-
+            if (!neighbors_exist[nn_p00])
+            {
+              std::cout << "Warning: neighbor doesn't exist in the xm-direction."
+                        << " Own number: " << n
+                        << " Nei number: " << neighbors[nn_p00]
+                        << " Own volume: " << volumes_p[neighbors[nn_000]]
+                        << " Nei volume: " << volumes_p[neighbors[nn_p00]]
+                        << " Face Area:" << s_p00/full_sx << "\n";
             } else {
 
-              w[nn_000] += flux;
-              w[nn_p00] -= flux;
+              double mu_val = mu_;
+              if (variable_mu_)
+                mu_val = interp_local.interpolate(fv_xmax, y_C + y_p00);
 
-              if (ratio > theta && setup_matrix)
-              {
-                mask_p[n] = 1;
-                std::cout << "Fallback fluxes\n";
+//            mu_val = mue_000;
+              double flux = mu_val * s_p00/dx_min_;
+              double ratio = fabs(y_p00)/dy_min_;
+
+              if (y_p00/full_sx < -theta && neighbors_exist[nn_pm0] && neighbors_exist[nn_0m0]) {
+
+                w[nn_000] += (1. - ratio) * flux;
+                w[nn_p00] -= (1. - ratio) * flux;
+                w[nn_0m0] += ratio * flux;
+                w[nn_pm0] -= ratio * flux;
+
+              } else if (y_p00/full_sx > theta && neighbors_exist[nn_pp0] && neighbors_exist[nn_0p0]) {
+
+                w[nn_000] += (1. - ratio) * flux;
+                w[nn_p00] -= (1. - ratio) * flux;
+                w[nn_0p0] += ratio * flux;
+                w[nn_pp0] -= ratio * flux;
+
+              } else {
+
+                w[nn_000] += flux;
+                w[nn_p00] -= flux;
+
+                if (ratio > theta && setup_matrix)
+                {
+//                  mask_p[n] = 10;
+                  std::cout << "Fallback fluxes\n";
+                }
               }
+
             }
           }
 
           // face_0m0
           if (s_0m0/full_sy > interface_rel_thresh)
           {
-            double mu_val = mu_;
-            if (variable_mu_)
-              mu_val = interp_local.interpolate(x_C + x_0m0, fv_ymin);
 
-//            mu_val = mue_000;
-            double flux = mu_val * s_0m0/dy_min_;
-            double ratio = fabs(x_0m0)/dx_min_;
-
-            if (x_0m0/full_sy < -theta && neighbors_exist[nn_mm0] && neighbors_exist[nn_m00]) {
-
-              w[nn_000] += (1. - ratio) * flux;
-              w[nn_0m0] -= (1. - ratio) * flux;
-              w[nn_m00] += ratio * flux;
-              w[nn_mm0] -= ratio * flux;
-
-            } else if (x_0m0/full_sy >  theta && neighbors_exist[nn_pm0] && neighbors_exist[nn_p00]) {
-
-              w[nn_000] += (1. - ratio) * flux;
-              w[nn_0m0] -= (1. - ratio) * flux;
-              w[nn_p00] += ratio * flux;
-              w[nn_pm0] -= ratio * flux;
-
+            if (!neighbors_exist[nn_0m0])
+            {
+              std::cout << "Warning: neighbor doesn't exist in the xm-direction."
+                        << " Own number: " << n
+                        << " Nei number: " << neighbors[nn_0m0]
+                        << " Own volume: " << volumes_p[neighbors[nn_000]]
+                        << " Nei volume: " << volumes_p[neighbors[nn_0m0]]
+                        << " Face Area:" << s_0m0/full_sy << "\n";
             } else {
 
-//              double flux = mue_000 * s_0m0/dy_min_;
+              double mu_val = mu_;
+              if (variable_mu_)
+                mu_val = interp_local.interpolate(x_C + x_0m0, fv_ymin);
 
-              w[nn_000] += flux;
-              w[nn_0m0] -= flux;
+              //            mu_val = mue_000;
+              double flux = mu_val * s_0m0/dy_min_;
+              double ratio = fabs(x_0m0)/dx_min_;
 
-              if (ratio > theta && setup_matrix)
-              {
-                mask_p[n] = 1;
-                std::cout << "Fallback fluxes\n";
+              if (x_0m0/full_sy < -theta && neighbors_exist[nn_mm0] && neighbors_exist[nn_m00]) {
+
+                w[nn_000] += (1. - ratio) * flux;
+                w[nn_0m0] -= (1. - ratio) * flux;
+                w[nn_m00] += ratio * flux;
+                w[nn_mm0] -= ratio * flux;
+
+              } else if (x_0m0/full_sy >  theta && neighbors_exist[nn_pm0] && neighbors_exist[nn_p00]) {
+
+                w[nn_000] += (1. - ratio) * flux;
+                w[nn_0m0] -= (1. - ratio) * flux;
+                w[nn_p00] += ratio * flux;
+                w[nn_pm0] -= ratio * flux;
+
+              } else {
+
+                //              double flux = mue_000 * s_0m0/dy_min_;
+
+                w[nn_000] += flux;
+                w[nn_0m0] -= flux;
+
+                if (ratio > theta && setup_matrix)
+                {
+//                  mask_p[n] = 10;
+                  std::cout << "Fallback fluxes\n";
+                }
               }
             }
           }
@@ -2790,40 +2841,53 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
           // face_0p0
           if (s_0p0/full_sy > interface_rel_thresh)
           {
-            double mu_val = mu_;
-            if (variable_mu_)
-              mu_val = interp_local.interpolate(x_C + x_0p0, fv_ymax);
 
-//            mu_val = mue_000;
-            double flux = mu_val * s_0p0/dy_min_;
-            double ratio = fabs(x_0p0)/dx_min_;
-
-            if (x_0p0/full_sy < -theta && neighbors_exist[nn_mp0] && neighbors_exist[nn_m00]) {
-
-              w[nn_000] += (1. - ratio) * flux;
-              w[nn_0p0] -= (1. - ratio) * flux;
-              w[nn_m00] += ratio * flux;
-              w[nn_mp0] -= ratio * flux;
-
-            } else if (x_0p0/full_sy >  theta && neighbors_exist[nn_pp0] && neighbors_exist[nn_p00]) {
-
-              w[nn_000] += (1. - ratio) * flux;
-              w[nn_0p0] -= (1. - ratio) * flux;
-              w[nn_p00] += ratio * flux;
-              w[nn_pp0] -= ratio * flux;
-
+            if (!neighbors_exist[nn_0p0])
+            {
+              std::cout << "Warning: neighbor doesn't exist in the xm-direction."
+                        << " Own number: " << n
+                        << " Nei number: " << neighbors[nn_0p0]
+                        << " Own volume: " << volumes_p[neighbors[nn_000]]
+                        << " Nei volume: " << volumes_p[neighbors[nn_0p0]]
+                        << " Face Area:" << s_0p0/full_sy << "\n";
             } else {
 
-//              double flux = mue_000 * s_0p0/dy_min_;
+              double mu_val = mu_;
+              if (variable_mu_)
+                mu_val = interp_local.interpolate(x_C + x_0p0, fv_ymax);
 
-              w[nn_000] += flux;
-              w[nn_0p0] -= flux;
+              //            mu_val = mue_000;
+              double flux = mu_val * s_0p0/dy_min_;
+              double ratio = fabs(x_0p0)/dx_min_;
 
-              if (ratio > theta && setup_matrix)
-              {
-                mask_p[n] = 1;
-                std::cout << "Fallback fluxes\n";
+              if (x_0p0/full_sy < -theta && neighbors_exist[nn_mp0] && neighbors_exist[nn_m00]) {
+
+                w[nn_000] += (1. - ratio) * flux;
+                w[nn_0p0] -= (1. - ratio) * flux;
+                w[nn_m00] += ratio * flux;
+                w[nn_mp0] -= ratio * flux;
+
+              } else if (x_0p0/full_sy >  theta && neighbors_exist[nn_pp0] && neighbors_exist[nn_p00]) {
+
+                w[nn_000] += (1. - ratio) * flux;
+                w[nn_0p0] -= (1. - ratio) * flux;
+                w[nn_p00] += ratio * flux;
+                w[nn_pp0] -= ratio * flux;
+
+              } else {
+
+                //              double flux = mue_000 * s_0p0/dy_min_;
+
+                w[nn_000] += flux;
+                w[nn_0p0] -= flux;
+
+                if (ratio > theta && setup_matrix)
+                {
+//                  mask_p[n] = 10;
+                  std::cout << "Fallback fluxes\n";
+                }
               }
+
             }
           }
 #endif
@@ -2913,10 +2977,10 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
           bool map_z_derivative[num_neighbors_max_];
 #endif
 
-          bool x_derivative_found = find_x_derivative(neighbors_exist, weights_x_derivative, map_x_derivative);
-          bool y_derivative_found = find_y_derivative(neighbors_exist, weights_y_derivative, map_y_derivative);
+          bool x_derivative_found = find_x_derivative(neighbors_exist, weights_x_derivative, map_x_derivative, neighbors, volumes_p);
+          bool y_derivative_found = find_y_derivative(neighbors_exist, weights_y_derivative, map_y_derivative, neighbors, volumes_p);
 #ifdef P4_TO_P8
-          bool z_derivative_found = find_z_derivative(neighbors_exist, weights_z_derivative, map_z_derivative);
+          bool z_derivative_found = find_z_derivative(neighbors_exist, weights_z_derivative, map_z_derivative, neighbors, volumes_p);
 #endif
 
 #ifdef P4_TO_P8
@@ -2966,8 +3030,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
           }
           else
           {
-            if (setup_matrix)
-              std::cout << "Fallback Robin BC\n";
+
+//            if (setup_matrix)
+//            {
+////              mask_p[n] = 20;
+//              std::cout << "Fallback Robin BC\n";
+//            }
 
             // code below asumes that we have only Robin or Neumann BC in a cell
             //---------------------------------------------------------------------
@@ -4468,7 +4536,7 @@ double my_p4est_poisson_nodes_mls_sc_t::compute_weights_through_face(double A, d
 }
 #endif
 
-bool my_p4est_poisson_nodes_mls_sc_t::find_x_derivative(bool *neighbors_exist, double *weights, bool *map)
+bool my_p4est_poisson_nodes_mls_sc_t::find_x_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p)
 {
   bool derivative_found = true;
 
@@ -4476,16 +4544,26 @@ bool my_p4est_poisson_nodes_mls_sc_t::find_x_derivative(bool *neighbors_exist, d
     map[i] = false;
 
   // check 00
-  if      (neighbors_exist[nn_000] && neighbors_exist[nn_m00]) { weights[nn_000] = 1.; weights[nn_m00] =-1.; map[nn_000] = true; map[nn_m00] = true; }
-  else if (neighbors_exist[nn_000] && neighbors_exist[nn_p00]) { weights[nn_000] =-1.; weights[nn_p00] = 1.; map[nn_000] = true; map[nn_p00] = true; }
+//  if      (neighbors_exist[nn_m00] && neighbors_exist[nn_p00]) { weights[nn_m00] =-.5; weights[nn_p00] =.5; map[nn_m00] = true; map[nn_p00] = true; }
+//  else
+//  if      (neighbors_exist[nn_000] && neighbors_exist[nn_p00]) { weights[nn_000] =-1.; weights[nn_p00] = 1.; map[nn_000] = true; map[nn_p00] = true; }
+//  else if (neighbors_exist[nn_000] && neighbors_exist[nn_m00]) { weights[nn_000] = 1.; weights[nn_m00] =-1.; map[nn_000] = true; map[nn_m00] = true; }
 
-  // check m0
-  else if (neighbors_exist[nn_0m0] && neighbors_exist[nn_mm0]) { weights[nn_0m0] = 1.; weights[nn_mm0] =-1.; map[nn_0m0] = true; map[nn_mm0] = true; }
-  else if (neighbors_exist[nn_0m0] && neighbors_exist[nn_pm0]) { weights[nn_0m0] =-1.; weights[nn_pm0] = 1.; map[nn_0m0] = true; map[nn_pm0] = true; }
+  if (neighbors_exist[nn_m00] && neighbors_exist[nn_p00]) {
+    if (volumes_p[neighbors[nn_m00]] > volumes_p[neighbors[nn_p00]]) { weights[nn_000] = 1.; weights[nn_m00] =-1.; map[nn_000] = true; map[nn_m00] = true; }
+    else                                                             { weights[nn_000] =-1.; weights[nn_p00] = 1.; map[nn_000] = true; map[nn_p00] = true; }
+  }
+  else if (neighbors_exist[nn_p00]) { weights[nn_000] =-1.; weights[nn_p00] = 1.; map[nn_000] = true; map[nn_p00] = true; }
+  else if (neighbors_exist[nn_m00]) { weights[nn_000] = 1.; weights[nn_m00] =-1.; map[nn_000] = true; map[nn_m00] = true; }
 
-  // check p0
-  else if (neighbors_exist[nn_0p0] && neighbors_exist[nn_mp0]) { weights[nn_0p0] = 1.; weights[nn_mp0] =-1.; map[nn_0p0] = true; map[nn_mp0] = true; }
-  else if (neighbors_exist[nn_0p0] && neighbors_exist[nn_pp0]) { weights[nn_0p0] =-1.; weights[nn_pp0] = 1.; map[nn_0p0] = true; map[nn_pp0] = true; }
+
+//  // check m0
+//  else if (neighbors_exist[nn_0m0] && neighbors_exist[nn_mm0]) { weights[nn_0m0] = 1.; weights[nn_mm0] =-1.; map[nn_0m0] = true; map[nn_mm0] = true; }
+//  else if (neighbors_exist[nn_0m0] && neighbors_exist[nn_pm0]) { weights[nn_0m0] =-1.; weights[nn_pm0] = 1.; map[nn_0m0] = true; map[nn_pm0] = true; }
+
+//  // check p0
+//  else if (neighbors_exist[nn_0p0] && neighbors_exist[nn_mp0]) { weights[nn_0p0] = 1.; weights[nn_mp0] =-1.; map[nn_0p0] = true; map[nn_mp0] = true; }
+//  else if (neighbors_exist[nn_0p0] && neighbors_exist[nn_pp0]) { weights[nn_0p0] =-1.; weights[nn_pp0] = 1.; map[nn_0p0] = true; map[nn_pp0] = true; }
 #ifdef P4_TO_P8
   // check 0m
   else if (neighbors_exist[nn_00m] && neighbors_exist[nn_m0m]) { weights[nn_00m] = 1.; weights[nn_m0m] =-1.; map[nn_00m] = true; map[nn_m0m] = true; }
@@ -4517,7 +4595,7 @@ bool my_p4est_poisson_nodes_mls_sc_t::find_x_derivative(bool *neighbors_exist, d
   return derivative_found;
 }
 
-bool my_p4est_poisson_nodes_mls_sc_t::find_y_derivative(bool *neighbors_exist, double *weights, bool *map)
+bool my_p4est_poisson_nodes_mls_sc_t::find_y_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p)
 {
   bool derivative_found = true;
 
@@ -4525,15 +4603,25 @@ bool my_p4est_poisson_nodes_mls_sc_t::find_y_derivative(bool *neighbors_exist, d
     map[i] = false;
 
   // check 00
-  if      (neighbors_exist[nn_000] && neighbors_exist[nn_0m0]) { weights[nn_000] = 1.; weights[nn_0m0] =-1.; map[nn_000] = true; map[nn_0m0] = true; }
-  else if (neighbors_exist[nn_000] && neighbors_exist[nn_0p0]) { weights[nn_000] =-1.; weights[nn_0p0] = 1.; map[nn_000] = true; map[nn_0p0] = true; }
-  // check 0m
-  else if (neighbors_exist[nn_m00] && neighbors_exist[nn_mm0]) { weights[nn_m00] = 1.; weights[nn_mm0] =-1.; map[nn_m00] = true; map[nn_mm0] = true; }
-  else if (neighbors_exist[nn_m00] && neighbors_exist[nn_mp0]) { weights[nn_m00] =-1.; weights[nn_mp0] = 1.; map[nn_m00] = true; map[nn_mp0] = true; }
+//  if      (neighbors_exist[nn_0m0] && neighbors_exist[nn_0p0]) { weights[nn_0m0] =-.5; weights[nn_0p0] = .5; map[nn_0m0] = true; map[nn_0p0] = true; }
+//  else
+//  if      (neighbors_exist[nn_000] && neighbors_exist[nn_0p0]) { weights[nn_000] =-1.; weights[nn_0p0] = 1.; map[nn_000] = true; map[nn_0p0] = true; }
+//  else if (neighbors_exist[nn_000] && neighbors_exist[nn_0m0]) { weights[nn_000] = 1.; weights[nn_0m0] =-1.; map[nn_000] = true; map[nn_0m0] = true; }
 
-  // check 0p
-  else if (neighbors_exist[nn_p00] && neighbors_exist[nn_pm0]) { weights[nn_p00] = 1.; weights[nn_pm0] =-1.; map[nn_p00] = true; map[nn_pm0] = true; }
-  else if (neighbors_exist[nn_p00] && neighbors_exist[nn_pp0]) { weights[nn_p00] =-1.; weights[nn_pp0] = 1.; map[nn_p00] = true; map[nn_pp0] = true; }
+    if      (neighbors_exist[nn_0m0] && neighbors_exist[nn_0p0]) {
+      if (volumes_p[neighbors[nn_0m0]] > volumes_p[neighbors[nn_0p0]]) { weights[nn_000] =-1.; weights[nn_0p0] = 1.; map[nn_000] = true; map[nn_0p0] = true; }
+      else                                                             { weights[nn_000] = 1.; weights[nn_0m0] =-1.; map[nn_000] = true; map[nn_0m0] = true; }
+    }
+    else if (neighbors_exist[nn_0p0]) { weights[nn_000] =-1.; weights[nn_0p0] = 1.; map[nn_000] = true; map[nn_0p0] = true; }
+    else if (neighbors_exist[nn_0m0]) { weights[nn_000] = 1.; weights[nn_0m0] =-1.; map[nn_000] = true; map[nn_0m0] = true; }
+
+//  // check 0m
+//  else if (neighbors_exist[nn_m00] && neighbors_exist[nn_mm0]) { weights[nn_m00] = 1.; weights[nn_mm0] =-1.; map[nn_m00] = true; map[nn_mm0] = true; }
+//  else if (neighbors_exist[nn_m00] && neighbors_exist[nn_mp0]) { weights[nn_m00] =-1.; weights[nn_mp0] = 1.; map[nn_m00] = true; map[nn_mp0] = true; }
+
+//  // check 0p
+//  else if (neighbors_exist[nn_p00] && neighbors_exist[nn_pm0]) { weights[nn_p00] = 1.; weights[nn_pm0] =-1.; map[nn_p00] = true; map[nn_pm0] = true; }
+//  else if (neighbors_exist[nn_p00] && neighbors_exist[nn_pp0]) { weights[nn_p00] =-1.; weights[nn_pp0] = 1.; map[nn_p00] = true; map[nn_pp0] = true; }
 
 #ifdef P4_TO_P8
   // check m0
@@ -4567,7 +4655,7 @@ bool my_p4est_poisson_nodes_mls_sc_t::find_y_derivative(bool *neighbors_exist, d
 }
 
 #ifdef P4_TO_P8
-bool my_p4est_poisson_nodes_mls_sc_t::find_z_derivative(bool *neighbors_exist, double *weights, bool *map)
+bool my_p4est_poisson_nodes_mls_sc_t::find_z_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p)
 {
   bool derivative_found = true;
 

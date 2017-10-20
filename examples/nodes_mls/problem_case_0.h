@@ -89,6 +89,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
+//        return 0.0;
           return 1.0;
       }
   } bc_coeff_0;
@@ -97,7 +98,8 @@ public:
   public:
       double operator()(double x, double y) const
       {
-          return 0.0;
+//          return 0.0;
+          return 1.0;
       }
   } bc_coeff_1;
 
@@ -105,7 +107,8 @@ public:
   public:
       double operator()(double x, double y) const
       {
-//        return 0.5;
+//        return 0.0;
+        return 1.0;
           return x-y + (x+y)*(x+y);
       }
   } bc_coeff_2;

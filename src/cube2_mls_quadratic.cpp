@@ -46,7 +46,7 @@ void cube2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::vect
     }
   }
 
-
+  loc = FCE;
   if (loc == FCE)
   {
 //    if (acn[0] == ADDITION) // the first action always has to be INTERSECTION

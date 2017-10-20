@@ -76,6 +76,7 @@
 #include "problem_case_8.h" // half-space
 #include "problem_case_9.h" // angle
 #include "problem_case_10.h" // angle
+#include "problem_case_11.h" // one circle
 
 #undef MIN
 #undef MAX
@@ -85,26 +86,39 @@ using namespace std;
 bool save_vtk = 1;
 bool reinitialize_lsfs = 0;
 
-int num_test_geometry = 6;
+// Arthur's examples
+// 11, 0, 0, 9, 8
+// 11, 1, 0, 6, 7
+// 11, 0, 1, 6, 7
+// 6,  4, 5, 5, 11
+// 11, 4, 5, 5, 6
+
+int num_test_geometry = 0;
+
+int num_test_mu_m = 5;
+int num_test_mu_p = 4;
+
+int num_test_um = 0;
+int num_test_up = 1;
 
 int num_test_diag_term_m = 0;
 int num_test_diag_term_p = 0;
 
-int num_test_mu_m = 0;
-int num_test_mu_p = 0;
-
-int num_test_um = 1;
-int num_test_up = 0;
-
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 4;
-#else
-int lmin = 5;
-int lmax = 5;
 int nb_splits = 5;
+int nb_splits_per_split = 1;
+#else
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 6;
+int nb_splits_per_split = 1;
 #endif
+
+bool use_sc_scheme = 1;
+bool scale_errors = 1;
+bool compute_grad_between = 1;
 
 //const int periodic[3] = {1, 1, 1};
 const int periodic[3] = {0, 0, 0};
@@ -112,11 +126,12 @@ const int n_xyz[3] = {1, 1, 1};
 const double p_xyz_min[3] = {-1.0, -1.0, -1.0};
 const double p_xyz_max[3] = { 1.0,  1.0,  1.0};
 
-// EXACT SOLUTIONS
-#include "exact_solutions.h"
 
 // DIFFUSION COEFFICIENTS
 #include "diffusion_coeffs.h"
+
+// EXACT SOLUTIONS
+#include "exact_solutions.h"
 
 // DIAGONAL TERMS
 #include "diag_terms.h"
@@ -191,6 +206,7 @@ problem_case_7_t problem_case_7;
 problem_case_8_t problem_case_8;
 problem_case_9_t problem_case_9;
 problem_case_10_t problem_case_10;
+problem_case_11_t problem_case_11;
 
 void set_parameters()
 {
@@ -328,6 +344,18 @@ void set_parameters()
         action        = problem_case_10.action;
         color         = problem_case_10.color;
       } break;
+    case 11:
+      {
+        phi_cf        = problem_case_11.phi_cf;
+        phi_x_cf      = problem_case_11.phi_x_cf;
+        phi_y_cf      = problem_case_11.phi_y_cf;
+#ifdef P4_TO_P8
+        phi_z_cf      = problem_case_11.phi_z_cf;
+#endif
+        bc_coeffs_cf  = problem_case_11.bc_coeffs_cf;
+        action        = problem_case_11.action;
+        color         = problem_case_11.color;
+      } break;
   }
 }
 
@@ -347,6 +375,7 @@ class u_jump_cf_t : public CF_2
 public:
   double operator()(double x, double y) const
   {
+//    return 0;
     return u_p_cf(x,y) - u_m_cf(x,y);
   }
 } u_jump_cf;
@@ -387,6 +416,7 @@ public:
     double norm = sqrt(nx*nx+ny*ny);
     nx /= norm; ny /= norm;
 
+//    return 2;
     return mu_p_cf(x,y) * (ux_p_cf(x,y)*nx + uy_p_cf(x,y)*ny)
         -  mu_m_cf(x,y) * (ux_m_cf(x,y)*nx + uy_m_cf(x,y)*ny);
   }
@@ -438,6 +468,8 @@ public:
   }
 } bc_wall_type;
 #endif
+
+
 
 
 vector<double> level, h;
@@ -512,8 +544,6 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 
-  connectivity = my_p4est_brick_new(n_xyz, p_xyz_min, p_xyz_max, &brick, periodic);
-
   p4est_t       *p4est;
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
@@ -525,23 +555,44 @@ int main (int argc, char* argv[])
   for(int iter=0; iter<nb_splits; ++iter)
   {
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
+    for (int sub_iter = 0; sub_iter < nb_splits_per_split; ++sub_iter)
+    {
+      ierr = PetscPrintf(mpi.comm(), "\t Sub split %d \n", sub_iter); CHKERRXX(ierr);
+      double p_xyz_min_alt[3];
+      double p_xyz_max_alt[3];
+      int l_inc = 0;
+
+      if (sub_iter == 0)
+      {
+        p_xyz_min_alt[0] = p_xyz_min[0]; p_xyz_max_alt[0] = p_xyz_max[0];
+        p_xyz_min_alt[1] = p_xyz_min[1]; p_xyz_max_alt[1] = p_xyz_max[1];
+        p_xyz_min_alt[2] = p_xyz_min[2]; p_xyz_max_alt[2] = p_xyz_max[2];
+      } else {
+        l_inc = 1;
+        double scale = (double) (nb_splits_per_split-sub_iter) / (double) nb_splits_per_split;
+        p_xyz_min_alt[0] = p_xyz_min[0] - .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]); p_xyz_max_alt[0] = p_xyz_max[0] + .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]);
+        p_xyz_min_alt[1] = p_xyz_min[1] - .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]); p_xyz_max_alt[1] = p_xyz_max[1] + .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]);
+        p_xyz_min_alt[2] = p_xyz_min[2] - .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]); p_xyz_max_alt[2] = p_xyz_max[2] + .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]);
+      }
+
+    connectivity = my_p4est_brick_new(n_xyz, p_xyz_min_alt, p_xyz_max_alt, &brick, periodic);
     p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
 //    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
-    splitting_criteria_cf_t data_tmp(lmin, lmax, &level_set_tot_cf, 1.4);
+    splitting_criteria_cf_t data_tmp(lmin, lmax, &level_set_tot_cf, 1.2);
     p4est->user_pointer = (void*)(&data_tmp);
 
 //    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
     my_p4est_partition(p4est, P4EST_FALSE, NULL);
-    for (int i = 0; i < iter; ++i)
+    for (int i = 0; i < iter+l_inc; ++i)
     {
       my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
       my_p4est_partition(p4est, P4EST_FALSE, NULL);
     }
 
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot_cf, 1.4);
+    splitting_criteria_cf_t data(lmin+iter+l_inc, lmax+iter+l_inc, &level_set_tot_cf, 1.2);
     p4est->user_pointer = (void*)(&data);
 
 //    my_p4est_partition(p4est, P4EST_FALSE, NULL);
@@ -643,6 +694,7 @@ int main (int argc, char* argv[])
     solver.set_diag_add(diag_term_m, diag_term_p);
 
     solver.set_keep_scalling(true);
+    solver.set_use_sc_scheme(use_sc_scheme);
 
 //    solver.compute_volumes();
 
@@ -744,6 +796,8 @@ int main (int argc, char* argv[])
     double *mask_m_ptr;   ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
     double *mask_p_ptr;   ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
+    double u_max = 0;
+
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
       double xyz[P4EST_DIM];
@@ -751,6 +805,8 @@ int main (int argc, char* argv[])
 
       vec_error_sl_m_ptr[n] = mask_m_ptr[n] < 0 ? ABS(sol_m_ptr[n] - u_m_cf.value(xyz)) : 0;
       vec_error_sl_p_ptr[n] = mask_p_ptr[n] < 0 ? ABS(sol_p_ptr[n] - u_p_cf.value(xyz)) : 0;
+
+      u_max = MAX(u_max, fabs(u_m_cf.value(xyz)), fabs(u_p_cf.value(xyz)));
     }
 
     ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
@@ -782,129 +838,199 @@ int main (int argc, char* argv[])
 
     quad_neighbor_nodes_of_node_t qnnn;
 
+    double gr_max = 0;
+
     for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
     {
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est, nodes, xyz);
 
       p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-      ngbd_n.get_neighbors(n, qnnn);
 
-      if ( mask_m_ptr[qnnn.node_000]<-EPS && !is_node_Wall(p4est, ni) &&
-     #ifdef P4_TO_P8
-           ( mask_m_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
-           ( mask_m_ptr[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-           ( mask_m_ptr[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
-     #else
-           ( mask_m_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
-           ( mask_m_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
-           ( mask_m_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
-           ( mask_m_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
-           ( mask_m_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
-     #endif
-           )
+      if (!compute_grad_between)
       {
+        ngbd_n.get_neighbors(n, qnnn);
+
+        if ( mask_m_ptr[qnnn.node_000]<-EPS && !is_node_Wall(p4est, ni) &&
+     #ifdef P4_TO_P8
+             ( mask_m_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+             ( mask_m_ptr[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+             ( mask_m_ptr[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
+     #else
+             ( mask_m_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+             ( mask_m_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+             ( mask_m_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+             ( mask_m_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+             ( mask_m_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
+     #endif
+             )
+        {
 #ifdef P4_TO_P8
-        double ux_m_exact = ux_m_cf(xyz[0], xyz[1], xyz[2]);
-        double uy_m_exact = uy_m_cf(xyz[0], xyz[1], xyz[2]);
-        double uz_m_exact = uz_m_cf(xyz[0], xyz[1], xyz[2]);
+          double ux_m_exact = ux_m_cf(xyz[0], xyz[1], xyz[2]);
+          double uy_m_exact = uy_m_cf(xyz[0], xyz[1], xyz[2]);
+          double uz_m_exact = uz_m_cf(xyz[0], xyz[1], xyz[2]);
+          gr_max = MAX(gr_max, sqrt(SQR(ux_m_exact) + SQR(uy_m_exact)+SQR(uz_m_exact)));
 #else
-        double ux_m_exact = ux_m_cf(xyz[0], xyz[1]);
-        double uy_m_exact = uy_m_cf(xyz[0], xyz[1]);
+          double ux_m_exact = ux_m_cf(xyz[0], xyz[1]);
+          double uy_m_exact = uy_m_cf(xyz[0], xyz[1]);
+          gr_max = MAX(gr_max, sqrt(SQR(ux_m_exact) + SQR(uy_m_exact)));
 #endif
-        double ux_m_error = fabs(qnnn.dx_central(sol_m_ptr) - ux_m_exact);
-        double uy_m_error = fabs(qnnn.dy_central(sol_m_ptr) - uy_m_exact);
+          double ux_m_error = fabs(qnnn.dx_central(sol_m_ptr) - ux_m_exact);
+          double uy_m_error = fabs(qnnn.dy_central(sol_m_ptr) - uy_m_exact);
 #ifdef P4_TO_P8
-        double uz_m_error = fabs(qnnn.dz_central(sol_m_ptr) - uz_m_exact);
-        vec_error_gr_m_ptr[n] = sqrt(SQR(ux_m_error) + SQR(uy_m_error) + SQR(uz_m_error));
+          double uz_m_error = fabs(qnnn.dz_central(sol_m_ptr) - uz_m_exact);
+          vec_error_gr_m_ptr[n] = sqrt(SQR(ux_m_error) + SQR(uy_m_error) + SQR(uz_m_error));
 #else
-        vec_error_gr_m_ptr[n] = sqrt(SQR(ux_m_error) + SQR(uy_m_error));
+          vec_error_gr_m_ptr[n] = sqrt(SQR(ux_m_error) + SQR(uy_m_error));
 #endif
+        } else {
+          vec_error_gr_m_ptr[n] = 0;
+        }
+
+
+        if ( mask_p_ptr[qnnn.node_000]<-EPS && !is_node_Wall(p4est, ni) &&
+     #ifdef P4_TO_P8
+             ( mask_p_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+             ( mask_p_ptr[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+             ( mask_p_ptr[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
+     #else
+             ( mask_p_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+             ( mask_p_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+             ( mask_p_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+             ( mask_p_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+             ( mask_p_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
+     #endif
+             )
+        {
+#ifdef P4_TO_P8
+          double ux_p_exact = ux_p_cf(xyz[0], xyz[1], xyz[2]);
+          double uy_p_exact = uy_p_cf(xyz[0], xyz[1], xyz[2]);
+          double uz_p_exact = uz_p_cf(xyz[0], xyz[1], xyz[2]);
+          gr_max = MAX(gr_max, sqrt(SQR(ux_p_exact) + SQR(uy_p_exact)+SQR(uz_p_exact)));
+#else
+          double ux_p_exact = ux_p_cf(xyz[0], xyz[1]);
+          double uy_p_exact = uy_p_cf(xyz[0], xyz[1]);
+          gr_max = MAX(gr_max, sqrt(SQR(ux_p_exact) + SQR(uy_p_exact)));
+#endif
+          double ux_p_error = fabs(qnnn.dx_central(sol_p_ptr) - ux_p_exact);
+          double uy_p_error = fabs(qnnn.dy_central(sol_p_ptr) - uy_p_exact);
+#ifdef P4_TO_P8
+          double uz_p_error = fabs(qnnn.dz_central(sol_p_ptr) - uz_p_exact);
+          vec_error_gr_p_ptr[n] = sqrt(SQR(ux_p_error) + SQR(uy_p_error) + SQR(uz_p_error));
+#else
+          vec_error_gr_p_ptr[n] = sqrt(SQR(ux_p_error) + SQR(uy_p_error));
+#endif
+        } else {
+          vec_error_gr_p_ptr[n] = 0;
+        }
+
       } else {
+        p4est_locidx_t neighbors      [(int)pow(3, P4EST_DIM)];
+        bool           neighbors_exist[(int)pow(3, P4EST_DIM)];
+
+        double xyz_nei[P4EST_DIM];
+        double xyz_mid[P4EST_DIM];
+        double normal[P4EST_DIM];
+
         vec_error_gr_m_ptr[n] = 0;
-      }
-
-
-      if ( mask_p_ptr[qnnn.node_000]<-EPS && !is_node_Wall(p4est, ni) &&
-     #ifdef P4_TO_P8
-           ( mask_p_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
-           ( mask_p_ptr[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-           ( mask_p_ptr[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
-     #else
-           ( mask_p_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
-           ( mask_p_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
-           ( mask_p_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
-           ( mask_p_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
-           ( mask_p_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
-     #endif
-           )
-      {
-#ifdef P4_TO_P8
-        double ux_p_exact = ux_p_cf(xyz[0], xyz[1], xyz[2]);
-        double uy_p_exact = uy_p_cf(xyz[0], xyz[1], xyz[2]);
-        double uz_p_exact = uz_p_cf(xyz[0], xyz[1], xyz[2]);
-#else
-        double ux_p_exact = ux_p_cf(xyz[0], xyz[1]);
-        double uy_p_exact = uy_p_cf(xyz[0], xyz[1]);
-#endif
-        double ux_p_error = fabs(qnnn.dx_central(sol_p_ptr) - ux_p_exact);
-        double uy_p_error = fabs(qnnn.dy_central(sol_p_ptr) - uy_p_exact);
-#ifdef P4_TO_P8
-        double uz_p_error = fabs(qnnn.dz_central(sol_p_ptr) - uz_p_exact);
-        vec_error_gr_p_ptr[n] = sqrt(SQR(ux_p_error) + SQR(uy_p_error) + SQR(uz_p_error));
-#else
-        vec_error_gr_p_ptr[n] = sqrt(SQR(ux_p_error) + SQR(uy_p_error));
-#endif
-      } else {
         vec_error_gr_p_ptr[n] = 0;
+
+        if (!is_node_Wall(p4est, ni))
+        {
+          solver.get_all_neighbors_(n, neighbors, neighbors_exist);
+//          for (int j = 0; j < (int)pow(3, P4EST_DIM); ++j)
+          for (int j = 1; j < (int)pow(3, P4EST_DIM); j+=2)
+          {
+            p4est_locidx_t n_nei = neighbors[j];
+            double delta = 0;
+            node_xyz_fr_n(n_nei, p4est, nodes, xyz_nei);
+
+            for (int i = 0; i < P4EST_DIM; ++i)
+            {
+              xyz_mid[i] = .5*(xyz[i]+xyz_nei[i]);
+              delta += SQR(xyz[i]-xyz_nei[i]);
+              normal[i] = xyz_nei[i]-xyz[i];
+            }
+            delta = sqrt(delta);
+
+            for (int i = 0; i < P4EST_DIM; ++i)
+              normal[i] /= delta;
+
+            if (mask_m_ptr[n] < 0)
+              if (mask_m_ptr[n_nei] < 0)
+              {
+#ifdef P4_TO_P8
+                double grad_exact = ux_m_cf.value(xyz_mid)*normal[0] + uy_m_cf.value(xyz_mid)*normal[1] + uz_m_cf.value(xyz_mid)*normal[2];
+#else
+                double grad_exact = ux_m_cf.value(xyz_mid)*normal[0] + uy_m_cf.value(xyz_mid)*normal[1];
+#endif
+                vec_error_gr_m_ptr[n] = MAX(vec_error_gr_m_ptr[n], fabs((sol_m_ptr[n_nei]-sol_m_ptr[n])/delta - grad_exact));
+
+                gr_max = MAX(gr_max, fabs(grad_exact));
+              }
+
+            if (mask_p_ptr[n] < 0)
+              if (mask_p_ptr[n_nei] < 0)
+              {
+#ifdef P4_TO_P8
+                double grad_exact = ux_p_cf.value(xyz_mid)*normal[0] + uy_p_cf.value(xyz_mid)*normal[1] + uz_p_cf.value(xyz_mid)*normal[2];
+#else
+                double grad_exact = ux_p_cf.value(xyz_mid)*normal[0] + uy_p_cf.value(xyz_mid)*normal[1];
+#endif
+                vec_error_gr_p_ptr[n] = MAX(vec_error_gr_p_ptr[n], fabs((sol_p_ptr[n_nei]-sol_p_ptr[n])/delta - grad_exact));
+
+                gr_max = MAX(gr_max, fabs(grad_exact));
+              }
+          }
+        }
       }
 
     }
@@ -1163,7 +1289,7 @@ int main (int argc, char* argv[])
     ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
 
     // extend
-//    ls.extend_Over_Interface_TVD(phi_smooth, mask_m, sol_m_ex, 100, 2); CHKERRXX(ierr);
+//    ls.extend_Over_Interface_TVD(phi_smooth, mask_m, sol_m_ex, 20, 2); CHKERRXX(ierr);
 
     ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
@@ -1172,7 +1298,7 @@ int main (int argc, char* argv[])
     }
     ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
 
-//    ls.extend_Over_Interface_TVD(phi_smooth, mask_p, sol_p_ex, 100, 2); CHKERRXX(ierr);
+//    ls.extend_Over_Interface_TVD(phi_smooth, mask_p, sol_p_ex, 20, 2); CHKERRXX(ierr);
 
     ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
@@ -1240,6 +1366,17 @@ int main (int argc, char* argv[])
     double err_gr_p_max = 0.;   ierr = VecMax(vec_error_gr_p, NULL, &err_gr_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_gr_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     double err_ex_p_max = 0.;   ierr = VecMax(vec_error_ex_p, NULL, &err_ex_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     double err_dd_p_max = 0.;   ierr = VecMax(vec_error_dd_p, NULL, &err_dd_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_dd_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+    if (scale_errors)
+    {
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+      err_sl_m_max /= u_max;
+      err_sl_p_max /= u_max;
+
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &gr_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+      err_gr_m_max /= gr_max;
+      err_gr_p_max /= gr_max;
+    }
 
     // Store error values
     level.push_back(lmin+iter);
@@ -1437,9 +1574,9 @@ int main (int argc, char* argv[])
     p4est_nodes_destroy(nodes);
     p4est_ghost_destroy(ghost);
     p4est_destroy      (p4est);
+    my_p4est_brick_destroy(connectivity, &brick);
+    }
   }
-
-  my_p4est_brick_destroy(connectivity, &brick);
 
   w.stop(); w.read_duration();
 

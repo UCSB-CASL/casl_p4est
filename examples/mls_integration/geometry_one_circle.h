@@ -75,10 +75,11 @@ public:
 //    double xc_0 = round((-d*sinT+0.08)*100.)/100.; double yc_0 = round(( d*cosT-0.07)*100.)/100.;
 //#endif
 
-    double r0 = 0.5, xc_0 = 0.08, yc_0 = 0.01, zc_0 = 0.03;
 #ifdef P4_TO_P8
+    double r0 = 0.5, xc_0 = 0.08, yc_0 = 0.01, zc_0 = 0.03;
     domain0.set_params(r0, xc_0, yc_0, zc_0);
 #else
+    double r0 = 0.77, xc_0 = 0.13, yc_0 = 0.21;
     domain0.set_params(r0, xc_0, yc_0);
 #endif
 

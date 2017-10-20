@@ -25,7 +25,7 @@
 
 class my_p4est_poisson_nodes_mls_sc_t
 {
-  static const bool use_refined_cube_ = 0;
+  static const bool use_refined_cube_ = 1;
   static const int cube_refinement_ = 1;
   static const int num_neighbors_max_ = pow(3, P4EST_DIM);
 
@@ -430,10 +430,10 @@ class my_p4est_poisson_nodes_mls_sc_t
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_poisson_nodes_mls_sc_t& other);
   my_p4est_poisson_nodes_mls_sc_t& operator=(const my_p4est_poisson_nodes_mls_sc_t& other);
 
-  bool find_x_derivative(bool *neighbors_exist, double *weights, bool *map);
-  bool find_y_derivative(bool *neighbors_exist, double *weights, bool *map);
+  bool find_x_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p);
+  bool find_y_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p);
 #ifdef P4_TO_P8
-  bool find_z_derivative(bool *neighbors_exist, double *weights, bool *map);
+  bool find_z_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p);
 #endif
 
 public:
@@ -579,7 +579,8 @@ public:
   void get_all_neighbors_(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists);
 
 //  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
+//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 //  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
 
   void assemble_matrix(Vec solution);

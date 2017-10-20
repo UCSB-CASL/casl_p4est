@@ -1292,6 +1292,12 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
         // then finite difference method
         if (phi_eff_000 < 0.)
         {
+
+          p4est_locidx_t neighbors[num_neighbors_max_];
+          bool neighbors_exist[num_neighbors_max_];
+
+          get_all_neighbors_(n, neighbors, neighbors_exist);
+
           double theta_m00 = d_m00;
           double theta_p00 = d_p00;
           double theta_0m0 = d_0m0;
@@ -1333,114 +1339,14 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
 
           // check if any Dirichlet interface crosses ngbd
           // THIS IS NOT CORRECT, FIX THIS
-          for (short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
-          {
-            if (bc_interface_type_->at(phi_idx) == DIRICHLET)
-            {
-              if (phi_000[phi_idx]*phi_m00[phi_idx] <= 0.)
-              {
-                double phixx_m00 = qnnn.f_m00_linear(phi_xx_p[phi_idx]);
-                double theta_m00_c = interface_Location_With_Second_Order_Derivative(0., d_m00, phi_000[phi_idx], phi_m00[phi_idx], phi_xx_p[phi_idx][n], phixx_m00);
-
-                if (theta_m00_c < eps)   theta_m00_c = eps;
-                if (theta_m00_c > d_m00) theta_m00_c = d_m00;
-
-                if (theta_m00_c < theta_m00)
-                {
-                  theta_m00   = theta_m00_c;
-                  phi_idx_m00 = phi_idx;
-                }
-
-                is_interface_m00 = true;
-              }
-
-              if (phi_000[phi_idx]*phi_p00[phi_idx] <= 0.)
-              {
-                double phixx_p00 = qnnn.f_p00_linear(phi_xx_p[phi_idx]);
-                double theta_p00_c = interface_Location_With_Second_Order_Derivative(0., d_p00, phi_000[phi_idx], phi_p00[phi_idx], phi_xx_p[phi_idx][n], phixx_p00);
-
-                if (theta_p00_c < eps)   theta_p00_c = eps;
-                if (theta_p00_c > d_p00) theta_p00_c = d_p00;
-
-                if (theta_p00_c < theta_p00)
-                {
-                  theta_p00   = theta_p00_c;
-                  phi_idx_p00 = phi_idx;
-                }
-
-                is_interface_p00 = true;
-              }
-
-              if (phi_000[phi_idx]*phi_0m0[phi_idx] <= 0.)
-              {
-                double phixx_0m0 = qnnn.f_0m0_linear(phi_xx_p[phi_idx]);
-                double theta_0m0_c = interface_Location_With_Second_Order_Derivative(0., d_0m0, phi_000[phi_idx], phi_0m0[phi_idx], phi_xx_p[phi_idx][n], phixx_0m0);
-
-                if (theta_0m0_c < eps)   theta_0m0_c = eps;
-                if (theta_0m0_c > d_0m0) theta_0m0_c = d_0m0;
-
-                if (theta_0m0_c < theta_0m0)
-                {
-                  theta_0m0   = theta_0m0_c;
-                  phi_idx_0m0 = phi_idx;
-                }
-
-                is_interface_0m0 = true;
-              }
-
-              if (phi_000[phi_idx]*phi_0p0[phi_idx] <= 0.)
-              {
-                double phixx_0p0 = qnnn.f_0p0_linear(phi_xx_p[phi_idx]);
-                double theta_0p0_c = interface_Location_With_Second_Order_Derivative(0., d_0p0, phi_000[phi_idx], phi_0p0[phi_idx], phi_xx_p[phi_idx][n], phixx_0p0);
-
-                if (theta_0p0_c < eps)   theta_0p0_c = eps;
-                if (theta_0p0_c > d_0p0) theta_0p0_c = d_0p0;
-
-                if (theta_0p0_c < theta_0p0)
-                {
-                  theta_0p0   = theta_0p0_c;
-                  phi_idx_0p0 = phi_idx;
-                }
-
-                is_interface_0p0 = true;
-              }
-#ifdef P4_TO_P8
-              if (phi_000[phi_idx]*phi_00m[phi_idx] <= 0.)
-              {
-                double phixx_00m = qnnn.f_00m_linear(phi_xx_p[phi_idx]);
-                double theta_00m_c = interface_Location_With_Second_Order_Derivative(0., d_00m, phi_000[phi_idx], phi_00m[phi_idx], phi_xx_p[phi_idx][n], phixx_00m);
-
-                if (theta_00m_c < eps)   theta_00m_c = eps;
-                if (theta_00m_c > d_00m) theta_00m_c = d_00m;
-
-                if (theta_00m_c < theta_00m)
-                {
-                  theta_00m   = theta_00m_c;
-                  phi_idx_00m = phi_idx;
-                }
-
-                is_interface_00m = true;
-              }
-
-              if (phi_000[phi_idx]*phi_00p[phi_idx] <= 0.)
-              {
-                double phixx_00p = qnnn.f_00p_linear(phi_xx_p[phi_idx]);
-                double theta_00p_c = interface_Location_With_Second_Order_Derivative(0., d_00p, phi_000[phi_idx], phi_00p[phi_idx], phi_xx_p[phi_idx][n], phixx_00p);
-
-                if (theta_00p_c < eps)   theta_00p_c = eps;
-                if (theta_00p_c > d_00p) theta_00p_c = d_00p;
-
-                if (theta_00p_c < theta_00p)
-                {
-                  theta_00p   = theta_00p_c;
-                  phi_idx_00p = phi_idx;
-                }
-
-                is_interface_00p = true;
-              }
-#endif
-            }
-          }
+          if (!is_node_xmWall(p4est_, ni)) if (phi_eff_000*phi_eff_p[neighbors[nn_m00]] < 0) { is_interface_m00 = find_interface_location_mls(theta_m00, phi_idx_m00, n, neighbors[nn_m00], d_m00, phi_p, phi_xx_p); if (theta_m00 < eps) theta_m00 = eps; }
+          if (!is_node_xpWall(p4est_, ni)) if (phi_eff_000*phi_eff_p[neighbors[nn_p00]] < 0) { is_interface_p00 = find_interface_location_mls(theta_p00, phi_idx_p00, n, neighbors[nn_p00], d_p00, phi_p, phi_xx_p); if (theta_p00 < eps) theta_p00 = eps; }
+          if (!is_node_ymWall(p4est_, ni)) if (phi_eff_000*phi_eff_p[neighbors[nn_0m0]] < 0) { is_interface_0m0 = find_interface_location_mls(theta_0m0, phi_idx_0m0, n, neighbors[nn_0m0], d_0m0, phi_p, phi_yy_p); if (theta_0m0 < eps) theta_0m0 = eps; }
+          if (!is_node_ypWall(p4est_, ni)) if (phi_eff_000*phi_eff_p[neighbors[nn_0p0]] < 0) { is_interface_0p0 = find_interface_location_mls(theta_0p0, phi_idx_0p0, n, neighbors[nn_0p0], d_0p0, phi_p, phi_yy_p); if (theta_0p0 < eps) theta_0p0 = eps; }
+  #ifdef P4_TO_P8
+          if (!is_node_zmWall(p4est_, ni)) if (phi_eff_000*phi_eff_p[neighbors[nn_00m]] < 0) { is_interface_00m = find_interface_location_mls(theta_00m, phi_idx_00m, n, neighbors[nn_00m], d_00m, phi_p, phi_zz_p); if (theta_00m < eps) theta_00m = eps; }
+          if (!is_node_zpWall(p4est_, ni)) if (phi_eff_000*phi_eff_p[neighbors[nn_00p]] < 0) { is_interface_00p = find_interface_location_mls(theta_00p, phi_idx_00p, n, neighbors[nn_00p], d_00p, phi_p, phi_zz_p); if (theta_00p < eps) theta_00p = eps; }
+  #endif
 
           if (is_interface_m00)
           {
@@ -2105,11 +2011,13 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
         if (setup_matrix)
         {
 //          if (volume_cut_cell < 0.2*full_cell_volume) mask_p[n] = 1;
+//          if (volume_cut_cell/full_cell_volume < 1.e-9) mask_p[n] = 1;
           if (volume_cut_cell/full_cell_volume < EPS) mask_p[n] = 1;
           else mask_p[n] = -1;
         }
 
         if (volume_cut_cell/full_cell_volume > EPS)
+//          if (volume_cut_cell/full_cell_volume > 1.e-9)
         {
           if (setup_rhs)
           {
@@ -2543,6 +2451,145 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
   }
 
+}
+
+bool my_p4est_poisson_nodes_mls_t::find_interface_location_mls(double& theta, int& phi_idx, p4est_locidx_t n0, p4est_locidx_t n1, double h,
+                                                                 std::vector<double *> &phi_p,
+                                                                 std::vector<double *> &phi_xx_p)
+{
+
+  std::vector<double> points;
+  std::vector<loc_t>  points_loc;
+  std::vector<BoundaryConditionType> points_type;
+  std::vector<int>    points_phi_idx;
+
+  points.push_back(0); points_loc.push_back(INS); points_type.push_back(NOINTERFACE); points_phi_idx.push_back(-1);
+  points.push_back(h); points_loc.push_back(INS); points_type.push_back(NOINTERFACE); points_phi_idx.push_back(-1);
+
+  std::vector<int> vtx0, vtx1;
+  std::vector<loc_t> edgs_loc;
+  std::vector<int> edgs_recycled;
+
+  vtx0.push_back(0); vtx1.push_back(1); edgs_loc.push_back(INS); edgs_recycled.push_back(0);
+
+  for (int i = 0; i < num_interfaces_; ++i)
+  {
+    // find interface location
+    double theta_tmp;
+    bool pos_slope = phi_p[i][n1] > 0;
+
+    if (phi_p[i][n0] < 0 && phi_p[i][n1] < 0)
+    {
+      theta_tmp = -h;
+    }
+    else if (phi_p[i][n0] > 0 && phi_p[i][n1] > 0)
+    {
+      theta_tmp = -h;
+    }
+    else
+    {
+      theta_tmp = interface_Location_With_Second_Order_Derivative(0., h, phi_p[i][n0], phi_p[i][n1], phi_xx_p[i][n0], phi_xx_p[i][n1]);
+    }
+
+    // loop through all points first
+    for (int pnt_idx = 0; pnt_idx < points.size(); ++pnt_idx)
+    {
+      if (theta_tmp > points[pnt_idx])
+      {
+        if ( pos_slope && action_->at(i) == ADDITION)     points_loc[pnt_idx] = INS;
+        if (!pos_slope && action_->at(i) == INTERSECTION) points_loc[pnt_idx] = OUT;
+      }
+      else
+      {
+        if (!pos_slope && action_->at(i) == ADDITION)     points_loc[pnt_idx] = INS;
+        if ( pos_slope && action_->at(i) == INTERSECTION) points_loc[pnt_idx] = OUT;
+      }
+    }
+
+    // loop through edges
+    int num_edgs = edgs_loc.size();
+    for (int edg_idx = 0; edg_idx < num_edgs; ++edg_idx)
+      if (edgs_recycled[edg_idx] == 0)
+      {
+        if (theta_tmp < points[vtx0[edg_idx]])
+        {
+          if ( pos_slope && action_->at(i) == INTERSECTION) edgs_loc[edg_idx] = OUT;
+          if (!pos_slope && action_->at(i) == ADDITION)     edgs_loc[edg_idx] = INS;
+        }
+        else if (theta_tmp > points[vtx1[edg_idx]])
+        {
+          if (!pos_slope && action_->at(i) == INTERSECTION) edgs_loc[edg_idx] = OUT;
+          if ( pos_slope && action_->at(i) == ADDITION)     edgs_loc[edg_idx] = INS;
+        }
+        else
+        {
+          edgs_recycled[edg_idx] = 1;
+          points.push_back(theta_tmp);
+          points_type.push_back(bc_interface_type_->at(i));
+          points_phi_idx.push_back(i);
+
+          vtx0.push_back(vtx0[edg_idx]);   vtx1.push_back(points.size()-1); edgs_recycled.push_back(0);
+          vtx0.push_back(points.size()-1); vtx1.push_back(vtx1[edg_idx]);   edgs_recycled.push_back(0);
+
+          if (edgs_loc[edg_idx] == INS)
+          {
+            switch (action_->at(i))
+            {
+              case ADDITION:
+                points_loc.push_back(INS);
+                edgs_loc.push_back(INS);
+                edgs_loc.push_back(INS);
+                break;
+              case INTERSECTION:
+                points_loc.push_back(FCE);
+                if (pos_slope)
+                {
+                  edgs_loc.push_back(INS);
+                  edgs_loc.push_back(OUT);
+                }
+                else
+                {
+                  edgs_loc.push_back(OUT);
+                  edgs_loc.push_back(INS);
+                }
+                break;
+            }
+          }
+          else if (edgs_loc[edg_idx] == OUT)
+          {
+            switch (action_->at(i))
+            {
+              case ADDITION:
+                points_loc.push_back(FCE);
+                if (pos_slope)
+                {
+                  edgs_loc.push_back(INS);
+                  edgs_loc.push_back(OUT);
+                }
+                else
+                {
+                  edgs_loc.push_back(OUT);
+                  edgs_loc.push_back(INS);
+                }
+                break;
+              case INTERSECTION:
+                points_loc.push_back(OUT);
+                edgs_loc.push_back(OUT);
+                edgs_loc.push_back(OUT);
+                break;
+            }
+          }
+          else throw;
+        }
+      }
+  }
+
+  for (int i = 0; i < points.size(); ++i)
+    if (points_loc[i] == FCE && points_type[i] == DIRICHLET) { theta = points[i]; phi_idx = points_phi_idx[i]; return true; }
+
+  return false;
+
+//  throw std::domain_error("[CASL_ERROR]: Intersection is not found.\n");
 }
 
 //void my_p4est_poisson_nodes_mls_t::setup_negative_variable_coeff_laplace_rhsvec()
@@ -3554,6 +3601,236 @@ void my_p4est_poisson_nodes_mls_t::inv_mat2_(double *in, double *out)
   out[1] = -in[1]/det;
   out[2] = -in[2]/det;
   out[3] =  in[0]/det;
+}
+
+
+void my_p4est_poisson_nodes_mls_t::get_all_neighbors_(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists)
+{
+  p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
+
+  // check if the node is a wall node
+  bool xm_wall = is_node_xmWall(p4est_, ni);
+  bool xp_wall = is_node_xpWall(p4est_, ni);
+  bool ym_wall = is_node_ymWall(p4est_, ni);
+  bool yp_wall = is_node_ypWall(p4est_, ni);
+#ifdef P4_TO_P8
+  bool zm_wall = is_node_zmWall(p4est_, ni);
+  bool zp_wall = is_node_zpWall(p4est_, ni);
+#endif
+
+  // count neighbors
+  for (int i = 0; i < num_neighbors_max_; i++) neighbor_exists[i] = true;
+
+  if (xm_wall)
+  {
+    int i = 0;
+    for (int j = 0; j < 3; j++)
+#ifdef P4_TO_P8
+      for (int k = 0; k < 3; k++)
+        neighbor_exists[i + j*3 + k*3*3] = false;
+#else
+      neighbor_exists[i + j*3] = false;
+#endif
+  }
+
+  if (xp_wall)
+  {
+    int i = 2;
+    for (int j = 0; j < 3; j++)
+#ifdef P4_TO_P8
+      for (int k = 0; k < 3; k++)
+        neighbor_exists[i + j*3 + k*3*3] = false;
+#else
+      neighbor_exists[i + j*3] = false;
+#endif
+  }
+
+  if (ym_wall)
+  {
+    int j = 0;
+    for (int i = 0; i < 3; i++)
+#ifdef P4_TO_P8
+      for (int k = 0; k < 3; k++)
+        neighbor_exists[i + j*3 + k*3*3] = false;
+#else
+      neighbor_exists[i + j*3] = false;
+#endif
+  }
+
+  if (yp_wall)
+  {
+    int j = 2;
+    for (int i = 0; i < 3; i++)
+#ifdef P4_TO_P8
+      for (int k = 0; k < 3; k++)
+        neighbor_exists[i + j*3 + k*3*3] = false;
+#else
+      neighbor_exists[i + j*3] = false;
+#endif
+  }
+
+#ifdef P4_TO_P8
+  if (zm_wall)
+  {
+    int k = 0;
+    for (int j = 0; j < 3; j++)
+      for (int i = 0; i < 3; i++)
+        neighbor_exists[i + j*3 + k*3*3] = false;
+  }
+
+  if (zp_wall)
+  {
+    int k = 2;
+    for (int j = 0; j < 3; j++)
+      for (int i = 0; i < 3; i++)
+        neighbor_exists[i + j*3 + k*3*3] = false;
+  }
+#endif
+
+  // find neighboring quadrants
+  p4est_locidx_t quad_mmm_idx; p4est_topidx_t tree_mmm_idx;
+  p4est_locidx_t quad_mpm_idx; p4est_topidx_t tree_mpm_idx;
+  p4est_locidx_t quad_pmm_idx; p4est_topidx_t tree_pmm_idx;
+  p4est_locidx_t quad_ppm_idx; p4est_topidx_t tree_ppm_idx;
+#ifdef P4_TO_P8
+  p4est_locidx_t quad_mmp_idx; p4est_topidx_t tree_mmp_idx;
+  p4est_locidx_t quad_mpp_idx; p4est_topidx_t tree_mpp_idx;
+  p4est_locidx_t quad_pmp_idx; p4est_topidx_t tree_pmp_idx;
+  p4est_locidx_t quad_ppp_idx; p4est_topidx_t tree_ppp_idx;
+#endif
+
+#ifdef P4_TO_P8
+  node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx); //nei_quads[dir::v_mmm] = quad_mmm_idx;
+  node_neighbors_->find_neighbor_cell_of_node(n, -1,  1, -1, quad_mpm_idx, tree_mpm_idx); //nei_quads[dir::v_mpm] = quad_mpm_idx;
+  node_neighbors_->find_neighbor_cell_of_node(n,  1, -1, -1, quad_pmm_idx, tree_pmm_idx); //nei_quads[dir::v_pmm] = quad_pmm_idx;
+  node_neighbors_->find_neighbor_cell_of_node(n,  1,  1, -1, quad_ppm_idx, tree_ppm_idx); //nei_quads[dir::v_ppm] = quad_ppm_idx;
+  node_neighbors_->find_neighbor_cell_of_node(n, -1, -1,  1, quad_mmp_idx, tree_mmp_idx); //nei_quads[dir::v_mmp] = quad_mmp_idx;
+  node_neighbors_->find_neighbor_cell_of_node(n, -1,  1,  1, quad_mpp_idx, tree_mpp_idx); //nei_quads[dir::v_mpp] = quad_mpp_idx;
+  node_neighbors_->find_neighbor_cell_of_node(n,  1, -1,  1, quad_pmp_idx, tree_pmp_idx); //nei_quads[dir::v_pmp] = quad_pmp_idx;
+  node_neighbors_->find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx); //nei_quads[dir::v_ppp] = quad_ppp_idx;
+#else
+  node_neighbors_->find_neighbor_cell_of_node(n, -1, -1, quad_mmm_idx, tree_mmm_idx); //nei_quads[dir::v_mmm] = quad_mmm_idx;
+  node_neighbors_->find_neighbor_cell_of_node(n, -1, +1, quad_mpm_idx, tree_mpm_idx); //nei_quads[dir::v_mpm] = quad_mpm_idx;
+  node_neighbors_->find_neighbor_cell_of_node(n, +1, -1, quad_pmm_idx, tree_pmm_idx); //nei_quads[dir::v_pmm] = quad_pmm_idx;
+  node_neighbors_->find_neighbor_cell_of_node(n, +1, +1, quad_ppm_idx, tree_ppm_idx); //nei_quads[dir::v_ppm] = quad_ppm_idx;
+#endif
+
+  // find neighboring nodes
+#ifdef P4_TO_P8
+  neighbors[nn_000] = n;
+
+  // m00
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpp];
+  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mmp];
+  else if (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mpm];
+  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mmm];
+
+  // p00
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_ppp];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmp];
+  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_ppm];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_pmm];
+
+  // 0m0
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmp];
+  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mmp];
+  else if (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_pmm];
+  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_mmm];
+
+  // 0p0
+  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_ppp];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpp];
+  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_ppm];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mpm];
+
+  // 00m
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_ppm];
+  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mpm];
+  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_pmm];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mmm];
+
+  // 00p
+  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_ppp];
+  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_mpp];
+  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_pmp];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mmp];
+
+  // 0mm
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mm] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm];
+  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mm] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mmm];
+  // 0pm
+  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pm] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_ppm];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pm] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpm];
+  // 0mp
+  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mp] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_pmp];
+  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mp] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_mmp];
+  // 0pp
+  if      (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pp] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_ppp];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pp] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mpp];
+
+  // m0m
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0m] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm];
+  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0m] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mmm];
+  // p0m
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0m] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_ppm];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0m] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmm];
+  // m0p
+  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0p] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mpp];
+  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0p] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mmp];
+  // p0p
+  if      (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0p] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_ppp];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0p] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_pmp];
+
+  // mm0
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mm0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mmp];
+  else if (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mm0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mmm];
+  // pm0
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pm0] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_pmp];
+  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pm0] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_pmm];
+  // mp0
+  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpp];
+  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mpm];
+  // pp0
+  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppp];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_ppm];
+
+  // mmm
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mmm] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mmm];
+  // pmm
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pmm] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_pmm];
+  // mpm
+  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mpm] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpm];
+  // ppm
+  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_ppm] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppm];
+
+  // mmp
+  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mmp] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mmp];
+  // pmp
+  if      (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pmp] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_pmp];
+  // mpp
+  if      (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mpp] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mpp];
+  // ppp
+  if      (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_ppp] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_ppp];
+#else
+  neighbors[nn_000] = n;
+
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm];
+  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mmm];
+
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_ppm];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmm];
+
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm];
+  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mmm];
+
+  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpm];
+  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_ppm];
+
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mm0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mmm];
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pm0] = nodes_->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_pmm];
+  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes_->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpm];
+  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes_->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppm];
+#endif
 }
 
 

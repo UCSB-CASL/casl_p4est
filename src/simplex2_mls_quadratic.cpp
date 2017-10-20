@@ -84,9 +84,40 @@ void simplex2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::v
         for (int i = 0; i < edgs.size(); ++i)
           if (!edgs[i].is_split)
           {
-            edg2_t *e = &edgs[i];
-            if (vtxs[e->vtx1].value < 0 && vtxs[e->vtx0].value > 0 && vtxs[e->vtx2].value > 0 ||
-                vtxs[e->vtx1].value > 0 && vtxs[e->vtx0].value < 0 && vtxs[e->vtx2].value < 0)
+//            edg2_t *e = &edgs[i];
+//            if (vtxs[e->vtx1].value < 0 && vtxs[e->vtx0].value > 0 && vtxs[e->vtx2].value > 0 ||
+//                vtxs[e->vtx1].value > 0 && vtxs[e->vtx0].value < 0 && vtxs[e->vtx2].value < 0)
+//            {
+//              needs_refinement = true;
+//              break;
+//            }
+
+
+            int num_sample_points = 10;
+            std::vector<double> phi_value(num_sample_points);
+
+            double da = 1./(double)(num_sample_points-1);
+
+            for (int j = 0; j < num_sample_points; j++)
+            {
+              edg2_t *edg = &edgs[i];
+
+              double a = da*(double)(j);
+
+              double N0 = 1.-3.*a+2.*a*a;
+              double N1 = 4.*a-4.*a*a;
+              double N2 = -a+2.*a*a;
+
+              phi_value[j] = vtxs[edg->vtx0].value * N0 + vtxs[edg->vtx1].value * N1 + vtxs[edg->vtx2].value * N2;
+
+            }
+
+            int num_sign_switches = 0;
+            for (int j = 1; j < num_sample_points; ++j)
+              if (phi_value[j-1]*phi_value[j] < 0.)
+                num_sign_switches++;
+
+            if (num_sign_switches > 1)
             {
               needs_refinement = true;
               break;
@@ -96,12 +127,15 @@ void simplex2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::v
         last_vtxs_size = vtxs.size();
 
         // refine if necessary
-        if (needs_refinement)
+        if (needs_refinement && refine_level < 4)
         {
           int n;
           n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
           n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
           refine_level++;
+        } else if (needs_refinement) {
+          std::cout << "Cannot resolve invalid geometry (bad)\n";
+          needs_refinement = false;
         }
 
       }
@@ -431,6 +465,32 @@ void simplex2_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
     double a_u1 = 0.5*edgs[tri->edg2].a;
     double b_u1 = 0.5;
 
+    if (edgs[tri->edg1].a - edgs[tri->edg1].a/edgs[tri->edg2].a * a_u0 - b_u1 < 0 && !invalid_reconstruction)
+    {
+//      double dist1 = distance(a_u0, b_u0, 0., 1., edgs[tri->edg2].a, 0);
+//      double dist2 = distance(0.5,  0.5,  0., 1., edgs[tri->edg2].a, 0);
+//      double alpha = dist1/(dist1+dist2);
+
+////      if (alpha < 1.0 && alpha > 0.)
+////      {
+////        a_u1 = a_u0 + alpha*(0.5-a_u0);
+////        b_u1 = b_u0 + alpha*(0.5-b_u0);
+////      }
+
+//      if (alpha < 1.0 && alpha > 0.)
+//      {
+//        a_u1 = 0.5*edgs[tri->edg2].a + alpha*(0.5-0.5*edgs[tri->edg2].a);
+//        b_u1 = 0.5*edgs[tri->edg1].a + alpha*(0.5-0.5*edgs[tri->edg1].a);
+//      }
+
+      a_u1 = a_u0;
+      b_u1 = b_u0/edgs[tri->edg1].a;
+
+    }
+
+//    double a_u1 = 0.5*(0.5 + a_u0);
+//    double b_u1 = 0.5*(0.5 + b_u0);
+
     double x_u1, y_u1;
     mapping_tri(x_u1, y_u1, n_tri, a_u1, b_u1);
 
@@ -564,6 +624,9 @@ void simplex2_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
 
     double a_u0 = 0.5*(1.-edgs[tri->edg0].a);
     double b_u0 = 0.5*edgs[tri->edg0].a;
+
+//    double a_u0 = 0.5*(0.5+a_u1);
+//    double b_u0 = 0.5*b_u1;
 
     double x_u0, y_u0;
     mapping_tri(x_u0, y_u0, n_tri, a_u0, b_u0);
@@ -798,7 +861,7 @@ void simplex2_mls_quadratic_t::find_middle_node(double &x_out, double &y_out, do
     x_out = 0.5*(x0+x1) + alpha*nx;
     y_out = 0.5*(y0+y1) + alpha*ny;
 
-    std::cout << "Here!\n";
+//    std::cout << "Here!\n";
   }
 
   if (y_out > 1.-x_out || x_out < 0. || y_out < 0.) {
@@ -1795,6 +1858,17 @@ double simplex2_mls_quadratic_t::area(int vtx0, int vtx1, int vtx2)
 
 //  return result;
 //}
+
+double simplex2_mls_quadratic_t::distance(double x0, double y0, double x1, double y1, double x2, double y2)
+{
+  double val = pow(x1-x0,2.) + pow(y1-y0,2.) - pow( ((x1-x0)*(x1-x2) + (y1-y0)*(y1-y2)), 2. )/( pow(x1-x2,2.) + pow(y1-y2,2.) );
+
+  if (val <0) std::cout << val << " : " << x0 << ", " << y0 << " : " << x1 << ", " << y1 << " : " << x2 << ", " << y2 << " Problems!\n";
+
+  if (val <0) val = EPS; //std::cout << val << " Problems!\n";
+  return sqrt(val);
+
+}
 
 
 

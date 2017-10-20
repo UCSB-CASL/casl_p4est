@@ -88,7 +88,7 @@ public:
       Fzz(NULL),
       Fzz_p(NULL),
       #endif
-      method(linear), eps(1.0E-15)
+      method(linear), eps(1.0E-12)
   {
     // compute domain sizes
     double *v2c = p4est->connectivity->vertices;

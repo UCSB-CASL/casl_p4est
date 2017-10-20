@@ -27,6 +27,32 @@ class my_p4est_poisson_nodes_mls_t
 {
   static const bool use_refined_cube_ = 1;
   static const int cube_refinement_ = 1;
+  static const int num_neighbors_max_ = pow(3, P4EST_DIM);
+
+  enum node_neighbor_t
+  {
+  #ifdef P4_TO_P8
+    // zm plane
+    nn_mmm = 0, nn_0mm = 1, nn_pmm = 2,
+    nn_m0m = 3, nn_00m = 4, nn_p0m = 5,
+    nn_mpm = 6, nn_0pm = 7, nn_ppm = 8,
+
+    // z0 plane
+    nn_mm0, nn_0m0, nn_pm0,
+    nn_m00, nn_000, nn_p00,
+    nn_mp0, nn_0p0, nn_pp0,
+
+    // zp plane
+    nn_mmp, nn_0mp, nn_pmp,
+    nn_m0p, nn_00p, nn_p0p,
+    nn_mpp, nn_0pp, nn_ppp
+
+  #else
+    nn_mm0 = 0, nn_0m0, nn_pm0,
+    nn_m00, nn_000, nn_p00,
+    nn_mp0, nn_0p0, nn_pp0
+  #endif
+  };
 
 #ifdef P4_TO_P8
   class unity_cf_t: public CF_3
@@ -369,6 +395,10 @@ public:
   inline std::vector<double>* get_scalling() { return &scalling_; }
 
   inline void assemble_rhs_only() { setup_linear_system_(false, true); }
+
+  bool find_interface_location_mls(double &theta, int &phi_idx, p4est_locidx_t n0, p4est_locidx_t n1, double h,
+                                     std::vector<double *> &phi_p,
+                                     std::vector<double *> &phi_xx_p);
 
 
   //---------------------------------------------------------------------------------

@@ -219,7 +219,7 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
         last_vtxs_size = vtxs.size();
 
         // refine if necessary
-        if (needs_refinement)
+        if (needs_refinement && refine_level < 4)
         {
           int n;
           n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
@@ -227,7 +227,11 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
           n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
           refine_level++;
 //          std::cout << "Refined, level " << refine_level << "\n";
+        } else if (needs_refinement) {
+          std::cout << "Cannot resolve invalid geometry (bad)\n";
+          needs_refinement = false;
         }
+
 
       }
 

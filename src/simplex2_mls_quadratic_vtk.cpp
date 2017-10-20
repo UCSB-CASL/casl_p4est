@@ -1,16 +1,15 @@
-#include "simplex3_mls_quadratic_vtk.h"
+#include "simplex2_mls_quadratic_vtk.h"
 
 using namespace std;
 
-void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls_quadratic_t *> &simplices, string dir, string suffix)
+void simplex2_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex2_mls_quadratic_t *> &simplices, string dir, string suffix)
 {
   vector<int> n_vtxs, n_vtxs_shift;
-  vector<int> n_edgs, n_tris, n_tets;
-  simplex3_mls_quadratic_t *s;
+  vector<int> n_edgs, n_tris;
+  simplex2_mls_quadratic_t *s;
   int n_vtxs_tot = 0;
   int n_edgs_tot = 0;
   int n_tris_tot = 0;
-  int n_tets_tot = 0;
 
   int n_s = simplices.size();
 
@@ -24,14 +23,13 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
 
     n_edgs.push_back(0); for (int j = 0; j < s->edgs.size(); j++) {if (!s->edgs[j].is_split) n_edgs.back()++;} n_edgs_tot += n_edgs.back();
     n_tris.push_back(0); for (int j = 0; j < s->tris.size(); j++) {if (!s->tris[j].is_split) n_tris.back()++;} n_tris_tot += n_tris.back();
-    n_tets.push_back(0); for (int j = 0; j < s->tets.size(); j++) {if (!s->tets[j].is_split) n_tets.back()++;} n_tets_tot += n_tets.back();
   }
 
   ofstream ofs;
 
   /* write vertices */
 
-  string vtxs_vtu = dir + "vtxs_3d_quadratic_" + suffix + ".vtu";
+  string vtxs_vtu = dir + "vtxs_2d_quadratic_" + suffix + ".vtu";
 
   ofs.open(vtxs_vtu.c_str());
 
@@ -51,6 +49,19 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
     for (int j = 0; j < n_vtxs[i]; j++)
     {
       ofs << (int) s->vtxs[j].loc << " ";
+    }
+    ofs << endl;
+  }
+
+  ofs << "</DataArray>" << endl
+      << "<DataArray type=\"Float32\" Name=\"recycled\" format=\"ascii\">" << endl;
+
+  for (int i = 0; i < n_s; i++)
+  {
+    s = simplices[i];
+    for (int j = 0; j < n_vtxs[i]; j++)
+    {
+      ofs << (int) s->vtxs[j].is_recycled << " ";
     }
     ofs << endl;
   }
@@ -82,7 +93,7 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
     {
       ofs << s->vtxs[j].x << " "
           << s->vtxs[j].y << " "
-          << s->vtxs[j].z << " ";
+          << 0 << " ";
     }
     ofs << endl;
   }
@@ -125,7 +136,7 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
 
   /* write edges */
 
-  string edgs_vtu = dir + "edgs_3d_quadratic_" + suffix +".vtu";
+  string edgs_vtu = dir + "edgs_2d_quadratic_" + suffix +".vtu";
   ofs.open(edgs_vtu.c_str());
 
   ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl
@@ -183,23 +194,23 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
   }
 
   ofs << "</DataArray>" << endl;
-  ofs << "<DataArray type=\"Float32\" Name=\"c1\" format=\"ascii\">" << endl;
+//  ofs << "<DataArray type=\"Float32\" Name=\"c1\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
-  {
-    s = simplices[i];
-    for (int j = 0; j < s->edgs.size(); j++)
-    {
-      if (!s->edgs[j].is_split)
-      {
-        ofs << s->edgs[j].c1 << " ";
-      }
-    }
-    ofs << endl;
-  }
+//  for (int i = 0; i < n_s; i++)
+//  {
+//    s = simplices[i];
+//    for (int j = 0; j < s->edgs.size(); j++)
+//    {
+//      if (!s->edgs[j].is_split)
+//      {
+//        ofs << s->edgs[j].c1 << " ";
+//      }
+//    }
+//    ofs << endl;
+//  }
 
-  ofs << "</DataArray>" << endl
-      << "</CellData>" << endl
+//  ofs << "</DataArray>" << endl;
+  ofs << "</CellData>" << endl
       << "<Points>" << endl
       << "<DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">" << endl;
 
@@ -210,7 +221,7 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
     {
       ofs << s->vtxs[j].x << " "
           << s->vtxs[j].y << " "
-          << s->vtxs[j].z << " ";
+          << 0 << " ";
     }
     ofs << endl;
   }
@@ -263,7 +274,7 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
 
   /* write triangles */
 
-  string tris_vtu = dir + "tris_3d_quadratic_" + suffix +".vtu";
+  string tris_vtu = dir + "tris_2d_quadratic_" + suffix +".vtu";
   ofs.open(tris_vtu.c_str());
 
   ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl
@@ -288,24 +299,24 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
 
   ofs << "</DataArray>" << endl
       << "</PointData>" << endl
-      << "<CellData Scalars=\"scalars\">" << endl
-      << "<DataArray type=\"Float32\" Name=\"color\" format=\"ascii\">" << endl;
+      << "<CellData Scalars=\"scalars\">" << endl;
+//      << "<DataArray type=\"Float32\" Name=\"color\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
-  {
-    s = simplices[i];
-    for (int j = 0; j < s->tris.size(); j++)
-    {
-      if (!s->tris[j].is_split)
-      {
-        ofs << s->tris[j].c << " ";
-      }
-    }
-    ofs << endl;
-  }
+//  for (int i = 0; i < n_s; i++)
+//  {
+//    s = simplices[i];
+//    for (int j = 0; j < s->tris.size(); j++)
+//    {
+//      if (!s->tris[j].is_split)
+//      {
+//        ofs << s->tris[j].c << " ";
+//      }
+//    }
+//    ofs << endl;
+//  }
 
-  ofs << "</DataArray>" << endl
-      << "<DataArray type=\"Float32\" Name=\"idx\" format=\"ascii\">" << endl;
+//  ofs << "</DataArray>" << endl
+  ofs << "<DataArray type=\"Float32\" Name=\"idx\" format=\"ascii\">" << endl;
 
   int tri_idx = 0;
   for (int i = 0; i < n_s; i++)
@@ -334,7 +345,7 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
     {
       ofs << s->vtxs[j].x << " "
           << s->vtxs[j].y << " "
-          << s->vtxs[j].z << " ";
+          << 0 << " ";
     }
     ofs << endl;
   }
@@ -351,7 +362,7 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
     {
       if (!s->tris[j].is_split)
       {
-        simplex3_mls_quadratic_t::tri3_t *tri = &s->tris[j];
+        simplex2_mls_quadratic_t::tri2_t *tri = &s->tris[j];
         ofs << n_vtxs_shift[i] + s->tris[j].vtx0 << " "
             << n_vtxs_shift[i] + s->tris[j].vtx1 << " "
             << n_vtxs_shift[i] + s->tris[j].vtx2 << " "
@@ -378,114 +389,6 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
   for (int i = 0; i < n_tris_tot; i++)
   {
     ofs << 22 << " ";
-  }
-  ofs << endl;
-
-  ofs << "</DataArray>" << endl
-      << "</Cells>" << endl
-      << "</Piece>" << endl
-      << "</UnstructuredGrid>" << endl
-      << "</VTKFile>" << endl;
-
-  ofs.close();
-
-  /* write tetrahedra */
-
-  string tets_vtu = dir + "tets_3d_quadratic_" + suffix +".vtu";
-  ofs.open(tets_vtu.c_str());
-
-  ofs << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl
-      << "<UnstructuredGrid>" << endl
-      << "<Piece NumberOfPoints=\""
-      << n_vtxs_tot
-      << "\" NumberOfCells=\""
-      << n_tets_tot
-      << "\">" << endl
-      << "<PointData Scalars=\"scalars\">" << endl
-      << "<DataArray type=\"Float32\" Name=\"scalars\" format=\"ascii\">" << endl;
-
-  for (int i = 0; i < n_s; i++)
-  {
-    s = simplices[i];
-    for (int j = 0; j < n_vtxs[i]; j++)
-    {
-      ofs << (int) s->vtxs[j].loc << " ";
-    }
-    ofs << endl;
-  }
-
-  ofs << "</DataArray>" << endl
-      << "</PointData>" << endl
-      << "<CellData Scalars=\"scalars\">" << endl;
-
-  ofs << "<DataArray type=\"Float32\" Name=\"scalars\" format=\"ascii\">" << endl;
-
-  for (int i = 0; i < n_s; i++)
-  {
-    s = simplices[i];
-    for (int j = 0; j < s->tets.size(); j++)
-    {
-      if (!s->tets[j].is_split)
-      {
-        ofs << (int) s->tets[j].loc << " ";
-      }
-    }
-    ofs << endl;
-  }
-
-  ofs << "</DataArray>" << endl
-      << "</CellData>" << endl
-      << "<Points>" << endl
-      << "<DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">" << endl;
-
-  for (int i = 0; i < n_s; i++)
-  {
-    s = simplices[i];
-    for (int j = 0; j < n_vtxs[i]; j++)
-    {
-      ofs << s->vtxs[j].x << " "
-          << s->vtxs[j].y << " "
-          << s->vtxs[j].z << " ";
-    }
-    ofs << endl;
-  }
-
-  ofs << "</DataArray>" << endl
-      << "</Points>" << endl
-      << "<Cells>" << endl
-      << "<DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">" << endl;
-
-  for (int i = 0; i < n_s; i++)
-  {
-    s = simplices[i];
-    for (int j = 0; j < s->tets.size(); j++)
-    {
-      if (!s->tets[j].is_split)
-      {
-        ofs << n_vtxs_shift[i] + s->tets[j].vtx0 << " "
-            << n_vtxs_shift[i] + s->tets[j].vtx1 << " "
-            << n_vtxs_shift[i] + s->tets[j].vtx2 << " "
-            << n_vtxs_shift[i] + s->tets[j].vtx3 << " ";
-      }
-    }
-    ofs << endl;
-  }
-
-  ofs << "</DataArray>" << endl
-      << "<DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\">" << endl;
-
-  for (int i = 0; i < n_tets_tot; i++)
-  {
-    ofs << 4*(i+1) << " ";
-  }
-  ofs << endl;
-
-  ofs << "</DataArray>" << endl
-      << "<DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">" << endl;
-
-  for (int i = 0; i < n_tets_tot; i++)
-  {
-    ofs << 10 << " ";
   }
   ofs << endl;
 
