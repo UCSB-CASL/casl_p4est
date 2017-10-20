@@ -319,15 +319,15 @@ public:
   void compute_jump(Vec vn_voro);
 
 #ifdef P4_TO_P8
-double extend_over_interface_Voronoi(Voronoi3D voro, unsigned int n0, unsigned int n1);
+double extend_over_interface_Voronoi(Voronoi3D voro, unsigned int n0, unsigned int n1, double phi_n1);
 #else
-double extend_over_interface_Voronoi(Voronoi2D voro, unsigned int n0, unsigned int n1);
+double extend_over_interface_Voronoi(Voronoi2D voro, unsigned int n0, unsigned int n1, double phi_n1);
 #endif
 
 #ifdef P4_TO_P8
-double interpolate_Voronoi_at_point(Point3 location);
+double interpolate_Voronoi_at_point(Point3 location, double sign);
 #else
-double interpolate_Voronoi_at_point(Point2 location);
+double interpolate_Voronoi_at_point(Point2 location, double sign);
 #endif
 
   void compute_electroporation(Vec X0, Vec X1, Vec Sm, Vec vn);
