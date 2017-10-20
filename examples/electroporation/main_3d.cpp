@@ -868,6 +868,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         ls.extend_from_interface_to_whole_domain_TVD(phi, Sm, Sm);
         ls.extend_from_interface_to_whole_domain_TVD(phi, X0, X0);
         ls.extend_from_interface_to_whole_domain_TVD(phi, X1, X1);
+
         // compute X and Sm
         if(test==1)
         {
@@ -1286,6 +1287,7 @@ int main(int argc, char** argv) {
         {
             ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
             solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2);
+            PetscPrintf(mpi.comm(), "Solve complete! Proceeding...\n");
             //interp_n.set_input(vn, quadratic);
             //double xyz_np[3] = {0,0,0.99*R1};
             //interp_n.add_point(0, xyz_np);

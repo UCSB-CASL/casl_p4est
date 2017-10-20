@@ -288,8 +288,6 @@ public:
 
     void set_X1(Vec X1);
 
-    void set_sol(Vec sol_tree);
-
     void set_vnm1(Vec vnm1_n);
 
     void set_vnm2(Vec vnm2_n);
@@ -323,12 +321,10 @@ public:
     }
     void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 
-    void compute_jump();
-#ifdef P4_TO_P8
+    void compute_jump(Vec solution);
+
     double extend_over_interface_Voronoi(unsigned int n0, unsigned int n1, double phi_n1, double sol);
-#else
-    double extend_over_interface_Voronoi(unsigned int n0, unsigned int n1, double phi_n1, double sol);
-#endif
+
 
 
 #ifdef P4_TO_P8
