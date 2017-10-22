@@ -104,7 +104,7 @@ double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0 
 
 
 int lmin = 2;
-int lmax = 5;
+int lmax = 6;
 int nb_splits = 1;
 
 double dt_scale = 400;

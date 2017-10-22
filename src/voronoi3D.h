@@ -133,7 +133,7 @@ public:
      * \param file_name the file in which the voronoi partition is to be saved
      */
   static void print_VTK_Format(const std::vector<Voronoi3D>& voro, const char* file_name,
-                                const double *xyz_min, const double *xyz_max, const bool *periodic, Vec vn_voro, int num_local_voro);
+                                const double *xyz_min, const double *xyz_max, const bool *periodic, double *vn_p);
 
   static void print_VTK_Format(const std::vector<Voronoi3D>& voro, const char* file_name,
                                 const double *xyz_min, const double *xyz_max, const bool *periodic);

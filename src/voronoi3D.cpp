@@ -202,7 +202,7 @@ void Voronoi3D::construct_Partition(const double *xyz_min, const double *xyz_max
 
 
 void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char* file_name,
-                                  const double *xyz_min, const double *xyz_max, const bool *periodic, Vec vn_voro, int num_local_voro)
+                                  const double *xyz_min, const double *xyz_max, const bool *periodic, double *vn_p)
 {
   FILE* f;
   f = fopen(file_name, "w");
@@ -337,16 +337,13 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
     }
   }
   fprintf(f, "\nCELL_DATA %d\n", nb_polygons);
-  fprintf(f, "\nSCALARS vn double 1\n");
+  fprintf(f, "\nSCALARS vn float 1\n");
   fprintf(f, "\nLOOKUP_TABLE default\n");
-  double *vn_p;
-  VecGetArray(vn_voro, &vn_p);
 
   for(unsigned int n=0; n<voro_global.size(); n++)
   {
     if(voro_global[n].voronoi!=NULL && voro[n].points.size()>0)
     {
-
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
       if(cl.start() && cl.pid()==(int) voro[n].nc && voro_global[n].voronoi->compute_cell(c,cl))
       {
@@ -354,12 +351,12 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
         c.neighbors(neigh);
 
         for(i=0; i<neigh.size(); i++)
-          fprintf(f, "%e\n",vn_p[i]);
+          fprintf(f, "%e\n",vn_p[neigh[i]]);
       }
     }
   }
   fclose(f);
-  VecRestoreArray(vn_voro, &vn_p);
+
 
   printf("Saved voronoi partition in %s\n", file_name);
 }
