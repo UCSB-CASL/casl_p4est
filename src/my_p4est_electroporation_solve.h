@@ -322,9 +322,11 @@ public:
     void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 
     void compute_jump(Vec solution);
-
-    double extend_over_interface_Voronoi(unsigned int n0, unsigned int n1, double phi_n1, double sol);
-
+#ifdef P4_TO_P8
+    double extend_over_interface_Voronoi(Voronoi3D voro_n0, Voronoi3D voro_n1, double phi_n1, double sol);
+#else
+    double extend_over_interface_Voronoi(Voronoi2D voro_n0, Voronoi2D voro_n1, double phi_n1, double sol);
+#endif
 
 
 #ifdef P4_TO_P8
