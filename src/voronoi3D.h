@@ -132,7 +132,10 @@ public:
      * \param voro the list of voronoi partitions to save
      * \param file_name the file in which the voronoi partition is to be saved
      */
-  static void print_VTK_Format( const std::vector<Voronoi3D>& voro, const char* file_name,
+  static void print_VTK_Format(const std::vector<Voronoi3D>& voro, const char* file_name,
+                                const double *xyz_min, const double *xyz_max, const bool *periodic, Vec vn_voro, int num_local_voro);
+
+  static void print_VTK_Format(const std::vector<Voronoi3D>& voro, const char* file_name,
                                 const double *xyz_min, const double *xyz_max, const bool *periodic);
 };
 

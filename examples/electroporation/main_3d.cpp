@@ -864,6 +864,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         solver.set_X0(X0);
         solver.set_X1(X1);
         solver.compute_electroporation(X0, X1, Sm, vn);
+
         ls.extend_from_interface_to_whole_domain_TVD(phi, vn, vn);
         ls.extend_from_interface_to_whole_domain_TVD(phi, Sm, Sm);
         ls.extend_from_interface_to_whole_domain_TVD(phi, X0, X0);

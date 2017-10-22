@@ -1303,15 +1303,6 @@ void my_p4est_electroporation_solve_t::compute_jump(Vec solution)
                 }
             }
 
-            int global_ghost_idx;
-            int global_voro_idx;
-            if((*points)[pair_index].n>=num_local_voro)
-                global_ghost_idx = voro_ghost_local_num[(*points)[pair_index].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[pair_index].n-num_local_voro]];
-            else
-                global_ghost_idx = (*points)[pair_index].n + voro_global_offset[p4est->mpirank];
-
-            global_voro_idx = n + voro_global_offset[p4est->mpirank];
-
 
             /* regular point */
 #ifdef P4_TO_P8
@@ -1324,23 +1315,20 @@ void my_p4est_electroporation_solve_t::compute_jump(Vec solution)
 
             if(phi_n*phi_l<0)
             {
-
-                int n0 = n;
-                int n1 = (*points)[pair_index].n;
-
 #ifdef P4_TO_P8
                 Voronoi3D voro_n1;
 #else
                 Voronoi2D voro_n1;
 #endif
-                compute_voronoi_cell(n1, voro_n1);
+                compute_voronoi_cell((*points)[pair_index].n, voro_n1);
 
                 // extend from ex/in-terior to in/ex-terior on Voronoi mesh
-                double sol_n = sol_voro_p[n0];
 #ifdef P4_TO_P8
                 double sol_l = interp_sol(pl.x,pl.y,pl.z);
+                double sol_n = interp_sol(pc.x,pc.y,pc.z);
 #else
                 double sol_l = interp_sol(pl.x,pl.y);
+                double sol_n = interp_sol(pc.x,pc.y);
 #endif
                 double u0 = extend_over_interface_Voronoi(voro, voro_n1, phi_l, sol_l);
                 double u1 = extend_over_interface_Voronoi(voro_n1, voro, phi_n, sol_n);
@@ -1350,6 +1338,16 @@ void my_p4est_electroporation_solve_t::compute_jump(Vec solution)
                 double v1 = sol_l - u1;
                 // assign the average jump to both the Voronoi points across the interface
                 double jump_v = 0.5*(v0 + v1);
+
+                int global_ghost_idx;
+                int global_voro_idx;
+                if((*points)[pair_index].n>=num_local_voro)
+                    global_ghost_idx = voro_ghost_local_num[(*points)[pair_index].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[pair_index].n-num_local_voro]];
+                else
+                    global_ghost_idx = (*points)[pair_index].n + voro_global_offset[p4est->mpirank];
+
+                global_voro_idx = n + voro_global_offset[p4est->mpirank];
+
                 VecSetValues(vn_voro,1,&global_ghost_idx,&jump_v,INSERT_VALUES);
                 VecSetValues(vn_voro,1,&global_voro_idx,&jump_v,INSERT_VALUES);
             }
@@ -1357,7 +1355,11 @@ void my_p4est_electroporation_solve_t::compute_jump(Vec solution)
     }
     VecAssemblyBegin(vn_voro);
     VecAssemblyEnd(vn_voro);
+    VecGhostUpdateBegin(vn_voro,INSERT_VALUES,SCATTER_FORWARD);
+    VecGhostUpdateEnd(vn_voro,INSERT_VALUES,SCATTER_FORWARD);
+
     ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+
     PetscPrintf(p4est->mpicomm, "--->---- END computing jump on the Voronoi mesh.\n");
 }
 
@@ -1368,22 +1370,24 @@ double my_p4est_electroporation_solve_t::extend_over_interface_Voronoi(Voronoi2D
 #endif
 {
     // extends the solution from voronoi nodes downstream from "n1"  crossing over the interface to the voronoi node "n0"
-
-
 #ifdef P4_TO_P8
     Point3 pc= voro_n0.get_Center_Point();
     Point3 norm = voro_n1.get_Center_Point() - voro_n0.get_Center_Point();
+    double d0 = sqrt(norm.x*norm.x+norm.y*norm.y+norm.z*norm.z);
 #else
     Point2 pc= voro_n0.get_Center_Point();
     Point2 norm = voro_n1.get_Center_Point() - voro_n0.get_Center_Point();
+    double d0 = sqrt(norm.x*norm.x+norm.y*norm.y);
+    if(d0<EPS)
+        return sol_n1;
 #endif
-
-    double d0 = sqrt(norm.x*norm.x+norm.y*norm.y+norm.z*norm.z);
 
     double diagg = 5*d0/2;
     norm.x /= d0;
     norm.y /= d0;
+#ifdef P4_TO_P8
     norm.z /= d0;
+#endif
     double p1 = sol_n1;
     double d1 = 0;
     double d2 = diagg;
@@ -1391,39 +1395,46 @@ double my_p4est_electroporation_solve_t::extend_over_interface_Voronoi(Voronoi2D
     double p2;
 #ifdef P4_TO_P8
     Point3 tmp;
+    Point3 tmp3;
 #else
     Point2 tmp;
+    Point2 tmp3;
 #endif
     tmp = pc + norm*(d0 + diagg);
+#ifdef P4_TO_P8
     tmp.x = std::min(xyz_max[0], std::max(xyz_min[0], tmp.x));
     tmp.y = std::min(xyz_max[1], std::max(xyz_min[1], tmp.y));
-#ifdef P4_TO_P8
     tmp.z = std::min(xyz_max[2], std::max(xyz_min[2], tmp.z));
-#endif
     p2 = interp_sol(tmp.x,tmp.y,tmp.z);
+#else
+    tmp.x = std::min(xyz_max[0], std::max(xyz_min[0], tmp.x));
+    tmp.y = std::min(xyz_max[1], std::max(xyz_min[1], tmp.y));
+    p2 = interp_sol(tmp.x,tmp.y);
+#endif
+
 
     //interpolate_Voronoi_at_point(tmp, SIGN(phi_n1));
-    double d3 = 2*diagg;
-    tmp = pc + norm*(d0 + 2*diagg);
+/*    double d3 = 2*diagg;
+    tmp3 = pc + norm*(d0 + 2*diagg);
 
-    tmp.x = std::min(xyz_max[0], std::max(xyz_min[0], tmp.x));
-    tmp.y = std::min(xyz_max[1], std::max(xyz_min[1], tmp.y));
+    tmp3.x = std::min(xyz_max[0], std::max(xyz_min[0], tmp3.x));
+    tmp3.y = std::min(xyz_max[1], std::max(xyz_min[1], tmp3.y));
 #ifdef P4_TO_P8
-    tmp.z = std::min(xyz_max[2], std::max(xyz_min[2], tmp.z));
+    tmp3.z = std::min(xyz_max[2], std::max(xyz_min[2], tmp3.z));
 #endif
 
     double p3;
 #ifdef P4_TO_P8
-    p3 = interp_sol(tmp.x,tmp.y,tmp.z);
+    p3 = interp_sol(tmp3.x,tmp3.y,tmp3.z);
 #else
-    p3 = interp_sol(tmp.x,tmp.y);
+    p3 = interp_sol(tmp3.x,tmp3.y);
 #endif
-
+*/
     double dif01 = (p2-p1)/(d2-d1);
-    double dif12 = (p3-p2)/(d3-d2);
-    double dif012 = (dif12-dif01)/(d3-d1);
+  //  double dif12 = (p3-p2)/(d3-d2);
+   // double dif012 = (dif12-dif01)/(d3-d1);
 
-    return p1 + (-d0-d1)*dif01 + (-d0-d1)*(-d0-d2)*dif012;
+    return p1 + (-d0-d1)*dif01;// + (-d0-d1)*(-d0-d2)*dif012;
 }
 
 #ifdef P4_TO_P8
@@ -1856,7 +1867,7 @@ void my_p4est_electroporation_solve_t::compute_electroporation(Vec X0_tree, Vec 
     ierr = VecDestroy(X0_voro); CHKERRXX(ierr);
     ierr = VecDestroy(X1_voro); CHKERRXX(ierr);
     ierr = VecDestroy(Sm_voro); CHKERRXX(ierr);
-    ierr = VecDestroy(vn_voro); CHKERRXX(ierr);
+   // ierr = VecDestroy(vn_voro); CHKERRXX(ierr);
     ierr = VecDestroy(sol_voro); CHKERRXX(ierr);
     PetscPrintf(p4est->mpicomm, "End computing electroporation variables on Voronoi mesh. \n");
 }
@@ -3177,10 +3188,11 @@ void my_p4est_electroporation_solve_t::print_voronoi_VTK(const char* path) const
 
 #ifdef P4_TO_P8
     bool periodic[P4EST_DIM] = {true, true, true};
-    Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
+    Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic, vn_voro, num_local_voro);
 #else
     Voronoi2D::print_VTK_Format(voro, name);
 #endif
+
 }
 
 
