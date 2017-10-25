@@ -42,7 +42,7 @@ my_p4est_electroporation_solve_t::my_p4est_electroporation_solve_t(const my_p4es
       p4est(node_neighbors->p4est), ghost(node_neighbors->ghost), nodes(node_neighbors->nodes),
       phi(NULL), rhs(NULL), sol_voro(NULL), vn_voro(NULL),
       voro_global_offset(p4est->mpisize),
-      interp_phi(node_neighbors), interp_sol(node_neighbors),
+      interp_phi(node_neighbors), interp_sol(node_neighbors), interp_dphi_x(node_neighbors),interp_dphi_y(node_neighbors),interp_dphi_z(node_neighbors),
       rhs_m(node_neighbors),
       rhs_p(node_neighbors),
       local_mu(false), local_add(false),
@@ -86,6 +86,11 @@ my_p4est_electroporation_solve_t::~my_p4est_electroporation_solve_t()
     if(local_add)            { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(add); }
     if(local_u_jump)         { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(u_jump); }
     if(local_mu_grad_u_jump) { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_grad_u_jump); }
+    /*if(X0_voro          != PETSC_NULL) { ierr = VecDestroy(X0_voro); CHKERRXX(ierr);}
+    if(X1_voro          != PETSC_NULL) { ierr = VecDestroy(X1_voro); CHKERRXX(ierr);}
+    if(Sm_voro          != PETSC_NULL) { ierr = VecDestroy(Sm_voro); CHKERRXX(ierr);}
+    if(sol_voro          != PETSC_NULL) { ierr = VecDestroy(sol_voro); CHKERRXX(ierr);}
+    if(vn_voro          != PETSC_NULL) { ierr = VecDestroy(vn_voro); CHKERRXX(ierr);}*/
 }
 
 
@@ -157,6 +162,19 @@ void my_p4est_electroporation_solve_t::set_phi(Vec phi)
 {
     this->phi = phi;
     interp_phi.set_input(phi, linear);
+}
+
+#ifdef P4_TO_P8
+void my_p4est_electroporation_solve_t::set_grad_phi(Vec grad_phi[3])
+#else
+void my_p4est_electroporation_solve_t::set_grad_phi(Vec grad_phi[2])
+#endif
+{
+    interp_dphi_x.set_input(grad_phi[0], linear);
+    interp_dphi_y.set_input(grad_phi[1], linear);
+#ifdef P4_TO_P8
+    interp_dphi_z.set_input(grad_phi[2], linear);
+#endif
 }
 
 
@@ -392,9 +410,7 @@ void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_init
 
     /* interpolate the solution back onto the original mesh */
     interpolate_solution_from_voronoi_to_tree(solution);
-
-
-    compute_jump(solution);
+    interp_sol.set_input(solution, linear);
     ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 }
 
@@ -1240,20 +1256,22 @@ void my_p4est_electroporation_solve_t::compute_voronoi_cell(unsigned int n, Voro
     ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_electroporation_solve_t::compute_jump(Vec solution)
+void my_p4est_electroporation_solve_t::compute_electroporation()
 {
-    PetscPrintf(p4est->mpicomm, " --->---- Begin computing jump on the Voronoi mesh.\n");
+    PetscPrintf(p4est->mpicomm, "Begin computing electroporation on the Voronoi mesh.\n");
     VecDuplicate(sol_voro, &vn_voro);
     double *sol_voro_p;
     ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
 
-    interp_sol.set_input(solution, linear);
-    double *vn_voro_p;
-    VecGetArray(vn_voro, &vn_voro_p);
+
+
+    VecDuplicate(sol_voro, &X0_voro);
+    VecDuplicate(sol_voro, &X1_voro);
+    VecDuplicate(sol_voro, &Sm_voro);
+
+
     for(unsigned int n=0; n<num_local_voro; ++n)
     {
-        if(fabs(vn_voro_p[n])>EPS)
-            continue;
 #ifdef P4_TO_P8
         Voronoi3D voro;
 #else
@@ -1264,28 +1282,44 @@ void my_p4est_electroporation_solve_t::compute_jump(Vec solution)
 
 #ifdef P4_TO_P8
         Point3 pc = voro_points[n];
+        Point3 pair;
 #else
         Point2 pc = voro_points[n];
+        Point2 pair;
 #endif
 
 
-#ifdef P4_TO_P8
-        const std::vector<Voronoi3DPoint> *points;
-#else
-        const std::vector<Voronoi2DPoint> *points;
-#endif
-        voro.get_Points(points);
+        //#ifdef P4_TO_P8
+        //        const std::vector<Voronoi3DPoint> *points;
+        //#else
+        //        const std::vector<Voronoi2DPoint> *points;
+        //#endif
+        //        voro.get_Points(points);
 
 #ifdef P4_TO_P8
         double phi_n = interp_phi(pc.x, pc.y, pc.z);
+        double dphix = interp_dphi_x(pc.x,pc.y,pc.z);
+        double dphiy = interp_dphi_y(pc.x,pc.y,pc.z);
+        double dphiz = interp_dphi_z(pc.x,pc.y,pc.z);
+        Point3 dphi;
+        dphi.x = dphix;
+        dphi.y = dphiy;
+        dphi.z = dphiz;
 #else
         double phi_n = interp_phi(pc.x, pc.y);
+        double dphix = interp_dphi_x(pc.x,pc.y);
+        double dphiy = interp_dphi_y(pc.x,pc.y);
+        Point2 dphi;
+        dphi.x = dphix;
+        dphi.y = dphiy;
 #endif
-        int pair_index=-1;
+        pair = pc-dphi*fabs(phi_n)*2;
+
+        //int pair_index = pair_point.n;
 
         // only sweep through each pair of Voronoi points ONCE by looking at nodes on one side of the interfaces.
-
-        double tmp_dist = DBL_MAX;
+        /*
+        double tmp_dist = DBL_MAX;/*
 
         for(unsigned int l=0; l<points->size(); ++l)
         {
@@ -1293,9 +1327,13 @@ void my_p4est_electroporation_solve_t::compute_jump(Vec solution)
             {
 #ifdef P4_TO_P8
                 Point3 pl = (*points)[l].p;
+                double phi_l = interp_phi(pl.x, pl.y, pl.z);
 #else
                 Point2 pl = (*points)[l].p;
+                double phi_l = interp_phi(pl.x, pl.y);
 #endif
+                if(phi_l*phi_n>0)
+                    continue;
 
                 if((pl-pc).norm_L2()<tmp_dist)
                 {
@@ -1305,26 +1343,37 @@ void my_p4est_electroporation_solve_t::compute_jump(Vec solution)
             }
         }
 
-
+*/
         /* regular point */
 #ifdef P4_TO_P8
-        Point3 pl = (*points)[pair_index].p;
-        double phi_l = interp_phi(pl.x, pl.y, pl.z);
+        double phi_l = interp_phi(pair.x, pair.y, pair.z);
 #else
-        Point2 pl = (*points)[pair_index].p;
-        double phi_l = interp_phi(pl.x, pl.y);
+        double phi_l = interp_phi(pair.x, pair.y);
 #endif
 
-        if(phi_n*phi_l<0)
+        if(phi_n*phi_l<0 && fabs(phi_n)<2*diag_min)
         {
+#ifdef P4_TO_P8
+            Voronoi3DPoint pair_point = find_voro_cell_at(pair);
+#else
+            Voronoi2DPoint pair_point = find_voro_cell_at(pair);
+#endif
+            int pair_id = pair_point.n; //(*points)[pair_index].n
+            if(pair_id<0)
+                continue;
+#ifdef P4_TO_P8
+        Point3 pl = pair_point.p;//(*points)[pair_index].p;
+#else
+        Point2 pl = pair_point.p;//(*points)[pair_index].p;
+#endif
 #ifdef P4_TO_P8
             Voronoi3D voro_n1;
 #else
             Voronoi2D voro_n1;
 #endif
-            compute_voronoi_cell((*points)[pair_index].n, voro_n1);
-
-            // extend from ex/in-terior to in/ex-terior on Voronoi mesh
+            /*compute_voronoi_cell((*points)[pair_index].n, voro_n1);*/
+            compute_voronoi_cell(pair_id, voro_n1);
+            /* extend from ex/in-terior to in/ex-terior on Voronoi mesh,*/
 #ifdef P4_TO_P8
             double sol_l = interp_sol(pl.x,pl.y,pl.z);
             double sol_n = interp_sol(pc.x,pc.y,pc.z);
@@ -1334,8 +1383,7 @@ void my_p4est_electroporation_solve_t::compute_jump(Vec solution)
 #endif
             double u0 = extend_over_interface_Voronoi(voro, voro_n1, phi_l, sol_l);
             double u1 = extend_over_interface_Voronoi(voro_n1, voro, phi_n, sol_n);
-
-            // compute the two approximations to jump around the interface
+            /* compute the two approximations to jump around the interface */
             double v0, v1;
             if(phi_n<0)
             {
@@ -1346,32 +1394,75 @@ void my_p4est_electroporation_solve_t::compute_jump(Vec solution)
                 v1 = u1 - sol_l;
             }
 
-            // assign the average jump to both the Voronoi points across the interface
+            /* assign the average jump to both the Voronoi points across the interface */
             double jump_v = 0.5*(v0 + v1);
 
             int global_ghost_idx;
             int global_voro_idx;
-            if((*points)[pair_index].n>=num_local_voro)
-                global_ghost_idx = voro_ghost_local_num[(*points)[pair_index].n-num_local_voro] + voro_global_offset[voro_ghost_rank[(*points)[pair_index].n-num_local_voro]];
+            if(pair_id>=num_local_voro)
+                global_ghost_idx = voro_ghost_local_num[pair_id-num_local_voro] + voro_global_offset[voro_ghost_rank[pair_id-num_local_voro]];
             else
-                global_ghost_idx = (*points)[pair_index].n + voro_global_offset[p4est->mpirank];
+                global_ghost_idx = pair_id + voro_global_offset[p4est->mpirank];
 
             global_voro_idx = n + voro_global_offset[p4est->mpirank];
 
-            VecSetValues(vn_voro,1,&global_ghost_idx,&jump_v,INSERT_VALUES);
+#ifdef P4_TO_P8
+            double X0_n = (*X0)(pc.x, pc.y, pc.z);
+            double X1_n = (*X1)(pc.x, pc.y, pc.z);
+#else
+            double X0_n = (*X0)(pc.x, pc.y);
+            double X1_n = (*X1)(pc.x, pc.y);
+#endif
+            double X0_tmp = X0_n + dt*(((*beta_0)(jump_v) - X0_n)/tau_ep);
+            double X1_voro_n = X1_n + dt*MAX( ((*beta_1)(X0_n)-X1_n)/tau_perm, ((*beta_1)(X0_n)-X1_n)/tau_res );
+            double X0_voro_n = X0_tmp;
+            double Sm_voro_n = SL + S0*X0_voro_n + S1*X1_voro_n;
+
+
             VecSetValues(vn_voro,1,&global_voro_idx,&jump_v,INSERT_VALUES);
+            VecSetValues(X0_voro,1,&global_voro_idx,&X0_voro_n,INSERT_VALUES);
+            VecSetValues(X1_voro,1,&global_voro_idx,&X1_voro_n,INSERT_VALUES);
+            VecSetValues(Sm_voro,1,&global_voro_idx,&Sm_voro_n,INSERT_VALUES);
+
+            VecSetValues(vn_voro,1,&global_ghost_idx,&jump_v,INSERT_VALUES);
+            VecSetValues(X0_voro,1,&global_ghost_idx,&X0_voro_n,INSERT_VALUES);
+            VecSetValues(X1_voro,1,&global_ghost_idx,&X1_voro_n,INSERT_VALUES);
+            VecSetValues(Sm_voro,1,&global_ghost_idx,&Sm_voro_n,INSERT_VALUES);
+
+
         }
     }
-    VecRestoreArray(vn_voro, &vn_voro_p);
 
     VecAssemblyBegin(vn_voro);
     VecAssemblyEnd(vn_voro);
-    VecGhostUpdateBegin(vn_voro,INSERT_VALUES,SCATTER_FORWARD);
-    VecGhostUpdateEnd(vn_voro,INSERT_VALUES,SCATTER_FORWARD);
+
+    VecAssemblyBegin(X0_voro);
+    VecAssemblyEnd(X0_voro);
+
+    VecAssemblyBegin(X1_voro);
+    VecAssemblyEnd(X1_voro);
+
+    VecAssemblyBegin(Sm_voro);
+    VecAssemblyEnd(Sm_voro);
+
+    ierr = VecGhostUpdateBegin(vn_voro,INSERT_VALUES,SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(vn_voro,INSERT_VALUES,SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecGhostUpdateBegin(X0_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (X0_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecGhostUpdateBegin(X1_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (X1_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecGhostUpdateBegin(Sm_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (Sm_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecGhostUpdateBegin(vn_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (vn_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
 
-    PetscPrintf(p4est->mpicomm, "--->---- END computing jump on the Voronoi mesh.\n");
+    PetscPrintf(p4est->mpicomm, "END computing electroporation on the Voronoi mesh.\n");
 }
 
 #ifdef P4_TO_P8
@@ -1447,6 +1538,98 @@ double my_p4est_electroporation_solve_t::extend_over_interface_Voronoi(Voronoi2D
 
     return p1 + (-d0-d1)*dif01;// + (-d0-d1)*(-d0-d2)*dif012;
 }
+
+
+
+
+
+#ifdef P4_TO_P8
+Voronoi3DPoint my_p4est_electroporation_solve_t::find_voro_cell_at(Point3 p_int)
+#else
+Voronoi2DPoint my_p4est_electroporation_solve_t::find_voro_cell_at(Point2 p_int)
+#endif
+{
+    double xyz1 [] =
+    {
+        std::min(xyz_max[0], std::max(xyz_min[0], p_int.x)),
+        std::min(xyz_max[1], std::max(xyz_min[1], p_int.y))
+    #ifdef P4_TO_P8
+        , std::min(xyz_max[2], std::max(xyz_min[2], p_int.z))
+    #endif
+    };
+
+    p4est_quadrant_t quad;
+    std::vector<p4est_quadrant_t> remote_matches;
+    int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz1, quad, remote_matches);
+
+    unsigned int index = -1; // this is the index of the voro cell containing the point p_int necessary for interpolation
+#ifdef P4_TO_P8
+    Voronoi3DPoint pair_point;
+#else
+    Voronoi2DPoint pair_point;
+#endif
+    if(rank_found==p4est->mpirank)
+    {
+        p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
+        p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+        p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+
+        double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+        double qy = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+#ifdef P4_TO_P8
+        double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+#endif
+        p4est_locidx_t node = -1;
+#ifdef P4_TO_P8
+        if     (xyz1[0]<=qx && xyz1[1]<=qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+        else if(xyz1[0]<=qx && xyz1[1]<=qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
+        else if(xyz1[0]<=qx && xyz1[1]> qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+        else if(xyz1[0]<=qx && xyz1[1]> qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
+        else if(xyz1[0]> qx && xyz1[1]<=qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+        else if(xyz1[0]> qx && xyz1[1]<=qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
+        else if(xyz1[0]> qx && xyz1[1]> qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+        else if(xyz1[0]> qx && xyz1[1]> qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
+#else
+        if     (xyz1[0]<=qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+        else if(xyz1[0]<=qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+        else if(xyz1[0]> qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+        else if(xyz1[0]> qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+#endif
+#ifdef P4_TO_P8
+        Point3 vp;
+#else
+        Point2 vp;
+#endif
+        double tmp_dist_voro = DBL_MAX;
+        for(unsigned int m=0; m<grid2voro[node].size(); ++m)
+        {
+
+            vp = voro_points[grid2voro[node][m]];
+
+            double voros_dist = (p_int-vp).norm_L2();
+            if(voros_dist<tmp_dist_voro)
+            {
+                tmp_dist_voro = voros_dist;
+                index = grid2voro[node][m];
+            }
+        }
+        pair_point.n = index + voro_global_offset[p4est->mpirank];;
+        pair_point.p.x = vp.x;
+        pair_point.p.y = vp.y;
+#ifdef P4_TO_P8
+        pair_point.p.z = vp.z;
+#endif
+        return pair_point;
+
+    }
+}
+
+
+
+
+
+
+
 
 #ifdef P4_TO_P8
 double my_p4est_electroporation_solve_t::interpolate_Voronoi_at_point(Point3 p_int, double sign)
@@ -1791,61 +1974,9 @@ double my_p4est_electroporation_solve_t::interpolate_Voronoi_at_point(Point2 p_i
 }
 
 
-void my_p4est_electroporation_solve_t::compute_electroporation(Vec X0_tree, Vec X1_tree, Vec Sm_tree, Vec vn_tree)
+void my_p4est_electroporation_solve_t::interpolate_electroporation_to_tree(Vec X0_tree, Vec X1_tree, Vec Sm_tree, Vec vn_tree)
 {
-    PetscPrintf(p4est->mpicomm, "Begin computing electroporation variables on Voronoi mesh. \n");
-
-    double vi = 0;
-    VecDuplicate(sol_voro, &X0_voro);
-    VecDuplicate(sol_voro, &X1_voro);
-    VecDuplicate(sol_voro, &Sm_voro);
-
-    double *X0_voro_p, *X1_voro_p, *Sm_voro_p, *vn_voro_p, *sol_voro_p;
-    VecGetArray(sol_voro, &sol_voro_p);
-    VecGetArray(X0_voro, &X0_voro_p);
-    VecGetArray(X1_voro, &X1_voro_p);
-    VecGetArray(Sm_voro, &Sm_voro_p);
-    VecGetArray(vn_voro, &vn_voro_p);
-    for(unsigned int n=0; n<num_local_voro; ++n)
-    {
-
-#ifdef P4_TO_P8
-        Point3 pc = voro_points[n];
-#else
-        Point2 pc = voro_points[n];
-#endif
-        vi = vn_voro_p[n];
-#ifdef P4_TO_P8
-        double X0_n = (*X0)(pc.x, pc.y, pc.z);
-        double X1_n = (*X1)(pc.x, pc.y, pc.z);
-#else
-        double X0_n = (*X0)(pc.x, pc.y);
-        double X1_n = (*X1)(pc.x, pc.y);
-#endif
-        double X0_tmp = X0_n + dt*(((*beta_0)(vi) - X0_n)/tau_ep);
-        X1_voro_p[n] = X1_n + dt*MAX( ((*beta_1)(X0_n)-X1_n)/tau_perm, ((*beta_1)(X0_n)-X1_n)/tau_res );
-        X0_voro_p[n] = X0_tmp;
-        Sm_voro_p[n] = SL + S0*X0_voro_p[n] + S1*X1_voro_p[n];
-    }
-    ierr = VecRestoreArray(X0_voro, &X0_voro_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(X1_voro, &X1_voro_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(Sm_voro, &Sm_voro_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vn_voro, &vn_voro_p); CHKERRXX(ierr);
-    /* update ghosts */
-    ierr = VecGhostUpdateBegin(X0_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (X0_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    ierr = VecGhostUpdateBegin(X1_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (X1_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    ierr = VecGhostUpdateBegin(Sm_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (Sm_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    ierr = VecGhostUpdateBegin(vn_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (vn_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-
+    PetscPrintf(p4est->mpicomm, "Begin interpolating electroporation variables onto tree mesh. \n");
     Vec l0, l;
     ierr = VecGhostGetLocalForm(sol_voro, &l); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(X0_voro, &l0); CHKERRXX(ierr);
@@ -1853,155 +1984,31 @@ void my_p4est_electroporation_solve_t::compute_electroporation(Vec X0_tree, Vec 
     ierr = VecGhostRestoreLocalForm(sol_voro, &l); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(X0_voro, &l0); CHKERRXX(ierr);
     interpolate_solution_from_voronoi_to_tree(X0_tree);
-    
+
     ierr = VecGhostGetLocalForm(sol_voro, &l); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(X1_voro, &l0); CHKERRXX(ierr);
     ierr = VecCopy(l0, l); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(sol_voro, &l); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(X1_voro, &l0); CHKERRXX(ierr);
     interpolate_solution_from_voronoi_to_tree(X1_tree);
-    
+
     ierr = VecGhostGetLocalForm(sol_voro, &l); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(Sm_voro, &l0); CHKERRXX(ierr);
     ierr = VecCopy(l0, l); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(sol_voro, &l); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(Sm_voro, &l0); CHKERRXX(ierr);
     interpolate_solution_from_voronoi_to_tree(Sm_tree);
-    
+
     ierr = VecGhostGetLocalForm(sol_voro, &l); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(vn_voro, &l0); CHKERRXX(ierr);
     ierr = VecCopy(l0, l); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(sol_voro, &l); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(vn_voro, &l0); CHKERRXX(ierr);
     interpolate_solution_from_voronoi_to_tree(vn_tree);
-    
-    ierr = VecDestroy(X0_voro); CHKERRXX(ierr);
-    ierr = VecDestroy(X1_voro); CHKERRXX(ierr);
-    ierr = VecDestroy(Sm_voro); CHKERRXX(ierr);
-    // ierr = VecDestroy(vn_voro); CHKERRXX(ierr);
-    ierr = VecDestroy(sol_voro); CHKERRXX(ierr);
-    PetscPrintf(p4est->mpicomm, "End computing electroporation variables on Voronoi mesh. \n");
+
+
+    PetscPrintf(p4est->mpicomm, "End interpolating electroporation variables onto tree mesh. \n");
 }
-//void my_p4est_electroporation_solve_t::compute_electroporation(Vec X0_tree, Vec X1_tree, Vec Sm_tree)
-//{
-//    PetscPrintf(p4est->mpicomm, "Begin computing electroporation variables on Voronoi mesh. \n");
-
-//    double vi;
-//    double *sol_voro_p;
-//    ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
-
-//    VecDuplicate(sol_voro, &X0_voro);
-//    VecDuplicate(sol_voro, &X1_voro);
-//    VecDuplicate(sol_voro, &Sm_voro);
-//    double *X0_voro_p, *X1_voro_p, *Sm_voro_p;
-//    VecGetArray(X0_voro, &X0_voro_p);
-//    VecGetArray(X1_voro, &X1_voro_p);
-//    VecGetArray(Sm_voro, &Sm_voro_p);
-//    for(unsigned int n=0; n<num_local_voro; ++n)
-//    {
-
-//#ifdef P4_TO_P8
-//        Point3 pc = voro_points[n];
-//#else
-//        Point2 pc = voro_points[n];
-//#endif
-//#ifdef P4_TO_P8
-//        Voronoi3D voro;
-//#else
-//        Voronoi2D voro;
-//#endif
-//        compute_voronoi_cell(n, voro);
-
-//#ifdef P4_TO_P8
-//        const std::vector<Voronoi3DPoint> *points;
-//#else
-//        const std::vector<Point2> *partition;
-//        const std::vector<Voronoi2DPoint> *points;
-//        voro.get_Partition(partition);
-//#endif
-//        voro.get_Points(points);
-//#ifdef P4_TO_P8
-//        double phi_n = interp_phi(pc.x, pc.y, pc.z);
-//#else
-//        double phi_n = interp_phi(pc.x, pc.y);
-//#endif
-//        for(unsigned int l=0; l<points->size(); ++l)
-//        {
-
-//            if((*points)[l].n>=0)
-//            {
-//                /* regular point */
-//#ifdef P4_TO_P8
-//                Point3 pl = (*points)[l].p;
-//                double phi_l = interp_phi(pl.x, pl.y, pl.z);
-//                vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
-//                double X0_n = (*X0)(pc.x, pc.y, pc.z);
-//                double X1_n = (*X1)(pc.x, pc.y, pc.z);
-//#else
-//                Point2 pl = (*points)[l].p;
-//                double phi_l = interp_phi(pl.x, pl.y);
-//                vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
-//#endif
-
-//                if(phi_n*phi_l<0)
-//                {
-//                    double X0_tmp = X0_n + dt*(((*beta_0)(vi) - X0_n)/tau_ep);
-//                    X1_voro_p[n] = X1_n + dt*MAX( ((*beta_1)(X0_n)-X1_n)/tau_perm, ((*beta_1)(X0_n)-X1_n)/tau_res );
-//                    X0_voro_p[n] = X0_tmp;
-//                    Sm_voro_p[n] = SL + S0*X0_voro_p[n] + S1*X1_voro_p[n];
-
-//                    X0_voro_p[(*points)[l].n] = X0_voro_p[n];
-//                    X1_voro_p[(*points)[l].n] = X1_voro_p[n];
-//                    Sm_voro_p[(*points)[l].n] = Sm_voro_p[n];
-
-//                }
-//            }
-//        }
-//    }
-//    ierr = VecRestoreArray(X0_voro, &X0_voro_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(X1_voro, &X1_voro_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(Sm_voro, &Sm_voro_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
-
-//    /* update ghosts */
-//    ierr = VecGhostUpdateBegin(X0_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd  (X0_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-//    ierr = VecGhostUpdateBegin(X1_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd  (X1_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-//    ierr = VecGhostUpdateBegin(Sm_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd  (Sm_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-
-//    Vec l0, l;
-//    ierr = VecGhostGetLocalForm(sol_voro, &l); CHKERRXX(ierr);
-//    ierr = VecGhostGetLocalForm(X0_voro, &l0); CHKERRXX(ierr);
-//    ierr = VecCopy(l0, l); CHKERRXX(ierr);
-//    ierr = VecGhostRestoreLocalForm(sol_voro, &l); CHKERRXX(ierr);
-//    ierr = VecGhostRestoreLocalForm(X0_voro, &l0); CHKERRXX(ierr);
-//    interpolate_solution_from_voronoi_to_tree(X0_tree);
-//    ierr = VecDestroy(X0_voro); CHKERRXX(ierr);
-
-//    ierr = VecGhostGetLocalForm(sol_voro, &l); CHKERRXX(ierr);
-//    ierr = VecGhostGetLocalForm(X1_voro, &l0); CHKERRXX(ierr);
-//    ierr = VecCopy(l0, l); CHKERRXX(ierr);
-//    ierr = VecGhostRestoreLocalForm(sol_voro, &l); CHKERRXX(ierr);
-//    ierr = VecGhostRestoreLocalForm(X1_voro, &l0); CHKERRXX(ierr);
-//    interpolate_solution_from_voronoi_to_tree(X1_tree);
-//    ierr = VecDestroy(X1_voro); CHKERRXX(ierr);
-
-//    ierr = VecGhostGetLocalForm(sol_voro, &l); CHKERRXX(ierr);
-//    ierr = VecGhostGetLocalForm(Sm_voro, &l0); CHKERRXX(ierr);
-//    ierr = VecCopy(l0, l); CHKERRXX(ierr);
-//    ierr = VecGhostRestoreLocalForm(sol_voro, &l); CHKERRXX(ierr);
-//    ierr = VecGhostRestoreLocalForm(Sm_voro, &l0); CHKERRXX(ierr);
-//    interpolate_solution_from_voronoi_to_tree(Sm_tree);
-//    ierr = VecDestroy(Sm_voro); CHKERRXX(ierr);
-
-//    ierr = VecDestroy(sol_voro); CHKERRXX(ierr);
-//    PetscPrintf(p4est->mpicomm, "End computing electroporation variables on Voronoi mesh. \n");
-//}
 
 
 void my_p4est_electroporation_solve_t::setup_linear_system()
@@ -2098,11 +2105,11 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 
 
 #ifndef P4_TO_P8
-        //        voro.compute_volume();
+                voro.compute_volume();
 #endif
-        //        double volume = voro.get_volume();
+                double volume = voro.get_volume();
 
-        //        rhs_p[n] *= volume;
+                rhs_p[n] *= volume;
 
         //#ifdef P4_TO_P8
         //        double add_n = (*add)(pc.x, pc.y, pc.z);
@@ -2125,10 +2132,10 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 #endif
 
             /* desperate fix: avoid 0s in the diagonal entries of the matrix because of roundoff error at high resolutions beyond level 8 */
-            if(s<1e-20)
+            if(s<1e-120)
             {
                 //PetscPrintf(p4est->mpicomm, "s %g\n", s);
-                s=1e-20;
+                s=1e-120;
             }
             if((*points)[l].n>=0)
             {
@@ -2257,6 +2264,7 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                         case 1:
                             /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
                             sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(Cm+dt*Smn));
+
                             //vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
                             vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
@@ -2330,59 +2338,6 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                 if(fabs(pc.y-xyz_min[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
                 if(fabs(pc.y-xyz_max[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
                 rhs_p[n] += s*sigma_n * bc->wallValue(x_tmp, y_tmp);
-
-
-
-                //                if     ((*points)[l].n==WALL_m00)
-                //                {
-                //                    if(bc->wallType(xyz_min[0],pc.y)==DIRICHLET) rhs_p[n] = bc->wallValue(xyz_min[0],pc.y)*s*sigma_n/(pc.x-xyz_min[0]);
-                //                    else                                  rhs_p[n] += bc->wallValue(xyz_min[0],pc.y)*s*sigma_n;
-                //                }
-                //                else if((*points)[l].n==WALL_p00)
-                //                {
-                //                    if(bc->wallType(xyz_max[0],pc.y)==DIRICHLET) rhs_p[n] = bc->wallValue(xyz_max[0],pc.y)*s*sigma_n/(xyz_max[0]-pc.x);
-                //                    else                                  rhs_p[n] += bc->wallValue(xyz_max[0],pc.y)*s*sigma_n;
-                //                }
-                //                else if((*points)[l].n==WALL_0m0)
-                //                {
-                //                    if(bc->wallType(pc.x,xyz_min[1])==DIRICHLET) rhs_p[n] = bc->wallValue(pc.x,xyz_min[1])*s*sigma_n/(pc.y-xyz_min[1]);
-                //                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_min[1])*s*sigma_n;
-                //                }
-                //                else if((*points)[l].n==WALL_0p0)
-                //                {
-                //                    if(bc->wallType(pc.x,xyz_max[1])==DIRICHLET) rhs_p[n] = bc->wallValue(pc.x,xyz_max[1])*s*sigma_n/(xyz_max[1]-pc.y);
-                //                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_max[1])*s*sigma_n;
-                //                }
-
-
-
-
-                /* walls */
-                //                if     ((*points)[l].n==WALL_m00 && bc->wallType(xyz_min[0],pc.y)==DIRICHLET)
-                //                {
-                //                    matrix_has_nullspace = false;
-                //                    ent.n = global_n_idx; ent.val += s*sigma_n/(pc.x-xyz_min[0]);
-                //                    matrix_entries[n].push_back(ent);
-                //                };
-                //                if((*points)[l].n==WALL_p00 && bc->wallType(xyz_max[0],pc.y)==DIRICHLET)
-                //                {
-                //                    matrix_has_nullspace = false;
-                //                    ent.n = global_n_idx; ent.val += s*sigma_n/(xyz_max[0] - pc.x);
-                //                    matrix_entries[n].push_back(ent);
-                //                };
-                //                if((*points)[l].n==WALL_0m0 && bc->wallType(pc.x,xyz_min[1])==DIRICHLET)
-                //                {
-                //                    matrix_has_nullspace = false;
-                //                    ent.n = global_n_idx; ent.val += s*sigma_n/(pc.y-xyz_min[1]);
-                //                    matrix_entries[n].push_back(ent);
-                //                };
-                //                if((*points)[l].n==WALL_0p0 && bc->wallType(pc.x,xyz_max[1])==DIRICHLET)
-                //                {
-                //                    matrix_has_nullspace = false;
-                //                    ent.n = global_n_idx; ent.val += s*sigma_n/(xyz_max[1] - pc.y);
-                //                    matrix_entries[n].push_back(ent);
-                //                };
-
 #endif
             }
         }
@@ -2419,19 +2374,6 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
     ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
     ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
 
-
-
-    //    //PAM3
-    //    Vec min;
-    //    VecDuplicate(rhs, &min);
-    //    MatGetRowMaxAbs(A, min, NULL);
-    //    //VecView(max, PETSC_VIEWER_STDOUT_WORLD);
-    //    PetscReal val;
-    //    ierr = VecMax(min,NULL,&val); CHKERRXX(ierr);
-    //    ierr = PetscPrintf(PETSC_COMM_WORLD, "maximum matrix element before: %g\n", (double)val); CHKERRXX(ierr);
-
-
-
     /* check for null space */
     MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace, 1, MPI_INT, MPI_LAND, p4est->mpicomm);
     if (matrix_has_nullspace)
@@ -2454,7 +2396,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
 
     double *rhs_p;
     ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
-    
+
     for(unsigned int n=0; n<num_local_voro; ++n)
     {
 #ifdef P4_TO_P8
@@ -3196,16 +3138,18 @@ void my_p4est_electroporation_solve_t::print_voronoi_VTK(const char* path) const
     char name[1000];
     sprintf(name, "%s_%d.vtk", path, p4est->mpirank);
 
-    double *vn_p;
+    double *vn_p, *sol_voro_p;
     VecGetArray(vn_voro, &vn_p);
+    VecGetArray(sol_voro, &sol_voro_p);
 
 #ifdef P4_TO_P8
     bool periodic[P4EST_DIM] = {true, true, true};
-    Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic, vn_p);
+    Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic, vn_p, sol_voro_p);
 #else
     Voronoi2D::print_VTK_Format(voro, name);
 #endif
     VecRestoreArray(vn_voro, &vn_p);
+    VecRestoreArray(sol_voro, &sol_voro_p);
 }
 
 

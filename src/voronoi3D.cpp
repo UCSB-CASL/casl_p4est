@@ -202,7 +202,7 @@ void Voronoi3D::construct_Partition(const double *xyz_min, const double *xyz_max
 
 
 void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char* file_name,
-                                  const double *xyz_min, const double *xyz_max, const bool *periodic, double *vn_p)
+                                  const double *xyz_min, const double *xyz_max, const bool *periodic, double *vn_p, double *sol_voro_p)
 {
   FILE* f;
   f = fopen(file_name, "w");
@@ -355,6 +355,9 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
       }
     }
   }
+
+
+
   fclose(f);
 
 

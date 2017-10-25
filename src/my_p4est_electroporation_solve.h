@@ -193,6 +193,9 @@ class my_p4est_electroporation_solve_t
 #endif
 
     my_p4est_interpolation_nodes_t interp_phi;
+    my_p4est_interpolation_nodes_t interp_dphi_x;
+    my_p4est_interpolation_nodes_t interp_dphi_y;
+    my_p4est_interpolation_nodes_t interp_dphi_z;
     my_p4est_interpolation_nodes_t interp_sol;
     my_p4est_interpolation_nodes_t rhs_m;
     my_p4est_interpolation_nodes_t rhs_p;
@@ -302,6 +305,11 @@ public:
     void set_bc(BoundaryConditions2D& bc);
 #endif
 
+#ifdef P4_TO_P8
+    void set_grad_phi(Vec grad_phi[3]);
+#else
+    void set_grad_phi(Vec grad_phi[2]);
+#endif
     void set_beta0(CF_1& beta_0_in);
 
     void set_beta1(CF_1& beta_1_in);
@@ -321,13 +329,18 @@ public:
     }
     void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 
-    void compute_jump(Vec solution);
+    void compute_electroporation();
 #ifdef P4_TO_P8
     double extend_over_interface_Voronoi(Voronoi3D voro_n0, Voronoi3D voro_n1, double phi_n1, double sol);
 #else
     double extend_over_interface_Voronoi(Voronoi2D voro_n0, Voronoi2D voro_n1, double phi_n1, double sol);
 #endif
 
+#ifdef P4_TO_P8
+    Voronoi3DPoint find_voro_cell_at(Point3 p_int);
+#else
+    Voronoi2DPoint find_voro_cell_at(Point2 p_int);
+#endif
 
 #ifdef P4_TO_P8
     double interpolate_Voronoi_at_point(Point3 location, double sign);
@@ -335,7 +348,7 @@ public:
     double interpolate_Voronoi_at_point(Point2 location, double sign);
 #endif
 
-    void compute_electroporation(Vec X0, Vec X1, Vec Sm, Vec vn);
+    void interpolate_electroporation_to_tree(Vec X0, Vec X1, Vec Sm, Vec vn);
 
     double interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const;
     void interpolate_solution_from_voronoi_to_tree(Vec solution) const;

@@ -40,7 +40,7 @@ using namespace std;
 
 
 
-int test = 4;
+int test = 5;
 
 /* 0 or 1 */
 int implicit = 1;
@@ -97,7 +97,7 @@ bool save_vtk = true;
 bool save_error = true;
 int save_every_n = 1;
 bool check_partition = false;
-bool save_voro = true;
+bool save_voro = false;
 bool save_stats = true;
 
 
@@ -489,11 +489,6 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     ierr = VecGetArray(rhs_p, &rhs_p_p); CHKERRXX(ierr);
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     {
-        double x = node_x_fr_n(n, p4est, nodes);
-        double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-        double z = node_z_fr_n(n, p4est, nodes);
-#endif
         rhs_m_p[n] = 0;
         rhs_p_p[n] = 0;
 
@@ -519,9 +514,9 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
 
 
-    solver.set_sigma(sigma_in);
-    solver.set_beta_0(beta_0_in);
-    solver.set_beta_1(beta_1_in);
+
+    solver.set_beta0(beta_0_in);
+    solver.set_beta1(beta_1_in);
     solver.set_Sm(Sm);
     solver.set_X0(X0);
     solver.set_X1(X1);
@@ -617,51 +612,6 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 //                ls.extend_Over_Interface(phi, vn, 1, 1);
 //        ls.average_Onto_Interface(phi, sol, u_plus_ext, u_minus_ext, vn, 1);
 
-        //      check jump
-        double *phi_p;
-        VecGetArray(phi, &phi_p);
-        double err_v;
-        err_v = 0;
-        for(unsigned int n=0; n<nodes->num_owned_indeps; ++n)
-        {
-            double x = node_x_fr_n(n, p4est, nodes);
-            double y = node_y_fr_n(n, p4est, nodes);
-
-            bool interface = false;
-            Voronoi2D voro;
-            solver.compute_voronoi_cell(n, voro);
-            vector<Voronoi2DPoint> *points;
-            vector<Point2> *partition;
-            voro.get_Partition(partition);
-            voro.get_Points(points);
-            unsigned int ln;
-            for(unsigned int l=0; l<points->size(); ++l)
-            {
-                if((*points)[l].n>=0 && phi_p[(*points)[l].n]*phi_p[n]<0)
-                {
-                    interface = true;
-                    ln = (*points)[l].n;
-
-                    break;
-                }
-            }
-
-            if(interface)
-            {
-                Point2 pc = voro.get_Center_Point();
-                double v_ex = v_exact(x,y,tn+dt);
-                err_v = MAX(err_v, ABS(v_ex));
-            }
-
-        }
-        PetscPrintf(p4est->mpicomm, ">> for tests 1 and 4, maximum exact jump is: %g\n", err_v);
-        VecRestoreArray(phi, &phi_p);
-
-        // finish check jump
-
-
-
-
 
 
 
@@ -695,6 +645,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         }
         else
         {
+
             double *vn_n_p, *Sm_n_p, *X0_np1, *X1_np1;
             ierr = VecGetArray(Sm, &Sm_n_p); CHKERRXX(ierr);
             ierr = VecGetArray(vn, &vn_n_p); CHKERRXX(ierr);
@@ -720,6 +671,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
                 Sm_n_p[n] = SL + S0*X_0_v_p[n] + S1*X_1_v_p[n];
 
             }
+
 
 
             ierr = VecRestoreArray(Sm, &Sm_n_p); CHKERRXX(ierr);
@@ -750,7 +702,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
 
 
-
+ PetscPrintf(p4est->mpicomm, "HERE!\n");
     if(check_partition)
         solver.check_voronoi_partition();
 
@@ -1052,7 +1004,7 @@ int main(int argc, char** argv) {
             ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
             ierr = VecDuplicate(phi, &sol); CHKERRXX(ierr);
             solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2);
-
+            PetscPrintf(p4est->mpicomm, "solved!\n");
             /* compute the error on the tree*/
             Vec err;
             ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
