@@ -1272,6 +1272,12 @@ void my_p4est_electroporation_solve_t::compute_electroporation()
 
     for(unsigned int n=0; n<num_local_voro; ++n)
     {
+
+
+
+
+
+
 #ifdef P4_TO_P8
         Voronoi3D voro;
 #else
@@ -1281,21 +1287,13 @@ void my_p4est_electroporation_solve_t::compute_electroporation()
         compute_voronoi_cell(n, voro);
 
 #ifdef P4_TO_P8
-        Point3 pc = voro_points[n];
+        Point3 pc;
         Point3 pair;
 #else
-        Point2 pc = voro_points[n];
+        Point2 pc;
         Point2 pair;
 #endif
-
-
-        //#ifdef P4_TO_P8
-        //        const std::vector<Voronoi3DPoint> *points;
-        //#else
-        //        const std::vector<Voronoi2DPoint> *points;
-        //#endif
-        //        voro.get_Points(points);
-
+        pc = voro.get_Center_Point();
 #ifdef P4_TO_P8
         double phi_n = interp_phi(pc.x, pc.y, pc.z);
         double dphix = interp_dphi_x(pc.x,pc.y,pc.z);
@@ -1313,65 +1311,39 @@ void my_p4est_electroporation_solve_t::compute_electroporation()
         dphi.x = dphix;
         dphi.y = dphiy;
 #endif
-        pair = pc-dphi*fabs(phi_n)*2;
+        if(fabs(phi_n)>0.3*diag_min || fabs(phi_n)<EPS)
+            continue;
 
-        //int pair_index = pair_point.n;
 
-        // only sweep through each pair of Voronoi points ONCE by looking at nodes on one side of the interfaces.
-        /*
-        double tmp_dist = DBL_MAX;/*
 
-        for(unsigned int l=0; l<points->size(); ++l)
+
+
+
+        pair = pc-dphi*phi_n*2;
+        int pair_id = find_voro_cell_at(pair);
+
+        pair_id -= voro_global_offset[p4est->mpirank];
+
+        if(pair_id<0)
+            continue;
+
+
+#ifdef P4_TO_P8
+        Point3 pl = voro_points[pair_id];
+        double phi_l = interp_phi(pl.x, pl.y, pl.z);
+#else
+        Point2 pl = voro_points[pair_id];
+        double phi_l = interp_phi(pl.x, pl.y);
+#endif
+
+
+        if(phi_n*phi_l<0)
         {
-            if((*points)[l].n>=0)
-            {
-#ifdef P4_TO_P8
-                Point3 pl = (*points)[l].p;
-                double phi_l = interp_phi(pl.x, pl.y, pl.z);
-#else
-                Point2 pl = (*points)[l].p;
-                double phi_l = interp_phi(pl.x, pl.y);
-#endif
-                if(phi_l*phi_n>0)
-                    continue;
-
-                if((pl-pc).norm_L2()<tmp_dist)
-                {
-                    tmp_dist = (pl-pc).norm_L2();
-                    pair_index = l;
-                }
-            }
-        }
-
-*/
-        /* regular point */
-#ifdef P4_TO_P8
-        double phi_l = interp_phi(pair.x, pair.y, pair.z);
-#else
-        double phi_l = interp_phi(pair.x, pair.y);
-#endif
-
-        if(phi_n*phi_l<0 && fabs(phi_n)<2*diag_min)
-        {
-#ifdef P4_TO_P8
-            Voronoi3DPoint pair_point = find_voro_cell_at(pair);
-#else
-            Voronoi2DPoint pair_point = find_voro_cell_at(pair);
-#endif
-            int pair_id = pair_point.n; //(*points)[pair_index].n
-            if(pair_id<0)
-                continue;
-#ifdef P4_TO_P8
-        Point3 pl = pair_point.p;//(*points)[pair_index].p;
-#else
-        Point2 pl = pair_point.p;//(*points)[pair_index].p;
-#endif
 #ifdef P4_TO_P8
             Voronoi3D voro_n1;
 #else
             Voronoi2D voro_n1;
 #endif
-            /*compute_voronoi_cell((*points)[pair_index].n, voro_n1);*/
             compute_voronoi_cell(pair_id, voro_n1);
             /* extend from ex/in-terior to in/ex-terior on Voronoi mesh,*/
 #ifdef P4_TO_P8
@@ -1385,17 +1357,22 @@ void my_p4est_electroporation_solve_t::compute_electroporation()
             double u1 = extend_over_interface_Voronoi(voro_n1, voro, phi_n, sol_n);
             /* compute the two approximations to jump around the interface */
             double v0, v1;
-            if(phi_n<0)
+            if(phi_n>0)
             {
-                v0 = u0 - sol_n;
-                v1 = sol_l - u1;
-            } else {
                 v0 = sol_n - u0;
                 v1 = u1 - sol_l;
+
+            } else {
+                v0 = u0 - sol_n;
+                v1 = sol_l - u1;
             }
 
+
             /* assign the average jump to both the Voronoi points across the interface */
-            double jump_v = 0.5*(v0 + v1);
+            double jump_v;
+
+            jump_v = 0.5*(v0 + v1);
+
 
             int global_ghost_idx;
             int global_voro_idx;
@@ -1514,9 +1491,7 @@ double my_p4est_electroporation_solve_t::extend_over_interface_Voronoi(Voronoi2D
     p2 = interp_sol(tmp.x,tmp.y);
 #endif
 
-
-    //interpolate_Voronoi_at_point(tmp, SIGN(phi_n1));
-    /*    double d3 = 2*diagg;
+    double d3 = 2*diagg;
     tmp3 = pc + norm*(d0 + 2*diagg);
 
     tmp3.x = std::min(xyz_max[0], std::max(xyz_min[0], tmp3.x));
@@ -1531,12 +1506,12 @@ double my_p4est_electroporation_solve_t::extend_over_interface_Voronoi(Voronoi2D
 #else
     p3 = interp_sol(tmp3.x,tmp3.y);
 #endif
-*/
-    double dif01 = (p2-p1)/(d2-d1);
-    //  double dif12 = (p3-p2)/(d3-d2);
-    // double dif012 = (dif12-dif01)/(d3-d1);
 
-    return p1 + (-d0-d1)*dif01;// + (-d0-d1)*(-d0-d2)*dif012;
+    double dif01 = (p2-p1)/(d2-d1);
+    double dif12 = (p3-p2)/(d3-d2);
+    double dif012 = (dif12-dif01)/(d3-d1);
+
+    return p1 + (-d0-d1)*dif01 + (-d0-d1)*(-d0-d2)*dif012;
 }
 
 
@@ -1544,9 +1519,9 @@ double my_p4est_electroporation_solve_t::extend_over_interface_Voronoi(Voronoi2D
 
 
 #ifdef P4_TO_P8
-Voronoi3DPoint my_p4est_electroporation_solve_t::find_voro_cell_at(Point3 p_int)
+int my_p4est_electroporation_solve_t::find_voro_cell_at(Point3 p_int)
 #else
-Voronoi2DPoint my_p4est_electroporation_solve_t::find_voro_cell_at(Point2 p_int)
+int my_p4est_electroporation_solve_t::find_voro_cell_at(Point2 p_int)
 #endif
 {
     double xyz1 [] =
@@ -1563,11 +1538,6 @@ Voronoi2DPoint my_p4est_electroporation_solve_t::find_voro_cell_at(Point2 p_int)
     int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz1, quad, remote_matches);
 
     unsigned int index = -1; // this is the index of the voro cell containing the point p_int necessary for interpolation
-#ifdef P4_TO_P8
-    Voronoi3DPoint pair_point;
-#else
-    Voronoi2DPoint pair_point;
-#endif
     if(rank_found==p4est->mpirank)
     {
         p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
@@ -1613,19 +1583,64 @@ Voronoi2DPoint my_p4est_electroporation_solve_t::find_voro_cell_at(Point2 p_int)
                 index = grid2voro[node][m];
             }
         }
-        pair_point.n = index + voro_global_offset[p4est->mpirank];;
-        pair_point.p.x = vp.x;
-        pair_point.p.y = vp.y;
-#ifdef P4_TO_P8
-        pair_point.p.z = vp.z;
-#endif
-        return pair_point;
+
+        return index + voro_global_offset[p4est->mpirank];
 
     }
 }
 
 
 
+#ifdef P4_TO_P8
+int my_p4est_electroporation_solve_t::find_tree_node_at(Point3 p_int)
+#else
+int my_p4est_electroporation_solve_t::find_tree_node_at(Point2 p_int)
+#endif
+{
+    double xyz1 [] =
+    {
+        std::min(xyz_max[0], std::max(xyz_min[0], p_int.x)),
+        std::min(xyz_max[1], std::max(xyz_min[1], p_int.y))
+    #ifdef P4_TO_P8
+        , std::min(xyz_max[2], std::max(xyz_min[2], p_int.z))
+    #endif
+    };
+
+    p4est_quadrant_t quad;
+    std::vector<p4est_quadrant_t> remote_matches;
+    int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz1, quad, remote_matches);
+    if(rank_found==p4est->mpirank)
+    {
+        p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
+        p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+        p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+
+        double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+        double qy = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
+#ifdef P4_TO_P8
+        double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
+#endif
+        p4est_locidx_t node = -1;
+#ifdef P4_TO_P8
+        if     (xyz1[0]<=qx && xyz1[1]<=qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+        else if(xyz1[0]<=qx && xyz1[1]<=qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
+        else if(xyz1[0]<=qx && xyz1[1]> qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+        else if(xyz1[0]<=qx && xyz1[1]> qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
+        else if(xyz1[0]> qx && xyz1[1]<=qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+        else if(xyz1[0]> qx && xyz1[1]<=qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
+        else if(xyz1[0]> qx && xyz1[1]> qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+        else if(xyz1[0]> qx && xyz1[1]> qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
+#else
+        if     (xyz1[0]<=qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+        else if(xyz1[0]<=qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+        else if(xyz1[0]> qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+        else if(xyz1[0]> qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+#endif
+
+        return node;
+
+    }
+}
 
 
 
@@ -2105,11 +2120,11 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 
 
 #ifndef P4_TO_P8
-                voro.compute_volume();
+        voro.compute_volume();
 #endif
-                double volume = voro.get_volume();
+        double volume = voro.get_volume();
 
-                rhs_p[n] *= volume;
+        rhs_p[n] *= volume;
 
         //#ifdef P4_TO_P8
         //        double add_n = (*add)(pc.x, pc.y, pc.z);
@@ -3138,18 +3153,21 @@ void my_p4est_electroporation_solve_t::print_voronoi_VTK(const char* path) const
     char name[1000];
     sprintf(name, "%s_%d.vtk", path, p4est->mpirank);
 
+
+
+#ifdef P4_TO_P8
     double *vn_p, *sol_voro_p;
     VecGetArray(vn_voro, &vn_p);
     VecGetArray(sol_voro, &sol_voro_p);
-
-#ifdef P4_TO_P8
     bool periodic[P4EST_DIM] = {true, true, true};
     Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic, vn_p, sol_voro_p);
-#else
-    Voronoi2D::print_VTK_Format(voro, name);
-#endif
     VecRestoreArray(vn_voro, &vn_p);
     VecRestoreArray(sol_voro, &sol_voro_p);
+#else
+
+    Voronoi2D::print_VTK_Format(voro, name);
+#endif
+
 }
 
 

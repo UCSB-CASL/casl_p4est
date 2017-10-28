@@ -61,10 +61,12 @@ double boxSide = 1e-3;      // only if test = 8
 
 double frequency = 1/(2*half_period)/1e6;
 /* 0 or 1 */
-int implicit = 1;
+int implicit = 0;
 /* order 1, 2 or 3. If choosing 3, implicit only */
 int order = 1;
 
+
+// good jump: implicit=0, order=1  && good solution implicit=1, order=1
 
 
 /* cell radius */
@@ -104,17 +106,17 @@ double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0 
 
 
 int lmin = 2;
-int lmax = 5;
+int lmax = 8;
 int nb_splits = 1;
 
-double dt_scale = 125;
+double dt_scale = 60;
 
 double tn;
-double tf = 5e-3;
+double tf = 3.e-6;
 double dt; // = 20e-9;
 
 double E_unscaled = 40; /* kv */
-double E = E_unscaled * 1e3 * (zmax-zmin);
+double E = E_unscaled * 1e3;// * (zmax-zmin);
 //double E = 40e3 * (xmax-xmin);
 
 double sigma_c = 1;
@@ -281,7 +283,7 @@ public:
         {
         case 0: return sqrt(SQR(x) + SQR(y) + SQR(z)) - r0;
         case 1: return sqrt(SQR(x) + SQR(y) + SQR(z)) - R1;
-        case 2: return sqrt(SQR(x) + SQR(y) + SQR(z)) - R1;
+        case 2: return sqrt(SQR(x) + SQR(y) + SQR(z)) - r0;//R1;
         case 3:
             for(int i=0; i<x_cells; ++i)
                 for(int j=0; j<y_cells; ++j)
@@ -415,22 +417,39 @@ double pulse(double tn)
         return -E;
 }
 
-double v_exact(double x, double y, double z, double tn)
+double v_exact(double x, double y, double z, double t)
 {
+    double r = sqrt(x*x + y*y + z*z);
     double theta = atan2(sqrt(x*x+y*y),z);
     double g = E*R2;
-    /* analytic coefficients */
-    double K = 1/(R1*R1*R1*(sigma_e-sigma_c)+R2*R2*R2*(2*sigma_e+sigma_c));
-    double A = 3*sigma_c*sigma_e*R2*R2*K;
-    double B = -sigma_c*sigma_e*(R1*R1 + 2*R2*R2*R2/R1)*K;
 
     if(test==1)
     {
-        return A/(SL-B)*g*cos(theta);
+        double K = 1/(R1*R1*R1*(sigma_e-sigma_c)+R2*R2*R2*(2*sigma_e+sigma_c));
+
+        double A = 3*sigma_c*sigma_e*R2*R2*K;
+        double B = -sigma_c*sigma_e*(R1*R1 + 2*R2*R2*R2/R1)*K;
+        double vv = A*g / (SL - B);
+
+        double alpha_e = R2*R2*(sigma_c+2*sigma_e)*K*g - R1*R1*sigma_c*K*vv;
+        double beta_e = R1*R1*R1*R2*R2*(sigma_e-sigma_c)*K*g + R1*R1*R2*R2*R2*sigma_c*K*vv;
+        double alpha_c = 3*sigma_e*R2*R2*K*g - sigma_e*(R1*R1+2*R2*R2*R2/R1)*K*vv;
+
+        return (alpha_e*r+beta_e/(r*r))*cos(theta) - alpha_c*r*cos(theta);
     }
-    else if(test==2)
+    if(test==2)
     {
-        return A/(SL-B)*g*(1-exp((B-SL)/Cm*tn))*cos(theta);
+        double K = 1/(R1*R1*R1*(sigma_e-sigma_c)+R2*R2*R2*(2*sigma_e+sigma_c));
+
+        double A = 3*sigma_c*sigma_e*R2*R2*K;
+        double B = -sigma_c*sigma_e*(R1*R1 + 2*R2*R2*R2/R1)*K;
+        double vv = A/(SL-B)*g*(1-exp((B-SL)/Cm*t));
+
+        double alpha_e = R2*R2*(sigma_c+2*sigma_e)*K*g - R1*R1*sigma_c*K*vv;
+        double beta_e = R1*R1*R1*R2*R2*(sigma_e-sigma_c)*K*g + R1*R1*R2*R2*R2*sigma_c*K*vv;
+        double alpha_c = 3*sigma_e*R2*R2*K*g - sigma_e*(R1*R1+2*R2*R2*R2/R1)*K*vv;
+
+        return (alpha_e*r + beta_e/(r*r))*cos(theta) - alpha_c*r*cos(theta);
     }
     else
         return 0;
@@ -445,8 +464,7 @@ struct BCWALLTYPE : WallBC3D
         case 1:
             return DIRICHLET;
         case 2:
-            if(ABS(z-zmin)<EPS || ABS(z-zmax)<EPS) return DIRICHLET;
-            else                                   return NEUMANN;
+            return DIRICHLET;
         case 3:
         case 4:
         case 5:
@@ -474,9 +492,10 @@ struct BCWALLVALUE : CF_3
         case 1:
             return u_exact(x,y,z,0,true);
         case 2:
-            if(ABS(z-zmin)<EPS) return 0;
-            if(ABS(z-zmax)<EPS) return E;
-            return 0;
+            return u_exact(x,y,z,t,true);
+//            if(ABS(z-zmin)<EPS) return 0;
+//            if(ABS(z-zmax)<EPS) return E;
+//            return 0;
         case 3:
         case 4:
         case 5:
@@ -497,6 +516,7 @@ struct BCWALLVALUE : CF_3
         }
     }
 } bc_wall_value_p;
+
 
 
 
@@ -709,7 +729,7 @@ public:
 
 void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
                          my_p4est_node_neighbors_t *ngbd_n, my_p4est_cell_neighbors_t *ngbd_c,
-                         Vec phi, Vec sol, double dt, Vec X0, Vec X1, Vec Sm, Vec vn, my_p4est_level_set_t ls, double tn, Vec vnm1, Vec vnm2, Vec grad_phi[3])
+                         Vec phi, Vec sol, double dt, Vec X0, Vec X1, Vec Sm, Vec vn, my_p4est_level_set_t ls, double tn, Vec vnm1, Vec vnm2, Vec grad_phi[3], double diag)
 {
     PetscErrorCode ierr;
 
@@ -814,6 +834,8 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         }
 
         /////////////
+
+
         // compute jump
         // make 2 other copies of the solution vector
         Vec u_plus_ext, u_minus_ext, u_plus_ext_l, u_minus_ext_l, sol_l;
@@ -840,7 +862,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         {
             phi_p[i] = -phi_p[i];
         }
-            VecRestoreArray(phi, &phi_p);
+
 
 
         Vec u_plus_cte, u_minus_cte;
@@ -853,62 +875,132 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         double *vn_p, *u_minus_cte_p, *u_plus_cte_p;
         VecGetArray(u_minus_cte, &u_minus_cte_p);
         VecGetArray(u_plus_cte, &u_plus_cte_p);
+
         VecGetArray(vn, &vn_p);
+        double *sol_p;
+        VecGetArray(sol, &sol_p);
         for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
         {
             vn_p[n] = u_minus_cte_p[n] - u_plus_cte_p[n];
         }
-
+        VecRestoreArray(sol, &sol_p);
+        VecRestoreArray(phi, &phi_p);
         VecRestoreArray(vn, &vn_p);
         VecRestoreArray(u_minus_cte, &u_minus_cte_p);
         VecRestoreArray(u_plus_cte, &u_plus_cte_p);
-
-
-
-
-        //solver.set_Sm(Sm);
-        //solver.set_X0(X0);
-        //solver.set_X1(X1);
-        //        solver.compute_electroporation();
+        Vec vn_tmp;
+        VecDuplicate(phi,&vn_tmp);
+        ls.extend_from_interface_to_whole_domain_TVD(phi, vn, vn_tmp);
+        double *vn_tmp_p;
+        VecGetArray(vn_tmp, &vn_tmp_p);
+        VecGetArray(vn, &vn_p);
+        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
+        {
+            vn_p[n] = vn_tmp_p[n];
+        }
+        VecRestoreArray(vn_tmp, &vn_tmp_p);
+        VecRestoreArray(vn, &vn_p);
         ierr = VecDestroy(u_plus_ext); CHKERRXX(ierr);
         ierr = VecDestroy(u_minus_ext); CHKERRXX(ierr);
         ierr = VecDestroy(u_plus_cte); CHKERRXX(ierr);
         ierr = VecDestroy(u_minus_cte); CHKERRXX(ierr);
 
-        if(check_partition)
-            solver.check_voronoi_partition();
 
-        /*char out_path[1000];
-        char *out_dir = NULL;
-        out_dir = getenv("OUT_DIR");
-        if(out_dir==NULL)
-        {
-            ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save stats\n"); CHKERRXX(ierr);
-        }
-        else
-        {
-            if(save_stats)
-            {
-                sprintf(out_path, "%s/stats.dat", out_dir);
-                solver.write_stats(out_path);
-            }
-            if(save_voro)
-            {
-                snprintf(out_path,1000, "%s/voronoi", out_dir);
-                solver.print_voronoi_VTK(out_path);
-            }
-        }
+        //        solver.set_Sm(Sm);
+        //        solver.set_X0(X0);
+        //        solver.set_X1(X1);
+        //        solver.compute_electroporation();
 
 
-        solver.interpolate_electroporation_to_tree(X0, X1, Sm, vn);
+        //        if(check_partition)
+        //            solver.check_voronoi_partition();
 
-        ls.extend_from_interface_to_whole_domain_TVD(phi, vn, vn);
-        ls.extend_from_interface_to_whole_domain_TVD(phi, Sm, Sm);
-        ls.extend_from_interface_to_whole_domain_TVD(phi, X0, X0);
-        ls.extend_from_interface_to_whole_domain_TVD(phi, X1, X1);
-        */
+        //        char out_path[1000];
+        //        char *out_dir = NULL;
+        //        out_dir = getenv("OUT_DIR");
+        //        if(out_dir==NULL)
+        //        {
+        //            ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save stats\n"); CHKERRXX(ierr);
+        //        }
+        //        else
+        //        {
+        //            if(save_stats)
+        //            {
+        //                sprintf(out_path, "%s/stats.dat", out_dir);
+        //                solver.write_stats(out_path);
+        //            }
+        //            if(save_voro)
+        //            {
+        //                snprintf(out_path,1000, "%s/voronoi", out_dir);
+        //                solver.print_voronoi_VTK(out_path);
+        //            }
+        //        }
 
-        // compute X and Sm
+
+        //        solver.interpolate_electroporation_to_tree(X0, X1, Sm, vn);
+
+
+
+
+
+        //        Vec vn_tmp;
+        //        double *vn_p;
+        //        VecDuplicate(vn,&vn_tmp);
+        //        ls.extend_from_interface_to_whole_domain_TVD(phi, vn, vn_tmp);
+        //        double *vn_tmp_p;
+        //        VecGetArray(vn_tmp, &vn_tmp_p);
+        //        VecGetArray(vn, &vn_p);
+        //        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
+        //        {
+        //            vn_p[n] = vn_tmp_p[n];
+        //        }
+        //        VecRestoreArray(vn_tmp, &vn_tmp_p);
+        //        VecRestoreArray(vn, &vn_p);
+
+        //        Vec u_plus_ext, u_minus_ext, u_plus_ext_l, u_minus_ext_l, vn_l;
+        //        ierr = VecDuplicate(vn, &u_plus_ext); CHKERRXX(ierr);
+        //        ierr = VecDuplicate(vn, &u_minus_ext); CHKERRXX(ierr);
+        //        VecGhostGetLocalForm(vn, &vn_l);
+        //        VecGhostGetLocalForm(u_plus_ext, &u_plus_ext_l);
+        //        VecGhostGetLocalForm(u_minus_ext, &u_minus_ext_l);
+        //        ierr = VecCopy(vn_l, u_plus_ext_l); CHKERRXX(ierr);
+        //        ierr = VecCopy(vn_l, u_minus_ext_l); CHKERRXX(ierr);
+        //        VecGhostRestoreLocalForm(vn, &vn_l);
+        //        VecGhostRestoreLocalForm(u_plus_ext, &u_plus_ext_l);
+        //        VecGhostRestoreLocalForm(u_minus_ext, &u_minus_ext_l);
+
+        //        //        project solutions onto the interface
+        //        double *phi_p;
+        //        VecGetArray(phi, &phi_p);
+
+        //        ls.extend_Over_Interface_TVD(phi, u_plus_ext);
+        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+        //            phi_p[i] = -phi_p[i];
+        //        ls.extend_Over_Interface_TVD(phi, u_minus_ext);
+        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+        //        {
+        //            phi_p[i] = -phi_p[i];
+        //        }
+        //        VecRestoreArray(phi, &phi_p);
+        //        double *vn_p, *u_minus_ext_p, *u_plus_ext_p;
+        //        VecGetArray(vn, &vn_p);
+        //        VecGetArray(u_minus_ext, &u_minus_ext_p);
+        //        VecGetArray(u_plus_ext, &u_plus_ext_p);
+        //        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
+        //        {
+        //            vn_p[n] = (u_plus_ext_p[n] + u_minus_ext_p[n])/2;
+        //        }
+        //        VecRestoreArray(vn, &vn_p);
+        //        VecRestoreArray(u_minus_ext, &u_minus_ext_p);
+        //        VecRestoreArray(u_plus_ext, &u_plus_ext_p);
+
+        //        ls.extend_from_interface_to_whole_domain_TVD(phi, vn, vn);
+        //        ls.extend_from_interface_to_whole_domain_TVD(phi, Sm, Sm);
+        //        ls.extend_from_interface_to_whole_domain_TVD(phi, X0, X0);
+        //        ls.extend_from_interface_to_whole_domain_TVD(phi, X1, X1);
+
+
+        //        compute X and Sm
         if(test==1)
         {
             Vec l;
@@ -939,17 +1031,10 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
             {
                 X_0_v_p[n] = X0_np1[n] + dt*((beta_0_in(vn_n_p[n]) - X_0_v_p[n])/tau_ep);
                 X_1_v_p[n] = X1_np1[n] + dt*MAX( (beta_1_in(X_0_v_p[n])-X_1_v_p[n])/tau_perm, (beta_1_in(X_0_v_p[n])-X_1_v_p[n])/tau_res );
-
-
                 convergence_Sm = MAX(convergence_Sm, ABS(Sm_n_p[n] - (SL + S0*X_0_v_p[n] + S1*X_1_v_p[n])) );
-
                 Sm_n_p[n] = SL + S0*X_0_v_p[n] + S1*X_1_v_p[n];
 
             }
-
-
-
-
             ierr = VecRestoreArray(Sm, &Sm_n_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(X0,&X0_np1); CHKERRXX(ierr);
             ierr = VecRestoreArray(X1,&X1_np1); CHKERRXX(ierr);
@@ -1264,7 +1349,7 @@ int main(int argc, char** argv) {
         double dt = MIN(dx,dy)/dt_scale;
 
 #endif
-        dt = 5e-8;		//PAM: just for convergence test
+        dt =5e-8;		//PAM: just for convergence test
 
         printf("initial dt=%g, MIN(Dx)=%g, scaling %g \n", dt, MIN(dx,dy,dz), MIN(dx,dy,dz)/dt);
 
@@ -1335,18 +1420,24 @@ int main(int argc, char** argv) {
         ierr = VecDuplicate(phi, &intensity); CHKERRXX(ierr);
         save_VTK(p4est, ghost, nodes, &brick, phi, sol, err, -1, X0, X1, Sm, vn);
         clock_t begin = clock();
-        //my_p4est_interpolation_nodes_t interp_n(&ngbd_n);
+        my_p4est_interpolation_nodes_t interp_n(&ngbd_n);
 
         while (tn<tf)
         {
             ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
-            solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2, grad_phi);
+            solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2, grad_phi, diag);
             PetscPrintf(mpi.comm(), "Solve complete! Proceeding...\n");
-            //interp_n.set_input(vn, quadratic);
-            //double xyz_np[3] = {0,0,0.99*R1};
-            //interp_n.add_point(0, xyz_np);
-            double u_Npole = 0;
-            //interp_n.interpolate(&u_Npole);
+            interp_n.set_input(vn, linear);
+            double xyz_np[3] = {0,0,r0};
+            interp_n.add_point(0, xyz_np);
+            double u_Npole = 0, u_Spole = 0;
+            interp_n.interpolate(&u_Npole);
+
+            double xyz_sp[3] = {0,0,-r0};
+            interp_n.add_point(0, xyz_sp);
+            interp_n.interpolate(&u_Spole);
+            //u_Npole = (u_Npole + fabs(u_Spole))/2;
+            // PetscPrintf(p4est->mpicomm, "INTERPOLATED JUMP IS  %g\n", u_Npole);
             /* compute the error on the tree*/
             double *err_p, *sol_p,*Ephi_p, *EInt_p, *vn_p, *intensity_p;
             ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
@@ -1365,12 +1456,12 @@ int main(int argc, char** argv) {
                 double y = node_y_fr_n(n, p4est, nodes);
                 double z = node_z_fr_n(n, p4est, nodes);
 
-                if(fabs(z-R1)<fabs(z_last-R1))
+                /*if(fabs(z-R1)<fabs(z_last-R1) && fabs(z-R1)>3*dz && u_Npole<vn_p[n])
                 {
                     z_last =z;
                     u_Npole = vn_p[n];
-                }
-                err_p[n] = v_exact(x,y,z,tn+dt);//u_exact(x,y,z, tn, phi_p[n]>0) - sol_p[n];
+                }*/
+                err_p[n] = fabs(u_exact(x,y,z, tn+dt, phi_p[n]>0) - sol_p[n]);
                 err_n = max(err_n, err_p[n]);
                 // a level-set just to represent the electrode surfaces for integration purposes
                 if(z>0)
@@ -1378,9 +1469,15 @@ int main(int argc, char** argv) {
                 else
                     Ephi_p[n] = -(z - zmin - EPS);
             }
+
+
+
+
+
+            //MPI_Allreduce(MPI_IN_PLACE, &z_last, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
             MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-            MPI_Allreduce(MPI_IN_PLACE, &u_Npole, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-            MPI_Allreduce(MPI_IN_PLACE, &z_last, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+            //MPI_Allreduce(MPI_IN_PLACE, &u_Npole, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+
             // computing the impedance vector
             for(size_t i=0; i<ngbd_n.get_layer_size(); ++i)
             {
@@ -1437,7 +1534,7 @@ int main(int argc, char** argv) {
 
             double impedance = integrate_over_interface(p4est, nodes, electrodes_phi, impedance_integrand);
             double PulseIntensity = integrate_over_interface(p4est, nodes, electrodes_phi, intensity);
-            PetscPrintf(p4est->mpicomm,"impedance is %g, Pulse Intensity is %g, on the TREE mesh the north pole TMP is %g, the North Pole z = %g; Max Error on Solution is %g\n.", impedance, PulseIntensity, u_Npole, z_last, err_n);
+            PetscPrintf(p4est->mpicomm,"impedance is %g, Pulse Intensity is %g, on the TREE mesh the north pole TMP is %g, the North Pole z = %g\n.", impedance, PulseIntensity, u_Npole, z_last);
 
 
 

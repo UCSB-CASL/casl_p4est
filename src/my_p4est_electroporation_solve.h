@@ -337,9 +337,11 @@ public:
 #endif
 
 #ifdef P4_TO_P8
-    Voronoi3DPoint find_voro_cell_at(Point3 p_int);
+    int find_voro_cell_at(Point3 p_int);
+    int find_tree_node_at(Point3 p_int);
 #else
-    Voronoi2DPoint find_voro_cell_at(Point2 p_int);
+    int find_voro_cell_at(Point2 p_int);
+    int find_tree_node_at(Point2 p_int);
 #endif
 
 #ifdef P4_TO_P8

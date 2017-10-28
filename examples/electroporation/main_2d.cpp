@@ -58,8 +58,8 @@ double xmax = test<6 ?  2*x_cells*r0 :  1e-3;
 double ymin = test<6 ? -2*y_cells*r0 : -1e-3;
 double ymax = test<6 ?  2*y_cells*r0 :  1e-3;
 
-int lmin = 7;
-int lmax = 10;
+int lmin = 2;
+int lmax = 5;
 int nb_splits = 1;
 
 double dt_scale = 40;
@@ -97,7 +97,7 @@ bool save_vtk = true;
 bool save_error = true;
 int save_every_n = 1;
 bool check_partition = false;
-bool save_voro = false;
+bool save_voro = true;
 bool save_stats = true;
 
 
@@ -702,7 +702,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
 
 
- PetscPrintf(p4est->mpicomm, "HERE!\n");
+
     if(check_partition)
         solver.check_voronoi_partition();
 
@@ -724,6 +724,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         {
             snprintf(out_path,1000, "%s/voronoi", out_dir);
             solver.print_voronoi_VTK(out_path);
+            PetscPrintf(p4est->mpicomm, "HERE!\n");
         }
     }
 
