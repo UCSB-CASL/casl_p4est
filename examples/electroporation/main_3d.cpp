@@ -105,11 +105,11 @@ double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0 
 
 
 
-int lmin = 2;
-int lmax = 8;
+int lmin = 3;
+int lmax = 6;
 int nb_splits = 1;
 
-double dt_scale = 60;
+double dt_scale = 40;
 
 double tn;
 double tf = 3.e-6;
@@ -283,7 +283,7 @@ public:
         {
         case 0: return sqrt(SQR(x) + SQR(y) + SQR(z)) - r0;
         case 1: return sqrt(SQR(x) + SQR(y) + SQR(z)) - R1;
-        case 2: return sqrt(SQR(x) + SQR(y) + SQR(z)) - r0;//R1;
+        case 2: return sqrt(SQR(x) + SQR(y) + SQR(z)) - R1;
         case 3:
             for(int i=0; i<x_cells; ++i)
                 for(int j=0; j<y_cells; ++j)
@@ -493,9 +493,9 @@ struct BCWALLVALUE : CF_3
             return u_exact(x,y,z,0,true);
         case 2:
             return u_exact(x,y,z,t,true);
-//            if(ABS(z-zmin)<EPS) return 0;
-//            if(ABS(z-zmax)<EPS) return E;
-//            return 0;
+            //            if(ABS(z-zmin)<EPS) return 0;
+            //            if(ABS(z-zmax)<EPS) return E;
+            //            return 0;
         case 3:
         case 4:
         case 5:
@@ -769,7 +769,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 #else
     BoundaryConditions2D bc;
 #endif
-    bc_wall_value_p.t = tn;
+    bc_wall_value_p.t = tn+dt;
     bc.setWallTypes(bc_wall_type_p);
     bc.setWallValues(bc_wall_value_p);
 
@@ -777,7 +777,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
 
 
-    solver.set_Sm(Sm);
+
     solver.set_parameters(implicit, order, dt, test, SL, tau_ep, tau_res, tau_perm, S0, S1, tn);
     solver.dt = dt;
     solver.Cm = Cm;
@@ -805,9 +805,15 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     ierr = VecGhostRestoreLocalForm(X_1_v, &l); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(X1, &l1); CHKERRXX(ierr);
     double convergence_Sm;
-    convergence_Sm = 0;
+
+    int counter = 0;
+
+
+
     do
     {
+        convergence_Sm = 0;
+        solver.set_Sm(Sm);
         solver.set_vnm1(vnm1);
         solver.set_vnm2(vnm2);
         solver.set_vn(vn);
@@ -833,7 +839,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
             VecGhostRestoreLocalForm(vn, &vn_l);
         }
 
-        /////////////
+
 
 
         // compute jump
@@ -904,6 +910,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         ierr = VecDestroy(u_minus_ext); CHKERRXX(ierr);
         ierr = VecDestroy(u_plus_cte); CHKERRXX(ierr);
         ierr = VecDestroy(u_minus_cte); CHKERRXX(ierr);
+
 
 
         //        solver.set_Sm(Sm);
@@ -1001,7 +1008,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
 
         //        compute X and Sm
-        if(test==1)
+        if(test==1 || test==2)
         {
             Vec l;
             ierr = VecGhostGetLocalForm(Sm, &l); CHKERRXX(ierr);
@@ -1027,14 +1034,21 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
             double *X_0_v_p, *X_1_v_p;
             ierr = VecGetArray(X_0_v, &X_0_v_p); CHKERRXX(ierr);
             ierr = VecGetArray(X_1_v, &X_1_v_p); CHKERRXX(ierr);
+            double *phi_p;
+            VecGetArray(phi, &phi_p);
             for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
             {
-                X_0_v_p[n] = X0_np1[n] + dt*((beta_0_in(vn_n_p[n]) - X_0_v_p[n])/tau_ep);
-                X_1_v_p[n] = X1_np1[n] + dt*MAX( (beta_1_in(X_0_v_p[n])-X_1_v_p[n])/tau_perm, (beta_1_in(X_0_v_p[n])-X_1_v_p[n])/tau_res );
-                convergence_Sm = MAX(convergence_Sm, ABS(Sm_n_p[n] - (SL + S0*X_0_v_p[n] + S1*X_1_v_p[n])) );
-                Sm_n_p[n] = SL + S0*X_0_v_p[n] + S1*X_1_v_p[n];
+                if(fabs(phi_p[n])>0.3*diag)
+                    continue;
+                X_0_v_p[n] = X0_np1[n] + dt*((beta_0_in(vn_n_p[n]) - X0_np1[n])/tau_ep);
+                X_1_v_p[n] = X1_np1[n] + dt*MAX( (beta_1_in(X0_np1[n])-X1_np1[n])/tau_perm, (beta_1_in(X0_np1[n])-X1_np1[n])/tau_res );
 
+
+                convergence_Sm = MAX(convergence_Sm, ABS(Sm_n_p[n] - (SL + S0*X_0_v_p[n] + S1*X_1_v_p[n])) );
+
+                Sm_n_p[n] = SL + S0*X_0_v_p[n] + S1*X_1_v_p[n];
             }
+            VecRestoreArray(phi, &phi_p);
             ierr = VecRestoreArray(Sm, &Sm_n_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(X0,&X0_np1); CHKERRXX(ierr);
             ierr = VecRestoreArray(X1,&X1_np1); CHKERRXX(ierr);
@@ -1054,8 +1068,10 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         ierr = VecGhostRestoreLocalForm(X_1_v, &l); CHKERRXX(ierr);
         ierr = VecGhostRestoreLocalForm(X1, &l1); CHKERRXX(ierr);
 
-
-    }while(0 && convergence_Sm>1e-3);
+        MPI_Allreduce(MPI_IN_PLACE, &convergence_Sm, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+        //PetscPrintf(p4est->mpicomm, "convergence Sm is %g\n", convergence_Sm);
+        counter++;
+    }while(0 && counter<2);//convergence_Sm>1e-3);
 
 
     ierr = VecDestroy(rhs_m); CHKERRXX(ierr);
@@ -1077,7 +1093,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
 
 void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_brick_t *brick,
-              Vec phi, Vec sol, Vec err,
+              Vec phi, Vec sol,
               int compt, Vec X0, Vec X1, Vec Sm, Vec vn)
 {
     PetscErrorCode ierr;
@@ -1100,10 +1116,9 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
        #endif
            "." << compt;
 
-    double *phi_p, *sol_p, *err_p, *X0_p, *X1_p, *Sm_p, *vn_p;
+    double *phi_p, *sol_p, *X0_p, *X1_p, *Sm_p, *vn_p;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
-    ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
     ierr = VecGetArray(X0, &X0_p); CHKERRXX(ierr);
     ierr = VecGetArray(X1, &X1_p); CHKERRXX(ierr);
     ierr = VecGetArray(Sm, &Sm_p); CHKERRXX(ierr);
@@ -1153,7 +1168,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
 
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
-                           8, 1, oss.str().c_str(),
+                           7, 1, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "mu", mu_p_,
                            VTK_POINT_DATA, "sol", sol_p,
@@ -1161,7 +1176,6 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
                            VTK_POINT_DATA, "X1", X1_p,
                            VTK_POINT_DATA, "vn", vn_p,
                            VTK_POINT_DATA, "Sm", Sm_p,
-                           VTK_POINT_DATA, "err", err_p,
                            VTK_CELL_DATA , "leaf_level", l_p);
 
     ierr = VecRestoreArray(mu, &mu_p_); CHKERRXX(ierr);
@@ -1174,7 +1188,6 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
     ierr = VecRestoreArray(Sm, &Sm_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(X0, &X0_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(X1, &X1_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(vn, &vn_p); CHKERRXX(ierr);
 
     PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
@@ -1192,6 +1205,9 @@ int main(int argc, char** argv) {
     parStopWatch w;
     w.start("Running example: electroporation");
 
+
+
+
     // p4est variables
     p4est_t*              p4est;
     p4est_nodes_t*        nodes;
@@ -1206,15 +1222,10 @@ int main(int argc, char** argv) {
 
     int periodic[] = {0, 0, 0};
     conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
+
     for(int repeat=0; repeat<nb_splits; ++repeat)
     {
-
         ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+repeat, lmax+repeat); CHKERRXX(ierr);
-
-
-
-
-
 
 
         // create the forest
@@ -1343,15 +1354,7 @@ int main(int argc, char** argv) {
         //PetscPrintf(p4est->mpicomm, "3: xmin=%g, xmax=%g, ymin=%g, ymax=%g, zmin=%g, zmax=%g\n", xmin, xmax, ymin, ymax, zmin, zmax);
 #endif
         double diag = sqrt(dx*dx + dy*dy + dz*dz);
-#ifdef P4_TO_P8
-        double dt = MIN(dx,dy,dz)/dt_scale;
-#else
-        double dt = MIN(dx,dy)/dt_scale;
 
-#endif
-        dt =5e-8;		//PAM: just for convergence test
-
-        printf("initial dt=%g, MIN(Dx)=%g, scaling %g \n", dt, MIN(dx,dy,dz), MIN(dx,dy,dz)/dt);
 
 
         // loop over time
@@ -1418,29 +1421,66 @@ int main(int argc, char** argv) {
         ierr = VecDuplicate(phi, &electrodes_phi); CHKERRXX(ierr);
         ierr = VecDuplicate(phi, &impedance_integrand); CHKERRXX(ierr);
         ierr = VecDuplicate(phi, &intensity); CHKERRXX(ierr);
-        save_VTK(p4est, ghost, nodes, &brick, phi, sol, err, -1, X0, X1, Sm, vn);
+        save_VTK(p4est, ghost, nodes, &brick, phi, sol, -1, X0, X1, Sm, vn);
         clock_t begin = clock();
         my_p4est_interpolation_nodes_t interp_n(&ngbd_n);
 
+#ifdef P4_TO_P8
+        dt = MIN(dx,dy,dz)/dt_scale;
+#else
+        dt = MIN(dx,dy)/dt_scale;
+#endif
+        dt=1.5625e-07;
+        PetscPrintf(p4est->mpicomm, "Proceed with dt=%g, scaling %g \n", dt, MIN(dx,dy,dz)/dt);
         while (tn<tf)
         {
             ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
-            solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2, grad_phi, diag);
-            PetscPrintf(mpi.comm(), "Solve complete! Proceeding...\n");
-            interp_n.set_input(vn, linear);
-            double xyz_np[3] = {0,0,r0};
+
+
+
+
+            //start with number of iterations lmax=5:1, lmax=6:2, lmax=7:5 and increasing over time.
+            //for(int ii=0;ii<(int) pow(2, lmax-5)+1;++ii)
+            double err_sol = 0;
+            int counter = 1;
+            interp_n.set_input(sol,linear);
+            double xyz_np[3] = {0,0,R1/2};
+            double sol_pole_new;
             interp_n.add_point(0, xyz_np);
-            double u_Npole = 0, u_Spole = 0;
+            if(iteration==0)
+                sol_pole_new=0.7;
+            else
+                interp_n.interpolate(&sol_pole_new);
+            double sol_pole_old;
+
+            do
+            {
+                sol_pole_old = sol_pole_new;
+                solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2, grad_phi, diag);
+                interp_n.set_input(sol,linear);
+                interp_n.interpolate(&sol_pole_new);
+                err_sol =  ABS(sol_pole_old - sol_pole_new);
+                PetscPrintf(p4est->mpicomm, "fiducial iteration number: %d, error is %g, old %g, new %g\n", counter, err_sol, sol_pole_old, sol_pole_new);
+                counter++;
+            }while(err_sol>0.1);
+
+            PetscPrintf(mpi.comm(), "Solve complete! Proceeding...\n");
+            interp_n.clear();
+
+
+
+            interp_n.set_input(vn, linear);
+            //double xyz_np[3] = {0,0,R1};
+            xyz_np[2] = R1;
+            interp_n.add_point(0, xyz_np);
+            double u_Npole = 0;
             interp_n.interpolate(&u_Npole);
 
-            double xyz_sp[3] = {0,0,-r0};
-            interp_n.add_point(0, xyz_sp);
-            interp_n.interpolate(&u_Spole);
-            //u_Npole = (u_Npole + fabs(u_Spole))/2;
+
             // PetscPrintf(p4est->mpicomm, "INTERPOLATED JUMP IS  %g\n", u_Npole);
             /* compute the error on the tree*/
             double *err_p, *sol_p,*Ephi_p, *EInt_p, *vn_p, *intensity_p;
-            ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
+            //ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
             ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
             //ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
             ierr = VecGetArray(electrodes_phi, &Ephi_p); CHKERRXX(ierr);
@@ -1449,20 +1489,10 @@ int main(int argc, char** argv) {
             ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
             err_nm1 = err_n;
             err_n = 0;
-            double z_last = 0;
+
             for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
             {
-                double x = node_x_fr_n(n, p4est, nodes);
-                double y = node_y_fr_n(n, p4est, nodes);
                 double z = node_z_fr_n(n, p4est, nodes);
-
-                /*if(fabs(z-R1)<fabs(z_last-R1) && fabs(z-R1)>3*dz && u_Npole<vn_p[n])
-                {
-                    z_last =z;
-                    u_Npole = vn_p[n];
-                }*/
-                err_p[n] = fabs(u_exact(x,y,z, tn+dt, phi_p[n]>0) - sol_p[n]);
-                err_n = max(err_n, err_p[n]);
                 // a level-set just to represent the electrode surfaces for integration purposes
                 if(z>0)
                     Ephi_p[n] = z - zmax + EPS;
@@ -1470,13 +1500,11 @@ int main(int argc, char** argv) {
                     Ephi_p[n] = -(z - zmin - EPS);
             }
 
+            //ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
+            //MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 
+            //PetscPrintf(p4est->mpicomm, "Iter %d maximum error on solution: %g, \t order : %g\n", iteration, err_n, log(err_nm1/err_n)/log(2));
 
-
-
-            //MPI_Allreduce(MPI_IN_PLACE, &z_last, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-            MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-            //MPI_Allreduce(MPI_IN_PLACE, &u_Npole, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 
             // computing the impedance vector
             for(size_t i=0; i<ngbd_n.get_layer_size(); ++i)
@@ -1523,18 +1551,16 @@ int main(int argc, char** argv) {
             ierr = VecGhostUpdateEnd(intensity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
             ierr = VecRestoreArray(vn, &vn_p); CHKERRXX(ierr);
-            ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
+
             ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
             //ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(electrodes_phi, &Ephi_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(impedance_integrand, &EInt_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(intensity, &intensity_p); CHKERRXX(ierr);
 
-            //            PetscPrintf(p4est->mpicomm, "Iter %d maximum error on solution: %g, \t order : %g\n", iteration, err_n, log(err_nm1/err_n)/log(2));
-
             double impedance = integrate_over_interface(p4est, nodes, electrodes_phi, impedance_integrand);
             double PulseIntensity = integrate_over_interface(p4est, nodes, electrodes_phi, intensity);
-            PetscPrintf(p4est->mpicomm,"impedance is %g, Pulse Intensity is %g, on the TREE mesh the north pole TMP is %g, the North Pole z = %g\n.", impedance, PulseIntensity, u_Npole, z_last);
+            PetscPrintf(p4est->mpicomm,"impedance= %g, Intensity= %g, north pole TMP at %g (s)= %g (kV)\n.", impedance, PulseIntensity, tn+dt, u_Npole);
 
 
 
@@ -1554,12 +1580,12 @@ int main(int argc, char** argv) {
                         if(iteration ==0){
                             FILE *f = fopen(out_path_Z, "w");
                             fprintf(f, "time [s], \t impedance [Ohm], \t north pole TMP \t Pulse Intensity (V) \t frequency [MHz] %g\n", frequency);
-                            fprintf(f, "%g \t %g \t %g \t  %g\n", tn+dt, impedance, u_Npole, PulseIntensity);
+                            fprintf(f, "%g \t %g \t %g \t  %g \n", tn+dt, impedance, u_Npole, PulseIntensity);
                             fclose(f);
                         }
                         else{
                             FILE *f = fopen(out_path_Z, "a");
-                            fprintf(f, "%g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity);
+                            fprintf(f, "%g \t %g \t %g \t %g \n", tn+dt, impedance, u_Npole, PulseIntensity);
                             fclose(f);
                         }
 
@@ -1569,7 +1595,7 @@ int main(int argc, char** argv) {
 
             if(save_vtk && iteration%save_every_n == 0)
             {
-                save_VTK(p4est, ghost, nodes, &brick, phi, sol, err, iteration, X0, X1, Sm, vn);
+                save_VTK(p4est, ghost, nodes, &brick, phi, sol, iteration, X0, X1, Sm, vn);
             }
             tn += dt;
             iteration++;

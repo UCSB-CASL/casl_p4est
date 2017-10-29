@@ -137,6 +137,7 @@ void my_p4est_electroporation_solve_t::set_Sm(Vec Sm_m)
     tmp->set_input(Sm_m, linear);
     this->Smm = tmp;
     local_Sm = true;
+    is_matrix_computed = false;
 }
 
 void my_p4est_electroporation_solve_t::set_X0(Vec X0)
@@ -338,7 +339,7 @@ void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_init
         setup_linear_system();
         ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
 
-        is_matrix_computed = true;
+        is_matrix_computed = true;   //PAM: bc electroporation affects the A matrix
 
 
 
