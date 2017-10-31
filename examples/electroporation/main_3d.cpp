@@ -105,8 +105,8 @@ double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0 
 
 
 
-int lmin = 3;
-int lmax = 6;
+int lmin = 2;
+int lmax = 5;
 int nb_splits = 1;
 
 double dt_scale = 40;
@@ -809,15 +809,22 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     int counter = 0;
 
 
+    solver.set_vn(vn);
+    solver.set_vnm1(vnm1);
+    solver.set_vnm2(vnm2);
+    my_p4est_interpolation_nodes_t interp_n(ngbd_n);
+    double xyz_np[3] = {0, 0, R1};
+    interp_n.add_point(0, xyz_np);
+    double Sm_err = 0;
+    double convergence_Sm_old;
+    interp_n.set_input(Sm, linear);
+    interp_n.interpolate(&convergence_Sm_old);
 
     do
     {
         convergence_Sm = 0;
-        solver.set_Sm(Sm);
-        solver.set_vnm1(vnm1);
-        solver.set_vnm2(vnm2);
-        solver.set_vn(vn);
 
+        solver.set_Sm(Sm);
         solver.solve(sol);
 
         if(order>2)
@@ -1008,7 +1015,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
 
         //        compute X and Sm
-        if(test==1 || test==2)
+        if(test==1)
         {
             Vec l;
             ierr = VecGhostGetLocalForm(Sm, &l); CHKERRXX(ierr);
@@ -1042,10 +1049,6 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
                     continue;
                 X_0_v_p[n] = X0_np1[n] + dt*((beta_0_in(vn_n_p[n]) - X0_np1[n])/tau_ep);
                 X_1_v_p[n] = X1_np1[n] + dt*MAX( (beta_1_in(X0_np1[n])-X1_np1[n])/tau_perm, (beta_1_in(X0_np1[n])-X1_np1[n])/tau_res );
-
-
-                convergence_Sm = MAX(convergence_Sm, ABS(Sm_n_p[n] - (SL + S0*X_0_v_p[n] + S1*X_1_v_p[n])) );
-
                 Sm_n_p[n] = SL + S0*X_0_v_p[n] + S1*X_1_v_p[n];
             }
             VecRestoreArray(phi, &phi_p);
@@ -1068,10 +1071,15 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         ierr = VecGhostRestoreLocalForm(X_1_v, &l); CHKERRXX(ierr);
         ierr = VecGhostRestoreLocalForm(X1, &l1); CHKERRXX(ierr);
 
-        MPI_Allreduce(MPI_IN_PLACE, &convergence_Sm, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-        //PetscPrintf(p4est->mpicomm, "convergence Sm is %g\n", convergence_Sm);
         counter++;
-    }while(0 && counter<2);//convergence_Sm>1e-3);
+        interp_n.set_input(Sm, linear);
+        interp_n.interpolate(&convergence_Sm);
+        Sm_err = ABS(convergence_Sm - convergence_Sm_old)/convergence_Sm_old;
+        PetscPrintf(p4est->mpicomm, "relative error in Sm is %g, old value %g, new value %g\n", Sm_err, convergence_Sm_old, convergence_Sm);
+        convergence_Sm_old = convergence_Sm;
+
+
+    }while(Sm_err>0.001);
 
 
     ierr = VecDestroy(rhs_m); CHKERRXX(ierr);
@@ -1430,54 +1438,23 @@ int main(int argc, char** argv) {
 #else
         dt = MIN(dx,dy)/dt_scale;
 #endif
-        dt=1.5625e-07;
+        dt=2.5e-08;
         PetscPrintf(p4est->mpicomm, "Proceed with dt=%g, scaling %g \n", dt, MIN(dx,dy,dz)/dt);
         while (tn<tf)
         {
             ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
-
-
-
-
             //start with number of iterations lmax=5:1, lmax=6:2, lmax=7:5 and increasing over time.
             //for(int ii=0;ii<(int) pow(2, lmax-5)+1;++ii)
-            double err_sol = 0;
-            int counter = 1;
-            interp_n.set_input(sol,linear);
-            double xyz_np[3] = {0,0,R1/2};
-            double sol_pole_new;
-            interp_n.add_point(0, xyz_np);
-            if(iteration==0)
-                sol_pole_new=0.7;
-            else
-                interp_n.interpolate(&sol_pole_new);
-            double sol_pole_old;
-
-            do
-            {
-                sol_pole_old = sol_pole_new;
-                solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2, grad_phi, diag);
-                interp_n.set_input(sol,linear);
-                interp_n.interpolate(&sol_pole_new);
-                err_sol =  ABS(sol_pole_old - sol_pole_new);
-                PetscPrintf(p4est->mpicomm, "fiducial iteration number: %d, error is %g, old %g, new %g\n", counter, err_sol, sol_pole_old, sol_pole_new);
-                counter++;
-            }while(err_sol>0.1);
-
-            PetscPrintf(mpi.comm(), "Solve complete! Proceeding...\n");
-            interp_n.clear();
-
+            solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2, grad_phi, diag);
 
 
             interp_n.set_input(vn, linear);
-            //double xyz_np[3] = {0,0,R1};
-            xyz_np[2] = R1;
+            double xyz_np[3] = {0, 0, R1};
             interp_n.add_point(0, xyz_np);
             double u_Npole = 0;
             interp_n.interpolate(&u_Npole);
+            interp_n.clear();
 
-
-            // PetscPrintf(p4est->mpicomm, "INTERPOLATED JUMP IS  %g\n", u_Npole);
             /* compute the error on the tree*/
             double *err_p, *sol_p,*Ephi_p, *EInt_p, *vn_p, *intensity_p;
             //ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
