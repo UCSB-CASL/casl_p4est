@@ -809,9 +809,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     int counter = 0;
 
 
-    solver.set_vn(vn);
-    solver.set_vnm1(vnm1);
-    solver.set_vnm2(vnm2);
+
     my_p4est_interpolation_nodes_t interp_n(ngbd_n);
     double xyz_np[3] = {0, 0, R1};
     interp_n.add_point(0, xyz_np);
@@ -820,10 +818,15 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     interp_n.set_input(Sm, linear);
     interp_n.interpolate(&convergence_Sm_old);
 
+
+    convergence_Sm = 0;
+
     do
     {
-        convergence_Sm = 0;
 
+        solver.set_vn(vn);
+        solver.set_vnm1(vnm1);
+        solver.set_vnm2(vnm2);
         solver.set_Sm(Sm);
         solver.solve(sol);
 
@@ -872,9 +875,8 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
             phi_p[i] = -phi_p[i];
         ls.extend_Over_Interface_TVD(phi, u_minus_ext);
         for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-        {
             phi_p[i] = -phi_p[i];
-        }
+
 
 
 
@@ -917,6 +919,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         ierr = VecDestroy(u_minus_ext); CHKERRXX(ierr);
         ierr = VecDestroy(u_plus_cte); CHKERRXX(ierr);
         ierr = VecDestroy(u_minus_cte); CHKERRXX(ierr);
+
 
 
 
@@ -1048,7 +1051,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
                 if(fabs(phi_p[n])>0.3*diag)
                     continue;
                 X_0_v_p[n] = X0_np1[n] + dt*((beta_0_in(vn_n_p[n]) - X0_np1[n])/tau_ep);
-                X_1_v_p[n] = X1_np1[n] + dt*MAX( (beta_1_in(X0_np1[n])-X1_np1[n])/tau_perm, (beta_1_in(X0_np1[n])-X1_np1[n])/tau_res );
+                X_1_v_p[n] = X1_np1[n] + dt*MAX((beta_1_in(X0_np1[n])-X1_np1[n])/tau_perm, (beta_1_in(X0_np1[n])-X1_np1[n])/tau_res);
                 Sm_n_p[n] = SL + S0*X_0_v_p[n] + S1*X_1_v_p[n];
             }
             VecRestoreArray(phi, &phi_p);
@@ -1071,24 +1074,20 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         ierr = VecGhostRestoreLocalForm(X_1_v, &l); CHKERRXX(ierr);
         ierr = VecGhostRestoreLocalForm(X1, &l1); CHKERRXX(ierr);
 
+
         counter++;
         interp_n.set_input(Sm, linear);
         interp_n.interpolate(&convergence_Sm);
         Sm_err = ABS(convergence_Sm - convergence_Sm_old)/convergence_Sm_old;
-        PetscPrintf(p4est->mpicomm, "relative error in Sm is %g, old value %g, new value %g\n", Sm_err, convergence_Sm_old, convergence_Sm);
+        PetscPrintf(p4est->mpicomm, "relative error in vn is %g, old value %g, new value %g\n", Sm_err, convergence_Sm_old, convergence_Sm);
         convergence_Sm_old = convergence_Sm;
-
-
-    }while(Sm_err>0.001);
-
-
+    }while(0 && Sm_err>0.001);
     ierr = VecDestroy(rhs_m); CHKERRXX(ierr);
     ierr = VecDestroy(rhs_p); CHKERRXX(ierr);
     ierr = VecDestroy(mu_m_); CHKERRXX(ierr);
     ierr = VecDestroy(mu_p_); CHKERRXX(ierr);
     ierr = VecDestroy(u_jump_); CHKERRXX(ierr);
     ierr = VecDestroy(mu_grad_u_jump_); CHKERRXX(ierr);
-
 }
 
 
