@@ -106,7 +106,7 @@ double zmax = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0 
 
 
 int lmin = 2;
-int lmax = 6;
+int lmax = 5;
 int nb_splits = 1;
 
 double dt_scale = 40;
@@ -793,17 +793,17 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     ierr = VecDuplicate(phi, &X_0_v); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &X_1_v); CHKERRXX(ierr);
 
-//    ierr = VecGhostGetLocalForm(X_0_v, &l); CHKERRXX(ierr);
-//    ierr = VecGhostGetLocalForm(X0, &l0); CHKERRXX(ierr);
-//    ierr = VecCopy(l0, l); CHKERRXX(ierr);
-//    ierr = VecGhostRestoreLocalForm(X_0_v, &l); CHKERRXX(ierr);
-//    ierr = VecGhostRestoreLocalForm(X0, &l0); CHKERRXX(ierr);
+    //    ierr = VecGhostGetLocalForm(X_0_v, &l); CHKERRXX(ierr);
+    //    ierr = VecGhostGetLocalForm(X0, &l0); CHKERRXX(ierr);
+    //    ierr = VecCopy(l0, l); CHKERRXX(ierr);
+    //    ierr = VecGhostRestoreLocalForm(X_0_v, &l); CHKERRXX(ierr);
+    //    ierr = VecGhostRestoreLocalForm(X0, &l0); CHKERRXX(ierr);
 
-//    ierr = VecGhostGetLocalForm(X_1_v, &l); CHKERRXX(ierr);
-//    ierr = VecGhostGetLocalForm(X1, &l1); CHKERRXX(ierr);
-//    ierr = VecCopy(l1, l); CHKERRXX(ierr);
-//    ierr = VecGhostRestoreLocalForm(X_1_v, &l); CHKERRXX(ierr);
-//    ierr = VecGhostRestoreLocalForm(X1, &l1); CHKERRXX(ierr);
+    //    ierr = VecGhostGetLocalForm(X_1_v, &l); CHKERRXX(ierr);
+    //    ierr = VecGhostGetLocalForm(X1, &l1); CHKERRXX(ierr);
+    //    ierr = VecCopy(l1, l); CHKERRXX(ierr);
+    //    ierr = VecGhostRestoreLocalForm(X_1_v, &l); CHKERRXX(ierr);
+    //    ierr = VecGhostRestoreLocalForm(X1, &l1); CHKERRXX(ierr);
     double convergence_Sm;
 
     int counter = 0;
@@ -827,6 +827,12 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     Vec vnp1;
     VecDuplicate(sol, &vnp1);
 
+    double *grad_phi_p[P4EST_DIM];
+    for(int j=0;j<P4EST_DIM;++j)
+        VecGetArray(grad_phi[j], &grad_phi_p[j]);
+
+
+
     do
     {
 
@@ -834,75 +840,162 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         solver.set_Sm(Sm);
         solver.solve(sol);
 
-        // compute jump
-        // make 2 other copies of the solution vector
-        Vec u_plus_ext, u_minus_ext, u_plus_ext_l, u_minus_ext_l, sol_l;
-        ierr = VecDuplicate(sol, &u_plus_ext); CHKERRXX(ierr);
-        ierr = VecDuplicate(sol, &u_minus_ext); CHKERRXX(ierr);
+        Vec u_plus, u_minus, u_plus_l, u_minus_l, sol_l;
+        ierr = VecDuplicate(sol, &u_plus); CHKERRXX(ierr);
+        ierr = VecDuplicate(sol, &u_minus); CHKERRXX(ierr);
         VecGhostGetLocalForm(sol, &sol_l);
-        VecGhostGetLocalForm(u_plus_ext, &u_plus_ext_l);
-        VecGhostGetLocalForm(u_minus_ext, &u_minus_ext_l);
-        ierr = VecCopy(sol_l, u_plus_ext_l); CHKERRXX(ierr);
-        ierr = VecCopy(sol_l, u_minus_ext_l); CHKERRXX(ierr);
+        VecGhostGetLocalForm(u_plus, &u_plus_l);
+        VecGhostGetLocalForm(u_minus, &u_minus_l);
+        ierr = VecCopy(sol_l, u_plus_l); CHKERRXX(ierr);
+        ierr = VecCopy(sol_l, u_minus_l); CHKERRXX(ierr);
         VecGhostRestoreLocalForm(sol, &sol_l);
-        VecGhostRestoreLocalForm(u_plus_ext, &u_plus_ext_l);
-        VecGhostRestoreLocalForm(u_minus_ext, &u_minus_ext_l);
-
-        // project solutions onto the interface
+        VecGhostRestoreLocalForm(u_plus, &u_plus_l);
+        VecGhostRestoreLocalForm(u_minus, &u_minus_l);
         double *phi_p;
         VecGetArray(phi, &phi_p);
-
-        ls.extend_Over_Interface_TVD(phi, u_plus_ext);
+        ls.extend_Over_Interface_TVD(phi, u_minus,100);
         for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
             phi_p[i] = -phi_p[i];
-        ls.extend_Over_Interface_TVD(phi, u_minus_ext);
+        ls.extend_Over_Interface_TVD(phi, u_plus,100);
         for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
             phi_p[i] = -phi_p[i];
-
-
-
-
-        Vec u_plus_cte, u_minus_cte;
-        ierr = VecDuplicate(u_plus_ext,&u_plus_cte); CHKERRXX(ierr);
-        ls.extend_from_interface_to_whole_domain_TVD(phi, u_plus_ext, u_plus_cte);
-        ierr = VecDuplicate(u_minus_ext,&u_minus_cte); CHKERRXX(ierr);
-        ls.extend_from_interface_to_whole_domain_TVD(phi, u_minus_ext, u_minus_cte);
-
-        // subtract the projected vectors, on the interface it is the jump.
-        double *vnp1_p, *u_minus_cte_p, *u_plus_cte_p;
-        VecGetArray(u_minus_cte, &u_minus_cte_p);
-        VecGetArray(u_plus_cte, &u_plus_cte_p);
-
-
-        VecGetArray(vnp1, &vnp1_p);
-        double *sol_p;
-        VecGetArray(sol, &sol_p);
-        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
+        Vec grad_up, grad_um;
+        double *dup_p,*dum_p, *up_p, *um_p;
+        ierr = VecGetArray(u_plus, &up_p); CHKERRXX(ierr);
+        ierr = VecGetArray(u_minus, &um_p); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est, nodes, &grad_up); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est, nodes, &grad_um); CHKERRXX(ierr);
+        ierr = VecGetArray(grad_up, &dup_p); CHKERRXX(ierr);
+        ierr = VecGetArray(grad_um, &dum_p); CHKERRXX(ierr);
+        for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
         {
-            vnp1_p[n] = u_minus_cte_p[n] - u_plus_cte_p[n];
+            p4est_locidx_t n = ngbd_n->get_layer_node(i);
+            const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+            dup_p[n] = qnnn.dx_central(up_p)*grad_phi_p[0][n] + qnnn.dy_central(up_p)*grad_phi_p[1][n] + qnnn.dz_central(up_p)*grad_phi_p[2][n];
+            dum_p[n] = qnnn.dx_central(um_p)*grad_phi_p[0][n] + qnnn.dy_central(um_p)*grad_phi_p[1][n] + qnnn.dz_central(um_p)*grad_phi_p[2][n];
         }
-        VecRestoreArray(sol, &sol_p);
-        VecRestoreArray(phi, &phi_p);
-        VecRestoreArray(vnp1, &vnp1_p);
-        VecRestoreArray(u_minus_cte, &u_minus_cte_p);
-        VecRestoreArray(u_plus_cte, &u_plus_cte_p);
-        Vec vn_tmp;
-        VecDuplicate(phi,&vn_tmp);
-        ls.extend_from_interface_to_whole_domain_TVD(phi, vnp1, vn_tmp);
-        double *vn_tmp_p;
-        VecGetArray(vn_tmp, &vn_tmp_p);
-        VecGetArray(vnp1, &vnp1_p);
-        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
+        ierr = VecGhostUpdateBegin(grad_up, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateBegin(grad_um, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
         {
-            vnp1_p[n] = vn_tmp_p[n];
+            p4est_locidx_t n = ngbd_n->get_local_node(i);
+            const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+            dup_p[n] = qnnn.dx_central(up_p)*grad_phi_p[0][n] + qnnn.dy_central(up_p)*grad_phi_p[1][n] + qnnn.dz_central(up_p)*grad_phi_p[2][n];
+            dum_p[n] = qnnn.dx_central(um_p)*grad_phi_p[0][n] + qnnn.dy_central(um_p)*grad_phi_p[1][n] + qnnn.dz_central(um_p)*grad_phi_p[2][n];
         }
-        VecRestoreArray(vn_tmp, &vn_tmp_p);
+        ierr = VecGhostUpdateEnd(grad_up, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateEnd(grad_um, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecRestoreArray(grad_up, &dup_p); CHKERRXX(ierr);
+        ierr = VecRestoreArray(grad_um, &dum_p); CHKERRXX(ierr);
+
+        Vec du_plus_cte, du_minus_cte;
+        ierr = VecDuplicate(sol,&du_plus_cte); CHKERRXX(ierr);
+        ls.extend_from_interface_to_whole_domain_TVD(phi, grad_up, du_plus_cte);
+        ierr = VecDuplicate(sol,&du_minus_cte); CHKERRXX(ierr);
+        ls.extend_from_interface_to_whole_domain_TVD(phi, grad_um, du_minus_cte);
+        double *du_plus_cte_p, *du_minus_cte_p;
+        VecGetArray(du_plus_cte, &du_plus_cte_p);
+        VecGetArray(du_minus_cte, &du_minus_cte_p);
+
+        double *Sm_p, *vn_p, *vnp1_p;
+        VecGetArray(vnp1, &vnp1_p);
+        VecGetArray(vn, &vn_p);
+        VecGetArray(Sm, &Sm_p);
+        for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
+        {
+            vnp1_p[n] = (Cm*vn_p[n] + dt*(sigma_c*du_minus_cte_p[n] + sigma_e*du_plus_cte_p[n])/2.)/(Cm + dt*Sm_p[n]);
+        }
+        VecRestoreArray(Sm, &Sm_p);
+        VecRestoreArray(vn, &vn_p);
         VecRestoreArray(vnp1, &vnp1_p);
-        ierr = VecDestroy(u_plus_ext); CHKERRXX(ierr);
-        ierr = VecDestroy(u_minus_ext); CHKERRXX(ierr);
-        ierr = VecDestroy(u_plus_cte); CHKERRXX(ierr);
-        ierr = VecDestroy(u_minus_cte); CHKERRXX(ierr);
-        VecDestroy(vn_tmp);
+        VecRestoreArray(du_plus_cte, &du_plus_cte_p);
+        VecRestoreArray(du_minus_cte, &du_minus_cte_p);
+
+
+
+        // Daniil Begin
+        //        // compute jump
+        //        // make 2 other copies of the solution vector
+        //        Vec u_plus_ext, u_minus_ext, u_plus_ext_l, u_minus_ext_l, sol_l;
+        //        ierr = VecDuplicate(sol, &u_plus_ext); CHKERRXX(ierr);
+        //        ierr = VecDuplicate(sol, &u_minus_ext); CHKERRXX(ierr);
+        //        VecGhostGetLocalForm(sol, &sol_l);
+        //        VecGhostGetLocalForm(u_plus_ext, &u_plus_ext_l);
+        //        VecGhostGetLocalForm(u_minus_ext, &u_minus_ext_l);
+        //        ierr = VecCopy(sol_l, u_plus_ext_l); CHKERRXX(ierr);
+        //        ierr = VecCopy(sol_l, u_minus_ext_l); CHKERRXX(ierr);
+        //        VecGhostRestoreLocalForm(sol, &sol_l);
+        //        VecGhostRestoreLocalForm(u_plus_ext, &u_plus_ext_l);
+        //        VecGhostRestoreLocalForm(u_minus_ext, &u_minus_ext_l);
+
+        //        // project solutions onto the interface
+        //        double *phi_p;
+        //        VecGetArray(phi, &phi_p);
+
+        //        ls.extend_Over_Interface_TVD(phi, u_plus_ext);
+        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+        //            phi_p[i] = -phi_p[i];
+        //        ls.extend_Over_Interface_TVD(phi, u_minus_ext);
+        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+        //            phi_p[i] = -phi_p[i];
+
+
+
+
+        //        Vec u_plus_cte, u_minus_cte;
+        //        ierr = VecDuplicate(u_plus_ext,&u_plus_cte); CHKERRXX(ierr);
+        //        ls.extend_from_interface_to_whole_domain_TVD(phi, u_plus_ext, u_plus_cte);
+        //        ierr = VecDuplicate(u_minus_ext,&u_minus_cte); CHKERRXX(ierr);
+        //        ls.extend_from_interface_to_whole_domain_TVD(phi, u_minus_ext, u_minus_cte);
+
+        //        // subtract the projected vectors, on the interface it is the jump.
+        //        double *vnp1_p, *u_minus_cte_p, *u_plus_cte_p;
+        //        VecGetArray(u_minus_cte, &u_minus_cte_p);
+        //        VecGetArray(u_plus_cte, &u_plus_cte_p);
+
+
+        //        VecGetArray(vnp1, &vnp1_p);
+        //        double *sol_p;
+        //        VecGetArray(sol, &sol_p);
+        //        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
+        //        {
+        //            vnp1_p[n] = u_minus_cte_p[n] - u_plus_cte_p[n];
+        //        }
+        //        VecRestoreArray(sol, &sol_p);
+        //        VecRestoreArray(phi, &phi_p);
+        //        VecRestoreArray(vnp1, &vnp1_p);
+        //        VecRestoreArray(u_minus_cte, &u_minus_cte_p);
+        //        VecRestoreArray(u_plus_cte, &u_plus_cte_p);
+        //        Vec vn_tmp;
+        //        VecDuplicate(phi,&vn_tmp);
+        //        ls.extend_from_interface_to_whole_domain_TVD(phi, vnp1, vn_tmp);
+        //        double *vn_tmp_p;
+        //        VecGetArray(vn_tmp, &vn_tmp_p);
+        //        VecGetArray(vnp1, &vnp1_p);
+        //        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
+        //        {
+        //            vnp1_p[n] = vn_tmp_p[n];
+        //        }
+        //        VecRestoreArray(vn_tmp, &vn_tmp_p);
+        //        VecRestoreArray(vnp1, &vnp1_p);
+        //        ierr = VecDestroy(u_plus_ext); CHKERRXX(ierr);
+        //        ierr = VecDestroy(u_minus_ext); CHKERRXX(ierr);
+        //        ierr = VecDestroy(u_plus_cte); CHKERRXX(ierr);
+        //        ierr = VecDestroy(u_minus_cte); CHKERRXX(ierr);
+        //        VecDestroy(vn_tmp);
+
+
+
+
+
+
+        // Daniil end
+
+
+
+
+
+
 
 
 
@@ -1311,9 +1404,10 @@ int main(int argc, char** argv) {
         Vec grad_phi[3];
         double *dphi_p[3],*phi_p;
         ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
         for(int i=0;i<3;++i)
         {
-            VecDuplicate(phi, &grad_phi[i]);
+            ierr = VecCreateGhostNodes(p4est, nodes, &grad_phi[i]); CHKERRXX(ierr);
             ierr = VecGetArray(grad_phi[i], &dphi_p[i]); CHKERRXX(ierr);
         }
 
@@ -1336,25 +1430,30 @@ int main(int argc, char** argv) {
         for(int j=0;j<3;++j)
         {
             ierr = VecGhostUpdateBegin(grad_phi[j], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            for(size_t i=0; i<ngbd_n.get_local_size(); ++i)
-            {
-                p4est_locidx_t n = ngbd_n.get_local_node(i);
-                const quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
-                double nx = qnnn.dx_central(phi_p);
-                double ny = qnnn.dy_central(phi_p);
-                double nz = qnnn.dz_central(phi_p);
-                double norm = sqrt(nx*nx+ny*ny+nz*nz);
-                if(norm>EPS) { nx /= norm; ny /= norm; nz/=norm;}
-                else         { nx = 0; ny = 0; nz=0;}
+        }
+        for(size_t i=0; i<ngbd_n.get_local_size(); ++i)
+        {
+            p4est_locidx_t n = ngbd_n.get_local_node(i);
+            const quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
+            double nx = qnnn.dx_central(phi_p);
+            double ny = qnnn.dy_central(phi_p);
+            double nz = qnnn.dz_central(phi_p);
+            double norm = sqrt(nx*nx+ny*ny+nz*nz);
+            if(norm>EPS) { nx /= norm; ny /= norm; nz/=norm;}
+            else         { nx = 0; ny = 0; nz=0;}
 
-                dphi_p[0][n] = nx;
-                dphi_p[1][n] = ny;
-                dphi_p[2][n] = nz;
-            }
+            dphi_p[0][n] = nx;
+            dphi_p[1][n] = ny;
+            dphi_p[2][n] = nz;
+        }
+        for(int j=0;j<3;++j)
+        {
             ierr = VecGhostUpdateEnd(grad_phi[j], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         }
         for(int j=0;j<3;++j)
+        {
             ierr = VecRestoreArray(grad_phi[j], &dphi_p[j]); CHKERRXX(ierr);
+        }
 
 
         /* set initial time step *//* find dx and dy smallest */
@@ -1451,7 +1550,7 @@ int main(int argc, char** argv) {
 #else
         dt = MIN(dx,dy)/dt_scale;
 #endif
-        dt=5e-08;
+        dt=2.5e-08;
         PetscPrintf(p4est->mpicomm, "Proceed with dt=%g, scaling %g \n", dt, MIN(dx,dy,dz)/dt);
         while (tn<tf)
         {
