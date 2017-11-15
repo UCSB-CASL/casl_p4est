@@ -271,8 +271,6 @@ void set_options(int argc, char **argv) {
     options.xmin[0] = options.xmin[1] = options.xmin[2] = -options.L + EPS;
     options.xmax[0] = options.xmax[1] = options.xmax[2] =  options.L;
     options.ntr[0]  = options.ntr[1]  = options.ntr[2]  = 1;
-    options.lmin    = 5;
-    options.lmax    = 10;
 
     static struct:cf_t {
       double operator()(double x, double y) const  {
