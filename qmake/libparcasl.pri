@@ -18,6 +18,7 @@ CONFIG(stampede, linux|macx|stampede): {
 # --------------------------------------------------------------
 CONFIG(2d, 2d|3d): {
 SOURCES += \
+  $$PARCASL/src/my_p4est_electroporation_solve.cpp \
   $$PARCASL/src/my_p4est_bialloy.cpp \
   $$PARCASL/src/my_p4est_cell_neighbors.cpp \
   $$PARCASL/src/my_p4est_faces.cpp \
@@ -61,6 +62,7 @@ SOURCES += \
 
 CONFIG(3d, 2d|3d): {
 SOURCES += \
+  $$PARCASL/src/my_p8est_electroporation_solve.cpp \
   $$PARCASL/src/my_p8est_bialloy.cpp \
   $$PARCASL/src/my_p8est_cell_neighbors.cpp \
   $$PARCASL/src/my_p8est_faces.cpp \
