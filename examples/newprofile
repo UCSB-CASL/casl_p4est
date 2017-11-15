@@ -11,24 +11,25 @@ function create_pro() {
 cat > $1.pro << EOF
 # --------------------------------------------------------------
 # This is a qmake script for generating makefiles. Please read
-# this short comment before changing this file. In particular,
-#
-#     *** DO NOT ADD SYSTEM DEPENDENT VARIABLES HERE ***
+# this short comment before changing this file. 
 #
 # Following build systems are supported:
 #   * macx (default)
 #   * linux
 #   * stampede
 #
-# To use either of these systems, please pass in the correct
+# To use either of these systems, you can pass in the correct
 # value to qmake, e.g. to build for stamepde system:
 #   qmake example.pro CONFIG+="stampede"
 #
-#           *** DO NOT ADD BUILD CONFIG HERE ***
+# You can also modify the CONFIG variable below, but remember
+# that doing so will prevent you from using the same script on
+# different systems.
 #
-# Instead pass the variable in terminal or through project
-# settings in QtCreator IDE.
+#   *** PLEASE DO NOT ADD YOUR CONFIG SCRIPT TO REPOSITORY ***
+#
 # --------------------------------------------------------------
+CONFIG += 2d
 include(../../qmake/libparcasl.pri)
 
 2d {

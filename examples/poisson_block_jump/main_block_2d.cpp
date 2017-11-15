@@ -62,8 +62,8 @@ int main(int argc, char** argv) {
   // define problem parameters
   static double kp [][2] =
   {
-    {2, 5},
-    {10, 1}
+    {2, 0.5},
+    {1, 1}
   };
 
   static double km [][2] =

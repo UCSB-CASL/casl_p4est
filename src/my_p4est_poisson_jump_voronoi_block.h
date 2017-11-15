@@ -2,6 +2,7 @@
 #define MY_P4EST_POISSON_JUMP_VORONOI_BLOCK_H
 
 #include <petsc.h>
+#include <vector>
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_cell_neighbors.h>
@@ -115,7 +116,7 @@ class my_p4est_poisson_jump_voronoi_block_t
   typedef CF_2 cf_t;
   typedef BoundaryConditions2D bc_t;
 #endif
-  vector<vector<cf_t*>> mu_m, mu_p, add;
+  vector<vector<cf_t*> > mu_m, mu_p, add;
   vector<cf_t*> u_jump, mu_grad_u_jump;
   vector<bc_t> bc;
 
@@ -157,11 +158,11 @@ public:
 
   void set_rhs(Vec rhs_m[], Vec rhs_p[]);
 
-  void set_diagonal(vector<vector<cf_t*>> &add);
+  void set_diagonal(vector<vector<cf_t*> > &add);
 
   void set_bc(vector<bc_t>& bc);
 
-  void set_mu(vector<vector<cf_t*>> &mu_m, vector<vector<cf_t*> >& mu_p);
+  void set_mu(vector<vector<cf_t*> > &mu_m, vector<vector<cf_t*> >& mu_p);
 
   void set_u_jump(vector<cf_t*> &u_jump);
 

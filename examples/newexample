@@ -11,23 +11,23 @@ function create_pro() {
 cat > $1/$1.pro << EOF
 # --------------------------------------------------------------
 # This is a qmake script for generating makefiles. Please read
-# this short comment before changing this file. In particular,
-#
-#     *** DO NOT ADD SYSTEM DEPENDENT VARIABLES HERE ***
+# this short comment before changing this file. 
 #
 # Following build systems are supported:
 #   * macx (default)
 #   * linux
 #   * stampede
 #
-# To use either of these systems, please pass in the correct
+# To use either of these systems, you can pass in the correct
 # value to qmake, e.g. to build for stamepde system:
 #   qmake example.pro CONFIG+="stampede"
 #
-#           *** DO NOT ADD BUILD CONFIG HERE ***
+# You can also modify the CONFIG variable below, but remember
+# that doing so will prevent you from using the same script on
+# different systems.
 #
-# Instead pass the variable in terminal or through project
-# settings in QtCreator IDE.
+#   *** PLEASE DO NOT ADD YOUR CONFIG SCRIPT TO REPOSITORY ***
+#
 # --------------------------------------------------------------
 CONFIG += 2d
 include(../../qmake/libparcasl.pri)
@@ -74,7 +74,7 @@ cat > $1/main_2d.cpp << EOF
 #endif
 
 #include <src/Parser.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 using namespace std;
 
@@ -99,8 +99,8 @@ int main(int argc, char** argv) {
   const int n_xyz[]      = { 1,  1,  1};
   const double xyz_min[] = {-1, -1, -1};
   const double xyz_max[] = { 1,  1,  1};
-  const int periodic[]   = { 1,  1,  1};
-  conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  const int periodic[]   = { 0,  0,  0};
+  conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   // create the forest
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
