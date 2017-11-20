@@ -1654,10 +1654,10 @@ int main (int argc, char* argv[])
         ns.update_from_tn_to_tnp1(&level_set);
     }
 
-    if(external_force_u==NULL) delete external_force_u;
+    if(external_force_u!=NULL) delete external_force_u;
     external_force_u = new external_force_u_t;
 
-    if(external_force_v==NULL) delete external_force_v;
+    if(external_force_v!=NULL) delete external_force_v;
 #ifdef P4_TO_P8
     external_force_v = new external_force_v_t;
 #else
@@ -1665,7 +1665,7 @@ int main (int argc, char* argv[])
 #endif
 
 #ifdef P4_TO_P8
-    if(external_force_w==NULL) delete external_force_w;
+    if(external_force_w!=NULL) delete external_force_w;
     external_force_w = new external_force_w_t(ns.get_ngbd_n(), ns.get_smoke());
 #endif
 
@@ -1830,10 +1830,10 @@ int main (int argc, char* argv[])
     delete naca;
 #endif
 
-  if(external_force_u==NULL) delete external_force_u;
-  if(external_force_v==NULL) delete external_force_v;
+  if(external_force_u!=NULL) delete external_force_u;
+  if(external_force_v!=NULL) delete external_force_v;
 #ifdef P4_TO_P8
-  if(external_force_w==NULL) delete external_force_w;
+  if(external_force_w!=NULL) delete external_force_w;
 #endif
 
   watch.stop();
