@@ -1100,13 +1100,12 @@ void my_p4est_bialloy_t::one_step()
 
 void my_p4est_bialloy_t::save_VTK(int iter)
 {
-#if defined STAMPEDE || defined CASL_JUQUEEN
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
-#else
-  char out_dir[10000];
-  snprintf(out_dir, 10000, "%s", "/home/guittet/code/Output/p4est_bialloy");
-#endif
+  const char *out_dir;
+  out_dir = getenv ("CASL_OUT_DIR");
+  if (out_dir == NULL) {
+    PetscPrintf(p4est->mpicomm, "Need CASL_OUT_DIR environment variable\n");
+    abort ();
+  }
 
   std::ostringstream oss;
 

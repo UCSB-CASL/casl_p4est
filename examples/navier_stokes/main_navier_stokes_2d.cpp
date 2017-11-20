@@ -706,21 +706,22 @@ private:
 public:
   NACA_CASL(MPI_Comm comm, int number, double length, double angle)
   {
-    (void) length;
-    char path_to_naca[1000];
-#if defined(STAMPEDE)
-    sprintf(path_to_naca, "/work/02673/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
-#elif defined(COMET)
-    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
-#else
-    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
-#endif
+    char path_to_naca[1000] = "";
+
+    const char *naca_dir;
+    naca_dir = getenv ("CASL_NACA_DIR");
+    if (naca_dir == NULL) {
+      PetscPrintf(p4est->mpicomm, "Need CASL_NACA_DIR environment variable\n");
+      abort ();
+    }
+    sprintf (path_to_naca, "%s/naca_%04d_lmax15_sampling500000_closed", naca_dir, number);
 
     PetscErrorCode ierr;
-    ierr = PetscPrintf(comm, "importing the naca model for file: %s\n", path_to_naca); CHKERRXX(ierr);
+    ierr = PetscPrintf (comm, "importing the naca model for file: %s\n",
+                        path_to_naca); CHKERRXX(ierr);
 
     lip = 1.2;
-    char name[1000];
+    char name[1000] = "";
     sprintf(name, "%s_tree.dat", path_to_naca);
     tr.load(name);
     sprintf(name, "%s_phi.dat", path_to_naca);
@@ -1236,23 +1237,24 @@ void check_velocity_cavity(mpi_context_t *mpi, my_p4est_navier_stokes_t *ns, dou
   interp1.set_input(phi, quadratic);
   interp1.interpolate(phi1.data());
 
+  const char *out_dir;
+  out_dir = getenv ("CASL_OUT_DIR");
+  if (out_dir == NULL) {
+    PetscPrintf(p4est->mpicomm, "Need CASL_OUT_DIR environment variable\n");
+    abort ();
+  }
+
   if(!mpi->mpirank)
   {
     FILE* fp;
-    char name[1000];
-#if defined(STAMPEDE) || defined(COMET)
-    char *out_dir;
-    out_dir = getenv("OUT_DIR");
-    if     (test_number==2) sprintf(name, "%s/velo_driven_cavity.dat", out_dir);
-    else if(test_number==3) sprintf(name, "%s/velo_driven_cavity_hole.dat", out_dir);
-#else
-    if     (test_number==2) sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/driven_cavity/cavity_velocity_%d-%d_%dx%d_Re%g_ntimesdt%g.dat", data->min_lvl, data->max_lvl, nx, ny, Re, n_times_dt);
-    else if(test_number==3) sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/driven_cavity_hole/cavity_hole_velocity_%d-%d_%dx%d_Re%g_ntimesdt%g.dat", data->min_lvl, data->max_lvl, nx, ny, Re, n_times_dt);
-#endif
-    fp = fopen(name, "w");
+    char name[1000] = "";
 
+    if     (test_number==2) sprintf(name, "%s/velo_cavity_velocity_%d-%d_%dx%d_Re%g_ntimesdt%g.dat", out_dir, data->min_lvl, data->max_lvl, nx, ny, Re, n_times_dt);
+    else if(test_number==3) sprintf(name, "%s/velo_cavity_hole_velocity_%d-%d_%dx%d_Re%g_ntimesdt%g.dat", out_dir, data->min_lvl, data->max_lvl, nx, ny, Re, n_times_dt);
+
+    fp = fopen(name, "w");
     if(fp==NULL)
-      throw std::invalid_argument("check_forces_cavity: could not open file.");
+      throw std::invalid_argument(name);
 
     ierr = PetscFPrintf(mpi->mpicomm, fp, "%% x/y \t vx \t vy\n"); CHKERRXX(ierr);
     for(int i=0; i<=N; ++i)
@@ -1568,29 +1570,31 @@ int main (int argc, char* argv[])
   tn = 0;
   int iter = 0;
 
-  char name[1000];
+  char name[1000] = "";
   double forces[P4EST_DIM];
 
   FILE *fp_forces;
-  char file_forces[1000];
+  char file_forces[1000] = "";
 
-#if defined(STAMPEDE) || defined(COMET)
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
-#endif
+  const char *out_dir;
+  out_dir = getenv ("CASL_OUT_DIR");
+  if (out_dir == NULL) {
+    PetscPrintf(mpi->mpicomm, "Need CASL_OUT_DIR environment variable\n");
+    abort ();
+  }
 
 #ifdef P4_TO_P8
   if(test_number==2 || test_number==5)
   {
-#if defined(STAMPEDE) || defined(COMET)
     if     (test_number==2) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, nz, Re, threshold_split_cell, n_times_dt, sl_order);
     else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_sphere_%d-%d_%dx%dx%d_thresh_%g_Re_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, nz, threshold_split_cell, Re, sl_order);
-#else
+
+#if 0
     if     (test_number==2) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/karman/forces_%d-%d_%dx%dx%d_Re_%g.dat", lmin, lmax, nx, ny, nz, Re);
     else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/3d/oscillating_sphere/forces_%d-%d_%dx%dx%d.dat", lmin, lmax, nx, ny, nz);
 #endif
 
-    ierr = PetscPrintf(mpi->mpicomm, "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi->mpicomm, "Saving forces in %s\n", file_forces); CHKERRXX(ierr);
     if(!mpi->mpirank)
     {
       fp_forces = fopen(file_forces, "w");
@@ -1604,11 +1608,10 @@ int main (int argc, char* argv[])
 #else
   if(test_number==4 || test_number==5 || test_number==6)
   {
-#if defined(STAMPEDE) || defined(COMET)
     if     (test_number==4) sprintf(file_forces, "%s/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
     else if(test_number==5) sprintf(file_forces, "%s/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
     else if(test_number==6) sprintf(file_forces, "%s/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
-#else
+#if 0
     if     (test_number==4) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/karman/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
     else if(test_number==5) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/oscillating_cylinder/forces_%d-%d_%dx%d_Re_%g.dat", lmin, lmax, nx, ny, Re);
     else if(test_number==6) sprintf(file_forces, "/home/guittet/code/Output/p4est_navier_stokes/2d/naca/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
@@ -1757,31 +1760,48 @@ int main (int argc, char* argv[])
 
     if(save_vtk && iter%save_every_n==0)
     {
-#if defined(STAMPEDE) || defined(COMET)
+#if 1
       sprintf(name, "%s/vtu/%05d_", out_dir, iter/save_every_n);
 #else
 
       switch(test_number)
       {
 #ifdef P4_TO_P8
-      case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
-      case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
-      case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/karman/karman_%d", iter/save_every_n); break;
-      case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/smoke_drop/smoke_drop_%d", iter/save_every_n); break;
-      case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/smoke_hill/smoke_hill_%d", iter/save_every_n); break;
-      case 5: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/oscillating_sphere/oscillating_sphere_%d", iter/save_every_n); break;
-      case 6: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/3d/vtu/smoke_city/smoke_city_%d", iter/save_every_n); break;
+      case 0: sprintf (name, "%s/vtu/analytic_vortex/without_time_%d",
+                       out_dir, iter/save_every_n); break;
+      case 1: sprintf (name, "%s/vtu/analytic_vortex/with_time_%d",
+                       out_dir, iter/save_every_n); break;
+      case 2: sprintf (name, "%s/vtu/karman/karman_%d",
+                       out_dir, iter/save_every_n); break;
+      case 3: sprintf (name, "%s/vtu/smoke_drop/smoke_drop_%d",
+                       out_dir, iter/save_every_n); break;
+      case 4: sprintf (name, "%s/vtu/smoke_hill/smoke_hill_%d",
+                       out_dir, iter/save_every_n); break;
+      case 5: sprintf (name, "%s/vtu/oscillating_sphere/oscillating_sphere_%d",
+                       out_dir, iter/save_every_n); break;
+      case 6: sprintf (name, "%s/vtu/smoke_city/smoke_city_%d",
+                       out_dir, iter/save_every_n); break;
 #else
-      case 0: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/without_time_%d", iter/save_every_n); break;
-      case 1: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/analytic_vortex/with_time_%d", iter/save_every_n); break;
-      case 2: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/driven_cavity/cavity_%d", iter/save_every_n); break;
-      case 3: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/driven_cavity_with_hole/hole_%d", iter/save_every_n); break;
-      case 4: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/karman/karman_%d", iter/save_every_n); break;
-      case 5: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/oscillating_cylinder/oscillating_%d", iter/save_every_n); break;
-      case 6: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/naca/naca_%d", iter/save_every_n); break;
-      case 7: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/smoke_drop/smoke_drop_%d", iter/save_every_n); break;
-      case 8: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/smoke_hill/smoke_hill_%d", iter/save_every_n); break;
-      case 9: sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/2d/vtu/rotating_cylinder/rotating_cylinder_%d", iter/save_every_n); break;
+      case 0: sprintf (name, "%s/vtu/analytic_vortex/without_time_%d",
+                       out_dir, iter/save_every_n); break;
+      case 1: sprintf (name, "%s/vtu/analytic_vortex/with_time_%d",
+                       out_dir, iter/save_every_n); break;
+      case 2: sprintf (name, "%s/vtu/driven_cavity/cavity_%d",
+                       out_dir, iter/save_every_n); break;
+      case 3: sprintf (name, "%s/vtu/driven_cavity_with_hole/hole_%d",
+                       out_dir, iter/save_every_n); break;
+      case 4: sprintf (name, "%s/vtu/karman/karman_%d",
+                       out_dir, iter/save_every_n); break;
+      case 5: sprintf (name, "%s/vtu/oscillating_cylinder/oscillating_%d",
+                       out_dir, iter/save_every_n); break;
+      case 6: sprintf (name, "%s/vtu/naca/naca_%d",
+                       out_dir, iter/save_every_n); break;
+      case 7: sprintf (name, "%s/vtu/smoke_drop/smoke_drop_%d",
+                       out_dir, iter/save_every_n); break;
+      case 8: sprintf (name, "%s/vtu/smoke_hill/smoke_hill_%d",
+                       out_dir, iter/save_every_n); break;
+      case 9: sprintf (name, "%s/vtu/rotating_cylinder/rotating_cylinder_%d",
+                       out_dir, iter/save_every_n); break;
 #endif
       default: throw std::invalid_argument("choose a valid test.");
       }
