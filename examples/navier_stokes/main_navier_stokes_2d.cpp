@@ -1281,6 +1281,9 @@ int main (int argc, char* argv[])
   MPI_Comm_size (mpi->mpicomm, &mpi->mpisize);
   MPI_Comm_rank (mpi->mpicomm, &mpi->mpirank);
 
+  ierr = PetscPrintf (mpi->mpicomm, "Processes: %d\n", mpi->mpisize);
+  CHKERRXX(ierr);
+
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
