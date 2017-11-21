@@ -37,6 +37,19 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
 
+/* let the compiler take care of padding and alignment */
+typedef union first_item
+{
+  struct
+  {
+    p4est_qcoord_t      xyz[P4EST_DIM];
+    p4est_topidx_t      ttt;
+  }
+  xt;
+  p4est_locidx_t      li;
+}
+first_item_t;
+
 /* logging variables -- defined in src/petsc_logging.cpp */
 
 #ifndef CASL_LOG_EVENTS
@@ -317,8 +330,6 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   int                 found;
   size_t              first_size, second_size, this_size;
   size_t              num_sharers, old_position, new_position;
-  p4est_qcoord_t     *xyz;
-  p4est_topidx_t     *ttt;
   p4est_locidx_t     *node_number;
   p4est_node_peer_t  *peers, *peer;
   p4est_indep_t       inkey;
@@ -351,6 +362,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   sc_array_t         *inda;
   sc_array_t         *shared_indeps;
   sc_hash_array_t    *indep_nodes;
+  first_item_t       *fi;
 
   P4EST_GLOBAL_PRODUCTION ("Into my_" P4EST_STRING "_nodes_new\n");
   P4EST_ASSERT (p4est_is_valid (p4est));
@@ -447,10 +459,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
 
 #ifdef P4EST_ENABLE_MPI
   /* Fill send buffers for non-owned nodes. */
-  /* TODO: use (P4EST_DIM + 1) times max size of qcoord and topidx
-           to prevent aliasing */
-  first_size = P4EST_DIM * sizeof (p4est_qcoord_t) + sizeof (p4est_topidx_t);
-  first_size = SC_MAX (first_size, sizeof (p4est_locidx_t));
+  first_size = sizeof (first_item_t);
   peers = P4EST_ALLOC (p4est_node_peer_t, num_procs);
 
   sc_array_init (&send_requests, sizeof (MPI_Request));
@@ -475,14 +484,13 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
       p4est_locidx_t     *send_idx =
         (p4est_locidx_t *) sc_array_push (&peer->send_first_oldidx);
       *send_idx = il;
-      xyz = (p4est_qcoord_t *) sc_array_push (&peer->send_first);
-      xyz[0] = in->x;
-      xyz[1] = in->y;
+      fi = (first_item_t *) sc_array_push (&peer->send_first);
+      fi->xt.xyz[0] = in->x;
+      fi->xt.xyz[1] = in->y;
 #ifdef P4_TO_P8
-      xyz[2] = in->z;
+      fi->xt.xyz[2] = in->z;
 #endif
-      ttt = (p4est_topidx_t *) (&xyz[P4EST_DIM]);
-      *ttt = in->p.which_tree;
+      fi->xt.ttt = in->p.which_tree;
       peer->expect_reply = 1;
       ++num_offproc_nodes;
     }
@@ -569,20 +577,23 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
     P4EST_ASSERT (byte_count % first_size == 0);
     elem_count = byte_count / (int) first_size;
     sc_array_resize (&peer->recv_first, (size_t) elem_count);
+#ifdef P4EST_ENABLE_DEBUG
+    /* make sure any unused padding space is initialized */
+    sc_array_memset (&peer->recv_first, -1);
+#endif
     mpiret = MPI_Recv (peer->recv_first.array, byte_count, MPI_BYTE,
                        k, P4EST_COMM_NODES_QUERY,
                        p4est->mpicomm, &recv_status);
     SC_CHECK_MPI (mpiret);
     peer->expect_query = 0;
     for (zz = 0; zz < peer->recv_first.elem_count; ++zz) {
-      xyz = (p4est_qcoord_t *) sc_array_index (&peer->recv_first, zz);
-      inkey.x = xyz[0];
-      inkey.y = xyz[1];
+      fi = (first_item_t *) sc_array_index (&peer->recv_first, zz);
+      inkey.x = fi->xt.xyz[0];
+      inkey.y = fi->xt.xyz[1];
 #ifdef P4_TO_P8
-      inkey.z = xyz[2];
+      inkey.z = fi->xt.xyz[2];
 #endif
-      ttt = (p4est_topidx_t *) (&xyz[P4EST_DIM]);
-      inkey.p.which_tree = *ttt;
+      inkey.p.which_tree = fi->xt.ttt;
       r = (p4est_quadrant_t *) sc_hash_array_insert_unique
         (indep_nodes, &inkey, &position);
       if (r != NULL) {
@@ -687,14 +698,13 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
     peer = peers + k;
     P4EST_ASSERT (!peers[k].expect_query && peer->recv_first.elem_count > 0);
     for (zz = 0; zz < peer->recv_first.elem_count; ++zz) {
-      xyz = (p4est_qcoord_t *) sc_array_index (&peer->recv_first, zz);
-      inkey.x = xyz[0];
-      inkey.y = xyz[1];
+      fi = (first_item_t *) sc_array_index (&peer->recv_first, zz);
+      inkey.x = fi->xt.xyz[0];
+      inkey.y = fi->xt.xyz[1];
 #ifdef P4_TO_P8
-      inkey.z = xyz[2];
+      inkey.z = fi->xt.xyz[2];
 #endif
-      ttt = (p4est_topidx_t *) (&xyz[P4EST_DIM]);
-      inkey.p.which_tree = *ttt;
+      inkey.p.which_tree = fi->xt.ttt;
       found = sc_hash_array_lookup (indep_nodes, &inkey, &position);
 #if 0
       if (!found) {
@@ -707,7 +717,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
       P4EST_ASSERT ((p4est_locidx_t) position >= offset_owned_indeps &&
                     (p4est_locidx_t) position < end_owned_indeps);
 #endif
-      node_number = (p4est_locidx_t *) xyz;
+      /* now we don't need the fi->xt information anymore and overwrite */
+      node_number = &fi->li;
       *node_number = (p4est_locidx_t) position - offset_owned_indeps;
       in = (p4est_indep_t *) sc_array_index (inda, position);
       P4EST_ASSERT (*node_number == in->p.piggy3.local_num);
@@ -774,7 +785,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
     peer = peers + k;
     P4EST_ASSERT (!peers[k].expect_query && peer->recv_first.elem_count > 0);
     for (zz = 0; zz < peer->recv_first.elem_count; ++zz) {
-      node_number = (p4est_locidx_t *) sc_array_index (&peer->recv_first, zz);
+      fi = (first_item_t *) sc_array_index (&peer->recv_first, zz);
+      node_number = &fi->li;
       position = (size_t) (*node_number + offset_owned_indeps);
       in = (p4est_indep_t *) sc_array_index (inda, position);
       P4EST_ASSERT (p4est_quadrant_is_node ((p4est_quadrant_t *) in, 1));
