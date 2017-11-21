@@ -13,14 +13,12 @@ juqueen = 0
 # PETSC_INC         Header files of petsc
 # PETSC_LIB         The libpetsc.* files
 # VOROPP_DIR        Where libvoro++ is make installed
+#
+# On JUQUEEN it is important to module load petsc/3.7.6_downloads_O3strict.
+# PETSC_DIR         Exported by the petsc module.  No need for _INC, _LIB.
 
-# On JUQUEEN it is important to module load petsc/3.6.0_downloads_O3strict.
-#            It is also advised to compile p4est and export P4EST_DIR accordingly,
-#            since this provides the BGQ-specific compiler flags from the p4est build.
-#            Export CASL_P4EST to point to the casl_p4est source directory.
-
-# hack to pass NULL as first parameter to PetscOptionsSetValue if set to 1
-# to use the JUQUEEN petsc version 3.6 this must be 0
+# Hack to pass NULL as first parameter to PetscOptionsSetValue if set to 1.
+# To use the local petsc version 3.4 this must be 0.
 petscoptions = 0
 
 ifeq ($(build), 2d)
@@ -81,6 +79,7 @@ ifeq ($(juqueen), 0)
 	INCPATH += -I$(PETSC_INC)
 	LIBS += -L$(PETSC_LIB) -lpetsc
 else
+        petscoptions = 1
 	include $(PETSC_DIR)/lib/petsc/conf/variables
 	include $(PETSC_DIR)/lib/petsc/conf/rules
 	INCPATH += $(PETSC_CC_INCLUDES)
@@ -251,13 +250,15 @@ $(OBJDIR)/%.o: %.c
 
 ####### Build rules
 
-.PHONY: all clean
-
 #all: $(SOURCES) $(TARGET)
 all: $(TARGET)
 
 $(TARGET):  $(OBJECTS)
 	$(LINK) -o $(TARGET) $(OBJECTS) $(LIBS) $(LFLAGS)
 
-clean: 
-	rm -rf $(OBJDIR)/*.o $(TARGET)
+# Somehow this is not compatible with juqueen's petsc rules
+#
+# clean:
+# 	rm -rf $(OBJDIR)/*.o $(TARGET)
+#
+# .PHONY: all clean
