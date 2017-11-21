@@ -1474,8 +1474,11 @@ int main (int argc, char* argv[])
   my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
 
   p4est_nodes_t *nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
-  my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick);
-  my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+
+  my_p4est_hierarchy_t *hierarchy_nm1 =
+     new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick);
+  my_p4est_node_neighbors_t *ngbd_nm1 =
+     new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
 
   /* create the initial forest at time n */
   p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
@@ -1548,7 +1551,6 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   external_force_w_t *external_force_w=NULL;
 #endif
-
 
   my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
   ns.set_phi(phi);
