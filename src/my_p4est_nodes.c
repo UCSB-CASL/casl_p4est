@@ -1019,9 +1019,6 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   /* reset the offset variable */
   nodes->offset_owned_indeps = 0;
 
-  /* check to make sure that p4est is not corrupted */
-  P4EST_ASSERT (p4est_is_valid (p4est));
-
   ierr = PetscLogEventEnd (log_my_p4est_nodes_new, 0, 0, 0, 0);
   CHKERRXX (ierr);
   IPMLogRegionEnd ("p4est_nodes_new");
