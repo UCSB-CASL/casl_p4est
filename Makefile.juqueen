@@ -1,149 +1,255 @@
-# This is a sample Makefile for compiling CASL_P4EST examples. It is mainly useful
-# for use on TACC clusters but should be simple to adapt to other enviroments. It
-# has been written by hand! to minmize any dependency which comes at the price of
-# flexibility. A better option would be CMake or qmake but not all supercomputers
-# provide them (Stampede actually has both ... so you know, use them if you want!)
+####### Compiler, tools and options
 
-# To use this, you need to set a couple of parameters:
-# 1) Either compiler your own petsc and set PETSC_DIR or use system-provided petsc
-# 2) Compile p4est and set P4EST_DIR enviroment variable to point to installation
-# 3) CASL_P4EST: set below. This points to the git repository. It can either be 
-# an absolute path or, like below, relative to the current directory in which you 
-# are invoking make.
-# 4) SRCS and CSRCS: Use these two variables below to set the files that need to be 
-# compiled for your current example. You could potentially put this in common.mkl and 
-# compile everything but compilation on clusters are sometimes slow and annoying ...
-# 5) build_type: either release or debug. Notice that this has no effect in choosing
-# proper PETSc or P4EST lib. 
-# 6) COMPILER_DEFINES: use these to define macros to the compiler
-# 
-# The rest of the Makefile should either be simple to follow or obscure enough to
-# to discourage you from reading. After all this is make!
+build = 3d
+debug = 1
+juqueen = 1
+log = 0
+
+# This Makefile requires the following environment variables:
 #
-# Author: Mohammad Mirzadeh
-# Date: 09-26-2013
+# CASL_P4EST        Toplevel directory of source
+# P4EST_DIR         Where p4est is make installed
+# PETSC_INC         Header files of petsc
+# PETSC_LIB         The libpetsc.* files
+# VOROPP_DIR        Where libvoro++ is make installed
+#
+# On JUQUEEN it is important to module load petsc/3.7.6_downloads_O3strict.
+# PETSC_DIR         Exported by the petsc module.  No need for _INC, _LIB.
 
-# Set the name of executable and its folder
-BIN_NAME   = BINARY_NAME_GOES_HERE
-BIN_FOLDER = .
+# Hack to pass NULL as first parameter to PetscOptionsSetValue if set to 1.
+# To use the local petsc version 3.4 this must be 0.
+# To use petsc 3.7.6 on juqueen, this must be 1.
+petscoptions = 1
 
-# Define the location for the CASL library 
-CASL_P4EST = ../..
-INCLUDE_FLAGS += -I$(CASL_P4EST)
+ifeq ($(build), 2d)
+	OBJDIR = .obj_2d
+	TARGET = p4est_navier_stokes_2d
+else
+	OBJDIR = .obj_3d
+	TARGET = p4est_navier_stokes_3d
+endif
 
-# Project info
-vpath %.cpp $(CASL_P4EST)/examples/parallel_levelset
-SRCS += main.cpp
+# only set these variables if P4EST_DIR is not defined in the environment
+ifeq ($(origin P4EST_DIR), undefined)
+        # don't go here; define P4EST_DIR
 
+	CFLAGS_DEBUG = -g -O0
+	CFLAGS_OPTIM = -O2
+
+	ifeq ($(debug),1)
+		CFLAGS += $(CFLAGS_DEBUG) 
+		CXXFLAGS += $(CFLAGS_DEBUG) 
+		P4EST_ARCH = debug
+	else
+		CFLAGS += $(CFLAGS_OPTIM)
+		CXXFLAGS += $(CFLAGS_OPTIM)
+		P4EST_ARCH = release
+	endif
+
+	#P4EST_DIR=/work/02673/guittet/softwares/build/p4est_mvapich2/release
+	P4EST_DIR=/work/02673/guittet/softwares/build/p4est_git/$(P4EST_ARCH)
+
+	# p4est
+	INCPATH += -I$(P4EST_DIR)/include
+	LIBS += -Wl,-rpath,$(P4EST_DIR)/lib -L$(P4EST_DIR)/lib -lp4est -lsc
+
+else
+	#echo "Use installed p4est from $(P4EST_DIR)"
+
+        # This inherits -g or -O0/-O2 flags from p4est
+	include $(P4EST_DIR)/etc/Makefile.p4est.mk
+	CFLAGS += $(P4EST_CFLAGS)
+	CXXFLAGS += $(P4EST_CFLAGS)
+
+	INCPATH += $(P4EST_CPPFLAGS)
+	LIBS += $(P4EST_LDFLAGS) $(P4EST_LIBS)
+endif
+
+ifeq ($(log),1)
+	CFLAGS += -DCASL_LOG_EVENTS
+	CXXFLAGS += -DCASL_LOG_EVENTS
+endif
+
+# petsc
+ifeq ($(juqueen), 0)
+	#INCPATH += -I$(PETSC_DIR)/include -I$(PETSC_DIR)/sandybridge-cxx/include
+	#LIBS += -Wl,-rpath,$(PETSC_DIR)/sandybridge-cxx/lib -L$(PETSC_DIR)/sandybridge-cxx/lib -lpetsc
+	#INCPATH += -I$(PETSC_DIR)/include
+	#LIBS += -Wl,-rpath,$(PETSC_DIR)/lib -L$(PETSC_DIR)/lib -lpetsc
+	INCPATH += -I$(PETSC_INC)
+	LIBS += -L$(PETSC_LIB) -lpetsc
+else
+	include $(PETSC_DIR)/lib/petsc/conf/variables
+	include $(PETSC_DIR)/lib/petsc/conf/rules
+	INCPATH += $(PETSC_CC_INCLUDES)
+	LIBS += $(PETSC_LIB)
+endif
+
+# casl p4est
+ifeq ($(origin CASL_P4EST), undefined)
+        # don't go here; define CASL_P4EST
+	CASL_P4EST = /home/foobar/work/casl_p4est
+endif
+INCPATH += -I$(CASL_P4EST)
+
+# casl library -- it seems this is outdated and only referenced in 2D (if even?)
+# CASL_DIR =/work/02673/guittet/code/casl_library
+
+# Voro++
+ifeq ($(origin VOROPP_DIR), undefined)
+        # don't go here; define VOROPP_DIR
+	LIBS += -L/work/02673/guittet/softwares/build/voro++/lib -lvoro++
+	INCPATH += -I/work/02673/guittet/softwares/build/voro++/include/voro++
+else
+	#echo "Use installed Voro++ library from $(VOROPP_DIR)"
+	LIBS += -L$(VOROPP_DIR)/lib -lvoro++
+	INCPATH += -I$(VOROPP_DIR)/include/voro++
+endif
+
+ifeq ($(petscoptions), 1)
+	CFLAGS += -DCASL_PETSC_OPTIONS
+	CXXFLAGS += -DCASL_PETSC_OPTIONS
+endif
+
+ifeq ($(juqueen), 0)
+	CC = mpicc
+	CXX = mpicxx
+	LINK = mpicxx
+else
+	ifeq ($(debug), 0)
+          CFLAGS += -qarch=qp -qtune=qp
+        else
+          CFLAGS += -qcheck=all
+        endif
+	CC = mpixlc_r
+	CXX = mpixlcxx_r
+	LINK = mpixlcxx_r
+endif
+
+vpath %.c   $(CASL_P4EST)/src
 vpath %.cpp $(CASL_P4EST)/src
-SRCS += utils.cpp \
-	refine_coarsen.cpp \
-	my_p4est_quad_neighbor_nodes_of_node.cpp \
-	my_p4est_hierarchy.cpp \
-	my_p4est_node_neighbors.cpp \
-	interpolating_function.cpp \
-	petsc_logging.cpp \
-	interpolating_function.cpp \
-	cube2.cpp \
-	simplex2.cpp \
-	point2.cpp \
-	CASL_math.cpp \
-	semi_lagrangian.cpp \
-	my_p4est_log_wrappers.cpp \
-	my_p4est_levelset.cpp \
-	Parser.cpp
+vpath %.cpp $(CASL_P4EST)/examples/navier_stokes
 
-vpath %.c $(CASL_P4EST)/src
-CSRCS += my_p4est_vtk.c \
-	my_p4est_tools.c \
-	my_p4est_nodes.c 
+####### Files
+ifeq ($(build),2d)
+	INCPATH += -I$(CASL_DIR)
+	SOURCES += \
+    $(CASL_P4EST)/examples/navier_stokes/main_navier_stokes_2d.cpp \
+    $(CASL_P4EST)/src/my_p4est_utils.cpp \
+    $(CASL_P4EST)/src/my_p4est_refine_coarsen.cpp \
+    $(CASL_P4EST)/src/my_p4est_vtk.c \
+    $(CASL_P4EST)/src/my_p4est_tools.c\
+    $(CASL_P4EST)/src/my_p4est_nodes.c \
+    $(CASL_P4EST)/src/my_p4est_interpolation.cpp \
+    $(CASL_P4EST)/src/my_p4est_interpolation_nodes.cpp \
+    $(CASL_P4EST)/src/my_p4est_interpolation_cells.cpp \
+    $(CASL_P4EST)/src/my_p4est_interpolation_faces.cpp \
+    $(CASL_P4EST)/src/my_p4est_level_set.cpp \
+    $(CASL_P4EST)/src/my_p4est_level_set_cells.cpp \
+    $(CASL_P4EST)/src/my_p4est_level_set_faces.cpp \
+    $(CASL_P4EST)/src/cube2.cpp \
+    $(CASL_P4EST)/src/point2.cpp \
+    $(CASL_P4EST)/src/simplex2.cpp \
+    $(CASL_P4EST)/src/voronoi2D.cpp \
+    $(CASL_P4EST)/src/matrix.cpp \
+    $(CASL_P4EST)/src/my_p4est_solve_lsqr.cpp \
+    $(CASL_P4EST)/src/my_p4est_hierarchy.cpp \
+    $(CASL_P4EST)/src/my_p4est_cell_neighbors.cpp \
+    $(CASL_P4EST)/src/my_p4est_node_neighbors.cpp \
+    $(CASL_P4EST)/src/my_p4est_quad_neighbor_nodes_of_node.cpp \
+    $(CASL_P4EST)/src/my_p4est_log_wrappers.c \
+    $(CASL_P4EST)/src/petsc_logging.cpp \
+    $(CASL_P4EST)/src/Parser.cpp \
+    $(CASL_P4EST)/src/math.cpp \
+    $(CASL_P4EST)/src/my_p4est_faces.cpp \
+    $(CASL_P4EST)/src/my_p4est_poisson_cells.cpp \
+    $(CASL_P4EST)/src/my_p4est_poisson_faces.cpp \
+    $(CASL_P4EST)/src/my_p4est_trajectory_of_point.cpp \
+    $(CASL_P4EST)/src/my_p4est_navier_stokes.cpp
 
-# Cluster setting; may set one of these to YES.
-TACC_CLUSTER = NO
-BGQ_CLUSTER = YES
+	# CASL_Library files
+	SOURCES += \
+		$(CASL_DIR)/lib/tools/CASL_math.cpp \
+		$(CASL_DIR)/lib/tools/CASL_types.cpp \
+		$(CASL_DIR)/lib/geometry/Point2.cpp \
+		$(CASL_DIR)/lib/geometry/Cube2.cpp \
+		$(CASL_DIR)/lib/geometry/Simplex2.cpp \
+		$(CASL_DIR)/lib/arrays/ArrayV.cpp \
+		$(CASL_DIR)/lib/algebra/MatrixFull.cpp \
+		$(CASL_DIR)/lib/algebra/SparseMatrix.cpp \
+		$(CASL_DIR)/lib/algebra/SparseMatrix_CRS.cpp \
+		$(CASL_DIR)/lib/algebra/Cholesky.cpp \
+		$(CASL_DIR)/lib/amr/QuadCell.cpp \
+		$(CASL_DIR)/lib/amr/QuadTree.cpp \
+		$(CASL_DIR)/lib/amr/QuadNgbdNodesOfNode.cpp \
+		$(CASL_DIR)/lib/tools/QuadTreeToolbox.cpp \
+		$(CASL_DIR)/lib/tools/QuadraticInterpolationOnQuadTree.cpp
 
-# What build type to use? __MUST__ either be 'debug' or 'release'
-BUILD_TYPE = release
+else
 
-# compiler options:
-# CXX_COMPILER_TYPE:
-#   This variable is used to set correct flags for the compiler;
-#   it can be GNU (for g++), INTEL (for icpc), or BGQ.
-# CXX_USE_MPI_COMPILER:
-#   This variable is used to determine whether MPI should be used
-CXX_COMPILER_TYPE    = BGQ
-CXX_DEFINES          = -DCASL_THROWS -DCASL_LOG_EVENTS
-CXX_EXTRA_FLAGS      = 
+#		LIBS += -L/work/02673/guittet/softwares/build/voro++/lib -lvoro++
+#		INCPATH += -I/work/02673/guittet/softwares/build/voro++/include/voro++
+#    $$CASL_P4EST/examples/navier_stokes/main_navier_stokes_scaling_3d.cpp
+#    $$CASL_P4EST/examples/faces/main_timing_faces_3d.cpp
+	SOURCES += \
+    $(CASL_P4EST)/examples/navier_stokes/main_navier_stokes_3d.cpp \
+    $(CASL_P4EST)/src/my_p8est_utils.cpp \
+    $(CASL_P4EST)/src/my_p8est_refine_coarsen.cpp \
+    $(CASL_P4EST)/src/my_p8est_vtk.c \
+    $(CASL_P4EST)/src/my_p8est_tools.c\
+    $(CASL_P4EST)/src/my_p8est_nodes.c \
+    $(CASL_P4EST)/src/my_p8est_interpolation.cpp \
+    $(CASL_P4EST)/src/my_p8est_interpolation_nodes.cpp \
+    $(CASL_P4EST)/src/my_p8est_interpolation_cells.cpp \
+    $(CASL_P4EST)/src/my_p8est_interpolation_faces.cpp \
+    $(CASL_P4EST)/src/my_p8est_level_set.cpp \
+    $(CASL_P4EST)/src/my_p8est_level_set_cells.cpp \
+    $(CASL_P4EST)/src/my_p8est_level_set_faces.cpp \
+    $(CASL_P4EST)/src/cube2.cpp \
+    $(CASL_P4EST)/src/cube3.cpp \
+    $(CASL_P4EST)/src/point2.cpp \
+    $(CASL_P4EST)/src/point3.cpp \
+    $(CASL_P4EST)/src/simplex2.cpp \
+    $(CASL_P4EST)/src/voronoi3D.cpp \
+    $(CASL_P4EST)/src/matrix.cpp \
+    $(CASL_P4EST)/src/my_p8est_solve_lsqr.cpp \
+    $(CASL_P4EST)/src/my_p8est_hierarchy.cpp \
+    $(CASL_P4EST)/src/my_p8est_cell_neighbors.cpp \
+    $(CASL_P4EST)/src/my_p8est_node_neighbors.cpp \
+    $(CASL_P4EST)/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
+    $(CASL_P4EST)/src/my_p8est_log_wrappers.c \
+    $(CASL_P4EST)/src/petsc_logging.cpp \
+    $(CASL_P4EST)/src/Parser.cpp \
+    $(CASL_P4EST)/src/math.cpp \
+    $(CASL_P4EST)/src/my_p8est_faces.cpp \
+    $(CASL_P4EST)/src/my_p8est_poisson_cells.cpp \
+    $(CASL_P4EST)/src/my_p8est_poisson_faces.cpp \
+    $(CASL_P4EST)/src/my_p8est_trajectory_of_point.cpp \
+    $(CASL_P4EST)/src/my_p8est_navier_stokes.cpp
+endif
 
-# Verbose control
-PRINT_WARNINGS    = NO
-PRINT_MAKE_OUTPUT = NO
+STRIP_SRC = $(notdir $(SOURCES))
+OBJECTS = $(patsubst %.cpp, $(OBJDIR)/%.o, $(filter %.cpp, $(STRIP_SRC)))	$(patsubst %.c, $(OBJDIR)/%.o, $(filter %.c, $(STRIP_SRC)))
 
-# Where to put all temporary objets?
-TEMP_OBJS_DIR      = objs
+####### Implicit rules
 
-# Use any external libraries?
-WITH_OPENMP   = NO
+$(OBJDIR)/%.o: %.cpp
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o "$@" "$<"
 
-include $(CASL_P4EST)/common.mk
+$(OBJDIR)/%.o: %.c
+	$(CC) -c $(CFLAGS) $(INCPATH) -o "$@" "$<"
 
-OBJS := $(patsubst %.cpp, $(TEMP_OBJS_DIR)/%.o,$(SRCS)) \
-	$(patsubst %.c, $(TEMP_OBJS_DIR)/%.o,$(CSRCS))
+####### Build rules
 
-DEPS := $(patsubst %.cpp, $(TEMP_OBJS_DIR)/.%.d,$(SRCS)) \
-	$(patsubst %.c, $(TEMP_OBJS_DIR)/.%.d,$(CSRCS))
+#all: $(SOURCES) $(TARGET)
+all: $(TARGET)
 
-.PHONY: all
-.DEFAULT_GOAL:=all
-all:
-	@echo	" ============== Build information =============== "
-	@echo   " Build type          = $(BUILD_TYPE) "
-	@echo   " CXX compiler type   = $(CXX_COMPILER_TYPE) " 
-	@echo   " CXX compiler called = $(CXX_FULL_PATH)"
-	@echo   " Compiler flags      = $(CXX_FLAGS)" 
-	@echo   " Include path        = $(INCLUDE_FLAGS)" 
-	@echo   ""
-	@echo   " Using external library PETSc:"
-	@echo   "    PETSC_DIR  = $(PETSC_DIR)"
-	@echo   "    PETSC_ARCH = $(PETSC_ARCH)"
-	@echo	"    PETSC_LIBS = $(PETSC_LIB)"
-	@echo   ""
-	@echo   " Using external library p4est:"
-	@echo   "    P4EST_DIR  = $(P4EST_DIR)"
-	@echo	"    P4EST_LIBS = $(P4EST_LIBS)"
-	@echo   ""
-	@echo	" =========== Building process started =========== "
-	@$(MKDIR) $(TEMP_OBJS_DIR)
-	@$(MAKE)  $(OBJS)
-	@$(MKDIR) $(BIN_FOLDER)
-	@$(MAKE)  $(BIN_NAME)
-	@echo	" ===================== done ===================== "
+$(TARGET):  $(OBJECTS)
+	$(LINK) -o $(TARGET) $(OBJECTS) $(LIBS) $(LFLAGS)
 
--include $(DEPS)
-
-$(TEMP_OBJS_DIR)/%.o: %.cpp
-	@echo " building $(@F) ..."
-	$(MPICXX) -c $(CXX_FLAGS) $(INCLUDE_FLAGS) -MMD $< -o $@
-	@mv $(TEMP_OBJS_DIR)/$*.d $(TEMP_OBJS_DIR)/.$*.d
-
-$(TEMP_OBJS_DIR)/%.o: %.c
-	@echo " building $(@F) ..."
-	$(MPICXX) -c $(CXX_FLAGS) $(INCLUDE_FLAGS) -MMD $< -o $@
-	@mv $(TEMP_OBJS_DIR)/$*.d $(TEMP_OBJS_DIR)/.$*.d
-
-$(BIN_NAME): $(OBJS)
-	@echo " linking $(@F) ..."
-	$(MPICC) $(LINK_FLAGS) $^ $(LINK_LIBS) -o $(BIN_FOLDER)/$(BIN_NAME)
-
-.PHONY: clean
-clean::
-	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME)
-
-.PHONY: cleandata
-cleandata::
-	@$(RM) $(BIN_FOLDER)/*.vtu $(BIN_FOLDER)/*.pvtu $(BIN_FOLDER)/*.vtk $(BIN_FOLDER)/*.dat $(BIN_FOLDER)/*.bin $(BIN_FOLDER)/*.xmf $(BIN_FOLDER)/*.visit
-
-.PHONY: cleanall
-cleanall::
-	@$(RM) $(TEMP_OBJS_DIR) $(BIN_FOLDER)/$(BIN_NAME) $(BIN_FOLDER)/*.vtu $(BIN_FOLDER)/*.xmf $(BIN_FOLDER)/*.hvy $(BIN_FOLDER)/*.pvtu $(BIN_FOLDER)/*.vtk $(BIN_FOLDER)/*.bin $(BIN_FODLER)/*.visit
-
+# Somehow this is not compatible with juqueen's petsc rules
+#
+# clean:
+# 	rm -rf $(OBJDIR)/*.o $(TARGET)
+#
+# .PHONY: all clean
