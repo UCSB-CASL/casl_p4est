@@ -1,0 +1,11 @@
+
+Find smallest possible setup that crashes on Juqueen
+Reproduce setup on personal computer and make it crash there too
+   (enable exceptions/assertions?)
+
+Possible causes for crash?
+CB my_p4est_nodes bugyy (what about the assertion in line 916)?
+SB cell interpolation buggy (the exception triggers on juqueen)?
+SB number of ghost layers required (theory/practice)?
+
+Run everything for the paper
