@@ -842,17 +842,21 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
 
   /* use the recieved info to construct the local_num for shared nodes */
   for (k = 0; k < num_procs; ++k) {
-    peer = peers + k;
-    char               *begin = (char *) peer->recv_second.array;
-    char               *end = begin + peer->recv_second.elem_count;
-    char               *it = begin;
-
     int                 sendc = 0;
+    char               *begin, *end, *it;
+
+    peer = peers + k;
+    begin = (char *) peer->recv_second.array;
+    end = begin + peer->recv_second.elem_count;
+    it = begin;
+
     while (it != end) {
+      size_t              pos;
       p4est_locidx_t      old_pos =
         *(p4est_locidx_t *) sc_array_index (&peer->send_first_oldidx, sendc);
+
       sendc++;
-      size_t              pos = (size_t) new_node_number[old_pos];
+      pos = (size_t) new_node_number[old_pos];
       in = (p4est_indep_t *) sc_array_index (inda, pos);
       in->p.piggy3.local_num = *(p4est_locidx_t *) it;
 
