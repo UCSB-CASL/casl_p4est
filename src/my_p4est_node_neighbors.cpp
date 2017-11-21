@@ -87,6 +87,17 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
 
 bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
 {
+#if 0
+  bool p_x = is_periodic(p4est,0);
+  bool p_y = is_periodic(p4est,1);
+#ifdef P4_TO_P8
+  bool p_z = is_periodic(p4est,2);
+#endif
+#else
+  bool p_x, p_y, p_z;
+  p_x = p_y = p_z = 0;
+#endif
+
   p4est_connectivity_t *connectivity = p4est->connectivity;
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
 
