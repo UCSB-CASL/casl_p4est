@@ -447,6 +447,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
 
 #ifdef P4EST_ENABLE_MPI
   /* Fill send buffers for non-owned nodes. */
+  /* TODO: use (P4EST_DIM + 1) times max size of qcoord and topidx
+           to prevent aliasing */
   first_size = P4EST_DIM * sizeof (p4est_qcoord_t) + sizeof (p4est_topidx_t);
   first_size = SC_MAX (first_size, sizeof (p4est_locidx_t));
   peers = P4EST_ALLOC (p4est_node_peer_t, num_procs);
@@ -764,6 +766,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
    * (int8_t)              Number of sharers (not including this processor)
    * num_sharers * (int)   The ranks of all sharers.
    */
+  /* TODO: turn into a multiple of sizeof (int) to prevent aliasing */
   second_size = sizeof (p4est_locidx_t) + sizeof (int8_t);
   for (l = 0; l < num_senders; ++l) {
     k = sender_ranks[l];
