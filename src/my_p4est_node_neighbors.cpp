@@ -1,7 +1,9 @@
 #ifdef P4_TO_P8
 #include "my_p8est_node_neighbors.h"
+#include <src/my_p8est_macros.h>
 #else
 #include "my_p4est_node_neighbors.h"
+#include <src/my_p4est_macros.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -18,6 +20,7 @@ extern PetscLogEvent log_my_p4est_node_neighbors_t;
 extern PetscLogEvent log_my_p4est_node_neighbors_t_dxx_central;
 extern PetscLogEvent log_my_p4est_node_neighbors_t_dyy_central;
 extern PetscLogEvent log_my_p4est_node_neighbors_t_dzz_central;
+extern PetscLogEvent log_my_p4est_node_neighbors_t_1st_derivatives_central;
 extern PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central;
 extern PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central_block;
 #endif
@@ -85,6 +88,31 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
   }
 }
 
+void my_p4est_node_neighbors_t::update(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes)
+{
+  hierarchy->update(p4est, ghost);
+
+  this->p4est = p4est;
+  this->ghost = ghost;
+  this->nodes = nodes;
+
+  if (is_initialized){
+    clear_neighbors();
+    init_neighbors();
+  }
+
+  layer_nodes.clear();
+  local_nodes.clear();
+
+  layer_nodes.reserve(nodes->num_owned_shared);
+  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
+
+  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i){
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
+    ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
+  }
+}
+
 bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
 {
 #if 0
@@ -100,6 +128,18 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 
   p4est_connectivity_t *connectivity = p4est->connectivity;
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
+
+
+  double *v2c = p4est->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
+  double xmin = v2c[3*t2v[0 + 0] + 0];
+  double ymin = v2c[3*t2v[0 + 0] + 1];
+  double xmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 0];
+  double ymax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 1];
+#ifdef P4_TO_P8
+  double zmin = v2c[3*t2v[0 + 0] + 2];
+  double zmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 2];
+#endif
 
   // need to unclamp the node to make sure we get the correct coordinate
   p4est_indep_t node_unclamped = *node;
@@ -331,9 +371,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_m00->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_m00_m0 = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_m00_m0 += (ymax-ymin);
     qnnn.d_m00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_m00_m0;
 #ifdef P4_TO_P8
     qnnn.d_m00_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_m00_0m += (zmax-zmin);
     qnnn.d_m00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_m00_0m;
 #endif
   }
@@ -380,9 +422,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_p00->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_p00_m0 = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_p00_m0 += (ymax-ymin);
     qnnn.d_p00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_p00_m0;
 #ifdef P4_TO_P8
     qnnn.d_p00_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_p00_0m += (zmax-zmin);
     qnnn.d_p00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_p00_0m;
 #endif
   }
@@ -429,11 +473,14 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_0m0->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_0m0_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_0m0_m0 += (xmax-xmin);
     qnnn.d_0m0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0m0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0m0_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_0m0_0m += (zmax-zmin);
     qnnn.d_0m0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0m0_0m;
 #endif
+
   }
 
   /* 0p0 */
@@ -478,9 +525,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_0p0->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_0p0_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_0p0_m0 += (xmax-xmin);
     qnnn.d_0p0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0p0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0p0_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_0p0_0m += (zmax-zmin);
     qnnn.d_0p0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0p0_0m;
 #endif
   }
@@ -517,8 +566,10 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_00m->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00m_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_00m_m0 += (xmax-xmin);
     qnnn.d_00m_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00m_m0;
     qnnn.d_00m_0m = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_00m_0m += (ymax-ymin);
     qnnn.d_00m_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00m_0m;
   }
 
@@ -553,8 +604,10 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_00p->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00p_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_00p_m0 += (xmax-xmin);
     qnnn.d_00p_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00p_m0;
     qnnn.d_00p_0m = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_00p_0m += (ymax-ymin);
     qnnn.d_00p_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00p_0m;
   }
 #endif
@@ -663,9 +716,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_m00_m0 = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_m00_m0 += (ymax-ymin);
     qnnn.d_m00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_m00_m0;
 #ifdef P4_TO_P8
     qnnn.d_m00_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_m00_0m += (zmax-zmin);
     qnnn.d_m00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_m00_0m;
 #endif
   }
@@ -763,9 +818,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_p00_m0 = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_p00_m0 += (ymax-ymin);
     qnnn.d_p00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_p00_m0;
 #ifdef P4_TO_P8
     qnnn.d_p00_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_p00_0m += (zmax-zmin);
     qnnn.d_p00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_p00_0m;
 #endif
   }
@@ -864,9 +921,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_0m0_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_0m0_m0 += (xmax-xmin);
     qnnn.d_0m0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0m0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0m0_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_0m0_0m += (zmax-zmin);
     qnnn.d_0m0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0m0_0m;
 #endif
   }
@@ -965,9 +1024,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_0p0_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_0p0_m0 += (xmax-xmin);
     qnnn.d_0p0_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_0p0_m0;
 #ifdef P4_TO_P8
     qnnn.d_0p0_0m = z - qz;
+    if(p_z && z < qz-qh/4) qnnn.d_0p0_0m += (zmax-zmin);
     qnnn.d_0p0_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_0p0_0m;
 #endif
   }
@@ -1036,8 +1097,10 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00m_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_00m_m0 += (xmax-xmin);
     qnnn.d_00m_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00m_m0;
     qnnn.d_00m_0m = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_00m_0m += (ymax-ymin);
     qnnn.d_00m_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00m_0m;
   }
 
@@ -1104,8 +1167,10 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
     double qh = P4EST_QUADRANT_LEN(quad_tmp->level) / (double) P4EST_ROOT_LEN;
 
     qnnn.d_00p_m0 = x - qx;
+    if(p_x && x < qx-qh/4) qnnn.d_00p_0m += (xmax-xmin);
     qnnn.d_00p_p0 = (tree_xmax-tree_xmin)*qh - qnnn.d_00p_m0;
     qnnn.d_00p_0m = y - qy;
+    if(p_y && y < qy-qh/4) qnnn.d_00p_0m += (ymax-ymin);
     qnnn.d_00p_0p = (tree_ymax-tree_ymin)*qh - qnnn.d_00p_0m;
   }
 #endif
@@ -1977,7 +2042,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fxx,
 
     if (f_size != fxx_size){
       std::ostringstream oss;
-      oss << "[ERROR]: Vectors must be of same size whe computing derivatives"
+      oss << "[ERROR]: Vectors must be of same size when computing derivatives"
           << " f_size = " << f_size << " fxx_size = " << fxx_size << std::endl;
 
       throw std::invalid_argument(oss.str());
@@ -1985,7 +2050,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fxx,
 
     if (f_size != fyy_size){
       std::ostringstream oss;
-      oss << "[ERROR]: Vectors must be of same size whe computing derivatives"
+      oss << "[ERROR]: Vectors must be of same size when computing derivatives"
           << " f_size = " << f_size << " fyy_size = " << fyy_size << std::endl;
 
       throw std::invalid_argument(oss.str());
@@ -2108,6 +2173,128 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fxx,
 
   IPMLogRegionEnd("2nd_derivatives");
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4EST_DIM]) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_1st_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionBegin("1st_derivatives");
+
+#ifdef CASL_THROWS
+  {
+    Vec f_l, fx_l[P4EST_DIM];
+    PetscInt f_size, fx_size[P4EST_DIM];
+
+    // Get local form
+    ierr = VecGhostGetLocalForm(f, &f_l); CHKERRXX(ierr);
+    ierr = VecGetSize(f_l, &f_size);   CHKERRXX(ierr);
+    for (short i=0; i<P4EST_DIM; i++){
+      ierr = VecGhostGetLocalForm(fx[i], &fx_l[i]); CHKERRXX(ierr);
+      ierr = VecGetSize(fx_l[i], &fx_size[i]); CHKERRXX(ierr);
+
+      if (f_size != fx_size[i]){
+        std::ostringstream oss;
+        oss << "[ERROR]: Vectors must be of same size whe computing derivatives"
+            << " f_size = " << f_size << " fx_size[" << i << "] = " << fx_size[i] << std::endl;
+
+        throw std::invalid_argument(oss.str());
+      }
+    }
+
+    // Restore local form
+    ierr = VecGhostRestoreLocalForm(f, &f_l); CHKERRXX(ierr);
+    for (short i=0; i<P4EST_DIM; i++)
+      ierr = VecGhostRestoreLocalForm(fx[i], &fx_l[i]); CHKERRXX(ierr);
+  }
+#endif
+
+  // get access to the iternal data
+  double *f_p, *fx_p[P4EST_DIM];
+  ierr = VecGetArray(f,&f_p); CHKERRXX(ierr);
+  foreach_dimension(dim) {
+    ierr = VecGetArray(fx[dim], &fx_p[dim]); CHKERRXX(ierr);
+  }
+
+  if (is_initialized){
+    // compute the derivatives on the boundary nodes -- fx
+    for (size_t i=0; i<layer_nodes.size(); i++)
+      fx_p[0][layer_nodes[i]] = neighbors[layer_nodes[i]].dx_central(f_p);
+
+    // start updating the ghost values
+    ierr = VecGhostUpdateBegin(fx[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    // compute the derivatives on the boundary nodes -- fy
+    for (size_t i=0; i<layer_nodes.size(); i++)
+      fx_p[1][layer_nodes[i]] = neighbors[layer_nodes[i]].dy_central(f_p);
+
+    // start updating the ghost values
+    ierr = VecGhostUpdateBegin(fx[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  #ifdef P4_TO_P8
+    // compute the derivatives on the boundary nodes -- fz
+    for (size_t i=0; i<layer_nodes.size(); i++)
+      fx_p[2][layer_nodes[i]] = neighbors[layer_nodes[i]].dz_central(f_p);
+
+    // start updating the ghost values
+    ierr = VecGhostUpdateBegin(fx[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  #endif
+
+    // compute the derivaties for all internal nodes
+    for (size_t i=0; i<local_nodes.size(); i++){
+      fx_p[0][local_nodes[i]] = neighbors[local_nodes[i]].dx_central(f_p);
+      fx_p[1][local_nodes[i]] = neighbors[local_nodes[i]].dy_central(f_p);
+  #ifdef P4_TO_P8
+      fx_p[2][local_nodes[i]] = neighbors[local_nodes[i]].dz_central(f_p);
+  #endif
+    }
+
+    foreach_dimension(dim) {
+      ierr = VecGhostUpdateEnd(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+  } else {
+
+    quad_neighbor_nodes_of_node_t qnnn;
+
+    // compute the derivatives on the boundary nodes
+    for (size_t i=0; i<layer_nodes.size(); i++){
+      get_neighbors(layer_nodes[i], qnnn);
+      fx_p[0][layer_nodes[i]] = qnnn.dx_central(f_p);
+      fx_p[1][layer_nodes[i]] = qnnn.dy_central(f_p);
+#ifdef P4_TO_P8
+      fx_p[2][layer_nodes[i]] = qnnn.dz_central(f_p);
+#endif
+    }
+    // start updating the ghost values
+    foreach_dimension(dim)
+      ierr = VecGhostUpdateBegin(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    // compute the derivaties for all internal nodes
+    for (size_t i=0; i<local_nodes.size(); i++){
+      get_neighbors(local_nodes[i], qnnn);
+
+      fx_p[0][local_nodes[i]] = qnnn.dx_central(f_p);
+      fx_p[1][local_nodes[i]] = qnnn.dy_central(f_p);
+  #ifdef P4_TO_P8
+      fx_p[2][local_nodes[i]] = qnnn.dz_central(f_p);
+  #endif
+    }
+
+    // finish updating the ghost values
+    foreach_dimension(dim) {
+      ierr = VecGhostUpdateEnd(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+  }
+
+  // restore internal data
+  ierr = VecRestoreArray(f,  &f_p  ); CHKERRXX(ierr);
+  foreach_dimension(dim) {
+    ierr = VecRestoreArray(fx[dim], &fx_p[dim]); CHKERRXX(ierr);
+  }
+
+  IPMLogRegionEnd("1st_derivatives");
+  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_1st_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 #ifdef P4_TO_P8

@@ -52,6 +52,10 @@ extern PetscLogEvent log_my_p4est_nodes_new;
 #define PetscLogFlops(n) 0
 #endif
 
+//#ifdef P4EST_ASSERT
+//#undef P4EST_ASSERT
+//#define P4EST_ASSERT(n) 0
+//#endif
 
 #ifdef P4EST_MPI
 
@@ -383,6 +387,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
                                    p4est_node_equal_piggy_fn, &clamped);
 
   /* This loop will collect independent nodes relevant for the elements. */
+//	MPI_Barrier(p4est->mpicomm);
+//	PetscPrintf(p4est->mpicomm, "before normal\n");
   num_owned_nodes = num_offproc_nodes = num_owned_shared = 0;
   num_indep_nodes = dup_indep_nodes = num_added_nodes = 0;
   quad_nodes = local_nodes;
@@ -417,6 +423,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   }
 
   // loop for nodes of ghost cells
+//	MPI_Barrier(p4est->mpicomm);
+//	PetscPrintf(p4est->mpicomm, "before ghost\n");
   if (ghost != NULL){
     for (zz = 0; zz < ghost->ghosts.elem_count;
          quad_nodes += P4EST_CHILDREN, ++zz){
@@ -442,6 +450,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
       }
     }
   }
+//	MPI_Barrier(p4est->mpicomm);
+//	PetscPrintf(p4est->mpicomm, "after\n");
 
   P4EST_ASSERT (num_indep_nodes + dup_indep_nodes == num_local_nodes);
   inda = &indep_nodes->a;
@@ -692,10 +702,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
         //                       inkey.x, inkey.y, inkey.level);
       }
       P4EST_ASSERT (found);
-#if 0
-      P4EST_ASSERT ((p4est_locidx_t) position >= offset_owned_indeps &&
-                    (p4est_locidx_t) position < end_owned_indeps);
-#endif
+      P4EST_ASSERT ((p4est_locidx_t) position >= offset_owned_indeps);// && (p4est_locidx_t) position < end_owned_indeps);
       node_number = (p4est_locidx_t *) xyz;
       *node_number = (p4est_locidx_t) position - offset_owned_indeps;
       in = (p4est_indep_t *) sc_array_index (inda, position);
@@ -912,7 +919,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t* ghost)
   sc_array_reset (&send_requests);
   for (k = 0; k < num_procs; ++k) {
     peer = peers + k;
-    P4EST_ASSERT (peer->recv_offset == peer->recv_second.elem_count);
+//    P4EST_ASSERT (peer->recv_offset == peer->recv_second.elem_count);
     sc_array_reset (&peer->send_first);
     sc_array_reset (&peer->send_first_oldidx);
     /* peer->recv_first has been reset above */
