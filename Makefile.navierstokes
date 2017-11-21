@@ -130,7 +130,7 @@ ifeq ($(juqueen), 0)
 		LINK = mpicxx
 	endif
 else
-	INCPATH += -DCASL_JUQUEEN
+	# INCPATH += -DCASL_JUQUEEN
 	CC = mpixlc_r
 	CXX = mpixlcxx_r
 	LINK = mpixlcxx_r

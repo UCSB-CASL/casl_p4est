@@ -1000,7 +1000,9 @@ void my_p4est_navier_stokes_t::solve_viscosity()
 #if defined COMET || defined STAMPEDE || defined CASL_JUQUEEN
   solver.set_compute_partition_on_the_fly(true);
 #else
-  solver.set_compute_partition_on_the_fly(false);
+  // we do the big-boy stuff also on a laptop
+  // solver.set_compute_partition_on_the_fly(false);
+  solver.set_compute_partition_on_the_fly(true);
 #endif
 
   solver.solve(vstar);
