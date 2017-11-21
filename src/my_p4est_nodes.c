@@ -424,9 +424,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
       for (k = 0; k < P4EST_CHILDREN; ++k) {
         p4est_quadrant_corner_node (q, k, &n);
         p4est_node_canonicalize (p4est, q->p.piggy3.which_tree, &n, &c);
-        r =
-          (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
-                                                            &c, &position);
+        r = (p4est_quadrant_t *) sc_hash_array_insert_unique
+          (indep_nodes, &c, &position);
         if (r != NULL) {
           /* found a new node */
           *r = c;
@@ -457,6 +456,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
     peer = peers + k;
     peer->expect_query = peer->expect_reply = 0;
     peer->recv_offset = 0;
+    /* TODO: only do this if this peer is sent to and/or received from */
     sc_array_init (&peer->send_first, first_size);
     sc_array_init (&peer->recv_first, first_size);
     sc_array_init (&peer->send_second, 1);
@@ -488,6 +488,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
       ++num_owned_nodes;
     }
     in->p.piggy1.owner_rank = owner;
+    /* TODO: populate receiver_ranks in this loop already */
   }
   P4EST_ASSERT (num_owned_nodes + num_offproc_nodes == num_indep_nodes);
   peer = NULL;
@@ -580,9 +581,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
 #endif
       ttt = (p4est_topidx_t *) (&xyz[P4EST_DIM]);
       inkey.p.which_tree = *ttt;
-      r =
-        (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
-                                                          &inkey, &position);
+      r = (p4est_quadrant_t *) sc_hash_array_insert_unique
+        (indep_nodes, &inkey, &position);
       if (r != NULL) {
         /* learned about a new node that rank owns but doesn't reference */
         /* *INDENT-OFF* HORRIBLE indent bug */
@@ -963,6 +963,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   offset_owned_indeps = nodes->offset_owned_indeps;
   num_owned_nodes = nodes->num_owned_indeps;
 
+  /* TODO: in C, variables must not be declared after statements */
   char               *begin_g = nodes->indep_nodes.array;
   size_t              size_g =
     (size_t) offset_owned_indeps * sizeof (p4est_indep_t);
