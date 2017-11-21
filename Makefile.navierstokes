@@ -2,9 +2,8 @@
 
 build = 3d
 debug = 1
-log = 0
-stampede = 0
 juqueen = 0
+log = 0
 
 # This Makefile requires the following environment variables:
 #
@@ -19,6 +18,7 @@ juqueen = 0
 
 # Hack to pass NULL as first parameter to PetscOptionsSetValue if set to 1.
 # To use the local petsc version 3.4 this must be 0.
+# To use petsc 3.7.6 on juqueen, this must be 1.
 petscoptions = 0
 
 ifeq ($(build), 2d)
@@ -31,7 +31,6 @@ endif
 
 # only set these variables if P4EST_DIR is not defined in the environment
 ifeq ($(origin P4EST_DIR), undefined)
-
         # don't go here; define P4EST_DIR
 
 	CFLAGS_DEBUG = -g -O0
@@ -57,6 +56,7 @@ ifeq ($(origin P4EST_DIR), undefined)
 else
 	#echo "Use installed p4est from $(P4EST_DIR)"
 
+        # This inherits -g or -O0/-O2 flags from p4est
 	include $(P4EST_DIR)/etc/Makefile.p4est.mk
 	CFLAGS += $(P4EST_CFLAGS)
 	CXXFLAGS += $(P4EST_CFLAGS)
@@ -79,7 +79,6 @@ ifeq ($(juqueen), 0)
 	INCPATH += -I$(PETSC_INC)
 	LIBS += -L$(PETSC_LIB) -lpetsc
 else
-        petscoptions = 1
 	include $(PETSC_DIR)/lib/petsc/conf/variables
 	include $(PETSC_DIR)/lib/petsc/conf/rules
 	INCPATH += $(PETSC_CC_INCLUDES)
@@ -107,29 +106,21 @@ else
 	INCPATH += -I$(VOROPP_DIR)/include/voro++
 endif
 
-# extra flags for the Stampede computer
-ifeq ($(stampede), 1)
-	CFLAGS += -DSTAMPEDE
-	CXXFLAGS += -DSTAMPEDE
-endif
-
 ifeq ($(petscoptions), 1)
 	CFLAGS += -DCASL_PETSC_OPTIONS
 	CXXFLAGS += -DCASL_PETSC_OPTIONS
 endif
 
 ifeq ($(juqueen), 0)
-	ifeq ($(debug), 0)
-		CC = @echo compiling $< && mpicc
-		CXX = @echo compiling $< && mpicxx
-		LINK = @echo linking $@ && mpicxx
-	else
-		CC = mpicc
-		CXX = mpicxx
-		LINK = mpicxx
-	endif
+	CC = mpicc
+	CXX = mpicxx
+	LINK = mpicxx
 else
-	# INCPATH += -DCASL_JUQUEEN
+	ifeq ($(debug), 0)
+          CFLAGS += -qarch=qp -qtune=qp
+        else
+          CFLAGS += -qcheck=all
+        endif
 	CC = mpixlc_r
 	CXX = mpixlcxx_r
 	LINK = mpixlcxx_r

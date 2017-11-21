@@ -997,13 +997,9 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   solver.set_diagonal(alpha * rho/dt_n);
   solver.set_bc(bc_v, dxyz_hodge, face_is_well_defined);
   solver.set_rhs(rhs);
-#if defined COMET || defined STAMPEDE || defined CASL_JUQUEEN
+
+  // previously this was only enabled for supercomputer production runs
   solver.set_compute_partition_on_the_fly(true);
-#else
-  // we do the big-boy stuff also on a laptop
-  // solver.set_compute_partition_on_the_fly(false);
-  solver.set_compute_partition_on_the_fly(true);
-#endif
 
   solver.solve(vstar);
 
