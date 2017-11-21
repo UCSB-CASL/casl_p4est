@@ -37,7 +37,7 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
 
-// logging variable -- defined in src/petsc_logging.cpp
+/* logging variables -- defined in src/petsc_logging.cpp */
 
 #ifndef CASL_LOG_EVENTS
 #undef PetscLogEventBegin
@@ -398,9 +398,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
       for (k = 0; k < P4EST_CHILDREN; ++k) {
         p4est_quadrant_corner_node (q, k, &n);
         p4est_node_canonicalize (p4est, jt, &n, &c);
-        r =
-          (p4est_quadrant_t *) sc_hash_array_insert_unique (indep_nodes,
-                                                            &c, &position);
+        r = (p4est_quadrant_t *) sc_hash_array_insert_unique
+          (indep_nodes, &c, &position);
         if (r != NULL) {
           /* found a new node */
           *r = c;
@@ -416,7 +415,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
     }
   }
 
-  // loop for nodes of ghost cells
+  /* loop for nodes of ghost cells */
   if (ghost != NULL) {
     for (zz = 0; zz < ghost->ghosts.elem_count;
          quad_nodes += P4EST_CHILDREN, ++zz) {
@@ -504,25 +503,30 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   num_receivers = (int) receiver_ranks.elem_count;
   sender_ranks = P4EST_ALLOC (int, num_procs);
 
-//      char name[1000];
-//      char *out_dir;
-//      out_dir = getenv("OUT_DIR");
-//      sprintf(name, "%s/notify/%03d.dat", out_dir);
-//  sprintf(name, "/home/guittet/code/Output/p4est_navier_stokes/notify/%03d.dat", p4est->mpirank);
-//      FILE *fp = fopen(name, "w");
-//  fprintf(fp, "%d\n", num_receivers);
-//  for(l=0; l<num_receivers; ++l)
-//    fprintf(fp, "%d ", *(int*)sc_array_index_int(&receiver_ranks, l));
-//  fprintf(fp, "\n");
-//  fclose(fp);
+#if 0
+  char                name[1000];
+  char               *out_dir;
+  out_dir = getenv ("OUT_DIR");
+  sprintf (name, "%s/notify/%03d.dat", out_dir);
+  sprintf (name,
+           "/home/guittet/code/Output/p4est_navier_stokes/notify/%03d.dat",
+           p4est->mpirank);
+  FILE               *fp = fopen (name, "w");
+  fprintf (fp, "%d\n", num_receivers);
+  for (l = 0; l < num_receivers; ++l)
+    fprintf (fp, "%d ", *(int *) sc_array_index_int (&receiver_ranks, l));
+  fprintf (fp, "\n");
+  fclose (fp);
 
-//      PetscPrintf(p4est->mpicomm, "Starting sc_notify\n");
+  PetscPrintf (p4est->mpicomm, "Starting sc_notify\n");
+#endif
   sc_notify ((int *) receiver_ranks.array, num_receivers,
              sender_ranks, &num_senders, p4est->mpicomm);
-//      PetscPrintf(p4est->mpicomm, "done with sc_notify\n");
-
-  //  P4EST_LDEBUGF ("Node query receivers %d senders %d\n",
-  //                 num_receivers, num_senders);
+#if 0
+  PetscPrintf (p4est->mpicomm, "done with sc_notify\n");
+  P4EST_LDEBUGF ("Node query receivers %d senders %d\n",
+                 num_receivers, num_senders);
+#endif
 
   /* Send queries to the owners of the independent nodes that I share. */
   for (l = 0; l < num_receivers; ++l) {
@@ -596,9 +600,11 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
     }
   }
 
-  //  P4EST_LDEBUGF ("Indeps %lld owned(pre) %lld off %lld added %lld\n",
-  //                 (long long) num_indep_nodes, (long long) num_owned_nodes,
-  //                 (long long) num_offproc_nodes, (long long) num_added_nodes);
+#if 0
+  P4EST_LDEBUGF ("Indeps %lld owned(pre) %lld off %lld added %lld\n",
+                 (long long) num_indep_nodes, (long long) num_owned_nodes,
+                 (long long) num_offproc_nodes, (long long) num_added_nodes);
+#endif
 
   num_indep_nodes += num_added_nodes;
   num_owned_nodes += num_added_nodes;
@@ -688,10 +694,12 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
       ttt = (p4est_topidx_t *) (&xyz[P4EST_DIM]);
       inkey.p.which_tree = *ttt;
       found = sc_hash_array_lookup (indep_nodes, &inkey, &position);
+#if 0
       if (!found) {
-        //        P4EST_LDEBUGF ("Not found %lld at %x %x %d\n", (long long) zz,
-        //                       inkey.x, inkey.y, inkey.level);
+        P4EST_LDEBUGF ("Not found %lld at %x %x %d\n", (long long) zz,
+                       inkey.x, inkey.y, inkey.level);
       }
+#endif
       P4EST_ASSERT (found);
 #if 0
       P4EST_ASSERT ((p4est_locidx_t) position >= offset_owned_indeps &&
@@ -793,9 +801,10 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
       }
     }
     send_request = (MPI_Request *) sc_array_push (&send_requests);
-    mpiret = MPI_Isend (peer->send_second.array, (int) peer->send_second.elem_count,    // OK since peer->send_second is array of char
-                        MPI_BYTE, k, P4EST_COMM_NODES_REPLY,
-                        p4est->mpicomm, send_request);
+    mpiret = MPI_Isend
+      (peer->send_second.array, (int) peer->send_second.elem_count,
+       /* OK since peer->send_second is array of char */
+       MPI_BYTE, k, P4EST_COMM_NODES_REPLY, p4est->mpicomm, send_request);
     SC_CHECK_MPI (mpiret);
     sc_array_reset (&peer->recv_first);
   }
@@ -915,8 +924,10 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   sc_array_reset (&send_requests);
   for (k = 0; k < num_procs; ++k) {
     peer = peers + k;
-    //  Soooooo this triggered.  Removing it for now.
-    //  P4EST_ASSERT (peer->recv_offset == peer->recv_second.elem_count);
+#if 0
+    /* Soooooo this triggered.  Removing it for now. */
+    P4EST_ASSERT (peer->recv_offset == peer->recv_second.elem_count);
+#endif
     sc_array_reset (&peer->send_first);
     sc_array_reset (&peer->send_first_oldidx);
     /* peer->recv_first has been reset above */
@@ -942,7 +953,10 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
                   (unsigned long long) shared_indeps->elem_count);
 #endif
 
-  //  P4EST_ASSERT (p4est_nodes_is_valid (p4est, nodes));
+#if 0
+  /* Sooooo we don't call this anymore */
+  P4EST_ASSERT (p4est_nodes_is_valid (p4est, nodes));
+#endif
   P4EST_GLOBAL_PRODUCTION ("Done " P4EST_STRING "_nodes_new\n");
 
   /* copy all first patch of the ghost nodes to the end of array */
@@ -956,19 +970,20 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   size_t              size_l =
     (size_t) num_owned_nodes * sizeof (p4est_indep_t);
 
-  // first copy the first piece into a buffer
+  /* first copy the first piece into a buffer */
   char               *buffer = (char *) malloc (size_g);
   memcpy ((void *) buffer, (void *) begin_g, size_g);
 
-  // move the local part to the begining
+  /* move the local part to the begining */
   memmove ((void *) begin_g, (void *) begin_l, size_l);
 
-  // copy back the first patch to just after local nodes
+  /* copy back the first patch to just after local nodes */
   memcpy ((void *) (begin_g + size_l), (void *) buffer, size_g);
 
   free (buffer);
 
-  /* now reorder the shared_offsets array with the new ordering if necessary, i.e. ghost nodes at the end */
+  /* now reorder the shared_offsets array with the new ordering if necessary,
+     i.e. ghost nodes at the end */
   if (nodes->shared_offsets != NULL) {
     p4est_locidx_t     *begin_sha_g = nodes->shared_offsets;
     size_t              size_sha_g =
@@ -987,7 +1002,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
     free (buffer_sha);
   }
 
-  // reset the local_nodes table
+  /* reset the local_nodes table */
   p4est_locidx_t     *q2n = nodes->local_nodes;
   {
     p4est_locidx_t      q;
@@ -1001,10 +1016,10 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
     }
   }
 
-  // reset the offset variable
+  /* reset the offset variable */
   nodes->offset_owned_indeps = 0;
 
-  // check to make sure that p4est is not corrupted
+  /* check to make sure that p4est is not corrupted */
   P4EST_ASSERT (p4est_is_valid (p4est));
 
   ierr = PetscLogEventEnd (log_my_p4est_nodes_new, 0, 0, 0, 0);
