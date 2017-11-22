@@ -37,6 +37,8 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
 
+/* TODO: use P4EST_ENABLE_MPI to disable as much code as possible in serial */
+
 /* let the compiler take care of padding and alignment */
 typedef union first_item
 {
@@ -49,6 +51,31 @@ typedef union first_item
   p4est_locidx_t      li;
 }
 first_item_t;
+
+static void
+locidx_to_ints (p4est_locidx_t li, int ints[2])
+{
+  if (sizeof (p4est_locidx_t) <= sizeof (int)) {
+    ints[0] = (int) li;
+    ints[1] = -1;
+  }
+  else {
+    ints[0] = li / (p4est_locidx_t) INT_MAX;
+    ints[1] = li % (p4est_locidx_t) INT_MAX;
+  }
+}
+
+static              p4est_locidx_t
+ints_to_locidx (const int ints[2])
+{
+  if (sizeof (p4est_locidx_t) <= sizeof (int)) {
+    P4EST_ASSERT (ints[1] == -1);
+    return (p4est_locidx_t) ints[0];
+  }
+  else {
+    return ints[0] * (p4est_locidx_t) INT_MAX + (p4est_locidx_t) ints[1];
+  }
+}
 
 /* logging variables -- defined in src/petsc_logging.cpp */
 
@@ -326,9 +353,9 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   int                 byte_count, elem_count;
   int                *old_sharers, *new_sharers;
   int                *node_rank;
-  char               *this_base;
+  int                *sint_base;
   int                 found;
-  size_t              first_size, second_size, this_size;
+  size_t              first_size, this_size;
   size_t              num_sharers, old_position, new_position;
   p4est_locidx_t     *node_number;
   p4est_node_peer_t  *peers, *peer;
@@ -470,8 +497,8 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
     /* TODO: only do this if this peer is sent to and/or received from */
     sc_array_init (&peer->send_first, first_size);
     sc_array_init (&peer->recv_first, first_size);
-    sc_array_init (&peer->send_second, 1);
-    sc_array_init (&peer->recv_second, 1);
+    sc_array_init (&peer->send_second, sizeof (int));
+    sc_array_init (&peer->recv_second, sizeof (int));
     sc_array_init (&peer->send_first_oldidx, sizeof (p4est_locidx_t));
   }
 
@@ -773,12 +800,10 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
   }
 
   /* Assemble and send reply information.  This is variable size.
-   * (p4est_locidx_t)      Node number in this processor's ordering
-   * (int8_t)              Number of sharers (not including this processor)
-   * num_sharers * (int)   The ranks of all sharers.
+   * (p4est_locidx_t) as 2 x int  Node number in this processor's ordering
+   * (int8_t)         as 1 x int  Number of sharers (not including this processor)
+   * num_sharers * (int)          The ranks of all sharers.
    */
-  /* TODO: turn into a multiple of sizeof (int) to prevent aliasing */
-  second_size = sizeof (p4est_locidx_t) + sizeof (int8_t);
   for (l = 0; l < num_senders; ++l) {
     k = sender_ranks[l];
     P4EST_ASSERT (k >= 0 && k < num_procs && k != rank);
@@ -793,11 +818,12 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
       P4EST_ASSERT (in->pad8 >= 0);
       num_sharers = (size_t) in->pad8;
       P4EST_ASSERT (num_sharers <= shared_indeps->elem_count);
-      this_size = second_size + num_sharers * sizeof (int);
-      this_base =
-        (char *) sc_array_push_count (&peer->send_second, this_size);
-      *(p4est_locidx_t *) this_base = *node_number;
-      *(int8_t *) (this_base + sizeof (p4est_locidx_t)) = in->pad8;
+
+      /* make room for the sharer information of this node */
+      sint_base =
+        (int *) sc_array_push_count (&peer->send_second, 3 + num_sharers);
+      locidx_to_ints (*node_number, &sint_base[0]);
+      sint_base[2] = (int) num_sharers;
       if (num_sharers > 0) {
         if (shared_offsets == NULL) {
           P4EST_ASSERT (in->pad16 >= 0);
@@ -811,15 +837,13 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
           (sc_recycle_array_t *) sc_array_index (shared_indeps,
                                                  num_sharers - 1);
         new_sharers = (int *) sc_array_index (&nrarr->a, new_position);
-        memcpy (this_base + second_size, new_sharers,
-                num_sharers * sizeof (int));
+        memcpy (sint_base + 3, new_sharers, num_sharers * sizeof (int));
       }
     }
     send_request = (MPI_Request *) sc_array_push (&send_requests);
     mpiret = MPI_Isend
-      (peer->send_second.array, (int) peer->send_second.elem_count,
-       /* OK since peer->send_second is array of char */
-       MPI_BYTE, k, P4EST_COMM_NODES_REPLY, p4est->mpicomm, send_request);
+      (peer->send_second.array, (int) peer->send_second.elem_count, MPI_INT,
+       k, P4EST_COMM_NODES_REPLY, p4est->mpicomm, send_request);
     SC_CHECK_MPI (mpiret);
     sc_array_reset (&peer->recv_first);
   }
@@ -846,8 +870,10 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
     P4EST_ASSERT (k != rank && peer->expect_reply);
     mpiret = MPI_Get_count (&probe_status, MPI_BYTE, &byte_count);
     SC_CHECK_MPI (mpiret);
-    sc_array_resize (&peer->recv_second, (size_t) byte_count);
-    mpiret = MPI_Recv (peer->recv_second.array, byte_count, MPI_BYTE,
+    P4EST_ASSERT (byte_count % sizeof (int) == 0);
+    elem_count = byte_count / sizeof (int);
+    sc_array_resize (&peer->recv_second, (size_t) elem_count);
+    mpiret = MPI_Recv (peer->recv_second.array, elem_count, MPI_INT,
                        k, P4EST_COMM_NODES_REPLY,
                        p4est->mpicomm, &recv_status);
     SC_CHECK_MPI (mpiret);
@@ -856,12 +882,13 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
 #endif /* P4EST_ENABLE_MPI */
 
   /* use the recieved info to construct the local_num for shared nodes */
+  /* TODO: move this into a P4EST_ENABLE_MPI conditional */
   for (k = 0; k < num_procs; ++k) {
     int                 sendc = 0;
-    char               *begin, *end, *it;
+    int                *begin, *end, *it;
 
     peer = peers + k;
-    begin = (char *) peer->recv_second.array;
+    begin = (int *) peer->recv_second.array;
     end = begin + peer->recv_second.elem_count;
     it = begin;
 
@@ -870,14 +897,17 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
       p4est_locidx_t      old_pos =
         *(p4est_locidx_t *) sc_array_index (&peer->send_first_oldidx, sendc);
 
+      P4EST_ASSERT (it < end);
+
       sendc++;
       pos = (size_t) new_node_number[old_pos];
       in = (p4est_indep_t *) sc_array_index (inda, pos);
-      in->p.piggy3.local_num = *(p4est_locidx_t *) it;
 
-      num_sharers = (size_t) (*(int8_t *) (it + sizeof (p4est_locidx_t)));
+      sint_base = (int *) it;
+      in->p.piggy3.local_num = ints_to_locidx (&sint_base[0]);
+      num_sharers = (size_t) sint_base[2];
+
       P4EST_ASSERT (num_sharers > 0);
-      this_size = second_size + num_sharers * sizeof (int);
 
       if (shared_indeps->elem_count < num_sharers) {
         nrarr = NULL;
@@ -894,7 +924,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
                                                  num_sharers - 1);
       }
       new_sharers = (int *) sc_recycle_array_insert (nrarr, &new_position);
-      memcpy (new_sharers, it + second_size, num_sharers * sizeof (int));
+      memcpy (new_sharers, sint_base + 3, num_sharers * sizeof (int));
       for (zz = 0; zz < num_sharers; ++zz) {
         if (new_sharers[zz] == rank) {
           new_sharers[zz] = k;
@@ -916,7 +946,7 @@ my_p4est_nodes_new (p4est_t * p4est, p4est_ghost_t * ghost)
         shared_offsets[pos] = (p4est_locidx_t) new_position;
       }
 
-      it += this_size;
+      it += 3 + num_sharers;
     }
   }
   P4EST_FREE (new_node_number);
