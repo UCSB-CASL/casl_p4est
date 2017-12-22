@@ -56,10 +56,10 @@
 #undef MIN
 #undef MAX
 int lmin = 5;
-int lmax = 5;
-int nb_splits = 7;
+int lmax = 7;
+int nb_splits = 6;
 
-double lip = 1.5;
+double lip = 3.5;
 
 using namespace std;
 
@@ -712,8 +712,8 @@ int main (int argc, char* argv[])
   double err_c0_n, err_c0_nm1;
   double err_c1_n, err_c1_nm1;
 
-//  double err_ex_n;
-//  double err_ex_nm1;
+  double err_ex_n;
+  double err_ex_nm1;
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
@@ -722,13 +722,13 @@ int main (int argc, char* argv[])
 
 //    srand(1);
 //    splitting_criteria_random_t data(2, 7, 1000, 10000);
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &phi_cf, 1.2);
+    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &phi_cf, lip);
     p4est->user_pointer = (void*)(&data);
 
 //    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
     my_p4est_partition(p4est, P4EST_FALSE, NULL);
-    p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+//    p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
     my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
     ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
@@ -796,6 +796,8 @@ int main (int argc, char* argv[])
     bc_c1.setRobinCoef(c1_robin_coef_cf);
 
     Vec rhs_t;  ierr = VecCreateGhostNodes(p4est, nodes, &rhs_t); CHKERRXX(ierr);
+    Vec rhs_tm; ierr = VecCreateGhostNodes(p4est, nodes, &rhs_tm); CHKERRXX(ierr);
+    Vec rhs_tp; ierr = VecCreateGhostNodes(p4est, nodes, &rhs_tp); CHKERRXX(ierr);
     Vec rhs_c0; ierr = VecCreateGhostNodes(p4est, nodes, &rhs_c0); CHKERRXX(ierr);
     Vec rhs_c1; ierr = VecCreateGhostNodes(p4est, nodes, &rhs_c1); CHKERRXX(ierr);
 
@@ -803,13 +805,16 @@ int main (int argc, char* argv[])
     sample_cf_on_nodes(p4est, nodes, rhs_c0_cf, rhs_c0);
     sample_cf_on_nodes(p4est, nodes, rhs_c1_cf, rhs_c1);
 
+    sample_cf_on_nodes(p4est, nodes, rhs_tm_cf, rhs_tm);
+    sample_cf_on_nodes(p4est, nodes, rhs_tp_cf, rhs_tp);
+
     my_p4est_poisson_nodes_t solver_t(&ngbd_n);
     solver_t.set_phi(phi);
     solver_t.set_diagonal(diag_add);
     solver_t.set_mu(dt*lambda);
     solver_t.set_bc(bc_t);
     solver_t.set_use_refined_cube(false);
-    solver_t.assemble_jump_rhs(rhs_t, jump_t_cf, jump_tn_cf, rhs_tm_cf, rhs_tp_cf);
+    solver_t.assemble_jump_rhs(rhs_t, jump_t_cf, jump_tn_cf, rhs_tm, rhs_tp);
     solver_t.set_rhs(rhs_t);
     solver_t.set_use_pointwise_dirichlet(false);
 
@@ -820,7 +825,7 @@ int main (int argc, char* argv[])
     solver_c0.set_bc(bc_c0);
     solver_c0.set_rhs(rhs_c0);
     solver_c0.set_use_refined_cube(true);
-    solver_c0.set_use_pointwise_dirichlet(false);
+//    solver_c0.set_use_pointwise_dirichlet(false);
 
     my_p4est_poisson_nodes_t solver_c1(&ngbd_n);
     solver_c1.set_phi(phi);
@@ -833,6 +838,21 @@ int main (int argc, char* argv[])
     Vec sol_t;  ierr = VecCreateGhostNodes(p4est, nodes, &sol_t);  CHKERRXX(ierr);
     Vec sol_c0; ierr = VecCreateGhostNodes(p4est, nodes, &sol_c0); CHKERRXX(ierr);
     Vec sol_c1; ierr = VecCreateGhostNodes(p4est, nodes, &sol_c1); CHKERRXX(ierr);
+
+    solver_c0.set_use_pointwise_dirichlet(true);
+    solver_c0.assemble_matrix(sol_c0);
+
+    for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+    {
+      for (short i = 0; i < solver_c0.pointwise_bc[n].size(); ++i)
+      {
+        double xyz[P4EST_DIM];
+        solver_c0.get_xyz_interface_point(n, i, xyz);
+        double c0_gamma = (c0_exact)(xyz[0],xyz[1]);
+
+        solver_c0.set_interface_point_value(n, i, c0_gamma);
+      }
+    }
 
 //    solver_t.solve_t(sol_t, 0, KSPBCGS, PCHYPRE);
 //    sample_cf_on_nodes(p4est, nodes, t_exact, sol_t);
@@ -911,55 +931,55 @@ int main (int argc, char* argv[])
     ierr = PetscPrintf(p4est->mpicomm, "Error in C0 on nodes : %g, order = %g\n", err_c0_n, log(err_c0_nm1/err_c0_n)/log(2)); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est->mpicomm, "Error in C1 on nodes : %g, order = %g\n", err_c1_n, log(err_c1_nm1/err_c1_n)/log(2)); CHKERRXX(ierr);
 
-//    /* extrapolate the solution and check accuracy */
-//    double band = 4;
+    /* extrapolate the solution and check accuracy */
+    double band = 2;
 
-//    if(bc_itype!=NOINTERFACE)
-//      ls.extend_Over_Interface_TVD(phi, sol, 20);
+//    ls.extend_Over_Interface_TVD(phi, sol_c0,100);
+    ls.extend_Over_Interface_TVD(phi, sol_c0, &solver_c0, 100);
 
-//    ierr = VecGetArrayRead(sol, &sol_p); CHKERRXX(ierr);
-//    ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(sol_c0, &sol_c0_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
-//    Vec err_ex;
-//    ierr = VecDuplicate(sol, &err_ex); CHKERRXX(ierr);
-//    double *err_ex_p;
-//    ierr = VecGetArray(err_ex, &err_ex_p); CHKERRXX(ierr);
+    Vec err_ex;
+    ierr = VecDuplicate(sol_c0, &err_ex); CHKERRXX(ierr);
+    double *err_ex_p;
+    ierr = VecGetArray(err_ex, &err_ex_p); CHKERRXX(ierr);
 
-//    err_ex_nm1 = err_ex_n;
-//    err_ex_n = 0;
+    err_ex_nm1 = err_ex_n;
+    err_ex_n = 0;
 
-//    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//    {
-//      if(phi_p[n]>0)
-//      {
-//        double x = node_x_fr_n(n, p4est, nodes);
-//        double y = node_y_fr_n(n, p4est, nodes);
-//#ifdef P4_TO_P8
-//        double z = node_z_fr_n(n, p4est, nodes);
-//        if(phi_p[n]<band*diag)
-//          err_ex_p[n] = fabs(sol_p[n] - u_exact(x,y,z));
-//#else
-//        if(phi_p[n]<band*diag)
-//          err_ex_p[n] = fabs(sol_p[n] - u_exact(x,y));
-//#endif
-//        else
-//          err_ex_p[n] = 0;
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+      if(phi_p[n]>0)
+      {
+        double x = node_x_fr_n(n, p4est, nodes);
+        double y = node_y_fr_n(n, p4est, nodes);
+#ifdef P4_TO_P8
+        double z = node_z_fr_n(n, p4est, nodes);
+        if(phi_p[n]<band*diag)
+          err_ex_p[n] = fabs(sol_c0_p[n] - c0_exact(x,y,z));
+#else
+        if(phi_p[n]<band*diag)
+          err_ex_p[n] = fabs(sol_c0_p[n] - c0_exact(x,y));
+#endif
+        else
+          err_ex_p[n] = 0;
 
-//        err_ex_n = MAX(err_ex_n, err_ex_p[n]);
-//      }
-//      else
-//        err_ex_p[n] = 0;
-//    }
+        err_ex_n = MAX(err_ex_n, err_ex_p[n]);
+      }
+      else
+        err_ex_p[n] = 0;
+    }
 
-//    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArrayRead(sol, &sol_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(err_ex, &err_ex_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(sol_c0, &sol_c0_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(err_ex, &err_ex_p); CHKERRXX(ierr);
 
-//    ierr = VecGhostUpdateBegin(err_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd  (err_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(err_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (err_ex, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-//    ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation : %g, order = %g\n", err_ex_n, log(err_ex_nm1/err_ex_n)/log(2)); CHKERRXX(ierr);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation : %g, order = %g\n", err_ex_n, log(err_ex_nm1/err_ex_n)/log(2)); CHKERRXX(ierr);
 
 
     //-------------------------------------------------------------------------------------------

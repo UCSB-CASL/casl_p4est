@@ -148,6 +148,10 @@ struct quad_neighbor_nodes_of_node_t {
   double dxx_central_on_p00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
   double dyy_central_on_0m0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
   double dyy_central_on_0p0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
+  double dy_central_on_m00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
+  double dy_central_on_p00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
+  double dx_central_on_0m0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
+  double dx_central_on_0p0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
 #ifdef P4_TO_P8
   double dzz_central_on_00m(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
   double dzz_central_on_00p(const double *f, const my_p4est_node_neighbors_t& neighbors) const;

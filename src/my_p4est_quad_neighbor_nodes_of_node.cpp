@@ -395,3 +395,68 @@ double quad_neighbor_nodes_of_node_t::dyy_central_on_0p0(const double *f, const 
 
   return (fyy_0p0_mm*d_0p0_p0 + fyy_0p0_pm*d_0p0_m0)/(d_0p0_m0+d_0p0_p0);
 }
+
+
+
+
+
+double quad_neighbor_nodes_of_node_t::dy_central_on_m00(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dxx_central_m00, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  // FIXME: These kind of operations would be expensive if neighbors is not initialized!
+  double fy_m00_mm = 0, fy_m00_pm = 0;
+  if (d_m00_p0 != 0) { fy_m00_mm = neighbors.get_neighbors(node_m00_mm).dy_central(f); }
+  if (d_m00_m0 != 0) { fy_m00_pm = neighbors.get_neighbors(node_m00_pm).dy_central(f); }
+
+  ierr = PetscLogFlops(5); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dxx_central_m00, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return (fy_m00_mm*d_m00_p0 + fy_m00_pm*d_m00_m0)/(d_m00_m0+d_m00_p0);
+}
+
+double quad_neighbor_nodes_of_node_t::dy_central_on_p00(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dxx_central_p00, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  double fy_p00_mm = 0, fy_p00_pm = 0;
+  if (d_p00_p0 != 0) { fy_p00_mm = neighbors.get_neighbors(node_p00_mm).dy_central(f); }
+  if (d_p00_m0 != 0) { fy_p00_pm = neighbors.get_neighbors(node_p00_pm).dy_central(f); }
+
+  ierr = PetscLogFlops(5); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dxx_central_p00, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return (fy_p00_mm*d_p00_p0 + fy_p00_pm*d_p00_m0)/(d_p00_m0+d_p00_p0);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_central_on_0m0(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dyy_central_0m0, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  double fx_0m0_mm = 0, fx_0m0_pm = 0;
+  if (d_0m0_p0 != 0) { fx_0m0_mm = neighbors.get_neighbors(node_0m0_mm).dx_central(f); }
+  if (d_0m0_m0 != 0) { fx_0m0_pm = neighbors.get_neighbors(node_0m0_pm).dx_central(f); }
+
+  ierr = PetscLogFlops(5); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central_0m0, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return (fx_0m0_mm*d_0m0_p0 + fx_0m0_pm*d_0m0_m0)/(d_0m0_m0+d_0m0_p0);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_central_on_0p0(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dyy_central_0p0, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  double fx_0p0_mm = 0, fx_0p0_pm = 0;
+  if (d_0p0_p0 != 0) { fx_0p0_mm = neighbors.get_neighbors(node_0p0_mm).dx_central(f); }
+  if (d_0p0_m0 != 0) { fx_0p0_pm = neighbors.get_neighbors(node_0p0_pm).dx_central(f); }
+
+  ierr = PetscLogFlops(5); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central_0p0, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return (fx_0p0_mm*d_0p0_p0 + fx_0p0_pm*d_0p0_m0)/(d_0p0_m0+d_0p0_p0);
+}

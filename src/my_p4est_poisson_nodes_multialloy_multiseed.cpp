@@ -1,11 +1,11 @@
 #ifdef P4_TO_P8
-#include "my_p8est_poisson_nodes_multialloy.h"
+#include "my_p8est_poisson_nodes_multialloy_multiseed.h"
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_interpolation_nodes_local.h>
 #else
-#include "my_p4est_poisson_nodes_multialloy.h"
+#include "my_p4est_poisson_nodes_multialloy_multiseed.h"
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_level_set.h>
@@ -658,8 +658,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
 //  ierr = VecRestoreArray(c0_.vec, &c0_p);
 
   my_p4est_level_set_t ls(node_neighbors_);
-//  ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, 100, 2, normal_.vec);
-  ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, solver_c0, 100, 2, normal_.vec);
+  ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, 100, 2, normal_.vec);
+//  ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, solver_c0, 100, 2, normal_.vec);
 
   node_neighbors_->second_derivatives_central(c0_.vec, c0_dd_.vec);
 
@@ -677,6 +677,12 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
   psi_c1_dd_.get_array();
   theta_.get_array();
 
+  std::vector<double *> phi_seed_ptr(num_seeds_, NULL);
+  for (int seed_idx = 0; seed_idx < num_seeds_; ++seed_idx)
+  {
+    ierr = VecGetArray(phi_seed_[seed_idx], &phi_seed_ptr[seed_idx]); CHKERRXX(ierr);
+  }
+
   for (p4est_locidx_t n = 0; n < nodes_->num_owned_indeps; ++n)
   {
     for (short i = 0; i < solver_psi_c0->pointwise_bc[n].size(); ++i)
@@ -691,14 +697,34 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
 //                               + (*eps_v_)(solver_psi_c0->interpolate_at_interface_point(n,i,theta_.ptr))/ml0_ )
 //          /(1.-kp0_)/c0_gamma;
 
+      int seed_idx_min = 0;
+      double phi_min = 1;
+      for (int seed_idx = 0; seed_idx < num_seeds_; ++seed_idx)
+      {
+        double *phi_ptr;
+        ierr = VecGetArray(phi_seed_[seed_idx], &phi_ptr); CHKERRXX(ierr);
+        double phi_value = solver_c0->interpolate_at_interface_point(n, i, phi_seed_ptr[seed_idx]);
+        if (fabs(phi_value) < phi_min)
+        {
+          phi_min = fabs(phi_value);
+          seed_idx_min = seed_idx;
+        }
+        ierr = VecRestoreArray(phi_seed_[seed_idx], &phi_ptr); CHKERRXX(ierr);
+      }
+
       double psi_c0_gamma = -( (1.-kp1_)*solver_psi_c0->interpolate_at_interface_point(n, i, c1_.ptr)
                                        *solver_psi_c0->interpolate_at_interface_point(n, i, psi_c1_.ptr)
                                 + t_diff_*latent_heat_/t_cond_*solver_psi_c0->interpolate_at_interface_point(n, i, psi_t_.ptr)
-                               + (*eps_v_)(solver_psi_c0->interpolate_at_interface_point(n,i,theta_.ptr))/ml0_ )
+                               + (*eps_v_)(solver_psi_c0->interpolate_at_interface_point(n,i,theta_.ptr)-theta_seed_[seed_idx_min])/ml0_ )
           /(1.-kp0_)/c0_gamma;
 
       solver_psi_c0->set_interface_point_value(n, i, psi_c0_gamma);
     }
+  }
+
+  for (int seed_idx = 0; seed_idx < num_seeds_; ++seed_idx)
+  {
+    ierr = VecRestoreArray(phi_seed_[seed_idx], &phi_seed_ptr[seed_idx]); CHKERRXX(ierr);
   }
 
   psi_t_.restore_array();
@@ -732,8 +758,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
   solver_psi_c0->solve(psi_c0_.vec);
 
   my_p4est_level_set_t ls(node_neighbors_);
-//  ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, 20, 2, normal_.vec);
-  ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, solver_psi_c0, 100, 2, normal_.vec);
+  ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, 20, 2, normal_.vec);
+//  ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, solver_psi_c0, 20, 2, normal_.vec);
 
   node_neighbors_->second_derivatives_central(psi_c0_.vec, psi_c0_dd_.vec);
 
@@ -1034,6 +1060,12 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
   bc_error_max_ = 0;
   double xyz[P4EST_DIM];
 
+  std::vector<double *> phi_seed_ptr(num_seeds_, NULL);
+  for (int seed_idx = 0; seed_idx < num_seeds_; ++seed_idx)
+  {
+    ierr = VecGetArray(phi_seed_[seed_idx], &phi_seed_ptr[seed_idx]); CHKERRXX(ierr);
+  }
+
   for (p4est_locidx_t n = 0; n < nodes_->num_owned_indeps; ++n)
   {
     bc_error_.ptr[n] = 0;
@@ -1060,7 +1092,22 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
         double theta = solver_c0->interpolate_at_interface_point(n, i, theta_.ptr);
         double kappa = solver_c0->interpolate_at_interface_point(n, i, kappa_.ptr);
 
-        double error = (conc_term + Tm_ - ther_term - (*eps_v_)(theta)*( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma ) + (*eps_c_)(theta)*kappa + (*GT_)(xyz[0], xyz[1]));
+        int seed_idx_min = 0;
+        double phi_min = 1;
+        for (int seed_idx = 0; seed_idx < num_seeds_; ++seed_idx)
+        {
+          double *phi_ptr;
+          ierr = VecGetArray(phi_seed_[seed_idx], &phi_ptr); CHKERRXX(ierr);
+          double phi_value = solver_c0->interpolate_at_interface_point(n, i, phi_seed_ptr[seed_idx]);
+          if (fabs(phi_value) < phi_min)
+          {
+            phi_min = fabs(phi_value);
+            seed_idx_min = seed_idx;
+          }
+          ierr = VecRestoreArray(phi_seed_[seed_idx], &phi_ptr); CHKERRXX(ierr);
+        }
+
+        double error = (conc_term + Tm_ - ther_term - (*eps_v_)(theta-theta_seed_[seed_idx_min])*( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma ) + (*eps_c_)(theta-theta_seed_[seed_idx_min])*kappa + (*GT_)(xyz[0], xyz[1]));
 
         bc_error_.ptr[n] = MAX(bc_error_.ptr[n], fabs(error));
         bc_error_max_ = MAX(bc_error_max_, fabs(error));
@@ -1090,6 +1137,11 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 
 
   /* restore pointers */
+
+  for (int seed_idx = 0; seed_idx < num_seeds_; ++seed_idx)
+  {
+    ierr = VecRestoreArray(phi_seed_[seed_idx], &phi_seed_ptr[seed_idx]); CHKERRXX(ierr);
+  }
 
   tm_.restore_array();
   tm_dd_.restore_array();

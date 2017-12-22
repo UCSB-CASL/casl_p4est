@@ -46,9 +46,9 @@
 
 #undef MIN
 #undef MAX
-int lmin = 5;
-int lmax = 5;
-int nb_splits = 5;
+int lmin = 3;
+int lmax = 9;
+int nb_splits = 4;
 
 double lip = 1.5;
 
@@ -113,8 +113,10 @@ void set_alloy_parameters()
     lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
 //    eps_c                = 2.7207e-5;
 //    eps_v                = 2.27e-2;
-    eps_c                = 0;
-    eps_v                = 0;
+    eps_v                = 1;
+    eps_c                = 1;
+//    eps_c                = 0;
+//    eps_v                = 0;
     eps_anisotropy       = 0.05;
 
     Dl[0] = 1e-5;
@@ -280,6 +282,7 @@ class kappa_cf_t: public CF_2
 public:
   double operator()(double x, double y) const
   {
+//    return 1.1;
     return (SQR(phi_x_cf(x,y))*phi_yy_cf(x,y) - 2.*phi_x_cf(x,y)*phi_y_cf(x,y)*phi_xy_cf(x,y) + SQR(phi_y_cf(x,y))*phi_xx_cf(x,y))/pow(SQR(phi_x_cf(x,y))+SQR(phi_y_cf(x,y)), 1.5);
   }
 } kappa_cf;
@@ -775,7 +778,7 @@ class gibbs_thompson_t : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return tm_exact(x,y) - Tm - ml[0]*c0_exact(x,y) - ml[1]*c1_exact(x,y) + eps_c_cf(theta_cf(x,y))*kappa_cf(x,y) + eps_v_cf(theta_cf(x,y))*vn_cf(x,y);
+    return tm_exact(x,y) - Tm - ml[0]*c0_exact(x,y) - ml[1]*c1_exact(x,y) - eps_c_cf(theta_cf(x,y))*kappa_cf(x,y) + eps_v_cf(theta_cf(x,y))*vn_cf(x,y);
   }
 } gibbs_thompson;
 
@@ -886,23 +889,28 @@ int main (int argc, char* argv[])
 
 //    srand(1);
 //    splitting_criteria_random_t data(2, 7, 1000, 10000);
-    splitting_criteria_cf_t data_tmp(lmin, lmax, &phi_cf, 1.2);
+    splitting_criteria_cf_t data_tmp(lmin, lmax, &phi_cf, lip);
     p4est->user_pointer = (void*)(&data_tmp);
 
 //    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
     for (int i = 0; i < iter; ++i)
+    {
       my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
+//      my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+      my_p4est_partition(p4est, P4EST_FALSE, NULL);
+    }
 
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &phi_cf, 1.2);
+    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &phi_cf, lip);
     p4est->user_pointer = (void*)(&data);
 
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+//    my_p4est_partition(p4est, P4EST_FALSE, NULL);
     p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
     my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
     ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-    my_p4est_ghost_expand(p4est, ghost);
+//    my_p4est_ghost_expand(p4est, ghost);
     nodes = my_p4est_nodes_new(p4est, ghost);
 
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
@@ -937,8 +945,30 @@ int main (int argc, char* argv[])
     Vec phi;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, phi_cf, phi);
-//    ls.reinitialize_1st_order_time_2nd_order_space(phi);
-//    ls.perturb_level_set_function(phi, EPS);
+
+    if (0) {
+      double xyz[P4EST_DIM];
+      double *phi_ptr;
+      srand(mpi.rank());
+
+      ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
+      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+      {
+        node_xyz_fr_n(n, p4est, nodes, xyz);
+
+        double d_phi = 0.001*dx*dx*dx*(double)(rand()%1000)/1000.;
+//        double d_phi = 0.01*dx*dx*cos(2.*PI*data.max_lvl*xyz[0])*sin(2.*PI*data.max_lvl*xyz[1]);
+        phi_ptr[n] += d_phi;
+      }
+      ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD);
+      ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);
+    }
+
+    ls.reinitialize_1st_order_time_2nd_order_space(phi, 100);
+//    ls.reinitialize_1st_order(phi, 100);
+//    ls.reinitialize_2nd_order(phi, 100);
+    ls.perturb_level_set_function(phi, EPS);
 
     Vec phi_dd[P4EST_DIM];
 
@@ -976,16 +1006,16 @@ int main (int argc, char* argv[])
         normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
         normal_p[2][n] = qnnn.dz_central(phi_p);
-        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+//        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
 #else
-        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+//        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
 #endif
 
-        normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
-        normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
-#ifdef P4_TO_P8
-        normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
-#endif
+//        normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+//        normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
+//#ifdef P4_TO_P8
+//        normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
+//#endif
       }
 
       for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -1001,19 +1031,18 @@ int main (int argc, char* argv[])
         normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
         normal_p[2][n] = qnnn.dz_central(phi_p);
-        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+//        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
 #else
-        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+//        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
 #endif
 
-        normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
-        normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
-#ifdef P4_TO_P8
-        normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
-#endif
+//        normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+//        normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
+//#ifdef P4_TO_P8
+//        normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
+//#endif
       }
 
-      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
       for(int dir=0; dir<P4EST_DIM; ++dir)
       {
@@ -1030,10 +1059,24 @@ int main (int argc, char* argv[])
       {
         p4est_locidx_t n = ngbd_n.get_layer_node(i);
         qnnn = ngbd_n.get_neighbors(n);
+        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     #ifdef P4_TO_P8
         kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/dxyz_max), -1/dxyz_max);
     #else
-        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1/dx), -1/dx);
+        if (is_node_Wall(p4est, ni))
+        {
+          kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+        } else {
+          double phi_x = normal_p[0][n];
+          double phi_y = normal_p[1][n];
+//          ierr = PetscPrintf(p4est->mpicomm, "Here\n"); CHKERRXX(ierr);
+          double phi_xx = qnnn.dxx_central(phi_p);
+          double phi_yy = qnnn.dyy_central(phi_p);
+          double phi_xy = .5*(qnnn.dx_central(normal_p[1])+qnnn.dy_central(normal_p[0]));
+          kappa_p[n] = (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx)/pow(phi_x*phi_x+phi_y*phi_y,3./2.);
+//          kappa_p[n] = phi_yy + phi_xx;
+        }
+//        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1/dx), -1/dx);
     #endif
       }
       ierr = VecGhostUpdateBegin(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
@@ -1041,26 +1084,57 @@ int main (int argc, char* argv[])
       {
         p4est_locidx_t n = ngbd_n.get_local_node(i);
         qnnn = ngbd_n.get_neighbors(n);
+        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     #ifdef P4_TO_P8
         kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/dxyz_max), -1/dxyz_max);
     #else
-        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1/dx), -1/dx);
+        if (is_node_Wall(p4est, ni))
+        {
+          kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+        } else {
+          double phi_x = normal_p[0][n];
+          double phi_y = normal_p[1][n];
+          double phi_xx = qnnn.dxx_central(phi_p);
+          double phi_yy = qnnn.dyy_central(phi_p);
+          double phi_xy = .5*(qnnn.dx_central(normal_p[1])+qnnn.dy_central(normal_p[0]));
+          kappa_p[n] = (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx)/pow(phi_x*phi_x+phi_y*phi_y,3./2.);
+//          kappa_p[n] = phi_yy + phi_xx;
+        }
+//        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1/dx), -1/dx);
     #endif
       }
       ierr = VecGhostUpdateEnd(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
       ierr = VecRestoreArray(kappa_tmp, &kappa_p); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+    #ifdef P4_TO_P8
+        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+    #else
+        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+    #endif
+
+        normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+        normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
+    #ifdef P4_TO_P8
+        normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
+    #endif
+      }
 
       for(int dir=0; dir<P4EST_DIM; ++dir)
       {
         ierr = VecRestoreArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
       }
 
-//      my_p4est_level_set_t ls(&ngbd_n);
-//      ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
-//      ierr = VecDestroy(kappa_tmp); CHKERRXX(ierr);
+      my_p4est_level_set_t ls(&ngbd_n);
+      ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
+      ierr = VecDestroy(kappa_tmp); CHKERRXX(ierr);
 
-      ierr = VecDestroy(kappa); CHKERRXX(ierr);
-      kappa = kappa_tmp;
+//      ierr = VecDestroy(kappa); CHKERRXX(ierr);
+//      kappa = kappa_tmp;
+
+//      sample_cf_on_nodes(p4est, nodes, kappa_cf, kappa);
 
       /* angle between normal and direction of growth */
 
@@ -1150,8 +1224,8 @@ int main (int argc, char* argv[])
     my_p4est_poisson_nodes_multialloy_t solver_all_in_one(&ngbd_n);
 
     int pin_every_n_steps = 3;
-    double bc_tolerance = 1.e-11;
-    int max_iterations = 100;
+    double bc_tolerance = 1.e-9;
+    int max_iterations = 1;
 
     solver_all_in_one.set_phi(phi, phi_dd, normal, kappa, theta);
     solver_all_in_one.set_parameters(dt, lambda, thermal_conductivity, latent_heat, Tm, Dl[0], kp[0], ml[0], Dl[1], kp[1], ml[1]);
@@ -1199,8 +1273,16 @@ int main (int argc, char* argv[])
     double theta_error = 0;
     double *kappa_p; ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
     double *theta_p; ierr = VecGetArray(theta, &theta_p); CHKERRXX(ierr);
+    Vec err_vn;  ierr = VecDuplicate(sol_t,  &err_vn); CHKERRXX(ierr);
+    Vec err_kappa;  ierr = VecDuplicate(sol_t,  &err_kappa); CHKERRXX(ierr);
+    double *err_vn_p, *err_kappa_p;
+    ierr = VecGetArray(err_kappa,  &err_kappa_p); CHKERRXX(ierr);
+    ierr = VecGetArray(err_vn,  &err_vn_p); CHKERRXX(ierr);
+
     for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
     {
+      err_kappa_p[n] = 0;
+      err_vn_p[n] = 0;
       for (short i = 0; i < solver_c0->pointwise_bc[n].size(); ++i)
       {
         double xyz[P4EST_DIM];
@@ -1208,8 +1290,13 @@ int main (int argc, char* argv[])
         vn_error = MAX(vn_error, fabs(vn->value(xyz) - vn_cf.value(xyz)));
         kappa_error = MAX(kappa_error, fabs(kappa_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, kappa_p)));
         theta_error = MAX(theta_error, fabs(theta_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, theta_p)));
+
+        err_kappa_p[n] = MAX(err_kappa_p[n], fabs(kappa_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, kappa_p)));
+        err_vn_p[n] = MAX(err_vn_p[n], fabs(theta_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, theta_p)));
       }
     }
+    ierr = VecRestoreArray(err_kappa,  &err_kappa_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(err_vn,  &err_vn_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(theta, &theta_p); CHKERRXX(ierr);
 
@@ -1315,24 +1402,24 @@ int main (int argc, char* argv[])
       PetscErrorCode ierr;
       const char *out_dir = getenv("OUT_DIR");
       if (!out_dir) {
-        out_dir = "out_dir/vtu";
+        out_dir = "out_dir";
         system((string("mkdir -p ")+out_dir).c_str());
       }
 
       std::ostringstream oss;
 
       oss << out_dir
-          << "/multiallo_poisson_solver_"
-          << "proc="
+          << "/vtu/multiallo_poisson_solver_"
+          << "proc"
           << p4est->mpisize << "_"
-             << "brick="
+             << "brick"
           << brick.nxyztrees[0] << "x"
           << brick.nxyztrees[1] <<
            #ifdef P4_TO_P8
              "x" << brick.nxyztrees[2] <<
            #endif
-             "_levels=(" <<lmin << "," << lmax << ")" <<
-             ".split=" << iter;
+//             "_levels=(" <<lmin << "," << lmax << ")" <<
+             ".split" << iter;
 
       double *phi_p;
       double *sol_t_p, *err_t_p;
@@ -1348,6 +1435,9 @@ int main (int argc, char* argv[])
       ierr = VecGetArray(err_t_nodes, &err_t_p); CHKERRXX(ierr);
       ierr = VecGetArray(err_c0_nodes, &err_c0_p); CHKERRXX(ierr);
       ierr = VecGetArray(err_c1_nodes, &err_c1_p); CHKERRXX(ierr);
+
+      ierr = VecGetArray(err_kappa,  &err_kappa_p); CHKERRXX(ierr);
+      ierr = VecGetArray(err_vn,  &err_vn_p); CHKERRXX(ierr);
 
       double *bc_error_p;
 
@@ -1380,7 +1470,7 @@ int main (int argc, char* argv[])
 
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
-                             8, 1, oss.str().c_str(),
+                             10, 1, oss.str().c_str(),
                              VTK_POINT_DATA, "phi", phi_p,
                              VTK_POINT_DATA, "sol_t",  sol_t_p,
                              VTK_POINT_DATA, "sol_c0", sol_c0_p,
@@ -1389,6 +1479,8 @@ int main (int argc, char* argv[])
                              VTK_POINT_DATA, "err_c0", err_c0_p,
                              VTK_POINT_DATA, "err_c1", err_c1_p,
                              VTK_POINT_DATA, "bc_error", bc_error_p,
+                             VTK_POINT_DATA, "kappa_error", err_kappa_p,
+                             VTK_POINT_DATA, "vn_error", err_vn_p,
 //                             VTK_POINT_DATA, "err_ex", err_ex_p,
                              VTK_CELL_DATA , "leaf_level", l_p);
 
@@ -1404,6 +1496,9 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArray(err_t_nodes, &err_t_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(err_c0_nodes, &err_c0_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(err_c1_nodes, &err_c1_p); CHKERRXX(ierr);
+
+      ierr = VecRestoreArray(err_kappa,  &err_kappa_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(err_vn,  &err_vn_p); CHKERRXX(ierr);
 
       ierr = VecRestoreArray(bc_error, &bc_error_p); CHKERRXX(ierr);
 

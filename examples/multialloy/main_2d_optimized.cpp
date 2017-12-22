@@ -137,12 +137,12 @@ void set_alloy_parameters()
     latent_heat          = 2350;           /* J.cm-3      */
     thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
     lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+//    eps_c                = 2.7207e-5;
+//    eps_v                = 2.27e-2;
+//    eps_anisotropy       = 0.05;
     eps_c                = 2.7207e-5;
-    eps_v                = 2.27e-2;
+    eps_v                = 2.27e-1;
     eps_anisotropy       = 0.05;
-//    eps_c                = 0.0;
-//    eps_v                = 0.0;
-//    eps_anisotropy       = 0.01;
 
 //    box_size = 4e-2;
 
@@ -167,10 +167,11 @@ void set_alloy_parameters()
       latent_heat          = 2350;           /* J.cm-3      */
       thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+//      eps_c                = 2.7207e-5;
+//      eps_v                = 2.27e-2;
+//      eps_anisotropy       = 0.05;
       eps_c                = 2.7207e-5;
       eps_v                = 2.27e-2;
-  //    eps_c                = 0.0;
-  //    eps_v                = 0.0;
       eps_anisotropy       = 0.05;
 
   //    box_size = 4e-2;
@@ -196,11 +197,12 @@ void set_alloy_parameters()
       latent_heat          = 2350;           /* J.cm-3      */
       thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-      eps_c                = 2.7207e-5;
-      eps_v                = 2.27e-2;
-  //    eps_c                = 0.0;
-  //    eps_v                = 0.0;
-      eps_anisotropy       = 0.05;
+      //      eps_c                = 2.7207e-5;
+      //      eps_v                = 2.27e-2;
+      //      eps_anisotropy       = 0.05;
+            eps_c                = 2.7207e-5;
+            eps_v                = 2.27e-2;
+            eps_anisotropy       = 0.05;
 
   //    box_size = 4e-2;
 
@@ -386,7 +388,9 @@ public:
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
     if(direction=='x') return -(x - 0.1);
-    else               return -(y - 0.1 + 0.000*cos(pow(2,lmax)*PI*(x-0.50007)));
+    else               return MAX(-(y - 0.1 + 0.0001*cos(pow(2,lmax)*PI*(x-0.50007))), 0.02 - sqrt(pow(x-0.7, 2.) + pow(y-0.23, 2.)), 0.02 - sqrt(pow(x-0.3, 2.) + pow(y-0.18, 2.)));
+
+//    return 0.05 - sqrt(pow(x-0.5, 2.) + pow(y-0.2, 2.));
   }
 } LS;
 
@@ -406,6 +410,7 @@ class WallBCValueTemperature : public CF_2
 public:
   double operator()(double x, double y) const
   {
+//    return -G;
     if(direction=='x')
     {
       if (ABS(x-xmax)<EPS)
@@ -441,7 +446,12 @@ public:
     }
     else
     {
-      if (ABS(y-ymin)<EPS || ABS(y-ymax)<EPS)
+//      if (ABS(y-ymin)<EPS || ABS(y-ymax)<EPS)
+//        return DIRICHLET;
+//      else
+//        return NEUMANN;
+
+      if (ABS(y-ymax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
@@ -498,8 +508,9 @@ public:
   {
 //    if(LS(x,y)<0) return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
 //    else          return LS(x,y)*G + c0*ml + Tm;
-    if(LS(x,y)>0) return -LS(x,y)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
-    else          return -LS(x,y)*G                                      + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
+//    if(LS(x,y)>0) return -LS(x,y)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
+//    else          return -LS(x,y)*G                                      + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
+    return initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
   }
 } initial_temperature;
 
