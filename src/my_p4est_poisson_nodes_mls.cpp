@@ -2285,12 +2285,14 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system_(bool setup_matrix, bool 
                     double bc_coeff_proj = bc_interface_coeff_->at(i_phi)->value(xyz_pr);
 
                     if (use_taylor_correction_) { w_000 += mu_proj*bc_coeff_proj*measure_of_iface/(mu_proj-bc_coeff_proj*dist); }
+//                    if (use_taylor_correction_) { w_000 += bc_coeff_proj*measure_of_iface*(1.+bc_coeff_proj*dist/mu_proj); }
                     else                        { w_000 += bc_coeff_proj*measure_of_iface; }
 
                     if (setup_rhs && use_taylor_correction_)
                     {
                       double bc_value_proj = bc_interface_value_->at(i_phi)->value(xyz_pr);
                       rhs_p[n] -= measure_of_iface*bc_coeff_proj*bc_value_proj*dist/(bc_coeff_proj*dist-mu_proj);
+//                      rhs_p[n] += measure_of_iface*bc_coeff_proj*bc_value_proj*dist/mu_proj*(1.+bc_coeff_proj*dist/mu_proj);
                     }
 
                     if (fabs(bc_coeff_proj) > 0) matrix_has_nullspace_ = false;

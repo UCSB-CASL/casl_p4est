@@ -72,7 +72,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
-//          return 0.;
+//          return 1.;
           return sin(x+y)*cos(x-y);
       }
   } bc_coeff_1;
@@ -89,6 +89,9 @@ public:
 #else
     double r0 = 0.77, xc0 = 0.13, yc0 = 0.21;
     double r1 = 0.53, xc1 =-0.41, yc1 =-0.37;
+
+//    double r1 = 0.77, xc1 = 0.13, yc1 = 0.21;
+//    double r0 = 0.53, xc0 =-0.41, yc0 =-0.37;
 
     domain0.set_params(r0, xc0, yc0);
     domain1.set_params(r1, xc1, yc1);

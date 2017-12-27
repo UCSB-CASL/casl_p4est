@@ -62,7 +62,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
-          return 1.0;
+          return -1.0;
       }
   } bc_coeff_0;
 
@@ -70,7 +70,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
-          return 0.0;
+          return -1.0;
       }
   } bc_coeff_1;
 #endif
@@ -87,9 +87,9 @@ public:
     domain0.set_params_points(x0, y0, z0, x2, y2, z2, x1, y1, z1);
     domain1.set_params_points(x1, y1, z1, x2, y2, z2, x3, y3, z3);
 #else
-    double x0 =-0.74; double y0 =-0.89;
-    double x1 = 0.83; double y1 =-0.11;
-    double x2 =-0.37; double y2 = 0.87;
+    double x0 =-0.740001; double y0 =-0.89;
+    double x1 = 0.83; double y1 = 10.87;
+    double x2 =-0.740001; double y2 = 10.87;
     domain0.set_params_points(x0, y0, x2, y2);
     domain1.set_params_points(x2, y2, x1, y1);
 #endif

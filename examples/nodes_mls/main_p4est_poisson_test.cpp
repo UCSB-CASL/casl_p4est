@@ -92,10 +92,10 @@ int nb_splits = 1;
 //int nb_splits = 1;
 int nb_splits_per_split = 10;
 #else
-int lmin = 6;
-int lmax = 6;
-int nb_splits = 1;
-int nb_splits_per_split = 30;
+int lmin = 5;
+int lmax = 5;
+int nb_splits = 4;
+int nb_splits_per_split = 20;
 #endif
 
 //const int periodic[3] = {1, 1, 1};
@@ -115,7 +115,7 @@ const double p_xyz_max[3] = {1, 1, 1};
  * 7412
  */
 
-int n_geometry = 2;
+int n_geometry = 6;
 int n_test = 0;
 int n_mu = 0;
 int n_diag_add = 0;
@@ -590,55 +590,56 @@ int main (int argc, char* argv[])
   for(int iter=0; iter<nb_splits; ++iter)
   {
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
-//    for (int sub_iter = 0; sub_iter < nb_splits_per_split; ++sub_iter)
-//    {
+    for (int sub_iter = 0; sub_iter < nb_splits_per_split; ++sub_iter)
+    {
 
-      double p_xyz_min_alt[3];
-      double p_xyz_max_alt[3];
-      int l_inc = 0;
-
-      double dxyz[3] = { (p_xyz_max[0]-p_xyz_min[0])/pow(2., (double) lmax+iter),
-                         (p_xyz_max[1]-p_xyz_min[1])/pow(2., (double) lmax+iter),
-                         (p_xyz_max[2]-p_xyz_min[2])/pow(2., (double) lmax+iter) };
-
-  #ifdef P4_TO_P8
-        for (int k = 0; k < nb_splits_per_split; ++k)
-        {
-          p_xyz_min_alt[2] = p_xyz_min[2] + (double) (k) / (double) (nb_splits_per_split) * dxyz[2];
-          p_xyz_max_alt[2] = p_xyz_max[2] + (double) (k) / (double) (nb_splits_per_split) * dxyz[2];
-  #endif
-          for (int j = 0; j < nb_splits_per_split; ++j)
-          {
-            p_xyz_min_alt[1] = p_xyz_min[1] + (double) (j) / (double) (nb_splits_per_split) * dxyz[1];
-            p_xyz_max_alt[1] = p_xyz_max[1] + (double) (j) / (double) (nb_splits_per_split) * dxyz[1];
-            for (int i = 0; i < nb_splits_per_split; ++i)
-            {
-              p_xyz_min_alt[0] = p_xyz_min[0] + (double) (i) / (double) (nb_splits_per_split) * dxyz[0];
-              p_xyz_max_alt[0] = p_xyz_max[0] + (double) (i) / (double) (nb_splits_per_split) * dxyz[0];
-
-#ifdef P4_TO_P8
-        int sub_iter = iter*nb_splits_per_split*nb_splits_per_split*nb_splits_per_split + k*nb_splits_per_split*nb_splits_per_split + j*nb_splits_per_split+i;
-#else
-        int sub_iter = iter*nb_splits_per_split*nb_splits_per_split + j*nb_splits_per_split+i;
-#endif
-
-//      ierr = PetscPrintf(mpi.comm(), "\t Sub split %d \n", sub_iter); CHKERRXX(ierr);
 //      double p_xyz_min_alt[3];
 //      double p_xyz_max_alt[3];
 //      int l_inc = 0;
 
-//      if (sub_iter == 0)
-//      {
-//        p_xyz_min_alt[0] = p_xyz_min[0]; p_xyz_max_alt[0] = p_xyz_max[0];
-//        p_xyz_min_alt[1] = p_xyz_min[1]; p_xyz_max_alt[1] = p_xyz_max[1];
-//        p_xyz_min_alt[2] = p_xyz_min[2]; p_xyz_max_alt[2] = p_xyz_max[2];
-//      } else {
-//        l_inc = 1;
-//        double scale = (double) (nb_splits_per_split-sub_iter) / (double) nb_splits_per_split;
-//        p_xyz_min_alt[0] = p_xyz_min[0] - .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]); p_xyz_max_alt[0] = p_xyz_max[0] + .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]);
-//        p_xyz_min_alt[1] = p_xyz_min[1] - .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]); p_xyz_max_alt[1] = p_xyz_max[1] + .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]);
-//        p_xyz_min_alt[2] = p_xyz_min[2] - .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]); p_xyz_max_alt[2] = p_xyz_max[2] + .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]);
-//      }
+//      double dxyz[3] = { (p_xyz_max[0]-p_xyz_min[0])/pow(2., (double) lmax+iter),
+//                         (p_xyz_max[1]-p_xyz_min[1])/pow(2., (double) lmax+iter),
+//                         (p_xyz_max[2]-p_xyz_min[2])/pow(2., (double) lmax+iter) };
+
+//  #ifdef P4_TO_P8
+//        for (int k = 0; k < nb_splits_per_split; ++k)
+//        {
+//          p_xyz_min_alt[2] = p_xyz_min[2] + (double) (k) / (double) (nb_splits_per_split) * dxyz[2];
+//          p_xyz_max_alt[2] = p_xyz_max[2] + (double) (k) / (double) (nb_splits_per_split) * dxyz[2];
+//  #endif
+////          for (int j = 0; j < 1; ++j)
+//            for (int j = 0; j < nb_splits_per_split; ++j)
+//          {
+//            p_xyz_min_alt[1] = p_xyz_min[1] + (double) (j) / (double) (nb_splits_per_split) * dxyz[1];
+//            p_xyz_max_alt[1] = p_xyz_max[1] + (double) (j) / (double) (nb_splits_per_split) * dxyz[1];
+//            for (int i = 0; i < nb_splits_per_split; ++i)
+//            {
+//              p_xyz_min_alt[0] = p_xyz_min[0] + (double) (i) / (double) (nb_splits_per_split) * dxyz[0];
+//              p_xyz_max_alt[0] = p_xyz_max[0] + (double) (i) / (double) (nb_splits_per_split) * dxyz[0];
+
+//#ifdef P4_TO_P8
+//        int sub_iter = iter*nb_splits_per_split*nb_splits_per_split*nb_splits_per_split + k*nb_splits_per_split*nb_splits_per_split + j*nb_splits_per_split+i;
+//#else
+//        int sub_iter = iter*nb_splits_per_split*nb_splits_per_split + j*nb_splits_per_split+i;
+//#endif
+
+      ierr = PetscPrintf(mpi.comm(), "\t Sub split %d \n", sub_iter); CHKERRXX(ierr);
+      double p_xyz_min_alt[3];
+      double p_xyz_max_alt[3];
+      int l_inc = 0;
+
+      if (sub_iter == 0)
+      {
+        p_xyz_min_alt[0] = p_xyz_min[0]; p_xyz_max_alt[0] = p_xyz_max[0];
+        p_xyz_min_alt[1] = p_xyz_min[1]; p_xyz_max_alt[1] = p_xyz_max[1];
+        p_xyz_min_alt[2] = p_xyz_min[2]; p_xyz_max_alt[2] = p_xyz_max[2];
+      } else {
+        l_inc = 1;
+        double scale = (double) (nb_splits_per_split-sub_iter) / (double) nb_splits_per_split;
+        p_xyz_min_alt[0] = p_xyz_min[0] - .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]); p_xyz_max_alt[0] = p_xyz_max[0] + .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]);
+        p_xyz_min_alt[1] = p_xyz_min[1] - .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]); p_xyz_max_alt[1] = p_xyz_max[1] + .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]);
+        p_xyz_min_alt[2] = p_xyz_min[2] - .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]); p_xyz_max_alt[2] = p_xyz_max[2] + .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]);
+      }
 
 
       connectivity = my_p4est_brick_new(n_xyz, p_xyz_min_alt, p_xyz_max_alt, &brick, periodic);
@@ -698,8 +699,8 @@ int main (int argc, char* argv[])
         ls.reinitialize_1st_order_time_2nd_order_space(phi.back(),20);
     }
 
-//        std::vector<BoundaryConditionType> bc_interface_type(num_surfaces, ROBIN);
-        std::vector<BoundaryConditionType> bc_interface_type(num_surfaces, DIRICHLET);
+        std::vector<BoundaryConditionType> bc_interface_type(num_surfaces, ROBIN);
+//        std::vector<BoundaryConditionType> bc_interface_type(num_surfaces, DIRICHLET);
     //    std::vector<BoundaryConditionType> bc_interface_type(num_surfaces, NEUMANN);
 
     // sample boundary conditions
@@ -754,6 +755,7 @@ int main (int argc, char* argv[])
 
     Mat A;
     std::vector<double> *scalling;
+    Vec volumes;
 
     my_p4est_poisson_nodes_mls_sc_t solver_sc(&ngbd_n);
     my_p4est_poisson_nodes_mls_t    solver(&ngbd_n);
@@ -784,6 +786,7 @@ int main (int argc, char* argv[])
       mask      = solver_sc.get_mask();
       A         = solver_sc.get_matrix();
       scalling  = solver_sc.get_scalling();
+      volumes   = solver_sc.get_volumes();
 
     } else {
 
@@ -807,10 +810,11 @@ int main (int argc, char* argv[])
 
       solver.get_phi_dd(phi_dd);
 
-      phi_eff = solver.get_phi_eff();
-      mask = solver.get_mask();
-      A = solver.get_matrix();
+      phi_eff  = solver.get_phi_eff();
+      mask     = solver.get_mask();
+      A        = solver.get_matrix();
       scalling = solver.get_scalling();
+      volumes  = solver.get_volumes();
     }
 
 
@@ -1403,13 +1407,13 @@ int main (int argc, char* argv[])
 
     // Store error values
     level.push_back(lmin+iter);
-//    h.push_back(dxyz_max*pow(2.,(double) data.max_lvl - data.min_lvl));
+    h.push_back(dxyz_max*pow(2.,(double) data.max_lvl - data.min_lvl));
 
-#ifdef P4_TO_P8
-        h.push_back(iter*nb_splits_per_split*nb_splits_per_split*nb_splits_per_split + k*nb_splits_per_split*nb_splits_per_split + j*nb_splits_per_split+i);
-#else
-        h.push_back(iter*nb_splits_per_split*nb_splits_per_split + j*nb_splits_per_split+i);
-#endif
+//#ifdef P4_TO_P8
+//        h.push_back(iter*nb_splits_per_split*nb_splits_per_split*nb_splits_per_split + k*nb_splits_per_split*nb_splits_per_split + j*nb_splits_per_split+i);
+//#else
+//        h.push_back(iter*nb_splits_per_split*nb_splits_per_split + j*nb_splits_per_split+i);
+//#endif
 
     error_sl_arr.push_back(err_sl_max);
     error_tr_arr.push_back(err_tr_max);
@@ -1501,9 +1505,12 @@ int main (int argc, char* argv[])
       double *mask_ptr;
       ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
 
+      double *volumes_ptr;
+      ierr = VecGetArray(volumes, &volumes_ptr); CHKERRXX(ierr);
+
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
-                             10, 1, oss.str().c_str(),
+                             11, 1, oss.str().c_str(),
                              VTK_POINT_DATA, "phi", phi_eff_ptr,
                              VTK_POINT_DATA, "phi_smooth", phi_smooth_ptr,
                              VTK_POINT_DATA, "sol", sol_ptr,
@@ -1514,6 +1521,7 @@ int main (int argc, char* argv[])
                              VTK_POINT_DATA, "error_ex", vec_error_ex_ptr,
                              VTK_POINT_DATA, "error_dd", vec_error_dd_ptr,
                              VTK_POINT_DATA, "mask", mask_ptr,
+                             VTK_POINT_DATA, "volumes", volumes_ptr,
                              VTK_CELL_DATA , "leaf_level", l_p);
 
       ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
@@ -1527,6 +1535,7 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArray(vec_error_dd, &vec_error_dd_ptr); CHKERRXX(ierr);
 
       ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(volumes, &volumes_ptr); CHKERRXX(ierr);
 
       ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
       ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
@@ -1570,12 +1579,12 @@ int main (int argc, char* argv[])
     p4est_destroy      (p4est);
     my_p4est_brick_destroy(connectivity, &brick);
 
-            }
-          }
-  #ifdef P4_TO_P8
-        }
-  #endif
-//    }
+//            }
+//          }
+//  #ifdef P4_TO_P8
+//        }
+//  #endif
+    }
   }
 
 

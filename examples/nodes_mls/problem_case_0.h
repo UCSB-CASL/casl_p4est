@@ -108,7 +108,7 @@ public:
       double operator()(double x, double y) const
       {
 //        return 0.0;
-        return 1.0;
+//        return 1.0;
           return x-y + (x+y)*(x+y);
       }
   } bc_coeff_2;
@@ -132,9 +132,12 @@ public:
 //    domain2.set_params(-0.15, -0.19, 0.7, 0.9, 0.9, 0.9);
 //    domain3.set_params(-1.0, -0.8, -0.7, -0.2, -0.3, -0.3);
 #else
-    double x0 =-0.74; double y0 =-0.89;
-    double x1 = 0.83; double y1 =-0.11;
-    double x2 =-0.37; double y2 = 0.87;
+    double x2 = 0.74; double y2 =-0.89;
+    double x1 =-0.83; double y1 =-0.11;
+    double x0 = 0.37; double y0 = 0.87;
+//    double x2 = 0.74; double y2 =-0.89;
+//    double x1 =-0.83; double y1 =-0.89;
+//    double x0 =-0.83; double y0 = 0.87;
     domain0.set_params_points(x0, y0, x2, y2);
     domain1.set_params_points(x2, y2, x1, y1);
     domain2.set_params_points(x1, y1, x0, y0);

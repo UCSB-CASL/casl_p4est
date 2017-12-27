@@ -64,7 +64,9 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
     //other
     mask_(NULL),
     keep_scalling_(false),
-    volumes_(NULL)
+    volumes_(NULL),
+    node_type_(NULL),
+    phi_x_(NULL), phi_y_(NULL), phi_z_(NULL), is_phi_d_owned_(false)
 {
   // compute global numbering of nodes
   global_node_offset_.resize(p4est_->mpisize+1, 0);
@@ -149,24 +151,19 @@ my_p4est_poisson_nodes_mls_sc_t::~my_p4est_poisson_nodes_mls_sc_t()
   if (ksp_           != NULL) {ierr = KSPDestroy(ksp_);                    CHKERRXX(ierr);}
   if (is_phi_dd_owned_)
   {
-    if (phi_xx_ != NULL)
-    {
-      for (int i = 0; i < phi_xx_->size(); i++) {ierr = VecDestroy(phi_xx_->at(i)); CHKERRXX(ierr);}
-      delete phi_xx_;
-    }
-
-    if (phi_yy_ != NULL)
-    {
-      for (int i = 0; i < phi_yy_->size(); i++) {ierr = VecDestroy(phi_yy_->at(i)); CHKERRXX(ierr);}
-      delete phi_yy_;
-    }
-
+    if (phi_xx_ != NULL) { for (int i = 0; i < phi_xx_->size(); i++) {ierr = VecDestroy(phi_xx_->at(i)); CHKERRXX(ierr);} delete phi_xx_; }
+    if (phi_yy_ != NULL) { for (int i = 0; i < phi_yy_->size(); i++) {ierr = VecDestroy(phi_yy_->at(i)); CHKERRXX(ierr);} delete phi_yy_; }
 #ifdef P4_TO_P8
-    if (phi_zz_ != NULL)
-    {
-      for (int i = 0; i < phi_zz_->size(); i++) {ierr = VecDestroy(phi_zz_->at(i)); CHKERRXX(ierr);}
-      delete phi_zz_;
-    }
+    if (phi_zz_ != NULL) { for (int i = 0; i < phi_zz_->size(); i++) {ierr = VecDestroy(phi_zz_->at(i)); CHKERRXX(ierr);} delete phi_zz_; }
+#endif
+  }
+
+  if (is_phi_d_owned_)
+  {
+    if (phi_x_ != NULL) { for (int i = 0; i < phi_x_->size(); i++) {ierr = VecDestroy(phi_x_->at(i)); CHKERRXX(ierr);} delete phi_x_; }
+    if (phi_y_ != NULL) { for (int i = 0; i < phi_y_->size(); i++) {ierr = VecDestroy(phi_y_->at(i)); CHKERRXX(ierr);} delete phi_y_; }
+#ifdef P4_TO_P8
+    if (phi_z_ != NULL) { for (int i = 0; i < phi_z_->size(); i++) {ierr = VecDestroy(phi_z_->at(i)); CHKERRXX(ierr);} delete phi_z_; }
 #endif
   }
 
@@ -180,6 +177,7 @@ my_p4est_poisson_nodes_mls_sc_t::~my_p4est_poisson_nodes_mls_sc_t()
   }
 
   if (volumes_ != NULL) {ierr = VecDestroy(volumes_); CHKERRXX(ierr);}
+  if (node_type_ != NULL) {ierr = VecDestroy(node_type_); CHKERRXX(ierr);}
   if (is_phi_eff_owned_)    {ierr = VecDestroy(phi_eff_);  CHKERRXX(ierr);}
 }
 
@@ -268,6 +266,34 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_phi_dd_()
 #endif
   }
   is_phi_dd_owned_ = true;
+}
+
+void my_p4est_poisson_nodes_mls_sc_t::compute_phi_d_()
+{
+  // Allocate memory for second derivaties
+  if (phi_x_ != NULL && is_phi_d_owned_) { for (int i = 0; i < phi_x_->size(); i++) {ierr = VecDestroy(phi_x_->at(i)); CHKERRXX(ierr);} delete phi_x_; } phi_x_ = new std::vector<Vec> ();
+  if (phi_y_ != NULL && is_phi_d_owned_) { for (int i = 0; i < phi_y_->size(); i++) {ierr = VecDestroy(phi_y_->at(i)); CHKERRXX(ierr);} delete phi_y_; } phi_y_ = new std::vector<Vec> ();
+#ifdef P4_TO_P8
+  if (phi_z_ != NULL && is_phi_d_owned_) { for (int i = 0; i < phi_z_->size(); i++) {ierr = VecDestroy(phi_z_->at(i)); CHKERRXX(ierr);} delete phi_z_; } phi_z_ = new std::vector<Vec> ();
+#endif
+
+  for (unsigned int i = 0; i < num_interfaces_; i++)
+  {
+    phi_x_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_x_->at(i)); CHKERRXX(ierr);
+    phi_y_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_y_->at(i)); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    phi_z_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_z_->at(i)); CHKERRXX(ierr);
+#endif
+
+#ifdef P4_TO_P8
+    Vec phi_d[P4EST_DIM] = { phi_x_->at(i), phi_y_->at(i), phi_z_->at(i) };
+#else
+    Vec phi_d[P4EST_DIM] = { phi_x_->at(i), phi_y_->at(i) };
+#endif
+
+    node_neighbors_->first_derivatives_central(phi_->at(i), phi_d);
+  }
+  is_phi_d_owned_ = true;
 }
 
 void my_p4est_poisson_nodes_mls_sc_t::compute_mue_dd_()
@@ -757,6 +783,9 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
   double *volumes_p;
   ierr = VecGetArray(volumes_, &volumes_p); CHKERRXX(ierr);
 
+  double *node_type_p;
+  ierr = VecGetArray(node_type_, &node_type_p); CHKERRXX(ierr);
+
   if (!variable_mu_) {
     mue_000 = mu_; mue_p00 = mu_; mue_m00 = mu_; mue_0m0 = mu_; mue_0p0 = mu_;
 #ifdef P4_TO_P8
@@ -835,6 +864,27 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 #endif
   for (int i = 0; i < num_interfaces_; ++i)
     phi_interp_local_cf[i] = phi_interp_local[i];
+
+  my_p4est_interpolation_nodes_local_t phi_x_local(node_neighbors_);
+  my_p4est_interpolation_nodes_local_t phi_y_local(node_neighbors_);
+#ifdef P4_TO_P8
+  my_p4est_interpolation_nodes_local_t phi_z_local(node_neighbors_);
+#endif
+
+  std::vector<double *> phi_x_ptr(num_interfaces_, NULL);
+  std::vector<double *> phi_y_ptr(num_interfaces_, NULL);
+#ifdef P4_TO_P8
+  std::vector<double *> phi_z_ptr(num_interfaces_, NULL);
+#endif
+
+  for (int i = 0; i < num_interfaces_; ++i)
+  {
+    ierr = VecGetArray(phi_x_->at(i), &phi_x_ptr[i]); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_y_->at(i), &phi_y_ptr[i]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(phi_z_->at(i), &phi_z_ptr[i]); CHKERRXX(ierr);
+#endif
+  }
 
   p4est_locidx_t node_m00_mm; p4est_locidx_t node_m00_pm;
   p4est_locidx_t node_p00_mm; p4est_locidx_t node_p00_pm;
@@ -1179,8 +1229,15 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
       interp_local.initialize(n);
 
       for (short i = 0; i < num_interfaces_; ++i)
+      {
 //        phi_interp_local[i]->initialize(n);
         phi_interp_local[i]->copy_init(interp_local);
+      }
+      phi_x_local.copy_init(interp_local);
+      phi_y_local.copy_init(interp_local);
+#ifdef P4_TO_P8
+      phi_z_local.copy_init(interp_local);
+#endif
 
 
       //---------------------------------------------------------------------
@@ -1207,6 +1264,15 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
         if(!is_node_zpWall(p4est_, ni)) {fv_size_z += cube_refinement_; fv_zmax = z_C+0.5*dz_min_;} else {fv_zmax = z_C;}
 #endif
 
+//        if(node_type_p[) {fv_size_x += cube_refinement_; fv_xmin = x_C-0.5*dx_min_;} else {fv_xmin = x_C;}
+//        if(!is_node_xpWall(p4est_, ni)) {fv_size_x += cube_refinement_; fv_xmax = x_C+0.5*dx_min_;} else {fv_xmax = x_C;}
+
+//        if(!is_node_ymWall(p4est_, ni)) {fv_size_y += cube_refinement_; fv_ymin = y_C-0.5*dy_min_;} else {fv_ymin = y_C;}
+//        if(!is_node_ypWall(p4est_, ni)) {fv_size_y += cube_refinement_; fv_ymax = y_C+0.5*dy_min_;} else {fv_ymax = y_C;}
+//#ifdef P4_TO_P8
+//        if(!is_node_zmWall(p4est_, ni)) {fv_size_z += cube_refinement_; fv_zmin = z_C-0.5*dz_min_;} else {fv_zmin = z_C;}
+//        if(!is_node_zpWall(p4est_, ni)) {fv_size_z += cube_refinement_; fv_zmax = z_C+0.5*dz_min_;} else {fv_zmax = z_C;}
+//#endif
 #ifdef P4_TO_P8
         full_cell_volume = (fv_xmax-fv_xmin)*(fv_ymax-fv_ymin)*(fv_zmax-fv_zmin);
 #else
@@ -2682,8 +2748,10 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
             if (neighbors_exist[i])
               neighbors_exist[i] = neighbors_exist[i] && (volumes_p[neighbors[i]] > domain_rel_thresh);
 
-          double theta = EPS;
+//          double theta = EPS;
 //          double theta = 10;
+          double theta = 1.e-6*dx_min_;
+
 
           // face m00
           if (s_m00/full_sx > interface_rel_thresh)
@@ -2728,7 +2796,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 
                 if (ratio > theta && setup_matrix)
                 {
-//                  mask_p[n] = 10;
+                  mask_p[n] = 10;
                   std::cout << "Fallback fluxes\n";
                 }
               }
@@ -2778,7 +2846,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 
                 if (ratio > theta && setup_matrix)
                 {
-//                  mask_p[n] = 10;
+                  mask_p[n] = 10;
                   std::cout << "Fallback fluxes\n";
                 }
               }
@@ -2831,7 +2899,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 
                 if (ratio > theta && setup_matrix)
                 {
-//                  mask_p[n] = 10;
+                  mask_p[n] = 10;
                   std::cout << "Fallback fluxes\n";
                 }
               }
@@ -2883,7 +2951,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 
                 if (ratio > theta && setup_matrix)
                 {
-//                  mask_p[n] = 10;
+                  mask_p[n] = 10;
                   std::cout << "Fallback fluxes\n";
                 }
               }
@@ -2983,37 +3051,112 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
           bool z_derivative_found = find_z_derivative(neighbors_exist, weights_z_derivative, map_z_derivative, neighbors, volumes_p);
 #endif
 
+          double weights_xy_derivative[num_neighbors_max_];
+          bool map_xy_derivative[num_neighbors_max_];
+          bool xy_derivative_found = find_xy_derivative(neighbors_exist, weights_xy_derivative, map_xy_derivative, neighbors, volumes_p);
+
+
 #ifdef P4_TO_P8
           if (x_derivative_found && y_derivative_found && z_derivative_found)
 #else
           if (x_derivative_found && y_derivative_found)
 #endif
           {
+//            double const_coeff = 0;
+//            double x_coeff = 0;
+//            double y_coeff = 0;
+//#ifdef P4_TO_P8
+//            double z_coeff = 0;
+//#endif
+
+//            double xy_coeff = 0;
+
+//            for (int phi_idx = 0; phi_idx < num_interfaces_; phi_idx++)
+//            {
+//              bc_coeff_times_delta_x_.set(*bc_interface_coeff_->at(phi_idx), xyz_C);
+//              bc_coeff_times_delta_y_.set(*bc_interface_coeff_->at(phi_idx), xyz_C);
+//#ifdef P4_TO_P8
+//              bc_coeff_times_delta_z_.set(*bc_interface_coeff_->at(phi_idx), xyz_C);
+//#endif
+
+//              bc_coeff_times_delta_xy_.set(*bc_interface_coeff_->at(phi_idx), xyz_C);
+
+//              for (int cube_idx = 0; cube_idx < cubes.size(); ++cube_idx)
+//              {
+//                const_coeff += cubes[cube_idx]->integrate_over_interface(*bc_interface_coeff_->at(phi_idx), color_->at(phi_idx));
+//                x_coeff += cubes[cube_idx]->integrate_over_interface(bc_coeff_times_delta_x_, color_->at(phi_idx));
+//                y_coeff += cubes[cube_idx]->integrate_over_interface(bc_coeff_times_delta_y_, color_->at(phi_idx));
+//#ifdef P4_TO_P8
+//                z_coeff += cubes[cube_idx]->integrate_over_interface(bc_coeff_times_delta_z_, color_->at(phi_idx));
+//#endif
+//                xy_coeff += cubes[cube_idx]->integrate_over_interface(bc_coeff_times_delta_xy_, color_->at(phi_idx));
+//              }
+//            }
+
             double const_coeff = 0;
             double x_coeff = 0;
             double y_coeff = 0;
+            double rhs_term = 0;
 #ifdef P4_TO_P8
             double z_coeff = 0;
 #endif
 
+            double xy_coeff = 0;
+
             for (int phi_idx = 0; phi_idx < num_interfaces_; phi_idx++)
             {
-              bc_coeff_times_delta_x_.set(*bc_interface_coeff_->at(phi_idx), xyz_C);
-              bc_coeff_times_delta_y_.set(*bc_interface_coeff_->at(phi_idx), xyz_C);
+              double norm[P4EST_DIM];
+              compute_normal_(phi_p[phi_idx], qnnn, norm);
+
+//              cf_const_t phi_x_local(norm[0]);
+//              cf_const_t phi_y_local(norm[1]);
+//#ifdef P4_TO_P8
+//              cf_const_t phi_z_local(norm[2]);
+//              const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+//              x_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+//              y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+//              rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local, *bc_interface_value_->at(phi_idx));
+//#else
+//              const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+//              x_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+//              y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+//              rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, *bc_interface_value_->at(phi_idx));
+//#endif
+
+              phi_x_local.set_input(phi_x_ptr[phi_idx], linear);
+              phi_y_local.set_input(phi_y_ptr[phi_idx], linear);
 #ifdef P4_TO_P8
-              bc_coeff_times_delta_z_.set(*bc_interface_coeff_->at(phi_idx), xyz_C);
+              phi_z_local.set_input(phi_z_ptr[phi_idx], linear);
+              const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+              x_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+              y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+              rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local, *bc_interface_value_->at(phi_idx));
+#else
+              const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+              x_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+              y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+              rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, *bc_interface_value_->at(phi_idx));
 #endif
+//              double tangent_coeff = 0;
+
 
               for (int cube_idx = 0; cube_idx < cubes.size(); ++cube_idx)
               {
-                const_coeff += cubes[cube_idx]->integrate_over_interface(*bc_interface_coeff_->at(phi_idx), color_->at(phi_idx));
-                x_coeff += cubes[cube_idx]->integrate_over_interface(bc_coeff_times_delta_x_, color_->at(phi_idx));
-                y_coeff += cubes[cube_idx]->integrate_over_interface(bc_coeff_times_delta_y_, color_->at(phi_idx));
+                const_coeff   += cubes[cube_idx]->integrate_over_interface(const_coeff_integrand_,   color_->at(phi_idx));
+                rhs_term      += cubes[cube_idx]->integrate_over_interface(rhs_term_integrand_,      color_->at(phi_idx));
+                x_coeff       += cubes[cube_idx]->integrate_over_interface(x_coeff_integrand_,       color_->at(phi_idx));
+                y_coeff       += cubes[cube_idx]->integrate_over_interface(y_coeff_integrand_,       color_->at(phi_idx));
 #ifdef P4_TO_P8
-                z_coeff += cubes[cube_idx]->integrate_over_interface(bc_coeff_times_delta_z_, color_->at(phi_idx));
+                z_coeff       += cubes[cube_idx]->integrate_over_interface(z_coeff_integrand_,       color_->at(phi_idx));
 #endif
+//                tangent_coeff += cubes[cube_idx]->integrate_over_interface(tangent_coeff_integrand_, color_->at(phi_idx));
               }
+
+//              x_coeff += -norm[1]*tangent_coeff;
+//              y_coeff +=  norm[0]*tangent_coeff;
             }
+
+            if (setup_rhs) rhs_p[n] -= rhs_term;
 
             if (setup_matrix && fabs(const_coeff) > 0) matrix_has_nullspace_ = false;
 
@@ -3027,15 +3170,21 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
               if (map_z_derivative[i]) w[i] += weights_z_derivative[i]*z_coeff/dz_min_;
 #endif
             }
+
+//            if (xy_derivative_found)
+//              for (int i = 0; i < num_neighbors_max_; ++i)
+//              {
+//                if (map_xy_derivative[i]) w[i] += 2.*weights_xy_derivative[i]*xy_coeff/dx_min_/dy_min_;
+//              }
           }
           else
           {
 
-//            if (setup_matrix)
-//            {
-////              mask_p[n] = 20;
-//              std::cout << "Fallback Robin BC\n";
-//            }
+            if (setup_matrix)
+            {
+              mask_p[n] = 20;
+              std::cout << "Fallback Robin BC\n";
+            }
 
             // code below asumes that we have only Robin or Neumann BC in a cell
             //---------------------------------------------------------------------
@@ -3296,6 +3445,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 
 
   ierr = VecRestoreArray(volumes_, &volumes_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(node_type_, &node_type_p); CHKERRXX(ierr);
 
   // restore pointers
   ierr = VecRestoreArray(mask_, &mask_p); CHKERRXX(ierr);
@@ -3313,6 +3463,15 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
     ierr = VecRestoreArray(phi_yy_->at(i), &phi_yy_p[i]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
     ierr = VecRestoreArray(phi_zz_->at(i), &phi_zz_p[i]); CHKERRXX(ierr);
+#endif
+  }
+
+  for (int i = 0; i < num_interfaces_; ++i)
+  {
+    ierr = VecRestoreArray(phi_x_->at(i), &phi_x_ptr[i]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_y_->at(i), &phi_y_ptr[i]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(phi_z_->at(i), &phi_z_ptr[i]); CHKERRXX(ierr);
 #endif
   }
 
@@ -3399,6 +3558,11 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
   if (volumes_ != NULL) { ierr = VecDestroy(volumes_); CHKERRXX(ierr); }
   ierr = VecDuplicate(phi_->at(0), &volumes_); CHKERRXX(ierr);
   ierr = VecGetArray(volumes_, &volumes_p); CHKERRXX(ierr);
+
+  double *node_type_p;
+  if (node_type_ != NULL) { ierr = VecDestroy(node_type_); CHKERRXX(ierr); }
+  ierr = VecDuplicate(phi_->at(0), &node_type_); CHKERRXX(ierr);
+  ierr = VecGetArray(node_type_, &node_type_p); CHKERRXX(ierr);
 
   // data for refined cells
   std::vector<double> phi_fv(pow(2*cube_refinement_+1,P4EST_DIM),-1);
@@ -3664,6 +3828,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
         if (ABS(phi_eff_000) < EPS)
         {
           volumes_p[n] = 1;
+          node_type_p[n] = -1;
           continue;
         }
 
@@ -3671,6 +3836,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
         if (phi_eff_000 > 0.)
         {
           volumes_p[n] = 0;
+          node_type_p[n] = 1;
           continue;
         }
 
@@ -3679,6 +3845,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
         if (phi_eff_000 < 0.)
         {
           volumes_p[n] = 1;
+          node_type_p[n] = -1;
           continue;
         }
 
@@ -3742,6 +3909,31 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
         {
           delete cubes[cube_idx];
         }
+
+        // check for a hanging volume
+        bool is_one_positive = false;
+        bool is_one_negative = false;
+
+#ifdef P4_TO_P8
+        for (short k = 0; k < fv_nz; k+=fv_nz-1)
+#endif
+          for (short j = 0; j < fv_ny; j+=fv_ny-1)
+            for (short i = 0; i < fv_nx; i+=fv_nx-1)
+            {
+#ifdef P4_TO_P8
+                int idx = k*fv_nx*fv_ny + j*fv_nx + i;
+#else
+                int idx = j*fv_nx + i;
+#endif
+              is_one_positive = is_one_positive || phi_fv[idx] > 0;
+              is_one_negative = is_one_negative || phi_fv[idx] < 0;
+            }
+
+        if (!is_one_negative)
+        {
+          node_type_p[n] = 0;
+        }
+
       }
     }
   }
@@ -3750,6 +3942,10 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
   ierr = VecRestoreArray(volumes_, &volumes_p); CHKERRXX(ierr);
   ierr = VecGhostUpdateBegin(volumes_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(volumes_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(node_type_, &node_type_p); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(node_type_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(node_type_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_sc_compute_volumes, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -4544,8 +4740,10 @@ bool my_p4est_poisson_nodes_mls_sc_t::find_x_derivative(bool *neighbors_exist, d
     map[i] = false;
 
   // check 00
-//  if      (neighbors_exist[nn_m00] && neighbors_exist[nn_p00]) { weights[nn_m00] =-.5; weights[nn_p00] =.5; map[nn_m00] = true; map[nn_p00] = true; }
-//  else
+  if      (neighbors_exist[nn_m00] && neighbors_exist[nn_p00]) { weights[nn_m00] =-.5; weights[nn_p00] =.5; map[nn_m00] = true; map[nn_p00] = true; }
+//  else if (neighbors_exist[nn_mm0] && neighbors_exist[nn_pm0]) { weights[nn_mm0] =-.5; weights[nn_pm0] =.5; map[nn_mm0] = true; map[nn_pm0] = true; }
+//  else if (neighbors_exist[nn_mp0] && neighbors_exist[nn_pp0]) { weights[nn_mp0] =-.5; weights[nn_pp0] =.5; map[nn_mp0] = true; map[nn_pp0] = true; }
+  else
 //  if      (neighbors_exist[nn_000] && neighbors_exist[nn_p00]) { weights[nn_000] =-1.; weights[nn_p00] = 1.; map[nn_000] = true; map[nn_p00] = true; }
 //  else if (neighbors_exist[nn_000] && neighbors_exist[nn_m00]) { weights[nn_000] = 1.; weights[nn_m00] =-1.; map[nn_000] = true; map[nn_m00] = true; }
 
@@ -4603,14 +4801,16 @@ bool my_p4est_poisson_nodes_mls_sc_t::find_y_derivative(bool *neighbors_exist, d
     map[i] = false;
 
   // check 00
-//  if      (neighbors_exist[nn_0m0] && neighbors_exist[nn_0p0]) { weights[nn_0m0] =-.5; weights[nn_0p0] = .5; map[nn_0m0] = true; map[nn_0p0] = true; }
-//  else
+  if      (neighbors_exist[nn_0m0] && neighbors_exist[nn_0p0]) { weights[nn_0m0] =-.5; weights[nn_0p0] = .5; map[nn_0m0] = true; map[nn_0p0] = true; }
+//  else if (neighbors_exist[nn_mm0] && neighbors_exist[nn_mp0]) { weights[nn_mm0] =-.5; weights[nn_mp0] = .5; map[nn_mm0] = true; map[nn_mp0] = true; }
+//  else if (neighbors_exist[nn_pm0] && neighbors_exist[nn_pp0]) { weights[nn_pm0] =-.5; weights[nn_pp0] = .5; map[nn_pm0] = true; map[nn_pp0] = true; }
+  else
 //  if      (neighbors_exist[nn_000] && neighbors_exist[nn_0p0]) { weights[nn_000] =-1.; weights[nn_0p0] = 1.; map[nn_000] = true; map[nn_0p0] = true; }
 //  else if (neighbors_exist[nn_000] && neighbors_exist[nn_0m0]) { weights[nn_000] = 1.; weights[nn_0m0] =-1.; map[nn_000] = true; map[nn_0m0] = true; }
 
     if      (neighbors_exist[nn_0m0] && neighbors_exist[nn_0p0]) {
-      if (volumes_p[neighbors[nn_0m0]] > volumes_p[neighbors[nn_0p0]]) { weights[nn_000] =-1.; weights[nn_0p0] = 1.; map[nn_000] = true; map[nn_0p0] = true; }
-      else                                                             { weights[nn_000] = 1.; weights[nn_0m0] =-1.; map[nn_000] = true; map[nn_0m0] = true; }
+      if (volumes_p[neighbors[nn_0m0]] > volumes_p[neighbors[nn_0p0]]) { weights[nn_000] = 1.; weights[nn_0m0] =-1.; map[nn_000] = true; map[nn_0m0] = true; }
+      else                                                             { weights[nn_000] =-1.; weights[nn_0p0] = 1.; map[nn_000] = true; map[nn_0p0] = true; }
     }
     else if (neighbors_exist[nn_0p0]) { weights[nn_000] =-1.; weights[nn_0p0] = 1.; map[nn_000] = true; map[nn_0p0] = true; }
     else if (neighbors_exist[nn_0m0]) { weights[nn_000] = 1.; weights[nn_0m0] =-1.; map[nn_000] = true; map[nn_0m0] = true; }
@@ -4702,6 +4902,47 @@ bool my_p4est_poisson_nodes_mls_sc_t::find_z_derivative(bool *neighbors_exist, d
   return derivative_found;
 }
 #endif
+
+
+bool my_p4est_poisson_nodes_mls_sc_t::find_xy_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p)
+{
+  bool derivative_found = true;
+
+  for (short i = 0; i < num_neighbors_max_; ++i)
+    map[i] = false;
+
+  // check 00
+  if      (neighbors_exist[nn_mm0] &&
+           neighbors_exist[nn_m00] &&
+           neighbors_exist[nn_0m0]) { weights[nn_mm0] = .25; map[nn_mm0] = true;
+                                      weights[nn_0m0] =-.25; map[nn_0m0] = true;
+                                      weights[nn_m00] =-.25; map[nn_m00] = true;
+                                      weights[nn_000] = .25; map[nn_000] = true; }
+  else if (neighbors_exist[nn_0m0] &&
+           neighbors_exist[nn_pm0] &&
+           neighbors_exist[nn_p00]) { weights[nn_0m0] = .25; map[nn_0m0] = true;
+                                      weights[nn_pm0] =-.25; map[nn_pm0] = true;
+                                      weights[nn_000] =-.25; map[nn_000] = true;
+                                      weights[nn_p00] = .25; map[nn_p00] = true; }
+  else if (neighbors_exist[nn_m00] &&
+           neighbors_exist[nn_mp0] &&
+           neighbors_exist[nn_0p0]) { weights[nn_m00] = .25; map[nn_m00] = true;
+                                      weights[nn_000] =-.25; map[nn_000] = true;
+                                      weights[nn_mp0] =-.25; map[nn_mp0] = true;
+                                      weights[nn_0p0] = .25; map[nn_0p0] = true; }
+  else if (neighbors_exist[nn_0p0] &&
+           neighbors_exist[nn_pp0] &&
+           neighbors_exist[nn_p00]) { weights[nn_000] = .25; map[nn_000] = true;
+                                      weights[nn_p00] =-.25; map[nn_p00] = true;
+                                      weights[nn_0p0] =-.25; map[nn_0p0] = true;
+                                      weights[nn_pp0] = .25; map[nn_pp0] = true; }
+#ifdef P4_TO_P8
+#endif
+  else
+    derivative_found = false;
+
+  return derivative_found;
+}
 
 //void my_p4est_poisson_nodes_mls_sc_t::assemble_matrix(Vec solution)
 //{

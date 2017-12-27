@@ -55,6 +55,30 @@ class my_p4est_poisson_nodes_mls_sc_t
   };
 
 #ifdef P4_TO_P8
+  class cf_const_t: public CF_3
+  {
+    double val_;
+  public:
+    cf_const_t(double val = 0) : val_(val) {}
+    double operator()(double x, double y, double z) const
+    {
+      return val_;
+    }
+  };
+#else
+  class cf_const_t: public CF_2
+  {
+    double val_;
+  public:
+    cf_const_t(double val = 0) : val_(val) {}
+    double operator()(double x, double y) const
+    {
+      return val_;
+    }
+  };
+#endif
+
+#ifdef P4_TO_P8
   class unity_cf_t: public CF_3
   {
   public:
@@ -291,6 +315,315 @@ class my_p4est_poisson_nodes_mls_sc_t
 #endif
 
 #ifdef P4_TO_P8
+#else
+  class bc_coeff_times_delta_xy_t: public CF_2
+  {
+    CF_2 *alpha_;
+    double *xyz_;
+  public:
+    inline void set(CF_2 &alpha, double *xyz)
+    {
+      alpha_ = &alpha; xyz_ = xyz;
+    }
+    double operator()(double x, double y) const
+    {
+      return (*alpha_)(x,y)*(x-xyz_[0])*(y-xyz_[1]);
+    }
+  } bc_coeff_times_delta_xy_;
+#endif
+
+#ifdef P4_TO_P8
+  class const_coeff_integrand_t: public CF_3
+  {
+    double *xyz_;
+    CF_3 *alpha_;
+    CF_3 *mu_;
+    CF_3 *nx_, *ny_, *nz_;
+  public:
+    inline void set(CF_3 &alpha, double *xyz, CF_3 &mu, CF_3 &nx, CF_3 &ny, CF_3 &nz)
+    {
+      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; nz_ = &nz;
+    }
+    double operator()(double x, double y, double z) const
+    {
+      double a  = (*alpha_)(x,y);
+      double mu = (*mu_)(x,y);
+      double nx = (*nx_)(x,y);
+      double ny = (*ny_)(x,y);
+      double nz = (*nz_)(x,y);
+      double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
+      nx /= norm; ny /= norm; nz /= norm;
+      return a/(1.+a/mu*(nx*(x-xyz_[0])+ny*(y-xyz_[1])+nz*(z-xyz_[2])));
+    }
+  } const_coeff_integrand_;
+#else
+  class const_coeff_integrand_t: public CF_2
+  {
+    double *xyz_;
+    CF_2 *alpha_;
+    CF_2 *mu_;
+    CF_2 *nx_, *ny_;
+  public:
+    inline void set(CF_2 &alpha, double *xyz, CF_2 &mu, CF_2 &nx, CF_2 &ny)
+    {
+      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny;
+    }
+    double operator()(double x, double y) const
+    {
+      double a  = (*alpha_)(x,y);
+      double mu = (*mu_)(x,y);
+      double nx = (*nx_)(x,y);
+      double ny = (*ny_)(x,y);
+      double norm = sqrt(nx*nx+ny*ny);
+      nx /= norm; ny /= norm;
+      return a/(1.+a/mu*(nx*(x-xyz_[0])+ny*(y-xyz_[1])));
+    }
+  } const_coeff_integrand_;
+#endif
+
+#ifdef P4_TO_P8
+  class x_coeff_integrand_t: public CF_3
+  {
+    double *xyz_;
+    CF_3 *alpha_;
+    CF_3 *mu_;
+    CF_3 *nx_, *ny_, *nz_;
+  public:
+    inline void set(CF_3 &alpha, double *xyz, CF_3 &mu, CF_3 &nx, CF_3 &ny, CF_3 &nz)
+    {
+      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; nz_ = &nz;
+    }
+    double operator()(double x, double y, double z) const
+    {
+      double a  = (*alpha_)(x,y);
+      double mu = (*mu_)(x,y);
+
+      double nx = (*nx_)(x,y);
+      double ny = (*ny_)(x,y);
+      double nz = (*nz_)(x,y);
+      double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
+      nx /= norm; ny /= norm; nz /= norm;
+
+      double nR = nx*(x-xyz_[0]) + ny*(y-xyz_[1]) + nz*(z-xyz_[2]);
+
+      double tx = (x-xyz_[0]) - nx*nR;
+      double ty = (y-xyz_[1]) - ny*nR;
+      double tz = (z-xyz_[2]) - nz*nR;
+
+      norm = sqrt(SQR(tx)+SQR(ty)+SQR(tz));
+      if (norm > EPS) { tx /= norm; ty /= norm; tz /= norm; }
+
+      return a*tx*(tx*(x-xyz_[0])+ty*(y-xyz_[1])+tz*(z-xyz_[2]))/(1.+a/mu*nR);
+    }
+  } x_coeff_integrand_;
+#else
+  class x_coeff_integrand_t: public CF_2
+  {
+    double *xyz_;
+    CF_2 *alpha_;
+    CF_2 *mu_;
+    CF_2 *nx_, *ny_;
+  public:
+    inline void set(CF_2 &alpha, double *xyz, CF_2 &mu, CF_2 &nx, CF_2 &ny)
+    {
+      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny;
+    }
+    double operator()(double x, double y) const
+    {
+      double a  = (*alpha_)(x,y);
+      double mu = (*mu_)(x,y);
+      double nx = (*nx_)(x,y);
+      double ny = (*ny_)(x,y);
+      double norm = sqrt(nx*nx+ny*ny);
+      nx /= norm; ny /= norm;
+      double tx = -ny;
+      double ty = nx;
+      return a*tx*(tx*(x-xyz_[0])+ty*(y-xyz_[1]))/(1.+a/mu*(nx*(x-xyz_[0])+ny*(y-xyz_[1])));
+    }
+  } x_coeff_integrand_;
+#endif
+
+#ifdef P4_TO_P8
+  class y_coeff_integrand_t: public CF_3
+  {
+    double *xyz_;
+    CF_3 *alpha_;
+    CF_3 *mu_;
+    CF_3 *nx_, *ny_, *nz_;
+  public:
+    inline void set(CF_3 &alpha, double *xyz, CF_3 &mu, CF_3 &nx, CF_3 &ny, CF_3 &nz)
+    {
+      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; nz_ = &nz;
+    }
+    double operator()(double x, double y, double z) const
+    {
+      double a  = (*alpha_)(x,y);
+      double mu = (*mu_)(x,y);
+
+      double nx = (*nx_)(x,y);
+      double ny = (*ny_)(x,y);
+      double nz = (*nz_)(x,y);
+      double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
+      nx /= norm; ny /= norm; nz /= norm;
+
+      double nR = nx*(x-xyz_[0]) + ny*(y-xyz_[1]) + nz*(z-xyz_[2]);
+
+      double tx = (x-xyz_[0]) - nx*nR;
+      double ty = (y-xyz_[1]) - ny*nR;
+      double tz = (z-xyz_[2]) - nz*nR;
+
+      norm = sqrt(SQR(tx)+SQR(ty)+SQR(tz));
+      if (norm > EPS) { tx /= norm; ty /= norm; tz /= norm; }
+
+      return a*ty*(tx*(x-xyz_[0])+ty*(y-xyz_[1])+tz*(z-xyz_[2]))/(1.+a/mu*nR);
+    }
+  } y_coeff_integrand_;
+#else
+  class y_coeff_integrand_t: public CF_2
+  {
+    double *xyz_;
+    CF_2 *alpha_;
+    CF_2 *mu_;
+    CF_2 *nx_, *ny_;
+  public:
+    inline void set(CF_2 &alpha, double *xyz, CF_2 &mu, CF_2 &nx, CF_2 &ny)
+    {
+      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny;
+    }
+    double operator()(double x, double y) const
+    {
+      double a  = (*alpha_)(x,y);
+      double mu = (*mu_)(x,y);
+      double nx = (*nx_)(x,y);
+      double ny = (*ny_)(x,y);
+      double norm = sqrt(nx*nx+ny*ny);
+      nx /= norm; ny /= norm;
+      double tx = -ny;
+      double ty = nx;
+      return a*ty*(tx*(x-xyz_[0])+ty*(y-xyz_[1]))/(1.+a/mu*(nx*(x-xyz_[0])+ny*(y-xyz_[1])));
+    }
+  } y_coeff_integrand_;
+#endif
+
+#ifdef P4_TO_P8
+  class z_coeff_integrand_t: public CF_3
+  {
+    double *xyz_;
+    CF_3 *alpha_;
+    CF_3 *mu_;
+    CF_3 *nx_, *ny_, *nz_;
+  public:
+    inline void set(CF_3 &alpha, double *xyz, CF_3 &mu, CF_3 &nx, CF_3 &ny, CF_3 &nz)
+    {
+      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; nz_ = &nz;
+    }
+    double operator()(double x, double y, double z) const
+    {
+      double a  = (*alpha_)(x,y);
+      double mu = (*mu_)(x,y);
+
+      double nx = (*nx_)(x,y);
+      double ny = (*ny_)(x,y);
+      double nz = (*nz_)(x,y);
+      double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
+      nx /= norm; ny /= norm; nz /= norm;
+
+      double nR = nx*(x-xyz_[0]) + ny*(y-xyz_[1]) + nz*(z-xyz_[2]);
+
+      double tx = (x-xyz_[0]) - nx*nR;
+      double ty = (y-xyz_[1]) - ny*nR;
+      double tz = (z-xyz_[2]) - nz*nR;
+
+      norm = sqrt(SQR(tx)+SQR(ty)+SQR(tz));
+      if (norm > EPS) { tx /= norm; ty /= norm; tz /= norm; }
+
+      return a*tz*(tx*(x-xyz_[0])+ty*(y-xyz_[1])+tz*(z-xyz_[2]))/(1.+a/mu*nR);
+    }
+  } z_coeff_integrand_;
+#endif
+
+#ifdef P4_TO_P8
+  class rhs_term_integrand_t: public CF_3
+  {
+    double *xyz_;
+    CF_3 *alpha_;
+    CF_3 *mu_;
+    CF_3 *nx_, *ny_, *nz_;
+    CF_3 *g_;
+  public:
+    inline void set(CF_3 &alpha, double *xyz, CF_3 &mu, CF_3 &nx, CF_3 &ny, CF_3 &nz, CF_3 &g)
+    {
+      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; nz_ = &nz; g_ = &g;
+    }
+    double operator()(double x, double y, double z) const
+    {
+      double a  = (*alpha_)(x,y);
+      double mu = (*mu_)(x,y);
+
+      double nx = (*nx_)(x,y);
+      double ny = (*ny_)(x,y);
+      double nz = (*nz_)(x,y);
+      double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
+      nx /= norm; ny /= norm; nz /= norm;
+
+      double nR = nx*(x-xyz_[0]) + ny*(y-xyz_[1]) + nz*(z-xyz_[2]);
+
+      return a/mu*nR*(*g_)(x,y,z)/(1.+a/mu*nR);
+    }
+  } rhs_term_integrand_;
+#else
+  class rhs_term_integrand_t: public CF_2
+  {
+    double *xyz_;
+    CF_2 *alpha_;
+    CF_2 *mu_;
+    CF_2 *nx_, *ny_;
+    CF_2 *g_;
+  public:
+    inline void set(CF_2 &alpha, double *xyz, CF_2 &mu, CF_2 &nx, CF_2 &ny, CF_2 &g)
+    {
+      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; g_ = &g;
+    }
+    double operator()(double x, double y) const
+    {
+      double a  = (*alpha_)(x,y);
+      double mu = (*mu_)(x,y);
+      double nx = (*nx_)(x,y);
+      double ny = (*ny_)(x,y);
+      double norm = sqrt(nx*nx+ny*ny);
+      nx /= norm; ny /= norm;
+
+      double nR = nx*(x-xyz_[0])+ny*(y-xyz_[1]);
+
+      return a/mu*nR*(*g_)(x,y)/(1.+a/mu*nR);
+    }
+  } rhs_term_integrand_;
+#endif
+
+//#ifdef P4_TO_P8
+//#else
+//  class rhs_term_integrand_t: public CF_2
+//  {
+//    CF_2 *alpha_;
+//    double *xyz_;
+//    CF_2 *mu_;
+//    double *norm_;
+//    CF_2 *g_;
+//  public:
+//    inline void set(CF_2 &alpha, double *xyz, CF_2 &mu, double *norm, CF_2 &g)
+//    {
+//      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; norm_ = norm; g_ = &g;
+//    }
+//    double operator()(double x, double y) const
+//    {
+//      double a  = (*alpha_)(x,y);
+//      double mu = (*mu_)(x,y);
+//      return a/mu*(norm_[0]*(x-xyz_[0])+norm_[1]*(y-xyz_[1]))*(*g_)(x,y)/(1.+a/mu*(norm_[0]*(x-xyz_[0])+norm_[1]*(y-xyz_[1])));
+//    }
+//  } rhs_term_integrand_;
+//#endif
+
+#ifdef P4_TO_P8
   class restriction_to_yz_t : public CF_2
   {
     CF_3 *f_;
@@ -357,6 +690,11 @@ class my_p4est_poisson_nodes_mls_sc_t
   bool is_phi_eff_owned_, is_phi_dd_owned_;
   Vec node_vol_;
 
+  std::vector<Vec> *phi_x_;
+  std::vector<Vec> *phi_y_;
+  std::vector<Vec> *phi_z_;
+  bool is_phi_d_owned_;
+
   double dxyz_m_[P4EST_DIM];
   double dx_min_, dy_min_, d_min_, diag_min_;
 #ifdef P4_TO_P8
@@ -406,6 +744,8 @@ class my_p4est_poisson_nodes_mls_sc_t
   bool keep_scalling_;
 
   Vec volumes_;
+  Vec node_type_;
+
 
   double eps_ifc_, eps_dom_;
 
@@ -414,6 +754,7 @@ class my_p4est_poisson_nodes_mls_sc_t
   void compute_volumes_();
   void compute_phi_eff_();
   void compute_phi_dd_();
+  void compute_phi_d_();
   void compute_mue_dd_();
 
 #ifdef P4_TO_P8
@@ -435,6 +776,8 @@ class my_p4est_poisson_nodes_mls_sc_t
 #ifdef P4_TO_P8
   bool find_z_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p);
 #endif
+
+  bool find_xy_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p);
 
 public:
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_node_neighbors_t *node_neighbors);
@@ -472,6 +815,9 @@ public:
       compute_phi_dd_();
       is_phi_dd_owned_ = true;
     }
+
+    compute_phi_d_();
+    is_phi_d_owned_ = true;
 
     if (phi_eff != NULL)
       phi_eff_ = phi_eff;
@@ -586,6 +932,7 @@ public:
   void assemble_matrix(Vec solution);
 
   inline Vec get_mask() { return mask_; }
+  inline Vec get_volumes() { return volumes_; }
 
   inline void get_phi_dd(std::vector<Vec> **phi_dd)
   {

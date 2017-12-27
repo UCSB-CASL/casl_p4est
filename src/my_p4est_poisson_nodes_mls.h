@@ -378,6 +378,7 @@ public:
   void assemble_matrix(Vec solution);
 
   inline Vec get_mask() { return mask_; }
+  inline Vec get_volumes() { return mask_; }
 
   inline void get_phi_dd(std::vector<Vec> **phi_dd)
   {
