@@ -27,6 +27,8 @@ public:
   const static int nodes_per_tri = 6;
   const static int nodes_per_tet = 10;
 
+  const double curvature_limit_ = 0.2;
+
   std::vector<CF_3 *> *phi_;
 
   double max_dist_error_;
@@ -220,6 +222,13 @@ public:
   void find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri);
   void find_middle_node_tet(double abc_out[], int n_tet);
   bool need_swap(int v0, int v1);
+  void deform_middle_node(double &x_out, double &y_out,
+                          double x, double y,
+                          double x0, double y0,
+                          double x1, double y1,
+                          double x2, double y2,
+                          double x3, double y3,
+                          double x01, double y01);
 
   void refine_all();
   void refine_edg(int n_edg);

@@ -61,6 +61,7 @@ class cube2_mls_quadratic_t
 public:
   const static int n_nodes = 9;
   const static int n_nodes_simplex = 6;
+  const static int n_nodes_dir = 3;
 
   double  x0, x1, y0, y1;
   loc_t   loc;

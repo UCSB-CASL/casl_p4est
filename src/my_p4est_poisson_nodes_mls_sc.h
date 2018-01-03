@@ -346,11 +346,11 @@ class my_p4est_poisson_nodes_mls_sc_t
     }
     double operator()(double x, double y, double z) const
     {
-      double a  = (*alpha_)(x,y);
-      double mu = (*mu_)(x,y);
-      double nx = (*nx_)(x,y);
-      double ny = (*ny_)(x,y);
-      double nz = (*nz_)(x,y);
+      double a  = (*alpha_)(x,y,z);
+      double mu = (*mu_)(x,y,z);
+      double nx = (*nx_)(x,y,z);
+      double ny = (*ny_)(x,y,z);
+      double nz = (*nz_)(x,y,z);
       double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
       nx /= norm; ny /= norm; nz /= norm;
       return a/(1.+a/mu*(nx*(x-xyz_[0])+ny*(y-xyz_[1])+nz*(z-xyz_[2])));
@@ -395,12 +395,12 @@ class my_p4est_poisson_nodes_mls_sc_t
     }
     double operator()(double x, double y, double z) const
     {
-      double a  = (*alpha_)(x,y);
-      double mu = (*mu_)(x,y);
+      double a  = (*alpha_)(x,y,z);
+      double mu = (*mu_)(x,y,z);
 
-      double nx = (*nx_)(x,y);
-      double ny = (*ny_)(x,y);
-      double nz = (*nz_)(x,y);
+      double nx = (*nx_)(x,y,z);
+      double ny = (*ny_)(x,y,z);
+      double nz = (*nz_)(x,y,z);
       double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
       nx /= norm; ny /= norm; nz /= norm;
 
@@ -457,12 +457,12 @@ class my_p4est_poisson_nodes_mls_sc_t
     }
     double operator()(double x, double y, double z) const
     {
-      double a  = (*alpha_)(x,y);
-      double mu = (*mu_)(x,y);
+      double a  = (*alpha_)(x,y,z);
+      double mu = (*mu_)(x,y,z);
 
-      double nx = (*nx_)(x,y);
-      double ny = (*ny_)(x,y);
-      double nz = (*nz_)(x,y);
+      double nx = (*nx_)(x,y,z);
+      double ny = (*ny_)(x,y,z);
+      double nz = (*nz_)(x,y,z);
       double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
       nx /= norm; ny /= norm; nz /= norm;
 
@@ -519,12 +519,12 @@ class my_p4est_poisson_nodes_mls_sc_t
     }
     double operator()(double x, double y, double z) const
     {
-      double a  = (*alpha_)(x,y);
-      double mu = (*mu_)(x,y);
+      double a  = (*alpha_)(x,y,z);
+      double mu = (*mu_)(x,y,z);
 
-      double nx = (*nx_)(x,y);
-      double ny = (*ny_)(x,y);
-      double nz = (*nz_)(x,y);
+      double nx = (*nx_)(x,y,z);
+      double ny = (*ny_)(x,y,z);
+      double nz = (*nz_)(x,y,z);
       double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
       nx /= norm; ny /= norm; nz /= norm;
 
@@ -557,12 +557,12 @@ class my_p4est_poisson_nodes_mls_sc_t
     }
     double operator()(double x, double y, double z) const
     {
-      double a  = (*alpha_)(x,y);
-      double mu = (*mu_)(x,y);
+      double a  = (*alpha_)(x,y,z);
+      double mu = (*mu_)(x,y,z);
 
-      double nx = (*nx_)(x,y);
-      double ny = (*ny_)(x,y);
-      double nz = (*nz_)(x,y);
+      double nx = (*nx_)(x,y,z);
+      double ny = (*ny_)(x,y,z);
+      double nz = (*nz_)(x,y,z);
       double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
       nx /= norm; ny /= norm; nz /= norm;
 
@@ -719,6 +719,8 @@ class my_p4est_poisson_nodes_mls_sc_t
   bool update_ghost_after_solving_;
   bool use_taylor_correction_;
   bool kink_special_treatment_;
+
+  bool use_sc_scheme_;
 
   // Bondary conditions
   bool neumann_wall_first_order_;

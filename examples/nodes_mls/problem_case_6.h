@@ -67,7 +67,7 @@ public:
 
 //    domain0.set_params(r0, xc0, yc0, zc0, 0.0, -1);
 
-    double r0 = 0.71, xc0 = 0.08, yc0 = 0.01, zc0 = 0.03;
+    double r0 = 0.81, xc0 = 0.08, yc0 = 0.01, zc0 = 0.03;
 
     domain0.set_params(r0, xc0, yc0, zc0, 0.0, 1);
 #else

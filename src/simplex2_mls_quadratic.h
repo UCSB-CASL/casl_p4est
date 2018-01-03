@@ -19,11 +19,26 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 
 class simplex2_mls_quadratic_t
 {
+  double x0_, y0_;
+  double x1_, y1_;
+  double x2_, y2_;
+  double x3_, y3_;
+  double x4_, y4_;
+  double x5_, y5_;
+
+  double eps_xyz_, eps_abc_;
+  double d_max_;
+
+  const static int nodes_per_tri_ = 6;
+  const static int max_refinement_ = 4;
+
+  const double curvature_limit_ = 0.15;
+
+  bool invalid_reconstruction_;
+
+  double eps_;
+
 public:
-
-  const static int nodes_per_tri = 6;
-
-  double eps;
 
   //--------------------------------------------------
   // Vertex
@@ -127,7 +142,7 @@ public:
     void set(loc_t loc_) {loc = loc_;}
   };
 
-  simplex2_mls_quadratic_t();
+//  simplex2_mls_quadratic_t();
   simplex2_mls_quadratic_t(double x0, double y0,
                            double x1, double y1,
                            double x2, double y2,
@@ -140,6 +155,7 @@ public:
   std::vector<tri2_t> tris;
 
   void construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 
   //--------------------------------------------------
   // Splitting
@@ -151,7 +167,13 @@ public:
   double find_intersection_quadratic(int e);
   void find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri);
   bool need_swap(int v0, int v1);
-
+  void deform_middle_node(double &x_out, double &y_out,
+                          double x, double y,
+                          double x0, double y0,
+                          double x1, double y1,
+                          double x2, double y2,
+                          double x3, double y3,
+                          double x01, double y01);
 
   //--------------------------------------------------
   // Refinement
@@ -191,8 +213,6 @@ public:
     }
   }
   double area(int vtx0, int vtx1, int vtx2);
-
-  bool invalid_reconstruction;
 
   double distance(double x0, double y0, double x1, double y1, double x2, double y2);
 

@@ -66,7 +66,8 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
     keep_scalling_(false),
     volumes_(NULL),
     node_type_(NULL),
-    phi_x_(NULL), phi_y_(NULL), phi_z_(NULL), is_phi_d_owned_(false)
+    phi_x_(NULL), phi_y_(NULL), phi_z_(NULL), is_phi_d_owned_(false),
+    use_sc_scheme_(true)
 {
   // compute global numbering of nodes
   global_node_offset_.resize(p4est_->mpisize+1, 0);
@@ -2419,6 +2420,8 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
           double theta = EPS;
 //          double theta = 10;
 
+          if (!use_sc_scheme_) theta = 10;
+
           // face m00
           if (s_m00/full_sx > interface_rel_thresh)
           {
@@ -2752,6 +2755,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 //          double theta = 10;
           double theta = 1.e-6*dx_min_;
 
+          if (!use_sc_scheme_) theta = 10;
 
           // face m00
           if (s_m00/full_sx > interface_rel_thresh)
@@ -2794,7 +2798,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
                 w[nn_000] += flux;
                 w[nn_m00] -= flux;
 
-                if (ratio > theta && setup_matrix)
+                if (ratio > theta && setup_matrix && use_sc_scheme_)
                 {
                   mask_p[n] = 10;
                   std::cout << "Fallback fluxes\n";
@@ -2844,7 +2848,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
                 w[nn_000] += flux;
                 w[nn_p00] -= flux;
 
-                if (ratio > theta && setup_matrix)
+                if (ratio > theta && setup_matrix && use_sc_scheme_)
                 {
                   mask_p[n] = 10;
                   std::cout << "Fallback fluxes\n";
@@ -2897,7 +2901,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
                 w[nn_000] += flux;
                 w[nn_0m0] -= flux;
 
-                if (ratio > theta && setup_matrix)
+                if (ratio > theta && setup_matrix && use_sc_scheme_)
                 {
                   mask_p[n] = 10;
                   std::cout << "Fallback fluxes\n";
@@ -2949,7 +2953,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
                 w[nn_000] += flux;
                 w[nn_0p0] -= flux;
 
-                if (ratio > theta && setup_matrix)
+                if (ratio > theta && setup_matrix && use_sc_scheme_)
                 {
                   mask_p[n] = 10;
                   std::cout << "Fallback fluxes\n";
@@ -3051,15 +3055,15 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
           bool z_derivative_found = find_z_derivative(neighbors_exist, weights_z_derivative, map_z_derivative, neighbors, volumes_p);
 #endif
 
-          double weights_xy_derivative[num_neighbors_max_];
-          bool map_xy_derivative[num_neighbors_max_];
-          bool xy_derivative_found = find_xy_derivative(neighbors_exist, weights_xy_derivative, map_xy_derivative, neighbors, volumes_p);
+//          double weights_xy_derivative[num_neighbors_max_];
+//          bool map_xy_derivative[num_neighbors_max_];
+//          bool xy_derivative_found = find_xy_derivative(neighbors_exist, weights_xy_derivative, map_xy_derivative, neighbors, volumes_p);
 
 
 #ifdef P4_TO_P8
-          if (x_derivative_found && y_derivative_found && z_derivative_found)
+          if (x_derivative_found && y_derivative_found && z_derivative_found && use_sc_scheme_)
 #else
-          if (x_derivative_found && y_derivative_found)
+          if (x_derivative_found && y_derivative_found && use_sc_scheme_)
 #endif
           {
 //            double const_coeff = 0;
@@ -3079,7 +3083,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 //              bc_coeff_times_delta_z_.set(*bc_interface_coeff_->at(phi_idx), xyz_C);
 //#endif
 
-//              bc_coeff_times_delta_xy_.set(*bc_interface_coeff_->at(phi_idx), xyz_C);
+////              bc_coeff_times_delta_xy_.set(*bc_interface_coeff_->at(phi_idx), xyz_C);
 
 //              for (int cube_idx = 0; cube_idx < cubes.size(); ++cube_idx)
 //              {
@@ -3089,7 +3093,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 //#ifdef P4_TO_P8
 //                z_coeff += cubes[cube_idx]->integrate_over_interface(bc_coeff_times_delta_z_, color_->at(phi_idx));
 //#endif
-//                xy_coeff += cubes[cube_idx]->integrate_over_interface(bc_coeff_times_delta_xy_, color_->at(phi_idx));
+////                xy_coeff += cubes[cube_idx]->integrate_over_interface(bc_coeff_times_delta_xy_, color_->at(phi_idx));
 //              }
 //            }
 
@@ -3115,6 +3119,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
 //              const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
 //              x_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
 //              y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+//              z_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
 //              rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local, *bc_interface_value_->at(phi_idx));
 //#else
 //              const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
@@ -3130,6 +3135,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
               const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
               x_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
               y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+              z_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
               rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local, *bc_interface_value_->at(phi_idx));
 #else
               const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
@@ -3137,6 +3143,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
               y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
               rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, *bc_interface_value_->at(phi_idx));
 #endif
+
 //              double tangent_coeff = 0;
 
 
@@ -3180,7 +3187,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
           else
           {
 
-            if (setup_matrix)
+            if (setup_matrix && use_sc_scheme_)
             {
               mask_p[n] = 20;
               std::cout << "Fallback Robin BC\n";
@@ -3314,6 +3321,76 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
                     rhs_p[n] -= cubes[cube_idx]->integrate_over_interface(taylor_expansion_const_term_, color_->at(phi_idx));
                 }
               }
+
+//              double const_coeff = 0;
+//              double x_coeff = 0;
+//              double y_coeff = 0;
+//              double rhs_term = 0;
+//#ifdef P4_TO_P8
+//              double z_coeff = 0;
+//#endif
+
+//              for (short interface_idx = 0; interface_idx < present_interfaces.size(); ++interface_idx)
+//              {
+//                int phi_idx = present_interfaces[interface_idx];
+
+//                double norm[P4EST_DIM];
+//                compute_normal_(phi_p[phi_idx], qnnn, norm);
+
+////                cf_const_t phi_x_local(norm[0]);
+////                cf_const_t phi_y_local(norm[1]);
+////#ifdef P4_TO_P8
+////                cf_const_t phi_z_local(norm[2]);
+////                const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+////                x_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+////                y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+////                z_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+////                rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local, *bc_interface_value_->at(phi_idx));
+////#else
+////                const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+////                x_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+////                y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+////                rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, *bc_interface_value_->at(phi_idx));
+////#endif
+
+//                phi_x_local.set_input(phi_x_ptr[phi_idx], linear);
+//                phi_y_local.set_input(phi_y_ptr[phi_idx], linear);
+//#ifdef P4_TO_P8
+//                phi_z_local.set_input(phi_z_ptr[phi_idx], linear);
+//                const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+//                x_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+//                y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+//                z_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local);
+//                rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, phi_z_local, *bc_interface_value_->at(phi_idx));
+//#else
+//                const_coeff_integrand_.set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+//                x_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+//                y_coeff_integrand_    .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local);
+//                rhs_term_integrand_   .set(*bc_interface_coeff_->at(phi_idx), xyz_C, interp_local, phi_x_local, phi_y_local, *bc_interface_value_->at(phi_idx));
+//#endif
+
+//                for (int cube_idx = 0; cube_idx < cubes.size(); ++cube_idx)
+//                {
+//                  const_coeff   += cubes[cube_idx]->integrate_over_interface(const_coeff_integrand_,   color_->at(phi_idx));
+//                  rhs_term      += cubes[cube_idx]->integrate_over_interface(rhs_term_integrand_,      color_->at(phi_idx));
+//                  x_coeff       += cubes[cube_idx]->integrate_over_interface(x_coeff_integrand_,       color_->at(phi_idx));
+//                  y_coeff       += cubes[cube_idx]->integrate_over_interface(y_coeff_integrand_,       color_->at(phi_idx));
+//#ifdef P4_TO_P8
+//                  z_coeff       += cubes[cube_idx]->integrate_over_interface(z_coeff_integrand_,       color_->at(phi_idx));
+//#endif
+//                }
+
+//              }
+
+//#ifdef P4_TO_P8
+//              if (setup_rhs) rhs_p[n] -= rhs_term + b_coeff[0]*x_coeff + b_coeff[1]*y_coeff + b_coeff[2]*z_coeff;
+//              w[nn_000] += const_coeff - a_coeff[0]*x_coeff - a_coeff[1]*y_coeff - a_coeff[2]*z_coeff;
+//#else
+//              if (setup_rhs) rhs_p[n] -= rhs_term + b_coeff[0]*x_coeff + b_coeff[1]*y_coeff;
+//              w[nn_000] += const_coeff - a_coeff[0]*x_coeff - a_coeff[1]*y_coeff;
+//#endif
+
+//              if (setup_matrix && fabs(const_coeff) > 0) matrix_has_nullspace_ = false;
             }
 
             // cells without kinks

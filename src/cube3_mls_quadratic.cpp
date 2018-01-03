@@ -49,6 +49,9 @@ void cube3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::vect
     }
   }
 
+  loc_t loc_prelim = loc;
+
+  loc = FCE;
   if (loc == FCE)
   {
     double x[27] = { x0, xc, x1, x0, xc, x1, x0, xc, x1,
@@ -146,6 +149,17 @@ void cube3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::vect
     simplex[3].construct_domain(phi, acn, clr);
     simplex[4].construct_domain(phi, acn, clr);
     simplex[5].construct_domain(phi, acn, clr);
+  }
+
+  if (simplex[0].tets.size() == 1 &&
+      simplex[1].tets.size() == 1 &&
+      simplex[2].tets.size() == 1 &&
+      simplex[3].tets.size() == 1 &&
+      simplex[4].tets.size() == 1 &&
+      simplex[5].tets.size() == 1)
+  {
+    loc = loc_prelim;
+    simplex.clear();
   }
 }
 

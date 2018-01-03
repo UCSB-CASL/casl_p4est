@@ -121,11 +121,9 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
   {
     last_vtxs_size = 0;
 
-    // split all elements
-
     invalid_reconstruction = true;
-
     int refine_level = 0;
+
     while (invalid_reconstruction)
     {
       needs_refinement = true;
@@ -141,10 +139,107 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
           }
 
         // check validity of data on each edge
+
+        // check validity of data on each edge
         needs_refinement = false;
         for (int i = 0; i < edgs.size(); ++i)
           if (!edgs[i].is_split)
           {
+            edg3_t *e = &edgs[i];
+
+            double phi0 = vtxs[e->vtx0].value;
+            double phi1 = vtxs[e->vtx1].value;
+            double phi2 = vtxs[e->vtx2].value;
+
+//            if (phi1 < 0 && phi0 > 0 && phi2 > 0 ||
+//                phi1 > 0 && phi0 < 0 && phi2 < 0)
+            if (phi1*phi0 < 0 && phi0*phi2 > 0)
+            {
+              needs_refinement = true;
+              break;
+            }
+
+//            if (phi0 > 0 && phi2 > 0 ||
+//                phi0 < 0 && phi2 < 0)
+            if (phi0*phi2 > 0)
+            {
+              // phi0*(1-3a+2a^2) + phi1*(4a-4a^2) + phi2*(-a+2a^2)
+              // = a^2 (2phi0 - 4phi1 + 2phi2) + a (-3phi0+4phi1-phi2) + phi0
+              // = a^2 c2 + a c1 + c0
+              double c0 = phi0;
+              double c1 = -3.*phi0+4.*phi1-phi2;
+              double c2 = 2.*phi0 - 4.*phi1 + 2.*phi2;
+
+              if (c2 > EPS)
+              {
+                double d = c1*c1 - 4.*c0*c2;
+                if (d > 0)
+                {
+                  double a1 = .5*(-c1-sqrt(d))/c2;
+                  double a2 = .5*(-c1+sqrt(d))/c2;
+                  if (a1 > 0. && a1 < 1. ||
+                      a2 > 0. && a2 < 1.)
+                  {
+                    std::cout << a1 << " " << a2 << "\n";
+                    needs_refinement = true;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+
+        if (!needs_refinement)
+        for (int i = 0; i < tris.size(); ++i)
+          if (!tris[i].is_split)
+          {
+            tri3_t *f = &tris[i];
+            edg3_t *e0 = &edgs[f->edg0];
+            edg3_t *e1 = &edgs[f->edg1];
+            edg3_t *e2 = &edgs[f->edg2];
+
+            double phi0 = vtxs[f->vtx0].value;
+            double phi1 = vtxs[f->vtx1].value;
+            double phi2 = vtxs[f->vtx2].value;
+            double phi3 = vtxs[e2->vtx1].value;
+            double phi4 = vtxs[e0->vtx1].value;
+            double phi5 = vtxs[e1->vtx1].value;
+
+            if (phi0*phi1 > 0 && phi1*phi2 > 0 && phi2*phi3 > 0 && phi3*phi4 > 0 && phi4*phi5 > 0)
+            {
+              double paa = 2.*phi0 + 2.*phi1 - 4.*phi3;
+              double pab = 4.*phi0 - 4.*phi3 + 4.*phi4 - 4.*phi5;
+              double pbb = 2.*phi0 + 2.*phi2 - 4.*phi5;
+              double pa = -3.*phi0 -    phi1 + 4.*phi3;
+              double pb = -3.*phi0 -    phi2 + 4.*phi5;
+
+              double det = 4.*paa*pbb - pab*pab;
+
+              if (fabs(det) > EPS)
+              {
+                double a = (pb*pab - 2.*pa*pbb)/det;
+                double b = (pa*pab - 2.*pb*paa)/det;
+
+                if (a > 0 && b > 0 && a+b < 1.)
+                {
+                  double phi_extremum = paa*a*a + pab*a*b + pbb*b*b + pa*a + pb*b + phi0;
+
+                  if (phi_extremum*phi0 < 0)
+                  {
+                    std::cout << "face " << a << " " << b << "\n";
+                    needs_refinement = true;
+                    break;
+                  }
+                }
+              }
+
+            }
+          }
+
+//        needs_refinement = false;
+//        for (int i = 0; i < edgs.size(); ++i)
+//          if (!edgs[i].is_split)
+//          {
 //            edg3_t *e = &edgs[i];
 //            if ( vtxs[e->vtx1].value < 0 && vtxs[e->vtx0].value > 0 && vtxs[e->vtx2].value > 0 ||
 //                 vtxs[e->vtx1].value > 0 && vtxs[e->vtx0].value < 0 && vtxs[e->vtx2].value < 0 )
@@ -153,43 +248,40 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
 //              break;
 //            }
 
-            int num_sample_points = 5;
-            std::vector<double> phi_value(num_sample_points);
 
-            double da = 1./(double)(num_sample_points-1);
+//            // TODO: replace this algorithm based on sampling of a level-set function with another algorithm based on
+//            // analyzing roots of a second-order polynomial
+//            int num_sample_points = 5;
+//            std::vector<double> phi_value(num_sample_points);
 
-            double xyz[3];
-            for (int j = 0; j < num_sample_points; j++)
-            {
-//              mapping_edg(xyz, i, da*(double)(j));
-//              phi_value[j] = phi[phi_idx]->value(xyz);
+//            double da = 1./(double)(num_sample_points-1);
 
-              edg3_t *edg = &edgs[i];
+//            double xyz[3];
+//            for (int j = 0; j < num_sample_points; j++)
+//            {
+//              edg3_t *edg = &edgs[i];
 
-              double a = da*(double)(j);
+//              double a = da*(double)(j);
 
-              double N0 = 1.-3.*a+2.*a*a;
-              double N1 = 4.*a-4.*a*a;
-              double N2 = -a+2.*a*a;
+//              double N0 = 1.-3.*a+2.*a*a;
+//              double N1 = 4.*a-4.*a*a;
+//              double N2 = -a+2.*a*a;
 
-              phi_value[j] = vtxs[edg->vtx0].value * N0 + vtxs[edg->vtx1].value * N1 + vtxs[edg->vtx2].value * N2;
+//              phi_value[j] = vtxs[edg->vtx0].value * N0 + vtxs[edg->vtx1].value * N1 + vtxs[edg->vtx2].value * N2;
 
-            }
+//            }
 
-            int num_sign_switches = 0;
-            for (int j = 1; j < num_sample_points; ++j)
-              if (phi_value[j-1]*phi_value[j] < 0.)
-                num_sign_switches++;
+//            int num_sign_switches = 0;
+//            for (int j = 1; j < num_sample_points; ++j)
+//              if (phi_value[j-1]*phi_value[j] < 0.)
+//                num_sign_switches++;
 
-            if (num_sign_switches > 1)
-            {
-//              std::cout << num_sign_switches << "\n";
-              needs_refinement = true;
-              break;
-            }
-
-
-          }
+//            if (num_sign_switches > 1)
+//            {
+//              needs_refinement = true;
+//              break;
+//            }
+//          }
 
 //        double xyz[3];
 //        double ab[2];
@@ -312,6 +404,54 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::v
 //  }
 }
 
+void simplex3_mls_quadratic_t::deform_middle_node(double &x_out, double &y_out,
+                                                  double x, double y,
+                                                  double x0, double y0,
+                                                  double x1, double y1,
+                                                  double x2, double y2,
+                                                  double x3, double y3,
+                                                  double x01, double y01)
+{
+
+  double Xa  = -x0+x1;
+  double Xb  = -x0+x3;
+  double Xab = x0-x1+x2-x3;
+
+  double Ya  = -y0+y1;
+  double Yb  = -y0+y3;
+  double Yab = y0-y1+y2-y3;
+
+  // solve quadratic equation
+  double c2 = Xb*Yab - Yb*Xab;      // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e
+  double c1 = Ya*Xb - Xa*Yb + Xab*(y-y0) - Yab*(x-x0);   // the expansion of f at the center of (0,1)
+  double c0 = Xa*(y-y0)-Ya*(x-x0);
+
+  double b;
+
+  if (fabs(c2) < eps) b = -c0/c1;
+  else
+  {
+//    if (Fn<0) alpha = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
+//    else      alpha = (-2.*c0)/(c1 + sqrt(c1*c1-4.*c2*c0));
+
+    double b1 = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
+    double b2 = (-2.*c0)/(c1 + sqrt(c1*c1-4.*c2*c0));
+
+    if (b1 >= 0. && b1 <= 1.) b = b1;
+    else if (b2 >= 0. && b2 <= 1.) b = b2;
+    else
+    {
+      std::cout << "Warning: inverse mapping is incorrect! (" << c0 << " " << c1 << " " << c2 << " " << b1 << " " << b2 << ")\n";
+      b = b1;
+    }
+  }
+
+  double a = (x-x0-b*Xb)/(Xa+b*Xab);
+
+  x_out = x0 + a*Xa + b*Xb + a*b*Xab + (1.-b)*((1.-a)*x0 + a*x1)*2.*(1.-a)*a*(-x0+2.*x01-x1);
+  y_out = y0 + a*Ya + b*Yb + a*b*Yab + (1.-b)*((1.-a)*y0 + a*y1)*2.*(1.-a)*a*(-y0+2.*y01-y1);
+
+}
 
 
 
@@ -583,7 +723,37 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
     double xyz_u0[3];
     mapping_tri(xyz_u0, n_tri, ab_u0);
 
+//    // check if not to curvy
+    double ab_u0_orig[2] = { .5*edgs[tri->edg2].a, .5*edgs[tri->edg1].a };
+//    double xyz_u0_orig[3];
+//    mapping_tri(xyz_u0_orig, n_tri, ab_u0_orig);
+
+//    double length = sqrt( SQR(vtxs[tri->c_vtx01].x - vtxs[tri->c_vtx02].x) +
+//                          SQR(vtxs[tri->c_vtx01].y - vtxs[tri->c_vtx02].y) +
+//                          SQR(vtxs[tri->c_vtx01].z - vtxs[tri->c_vtx02].z) );
+
+//    double deform = sqrt( SQR(xyz_u0[0]-xyz_u0_orig[0]) +
+//                          SQR(xyz_u0[1]-xyz_u0_orig[1]) +
+//                          SQR(xyz_u0[2]-xyz_u0_orig[2]) );
+
+    double length = sqrt( SQR(edgs[tri->edg1].a) + SQR(edgs[tri->edg2].a) );
+    double deform = sqrt( SQR(ab_u0[0] - ab_u0_orig[0]) +
+                          SQR(ab_u0[1] - ab_u0_orig[1]) );
+
+    if (deform > length*curvature_limit_)
+    {
+      std::cout << "High curvature: " << length << " " << deform << "\n";
+      invalid_reconstruction = true;
+    }
+
     double ab_u1[2] = { 0.5*edgs[tri->edg2].a, 0.5 };
+
+    double a_new, b_new;
+
+    deform_middle_node(a_new, b_new, ab_u1[0], ab_u1[1], 0, edgs[tri->edg1].a, edgs[tri->edg2].a, 0, 1, 0, 0, 1, ab_u0[0], ab_u0[1]);
+
+    ab_u1[0] = a_new;
+    ab_u1[1] = b_new;
 
     double xyz_u1[3];
     mapping_tri(xyz_u1, n_tri, ab_u1);
@@ -721,7 +891,38 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
     double xyz_u1[3];
     mapping_tri(xyz_u1, n_tri, ab_u1);
 
+
+    // check if not to curvy
+    double ab_u1_orig[2] = { .5*(1.-edgs[tri->edg0].a), .5*(edgs[tri->edg0].a + edgs[tri->edg1].a) };
+//    double xyz_u1_orig[3];
+//    mapping_tri(xyz_u1_orig, n_tri, ab_u1_orig);
+
+//    double length = sqrt( SQR(vtxs[tri->c_vtx02].x - vtxs[tri->c_vtx12].x) +
+//                          SQR(vtxs[tri->c_vtx02].y - vtxs[tri->c_vtx12].y) +
+//                          SQR(vtxs[tri->c_vtx02].z - vtxs[tri->c_vtx12].z) );
+
+//    double deform = sqrt( SQR(xyz_u1[0]-xyz_u1_orig[0]) +
+//                          SQR(xyz_u1[1]-xyz_u1_orig[1]) +
+//                          SQR(xyz_u1[2]-xyz_u1_orig[2]) );
+
+    double length = sqrt( SQR(1.-edgs[tri->edg0].a) + SQR(edgs[tri->edg0].a-edgs[tri->edg1].a) );
+    double deform = sqrt( SQR(ab_u1[0] - ab_u1_orig[0]) +
+                          SQR(ab_u1[1] - ab_u1_orig[1]) );
+
+    if (deform > length*curvature_limit_)
+    {
+      std::cout << "High curvature: " << length << " " << deform << "\n";
+      invalid_reconstruction = true;
+    }
+
     double ab_u0[2] = { 0.5*(1.-edgs[tri->edg0].a), 0.5*edgs[tri->edg0].a };
+
+    double a_new, b_new;
+
+    deform_middle_node(a_new, b_new, ab_u0[0], ab_u0[1],  (1.-edgs[tri->edg0].a),  edgs[tri->edg0].a, 0, edgs[tri->edg1].a, 0, 0, 1, 0, ab_u1[0], ab_u1[1]);
+
+    ab_u0[0] = a_new;
+    ab_u0[1] = b_new;
 
     double xyz_u0[3];
     mapping_tri(xyz_u0, n_tri, ab_u0);
@@ -1429,7 +1630,7 @@ void simplex3_mls_quadratic_t::find_middle_node(double &x_out, double &y_out, do
 
   double alpha;
 
-  if (fabs(c2) < eps) alpha = -c0/c1;
+  if (fabs(c2) < EPS) alpha = -c0/c1;
   else
   {
 //    if (Fn<0) alpha = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));

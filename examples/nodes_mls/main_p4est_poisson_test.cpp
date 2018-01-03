@@ -84,9 +84,9 @@ using namespace std;
 bool save_vtk = 1;
 
 #ifdef P4_TO_P8
-int lmin = 5;
-int lmax = 5;
-int nb_splits = 1;
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 3;
 //int lmin = 7;
 //int lmax = 7;
 //int nb_splits = 1;
@@ -94,7 +94,7 @@ int nb_splits_per_split = 10;
 #else
 int lmin = 5;
 int lmax = 5;
-int nb_splits = 4;
+int nb_splits = 3;
 int nb_splits_per_split = 20;
 #endif
 
@@ -115,7 +115,7 @@ const double p_xyz_max[3] = {1, 1, 1};
  * 7412
  */
 
-int n_geometry = 6;
+int n_geometry = 7;
 int n_test = 0;
 int n_mu = 0;
 int n_diag_add = 0;

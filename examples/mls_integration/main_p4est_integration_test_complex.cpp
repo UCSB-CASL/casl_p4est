@@ -66,14 +66,14 @@ using namespace std;
 int lmin = 4;
 int lmax = 4;
 int nb_splits = 3;
-int nb_splits_per_split = 1;
-int nx_shifts = 10;
-int ny_shifts = 10;
-int nz_shifts = 10;
+int nb_splits_per_split = 10;
+int nx_shifts = 1;
+int ny_shifts = 1;
+int nz_shifts = 1;
 #else
-int lmin = 4;
-int lmax = 4;
-int nb_splits = 1;
+int lmin = 3;
+int lmax = 3;
+int nb_splits = 5;
 int nb_splits_per_split = 1;
 int nx_shifts = 30;
 int ny_shifts = 30;
@@ -87,7 +87,7 @@ const int periodic[] = {0, 0, 0};
 const double p_xyz_min[] = {-1.2, -1.2, -1.2};
 const double p_xyz_max[] = { 1.0,  1.0,  1.0};
 
-bool save_vtk = 1;
+bool save_vtk = 0;
 
 // function to integrate
 int func_num = 0;
@@ -130,7 +130,7 @@ public:
  * 4 - rose-like domain
  * 5 - one circle
  */
-int geometry_num = 0;
+int geometry_num = 1;
 
 geometry_two_circles_union_t        geometry_two_circles_union;
 geometry_two_circles_intersection_t geometry_two_circles_intersection;
