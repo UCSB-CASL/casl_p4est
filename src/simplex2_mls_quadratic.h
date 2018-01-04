@@ -34,6 +34,10 @@ class simplex2_mls_quadratic_t
 
   const double curvature_limit_ = 0.15;
 
+  const bool check_for_curvature_          = true;
+  const bool check_for_edge_intersections_ = true;
+  const bool adjust_auxiliary_midpoint_    = true;
+
   bool invalid_reconstruction_;
 
   double eps_;
@@ -165,7 +169,8 @@ public:
   void do_action_tri(int n_tri, int cn, action_t action);
 
   double find_intersection_quadratic(int e);
-  void find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri);
+//  void find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri);
+  void find_middle_node(double *xyz_out, double *xyz0, double *xyz1, int n_tri);
   bool need_swap(int v0, int v1);
   void deform_middle_node(double &x_out, double &y_out,
                           double x, double y,
@@ -174,6 +179,14 @@ public:
                           double x2, double y2,
                           double x3, double y3,
                           double x01, double y01);
+
+  void deform_middle_node(double *xyz_out,
+                          double *xyz_in,
+                          double *xyz0,
+                          double *xyz1,
+                          double *xyz2,
+                          double *xyz3,
+                          double *xyz01);
 
   //--------------------------------------------------
   // Refinement
@@ -197,7 +210,8 @@ public:
 
   double interpolate_from_parent(std::vector<double> &f, double x, double y);
   void mapping_edg(double &x, double &y, int n_edg, double a);
-  void mapping_tri(double &x, double &y, int n_tri, double a, double b);
+//  void mapping_tri(double &x, double &y, int n_tri, double a, double b);
+  void mapping_tri(double *xyz, int n_tri, double *abc);
 
   template<typename X>
   void swap(X &x, X &y)

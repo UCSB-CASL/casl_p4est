@@ -678,10 +678,10 @@ void simplex2_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
   int e0_type_expect, e1_type_expect, e2_type_expect;
 
   switch (num_negatives){
-  case 0: e0_type_expect = 0; e1_type_expect = 0; e2_type_expect = 0; break;
-  case 1: e0_type_expect = 0; e1_type_expect = 1; e2_type_expect = 1; break;
-  case 2: e0_type_expect = 1; e1_type_expect = 1; e2_type_expect = 2; break;
-  case 3: e0_type_expect = 2; e1_type_expect = 2; e2_type_expect = 2; break;
+    case 0: e0_type_expect = 0; e1_type_expect = 0; e2_type_expect = 0; break;
+    case 1: e0_type_expect = 0; e1_type_expect = 1; e2_type_expect = 1; break;
+    case 2: e0_type_expect = 1; e1_type_expect = 1; e2_type_expect = 2; break;
+    case 3: e0_type_expect = 2; e1_type_expect = 2; e2_type_expect = 2; break;
   }
 
   if (edgs[tri->edg0].type != e0_type_expect || edgs[tri->edg1].type != e1_type_expect || edgs[tri->edg2].type != e2_type_expect)
@@ -696,411 +696,364 @@ void simplex2_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
 
   switch (num_negatives)
   {
-  case 0: // (+++)
-    /* split a triangle */
-    // no need to split
+    case 0: // (+++)
+      /* split a triangle */
+      // no need to split
 
-    /* apply rules */
-    switch (action){
-    case INTERSECTION:  tri->set(OUT);    break;
-    case ADDITION:      /* do nothing */  break;
-    case COLORATION:    /* do nothing */  break;
-    }
-    break;
-
-  case 1: // (-++)
-  {
-    /* split a triangle */
-    tri->is_split = true;
-
-    // new vertices
-    tri->c_vtx01 = edgs[tri->edg2].c_vtx_x;
-    tri->c_vtx02 = edgs[tri->edg1].c_vtx_x;
-
-//    // coordinates of new vertices in reference element
-//    double abc_v01[] = { edgs[tri->edg2].a, 0. };
-//    double abc_v02[] = { 0., edgs[tri->edg1].a };
-
-    // vertex along interface
-    double a_u0, b_u0;
-    find_middle_node(a_u0, b_u0, 0, edgs[tri->edg1].a, edgs[tri->edg2].a, 0, n_tri);
-//    double abc_u0[2];
-//    find_middle_node(abc_u0, abc_v02, abc_v01, n_tri);
-
-//    if (b_u0 > 1. - a_u0/edgs[tri->edg2].a)
-//    {
-//      invalid_reconstruction_ = true;
-
-//      double zeta0 = 1. - .5 - .5*edgs[tri->edg1].a;
-//      double zeta1 = 1. - a_u0/edgs[tri->edg2].a - b_u0;
-//      double ratio = (zeta0-eps_abc_)/(zeta0-zeta1);
-
-//      a_u0 = .5*edgs[tri->edg2].a + ratio*(a_u0 - .5*edgs[tri->edg2].a);
-//      b_u0 = .5*edgs[tri->edg1].a + ratio*(b_u0 - .5*edgs[tri->edg1].a);
-//      std::cout << "Intersecting edges: " << .5*edgs[tri->edg2].a << " " << .5*edgs[tri->edg1].a << " " << a_u0 << " " << b_u0 << "\n";
-
-//    }
-
-//    if (b_u0 > 1. - a_u0/edgs[tri->edg2].a)
-//    {
-//      std::cout << "Intersecting edges: " << .5*edgs[tri->edg2].a << " " << .5*edgs[tri->edg1].a << " " << a_u0 << " " << b_u0 << "\n";
-//    }
-
-    if (b_u0 > 1. - a_u0/edgs[tri->edg2].a)
-    {
-      invalid_reconstruction_ = true;
-
-      double zeta0 = 1. - .5 - .5*edgs[tri->edg1].a;
-      double zeta1 = 1. - a_u0/edgs[tri->edg2].a - b_u0;
-      double ratio = (zeta0-eps_abc_)/(zeta0-zeta1);
-
-      a_u0 = .5*edgs[tri->edg2].a + ratio*(a_u0 - .5*edgs[tri->edg2].a);
-      b_u0 = .5*edgs[tri->edg1].a + ratio*(b_u0 - .5*edgs[tri->edg1].a);
-      std::cout << "Intersecting edges: " << .5*edgs[tri->edg2].a << " " << .5*edgs[tri->edg1].a << " " << a_u0 << " " << b_u0 << "\n";
-
-    }
-
-    if (b_u0 > 1. - a_u0/edgs[tri->edg2].a)
-    {
-      std::cout << "Intersecting edges: " << .5*edgs[tri->edg2].a << " " << .5*edgs[tri->edg1].a << " " << a_u0 << " " << b_u0 << "\n";
-    }
-
-//     DEBUGGING: check if linear reconstruction works
-//    a_u0 = 0.5*edgs[tri->edg2].a;
-//    b_u0 = 0.5*edgs[tri->edg1].a;
-
-    double x_u0, y_u0;
-    mapping_tri(x_u0, y_u0, n_tri, a_u0, b_u0);
-
-//    double xyz_u0;
-//    mapping_tri(xyz_u0, n_tri, abc_u0);
-
-    //    // check if not too curvy
-    double a_u0_orig = .5*edgs[tri->edg2].a;
-    double b_u0_orig = .5*edgs[tri->edg1].a;
-    double x_u0_orig;
-    double y_u0_orig;
-    mapping_tri(x_u0_orig, y_u0_orig, n_tri, a_u0_orig, b_u0_orig);
-
-    double length = sqrt( SQR(vtxs[tri->c_vtx01].x - vtxs[tri->c_vtx02].x) +
-                          SQR(vtxs[tri->c_vtx01].y - vtxs[tri->c_vtx02].y) );
-
-    double deform = sqrt( SQR(x_u0-x_u0_orig) +
-                          SQR(y_u0-y_u0_orig) );
-
-//    double length = sqrt( SQR(edgs[tri->edg1].a) + SQR(edgs[tri->edg2].a) );
-//    double deform = sqrt( SQR(a_u0 - a_u0_orig) +
-//                          SQR(b_u0 - b_u0_orig) );
-
-    if (deform > length*curvature_limit_)
-    {
-      std::cout << "High curvature: " << length << " " << deform << "\n";
-      invalid_reconstruction_ = true;
-    }
-
-    double a_u1 = 0.5*edgs[tri->edg2].a;
-    double b_u1 = 0.5;
-
-    deform_middle_node(a_u1, b_u1, a_u1, b_u1, 0, edgs[tri->edg1].a, edgs[tri->edg2].a, 0, 1, 0, 0, 1, a_u0, b_u0);
-//    deform_middle_node(a_u1, b_u1, a_u1, b_u1, 0, 0, 1, 0, 1, 1, 0, 1, 0.5, 0);
-
-//    if (edgs[tri->edg1].a - edgs[tri->edg1].a/edgs[tri->edg2].a * a_u0 - b_u1 < 0 && !invalid_reconstruction_)
-//    {
-//      double dist1 = distance(a_u0, b_u0, 0., 1., edgs[tri->edg2].a, 0);
-//      double dist2 = distance(0.5,  0.5,  0., 1., edgs[tri->edg2].a, 0);
-//      double alpha = dist1/(dist1+dist2);
-
-////      if (alpha < 1.0 && alpha > 0.)
-////      {
-////        a_u1 = a_u0 + alpha*(0.5-a_u0);
-////        b_u1 = b_u0 + alpha*(0.5-b_u0);
-////      }
-
-//      if (alpha < 1.0 && alpha > 0.)
-//      {
-//        a_u1 = 0.5*edgs[tri->edg2].a + alpha*(0.5-0.5*edgs[tri->edg2].a);
-//        b_u1 = 0.5*edgs[tri->edg1].a + alpha*(0.5-0.5*edgs[tri->edg1].a);
-//      }
-
-//      a_u1 = a_u0;
-//      b_u1 = b_u0/edgs[tri->edg1].a;
-
-//    }
-
-//    double a_u1 = 0.5*(0.5 + a_u0);
-//    double b_u1 = 0.5*(0.5 + b_u0);
-
-    double x_u1, y_u1;
-    mapping_tri(x_u1, y_u1, n_tri, a_u1, b_u1);
-
-    //     DEBUGGING: check if linear reconstruction works
-//    x_u0 = 0.5*(vtxs[tri->c_vtx01].x+vtxs[tri->c_vtx02].x);
-//    y_u0 = 0.5*(vtxs[tri->c_vtx01].y+vtxs[tri->c_vtx02].y);
-
-//    x_u1 = 0.5*(vtxs[tri->c_vtx01].x+vtxs[tri->vtx2].x);
-//    y_u1 = 0.5*(vtxs[tri->c_vtx01].y+vtxs[tri->vtx2].y);
-
-    vtxs.push_back(vtx2_t(x_u0, y_u0));
-    vtxs.push_back(vtx2_t(x_u1, y_u1));
-
-    int u0 = vtxs.size()-2;
-    int u1 = vtxs.size()-1;
-
-    // new edges
-    edgs.push_back(edg2_t(tri->c_vtx01, u0, tri->c_vtx02));
-    edgs.push_back(edg2_t(tri->c_vtx01, u1, tri->vtx2   ));
-
-    // edges might have changed their addresses
-    edg0 = &edgs[tri->edg0];
-    edg1 = &edgs[tri->edg1];
-    edg2 = &edgs[tri->edg2];
-
-    tri->c_edg0 = edgs.size()-2;
-    tri->c_edg1 = edgs.size()-1;
-
-    // new triangles
-    tris.push_back(tri2_t(tri->vtx0,    tri->c_vtx01, tri->c_vtx02, tri->c_edg0,  edg1->c_edg0, edg2->c_edg0)); tri = &tris[n_tri];
-    tris.push_back(tri2_t(tri->c_vtx01, tri->c_vtx02, tri->vtx2,    edg1->c_edg1, tri->c_edg1,  tri->c_edg0));  tri = &tris[n_tri];
-    tris.push_back(tri2_t(tri->c_vtx01, tri->vtx1,    tri->vtx2,    tri->edg0,    tri->c_edg1,  edg2->c_edg1)); tri = &tris[n_tri];
-
-    tri->c_tri0 = tris.size()-3;
-    tri->c_tri1 = tris.size()-2;
-    tri->c_tri2 = tris.size()-1;
-
-    /* apply rules */
-    c_edg0 = &edgs[tri->c_edg0];
-    c_edg1 = &edgs[tri->c_edg1];
-
-    c_tri0 = &tris[tri->c_tri0];
-    c_tri1 = &tris[tri->c_tri1];
-    c_tri2 = &tris[tri->c_tri2];
-
-    vtx_u0 = &vtxs[u0];
-    vtx_u1 = &vtxs[u1];
-
-    if (action == INTERSECTION || action == ADDITION) c_edg0->p_lsf = cn;
-
-#ifdef CASL_THROWS
-    if (!tri_is_ok(tri->c_tri0) || !tri_is_ok(tri->c_tri1) || !tri_is_ok(tri->c_tri2))
-      throw std::domain_error("[CASL_ERROR]: While splitting a triangle one of child triangles is not consistent.");
-
-    // track the parent
-    c_edg0->p_tri = n_tri;
-    c_edg1->p_tri = n_tri;
-    c_tri0->p_tri = n_tri;
-    c_tri1->p_tri = n_tri;
-    c_tri2->p_tri = n_tri;
-#endif
-
-    switch (action){
-    case INTERSECTION:
-      switch (tri->loc){
-      case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
-      case INS: c_edg0->set(FCE, cn); vtx_u0->set(FCE, cn, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(INS); c_tri1->set(OUT); c_tri2->set(OUT); break;
-        default:
-#ifdef CASL_THROWS
-          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
-#endif
-      } break;
-    case ADDITION:
-      switch (tri->loc){
-      case OUT: c_edg0->set(FCE, cn); vtx_u0->set(FCE, cn, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(INS); c_tri1->set(OUT); c_tri2->set(OUT); break;
-      case INS: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(INS, -1); vtx_u1->set(INS, -1, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
-        default:
-#ifdef CASL_THROWS
-          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
-#endif
-      } break;
-    case COLORATION:
-      switch (tri->loc){
-      case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
-      case INS: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(INS, -1); vtx_u1->set(INS, -1, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
-        default:
-#ifdef CASL_THROWS
-          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
-#endif
-      } break;
-    }
-    break;
+      /* apply rules */
+      switch (action){
+        case INTERSECTION:  tri->set(OUT);    break;
+        case ADDITION:      /* do nothing */  break;
+        case COLORATION:    /* do nothing */  break;
       }
+      break;
 
-  case 2: // (--+)
+    case 1: // (-++)
       {
-    /* split a triangle */
-    tri->is_split = true;
+        /* split a triangle */
+        tri->is_split = true;
 
-    tri->c_vtx02 = edgs[tri->edg1].c_vtx_x;
-    tri->c_vtx12 = edgs[tri->edg0].c_vtx_x;
+        /* new vertices */
+        tri->c_vtx01 = edgs[tri->edg2].c_vtx_x;
+        tri->c_vtx02 = edgs[tri->edg1].c_vtx_x;
 
-    // vertex along interface
-    double a_u1, b_u1;
-    find_middle_node(a_u1, b_u1, 1.-edgs[tri->edg0].a, edgs[tri->edg0].a, 0, edgs[tri->edg1].a, n_tri);
+        // coordinates of new vertices in reference element
+        double abc_v01[] = { edgs[tri->edg2].a, 0. };
+        double abc_v02[] = { 0., edgs[tri->edg1].a };
 
-    if (b_u1 < a_u1*edgs[tri->edg0].a/(1.-edgs[tri->edg0].a))
-    {
-      invalid_reconstruction_ = true;
-      double ab_u1_orig[2] = {.5*(1.-edgs[tri->edg0].a), .5*(edgs[tri->edg0].a + edgs[tri->edg1].a)};
+        /* vertex along interface */
+        double abc_u0_lin[2] = { .5*(abc_v01[0] + abc_v02[0]), .5*(abc_v01[1] + abc_v02[1]) };
+        double abc_u0[2];
+        find_middle_node(abc_u0, abc_v02, abc_v01, n_tri);
 
-      double zeta0 = ab_u1_orig[1] - ab_u1_orig[0]*edgs[tri->edg0].a/(1.-edgs[tri->edg0].a);
-      double zeta1 = b_u1 - a_u1*edgs[tri->edg0].a/(1.-edgs[tri->edg0].a);
-      double ratio = (zeta0-eps_abc_)/(zeta0-zeta1);
+        /* check for an intersection with an auxiliary straight edge */
+        if (check_for_edge_intersections_)
+        {
+          // two points on the edge
+          double *edge_vtx0   = abc_v01;
+          double  edge_vtx1[] = { 0., 1. };
 
-      a_u1 = .5*(1.-edgs[tri->edg0].a) + ratio*(a_u1 - .5*(1.-edgs[tri->edg0].a));
-      b_u1 = .5*(edgs[tri->edg0].a+edgs[tri->edg1].a) + ratio*(b_u1 - .5*(edgs[tri->edg0].a+edgs[tri->edg1].a));
+          // tangent and normal vectors
+          double t[] = { edge_vtx1[0] - edge_vtx0[0], edge_vtx1[1] - edge_vtx0[1] };
+          double n[] = { -t[1], t[0] };
+          double norm = sqrt(SQR(n[0]) + SQR(n[1]));
+          n[0] /= norm; n[1] /= norm;
 
-      std::cout << "Intersecting edges: " << .5*(1.-edgs[tri->edg0].a) << " " << .5*(edgs[tri->edg0].a+edgs[tri->edg1].a) << " " << a_u1 << " " << b_u1 << "\n";
-    }
+          // level-set function for the edge: phi = na*(a-a0) + nb*(b-b0)
+          double dist_to_edge = n[0]*(abc_u0[0]-edge_vtx0[0]) + n[1]*(abc_u0[1]-edge_vtx0[1]);
 
-    if (b_u1 < a_u1*edgs[tri->edg0].a/(1.-edgs[tri->edg0].a))
-    {
-      std::cout << "Intersecting edges: " << .5*(1.-edgs[tri->edg0].a) << " " << .5*(edgs[tri->edg0].a+edgs[tri->edg1].a) << " " << a_u1 << " " << b_u1 << "\n";
-    }
+          if (dist_to_edge < 0)
+          {
+            // set the whole reconstruction for refinement
+            invalid_reconstruction_ = true;
 
-    // DEBUGGING: check if linear reconstruction works
-//    a_u1 = 0.5*(1.-edgs[tri->edg0].a);
-//    b_u1 = 0.5*(edgs[tri->edg1].a+edgs[tri->edg0].a);
+            // bring the midpoint below the edge in case the max level of refinement is reached
+            double dist_to_edge_lin = n[0]*(abc_u0_lin[0]-edge_vtx0[0]) + n[1]*(abc_u0_lin[1]-edge_vtx0[1]);
+            double ratio = (dist_to_edge_lin-eps_abc_)/(dist_to_edge_lin-dist_to_edge);
 
-    double x_u1, y_u1;
-    mapping_tri(x_u1, y_u1, n_tri, a_u1, b_u1);
+            abc_u0[0] = abc_u0_lin[0] + ratio*(abc_u0[0] - abc_u0_lin[0]);
+            abc_u0[1] = abc_u0_lin[1] + ratio*(abc_u0[1] - abc_u0_lin[1]);
+          }
+        }
 
+        /* midpoint of the auxiliary edge */
+        double abc_u1[2] = { 0.5*edgs[tri->edg2].a, 0.5 };
 
-    // check if not to curvy
-    double a_u1_orig = .5*(1.-edgs[tri->edg0].a);
-    double b_u1_orig = .5*(edgs[tri->edg0].a + edgs[tri->edg1].a);
+        if (adjust_auxiliary_midpoint_)
+        {
+          double *quad_node0   = abc_v01;
+          double *quad_node1   = abc_v02;
+          double  quad_node2[] = { 1., 0. };
+          double  quad_node3[] = { 0., 1. };
+          double *quad_node4   = abc_u0;
 
-    double x_u1_orig;
-    double y_u1_orig;
-    mapping_tri(x_u1_orig, y_u1_orig, n_tri, a_u1_orig, b_u1_orig);
+          deform_middle_node(abc_u1, abc_u1, quad_node0, quad_node1, quad_node2, quad_node3, quad_node4);
+        }
 
-    double length = sqrt( SQR(vtxs[tri->c_vtx02].x - vtxs[tri->c_vtx12].x) +
-                          SQR(vtxs[tri->c_vtx02].y - vtxs[tri->c_vtx12].y) );
+        /* map midpoints to physical space */
+        double xyz_u0[2]; mapping_tri(xyz_u0, n_tri, abc_u0);
+        double xyz_u1[2]; mapping_tri(xyz_u1, n_tri, abc_u1);
 
-    double deform = sqrt( SQR(x_u1-x_u1_orig) +
-                          SQR(y_u1-y_u1_orig) );
+        /* check if deformation is not too high */
+        if (check_for_curvature_)
+        {
+          double xyz_u0_lin[2]; mapping_tri(xyz_u0_lin, n_tri, abc_u0_lin);
 
-//    double length = sqrt( SQR(1.-edgs[tri->edg0].a) + SQR(edgs[tri->edg0].a-edgs[tri->edg1].a) );
-//    double deform = sqrt( SQR(a_u1 - a_u1_orig) +
-//                          SQR(b_u1 - b_u1_orig) );
+          double length = sqrt( SQR(vtxs[tri->c_vtx01].x - vtxs[tri->c_vtx02].x) +
+                                SQR(vtxs[tri->c_vtx01].y - vtxs[tri->c_vtx02].y) );
 
-    if (deform > length*curvature_limit_)
-    {
-      std::cout << "High curvature: " << length << " " << deform << "\n";
-      invalid_reconstruction_ = true;
-    }
+          double deform = sqrt( SQR(xyz_u0[0]-xyz_u0_lin[0]) +
+                                SQR(xyz_u0[1]-xyz_u0_lin[1]) );
 
+          if (deform > length*curvature_limit_)
+          {
+            //std::cout << "High curvature: " << length << " " << deform << "\n";
+            invalid_reconstruction_ = true;
+          }
+        }
 
-    double a_u0 = 0.5*(1.-edgs[tri->edg0].a);
-    double b_u0 = 0.5*edgs[tri->edg0].a;
+        vtxs.push_back(vtx2_t(xyz_u0[0], xyz_u0[1]));
+        vtxs.push_back(vtx2_t(xyz_u1[0], xyz_u1[1]));
 
-    deform_middle_node(a_u0, b_u0, a_u0, b_u0,  (1.-edgs[tri->edg0].a),  edgs[tri->edg0].a, 0, edgs[tri->edg1].a, 0, 0, 1, 0, a_u1, b_u1);
+        int u0 = vtxs.size()-2;
+        int u1 = vtxs.size()-1;
 
-//    double a_u0 = 0.5*(0.5+a_u1);
-//    double b_u0 = 0.5*b_u1;
+        // new edges
+        edgs.push_back(edg2_t(tri->c_vtx01, u0, tri->c_vtx02));
+        edgs.push_back(edg2_t(tri->c_vtx01, u1, tri->vtx2   ));
 
-    double x_u0, y_u0;
-    mapping_tri(x_u0, y_u0, n_tri, a_u0, b_u0);
+        // edges might have changed their addresses
+        edg0 = &edgs[tri->edg0];
+        edg1 = &edgs[tri->edg1];
+        edg2 = &edgs[tri->edg2];
 
-    // DEBUGGING: check if linear reconstruction works
-//    x_u0 = 0.5*(vtxs[tri->vtx0].x+vtxs[tri->c_vtx12].x);
-//    y_u0 = 0.5*(vtxs[tri->vtx0].y+vtxs[tri->c_vtx12].y);
+        tri->c_edg0 = edgs.size()-2;
+        tri->c_edg1 = edgs.size()-1;
 
-//    x_u1 = 0.5*(vtxs[tri->c_vtx02].x+vtxs[tri->c_vtx12].x);
-//    y_u1 = 0.5*(vtxs[tri->c_vtx02].y+vtxs[tri->c_vtx12].y);
+        // new triangles
+        tris.push_back(tri2_t(tri->vtx0,    tri->c_vtx01, tri->c_vtx02, tri->c_edg0,  edg1->c_edg0, edg2->c_edg0)); tri = &tris[n_tri];
+        tris.push_back(tri2_t(tri->c_vtx01, tri->c_vtx02, tri->vtx2,    edg1->c_edg1, tri->c_edg1,  tri->c_edg0));  tri = &tris[n_tri];
+        tris.push_back(tri2_t(tri->c_vtx01, tri->vtx1,    tri->vtx2,    tri->edg0,    tri->c_edg1,  edg2->c_edg1)); tri = &tris[n_tri];
 
-    vtxs.push_back(vtx2_t(x_u0, y_u0));
-    vtxs.push_back(vtx2_t(x_u1, y_u1));
+        tri->c_tri0 = tris.size()-3;
+        tri->c_tri1 = tris.size()-2;
+        tri->c_tri2 = tris.size()-1;
 
-    int u0 = vtxs.size()-2;
-    int u1 = vtxs.size()-1;
+        /* apply rules */
+        c_edg0 = &edgs[tri->c_edg0];
+        c_edg1 = &edgs[tri->c_edg1];
 
-    // create new edges
-    edgs.push_back(edg2_t(tri->vtx0,    u0, tri->c_vtx12));
-    edgs.push_back(edg2_t(tri->c_vtx02, u1, tri->c_vtx12));
+        c_tri0 = &tris[tri->c_tri0];
+        c_tri1 = &tris[tri->c_tri1];
+        c_tri2 = &tris[tri->c_tri2];
 
-    // edges might have changed their addresses
-    edg0 = &edgs[tri->edg0];
-    edg1 = &edgs[tri->edg1];
-    edg2 = &edgs[tri->edg2];
+        vtx_u0 = &vtxs[u0];
+        vtx_u1 = &vtxs[u1];
 
-    tri->c_edg0 = edgs.size()-2;
-    tri->c_edg1 = edgs.size()-1;
-
-    tris.push_back(tri2_t(tri->vtx0,    tri->vtx1,    tri->c_vtx12, edg0->c_edg0, tri->c_edg0,  tri->edg2   )); tri = &tris[n_tri];
-    tris.push_back(tri2_t(tri->vtx0,    tri->c_vtx02, tri->c_vtx12, tri->c_edg1,  tri->c_edg0,  edg1->c_edg0)); tri = &tris[n_tri];
-    tris.push_back(tri2_t(tri->c_vtx02, tri->c_vtx12, tri->vtx2,    edg0->c_edg1, edg1->c_edg1, tri->c_edg1 )); tri = &tris[n_tri];
-
-    tri->c_tri0 = tris.size()-3;
-    tri->c_tri1 = tris.size()-2;
-    tri->c_tri2 = tris.size()-1;
-
-    /* apply rules */
-    c_edg0 = &edgs[tri->c_edg0];
-    c_edg1 = &edgs[tri->c_edg1];
-
-    c_tri0 = &tris[tri->c_tri0];
-    c_tri1 = &tris[tri->c_tri1];
-    c_tri2 = &tris[tri->c_tri2];
-
-    vtx_u0 = &vtxs[u0];
-    vtx_u1 = &vtxs[u1];
-
-    if (action == INTERSECTION || action == ADDITION) c_edg1->p_lsf = cn;
+        if (action == INTERSECTION || action == ADDITION) c_edg0->p_lsf = cn;
 
 #ifdef CASL_THROWS
-    if (!tri_is_ok(tri->c_tri0) || !tri_is_ok(tri->c_tri1) || !tri_is_ok(tri->c_tri2))
-      throw std::domain_error("[CASL_ERROR]: While splitting a triangle one of child triangles is not consistent.");
+        if (!tri_is_ok(tri->c_tri0) || !tri_is_ok(tri->c_tri1) || !tri_is_ok(tri->c_tri2))
+          throw std::domain_error("[CASL_ERROR]: While splitting a triangle one of child triangles is not consistent.");
 
-    // track the parent
-    c_edg0->p_tri = n_tri;
-    c_edg1->p_tri = n_tri;
-    c_tri0->p_tri = n_tri;
-    c_tri1->p_tri = n_tri;
-    c_tri2->p_tri = n_tri;
+        // track the parent
+        c_edg0->p_tri = n_tri;
+        c_edg1->p_tri = n_tri;
+        c_tri0->p_tri = n_tri;
+        c_tri1->p_tri = n_tri;
+        c_tri2->p_tri = n_tri;
 #endif
 
-    switch (action){
-    case INTERSECTION:
-      switch (tri->loc){
-      case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
-      case INS: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(FCE, cn); vtx_u1->set(FCE, cn, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(OUT); break;
-        default:
+        switch (action){
+          case INTERSECTION:
+            switch (tri->loc){
+              case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
+              case INS: c_edg0->set(FCE, cn); vtx_u0->set(FCE, cn, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(INS); c_tri1->set(OUT); c_tri2->set(OUT); break;
+              default:
 #ifdef CASL_THROWS
-          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+                throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
-      } break;
-    case ADDITION:
-      switch (tri->loc){
-      case OUT: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(FCE, cn); vtx_u1->set(FCE, cn, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(OUT); break;
-      case INS: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(INS, -1); vtx_u1->set(INS, -1, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
-        default:
+            } break;
+          case ADDITION:
+            switch (tri->loc){
+              case OUT: c_edg0->set(FCE, cn); vtx_u0->set(FCE, cn, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(INS); c_tri1->set(OUT); c_tri2->set(OUT); break;
+              case INS: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(INS, -1); vtx_u1->set(INS, -1, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
+              default:
 #ifdef CASL_THROWS
-          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+                throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
-      } break;
-    case COLORATION:
-      switch (tri->loc){
-      case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
-      case INS: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(INS, -1); vtx_u1->set(INS, -1, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
-        default:
+            } break;
+          case COLORATION:
+            switch (tri->loc){
+              case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
+              case INS: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(INS, -1); vtx_u1->set(INS, -1, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
+              default:
 #ifdef CASL_THROWS
-          throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+                throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
-      } break;
-    }
-    break;
+            } break;
+        }
+        break;
       }
 
-  case 3: // (---)
-    /* split a triangle */
-    // no need to split
+    case 2: // (--+)
+      {
+        /* split a triangle */
+        tri->is_split = true;
 
-    /* apply rules */
-    switch (action){
-    case INTERSECTION:  /* do nothing */  break;
-    case ADDITION:      tri->set(INS);    break;
-    case COLORATION:                      break;
-    }
-    break;
+        /* new vertices */
+        tri->c_vtx02 = edgs[tri->edg1].c_vtx_x;
+        tri->c_vtx12 = edgs[tri->edg0].c_vtx_x;
+
+        // coordinates of new vertices in reference element
+        double abc_v02[] = { 0.,                   edgs[tri->edg1].a };
+        double abc_v12[] = { 1.-edgs[tri->edg0].a, edgs[tri->edg0].a };
+
+        /* vertex along interface */
+        double abc_u1_lin[2] = { .5*(abc_v02[0] + abc_v12[0]), .5*(abc_v02[1] + abc_v12[1]) };
+        double abc_u1[2];
+        find_middle_node(abc_u1, abc_v12, abc_v02, n_tri);
+
+        /* check for an intersection with an auxiliary straight edge */
+        if (check_for_edge_intersections_)
+        {
+          // two points on the edge
+          double edge_vtx0[2] = { 0., 0.};
+          double edge_vtx1[2] = { abc_v12[0], abc_v12[1] };
+
+          // tangent and normal vectors
+          double t[] = { edge_vtx1[0] - edge_vtx0[0], edge_vtx1[1] - edge_vtx0[1] };
+          double n[] = { -t[1], t[0] };
+          double norm = sqrt(SQR(n[0]) + SQR(n[1]));
+          n[0] /= norm; n[1] /= norm;
+
+          // level-set function for the edge: phi = na*(a-a0) + nb*(b-b0)
+          double dist_to_edge = n[0]*(abc_u1[0]-edge_vtx0[0]) + n[1]*(abc_u1[1]-edge_vtx0[1]);
+
+          if (dist_to_edge < 0)
+          {
+            // set the whole reconstruction for refinement
+            invalid_reconstruction_ = true;
+
+            // bring the midpoint below the edge in case the max level of refinement is reached
+            double dist_to_edge_lin = n[0]*(abc_u1_lin[0]-edge_vtx0[0]) + n[1]*(abc_u1_lin[1]-edge_vtx0[1]);
+            double ratio = (dist_to_edge_lin-eps_abc_)/(dist_to_edge_lin-dist_to_edge);
+
+            abc_u1[0] = abc_u1_lin[0] + ratio*(abc_u1[0] - abc_u1_lin[0]);
+            abc_u1[1] = abc_u1_lin[1] + ratio*(abc_u1[1] - abc_u1_lin[1]);
+          }
+        }
+
+        /* midpoint of the auxiliary edge */
+        double abc_u0[] = { 0.5*(1.-edgs[tri->edg0].a), 0.5*edgs[tri->edg0].a };
+
+        if (adjust_auxiliary_midpoint_)
+        {
+          double quad_node0[] = { abc_v12[0], abc_v12[1] };
+          double quad_node1[] = { abc_v02[0], abc_v02[1] };
+          double quad_node2[] = { 0., 0. };
+          double quad_node3[] = { 1., 0. };
+          double quad_node4[] = { abc_u1[0], abc_u1[1] };
+
+          deform_middle_node(abc_u0, abc_u0, quad_node0, quad_node1, quad_node2, quad_node3, quad_node4);
+        }
+
+        /* map midpoints to physical space */
+        double xyz_u0[2]; mapping_tri(xyz_u0, n_tri, abc_u0);
+        double xyz_u1[2]; mapping_tri(xyz_u1, n_tri, abc_u1);
+
+        /* check if deformation is not too high */
+        if (check_for_curvature_)
+        {
+          double xyz_u1_lin[2]; mapping_tri(xyz_u1_lin, n_tri, abc_u1_lin);
+
+          double length = sqrt( SQR(vtxs[tri->c_vtx02].x - vtxs[tri->c_vtx12].x) +
+                                SQR(vtxs[tri->c_vtx02].y - vtxs[tri->c_vtx12].y) );
+
+          double deform = sqrt( SQR(xyz_u1[0]-xyz_u1_lin[0]) +
+                                SQR(xyz_u1[1]-xyz_u1_lin[1]) );
+
+          if (deform > length*curvature_limit_)
+          {
+            //std::cout << "High curvature: " << length << " " << deform << "\n";
+            invalid_reconstruction_ = true;
+          }
+        }
+
+        vtxs.push_back(vtx2_t(xyz_u0[0], xyz_u0[1]));
+        vtxs.push_back(vtx2_t(xyz_u1[0], xyz_u1[1]));
+
+        int u0 = vtxs.size()-2;
+        int u1 = vtxs.size()-1;
+
+        // create new edges
+        edgs.push_back(edg2_t(tri->vtx0,    u0, tri->c_vtx12));
+        edgs.push_back(edg2_t(tri->c_vtx02, u1, tri->c_vtx12));
+
+        // edges might have changed their addresses
+        edg0 = &edgs[tri->edg0];
+        edg1 = &edgs[tri->edg1];
+        edg2 = &edgs[tri->edg2];
+
+        tri->c_edg0 = edgs.size()-2;
+        tri->c_edg1 = edgs.size()-1;
+
+        tris.push_back(tri2_t(tri->vtx0,    tri->vtx1,    tri->c_vtx12, edg0->c_edg0, tri->c_edg0,  tri->edg2   )); tri = &tris[n_tri];
+        tris.push_back(tri2_t(tri->vtx0,    tri->c_vtx02, tri->c_vtx12, tri->c_edg1,  tri->c_edg0,  edg1->c_edg0)); tri = &tris[n_tri];
+        tris.push_back(tri2_t(tri->c_vtx02, tri->c_vtx12, tri->vtx2,    edg0->c_edg1, edg1->c_edg1, tri->c_edg1 )); tri = &tris[n_tri];
+
+        tri->c_tri0 = tris.size()-3;
+        tri->c_tri1 = tris.size()-2;
+        tri->c_tri2 = tris.size()-1;
+
+        /* apply rules */
+        c_edg0 = &edgs[tri->c_edg0];
+        c_edg1 = &edgs[tri->c_edg1];
+
+        c_tri0 = &tris[tri->c_tri0];
+        c_tri1 = &tris[tri->c_tri1];
+        c_tri2 = &tris[tri->c_tri2];
+
+        vtx_u0 = &vtxs[u0];
+        vtx_u1 = &vtxs[u1];
+
+        if (action == INTERSECTION || action == ADDITION) c_edg1->p_lsf = cn;
+
+#ifdef CASL_THROWS
+        if (!tri_is_ok(tri->c_tri0) || !tri_is_ok(tri->c_tri1) || !tri_is_ok(tri->c_tri2))
+          throw std::domain_error("[CASL_ERROR]: While splitting a triangle one of child triangles is not consistent.");
+
+        // track the parent
+        c_edg0->p_tri = n_tri;
+        c_edg1->p_tri = n_tri;
+        c_tri0->p_tri = n_tri;
+        c_tri1->p_tri = n_tri;
+        c_tri2->p_tri = n_tri;
+#endif
+
+        switch (action){
+          case INTERSECTION:
+            switch (tri->loc){
+              case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
+              case INS: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(FCE, cn); vtx_u1->set(FCE, cn, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(OUT); break;
+              default:
+#ifdef CASL_THROWS
+                throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
+            } break;
+          case ADDITION:
+            switch (tri->loc){
+              case OUT: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(FCE, cn); vtx_u1->set(FCE, cn, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(OUT); break;
+              case INS: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(INS, -1); vtx_u1->set(INS, -1, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
+              default:
+#ifdef CASL_THROWS
+                throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
+            } break;
+          case COLORATION:
+            switch (tri->loc){
+              case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
+              case INS: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(INS, -1); vtx_u1->set(INS, -1, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(INS); break;
+              default:
+#ifdef CASL_THROWS
+                throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
+#endif
+            } break;
+        }
+        break;
+      }
+
+    case 3: // (---)
+      /* split a triangle */
+      // no need to split
+
+      /* apply rules */
+      switch (action){
+        case INTERSECTION:  /* do nothing */  break;
+        case ADDITION:      tri->set(INS);    break;
+        case COLORATION:                      break;
+      }
+      break;
   }
 }
 
@@ -1155,13 +1108,14 @@ double simplex2_mls_quadratic_t::find_intersection_quadratic(int e)
   return .5+x;
 }
 
-void simplex2_mls_quadratic_t::find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri)
+//void simplex2_mls_quadratic_t::find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri)
+void simplex2_mls_quadratic_t::find_middle_node(double *xyz_out, double *xyz0, double *xyz1, int n_tri)
 {
   tri2_t *tri = &tris[n_tri];
 
   // compute normal
-  double tx = x1-x0;
-  double ty = y1-y0;
+  double tx = xyz1[0]-xyz0[0];
+  double ty = xyz1[1]-xyz0[1];
   double norm = sqrt(tx*tx+ty*ty);
   tx /= norm;
   ty /= norm;
@@ -1183,12 +1137,12 @@ void simplex2_mls_quadratic_t::find_middle_node(double &x_out, double &y_out, do
 //  for (short i = 0; i < nodes_per_tri_; ++i)
 //    f[i] = vtxs[nv[i]].value;
 
-  double a = 0.5*(x0+x1);
-  double b = 0.5*(y0+y1);
+  double a = 0.5*(xyz0[0]+xyz1[0]);
+  double b = 0.5*(xyz0[1]+xyz1[1]);
 
-  double N[nodes_per_tri_]  = {(1.-a-b)*(1.-2.*a-2.*b),  a*(2.*a-1.),  b*(2.*b-1.),  4.*a*(1.-a-b),  4.*a*b, 4.*b*(1.-a-b)};
-  double Na[nodes_per_tri_] = {-3.+4.*a+4.*b,            4.*a-1.,      0,            4.-8.*a-4.*b,   4.*b,   -4.*b};
-  double Nb[nodes_per_tri_] = {-3.+4.*a+4.*b,            0,            4.*b-1.,       -4.*a,          4.*a,   4.-4.*a-8.*b};
+  double N[nodes_per_tri_]   = {(1.-a-b)*(1.-2.*a-2.*b),  a*(2.*a-1.),  b*(2.*b-1.),  4.*a*(1.-a-b),  4.*a*b, 4.*b*(1.-a-b)};
+  double Na[nodes_per_tri_]  = {-3.+4.*a+4.*b,            4.*a-1.,      0,            4.-8.*a-4.*b,   4.*b,   -4.*b};
+  double Nb[nodes_per_tri_]  = {-3.+4.*a+4.*b,            0,            4.*b-1.,       -4.*a,          4.*a,   4.-4.*a-8.*b};
   double Naa[nodes_per_tri_] = {4,4,0,-8,0,0};
   double Nab[nodes_per_tri_] = {4,0,0,-4,4,-4};
   double Nbb[nodes_per_tri_] = {4,0,4,0,0,-8};
@@ -1223,52 +1177,54 @@ void simplex2_mls_quadratic_t::find_middle_node(double &x_out, double &y_out, do
     else alpha = alpha1;
   }
 
-  x_out = 0.5*(x0+x1) + alpha*nx;
-  y_out = 0.5*(y0+y1) + alpha*ny;
+  xyz_out[0] = a + alpha*nx;
+  xyz_out[1] = b + alpha*ny;
 
-  while (x_out + y_out > 1. || x_out < 0. || y_out < 0.)
+  while (xyz_out[0] + xyz_out[1] > 1. || xyz_out[0] < 0. || xyz_out[1] < 0.)
   {
     invalid_reconstruction_ = true;
-    if (x_out < 0.) alpha = (.5*(x0+x1)-eps_abc_)/(.5*(x0+x1)-x_out)*alpha;
-    else if (y_out < 0.) alpha = (.5*(y0+y1)-eps_abc_)/(.5*(y0+y1)-y_out)*alpha;
-    else if (1.-x_out-y_out < 0.) alpha = (1.-.5*(x0+x1)-.5*(y0+y1)-eps_abc_)/(1. -.5*(x0+x1)-.5*(y0+y1)-(1.-x_out-y_out))*alpha;
+    if      (xyz_out[0] < 0.)               alpha = (a-eps_abc_)/(a-xyz_out[0])*alpha;
+    else if (xyz_out[1] < 0.)               alpha = (b-eps_abc_)/(b-xyz_out[1])*alpha;
+    else if (1.-xyz_out[0]-xyz_out[1] < 0.) alpha = (1.-a-b-eps_abc_)/(1. -a-b-(1.-xyz_out[0]-xyz_out[1]))*alpha;
 
-    x_out = 0.5*(x0+x1) + alpha*nx;
-    y_out = 0.5*(y0+y1) + alpha*ny;
+    xyz_out[0] = a + alpha*nx;
+    xyz_out[1] = b + alpha*ny;
 
 //    std::cout << "Here!\n";
 //    std::cout << "Warning: point is outside of a triangle! (" << .5*(x0+x1) << " " << .5*(y0+y1) << " " << x_out << " " << y_out << ")\n";
 
   }
-
-//  if (y_out > 1.-x_out || x_out < 0. || y_out < 0.) {
-//    std::cout << "Warning: point is outside of a triangle! (" << .5*(x0+x1) << " " << .5*(y0+y1) << " " << x_out << " " << y_out << ")\n";
-//  }
-
 }
 
-void simplex2_mls_quadratic_t::deform_middle_node(double &x_out, double &y_out,
-                                                  double x, double y,
-                                                  double x0, double y0,
-                                                  double x1, double y1,
-                                                  double x2, double y2,
-                                                  double x3, double y3,
-                                                  double x01, double y01)
+//void simplex2_mls_quadratic_t::deform_middle_node(double &x_out, double &y_out,
+//                                                  double x, double y,
+//                                                  double x0, double y0,
+//                                                  double x1, double y1,
+//                                                  double x2, double y2,
+//                                                  double x3, double y3,
+//                                                  double x01, double y01)
+void simplex2_mls_quadratic_t::deform_middle_node(double *xyz_out,
+                                                  double *xyz_in,
+                                                  double *xyz0,
+                                                  double *xyz1,
+                                                  double *xyz2,
+                                                  double *xyz3,
+                                                  double *xyz01)
 {
 
-  double Xa  = -x0+x1;
-  double Xb  = -x0+x3;
-  double Xab = x0-x1+x2-x3;
+  double Xa  = -xyz0[0] + xyz1[0];
+  double Xb  = -xyz0[0] + xyz3[0];
+  double Xab =  xyz0[0] - xyz1[0] + xyz2[0] - xyz3[0];
 
-  double Ya  = -y0+y1;
-  double Yb  = -y0+y3;
-  double Yab = y0-y1+y2-y3;
+  double Ya  = -xyz0[1] + xyz1[1];
+  double Yb  = -xyz0[1] + xyz3[1];
+  double Yab =  xyz0[1] - xyz1[1] + xyz2[1] - xyz3[1];
 
   // solve quadratic equation
   // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0
   double c2 = Xb*Yab - Yb*Xab;
-  double c1 = Ya*Xb - Xa*Yb + Xab*(y-y0) - Yab*(x-x0);
-  double c0 = Xa*(y-y0)-Ya*(x-x0);
+  double c1 = Ya*Xb - Xa*Yb + Xab*(xyz_in[1]-xyz0[1]) - Yab*(xyz_in[0]-xyz0[0]);
+  double c0 = Xa*(xyz_in[1]-xyz0[1])-Ya*(xyz_in[0]-xyz0[0]);
 
   double b;
 
@@ -1281,7 +1237,7 @@ void simplex2_mls_quadratic_t::deform_middle_node(double &x_out, double &y_out,
     double b1 = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
     double b2 = (-2.*c0)/(c1 + sqrt(c1*c1-4.*c2*c0));
 
-    if (b1 >= 0. && b1 <= 1.) b = b1;
+    if      (b1 >= 0. && b1 <= 1.) b = b1;
     else if (b2 >= 0. && b2 <= 1.) b = b2;
     else
     {
@@ -1290,11 +1246,10 @@ void simplex2_mls_quadratic_t::deform_middle_node(double &x_out, double &y_out,
     }
   }
 
-  double a = (x-x0-b*Xb)/(Xa+b*Xab);
+  double a = (xyz_in[0]-xyz0[0]-b*Xb)/(Xa+b*Xab);
 
-  x_out = x0 + a*Xa + b*Xb + a*b*Xab + (1.-b)*((1.-a)*x0 + a*x1)*2.*(1.-a)*a*(-x0+2.*x01-x1);
-  y_out = y0 + a*Ya + b*Yb + a*b*Yab + (1.-b)*((1.-a)*y0 + a*y1)*2.*(1.-a)*a*(-y0+2.*y01-y1);
-
+  xyz_out[0] = xyz0[0] + a*Xa + b*Xb + a*b*Xab + (1.-b)*((1.-a)*xyz0[0] + a*xyz1[0])*2.*(1.-a)*a*(-xyz0[0]+2.*xyz01[0]-xyz1[0]);
+  xyz_out[1] = xyz0[1] + a*Ya + b*Yb + a*b*Yab + (1.-b)*((1.-a)*xyz0[1] + a*xyz1[1])*2.*(1.-a)*a*(-xyz0[1]+2.*xyz01[1]-xyz1[1]);
 }
 
 //void simplex2_mls_quadratic_t::find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri)
@@ -1459,10 +1414,11 @@ void simplex2_mls_quadratic_t::refine_tri(int n_tri)
   if (need_swap(tri->vtx0, tri->vtx1)) {swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1);}
 
   /* Create 3 new vertices */
-  double x, y;
-  mapping_tri(x, y, n_tri, .25, .25); vtxs.push_back(vtx2_t(x, y));
-  mapping_tri(x, y, n_tri, .50, .25); vtxs.push_back(vtx2_t(x, y));
-  mapping_tri(x, y, n_tri, .25, .50); vtxs.push_back(vtx2_t(x, y));
+  double xyz[2];
+  double abc[2];
+  abc[0] = .25; abc[1] = .25; mapping_tri(xyz, n_tri, abc); vtxs.push_back(vtx2_t(xyz[0], xyz[1]));
+  abc[0] = .50; abc[1] = .25; mapping_tri(xyz, n_tri, abc); vtxs.push_back(vtx2_t(xyz[0], xyz[1]));
+  abc[0] = .25; abc[1] = .50; mapping_tri(xyz, n_tri, abc); vtxs.push_back(vtx2_t(xyz[0], xyz[1]));
 
   int n_u0 = vtxs.size()-3;
   int n_u1 = vtxs.size()-2;
@@ -1599,12 +1555,12 @@ double simplex2_mls_quadratic_t::integrate_over_domain(CF_2 &f)
   double result = 0.0;
   double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
   double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
-  double x,y;
+  double xyz[3];
 
   // quadrature points, degree 2
-  double a0 = .0, b0 = .5;
-  double a1 = .5, b1 = .0;
-  double a2 = .5, b2 = .5;
+  double abc0[] = {.0, .5};
+  double abc1[] = {.5, .0};
+  double abc2[] = {.5, .5};
 
   /* integrate over triangles */
   for (unsigned int i = 0; i < tris.size(); i++)
@@ -1613,14 +1569,14 @@ double simplex2_mls_quadratic_t::integrate_over_domain(CF_2 &f)
     if (!t->is_split && t->loc == INS)
     {
       // map quadrature points into real space and interpolate integrand
-      mapping_tri(x, y, i, a0, b0); f0 = f( x, y );
-      mapping_tri(x, y, i, a1, b1); f1 = f( x, y );
-      mapping_tri(x, y, i, a2, b2); f2 = f( x, y );
+      mapping_tri(xyz, i, abc0); f0 = f.value( xyz );
+      mapping_tri(xyz, i, abc1); f1 = f.value( xyz );
+      mapping_tri(xyz, i, abc2); f2 = f.value( xyz );
 
       // scale weights by Jacobian
-      w0 = jacobian_tri(i, a0, b0);
-      w1 = jacobian_tri(i, a1, b1);
-      w2 = jacobian_tri(i, a2, b2);
+      w0 = jacobian_tri(i, abc0[0], abc0[1]);
+      w1 = jacobian_tri(i, abc1[0], abc1[1]);
+      w2 = jacobian_tri(i, abc2[0], abc2[1]);
 
       result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
     }
@@ -1988,10 +1944,13 @@ void simplex2_mls_quadratic_t::mapping_edg(double &x, double &y, int n_edg, doub
   y = vtxs[edg->vtx0].y * N0 + vtxs[edg->vtx1].y * N1 + vtxs[edg->vtx2].y * N2;
 }
 
-void simplex2_mls_quadratic_t::mapping_tri(double &x, double &y, int n_tri, double a, double b)
+//void simplex2_mls_quadratic_t::mapping_tri(double &x, double &y, int n_tri, double a, double b)
+void simplex2_mls_quadratic_t::mapping_tri(double *xyz, int n_tri, double *abc)
 {
   tri2_t *tri = &tris[n_tri];
 
+  double a = abc[0];
+  double b = abc[1];
   double N[nodes_per_tri_]  = {(1.-a-b)*(1.-2.*a-2.*b),  a*(2.*a-1.),  b*(2.*b-1.),  4.*a*(1.-a-b),  4.*a*b, 4.*b*(1.-a-b)};
 
   int nv0 = tri->vtx0;
@@ -2001,8 +1960,8 @@ void simplex2_mls_quadratic_t::mapping_tri(double &x, double &y, int n_tri, doub
   int nv4 = edgs[tri->edg0].vtx1;
   int nv5 = edgs[tri->edg1].vtx1;
 
-  x = vtxs[nv0].x * N[0] + vtxs[nv1].x * N[1] + vtxs[nv2].x * N[2] + vtxs[nv3].x * N[3] + vtxs[nv4].x * N[4] + vtxs[nv5].x * N[5];
-  y = vtxs[nv0].y * N[0] + vtxs[nv1].y * N[1] + vtxs[nv2].y * N[2] + vtxs[nv3].y * N[3] + vtxs[nv4].y * N[4] + vtxs[nv5].y * N[5];
+  xyz[0] = vtxs[nv0].x * N[0] + vtxs[nv1].x * N[1] + vtxs[nv2].x * N[2] + vtxs[nv3].x * N[3] + vtxs[nv4].x * N[4] + vtxs[nv5].x * N[5];
+  xyz[1] = vtxs[nv0].y * N[0] + vtxs[nv1].y * N[1] + vtxs[nv2].y * N[2] + vtxs[nv3].y * N[3] + vtxs[nv4].y * N[4] + vtxs[nv5].y * N[5];
 }
 
 
