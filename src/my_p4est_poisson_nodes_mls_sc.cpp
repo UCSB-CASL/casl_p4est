@@ -1309,29 +1309,51 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system_(bool setup_matrix, bo
         for (short i = 1; i < fv_nz; ++i)
           fv_z[i] = fv_z[i-1] + fv_dz;
 #endif
+//        // sample level-set function at cube nodes and check if crossed
+//        for (short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
+//        {
+//          bool is_one_positive = false;
+//          bool is_one_negative = false;
+
+//#ifdef P4_TO_P8
+//          for (short k = 0; k < fv_nz; ++k)
+//#endif
+//            for (short j = 0; j < fv_ny; ++j)
+//              for (short i = 0; i < fv_nx; ++i)
+//              {
+//#ifdef P4_TO_P8
+//                int idx = k*fv_nx*fv_ny + j*fv_nx + i;
+//                phi_fv[idx] = phi_interp_local[phi_idx]->interpolate(fv_x[i], fv_y[j], fv_z[k]);
+//#else
+//                int idx = j*fv_nx + i;
+//                //              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
+//                phi_fv[idx] = phi_interp_local[phi_idx]->interpolate(fv_x[i], fv_y[j]);
+//#endif
+//                is_one_positive = is_one_positive || phi_fv[idx] > 0;
+//                is_one_negative = is_one_negative || phi_fv[idx] < 0;
+//              }
+
+//          if (is_one_negative && is_one_positive)
+//          {
+//            if (bc_interface_type_->at(phi_idx) == DIRICHLET) is_ngbd_crossed_dirichlet = true;
+//            if (bc_interface_type_->at(phi_idx) == NEUMANN)   is_ngbd_crossed_neumann   = true;
+//            if (bc_interface_type_->at(phi_idx) == ROBIN)     is_ngbd_crossed_neumann   = true;
+//          }
+//        }
+
         // sample level-set function at cube nodes and check if crossed
+        get_all_neighbors_(n, neighbors, neighbors_exist);
         for (short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
         {
           bool is_one_positive = false;
           bool is_one_negative = false;
 
-#ifdef P4_TO_P8
-          for (short k = 0; k < fv_nz; ++k)
-#endif
-            for (short j = 0; j < fv_ny; ++j)
-              for (short i = 0; i < fv_nx; ++i)
-              {
-#ifdef P4_TO_P8
-                int idx = k*fv_nx*fv_ny + j*fv_nx + i;
-                phi_fv[idx] = phi_interp_local[phi_idx]->interpolate(fv_x[i], fv_y[j], fv_z[k]);
-#else
-                int idx = j*fv_nx + i;
-                //              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
-                phi_fv[idx] = phi_interp_local[phi_idx]->interpolate(fv_x[i], fv_y[j]);
-#endif
-                is_one_positive = is_one_positive || phi_fv[idx] > 0;
-                is_one_negative = is_one_negative || phi_fv[idx] < 0;
-              }
+          for (short i = 0; i < num_neighbors_max_; ++i)
+            if (neighbors_exist[i])
+            {
+              is_one_positive = is_one_positive || phi_p[phi_idx][neighbors[i]] > 0;
+              is_one_negative = is_one_negative || phi_p[phi_idx][neighbors[i]] < 0;
+            }
 
           if (is_one_negative && is_one_positive)
           {
@@ -3804,28 +3826,52 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
         for (short i = 1; i < fv_nz; ++i)
           fv_z[i] = fv_z[i-1] + fv_dz;
 #endif
+//        // sample level-set function at cube nodes and check if crossed
+//        for (short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
+//        {
+//          bool is_one_positive = false;
+//          bool is_one_negative = false;
+
+//#ifdef P4_TO_P8
+//          for (short k = 0; k < fv_nz; ++k)
+//#endif
+//            for (short j = 0; j < fv_ny; ++j)
+//              for (short i = 0; i < fv_nx; ++i)
+//              {
+//#ifdef P4_TO_P8
+//                int idx = k*fv_nx*fv_ny + j*fv_nx + i;
+//                phi_fv[idx] = phi_interp_local[phi_idx]->interpolate(fv_x[i], fv_y[j], fv_z[k]);
+//#else
+//                int idx = j*fv_nx + i;
+//                phi_fv[idx] = phi_interp_local[phi_idx]->interpolate(fv_x[i], fv_y[j]);
+//#endif
+//                is_one_positive = is_one_positive || phi_fv[idx] > 0;
+//                is_one_negative = is_one_negative || phi_fv[idx] < 0;
+//              }
+
+//          if (is_one_negative && is_one_positive)
+//          {
+//            if (bc_interface_type_->at(phi_idx) == DIRICHLET) is_ngbd_crossed_dirichlet = true;
+//            if (bc_interface_type_->at(phi_idx) == NEUMANN)   is_ngbd_crossed_neumann   = true;
+//            if (bc_interface_type_->at(phi_idx) == ROBIN)     is_ngbd_crossed_neumann   = true;
+//          }
+//        }
+
         // sample level-set function at cube nodes and check if crossed
+        bool neighbors_exist[num_neighbors_max_];
+        p4est_locidx_t neighbors[num_neighbors_max_];
+        get_all_neighbors_(n, neighbors, neighbors_exist);
         for (short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
         {
           bool is_one_positive = false;
           bool is_one_negative = false;
 
-#ifdef P4_TO_P8
-          for (short k = 0; k < fv_nz; ++k)
-#endif
-            for (short j = 0; j < fv_ny; ++j)
-              for (short i = 0; i < fv_nx; ++i)
-              {
-#ifdef P4_TO_P8
-                int idx = k*fv_nx*fv_ny + j*fv_nx + i;
-                phi_fv[idx] = phi_interp_local[phi_idx]->interpolate(fv_x[i], fv_y[j], fv_z[k]);
-#else
-                int idx = j*fv_nx + i;
-                phi_fv[idx] = phi_interp_local[phi_idx]->interpolate(fv_x[i], fv_y[j]);
-#endif
-                is_one_positive = is_one_positive || phi_fv[idx] > 0;
-                is_one_negative = is_one_negative || phi_fv[idx] < 0;
-              }
+          for (short i = 0; i < num_neighbors_max_; ++i)
+            if (neighbors_exist[i])
+            {
+              is_one_positive = is_one_positive || phi_p[phi_idx][neighbors[i]] > 0;
+              is_one_negative = is_one_negative || phi_p[phi_idx][neighbors[i]] < 0;
+            }
 
           if (is_one_negative && is_one_positive)
           {

@@ -26,9 +26,43 @@
  *
  */
 
-#define NUM_TETS 6
-// Tetrahedron #0
+const int num_faces = 12;
+const double fp[num_faces][6] = { { 0,  2,  8,  1,  5,  4  },
+                                  { 0,  6,  8,  3,  7,  4  },
+                                  { 18, 20, 26, 19, 23, 22 },
+                                  { 18, 24, 26, 21, 25, 22 },
+                                  { 0,  6,  24, 3,  15, 12 },
+                                  { 0,  18, 24, 9,  21, 12 },
+                                  { 2,  8,  26, 5,  17, 14 },
+                                  { 2,  20, 26, 11, 23, 14 },
+                                  { 0,  2,  20, 1,  11, 10 },
+                                  { 0,  18, 20, 9,  19, 10 },
+                                  { 6,  8,  26, 7,  17, 16 },
+                                  { 6,  24, 26, 15, 25, 16 } };
+const int num_edges = 12;
+const double ep[num_edges][3] = { { 0,  1,  2  },
+                                  { 6,  7,  8  },
+                                  { 18, 19, 20 },
+                                  { 24, 25, 26 },
+                                  { 0,  3,  6  },
+                                  { 2,  5,  8  },
+                                  { 18, 21, 24 },
+                                  { 20, 23, 26 },
+                                  { 0,  9,  18 },
+                                  { 2,  11, 20 },
+                                  { 6,  15, 24 },
+                                  { 8,  17, 26 } };
+const int num_tetrs = 6;
+const double tp[num_tetrs][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
+                                   { 0, 8,  6,  26, 4,  7,  3,  13, 17, 16},
+                                   { 0, 20, 2,  26, 10, 11, 1,  13, 23, 14},
+                                   { 0, 6,  24, 26, 3,  15, 12, 13, 16, 25},
+                                   { 0, 18, 20, 26, 9,  19, 10, 13, 22, 23},
+                                   { 0, 24, 18, 26, 12, 21, 9,  13, 25, 22} };
 
+#define NUM_TETS 6
+
+// Tetrahedron #0
 /*
  *             o-----------o-----------o
  *            /|          /|          /|
@@ -253,8 +287,10 @@ class cube3_mls_quadratic_t
 public:
   const static int n_nodes = 27;
   const static int n_nodes_simplex = 10;
+  const static int n_nodes_dir = 3;
+  const double lip = 1.;
 
-  double  x0, x1, y0, y1, z0, z1;
+  double  x0, x1, y0, y1, z0, z1, diag;
   loc_t   loc;
   int     num_of_lsfs;
 //  bool    use_linear;
@@ -262,7 +298,10 @@ public:
   std::vector<simplex3_mls_quadratic_t> simplex;
 
   cube3_mls_quadratic_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
-    : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1) {}
+    : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1)
+  {
+    diag = sqrt(SQR(x1-x0)+SQR(y1-y0)+SQR(z1-z0));
+  }
 
   void construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 

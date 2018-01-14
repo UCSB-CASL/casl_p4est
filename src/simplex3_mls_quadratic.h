@@ -17,19 +17,22 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 #include <src/my_p4est_utils.h>
 #endif
 
+//#define SIMPLEX3_MLS_QUADRATIC_DEBUG
+
 class simplex3_mls_quadratic_t
 {
 public:
   double eps;
 
-  bool not_pure;
-
   const static int nodes_per_tri = 6;
   const static int nodes_per_tet = 10;
+  const static int max_refinement_ = 4;
 
-  const double curvature_limit_ = 0.2;
+  const double curvature_limit_ = 0.05;
 
-  std::vector<CF_3 *> *phi_;
+  const bool check_for_overlapping_ = true;
+
+//  std::vector<CF_3 *> *phi_;
 
   double max_dist_error_;
 
@@ -47,13 +50,13 @@ public:
     double  ratio;    // placement between nv0 and nv1
     bool    is_recycled;
 
-#ifdef CASL_THROWS
+#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
     int p_edg; // parent edge
 #endif
 
     vtx3_t(double x, double y, double z)
       : x(x), y(y), z(z), c0(-1), c1(-1), c2(-1), value(0.0), loc(INS), is_recycled(false)
-#ifdef CASL_THROWS
+#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
       , n_vtx0(-1), n_vtx1(-1), ratio(1.0),
         p_edg(-1)
 #endif
@@ -76,14 +79,14 @@ public:
     int c_vtx_x;        // intersection point vertex
     int c_edg0, c_edg1; // edges
 
-#ifdef CASL_THROWS
+#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
     int type;                 // type of splitting
     int p_edg, p_tri, p_tet;  // parental objects
 #endif
 
     edg3_t(int v0, int v1, int v2)
       : vtx0(v0), vtx1(v1), vtx2(v2), c0(-1), c1(-1), is_split(false), loc(INS)
-#ifdef CASL_THROWS
+#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
       , c_vtx_x(-11), c_edg0(-12), c_edg1(-13),
         type(-1), p_edg(-1), p_tri(-1), p_tet(-1)
 #endif
@@ -121,7 +124,7 @@ public:
     int c_edg0,  c_edg1,  c_edg2;   // edges
     int c_tri0,  c_tri1,  c_tri2,  c_tri3;   // triangles
 
-#ifdef CASL_THROWS
+#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
     int type;
     int p_tri, p_tet;
 #endif
@@ -132,7 +135,7 @@ public:
         edg0(e0), edg1(e1), edg2(e2),
         c(-1), loc(INS), is_split(false), dir(-1), p_lsf(-1),
         is_curved(false)
-#ifdef CASL_THROWS
+#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
       , c_vtx01(-21), c_vtx02(-22), c_vtx12(-23),
         c_edg0(-24), c_edg1(-25), c_edg2(-26),
         c_tri0(-27), c_tri1(-28), c_tri2(-29), c_tri3(-20),
@@ -165,7 +168,7 @@ public:
     int c_tri0, c_tri1, c_tri2, c_tri3, c_tri4, c_tri5;       // up to 6 child triangles
     int c_tet0, c_tet1, c_tet2, c_tet3, c_tet4, c_tet5;       // up to 6 child tetrahedra
 
-#ifdef CASL_THROWS
+#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
     int type;
     int p_tet;
 #endif
@@ -175,7 +178,7 @@ public:
       : vtx0(v0), vtx1(v1), vtx2(v2), vtx3(v3),
         tri0(t0), tri1(t1), tri2(t2), tri3(t3),
         loc(INS), is_split(false)
-#ifdef CASL_THROWS
+#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
       , c_vtx01(-30), c_vtx02(-31), c_vtx03(-32), c_vtx12(-33), c_vtx13(-34), c_vtx23(-35),
         c_tri0(-36), c_tri1(-37), c_tri2(-38), c_tri3(-39), c_tri4(-40), c_tri5(-41),
         c_tet0(-42), c_tet1(-43), c_tet2(-44), c_tet3(-45), c_tet4(-46), c_tet5(-47),
@@ -213,6 +216,7 @@ public:
   std::vector<tet3_t> tets;
 
   void construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
   void do_action_vtx(int n_vtx, int cn, action_t action);
   void do_action_edg(int n_edg, int cn, action_t action);
   void do_action_tri(int n_tri, int cn, action_t action);
@@ -304,7 +308,7 @@ public:
 //  void set_use_linear(bool val) { use_linear = val; }
 //  void set_use_linear(bool val) { use_linear = true; }
 
-#ifdef CASL_THROWS
+#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
   bool tri_is_ok(int v0, int v1, int v2, int e0, int e1, int e2);
   bool tri_is_ok(int t);
   bool tet_is_ok(int s);

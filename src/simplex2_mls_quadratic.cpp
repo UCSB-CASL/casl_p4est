@@ -74,7 +74,6 @@ simplex2_mls_quadratic_t::simplex2_mls_quadratic_t(double x0, double y0,
 //--------------------------------------------------
 void simplex2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
-
   double phi0, phi1, phi2;
   double c0, c1, c2;
   double a_ext, phi_ext;
@@ -94,8 +93,9 @@ void simplex2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::v
       n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
     }
 
-    // loop over LSFs
     int refine_level = 0;
+
+    // loop over LSFs
     for (short phi_idx = 0; phi_idx < phi.size(); ++phi_idx)
     {
       int last_vtxs_size = 0;
@@ -136,9 +136,9 @@ void simplex2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::v
 //              if (phi0 > 0 && phi2 > 0 ||
 //                  phi0 < 0 && phi2 < 0)
 //              {
-//                c0 = phi0;
-//                c1 = -3.*phi0+4.*phi1-phi2;
-//                c2 = 2.*phi0 - 4.*phi1 + 2.*phi2;
+//                c0 =     phi0;
+//                c1 = -3.*phi0 + 4.*phi1 -    phi2;
+//                c2 =  2.*phi0 - 4.*phi1 + 2.*phi2;
 
 //                if (c2 > EPS)
 //                {
@@ -195,7 +195,6 @@ void simplex2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::v
             std::cout << "Cannot resolve invalid geometry (bad)\n";
             needs_refinement = false;
           }
-
         }
 
         invalid_reconstruction_ = false;

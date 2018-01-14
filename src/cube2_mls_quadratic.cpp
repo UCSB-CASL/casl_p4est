@@ -21,6 +21,7 @@ void cube2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::vect
   std::vector<double> phi_all(num_of_lsfs*n_nodes, -1.);
 
   /* Eliminate unnecessary splitting */
+
   loc = INS;
 
   double value;
@@ -28,10 +29,10 @@ void cube2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::vect
   double c0, c1, c2;
   int I, J;
 
-
-  std::vector<CF_2 *>   nt_phi;// = phi;
-  std::vector<action_t> nt_acn;// = acn;
-  std::vector<int>      nt_clr;// = clr;
+  std::vector<CF_2 *>   nt_phi;
+  std::vector<action_t> nt_acn;
+  std::vector<int>      nt_clr;
+  std::vector<int>      nt_idx;
 
   for (unsigned int p = 0; p < num_of_lsfs; p++)
   {
@@ -121,20 +122,24 @@ void cube2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::vect
 
     if (all_positive)
     {
-      if (acn[p] == INTERSECTION) {
+      if (acn[p] == INTERSECTION)
+      {
         loc = OUT;
         nt_phi.clear();
         nt_acn.clear();
         nt_clr.clear();
+        nt_idx.clear();
       }
     }
     else if (all_negative)
     {
-      if (acn[p] == ADDITION) {
+      if (acn[p] == ADDITION)
+      {
         loc = INS;
         nt_phi.clear();
         nt_acn.clear();
         nt_clr.clear();
+        nt_idx.clear();
       }
     }
     else if (loc == FCE || (loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
@@ -143,14 +148,16 @@ void cube2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::vect
       nt_phi.push_back(phi[p]);
       nt_acn.push_back(acn[p]);
       nt_clr.push_back(clr[p]);
+      nt_idx.push_back(p);
     }
   }
 
+  /* uncomment this to use all level-set functions */
 //  nt_phi = phi;
 //  nt_acn = acn;
 //  nt_clr = clr;
-
 //  loc = FCE;
+
   if (loc == FCE)
   {
     // the first action always has to be INTERSECTION
@@ -162,32 +169,52 @@ void cube2_mls_quadratic_t::construct_domain(std::vector<CF_2 *> &phi, std::vect
 
     simplex.clear();
     simplex.reserve(2);
-    simplex.push_back(simplex2_mls_quadratic_t(x[t0p0], y[t0p0], x[t0p1], y[t0p1], x[t0p2], y[t0p2],
-                                               x[t0p3], y[t0p3], x[t0p4], y[t0p4], x[t0p5], y[t0p5]));// simplex.back().set_use_linear(use_linear);
-    simplex.push_back(simplex2_mls_quadratic_t(x[t1p0], y[t1p0], x[t1p1], y[t1p1], x[t1p2], y[t1p2],
-                                               x[t1p3], y[t1p3], x[t1p4], y[t1p4], x[t1p5], y[t1p5]));// simplex.back().set_use_linear(use_linear);
+
+    simplex.push_back(simplex2_mls_quadratic_t(x[t0p0], y[t0p0],
+                                               x[t0p1], y[t0p1],
+                                               x[t0p2], y[t0p2],
+                                               x[t0p3], y[t0p3],
+                                               x[t0p4], y[t0p4],
+                                               x[t0p5], y[t0p5]));
+
+    simplex.push_back(simplex2_mls_quadratic_t(x[t1p0], y[t1p0],
+                                               x[t1p1], y[t1p1],
+                                               x[t1p2], y[t1p2],
+                                               x[t1p3], y[t1p3],
+                                               x[t1p4], y[t1p4],
+                                               x[t1p5], y[t1p5]));
 
     // mark appropriate edges for integrate_in_dir
     simplex[0].edgs[0].dir = 1; simplex[0].edgs[2].dir = 2;
     simplex[1].edgs[0].dir = 3; simplex[1].edgs[2].dir = 0;
+
+    num_of_lsfs = nt_acn.size();
 
     std::vector<double> phi_s0(n_nodes_simplex*num_of_lsfs, -1);
     std::vector<double> phi_s1(n_nodes_simplex*num_of_lsfs, -1);
 
     for (int i = 0; i < num_of_lsfs; ++i)
     {
-      phi_s0[n_nodes_simplex*i+0] = phi_all[n_nodes*i+t0p0]; phi_s1[n_nodes_simplex*i+0] = phi_all[n_nodes*i+t1p0];
-      phi_s0[n_nodes_simplex*i+1] = phi_all[n_nodes*i+t0p1]; phi_s1[n_nodes_simplex*i+1] = phi_all[n_nodes*i+t1p1];
-      phi_s0[n_nodes_simplex*i+2] = phi_all[n_nodes*i+t0p2]; phi_s1[n_nodes_simplex*i+2] = phi_all[n_nodes*i+t1p2];
-      phi_s0[n_nodes_simplex*i+3] = phi_all[n_nodes*i+t0p3]; phi_s1[n_nodes_simplex*i+3] = phi_all[n_nodes*i+t1p3];
-      phi_s0[n_nodes_simplex*i+4] = phi_all[n_nodes*i+t0p4]; phi_s1[n_nodes_simplex*i+4] = phi_all[n_nodes*i+t1p4];
-      phi_s0[n_nodes_simplex*i+5] = phi_all[n_nodes*i+t0p5]; phi_s1[n_nodes_simplex*i+5] = phi_all[n_nodes*i+t1p5];
+      int phi_idx = nt_idx[i];
+      phi_s0[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+t0p0]; phi_s1[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+t1p0];
+      phi_s0[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+t0p1]; phi_s1[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+t1p1];
+      phi_s0[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+t0p2]; phi_s1[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+t1p2];
+      phi_s0[n_nodes_simplex*i+3] = phi_all[n_nodes*phi_idx+t0p3]; phi_s1[n_nodes_simplex*i+3] = phi_all[n_nodes*phi_idx+t1p3];
+      phi_s0[n_nodes_simplex*i+4] = phi_all[n_nodes*phi_idx+t0p4]; phi_s1[n_nodes_simplex*i+4] = phi_all[n_nodes*phi_idx+t1p4];
+      phi_s0[n_nodes_simplex*i+5] = phi_all[n_nodes*phi_idx+t0p5]; phi_s1[n_nodes_simplex*i+5] = phi_all[n_nodes*phi_idx+t1p5];
     }
-//    simplex[0].construct_domain(phi, acn, clr);
-//    simplex[1].construct_domain(phi, acn, clr);
-    simplex[0].construct_domain(phi_s0, acn, clr);
-    simplex[1].construct_domain(phi_s1, acn, clr);
+//    simplex[0].construct_domain(nt_phi, nt_acn, nt_clr);
+//    simplex[1].construct_domain(nt_phi, nt_acn, nt_clr);
+    simplex[0].construct_domain(phi_s0, nt_acn, nt_clr);
+    simplex[1].construct_domain(phi_s1, nt_acn, nt_clr);
   }
+
+//  if (simplex[0].tets.size() == 1 &&
+//      simplex[1].tets.size() == 1 )
+//  {
+//    loc = loc_prelim;
+//    simplex.clear();
+//  }
 
 }
 

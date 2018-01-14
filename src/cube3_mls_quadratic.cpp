@@ -2,58 +2,237 @@
 
 void cube3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
-  bool all_positive, all_negative;
-
   num_of_lsfs = phi.size();
 
+  // 3-by-3-by-3 grid
   double xc = .5*(x0+x1);
   double yc = .5*(y0+y1);
   double zc = .5*(z0+z1);
+
+  double x[] = { x0, xc, x1 };
+  double y[] = { y0, yc, y1 };
+  double z[] = { z0, zc, z1 };
 
 #ifdef CASL_THROWS
   if (num_of_lsfs != acn.size() || num_of_lsfs != clr.size())
           throw std::domain_error("[CASL_ERROR]: (cube3_mls_quadratic_t::construct_domain) sizes of phi, acn and clr do not coincide.");
 #endif
 
+  std::vector<double> phi_all(num_of_lsfs*n_nodes, -1.);
+
   /* Eliminate unnecessary splitting */
+
   loc = INS;
+
+  double value;
+  double p0, p1, p2, p3, p4, p5;
+  double c0, c1, c2;
+  int I, J, K;
+
+  std::vector<CF_3 *>   nt_phi;
+  std::vector<action_t> nt_acn;
+  std::vector<int>      nt_clr;
+  std::vector<int>      nt_idx;
+
+  double band = lip*diag;
+
+//  if(0)
+//  for (unsigned int p = 0; p < num_of_lsfs; p++)
+//  {
+//    bool all_negative = false;
+//    bool all_positive = false;
+
+//    // check how far cube is from interface
+//    double value = (*phi[p]) ( xc, yc, zc );
+
+//    if (value > band)
+//    {
+//      all_negative = false;
+//      all_positive = true;
+//    }
+//    else if (value < -band)
+//    {
+//      all_negative = true;
+//      all_positive = false;
+//    }
+
+//    if (all_positive)
+//    {
+//      if (acn[p] == INTERSECTION)
+//      {
+//        loc = OUT;
+//      }
+//    }
+//    else if (all_negative)
+//    {
+//      if (acn[p] == ADDITION)
+//      {
+//        loc = INS;
+//      }
+//    }
+//    else if (loc == FCE || (loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
+//    {
+//      loc = FCE;
+//    }
+//  }
+
+//  if (loc == FCE)
   for (unsigned int p = 0; p < num_of_lsfs; p++)
   {
-    all_negative = true;
-    all_positive = true;
+    bool all_negative = true;
+    bool all_positive = true;
 
-    double x[3] = { x0, xc, x1 };
-    double y[3] = { y0, yc, y1 };
-    double z[3] = { z0, zc, z1 };
+    // check how far cube is from interface
+    double value = (*phi[p]) ( xc, yc, zc );
 
-    for (short k = 0; k < 3; ++k)
-      for (short j = 0; j < 3; ++j)
-        for (short i = 0; i < 3; ++i)
+    if (value > band)
+    {
+      all_negative = false;
+      all_positive = true;
+    }
+    else if (value < -band)
+    {
+      all_negative = true;
+      all_positive = false;
+    }
+    else
+    {
+      // sample level-set function and check for intersections
+      for (short k = 0; k < 3; ++k)
+        for (short j = 0; j < 3; ++j)
+          for (short i = 0; i < 3; ++i)
+          {
+            value = (*phi[p]) ( x[i], y[j], z[k] );
+//            value = -1;
+            phi_all[n_nodes*p + n_nodes_dir*n_nodes_dir*k + n_nodes_dir*j + i] = value;
+            all_negative = (all_negative && (value < 0.));
+            all_positive = (all_positive && (value > 0.));
+          }
+
+      // check edges for complex intersections
+//      if(0)
+      if (all_negative || all_positive)
+      {
+        for (int idx_edge = 0; idx_edge < num_edges; ++idx_edge)
         {
-          double value = (*phi[p]) ( x[i], y[j], z[k] );
-          all_negative = (all_negative && (value < 0.));
-          all_positive = (all_positive && (value > 0.));
+          p0 = phi_all[n_nodes*p + ep[idx_edge][0]];
+          p1 = phi_all[n_nodes*p + ep[idx_edge][1]];
+          p2 = phi_all[n_nodes*p + ep[idx_edge][2]];
+
+          c0 = p0;
+          c1 = -3.*p0 + 4.*p1 -    p2;
+          c2 =  2.*p0 - 4.*p1 + 2.*p2;
+
+          if (fabs(c2) > EPS)
+          {
+            double a_ext = -.5*c1/c2;
+            if (a_ext > 0. && a_ext < 1.)
+            {
+              double phi_ext = c0 + c1*a_ext + c2*a_ext*a_ext;
+
+              if (p0*phi_ext < 0)
+              {
+                //              std::cout << "cube: " << a_ext << " " << phi_ext << "\n";
+                all_negative = false;
+                all_positive = false;
+                break;
+              }
+            }
+          }
+
         }
+      }
+
+      // check faces for complex intersections
+//      if(0)
+      if (all_negative || all_positive)
+      {
+        for (int idx_face = 0; idx_face < num_faces; ++idx_face)
+        {
+          p0 = phi_all[n_nodes*p + fp[idx_face][0]];
+          p1 = phi_all[n_nodes*p + fp[idx_face][1]];
+          p2 = phi_all[n_nodes*p + fp[idx_face][2]];
+          p3 = phi_all[n_nodes*p + fp[idx_face][3]];
+          p4 = phi_all[n_nodes*p + fp[idx_face][4]];
+          p5 = phi_all[n_nodes*p + fp[idx_face][5]];
+
+          if (p0*p1 > 0 && p1*p2 > 0 && p2*p3 > 0 && p3*p4 > 0 && p4*p5 > 0)
+          {
+            double paa = 2.*p0 + 2.*p1 - 4.*p3;
+            double pab = 4.*p0 - 4.*p3 + 4.*p4 - 4.*p5;
+            double pbb = 2.*p0 + 2.*p2 - 4.*p5;
+            double pa = -3.*p0 -    p1 + 4.*p3;
+            double pb = -3.*p0 -    p2 + 4.*p5;
+
+            double det = 4.*paa*pbb - pab*pab;
+
+            if (fabs(det) > EPS)
+            {
+              double a = (pb*pab - 2.*pa*pbb)/det;
+              double b = (pa*pab - 2.*pb*paa)/det;
+
+              if (a > 0 && b > 0 && a+b < 1.)
+              {
+                double phi_extremum = paa*a*a + pab*a*b + pbb*b*b + pa*a + pb*b + p0;
+
+                if (phi_extremum*p0 < 0)
+                {
+//                  std::cout << "face " << a << " " << b << "\n";
+                  all_negative = false;
+                  all_positive = false;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
 
     if (all_positive)
     {
-      if (acn[p] == INTERSECTION) loc = OUT;
+      if (acn[p] == INTERSECTION)
+      {
+        loc = OUT;
+        nt_phi.clear();
+        nt_acn.clear();
+        nt_clr.clear();
+        nt_idx.clear();
+      }
     }
     else if (all_negative)
     {
-      if (acn[p] == ADDITION) loc = INS;
+      if (acn[p] == ADDITION)
+      {
+        loc = INS;
+        nt_phi.clear();
+        nt_acn.clear();
+        nt_clr.clear();
+        nt_idx.clear();
+      }
     }
-    else if ((loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
+    else if (loc == FCE || (loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
     {
       loc = FCE;
+      nt_phi.push_back(phi[p]);
+      nt_acn.push_back(acn[p]);
+      nt_clr.push_back(clr[p]);
+      nt_idx.push_back(p);
     }
   }
 
-  loc_t loc_prelim = loc;
+  /* uncomment this to use all level-set functions */
+//  nt_phi = phi;
+//  nt_acn = acn;
+//  nt_clr = clr;
+//  loc = FCE;
 
-  loc = FCE;
+//  if (nt_idx.size() > 1) loc = OUT;
+
   if (loc == FCE)
   {
+    if (nt_acn[0] == ADDITION) nt_acn[0] = INTERSECTION;
+
     double x[27] = { x0, xc, x1, x0, xc, x1, x0, xc, x1,
                      x0, xc, x1, x0, xc, x1, x0, xc, x1,
                      x0, xc, x1, x0, xc, x1, x0, xc, x1 };
@@ -66,7 +245,7 @@ void cube3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::vect
                      zc, zc, zc, zc, zc, zc, zc, zc, zc,
                      z1, z1, z1, z1, z1, z1, z1, z1, z1 };
 
-    /* Split a cube into 5 simplices */
+    /* Split a cube into 6 simplices */
     simplex.clear();
     simplex.reserve(NUM_TETS);
     simplex.push_back(simplex3_mls_quadratic_t(x[t0p0],y[t0p0],z[t0p0],
@@ -143,28 +322,39 @@ void cube3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::vect
     simplex[4].tris[0].dir = 5; simplex[4].tris[3].dir = 2;
     simplex[5].tris[0].dir = 5; simplex[5].tris[3].dir = 0;
 
-    simplex[0].construct_domain(phi, acn, clr);
-    simplex[1].construct_domain(phi, acn, clr);
-    simplex[2].construct_domain(phi, acn, clr);
-    simplex[3].construct_domain(phi, acn, clr);
-    simplex[4].construct_domain(phi, acn, clr);
-    simplex[5].construct_domain(phi, acn, clr);
+    num_of_lsfs = nt_idx.size();
+
+    std::vector<double> phi_s(n_nodes_simplex*num_of_lsfs, -1);
+
+    for (int s = 0; s < NUM_TETS; ++s)
+    {
+      for (int i = 0; i < num_of_lsfs; ++i)
+      {
+        int phi_idx = nt_idx[i];
+        for (int n = 0; n < n_nodes_simplex; ++n)
+          phi_s[n_nodes_simplex*i + n] = phi_all[n_nodes*phi_idx + tp[s][n]];
+      }
+      simplex[s].construct_domain(phi_s, nt_acn, nt_clr);
+
+//      simplex[s].construct_domain(nt_phi, nt_acn, nt_clr);
+    }
   }
 
-  if (simplex[0].tets.size() == 1 &&
-      simplex[1].tets.size() == 1 &&
-      simplex[2].tets.size() == 1 &&
-      simplex[3].tets.size() == 1 &&
-      simplex[4].tets.size() == 1 &&
-      simplex[5].tets.size() == 1)
-  {
-    loc = loc_prelim;
-    simplex.clear();
-  }
+//  if (simplex[0].tets.size() == 1 &&
+//      simplex[1].tets.size() == 1 &&
+//      simplex[2].tets.size() == 1 &&
+//      simplex[3].tets.size() == 1 &&
+//      simplex[4].tets.size() == 1 &&
+//      simplex[5].tets.size() == 1)
+//  {
+//    loc = loc_prelim;
+//    simplex.clear();
+//  }
 }
 
 double cube3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 {
+//  return 0;
   switch (loc){
     case INS:
       {
@@ -211,6 +401,7 @@ double cube3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 
 double cube3_mls_quadratic_t::integrate_over_interface(CF_3& f, int num)
 {
+//  return 0;
   if (loc == FCE)
   {
 //    double f0 = simplex[0].integrate_over_interface(f, num);

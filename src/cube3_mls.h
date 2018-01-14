@@ -84,8 +84,10 @@ class cube3_mls_t
 public:
   const static int n_nodes = 8;
   const static int n_nodes_simplex = 4;
+  const static int n_nodes_dir = 2;
+  const double lip = 1.;
 
-  double  x0, x1, y0, y1, z0, z1;
+  double  x0, x1, y0, y1, z0, z1, diag;
   loc_t   loc;
   int     num_of_lsfs;
 
@@ -93,7 +95,10 @@ public:
 
 
   cube3_mls_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
-    : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1) {}
+    : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1)
+  {
+    diag = sqrt(SQR(x1-x0)+SQR(y1-y0)+SQR(z1-z0));
+  }
 
   void construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 

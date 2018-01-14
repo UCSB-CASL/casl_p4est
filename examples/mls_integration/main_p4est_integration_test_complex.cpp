@@ -59,25 +59,48 @@
 #undef MIN
 #undef MAX
 
+#define RESET   "\033[0m"
+#define BLACK   "\033[30m"      /* Black */
+#define RED     "\033[31m"      /* Red */
+#define GREEN   "\033[32m"      /* Green */
+#define YELLOW  "\033[33m"      /* Yellow */
+#define BLUE    "\033[34m"      /* Blue */
+#define MAGENTA "\033[35m"      /* Magenta */
+#define CYAN    "\033[36m"      /* Cyan */
+#define WHITE   "\033[37m"      /* White */
+#define BOLDBLACK   "\033[1m\033[30m"      /* Bold Black */
+#define BOLDRED     "\033[1m\033[31m"      /* Bold Red */
+#define BOLDGREEN   "\033[1m\033[32m"      /* Bold Green */
+#define BOLDYELLOW  "\033[1m\033[33m"      /* Bold Yellow */
+#define BOLDBLUE    "\033[1m\033[34m"      /* Bold Blue */
+#define BOLDMAGENTA "\033[1m\033[35m"      /* Bold Magenta */
+#define BOLDCYAN    "\033[1m\033[36m"      /* Bold Cyan */
+#define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
+
 using namespace std;
 
 /* grid and discretization */
 #ifdef P4_TO_P8
+int lmin = 5;
+int lmax = 5;
+int nb_splits = 2;
+int nb_splits_per_split = 5;
+int nx_shifts = 5;
+int ny_shifts = 5;
+int nz_shifts = 5;
+int num_shifts = nx_shifts*ny_shifts*nz_shifts;
+#else
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 3;
-int nb_splits_per_split = 10;
-int nx_shifts = 1;
-int ny_shifts = 1;
-int nz_shifts = 1;
-#else
-int lmin = 3;
-int lmax = 3;
 int nb_splits = 5;
-int nb_splits_per_split = 1;
-int nx_shifts = 30;
-int ny_shifts = 30;
+int nb_splits_per_split = 10;
+int nx_shifts = 10;
+int ny_shifts = 10;
+int num_shifts = nx_shifts*ny_shifts;
 #endif
+
+int num_resolutions = (nb_splits-1)*nb_splits_per_split + 1;
+int num_iter_tot = num_resolutions*num_shifts;
 
 bool reinitialize_level_set = 0;
 
@@ -130,7 +153,7 @@ public:
  * 4 - rose-like domain
  * 5 - one circle
  */
-int geometry_num = 1;
+int geometry_num = 0;
 
 geometry_two_circles_union_t        geometry_two_circles_union;
 geometry_two_circles_intersection_t geometry_two_circles_intersection;
@@ -174,9 +197,26 @@ public:
 class result_t
 {
 public:
-  vector<double> ID, IB;
-  vector< vector<double> > ISB, IX, IX3;
-} result, result_quadratic;
+  vector<double> ID;              // integral  over domain
+  vector<double> IB;              // integral  over the whole boundary
+  vector< vector<double> > ISB;   // integrals over smooth boundary parts
+  vector< vector<double> > IX;    // integrals over intersection (junctures) of 2 smooth boundary parts
+  vector< vector<double> > IX3;   // integrals over intersection (junctures) of 3 smooth boundary parts (only 3D)
+
+  result_t(int n_subs, int n_Xs, int n_X3s, int length)
+  {
+    initialize(n_subs, n_Xs, n_X3s, length);
+  }
+
+  void initialize(int n_subs, int n_Xs, int n_X3s, int length)
+  {
+    ID .resize(length, 0);
+    IB .resize(length, 0);
+    ISB.resize(n_subs, std::vector<double>(length, 0));
+    IX .resize(n_Xs,   std::vector<double>(length, 0));
+    IX3.resize(n_X3s,  std::vector<double>(length, 0));
+  }
+};
 
 void set_parameters()
 {
@@ -346,44 +386,6 @@ void set_parameters()
           exact.provided = true;
         } break;
     }
-
-  // prepare arrays for numerical results
-  result.ISB.clear();
-  for (int i = 0; i < exact.n_subs; i++)
-  {
-    result.ISB.push_back(vector<double>());
-  }
-
-  result.IX.clear();
-  for (int i = 0; i < exact.n_Xs; i++)
-  {
-    result.IX.push_back(vector<double>());
-  }
-
-  result.IX3.clear();
-  for (int i = 0; i < exact.n_X3s; i++)
-  {
-    result.IX3.push_back(vector<double>());
-  }
-
-  // prepare arrays for numerical results
-  result_quadratic.ISB.clear();
-  for (int i = 0; i < exact.n_subs; i++)
-  {
-    result_quadratic.ISB.push_back(vector<double>());
-  }
-
-  result_quadratic.IX.clear();
-  for (int i = 0; i < exact.n_Xs; i++)
-  {
-    result_quadratic.IX.push_back(vector<double>());
-  }
-
-  result_quadratic.IX3.clear();
-  for (int i = 0; i < exact.n_X3s; i++)
-  {
-    result_quadratic.IX3.push_back(vector<double>());
-  }
 }
 
 #ifdef P4_TO_P8
@@ -447,9 +449,15 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
               std::vector<Vec> phi, Vec phi_tot,
               int compt);
 
+double compute_convergence_order(std::vector<double> &x, std::vector<double> &y);
+void save_vector(const char *filename, const std::vector<double> &data, ios_base::openmode mode = ios_base::out, char delim = ',');
+void print_convergence_table(MPI_Comm mpi_comm,
+                             std::vector<double> &level, std::vector<double> &h,
+                             std::vector<double> &L_one, std::vector<double> &L_avg, std::vector<double> &L_dev, std::vector<double> &L_max,
+                             std::vector<double> &Q_one, std::vector<double> &Q_avg, std::vector<double> &Q_dev, std::vector<double> &Q_max);
+
 int main (int argc, char* argv[])
 {
-
   set_parameters();
 
   level_set_tot_t ls_tot(LSF, action, color);
@@ -470,70 +478,79 @@ int main (int argc, char* argv[])
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
 
-  std::vector<double> phi_integr;
-  std::vector<double> phi_integr_quadratic;
+  int file_num = 0;
+
+  result_t result_L_all(exact.n_subs, exact.n_Xs, exact.n_X3s, num_iter_tot);
+  result_t result_Q_all(exact.n_subs, exact.n_Xs, exact.n_X3s, num_iter_tot);
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
-    ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d.\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
 
-    for (int sub_iter = 0; sub_iter < nb_splits_per_split; ++sub_iter)
+    int num_sub_iter = (iter == 0 ? 1 : nb_splits_per_split);
+
+    for (int sub_iter = 0; sub_iter < num_sub_iter; ++sub_iter)
     {
-
-      ierr = PetscPrintf(mpi.comm(), "\t Sub split %d \n", sub_iter); CHKERRXX(ierr);
 
       double p_xyz_min_alt[3];
       double p_xyz_max_alt[3];
-      int l_inc = 0;
 
-      if (sub_iter == 0)
-      {
-        p_xyz_min_alt[0] = p_xyz_min[0]; p_xyz_max_alt[0] = p_xyz_max[0];
-        p_xyz_min_alt[1] = p_xyz_min[1]; p_xyz_max_alt[1] = p_xyz_max[1];
-        p_xyz_min_alt[2] = p_xyz_min[2]; p_xyz_max_alt[2] = p_xyz_max[2];
-      } else {
-        l_inc = 1;
-        double scale = (double) (nb_splits_per_split-sub_iter) / (double) nb_splits_per_split;
-        p_xyz_min_alt[0] = p_xyz_min[0] - .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]); p_xyz_max_alt[0] = p_xyz_max[0] + .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]);
-        p_xyz_min_alt[1] = p_xyz_min[1] - .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]); p_xyz_max_alt[1] = p_xyz_max[1] + .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]);
-        p_xyz_min_alt[2] = p_xyz_min[2] - .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]); p_xyz_max_alt[2] = p_xyz_max[2] + .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]);
-      }
+      double scale = (double) (num_sub_iter-1-sub_iter) / (double) num_sub_iter;
+      p_xyz_min_alt[0] = p_xyz_min[0] - .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]); p_xyz_max_alt[0] = p_xyz_max[0] + .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]);
+      p_xyz_min_alt[1] = p_xyz_min[1] - .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]); p_xyz_max_alt[1] = p_xyz_max[1] + .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]);
+      p_xyz_min_alt[2] = p_xyz_min[2] - .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]); p_xyz_max_alt[2] = p_xyz_max[2] + .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]);
 
-      double dxyz[3] = { (p_xyz_max[0]-p_xyz_min[0])/pow(2., (double) lmax+iter+l_inc),
-                         (p_xyz_max[1]-p_xyz_min[1])/pow(2., (double) lmax+iter+l_inc),
-                         (p_xyz_max[2]-p_xyz_min[2])/pow(2., (double) lmax+iter+l_inc) };
+
+      double dxyz[3] = { (p_xyz_max_alt[0]-p_xyz_min_alt[0])/pow(2., (double) lmax+iter),
+                         (p_xyz_max_alt[1]-p_xyz_min_alt[1])/pow(2., (double) lmax+iter),
+                         (p_xyz_max_alt[2]-p_xyz_min_alt[2])/pow(2., (double) lmax+iter) };
 
       double p_xyz_min_shift[3];
       double p_xyz_max_shift[3];
 
 #ifdef P4_TO_P8
-      for (int k = 0; k < nz_shifts; ++k)
-      {
-        p_xyz_min_shift[2] = p_xyz_min_alt[2] + (double) (k) / (double) (nz_shifts) * dxyz[2];
-        p_xyz_max_shift[2] = p_xyz_max_alt[2] + (double) (k) / (double) (nz_shifts) * dxyz[2];
+      h.push_back(MIN(dxyz[0],dxyz[1],dxyz[2]));
+#else
+      h.push_back(MIN(dxyz[0],dxyz[1]));
 #endif
-        for (int j = 0; j < ny_shifts; ++j)
+
+      level.push_back(lmax+iter-scale);
+      ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f).\n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+      for (int k_shift = 0; k_shift < nz_shifts; ++k_shift)
+      {
+        p_xyz_min_shift[2] = p_xyz_min_alt[2] + (double) (k_shift) / (double) (nz_shifts) * dxyz[2];
+        p_xyz_max_shift[2] = p_xyz_max_alt[2] + (double) (k_shift) / (double) (nz_shifts) * dxyz[2];
+#endif
+        for (int j_shift = 0; j_shift < ny_shifts; ++j_shift)
         {
-          p_xyz_min_shift[1] = p_xyz_min_alt[1] + (double) (j) / (double) (ny_shifts) * dxyz[1];
-          p_xyz_max_shift[1] = p_xyz_max_alt[1] + (double) (j) / (double) (ny_shifts) * dxyz[1];
-          for (int i = 0; i < nx_shifts; ++i)
+          p_xyz_min_shift[1] = p_xyz_min_alt[1] + (double) (j_shift) / (double) (ny_shifts) * dxyz[1];
+          p_xyz_max_shift[1] = p_xyz_max_alt[1] + (double) (j_shift) / (double) (ny_shifts) * dxyz[1];
+
+          for (int i_shift = 0; i_shift < nx_shifts; ++i_shift)
           {
-            p_xyz_min_shift[0] = p_xyz_min_alt[0] + (double) (i) / (double) (nx_shifts) * dxyz[0];
-            p_xyz_max_shift[0] = p_xyz_max_alt[0] + (double) (i) / (double) (nx_shifts) * dxyz[0];
+            p_xyz_min_shift[0] = p_xyz_min_alt[0] + (double) (i_shift) / (double) (nx_shifts) * dxyz[0];
+            p_xyz_max_shift[0] = p_xyz_max_alt[0] + (double) (i_shift) / (double) (nx_shifts) * dxyz[0];
 
             connectivity = my_p4est_brick_new(n_xyz, p_xyz_min_shift, p_xyz_max_shift, &brick, periodic);
 
             p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-            splitting_criteria_cf_t data(0, lmax+iter+l_inc, &ls_tot, 1.2);
-            if (func_num != 0)
-              data.min_lvl = lmin+iter+l_inc;
+            splitting_criteria_cf_t data(0, lmax+iter, &ls_tot, 1.2);
+            if (func_num != 0) data.min_lvl = lmin+iter;
+
             p4est->user_pointer = (void*)(&data);
 
-            my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-            my_p4est_partition(p4est, P4EST_FALSE, NULL);
-            p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
-            my_p4est_partition(p4est, P4EST_FALSE, NULL);
+//            my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+//            my_p4est_partition(p4est, P4EST_FALSE, NULL);
+            for (int lvl = 0; lvl < data.max_lvl; ++lvl)
+            {
+              my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+              my_p4est_partition(p4est, P4EST_TRUE, NULL);
+            }
+//            p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+//            my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
             ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
 //            my_p4est_ghost_expand(p4est, ghost);
@@ -590,7 +607,7 @@ int main (int argc, char* argv[])
             ierr = VecCreateGhostNodes(p4est, nodes, &phi_tot); CHKERRXX(ierr);
             sample_cf_on_nodes(p4est, nodes, ls_tot, phi_tot);
 
-            my_p4est_integration_mls_t integration(p4est, nodes);
+            my_p4est_integration_mls_t integration_L(p4est, nodes);
 
             //    integration.set_phi(phi_vec, geometry.action, geometry.color);
             //    integration.set_phi(geometry.LSF, geometry.action, geometry.color);
@@ -600,23 +617,31 @@ int main (int argc, char* argv[])
             //    integration.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, *action, *color);
             //#endif
 #ifdef P4_TO_P8
-            integration.set_phi(phi_vec, *action, *color);
+            integration_L.set_phi(phi_vec, *action, *color);
 #else
-            integration.set_phi(phi_vec, *action, *color);
+            integration_L.set_phi(phi_vec, *action, *color);
 #endif
             //    integration.set_use_cube_refined(0);
 
-            my_p4est_integration_mls_t integration_quadratic(p4est, nodes);
+            my_p4est_integration_mls_t integration_Q(p4est, nodes);
 
 #ifdef P4_TO_P8
-            integration_quadratic.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, *action, *color);
+            integration_Q.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, phi_zz_vec, *action, *color);
 #else
-            integration_quadratic.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, *action, *color);
+            integration_Q.set_phi(phi_vec, phi_xx_vec, phi_yy_vec, *action, *color);
 #endif
 
+            char *out_dir;
+            out_dir = getenv("OUT_DIR");
+            std::ostringstream oss;
+
+            oss << out_dir
+                << "/geometry";
+
+            if (0)
             if (save_vtk)
             {
-              integration.initialize();
+              integration_L.initialize();
 #ifdef P4_TO_P8
               vector<simplex3_mls_t *> simplices;
               int n_sps = NTETS;
@@ -625,30 +650,22 @@ int main (int argc, char* argv[])
               int n_sps = 2;
 #endif
 
-              for (int k = 0; k < integration.cubes_linear.size(); k++)
-                if (integration.cubes_linear[k].loc == FCE)
+              for (int k = 0; k < integration_L.cubes_linear.size(); k++)
+                if (integration_L.cubes_linear[k].loc == FCE)
                   for (int l = 0; l < n_sps; l++)
-                    simplices.push_back(&integration.cubes_linear[k].simplex[l]);
-
-
-#ifdef P4_TO_P8
-              int file_num = iter*nx_shifts*ny_shifts*nz_shifts + k*nx_shifts*ny_shifts + j*nx_shifts+i;
-#else
-              int file_num = iter*nx_shifts*ny_shifts + j*nx_shifts+i;
-#endif
+                    simplices.push_back(&integration_L.cubes_linear[k].simplex[l]);
 
 #ifdef P4_TO_P8
-              simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(file_num));
+              simplex3_mls_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
 #else
-              simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(file_num));
+              simplex2_mls_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
 #endif
               save_VTK(p4est, ghost, nodes, &brick, phi_vec, phi_tot, iter);
             }
 
-            //#ifdef P4_TO_P8
             if (save_vtk)
             {
-              integration_quadratic.initialize();
+              integration_Q.initialize();
 #ifdef P4_TO_P8
               vector<simplex3_mls_quadratic_t *> simplices;
               int n_sps = NUM_TETS;
@@ -657,97 +674,35 @@ int main (int argc, char* argv[])
               int n_sps = 2;
 #endif
 
-#ifdef P4_TO_P8
-              int file_num = iter*nx_shifts*ny_shifts*nz_shifts + k*nx_shifts*ny_shifts + j*nx_shifts+i;
-#else
-              int file_num = iter*nx_shifts*ny_shifts + j*nx_shifts+i;
-#endif
-
-              for (int k = 0; k < integration_quadratic.cubes_quadratic.size(); k++)
-                if (integration_quadratic.cubes_quadratic[k].loc == FCE)
+              for (int k = 0; k < integration_Q.cubes_quadratic.size(); k++)
+                if (integration_Q.cubes_quadratic[k].loc == FCE)
                   for (int l = 0; l < n_sps; l++)
-                    simplices.push_back(&integration_quadratic.cubes_quadratic[k].simplex[l]);
+                    simplices.push_back(&integration_Q.cubes_quadratic[k].simplex[l]);
 
 #ifdef P4_TO_P8
-              simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(file_num));
+              simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
 #else
-              simplex2_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(file_num));
+              simplex2_mls_quadratic_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
 #endif
               PetscPrintf(p4est->mpicomm, "VTK saved %d\n", file_num);
 
             }
-//#endif
 
 
-      /* Calculate and store results */
+            /* Calculate and store results */
+            result_L_all.ID[file_num] = integration_L.integrate_over_domain(func_vec);
+            result_Q_all.ID[file_num] = integration_Q.integrate_over_domain(func_vec, fdd);
 
-#ifdef P4_TO_P8
-            Vec phi_dd[P4EST_DIM] = { phi_xx_vec[0], phi_yy_vec[0], phi_zz_vec[0] };
-#else
-            Vec phi_dd[P4EST_DIM] = { phi_xx_vec[0], phi_yy_vec[0] };
-#endif
-            //    phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd)/integration_quadratic.integrate_over_interface(0, func_vec, fdd));
-            phi_integr.push_back(integration_quadratic.integrate_over_interface(0, phi_vec[0], phi_dd));
-
-            if (exact.provided || iter < nb_splits-1)
+            for (int i = 0; i < exact.n_subs; i++)
             {
-              level.push_back(lmax+iter);
-//                      h.push_back((p_xyz_max_alt[0]-p_xyz_min_alt[0])/pow(2.0,(double)(lmax+iter+l_inc)));
-//                      h.push_back(iter*nb_splits_per_split + sub_iter);
-
-#ifdef P4_TO_P8
-              h.push_back(iter*nx_shifts*ny_shifts*nz_shifts + k*nx_shifts*ny_shifts + j*nx_shifts+i);
-#else
-              h.push_back(iter*nx_shifts*ny_shifts + j*nx_shifts+i);
-#endif
-
-              result.ID.push_back(integration.integrate_over_domain(func_vec));
-              result_quadratic.ID.push_back(integration_quadratic.integrate_over_domain(func_vec, fdd));
-
-              for (int i = 0; i < exact.n_subs; i++)
-              {
-                result.ISB[i].push_back(integration.integrate_over_interface(color->at(i), func_vec));
-                result_quadratic.ISB[i].push_back(integration_quadratic.integrate_over_interface(color->at(i), func_vec, fdd));
-              }
-
-              for (int i = 0; i < exact.n_Xs; i++)
-              {
-#ifdef P4_TO_P8
-                result.IX[i].push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
-                result_quadratic.IX[i].push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
-#else
-                result.IX[i].push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
-                result_quadratic.IX[i].push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
-#endif
-              }
-
-#ifdef P4_TO_P8
-              for (int i = 0; i < exact.n_X3s; i++)
-                //        double val = integration.integrate_over_intersection(func_vec, exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i]);
-                result.IX3[i].push_back(integration.integrate_over_intersection(exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i], func_vec));
-#endif
+              result_L_all.ISB[i][file_num] = integration_L.integrate_over_interface(color->at(i), func_vec);
+              result_Q_all.ISB[i][file_num] = integration_Q.integrate_over_interface(color->at(i), func_vec, fdd);
             }
-            else if (iter == nb_splits-1)
+
+            for (int i = 0; i < exact.n_Xs; i++)
             {
-              //      exact.ID  = (integration.integrate_over_domain(func_vec));
-              exact.ID  = (integration_quadratic.integrate_over_domain(func_vec, fdd));
-
-              for (int i = 0; i < exact.n_subs; i++)
-                //        exact.ISB.push_back(integration.integrate_over_interface(color->at(i), func_vec));
-                exact.ISB.push_back(integration_quadratic.integrate_over_interface(color->at(i), func_vec, fdd));
-
-              for (int i = 0; i < exact.n_Xs; i++)
-#ifdef P4_TO_P8
-                exact.IX.push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
-#else
-                //        exact.IX.push_back(integration.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec));
-                exact.IX.push_back(integration_quadratic.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd));
-#endif
-
-#ifdef P4_TO_P8
-              for (int i = 0; i < exact.n_X3s; i++)
-                exact.IX3.push_back(integration.integrate_over_intersection(exact.IX3c0[i], exact.IX3c1[i], exact.IX3c2[i], func_vec));
-#endif
+              result_L_all.IX[i][file_num] = integration_L.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec);
+              result_Q_all.IX[i][file_num] = integration_Q.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd);
             }
 
             ierr = VecDestroy(func_vec); CHKERRXX(ierr);
@@ -775,6 +730,9 @@ int main (int argc, char* argv[])
 
             my_p4est_brick_destroy(connectivity, &brick);
 
+            ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f). Case no. %6d/%d is finished.\n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale, file_num, num_iter_tot); CHKERRXX(ierr);
+            ++file_num;
+
           }
         }
 #ifdef P4_TO_P8
@@ -783,26 +741,308 @@ int main (int argc, char* argv[])
     }
   }
 
+  /* post-process results */
+
+  // if exact values are not provided use the most refined grid for reference
+  if (!exact.provided)
+  {
+    exact.ID = 0;
+
+    for (int i = 0; i < exact.n_subs; i++)
+      exact.ISB.push_back(0);
+
+    for (int i = 0; i < exact.n_Xs; i++)
+      exact.IX.push_back(0);
+
+#ifdef P4_TO_P8
+    for (int i = 0; i < exact.n_X3s; i++)
+      exact.IX3.push_back(0);
+#endif
+
+    for (int s = 0; s < num_shifts; ++s)
+    {
+      int p = (num_resolutions-1)*num_shifts + s;
+
+      exact.ID += result_Q_all.ID[p];
+
+      for (int i = 0; i < exact.n_subs; i++)
+        exact.ISB[i] += result_Q_all.ISB[i][p];
+
+      for (int i = 0; i < exact.n_Xs; i++)
+        exact.IX[i] += result_Q_all.IX[i][p];
+
+#ifdef P4_TO_P8
+      for (int i = 0; i < exact.n_X3s; i++)
+        exact.IX3[i] += result_Q_all.IX3[i][p];
+#endif
+    }
+
+    exact.ID /= num_shifts;
+
+    for (int i = 0; i < exact.n_subs; i++)
+      exact.ISB[i] /= num_shifts;
+
+    for (int i = 0; i < exact.n_Xs; i++)
+      exact.IX[i] /= num_shifts;
+
+#ifdef P4_TO_P8
+    for (int i = 0; i < exact.n_X3s; i++)
+      exact.IX3[i] /= num_shifts;
+#endif
+
+    num_resolutions -= 1;
+    num_iter_tot -= num_shifts;
+
+    level.resize(num_resolutions);
+    h.resize(num_resolutions);
+
+    result_L_all.ID.resize(num_iter_tot);
+    result_Q_all.ID.resize(num_iter_tot);
+
+    for (int i = 0; i < exact.n_subs; i++)
+    {
+      result_L_all.ISB[i].resize(num_iter_tot);
+      result_Q_all.ISB[i].resize(num_iter_tot);
+    }
+
+    for (int i = 0; i < exact.n_Xs; i++)
+    {
+      result_L_all.IX[i].resize(num_iter_tot);
+      result_Q_all.IX[i].resize(num_iter_tot);
+    }
+  }
+
+  // compute errors in all cases
+  for (int p = 0; p < num_iter_tot; ++p)
+  {
+    result_L_all.ID[p] = fabs(result_L_all.ID[p]-exact.ID);
+    result_Q_all.ID[p] = fabs(result_Q_all.ID[p]-exact.ID);
+
+    for (int i = 0; i < exact.n_subs; i++)
+    {
+      result_L_all.ISB[i][p] = fabs(result_L_all.ISB[i][p] - exact.ISB[i]);
+      result_Q_all.ISB[i][p] = fabs(result_Q_all.ISB[i][p] - exact.ISB[i]);
+    }
+
+    for (int i = 0; i < exact.n_Xs; i++)
+    {
+      result_L_all.IX[i][p] = fabs(result_L_all.IX[i][p] - exact.IX[i]);
+      result_Q_all.IX[i][p] = fabs(result_Q_all.IX[i][p] - exact.IX[i]);
+    }
+  }
+
+  result_t result_L_max(exact.n_subs, exact.n_Xs, exact.n_X3s, num_resolutions);
+  result_t result_L_avg(exact.n_subs, exact.n_Xs, exact.n_X3s, num_resolutions);
+  result_t result_L_dev(exact.n_subs, exact.n_Xs, exact.n_X3s, num_resolutions);
+  result_t result_L_one(exact.n_subs, exact.n_Xs, exact.n_X3s, num_resolutions);
+
+  result_t result_Q_max(exact.n_subs, exact.n_Xs, exact.n_X3s, num_resolutions);
+  result_t result_Q_avg(exact.n_subs, exact.n_Xs, exact.n_X3s, num_resolutions);
+  result_t result_Q_dev(exact.n_subs, exact.n_Xs, exact.n_X3s, num_resolutions);
+  result_t result_Q_one(exact.n_subs, exact.n_Xs, exact.n_X3s, num_resolutions);
+
+  // for each resolution compute max, mean and deviation
+  for (int p = 0; p < num_resolutions; ++p)
+  {
+    // one
+    result_L_one.ID[p] = result_L_all.ID[p*num_shifts];
+    result_Q_one.ID[p] = result_Q_all.ID[p*num_shifts];
+
+    for (int i = 0; i < exact.n_subs; i++)
+    {
+      result_L_one.ISB[i][p] = result_L_all.ISB[i][p*num_shifts];
+      result_Q_one.ISB[i][p] = result_Q_all.ISB[i][p*num_shifts];
+    }
+
+    for (int i = 0; i < exact.n_Xs; i++)
+    {
+      result_L_one.IX[i][p] = result_L_all.IX[i][p*num_shifts];
+      result_Q_one.IX[i][p] = result_Q_all.IX[i][p*num_shifts];
+    }
+
+    // max
+    for (int s = 0; s < num_shifts; ++s)
+    {
+      result_L_max.ID[p] = MAX(result_L_max.ID[p], result_L_all.ID[p*num_shifts + s]);
+      result_Q_max.ID[p] = MAX(result_Q_max.ID[p], result_Q_all.ID[p*num_shifts + s]);
+
+      for (int i = 0; i < exact.n_subs; i++)
+      {
+        result_L_max.ISB[i][p] = MAX(result_L_max.ISB[i][p], result_L_all.ISB[i][p*num_shifts + s]);
+        result_Q_max.ISB[i][p] = MAX(result_Q_max.ISB[i][p], result_Q_all.ISB[i][p*num_shifts + s]);
+      }
+
+      for (int i = 0; i < exact.n_Xs; i++)
+      {
+        result_L_max.IX[i][p] = MAX(result_L_max.IX[i][p], result_L_all.IX[i][p*num_shifts + s]);
+        result_Q_max.IX[i][p] = MAX(result_Q_max.IX[i][p], result_Q_all.IX[i][p*num_shifts + s]);
+      }
+    }
+
+    // avg
+    for (int s = 0; s < num_shifts; ++s)
+    {
+      result_L_avg.ID[p] += result_L_all.ID[p*num_shifts + s];
+      result_Q_avg.ID[p] += result_Q_all.ID[p*num_shifts + s];
+
+      for (int i = 0; i < exact.n_subs; i++)
+      {
+        result_L_avg.ISB[i][p] += result_L_all.ISB[i][p*num_shifts + s];
+        result_Q_avg.ISB[i][p] += result_Q_all.ISB[i][p*num_shifts + s];
+      }
+
+      for (int i = 0; i < exact.n_Xs; i++)
+      {
+        result_L_avg.IX[i][p] += result_L_all.IX[i][p*num_shifts + s];
+        result_Q_avg.IX[i][p] += result_Q_all.IX[i][p*num_shifts + s];
+      }
+    }
+
+    result_L_avg.ID[p] /= num_shifts;
+    result_Q_avg.ID[p] /= num_shifts;
+
+    for (int i = 0; i < exact.n_subs; i++)
+    {
+      result_L_avg.ISB[i][p] /= num_shifts;
+      result_Q_avg.ISB[i][p] /= num_shifts;
+    }
+
+    for (int i = 0; i < exact.n_Xs; i++)
+    {
+      result_L_avg.IX[i][p] /= num_shifts;
+      result_Q_avg.IX[i][p] /= num_shifts;
+    }
+
+    // deviation
+    if (num_shifts != 1)
+    {
+      for (int s = 0; s < num_shifts; ++s)
+      {
+        // avg
+        result_L_dev.ID[p] += pow(result_L_all.ID[p*num_shifts + s] - result_L_avg.ID[p], 2.);
+        result_Q_dev.ID[p] += pow(result_Q_all.ID[p*num_shifts + s] - result_Q_avg.ID[p], 2.);
+
+        for (int i = 0; i < exact.n_subs; i++)
+        {
+          result_L_dev.ISB[i][p] += pow(result_L_all.ISB[i][p*num_shifts + s] - result_L_avg.ISB[i][p], 2.);
+          result_Q_dev.ISB[i][p] += pow(result_Q_all.ISB[i][p*num_shifts + s] - result_Q_avg.ISB[i][p], 2.);
+        }
+
+        for (int i = 0; i < exact.n_Xs; i++)
+        {
+          result_L_dev.IX[i][p] += pow(result_L_all.IX[i][p*num_shifts + s] - result_L_avg.IX[i][p], 2.);
+          result_Q_dev.IX[i][p] += pow(result_Q_all.IX[i][p*num_shifts + s] - result_Q_avg.IX[i][p], 2.);
+        }
+      }
+
+      result_L_dev.ID[p] = sqrt(result_L_dev.ID[p]/(num_shifts-1));
+      result_Q_dev.ID[p] = sqrt(result_Q_dev.ID[p]/(num_shifts-1));
+
+      for (int i = 0; i < exact.n_subs; i++)
+      {
+        result_L_dev.ISB[i][p] = sqrt(result_L_dev.ISB[i][p]/(num_shifts-1));
+        result_Q_dev.ISB[i][p] = sqrt(result_Q_dev.ISB[i][p]/(num_shifts-1));
+      }
+
+      for (int i = 0; i < exact.n_Xs; i++)
+      {
+        result_L_dev.IX[i][p] = sqrt(result_L_dev.IX[i][p]/(num_shifts-1));
+        result_Q_dev.IX[i][p] = sqrt(result_Q_dev.IX[i][p]/(num_shifts-1));
+      }
+    }
+  }
+
+  // print tables
+
+
+
+  ierr = PetscPrintf(mpi.comm(), "\nDomain Integral\n"); CHKERRXX(ierr);
+  print_convergence_table(mpi.comm(),
+                          level, h,
+                          result_L_one.ID, result_L_avg.ID, result_L_dev.ID, result_L_max.ID,
+                          result_Q_one.ID, result_Q_avg.ID, result_Q_dev.ID, result_Q_max.ID);
+
+  for (int i = 0; i < exact.n_subs; ++i)
+  {
+    ierr = PetscPrintf(mpi.comm(), "Boundary Integral no. %d\n", i); CHKERRXX(ierr);
+    print_convergence_table(mpi.comm(),
+                            level, h,
+                            result_L_one.ISB[i], result_L_avg.ISB[i], result_L_dev.ISB[i], result_L_max.ISB[i],
+                            result_Q_one.ISB[i], result_Q_avg.ISB[i], result_Q_dev.ISB[i], result_Q_max.ISB[i]);
+  }
+
+  if (mpi.rank() == 0)
+  {
+    char *out_dir;
+    out_dir = getenv("OUT_DIR");
+    std::ostringstream oss_dir;
+    std::string filename;
+
+    oss_dir << out_dir
+            << "/convergence";
+
+    // save level and resolution
+    filename = out_dir; filename += "/convergence/lvl.txt";      save_vector(filename.c_str(), level);
+    filename = out_dir; filename += "/convergence/h.txt";        save_vector(filename.c_str(), h);
+
+    // domain integral
+    filename = out_dir; filename += "/convergence/l_all_id.txt"; save_vector(filename.c_str(), result_L_all.ID);
+    filename = out_dir; filename += "/convergence/q_all_id.txt"; save_vector(filename.c_str(), result_Q_all.ID);
+    filename = out_dir; filename += "/convergence/l_max_id.txt"; save_vector(filename.c_str(), result_L_max.ID);
+    filename = out_dir; filename += "/convergence/q_max_id.txt"; save_vector(filename.c_str(), result_Q_max.ID);
+    filename = out_dir; filename += "/convergence/l_avg_id.txt"; save_vector(filename.c_str(), result_L_avg.ID);
+    filename = out_dir; filename += "/convergence/q_avg_id.txt"; save_vector(filename.c_str(), result_Q_avg.ID);
+    filename = out_dir; filename += "/convergence/l_one_id.txt"; save_vector(filename.c_str(), result_L_one.ID);
+    filename = out_dir; filename += "/convergence/q_one_id.txt"; save_vector(filename.c_str(), result_Q_one.ID);
+    filename = out_dir; filename += "/convergence/l_dev_id.txt"; save_vector(filename.c_str(), result_L_dev.ID);
+    filename = out_dir; filename += "/convergence/q_dev_id.txt"; save_vector(filename.c_str(), result_Q_dev.ID);
+
+    // boundary integrals
+    for (int i = 0; i < exact.n_subs; i++)
+    {
+      ios_base::openmode mode = (i == 0 ? ios_base::out : ios_base::app);
+      filename = out_dir; filename += "/convergence/l_all_isb.txt"; save_vector(filename.c_str(), result_L_all.ISB[i], mode);
+      filename = out_dir; filename += "/convergence/q_all_isb.txt"; save_vector(filename.c_str(), result_Q_all.ISB[i], mode);
+      filename = out_dir; filename += "/convergence/l_max_isb.txt"; save_vector(filename.c_str(), result_L_max.ISB[i], mode);
+      filename = out_dir; filename += "/convergence/q_max_isb.txt"; save_vector(filename.c_str(), result_Q_max.ISB[i], mode);
+      filename = out_dir; filename += "/convergence/l_avg_isb.txt"; save_vector(filename.c_str(), result_L_avg.ISB[i], mode);
+      filename = out_dir; filename += "/convergence/q_avg_isb.txt"; save_vector(filename.c_str(), result_Q_avg.ISB[i], mode);
+      filename = out_dir; filename += "/convergence/l_one_isb.txt"; save_vector(filename.c_str(), result_L_one.ISB[i], mode);
+      filename = out_dir; filename += "/convergence/q_one_isb.txt"; save_vector(filename.c_str(), result_Q_one.ISB[i], mode);
+      filename = out_dir; filename += "/convergence/l_dev_isb.txt"; save_vector(filename.c_str(), result_L_dev.ISB[i], mode);
+      filename = out_dir; filename += "/convergence/q_dev_isb.txt"; save_vector(filename.c_str(), result_Q_dev.ISB[i], mode);
+    }
+
+
+  }
+
+
+
+  /// boundary integrals
+  /// integrals over intersections
+
+  // save convergence data
+
 
   w.stop(); w.read_duration();
   // make a plot
   int plot_color = 1;
-  if (mpi.rank() == 0)
+  if (mpi.rank() == -1)
   {
     // plot convergence results for a quick check
     Gnuplot plot;
-    print_Table("Convergence", exact.ID, level, h, "Domain", result.ID, 1, &plot);
+    print_Table("Convergence", 0, level, h, "Domain", result_L_max.ID, 1, &plot);
     plot_color++;
 
     for (int i = 0; i < exact.n_subs; i++)
     {
-      print_Table("Convergence", exact.ISB[i], level, h, "Sub-boundary #"+to_string(i), result.ISB[i], plot_color, &plot);
+      print_Table("Convergence", 0, level, h, "Sub-boundary #"+to_string(i), result_L_max.ISB[i], plot_color, &plot);
       plot_color++;
     }
 
     for (int i = 0; i < exact.n_Xs; i++)
     {
-      print_Table("Convergence", exact.IX[i], level, h, "X of #"+to_string(exact.IXc0[i])+" and #"+to_string(exact.IXc1[i]), result.IX[i], plot_color, &plot);
+      print_Table("Convergence", 0, level, h, "X of #"+to_string(exact.IXc0[i])+" and #"+to_string(exact.IXc1[i]), result_L_max.IX[i], plot_color, &plot);
       plot_color++;
     }
 
@@ -810,18 +1050,18 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     for (int i = 0; i < exact.n_X3s; i++)
     {
-      print_Table("Convergence", exact.IX3[i], level, h, "X of #"+to_string(exact.IX3c0[i])+" and #"+to_string(exact.IX3c1[i])+" and #"+to_string(exact.IX3c2[i]), result.IX3[i], plot_color, &plot);
+      print_Table("Convergence", 0, level, h, "X of #"+to_string(exact.IX3c0[i])+" and #"+to_string(exact.IX3c1[i])+" and #"+to_string(exact.IX3c2[i]), result_L_max.IX3[i], plot_color, &plot);
       plot_color++;
     }
 #endif
 
 //    plot_color = 1;
-    print_Table("Convergence", exact.ID, level, h, "Domain", result_quadratic.ID, plot_color, &plot);
+    print_Table("Convergence", 0, level, h, "Domain", result_Q_max.ID, plot_color, &plot);
     plot_color++;
 
     for (int i = 0; i < exact.n_subs; i++)
     {
-      print_Table("Convergence", exact.ISB[i], level, h, "Sub-boundary #"+to_string(i), result_quadratic.ISB[i], plot_color, &plot);
+      print_Table("Convergence", 0, level, h, "Sub-boundary #"+to_string(i), result_Q_max.ISB[i], plot_color, &plot);
       plot_color++;
     }
 
@@ -833,7 +1073,7 @@ int main (int argc, char* argv[])
 
     for (int i = 0; i < exact.n_Xs; i++)
     {
-      print_Table("Convergence", exact.IX[i], level, h, "X of #"+to_string(exact.IXc0[i])+" and #"+to_string(exact.IXc1[i]), result_quadratic.IX[i], plot_color, &plot);
+      print_Table("Convergence", 0, level, h, "X of #"+to_string(exact.IXc0[i])+" and #"+to_string(exact.IXc1[i]), result_Q_max.IX[i], plot_color, &plot);
       plot_color++;
     }
 
@@ -841,78 +1081,132 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     for (int i = 0; i < exact.n_X3s; i++)
     {
-      print_Table("Convergence", exact.IX3[i], level, h, "X of #"+to_string(exact.IX3c0[i])+" and #"+to_string(exact.IX3c1[i])+" and #"+to_string(exact.IX3c2[i]), result_quadratic.IX3[i], plot_color, &plot);
+      print_Table("Convergence", 0, level, h, "X of #"+to_string(exact.IX3c0[i])+" and #"+to_string(exact.IX3c1[i])+" and #"+to_string(exact.IX3c2[i]), result_Q_max.IX3[i], plot_color, &plot);
       plot_color++;
     }
 #endif
-
-//    print_Table("Convergence", 0, level, h, "phi_integr", phi_integr, plot_color, &plot);
-
-    // print all errors in compact form for plotting in matlab
-    // step sizes
-      cout << "h"; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << h[i]; } cout <<  ";" << endl;
-
-    // domain
-      cout << "dom"; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result.ID[i]-exact.ID); } cout <<  ";" << endl;
-
-    // sub-boundaries
-    for (int j = 0; j < exact.n_subs; j++) {
-      cout << "ifc" << j; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result.ISB[j][i]-exact.ISB[j]); } cout <<  ";" << endl;
-    }
-
-    // X of 2 sub-boundaries
-    for (int j = 0; j < exact.n_Xs; j++) {
-      cout << exact.IXc0[j] << "x" << exact.IXc1[j]; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result.IX[j][i]-exact.IX[j]); } cout <<  ";" << endl;
-    }
-
-    // print all errors in compact form for plotting in matlab
-    // step sizes
-      cout << "h"; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << h[i]; } cout <<  ";" << endl;
-
-    // domain
-      cout << "dom"; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result_quadratic.ID[i]-exact.ID); } cout <<  ";" << endl;
-
-    // sub-boundaries
-    for (int j = 0; j < exact.n_subs; j++) {
-      cout << "ifc" << j; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result_quadratic.ISB[j][i]-exact.ISB[j]); } cout <<  ";" << endl;
-    }
-
-    // X of 2 sub-boundaries
-    for (int j = 0; j < exact.n_Xs; j++) {
-      cout << exact.IXc0[j] << "x" << exact.IXc1[j]; for (int i = 0; i < h.size(); i++) { cout << ", "; cout << fabs(result_quadratic.IX[j][i]-exact.IX[j]); } cout <<  ";" << endl;
-    }
-
-
-#ifdef P4_TO_P8
-    // X of 3 sub-boundaries
-    for (int j = 0; j < exact.n_X3s; j++)
-    {
-      for (int i = 0; i < h.size(); i++)
-      {
-        if (i != 0) cout << ", ";
-        cout << fabs(result.IX3[j][i]-exact.IX3[j]);
-      }
-      cout <<  ";" << endl;
-    }
-#endif
-
-//    for (int i = 0; i < h.size(); i++)
-//    {
-//      cout << h[i] << ", "
-//           << fabs(result.ID[i]-exact.ID);
-
-//      for (int j = 0; j < exact.n_subs; j++)
-//        cout << ", " << fabs(result.ISB[j][i]-exact.ISB[j]);
-
-//      for (int j = 0; j < exact.n_Xs; j++)
-//        cout << ", " << fabs(result.IX[j][i]-exact.IX[j]);
-
-//      cout <<  ";" << endl;
-//    }
     std::cin.get();
   }
 
   return 0;
+}
+
+void print_convergence_table(MPI_Comm mpi_comm,
+                             std::vector<double> &level, std::vector<double> &h,
+                             std::vector<double> &L_one, std::vector<double> &L_avg, std::vector<double> &L_dev, std::vector<double> &L_max,
+                             std::vector<double> &Q_one, std::vector<double> &Q_avg, std::vector<double> &Q_dev, std::vector<double> &Q_max)
+{
+  PetscErrorCode ierr;
+  double order;
+
+  ierr = PetscPrintf(mpi_comm, "\n"); CHKERRXX(ierr);
+
+  ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi_comm, "                    |  Linear Integration                                                                     |  Quadratic Integration                                                                \n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi_comm, "                    |  Average                    |  One                        |  Max                        |  Average                    |  One                        |  Max                      \n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi_comm, "lvl  | Resolution   |  Error      ( Dev )  Order  |  Error      ( Dev )  Order  |  Error      ( Dev )  Order  |  Error      ( Dev )  Order  |  Error      ( Dev )  Order  |  Error      ( Dev )  Order\n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
+
+
+  for (int i = 0; i < num_resolutions; ++i)
+  {
+    // lvl and h
+    ierr = PetscPrintf(mpi_comm, "%.2f | %.5e", level[i], h[i]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
+
+
+    /* linear integration */
+    // avg
+    if (i == 0) order = compute_convergence_order(h, L_avg);
+    else        order = log(L_avg[i-1]/L_avg[i])/log(h[i-1]/h[i]);
+
+    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", L_avg[i], 100.*L_dev[i]/L_avg[i], order); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
+
+    // one
+    if (i == 0) order = compute_convergence_order(h, L_one);
+    else        order = log(L_one[i-1]/L_one[i])/log(h[i-1]/h[i]);
+
+    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", L_one[i], 100.*fabs(L_one[i]-L_avg[i])/L_avg[i], order); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
+
+    // max
+    if (i == 0) order = compute_convergence_order(h, L_max);
+    else        order = log(L_max[i-1]/L_max[i])/log(h[i-1]/h[i]);
+
+    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", L_max[i], 100.*fabs(L_max[i]-L_avg[i])/L_avg[i], order); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
+
+    /* quadratic integration */
+    //avg
+    if (i == 0) order = compute_convergence_order(h, Q_avg);
+    else        order = log(Q_avg[i-1]/Q_avg[i])/log(h[i-1]/h[i]);
+
+    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", Q_avg[i], 100.*Q_dev[i]/Q_avg[i], order); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
+
+    // one
+    if (i == 0) order = compute_convergence_order(h, Q_one);
+    else        order = log(Q_one[i-1]/Q_one[i])/log(h[i-1]/h[i]);
+
+    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", Q_one[i], 100.*fabs(Q_one[i]-Q_avg[i])/Q_avg[i], order); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
+
+    // max
+    if (i == 0) order = compute_convergence_order(h, Q_max);
+    else        order = log(Q_max[i-1]/Q_max[i])/log(h[i-1]/h[i]);
+
+    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", Q_max[i], 100.*fabs(Q_max[i]-Q_avg[i])/Q_avg[i], order); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi_comm, "\n"); CHKERRXX(ierr);
+  }
+  ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
+
+  ierr = PetscPrintf(mpi_comm, "\n"); CHKERRXX(ierr);
+}
+
+double compute_convergence_order(std::vector<double> &x, std::vector<double> &y)
+{
+  if (x.size() != y.size())
+  {
+    std::cout << "[ERROR]: sizes of arrays do not coincide\n";
+    return 0;
+  }
+
+  int n = x.size();
+
+  double sum_x  = 0;
+  double sum_y  = 0;
+  double sum_xy = 0;
+  double sum_xx = 0;
+
+  for (int i = 0; i < n; ++i)
+  {
+    double log_x = log(x[i]);
+    double log_y = log(y[i]);
+
+    sum_x  += log_x;
+    sum_y  += log_y;
+    sum_xy += log_x*log_y;
+    sum_xx += log_x*log_x;
+  }
+
+  return (sum_xy - sum_x*sum_y/n)/(sum_xx - sum_x*sum_x/n);
+}
+
+void save_vector(const char *filename, const std::vector<double> &data, ios_base::openmode mode, char delim)
+{
+  ofstream ofs;
+  ofs.open(filename, mode);
+
+  for (int i = 0; i < data.size(); ++i)
+  {
+    if (i != 0) ofs << delim;
+    ofs << data[i];
+  }
+
+  ofs << "\n";
 }
 
 
@@ -922,13 +1216,8 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
               int compt)
 {
   PetscErrorCode ierr;
-#ifdef STAMPEDE
   char *out_dir;
   out_dir = getenv("OUT_DIR");
-#else
-  char out_dir[10000];
-  sprintf(out_dir, OUTPUT_DIR);
-#endif
 
   std::ostringstream oss;
 

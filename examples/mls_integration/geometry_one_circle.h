@@ -76,7 +76,9 @@ public:
 //#endif
 
 #ifdef P4_TO_P8
-    double r0 = 0.5, xc_0 = 0.08, yc_0 = 0.01, zc_0 = 0.03;
+    double r0 = 0.71, xc_0 = 0.13, yc_0 = 0.27, zc_0 = 0.21;
+//    double r0 = 0.5, xc_0 = 0.08, yc_0 = 0.01, zc_0 = 0.03;
+//    double r0 = 0.63, xc_0 =-0.24, yc_0 =-0.16, zc_0 =-0.33;
     domain0.set_params(r0, xc_0, yc_0, zc_0);
 #else
     double r0 = 0.77, xc_0 = 0.13, yc_0 = 0.21;

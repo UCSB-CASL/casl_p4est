@@ -172,13 +172,13 @@ public:
 //  void find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri);
   void find_middle_node(double *xyz_out, double *xyz0, double *xyz1, int n_tri);
   bool need_swap(int v0, int v1);
-  void deform_middle_node(double &x_out, double &y_out,
-                          double x, double y,
-                          double x0, double y0,
-                          double x1, double y1,
-                          double x2, double y2,
-                          double x3, double y3,
-                          double x01, double y01);
+//  void deform_middle_node(double &x_out, double &y_out,
+//                          double x, double y,
+//                          double x0, double y0,
+//                          double x1, double y1,
+//                          double x2, double y2,
+//                          double x3, double y3,
+//                          double x01, double y01);
 
   void deform_middle_node(double *xyz_out,
                           double *xyz_in,

@@ -2,85 +2,138 @@
 
 void cube3_mls_t::construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
-  bool all_positive, all_negative;
-
    num_of_lsfs = phi.size();
+
+   // 2-by-2-by-2 grid
+   double x[2] = { x0, x1 };
+   double y[2] = { y0, y1 };
+   double z[2] = { z0, z1 };
 
  #ifdef CASL_THROWS
    if (num_of_lsfs != acn.size() || num_of_lsfs != clr.size())
            throw std::domain_error("[CASL_ERROR]: (cube3_mls_quadratic_t::construct_domain) sizes of phi, acn and clr do not coincide.");
  #endif
 
+   std::vector<double> phi_all(num_of_lsfs*n_nodes, -1.);
+
    /* Eliminate unnecessary splitting */
+
    loc = INS;
+
+   std::vector<CF_3 *>   nt_phi;
+   std::vector<action_t> nt_acn;
+   std::vector<int>      nt_clr;
+   std::vector<int>      nt_idx;
+
+   double band = lip*diag;
+
    for (unsigned int p = 0; p < num_of_lsfs; p++)
    {
-     all_negative = true;
-     all_positive = true;
+     bool all_negative = true;
+     bool all_positive = true;
 
-     double x[2] = { x0, x1 };
-     double y[2] = { y0, y1 };
-     double z[2] = { z0, z1 };
+     // check how far cube is from interface
+     double value = (*phi[p]) ( .5*(x0+x1), .5*(y0+y1), .5*(z0+z1) );
 
-     for (short k = 0; k < 2; ++k)
-       for (short j = 0; j < 2; ++j)
-         for (short i = 0; i < 2; ++i)
-         {
-           double value = (*phi[p]) ( x[i], y[j], z[k] );
-           all_negative = (all_negative && (value < 0.));
-           all_positive = (all_positive && (value > 0.));
-         }
+     if (value > band)
+     {
+       all_negative = false;
+       all_positive = true;
+     }
+     else if (value < -band)
+     {
+       all_negative = true;
+       all_positive = false;
+     }
+     else
+     {
+       // sample level-set function and check for intersections
+       for (short k = 0; k < 2; ++k)
+         for (short j = 0; j < 2; ++j)
+           for (short i = 0; i < 2; ++i)
+           {
+             double value = (*phi[p]) ( x[i], y[j], z[k] );
+//             value = -1;
+             phi_all[n_nodes*p + n_nodes_dir*n_nodes_dir*k + n_nodes_dir*j + i] = value;
+             all_negative = (all_negative && (value < 0.));
+             all_positive = (all_positive && (value > 0.));
+           }
+     }
 
      if (all_positive)
      {
-       if (acn[p] == INTERSECTION) loc = OUT;
+       if (acn[p] == INTERSECTION)
+       {
+         loc = OUT;
+         nt_phi.clear();
+         nt_acn.clear();
+         nt_clr.clear();
+         nt_idx.clear();
+       }
      }
      else if (all_negative)
      {
-       if (acn[p] == ADDITION) loc = INS;
+       if (acn[p] == ADDITION)
+       {
+         loc = INS;
+         nt_phi.clear();
+         nt_acn.clear();
+         nt_clr.clear();
+         nt_idx.clear();
+       }
      }
-     else if ((loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
+     else if (loc == FCE || (loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
      {
        loc = FCE;
+       nt_phi.push_back(phi[p]);
+       nt_acn.push_back(acn[p]);
+       nt_clr.push_back(clr[p]);
+       nt_idx.push_back(p);
      }
    }
 
+//   if (nt_idx.size() > 1) loc = OUT;
+
    if (loc == FCE)
    {
-    double x[8] = {x0,x1,x0,x1,x0,x1,x0,x1};
-    double y[8] = {y0,y0,y1,y1,y0,y0,y1,y1};
-    double z[8] = {z0,z0,z0,z0,z1,z1,z1,z1};
+     if (nt_acn[0] == ADDITION) nt_acn[0] = INTERSECTION;
 
-    /* Split a cube into 5 simplices */
-    simplex.clear();
-    simplex.reserve(NTETS);
-    simplex.push_back(simplex3_mls_t(x[t0p0],y[t0p0],z[t0p0], x[t0p1],y[t0p1],z[t0p1], x[t0p2],y[t0p2],z[t0p2], x[t0p3],y[t0p3],z[t0p3])); //simplex.back().set_use_linear(use_linear);
-    simplex.push_back(simplex3_mls_t(x[t1p0],y[t1p0],z[t1p0], x[t1p1],y[t1p1],z[t1p1], x[t1p2],y[t1p2],z[t1p2], x[t1p3],y[t1p3],z[t1p3])); //simplex.back().set_use_linear(use_linear);
-    simplex.push_back(simplex3_mls_t(x[t2p0],y[t2p0],z[t2p0], x[t2p1],y[t2p1],z[t2p1], x[t2p2],y[t2p2],z[t2p2], x[t2p3],y[t2p3],z[t2p3])); //simplex.back().set_use_linear(use_linear);
-    simplex.push_back(simplex3_mls_t(x[t3p0],y[t3p0],z[t3p0], x[t3p1],y[t3p1],z[t3p1], x[t3p2],y[t3p2],z[t3p2], x[t3p3],y[t3p3],z[t3p3])); //simplex.back().set_use_linear(use_linear);
-    simplex.push_back(simplex3_mls_t(x[t4p0],y[t4p0],z[t4p0], x[t4p1],y[t4p1],z[t4p1], x[t4p2],y[t4p2],z[t4p2], x[t4p3],y[t4p3],z[t4p3])); //simplex.back().set_use_linear(use_linear);
+     double x[8] = {x0,x1,x0,x1,x0,x1,x0,x1};
+     double y[8] = {y0,y0,y1,y1,y0,y0,y1,y1};
+     double z[8] = {z0,z0,z0,z0,z1,z1,z1,z1};
+
+     /* Split a cube into 6 simplices */
+     simplex.clear();
+     simplex.reserve(NTETS);
+     simplex.push_back(simplex3_mls_t(x[t0p0],y[t0p0],z[t0p0], x[t0p1],y[t0p1],z[t0p1], x[t0p2],y[t0p2],z[t0p2], x[t0p3],y[t0p3],z[t0p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_t(x[t1p0],y[t1p0],z[t1p0], x[t1p1],y[t1p1],z[t1p1], x[t1p2],y[t1p2],z[t1p2], x[t1p3],y[t1p3],z[t1p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_t(x[t2p0],y[t2p0],z[t2p0], x[t2p1],y[t2p1],z[t2p1], x[t2p2],y[t2p2],z[t2p2], x[t2p3],y[t2p3],z[t2p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_t(x[t3p0],y[t3p0],z[t3p0], x[t3p1],y[t3p1],z[t3p1], x[t3p2],y[t3p2],z[t3p2], x[t3p3],y[t3p3],z[t3p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_t(x[t4p0],y[t4p0],z[t4p0], x[t4p1],y[t4p1],z[t4p1], x[t4p2],y[t4p2],z[t4p2], x[t4p3],y[t4p3],z[t4p3])); //simplex.back().set_use_linear(use_linear);
 #ifdef CUBE3_MLS_KUHN
-    simplex.push_back(simplex3_mls_t(x[t5p0],y[t5p0],z[t5p0], x[t5p1],y[t5p1],z[t5p1], x[t5p2],y[t5p2],z[t5p2], x[t5p3],y[t5p3],z[t5p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_t(x[t5p0],y[t5p0],z[t5p0], x[t5p1],y[t5p1],z[t5p1], x[t5p2],y[t5p2],z[t5p2], x[t5p3],y[t5p3],z[t5p3])); //simplex.back().set_use_linear(use_linear);
 #endif
 
-    // TODO: mark appropriate edges for integrate_in_dir
+     // TODO: mark appropriate edges for integrate_in_dir
 #ifdef CUBE3_MLS_KUHN
-    simplex[0].tris[0].dir = 1; simplex[0].tris[3].dir = 4;
-    simplex[1].tris[0].dir = 3; simplex[1].tris[3].dir = 4;
-    simplex[2].tris[0].dir = 1; simplex[2].tris[3].dir = 2;
-    simplex[3].tris[0].dir = 3; simplex[3].tris[3].dir = 0;
-    simplex[4].tris[0].dir = 5; simplex[4].tris[3].dir = 2;
-    simplex[5].tris[0].dir = 5; simplex[5].tris[3].dir = 0;
+     simplex[0].tris[0].dir = 1; simplex[0].tris[3].dir = 4;
+     simplex[1].tris[0].dir = 3; simplex[1].tris[3].dir = 4;
+     simplex[2].tris[0].dir = 1; simplex[2].tris[3].dir = 2;
+     simplex[3].tris[0].dir = 3; simplex[3].tris[3].dir = 0;
+     simplex[4].tris[0].dir = 5; simplex[4].tris[3].dir = 2;
+     simplex[5].tris[0].dir = 5; simplex[5].tris[3].dir = 0;
 #endif
-    // it doesn't make sense to do it for the MIDDLE_CUT triangulation
+     // it doesn't make sense to do it for the MIDDLE_CUT triangulation
 
-    simplex[0].construct_domain(phi, acn, clr);
-    simplex[1].construct_domain(phi, acn, clr);
-    simplex[2].construct_domain(phi, acn, clr);
-    simplex[3].construct_domain(phi, acn, clr);
-    simplex[4].construct_domain(phi, acn, clr);
-    simplex[5].construct_domain(phi, acn, clr);
-  }
+     num_of_lsfs = nt_idx.size();
+
+     simplex[0].construct_domain(nt_phi, nt_acn, nt_clr);
+     simplex[1].construct_domain(nt_phi, nt_acn, nt_clr);
+     simplex[2].construct_domain(nt_phi, nt_acn, nt_clr);
+     simplex[3].construct_domain(nt_phi, nt_acn, nt_clr);
+     simplex[4].construct_domain(nt_phi, nt_acn, nt_clr);
+     simplex[5].construct_domain(nt_phi, nt_acn, nt_clr);
+   }
 }
 
 double cube3_mls_t::integrate_over_domain(CF_3 &f)
