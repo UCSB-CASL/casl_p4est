@@ -1444,9 +1444,9 @@ public:
   }
 
 #ifdef P4_TO_P8
-  inline double operator()(double x, double y, double z) const;
+  double operator()(double x, double y, double z) const;
 #else
-  inline double operator()(double x, double y) const;
+  double operator()(double x, double y) const;
 #endif
 
 //#ifdef P4_TO_P8

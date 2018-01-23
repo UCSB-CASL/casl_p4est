@@ -17,20 +17,31 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 #include <src/my_p4est_utils.h>
 #endif
 
-//#define SIMPLEX3_MLS_QUADRATIC_DEBUG
+#define SIMPLEX3_MLS_QUADRATIC_DEBUG
 
 class simplex3_mls_quadratic_t
 {
 public:
   double eps;
 
-  const static int nodes_per_tri = 6;
-  const static int nodes_per_tet = 10;
-  const static int max_refinement_ = 4;
+  double kappa_;
 
-  const double curvature_limit_ = 0.05;
+  const static int nodes_per_tri_ = 6;
+  const static int nodes_per_tet_ = 10;
+  const static int max_refinement_ = 10;
 
-  const bool check_for_overlapping_ = true;
+  const double curvature_limit_ = 0.1;
+
+  const double snap_limit_ = 0.2;
+
+  const double kappa_scale_ = 2;
+
+  const bool check_for_curvature_          = true;
+  const bool check_for_edge_intersections_ = true;
+  const bool adjust_auxiliary_midpoint_    = false;
+  const bool check_for_overlapping_        = true;
+  const bool refine_in_normal_dir_         = true;
+
 
 //  std::vector<CF_3 *> *phi_;
 
@@ -60,7 +71,14 @@ public:
       , n_vtx0(-1), n_vtx1(-1), ratio(1.0),
         p_edg(-1)
 #endif
-    {}
+    {
+#ifdef CASL_THROWS
+          if (x != x ||
+              y != y ||
+              z != z )
+                throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
+#endif
+    }
 
     void set(loc_t loc_, int c0_, int c1_, int c2_) {loc = loc_; c0 = c0_; c1 = c1_; c2 = c2_;}
   };
@@ -73,6 +91,7 @@ public:
     bool  is_split;   // has the edge been split
     loc_t loc;        // location
     double value;    // stored value at midpoint
+    bool to_refine;
 
     /* Child objects */
     double a;           // location of the intersection point in reference element
@@ -85,7 +104,7 @@ public:
 #endif
 
     edg3_t(int v0, int v1, int v2)
-      : vtx0(v0), vtx1(v1), vtx2(v2), c0(-1), c1(-1), is_split(false), loc(INS)
+      : vtx0(v0), vtx1(v1), vtx2(v2), c0(-1), c1(-1), is_split(false), loc(INS), to_refine(false), a(0.5)
 #ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
       , c_vtx_x(-11), c_edg0(-12), c_edg1(-13),
         type(-1), p_edg(-1), p_tri(-1), p_tet(-1)
@@ -112,6 +131,9 @@ public:
     bool  is_split;         // has the triangle been split
     int   dir;              // to keep track of faces of a cube
     int   p_lsf;            // parent level-set function
+    bool to_refine;
+
+    double a, b;
 
     /* some stuff for better reconstruction */
     double g_vtx01[3], g_vtx12[3], g_vtx02[3]; // midpoints in normal direction
@@ -134,7 +156,7 @@ public:
       : vtx0(v0), vtx1(v1), vtx2(v2),
         edg0(e0), edg1(e1), edg2(e2),
         c(-1), loc(INS), is_split(false), dir(-1), p_lsf(-1),
-        is_curved(false)
+        is_curved(false), to_refine(false), a(0), b(0)
 #ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
       , c_vtx01(-21), c_vtx02(-22), c_vtx12(-23),
         c_edg0(-24), c_edg1(-25), c_edg2(-26),
@@ -215,6 +237,11 @@ public:
   std::vector<tri3_t> tris;
   std::vector<tet3_t> tets;
 
+  std::vector<vtx3_t> vtxs_tmp;
+  std::vector<edg3_t> edgs_tmp;
+  std::vector<tri3_t> tris_tmp;
+  std::vector<tet3_t> tets_tmp;
+
   void construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
   void construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
   void do_action_vtx(int n_vtx, int cn, action_t action);
@@ -223,21 +250,30 @@ public:
   void do_action_tet(int n_tet, int cn, action_t action);
 
   double find_intersection_quadratic(int e);
-  void find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri);
-  void find_middle_node_tet(double abc_out[], int n_tet);
+  void find_middle_node(double *xyz_out, double *xyz0, double *xyz1, int n_tri, double *t = NULL);
+  void find_middle_node_tet(double abc_out[], int n_tet, double *t = NULL);
   bool need_swap(int v0, int v1);
-  void deform_middle_node(double &x_out, double &y_out,
-                          double x, double y,
-                          double x0, double y0,
-                          double x1, double y1,
-                          double x2, double y2,
-                          double x3, double y3,
-                          double x01, double y01);
+  void deform_middle_node(double *xyz_out,
+                          double *xyz_in,
+                          double *xyz0,
+                          double *xyz1,
+                          double *xyz2,
+                          double *xyz3,
+                          double *xyz01);
 
   void refine_all();
   void refine_edg(int n_edg);
   void refine_tri(int n_tri);
   void refine_tet(int n_tet);
+
+  void smart_refine_edg(int n_edg);
+  void smart_refine_tri(int n_tri);
+  void smart_refine_tri(int n_tri, double a, double b);
+  void smart_refine_tet(int n_tet);
+
+  void sort_edg(int n_edg);
+  void sort_tri(int n_tri);
+  void sort_tet(int n_tet);
 
 //  void interpolate_all(double &p0, double &p1, double &p2, double &p3);
 //  void interpolate_from_neighbors(int v);
@@ -276,6 +312,7 @@ public:
   void construct_proper_mapping(int tri_idx, int phi_idx);
   double find_root(double phi, double phi_n, double phi_nn);
   double interpolate_from_parent(std::vector<double> &f, double* xyz);
+  double interpolate_from_parent(double* xyz);
   void inv_mat3(double *in, double *out);
   double interpolate_from_parent_with_derivatives(double* xyz, double normal[3], double &F, double &Fn, double &Fnn);
   double interpolate_from_parent_with_derivatives(double* xyz, double &F, double &Fn, double &Fnn, double *normal);
@@ -303,7 +340,7 @@ public:
     }
   }
 
-  bool invalid_reconstruction;
+  bool invalid_reconstruction_;
 
 //  void set_use_linear(bool val) { use_linear = val; }
 //  void set_use_linear(bool val) { use_linear = true; }

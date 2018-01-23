@@ -71,6 +71,19 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
   }
 
   ofs << "</DataArray>" << endl
+      << "<DataArray type=\"Float32\" Name=\"simplex\" format=\"ascii\">" << endl;
+
+  for (int i = 0; i < n_s; i++)
+  {
+    s = simplices[i];
+    for (int j = 0; j < n_vtxs[i]; j++)
+    {
+      ofs << i << " ";
+    }
+    ofs << endl;
+  }
+
+  ofs << "</DataArray>" << endl
       << "</CellData>" << endl
       << "<Points>" << endl
       << "<DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">" << endl;
@@ -161,6 +174,22 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
       if (!s->edgs[j].is_split)
       {
         ofs << (int) s->edgs[j].loc << " ";
+      }
+    }
+    ofs << endl;
+  }
+
+  ofs << "</DataArray>" << endl;
+  ofs << "<DataArray type=\"Float32\" Name=\"simplex\" format=\"ascii\">" << endl;
+
+  for (int i = 0; i < n_s; i++)
+  {
+    s = simplices[i];
+    for (int j = 0; j < s->edgs.size(); j++)
+    {
+      if (!s->edgs[j].is_split)
+      {
+        ofs << i << " ";
       }
     }
     ofs << endl;
@@ -323,6 +352,21 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
   }
 
   ofs << "</DataArray>" << endl
+      << "<DataArray type=\"Float32\" Name=\"simplex\" format=\"ascii\">" << endl;
+  for (int i = 0; i < n_s; i++)
+  {
+    s = simplices[i];
+    for (int j = 0; j < s->tris.size(); j++)
+    {
+      if (!s->tris[j].is_split)
+      {
+        ofs << i << " ";
+      }
+    }
+    ofs << endl;
+  }
+
+  ofs << "</DataArray>" << endl
       << "</CellData>" << endl
       << "<Points>" << endl
       << "<DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">" << endl;
@@ -428,6 +472,22 @@ void simplex3_mls_quadratic_vtk::write_simplex_geometry(std::vector<simplex3_mls
       if (!s->tets[j].is_split)
       {
         ofs << (int) s->tets[j].loc << " ";
+      }
+    }
+    ofs << endl;
+  }
+
+  ofs << "</DataArray>" << endl;
+  ofs << "<DataArray type=\"Float32\" Name=\"scalars\" format=\"ascii\">" << endl;
+
+  for (int i = 0; i < n_s; i++)
+  {
+    s = simplices[i];
+    for (int j = 0; j < s->tets.size(); j++)
+    {
+      if (!s->tets[j].is_split)
+      {
+        ofs << i << " ";
       }
     }
     ofs << endl;

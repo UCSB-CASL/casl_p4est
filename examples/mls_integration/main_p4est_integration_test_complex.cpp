@@ -81,17 +81,17 @@ using namespace std;
 
 /* grid and discretization */
 #ifdef P4_TO_P8
-int lmin = 5;
-int lmax = 5;
+int lmin = 3;
+int lmax = 3;
 int nb_splits = 2;
-int nb_splits_per_split = 5;
+int nb_splits_per_split = 4;
 int nx_shifts = 5;
 int ny_shifts = 5;
 int nz_shifts = 5;
 int num_shifts = nx_shifts*ny_shifts*nz_shifts;
 #else
-int lmin = 4;
-int lmax = 4;
+int lmin = 3;
+int lmax = 3;
 int nb_splits = 5;
 int nb_splits_per_split = 10;
 int nx_shifts = 10;
@@ -153,7 +153,7 @@ public:
  * 4 - rose-like domain
  * 5 - one circle
  */
-int geometry_num = 0;
+int geometry_num = 1;
 
 geometry_two_circles_union_t        geometry_two_circles_union;
 geometry_two_circles_intersection_t geometry_two_circles_intersection;
@@ -971,6 +971,15 @@ int main (int argc, char* argv[])
                             result_Q_one.ISB[i], result_Q_avg.ISB[i], result_Q_dev.ISB[i], result_Q_max.ISB[i]);
   }
 
+  for (int i = 0; i < exact.n_Xs; ++i)
+  {
+    ierr = PetscPrintf(mpi.comm(), "Intersection Integral no. %d\n", i); CHKERRXX(ierr);
+    print_convergence_table(mpi.comm(),
+                            level, h,
+                            result_L_one.IX[i], result_L_avg.IX[i], result_L_dev.IX[i], result_L_max.IX[i],
+                            result_Q_one.IX[i], result_Q_avg.IX[i], result_Q_dev.IX[i], result_Q_max.IX[i]);
+  }
+
   if (mpi.rank() == 0)
   {
     char *out_dir;
@@ -1011,6 +1020,22 @@ int main (int argc, char* argv[])
       filename = out_dir; filename += "/convergence/q_one_isb.txt"; save_vector(filename.c_str(), result_Q_one.ISB[i], mode);
       filename = out_dir; filename += "/convergence/l_dev_isb.txt"; save_vector(filename.c_str(), result_L_dev.ISB[i], mode);
       filename = out_dir; filename += "/convergence/q_dev_isb.txt"; save_vector(filename.c_str(), result_Q_dev.ISB[i], mode);
+    }
+
+    // intersection integrals
+    for (int i = 0; i < exact.n_Xs; i++)
+    {
+      ios_base::openmode mode = (i == 0 ? ios_base::out : ios_base::app);
+      filename = out_dir; filename += "/convergence/l_all_ix.txt"; save_vector(filename.c_str(), result_L_all.IX[i], mode);
+      filename = out_dir; filename += "/convergence/q_all_ix.txt"; save_vector(filename.c_str(), result_Q_all.IX[i], mode);
+      filename = out_dir; filename += "/convergence/l_max_ix.txt"; save_vector(filename.c_str(), result_L_max.IX[i], mode);
+      filename = out_dir; filename += "/convergence/q_max_ix.txt"; save_vector(filename.c_str(), result_Q_max.IX[i], mode);
+      filename = out_dir; filename += "/convergence/l_avg_ix.txt"; save_vector(filename.c_str(), result_L_avg.IX[i], mode);
+      filename = out_dir; filename += "/convergence/q_avg_ix.txt"; save_vector(filename.c_str(), result_Q_avg.IX[i], mode);
+      filename = out_dir; filename += "/convergence/l_one_ix.txt"; save_vector(filename.c_str(), result_L_one.IX[i], mode);
+      filename = out_dir; filename += "/convergence/q_one_ix.txt"; save_vector(filename.c_str(), result_Q_one.IX[i], mode);
+      filename = out_dir; filename += "/convergence/l_dev_ix.txt"; save_vector(filename.c_str(), result_L_dev.IX[i], mode);
+      filename = out_dir; filename += "/convergence/q_dev_ix.txt"; save_vector(filename.c_str(), result_Q_dev.IX[i], mode);
     }
 
 

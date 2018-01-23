@@ -30,13 +30,17 @@ class simplex2_mls_quadratic_t
   double d_max_;
 
   const static int nodes_per_tri_ = 6;
-  const static int max_refinement_ = 4;
+  const static int max_refinement_ = 10;
 
-  const double curvature_limit_ = 0.15;
+  const double curvature_limit_ = 0.05;
+
+  const double snap_limit_ = 0.25;
 
   const bool check_for_curvature_          = true;
   const bool check_for_edge_intersections_ = true;
-  const bool adjust_auxiliary_midpoint_    = true;
+  const bool adjust_auxiliary_midpoint_    = false;
+  const bool check_for_overlapping_        = true;
+  const bool refine_in_normal_dir_         = true;
 
   bool invalid_reconstruction_;
 
@@ -88,6 +92,8 @@ public:
                             // (-1 - inside; 0 - m0; 1 - p0; 2 - 0m; 3 - 0p;)
     int   p_lsf;            // # of lsf that created an edge
 
+    bool to_refine;
+
 
     /* Child objects */
     double a;           // location of the intersection point in reference element
@@ -100,7 +106,7 @@ public:
 #endif
 
     edg2_t(int v0, int v1, int v2)
-      : vtx0(v0), vtx1(v1), vtx2(v2), c0(-1), is_split(false), loc(INS), dir(-1), p_lsf(-1)
+      : vtx0(v0), vtx1(v1), vtx2(v2), c0(-1), is_split(false), loc(INS), dir(-1), p_lsf(-1), to_refine(false)
 #ifdef CASL_THROWS
       , c_vtx_x(-1), c_edg0(-1), c_edg1(-1),
         type(-1), p_edg(-1), p_tri(-1), p_tet(-1)
@@ -120,6 +126,7 @@ public:
     int   edg0, edg1, edg2; // edges
     loc_t loc;              // location
     bool  is_split;         // has the triangle been split
+    bool to_refine;
 
     /* Child objects */
     int c_vtx01, c_vtx02, c_vtx12;  // vertices
@@ -135,7 +142,7 @@ public:
            int e0 = -1, int e1 = -1, int e2 = -1)
       : vtx0(v0), vtx1(v1), vtx2(v2),
         edg0(e0), edg1(e1), edg2(e2),
-        loc(INS), is_split(false)
+        loc(INS), is_split(false), to_refine(false)
 #ifdef CASL_THROWS
       , c_vtx01(-1), c_vtx02(-1), c_vtx12(-1),
         c_edg0(-1), c_edg1(-1),
@@ -158,6 +165,10 @@ public:
   std::vector<edg2_t> edgs;
   std::vector<tri2_t> tris;
 
+  std::vector<vtx2_t> vtxs_tmp;
+  std::vector<edg2_t> edgs_tmp;
+  std::vector<tri2_t> tris_tmp;
+
   void construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
   void construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 
@@ -170,7 +181,7 @@ public:
 
   double find_intersection_quadratic(int e);
 //  void find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri);
-  void find_middle_node(double *xyz_out, double *xyz0, double *xyz1, int n_tri);
+  void find_middle_node(double *xyz_out, double *xyz0, double *xyz1, int n_tri, double *t = NULL);
   bool need_swap(int v0, int v1);
 //  void deform_middle_node(double &x_out, double &y_out,
 //                          double x, double y,
@@ -195,6 +206,9 @@ public:
   void refine_edg(int n_edg);
   void refine_tri(int n_tri);
 
+  void smart_refine_edg(int n_edg);
+  void smart_refine_tri(int n_tri);
+
   //--------------------------------------------------
   // Integration
   //--------------------------------------------------
@@ -209,6 +223,7 @@ public:
 
 
   double interpolate_from_parent(std::vector<double> &f, double x, double y);
+  double interpolate_from_parent(double x, double y);
   void mapping_edg(double &x, double &y, int n_edg, double a);
 //  void mapping_tri(double &x, double &y, int n_tri, double a, double b);
   void mapping_tri(double *xyz, int n_tri, double *abc);

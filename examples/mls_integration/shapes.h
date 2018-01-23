@@ -370,6 +370,7 @@ public:
     double r = sqrt(X*X + Y*Y);
     if (r < 1.0E-9) r = 1.0E-9; // to avoid division by zero
     return inside*(r-r0 - beta*(pow(Y,5.)+5.*pow(X,4.)*Y-10.*pow(X*Y,2.)*Y)/pow(r,5.));
+//    return inside*(r*r-r0*r0);
   }
 };
 
