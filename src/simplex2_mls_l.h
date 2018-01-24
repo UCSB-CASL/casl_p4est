@@ -4,8 +4,8 @@ enum loc_t {INS, OUT, FCE, LNE, PNT};
 enum action_t {INTERSECTION, ADDITION, COLORATION};
 #endif
 
-#ifndef SIMPLEX2_MLS_H
-#define SIMPLEX2_MLS_H
+#ifndef simplex2_mls_l_H
+#define simplex2_mls_l_H
 
 #include <math.h>
 #include <vector>
@@ -17,13 +17,15 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 #include <src/my_p4est_utils.h>
 #endif
 
-class simplex2_mls_t
+class simplex2_mls_l_t
 {
 public:
 
   const static int nodes_per_tri = 3;
 
   double eps;
+
+  double A_;
 
   struct vtx2_t // vertex
   {
@@ -116,8 +118,8 @@ public:
     void set(loc_t loc_) {loc = loc_;}
   };
 
-  simplex2_mls_t();
-  simplex2_mls_t(double x0, double y0,
+  simplex2_mls_l_t();
+  simplex2_mls_l_t(double x0, double y0,
                  double x1, double y1,
                  double x2, double y2);
 
@@ -128,6 +130,7 @@ public:
   std::vector<tri2_t> tris;
 
   void construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 
   //--------------------------------------------------
   // Splitting
@@ -140,6 +143,7 @@ public:
 
   void interpolate_all(CF_2 &f);
   void interpolate_from_neighbors(int v);
+  double interpolate(int v);
 
   //--------------------------------------------------
   // Integration
@@ -149,6 +153,15 @@ public:
   double integrate_over_colored_interface (CF_2 &f, int num0, int num1);
   double integrate_over_intersection      (CF_2 &f, int num0, int num1);
   double integrate_in_dir                 (CF_2 &f, int dir);
+
+  //--------------------------------------------------
+  // Quadrature Points
+  //--------------------------------------------------
+  void quadrature_over_domain       (                    std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_over_interface    (int num,            std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_over_intersection (int num0, int num1, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_in_dir            (int dir,            std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+
 
   double length (int vtx0, int vtx1);
   double area   (int vtx0, int vtx1, int vtx2);
@@ -181,4 +194,4 @@ public:
 
 };
 
-#endif // SIMPLEX2_MLS_H
+#endif // simplex2_mls_l_H

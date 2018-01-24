@@ -4,8 +4,8 @@ enum loc_t {INS, OUT, FCE, LNE, PNT};
 enum action_t {INTERSECTION, ADDITION, COLORATION};
 #endif
 
-#ifndef SIMPLEX2_MLS_QUADRATIC_H
-#define SIMPLEX2_MLS_QUADRATIC_H
+#ifndef simplex2_mls_q_H
+#define simplex2_mls_q_H
 
 #include <math.h>
 #include <vector>
@@ -17,7 +17,7 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 #include <src/my_p4est_utils.h>
 #endif
 
-class simplex2_mls_quadratic_t
+class simplex2_mls_q_t
 {
   double x0_, y0_;
   double x1_, y1_;
@@ -153,8 +153,7 @@ public:
     void set(loc_t loc_) {loc = loc_;}
   };
 
-//  simplex2_mls_quadratic_t();
-  simplex2_mls_quadratic_t(double x0, double y0,
+  simplex2_mls_q_t(double x0, double y0,
                            double x1, double y1,
                            double x2, double y2,
                            double x3, double y3,
@@ -169,6 +168,9 @@ public:
   std::vector<edg2_t> edgs_tmp;
   std::vector<tri2_t> tris_tmp;
 
+  //--------------------------------------------------
+  // Reconstruction of irregular domains
+  //--------------------------------------------------
   void construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
   void construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 
@@ -180,16 +182,8 @@ public:
   void do_action_tri(int n_tri, int cn, action_t action);
 
   double find_intersection_quadratic(int e);
-//  void find_middle_node(double &x_out, double &y_out, double x0, double y0, double x1, double y1, int n_tri);
   void find_middle_node(double *xyz_out, double *xyz0, double *xyz1, int n_tri, double *t = NULL);
   bool need_swap(int v0, int v1);
-//  void deform_middle_node(double &x_out, double &y_out,
-//                          double x, double y,
-//                          double x0, double y0,
-//                          double x1, double y1,
-//                          double x2, double y2,
-//                          double x3, double y3,
-//                          double x01, double y01);
 
   void deform_middle_node(double *xyz_out,
                           double *xyz_in,
@@ -206,6 +200,9 @@ public:
   void refine_edg(int n_edg);
   void refine_tri(int n_tri);
 
+  //--------------------------------------------------
+  // Geometry Aware Refinement
+  //--------------------------------------------------
   void smart_refine_edg(int n_edg);
   void smart_refine_tri(int n_tri);
 
@@ -218,15 +215,31 @@ public:
   double integrate_over_intersection      (CF_2 &f, int num0, int num1);
   double integrate_in_dir                 (CF_2 &f, int dir);
 
+  //--------------------------------------------------
+  // Quadrature Points
+  //--------------------------------------------------
+  void quadrature_over_domain       (                    std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_over_interface    (int num,            std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_over_intersection (int num0, int num1, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_in_dir            (int dir,            std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+
+  //--------------------------------------------------
+  // Jacobians
+  //--------------------------------------------------
   double jacobian_edg(int n_edg, double a);
   double jacobian_tri(int n_edg, double a, double b);
 
+  //--------------------------------------------------
+  // Mappings
+  //--------------------------------------------------
+  void mapping_edg(double &x, double &y, int n_edg, double a);
+  void mapping_tri(double *xyz, int n_tri, double *abc);
 
+  //--------------------------------------------------
+  // Interpolation
+  //--------------------------------------------------
   double interpolate_from_parent(std::vector<double> &f, double x, double y);
   double interpolate_from_parent(double x, double y);
-  void mapping_edg(double &x, double &y, int n_edg, double a);
-//  void mapping_tri(double &x, double &y, int n_tri, double a, double b);
-  void mapping_tri(double *xyz, int n_tri, double *abc);
 
   template<typename X>
   void swap(X &x, X &y)
@@ -252,4 +265,4 @@ public:
 
 };
 
-#endif // SIMPLEX2_MLS_QUADRATIC_H
+#endif // simplex2_mls_q_H

@@ -1,20 +1,20 @@
-#include "simplex3_mls_quadratic.h"
+#include "simplex3_mls_q.h"
 
 
 //--------------------------------------------------
 // Constructors
 //--------------------------------------------------
-simplex3_mls_quadratic_t::simplex3_mls_quadratic_t()
+simplex3_mls_q_t::simplex3_mls_q_t()
 {
   vtxs.reserve(8);
   edgs.reserve(27);
   tris.reserve(20);
   tets.reserve(6);
 
-  eps = 1.0e-13;
+  eps_ = 1.0e-13;
 }
 
-simplex3_mls_quadratic_t::simplex3_mls_quadratic_t(double x0, double y0, double z0,
+simplex3_mls_q_t::simplex3_mls_q_t(double x0, double y0, double z0,
                                                    double x1, double y1, double z1,
                                                    double x2, double y2, double z2,
                                                    double x3, double y3, double z3,
@@ -84,7 +84,7 @@ simplex3_mls_quadratic_t::simplex3_mls_quadratic_t(double x0, double y0, double 
   tets.push_back(tet3_t(0,1,2,3,0,1,2,3));
 
 //  use_linear = true;
-  eps = 1.0e-13;
+  eps_ = 1.0e-13;
 
   diag = MAX(fabs(x0-x1), fabs(y0-y1), fabs(z0-z1));
 }
@@ -95,279 +95,7 @@ simplex3_mls_quadratic_t::simplex3_mls_quadratic_t(double x0, double y0, double 
 //--------------------------------------------------
 // Constructing domain
 //--------------------------------------------------
-void simplex3_mls_quadratic_t::construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
-{
-
-  bool needs_refinement = true;
-  int last_vtxs_size = 0;
-
-  int initial_refinement = 0;
-  int n;
-
-  std::vector<vtx3_t> vtxs_initial = vtxs;
-  std::vector<edg3_t> edgs_initial = edgs;
-  std::vector<tri3_t> tris_initial = tris;
-  std::vector<tet3_t> tets_initial = tets;
-
-
-  while(1)
-  {
-    for (int i = 0; i < initial_refinement; ++i)
-    {
-      n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
-      n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
-      n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
-    }
-
-    int refine_level = 0;
-
-    // loop over LSFs
-    for (short phi_idx = 0; phi_idx < phi.size(); ++phi_idx)
-    {
-      last_vtxs_size = 0;
-
-      invalid_reconstruction_ = true;
-
-      while (invalid_reconstruction_)
-      {
-        needs_refinement = true;
-
-        while (needs_refinement)
-        {
-          // interpolate to all vertices
-          for (int i = last_vtxs_size; i < vtxs.size(); ++i)
-            if (!vtxs[i].is_recycled)
-            {
-              vtxs[i].value = (*phi[phi_idx]) ( vtxs[i].x, vtxs[i].y, vtxs[i].z );
-              perturb(vtxs[i].value, eps);
-            }
-
-          // check validity of data on each edge
-          needs_refinement = false;
-          for (int i = 0; i < edgs.size(); ++i)
-            if (!edgs[i].is_split)
-            {
-              edg3_t *e = &edgs[i];
-
-              double phi0 = vtxs[e->vtx0].value;
-              double phi1 = vtxs[e->vtx1].value;
-              double phi2 = vtxs[e->vtx2].value;
-
-              if (phi1*phi0 < 0 && phi0*phi2 > 0)
-              {
-                needs_refinement = true;
-                break;
-              }
-
-//              if (phi0*phi2 > 0)
-//              {
-//                double c0 =     phi0;
-//                double c1 = -3.*phi0 + 4.*phi1 -    phi2;
-//                double c2 =  2.*phi0 - 4.*phi1 + 2.*phi2;
-
-//                if (c2 > EPS)
-//                {
-//                  double d = c1*c1 - 4.*c0*c2;
-//                  if (d > 0)
-//                  {
-//                    double a1 = .5*(-c1-sqrt(d))/c2;
-//                    double a2 = .5*(-c1+sqrt(d))/c2;
-//                    if (a1 > 0. && a1 < 1. ||
-//                        a2 > 0. && a2 < 1.)
-//                    {
-//                      std::cout << a1 << " " << a2 << "\n";
-//                      needs_refinement = true;
-//                      break;
-//                    }
-//                  }
-//                }
-//              }
-
-              if (!needs_refinement && phi0*phi2 > 0)
-              {
-                double c0 = phi0;
-                double c1 = -3.*phi0 + 4.*phi1 -    phi2;
-                double c2 =  2.*phi0 - 4.*phi1 + 2.*phi2;
-
-                if (fabs(c2) > EPS)
-                {
-                  double a_ext = -.5*c1/c2;
-                  if (a_ext > 0. && a_ext < 1.)
-                  {
-                    double phi_ext = c0 + c1*a_ext + c2*a_ext*a_ext;
-
-                    if (phi0*phi_ext < 0)
-                    {
-//                      std::cout << a_ext << " " << phi_ext << "\n";
-                      needs_refinement = true;
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-
-          // check validity of data on each face
-          if (!needs_refinement)
-            for (int i = 0; i < tris.size(); ++i)
-              if (!tris[i].is_split)
-              {
-                tri3_t *f = &tris[i];
-                edg3_t *e0 = &edgs[f->edg0];
-                edg3_t *e1 = &edgs[f->edg1];
-                edg3_t *e2 = &edgs[f->edg2];
-
-                double phi0 = vtxs[f->vtx0 ].value;
-                double phi1 = vtxs[f->vtx1 ].value;
-                double phi2 = vtxs[f->vtx2 ].value;
-                double phi3 = vtxs[e2->vtx1].value;
-                double phi4 = vtxs[e0->vtx1].value;
-                double phi5 = vtxs[e1->vtx1].value;
-
-                if (phi0*phi1 > 0 && phi1*phi2 > 0 && phi2*phi3 > 0 && phi3*phi4 > 0 && phi4*phi5 > 0)
-                {
-                  double paa = 2.*phi0 + 2.*phi1 - 4.*phi3;
-                  double pab = 4.*phi0 - 4.*phi3 + 4.*phi4 - 4.*phi5;
-                  double pbb = 2.*phi0 + 2.*phi2 - 4.*phi5;
-                  double pa = -3.*phi0 -    phi1 + 4.*phi3;
-                  double pb = -3.*phi0 -    phi2 + 4.*phi5;
-
-                  double det = 4.*paa*pbb - pab*pab;
-
-                  if (fabs(det) > EPS)
-                  {
-                    double a = (pb*pab - 2.*pa*pbb)/det;
-                    double b = (pa*pab - 2.*pb*paa)/det;
-
-                    if (a > 0 && b > 0 && a+b < 1.)
-                    {
-                      double phi_extremum = paa*a*a + pab*a*b + pbb*b*b + pa*a + pb*b + phi0;
-
-                      if (phi_extremum*phi0 < 0)
-                      {
-//                        std::cout << "face " << a << " " << b << "\n";
-                        needs_refinement = true;
-                        break;
-                      }
-                    }
-                  }
-
-                }
-              }
-
-          last_vtxs_size = vtxs.size();
-
-          // refine if necessary
-          if (needs_refinement && refine_level < max_refinement_ - initial_refinement)
-          {
-            int n;
-            n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
-            n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
-            n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
-            refine_level++;
-          } else if (needs_refinement) {
-            std::cout << "Cannot resolve invalid geometry (bad)\n";
-            needs_refinement = false;
-          }
-        }
-
-        invalid_reconstruction_ = false;
-
-        std::vector<vtx3_t> vtx_tmp = vtxs;
-        std::vector<edg3_t> edg_tmp = edgs;
-        std::vector<tri3_t> tri_tmp = tris;
-        std::vector<tet3_t> tet_tmp = tets;
-
-        int n;
-        n = vtxs.size(); for (int i = 0; i < n; i++) { do_action_vtx(i, clr[phi_idx], acn[phi_idx]); }
-        n = edgs.size(); for (int i = 0; i < n; i++) { do_action_edg(i, clr[phi_idx], acn[phi_idx]); }
-        n = tris.size(); for (int i = 0; i < n; i++) { do_action_tri(i, clr[phi_idx], acn[phi_idx]); }
-        n = tets.size(); for (int i = 0; i < n; i++) { do_action_tet(i, clr[phi_idx], acn[phi_idx]); }
-
-        if (invalid_reconstruction_ && refine_level < max_refinement_ - initial_refinement)
-        {
-          vtxs = vtx_tmp;
-          edgs = edg_tmp;
-          tris = tri_tmp;
-          tets = tet_tmp;
-
-          n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
-          n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
-          n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
-
-          refine_level++;
-        } else {
-//          if (invalid_reconstruction_) std::cout << "Cannot resolve invalid geometry\n";
-          invalid_reconstruction_ = false;
-        }
-      }
-
-      eps *= 0.5;
-    }
-
-    // sort everything before integration
-    for (int i = 0; i < edgs.size(); i++)
-    {
-      edg3_t *edg = &edgs[i];
-      if (need_swap(edg->vtx0, edg->vtx2)) { swap(edg->vtx0, edg->vtx2); }
-    }
-
-    for (int i = 0; i < tris.size(); i++)
-    {
-      tri3_t *tri = &tris[i];
-      if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); swap(tri->c_vtx12, tri->c_vtx02); swap(tri->ab12, tri->ab02); }
-      if (need_swap(tri->vtx1, tri->vtx2)) { swap(tri->vtx1, tri->vtx2); swap(tri->edg1, tri->edg2); swap(tri->c_vtx02, tri->c_vtx01); swap(tri->ab02, tri->ab01); }
-      if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); swap(tri->c_vtx12, tri->c_vtx02); swap(tri->ab12, tri->ab02); }
-    }
-
-    for (int i = 0; i < tets.size(); i++)
-    {
-      tet3_t *tet = &tets[i];
-      if (need_swap(tet->vtx0, tet->vtx1)) { swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1); }
-      if (need_swap(tet->vtx1, tet->vtx2)) { swap(tet->vtx1, tet->vtx2); swap(tet->tri1, tet->tri2); }
-      if (need_swap(tet->vtx2, tet->vtx3)) { swap(tet->vtx2, tet->vtx3); swap(tet->tri2, tet->tri3); }
-      if (need_swap(tet->vtx0, tet->vtx1)) { swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1); }
-      if (need_swap(tet->vtx1, tet->vtx2)) { swap(tet->vtx1, tet->vtx2); swap(tet->tri1, tet->tri2); }
-      if (need_swap(tet->vtx0, tet->vtx1)) { swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1); }
-    }
-
-    if (check_for_overlapping_)
-    {
-      // check for overlapping volumes
-      double v_before = volume(tets[0].vtx0, tets[0].vtx1, tets[0].vtx2, tets[0].vtx3);
-      double v_after  = 0;
-
-      // compute volume after using linear representation
-      for (int i = 0; i < tets.size(); ++i)
-        if (!tets[i].is_split)
-          v_after += volume(tets[i].vtx0, tets[i].vtx1, tets[i].vtx2, tets[i].vtx3);
-
-      if (fabs(v_before-v_after) > EPS)
-      {
-        if (initial_refinement == max_refinement_)
-        {
-          std::cout << "Can't resolve overlapping " << fabs(v_before-v_after) << "\n";
-          break;
-        } else {
-          ++initial_refinement;
-          //std::cout << "Overlapping " << fabs(s_before-s_after) << "\n";
-          vtxs = vtxs_initial;
-          edgs = edgs_initial;
-          tris = tris_initial;
-          tets = tets_initial;
-        }
-      } else {
-        break;
-      }
-    } else {
-      break;
-    }
-    break;
-  }
-}
-
-/*
-void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+void simplex3_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
 
   bool needs_refinement = true;
@@ -401,264 +129,7 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
       {
         vtxs[i].value  = phi[nodes_per_tet_*phi_idx + i];
         phi_current[i] = phi[nodes_per_tet_*phi_idx + i];
-      }
-
-      last_vtxs_size = nodes_per_tri_;
-
-      invalid_reconstruction_ = true;
-
-      while (invalid_reconstruction_)
-      {
-        needs_refinement = true;
-
-        while (needs_refinement)
-        {
-          // interpolate to all vertices
-          for (int i = last_vtxs_size; i < vtxs.size(); ++i)
-            if (!vtxs[i].is_recycled)
-            {
-              double xyz[3] = { vtxs[i].x, vtxs[i].y, vtxs[i].z };
-              vtxs[i].value = interpolate_from_parent (phi_current, xyz );
-              perturb(vtxs[i].value, eps);
-            }
-
-          // check validity of data on each edge
-          needs_refinement = false;
-          for (int i = 0; i < edgs.size(); ++i)
-            if (!edgs[i].is_split)
-            {
-              edg3_t *e = &edgs[i];
-
-              double phi0 = vtxs[e->vtx0].value;
-              double phi1 = vtxs[e->vtx1].value;
-              double phi2 = vtxs[e->vtx2].value;
-
-              if (phi1*phi0 < 0 && phi0*phi2 > 0)
-              {
-                needs_refinement = true;
-                break;
-              }
-
-              if (phi0*phi2 > 0)
-              {
-                double c0 = phi0;
-                double c1 = -3.*phi0 + 4.*phi1 -    phi2;
-                double c2 =  2.*phi0 - 4.*phi1 + 2.*phi2;
-
-                if (fabs(c2) > EPS)
-                {
-                  double a_ext = -.5*c1/c2;
-                  if (a_ext > 0. && a_ext < 1.)
-                  {
-                    double phi_ext = c0 + c1*a_ext + c2*a_ext*a_ext;
-
-                    if (phi0*phi_ext < 0)
-                    {
-//                      std::cout << a_ext << " " << phi_ext << "\n";
-                      needs_refinement = true;
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-
-          // check validity of data on each face
-          if (!needs_refinement)
-            for (int i = 0; i < tris.size(); ++i)
-              if (!tris[i].is_split)
-              {
-                tri3_t *f = &tris[i];
-                edg3_t *e0 = &edgs[f->edg0];
-                edg3_t *e1 = &edgs[f->edg1];
-                edg3_t *e2 = &edgs[f->edg2];
-
-                double phi0 = vtxs[f->vtx0].value;
-                double phi1 = vtxs[f->vtx1].value;
-                double phi2 = vtxs[f->vtx2].value;
-                double phi3 = vtxs[e2->vtx1].value;
-                double phi4 = vtxs[e0->vtx1].value;
-                double phi5 = vtxs[e1->vtx1].value;
-
-                if (phi0*phi1 > 0 && phi1*phi2 > 0 && phi2*phi3 > 0 && phi3*phi4 > 0 && phi4*phi5 > 0)
-                {
-                  double paa = 2.*phi0 + 2.*phi1 - 4.*phi3;
-                  double pab = 4.*phi0 - 4.*phi3 + 4.*phi4 - 4.*phi5;
-                  double pbb = 2.*phi0 + 2.*phi2 - 4.*phi5;
-                  double pa = -3.*phi0 -    phi1 + 4.*phi3;
-                  double pb = -3.*phi0 -    phi2 + 4.*phi5;
-
-                  double det = 4.*paa*pbb - pab*pab;
-
-                  if (fabs(det) > EPS)
-                  {
-                    double a = (pb*pab - 2.*pa*pbb)/det;
-                    double b = (pa*pab - 2.*pb*paa)/det;
-
-                    if (a > 0 && b > 0 && a+b < 1.)
-                    {
-                      double phi_extremum = paa*a*a + pab*a*b + pbb*b*b + pa*a + pb*b + phi0;
-
-                      if (phi_extremum*phi0 < 0)
-                      {
-//                        std::cout << "face " << a << " " << b << "\n";
-                        needs_refinement = true;
-                        break;
-                      }
-                    }
-                  }
-
-                }
-              }
-
-          last_vtxs_size = vtxs.size();
-
-          // refine if necessary
-          if (needs_refinement && refine_level < max_refinement_ - initial_refinement)
-          {
-            int n;
-            n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
-            n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
-            n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
-            refine_level++;
-          } else if (needs_refinement) {
-            std::cout << "Cannot resolve invalid geometry (bad)\n";
-            needs_refinement = false;
-          }
-        }
-
-        invalid_reconstruction_ = false;
-
-        vtxs_tmp = vtxs;
-        edgs_tmp = edgs;
-        tris_tmp = tris;
-        tets_tmp = tets;
-
-        int n;
-        n = vtxs.size(); for (int i = 0; i < n; i++) {                                    do_action_vtx(i, clr[phi_idx], acn[phi_idx]); }
-        n = edgs.size(); for (int i = 0; i < n; i++) {                                    do_action_edg(i, clr[phi_idx], acn[phi_idx]); }
-        n = tris.size(); for (int i = 0; i < n; i++) { if (invalid_reconstruction_ && refine_level < max_refinement_ - initial_refinement) break; do_action_tri(i, clr[phi_idx], acn[phi_idx]); }
-        n = tets.size(); for (int i = 0; i < n; i++) { if (invalid_reconstruction_ && refine_level < max_refinement_ - initial_refinement) break; do_action_tet(i, clr[phi_idx], acn[phi_idx]); }
-
-        if (invalid_reconstruction_ && refine_level < max_refinement_ - initial_refinement)
-        {
-          vtxs = vtxs_tmp;
-          edgs = edgs_tmp;
-          tris = tris_tmp;
-          tets = tets_tmp;
-
-          n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
-          n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
-          n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
-
-          refine_level++;
-        } else {
-//          if (invalid_reconstruction_) std::cout << "Cannot resolve invalid geometry\n";
-          invalid_reconstruction_ = false;
-        }
-      }
-
-      eps *= 0.5;
-    }
-
-    // sort everything before integration
-    for (int i = 0; i < edgs.size(); i++)
-    {
-      edg3_t *edg = &edgs[i];
-      if (need_swap(edg->vtx0, edg->vtx2)) { swap(edg->vtx0, edg->vtx2); }
-    }
-
-    for (int i = 0; i < tris.size(); i++)
-    {
-      tri3_t *tri = &tris[i];
-      if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); swap(tri->c_vtx12, tri->c_vtx02); swap(tri->ab12, tri->ab02); }
-      if (need_swap(tri->vtx1, tri->vtx2)) { swap(tri->vtx1, tri->vtx2); swap(tri->edg1, tri->edg2); swap(tri->c_vtx02, tri->c_vtx01); swap(tri->ab02, tri->ab01); }
-      if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); swap(tri->c_vtx12, tri->c_vtx02); swap(tri->ab12, tri->ab02); }
-    }
-
-    for (int i = 0; i < tets.size(); i++)
-    {
-      tet3_t *tet = &tets[i];
-      if (need_swap(tet->vtx0, tet->vtx1)) { swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1); }
-      if (need_swap(tet->vtx1, tet->vtx2)) { swap(tet->vtx1, tet->vtx2); swap(tet->tri1, tet->tri2); }
-      if (need_swap(tet->vtx2, tet->vtx3)) { swap(tet->vtx2, tet->vtx3); swap(tet->tri2, tet->tri3); }
-      if (need_swap(tet->vtx0, tet->vtx1)) { swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1); }
-      if (need_swap(tet->vtx1, tet->vtx2)) { swap(tet->vtx1, tet->vtx2); swap(tet->tri1, tet->tri2); }
-      if (need_swap(tet->vtx0, tet->vtx1)) { swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1); }
-    }
-
-    if (check_for_overlapping_)
-    {
-      // check for overlapping volumes
-      double v_before = volume(tets[0].vtx0, tets[0].vtx1, tets[0].vtx2, tets[0].vtx3);
-      double v_after  = 0;
-
-      // compute volume after using linear representation
-      for (int i = 0; i < tets.size(); ++i)
-        if (!tets[i].is_split)
-          v_after += volume(tets[i].vtx0, tets[i].vtx1, tets[i].vtx2, tets[i].vtx3);
-
-      if (fabs(v_before-v_after) > EPS)
-      {
-        if (initial_refinement == max_refinement_)
-        {
-          std::cout << "Can't resolve overlapping " << fabs(v_before-v_after) << "\n";
-          break;
-        } else {
-          ++initial_refinement;
-          //std::cout << "Overlapping " << fabs(s_before-s_after) << "\n";
-          vtxs = vtxs_initial;
-          edgs = edgs_initial;
-          tris = tris_initial;
-          tets = tets_initial;
-        }
-      } else {
-        break;
-      }
-    } else {
-      break;
-    }
-  }
-
-//  n = edgs.size(); for (int i = 0; i < n; i++) if (!edgs[i].is_split && edgs[i].loc == FCE) deform_edge_in_normal_dir(i);
-} //*/
-
-//*
-void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
-{
-
-  bool needs_refinement = true;
-  int last_vtxs_size = 0;
-
-  int initial_refinement = 0;
-  int n;
-
-  std::vector<double> phi_current(nodes_per_tet_, -1);
-
-  std::vector<vtx3_t> vtxs_initial = vtxs;
-  std::vector<edg3_t> edgs_initial = edgs;
-  std::vector<tri3_t> tris_initial = tris;
-  std::vector<tet3_t> tets_initial = tets;
-
-  while(1)
-  {
-    for (int i = 0; i < initial_refinement; ++i)
-    {
-      n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
-      n = tris.size(); for (int i = 0; i < n; i++) refine_tri(i);
-      n = tets.size(); for (int i = 0; i < n; i++) refine_tet(i);
-    }
-
-    int refine_level = 0;
-
-    // loop over LSFs
-    for (short phi_idx = 0; phi_idx < acn.size(); ++phi_idx)
-    {
-      for (int i = 0; i < nodes_per_tet_; ++i)
-      {
-        vtxs[i].value  = phi[nodes_per_tet_*phi_idx + i];
-        phi_current[i] = phi[nodes_per_tet_*phi_idx + i];
-        perturb(vtxs[i].value, eps);
+        perturb(vtxs[i].value, eps_);
       }
 
       // compute curvature
@@ -758,7 +229,7 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
             {
               double xyz[3] = { vtxs[i].x, vtxs[i].y, vtxs[i].z };
               vtxs[i].value = interpolate_from_parent (phi_current, xyz );
-              perturb(vtxs[i].value, eps);
+              perturb(vtxs[i].value, eps_);
             }
 
           last_vtxs_size = vtxs.size();
@@ -777,38 +248,33 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
               double phi1 = vtxs[e->vtx1].value;
               double phi2 = vtxs[e->vtx2].value;
 
-//              if (phi1*phi0 < 0 && phi0*phi2 > 0)
-//              {
-//                needs_refinement = true;
-//                e->to_refine = true;
-//                e->a = .5;
-//                smart_refine_edg(i);
-////                break;
-//              }
+              if (phi1*phi0 < 0 && phi0*phi2 > 0)
+              {
+                needs_refinement = true;
+                e->to_refine = true;
+                e->a = .5;
+                smart_refine_edg(i);
+              }
 
               if (!e->to_refine && phi0*phi2 > 0)
               {
-                double c0 = phi0;
-                double c1 = -3.*phi0 + 4.*phi1 -    phi2;
                 double c2 =  2.*phi0 - 4.*phi1 + 2.*phi2;
 
                 if (fabs(c2) > EPS)
                 {
+                  double c1 = -3.*phi0 + 4.*phi1 - phi2;
                   double a_ext = -.5*c1/c2;
+
                   if (a_ext > 0. && a_ext < 1.)
                   {
-                    double phi_ext = c0 + c1*a_ext + c2*a_ext*a_ext;
+                    double phi_ext = phi0 + c1*a_ext + c2*a_ext*a_ext;
 
                     if (phi0*phi_ext < 0)
                     {
-//                      std::cout << a_ext << " " << phi_ext << "\n";
                       needs_refinement = true;
                       e->to_refine = true;
                       e->a = need_swap(e->vtx0, e->vtx2) ? 1.-a_ext : a_ext;
                       smart_refine_edg(i);
-//                      break;
-                      if (refine_level == max_refinement_ - initial_refinement)
-                        std::cout << "Here\n";
                     }
                   }
                 }
@@ -848,13 +314,14 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
                     double paa = 2.*phi0 + 2.*phi1 - 4.*phi3;
                     double pab = 4.*phi0 - 4.*phi3 + 4.*phi4 - 4.*phi5;
                     double pbb = 2.*phi0 + 2.*phi2 - 4.*phi5;
-                    double pa = -3.*phi0 -    phi1 + 4.*phi3;
-                    double pb = -3.*phi0 -    phi2 + 4.*phi5;
 
                     double det = 4.*paa*pbb - pab*pab;
 
                     if (fabs(det) > EPS)
                     {
+                      double pa = -3.*phi0 - phi1 + 4.*phi3;
+                      double pb = -3.*phi0 - phi2 + 4.*phi5;
+
                       double a = (pb*pab - 2.*pa*pbb)/det;
                       double b = (pa*pab - 2.*pb*paa)/det;
 
@@ -863,17 +330,12 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
                         double phi_extremum = paa*a*a + pab*a*b + pbb*b*b + pa*a + pb*b + phi0;
 
                         if (phi_extremum*phi0 < 0)
-//                        if (phi_extremum*phi0 < 0 ||
-//                            phi_extremum*phi1 < 0 ||
-//                            phi_extremum*phi2 < 0 )
                         {
                           needs_refinement = true;
                           f->to_refine = true;
                           f->a = a;
                           f->b = b;
                           smart_refine_tri(i, a, b);
-                          std::cout << "Face refinement\n";
-//                          break;
                         }
                       }
                     }
@@ -882,14 +344,12 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
                 }
               }
 
-
           // refine if necessary
           if (needs_refinement && refine_level < max_refinement_ - initial_refinement)
           {
 //             for (int i = 0; i < edgs.size(); i++) smart_refine_edg(i);
             for (int i = 0; i < tris.size(); i++) smart_refine_tri(i);
             for (int i = 0; i < tets.size(); i++) smart_refine_tet(i);
-//            std::cout << "Refined 1\n";
             refine_level++;
           } else if (needs_refinement) {
             std::cout << "Cannot resolve invalid geometry (bad)\n";
@@ -910,7 +370,6 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
         n = tris.size(); for (int i = 0; i < n; i++) { do_action_tri(i, clr[phi_idx], acn[phi_idx]); }
         n = tets.size(); for (int i = 0; i < n; i++) { do_action_tet(i, clr[phi_idx], acn[phi_idx]); }
 
-//        invalid_reconstruction_ = false;
         if (invalid_reconstruction_ && refine_level < max_refinement_ - initial_refinement)
         {
           vtxs = vtxs_tmp;
@@ -922,8 +381,6 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
           for (int i = 0; i < tris.size(); i++) smart_refine_tri(i);
           for (int i = 0; i < tets.size(); i++) smart_refine_tet(i);
 
-//          std::cout << "Refined 2\n";
-
           refine_level++;
         } else {
           if (invalid_reconstruction_)
@@ -932,7 +389,7 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
         }
       }
 
-      eps *= 0.5;
+      eps_ *= 0.5;
     }
 
     // sort everything before integration
@@ -999,9 +456,7 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
   edgs_tmp.clear();
   tris_tmp.clear();
   tets_tmp.clear();
-
-//  n = edgs.size(); for (int i = 0; i < n; i++) if (!edgs[i].is_split && edgs[i].loc == FCE) deform_edge_in_normal_dir(i);
-} //*/
+}
 
 
 
@@ -1009,20 +464,21 @@ void simplex3_mls_quadratic_t::construct_domain(std::vector<double> &phi, std::v
 //--------------------------------------------------
 // Splitting
 //--------------------------------------------------
-void simplex3_mls_quadratic_t::do_action_vtx(int n_vtx, int cn, action_t action)
+void simplex3_mls_q_t::do_action_vtx(int n_vtx, int cn, action_t action)
 {
   vtx3_t *vtx = &vtxs[n_vtx];
 
   if (vtx->is_recycled) return;
 
-  switch (action){
-  case INTERSECTION:  if (vtx->value > 0)                                                       vtx->set(OUT, -1, -1, -1);  break;
-  case ADDITION:      if (vtx->value < 0)                                                       vtx->set(INS, -1, -1, -1);  break;
-  case COLORATION:    if (vtx->value < 0) if (vtx->loc==FCE || vtx->loc==LNE || vtx->loc==PNT)  vtx->set(FCE, cn, -1, -1);  break;
+  switch (action)
+  {
+    case INTERSECTION:  if (vtx->value > 0)                                                       vtx->set(OUT, -1, -1, -1);  break;
+    case ADDITION:      if (vtx->value < 0)                                                       vtx->set(INS, -1, -1, -1);  break;
+    case COLORATION:    if (vtx->value < 0) if (vtx->loc==FCE || vtx->loc==LNE || vtx->loc==PNT)  vtx->set(FCE, cn, -1, -1);  break;
   }
 }
 
-void simplex3_mls_quadratic_t::do_action_edg(int n_edg, int cn, action_t action)
+void simplex3_mls_q_t::do_action_edg(int n_edg, int cn, action_t action)
 {
   edg3_t *edg = &edgs[n_edg];
 
@@ -1038,7 +494,7 @@ void simplex3_mls_quadratic_t::do_action_edg(int n_edg, int cn, action_t action)
   if (vtxs[edg->vtx0].value < 0) num_negatives++;
   if (vtxs[edg->vtx2].value < 0) num_negatives++;
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
   edg->type = num_negatives;
 #endif
 
@@ -1106,7 +562,7 @@ void simplex3_mls_quadratic_t::do_action_edg(int n_edg, int cn, action_t action)
     c_edg0  = &edgs[edg->c_edg0];
     c_edg1  = &edgs[edg->c_edg1];
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     c_vtx_x->p_edg = n_edg;
     c_edg0->p_edg  = n_edg;
     c_edg1->p_edg  = n_edg;
@@ -1120,7 +576,7 @@ void simplex3_mls_quadratic_t::do_action_edg(int n_edg, int cn, action_t action)
       case FCE: c_vtx_x->set(LNE, c0, cn, -1); c_edg0->set(FCE, c0, -1); c_vtx_0x->set(FCE, c0, -1, -1); c_edg1->set(OUT, -1, -1); c_vtx_x2->set(OUT, -1, -1, -1); if (c0==cn)            c_vtx_x->set(FCE, c0, -1, -1);  break;
       case LNE: c_vtx_x->set(PNT, c0, c1, cn); c_edg0->set(LNE, c0, c1); c_vtx_0x->set(LNE, c0, c1, -1); c_edg1->set(OUT, -1, -1); c_vtx_x2->set(OUT, -1, -1, -1); if (c0==cn || c1==cn)  c_vtx_x->set(LNE, c0, c1, -1);  break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       }
@@ -1132,7 +588,7 @@ void simplex3_mls_quadratic_t::do_action_edg(int n_edg, int cn, action_t action)
       case FCE: c_vtx_x->set(LNE, c0, cn, -1); c_edg0->set(INS, -1, -1); c_vtx_0x->set(INS, -1, -1, -1); c_edg1->set(FCE, c0, -1); c_vtx_x2->set(FCE, c0, -1, -1); if (c0==cn)            c_vtx_x->set(FCE, c0, -1, -1);  break;
       case LNE: c_vtx_x->set(PNT, c0, c1, cn); c_edg0->set(INS, -1, -1); c_vtx_0x->set(INS, -1, -1, -1); c_edg1->set(LNE, c0, c1); c_vtx_x2->set(LNE, c0, c1, -1); if (c0==cn || c1==cn)  c_vtx_x->set(LNE, c0, c1, -1);  break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       }
@@ -1144,7 +600,7 @@ void simplex3_mls_quadratic_t::do_action_edg(int n_edg, int cn, action_t action)
       case FCE: c_vtx_x->set(LNE, c0, cn, -1); c_edg0->set(FCE, cn, -1); c_vtx_0x->set(FCE, cn, -1, -1); c_edg1->set(FCE, c0, -1); c_vtx_x2->set(FCE, c0, -1, -1); if (c0==cn)            c_vtx_x->set(FCE, c0, -1, -1);  break;
       case LNE: c_vtx_x->set(PNT, c0, c1, cn); c_edg0->set(FCE, cn, -1); c_vtx_0x->set(FCE, cn, -1, -1); c_edg1->set(LNE, c0, c1); c_vtx_x2->set(LNE, c0, c1, -1); if (c0==cn || c1==cn)  c_vtx_x->set(LNE, c0, c1, -1);  break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       }
@@ -1166,7 +622,7 @@ void simplex3_mls_quadratic_t::do_action_edg(int n_edg, int cn, action_t action)
   }
 }
 
-void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
+void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
 {
   tri3_t *tri = &tris[n_tri];
 
@@ -1185,7 +641,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
   if (vtxs[tri->vtx1].value < 0) num_negatives++;
   if (vtxs[tri->vtx2].value < 0) num_negatives++;
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
   tri->type = num_negatives;
 
   /* check whether vertices of a triangle and edges coincide */
@@ -1279,7 +735,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
 
 //        // bring the midpoint below the edge in case the max level of refinement is reached
 //        double dist_to_edge_lin = n[0]*(abc_u0_lin[0]-edge_vtx0[0]) + n[1]*(abc_u0_lin[1]-edge_vtx0[1]);
-//        double ratio = (dist_to_edge_lin-eps)/(dist_to_edge_lin-dist_to_edge);
+//        double ratio = (dist_to_edge_lin-eps_)/(dist_to_edge_lin-dist_to_edge);
 
 //        abc_u0[0] = abc_u0_lin[0] + ratio*(abc_u0[0] - abc_u0_lin[0]);
 //        abc_u0[1] = abc_u0_lin[1] + ratio*(abc_u0[1] - abc_u0_lin[1]);
@@ -1502,7 +958,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
     vtx_u0 = &vtxs[u0];
     vtx_u1 = &vtxs[u1];
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     if (!tri_is_ok(tri->c_tri0) || !tri_is_ok(tri->c_tri1) || !tri_is_ok(tri->c_tri2))
       throw std::domain_error("[CASL_ERROR]: While splitting a triangle one of child triangles is not consistent.");
 
@@ -1521,7 +977,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
       case INS: c_edg0->set(FCE, cn, -1); vtx_u0->set(FCE, cn, -1, -1); c_edg1->set(OUT, -1, -1); vtx_u1->set(OUT, -1, -1, -1); c_tri0->set(INS, -1); c_tri1->set(OUT, -1); c_tri2->set(OUT, -1); break;
       case FCE: c_edg0->set(LNE, cc, cn); vtx_u0->set(LNE, cc, cn, -1); c_edg1->set(OUT, -1, -1); vtx_u1->set(OUT, -1, -1, -1); c_tri0->set(FCE, cc); c_tri1->set(OUT, -1); c_tri2->set(OUT, -1); if (cc==cn) c_edg0->set(FCE, cc, -1); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -1531,7 +987,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
       case INS: c_edg0->set(INS, -1, -1); vtx_u0->set(INS, -1, -1, -1); c_edg1->set(INS, -1, -1); vtx_u1->set(INS, -1, -1, -1); c_tri0->set(INS, -1); c_tri1->set(INS, -1); c_tri2->set(INS, -1); break;
       case FCE: c_edg0->set(LNE, cc, cn); vtx_u0->set(LNE, cc, cn, -1); c_edg1->set(FCE, cc, -1); vtx_u1->set(FCE, cc, -1, -1); c_tri0->set(INS, -1); c_tri1->set(FCE, cc); c_tri2->set(FCE, cc); if (cc==cn) c_edg0->set(FCE, cc, -1); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -1541,7 +997,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
       case INS: c_edg0->set(INS, -1, -1); vtx_u0->set(INS, -1, -1, -1); c_edg1->set(INS, -1, -1); vtx_u1->set(INS, -1, -1, -1); c_tri0->set(INS, -1); c_tri1->set(INS, -1); c_tri2->set(INS, -1); break;
       case FCE: c_edg0->set(LNE, cc, cn); vtx_u0->set(LNE, cc, cn, -1); c_edg1->set(FCE, cc, -1); vtx_u1->set(FCE, cc, -1, -1); c_tri0->set(FCE, cn); c_tri1->set(FCE, cc); c_tri2->set(FCE, cc); if (cc==cn) c_edg0->set(FCE, cc, -1); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -1596,7 +1052,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
 
 //        // bring the midpoint below the edge in case the max level of refinement is reached
 //        double dist_to_edge_lin = n[0]*(abc_u1_lin[0]-edge_vtx0[0]) + n[1]*(abc_u1_lin[1]-edge_vtx0[1]);
-//        double ratio = (dist_to_edge_lin-eps)/(dist_to_edge_lin-dist_to_edge);
+//        double ratio = (dist_to_edge_lin-eps_)/(dist_to_edge_lin-dist_to_edge);
 
 //        abc_u1[0] = abc_u1_lin[0] + ratio*(abc_u1[0] - abc_u1_lin[0]);
 //        abc_u1[1] = abc_u1_lin[1] + ratio*(abc_u1[1] - abc_u1_lin[1]);
@@ -1818,7 +1274,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
     vtx_u0 = &vtxs[u0];
     vtx_u1 = &vtxs[u1];
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     if (!tri_is_ok(tri->c_tri0) || !tri_is_ok(tri->c_tri1) || !tri_is_ok(tri->c_tri2))
       throw std::domain_error("[CASL_ERROR]: While splitting a triangle one of child triangles is not consistent.");
 
@@ -1837,7 +1293,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
       case INS: c_edg0->set(INS, -1, -1); vtx_u0->set(INS, -1, -1, -1); c_edg1->set(FCE, cn, -1); vtx_u1->set(FCE, cn, -1, -1); c_tri0->set(INS, -1); c_tri1->set(INS, -1); c_tri2->set(OUT, -1); break;
       case FCE: c_edg0->set(FCE, cc, -1); vtx_u0->set(FCE, cc, -1, -1); c_edg1->set(LNE, cc, cn); vtx_u1->set(LNE, cc, cn, -1); c_tri0->set(FCE, cc); c_tri1->set(FCE, cc); c_tri2->set(OUT, -1); if (cc==cn) c_edg1->set(FCE, cc, -1); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -1847,7 +1303,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
       case INS: c_edg0->set(INS, -1, -1); vtx_u0->set(INS, -1, -1, -1); c_edg1->set(INS, -1, -1); vtx_u1->set(INS, -1, -1, -1); c_tri0->set(INS, -1); c_tri1->set(INS, -1); c_tri2->set(INS, -1); break;
       case FCE: c_edg0->set(INS, -1, -1); vtx_u0->set(INS, -1, -1, -1); c_edg1->set(LNE, cc, cn); vtx_u1->set(LNE, cc, cn, -1); c_tri0->set(INS, -1); c_tri1->set(INS, -1); c_tri2->set(FCE, cc); if (cc==cn) c_edg1->set(FCE, cc, -1); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -1857,7 +1313,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
       case INS: c_edg0->set(INS, -1, -1); vtx_u0->set(INS, -1, -1, -1); c_edg1->set(INS, -1, -1); vtx_u1->set(INS, -1, -1, -1); c_tri0->set(INS, -1); c_tri1->set(INS, -1); c_tri2->set(INS, -1); break;
       case FCE: c_edg0->set(FCE, cn, -1); vtx_u0->set(FCE, cn, -1, -1); c_edg1->set(LNE, cc, cn); vtx_u1->set(LNE, cc, cn, -1); c_tri0->set(FCE, cn); c_tri1->set(FCE, cn); c_tri2->set(FCE, cc); if (cc==cn) c_edg1->set(FCE, cc, -1); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -1878,7 +1334,7 @@ void simplex3_mls_quadratic_t::do_action_tri(int n_tri, int cn, action_t action)
     break;
   }
 }
-void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
+void simplex3_mls_q_t::do_action_tet(int n_tet, int cn, action_t action)
 {
   tet3_t *tet = &tets[n_tet];
 
@@ -1899,7 +1355,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
   if (vtxs[tet->vtx2].value < 0) num_negatives++;
   if (vtxs[tet->vtx3].value < 0) num_negatives++;
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
   tet->type = num_negatives;
 
   /* check whether vertices coincide */
@@ -2002,7 +1458,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
     c_tet2 = &tets[tet->c_tet2];
     c_tet3 = &tets[tet->c_tet3];
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     if (!tri_is_ok(tet->c_tri0) || !tri_is_ok(tet->c_tri1) || !tri_is_ok(tet->c_tri2))
       throw std::domain_error("[CASL_ERROR]: While splitting a tetrahedron one of child triangles is not consistent.");
 
@@ -2028,7 +1484,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
       case OUT: c_tri0->set(OUT, -1); c_tri1->set(OUT, -1); c_tri2->set(OUT, -1); c_tet0->set(OUT); c_tet1->set(OUT); c_tet2->set(OUT); c_tet3->set(OUT); break;
       case INS: c_tri0->set(FCE, cn); c_tri1->set(OUT, -1); c_tri2->set(OUT, -1); c_tet0->set(INS); c_tet1->set(OUT); c_tet2->set(OUT); c_tet3->set(OUT); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -2037,7 +1493,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
       case OUT: c_tri0->set(FCE, cn); c_tri1->set(OUT, -1); c_tri2->set(OUT, -1); c_tet0->set(INS); c_tet1->set(OUT); c_tet2->set(OUT); c_tet3->set(OUT); break;
       case INS: c_tri0->set(INS, -1); c_tri1->set(INS, -1); c_tri2->set(INS, -1); c_tet0->set(INS); c_tet1->set(INS); c_tet2->set(INS); c_tet3->set(INS); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -2046,7 +1502,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
       case OUT: c_tri0->set(OUT, -1); c_tri1->set(OUT, -1); c_tri2->set(OUT, -1); c_tet0->set(OUT); c_tet1->set(OUT); c_tet2->set(OUT); c_tet3->set(OUT); break;
       case INS: c_tri0->set(INS, -1); c_tri1->set(INS, -1); c_tri2->set(INS, -1); c_tet0->set(INS); c_tet1->set(INS); c_tet2->set(INS); c_tet3->set(INS); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -2303,7 +1759,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
     c_tet5 = &tets[tet->c_tet5];
 
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     if (!tri_is_ok(tet->c_tri0) || !tri_is_ok(tet->c_tri1) || !tri_is_ok(tet->c_tri2) ||
         !tri_is_ok(tet->c_tri3) || !tri_is_ok(tet->c_tri4) || !tri_is_ok(tet->c_tri5))
       throw std::domain_error("[CASL_ERROR]: While splitting a tetrahedron one of child triangles is not consistent.");
@@ -2353,7 +1809,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
                 c_tri5->set(OUT,-1);  c_tet5->set(OUT);
                 break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -2374,7 +1830,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
                 c_tri5->set(INS,-1);  c_tet5->set(INS);
                 break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -2395,7 +1851,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
                 c_tri5->set(INS,-1);  c_tet5->set(INS);
                 break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -2453,7 +1909,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
     c_tet2 = &tets[tet->c_tet2];
     c_tet3 = &tets[tet->c_tet3];
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     if (!tri_is_ok(tet->c_tri0) || !tri_is_ok(tet->c_tri1) || !tri_is_ok(tet->c_tri2))
       throw std::domain_error("[CASL_ERROR]: While splitting a tetrahedron one of child triangles is not consistent.");
 
@@ -2479,7 +1935,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
       case OUT: c_tri0->set(OUT,-1); c_tri1->set(OUT,-1); c_tri2->set(OUT,-1); c_tet0->set(OUT); c_tet1->set(OUT); c_tet2->set(OUT); c_tet3->set(OUT); break;
       case INS: c_tri0->set(INS,-1); c_tri1->set(INS,-1); c_tri2->set(FCE,cn); c_tet0->set(INS); c_tet1->set(INS); c_tet2->set(INS); c_tet3->set(OUT); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -2488,7 +1944,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
       case OUT: c_tri0->set(INS,-1); c_tri1->set(INS,-1); c_tri2->set(FCE,cn); c_tet0->set(INS); c_tet1->set(INS); c_tet2->set(INS); c_tet3->set(OUT); break;
       case INS: c_tri0->set(INS,-1); c_tri1->set(INS,-1); c_tri2->set(INS,-1); c_tet0->set(INS); c_tet1->set(INS); c_tet2->set(INS); c_tet3->set(INS); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -2497,7 +1953,7 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
       case OUT: c_tri0->set(OUT,-1); c_tri1->set(OUT,-1); c_tri2->set(OUT,-1); c_tet0->set(OUT); c_tet1->set(OUT); c_tet2->set(OUT); c_tet3->set(OUT); break;
       case INS: c_tri0->set(INS,-1); c_tri1->set(INS,-1); c_tri2->set(INS,-1); c_tet0->set(INS); c_tet1->set(INS); c_tet2->set(INS); c_tet3->set(INS); break;
         default: ;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
           throw std::domain_error("[CASL_ERROR]: An element has wrong location.");
 #endif
       } break;
@@ -2527,17 +1983,17 @@ void simplex3_mls_quadratic_t::do_action_tet(int n_tet, int cn, action_t action)
 //--------------------------------------------------
 // Auxiliary tools for splitting
 //--------------------------------------------------
-double simplex3_mls_quadratic_t::find_intersection_quadratic(int e)
+double simplex3_mls_q_t::find_intersection_quadratic(int e)
 {
   double f0 = vtxs[edgs[e].vtx0].value;
   double f1 = vtxs[edgs[e].vtx1].value;
   double f2 = vtxs[edgs[e].vtx2].value;
 
-  if (fabs(f0) < .8*eps) return .8*eps;
-  if (fabs(f1) < .8*eps) return 0.5;
-  if (fabs(f2) < .8*eps) return 1.-.8*eps;
+  if (fabs(f0) < .8*eps_) return .8*eps_;
+  if (fabs(f1) < .8*eps_) return 0.5;
+  if (fabs(f2) < .8*eps_) return 1.-.8*eps_;
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
   if(f0*f2 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
 #endif
 
@@ -2553,7 +2009,7 @@ double simplex3_mls_quadratic_t::find_intersection_quadratic(int e)
   else
   {
     double d = c1*c1-4.*c2*c0;
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     if (d < 0)
       throw std::domain_error("[CASL_ERROR]: No intersection is found.");
 #endif
@@ -2564,7 +2020,7 @@ double simplex3_mls_quadratic_t::find_intersection_quadratic(int e)
 //    else        x = (-2.*c0)/(c1 + sqrt(d));
   }
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
   if (x < -0.5 || x > 0.5)
   {
     std::cout << f0 << " " << f1 << " " << f2 << " " << x << std::endl;
@@ -2572,14 +2028,14 @@ double simplex3_mls_quadratic_t::find_intersection_quadratic(int e)
   }
 #endif
 
-  if (x <-0.5) return .8*eps;
-  if (x > 0.5) return 1.-.8*eps;
+  if (x <-0.5) return .8*eps_;
+  if (x > 0.5) return 1.-.8*eps_;
 
   return .5+x;
 }
 
 
-void simplex3_mls_quadratic_t::find_middle_node(double *xyz_out, double *xyz0, double *xyz1, int n_tri, double *t)
+void simplex3_mls_q_t::find_middle_node(double *xyz_out, double *xyz0, double *xyz1, int n_tri, double *t)
 {
   tri3_t *tri = &tris[n_tri];
 
@@ -2781,9 +2237,9 @@ void simplex3_mls_quadratic_t::find_middle_node(double *xyz_out, double *xyz0, d
           invalid_reconstruction_ = true;
       }
 
-//      if      (xyz_out[0] < 0.)               alpha = (a-eps)/(a-xyz_out[0])*alpha;
-//      else if (xyz_out[1] < 0.)               alpha = (b-eps)/(b-xyz_out[1])*alpha;
-//      else if (1.-xyz_out[0]-xyz_out[1] < 0.) alpha = (1.-a-b-eps)/(1. -a-b-(1.-xyz_out[0]-xyz_out[1]))*alpha;
+//      if      (xyz_out[0] < 0.)               alpha = (a-eps_)/(a-xyz_out[0])*alpha;
+//      else if (xyz_out[1] < 0.)               alpha = (b-eps_)/(b-xyz_out[1])*alpha;
+//      else if (1.-xyz_out[0]-xyz_out[1] < 0.) alpha = (1.-a-b-eps_)/(1. -a-b-(1.-xyz_out[0]-xyz_out[1]))*alpha;
 
 //      xyz_out[0] = a + alpha*nx;
 //      xyz_out[1] = b + alpha*ny;
@@ -2794,7 +2250,7 @@ void simplex3_mls_quadratic_t::find_middle_node(double *xyz_out, double *xyz0, d
   }
 }
 
-void simplex3_mls_quadratic_t::deform_middle_node(double *xyz_out,
+void simplex3_mls_q_t::deform_middle_node(double *xyz_out,
                                                   double *xyz_in,
                                                   double *xyz0,
                                                   double *xyz1,
@@ -2845,7 +2301,7 @@ void simplex3_mls_quadratic_t::deform_middle_node(double *xyz_out,
 }
 
 
-void simplex3_mls_quadratic_t::find_middle_node_tet(double abc_out[3], int n_tet, double *t)
+void simplex3_mls_q_t::find_middle_node_tet(double abc_out[3], int n_tet, double *t)
 {
   tet3_t *tet = &tets[n_tet];
 
@@ -3063,7 +2519,7 @@ void simplex3_mls_quadratic_t::find_middle_node_tet(double abc_out[3], int n_tet
 
   double alpha;
 
-  if (fabs(c2) < eps) alpha = -c0/c1;
+  if (fabs(c2) < EPS) alpha = -c0/c1;
   else
   {
 //    if (Fn<0) alpha = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
@@ -3076,7 +2532,7 @@ void simplex3_mls_quadratic_t::find_middle_node_tet(double abc_out[3], int n_tet
     else alpha = alpha1;
   }
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
   if (alpha != alpha) throw std::domain_error("[CASL_ERROR]: ");
 #endif
 
@@ -3094,10 +2550,10 @@ void simplex3_mls_quadratic_t::find_middle_node_tet(double abc_out[3], int n_tet
 //      std::cout << "Warning: point is outside of a tetrahedron! (" << alpha << " " << a << " " << b << " " << c << " " << abc_out[0] << " " << abc_out[1] << " " << abc_out[2] << ")\n";
       //    std::cout << edgs_tmp[e23].to_refine  << "\n";
       //    invalid_reconstruction_ = true;
-      if (abc_out[0] < 0.) alpha = (a-eps)/(a-abc_out[0])*alpha;
-      else if (abc_out[1] < 0.) alpha = (b-eps)/(b-abc_out[1])*alpha;
-      else if (abc_out[2] < 0.) alpha = (c-eps)/(c-abc_out[2])*alpha;
-      else if (abc_out[0] + abc_out[1] + abc_out[2] > 1.) alpha = (1.-a-b-c-eps)/(1.-a-b-c - (1.-abc_out[0]-abc_out[1]-abc_out[2]))*alpha;
+      if (abc_out[0] < 0.) alpha = (a-eps_)/(a-abc_out[0])*alpha;
+      else if (abc_out[1] < 0.) alpha = (b-eps_)/(b-abc_out[1])*alpha;
+      else if (abc_out[2] < 0.) alpha = (c-eps_)/(c-abc_out[2])*alpha;
+      else if (abc_out[0] + abc_out[1] + abc_out[2] > 1.) alpha = (1.-a-b-c-eps_)/(1.-a-b-c - (1.-abc_out[0]-abc_out[1]-abc_out[2]))*alpha;
 
       abc_out[0] = a;
       abc_out[1] = b;
@@ -3116,7 +2572,7 @@ void simplex3_mls_quadratic_t::find_middle_node_tet(double abc_out[3], int n_tet
 }
 
 
-//void simplex3_mls_quadratic_t::find_middle_node_tet(double abc_out[3], int n_tet)
+//void simplex3_mls_q_t::find_middle_node_tet(double abc_out[3], int n_tet)
 //{
 //  tet3_t *tet = &tets[n_tet];
 
@@ -3248,7 +2704,7 @@ void simplex3_mls_quadratic_t::find_middle_node_tet(double abc_out[3], int n_tet
 //}
 
 
-bool simplex3_mls_quadratic_t::need_swap(int v0, int v1)
+bool simplex3_mls_q_t::need_swap(int v0, int v1)
 {
 //  double dif = vtxs[v0].value - vtxs[v1].value;
 //  if (dif > 0.)
@@ -3283,7 +2739,7 @@ bool simplex3_mls_quadratic_t::need_swap(int v0, int v1)
 // Refinement
 //--------------------------------------------------
 
-void simplex3_mls_quadratic_t::refine_all()
+void simplex3_mls_q_t::refine_all()
 {
   int n;
   n = edgs.size(); for (int i = 0; i < n; i++) refine_edg(i);
@@ -3293,7 +2749,7 @@ void simplex3_mls_quadratic_t::refine_all()
   std::cout << "Refined!\n";
 }
 
-void simplex3_mls_quadratic_t::refine_edg(int n_edg)
+void simplex3_mls_q_t::refine_edg(int n_edg)
 {
   edg3_t *edg = &edgs[n_edg];
 
@@ -3335,7 +2791,7 @@ void simplex3_mls_quadratic_t::refine_edg(int n_edg)
   edgs[edg->c_edg1].set(loc, c0, c1);
 }
 
-void simplex3_mls_quadratic_t::refine_tri(int n_tri)
+void simplex3_mls_q_t::refine_tri(int n_tri)
 {
   tri3_t *tri = &tris[n_tri];
 
@@ -3385,7 +2841,7 @@ void simplex3_mls_quadratic_t::refine_tri(int n_tri)
   int n_tri2 = tris.size()-2;
   int n_tri3 = tris.size()-1;
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
   tri_is_ok(n_tri0);
   tri_is_ok(n_tri1);
   tri_is_ok(n_tri2);
@@ -3420,7 +2876,7 @@ void simplex3_mls_quadratic_t::refine_tri(int n_tri)
   tris[n_tri3].set(loc, c); tris[n_tri3].dir = dir;
 }
 
-void simplex3_mls_quadratic_t::refine_tet(int n_tet)
+void simplex3_mls_q_t::refine_tet(int n_tet)
 {
   tet3_t *tet = &tets[n_tet];
 
@@ -3536,7 +2992,7 @@ void simplex3_mls_quadratic_t::refine_tet(int n_tet)
   tets[n_tet7].set(loc);
 
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
   tri_is_ok(cf0);
   tri_is_ok(cf1);
   tri_is_ok(cf2);
@@ -3566,7 +3022,7 @@ void simplex3_mls_quadratic_t::refine_tet(int n_tet)
 // Geometry Aware Refinement
 //--------------------------------------------------
 
-void simplex3_mls_quadratic_t::smart_refine_edg(int n_edg)
+void simplex3_mls_q_t::smart_refine_edg(int n_edg)
 {
   edg3_t *edg = &edgs[n_edg];
 
@@ -3649,7 +3105,7 @@ void simplex3_mls_quadratic_t::smart_refine_edg(int n_edg)
   }
 }
 
-void simplex3_mls_quadratic_t::smart_refine_tri(int n_tri)
+void simplex3_mls_q_t::smart_refine_tri(int n_tri)
 {
   tri3_t *tri = &tris[n_tri];
 
@@ -3770,7 +3226,7 @@ void simplex3_mls_quadratic_t::smart_refine_tri(int n_tri)
 
 }
 
-void simplex3_mls_quadratic_t::smart_refine_tri(int n_tri, double a, double b)
+void simplex3_mls_q_t::smart_refine_tri(int n_tri, double a, double b)
 {
   tri3_t *tri = &tris[n_tri];
 
@@ -3858,45 +3314,7 @@ void simplex3_mls_quadratic_t::smart_refine_tri(int n_tri, double a, double b)
   tris[ct2].set(loc, c); tris[ct2].dir = dir;
 }
 
-void simplex3_mls_quadratic_t::sort_edg(int n_edg)
-{
-  edg3_t *edg = &edgs[n_edg];
-
-  if (edg->is_split) return;
-
-  /* Sort vertices */
-  if (need_swap(edg->vtx0, edg->vtx2)) swap(edg->vtx0, edg->vtx2);
-}
-
-void simplex3_mls_quadratic_t::sort_tri(int n_tri)
-{
-  tri3_t *tri = &tris[n_tri];
-
-  if (tri->is_split) return;
-
-  /* Sort vertices */
-  if (need_swap(tri->vtx0, tri->vtx1)) {swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1);}
-  if (need_swap(tri->vtx1, tri->vtx2)) {swap(tri->vtx1, tri->vtx2); swap(tri->edg1, tri->edg2);}
-  if (need_swap(tri->vtx0, tri->vtx1)) {swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1);}
-}
-
-void simplex3_mls_quadratic_t::sort_tet(int n_tet)
-{
-  tet3_t *tet = &tets[n_tet];
-
-  if (tet->is_split) return;
-
-  // Sort vertices
-  if (need_swap(tet->vtx0, tet->vtx1)) {swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1);}
-  if (need_swap(tet->vtx1, tet->vtx2)) {swap(tet->vtx1, tet->vtx2); swap(tet->tri1, tet->tri2);}
-  if (need_swap(tet->vtx2, tet->vtx3)) {swap(tet->vtx2, tet->vtx3); swap(tet->tri2, tet->tri3);}
-  if (need_swap(tet->vtx0, tet->vtx1)) {swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1);}
-  if (need_swap(tet->vtx1, tet->vtx2)) {swap(tet->vtx1, tet->vtx2); swap(tet->tri1, tet->tri2);}
-  if (need_swap(tet->vtx0, tet->vtx1)) {swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1);}
-}
-
-//*
-void simplex3_mls_quadratic_t::smart_refine_tet(int n_tet)
+void simplex3_mls_q_t::smart_refine_tet(int n_tet)
 {
   tet3_t *tet = &tets[n_tet];
 
@@ -4028,7 +3446,7 @@ void simplex3_mls_quadratic_t::smart_refine_tet(int n_tet)
       tets[n_tet1].set(loc);
 
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
       tri_is_ok(cf0);
 
       tet_is_ok(n_tet0);
@@ -4168,7 +3586,7 @@ void simplex3_mls_quadratic_t::smart_refine_tet(int n_tet)
       tets[n_tet2].set(loc);
       tets[n_tet3].set(loc);
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
       tri_is_ok(cf1);
       tri_is_ok(cf2);
       tri_is_ok(cf3);
@@ -4181,14 +3599,51 @@ void simplex3_mls_quadratic_t::smart_refine_tet(int n_tet)
     }
   }
 
-}//*/
+}
+
+void simplex3_mls_q_t::sort_edg(int n_edg)
+{
+  edg3_t *edg = &edgs[n_edg];
+
+  if (edg->is_split) return;
+
+  /* Sort vertices */
+  if (need_swap(edg->vtx0, edg->vtx2)) swap(edg->vtx0, edg->vtx2);
+}
+
+void simplex3_mls_q_t::sort_tri(int n_tri)
+{
+  tri3_t *tri = &tris[n_tri];
+
+  if (tri->is_split) return;
+
+  /* Sort vertices */
+  if (need_swap(tri->vtx0, tri->vtx1)) {swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1);}
+  if (need_swap(tri->vtx1, tri->vtx2)) {swap(tri->vtx1, tri->vtx2); swap(tri->edg1, tri->edg2);}
+  if (need_swap(tri->vtx0, tri->vtx1)) {swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1);}
+}
+
+void simplex3_mls_q_t::sort_tet(int n_tet)
+{
+  tet3_t *tet = &tets[n_tet];
+
+  if (tet->is_split) return;
+
+  // Sort vertices
+  if (need_swap(tet->vtx0, tet->vtx1)) {swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1);}
+  if (need_swap(tet->vtx1, tet->vtx2)) {swap(tet->vtx1, tet->vtx2); swap(tet->tri1, tet->tri2);}
+  if (need_swap(tet->vtx2, tet->vtx3)) {swap(tet->vtx2, tet->vtx3); swap(tet->tri2, tet->tri3);}
+  if (need_swap(tet->vtx0, tet->vtx1)) {swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1);}
+  if (need_swap(tet->vtx1, tet->vtx2)) {swap(tet->vtx1, tet->vtx2); swap(tet->tri1, tet->tri2);}
+  if (need_swap(tet->vtx0, tet->vtx1)) {swap(tet->vtx0, tet->vtx1); swap(tet->tri0, tet->tri1);}
+}
 
 
 
 //--------------------------------------------------
 // Integration
 //--------------------------------------------------
-double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
+double simplex3_mls_q_t::integrate_over_domain(CF_3 &f)
 {
 //  return 0;
   double result = 0.0;
@@ -4231,7 +3686,7 @@ double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
   return result*0.125/3.;
 }
 
-//double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
+//double simplex3_mls_q_t::integrate_over_domain(CF_3 &f)
 //{
 //  double result = 0.0;
 //  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
@@ -4257,7 +3712,7 @@ double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 //      result += (f0+f1+f2+f3)/4.0*volume(s->vtx0, s->vtx1, s->vtx2, s->vtx3);
 //    }
 
-//#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//#ifdef simplex3_mls_q_DEBUG
 //  if (result != result)
 //    throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
 //#endif
@@ -4265,7 +3720,7 @@ double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 //  return result;
 //}
 
-//double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
+//double simplex3_mls_q_t::integrate_over_domain(CF_3 &f)
 //{
 //  double result = 0.0;
 //  double w0 = 0, w1 = 0, w2 = 0, w3 = 0, w4 = 0;
@@ -4306,7 +3761,7 @@ double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 ////      result += (f0+f1+f2+f3+f4)/5.0*volume(s->vtx0, s->vtx1, s->vtx2, s->vtx3);
 //    }
 
-//#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//#ifdef simplex3_mls_q_DEBUG
 //  if (result != result)
 //    throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
 //#endif
@@ -4316,7 +3771,7 @@ double simplex3_mls_quadratic_t::integrate_over_domain(CF_3 &f)
 //}
 
 
-double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
+double simplex3_mls_q_t::integrate_over_interface(CF_3 &f, int num)
 {
 //  return 0;
   bool integrate_specific = (num != -1);
@@ -4362,7 +3817,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 }
 
 
-//double simplex3_mls_quadratic_t::integrate_over_interface(std::vector<double> &f, int num)
+//double simplex3_mls_q_t::integrate_over_interface(std::vector<double> &f, int num)
 //{
 //  bool integrate_specific = (num != -1);
 
@@ -4418,7 +3873,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //  return result/6.;
 //}
 
-//double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
+//double simplex3_mls_q_t::integrate_over_interface(CF_3 &f, int num)
 //{
 //  bool integrate_specific = (num != -1);
 
@@ -4452,7 +3907,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //  return result;
 //}
 
-//double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
+//double simplex3_mls_q_t::integrate_over_interface(CF_3 &f, int num)
 //{
 //  bool integrate_specific = (num != -1);
 
@@ -4496,7 +3951,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //  return result/96.;
 //}
 
-//double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
+//double simplex3_mls_q_t::integrate_over_interface(CF_3 &f, int num)
 //{
 //  bool integrate_specific = (num != -1);
 
@@ -4574,7 +4029,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 ////  std::cout << max_dist_error_ << std::endl;
 ////  return max_dist_error_;
 
-////#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+////#ifdef simplex3_mls_q_DEBUG
 ////  if (result != result)
 ////  {
 ////    std::cout << w0 << " " << w1 << " " << w2 << " " << w3 << " " << w4 << " " << w5 << " " << w6 << std::endl;
@@ -4588,7 +4043,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //  return 0.5*result;
 //}
 
-//double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
+//double simplex3_mls_q_t::integrate_over_interface(CF_3 &f, int num)
 //{
 //  bool integrate_specific = (num != -1);
 
@@ -4687,7 +4142,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //  return 0.5*result;
 //}
 
-//double simplex3_mls_quadratic_t::integrate_over_interface(std::vector<double> &f, int num)
+//double simplex3_mls_q_t::integrate_over_interface(std::vector<double> &f, int num)
 //{
 //  double result = 0.0;
 //  double w0 = 0, w1 = 0, w2 = 0;
@@ -4722,7 +4177,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //  return result/18.;
 //}
 
-//double simplex3_mls_quadratic_t::integrate_over_colored_interface(CF_3 &f, int num0, int num1)
+//double simplex3_mls_q_t::integrate_over_colored_interface(CF_3 &f, int num0, int num1)
 //{
 //  double result = 0.0;
 //  double w0 = 0, w1 = 0, w2 = 0;
@@ -4759,7 +4214,7 @@ double simplex3_mls_quadratic_t::integrate_over_interface(CF_3 &f, int num)
 //}
 
 
-double simplex3_mls_quadratic_t::integrate_over_colored_interface(CF_3 &f, int num0, int num1)
+double simplex3_mls_q_t::integrate_over_colored_interface(CF_3 &f, int num0, int num1)
 {
   double result = 0.0;
   double w0 = 0, w1 = 0, w2 = 0;
@@ -4798,7 +4253,7 @@ double simplex3_mls_quadratic_t::integrate_over_colored_interface(CF_3 &f, int n
   return result/6.;
 }
 
-//double simplex3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, int num1)
+//double simplex3_mls_q_t::integrate_over_intersection(CF_3 &f, int num0, int num1)
 //{
 //  bool integrate_specific = (num0 != -1 && num1 != -1);
 
@@ -4836,7 +4291,7 @@ double simplex3_mls_quadratic_t::integrate_over_colored_interface(CF_3 &f, int n
 //  return result;
 //}
 
-double simplex3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, int num1)
+double simplex3_mls_q_t::integrate_over_intersection(CF_3 &f, int num0, int num1)
 {
   bool integrate_specific = (num0 != -1 && num1 != -1);
 
@@ -4846,6 +4301,13 @@ double simplex3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, 
   double xyz[3];
 
   // quadrature points
+  //  double a0 = .5*(1.-1./sqrt(3.));
+  //  double a1 = .5*(1.+1./sqrt(3.));
+
+  //  double a0 = .5*(1.-sqrt(.6));
+  //  double a1 = .5;
+  //  double a2 = .5*(1.+sqrt(.6));
+
   static double a0 = 0.;
   static double a1 = .5;
   static double a2 = 1.;
@@ -4880,81 +4342,7 @@ double simplex3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, 
   return result/6.;
 }
 
-
-//double simplex3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, int num1)
-//{
-//  bool integrate_specific = (num0 != -1 && num1 != -1);
-////  double result = 0.0;
-////  double w0 = 0, w1 = 0, w2 = 0;
-////  double f0 = 0, f1 = 0, f2 = 0;
-////  double x,y;
-
-////  // quadrature points
-////  double a0 = .5*(1.-sqrt(.6));
-////  double a1 = .5;
-////  double a2 = .5*(1.+sqrt(.6));
-
-////  /* integrate over edges */
-////  for (unsigned int i = 0; i < edgs.size(); i++)
-////  {
-////    edg2_t *e = &edgs[i];
-////    if (!e->is_split && e->loc == FCE)
-////      if ((!integrate_specific && e->c0 >= 0) || (integrate_specific && e->c0 == num))
-////      {
-////        // map quadrature points into real space and interpolate integrand
-////        mapping_edg(x, y, i, a0); f0 = interpolate_from_parent(f, x, y);
-////        mapping_edg(x, y, i, a1); f1 = interpolate_from_parent(f, x, y);
-////        mapping_edg(x, y, i, a2); f2 = interpolate_from_parent(f, x, y);
-
-////        // scale weights by Jacobian
-////        w0 = 5./9.*jacobian_edg(i, a0)/2.;
-////        w1 = 8./9.*jacobian_edg(i, a1)/2.;
-////        w2 = 5./9.*jacobian_edg(i, a2)/2.;
-
-////        result += w0*f0 + w1*f1+w2*f2;
-////      }
-////  }
-
-////  return result;
-
-//  double result = 0.0;
-//  double w0 = 0, w1 = 0, w2 = 0;
-//  double f0 = 0, f1 = 0, f2 = 0;
-//  double xyz[3];
-
-//  // quadrature points
-//  double a0 = .5*(1.-sqrt(.6));
-//  double a1 = .5;
-//  double a2 = .5*(1.+sqrt(.6));
-
-//  /* integrate over edges */
-//  for (unsigned int i = 0; i < edgs.size(); i++)
-//  {
-//    edg3_t *e = &edgs[i];
-//    if (!e->is_split && e->loc == LNE)
-//      if ( !integrate_specific
-//           || (integrate_specific
-//               && (e->c0 == num0 || e->c1 == num0)
-//               && (e->c0 == num1 || e->c1 == num1)) )
-//      {
-//        // map quadrature points into real space and interpolate integrand
-//        mapping_edg(xyz, i, a0); f0 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_edg(xyz, i, a1); f1 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_edg(xyz, i, a2); f2 = f( xyz[0], xyz[1], xyz[2] );
-
-//        // scale weights by Jacobian
-//        w0 = 5.*jacobian_edg(i, a0);
-//        w1 = 8.*jacobian_edg(i, a1);
-//        w2 = 5.*jacobian_edg(i, a2);
-
-//        result += w0*f0 + w1*f1+w2*f2;
-//      }
-//  }
-
-//  return result/18.;
-//}
-
-double simplex3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, int num1, int num2)
+double simplex3_mls_q_t::integrate_over_intersection(CF_3 &f, int num0, int num1, int num2)
 {
   double result = 0.0;
   bool integrate_specific = (num0 != -1 && num1 != -1 && num2 != -1);
@@ -4979,116 +4367,7 @@ double simplex3_mls_quadratic_t::integrate_over_intersection(CF_3 &f, int num0, 
   return result;
 }
 
-//double simplex3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
-//{
-//  double result = 0.0;
-//  double w0 = 0, w1 = 0, w2 = 0;
-//  double f0 = 0, f1 = 0, f2 = 0;
-//  double xyz[3];
-
-//  // quadrature points
-//  double ab0[2] = { 1./6., 1./6. };
-//  double ab1[2] = { 2./3., 1./6. };
-//  double ab2[2] = { 1./6., 2./3. };
-
-//  /* integrate over triangles */
-//  for (unsigned int i = 0; i < tris.size(); i++)
-//  {
-//    tri3_t *t = &tris[i];
-//    if (!t->is_split && t->loc == INS)
-//      if (t->dir == dir)
-//      {
-//        // map quadrature points into real space and interpolate integrand
-//        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
-
-//        // scale weights by Jacobian
-//        w0 = jacobian_tri(i, ab0)/6.;
-//        w1 = jacobian_tri(i, ab1)/6.;
-//        w2 = jacobian_tri(i, ab2)/6.;
-
-//        result += w0*f0 + w1*f1 + w2*f2;
-//      }
-//  }
-
-//  return result;
-//}
-
-// Linear integration
-//double simplex3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
-//{
-//  double result = 0.0;
-//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
-//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
-//  double xyz[3];
-
-//  // quadrature points
-//  double ab0[2] = { 0., 0. };
-//  double ab1[2] = { 1., 0. };
-//  double ab2[2] = { 0., 1. };
-
-//  /* integrate over triangles */
-//  for (unsigned int i = 0; i < tris.size(); i++)
-//  {
-//    tri3_t *t = &tris[i];
-//    if (!t->is_split && t->loc == INS)
-//      if (t->dir == dir)
-//      {
-//        // map quadrature points into real space and interpolate integrand
-//        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
-
-//        result += (f0+f1+f2)/3.*area(t->vtx0, t->vtx1, t->vtx2);
-//      }
-//  }
-
-////  return result/96.;
-//  return result;
-//}
-
-//double simplex3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
-//{
-//  double result = 0.0;
-//  double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
-//  double f0 = 0, f1 = 0, f2 = 0, f3 = 0;
-//  double xyz[3];
-
-//  // quadrature points
-//  double ab0[2] = { 1./3., 1./3. };
-//  double ab1[2] = { .2, .6 };
-//  double ab2[2] = { .2, .2 };
-//  double ab3[2] = { .6, .2 };
-
-//  /* integrate over triangles */
-//  for (unsigned int i = 0; i < tris.size(); i++)
-//  {
-//    tri3_t *t = &tris[i];
-//    if (!t->is_split && t->loc == INS)
-//      if (t->dir == dir)
-//      {
-//        // map quadrature points into real space and interpolate integrand
-//        mapping_tri(xyz, i, ab0); f0 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_tri(xyz, i, ab1); f1 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_tri(xyz, i, ab2); f2 = f( xyz[0], xyz[1], xyz[2] );
-//        mapping_tri(xyz, i, ab3); f3 = f( xyz[0], xyz[1], xyz[2] );
-
-
-//        // scale weights by Jacobian
-//        w0 =-27.*jacobian_tri(i, ab0);
-//        w1 = 25.*jacobian_tri(i, ab1);
-//        w2 = 25.*jacobian_tri(i, ab2);
-//        w3 = 25.*jacobian_tri(i, ab3);
-
-//        result += w0*f0 + w1*f1 + w2*f2 + w3*f3;
-//      }
-//  }
-
-//  return result/96.;
-//}
-
-double simplex3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
+double simplex3_mls_q_t::integrate_in_dir(CF_3 &f, int dir)
 {
   double result = 0.0;
   double w0 = 0, w1 = 0, w2 = 0;
@@ -5096,6 +4375,9 @@ double simplex3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
   double xyz[3];
 
   // quadrature points
+  //  double ab0[2] = { 1./6., 1./6. };
+  //  double ab1[2] = { 2./3., 1./6. };
+  //  double ab2[2] = { 1./6., 2./3. };
   static double ab0[2] = { .0, .5 };
   static double ab1[2] = { .5, .0 };
   static double ab2[2] = { .5, .5 };
@@ -5128,12 +4410,151 @@ double simplex3_mls_quadratic_t::integrate_in_dir(CF_3 &f, int dir)
 }
 
 
+//--------------------------------------------------
+// Quadrature points
+//--------------------------------------------------
+void simplex3_mls_q_t::quadrature_over_domain(std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z)
+{
+//  return 0;
+  double xyz[3];
+
+  static double scale = 0.125/3.;
+
+  // quadrature points
+  static double alph = (5.+3.*sqrt(5.))/20.;
+  static double beta = (5.-   sqrt(5.))/20.;
+
+  static double abc0[3] = { beta, beta, beta };
+  static double abc1[3] = { alph, beta, beta };
+  static double abc2[3] = { beta, alph, beta };
+  static double abc3[3] = { beta, beta, alph };
+
+  /* integrate over tetrahedra */
+  for (unsigned int i = 0; i < tets.size(); i++)
+    if (!tets[i].is_split && tets[i].loc == INS)
+    {
+      mapping_tet(xyz, i, abc0); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_tet(i, abc0)*scale);
+      mapping_tet(xyz, i, abc1); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_tet(i, abc1)*scale);
+      mapping_tet(xyz, i, abc2); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_tet(i, abc2)*scale);
+      mapping_tet(xyz, i, abc3); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_tet(i, abc3)*scale);
+    }
+}
+
+void simplex3_mls_q_t::quadrature_over_interface(int num, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z)
+{
+  bool integrate_specific = (num != -1);
+
+  double xyz[3];
+
+  // quadrature points
+  //  double ab0[2] = { 1./6., 1./6. };
+  //  double ab1[2] = { 2./3., 1./6. };
+  //  double ab2[2] = { 1./6., 2./3. };
+  static double abc0[2] = { .0, .5 };
+  static double abc1[2] = { .5, .0 };
+  static double abc2[2] = { .5, .5 };
+
+  /* integrate over triangles */
+  for (unsigned int i = 0; i < tris.size(); i++)
+  {
+    tri3_t *t = &tris[i];
+    if (!t->is_split && t->loc == FCE)
+      if (!integrate_specific
+          || (integrate_specific && t->c == num))
+      {
+        mapping_tri(xyz, i, abc0); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_tri(i, abc0)/6.);
+        mapping_tri(xyz, i, abc1); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_tri(i, abc1)/6.);
+        mapping_tri(xyz, i, abc2); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_tri(i, abc2)/6.);
+      }
+  }
+}
+
+void simplex3_mls_q_t::quadrature_over_intersection(int num0, int num1, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z)
+{
+  bool integrate_specific = (num0 != -1 && num1 != -1);
+
+  double xyz[3];
+
+  // quadrature points
+  //  double a0 = .5*(1.-1./sqrt(3.));
+  //  double a1 = .5*(1.+1./sqrt(3.));
+
+  //  double a0 = .5*(1.-sqrt(.6));
+  //  double a1 = .5;
+  //  double a2 = .5*(1.+sqrt(.6));
+
+  static double a0 = 0.;
+  static double a1 = .5;
+  static double a2 = 1.;
+
+  /* integrate over edges */
+  for (unsigned int i = 0; i < edgs.size(); i++)
+  {
+    edg3_t *e = &edgs[i];
+    if (!e->is_split && e->loc == LNE)
+      if ( !integrate_specific
+           || (integrate_specific
+               && (e->c0 == num0 || e->c1 == num0)
+               && (e->c0 == num1 || e->c1 == num1)) )
+      {
+        mapping_edg(xyz, i, a0); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_edg(i, a0)/6.);
+        mapping_edg(xyz, i, a1); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_edg(i, a1)*2./3.);
+        mapping_edg(xyz, i, a2); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_edg(i, a2)/6.);
+      }
+  }
+}
+
+void simplex3_mls_q_t::quadrature_over_intersection(int num0, int num1, int num2, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z)
+{
+  bool integrate_specific = (num0 != -1 && num1 != -1 && num2 != -1);
+
+  for (unsigned int i = 0; i < vtxs.size(); i++)
+  {
+    vtx3_t *v = &vtxs[i];
+    if (v->loc == PNT)
+      if ( !integrate_specific
+           || (integrate_specific
+               && (v->c0 == num0 || v->c1 == num0 || v->c2 == num0)
+               && (v->c0 == num1 || v->c1 == num1 || v->c2 == num1)
+               && (v->c0 == num2 || v->c1 == num2 || v->c2 == num2)) )
+      {
+        X.push_back(v->x); Y.push_back(v->y); Z.push_back(v->z); weights.push_back(1.);
+      }
+  }
+}
+
+void simplex3_mls_q_t::quadrature_in_dir(int dir, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z)
+{
+  double xyz[3];
+
+  // quadrature points
+  //  double abc0[2] = { 1./6., 1./6. };
+  //  double abc1[2] = { 2./3., 1./6. };
+  //  double abc2[2] = { 1./6., 2./3. };
+  static double abc0[2] = { .0, .5 };
+  static double abc1[2] = { .5, .0 };
+  static double abc2[2] = { .5, .5 };
+
+  /* integrate over triangles */
+  for (unsigned int i = 0; i < tris.size(); i++)
+  {
+    tri3_t *t = &tris[i];
+    if (!t->is_split && t->loc == INS)
+      if (t->dir == dir)
+      {
+        mapping_tri(xyz, i, abc0); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_tri(i, abc0)/6.);
+        mapping_tri(xyz, i, abc1); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_tri(i, abc1)/6.);
+        mapping_tri(xyz, i, abc2); X.push_back(xyz[0]); Y.push_back(xyz[1]); Z.push_back(xyz[2]); weights.push_back(jacobian_tri(i, abc2)/6.);
+      }
+  }
+}
+
 
 
 //--------------------------------------------------
 // Jacobians
 //--------------------------------------------------
-double simplex3_mls_quadratic_t::jacobian_edg(int n_edg, double a)
+double simplex3_mls_q_t::jacobian_edg(int n_edg, double a)
 {
   edg3_t *edg = &edgs[n_edg];
 
@@ -5146,7 +4567,7 @@ double simplex3_mls_quadratic_t::jacobian_edg(int n_edg, double a)
   return sqrt(X*X+Y*Y+Z*Z);
 }
 
-double simplex3_mls_quadratic_t::jacobian_tri(int n_tri, double *ab)
+double simplex3_mls_q_t::jacobian_tri(int n_tri, double *ab)
 {
   tri3_t *tri = &tris[n_tri];
 
@@ -5203,7 +4624,7 @@ double simplex3_mls_quadratic_t::jacobian_tri(int n_tri, double *ab)
 //    return 1.*sqrt((Xa*Xa+Ya*Ya+Za*Za)*(Xb*Xb+Yb*Yb+Zb*Zb) - pow(Xa*Xb+Ya*Yb+Za*Zb, 2.));
     double result = jacobian_2d*sqrt((Xa*Xa+Ya*Ya+Za*Za)*(Xb*Xb+Yb*Yb+Zb*Zb) - pow(Xa*Xb+Ya*Yb+Za*Zb, 2.));
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     if (result != result)
       throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
 #endif
@@ -5251,7 +4672,7 @@ double simplex3_mls_quadratic_t::jacobian_tri(int n_tri, double *ab)
     //
     double result = sqrt(fabs((X1*X1+Y1*Y1+Z1*Z1)*(X2*X2+Y2*Y2+Z2*Z2) - pow(X1*X2+Y1*Y2+Z1*Z2,2.)));
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     if (result != result)
       throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
 #endif
@@ -5260,7 +4681,7 @@ double simplex3_mls_quadratic_t::jacobian_tri(int n_tri, double *ab)
   }
 }
 
-double simplex3_mls_quadratic_t::jacobian_tet(int n_tet, double *abc)
+double simplex3_mls_q_t::jacobian_tet(int n_tet, double *abc)
 {
   tet3_t *tet = &tets[n_tet];
 
@@ -5315,7 +4736,7 @@ double simplex3_mls_quadratic_t::jacobian_tet(int n_tet, double *abc)
 ////--------------------------------------------------
 //// Interpolation
 ////--------------------------------------------------
-//double simplex3_mls_quadratic_t::interpolate_from_parent(std::vector<double> &f, double* xyz)
+//double simplex3_mls_q_t::interpolate_from_parent(std::vector<double> &f, double* xyz)
 //{
 //  // map real point to reference element
 //  vtx3_t *v0 = &vtxs[0];
@@ -5348,7 +4769,7 @@ double simplex3_mls_quadratic_t::jacobian_tet(int n_tet, double *abc)
 //  return result;
 //}
 
-//void simplex3_mls_quadratic_t::inv_mat3(double *in, double *out)
+//void simplex3_mls_q_t::inv_mat3(double *in, double *out)
 //{
 //  double det = in[3*0+0]*(in[3*1+1]*in[3*2+2] - in[3*2+1]*in[3*1+2]) -
 //               in[3*0+1]*(in[3*1+0]*in[3*2+2] - in[3*1+2]*in[3*2+0]) +
@@ -5378,7 +4799,7 @@ double simplex3_mls_quadratic_t::jacobian_tet(int n_tet, double *abc)
 //--------------------------------------------------
 // Mapping
 //--------------------------------------------------
-void simplex3_mls_quadratic_t::mapping_edg(double* xyz, int n_edg, double a)
+void simplex3_mls_q_t::mapping_edg(double* xyz, int n_edg, double a)
 {
   edg3_t *edg = &edgs[n_edg];
 
@@ -5391,7 +4812,7 @@ void simplex3_mls_quadratic_t::mapping_edg(double* xyz, int n_edg, double a)
   xyz[2] = vtxs[edg->vtx0].z * N0 + vtxs[edg->vtx1].z * N1 + vtxs[edg->vtx2].z * N2;
 }
 
-void simplex3_mls_quadratic_t::mapping_tri(double* xyz, int n_tri, double* ab)
+void simplex3_mls_q_t::mapping_tri(double* xyz, int n_tri, double* ab)
 {
   tri3_t *tri = &tris[n_tri];
 
@@ -5458,7 +4879,7 @@ void simplex3_mls_quadratic_t::mapping_tri(double* xyz, int n_tri, double* ab)
   }
 }
 
-void simplex3_mls_quadratic_t::mapping_tet(double *xyz, int n_tet, double* abc)
+void simplex3_mls_q_t::mapping_tet(double *xyz, int n_tet, double* abc)
 {
   tet3_t *tet = &tets[n_tet];
 
@@ -5507,7 +4928,7 @@ void simplex3_mls_quadratic_t::mapping_tet(double *xyz, int n_tet, double* abc)
 #endif
 }
 
-double simplex3_mls_quadratic_t::find_root(double phi, double phi_n, double phi_nn)
+double simplex3_mls_q_t::find_root(double phi, double phi_n, double phi_nn)
 {
   double c2 = 0.5*phi_nn;      // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e
   double c1 = phi_n;   // the expansion of f at the center of (0,1)
@@ -5515,7 +4936,7 @@ double simplex3_mls_quadratic_t::find_root(double phi, double phi_n, double phi_
 
   double x;
 
-  if (fabs(c2) < eps) { x = -c0/c1; }
+  if (fabs(c2) < eps_) { x = -c0/c1; }
   else
   {
 //    if (c1<0) x = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
@@ -5527,21 +4948,21 @@ double simplex3_mls_quadratic_t::find_root(double phi, double phi_n, double phi_
     if (fabs(alpha1)>fabs(alpha2)) x = alpha2;
     else x = alpha1;
   }
-//#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//#ifdef simplex3_mls_q_DEBUG
 //  if (x < -0.5 || x > 0.5)
 //  {
 //    throw std::domain_error("[CASL_ERROR]: ");
 //  }
 //#endif
 
-//  if (x <-0.5) return eps;
-//  if (x > 0.5) return 1.-eps;
+//  if (x <-0.5) return eps_;
+//  if (x > 0.5) return 1.-eps_;
 
   return x;
 }
 
 
-void simplex3_mls_quadratic_t::construct_proper_mapping(int tri_idx, int phi_idx)
+void simplex3_mls_q_t::construct_proper_mapping(int tri_idx, int phi_idx)
 {
   tri3_t *tri = &tris[tri_idx];
 
@@ -5765,8 +5186,8 @@ void simplex3_mls_quadratic_t::construct_proper_mapping(int tri_idx, int phi_idx
 
 }
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
-bool simplex3_mls_quadratic_t::tri_is_ok(int v0, int v1, int v2, int e0, int e1, int e2)
+#ifdef simplex3_mls_q_DEBUG
+bool simplex3_mls_q_t::tri_is_ok(int v0, int v1, int v2, int e0, int e1, int e2)
 {
   bool result = true;
   result = (edgs[e0].vtx0 == v1 || edgs[e0].vtx2 == v1) && (edgs[e0].vtx0 == v2 || edgs[e0].vtx2 == v2);
@@ -5776,7 +5197,7 @@ bool simplex3_mls_quadratic_t::tri_is_ok(int v0, int v1, int v2, int e0, int e1,
   return result;
 }
 
-bool simplex3_mls_quadratic_t::tri_is_ok(int t)
+bool simplex3_mls_q_t::tri_is_ok(int t)
 {
   tri3_t *tri = &tris[t];
   bool result = tri_is_ok(tri->vtx0, tri->vtx1, tri->vtx2, tri->edg0, tri->edg1, tri->edg2);
@@ -5784,7 +5205,7 @@ bool simplex3_mls_quadratic_t::tri_is_ok(int t)
   return result;
 }
 
-bool simplex3_mls_quadratic_t::tet_is_ok(int s)
+bool simplex3_mls_q_t::tet_is_ok(int s)
 {
   bool result = true;
   tet3_t *tet = &tets[s];
@@ -5825,13 +5246,13 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 
 
 
-//void simplex3_mls_quadratic_t::interpolate_from_neighbors(int v)
+//void simplex3_mls_q_t::interpolate_from_neighbors(int v)
 //{
 //  vtx3_t *vtx = &vtxs[v];
 //  vtx->value = vtx->ratio*vtxs[vtx->n_vtx0].value + (1.0-vtx->ratio)*vtxs[vtx->n_vtx1].value;
 //}
 
-//void simplex3_mls_quadratic_t::interpolate_from_parent(int v)
+//void simplex3_mls_q_t::interpolate_from_parent(int v)
 //{
 //  double vol0 = volume(v, 1, 2, 3);
 //  double vol1 = volume(0, v, 2, 3);
@@ -5839,7 +5260,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  double vol3 = volume(0, 1, 2, v);
 //  double vol  = volume(0, 1, 2, 3);
 
-//  #ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//  #ifdef simplex3_mls_q_DEBUG
 //    if (vol < eps)
 //      throw std::domain_error("[CASL_ERROR]: Division by zero.");
 //  #endif
@@ -5847,7 +5268,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  vtxs[v].value = (vol0*vtxs[0].value + vol1*vtxs[1].value + vol2*vtxs[2].value + vol3*vtxs[3].value)/vol;
 //}
 
-//void simplex3_mls_quadratic_t::interpolate_from_parent(vtx3_t &vertex)
+//void simplex3_mls_q_t::interpolate_from_parent(vtx3_t &vertex)
 //{
 //  double vol0 = volume(vertex, vtxs[1], vtxs[2], vtxs[3]);
 //  double vol1 = volume(vtxs[0], vertex, vtxs[2], vtxs[3]);
@@ -5855,7 +5276,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  double vol3 = volume(vtxs[0], vtxs[1], vtxs[2], vertex);
 //  double vol  = volume(vtxs[0], vtxs[1], vtxs[2], vtxs[3]);
 
-//  #ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//  #ifdef simplex3_mls_q_DEBUG
 //    if (vol < eps)
 //      throw std::domain_error("[CASL_ERROR]: Division by zero.");
 //  #endif
@@ -5863,7 +5284,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  vertex.value = (vol0*vtxs[0].value + vol1*vtxs[1].value + vol2*vtxs[2].value + vol3*vtxs[3].value)/vol;
 //}
 
-//void simplex3_mls_quadratic_t::interpolate_all(double &p0, double &p1, double &p2, double &p3)
+//void simplex3_mls_q_t::interpolate_all(double &p0, double &p1, double &p2, double &p3)
 //{
 //  vtxs[0].value = p0;
 //  vtxs[1].value = p1;
@@ -5874,7 +5295,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 ////  for (int i = 4; i < vtxs.size(); i++) interpolate_from_parent(i);
 //}
 
-//double simplex3_mls_quadratic_t::find_intersection_linear(int v0, int v1)
+//double simplex3_mls_q_t::find_intersection_linear(int v0, int v1)
 //{
 //  vtx3_t *vtx0 = &vtxs[v0];
 //  vtx3_t *vtx1 = &vtxs[v1];
@@ -5882,7 +5303,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  double ny = vtx1->y - vtx0->y;
 //  double nz = vtx1->z - vtx0->z;
 //  double l = sqrt(nx*nx+ny*ny+nz*nz);
-//#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//#ifdef simplex3_mls_q_DEBUG
 //  if(l < 0.8*eps) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
 //#endif
 //  nx /= l;
@@ -5894,7 +5315,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  if(fabs(f0)<0.8*eps) return 0.+0.8*eps;
 //  if(fabs(f1)<0.8*eps) return l-0.8*eps;
 
-//#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//#ifdef simplex3_mls_q_DEBUG
 //  if(f0*f1 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
 //#endif
 
@@ -5903,14 +5324,14 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 
 //  double x = -c0/c1;
 
-//#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//#ifdef simplex3_mls_q_DEBUG
 //  if (x < -0.5*l || x > 0.5*l) throw std::domain_error("[CASL_ERROR]: ");
 //#endif
 
 //  return 1.-(x+0.5*l)/l;
 //}
 
-//double simplex3_mls_quadratic_t::find_intersection_quadratic(int e)
+//double simplex3_mls_q_t::find_intersection_quadratic(int e)
 //{
 //  vtx3_t *vtx0 = &vtxs[edgs[e].vtx0];
 //  vtx3_t *vtx1 = &vtxs[edgs[e].vtx1];
@@ -5918,7 +5339,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  double ny = vtx1->y - vtx0->y;
 //  double nz = vtx1->z - vtx0->z;
 //  double l = sqrt(nx*nx+ny*ny+nz*nz);
-//#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//#ifdef simplex3_mls_q_DEBUG
 //  if(l < 0.8*eps) throw std::invalid_argument("[CASL_ERROR]: Vertices are too close.");
 //#endif
 //  nx /= l;
@@ -5932,7 +5353,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  if (fabs(f01) < 0.8*eps) return 0.5;
 //  if (fabs(f1)  < 0.8*eps) return (0.+0.8*eps)/l;
 
-//#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//#ifdef simplex3_mls_q_DEBUG
 //  if(f0*f1 >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
 //#endif
 
@@ -5950,7 +5371,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //    if(f1<0) x = (-2.*c0)/(c1 - sqrt(c1*c1-4.*c2*c0));
 //    else     x = (-2.*c0)/(c1 + sqrt(c1*c1-4.*c2*c0));
 //  }
-//#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+//#ifdef simplex3_mls_q_DEBUG
 //  if (x < -0.5*l || x > 0.5*l) throw std::domain_error("[CASL_ERROR]: ");
 //#endif
 
@@ -5960,7 +5381,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  return 1.-(x+0.5*l)/l;
 //}
 
-//void simplex3_mls_quadratic_t::get_edge_coords(int e, double xyz[])
+//void simplex3_mls_q_t::get_edge_coords(int e, double xyz[])
 //{
 //  vtx3_t *vtx0 = &vtxs[edgs[e].vtx0];
 //  vtx3_t *vtx1 = &vtxs[edgs[e].vtx1];
@@ -5970,13 +5391,13 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  xyz[2] = 0.5*(vtx0->z+vtx1->z);
 //}
 
-//double simplex3_mls_quadratic_t::length(int vtx0, int vtx1)
+//double simplex3_mls_q_t::length(int vtx0, int vtx1)
 //{
 //  return sqrt(pow(vtxs[vtx0].x - vtxs[vtx1].x, 2.0)
 //            + pow(vtxs[vtx0].y - vtxs[vtx1].y, 2.0)
 //            + pow(vtxs[vtx0].z - vtxs[vtx1].z, 2.0));
 //}
-//double simplex3_mls_quadratic_t::area(int vtx0, int vtx1, int vtx2)
+//double simplex3_mls_q_t::area(int vtx0, int vtx1, int vtx2)
 //{
 //  double x01 = vtxs[vtx1].x - vtxs[vtx0].x; double x02 = vtxs[vtx2].x - vtxs[vtx0].x;
 //  double y01 = vtxs[vtx1].y - vtxs[vtx0].y; double y02 = vtxs[vtx2].y - vtxs[vtx0].y;
@@ -5985,7 +5406,7 @@ bool simplex3_mls_quadratic_t::tet_is_ok(int s)
 //  return 0.5*sqrt(pow(y01*z02-z01*y02,2.0) + pow(z01*x02-x01*z02,2.0) + pow(x01*y02-y01*x02,2.0));
 //}
 
-double simplex3_mls_quadratic_t::volume(int vtx0, int vtx1, int vtx2, int vtx3)
+double simplex3_mls_q_t::volume(int vtx0, int vtx1, int vtx2, int vtx3)
 {
   double a11 = vtxs[vtx1].x-vtxs[vtx0].x; double a12 = vtxs[vtx1].y-vtxs[vtx0].y; double a13 = vtxs[vtx1].z-vtxs[vtx0].z;
   double a21 = vtxs[vtx2].x-vtxs[vtx0].x; double a22 = vtxs[vtx2].y-vtxs[vtx0].y; double a23 = vtxs[vtx2].z-vtxs[vtx0].z;
@@ -5998,7 +5419,7 @@ double simplex3_mls_quadratic_t::volume(int vtx0, int vtx1, int vtx2, int vtx3)
   return fabs(vol/6.);
 }
 
-double simplex3_mls_quadratic_t::volume(vtx3_t &vtx0, vtx3_t &vtx1, vtx3_t &vtx2, vtx3_t &vtx3)
+double simplex3_mls_q_t::volume(vtx3_t &vtx0, vtx3_t &vtx1, vtx3_t &vtx2, vtx3_t &vtx3)
 {
   double a11 = vtx1.x-vtx0.x; double a12 = vtx1.y-vtx0.y; double a13 = vtx1.z-vtx0.z;
   double a21 = vtx2.x-vtx0.x; double a22 = vtx2.y-vtx0.y; double a23 = vtx2.z-vtx0.z;
@@ -6011,7 +5432,7 @@ double simplex3_mls_quadratic_t::volume(vtx3_t &vtx0, vtx3_t &vtx1, vtx3_t &vtx2
   return fabs(vol/6.);
 }
 
-double simplex3_mls_quadratic_t::area(int vtx0, int vtx1, int vtx2)
+double simplex3_mls_q_t::area(int vtx0, int vtx1, int vtx2)
 {
   double x01 = vtxs[vtx1].x - vtxs[vtx0].x; double x02 = vtxs[vtx2].x - vtxs[vtx0].x;
   double y01 = vtxs[vtx1].y - vtxs[vtx0].y; double y02 = vtxs[vtx2].y - vtxs[vtx0].y;
@@ -6028,7 +5449,7 @@ double simplex3_mls_quadratic_t::area(int vtx0, int vtx1, int vtx2)
 //--------------------------------------------------
 // Interpolation
 //--------------------------------------------------
-double simplex3_mls_quadratic_t::interpolate_from_parent(std::vector<double> &f, double* xyz)
+double simplex3_mls_q_t::interpolate_from_parent(std::vector<double> &f, double* xyz)
 {
   // map real point to reference element
   vtx3_t *v0 = &vtxs[0];
@@ -6061,7 +5482,7 @@ double simplex3_mls_quadratic_t::interpolate_from_parent(std::vector<double> &f,
   return result;
 }
 
-double simplex3_mls_quadratic_t::interpolate_from_parent(double* xyz)
+double simplex3_mls_q_t::interpolate_from_parent(double* xyz)
 {
   // map real point to reference element
   vtx3_t *v0 = &vtxs[0];
@@ -6094,7 +5515,7 @@ double simplex3_mls_quadratic_t::interpolate_from_parent(double* xyz)
   return result;
 }
 
-void simplex3_mls_quadratic_t::inv_mat3(double *in, double *out)
+void simplex3_mls_q_t::inv_mat3(double *in, double *out)
 {
   double det = in[3*0+0]*(in[3*1+1]*in[3*2+2] - in[3*2+1]*in[3*1+2]) -
                in[3*0+1]*(in[3*1+0]*in[3*2+2] - in[3*1+2]*in[3*2+0]) +
@@ -6114,7 +5535,7 @@ void simplex3_mls_quadratic_t::inv_mat3(double *in, double *out)
 }
 
 
-double simplex3_mls_quadratic_t::interpolate_from_parent_with_derivatives(double* xyz, double normal[3], double &F, double &Fn, double &Fnn)
+double simplex3_mls_q_t::interpolate_from_parent_with_derivatives(double* xyz, double normal[3], double &F, double &Fn, double &Fnn)
 {
   tet3_t *tet = &tets[0];
 
@@ -6256,7 +5677,7 @@ double simplex3_mls_quadratic_t::interpolate_from_parent_with_derivatives(double
 }
 
 
-double simplex3_mls_quadratic_t::interpolate_from_parent_with_derivatives(double* xyz, double &F, double &Fn, double &Fnn, double *normal)
+double simplex3_mls_q_t::interpolate_from_parent_with_derivatives(double* xyz, double &F, double &Fn, double &Fnn, double *normal)
 {
   tet3_t *tet = &tets[0];
 
@@ -6404,7 +5825,7 @@ double simplex3_mls_quadratic_t::interpolate_from_parent_with_derivatives(double
 }
 
 
-void simplex3_mls_quadratic_t::deform_edge_in_normal_dir(int n_edg)
+void simplex3_mls_q_t::deform_edge_in_normal_dir(int n_edg)
 {
   edg3_t *edg = &edgs[n_edg];
 
@@ -6426,7 +5847,7 @@ void simplex3_mls_quadratic_t::deform_edge_in_normal_dir(int n_edg)
   vtxs[edg->vtx1].z = xyz_start[2] + d*normal[2];
 }
 
-void simplex3_mls_quadratic_t::invert_mapping_tri(int tri_idx, double xyz[3], double ab[2])
+void simplex3_mls_q_t::invert_mapping_tri(int tri_idx, double xyz[3], double ab[2])
 {
   tri3_t *tri = &tris[tri_idx];
 

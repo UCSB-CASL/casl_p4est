@@ -1,5 +1,5 @@
-#ifndef CUBE3_MLS_QUADRATIC_H
-#define CUBE3_MLS_QUADRATIC_H
+#ifndef cube3_mls_q_H
+#define cube3_mls_q_H
 
 /*
  *            18----------21----------24
@@ -52,13 +52,13 @@ const double ep[num_edges][3] = { { 0,  1,  2  },
                                   { 2,  11, 20 },
                                   { 6,  15, 24 },
                                   { 8,  17, 26 } };
-const int num_tetrs = 6;
-const double tp[num_tetrs][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
-                                   { 0, 8,  6,  26, 4,  7,  3,  13, 17, 16},
-                                   { 0, 20, 2,  26, 10, 11, 1,  13, 23, 14},
-                                   { 0, 6,  24, 26, 3,  15, 12, 13, 16, 25},
-                                   { 0, 18, 20, 26, 9,  19, 10, 13, 22, 23},
-                                   { 0, 24, 18, 26, 12, 21, 9,  13, 25, 22} };
+const int num_tetrs_q = 6;
+const double tp_q[num_tetrs_q][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
+                                       { 0, 8,  6,  26, 4,  7,  3,  13, 17, 16},
+                                       { 0, 20, 2,  26, 10, 11, 1,  13, 23, 14},
+                                       { 0, 6,  24, 26, 3,  15, 12, 13, 16, 25},
+                                       { 0, 18, 20, 26, 9,  19, 10, 13, 22, 23},
+                                       { 0, 24, 18, 26, 12, 21, 9,  13, 25, 22} };
 
 #define NUM_TETS 6
 
@@ -275,35 +275,36 @@ const double tp[num_tetrs][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
 #define t5p9 22
 
 #include <vector>
-#include "simplex3_mls_quadratic.h"
+#include "simplex3_mls_q.h"
 #ifdef P4_TO_P8
 #include <src/my_p8est_utils.h>
 #else
 #include <src/my_p4est_utils.h>
 #endif
 
-class cube3_mls_quadratic_t
+class cube3_mls_q_t
 {
 public:
   const static int n_nodes = 27;
   const static int n_nodes_simplex = 10;
   const static int n_nodes_dir = 3;
-  const double lip = 1.;
+  const double lip = 2.;
 
   double  x0, x1, y0, y1, z0, z1, diag;
   loc_t   loc;
   int     num_of_lsfs;
 //  bool    use_linear;
 
-  std::vector<simplex3_mls_quadratic_t> simplex;
+  std::vector<simplex3_mls_q_t> simplex;
 
-  cube3_mls_quadratic_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
+  cube3_mls_q_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
     : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1)
   {
     diag = sqrt(SQR(x1-x0)+SQR(y1-y0)+SQR(z1-z0));
   }
 
   void construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(std::vector<double> &phi_all, std::vector<action_t> &acn, std::vector<int> &clr);
 
   double integrate_over_domain            (CF_3& f);
   double integrate_over_interface         (CF_3& f, int num);
@@ -311,6 +312,13 @@ public:
   double integrate_over_intersection      (CF_3& f, int num0, int num1);
   double integrate_over_intersection      (CF_3& f, int num0, int num1, int num2);
   double integrate_in_dir                 (CF_3& f, int dir);
+
+  void quadrature_over_domain      (                              std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_over_interface   (int num,                      std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_over_intersection(int num0, int num1,           std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_over_intersection(int num0, int num1, int num2, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_in_dir           (int dir,                      std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+
 
 //  double measure_of_domain            ();
 //  double measure_of_interface         (int num);
@@ -411,4 +419,4 @@ public:
  *
  */
 
-#endif // CUBE3_MLS_QUADRATIC_H
+#endif // cube3_mls_q_H

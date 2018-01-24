@@ -23,8 +23,8 @@
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
-#include <src/simplex3_mls_vtk.h>
-#include <src/simplex3_mls_quadratic_vtk.h>
+#include <src/simplex3_mls_l_vtk.h>
+#include <src/simplex3_mls_q_vtk.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -38,8 +38,8 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
-#include <src/simplex2_mls_vtk.h>
-#include <src/simplex2_mls_quadratic_vtk.h>
+#include <src/simplex2_mls_l_vtk.h>
+#include <src/simplex2_mls_q_vtk.h>
 #endif
 
 #include <tools/plotting.h>
@@ -92,8 +92,8 @@ int num_shifts = nx_shifts*ny_shifts*nz_shifts;
 #else
 int lmin = 3;
 int lmax = 3;
-int nb_splits = 5;
-int nb_splits_per_split = 10;
+int nb_splits = 4;
+int nb_splits_per_split = 4;
 int nx_shifts = 10;
 int ny_shifts = 10;
 int num_shifts = nx_shifts*ny_shifts;
@@ -638,55 +638,55 @@ int main (int argc, char* argv[])
             oss << out_dir
                 << "/geometry";
 
-            if (0)
-            if (save_vtk)
-            {
-              integration_L.initialize();
-#ifdef P4_TO_P8
-              vector<simplex3_mls_t *> simplices;
-              int n_sps = NTETS;
-#else
-              vector<simplex2_mls_t *> simplices;
-              int n_sps = 2;
-#endif
+//            if (0)
+//            if (save_vtk)
+//            {
+//              integration_L.initialize();
+//#ifdef P4_TO_P8
+//              vector<simplex3_mls_l_t *> simplices;
+//              int n_sps = NTETS;
+//#else
+//              vector<simplex2_mls_l_t *> simplices;
+//              int n_sps = 2;
+//#endif
 
-              for (int k = 0; k < integration_L.cubes_linear.size(); k++)
-                if (integration_L.cubes_linear[k].loc == FCE)
-                  for (int l = 0; l < n_sps; l++)
-                    simplices.push_back(&integration_L.cubes_linear[k].simplex[l]);
+//              for (int k = 0; k < integration_L.cubes_linear.size(); k++)
+//                if (integration_L.cubes_linear[k].loc == FCE)
+//                  for (int l = 0; l < n_sps; l++)
+//                    simplices.push_back(&integration_L.cubes_linear[k].simplex[l]);
 
-#ifdef P4_TO_P8
-              simplex3_mls_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
-#else
-              simplex2_mls_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
-#endif
-              save_VTK(p4est, ghost, nodes, &brick, phi_vec, phi_tot, iter);
-            }
+//#ifdef P4_TO_P8
+//              simplex3_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
+//#else
+//              simplex2_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
+//#endif
+//              save_VTK(p4est, ghost, nodes, &brick, phi_vec, phi_tot, iter);
+//            }
 
-            if (save_vtk)
-            {
-              integration_Q.initialize();
-#ifdef P4_TO_P8
-              vector<simplex3_mls_quadratic_t *> simplices;
-              int n_sps = NUM_TETS;
-#else
-              vector<simplex2_mls_quadratic_t *> simplices;
-              int n_sps = 2;
-#endif
+//            if (save_vtk)
+//            {
+//              integration_Q.initialize();
+//#ifdef P4_TO_P8
+//              vector<simplex3_mls_q_t *> simplices;
+//              int n_sps = NUM_TETS;
+//#else
+//              vector<simplex2_mls_q_t *> simplices;
+//              int n_sps = 2;
+//#endif
 
-              for (int k = 0; k < integration_Q.cubes_quadratic.size(); k++)
-                if (integration_Q.cubes_quadratic[k].loc == FCE)
-                  for (int l = 0; l < n_sps; l++)
-                    simplices.push_back(&integration_Q.cubes_quadratic[k].simplex[l]);
+//              for (int k = 0; k < integration_Q.cubes_quadratic.size(); k++)
+//                if (integration_Q.cubes_quadratic[k].loc == FCE)
+//                  for (int l = 0; l < n_sps; l++)
+//                    simplices.push_back(&integration_Q.cubes_quadratic[k].simplex[l]);
 
-#ifdef P4_TO_P8
-              simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
-#else
-              simplex2_mls_quadratic_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
-#endif
-              PetscPrintf(p4est->mpicomm, "VTK saved %d\n", file_num);
+//#ifdef P4_TO_P8
+//              simplex3_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
+//#else
+//              simplex2_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
+//#endif
+//              PetscPrintf(p4est->mpicomm, "VTK saved %d\n", file_num);
 
-            }
+//            }
 
 
             /* Calculate and store results */

@@ -12,7 +12,7 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/simplex3_mls.h>
+#include <src/simplex3_mls_l.h>
 #else
 #include <p4est.h>
 #include <src/my_p4est_utils.h>
@@ -20,7 +20,7 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/simplex2_mls.h>
+#include <src/simplex2_mls_l.h>
 #endif
 
 class my_p4est_semi_lagrangian_t

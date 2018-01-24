@@ -5,13 +5,15 @@
 #include <p8est.h>
 #include <p8est_nodes.h>
 #include "cube3_mls.h"
-#include "cube3_mls_quadratic.h"
+#include "cube3_mls_l.h"
+#include "cube3_mls_q.h"
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
 #include <src/my_p4est_utils.h>
 #include "cube2_mls.h"
-#include "cube2_mls_quadratic.h"
+#include "cube2_mls_l.h"
+#include "cube2_mls_q.h"
 #endif
 
 #include <src/petsc_logging.h>
@@ -41,12 +43,18 @@ public:
   bool linear_integration;
 
 #ifdef P4_TO_P8
-  std::vector<cube3_mls_t> cubes_linear;
-  std::vector<cube3_mls_quadratic_t> cubes_quadratic;
+  std::vector<cube3_mls_t> cubes;
 #else
-  std::vector<cube2_mls_t> cubes_linear;
-  std::vector<cube2_mls_quadratic_t> cubes_quadratic;
+  std::vector<cube2_mls_t> cubes;
 #endif
+
+//#ifdef P4_TO_P8
+//  std::vector<cube3_mls_l_t> cubes_linear;
+//  std::vector<cube3_mls_q_t> cubes_quadratic;
+//#else
+//  std::vector<cube2_mls_l_t> cubes_linear;
+//  std::vector<cube2_mls_q_t> cubes_quadratic;
+//#endif
 
 
   my_p4est_integration_mls_t(p4est_t *p4est_, p4est_nodes_t *nodes_)

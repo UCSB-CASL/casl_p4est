@@ -4,8 +4,8 @@ enum loc_t {INS, OUT, FCE, LNE, PNT};
 enum action_t {INTERSECTION, ADDITION, COLORATION};
 #endif
 
-#ifndef SIMPLEX3_MLS_H
-#define SIMPLEX3_MLS_H
+#ifndef simplex3_mls_l_H
+#define simplex3_mls_l_H
 
 //#include <src/point3.h>
 #include <math.h>
@@ -23,13 +23,15 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 //#include <src/my_p4est_utils.h>
 //#include <src/mls_types.h>
 
-class simplex3_mls_t
+class simplex3_mls_l_t
 {
 public:
   double eps;
 
   const static int nodes_per_tri = 3;
   const static int nodes_per_tet = 4;
+
+  double vol_;
 
   struct vtx3_t // vertex
   {
@@ -157,8 +159,8 @@ public:
     void set(loc_t loc_) {loc = loc_;}
   };
 
-  simplex3_mls_t();
-  simplex3_mls_t(double x0, double y0, double z0,
+  simplex3_mls_l_t();
+  simplex3_mls_l_t(double x0, double y0, double z0,
                  double x1, double y1, double z1,
                  double x2, double y2, double z2,
                  double x3, double y3, double z3);
@@ -168,8 +170,16 @@ public:
   std::vector<tri3_t> tris;
   std::vector<tet3_t> tets;
 
-  void construct_domain(std::vector< CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  //--------------------------------------------------
+  // Reconstruction of irregular domains
+  //--------------------------------------------------
+  void construct_domain(std::vector<CF_3 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 //  void do_action(int cn, action_t action);
+
+  //--------------------------------------------------
+  // Splitting
+  //--------------------------------------------------
   void do_action_vtx(int n_vtx, int cn, action_t action);
   void do_action_edg(int n_edg, int cn, action_t action);
   void do_action_tri(int n_tri, int cn, action_t action);
@@ -177,17 +187,32 @@ public:
 
   bool need_swap(int v0, int v1);
 
+  //--------------------------------------------------
+  // Interpolation
+  //--------------------------------------------------
   void interpolate_all(CF_3 &f);
   void interpolate_from_neighbors(int v);
   void interpolate_from_parent(int v);
   void interpolate_from_parent(vtx3_t &v);
 
+  //--------------------------------------------------
+  // Integration
+  //--------------------------------------------------
   double integrate_over_domain            (CF_3 &f);
   double integrate_over_interface         (CF_3 &f, int num0);
   double integrate_over_colored_interface (CF_3 &f, int num0, int num1);
   double integrate_over_intersection      (CF_3 &f, int num0, int num1);
   double integrate_over_intersection      (CF_3 &f, int num0, int num1, int num2);
   double integrate_in_dir                 (CF_3 &f, int dir);
+
+  //--------------------------------------------------
+  // Quadrature Points
+  //--------------------------------------------------
+  void quadrature_over_domain       (                              std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_over_interface    (int num0,                     std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_over_intersection (int num0, int num1,           std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_over_intersection (int num0, int num1, int num2, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_in_dir            (int dir,                      std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
 
   double length (int vtx0, int vtx1);
   double area   (int vtx0, int vtx1, int vtx2);
@@ -225,4 +250,4 @@ public:
 
 };
 
-#endif // SIMPLEX3_MLS_H
+#endif // simplex3_mls_l_H

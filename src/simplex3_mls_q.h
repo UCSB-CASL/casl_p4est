@@ -4,8 +4,8 @@ enum loc_t {INS, OUT, FCE, LNE, PNT};
 enum action_t {INTERSECTION, ADDITION, COLORATION};
 #endif
 
-#ifndef SIMPLEX3_MLS_QUADRATIC_H
-#define SIMPLEX3_MLS_QUADRATIC_H
+#ifndef simplex3_mls_q_H
+#define simplex3_mls_q_H
 
 #include <math.h>
 #include <vector>
@@ -17,17 +17,19 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 #include <src/my_p4est_utils.h>
 #endif
 
-#define SIMPLEX3_MLS_QUADRATIC_DEBUG
+#define simplex3_mls_q_DEBUG
 
-class simplex3_mls_quadratic_t
+class simplex3_mls_q_t
 {
 public:
-  double eps;
+  double eps_;
 
   double kappa_;
 
-  const static int nodes_per_tri_ = 6;
-  const static int nodes_per_tet_ = 10;
+  bool invalid_reconstruction_;
+
+  const static int nodes_per_tri_  = 6;
+  const static int nodes_per_tet_  = 10;
   const static int max_refinement_ = 10;
 
   const double curvature_limit_ = 0.1;
@@ -61,13 +63,13 @@ public:
     double  ratio;    // placement between nv0 and nv1
     bool    is_recycled;
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     int p_edg; // parent edge
 #endif
 
     vtx3_t(double x, double y, double z)
       : x(x), y(y), z(z), c0(-1), c1(-1), c2(-1), value(0.0), loc(INS), is_recycled(false)
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
       , n_vtx0(-1), n_vtx1(-1), ratio(1.0),
         p_edg(-1)
 #endif
@@ -98,14 +100,14 @@ public:
     int c_vtx_x;        // intersection point vertex
     int c_edg0, c_edg1; // edges
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     int type;                 // type of splitting
     int p_edg, p_tri, p_tet;  // parental objects
 #endif
 
     edg3_t(int v0, int v1, int v2)
       : vtx0(v0), vtx1(v1), vtx2(v2), c0(-1), c1(-1), is_split(false), loc(INS), to_refine(false), a(0.5)
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
       , c_vtx_x(-11), c_edg0(-12), c_edg1(-13),
         type(-1), p_edg(-1), p_tri(-1), p_tet(-1)
 #endif
@@ -146,7 +148,7 @@ public:
     int c_edg0,  c_edg1,  c_edg2;   // edges
     int c_tri0,  c_tri1,  c_tri2,  c_tri3;   // triangles
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     int type;
     int p_tri, p_tet;
 #endif
@@ -157,7 +159,7 @@ public:
         edg0(e0), edg1(e1), edg2(e2),
         c(-1), loc(INS), is_split(false), dir(-1), p_lsf(-1),
         is_curved(false), to_refine(false), a(0), b(0)
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
       , c_vtx01(-21), c_vtx02(-22), c_vtx12(-23),
         c_edg0(-24), c_edg1(-25), c_edg2(-26),
         c_tri0(-27), c_tri1(-28), c_tri2(-29), c_tri3(-20),
@@ -190,7 +192,7 @@ public:
     int c_tri0, c_tri1, c_tri2, c_tri3, c_tri4, c_tri5;       // up to 6 child triangles
     int c_tet0, c_tet1, c_tet2, c_tet3, c_tet4, c_tet5;       // up to 6 child tetrahedra
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
     int type;
     int p_tet;
 #endif
@@ -200,7 +202,7 @@ public:
       : vtx0(v0), vtx1(v1), vtx2(v2), vtx3(v3),
         tri0(t0), tri1(t1), tri2(t2), tri3(t3),
         loc(INS), is_split(false)
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
       , c_vtx01(-30), c_vtx02(-31), c_vtx03(-32), c_vtx12(-33), c_vtx13(-34), c_vtx23(-35),
         c_tri0(-36), c_tri1(-37), c_tri2(-38), c_tri3(-39), c_tri4(-40), c_tri5(-41),
         c_tet0(-42), c_tet1(-43), c_tet2(-44), c_tet3(-45), c_tet4(-46), c_tet5(-47),
@@ -220,8 +222,8 @@ public:
     }
   };
 
-  simplex3_mls_quadratic_t();
-  simplex3_mls_quadratic_t(double x0, double y0, double z0,
+  simplex3_mls_q_t();
+  simplex3_mls_q_t(double x0, double y0, double z0,
                            double x1, double y1, double z1,
                            double x2, double y2, double z2,
                            double x3, double y3, double z3,
@@ -287,6 +289,12 @@ public:
   double integrate_over_intersection      (CF_3 &f, int num0, int num1, int num2);
   double integrate_in_dir                 (CF_3 &f, int dir);
 
+  void quadrature_over_domain       (                              std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_over_interface    (int num,                      std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_over_intersection (int num0, int num1,           std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_over_intersection (int num0, int num1, int num2, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+  void quadrature_in_dir            (int dir,                      std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+
   double jacobian_edg(int n_edg, double a);
   double jacobian_tri(int n_tri, double *ab);
   double jacobian_tet(int n_tet, double *abc);
@@ -333,19 +341,20 @@ public:
     tmp = x; x = y; y = tmp;
   }
 
-  void perturb(double &f, double epsilon){
+  inline void perturb(double &f, const double &epsilon)
+  {
+//    fabs(f) < epsilon ? ( (f > 0) ? f = epsilon : f = -epsilon );
     if(fabs(f) < epsilon){
-      if(f > 0) f =  epsilon;
-      else      f = -epsilon;
+      f = (f > 0) ? epsilon : -epsilon;
+//      if(f > 0) f =  epsilon;
+//      else      f = -epsilon;
     }
   }
-
-  bool invalid_reconstruction_;
 
 //  void set_use_linear(bool val) { use_linear = val; }
 //  void set_use_linear(bool val) { use_linear = true; }
 
-#ifdef SIMPLEX3_MLS_QUADRATIC_DEBUG
+#ifdef simplex3_mls_q_DEBUG
   bool tri_is_ok(int v0, int v1, int v2, int e0, int e1, int e2);
   bool tri_is_ok(int t);
   bool tet_is_ok(int s);
@@ -353,4 +362,4 @@ public:
 
 };
 
-#endif // SIMPLEX3_MLS_QUADRATIC_H
+#endif // simplex3_mls_q_H

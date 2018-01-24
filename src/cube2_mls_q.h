@@ -1,5 +1,5 @@
-#ifndef CUBE2_MLS_QUADRATIC_H
-#define CUBE2_MLS_QUADRATIC_H
+#ifndef cube2_mls_q_H
+#define cube2_mls_q_H
 
 /* Values of LSFs and integrand should be in the following (z-) order
  *
@@ -49,14 +49,14 @@
 #define t1p5 4
 
 #include "vector"
-#include "simplex2_mls_quadratic.h"
+#include "simplex2_mls_q.h"
 #ifdef P4_TO_P8
 #include <src/my_p8est_utils.h>
 #else
 #include <src/my_p4est_utils.h>
 #endif
 
-class cube2_mls_quadratic_t
+class cube2_mls_q_t
 {
 public:
   const static int n_nodes = 9;
@@ -68,12 +68,13 @@ public:
   int     num_of_lsfs;
 //  bool    use_linear;
 
-  std::vector<simplex2_mls_quadratic_t> simplex;
+  std::vector<simplex2_mls_q_t> simplex;
 
-  cube2_mls_quadratic_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1.)
+  cube2_mls_q_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1.)
     : x0(x0), x1(x1), y0(y0), y1(y1) {}
 
   void construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(std::vector<double> &phi_all, std::vector<action_t> &acn, std::vector<int> &clr);
 
   double integrate_over_domain            (CF_2 &f);
   double integrate_over_interface         (CF_2 &f, int num);
@@ -81,6 +82,11 @@ public:
   double integrate_in_dir                 (CF_2 &f, int dir);
 //  double integrate_in_non_cart_dir        (double *f, int dir);
   double integrate_over_colored_interface (CF_2 &f, int num0, int num1);
+
+  void quadrature_over_domain      (                    std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_over_interface   (int num,            std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_over_intersection(int num0, int num1, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_in_dir           (int dir,            std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
 
 //  double measure_of_domain            ();
 //  double measure_of_interface         (int num);
@@ -96,4 +102,4 @@ public:
 //  double interpolate_quadratic(double *f, double *fxx, double *fyy, double x, double y);
 };
 
-#endif // CUBE2_MLS_QUADRATIC_H
+#endif // cube2_mls_q_H

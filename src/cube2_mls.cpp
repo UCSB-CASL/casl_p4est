@@ -1,315 +1,156 @@
 #include "cube2_mls.h"
 
-void cube2_mls_t::construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+cube2_mls_t::cube2_mls_t(double xyz_min[], double xyz_max[], int mnk[], int order)
 {
-  bool all_positive, all_negative;
+  order_ = order;
+  points_per_cube_ = (order_+1)*(order_+1);
 
-  num_of_lsfs = phi.size();
+  cubes_in_x_  = mnk[0];
+  cubes_in_y_  = mnk[1];
+  cubes_total_ = cubes_in_x_*cubes_in_y_;
 
-#ifdef CASL_THROWS
-  if (num_of_lsfs != acn.size() || num_of_lsfs != clr.size())
-          throw std::domain_error("[CASL_ERROR]: (cube2_mls_t::construct_domain) sizes of phi, acn and clr do not coincide.");
-#endif
+  points_in_x_  = cubes_in_x_*order_+1;
+  points_in_y_  = cubes_in_y_*order_+1;
+  points_total_ = points_in_x_*points_in_y_;
 
-  /* Eliminate unnecessary splitting */
-  loc = INS;
-  for (unsigned int p = 0; p < num_of_lsfs; p++)
-  {
-    all_negative = true;
-    all_positive = true;
+  // create grid
+  x_.resize(points_in_x_, 0);
+  y_.resize(points_in_y_, 0);
 
-    double x[2] = { x0, x1 };
-    double y[2] = { y0, y1 };
+  double dx = (xyz_max[0]-xyz_min[0]) / (double) (points_in_x_ - 1);
+  double dy = (xyz_max[1]-xyz_min[1]) / (double) (points_in_y_ - 1);
 
-    for (short j = 0; j < 2; ++j)
-      for (short i = 0; i < 2; ++i)
-      {
-        double value = (*phi[p]) ( x[i], y[j]);
-        all_negative = (all_negative && (value < 0.));
-        all_positive = (all_positive && (value > 0.));
-      }
+  for (int i = 0; i < points_in_x_; ++i) x_[i] = xyz_min[0] + (double) i * dx;
+  for (int i = 0; i < points_in_y_; ++i) y_[i] = xyz_min[1] + (double) i * dy;
 
-    if (all_positive)
+  x_grid_.resize(points_total_, 0);
+  y_grid_.resize(points_total_, 0);
+
+  for (int i = 0; i < points_in_x_; ++i)
+    for (int j = 0; j < points_in_y_; ++j)
     {
-      if (acn[p] == INTERSECTION) loc = OUT;
+      int idx = j * points_in_x_ + i;
+      x_grid_[idx] = x_[i];
+      y_grid_[idx] = y_[j];
     }
-    else if (all_negative)
-    {
-      if (acn[p] == ADDITION) loc = INS;
-    }
-    else if ((loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
-    {
-      loc = FCE;
-    }
-  }
-
-//  num_non_trivial = non_trivial.size();
-
-  if (loc == FCE)
-  {
-//    if (non_trivial_action[0] == ADDITION) // the first action always has to be INTERSECTION
-//      non_trivial_action[0] = INTERSECTION;
-
-    /* Split the cube into 2 simplices */
-    double x[4] = {x0, x1, x0, x1}; double y[4] = {y0, y0, y1, y1};
-
-    simplex.clear();
-    simplex.reserve(2);
-    simplex.push_back(simplex2_mls_t(x[t0p0], y[t0p0], x[t0p1], y[t0p1], x[t0p2], y[t0p2])); // simplex.back().set_use_linear(use_linear);
-    simplex.push_back(simplex2_mls_t(x[t1p0], y[t1p0], x[t1p1], y[t1p1], x[t1p2], y[t1p2])); // simplex.back().set_use_linear(use_linear);
-
-    // TODO: mark appropriate edges for integrate_in_dir
-    simplex[0].edgs[0].dir = 1; simplex[0].edgs[2].dir = 2;
-    simplex[1].edgs[0].dir = 3; simplex[1].edgs[2].dir = 0;
-
-    simplex[0].construct_domain(phi, acn, clr);
-    simplex[1].construct_domain(phi, acn, clr);
-  }
-
 }
 
-double cube2_mls_t::integrate_over_domain(CF_2 &f)
+cube2_mls_t::~cube2_mls_t()
 {
-  switch (loc){
-    case INS:
-      {
-        double alpha = 1./sqrt(3.);
+  if      (order_ == 1) { for (int idx = 0; idx < cubes_total_; ++idx) delete cubes_l_[idx]; }
+  else if (order_ == 2) { for (int idx = 0; idx < cubes_total_; ++idx) delete cubes_q_[idx]; }
+}
 
-        double F0 = f( x0+.5*(-alpha+1.)*(x1-x0), y0+.5*(-alpha+1.)*(y1-y0) );
-        double F1 = f( x0+.5*( alpha+1.)*(x1-x0), y0+.5*(-alpha+1.)*(y1-y0) );
-        double F2 = f( x0+.5*(-alpha+1.)*(x1-x0), y0+.5*( alpha+1.)*(y1-y0) );
-        double F3 = f( x0+.5*( alpha+1.)*(x1-x0), y0+.5*( alpha+1.)*(y1-y0) );
 
-        return (x1-x0)*(y1-y0)*(F0+F1+F2+F3)/4.0;
-      } break;
-    case OUT: return 0.; break;
-    case FCE:
-      {
-        return simplex[0].integrate_over_domain(f)
-            +  simplex[1].integrate_over_domain(f);
+void cube2_mls_t::reconstruct(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+{
+  int num_phi = acn.size();
 
-      } break;
+  if (clr.size() != num_phi) throw;
+  if (phi.size() != num_phi*points_total_) throw;
+
+  std::vector<double> phi_cube(points_per_cube_*num_phi, -1);
+
+  if      (order_ == 1) cubes_l_.resize(cubes_total_, NULL);
+  else if (order_ == 2) cubes_q_.resize(cubes_total_, NULL);
+  else throw;
+
+  for (int i = 0; i < cubes_in_x_; ++i)
+    for (int j = 0; j < cubes_in_y_; ++j)
+    {
+      int idx = j*cubes_in_x_ + i;
+
+      // create new cube
+      if      (order_ == 1) cubes_l_[idx] = new cube2_mls_l_t(x_[i*order_], x_[(i+1)*order_], y_[j*order_], y_[(j+1)*order_]);
+      else if (order_ == 2) cubes_q_[idx] = new cube2_mls_q_t(x_[i*order_], x_[(i+1)*order_], y_[j*order_], y_[(j+1)*order_]);
+      else throw;
+
+      // get values of level-set functions for a cube
+      for (int phi_idx = 0; phi_idx < num_phi; ++phi_idx)
+        for (int ii = 0; ii < order_+1; ++ii)
+          for (int jj = 0; jj < order_+1; ++jj)
+          {
+            phi_cube[phi_idx*points_per_cube_ + jj*(order_+1) + ii] = phi[phi_idx*points_total_ + (j*order_+jj)*points_in_x_ + i*order_+ii];
+          }
+
+      // feed level-set functions values to a cube for reconstruction
+      if      (order_ == 1) cubes_l_[idx]->construct_domain(phi_cube, acn, clr);
+      else if (order_ == 2) cubes_q_[idx]->construct_domain(phi_cube, acn, clr);
+      else throw;
+    }
+}
+
+void cube2_mls_t::quadrature_over_domain(std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y)
+{
+  W.clear();
+  X.clear();
+  Y.clear();
+
+  if      (order_ == 1) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_l_[idx]->quadrature_over_domain(W, X, Y); }
+  else if (order_ == 2) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_q_[idx]->quadrature_over_domain(W, X, Y); }
+  else throw;
+}
+
+void cube2_mls_t::quadrature_over_interface(int num0, std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y)
+{
+  W.clear();
+  X.clear();
+  Y.clear();
+
+  if      (order_ == 1) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_l_[idx]->quadrature_over_interface(num0, W, X, Y); }
+  else if (order_ == 2) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_q_[idx]->quadrature_over_interface(num0, W, X, Y); }
+  else throw;
+}
+
+void cube2_mls_t::quadrature_over_intersection(int num0, int num1, std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y)
+{
+  W.clear();
+  X.clear();
+  Y.clear();
+
+  if      (order_ == 1) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_l_[idx]->quadrature_over_intersection(num0, num1, W, X, Y); }
+  else if (order_ == 2) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_q_[idx]->quadrature_over_intersection(num0, num1, W, X, Y); }
+  else throw;
+}
+
+
+void cube2_mls_t::quadrature_in_dir(int dir, std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y)
+{
+  W.clear();
+  X.clear();
+  Y.clear();
+
+  int i_start = 0, i_total = cubes_in_x_;
+  int j_start = 0, j_total = cubes_in_y_;
+
+  switch (dir)
+  {
+    case 0:
+      i_start = 0;
+      i_total = 1;
+      break;
+    case 1:
+      i_start = cubes_in_x_-1;
+      i_total = 1;
+      break;
+    case 2:
+      j_start = 0;
+      j_total = 1;
+      break;
+    case 3:
+      j_start = cubes_in_y_-1;
+      j_total = 1;
+      break;
     default:
-#ifdef CASL_THROWS
-          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
-#endif
-      return 0.;
+      throw;
   }
+
+  for (int i = i_start; i < i_start + i_total; ++i)
+    for (int j = j_start; j < j_start + j_total; ++j)
+    {
+      int idx = j*cubes_in_x_ + i;
+
+      if      (order_ == 1) { cubes_l_[idx]->quadrature_in_dir(dir, W, X, Y); }
+      else if (order_ == 2) { cubes_q_[idx]->quadrature_in_dir(dir, W, X, Y); }
+    }
 }
-
-double cube2_mls_t::integrate_over_interface(CF_2 &f, int num)
-{
-  if (loc == FCE)
-  {
-    return simplex[0].integrate_over_interface(f, num)
-         + simplex[1].integrate_over_interface(f, num);
-  }
-  else
-    return 0.0;
-}
-
-double cube2_mls_t::integrate_over_colored_interface(CF_2 &f, int num0, int num1)
-{
-  if (loc == FCE)
-  {
-    return simplex[0].integrate_over_colored_interface(f, num0, num1)
-         + simplex[1].integrate_over_colored_interface(f, num0, num1);
-  }
-  else
-    return 0.0;
-}
-
-double cube2_mls_t::integrate_over_intersection(CF_2 &f, int num0, int num1)
-{
-  if (loc == FCE && num_of_lsfs > 1)
-  {
-    return simplex[0].integrate_over_intersection(f, num0, num1)
-         + simplex[1].integrate_over_intersection(f, num0, num1);
-  }
-  else
-    return 0.0;
-}
-
-double cube2_mls_t::integrate_in_dir(CF_2 &f, int dir)
-{
-  switch (loc){
-    case INS:
-      {
-        double alpha = 1./sqrt(3.);
-        double F0 = 1, F1 = 1, s = 0;
-        switch (dir){
-          case 0: s = (y1-y0);
-            F0 = f( x0, y0+.5*(-alpha+1.)*(y1-y0) );
-            F1 = f( x0, y0+.5*( alpha+1.)*(y1-y0) );
-            break;
-          case 1: s = (y1-y0);
-            F0 = f( x1, y0+.5*(-alpha+1.)*(y1-y0) );
-            F1 = f( x1, y0+.5*( alpha+1.)*(y1-y0) );
-            break;
-          case 2: s = (x1-x0);
-            F0 = f( x0+.5*(-alpha+1.)*(x1-x0), y0 );
-            F1 = f( x0+.5*( alpha+1.)*(x1-x0), y0 );
-            break;
-          case 3: s = (x1-x0);
-            F0 = f( x0+.5*(-alpha+1.)*(x1-x0), y1 );
-            F1 = f( x0+.5*( alpha+1.)*(x1-x0), y1 );
-            break;
-        }
-
-        return s*0.5*(F0+F1);
-      } break;
-    case OUT:
-      return 0; break;
-    case FCE:
-      {
-        return simplex[0].integrate_in_dir(f, dir)
-             + simplex[1].integrate_in_dir(f, dir);
-      } break;
-    default:
-#ifdef CASL_THROWS
-      throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
-#endif
-      return 0.;
-  }
-#ifdef CASL_THROWS
-  throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
-#endif
-  return 0.;
-}
-
-//double cube2_mls_t::measure_of_domain()
-//{
-//  switch (loc){
-//  case INS:
-//  {
-//    return (x1-x0)*(y1-y0);
-//  } break;
-//  case OUT: return 0.; break;
-//  case FCE:
-//  {
-//    return simplex[0].integrate_over_domain(1., 1., 1.)
-//         + simplex[1].integrate_over_domain(1., 1., 1.);
-
-//  } break;
-//    default:
-//#ifdef CASL_THROWS
-//          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
-//#endif
-//      return 0.;
-//  }
-//}
-
-//double cube2_mls_t::measure_of_interface(int num)
-//{
-//  if (loc == FCE)
-//  {
-//    return simplex[0].integrate_over_interface(1., 1., 1., num)
-//         + simplex[1].integrate_over_interface(1., 1., 1., num);
-//  }
-//  else
-//    return 0.0;
-//}
-
-//double cube2_mls_t::measure_of_colored_interface(int num0, int num1)
-//{
-//  if (loc == FCE)
-//  {
-//    return simplex[0].integrate_over_colored_interface(1.,1.,1., num0, num1)
-//         + simplex[1].integrate_over_colored_interface(1.,1.,1., num0, num1);
-//  }
-//  else
-//    return 0.0;
-//}
-
-//double cube2_mls_t::measure_of_intersection(int num0, int num1)
-//{
-//  if (loc == FCE && num_non_trivial > 1)
-//  {
-//    return simplex[0].integrate_over_intersection(1.,1.,1., num0, num1)
-//         + simplex[1].integrate_over_intersection(1.,1.,1., num0, num1);
-//  }
-//  else
-//    return 0.0;
-//}
-
-//double cube2_mls_t::measure_in_dir(int dir)
-//{
-//  switch (loc){
-//  case INS:
-//  {
-//    switch (dir){
-//    case 0: return (y1-y0); break;
-//    case 1: return (y1-y0); break;
-//    case 2: return (x1-x0); break;
-//    case 3: return (x1-x0); break;
-//    }
-//  } break;
-//  case OUT:
-//    return 0; break;
-//  case FCE:
-//  {
-//    return simplex[0].integrate_in_dir(1.,1.,1., dir)
-//         + simplex[1].integrate_in_dir(1.,1.,1., dir);
-//  } break;
-//    default:
-//#ifdef CASL_THROWS
-//          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
-//#endif
-//      return 0.;
-//  }
-//#ifdef CASL_THROWS
-//          throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
-//#endif
-//  return 0.;
-//}
-
-//double cube2_mls_t::integrate_in_non_cart_dir(double *f, int dir)
-//{
-//  if (loc == FCE)
-//  {
-//    double F[4];
-//    F[0] = interp.linear(f,x0,y0);
-//    F[1] = interp.linear(f,x1,y0);
-//    F[2] = interp.linear(f,x0,y1);
-//    F[3] = interp.linear(f,x1,y1);
-//    return simplex[0].integrate_in_non_cart_dir(F[t0p0], F[t0p1], F[t0p2], dir)
-//         + simplex[1].integrate_in_non_cart_dir(F[t1p0], F[t1p1], F[t1p2], dir);
-//  }
-//  else
-//    return 0.0;
-//}
-
-//double cube2_mls_t::interpolate_linear(double *f, double x, double y)
-//{
-//  double d_m00 = (x-x0)/(x1-x0);
-//  double d_p00 = (x1-x)/(x1-x0);
-//  double d_0m0 = (y-y0)/(y1-y0);
-//  double d_0p0 = (y1-y)/(y1-y0);
-
-//  double w_mm0 = d_p00*d_0p0;
-//  double w_pm0 = d_m00*d_0p0;
-//  double w_mp0 = d_p00*d_0m0;
-//  double w_pp0 = d_m00*d_0m0;
-
-//  return (w_mm0*f[0] + w_pm0*f[1] + w_mp0*f[2] + w_pp0*f[3]);
-//}
-
-//double cube2_mls_t::interpolate_quadratic(double *f, double *fxx, double *fyy, double x, double y)
-//{
-//  double d_m00 = (x-x0)/(x1-x0);
-//  double d_p00 = (x1-x)/(x1-x0);
-//  double d_0m0 = (y-y0)/(y1-y0);
-//  double d_0p0 = (y1-y)/(y1-y0);
-
-//  double w_mm0 = d_p00*d_0p0;
-//  double w_pm0 = d_m00*d_0p0;
-//  double w_mp0 = d_p00*d_0m0;
-//  double w_pp0 = d_m00*d_0m0;
-
-//  double Fxx = w_mm0*fxx[0] + w_pm0*fxx[1] + w_mp0*fxx[2] + w_pp0*fxx[3];
-//  double Fyy = w_mm0*fyy[0] + w_pm0*fyy[1] + w_mp0*fyy[2] + w_pp0*fyy[3];
-
-//  double F = w_mm0*f[0] + w_pm0*f[1] + w_mp0*f[2] + w_pp0*f[3]
-//             - 0.5*((x1-x0)*(x1-x0)*d_p00*d_m00*Fxx + (y1-y0)*(y1-y0)*d_0p0*d_0m0*Fyy);
-//  return F;
-//}

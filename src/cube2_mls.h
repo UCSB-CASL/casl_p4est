@@ -1,64 +1,46 @@
 #ifndef CUBE2_MLS_H
 #define CUBE2_MLS_H
 
-/* Splitting of a cube into simplices
- *
- * all arrays should be in the order: 00, 10, 01, 11
- *                                     0,  1,  2,  3
- */
-
-// Simplex #0
-#define t0p0 0
-#define t0p1 1
-#define t0p2 3
-// Simplex #1
-#define t1p0 0
-#define t1p1 2
-#define t1p2 3
-
 #include "vector"
-#include "simplex2_mls.h"
-#ifdef P4_TO_P8
-#include <src/my_p8est_utils.h>
-#else
-#include <src/my_p4est_utils.h>
-#endif
+#include "cube2_mls_l.h"
+#include "cube2_mls_q.h"
 
 class cube2_mls_t
 {
+  std::vector<double> x_;
+  std::vector<double> y_;
+
+  std::vector<cube2_mls_l_t *> cubes_l_;
+  std::vector<cube2_mls_q_t *> cubes_q_;
+
+  int order_;
+  int points_per_cube_;
+
+  int cubes_in_x_;
+  int cubes_in_y_;
+  int cubes_total_;
+
+  int points_in_x_;
+  int points_in_y_;
+  int points_total_;
+
 public:
-  const static int n_nodes = 4;
-  const static int n_nodes_simplex = 3;
+  std::vector<double> x_grid_;
+  std::vector<double> y_grid_;
 
-  double  x0, x1, y0, y1;
-  loc_t   loc;
-  int     num_of_lsfs;
-  bool    use_linear;
+  cube2_mls_t(double xyz_min[], double xyz_max[], int mnk[], int order);
 
-  std::vector<simplex2_mls_t> simplex;
+  ~cube2_mls_t();
 
-  cube2_mls_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1.)
-    : x0(x0), x1(x1), y0(y0), y1(y1), use_linear(true) {}
+  inline void get_x_coord(std::vector<double> *x) { x = &x_grid_; }
+  inline void get_y_coord(std::vector<double> *y) { y = &y_grid_; }
 
-  void construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void reconstruct(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 
-  double integrate_over_domain            (CF_2 &f);
-  double integrate_over_interface         (CF_2 &f, int num);
-  double integrate_over_intersection      (CF_2 &f, int num0, int num1);
-  double integrate_in_dir                 (CF_2 &f, int dir);
-//  double integrate_in_non_cart_dir        (double *f, int dir);
-  double integrate_over_colored_interface (CF_2 &f, int num0, int num1);
-
-//  double measure_of_domain            ();
-//  double measure_of_interface         (int num);
-//  double measure_of_intersection      (int num0, int num1);
-//  double measure_of_colored_interface (int num0, int num1);
-//  double measure_in_dir               (int dir);
-
-  void set_use_linear(bool val) { use_linear = val; }
-
-//  double interpolate_linear(double *f, double x, double y);
-//  double interpolate_quadratic(double *f, double *fxx, double *fyy, double x, double y);
+  void quadrature_over_domain      (                    std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_over_interface   (int num0,           std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_over_intersection(int num0, int num1, std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y);
+  void quadrature_in_dir           (int dir,            std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y);
 };
 
 #endif // CUBE2_MLS_H

@@ -1,7 +1,7 @@
-#include "simplex2_mls.h"
+#include "simplex2_mls_l.h"
 #include "casl_math.h"
 
-simplex2_mls_t::simplex2_mls_t()
+simplex2_mls_l_t::simplex2_mls_l_t()
 {
   vtxs.reserve(8);
   edgs.reserve(27);
@@ -12,9 +12,9 @@ simplex2_mls_t::simplex2_mls_t()
   eps = 1.0e-13;
 }
 
-simplex2_mls_t::simplex2_mls_t(double x0, double y0,
-                               double x1, double y1,
-                               double x2, double y2)
+simplex2_mls_l_t::simplex2_mls_l_t(double x0, double y0,
+                                   double x1, double y1,
+                                   double x2, double y2)
 //  : x({x0, x1, x2}), y({y0, y1, y2})
 {
   // usually there will be only one cut
@@ -33,6 +33,8 @@ simplex2_mls_t::simplex2_mls_t(double x0, double y0,
 
   tris.push_back(tri2_t(0,1,2,0,1,2));
 
+  A_ = area(0, 1, 2);
+
   use_linear = true;
 
   eps = 1.0e-13;
@@ -44,7 +46,7 @@ simplex2_mls_t::simplex2_mls_t(double x0, double y0,
 //--------------------------------------------------
 // Constructing domain
 //--------------------------------------------------
-void simplex2_mls_t::construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+void simplex2_mls_l_t::construct_domain(std::vector<CF_2 *> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
   double xyz[3];
   // loop over LSFs
@@ -75,7 +77,44 @@ void simplex2_mls_t::construct_domain(std::vector<CF_2 *> &phi, std::vector<acti
   }
 }
 
-void simplex2_mls_t::do_action_vtx(int n_vtx, int cn, action_t action)
+void simplex2_mls_l_t::construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+{
+  double xyz[3];
+  // loop over LSFs
+  for (short phi_idx = 0; phi_idx < acn.size(); ++phi_idx)
+  {
+    for (int i = 0; i < nodes_per_tri; ++i)
+    {
+      vtxs[i].value = phi[phi_idx*nodes_per_tri+i];
+      perturb(vtxs[i].value, eps);
+    }
+
+    // interpolate to all vertices
+    for (int i = nodes_per_tri; i < vtxs.size(); ++i)
+    {
+      vtxs[i].value = interpolate(i);
+      perturb(vtxs[i].value, eps);
+    }
+
+//    for (int i = 0; i < edgs.size(); ++i)
+//      if (!edgs[i].is_split)
+//      {
+//        edg2_t *e = &edgs[i];
+//        get_edge_coords(i, xyz);
+//        e->value = (*phi[phi_idx]) ( xyz[0], xyz[1] );
+//      }
+
+    // split all elements
+    int n;
+    n = vtxs.size(); for (int i = 0; i < n; i++) do_action_vtx(i, clr[phi_idx], acn[phi_idx]);
+    n = edgs.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
+    n = tris.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
+
+    eps *= 0.5;
+  }
+}
+
+void simplex2_mls_l_t::do_action_vtx(int n_vtx, int cn, action_t action)
 {
   vtx2_t *vtx = &vtxs[n_vtx];
 
@@ -87,7 +126,7 @@ void simplex2_mls_t::do_action_vtx(int n_vtx, int cn, action_t action)
   case COLORATION:    if (vtx->value < 0) if (vtx->loc==FCE || vtx->loc==PNT)  vtx->set(FCE, cn, -1);  break;
   }
 }
-void simplex2_mls_t::do_action_edg(int n_edg, int cn, action_t action)
+void simplex2_mls_l_t::do_action_edg(int n_edg, int cn, action_t action)
 {
   edg2_t *edg = &edgs[n_edg];
 
@@ -215,7 +254,7 @@ void simplex2_mls_t::do_action_edg(int n_edg, int cn, action_t action)
   }
 }
 
-void simplex2_mls_t::do_action_tri(int n_tri, int cn, action_t action)
+void simplex2_mls_l_t::do_action_tri(int n_tri, int cn, action_t action)
 {
   tri2_t *tri = &tris[n_tri];
 
@@ -453,7 +492,7 @@ void simplex2_mls_t::do_action_tri(int n_tri, int cn, action_t action)
   }
 }
 
-bool simplex2_mls_t::need_swap(int v0, int v1)
+bool simplex2_mls_l_t::need_swap(int v0, int v1)
 {
 //  double dif = vtxs[v0].value - vtxs[v1].value;
 //  if (fabs(dif) < eps){ // if values are too close, sort vertices by their numbers
@@ -476,13 +515,19 @@ bool simplex2_mls_t::need_swap(int v0, int v1)
   }
 }
 
-double simplex2_mls_t::length(int vtx0, int vtx1)
+
+
+
+//--------------------------------------------------
+// Integration
+//--------------------------------------------------
+double simplex2_mls_l_t::length(int vtx0, int vtx1)
 {
   return sqrt(pow(vtxs[vtx0].x - vtxs[vtx1].x, 2.0)
             + pow(vtxs[vtx0].y - vtxs[vtx1].y, 2.0));
 }
 
-double simplex2_mls_t::area(int vtx0, int vtx1, int vtx2)
+double simplex2_mls_l_t::area(int vtx0, int vtx1, int vtx2)
 {
   double x01 = vtxs[vtx1].x - vtxs[vtx0].x; double x02 = vtxs[vtx2].x - vtxs[vtx0].x;
   double y01 = vtxs[vtx1].y - vtxs[vtx0].y; double y02 = vtxs[vtx2].y - vtxs[vtx0].y;
@@ -490,7 +535,7 @@ double simplex2_mls_t::area(int vtx0, int vtx1, int vtx2)
   return 0.5*fabs(x01*y02-y01*x02);
 }
 
-double simplex2_mls_t::integrate_over_domain(CF_2 &f)
+double simplex2_mls_l_t::integrate_over_domain(CF_2 &f)
 {
   /* interpolate function values to vertices */
   interpolate_all(f);
@@ -511,7 +556,7 @@ double simplex2_mls_t::integrate_over_domain(CF_2 &f)
   return result;
 }
 
-double simplex2_mls_t::integrate_over_interface(CF_2 &f, int num)
+double simplex2_mls_l_t::integrate_over_interface(CF_2 &f, int num)
 {
   bool integrate_specific = (num != -1);
 
@@ -533,7 +578,7 @@ double simplex2_mls_t::integrate_over_interface(CF_2 &f, int num)
 }
 
 // integrate over colored interfaces (num0 - parental lsf, num1 - coloring lsf)
-double simplex2_mls_t::integrate_over_colored_interface(CF_2 &f, int num0, int num1)
+double simplex2_mls_l_t::integrate_over_colored_interface(CF_2 &f, int num0, int num1)
 {
   /* interpolate function values to vertices */
   interpolate_all(f);
@@ -552,7 +597,7 @@ double simplex2_mls_t::integrate_over_colored_interface(CF_2 &f, int num0, int n
   return result;
 }
 
-double simplex2_mls_t::integrate_over_intersection(CF_2 &f, int num0, int num1)
+double simplex2_mls_l_t::integrate_over_intersection(CF_2 &f, int num0, int num1)
 {
   double result = 0.0;
   bool integrate_specific = (num0 != -1 && num1 != -1);
@@ -575,7 +620,7 @@ double simplex2_mls_t::integrate_over_intersection(CF_2 &f, int num0, int num1)
   return result;
 }
 
-double simplex2_mls_t::integrate_in_dir(CF_2 &f, int dir)
+double simplex2_mls_l_t::integrate_in_dir(CF_2 &f, int dir)
 {
   /* interpolate function values to vertices */
   interpolate_all(f);
@@ -594,37 +639,106 @@ double simplex2_mls_t::integrate_in_dir(CF_2 &f, int dir)
   return result;
 }
 
-//double simplex2_mls_t::integrate_in_non_cart_dir(double f0, double f1, double f2, int num)
-//{
-//  /* interpolate function values to vertices */
-//  interpolate_all(f0, f1, f2);
 
-//  double result = 0.0;
+//--------------------------------------------------
+// Quadrature Points
+//--------------------------------------------------
+void simplex2_mls_l_t::quadrature_over_domain(std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y)
+{
+  for (unsigned int i = 0; i < tris.size(); i++)
+  {
+    tri2_t *t = &tris[i];
+    if (!t->is_split && t->loc == INS)
+    {
+      double w = area(t->vtx0, t->vtx1, t->vtx2)/3.0;
 
-//  /* integrate over edges */
-//  for (unsigned int i = 0; i < edgs.size(); i++)
-//  {
-//    edg2_t *e = &edgs[i];
-//    if (!e->is_split && (e->loc == INS || e->loc == FCE))
-//      if (e->p_lsf == num)
-//        result += length(e->vtx0, e->vtx1)*(vtxs[e->vtx0].value + vtxs[e->vtx1].value)/2.0;
-//  }
+      weights.push_back(w); X.push_back(vtxs[t->vtx0].x); Y.push_back(vtxs[t->vtx0].y);
+      weights.push_back(w); X.push_back(vtxs[t->vtx1].x); Y.push_back(vtxs[t->vtx1].y);
+      weights.push_back(w); X.push_back(vtxs[t->vtx2].x); Y.push_back(vtxs[t->vtx2].y);
+    }
+  }
+}
 
-//  return result;
-//}
+void simplex2_mls_l_t::quadrature_over_interface(int num, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y)
+{
+  bool integrate_specific = (num != -1);
 
-void simplex2_mls_t::interpolate_from_neighbors(int v)
+  for (unsigned int i = 0; i < edgs.size(); i++)
+  {
+    edg2_t *e = &edgs[i];
+    if (!e->is_split && e->loc == FCE)
+      if ((!integrate_specific && e->c0 >= 0) || (integrate_specific && e->c0 == num))
+      {
+        double w = length(e->vtx0, e->vtx1)/2.0;
+
+        weights.push_back(w); X.push_back(vtxs[e->vtx0].x); Y.push_back(vtxs[e->vtx0].y);
+        weights.push_back(w); X.push_back(vtxs[e->vtx1].x); Y.push_back(vtxs[e->vtx1].y);
+      }
+  }
+}
+
+void simplex2_mls_l_t::quadrature_over_intersection(int num0, int num1, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y)
+{
+  bool integrate_specific = (num0 != -1 && num1 != -1);
+
+  for (unsigned int i = 0; i < vtxs.size(); i++)
+  {
+    vtx2_t *v = &vtxs[i];
+    if (v->loc == PNT)
+      if ( !integrate_specific
+           || (integrate_specific
+               && (v->c0 == num0 || v->c1 == num0)
+               && (v->c0 == num1 || v->c1 == num1)) )
+      {
+        weights.push_back(1); X.push_back(v->x); Y.push_back(v->y);
+      }
+  }
+}
+
+void simplex2_mls_l_t::quadrature_in_dir(int dir, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y)
+{
+  for (unsigned int i = 0; i < edgs.size(); i++)
+  {
+    edg2_t *e = &edgs[i];
+    if (!e->is_split && e->loc == INS)
+      if (e->dir == dir)
+      {
+        double w = length(e->vtx0, e->vtx1)/2.0;
+
+        weights.push_back(w); X.push_back(vtxs[e->vtx0].x); Y.push_back(vtxs[e->vtx0].y);
+        weights.push_back(w); X.push_back(vtxs[e->vtx1].x); Y.push_back(vtxs[e->vtx1].y);
+      }
+  }
+}
+
+
+
+
+
+//--------------------------------------------------
+// Interpolation
+//--------------------------------------------------
+void simplex2_mls_l_t::interpolate_from_neighbors(int v)
 {
   vtx2_t *vtx = &vtxs[v];
   vtx->value = vtx->ratio*vtxs[vtx->n_vtx0].value + (1.0-vtx->ratio)*vtxs[vtx->n_vtx1].value;
 }
 
-void simplex2_mls_t::interpolate_all(CF_2 &f)
+void simplex2_mls_l_t::interpolate_all(CF_2 &f)
 {
   for (unsigned int i = 0; i < vtxs.size(); i++) vtxs[i].value = f(vtxs[i].x, vtxs[i].y);
 }
 
-double simplex2_mls_t::find_intersection_linear(int v0, int v1)
+double simplex2_mls_l_t::interpolate(int v)
+{
+  double A0 = area(v, 1, 2);
+  double A1 = area(0, v, 2);
+  double A2 = area(0, 1, v);
+
+  return (A0*vtxs[0].value + A1*vtxs[1].value + A2*vtxs[2].value)/A_;
+}
+
+double simplex2_mls_l_t::find_intersection_linear(int v0, int v1)
 {
   vtx2_t *vtx0 = &vtxs[v0];
   vtx2_t *vtx1 = &vtxs[v1];
@@ -656,7 +770,7 @@ double simplex2_mls_t::find_intersection_linear(int v0, int v1)
   return 1.-(x+0.5*l)/l;
 }
 
-double simplex2_mls_t::find_intersection_quadratic(int e)
+double simplex2_mls_l_t::find_intersection_quadratic(int e)
 {
   vtx2_t *vtx0 = &vtxs[edgs[e].vtx0];
   vtx2_t *vtx1 = &vtxs[edgs[e].vtx1];
@@ -702,7 +816,7 @@ double simplex2_mls_t::find_intersection_quadratic(int e)
   return 1.-(x+0.5*l)/l;
 }
 
-void simplex2_mls_t::get_edge_coords(int e, double xyz[])
+void simplex2_mls_l_t::get_edge_coords(int e, double xyz[])
 {
   vtx2_t *vtx0 = &vtxs[edgs[e].vtx0];
   vtx2_t *vtx1 = &vtxs[edgs[e].vtx1];
@@ -711,7 +825,7 @@ void simplex2_mls_t::get_edge_coords(int e, double xyz[])
   xyz[1] = 0.5*(vtx0->y+vtx1->y);
 }
 
-//double simplex2_mls_t::find_intersection_brent(int v0, int v1)
+//double simplex2_mls_l_t::find_intersection_brent(int v0, int v1)
 //{
 //#ifdef CASL_THROWS
 //  if(phi_cf == NULL) throw std::invalid_argument("[CASL_ERROR]: LSF is not provided.");
@@ -798,7 +912,7 @@ void simplex2_mls_t::get_edge_coords(int e, double xyz[])
 //}
 
 #ifdef CASL_THROWS
-bool simplex2_mls_t::tri_is_ok(int v0, int v1, int v2, int e0, int e1, int e2)
+bool simplex2_mls_l_t::tri_is_ok(int v0, int v1, int v2, int e0, int e1, int e2)
 {
   bool result = true;
   result = (edgs[e0].vtx0 == v1 || edgs[e0].vtx1 == v1) && (edgs[e0].vtx0 == v2 || edgs[e0].vtx1 == v2);
@@ -807,7 +921,7 @@ bool simplex2_mls_t::tri_is_ok(int v0, int v1, int v2, int e0, int e1, int e2)
   return result;
 }
 
-bool simplex2_mls_t::tri_is_ok(int t)
+bool simplex2_mls_l_t::tri_is_ok(int t)
 {
   tri2_t *tri = &tris[t];
   bool result = tri_is_ok(tri->vtx0, tri->vtx1, tri->vtx2, tri->edg0, tri->edg1, tri->edg2);
