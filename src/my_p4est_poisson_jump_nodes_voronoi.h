@@ -21,6 +21,7 @@
 
 class my_p4est_poisson_jump_nodes_voronoi_t
 {
+  friend class my_p4est_biomolecules_solver_t;
   typedef struct
   {
     double val;
@@ -78,7 +79,7 @@ class my_p4est_poisson_jump_nodes_voronoi_t
     {
       return cst;
     }
-  } mu_constant;
+  };
 
   class ADD_CONSTANT: public CF_3
   {
@@ -91,7 +92,7 @@ class my_p4est_poisson_jump_nodes_voronoi_t
     {
       return cst;
     }
-  } add_constant;
+  };
 #else
   class ZERO: public CF_2
   {
@@ -113,7 +114,7 @@ class my_p4est_poisson_jump_nodes_voronoi_t
     {
       return cst;
     }
-  } mu_constant;
+  };
 
   class ADD_CONSTANT: public CF_2
   {
@@ -126,8 +127,11 @@ class my_p4est_poisson_jump_nodes_voronoi_t
     {
       return cst;
     }
-  } add_constant;
+  };
 #endif
+
+  MU_CONSTANT   mu_constant_m, mu_constant_p;
+  ADD_CONSTANT  add_constant_m, add_constant_p;
 
   const my_p4est_node_neighbors_t *ngbd_n;
   const my_p4est_cell_neighbors_t *ngbd_c;
@@ -187,12 +191,14 @@ class my_p4est_poisson_jump_nodes_voronoi_t
 
 #ifdef P4_TO_P8
   CF_3 *mu_m, *mu_p;
-  CF_3 *add;
+//  CF_3 *add;
+  CF_3 *add_m, *add_p;
   CF_3 *u_jump;
   CF_3 *mu_grad_u_jump;
 #else
   CF_2 *mu_m, *mu_p;
-  CF_2 *add;
+//  CF_2 *add;
+  CF_2 *add_m, *add_p;
   CF_2 *u_jump;
   CF_2 *mu_grad_u_jump;
 #endif
@@ -231,9 +237,11 @@ public:
 
   void set_rhs(Vec rhs_m, Vec rhs_p);
 
-  void set_diagonal(double add);
+  void set_diagonal(double add_) {set_diagonals(add_, add_);}
+  void set_diagonals(double add_m_, double add_p_);
 
-  void set_diagonal(Vec add);
+  void set_diagonal(Vec add_) {set_diagonals(add_, add_);}
+  void set_diagonals(Vec add_m_, Vec add_p_);
 
 #ifdef P4_TO_P8
   void set_bc(BoundaryConditions3D& bc);
@@ -241,9 +249,11 @@ public:
   void set_bc(BoundaryConditions2D& bc);
 #endif
 
-  void set_mu(double mu);
+  void set_mu(double mu_) {set_mu(mu_, mu_);}
+  void set_mu(double mu_m_, double mu_p_);
 
-  void set_mu(Vec mu_m, Vec mu_p);
+  void set_mu(Vec mu_) {set_mu(mu_, mu_);}
+  void set_mu(Vec mu_m_, Vec mu_p_);
 
   void set_u_jump(Vec u_jump);
 
@@ -255,7 +265,7 @@ public:
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
 
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR, bool delete_sol_voro = true, bool interpolate_solution_back_on_tree = true);
 
   double interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const;
   void interpolate_solution_from_voronoi_to_tree(Vec solution) const;

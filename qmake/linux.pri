@@ -3,16 +3,18 @@
 # --------------------------------------------------------------
 
 # PETSc
-PETSC_INCLUDES_RELEASE = /usr/local/include
-PETSC_INCLUDES_DEBUG   = /usr/local/include
-PETSC_LIBS_RELEASE = -Wl,-rpath,/usr/local/lib -L/usr/local/lib -lpetsc
-PETSC_LIBS_DEBUG   = -Wl,-rpath,/usr/local/lib -L/usr/local/lib -lpetsc
+PETSC_INCLUDES_RELEASE  = /home/egan/libraries/petsc-3.6.4/build-openmpi/include
+PETSC_INCLUDES_RELEASE += /home/egan/libraries/petsc-3.6.4/include
+PETSC_INCLUDES_DEBUG    = /home/egan/libraries/petsc-3.6.4/build-openmpi/include
+PETSC_INCLUDES_DEBUG   += /home/egan/libraries/petsc-3.6.4/include
+PETSC_LIBS_RELEASE = -Wl,-rpath,/home/egan/libraries/petsc-3.6.4/build-openmpi/lib -L/home/egan/libraries/petsc-3.6.4/build-openmpi/lib -lpetsc
+PETSC_LIBS_DEBUG   = -Wl,-rpath,/home/egan/libraries/petsc-3.6.4/build-openmpi/lib -L/home/egan/libraries/petsc-3.6.4/build-openmpi/lib -lpetsc
 
 # p4est
-P4EST_INCLUDES_RELEASE = /usr/local/include
-P4EST_INCLUDES_DEBUG   = /usr/local/include
-P4EST_LIBS_RELEASE = -Wl,-rpath,/usr/local/lib -L/usr/local/lib -lp4est -lsc
-P4EST_LIBS_DEBUG   = -Wl,-rpath,/usr/local/lib -L/usr/local/lib -lp4est -lsc
+P4EST_INCLUDES_RELEASE = /home/egan/libraries/p4est-1.1/local/include
+P4EST_INCLUDES_DEBUG   = /home/egan/libraries/p4est-1.1/local/include
+P4EST_LIBS_RELEASE = -Wl,-rpath,/home/egan/libraries/p4est-1.1/local/lib -L/home/egan/libraries/p4est-1.1/local/lib -lp4est -lsc
+P4EST_LIBS_DEBUG   = -Wl,-rpath,/home/egan/libraries/p4est-1.1/local/lib -L/home/egan/libraries/p4est-1.1/local/lib -lp4est -lsc
 
 # voro++
 VORO_INCLUDES_RELEASE = /usr/local/include/voro++

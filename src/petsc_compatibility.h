@@ -51,5 +51,9 @@
 #define KSPSetOperators(a,b,c,d) KSPSetOperators(a,b,c)
 #endif
 
+#if PETSC_VERSION_GE(3,7,0)
+#define PetscOptionsSetValue(a,b) PetscOptionsSetValue(NULL,a,b)
+#endif
+
 
 #endif // PETSC_COMPATIBILITY_H

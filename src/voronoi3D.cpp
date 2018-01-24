@@ -117,17 +117,17 @@ void Voronoi3D::construct_Partition(const double *xyz_min, const double *xyz_max
   voro::particle_order po;
 
   /* add the center point */
-  double x_tmp = fabs(pc.x-xyz_min[0])<eps ? xyz_min[0]+eps : fabs(pc.x-xyz_max[0])<eps ? xyz_max[0]-eps : pc.x;
-  double y_tmp = fabs(pc.y-xyz_min[1])<eps ? xyz_min[1]+eps : fabs(pc.y-xyz_max[1])<eps ? xyz_max[1]-eps : pc.y;
-  double z_tmp = fabs(pc.z-xyz_min[2])<eps ? xyz_min[2]+eps : fabs(pc.z-xyz_max[2])<eps ? xyz_max[2]-eps : pc.z;
+  double x_tmp = ((fabs(pc.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*eps) : ((fabs(pc.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*eps) : pc.x));
+  double y_tmp = ((fabs(pc.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*eps) : ((fabs(pc.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*eps) : pc.y));
+  double z_tmp = ((fabs(pc.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*eps) : ((fabs(pc.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*eps) : pc.z));
   voronoi.put(po, nc, x_tmp, y_tmp, z_tmp);
 
   /* add the points potentially involved in the voronoi partition */
   for(unsigned int m=0; m<points.size(); ++m)
   {
-    double x_tmp = fabs(points[m].p.x-xyz_min[0])<eps ? xyz_min[0]+eps : fabs(points[m].p.x-xyz_max[0])<eps ? xyz_max[0]-eps : points[m].p.x;
-    double y_tmp = fabs(points[m].p.y-xyz_min[1])<eps ? xyz_min[1]+eps : fabs(points[m].p.y-xyz_max[1])<eps ? xyz_max[1]-eps : points[m].p.y;
-    double z_tmp = fabs(points[m].p.z-xyz_min[2])<eps ? xyz_min[2]+eps : fabs(points[m].p.z-xyz_max[2])<eps ? xyz_max[2]-eps : points[m].p.z;
+    double x_tmp = ((fabs(points[m].p.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*eps) : ((fabs(points[m].p.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*eps) : points[m].p.x));
+    double y_tmp = ((fabs(points[m].p.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*eps) : ((fabs(points[m].p.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*eps) : points[m].p.y));
+    double z_tmp = ((fabs(points[m].p.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*eps) : ((fabs(points[m].p.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*eps) : points[m].p.z));
     voronoi.put(po, points[m].n, x_tmp, y_tmp, z_tmp);
   }
 
@@ -197,6 +197,12 @@ void Voronoi3D::construct_Partition(const double *xyz_min, const double *xyz_max
     points.clear();
     points = final_points;
   }
+  else
+  {
+    std::cerr << "We're in SERIOUS TROUBLE, dude..." << std::endl;
+    std::cerr << "cl.start() = " << cl.start()  << std::endl;
+    std::cerr << "voronoi.compute_cell(voro_cell,cl) = " << voronoi.compute_cell(voro_cell,cl) << std::endl;
+  }
 }
 
 
@@ -219,17 +225,17 @@ void Voronoi3D::print_VTK_Format( const std::vector<Voronoi3D>& voro, const char
                                                    1, 1, 1, periodic[0], periodic[1], periodic[2], 8);
       voro_global[n].po = new voro::particle_order;
 
-      double x_c = fabs(voro[n].pc.x-xyz_min[0])<eps ? xyz_min[0]+eps : fabs(voro[n].pc.x-xyz_max[0])<eps ? xyz_max[0]-eps : voro[n].pc.x;
-      double y_c = fabs(voro[n].pc.y-xyz_min[1])<eps ? xyz_min[1]+eps : fabs(voro[n].pc.y-xyz_max[1])<eps ? xyz_max[1]-eps : voro[n].pc.y;
-      double z_c = fabs(voro[n].pc.z-xyz_min[2])<eps ? xyz_min[2]+eps : fabs(voro[n].pc.z-xyz_max[2])<eps ? xyz_max[2]-eps : voro[n].pc.z;
+      double x_c = ((fabs(voro[n].pc.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*eps) : ((fabs(voro[n].pc.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*eps) : voro[n].pc.x));
+      double y_c = ((fabs(voro[n].pc.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*eps) : ((fabs(voro[n].pc.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*eps) : voro[n].pc.y));
+      double z_c = ((fabs(voro[n].pc.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*eps) : ((fabs(voro[n].pc.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*eps) : voro[n].pc.z));
       voro_global[n].voronoi->put(*voro_global[n].po, voro[n].nc, x_c, y_c, z_c);
 
       for(unsigned int m=0; m<voro[n].points.size(); ++m)
         if(voro[n].points[m].n>=0)
         {
-          double x_m = fabs(voro[n].points[m].p.x-xyz_min[0])<eps ? xyz_min[0]+eps : fabs(voro[n].points[m].p.x-xyz_max[0])<eps ? xyz_max[0]-eps : voro[n].points[m].p.x;
-          double y_m = fabs(voro[n].points[m].p.y-xyz_min[1])<eps ? xyz_min[1]+eps : fabs(voro[n].points[m].p.y-xyz_max[1])<eps ? xyz_max[1]-eps : voro[n].points[m].p.y;
-          double z_m = fabs(voro[n].points[m].p.z-xyz_min[2])<eps ? xyz_min[2]+eps : fabs(voro[n].points[m].p.z-xyz_max[2])<eps ? xyz_max[2]-eps : voro[n].points[m].p.z;
+          double x_m = ((fabs(voro[n].points[m].p.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*eps) : ((fabs(voro[n].points[m].p.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*eps) : voro[n].points[m].p.x));
+          double y_m = ((fabs(voro[n].points[m].p.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*eps) : ((fabs(voro[n].points[m].p.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*eps) : voro[n].points[m].p.y));
+          double z_m = ((fabs(voro[n].points[m].p.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*eps) : ((fabs(voro[n].points[m].p.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*eps) : voro[n].points[m].p.z));
           voro_global[n].voronoi->put(*voro_global[n].po, voro[n].points[m].n, x_m, y_m, z_m);
         }
     }
