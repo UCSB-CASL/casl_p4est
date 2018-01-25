@@ -1,6 +1,8 @@
 #include "voronoi3D.h"
 #include <vector>
 
+#include <algorithm>
+
 void Voronoi3D::clear()
 {
   points.resize(0);
@@ -122,13 +124,32 @@ void Voronoi3D::construct_Partition(const double *xyz_min, const double *xyz_max
   double z_tmp = ((fabs(pc.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*eps) : ((fabs(pc.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*eps) : pc.z));
   voronoi.put(po, nc, x_tmp, y_tmp, z_tmp);
 
+  std::vector<double> point_distances(points.size());
+  std::vector<unsigned int> index(points.size(), 0);
+  for(unsigned int m=0; m<points.size(); ++m)
+  {
+    point_distances.at(m) = (points[m].p - pc).norm_L2();
+    index.at(m) = m;
+  }
+
+  sort(index.begin(), index.end(),
+      [&](const int& a, const int& b) {
+          return (point_distances[a] < point_distances[b]);
+      }
+  );
+
   /* add the points potentially involved in the voronoi partition */
   for(unsigned int m=0; m<points.size(); ++m)
   {
-    double x_tmp = ((fabs(points[m].p.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*eps) : ((fabs(points[m].p.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*eps) : points[m].p.x));
-    double y_tmp = ((fabs(points[m].p.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*eps) : ((fabs(points[m].p.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*eps) : points[m].p.y));
-    double z_tmp = ((fabs(points[m].p.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*eps) : ((fabs(points[m].p.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*eps) : points[m].p.z));
-    voronoi.put(po, points[m].n, x_tmp, y_tmp, z_tmp);
+    unsigned int idx = index.at(m);
+    double x_tmp = ((fabs(points[idx].p.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*eps) : ((fabs(points[idx].p.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*eps) : points[idx].p.x));
+    double y_tmp = ((fabs(points[idx].p.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*eps) : ((fabs(points[idx].p.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*eps) : points[idx].p.y));
+    double z_tmp = ((fabs(points[idx].p.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*eps) : ((fabs(points[idx].p.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*eps) : points[idx].p.z));
+    voronoi.put(po, points[idx].n, x_tmp, y_tmp, z_tmp);
+//    double x_tmp = ((fabs(points[m].p.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*eps) : ((fabs(points[m].p.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*eps) ? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*eps) : points[m].p.x));
+//    double y_tmp = ((fabs(points[m].p.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*eps) : ((fabs(points[m].p.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*eps) ? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*eps) : points[m].p.y));
+//    double z_tmp = ((fabs(points[m].p.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*eps) : ((fabs(points[m].p.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*eps) ? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*eps) : points[m].p.z));
+//    voronoi.put(po, points[m].n, x_tmp, y_tmp, z_tmp);
   }
 
 
@@ -146,6 +167,9 @@ void Voronoi3D::construct_Partition(const double *xyz_min, const double *xyz_max
 
     voro_cell.neighbors(neigh);
     voro_cell.face_areas(areas);
+    double max_area = 0.0;
+    for(unsigned int n=0; n<neigh.size(); n++)
+      max_area = MAX(max_area, areas[n]);
 
     for(unsigned int n=0; n<neigh.size(); n++)
     {
@@ -192,7 +216,8 @@ void Voronoi3D::construct_Partition(const double *xyz_min, const double *xyz_max
         }
       }
 
-      final_points.push_back(new_voro_nb);
+      if(new_voro_nb.s > EPS*max_area)
+        final_points.push_back(new_voro_nb);
     }
     points.clear();
     points = final_points;
