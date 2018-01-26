@@ -1,5 +1,5 @@
 clear;
-plot_intersections = 0;
+plot_intersections = 1;
 
 out_dir = '/home/dbochkov/Outputs/integration_mls/convergence';
 

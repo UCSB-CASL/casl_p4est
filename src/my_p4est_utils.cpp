@@ -179,6 +179,7 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
   };
 #endif
 
+/* Daniil: this interpolation scheme might result in discontinuities on faces between quadrants
   double fdd[P4EST_DIM];
   for (short i = 0; i<P4EST_DIM; i++)
     fdd[i] = Fdd[i];
@@ -186,6 +187,99 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
   for (short j = 1; j<P4EST_CHILDREN; j++)
     for (short i = 0; i<P4EST_DIM; i++)
       fdd[i] = MINMOD(fdd[i], Fdd[j*P4EST_DIM + i]);
+//*/
+
+  // Below are two alternative schemes inspired by bi/tri-quadratic interpolation combined with the minmod limiter
+
+//* First alternative scheme: first, minmod on every edge, then weight-average
+  double fdd[P4EST_DIM];
+  for (short i = 0; i<P4EST_DIM; i++)
+    fdd[i] = 0;
+
+  int i, jm, jp;
+
+  i = 0;
+  jm = 0; jp = 1; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+  jm = 2; jp = 3; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+#ifdef P4_TO_P8
+  jm = 4; jp = 5; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+  jm = 6; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+#endif
+
+  i = 1;
+  jm = 0; jp = 2; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+  jm = 1; jp = 3; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+#ifdef P4_TO_P8
+  jm = 4; jp = 6; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+  jm = 5; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+#endif
+
+#ifdef P4_TO_P8
+  i = 2;
+  jm = 0; jp = 4; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+  jm = 1; jp = 5; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+  jm = 2; jp = 6; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+  jm = 3; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+#endif
+//*/
+
+/* Second alternative scheme: first, weight-average in perpendicular plane, then minmod
+  double fdd[P4EST_DIM];
+  for (short i = 0; i<P4EST_DIM; i++)
+    fdd[i] = 0;
+
+  int i, jm, jp;
+  double fdd_m, fdd_p;
+
+  i = 0;
+  fdd_m = 0;
+  fdd_p = 0;
+  jm = 0; jp = 1; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+  jm = 2; jp = 3; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+#ifdef P4_TO_P8
+  jm = 4; jp = 5; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+  jm = 6; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+#endif
+  fdd[i] = MINMOD(fdd_m, fdd_p);
+
+  i = 1;
+  fdd_m = 0;
+  fdd_p = 0;
+  jm = 0; jp = 2; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+  jm = 1; jp = 3; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+#ifdef P4_TO_P8
+  jm = 4; jp = 6; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+  jm = 5; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+#endif
+  fdd[i] = MINMOD(fdd_m, fdd_p);
+
+#ifdef P4_TO_P8
+  i = 2;
+  fdd_m = 0;
+  fdd_p = 0;
+  jm = 0; jp = 4; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+  jm = 1; jp = 5; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+  jm = 2; jp = 6; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+  jm = 3; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+#endif
+  fdd[i] = MINMOD(fdd_m, fdd_p);
+//*/
+
+  // Second alternative scheme: first, weight-average in perpendicular plane, then minmod
+//  double fdd[P4EST_DIM];
+//  double fdd_m[P4EST_DIM];
+//  double fdd_p[P4EST_DIM];
+
+//  int i = 0;
+//  fdd_m[i] = Fdd[0*P4EST_DIM + i]*d_0p0 + Fdd[2*P4EST_DIM + i]*d_0m0;
+//  fdd_p[i] = Fdd[1*P4EST_DIM + i]*d_0p0 + Fdd[3*P4EST_DIM + i]*d_0m0;
+
+//  i = 1;
+//  fdd_m[i] = Fdd[0*P4EST_DIM + i]*d_p00 + Fdd[1*P4EST_DIM + i]*d_m00;
+//  fdd_p[i] = Fdd[2*P4EST_DIM + i]*d_p00 + Fdd[3*P4EST_DIM + i]*d_m00;
+
+//  for (short i = 0; i<P4EST_DIM; i++)
+//    fdd[i] = MINMOD(fdd_m[i], fdd_p[i]);
 
   double value = 0;
   for (short j = 0; j<P4EST_CHILDREN; j++)

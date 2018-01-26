@@ -462,7 +462,8 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
 #endif
             }
           }
-          quadrant_interp_t phi_interpolation(p4est, tree_idx, quad, linear_integration ? linear : quadratic, &P_interpolation[p], linear_integration ? NULL : &Pdd_interpolation[p]);
+          quadrant_interp_t phi_interpolation(p4est, tree_idx, quad, linear_integration ? linear : quadratic_non_oscillatory, &P_interpolation[p], linear_integration ? NULL : &Pdd_interpolation[p]);
+//          quadrant_interp_t phi_interpolation(p4est, tree_idx, quad, linear_integration ? linear : quadratic, &P_interpolation[p], linear_integration ? NULL : &Pdd_interpolation[p]);
 
           for (int pnt_idx = 0; pnt_idx < points_total; ++pnt_idx)
 #ifdef P4_TO_P8

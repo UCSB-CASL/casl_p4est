@@ -83,7 +83,7 @@ using namespace std;
 #ifdef P4_TO_P8
 int lmin = 3;
 int lmax = 3;
-int nb_splits = 2;
+int nb_splits = 3;
 int nb_splits_per_split = 4;
 int nx_shifts = 5;
 int ny_shifts = 5;
@@ -92,8 +92,8 @@ int num_shifts = nx_shifts*ny_shifts*nz_shifts;
 #else
 int lmin = 3;
 int lmax = 3;
-int nb_splits = 4;
-int nb_splits_per_split = 4;
+int nb_splits = 6;
+int nb_splits_per_split = 10;
 int nx_shifts = 10;
 int ny_shifts = 10;
 int num_shifts = nx_shifts*ny_shifts;
