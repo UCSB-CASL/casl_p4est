@@ -40,12 +40,12 @@ using namespace std;
 
 
 
-int test = 5;
+int test = 4;
 
 /* 0 or 1 */
 int implicit = 1;
 /* order 1, 2 or 3. If choosing 3, implicit only */
-int order = 3;
+int order = 1;
 
 /* number of cells in x and y dimensions */
 int x_cells = 1;
@@ -58,9 +58,9 @@ double xmax = test<6 ?  2*x_cells*r0 :  1e-3;
 double ymin = test<6 ? -2*y_cells*r0 : -1e-3;
 double ymax = test<6 ?  2*y_cells*r0 :  1e-3;
 
-int lmin = 2;
+int lmin = 5;
 int lmax = 5;
-int nb_splits = 1;
+int nb_splits = 3;
 
 double dt_scale = 40;
 
@@ -97,7 +97,7 @@ bool save_vtk = true;
 bool save_error = true;
 int save_every_n = 1;
 bool check_partition = false;
-bool save_voro = true;
+bool save_voro = false;
 bool save_stats = true;
 
 

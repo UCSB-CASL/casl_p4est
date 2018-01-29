@@ -11,6 +11,19 @@
 
 #include <voro++.hh>
 
+#include "libqhullcpp/Qhull.h"
+#include "libqhullcpp/QhullError.h"
+#include "libqhullcpp/RboxPoints.h"
+#include "libqhullcpp/QhullFacetList.h"
+
+
+#include "libqhullcpp/QhullQh.h"
+#include "libqhullcpp/QhullFacet.h"
+#include "libqhull_r/libqhull_r.h"
+
+
+
+
 using std::vector;
 
 struct VoroNgbd {
@@ -58,7 +71,8 @@ private:
   int nc;
   vector<Voronoi3DPoint> points;
   double volume;
-
+  int *adj, *adji; /*facets and facet index */
+  int nadj, nadjpos; /*number of facets */
 public:
   /*!
      * \brief default constructor for the Voronoi2D class
@@ -124,6 +138,10 @@ public:
      * \brief construct the voronoi parition around point pc using the neighborhood given in "points"
      */
   void construct_Partition(const double *xyz_min, const double *xyz_max, const bool *periodic);
+
+ // int qh_eachvoronoi_mod (qhT * qh, FILE * fp, printvridgeT printvridge,
+ //                         vertexT * atvertex, boolT visitall, qh_RIDGE innerouter,
+ //                         boolT inorder, int*adj, int*adji, int nadjpos, int nadj);
 
   inline double get_volume() const { return this->volume; }
 
