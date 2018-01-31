@@ -1,5 +1,5 @@
 clear;
-plot_intersections = 1;
+plot_intersections = 0;
 
 out_dir = '/home/dbochkov/Outputs/integration_mls/convergence';
 
@@ -193,11 +193,11 @@ end
 
 % find coefficient for second order line
 a2 = 1*max(max([l_max_id; l_max_isb])./h.^2);
-a3 = 1*min(mean([q_max_isb])./h.^3);
+a3 = 1*min(mean([q_max_isb])./h.^4);
 a4 = 1*min(([q_max_id])./h.^4);
 
 loglog(h, a2*h.^2, '-k', 'LineWidth', 1);
-loglog(h, a3*h.^3, '-k', 'LineWidth', 2);
+loglog(h, a3*h.^4, '-k', 'LineWidth', 2);
 loglog(h, a4*h.^4, '-k', 'LineWidth', 3);
 hold off
 xlim([min(h)/((max(h)/min(h))^(0.07)), max(h)*((max(h)/min(h))^(0.07)) ]);

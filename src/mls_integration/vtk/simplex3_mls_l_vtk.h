@@ -6,7 +6,7 @@
 #include <fstream>
 #include <iostream>
 
-#include "simplex3_mls_l.h"
+#include "../simplex3_mls_l.h"
 
 class simplex3_mls_l_vtk
 {

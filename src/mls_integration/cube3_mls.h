@@ -11,9 +11,6 @@ class cube3_mls_t
   std::vector<double> y_;
   std::vector<double> z_;
 
-  std::vector<cube3_mls_l_t *> cubes_l_;
-  std::vector<cube3_mls_q_t *> cubes_q_;
-
   int order_;
   int points_per_cube_;
 
@@ -29,6 +26,9 @@ class cube3_mls_t
 
 public:
 
+  std::vector<cube3_mls_l_t *> cubes_l_;
+  std::vector<cube3_mls_q_t *> cubes_q_;
+
   std::vector<double> x_grid_;
   std::vector<double> y_grid_;
   std::vector<double> z_grid_;
@@ -37,9 +37,9 @@ public:
 
   ~cube3_mls_t();
 
-  inline void get_x_coord(std::vector<double> *x) { x = &x_grid_; }
-  inline void get_y_coord(std::vector<double> *y) { y = &y_grid_; }
-  inline void get_z_coord(std::vector<double> *z) { z = &z_grid_; }
+  inline void get_x_coord(std::vector<double> &x) { x = x_grid_; }
+  inline void get_y_coord(std::vector<double> &y) { y = y_grid_; }
+  inline void get_z_coord(std::vector<double> &z) { z = z_grid_; }
 
   void reconstruct(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 

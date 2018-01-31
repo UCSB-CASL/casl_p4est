@@ -179,7 +179,7 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
   };
 #endif
 
-/* Daniil: this interpolation scheme might result in discontinuities on faces between quadrants
+//* Daniil: this interpolation scheme might result in discontinuities on faces between quadrants
   double fdd[P4EST_DIM];
   for (short i = 0; i<P4EST_DIM; i++)
     fdd[i] = Fdd[i];
@@ -191,7 +191,7 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
 
   // Below are two alternative schemes inspired by bi/tri-quadratic interpolation combined with the minmod limiter
 
-//* First alternative scheme: first, minmod on every edge, then weight-average
+/* First alternative scheme: first, minmod on every edge, then weight-average
   double fdd[P4EST_DIM];
   for (short i = 0; i<P4EST_DIM; i++)
     fdd[i] = 0;

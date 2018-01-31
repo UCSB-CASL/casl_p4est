@@ -18,13 +18,13 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
   {
     s = simplices[i];
 
-    n_vtxs.push_back(s->vtxs.size());
+    n_vtxs.push_back(s->vtxs_.size());
     n_vtxs_shift.push_back(n_vtxs_tot);
     n_vtxs_tot += n_vtxs.back();
 
-    n_edgs.push_back(0); for (int j = 0; j < s->edgs.size(); j++) {if (!s->edgs[j].is_split) n_edgs.back()++;} n_edgs_tot += n_edgs.back();
-    n_tris.push_back(0); for (int j = 0; j < s->tris.size(); j++) {if (!s->tris[j].is_split) n_tris.back()++;} n_tris_tot += n_tris.back();
-    n_tets.push_back(0); for (int j = 0; j < s->tets.size(); j++) {if (!s->tets[j].is_split) n_tets.back()++;} n_tets_tot += n_tets.back();
+    n_edgs.push_back(0); for (int j = 0; j < s->edgs_.size(); j++) {if (!s->edgs_[j].is_split) n_edgs.back()++;} n_edgs_tot += n_edgs.back();
+    n_tris.push_back(0); for (int j = 0; j < s->tris_.size(); j++) {if (!s->tris_[j].is_split) n_tris.back()++;} n_tris_tot += n_tris.back();
+    n_tets.push_back(0); for (int j = 0; j < s->tets_.size(); j++) {if (!s->tets_[j].is_split) n_tets.back()++;} n_tets_tot += n_tets.back();
   }
 
   ofstream ofs;
@@ -50,7 +50,7 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
     s = simplices[i];
     for (int j = 0; j < n_vtxs[i]; j++)
     {
-      ofs << (int) s->vtxs[j].loc << " ";
+      ofs << (int) s->vtxs_[j].loc << " ";
     }
     ofs << endl;
   }
@@ -65,7 +65,7 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
     s = simplices[i];
     for (int j = 0; j < n_vtxs[i]; j++)
     {
-      ofs << (int) s->vtxs[j].loc << " ";
+      ofs << (int) s->vtxs_[j].loc << " ";
     }
     ofs << endl;
   }
@@ -80,9 +80,9 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
     s = simplices[i];
     for (int j = 0; j < n_vtxs[i]; j++)
     {
-      ofs << s->vtxs[j].x << " "
-          << s->vtxs[j].y << " "
-          << s->vtxs[j].z << " ";
+      ofs << s->vtxs_[j].x << " "
+          << s->vtxs_[j].y << " "
+          << s->vtxs_[j].z << " ";
     }
     ofs << endl;
   }
@@ -143,7 +143,7 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
     s = simplices[i];
     for (int j = 0; j < n_vtxs[i]; j++)
     {
-      ofs << (int) s->vtxs[j].loc << " ";
+      ofs << (int) s->vtxs_[j].loc << " ";
     }
     ofs << endl;
   }
@@ -156,11 +156,11 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
   for (int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->edgs.size(); j++)
+    for (int j = 0; j < s->edgs_.size(); j++)
     {
-      if (!s->edgs[j].is_split)
+      if (!s->edgs_[j].is_split)
       {
-        ofs << (int) s->edgs[j].loc << " ";
+        ofs << (int) s->edgs_[j].loc << " ";
       }
     }
     ofs << endl;
@@ -172,11 +172,11 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
   for (int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->edgs.size(); j++)
+    for (int j = 0; j < s->edgs_.size(); j++)
     {
-      if (!s->edgs[j].is_split)
+      if (!s->edgs_[j].is_split)
       {
-        ofs << s->edgs[j].c0 << " ";
+        ofs << s->edgs_[j].c0 << " ";
       }
     }
     ofs << endl;
@@ -188,11 +188,11 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
   for (int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->edgs.size(); j++)
+    for (int j = 0; j < s->edgs_.size(); j++)
     {
-      if (!s->edgs[j].is_split)
+      if (!s->edgs_[j].is_split)
       {
-        ofs << s->edgs[j].c1 << " ";
+        ofs << s->edgs_[j].c1 << " ";
       }
     }
     ofs << endl;
@@ -208,9 +208,9 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
     s = simplices[i];
     for (int j = 0; j < n_vtxs[i]; j++)
     {
-      ofs << s->vtxs[j].x << " "
-          << s->vtxs[j].y << " "
-          << s->vtxs[j].z << " ";
+      ofs << s->vtxs_[j].x << " "
+          << s->vtxs_[j].y << " "
+          << s->vtxs_[j].z << " ";
     }
     ofs << endl;
   }
@@ -223,12 +223,12 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
   for (int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->edgs.size(); j++)
+    for (int j = 0; j < s->edgs_.size(); j++)
     {
-      if (!s->edgs[j].is_split)
+      if (!s->edgs_[j].is_split)
       {
-        ofs << n_vtxs_shift[i] + s->edgs[j].vtx0 << " "
-            << n_vtxs_shift[i] + s->edgs[j].vtx1 << " ";
+        ofs << n_vtxs_shift[i] + s->edgs_[j].vtx0 << " "
+            << n_vtxs_shift[i] + s->edgs_[j].vtx1 << " ";
       }
     }
     ofs << endl;
@@ -280,7 +280,7 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
     s = simplices[i];
     for (int j = 0; j < n_vtxs[i]; j++)
     {
-      ofs << (int) s->vtxs[j].loc << " ";
+      ofs << (int) s->vtxs_[j].loc << " ";
     }
     ofs << endl;
   }
@@ -293,11 +293,11 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
   for (int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->tris.size(); j++)
+    for (int j = 0; j < s->tris_.size(); j++)
     {
-      if (!s->tris[j].is_split)
+      if (!s->tris_[j].is_split)
       {
-        ofs << s->tris[j].c << " ";
+        ofs << s->tris_[j].c << " ";
       }
     }
     ofs << endl;
@@ -310,9 +310,9 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
   for (int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->tris.size(); j++)
+    for (int j = 0; j < s->tris_.size(); j++)
     {
-      if (!s->tris[j].is_split)
+      if (!s->tris_[j].is_split)
       {
         ofs << tri_idx << " ";
         ++tri_idx;
@@ -331,9 +331,9 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
     s = simplices[i];
     for (int j = 0; j < n_vtxs[i]; j++)
     {
-      ofs << s->vtxs[j].x << " "
-          << s->vtxs[j].y << " "
-          << s->vtxs[j].z << " ";
+      ofs << s->vtxs_[j].x << " "
+          << s->vtxs_[j].y << " "
+          << s->vtxs_[j].z << " ";
     }
     ofs << endl;
   }
@@ -346,13 +346,13 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
   for (int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->tris.size(); j++)
+    for (int j = 0; j < s->tris_.size(); j++)
     {
-      if (!s->tris[j].is_split)
+      if (!s->tris_[j].is_split)
       {
-        ofs << n_vtxs_shift[i] + s->tris[j].vtx0 << " "
-            << n_vtxs_shift[i] + s->tris[j].vtx1 << " "
-            << n_vtxs_shift[i] + s->tris[j].vtx2 << " ";
+        ofs << n_vtxs_shift[i] + s->tris_[j].vtx0 << " "
+            << n_vtxs_shift[i] + s->tris_[j].vtx1 << " "
+            << n_vtxs_shift[i] + s->tris_[j].vtx2 << " ";
       }
     }
     ofs << endl;
@@ -404,7 +404,7 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
     s = simplices[i];
     for (int j = 0; j < n_vtxs[i]; j++)
     {
-      ofs << (int) s->vtxs[j].loc << " ";
+      ofs << (int) s->vtxs_[j].loc << " ";
     }
     ofs << endl;
   }
@@ -418,11 +418,11 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
   for (int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->tets.size(); j++)
+    for (int j = 0; j < s->tets_.size(); j++)
     {
-      if (!s->tets[j].is_split)
+      if (!s->tets_[j].is_split)
       {
-        ofs << (int) s->tets[j].loc << " ";
+        ofs << (int) s->tets_[j].loc << " ";
       }
     }
     ofs << endl;
@@ -438,9 +438,9 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
     s = simplices[i];
     for (int j = 0; j < n_vtxs[i]; j++)
     {
-      ofs << s->vtxs[j].x << " "
-          << s->vtxs[j].y << " "
-          << s->vtxs[j].z << " ";
+      ofs << s->vtxs_[j].x << " "
+          << s->vtxs_[j].y << " "
+          << s->vtxs_[j].z << " ";
     }
     ofs << endl;
   }
@@ -453,14 +453,14 @@ void simplex3_mls_l_vtk::write_simplex_geometry(std::vector<simplex3_mls_l_t *>&
   for (int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->tets.size(); j++)
+    for (int j = 0; j < s->tets_.size(); j++)
     {
-      if (!s->tets[j].is_split)
+      if (!s->tets_[j].is_split)
       {
-        ofs << n_vtxs_shift[i] + s->tets[j].vtx0 << " "
-            << n_vtxs_shift[i] + s->tets[j].vtx1 << " "
-            << n_vtxs_shift[i] + s->tets[j].vtx2 << " "
-            << n_vtxs_shift[i] + s->tets[j].vtx3 << " ";
+        ofs << n_vtxs_shift[i] + s->tets_[j].vtx0 << " "
+            << n_vtxs_shift[i] + s->tets_[j].vtx1 << " "
+            << n_vtxs_shift[i] + s->tets_[j].vtx2 << " "
+            << n_vtxs_shift[i] + s->tets_[j].vtx3 << " ";
       }
     }
     ofs << endl;
