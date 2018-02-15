@@ -2,7 +2,6 @@
 #include <src/my_p4est_refine_coarsen.h>
 
 #include <algorithm>
-#include <cassert>
 
 #include <src/petsc_compatibility.h>
 #include <src/casl_math.h>
@@ -40,7 +39,8 @@ my_p4est_poisson_jump_nodes_voronoi_t::my_p4est_poisson_jump_nodes_voronoi_t(con
     rhs_p(node_neighbors),
     local_mu(false), local_add(false),
     local_u_jump(false), local_mu_grad_u_jump(false),
-    mu_m(&mu_constant), mu_p(&mu_constant), add(&add_constant),
+    mu_m(&mu_constant_m), mu_p(&mu_constant_p),
+    add_m(&add_constant_m), add_p(&add_constant_p),
     u_jump(&zero), mu_grad_u_jump(&zero),
     A(PETSC_NULL), A_null_space(PETSC_NULL), ksp(PETSC_NULL),
     is_voronoi_partition_constructed(false), is_matrix_computed(false), matrix_has_nullspace(false)
@@ -65,12 +65,12 @@ my_p4est_poisson_jump_nodes_voronoi_t::my_p4est_poisson_jump_nodes_voronoi_t(con
 
 my_p4est_poisson_jump_nodes_voronoi_t::~my_p4est_poisson_jump_nodes_voronoi_t()
 {
-  if(A            != PETSC_NULL) { ierr = MatDestroy(A);                     CHKERRXX(ierr); }
-  if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr); }
-  if(ksp          != PETSC_NULL) { ierr = KSPDestroy(ksp);                   CHKERRXX(ierr); }
-  if(rhs          != PETSC_NULL) { ierr = VecDestroy(rhs);                   CHKERRXX(ierr); }
+  if(A            != PETSC_NULL) { ierr = MatDestroy(A);                      CHKERRXX(ierr); }
+  if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space);  CHKERRXX(ierr); }
+  if(ksp          != PETSC_NULL) { ierr = KSPDestroy(ksp);                    CHKERRXX(ierr); }
+  if(rhs          != PETSC_NULL) { ierr = VecDestroy(rhs);                    CHKERRXX(ierr); }
   if(local_mu)             { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_m); delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_p); }
-  if(local_add)            { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(add); }
+  if(local_add)            { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(add_m); delete dynamic_cast<my_p4est_interpolation_nodes_t*>(add_p); }
   if(local_u_jump)         { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(u_jump); }
   if(local_mu_grad_u_jump) { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_grad_u_jump); }
 }
@@ -82,7 +82,7 @@ PetscErrorCode my_p4est_poisson_jump_nodes_voronoi_t::VecCreateGhostVoronoiRhs()
   PetscInt num_local = num_local_voro;
   PetscInt num_global = voro_global_offset[p4est->mpisize];
 
-  std::vector<PetscInt> ghost_voro(voro_points.size() - num_local, 0);
+  std::vector<PetscInt> ghost_voro(voro_seeds.size() - num_local, 0);
 
   for (size_t i = 0; i<ghost_voro.size(); ++i)
   {
@@ -112,20 +112,33 @@ void my_p4est_poisson_jump_nodes_voronoi_t::set_rhs(Vec rhs_m, Vec rhs_p)
   this->rhs_p.set_input(rhs_p, linear);
 }
 
-
-void my_p4est_poisson_jump_nodes_voronoi_t::set_diagonal(double add)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_diagonals(double add_m_, double add_p_)
 {
-  if(local_add) { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->add); local_add = false; }
-  add_constant.set(add);
-  this->add = &add_constant;
+  if(local_add)
+  {
+    delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->add_m);
+    delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->add_p);
+    local_add = false;
+  }
+  add_constant_m.set(add_m_);
+  this->add_m = &add_constant_m;
+  add_constant_p.set(add_p_);
+  this->add_p = &add_constant_p;
 }
 
-void my_p4est_poisson_jump_nodes_voronoi_t::set_diagonal(Vec add)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_diagonals(Vec add_m_, Vec add_p_)
 {
-  if(local_add) delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->add);
+  if(local_add)
+  {
+    delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->add_m);
+    delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->add_p);
+  }
   my_p4est_interpolation_nodes_t *tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
-  tmp->set_input(add, linear);
-  this->add = tmp;
+  tmp->set_input(add_m_, linear);
+  this->add_m = tmp;
+  tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
+  tmp->set_input(add_p_, linear);
+  this->add_p = tmp;
   local_add = true;
 }
 
@@ -141,18 +154,27 @@ void my_p4est_poisson_jump_nodes_voronoi_t::set_bc(BoundaryConditions2D& bc)
 }
 
 
-void my_p4est_poisson_jump_nodes_voronoi_t::set_mu(double mu)
+void my_p4est_poisson_jump_nodes_voronoi_t::set_mu(double mu_m_, double mu_p_)
 {
-  if(local_mu) { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_m); delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_p); local_mu = false; }
-  mu_constant.set(mu);
-  mu_m = &mu_constant;
-  mu_p = &mu_constant;
+  if(local_mu)
+  {
+    delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_m);
+    delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_p);
+    local_mu = false;
+  }
+  mu_constant_m.set(mu_m_);
+  mu_m = &mu_constant_m;
+  mu_constant_p.set(mu_p_);
+  mu_p = &mu_constant_p;
 }
-
 
 void my_p4est_poisson_jump_nodes_voronoi_t::set_mu(Vec mu_m, Vec mu_p)
 {
-  if(local_mu) { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->mu_m); delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->mu_p); }
+  if(local_mu)
+  {
+    delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->mu_m);
+    delete dynamic_cast<my_p4est_interpolation_nodes_t*>(this->mu_p);
+  }
   my_p4est_interpolation_nodes_t *tmp = new my_p4est_interpolation_nodes_t(ngbd_n);
   tmp->set_input(mu_m, linear);
   this->mu_m = tmp;
@@ -190,20 +212,19 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
 #ifdef CASL_THROWS
   if(bc == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
 
-  {
-    PetscInt sol_size;
-    ierr = VecGetLocalSize(solution, &sol_size); CHKERRXX(ierr);
-    if (sol_size != nodes->num_owned_indeps){
-      std::ostringstream oss;
-      oss << "[CASL_ERROR]: solution vector must be preallocated and locally have the same size as num_owned_indeps"
-          << "solution.local_size = " << sol_size << " nodes->num_owned_indeps = " << nodes->num_owned_indeps << std::endl;
-      throw std::invalid_argument(oss.str());
-    }
+  PetscInt sol_size;
+  ierr = VecGetLocalSize(solution, &sol_size); CHKERRXX(ierr);
+  if (sol_size != nodes->num_owned_indeps){
+    std::ostringstream oss;
+    oss << "[CASL_ERROR]: solution vector must be preallocated and locally have the same size as num_owned_indeps"
+        << "solution.local_size = " << sol_size << " nodes->num_owned_indeps = " << nodes->num_owned_indeps << std::endl;
+    throw std::invalid_argument(oss.str());
   }
 #endif
 
   // set ksp type
   ierr = KSPSetType(ksp, ksp_type); CHKERRXX(ierr);
+  // [Raphael]: is this really relevant since sol_voro is build by duplication of rhs (no copy)
   if (use_nonzero_initial_guess)
     ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
   ierr = KSPSetFromOptions(ksp); CHKERRXX(ierr);
@@ -211,10 +232,8 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   /* first compute the voronoi partition */
   if(!is_voronoi_partition_constructed)
   {
-    is_voronoi_partition_constructed = true;
-//    ierr = PetscPrintf(p4est->mpicomm, "Computing voronoi points ...\n"); CHKERRXX(ierr);
     compute_voronoi_points();
-//    ierr = PetscPrintf(p4est->mpicomm, "Done computing voronoi points.\n"); CHKERRXX(ierr);
+    is_voronoi_partition_constructed = true;
   }
 
   /*
@@ -229,13 +248,6 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
 //    ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
     setup_linear_system();
 //    ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
-
-//    int static counter = 0;
-//    if (counter++ == 166) {
-//      std::ostringstream vtkname;
-//      vtkname << "voro166." << p4est->mpisize;
-//      print_voronoi_VTK(vtkname.str().c_str());
-//    }
 
     is_matrix_computed = true;
     ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
@@ -277,12 +289,9 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
-    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
-    if (matrix_has_nullspace){
-      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
-    }
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
+
 
   /* set the nullspace */
   if (matrix_has_nullspace){
@@ -298,17 +307,11 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   /* Solve the system */
   ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
 
-
-
 //  ierr = PetscPrintf(p4est->mpicomm, "Solving linear system ...\n"); CHKERRXX(ierr);
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs, sol_voro); CHKERRXX(ierr);
   ierr = PetscLogEventEnd  (log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
-  //  ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system.\n"); CHKERRXX(ierr);
-
-  double res;
-  ierr = KSPGetResidualNorm(ksp, &res);
-  //ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system ... residual = %f\n", res); CHKERRXX(ierr);
+//  ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system.\n"); CHKERRXX(ierr);
 
   /* update ghosts */
   ierr = VecGhostUpdateBegin(sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -317,39 +320,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   /* interpolate the solution back onto the original mesh */
   interpolate_solution_from_voronoi_to_tree(solution);
 
-//  static int counter = 0;
-//  if (counter == 0 || counter == 165 || counter == 166) {
-//    PetscPrintf(p4est->mpicomm, "Saving matrix to file %d\n", counter);
-//    PetscViewer view;
-//    char objname[100];
-
-//    sprintf(objname, "A_%d", p4est->mpisize);
-//    PetscObjectSetName((PetscObject)A, objname);
-
-//    sprintf(objname, "b_%d", p4est->mpisize);
-//    PetscObjectSetName((PetscObject)rhs, objname);
-
-//    sprintf(objname, "voro_%d", p4est->mpisize);
-//    PetscObjectSetName((PetscObject)sol_voro, objname);
-
-//    sprintf(objname, "sol_%d", p4est->mpisize);
-//    PetscObjectSetName((PetscObject)solution, objname);
-
-//    char name[PATH_MAX];
-//    sprintf(name, "petsc_%d_%d.m", counter, p4est->mpisize);
-//    PetscViewerASCIIOpen(p4est->mpicomm, name, &view);
-//    PetscViewerPushFormat(view, PETSC_VIEWER_ASCII_MATLAB);
-
-//    MatView(A, view);
-//    VecView(rhs, view);
-//    VecView(sol_voro, view);
-//    VecView(solution, view);
-
-//    PetscViewerDestroy(view);
-//  }
-//  counter++;
-
-  ierr = VecDestroy(sol_voro); CHKERRXX(ierr);
+  ierr = VecDestroy(sol_voro); sol_voro = NULL; CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 }
@@ -359,6 +330,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_compute_voronoi_points, 0, 0, 0, 0); CHKERRXX(ierr);
 
+  // clear data first if needed
   if(grid2voro.size()!=0)
   {
     for(unsigned int n=0; n<grid2voro.size(); ++n)
@@ -366,46 +338,45 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
   }
   grid2voro.resize(nodes->indep_nodes.elem_count);
 
-  voro_points.clear();
+  voro_seeds.clear();
 
-  double *phi_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  // here we start
+  int mpiret;
+  const double *phi_p;
+  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
   std::vector<p4est_locidx_t> marked_nodes;
 
-  /* find the projected points associated to shared nodes
-   * if a projected point is shared, all larger rank are informed.
-   * The goal here is to avoid building two close projected points at a processor boundary
-   * and to have a consistent partition across processes
+
+  /* --- 0. INITIALIZATION OF THE PROCEDURE ---*/
+  /* Find the projected points associated with shared grid nodes, first. If a layer grid node is close to the
+   * interface, the projected point is calculated and shared with the sharer process(es). After communication
+   * of these "shared" projected points, every process will be able to prevent the interface to be sampled with
+   * points that are "too close" to each other (less than diag_min/close_distance_factor)
+   * The goal here is to provide processes with sufficient information to avoid creating two projected points
+   * that are two close to each other, by initializing so the projected points associated with ghost layers
+   * across process boundaries in a globally consistent way. Then every local projected point (projection of
+   * a grid node interior to the process region) is added to the set of interface sampling points if it is
+   * not too close to any other point already in the set of sampling points.
+   * The grid nodes that are far from the interface or that need to be added to the list of Voronoi seeds for
+   * some other reason are added to voro_seeds.
    */
-  std::vector< std::vector<added_point_t> > buff_shared_added_points_send(p4est->mpisize);
-  std::vector< std::vector<added_point_t> > buff_shared_added_points_recv(p4est->mpisize);
-  std::vector<bool> send_shared_to(p4est->mpisize, false);
+  //
+  // From now on, marked_nodes contains local indices of grid nodes that need to be added to voro_seeds
+  //
+  /* lists of projected points created from layer nodes to be shared with (an)other process(es) */
+  std::vector< std::vector<projected_point_t> > buff_shared_projected_points_send(p4est->mpisize);
+  /* lists of projected points created from layer nodes by (an)other process(es) to be shared with the current process */
+  std::vector< std::vector<projected_point_t> > buff_shared_projected_points_recv(p4est->mpisize);
+  std::vector<int> send_projected_to(p4est->mpisize, 0);
 
   for(size_t l=0; l<ngbd_n->get_layer_size(); ++l)
   {
+    /* get the shared node */
     p4est_locidx_t n = ngbd_n->get_layer_node(l);
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    size_t num_sharers = (size_t) node->pad8;
 
-    sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
-    int *sharers;
-    size_t sharers_index;
-    if(nodes->shared_offsets == NULL)
-    {
-      P4EST_ASSERT(node->pad16 >= 0);
-      sharers_index = (size_t) node->pad16;
-    }
-    else
-    {
-      P4EST_ASSERT(node->pad16 == -1);
-      sharers_index = (size_t) nodes->shared_offsets[n];
-    }
-
-    sharers = (int*) sc_array_index(&rec->a, sharers_index);
-    for(size_t s=0; s<num_sharers; ++s)
-      send_shared_to[sharers[s]] = true;
-
+    /* check if it is close to interface */
 #ifdef P4_TO_P8
     double p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p;
     (*ngbd_n).get_neighbors(n).ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p);
@@ -416,56 +387,67 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
     if(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0)
 #endif
     {
+      if(is_node_Wall(p4est, node))
+        marked_nodes.push_back(n); // when the interface is close to the boundary, we add the node to the seeds as well
+
+      /* get the sharer processes, fill the buffers and initialize the future communications */
+      size_t num_sharers = (size_t) node->pad8;
+      sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
+      int *sharers;
+      size_t sharers_index;
+      if(nodes->shared_offsets == NULL)
+      {
+        P4EST_ASSERT(node->pad16 >= 0);
+        sharers_index = (size_t) node->pad16;
+      }
+      else
+      {
+        P4EST_ASSERT(node->pad16 == -1);
+        sharers_index = (size_t) nodes->shared_offsets[n];
+      }
+
+      sharers = (int*) sc_array_index(&rec->a, sharers_index);
+      for(size_t s=0; s<num_sharers; ++s)
+        send_projected_to[sharers[s]] = 1;
+
+      /* calculate the projected point */
       double d = phi_p[n];
 #ifdef P4_TO_P8
       Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p), (*ngbd_n).get_neighbors(n).dz_central(phi_p));
 #else
-      // FIXME: These kind of operations would be expensive if neighbors is not initialized!
       Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p));
 #endif
-      dp /= dp.norm_L2();
-      double xn = node_x_fr_n(n, p4est, nodes);
-      double yn = node_y_fr_n(n, p4est, nodes);
-      added_point_t added_point_n;
-      added_point_n.x = xn-d*dp.x;
-      added_point_n.y = yn-d*dp.y;
-      added_point_n.dx = dp.x;
-      added_point_n.dy = dp.y;
+      // note: if phi is somehow a signed distance, dp has no dimension
+      if(dp.norm_L2() > EPS) // no issue to calculate the projected point, so do it
+      {
+        dp /= dp.norm_L2();
+        double xn = node_x_fr_n(n, p4est, nodes);
+        double yn = node_y_fr_n(n, p4est, nodes);
+        projected_point_t projected_point_n;
+        projected_point_n.x = xn-d*dp.x;
+        projected_point_n.y = yn-d*dp.y;
+        projected_point_n.dx = dp.x;
+        projected_point_n.dy = dp.y;
 #ifdef P4_TO_P8
-      double zn = node_z_fr_n(n, p4est, nodes);
-      added_point_n.z = zn-d*dp.z;
-      added_point_n.dz = dp.z;
+        double zn = node_z_fr_n(n, p4est, nodes);
+        projected_point_n.z = zn-d*dp.z;
+        projected_point_n.dz = dp.z;
 #endif
 
-      for(size_t s=0; s<num_sharers; ++s)
-      {
-        buff_shared_added_points_send[sharers[s]].push_back(added_point_n);
+        // add the projected point to the buffers to be sent to all appropriate sharer processes
+        for(size_t s=0; s<num_sharers; ++s)
+          buff_shared_projected_points_send[sharers[s]].push_back(projected_point_n);
+        // fill the self-communication recv buffer
+        buff_shared_projected_points_recv[p4est->mpirank].push_back(projected_point_n);
       }
-      buff_shared_added_points_recv[p4est->mpirank].push_back(added_point_n);
+      else // the projected point can't be calculated in a reliable way, the gradient is ill-defined (e.g. center of an under-resolved sphere)
+        marked_nodes.push_back(n); // then, we add the grid node to the seeds as well
     }
     else
-      marked_nodes.push_back(n);
+      marked_nodes.push_back(n); // the point is far from the interface so add it to the seeds
   }
-
-  /* send the shared points to the corresponding neighbors ranks
-   * note that some messages have a size 0 since the processes can't know who is going to send them data
-   * in order to find that out, one needs to call ngbd_with_quadratic_interpolation on ghost nodes...
-   */
-  std::vector<MPI_Request> req_shared_added_points;
-  for(int r=0; r<p4est->mpisize; ++r)
-  {
-    if(send_shared_to[r]==true)
-    {
-      MPI_Request req;
-      MPI_Isend(&buff_shared_added_points_send[r][0], buff_shared_added_points_send[r].size()*sizeof(added_point_t), MPI_BYTE, r, 4, p4est->mpicomm, &req);
-      req_shared_added_points.push_back(req);
-    }
-  }
-
-  /* add the nodes that are actual voronoi points (not close to interface)
-   * to the list of voronoi points
-   */
-  /* layer nodes first */
+  /* add the grid nodes that are voronoi seeds (not close to the interface, or for some other reason) */
+  /* layer nodes (marked here above) first */
   for(unsigned int i=0; i<marked_nodes.size(); ++i)
   {
     p4est_locidx_t n = marked_nodes[i];
@@ -477,14 +459,28 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #else
     Point2 p(xn, yn);
 #endif
-    grid2voro[n].push_back(voro_points.size());
-    voro_points.push_back(p);
+    grid2voro[n].push_back(voro_seeds.size());
+    voro_seeds.push_back(p);
   }
-
-  /* now local nodes */
+  // RESET marked_nodes:
   marked_nodes.clear();
-  for(size_t l=0; l<ngbd_n->get_local_size(); ++l)
+  //
+  // From now on, marked_nodes will be set to contain indices of local nodes whose projection needs to be calculated
+  //
+
+  /* send the projected points to the corresponding neighbor processes, non-blocking */
+  std::vector<MPI_Request> req_shared_projected_points;
+  for(int r=0; r<p4est->mpisize; ++r)
   {
+    if(send_projected_to[r]==1)
+    {
+      MPI_Request req;
+      mpiret = MPI_Isend(&buff_shared_projected_points_send[r][0], buff_shared_projected_points_send[r].size()*sizeof(projected_point_t), MPI_BYTE, r, 4, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
+      req_shared_projected_points.push_back(req);
+    }
+  }
+  /* loop through local (inner) nodes, add the relevant ones to the voronoi seeds and mark the other ones */
+  for (size_t l = 0; l < ngbd_n->get_local_size(); ++l) {
     p4est_locidx_t n = ngbd_n->get_local_node(l);
 #ifdef P4_TO_P8
     double p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p;
@@ -496,6 +492,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
     if(!(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0))
 #endif
     {
+      // not close to the interface, so add it to the seeds
       double xn = node_x_fr_n(n, p4est, nodes);
       double yn = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
@@ -504,59 +501,93 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #else
       Point2 p(xn, yn);
 #endif
-      grid2voro[n].push_back(voro_points.size());
-      voro_points.push_back(p);
+      grid2voro[n].push_back(voro_seeds.size());
+      voro_seeds.push_back(p);
     }
     else
-      marked_nodes.push_back(n);
+    {
+      // the grid node is close to the interface
+      if(is_node_Wall(p4est, ((p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n))))
+      {
+        // once again, if it's a wall node, we add it to the seeds as well
+        double xn = node_x_fr_n(n, p4est, nodes);
+        double yn = node_y_fr_n(n, p4est, nodes);
+#ifdef P4_TO_P8
+        double zn = node_z_fr_n(n, p4est, nodes);
+        Point3 p(xn, yn, zn);
+#else
+        Point2 p(xn, yn);
+#endif
+        grid2voro[n].push_back(voro_seeds.size());
+        voro_seeds.push_back(p);
+      }
+#ifdef P4_TO_P8
+      Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p), (*ngbd_n).get_neighbors(n).dz_central(phi_p));
+#else
+      Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p));
+#endif
+      if(dp.norm_L2() > EPS)
+        marked_nodes.push_back(n); // the projection can be safely calculated, add it to the marked nodes
+      else
+      {
+        // under-resolved case, the projection can't be calculated reliably (e.g. center of an under-resolved
+        // sphere), add the grid node to the seeds
+        double xn = node_x_fr_n(n, p4est, nodes);
+        double yn = node_y_fr_n(n, p4est, nodes);
+#ifdef P4_TO_P8
+        double zn = node_z_fr_n(n, p4est, nodes);
+        Point3 p(xn, yn, zn);
+#else
+        Point2 p(xn, yn);
+#endif
+        grid2voro[n].push_back(voro_seeds.size());
+        voro_seeds.push_back(p);
+      }
+    }
   }
-
-  /* compute how many messages we are expecting to receive */
-  std::vector<bool> recv_shared_fr(p4est->mpisize, false);
-  for(size_t n=nodes->num_owned_indeps; n<nodes->indep_nodes.elem_count; ++n)
-    recv_shared_fr[nodes->nonlocal_ranks[n-nodes->num_owned_indeps]] = true;
-
-  int nb_rcv = 0;
-  for(int r=0; r<p4est->mpisize; ++r)
-    if(recv_shared_fr[r]==true) nb_rcv++;
-
-  /* now receive the points */
-  while(nb_rcv>0)
+  /* compute how many messages (buffers of "ghost" projected points) we are expecting to receive */
+  int nb_rcv;
+  std::vector<int> nb_element_per_process(p4est->mpisize, 1);
+  mpiret = MPI_Reduce_scatter(&send_projected_to[0], &nb_rcv, &nb_element_per_process[0], MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  /* Receive the buffers */
+  while(nb_rcv > 0)
   {
     MPI_Status status;
-    MPI_Probe(MPI_ANY_SOURCE, 4, p4est->mpicomm, &status);
+    mpiret = MPI_Probe(MPI_ANY_SOURCE, 4, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
     int vec_size;
-    MPI_Get_count(&status, MPI_BYTE, &vec_size);
-    vec_size /= sizeof(added_point_t);
+    mpiret = MPI_Get_count(&status, MPI_BYTE, &vec_size); SC_CHECK_MPI(mpiret);
+    vec_size /= sizeof(projected_point_t);
 
-    buff_shared_added_points_recv[status.MPI_SOURCE].resize(vec_size);
-    MPI_Recv(&buff_shared_added_points_recv[status.MPI_SOURCE][0], vec_size*sizeof(added_point_t), MPI_BYTE, status.MPI_SOURCE, 4, p4est->mpicomm, &status);
+    buff_shared_projected_points_recv[status.MPI_SOURCE].resize(vec_size);
+    mpiret = MPI_Recv(&buff_shared_projected_points_recv[status.MPI_SOURCE][0], vec_size*sizeof(projected_point_t), MPI_BYTE, status.MPI_SOURCE, 4, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
 
     nb_rcv--;
   }
 
-  /* now add the points to the list of projected points */
+  /* Create the list of projected points in a globally consistent way */
 #ifdef P4_TO_P8
-  std::vector<Point3> added_points;
-  std::vector<Point3> added_points_grad;
+  std::vector<Point3> projected_points;
+  std::vector<Point3> projected_points_grad;
 #else
-  std::vector<Point2> added_points;
-  std::vector<Point2> added_points_grad;
+  std::vector<Point2> projected_points;
+  std::vector<Point2> projected_points_grad;
 #endif
+  /* initialize the list of projected points with the "ghost" projected points and the projected layer points.
+   * Note the loop over increasing rank processes to make the initialized sets of points consistent across process boundaries */
   for(int r=0; r<p4est->mpisize; ++r)
   {
-    for(unsigned int m=0; m<buff_shared_added_points_recv[r].size(); ++m)
+    for(unsigned int m=0; m<buff_shared_projected_points_recv[r].size(); ++m)
     {
 #ifdef P4_TO_P8
-      Point3 p(buff_shared_added_points_recv[r][m].x, buff_shared_added_points_recv[r][m].y, buff_shared_added_points_recv[r][m].z);
+      Point3 p(buff_shared_projected_points_recv[r][m].x, buff_shared_projected_points_recv[r][m].y, buff_shared_projected_points_recv[r][m].z);
 #else
-      Point2 p(buff_shared_added_points_recv[r][m].x, buff_shared_added_points_recv[r][m].y);
+      Point2 p(buff_shared_projected_points_recv[r][m].x, buff_shared_projected_points_recv[r][m].y);
 #endif
 
       bool already_added = false;
-      for(unsigned int k=0; k<added_points.size(); ++k)
+      for(unsigned int k=0; k<projected_points.size(); ++k) // [Raphael]: this is terrible, maybe we should brainstorm a better approach?
       {
-        if((p-added_points[k]).norm_L2() < diag_min/10)
+        if((p-projected_points[k]).norm_L2() < diag_min/close_distance_factor)
         {
           already_added = true;
           break;
@@ -565,24 +596,21 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 
       if(!already_added)
       {
-        added_points.push_back(p);
+        projected_points.push_back(p);
 #ifdef P4_TO_P8
-        Point3 dp(buff_shared_added_points_recv[r][m].dx, buff_shared_added_points_recv[r][m].dy, buff_shared_added_points_recv[r][m].dz);
+        Point3 dp(buff_shared_projected_points_recv[r][m].dx, buff_shared_projected_points_recv[r][m].dy, buff_shared_projected_points_recv[r][m].dz);
 #else
-        Point2 dp(buff_shared_added_points_recv[r][m].dx, buff_shared_added_points_recv[r][m].dy);
+        Point2 dp(buff_shared_projected_points_recv[r][m].dx, buff_shared_projected_points_recv[r][m].dy);
 #endif
-        added_points_grad.push_back(dp);
+        projected_points_grad.push_back(dp);
       }
     }
-
-    //    buff_shared_added_points_send[r].clear();
-    buff_shared_added_points_recv[r].clear();
+    buff_shared_projected_points_recv[r].clear();
   }
+  buff_shared_projected_points_recv.clear();
 
-  //  buff_shared_added_points_send.clear();
-  buff_shared_added_points_recv.clear();
-
-  /* add the local points to the list of projected points */
+  /* add the projected local (inner) points to the list of projected points. The appropriate grid nodes have been
+   * added to marked_nodes earlier */
   for(size_t i=0; i<marked_nodes.size(); ++i)
   {
     p4est_locidx_t n = marked_nodes[i];
@@ -597,6 +625,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #endif
 
     double d = phi_p[n];
+    P4EST_ASSERT(dp.norm_L2() > EPS);
     dp /= dp.norm_L2();
 
 #ifdef P4_TO_P8
@@ -606,9 +635,9 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #endif
 
     bool already_added = false;
-    for(unsigned int m=0; m<added_points.size(); ++m)
+    for(unsigned int m=0; m<projected_points.size(); ++m) // [Raphael]: this is terrible, maybe we should brainstorm a better approach?
     {
-      if((p_proj-added_points[m]).norm_L2() < diag_min/10)
+      if((p_proj-projected_points[m]).norm_L2() < diag_min/close_distance_factor)
       {
         already_added = true;
         break;
@@ -617,141 +646,95 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 
     if(!already_added)
     {
-      added_points.push_back(p_proj);
-      added_points_grad.push_back(dp);
+      projected_points.push_back(p_proj);
+      projected_points_grad.push_back(dp);
     }
   }
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  // clear the buffers of "shared" projected points, no longer needed
+  /* --- END OF INITIALIZATION OF THE PROCEDURE ---*/
 
-  /* finally build the voronoi points from the list of projected points */
-  double band = diag_min/10;
-  for(unsigned int n=0; n<added_points.size(); ++n)
+  /* --- 1. CREATION OF VORONOI SEEDS ACROSS THE INTERFACE ---*/
+  double band = diag_min/close_distance_factor; // distance from the created voronoi seeds to the interface
+  for(unsigned int n=0; n<projected_points.size(); ++n)
   {
 #ifdef P4_TO_P8
-    Point3 p_proj = added_points[n];
-    Point3 dp = added_points_grad[n];
+    Point3 p_proj = projected_points[n];
+    Point3 dp = projected_points_grad[n];
 #else
-    Point2 p_proj = added_points[n];
-    Point2 dp = added_points_grad[n];
+    Point2 p_proj = projected_points[n];
+    Point2 dp = projected_points_grad[n];
 #endif
+    // add the two mirror points if they belong to the process' subregion of the domain
+    for (short kk = 0; kk < 2; ++kk) {
+      // calculate the voronoi seed
+      double xyz [] =
+      {
+        std::min(xyz_max[0], std::max(xyz_min[0], p_proj.x + ((double) (1-2*kk))*band*dp.x)),
+        std::min(xyz_max[1], std::max(xyz_min[1], p_proj.y + ((double) (1-2*kk))*band*dp.y))
+    #ifdef P4_TO_P8
+        , std::min(xyz_max[2], std::max(xyz_min[2], p_proj.z + ((double) (1-2*kk))*band*dp.z))
+    #endif
+      };
 
-    /* add first point */
-    double xyz1 [] =
-    {
-      std::min(xyz_max[0], std::max(xyz_min[0], p_proj.x + band*dp.x)),
-      std::min(xyz_max[1], std::max(xyz_min[1], p_proj.y + band*dp.y))
+      // get the proc owner of that voronoi seed
+      p4est_quadrant_t quad;
+      std::vector<p4est_quadrant_t> remote_matches;
+      int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
+      // if we are the owner, add it to our list of seeds
+      if(rank_found==p4est->mpirank)
+      {
+        p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
+        p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+        p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+
+        double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
+        double qy = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
   #ifdef P4_TO_P8
-      , std::min(xyz_max[2], std::max(xyz_min[2], p_proj.z + band*dp.z))
+        double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
   #endif
-    };
-
-    p4est_quadrant_t quad;
-    std::vector<p4est_quadrant_t> remote_matches;
-    int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz1, quad, remote_matches);
-
-    if(rank_found==p4est->mpirank)
-    {
-      p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
-      p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-      p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
-
-      double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
-      double qy = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
-#ifdef P4_TO_P8
-      double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
-#endif
-
-      p4est_locidx_t node = -1;
-#ifdef P4_TO_P8
-      if     (xyz1[0]<=qx && xyz1[1]<=qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz1[0]<=qx && xyz1[1]<=qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
-      else if(xyz1[0]<=qx && xyz1[1]> qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz1[0]<=qx && xyz1[1]> qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
-      else if(xyz1[0]> qx && xyz1[1]<=qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz1[0]> qx && xyz1[1]<=qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
-      else if(xyz1[0]> qx && xyz1[1]> qy && xyz1[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
-      else if(xyz1[0]> qx && xyz1[1]> qy && xyz1[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
-#else
-      if     (xyz1[0]<=qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz1[0]<=qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz1[0]> qx && xyz1[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz1[0]> qx && xyz1[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
-#endif
-
-      grid2voro[node].push_back(voro_points.size());
-#ifdef P4_TO_P8
-      Point3 p(xyz1[0], xyz1[1], xyz1[2]);
-#else
-      Point2 p(xyz1[0], xyz1[1]);
-#endif
-      voro_points.push_back(p);
-    }
-
-    /* add second point */
-    double xyz2 [] =
-    {
-      std::min(xyz_max[0], std::max(xyz_min[0], p_proj.x - band*dp.x)),
-      std::min(xyz_max[1], std::max(xyz_min[1], p_proj.y - band*dp.y))
+        /* add the newly created Voronoi seed to the appropriate entry in grid2voro, i.e. the entry corresponding
+         * to the closest vertex of the quad owning the Voronoi seed. */
+        p4est_locidx_t node = -1;
   #ifdef P4_TO_P8
-      , std::min(xyz_max[2], std::max(xyz_min[2], p_proj.z - band*dp.z))
+        if     (xyz[0]<=qx && xyz[1]<=qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+        else if(xyz[0]<=qx && xyz[1]<=qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
+        else if(xyz[0]<=qx && xyz[1]> qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+        else if(xyz[0]<=qx && xyz[1]> qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
+        else if(xyz[0]> qx && xyz[1]<=qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+        else if(xyz[0]> qx && xyz[1]<=qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
+        else if(xyz[0]> qx && xyz[1]> qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
+        else if(xyz[0]> qx && xyz[1]> qy && xyz[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
+  #else
+        if     (xyz[0]<=qx && xyz[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
+        else if(xyz[0]<=qx && xyz[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
+        else if(xyz[0]> qx && xyz[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
+        else if(xyz[0]> qx && xyz[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
   #endif
-    };
 
-    remote_matches.clear();
-    rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz2, quad, remote_matches);
-
-    if(rank_found==p4est->mpirank)
-    {
-      p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
-      p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-      p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
-
-      double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
-      double qy = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
-#ifdef P4_TO_P8
-      double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
-#endif
-
-      p4est_locidx_t node = -1;
-#ifdef P4_TO_P8
-      if     (xyz2[0]<=qx && xyz2[1]<=qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz2[0]<=qx && xyz2[1]<=qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmp];
-      else if(xyz2[0]<=qx && xyz2[1]> qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz2[0]<=qx && xyz2[1]> qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpp];
-      else if(xyz2[0]> qx && xyz2[1]<=qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz2[0]> qx && xyz2[1]<=qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmp];
-      else if(xyz2[0]> qx && xyz2[1]> qy && xyz2[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
-      else if(xyz2[0]> qx && xyz2[1]> qy && xyz2[2]> qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppp];
-#else
-      if     (xyz2[0]<=qx && xyz2[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
-      else if(xyz2[0]<=qx && xyz2[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mpm];
-      else if(xyz2[0]> qx && xyz2[1]<=qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_pmm];
-      else if(xyz2[0]> qx && xyz2[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
-#endif
-
-      grid2voro[node].push_back(voro_points.size());
-#ifdef P4_TO_P8
-      Point3 p(xyz2[0], xyz2[1], xyz2[2]);
-#else
-      Point2 p(xyz2[0], xyz2[1]);
-#endif
-      voro_points.push_back(p);
+        grid2voro[node].push_back(voro_seeds.size());
+  #ifdef P4_TO_P8
+        Point3 p(xyz[0], xyz[1], xyz[2]);
+  #else
+        Point2 p(xyz[0], xyz[1]);
+  #endif
+        voro_seeds.push_back(p);
+      }
     }
   }
+  projected_points.clear();
+  projected_points_grad.clear();
+  /* --- END OF CREATION OF VORONOI SEEDS ACROSS THE INTERFACE ---*/
 
-  added_points.clear();
-  added_points_grad.clear();
-
+  /* --- 2. PARALLEL DISTRIBUTION AND GHOST LAYERING OF VORONOI SEEDS ---*/
   /* prepare the buffer to send shared local voro points */
-  std::vector< std::vector<voro_comm_t> > buff_send_points(p4est->mpisize);
-  std::vector<bool> send_to(p4est->mpisize, false);
+  std::vector< std::vector<voro_seed_comm_t> > buff_send_points(p4est->mpisize);
+  std::vector<bool> is_a_neighbor(p4est->mpisize, false);
 
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
   {
-    /* if the node is shared, add to corresponding buffer
-     * note that we are sending empty messages to some processes, this is
-     * because checking who is going to send a message requires a communication ...
-     * so we just send a message to all possible processes, even if the message is empty
-     */
+    /* if the node is shared, add the relevant Voronoi seed(s) associated with
+     * it to the corresponding buffer to send */
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
     size_t num_sharers = (size_t) node->pad8;
     if(num_sharers>0)
@@ -769,103 +752,63 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         P4EST_ASSERT(node->pad16 == -1);
         sharers_index = (size_t) nodes->shared_offsets[n];
       }
-
       sharers = (int*) sc_array_index(&rec->a, sharers_index);
 
       for(size_t s=0; s<num_sharers; ++s)
       {
-        send_to[sharers[s]] = true;
+        is_a_neighbor[sharers[s]] = true;
 
         for(unsigned int m=0; m<grid2voro[n].size(); ++m)
         {
-          voro_comm_t v;
+          voro_seed_comm_t v;
           v.local_num = grid2voro[n][m];
-          v.x = voro_points[grid2voro[n][m]].x;
-          v.y = voro_points[grid2voro[n][m]].y;
+          v.x = voro_seeds[grid2voro[n][m]].x;
+          v.y = voro_seeds[grid2voro[n][m]].y;
 #ifdef P4_TO_P8
-          v.z = voro_points[grid2voro[n][m]].z;
+          v.z = voro_seeds[grid2voro[n][m]].z;
 #endif
           buff_send_points[sharers[s]].push_back(v);
         }
       }
     }
   }
-
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-
   /* send the data to remote processes */
   std::vector<MPI_Request> req_send_points;
   for(int r=0; r<p4est->mpisize; ++r)
   {
-    if(send_to[r]==true)
+    if(is_a_neighbor[r]==true)
     {
       MPI_Request req;
-      MPI_Isend((void*)&buff_send_points[r][0], buff_send_points[r].size()*sizeof(voro_comm_t), MPI_BYTE, r, 2, p4est->mpicomm, &req);
+      mpiret = MPI_Isend((void*)&buff_send_points[r][0], buff_send_points[r].size()*sizeof(voro_seed_comm_t), MPI_BYTE, r, 2, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
       req_send_points.push_back(req);
     }
   }
-
   /* get local number of voronoi points for every processor */
-  num_local_voro = voro_points.size();
+  num_local_voro = voro_seeds.size();
   voro_global_offset[p4est->mpirank] = num_local_voro;
-  MPI_Allgather(MPI_IN_PLACE, 1, MPI_INT, &voro_global_offset[0], 1, MPI_INT, p4est->mpicomm);
+  mpiret = MPI_Allgather(MPI_IN_PLACE, 1, MPI_INT, &voro_global_offset[0], 1, MPI_INT, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   for(int r=1; r<p4est->mpisize; ++r)
-  {
     voro_global_offset[r] += voro_global_offset[r-1];
-  }
-
   voro_global_offset.insert(voro_global_offset.begin(), 0);
-//  ierr = PetscPrintf(p4est->mpicomm, "Number of voronoi points : %d\n", voro_global_offset[p4est->mpisize]);
-
-  /* initialize the buffer to receive remote points */
-  std::vector<bool> recv_fr(p4est->mpisize);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-  {
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    size_t num_sharers = (size_t) node->pad8;
-    if(num_sharers>0)
-    {
-      sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
-      int *sharers;
-      size_t sharers_index;
-      if(nodes->shared_offsets == NULL)
-      {
-        P4EST_ASSERT(node->pad16 >= 0);
-        sharers_index = (size_t) node->pad16;
-      }
-      else
-      {
-        P4EST_ASSERT(node->pad16 == -1);
-        sharers_index = (size_t) nodes->shared_offsets[n];
-      }
-
-      sharers = (int*) sc_array_index(&rec->a, sharers_index);
-
-      for(size_t s=0; s<num_sharers; ++s)
-      {
-        recv_fr[sharers[s]] = true;
-      }
-    }
-  }
 
   nb_rcv = 0;
   for(int r=0; r<p4est->mpisize; ++r)
-    if(recv_fr[r]) nb_rcv++;
-
-  /* now receive the data */
+    if(is_a_neighbor[r]) nb_rcv++;
+  /* now receive the data from neighbor process(es) */
   while(nb_rcv>0)
   {
     MPI_Status status;
-    MPI_Probe(MPI_ANY_SOURCE, 2, p4est->mpicomm, &status);
+    mpiret = MPI_Probe(MPI_ANY_SOURCE, 2, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
 
     int nb_points;
-    MPI_Get_count(&status, MPI_BYTE, &nb_points);
-    nb_points /= sizeof(voro_comm_t);
+    mpiret = MPI_Get_count(&status, MPI_BYTE, &nb_points); SC_CHECK_MPI(mpiret);
+    nb_points /= sizeof(voro_seed_comm_t);
 
-    std::vector<voro_comm_t> buff_recv_points(nb_points);
+    std::vector<voro_seed_comm_t> buff_recv_points(nb_points);
 
     int sender_rank = status.MPI_SOURCE;
-    MPI_Recv(&buff_recv_points[0], nb_points*sizeof(voro_comm_t), MPI_BYTE, sender_rank, status.MPI_TAG, p4est->mpicomm, &status);
+    P4EST_ASSERT(is_a_neighbor[sender_rank]);
+    mpiret = MPI_Recv(&buff_recv_points[0], nb_points*sizeof(voro_seed_comm_t), MPI_BYTE, sender_rank, status.MPI_TAG, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
 
     /* now associate the received voronoi points to the corresponding local/ghost nodes */
     for(int n=0; n<nb_points; ++n)
@@ -888,7 +831,8 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
         p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
         p4est_locidx_t quad_idx;
-        if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+        P4EST_ASSERT(rank_found != p4est->mpirank); // this can't happen, in principle
+        if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset; // this can't happen, in principle
         else                           quad_idx = quad.p.piggy3.local_num + p4est->local_num_quadrants;
 
         double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
@@ -897,6 +841,8 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
 #endif
 
+        /* add the ghost Voronoi seed to the appropriate entry in grid2voro, i.e. the entry
+         * corresponding to the closest vertex of the quad owning the Voronoi seed. */
         p4est_locidx_t node = -1;
 #ifdef P4_TO_P8
         if     (xyz[0]<=qx && xyz[1]<=qy && xyz[2]<=qz) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_mmm];
@@ -914,13 +860,13 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         else if(xyz[0]> qx && xyz[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
 
-        grid2voro[node].push_back(voro_points.size());
+        grid2voro[node].push_back(voro_seeds.size());
 #ifdef P4_TO_P8
         Point3 p(xyz[0], xyz[1], xyz[2]);
 #else
         Point2 p(xyz[0], xyz[1]);
 #endif
-        voro_points.push_back(p);
+        voro_seeds.push_back(p);
 
         voro_ghost_local_num.push_back(buff_recv_points[n].local_num);
         voro_ghost_rank.push_back(sender_rank);
@@ -929,23 +875,18 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 
     nb_rcv--;
   }
+  /* --- END OF PARALLEL DISTRIBUTION AND GHOST LAYERING OF VORONOI SEEDS ---*/
 
-  MPI_Waitall(req_shared_added_points.size(), &req_shared_added_points[0], MPI_STATUSES_IGNORE);
-  MPI_Waitall(req_send_points.size(), &req_send_points[0], MPI_STATUSES_IGNORE);
+  /* --- 3. FINALIZATION ---*/
+  // finalize all non-blocking communications (the corresponding data is dynamically deleted at termination)
+  mpiret = MPI_Waitall(req_shared_projected_points.size(), &req_shared_projected_points[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Waitall(req_send_points.size(), &req_send_points[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
 
-  /* clear buffers */
-  //  for(int r=0; r<p4est->mpisize; ++r)
-  //    buff_send_points[r].clear();
-  //  buff_send_points.clear();
-  send_to.clear();
-  recv_fr.clear();
-
+  // create the RHS vector for the Voronoi jump solver, parallel layout based on the parallel layout of Voronoi seeds
   ierr = VecCreateGhostVoronoiRhs(); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_compute_voronoi_points, 0, 0, 0, 0); CHKERRXX(ierr);
 }
-
-
 
 
 #ifdef P4_TO_P8
@@ -957,13 +898,12 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  /* find the cell to which this point belongs */
 #ifdef P4_TO_P8
   Point3 pc;
 #else
   Point2 pc;
 #endif
-  pc = voro_points[n];
+  pc = voro_seeds[n];
 
   double xyz [] =
   {
@@ -973,6 +913,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
     , pc.z
   #endif
   };
+  /* find the quadrant to which this point belongs */
   p4est_quadrant_t quad;
   std::vector<p4est_quadrant_t> remote_matches;
   int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
@@ -981,10 +922,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
   p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
   p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
   p4est_locidx_t quad_idx;
-#ifdef CASL_THROWS
-  if(rank_found==-1)
-    throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_jump_nodes_voronoi_t->compute_voronoi_mesh: found remote quadrant.");
-#endif
+  P4EST_ASSERT(rank_found != -1);
   if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
   else                           quad_idx = quad.p.piggy3.local_num + p4est->local_num_quadrants;
 
@@ -1003,76 +941,69 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
   voro.set_Center_Point(pc);
 #endif
 
-  std::vector<p4est_locidx_t> ngbd_quads;
+  std::vector<p4est_locidx_t> ngbd_quads; // set of neighboring quadrants to be built (avoid redundancy of quadrants)
 
   /* if exactly on a grid node */
-  if( (fabs(xyz[0]-(qx-qh[0]/2))<EPS || fabs(xyz[0]-(qx+qh[0]/2))<EPS) &&
-      (fabs(xyz[1]-(qy-qh[1]/2))<EPS || fabs(xyz[1]-(qy+qh[1]/2))<EPS)
+  if( (fabs(xyz[0]-(qx-qh[0]/2))<qh[0]*EPS || fabs(xyz[0]-(qx+qh[0]/2))<qh[0]*EPS)
+      && (fabs(xyz[1]-(qy-qh[1]/2))<qh[1]*EPS || fabs(xyz[1]-(qy+qh[1]/2))<qh[1]*EPS)
     #ifdef P4_TO_P8
-      && (fabs(xyz[2]-(qz-qh[2]/2))<EPS || fabs(xyz[2]-(qz+qh[2]/2))<EPS)
+      && (fabs(xyz[2]-(qz-qh[2]/2))<qh[2]*EPS || fabs(xyz[2]-(qz+qh[2]/2))<qh[2]*EPS)
     #endif
       )
   {
+    // find that grid node
 #ifdef P4_TO_P8
-    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<EPS ?
-          (fabs(xyz[1]-(qy-qh[1]/2))<EPS ?
-            (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_mmm : dir::v_mmp)
-        : (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_mpm : dir::v_mpp) )
-        : (fabs(xyz[1]-(qy-qh[1]/2))<EPS ?
-        (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_pmm : dir::v_pmp)
-        : (fabs(xyz[2]-(qz-qh[2]/2))<EPS ? dir::v_ppm : dir::v_ppp) ) );
+    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<qh[0]*EPS ?
+          (fabs(xyz[1]-(qy-qh[1]/2))<qh[1]*EPS ?
+            (fabs(xyz[2]-(qz-qh[2]/2))<qh[2]*EPS ? dir::v_mmm : dir::v_mmp)
+        : (fabs(xyz[2]-(qz-qh[2]/2))<qh[2]*EPS ? dir::v_mpm : dir::v_mpp) )
+        : (fabs(xyz[1]-(qy-qh[1]/2))<qh[1]*EPS ?
+        (fabs(xyz[2]-(qz-qh[2]/2))<qh[2]*EPS ? dir::v_pmm : dir::v_pmp)
+        : (fabs(xyz[2]-(qz-qh[2]/2))<qh[2]*EPS ? dir::v_ppm : dir::v_ppp) ) );
 #else
-    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<EPS ?
-          (fabs(xyz[1]-(qy-qh[1]/2))<EPS ? dir::v_mmm : dir::v_mpm)
-        : (fabs(xyz[1]-(qy-qh[1]/2))<EPS ? dir::v_pmm : dir::v_ppm) );
+    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<qh[0]*EPS ?
+          (fabs(xyz[1]-(qy-qh[1]/2))<qh[1]*EPS ? dir::v_mmm : dir::v_mpm)
+        : (fabs(xyz[1]-(qy-qh[1]/2))<qh[1]*EPS ? dir::v_pmm : dir::v_ppm) );
 #endif
     p4est_locidx_t node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir];
 
-    p4est_locidx_t quad_idx;
-
+    // find all the neighboring quadrants
+    p4est_locidx_t neighboring_quad_idx;
     std::vector<p4est_quadrant_t> tmp;
-#ifdef P4_TO_P8
     for(char i=-1; i<=1; i+=2)
     {
       for(char j=-1; j<=1; j+=2)
       {
+#ifdef P4_TO_P8
         for(char k=-1; k<=1; k+=2)
         {
-          ngbd_n->find_neighbor_cell_of_node(node,  i,  j, k, quad_idx, tree_idx);
-          if(quad_idx>=0)
+          ngbd_n->find_neighbor_cell_of_node(node,  i,  j, k, neighboring_quad_idx, tree_idx);
+#else
+          ngbd_n->find_neighbor_cell_of_node(node,  i,  j, neighboring_quad_idx, tree_idx);
+#endif
+          if(neighboring_quad_idx>=0) // invalid quadrant if not >=0
           {
-            ngbd_quads.push_back(quad_idx);
-            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0, 0);
-            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j, 0);
-            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, 0, k);
-            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j, 0);
-            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0, k);
-            ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j, k);
+            ngbd_quads.push_back(neighboring_quad_idx);
+#ifdef P4_TO_P8
+            ngbd_c->find_neighbor_cells_of_cell(tmp, neighboring_quad_idx, tree_idx, i, 0, 0);
+            ngbd_c->find_neighbor_cells_of_cell(tmp, neighboring_quad_idx, tree_idx, 0, j, 0);
+            ngbd_c->find_neighbor_cells_of_cell(tmp, neighboring_quad_idx, tree_idx, 0, 0, k);
+            ngbd_c->find_neighbor_cells_of_cell(tmp, neighboring_quad_idx, tree_idx, i, j, 0);
+            ngbd_c->find_neighbor_cells_of_cell(tmp, neighboring_quad_idx, tree_idx, i, 0, k);
+            ngbd_c->find_neighbor_cells_of_cell(tmp, neighboring_quad_idx, tree_idx, 0, j, k);
+#else
+            ngbd_c->find_neighbor_cells_of_cell(tmp, neighboring_quad_idx, tree_idx, i, 0);
+            ngbd_c->find_neighbor_cells_of_cell(tmp, neighboring_quad_idx, tree_idx, 0, j);
+#endif
             for(unsigned int m=0; m<tmp.size(); ++m)
               ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
             tmp.clear();
           }
+#ifdef P4_TO_P8
         }
-      }
-    }
-#else
-    for(char i=-1; i<=1; i+=2)
-    {
-      for(char j=-1; j<=1; j+=2)
-      {
-        ngbd_n->find_neighbor_cell_of_node(node,  i,  j, quad_idx, tree_idx);
-        if(quad_idx>=0)
-        {
-          ngbd_quads.push_back(quad_idx);
-          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0);
-          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j);
-          for(unsigned int m=0; m<tmp.size(); ++m)
-            ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
-          tmp.clear();
-        }
-      }
-    }
 #endif
+      }
+    }
   }
   /* the voronoi point is not a grid node */
   else
@@ -1101,31 +1032,31 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
     p4est_locidx_t q_idx;
     p4est_topidx_t t_idx;
 #ifdef P4_TO_P8
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mmm];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mmm];
     ngbd_n->find_neighbor_cell_of_node(n_idx, -1, -1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mpm];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mpm];
     ngbd_n->find_neighbor_cell_of_node(n_idx, -1,  1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_pmm];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_pmm];
     ngbd_n->find_neighbor_cell_of_node(n_idx,  1, -1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_ppm];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppm];
     ngbd_n->find_neighbor_cell_of_node(n_idx,  1,  1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
 
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mmp];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mmp];
     ngbd_n->find_neighbor_cell_of_node(n_idx, -1, -1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mpp];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mpp];
     ngbd_n->find_neighbor_cell_of_node(n_idx, -1,  1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_pmp];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_pmp];
     ngbd_n->find_neighbor_cell_of_node(n_idx,  1, -1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_ppp];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppp];
     ngbd_n->find_neighbor_cell_of_node(n_idx,  1,  1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
 #else
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mmm];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mmm];
     ngbd_n->find_neighbor_cell_of_node(n_idx, -1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_mpm];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_mpm];
     ngbd_n->find_neighbor_cell_of_node(n_idx, -1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_pmm];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_pmm];
     ngbd_n->find_neighbor_cell_of_node(n_idx,  1, -1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
-    n_idx = nodes->local_nodes[ngbd_quads[0]*P4EST_CHILDREN + dir::v_ppm];
+    n_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + dir::v_ppm];
     ngbd_n->find_neighbor_cell_of_node(n_idx,  1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
 #endif
 
@@ -1152,7 +1083,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
   }
 
   /* now create the list of nodes */
-  for(unsigned int k=0; k<ngbd_quads.size(); ++k)
+  for(unsigned int k = 0; k < ngbd_quads.size(); ++k) //it=ngbd_quads.begin(); it != ngbd_quads.end(); ++it)
   {
     for(int dir=0; dir<P4EST_CHILDREN; ++dir)
     {
@@ -1162,10 +1093,10 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
         if(grid2voro[n_idx][m] != n)
         {
 #ifdef P4_TO_P8
-          Point3 pm = voro_points[grid2voro[n_idx][m]];
+          Point3 pm = voro_seeds[grid2voro[n_idx][m]];
           voro.push(grid2voro[n_idx][m], pm.x, pm.y, pm.z);
 #else
-          Point2 pm = voro_points[grid2voro[n_idx][m]];
+          Point2 pm = voro_seeds[grid2voro[n_idx][m]];
           voro.push(grid2voro[n_idx][m], pm.x, pm.y);
 #endif
         }
@@ -1175,10 +1106,10 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int n,
 
   /* add the walls */
 #ifndef P4_TO_P8
-  if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xyz_min[0])), pc.y );
-  if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xyz_max[0]-pc.x)), pc.y );
-  if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX(EPS, 2*(pc.y-xyz_min[1])));
-  if(is_quad_ypWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0p0, pc.x, pc.y+MAX(EPS, 2*(xyz_max[1]-pc.y)));
+  if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX((xyz_max[0]-xyz_min[0])*EPS, 2*(pc.x-xyz_min[0])), pc.y );
+  if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX((xyz_max[0]-xyz_min[0])*EPS, 2*(xyz_max[0]-pc.x)), pc.y );
+  if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX((xyz_max[1]-xyz_min[1])*EPS, 2*(pc.y-xyz_min[1])));
+  if(is_quad_ypWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0p0, pc.x, pc.y+MAX((xyz_max[1]-xyz_min[1])*EPS, 2*(xyz_max[1]-pc.y)));
 #endif
 
   /* finally, construct the partition */
@@ -1209,14 +1140,14 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
     PetscInt global_n_idx = n+voro_global_offset[p4est->mpirank];
 
 #ifdef P4_TO_P8
-    Point3 pc = voro_points[n];
+    Point3 pc = voro_seeds[n];
 #else
-    Point2 pc = voro_points[n];
+    Point2 pc = voro_seeds[n];
 #endif
-    if( (ABS(pc.x-xyz_min[0])<EPS || ABS(pc.x-xyz_max[0])<EPS ||
-         ABS(pc.y-xyz_min[1])<EPS || ABS(pc.y-xyz_max[1])<EPS
+    if( (ABS(pc.x-xyz_min[0])<(xyz_max[0]-xyz_min[0])*EPS || ABS(pc.x-xyz_max[0])<(xyz_max[0]-xyz_min[0])*EPS ||
+         ABS(pc.y-xyz_min[1])<(xyz_max[1]-xyz_min[1])*EPS || ABS(pc.y-xyz_max[1])<(xyz_max[1]-xyz_min[1])*EPS
      #ifdef P4_TO_P8
-         || ABS(pc.z-xyz_min[2])<EPS || ABS(pc.z-xyz_max[2])<EPS
+         || ABS(pc.z-xyz_min[2])<(xyz_max[2]-xyz_min[2])*EPS || ABS(pc.z-xyz_max[2])<(xyz_max[2]-xyz_min[2])*EPS
          ) && bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
 #else
          ) && bc->wallType(pc.x,pc.y)==DIRICHLET)
@@ -1250,28 +1181,23 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
 #endif
     voro.get_Points(points);
 
-//    if (points->size() <= 1) {
-//      PetscPrintf(p4est->mpicomm, "[%2d] Voronoi node %d has %d points\n", p4est->mpirank, n, points->size());
-//      PetscSynchronizedPrintf(p4est->mpicomm, "[%2d] Voronoi node %d has %d points\n", p4est->mpirank, n, points->size());
-//    }
-//    PetscSynchronizedFlush(p4est->mpicomm, stdout);
-//    MPI_Barrier(p4est->mpicomm);
-
 #ifdef P4_TO_P8
     double phi_n = interp_phi(pc.x, pc.y, pc.z);
 #else
     double phi_n = interp_phi(pc.x, pc.y);
 #endif
-    double mu_n;
+    double mu_n, add_n;
 
     if(phi_n<0)
     {
 #ifdef P4_TO_P8
       rhs_p[n] = this->rhs_m(pc.x, pc.y, pc.z);
       mu_n     = (*mu_m)(pc.x, pc.y, pc.z);
+      add_n    = (*add_m)(pc.x, pc.y, pc.z);
 #else
       rhs_p[n] = this->rhs_m(pc.x, pc.y);
       mu_n     = (*mu_m)(pc.x, pc.y);
+      add_n    = (*add_m)(pc.x, pc.y);
 #endif
     }
     else
@@ -1279,9 +1205,11 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
 #ifdef P4_TO_P8
       rhs_p[n] = this->rhs_p(pc.x, pc.y, pc.z);
       mu_n     = (*mu_p)(pc.x, pc.y, pc.z);
+      add_n    = (*add_p)(pc.x, pc.y, pc.z);
 #else
       rhs_p[n] = this->rhs_p(pc.x, pc.y);
       mu_n     = (*mu_p)(pc.x, pc.y);
+      add_n    = (*add_p)(pc.x, pc.y);
 #endif
     }
 
@@ -1291,11 +1219,6 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
     double volume = voro.get_volume();
 
     rhs_p[n] *= volume;
-#ifdef P4_TO_P8
-    double add_n = (*add)(pc.x, pc.y, pc.z);
-#else
-    double add_n = (*add)(pc.x, pc.y);
-#endif
     if(add_n>EPS) matrix_has_nullspace = false;
 
     mat_entry_t ent; ent.n = global_n_idx; ent.val = volume*add_n;
@@ -1374,22 +1297,32 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
         /* perturb the corners to differentiate between the edges of the domain ... otherwise 1st order only at the corners */
 #ifdef P4_TO_P8
         double z_tmp = pc.z;
-        if(fabs(pc.x-xyz_min[0])<EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS;
-        if(fabs(pc.x-xyz_max[0])<EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS;
-        if(fabs(pc.y-xyz_min[1])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS;
-        if(fabs(pc.y-xyz_max[1])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS;
-        if(fabs(pc.z-xyz_min[2])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS;
-        if(fabs(pc.z-xyz_max[2])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS;
+        if(fabs(pc.x-xyz_min[0])<(xyz_max[0]-xyz_min[0])*EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS*(xyz_max[0]-xyz_min[0]);
+        if(fabs(pc.x-xyz_max[0])<(xyz_max[0]-xyz_min[0])*EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS*(xyz_max[0]-xyz_min[0]);
+        if(fabs(pc.y-xyz_min[1])<(xyz_max[1]-xyz_min[1])*EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS*(xyz_max[1]-xyz_min[1]);
+        if(fabs(pc.y-xyz_max[1])<(xyz_max[1]-xyz_min[1])*EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS*(xyz_max[1]-xyz_min[1]);
+        if(fabs(pc.z-xyz_min[2])<(xyz_max[2]-xyz_min[2])*EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS*(xyz_max[2]-xyz_min[2]);
+        if(fabs(pc.z-xyz_max[2])<(xyz_max[2]-xyz_min[2])*EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS*(xyz_max[2]-xyz_min[2]);
         rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp, z_tmp);
 #else
-        if(fabs(pc.x-xyz_min[0])<EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS;
-        if(fabs(pc.x-xyz_max[0])<EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS;
-        if(fabs(pc.y-xyz_min[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
-        if(fabs(pc.y-xyz_max[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
+        if(fabs(pc.x-xyz_min[0])<(xyz_max[0]-xyz_min[0])*EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS*(xyz_max[0]-xyz_min[0]);
+        if(fabs(pc.x-xyz_max[0])<(xyz_max[0]-xyz_min[0])*EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS*(xyz_max[0]-xyz_min[0]);
+        if(fabs(pc.y-xyz_min[1])<(xyz_max[1]-xyz_min[1])*EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS*(xyz_max[1]-xyz_min[1]);
+        if(fabs(pc.y-xyz_max[1])<(xyz_max[1]-xyz_min[1])*EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS*(xyz_max[1]-xyz_min[1]);
         rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp);
 #endif
       }
     }
+
+//    double scaling_value = (matrix_entries[n].size() > 1)? 0.0:1.0;
+//    for(size_t l=1; l<matrix_entries[n].size(); ++l)
+//      scaling_value += fabs(matrix_entries[n][l].val);
+
+//    for(size_t l=0; l<matrix_entries[n].size(); ++l)
+//    {
+//      matrix_entries[n][l].val  /= scaling_value;
+//    }
+//    rhs_p[n]                    /= scaling_value;
   }
 
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
@@ -1397,8 +1330,8 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
   PetscInt num_owned_global = voro_global_offset[p4est->mpisize];
   PetscInt num_owned_local  = (PetscInt) num_local_voro;
 
-  if (A != NULL)
-    ierr = MatDestroy(A); CHKERRXX(ierr);
+  if (A != NULL){
+    ierr = MatDestroy(A); CHKERRXX(ierr);}
 
   /* set up the matrix */
   ierr = MatCreate(p4est->mpicomm, &A); CHKERRXX(ierr);
@@ -1418,7 +1351,6 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
     for(unsigned int m=0; m<matrix_entries[n].size(); ++m)
       ierr = MatSetValue(A, global_n_idx, matrix_entries[n][m].n, matrix_entries[n][m].val, ADD_VALUES); CHKERRXX(ierr);
   }
-
   /* assemble the matrix */
   ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
   ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
@@ -1432,10 +1364,21 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
       ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, PETSC_NULL, &A_null_space); CHKERRXX(ierr);
     }
     ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-//    ierr = MatNullSpaceRemove(A_null_space, rhs, NULL); CHKERRXX(ierr);
   }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
+
+
+//  const std::string name = "/home/raphael/Bureau/workspaceCASL/projects/biomol/output/validation/matrix_" +std::to_string(xyz_max[0]-xyz_min[0]);
+//  const std::string name_rhs = "/home/raphael/Bureau/workspaceCASL/projects/biomol/output/validation/rhs_" +std::to_string(xyz_max[0]-xyz_min[0]);
+//  PetscViewer viewer, viewer_rhs;
+//  ierr = PetscViewerASCIIOpen(p4est->mpicomm, name.c_str(), &viewer); CHKERRXX(ierr);
+//  ierr = PetscViewerASCIIOpen(p4est->mpicomm, name_rhs.c_str(), &viewer_rhs); CHKERRXX(ierr);
+//  ierr = MatView(A, viewer); CHKERRXX(ierr);
+//  ierr = VecView(rhs, viewer_rhs); CHKERRXX(ierr);
+//  ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
+//  ierr = PetscViewerDestroy(viewer_rhs); CHKERRXX(ierr);
+
 }
 
 
@@ -1449,14 +1392,14 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_negative_laplace_rhsvec()
   for(unsigned int n=0; n<num_local_voro; ++n)
   {
 #ifdef P4_TO_P8
-    Point3 pc = voro_points[n];
+    Point3 pc = voro_seeds[n];
 #else
-    Point2 pc = voro_points[n];
+    Point2 pc = voro_seeds[n];
 #endif
-    if( (ABS(pc.x-xyz_min[0])<EPS || ABS(pc.x-xyz_max[0])<EPS ||
-         ABS(pc.y-xyz_min[1])<EPS || ABS(pc.y-xyz_max[1])<EPS
+    if( (ABS(pc.x-xyz_min[0])<(xyz_max[0]-xyz_min[0])*EPS || ABS(pc.x-xyz_max[0])<(xyz_max[0]-xyz_min[0])*EPS ||
+         ABS(pc.y-xyz_min[1])<(xyz_max[1]-xyz_min[1])*EPS || ABS(pc.y-xyz_max[1])<(xyz_max[1]-xyz_min[1])*EPS
      #ifdef P4_TO_P8
-         || ABS(pc.z-xyz_min[2])<EPS || ABS(pc.z-xyz_max[2])<EPS
+         || ABS(pc.z-xyz_min[2])<(xyz_max[2]-xyz_min[2])*EPS || ABS(pc.z-xyz_max[2])<(xyz_max[2]-xyz_min[2])*EPS
          ) && bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
 #else
          ) && bc->wallType(pc.x,pc.y)==DIRICHLET)
@@ -1569,18 +1512,18 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_negative_laplace_rhsvec()
         /* perturb the corners to differentiate between the edges of the domain ... otherwise 1st order only at the corners */
 #ifdef P4_TO_P8
         double z_tmp = pc.z;
-        if(fabs(pc.x-xyz_min[0])<EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS;
-        if(fabs(pc.x-xyz_max[0])<EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS;
-        if(fabs(pc.y-xyz_min[1])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS;
-        if(fabs(pc.y-xyz_max[1])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS;
-        if(fabs(pc.z-xyz_min[2])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS;
-        if(fabs(pc.z-xyz_max[2])<EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS;
+        if(fabs(pc.x-xyz_min[0])<(xyz_max[0]-xyz_min[0])*EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp += 2*EPS*(xyz_max[0]-xyz_min[0]);
+        if(fabs(pc.x-xyz_max[0])<(xyz_max[0]-xyz_min[0])*EPS && ( (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) x_tmp -= 2*EPS*(xyz_max[0]-xyz_min[0]);
+        if(fabs(pc.y-xyz_min[1])<(xyz_max[1]-xyz_min[1])*EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp += 2*EPS*(xyz_max[1]-xyz_min[1]);
+        if(fabs(pc.y-xyz_max[1])<(xyz_max[1]-xyz_min[1])*EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_00m  || (*points)[l].n==WALL_00p) ) y_tmp -= 2*EPS*(xyz_max[1]-xyz_min[1]);
+        if(fabs(pc.z-xyz_min[2])<(xyz_max[2]-xyz_min[2])*EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp += 2*EPS*(xyz_max[2]-xyz_min[2]);
+        if(fabs(pc.z-xyz_max[2])<(xyz_max[2]-xyz_min[2])*EPS && ( (*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00 || (*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0) ) z_tmp -= 2*EPS*(xyz_max[2]-xyz_min[2]);
         rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp, z_tmp);
 #else
-        if(fabs(pc.x-xyz_min[0])<EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS;
-        if(fabs(pc.x-xyz_max[0])<EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS;
-        if(fabs(pc.y-xyz_min[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
-        if(fabs(pc.y-xyz_max[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
+        if(fabs(pc.x-xyz_min[0])<(xyz_max[0]-xyz_min[0])*EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp += 2*EPS*(xyz_max[0]-xyz_min[0]);
+        if(fabs(pc.x-xyz_max[0])<(xyz_max[0]-xyz_min[0])*EPS && ((*points)[l].n==WALL_0m0  || (*points)[l].n==WALL_0p0)) x_tmp -= 2*EPS*(xyz_max[0]-xyz_min[0]);
+        if(fabs(pc.y-xyz_min[1])<(xyz_max[1]-xyz_min[1])*EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS*(xyz_max[1]-xyz_min[1]);
+        if(fabs(pc.y-xyz_max[1])<(xyz_max[1]-xyz_min[1])*EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS*(xyz_max[1]-xyz_min[1]);
         rhs_p[n] += s*mu_n * bc->wallValue(x_tmp, y_tmp);
 #endif
       }
@@ -1618,8 +1561,12 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
   /* first check if the node is a voronoi point */
   for(unsigned int m=0; m<grid2voro[n].size(); ++m)
   {
-    pm = voro_points[grid2voro[n][m]];
-    if((pn-pm).norm_L2()<EPS)
+    pm = voro_seeds[grid2voro[n][m]];
+    if((pn-pm).norm_L2()<sqrt(SQR(xyz_max[0]-xyz_min[0])+SQR(xyz_max[1]-xyz_min[1])
+                          #ifdef P4_TO_P8
+                                +SQR(xyz_max[2]-xyz_min[2])
+                          #endif
+                                )*EPS)
     {
       double retval = sol_voro_p[grid2voro[n][m]];
       ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
@@ -1706,7 +1653,7 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
         if( ni[0]!=grid2voro[n_idx][m] &&
             ni[1]!=grid2voro[n_idx][m] )
         {
-          pm = voro_points[grid2voro[n_idx][m]];
+          pm = voro_seeds[grid2voro[n_idx][m]];
 #ifdef P4_TO_P8
           double xyz[] = {pm.x, pm.y, pm.z};
 #else
@@ -1737,21 +1684,18 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
                 ni[1]=grid2voro[n_idx][m]; di[1]=d;
               }
             }
-          } else {
-            throw std::runtime_error("Found rank = -1 in voronoi interpolaiton. This should not happen. SHIT SHIT SHIT");
           }
         }
       }
     }
   }
 
-  assert(ni[0] != UINT_MAX && ni[1] != UINT_MAX);
 #ifdef P4_TO_P8
-  Point3 p0(voro_points[ni[0]]);
-  Point3 p1(voro_points[ni[1]]);
+  Point3 p0(voro_seeds[ni[0]]);
+  Point3 p1(voro_seeds[ni[1]]);
 #else
-  Point2 p0(voro_points[ni[0]]);
-  Point2 p1(voro_points[ni[1]]);
+  Point2 p0(voro_seeds[ni[0]]);
+  Point2 p1(voro_seeds[ni[1]]);
 #endif
 
   /* find a third point forming a non-flat triangle */
@@ -1767,7 +1711,7 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
             ni[1]!=grid2voro[n_idx][m] &&
             ni[2]!=grid2voro[n_idx][m])
         {
-          pm = voro_points[grid2voro[n_idx][m]];
+          pm = voro_seeds[grid2voro[n_idx][m]];
 #ifdef P4_TO_P8
           double xyz[] = {pm.x, pm.y, pm.z};
 #else
@@ -1797,19 +1741,16 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
                 ni[2]=grid2voro[n_idx][m]; di[2]=d;
               }
             }
-          } else {
-            throw std::runtime_error("Found rank = -1 in voronoi interpolaiton. This should not happen. SHIT SHIT SHIT");
           }
         }
       }
     }
   }
 
-  assert(ni[2] != UINT_MAX);
 #ifdef P4_TO_P8
-  Point3 p2(voro_points[ni[2]]);
+  Point3 p2(voro_seeds[ni[2]]);
 #else
-  Point2 p2(voro_points[ni[2]]);
+  Point2 p2(voro_seeds[ni[2]]);
 #endif
 
 #ifdef P4_TO_P8
@@ -1827,7 +1768,7 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
             ni[2]!=grid2voro[n_idx][m] &&
             ni[3]!=grid2voro[n_idx][m])
         {
-          pm = voro_points[grid2voro[n_idx][m]];
+          pm = voro_seeds[grid2voro[n_idx][m]];
           double xyz[] = {pm.x, pm.y, pm.z};
           p4est_quadrant_t quad;
           std::vector<p4est_quadrant_t> remote_matches;
@@ -1843,21 +1784,18 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
               Point3 n = (p1-p0).cross(p2-p0).normalize();
               double h = ABS((pm-p0).dot(n));
 
-              if(d<di[3] && h > diag_min/5)
+              if(d<di[3] && h > 2.0*diag_min/close_distance_factor)
               {
                 ni[3]=grid2voro[n_idx][m]; di[3]=d;
               }
             }
-          } else {
-            throw std::runtime_error("Found rank = -1 in voronoi interpolaiton. This should not happen. SHIT SHIT SHIT");
           }
         }
       }
     }
   }
 
-  assert(ni[3] != UINT_MAX);
-  Point3 p3(voro_points[ni[3]]);
+  Point3 p3(voro_seeds[ni[3]]);
 #endif
 
   /* make sure we found 3 points */
@@ -1928,7 +1866,7 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
      *               | b30 b31 b32 b33 |       | c3 |        | f3 |
      *
      */
-
+  /*
   double b00 =  ( p1.y*p2.z + p2.y*p3.z + p3.y*p1.z - p1.y*p3.z - p2.y*p1.z - p3.y*p2.z );
   double b01 = -( p0.y*p2.z + p2.y*p3.z + p3.y*p0.z - p0.y*p3.z - p2.y*p0.z - p3.y*p2.z );
   double b02 =  ( p0.y*p1.z + p1.y*p3.z + p3.y*p0.z - p0.y*p3.z - p1.y*p0.z - p3.y*p1.z );
@@ -1955,7 +1893,20 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
   double c3 = (b30*f0 + b31*f1 + b32*f2 + b33*f3) / det;
 
   return c0*pn.x + c1*pn.y + c2*pn.z + c3;
+  */
 
+  p0 -= pn;
+  p1 -= pn;
+  p2 -= pn;
+  p3 -= pn;
+
+  double den  = ((p1-p0).cross(p2-p0)).dot(p3-p0);
+  double c0   = (p1.cross(p2)).dot(p3)/den;
+  double c1   = (p2.cross(p0)).dot(p3)/den;
+  double c2   = (p0.cross(p1)).dot(p3)/den;
+  double c3   = 1.0-c0-c1-c2;
+
+  return (f0*c0+f1*c1+f2*c2+f3*c3);
 #else
 
   double c0 = ( (p1.y* 1- 1*p2.y)*f0 + ( 1*p2.y-p0.y* 1)*f1 + (p0.y* 1- 1*p1.y)*f2 ) / det;
@@ -1975,44 +1926,55 @@ void my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_to
 
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
 
+#ifdef CASL_THROWS
+  PetscInt sol_size;
+  ierr = VecGetLocalSize(solution, &sol_size); CHKERRXX(ierr);
+  if (sol_size != nodes->num_owned_indeps){
+    std::ostringstream oss;
+    oss << "[CASL_ERROR]: solution vector must be preallocated and locally have the same size as num_owned_indeps"
+        << "solution.local_size = " << sol_size << " nodes->num_owned_indeps = " << nodes->num_owned_indeps << std::endl;
+    throw std::invalid_argument(oss.str());
+  }
+#endif
+
   double *solution_p;
   ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);
 
   /* for debugging, compute the error on the voronoi mesh */
-  // bousouf
-  if(0)
-  {
-    double *sol_voro_p;
-    ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+//  // bousouf
+//  if(1)
+//  {
+//    double *sol_voro_p;
+//    ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
 
-    double err = 0;
-    for(unsigned int n=0; n<num_local_voro; ++n)
-    {
-      double u_ex;
-#ifdef P4_TO_P8
-      Point3 pc = voro_points[n];
+//    double err = 0;
+//    for(unsigned int n=0; n<num_local_voro; ++n)
+//    {
+//      double u_ex;
+//#ifdef P4_TO_P8
+//      Point3 pc = voro_seeds[n];
 
-      double phi_n = interp_phi(pc.x, pc.y, pc.z);
-      u_ex = cos(pc.x)*sin(pc.y)*exp(pc.z);
-      if(phi_n<0) u_ex = exp(pc.z);
-      else        u_ex = cos(pc.x)*sin(pc.y);
-#else
-      Point2 pc = voro_points[n];
+//      double phi_n = interp_phi(pc.x, pc.y, pc.z);
+//      u_ex = cos(pc.x)*sin(pc.y)*exp(pc.z);
+//      if(phi_n<0) u_ex = exp(pc.z);
+//      else        u_ex = cos(pc.x)*sin(pc.y);
+//#else
+//      Point2 pc = voro_seeds[n];
 
-      double phi_n = interp_phi(pc.x, pc.y);
-      //      u_ex = cos(pc.x)*sin(pc.y);
-      if(phi_n<0) u_ex = exp(pc.x);
-      else        u_ex = cos(pc.x)*sin(pc.y);
-#endif
+//      double phi_n = interp_phi(pc.x, pc.y);
+//      //      u_ex = cos(pc.x)*sin(pc.y);
+//      if(phi_n<0) u_ex = exp(pc.x);
+//      else        u_ex = cos(pc.x)*sin(pc.y);
+//#endif
 
-      err = std::max(err, ABS(u_ex - sol_voro_p[n]));
-    }
+//      err = std::max(err, ABS(u_ex - sol_voro_p[n]));
+//    }
 
-    ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
 
-    MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
-//    PetscPrintf(p4est->mpicomm, "Error on voronoi : %g\n", err);
-  }
+//    MPI_Allreduce(MPI_IN_PLACE, &err, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+////    PetscPrintf(p4est->mpicomm, "Error on voronoi : %g\n", err);
+//  }
 
   for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
   {
@@ -2053,7 +2015,11 @@ void my_p4est_poisson_jump_nodes_voronoi_t::write_stats(const char *path) const
     /* first check if the node is a voronoi point */
     for(unsigned int m=0; m<grid2voro[n].size(); ++m)
     {
-      if((pn-voro_points[grid2voro[n][m]]).norm_L2()<EPS)
+      if((pn-voro_seeds[grid2voro[n][m]]).norm_L2()< sqrt(SQR(xyz_max[0]-xyz_min[0])+SQR(xyz_max[1]-xyz_min[1])
+                                                     #ifdef P4_TO_P8
+                                                           +SQR(xyz_max[2]-xyz_min[2])
+                                                     #endif
+                                                           )*EPS)
       {
         nodes_voro[p4est->mpirank]++;
         goto next_point;
@@ -2098,9 +2064,9 @@ void my_p4est_poisson_jump_nodes_voronoi_t::print_voronoi_VTK(const char* path) 
 
 #ifdef P4_TO_P8
   bool periodic[P4EST_DIM] = {false, false, false};
-//  Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
+  Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
 #else
-//  Voronoi2D::print_VTK_Format(voro, name);
+  Voronoi2D::print_VTK_Format(voro, name);
 #endif
 }
 
