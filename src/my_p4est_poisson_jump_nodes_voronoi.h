@@ -263,15 +263,103 @@ public:
   void compute_voronoi_points();
 
   /*!
-   * \brief compute_voronoi_cell
-   * \param n
-   * \param voro
+   * \brief compute_voronoi_cell: creates the Voronoi cell associated with the seed voro_seeds[seed_idx]
+   * \param seed_idx: index of the Voronoi seed
+   * \param voro: Voronoi2D/3D object to be constructed, i.e. the Voronoi cell of seed voro_seeds[n]
+   * - If voro_seeds[n] is a grid node, the algorithm finds all direct neighbor quadrants and their
+   * face neighbors (+ their edge neighbors in 3D), i.e. for a uniform grid in 2D where '*' is the
+   * seed of interest, the folloinw quadrants are found (enumerated in order)
+   *
+   *                     ---------------------
+   *                     |         |         |
+   *                     |    3    |    5    |
+   *                     |         |         |
+   *                     |         |         |
+   *           -----------------------------------------
+   *           |         |         |         |         |
+   *           |    3    |    2    |    4    |    5    |
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           --------------------*--------------------
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           |    1    |    0    |    6    |    7    |
+   *           |         |         |         |         |
+   *           -----------------------------------------
+   *                     |         |         |
+   *                     |         |         |
+   *                     |    1    |    7    |
+   *                     |         |         |
+   *                     ---------------------
+   * - If voro_seeds[n] is _not_ a grid node, the algorithm finds the owner quadrant first, then all
+   * its face neighbors (note: no edge neighbor in 3D) and their own face neighbors, as well. Corner
+   * neighbors of the owner quadrant are added as well ([Raphael]: isn't that irrelevant in 2D?),
+   * i.e. for a uniform grid in 2D where '*' is the seed of interest, the folloinw quadrants are found
+   *
+   *                               -----------
+   *                               |         |
+   *                               |   2     |
+   *                               |         |
+   *                               |         |
+   *                     -------------------------------
+   *                     |         |         |         |
+   *                     |   2     |   1     |   2     |
+   *                     |         |         |         |
+   *                     |         |         |         |
+   *           ---------------------------------------------------
+   *           |         |         |         |         |         |
+   *           |   2     |   1     |   0     |   1     |    2    |
+   *           |         |         |         |         |         |
+   *           |         |         | *       |         |         |
+   *           ---------------------------------------------------
+   *                     |         |         |         |
+   *                     |   2     |   1     |   2     |
+   *                     |         |         |         |
+   *                     |         |         |         |
+   *                     -------------------------------
+   *                               |         |
+   *                               |    2    |
+   *                               |         |
+   *                               |         |
+   *                               -----------
+   *
+   * - Then, for all grid node (local index v) being a vertex of one of those neighbor quadrants
+   * of the voronoi seed of interest, the voronoi seeds pointed by the grid2voro[v] array are
+   * added as potential candidates for neighbor Voronoi seeds of the Voronoi cell to be constructed.
+   * The Voronoi cell is then constructed correspondingly.
    */
 #ifdef P4_TO_P8
-  void compute_voronoi_cell(unsigned int n, Voronoi3D &voro) const;
+  void compute_voronoi_cell(unsigned int seed_idx, Voronoi3D &voro) const;
 #else
-  void compute_voronoi_cell(unsigned int n, Voronoi2D &voro) const;
+  void compute_voronoi_cell(unsigned int seed_idx, Voronoi2D &voro) const;
 #endif
+  /*!
+   * \brief push_quad_idx_to_list adds a local quadrant index to a list if not already in it
+   * \param loc_quad_idx: local index of the quadrant under consideration
+   * \param list_of_quad_idx: list of local quadrant indices
+   */
+  inline void push_quad_idx_to_list(const p4est_locidx_t loc_quad_idx, std::vector<p4est_locidx_t>& list_of_quad_idx) const
+  {
+    if(loc_quad_idx >= 0) // invalid quad if loc_quad_idx < 0
+    {
+      bool add_it = true;
+      for(unsigned int nn=0; nn<list_of_quad_idx.size(); ++nn)
+        if(list_of_quad_idx[nn] == loc_quad_idx)
+        {
+          add_it = false;
+          break;
+        }
+      if(add_it)
+      {
+#ifndef P4_TO_P8
+        std::cout << std::endl;
+        std::cout << "GUESS WHAT; I'm NOT useless" << std::endl; // see comment above in compute_voronoi_cell
+        std::cout << std::endl;
+#endif
+        list_of_quad_idx.push_back(loc_quad_idx);
+      }
+    }
+  }
   void print_voronoi_VTK(const char* path) const;
   void setup_linear_system();
   void setup_negative_laplace_rhsvec();
