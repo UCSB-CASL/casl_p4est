@@ -289,9 +289,12 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRXX(ierr);
+    // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
+    if (matrix_has_nullspace){
+      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
+    }
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
-
 
   /* set the nullspace */
   if (matrix_has_nullspace){
@@ -312,6 +315,10 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   ierr = KSPSolve(ksp, rhs, sol_voro); CHKERRXX(ierr);
   ierr = PetscLogEventEnd  (log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
 //  ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system.\n"); CHKERRXX(ierr);
+
+  double res;
+  ierr = KSPGetResidualNorm(ksp, &res);
+  //ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system ... residual = %f\n", res); CHKERRXX(ierr);
 
   /* update ghosts */
   ierr = VecGhostUpdateBegin(sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -388,7 +395,15 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #endif
     {
       if(is_node_Wall(p4est, node))
+      {
+        if(   (!is_periodic(p4est, 0) && ((node->x == 0) || (node->x == P4EST_ROOT_LEN) || (node->x == P4EST_ROOT_LEN - 1))) // nodes may be unclamped
+           || (!is_periodic(p4est, 1) && ((node->y == 0) || (node->y == P4EST_ROOT_LEN) || (node->y == P4EST_ROOT_LEN - 1))) // nodes may be unclamped
+      #ifdef P4_TO_P8
+           || (!is_periodic(p4est, 2) && ((node->z == 0) || (node->z == P4EST_ROOT_LEN) || (node->z == P4EST_ROOT_LEN - 1))) // nodes may be unclamped
+      #endif
+              )
         marked_nodes.push_back(n); // when the interface is close to the boundary, we add the node to the seeds as well
+      }
 
       /* get the sharer processes, fill the buffers and initialize the future communications */
       size_t num_sharers = (size_t) node->pad8;
@@ -509,17 +524,26 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
       // the grid node is close to the interface
       if(is_node_Wall(p4est, ((p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n))))
       {
-        // once again, if it's a wall node, we add it to the seeds as well
-        double xn = node_x_fr_n(n, p4est, nodes);
-        double yn = node_y_fr_n(n, p4est, nodes);
+        p4est_indep_t* node = ((p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n));
+        if(   (!is_periodic(p4est, 0) && ((node->x == 0) || (node->x == P4EST_ROOT_LEN) || (node->x == P4EST_ROOT_LEN - 1))) // nodes may be unclamped
+           || (!is_periodic(p4est, 1) && ((node->y == 0) || (node->y == P4EST_ROOT_LEN) || (node->y == P4EST_ROOT_LEN - 1))) // nodes may be unclamped
+      #ifdef P4_TO_P8
+           || (!is_periodic(p4est, 2) && ((node->z == 0) || (node->z == P4EST_ROOT_LEN) || (node->z == P4EST_ROOT_LEN - 1))) // nodes may be unclamped
+      #endif
+              )
+        {
+          // once again, if it's a wall node, we add it to the seeds as well
+          double xn = node_x_fr_n(n, p4est, nodes);
+          double yn = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
-        double zn = node_z_fr_n(n, p4est, nodes);
-        Point3 p(xn, yn, zn);
+          double zn = node_z_fr_n(n, p4est, nodes);
+          Point3 p(xn, yn, zn);
 #else
-        Point2 p(xn, yn);
+          Point2 p(xn, yn);
 #endif
-        grid2voro[n].push_back(voro_seeds.size());
-        voro_seeds.push_back(p);
+          grid2voro[n].push_back(voro_seeds.size());
+          voro_seeds.push_back(p);
+        }
       }
 #ifdef P4_TO_P8
       Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p), (*ngbd_n).get_neighbors(n).dz_central(phi_p));
@@ -1684,6 +1708,8 @@ double my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_
                 ni[1]=grid2voro[n_idx][m]; di[1]=d;
               }
             }
+          } else {
+            throw std::runtime_error("Found rank = -1 in voronoi interpolaiton. This should not happen. SHIT SHIT SHIT");
           }
         }
       }
@@ -1925,17 +1951,6 @@ void my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_to
   PetscErrorCode ierr;
 
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
-
-#ifdef CASL_THROWS
-  PetscInt sol_size;
-  ierr = VecGetLocalSize(solution, &sol_size); CHKERRXX(ierr);
-  if (sol_size != nodes->num_owned_indeps){
-    std::ostringstream oss;
-    oss << "[CASL_ERROR]: solution vector must be preallocated and locally have the same size as num_owned_indeps"
-        << "solution.local_size = " << sol_size << " nodes->num_owned_indeps = " << nodes->num_owned_indeps << std::endl;
-    throw std::invalid_argument(oss.str());
-  }
-#endif
 
   double *solution_p;
   ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);
