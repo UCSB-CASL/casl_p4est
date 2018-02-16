@@ -41,7 +41,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
 #ifdef P4_TO_P8
   if     (quad->x==0 && dir_x==-1 && quad->y==0 && dir_y==-1 && quad->z==0 && dir_z==-1)
   {
-    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
+    if((!px && (myb->nxyztrees[0]==1)) || (!py && (myb->nxyztrees[1]==1)) || (!pz && (myb->nxyztrees[2]==1))) return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_mmm];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -52,7 +52,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y==0 && dir_y==-1 && quad->z==0 && dir_z==-1)
   {
-    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
+    if((!px && (myb->nxyztrees[0]==1)) || (!py && (myb->nxyztrees[1]==1)) || (!pz && (myb->nxyztrees[2]==1))) return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_pmm];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -63,7 +63,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x==0 && dir_x==-1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z==0 && dir_z==-1)
   {
-    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
+    if((!px && (myb->nxyztrees[0]==1)) || (!py && (myb->nxyztrees[1]==1)) || (!pz && (myb->nxyztrees[2]==1)))  return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_mpm];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -74,7 +74,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z==0 && dir_z==-1)
   {
-    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
+    if((!px && (myb->nxyztrees[0]==1)) || (!py && (myb->nxyztrees[1]==1)) || (!pz && (myb->nxyztrees[2]==1)))  return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_ppm];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -85,7 +85,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x==0 && dir_x==-1 && quad->y==0 && dir_y==-1 && quad->z+size==P4EST_ROOT_LEN && dir_z==1)
   {
-    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
+    if((!px && (myb->nxyztrees[0]==1)) || (!py && (myb->nxyztrees[1]==1)) || (!pz && (myb->nxyztrees[2]==1)))  return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_mmp];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -96,7 +96,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y==0 && dir_y==-1 && quad->z==P4EST_ROOT_LEN && dir_z==1)
   {
-    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
+    if((!px && (myb->nxyztrees[0]==1)) || (!py && (myb->nxyztrees[1]==1)) || (!pz && (myb->nxyztrees[2]==1)))  return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_pmp];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -107,7 +107,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x==0 && dir_x==-1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z==P4EST_ROOT_LEN && dir_z==1)
   {
-    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
+    if((!px && (myb->nxyztrees[0]==1)) || (!py && (myb->nxyztrees[1]==1)) || (!pz && (myb->nxyztrees[2]==1)))  return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_mpp];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
@@ -118,7 +118,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
   else if(quad->x+size==P4EST_ROOT_LEN && dir_x==1 && quad->y+size==P4EST_ROOT_LEN && dir_y==1 && quad->z==P4EST_ROOT_LEN && dir_z==1)
   {
-    if(myb->nxyztrees[0]==1 || myb->nxyztrees[1]==1 || myb->nxyztrees[2]==1) return;
+    if((!px && (myb->nxyztrees[0]==1)) || (!py && (myb->nxyztrees[1]==1)) || (!pz && (myb->nxyztrees[2]==1)))  return;
     p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + dir::v_ppp];
     if(corner==-1) return;
     p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
