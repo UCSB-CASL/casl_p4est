@@ -57,6 +57,17 @@ class my_p4est_poisson_jump_nodes_voronoi_t
 #endif
   } projected_point_t;
 
+  struct neighbor_seed
+  {
+    size_t local_seed_idx;
+    double distance;
+    inline bool operator <(const neighbor_seed& rhs_seed) const
+    {
+      return (this->distance < rhs_seed.distance);
+    }
+  };
+
+
 #ifdef P4_TO_P8
   class ZERO: public CF_3
   {
@@ -252,7 +263,7 @@ public:
    * two of them are not closer than diag_min/close_distance_factor from one another (this is
    * ensured globally, by treating the projected points associated with ghost layers' grid nodes
    * first, in a globally consistent way. Note that the result is NOT partition-independent).
-   * - Once those sampling nodes are determines, the mirror points across the interface are
+   * - Once those sampling nodes are determined, the mirror points across the interface are
    * calculated and attributed to the process owning the quadrant to which they belong. Ghost
    * Voronoi seeds are determined and the corresponding data structures are updated.
    * At termination,
@@ -268,7 +279,7 @@ public:
    * \param voro: Voronoi2D/3D object to be constructed, i.e. the Voronoi cell of seed voro_seeds[n]
    * - If voro_seeds[n] is a grid node, the algorithm finds all direct neighbor quadrants and their
    * face neighbors (+ their edge neighbors in 3D), i.e. for a uniform grid in 2D where '*' is the
-   * seed of interest, the folloinw quadrants are found (enumerated in order)
+   * seed of interest, the following quadrants are found (enumerated in order)
    *
    *                     ---------------------
    *                     |         |         |
@@ -294,7 +305,7 @@ public:
    * - If voro_seeds[n] is _not_ a grid node, the algorithm finds the owner quadrant first, then all
    * its face neighbors (note: no edge neighbor in 3D) and their own face neighbors, as well. Corner
    * neighbors of the owner quadrant are added as well ([Raphael]: isn't that irrelevant in 2D?),
-   * i.e. for a uniform grid in 2D where '*' is the seed of interest, the folloinw quadrants are found
+   * i.e. for a uniform grid in 2D where '*' is the seed of interest, the following quadrants are found
    *
    *                               -----------
    *                               |         |
@@ -360,10 +371,18 @@ public:
       }
     }
   }
-  void print_voronoi_VTK(const char* path) const;
+  /*!
+   * \brief setup_linear_system: self-explanatory, core of the solver, see Arthur's paper
+   * "Solving elliptic problems with discontinuities on irregular domains – the Voronoi Interface Method"
+   */
   void setup_linear_system();
+  /*!
+   * \brief setup_negative_laplace_rhsvec: self-explanatory, core of the solver, see Arthur's paper
+   * "Solving elliptic problems with discontinuities on irregular domains – the Voronoi Interface Method"
+   */
   void setup_negative_laplace_rhsvec();
 
+  void print_voronoi_VTK(const char* path) const;
   my_p4est_poisson_jump_nodes_voronoi_t(const my_p4est_node_neighbors_t *node_neighbors, const my_p4est_cell_neighbors_t *cell_neighbors);
   ~my_p4est_poisson_jump_nodes_voronoi_t();
 
@@ -401,7 +420,55 @@ public:
 
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 
+  /*!
+   * \brief interpolate_solution_from_voronoi_to_tree_on_node_n self-explanatory
+   * \param n: local index of the grid node of interest
+   * - If the grid node of interest is a Voronoi seed the solution is simply read from
+   * the appropriate Voronoi cell
+   * - Else, the algorithm finds the (P4EST_DIM + 1) closest Voronoi seeds that create
+   * a non-degenerate simplex around (or close to) the grid node of interest and
+   * interpolates the solution from those Voronoi seeds, the interpolation is linear.
+   * The procedure first finds the two closest Voronoi seeds p0 and p1. The third point
+   * p2 is defined as the closest point such that the angles (p1, p0, p2) and
+   * (p0, p1, p2) (modulo PI) are both either greater than PI/5 (or PI/10 in 3D) or
+   * smaller than 4*PI/5 (or 9*PI/10 in 3D).
+   * In 3D, a fourht point p3 is required. It's chosen as the closest Voronoi seed such
+   * that the height of the tetrahedron (p0, p1, p2, p3) from base (p0, p1, p2) is
+   * greater than 2.0*diag_min/close_distance_factor.
+   * The points p0, p1, p2 and p3 are found among all the Voronoi seeds pointed by all
+   * the grid2voro[v] arrays where v is a vertex of one of all the two-layer neighbor
+   * quadrants of the grid node of interest, i.e. for a uniform grid in 2D where '*' is
+   * the grid node of interest, the vertices of the following quadrants are found
+   *
+   *           -----------------------------------------
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           -----------------------------------------
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           --------------------*--------------------
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           -----------------------------------------
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           |         |         |         |         |
+   *           -----------------------------------------
+   * \return
+   */
   double interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const;
+  /*!
+   * \brief interpolate_solution_from_voronoi_to_tree self-explanatory
+   * \param[inout] solution: node-based vector to be calculated
+   * calls interpolate_solution_from_voronoi_to_tree_on_node_n() for all local grid nodes
+   */
   void interpolate_solution_from_voronoi_to_tree(Vec solution) const;
 
   void write_stats(const char *path) const;
