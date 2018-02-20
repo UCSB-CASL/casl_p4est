@@ -471,6 +471,19 @@ public:
    */
   void interpolate_solution_from_voronoi_to_tree(Vec solution) const;
 
+  /*!
+   * \brief write_stats writes statistics about the Voronoi seeds
+   * \param path absolute path of the statistics file to be written
+   * The method opens a file of the given absolute path and writes a file
+   * of the table form
+   * % rank  |  total number of Voronoi seeds locally owned  |  ... that are ...  |  local grid nodes  |  close to a local grid node  |  ghost grid nodes  |  close to a ghost grid node  |  validity check
+   * which is self-explanatory.
+   * The validity check checks that
+   * 1) no proc claims a Voronoi seed that is one of its ghost grid nodes;
+   * 2) all Voronoi seeds that are owned by a processor are either local grid nodes, or
+   * kept track of within the grid2voro struc as a Voronoi seed nearby a local node or
+   * a ghost grid node
+   */
   void write_stats(const char *path) const;
 
   void check_voronoi_partition() const;

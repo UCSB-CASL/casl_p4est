@@ -1907,10 +1907,12 @@ void my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_to
 
 void my_p4est_poisson_jump_nodes_voronoi_t::write_stats(const char *path) const
 {
-  std::vector<unsigned int> nodes_voro(p4est->mpisize, 0);
-  std::vector<unsigned int> indep_voro(p4est->mpisize, 0);
+  std::vector<unsigned int> voro_seeds_that_are_local_grid_nodes(p4est->mpisize, 0);
+  std::vector<unsigned int> voro_seeds_that_are_ghost_grid_nodes(p4est->mpisize, 0);
+  std::vector<unsigned int> independent_voro_seeds_that_are_close_to_local_grid_nodes(p4est->mpisize, 0);
+  std::vector<unsigned int> independent_voro_seeds_that_are_close_to_ghost_grid_nodes(p4est->mpisize, 0);
 
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  for(p4est_locidx_t n=0; n< nodes->num_owned_indeps; ++n)
   {
 #ifdef P4_TO_P8
     Point3 pn(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est, nodes));
@@ -1921,36 +1923,61 @@ void my_p4est_poisson_jump_nodes_voronoi_t::write_stats(const char *path) const
     /* first check if the node is a voronoi point */
     for(unsigned int m=0; m<grid2voro[n].size(); ++m)
     {
-      if((pn-voro_seeds[grid2voro[n][m]]).norm_L2()< sqrt(SQR(xyz_max[0]-xyz_min[0])+SQR(xyz_max[1]-xyz_min[1])
+      if(((pn-voro_seeds[grid2voro[n][m]]).norm_L2()< sqrt(SQR(xyz_max[0]-xyz_min[0])+SQR(xyz_max[1]-xyz_min[1])
                                                      #ifdef P4_TO_P8
                                                            +SQR(xyz_max[2]-xyz_min[2])
                                                      #endif
-                                                           )*EPS)
-      {
-        nodes_voro[p4est->mpirank]++;
-        goto next_point;
-      }
+                                                           )*EPS) && (grid2voro[n][m] < num_local_voro))
+        voro_seeds_that_are_local_grid_nodes[p4est->mpirank]++;
+      else if(grid2voro[n][m] < num_local_voro)
+        independent_voro_seeds_that_are_close_to_local_grid_nodes[p4est->mpirank]++;
     }
-
-    indep_voro[p4est->mpirank]++;
-next_point:
-    ;
   }
 
-  MPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, &nodes_voro[0], 1, MPI_UNSIGNED, p4est->mpicomm);
-  MPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, &indep_voro[0], 1, MPI_UNSIGNED, p4est->mpicomm);
+  for(p4est_locidx_t n=nodes->num_owned_indeps; n<(p4est_locidx_t) nodes->indep_nodes.elem_count; ++n)
+  {
+#ifdef P4_TO_P8
+    Point3 pn(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est, nodes));
+#else
+    Point2 pn(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes));
+#endif
+
+    /* first check if the node is a voronoi point */
+    for(unsigned int m=0; m<grid2voro[n].size(); ++m)
+    {
+      if(((pn-voro_seeds[grid2voro[n][m]]).norm_L2()< sqrt(SQR(xyz_max[0]-xyz_min[0])+SQR(xyz_max[1]-xyz_min[1])
+                                                     #ifdef P4_TO_P8
+                                                           +SQR(xyz_max[2]-xyz_min[2])
+                                                     #endif
+                                                           )*EPS) && (grid2voro[n][m] < num_local_voro))
+        voro_seeds_that_are_ghost_grid_nodes[p4est->mpirank]++;
+      else if(grid2voro[n][m] < num_local_voro)
+        independent_voro_seeds_that_are_close_to_ghost_grid_nodes[p4est->mpirank]++;
+    }
+  }
+
+  MPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, &voro_seeds_that_are_local_grid_nodes[0], 1, MPI_UNSIGNED, p4est->mpicomm);
+  MPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, &independent_voro_seeds_that_are_close_to_local_grid_nodes[0], 1, MPI_UNSIGNED, p4est->mpicomm);
+  MPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, &voro_seeds_that_are_ghost_grid_nodes[0], 1, MPI_UNSIGNED, p4est->mpicomm);
+  MPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, &independent_voro_seeds_that_are_close_to_ghost_grid_nodes[0], 1, MPI_UNSIGNED, p4est->mpicomm);
 
   /* write voronoi stats */
   if(p4est->mpirank==0)
   {
     FILE *f = fopen(path, "w");
-    fprintf(f, "%% rank  |  nb_voro  |  nb_indep_voro  |  nb_nodes_voro\n");
+    fprintf(f, "%% rank  |  total number of Voronoi seeds locally owned  |  ... that are ...  |  local grid nodes  |  close to a local grid node  |  ghost grid nodes  |  close to a ghost grid node  |  validity check  \n");
     for(int i=0; i<p4est->mpisize; ++i)
-      fprintf(f, "%d %d %u %u\n", i, voro_global_offset[i+1]-voro_global_offset[i], indep_voro[i], nodes_voro[i]);
+      fprintf(f, "%8d %45d                    %22u %30u %20u %30u     %s\n",
+              i,
+              voro_global_offset[i+1]-voro_global_offset[i],
+          voro_seeds_that_are_local_grid_nodes[i],
+          independent_voro_seeds_that_are_close_to_local_grid_nodes[i],
+          voro_seeds_that_are_ghost_grid_nodes[i],
+          independent_voro_seeds_that_are_close_to_ghost_grid_nodes[i],
+          ((voro_seeds_that_are_ghost_grid_nodes[i] == (unsigned int) 0) && ((unsigned int) (voro_global_offset[i+1]-voro_global_offset[i]) == voro_seeds_that_are_local_grid_nodes[i] + independent_voro_seeds_that_are_close_to_local_grid_nodes[i] + voro_seeds_that_are_ghost_grid_nodes[i] + independent_voro_seeds_that_are_close_to_ghost_grid_nodes[i]))? "IT'S ALRIGHT" : "PROBLEM");
     fclose(f);
   }
 }
-
 
 
 
