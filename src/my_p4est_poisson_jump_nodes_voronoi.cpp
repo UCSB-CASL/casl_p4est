@@ -554,8 +554,8 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
   }
   /* compute how many messages (buffers of "ghost" projected points) we are expecting to receive */
   int nb_rcv;
-  std::vector<int> nb_element_per_process(p4est->mpisize, 1);
-  mpiret = MPI_Reduce_scatter(&send_projected_to[0], &nb_rcv, &nb_element_per_process[0], MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  std::vector<int> nb_int_per_proc(p4est->mpisize, 1);
+  mpiret = MPI_Reduce_scatter(&send_projected_to[0], &nb_rcv, &nb_int_per_proc[0], MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   /* Receive the buffers */
   while(nb_rcv > 0)
   {
@@ -2018,6 +2018,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::check_voronoi_partition() const
   const std::vector<Voronoi2DPoint> *pts;
 #endif
 
+  std::vector< int > send_to(p4est->mpisize, 0);
   std::vector< std::vector<check_comm_t> > buff_send(p4est->mpisize);
 
   for(unsigned int n=0; n<num_local_voro; ++n)
@@ -2055,11 +2056,12 @@ void my_p4est_poisson_jump_nodes_voronoi_t::check_voronoi_partition() const
             nb_bad++;
           }
         }
-        else if(voro_ghost_rank[(*points)[m].n-num_local_voro]<p4est->mpirank)
+        else
         {
           check_comm_t tmp;
           tmp.n = n;
           tmp.k = voro_ghost_local_num[(*points)[m].n-num_local_voro];
+          send_to[voro_ghost_rank[(*points)[m].n-num_local_voro]] = 1;
           buff_send[voro_ghost_rank[(*points)[m].n-num_local_voro]].push_back(tmp);
         }
       }
@@ -2067,14 +2069,22 @@ void my_p4est_poisson_jump_nodes_voronoi_t::check_voronoi_partition() const
   }
 
   /* initiate communication */
-  std::vector<MPI_Request> req(p4est->mpirank);
-  for(int r=0; r<p4est->mpirank; ++r)
+  std::vector<MPI_Request> requests;
+  for(int r=0; r<p4est->mpisize; ++r)
   {
-    MPI_Isend(&buff_send[r][0], buff_send[r].size()*sizeof(check_comm_t), MPI_BYTE, r, 8, p4est->mpicomm, &req[r]);
+    if(send_to[r] == 1)
+    {
+      MPI_Request req;
+      MPI_Isend(&buff_send[r][0], buff_send[r].size()*sizeof(check_comm_t), MPI_BYTE, r, 8, p4est->mpicomm, &req);
+      requests.push_back(req);
+    }
   }
 
   /* now receive */
-  int nb_recv = p4est->mpisize-(p4est->mpirank+1);
+  // get the number of messages to receive
+  int nb_recv;
+  std::vector<int> nb_int_per_proc(p4est->mpisize, 1);
+  int mpiret = MPI_Reduce_scatter(&send_to[0], &nb_recv, &nb_int_per_proc[0], MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   while(nb_recv>0)
   {
     MPI_Status status;
@@ -2115,7 +2125,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::check_voronoi_partition() const
     nb_recv--;
   }
 
-  MPI_Waitall(req.size(), &req[0], MPI_STATUSES_IGNORE);
+  MPI_Waitall(requests.size(), &requests[0], MPI_STATUSES_IGNORE);
 
   MPI_Allreduce(MPI_IN_PLACE, (void*) &nb_bad, 1, MPI_INT, MPI_SUM, p4est->mpicomm);
 

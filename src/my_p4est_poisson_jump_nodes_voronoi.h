@@ -486,7 +486,23 @@ public:
    */
   void write_stats(const char *path) const;
 
+  /*!
+   * \brief check_voronoi_partition checks that neighbor relationships in Voronoi seeds
+   * are consistent: loop over every local Voronoi seed, and checks that all its neighbor
+   * seeds consider itself as a neighbor, as well.
+   * If an inconsistency is found, an information message is printed on std::cout
+   */
   void check_voronoi_partition() const;
 };
+/*
+POTENTIAL IMPROVEMENTS [Raphael]
+--------------------------------
+- call compute_voronoi_cell for all cells only once and store it in memory somehow;
+- check_voronoi_partition prints warning messages in 3D for a grid 5/8 with small
+surface areas--> inconsistent neighbors breaking down the symmetry of the linear
+system, undesirable. Potential origins (imho) in the considered neighboring quads in
+compute_voronoi_cell and/or in construct_partition (i.e. from voro++)
+*/
+
 
 #endif // MY_P4EST_POISSON_JUMP_NODES_VORONOI_H
