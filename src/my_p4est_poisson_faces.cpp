@@ -393,9 +393,9 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 
   /* now gather the neighbor cells to get the potential voronoi neighbors */
 #ifdef P4_TO_P8
-  voro_tmp.set_Center_Point(f_idx,x,y,z);
+  voro_tmp.set_center_point(f_idx,x,y,z);
 #else
-  voro_tmp.set_Center_Point(x,y);
+  voro_tmp.set_center_point(x,y);
 #endif
 
   /* check for uniform case, if so build voronoi partition by hand */
@@ -413,7 +413,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
      faces->q2f(qm_idx,2*dir)!=NO_VELOCITY && faces->q2f(qp_idx,2*dir+1)!=NO_VELOCITY)
   {
 #ifdef P4_TO_P8
-    vector<Voronoi3DPoint> points(6);
+    vector<ngbd3Dseed> points(6);
     points[0].n = faces->q2f(qp_idx,2*dir+1);
     points[0].p.x = faces->x_fr_f(points[0].n,dir);
     points[0].p.y = faces->y_fr_f(points[0].n,dir);
@@ -450,9 +450,9 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
     points[5].p.z = faces->z_fr_f(points[5].n,dir);
     points[5].s = dir==dir::x ? dx*dy : (dir==dir::y ? dx*dy : dx*dz);
 
-    voro_tmp.set_Points(points, dx*dy*dz);
+    voro_tmp.set_cell(points, dx*dy*dz);
 #else
-    vector<Voronoi2DPoint> points(4);
+    vector<ngbd2Dseed> points(4);
     vector<Point2> partition(4);
 
     points[0].n = faces->q2f(qm_idx,2*dir);
@@ -501,28 +501,33 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
       break;
     }
 
-    voro_tmp.set_Points_And_Partition(points, partition, dx*dy);
+    voro_tmp.set_neighbors_and_partition(points, partition, dx*dy);
 #endif
   }
 
   /* otherwise, there is a T-junction and the grid is not uniform, need to compute the voronoi cell */
   else
   {
+    const bool periodic[] = {0, 0
+                         #ifdef P4_TO_P8
+                             , 0
+                         #endif
+                            };
     /* note that the walls are dealt with by voro++ in 3D */
   #ifndef P4_TO_P8
     switch(dir)
     {
     case dir::x:
-      if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_m00, x-dx, y);
-      if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_p00, x+dx, y);
-      if( (qm_idx==-1 || is_quad_ymWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ymWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0m0, x, y-dy);
-      if( (qm_idx==-1 || is_quad_ypWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ypWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0p0, x, y+dy);
+      if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_m00, x-dx, y, periodic, xyz_min, xyz_max);
+      if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_p00, x+dx, y, periodic, xyz_min, xyz_max);
+      if( (qm_idx==-1 || is_quad_ymWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ymWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0m0, x, y-dy, periodic, xyz_min, xyz_max);
+      if( (qm_idx==-1 || is_quad_ypWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_ypWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_0p0, x, y+dy, periodic, xyz_min, xyz_max);
       break;
     case dir::y:
-      if( (qm_idx==-1 || is_quad_xmWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xmWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_m00, x-dx, y);
-      if( (qm_idx==-1 || is_quad_xpWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xpWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_p00, x+dx, y);
-      if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0m0, x, y-dy);
-      if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0p0, x, y+dy);
+      if( (qm_idx==-1 || is_quad_xmWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xmWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_m00, x-dx, y, periodic, xyz_min, xyz_max);
+      if( (qm_idx==-1 || is_quad_xpWall(p4est, tm_idx, &qm)) && (qp_idx==-1 || is_quad_xpWall(p4est, tp_idx, &qp)) ) voro_tmp.push(WALL_p00, x+dx, y, periodic, xyz_min, xyz_max);
+      if(qm_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0m0, x, y-dy, periodic, xyz_min, xyz_max);
+      if(qp_idx==-1 && bc[dir].wallType(x,y)==NEUMANN) voro_tmp.push(WALL_0p0, x, y+dy, periodic, xyz_min, xyz_max);
       break;
     }
   #endif
@@ -724,7 +729,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 #ifdef P4_TO_P8
         voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
 #else
-        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
+        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), periodic, xyz_min, xyz_max);
 #endif
       }
 
@@ -734,7 +739,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 #ifdef P4_TO_P8
         voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
 #else
-        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir));
+        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), periodic, xyz_min, xyz_max);
 #endif
       }
     }
@@ -744,10 +749,9 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 //    double xyz_max[0]_ = p4est->connectivity->vertices[3*vp + 0];
 //    double xyz_max[1]_ = p4est->connectivity->vertices[3*vp + 1];
 //    double xyz_max[2]_ = p4est->connectivity->vertices[3*vp + 2];
-    bool periodic[] = {0, 0, 0};
-    voro_tmp.construct_Partition(xyz_min, xyz_max, periodic);
+    voro_tmp.construct_partition(xyz_min, xyz_max, periodic);
 #else
-    voro_tmp.construct_Partition();
+    voro_tmp.construct_partition();
     voro_tmp.compute_volume();
 #endif
   }
@@ -761,11 +765,11 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
 void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(p4est_locidx_t f_idx, int dir)
 {
   Voronoi2D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
-  vector<Voronoi2DPoint> *points;
+  vector<ngbd2Dseed> *points;
   vector<Point2> *partition;
 
-  voro_tmp.get_Points(points);
-  voro_tmp.get_Partition(partition);
+  voro_tmp.get_neighbor_seeds(points);
+  voro_tmp.get_partition(partition);
 
   /* first clip the voronoi partition at the boundary of the domain */
   if(dir==dir::x)
@@ -847,8 +851,8 @@ void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(p4est_locidx_t f_idx,
     double y = faces->y_fr_f(f_idx, dir);
 
     double phi_c = interp_phi(x,y);
-    voro_tmp.set_Level_Set_Values(phi_values, phi_c);
-    voro_tmp.clip_Interface();
+    voro_tmp.set_level_set_values(phi_values, phi_c);
+    voro_tmp.clip_interface();
   }
 
   voro_tmp.compute_volume();
@@ -911,13 +915,13 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
       compute_voronoi_cell(f_idx, dir);
 
 #ifdef P4_TO_P8
-      const vector<Voronoi3DPoint> *points;
+      const vector<ngbd3Dseed> *points;
 #else
-      vector<Voronoi2DPoint> *points;
+      vector<ngbd2Dseed> *points;
 #endif
 
-      if(compute_partition_on_the_fly) voro[0].get_Points(points);
-      else                             voro[f_idx].get_Points(points);
+      if(compute_partition_on_the_fly) voro[0].get_neighbor_seeds(points);
+      else                             voro[f_idx].get_neighbor_seeds(points);
 
       for(unsigned int n=0; n<points->size(); ++n)
       {
@@ -1099,14 +1103,14 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 
 #ifdef P4_TO_P8
     Voronoi3D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
-    const vector<Voronoi3DPoint> *points;
+    const vector<ngbd3Dseed> *points;
 #else
     Voronoi2D &voro_tmp = compute_partition_on_the_fly ? voro[0] : voro[f_idx];
-    vector<Voronoi2DPoint> *points;
+    vector<ngbd2Dseed> *points;
     vector<Point2> *partition;
-    voro_tmp.get_Partition(partition);
+    voro_tmp.get_partition(partition);
 #endif
-    voro_tmp.get_Points(points);
+    voro_tmp.get_neighbor_seeds(points);
 
     /*
      * close to interface and dirichlet => finite differences
@@ -1967,9 +1971,9 @@ void my_p4est_poisson_faces_t::print_partition_VTK(const char *file)
   {
 #ifdef P4_TO_P8
     bool periodic[] = {0, 0, 0};
-    Voronoi3D::print_VTK_Format(voro, file, xyz_min, xyz_max, periodic);
+    Voronoi3D::print_VTK_format(voro, file, xyz_min, xyz_max, periodic);
 #else
-    Voronoi2D::print_VTK_Format(voro, file);
+    Voronoi2D::print_VTK_format(voro, file);
 #endif
   }
 }

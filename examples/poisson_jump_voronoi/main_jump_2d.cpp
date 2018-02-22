@@ -49,36 +49,65 @@
 using namespace std;
 
 int lmin = 4;
-int lmax = 6;
-int nb_splits = 4;
+int lmax = 7;
+int nb_splits = 6;
 
-int nx = 2;
-int ny = 2;
-int nz = 2;
-
-double xmin = -1;
-double xmax = 3;
-double ymin = -1;
-double ymax = 4;
-double zmin = 0;
-double zmax = 3;
+int nx = 1;
+int ny = 1;
+int nz = 1;
 
 bool save_vtk = false;
 bool save_voro = false;
 bool save_stats = false;
 bool check_partition = false;
 
+const int wave_number = 1;
+#ifdef P4_TO_P8
+#else
+const double mu_value = 4.3;
+const double mu_ratio = 10.0;
+#endif
+
+struct domain{
+  double xmin, xmax, ymin, ymax, zmin, zmax;
+  domain(const double xmin_, const double xmax_, const double ymin_, const double ymax_, const double zmin_, const double zmax_):
+    xmin(xmin_), xmax(xmax_), ymin(ymin_), ymax(ymax_), zmin(zmin_), zmax(zmax_)
+  {}
+};
+
+domain centered_ones(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+double tiny_value = 0.000006487;
+domain centered_tiny(-tiny_value, tiny_value, -tiny_value, tiny_value, -tiny_value, tiny_value);
+double big_value = 86463.6134;
+domain centered_big(-big_value, big_value, -big_value, big_value, -big_value, big_value);
+domain shifted(512.0, 512.0+24.0, -9.13, -9.13+24.0, 73.84, 73.84+24.0);
+
+domain omega = centered_ones;
+//domain omega = centered_tiny;
+//domain omega = centered_big;
+//domain omega = shifted;
+
 /*
  * 0 - circle
  */
 int level_set_type = 0;
 
+int test_number = 6;
 /*
  *  ********* 2D *********
  * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1, diag_add=0
- * 1 - u_m=u_p=cos(x)*sin(y), mu_m=mu_p, BC dirichlet
- * 2 - u_m=u_p=sin(x)*sin(y), mu_m=mu_p, BC neumann
- * 3 - u_m=exp(x), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-y)   article example 4.4
+ * 1 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=mu_value, BC dirichlet
+ * 2 - u_m=u_p=sin(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=mu_value, BC neumann
+ * 3 - u_m=exp((x-0.5*(xmin+xmax))/(xmax-xmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*ln((x-0.5*(xmax+xmin))/(xmax-xmin)+2)+4, mu_p=exp(-(y-0.5*(ymin+ymax))/(ymax-ymin))   article example 4.4
+ * 4 - u_m=up=sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))*log((y-ymin)/(ymax-ymin) + 1.2), mu_m=mu_p=mu_value, BC periodic in x, dirichlet in y
+ * 5 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))))*(SQR((y-ymin)/(ymax-ymin))+atan(3.0*(y-0.5*(ymin+ymax))/(ymax-ymin))),
+ *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin))
+ *   - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin))
+ *   - mu_p=mu_value
+ *   BC periodic in x, dirichlet in y
+ * 6 - u_m=up=SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin)))*SQR(cos(2.0*PI*2.0*wave_number*(y-ymin)/(ymax-ymin)))
+ *   - mu_m=mu_p/mu_ratio=mu_value
+ *   fully periodic
  *
  *  ********* 3D *********
  * 0 - u_m=exp(z), u_p=cos(x)*sin(y), mu_m=mu_p
@@ -88,14 +117,13 @@ int level_set_type = 0;
  * 4 - u_m=y*z*sin(x), u_p=x*y*y+z*z*z, mu_m=y*y+5, mu_p=exp(x+z)        article example 4.7
  * 5 - u_m=u_p=cos(x)*sin(y)*exp(z), mu_m=y*y+5, mu_p=exp(x+z)
  */
-int test_number = 1;
 
 double diag_add = 0;
 
 #ifdef P4_TO_P8
-double r0 = (double) MIN(xmax-xmin,ymax-ymin,zmax-zmin) / 4;
+double r0 = (double) MIN(omega.xmax-omega.xmin,omega.ymax-omega.ymin,omega.zmax-omega.zmin) / 4;
 #else
-double r0 = (double) MIN(xmax-xmin,ymax-ymin) / 4;
+double r0 = (double) MIN(omega.xmax-omega.xmin,omega.ymax-omega.ymin) / 4;
 #endif
 
 
@@ -110,7 +138,7 @@ public:
     switch(level_set_type)
     {
     case 0:
-      return r0 - sqrt(SQR(x - (xmin+xmax)/2) + SQR(y - (ymin+ymax)/2) + SQR(z - (zmin+zmax)/2));
+      return r0 - sqrt(SQR(x - (omega.xmin+omega.xmax)/2) + SQR(y - (omega.ymin+omega.ymax)/2) + SQR(z - (omega.zmin+omega.zmax)/2));
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -131,7 +159,7 @@ double phi_x(double x, double y, double z)
   switch(level_set_type)
   {
   case 0:
-    return -(x-(xmin+xmax)/2)/sqrt(SQR(x-(xmin+xmax)/2)+SQR(y-(ymin+ymax)/2)+SQR(z-(zmin+zmax)/2));
+    return -(x-(omega.xmin+omega.xmax)/2)/sqrt(SQR(x-(omega.xmin+omega.xmax)/2)+SQR(y-(omega.ymin+omega.ymax)/2)+SQR(z-(omega.zmin+omega.zmax)/2));
   default:
     throw std::invalid_argument("Choose a valid level set.");
   }
@@ -142,7 +170,7 @@ double phi_y(double x, double y, double z)
   switch(level_set_type)
   {
   case 0:
-    return -(y-(ymin+ymax)/2)/sqrt(SQR(x-(xmin+xmax)/2)+SQR(y-(ymin+ymax)/2)+SQR(z-(zmin+zmax)/2));
+    return -(y-(omega.ymin+omega.ymax)/2)/sqrt(SQR(x-(omega.xmin+omega.xmax)/2)+SQR(y-(omega.ymin+omega.ymax)/2)+SQR(z-(omega.zmin+omega.zmax)/2));
   default:
     throw std::invalid_argument("Choose a valid level set.");
   }
@@ -153,7 +181,7 @@ double phi_z(double x, double y, double z)
   switch(level_set_type)
   {
   case 0:
-    return -(z-(zmin+zmax)/2)/sqrt(SQR(x-(xmin+xmax)/2)+SQR(y-(ymin+ymax)/2)+SQR(z-(zmin+zmax)/2));
+    return -(z-(omega.zmin+omega.zmax)/2)/sqrt(SQR(x-(omega.xmin+omega.xmax)/2)+SQR(y-(omega.ymin+omega.ymax)/2)+SQR(z-(omega.zmin+omega.zmax)/2));
   default:
     throw std::invalid_argument("Choose a valid level set.");
   }
@@ -189,7 +217,7 @@ class MU_P: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch(test_number)
+    switch(.coord.)
     {
     case 0:
       return 1;
@@ -397,7 +425,7 @@ public:
     switch(level_set_type)
     {
     case 0:
-      return r0 - sqrt(SQR(x - (xmin+xmax)/2) + SQR(y - (ymin+ymax)/2));
+      return r0 - sqrt(SQR(x - (omega.xmin+omega.xmax)/2) + SQR(y - (omega.ymin+omega.ymax)/2));
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -418,7 +446,7 @@ double phi_x(double x, double y)
   switch(level_set_type)
   {
   case 0:
-    return -(x-(xmin+xmax)/2)/sqrt(SQR(x-(xmin+xmax)/2)+SQR(y-(ymin+ymax)/2));
+    return -(x-(omega.xmin+omega.xmax)/2)/sqrt(SQR(x-(omega.xmin+omega.xmax)/2)+SQR(y-(omega.ymin+omega.ymax)/2));
   default:
     throw std::invalid_argument("Choose a valid level set.");
   }
@@ -429,7 +457,7 @@ double phi_y(double x, double y)
   switch(level_set_type)
   {
   case 0:
-    return -(y-(ymin+ymax)/2)/sqrt(SQR(x-(xmin+xmax)/2)+SQR(y-(ymin+ymax)/2));
+    return -(y-(omega.ymin+omega.ymax)/2)/sqrt(SQR(x-(omega.xmin+omega.xmax)/2)+SQR(y-(omega.ymin+omega.ymax)/2));
   default:
     throw std::invalid_argument("Choose a valid level set.");
   }
@@ -446,9 +474,13 @@ public:
       return 1;
     case 1:
     case 2:
-      return 4.3;
+    case 4:
+    case 6:
+      return mu_value;
     case 3:
-      return SQR(y)*log(x+2)+4;
+      return SQR((y-omega.ymin)/(omega.ymax-omega.ymin))*log((x-0.5*(omega.xmax+omega.xmin))/(omega.xmax-omega.xmin)+2.0)+4.0;
+    case 5:
+      return 2.0+0.3*cos(2.0*PI*(x-omega.xmin)/(omega.xmax-omega.xmin));
     default:
       throw std::invalid_argument("Choose a valid test.");
     }
@@ -466,9 +498,13 @@ public:
       return 1;
     case 1:
     case 2:
-      return 4.3;
+    case 4:
+    case 5:
+      return mu_value;
     case 3:
-      return exp(-y);
+      return exp(-(y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
+    case 6:
+      return mu_ratio*mu_value;
     default:
       throw std::invalid_argument("Choose a valid test.");
     }
@@ -479,17 +515,23 @@ struct U_M : CF_2
 {
   double operator()(double x, double y) const
   {
-    double r = sqrt(SQR(x-(xmin+xmax)/2) + SQR(y-(ymin+ymax)/2));
+    double r = sqrt(SQR(x-(omega.xmin+omega.xmax)/2) + SQR(y-(omega.ymin+omega.ymax)/2));
     switch(test_number)
     {
     case 0:
-      return 1+log(r/.5);
+      return 1+log(r/r0);
     case 1:
-      return cos(x)*sin(y);
+      return cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
     case 2:
-      return sin(x)*sin(y);
+      return sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
     case 3:
-      return exp(x);
+      return exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin));
+    case 4:
+      return sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*log((y-omega.ymin)/(omega.ymax-omega.ymin)+1.2);
+    case 5:
+      return exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*(SQR((y-omega.ymin)/(omega.ymax-omega.ymin))+atan(3.0*(y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin)));
+    case 6:
+      return SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin)))*SQR(cos(2.0*PI*2.0*wave_number*(y-omega.ymin)/(omega.ymax-omega.ymin)));
     default:
       throw std::invalid_argument("Choose a valid test.");
     }
@@ -505,11 +547,14 @@ struct U_P : CF_2
     case 0:
       return 1;
     case 1:
-      return cos(x)*sin(y);
     case 2:
-      return sin(x)*sin(y);
+    case 4:
+    case 6:
+      return u_m(x,y);
     case 3:
-      return cos(x)*sin(y);
+      return cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+    case 5:
+      return 1.0-pow((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin), 3.0)-SQR((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
     default:
       throw std::invalid_argument("Choose a valid test.");
     }
@@ -537,20 +582,32 @@ double grad_u_m(double x, double y)
   switch(test_number)
   {
   case 0:
-    ux = (x-(xmin+xmax)/2)/(SQR(x-(xmin+xmax)/2)+SQR(y-(ymin+ymax)/2));
-    uy = (y-(ymin+ymax)/2)/(SQR(x-(xmin+xmax)/2)+SQR(y-(ymin+ymax)/2));
+    ux = (x-0.5*(omega.xmin+omega.xmax))/(SQR(x-0.5*(omega.xmin+omega.xmax))+SQR(y-0.5*(omega.ymin+omega.ymax)));
+    uy = (y-0.5*(omega.ymin+omega.ymax))/(SQR(x-0.5*(omega.xmin+omega.xmax))+SQR(y-0.5*(omega.ymin+omega.ymax)));
     break;
   case 1:
-    ux = -sin(x)*sin(y);
-    uy =  cos(x)*cos(y);
+    ux = -(1.0/(omega.xmax-omega.xmin))*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+    uy =  (1.0/(omega.ymax-omega.ymin))*cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin));
     break;
   case 2:
-    ux =  cos(x)*sin(y);
-    uy =  sin(x)*cos(y);
+    ux =  (1.0/(omega.xmax-omega.xmin))*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+    uy =  (1.0/(omega.ymax-omega.ymin))*sin(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin));
     break;
   case 3:
-    ux = exp(x);
+    ux = (1.0/(omega.xmax-omega.xmin))*exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin));
     uy = 0;
+    break;
+  case 4:
+    ux = (2.0*PI*wave_number/(omega.xmax-omega.xmin))*cos(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*log((y-omega.ymin)/(omega.ymax-omega.ymin)+1.2);;
+    uy = sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*(1.0/(y-omega.ymin+1.2*(omega.ymax - omega.ymin)));
+    break;
+  case 5:
+    ux = exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*(SQR((y-omega.ymin)/(omega.ymax-omega.ymin))+atan(3.0*(y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin)))*(-sin(2.0*2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*(2.0*PI*wave_number/(omega.xmax-omega.xmin)));
+    uy = exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*(2.0*(y-omega.ymin)/SQR(omega.ymax-omega.ymin) + (1.0/(1.0+SQR(3.0*(y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))))*(3.0/(omega.ymax-omega.ymin)));
+    break;
+  case 6:
+    ux = (2.0*PI*wave_number/(omega.xmax-omega.xmin))*sin(2.0*2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*SQR(cos(2.0*PI*2.0*wave_number*(y-omega.ymin)/(omega.ymax-omega.ymin)));
+    uy = -(2.0*PI*2.0*wave_number/(omega.ymax-omega.ymin))*SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin)))*sin(2.0*2.0*PI*2.0*wave_number*(y-omega.ymin)/(omega.ymax-omega.ymin));
     break;
   default:
     throw std::invalid_argument("Choose a valid test.");
@@ -572,16 +629,28 @@ double grad_u_p(double x, double y)
     uy = 0;
     break;
   case 1:
-    ux = -sin(x)*sin(y);
-    uy =  cos(x)*cos(y);
+    ux = -(1.0/(omega.xmax-omega.xmin))*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+    uy =  (1.0/(omega.ymax-omega.ymin))*cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin));
     break;
   case 2:
-    ux =  cos(x)*sin(y);
-    uy =  sin(x)*cos(y);
+    ux =  (1.0/(omega.xmax-omega.xmin))*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+    uy =  (1.0/(omega.ymax-omega.ymin))*sin(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin));
     break;
   case 3:
-    ux = -sin(x)*sin(y);
-    uy =  cos(x)*cos(y);
+    ux = -(1.0/(omega.xmax-omega.xmin))*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+    uy =  (1.0/(omega.ymax-omega.ymin))*cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin));
+    break;
+  case 4:
+    ux = (2.0*PI*wave_number/(omega.xmax-omega.xmin))*cos(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*log((y-omega.ymin)/(omega.ymax-omega.ymin)+1.2);;
+    uy = sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*(1.0/(y-omega.ymin+1.2*(omega.ymax - omega.ymin)));
+    break;
+  case 5:
+    ux = -3.0*SQR((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin))*(1.0/(omega.xmax-omega.xmin));
+    uy = -2.0*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*(1.0/(omega.ymax-omega.ymin));
+    break;
+  case 6:
+    ux = (2.0*PI*wave_number/(omega.xmax-omega.xmin))*sin(2.0*2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*SQR(cos(2.0*PI*2.0*wave_number*(y-omega.ymin)/(omega.ymax-omega.ymin)));
+    uy = -(2.0*PI*2.0*wave_number/(omega.ymax-omega.ymin))*SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin)))*sin(2.0*2.0*PI*2.0*wave_number*(y-omega.ymin)/(omega.ymax-omega.ymin));
     break;
   default:
     throw std::invalid_argument("Choose a valid test.");
@@ -605,7 +674,7 @@ public:
 class BC_WALL_TYPE : public WallBC2D
 {
 public:
-  BoundaryConditionType operator() (double , double ) const
+  BoundaryConditionType operator() (double, double) const
   {
     if(test_number==2) return NEUMANN;
     return DIRICHLET;
@@ -621,10 +690,10 @@ public:
       return level_set(x,y)<0 ? u_m(x,y) : u_p(x,y);
     else
     {
-      if(ABS(x-   0)<EPS) return -cos(x)*sin(y);
-      if(ABS(x-xmax)<EPS) return  cos(x)*sin(y);
-      if(ABS(y-   0)<EPS) return -sin(x)*cos(y);
-      return  sin(x)*cos(y);
+      if(ABS(x-omega.xmin)<EPS*(omega.xmax - omega.xmin)) return -(1.0/(omega.xmax-omega.xmin))*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      if(ABS(x-omega.xmax)<EPS*(omega.xmax - omega.xmin)) return  (1.0/(omega.xmax-omega.xmin))*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      if(ABS(y-omega.ymin)<EPS*(omega.ymax - omega.ymin)) return -(1.0/(omega.ymax-omega.ymin))*sin(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin));
+      return  (1.0/(omega.ymax-omega.ymin))*sin(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin));
     }
   }
 } bc_wall_value;
@@ -638,8 +707,8 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
               int compt)
 {
   PetscErrorCode ierr;
-  char *out_dir = NULL;
-  out_dir = getenv("OUT_DIR");
+  string output = "/home/egan/workspace/projects/jump_solver/output";
+  const char *out_dir = output.c_str();
   if(out_dir==NULL)
   {
     ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save visuals\n"); CHKERRXX(ierr);
@@ -734,7 +803,10 @@ void shift_Neumann_Solution(p4est_t *p4est, p4est_nodes_t *nodes, Vec sol)
   switch(test_number)
   {
   case 2:
-    ex_int = (1-cos((double) nx))*(1-cos((double) ny));
+    ex_int = 4.0*(omega.xmax-omega.xmin)*(omega.ymax-omega.ymin)*SQR(sin(0.5))*sin(0.5*(omega.xmin+omega.xmax)/(omega.xmax-omega.xmin))*sin(0.5*(omega.ymin+omega.ymax)/(omega.ymax-omega.ymin));
+    break;
+  case 6:
+    ex_int = 0.5*0.5*(omega.xmax-omega.xmin)*(omega.ymax-omega.ymin);
     break;
   default:
     ex_int = 0;
@@ -749,7 +821,7 @@ void shift_Neumann_Solution(p4est_t *p4est, p4est_nodes_t *nodes, Vec sol)
   ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
 
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    sol_p[n] += (ex_int - sol_int)/((xmax-xmin)*(ymax-ymin));
+    sol_p[n] += (ex_int - sol_int)/((omega.xmax-omega.xmin)*(omega.ymax-omega.ymin));
 
   ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
 }
@@ -774,7 +846,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
   ierr = VecDuplicate(phi, &u_jump_); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &mu_grad_u_jump_); CHKERRXX(ierr);
 
-  sample_cf_on_nodes(p4est, nodes, mu_m, mu_m_ );
+  sample_cf_on_nodes(p4est, nodes, mu_m, mu_m_);
   sample_cf_on_nodes(p4est, nodes, mu_p, mu_p_);
   sample_cf_on_nodes(p4est, nodes, u_jump, u_jump_);
   sample_cf_on_nodes(p4est, nodes, mu_grad_u_jump, mu_grad_u_jump_);
@@ -825,16 +897,30 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
       rhs_p_p[n] = 0;
       break;
     case 1:
-      rhs_m_p[n] = (2*mu_m(x,y) + diag_add) * cos(x)*sin(y);
-      rhs_p_p[n] = (2*mu_p(x,y) + diag_add) * cos(x)*sin(y);
+      rhs_m_p[n] = (mu_m(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin)) + diag_add) * cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      rhs_p_p[n] = (mu_p(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin)) + diag_add) * cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
       break;
     case 2:
-      rhs_m_p[n] = (2*mu_m(x,y) + diag_add) * sin(x)*sin(y);
-      rhs_p_p[n] = (2*mu_p(x,y) + diag_add) * sin(x)*sin(y);
+      rhs_m_p[n] = (mu_m(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin)) + diag_add) * sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      rhs_p_p[n] = (mu_p(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin)) + diag_add) * sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
       break;
     case 3:
-      rhs_m_p[n] = -exp(x)*(y*y*log(x+2)+y*y/(x+2)+4);
-      rhs_p_p[n] = exp(-y)*cos(x)*(cos(y)+2*sin(y));
+      rhs_m_p[n] = -SQR((y-omega.ymin)/(omega.ymax-omega.ymin))*(1.0/(x-0.5*(omega.xmin+omega.xmax)+2.0*(omega.xmax-omega.xmin)))*(1.0/(omega.xmax-omega.xmin))*exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin)) - mu_m(x, y)*SQR(1.0/(omega.xmax-omega.xmin))*exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin));
+      rhs_p_p[n] = (1.0/(omega.ymax-omega.ymin))*exp(-(y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*(cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin))*(1.0/(omega.ymax-omega.ymin))) + mu_p(x, y)*(cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin)))*(SQR(1.0/(omega.xmax-omega.xmin)) + SQR(1.0/(omega.ymax-omega.ymin)));
+      break;
+    case 4:
+      rhs_m_p[n] = mu_m(x, y)*(SQR(2.0*PI*wave_number/(omega.xmax - omega.xmin))*log((y-omega.ymin)/(omega.ymax-omega.ymin)+1.2) + SQR(1.0/(y-omega.ymin+1.2*(omega.ymax - omega.ymin))))*sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin));
+      rhs_p_p[n] = mu_p(x, y)*(SQR(2.0*PI*wave_number/(omega.xmax - omega.xmin))*log((y-omega.ymin)/(omega.ymax-omega.ymin)+1.2) + SQR(1.0/(y-omega.ymin+1.2*(omega.ymax - omega.ymin))))*sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin));
+      break;
+    case 5:
+      rhs_m_p[n] = +0.3*(2.0*PI/(omega.xmax-omega.xmin))*sin(2.0*PI*(x-omega.xmin)/(omega.xmax-omega.xmin))*(SQR((y-omega.ymin)/(omega.ymax-omega.ymin))+atan(3.0*(y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin)))*exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*(-sin(2.0*2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*(2.0*PI*wave_number/(omega.xmax-omega.xmin)))
+          -mu_m(x, y)*(SQR((y-omega.ymin)/(omega.ymax-omega.ymin))+atan(3.0*(y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin)))*exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*(SQR(-sin(2.0*2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*(2.0*PI*wave_number/(omega.xmax-omega.xmin))) - 2.0*SQR(2.0*PI*wave_number/(omega.xmax-omega.xmin))*cos(2.0*2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin)))
+          -mu_m(x, y)*exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*(2.0/SQR(omega.ymax-omega.ymin)-54.0*(omega.ymax-omega.ymin)*(y-0.5*(omega.ymin+omega.ymax))/SQR(SQR(omega.ymax-omega.ymin)+SQR(3*(y-0.5*(omega.ymin+omega.ymax)))));
+      rhs_p_p[n] = mu_p(x, y)*(6.0*(x-0.5*(omega.xmin+omega.xmax))/pow((omega.xmax-omega.xmin), 3.0) + 2.0/SQR(omega.ymax-omega.ymin));
+      break;
+    case 6:
+      rhs_m_p[n] = -mu_m(x, y)*(2.0*SQR(2.0*PI*wave_number/(omega.xmax-omega.xmin))*cos(2.0*2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*SQR(cos(2.0*PI*2.0*wave_number*(y-omega.ymin)/(omega.ymax-omega.ymin))) - 2.0*SQR(2.0*PI*2.0*wave_number/(omega.ymax-omega.ymin))*SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin)))*cos(2.0*2.0*PI*2.0*wave_number*(y-omega.ymin)/(omega.ymax-omega.ymin)));
+      rhs_p_p[n] = -mu_p(x, y)*(2.0*SQR(2.0*PI*wave_number/(omega.xmax-omega.xmin))*cos(2.0*2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*SQR(cos(2.0*PI*2.0*wave_number*(y-omega.ymin)/(omega.ymax-omega.ymin))) - 2.0*SQR(2.0*PI*2.0*wave_number/(omega.ymax-omega.ymin))*SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin)))*cos(2.0*2.0*PI*2.0*wave_number*(y-omega.ymin)/(omega.ymax-omega.ymin)));
       break;
     default:
       throw std::invalid_argument("Choose a valid test.");
@@ -872,8 +958,8 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 //  sample_cf_on_nodes(p4est, nodes, u_m, sol);
 
   char out_path[1000];
-  char *out_dir = NULL;
-  out_dir = getenv("OUT_DIR");
+  char *out_dir = "/home/egan/workspace/projects/jump_solver/output";
+//  out_dir = getenv("OUT_DIR");
   if(out_dir==NULL)
   {
     ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save stats\n"); CHKERRXX(ierr);
@@ -926,10 +1012,19 @@ int main (int argc, char* argv[])
                  1 - u_m=exp(z), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-z)   article example 4.6");
 #else
   cmd.add_option("test", "choose a test.\n\
-                 0 - u_m=1+log(r/r0), u_p=1, mu=1\n\
-                 1 - u_m=u_p=cos(x)*sin(y), mu_m=mu_p, BC dirichlet\n\
-                 2 - u_m=u_p=sin(x)*sin(y), mu_m=mu_p, BC neumann\n\
-                 3 - u_m=exp(x), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-y)   article example 4.4");
+                  0 - u_m=1+log(r/r0), r = sqrt(SQR(x-0.5*(xmax+xmin)) + SQR(y-0.5*(ymax+ymin)))), r0 = MIN(xmax-xmin,ymax-ymin/4), u_p=1, mu_m=mu_p=1\n\
+                  1 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=constant, BC dirichlet\n\
+                  2 - u_m=u_p=sin(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=constant, BC neumann\n\
+                  3 - u_m=exp((x-0.5*(xmin+xmax))/(xmax-xmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*ln((x-0.5*(xmax+xmin))/(xmax-xmin)+2)+4, mu_p=exp(-(y-0.5*(ymin+ymax))/(ymax-ymin))   article example 4.4\n\
+                  4 - u_m=up=sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))*log((y-ymin)/(ymax-ymin) + 1.2), mu_m=mu_p=constant, BC periodic in x, dirichlet in y\n\
+                  5 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))))*(SQR((y-ymin)/(ymax-ymin))+atan(3.0*(y-0.5*(ymin+ymax))/(ymax-ymin))),\n\
+                    - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin))\n\
+                    - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin))\n\
+                    - mu_p=constant\n\
+                    - BC periodic in x, dirichlet in y\n\
+                  6 - u_m=up=SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin)))*SQR(cos(2.0*PI*2.0*wave_number*(y-ymin)/(ymax-ymin)))\n\
+                    - mu_m=mu_p/mu_ratio=constant\n\
+                    - fully periodic");
 #endif
   cmd.parse(argc, argv);
 
@@ -962,9 +1057,28 @@ int main (int argc, char* argv[])
   my_p4est_brick_t brick;
 
   const int n_xyz []       = {nx, ny, nz};
-  const double xyz_min []  = {xmin, ymin, zmin};
-  const double xyz_max []  = {xmax, ymax, zmax};
-  const int periodic []    = {0, 0, 0};
+  const double xyz_min []  = {omega.xmin, omega.ymin, omega.zmin};
+  const double xyz_max []  = {omega.xmax, omega.ymax, omega.zmax};
+  int p_x, p_y, p_z;
+#ifdef P4_TO_P8
+  p_x=p_y=p_z=0;
+#else
+  switch (test_number) {
+  case 4:
+  case 5:
+    p_x=1;
+    p_y=p_z=0;
+    break;
+  case 6:
+    p_x=p_y=1;
+    p_z=0;
+    break;
+  default:
+    p_x=p_y=p_z=0;
+    break;
+  }
+#endif
+  const int periodic []    = {p_x, p_y, p_z};
 
   connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
   p4est_t       *p4est;
@@ -1032,7 +1146,10 @@ int main (int argc, char* argv[])
     ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
     err_nm1 = err_n;
     err_n = 0;
-    double x_err=-1, y_err=-1, z_err=-1;
+    double x_err=-1, y_err=-1;
+#ifdef P4_TO_P8
+    double z_err=-1;
+#endif
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     {
       double x = node_x_fr_n(n, p4est, nodes);
@@ -1056,7 +1173,11 @@ int main (int argc, char* argv[])
 
     MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
     PetscPrintf(p4est->mpicomm, "Iter %d : %g, \t order : %g\n", iter, err_n, log(err_nm1/err_n)/log(2));
-    PetscPrintf(p4est->mpicomm, "error at %g, %g, %g, qh = %g, dist_interface = %g\n", x_err, y_err, z_err, (double) 2/pow(2,lmax+iter+1), fabs(sqrt(SQR(x_err-1) + SQR(y_err-1) + SQR(z_err-1))-r0));
+#ifdef P4_TO_P8
+    PetscPrintf(p4est->mpicomm, "error at %g, %g, %g, qh = %g, dist_interface = %g\n", x_err, y_err, z_err, (double) 2/pow(2,lmax+iter+1), fabs(level_set(x_err, y_err, z_err)));
+#else
+    PetscPrintf(p4est->mpicomm, "error at %g, %g, qh = %g, dist_interface = %g\n", x_err, y_err, (double) 2/pow(2,lmax+iter+1), fabs(level_set(x_err, y_err)));
+#endif
 
     ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);

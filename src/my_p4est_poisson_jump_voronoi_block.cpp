@@ -957,9 +957,9 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
 
 #ifdef P4_TO_P8
   // FIXME: Is this correct? comprare to old voronoi solver
-  voro.set_Center_Point(n,pc);
+  voro.set_center_point(n,pc);
 #else
-  voro.set_Center_Point(pc);
+  voro.set_center_point(pc);
 #endif
 
   p4est_locidx_t quad_idx;
@@ -1118,6 +1118,16 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
     }
   }
 
+#ifdef P4_TO_P8
+  const bool periodic []  = {false, false, false};
+  double xyz_min [] = {xmin, ymin, zmin};
+  double xyz_max [] = {xmax, ymax, zmax};
+#else
+  const bool periodic []  = {false, false};
+  double xyz_min [] = {xmin, ymin};
+  double xyz_max [] = {xmax, ymax};
+#endif
+
   /* now create the list of nodes */
   for(unsigned int k=0; k<ngbd_quads.size(); ++k)
   {
@@ -1133,7 +1143,7 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
           voro.push(grid2voro[n_idx][m], pm.x, pm.y, pm.z);
 #else
           Point2 pm = voro_points[grid2voro[n_idx][m]];
-          voro.push(grid2voro[n_idx][m], pm.x, pm.y);
+          voro.push(grid2voro[n_idx][m], pm.x, pm.y, periodic, xyz_min, xyz_max);
 #endif
         }
       }
@@ -1149,20 +1159,17 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
   if(is_quad_zmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_00m, pc.x, pc.y, pc.z-MAX(EPS, 2*(pc.z-zmin)));
   if(is_quad_zpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_00p, pc.x, pc.y, pc.z+MAX(EPS, 2*(zmax-pc.z)));
 #else
-  if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xmin)), pc.y );
-  if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xmax-pc.x)), pc.y );
-  if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX(EPS, 2*(pc.y-ymin)));
-  if(is_quad_ypWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0p0, pc.x, pc.y+MAX(EPS, 2*(ymax-pc.y)));
+  if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xmin)), pc.y, periodic, xyz_min, xyz_max );
+  if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xmax-pc.x)), pc.y, periodic, xyz_min, xyz_max );
+  if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX(EPS, 2*(pc.y-ymin)), periodic, xyz_min, xyz_max );
+  if(is_quad_ypWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0p0, pc.x, pc.y+MAX(EPS, 2*(ymax-pc.y)), periodic, xyz_min, xyz_max );
 #endif
 
   /* finally, construct the partition */
 #ifdef P4_TO_P8
-  double xyz_min [] = {xmin, ymin, zmin};
-  double xyz_max [] = {xmax, ymax, zmax};
-  bool periodic []  = {false, false, false};
-  voro.construct_Partition(xyz_min, xyz_max, periodic);
+  voro.construct_partition(xyz_min, xyz_max, periodic);
 #else
-  voro.construct_Partition();
+  voro.construct_partition();
 #endif
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1203,13 +1210,13 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
     compute_voronoi_cell(n, voro);
 
 #ifdef P4_TO_P8
-    const std::vector<Voronoi3DPoint> *points;
+    const std::vector<ngbd3Dseed> *points;
 #else
     const std::vector<Point2> *partition;
-    const std::vector<Voronoi2DPoint> *points;
-    voro.get_Partition(partition);
+    const std::vector<ngbd2Dseed> *points;
+    voro.get_partition(partition);
 #endif
-    voro.get_Points(points);
+    voro.get_neighbor_seeds(points);
 #ifndef P4_TO_P8
     voro.compute_volume();
 #endif
@@ -2138,7 +2145,7 @@ void my_p4est_poisson_jump_voronoi_block_t::print_voronoi_VTK(const char* path) 
 #ifdef P4_TO_P8
 //  Voronoi3D::print_VTK_Format(voro, name, xmin, xmax, ymin, ymax, zmin, zmax, false, false, false);
 #else
-  Voronoi2D::print_VTK_Format(voro, name);
+  Voronoi2D::print_VTK_format(voro, name);
 #endif
 }
 
@@ -2149,12 +2156,12 @@ void my_p4est_poisson_jump_voronoi_block_t::check_voronoi_partition() const
   ierr = PetscPrintf(p4est->mpicomm, "Checking partition ...\n"); CHKERRXX(ierr);
 #ifdef P4_TO_P8
   std::vector<Voronoi3D> voro(num_local_voro);
-  const std::vector<Voronoi3DPoint> *points;
-  const std::vector<Voronoi3DPoint> *pts;
+  const std::vector<ngbd3Dseed> *points;
+  const std::vector<ngbd3Dseed> *pts;
 #else
   std::vector<Voronoi2D> voro(num_local_voro);
-  const std::vector<Voronoi2DPoint> *points;
-  const std::vector<Voronoi2DPoint> *pts;
+  const std::vector<ngbd2Dseed> *points;
+  const std::vector<ngbd2Dseed> *pts;
 #endif
 
   std::vector< std::vector<check_comm_t> > buff_send(p4est->mpisize);
@@ -2165,7 +2172,7 @@ void my_p4est_poisson_jump_voronoi_block_t::check_voronoi_partition() const
   int nb_bad = 0;
   for(unsigned int n=0; n<num_local_voro; ++n)
   {
-    voro[n].get_Points(points);
+    voro[n].get_neighbor_seeds(points);
 
     for(unsigned int m=0; m<points->size(); ++m)
     {
@@ -2173,7 +2180,7 @@ void my_p4est_poisson_jump_voronoi_block_t::check_voronoi_partition() const
       {
         if((*points)[m].n<(int) num_local_voro)
         {
-          voro[(*points)[m].n].get_Points(pts);
+          voro[(*points)[m].n].get_neighbor_seeds(pts);
           bool ok = false;
           for(unsigned int k=0; k<pts->size(); ++k)
           {
@@ -2186,7 +2193,7 @@ void my_p4est_poisson_jump_voronoi_block_t::check_voronoi_partition() const
 
           if(ok==false)
           {
-            std::cout << p4est->mpirank << " found bad voronoi cell for point # " << n << " : " << (*points)[m].n << ", \t Centerd on : " << voro[n].get_Center_Point();
+            std::cout << p4est->mpirank << " found bad voronoi cell for point # " << n << " : " << (*points)[m].n << ", \t Centerd on : " << voro[n].get_center_point();
             nb_bad++;
           }
         }
@@ -2229,7 +2236,7 @@ void my_p4est_poisson_jump_voronoi_block_t::check_voronoi_partition() const
       if(local_idx<0 || local_idx>=(int) num_local_voro)
         throw std::invalid_argument("my_p4est_poisson_jump_nodes_voronoi_t->check_voronoi_partition: asked to check a non local point or a wall.");
 
-        voro[local_idx].get_Points(pts);
+        voro[local_idx].get_neighbor_seeds(pts);
         bool ok = false;
         for(unsigned int k=0; k<pts->size(); ++k)
         {
@@ -2242,7 +2249,7 @@ void my_p4est_poisson_jump_voronoi_block_t::check_voronoi_partition() const
 
         if(ok==false)
         {
-          std::cout << p4est->mpirank << " found bad ghost voronoi cell for point # " << local_idx << " : " << ghost_idx << ", \t Centerd on : " << voro[local_idx].get_Center_Point();
+          std::cout << p4est->mpirank << " found bad ghost voronoi cell for point # " << local_idx << " : " << ghost_idx << ", \t Centerd on : " << voro[local_idx].get_center_point();
           nb_bad++;
         }
     }
