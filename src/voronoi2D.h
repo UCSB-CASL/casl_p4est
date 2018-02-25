@@ -27,11 +27,21 @@ struct ngbd2Dseed
      */
   double theta;
 
+  /*!
+   * \brief the distance from this neighbor Voronoi seed to the cell center seed
+   */
+  double dist;
+
   void operator=(ngbd2Dseed v)
   {
-    n = v.n; p = v.p; theta = v.theta;
+    n = v.n; p = v.p; theta = v.theta; dist = v.dist;
+  }
+  inline bool operator<(const ngbd2Dseed& v) const
+  {
+    return (((this->theta <= 2.0*PI) && (this->theta >=0.0) && (v.theta <= 2.0*PI) && (v.theta >=0.0) && (fabs(this->theta - v.theta) > 2.0*PI*EPS))? (this->theta < v.theta):(this->dist < v.dist));
   }
 };
+
 
 /*!
  * \brief The Voronoi2D class construct a Voronoi partition for a point given its surrounding points.
@@ -52,6 +62,8 @@ public:
      * \brief default constructor for the Voronoi2D class
      */
   Voronoi2D() { center_seed.x=DBL_MAX; center_seed.y=DBL_MAX; }
+
+//  bool comparison (ngbd2Dseed nb_left, ngbd2Dseed nb_right) {return (nb_left.dist < nb_right.dist);}
 
   /*!
      * \brief reset the voronoi partition

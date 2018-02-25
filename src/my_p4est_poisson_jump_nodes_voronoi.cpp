@@ -691,6 +691,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
   #ifdef P4_TO_P8
         double qz = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
   #endif
+
         /* add the newly created Voronoi seed to the appropriate entry in grid2voro, i.e. the entry corresponding
          * to the closest vertex of the quad owning the Voronoi seed. */
         p4est_locidx_t node = -1;
@@ -945,26 +946,26 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int se
   std::vector<p4est_quadrant_t> nb_quads;
 
   /* if exactly on a grid node */
-  if( (fabs(xyz[0]-(qx-qh[0]/2))<qh[0]*EPS || fabs(xyz[0]-(qx+qh[0]/2))<qh[0]*EPS)
-      && (fabs(xyz[1]-(qy-qh[1]/2))<qh[1]*EPS || fabs(xyz[1]-(qy+qh[1]/2))<qh[1]*EPS)
+  if( (fabs(xyz[0]-(qx-qh[0]/2))<(xyz_max[0] - xyz_min[0])*EPS || fabs(xyz[0]-(qx+qh[0]/2))<(xyz_max[0] - xyz_min[0])*EPS)
+      && (fabs(xyz[1]-(qy-qh[1]/2))<(xyz_max[1] - xyz_min[1])*EPS || fabs(xyz[1]-(qy+qh[1]/2))<(xyz_max[1] - xyz_min[1])*EPS)
     #ifdef P4_TO_P8
-      && (fabs(xyz[2]-(qz-qh[2]/2))<qh[2]*EPS || fabs(xyz[2]-(qz+qh[2]/2))<qh[2]*EPS)
+      && (fabs(xyz[2]-(qz-qh[2]/2))<(xyz_max[2] - xyz_min[2])*EPS || fabs(xyz[2]-(qz+qh[2]/2))<(xyz_max[2] - xyz_min[2])*EPS)
     #endif
       )
   {
     // find that grid node
 #ifdef P4_TO_P8
-    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<qh[0]*EPS ?
-          (fabs(xyz[1]-(qy-qh[1]/2))<qh[1]*EPS ?
-            (fabs(xyz[2]-(qz-qh[2]/2))<qh[2]*EPS ? dir::v_mmm : dir::v_mmp)
-        : (fabs(xyz[2]-(qz-qh[2]/2))<qh[2]*EPS ? dir::v_mpm : dir::v_mpp) )
-        : (fabs(xyz[1]-(qy-qh[1]/2))<qh[1]*EPS ?
-        (fabs(xyz[2]-(qz-qh[2]/2))<qh[2]*EPS ? dir::v_pmm : dir::v_pmp)
-        : (fabs(xyz[2]-(qz-qh[2]/2))<qh[2]*EPS ? dir::v_ppm : dir::v_ppp) ) );
+    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<(xyz_max[0] - xyz_min[0])*EPS ?
+          (fabs(xyz[1]-(qy-qh[1]/2))<(xyz_max[1] - xyz_min[1])*EPS ?
+            (fabs(xyz[2]-(qz-qh[2]/2))<(xyz_max[2] - xyz_min[2])*EPS ? dir::v_mmm : dir::v_mmp)
+        : (fabs(xyz[2]-(qz-qh[2]/2))<(xyz_max[2] - xyz_min[2])*EPS ? dir::v_mpm : dir::v_mpp) )
+        : (fabs(xyz[1]-(qy-qh[1]/2))<(xyz_max[1] - xyz_min[1])*EPS ?
+        (fabs(xyz[2]-(qz-qh[2]/2))<(xyz_max[2] - xyz_min[2])*EPS ? dir::v_pmm : dir::v_pmp)
+        : (fabs(xyz[2]-(qz-qh[2]/2))<(xyz_max[2] - xyz_min[2])*EPS ? dir::v_ppm : dir::v_ppp) ) );
 #else
-    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<qh[0]*EPS ?
-          (fabs(xyz[1]-(qy-qh[1]/2))<qh[1]*EPS ? dir::v_mmm : dir::v_mpm)
-        : (fabs(xyz[1]-(qy-qh[1]/2))<qh[1]*EPS ? dir::v_pmm : dir::v_ppm) );
+    int dir = (fabs(xyz[0]-(qx-qh[0]/2))<(xyz_max[0] - xyz_min[0])*EPS ?
+          (fabs(xyz[1]-(qy-qh[1]/2))<(xyz_max[1] - xyz_min[1])*EPS ? dir::v_mmm : dir::v_mpm)
+        : (fabs(xyz[1]-(qy-qh[1]/2))<(xyz_max[1] - xyz_min[1])*EPS ? dir::v_pmm : dir::v_ppm) );
 #endif
     p4est_locidx_t node = nodes->local_nodes[P4EST_CHILDREN*owner_quad_idx + dir];
 
@@ -2112,7 +2113,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::check_voronoi_partition() const
 
       if(ok==false)
       {
-        std::cout << p4est->mpirank << " found bad ghost voronoi cell for point # " << local_idx << " : " << ghost_idx << ", \t Centerd on : " << voro[local_idx].get_center_point();
+        std::cout << p4est->mpirank << " found bad ghost voronoi cell for point # " << local_idx << " : " << ghost_idx << ", \t Centered on : " << voro[local_idx].get_center_point();
         nb_bad++;
       }
     }

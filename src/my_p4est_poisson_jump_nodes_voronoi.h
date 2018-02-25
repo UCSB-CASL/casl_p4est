@@ -338,6 +338,10 @@ public:
    * of the voronoi seed of interest, the voronoi seeds pointed by the grid2voro[v] array are
    * added as potential candidates for neighbor Voronoi seeds of the Voronoi cell to be constructed.
    * The Voronoi cell is then constructed correspondingly.
+   * [Raphael's note: shouldn't the second case be an overlap of the P4EST_CHILDREN first case
+   * scenarii where the node of interest is one of the P4EST_CHILDREN vertices in the owner cell?
+   * That would ensure geomertical consistency and avoid ill-behaved problems when points are very
+   * close to vertices or numerically considered as non-vertices]
    */
 #ifdef P4_TO_P8
   void compute_voronoi_cell(unsigned int seed_idx, Voronoi3D &voro) const;

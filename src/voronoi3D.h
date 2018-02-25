@@ -50,7 +50,7 @@ struct ngbd3Dseed
   {
     n = v.n; p = v.p; s=v.s; dist = v.dist;
   }
-  inline bool operator <(const ngbd3Dseed& v) const
+  inline bool operator<(const ngbd3Dseed& v) const
   {
     return (this->dist < v.dist);
   }

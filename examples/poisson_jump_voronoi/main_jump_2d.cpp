@@ -92,7 +92,7 @@ domain omega = centered_ones;
  */
 int level_set_type = 0;
 
-int test_number = 6;
+int test_number = 0;
 /*
  *  ********* 2D *********
  * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1, diag_add=0
@@ -217,7 +217,7 @@ class MU_P: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch(.coord.)
+    switch(test_number)
     {
     case 0:
       return 1;
@@ -1147,9 +1147,12 @@ int main (int argc, char* argv[])
     err_nm1 = err_n;
     err_n = 0;
     double x_err=-1, y_err=-1;
+    double domain_diag = SQR(omega.xmax - omega.xmin) + SQR(omega.ymax - omega.ymin);
 #ifdef P4_TO_P8
     double z_err=-1;
+    domain_diag += SQR(omega.zmax - omega.zmin);
 #endif
+    domain_diag = sqrt(domain_diag);
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     {
       double x = node_x_fr_n(n, p4est, nodes);
@@ -1157,10 +1160,12 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
       double z = node_z_fr_n(n, p4est, nodes);
       err_p[n] = fabs(u_exact(x,y,z) - sol_p[n]);
+      double level_set_value = level_set(x, y, z);
 #else
       err_p[n] = fabs(u_exact(x,y) - sol_p[n]);
+      double level_set_value = level_set(x, y);
 #endif
-      if(err_p[n]>err_n)
+      if((err_p[n]>err_n) && (fabs(level_set_value) > EPS*domain_diag))
       {
         x_err = x;
         y_err = y;
