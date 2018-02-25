@@ -37,20 +37,7 @@ void Voronoi3D::set_center_point( int idx_center_seed_, Point3 &center_seed_ )
 void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max, const bool *periodic)
 {
   // sort the neighbor seeds by increasing distance first (behaves much better in voro++)
-  std::cout << "TEST" << std::endl;
-  std::cout << "Before sorting " << std::endl;
-  for (size_t kkk = 0; kkk < nb_seeds.size(); ++kkk)
-    std::cout << "nb_seeds[" << kkk << "].dist = " << nb_seeds[kkk].dist << std::endl;
-
-
   sort(nb_seeds.begin(), nb_seeds.end());
-
-
-  std::cout << "After sorting " << std::endl;
-  for (size_t kkk = 0; kkk < nb_seeds.size(); ++kkk)
-    std::cout << "nb_seeds[" << kkk << "].dist = " << nb_seeds[kkk].dist << std::endl;
-  std::cout << "END OF TEST" << std::endl;
-
 
   // get the scaling factor
   const double min_dist = nb_seeds[0].dist;

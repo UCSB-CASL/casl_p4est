@@ -178,18 +178,18 @@ void Voronoi2D::construct_partition()
   // center the seed to (0.0, 0.0)
   Point2 center_seed_saved = center_seed; center_seed.x = 0.0; center_seed.y = 0.0;
   double angle;
-  for (size_t kkk = 0; kkk < nb_seeds.size(); ++kkk) {
-    nb_seeds[kkk].p     = (nb_seeds[kkk].p - center_seed_saved)/scaling_length;
-    nb_seeds[kkk].dist  /= scaling_length;
-    if(kkk == 0)
+  for (size_t m = 0; m < nb_seeds.size(); ++m) {
+    nb_seeds[m].p     = (nb_seeds[m].p - center_seed_saved)/scaling_length;
+    nb_seeds[m].dist  /= scaling_length;
+    if(m == 0)
       angle = 0.0;
     else
     {
-      angle = acos(MAX(-1., MIN(1., (nb_seeds[0].p).dot(nb_seeds[kkk].p)/(closest_distance*(nb_seeds[kkk].p).norm_L2()))));
-      if((nb_seeds[0].p).cross(nb_seeds[kkk].p) < 0.0)
+      angle = acos(MAX(-1., MIN(1., (nb_seeds[0].p).dot(nb_seeds[m].p)/(closest_distance*(nb_seeds[m].p).norm_L2()))));
+      if((nb_seeds[0].p).cross(nb_seeds[m].p) < 0.0)
         angle = 2.0*PI - angle;
     }
-    nb_seeds[kkk].theta = angle;
+    nb_seeds[m].theta = angle;
   }
 
   // sort the list with increasing theta angles
@@ -201,9 +201,9 @@ void Voronoi2D::construct_partition()
   // construct the vertices of the voronoi partition
   vector<double> theta_vertices(nb_seeds.size());
   partition.resize(nb_seeds.size());
-  for(unsigned int m=0; m<nb_seeds.size(); ++m)
+  for(size_t m=0; m<nb_seeds.size(); ++m)
   {
-    unsigned int k = mod(m+1, nb_seeds.size());
+    size_t k = mod(m+1, nb_seeds.size());
     // find unit director vector of bisector planes m or k by (normed) cross
     // product between e_z and nb_seeds[m].p or nb_seeds[k].p, where e_z it the
     // out-of-plane unit vector
@@ -253,10 +253,10 @@ void Voronoi2D::construct_partition()
 
   P4EST_ASSERT(partition.size() == nb_seeds.size());
   center_seed = center_seed_saved;
-  for (size_t kkk = 0; kkk < partition.size(); ++kkk) {
-    nb_seeds[kkk].p     = center_seed + (nb_seeds[kkk].p)*scaling_length;
-    nb_seeds[kkk].dist  *= scaling_length;
-    partition[kkk]      = center_seed + (partition[kkk])*scaling_length;
+  for (size_t m = 0; m < partition.size(); ++m) {
+    nb_seeds[m].p     = center_seed + (nb_seeds[m].p)*scaling_length;
+    nb_seeds[m].dist  *= scaling_length;
+    partition[m]      = center_seed + (partition[m])*scaling_length;
   }
 
   compute_volume();
