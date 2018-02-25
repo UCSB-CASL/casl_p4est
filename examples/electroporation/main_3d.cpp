@@ -63,15 +63,15 @@ using namespace std;
 
 
 
-int test = 2;
+int test = 9; //dynamic linear case=2, dynamic nonlinear case=4, static linear case=1
 
-double cellDensity = 0.045;   // only if test = 8 || 9, maximum possible density is 0.045
-double half_period = 1;//5e-7;  // frequency = 1/(2*half_period) : 5e-7 [s] = 10 [MHz]
-double boxSide = 1;      // only if test = 8
-double alpha = 1e-3;        // this is the scaling factor
+double cellDensity = 0.5;   // only if test = 8 || 9, maximum possible density is 0.045
+
+double boxSide = 1e-3;      // only if test = 8
+double alpha = 1;        // this is the scaling factor 1e-3
 
 
-double frequency = 1/(2*half_period)/1e6;
+double omega = 1e9;  //w= 1 GHz angular frecuency
 /* 0 or 1 */
 int implicit = 0;
 /* order 1, 2 or 3. If choosing 3, implicit only */
@@ -90,6 +90,8 @@ double c = test<5 ? r0 : (test==5 ? r0/ellipse : r0*ellipse);
 
 
 double boxVolume = boxSide*boxSide*boxSide;
+double ClusterRadius = 0.49*boxSide;
+double SphereVolume = 4*PI*(ClusterRadius*ClusterRadius*ClusterRadius)/3;
 double coeff = 1.;
 double cellVolume = 4*PI*(coeff*r0)*(coeff*r0)*(coeff*r0)/3;
 // 30 is the safety coefficient to avoid too-close cells corresponding to a minimum radius of ~3*r0
@@ -97,11 +99,11 @@ double cellVolume = 4*PI*(coeff*r0)*(coeff*r0)*(coeff*r0)/3;
 
 
 /* number of cells in x and y dimensions */
-int x_cells = 1;
-int y_cells = 1;
-int z_cells = 1;
+int x_cells = 4;
+int y_cells = 4;
+int z_cells = 4;
 /* number of random cells */
-int nb_cells = test==7 ? 1 : ((test==8 || test==9) ? int (cellDensity*boxVolume/cellVolume) : x_cells*y_cells*z_cells);
+int nb_cells = test==7 ? 64 : ((test==8 || test==9) ? int (cellDensity*SphereVolume/cellVolume) : x_cells*y_cells*z_cells);
 /* number of cells in x and y dimensions */
 
 
@@ -116,20 +118,20 @@ double zmaxx = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0
 
 
 
-
+int axial_nb = boxSide/r0;
+int lmax_thr = (int)log2(axial_nb)+2;
 int lmin = 2;
-int lmax = 6;
+int lmax = MAX(lmax_thr, 7);
 int nb_splits = 1;
 
-double dt_scale = 400;
+double dt_scale = 40000;
 
 double tn;
-double tf = 5.e-6;
+double tf = 1.e-6;
 double dt; // = 20e-9;
 
-double E_unscaled = 40*alpha; /* kv */
-double E = E_unscaled * 1e3 * (zmaxx-zminn);
-//double E = 40e3 * (xmax-xmin);
+double E_unscaled = 40; /* kv/m */
+double E = E_unscaled * 1e3 * ((zmaxx-zminn)*alpha)*alpha;  // this is the potential difference in SI units!
 
 double sigma_c = 1;
 double sigma_e = 15;
@@ -241,7 +243,7 @@ public:
                 bool far_enough = true;
                 for(int ii=0;ii<v.size();++ii){
                     double mindist = sqrt(SQR(p[0]-v[ii][0])+ SQR(p[1]-v[ii][1])+SQR(p[2]-v[ii][2]));
-                    if(mindist<3*r0){
+                    if(mindist<1.5*r0){
                         far_enough = false;
                         break;
 
@@ -273,7 +275,7 @@ public:
                 cellVolumes += 4*PI*radii[n]*radii[n]*radii[n]/3;
             }
 
-            density = cellVolumes/boxVolume;
+            density = cellVolumes/SphereVolume;
             printf( "Done initializing random cells. The Cell volume density is = %g\n", density);
             fflush(stdout);
 
@@ -302,7 +304,7 @@ public:
                     for(int k=0; k<z_cells; ++k)
                         d = MIN(d, sqrt(SQR(x-(xmin+i*4*r0+2*r0)) + SQR(y-(ymin+j*4*r0+2*r0)) + SQR(z-(zminn+k*4*r0+2*r0))) - r0);
             return d;
-        case 4:
+        case 4: return sqrt(SQR(x) + SQR(y) + SQR(z)) - R1;
         case 5:
         case 6:
             for(int i=0; i<x_cells; ++i)
@@ -429,11 +431,13 @@ double u_exact(double x, double y, double z, double t, bool phi_is_pos)
 //PAM: square pulse to be asked from Clair
 double pulse(double tn)
 {
-    int cycle = int(tn/half_period);
-    if(cycle%2 == 0)
-        return E;
-    else
-        return -E;
+
+    return E*cos(omega*tn);
+//    int cycle = int(tn/half_period);
+//    if(cycle%2 == 0)
+//        return E;
+//    else
+//        return -E;
 }
 
 // rescale later!
@@ -458,7 +462,7 @@ double v_exact(double x, double y, double z, double t)
         double A = 3*sigma_c*sigma_e*R2*R2*K;
         double B = -sigma_c*sigma_e*(R1*R1 + 2*R2*R2*R2/R1)*K;
 
-        return A/(SL-B)*g*(1-exp((B-SL)/Cm*t))*cos(theta);
+        return A/(SL-B)*g*(1-exp((B-SL)*t/Cm))*cos(theta);
     }
     else
         return 0;
@@ -476,6 +480,9 @@ struct BCWALLTYPE : WallBC3D
             return DIRICHLET;
         case 3:
         case 4:
+            if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return DIRICHLET;
+            else                                   return NEUMANN;
+            //return DIRICHLET;
         case 5:
         case 6:
         case 7:
@@ -504,6 +511,9 @@ struct BCWALLVALUE : CF_3
             return u_exact(x,y,z,t+dt,true);
         case 3:
         case 4:
+            if(ABS(z-zminn)<EPS) return 0;
+            if(ABS(z-zmaxx)<EPS) return E;
+            return 0;
         case 5:
         case 6:
         case 7:
@@ -817,13 +827,13 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
 
 
-    my_p4est_interpolation_nodes_t interp_n(ngbd_n);
-    double xyz_np[3] = {0, 0, R1};
-    interp_n.add_point(0, xyz_np);
+    //my_p4est_interpolation_nodes_t interp_n(ngbd_n);
+    //double xyz_np[3] = {0, 0, R1};
+    //interp_n.add_point(0, xyz_np);
     double Sm_err = 0;
-    double convergence_Sm_old;
-    interp_n.set_input(Sm, linear);
-    interp_n.interpolate(&convergence_Sm_old);
+    //double convergence_Sm_old;
+   // interp_n.set_input(Sm, linear);
+    //interp_n.interpolate(&convergence_Sm_old);
 
 
     convergence_Sm = 0;
@@ -1108,6 +1118,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
             ierr = VecGhostRestoreLocalForm(X1, &l); CHKERRXX(ierr);
             Sm_err = 1e-4;
         } else {
+
             double *vn_n_p, *Sm_n_p, *X0_np1, *X1_np1,*X_0_v_p, *X_1_v_p;
             ierr = VecGetArray(Sm, &Sm_n_p); CHKERRXX(ierr);
             ierr = VecGetArray(vnp1, &vn_n_p); CHKERRXX(ierr);
@@ -1131,14 +1142,16 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
             ierr = VecRestoreArray(X_0_v, &X_0_v_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(X_1_v, &X_1_v_p); CHKERRXX(ierr);
             counter++;
-            interp_n.set_input(Sm, linear);
-            interp_n.interpolate(&convergence_Sm);
-            Sm_err = ABS(convergence_Sm - convergence_Sm_old)/convergence_Sm_old;
-            PetscPrintf(p4est->mpicomm, "relative error in Sm is %g, old value %g, new value %g\n", Sm_err, convergence_Sm_old, convergence_Sm);
-            convergence_Sm_old = convergence_Sm;
+           // interp_n.set_input(Sm, linear);
+           // interp_n.interpolate(&convergence_Sm);
+            //Sm_err = ABS(convergence_Sm - convergence_Sm_old)/convergence_Sm_old;
+            //PetscPrintf(p4est->mpicomm, "relative error in Sm is %g, old value %g, new value %g\n", Sm_err, convergence_Sm_old, convergence_Sm);
+            //convergence_Sm_old = convergence_Sm;
         }
 
-    }while(Sm_err>0.001);
+
+    }while(0 );//&& Sm_err>0.001);
+
 
     ierr = VecGhostGetLocalForm(X_0_v, &l); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(X0, &l0); CHKERRXX(ierr);
@@ -1321,6 +1334,7 @@ int main(int argc, char** argv) {
 
     // domain size information
     const int n_xyz []      = {2, 2, 2};
+    std::cout<<xmin<<std::endl;
     const double xyz_min [] = {xmin, ymin, zminn}; //{-1, -1, -1};
     const double xyz_max [] = {xmax, ymax, zmaxx}; //{ 1,  1,  1};
 
@@ -1540,7 +1554,7 @@ int main(int argc, char** argv) {
 #else
         dt = MIN(dx,dy)/dt_scale;
 #endif
-        dt=1e-08;
+        dt=MIN(dt,0.1/omega);//3.90625e-08;
         PetscPrintf(p4est->mpicomm, "Proceed with dt=%g, dx=%g, scaling %g \n", dt, dz,MIN(dx,dy,dz)/dt);
         while (tn<tf)
         {
@@ -1552,11 +1566,13 @@ int main(int argc, char** argv) {
 
 
             interp_n.set_input(vn, linear);
-            double xyz_np[3] = {0,0, R1}; //{0, 1.1*R1*cos(PI/4), 1.1*R1*sin(PI/4)};
+            double xyz_np[3] = {0, 1.*R1*cos(PI/4), 1.0*R1*sin(PI/4)};
             interp_n.add_point(0, xyz_np);
             double u_Npole = 0;
             interp_n.interpolate(&u_Npole);
             interp_n.clear();
+            double u_Npole_exact;
+            u_Npole_exact = v_exact(xyz_np[0], xyz_np[1], xyz_np[2], tn+dt);
 
             /* compute the error on the tree*/
             double *err_p, *sol_p,*Ephi_p, *EInt_p, *vn_p, *intensity_p;
@@ -1661,7 +1677,9 @@ int main(int argc, char** argv) {
 
             double impedance = integrate_over_interface(p4est, nodes, electrodes_phi, impedance_integrand);
             double PulseIntensity = integrate_over_interface(p4est, nodes, electrodes_phi, intensity);
-            PetscPrintf(p4est->mpicomm,"impedance= %g, Intensity= %g, desired TMP at %g (s)= %g (V) and the error is %g\n.", impedance, PulseIntensity, tn+dt, u_Npole, des_err);
+
+            double epsilon_r = (zmaxx-zminn)*(PulseIntensity/sigma_e)/((xmax-xmin)*(ymax-ymin))/pulse(tn);     //PAM: the relative permittivity (dispersive term! eps = "eps_r"*eps_0 - j*sigma/omega)
+            //PetscPrintf(p4est->mpicomm,"impedance= %g, Intensity= %g, desired TMP at %g (s)= %g (V) and the error is %g\n.", impedance, PulseIntensity, tn+dt, u_Npole, des_err);
 
 
 
@@ -1680,13 +1698,13 @@ int main(int argc, char** argv) {
                     {
                         if(iteration ==0){
                             FILE *f = fopen(out_path_Z, "w");
-                            fprintf(f, "time [s], \t impedance [Ohm], \t north pole TMP \t Pulse Intensity (V)  \t error \t frequency [MHz] %g\n", frequency);
-                            fprintf(f, "%g \t %g \t %g \t  %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err);
+                            fprintf(f, "time [s], \t impedance [Ohm], \t north pole TMP \t Pulse Intensity (A)  \t error \t exact TMP \t relative permittivity \t Applied E(t) \t Omega [Hz] %g\n", omega);
+                            fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn));
                             fclose(f);
                         }
                         else{
                             FILE *f = fopen(out_path_Z, "a");
-                            fprintf(f, "%g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err);
+                            fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn));
                             fclose(f);
                         }
 
