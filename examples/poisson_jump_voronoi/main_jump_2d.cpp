@@ -49,8 +49,8 @@
 using namespace std;
 
 int lmin = 4;
-int lmax = 7;
-int nb_splits = 6;
+int lmax = 4;
+int nb_splits = 4;
 
 int nx = 1;
 int ny = 1;
@@ -92,10 +92,10 @@ domain omega = centered_ones;
  */
 int level_set_type = 0;
 
-int test_number = 0;
+int test_number = 5;
 /*
  *  ********* 2D *********
- * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1, diag_add=0
+ * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1
  * 1 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=mu_value, BC dirichlet
  * 2 - u_m=u_p=sin(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=mu_value, BC neumann
  * 3 - u_m=exp((x-0.5*(xmin+xmax))/(xmax-xmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*ln((x-0.5*(xmax+xmin))/(xmax-xmin)+2)+4, mu_p=exp(-(y-0.5*(ymin+ymax))/(ymax-ymin))   article example 4.4
@@ -110,20 +110,18 @@ int test_number = 0;
  *   fully periodic
  *
  *  ********* 3D *********
- * 0 - u_m=exp(z), u_p=cos(x)*sin(y), mu_m=mu_p
- * 1 - u_m=exp(z), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-z)   article example 4.6
- * 2 - u_m=u_p=cos(x)*sin(y)*exp(z), mu_m=mu_p, BC dirichlet
- * 3 - u_m=u_p=cos(x)*sin(y)*exp(z), mu_m=mu_p=exp(x)*ln(y+z+2), BC dirichlet
- * 4 - u_m=y*z*sin(x), u_p=x*y*y+z*z*z, mu_m=y*y+5, mu_p=exp(x+z)        article example 4.7
- * 5 - u_m=u_p=cos(x)*sin(y)*exp(z), mu_m=y*y+5, mu_p=exp(x+z)
+ * 0 - u_m=exp((z-zmin)/(xmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0
+ * 1 - u_m=exp((z-zmin)/(xmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax-xmin)+2)+4, mu_p=exp(-(z-zmin)/(zmax-zmin))   article example 4.6
+ * 2 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=1.45, BC dirichlet
+ * 3 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=exp((x-xmin)/(xmax-xmin))*ln((y-ymin)/(ymax-ymin)+(z-zmin)/(zmax-zmin)+2), BC dirichlet
+ * 4 - u_m=((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin)), u_p=((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))    article example 4.7
+ * 5 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))
  */
 
-double diag_add = 0;
-
 #ifdef P4_TO_P8
-double r0 = (double) MIN(omega.xmax-omega.xmin,omega.ymax-omega.ymin,omega.zmax-omega.zmin) / 4;
+double r0 = (double) MIN(omega.xmax-omega.xmin,omega.ymax-omega.ymin,omega.zmax-omega.zmin) / 4.0;
 #else
-double r0 = (double) MIN(omega.xmax-omega.xmin,omega.ymax-omega.ymin) / 4;
+double r0 = (double) MIN(omega.xmax-omega.xmin,omega.ymax-omega.ymin) / 4.0;
 #endif
 
 
@@ -197,15 +195,14 @@ public:
     case 0:
       return 1;
     case 1:
-      return SQR(y)*log(x+2)+4;
+      return SQR((y-omega.ymin)/(omega.ymax-omega.ymin))*log((x-omega.xmin)/(omega.xmax-omega.xmin)+2.0)+4.0;
     case 2:
       return 1.45;
     case 3:
-      return exp(x)*log(y+z+2);
+      return exp((x-omega.xmin)/(omega.xmax-omega.xmin))*log((y-omega.ymin)/(omega.ymax-omega.ymin)+(z-omega.zmin)/(omega.zmax-omega.zmin)+2.0);
     case 4:
-      return y*y+5;
     case 5:
-      return y*y+5;
+      return SQR((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))+5.0;
     default:
       throw std::invalid_argument("Choose a valid test.");
     }
@@ -220,17 +217,14 @@ public:
     switch(test_number)
     {
     case 0:
-      return 1;
-    case 1:
-      return exp(-z);
     case 2:
-      return 1.45;
     case 3:
-      return exp(x)*log(y+z+2);
+      return mu_m(x, y, z);
+    case 1:
+      return exp(-(z-omega.zmin)/(omega.zmax - omega.zmin));
     case 4:
-      return exp(x+z);
     case 5:
-      return exp(x+z);
+      return exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin)+(z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
     default:
       throw std::invalid_argument("Choose a valid test.");
     }
@@ -242,17 +236,14 @@ double u_m(double x, double y, double z)
   switch(test_number)
   {
   case 0:
-    return exp(z);
   case 1:
-    return exp(z);
+    return exp((z-omega.zmin)/(omega.zmax - omega.zmin));
   case 2:
-    return cos(x)*sin(y)*exp(z);
   case 3:
-    return cos(x)*sin(y)*exp(z);
-  case 4:
-    return y*z*sin(x);
   case 5:
-    return cos(x)*sin(y)*exp(z);
+    return cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
+  case 4:
+    return ((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))*sin(x/(omega.xmax-omega.xmin));
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
@@ -263,17 +254,14 @@ double u_p(double x, double y, double z)
   switch(test_number)
   {
   case 0:
-    return cos(x)*sin(y);
   case 1:
-    return cos(x)*sin(y);
+    return cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax - omega.ymin));
   case 2:
-    return cos(x)*sin(y)*exp(z);
   case 3:
-    return cos(x)*sin(y)*exp(z);
-  case 4:
-    return x*y*y + z*z*z;
   case 5:
-    return cos(x)*sin(y)*exp(z);
+    return u_m(x,y,z);
+  case 4:
+    return ((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin))*SQR((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))+pow((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin), 3.0);
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
@@ -302,32 +290,24 @@ double grad_u_m(double x, double y, double z)
   case 0:
     ux = 0;
     uy = 0;
-    uz = exp(z);
+    uz = exp((z-omega.zmin)/(omega.zmax - omega.zmin))*(1.0/(omega.zmax - omega.zmin));
     break;
   case 1:
     ux = 0;
     uy = 0;
-    uz = exp(z);
+    uz = exp((z-omega.zmin)/(omega.zmax - omega.zmin))*(1.0/(omega.zmax - omega.zmin));
     break;
   case 2:
-    ux = -sin(x)*sin(y)*exp(z);
-    uy =  cos(x)*cos(y)*exp(z);
-    uz =  cos(x)*sin(y)*exp(z);
-    break;
   case 3:
-    ux = -sin(x)*sin(y)*exp(z);
-    uy =  cos(x)*cos(y)*exp(z);
-    uz =  cos(x)*sin(y)*exp(z);
+  case 5:
+    ux = -(1.0/(omega.xmax-omega.xmin))*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
+    uy =  (1.0/(omega.ymax-omega.ymin))*cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
+    uz =  (1.0/(omega.zmax-omega.zmin))*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
     break;
   case 4:
-    ux = y*z*cos(x);
-    uy = z*sin(x);
-    uz = y*sin(x);
-    break;
-  case 5:
-    ux = -sin(x)*sin(y)*exp(z);
-    uy =  cos(x)*cos(y)*exp(z);
-    uz =  cos(x)*sin(y)*exp(z);
+    ux = (1.0/(omega.xmax-omega.xmin))*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))*cos(x/(omega.xmax-omega.xmin));
+    uy = (1.0/(omega.ymax-omega.ymin))*((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))*sin(x/(omega.xmax-omega.xmin));
+    uz = (1.0/(omega.zmax-omega.zmin))*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*sin(x/(omega.xmax-omega.xmin));
     break;
   default:
     throw std::invalid_argument("Choose a valid test.");
@@ -346,34 +326,23 @@ double grad_u_p(double x, double y, double z)
   switch(test_number)
   {
   case 0:
-    ux = -sin(x)*sin(y);
-    uy =  cos(x)*cos(y);
+    ux = -sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.xmax - omega.xmin))*(1.0/(omega.xmax - omega.xmin));
+    uy =  cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.xmax - omega.xmin))*(1.0/(omega.ymax - omega.ymin));
     uz = 0;
     break;
   case 1:
-    ux = -sin(x)*sin(y);
-    uy =  cos(x)*cos(y);
+    ux = -sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.xmax - omega.xmin))*(1.0/(omega.xmax - omega.xmin));
+    uy =  cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.xmax - omega.xmin))*(1.0/(omega.ymax - omega.ymin));
     uz = 0;
     break;
   case 2:
-    ux = -sin(x)*sin(y)*exp(z);
-    uy =  cos(x)*cos(y)*exp(z);
-    uz =  cos(x)*sin(y)*exp(z);
-    break;
   case 3:
-    ux = -sin(x)*sin(y)*exp(z);
-    uy =  cos(x)*cos(y)*exp(z);
-    uz =  cos(x)*sin(y)*exp(z);
-    break;
-  case 4:
-    ux = y*y;
-    uy = 2*x*y;
-    uz = 3*z*z;
-    break;
   case 5:
-    ux = -sin(x)*sin(y)*exp(z);
-    uy =  cos(x)*cos(y)*exp(z);
-    uz =  cos(x)*sin(y)*exp(z);
+    return grad_u_m(x,y,z);
+  case 4:
+    ux = (1.0/(omega.xmax-omega.xmin))*SQR((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
+    uy = (2.0/(omega.ymax-omega.ymin))*((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin))*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
+    uz = (3.0/(omega.zmax-omega.zmin))*SQR((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
     break;
   default:
     throw std::invalid_argument("Choose a valid test.");
@@ -863,28 +832,32 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     switch(test_number)
     {
     case 0:
-      rhs_m_p[n] = -exp(z);
-      rhs_p_p[n] = 2*cos(x)*sin(y);
-      break;
     case 1:
-      rhs_m_p[n] = -exp(z)*(y*y*log(x+2)+4);
-      rhs_p_p[n] = exp(-z)*2*cos(x)*sin(y);
+      rhs_m_p[n] = -mu_m(x,y,z)*exp((z-omega.zmin)/(omega.zmax - omega.zmin))*SQR(1.0/(omega.zmax-omega.zmin));
+      rhs_p_p[n] = mu_p(x,y,z)*cos(x/(omega.xmax - omega.xmin))*sin(y/(omega.ymax - omega.ymin))*(SQR(1.0/(omega.xmax-omega.xmin)) + SQR(1.0/(omega.ymax-omega.ymin)));
       break;
     case 2:
-      rhs_m_p[n] = (mu_m(x,y,z) + diag_add)*cos(x)*sin(y)*exp(z);
-      rhs_p_p[n] = (mu_p(x,y,z) + diag_add)*cos(x)*sin(y)*exp(z);
+      rhs_m_p[n] = mu_m(x,y,z)*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin))*(1.0/SQR(omega.xmax-omega.xmin)+1.0/SQR(omega.ymax-omega.ymin)-1.0/SQR(omega.zmax-omega.zmin));
+      rhs_p_p[n] = mu_p(x,y,z)*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin))*(1.0/SQR(omega.xmax-omega.xmin)+1.0/SQR(omega.ymax-omega.ymin)-1.0/SQR(omega.zmax-omega.zmin));
       break;
     case 3:
-      rhs_m_p[n] = exp(x+z)*(log(y+z+2)*sin(y)*(cos(x)+sin(x)) - cos(x)*(cos(y)+sin(y))/(y+z+2));
-      rhs_p_p[n] = exp(x+z)*(log(y+z+2)*sin(y)*(cos(x)+sin(x)) - cos(x)*(cos(y)+sin(y))/(y+z+2));
+      rhs_m_p[n] = rhs_p_p[n] =
+          + (1.0/SQR(omega.xmax-omega.xmin))*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin))*exp((x-omega.xmin)/(omega.xmax-omega.xmin))*log((y-omega.ymin)/(omega.ymax-omega.ymin)+(z-omega.zmin)/(omega.zmax-omega.zmin)+2.0)
+          - (1.0/SQR(omega.ymax-omega.ymin))*cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin))*exp((x-omega.xmin)/(omega.xmax-omega.xmin))*(1.0/((y-omega.ymin)/(omega.ymax-omega.ymin)+(z-omega.zmin)/(omega.zmax-omega.zmin)+2.0))
+          - (1.0/SQR(omega.zmax-omega.zmin))*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin))*exp((x-omega.xmin)/(omega.xmax-omega.xmin))*(1.0/((y-omega.ymin)/(omega.ymax-omega.ymin)+(z-omega.zmin)/(omega.zmax-omega.zmin)+2.0))
+          - mu_m(x,y,z)*u_m(x,y,z)*(-1.0/SQR(omega.xmax-omega.xmin)-1.0/SQR(omega.ymax-omega.ymin)+1.0/SQR(omega.zmax-omega.zmin));
       break;
     case 4:
-      rhs_m_p[n] = y*z*sin(x)*(y*y+3);
-      rhs_p_p[n] = -exp(x+z)*(y*y+2*x+3*z*(z+2));
+      rhs_m_p[n] = ((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))*sin(x/(omega.xmax-omega.xmin))*(mu_m(x,y,z)/SQR(omega.xmax-omega.xmin)-2.0/SQR(omega.ymax-omega.ymin));
+      rhs_p_p[n] = -exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin) + (z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))*(SQR((y-0.5*(omega.ymin+omega.ymax))/((omega.xmax-omega.xmin)*(omega.ymax-omega.ymin))) + 3.0*SQR((z-0.5*(omega.zmin+omega.zmax))/SQR(omega.zmax-omega.zmin)))
+          -mu_p(x,y,z)*(2.0*(x-0.5*(omega.xmin + omega.xmax))/((omega.xmax-omega.xmin)*SQR(omega.ymax-omega.ymin)) +6.0*(z-0.5*(omega.zmin+omega.zmax))/(pow(omega.zmax-omega.zmin, 3.0)));
       break;
     case 5:
-      rhs_m_p[n] = exp(z)*cos(x)*(sin(y)*(y*y+5) - 2*y*cos(y));
-      rhs_p_p[n] = exp(x+2*z)*sin(x)*sin(y);
+      rhs_m_p[n] = mu_m(x,y,z)*u_m(x,y,z)*(1.0/SQR(omega.xmax - omega.xmin) + 1.0/SQR(omega.ymax - omega.ymin) - 1.0/SQR(omega.zmax-omega.zmin))
+          - (2.0/SQR(omega.ymax - omega.ymin))*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax - omega.ymin))*cos(x/(omega.xmax - omega.xmin))*cos(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
+      rhs_p_p[n] = mu_p(x,y,z)*u_p(x,y,z)*(1.0/SQR(omega.xmax - omega.xmin) + 1.0/SQR(omega.ymax - omega.ymin) - 1.0/SQR(omega.zmax-omega.zmin))
+          +(1.0/SQR(omega.xmax-omega.xmin))*mu_p(x,y,z)*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin))
+          -(1.0/SQR(omega.zmax-omega.zmin))*mu_p(x,y,z)*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
       break;
     default:
       throw std::invalid_argument("Choose a valid test.");
@@ -897,12 +870,12 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
       rhs_p_p[n] = 0;
       break;
     case 1:
-      rhs_m_p[n] = (mu_m(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin)) + diag_add) * cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
-      rhs_p_p[n] = (mu_p(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin)) + diag_add) * cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      rhs_m_p[n] = mu_m(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin))*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      rhs_p_p[n] = mu_p(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin))*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
       break;
     case 2:
-      rhs_m_p[n] = (mu_m(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin)) + diag_add) * sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
-      rhs_p_p[n] = (mu_p(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin)) + diag_add) * sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      rhs_m_p[n] = mu_m(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin))*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      rhs_p_p[n] = mu_p(x,y)*(1.0/SQR(omega.xmax-omega.xmin) + 1.0/SQR(omega.ymax-omega.ymin))*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
       break;
     case 3:
       rhs_m_p[n] = -SQR((y-omega.ymin)/(omega.ymax-omega.ymin))*(1.0/(x-0.5*(omega.xmin+omega.xmax)+2.0*(omega.xmax-omega.xmin)))*(1.0/(omega.xmax-omega.xmin))*exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin)) - mu_m(x, y)*SQR(1.0/(omega.xmax-omega.xmin))*exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin));
@@ -1008,8 +981,11 @@ int main (int argc, char* argv[])
   cmd.add_option("check_partition", "1 to check if the voronoi partition is symmetric, 0 otherwise");
 #ifdef P4_TO_P8
   cmd.add_option("test", "choose a test.\n\
-                 0 - u_m=1+log(r/r0), u_p=1, mu=1\n\
-                 1 - u_m=exp(z), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-z)   article example 4.6");
+                 0 - u_m=exp((z-zmin)/(xmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0\n\
+                 1 - u_m=exp((z-zmin)/(xmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax-xmin)+2)+4, mu_p=exp(-(z-zmin)/(zmax-zmin)) article example 4.6 \n\
+                 2 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=1.45, BC dirichlet\n\
+                 3 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=exp((x-xmin)/(xmax-xmin))*ln((y-ymin)/(ymax-ymin)+(z-zmin)/(zmax-zmin)+2), BC dirichlet\n\
+                 4 - u_m=((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin)), u_p=((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(xmax-xmin))    article example 4.7");
 #else
   cmd.add_option("test", "choose a test.\n\
                   0 - u_m=1+log(r/r0), r = sqrt(SQR(x-0.5*(xmax+xmin)) + SQR(y-0.5*(ymax+ymin)))), r0 = MIN(xmax-xmin,ymax-ymin/4), u_p=1, mu_m=mu_p=1\n\
