@@ -52,7 +52,7 @@
 #include <src/voronoi3D.h>
 #include <src/my_p8est_level_set.h>
 #endif
-#include "nearpt3/nearpt3.cc"
+//#include "nearpt3/nearpt3.cc"
 #include <src/Parser.h>
 #include <src/math.h>
 
@@ -63,23 +63,20 @@ using namespace std;
 
 
 
-int test = 9; //dynamic linear case=2, dynamic nonlinear case=4, static linear case=1
+int test = 9; //dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random spheroid=9
 
-double cellDensity = 0.5;   // only if test = 8 || 9, maximum possible density is 0.045
+double cellDensity = 0.005;   // only if test = 8 || 9
 
 double boxSide = 1e-3;      // only if test = 8
-double alpha = 1;        // this is the scaling factor 1e-3
+double alpha = 1;        // this is the scaling factor 1e-3, don't use! set to 1.
 
 
-double omega = 1e9;  //w= 1 GHz angular frecuency
+double omega = 1;  //example: w= 1e9 = 1 GHz angular frequency
+double epsilon_0 = 8.85e-12; // farad/meter: permitivity in vacuum
 /* 0 or 1 */
 int implicit = 0;
 /* order 1, 2 or 3. If choosing 3, implicit only */
 int order = 1;
-
-
-// good jump: implicit=0, order=1  && good solution implicit=1, order=1
-
 
 /* cell radius */
 double r0 = test==5 ? 46e-6/alpha : (test==6 ? 53e-6/alpha : ((test==8 || test==9) ? 7e-6/alpha :50e-6/alpha));
@@ -104,7 +101,6 @@ int y_cells = 4;
 int z_cells = 4;
 /* number of random cells */
 int nb_cells = test==7 ? 64 : ((test==8 || test==9) ? int (cellDensity*SphereVolume/cellVolume) : x_cells*y_cells*z_cells);
-/* number of cells in x and y dimensions */
 
 
 double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ? -boxSide/2 : -4*x_cells*r0));
@@ -115,22 +111,18 @@ double zminn = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0
 double zmaxx = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ?  boxSide/2 :  4*z_cells*r0));
 
 
-
-
-
-int axial_nb = boxSide/r0;
-int lmax_thr = (int)log2(axial_nb)+2;
+int axial_nb = boxSide/r0/2;
+int lmax_thr = (int)log2(axial_nb)+1;
 int lmin = 2;
 int lmax = MAX(lmax_thr, 7);
 int nb_splits = 1;
 
-double dt_scale = 40000;
-
+double dt_scale = 200;
 double tn;
 double tf = 1.e-6;
-double dt; // = 20e-9;
+double dt;
 
-double E_unscaled = 40; /* kv/m */
+double E_unscaled = 40; /* applied electric field on the top electrode: kv/m */
 double E = E_unscaled * 1e3 * ((zmaxx-zminn)*alpha)*alpha;  // this is the potential difference in SI units!
 
 double sigma_c = 1;
@@ -272,7 +264,7 @@ public:
                 theta[n].x = PI*(double)rand()/RAND_MAX;
                 theta[n].y = PI*(double)rand()/RAND_MAX;
                 theta[n].z = PI*(double)rand()/RAND_MAX;
-                cellVolumes += 4*PI*radii[n]*radii[n]*radii[n]/3;
+                cellVolumes += 4*PI*radii[n]*radii[n]*radii[n]*ex[n].x*ex[n].y*ex[n].z/3;
             }
 
             density = cellVolumes/SphereVolume;
@@ -433,11 +425,11 @@ double pulse(double tn)
 {
 
     return E*cos(omega*tn);
-//    int cycle = int(tn/half_period);
-//    if(cycle%2 == 0)
-//        return E;
-//    else
-//        return -E;
+    //    int cycle = int(tn/half_period);
+    //    if(cycle%2 == 0)
+    //        return E;
+    //    else
+    //        return -E;
 }
 
 // rescale later!
@@ -522,11 +514,11 @@ struct BCWALLVALUE : CF_3
             return 0;
         case 8:
             if(ABS(z-zmaxx)<EPS) return  pulse(t);
-            if(ABS(z-zminn)<EPS) return -pulse(t);
+            if(ABS(z-zminn)<EPS) return 0;
             return 0;
         case 9:
             if(ABS(z-zmaxx)<EPS) return  pulse(t);
-            if(ABS(z-zminn)<EPS) return -pulse(t);
+            if(ABS(z-zminn)<EPS) return 0;
             return 0;
         default: throw std::invalid_argument("Choose a valid test.");
         }
@@ -832,7 +824,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     //interp_n.add_point(0, xyz_np);
     double Sm_err = 0;
     //double convergence_Sm_old;
-   // interp_n.set_input(Sm, linear);
+    // interp_n.set_input(Sm, linear);
     //interp_n.interpolate(&convergence_Sm_old);
 
 
@@ -938,7 +930,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
         VecGetArray(Sm, &Sm_p);
         for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
         {
-                vnp1_p[n] = (Cm*vn_p[n] + dt*(sigma_c*du_minus_cte_p[n] + sigma_e*du_plus_cte_p[n])/2.)/(Cm + dt*Sm_p[n]);
+            vnp1_p[n] = (Cm*vn_p[n] + dt*(sigma_c*du_minus_cte_p[n] + sigma_e*du_plus_cte_p[n])/2.)/(Cm + dt*Sm_p[n]);
         }
         VecRestoreArray(Sm, &Sm_p);
         VecRestoreArray(vn, &vn_p);
@@ -1142,8 +1134,8 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
             ierr = VecRestoreArray(X_0_v, &X_0_v_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(X_1_v, &X_1_v_p); CHKERRXX(ierr);
             counter++;
-           // interp_n.set_input(Sm, linear);
-           // interp_n.interpolate(&convergence_Sm);
+            // interp_n.set_input(Sm, linear);
+            // interp_n.interpolate(&convergence_Sm);
             //Sm_err = ABS(convergence_Sm - convergence_Sm_old)/convergence_Sm_old;
             //PetscPrintf(p4est->mpicomm, "relative error in Sm is %g, old value %g, new value %g\n", Sm_err, convergence_Sm_old, convergence_Sm);
             //convergence_Sm_old = convergence_Sm;
@@ -1323,8 +1315,6 @@ int main(int argc, char** argv) {
     w.start("Running example: electroporation");
 
 
-
-
     // p4est variables
     p4est_t*              p4est;
     p4est_nodes_t*        nodes;
@@ -1334,7 +1324,7 @@ int main(int argc, char** argv) {
 
     // domain size information
     const int n_xyz []      = {2, 2, 2};
-    std::cout<<xmin<<std::endl;
+    PetscPrintf(mpi.comm(), "xyz_max for Box dimensions are set to be xmax = %g \t ymax = %g \t zmax = %g\n", xmax, ymax, zmaxx);
     const double xyz_min [] = {xmin, ymin, zminn}; //{-1, -1, -1};
     const double xyz_max [] = {xmax, ymax, zmaxx}; //{ 1,  1,  1};
 
@@ -1364,10 +1354,10 @@ int main(int argc, char** argv) {
         p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
         my_p4est_partition(p4est, P4EST_TRUE, NULL);  //PAM
 
-        // create ghost layer at time nm1
+        // create ghost layer at time nm1: 2 layers to use Voronoi solver!
         ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
         my_p4est_ghost_expand(p4est, ghost);
-        //        my_p4est_ghost_expand(p4est, ghost);
+        my_p4est_ghost_expand(p4est, ghost);
         // create node structure at time nm1
         nodes = my_p4est_nodes_new(p4est, ghost);
 
@@ -1388,14 +1378,11 @@ int main(int argc, char** argv) {
 
         my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
         my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
-        // compute neighborhood information
 
+        /* compute neighborhood information */
         ngbd_n.init_neighbors();
 
-
-
         /* initialize the variables */
-
         Vec phi, X0, X1, Sm, vn;
         ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
         sample_cf_on_nodes(p4est, nodes, level_set, phi);
@@ -1477,7 +1464,7 @@ int main(int argc, char** argv) {
         double dz = (zmaxx-zminn) / pow(2.,(double) sp.max_lvl);
         //PetscPrintf(p4est->mpicomm, "3: xmin=%g, xmax=%g, ymin=%g, ymax=%g, zmin=%g, zmax=%g\n", xmin, xmax, ymin, ymax, zmin, zmax);
 #endif
-        double diag = sqrt(dx*dx + dy*dy + dz*dz);
+       double diag = sqrt(dx*dx + dy*dy + dz*dz);
 
 
 
@@ -1523,27 +1510,19 @@ int main(int argc, char** argv) {
         ierr = VecDuplicate(phi, &vn); CHKERRXX(ierr);
         sample_cf_on_nodes(p4est, nodes, initial_vn, vn);
 
-
-
-
-
         Vec vnm1, vnm2;
         ierr = VecDuplicate(phi, &vnm1); CHKERRXX(ierr);
         ierr = VecDuplicate(phi, &vnm2); CHKERRXX(ierr);
         sample_cf_on_nodes(p4est, nodes, initial_vnm1, vnm1);
         sample_cf_on_nodes(p4est, nodes, initial_vnm2, vnm2);
 
-
-
-
         Vec sol;
         Vec err;
         ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
         ierr = VecDuplicate(phi, &sol); CHKERRXX(ierr);
 
-        Vec electrodes_phi, impedance_integrand, intensity;
+        Vec electrodes_phi, intensity;
         ierr = VecDuplicate(phi, &electrodes_phi); CHKERRXX(ierr);
-        ierr = VecDuplicate(phi, &impedance_integrand); CHKERRXX(ierr);
         ierr = VecDuplicate(phi, &intensity); CHKERRXX(ierr);
         save_VTK(p4est, ghost, nodes, &brick, phi, sol, -1, X0, X1, Sm, vn, err);
         clock_t begin = clock();
@@ -1554,35 +1533,35 @@ int main(int argc, char** argv) {
 #else
         dt = MIN(dx,dy)/dt_scale;
 #endif
-        dt=MIN(dt,0.1/omega);//3.90625e-08;
+        dt=MIN(dt,0.1/omega);
         PetscPrintf(p4est->mpicomm, "Proceed with dt=%g, dx=%g, scaling %g \n", dt, dz,MIN(dx,dy,dz)/dt);
         while (tn<tf)
         {
+            PetscPrintf(mpi.comm(), "####################################################\n");
             ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
-            //start with number of iterations lmax=5:1, lmax=6:2, lmax=7:5 and increasing over time.
-            //for(int ii=0;ii<(int) pow(2, lmax-5)+1;++ii)
             ls.perturb_level_set_function(phi, EPS);
             solve_Poisson_Jump(p4est, nodes, &ngbd_n, &ngbd_c, phi, sol, dt, X0, X1, Sm, vn, ls,tn, vnm1, vnm2, grad_phi, diag);
 
-
-            interp_n.set_input(vn, linear);
-            double xyz_np[3] = {0, 1.*R1*cos(PI/4), 1.0*R1*sin(PI/4)};
-            interp_n.add_point(0, xyz_np);
+            double u_Npole_exact = 0;
             double u_Npole = 0;
-            interp_n.interpolate(&u_Npole);
-            interp_n.clear();
-            double u_Npole_exact;
-            u_Npole_exact = v_exact(xyz_np[0], xyz_np[1], xyz_np[2], tn+dt);
+            double xyz_np[3] = {0, 1.*R1*cos(PI/4), 1.0*R1*sin(PI/4)};
+            if(test==1 || test==2 || test==4)
+            {
+                interp_n.set_input(vn, linear);
+                interp_n.add_point(0, xyz_np);
+                interp_n.interpolate(&u_Npole);
+                interp_n.clear();
+                u_Npole_exact = v_exact(xyz_np[0], xyz_np[1], xyz_np[2], tn+dt);
+            }
 
             /* compute the error on the tree*/
-            double *err_p, *sol_p,*Ephi_p, *EInt_p, *vn_p, *intensity_p;
+            double *err_p, *sol_p,*Ephi_p, *intensity_p;
             ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
             ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
             ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
             ierr = VecGetArray(electrodes_phi, &Ephi_p); CHKERRXX(ierr);
-            ierr = VecGetArray(impedance_integrand, &EInt_p); CHKERRXX(ierr);
             ierr = VecGetArray(intensity, &intensity_p); CHKERRXX(ierr);
-            ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
+
             err_nm1 = err_n;
             err_n = 0;
 
@@ -1591,8 +1570,8 @@ int main(int argc, char** argv) {
                 double x = node_x_fr_n(n, p4est, nodes);
                 double y = node_y_fr_n(n, p4est, nodes);
                 double z = node_z_fr_n(n, p4est, nodes);
-                // a level-set just to represent the electrode surfaces for integration purposes
 
+                // a level-set just to represent the electrode surfaces for integration purposes
                 Ephi_p[n] = z - zmaxx + EPS; // only on the top surface.
                 // this is on both surfaces
                 /*if(z>0)
@@ -1613,41 +1592,16 @@ int main(int argc, char** argv) {
             MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
             ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-            PetscPrintf(p4est->mpicomm, "tests=1,2: Iter %d maximum error on solution: %g ORDER: %g\n", iteration, err_n, log(err_nm1/err_n)/log(2));
+            //PetscPrintf(p4est->mpicomm, "tests=1,2: Iter %d maximum error on solution: %g ORDER: %g\n", iteration, err_n, log(err_nm1/err_n)/log(2));
 
-            interp_n.set_input(err, linear);
-            interp_n.add_point(0, xyz_np);
             double des_err = 0;
-            interp_n.interpolate(&des_err);
-            interp_n.clear();
-
-
-
-            // computing the impedance vector
-            for(size_t i=0; i<ngbd_n.get_layer_size(); ++i)
+            if (test==1 || test==2 || test==4)
             {
-                p4est_locidx_t n = ngbd_n.get_layer_node(i);
-                quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
-                double normal_drv_potential = qnnn.dz_central(sol_p);
-                intensity_p[n] = sigma_e*normal_drv_potential;
-                if(normal_drv_potential>0)
-                    EInt_p[n] = sol_p[n]/normal_drv_potential;
-                else
-                    EInt_p[n] = 0;
+                interp_n.set_input(err, linear);
+                interp_n.add_point(0, xyz_np);
+                interp_n.interpolate(&des_err);
+                interp_n.clear();
             }
-            ierr = VecGhostUpdateBegin(impedance_integrand, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            for(size_t i=0; i<ngbd_n.get_local_size(); ++i)
-            {
-                p4est_locidx_t n = ngbd_n.get_local_node(i);
-                quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
-                double normal_drv_potential = qnnn.dz_central(sol_p);
-                intensity_p[n] = sigma_e*normal_drv_potential;
-                if(normal_drv_potential>0)
-                    EInt_p[n] = sol_p[n]/normal_drv_potential;
-                else
-                    EInt_p[n] = 0;
-            }
-            ierr = VecGhostUpdateEnd(impedance_integrand, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
             // Computing the intensity vector
             for(size_t i=0; i<ngbd_n.get_layer_size(); ++i)
@@ -1666,22 +1620,29 @@ int main(int argc, char** argv) {
                 intensity_p[n] = sigma_e*normal_drv_potential;
             }
             ierr = VecGhostUpdateEnd(intensity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-            ierr = VecRestoreArray(vn, &vn_p); CHKERRXX(ierr);
-
             ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
-
             ierr = VecRestoreArray(electrodes_phi, &Ephi_p); CHKERRXX(ierr);
-            ierr = VecRestoreArray(impedance_integrand, &EInt_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(intensity, &intensity_p); CHKERRXX(ierr);
 
-            double impedance = integrate_over_interface(p4est, nodes, electrodes_phi, impedance_integrand);
-            double PulseIntensity = integrate_over_interface(p4est, nodes, electrodes_phi, intensity);
 
-            double epsilon_r = (zmaxx-zminn)*(PulseIntensity/sigma_e)/((xmax-xmin)*(ymax-ymin))/pulse(tn);     //PAM: the relative permittivity (dispersive term! eps = "eps_r"*eps_0 - j*sigma/omega)
-            //PetscPrintf(p4est->mpicomm,"impedance= %g, Intensity= %g, desired TMP at %g (s)= %g (V) and the error is %g\n.", impedance, PulseIntensity, tn+dt, u_Npole, des_err);
+            // compute the important quantities: Pulse Intensity (A), impedance (Ohm), permitivity, conductivity
+            double avg_Voltage = integrate_over_interface(p4est, nodes, electrodes_phi, sol)/((xmax-xmin)*(ymax-ymin));            // V*m^2
+            double PulseIntensity = integrate_over_interface(p4est, nodes, electrodes_phi, intensity);   // current throughput (A): charge flux
+            double impedance = avg_Voltage/PulseIntensity;                                               // Impedance (Ohm)
 
+            double net_E = PulseIntensity/sigma_e;                                                       // E_net = epsilon_0*Q_top_plate = integral(E.dA) on top plate
+            double epsilon_r = 1;                                                                        // relative permitivity, real part
+            if(fabs(avg_Voltage)>EPS)
+            {
+                epsilon_r = fabs(net_E*(zmaxx-zminn)/((xmax-xmin)*(ymax-ymin)*avg_Voltage));     //PAM: the relative permittivity (dispersive term! eps = "eps_r"*eps_0 - j*sigma/omega)
+                if (epsilon_r<1)
+                    epsilon_r = 1;
+            }
+            double sigma_eff_Real, sigma_eff_Imaginary;
+            double shape_factor = (xmax - xmin)*(ymax - ymin)/(zmaxx - zminn);
 
+            sigma_eff_Real = 1/impedance/shape_factor;
+            sigma_eff_Imaginary = -epsilon_r*epsilon_0*omega;
 
             if(save_impedance){
                 char *out_dir = NULL;
@@ -1698,13 +1659,13 @@ int main(int argc, char** argv) {
                     {
                         if(iteration ==0){
                             FILE *f = fopen(out_path_Z, "w");
-                            fprintf(f, "time [s], \t impedance [Ohm], \t north pole TMP \t Pulse Intensity (A)  \t error \t exact TMP \t relative permittivity \t Applied E(t) \t Omega [Hz] %g\n", omega);
-                            fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn));
+                            fprintf(f, "time [s], \t impedance [Ohm], \t north pole TMP \t Pulse Intensity (A)  \t error \t exact TMP [V] \t relative permittivity \t Applied E(t) \t Re(sigma_eff) [S/m] \t Im(sigma_eff) [S/m] \t Omega [Hz] %g\n", omega);
+                            fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn), sigma_eff_Real, sigma_eff_Imaginary);
                             fclose(f);
                         }
                         else{
                             FILE *f = fopen(out_path_Z, "a");
-                            fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn));
+                            fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn), sigma_eff_Real, sigma_eff_Imaginary);
                             fclose(f);
                         }
 
