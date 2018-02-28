@@ -1140,7 +1140,7 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
         {
 #ifdef P4_TO_P8
           Point3 pm = voro_points[grid2voro[n_idx][m]];
-          voro.push(grid2voro[n_idx][m], pm.x, pm.y, pm.z);
+          voro.push(grid2voro[n_idx][m], pm.x, pm.y, pm.z, periodic, xyz_min, xyz_max);
 #else
           Point2 pm = voro_points[grid2voro[n_idx][m]];
           voro.push(grid2voro[n_idx][m], pm.x, pm.y, periodic, xyz_min, xyz_max);
@@ -1152,12 +1152,12 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
 
   /* add the walls */
 #ifdef P4_TO_P8
-  if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xmin)), pc.y, pc.z);
-  if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xmax-pc.x)), pc.y, pc.z);
-  if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX(EPS, 2*(pc.y-ymin)), pc.z);
-  if(is_quad_ypWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0p0, pc.x, pc.y+MAX(EPS, 2*(ymax-pc.y)), pc.z);
-  if(is_quad_zmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_00m, pc.x, pc.y, pc.z-MAX(EPS, 2*(pc.z-zmin)));
-  if(is_quad_zpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_00p, pc.x, pc.y, pc.z+MAX(EPS, 2*(zmax-pc.z)));
+  if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xmin)), pc.y, pc.z, periodic, xyz_min, xyz_max);
+  if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xmax-pc.x)), pc.y, pc.z, periodic, xyz_min, xyz_max);
+  if(is_quad_ymWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0m0, pc.x, pc.y-MAX(EPS, 2*(pc.y-ymin)), pc.z, periodic, xyz_min, xyz_max);
+  if(is_quad_ypWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_0p0, pc.x, pc.y+MAX(EPS, 2*(ymax-pc.y)), pc.z, periodic, xyz_min, xyz_max);
+  if(is_quad_zmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_00m, pc.x, pc.y, pc.z-MAX(EPS, 2*(pc.z-zmin)), periodic, xyz_min, xyz_max);
+  if(is_quad_zpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_00p, pc.x, pc.y, pc.z+MAX(EPS, 2*(zmax-pc.z)), periodic, xyz_min, xyz_max);
 #else
   if(is_quad_xmWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_m00, pc.x-MAX(EPS, 2*(pc.x-xmin)), pc.y, periodic, xyz_min, xyz_max );
   if(is_quad_xpWall(p4est, quad.p.piggy3.which_tree, &quad)) voro.push(WALL_p00, pc.x+MAX(EPS, 2*(xmax-pc.x)), pc.y, periodic, xyz_min, xyz_max );

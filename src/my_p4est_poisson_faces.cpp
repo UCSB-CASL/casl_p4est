@@ -727,7 +727,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
       if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
       {
 #ifdef P4_TO_P8
-        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
+        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir), periodic, xyz_min, xyz_max);
 #else
         voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), periodic, xyz_min, xyz_max);
 #endif
@@ -737,7 +737,7 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
       if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
       {
 #ifdef P4_TO_P8
-        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir));
+        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir), periodic, xyz_min, xyz_max);
 #else
         voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), periodic, xyz_min, xyz_max);
 #endif

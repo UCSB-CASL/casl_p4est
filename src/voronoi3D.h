@@ -112,9 +112,9 @@ public:
    * \param n the index of the point to add
    * \param pt coordinates of the candidate neighbor seed to add
    */
-  void push( int n, Point3 &pt);
+  void push( int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max);
   // overloading
-  void push( int n, double x, double y, double z) { Point3 tmp(x, y, z); push(n, tmp); }
+  void push( int n, double x, double y, double z, const bool* periodicity, const double* xyz_min, const double* xyz_max) { Point3 tmp(x, y, z); push(n, tmp, periodicity, xyz_min, xyz_max); }
 
   /*!
      * \brief construct the voronoi parition around point pc using the neighborhood given in nb_seeds

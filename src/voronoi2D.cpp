@@ -82,7 +82,7 @@ void Voronoi2D::push( int n, double x, double y, const bool* periodicity, const 
   p.dist  = (p.p - center_seed).norm_L2();
   p.theta = DBL_MAX;
   nb_seeds.push_back(p);
-  if(periodicity[0] || periodicity[1]) // some periodicity
+  if(periodicity[0] || periodicity[1]) // some periodicity ?
   {
     const double domain_diag = sqrt(SQR(xyz_max[0] - xyz_min[0]) + SQR(xyz_max[1] - xyz_min[1]));
     if(periodicity[0]) // x periodic

@@ -59,14 +59,12 @@ int nz = 1;
 bool save_vtk = false;
 bool save_voro = false;
 bool save_stats = false;
-bool check_partition = false;
+bool check_partition = true;
+//bool check_partition = false;
 
 const int wave_number = 1;
-#ifdef P4_TO_P8
-#else
 const double mu_value = 4.3;
 const double mu_ratio = 10.0;
-#endif
 
 struct domain{
   double xmin, xmax, ymin, ymax, zmin, zmax;
@@ -82,17 +80,17 @@ double big_value = 86463.6134;
 domain centered_big(-big_value, big_value, -big_value, big_value, -big_value, big_value);
 domain shifted(512.0, 512.0+24.0, -9.13, -9.13+24.0, 73.84, 73.84+24.0);
 
-domain omega = centered_ones;
+//domain omega = centered_ones;
 //domain omega = centered_tiny;
 //domain omega = centered_big;
-//domain omega = shifted;
+domain omega = shifted;
 
 /*
  * 0 - circle
  */
 int level_set_type = 0;
 
-int test_number = 5;
+int test_number = 6;
 /*
  *  ********* 2D *********
  * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1
@@ -104,10 +102,10 @@ int test_number = 5;
  *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin))
  *   - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin))
  *   - mu_p=mu_value
- *   BC periodic in x, dirichlet in y
+ *   - BC periodic in x, dirichlet in y
  * 6 - u_m=up=SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin)))*SQR(cos(2.0*PI*2.0*wave_number*(y-ymin)/(ymax-ymin)))
  *   - mu_m=mu_p/mu_ratio=mu_value
- *   fully periodic
+ *   - fully periodic
  *
  *  ********* 3D *********
  * 0 - u_m=exp((z-zmin)/(xmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0
@@ -116,6 +114,11 @@ int test_number = 5;
  * 3 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=exp((x-xmin)/(xmax-xmin))*ln((y-ymin)/(ymax-ymin)+(z-zmin)/(zmax-zmin)+2), BC dirichlet
  * 4 - u_m=((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin)), u_p=((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))    article example 4.7
  * 5 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))
+ * 6 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))))*(SQR((y-ymin)/(ymax-ymin))*atan(3.0*(z-0.5*(zmin+zmax))/(zmax-zmin))),
+ *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin))
+ *   - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin))
+ *   - mu_p=mu_value
+ *   - BC periodic in x, dirichlet in y, z
  */
 
 #ifdef P4_TO_P8
@@ -203,6 +206,8 @@ public:
     case 4:
     case 5:
       return SQR((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))+5.0;
+    case 6:
+      return (2.0 + 0.3*cos(2.0*PI*(x-omega.xmin)/(omega.xmax-omega.xmin)));
     default:
       throw std::invalid_argument("Choose a valid test.");
     }
@@ -225,6 +230,8 @@ public:
     case 4:
     case 5:
       return exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin)+(z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
+    case 6:
+      return mu_value;
     default:
       throw std::invalid_argument("Choose a valid test.");
     }
@@ -244,6 +251,8 @@ double u_m(double x, double y, double z)
     return cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
   case 4:
     return ((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))*sin(x/(omega.xmax-omega.xmin));
+  case 6:
+    return (exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*SQR((y-omega.ymin)/(omega.ymax-omega.ymin))*atan(3.0*(z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin)));
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
@@ -262,6 +271,8 @@ double u_p(double x, double y, double z)
     return u_m(x,y,z);
   case 4:
     return ((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin))*SQR((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))+pow((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin), 3.0);
+  case 6:
+    return (1.0 - pow((x - 0.5*(omega.xmin + omega.xmax))/(omega.xmax - omega.xmin), 3.0) - SQR((y - 0.5*(omega.ymin + omega.ymax))/(omega.ymax - omega.ymin)) + ((z - 0.5*(omega.zmin + omega.zmax))/(omega.zmax - omega.zmin)));
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
@@ -309,6 +320,11 @@ double grad_u_m(double x, double y, double z)
     uy = (1.0/(omega.ymax-omega.ymin))*((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))*sin(x/(omega.xmax-omega.xmin));
     uz = (1.0/(omega.zmax-omega.zmin))*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*sin(x/(omega.xmax-omega.xmin));
     break;
+  case 6:
+    ux = -(2.0*PI*((double) wave_number)/(omega.xmax - omega.xmin))*sin(2.0*2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))*u_m(x,y,z);
+    uy = (2.0/(omega.ymax-omega.ymin))*((y-omega.ymin)/(omega.ymax-omega.ymin))*exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*atan(3.0*(z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
+    uz = exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*SQR((y-omega.ymin)/(omega.ymax-omega.ymin))*(1.0/(1.0 + SQR(3.0*(z - 0.5*(omega.zmin + omega.zmax))/(omega.zmax - omega.zmin))))*(3.0/(omega.zmax - omega.zmin));
+    break;
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
@@ -343,6 +359,11 @@ double grad_u_p(double x, double y, double z)
     ux = (1.0/(omega.xmax-omega.xmin))*SQR((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
     uy = (2.0/(omega.ymax-omega.ymin))*((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin))*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
     uz = (3.0/(omega.zmax-omega.zmin))*SQR((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
+    break;
+  case 6:
+    ux = -3.0*SQR((x - 0.5*(omega.xmin + omega.xmax))/(omega.xmax - omega.xmin))*(1.0/(omega.xmax - omega.xmin));
+    uy = -2.0*((y - 0.5*(omega.ymin + omega.ymax))/(omega.ymax - omega.ymin))*(1.0/(omega.ymax - omega.ymin));
+    uz = +1.0/(omega.zmax - omega.zmin);
     break;
   default:
     throw std::invalid_argument("Choose a valid test.");
@@ -859,6 +880,13 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
           +(1.0/SQR(omega.xmax-omega.xmin))*mu_p(x,y,z)*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin))
           -(1.0/SQR(omega.zmax-omega.zmin))*mu_p(x,y,z)*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
       break;
+    case 6:
+      rhs_m_p[n] = -0.3*SQR(2.0*PI/(omega.xmax - omega.xmin))*((double) wave_number)*sin(2.0*PI*(x-omega.xmin)/(omega.xmax - omega.xmin))*sin(2.0*2.0*PI*wave_number*(x- omega.xmin)/(omega.xmax - omega.xmin))*u_m(x,y,z)
+          -mu_m(x,y,z)*u_m(x,y,z)*SQR(2.0*PI*((double) wave_number)/(omega.xmax - omega.xmin))*(SQR(sin(2.0*2.0*PI*wave_number*(x - omega.xmin)/(omega.xmax - omega.xmin))) - 2.0*cos(2.0*2.0*PI*wave_number*(x - omega.xmin)/(omega.xmax - omega.xmin)))
+          -mu_m(x,y,z)*2.0*SQR(1.0/(omega.ymax - omega.ymin))*exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*atan(3.0*(z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))
+          +mu_m(x,y,z)*SQR(3.0/(omega.zmax - omega.zmin))*2.0*(3.0*(z - 0.5*(omega.zmin + omega.zmax))/(omega.zmax-omega.zmin))*exp(-SQR(sin(2.0*PI*wave_number*(x-omega.xmin)/(omega.xmax-omega.xmin))))*SQR((y-omega.ymin)/(omega.ymax-omega.ymin))*(1.0/SQR(1.0 + SQR(3.0*(z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))));
+      rhs_p_p[n] = -mu_p(x,y,z)*(-6.0*SQR(1.0/(omega.xmax - omega.xmin))*((x - 0.5*(omega.xmin + omega.xmax))/(omega.xmax - omega.xmin)) - 2.0*SQR(1.0/(omega.ymax - omega.ymin)));
+      break;
     default:
       throw std::invalid_argument("Choose a valid test.");
     }
@@ -1037,7 +1065,15 @@ int main (int argc, char* argv[])
   const double xyz_max []  = {omega.xmax, omega.ymax, omega.zmax};
   int p_x, p_y, p_z;
 #ifdef P4_TO_P8
-  p_x=p_y=p_z=0;
+  switch (test_number) {
+  case 6:
+    p_x=1;
+    p_y=p_z=0;
+    break;
+  default:
+    p_x=p_y=p_z=0;
+    break;
+  }
 #else
   switch (test_number) {
   case 4:

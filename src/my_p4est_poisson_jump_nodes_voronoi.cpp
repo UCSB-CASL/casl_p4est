@@ -374,20 +374,40 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
     p4est_locidx_t n = ngbd_n->get_layer_node(l);
     p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
 
-    /* check if it is close to interface */
+    bool look_xm = true, look_xp = true, look_ym = true, look_yp = true;
 #ifdef P4_TO_P8
-    double p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p;
-    (*ngbd_n).get_neighbors(n).ngbd_with_quadratic_interpolation(phi_read_only_p, p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p);
-    if(p_000*p_m00<=0 || p_000*p_p00<=0 || p_000*p_0m0<=0 || p_000*p_0p0<=0 || p_000*p_00m<=0 || p_000*p_00p<=0)
-#else
-    double p_00, p_m0, p_p0, p_0m, p_0p;
-    (*ngbd_n).get_neighbors(n).ngbd_with_quadratic_interpolation(phi_read_only_p, p_00, p_m0, p_p0, p_0m, p_0p);
-    if(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0)
+    bool look_zm = true, look_zp = true;
 #endif
+    bool already_added = false;
+    if(is_node_Wall(p4est, node)) // we add the walls nodes, NO MATTER WHAT!
     {
-      if(is_node_Wall(p4est, node))
-        marked_nodes.push_back(n); // when the interface is close to the boundary, we add the node to the seeds as well
-
+      look_xm = !is_node_xmWall(p4est, node);
+      look_xp = !is_node_xpWall(p4est, node);
+      look_ym = !is_node_ymWall(p4est, node);
+      look_yp = !is_node_ypWall(p4est, node);
+#ifdef P4_TO_P8
+      look_zm = !is_node_zmWall(p4est, node);
+      look_zp = !is_node_zpWall(p4est, node);
+#endif
+      marked_nodes.push_back(n);
+      already_added = true;
+    }
+    /* Now, check if it is close to interface */
+    double p_000, p_m00, p_p00, p_0m0, p_0p0;
+#ifdef P4_TO_P8
+    double p_00m, p_00p;
+#endif
+    (*ngbd_n).get_neighbors(n).ngbd_with_quadratic_interpolation(phi_read_only_p, p_000, p_m00, p_p00, p_0m0, p_0p0
+                                                             #ifdef P4_TO_P8
+                                                                 , p_00m, p_00p
+                                                             #endif
+                                                                 );
+    if((look_xm && (p_000*p_m00<=0)) || (look_xp && (p_000*p_p00<=0)) || (look_ym && (p_000*p_0m0<=0)) || (look_yp && (p_000*p_0p0<=0))
+   #ifdef P4_TO_P8
+       || (look_zm && (p_000*p_00m<=0)) || (look_zp && (p_000*p_00p<=0))
+   #endif
+       )
+    {
       /* get the sharer processes, fill the buffers and initialize the future communications */
       size_t num_sharers = (size_t) node->pad8;
       sc_recycle_array_t *rec = (sc_recycle_array_t*)sc_array_index(&nodes->shared_indeps, num_sharers - 1);
@@ -431,18 +451,17 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         projected_point_n.z = zn-d*dp.z;
         projected_point_n.dz = dp.z;
 #endif
-
         // add the projected point to the buffers to be sent to all appropriate sharer processes
         for(size_t s=0; s<num_sharers; ++s)
           buff_shared_projected_points_send[sharers[s]].push_back(projected_point_n);
         // fill the self-communication recv buffer
         buff_shared_projected_points_recv[p4est->mpirank].push_back(projected_point_n);
       }
-      else // the projected point can't be calculated in a reliable way, the gradient is ill-defined (e.g. center of an under-resolved sphere)
+      else if(!already_added) // the projected point can't be calculated in a reliable way, the gradient is ill-defined (e.g. center of an under-resolved sphere)
         marked_nodes.push_back(n); // then, we add the grid node to the seeds as well
     }
-    else
-      marked_nodes.push_back(n); // the point is far from the interface so add it to the seeds
+    else if (!already_added)
+      marked_nodes.push_back(n); // the point is far from the interface so add it to the seeds, if not already done
   }
   /* add the grid nodes that are voronoi seeds (not close to the interface, or for some other reason) */
   /* layer nodes (marked here above) first */
@@ -479,18 +498,25 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
   }
   /* loop through local (inner) nodes, add the relevant ones to the voronoi seeds and mark the other ones */
   for (size_t l = 0; l < ngbd_n->get_local_size(); ++l) {
+    /* get the local node */
     p4est_locidx_t n = ngbd_n->get_local_node(l);
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+
+    bool look_xm = true, look_xp = true, look_ym = true, look_yp = true;
 #ifdef P4_TO_P8
-    double p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p;
-    (*ngbd_n).get_neighbors(n).ngbd_with_quadratic_interpolation(phi_read_only_p, p_000, p_m00, p_p00, p_0m0, p_0p0, p_00m, p_00p);
-    if(!(p_000*p_m00<=0 || p_000*p_p00<=0 || p_000*p_0m0<=0 || p_000*p_0p0<=0 || p_000*p_00m<=0 || p_000*p_00p<=0))
-#else
-    double p_00, p_m0, p_p0, p_0m, p_0p;
-    (*ngbd_n).get_neighbors(n).ngbd_with_quadratic_interpolation(phi_read_only_p, p_00, p_m0, p_p0, p_0m, p_0p);
-    if(!(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0))
+    bool look_zm = true, look_zp = true;
 #endif
+    bool already_added = false;
+    if(is_node_Wall(p4est, node)) // we add the walls nodes, NO MATTER WHAT!
     {
-      // not close to the interface, so add it to the seeds
+      look_xm = !is_node_xmWall(p4est, node);
+      look_xp = !is_node_xpWall(p4est, node);
+      look_ym = !is_node_ymWall(p4est, node);
+      look_yp = !is_node_ypWall(p4est, node);
+#ifdef P4_TO_P8
+      look_zm = !is_node_zmWall(p4est, node);
+      look_zp = !is_node_zpWall(p4est, node);
+#endif
       double xn = node_x_fr_n(n, p4est, nodes);
       double yn = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
@@ -501,32 +527,33 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #endif
       grid2voro[n].push_back(voro_seeds.size());
       voro_seeds.push_back(p);
+      already_added = true;
     }
-    else
-    {
-      // the grid node is close to the interface
-      if(is_node_Wall(p4est, ((p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n))))
-      {
-        // once again, if it's a wall node, we add it to the seeds as well
-        double xn = node_x_fr_n(n, p4est, nodes);
-        double yn = node_y_fr_n(n, p4est, nodes);
+    /* check if it is close to interface */
+    double p_000, p_m00, p_p00, p_0m0, p_0p0;
 #ifdef P4_TO_P8
-        double zn = node_z_fr_n(n, p4est, nodes);
-        Point3 p(xn, yn, zn);
-#else
-        Point2 p(xn, yn);
+    double p_00m, p_00p;
 #endif
-        grid2voro[n].push_back(voro_seeds.size());
-        voro_seeds.push_back(p);
-      }
+    (*ngbd_n).get_neighbors(n).ngbd_with_quadratic_interpolation(phi_read_only_p, p_000, p_m00, p_p00, p_0m0, p_0p0
+                                                             #ifdef P4_TO_P8
+                                                                 , p_00m, p_00p
+                                                             #endif
+                                                                 );
+    if((look_xm && (p_000*p_m00<=0)) || (look_xp && (p_000*p_p00<=0)) || (look_ym && (p_000*p_0m0<=0)) || (look_yp && (p_000*p_0p0<=0))
+   #ifdef P4_TO_P8
+       || (look_zm && (p_000*p_00m<=0)) || (look_zp && (p_000*p_00p<=0))
+   #endif
+       )
+    {
+      // the point is close tom the interface
 #ifdef P4_TO_P8
       Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dz_central(phi_read_only_p));
 #else
       Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p));
 #endif
       if(dp.norm_L2() > EPS)
-        marked_nodes.push_back(n); // the projection can be safely calculated, add it to the marked nodes
-      else
+        marked_nodes.push_back(n); // the projection can be safely calculated, so add it to the marked nodes
+      else if(!already_added)
       {
         // under-resolved case, the projection can't be calculated reliably (e.g. center of an under-resolved
         // sphere), add the grid node to the seeds
@@ -541,6 +568,20 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         grid2voro[n].push_back(voro_seeds.size());
         voro_seeds.push_back(p);
       }
+    }
+    else if(!already_added)
+    {
+      // not close to the interface, so add it to the seeds
+      double xn = node_x_fr_n(n, p4est, nodes);
+      double yn = node_y_fr_n(n, p4est, nodes);
+#ifdef P4_TO_P8
+      double zn = node_z_fr_n(n, p4est, nodes);
+      Point3 p(xn, yn, zn);
+#else
+      Point2 p(xn, yn);
+#endif
+      grid2voro[n].push_back(voro_seeds.size());
+      voro_seeds.push_back(p);
     }
   }
   /* compute how many messages (buffers of "ghost" projected points) we are expecting to receive */
@@ -711,12 +752,12 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         else if(xyz[0]> qx && xyz[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
   #endif
 
-        grid2voro[node].push_back(voro_seeds.size());
   #ifdef P4_TO_P8
         Point3 p(xyz[0], xyz[1], xyz[2]);
   #else
         Point2 p(xyz[0], xyz[1]);
   #endif
+        grid2voro[node].push_back(voro_seeds.size());
         voro_seeds.push_back(p);
       }
     }
@@ -859,12 +900,12 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         else if(xyz[0]> qx && xyz[1]> qy) node = nodes->local_nodes[P4EST_CHILDREN*quad_idx + dir::v_ppm];
 #endif
 
-        grid2voro[node].push_back(voro_seeds.size());
 #ifdef P4_TO_P8
         Point3 p(xyz[0], xyz[1], xyz[2]);
 #else
         Point2 p(xyz[0], xyz[1]);
 #endif
+        grid2voro[node].push_back(voro_seeds.size());
         voro_seeds.push_back(p);
 
         voro_ghost_local_num.push_back(buff_recv_points[n].local_num);
@@ -1142,7 +1183,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int se
           // --> avoid duplication of points
 #ifdef P4_TO_P8
           Point3 pm = voro_seeds[grid2voro[n_idx][m]];
-          voro.push(grid2voro[n_idx][m], pm.x, pm.y, pm.z);
+          voro.push(grid2voro[n_idx][m], pm.x, pm.y, pm.z, periodic, xyz_min, xyz_max);
 #else
           Point2 pm = voro_seeds[grid2voro[n_idx][m]];
           voro.push(grid2voro[n_idx][m], pm.x, pm.y, periodic, xyz_min, xyz_max);
@@ -1164,7 +1205,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(unsigned int se
 #ifdef P4_TO_P8
   voro.construct_partition(xyz_min, xyz_max, periodic);
 #else
-    voro.construct_partition();
+  voro.construct_partition();
 #endif
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
