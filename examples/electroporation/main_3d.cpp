@@ -63,9 +63,9 @@ using namespace std;
 
 
 
-int test = 9; //dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random spheroid=9
+int test = 4; //dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random spheroid=9
 
-double cellDensity = 0.005;   // only if test = 8 || 9
+double cellDensity = 0.1;   // only if test = 8 || 9
 
 double boxSide = 1e-3;      // only if test = 8
 double alpha = 1;        // this is the scaling factor 1e-3, don't use! set to 1.
@@ -96,11 +96,11 @@ double cellVolume = 4*PI*(coeff*r0)*(coeff*r0)*(coeff*r0)/3;
 
 
 /* number of cells in x and y dimensions */
-int x_cells = 4;
-int y_cells = 4;
-int z_cells = 4;
+int x_cells = 1;
+int y_cells = 1;
+int z_cells = 1;
 /* number of random cells */
-int nb_cells = test==7 ? 64 : ((test==8 || test==9) ? int (cellDensity*SphereVolume/cellVolume) : x_cells*y_cells*z_cells);
+int nb_cells = test==7 ? 1 : ((test==8 || test==9) ? int (cellDensity*SphereVolume/cellVolume) : x_cells*y_cells*z_cells);
 
 
 double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ? -boxSide/2 : -4*x_cells*r0));
@@ -112,7 +112,7 @@ double zmaxx = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0
 
 
 int axial_nb = boxSide/r0/2;
-int lmax_thr = (int)log2(axial_nb)+1;
+int lmax_thr = (int)log2(axial_nb)+2;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
 int lmin = 2;
 int lmax = MAX(lmax_thr, 7);
 int nb_splits = 1;
@@ -185,8 +185,6 @@ public:
             std::vector<std::array<double,3> > v;
             std::array<double,3> p;
             double Radius=0;
-            double azimuth = 0;
-            double polar =0;
 
             double *r;
             int halton_counter = 0;
@@ -195,7 +193,7 @@ public:
             if(test==9){
                 double azimuth = 0;
                 double polar = 0;
-                Radius = 0.49*(xmax-xmin)*r[0];
+                Radius = 0.50*(xmax-xmin-3*r0)*r[0];
                 azimuth = 2*PI*r[1];
                 polar = PI*r[2];
 
@@ -203,9 +201,9 @@ public:
                 p[1] = Radius*sin(polar)*sin(azimuth);
                 p[2] = Radius*cos(polar);
             } else {
-                p[0] = 0.99*(xmax-xmin)*(r[0] - 0.5);
-                p[1] = 0.99*(ymax-ymin)*(r[1] - 0.5);
-                p[2] = 0.99*(zmaxx-zminn)*(r[2] - 0.5);
+                p[0] = 0.90*(xmax-xmin)*(r[0] - 0.5);
+                p[1] = 0.90*(ymax-ymin)*(r[1] - 0.5);
+                p[2] = 0.90*(zmaxx-zminn)*(r[2] - 0.5);
             }
             halton_counter++;
             v.push_back(p);
@@ -219,7 +217,7 @@ public:
                 if(test==9){
                     double azimuth = 0;
                     double polar = 0;
-                    Radius = 0.49*(xmax-xmin)*r[0];
+                    Radius = 0.50*(xmax-xmin-3*r0)*r[0];
                     azimuth = 2*PI*r[1];
                     polar = PI*r[2];
 
@@ -227,15 +225,15 @@ public:
                     p[1] = Radius*sin(polar)*sin(azimuth);
                     p[2] = Radius*cos(polar);
                 } else {
-                    p[0] = 0.99*(xmax-xmin)*(r[0] - 0.5);
-                    p[1] = 0.99*(ymax-ymin)*(r[1] - 0.5);
-                    p[2] = 0.99*(zmaxx-zminn)*(r[2] - 0.5);
+                    p[0] = 0.90*(xmax-xmin)*(r[0] - 0.5);
+                    p[1] = 0.90*(ymax-ymin)*(r[1] - 0.5);
+                    p[2] = 0.90*(zmaxx-zminn)*(r[2] - 0.5);
                 }
                 halton_counter++;
                 bool far_enough = true;
-                for(int ii=0;ii<v.size();++ii){
+                for(unsigned int ii=0;ii<v.size();++ii){
                     double mindist = sqrt(SQR(p[0]-v[ii][0])+ SQR(p[1]-v[ii][1])+SQR(p[2]-v[ii][2]));
-                    if(mindist<1.5*r0){
+                    if(mindist<3*r0){
                         far_enough = false;
                         break;
 
@@ -526,11 +524,6 @@ struct BCWALLVALUE : CF_3
 } bc_wall_value_p;
 
 
-
-
-
-
-
 double sigma(double x, double y, double z)
 {
     return level_set(x,y,z)<0 ? sigma_c : sigma_e;
@@ -566,14 +559,7 @@ public:
 
 
 
-class Initial_U : public CF_3
-{
-public:
-    double operator()(double x, double y, double z) const
-    {
-        return 0;
-    }
-} initial_u;
+
 
 
 
@@ -660,15 +646,6 @@ public:
 } initial_sm;
 
 
-
-
-
-
-
-
-
-
-
 class MU_M: public CF_3
 {
 public:
@@ -703,36 +680,11 @@ struct U_P : CF_3
     }
 } u_p;
 
-class U_JUMP: public CF_3
-{
-public:
-    double operator()(double x, double y, double z) const
-    {
-        return 0;
-    }
-} u_jump;
 
 
 
-double grad_u_m(double x, double y, double z)
-{
-    return 0;
-}
-
-double grad_u_p(double x, double y, double z)
-{
-    return 0;
-}
 
 
-class MU_GRAD_U_JUMP: public CF_3
-{
-public:
-    double operator()(double x, double y, double z) const
-    {
-        return mu_p(x,y,z)*grad_u_p(x,y,z) - mu_m(x,y,z)*grad_u_m(x,y,z);
-    }
-} mu_grad_u_jump;
 
 
 
@@ -744,18 +696,15 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 
     Vec rhs_m, rhs_p;
     Vec mu_m_, mu_p_;
-    Vec u_jump_;
-    Vec mu_grad_u_jump_;
+
     ierr = VecDuplicate(phi, &rhs_m); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &rhs_p); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &mu_m_); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &mu_p_); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &u_jump_); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &mu_grad_u_jump_); CHKERRXX(ierr);
+
     sample_cf_on_nodes(p4est, nodes, mu_m, mu_m_);
     sample_cf_on_nodes(p4est, nodes, mu_p, mu_p_);
-    sample_cf_on_nodes(p4est, nodes, u_jump, u_jump_);
-    sample_cf_on_nodes(p4est, nodes, mu_grad_u_jump, mu_grad_u_jump_);
+
 
 
 
@@ -1188,8 +1137,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
     ierr = VecDestroy(rhs_p); CHKERRXX(ierr);
     ierr = VecDestroy(mu_m_); CHKERRXX(ierr);
     ierr = VecDestroy(mu_p_); CHKERRXX(ierr);
-    ierr = VecDestroy(u_jump_); CHKERRXX(ierr);
-    ierr = VecDestroy(mu_grad_u_jump_); CHKERRXX(ierr);
+
     VecDestroy(vnp1);
     VecDestroy(X_0_v);
     VecDestroy(X_1_v);
@@ -1340,7 +1288,7 @@ int main(int argc, char** argv) {
         p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
         // refine based on distance to a level-set
-        splitting_criteria_cf_t sp(lmin+repeat, lmax+repeat, &level_set, 1.2);
+        splitting_criteria_cf_t sp(lmin+repeat, lmax+repeat, &level_set, 1.1);
 
         p4est->user_pointer = &sp;
         for(int i=0; i<lmax; i++)
@@ -1357,7 +1305,7 @@ int main(int argc, char** argv) {
         // create ghost layer at time nm1: 2 layers to use Voronoi solver!
         ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
         my_p4est_ghost_expand(p4est, ghost);
-        my_p4est_ghost_expand(p4est, ghost);
+       // my_p4est_ghost_expand(p4est, ghost);
         // create node structure at time nm1
         nodes = my_p4est_nodes_new(p4est, ghost);
 
@@ -1631,12 +1579,13 @@ int main(int argc, char** argv) {
             double impedance = avg_Voltage/PulseIntensity;                                               // Impedance (Ohm)
 
             double net_E = PulseIntensity/sigma_e;                                                       // E_net = epsilon_0*Q_top_plate = integral(E.dA) on top plate
+            double applied_E = net_E/(xmax-xmin)/(ymax-ymin);
             double epsilon_r = 1;                                                                        // relative permitivity, real part
             if(fabs(avg_Voltage)>EPS)
             {
                 epsilon_r = fabs(net_E*(zmaxx-zminn)/((xmax-xmin)*(ymax-ymin)*avg_Voltage));     //PAM: the relative permittivity (dispersive term! eps = "eps_r"*eps_0 - j*sigma/omega)
-                if (epsilon_r<1)
-                    epsilon_r = 1;
+//                if (epsilon_r<1)
+//                    epsilon_r = 1;
             }
             double sigma_eff_Real, sigma_eff_Imaginary;
             double shape_factor = (xmax - xmin)*(ymax - ymin)/(zmaxx - zminn);
@@ -1659,13 +1608,13 @@ int main(int argc, char** argv) {
                     {
                         if(iteration ==0){
                             FILE *f = fopen(out_path_Z, "w");
-                            fprintf(f, "time [s], \t impedance [Ohm], \t north pole TMP \t Pulse Intensity (A)  \t error \t exact TMP [V] \t relative permittivity \t Applied E(t) \t Re(sigma_eff) [S/m] \t Im(sigma_eff) [S/m] \t Omega [Hz] %g\n", omega);
-                            fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn), sigma_eff_Real, sigma_eff_Imaginary);
+                            fprintf(f, "time [s], \t impedance [Ohm], \t north pole TMP \t Pulse Intensity (A)  \t error \t exact TMP [V] \t relative permittivity \t Applied Delta V(t) \t Applied E(t) \t Re(sigma_eff) [S/m] \t Im(sigma_eff) [S/m] \t Omega [Hz] %g \t cell volume fraction %g\n", omega, cellDensity);
+                            fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary);
                             fclose(f);
                         }
                         else{
                             FILE *f = fopen(out_path_Z, "a");
-                            fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn), sigma_eff_Real, sigma_eff_Imaginary);
+                            fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary);
                             fclose(f);
                         }
 
