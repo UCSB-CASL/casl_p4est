@@ -63,15 +63,16 @@ using namespace std;
 
 
 
-int test = 4; //dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random spheroid=9
+int test = 8; //dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9
 
-double cellDensity = 0.1;   // only if test = 8 || 9
 
-double boxSide = 1e-3;      // only if test = 8
+double cellDensity = 0.005;   // only if test = 8 || 9
+double density = 0;         // this is for measuring the density finally. don't change its declaration value.
+double boxSide = 0.5e-3;      // only if test = 8
 double alpha = 1;        // this is the scaling factor 1e-3, don't use! set to 1.
 
 
-double omega = 1;  //example: w= 1e9 = 1 GHz angular frequency
+double omega = 1e9;  //example: w= 1e9 = 1 GHz angular frequency
 double epsilon_0 = 8.85e-12; // farad/meter: permitivity in vacuum
 /* 0 or 1 */
 int implicit = 0;
@@ -86,7 +87,7 @@ double b = test<5 ? r0 : (test==5 ? r0*ellipse : r0/ellipse);
 double c = test<5 ? r0 : (test==5 ? r0/ellipse : r0*ellipse);
 
 
-double boxVolume = boxSide*boxSide*boxSide;
+double boxVolume = boxSide*boxSide*boxSide; // only for cases 8 or 9
 double ClusterRadius = 0.49*boxSide;
 double SphereVolume = 4*PI*(ClusterRadius*ClusterRadius*ClusterRadius)/3;
 double coeff = 1.;
@@ -96,11 +97,11 @@ double cellVolume = 4*PI*(coeff*r0)*(coeff*r0)*(coeff*r0)/3;
 
 
 /* number of cells in x and y dimensions */
-int x_cells = 1;
-int y_cells = 1;
-int z_cells = 1;
+int x_cells = 15;
+int y_cells = 15;
+int z_cells = 15;
 /* number of random cells */
-int nb_cells = test==7 ? 1 : ((test==8 || test==9) ? int (cellDensity*SphereVolume/cellVolume) : x_cells*y_cells*z_cells);
+int nb_cells = test==7 ? 2 : ((test==8 || test==9) ? int (cellDensity*SphereVolume/cellVolume) : x_cells*y_cells*z_cells);
 
 
 double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ? -boxSide/2 : -4*x_cells*r0));
@@ -111,15 +112,15 @@ double zminn = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0
 double zmaxx = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ?  boxSide/2 :  4*z_cells*r0));
 
 
-int axial_nb = boxSide/r0/2;
+int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+2;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
 int lmin = 2;
-int lmax = MAX(lmax_thr, 7);
+int lmax = MAX(lmax_thr, 8);
 int nb_splits = 1;
 
-double dt_scale = 200;
+double dt_scale = 10 ;//200;
 double tn;
-double tf = 1.e-6;
+double tf = 100*PI/omega;
 double dt;
 
 double E_unscaled = 40; /* applied electric field on the top electrode: kv/m */
@@ -134,7 +135,7 @@ double S0 = 1.1e6*alpha;
 double S1 = 1e4*alpha;
 double X_0 = 0;
 double X_1 = 0;
-
+double Sm_threshold_value = 100*SL;   // threshold to be considered permeabilized: 100 times the rest value
 double Vep = 258e-3;
 double Xep = 0.5;
 
@@ -166,11 +167,11 @@ public:
     vector<Point3> ex;
     vector<Point3> theta;
     double cellVolumes;
-    double density = 0;
+
 
     LevelSet()
     {
-        lip=1.2;
+        lip=1.1;
         if(test==7 || test==8 || test==9)
         {
             centers.resize(nb_cells);
@@ -201,9 +202,9 @@ public:
                 p[1] = Radius*sin(polar)*sin(azimuth);
                 p[2] = Radius*cos(polar);
             } else {
-                p[0] = 0.90*(xmax-xmin)*(r[0] - 0.5);
-                p[1] = 0.90*(ymax-ymin)*(r[1] - 0.5);
-                p[2] = 0.90*(zmaxx-zminn)*(r[2] - 0.5);
+                p[0] = (xmax-xmin - 3*r0)*(r[0] - 0.5);
+                p[1] = (ymax-ymin - 3*r0)*(r[1] - 0.5);
+                p[2] = (zmaxx-zminn - 3*r0)*(r[2] - 0.5);
             }
             halton_counter++;
             v.push_back(p);
@@ -225,9 +226,9 @@ public:
                     p[1] = Radius*sin(polar)*sin(azimuth);
                     p[2] = Radius*cos(polar);
                 } else {
-                    p[0] = 0.90*(xmax-xmin)*(r[0] - 0.5);
-                    p[1] = 0.90*(ymax-ymin)*(r[1] - 0.5);
-                    p[2] = 0.90*(zmaxx-zminn)*(r[2] - 0.5);
+                    p[0] = (xmax-xmin - 3*r0)*(r[0] - 0.5);
+                    p[1] = (ymax-ymin - 3*r0)*(r[1] - 0.5);
+                    p[2] = (zmaxx-zminn - 3*r0)*(r[2] - 0.5);
                 }
                 halton_counter++;
                 bool far_enough = true;
@@ -265,7 +266,10 @@ public:
                 cellVolumes += 4*PI*radii[n]*radii[n]*radii[n]*ex[n].x*ex[n].y*ex[n].z/3;
             }
 
-            density = cellVolumes/SphereVolume;
+            if (test==8 || test==9)
+                density = cellVolumes/SphereVolume;
+            else
+                density = cellVolumes/(xmax-xmin)/(ymax-ymin)/(zmaxx-zminn);
             printf( "Done initializing random cells. The Cell volume density is = %g\n", density);
             fflush(stdout);
 
@@ -508,7 +512,7 @@ struct BCWALLVALUE : CF_3
         case 6:
         case 7:
             if(ABS(z-zminn)<EPS) return 0;
-            if(ABS(z-zmaxx)<EPS) return E;
+            if(ABS(z-zmaxx)<EPS) return pulse(t);
             return 0;
         case 8:
             if(ABS(z-zmaxx)<EPS) return  pulse(t);
@@ -1469,9 +1473,12 @@ int main(int argc, char** argv) {
         ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
         ierr = VecDuplicate(phi, &sol); CHKERRXX(ierr);
 
-        Vec electrodes_phi, intensity;
-        ierr = VecDuplicate(phi, &electrodes_phi); CHKERRXX(ierr);
+        Vec top_electrode_phi, bottom_electrode_phi, intensity, Sm_thresholded, ones;
+        ierr = VecDuplicate(phi, &top_electrode_phi); CHKERRXX(ierr);
+        ierr = VecDuplicate(phi, &bottom_electrode_phi); CHKERRXX(ierr);
         ierr = VecDuplicate(phi, &intensity); CHKERRXX(ierr);
+        ierr = VecDuplicate(phi, &Sm_thresholded); CHKERRXX(ierr);
+        ierr = VecDuplicate(phi, &ones); CHKERRXX(ierr);
         save_VTK(p4est, ghost, nodes, &brick, phi, sol, -1, X0, X1, Sm, vn, err);
         clock_t begin = clock();
         my_p4est_interpolation_nodes_t interp_n(&ngbd_n);
@@ -1503,12 +1510,16 @@ int main(int argc, char** argv) {
             }
 
             /* compute the error on the tree*/
-            double *err_p, *sol_p,*Ephi_p, *intensity_p;
+            double *err_p, *sol_p,*TEphi_p, *BEphi_p, *intensity_p, *Sm_p, *Sm_thresholded_p, *ones_p;
             ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
             ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
             ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-            ierr = VecGetArray(electrodes_phi, &Ephi_p); CHKERRXX(ierr);
+            ierr = VecGetArray(top_electrode_phi, &TEphi_p); CHKERRXX(ierr);
+            ierr = VecGetArray(bottom_electrode_phi, &BEphi_p); CHKERRXX(ierr);
             ierr = VecGetArray(intensity, &intensity_p); CHKERRXX(ierr);
+            ierr = VecGetArray(Sm, &Sm_p); CHKERRXX(ierr);
+            ierr = VecGetArray(Sm_thresholded, &Sm_thresholded_p); CHKERRXX(ierr);
+            ierr = VecGetArray(ones, &ones_p); CHKERRXX(ierr);
 
             err_nm1 = err_n;
             err_n = 0;
@@ -1520,22 +1531,31 @@ int main(int argc, char** argv) {
                 double z = node_z_fr_n(n, p4est, nodes);
 
                 // a level-set just to represent the electrode surfaces for integration purposes
-                Ephi_p[n] = z - zmaxx + EPS; // only on the top surface.
+                TEphi_p[n] = z - (zmaxx - EPS); // only on the top surface.
+                BEphi_p[n] = z - (zminn + EPS); // only on the top surface.
                 // this is on both surfaces
                 /*if(z>0)
                     Ephi_p[n] = z - zmaxx + EPS;
                 else
                     Ephi_p[n] = -(z - zminn - EPS); */
 
-                if(ABS(phi_p[n])>0.1*diag)
+                if((ABS(phi_p[n])>0.1*diag) && (test==1 || test==2 || test ==4))
                 {
                     err_p[n] = ABS(sol_p[n] - u_exact(x,y,z,tn,phi_p[n]>0));
                     err_n = MAX(err_n,err_p[n]);
                 }
+                ones_p[n] = 1;
+                if(ABS(phi_p[n])< 0.1*diag && ABS(Sm_p[n])>Sm_threshold_value)
+                    Sm_thresholded_p[n] = 1;                                        // this is to mark cells that are permeabilized above a threshold, to compute their area
+                else
+                    Sm_thresholded_p[n] = 0;
             }
 
-
-
+            ierr = VecRestoreArray(top_electrode_phi, &TEphi_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(bottom_electrode_phi, &BEphi_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(Sm_thresholded, &Sm_thresholded_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(Sm, &Sm_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(ones, &ones_p); CHKERRXX(ierr);
 
             MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
             ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
@@ -1569,13 +1589,13 @@ int main(int argc, char** argv) {
             }
             ierr = VecGhostUpdateEnd(intensity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
             ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
-            ierr = VecRestoreArray(electrodes_phi, &Ephi_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(intensity, &intensity_p); CHKERRXX(ierr);
 
 
             // compute the important quantities: Pulse Intensity (A), impedance (Ohm), permitivity, conductivity
-            double avg_Voltage = integrate_over_interface(p4est, nodes, electrodes_phi, sol)/((xmax-xmin)*(ymax-ymin));            // V*m^2
-            double PulseIntensity = integrate_over_interface(p4est, nodes, electrodes_phi, intensity);   // current throughput (A): charge flux
+            double avg_Voltage = integrate_over_interface(p4est, nodes, top_electrode_phi, sol) - integrate_over_interface(p4est, nodes, bottom_electrode_phi, sol);
+            avg_Voltage /= ((xmax-xmin)*(ymax-ymin));                                                       // V*m^2
+            double PulseIntensity = integrate_over_interface(p4est, nodes, top_electrode_phi, intensity);   // current throughput (A): charge flux
             double impedance = avg_Voltage/PulseIntensity;                                               // Impedance (Ohm)
 
             double net_E = PulseIntensity/sigma_e;                                                       // E_net = epsilon_0*Q_top_plate = integral(E.dA) on top plate
@@ -1584,14 +1604,18 @@ int main(int argc, char** argv) {
             if(fabs(avg_Voltage)>EPS)
             {
                 epsilon_r = fabs(net_E*(zmaxx-zminn)/((xmax-xmin)*(ymax-ymin)*avg_Voltage));     //PAM: the relative permittivity (dispersive term! eps = "eps_r"*eps_0 - j*sigma/omega)
-//                if (epsilon_r<1)
-//                    epsilon_r = 1;
+                if (epsilon_r<1)
+                    epsilon_r = 1;
             }
+            double epsilon_Im = (zmaxx-zminn)/epsilon_0/impedance/omega/(xmax-xmin)/(ymax-ymin);  // imaginary part of epsilon
             double sigma_eff_Real, sigma_eff_Imaginary;
             double shape_factor = (xmax - xmin)*(ymax - ymin)/(zmaxx - zminn);
 
             sigma_eff_Real = 1/impedance/shape_factor;
             sigma_eff_Imaginary = -epsilon_r*epsilon_0*omega;
+
+            double total_area_permeabilized = integrate_over_interface(p4est, nodes, phi, Sm_thresholded);
+            double total_area = integrate_over_interface(p4est, nodes, phi, ones);
 
             if(save_impedance){
                 char *out_dir = NULL;
@@ -1608,13 +1632,14 @@ int main(int argc, char** argv) {
                     {
                         if(iteration ==0){
                             FILE *f = fopen(out_path_Z, "w");
-                            fprintf(f, "time [s], \t impedance [Ohm], \t north pole TMP \t Pulse Intensity (A)  \t error \t exact TMP [V] \t relative permittivity \t Applied Delta V(t) \t Applied E(t) \t Re(sigma_eff) [S/m] \t Im(sigma_eff) [S/m] \t Omega [Hz] %g \t cell volume fraction %g\n", omega, cellDensity);
-                            fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary);
+                            fprintf(f, "Simulation Parameters: Omega [Hz] %g \t cell volume fraction %g \t box side length [m] %g \n", omega, density, xmax-xmin);
+                            fprintf(f, "time [s], \t impedance [Ohm], \t north pole TMP \t Pulse Intensity (A)  \t error \t exact TMP [V] \t REAL relative permittivity \t IMAGINARY permittivity \t Applied Delta V(t) [Volt] \t Applied E(t) [V/m] \t Re(sigma_eff) [S/m] \t Im(sigma_eff) [S/m] \t total area permeabilized [m^2] \t total area [m^2]\n");
+                            fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized, total_area);
                             fclose(f);
                         }
                         else{
                             FILE *f = fopen(out_path_Z, "a");
-                            fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary);
+                            fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized, total_area);
                             fclose(f);
                         }
 
