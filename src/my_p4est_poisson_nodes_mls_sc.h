@@ -15,19 +15,16 @@
 #include <src/my_p4est_utils.h>
 #endif
 
-#include <src/cube3_mls.h>
-#include <src/cube2_mls.h>
-
-#include <src/cube3_mls_quadratic.h>
-#include <src/cube2_mls_quadratic.h>
-
-#define USE_QUADRATIC_CUBES
+#include <src/mls_integration/cube3_mls.h>
+#include <src/mls_integration/cube2_mls.h>
 
 class my_p4est_poisson_nodes_mls_sc_t
 {
   static const bool use_refined_cube_ = 0;
   static const int cube_refinement_ = 1;
   static const int num_neighbors_max_ = pow(3, P4EST_DIM);
+
+  const double phi_perturbation_ = 1.e-10;
 
   enum node_neighbor_t
   {
@@ -666,6 +663,8 @@ class my_p4est_poisson_nodes_mls_sc_t
 
   const my_p4est_node_neighbors_t *node_neighbors_;
 
+  Vec exact_;
+
   // p4est objects
   p4est_t           *p4est_;
   p4est_nodes_t     *nodes_;
@@ -682,6 +681,12 @@ class my_p4est_poisson_nodes_mls_sc_t
   std::vector<PetscInt> petsc_gloidx_;
 
   // Geometry
+#ifdef P4_TO_P8
+  std::vector< CF_3 *> *phi_cf_;
+#else
+  std::vector< CF_2 *> *phi_cf_;
+#endif
+
   std::vector<Vec> *phi_, *phi_xx_, *phi_yy_, *phi_zz_;
   std::vector<int>        *color_;
   std::vector<action_t>   *action_;
@@ -689,6 +694,11 @@ class my_p4est_poisson_nodes_mls_sc_t
   int num_interfaces_;
   bool is_phi_eff_owned_, is_phi_dd_owned_;
   Vec node_vol_;
+
+  int integration_order_;
+
+  double lip_;
+  void set_lip(double lip) { lip_ = lip; }
 
   std::vector<Vec> *phi_x_;
   std::vector<Vec> *phi_y_;
@@ -707,6 +717,12 @@ class my_p4est_poisson_nodes_mls_sc_t
   Vec rhs_;
   Vec mue_;
   Vec mue_xx_, mue_yy_, mue_zz_;
+
+#ifdef P4_TO_P8
+  CF_3 *rhs_cf_;
+#else
+  CF_2 *rhs_cf_;
+#endif
 
   bool variable_mu_;
   bool is_mue_dd_owned_;
@@ -765,9 +781,7 @@ class my_p4est_poisson_nodes_mls_sc_t
 
   void preallocate_matrix();
 
-  void setup_linear_system_(bool setup_matrix, bool setup_rhs);
-//  void setup_negative_variable_coeff_laplace_matrix_();
-//  void setup_negative_variable_coeff_laplace_rhsvec_();
+  void setup_linear_system(bool setup_matrix, bool setup_rhs);
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_poisson_nodes_mls_sc_t& other);
@@ -784,6 +798,15 @@ class my_p4est_poisson_nodes_mls_sc_t
 public:
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_node_neighbors_t *node_neighbors);
   ~my_p4est_poisson_nodes_mls_sc_t();
+
+
+#ifdef P4_TO_P8
+  inline void set_phi_cf(std::vector< CF_3 *> &phi_cf) { phi_cf_ = &phi_cf; }
+#else
+  inline void set_phi_cf(std::vector< CF_2 *> &phi_cf) { phi_cf_ = &phi_cf; }
+#endif
+
+  inline void set_exact(Vec exact) { exact_ = exact; }
 
   // set geometry
   inline void set_geometry(int num_interfaces,
@@ -901,6 +924,11 @@ public:
 
 
   inline void set_rhs(Vec rhs) { rhs_ = rhs; }
+#ifdef P4_TO_P8
+  inline void set_rhs(CF_3 &rhs_cf)   { rhs_cf_ = &rhs_cf; }
+#else
+  inline void set_rhs(CF_2 &rhs_cf)   { rhs_cf_ = &rhs_cf; }
+#endif
 
   inline void set_is_matrix_computed(bool is_matrix_computed) { is_matrix_computed_ = is_matrix_computed; }
 
@@ -915,20 +943,25 @@ public:
   inline void set_use_taylor_correction   (bool value) { use_taylor_correction_     = value; }
   inline void set_keep_scalling           (bool value) { keep_scalling_             = value; }
   inline void set_kink_treatment          (bool value) { kink_special_treatment_    = value; }
+  inline void set_use_sc_scheme           (bool value) { use_sc_scheme_             = value; }
+  inline void set_integration_order       (int  value)  { integration_order_         = value; }
 
   void inv_mat2_(double *in, double *out);
   void inv_mat3_(double *in, double *out);
+  bool inv_mat4_(const double m[16], double invOut[16]);
 
 //  void find_projection_(double *phi_p, p4est_locidx_t *neighbors, bool *neighbor_exists, double dxyz_pr[], double &dist_pr);
   void find_projection_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr);
 
   void compute_normal_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[]);
 
-  void get_all_neighbors_(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists);
+  void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists);
+
+  void find_hanging_cells(int *network, bool *hanging_cells);
 
 //  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
-//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 //  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
 
   void assemble_matrix(Vec solution);
@@ -951,14 +984,21 @@ public:
 
   inline std::vector<double>* get_scalling() { return &scalling_; }
 
-  inline void assemble_rhs_only() { setup_linear_system_(false, true); }
+  inline void assemble_rhs_only() { setup_linear_system(false, true); }
+
+#ifdef P4_TO_P8
+void reconstruct_domain(std::vector<cube3_mls_t> &cubes);
+#else
+void reconstruct_domain(std::vector<cube2_mls_t> &cubes);
+#endif
 
 
   //---------------------------------------------------------------------------------
   // some stuff for pointwise dirichlet
   //---------------------------------------------------------------------------------
 
-  struct interface_point_t {
+  struct interface_point_t
+  {
     short dir;
     double dist;
     double value;

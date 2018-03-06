@@ -37,13 +37,21 @@ void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
     all_negative = true;
     all_positive = true;
 
+    double phi_max = 0;
     for (short j = 0; j < n_nodes_dir; ++j)
       for (short i = 0; i < n_nodes_dir; ++i)
       {
         value = phi_all[n_nodes*p + n_nodes_dir*j + i];
         all_negative = (all_negative && (value < 0.));
         all_positive = (all_positive && (value > 0.));
+        phi_max = phi_max > fabs(value) ? phi_max : fabs(value);
       }
+
+    double phi_eps = phi_max*eps_rel_;
+
+    for (short j = 0; j < n_nodes_dir; ++j)
+      for (short i = 0; i < n_nodes_dir; ++i)
+        perturb(phi_all[n_nodes*p + n_nodes_dir*j + i], phi_eps);
 
     // check edges for complex intersections
     if (all_negative || all_positive)
@@ -164,8 +172,8 @@ void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
                                        x[t1p5], y[t1p5]));
 
     // mark appropriate edges for integrate_in_dir
-    simplex[0].edgs_[0].dir = 1; simplex[0].edgs_[2].dir = 2;
-    simplex[1].edgs_[0].dir = 3; simplex[1].edgs_[2].dir = 0;
+//    simplex[0].edgs_[0].dir = 1; simplex[0].edgs_[2].dir = 2;
+//    simplex[1].edgs_[0].dir = 3; simplex[1].edgs_[2].dir = 0;
 
     num_of_lsfs = nt_acn.size();
 
@@ -298,11 +306,16 @@ void cube2_mls_q_t::quadrature_in_dir(int dir, std::vector<double> &weights, std
             break;
         }
       }
+      break;
     case FCE:
+      switch (dir)
       {
-        simplex[0].quadrature_in_dir(dir, weights, X, Y);
-        simplex[1].quadrature_in_dir(dir, weights, X, Y);
+        case 0: simplex[1].quadrature_in_dir(2, weights, X, Y); break;
+        case 1: simplex[0].quadrature_in_dir(0, weights, X, Y); break;
+        case 2: simplex[0].quadrature_in_dir(2, weights, X, Y); break;
+        case 3: simplex[1].quadrature_in_dir(0, weights, X, Y); break;
       }
+      break;
     default:
 #ifdef CASL_THROWS
       throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");

@@ -33,7 +33,11 @@ public:
   std::vector<double> y_grid_;
   std::vector<double> z_grid_;
 
-  cube3_mls_t(double xyz_min[], double xyz_max[], int mnk[], int order);
+  cube3_mls_t() {}
+  cube3_mls_t(double xyz_min[], double xyz_max[], int mnk[], int order)
+  { initialize(xyz_min, xyz_max, mnk, order); }
+
+  void initialize (double xyz_min[], double xyz_max[], int mnk[], int order);
 
   ~cube3_mls_t();
 

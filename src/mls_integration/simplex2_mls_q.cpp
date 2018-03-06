@@ -35,6 +35,10 @@ simplex2_mls_q_t::simplex2_mls_q_t(double x0, double y0,
 
   tris_.push_back(tri2_t(0,1,2,0,1,2));
 
+  edgs_[0].dir = 0;
+  edgs_[1].dir = 1;
+  edgs_[2].dir = 2;
+
   // pre-compute inverse matrix for mapping of the original simplex onto the reference simplex
   vtx2_t *v0 = &vtxs_[0];
   vtx2_t *v1 = &vtxs_[1];
@@ -1022,8 +1026,8 @@ bool simplex2_mls_q_t::find_middle_node(double *xyz_out, double *xyz0, double *x
   ty /= norm;
 
   // vector perpendicular to the linear reconstruction
-  double Nx =-ty;
-  double Ny = tx;
+  double Nx = ty;
+  double Ny =-tx;
 
   // map normal vector back to the reference triangle
   double nx = ( (Nx)*(v2->y-v0->y) - (Ny)*(v2->x-v0->x) ) / ( (v1->x-v0->x)*(v2->y-v0->y) - (v1->y-v0->y)*(v2->x-v0->x) );
@@ -1058,6 +1062,24 @@ bool simplex2_mls_q_t::find_middle_node(double *xyz_out, double *xyz0, double *x
     Fn  += f*(Na[i]*nx+Nb[i]*ny);
     Fnn += f*(Naa[i]*nx*nx + 2.*Nab[i]*nx*ny + Nbb[i]*ny*ny);
   }
+
+//  double Fa = 0;
+//  double Fb = 0;
+//  for (short i = 0; i < nodes_per_tri_; ++i)
+//  {
+//    f = vtxs_[nv[i]].value;
+//    Fa += f*Na[i];
+//    Fb += f*Nb[i];
+//  }
+
+//  norm = sqrt(Fa*Fa + Fb*Fb);
+
+//  Fa /= norm;
+//  Fb /= norm;
+
+//  std::cout << Fa << " " << Fb << "\n";
+//  std::cout << nx << " " << ny << "\n";
+
 
   // solve quadratic equation
   double c2 = .5*Fnn;
@@ -1529,11 +1551,11 @@ void simplex2_mls_q_t::quadrature_over_interface(int num, std::vector<double> &w
   double xyz[2];
 
   // quadrature points, order 3
-  static double a0 = .5*(1.-1./sqrt(3.));
-  static double a1 = .5*(1.+1./sqrt(3.));
-  //  double a0 = 0.;
-  //  double a1 = .5;
-  //  double a2 = 1.;
+//  static double a0 = .5*(1.-1./sqrt(3.));
+//  static double a1 = .5*(1.+1./sqrt(3.));
+  static double a0 = 0.;
+  static double a1 = .5;
+  static double a2 = 1.;
 
   /* integrate over edges */
   for (unsigned int i = 0; i < edgs_.size(); i++)
@@ -1542,8 +1564,11 @@ void simplex2_mls_q_t::quadrature_over_interface(int num, std::vector<double> &w
     if (!e->is_split && e->loc == FCE)
       if ((!integrate_specific && e->c0 >= 0) || (integrate_specific && e->c0 == num))
       {
-        mapping_edg(xyz, i, a0); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a0)/2.);
-        mapping_edg(xyz, i, a1); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a1)/2.);
+//        mapping_edg(xyz, i, a0); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a0)/2.);
+//        mapping_edg(xyz, i, a1); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a1)/2.);
+        mapping_edg(xyz, i, a0); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a0)/6.);
+        mapping_edg(xyz, i, a1); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a1)*2./3.);
+        mapping_edg(xyz, i, a2); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a2)/6.);
       }
   }
 
@@ -1572,11 +1597,11 @@ void simplex2_mls_q_t::quadrature_in_dir(int dir, std::vector<double> &weights, 
   double xyz[2];
 
   // quadrature points
-  static double a0 = .5*(1.-1./sqrt(3.));
-  static double a1 = .5*(1.+1./sqrt(3.));
-//  double a0 = 0.;
-//  double a1 = .5;
-//  double a2 = 1.;
+//  static double a0 = .5*(1.-1./sqrt(3.));
+//  static double a1 = .5*(1.+1./sqrt(3.));
+  double a0 = 0.;
+  double a1 = .5;
+  double a2 = 1.;
 
   /* integrate over edges */
   for (unsigned int i = 0; i < edgs_.size(); i++)
@@ -1585,8 +1610,11 @@ void simplex2_mls_q_t::quadrature_in_dir(int dir, std::vector<double> &weights, 
     if (!e->is_split && e->loc == INS)
       if (e->dir == dir)
       {
-        mapping_edg(xyz, i, a0); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a0)/2.);
-        mapping_edg(xyz, i, a1); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a1)/2.);
+//        mapping_edg(xyz, i, a0); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a0)/2.);
+//        mapping_edg(xyz, i, a1); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a1)/2.);
+        mapping_edg(xyz, i, a0); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a0)/6.);
+        mapping_edg(xyz, i, a1); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a1)*2./3.);
+        mapping_edg(xyz, i, a2); X.push_back(xyz[0]); Y.push_back(xyz[1]); weights.push_back(jacobian_edg(i, a2)/6.);
       }
   }
 }

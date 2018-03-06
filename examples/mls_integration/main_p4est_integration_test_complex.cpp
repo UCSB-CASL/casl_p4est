@@ -79,21 +79,23 @@
 
 using namespace std;
 
+//#define TEST_OH2_ERRORS_HYPOTHESIS
+
 /* grid and discretization */
 #ifdef P4_TO_P8
 int lmin = 3;
 int lmax = 3;
-int nb_splits = 4;
-int nb_splits_per_split = 2;
-int nx_shifts = 3;
-int ny_shifts = 3;
-int nz_shifts = 3;
+int nb_splits = 7;
+int nb_splits_per_split = 10;
+int nx_shifts = 1;
+int ny_shifts = 1;
+int nz_shifts = 1;
 int num_shifts = nx_shifts*ny_shifts*nz_shifts;
 #else
 int lmin = 3;
 int lmax = 3;
-int nb_splits = 7;
-int nb_splits_per_split = 10;
+int nb_splits = 8;
+int nb_splits_per_split = 4;
 int nx_shifts = 10;
 int ny_shifts = 10;
 int num_shifts = nx_shifts*ny_shifts;
@@ -107,7 +109,7 @@ bool reinitialize_level_set = 0;
 const int n_xyz[] = {1, 1, 1};
 const int periodic[] = {0, 0, 0};
 
-const double p_xyz_min[] = {-1.2, -1.2, -1.2};
+const double p_xyz_min[] = {-1.0, -1.0, -1.0};
 const double p_xyz_max[] = { 1.0,  1.0,  1.0};
 
 bool save_vtk = 0;
@@ -458,10 +460,6 @@ void print_convergence_table(MPI_Comm mpi_comm,
 
 int main (int argc, char* argv[])
 {
-  set_parameters();
-
-  level_set_tot_t ls_tot(LSF, action, color);
-
   PetscErrorCode ierr;
   int mpiret;
   mpi_environment_t mpi;
@@ -469,6 +467,56 @@ int main (int argc, char* argv[])
 
   parStopWatch w;
   w.start("total time");
+
+  cmdParser cmd;
+  cmd.add_option("lmin", "min level of the tree");
+  cmd.add_option("lmax", "max level of the tree");
+  cmd.add_option("nb_splits", "number of recursive splits");
+  cmd.add_option("nb_splits_per_split", "");
+  cmd.add_option("nx_shifts", "");
+  cmd.add_option("ny_shifts", "");
+#ifdef P4_TO_P8
+  cmd.add_option("nz_shifts", "");
+#endif
+
+  cmd.add_option("save_vtk", "save the p4est in vtk format");
+  cmd.add_option("reinit", "reinitialize level-set function");
+  cmd.add_option("func_num", "test function");
+  cmd.add_option("geometry_num", "geometry_num");
+
+  cmd.parse(argc, argv);
+
+  cmd.print();
+
+  lmin = cmd.get("lmin", lmin);
+  lmax = cmd.get("lmax", lmax);
+  nb_splits = cmd.get("nb_splits", nb_splits);
+  nb_splits_per_split = cmd.get("nb_splits_per_split", nb_splits_per_split);
+  nx_shifts = cmd.get("nx_shifts", nx_shifts);
+  ny_shifts = cmd.get("ny_shifts", ny_shifts);
+#ifdef P4_TO_P8
+  nz_shifts = cmd.get("nz_shifts", nz_shifts);
+#endif
+
+  reinitialize_level_set = cmd.get("reinit", reinitialize_level_set);
+  geometry_num = cmd.get("geometry_num", geometry_num);
+  func_num = cmd.get("func_num", func_num);
+  save_vtk = cmd.get("save_vtk", save_vtk);
+
+
+  set_parameters();
+
+#ifdef P4_TO_P8
+  num_shifts = nx_shifts*ny_shifts*nz_shifts;
+#else
+  num_shifts = nx_shifts*ny_shifts;
+#endif
+
+  num_resolutions = (nb_splits-1)*nb_splits_per_split + 1;
+  num_iter_tot = num_resolutions*num_shifts;
+
+  level_set_tot_t ls_tot(LSF, action, color);
+
 
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
@@ -479,12 +527,6 @@ int main (int argc, char* argv[])
   p4est_ghost_t *ghost;
 
   int file_num = 0;
-
-  double val = 2.*sqrt(DBL_MIN);
-//  double val2 = val*val;
-  double val2 = DBL_MIN*DBL_MAX;
-
-  std::cout << val << " " << val2 << "\n";
 
   result_t result_L_all(exact.n_subs, exact.n_Xs, exact.n_X3s, num_iter_tot);
   result_t result_Q_all(exact.n_subs, exact.n_Xs, exact.n_X3s, num_iter_tot);
@@ -543,6 +585,23 @@ int main (int argc, char* argv[])
 
             p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
+#ifdef TEST_OH2_ERRORS_HYPOTHESIS
+            // testing O(h^2) errors hypothesis
+            {
+              // sphere's radius
+              double R = 0.77;
+
+              // relative cap's base radius
+              double a = 0.7;
+
+              // relative margin
+              double b = 2;
+
+              // center of required cube
+              geometry_one_circle.domain0.set_params(R, p_xyz_max_shift[0] - b*h.back() - sqrt(SQR(R) - SQR(a*h.back())), 0, 0);
+            }
+#endif
+
             splitting_criteria_cf_t data(0, lmax+iter, &ls_tot, 1.2);
             if (func_num != 0) data.min_lvl = lmin+iter;
 
@@ -558,6 +617,7 @@ int main (int argc, char* argv[])
 //            p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
 //            my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
+//            ghost = NULL;
             ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
 //            my_p4est_ghost_expand(p4est, ghost);
             nodes = my_p4est_nodes_new(p4est, ghost);
@@ -647,7 +707,13 @@ int main (int argc, char* argv[])
             oss << out_dir
                 << "/geometry";
 
-            if (0)
+            std::ostringstream command;
+            command << "mkdir -p " << out_dir << "/geometry";
+            int ret_sys = system(command.str().c_str());
+            if (ret_sys<0)
+              throw std::invalid_argument("could not create directory");
+
+//            if (0)
             if (save_vtk)
             {
               integration_L.initialize();
@@ -670,7 +736,7 @@ int main (int argc, char* argv[])
 #else
               simplex2_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_num));
 #endif
-              save_VTK(p4est, ghost, nodes, &brick, phi_vec, phi_tot, iter);
+              save_VTK(p4est, ghost, nodes, &brick, phi_vec, phi_tot, file_num);
             }
 
             if (save_vtk)
@@ -824,21 +890,46 @@ int main (int argc, char* argv[])
   }
 
   // compute errors in all cases
-  for (int p = 0; p < num_iter_tot; ++p)
+//  for (int p = 0; p < num_iter_tot; ++p)
+//  {
+  for (int r = 0; r < num_resolutions; ++r)
   {
-    result_L_all.ID[p] = fabs(result_L_all.ID[p]-exact.ID);
-    result_Q_all.ID[p] = fabs(result_Q_all.ID[p]-exact.ID);
 
-    for (int i = 0; i < exact.n_subs; i++)
+#ifdef TEST_OH2_ERRORS_HYPOTHESIS
+    // testing O(h^2) errors hypothesis
     {
-      result_L_all.ISB[i][p] = fabs(result_L_all.ISB[i][p] - exact.ISB[i]);
-      result_Q_all.ISB[i][p] = fabs(result_Q_all.ISB[i][p] - exact.ISB[i]);
+      // sphere's radius
+      double R = 0.77;
+
+      // relative cap's base radius
+      double a = 0.7;
+
+      double H = (R-sqrt(SQR(R) - SQR(a*h[r])));
+      exact.ID = .25*PI*H*H*(R-H/3.);
+      exact.ISB[0] = .5*PI*R*H;
+
+//      exact.ID     *= 4.;
+//      exact.ISB[0] *= 4.;
     }
+#endif
 
-    for (int i = 0; i < exact.n_Xs; i++)
+    for (int s = 0; s < num_shifts; ++s)
     {
-      result_L_all.IX[i][p] = fabs(result_L_all.IX[i][p] - exact.IX[i]);
-      result_Q_all.IX[i][p] = fabs(result_Q_all.IX[i][p] - exact.IX[i]);
+      int p = r*num_shifts+s;
+      result_L_all.ID[p] = fabs(result_L_all.ID[p]-exact.ID);
+      result_Q_all.ID[p] = fabs(result_Q_all.ID[p]-exact.ID);
+
+      for (int i = 0; i < exact.n_subs; i++)
+      {
+        result_L_all.ISB[i][p] = fabs(result_L_all.ISB[i][p] - exact.ISB[i]);
+        result_Q_all.ISB[i][p] = fabs(result_Q_all.ISB[i][p] - exact.ISB[i]);
+      }
+
+      for (int i = 0; i < exact.n_Xs; i++)
+      {
+        result_L_all.IX[i][p] = fabs(result_L_all.IX[i][p] - exact.IX[i]);
+        result_Q_all.IX[i][p] = fabs(result_Q_all.IX[i][p] - exact.IX[i]);
+      }
     }
   }
 
@@ -1001,6 +1092,12 @@ int main (int argc, char* argv[])
     oss_dir << out_dir
             << "/convergence";
 
+    std::ostringstream command;
+    command << "mkdir -p " << out_dir << "/convergence";
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys<0)
+      throw std::invalid_argument("could not create directory");
+
     // save level and resolution
     filename = out_dir; filename += "/convergence/lvl.txt";      save_vector(filename.c_str(), level);
     filename = out_dir; filename += "/convergence/h.txt";        save_vector(filename.c_str(), h);
@@ -1048,7 +1145,6 @@ int main (int argc, char* argv[])
       filename = out_dir; filename += "/convergence/l_dev_ix.txt"; save_vector(filename.c_str(), result_L_dev.IX[i], mode);
       filename = out_dir; filename += "/convergence/q_dev_ix.txt"; save_vector(filename.c_str(), result_Q_dev.IX[i], mode);
     }
-
 
   }
 
@@ -1266,6 +1362,12 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
          "x" << brick->nxyztrees[2] <<
        #endif
          "." << compt;
+
+  std::ostringstream command;
+  command << "mkdir -p " << out_dir << "/vtu";
+  int ret_sys = system(command.str().c_str());
+  if (ret_sys<0)
+    throw std::invalid_argument("could not create directory");
 
   double *phi_p;
   std::vector<double *> point_data(phi.size(), NULL);

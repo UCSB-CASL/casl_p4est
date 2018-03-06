@@ -283,7 +283,7 @@ public:
   const static int n_nodes = 27;
   const static int n_nodes_simplex = 10;
   const static int n_nodes_dir = 3;
-  const double lip = 2.;
+  const double lip = 5.;
 
   double  x0, x1, y0, y1, z0, z1, diag;
   loc_t   loc;

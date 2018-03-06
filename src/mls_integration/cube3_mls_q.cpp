@@ -312,13 +312,13 @@ void cube3_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
                                                x[t5p8],y[t5p8],z[t5p8],
                                                x[t5p9],y[t5p9],z[t5p9]));
 
-    // mark appropriate edges for integrate_in_dir
-    simplex[0].tris_[0].dir = 1; simplex[0].tris_[3].dir = 4;
-    simplex[1].tris_[0].dir = 3; simplex[1].tris_[3].dir = 4;
-    simplex[2].tris_[0].dir = 1; simplex[2].tris_[3].dir = 2;
-    simplex[3].tris_[0].dir = 3; simplex[3].tris_[3].dir = 0;
-    simplex[4].tris_[0].dir = 5; simplex[4].tris_[3].dir = 2;
-    simplex[5].tris_[0].dir = 5; simplex[5].tris_[3].dir = 0;
+//    // mark appropriate edges for integrate_in_dir
+//    simplex[0].tris_[0].dir = 1; simplex[0].tris_[3].dir = 4;
+//    simplex[1].tris_[0].dir = 3; simplex[1].tris_[3].dir = 4;
+//    simplex[2].tris_[0].dir = 1; simplex[2].tris_[3].dir = 2;
+//    simplex[3].tris_[0].dir = 3; simplex[3].tris_[3].dir = 0;
+//    simplex[4].tris_[0].dir = 5; simplex[4].tris_[3].dir = 2;
+//    simplex[5].tris_[0].dir = 5; simplex[5].tris_[3].dir = 0;
 
     num_of_lsfs = nt_idx.size();
 
@@ -511,16 +511,51 @@ void cube3_mls_q_t::quadrature_in_dir(int dir, std::vector<double> &weights, std
             X.push_back(xp); Y.push_back(yp); Z.push_back(z1); weights.push_back(w);
             break;
         }
-      }
+      } break;
     case FCE:
       {
-        simplex[0].quadrature_in_dir(dir, weights, X, Y, Z);
-        simplex[1].quadrature_in_dir(dir, weights, X, Y, Z);
-        simplex[2].quadrature_in_dir(dir, weights, X, Y, Z);
-        simplex[3].quadrature_in_dir(dir, weights, X, Y, Z);
-        simplex[4].quadrature_in_dir(dir, weights, X, Y, Z);
-        simplex[5].quadrature_in_dir(dir, weights, X, Y, Z);
+      /* integration in dir
+       * 0: s3->f3 + s5->f3
+       * 1: s0->f0 + s2->f0
+       * 2: s2->f3 + s4->f3
+       * 3: s1->f0 + s3->f0
+       * 4: s0->f3 + s1->f3
+       * 5: s4->f0 + s5->f0
+       */
+      switch (dir)
+      {
+        case 0:
+          simplex[3].quadrature_in_dir(3, weights, X, Y, Z);
+          simplex[5].quadrature_in_dir(3, weights, X, Y, Z);
+          break;
+        case 1:
+          simplex[0].quadrature_in_dir(0, weights, X, Y, Z);
+          simplex[2].quadrature_in_dir(0, weights, X, Y, Z);
+          break;
+        case 2:
+          simplex[2].quadrature_in_dir(3, weights, X, Y, Z);
+          simplex[4].quadrature_in_dir(3, weights, X, Y, Z);
+          break;
+        case 3:
+          simplex[1].quadrature_in_dir(0, weights, X, Y, Z);
+          simplex[3].quadrature_in_dir(0, weights, X, Y, Z);
+          break;
+        case 4:
+          simplex[0].quadrature_in_dir(3, weights, X, Y, Z);
+          simplex[1].quadrature_in_dir(3, weights, X, Y, Z);
+          break;
+        case 5:
+          simplex[4].quadrature_in_dir(0, weights, X, Y, Z);
+          simplex[5].quadrature_in_dir(0, weights, X, Y, Z);
+          break;
       }
+//        simplex[0].quadrature_in_dir(dir, weights, X, Y, Z);
+//        simplex[1].quadrature_in_dir(dir, weights, X, Y, Z);
+//        simplex[2].quadrature_in_dir(dir, weights, X, Y, Z);
+//        simplex[3].quadrature_in_dir(dir, weights, X, Y, Z);
+//        simplex[4].quadrature_in_dir(dir, weights, X, Y, Z);
+//        simplex[5].quadrature_in_dir(dir, weights, X, Y, Z);
+      } break;
     default:
 #ifdef CASL_THROWS
       throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");

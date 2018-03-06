@@ -59,11 +59,8 @@ void cube2_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
     simplex.push_back(simplex2_mls_l_t(x[t1p0], y[t1p0], x[t1p1], y[t1p1], x[t1p2], y[t1p2])); // simplex.back().set_use_linear(use_linear);
 
     // TODO: mark appropriate edges for integrate_in_dir
-    simplex[0].edgs_[0].dir = 1; simplex[0].edgs_[2].dir = 2;
-    simplex[1].edgs_[0].dir = 3; simplex[1].edgs_[2].dir = 0;
-
-//    simplex[0].construct_domain(phi, acn, clr);
-//    simplex[1].construct_domain(phi, acn, clr);
+//    simplex[0].edgs_[0].dir = 1; simplex[0].edgs_[2].dir = 2;
+//    simplex[1].edgs_[0].dir = 3; simplex[1].edgs_[2].dir = 0;
 
 
     std::vector<double> phi_s0(n_nodes_simplex*num_of_lsfs, -1);
@@ -192,12 +189,27 @@ void cube2_mls_l_t::quadrature_in_dir(int dir, std::vector<double> &weights, std
             X.push_back(xp); Y.push_back(y1); weights.push_back(w);
             break;
         }
-      }
+      } break;
     case FCE:
       {
-        simplex[0].quadrature_in_dir(dir, weights, X, Y);
-        simplex[1].quadrature_in_dir(dir, weights, X, Y);
+      /* integration in dir
+       * 0: s1->e2
+       * 1: s0->e0
+       * 2: s0->e2
+       * 3: s1->e0
+       */
+
+      switch (dir)
+      {
+        case 0: simplex[1].quadrature_in_dir(2, weights, X, Y); break;
+        case 1: simplex[0].quadrature_in_dir(0, weights, X, Y); break;
+        case 2: simplex[0].quadrature_in_dir(2, weights, X, Y); break;
+        case 3: simplex[1].quadrature_in_dir(0, weights, X, Y); break;
       }
+
+//        simplex[0].quadrature_in_dir(dir, weights, X, Y);
+//        simplex[1].quadrature_in_dir(dir, weights, X, Y);
+      } break;
     default:
 #ifdef CASL_THROWS
       throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");

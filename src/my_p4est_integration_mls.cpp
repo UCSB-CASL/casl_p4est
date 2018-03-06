@@ -345,6 +345,36 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
         double dz = (tree_zmax-tree_zmin)*dmin; double z0 = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  double z1 = z0 + dz;
 #endif
 
+#ifdef TEST_OH2_ERRORS_HYPOTHESIS
+        // checking O(h^2) errors hypothesis
+        {
+          // sphere's radius
+          double R = 0.77;
+
+          // relative cap's base radius
+          double a = 0.7;
+
+          // relative margin
+          double b = 2;
+
+          // center of required cube
+          double xc = tree_xmax-b*dx+.5*dx;
+          double yc = .5*dy;
+          double zc = .5*dz;
+
+          if ( fabs(.5*(x0+x1) - xc) > 1.e-10 ||
+               fabs(.5*(y0+y1) - yc) > 1.e-10 ||
+               fabs(.5*(z0+z1) - zc) > 1.e-10 )
+          {
+            continue;
+          } else {
+//            continue;
+//            std::cout << "Found!\n";
+//            std::cout << xc << " : " << yc << ":" << zc << "\n";
+          }
+        }
+#endif
+
 #ifdef P4_TO_P8
         double xyz_min[] = {x0, y0, z0};
         double xyz_max[] = {x1, y1, z1};

@@ -21,6 +21,10 @@ simplex2_mls_l_t::simplex2_mls_l_t(double x0, double y0,
 
   tris_.push_back(tri2_t(0,1,2,0,1,2));
 
+  edgs_[0].dir = 0;
+  edgs_[1].dir = 1;
+  edgs_[2].dir = 2;
+
   // pre-compute the simplex area for interpolation
   A_ = area(0, 1, 2);
 

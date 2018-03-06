@@ -63,8 +63,9 @@ public:
   public:
       double operator()(double x, double y) const
       {
-//          return 0.;
-          return 1.0;
+//                return 0.;
+          return 1.;
+//          return 0.5;
       }
   } bc_coeff_0;
 
@@ -72,6 +73,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
+//                return 0.;
 //          return 1.;
           return sin(x+y)*cos(x-y);
       }
@@ -81,14 +83,18 @@ public:
   problem_case_1_t()
   {
 #ifdef P4_TO_P8
-    double r0 = 0.71, xc0 = 0.13, yc0 = 0.27, zc0 = 0.21;
-    double r1 = 0.63, xc1 =-0.24, yc1 =-0.16, zc1 =-0.33;
+    double r0 = 0.71, xc0 = 0.22, yc0 = 0.17, zc0 = 0.21;
+    double r1 = 0.63, xc1 =-0.19, yc1 =-0.19, zc1 =-0.23;
+
+//    double r1 = 0.71, xc1 = 0.22, yc1 = 0.17, zc1 = 0.21;
+//    double r0 = 0.63, xc0 =-0.19, yc0 =-0.19, zc0 =-0.23;
 
     domain0.set_params(r0, xc0, yc0, zc0);
     domain1.set_params(r1, xc1, yc1, zc1);
 #else
     double r0 = 0.77, xc0 = 0.13, yc0 = 0.21;
-    double r1 = 0.53, xc1 =-0.41, yc1 =-0.37;
+//    double r0 = 0.37, xc0 = 0.43, yc0 = 0.41;
+    double r1 = 0.49, xc1 =-0.33, yc1 =-0.37;
 
 //    double r1 = 0.77, xc1 = 0.13, yc1 = 0.21;
 //    double r0 = 0.53, xc0 =-0.41, yc0 =-0.37;

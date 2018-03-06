@@ -1,9 +1,20 @@
 clear;
 plot_intersections = 0;
 
-out_dir = '/home/dbochkov/Outputs/integration_mls/convergence';
+% out_dir = '/home/dbochkov/Outputs/integration_mls/convergence';
+out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/f1/2d/union/convergence';
+% out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/f1/2d/difference/convergence';
+% out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/f0/3d/union/convergence';
+% out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/f0/3d/difference/convergence';
 
 h = importdata(strcat(out_dir,'/h.txt'));
+
+order_L = 2;
+order_Q = 3;
+error_spacing = 2;
+
+num_xticks = 3;
+num_yticks = 5;
 
 l_all_id = importdata(strcat(out_dir,'/l_all_id.txt'));
 q_all_id = importdata(strcat(out_dir,'/q_all_id.txt'));
@@ -122,7 +133,7 @@ loglog(h, q_avg_id, '-k', 'markersize', 4, 'linewidth', 2);
 loglog(h, q_one_id, '-sr', 'markersize', 4, 'linewidth', 1);
 loglog(h, q_max_id, 'ob', 'markersize', 4, 'linewidth', 2);
 hold off
-xlim([min(h)/((max(h)/min(h))^(0.07)), max(h)*((max(h)/min(h))^(0.07)) ]);
+% xlim([h_min, h_max]);
 
 for i=1:n_subs
     subplot(num_subplots, 3, (i+1)*3);
@@ -134,7 +145,7 @@ for i=1:n_subs
     loglog(h, q_one_isb(i,:), '-sr', 'markersize', 4, 'linewidth', 1);
     loglog(h, q_max_isb(i,:), 'ob', 'markersize', 4, 'linewidth', 2);
     hold off
-    xlim([min(h)/((max(h)/min(h))^(0.07)), max(h)*((max(h)/min(h))^(0.07)) ]);
+%     xlim([h_min, h_max]);
 end
 
 if plot_intersections == 1
@@ -148,18 +159,19 @@ for i=1:n_Xs
     loglog(h, q_one_ix(i,:), '-sr', 'markersize', 4, 'linewidth', 1);
     loglog(h, q_max_ix(i,:), 'ob', 'markersize', 4, 'linewidth', 2);
     hold off
-    xlim([min(h)/((max(h)/min(h))^(0.07)), max(h)*((max(h)/min(h))^(0.07)) ]);
+%     xlim([h_min, h_max]);
 end
 end
 
-c = lines(7);
-% subplot(1, 1, 1);
-
-
-
-PropName  = {'Marker', 'LineWidth', 'MarkerSize', 'MarkerFaceColor'};
-PropValue = {'o', 2, 4, 'auto'};
+% condensed convergence plots
 figure;
+
+aL = max(max([l_max_id; l_max_isb])./h.^order_L);
+aQ = max(max([q_max_id; q_max_isb])./h.^order_Q);
+
+PropName  = {'Marker','LineStyle', 'LineWidth', 'MarkerSize', 'MarkerFaceColor'};
+PropValue = {'d','-', 1, 2, 'auto'};
+
 L = loglog(h, l_max_id);
 set(L, PropName, PropValue);
 hold on
@@ -175,10 +187,15 @@ for i=1:n_Xs
 end
 end
 
+loglog(h, aL*h.^order_L, '-k', 'LineWidth', 1);
+
 PropName  = {'Marker', 'LineWidth', 'MarkerSize', 'MarkerFaceColor'};
-PropValue = {'s', 2, 4, 'auto'};
+PropValue = {'s', 1, 2, 'auto'};
+
 set(gca, 'ColorOrderIndex', 1);
-loglog(h, q_max_id, 'linewidth', 2);
+
+L = loglog(h, q_max_id);
+set(L, PropName, PropValue);
 for i=1:n_subs
     L = loglog(h, q_max_isb(i,:));
     set(L, PropName, PropValue);
@@ -191,13 +208,35 @@ for i=1:n_Xs
 end
 end
 
-% find coefficient for second order line
-a2 = 1*max(max([l_max_id; l_max_isb])./h.^2);
-a3 = 1*min(mean([q_max_isb])./h.^4);
-a4 = 1*min(([q_max_id])./h.^4);
+loglog(h, aQ*h.^order_Q, '-k', 'LineWidth', 2);
 
-loglog(h, a2*h.^2, '-k', 'LineWidth', 1);
-loglog(h, a3*h.^4, '-k', 'LineWidth', 2);
-loglog(h, a4*h.^4, '-k', 'LineWidth', 3);
 hold off
-xlim([min(h)/((max(h)/min(h))^(0.07)), max(h)*((max(h)/min(h))^(0.07)) ]);
+
+grid on
+
+% legend
+L = legend('$I_\Omega^L$','$I_{\Gamma_1}^L$','$I_{\Gamma_2}^L$', strcat('$\sim h^',num2str(order_L),'$'), ...
+           '$I_\Omega^Q$','$I_{\Gamma_1}^Q$','$I_{\Gamma_2}^Q$', strcat('$\sim h^',num2str(order_Q),'$'));
+set(L, 'interpreter', 'latex');
+
+% axes
+h_min = min(h)/((max(h)/min(h))^(0.07));
+h_max = max(h)*((max(h)/min(h))^(0.4));
+
+e_rat = max(max([l_max_id; l_max_isb; q_max_id; q_max_isb]))/min(min([l_max_id; l_max_isb; q_max_id; q_max_isb]));
+e_max = max(max([l_max_id; l_max_isb; q_max_id; q_max_isb]))*e_rat^0.1;
+e_min = min(min([l_max_id; l_max_isb; q_max_id; q_max_isb]))/e_rat^0.1;
+
+xlim([h_min, h_max]);
+ylim([e_min, e_max]);
+
+xlabel('Grid resolution');
+ylabel('Integration error');
+    
+xticks(round(10.^linspace(log10(min(h)), log10(max(h)), num_xticks), 1, 'significant'));
+yticks(10.^[floor(log10(e_min)):round((log10(e_max)-log10(e_min))/num_yticks):ceil(log10(e_max))]);
+
+% figure size
+fig = gcf;
+fig.Units = 'inches';
+fig.Position = [10 10 3 2.5];

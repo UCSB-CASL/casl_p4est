@@ -53,7 +53,7 @@ private:
   const static int nodes_per_tri_ = 6;
 
   // resolution limit (eps_ = eps_rel*lmin)
-  const double eps_rel_ = 1.e-10;
+  const double eps_rel_ = 1.e-12;
   double eps_;
   double lmin_;
 
@@ -76,10 +76,10 @@ private:
   // parameters
   const static int max_refinement_ = 10;
   const double snap_limit_ = 0.2;
-  const bool check_for_curvature_          = true;
-  const bool check_for_edge_intersections_ = true;
-  const bool check_for_overlapping_        = true;
-  const bool refine_in_normal_dir_         = true;
+  const bool check_for_curvature_          = 0;
+  const bool check_for_edge_intersections_ = 1;
+  const bool check_for_overlapping_        = 1;
+  const bool refine_in_normal_dir_         = 1;
   const bool adjust_auxiliary_midpoint_    = false;
 
   //--------------------------------------------------

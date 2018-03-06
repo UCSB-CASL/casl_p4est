@@ -78,14 +78,14 @@ public:
 //#endif
 
 #ifdef P4_TO_P8
-    double r0 = 0.71, xc_0 = 0.13, yc_0 = 0.27, zc_0 = 0.21;
-    double r1 = 0.63, xc_1 =-0.24, yc_1 =-0.16, zc_1 =-0.33;
+    double r0 = 0.71, xc_0 = 0.22, yc_0 = 0.17, zc_0 = 0.21;
+    double r1 = 0.63, xc_1 =-0.19, yc_1 =-0.19, zc_1 =-0.23;
 
     domain0.set_params(r0, xc_0, yc_0, zc_0);
     domain1.set_params(r1, xc_1, yc_1, zc_1);
 #else
     double r0 = 0.77, xc_0 = 0.13, yc_0 = 0.21;
-    double r1 = 0.53, xc_1 =-0.41, yc_1 =-0.37;
+    double r1 = 0.49, xc_1 =-0.33, yc_1 =-0.37;
 
     domain0.set_params(r0, xc_0, yc_0);
     domain1.set_params(r1, xc_1, yc_1);

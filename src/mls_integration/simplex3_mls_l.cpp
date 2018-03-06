@@ -34,6 +34,11 @@ simplex3_mls_l_t::simplex3_mls_l_t(double x0, double y0, double z0,
 
   tets_.push_back(tet3_t(0,1,2,3,0,1,2,3));
 
+  tris_[0].dir = 0;
+  tris_[1].dir = 1;
+  tris_[2].dir = 2;
+  tris_[3].dir = 3;
+
   // pre-compute the simplex volume for interpolation
   vol_ = volume(0, 1, 2, 3);
 
@@ -81,17 +86,23 @@ void simplex3_mls_l_t::construct_domain(std::vector<double> &phi, std::vector<ac
   // loop over LSFs
   for (short phi_idx = 0; phi_idx < acn.size(); ++phi_idx)
   {
+    phi_max_ = 0;
     for (int i = 0; i < nodes_per_tet_; ++i)
     {
       vtxs_[i].value = phi[phi_idx*nodes_per_tet_ + i];
-      perturb(vtxs_[i].value, phi_perturbance_);
+      phi_max_ = phi_max_ > fabs(vtxs_[i].value) ? phi_max_ : fabs(vtxs_[i].value);
     }
+
+    phi_eps_ = eps_rel_*phi_max_;
+
+    for (int i = 0; i < nodes_per_tet_; ++i)
+      perturb(vtxs_[i].value, phi_eps_);
 
     // interpolate to all vertices
     for (int i = nodes_per_tet_; i < vtxs_.size(); ++i)
     {
       interpolate_from_parent(i);
-      perturb(vtxs_[i].value, phi_perturbance_);
+      perturb(vtxs_[i].value, phi_eps_);
     }
 
     // split all elements

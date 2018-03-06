@@ -30,7 +30,10 @@ public:
   std::vector<double> x_grid_;
   std::vector<double> y_grid_;
 
+  cube2_mls_t() {}
   cube2_mls_t(double xyz_min[], double xyz_max[], int mnk[], int order);
+
+  void initialize(double xyz_min[], double xyz_max[], int mnk[], int order);
 
   ~cube2_mls_t();
 

@@ -58,6 +58,8 @@ public:
   const static int n_nodes_simplex = 6;
   const static int n_nodes_dir = 3;
 
+  const double eps_rel_ = 1.e-12;
+
   double  x0, x1, y0, y1;
   loc_t   loc;
   int     num_of_lsfs;
@@ -73,6 +75,16 @@ public:
   void quadrature_over_interface   (int num,            std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
   void quadrature_over_intersection(int num0, int num1, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
   void quadrature_in_dir           (int dir,            std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
+
+  inline void perturb(double &f, double epsilon)
+  {
+    if(fabs(f) < epsilon)
+    {
+      if(f >= 0) f =  epsilon;
+      else       f = -epsilon;
+    }
+  }
+
 };
 
 #endif // cube2_mls_q_H

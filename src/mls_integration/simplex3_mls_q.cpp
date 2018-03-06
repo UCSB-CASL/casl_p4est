@@ -70,6 +70,11 @@ simplex3_mls_q_t::simplex3_mls_q_t(double x0, double y0, double z0,
 
   tets_.push_back(tet3_t(0,1,2,3,0,1,2,3));
 
+  tris_[0].dir = 0;
+  tris_[1].dir = 1;
+  tris_[2].dir = 2;
+  tris_[3].dir = 3;
+
   // pre-compute inverse matrix for mapping of the original simplex onto the reference simplex
   vtx3_t *v0 = &vtxs_[0];
   vtx3_t *v1 = &vtxs_[1];
@@ -149,7 +154,7 @@ void simplex3_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
         phi_max_ = phi_max_ > fabs(phi_current[i]) ? phi_max_ : fabs(phi_current[i]);
       }
 
-      double phi_eps_ = eps_rel_*phi_max_;
+      phi_eps_ = eps_rel_*phi_max_;
 
       for (int i = 0; i < nodes_per_tet_; ++i)
         perturb(vtxs_[i].value, phi_eps_);
@@ -180,6 +185,8 @@ void simplex3_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
 
           // check validity of data on each edge
           needs_refinement = false;
+          if (check_for_valid_data_)
+          {
           int n = edgs_.size();
           for (int i = 0; i < n; ++i)
             if (!edgs_[i].is_split)
@@ -197,7 +204,7 @@ void simplex3_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
                 needs_refinement = true;
                 e->to_refine = true;
                 e->a = .5;
-                smart_refine_edg(i);
+//                smart_refine_edg(i);
               }
 
               if (!e->to_refine && same_sign(phi0, phi2))
@@ -218,7 +225,7 @@ void simplex3_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
                       needs_refinement = true;
                       e->to_refine = true;
                       e->a = need_swap(e->vtx0, e->vtx2) ? 1.-a_ext : a_ext;
-                      smart_refine_edg(i);
+//                      smart_refine_edg(i);
                     }
                   }
                 }
@@ -284,7 +291,7 @@ void simplex3_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
                           f->to_refine = true;
                           f->a = a;
                           f->b = b;
-                          smart_refine_tri(i, a, b);
+//                          smart_refine_tri(i, a, b);
                           std::cout << "Face refinement!\n";
                         }
                       }
@@ -293,11 +300,12 @@ void simplex3_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
                   }
                 }
               }
+          }
 
           // refine if necessary
           if (needs_refinement && refine_level < max_refinement_ - initial_refinement)
           {
-//             for (int i = 0; i < edgs_.size(); i++) smart_refine_edg(i);
+            for (int i = 0; i < edgs_.size(); i++) smart_refine_edg(i);
             for (int i = 0; i < tris_.size(); i++) smart_refine_tri(i);
             for (int i = 0; i < tets_.size(); i++) smart_refine_tet(i);
             refine_level++;
@@ -306,7 +314,6 @@ void simplex3_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
             needs_refinement = false;
           }
         }
-
 
         invalid_reconstruction_ = false;
 
@@ -336,11 +343,28 @@ void simplex3_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
           refine_level++;
         } else {
           if (invalid_reconstruction_)
-            std::cout << "Cannot resolve invalid geometry\n";
-          invalid_reconstruction_ = false;
+          {
+            std::cout << initial_refinement << "Cannot resolve invalid geometry\n";
+            if (initial_refinement < 3)
+            {
+              ++initial_refinement;
+              vtxs_ = vtxs_initial;
+              edgs_ = edgs_initial;
+              tris_ = tris_initial;
+              tets_ = tets_initial;
+              break;
+            } else {
+              invalid_reconstruction_ = false;
+            }
+          }
+//          invalid_reconstruction_ = false;
         }
       }
+      if (invalid_reconstruction_) break;
     }
+
+    if (invalid_reconstruction_) continue;
+
 
     // sort everything before integration
     for (int i = 0; i < edgs_.size(); i++)
@@ -648,6 +672,8 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
         tri->c_vtx01 = edgs_[tri->edg2].c_vtx_x;
         tri->c_vtx02 = edgs_[tri->edg1].c_vtx_x;
 
+        double length_edg = length(tri->c_vtx01, tri->c_vtx02);
+
         // coordinates of new vertices in reference element
         double abc_v01[] = { edgs_[tri->edg2].a, 0. };
         double abc_v02[] = { 0., edgs_[tri->edg1].a };
@@ -656,7 +682,15 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
         double abc_u0_lin[2] = { .5*(abc_v01[0] + abc_v02[0]), .5*(abc_v01[1] + abc_v02[1]) };
         double abc_u0[2];
         double t[2];
-        bool reconstruction_is_good = find_middle_node(abc_u0, abc_v02, abc_v01, n_tri, t);
+        bool reconstruction_is_good = true;
+
+        if (length_edg > eps_)
+          reconstruction_is_good = find_middle_node(abc_u0, abc_v02, abc_v01, n_tri, t);
+        else
+        {
+          abc_u0[0] = abc_u0_lin[0];
+          abc_u0[1] = abc_u0_lin[1];
+        }
 
         // midpoint of the auxiliary edge
         double abc_u1[2] = { 0.5*edgs_[tri->edg2].a, 0.5 };
@@ -679,7 +713,7 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
         double xyz_u1[3]; mapping_tri(xyz_u1, n_tri, abc_u1);
 
         // check for an intersection with an auxiliary straight edge
-        if (check_for_edge_intersections_ && reconstruction_is_good)
+        if (check_for_edge_intersections_ && reconstruction_is_good && length_edg > eps_)
         {
           // interpolate level-set function into the new point
           double phi1 = interpolate_from_parent(xyz_u1);
@@ -691,11 +725,10 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
           // and check whether the slope and the value at the other end of the same sign
           if (c1*phi2 < 0)
           {
-            invalid_reconstruction_ = true;
             reconstruction_is_good = false;
 
             // use linear recontruction in case the max level of refinement is reached
-//            mapping_tri(xyz_u0, n_tri, abc_u0_lin);
+            mapping_tri(xyz_u0, n_tri, abc_u0_lin);
           }
         }
 
@@ -707,7 +740,7 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
         int u1 = vtxs_.size()-1;
 
         // check if deformation is not too high
-        if (check_for_curvature_ && reconstruction_is_good)
+        if (check_for_curvature_ && reconstruction_is_good && length_edg > eps_)
         {
           // compute curvature of the curved edge
           vtx3_t *v0 = &vtxs_[tri->c_vtx01];
@@ -718,31 +751,33 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
           double ya = v2->y - v0->y;
           double za = v2->z - v0->z;
 
-          double xaa = 4.*(v0->x - 2.*v1->x + v2->x);
-          double yaa = 4.*(v0->y - 2.*v1->y + v2->y);
-          double zaa = 4.*(v0->z - 2.*v1->z + v2->z);
+          double max_x = fabs(v0->x) < fabs(v1->x) ? (fabs(v1->x) < fabs(v2->x) ? fabs(v2->x) : fabs(v1->x)) :
+                                                     (fabs(v0->x) < fabs(v2->x) ? fabs(v2->x) : fabs(v0->x)) ;
+          double max_y = fabs(v0->y) < fabs(v1->y) ? (fabs(v1->y) < fabs(v2->y) ? fabs(v2->y) : fabs(v1->y)) :
+                                                     (fabs(v0->y) < fabs(v2->y) ? fabs(v2->y) : fabs(v0->y)) ;
+          double max_z = fabs(v0->z) < fabs(v1->z) ? (fabs(v1->z) < fabs(v2->z) ? fabs(v2->z) : fabs(v1->z)) :
+                                                     (fabs(v0->z) < fabs(v2->z) ? fabs(v2->z) : fabs(v0->z)) ;
+
+          double xaa = 4.*(v0->x - 2.*v1->x + v2->x); if (fabs(xaa) < eps_*max_x) xaa = 0;
+          double yaa = 4.*(v0->y - 2.*v1->y + v2->y); if (fabs(yaa) < eps_*max_y) yaa = 0;
+          double zaa = 4.*(v0->z - 2.*v1->z + v2->z); if (fabs(zaa) < eps_*max_z) zaa = 0;
 
           double kappa_edg = fabs( sqrt( pow(zaa*ya-yaa*za, 2.) +
                                          pow(xaa*za-zaa*xa, 2.) +
                                          pow(yaa*xa-xaa*ya, 2.) )
                                    / pow( xa*xa + ya*ya + za*za , 1.5) );
 
-
-          double length_edg = sqrt( pow(v0->x - v2->x, 2.) +
-                                    pow(v0->y - v2->y, 2.) +
-                                    pow(v0->z - v2->z, 2.) );
-
-          if (kappa_edg*length_edg > kappa_scale_*kappa_*lmin_)
+          if (kappa_edg*length_edg > kappa_scale_*kappa_*lmin_ && kappa_edg*length_edg > kappa_eps_)
           {
-            invalid_reconstruction_ = true;
             reconstruction_is_good = false;
 
           }
         }
 
         // refine edges if any of the above tests failed
-        if (!reconstruction_is_good)
+        if (!reconstruction_is_good && try_to_fix_outside_vertices_)
         {
+          invalid_reconstruction_ = true;
           bool at_least_one = false;
 
           // split edges of the triangle by a straight line that is perpendicular to the linear
@@ -885,6 +920,8 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
         tri->c_vtx02 = edgs_[tri->edg1].c_vtx_x;
         tri->c_vtx12 = edgs_[tri->edg0].c_vtx_x;
 
+        double length_edg = length(tri->c_vtx02, tri->c_vtx12);
+
         // coordinates of new vertices in reference element
         double abc_v02[] = { 0.,                    edgs_[tri->edg1].a };
         double abc_v12[] = { 1.-edgs_[tri->edg0].a, edgs_[tri->edg0].a };
@@ -893,7 +930,15 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
         double abc_u1_lin[2] = { .5*(abc_v02[0] + abc_v12[0]), .5*(abc_v02[1] + abc_v12[1]) };
         double abc_u1[2];
         double t[2];
-        bool reconstruction_is_good = find_middle_node(abc_u1, abc_v12, abc_v02, n_tri, t);
+        bool reconstruction_is_good = true;
+
+        if (length_edg > eps_)
+          reconstruction_is_good = find_middle_node(abc_u1, abc_v12, abc_v02, n_tri, t);
+        else
+        {
+          abc_u1[0] = abc_u1_lin[0];
+          abc_u1[1] = abc_u1_lin[1];
+        }
 
         // midpoint of the auxiliary edge
         double abc_u0[] = { 0.5*(1.-edgs_[tri->edg0].a), 0.5*edgs_[tri->edg0].a };
@@ -916,7 +961,7 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
         double xyz_u1[3]; mapping_tri(xyz_u1, n_tri, abc_u1);
 
         // check for an intersection with an auxiliary straight edge
-        if (check_for_edge_intersections_ && reconstruction_is_good)
+        if (check_for_edge_intersections_ && reconstruction_is_good && length_edg > eps_)
         {
           // interpolate level-set function into the new point
           double phi1 = interpolate_from_parent(xyz_u0);
@@ -928,11 +973,10 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
           // and check whether the slope and the value at the other end of the same sign
           if (c1*phi2 < 0)
           {
-            invalid_reconstruction_ = true;
             reconstruction_is_good = false;
 
             // use linear recontruction in case the max level of refinement is reached
-//            mapping_tri(xyz_u1, n_tri, abc_u1_lin);
+            mapping_tri(xyz_u1, n_tri, abc_u1_lin);
           }
         }
 
@@ -944,7 +988,7 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
         int u1 = vtxs_.size()-1;
 
         // check if deformation is not too high
-        if (check_for_curvature_ && reconstruction_is_good)
+        if (check_for_curvature_ && reconstruction_is_good && length_edg > eps_)
         {
           // compute curvature
           vtx3_t *v0 = &vtxs_[tri->c_vtx02];
@@ -955,30 +999,32 @@ void simplex3_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
           double ya = v2->y - v0->y;
           double za = v2->z - v0->z;
 
-          double xaa = 4.*(v0->x - 2.*v1->x + v2->x);
-          double yaa = 4.*(v0->y - 2.*v1->y + v2->y);
-          double zaa = 4.*(v0->z - 2.*v1->z + v2->z);
+          double max_x = fabs(v0->x) < fabs(v1->x) ? (fabs(v1->x) < fabs(v2->x) ? fabs(v2->x) : fabs(v1->x)) :
+                                                     (fabs(v0->x) < fabs(v2->x) ? fabs(v2->x) : fabs(v0->x)) ;
+          double max_y = fabs(v0->y) < fabs(v1->y) ? (fabs(v1->y) < fabs(v2->y) ? fabs(v2->y) : fabs(v1->y)) :
+                                                     (fabs(v0->y) < fabs(v2->y) ? fabs(v2->y) : fabs(v0->y)) ;
+          double max_z = fabs(v0->z) < fabs(v1->z) ? (fabs(v1->z) < fabs(v2->z) ? fabs(v2->z) : fabs(v1->z)) :
+                                                     (fabs(v0->z) < fabs(v2->z) ? fabs(v2->z) : fabs(v0->z)) ;
+
+          double xaa = 4.*(v0->x - 2.*v1->x + v2->x); if (fabs(xaa) < eps_*max_x) xaa = 0;
+          double yaa = 4.*(v0->y - 2.*v1->y + v2->y); if (fabs(yaa) < eps_*max_y) yaa = 0;
+          double zaa = 4.*(v0->z - 2.*v1->z + v2->z); if (fabs(zaa) < eps_*max_z) zaa = 0;
 
           double kappa_edg = fabs( sqrt( pow(zaa*ya-yaa*za, 2.) +
                                          pow(xaa*za-zaa*xa, 2.) +
                                          pow(yaa*xa-xaa*ya, 2.) )
                                    / pow( xa*xa + ya*ya + za*za , 1.5) );
 
-
-          double length_edg = sqrt( pow(v0->x - v2->x, 2.) +
-                                    pow(v0->y - v2->y, 2.) +
-                                    pow(v0->z - v2->z, 2.) );
-
-          if (kappa_edg*length_edg > kappa_scale_*kappa_*lmin_)
+          if (kappa_edg*length_edg > kappa_scale_*kappa_*lmin_ && kappa_edg*length_edg > kappa_eps_)
           {
-            invalid_reconstruction_ = true;
             reconstruction_is_good = false;
           }
         }
 
         // refine edges if any of the above tests were failed
-        if (!reconstruction_is_good)
+        if (!reconstruction_is_good && try_to_fix_outside_vertices_)
         {
+          invalid_reconstruction_ = true;
           bool at_least_one = false;
 
           // split edges of the triangle by a straight line that is perpendicular to the linear
@@ -1312,12 +1358,27 @@ void simplex3_mls_q_t::do_action_tet(int n_tet, int cn, action_t action)
         tet->c_vtx12 = tris_[tet->tri0].c_vtx01;
         tet->c_vtx13 = tris_[tet->tri0].c_vtx02;
 
+        double length_edg = length(tet->c_vtx03, tet->c_vtx12);
+
         // midpoint aloung the interface
+        double r12 = edgs_[tris_[tet->tri0].edg2].a;
+        double r03 = edgs_[tris_[tet->tri1].edg1].a;
+
+        double abc_u_lin[3] = { .5*(1.-r12), .5*r12, .5*r03 };
         double abc_u[3];
         double xyz_u[3];
         double t[3];
 
-        bool reconstruction_is_good = find_middle_node_tet(abc_u, n_tet, t);
+        bool reconstruction_is_good = true;
+
+        if (length_edg > eps_)
+          reconstruction_is_good = find_middle_node_tet(abc_u, n_tet, t);
+        else
+        {
+          abc_u[0] = abc_u_lin[0];
+          abc_u[1] = abc_u_lin[1];
+          abc_u[2] = abc_u_lin[2];
+        }
 
         mapping_tet(xyz_u, n_tet, abc_u);
 
@@ -1326,7 +1387,7 @@ void simplex3_mls_q_t::do_action_tet(int n_tet, int cn, action_t action)
         int vn = vtxs_.size()-1;
 
         /* check if deformation is not too high */
-        if (check_for_curvature_ && reconstruction_is_good)
+        if (check_for_curvature_ && reconstruction_is_good && length_edg > eps_)
         {
           // compute curvature of the curved edge
           vtx3_t *v0 = &vtxs_[tet->c_vtx03];
@@ -1337,21 +1398,23 @@ void simplex3_mls_q_t::do_action_tet(int n_tet, int cn, action_t action)
           double ya = v2->y - v0->y;
           double za = v2->z - v0->z;
 
-          double xaa = 4.*(v0->x - 2.*v1->x + v2->x);
-          double yaa = 4.*(v0->y - 2.*v1->y + v2->y);
-          double zaa = 4.*(v0->z - 2.*v1->z + v2->z);
+          double max_x = fabs(v0->x) < fabs(v1->x) ? (fabs(v1->x) < fabs(v2->x) ? fabs(v2->x) : fabs(v1->x)) :
+                                                     (fabs(v0->x) < fabs(v2->x) ? fabs(v2->x) : fabs(v0->x)) ;
+          double max_y = fabs(v0->y) < fabs(v1->y) ? (fabs(v1->y) < fabs(v2->y) ? fabs(v2->y) : fabs(v1->y)) :
+                                                     (fabs(v0->y) < fabs(v2->y) ? fabs(v2->y) : fabs(v0->y)) ;
+          double max_z = fabs(v0->z) < fabs(v1->z) ? (fabs(v1->z) < fabs(v2->z) ? fabs(v2->z) : fabs(v1->z)) :
+                                                     (fabs(v0->z) < fabs(v2->z) ? fabs(v2->z) : fabs(v0->z)) ;
+
+          double xaa = 4.*(v0->x - 2.*v1->x + v2->x); if (fabs(xaa) < eps_rel_*max_x) xaa = 0;
+          double yaa = 4.*(v0->y - 2.*v1->y + v2->y); if (fabs(yaa) < eps_rel_*max_y) yaa = 0;
+          double zaa = 4.*(v0->z - 2.*v1->z + v2->z); if (fabs(zaa) < eps_rel_*max_z) zaa = 0;
 
           double kappa_edg = fabs( sqrt( pow(zaa*ya-yaa*za, 2.) +
                                          pow(xaa*za-zaa*xa, 2.) +
                                          pow(yaa*xa-xaa*ya, 2.) )
                                    / pow( xa*xa + ya*ya + za*za , 1.5) );
 
-
-          double length_edg = sqrt( pow(v0->x - v2->x, 2.) +
-                                    pow(v0->y - v2->y, 2.) +
-                                    pow(v0->z - v2->z, 2.) );
-
-          if (kappa_edg*length_edg > kappa_scale_*kappa_*lmin_ &&
+          if (kappa_edg*length_edg > kappa_scale_*kappa_*lmin_ && kappa_edg*length_edg > kappa_eps_ &&
               !edgs_tmp_[tris_[tet->tri0].edg0].to_refine &&
               !edgs_tmp_[tris_[tet->tri0].edg1].to_refine &&
               !edgs_tmp_[tris_[tet->tri0].edg2].to_refine &&
@@ -1360,20 +1423,14 @@ void simplex3_mls_q_t::do_action_tet(int n_tet, int cn, action_t action)
               !edgs_tmp_[tris_[tet->tri2].edg2].to_refine)
           {
             // TODO: print a message
-            invalid_reconstruction_ = true;
             reconstruction_is_good = false;
           }
         }
 
 
-        if (!reconstruction_is_good)
+        if (!reconstruction_is_good && try_to_fix_outside_vertices_)
         {
           invalid_reconstruction_ = true;
-
-          double r12 = edgs_[tris_[tet->tri0].edg2].a;
-          double r03 = edgs_[tris_[tet->tri1].edg1].a;
-
-          double abc_u_lin[3] = { .5*(1.-r12), .5*r12, .5*r03 };
 
           double A, B, C;
           A = 0; B = 0; C = 0; double phi_line_0 = (A-abc_u_lin[0])*t[0] + (B-abc_u_lin[1])*t[1]+ (C-abc_u_lin[2])*t[2];
@@ -1896,21 +1953,26 @@ bool simplex3_mls_q_t::find_middle_node(double *xyz_out, double *xyz0, double *x
     Fnn += f*(Naa[i]*nx*nx + 2.*Nab[i]*nx*ny + Nbb[i]*ny*ny);
   }
 
-  // solve quadratic equation
-  double c2 = .5*Fnn;
-  double c1 = Fn;
-  double c0 = F;
+  double alpha = 0;
 
-  det = c1*c1-4.*c2*c0;
+  if (fabs(F) > phi_eps_)
+  {
+    // solve quadratic equation
+    double c2 = .5*Fnn;
+    double c1 = Fn;
+    double c0 = F;
 
-  if (det < 0)
-    throw std::domain_error("[CASL_ERROR]: (simplex3_mls_q_t) intersection is not found.");
+    det = c1*c1-4.*c2*c0;
 
-  // we are interested only in the closest root
-  double alpha = -2.*c0/(c1 + signum(c1)*sqrt(det));
+    if (det < 0)
+      throw std::domain_error("[CASL_ERROR]: (simplex3_mls_q_t) intersection is not found.");
 
-  if (not_finite(alpha))
-    throw std::domain_error("[CASL_ERROR]: (simplex3_mls_q_t) Something went wrong during integration.");
+    // we are interested only in the closest root
+    alpha = -2.*c0/(c1 + signum(c1)*sqrt(det));
+
+    if (not_finite(alpha))
+      throw std::domain_error("[CASL_ERROR]: (simplex3_mls_q_t) Something went wrong during integration.");
+  }
 
   // compute reference coordinates of the midpoint
   xyz_out[0] = a + alpha*nx;
@@ -1926,8 +1988,6 @@ bool simplex3_mls_q_t::find_middle_node(double *xyz_out, double *xyz0, double *x
       // TODO: print warning
       std::cout << "Warning: midpoint falls outside of a triangle!\n";
       std::cout << xyz_out[0] << " " << xyz_out[1] << " " << xyz_out[0] + xyz_out[1] << "\n";
-
-      invalid_reconstruction_ = true;
 
       // use linear reconstruction in case the max level of refinement is reached
       xyz_out[0] = a;
@@ -2123,24 +2183,29 @@ bool simplex3_mls_q_t::find_middle_node_tet(double abc_out[3], int n_tet, double
     Fzx += f*Nca[i];
   }
 
-  double Fn  = Fx*nx + Fy*ny + Fz*nz;
-  double Fnn = Fxx*nx*nx + Fyy*ny*ny + Fzz*nz*nz + 2.*Fxy*nx*ny + 2.*Fyz*ny*nz + 2.*Fzx*nz*nx;
+  double alpha = 0;
 
-  // solve quadratic equation
-  double c2 = 0.5*Fnn;      // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e
-  double c1 = Fn;   // the expansion of f at the center of (0,1)
-  double c0 = F;
+  if (fabs(F) > phi_eps_)
+  {
+    double Fn  = Fx*nx + Fy*ny + Fz*nz;
+    double Fnn = Fxx*nx*nx + Fyy*ny*ny + Fzz*nz*nz + 2.*Fxy*nx*ny + 2.*Fyz*ny*nz + 2.*Fzx*nz*nx;
 
-  det = c1*c1-4.*c2*c0;
+    // solve quadratic equation
+    double c2 = 0.5*Fnn;      // c2*(x-xc)^2 + c1*(x-xc) + c0 = 0, i.e
+    double c1 = Fn;   // the expansion of f at the center of (0,1)
+    double c0 = F;
 
-  if (det < 0)
-    throw std::domain_error("[CASL_ERROR]: (simplex3_mls_q_t) intersection is not found.");
+    det = c1*c1-4.*c2*c0;
 
-  // we are interested only in the closest root
-  double alpha = -2.*c0/(c1 + signum(c1)*sqrt(det));
+    if (det < 0) det = c1*c1;
+    //    throw std::domain_error("[CASL_ERROR]: (simplex3_mls_q_t) intersection is not found.");
 
-  if (not_finite(alpha))
-    throw std::domain_error("[CASL_ERROR]: (simplex3_mls_q_t) Something went wrong during integration.");
+    // we are interested only in the closest root
+    alpha = -2.*c0/(c1 + signum(c1)*sqrt(det));
+
+    if (not_finite(alpha))
+      throw std::domain_error("[CASL_ERROR]: (simplex3_mls_q_t) Something went wrong during integration.");
+  }
 
   abc_out[0] = a + alpha*nx;
   abc_out[1] = b + alpha*ny;
@@ -2165,8 +2230,6 @@ bool simplex3_mls_q_t::find_middle_node_tet(double abc_out[3], int n_tet, double
 //          << " " << abc_out[0]
 //          << " " << abc_out[1]
 //          << " " << abc_out[2] << "\n";
-
-      invalid_reconstruction_ = true;
 
       // use linear reconstruction in case the max level of refinement is reached
       abc_out[0] = a;
@@ -3813,10 +3876,26 @@ void simplex3_mls_q_t::compute_curvature()
   double phi_yz = phi_aa*a_y*a_z + phi_bb*b_y*b_z + phi_cc*c_y*c_z + phi_ab*(a_y*b_z+a_z*b_y) + phi_bc*(b_y*c_z+b_z*c_y) + phi_ca*(c_y*a_z+c_z*a_y);
   double phi_zx = phi_aa*a_z*a_x + phi_bb*b_z*b_x + phi_cc*c_z*c_x + phi_ab*(a_z*b_x+a_x*b_z) + phi_bc*(b_z*c_x+b_x*c_z) + phi_ca*(c_z*a_x+c_x*a_z);
 
-  kappa_ = fabs( (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx +
-                  phi_x*phi_x*phi_zz - 2.*phi_x*phi_z*phi_zx + phi_z*phi_z*phi_xx +
-                  phi_z*phi_z*phi_yy - 2.*phi_z*phi_y*phi_yz + phi_y*phi_y*phi_zz)
-                 / pow( phi_x*phi_x + phi_y*phi_y + phi_z*phi_z, 1.5) );
+  double kappa_mean = ( (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx +
+                             phi_x*phi_x*phi_zz - 2.*phi_x*phi_z*phi_zx + phi_z*phi_z*phi_xx +
+                             phi_z*phi_z*phi_yy - 2.*phi_z*phi_y*phi_yz + phi_y*phi_y*phi_zz)
+                            / pow( phi_x*phi_x + phi_y*phi_y + phi_z*phi_z, 1.5) );
+
+  double kappa_gauss = ( phi_x*phi_x*(phi_yy*phi_zz - phi_yz*phi_yz) +
+                             phi_y*phi_y*(phi_zz*phi_xx - phi_zx*phi_zx) +
+                             phi_z*phi_z*(phi_xx*phi_yy - phi_xy*phi_xy) +
+                             2.*( phi_x*phi_y*(phi_zx*phi_yz - phi_xy*phi_zz) +
+                                  phi_y*phi_z*(phi_xy*phi_zx - phi_yz*phi_xx) +
+                                  phi_z*phi_x*(phi_xy*phi_yz - phi_zx*phi_yy) ) )
+      / pow( phi_x*phi_x + phi_y*phi_y + phi_z*phi_z, 2.);
+
+//  if (kappa_mean*kappa_mean - 4.*kappa_gauss < 0.) throw;
+  if (kappa_mean*kappa_mean - 4.*kappa_gauss < 0.) kappa_gauss = 0;
+
+  double kappa_1st = .5*(kappa_mean + sqrt(kappa_mean*kappa_mean - 4.*kappa_gauss));
+  double kappa_2nd = .5*(kappa_mean - sqrt(kappa_mean*kappa_mean - 4.*kappa_gauss));
+
+  kappa_ = fabs(kappa_1st) > fabs(kappa_2nd) ? fabs(kappa_1st) : fabs(kappa_2nd);
 }
 
 //--------------------------------------------------

@@ -83,7 +83,8 @@ public:
   public:
       double operator()(double x, double y) const
       {
-          return 1.0 + sin(x)*cos(y);
+        return 1.0;
+        return 1.0 + sin(x)*cos(y);
       }
   } bc_coeff_1;
 
@@ -91,7 +92,8 @@ public:
   public:
       double operator()(double x, double y) const
       {
-          return exp(x+y);
+        return 1.0;
+        return exp(x+y);
       }
   } bc_coeff_2;
 #endif
@@ -112,7 +114,7 @@ public:
     domain2.set_params(r2, xc2, yc2, zc2, beta2, inside2, nx2, ny2, nz2, theta2);
 #else
     double r0 = 0.73, xc0 = 0.13, yc0 = 0.16, theta0 = 0.1*PI, beta0 = 0.08, inside0 = 1;
-    double r1 = 0.66, xc1 =-0.21, yc1 =-0.23, theta1 =-0.2*PI, beta1 =-0.08, inside1 = 1;
+    double r1 = 0.66, xc1 =-0.14, yc1 =-0.21, theta1 =-0.2*PI, beta1 =-0.08, inside1 = 1;
     double r2 = 0.59, xc2 = 0.45, yc2 =-0.53, theta2 = 0.2*PI, beta2 =-0.08, inside2 =-1;
 
     domain0.set_params(r0, xc0, yc0, beta0, inside0, theta0);

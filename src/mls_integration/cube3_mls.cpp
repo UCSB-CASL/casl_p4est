@@ -1,7 +1,10 @@
 #include "cube3_mls.h"
 
-cube3_mls_t::cube3_mls_t(double xyz_min[], double xyz_max[], int mnk[], int order)
+void cube3_mls_t::initialize(double xyz_min[], double xyz_max[], int mnk[], int order)
 {
+  for (int idx = 0; idx < cubes_l_.size(); ++idx) delete cubes_l_[idx];
+  for (int idx = 0; idx < cubes_q_.size(); ++idx) delete cubes_q_[idx];
+
   order_ = order;
   points_per_cube_ = (order_+1)*(order_+1)*(order_+1);
 
@@ -45,8 +48,8 @@ cube3_mls_t::cube3_mls_t(double xyz_min[], double xyz_max[], int mnk[], int orde
 
 cube3_mls_t::~cube3_mls_t()
 {
-  if      (order_ == 1) { for (int idx = 0; idx < cubes_l_.size(); ++idx) delete cubes_l_[idx]; }
-  else if (order_ == 2) { for (int idx = 0; idx < cubes_q_.size(); ++idx) delete cubes_q_[idx]; }
+  for (int idx = 0; idx < cubes_l_.size(); ++idx) delete cubes_l_[idx];
+  for (int idx = 0; idx < cubes_q_.size(); ++idx) delete cubes_q_[idx];
 }
 
 
