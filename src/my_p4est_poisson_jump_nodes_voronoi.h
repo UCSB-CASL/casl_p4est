@@ -19,6 +19,51 @@
 #include <src/voronoi2D.h>
 #endif
 
+struct error_sample
+{
+  double error_value;
+  double error_location_x;
+  double error_location_y;
+#ifdef P4_TO_P8
+  double error_location_z;
+#endif
+  void operator=(error_sample& rhs)
+  {
+    this->error_value       = rhs.error_value;
+    this->error_location_x  = rhs.error_location_x;
+    this->error_location_y  = rhs.error_location_y;
+#ifdef P4_TO_P8
+    this->error_location_z  = rhs.error_location_z;
+#endif
+  }
+  bool operator>(error_sample& rhs)
+  {
+    return (this->error_value > rhs.error_value);
+  }
+  error_sample()
+  {
+    this->error_value       = 0.0;
+    this->error_location_x  = -DBL_MAX;
+    this->error_location_y  = -DBL_MAX;
+#ifdef P4_TO_P8
+    this->error_location_z  = -DBL_MAX;
+#endif
+  }
+  error_sample(double value, double x_loc, double y_loc
+             #ifdef P4_TO_P8
+               , double z_loc
+             #endif
+               )
+  {
+    this->error_value       = value;
+    this->error_location_x  = x_loc;
+    this->error_location_y  = y_loc;
+#ifdef P4_TO_P8
+    this->error_location_z  = z_loc;
+#endif
+  }
+};
+
 class my_p4est_poisson_jump_nodes_voronoi_t
 {
   typedef struct
@@ -422,7 +467,15 @@ public:
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
 
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR, const bool destroy_solution_on_voronoi_mesh = true);
+
+  void destroy_solution()
+  {
+    if(sol_voro != PETSC_NULL)
+    {
+      ierr = VecDestroy(sol_voro); CHKERRXX(ierr); sol_voro = NULL;
+    }
+  }
 
   /*!
    * \brief interpolate_solution_from_voronoi_to_tree_on_node_n self-explanatory
@@ -497,6 +550,15 @@ public:
    * If an inconsistency is found, an information message is printed on std::cout
    */
   void check_voronoi_partition() const;
+
+  void get_max_error_at_seed_locations(error_sample& max_error_on_seeds, int& rank_max_error,
+                                     #ifdef P4_TO_P8
+                                       double (*exact_solution) (double, double, double),
+                                     #else
+                                       double (*exact_solution) (double, double),
+                                     #endif
+                                       const double& shift_value = 0.0
+                                       )  const;
 };
 /*
 POTENTIAL IMPROVEMENTS [Raphael]

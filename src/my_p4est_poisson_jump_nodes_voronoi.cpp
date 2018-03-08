@@ -68,6 +68,7 @@ my_p4est_poisson_jump_nodes_voronoi_t::~my_p4est_poisson_jump_nodes_voronoi_t()
   if(A_null_space != PETSC_NULL) { ierr = MatNullSpaceDestroy(A_null_space);  CHKERRXX(ierr); }
   if(ksp          != PETSC_NULL) { ierr = KSPDestroy(ksp);                    CHKERRXX(ierr); }
   if(rhs          != PETSC_NULL) { ierr = VecDestroy(rhs);                    CHKERRXX(ierr); }
+  if(sol_voro     != PETSC_NULL) { ierr = VecDestroy(sol_voro);               CHKERRXX(ierr); }
   if(local_mu)             { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_m); delete dynamic_cast<my_p4est_interpolation_nodes_t*>(mu_p); }
   if(local_add)            { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(add_m); delete dynamic_cast<my_p4est_interpolation_nodes_t*>(add_p); }
   if(local_u_jump)         { delete dynamic_cast<my_p4est_interpolation_nodes_t*>(u_jump); }
@@ -197,7 +198,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::set_mu_grad_u_jump(Vec mu_grad_u_jum
   local_mu_grad_u_jump = true;
 }
 
-void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
+void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type, const bool destroy_solution_on_voronoi_mesh)
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 
@@ -319,7 +320,10 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   /* interpolate the solution back onto the original mesh */
   interpolate_solution_from_voronoi_to_tree(solution);
 
-  ierr = VecDestroy(sol_voro); sol_voro = NULL; CHKERRXX(ierr);
+  if(destroy_solution_on_voronoi_mesh)
+  {
+    ierr = VecDestroy(sol_voro); sol_voro = PETSC_NULL; CHKERRXX(ierr);
+  }
 
   ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 }
@@ -2168,4 +2172,42 @@ void my_p4est_poisson_jump_nodes_voronoi_t::check_voronoi_partition() const
 
   if(nb_bad==0) { ierr = PetscPrintf(p4est->mpicomm, "Partition is good.\n"); CHKERRXX(ierr); }
   else          { ierr = PetscPrintf(p4est->mpicomm, "Partition is NOT good, %d problem found.\n", nb_bad); CHKERRXX(ierr); }
+}
+
+void my_p4est_poisson_jump_nodes_voronoi_t::get_max_error_at_seed_locations(error_sample& max_error_on_seeds, int &rank_max_error,
+                                                                            #ifdef P4_TO_P8
+                                                                            double (*exact_solution) (double, double, double),
+                                                                            #else
+                                                                            double (*exact_solution) (double, double),
+                                                                            #endif
+                                                                            const double& shift_value) const
+{
+
+  max_error_on_seeds.error_value = 0.0;
+  const double * sol_voro_read_only_p;
+  PetscErrorCode ierrr = VecGetArrayRead(sol_voro, &sol_voro_read_only_p); CHKERRXX(ierrr);
+  for (unsigned int seed_idx = 0; seed_idx < num_local_voro; ++seed_idx)
+  {
+#ifdef P4_TO_P8
+    Point3 seed = voro_seeds[seed_idx];
+    error_sample local_error(fabs(shift_value + sol_voro_read_only_p[seed_idx] - (*exact_solution)(seed.x, seed.y, seed.z)), seed.x, seed.y, seed.z);
+#else
+    Point2 seed = voro_seeds[seed_idx];
+    error_sample local_error(fabs(shift_value + sol_voro_read_only_p[seed_idx] - (*exact_solution)(seed.x, seed.y)), seed.x, seed.y);
+#endif
+    if(local_error > max_error_on_seeds)
+      max_error_on_seeds = local_error;
+  }
+  ierrr = VecRestoreArrayRead(sol_voro, &sol_voro_read_only_p); CHKERRXX(ierrr);
+  std::vector<error_sample> max_errors_on_seeds_on_procs(p4est->mpisize);
+  int mpiret = MPI_Allgather((void*) &max_error_on_seeds, sizeof(error_sample), MPI_BYTE, (void *) &max_errors_on_seeds_on_procs[0], sizeof(error_sample), MPI_BYTE, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  max_error_on_seeds.error_value = 0.0;
+  rank_max_error = 0;
+  for (int r = 0; r < p4est->mpisize; ++r) {
+    if(max_errors_on_seeds_on_procs[r] > max_error_on_seeds)
+    {
+       max_error_on_seeds = max_errors_on_seeds_on_procs[r];
+       rank_max_error = r;
+    }
+  }
 }
