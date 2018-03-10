@@ -129,32 +129,45 @@ void my_p4est_epidemics_t::read(const std::string &census) {
         Lx_min = MIN(Lx_min, tracts[i].x);
         Ly_min = MIN(Ly_min, tracts[i].y);
     }
+    // make room from boundaries
+    Lx_min *= 1.1;
+    Lx_max *= 1.1;
+    Ly_min *= 1.1;
+    Ly_max *= 1.1;
     // scale and recenter the tracts to middle
-    translate(Lx_min, Ly_min);
+    translate(Lx_min, Ly_min);   // shift coordinate system to the bottom left corner
     unit_scaling();
-
+    translate(0, -0.2);
 
     int maxPts = tracts.size();
     dataPts = annAllocPts(maxPts, P4EST_DIM); // allocate data points
-    double tmp=0;
+
+
     for(int n=0; n<tracts.size(); ++n)
     {
-        double coord [2] = {tracts[n].x, tracts[n].y};
-        dataPts[n] = coord;
-        tmp = MIN(tmp, tracts[n].x);
+        dataPts[n][0] = tracts[n].x;
+        dataPts[n][1] = tracts[n].y;
     }
 
+    if(p4est->mpirank==0)
+    {
+        std::ofstream fout;
+        fout.open("locs.txt");
+        for(int n=0; n<tracts.size(); ++n)
+            fout << tracts[n].x << "\t" << tracts[n].y << "\n";
+        fout.close();
+    }
     set_density();
 }
 
-void my_p4est_epidemics_t::translate(double x_center, double y_center) {
+void my_p4est_epidemics_t::translate(double x_shift, double y_shift) {
     // move the tracts to the new location
     for (size_t i = 0; i<tracts.size(); i++){
-        tracts[i].x -= x_center;
-        tracts[i].y -= y_center;
+        tracts[i].x -= x_shift;
+        tracts[i].y -= y_shift;
     }
-    xc_ = x_center;
-    yc_ = y_center;
+    xc_ -= x_shift;
+    yc_ -= y_shift;
 }
 
 void my_p4est_epidemics_t::unit_scaling() {
@@ -179,32 +192,39 @@ void my_p4est_epidemics_t::set_density()
 double my_p4est_epidemics_t::interp_density(double x, double y)
 {
     ANNpoint queryPt;           // query point
-    queryPt = annAllocPt(P4EST_DIM);  // allocate query point
-    double coord [2] = {x, y};
-    queryPt = coord;
+    queryPt = annAllocPt(2);  // allocate query point
+
+    queryPt[0] = x;
+    queryPt[1] = y;
 
     ANNidxArray nnIdx;          // near neighbor indices
     ANNdistArray dists;         // near neighbor distances
     nnIdx = new ANNidx[k_neighs];      // allocate near neigh indices
     dists = new ANNdist[k_neighs];     // allocate near neighbor dists
-    kdTree->annkSearch( queryPt, k_neighs, nnIdx, dists, EPS);
+    kdTree->annkSearch( queryPt, k_neighs, nnIdx, dists, 0);
 
     double interpolated_density = 0;
     double denom = 0;
-    for (int i = 0; i < k_neighs; i++) {
-        if(dists[i]>R_eff)
-            continue;
-        double weight = 1/dists[i];
-        double neigh_dens = tracts[nnIdx[i]].density;
-        interpolated_density += weight*neigh_dens;
-        denom += weight;
+    for (int i = 0; i < k_neighs; i++)
+    {
+        int nid = nnIdx[i];
+        double dist = sqrt(dists[i]);
+        if(dists[i]<=R_eff)
+        {
+            double neigh_dens = tracts[nid].density;
+            double weight = 1/dist;
+            interpolated_density += weight*neigh_dens;
+            denom += weight;
+        }
     }
+
     if(denom>EPS)
         interpolated_density /= denom;
     else
         interpolated_density = 0;
     delete [] nnIdx; // clean things up
     delete [] dists;
+
     return interpolated_density;
 }
 
