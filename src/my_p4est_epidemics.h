@@ -97,7 +97,7 @@ private:
   int k_neighs = 5;             // number of nearest neighbors to draw
   ANNpointArray dataPts;        // data points
   ANNkd_tree* kdTree;
-  double R_eff = 0.005;          // effective radius for neighborhood
+  double R_eff = 0.0005;          // effective radius for neighborhood
 
   std::vector<Tract> tracts;
   std::vector<double> densities;
