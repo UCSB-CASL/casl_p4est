@@ -548,32 +548,19 @@ void my_p4est_epidemics_t::solve(int iter)
             double up = U_n_p[n];
             double vp = V_n_p[n];
             double wp = W_n_p[n];
-            double s = interp_density(x,y) - up - vp + wp;
-            //            if(s>=1)
-            //            {
-            //                up = 0;
-            //                vp = 0;
-            //                wp = 0;
-            //                s=1;
-            //            }
-            //            if(up>=1)
-            //            {
-            //                up = 1;
-            //                vp = 0;
-            //                wp = 0;
-            //            }
-            //            if(vp>=1)
-            //            {
-            //                up = 0;
-            //                vp = 1;
-            //                wp = 0;
-            //            }
-            //            if(wp>=1)
-            //            {
-            //                up = 0;
-            //                vp = 0;
-            //                wp = 1;
-            //            }
+            double frac = interp_density(x,y);
+            double s = frac - up - vp + wp;
+
+            if (s>=frac || frac < EPS)
+            {
+                up = 0;
+                vp = 0;
+                wp = 0;
+                s = frac;
+            }
+
+
+
             rhs_u_p[n] = up + dt_n*(R_A*s*up + Xi_B*R_A*(vp - wp)*up - up);
             rhs_v_p[n] = vp + dt_n*(R_B*s*vp + Xi_A*R_B*(up - wp)*vp - vp);
             rhs_w_p[n] = wp + dt_n*(Xi_A*R_B*(up - wp)*vp + Xi_B*R_A*(vp - wp)*up - 2*wp);
@@ -665,10 +652,10 @@ void my_p4est_epidemics_t::initialize_infections()
     for(int infection=0;infection<2;++infection)
     {
         /* select nucleation point */
-        xc = ((double)rand()/RAND_MAX)*L;
-        yc = ((double)rand()/RAND_MAX)*L;
-        //        xc = infection*L;
-        //        yc = infection*L;
+        //xc = ((double)rand()/RAND_MAX)*L;
+        //yc = ((double)rand()/RAND_MAX)*L;
+        xc = 0.4 + infection*0.2;
+        yc = 0.5;
         circle_t circle(xc, yc, r, this);
 
 

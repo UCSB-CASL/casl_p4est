@@ -29,7 +29,7 @@ int main (int argc, char** argv)
     cmd.parse(argc, argv);
 
     int lmin = cmd.get("lmin", 7);
-    int lmax = cmd.get("lmax", 10);
+    int lmax = cmd.get("lmax", 7);
     int nx = cmd.get("nx", 2);
     int ny = cmd.get("ny", 2);
     int save_vtk = cmd.get("save_vtk", 1);
@@ -41,9 +41,9 @@ int main (int argc, char** argv)
     double alpha_B = cmd.get("alpha_B", 2.0);
     double Xi_A = cmd.get("Xi_A", 5);
     double Xi_B = cmd.get("Xi_B", 5);
-    double D_A = cmd.get("D_A", 1e-6);
-    double D_B = cmd.get("D_B", 1e-6);
-    double D_AB = cmd.get("D_AB", 1e-6);
+    double D_A = cmd.get("D_A", 1);
+    double D_B = cmd.get("D_B", 1);
+    double D_AB = cmd.get("D_AB", 1);
 
     double box_size = cmd.get("box_size", 1);
 
@@ -80,6 +80,7 @@ int main (int argc, char** argv)
     /* initialize the solver */
     my_p4est_epidemics_t epidemics(ngbd);
     epidemics.read("US_census.dat");
+    //epidemics.read("uniform_data.dat");
     epidemics.set_parameters(R_A, R_B, Xi_A, Xi_B);
     epidemics.set_D(D_A, D_B, D_AB);
 
