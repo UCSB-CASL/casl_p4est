@@ -114,6 +114,9 @@ const double p_xyz_max[] = { 1.0,  1.0,  1.0};
 
 bool save_vtk = 0;
 
+bool check_for_curvature = 0;
+bool integrate_one_cell = 0;
+
 // function to integrate
 int func_num = 0;
 
@@ -484,6 +487,9 @@ int main (int argc, char* argv[])
   cmd.add_option("func_num", "test function");
   cmd.add_option("geometry_num", "geometry_num");
 
+  cmd.add_option("check_for_curvature", "check_for_curvature");
+  cmd.add_option("integrate_one_cell", "integrate_one_cell");
+
   cmd.parse(argc, argv);
 
   cmd.print();
@@ -503,6 +509,8 @@ int main (int argc, char* argv[])
   func_num = cmd.get("func_num", func_num);
   save_vtk = cmd.get("save_vtk", save_vtk);
 
+  check_for_curvature = cmd.get("check_for_curvature", check_for_curvature);
+  integrate_one_cell = cmd.get("integrate_one_cell", integrate_one_cell);
 
   set_parameters();
 
@@ -585,20 +593,27 @@ int main (int argc, char* argv[])
 
             p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-#ifdef TEST_OH2_ERRORS_HYPOTHESIS
             // testing O(h^2) errors hypothesis
+            double xyz_cell[P4EST_DIM];
+#ifdef P4_TO_P8
+            if (geometry_num == 5)
             {
               // sphere's radius
-              double R = 0.77;
+              double R = geometry_one_circle.domain0.phi.r0;
 
               // relative cap's base radius
-              double a = 0.7;
+              double a = 0.5;
 
               // relative margin
               double b = 2;
 
-              // center of required cube
+              // shift sphere to domain boundary
               geometry_one_circle.domain0.set_params(R, p_xyz_max_shift[0] - b*h.back() - sqrt(SQR(R) - SQR(a*h.back())), 0, 0);
+
+              // center of required cube
+              xyz_cell[0] = p_xyz_max_shift[0]-b*dxyz[0]+.5*dxyz[0];
+              xyz_cell[1] = .5*dxyz[1];
+              xyz_cell[2] = .5*dxyz[2];
             }
 #endif
 
@@ -700,6 +715,10 @@ int main (int argc, char* argv[])
             integration_L.set_phi(*LSF, *action, *color, 1);
             integration_Q.set_phi(*LSF, *action, *color, 0);
 
+#ifdef P4_TO_P8
+            integration_Q.check_for_curvature = check_for_curvature;
+#endif
+
             char *out_dir;
             out_dir = getenv("OUT_DIR");
             std::ostringstream oss;
@@ -765,21 +784,26 @@ int main (int argc, char* argv[])
 
             }
 
+            double *xyz_c = NULL;
+
+#ifdef P4_TO_P8
+            if (integrate_one_cell) xyz_c = xyz_cell;
+#endif
 
             /* Calculate and store results */
-            result_L_all.ID[file_num] = integration_L.integrate_over_domain(func_vec);
-            result_Q_all.ID[file_num] = integration_Q.integrate_over_domain(func_vec, fdd);
+            result_L_all.ID[file_num] = integration_L.integrate_over_domain(func_vec, NULL, xyz_c);
+            result_Q_all.ID[file_num] = integration_Q.integrate_over_domain(func_vec, fdd, xyz_c);
 
             for (int i = 0; i < exact.n_subs; i++)
             {
-              result_L_all.ISB[i][file_num] = integration_L.integrate_over_interface(color->at(i), func_vec);
-              result_Q_all.ISB[i][file_num] = integration_Q.integrate_over_interface(color->at(i), func_vec, fdd);
+              result_L_all.ISB[i][file_num] = integration_L.integrate_over_interface(color->at(i), func_vec, NULL, xyz_c);
+              result_Q_all.ISB[i][file_num] = integration_Q.integrate_over_interface(color->at(i), func_vec, fdd, xyz_c);
             }
 
             for (int i = 0; i < exact.n_Xs; i++)
             {
-              result_L_all.IX[i][file_num] = integration_L.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec);
-              result_Q_all.IX[i][file_num] = integration_Q.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd);
+              result_L_all.IX[i][file_num] = integration_L.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, NULL, xyz_c);
+              result_Q_all.IX[i][file_num] = integration_Q.integrate_over_intersection(exact.IXc0[i], exact.IXc1[i], func_vec, fdd, xyz_c);
             }
 
             ierr = VecDestroy(func_vec); CHKERRXX(ierr);
@@ -895,14 +919,14 @@ int main (int argc, char* argv[])
   for (int r = 0; r < num_resolutions; ++r)
   {
 
-#ifdef TEST_OH2_ERRORS_HYPOTHESIS
     // testing O(h^2) errors hypothesis
+    if (integrate_one_cell)
     {
       // sphere's radius
-      double R = 0.77;
+      double R = geometry_one_circle.domain0.phi.r0;
 
       // relative cap's base radius
-      double a = 0.7;
+      double a = 0.5;
 
       double H = (R-sqrt(SQR(R) - SQR(a*h[r])));
       exact.ID = .25*PI*H*H*(R-H/3.);
@@ -911,7 +935,6 @@ int main (int argc, char* argv[])
 //      exact.ID     *= 4.;
 //      exact.ISB[0] *= 4.;
     }
-#endif
 
     for (int s = 0; s < num_shifts; ++s)
     {

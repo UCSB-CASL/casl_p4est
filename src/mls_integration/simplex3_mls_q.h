@@ -51,6 +51,8 @@ public:
   void quadrature_over_intersection (int num0, int num1, int num2, std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
   void quadrature_in_dir            (int dir,                      std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
 
+  inline void set_check_for_curvature(bool value) { check_for_curvature_ = value; }
+
 private:
 
   // some geometric info
@@ -84,15 +86,16 @@ private:
   // some parameters of reconstructions
   const static int max_refinement_ = 8;
   const double snap_limit_ = 0.2;
-  const double kappa_scale_ = 1;
-  const double kappa_eps_ = 1.e-12;
-  const bool check_for_curvature_          = 1;
+  const double kappa_scale_ = 2;
+  const double kappa_eps_ = 1.e-5;
   const bool check_for_edge_intersections_ = 1;
   const bool try_to_fix_outside_vertices_  = 1;
   const bool check_for_overlapping_        = 1;
   const bool check_for_valid_data_         = 1;
   const bool refine_in_normal_dir_         = 1;
   const bool adjust_auxiliary_midpoint_    = 0;
+
+  bool check_for_curvature_;
 
   //--------------------------------------------------
   // Elementary Geometric Elements

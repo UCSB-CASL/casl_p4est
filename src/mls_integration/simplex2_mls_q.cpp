@@ -250,7 +250,7 @@ void simplex2_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
         if (!tris_[i].is_split)
           s_after += area(tris_[i].vtx0, tris_[i].vtx1, tris_[i].vtx2);
 
-      if (fabs(s_before-s_after)/s_before > eps_rel_)
+      if (fabs(1.-s_after/s_before) > eps_rel_)
       {
         if (initial_refinement == max_refinement_)
         {

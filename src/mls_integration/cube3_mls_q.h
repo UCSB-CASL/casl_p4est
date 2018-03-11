@@ -285,6 +285,8 @@ public:
   const static int n_nodes_dir = 3;
   const double lip = 5.;
 
+  bool check_for_curvature_;
+
   double  x0, x1, y0, y1, z0, z1, diag;
   loc_t   loc;
   int     num_of_lsfs;
@@ -293,12 +295,14 @@ public:
   std::vector<simplex3_mls_q_t> simplex;
 
   cube3_mls_q_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1., double z0 = 0., double z1 = 1.)
-    : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1)
+    : x0(x0), x1(x1), y0(y0), y1(y1), z0(z0), z1(z1), check_for_curvature_(true)
   {
     diag = sqrt(pow(x1-x0, 2.)+
                 pow(y1-y0, 2.)+
                 pow(z1-z0, 2.));
   }
+
+  inline void set_check_for_curvature(bool value) { check_for_curvature_ = value; }
 
   void construct_domain(std::vector<double> &phi_all, std::vector<action_t> &acn, std::vector<int> &clr);
 

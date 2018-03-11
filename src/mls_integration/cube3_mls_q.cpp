@@ -332,7 +332,7 @@ void cube3_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
         for (int n = 0; n < n_nodes_simplex; ++n)
           phi_s[n_nodes_simplex*i + n] = phi_all[n_nodes*phi_idx + tp_q[s][n]];
       }
-
+      simplex[s].set_check_for_curvature(check_for_curvature_);
       simplex[s].construct_domain(phi_s, nt_acn, nt_clr);
     }
   }

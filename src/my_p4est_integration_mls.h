@@ -44,6 +44,7 @@ public:
 
   bool initialized;
   bool linear_integration;
+  bool check_for_curvature;
 
 #ifdef P4_TO_P8
   std::vector<cube3_mls_t> cubes;
@@ -61,7 +62,7 @@ public:
 
 
   my_p4est_integration_mls_t(p4est_t *p4est_, p4est_nodes_t *nodes_)
-    : p4est(NULL), nodes(NULL), phi(NULL), phi_cf(NULL), color(NULL), action(NULL), initialized(false), linear_integration(true)
+    : p4est(NULL), nodes(NULL), phi(NULL), phi_cf(NULL), color(NULL), action(NULL), initialized(false), linear_integration(true), check_for_curvature(true)
   {p4est = p4est_; nodes = nodes_;}
 
   void initialize();
@@ -135,14 +136,14 @@ public:
   }
 #endif
 
-  double perform(int_type_t int_type, int n0 = -1, int n1 = -1, int n2 = -1, Vec f = NULL, Vec *fdd = NULL);
+  double perform(int_type_t int_type, int n0 = -1, int n1 = -1, int n2 = -1, Vec f = NULL, Vec *fdd = NULL, double *xyz_cell = NULL);
 
   // linear integration
-  double integrate_over_domain        (                         Vec f, Vec *fdd = NULL) {return perform(DOM,-1,-1,-1,f,fdd);}
-  double integrate_over_interface     (int n0,                  Vec f, Vec *fdd = NULL) {return perform(FC1,n0,-1,-1,f,fdd);}
-  double integrate_over_intersection  (int n0, int n1,          Vec f, Vec *fdd = NULL) {return perform(FC2,n0,n1,-1,f,fdd);}
+  double integrate_over_domain        (                         Vec f, Vec *fdd = NULL, double *xyz_cell = NULL) {return perform(DOM,-1,-1,-1,f,fdd,xyz_cell);}
+  double integrate_over_interface     (int n0,                  Vec f, Vec *fdd = NULL, double *xyz_cell = NULL) {return perform(FC1,n0,-1,-1,f,fdd,xyz_cell);}
+  double integrate_over_intersection  (int n0, int n1,          Vec f, Vec *fdd = NULL, double *xyz_cell = NULL) {return perform(FC2,n0,n1,-1,f,fdd,xyz_cell);}
 #ifdef P4_TO_P8
-  double integrate_over_intersection  (int n0, int n1, int n2,  Vec f, Vec *fdd = NULL) {return perform(FC3,n0,n1,n2,f,fdd);}
+  double integrate_over_intersection  (int n0, int n1, int n2,  Vec f, Vec *fdd = NULL, double *xyz_cell = NULL) {return perform(FC3,n0,n1,n2,f,fdd,xyz_cell);}
 #endif
 
   double integrate_everywhere         (Vec f);

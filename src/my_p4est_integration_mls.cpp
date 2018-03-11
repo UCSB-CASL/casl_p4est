@@ -155,6 +155,10 @@ void my_p4est_integration_mls_t::initialize()
 
 //      std::cout << "[ERROR]: here " << quad_idx << "\n";
 
+#ifdef P4_TO_P8
+      if (!linear_integration)
+        cubes.back().set_check_for_curvature(check_for_curvature);
+#endif
       cubes.back().reconstruct(phi_cube, *action, *color);
 
 //      std::cout << "[ERROR]: here " << quad_idx << "\n";
@@ -176,7 +180,7 @@ void my_p4est_integration_mls_t::initialize()
   }
 }
 
-double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, int n2, Vec f, Vec *fdd)
+double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, int n2, Vec f, Vec *fdd, double *xyz_cell)
 {
   PetscErrorCode ierr;
   double sum = 0.;
@@ -345,8 +349,9 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
         double dz = (tree_zmax-tree_zmin)*dmin; double z0 = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  double z1 = z0 + dz;
 #endif
 
-#ifdef TEST_OH2_ERRORS_HYPOTHESIS
         // checking O(h^2) errors hypothesis
+#ifdef P4_TO_P8
+        if (xyz_cell != NULL)
         {
           // sphere's radius
           double R = 0.77;
@@ -357,14 +362,9 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
           // relative margin
           double b = 2;
 
-          // center of required cube
-          double xc = tree_xmax-b*dx+.5*dx;
-          double yc = .5*dy;
-          double zc = .5*dz;
-
-          if ( fabs(.5*(x0+x1) - xc) > 1.e-10 ||
-               fabs(.5*(y0+y1) - yc) > 1.e-10 ||
-               fabs(.5*(z0+z1) - zc) > 1.e-10 )
+          if ( fabs(.5*(x0+x1) - xyz_cell[0]) > 1.e-10 ||
+               fabs(.5*(y0+y1) - xyz_cell[1]) > 1.e-10 ||
+               fabs(.5*(z0+z1) - xyz_cell[2]) > 1.e-10 )
           {
             continue;
           } else {
@@ -443,6 +443,10 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
           }
         }
 
+#ifdef P4_TO_P8
+        if (!linear_integration)
+          cube.set_check_for_curvature(check_for_curvature);
+#endif
         cube.reconstruct(phi_cube, *action, *color);
 
         std::vector<double> W, X, Y, Z;

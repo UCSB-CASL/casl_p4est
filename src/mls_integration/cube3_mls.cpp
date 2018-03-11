@@ -2,6 +2,8 @@
 
 void cube3_mls_t::initialize(double xyz_min[], double xyz_max[], int mnk[], int order)
 {
+  check_for_curvature_ = true;
+
   for (int idx = 0; idx < cubes_l_.size(); ++idx) delete cubes_l_[idx];
   for (int idx = 0; idx < cubes_q_.size(); ++idx) delete cubes_q_[idx];
 
@@ -88,8 +90,9 @@ void cube3_mls_t::reconstruct(std::vector<double> &phi, std::vector<action_t> &a
               }
 
         // feed level-set functions values to a cube for reconstruction
-        if      (order_ == 1) cubes_l_[idx]->construct_domain(phi_cube, acn, clr);
-        else if (order_ == 2) cubes_q_[idx]->construct_domain(phi_cube, acn, clr);
+        if      (order_ == 1) { cubes_l_[idx]->construct_domain(phi_cube, acn, clr); }
+        else if (order_ == 2) { cubes_q_[idx]->set_check_for_curvature(check_for_curvature_);
+                                cubes_q_[idx]->construct_domain(phi_cube, acn, clr); }
         else throw;
       }
 

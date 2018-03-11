@@ -20,8 +20,7 @@
 
 class my_p4est_poisson_nodes_mls_sc_t
 {
-  static const bool use_refined_cube_ = 0;
-  static const int cube_refinement_ = 1;
+  static const int cube_refinement_ = 0;
   static const int num_neighbors_max_ = pow(3, P4EST_DIM);
 
   const double phi_perturbation_ = 1.e-10;
@@ -737,6 +736,7 @@ class my_p4est_poisson_nodes_mls_sc_t
   bool kink_special_treatment_;
 
   bool use_sc_scheme_;
+  int fallback_;
 
   // Bondary conditions
   bool neumann_wall_first_order_;
@@ -764,8 +764,12 @@ class my_p4est_poisson_nodes_mls_sc_t
   Vec volumes_;
   Vec node_type_;
 
+  bool try_remove_hanging_cells_;
 
   double eps_ifc_, eps_dom_;
+
+  double domain_rel_thresh_;
+  double interface_rel_thresh_;
 
   enum discretization_scheme_t { FDM, FVM } discretization_scheme_;
 
@@ -799,6 +803,8 @@ public:
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_node_neighbors_t *node_neighbors);
   ~my_p4est_poisson_nodes_mls_sc_t();
 
+  inline void set_fallback(int value) { fallback_ = value; }
+  inline void set_try_remove_hanging_cells(bool value) { try_remove_hanging_cells_ = value; }
 
 #ifdef P4_TO_P8
   inline void set_phi_cf(std::vector< CF_3 *> &phi_cf) { phi_cf_ = &phi_cf; }

@@ -59,8 +59,8 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
-//        return 0.0;
-          return 1.0;
+        return 0.0;
+//          return 1.0;
 //          return x-y + (x+y)*(x+y);
       }
   } bc_coeff_1;
@@ -70,7 +70,7 @@ public:
       double operator()(double x, double y, double z) const
       {
 //        return 0.0;
-        return 1.0;
+//        return 1.0;
           return x-y + (x+y)*(x+y);
       }
   } bc_coeff_2;
@@ -80,7 +80,7 @@ public:
       double operator()(double x, double y, double z) const
       {
 //        return 0.0;
-        return 1.0;
+//        return 1.0;
           return x+y;
       }
   } bc_coeff_3;
@@ -98,8 +98,8 @@ public:
   public:
       double operator()(double x, double y) const
       {
-//          return 0.0;
-          return 1.0;
+          return 0.0;
+//          return 1.0;
       }
   } bc_coeff_1;
 
@@ -108,7 +108,7 @@ public:
       double operator()(double x, double y) const
       {
 //        return 0.0;
-        return 1.0;
+//        return 1.0;
           return x-y + (x+y)*(x+y);
       }
   } bc_coeff_2;
@@ -121,8 +121,8 @@ public:
     double x0 =-0.86, y0 =-0.87, z0 =-0.83;
     double x1 = 0.88, y1 =-0.52, z1 = 0.63;
     double x2 = 0.67, y2 = 0.82, z2 =-0.87;
-//    double x3 =-0.78, y3 = 0.73, z3 = 0.85;
-    double x3 =-0.85, y3 = 0.73, z3 = 0.85;
+    double x3 =-0.78, y3 = 0.73, z3 = 0.85;
+//    double x3 =-0.85, y3 = 0.73, z3 = 0.85;
 
     domain0.set_params_points(x0, y0, z0, x2, y2, z2, x1, y1, z1);
     domain1.set_params_points(x1, y1, z1, x2, y2, z2, x3, y3, z3);

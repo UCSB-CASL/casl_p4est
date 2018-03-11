@@ -24,6 +24,8 @@ class cube3_mls_t
   int points_in_z_;
   int points_total_;
 
+  bool check_for_curvature_;
+
 public:
 
   std::vector<cube3_mls_l_t *> cubes_l_;
@@ -44,6 +46,8 @@ public:
   inline void get_x_coord(std::vector<double> &x) { x = x_grid_; }
   inline void get_y_coord(std::vector<double> &y) { y = y_grid_; }
   inline void get_z_coord(std::vector<double> &z) { z = z_grid_; }
+
+  inline void set_check_for_curvature(bool value) { check_for_curvature_ = value; }
 
   void reconstruct(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
 

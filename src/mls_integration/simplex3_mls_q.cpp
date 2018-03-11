@@ -104,6 +104,8 @@ simplex3_mls_q_t::simplex3_mls_q_t(double x0, double y0, double z0,
   lmin_ = lmin_ < l23 ? lmin_ : l23;
 
   eps_ = eps_rel_*lmin_;
+
+  check_for_curvature_ = true;
 }
 
 
