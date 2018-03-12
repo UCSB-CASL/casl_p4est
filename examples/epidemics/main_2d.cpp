@@ -28,17 +28,17 @@ int main (int argc, char** argv)
     cmd.add_option("D_AB", "set diffusion coefficient for AB");
     cmd.parse(argc, argv);
 
-    int lmin = cmd.get("lmin", 7);
-    int lmax = cmd.get("lmax", 7);
+    int lmin = cmd.get("lmin", 8);
+    int lmax = cmd.get("lmax", 8);
     int nx = cmd.get("nx", 2);
     int ny = cmd.get("ny", 2);
     int save_vtk = cmd.get("save_vtk", 1);
     int save_every_n = cmd.get("save_every_n", 1);
 
-    double beta = cmd.get("beta", 1.);
+    double beta = cmd.get("beta", 1);
     double t_final = cmd.get("tf", 5);
-    double alpha_A = cmd.get("alpha_A", 2.0);
-    double alpha_B = cmd.get("alpha_B", 2.0);
+    double alpha_A = cmd.get("alpha_A", 5);
+    double alpha_B = cmd.get("alpha_B", 5);
     double Xi_A = cmd.get("Xi_A", 5);
     double Xi_B = cmd.get("Xi_B", 5);
     double D_A = cmd.get("D_A", 1);
@@ -79,7 +79,7 @@ int main (int argc, char** argv)
 
     /* initialize the solver */
     my_p4est_epidemics_t epidemics(ngbd);
-    epidemics.read("US_census.dat");
+    //epidemics.read("US_census.dat");
     //epidemics.read("uniform_data.dat");
     epidemics.set_parameters(R_A, R_B, Xi_A, Xi_B);
     epidemics.set_D(D_A, D_B, D_AB);
