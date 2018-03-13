@@ -654,16 +654,16 @@ int main (int argc, char* argv[])
   /* set initial time step */
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2., (double) data.max_lvl);
-  double dy = (ymax-ymin) / pow(2., (double) data.max_lvl);
+  double xmin_tree = p4est->connectivity->vertices[3*vm + 0];
+  double ymin_tree = p4est->connectivity->vertices[3*vm + 1];
+  double xmax_tree = p4est->connectivity->vertices[3*vp + 0];
+  double ymax_tree = p4est->connectivity->vertices[3*vp + 1];
+  double dx = (xmax_tree-xmin_tree) / pow(2., (double) data.max_lvl);
+  double dy = (ymax_tree-ymin_tree) / pow(2., (double) data.max_lvl);
 #ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
+  double zmin_tree = p4est->connectivity->vertices[3*vm + 2];
+  double zmax_tree = p4est->connectivity->vertices[3*vp + 2];
+  double dz = (zmax_tree-zmin_tree) / pow(2.,(double) data.max_lvl);
 #endif
 
 #ifdef P4_TO_P8
