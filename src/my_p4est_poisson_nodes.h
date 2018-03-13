@@ -146,7 +146,7 @@ public:
     interface_point_t(double dir_, double dist_) {dir = dir_; dist = dist_;}
   };
 
-  std::vector<std::vector<interface_point_t>> pointwise_bc;
+  std::vector< std::vector<interface_point_t> > pointwise_bc;
 
   inline void get_xyz_interface_point(p4est_locidx_t n, short i, double *xyz)
   {

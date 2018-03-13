@@ -85,7 +85,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   max_iterations_ = 50;
   phi_thresh_ = 0.001;
 
-  interpolation_between_grids_ = quadratic;
+  interpolation_between_grids_ = quadratic_non_oscillatory_continuous_v1;
 }
 
 
@@ -659,7 +659,7 @@ void my_p4est_multialloy_t::update_grid()
   Vec phi_tmp;
   ierr = VecDuplicate(phi_, &phi_tmp); CHKERRXX(ierr);
 
-  interp.set_input(phi_nm1, quadratic_non_oscillatory);
+  interp.set_input(phi_nm1, interpolation_between_grids_);
   interp.interpolate(phi_tmp);
 
   Vec tm_tmp; ierr = VecDuplicate(phi_, &tm_tmp); CHKERRXX(ierr);
@@ -759,7 +759,7 @@ void my_p4est_multialloy_t::update_grid()
 
   Vec kappa_n;
   ierr = VecDuplicate(phi_, &kappa_n); CHKERRXX(ierr);
-  interp.set_input(kappa_, quadratic_non_oscillatory);
+  interp.set_input(kappa_, interpolation_between_grids_);
   interp.interpolate(kappa_n);
   ierr = VecDestroy(kappa_); CHKERRXX(ierr);
   kappa_ = kappa_n;

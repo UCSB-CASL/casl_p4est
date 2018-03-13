@@ -242,13 +242,11 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt,
 void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **vxx, Vec phi_n, Vec *phi_xx_n,
                                                       double *phi_np1)
 {
-  interpolation_method v_interpolation = quadratic;
-//  if (use_second_derivatives) v_interpolation = quadratic;
-//  else                        v_interpolation = linear;
+//  interpolation_method v_interpolation = quadratic;
+//  interpolation_method phi_interpolation = quadratic_non_oscillatory;
 
-  interpolation_method phi_interpolation = quadratic_non_oscillatory;
-//  if (use_second_derivatives) phi_interpolation = quadratic_non_oscillatory;
-//  else                        phi_interpolation = linear;
+  interpolation_method v_interpolation   = quadratic_non_oscillatory_continuous_v1;
+  interpolation_method phi_interpolation = quadratic_non_oscillatory_continuous_v1;
 
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);

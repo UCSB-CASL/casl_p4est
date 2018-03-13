@@ -50,11 +50,11 @@
 #undef MIN
 #undef MAX
 
-int lmin = 6;
-int lmax = 11;
+int lmin = 5;
+int lmax = 10;
 int save_every_n_iteration = 50;
 
-double bc_tolerance = 1.e-8;
+double bc_tolerance = 1.e-5;
 
 double cfl_number = 0.1;
 double phi_thresh = 0.01;
@@ -76,15 +76,15 @@ char direction = 'z';
 char direction = 'y';
 #endif
 
-double termination_length = 0.7;
+double termination_length = 0.99;
 
 /* 0 - NiCu
  * 1 - AlCu
  */
-int alloy_type = 0;
+int alloy_type = 2;
 
-double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
-//double box_size = 5e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+//double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 2e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
 
 double xmin = 0;
@@ -127,38 +127,8 @@ void set_alloy_parameters()
 {
   switch(alloy_type)
   {
-  case 0:
-    /* those are the default parameters for Ni-0.25831at%Cu-0.15at%Cu = Ni-0.40831at%Cu */
-    rho                  = 8.88e-3;        /* kg.cm-3    */
-    heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
-    Tm                   = 1728;           /* K           */
-    G                    = 4e2;            /* k.cm-1      */
-    V                    = 0.01;           /* cm.s-1      */
-    latent_heat          = 2350;           /* J.cm-3      */
-    thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
-    lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-//    eps_c                = 2.7207e-5;
-//    eps_v                = 2.27e-2;
-//    eps_anisotropy       = 0.05;
-    eps_c                = 2.7207e-5;
-    eps_v                = 2.27e-1;
-    eps_anisotropy       = 0.05;
-
-//    box_size = 4e-2;
-
-    ml0                   =-357;            /* K / at frac. - liquidous slope */
-    kp0                   = 0.86;           /* partition coefficient */
-    c00                   = 0.2;            /* at frac.    */
-    Dl0                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
-
-    ml1                   =-357;            /* K / at frac. - liquidous slope */
-    kp1                   = 0.86;           /* partition coefficient */
-    c01                   = 0.2;            /* at frac.    */
-    Dl1                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
-
-    break;
-    case 1:
-      /* those are the default parameters for Ni-0.25831at%Cu-0.15at%Cu = Ni-0.40831at%Cu */
+    case 0:
+      /* Ni - 0.2at%Cu - 0.2at%Cu */
       rho                  = 8.88e-3;        /* kg.cm-3    */
       heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
       Tm                   = 1728;           /* K           */
@@ -167,83 +137,75 @@ void set_alloy_parameters()
       latent_heat          = 2350;           /* J.cm-3      */
       thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-//      eps_c                = 2.7207e-5;
-//      eps_v                = 2.27e-2;
-//      eps_anisotropy       = 0.05;
+
       eps_c                = 2.7207e-5;
       eps_v                = 2.27e-2;
       eps_anisotropy       = 0.05;
 
-  //    box_size = 4e-2;
-
       ml0                   =-357;            /* K / at frac. - liquidous slope */
       kp0                   = 0.86;           /* partition coefficient */
-      c00                   = 0.3;            /* at frac.    */
+      c00                   = 0.2;            /* at frac.    */
       Dl0                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
 
       ml1                   =-357;            /* K / at frac. - liquidous slope */
       kp1                   = 0.86;           /* partition coefficient */
-      c01                   = 0.1;            /* at frac.    */
+      c01                   = 0.2;            /* at frac.    */
       Dl1                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
 
+//      box_size = 4e-2;
+
       break;
-    case 2:
-      /* those are the default parameters for Ni-0.25831at%Cu-0.15at%Cu = Ni-0.40831at%Cu */
-      rho                  = 8.88e-3;        /* kg.cm-3    */
-      heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
-      Tm                   = 1728;           /* K           */
-      G                    = 4e2;            /* k.cm-1      */
-      V                    = 0.01;           /* cm.s-1      */
-      latent_heat          = 2350;           /* J.cm-3      */
-      thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
+    case 1:
+      /* Ni - 15.2wt%Al - 5.8wt%Ta  */
+      rho            = 7.365e-3;  /* kg.cm-3    */
+      heat_capacity  = 660;       /* J.kg-1.K-1 */
+      Tm             = 1754;      /* K           */
+      G              = 200;       /* K.cm-1      */
+      V              = 0.01;      /* cm.s-1      */
+      latent_heat    = 2136;      /* J.cm-3      */
+      thermal_conductivity =  0.8;/* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-      //      eps_c                = 2.7207e-5;
-      //      eps_v                = 2.27e-2;
-      //      eps_anisotropy       = 0.05;
-            eps_c                = 2.7207e-5;
-            eps_v                = 2.27e-2;
-            eps_anisotropy       = 0.05;
+      eps_c          = 2.7207e-4;
+      eps_v          = 2.27e-2;
+      eps_anisotropy = 0.05;
 
-  //    box_size = 4e-2;
+      Dl0 = 5e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
+      ml0 =-255;       /* K / wt frac. - liquidous slope */
+      c00 = 0.152;     /* wt frac.    */
+      kp0 = 0.48;      /* partition coefficient */
 
-      ml0                   =-357;            /* K / at frac. - liquidous slope */
-      kp0                   = 0.86;           /* partition coefficient */
-      c00                   = 0.1;            /* at frac.    */
-      Dl0                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
+      Dl1 = 5e-5;
+      ml1 =-517;
+      c01 = 0.058;
+      kp1 = 0.54;
 
-      ml1                   =-357;            /* K / at frac. - liquidous slope */
-      kp1                   = 0.86;           /* partition coefficient */
-      c01                   = 0.3;            /* at frac.    */
-      Dl1                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
+//      box_size = 2e-1;
 
-      break;
-//  case 1:
-//    /* experimental Ni-Al-Ta parameters */
-//    rho            = 7.365e-3;  /* kg.cm-3    */
-//    heat_capacity  = 660;       /* J.kg-1.K-1 */
-//    ml             =-255;       /* K / wt frac. - liquidous slope */
-//    kp             = 0.48;      /* partition coefficient */
-//    c0             = 0.152;     /* wt frac.    */
-//    Tm             = 1754;      /* K           */
-//    Dl             = 5e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
-//    Ds             = 1e-13;     /* cm2.s-1 - solid concentration diffusion coefficient */
-//    G              = 20;        /* K.cm-1      */
-//    V              = 0.01;      /* cm.s-1      */
-//    latent_heat    = 2136;      /* J.cm-3      */
-//    thermal_conductivity =  0.8; /* W.cm-1.K-1  */
-//    lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-//    eps_c          = 2.7207e-5;
-//    eps_v          = 2.27e-2;
-//    eps_anisotropy = 0.05;
+    case 2:
+      /* Co - 9.4at%Al - 10.7at%W  */
+      rho            = 9.2392e-3;   /* kg.cm-3    */
+      heat_capacity  = 356;         /* J.kg-1.K-1 */
+      Tm             = 1996;        /* K           */
+      G              = 200;         /* K.cm-1      */
+      V              = 0.01;        /* cm.s-1      */
+      latent_heat    = 2588.7;      /* J.cm-3      */
+      thermal_conductivity =  1.3;/* W.cm-1.K-1  */
+      lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+      eps_c          = 2.7207e-4;
+      eps_v          = 2.27e-2;
+      eps_anisotropy = 0.05;
 
-////    box_size = 5e-1;
+      Dl0 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
+      ml0 =-874;       /* K / wt frac. - liquidous slope */
+      c00 = 0.107;     /* at frac.    */
+      kp0 = 0.848;     /* partition coefficient */
 
-//    Dl_sec = 5e-5;
-//    Ds_sec = 1e-13;
-//    ml_sec =-517;
-//    c0_sec = 0.058;
-//    kp_sec = 0.54;
-//    break;
+      Dl1 = 1e-5;
+      ml1 =-1378;
+      c01 = 0.094;
+      kp1 = 0.848;
+
+//      box_size = 2e-1;
   }
 }
 
@@ -388,7 +350,8 @@ public:
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
     if(direction=='x') return -(x - 0.1);
-    else               return MAX(-(y - 0.1 + 0.0001*cos(pow(2,lmax)*PI*(x-0.50007))), 0.02 - sqrt(pow(x-0.7, 2.) + pow(y-0.23, 2.)), 0.02 - sqrt(pow(x-0.3, 2.) + pow(y-0.18, 2.)));
+    else               return -(y - 0.1);
+//    else               return MAX(-(y - 0.1 + 0.0001*cos(pow(2,lmax)*PI*(x-0.50007))), 0.02 - sqrt(pow(x-0.7, 2.) + pow(y-0.23, 2.)), 0.02 - sqrt(pow(x-0.3, 2.) + pow(y-0.18, 2.)));
 
 //    return 0.05 - sqrt(pow(x-0.5, 2.) + pow(y-0.2, 2.));
   }

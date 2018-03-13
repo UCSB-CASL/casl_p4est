@@ -84,7 +84,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   max_iterations_ = 50;
   phi_thresh_ = 0.001;
 
-  interpolation_between_grids_ = quadratic;
+  interpolation_between_grids_ = quadratic_non_oscillatory_continuous_v1;
 }
 
 
@@ -151,6 +151,200 @@ void my_p4est_multialloy_t::set_normal_velocity(Vec v)
 
 
 
+//void my_p4est_multialloy_t::compute_normal_and_curvature()
+//{
+//  /* second order derivatives */
+//  for (int dim = 0; dim < P4EST_DIM; ++dim)
+//  {
+//    if (phi_dd_[dim] != NULL) { ierr = VecDestroy(phi_dd_[dim]); CHKERRXX(ierr); }
+//    ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_dd_[dim]); CHKERRXX(ierr);
+//  }
+
+//  ngbd_->second_derivatives_central(phi_, phi_dd_);
+
+//  /* normal */
+//  double *normal_p[P4EST_DIM];
+//  for(int dir=0; dir<P4EST_DIM; ++dir)
+//  {
+//    if(normal_[dir]!=NULL) { ierr = VecDestroy(normal_[dir]); CHKERRXX(ierr); }
+//    ierr = VecCreateGhostNodes(p4est_, nodes_, &normal_[dir]); CHKERRXX(ierr);
+//    ierr = VecGetArray(normal_[dir], &normal_p[dir]); CHKERRXX(ierr);
+//  }
+
+//  const double *phi_p;
+//  ierr = VecGetArrayRead(phi_, &phi_p); CHKERRXX(ierr);
+
+//  quad_neighbor_nodes_of_node_t qnnn;
+//  for(size_t i=0; i<ngbd_->get_layer_size(); ++i)
+//  {
+//    p4est_locidx_t n = ngbd_->get_layer_node(i);
+//    qnnn = ngbd_->get_neighbors(n);
+//    normal_p[0][n] = qnnn.dx_central(phi_p);
+//    normal_p[1][n] = qnnn.dy_central(phi_p);
+//#ifdef P4_TO_P8
+//    normal_p[2][n] = qnnn.dz_central(phi_p);
+//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+//#else
+//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+//#endif
+
+//    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+//    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
+//#ifdef P4_TO_P8
+//    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
+//#endif
+//  }
+
+//  for(int dir=0; dir<P4EST_DIM; ++dir)
+//  {
+//    ierr = VecGhostUpdateBegin(normal_[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
+
+//  for(size_t i=0; i<ngbd_->get_local_size(); ++i)
+//  {
+//    p4est_locidx_t n = ngbd_->get_local_node(i);
+//    qnnn = ngbd_->get_neighbors(n);
+//    normal_p[0][n] = qnnn.dx_central(phi_p);
+//    normal_p[1][n] = qnnn.dy_central(phi_p);
+//#ifdef P4_TO_P8
+//    normal_p[2][n] = qnnn.dz_central(phi_p);
+//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+//#else
+//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+//#endif
+
+//    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+//    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
+//#ifdef P4_TO_P8
+//    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
+//#endif
+//  }
+//  ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
+
+//  for(int dir=0; dir<P4EST_DIM; ++dir)
+//  {
+//    ierr = VecGhostUpdateEnd(normal_[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
+
+//  /* curvature */
+//  if(kappa_!=NULL) { ierr = VecDestroy(kappa_); CHKERRXX(ierr); }
+
+//  ierr = VecDuplicate(phi_, &kappa_); CHKERRXX(ierr);
+
+//  Vec kappa_tmp;
+//  ierr = VecDuplicate(kappa_, &kappa_tmp); CHKERRXX(ierr);
+//  double *kappa_p;
+//  ierr = VecGetArray(kappa_tmp, &kappa_p); CHKERRXX(ierr);
+//  for(size_t i=0; i<ngbd_->get_layer_size(); ++i)
+//  {
+//    p4est_locidx_t n = ngbd_->get_layer_node(i);
+//    qnnn = ngbd_->get_neighbors(n);
+////#ifdef P4_TO_P8
+////    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1./dxyz_max_), -1./dxyz_max_);
+////#else
+////    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1./dxyz_max_), -1./dxyz_max_);
+////#endif
+//#ifdef P4_TO_P8
+//    kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]);
+//#else
+//    kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+//#endif
+//  }
+//  ierr = VecGhostUpdateBegin(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
+//  for(size_t i=0; i<ngbd_->get_local_size(); ++i)
+//  {
+//    p4est_locidx_t n = ngbd_->get_local_node(i);
+//    qnnn = ngbd_->get_neighbors(n);
+////#ifdef P4_TO_P8
+////    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1./dxyz_max_), -1./dxyz_max_);
+////#else
+////    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1./dxyz_max_), -1./dxyz_max_);
+////#endif
+//    #ifdef P4_TO_P8
+//        kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]);
+//    #else
+//        kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+//    #endif
+//  }
+//  ierr = VecGhostUpdateEnd(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
+//  ierr = VecRestoreArray(kappa_tmp, &kappa_p); CHKERRXX(ierr);
+
+//  for(int dir=0; dir<P4EST_DIM; ++dir)
+//  {
+//    ierr = VecRestoreArray(normal_[dir], &normal_p[dir]); CHKERRXX(ierr);
+//  }
+
+////  my_p4est_level_set_t ls(ngbd);
+////  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
+////  ierr = VecDestroy(kappa_tmp); CHKERRXX(ierr);
+
+//  ierr = VecDestroy(kappa_); CHKERRXX(ierr);
+//  kappa_ = kappa_tmp;
+
+//  /* angle between normal and direction of growth */
+//#ifdef P4_TO_P8
+//  if (theta_xz_ != NULL) { ierr = VecDestroy(theta_xz_); CHKERRXX(ierr); }
+//  if (theta_yz_ != NULL) { ierr = VecDestroy(theta_yz_); CHKERRXX(ierr); }
+
+//  ierr = VecDuplicate(phi_, &theta_xz_); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi_, &theta_yz_); CHKERRXX(ierr);
+
+//  Vec theta_xz_tmp; double *theta_xz_tmp_p;
+//  Vec theta_yz_tmp; double *theta_yz_tmp_p;
+//  ierr = VecDuplicate(phi_, &theta_xz_tmp); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi_, &theta_yz_tmp); CHKERRXX(ierr);
+//  ierr = VecGetArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(theta_yz_tmp, &theta_yz_tmp_p); CHKERRXX(ierr);
+//#else
+//  if (theta_ != NULL) { ierr = VecDestroy(theta_); CHKERRXX(ierr); }
+//  ierr = VecDuplicate(phi_, &theta_); CHKERRXX(ierr);
+
+//  Vec theta_tmp; double *theta_tmp_p;
+//  ierr = VecDuplicate(phi_, &theta_tmp); CHKERRXX(ierr);
+//  ierr = VecGetArray(theta_tmp, &theta_tmp_p); CHKERRXX(ierr);
+//#endif
+
+//  for(int dir=0; dir<P4EST_DIM; ++dir)
+//  {
+//    ierr = VecGetArray(normal_[dir], &normal_p[dir]); CHKERRXX(ierr);
+//  }
+
+//  for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n)
+//  {
+//#ifdef P4_TO_P8
+//    theta_xz_tmp_p[n] = atan2(normal_p[2][n], normal_p[0][n]);
+//    theta_yz_tmp_p[n] = atan2(normal_p[2][n], normal_p[1][n]);
+//#else
+//    theta_tmp_p[n] = atan2(-normal_p[1][n], -normal_p[0][n]);
+//#endif
+//  }
+
+//  for(int dir=0; dir<P4EST_DIM; ++dir)
+//  {
+//    ierr = VecRestoreArray(normal_[dir], &normal_p[dir]); CHKERRXX(ierr);
+//  }
+
+//#ifdef P4_TO_P8
+////  ierr = VecRestoreArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
+////  ierr = VecRestoreArray(theta_yz_tmp, &theta_yz_tmp_p); CHKERRXX(ierr);
+////  ls.extend_from_interface_to_whole_domain_TVD(phi_, theta_xz_tmp, theta_xz_);
+////  ls.extend_from_interface_to_whole_domain_TVD(phi_, theta_yz_tmp, theta_yz_);
+////  ierr = VecDestroy(theta_xz_tmp); CHKERRXX(ierr);
+////  ierr = VecDestroy(theta_yz_tmp); CHKERRXX(ierr);
+//  ierr = VecDestroy(theta_xz_); CHKERRXX(ierr);
+//  ierr = VecDestroy(theta_yz_); CHKERRXX(ierr);
+//  theta_xz_ = theta_xz_tmp;
+//  theta_yz_ = theta_yz_tmp;
+//#else
+////  ierr = VecRestoreArray(theta_tmp, &theta_tmp_p); CHKERRXX(ierr);
+////  ls.extend_from_interface_to_whole_domain_TVD(phi_, theta_tmp, theta_);
+////  ierr = VecDestroy(theta_tmp); CHKERRXX(ierr);
+//  ierr = VecDestroy(theta_); CHKERRXX(ierr);
+//  theta_ = theta_tmp;
+//#endif
+
+//} //*/
+
 void my_p4est_multialloy_t::compute_normal_and_curvature()
 {
   /* second order derivatives */
@@ -183,16 +377,16 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
     normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
     normal_p[2][n] = qnnn.dz_central(phi_p);
-    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
 #else
-    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
 #endif
 
-    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
-    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
-#ifdef P4_TO_P8
-    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
-#endif
+//    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+//    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
+//#ifdef P4_TO_P8
+//    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
+//#endif
   }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -208,16 +402,16 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
     normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
     normal_p[2][n] = qnnn.dz_central(phi_p);
-    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
 #else
-    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
 #endif
 
-    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
-    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
-#ifdef P4_TO_P8
-    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
-#endif
+//    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+//    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
+//#ifdef P4_TO_P8
+//    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
+//#endif
   }
   ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
 
@@ -235,10 +429,12 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
   ierr = VecDuplicate(kappa_, &kappa_tmp); CHKERRXX(ierr);
   double *kappa_p;
   ierr = VecGetArray(kappa_tmp, &kappa_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi_, &phi_p); CHKERRXX(ierr);
   for(size_t i=0; i<ngbd_->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd_->get_layer_node(i);
     qnnn = ngbd_->get_neighbors(n);
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
 //#ifdef P4_TO_P8
 //    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1./dxyz_max_), -1./dxyz_max_);
 //#else
@@ -247,7 +443,19 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
 #ifdef P4_TO_P8
     kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]);
 #else
-    kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+//    kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);;
+    if (is_node_Wall(p4est_, ni))
+    {
+      kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+    } else {
+      double phi_x = normal_p[0][n];
+      double phi_y = normal_p[1][n];
+      double phi_xx = qnnn.dxx_central(phi_p);
+      double phi_yy = qnnn.dyy_central(phi_p);
+      double phi_xy = .5*(qnnn.dx_central(normal_p[1])+qnnn.dy_central(normal_p[0]));
+      kappa_p[n] = (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx)/pow(phi_x*phi_x+phi_y*phi_y,3./2.);
+    }
+//    kappa_p[n] = qnnn.dxx_central(phi_p) + qnnn.dyy_central(phi_p);
 #endif
   }
   ierr = VecGhostUpdateBegin(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
@@ -255,6 +463,7 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
   {
     p4est_locidx_t n = ngbd_->get_local_node(i);
     qnnn = ngbd_->get_neighbors(n);
+    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
 //#ifdef P4_TO_P8
 //    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1./dxyz_max_), -1./dxyz_max_);
 //#else
@@ -263,23 +472,53 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
     #ifdef P4_TO_P8
         kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]);
     #else
-        kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+//        kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+
+    if (is_node_Wall(p4est_, ni))
+    {
+      kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+    } else {
+      double phi_x = normal_p[0][n];
+      double phi_y = normal_p[1][n];
+      double phi_xx = qnnn.dxx_central(phi_p);
+      double phi_yy = qnnn.dyy_central(phi_p);
+      double phi_xy = .5*(qnnn.dx_central(normal_p[1])+qnnn.dy_central(normal_p[0]));
+      kappa_p[n] = (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx)/pow(phi_x*phi_x+phi_y*phi_y,3./2.);
+    }
+//        kappa_p[n] = qnnn.dxx_central(phi_p) + qnnn.dyy_central(phi_p);
     #endif
   }
+  ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
   ierr = VecRestoreArray(kappa_tmp, &kappa_p); CHKERRXX(ierr);
+
+
+  for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n)
+  {
+#ifdef P4_TO_P8
+    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+#else
+    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+#endif
+
+    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
+#ifdef P4_TO_P8
+    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
+#endif
+  }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecRestoreArray(normal_[dir], &normal_p[dir]); CHKERRXX(ierr);
   }
 
-//  my_p4est_level_set_t ls(ngbd);
-//  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
-//  ierr = VecDestroy(kappa_tmp); CHKERRXX(ierr);
+  my_p4est_level_set_t ls(ngbd_);
+  ls.extend_from_interface_to_whole_domain_TVD(phi_, kappa_tmp, kappa_);
+  ierr = VecDestroy(kappa_tmp); CHKERRXX(ierr);
 
-  ierr = VecDestroy(kappa_); CHKERRXX(ierr);
-  kappa_ = kappa_tmp;
+//  ierr = VecDestroy(kappa_); CHKERRXX(ierr);
+//  kappa_ = kappa_tmp;
 
   /* angle between normal and direction of growth */
 #ifdef P4_TO_P8
@@ -344,7 +583,6 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
 #endif
 
 }
-
 
 
 
@@ -605,7 +843,7 @@ void my_p4est_multialloy_t::update_grid()
   Vec phi_tmp;
   ierr = VecDuplicate(phi_, &phi_tmp); CHKERRXX(ierr);
 
-  interp.set_input(phi_nm1, quadratic_non_oscillatory);
+  interp.set_input(phi_nm1, quadratic_non_oscillatory_continuous_v1);
   interp.interpolate(phi_tmp);
 
   Vec tm_tmp; ierr = VecDuplicate(phi_, &tm_tmp); CHKERRXX(ierr);
@@ -705,7 +943,7 @@ void my_p4est_multialloy_t::update_grid()
 
   Vec kappa_n;
   ierr = VecDuplicate(phi_, &kappa_n); CHKERRXX(ierr);
-  interp.set_input(kappa_, quadratic_non_oscillatory);
+  interp.set_input(kappa_, quadratic_non_oscillatory_continuous_v1);
   interp.interpolate(kappa_n);
   ierr = VecDestroy(kappa_); CHKERRXX(ierr);
   kappa_ = kappa_n;

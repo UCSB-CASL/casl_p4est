@@ -114,7 +114,7 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
     }
 
       // compute derivatives
-    if (method == quadratic || method == quadratic_non_oscillatory) {
+    if (method == quadratic || method == quadratic_non_oscillatory || method == quadratic_non_oscillatory_continuous_v1 || method == quadratic_non_oscillatory_continuous_v2) {
       if (use_precomputed_derivatives) {
         for (short j = 0; j<P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
@@ -169,6 +169,10 @@ double my_p4est_interpolation_nodes_t::operator ()(double x, double y) const
       value = quadratic_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p);
     } else if (method == quadratic_non_oscillatory) {
       value = quadratic_non_oscillatory_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p);
+    } else if (method == quadratic_non_oscillatory_continuous_v1) {
+      value = quadratic_non_oscillatory_continuous_v1_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p);
+    } else if (method == quadratic_non_oscillatory_continuous_v2) {
+      value = quadratic_non_oscillatory_continuous_v2_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p);
     }
 
     return value;
@@ -240,7 +244,7 @@ double my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad,
   }
 
   /* compute derivatives */
-  if (method == quadratic || method == quadratic_non_oscillatory)
+  if (method == quadratic || method == quadratic_non_oscillatory || method == quadratic_non_oscillatory_continuous_v1 || method == quadratic_non_oscillatory_continuous_v2)
   {
     double fdd[P4EST_CHILDREN*P4EST_DIM];
 
@@ -291,8 +295,14 @@ double my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad,
     }
     ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 
-    if(method==quadratic) return quadratic_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
-    else  return quadratic_non_oscillatory_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
+    if      (method==quadratic)
+      return quadratic_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
+    else if (method==quadratic_non_oscillatory)
+      return quadratic_non_oscillatory_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
+    else if (method==quadratic_non_oscillatory_continuous_v1)
+      return quadratic_non_oscillatory_continuous_v1_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
+    else if (method==quadratic_non_oscillatory_continuous_v2)
+      return quadratic_non_oscillatory_continuous_v2_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
   }
   ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 

@@ -63,7 +63,9 @@ enum {
 enum interpolation_method{
   linear,
   quadratic,
-  quadratic_non_oscillatory
+  quadratic_non_oscillatory,
+  quadratic_non_oscillatory_continuous_v1,
+  quadratic_non_oscillatory_continuous_v2
 };
 
 class CF_1
@@ -391,6 +393,8 @@ double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const 
  * \return interpolated value
  */
 double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point

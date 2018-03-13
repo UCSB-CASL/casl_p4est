@@ -51,7 +51,7 @@
 #undef MAX
 
 int lmin = 5;
-int lmax = 11;
+int lmax = 10;
 int save_every_n_iteration = 100;
 
 double bc_tolerance = 1.e-5;
@@ -81,6 +81,7 @@ double termination_length = 0.99;
  * 1 - AlCu
  */
 int alloy_type = 0;
+//int alloy_type = 3;
 
 double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 //double box_size = 5e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
@@ -163,9 +164,7 @@ void set_alloy_parameters()
       latent_heat          = 2350;           /* J.cm-3      */
       thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-//      eps_c                = 2.7207e-5;
-//      eps_v                = 2.27e-2;
-//      eps_anisotropy       = 0.05;
+
       eps_c                = 2.7207e-5;
       eps_v                = 2.27e-2;
       eps_anisotropy       = 0.05;
@@ -218,10 +217,10 @@ void set_alloy_parameters()
     rho            = 7.365e-3;  /* kg.cm-3    */
     heat_capacity  = 660;       /* J.kg-1.K-1 */
     Tm             = 1754;      /* K           */
-    G              = 200;        /* K.cm-1      */
+    G              = 200;       /* K.cm-1      */
     V              = 0.01;      /* cm.s-1      */
     latent_heat    = 2136;      /* J.cm-3      */
-    thermal_conductivity =  0.8; /* W.cm-1.K-1  */
+    thermal_conductivity =  0.8;/* W.cm-1.K-1  */
     lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
     eps_c          = 2.7207e-4;
     eps_v          = 2.27e-2;
@@ -229,10 +228,10 @@ void set_alloy_parameters()
 
     box_size = 2e-1;
 
-    Dl0             = 5e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
-    ml0             =-255;       /* K / wt frac. - liquidous slope */
-    c00             = 0.152;     /* wt frac.    */
-    kp0             = 0.48;      /* partition coefficient */
+    Dl0 = 5e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
+    ml0 =-255;       /* K / wt frac. - liquidous slope */
+    c00 = 0.152;     /* wt frac.    */
+    kp0 = 0.48;      /* partition coefficient */
 
     Dl1 = 5e-5;
     ml1 =-517;
@@ -243,8 +242,10 @@ void set_alloy_parameters()
   }
 }
 
+// number of seeds
 int num_seeds = 3;
 
+// crystallographic directions of seeds
 double theta_seed[] = {0., -0.125*PI, 0.25*PI};
 
 //int num_seeds = 2;
