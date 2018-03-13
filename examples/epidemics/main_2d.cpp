@@ -28,18 +28,18 @@ int main (int argc, char** argv)
     cmd.add_option("D_AB", "set diffusion coefficient for AB");
     cmd.parse(argc, argv);
 
-    int lmin = cmd.get("lmin", 8);
-    int lmax = cmd.get("lmax", 8);
+    int lmin = cmd.get("lmin", 9);
+    int lmax = cmd.get("lmax", 9);
     int nx = cmd.get("nx", 2);
     int ny = cmd.get("ny", 2);
     int save_vtk = cmd.get("save_vtk", 1);
     int save_every_n = cmd.get("save_every_n", 1);
 
     double beta = cmd.get("beta", 1);
-    double t_final = cmd.get("tf", 5);
-    double alpha_A = cmd.get("alpha_A", 5);
-    double alpha_B = cmd.get("alpha_B", 5);
-    double Xi_A = cmd.get("Xi_A", 5);
+    double t_final = cmd.get("tf", 0.05);
+    double alpha_A = cmd.get("alpha_A", 2);
+    double alpha_B = cmd.get("alpha_B", 2);
+    double Xi_A = cmd.get("Xi_A", 50);
     double Xi_B = cmd.get("Xi_B", 5);
     double D_A = cmd.get("D_A", 1);
     double D_B = cmd.get("D_B", 1);
@@ -107,9 +107,9 @@ int main (int argc, char** argv)
         ierr = PetscPrintf(p4est->mpicomm, "Iteration #%d, tn = %e\n", iter, tn); CHKERRXX(ierr);
         if(iter!=0)
         {
-            epidemics.compute_velocity();
-            epidemics.compute_dt();
-            epidemics.update_grid();
+            //epidemics.compute_velocity();
+            //epidemics.compute_dt();
+            //epidemics.update_grid();
         } else {
             epidemics.initialize_infections();
         }

@@ -277,6 +277,7 @@ private:
     Vec U_n, U_np1;
     Vec V_n, V_np1;
     Vec W_n, W_np1;
+    Vec land;
 
 
     /* physical parameters */

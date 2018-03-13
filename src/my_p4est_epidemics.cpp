@@ -33,7 +33,7 @@ my_p4est_epidemics_t::my_p4est_epidemics_t(my_p4est_node_neighbors_t *ngbd)
 
 
     L = xyz_max[0]-xyz_min[0];
-    dt_n = 1e-6;
+    dt_n = 1e-3;
     dxyz_min(p4est, dxyz);
     srand(time(NULL));
 
@@ -324,8 +324,8 @@ void my_p4est_epidemics_t::compute_velocity()
     {
         p4est_locidx_t n = ngbd->get_local_node(i);
         const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-        v_A_p[0][n] =  -(D_AB*qnnn.dx_central(W_n_p) - D_A*qnnn.dx_central(U_n_p));
-        v_A_p[1][n] = -(D_AB*qnnn.dy_central(W_n_p) - D_A*qnnn.dy_central(U_n_p));
+        v_A_p[0][n] =  (D_AB*qnnn.dx_central(W_n_p) - D_A*qnnn.dx_central(U_n_p));
+        v_A_p[1][n] = (D_AB*qnnn.dy_central(W_n_p) - D_A*qnnn.dy_central(U_n_p));
     }
     ierr = VecGhostUpdateEnd(vtmp[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(vtmp[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -347,8 +347,8 @@ void my_p4est_epidemics_t::compute_velocity()
     {
         p4est_locidx_t n = ngbd->get_layer_node(i);
         const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-        v_B_p[0][n] = -(D_AB*qnnn.dx_central(W_n_p) - D_B*qnnn.dx_central(V_n_p));
-        v_B_p[1][n] = -(D_AB*qnnn.dy_central(W_n_p) - D_B*qnnn.dy_central(V_n_p));
+        v_B_p[0][n] = (D_AB*qnnn.dx_central(W_n_p) - D_B*qnnn.dx_central(V_n_p));
+        v_B_p[1][n] = (D_AB*qnnn.dy_central(W_n_p) - D_B*qnnn.dy_central(V_n_p));
     }
     ierr = VecGhostUpdateBegin(vtmp_new[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(vtmp_new[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -356,8 +356,8 @@ void my_p4est_epidemics_t::compute_velocity()
     {
         p4est_locidx_t n = ngbd->get_local_node(i);
         const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-        v_B_p[0][n] = -(D_AB*qnnn.dx_central(W_n_p) - D_B*qnnn.dx_central(V_n_p));
-        v_B_p[1][n] = -(D_AB*qnnn.dy_central(W_n_p) - D_B*qnnn.dy_central(V_n_p));
+        v_B_p[0][n] = (D_AB*qnnn.dx_central(W_n_p) - D_B*qnnn.dx_central(V_n_p));
+        v_B_p[1][n] = (D_AB*qnnn.dy_central(W_n_p) - D_B*qnnn.dy_central(V_n_p));
     }
     ierr = VecGhostUpdateEnd(vtmp_new[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(vtmp_new[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -383,8 +383,8 @@ void my_p4est_epidemics_t::compute_velocity()
     for(size_t i=0; i<ngbd->get_local_size(); ++i)
     {
         p4est_locidx_t n = ngbd->get_local_node(i);
-        v_t_p[0][n] = -v_A_p[0][n] - v_B_p[0][n];
-        v_t_p[1][n] = -v_A_p[1][n] - v_B_p[1][n];
+        v_t_p[0][n] = v_A_p[0][n] - v_B_p[0][n];
+        v_t_p[1][n] = v_A_p[1][n] - v_B_p[1][n];
     }
     ierr = VecRestoreArray(vtmp_AB[0], &v_t_p[0]); CHKERRXX(ierr);
     ierr = VecRestoreArray(vtmp_AB[1], &v_t_p[1]); CHKERRXX(ierr);
@@ -520,7 +520,7 @@ void my_p4est_epidemics_t::solve(int iter)
 
 
 
-    double *U_n_p, *V_n_p, *W_n_p, *phi_A_p, *phi_B_p, *phi_AB_p;
+    double *U_n_p, *V_n_p, *W_n_p, *phi_A_p, *phi_B_p, *phi_AB_p, *land_p;
     if(iter==0)
     {
         VecGetArray(U_n, &U_n_p);
@@ -529,23 +529,32 @@ void my_p4est_epidemics_t::solve(int iter)
         VecGetArray(phi[0], &phi_A_p);
         VecGetArray(phi[1], &phi_B_p);
         VecGetArray(phi[2], &phi_AB_p);
+        VecDuplicate(U_n, &land);
+        VecGetArray(land, &land_p);
         for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
         {
             double x = node_x_fr_n(n, p4est, nodes);
             double y = node_y_fr_n(n, p4est, nodes);
+            double local_density = get_density(x,y);
+            if(land_p[n]>0)
+                land_p[n] = 1;
+            else
+                land_p[n] = -1;
+
             if(phi_A_p[n]>0)
-                U_n_p[n] = get_density(x,y);
+                U_n_p[n] = local_density;
 
             if(phi_B_p[n]>0)
-                V_n_p[n] = get_density(x,y);
+                V_n_p[n] = local_density;
             if(phi_AB_p[n]>0)
                 W_n_p[n] = 0;
             if(phi_A_p[n]>=0 && phi_B_p[n]>=0)
             {
-                U_n_p[n] = get_density(x,y)/2;
-                V_n_p[n] = get_density(x,y)/2;
+                U_n_p[n] = local_density/2;
+                V_n_p[n] = local_density/2;
             }
         }
+        VecRestoreArray(land, &land_p);
         VecRestoreArray(U_n, &U_n_p);
         VecRestoreArray(V_n, &V_n_p);
         VecRestoreArray(W_n, &W_n_p);
@@ -560,18 +569,21 @@ void my_p4est_epidemics_t::solve(int iter)
 
         my_p4est_poisson_nodes_t solver_u(ngbd);
         //solver_u.set_phi(phi[0]);
+        solver_u.set_phi(land);
         solver_u.set_mu(dt_n*D_A);
         solver_u.set_diagonal(1);
         solver_u.set_bc(bc);
 
         my_p4est_poisson_nodes_t solver_v(ngbd);
         //solver_v.set_phi(phi[1]);
+        solver_v.set_phi(land);
         solver_v.set_mu(dt_n*D_B);
         solver_v.set_diagonal(1);
         solver_v.set_bc(bc);
 
         my_p4est_poisson_nodes_t solver_w(ngbd);
         //solver_w.set_phi(phi[2]);
+        solver_w.set_phi(land);
         solver_w.set_mu(dt_n*D_AB);
         solver_w.set_diagonal(1);
         solver_w.set_bc(bc);
@@ -586,7 +598,7 @@ void my_p4est_epidemics_t::solve(int iter)
         ierr = VecDuplicate(V_n, &V_np1); CHKERRXX(ierr);
         ierr = VecDuplicate(W_n, &W_np1); CHKERRXX(ierr);
 
-        // my_p4est_level_set_t ls(ngbd);
+         //my_p4est_level_set_t ls(ngbd);
         int counter = 0;
         while(counter <1)
         {
@@ -610,10 +622,17 @@ void my_p4est_epidemics_t::solve(int iter)
 
                 if(up>frac)
                     up = frac;
+                if(up<0)
+                    up = 0;
                 if(vp>frac)
                     vp = frac;
+                if(vp<0)
+                    vp=0;
                 if(wp>frac)
                     wp=frac;
+                if(wp<0)
+                    wp=0;
+
                 rhs_u_p[n] = up + dt_n*(R_A*s*up + Xi_B*R_A*(vp - wp)*up - up);
                 rhs_v_p[n] = vp + dt_n*(R_B*s*vp + Xi_A*R_B*(up - wp)*vp - vp);
                 rhs_w_p[n] = wp + dt_n*(Xi_A*R_B*(up - wp)*vp + Xi_B*R_A*(vp - wp)*up - 2*wp);
@@ -634,9 +653,9 @@ void my_p4est_epidemics_t::solve(int iter)
             solver_w.set_rhs(rhs_w);
             solver_w.solve(W_np1);
 
-            //        ls.extend_Over_Interface_TVD(phi[0], U_np1);
-            //        ls.extend_Over_Interface_TVD(phi[1], V_np1);
-            //        ls.extend_Over_Interface_TVD(phi[2], W_np1);
+//            ls.extend_Over_Interface_TVD(phi[0], U_np1);
+//            ls.extend_Over_Interface_TVD(phi[1], V_np1);
+//            ls.extend_Over_Interface_TVD(phi[2], W_np1);
 
             double *U_np1_p, *V_np1_p, *W_np1_p;
             ierr = VecGetArray(U_n, &U_n_p); CHKERRXX(ierr);
@@ -669,7 +688,7 @@ void my_p4est_epidemics_t::solve(int iter)
 void my_p4est_epidemics_t::initialize_infections()
 {
     double xc, yc;
-    double r = MAX(2*MIN(dxyz[0],dxyz[1]), 0.15);
+    double r = MAX(2*MIN(dxyz[0],dxyz[1]), 0.2);
 
     Vec tmpp;
     VecDuplicate(phi_g, &tmpp);
