@@ -908,8 +908,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
               phi_fv[idx] = phi_interp(fv_x[i], fv_y[j], fv_z[k]);
 #else
               int idx = j*fv_nx + i;
-//              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
-              phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j]);
+              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
+//              phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j]);
 #endif
               is_one_positive = is_one_positive || phi_fv[idx] > 0;
               is_one_negative = is_one_negative || phi_fv[idx] < 0;
@@ -1584,7 +1584,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
               s_00p += c2.area_In_Negative_Domain(qv);
             }
 #else
-          if (volume_cut_cell < 0.3*dx_min*dy_min) mask_p[n] = 1;
+          if (volume_cut_cell < 0.001*dx_min*dy_min) mask_p[n] = 1;
 
           PetscInt node_m00_g = petsc_gloidx[qnnn.d_m00_m0==0 ? qnnn.node_m00_mm : qnnn.node_m00_pm];
           PetscInt node_p00_g = petsc_gloidx[qnnn.d_p00_m0==0 ? qnnn.node_p00_mm : qnnn.node_p00_pm];
@@ -1710,8 +1710,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 
   // restore pointers
   ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
-//  ierr = VecGhostUpdateBegin(mask, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//  ierr = VecGhostUpdateEnd(mask, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(mask, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(mask, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(phi_,    &phi_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
@@ -1985,8 +1985,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
               phi_fv[idx] = phi_interp(fv_x[i], fv_y[j], fv_z[k]);
 #else
               int idx = j*fv_nx + i;
-//              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
-              phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j]);
+              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
+//              phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j]);
 #endif
               is_one_positive = is_one_positive || phi_fv[idx] > 0;
               is_one_negative = is_one_negative || phi_fv[idx] < 0;
@@ -2692,9 +2692,9 @@ void my_p4est_poisson_nodes_t::set_phi(Vec phi, Vec phi_xx, Vec phi_yy)
 
   // set the interpolating function parameters
 #ifdef P4_TO_P8
-  phi_interp.set_input(phi_, phi_xx_, phi_yy_, phi_zz_, quadratic);
+  phi_interp.set_input(phi_, phi_xx_, phi_yy_, phi_zz_, quadratic_non_oscillatory_continuous_v2);
 #else
-  phi_interp.set_input(phi_, phi_xx_, phi_yy_, quadratic);
+  phi_interp.set_input(phi_, phi_xx_, phi_yy_, quadratic_non_oscillatory_continuous_v1);
 #endif
 }
 
@@ -3014,8 +3014,8 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u
             phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j], fv_z[k]);
 #else
             int idx = j*fv_nx + i;
-            //              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
-            phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j]);
+            phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
+//            phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j]);
 #endif
             is_one_positive = is_one_positive || phi_fv[idx] > 0;
             is_one_negative = is_one_negative || phi_fv[idx] < 0;

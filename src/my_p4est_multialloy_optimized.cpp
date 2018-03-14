@@ -25,6 +25,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
     kappa_(NULL),
     eps_c_cf_(this), eps_v_cf_(this),
     c00_cf_(this),
+    bc_error_(NULL),
   #ifdef P4_TO_P8
     theta_xz_(NULL), theta_yz_(NUL)
   #else
@@ -78,9 +79,9 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
     phi_dd_[dir] = NULL;
   }
 
-  cfl_number_ = 0.5;
-  pin_every_n_steps_ = 100;
-  bc_tolerance_ = 1.e-8;
+  cfl_number_ = 0.1;
+  pin_every_n_steps_ = 3;
+  bc_tolerance_ = 1.e-5;
   max_iterations_ = 50;
   phi_thresh_ = 0.001;
 
@@ -377,16 +378,8 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
     normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
     normal_p[2][n] = qnnn.dz_central(phi_p);
-//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
 #else
-//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
 #endif
-
-//    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
-//    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
-//#ifdef P4_TO_P8
-//    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
-//#endif
   }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -402,16 +395,9 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
     normal_p[1][n] = qnnn.dy_central(phi_p);
 #ifdef P4_TO_P8
     normal_p[2][n] = qnnn.dz_central(phi_p);
-//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
 #else
-//    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
 #endif
 
-//    normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
-//    normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
-//#ifdef P4_TO_P8
-//    normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
-//#endif
   }
   ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
 
@@ -435,15 +421,9 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
     p4est_locidx_t n = ngbd_->get_layer_node(i);
     qnnn = ngbd_->get_neighbors(n);
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
-//#ifdef P4_TO_P8
-//    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1./dxyz_max_), -1./dxyz_max_);
-//#else
-//    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1./dxyz_max_), -1./dxyz_max_);
-//#endif
 #ifdef P4_TO_P8
     kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]);
 #else
-//    kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);;
     if (is_node_Wall(p4est_, ni))
     {
       kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
@@ -455,24 +435,19 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
       double phi_xy = .5*(qnnn.dx_central(normal_p[1])+qnnn.dy_central(normal_p[0]));
       kappa_p[n] = (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx)/pow(phi_x*phi_x+phi_y*phi_y,3./2.);
     }
-//    kappa_p[n] = qnnn.dxx_central(phi_p) + qnnn.dyy_central(phi_p);
 #endif
   }
+
   ierr = VecGhostUpdateBegin(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
+
   for(size_t i=0; i<ngbd_->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd_->get_local_node(i);
     qnnn = ngbd_->get_neighbors(n);
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
-//#ifdef P4_TO_P8
-//    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1./dxyz_max_), -1./dxyz_max_);
-//#else
-//    kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1./dxyz_max_), -1./dxyz_max_);
-//#endif
-    #ifdef P4_TO_P8
-        kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]);
-    #else
-//        kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
+#ifdef P4_TO_P8
+    kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]);
+#else
 
     if (is_node_Wall(p4est_, ni))
     {
@@ -485,8 +460,7 @@ void my_p4est_multialloy_t::compute_normal_and_curvature()
       double phi_xy = .5*(qnnn.dx_central(normal_p[1])+qnnn.dy_central(normal_p[0]));
       kappa_p[n] = (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx)/pow(phi_x*phi_x+phi_y*phi_y,3./2.);
     }
-//        kappa_p[n] = qnnn.dxx_central(phi_p) + qnnn.dyy_central(phi_p);
-    #endif
+#endif
   }
   ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
@@ -843,7 +817,7 @@ void my_p4est_multialloy_t::update_grid()
   Vec phi_tmp;
   ierr = VecDuplicate(phi_, &phi_tmp); CHKERRXX(ierr);
 
-  interp.set_input(phi_nm1, quadratic_non_oscillatory_continuous_v1);
+  interp.set_input(phi_nm1, interpolation_between_grids_);
   interp.interpolate(phi_tmp);
 
   Vec tm_tmp; ierr = VecDuplicate(phi_, &tm_tmp); CHKERRXX(ierr);
@@ -884,7 +858,7 @@ void my_p4est_multialloy_t::update_grid()
 
 //  ierr = VecDestroy(t_n_); CHKERRXX(ierr);
 //  ierr = VecDuplicate(phi_, &t_n_); CHKERRXX(ierr);
-//  interp.set_input(t_np1_, quadratic_non_oscillatory);
+//  interp.set_input(t_np1_, interpolation_between_grids_);
 //  interp.interpolate(t_n_);
 
 
@@ -1184,11 +1158,6 @@ void my_p4est_multialloy_t::update_grid()
 
 void my_p4est_multialloy_t::one_step()
 {
-
-//  int pin_every_n_steps_ = 100;
-//  double bc_tolerance_ = 1.e-8;
-//  int max_iterations_ = 40;
-
   // solve coupled system of equations
   my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_);
   solver_all_in_one.set_phi(phi_, phi_dd_, normal_, kappa_, theta_);

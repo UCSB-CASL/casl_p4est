@@ -751,7 +751,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
   rhs_c1_.get_array();
   rhs_tmp.get_array();
 
-  for (p4est_locidx_t n = 0; n < nodes_->num_owned_indeps; ++n)
+//  for (p4est_locidx_t n = 0; n < nodes_->num_owned_indeps; ++n)
+  for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n)
     rhs_tmp.ptr[n] = rhs_c1_.ptr[n];
 
   rhs_c1_.restore_array();
@@ -911,8 +912,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
   c0n_.restore_array();
   normal_.restore_array();
 
-//  my_p4est_level_set_t ls(node_neighbors_);
-//  ls.extend_Over_Interface_TVD(phi_.vec, c0n_.vec, 20, 2, normal_.vec);
+  my_p4est_level_set_t ls(node_neighbors_);
+  ls.extend_Over_Interface_TVD(phi_.vec, c0n_.vec, 20, 2, normal_.vec);
 
   // compute second derivatives for interpolation purposes
   for (short dim = 0; dim < P4EST_DIM; ++dim)

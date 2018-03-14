@@ -56,7 +56,7 @@ int save_every_n_iteration = 50;
 
 double bc_tolerance = 1.e-5;
 
-double cfl_number = 0.1;
+double cfl_number = 0.05;
 double phi_thresh = 0.01;
 double zero_negative_velocity = true;
 int max_iterations = 50;
@@ -180,18 +180,19 @@ void set_alloy_parameters()
       kp1 = 0.54;
 
 //      box_size = 2e-1;
+      break;
 
     case 2:
       /* Co - 9.4at%Al - 10.7at%W  */
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 200;         /* K.cm-1      */
-      V              = 0.01;        /* cm.s-1      */
+      G              = 100;         /* K.cm-1      */
+      V              = 0.1;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-      eps_c          = 2.7207e-4;
+      eps_c          = 2.7207e-5;
       eps_v          = 2.27e-2;
       eps_anisotropy = 0.05;
 
@@ -205,7 +206,35 @@ void set_alloy_parameters()
       c01 = 0.094;
       kp1 = 0.848;
 
-//      box_size = 2e-1;
+      box_size = 1e-1;
+      break;
+
+    case 3:
+      /* Co - 9.4at%Al - 10.7at%W  */
+      rho            = 9.2392e-3;   /* kg.cm-3    */
+      heat_capacity  = 356;         /* J.kg-1.K-1 */
+      Tm             = 1996;        /* K           */
+      G              = 5;         /* K.cm-1      */
+      V              = 0.01;        /* cm.s-1      */
+      latent_heat    = 2588.7;      /* J.cm-3      */
+      thermal_conductivity =  1.3;/* W.cm-1.K-1  */
+      lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+      eps_c          = 2.7207e-5;
+      eps_v          = 2.27e-2;
+      eps_anisotropy = 0.05;
+
+      Dl0 = 1e-5;
+      ml0 =-1378;
+      c00 = 0.094;
+      kp0 = 0.848;
+
+      Dl1 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
+      ml1 =-874;       /* K / wt frac. - liquidous slope */
+      c01 = 0.107;     /* at frac.    */
+      kp1 = 0.848;     /* partition coefficient */
+
+      box_size = 2e-1;
+      break;
   }
 }
 
@@ -749,8 +778,6 @@ int main (int argc, char* argv[])
   while(keep_going)
 //  while (iteration < 20)
   {
-
-
     bas.one_step();
 
     tn += bas.get_dt();
