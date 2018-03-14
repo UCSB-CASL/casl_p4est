@@ -60,7 +60,7 @@ double cfl_number = 0.1;
 double phi_thresh = 0.01;
 double zero_negative_velocity = true;
 int max_iterations = 50;
-int pin_every_n_steps = 4;
+int pin_every_n_steps = 3;
 
 
 double lip = 1.5;
@@ -76,7 +76,7 @@ char direction = 'z';
 char direction = 'y';
 #endif
 
-double termination_length = 0.99;
+double termination_length = 0.95;
 
 /* 0 - NiCu
  * 1 - AlCu
@@ -192,8 +192,8 @@ void set_alloy_parameters()
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-      eps_c          = 0*2.7207e-5;
-      eps_v          = 2.27e-1;
+      eps_c          = 2.7207e-5;
+      eps_v          = 2.27e-2;
       eps_anisotropy = 0.05;
 
       Dl0 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
@@ -233,7 +233,7 @@ void set_alloy_parameters()
       c01 = 0.107;     /* at frac.    */
       kp1 = 0.848;     /* partition coefficient */
 
-      box_size = 2e-1;
+      box_size = 1e-1;
       break;
   }
 }
