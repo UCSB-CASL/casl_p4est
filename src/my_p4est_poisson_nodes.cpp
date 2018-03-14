@@ -831,6 +831,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
       // interface boundary
       //---------------------------------------------------------------------
       if((ABS(phi_000)<EPS && bc_->interfaceType() == DIRICHLET) ){
+//      if((ABS(phi_000)<1.e-4*diag_min && bc_->interfaceType() == DIRICHLET) ){
         ierr = MatSetValue(A, node_000_g, node_000_g, bc_strength, ADD_VALUES); CHKERRXX(ierr);
 
         if (use_pointwise_dirichlet)
@@ -1909,6 +1910,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
       // interface boundary
       //---------------------------------------------------------------------
       if((ABS(phi_000)<EPS && bc_->interfaceType() == DIRICHLET) ){
+//      if((ABS(phi_000)<1.e-4*diag_min && bc_->interfaceType() == DIRICHLET) ){
         if (use_pointwise_dirichlet)
           rhs_p[n] = pointwise_bc[n][0].value;
         else

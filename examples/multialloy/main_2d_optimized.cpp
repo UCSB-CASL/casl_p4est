@@ -52,15 +52,15 @@
 
 int lmin = 5;
 int lmax = 10;
-int save_every_n_iteration = 50;
+int save_every_n_iteration = 10;
 
 double bc_tolerance = 1.e-5;
 
-double cfl_number = 0.05;
+double cfl_number = 0.1;
 double phi_thresh = 0.01;
 double zero_negative_velocity = true;
 int max_iterations = 50;
-int pin_every_n_steps = 3;
+int pin_every_n_steps = 4;
 
 
 double lip = 1.5;
@@ -187,13 +187,13 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 100;         /* K.cm-1      */
-      V              = 0.1;        /* cm.s-1      */
+      G              = 10;         /* K.cm-1      */
+      V              = 0.05;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-      eps_c          = 2.7207e-5;
-      eps_v          = 2.27e-2;
+      eps_c          = 0*2.7207e-5;
+      eps_v          = 2.27e-1;
       eps_anisotropy = 0.05;
 
       Dl0 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */

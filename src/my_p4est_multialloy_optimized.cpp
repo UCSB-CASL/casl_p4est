@@ -695,21 +695,24 @@ void my_p4est_multialloy_t::compute_dt()
 
   double kappa_max = 0;
   vgamma_max_ = 0;
+  double kv_max = 0;
 
   for(p4est_locidx_t n=0; n<nodes_->num_owned_indeps; ++n)
     if(fabs(phi_p[n]) < dxyz_close_interface_)
     {
       vgamma_max_ = MAX(vgamma_max_, fabs(vn_p[n]));
       kappa_max = MAX(kappa_max, fabs(kappa_p[n]));
+      kv_max = MAX(kv_max, fabs(kappa_p[n]*vn_p[n]));
     }
 
   ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(kappa_, &kappa_p); CHKERRXX(ierr);
 
-  kappa_max = MIN(kappa_max, 1/dxyz_min_);
+//  kappa_max = MIN(kappa_max, 1/dxyz_min_);
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &kappa_max,   1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
       mpiret = MPI_Allreduce(MPI_IN_PLACE, &vgamma_max_, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &kv_max,      1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
   ierr = PetscPrintf(p4est_->mpicomm, "Maximum curvature = %e\n", kappa_max); CHKERRXX(ierr);
 
@@ -734,9 +737,10 @@ void my_p4est_multialloy_t::compute_dt()
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
   dt_nm1_ = dt_n_;
-  dt_n_ = cfl_number_ * dxyz_min_ * MIN(1/u_max, 1/cooling_velocity_);
+//  dt_n_ = cfl_number_ * MIN(dxyz_min_/vgamma_max_, dxyz_min_/cooling_velocity_, 1./MAX(kv_max, 1.e-6*cooling_velocity_/dxyz_min_)) ;
+  dt_n_ = cfl_number_ * MIN(dxyz_min_/vgamma_max_, 1./MAX(kv_max, 1.e-6*cooling_velocity_/dxyz_min_)) ;
 
-  PetscPrintf(p4est_->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e\n", u_max, vgamma_max_, cooling_velocity_);
+  PetscPrintf(p4est_->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e, %e, %e\n", u_max, vgamma_max_, cooling_velocity_, dxyz_min_/vgamma_max_, 1./kv_max);
   PetscPrintf(p4est_->mpicomm, "dt = %e\n", dt_n_);
 }
 
