@@ -51,8 +51,8 @@
 #undef MAX
 
 int lmin = 5;
-int lmax = 10;
-int save_every_n_iteration = 10;
+int lmax = 6;
+int save_every_n_iteration = 1;
 
 double bc_tolerance = 1.e-5;
 
@@ -60,7 +60,7 @@ double cfl_number = 0.1;
 double phi_thresh = 0.01;
 double zero_negative_velocity = true;
 int max_iterations = 50;
-int pin_every_n_steps = 3;
+int pin_every_n_steps = 10;
 
 
 double lip = 1.5;
@@ -706,10 +706,10 @@ int main (int argc, char* argv[])
 
   srand(mpi.rank());
 
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-  {
-    phi_p[n] += 0.1*dx*(double)(rand()%1000)/1000.;
-  }
+//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+//  {
+//    phi_p[n] += 0.1*dx*(double)(rand()%1000)/1000.;
+//  }
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 

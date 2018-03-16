@@ -81,6 +81,9 @@ my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
   if (solver_c1 != NULL) delete solver_c1;
   if (solver_psi_c0 != NULL) delete solver_psi_c0;
 
+  if (c0_gamma_.vec != NULL) { ierr = VecDestroy(c0_gamma_.vec); CHKERRXX(ierr); }
+  if (c0n_gamma_.vec != NULL) { ierr = VecDestroy(c0n_gamma_.vec); CHKERRXX(ierr); }
+
 //  if (is_normal_owned_)
 //    for (short dir = 0; dir < P4EST_DIM; ++dir)
 //    {
@@ -657,9 +660,27 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
 //  std::cout << std::endl;
 //  ierr = VecRestoreArray(c0_.vec, &c0_p);
 
+  double dxyz[P4EST_DIM];
+  dxyz_min(p4est_, dxyz);
+  double shift = 1.e-3*MIN(dxyz[0], dxyz[1]);
+
+  phi_.get_array();
+  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] += shift; }
+  phi_.restore_array();
+
   my_p4est_level_set_t ls(node_neighbors_);
   ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, 100, 2, normal_.vec);
 //  ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, solver_c0, 100, 2, normal_.vec);
+
+  phi_.get_array();
+  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] -= shift; }
+  phi_.restore_array();
+
+  if (c0_gamma_.vec != NULL) { ierr = VecDestroy(c0_gamma_.vec); CHKERRXX(ierr); }
+
+  ierr = VecDuplicate(phi_.vec, &c0_gamma_.vec); CHKERRXX(ierr);
+
+  ls.extend_from_interface_to_whole_domain_TVD(phi_.vec, c0_.vec, c0_gamma_.vec);
 
   node_neighbors_->second_derivatives_central(c0_.vec, c0_dd_.vec);
 
@@ -731,9 +752,22 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
   solver_psi_c0->set_rhs(rhs_tmp.vec);
   solver_psi_c0->solve(psi_c0_.vec);
 
+
+  double dxyz[P4EST_DIM];
+  dxyz_min(p4est_, dxyz);
+  double shift = 1.e-3*MIN(dxyz[0], dxyz[1]);
+
+  phi_.get_array();
+  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] += shift; }
+  phi_.restore_array();
+
   my_p4est_level_set_t ls(node_neighbors_);
   ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, 50, 2, normal_.vec);
 //  ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, solver_psi_c0, 100, 2, normal_.vec);
+
+  phi_.get_array();
+  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] -= shift; }
+  phi_.restore_array();
 
   node_neighbors_->second_derivatives_central(psi_c0_.vec, psi_c0_dd_.vec);
 
@@ -913,7 +947,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
   normal_.restore_array();
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.extend_Over_Interface_TVD(phi_.vec, c0n_.vec, 20, 2, normal_.vec);
+//  ls.extend_Over_Interface_TVD(phi_.vec, c0n_.vec, 20, 2, normal_.vec);
 
   // compute second derivatives for interpolation purposes
   for (short dim = 0; dim < P4EST_DIM; ++dim)
@@ -921,6 +955,12 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
     if (c0n_dd_.vec[dim] != NULL) { ierr = VecDestroy(c0n_dd_.vec[dim]); CHKERRXX(ierr); }
     ierr = VecDuplicate(phi_dd_.vec[dim], &c0n_dd_.vec[dim]); CHKERRXX(ierr);
   }
+
+  if (c0n_gamma_.vec != NULL) { ierr = VecDestroy(c0n_gamma_.vec); CHKERRXX(ierr); }
+
+  ierr = VecDuplicate(phi_.vec, &c0n_gamma_.vec); CHKERRXX(ierr);
+
+  ls.extend_from_interface_to_whole_domain_TVD(phi_.vec, c0n_.vec, c0n_gamma_.vec);
 
   node_neighbors_->second_derivatives_central(c0n_.vec, c0n_dd_.vec);
 }

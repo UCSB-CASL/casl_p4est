@@ -56,10 +56,10 @@
 #undef MIN
 #undef MAX
 int lmin = 5;
-int lmax = 7;
+int lmax = 5;
 int nb_splits = 6;
 
-double lip = 3.5;
+double lip = 1.5;
 
 using namespace std;
 

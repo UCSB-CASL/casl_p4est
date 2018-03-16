@@ -366,11 +366,11 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
     double qh = P4EST_QUADRANT_LEN(quad_m00->level) / (double) P4EST_ROOT_LEN;
     qnnn.d_m00_m0 = y - qy;
-    if(p_y && y < qy-qh/4) qnnn.d_m00_m0 += (ymax-ymin);
+    if(p_y && y < qy-(tree_ymax-tree_ymin)*qh/4.) qnnn.d_m00_m0 += (ymax-ymin);
     qnnn.d_m00_p0 = (tree_ymax-tree_ymin)*qh - qnnn.d_m00_m0;
 #ifdef P4_TO_P8
     qnnn.d_m00_0m = z - qz;
-    if(p_z && z < qz-qh/4) qnnn.d_m00_0m += (zmax-zmin);
+    if(p_z && z < qz-(tree_ymax-tree_ymin)*qh/4.) qnnn.d_m00_0m += (zmax-zmin);
     qnnn.d_m00_0p = (tree_zmax-tree_zmin)*qh - qnnn.d_m00_0m;
 #endif
   }

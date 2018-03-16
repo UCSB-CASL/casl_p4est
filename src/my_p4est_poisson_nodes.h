@@ -28,6 +28,7 @@ class my_p4est_poisson_nodes_t
   my_p4est_interpolation_nodes_t phi_interp;
 //  my_p4est_interpolation_nodes_t robin_coef_interp;
 
+  bool use_linear_continuous_dirichlet_;
   bool neumann_wall_first_order;
   double mu_, diag_add_;
   bool is_matrix_computed;

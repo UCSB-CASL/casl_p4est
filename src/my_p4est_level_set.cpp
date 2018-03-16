@@ -3792,7 +3792,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
 void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec qi, Vec q, int iterations, int order)
 {
   interpolation_method q_interpolation;
-  if (use_second_derivatives) q_interpolation = quadratic_non_oscillatory;
+  if (use_second_derivatives) q_interpolation = quadratic_non_oscillatory_continuous_v1;
   else                        q_interpolation = linear;
 
   PetscErrorCode ierr;
@@ -4270,7 +4270,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
 void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec phi_smooth, Vec qi, Vec q, int iterations, int order)
 {
   interpolation_method q_interpolation;
-  if (use_second_derivatives) q_interpolation = quadratic_non_oscillatory;
+  if (use_second_derivatives) q_interpolation = quadratic_non_oscillatory_continuous_v1;
   else                        q_interpolation = linear;
 
   PetscErrorCode ierr;

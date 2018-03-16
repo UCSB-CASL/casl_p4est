@@ -127,11 +127,13 @@ class my_p4est_poisson_nodes_multialloy_t
     double operator()(double x, double y) const
     {
 //      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
-      ptr_->interp_.set_input(ptr_->c0_.vec, linear);
+//      ptr_->interp_.set_input(ptr_->c0_.vec, linear);
+      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
       double c0 = ptr_->interp_(x, y);
 
 //      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
-      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
+//      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
+      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
       double c0n = ptr_->interp_(x, y);
 
       return ptr_->Dl0_/(1.-ptr_->kp0_)*(c0n - (*ptr_->c0_flux_)(x,y))/c0;
@@ -271,6 +273,9 @@ class my_p4est_poisson_nodes_multialloy_t
   vec_and_ptr_t t_;  vec_and_ptr_dim_t t_dd_;
   vec_and_ptr_t c0_; vec_and_ptr_dim_t c0_dd_;
   vec_and_ptr_t c1_; vec_and_ptr_dim_t c1_dd_;
+
+  vec_and_ptr_t c0_gamma_;
+  vec_and_ptr_t c0n_gamma_;
 
   vec_and_ptr_t tm_; vec_and_ptr_dim_t tm_dd_;
 

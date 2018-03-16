@@ -53,7 +53,7 @@ my_p4est_poisson_nodes_t::my_p4est_poisson_nodes_t(const my_p4est_node_neighbors
     use_refined_cube(true), variable_mu(false), use_pointwise_dirichlet(false),
     mask(NULL),
     keep_scalling(false),
-    new_pc(true)
+    new_pc(true), use_linear_continuous_dirichlet_(true)
   #ifdef P4_TO_P8
     ,
     phi_zz_(NULL), mue_zz_(NULL)
@@ -948,12 +948,16 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         bool is_interface_00p = (bc_->interfaceType() == DIRICHLET && phi_00p*phi_000 <= 0.);
 #endif
 
+        bool is_interface_any = false;
 #ifdef P4_TO_P8
         if ( is_interface_0m0 || is_interface_m00 || is_interface_p00 || is_interface_0p0  || is_interface_00m || is_interface_00p)
 #else
         if ( is_interface_0m0 || is_interface_m00 || is_interface_p00 || is_interface_0p0 )
 #endif
+        {
           matrix_has_nullspace = false;
+          is_interface_any = true;
+        }
 
         // given boundary condition at interface from quadratic interpolation
         if( is_interface_m00) {
@@ -1073,292 +1077,382 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         }
 #endif
 
+        double w_m00 = 0;
+        double w_p00 = 0;
+        double w_0m0 = 0;
+        double w_0p0 = 0;
 #ifdef P4_TO_P8
-        //------------------------------------
-        // Dfxx =   fxx + a*fyy + b*fzz
-        // Dfyy = c*fxx +   fyy + d*fzz
-        // Dfzz = e*fxx + f*fyy +   fzz
-        //------------------------------------
-        double a = d_m00_m0*d_m00_p0/d_m00/(d_p00+d_m00) + d_p00_m0*d_p00_p0/d_p00/(d_p00+d_m00) ;
-        double b = d_m00_0m*d_m00_0p/d_m00/(d_p00+d_m00) + d_p00_0m*d_p00_0p/d_p00/(d_p00+d_m00) ;
-
-        double c = d_0m0_m0*d_0m0_p0/d_0m0/(d_0p0+d_0m0) + d_0p0_m0*d_0p0_p0/d_0p0/(d_0p0+d_0m0) ;
-        double d = d_0m0_0m*d_0m0_0p/d_0m0/(d_0p0+d_0m0) + d_0p0_0m*d_0p0_0p/d_0p0/(d_0p0+d_0m0) ;
-
-        double e = d_00m_m0*d_00m_p0/d_00m/(d_00p+d_00m) + d_00p_m0*d_00p_p0/d_00p/(d_00p+d_00m) ;
-        double f = d_00m_0m*d_00m_0p/d_00m/(d_00p+d_00m) + d_00p_0m*d_00p_0p/d_00p/(d_00p+d_00m) ;
-
-        //------------------------------------------------------------
-        // compensating the error of linear interpolation at T-junction using
-        // the derivative in the transversal direction
-        //
-        // Laplace = wi*Dfxx +
-        //           wj*Dfyy +
-        //           wk*Dfzz
-        //------------------------------------------------------------
-        double det = 1.-a*c-b*e-d*f+a*d*e+b*c*f;
-        double wi = (1.-c-e+c*f+e*d-d*f)/det;
-        double wj = (1.-a-f+a*e+f*b-b*e)/det;
-        double wk = (1.-b-d+b*c+d*a-a*c)/det;
-
-        //---------------------------------------------------------------------
-        // Shortley-Weller method, dimension by dimension
-        //---------------------------------------------------------------------
-        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0, w_00m=0, w_00p=0;
-
-        // if node is at wall, what's below will apply Neumann BC
-        if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
-        else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
-        else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
-
-        if(is_node_xpWall(p4est, ni))      w_m00 += -1.0/(d_m00*d_m00);
-        else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0/(d_p00*d_p00);
-        else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
-
-        if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0/(d_0p0*d_0p0);
-        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0/(d_0m0*d_0m0);
-        else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
-
-        if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0/(d_0m0*d_0m0);
-        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0/(d_0p0*d_0p0);
-        else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
-
-        if(is_node_zmWall(p4est, ni))      w_00p += -1.0/(d_00p*d_00p);
-        else if(is_node_zpWall(p4est, ni)) w_00m += -1.0/(d_00m*d_00m);
-        else                               w_00m += -2.0*wk/d_00m/(d_00m+d_00p);
-
-        if(is_node_zpWall(p4est, ni))      w_00m += -1.0/(d_00m*d_00m);
-        else if(is_node_zmWall(p4est, ni)) w_00p += -1.0/(d_00p*d_00p);
-        else                               w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
-
-        if (variable_mu)
-        {
-          if(!is_interface_m00) {
-            w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-            w_m00_mp = 0.5*(mue_000 + mue_p[node_m00_mp])*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-            w_m00_pm = 0.5*(mue_000 + mue_p[node_m00_pm])*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-            w_m00_pp = 0.5*(mue_000 + mue_p[node_m00_pp])*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-            w_m00 = w_m00_mm + w_m00_mp + w_m00_pm + w_m00_pp;
-          } else {
-            w_m00 *= 0.5*(mue_000 + mue_m00);
-          }
-
-          if(!is_interface_p00) {
-            w_p00_mm = 0.5*(mue_000 + mue_p[node_p00_mm])*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-            w_p00_mp = 0.5*(mue_000 + mue_p[node_p00_mp])*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-            w_p00_pm = 0.5*(mue_000 + mue_p[node_p00_pm])*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-            w_p00_pp = 0.5*(mue_000 + mue_p[node_p00_pp])*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-            w_p00 = w_p00_mm + w_p00_mp + w_p00_pm + w_p00_pp;
-          } else {
-            w_p00 *= 0.5*(mue_000 + mue_p00);
-          }
-
-          if(!is_interface_0m0) {
-            w_0m0_mm = 0.5*(mue_000 + mue_p[node_0m0_mm])*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-            w_0m0_mp = 0.5*(mue_000 + mue_p[node_0m0_mp])*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-            w_0m0_pm = 0.5*(mue_000 + mue_p[node_0m0_pm])*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-            w_0m0_pp = 0.5*(mue_000 + mue_p[node_0m0_pp])*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-            w_0m0 = w_0m0_mm + w_0m0_mp + w_0m0_pm + w_0m0_pp;
-          } else {
-            w_0m0 *= 0.5*(mue_000 + mue_0m0);
-          }
-
-          if(!is_interface_0p0) {
-            w_0p0_mm = 0.5*(mue_000 + mue_p[node_0p0_mm])*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-            w_0p0_mp = 0.5*(mue_000 + mue_p[node_0p0_mp])*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-            w_0p0_pm = 0.5*(mue_000 + mue_p[node_0p0_pm])*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-            w_0p0_pp = 0.5*(mue_000 + mue_p[node_0p0_pp])*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-            w_0p0 = w_0p0_mm + w_0p0_mp + w_0p0_pm + w_0p0_pp;
-          } else {
-            w_0p0 *= 0.5*(mue_000 + mue_0p0);
-          }
-
-          if(!is_interface_00m) {
-            w_00m_mm = 0.5*(mue_000 + mue_p[node_00m_mm])*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-            w_00m_mp = 0.5*(mue_000 + mue_p[node_00m_mp])*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-            w_00m_pm = 0.5*(mue_000 + mue_p[node_00m_pm])*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-            w_00m_pp = 0.5*(mue_000 + mue_p[node_00m_pp])*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-            w_00m = w_00m_mm + w_00m_mp + w_00m_pm + w_00m_pp;
-          } else {
-            w_00m *= 0.5*(mue_000 + mue_00m);
-          }
-
-          if(!is_interface_00p) {
-            w_00p_mm = 0.5*(mue_000 + mue_p[node_00p_mm])*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-            w_00p_mp = 0.5*(mue_000 + mue_p[node_00p_mp])*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-            w_00p_pm = 0.5*(mue_000 + mue_p[node_00p_pm])*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-            w_00p_pp = 0.5*(mue_000 + mue_p[node_00p_pp])*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-            w_00p = w_00p_mm + w_00p_mp + w_00p_pm + w_00p_pp;
-          } else {
-            w_00p *= 0.5*(mue_000 + mue_00p);
-          }
-
-        } else {
-
-          if(!is_interface_m00) {
-            w_m00_mm = mu_*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-            w_m00_mp = mu_*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-            w_m00_pm = mu_*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-            w_m00_pp = mu_*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-            w_m00 = w_m00_mm + w_m00_mp + w_m00_pm + w_m00_pp;
-          } else {
-            w_m00 *= mu_;
-          }
-
-          if(!is_interface_p00) {
-            w_p00_mm = mu_*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-            w_p00_mp = mu_*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-            w_p00_pm = mu_*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-            w_p00_pp = mu_*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-            w_p00 = w_p00_mm + w_p00_mp + w_p00_pm + w_p00_pp;
-          } else {
-            w_p00 *= mu_;
-          }
-
-          if(!is_interface_0m0) {
-            w_0m0_mm = mu_*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-            w_0m0_mp = mu_*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-            w_0m0_pm = mu_*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-            w_0m0_pp = mu_*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-            w_0m0 = w_0m0_mm + w_0m0_mp + w_0m0_pm + w_0m0_pp;
-          } else {
-            w_0m0 *= mu_;
-          }
-
-          if(!is_interface_0p0) {
-            w_0p0_mm = mu_*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-            w_0p0_mp = mu_*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-            w_0p0_pm = mu_*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-            w_0p0_pp = mu_*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-            w_0p0 = w_0p0_mm + w_0p0_mp + w_0p0_pm + w_0p0_pp;
-          } else {
-            w_0p0 *= mu_;
-          }
-
-          if(!is_interface_00m) {
-            w_00m_mm = mu_*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-            w_00m_mp = mu_*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-            w_00m_pm = mu_*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-            w_00m_pp = mu_*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-            w_00m = w_00m_mm + w_00m_mp + w_00m_pm + w_00m_pp;
-          } else {
-            w_00m *= mu_;
-          }
-
-          if(!is_interface_00p) {
-            w_00p_mm = mu_*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-            w_00p_mp = mu_*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-            w_00p_pm = mu_*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-            w_00p_pp = mu_*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-            w_00p = w_00p_mm + w_00p_mp + w_00p_pm + w_00p_pp;
-          } else {
-            w_00p *= mu_;
-          }
-
-        }
-#else
-        //---------------------------------------------------------------------
-        // compensating the error of linear interpolation at T-junction using
-        // the derivative in the transversal direction
-        //---------------------------------------------------------------------
-        double wi = 1.0 - d_0m0_m0*d_0m0_p0/d_0m0/(d_0m0+d_0p0) - d_0p0_m0*d_0p0_p0/d_0p0/(d_0m0+d_0p0);
-        double wj = 1.0 - d_m00_p0*d_m00_m0/d_m00/(d_m00+d_p00) - d_p00_p0*d_p00_m0/d_p00/(d_m00+d_p00);
-
-        //---------------------------------------------------------------------
-        // Shortley-Weller method, dimension by dimension
-        //---------------------------------------------------------------------
-        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
-
-        // if node is at wall, what's below will apply Neumann BC
-        if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
-        else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
-        else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
-
-        if(is_node_xpWall(p4est, ni))      w_m00 += -1.0/(d_m00*d_m00);
-        else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0/(d_p00*d_p00);
-        else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
-
-        if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0/(d_0p0*d_0p0);
-        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0/(d_0m0*d_0m0);
-        else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
-
-        if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0/(d_0m0*d_0m0);
-        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0/(d_0p0*d_0p0);
-        else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
-
-        //---------------------------------------------------------------------
-        // addition to diagonal elements
-        //---------------------------------------------------------------------
-        if (variable_mu) {
-
-          if(!is_interface_m00) {
-            w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0/(d_m00_m0+d_m00_p0);
-            w_m00_pm = 0.5*(mue_000 + mue_p[node_m00_pm])*w_m00*d_m00_m0/(d_m00_m0+d_m00_p0);
-            w_m00 = w_m00_mm + w_m00_pm;
-          } else {
-            w_m00 *= 0.5*(mue_000 + mue_m00);
-          }
-
-          if(!is_interface_p00) {
-            w_p00_mm = 0.5*(mue_000 + mue_p[node_p00_mm])*w_p00*d_p00_p0/(d_p00_m0+d_p00_p0);
-            w_p00_pm = 0.5*(mue_000 + mue_p[node_p00_pm])*w_p00*d_p00_m0/(d_p00_m0+d_p00_p0);
-            w_p00    = w_p00_mm + w_p00_pm;
-          } else {
-            w_p00 *= 0.5*(mue_000 + mue_p00);
-          }
-
-          if(!is_interface_0m0) {
-            w_0m0_mm = 0.5*(mue_000 + mue_p[node_0m0_mm])*w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0);
-            w_0m0_pm = 0.5*(mue_000 + mue_p[node_0m0_pm])*w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0);
-            w_0m0 = w_0m0_mm + w_0m0_pm;
-          } else {
-            w_0m0 *= 0.5*(mue_000 + mue_0m0);
-          }
-
-          if(!is_interface_0p0) {
-            w_0p0_mm = 0.5*(mue_000 + mue_p[node_0p0_mm])*w_0p0*d_0p0_p0/(d_0p0_m0+d_0p0_p0);
-            w_0p0_pm = 0.5*(mue_000 + mue_p[node_0p0_pm])*w_0p0*d_0p0_m0/(d_0p0_m0+d_0p0_p0);
-            w_0p0 = w_0p0_mm + w_0p0_pm;
-          } else {
-            w_0p0 *= 0.5*(mue_000 + mue_0p0);
-          }
-
-        } else {
-
-          if(!is_interface_m00 && !is_node_xmWall(p4est, ni)) {
-            w_m00_mm = mu_*w_m00*d_m00_p0/(d_m00_m0+d_m00_p0);
-            w_m00_pm = mu_*w_m00*d_m00_m0/(d_m00_m0+d_m00_p0);
-            w_m00 = w_m00_mm + w_m00_pm;
-          } else {
-            w_m00 *= mu_;
-          }
-
-          if(!is_interface_p00 && !is_node_xpWall(p4est, ni)) {
-            w_p00_mm = mu_*w_p00*d_p00_p0/(d_p00_m0+d_p00_p0);
-            w_p00_pm = mu_*w_p00*d_p00_m0/(d_p00_m0+d_p00_p0);
-            w_p00    = w_p00_mm + w_p00_pm;
-          } else {
-            w_p00 *= mu_;
-          }
-
-          if(!is_interface_0m0 && !is_node_ymWall(p4est, ni)) {
-            w_0m0_mm = mu_*w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0);
-            w_0m0_pm = mu_*w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0);
-            w_0m0 = w_0m0_mm + w_0m0_pm;
-          } else {
-            w_0m0 *= mu_;
-          }
-
-          if(!is_interface_0p0 && !is_node_ypWall(p4est, ni)) {
-            w_0p0_mm = mu_*w_0p0*d_0p0_p0/(d_0p0_m0+d_0p0_p0);
-            w_0p0_pm = mu_*w_0p0*d_0p0_m0/(d_0p0_m0+d_0p0_p0);
-            w_0p0 = w_0p0_mm + w_0p0_pm;
-          } else {
-            w_0p0 *= mu_;
-          }
-
-        }
+        double w_00m = 0;
+        double w_00p = 0;
 #endif
+
+        // count number of crossings
+        char num_interfaces = 0;
+
+        num_interfaces += is_interface_m00 ? 1 : 0;
+        num_interfaces += is_interface_p00 ? 1 : 0;
+        num_interfaces += is_interface_0m0 ? 1 : 0;
+        num_interfaces += is_interface_0p0 ? 1 : 0;
+
+        if (is_interface_any && use_linear_continuous_dirichlet_)
+        {
+          // assuming grid is uniform near the interface
+
+          if (num_interfaces == 3) // almost isolated point, use linear interpolation
+          {
+            if (use_pointwise_dirichlet)
+              pointwise_bc[n].clear();
+
+            if (!is_interface_m00)
+            {
+              w_m00 = d_p00/(d_p00+d_m00);
+              w_p00 = d_m00/(d_p00+d_m00);
+              pointwise_bc[n].push_back(interface_point_t(1, d_p00));
+            }
+
+            if (!is_interface_p00)
+            {
+              w_m00 = d_p00/(d_p00+d_m00);
+              w_p00 = d_m00/(d_p00+d_m00);
+              pointwise_bc[n].push_back(interface_point_t(0, d_m00));
+            }
+
+            if (!is_interface_0m0)
+            {
+              w_0m0 = d_0p0/(d_0p0+d_0m0);
+              w_0p0 = d_0m0/(d_0p0+d_0m0);
+              pointwise_bc[n].push_back(interface_point_t(3, d_0p0));
+            }
+
+            if (!is_interface_0p0)
+            {
+              w_0m0 = d_0p0/(d_0p0+d_0m0);
+              w_0p0 = d_0m0/(d_0p0+d_0m0);
+              pointwise_bc[n].push_back(interface_point_t(2, d_0m0));
+            }
+
+          }
+          else
+          {
+            double dx_max = MAX(d_m00, d_p00);
+
+            w_m00 = mu_*(1. + (dx_max - d_m00)/dx_max  - SQR(dx_max - d_p00)/d_m00/dx_max)/SQR(dx_max);
+            w_p00 = mu_*(1. + (dx_max - d_p00)/dx_max  - SQR(dx_max - d_m00)/d_p00/dx_max)/SQR(dx_max);
+
+            double dy_max = MAX(d_0m0, d_0p0);
+
+            w_0m0 = mu_*(1. + (dy_max - d_0m0)/dy_max  - SQR(dy_max - d_0p0)/d_0m0/dy_max)/SQR(dy_max);
+            w_0p0 = mu_*(1. + (dy_max - d_0p0)/dy_max  - SQR(dy_max - d_0m0)/d_0p0/dy_max)/SQR(dy_max);
+          }
+
+          if (!is_interface_m00)
+          {
+            if (d_m00_m0 == 0) w_m00_mm = w_m00;
+            else               w_m00_pm = w_m00;
+          }
+
+          if (!is_interface_p00)
+          {
+            if (d_p00_m0 == 0) w_p00_mm = w_p00;
+            else               w_p00_pm = w_p00;
+          }
+
+          if (!is_interface_0m0)
+          {
+            if (d_0m0_m0 == 0) w_0m0_mm = w_0m0;
+            else               w_0m0_pm = w_0m0;
+          }
+
+          if (!is_interface_0p0)
+          {
+            if (d_0p0_m0 == 0) w_0p0_mm = w_0p0;
+            else               w_0p0_pm = w_0p0;
+          }
+
+        } else {
+
+#ifdef P4_TO_P8
+          //------------------------------------
+          // Dfxx =   fxx + a*fyy + b*fzz
+          // Dfyy = c*fxx +   fyy + d*fzz
+          // Dfzz = e*fxx + f*fyy +   fzz
+          //------------------------------------
+          double a = d_m00_m0*d_m00_p0/d_m00/(d_p00+d_m00) + d_p00_m0*d_p00_p0/d_p00/(d_p00+d_m00) ;
+          double b = d_m00_0m*d_m00_0p/d_m00/(d_p00+d_m00) + d_p00_0m*d_p00_0p/d_p00/(d_p00+d_m00) ;
+
+          double c = d_0m0_m0*d_0m0_p0/d_0m0/(d_0p0+d_0m0) + d_0p0_m0*d_0p0_p0/d_0p0/(d_0p0+d_0m0) ;
+          double d = d_0m0_0m*d_0m0_0p/d_0m0/(d_0p0+d_0m0) + d_0p0_0m*d_0p0_0p/d_0p0/(d_0p0+d_0m0) ;
+
+          double e = d_00m_m0*d_00m_p0/d_00m/(d_00p+d_00m) + d_00p_m0*d_00p_p0/d_00p/(d_00p+d_00m) ;
+          double f = d_00m_0m*d_00m_0p/d_00m/(d_00p+d_00m) + d_00p_0m*d_00p_0p/d_00p/(d_00p+d_00m) ;
+
+          //------------------------------------------------------------
+          // compensating the error of linear interpolation at T-junction using
+          // the derivative in the transversal direction
+          //
+          // Laplace = wi*Dfxx +
+          //           wj*Dfyy +
+          //           wk*Dfzz
+          //------------------------------------------------------------
+          double det = 1.-a*c-b*e-d*f+a*d*e+b*c*f;
+          double wi = (1.-c-e+c*f+e*d-d*f)/det;
+          double wj = (1.-a-f+a*e+f*b-b*e)/det;
+          double wk = (1.-b-d+b*c+d*a-a*c)/det;
+
+//          //---------------------------------------------------------------------
+//          // Shortley-Weller method, dimension by dimension
+//          //---------------------------------------------------------------------
+//          double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0, w_00m=0, w_00p=0;
+
+          // if node is at wall, what's below will apply Neumann BC
+          if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
+          else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
+          else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
+
+          if(is_node_xpWall(p4est, ni))      w_m00 += -1.0/(d_m00*d_m00);
+          else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0/(d_p00*d_p00);
+          else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
+
+          if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0/(d_0p0*d_0p0);
+          else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0/(d_0m0*d_0m0);
+          else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
+
+          if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0/(d_0m0*d_0m0);
+          else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0/(d_0p0*d_0p0);
+          else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
+
+          if(is_node_zmWall(p4est, ni))      w_00p += -1.0/(d_00p*d_00p);
+          else if(is_node_zpWall(p4est, ni)) w_00m += -1.0/(d_00m*d_00m);
+          else                               w_00m += -2.0*wk/d_00m/(d_00m+d_00p);
+
+          if(is_node_zpWall(p4est, ni))      w_00m += -1.0/(d_00m*d_00m);
+          else if(is_node_zmWall(p4est, ni)) w_00p += -1.0/(d_00p*d_00p);
+          else                               w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
+
+          if (variable_mu)
+          {
+            if(!is_interface_m00) {
+              w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+              w_m00_mp = 0.5*(mue_000 + mue_p[node_m00_mp])*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+              w_m00_pm = 0.5*(mue_000 + mue_p[node_m00_pm])*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+              w_m00_pp = 0.5*(mue_000 + mue_p[node_m00_pp])*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+              w_m00 = w_m00_mm + w_m00_mp + w_m00_pm + w_m00_pp;
+            } else {
+              w_m00 *= 0.5*(mue_000 + mue_m00);
+            }
+
+            if(!is_interface_p00) {
+              w_p00_mm = 0.5*(mue_000 + mue_p[node_p00_mm])*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+              w_p00_mp = 0.5*(mue_000 + mue_p[node_p00_mp])*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+              w_p00_pm = 0.5*(mue_000 + mue_p[node_p00_pm])*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+              w_p00_pp = 0.5*(mue_000 + mue_p[node_p00_pp])*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+              w_p00 = w_p00_mm + w_p00_mp + w_p00_pm + w_p00_pp;
+            } else {
+              w_p00 *= 0.5*(mue_000 + mue_p00);
+            }
+
+            if(!is_interface_0m0) {
+              w_0m0_mm = 0.5*(mue_000 + mue_p[node_0m0_mm])*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+              w_0m0_mp = 0.5*(mue_000 + mue_p[node_0m0_mp])*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+              w_0m0_pm = 0.5*(mue_000 + mue_p[node_0m0_pm])*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+              w_0m0_pp = 0.5*(mue_000 + mue_p[node_0m0_pp])*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+              w_0m0 = w_0m0_mm + w_0m0_mp + w_0m0_pm + w_0m0_pp;
+            } else {
+              w_0m0 *= 0.5*(mue_000 + mue_0m0);
+            }
+
+            if(!is_interface_0p0) {
+              w_0p0_mm = 0.5*(mue_000 + mue_p[node_0p0_mm])*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+              w_0p0_mp = 0.5*(mue_000 + mue_p[node_0p0_mp])*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+              w_0p0_pm = 0.5*(mue_000 + mue_p[node_0p0_pm])*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+              w_0p0_pp = 0.5*(mue_000 + mue_p[node_0p0_pp])*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+              w_0p0 = w_0p0_mm + w_0p0_mp + w_0p0_pm + w_0p0_pp;
+            } else {
+              w_0p0 *= 0.5*(mue_000 + mue_0p0);
+            }
+
+            if(!is_interface_00m) {
+              w_00m_mm = 0.5*(mue_000 + mue_p[node_00m_mm])*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+              w_00m_mp = 0.5*(mue_000 + mue_p[node_00m_mp])*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+              w_00m_pm = 0.5*(mue_000 + mue_p[node_00m_pm])*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+              w_00m_pp = 0.5*(mue_000 + mue_p[node_00m_pp])*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+              w_00m = w_00m_mm + w_00m_mp + w_00m_pm + w_00m_pp;
+            } else {
+              w_00m *= 0.5*(mue_000 + mue_00m);
+            }
+
+            if(!is_interface_00p) {
+              w_00p_mm = 0.5*(mue_000 + mue_p[node_00p_mm])*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+              w_00p_mp = 0.5*(mue_000 + mue_p[node_00p_mp])*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+              w_00p_pm = 0.5*(mue_000 + mue_p[node_00p_pm])*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+              w_00p_pp = 0.5*(mue_000 + mue_p[node_00p_pp])*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+              w_00p = w_00p_mm + w_00p_mp + w_00p_pm + w_00p_pp;
+            } else {
+              w_00p *= 0.5*(mue_000 + mue_00p);
+            }
+
+          } else {
+
+            if(!is_interface_m00) {
+              w_m00_mm = mu_*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+              w_m00_mp = mu_*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+              w_m00_pm = mu_*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+              w_m00_pp = mu_*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+              w_m00 = w_m00_mm + w_m00_mp + w_m00_pm + w_m00_pp;
+            } else {
+              w_m00 *= mu_;
+            }
+
+            if(!is_interface_p00) {
+              w_p00_mm = mu_*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+              w_p00_mp = mu_*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+              w_p00_pm = mu_*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+              w_p00_pp = mu_*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+              w_p00 = w_p00_mm + w_p00_mp + w_p00_pm + w_p00_pp;
+            } else {
+              w_p00 *= mu_;
+            }
+
+            if(!is_interface_0m0) {
+              w_0m0_mm = mu_*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+              w_0m0_mp = mu_*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+              w_0m0_pm = mu_*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+              w_0m0_pp = mu_*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+              w_0m0 = w_0m0_mm + w_0m0_mp + w_0m0_pm + w_0m0_pp;
+            } else {
+              w_0m0 *= mu_;
+            }
+
+            if(!is_interface_0p0) {
+              w_0p0_mm = mu_*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+              w_0p0_mp = mu_*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+              w_0p0_pm = mu_*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+              w_0p0_pp = mu_*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+              w_0p0 = w_0p0_mm + w_0p0_mp + w_0p0_pm + w_0p0_pp;
+            } else {
+              w_0p0 *= mu_;
+            }
+
+            if(!is_interface_00m) {
+              w_00m_mm = mu_*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+              w_00m_mp = mu_*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+              w_00m_pm = mu_*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+              w_00m_pp = mu_*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+              w_00m = w_00m_mm + w_00m_mp + w_00m_pm + w_00m_pp;
+            } else {
+              w_00m *= mu_;
+            }
+
+            if(!is_interface_00p) {
+              w_00p_mm = mu_*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+              w_00p_mp = mu_*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+              w_00p_pm = mu_*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+              w_00p_pp = mu_*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+              w_00p = w_00p_mm + w_00p_mp + w_00p_pm + w_00p_pp;
+            } else {
+              w_00p *= mu_;
+            }
+
+          }
+#else
+          //---------------------------------------------------------------------
+          // compensating the error of linear interpolation at T-junction using
+          // the derivative in the transversal direction
+          //---------------------------------------------------------------------
+          double wi = 1.0 - d_0m0_m0*d_0m0_p0/d_0m0/(d_0m0+d_0p0) - d_0p0_m0*d_0p0_p0/d_0p0/(d_0m0+d_0p0);
+          double wj = 1.0 - d_m00_p0*d_m00_m0/d_m00/(d_m00+d_p00) - d_p00_p0*d_p00_m0/d_p00/(d_m00+d_p00);
+
+          // if node is at wall, what's below will apply Neumann BC
+          if(is_node_xmWall(p4est, ni))      w_p00 += -1.0/(d_p00*d_p00);
+          else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0/(d_m00*d_m00);
+          else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
+
+          if(is_node_xpWall(p4est, ni))      w_m00 += -1.0/(d_m00*d_m00);
+          else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0/(d_p00*d_p00);
+          else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
+
+          if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0/(d_0p0*d_0p0);
+          else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0/(d_0m0*d_0m0);
+          else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
+
+          if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0/(d_0m0*d_0m0);
+          else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0/(d_0p0*d_0p0);
+          else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
+
+          //---------------------------------------------------------------------
+          // addition to diagonal elements
+          //---------------------------------------------------------------------
+          if (variable_mu) {
+
+            if(!is_interface_m00) {
+              w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0/(d_m00_m0+d_m00_p0);
+              w_m00_pm = 0.5*(mue_000 + mue_p[node_m00_pm])*w_m00*d_m00_m0/(d_m00_m0+d_m00_p0);
+              w_m00 = w_m00_mm + w_m00_pm;
+            } else {
+              w_m00 *= 0.5*(mue_000 + mue_m00);
+            }
+
+            if(!is_interface_p00) {
+              w_p00_mm = 0.5*(mue_000 + mue_p[node_p00_mm])*w_p00*d_p00_p0/(d_p00_m0+d_p00_p0);
+              w_p00_pm = 0.5*(mue_000 + mue_p[node_p00_pm])*w_p00*d_p00_m0/(d_p00_m0+d_p00_p0);
+              w_p00    = w_p00_mm + w_p00_pm;
+            } else {
+              w_p00 *= 0.5*(mue_000 + mue_p00);
+            }
+
+            if(!is_interface_0m0) {
+              w_0m0_mm = 0.5*(mue_000 + mue_p[node_0m0_mm])*w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0);
+              w_0m0_pm = 0.5*(mue_000 + mue_p[node_0m0_pm])*w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0);
+              w_0m0 = w_0m0_mm + w_0m0_pm;
+            } else {
+              w_0m0 *= 0.5*(mue_000 + mue_0m0);
+            }
+
+            if(!is_interface_0p0) {
+              w_0p0_mm = 0.5*(mue_000 + mue_p[node_0p0_mm])*w_0p0*d_0p0_p0/(d_0p0_m0+d_0p0_p0);
+              w_0p0_pm = 0.5*(mue_000 + mue_p[node_0p0_pm])*w_0p0*d_0p0_m0/(d_0p0_m0+d_0p0_p0);
+              w_0p0 = w_0p0_mm + w_0p0_pm;
+            } else {
+              w_0p0 *= 0.5*(mue_000 + mue_0p0);
+            }
+
+          } else {
+
+            if(!is_interface_m00 && !is_node_xmWall(p4est, ni)) {
+              w_m00_mm = mu_*w_m00*d_m00_p0/(d_m00_m0+d_m00_p0);
+              w_m00_pm = mu_*w_m00*d_m00_m0/(d_m00_m0+d_m00_p0);
+              w_m00 = w_m00_mm + w_m00_pm;
+            } else {
+              w_m00 *= mu_;
+            }
+
+            if(!is_interface_p00 && !is_node_xpWall(p4est, ni)) {
+              w_p00_mm = mu_*w_p00*d_p00_p0/(d_p00_m0+d_p00_p0);
+              w_p00_pm = mu_*w_p00*d_p00_m0/(d_p00_m0+d_p00_p0);
+              w_p00    = w_p00_mm + w_p00_pm;
+            } else {
+              w_p00 *= mu_;
+            }
+
+            if(!is_interface_0m0 && !is_node_ymWall(p4est, ni)) {
+              w_0m0_mm = mu_*w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0);
+              w_0m0_pm = mu_*w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0);
+              w_0m0 = w_0m0_mm + w_0m0_pm;
+            } else {
+              w_0m0 *= mu_;
+            }
+
+            if(!is_interface_0p0 && !is_node_ypWall(p4est, ni)) {
+              w_0p0_mm = mu_*w_0p0*d_0p0_p0/(d_0p0_m0+d_0p0_p0);
+              w_0p0_pm = mu_*w_0p0*d_0p0_m0/(d_0p0_m0+d_0p0_p0);
+              w_0p0 = w_0p0_mm + w_0p0_pm;
+            } else {
+              w_0p0 *= mu_;
+            }
+
+          }
+#endif
+        }
 
         //---------------------------------------------------------------------
         // diag scaling
@@ -1369,6 +1463,9 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 #else
         double w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 );
 #endif
+        if (num_interfaces == 3)
+          w_000 = - 1.;
+
 //        w_m00 /= w_000; w_p00 /= w_000;
 //        w_0m0 /= w_000; w_0p0 /= w_000;
 //#ifdef P4_TO_P8
@@ -2039,6 +2136,17 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
 //          continue;
 //        }
 
+
+        bool is_interface_any = false;
+#ifdef P4_TO_P8
+        if ( is_interface_0m0 || is_interface_m00 || is_interface_p00 || is_interface_0p0  || is_interface_00m || is_interface_00p)
+#else
+        if ( is_interface_0m0 || is_interface_m00 || is_interface_p00 || is_interface_0p0 )
+#endif
+        {
+          is_interface_any = true;
+        }
+
         double val_interface_m00 = 0.;
         double val_interface_p00 = 0.;
         double val_interface_0m0 = 0.;
@@ -2175,6 +2283,163 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         }
 #endif
 
+        double w_m00 = 0;
+        double w_p00 = 0;
+        double w_0m0 = 0;
+        double w_0p0 = 0;
+#ifdef P4_TO_P8
+        double w_00m = 0;
+        double w_00p = 0;
+#endif
+
+        // count number of crossings
+        char num_interfaces = 0;
+
+        num_interfaces += (is_interface_m00 ? 1 : 0);
+        num_interfaces += (is_interface_p00 ? 1 : 0);
+        num_interfaces += (is_interface_0m0 ? 1 : 0);
+        num_interfaces += (is_interface_0p0 ? 1 : 0);
+
+        if (is_interface_any && use_linear_continuous_dirichlet_)
+        {
+          // assuming grid is uniform near the interface
+
+          if (num_interfaces == 3) // almost isolated point, use linear interpolation
+          {
+            rhs_p[n] = 0;
+
+            if (use_pointwise_dirichlet)
+              pointwise_bc[n].clear();
+
+            if (!is_interface_m00)
+            {
+              w_m00 = d_p00/(d_p00+d_m00);
+              w_p00 = d_m00/(d_p00+d_m00);
+              pointwise_bc[n].push_back(interface_point_t(1, d_p00));
+            }
+
+            if (!is_interface_p00)
+            {
+              w_m00 = d_p00/(d_p00+d_m00);
+              w_p00 = d_m00/(d_p00+d_m00);
+              pointwise_bc[n].push_back(interface_point_t(0, d_m00));
+            }
+
+            if (!is_interface_0m0)
+            {
+              w_0m0 = d_0p0/(d_0p0+d_0m0);
+              w_0p0 = d_0m0/(d_0p0+d_0m0);
+              pointwise_bc[n].push_back(interface_point_t(3, d_0p0));
+            }
+
+            if (!is_interface_0p0)
+            {
+              w_0m0 = d_0p0/(d_0p0+d_0m0);
+              w_0p0 = d_0m0/(d_0p0+d_0m0);
+              pointwise_bc[n].push_back(interface_point_t(2, d_0m0));
+            }
+
+          }
+          else
+          {
+            double dx_max = MAX(d_m00, d_p00);
+
+            w_m00 = mu_*(1. + (dx_max - d_m00)/dx_max  - SQR(dx_max - d_p00)/d_m00/dx_max)/SQR(dx_max);
+            w_p00 = mu_*(1. + (dx_max - d_p00)/dx_max  - SQR(dx_max - d_m00)/d_p00/dx_max)/SQR(dx_max);
+
+            double dy_max = MAX(d_0m0, d_0p0);
+
+            w_0m0 = mu_*(1. + (dy_max - d_0m0)/dy_max  - SQR(dy_max - d_0p0)/d_0m0/dy_max)/SQR(dy_max);
+            w_0p0 = mu_*(1. + (dy_max - d_0p0)/dy_max  - SQR(dy_max - d_0m0)/d_0p0/dy_max)/SQR(dy_max);
+
+          }
+
+        } else {
+
+#ifdef P4_TO_P8
+          //------------------------------------
+          // Dfxx =   fxx + a*fyy + b*fzz
+          // Dfyy = c*fxx +   fyy + d*fzz
+          // Dfzz = e*fxx + f*fyy +   fzz
+          //------------------------------------
+          double a = d_m00_m0*d_m00_p0/d_m00/(d_p00+d_m00) + d_p00_m0*d_p00_p0/d_p00/(d_p00+d_m00) ;
+          double b = d_m00_0m*d_m00_0p/d_m00/(d_p00+d_m00) + d_p00_0m*d_p00_0p/d_p00/(d_p00+d_m00) ;
+
+          double c = d_0m0_m0*d_0m0_p0/d_0m0/(d_0p0+d_0m0) + d_0p0_m0*d_0p0_p0/d_0p0/(d_0p0+d_0m0) ;
+          double d = d_0m0_0m*d_0m0_0p/d_0m0/(d_0p0+d_0m0) + d_0p0_0m*d_0p0_0p/d_0p0/(d_0p0+d_0m0) ;
+
+          double e = d_00m_m0*d_00m_p0/d_00m/(d_00p+d_00m) + d_00p_m0*d_00p_p0/d_00p/(d_00p+d_00m) ;
+          double f = d_00m_0m*d_00m_0p/d_00m/(d_00p+d_00m) + d_00p_0m*d_00p_0p/d_00p/(d_00p+d_00m) ;
+
+          //------------------------------------------------------------
+          // compensating the error of linear interpolation at T-junction using
+          // the derivative in the transversal direction
+          //
+          // Laplace = wi*Dfxx +
+          //           wj*Dfyy +
+          //           wk*Dfzz
+          //------------------------------------------------------------
+
+          double det = 1.-a*c-b*e-d*f+a*d*e+b*c*f;
+          double wi = (1.-c-e+c*f+e*d-d*f)/det;
+          double wj = (1.-a-f+a*e+f*b-b*e)/det;
+          double wk = (1.-b-d+b*c+d*a-a*c)/det;
+#else
+          //------------------------------------------------------------
+          // compensating the error of linear interpolation at T-junction using
+          // the derivative in the transversal direction
+          //
+          // Laplace = wi*Dfxx +
+          //           wj*Dfyy
+          //------------------------------------------------------------
+
+          double wi = 1.0 - d_0m0_m0*d_0m0_p0/d_0m0/(d_0m0+d_0p0) - d_0p0_m0*d_0p0_p0/d_0p0/(d_0m0+d_0p0);
+          double wj = 1.0 - d_m00_p0*d_m00_m0/d_m00/(d_m00+d_p00) - d_p00_p0*d_p00_m0/d_p00/(d_m00+d_p00);
+#endif
+
+          //        //---------------------------------------------------------------------
+          //        // Shortley-Weller method, dimension by dimension
+          //        //---------------------------------------------------------------------
+          //        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
+          //#ifdef P4_TO_P8
+          //        double w_00m=0, w_00p=0;
+          //#endif
+          if(is_node_xmWall(p4est, ni))      w_p00 += -1.0*wi/(d_p00*d_p00);
+          else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0*wi/(d_m00*d_m00);
+          else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
+
+          if(is_node_xpWall(p4est, ni))      w_m00 += -1.0*wi/(d_m00*d_m00);
+          else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0*wi/(d_p00*d_p00);
+          else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
+
+          if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0*wj/(d_0p0*d_0p0);
+          else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0*wj/(d_0m0*d_0m0);
+          else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
+
+          if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0*wj/(d_0m0*d_0m0);
+          else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0*wj/(d_0p0*d_0p0);
+          else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
+
+#ifdef P4_TO_P8
+          if(is_node_zmWall(p4est, ni))      w_00p += -1.0*wk/(d_00p*d_00p);
+          else if(is_node_zpWall(p4est, ni)) w_00m += -1.0*wk/(d_00m*d_00m);
+          else                               w_00m += -2.0*wk/d_00m/(d_00m+d_00p);
+
+          if(is_node_zpWall(p4est, ni))      w_00m += -1.0*wk/(d_00m*d_00m);
+          else if(is_node_zmWall(p4est, ni)) w_00p += -1.0*wk/(d_00p*d_00p);
+          else                               w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
+#endif
+          w_m00 *= 0.5*(mue_000 + mue_m00);
+          w_p00 *= 0.5*(mue_000 + mue_p00);
+          w_0m0 *= 0.5*(mue_000 + mue_0m0);
+          w_0p0 *= 0.5*(mue_000 + mue_0p0);
+#ifdef P4_TO_P8
+          w_00m *= 0.5*(mue_000 + mue_00m);
+          w_00p *= 0.5*(mue_000 + mue_00p);
+#endif
+        }
+
+
         if (use_pointwise_dirichlet)
         {
           std::vector<double> val_interface(2*P4EST_DIM, 0);
@@ -2194,88 +2459,6 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
 #endif
         }
 
-#ifdef P4_TO_P8
-        //------------------------------------
-        // Dfxx =   fxx + a*fyy + b*fzz
-        // Dfyy = c*fxx +   fyy + d*fzz
-        // Dfzz = e*fxx + f*fyy +   fzz
-        //------------------------------------
-        double a = d_m00_m0*d_m00_p0/d_m00/(d_p00+d_m00) + d_p00_m0*d_p00_p0/d_p00/(d_p00+d_m00) ;
-        double b = d_m00_0m*d_m00_0p/d_m00/(d_p00+d_m00) + d_p00_0m*d_p00_0p/d_p00/(d_p00+d_m00) ;
-
-        double c = d_0m0_m0*d_0m0_p0/d_0m0/(d_0p0+d_0m0) + d_0p0_m0*d_0p0_p0/d_0p0/(d_0p0+d_0m0) ;
-        double d = d_0m0_0m*d_0m0_0p/d_0m0/(d_0p0+d_0m0) + d_0p0_0m*d_0p0_0p/d_0p0/(d_0p0+d_0m0) ;
-
-        double e = d_00m_m0*d_00m_p0/d_00m/(d_00p+d_00m) + d_00p_m0*d_00p_p0/d_00p/(d_00p+d_00m) ;
-        double f = d_00m_0m*d_00m_0p/d_00m/(d_00p+d_00m) + d_00p_0m*d_00p_0p/d_00p/(d_00p+d_00m) ;
-
-        //------------------------------------------------------------
-        // compensating the error of linear interpolation at T-junction using
-        // the derivative in the transversal direction
-        //
-        // Laplace = wi*Dfxx +
-        //           wj*Dfyy +
-        //           wk*Dfzz
-        //------------------------------------------------------------
-
-        double det = 1.-a*c-b*e-d*f+a*d*e+b*c*f;
-        double wi = (1.-c-e+c*f+e*d-d*f)/det;
-        double wj = (1.-a-f+a*e+f*b-b*e)/det;
-        double wk = (1.-b-d+b*c+d*a-a*c)/det;
-#else
-        //------------------------------------------------------------
-        // compensating the error of linear interpolation at T-junction using
-        // the derivative in the transversal direction
-        //
-        // Laplace = wi*Dfxx +
-        //           wj*Dfyy
-        //------------------------------------------------------------
-
-        double wi = 1.0 - d_0m0_m0*d_0m0_p0/d_0m0/(d_0m0+d_0p0) - d_0p0_m0*d_0p0_p0/d_0p0/(d_0m0+d_0p0);
-        double wj = 1.0 - d_m00_p0*d_m00_m0/d_m00/(d_m00+d_p00) - d_p00_p0*d_p00_m0/d_p00/(d_m00+d_p00);
-#endif
-
-        //---------------------------------------------------------------------
-        // Shortley-Weller method, dimension by dimension
-        //---------------------------------------------------------------------
-        double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
-#ifdef P4_TO_P8
-        double w_00m=0, w_00p=0;
-#endif
-        if(is_node_xmWall(p4est, ni))      w_p00 += -1.0*wi/(d_p00*d_p00);
-        else if(is_node_xpWall(p4est, ni)) w_m00 += -1.0*wi/(d_m00*d_m00);
-        else                               w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
-
-        if(is_node_xpWall(p4est, ni))      w_m00 += -1.0*wi/(d_m00*d_m00);
-        else if(is_node_xmWall(p4est, ni)) w_p00 += -1.0*wi/(d_p00*d_p00);
-        else                               w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
-
-        if(is_node_ymWall(p4est, ni))      w_0p0 += -1.0*wj/(d_0p0*d_0p0);
-        else if(is_node_ypWall(p4est, ni)) w_0m0 += -1.0*wj/(d_0m0*d_0m0);
-        else                               w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
-
-        if(is_node_ypWall(p4est, ni))      w_0m0 += -1.0*wj/(d_0m0*d_0m0);
-        else if(is_node_ymWall(p4est, ni)) w_0p0 += -1.0*wj/(d_0p0*d_0p0);
-        else                               w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
-
-#ifdef P4_TO_P8
-        if(is_node_zmWall(p4est, ni))      w_00p += -1.0*wk/(d_00p*d_00p);
-        else if(is_node_zpWall(p4est, ni)) w_00m += -1.0*wk/(d_00m*d_00m);
-        else                               w_00m += -2.0*wk/d_00m/(d_00m+d_00p);
-
-        if(is_node_zpWall(p4est, ni))      w_00m += -1.0*wk/(d_00m*d_00m);
-        else if(is_node_zmWall(p4est, ni)) w_00p += -1.0*wk/(d_00p*d_00p);
-        else                               w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
-#endif
-        w_m00 *= 0.5*(mue_000 + mue_m00);
-        w_p00 *= 0.5*(mue_000 + mue_p00);
-        w_0m0 *= 0.5*(mue_000 + mue_0m0);
-        w_0p0 *= 0.5*(mue_000 + mue_0p0);
-#ifdef P4_TO_P8
-        w_00m *= 0.5*(mue_000 + mue_00m);
-        w_00p *= 0.5*(mue_000 + mue_00p);
-#endif
-
         //---------------------------------------------------------------------
         // diag scaling
         //---------------------------------------------------------------------
@@ -2284,6 +2467,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
 #else
         double w_000 = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 );
 #endif
+        if (num_interfaces == 3)
+          w_000 = - 1.;
 
 //        w_m00 /= w_000; w_p00 /= w_000;
 //        w_0m0 /= w_000; w_0p0 /= w_000;

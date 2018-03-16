@@ -46,8 +46,8 @@
 
 #undef MIN
 #undef MAX
-int lmin = 3;
-int lmax = 9;
+int lmin = 5;
+int lmax = 7;
 int nb_splits = 4;
 
 double lip = 1.5;
@@ -113,10 +113,10 @@ void set_alloy_parameters()
     lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
 //    eps_c                = 2.7207e-5;
 //    eps_v                = 2.27e-2;
-    eps_v                = 1;
-    eps_c                = 1;
-//    eps_c                = 0;
-//    eps_v                = 0;
+//    eps_v                = 1;
+//    eps_c                = 1;
+    eps_c                = 0;
+    eps_v                = 0;
     eps_anisotropy       = 0.05;
 
     Dl[0] = 1e-5;
@@ -1225,7 +1225,7 @@ int main (int argc, char* argv[])
 
     int pin_every_n_steps = 3;
     double bc_tolerance = 1.e-9;
-    int max_iterations = 1;
+    int max_iterations = 100;
 
     solver_all_in_one.set_phi(phi, phi_dd, normal, kappa, theta);
     solver_all_in_one.set_parameters(dt, lambda, thermal_conductivity, latent_heat, Tm, Dl[0], kp[0], ml[0], Dl[1], kp[1], ml[1]);

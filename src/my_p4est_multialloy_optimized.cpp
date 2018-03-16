@@ -702,13 +702,13 @@ void my_p4est_multialloy_t::compute_dt()
     {
       vgamma_max_ = MAX(vgamma_max_, fabs(vn_p[n]));
       kappa_max = MAX(kappa_max, fabs(kappa_p[n]));
-      kv_max = MAX(kv_max, fabs(kappa_p[n]*vn_p[n]));
+      kv_max = MAX(kv_max, fabs(MIN(kappa_max, 1./dxyz_min_)*vn_p[n]));
     }
 
   ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(kappa_, &kappa_p); CHKERRXX(ierr);
 
-//  kappa_max = MIN(kappa_max, 1/dxyz_min_);
+  kappa_max = MIN(kappa_max, 1./dxyz_min_);
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &kappa_max,   1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
       mpiret = MPI_Allreduce(MPI_IN_PLACE, &vgamma_max_, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
