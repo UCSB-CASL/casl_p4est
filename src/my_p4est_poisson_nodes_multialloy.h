@@ -213,6 +213,7 @@ class my_p4est_poisson_nodes_multialloy_t
 
   // level-set function
   vec_and_ptr_t phi_;
+  vec_and_ptr_t phi_smooth_;
   vec_and_ptr_dim_t phi_dd_;
 
   vec_and_ptr_t theta_;
@@ -256,6 +257,8 @@ class my_p4est_poisson_nodes_multialloy_t
   double bc_tolerance_;
   int pin_every_n_steps_;
   int max_iterations_;
+
+  double velo_max_;
 
   bool use_refined_cube_;
 
@@ -323,7 +326,7 @@ public:
   my_p4est_poisson_nodes_multialloy_t(my_p4est_node_neighbors_t *node_neighbors);
   ~my_p4est_poisson_nodes_multialloy_t();
 
-  void set_phi(Vec phi, Vec* phi_dd, Vec* normal, Vec kappa, Vec theta);
+  void set_phi(Vec phi, Vec* phi_dd, Vec* normal, Vec kappa, Vec theta, Vec phi_smooth);
 
   inline void set_parameters(double dt,
                              double thermal_diffusivity, double thermal_conductivity, double latent_heat, double Tm,
@@ -354,6 +357,7 @@ public:
 
 //  void solve(Vec t, Vec t_dd[P4EST_DIM], Vec c0, Vec c0_dd[P4EST_DIM], Vec c1, Vec c1_dd[P4EST_DIM], double& bc_error_max, Vec& bc_error);
   void solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max);
+  void solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl);
   void solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, Vec c0n);
 
   void solve_t();

@@ -51,19 +51,19 @@
 #undef MAX
 
 int lmin = 5;
-int lmax = 6;
+int lmax = 10;
 int save_every_n_iteration = 1;
 
 double bc_tolerance = 1.e-5;
 
 double cfl_number = 0.1;
-double phi_thresh = 0.01;
+double phi_thresh = 1e-3;
 double zero_negative_velocity = true;
-int max_iterations = 50;
-int pin_every_n_steps = 10;
+int max_iterations = 100;
+int pin_every_n_steps = 100;
 
 
-double lip = 1.5;
+double lip = 2;
 
 using namespace std;
 
@@ -187,7 +187,7 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 10;         /* K.cm-1      */
+      G              = 10000;         /* K.cm-1      */
       V              = 0.05;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
@@ -206,7 +206,7 @@ void set_alloy_parameters()
       c01 = 0.094;
       kp1 = 0.848;
 
-      box_size = 1e-1;
+      box_size = 1.0e-2;
       break;
 
     case 3:
@@ -706,10 +706,10 @@ int main (int argc, char* argv[])
 
   srand(mpi.rank());
 
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    phi_p[n] += 0.1*dx*(double)(rand()%1000)/1000.;
-//  }
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    phi_p[n] += 0.1*dx*(double)(rand()%1000)/1000.;
+  }
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
@@ -857,6 +857,7 @@ int main (int argc, char* argv[])
     }
 
     bas.update_grid();
+    bas.compute_dt();
     iteration++;
   }
 

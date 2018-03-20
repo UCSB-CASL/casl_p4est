@@ -65,6 +65,15 @@ private:
     }
   } c00_cf_;
 
+  class wall_bc_smoothing_t : public WallBC2D
+  {
+  public:
+    BoundaryConditionType operator()( double , double ) const
+    {
+      return NEUMANN;
+    }
+  } wall_bc_smoothing_;
+
 #ifdef P4_TO_P8
   BoundaryConditions3D bc_t_;
   BoundaryConditions3D bc_c0_;
@@ -101,6 +110,7 @@ private:
   /* velocity */
   Vec v_interface_n_  [P4EST_DIM];
   Vec v_interface_np1_[P4EST_DIM];
+  Vec normal_velocity_n_;
   Vec normal_velocity_np1_;
   /* max interface velocity in normal direction in band 4*MIN(dx,dy,dz) */
   double vgamma_max_;
@@ -109,6 +119,8 @@ private:
   Vec phi_, phi_dd_[P4EST_DIM];
   Vec normal_[P4EST_DIM];
   Vec kappa_;
+
+  Vec phi_smooth_;
 
 #ifdef P4_TO_P8
   Vec theta_xz_, theta_yz_;
@@ -214,6 +226,8 @@ public:
   inline void set_phi(Vec phi)
   {
     this->phi_ = phi;
+    compute_smoothed_phi();
+    copy_ghosted_vec(phi_smooth_, phi_);
     compute_normal_and_curvature();
   }
 
@@ -312,6 +326,8 @@ public:
   void update_grid();
   void one_step();
   void save_VTK(int iter);
+
+  void compute_smoothed_phi();
 
   inline void copy_ghosted_vec(Vec input, Vec output)
   {

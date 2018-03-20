@@ -104,9 +104,10 @@ my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
 }
 
 
-void my_p4est_poisson_nodes_multialloy_t::set_phi(Vec phi, Vec* phi_dd, Vec* normal, Vec kappa, Vec theta)
+void my_p4est_poisson_nodes_multialloy_t::set_phi(Vec phi, Vec* phi_dd, Vec* normal, Vec kappa, Vec theta, Vec phi_smooth)
 {
   phi_.vec = phi;
+  phi_smooth_.vec = phi_smooth;
 
   if (phi_dd != NULL)
   {
@@ -358,6 +359,157 @@ void my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_er
 //    std::cout << "Iteration " << iteration << " Rank " << p4est_->mpirank << std::endl;
   }
 
+  solve_c0();
+  compute_c0n();
+  is_c1_matrix_computed_ = false;
+
+  solve_t();
+  solve_c1();
+
+  // clean everything
+  ierr = VecDestroy(tm_.vec); CHKERRXX(ierr);
+  ierr = VecDestroy(psi_t_.vec); CHKERRXX(ierr);
+  ierr = VecDestroy(psi_c0_.vec); CHKERRXX(ierr);
+  ierr = VecDestroy(psi_c1_.vec); CHKERRXX(ierr);
+
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecDestroy(tm_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDestroy(psi_t_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDestroy(psi_c0_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDestroy(psi_c1_dd_.vec[dim]); CHKERRXX(ierr);
+  }
+
+  bc_error_max = bc_error_max_;
+
+//  solve_c1();
+//  solve_c0_robin();
+}
+
+void my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl)
+{
+  t_.vec = t;
+  c0_.vec = c0;
+  c1_.vec = c1;
+
+  second_derivatives_owned_ = true;
+
+  if (tm_.vec != NULL) { ierr = VecDestroy(tm_.vec); CHKERRXX(ierr); }
+  ierr = VecDuplicate(t_.vec, &tm_.vec); CHKERRXX(ierr);
+
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    if (t_dd_.vec[dim]  != NULL) { ierr = VecDestroy(t_dd_.vec[dim]); CHKERRXX(ierr); }
+    if (tm_dd_.vec[dim] != NULL) { ierr = VecDestroy(tm_dd_.vec[dim]); CHKERRXX(ierr); }
+    if (c0_dd_.vec[dim] != NULL) { ierr = VecDestroy(c0_dd_.vec[dim]); CHKERRXX(ierr); }
+    if (c1_dd_.vec[dim] != NULL) { ierr = VecDestroy(c1_dd_.vec[dim]); CHKERRXX(ierr); }
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &t_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDuplicate(t_dd_.vec[dim], &tm_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDuplicate(t_dd_.vec[dim], &c0_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDuplicate(t_dd_.vec[dim], &c1_dd_.vec[dim]); CHKERRXX(ierr);
+  }
+
+  bc_error_.vec = bc_error;
+
+  // allocate memory for lagrangian multipliers
+  ierr = VecDuplicate(t_.vec, &psi_t_.vec); CHKERRXX(ierr);
+  ierr = VecDuplicate(c0_.vec, &psi_c0_.vec); CHKERRXX(ierr);
+  ierr = VecDuplicate(c1_.vec, &psi_c1_.vec); CHKERRXX(ierr);
+
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecDuplicate(t_dd_.vec[dim], &psi_t_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDuplicate(c0_dd_.vec[dim], &psi_c0_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDuplicate(c1_dd_.vec[dim], &psi_c1_dd_.vec[dim]); CHKERRXX(ierr);
+  }
+
+  double dxyz[P4EST_DIM];
+
+  dxyz_min(p4est_, dxyz);
+
+  double d_min = MIN(dxyz[0], dxyz[1]);
+
+  dt_ = dt;
+  initialize_solvers();
+
+  int iteration = 0;
+  bc_error_max_ = 1.;
+  bool need_one = true;
+  while(bc_error_max_ > bc_tolerance_ && iteration < max_iterations_ || need_one)
+  {
+    ++iteration;
+
+    solve_psi_t();
+
+    solve_c0();
+    compute_c0n();
+    is_c1_matrix_computed_ = false;
+
+    solve_t();
+    solve_c1();
+
+    if (iteration%pin_every_n_steps_ != 0)
+    {
+      solve_psi_c1();
+      solve_psi_c0();
+      compute_psi_c0n();
+    }
+
+    adjust_c0_gamma(iteration);
+    need_one = false;
+    if (iteration > 3 && dt_ > cfl*d_min/velo_max_)
+    {
+      need_one = true;
+      dt_ = 0.8*cfl*d_min/velo_max_;
+
+      solver_t->set_mu(dt_*t_diff_);
+      is_t_matrix_computed_ = false;
+
+#ifdef P4_TO_P8
+      BoundaryConditions3D bc_c0_tmp;
+#else
+      BoundaryConditions2D bc_c0_tmp;
+#endif
+      bc_c0_tmp.setWallTypes(bc_c0_.getWallType());
+      bc_c0_tmp.setWallValues(zero_cf_);
+      bc_c0_tmp.setInterfaceType(DIRICHLET);
+      bc_c0_tmp.setInterfaceValue(zero_cf_);
+
+      std::vector< std::vector<my_p4est_poisson_nodes_t::interface_point_t> > pointwise_bc_tmp;
+      pointwise_bc_tmp = solver_c0->pointwise_bc;
+
+      solver_c0->set_diagonal(1.);
+      solver_c0->set_use_pointwise_dirichlet(true);
+      solver_c0->set_mu(dt_*Dl0_);
+      solver_c0->set_bc(bc_c0_tmp);
+      solver_c0->assemble_matrix(c0_.vec);
+      solver_c0->pointwise_bc = pointwise_bc_tmp;
+
+      pointwise_bc_tmp = solver_psi_c0->pointwise_bc;
+      solver_psi_c0->set_diagonal(1.);
+      solver_psi_c0->set_use_pointwise_dirichlet(true);
+      solver_psi_c0->set_mu(dt_*Dl0_);
+      solver_psi_c0->set_bc(bc_c0_tmp);
+      solver_psi_c0->assemble_matrix(psi_c0_.vec);
+      solver_psi_c0->pointwise_bc = pointwise_bc_tmp;
+
+      solver_c1->set_mu(dt_*Dl1_);
+      is_c1_matrix_computed_ = false;
+    }
+
+    ierr = PetscPrintf(p4est_->mpicomm, "Iteration %d: bc error = %g, time step = %g, max velo = %g\n", iteration, bc_error_max_, dt_, velo_max_); CHKERRXX(ierr);
+
+//    std::cout << "Iteration " << iteration << " Rank " << p4est_->mpirank << std::endl;
+  }
+
+  solve_c0();
+  compute_c0n();
+  is_c1_matrix_computed_ = false;
+
+  solve_t();
+  solve_c1();
+
+  dt = dt_;
 
   // clean everything
   ierr = VecDestroy(tm_.vec); CHKERRXX(ierr);
@@ -662,19 +814,19 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
 
   double dxyz[P4EST_DIM];
   dxyz_min(p4est_, dxyz);
-  double shift = 1.e-3*MIN(dxyz[0], dxyz[1]);
+  double shift = 1.e-2*MIN(dxyz[0], dxyz[1]);
 
-  phi_.get_array();
-  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] += shift; }
-  phi_.restore_array();
+//  phi_.get_array();
+//  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] += shift; }
+//  phi_.restore_array();
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, 100, 2, normal_.vec);
-//  ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, solver_c0, 100, 2, normal_.vec);
+//  ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, 100, 2, normal_.vec);
+  ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, solver_c0, 100, 2, normal_.vec);
 
-  phi_.get_array();
-  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] -= shift; }
-  phi_.restore_array();
+//  phi_.get_array();
+//  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] -= shift; }
+//  phi_.restore_array();
 
   if (c0_gamma_.vec != NULL) { ierr = VecDestroy(c0_gamma_.vec); CHKERRXX(ierr); }
 
@@ -757,17 +909,17 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
   dxyz_min(p4est_, dxyz);
   double shift = 1.e-3*MIN(dxyz[0], dxyz[1]);
 
-  phi_.get_array();
-  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] += shift; }
-  phi_.restore_array();
+//  phi_.get_array();
+//  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] += shift; }
+//  phi_.restore_array();
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, 50, 2, normal_.vec);
-//  ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, solver_psi_c0, 100, 2, normal_.vec);
+//  ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, 50, 2, normal_.vec);
+  ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, solver_psi_c0, 50, 2, normal_.vec);
 
-  phi_.get_array();
-  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] -= shift; }
-  phi_.restore_array();
+//  phi_.get_array();
+//  for (size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) { phi_.ptr[n] -= shift; }
+//  phi_.restore_array();
 
   node_neighbors_->second_derivatives_central(psi_c0_.vec, psi_c0_dd_.vec);
 
@@ -1075,6 +1227,8 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
   bc_error_max_ = 0;
   double xyz[P4EST_DIM];
 
+  velo_max_ = 0;
+
   for (p4est_locidx_t n = 0; n < nodes_->num_owned_indeps; ++n)
   {
     bc_error_.ptr[n] = 0;
@@ -1122,11 +1276,14 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
         }
 
         solver_c0->set_interface_point_value(n, i, c0_gamma-change);
+
+        velo_max_ = MAX(velo_max_, fabs(Dl0_/(1.-kp0_)*c0n/c0_gamma));
       }
     }
   }
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &bc_error_max_, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &velo_max_,     1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
 
 

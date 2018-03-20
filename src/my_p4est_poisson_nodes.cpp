@@ -53,7 +53,7 @@ my_p4est_poisson_nodes_t::my_p4est_poisson_nodes_t(const my_p4est_node_neighbors
     use_refined_cube(true), variable_mu(false), use_pointwise_dirichlet(false),
     mask(NULL),
     keep_scalling(false),
-    new_pc(true), use_linear_continuous_dirichlet_(true)
+    new_pc(true), use_linear_continuous_dirichlet_(false)
   #ifdef P4_TO_P8
     ,
     phi_zz_(NULL), mue_zz_(NULL)
@@ -1094,55 +1094,37 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         num_interfaces += is_interface_0m0 ? 1 : 0;
         num_interfaces += is_interface_0p0 ? 1 : 0;
 
-        if (is_interface_any && use_linear_continuous_dirichlet_)
+        if (num_interfaces == 3 && 0) // almost isolated point, use linear interpolation
         {
-          // assuming grid is uniform near the interface
+          if (use_pointwise_dirichlet)
+            pointwise_bc[n].clear();
 
-          if (num_interfaces == 3) // almost isolated point, use linear interpolation
+          if (!is_interface_m00)
           {
-            if (use_pointwise_dirichlet)
-              pointwise_bc[n].clear();
-
-            if (!is_interface_m00)
-            {
-              w_m00 = d_p00/(d_p00+d_m00);
-              w_p00 = d_m00/(d_p00+d_m00);
-              pointwise_bc[n].push_back(interface_point_t(1, d_p00));
-            }
-
-            if (!is_interface_p00)
-            {
-              w_m00 = d_p00/(d_p00+d_m00);
-              w_p00 = d_m00/(d_p00+d_m00);
-              pointwise_bc[n].push_back(interface_point_t(0, d_m00));
-            }
-
-            if (!is_interface_0m0)
-            {
-              w_0m0 = d_0p0/(d_0p0+d_0m0);
-              w_0p0 = d_0m0/(d_0p0+d_0m0);
-              pointwise_bc[n].push_back(interface_point_t(3, d_0p0));
-            }
-
-            if (!is_interface_0p0)
-            {
-              w_0m0 = d_0p0/(d_0p0+d_0m0);
-              w_0p0 = d_0m0/(d_0p0+d_0m0);
-              pointwise_bc[n].push_back(interface_point_t(2, d_0m0));
-            }
-
+            w_m00 = d_p00/(d_p00+d_m00);
+            w_p00 = d_m00/(d_p00+d_m00);
+            pointwise_bc[n].push_back(interface_point_t(1, d_p00));
           }
-          else
+
+          if (!is_interface_p00)
           {
-            double dx_max = MAX(d_m00, d_p00);
+            w_m00 = d_p00/(d_p00+d_m00);
+            w_p00 = d_m00/(d_p00+d_m00);
+            pointwise_bc[n].push_back(interface_point_t(0, d_m00));
+          }
 
-            w_m00 = mu_*(1. + (dx_max - d_m00)/dx_max  - SQR(dx_max - d_p00)/d_m00/dx_max)/SQR(dx_max);
-            w_p00 = mu_*(1. + (dx_max - d_p00)/dx_max  - SQR(dx_max - d_m00)/d_p00/dx_max)/SQR(dx_max);
+          if (!is_interface_0m0)
+          {
+            w_0m0 = d_0p0/(d_0p0+d_0m0);
+            w_0p0 = d_0m0/(d_0p0+d_0m0);
+            pointwise_bc[n].push_back(interface_point_t(3, d_0p0));
+          }
 
-            double dy_max = MAX(d_0m0, d_0p0);
-
-            w_0m0 = mu_*(1. + (dy_max - d_0m0)/dy_max  - SQR(dy_max - d_0p0)/d_0m0/dy_max)/SQR(dy_max);
-            w_0p0 = mu_*(1. + (dy_max - d_0p0)/dy_max  - SQR(dy_max - d_0m0)/d_0p0/dy_max)/SQR(dy_max);
+          if (!is_interface_0p0)
+          {
+            w_0m0 = d_0p0/(d_0p0+d_0m0);
+            w_0p0 = d_0m0/(d_0p0+d_0m0);
+            pointwise_bc[n].push_back(interface_point_t(2, d_0m0));
           }
 
           if (!is_interface_m00)
@@ -1167,6 +1149,89 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           {
             if (d_0p0_m0 == 0) w_0p0_mm = w_0p0;
             else               w_0p0_pm = w_0p0;
+          }
+
+//          std::cout << is_interface_m00 << " "
+//                    << is_interface_p00 << " "
+//                    << is_interface_0m0 << " "
+//                    << is_interface_0p0 << "\n";
+//          std::cout << w_m00 << " " << w_p00 << " " << w_0m0 << " " << w_0p0 << "\n";
+
+        }
+        else
+        if (is_interface_any && use_linear_continuous_dirichlet_)
+        {
+          // assuming grid is uniform near the interface
+
+//          if (num_interfaces == 3) // almost isolated point, use linear interpolation
+//          {
+//            if (use_pointwise_dirichlet)
+//              pointwise_bc[n].clear();
+
+//            if (!is_interface_m00)
+//            {
+//              w_m00 = d_p00/(d_p00+d_m00);
+//              w_p00 = d_m00/(d_p00+d_m00);
+//              pointwise_bc[n].push_back(interface_point_t(1, d_p00));
+//            }
+
+//            if (!is_interface_p00)
+//            {
+//              w_m00 = d_p00/(d_p00+d_m00);
+//              w_p00 = d_m00/(d_p00+d_m00);
+//              pointwise_bc[n].push_back(interface_point_t(0, d_m00));
+//            }
+
+//            if (!is_interface_0m0)
+//            {
+//              w_0m0 = d_0p0/(d_0p0+d_0m0);
+//              w_0p0 = d_0m0/(d_0p0+d_0m0);
+//              pointwise_bc[n].push_back(interface_point_t(3, d_0p0));
+//            }
+
+//            if (!is_interface_0p0)
+//            {
+//              w_0m0 = d_0p0/(d_0p0+d_0m0);
+//              w_0p0 = d_0m0/(d_0p0+d_0m0);
+//              pointwise_bc[n].push_back(interface_point_t(2, d_0m0));
+//            }
+
+//          }
+//          else
+          {
+            double dx_max = MAX(d_m00, d_p00);
+
+            w_m00 = mu_*(1. + (dx_max - d_m00)/dx_max  - SQR(dx_max - d_p00)/d_m00/dx_max)/SQR(dx_max);
+            w_p00 = mu_*(1. + (dx_max - d_p00)/dx_max  - SQR(dx_max - d_m00)/d_p00/dx_max)/SQR(dx_max);
+
+            double dy_max = MAX(d_0m0, d_0p0);
+
+            w_0m0 = mu_*(1. + (dy_max - d_0m0)/dy_max  - SQR(dy_max - d_0p0)/d_0m0/dy_max)/SQR(dy_max);
+            w_0p0 = mu_*(1. + (dy_max - d_0p0)/dy_max  - SQR(dy_max - d_0m0)/d_0p0/dy_max)/SQR(dy_max);
+          }
+
+          if (!is_interface_m00)
+          {
+            if (d_m00_m0 < d_m00_p0) w_m00_mm = w_m00;
+            else                     w_m00_pm = w_m00;
+          }
+
+          if (!is_interface_p00)
+          {
+            if (d_p00_m0 < d_p00_p0) w_p00_mm = w_p00;
+            else                     w_p00_pm = w_p00;
+          }
+
+          if (!is_interface_0m0)
+          {
+            if (d_0m0_m0 < d_0m0_p0) w_0m0_mm = w_0m0;
+            else                     w_0m0_pm = w_0m0;
+          }
+
+          if (!is_interface_0p0)
+          {
+            if (d_0p0_m0 < d_0p0_p0) w_0p0_mm = w_0p0;
+            else                     w_0p0_pm = w_0p0;
           }
 
         } else {
@@ -1463,7 +1528,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 #else
         double w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 );
 #endif
-        if (num_interfaces == 3)
+        if (num_interfaces == 3 && 0)
           w_000 = - 1.;
 
 //        w_m00 /= w_000; w_p00 /= w_000;
@@ -2300,47 +2365,77 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         num_interfaces += (is_interface_0m0 ? 1 : 0);
         num_interfaces += (is_interface_0p0 ? 1 : 0);
 
+        if (num_interfaces == 3 && 0) // almost isolated point, use linear interpolation
+        {
+          rhs_p[n] = 0;
+
+          if (!is_interface_m00)
+          {
+            w_m00 = d_p00/(d_p00+d_m00);
+            w_p00 = d_m00/(d_p00+d_m00);
+          }
+
+          if (!is_interface_p00)
+          {
+            w_m00 = d_p00/(d_p00+d_m00);
+            w_p00 = d_m00/(d_p00+d_m00);
+          }
+
+          if (!is_interface_0m0)
+          {
+            w_0m0 = d_0p0/(d_0p0+d_0m0);
+            w_0p0 = d_0m0/(d_0p0+d_0m0);
+          }
+
+          if (!is_interface_0p0)
+          {
+            w_0m0 = d_0p0/(d_0p0+d_0m0);
+            w_0p0 = d_0m0/(d_0p0+d_0m0);
+          }
+
+        }
+        else
         if (is_interface_any && use_linear_continuous_dirichlet_)
         {
           // assuming grid is uniform near the interface
 
-          if (num_interfaces == 3) // almost isolated point, use linear interpolation
-          {
-            rhs_p[n] = 0;
+//          if (num_interfaces == 3) // almost isolated point, use linear interpolation
+//          {
+//            rhs_p[n] = 0;
 
-            if (use_pointwise_dirichlet)
-              pointwise_bc[n].clear();
+//            if (use_pointwise_dirichlet)
+//              pointwise_bc[n].clear();
 
-            if (!is_interface_m00)
-            {
-              w_m00 = d_p00/(d_p00+d_m00);
-              w_p00 = d_m00/(d_p00+d_m00);
-              pointwise_bc[n].push_back(interface_point_t(1, d_p00));
-            }
+//            if (!is_interface_m00)
+//            {
+//              w_m00 = d_p00/(d_p00+d_m00);
+//              w_p00 = d_m00/(d_p00+d_m00);
+//              pointwise_bc[n].push_back(interface_point_t(1, d_p00));
+//            }
 
-            if (!is_interface_p00)
-            {
-              w_m00 = d_p00/(d_p00+d_m00);
-              w_p00 = d_m00/(d_p00+d_m00);
-              pointwise_bc[n].push_back(interface_point_t(0, d_m00));
-            }
+//            if (!is_interface_p00)
+//            {
+//              w_m00 = d_p00/(d_p00+d_m00);
+//              w_p00 = d_m00/(d_p00+d_m00);
+//              pointwise_bc[n].push_back(interface_point_t(0, d_m00));
+//            }
 
-            if (!is_interface_0m0)
-            {
-              w_0m0 = d_0p0/(d_0p0+d_0m0);
-              w_0p0 = d_0m0/(d_0p0+d_0m0);
-              pointwise_bc[n].push_back(interface_point_t(3, d_0p0));
-            }
+//            if (!is_interface_0m0)
+//            {
+//              w_0m0 = d_0p0/(d_0p0+d_0m0);
+//              w_0p0 = d_0m0/(d_0p0+d_0m0);
+//              pointwise_bc[n].push_back(interface_point_t(3, d_0p0));
+//            }
 
-            if (!is_interface_0p0)
-            {
-              w_0m0 = d_0p0/(d_0p0+d_0m0);
-              w_0p0 = d_0m0/(d_0p0+d_0m0);
-              pointwise_bc[n].push_back(interface_point_t(2, d_0m0));
-            }
+//            if (!is_interface_0p0)
+//            {
+//              w_0m0 = d_0p0/(d_0p0+d_0m0);
+//              w_0p0 = d_0m0/(d_0p0+d_0m0);
+//              pointwise_bc[n].push_back(interface_point_t(2, d_0m0));
+//            }
 
-          }
-          else
+//          }
+//          else
           {
             double dx_max = MAX(d_m00, d_p00);
 
@@ -2467,7 +2562,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
 #else
         double w_000 = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 );
 #endif
-        if (num_interfaces == 3)
+        if (num_interfaces == 3 && 0)
           w_000 = - 1.;
 
 //        w_m00 /= w_000; w_p00 /= w_000;

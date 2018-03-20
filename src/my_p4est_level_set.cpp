@@ -5611,6 +5611,18 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
   ierr = VecDuplicate(phi, &tmp); CHKERRXX(ierr);
   double *tmp_p;
 
+  double dxyz[P4EST_DIM];
+
+  dxyz_min(p4est, dxyz);
+
+#ifdef P4_TO_P8
+  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]));
+#else
+  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
+#endif
+
+  double rel_thresh = 1.e-3;
+
   /* init the neighborhood information if needed */
   /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
    * at the end of this function if they were not initialized beforehand ?
@@ -5748,9 +5760,9 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
             #endif
                     );
       }
-      else if (phi_p[qnnn.node_000]<-EPS)
+      else if (phi_p[qnnn.node_000]<-EPS && solver->pointwise_bc[n].size() < 3)
       {
-        b_qn_well_defined_p[n] = true;
+//        if (solver->pointwise_bc[n].size() >= 3) std::cout << solver->pointwise_bc[n].size() << "now!\n";
         double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
         double d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0;
 #ifdef P4_TO_P8
@@ -5765,6 +5777,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 #endif
         double q_000 = q_p[n];
 
+        double d_min = diag;
         for (int i = 0; i < solver->pointwise_bc[n].size(); ++i)
         {
           switch (solver->pointwise_bc[n][i].dir)
@@ -5778,15 +5791,24 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
             case 5: d_00p = solver->pointwise_bc[n][i].dist; q_00p = solver->pointwise_bc[n][i].value; break;
 #endif
           }
+
+          d_min = MIN(d_min, solver->pointwise_bc[n][i].dist);
         }
 
-        qn_p[n] = ( nx[n]*((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00) +
-                    ny[n]*((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0)
-            #ifdef P4_TO_P8
-                  + nz[n]*((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p)
-            #endif
-                    );
+        if (d_min > rel_thresh*diag)
+        {
+          b_qn_well_defined_p[n] = true;
 
+          qn_p[n] = ( nx[n]*((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00) +
+                      ny[n]*((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0)
+            #ifdef P4_TO_P8
+                      + nz[n]*((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p)
+            #endif
+                      );
+        } else {
+          b_qn_well_defined_p[n] = false;
+          qn_p[n] = 0;
+        }
       }
       else
       {
@@ -5855,9 +5877,9 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
             #endif
                     );
       }
-      else if (phi_p[qnnn.node_000]<-EPS)
+      else if (phi_p[qnnn.node_000]<-EPS && solver->pointwise_bc[n].size() < 3)
       {
-        b_qn_well_defined_p[n] = true;
+//        if (solver->pointwise_bc[n].size() >= 3) std::cout << solver->pointwise_bc[n].size() << "now!\n";
         double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
         double d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0;
 #ifdef P4_TO_P8
@@ -5872,6 +5894,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 #endif
         double q_000 = q_p[n];
 
+        double d_min = diag;
         for (int i = 0; i < solver->pointwise_bc[n].size(); ++i)
         {
           switch (solver->pointwise_bc[n][i].dir)
@@ -5885,15 +5908,23 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
             case 5: d_00p = solver->pointwise_bc[n][i].dist; q_00p = solver->pointwise_bc[n][i].value; break;
 #endif
           }
+          d_min = MIN(d_min, solver->pointwise_bc[n][i].dist);
         }
 
-        qn_p[n] = ( nx[n]*((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00) +
-                    ny[n]*((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0)
-            #ifdef P4_TO_P8
-                  + nz[n]*((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p)
-            #endif
-                    );
+        if (d_min > rel_thresh*diag)
+        {
+          b_qn_well_defined_p[n] = true;
 
+          qn_p[n] = ( nx[n]*((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00) +
+                      ny[n]*((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0)
+            #ifdef P4_TO_P8
+                      + nz[n]*((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p)
+            #endif
+                      );
+        } else {
+          b_qn_well_defined_p[n] = false;
+          qn_p[n] = 0;
+        }
       }
       else
       {
@@ -6362,23 +6393,23 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
         }
 
         /* minmod operation */
-//        qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
-//        qxx_p00 = qxx_p[n]*qxx_p00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_p00) ? qxx_p[n] : qxx_p00);
-//        qyy_0m0 = qyy_p[n]*qyy_0m0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0m0) ? qyy_p[n] : qyy_0m0);
-//        qyy_0p0 = qyy_p[n]*qyy_0p0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0p0) ? qyy_p[n] : qyy_0p0);
-//#ifdef P4_TO_P8
-//        qzz_00m = qzz_p[n]*qzz_00m<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
-//        qzz_00p = qzz_p[n]*qzz_00p<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
-//#endif
-
-        qxx_m00 = MC(qxx_p[n],qxx_m00);
-        qxx_p00 = MC(qxx_p[n],qxx_p00);
-        qyy_0m0 = MC(qyy_p[n],qyy_0m0);
-        qyy_0p0 = MC(qyy_p[n],qyy_0p0);
+        qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
+        qxx_p00 = qxx_p[n]*qxx_p00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_p00) ? qxx_p[n] : qxx_p00);
+        qyy_0m0 = qyy_p[n]*qyy_0m0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0m0) ? qyy_p[n] : qyy_0m0);
+        qyy_0p0 = qyy_p[n]*qyy_0p0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0p0) ? qyy_p[n] : qyy_0p0);
 #ifdef P4_TO_P8
-        qzz_00m = MC(qzz_p[n],qzz_00m);
-        qzz_00p = MC(qzz_p[n],qzz_00p);
+        qzz_00m = qzz_p[n]*qzz_00m<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
+        qzz_00p = qzz_p[n]*qzz_00p<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
 #endif
+
+//        qxx_m00 = MC(qxx_p[n],qxx_m00);
+//        qxx_p00 = MC(qxx_p[n],qxx_p00);
+//        qyy_0m0 = MC(qyy_p[n],qyy_0m0);
+//        qyy_0p0 = MC(qyy_p[n],qyy_0p0);
+//#ifdef P4_TO_P8
+//        qzz_00m = MC(qzz_p[n],qzz_00m);
+//        qzz_00p = MC(qzz_p[n],qzz_00p);
+//#endif
 
         if(nx[n]<0) qx -= .5*qnnn.d_p00*qxx_p00;
         else        qx += .5*qnnn.d_m00*qxx_m00;
@@ -6462,23 +6493,23 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
         }
 
         /* minmod operation */
-//        qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
-//        qxx_p00 = qxx_p[n]*qxx_p00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_p00) ? qxx_p[n] : qxx_p00);
-//        qyy_0m0 = qyy_p[n]*qyy_0m0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0m0) ? qyy_p[n] : qyy_0m0);
-//        qyy_0p0 = qyy_p[n]*qyy_0p0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0p0) ? qyy_p[n] : qyy_0p0);
-//#ifdef P4_TO_P8
-//        qzz_00m = qzz_p[n]*qzz_00m<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
-//        qzz_00p = qzz_p[n]*qzz_00p<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
-//#endif
-
-        qxx_m00 = MC(qxx_p[n],qxx_m00);
-        qxx_p00 = MC(qxx_p[n],qxx_p00);
-        qyy_0m0 = MC(qyy_p[n],qyy_0m0);
-        qyy_0p0 = MC(qyy_p[n],qyy_0p0);
+        qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
+        qxx_p00 = qxx_p[n]*qxx_p00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_p00) ? qxx_p[n] : qxx_p00);
+        qyy_0m0 = qyy_p[n]*qyy_0m0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0m0) ? qyy_p[n] : qyy_0m0);
+        qyy_0p0 = qyy_p[n]*qyy_0p0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0p0) ? qyy_p[n] : qyy_0p0);
 #ifdef P4_TO_P8
-        qzz_00m = MC(qzz_p[n],qzz_00m);
-        qzz_00p = MC(qzz_p[n],qzz_00p);
+        qzz_00m = qzz_p[n]*qzz_00m<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
+        qzz_00p = qzz_p[n]*qzz_00p<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
 #endif
+
+//        qxx_m00 = MC(qxx_p[n],qxx_m00);
+//        qxx_p00 = MC(qxx_p[n],qxx_p00);
+//        qyy_0m0 = MC(qyy_p[n],qyy_0m0);
+//        qyy_0p0 = MC(qyy_p[n],qyy_0p0);
+//#ifdef P4_TO_P8
+//        qzz_00m = MC(qzz_p[n],qzz_00m);
+//        qzz_00p = MC(qzz_p[n],qzz_00p);
+//#endif
 
         if(nx[n]<0) qx -= .5*qnnn.d_p00*qxx_p00;
         else        qx += .5*qnnn.d_m00*qxx_m00;

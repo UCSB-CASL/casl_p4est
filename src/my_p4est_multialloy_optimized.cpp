@@ -20,8 +20,10 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
     t_n_(NULL), t_np1_(NULL),
     c0_n_(NULL), c0_np1_(NULL),
     c1_n_(NULL), c1_np1_(NULL),
+    normal_velocity_n_(NULL),
     normal_velocity_np1_(NULL),
     phi_(NULL),
+    phi_smooth_(NULL),
     kappa_(NULL),
     eps_c_cf_(this), eps_v_cf_(this),
     c00_cf_(this),
@@ -101,6 +103,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   if(c1_n_   !=NULL) { ierr = VecDestroy(c1_n_);   CHKERRXX(ierr); }
   if(c1_np1_ !=NULL) { ierr = VecDestroy(c1_np1_); CHKERRXX(ierr); }
 
+  if(normal_velocity_n_   !=NULL) { ierr = VecDestroy(normal_velocity_n_);   CHKERRXX(ierr); }
   if(normal_velocity_np1_ !=NULL) { ierr = VecDestroy(normal_velocity_np1_); CHKERRXX(ierr); }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -116,6 +119,8 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   if(theta_!=NULL) { ierr = VecDestroy(theta_); CHKERRXX(ierr); }
 
   if(bc_error_ !=NULL) { ierr = VecDestroy(bc_error_);   CHKERRXX(ierr); }
+
+  if (phi_smooth_ != NULL) { ierr = VecDestroy(phi_smooth_); CHKERRXX(ierr); }
 
   /* destroy the p4est and its connectivity structure */
   delete ngbd_;
@@ -691,7 +696,8 @@ void my_p4est_multialloy_t::compute_dt()
   ierr = VecGetArrayRead(phi_, &phi_p); CHKERRXX(ierr);
 
   const double *vn_p;
-  ierr = VecGetArrayRead(normal_velocity_np1_, &vn_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(normal_velocity_n_, &vn_p); CHKERRXX(ierr);
+//  ierr = VecGetArrayRead(normal_velocity_np1_, &vn_p); CHKERRXX(ierr);
 
   double kappa_max = 0;
   vgamma_max_ = 0;
@@ -705,6 +711,8 @@ void my_p4est_multialloy_t::compute_dt()
       kv_max = MAX(kv_max, fabs(MIN(kappa_max, 1./dxyz_min_)*vn_p[n]));
     }
 
+  ierr = VecRestoreArrayRead(normal_velocity_n_, &vn_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(normal_velocity_np1_, &vn_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(kappa_, &kappa_p); CHKERRXX(ierr);
 
@@ -724,13 +732,15 @@ void my_p4est_multialloy_t::compute_dt()
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    ierr = VecGetArrayRead(v_interface_np1_[dir], &v_interface_np1_p); CHKERRXX(ierr);
+//    ierr = VecGetArrayRead(v_interface_np1_[dir], &v_interface_np1_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(v_interface_n_[dir], &v_interface_np1_p); CHKERRXX(ierr);
 
     for(p4est_locidx_t n=0; n<nodes_->num_owned_indeps; ++n)
       if(fabs(phi_p[n]) < dxyz_close_interface_)
         u_max = MAX(u_max, fabs(v_interface_np1_p[n]));
 
-    ierr = VecRestoreArrayRead(v_interface_np1_[dir], &v_interface_np1_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(v_interface_n_[dir], &v_interface_np1_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArrayRead(v_interface_np1_[dir], &v_interface_np1_p); CHKERRXX(ierr);
   }
 
   ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
@@ -800,7 +810,7 @@ void my_p4est_multialloy_t::update_grid()
 
   /* bousouf update this for second order in time */
 //  invert_phi();
-  if (1)
+  if (0)
     sl.update_p4est(v_interface_np1_, dt_n_, phi_);
   else // Daniil: synchronized with the serial version (sort of)
     sl.update_p4est(v_interface_n_, v_interface_np1_, dt_nm1_, dt_n_, phi_);
@@ -912,12 +922,14 @@ void my_p4est_multialloy_t::update_grid()
     ierr = VecDuplicate(phi_, &v_interface_np1_[dir]); CHKERRXX(ierr);
   }
 
-//  Vec normal_velocity_n;
-//  ierr = VecDuplicate(phi, &normal_velocity_n); CHKERRXX(ierr);
-//  interp.set_input(normal_velocity_np1, linear);
-//  interp.interpolate(normal_velocity_n);
-//  ierr = VecDestroy(normal_velocity_np1); CHKERRXX(ierr);
-//  normal_velocity_np1 = normal_velocity_n;
+  ierr = VecDestroy(normal_velocity_n_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &normal_velocity_n_); CHKERRXX(ierr);
+  interp.set_input(normal_velocity_np1_, interpolation_between_grids_);
+  interp.interpolate(normal_velocity_n_);
+
+  ierr = VecDestroy(normal_velocity_np1_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &normal_velocity_np1_); CHKERRXX(ierr);
+  copy_ghosted_vec(normal_velocity_n_, normal_velocity_np1_);
 
   Vec kappa_n;
   ierr = VecDuplicate(phi_, &kappa_n); CHKERRXX(ierr);
@@ -932,48 +944,59 @@ void my_p4est_multialloy_t::update_grid()
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
 
-//  /* help interface to not get stuck at grid nodes */
-//  double kappa_thresh = 1.0/dxyz_min_/100.;
+  /* help interface to not get stuck at grid nodes */
+  double kappa_thresh = 0.1/dxyz_min_;
+  double *phi_p, *normal_velocity_np1_p, *kappa_p;
+
+  ierr = VecGetArray(phi_, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(kappa_, &kappa_p); CHKERRXX(ierr);
+
+  for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n)
+  {
+    if (fabs(phi_p[n]) < phi_thresh_ && fabs(kappa_p[n]) > kappa_thresh)
+    {
+      phi_p[n] *= -1.;
+      std::cout << "Happened!\n";
+    }
+  }
+
+  ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(kappa_, &kappa_p); CHKERRXX(ierr);
+
 //  double *phi_p, *normal_velocity_np1_p, *kappa_p;
 
 //  ierr = VecGetArray(phi_, &phi_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
 //  ierr = VecGetArray(kappa_, &kappa_p); CHKERRXX(ierr);
 
 //  for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n)
 //  {
-//    if (phi_p[n] < 0. && phi_p[n] > -phi_thresh_*dxyz_min_ && kappa_p[n] > kappa_thresh)
-//      phi_p[n] *= -1.;
-//  }
-
-//  ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(kappa_, &kappa_p); CHKERRXX(ierr);
-
-//  double fraction = 0.0000;
-//  double *phi_p, *normal_velocity_np1_p;
-
-//  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-//  ierr = VecGetArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
-
-//  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-//  {
-//    if (fabs(phi_p[n]) < fraction*dxyz_min)
+//    if (fabs(phi_p[n]) < phi_thresh_ && fabs(kappa_p[n]) > kappa_thresh)
 //    {
-//      if (normal_velocity_np1_p[n] > 0. && phi_p[n] > 0) phi_p[n] *= -1.;
-//      if (normal_velocity_np1_p[n] < 0. && phi_p[n] < 0) phi_p[n] *= -1.;
+//      if (normal_velocity_np1_p[n] > 0. && phi_p[n] > 0 ||
+//          normal_velocity_np1_p[n] < 0. && phi_p[n] < 0)
+//      {
+//        phi_p[n] *= -1.;
+//        std::cout << "Happened!\n";
+//      }
 //    }
 ////    if (phi_p[n] > 0. && phi_p[n] < fraction*dxyz_min)
 ////      phi_p[n] *= -1;
 //  }
 
-//  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(normal_velocity_np1, &normal_velocity_np1_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(kappa_, &kappa_p); CHKERRXX(ierr);
 
   /* reinitialize and perturb phi */
   my_p4est_level_set_t ls_new(ngbd_);
   ls_new.reinitialize_1st_order_time_2nd_order_space(phi_);
-  ls_new.perturb_level_set_function(phi_, EPS);
+//  ls_new.reinitialize_2nd_order(phi_);
+//  ls_new.perturb_level_set_function(phi_, EPS);
 
   compute_normal_and_curvature();
+
+//  compute_smoothed_phi();
 
   PetscPrintf(p4est_->mpicomm, "Done \n");
 }
@@ -1164,7 +1187,7 @@ void my_p4est_multialloy_t::one_step()
 {
   // solve coupled system of equations
   my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_);
-  solver_all_in_one.set_phi(phi_, phi_dd_, normal_, kappa_, theta_);
+  solver_all_in_one.set_phi(phi_, phi_dd_, normal_, kappa_, theta_, phi_smooth_);
   solver_all_in_one.set_parameters(dt_n_, thermal_diffusivity_, thermal_conductivity_, latent_heat_, Tm_, Dl0_, kp0_, ml0_, Dl1_, kp1_, ml1_);
   solver_all_in_one.set_bc(bc_t_, bc_c0_, bc_c1_);
   solver_all_in_one.set_GT(zero_);
@@ -1191,14 +1214,17 @@ void my_p4est_multialloy_t::one_step()
 
   ierr = VecDuplicate(phi_, &bc_error_); CHKERRXX(ierr);
 
-  solver_all_in_one.solve(t_np1_, c0_np1_, c1_np1_, bc_error_, bc_error_max_);
+//  solver_all_in_one.solve(t_np1_, c0_np1_, c1_np1_, bc_error_, bc_error_max_);
+
+//  dt_nm1_ = dt_n_;
+  solver_all_in_one.solve(t_np1_, c0_np1_, c1_np1_, bc_error_, bc_error_max_, dt_n_, cfl_number_);
 
 //  solver_all_in_one.solve(t_np1_, c0_np1_, c1_np1_, bc_error_, bc_error_max_, c0n_n_);
 
 //  ierr = VecDestroy(c0_gamma); CHKERRXX(ierr);
   // compute velocity
   compute_velocity();
-  compute_dt();
+//  compute_dt();
 }
 
 //void my_p4est_multialloy_t::smooth_velocity(Vec input)
@@ -1324,9 +1350,11 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   sprintf(name, "%s/vtu/bialloy_%d_%dx%d.%05d", out_dir, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], iter);
 #endif
 
+  const double *phi_smooth_p;
   const double *phi_p, *t_p, *c0_p, *c1_p;
   double *normal_velocity_np1_p;
   ierr = VecGetArrayRead(phi_, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi_smooth_, &phi_smooth_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(t_np1_, &t_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(c0_np1_, &c0_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(c1_np1_, &c1_p); CHKERRXX(ierr);
@@ -1370,11 +1398,12 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   my_p4est_vtk_write_all(  p4est_, nodes_, ghost_,
                            P4EST_TRUE, P4EST_TRUE,
                          #ifdef P4_TO_P8
-                           8, 1, name,
+                           9, 1, name,
                          #else
-                           8, 1, name,
+                           9, 1, name,
                          #endif
                            VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "phi_smooth", phi_smooth_p,
                            VTK_POINT_DATA, "t", t_p,
                            VTK_POINT_DATA, "c0", c0_p,
                            VTK_POINT_DATA, "c1", c1_p,
@@ -1393,6 +1422,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
 
   ierr = VecRestoreArrayRead(bc_error_, &bc_error_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(phi_smooth_, &phi_smooth_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(t_np1_, &t_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(c0_np1_, &c0_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(c1_np1_, &c1_p); CHKERRXX(ierr);
@@ -1401,4 +1431,47 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   ierr = VecRestoreArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
 
   PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);
+}
+
+void my_p4est_multialloy_t::compute_smoothed_phi()
+{
+  my_p4est_poisson_nodes_t solver(ngbd_);
+
+  int num_smoothing_iterations = 50;
+  double mu_smoothing = 3.e-8;
+
+#ifdef P4_TO_P8
+  BoundaryConditions3D bc;
+#else
+  BoundaryConditions2D bc;
+#endif
+  bc.setWallTypes(wall_bc_smoothing_);
+  bc.setWallValues(zero_);
+  bc.setInterfaceType(DIRICHLET);
+  bc.setInterfaceValue(zero_);
+
+  solver.set_bc(bc);
+  solver.set_mu(mu_smoothing);
+  solver.set_diagonal(1.0);
+
+  if (phi_smooth_ != NULL) { ierr = VecDestroy(phi_smooth_); CHKERRXX(ierr); }
+
+  ierr = VecDuplicate(phi_, &phi_smooth_); CHKERRXX(ierr);
+
+  copy_ghosted_vec(phi_, phi_smooth_);
+
+  Vec rhs;
+  ierr = VecDuplicate(phi_, &rhs); CHKERRXX(ierr);
+
+  for (int i = 0; i < num_smoothing_iterations; ++i)
+  {
+    copy_ghosted_vec(phi_smooth_, rhs);
+    solver.set_rhs(rhs);
+    solver.solve(phi_smooth_, true);
+  }
+
+  ierr = VecDestroy(rhs); CHKERRXX(ierr);
+
+  my_p4est_level_set_t ls_new(ngbd_);
+  ls_new.reinitialize_1st_order_time_2nd_order_space(phi_smooth_);
 }
