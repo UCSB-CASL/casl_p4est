@@ -28,6 +28,7 @@ class my_p4est_level_set_t {
 
   bool use_second_derivatives_extend_from_interface;
   bool use_second_derivatives;
+  bool use_one_sided_derivatives;
 
 #ifdef P4_TO_P8
   void compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc) const;
@@ -57,7 +58,8 @@ class my_p4est_level_set_t {
 public:
   my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_ )
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
-      use_second_derivatives(true), use_second_derivatives_extend_from_interface(true)
+      use_second_derivatives(true), use_second_derivatives_extend_from_interface(true),
+      use_one_sided_derivatives(true)
   {}
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {

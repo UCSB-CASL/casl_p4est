@@ -482,6 +482,13 @@ void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(std::vector<
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_1_iter, 0, 0, 0, 0);
 
+
+  bool px = is_periodic(p4est, 0);
+  bool py = is_periodic(p4est, 1);
+#ifdef P4_TO_P8
+  bool pz = is_periodic(p4est, 2);
+#endif
+
   quad_neighbor_nodes_of_node_t qnnn;
   for( size_t n_map=0; n_map<map.size(); ++n_map)
   {
@@ -535,13 +542,13 @@ void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(std::vector<
     {
       p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
       p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
-      if(nb_tree_idx == tree_idx) { s_m00 = s_p00; p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
+      if(!px && nb_tree_idx == tree_idx) { s_m00 = s_p00; p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
     }
     else if(unclamped_node.x==P4EST_ROOT_LEN)
     {
       p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
       p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-      if(nb_tree_idx == tree_idx) { s_p00 = s_m00; p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
+      if(!px && nb_tree_idx == tree_idx) { s_p00 = s_m00; p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
     }
 
     /* wall in the y direction */
@@ -549,13 +556,13 @@ void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(std::vector<
     {
       p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
       p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
-      if(nb_tree_idx == tree_idx) { s_0m0 = s_0p0; p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
+      if(!py && nb_tree_idx == tree_idx) { s_0m0 = s_0p0; p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
     }
     else if(unclamped_node.y==P4EST_ROOT_LEN)
     {
       p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
       p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
-      if(nb_tree_idx == tree_idx) { s_0p0 = s_0m0; p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
+      if(!py && nb_tree_idx == tree_idx) { s_0p0 = s_0m0; p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
     }
 
 #ifdef P4_TO_P8
@@ -564,13 +571,13 @@ void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(std::vector<
     {
       p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
       p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00m];
-      if(nb_tree_idx == tree_idx) { s_00m = s_00p; p_00m=p_00p; pzz_000 = pzz_00m = pzz_00p = 0; }
+      if(!pz && nb_tree_idx == tree_idx) { s_00m = s_00p; p_00m=p_00p; pzz_000 = pzz_00m = pzz_00p = 0; }
     }
     else if(unclamped_node.z==P4EST_ROOT_LEN)
     {
       p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
       p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00p];
-      if(nb_tree_idx == tree_idx) { s_00p = s_00m; p_00p=p_00m; pzz_000 = pzz_00m = pzz_00p = 0; }
+      if(!pz && nb_tree_idx == tree_idx) { s_00p = s_00m; p_00p=p_00m; pzz_000 = pzz_00m = pzz_00p = 0; }
     }
 #endif
 
@@ -2322,6 +2329,10 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
   ierr = VecDuplicate(phi, &tmp); CHKERRXX(ierr);
   double *tmp_p;
 
+  double dxyz[P4EST_DIM];
+
+  dxyz_min(p4est, dxyz);
+
   /* init the neighborhood information if needed */
   /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
    * at the end of this function if they were not initialized beforehand ?
@@ -2459,6 +2470,157 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             #endif
                     );
       }
+      else if (phi_p[qnnn.node_000]<-EPS && use_one_sided_derivatives)
+      {
+        bool all_directions_good = true;
+
+        double qx = qnnn.dx_central(q_p);
+        double qy = qnnn.dy_central(q_p);
+#ifdef P4_TO_P8
+        double qz = qnnn.dz_central(q_p);
+#endif
+        p4est_locidx_t node_m00 = qnnn.neighbor_m00();
+        p4est_locidx_t node_p00 = qnnn.neighbor_p00();
+        p4est_locidx_t node_0m0 = qnnn.neighbor_0m0();
+        p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00m = qnnn.neighbor_00m();
+        p4est_locidx_t node_00p = qnnn.neighbor_00p();
+#endif
+        p4est_locidx_t node_M00 = -1;
+        p4est_locidx_t node_P00 = -1;
+        p4est_locidx_t node_0M0 = -1;
+        p4est_locidx_t node_0P0 = -1;
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00M = -1;
+        p4est_locidx_t node_00P = -1;
+#endif
+
+        bool is_ok_m00 = false, is_ok_M00 = false;
+        bool is_ok_p00 = false, is_ok_P00 = false;
+        bool is_ok_0m0 = false, is_ok_0M0 = false;
+        bool is_ok_0p0 = false, is_ok_0P0 = false;
+#ifdef P4_TO_P8
+        bool is_ok_00m = false, is_ok_00M = false;
+        bool is_ok_00p = false, is_ok_00P = false;
+#endif
+
+        quad_neighbor_nodes_of_node_t qnnn_nei;
+
+        if (node_m00 != -1)
+          if (phi_p[node_m00] < -EPS)
+          {
+            is_ok_m00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_m00);
+            node_M00 = qnnn_nei.neighbor_m00();
+
+            if (node_M00 != -1)
+              if (phi_p[node_M00] < -EPS)
+                is_ok_M00 = true;
+          }
+
+        if (node_p00 != -1)
+          if (phi_p[node_p00] < -EPS)
+          {
+            is_ok_p00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_p00);
+            node_P00 = qnnn_nei.neighbor_p00();
+
+            if (node_P00 != -1)
+              if (phi_p[node_P00] < -EPS)
+                is_ok_P00 = true;
+          }
+
+        if (node_0m0 != -1)
+          if (phi_p[node_0m0] < -EPS)
+          {
+            is_ok_0m0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0m0);
+            node_0M0 = qnnn_nei.neighbor_0m0();
+
+            if (node_0M0 != -1)
+              if (phi_p[node_0M0] < -EPS)
+                is_ok_0M0 = true;
+          }
+
+        if (node_0p0 != -1)
+          if (phi_p[node_0p0] < -EPS)
+          {
+            is_ok_0p0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0p0);
+            node_0P0 = qnnn_nei.neighbor_0p0();
+
+            if (node_0P0 != -1)
+              if (phi_p[node_0P0] < -EPS)
+                is_ok_0P0 = true;
+          }
+
+#ifdef P4_TO_P8
+        if (node_00m != -1)
+          if (phi_p[node_00m] < -EPS)
+          {
+            is_ok_00m = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00m);
+            node_00M = qnnn_nei.neighbor_00m();
+
+            if (node_00M != -1)
+              if (phi_p[node_00M] < -EPS)
+                is_ok_00M = true;
+          }
+
+        if (node_00p != -1)
+          if (phi_p[node_00p] < -EPS)
+          {
+            is_ok_00p = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00p);
+            node_00P = qnnn_nei.neighbor_00p();
+
+            if (node_00P != -1)
+              if (phi_p[node_00P] < -EPS)
+                is_ok_00P = true;
+          }
+#endif
+
+        double q_000 = q_p[qnnn.node_000];
+
+        if      (is_ok_m00 && is_ok_p00) qx =  0.5*(q_p[node_p00]-q_p[node_m00])/dxyz[0];
+        else if (is_ok_m00 && is_ok_M00) qx = -0.5*(-3.*q_000 + 4.*q_p[node_m00] - q_p[node_M00])/dxyz[0];
+        else if (is_ok_p00 && is_ok_P00) qx =  0.5*(-3.*q_000 + 4.*q_p[node_p00] - q_p[node_P00])/dxyz[0];
+        else all_directions_good = false;
+
+        if      (is_ok_0m0 && is_ok_0p0) qy =  0.5*(q_p[node_0p0]-q_p[node_0m0])/dxyz[1];
+        else if (is_ok_0m0 && is_ok_0M0) qy = -0.5*(-3.*q_000 + 4.*q_p[node_0m0] - q_p[node_0M0])/dxyz[1];
+        else if (is_ok_0p0 && is_ok_0P0) qy =  0.5*(-3.*q_000 + 4.*q_p[node_0p0] - q_p[node_0P0])/dxyz[1];
+        else all_directions_good = false;
+
+#ifdef P4_TO_P8
+        if      (is_ok_00m && is_ok_00p) qz =  0.5*(q_p[node_00p]-q_p[node_00m])/dxyz[2];
+        else if (is_ok_00m && is_ok_00M) qz = -0.5*(-3.*q_000 + 4.*q_p[node_00m] - q_p[node_00M])/dxyz[2];
+        else if (is_ok_00p && is_ok_00P) qz =  0.5*(-3.*q_000 + 4.*q_p[node_00p] - q_p[node_00P])/dxyz[2];
+        else all_directions_good = false;
+#endif
+
+        if (all_directions_good)
+        {
+          b_qn_well_defined_p[n] = true;
+
+          qn_p[n] = ( nx[n]*qx +
+                      ny[n]*qy
+            #ifdef P4_TO_P8
+                      + nz[n]*qz
+            #endif
+                      );
+        } else {
+          b_qn_well_defined_p[n] = false;
+          qn_p[n] = 0;
+        }
+      }
       else
       {
         b_qn_well_defined_p[n] = false;
@@ -2525,6 +2687,157 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
                     + nz[n]*qnnn.dz_central(q_p)
             #endif
                     );
+      }
+      else if (phi_p[qnnn.node_000]<-EPS && use_one_sided_derivatives)
+      {
+        bool all_directions_good = true;
+
+        double qx = qnnn.dx_central(q_p);
+        double qy = qnnn.dy_central(q_p);
+#ifdef P4_TO_P8
+        double qz = qnnn.dz_central(q_p);
+#endif
+        p4est_locidx_t node_m00 = qnnn.neighbor_m00();
+        p4est_locidx_t node_p00 = qnnn.neighbor_p00();
+        p4est_locidx_t node_0m0 = qnnn.neighbor_0m0();
+        p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00m = qnnn.neighbor_00m();
+        p4est_locidx_t node_00p = qnnn.neighbor_00p();
+#endif
+        p4est_locidx_t node_M00 = -1;
+        p4est_locidx_t node_P00 = -1;
+        p4est_locidx_t node_0M0 = -1;
+        p4est_locidx_t node_0P0 = -1;
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00M = -1;
+        p4est_locidx_t node_00P = -1;
+#endif
+
+        bool is_ok_m00 = false, is_ok_M00 = false;
+        bool is_ok_p00 = false, is_ok_P00 = false;
+        bool is_ok_0m0 = false, is_ok_0M0 = false;
+        bool is_ok_0p0 = false, is_ok_0P0 = false;
+#ifdef P4_TO_P8
+        bool is_ok_00m = false, is_ok_00M = false;
+        bool is_ok_00p = false, is_ok_00P = false;
+#endif
+
+        quad_neighbor_nodes_of_node_t qnnn_nei;
+
+        if (node_m00 != -1)
+          if (phi_p[node_m00] < -EPS)
+          {
+            is_ok_m00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_m00);
+            node_M00 = qnnn_nei.neighbor_m00();
+
+            if (node_M00 != -1)
+              if (phi_p[node_M00] < -EPS)
+                is_ok_M00 = true;
+          }
+
+        if (node_p00 != -1)
+          if (phi_p[node_p00] < -EPS)
+          {
+            is_ok_p00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_p00);
+            node_P00 = qnnn_nei.neighbor_p00();
+
+            if (node_P00 != -1)
+              if (phi_p[node_P00] < -EPS)
+                is_ok_P00 = true;
+          }
+
+        if (node_0m0 != -1)
+          if (phi_p[node_0m0] < -EPS)
+          {
+            is_ok_0m0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0m0);
+            node_0M0 = qnnn_nei.neighbor_0m0();
+
+            if (node_0M0 != -1)
+              if (phi_p[node_0M0] < -EPS)
+                is_ok_0M0 = true;
+          }
+
+        if (node_0p0 != -1)
+          if (phi_p[node_0p0] < -EPS)
+          {
+            is_ok_0p0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0p0);
+            node_0P0 = qnnn_nei.neighbor_0p0();
+
+            if (node_0P0 != -1)
+              if (phi_p[node_0P0] < -EPS)
+                is_ok_0P0 = true;
+          }
+
+#ifdef P4_TO_P8
+        if (node_00m != -1)
+          if (phi_p[node_00m] < -EPS)
+          {
+            is_ok_00m = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00m);
+            node_00M = qnnn_nei.neighbor_00m();
+
+            if (node_00M != -1)
+              if (phi_p[node_00M] < -EPS)
+                is_ok_00M = true;
+          }
+
+        if (node_00p != -1)
+          if (phi_p[node_00p] < -EPS)
+          {
+            is_ok_00p = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00p);
+            node_00P = qnnn_nei.neighbor_00p();
+
+            if (node_00P != -1)
+              if (phi_p[node_00P] < -EPS)
+                is_ok_00P = true;
+          }
+#endif
+
+        double q_000 = q_p[qnnn.node_000];
+
+        if      (is_ok_m00 && is_ok_p00) qx =  0.5*(q_p[node_p00]-q_p[node_m00])/dxyz[0];
+        else if (is_ok_m00 && is_ok_M00) qx = -0.5*(-3.*q_000 + 4.*q_p[node_m00] - q_p[node_M00])/dxyz[0];
+        else if (is_ok_p00 && is_ok_P00) qx =  0.5*(-3.*q_000 + 4.*q_p[node_p00] - q_p[node_P00])/dxyz[0];
+        else all_directions_good = false;
+
+        if      (is_ok_0m0 && is_ok_0p0) qy =  0.5*(q_p[node_0p0]-q_p[node_0m0])/dxyz[1];
+        else if (is_ok_0m0 && is_ok_0M0) qy = -0.5*(-3.*q_000 + 4.*q_p[node_0m0] - q_p[node_0M0])/dxyz[1];
+        else if (is_ok_0p0 && is_ok_0P0) qy =  0.5*(-3.*q_000 + 4.*q_p[node_0p0] - q_p[node_0P0])/dxyz[1];
+        else all_directions_good = false;
+
+#ifdef P4_TO_P8
+        if      (is_ok_00m && is_ok_00p) qz =  0.5*(q_p[node_00p]-q_p[node_00m])/dxyz[2];
+        else if (is_ok_00m && is_ok_00M) qz = -0.5*(-3.*q_000 + 4.*q_p[node_00m] - q_p[node_00M])/dxyz[2];
+        else if (is_ok_00p && is_ok_00P) qz =  0.5*(-3.*q_000 + 4.*q_p[node_00p] - q_p[node_00P])/dxyz[2];
+        else all_directions_good = false;
+#endif
+
+        if (all_directions_good)
+        {
+          b_qn_well_defined_p[n] = true;
+
+          qn_p[n] = ( nx[n]*qx +
+                      ny[n]*qy
+            #ifdef P4_TO_P8
+                      + nz[n]*qz
+            #endif
+                      );
+        } else {
+          b_qn_well_defined_p[n] = false;
+          qn_p[n] = 0;
+        }
       }
       else
       {
@@ -2613,6 +2926,157 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
              #endif
                      );
       }
+      else if (b_qn_well_defined_p[qnnn.node_000]==true && use_one_sided_derivatives)
+      {
+        bool all_directions_good = true;
+
+        double qnx = qnnn.dx_central(qn_p);
+        double qny = qnnn.dy_central(qn_p);
+#ifdef P4_TO_P8
+        double qnz = qnnn.dz_central(qn_p);
+#endif
+        p4est_locidx_t node_m00 = qnnn.neighbor_m00();
+        p4est_locidx_t node_p00 = qnnn.neighbor_p00();
+        p4est_locidx_t node_0m0 = qnnn.neighbor_0m0();
+        p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00m = qnnn.neighbor_00m();
+        p4est_locidx_t node_00p = qnnn.neighbor_00p();
+#endif
+        p4est_locidx_t node_M00 = -1;
+        p4est_locidx_t node_P00 = -1;
+        p4est_locidx_t node_0M0 = -1;
+        p4est_locidx_t node_0P0 = -1;
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00M = -1;
+        p4est_locidx_t node_00P = -1;
+#endif
+
+        bool is_ok_m00 = false, is_ok_M00 = false;
+        bool is_ok_p00 = false, is_ok_P00 = false;
+        bool is_ok_0m0 = false, is_ok_0M0 = false;
+        bool is_ok_0p0 = false, is_ok_0P0 = false;
+#ifdef P4_TO_P8
+        bool is_ok_00m = false, is_ok_00M = false;
+        bool is_ok_00p = false, is_ok_00P = false;
+#endif
+
+        quad_neighbor_nodes_of_node_t qnnn_nei;
+
+        if (node_m00 != -1)
+          if (b_qn_well_defined_p[node_m00])
+          {
+            is_ok_m00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_m00);
+            node_M00 = qnnn_nei.neighbor_m00();
+
+            if (node_M00 != -1)
+              if (b_qn_well_defined_p[node_M00])
+                is_ok_M00 = true;
+          }
+
+        if (node_p00 != -1)
+          if (b_qn_well_defined_p[node_p00])
+          {
+            is_ok_p00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_p00);
+            node_P00 = qnnn_nei.neighbor_p00();
+
+            if (node_P00 != -1)
+              if (b_qn_well_defined_p[node_P00])
+                is_ok_P00 = true;
+          }
+
+        if (node_0m0 != -1)
+          if (b_qn_well_defined_p[node_0m0])
+          {
+            is_ok_0m0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0m0);
+            node_0M0 = qnnn_nei.neighbor_0m0();
+
+            if (node_0M0 != -1)
+              if (b_qn_well_defined_p[node_0M0])
+                is_ok_0M0 = true;
+          }
+
+        if (node_0p0 != -1)
+          if (b_qn_well_defined_p[node_0p0])
+          {
+            is_ok_0p0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0p0);
+            node_0P0 = qnnn_nei.neighbor_0p0();
+
+            if (node_0P0 != -1)
+              if (b_qn_well_defined_p[node_0P0])
+                is_ok_0P0 = true;
+          }
+
+#ifdef P4_TO_P8
+        if (node_00m != -1)
+          if (b_qn_well_defined_p[node_00m])
+          {
+            is_ok_00m = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00m);
+            node_00M = qnnn_nei.neighbor_00m();
+
+            if (node_00M != -1)
+              if (b_qn_well_defined_p[node_00M])
+                is_ok_00M = true;
+          }
+
+        if (node_00p != -1)
+          if (b_qn_well_defined_p[node_00p])
+          {
+            is_ok_00p = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00p);
+            node_00P = qnnn_nei.neighbor_00p();
+
+            if (node_00P != -1)
+              if (b_qn_well_defined_p[node_00P])
+                is_ok_00P = true;
+          }
+#endif
+
+        double qn_000 = qn_p[qnnn.node_000];
+
+        if      (is_ok_m00 && is_ok_p00) qnx =  0.5*(qn_p[node_p00]-qn_p[node_m00])/dxyz[0];
+        else if (is_ok_m00 && is_ok_M00) qnx = -0.5*(-3.*qn_000 + 4.*qn_p[node_m00] - qn_p[node_M00])/dxyz[0];
+        else if (is_ok_p00 && is_ok_P00) qnx =  0.5*(-3.*qn_000 + 4.*qn_p[node_p00] - qn_p[node_P00])/dxyz[0];
+        else all_directions_good = false;
+
+        if      (is_ok_0m0 && is_ok_0p0) qny =  0.5*(qn_p[node_0p0]-qn_p[node_0m0])/dxyz[1];
+        else if (is_ok_0m0 && is_ok_0M0) qny = -0.5*(-3.*qn_000 + 4.*qn_p[node_0m0] - qn_p[node_0M0])/dxyz[1];
+        else if (is_ok_0p0 && is_ok_0P0) qny =  0.5*(-3.*qn_000 + 4.*qn_p[node_0p0] - qn_p[node_0P0])/dxyz[1];
+        else all_directions_good = false;
+
+#ifdef P4_TO_P8
+        if      (is_ok_00m && is_ok_00p) qnz =  0.5*(qn_p[node_00p]-qn_p[node_00m])/dxyz[2];
+        else if (is_ok_00m && is_ok_00M) qnz = -0.5*(-3.*qn_000 + 4.*qn_p[node_00m] - qn_p[node_00M])/dxyz[2];
+        else if (is_ok_00p && is_ok_00P) qnz =  0.5*(-3.*qn_000 + 4.*qn_p[node_00p] - qn_p[node_00P])/dxyz[2];
+        else all_directions_good = false;
+#endif
+
+        if (all_directions_good)
+        {
+          b_qnn_well_defined_p[n] = true;
+
+          qnn_p[n] = ( nx[n]*qnx +
+                       ny[n]*qny
+            #ifdef P4_TO_P8
+                      + nz[n]*qnz
+            #endif
+                      );
+        } else {
+          b_qnn_well_defined_p[n] = false;
+          qnn_p[n] = 0;
+        }
+      }
       else
       {
         b_qnn_well_defined_p[n] = false;
@@ -2681,6 +3145,157 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
                      + nz[n]*qnnn.dz_central(qn_p)
              #endif
                      );
+      }
+      else if (b_qn_well_defined_p[qnnn.node_000]==true && use_one_sided_derivatives)
+      {
+        bool all_directions_good = true;
+
+        double qnx = qnnn.dx_central(qn_p);
+        double qny = qnnn.dy_central(qn_p);
+#ifdef P4_TO_P8
+        double qnz = qnnn.dz_central(qn_p);
+#endif
+        p4est_locidx_t node_m00 = qnnn.neighbor_m00();
+        p4est_locidx_t node_p00 = qnnn.neighbor_p00();
+        p4est_locidx_t node_0m0 = qnnn.neighbor_0m0();
+        p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00m = qnnn.neighbor_00m();
+        p4est_locidx_t node_00p = qnnn.neighbor_00p();
+#endif
+        p4est_locidx_t node_M00 = -1;
+        p4est_locidx_t node_P00 = -1;
+        p4est_locidx_t node_0M0 = -1;
+        p4est_locidx_t node_0P0 = -1;
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00M = -1;
+        p4est_locidx_t node_00P = -1;
+#endif
+
+        bool is_ok_m00 = false, is_ok_M00 = false;
+        bool is_ok_p00 = false, is_ok_P00 = false;
+        bool is_ok_0m0 = false, is_ok_0M0 = false;
+        bool is_ok_0p0 = false, is_ok_0P0 = false;
+#ifdef P4_TO_P8
+        bool is_ok_00m = false, is_ok_00M = false;
+        bool is_ok_00p = false, is_ok_00P = false;
+#endif
+
+        quad_neighbor_nodes_of_node_t qnnn_nei;
+
+        if (node_m00 != -1)
+          if (b_qn_well_defined_p[node_m00])
+          {
+            is_ok_m00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_m00);
+            node_M00 = qnnn_nei.neighbor_m00();
+
+            if (node_M00 != -1)
+              if (b_qn_well_defined_p[node_M00])
+                is_ok_M00 = true;
+          }
+
+        if (node_p00 != -1)
+          if (b_qn_well_defined_p[node_p00])
+          {
+            is_ok_p00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_p00);
+            node_P00 = qnnn_nei.neighbor_p00();
+
+            if (node_P00 != -1)
+              if (b_qn_well_defined_p[node_P00])
+                is_ok_P00 = true;
+          }
+
+        if (node_0m0 != -1)
+          if (b_qn_well_defined_p[node_0m0])
+          {
+            is_ok_0m0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0m0);
+            node_0M0 = qnnn_nei.neighbor_0m0();
+
+            if (node_0M0 != -1)
+              if (b_qn_well_defined_p[node_0M0])
+                is_ok_0M0 = true;
+          }
+
+        if (node_0p0 != -1)
+          if (b_qn_well_defined_p[node_0p0])
+          {
+            is_ok_0p0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0p0);
+            node_0P0 = qnnn_nei.neighbor_0p0();
+
+            if (node_0P0 != -1)
+              if (b_qn_well_defined_p[node_0P0])
+                is_ok_0P0 = true;
+          }
+
+#ifdef P4_TO_P8
+        if (node_00m != -1)
+          if (b_qn_well_defined_p[node_00m])
+          {
+            is_ok_00m = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00m);
+            node_00M = qnnn_nei.neighbor_00m();
+
+            if (node_00M != -1)
+              if (b_qn_well_defined_p[node_00M])
+                is_ok_00M = true;
+          }
+
+        if (node_00p != -1)
+          if (b_qn_well_defined_p[node_00p])
+          {
+            is_ok_00p = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00p);
+            node_00P = qnnn_nei.neighbor_00p();
+
+            if (node_00P != -1)
+              if (b_qn_well_defined_p[node_00P])
+                is_ok_00P = true;
+          }
+#endif
+
+        double qn_000 = qn_p[qnnn.node_000];
+
+        if      (is_ok_m00 && is_ok_p00) qnx =  0.5*(qn_p[node_p00]-qn_p[node_m00])/dxyz[0];
+        else if (is_ok_m00 && is_ok_M00) qnx = -0.5*(-3.*qn_000 + 4.*qn_p[node_m00] - qn_p[node_M00])/dxyz[0];
+        else if (is_ok_p00 && is_ok_P00) qnx =  0.5*(-3.*qn_000 + 4.*qn_p[node_p00] - qn_p[node_P00])/dxyz[0];
+        else all_directions_good = false;
+
+        if      (is_ok_0m0 && is_ok_0p0) qny =  0.5*(qn_p[node_0p0]-qn_p[node_0m0])/dxyz[1];
+        else if (is_ok_0m0 && is_ok_0M0) qny = -0.5*(-3.*qn_000 + 4.*qn_p[node_0m0] - qn_p[node_0M0])/dxyz[1];
+        else if (is_ok_0p0 && is_ok_0P0) qny =  0.5*(-3.*qn_000 + 4.*qn_p[node_0p0] - qn_p[node_0P0])/dxyz[1];
+        else all_directions_good = false;
+
+#ifdef P4_TO_P8
+        if      (is_ok_00m && is_ok_00p) qnz =  0.5*(qn_p[node_00p]-qn_p[node_00m])/dxyz[2];
+        else if (is_ok_00m && is_ok_00M) qnz = -0.5*(-3.*qn_000 + 4.*qn_p[node_00m] - qn_p[node_00M])/dxyz[2];
+        else if (is_ok_00p && is_ok_00P) qnz =  0.5*(-3.*qn_000 + 4.*qn_p[node_00p] - qn_p[node_00P])/dxyz[2];
+        else all_directions_good = false;
+#endif
+
+        if (all_directions_good)
+        {
+          b_qnn_well_defined_p[n] = true;
+
+          qnn_p[n] = ( nx[n]*qnx +
+                       ny[n]*qny
+            #ifdef P4_TO_P8
+                      + nz[n]*qnz
+            #endif
+                      );
+        } else {
+          b_qnn_well_defined_p[n] = false;
+          qnn_p[n] = 0;
+        }
       }
       else
       {
@@ -4776,6 +5391,11 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
   ierr = VecDuplicate(phi, &tmp); CHKERRXX(ierr);
   double *tmp_p;
 
+  double dxyz[P4EST_DIM];
+
+  dxyz_min(p4est, dxyz);
+
+
   /* init the neighborhood information if needed */
   /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
    * at the end of this function if they were not initialized beforehand ?
@@ -4890,6 +5510,157 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             #endif
                     );
       }
+      else if (mask_p[qnnn.node_000]<-EPS && use_one_sided_derivatives)
+      {
+        bool all_directions_good = true;
+
+        double qx = qnnn.dx_central(q_p);
+        double qy = qnnn.dy_central(q_p);
+#ifdef P4_TO_P8
+        double qz = qnnn.dz_central(q_p);
+#endif
+        p4est_locidx_t node_m00 = qnnn.neighbor_m00();
+        p4est_locidx_t node_p00 = qnnn.neighbor_p00();
+        p4est_locidx_t node_0m0 = qnnn.neighbor_0m0();
+        p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00m = qnnn.neighbor_00m();
+        p4est_locidx_t node_00p = qnnn.neighbor_00p();
+#endif
+        p4est_locidx_t node_M00 = -1;
+        p4est_locidx_t node_P00 = -1;
+        p4est_locidx_t node_0M0 = -1;
+        p4est_locidx_t node_0P0 = -1;
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00M = -1;
+        p4est_locidx_t node_00P = -1;
+#endif
+
+        bool is_ok_m00 = false, is_ok_M00 = false;
+        bool is_ok_p00 = false, is_ok_P00 = false;
+        bool is_ok_0m0 = false, is_ok_0M0 = false;
+        bool is_ok_0p0 = false, is_ok_0P0 = false;
+#ifdef P4_TO_P8
+        bool is_ok_00m = false, is_ok_00M = false;
+        bool is_ok_00p = false, is_ok_00P = false;
+#endif
+
+        quad_neighbor_nodes_of_node_t qnnn_nei;
+
+        if (node_m00 != -1)
+          if (mask_p[node_m00] < -EPS)
+          {
+            is_ok_m00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_m00);
+            node_M00 = qnnn_nei.neighbor_m00();
+
+            if (node_M00 != -1)
+              if (mask_p[node_M00] < -EPS)
+                is_ok_M00 = true;
+          }
+
+        if (node_p00 != -1)
+          if (mask_p[node_p00] < -EPS)
+          {
+            is_ok_p00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_p00);
+            node_P00 = qnnn_nei.neighbor_p00();
+
+            if (node_P00 != -1)
+              if (mask_p[node_P00] < -EPS)
+                is_ok_P00 = true;
+          }
+
+        if (node_0m0 != -1)
+          if (mask_p[node_0m0] < -EPS)
+          {
+            is_ok_0m0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0m0);
+            node_0M0 = qnnn_nei.neighbor_0m0();
+
+            if (node_0M0 != -1)
+              if (mask_p[node_0M0] < -EPS)
+                is_ok_0M0 = true;
+          }
+
+        if (node_0p0 != -1)
+          if (mask_p[node_0p0] < -EPS)
+          {
+            is_ok_0p0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0p0);
+            node_0P0 = qnnn_nei.neighbor_0p0();
+
+            if (node_0P0 != -1)
+              if (mask_p[node_0P0] < -EPS)
+                is_ok_0P0 = true;
+          }
+
+#ifdef P4_TO_P8
+        if (node_00m != -1)
+          if (mask_p[node_00m] < -EPS)
+          {
+            is_ok_00m = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00m);
+            node_00M = qnnn_nei.neighbor_00m();
+
+            if (node_00M != -1)
+              if (mask_p[node_00M] < -EPS)
+                is_ok_00M = true;
+          }
+
+        if (node_00p != -1)
+          if (mask_p[node_00p] < -EPS)
+          {
+            is_ok_00p = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00p);
+            node_00P = qnnn_nei.neighbor_00p();
+
+            if (node_00P != -1)
+              if (mask_p[node_00P] < -EPS)
+                is_ok_00P = true;
+          }
+#endif
+
+        double q_000 = q_p[qnnn.node_000];
+
+        if      (is_ok_m00 && is_ok_p00) qx =  0.5*(q_p[node_p00]-q_p[node_m00])/dxyz[0];
+        else if (is_ok_m00 && is_ok_M00) qx = -0.5*(-3.*q_000 + 4.*q_p[node_m00] - q_p[node_M00])/dxyz[0];
+        else if (is_ok_p00 && is_ok_P00) qx =  0.5*(-3.*q_000 + 4.*q_p[node_p00] - q_p[node_P00])/dxyz[0];
+        else all_directions_good = false;
+
+        if      (is_ok_0m0 && is_ok_0p0) qy =  0.5*(q_p[node_0p0]-q_p[node_0m0])/dxyz[1];
+        else if (is_ok_0m0 && is_ok_0M0) qy = -0.5*(-3.*q_000 + 4.*q_p[node_0m0] - q_p[node_0M0])/dxyz[1];
+        else if (is_ok_0p0 && is_ok_0P0) qy =  0.5*(-3.*q_000 + 4.*q_p[node_0p0] - q_p[node_0P0])/dxyz[1];
+        else all_directions_good = false;
+
+#ifdef P4_TO_P8
+        if      (is_ok_00m && is_ok_00p) qz =  0.5*(q_p[node_00p]-q_p[node_00m])/dxyz[2];
+        else if (is_ok_00m && is_ok_00M) qz = -0.5*(-3.*q_000 + 4.*q_p[node_00m] - q_p[node_00M])/dxyz[2];
+        else if (is_ok_00p && is_ok_00P) qz =  0.5*(-3.*q_000 + 4.*q_p[node_00p] - q_p[node_00P])/dxyz[2];
+        else all_directions_good = false;
+#endif
+
+        if (all_directions_good)
+        {
+          b_qn_well_defined_p[n] = true;
+
+          qn_p[n] = ( nx[n]*qx +
+                      ny[n]*qy
+            #ifdef P4_TO_P8
+                      + nz[n]*qz
+            #endif
+                      );
+        } else {
+          b_qn_well_defined_p[n] = false;
+          qn_p[n] = 0;
+        }
+      }
       else
       {
         b_qn_well_defined_p[n] = false;
@@ -4956,6 +5727,157 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
                     + nz[n]*qnnn.dz_central(q_p)
             #endif
                     );
+      }
+      else if (mask_p[qnnn.node_000]<-EPS && use_one_sided_derivatives)
+      {
+        bool all_directions_good = true;
+
+        double qx = qnnn.dx_central(q_p);
+        double qy = qnnn.dy_central(q_p);
+#ifdef P4_TO_P8
+        double qz = qnnn.dz_central(q_p);
+#endif
+        p4est_locidx_t node_m00 = qnnn.neighbor_m00();
+        p4est_locidx_t node_p00 = qnnn.neighbor_p00();
+        p4est_locidx_t node_0m0 = qnnn.neighbor_0m0();
+        p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00m = qnnn.neighbor_00m();
+        p4est_locidx_t node_00p = qnnn.neighbor_00p();
+#endif
+        p4est_locidx_t node_M00 = -1;
+        p4est_locidx_t node_P00 = -1;
+        p4est_locidx_t node_0M0 = -1;
+        p4est_locidx_t node_0P0 = -1;
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00M = -1;
+        p4est_locidx_t node_00P = -1;
+#endif
+
+        bool is_ok_m00 = false, is_ok_M00 = false;
+        bool is_ok_p00 = false, is_ok_P00 = false;
+        bool is_ok_0m0 = false, is_ok_0M0 = false;
+        bool is_ok_0p0 = false, is_ok_0P0 = false;
+#ifdef P4_TO_P8
+        bool is_ok_00m = false, is_ok_00M = false;
+        bool is_ok_00p = false, is_ok_00P = false;
+#endif
+
+        quad_neighbor_nodes_of_node_t qnnn_nei;
+
+        if (node_m00 != -1)
+          if (mask_p[node_m00] < -EPS)
+          {
+            is_ok_m00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_m00);
+            node_M00 = qnnn_nei.neighbor_m00();
+
+            if (node_M00 != -1)
+              if (mask_p[node_M00] < -EPS)
+                is_ok_M00 = true;
+          }
+
+        if (node_p00 != -1)
+          if (mask_p[node_p00] < -EPS)
+          {
+            is_ok_p00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_p00);
+            node_P00 = qnnn_nei.neighbor_p00();
+
+            if (node_P00 != -1)
+              if (mask_p[node_P00] < -EPS)
+                is_ok_P00 = true;
+          }
+
+        if (node_0m0 != -1)
+          if (mask_p[node_0m0] < -EPS)
+          {
+            is_ok_0m0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0m0);
+            node_0M0 = qnnn_nei.neighbor_0m0();
+
+            if (node_0M0 != -1)
+              if (mask_p[node_0M0] < -EPS)
+                is_ok_0M0 = true;
+          }
+
+        if (node_0p0 != -1)
+          if (mask_p[node_0p0] < -EPS)
+          {
+            is_ok_0p0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0p0);
+            node_0P0 = qnnn_nei.neighbor_0p0();
+
+            if (node_0P0 != -1)
+              if (mask_p[node_0P0] < -EPS)
+                is_ok_0P0 = true;
+          }
+
+#ifdef P4_TO_P8
+        if (node_00m != -1)
+          if (mask_p[node_00m] < -EPS)
+          {
+            is_ok_00m = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00m);
+            node_00M = qnnn_nei.neighbor_00m();
+
+            if (node_00M != -1)
+              if (mask_p[node_00M] < -EPS)
+                is_ok_00M = true;
+          }
+
+        if (node_00p != -1)
+          if (mask_p[node_00p] < -EPS)
+          {
+            is_ok_00p = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00p);
+            node_00P = qnnn_nei.neighbor_00p();
+
+            if (node_00P != -1)
+              if (mask_p[node_00P] < -EPS)
+                is_ok_00P = true;
+          }
+#endif
+
+        double q_000 = q_p[qnnn.node_000];
+
+        if      (is_ok_m00 && is_ok_p00) qx =  0.5*(q_p[node_p00]-q_p[node_m00])/dxyz[0];
+        else if (is_ok_m00 && is_ok_M00) qx = -0.5*(-3.*q_000 + 4.*q_p[node_m00] - q_p[node_M00])/dxyz[0];
+        else if (is_ok_p00 && is_ok_P00) qx =  0.5*(-3.*q_000 + 4.*q_p[node_p00] - q_p[node_P00])/dxyz[0];
+        else all_directions_good = false;
+
+        if      (is_ok_0m0 && is_ok_0p0) qy =  0.5*(q_p[node_0p0]-q_p[node_0m0])/dxyz[1];
+        else if (is_ok_0m0 && is_ok_0M0) qy = -0.5*(-3.*q_000 + 4.*q_p[node_0m0] - q_p[node_0M0])/dxyz[1];
+        else if (is_ok_0p0 && is_ok_0P0) qy =  0.5*(-3.*q_000 + 4.*q_p[node_0p0] - q_p[node_0P0])/dxyz[1];
+        else all_directions_good = false;
+
+#ifdef P4_TO_P8
+        if      (is_ok_00m && is_ok_00p) qz =  0.5*(q_p[node_00p]-q_p[node_00m])/dxyz[2];
+        else if (is_ok_00m && is_ok_00M) qz = -0.5*(-3.*q_000 + 4.*q_p[node_00m] - q_p[node_00M])/dxyz[2];
+        else if (is_ok_00p && is_ok_00P) qz =  0.5*(-3.*q_000 + 4.*q_p[node_00p] - q_p[node_00P])/dxyz[2];
+        else all_directions_good = false;
+#endif
+
+        if (all_directions_good)
+        {
+          b_qn_well_defined_p[n] = true;
+
+          qn_p[n] = ( nx[n]*qx +
+                      ny[n]*qy
+            #ifdef P4_TO_P8
+                      + nz[n]*qz
+            #endif
+                      );
+        } else {
+          b_qn_well_defined_p[n] = false;
+          qn_p[n] = 0;
+        }
       }
       else
       {
@@ -5044,6 +5966,157 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
              #endif
                      );
       }
+      else if (b_qn_well_defined_p[qnnn.node_000]==true && use_one_sided_derivatives)
+      {
+        bool all_directions_good = true;
+
+        double qnx = qnnn.dx_central(qn_p);
+        double qny = qnnn.dy_central(qn_p);
+#ifdef P4_TO_P8
+        double qnz = qnnn.dz_central(qn_p);
+#endif
+        p4est_locidx_t node_m00 = qnnn.neighbor_m00();
+        p4est_locidx_t node_p00 = qnnn.neighbor_p00();
+        p4est_locidx_t node_0m0 = qnnn.neighbor_0m0();
+        p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00m = qnnn.neighbor_00m();
+        p4est_locidx_t node_00p = qnnn.neighbor_00p();
+#endif
+        p4est_locidx_t node_M00 = -1;
+        p4est_locidx_t node_P00 = -1;
+        p4est_locidx_t node_0M0 = -1;
+        p4est_locidx_t node_0P0 = -1;
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00M = -1;
+        p4est_locidx_t node_00P = -1;
+#endif
+
+        bool is_ok_m00 = false, is_ok_M00 = false;
+        bool is_ok_p00 = false, is_ok_P00 = false;
+        bool is_ok_0m0 = false, is_ok_0M0 = false;
+        bool is_ok_0p0 = false, is_ok_0P0 = false;
+#ifdef P4_TO_P8
+        bool is_ok_00m = false, is_ok_00M = false;
+        bool is_ok_00p = false, is_ok_00P = false;
+#endif
+
+        quad_neighbor_nodes_of_node_t qnnn_nei;
+
+        if (node_m00 != -1)
+          if (b_qn_well_defined_p[node_m00])
+          {
+            is_ok_m00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_m00);
+            node_M00 = qnnn_nei.neighbor_m00();
+
+            if (node_M00 != -1)
+              if (b_qn_well_defined_p[node_M00])
+                is_ok_M00 = true;
+          }
+
+        if (node_p00 != -1)
+          if (b_qn_well_defined_p[node_p00])
+          {
+            is_ok_p00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_p00);
+            node_P00 = qnnn_nei.neighbor_p00();
+
+            if (node_P00 != -1)
+              if (b_qn_well_defined_p[node_P00])
+                is_ok_P00 = true;
+          }
+
+        if (node_0m0 != -1)
+          if (b_qn_well_defined_p[node_0m0])
+          {
+            is_ok_0m0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0m0);
+            node_0M0 = qnnn_nei.neighbor_0m0();
+
+            if (node_0M0 != -1)
+              if (b_qn_well_defined_p[node_0M0])
+                is_ok_0M0 = true;
+          }
+
+        if (node_0p0 != -1)
+          if (b_qn_well_defined_p[node_0p0])
+          {
+            is_ok_0p0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0p0);
+            node_0P0 = qnnn_nei.neighbor_0p0();
+
+            if (node_0P0 != -1)
+              if (b_qn_well_defined_p[node_0P0])
+                is_ok_0P0 = true;
+          }
+
+#ifdef P4_TO_P8
+        if (node_00m != -1)
+          if (b_qn_well_defined_p[node_00m])
+          {
+            is_ok_00m = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00m);
+            node_00M = qnnn_nei.neighbor_00m();
+
+            if (node_00M != -1)
+              if (b_qn_well_defined_p[node_00M])
+                is_ok_00M = true;
+          }
+
+        if (node_00p != -1)
+          if (b_qn_well_defined_p[node_00p])
+          {
+            is_ok_00p = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00p);
+            node_00P = qnnn_nei.neighbor_00p();
+
+            if (node_00P != -1)
+              if (b_qn_well_defined_p[node_00P])
+                is_ok_00P = true;
+          }
+#endif
+
+        double qn_000 = qn_p[qnnn.node_000];
+
+        if      (is_ok_m00 && is_ok_p00) qnx =  0.5*(qn_p[node_p00]-qn_p[node_m00])/dxyz[0];
+        else if (is_ok_m00 && is_ok_M00) qnx = -0.5*(-3.*qn_000 + 4.*qn_p[node_m00] - qn_p[node_M00])/dxyz[0];
+        else if (is_ok_p00 && is_ok_P00) qnx =  0.5*(-3.*qn_000 + 4.*qn_p[node_p00] - qn_p[node_P00])/dxyz[0];
+        else all_directions_good = false;
+
+        if      (is_ok_0m0 && is_ok_0p0) qny =  0.5*(qn_p[node_0p0]-qn_p[node_0m0])/dxyz[1];
+        else if (is_ok_0m0 && is_ok_0M0) qny = -0.5*(-3.*qn_000 + 4.*qn_p[node_0m0] - qn_p[node_0M0])/dxyz[1];
+        else if (is_ok_0p0 && is_ok_0P0) qny =  0.5*(-3.*qn_000 + 4.*qn_p[node_0p0] - qn_p[node_0P0])/dxyz[1];
+        else all_directions_good = false;
+
+#ifdef P4_TO_P8
+        if      (is_ok_00m && is_ok_00p) qnz =  0.5*(qn_p[node_00p]-qn_p[node_00m])/dxyz[2];
+        else if (is_ok_00m && is_ok_00M) qnz = -0.5*(-3.*qn_000 + 4.*qn_p[node_00m] - qn_p[node_00M])/dxyz[2];
+        else if (is_ok_00p && is_ok_00P) qnz =  0.5*(-3.*qn_000 + 4.*qn_p[node_00p] - qn_p[node_00P])/dxyz[2];
+        else all_directions_good = false;
+#endif
+
+        if (all_directions_good)
+        {
+          b_qnn_well_defined_p[n] = true;
+
+          qnn_p[n] = ( nx[n]*qnx +
+                       ny[n]*qny
+            #ifdef P4_TO_P8
+                      + nz[n]*qnz
+            #endif
+                      );
+        } else {
+          b_qnn_well_defined_p[n] = false;
+          qnn_p[n] = 0;
+        }
+      }
       else
       {
         b_qnn_well_defined_p[n] = false;
@@ -5112,6 +6185,157 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
                      + nz[n]*qnnn.dz_central(qn_p)
              #endif
                      );
+      }
+      else if (b_qn_well_defined_p[qnnn.node_000]==true && use_one_sided_derivatives)
+      {
+        bool all_directions_good = true;
+
+        double qnx = qnnn.dx_central(qn_p);
+        double qny = qnnn.dy_central(qn_p);
+#ifdef P4_TO_P8
+        double qnz = qnnn.dz_central(qn_p);
+#endif
+        p4est_locidx_t node_m00 = qnnn.neighbor_m00();
+        p4est_locidx_t node_p00 = qnnn.neighbor_p00();
+        p4est_locidx_t node_0m0 = qnnn.neighbor_0m0();
+        p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00m = qnnn.neighbor_00m();
+        p4est_locidx_t node_00p = qnnn.neighbor_00p();
+#endif
+        p4est_locidx_t node_M00 = -1;
+        p4est_locidx_t node_P00 = -1;
+        p4est_locidx_t node_0M0 = -1;
+        p4est_locidx_t node_0P0 = -1;
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00M = -1;
+        p4est_locidx_t node_00P = -1;
+#endif
+
+        bool is_ok_m00 = false, is_ok_M00 = false;
+        bool is_ok_p00 = false, is_ok_P00 = false;
+        bool is_ok_0m0 = false, is_ok_0M0 = false;
+        bool is_ok_0p0 = false, is_ok_0P0 = false;
+#ifdef P4_TO_P8
+        bool is_ok_00m = false, is_ok_00M = false;
+        bool is_ok_00p = false, is_ok_00P = false;
+#endif
+
+        quad_neighbor_nodes_of_node_t qnnn_nei;
+
+        if (node_m00 != -1)
+          if (b_qn_well_defined_p[node_m00])
+          {
+            is_ok_m00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_m00);
+            node_M00 = qnnn_nei.neighbor_m00();
+
+            if (node_M00 != -1)
+              if (b_qn_well_defined_p[node_M00])
+                is_ok_M00 = true;
+          }
+
+        if (node_p00 != -1)
+          if (b_qn_well_defined_p[node_p00])
+          {
+            is_ok_p00 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_p00);
+            node_P00 = qnnn_nei.neighbor_p00();
+
+            if (node_P00 != -1)
+              if (b_qn_well_defined_p[node_P00])
+                is_ok_P00 = true;
+          }
+
+        if (node_0m0 != -1)
+          if (b_qn_well_defined_p[node_0m0])
+          {
+            is_ok_0m0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0m0);
+            node_0M0 = qnnn_nei.neighbor_0m0();
+
+            if (node_0M0 != -1)
+              if (b_qn_well_defined_p[node_0M0])
+                is_ok_0M0 = true;
+          }
+
+        if (node_0p0 != -1)
+          if (b_qn_well_defined_p[node_0p0])
+          {
+            is_ok_0p0 = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_0p0);
+            node_0P0 = qnnn_nei.neighbor_0p0();
+
+            if (node_0P0 != -1)
+              if (b_qn_well_defined_p[node_0P0])
+                is_ok_0P0 = true;
+          }
+
+#ifdef P4_TO_P8
+        if (node_00m != -1)
+          if (b_qn_well_defined_p[node_00m])
+          {
+            is_ok_00m = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00m);
+            node_00M = qnnn_nei.neighbor_00m();
+
+            if (node_00M != -1)
+              if (b_qn_well_defined_p[node_00M])
+                is_ok_00M = true;
+          }
+
+        if (node_00p != -1)
+          if (b_qn_well_defined_p[node_00p])
+          {
+            is_ok_00p = true;
+
+            qnnn_nei = ngbd->get_neighbors(node_00p);
+            node_00P = qnnn_nei.neighbor_00p();
+
+            if (node_00P != -1)
+              if (b_qn_well_defined_p[node_00P])
+                is_ok_00P = true;
+          }
+#endif
+
+        double qn_000 = qn_p[qnnn.node_000];
+
+        if      (is_ok_m00 && is_ok_p00) qnx =  0.5*(qn_p[node_p00]-qn_p[node_m00])/dxyz[0];
+        else if (is_ok_m00 && is_ok_M00) qnx = -0.5*(-3.*qn_000 + 4.*qn_p[node_m00] - qn_p[node_M00])/dxyz[0];
+        else if (is_ok_p00 && is_ok_P00) qnx =  0.5*(-3.*qn_000 + 4.*qn_p[node_p00] - qn_p[node_P00])/dxyz[0];
+        else all_directions_good = false;
+
+        if      (is_ok_0m0 && is_ok_0p0) qny =  0.5*(qn_p[node_0p0]-qn_p[node_0m0])/dxyz[1];
+        else if (is_ok_0m0 && is_ok_0M0) qny = -0.5*(-3.*qn_000 + 4.*qn_p[node_0m0] - qn_p[node_0M0])/dxyz[1];
+        else if (is_ok_0p0 && is_ok_0P0) qny =  0.5*(-3.*qn_000 + 4.*qn_p[node_0p0] - qn_p[node_0P0])/dxyz[1];
+        else all_directions_good = false;
+
+#ifdef P4_TO_P8
+        if      (is_ok_00m && is_ok_00p) qnz =  0.5*(qn_p[node_00p]-qn_p[node_00m])/dxyz[2];
+        else if (is_ok_00m && is_ok_00M) qnz = -0.5*(-3.*qn_000 + 4.*qn_p[node_00m] - qn_p[node_00M])/dxyz[2];
+        else if (is_ok_00p && is_ok_00P) qnz =  0.5*(-3.*qn_000 + 4.*qn_p[node_00p] - qn_p[node_00P])/dxyz[2];
+        else all_directions_good = false;
+#endif
+
+        if (all_directions_good)
+        {
+          b_qnn_well_defined_p[n] = true;
+
+          qnn_p[n] = ( nx[n]*qnx +
+                       ny[n]*qny
+            #ifdef P4_TO_P8
+                      + nz[n]*qnz
+            #endif
+                      );
+        } else {
+          b_qnn_well_defined_p[n] = false;
+          qnn_p[n] = 0;
+        }
       }
       else
       {
@@ -5760,6 +6984,213 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
             #endif
                     );
       }
+      else if (phi_p[qnnn.node_000]<-EPS && solver->get_use_quadratic_continuous_stencil() && solver->pointwise_bc[n].size() < 3)
+      {
+        bool is_interface_m00 = false;
+        bool is_interface_p00 = false;
+        bool is_interface_0m0 = false;
+        bool is_interface_0p0 = false;
+#ifdef P4_TO_P8
+        bool is_interface_00m = false;
+        bool is_interface_00p = false;
+#endif
+
+        double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
+        double d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0;
+#ifdef P4_TO_P8
+        double d_00m = qnnn.d_00m, d_00p = qnnn.d_00p;
+#endif
+
+        // assuming grid is uniform near the interface
+        double q_m00 = qnnn.f_m00_linear(q_p), q_p00 = qnnn.f_p00_linear(q_p);
+        double q_0m0 = qnnn.f_0m0_linear(q_p), q_0p0 = qnnn.f_0p0_linear(q_p);
+#ifdef P4_TO_P8
+        double q_00m = qnnn.f_00m_linear(q_p), q_00p = qnnn.f_00p_linear(q_p);
+#endif
+        double q_000 = q_p[n];
+
+        double d_min = diag;
+        for (int i = 0; i < solver->pointwise_bc[n].size(); ++i)
+        {
+          switch (solver->pointwise_bc[n][i].dir)
+          {
+            case 0: d_m00 = solver->pointwise_bc[n][i].dist; q_m00 = solver->pointwise_bc[n][i].value; is_interface_m00 = true; break;
+            case 1: d_p00 = solver->pointwise_bc[n][i].dist; q_p00 = solver->pointwise_bc[n][i].value; is_interface_p00 = true; break;
+            case 2: d_0m0 = solver->pointwise_bc[n][i].dist; q_0m0 = solver->pointwise_bc[n][i].value; is_interface_0m0 = true; break;
+            case 3: d_0p0 = solver->pointwise_bc[n][i].dist; q_0p0 = solver->pointwise_bc[n][i].value; is_interface_0p0 = true; break;
+#ifdef P4_TO_P8
+            case 4: d_00m = solver->pointwise_bc[n][i].dist; q_00m = solver->pointwise_bc[n][i].value; is_interface_00m = true; break;
+            case 5: d_00p = solver->pointwise_bc[n][i].dist; q_00p = solver->pointwise_bc[n][i].value; is_interface_00p = true; break;
+#endif
+          }
+
+          d_min = MIN(d_min, solver->pointwise_bc[n][i].dist);
+        }
+
+        bool all_directions_good = true;
+
+        double qx = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00);
+        double qy = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0);
+#ifdef P4_TO_P8
+        double qz = ((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p);
+#endif
+
+        p4est_locidx_t node_M00;
+        p4est_locidx_t node_P00;
+        p4est_locidx_t node_0M0;
+        p4est_locidx_t node_0P0;
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00M;
+        p4est_locidx_t node_00P;
+#endif
+
+        if (is_interface_m00)
+        {
+          bool enough_neighbors = false;
+
+          if (!is_interface_p00)
+          {
+            p4est_locidx_t n_nei = (qnnn.d_p00_m0 == 0 ? qnnn.node_p00_mm : qnnn.node_p00_pm);
+            const quad_neighbor_nodes_of_node_t qnnn_nei = ngbd->get_neighbors(n_nei);
+
+            node_P00 = (qnnn_nei.d_p00_m0 == 0 ? qnnn_nei.node_p00_mm : qnnn_nei.node_p00_pm);
+
+            enough_neighbors = phi_p[node_P00] < -EPS;
+          }
+
+          if (enough_neighbors)
+          {
+            double d = d_m00/dxyz[0];
+            qx =  (-3. + 2.5*d - 0.50*pow(d,2.))*q_m00
+                + (      2.0*d - 1.75*pow(d,2.) - 0.5*pow(d,3.) + 0.25*pow(d,4.))*q_000
+                + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_p00
+                + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_P00];
+
+//            qx = -3.*q_000 + 4.*q_p00 - q_p[node_P00];
+
+            qx /= 2.*dxyz[0];
+          } else {
+            all_directions_good = false;
+            qx = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00);
+          }
+        }
+
+        if (is_interface_p00)
+        {
+          bool enough_neighbors = false;
+
+          if (!is_interface_m00)
+          {
+            p4est_locidx_t n_nei = (qnnn.d_m00_m0 == 0 ? qnnn.node_m00_mm : qnnn.node_m00_pm);
+            const quad_neighbor_nodes_of_node_t qnnn_nei = ngbd->get_neighbors(n_nei);
+
+            node_M00 = (qnnn_nei.d_m00_m0 == 0 ? qnnn_nei.node_m00_mm : qnnn_nei.node_m00_pm);
+
+            enough_neighbors = phi_p[node_M00] < -EPS;
+          }
+
+          if (enough_neighbors)
+          {
+            double d = d_p00/dxyz[0];
+            qx =  (-3. + 2.5*d - 0.50*pow(d,2.))*q_p00
+                + (      2.0*d - 1.75*pow(d,2.) - 0.5*pow(d,3.) + 0.25*pow(d,4.))*q_000
+                + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_m00
+                + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_M00];
+
+//            qx = -3.*q_000 + 4.*q_m00 - q_p[node_M00];
+
+            qx /= 2.*dxyz[0];
+
+            qx *= -1.;
+          } else {
+            all_directions_good = false;
+            qx = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00);
+          }
+        }
+
+        if (is_interface_0m0)
+        {
+          bool enough_neighbors = false;
+
+          if (!is_interface_0p0)
+          {
+            p4est_locidx_t n_nei = (qnnn.d_0p0_m0 == 0 ? qnnn.node_0p0_mm : qnnn.node_0p0_pm);
+            const quad_neighbor_nodes_of_node_t qnnn_nei = ngbd->get_neighbors(n_nei);
+
+            node_0P0 = (qnnn_nei.d_0p0_m0 == 0 ? qnnn_nei.node_0p0_mm : qnnn_nei.node_0p0_pm);
+
+            enough_neighbors = phi_p[node_0P0] < -EPS;
+          }
+
+          if (enough_neighbors)
+          {
+            double d = d_0m0/dxyz[1];
+            qy =  (-3. + 2.5*d - 0.50*pow(d,2.))*q_0m0
+                + (      2.0*d - 1.75*pow(d,2.) - 0.5*pow(d,3.) + 0.25*pow(d,4.))*q_000
+                + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_0p0
+                + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_0P0];
+
+//            qy = -3.*q_000 + 4.*q_0p0 - q_p[node_0P0];
+
+            qy /= 2.*dxyz[1];
+          } else {
+            all_directions_good = false;
+            qy = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0);
+          }
+        }
+
+        if (is_interface_0p0)
+        {
+          bool enough_neighbors = false;
+
+          if (!is_interface_0m0)
+          {
+            p4est_locidx_t n_nei = (qnnn.d_0m0_m0 == 0 ? qnnn.node_0m0_mm : qnnn.node_0m0_pm);
+            const quad_neighbor_nodes_of_node_t qnnn_nei = ngbd->get_neighbors(n_nei);
+
+            node_0M0 = (qnnn_nei.d_0m0_m0 == 0 ? qnnn_nei.node_0m0_mm : qnnn_nei.node_0m0_pm);
+
+            enough_neighbors = phi_p[node_0M0] < -EPS;
+          }
+
+          if (enough_neighbors)
+          {
+            double d = d_0p0/dxyz[1];
+            qy =  (-3. + 2.5*d - 0.50*pow(d,2.))*q_0p0
+                + (      2.0*d - 1.75*pow(d,2.) - 0.5*pow(d,3.) + 0.25*pow(d,4.))*q_000
+                + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_0m0
+                + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_0M0];
+
+//            qy = -3.*q_000 + 4.*q_0m0 - q_p[node_0M0];
+
+            qy /= 2.*dxyz[1];
+
+            qy *= -1.;
+          } else {
+            all_directions_good = false;
+            qy = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0);
+          }
+        }
+#ifdef P4_TO_P8
+        throw;
+#endif
+
+        if (all_directions_good || d_min > rel_thresh*diag)
+//        if (all_directions_good)
+        {
+          b_qn_well_defined_p[n] = true;
+
+          qn_p[n] = ( nx[n]*qx +
+                      ny[n]*qy
+            #ifdef P4_TO_P8
+                      + nz[n]*qz
+            #endif
+                      );
+        } else {
+          b_qn_well_defined_p[n] = false;
+          qn_p[n] = 0;
+        }
+      }
       else if (phi_p[qnnn.node_000]<-EPS && solver->pointwise_bc[n].size() < 3)
       {
 //        if (solver->pointwise_bc[n].size() >= 3) std::cout << solver->pointwise_bc[n].size() << "now!\n";
@@ -5876,6 +7307,213 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
                     + nz[n]*qnnn.dz_central(q_p)
             #endif
                     );
+      }
+      else if (phi_p[qnnn.node_000]<-EPS && solver->get_use_quadratic_continuous_stencil() && solver->pointwise_bc[n].size() < 3)
+      {
+        bool is_interface_m00 = false;
+        bool is_interface_p00 = false;
+        bool is_interface_0m0 = false;
+        bool is_interface_0p0 = false;
+#ifdef P4_TO_P8
+        bool is_interface_00m = false;
+        bool is_interface_00p = false;
+#endif
+
+        double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
+        double d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0;
+#ifdef P4_TO_P8
+        double d_00m = qnnn.d_00m, d_00p = qnnn.d_00p;
+#endif
+
+        // assuming grid is uniform near the interface
+        double q_m00 = qnnn.f_m00_linear(q_p), q_p00 = qnnn.f_p00_linear(q_p);
+        double q_0m0 = qnnn.f_0m0_linear(q_p), q_0p0 = qnnn.f_0p0_linear(q_p);
+#ifdef P4_TO_P8
+        double q_00m = qnnn.f_00m_linear(q_p), q_00p = qnnn.f_00p_linear(q_p);
+#endif
+        double q_000 = q_p[n];
+
+        double d_min = diag;
+        for (int i = 0; i < solver->pointwise_bc[n].size(); ++i)
+        {
+          switch (solver->pointwise_bc[n][i].dir)
+          {
+            case 0: d_m00 = solver->pointwise_bc[n][i].dist; q_m00 = solver->pointwise_bc[n][i].value; is_interface_m00 = true; break;
+            case 1: d_p00 = solver->pointwise_bc[n][i].dist; q_p00 = solver->pointwise_bc[n][i].value; is_interface_p00 = true; break;
+            case 2: d_0m0 = solver->pointwise_bc[n][i].dist; q_0m0 = solver->pointwise_bc[n][i].value; is_interface_0m0 = true; break;
+            case 3: d_0p0 = solver->pointwise_bc[n][i].dist; q_0p0 = solver->pointwise_bc[n][i].value; is_interface_0p0 = true; break;
+#ifdef P4_TO_P8
+            case 4: d_00m = solver->pointwise_bc[n][i].dist; q_00m = solver->pointwise_bc[n][i].value; is_interface_00m = true; break;
+            case 5: d_00p = solver->pointwise_bc[n][i].dist; q_00p = solver->pointwise_bc[n][i].value; is_interface_00p = true; break;
+#endif
+          }
+
+          d_min = MIN(d_min, solver->pointwise_bc[n][i].dist);
+        }
+
+        bool all_directions_good = true;
+
+        double qx = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00);
+        double qy = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0);
+#ifdef P4_TO_P8
+        double qz = ((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p);
+#endif
+
+        p4est_locidx_t node_M00;
+        p4est_locidx_t node_P00;
+        p4est_locidx_t node_0M0;
+        p4est_locidx_t node_0P0;
+#ifdef P4_TO_P8
+        p4est_locidx_t node_00M;
+        p4est_locidx_t node_00P;
+#endif
+
+        if (is_interface_m00)
+        {
+          bool enough_neighbors = false;
+
+          if (!is_interface_p00)
+          {
+            p4est_locidx_t n_nei = (qnnn.d_p00_m0 == 0 ? qnnn.node_p00_mm : qnnn.node_p00_pm);
+            const quad_neighbor_nodes_of_node_t qnnn_nei = ngbd->get_neighbors(n_nei);
+
+            node_P00 = (qnnn_nei.d_p00_m0 == 0 ? qnnn_nei.node_p00_mm : qnnn_nei.node_p00_pm);
+
+            enough_neighbors = phi_p[node_P00] < -EPS;
+          }
+
+          if (enough_neighbors)
+          {
+            double d = d_m00/dxyz[0];
+            qx =  (-3. + 2.5*d - 0.50*pow(d,2.))*q_m00
+                + (      2.0*d - 1.75*pow(d,2.) - 0.5*pow(d,3.) + 0.25*pow(d,4.))*q_000
+                + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_p00
+                + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_P00];
+
+//            qx = -3.*q_000 + 4.*q_p00 - q_p[node_P00];
+
+            qx /= 2.*dxyz[0];
+          } else {
+            all_directions_good = false;
+            qx = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00);
+          }
+        }
+
+        if (is_interface_p00)
+        {
+          bool enough_neighbors = false;
+
+          if (!is_interface_m00)
+          {
+            p4est_locidx_t n_nei = (qnnn.d_m00_m0 == 0 ? qnnn.node_m00_mm : qnnn.node_m00_pm);
+            const quad_neighbor_nodes_of_node_t qnnn_nei = ngbd->get_neighbors(n_nei);
+
+            node_M00 = (qnnn_nei.d_m00_m0 == 0 ? qnnn_nei.node_m00_mm : qnnn_nei.node_m00_pm);
+
+            enough_neighbors = phi_p[node_M00] < -EPS;
+          }
+
+          if (enough_neighbors)
+          {
+            double d = d_p00/dxyz[0];
+            qx =  (-3. + 2.5*d - 0.50*pow(d,2.))*q_p00
+                + (      2.0*d - 1.75*pow(d,2.) - 0.5*pow(d,3.) + 0.25*pow(d,4.))*q_000
+                + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_m00
+                + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_M00];
+
+//            qx = -3.*q_000 + 4.*q_m00 - q_p[node_M00];
+
+            qx /= 2.*dxyz[0];
+
+            qx *= -1.;
+          } else {
+            all_directions_good = false;
+            qx = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00);
+          }
+        }
+
+        if (is_interface_0m0)
+        {
+          bool enough_neighbors = false;
+
+          if (!is_interface_0p0)
+          {
+            p4est_locidx_t n_nei = (qnnn.d_0p0_m0 == 0 ? qnnn.node_0p0_mm : qnnn.node_0p0_pm);
+            const quad_neighbor_nodes_of_node_t qnnn_nei = ngbd->get_neighbors(n_nei);
+
+            node_0P0 = (qnnn_nei.d_0p0_m0 == 0 ? qnnn_nei.node_0p0_mm : qnnn_nei.node_0p0_pm);
+
+            enough_neighbors = phi_p[node_0P0] < -EPS;
+          }
+
+          if (enough_neighbors)
+          {
+            double d = d_0m0/dxyz[1];
+            qy =  (-3. + 2.5*d - 0.50*pow(d,2.))*q_0m0
+                + (      2.0*d - 1.75*pow(d,2.) - 0.5*pow(d,3.) + 0.25*pow(d,4.))*q_000
+                + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_0p0
+                + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_0P0];
+
+//            qy = -3.*q_000 + 4.*q_0p0 - q_p[node_0P0];
+
+            qy /= 2.*dxyz[1];
+          } else {
+            all_directions_good = false;
+            qy = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0);
+          }
+        }
+
+        if (is_interface_0p0)
+        {
+          bool enough_neighbors = false;
+
+          if (!is_interface_0m0)
+          {
+            p4est_locidx_t n_nei = (qnnn.d_0m0_m0 == 0 ? qnnn.node_0m0_mm : qnnn.node_0m0_pm);
+            const quad_neighbor_nodes_of_node_t qnnn_nei = ngbd->get_neighbors(n_nei);
+
+            node_0M0 = (qnnn_nei.d_0m0_m0 == 0 ? qnnn_nei.node_0m0_mm : qnnn_nei.node_0m0_pm);
+
+            enough_neighbors = phi_p[node_0M0] < -EPS;
+          }
+
+          if (enough_neighbors)
+          {
+            double d = d_0p0/dxyz[1];
+            qy =  (-3. + 2.5*d - 0.50*pow(d,2.))*q_0p0
+                + (      2.0*d - 1.75*pow(d,2.) - 0.5*pow(d,3.) + 0.25*pow(d,4.))*q_000
+                + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_0m0
+                + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_0M0];
+
+//            qy = -3.*q_000 + 4.*q_0m0 - q_p[node_0M0];
+
+            qy /= 2.*dxyz[1];
+
+            qy *= -1.;
+          } else {
+            all_directions_good = false;
+            qy = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0);
+          }
+        }
+#ifdef P4_TO_P8
+        throw;
+#endif
+
+        if (all_directions_good || d_min > rel_thresh*diag)
+//        if (all_directions_good)
+        {
+          b_qn_well_defined_p[n] = true;
+
+          qn_p[n] = ( nx[n]*qx +
+                      ny[n]*qy
+            #ifdef P4_TO_P8
+                      + nz[n]*qz
+            #endif
+                      );
+        } else {
+          b_qn_well_defined_p[n] = false;
+          qn_p[n] = 0;
+        }
       }
       else if (phi_p[qnnn.node_000]<-EPS && solver->pointwise_bc[n].size() < 3)
       {

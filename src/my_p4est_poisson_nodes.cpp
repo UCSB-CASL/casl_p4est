@@ -53,7 +53,9 @@ my_p4est_poisson_nodes_t::my_p4est_poisson_nodes_t(const my_p4est_node_neighbors
     use_refined_cube(true), variable_mu(false), use_pointwise_dirichlet(false),
     mask(NULL),
     keep_scalling(false),
-    new_pc(true), use_linear_continuous_dirichlet_(false)
+    new_pc(true),
+    use_linear_continuous_dirichlet_(false),
+    use_quadratic_continuous_stencil_(true)
   #ifdef P4_TO_P8
     ,
     phi_zz_(NULL), mue_zz_(NULL)
@@ -234,8 +236,6 @@ void my_p4est_poisson_nodes_t::preallocate_matrix()
 
   for (p4est_locidx_t n=0; n<num_owned_local; n++)
   {
-    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
-
     /*
      * Check for neighboring nodes:
      * 1) If they exist and are local nodes, increment d_nnz[n]
@@ -246,6 +246,8 @@ void my_p4est_poisson_nodes_t::preallocate_matrix()
     if (!bc_->interfaceType() == NOINTERFACE)
       if (phi_p[n] > 2*diag_min)
         continue;
+
+    const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
 
 #ifdef P4_TO_P8
     if (qnnn.d_m00_p0*qnnn.d_m00_0p != 0) // node_m00_mm will enter discretization
@@ -330,6 +332,39 @@ void my_p4est_poisson_nodes_t::preallocate_matrix()
     if (qnnn.d_00p_m0*qnnn.d_00p_0m != 0) // node_00p_pp will enter discretization
       qnnn.node_00p_pp < num_owned_local ? d_nnz[n]++ : o_nnz[n]++;
 #endif
+
+    if (use_quadratic_continuous_stencil_)
+    {
+      double phi_000;
+      double phi_m00;
+      double phi_p00;
+      double phi_0m0;
+      double phi_0p0;
+#ifdef P4_TO_P8
+      double phi_00m;
+      double phi_00p;
+      qnnn.ngbd_with_quadratic_interpolation(phi_p, phi_000, phi_m00, phi_p00, phi_0m0, phi_0p0, phi_00m, phi_00p);
+#else
+      qnnn.ngbd_with_quadratic_interpolation(phi_p, phi_000, phi_m00, phi_p00, phi_0m0, phi_0p0);
+#endif
+      bool is_interface_m00 = (bc_->interfaceType() == DIRICHLET && phi_m00*phi_000 <= 0.);
+      bool is_interface_p00 = (bc_->interfaceType() == DIRICHLET && phi_p00*phi_000 <= 0.);
+      bool is_interface_0m0 = (bc_->interfaceType() == DIRICHLET && phi_0m0*phi_000 <= 0.);
+      bool is_interface_0p0 = (bc_->interfaceType() == DIRICHLET && phi_0p0*phi_000 <= 0.);
+#ifdef P4_TO_P8
+      bool is_interface_00m = (bc_->interfaceType() == DIRICHLET && phi_00m*phi_000 <= 0.);
+      bool is_interface_00p = (bc_->interfaceType() == DIRICHLET && phi_00p*phi_000 <= 0.);
+#endif
+
+      if (is_interface_m00) { d_nnz[n]++; o_nnz[n]++; }
+      if (is_interface_p00) { d_nnz[n]++; o_nnz[n]++; }
+      if (is_interface_0m0) { d_nnz[n]++; o_nnz[n]++; }
+      if (is_interface_0p0) { d_nnz[n]++; o_nnz[n]++; }
+#ifdef P4_TO_P8
+      if (is_interface_00m) { d_nnz[n]++; o_nnz[n]++; }
+      if (is_interface_00p) { d_nnz[n]++; o_nnz[n]++; }
+#endif
+    }
 
   }
 
@@ -1086,6 +1121,16 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         double w_00p = 0;
 #endif
 
+        double w_M00 = 0;
+        double w_P00 = 0;
+        double w_0M0 = 0;
+        double w_0P0 = 0;
+
+        p4est_locidx_t node_M00 = -1;
+        p4est_locidx_t node_P00 = -1;
+        p4est_locidx_t node_0M0 = -1;
+        p4est_locidx_t node_0P0 = -1;
+
         // count number of crossings
         char num_interfaces = 0;
 
@@ -1234,7 +1279,135 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
             else                     w_0p0_pm = w_0p0;
           }
 
-        } else {
+        }
+        else if (is_interface_any && use_quadratic_continuous_stencil_)
+        {
+          if (is_interface_m00)
+          {
+            bool enough_neighbors = false;
+            if (!is_interface_p00)
+            {
+              p4est_locidx_t n_nei = (d_p00_m0 == 0 ? node_p00_mm : node_p00_pm);
+              const quad_neighbor_nodes_of_node_t qnnn_nei = node_neighbors_->get_neighbors(n_nei);
+
+              node_P00 = (qnnn_nei.d_p00_m0 == 0 ? qnnn_nei.node_p00_mm : qnnn_nei.node_p00_pm);
+
+              enough_neighbors = phi_p[node_P00] < -EPS;
+            }
+
+            if (enough_neighbors)
+            {
+//              std::cout << "Happened!\n";
+              double d = d_m00/dxyz_m[0];
+              w_m00 = ( 3. - 2.5*d + 0.50*pow(d,2.))/SQR(dxyz_m[0]);
+              w_p00 = (-2. + 6.0*d - 2.00*pow(d,2.) - 1.5*pow(d,3.) + 0.50*pow(d,4.))/SQR(dxyz_m[0]);
+              w_P00 = ( 1. - 1.5*d - 0.25*pow(d,2.) + 1.0*pow(d,3.) - 0.25*pow(d,4.))/SQR(dxyz_m[0]);
+            } else {
+              w_m00 = 2./d_m00/(d_m00+d_p00);
+              w_p00 = 2./d_p00/(d_m00+d_p00);
+            }
+
+            if (!is_interface_p00)
+            {
+              if (d_p00_m0 == 0) w_p00_mm = w_p00;
+              else               w_p00_pm = w_p00;
+            }
+          }
+
+          if (is_interface_p00)
+          {
+            bool enough_neighbors = false;
+            if (!is_interface_m00)
+            {
+              p4est_locidx_t n_nei = (d_m00_m0 == 0 ? node_m00_mm : node_m00_pm);
+              const quad_neighbor_nodes_of_node_t qnnn_nei = node_neighbors_->get_neighbors(n_nei);
+
+              node_M00 = (qnnn_nei.d_m00_m0 == 0 ? qnnn_nei.node_m00_mm : qnnn_nei.node_m00_pm);
+
+              enough_neighbors = phi_p[node_M00] < -EPS;
+            }
+
+            if (enough_neighbors)
+            {
+              double d = d_p00/dxyz_m[0];
+              w_p00 = ( 3. - 2.5*d + 0.50*pow(d,2.))/SQR(dxyz_m[0]);
+              w_m00 = (-2. + 6.0*d - 2.00*pow(d,2.) - 1.5*pow(d,3.) + 0.50*pow(d,4.))/SQR(dxyz_m[0]);
+              w_M00 = ( 1. - 1.5*d - 0.25*pow(d,2.) + 1.0*pow(d,3.) - 0.25*pow(d,4.))/SQR(dxyz_m[0]);
+            } else {
+              w_m00 = 2./d_m00/(d_m00+d_p00);
+              w_p00 = 2./d_p00/(d_m00+d_p00);
+            }
+
+            if (!is_interface_m00)
+            {
+              if (d_m00_m0 == 0) w_m00_mm = w_m00;
+              else               w_m00_pm = w_m00;
+            }
+          }
+
+          if (is_interface_0m0)
+          {
+            bool enough_neighbors = false;
+            if (!is_interface_0p0)
+            {
+              p4est_locidx_t n_nei = (d_0p0_m0 == 0 ? node_0p0_mm : node_0p0_pm);
+              const quad_neighbor_nodes_of_node_t qnnn_nei = node_neighbors_->get_neighbors(n_nei);
+
+              node_0P0 = (qnnn_nei.d_0p0_m0 == 0 ? qnnn_nei.node_0p0_mm : qnnn_nei.node_0p0_pm);
+
+              enough_neighbors = phi_p[node_0P0] < -EPS;
+            }
+
+            if (enough_neighbors)
+            {
+              double d = d_0m0/dxyz_m[1];
+              w_0m0 = ( 3. - 2.5*d + 0.50*pow(d,2.))/SQR(dxyz_m[1]);
+              w_0p0 = (-2. + 6.0*d - 2.00*pow(d,2.) - 1.5*pow(d,3.) + 0.50*pow(d,4.))/SQR(dxyz_m[1]);
+              w_0P0 = ( 1. - 1.5*d - 0.25*pow(d,2.) + 1.0*pow(d,3.) - 0.25*pow(d,4.))/SQR(dxyz_m[1]);
+            } else {
+              w_0m0 = 2./d_0m0/(d_0m0+d_0p0);
+              w_0p0 = 2./d_0p0/(d_0m0+d_0p0);
+            }
+
+            if (!is_interface_0p0)
+            {
+              if (d_0p0_m0 == 0) w_0p0_mm = w_0p0;
+              else               w_0p0_pm = w_0p0;
+            }
+          }
+
+          if (is_interface_0p0)
+          {
+            bool enough_neighbors = false;
+            if (!is_interface_0m0)
+            {
+              p4est_locidx_t n_nei = (d_0m0_m0 == 0 ? node_0m0_mm : node_0m0_pm);
+              const quad_neighbor_nodes_of_node_t qnnn_nei = node_neighbors_->get_neighbors(n_nei);
+
+              node_0M0 = (qnnn_nei.d_0m0_m0 == 0 ? qnnn_nei.node_0m0_mm : qnnn_nei.node_0m0_pm);
+
+              enough_neighbors = phi_p[node_0M0] < -EPS;
+            }
+
+            if (enough_neighbors)
+            {
+              double d = d_0p0/dxyz_m[1];
+              w_0p0 = ( 3. - 2.5*d + 0.50*pow(d,2.))/SQR(dxyz_m[1]);
+              w_0m0 = (-2. + 6.0*d - 2.00*pow(d,2.) - 1.5*pow(d,3.) + 0.50*pow(d,4.))/SQR(dxyz_m[1]);
+              w_0M0 = ( 1. - 1.5*d - 0.25*pow(d,2.) + 1.0*pow(d,3.) - 0.25*pow(d,4.))/SQR(dxyz_m[1]);
+            } else {
+              w_0m0 = 2./d_0m0/(d_0m0+d_0p0);
+              w_0p0 = 2./d_0p0/(d_0m0+d_0p0);
+            }
+
+            if (!is_interface_0m0)
+            {
+              if (d_0m0_m0 == 0) w_0m0_mm = w_0m0;
+              else               w_0m0_pm = w_0m0;
+            }
+          }
+        }
+        else {
 
 #ifdef P4_TO_P8
           //------------------------------------
@@ -1527,6 +1700,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         double w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p);
 #else
         double w_000  = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 );
+        if (use_quadratic_continuous_stencil_)
+          w_000 -= w_M00 + w_P00 + w_0M0 + w_0P0;
 #endif
         if (num_interfaces == 3 && 0)
           w_000 = - 1.;
@@ -1595,6 +1770,11 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           if (ABS(w_00p_pp) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_00p_pp], w_00p_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
         }
 #endif
+        if (node_M00 != -1 && ABS(w_M00) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_M00], w_M00/w_000, ADD_VALUES); CHKERRXX(ierr);}
+        if (node_P00 != -1 && ABS(w_P00) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_P00], w_P00/w_000, ADD_VALUES); CHKERRXX(ierr);}
+        if (node_0M0 != -1 && ABS(w_0M0) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0M0], w_0M0/w_000, ADD_VALUES); CHKERRXX(ierr);}
+        if (node_0P0 != -1 && ABS(w_0P0) > EPS) {ierr = MatSetValue(A, node_000_g, petsc_gloidx[node_0P0], w_0P0/w_000, ADD_VALUES); CHKERRXX(ierr);}
+
         scalling[n] = w_000;
 
         if(add_p[n] > 0) matrix_has_nullspace = false;
@@ -2357,6 +2537,16 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         double w_00p = 0;
 #endif
 
+        double w_M00 = 0;
+        double w_P00 = 0;
+        double w_0M0 = 0;
+        double w_0P0 = 0;
+
+        p4est_locidx_t node_M00 = -1;
+        p4est_locidx_t node_P00 = -1;
+        p4est_locidx_t node_0M0 = -1;
+        p4est_locidx_t node_0P0 = -1;
+
         // count number of crossings
         char num_interfaces = 0;
 
@@ -2448,6 +2638,108 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
             w_0p0 = mu_*(1. + (dy_max - d_0p0)/dy_max  - SQR(dy_max - d_0m0)/d_0p0/dy_max)/SQR(dy_max);
 
           }
+        }
+          else if (is_interface_any && use_quadratic_continuous_stencil_)
+          {
+            if (is_interface_m00)
+            {
+              bool enough_neighbors = false;
+              if (!is_interface_p00)
+              {
+                p4est_locidx_t n_nei = (qnnn.d_p00_m0 == 0 ? qnnn.node_p00_mm : qnnn.node_p00_pm);
+                const quad_neighbor_nodes_of_node_t qnnn_nei = node_neighbors_->get_neighbors(n_nei);
+
+                node_P00 = (qnnn_nei.d_p00_m0 == 0 ? qnnn_nei.node_p00_mm : qnnn_nei.node_p00_pm);
+
+                enough_neighbors = phi_p[node_P00] < -EPS;
+              }
+
+              if (enough_neighbors)
+              {
+                double d = d_m00/dxyz_m[0];
+                w_m00 = ( 3. - 2.5*d + 0.50*pow(d,2.))/SQR(dxyz_m[0]);
+                w_p00 = (-2. + 6.0*d - 2.00*pow(d,2.) - 1.5*pow(d,3.) + 0.50*pow(d,4.))/SQR(dxyz_m[0]);
+                w_P00 = ( 1. - 1.5*d - 0.25*pow(d,2.) + 1.0*pow(d,3.) - 0.25*pow(d,4.))/SQR(dxyz_m[0]);
+              } else {
+                w_m00 = 2./d_m00/(d_m00+d_p00);
+                w_p00 = 2./d_p00/(d_m00+d_p00);
+              }
+            }
+
+            if (is_interface_p00)
+            {
+              bool enough_neighbors = false;
+              if (!is_interface_m00)
+              {
+                p4est_locidx_t n_nei = (qnnn.d_m00_m0 == 0 ? qnnn.node_m00_mm : qnnn.node_m00_pm);
+                const quad_neighbor_nodes_of_node_t qnnn_nei = node_neighbors_->get_neighbors(n_nei);
+
+                node_M00 = (qnnn_nei.d_m00_m0 == 0 ? qnnn_nei.node_m00_mm : qnnn_nei.node_m00_pm);
+
+                enough_neighbors = phi_p[node_M00] < -EPS;
+              }
+
+              if (enough_neighbors)
+              {
+                double d = d_p00/dxyz_m[0];
+                w_p00 = ( 3. - 2.5*d + 0.50*pow(d,2.))/SQR(dxyz_m[0]);
+                w_m00 = (-2. + 6.0*d - 2.00*pow(d,2.) - 1.5*pow(d,3.) + 0.50*pow(d,4.))/SQR(dxyz_m[0]);
+                w_M00 = ( 1. - 1.5*d - 0.25*pow(d,2.) + 1.0*pow(d,3.) - 0.25*pow(d,4.))/SQR(dxyz_m[0]);
+              } else {
+                w_m00 = 2./d_m00/(d_m00+d_p00);
+                w_p00 = 2./d_p00/(d_m00+d_p00);
+              }
+            }
+
+            if (is_interface_0m0)
+            {
+              bool enough_neighbors = false;
+              if (!is_interface_0p0)
+              {
+                p4est_locidx_t n_nei = (qnnn.d_0p0_m0 == 0 ? qnnn.node_0p0_mm : qnnn.node_0p0_pm);
+                const quad_neighbor_nodes_of_node_t qnnn_nei = node_neighbors_->get_neighbors(n_nei);
+
+                node_0P0 = (qnnn_nei.d_0p0_m0 == 0 ? qnnn_nei.node_0p0_mm : qnnn_nei.node_0p0_pm);
+
+                enough_neighbors = phi_p[node_0P0] < -EPS;
+              }
+
+              if (enough_neighbors)
+              {
+                double d = d_0m0/dxyz_m[1];
+                w_0m0 = ( 3. - 2.5*d + 0.50*pow(d,2.))/SQR(dxyz_m[1]);
+                w_0p0 = (-2. + 6.0*d - 2.00*pow(d,2.) - 1.5*pow(d,3.) + 0.50*pow(d,4.))/SQR(dxyz_m[1]);
+                w_0P0 = ( 1. - 1.5*d - 0.25*pow(d,2.) + 1.0*pow(d,3.) - 0.25*pow(d,4.))/SQR(dxyz_m[1]);
+              } else {
+                w_0m0 = 2./d_0m0/(d_0m0+d_0p0);
+                w_0p0 = 2./d_0p0/(d_0m0+d_0p0);
+              }
+            }
+
+            if (is_interface_0p0)
+            {
+              bool enough_neighbors = false;
+              if (!is_interface_0m0)
+              {
+                p4est_locidx_t n_nei = (qnnn.d_0m0_m0 == 0 ? qnnn.node_0m0_mm : qnnn.node_0m0_pm);
+                const quad_neighbor_nodes_of_node_t qnnn_nei = node_neighbors_->get_neighbors(n_nei);
+
+                node_0M0 = (qnnn_nei.d_0m0_m0 == 0 ? qnnn_nei.node_0m0_mm : qnnn_nei.node_0m0_pm);
+
+                enough_neighbors = phi_p[node_0M0] < -EPS;
+              }
+
+              if (enough_neighbors)
+              {
+                double d = d_0p0/dxyz_m[1];
+                w_0p0 = ( 3. - 2.5*d + 0.50*pow(d,2.))/SQR(dxyz_m[1]);
+                w_0m0 = (-2. + 6.0*d - 2.00*pow(d,2.) - 1.5*pow(d,3.) + 0.50*pow(d,4.))/SQR(dxyz_m[1]);
+                w_0M0 = ( 1. - 1.5*d - 0.25*pow(d,2.) + 1.0*pow(d,3.) - 0.25*pow(d,4.))/SQR(dxyz_m[1]);
+              } else {
+                w_0m0 = 2./d_0m0/(d_0m0+d_0p0);
+                w_0p0 = 2./d_0p0/(d_0m0+d_0p0);
+              }
+            }
 
         } else {
 
@@ -2561,6 +2853,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         double w_000 = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 + w_00m + w_00p );
 #else
         double w_000 = add_p[n] - ( w_m00 + w_p00 + w_0m0 + w_0p0 );
+        if (use_quadratic_continuous_stencil_)
+          w_000 -= w_M00 + w_P00 + w_0M0 + w_0P0;
 #endif
         if (num_interfaces == 3 && 0)
           w_000 = - 1.;

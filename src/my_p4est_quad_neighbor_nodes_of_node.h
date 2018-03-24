@@ -227,6 +227,15 @@ struct quad_neighbor_nodes_of_node_t {
     fprintf(pFile,"d_m00 : %f\nd_p00 : %f\nd_0m0 : %f\nd_0p0 : %f\n",d_m00,d_p00,d_0m0,d_0p0);
 #endif
   }
+
+  p4est_locidx_t neighbor_m00();
+  p4est_locidx_t neighbor_p00();
+  p4est_locidx_t neighbor_0m0();
+  p4est_locidx_t neighbor_0p0();
+#ifdef P4_TO_P8
+  p4est_locidx_t neighbor_00m();
+  p4est_locidx_t neighbor_00p();
+#endif
 };
 
 #endif /* !MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H */

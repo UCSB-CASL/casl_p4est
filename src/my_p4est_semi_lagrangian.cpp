@@ -347,6 +347,12 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
                                                       Vec phi_n, Vec *phi_xx_n,
                                                       double *phi_np1)
 {
+//  interpolation_method v_interpolation   = quadratic_non_oscillatory_continuous_v1;
+//  interpolation_method phi_interpolation = quadratic_non_oscillatory_continuous_v1;
+
+  interpolation_method v_interpolation   = quadratic_non_oscillatory_continuous_v2;
+  interpolation_method phi_interpolation = quadratic_non_oscillatory_continuous_v2;
+
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_advect_from_n_to_np1_2nd_order, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -369,9 +375,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     v_tmp_n[dir].resize(nodes->indep_nodes.elem_count);
 
 #ifdef P4_TO_P8
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], quadratic);
+    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], v_interpolation);
 #else
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], quadratic);
+    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], v_interpolation);
 #endif
     interp_n.interpolate(v_tmp_n[dir].data());
   }
@@ -407,17 +413,17 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     v_tmp_nm1[dir].resize(nodes->indep_nodes.elem_count);
 
 #ifdef P4_TO_P8
-    interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], vxx_nm1[dir][2], quadratic);
+    interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], vxx_nm1[dir][2], v_interpolation);
 #else
-    interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], quadratic);
+    interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], v_interpolation);
 #endif
     interp_nm1.interpolate(v_tmp_nm1[dir].data());
 
 
 #ifdef P4_TO_P8
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], quadratic);
+    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], v_interpolation);
 #else
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], quadratic);
+    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], v_interpolation);
 #endif
     interp_n.interpolate(v_tmp_n[dir].data());
   }
@@ -448,16 +454,16 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     {
       if      (is_periodic(p4est,dir) && xyz_d[dir]<xyz_min[dir]) xyz_d[dir] += xyz_max[dir]-xyz_min[dir];
       else if (is_periodic(p4est,dir) && xyz_d[dir]>xyz_max[dir]) xyz_d[dir] -= xyz_max[dir]-xyz_min[dir];
-      else                                               xyz_d[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_d[dir]));
+      else                                                        xyz_d[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_d[dir]));
     }
 
     interp_n.add_point(n, xyz_d);
   }
 
 #ifdef P4_TO_P8
-  interp_n.set_input(phi_n, phi_xx_n[0], phi_xx_n[1], phi_xx_n[2], quadratic_non_oscillatory);
+  interp_n.set_input(phi_n, phi_xx_n[0], phi_xx_n[1], phi_xx_n[2], phi_interpolation);
 #else
-  interp_n.set_input(phi_n, phi_xx_n[0], phi_xx_n[1], quadratic_non_oscillatory);
+  interp_n.set_input(phi_n, phi_xx_n[0], phi_xx_n[1], phi_interpolation);
 #endif
   interp_n.interpolate(phi_np1);
 
@@ -757,6 +763,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
 
       // reset nodes, ghost, and phi
       p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      my_p4est_ghost_expand(p4est, ghost);
       p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
       ierr = VecDestroy(phi_np1); CHKERRXX(ierr);

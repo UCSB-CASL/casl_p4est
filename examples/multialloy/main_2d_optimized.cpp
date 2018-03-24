@@ -60,7 +60,7 @@ double cfl_number = 0.1;
 double phi_thresh = 1e-3;
 double zero_negative_velocity = true;
 int max_iterations = 100;
-int pin_every_n_steps = 100;
+int pin_every_n_steps = 1000;
 
 
 double lip = 2;
@@ -90,13 +90,13 @@ double scaling = 1/box_size;
 double xmin = 0;
 double ymin = 0;
 double xmax = 1;
-double ymax = 1;
+double ymax = 2;
 #ifdef P4_TO_P8
 double zmin = 0;
 double zmax = 1;
-int n_xyz[] = {1, 1, 1};
+int n_xyz[] = {1, 2, 1};
 #else
-int n_xyz[] = {1, 1};
+int n_xyz[] = {1, 2};
 #endif
 
 double rho;                  /* density                                    - kg.cm-3      */
@@ -187,7 +187,7 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 10000;         /* K.cm-1      */
+      G              = 100;         /* K.cm-1      */
       V              = 0.05;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
@@ -206,7 +206,8 @@ void set_alloy_parameters()
       c01 = 0.094;
       kp1 = 0.848;
 
-      box_size = 1.0e-2;
+      box_size = 1.0e-1;
+
       break;
 
     case 3:
@@ -656,6 +657,7 @@ int main (int argc, char* argv[])
   my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
   p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est, ghost);
   p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
 
   my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est,ghost, &brick);
@@ -857,6 +859,7 @@ int main (int argc, char* argv[])
     }
 
     bas.update_grid();
+//    bas.update_grid_eno();
     bas.compute_dt();
     iteration++;
   }

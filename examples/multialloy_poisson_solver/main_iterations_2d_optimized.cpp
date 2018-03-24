@@ -47,7 +47,7 @@
 #undef MIN
 #undef MAX
 int lmin = 5;
-int lmax = 7;
+int lmax = 5;
 int nb_splits = 4;
 
 double lip = 1.5;
@@ -910,7 +910,7 @@ int main (int argc, char* argv[])
     my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
     ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-//    my_p4est_ghost_expand(p4est, ghost);
+    my_p4est_ghost_expand(p4est, ghost);
     nodes = my_p4est_nodes_new(p4est, ghost);
 
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
@@ -1225,9 +1225,9 @@ int main (int argc, char* argv[])
 
     int pin_every_n_steps = 3;
     double bc_tolerance = 1.e-9;
-    int max_iterations = 100;
+    int max_iterations = 1000;
 
-    solver_all_in_one.set_phi(phi, phi_dd, normal, kappa, theta);
+    solver_all_in_one.set_phi(phi, phi_dd, normal, kappa, theta, NULL);
     solver_all_in_one.set_parameters(dt, lambda, thermal_conductivity, latent_heat, Tm, Dl[0], kp[0], ml[0], Dl[1], kp[1], ml[1]);
     solver_all_in_one.set_bc(bc_t, bc_c0, bc_c1);
     solver_all_in_one.set_GT(gibbs_thompson);

@@ -609,7 +609,7 @@ void my_p4est_multialloy_t::compute_velocity()
     v_gamma_p[2][n] = -qnnn.dz_central(c0_np1_p)*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
 #endif
 
-    vn_p[n] = -(v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
+    vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
 
 //    if (vn_p[n] < 0)
 //    {
@@ -636,7 +636,7 @@ void my_p4est_multialloy_t::compute_velocity()
     v_gamma_p[2][n] = -qnnn.dz_central(c0_np1_p)*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
 #endif
 
-    vn_p[n] = -(v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
+    vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
 
 //    if (vn_p[n] < 0)
 //    {
@@ -671,6 +671,7 @@ void my_p4est_multialloy_t::compute_velocity()
     ierr = VecDuplicate(phi_dd_[dir], &v_interface_np1_[dir]); CHKERRXX(ierr);
 
     ls.extend_from_interface_to_whole_domain_TVD(phi_, v_gamma[dir], v_interface_np1_[dir]);
+//    ls.extend_from_interface_to_whole_domain_TVD(phi_, phi_smooth_, v_gamma[dir], v_interface_np1_[dir]);
     ierr = VecDestroy(v_gamma[dir]); CHKERRXX(ierr);
   }
 
@@ -678,6 +679,7 @@ void my_p4est_multialloy_t::compute_velocity()
   ierr = VecDuplicate(phi_, &normal_velocity_np1_); CHKERRXX(ierr);
 
   ls.extend_from_interface_to_whole_domain_TVD(phi_, vn, normal_velocity_np1_);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi_, phi_smooth_, vn, normal_velocity_np1_);
   ierr = VecDestroy(vn); CHKERRXX(ierr);
 }
 
@@ -757,6 +759,298 @@ void my_p4est_multialloy_t::compute_dt()
 
 
 
+void my_p4est_multialloy_t::update_grid_eno()
+{
+  PetscPrintf(p4est_->mpicomm, "Updating grid... ");
+
+  p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
+  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_np1, ghost_np1);
+  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+  Vec phi_nm1;
+  ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_nm1); CHKERRXX(ierr);
+
+  copy_ghosted_vec(phi_, phi_nm1); CHKERRXX(ierr);
+
+  Vec tm_old; ierr = VecDuplicate(phi_, &tm_old); CHKERRXX(ierr);
+  Vec tp_old; ierr = VecDuplicate(phi_, &tp_old); CHKERRXX(ierr);
+
+//  double *phi_p;
+//  ierr = VecGetArray(phi_, &phi_p); CHKERRXX(ierr);
+
+  double *t_p, *tm_p, *tp_p;
+  ierr = VecGetArray(t_np1_, &t_p); CHKERRXX(ierr);
+  ierr = VecGetArray(tm_old, &tm_p); CHKERRXX(ierr);
+  ierr = VecGetArray(tp_old, &tp_p); CHKERRXX(ierr);
+
+  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  {
+    tm_p[n] = t_p[n];
+    tp_p[n] = t_p[n];
+  }
+
+  ierr = VecRestoreArray(t_np1_, &t_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(tm_old, &tm_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(tp_old, &tp_p); CHKERRXX(ierr);
+
+  my_p4est_level_set_t ls(ngbd_);
+
+  ls.extend_Over_Interface_TVD(phi_, tm_old);
+
+  invert_phi();
+  ls.extend_Over_Interface_TVD(phi_, tp_old);
+  invert_phi();
+
+//  Vec c0_interface;  ierr = VecDuplicate(phi_, &c0_interface);  CHKERRXX(ierr);
+//  Vec c0n_interface; ierr = VecDuplicate(phi_, &c0n_interface); CHKERRXX(ierr);
+
+//  ls.extend_from_interface_to_whole_domain_TVD(phi_, c0_np1_, c0_interface);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi_, c0n_n_, c0n_interface);
+
+  my_p4est_interpolation_nodes_t interp(ngbd_);
+
+  {
+
+    double dt_tmp = ls.advect_in_normal_direction(normal_velocity_np1_, phi_, dt_n_);
+
+    if (dt_n_ > dt_tmp) throw;
+
+    /* save the old splitting criteria information */
+    splitting_criteria_t* sp_old = (splitting_criteria_t*)ngbd_->p4est->user_pointer;
+
+    Vec phi_np1;
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+
+    bool is_grid_changing = true;
+
+    int counter = 0;
+    while (is_grid_changing)
+    {
+      double xyz[P4EST_DIM];
+      for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+      {
+        node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+        interp.add_point(n, xyz);
+      }
+
+      interp.set_input(phi_, interpolation_between_grids_);
+      interp.interpolate(phi_np1);
+
+      double* phi_np1_p;
+      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+      is_grid_changing = sp.refine_and_coarsen(p4est_np1, nodes_np1, phi_np1_p);
+
+      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      if (is_grid_changing)
+      {
+        my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+
+        // reset nodes, ghost, and phi
+        p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+        my_p4est_ghost_expand(p4est_np1, ghost_np1);
+        p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+        ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+        interp.clear();
+      }
+
+      counter++;
+    }
+
+    p4est_np1->user_pointer = (void*) sp_old;
+
+    ierr = VecDestroy(phi_); CHKERRXX(ierr);
+    phi_ = phi_np1;
+  }
+
+  /* interpolate the quantities on the new grid */
+
+//  double xyz[P4EST_DIM];
+//  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+//  {
+//    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+//    interp.add_point(n, xyz);
+//  }
+
+  /* temperature */
+
+  Vec phi_tmp;
+  ierr = VecDuplicate(phi_, &phi_tmp); CHKERRXX(ierr);
+
+  interp.set_input(phi_nm1, interpolation_between_grids_);
+  interp.interpolate(phi_tmp);
+
+  Vec tm_tmp; ierr = VecDuplicate(phi_, &tm_tmp); CHKERRXX(ierr);
+  interp.set_input(tm_old, interpolation_between_grids_);
+  interp.interpolate(tm_tmp);
+
+  Vec tp_tmp; ierr = VecDuplicate(phi_, &tp_tmp); CHKERRXX(ierr);
+  interp.set_input(tp_old, interpolation_between_grids_);
+  interp.interpolate(tp_tmp);
+
+  ierr = VecDestroy(t_n_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &t_n_); CHKERRXX(ierr);
+
+  ierr = VecGetArray(t_n_, &t_p); CHKERRXX(ierr);
+  ierr = VecGetArray(tm_tmp, &tm_p); CHKERRXX(ierr);
+  ierr = VecGetArray(tp_tmp, &tp_p); CHKERRXX(ierr);
+
+  double *phi_tmp_p;
+  ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+
+  for(size_t n = 0; n < nodes_np1->indep_nodes.elem_count; ++n)
+  {
+    if (phi_tmp_p[n] < 0.)  t_p[n] = tm_p[n];
+    else                    t_p[n] = tp_p[n];
+  }
+
+  ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(t_n_, &t_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(tm_tmp, &tm_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(tp_tmp, &tp_p); CHKERRXX(ierr);
+
+  ierr = VecDestroy(tm_tmp); CHKERRXX(ierr);
+  ierr = VecDestroy(tp_tmp); CHKERRXX(ierr);
+  ierr = VecDestroy(tm_old); CHKERRXX(ierr);
+  ierr = VecDestroy(tp_old); CHKERRXX(ierr);
+  ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
+  ierr = VecDestroy(phi_nm1); CHKERRXX(ierr);
+
+//  ierr = VecDestroy(t_n_); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi_, &t_n_); CHKERRXX(ierr);
+//  interp.set_input(t_np1_, interpolation_between_grids_);
+//  interp.interpolate(t_n_);
+
+
+  ierr = VecDestroy(t_np1_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &t_np1_); CHKERRXX(ierr);
+  copy_ghosted_vec(t_n_, t_np1_);
+
+
+  /* concentrartions */
+
+  ierr = VecDestroy(c0_n_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &c0_n_); CHKERRXX(ierr);
+  interp.set_input(c0_np1_, interpolation_between_grids_);
+  interp.interpolate(c0_n_);
+
+  ierr = VecDestroy(c0_np1_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &c0_np1_); CHKERRXX(ierr);
+//  interp.set_input(c0_interface, interpolation_between_grids_);
+//  interp.interpolate(c0_np1_);
+  copy_ghosted_vec(c0_n_, c0_np1_);
+
+//  ierr = VecDestroy(c0n_n_); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi_, &c0n_n_); CHKERRXX(ierr);
+//  interp.set_input(c0n_interface, interpolation_between_grids_);
+//  interp.interpolate(c0n_n_);
+
+//  ierr = VecDestroy(c0_interface); CHKERRXX(ierr);
+//  ierr = VecDestroy(c0n_interface); CHKERRXX(ierr);
+
+  ierr = VecDestroy(c1_n_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &c1_n_); CHKERRXX(ierr);
+  interp.set_input(c1_np1_, interpolation_between_grids_);
+  interp.interpolate(c1_n_);
+
+  ierr = VecDestroy(c1_np1_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &c1_np1_); CHKERRXX(ierr);
+  copy_ghosted_vec(c1_n_, c1_np1_);
+
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecDestroy(v_interface_n_[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_, &v_interface_n_[dir]); CHKERRXX(ierr);
+    interp.set_input(v_interface_np1_[dir], interpolation_between_grids_);
+    interp.interpolate(v_interface_n_[dir]);
+    ierr = VecDestroy(v_interface_np1_[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_, &v_interface_np1_[dir]); CHKERRXX(ierr);
+  }
+
+  ierr = VecDestroy(normal_velocity_n_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &normal_velocity_n_); CHKERRXX(ierr);
+  interp.set_input(normal_velocity_np1_, interpolation_between_grids_);
+  interp.interpolate(normal_velocity_n_);
+
+  ierr = VecDestroy(normal_velocity_np1_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &normal_velocity_np1_); CHKERRXX(ierr);
+  copy_ghosted_vec(normal_velocity_n_, normal_velocity_np1_);
+
+  Vec kappa_n;
+  ierr = VecDuplicate(phi_, &kappa_n); CHKERRXX(ierr);
+  interp.set_input(kappa_, quadratic_non_oscillatory_continuous_v1);
+  interp.interpolate(kappa_n);
+  ierr = VecDestroy(kappa_); CHKERRXX(ierr);
+  kappa_ = kappa_n;
+
+  p4est_destroy(p4est_);       p4est_ = p4est_np1;
+  p4est_ghost_destroy(ghost_); ghost_ = ghost_np1;
+  p4est_nodes_destroy(nodes_); nodes_ = nodes_np1;
+  hierarchy_->update(p4est_, ghost_);
+  ngbd_->update(hierarchy_, nodes_);
+
+  /* help interface to not get stuck at grid nodes */
+  double kappa_thresh = 0.1/dxyz_min_;
+  double *phi_p, *normal_velocity_np1_p, *kappa_p;
+
+  ierr = VecGetArray(phi_, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(kappa_, &kappa_p); CHKERRXX(ierr);
+
+  for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n)
+  {
+    if (fabs(phi_p[n]) < phi_thresh_ && fabs(kappa_p[n]) > kappa_thresh)
+    {
+      phi_p[n] *= -1.;
+      std::cout << "Happened!\n";
+    }
+  }
+
+  ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(kappa_, &kappa_p); CHKERRXX(ierr);
+
+//  double *phi_p, *normal_velocity_np1_p, *kappa_p;
+
+//  ierr = VecGetArray(phi_, &phi_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(kappa_, &kappa_p); CHKERRXX(ierr);
+
+//  for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n)
+//  {
+//    if (fabs(phi_p[n]) < phi_thresh_ && fabs(kappa_p[n]) > kappa_thresh)
+//    {
+//      if (normal_velocity_np1_p[n] > 0. && phi_p[n] > 0 ||
+//          normal_velocity_np1_p[n] < 0. && phi_p[n] < 0)
+//      {
+//        phi_p[n] *= -1.;
+//        std::cout << "Happened!\n";
+//      }
+//    }
+////    if (phi_p[n] > 0. && phi_p[n] < fraction*dxyz_min)
+////      phi_p[n] *= -1;
+//  }
+
+  ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(kappa_, &kappa_p); CHKERRXX(ierr);
+
+  /* reinitialize and perturb phi */
+  my_p4est_level_set_t ls_new(ngbd_);
+  ls_new.reinitialize_1st_order_time_2nd_order_space(phi_);
+//  ls_new.reinitialize_2nd_order(phi_);
+//  ls_new.perturb_level_set_function(phi_, EPS);
+
+  compute_normal_and_curvature();
+
+  compute_smoothed_phi();
+
+  PetscPrintf(p4est_->mpicomm, "Done \n");
+}
 
 void my_p4est_multialloy_t::update_grid()
 {
@@ -764,6 +1058,7 @@ void my_p4est_multialloy_t::update_grid()
 
   p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_np1, ghost_np1);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   Vec phi_nm1;
@@ -996,7 +1291,7 @@ void my_p4est_multialloy_t::update_grid()
 
   compute_normal_and_curvature();
 
-//  compute_smoothed_phi();
+  compute_smoothed_phi();
 
   PetscPrintf(p4est_->mpicomm, "Done \n");
 }

@@ -668,3 +668,53 @@ void quad_neighbor_nodes_of_node_t::ngbd_with_quadratic_interpolation( const dou
 
     ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_ngbd_with_quad_interp, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_m00() const{
+  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
+  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
+  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
+  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  else return -1;
+//  else throw std::invalid_argument("No neighbor in m00 direction \n");
+}
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_p00() const{
+  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
+  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
+  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
+  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  else return -1;
+//  else throw std::invalid_argument("No neighbor in m00 direction \n");
+}
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_0m0() const{
+  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
+  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
+  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
+  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  else return -1;
+//  else throw std::invalid_argument("No neighbor in m00 direction \n");
+}
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_0p0() const{
+  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
+  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
+  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
+  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  else return -1;
+//  else throw std::invalid_argument("No neighbor in m00 direction \n");
+}
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_00m() const{
+  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
+  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
+  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
+  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  else return -1;
+//  else throw std::invalid_argument("No neighbor in m00 direction \n");
+}
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_00p() const{
+  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
+  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
+  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
+  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  else return -1;
+//  else throw std::invalid_argument("No neighbor in m00 direction \n");
+}
+

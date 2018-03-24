@@ -324,6 +324,7 @@ public:
 
   void compute_dt();
   void update_grid();
+  void update_grid_eno();
   void one_step();
   void save_VTK(int iter);
 
