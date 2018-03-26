@@ -1205,6 +1205,7 @@ class mpi_environment_t{
 public:
   ~mpi_environment_t(){
     ierr = PetscFinalize(); CHKERRXX(ierr);
+    sc_finalize();
     MPI_Finalize();
   }
 
