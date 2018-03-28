@@ -50,6 +50,15 @@ int lmin = 5;
 int lmax = 5;
 int nb_splits = 4;
 
+bool use_continuous_stencil = false;
+bool use_one_sided_derivatives = false;
+bool use_points_on_interface = true;
+bool update_c0_robin = true;
+
+int pin_every_n_steps = 3;
+double bc_tolerance = 1.e-9;
+int max_iterations = 1000;
+
 double lip = 1.5;
 
 using namespace std;
@@ -910,7 +919,8 @@ int main (int argc, char* argv[])
     my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
     ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-    my_p4est_ghost_expand(p4est, ghost);
+    if (use_one_sided_derivatives || use_continuous_stencil)
+      my_p4est_ghost_expand(p4est, ghost);
     nodes = my_p4est_nodes_new(p4est, ghost);
 
     my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
@@ -1223,11 +1233,7 @@ int main (int argc, char* argv[])
 
     my_p4est_poisson_nodes_multialloy_t solver_all_in_one(&ngbd_n);
 
-    int pin_every_n_steps = 3;
-    double bc_tolerance = 1.e-9;
-    int max_iterations = 1000;
-
-    solver_all_in_one.set_phi(phi, phi_dd, normal, kappa, theta, NULL);
+    solver_all_in_one.set_phi(phi, phi_dd, normal, kappa, theta);
     solver_all_in_one.set_parameters(dt, lambda, thermal_conductivity, latent_heat, Tm, Dl[0], kp[0], ml[0], Dl[1], kp[1], ml[1]);
     solver_all_in_one.set_bc(bc_t, bc_c0, bc_c1);
     solver_all_in_one.set_GT(gibbs_thompson);
@@ -1235,6 +1241,11 @@ int main (int argc, char* argv[])
     solver_all_in_one.set_pin_every_n_steps(pin_every_n_steps);
     solver_all_in_one.set_tolerance(bc_tolerance, max_iterations);
     solver_all_in_one.set_rhs(rhs_tm, rhs_tp, rhs_c0, rhs_c1);
+
+    solver_all_in_one.set_use_continuous_stencil(use_continuous_stencil);
+    solver_all_in_one.set_use_one_sided_derivatives(use_one_sided_derivatives);
+    solver_all_in_one.set_use_points_on_interface(use_points_on_interface);
+    solver_all_in_one.set_update_c0_robin(update_c0_robin);
 
     solver_all_in_one.set_jump_t(jump_t_cf);
     solver_all_in_one.set_flux_c(c0_interface_val_cf, c1_interface_val_cf);
@@ -1261,7 +1272,7 @@ int main (int argc, char* argv[])
 
     double bc_error_max = 0;
 //    solver_all_in_one.solve(sol_t, sol_t_dd, sol_c0, sol_c0_dd, sol_c1, sol_c1_dd, bc_error_max, bc_error);
-    solver_all_in_one.solve(sol_t, sol_c0, sol_c1, bc_error, bc_error_max);
+    solver_all_in_one.solve(sol_t, sol_c0, sol_c1, bc_error, bc_error_max, dt, 1.e10);
 
 
     /* check the error */

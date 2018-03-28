@@ -763,7 +763,6 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
 
       // reset nodes, ghost, and phi
       p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-      my_p4est_ghost_expand(p4est, ghost);
       p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
       ierr = VecDestroy(phi_np1); CHKERRXX(ierr);

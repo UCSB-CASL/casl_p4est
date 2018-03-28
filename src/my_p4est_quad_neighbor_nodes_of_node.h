@@ -228,13 +228,13 @@ struct quad_neighbor_nodes_of_node_t {
 #endif
   }
 
-  p4est_locidx_t neighbor_m00();
-  p4est_locidx_t neighbor_p00();
-  p4est_locidx_t neighbor_0m0();
-  p4est_locidx_t neighbor_0p0();
+  p4est_locidx_t neighbor_m00() const;
+  p4est_locidx_t neighbor_p00() const;
+  p4est_locidx_t neighbor_0m0() const;
+  p4est_locidx_t neighbor_0p0() const;
 #ifdef P4_TO_P8
-  p4est_locidx_t neighbor_00m();
-  p4est_locidx_t neighbor_00p();
+  p4est_locidx_t neighbor_00m() const;
+  p4est_locidx_t neighbor_00p() const;
 #endif
 };
 

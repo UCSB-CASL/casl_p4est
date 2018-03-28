@@ -26,8 +26,7 @@ class my_p4est_level_set_t {
   p4est_ghost_t *ghost;
   my_p4est_node_neighbors_t *ngbd;
 
-  bool use_second_derivatives_extend_from_interface;
-  bool use_second_derivatives;
+  interpolation_method interpolation_on_interface;
   bool use_one_sided_derivatives;
 
 #ifdef P4_TO_P8
@@ -58,8 +57,8 @@ class my_p4est_level_set_t {
 public:
   my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_ )
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
-      use_second_derivatives(true), use_second_derivatives_extend_from_interface(true),
-      use_one_sided_derivatives(true)
+      interpolation_on_interface(quadratic_non_oscillatory_continuous_v2),
+      use_one_sided_derivatives(false)
   {}
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {
@@ -69,6 +68,9 @@ public:
     nodes = ngbd->nodes;
     ghost = ngbd->ghost;
   }
+
+  inline void set_interpolation_on_interface(interpolation_method val) { interpolation_on_interface = val; }
+  inline void set_use_one_sided_derivaties(bool val) { use_one_sided_derivatives = val; }
 
   /* perturb the level set function by epsilon */
   void perturb_level_set_function( Vec phi_petsc, double epsilon );
@@ -133,7 +135,7 @@ public:
   /* extend a quantity over the interface with the TVD algorithm */
   void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL) const;
 
-  /* extend a quantity over the interface with the TVD algorithm using mask*/
+  /* extend a quantity over the interface with the TVD algorithm using mask */
   void extend_Over_Interface_TVD(Vec phi, Vec mask, Vec q, int iterations=20, int order=2) const;
 
   void extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_poisson_nodes_t *solver, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL) const;
@@ -163,9 +165,6 @@ public:
                                                                 ) const;
   void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20 , int order = 2);
 
-  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec phi_smooth, Vec q_interface, Vec q, int iterations=20 , int order = 2);
-
-  void set_use_second_derivatives(bool val) {use_second_derivatives = val;}
 };
 
 #endif // MY_P4EST_LEVELSET_H

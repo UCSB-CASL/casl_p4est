@@ -160,6 +160,13 @@ private:
   int max_iterations_;
   double phi_thresh_;
 
+  bool use_continuous_stencil_;
+  bool use_one_sided_derivatives_;
+  bool use_superconvergent_robin_;
+  bool use_superconvergent_jump_;
+  bool use_points_on_interface_;
+  bool update_c0_robin_;
+
   interpolation_method interpolation_between_grids_;
 
   class eps_c_cf_t : public CF_1
@@ -223,12 +230,19 @@ public:
     this->ml1_ = ml1;
   }
 
+  inline void set_use_continuous_stencil   (bool value) { use_continuous_stencil_    = value;}
+  inline void set_use_one_sided_derivatives(bool value) { use_one_sided_derivatives_ = value;}
+  inline void set_use_superconvergent_robin(bool value) { use_superconvergent_robin_ = value;}
+  inline void set_use_superconvergent_jump (bool value) { use_superconvergent_jump_  = value;}
+  inline void set_use_points_on_interface  (bool value) { use_points_on_interface_   = value;}
+  inline void set_update_c0_robin          (bool value) { update_c0_robin_           = value;}
+
   inline void set_phi(Vec phi)
   {
     this->phi_ = phi;
     compute_smoothed_phi();
     copy_ghosted_vec(phi_smooth_, phi_);
-    compute_normal_and_curvature();
+    compute_geometric_properties();
   }
 
 #ifdef P4_TO_P8
@@ -319,7 +333,7 @@ public:
   inline void set_max_iterations (int max_iterations) { max_iterations_ = max_iterations; }
   inline void set_phi_thresh (int phi_thresh) { phi_thresh_ = phi_thresh; }
 
-  void compute_normal_and_curvature();
+  void compute_geometric_properties();
   void compute_velocity();
 
   void compute_dt();
@@ -329,25 +343,6 @@ public:
   void save_VTK(int iter);
 
   void compute_smoothed_phi();
-
-  inline void copy_ghosted_vec(Vec input, Vec output)
-  {
-    Vec src, out;
-    ierr = VecGhostGetLocalForm(input, &src); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(output, &out); CHKERRXX(ierr);
-    ierr = VecCopy(src, out); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(input, &src); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
-  }
-
-  inline void invert_phi()
-  {
-    double *phi_p;
-    ierr = VecGetArray(phi_, &phi_p); CHKERRXX(ierr);
-    for (size_t n = 0; n < nodes_->indep_nodes.elem_count; ++n)
-      phi_p[n] *= -1.;
-    ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
-  }
 };
 
 

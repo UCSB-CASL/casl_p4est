@@ -1429,4 +1429,85 @@ public:
   }
 };
 
+void copy_ghosted_vec(Vec input, Vec output);
+
+void invert_phi(p4est_nodes_t *nodes, Vec phi);
+
+struct vec_and_ptr_t
+{
+  PetscErrorCode ierr;
+  Vec vec;
+  double *ptr;
+
+  vec_and_ptr_t() : vec(NULL), ptr(NULL) {}
+//  vec_and_ptr_t(p4est_t *p4est, p4est_nodes_t *nodes) : vec(NULL), ptr(NULL)
+//  {
+//    initialize(p4est, nodes);
+//  }
+//  vec_and_ptr_t(Vec template_vec) : vec(NULL), ptr(NULL)
+//  {
+//    initialize(template_vec);
+//  }
+//  ~vec_and_ptr_t()
+//  {
+//    finalize();
+//  }
+
+  inline void get_array()
+  {
+    ierr = VecGetArray(vec, &ptr); CHKERRXX(ierr);
+  }
+  inline void restore_array()
+  {
+    ierr = VecRestoreArray(vec, &ptr); CHKERRXX(ierr);
+  }
+
+//  inline void initialize(p4est_t *p4est, p4est_nodes_t *nodes)
+//  {
+//    finalize();
+//    ierr = VecCreateGhostNodes(p4est, nodes, &vec); CHKERRXX(ierr);
+//  }
+//  inline void initialize(Vec template_vec)
+//  {
+//    finalize();
+//    ierr = VecDuplicate(template_vec, &vec); CHKERRXX(ierr);
+//  }
+//  inline void finalize()
+//  {
+//    if (vec != NULL) { ierr = VecDestroy(vec); CHKERRXX(ierr); }
+//  }
+};
+
+
+struct vec_and_ptr_dim_t
+{
+  PetscErrorCode ierr;
+  Vec vec[P4EST_DIM];
+  double *ptr[P4EST_DIM];
+
+  vec_and_ptr_dim_t() {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vec[dim] = NULL; ptr[dim] = NULL;
+    }
+  }
+
+  inline void get_array()
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      ierr = VecGetArray(vec[dim], &ptr[dim]); CHKERRXX(ierr);
+    }
+  }
+  inline void restore_array()
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      ierr = VecRestoreArray(vec[dim], &ptr[dim]); CHKERRXX(ierr);
+    }
+  }
+};
+
+void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa);
+
 #endif // UTILS_H

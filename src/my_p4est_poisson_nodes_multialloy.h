@@ -27,53 +27,6 @@
 class my_p4est_poisson_nodes_multialloy_t
 {
   PetscErrorCode ierr;
-  struct vec_and_ptr_t
-  {
-    PetscErrorCode ierr;
-    Vec vec;
-    double *ptr;
-
-    vec_and_ptr_t() : vec(NULL), ptr(NULL) {}
-
-    inline void get_array()
-    {
-      ierr = VecGetArray(vec, &ptr); CHKERRXX(ierr);
-    }
-    inline void restore_array()
-    {
-      ierr = VecRestoreArray(vec, &ptr); CHKERRXX(ierr);
-    }
-  };
-
-
-  struct vec_and_ptr_dim_t
-  {
-    PetscErrorCode ierr;
-    Vec vec[P4EST_DIM];
-    double *ptr[P4EST_DIM];
-
-    vec_and_ptr_dim_t() {
-      for (short dim = 0; dim < P4EST_DIM; ++dim) {
-        vec[dim] = NULL; ptr[dim] = NULL;
-      }
-    }
-
-    inline void get_array()
-    {
-      for (short dim = 0; dim < P4EST_DIM; ++dim)
-      {
-        ierr = VecGetArray(vec[dim], &ptr[dim]); CHKERRXX(ierr);
-      }
-    }
-    inline void restore_array()
-    {
-      for (short dim = 0; dim < P4EST_DIM; ++dim)
-      {
-        ierr = VecRestoreArray(vec[dim], &ptr[dim]); CHKERRXX(ierr);
-      }
-    }
-  };
-
 
   class zero_cf_t : public CF_2
   {
@@ -117,8 +70,6 @@ class my_p4est_poisson_nodes_multialloy_t
     }
   } psi_c1_interface_value_;
 
-
-
   class vn_from_c0_t : public CF_2
   {
     my_p4est_poisson_nodes_multialloy_t *ptr_;
@@ -126,14 +77,14 @@ class my_p4est_poisson_nodes_multialloy_t
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double x, double y) const
     {
-//      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
+      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
 //      ptr_->interp_.set_input(ptr_->c0_.vec, linear);
-      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
+//      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
       double c0 = ptr_->interp_(x, y);
 
-//      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
+      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
 //      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
-      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
+//      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
       double c0n = ptr_->interp_(x, y);
 
       return ptr_->Dl0_/(1.-ptr_->kp0_)*(c0n - (*ptr_->c0_flux_)(x,y))/c0;
@@ -199,7 +150,6 @@ class my_p4est_poisson_nodes_multialloy_t
 //    return Dl0_/(1.-kp0_)*c0n/c0;
 //  }
 
-//  inline double tn_jump_
 
   my_p4est_interpolation_nodes_t interp_;
 
@@ -213,14 +163,12 @@ class my_p4est_poisson_nodes_multialloy_t
 
   // level-set function
   vec_and_ptr_t phi_;
-  vec_and_ptr_t phi_smooth_;
   vec_and_ptr_dim_t phi_dd_;
 
   vec_and_ptr_t theta_;
   vec_and_ptr_t kappa_;
 
   vec_and_ptr_dim_t normal_;
-//  vec_and_ptr_dim_t normal_dd_[P4EST_DIM];
 
   bool is_phi_dd_owned_;
   bool is_normal_owned_;
@@ -290,8 +238,6 @@ class my_p4est_poisson_nodes_multialloy_t
   // velocity related quatities
   vec_and_ptr_t c0n_;     vec_and_ptr_dim_t c0n_dd_;
   vec_and_ptr_t psi_c0n_; vec_and_ptr_dim_t psi_c0n_dd_;
-//  vec_and_ptr_t dc0_    [P4EST_DIM]; vec_and_ptr_dim_t dc0_dd_    [P4EST_DIM];
-//  vec_and_ptr_t psi_dc0_[P4EST_DIM]; vec_and_ptr_dim_t psi_dc0_dd_[P4EST_DIM];
 
   // rhs
   vec_and_ptr_t rhs_tl_;
@@ -299,24 +245,12 @@ class my_p4est_poisson_nodes_multialloy_t
   vec_and_ptr_t rhs_c0_;
   vec_and_ptr_t rhs_c1_;
 
-
-//  // pointers
-//  double *t_ptr_, *t_dd_ptr_[P4EST_DIM];
-//  double *c0_ptr_, *c0_dd_ptr_[P4EST_DIM];
-//  double *c1_ptr_, *c1_dd_ptr_[P4EST_DIM];
-
-//  double *psi_t_ptr_, *psi_t_dd_ptr_[P4EST_DIM];
-//  double *psi_c0_ptr_, *psi_c0_dd_ptr_[P4EST_DIM];
-//  double *psi_c1_ptr_, *psi_c1_dd_ptr_[P4EST_DIM];
-
-//  double *dc0_ptr_    [P4EST_DIM], *dc0_dd_ptr_    [P4EST_DIM][P4EST_DIM];
-//  double *psi_dc0_ptr_[P4EST_DIM], *psi_dc0_dd_ptr_[P4EST_DIM][P4EST_DIM];
-
-//  double *phi_ptr_;
-//  double *phi_dd_ptr_[P4EST_DIM];
-
-//  double *normal_ptr_[P4EST_DIM];
-//  double *normal_dd_ptr_[P4EST_DIM][P4EST_DIM];
+  bool use_continuous_stencil_;
+  bool use_one_sided_derivatives_;
+  bool use_superconvergent_robin_;
+  bool use_superconvergent_jump_;
+  bool update_c0_robin_;
+  bool use_points_on_interface_;
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_multialloy_t(const my_p4est_poisson_nodes_t& other);
@@ -326,7 +260,7 @@ public:
   my_p4est_poisson_nodes_multialloy_t(my_p4est_node_neighbors_t *node_neighbors);
   ~my_p4est_poisson_nodes_multialloy_t();
 
-  void set_phi(Vec phi, Vec* phi_dd, Vec* normal, Vec kappa, Vec theta, Vec phi_smooth);
+  void set_phi(Vec phi, Vec* phi_dd, Vec* normal, Vec kappa, Vec theta);
 
   inline void set_parameters(double dt,
                              double thermal_diffusivity, double thermal_conductivity, double latent_heat, double Tm,
@@ -353,12 +287,18 @@ public:
   inline void set_flux_c(CF_2& c0_flux, CF_2& c1_flux) { c0_flux_ = &c0_flux; c1_flux_ = &c1_flux; }
   inline void set_c0_guess(CF_2& c0_guess) { c0_guess_ = &c0_guess; }
 
+
+  inline void set_use_continuous_stencil   (bool value) { use_continuous_stencil_    = value;}
+  inline void set_use_one_sided_derivatives(bool value) { use_one_sided_derivatives_ = value;}
+  inline void set_use_superconvergent_robin(bool value) { use_superconvergent_robin_ = value;}
+  inline void set_use_superconvergent_jump (bool value) { use_superconvergent_jump_  = value;}
+  inline void set_use_points_on_interface  (bool value) { use_points_on_interface_   = value;}
+  inline void set_update_c0_robin          (bool value) { update_c0_robin_           = value;}
+
+
   void initialize_solvers();
 
-//  void solve(Vec t, Vec t_dd[P4EST_DIM], Vec c0, Vec c0_dd[P4EST_DIM], Vec c1, Vec c1_dd[P4EST_DIM], double& bc_error_max, Vec& bc_error);
-  void solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max);
   void solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl);
-  void solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, Vec c0n);
 
   void solve_t();
   void solve_psi_t();

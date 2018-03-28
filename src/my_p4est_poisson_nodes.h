@@ -28,8 +28,6 @@ class my_p4est_poisson_nodes_t
   my_p4est_interpolation_nodes_t phi_interp;
 //  my_p4est_interpolation_nodes_t robin_coef_interp;
 
-  bool use_linear_continuous_dirichlet_;
-  bool use_quadratic_continuous_stencil_;
   bool neumann_wall_first_order;
   double mu_, diag_add_;
   bool is_matrix_computed;
@@ -68,6 +66,7 @@ class my_p4est_poisson_nodes_t
   bool use_refined_cube;
 
   bool use_pointwise_dirichlet;
+  bool use_continuous_stencil;
 
   bool new_pc;
 
@@ -119,6 +118,8 @@ public:
 
   inline void set_use_refined_cube( bool val ) { use_refined_cube=val; }
 
+  inline void set_use_continuous_stencil( bool val ) { use_continuous_stencil=val; }
+
   inline void set_use_pointwise_dirichlet( bool val ) { use_pointwise_dirichlet=val; }
 
   void shift_to_exact_solution(Vec sol, Vec uex);
@@ -136,7 +137,7 @@ public:
 
   Vec get_mask() { return mask; }
 
-  inline bool get_use_quadratic_continuous_stencil() { return use_quadratic_continuous_stencil_; }
+  inline bool get_use_quadratic_continuous_stencil() { return use_continuous_stencil; }
 
   //---------------------------------------------------------------------------------
   // some stuff for pointwise dirichlet

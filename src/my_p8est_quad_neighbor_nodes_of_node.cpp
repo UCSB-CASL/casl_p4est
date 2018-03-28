@@ -678,42 +678,42 @@ p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_m00() const{
 //  else throw std::invalid_argument("No neighbor in m00 direction \n");
 }
 p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_p00() const{
-  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
-  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
-  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
-  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  if      (d_p00_m0 == 0 && d_p00_0m == 0) return node_p00_mm;
+  else if (d_p00_p0 == 0 && d_p00_0m == 0) return node_p00_pm;
+  else if (d_p00_m0 == 0 && d_p00_0p == 0) return node_p00_mp;
+  else if (d_p00_p0 == 0 && d_p00_0p == 0) return node_p00_pp;
   else return -1;
 //  else throw std::invalid_argument("No neighbor in m00 direction \n");
 }
 p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_0m0() const{
-  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
-  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
-  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
-  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  if      (d_0m0_m0 == 0 && d_0m0_0m == 0) return node_0m0_mm;
+  else if (d_0m0_p0 == 0 && d_0m0_0m == 0) return node_0m0_pm;
+  else if (d_0m0_m0 == 0 && d_0m0_0p == 0) return node_0m0_mp;
+  else if (d_0m0_p0 == 0 && d_0m0_0p == 0) return node_0m0_pp;
   else return -1;
 //  else throw std::invalid_argument("No neighbor in m00 direction \n");
 }
 p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_0p0() const{
-  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
-  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
-  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
-  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  if      (d_0p0_m0 == 0 && d_0p0_0m == 0) return node_0p0_mm;
+  else if (d_0p0_p0 == 0 && d_0p0_0m == 0) return node_0p0_pm;
+  else if (d_0p0_m0 == 0 && d_0p0_0p == 0) return node_0p0_mp;
+  else if (d_0p0_p0 == 0 && d_0p0_0p == 0) return node_0p0_pp;
   else return -1;
 //  else throw std::invalid_argument("No neighbor in m00 direction \n");
 }
 p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_00m() const{
-  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
-  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
-  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
-  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  if      (d_00m_m0 == 0 && d_00m_0m == 0) return node_00m_mm;
+  else if (d_00m_p0 == 0 && d_00m_0m == 0) return node_00m_pm;
+  else if (d_00m_m0 == 0 && d_00m_0p == 0) return node_00m_mp;
+  else if (d_00m_p0 == 0 && d_00m_0p == 0) return node_00m_pp;
   else return -1;
 //  else throw std::invalid_argument("No neighbor in m00 direction \n");
 }
 p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_00p() const{
-  if      (d_m00_m0 == 0 && d_m00_0m == 0) return node_m00_mm;
-  else if (d_m00_p0 == 0 && d_m00_0m == 0) return node_m00_pm;
-  else if (d_m00_m0 == 0 && d_m00_0p == 0) return node_m00_mp;
-  else if (d_m00_p0 == 0 && d_m00_0p == 0) return node_m00_pp;
+  if      (d_00p_m0 == 0 && d_00p_0m == 0) return node_00p_mm;
+  else if (d_00p_p0 == 0 && d_00p_0m == 0) return node_00p_pm;
+  else if (d_00p_m0 == 0 && d_00p_0p == 0) return node_00p_mp;
+  else if (d_00p_p0 == 0 && d_00p_0p == 0) return node_00p_pp;
   else return -1;
 //  else throw std::invalid_argument("No neighbor in m00 direction \n");
 }

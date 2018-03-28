@@ -62,6 +62,14 @@ double zero_negative_velocity = true;
 int max_iterations = 100;
 int pin_every_n_steps = 1000;
 
+bool use_continuous_stencil    = 0;
+bool use_one_sided_derivatives = false;
+bool use_points_on_interface   = true;
+bool update_c0_robin           = true;
+
+// not implemented yet
+bool use_superconvergent_robin = false;
+bool use_superconvergent_jump  = false;
 
 double lip = 2;
 
@@ -90,13 +98,13 @@ double scaling = 1/box_size;
 double xmin = 0;
 double ymin = 0;
 double xmax = 1;
-double ymax = 2;
+double ymax = 1;
 #ifdef P4_TO_P8
 double zmin = 0;
 double zmax = 1;
-int n_xyz[] = {1, 2, 1};
+int n_xyz[] = {1, 1, 1};
 #else
-int n_xyz[] = {1, 2};
+int n_xyz[] = {1, 1};
 #endif
 
 double rho;                  /* density                                    - kg.cm-3      */
@@ -187,13 +195,13 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 100;         /* K.cm-1      */
+      G              = 20000;         /* K.cm-1      */
       V              = 0.05;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-      eps_c          = 2.7207e-5;
-      eps_v          = 2.27e-2;
+      eps_c          = 0*2.7207e-5;
+      eps_v          = 0*2.27e-2;
       eps_anisotropy = 0.05;
 
       Dl0 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
@@ -206,7 +214,7 @@ void set_alloy_parameters()
       c01 = 0.094;
       kp1 = 0.848;
 
-      box_size = 1.0e-1;
+      box_size = 1.0e-2;
 
       break;
 
@@ -502,8 +510,9 @@ public:
 //    if(LS(x,y)<0) return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
 //    else          return LS(x,y)*G + c0*ml + Tm;
 //    if(LS(x,y)>0) return -LS(x,y)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
-//    else          return -LS(x,y)*G                                      + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
-    return initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
+//    else
+      return -LS(x,y)*G                                      + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
+//    return initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
   }
 } initial_temperature;
 
@@ -657,7 +666,8 @@ int main (int argc, char* argv[])
   my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
   p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est, ghost);
+  if (use_continuous_stencil || use_one_sided_derivatives)
+    my_p4est_ghost_expand(p4est, ghost);
   p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
 
   my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est,ghost, &brick);
@@ -748,6 +758,15 @@ int main (int argc, char* argv[])
   bas.set_pin_every_n_steps(pin_every_n_steps);
   bas.set_cfl(cfl_number);
   bas.set_phi_thresh(phi_thresh);
+
+  bas.set_use_continuous_stencil   (use_continuous_stencil   );
+  bas.set_use_one_sided_derivatives(use_one_sided_derivatives);
+  bas.set_use_superconvergent_robin(use_superconvergent_robin);
+  bas.set_use_superconvergent_jump (use_superconvergent_jump );
+  bas.set_use_points_on_interface  (use_points_on_interface  );
+  bas.set_update_c0_robin          (update_c0_robin          );
+
+
 //  bas.set_zero_negative_velocity(zero_negative_velocity);
 //  bas.set_num_of_iterations_per_step(num_of_iters_per_step);
 

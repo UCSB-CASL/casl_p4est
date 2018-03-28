@@ -1990,3 +1990,73 @@ std::istream& operator>> (std::istream& is, BoundaryConditionType& type)
 
   return is;
 }
+
+
+void copy_ghosted_vec(Vec input, Vec output)
+{
+  PetscErrorCode ierr;
+  Vec src, out;
+  ierr = VecGhostGetLocalForm(input, &src);      CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
+  ierr = VecCopy(src, out);                      CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input, &src);  CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+}
+
+void invert_phi(p4est_nodes_t *nodes, Vec phi)
+{
+  PetscErrorCode ierr;
+  double *phi_p;
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
+  for (size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
+    phi_p[n] = -phi_p[n];
+
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+}
+
+void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa)
+{
+  PetscErrorCode ierr;
+
+  const p4est_t       *p4est = neighbors.get_p4est();
+  const p4est_nodes_t *nodes = neighbors.get_nodes();
+
+//  /* reset normals[] */
+//  foreach_dimension(dim)
+//  {
+//    if (normals[dim] != NULL) { ierr = VecDestroy(normals[dim]); CHKERRXX(ierr); }
+//    ierr = VecCreateGhostNodes(p4est, nodes, &normals[dim]); CHKERRXX(ierr);
+//  }
+
+//  /* reset kappa */
+//  if (kappa != NULL) { ierr = VecDestroy(kappa); CHKERRXX(ierr); }
+//  ierr = VecCreateGhostNodes(p4est, nodes, &kappa); CHKERRXX(ierr);
+
+  /* compute first derivatives */
+  neighbors.first_derivatives_central(phi, normals);
+
+  /* compute curvature */
+  compute_mean_curvature(neighbors, phi, normals, kappa);
+
+  /* compute normals */
+  double *normal_p[P4EST_DIM];
+  foreach_dimension(dim) { ierr = VecGetArray(normals[dim], &normal_p[dim]); CHKERRXX(ierr); }
+
+  foreach_node(n, nodes)
+  {
+#ifdef P4_TO_P8
+    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+#else
+    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+#endif
+
+    normal_p[0][n] = norm < EPS ? 0 : normal_p[0][n]/norm;
+    normal_p[1][n] = norm < EPS ? 0 : normal_p[1][n]/norm;
+#ifdef P4_TO_P8
+    normal_p[2][n] = norm < EPS ? 0 : normal_p[2][n]/norm;
+#endif
+  }
+
+  foreach_dimension(dim) { ierr = VecRestoreArray(normals[dim], &normal_p[dim]); CHKERRXX(ierr); }
+}
