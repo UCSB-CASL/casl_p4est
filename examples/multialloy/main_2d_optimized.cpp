@@ -62,7 +62,7 @@ double zero_negative_velocity = true;
 int max_iterations = 100;
 int pin_every_n_steps = 1000;
 
-bool use_continuous_stencil    = 0;
+bool use_continuous_stencil    = false;
 bool use_one_sided_derivatives = false;
 bool use_points_on_interface   = true;
 bool update_c0_robin           = true;
@@ -563,6 +563,12 @@ int main (int argc, char* argv[])
   cmd.add_option("max_iterations", "max_iterations");
   cmd.add_option("pin_every_n_steps", "pin_every_n_steps");
 
+  cmd.add_option("use_continuous_stencil"   , "use_continuous_stencil"   );
+  cmd.add_option("use_one_sided_derivatives", "use_one_sided_derivatives");
+  cmd.add_option("use_points_on_interface"  , "use_points_on_interface"  );
+  cmd.add_option("update_c0_robin"          , "update_c0_robin"          );
+  cmd.add_option("use_superconvergent_robin", "use_superconvergent_robin");
+  cmd.add_option("use_superconvergent_jump" , "use_superconvergent_jump" );
 
   cmd.parse(argc, argv);
 
@@ -622,6 +628,12 @@ int main (int argc, char* argv[])
   pin_every_n_steps = cmd.get("pin_every_n_steps", pin_every_n_steps);
   bc_tolerance = cmd.get("bc_tolerance", bc_tolerance);
 
+  use_continuous_stencil    = cmd.get("use_continuous_stencil"   , use_continuous_stencil   );
+  use_one_sided_derivatives = cmd.get("use_one_sided_derivatives", use_one_sided_derivatives);
+  use_points_on_interface   = cmd.get("use_points_on_interface"  , use_points_on_interface  );
+  update_c0_robin           = cmd.get("update_c0_robin"          , update_c0_robin          );
+  use_superconvergent_robin = cmd.get("use_superconvergent_robin", use_superconvergent_robin);
+  use_superconvergent_jump  = cmd.get("use_superconvergent_jump" , use_superconvergent_jump );
 
   double latent_heat_orig = latent_heat;
   double G_orig = G;
