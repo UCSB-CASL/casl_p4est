@@ -446,8 +446,8 @@ void my_p4est_multialloy_t::update_grid()
 
   p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  if (use_continuous_stencil_ || use_one_sided_derivatives_)
-    my_p4est_ghost_expand(p4est_np1, ghost_np1);
+//  if (use_continuous_stencil_ || use_one_sided_derivatives_)
+//    my_p4est_ghost_expand(p4est_np1, ghost_np1);
   p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   Vec phi_nm1;
@@ -466,7 +466,7 @@ void my_p4est_multialloy_t::update_grid()
   ierr = VecGetArray(tm_old, &tm_p); CHKERRXX(ierr);
   ierr = VecGetArray(tp_old, &tp_p); CHKERRXX(ierr);
 
-  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n)
   {
     tm_p[n] = t_p[n];
     tp_p[n] = t_p[n];
@@ -491,6 +491,9 @@ void my_p4est_multialloy_t::update_grid()
 //  ls.extend_from_interface_to_whole_domain_TVD(phi_, c0n_n_, c0n_interface);
 
   my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd_, ngbd_);
+
+  sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
+  sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
 
   /* bousouf update this for second order in time */
   if (0)

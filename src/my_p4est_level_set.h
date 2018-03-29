@@ -57,7 +57,7 @@ class my_p4est_level_set_t {
 public:
   my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_ )
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
-      interpolation_on_interface(quadratic_non_oscillatory_continuous_v2),
+      interpolation_on_interface(quadratic_non_oscillatory),
       use_one_sided_derivatives(false)
   {}
 

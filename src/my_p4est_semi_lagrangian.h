@@ -51,10 +51,14 @@ class my_p4est_semi_lagrangian_t
                             Vec phi_n, Vec *phi_xx_n,
                             double *phi_np1);
 
-  bool use_second_derivatives;
+  interpolation_method velo_interpolation;
+  interpolation_method phi_interpolation;
 
 public:
   my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1, p4est_ghost_t **ghost_np1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1=NULL);
+
+  inline void set_velo_interpolation(interpolation_method method) { velo_interpolation = method; }
+  inline void set_phi_interpolation (interpolation_method method) { phi_interpolation  = method; }
 
 #ifdef P4_TO_P8
   double compute_dt(const CF_3& vx, const CF_3& vy, const CF_3& vz);
@@ -124,8 +128,6 @@ public:
    * \note you need to update ngbd_n and hierarchy yourself !
    */
   void update_p4est(Vec *v, double dt, std::vector<Vec> &phi_parts, Vec &phi, Vec *phi_xx=NULL);
-
-  void set_use_second_derivatives(bool val) {use_second_derivatives = val;}
 };
 
 #endif // MY_P4EST_SEMI_LAGRANGIAN_H

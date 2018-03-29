@@ -61,6 +61,9 @@ my_p4est_semi_lagrangian_t::my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4es
     xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
   for (short i=0; i<P4EST_DIM; i++)
     xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
+
+  velo_interpolation = quadratic;
+  phi_interpolation  = quadratic_non_oscillatory;
 }
 
 #ifdef P4_TO_P8
@@ -229,9 +232,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt,
   }
 
 #ifdef P4_TO_P8
-  interp.set_input(phi_n, phi_xx_n[0], phi_xx_n[1], phi_xx_n[2], quadratic_non_oscillatory);
+  interp.set_input(phi_n, phi_xx_n[0], phi_xx_n[1], phi_xx_n[2], phi_interpolation);
 #else
-  interp.set_input(phi_n, phi_xx_n[0], phi_xx_n[1], quadratic_non_oscillatory);
+  interp.set_input(phi_n, phi_xx_n[0], phi_xx_n[1], phi_interpolation);
 #endif
   interp.interpolate(phi_np1);
 
@@ -242,12 +245,6 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt,
 void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **vxx, Vec phi_n, Vec *phi_xx_n,
                                                       double *phi_np1)
 {
-//  interpolation_method v_interpolation = quadratic;
-//  interpolation_method phi_interpolation = quadratic_non_oscillatory;
-
-  interpolation_method v_interpolation   = quadratic_non_oscillatory_continuous_v1;
-  interpolation_method phi_interpolation = quadratic_non_oscillatory_continuous_v1;
-
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -266,9 +263,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   {
     v_tmp[dir].resize(nodes->indep_nodes.elem_count);
 #ifdef P4_TO_P8
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], v_interpolation);
+    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], velo_interpolation);
 #else
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], v_interpolation);
+    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], velo_interpolation);
 #endif
     interp.interpolate(v_tmp[dir].data());
   }
@@ -300,9 +297,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
 #ifdef P4_TO_P8
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], v_interpolation);
+    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], velo_interpolation);
 #else
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], v_interpolation);
+    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], velo_interpolation);
 #endif
     interp.interpolate(v_tmp[dir].data());
   }
@@ -347,12 +344,6 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
                                                       Vec phi_n, Vec *phi_xx_n,
                                                       double *phi_np1)
 {
-//  interpolation_method v_interpolation   = quadratic_non_oscillatory_continuous_v1;
-//  interpolation_method phi_interpolation = quadratic_non_oscillatory_continuous_v1;
-
-  interpolation_method v_interpolation   = quadratic_non_oscillatory_continuous_v2;
-  interpolation_method phi_interpolation = quadratic_non_oscillatory_continuous_v2;
-
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_advect_from_n_to_np1_2nd_order, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -375,9 +366,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     v_tmp_n[dir].resize(nodes->indep_nodes.elem_count);
 
 #ifdef P4_TO_P8
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], v_interpolation);
+    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], velo_interpolation);
 #else
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], v_interpolation);
+    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], velo_interpolation);
 #endif
     interp_n.interpolate(v_tmp_n[dir].data());
   }
@@ -413,17 +404,17 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     v_tmp_nm1[dir].resize(nodes->indep_nodes.elem_count);
 
 #ifdef P4_TO_P8
-    interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], vxx_nm1[dir][2], v_interpolation);
+    interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], vxx_nm1[dir][2], velo_interpolation);
 #else
-    interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], v_interpolation);
+    interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], velo_interpolation);
 #endif
     interp_nm1.interpolate(v_tmp_nm1[dir].data());
 
 
 #ifdef P4_TO_P8
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], v_interpolation);
+    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], velo_interpolation);
 #else
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], v_interpolation);
+    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], velo_interpolation);
 #endif
     interp_n.interpolate(v_tmp_n[dir].data());
   }
