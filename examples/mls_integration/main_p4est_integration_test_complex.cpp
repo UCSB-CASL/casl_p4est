@@ -114,7 +114,7 @@ const double p_xyz_max[] = { 1.0,  1.0,  1.0};
 
 bool save_vtk = 0;
 
-bool check_for_curvature = 0;
+bool check_for_curvature = 1;
 bool integrate_one_cell = 0;
 
 // function to integrate

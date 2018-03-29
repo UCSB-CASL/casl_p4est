@@ -560,6 +560,7 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
   } else {
     setup_linear_system(false, true);
   }
+//  setup_linear_system(false, true);
 
   if (new_pc_)
   {
@@ -589,7 +590,8 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
      * "0 "gives better convergence rate (in 3D).
      * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
     */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.9"); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0."); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.91"); CHKERRXX(ierr);
 
     /* 2- Coarsening type
      * Available Options:
@@ -3243,7 +3245,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           double log_weight_min = -6.;
 //          double gamma = -log_weight_min*2./3./sqrt((double)P4EST_DIM);
 //          double gamma = -log_weight_min*2./3./((double)P4EST_DIM);
-          double gamma = -3.*log(10.);
+          double gamma = 3.*log(10.);
 
           for (char phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
           {

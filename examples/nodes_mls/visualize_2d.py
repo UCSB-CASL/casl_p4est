@@ -5,17 +5,17 @@ paraview.simple._DisableFirstRenderCameraReset()
 
 # create a new 'XML Partitioned Unstructured Grid Reader'
 nodes_1_1x1 = XMLPartitionedUnstructuredGridReader(FileName=[\
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/triangle/gradients_1st_order/vtu/nodes_1_1x1.4.pvtu', \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/triangle/gradients_2nd_order_b/vtu/nodes_1_1x1.4.pvtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/triangle/gradients_1st_order/vtu/nodes_1_1x1.4.pvtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/triangle/gradients_2nd_order_b/vtu/nodes_1_1x1.4.pvtu', \
 \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/union/gradients_1st_order/vtu/nodes_1_1x1.4.pvtu', \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/union/gradients_2nd_order_b/vtu/nodes_1_1x1.4.pvtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/union/gradients_1st_order/vtu/nodes_1_1x1.4.pvtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/union/gradients_2nd_order_b/vtu/nodes_1_1x1.4.pvtu', \
 \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/difference/gradients_1st_order/vtu/nodes_1_1x1.4.pvtu', \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/difference/gradients_2nd_order_b/vtu/nodes_1_1x1.4.pvtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/difference/gradients_1st_order/vtu/nodes_1_1x1.4.pvtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/difference/gradients_2nd_order_b/vtu/nodes_1_1x1.4.pvtu', \
 \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/three_flowers/gradients_1st_order/vtu/nodes_1_1x1.4.pvtu', \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/three_flowers/gradients_2nd_order_b/vtu/nodes_1_1x1.4.pvtu'])
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/three_flowers/gradients_1st_order/vtu/nodes_1_1x1.4.pvtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/three_flowers/gradients_2nd_order_b/vtu/nodes_1_1x1.4.pvtu'])
 nodes_1_1x1.CellArrayStatus = ['proc_rank', 'tree_idx', 'leaf_level']
 nodes_1_1x1.PointArrayStatus = ['phi', 'phi_smooth', 'sol', 'sol_ex', 'error_sl', 'error_tr', 'error_gr', 'error_ex', 'error_dd', 'mask', 'volumes']
 
@@ -47,17 +47,17 @@ renderView1.Background = [1.0, 1.0, 1.0]
 
 # create a new 'XML Unstructured Grid Reader'
 edgs_2d_quadratic_ = XMLUnstructuredGridReader(FileName=[ \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/triangle/gradients_1st_order/geometry/edgs_2d_quadratic_4.vtu', \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/triangle/gradients_2nd_order_b/geometry/edgs_2d_quadratic_4.vtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/triangle/gradients_1st_order/geometry/edgs_2d_quadratic_4.vtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/triangle/gradients_2nd_order_b/geometry/edgs_2d_quadratic_4.vtu', \
 \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/union/gradients_1st_order/geometry/edgs_2d_quadratic_4.vtu', \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/union/gradients_2nd_order_b/geometry/edgs_2d_quadratic_4.vtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/union/gradients_1st_order/geometry/edgs_2d_quadratic_4.vtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/union/gradients_2nd_order_b/geometry/edgs_2d_quadratic_4.vtu', \
 \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/difference/gradients_1st_order/geometry/edgs_2d_quadratic_4.vtu', \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/difference/gradients_2nd_order_b/geometry/edgs_2d_quadratic_4.vtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/difference/gradients_1st_order/geometry/edgs_2d_quadratic_4.vtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/difference/gradients_2nd_order_b/geometry/edgs_2d_quadratic_4.vtu', \
 \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/three_flowers/gradients_1st_order/geometry/edgs_2d_quadratic_4.vtu', \
-'/home/dbochkov/Outputs/paper_examples/poisson/2d/three_flowers/gradients_2nd_order_b/geometry/edgs_2d_quadratic_4.vtu'])
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/three_flowers/gradients_1st_order/geometry/edgs_2d_quadratic_4.vtu', \
+'/home/dbochkov/Outputs/paper_examples/poisson/2d_test/three_flowers/gradients_2nd_order_b/geometry/edgs_2d_quadratic_4.vtu'])
 edgs_2d_quadratic_.CellArrayStatus = ['location', 'c0']
 edgs_2d_quadratic_.PointArrayStatus = ['location']
 

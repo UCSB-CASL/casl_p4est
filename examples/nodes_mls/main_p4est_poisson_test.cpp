@@ -87,8 +87,8 @@ bool save_vtk = 0;
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 3;
-int nb_splits_per_split = 5;
+int nb_splits = 1;
+int nb_splits_per_split = 1;
 int nx_shifts = 5;
 int ny_shifts = 5;
 int nz_shifts = 5;
@@ -97,7 +97,7 @@ int num_shifts = nx_shifts*ny_shifts*nz_shifts;
 int lmin = 4;
 int lmax = 4;
 int nb_splits = 3;
-int nb_splits_per_split = 4;
+int nb_splits_per_split = 1;
 int nx_shifts = 10;
 int ny_shifts = 10;
 int num_shifts = nx_shifts*ny_shifts;
@@ -125,8 +125,8 @@ const double p_xyz_max[3] = { 1.,  1.,  1.};
  * 7412
  */
 
-int n_geometry = 1;
-int n_test = 1;
+int n_geometry = 0;
+int n_test = 0;
 int n_mu = 0;
 int n_diag_add = 0;
 
@@ -135,11 +135,11 @@ bool plot_convergence = 1;
 bool save_domain_reconstruction = save_vtk;
 bool do_extension = 0;
 
-bool sc_scheme = 1;
+bool sc_scheme = 0;
 int integration_order = 2;
 
 double mask_thresh = 0;
-bool try_remove_hanging_cells = false;
+bool try_remove_hanging_cells = 0;
 
 
 // EXACT SOLUTION

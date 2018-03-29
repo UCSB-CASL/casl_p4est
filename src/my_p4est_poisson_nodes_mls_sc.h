@@ -968,6 +968,7 @@ public:
 //  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
 //  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPCG, PCType pc_type = PCHYPRE);
 //  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
 
   void assemble_matrix(Vec solution);

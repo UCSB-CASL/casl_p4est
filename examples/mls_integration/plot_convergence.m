@@ -11,10 +11,10 @@ clear;
 % out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/f1/2d/union/convergence';
 % out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/f1/2d/difference/convergence';
 % out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/f1/3d/union/convergence';
-% out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/f1/3d/difference/convergence';
+out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/f1/3d/difference/convergence';
 
 
-out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/sphere/without_all/convergence';
+% out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/sphere/without_all/convergence';
 % out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/sphere/without_one/convergence';
 % out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/sphere/with_all/convergence';
 % out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/integration/sphere/with_one/convergence';
@@ -26,7 +26,7 @@ order_Q = 3;
 order_Q2 = 4;
 error_spacing = 2;
 
-plot_intersections = 0;
+plot_intersections = 1;
 plot_detailed_convergence = 0;
 plot_condensed_convergence = 1;
 plot_detailed_convergence2 = 0;

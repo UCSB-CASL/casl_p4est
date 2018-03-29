@@ -3,14 +3,14 @@ clear;
 error_ticks_num = 3;
 resolution_ticks_num = 5;
 
-plot_detailed_convergence = 1;
+plot_detailed_convergence = 0;
 plot_condensed_convergence = 1;
 
 % % data
 % s_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/2d/triangle/gradients_1st_order/convergence';
 % n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/2d/triangle/gradients_2nd_order_b/convergence';
-s_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/2d/union/gradients_1st_order/convergence';
-n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/2d/union/gradients_2nd_order_c/convergence';
+% s_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/2d/union/gradients_1st_order/convergence';
+% n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/2d/union/gradients_2nd_order_c/convergence';
 % s_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/2d/difference/gradients_1st_order/convergence';
 % n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/2d/difference/gradients_2nd_order_c/convergence';
 % s_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/2d/three_flowers/gradients_1st_order/convergence';
@@ -33,6 +33,16 @@ n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/po
 % n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d/difference/gradients_2nd_order_c/convergence';
 % s_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d/three_flowers/gradients_1st_order/convergence';
 % n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d/three_flowers/gradients_2nd_order_c/convergence';
+
+% s_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d_test/triangle/gradients_1st_order/convergence';
+% n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d_test/triangle/gradients_2nd_order_c/convergence';
+% s_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d_test/union/gradients_1st_order/convergence';
+% n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d_test/union/gradients_2nd_order_c/convergence';
+% s_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d_test/difference/gradients_1st_order/convergence';
+% n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d_test/difference/gradients_2nd_order_c/convergence';
+s_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d_test/three_flowers/gradients_1st_order/convergence';
+n_out_dir = '/home/dbochkov/Dropbox/Docs/Papers/05_mls_sc_poisson_solver/data/poisson/3d_test/three_flowers/gradients_2nd_order_c/convergence';
+
 
 h = importdata(strcat(s_out_dir,'/h.txt'));
     
@@ -110,7 +120,7 @@ if (plot_detailed_convergence == 1)
     yticks(10.^[floor(log10(ymin)):round((log10(ymax)-log10(ymin))/error_ticks_num):ceil(log10(ymax))]);
     
     % legend
-    L = legend('Symmetric', 'Non-symmetric', 'Symmetric (max)', 'Non-symmetric (max)');
+    L = legend('Symmetric', 'Superconvergent', 'Symmetric (max)', 'Superconvergent (max)');
     set(L, 'interpreter', 'latex');
     
     % figure size
@@ -164,7 +174,7 @@ if (plot_detailed_convergence == 1)
     yticks(10.^[floor(log10(ymin)):round((log10(ymax)-log10(ymin))/error_ticks_num):ceil(log10(ymax))]);
     
     % legend
-    L = legend('Symmetric', 'Non-symmetric', 'Symmetric (max)', 'Non-symmetric (max)');
+    L = legend('Symmetric', 'Superconvergent', 'Symmetric (max)', 'Superconvergent (max)');
     set(L, 'interpreter', 'latex');
     
     % figure size
@@ -232,7 +242,7 @@ if (plot_condensed_convergence == 1)
     yticks(10.^[floor(log10(ymin)):round((log10(ymax)-log10(ymin))/error_ticks_num):ceil(log10(ymax))]);
     
     % legend
-    L = legend('Symmetric', 'Non-symmetric', '2nd order');
+    L = legend('Symmetric', 'Superconvergent', '2nd order');
     set(L, 'interpreter', 'latex');
     
     fig = gcf;
@@ -291,7 +301,7 @@ if (plot_condensed_convergence == 1)
     yticks(10.^[floor(log10(ymin)):round((log10(ymax)-log10(ymin))/error_ticks_num):ceil(log10(ymax))]);
     
     % legend
-    L = legend('Symmetric', 'Non-symmetric', '1st order', '2nd order');
+    L = legend('Symmetric', 'Superconvergent', '1st order', '2nd order');
     set(L, 'interpreter', 'latex');
     
     fig = gcf;
