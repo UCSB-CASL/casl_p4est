@@ -5,12 +5,12 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/grid_interpolation3.h>
+//#include <src/grid_interpolation3.h>
 #else
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/grid_interpolation2.h>
+//#include <src/grid_interpolation2.h>
 #endif
 
 #ifdef P4_TO_P8
@@ -54,11 +54,11 @@ public:
 //  double fzz[P4EST_CHILDREN];
 //#endif
 
-#ifdef P4_TO_P8
-  grid_interpolation3_t interp;
-#else
-  grid_interpolation2_t interp;
-#endif
+//#ifdef P4_TO_P8
+//  grid_interpolation3_t interp;
+//#else
+//  grid_interpolation2_t interp;
+//#endif
 
   // neighboring quadrants
   p4est_locidx_t quad_idx[P4EST_CHILDREN];
@@ -172,7 +172,10 @@ public:
   }
 #endif
 
-  inline void set_eps(double eps_in) {eps = eps_in; interp.set_eps(eps_in);}
+  inline void set_eps(double eps_in) {
+    eps = eps_in;
+//    interp.set_eps(eps_in);
+  }
 
   inline void copy_init(my_p4est_interpolation_nodes_local_t &other)
   {
