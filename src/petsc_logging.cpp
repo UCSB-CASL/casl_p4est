@@ -36,6 +36,14 @@ PetscLogEvent log_my_p4est_poisson_nodes_rhsvec_setup;
 PetscLogEvent log_my_p4est_poisson_nodes_solve;
 PetscLogEvent log_my_p4est_poisson_nodes_KSPSolve;
 
+// my_p4est_poisson_nodes_mls_sc_t
+PetscLogEvent log_my_p4est_poisson_nodes_mls_sc_matrix_preallocation;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_sc_matrix_setup;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_sc_rhsvec_setup;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_sc_solve;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_sc_KSPSolve;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_sc_compute_volumes;
+
 // my_p4est_poisson_cells_t
 PetscLogEvent log_my_p4est_poisson_cells_matrix_preallocation;
 PetscLogEvent log_my_p4est_poisson_cells_matrix_setup;
@@ -182,6 +190,14 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::rhsvec_setup                    ", 0, &log_my_p4est_poisson_nodes_rhsvec_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::solve                           ", 0, &log_my_p4est_poisson_nodes_solve); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::KSPSolve                        ", 0, &log_my_p4est_poisson_nodes_KSPSolve); CHKERRXX(ierr);
+
+  // my_p4est_poisson_nodes_t
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls_sc::matrix_preallocation     ", 0, &log_my_p4est_poisson_nodes_mls_sc_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls_sc::matrix_setup             ", 0, &log_my_p4est_poisson_nodes_mls_sc_matrix_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls_sc::rhsvec_setup             ", 0, &log_my_p4est_poisson_nodes_mls_sc_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls_sc::solve                    ", 0, &log_my_p4est_poisson_nodes_mls_sc_solve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls_sc::KSPSolve                 ", 0, &log_my_p4est_poisson_nodes_mls_sc_KSPSolve); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls_sc::compute_volumes          ", 0, &log_my_p4est_poisson_nodes_mls_sc_compute_volumes); CHKERRXX(ierr);
 
   // my_p4est_poisson_cells_t
   ierr = PetscLogEventRegister("my_p4est_poisson_cells::matrix_preallocation            ", 0, &log_my_p4est_poisson_cells_matrix_preallocation); CHKERRXX(ierr);

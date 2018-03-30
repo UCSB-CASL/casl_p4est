@@ -5,15 +5,19 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/grid_interpolation3.h>
+//#include <src/grid_interpolation3.h>
 #else
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/grid_interpolation2.h>
+//#include <src/grid_interpolation2.h>
 #endif
 
-class my_p4est_interpolation_nodes_local_t
+#ifdef P4_TO_P8
+class my_p4est_interpolation_nodes_local_t : public CF_3
+#else
+class my_p4est_interpolation_nodes_local_t : public CF_2
+#endif
 {
 //private:
 public:
@@ -43,18 +47,18 @@ public:
 #endif
 
   // local values of input
-  double f  [P4EST_CHILDREN];
-  double fxx[P4EST_CHILDREN];
-  double fyy[P4EST_CHILDREN];
-#ifdef P4_TO_P8
-  double fzz[P4EST_CHILDREN];
-#endif
+//  double f  [P4EST_CHILDREN];
+//  double fxx[P4EST_CHILDREN];
+//  double fyy[P4EST_CHILDREN];
+//#ifdef P4_TO_P8
+//  double fzz[P4EST_CHILDREN];
+//#endif
 
-#ifdef P4_TO_P8
-  grid_interpolation3_t interp;
-#else
-  grid_interpolation2_t interp;
-#endif
+//#ifdef P4_TO_P8
+//  grid_interpolation3_t interp;
+//#else
+//  grid_interpolation2_t interp;
+//#endif
 
   // neighboring quadrants
   p4est_locidx_t quad_idx[P4EST_CHILDREN];
@@ -76,11 +80,15 @@ public:
 
   my_p4est_interpolation_nodes_local_t(const my_p4est_node_neighbors_t* ngbd_n)
     : nodes(ngbd_n->nodes), node_neighbors(ngbd_n), p4est(ngbd_n->p4est), ghost(ngbd_n->ghost),
-      Fxx(NULL), Fxx_p(NULL), Fyy(NULL), Fyy_p(NULL),
+      Fxx(NULL),
+      Fyy(NULL),
+      Fxx_p(NULL),
+      Fyy_p(NULL),
       #ifdef P4_TO_P8
-      Fzz(NULL), Fzz_p(NULL),
+      Fzz(NULL),
+      Fzz_p(NULL),
       #endif
-      method(linear), eps(1.0E-15)
+      method(linear), eps(1.0E-12)
   {
     // compute domain sizes
     double *v2c = p4est->connectivity->vertices;
@@ -99,19 +107,19 @@ public:
   void initialize(p4est_locidx_t n);
 
   // set input as Vec's
-  inline void set_input(Vec Fi_in, interpolation_method method_in)
+  void set_input(Vec Fi_in, interpolation_method method_in)
   {
     Fi = Fi_in; method = method_in; is_input_in_vec = true;
   }
 
 #ifdef P4_TO_P8
-  inline void set_input(Vec Fi_in, Vec Fxx_in, Vec Fyy_in, Vec Fzz_in, interpolation_method method_in)
+  void set_input(Vec Fi_in, Vec Fxx_in, Vec Fyy_in, Vec Fzz_in, interpolation_method method_in)
   {
     Fi = Fi_in; Fxx = Fxx_in; Fyy = Fyy_in; Fzz = Fzz_in;
     method = method_in; is_input_in_vec = true;
   }
 #else
-  inline void set_input(Vec Fi_in, Vec Fxx_in, Vec Fyy_in, interpolation_method method_in)
+  void set_input(Vec Fi_in, Vec Fxx_in, Vec Fyy_in, interpolation_method method_in)
   {
     Fi = Fi_in; Fxx = Fxx_in; Fyy = Fyy_in;
     method = method_in; is_input_in_vec = true;
@@ -119,52 +127,70 @@ public:
 #endif
 
   // set input as pointers
-  inline void set_input(double* Fi_p_in, interpolation_method method_in)
+  void set_input(double* Fi_p_in, interpolation_method method_in)
   {
     Fi_p = Fi_p_in;
     method = method_in; is_input_in_vec = false;
   }
 
 #ifdef P4_TO_P8
-  inline void set_input(double* Fi_p_in, double* Fxx_p_in, double* Fyy_p_in, double* Fzz_p_in, interpolation_method method_in)
+  void set_input(double* Fi_p_in, double* Fxx_p_in, double* Fyy_p_in, double* Fzz_p_in, interpolation_method method_in)
   {
     Fi_p = Fi_p_in; Fxx_p = Fxx_p_in; Fyy_p = Fyy_p_in; Fzz_p = Fzz_p_in;
     method = method_in; is_input_in_vec = false;
   }
 #else
-  inline void set_input(double* Fi_p_in, double* Fxx_p_in, double* Fyy_p_in, interpolation_method method_in)
+  void set_input(double* Fi_p_in, double* Fxx_p_in, double* Fyy_p_in, interpolation_method method_in)
   {
     Fi_p = Fi_p_in; Fxx_p = Fxx_p_in; Fyy_p = Fyy_p_in;
     method = method_in; is_input_in_vec = false;
   }
 #endif
 
-  inline void set_input(double* Fi_p_in, double* Fdd_p_in[P4EST_DIM], interpolation_method method_in)
-  {
 #ifdef P4_TO_P8
-    set_input(Fi_p_in, Fdd_p_in[0], Fdd_p_in[1], Fdd_p_in[2], method_in);
+  double quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const;
 #else
-    set_input(Fi_p_in, Fdd_p_in[0], Fdd_p_in[1], method_in);
+  double quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const;
 #endif
-  }
+
+  double linear_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *xyz_global) const;
 
   // interpolation method
 #ifdef P4_TO_P8
-  double interpolate(double x, double y, double z);
+  double interpolate(double x, double y, double z) const;
+//  inline double operator () (double x, double y, double z);
+  double operator () (double x, double y, double z) const
+  {
+    return interpolate(x,y,z);
+  }
 #else
-  double interpolate(double x, double y);
+  double interpolate(double x, double y) const;
+//  inline double operator () (double x, double y);
+  inline double operator () (double x, double y) const
+  {
+    return interpolate(x,y);
+  }
 #endif
 
-  inline double interpolate(double* xyz)
-  {
-#ifdef P4_TO_P8
-    return interpolate(xyz[0], xyz[1], xyz[2]);
-#else
-    return interpolate(xyz[0], xyz[1]);
-#endif
+  inline void set_eps(double eps_in) {
+    eps = eps_in;
+//    interp.set_eps(eps_in);
   }
 
-  void set_eps(double eps_in) {eps = eps_in; interp.set_eps(eps_in);}
-};
+  inline void copy_init(my_p4est_interpolation_nodes_local_t &other)
+  {
+    for (short i = 0; i < P4EST_CHILDREN; ++i)
+    {
+      quad_idx[i] = other.quad_idx[i];
+      tree_idx[i] = other.tree_idx[i];
+      level_of_quad[i] = other.level_of_quad[i];
+    }
 
+    for (short i = 0; i < P4EST_DIM*P4EST_CHILDREN; ++i)
+    {
+      xyz_quad_min[i] = other.xyz_quad_min[i];
+      xyz_quad_max[i] = other.xyz_quad_max[i];
+    }
+  }
+};
 #endif /* MY_P4EST_INTERPOLATION_NODES_LOCAL */

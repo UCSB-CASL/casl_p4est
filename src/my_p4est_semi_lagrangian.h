@@ -12,6 +12,7 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_node_neighbors.h>
+#include <src/mls_integration/simplex3_mls_l.h>
 #else
 #include <p4est.h>
 #include <src/my_p4est_utils.h>
@@ -19,6 +20,7 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_node_neighbors.h>
+#include <src/mls_integration/simplex2_mls_l.h>
 #endif
 
 class my_p4est_semi_lagrangian_t
@@ -128,6 +130,19 @@ public:
    * \note you need to update ngbd_n and hierarchy yourself !
    */
   void update_p4est(Vec *v, double dt, std::vector<Vec> &phi_parts, Vec &phi, Vec *phi_xx=NULL);
+
+  /*!
+   * \brief (multi level-set version) update a p4est from tn to tnp1, using a semi-Lagrangian scheme with Euler along the characteristic.
+   *   The forest at time n is copied, and is then refined, coarsened and balance iteratively until convergence.
+   * \param v       the velocity field. This is a pointer to an array of dimension P4EST_DIM.
+   * \param dt      the time step
+   * \param phi     the level set functions
+   * \param action  the contructing operations
+   * \param phi_idx the number of level-set function to be advected
+   * \param phi_xx  the derivatives of the level set function to be advected. This is a pointer to an array of dimension P4EST_DIM
+   * \note you need to update ngbd_n and hierarchy yourself !
+   */
+  void update_p4est(Vec *v, double dt, std::vector<Vec> &phi, std::vector<action_t> &action, int phi_idx, Vec *phi_xx=NULL);
 };
 
 #endif // MY_P4EST_SEMI_LAGRANGIAN_H

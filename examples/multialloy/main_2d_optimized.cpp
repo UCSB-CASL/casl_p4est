@@ -62,6 +62,8 @@ double zero_negative_velocity = true;
 int max_iterations = 100;
 int pin_every_n_steps = 1000;
 
+double init_perturb = 0.01;
+
 bool use_continuous_stencil    = false;
 bool use_one_sided_derivatives = false;
 bool use_points_on_interface   = true;
@@ -570,6 +572,8 @@ int main (int argc, char* argv[])
   cmd.add_option("use_superconvergent_robin", "use_superconvergent_robin");
   cmd.add_option("use_superconvergent_jump" , "use_superconvergent_jump" );
 
+  cmd.add_option("init_perturb", "init_perturb");
+
   cmd.parse(argc, argv);
 
   alloy_type = cmd.get("alloy", alloy_type);
@@ -634,6 +638,8 @@ int main (int argc, char* argv[])
   update_c0_robin           = cmd.get("update_c0_robin"          , update_c0_robin          );
   use_superconvergent_robin = cmd.get("use_superconvergent_robin", use_superconvergent_robin);
   use_superconvergent_jump  = cmd.get("use_superconvergent_jump" , use_superconvergent_jump );
+
+  init_perturb = cmd.get("init_perturb", init_perturb);
 
   double latent_heat_orig = latent_heat;
   double G_orig = G;
@@ -732,7 +738,7 @@ int main (int argc, char* argv[])
 
   for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
   {
-    phi_p[n] += 0.1*dx*(double)(rand()%1000)/1000.;
+    phi_p[n] += init_perturb*dx*(double)(rand()%1000)/1000.;
   }
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);

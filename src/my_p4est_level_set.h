@@ -163,7 +163,7 @@ public:
                                                                 , std::vector<double>& s_00m, std::vector<double>& s_00p
                                                               #endif
                                                                 ) const;
-  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20 , int order = 2);
+  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20) const;
 
 };
 

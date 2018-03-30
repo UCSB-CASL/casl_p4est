@@ -934,18 +934,6 @@ void my_p4est_level_set_t::reinitialize_1st_order_time_2nd_order_space( Vec phi,
   ierr = VecCreateGhostNodes(p4est, nodes, &dzz ); CHKERRXX(ierr);
 #endif
 
-  // Vectors for 'upwind' second-derivatives
-  Vec dxx_fix, dyy_fix;
-  double *dxx_fix_p, *dyy_fix_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dxx_fix); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dyy_fix); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  Vec dzz;
-  double *dzz_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dzz_fix); CHKERRXX(ierr);
-#endif
-
 #ifdef P4_TO_P8
   compute_derivatives(phi, dxx0, dyy0, dzz0);
 #else
@@ -967,35 +955,14 @@ void my_p4est_level_set_t::reinitialize_1st_order_time_2nd_order_space( Vec phi,
     compute_derivatives(phi, dxx, dyy);
 #endif
 
-    {
-      Vec src, out;
-      ierr = VecGhostGetLocalForm(dxx, &src); CHKERRXX(ierr);
-      ierr = VecGhostGetLocalForm(dxx_fix, &out); CHKERRXX(ierr);
-      ierr = VecCopy(src, out); CHKERRXX(ierr);
-      ierr = VecGhostRestoreLocalForm(dxx, &src); CHKERRXX(ierr);
-      ierr = VecGhostRestoreLocalForm(dxx_fix, &out); CHKERRXX(ierr);
-
-      ierr = VecGhostGetLocalForm(dyy, &src); CHKERRXX(ierr);
-      ierr = VecGhostGetLocalForm(dyy_fix, &out); CHKERRXX(ierr);
-      ierr = VecCopy(src, out); CHKERRXX(ierr);
-      ierr = VecGhostRestoreLocalForm(dyy, &src); CHKERRXX(ierr);
-      ierr = VecGhostRestoreLocalForm(dyy_fix, &out); CHKERRXX(ierr);
-    }
-
     ierr = VecGetArray(dxx, &dxx_p); CHKERRXX(ierr);
     ierr = VecGetArray(dyy, &dyy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
     ierr = VecGetArray(dzz, &dzz_p); CHKERRXX(ierr);
 #endif
 
-    ierr = VecGetArray(dxx_fix, &dxx_fix_p); CHKERRXX(ierr);
-    ierr = VecGetArray(dyy_fix, &dyy_fix_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(dzz_fix, &dzz_fix_p); CHKERRXX(ierr);
-#endif
-
-    /* 1) Preocess layer nodes */
     IPMLogRegionBegin("reinit_1st_2nd");
+    /* 1) Preocess layer nodes */
     reinitialize_One_Iteration_Second_Order( ngbd->layer_nodes,
                                          #ifdef P4_TO_P8
                                              dxx0_p, dyy0_p, dzz0_p,
@@ -4093,23 +4060,13 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
     //---------------------------------------------------------------------
     // Second order accurate One-Sided Differecing
     //---------------------------------------------------------------------
-
-    double qxm = (q_000-q_m00)/s_m00_;
-    double qxp = (q_p00-q_000)/s_p00_;
-    double qym = (q_000-q_0m0)/s_0m0_;
-    double qyp = (q_0p0-q_000)/s_0p0_;
+    double qxm = (q_000-q_m00)/s_m00_ + 0.5*s_m00_*MINMOD(qxx_m00, qxx_000);
+    double qxp = (q_p00-q_000)/s_p00_ - 0.5*s_p00_*MINMOD(qxx_p00, qxx_000);
+    double qym = (q_000-q_0m0)/s_0m0_ + 0.5*s_0m0_*MINMOD(qyy_0m0, qyy_000);
+    double qyp = (q_0p0-q_000)/s_0p0_ - 0.5*s_0p0_*MINMOD(qyy_0p0, qyy_000);
 #ifdef P4_TO_P8
-    double qzm = (q_000-q_00m)/s_00m_;
-    double qzp = (q_00p-q_000)/s_00p_;
-#endif
-
-    qxm += 0.5*s_m00_*MINMOD(qxx_m00, qxx_000);
-    qxp -= 0.5*s_p00_*MINMOD(qxx_p00, qxx_000);
-    qym += 0.5*s_0m0_*MINMOD(qyy_0m0, qyy_000);
-    qyp -= 0.5*s_0p0_*MINMOD(qyy_0p0, qyy_000);
-#ifdef P4_TO_P8
-    qzm += 0.5*s_00m_*MINMOD(qzz_00m, qzz_000);
-    qzp -= 0.5*s_00p_*MINMOD(qzz_00p, qzz_000);
+    double qzm = (q_000-q_00m)/s_00m_ + 0.5*s_00m_*MINMOD(qzz_00m, qzz_000);
+    double qzp = (q_00p-q_000)/s_00p_ - 0.5*s_00p_*MINMOD(qzz_00p, qzz_000);
 #endif
 
     //---------------------------------------------------------------------
@@ -4134,7 +4091,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
 }
 
 
-void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec qi, Vec q, int iterations, int order)
+void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec qi, Vec q, int iterations ) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
@@ -4605,13 +4562,6 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
 }
-
-
-
-
-
-
-
 
 void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, int iterations, int order) const
 {
@@ -5947,26 +5897,14 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
 #endif
 
         /* second order derivatives */
-        double qxx_m00 = 0.0;
-        double qxx_p00 = 0.0;
-        double qyy_0m0 = 0.0;
-        double qyy_0p0 = 0.0;
+        double qxx_m00 = qnnn.f_m00_linear(qxx_p);
+        double qxx_p00 = qnnn.f_p00_linear(qxx_p);
+        double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
+        double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
 #ifdef P4_TO_P8
-        double qzz_00m = 0.0;
-        double qzz_00p = 0.0;
+        double qzz_00m = qnnn.f_00m_linear(qzz_p);
+        double qzz_00p = qnnn.f_00p_linear(qzz_p);
 #endif
-
-        if (order == 2)
-        {
-          qxx_m00 = qnnn.f_m00_linear(qxx_p);
-          qxx_p00 = qnnn.f_p00_linear(qxx_p);
-          qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
-          qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
-#ifdef P4_TO_P8
-          qzz_00m = qnnn.f_00m_linear(qzz_p);
-          qzz_00p = qnnn.f_00p_linear(qzz_p);
-#endif
-        }
 
         /* minmod operation */
         qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
@@ -7238,33 +7176,15 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
                             : (qnnn.f_00p_linear(q_p) - q_p[n]) / qnnn.d_00p;
 #endif
 
-        /* DANIIL: in case when the function is called with order = 0 or 1,
-         * does it make sense to use second derivatives?
-         * For example, in situation when a Poisson solver produces
-         * non-convergent second derivatives, I'd want to extend my solution
-         * without using second order derivatives */
-
         /* second order derivatives */
-        double qxx_m00 = 0.0;
-        double qxx_p00 = 0.0;
-        double qyy_0m0 = 0.0;
-        double qyy_0p0 = 0.0;
+        double qxx_m00 = qnnn.f_m00_linear(qxx_p);
+        double qxx_p00 = qnnn.f_p00_linear(qxx_p);
+        double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
+        double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
 #ifdef P4_TO_P8
-        double qzz_00m = 0.0;
-        double qzz_00p = 0.0;
+        double qzz_00m = qnnn.f_00m_linear(qzz_p);
+        double qzz_00p = qnnn.f_00p_linear(qzz_p);
 #endif
-
-        if (order == 2)
-        {
-          qxx_m00 = qnnn.f_m00_linear(qxx_p);
-          qxx_p00 = qnnn.f_p00_linear(qxx_p);
-          qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
-          qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
-#ifdef P4_TO_P8
-          qzz_00m = qnnn.f_00m_linear(qzz_p);
-          qzz_00p = qnnn.f_00p_linear(qzz_p);
-#endif
-        }
 
         /* minmod operation */
         qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
@@ -7275,15 +7195,6 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
         qzz_00m = qzz_p[n]*qzz_00m<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
         qzz_00p = qzz_p[n]*qzz_00p<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
 #endif
-
-//        qxx_m00 = MC(qxx_p[n],qxx_m00);
-//        qxx_p00 = MC(qxx_p[n],qxx_p00);
-//        qyy_0m0 = MC(qyy_p[n],qyy_0m0);
-//        qyy_0p0 = MC(qyy_p[n],qyy_0p0);
-//#ifdef P4_TO_P8
-//        qzz_00m = MC(qzz_p[n],qzz_00m);
-//        qzz_00p = MC(qzz_p[n],qzz_00p);
-//#endif
 
         if(nx[n]<0) qx -= .5*qnnn.d_p00*qxx_p00;
         else        qx += .5*qnnn.d_m00*qxx_m00;
@@ -7345,26 +7256,14 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 #endif
 
         /* second order derivatives */
-        double qxx_m00 = 0.0;
-        double qxx_p00 = 0.0;
-        double qyy_0m0 = 0.0;
-        double qyy_0p0 = 0.0;
+        double qxx_m00 = qnnn.f_m00_linear(qxx_p);
+        double qxx_p00 = qnnn.f_p00_linear(qxx_p);
+        double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
+        double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
 #ifdef P4_TO_P8
-        double qzz_00m = 0.0;
-        double qzz_00p = 0.0;
+        double qzz_00m = qnnn.f_00m_linear(qzz_p);
+        double qzz_00p = qnnn.f_00p_linear(qzz_p);
 #endif
-
-        if (order == 2)
-        {
-          qxx_m00 = qnnn.f_m00_linear(qxx_p);
-          qxx_p00 = qnnn.f_p00_linear(qxx_p);
-          qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
-          qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
-#ifdef P4_TO_P8
-          qzz_00m = qnnn.f_00m_linear(qzz_p);
-          qzz_00p = qnnn.f_00p_linear(qzz_p);
-#endif
-        }
 
         /* minmod operation */
         qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
@@ -7375,15 +7274,6 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
         qzz_00m = qzz_p[n]*qzz_00m<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
         qzz_00p = qzz_p[n]*qzz_00p<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
 #endif
-
-//        qxx_m00 = MC(qxx_p[n],qxx_m00);
-//        qxx_p00 = MC(qxx_p[n],qxx_p00);
-//        qyy_0m0 = MC(qyy_p[n],qyy_0m0);
-//        qyy_0p0 = MC(qyy_p[n],qyy_0p0);
-//#ifdef P4_TO_P8
-//        qzz_00m = MC(qzz_p[n],qzz_00m);
-//        qzz_00p = MC(qzz_p[n],qzz_00p);
-//#endif
 
         if(nx[n]<0) qx -= .5*qnnn.d_p00*qxx_p00;
         else        qx += .5*qnnn.d_m00*qxx_m00;
