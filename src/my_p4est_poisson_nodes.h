@@ -253,8 +253,12 @@ public:
     return .5*(p0+p1) + (p1-p0)*(dist/h-.5) + .5*p_dd*(dist*dist-dist*h);
   }
 
-//  void assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2& jump_un, CF_2& rhs_m, CF_2& rhs_p);
+#ifdef P4_TO_P8
+  void assemble_jump_rhs(Vec rhs_out, const CF_3& jump_u, CF_3& jump_un, Vec rhs_m_in = NULL, Vec rhs_p_in = NULL);
+#else
   void assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u, CF_2& jump_un, Vec rhs_m_in = NULL, Vec rhs_p_in = NULL);
+#endif
+
 };
 
 #endif // MY_P4EST_POISSON_NODES_H

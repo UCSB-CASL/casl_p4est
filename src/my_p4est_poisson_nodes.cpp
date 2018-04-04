@@ -3,6 +3,7 @@
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/cube3.h>
 #include <src/cube2.h>
+#include <src/my_p8est_interpolation_nodes_local.h>
 #else
 #include "my_p4est_poisson_nodes.h"
 #include <src/my_p4est_refine_coarsen.h>
@@ -615,7 +616,11 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
   }
 
   my_p4est_interpolation_nodes_local_t phi_interp_local(node_neighbors_);
+#ifdef P4_TO_P8
+  phi_interp_local.set_input(phi_p, phi_xx_p, phi_yy_p, phi_zz_p, quadratic);
+#else
   phi_interp_local.set_input(phi_p, phi_xx_p, phi_yy_p, quadratic);
+#endif
 
   /* Daniil: while working on solidification of alloys I came to realize
    * that due to very irregular structure of solidification fronts (where
@@ -925,7 +930,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         for (short i = 1; i < fv_ny; ++i)
           fv_y[i] = fv_y[i-1] + fv_dy;
 #ifdef P4_TO_P8
-        double fv_dx = (fv_zmax-fv_zmin)/ (double)(fv_size_z);
+        double fv_dz = (fv_zmax-fv_zmin)/ (double)(fv_size_z);
         fv_z[0] = fv_zmin;
         for (short i = 1; i < fv_nz; ++i)
           fv_z[i] = fv_z[i-1] + fv_dz;
@@ -940,7 +945,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
             {
 #ifdef P4_TO_P8
               int idx = k*fv_nx*fv_ny + j*fv_nx + i;
-              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j], fv_z[k]);
+//              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j], fv_z[k]);
+              phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j], fv_z[k]);
 #else
               int idx = j*fv_nx + i;
               phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
@@ -1367,7 +1373,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
                 node_00M = qnnn_nei.neighbor_00m();
 
                 if (node_00M != -1)
-                  enough_neighbors = phi_m[node_00M] < -EPS;
+                  enough_neighbors = phi_p[node_00M] < -EPS;
               }
             }
 
@@ -1794,8 +1800,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
               phi_cube.val011 = phi_fv[(k+1)*fv_nx*fv_ny + (j+1)*fv_nx + (i+0)];
               phi_cube.val111 = phi_fv[(k+1)*fv_nx*fv_ny + (j+1)*fv_nx + (i+1)];
 
-              volume_cut_cell += cube.area_In_Negative_Domain(phi_cube);
-              interface_area  += cube.interface_Length_In_Cell(phi_cube);
+              volume_cut_cell += cube.volume_In_Negative_Domain(phi_cube);
+              interface_area  += cube.interface_Area_In_Cell(phi_cube);
             }
 #else
         Cube2 cube;
@@ -1886,7 +1892,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
             }
 
           double s_00m = 0, s_00p = 0;
-          for (short j = 0; j < fv_size_j; ++j)
+          for (short j = 0; j < fv_size_y; ++j)
             for (short i = 0; i < fv_size_x; ++i) {
 
               c2.x0 = fv_x[i]; c2.x1 = fv_x[i+1];
@@ -2127,7 +2133,12 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
   }
 
   my_p4est_interpolation_nodes_local_t phi_interp_local(node_neighbors_);
+#ifdef P4_TO_P8
+  phi_interp_local.set_input(phi_p, phi_xx_p, phi_yy_p, phi_zz_p, quadratic);
+#else
   phi_interp_local.set_input(phi_p, phi_xx_p, phi_yy_p, quadratic);
+#endif
+
 
   /* Daniil: while working on solidification of alloys I came to realize
    * that due to very irregular structure of solidification fronts (where
@@ -2293,7 +2304,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         for (short i = 1; i < fv_ny; ++i)
           fv_y[i] = fv_y[i-1] + fv_dy;
 #ifdef P4_TO_P8
-        double fv_dx = (fv_zmax-fv_zmin)/ (double)(fv_size_z);
+        double fv_dz = (fv_zmax-fv_zmin)/ (double)(fv_size_z);
         fv_z[0] = fv_zmin;
         for (short i = 1; i < fv_nz; ++i)
           fv_z[i] = fv_z[i-1] + fv_dz;
@@ -2308,7 +2319,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
             {
 #ifdef P4_TO_P8
               int idx = k*fv_nx*fv_ny + j*fv_nx + i;
-              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j], fv_z[k]);
+//              phi_fv[idx] = phi_interp(fv_x[i], fv_y[j], fv_z[k]);
+              phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j], fv_z[k]);
 #else
               int idx = j*fv_nx + i;
               phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
@@ -2707,7 +2719,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
                 node_00M = qnnn_nei.neighbor_00m();
 
                 if (node_00M != -1)
-                  enough_neighbors = phi_m[node_00M] < -EPS;
+                  enough_neighbors = phi_p[node_00M] < -EPS;
               }
             }
 
@@ -2934,8 +2946,8 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
               phi_cube.val011 = phi_fv[(k+1)*fv_nx*fv_ny + (j+1)*fv_nx + (i+0)];
               phi_cube.val111 = phi_fv[(k+1)*fv_nx*fv_ny + (j+1)*fv_nx + (i+1)];
 
-              volume_cut_cell += cube.area_In_Negative_Domain(phi_cube);
-              interface_area  += cube.interface_Length_In_Cell(phi_cube);
+              volume_cut_cell += cube.volume_In_Negative_Domain(phi_cube);
+              interface_area  += cube.interface_Area_In_Cell(phi_cube);
             }
 #else
         Cube2 cube;
@@ -3012,7 +3024,7 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
             }
 
           double s_00m = 0, s_00p = 0;
-          for (short j = 0; j < fv_size_j; ++j)
+          for (short j = 0; j < fv_size_y; ++j)
             for (short i = 0; i < fv_size_x; ++i) {
 
               c2.x0 = fv_x[i]; c2.x1 = fv_x[i+1];
@@ -3391,7 +3403,11 @@ void my_p4est_poisson_nodes_t::assemble_matrix(Vec solution)
 }
 
 //void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, CF_2& jump_u, CF_2& jump_un, CF_2& rhs_m, CF_2& rhs_p)
+#ifdef P4_TO_P8
+void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_3& jump_u, CF_3& jump_un, Vec rhs_m_in, Vec rhs_p_in)
+#else
 void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u, CF_2& jump_un, Vec rhs_m_in, Vec rhs_p_in)
+#endif
 {
 
   // set local add if none was given
@@ -3446,7 +3462,11 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u
     rhs_out_p[n] = 0;
 
   my_p4est_interpolation_nodes_local_t phi_interp_local(node_neighbors_);
+#ifdef P4_TO_P8
+  phi_interp_local.set_input(phi_p, phi_xx_p, phi_yy_p, phi_zz_p, quadratic);
+#else
   phi_interp_local.set_input(phi_p, phi_xx_p, phi_yy_p, quadratic);
+#endif
 
   /* Daniil: while working on solidification of alloys I came to realize
    * that due to very irregular structure of solidification fronts (where
@@ -3546,7 +3566,7 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u
       for (short i = 1; i < fv_ny; ++i)
         fv_y[i] = fv_y[i-1] + fv_dy;
 #ifdef P4_TO_P8
-      double fv_dx = (fv_zmax-fv_zmin)/ (double)(fv_size_z);
+      double fv_dz = (fv_zmax-fv_zmin)/ (double)(fv_size_z);
       fv_z[0] = fv_zmin;
       for (short i = 1; i < fv_nz; ++i)
         fv_z[i] = fv_z[i-1] + fv_dz;
@@ -3562,7 +3582,7 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u
 #ifdef P4_TO_P8
             int idx = k*fv_nx*fv_ny + j*fv_nx + i;
             phi_fv[idx] = phi_interp(fv_x[i], fv_y[j], fv_z[k]);
-            phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j], fv_z[k]);
+//            phi_fv[idx] = phi_interp_local.interpolate(fv_x[i], fv_y[j], fv_z[k]);
 #else
             int idx = j*fv_nx + i;
             phi_fv[idx] = phi_interp(fv_x[i], fv_y[j]);
@@ -3625,8 +3645,8 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u
               phi_cube.val011 = phi_fv[(k+1)*fv_nx*fv_ny + (j+1)*fv_nx + (i+0)];
               phi_cube.val111 = phi_fv[(k+1)*fv_nx*fv_ny + (j+1)*fv_nx + (i+1)];
 
-              volume_cut_cell += cube.area_In_Negative_Domain(phi_cube);
-              interface_area  += cube.interface_Length_In_Cell(phi_cube);
+              volume_cut_cell += cube.volume_In_Negative_Domain(phi_cube);
+              interface_area  += cube.interface_Area_In_Cell(phi_cube);
               integral_bc += cube.integrate_Over_Interface(jump_un, phi_cube);
             }
 #else
@@ -3712,7 +3732,7 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u
           }
 
         double s_00m = 0, s_00p = 0;
-        for (short j = 0; j < fv_size_j; ++j)
+        for (short j = 0; j < fv_size_y; ++j)
           for (short i = 0; i < fv_size_x; ++i) {
 
             c2.x0 = fv_x[i]; c2.x1 = fv_x[i+1];
@@ -3750,13 +3770,18 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u
         }
 #endif
 
-        double s_m00_m = s_m00, s_m00_p = (fv_xmax-fv_xmin) - s_m00;
-        double s_p00_m = s_p00, s_p00_p = (fv_xmax-fv_xmin) - s_p00;
-        double s_0m0_m = s_0m0, s_0m0_p = (fv_ymax-fv_ymin) - s_0m0;
-        double s_0p0_m = s_0p0, s_0p0_p = (fv_ymax-fv_ymin) - s_0p0;
 #ifdef P4_TO_P8
-        double s_00m_m = s_00m, s_00m_p = (fv_zmax-fv_zmin) - s_00m;
-        double s_00p_m = s_00p, s_00p_p = (fv_zmax-fv_zmin) - s_00p;
+        double s_m00_m = s_m00, s_m00_p = (fv_ymax-fv_ymin)*(fv_zmax-fv_zmin) - s_m00;
+        double s_p00_m = s_p00, s_p00_p = (fv_ymax-fv_ymin)*(fv_zmax-fv_zmin) - s_p00;
+        double s_0m0_m = s_0m0, s_0m0_p = (fv_xmax-fv_xmin)*(fv_zmax-fv_zmin) - s_0m0;
+        double s_0p0_m = s_0p0, s_0p0_p = (fv_xmax-fv_xmin)*(fv_zmax-fv_zmin) - s_0p0;
+        double s_00m_m = s_00m, s_00m_p = (fv_ymax-fv_ymin)*(fv_xmax-fv_xmin) - s_00m;
+        double s_00p_m = s_00p, s_00p_p = (fv_ymax-fv_ymin)*(fv_xmax-fv_xmin) - s_00p;
+#else
+        double s_m00_m = s_m00, s_m00_p = (fv_ymax-fv_ymin) - s_m00;
+        double s_p00_m = s_p00, s_p00_p = (fv_ymax-fv_ymin) - s_p00;
+        double s_0m0_m = s_0m0, s_0m0_p = (fv_xmax-fv_xmin) - s_0m0;
+        double s_0p0_m = s_0p0, s_0p0_p = (fv_xmax-fv_xmin) - s_0p0;
 #endif
 
         double xyz_p[P4EST_DIM];
@@ -3779,8 +3804,13 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u
           else if (xyz_p[dir] > xyz_C[dir]+dxyz_m[dir]) xyz_p[dir] = xyz_C[dir]+dxyz_m[dir]+EPS;
         }
 
-        double alpha_proj = jump_u(xyz_p[0],xyz_p[1]);
-        double beta_proj = jump_un(xyz_p[0],xyz_p[1]);
+#ifdef P4_TO_P8
+        double alpha_proj = jump_u (xyz_p[0],xyz_p[1],xyz_p[2]);
+        double beta_proj  = jump_un(xyz_p[0],xyz_p[1],xyz_p[2]);
+#else
+        double alpha_proj = jump_u (xyz_p[0],xyz_p[1]);
+        double beta_proj  = jump_un(xyz_p[0],xyz_p[1]);
+#endif
 
 //        double rhs_m_val = rhs_m(xyz_p[0],xyz_p[1]);
 //        double rhs_p_val = rhs_p(xyz_p[0],xyz_p[1]);
@@ -3792,19 +3822,35 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u
         if (phi_p[n] < 0.) {
           double factor = (fabs(phi_p[n])*beta_proj - alpha_proj)/volume_full_cell;
 
+#ifdef P4_TO_P8
+          rhs_out_p[n] -= factor*(add_p[n]*volume_cut_cell_p + mu_*((s_m00_p+s_p00_p)/dx_min+(s_0m0_p+s_0p0_p)/dy_min+(s_00m_p+s_00p_p)/dz_min));
+#else
           rhs_out_p[n] -= factor*(add_p[n]*volume_cut_cell_p + mu_*((s_m00_p+s_p00_p)/dx_min+(s_0m0_p+s_0p0_p)/dy_min));
+#endif
           rhs_out_p[n_m00] += mu_*s_m00_p*factor/dx_min;
           rhs_out_p[n_p00] += mu_*s_p00_p*factor/dx_min;
           rhs_out_p[n_0m0] += mu_*s_0m0_p*factor/dy_min;
           rhs_out_p[n_0p0] += mu_*s_0p0_p*factor/dy_min;
+#ifdef P4_TO_P8
+          rhs_out_p[n_00m] += mu_*s_00m_p*factor/dz_min;
+          rhs_out_p[n_00p] += mu_*s_00p_p*factor/dz_min;
+#endif
         } else {
           double factor = (fabs(phi_p[n])*beta_proj + alpha_proj)/volume_full_cell;
 
+#ifdef P4_TO_P8
+          rhs_out_p[n] -= factor*(add_p[n]*volume_cut_cell_m + mu_*((s_m00_m+s_p00_m)/dx_min+(s_0m0_m+s_0p0_m)/dy_min+(s_00m_m+s_00p_m)/dz_min));
+#else
           rhs_out_p[n] -= factor*(add_p[n]*volume_cut_cell_m + mu_*((s_m00_m+s_p00_m)/dx_min+(s_0m0_m+s_0p0_m)/dy_min));
+#endif
           rhs_out_p[n_m00] += mu_*s_m00_m*factor/dx_min;
           rhs_out_p[n_p00] += mu_*s_p00_m*factor/dx_min;
           rhs_out_p[n_0m0] += mu_*s_0m0_m*factor/dy_min;
           rhs_out_p[n_0p0] += mu_*s_0p0_m*factor/dy_min;
+#ifdef P4_TO_P8
+          rhs_out_p[n_00m] += mu_*s_00m_m*factor/dz_min;
+          rhs_out_p[n_00p] += mu_*s_00p_m*factor/dz_min;
+#endif
         }
       }
     }

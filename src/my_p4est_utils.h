@@ -302,6 +302,10 @@ public:
     p_RobinCoef = &in;
   }
 
+  inline const CF_3& getWallValue(){
+    return *p_WallValue;
+  }
+
   inline const CF_3& getInterfaceValue(){
     return *p_InterfaceValue;
   }

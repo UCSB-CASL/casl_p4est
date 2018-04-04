@@ -24,7 +24,7 @@
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_poisson_nodes.h>
-#include <src/my_p8est_bialloy.h>
+#include <src/my_p8est_multialloy_optimized.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -39,7 +39,6 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_multialloy_optimized.h>
-//#include <src/my_p4est_multialloy_var2.h>
 #endif
 
 #include <src/point3.h>
@@ -50,8 +49,8 @@
 #undef MIN
 #undef MAX
 
-int lmin = 5;
-int lmax = 10;
+int lmin = 4;
+int lmax = 6;
 int save_every_n_iteration = 1;
 
 double bc_tolerance = 1.e-5;
@@ -197,13 +196,13 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 20000;         /* K.cm-1      */
+      G              = 500;         /* K.cm-1      */
       V              = 0.05;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-      eps_c          = 0*2.7207e-5;
-      eps_v          = 0*2.27e-2;
+      eps_c          = 2.7207e-5;
+      eps_v          = 2.27e-2;
       eps_anisotropy = 0.05;
 
       Dl0 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
@@ -254,9 +253,9 @@ void set_alloy_parameters()
 
 struct plan_t : CF_3{
   double operator()(double x, double y, double z) const {
-    if     (direction=='x') return x - 0.1;
-    else if(direction=='y') return y - 0.1;
-    else                    return z - 0.1;
+    if     (direction=='x') return -(x - 0.1);
+    else if(direction=='y') return -(y - 0.1);
+    else                    return -(z - 0.1);
   }
 } LS;
 
@@ -333,7 +332,7 @@ public:
   }
 } wall_bc_type_concentration;
 
-class WallBCValueConcentrationS : public CF_3
+class WallBCValueConcentration0 : public CF_3
 {
 public:
   double operator()(double x, double y, double z) const
@@ -341,11 +340,20 @@ public:
     if (wall_bc_type_concentration(x,y,z)==NEUMANN)
       return 0;
     else
-      return kp * c0;
+      return c00;
   }
-} wall_bc_value_concentration_s;
+} wall_bc_value_concentration_0;
 
-class WallBCValueConcentrationL : public CF_3
+class InitialConcentration0 : public CF_3
+{
+public:
+  double operator()(double , double , double ) const
+  {
+    return c00;
+  }
+} initial_concentration_0;
+
+class WallBCValueConcentration1 : public CF_3
 {
 public:
   double operator()(double x, double y, double z) const
@@ -353,37 +361,29 @@ public:
     if (wall_bc_type_concentration(x,y,z)==NEUMANN)
       return 0;
     else
-      return c0;
+      return c01;
   }
-} wall_bc_value_concentration_l;
+} wall_bc_value_concentration_1;
+
+class InitialConcentration1 : public CF_3
+{
+public:
+  double operator()(double , double , double ) const
+  {
+    return c01;
+  }
+} initial_concentration_1;
 
 class InitialTemperature : public CF_3
 {
 public:
   double operator()(double x, double y, double z) const
   {
-    if(LS(x,y,z)<0) return LS(x,y,z)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
-    else            return LS(x,y,z)*G + c0*ml + Tm;
+//    if(LS(x,y,z)>0) return -LS(x,y,z)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_0(x,y,z)*ml0 + initial_concentration_1(x,y,z)*ml1 + Tm;
+//    else
+      return -LS(x,y,z)*G + initial_concentration_0(x,y,z)*ml0 + initial_concentration_1(x,y,z)*ml1 + Tm;
   }
 } initial_temperature;
-
-class InitialConcentrationS : public CF_3
-{
-public:
-  double operator()(double , double, double ) const
-  {
-    return kp * c0;
-  }
-} initial_concentration_s;
-
-class InitialConcentrationL : public CF_3
-{
-public:
-  double operator()(double , double , double ) const
-  {
-    return c0;
-  }
-} initial_concentration_l;
 
 #else
 
@@ -391,9 +391,6 @@ struct plan_t : CF_2{
   double operator()(double x, double y) const {
     if(direction=='x') return -(x - 0.1);
     else               return -(y - 0.1);
-//    else               return MAX(-(y - 0.1 + 0.0001*cos(pow(2,lmax)*PI*(x-0.50007))), 0.02 - sqrt(pow(x-0.7, 2.) + pow(y-0.23, 2.)), 0.02 - sqrt(pow(x-0.3, 2.) + pow(y-0.18, 2.)));
-
-//    return 0.05 - sqrt(pow(x-0.5, 2.) + pow(y-0.2, 2.));
   }
 } LS;
 
@@ -401,9 +398,8 @@ struct plan_t : CF_2{
 class WallBCTypeTemperature : public WallBC2D
 {
 public:
-  BoundaryConditionType operator()( double x, double y ) const
+  BoundaryConditionType operator()( double, double ) const
   {
-    (void) x; (void) y;
     return NEUMANN;
   }
 } wall_bc_type_temperature;
@@ -413,7 +409,6 @@ class WallBCValueTemperature : public CF_2
 public:
   double operator()(double x, double y) const
   {
-//    return -G;
     if(direction=='x')
     {
       if (ABS(x-xmax)<EPS)
@@ -449,11 +444,6 @@ public:
     }
     else
     {
-//      if (ABS(y-ymin)<EPS || ABS(y-ymax)<EPS)
-//        return DIRICHLET;
-//      else
-//        return NEUMANN;
-
       if (ABS(y-ymax)<EPS)
         return DIRICHLET;
       else
@@ -495,7 +485,7 @@ public:
   }
 } wall_bc_value_concentration_1;
 
-class InitialConcentrationL : public CF_2
+class InitialConcentration1 : public CF_2
 {
 public:
   double operator()(double , double ) const
@@ -509,12 +499,9 @@ class InitialTemperature : public CF_2
 public:
   double operator()(double x, double y) const
   {
-//    if(LS(x,y)<0) return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
-//    else          return LS(x,y)*G + c0*ml + Tm;
-//    if(LS(x,y)>0) return -LS(x,y)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
-//    else
-      return -LS(x,y)*G                                      + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
-//    return initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
+    if(LS(x,y)>0) return -LS(x,y)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
+    else
+      return -LS(x,y)*G + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
   }
 } initial_temperature;
 

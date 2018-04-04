@@ -6,8 +6,6 @@
 #include <src/casl_math.h>
 
 
-
-#undef P4_TO_P8
 #ifdef P4_TO_P8
 #include <src/my_p8est_tools.h>
 #include <p8est.h>
@@ -23,7 +21,6 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_poisson_nodes_multialloy.h>
-//#include <src/my_p4est_poisson_nodes_voronoi.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #endif
 
@@ -54,6 +51,27 @@ private:
   } zero_;
 #endif
 
+#ifdef P4_TO_P8
+  class c00_cf_t : public CF_3
+  {
+    my_p4est_multialloy_t *ptr_;
+  public:
+    c00_cf_t(my_p4est_multialloy_t *ptr) { ptr_ = ptr; }
+    double operator()(double, double, double) const
+    {
+      return ptr_->c00_;
+    }
+  } c00_cf_;
+
+  class wall_bc_smoothing_t : public WallBC3D
+  {
+  public:
+    BoundaryConditionType operator()( double , double , double ) const
+    {
+      return NEUMANN;
+    }
+  } wall_bc_smoothing_;
+#else
   class c00_cf_t : public CF_2
   {
     my_p4est_multialloy_t *ptr_;
@@ -73,6 +91,7 @@ private:
       return NEUMANN;
     }
   } wall_bc_smoothing_;
+#endif
 
 #ifdef P4_TO_P8
   BoundaryConditions3D bc_t_;
@@ -169,27 +188,56 @@ private:
 
   interpolation_method interpolation_between_grids_;
 
-  class eps_c_cf_t : public CF_1
+#ifdef P4_TO_P8
+  class eps_c_cf_t : public CF_3
   {
     my_p4est_multialloy_t *ptr_;
   public:
     eps_c_cf_t(my_p4est_multialloy_t *ptr) : ptr_(ptr) {}
-    double operator()(double theta) const
+    double operator()(double nx, double ny, double nz) const
     {
-      return ptr_->epsilon_c_*(1.-15.*ptr_->epsilon_anisotropy_*cos(4.*theta));
+      double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
+      return ptr_->epsilon_c_*(1.0-4.0*ptr_->epsilon_anisotropy_*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
     }
   } eps_c_cf_;
 
-  class eps_v_cf_t : public CF_1
+  class eps_v_cf_t : public CF_3
   {
     my_p4est_multialloy_t *ptr_;
   public:
     eps_v_cf_t(my_p4est_multialloy_t *ptr) : ptr_(ptr) {}
-    double operator()(double theta) const
+    double operator()(double nx, double ny, double nz) const
     {
+      double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
+      return ptr_->epsilon_v_*(1.0-4.0*ptr_->epsilon_anisotropy_*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
+    }
+  } eps_v_cf_;
+#else
+  class eps_c_cf_t : public CF_2
+  {
+    my_p4est_multialloy_t *ptr_;
+  public:
+    eps_c_cf_t(my_p4est_multialloy_t *ptr) : ptr_(ptr) {}
+    double operator()(double nx, double ny) const
+    {
+      double theta = atan2(ny, nx);
+      return ptr_->epsilon_c_*(1.-15.*ptr_->epsilon_anisotropy_*cos(4.*theta));
+    }
+  } eps_c_cf_;
+
+  class eps_v_cf_t : public CF_2
+  {
+    my_p4est_multialloy_t *ptr_;
+  public:
+    eps_v_cf_t(my_p4est_multialloy_t *ptr) : ptr_(ptr) {}
+    double operator()(double nx, double ny) const
+    {
+      double theta = atan2(ny, nx);
       return ptr_->epsilon_v_*(1.-15.*ptr_->epsilon_anisotropy_*cos(4.*theta));
     }
   } eps_v_cf_;
+#endif
+
 
 public:
 

@@ -22,6 +22,7 @@
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_poisson_nodes.h>
+#include <src/my_p8est_poisson_nodes_multialloy.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #else
 #include <p4est_bits.h>
@@ -46,16 +47,16 @@
 
 #undef MIN
 #undef MAX
-int lmin = 5;
-int lmax = 5;
-int nb_splits = 4;
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 5;
 
 bool use_continuous_stencil = false;
 bool use_one_sided_derivatives = false;
 bool use_points_on_interface = true;
 bool update_c0_robin = true;
 
-int pin_every_n_steps = 3;
+int pin_every_n_steps = 3000;
 double bc_tolerance = 1.e-9;
 int max_iterations = 1000;
 
@@ -79,7 +80,7 @@ double zmax = 1;
 int n_xyz[] = {1, 1, 1};
 
 double r_0 = 0.3;
-double x_0 = 0.5+0.09;
+double x_0 = 0.5+0.01;
 double y_0 = 0.5-0.03;
 double z_0 = 0.5+0.07;
 
@@ -124,8 +125,8 @@ void set_alloy_parameters()
 //    eps_v                = 2.27e-2;
 //    eps_v                = 1;
 //    eps_c                = 1;
-    eps_c                = 0;
-    eps_v                = 0;
+    eps_c                = 1;
+    eps_v                = 1;
     eps_anisotropy       = 0.05;
 
     Dl[0] = 1e-5;
@@ -162,28 +163,103 @@ int test_number = 0;
 
 double diag_add = 1;
 
-class eps_v_cf_t : public CF_1
+//#ifdef P4_TO_P8
+//class eps_v_cf_t : public CF_2
+//{
+//public:
+//  double operator()(double x, double y) const
+//  {
+//    return eps_v*(1.0-15.0*eps_anisotropy*.5*(cos(4.0*x)+cos(4.0*y)));
+//  }
+//} eps_v_cf;
+
+//class eps_c_cf_t : public CF_2
+//{
+//public:
+//  double operator()(double x, double y) const
+//  {
+//    return eps_c*(1.0-15.0*eps_anisotropy*.5*(cos(4.0*x)+cos(4.0*y)));
+//  }
+//} eps_c_cf;
+//#else
+//class eps_v_cf_t : public CF_1
+//{
+//public:
+//  double operator()(double x) const
+//  {
+//    return eps_v*(1.0-15.0*eps_anisotropy*cos(4.0*x));
+//  }
+//} eps_v_cf;
+
+//class eps_c_cf_t : public CF_1
+//{
+//public:
+//  double operator()(double x) const
+//  {
+//    return eps_c*(1.0-15.0*eps_anisotropy*cos(4.0*x));
+//  }
+//} eps_c_cf;
+//#endif
+
+#ifdef P4_TO_P8
+class eps_v_cf_t : public CF_3
 {
 public:
-  double operator()(double x) const
+  double operator()(double nx, double ny, double nz) const
   {
-    return eps_v*(1.0-15.0*eps_anisotropy*cos(4.0*x));
+//    double theta_xz = atan2(nz, nx);
+//    double theta_yz = atan2(nz, ny);
+//    return eps_v*(1.0-15.0*eps_anisotropy*.5*(cos(4.0*theta_xz)+cos(4.0*theta_yz)));
+    double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
+    return eps_v*(1.0-4.0*eps_anisotropy*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
   }
 } eps_v_cf;
 
-class eps_c_cf_t : public CF_1
+class eps_c_cf_t : public CF_3
 {
 public:
-  double operator()(double x) const
+  double operator()(double nx, double ny, double nz) const
   {
-    return eps_c*(1.0-15.0*eps_anisotropy*cos(4.0*x));
+//    double theta_xz = atan2(nz, nx);
+//    double theta_yz = atan2(nz, ny);
+//    return eps_c*(1.0-15.0*eps_anisotropy*.5*(cos(4.0*theta_xz)+cos(4.0*theta_yz)));
+    double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
+    return eps_c*(1.0-4.0*eps_anisotropy*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
   }
 } eps_c_cf;
+#else
+class eps_v_cf_t : public CF_2
+{
+public:
+  double operator()(double nx, double ny) const
+  {
+    double theta = atan2(ny, nx);
+    return eps_v*(1.0-15.0*eps_anisotropy*cos(4.0*theta));
+  }
+} eps_v_cf;
+
+class eps_c_cf_t : public CF_2
+{
+public:
+  double operator()(double nx, double ny) const
+  {
+    double theta = atan2(ny, nx);
+    return eps_c*(1.0-15.0*eps_anisotropy*cos(4.0*theta));
+  }
+} eps_c_cf;
+#endif
 
 
 #ifdef P4_TO_P8
+class zero_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return 0;
+  }
+} zero_cf;
 #else
-
 class zero_cf_t: public CF_2
 {
 public:
@@ -192,10 +268,162 @@ public:
     return 0;
   }
 } zero_cf;
+#endif
 
 //------------------------------------------------------------
 // Level-Set Function
 //------------------------------------------------------------
+#ifdef P4_TO_P8
+class phi_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+      return r_0 - sqrt(SQR(x - x_0) + SQR(y - y_0) + SQR(z - z_0));
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} phi_cf;
+
+class phi_x_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+      return -(x-x_0)/sqrt(SQR(x - x_0) + SQR(y - y_0) + SQR(z - z_0) + EPS);
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} phi_x_cf;
+
+class phi_y_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+      return -(y-y_0)/sqrt(SQR(x - x_0) + SQR(y - y_0) + SQR(z - z_0) + EPS);
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} phi_y_cf;
+
+class phi_z_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+      return -(z-z_0)/sqrt(SQR(x - x_0) + SQR(y - y_0) + SQR(z - z_0) + EPS);
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} phi_z_cf;
+
+class phi_xx_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+      return -(SQR(y-y_0)+SQR(z-z_0))/pow(SQR(x - x_0) + SQR(y - y_0) + SQR(z - z_0) + EPS, 1.5);
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} phi_xx_cf;
+
+class phi_yy_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+      return -(SQR(x-x_0)+SQR(z-z_0))/pow(SQR(x - x_0) + SQR(y - y_0) + SQR(z - z_0) + EPS, 1.5);
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} phi_yy_cf;
+
+class phi_zz_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+      return -(SQR(y-y_0)+SQR(x-x_0))/pow(SQR(x - x_0) + SQR(y - y_0) + SQR(z - z_0) + EPS, 1.5);
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} phi_zz_cf;
+
+class phi_xy_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+        return (x-x_0)*(y-y_0)/pow(SQR(x - x_0) + SQR(y - y_0) + SQR(z - z_0) + EPS, 1.5);
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} phi_xy_cf;
+
+class phi_yz_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+        return (z-z_0)*(y-y_0)/pow(SQR(x - x_0) + SQR(y - y_0) + SQR(z - z_0) + EPS, 1.5);
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} phi_yz_cf;
+
+class phi_zx_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(interface_type)
+    {
+    case 0:
+        return (x-x_0)*(z-z_0)/pow(SQR(x - x_0) + SQR(y - y_0) + SQR(z - z_0) + EPS, 1.5);
+    default:
+      throw std::invalid_argument("Choose a valid level set.");
+    }
+  }
+} phi_zx_cf;
+#else
 class phi_cf_t: public CF_2
 {
 public:
@@ -219,7 +447,7 @@ public:
     switch(interface_type)
     {
     case 0:
-      return -(x-x_0)/sqrt(SQR(x - x_0) + SQR(y - y_0));
+      return -(x-x_0)/sqrt(SQR(x - x_0) + SQR(y - y_0) + EPS);
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -234,7 +462,7 @@ public:
     switch(interface_type)
     {
     case 0:
-      return -(y-y_0)/sqrt(SQR(x - x_0) + SQR(y - y_0));
+      return -(y-y_0)/sqrt(SQR(x - x_0) + SQR(y - y_0) + EPS);
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -249,7 +477,7 @@ public:
     switch(interface_type)
     {
     case 0:
-      return -(y-y_0)*(y-y_0)/pow(SQR(x - x_0) + SQR(y - y_0), 1.5);
+      return -(y-y_0)*(y-y_0)/pow(SQR(x - x_0) + SQR(y - y_0) + EPS, 1.5);
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -264,7 +492,7 @@ public:
     switch(interface_type)
     {
     case 0:
-        return (x-x_0)*(y-y_0)/pow(SQR(x - x_0) + SQR(y - y_0), 1.5);
+        return (x-x_0)*(y-y_0)/pow(SQR(x - x_0) + SQR(y - y_0) + EPS, 1.5);
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -279,38 +507,158 @@ public:
     switch(interface_type)
     {
     case 0:
-        return -(x-x_0)*(x-x_0)/pow(SQR(x - x_0) + SQR(y - y_0), 1.5);
+        return -(x-x_0)*(x-x_0)/pow(SQR(x - x_0) + SQR(y - y_0) + EPS, 1.5);
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
   }
 } phi_yy_cf;
+#endif
 
+#ifdef P4_TO_P8
+class kappa_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return (SQR(phi_x_cf(x,y,z))*phi_yy_cf(x,y,z) - 2.*phi_x_cf(x,y,z)*phi_y_cf(x,y,z)*phi_xy_cf(x,y,z) + SQR(phi_y_cf(x,y,z))*phi_xx_cf(x,y,z) +
+            SQR(phi_y_cf(x,y,z))*phi_zz_cf(x,y,z) - 2.*phi_y_cf(x,y,z)*phi_z_cf(x,y,z)*phi_yz_cf(x,y,z) + SQR(phi_z_cf(x,y,z))*phi_yy_cf(x,y,z) +
+            SQR(phi_x_cf(x,y,z))*phi_zz_cf(x,y,z) - 2.*phi_z_cf(x,y,z)*phi_x_cf(x,y,z)*phi_zx_cf(x,y,z) + SQR(phi_z_cf(x,y,z))*phi_xx_cf(x,y,z))
+        /pow(SQR(phi_x_cf(x,y,z)) + SQR(phi_y_cf(x,y,z)) + SQR(phi_z_cf(x,y,z)) + EPS, 1.5);
+  }
+} kappa_cf;
+#else
 class kappa_cf_t: public CF_2
 {
 public:
   double operator()(double x, double y) const
   {
-//    return 1.1;
-    return (SQR(phi_x_cf(x,y))*phi_yy_cf(x,y) - 2.*phi_x_cf(x,y)*phi_y_cf(x,y)*phi_xy_cf(x,y) + SQR(phi_y_cf(x,y))*phi_xx_cf(x,y))/pow(SQR(phi_x_cf(x,y))+SQR(phi_y_cf(x,y)), 1.5);
+    return (SQR(phi_x_cf(x,y))*phi_yy_cf(x,y) - 2.*phi_x_cf(x,y)*phi_y_cf(x,y)*phi_xy_cf(x,y) + SQR(phi_y_cf(x,y))*phi_xx_cf(x,y))/pow(SQR(phi_x_cf(x,y))+SQR(phi_y_cf(x,y)) + EPS, 1.5);
   }
 } kappa_cf;
+#endif
 
-class theta_cf_t: public CF_2
+
+#ifdef P4_TO_P8
+class theta_xz_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    double norm = sqrt(SQR(phi_x_cf(x,y,z)) +
+                       SQR(phi_y_cf(x,y,z)) +
+                       SQR(phi_z_cf(x,y,z))) + EPS;
+
+    return atan2(phi_z_cf(x,y,z)/norm,
+                 phi_x_cf(x,y,z)/norm);
+  }
+} theta_xz_cf;
+class theta_yz_cf_t: public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    double norm = sqrt(SQR(phi_x_cf(x,y,z)) +
+                       SQR(phi_y_cf(x,y,z)) +
+                       SQR(phi_z_cf(x,y,z))) + EPS;
+
+    return atan2(phi_z_cf(x,y,z)/norm,
+                 phi_y_cf(x,y,z)/norm);
+  }
+} theta_yz_cf;
+#else
+class theta_xz_cf_t: public CF_2
 {
 public:
   double operator()(double x, double y) const
   {
-    double norm = sqrt(SQR(phi_x_cf(x,y)) + SQR(phi_y_cf(x,y)));
+    double norm = sqrt(SQR(phi_x_cf(x,y)) + SQR(phi_y_cf(x,y))+EPS);
     return atan2(phi_y_cf(x,y)/norm, phi_x_cf(x,y)/norm);
   }
-} theta_cf;
+} theta_xz_cf;
+#endif
 
 
 
 //------------------------------------------------------------
 // Concentration 0
 //------------------------------------------------------------
+#ifdef P4_TO_P8
+class c0_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return 0.5*(1.1+sin(x)*cos(y))*exp(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} c0_exact;
+
+class c0_x_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return 0.5*cos(x)*cos(y)*exp(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} c0_x_exact;
+
+class c0_y_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return -0.5*sin(x)*sin(y)*exp(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} c0_y_exact;
+
+class c0_z_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return 0.5*(1.1+sin(x)*cos(y))*exp(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} c0_z_exact;
+
+class c0_dd_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return -2.*0.5*sin(x)*cos(y)*exp(z) + 0.5*(1.1+sin(x)*cos(y))*exp(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} c0_dd_exact;
+#else
 class c0_exact_t : public CF_2
 {
 public:
@@ -370,10 +718,85 @@ public:
     }
   }
 } c0_dd_exact;
+#endif
 
 //------------------------------------------------------------
 // Concentration 1
 //------------------------------------------------------------
+#ifdef P4_TO_P8
+class c1_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return cos(x)*sin(y)*exp(-z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} c1_exact;
+
+class c1_x_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0: return -sin(x)*sin(y)*exp(-z);
+      default: throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} c1_x_exact;
+
+class c1_y_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return cos(x)*cos(y)*exp(-z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} c1_y_exact;
+
+class c1_z_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return -cos(x)*sin(y)*exp(-z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} c1_z_exact;
+
+class c1_dd_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return -1.*cos(x)*sin(y)*exp(-z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} c1_dd_exact;
+#else
 class c1_exact_t : public CF_2
 {
 public:
@@ -431,11 +854,92 @@ public:
     }
   }
 } c1_dd_exact;
+#endif
 
 //------------------------------------------------------------
 // Temperature
 //------------------------------------------------------------
+#ifdef P4_TO_P8
+class tm_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+//        return sin(x)*(y+y*y);
+        return (x*x + x*y + y*y)*sin(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} tm_exact;
 
+class tm_x_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+//        return cos(x)*(y+y*y);
+        return (2.*x + y)*sin(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} tm_x_exact;
+
+class tm_y_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+//        return sin(x)*(1.+2.*y);
+        return (x + 2.*y)*sin(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} tm_y_exact;
+
+class tm_z_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+//        return sin(x)*(1.+2.*y);
+        return (x*x + x*y + y*y)*cos(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} tm_z_exact;
+
+class tm_dd_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+//        return -sin(x)*(y+y*y) + 2.*sin(x);
+        return 4.*sin(z) - (x*x + x*y + y*y)*sin(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} tm_dd_exact;
+#else
 class tm_exact_t : public CF_2
 {
 public:
@@ -444,7 +948,6 @@ public:
     switch(test_number)
     {
       case 0:
-//        return sin(x)*(y+y*y);
         return x*x + x*y + y*y;
       default:
         throw std::invalid_argument("Choose a valid test.");
@@ -460,7 +963,6 @@ public:
     switch(test_number)
     {
       case 0:
-//        return cos(x)*(y+y*y);
         return 2.*x + y;
       default:
         throw std::invalid_argument("Choose a valid test.");
@@ -476,7 +978,6 @@ public:
     switch(test_number)
     {
       case 0:
-//        return sin(x)*(1.+2.*y);
         return x + 2.*y;
       default:
         throw std::invalid_argument("Choose a valid test.");
@@ -492,14 +993,166 @@ public:
     switch(test_number)
     {
       case 0:
-//        return -sin(x)*(y+y*y) + 2.*sin(x);
         return 4.;
       default:
         throw std::invalid_argument("Choose a valid test.");
     }
   }
 } tm_dd_exact;
+#endif
 
+
+#ifdef P4_TO_P8
+//class tm_exact_t : public CF_3
+//{
+//public:
+//  double operator()(double x, double y, double z) const
+//  {
+//    switch(test_number)
+//    {
+//      case 0:
+//        return 2.*sin(x)*(y+y*y)*cos(z)+3.;
+//      default:
+//        throw std::invalid_argument("Choose a valid test.");
+//    }
+//  }
+//} tm_exact;
+
+//class tm_x_exact_t : public CF_3
+//{
+//public:
+//  double operator()(double x, double y, double z) const
+//  {
+//    switch(test_number)
+//    {
+//      case 0:
+//        return 2.*cos(x)*(y+y*y)*cos(z);
+//      default:
+//        throw std::invalid_argument("Choose a valid test.");
+//    }
+//  }
+//} tm_x_exact;
+
+//class tm_y_exact_t : public CF_3
+//{
+//public:
+//  double operator()(double x, double y, double z) const
+//  {
+//    switch(test_number)
+//    {
+//      case 0:
+//        return 2.*sin(x)*(1.+2.*y)*cos(z);
+//      default:
+//        throw std::invalid_argument("Choose a valid test.");
+//    }
+//  }
+//} tm_y_exact;
+
+//class tm_z_exact_t : public CF_3
+//{
+//public:
+//  double operator()(double x, double y, double z) const
+//  {
+//    switch(test_number)
+//    {
+//      case 0:
+//        return -2.*sin(x)*(y+y*y)*sin(z);
+//      default:
+//        throw std::invalid_argument("Choose a valid test.");
+//    }
+//  }
+//} tm_z_exact;
+
+//class tm_dd_exact_t : public CF_3
+//{
+//public:
+//  double operator()(double x, double y, double z) const
+//  {
+//    switch(test_number)
+//    {
+//      case 0:
+//        return 2.*(-2.*sin(x)*(y+y*y)*cos(z) + 2.*sin(x)*cos(z));
+//      default:
+//        throw std::invalid_argument("Choose a valid test.");
+//    }
+//  }
+//} tm_dd_exact;
+
+class tp_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return sin(x)*(y+y*y)*cos(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} tp_exact;
+
+class tp_x_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return cos(x)*(y+y*y)*cos(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} tp_x_exact;
+
+class tp_y_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return sin(x)*(1.+2.*y)*cos(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} tp_y_exact;
+
+class tp_z_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return -sin(x)*(y+y*y)*sin(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} tp_z_exact;
+
+class tp_dd_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch(test_number)
+    {
+      case 0:
+        return -2.*sin(x)*(y+y*y)*cos(z) + 2.*sin(x)*cos(z);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+    }
+  }
+} tp_dd_exact;
+#else
 class tp_exact_t : public CF_2
 {
 public:
@@ -559,7 +1212,19 @@ public:
     }
   }
 } tp_dd_exact;
+#endif
 
+#ifdef P4_TO_P8
+class t_exact_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    if (phi_cf(x,y,z) < 0)  return tm_exact(x,y,z);
+    else                    return tp_exact(x,y,z);
+  }
+} t_exact;
+#else
 class t_exact_t : public CF_2
 {
 public:
@@ -569,10 +1234,48 @@ public:
     else                  return tp_exact(x,y);
   }
 } t_exact;
+#endif
 
 //------------------------------------------------------------
 // right-hand-sides
 //------------------------------------------------------------
+#ifdef P4_TO_P8
+class rhs_c0_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return diag_add*c0_exact(x,y,z) - dt*Dl[0]*c0_dd_exact(x,y,z);
+  }
+} rhs_c0_cf;
+
+class rhs_c1_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return diag_add*c1_exact(x,y,z) - dt*Dl[1]*c1_dd_exact(x,y,z);
+  }
+} rhs_c1_cf;
+
+class rhs_tm_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return diag_add*tm_exact(x,y,z) - dt*lambda*tm_dd_exact(x,y,z);
+  }
+} rhs_tm_cf;
+
+class rhs_tp_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return diag_add*tp_exact(x,y,z) - dt*lambda*tp_dd_exact(x,y,z);
+  }
+} rhs_tp_cf;
+#else
 class rhs_c0_cf_t : public CF_2
 {
 public:
@@ -608,10 +1311,37 @@ public:
     return diag_add*tp_exact(x,y) - dt*lambda*tp_dd_exact(x,y);
   }
 } rhs_tp_cf;
+#endif
 
 //------------------------------------------------------------
 // jumps in t
 //------------------------------------------------------------
+#ifdef P4_TO_P8
+class jump_t_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return tm_exact(x,y,z) - tp_exact(x,y,z);
+  }
+} jump_t_cf;
+
+class jump_tn_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    double nx = phi_x_cf(x,y,z);
+    double ny = phi_y_cf(x,y,z);
+    double nz = phi_z_cf(x,y,z);
+    double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
+    nx /= norm; ny /= norm; nz /= norm;
+    return (tm_x_exact(x,y,z) - tp_x_exact(x,y,z))*nx +
+           (tm_y_exact(x,y,z) - tp_y_exact(x,y,z))*ny +
+           (tm_z_exact(x,y,z) - tp_z_exact(x,y,z))*nz;
+  }
+} jump_tn_cf;
+#else
 class jump_t_cf_t : public CF_2
 {
 public:
@@ -628,11 +1358,13 @@ public:
   {
     double nx = phi_x_cf(x,y);
     double ny = phi_y_cf(x,y);
-    double norm = sqrt(nx*nx+ny*ny);
+    double norm = sqrt(nx*nx+ny*ny)+EPS;
     nx /= norm; ny /= norm;
     return (tm_x_exact(x,y) - tp_x_exact(x,y))*nx + (tm_y_exact(x,y) - tp_y_exact(x,y))*ny;
   }
 } jump_tn_cf;
+#endif
+
 
 //class jump_psi_tn_cf_t : public CF_2
 //{
@@ -643,6 +1375,23 @@ public:
 //  }
 //} jump_psi_tn_cf;
 
+#ifdef P4_TO_P8
+class vn_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    double nx = phi_x_cf(x,y,z);
+    double ny = phi_y_cf(x,y,z);
+    double nz = phi_z_cf(x,y,z);
+    double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
+    nx /= norm; ny /= norm; nz /= norm;
+    return (thermal_conductivity/latent_heat*((tm_x_exact(x,y,z) - tp_x_exact(x,y,z))*nx +
+                                              (tm_y_exact(x,y,z) - tp_y_exact(x,y,z))*ny +
+                                              (tm_z_exact(x,y,z) - tp_z_exact(x,y,z))*nz));
+  }
+} vn_cf;
+#else
 class vn_cf_t : public CF_2
 {
 public:
@@ -650,15 +1399,42 @@ public:
   {
     double nx = phi_x_cf(x,y);
     double ny = phi_y_cf(x,y);
-    double norm = sqrt(nx*nx+ny*ny);
+    double norm = sqrt(nx*nx+ny*ny)+EPS;
     nx /= norm; ny /= norm;
-    return (thermal_conductivity/latent_heat*((tm_x_exact(x,y) - tp_x_exact(x,y))*nx + (tm_y_exact(x,y) - tp_y_exact(x,y))*ny));
+    return (thermal_conductivity/latent_heat*((tm_x_exact(x,y) - tp_x_exact(x,y))*nx +
+                                              (tm_y_exact(x,y) - tp_y_exact(x,y))*ny));
   }
 } vn_cf;
+#endif
 
 //------------------------------------------------------------
 // bc for c1
 //------------------------------------------------------------
+#ifdef P4_TO_P8
+class c1_robin_coef_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+//    return 1.0;
+    return -(1.-kp[1])/Dl[1]*vn_cf(x,y,z);
+  }
+} c1_robin_coef_cf;
+
+class c1_interface_val_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    double nx = phi_x_cf(x,y,z);
+    double ny = phi_y_cf(x,y,z);
+    double nz = phi_z_cf(x,y,z);
+    double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
+    nx /= norm; ny /= norm; nz /= norm;
+    return c1_x_exact(x,y,z)*nx + c1_y_exact(x,y,z)*ny + c1_z_exact(x,y,z)*nz + c1_robin_coef_cf(x,y,z)*c1_exact(x,y,z);
+  }
+} c1_interface_val_cf;
+#else
 class c1_robin_coef_cf_t : public CF_2
 {
 public:
@@ -676,11 +1452,12 @@ public:
   {
     double nx = phi_x_cf(x,y);
     double ny = phi_y_cf(x,y);
-    double norm = sqrt(nx*nx+ny*ny);
+    double norm = sqrt(nx*nx+ny*ny)+EPS;
     nx /= norm; ny /= norm;
     return c1_x_exact(x,y)*nx + c1_y_exact(x,y)*ny + c1_robin_coef_cf(x,y)*c1_exact(x,y);
   }
 } c1_interface_val_cf;
+#endif
 
 //class psi_c1_interface_val_cf_t : public CF_2
 //{
@@ -692,6 +1469,34 @@ public:
 //} psi_c1_interface_val_cf;
 
 
+#ifdef P4_TO_P8
+class bc_wall_type_t_t : public WallBC3D
+{
+public:
+  BoundaryConditionType operator()(double, double, double) const
+  {
+    return DIRICHLET;
+  }
+} bc_wall_type_t;
+
+class bc_wall_type_c0_t : public WallBC3D
+{
+public:
+  BoundaryConditionType operator()(double, double, double) const
+  {
+    return DIRICHLET;
+  }
+} bc_wall_type_c0;
+
+class bc_wall_type_c1_t : public WallBC3D
+{
+public:
+  BoundaryConditionType operator()(double, double, double) const
+  {
+    return DIRICHLET;
+  }
+} bc_wall_type_c1;
+#else
 class bc_wall_type_t_t : public WallBC2D
 {
 public:
@@ -718,11 +1523,27 @@ public:
     return DIRICHLET;
   }
 } bc_wall_type_c1;
+#endif
 
 
 
 
 
+#ifdef P4_TO_P8
+class c0_interface_val_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    double nx = phi_x_cf(x,y,z);
+    double ny = phi_y_cf(x,y,z);
+    double nz = phi_z_cf(x,y,z);
+    double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
+    nx /= norm; ny /= norm; nz /= norm;
+    return c0_x_exact(x,y,z)*nx + c0_y_exact(x,y,z)*ny + c0_z_exact(x,y,z)*nz - (1.-kp[0])/Dl[0]*vn_cf(x,y,z)*c0_exact(x,y,z);
+  }
+} c0_interface_val_cf;
+#else
 class c0_interface_val_cf_t : public CF_2
 {
 public:
@@ -730,12 +1551,12 @@ public:
   {
     double nx = phi_x_cf(x,y);
     double ny = phi_y_cf(x,y);
-    double norm = sqrt(nx*nx+ny*ny);
+    double norm = sqrt(nx*nx+ny*ny)+EPS;
     nx /= norm; ny /= norm;
     return c0_x_exact(x,y)*nx + c0_y_exact(x,y)*ny - (1.-kp[0])/Dl[0]*vn_cf(x,y)*c0_exact(x,y);
   }
 } c0_interface_val_cf;
-
+#endif
 
 
 //class vn_from_c0_t : public CF_2
@@ -769,30 +1590,52 @@ public:
 
 
 
+#ifdef P4_TO_P8
+class c0_guess_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+//    return 1.;
+    return c0_exact(x,y,z);
+//    return c0_exact(x,y) + 0.1;
+  }
+} c0_guess;
+#else
 class c0_guess_t : public CF_2
 {
 public:
   double operator()(double x, double y) const
   {
-    return 1.;
-//    return c0_exact(x,y);
+//    return 1.;
+    return c0_exact(x,y);
 //    return c0_exact(x,y) + 0.1;
   }
 } c0_guess;
+#endif
 
 
 
+#ifdef P4_TO_P8
+class gibbs_thompson_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return tm_exact(x,y,z) - Tm - ml[0]*c0_exact(x,y,z) - ml[1]*c1_exact(x,y,z) - eps_c_cf(phi_x_cf(x,y,z), phi_y_cf(x,y,z), phi_z_cf(x,y,z))*kappa_cf(x,y,z) + eps_v_cf(phi_x_cf(x,y,z), phi_y_cf(x,y,z), phi_z_cf(x,y,z))*vn_cf(x,y,z);
+  }
+} gibbs_thompson;
+#else
 class gibbs_thompson_t : public CF_2
 {
 public:
   double operator()(double x, double y) const
   {
-    return tm_exact(x,y) - Tm - ml[0]*c0_exact(x,y) - ml[1]*c1_exact(x,y) - eps_c_cf(theta_cf(x,y))*kappa_cf(x,y) + eps_v_cf(theta_cf(x,y))*vn_cf(x,y);
+    return tm_exact(x,y) - Tm - ml[0]*c0_exact(x,y) - ml[1]*c1_exact(x,y) - eps_c_cf(phi_x_cf(x,y), phi_y_cf(x,y))*kappa_cf(x,y) + eps_v_cf(phi_x_cf(x,y), phi_y_cf(x,y))*vn_cf(x,y);
   }
 } gibbs_thompson;
-
-
 #endif
+
 
 
 int main (int argc, char* argv[])
@@ -966,7 +1809,7 @@ int main (int argc, char* argv[])
       {
         node_xyz_fr_n(n, p4est, nodes, xyz);
 
-        double d_phi = 0.001*dx*dx*dx*(double)(rand()%1000)/1000.;
+        double d_phi = 0.000*dx*dx*dx*(double)(rand()%1000)/1000.;
 //        double d_phi = 0.01*dx*dx*cos(2.*PI*data.max_lvl*xyz[0])*sin(2.*PI*data.max_lvl*xyz[1]);
         phi_ptr[n] += d_phi;
       }
@@ -975,10 +1818,10 @@ int main (int argc, char* argv[])
       ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);
     }
 
-    ls.reinitialize_1st_order_time_2nd_order_space(phi, 100);
+//    ls.reinitialize_1st_order_time_2nd_order_space(phi, 100);
 //    ls.reinitialize_1st_order(phi, 100);
 //    ls.reinitialize_2nd_order(phi, 100);
-    ls.perturb_level_set_function(phi, EPS);
+//    ls.perturb_level_set_function(phi, EPS);
 
     Vec phi_dd[P4EST_DIM];
 
@@ -992,159 +1835,29 @@ int main (int argc, char* argv[])
     // compute normal
     Vec normal[P4EST_DIM];
     Vec kappa; ierr = VecDuplicate(phi, &kappa); CHKERRXX(ierr);
-    Vec theta; ierr = VecDuplicate(phi, &theta); CHKERRXX(ierr);
+    Vec theta_xz; ierr = VecDuplicate(phi, &theta_xz); CHKERRXX(ierr);
+    Vec theta_yz; ierr = VecDuplicate(phi, &theta_yz); CHKERRXX(ierr);
 
+    double *normal_p[P4EST_DIM];
     {
-      double *normal_p[P4EST_DIM];
+      Vec kappa_tmp; ierr = VecDuplicate(phi, &kappa_tmp); CHKERRXX(ierr);
+      const double *phi_p;
 
       for(int dir=0; dir<P4EST_DIM; ++dir)
       {
         ierr = VecCreateGhostNodes(p4est, nodes, &normal[dir]); CHKERRXX(ierr);
-        ierr = VecGetArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
       }
 
-      const double *phi_p;
-      ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
-
-      quad_neighbor_nodes_of_node_t qnnn;
-
-      for(size_t i=0; i<ngbd_n.get_layer_size(); ++i)
-      {
-        p4est_locidx_t n = ngbd_n.get_layer_node(i);
-        qnnn = ngbd_n.get_neighbors(n);
-        normal_p[0][n] = qnnn.dx_central(phi_p);
-        normal_p[1][n] = qnnn.dy_central(phi_p);
-#ifdef P4_TO_P8
-        normal_p[2][n] = qnnn.dz_central(phi_p);
-//        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
-#else
-//        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
-#endif
-
-//        normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
-//        normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
-//#ifdef P4_TO_P8
-//        normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
-//#endif
-      }
-
-      for(int dir=0; dir<P4EST_DIM; ++dir)
-      {
-        ierr = VecGhostUpdateBegin(normal[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      }
-
-      for(size_t i=0; i<ngbd_n.get_local_size(); ++i)
-      {
-        p4est_locidx_t n = ngbd_n.get_local_node(i);
-        qnnn = ngbd_n.get_neighbors(n);
-        normal_p[0][n] = qnnn.dx_central(phi_p);
-        normal_p[1][n] = qnnn.dy_central(phi_p);
-#ifdef P4_TO_P8
-        normal_p[2][n] = qnnn.dz_central(phi_p);
-//        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
-#else
-//        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
-#endif
-
-//        normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
-//        normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
-//#ifdef P4_TO_P8
-//        normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
-//#endif
-      }
-
-
-      for(int dir=0; dir<P4EST_DIM; ++dir)
-      {
-        ierr = VecGhostUpdateEnd(normal[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      }
-
-      // compute curvature and angle
-      /* curvature */
-      Vec kappa_tmp;
-      ierr = VecDuplicate(kappa, &kappa_tmp); CHKERRXX(ierr);
-      double *kappa_p;
-      ierr = VecGetArray(kappa_tmp, &kappa_p); CHKERRXX(ierr);
-      for(size_t i=0; i<ngbd_n.get_layer_size(); ++i)
-      {
-        p4est_locidx_t n = ngbd_n.get_layer_node(i);
-        qnnn = ngbd_n.get_neighbors(n);
-        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    #ifdef P4_TO_P8
-        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/dxyz_max), -1/dxyz_max);
-    #else
-        if (is_node_Wall(p4est, ni))
-        {
-          kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
-        } else {
-          double phi_x = normal_p[0][n];
-          double phi_y = normal_p[1][n];
-//          ierr = PetscPrintf(p4est->mpicomm, "Here\n"); CHKERRXX(ierr);
-          double phi_xx = qnnn.dxx_central(phi_p);
-          double phi_yy = qnnn.dyy_central(phi_p);
-          double phi_xy = .5*(qnnn.dx_central(normal_p[1])+qnnn.dy_central(normal_p[0]));
-          kappa_p[n] = (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx)/pow(phi_x*phi_x+phi_y*phi_y,3./2.);
-//          kappa_p[n] = phi_yy + phi_xx;
-        }
-//        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1/dx), -1/dx);
-    #endif
-      }
-      ierr = VecGhostUpdateBegin(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
-      for(size_t i=0; i<ngbd_n.get_local_size(); ++i)
-      {
-        p4est_locidx_t n = ngbd_n.get_local_node(i);
-        qnnn = ngbd_n.get_neighbors(n);
-        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-    #ifdef P4_TO_P8
-        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/dxyz_max), -1/dxyz_max);
-    #else
-        if (is_node_Wall(p4est, ni))
-        {
-          kappa_p[n] = qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]);
-        } else {
-          double phi_x = normal_p[0][n];
-          double phi_y = normal_p[1][n];
-          double phi_xx = qnnn.dxx_central(phi_p);
-          double phi_yy = qnnn.dyy_central(phi_p);
-          double phi_xy = .5*(qnnn.dx_central(normal_p[1])+qnnn.dy_central(normal_p[0]));
-          kappa_p[n] = (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx)/pow(phi_x*phi_x+phi_y*phi_y,3./2.);
-//          kappa_p[n] = phi_yy + phi_xx;
-        }
-//        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1/dx), -1/dx);
-    #endif
-      }
-      ierr = VecGhostUpdateEnd(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
-      ierr = VecRestoreArray(kappa_tmp, &kappa_p); CHKERRXX(ierr);
-      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-
-      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-      {
-    #ifdef P4_TO_P8
-        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
-    #else
-        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
-    #endif
-
-        normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
-        normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
-    #ifdef P4_TO_P8
-        normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
-    #endif
-      }
-
-      for(int dir=0; dir<P4EST_DIM; ++dir)
-      {
-        ierr = VecRestoreArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
-      }
+      compute_normals_and_mean_curvature(ngbd_n, phi, normal, kappa_tmp);
 
       my_p4est_level_set_t ls(&ngbd_n);
-      ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
-      ierr = VecDestroy(kappa_tmp); CHKERRXX(ierr);
+//      ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
+//      ierr = VecDestroy(kappa_tmp); CHKERRXX(ierr);
 
-//      ierr = VecDestroy(kappa); CHKERRXX(ierr);
-//      kappa = kappa_tmp;
+            ierr = VecDestroy(kappa); CHKERRXX(ierr);
+            kappa = kappa_tmp;
 
-//      sample_cf_on_nodes(p4est, nodes, kappa_cf, kappa);
+      //      sample_cf_on_nodes(p4est, nodes, kappa_cf, kappa);
 
       /* angle between normal and direction of growth */
 
@@ -1153,28 +1866,28 @@ int main (int argc, char* argv[])
         ierr = VecGetArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
       }
 
-    #ifdef P4_TO_P8
+#ifdef P4_TO_P8
       Vec theta_xz_tmp; double *theta_xz_tmp_p;
       Vec theta_yz_tmp; double *theta_yz_tmp_p;
       ierr = VecDuplicate(phi, &theta_xz_tmp); CHKERRXX(ierr);
       ierr = VecDuplicate(phi, &theta_yz_tmp); CHKERRXX(ierr);
       ierr = VecGetArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
       ierr = VecGetArray(theta_yz_tmp, &theta_yz_tmp_p); CHKERRXX(ierr);
-    #else
-      Vec theta_tmp; double *theta_tmp_p;
-      ierr = VecDuplicate(phi, &theta_tmp); CHKERRXX(ierr);
-      ierr = VecGetArray(theta_tmp, &theta_tmp_p); CHKERRXX(ierr);
-    #endif
+#else
+      Vec theta_xz_tmp; double *theta_xz_tmp_p;
+      ierr = VecDuplicate(phi, &theta_xz_tmp); CHKERRXX(ierr);
+      ierr = VecGetArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
+#endif
 
 
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
-    #ifdef P4_TO_P8
+#ifdef P4_TO_P8
         theta_xz_tmp_p[n] = atan2(normal_p[2][n], normal_p[0][n]);
         theta_yz_tmp_p[n] = atan2(normal_p[2][n], normal_p[1][n]);
-    #else
-        theta_tmp_p[n] = atan2(normal_p[1][n], normal_p[0][n]);
-    #endif
+#else
+        theta_xz_tmp_p[n] = atan2(normal_p[1][n], normal_p[0][n]);
+#endif
       }
 
       for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -1182,20 +1895,24 @@ int main (int argc, char* argv[])
         ierr = VecRestoreArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
       }
 
-    #ifdef P4_TO_P8
-      ierr = VecRestoreArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(theta_yz_tmp, &theta_yz_tmp_p); CHKERRXX(ierr);
-      ls.extend_from_interface_to_whole_domain_TVD(phi, theta_xz_tmp, theta_xz);
-      ls.extend_from_interface_to_whole_domain_TVD(phi, theta_yz_tmp, theta_yz);
-      ierr = VecDestroy(theta_xz_tmp); CHKERRXX(ierr);
-      ierr = VecDestroy(theta_yz_tmp); CHKERRXX(ierr);
-    #else
-    //  ierr = VecRestoreArray(theta_tmp, &theta_tmp_p); CHKERRXX(ierr);
-    //  ls.extend_from_interface_to_whole_domain_TVD(phi, theta_tmp, theta);
-    //  ierr = VecDestroy(theta_tmp); CHKERRXX(ierr);
-      ierr = VecDestroy(theta); CHKERRXX(ierr);
-      theta = theta_tmp;
-    #endif
+#ifdef P4_TO_P8
+      //      ierr = VecRestoreArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
+      //      ierr = VecRestoreArray(theta_yz_tmp, &theta_yz_tmp_p); CHKERRXX(ierr);
+      //      ls.extend_from_interface_to_whole_domain_TVD(phi, theta_xz_tmp, theta_xz);
+      //      ls.extend_from_interface_to_whole_domain_TVD(phi, theta_yz_tmp, theta_yz);
+      //      ierr = VecDestroy(theta_xz_tmp); CHKERRXX(ierr);
+      //      ierr = VecDestroy(theta_yz_tmp); CHKERRXX(ierr);
+      ierr = VecDestroy(theta_xz); CHKERRXX(ierr);
+      ierr = VecDestroy(theta_yz); CHKERRXX(ierr);
+      theta_xz = theta_xz_tmp;
+      theta_yz = theta_yz_tmp;
+#else
+      //  ierr = VecRestoreArray(theta_tmp, &theta_tmp_p); CHKERRXX(ierr);
+      //  ls.extend_from_interface_to_whole_domain_TVD(phi, theta_tmp, theta);
+      //  ierr = VecDestroy(theta_tmp); CHKERRXX(ierr);
+      ierr = VecDestroy(theta_xz); CHKERRXX(ierr);
+      theta_xz = theta_xz_tmp;
+#endif
 
     }
 
@@ -1233,7 +1950,7 @@ int main (int argc, char* argv[])
 
     my_p4est_poisson_nodes_multialloy_t solver_all_in_one(&ngbd_n);
 
-    solver_all_in_one.set_phi(phi, phi_dd, normal, kappa, theta);
+    solver_all_in_one.set_phi(phi, phi_dd, normal, kappa);
     solver_all_in_one.set_parameters(dt, lambda, thermal_conductivity, latent_heat, Tm, Dl[0], kp[0], ml[0], Dl[1], kp[1], ml[1]);
     solver_all_in_one.set_bc(bc_t, bc_c0, bc_c1);
     solver_all_in_one.set_GT(gibbs_thompson);
@@ -1250,6 +1967,8 @@ int main (int argc, char* argv[])
     solver_all_in_one.set_jump_t(jump_t_cf);
     solver_all_in_one.set_flux_c(c0_interface_val_cf, c1_interface_val_cf);
     solver_all_in_one.set_c0_guess(c0_guess);
+
+    solver_all_in_one.set_vn(vn_cf);
 
     Vec sol_t;  ierr = VecCreateGhostNodes(p4est, nodes, &sol_t);  CHKERRXX(ierr);
     Vec sol_c0; ierr = VecCreateGhostNodes(p4est, nodes, &sol_c0); CHKERRXX(ierr);
@@ -1277,18 +1996,27 @@ int main (int argc, char* argv[])
 
     /* check the error */
     my_p4est_poisson_nodes_t *solver_c0 = solver_all_in_one.get_solver_c0();
+#ifdef P4_TO_P8
+    CF_3 *vn = solver_all_in_one.get_vn();
+#else
     CF_2 *vn = solver_all_in_one.get_vn();
+#endif
 
     double vn_error = 0;
     double kappa_error = 0;
-    double theta_error = 0;
+    double theta_xz_error = 0;
     double *kappa_p; ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
-    double *theta_p; ierr = VecGetArray(theta, &theta_p); CHKERRXX(ierr);
+    double *theta_xz_p; ierr = VecGetArray(theta_xz, &theta_xz_p); CHKERRXX(ierr);
     Vec err_vn;  ierr = VecDuplicate(sol_t,  &err_vn); CHKERRXX(ierr);
     Vec err_kappa;  ierr = VecDuplicate(sol_t,  &err_kappa); CHKERRXX(ierr);
     double *err_vn_p, *err_kappa_p;
     ierr = VecGetArray(err_kappa,  &err_kappa_p); CHKERRXX(ierr);
     ierr = VecGetArray(err_vn,  &err_vn_p); CHKERRXX(ierr);
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecGetArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+    }
 
     for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
     {
@@ -1300,19 +2028,41 @@ int main (int argc, char* argv[])
         solver_c0->get_xyz_interface_point(n, i, xyz);
         vn_error = MAX(vn_error, fabs(vn->value(xyz) - vn_cf.value(xyz)));
         kappa_error = MAX(kappa_error, fabs(kappa_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, kappa_p)));
-        theta_error = MAX(theta_error, fabs(theta_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, theta_p)));
+//        theta_xz_error = MAX(theta_xz_error, fabs(theta_xz_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, theta_xz_p)));
+
+        double nx = phi_x_cf.value(xyz);
+        double ny = phi_y_cf.value(xyz);
+#ifdef P4_TO_P8
+        double nz = phi_z_cf.value(xyz);
+        double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
+#else
+        double norm = sqrt(nx*nx+ny*ny)+EPS;
+#endif
+
+        double normal_error = sqrt(SQR(nx/norm - solver_c0->interpolate_at_interface_point(n, i, normal_p[0])) +
+    #ifdef P4_TO_P8
+                                   SQR(nz/norm - solver_c0->interpolate_at_interface_point(n, i, normal_p[2])) +
+    #endif
+                                   SQR(ny/norm - solver_c0->interpolate_at_interface_point(n, i, normal_p[1])));
+
+        theta_xz_error = MAX(theta_xz_error, normal_error);
 
         err_kappa_p[n] = MAX(err_kappa_p[n], fabs(kappa_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, kappa_p)));
-        err_vn_p[n] = MAX(err_vn_p[n], fabs(theta_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, theta_p)));
+        err_vn_p[n] = MAX(err_vn_p[n], fabs(theta_xz_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, theta_xz_p)));
       }
     }
     ierr = VecRestoreArray(err_kappa,  &err_kappa_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_vn,  &err_vn_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(theta, &theta_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(theta_xz, &theta_xz_p); CHKERRXX(ierr);
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecRestoreArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+    }
 
     err_kappa_nm1 = err_kappa_n; err_kappa_n = kappa_error;
-    err_theta_nm1 = err_theta_n; err_theta_n = theta_error;
+    err_theta_nm1 = err_theta_n; err_theta_n = theta_xz_error;
     err_vn_nm1  = err_vn_n;  err_vn_n  = vn_error;
     err_t_nm1  = err_t_n;  err_t_n  = 0;
     err_c0_nm1 = err_c0_n; err_c0_n = 0;
