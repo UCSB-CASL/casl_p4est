@@ -13,8 +13,6 @@
 #include <src/my_p4est_interpolation_nodes_local.h>
 #endif
 
-#include <tools/plotting.h>
-
 #include <src/petsc_compatibility.h>
 #include <src/casl_math.h>
 
@@ -71,7 +69,8 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
     lip_(2.0), integration_order_(2),
     try_remove_hanging_cells_(false),
     phi_cf_(NULL),
-    fallback_(1)
+    fallback_(1),
+    exact_(NULL)
 {
   // compute global numbering of nodes
   global_node_offset_.resize(p4est_->mpisize+1, 0);
@@ -721,7 +720,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   double eps = 1E-6*d_min_*d_min_;
 
   double *exact_ptr;
-  ierr = VecGetArray(exact_, &exact_ptr); CHKERRXX(ierr);
+  if (exact_ != NULL) { ierr = VecGetArray(exact_, &exact_ptr); CHKERRXX(ierr); }
 
   //---------------------------------------------------------------------
   // get access to LSFs
@@ -1046,7 +1045,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
         if (setup_rhs)
         {
-          rhs_p[n] = bc_wall_value_->value(xyz_C);
+          rhs_p[n] = (*bc_wall_value_).value(xyz_C);
         }
 
         continue;
@@ -2141,13 +2140,13 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         if (attempt_to_expand)
         {
           ierr = PetscPrintf(p4est_->mpicomm, "Attempting hanging neighbors attachment...\n");
-          if (expand[dir::f_m00]) { fv_size_x += 1; fv_xmin -= 2.*0.5*dx_min_; }
-          if (expand[dir::f_p00]) { fv_size_x += 1; fv_xmax += 2.*0.5*dx_min_; }
-          if (expand[dir::f_0m0]) { fv_size_y += 1; fv_ymin -= 2.*0.5*dy_min_; }
-          if (expand[dir::f_0p0]) { fv_size_y += 1; fv_ymax += 2.*0.5*dy_min_; }
+          if (expand[dir::f_m00]) { fv_size_x += 1; fv_xmin -= 1.*0.5*dx_min_; }
+          if (expand[dir::f_p00]) { fv_size_x += 1; fv_xmax += 1.*0.5*dx_min_; }
+          if (expand[dir::f_0m0]) { fv_size_y += 1; fv_ymin -= 1.*0.5*dy_min_; }
+          if (expand[dir::f_0p0]) { fv_size_y += 1; fv_ymax += 1.*0.5*dy_min_; }
 #ifdef P4_TO_P8
-          if (expand[dir::f_00m]) { fv_size_z += 1; fv_zmin -= 2.*0.5*dz_min_; }
-          if (expand[dir::f_00p]) { fv_size_z += 1; fv_zmax += 2.*0.5*dz_min_; }
+          if (expand[dir::f_00m]) { fv_size_z += 1; fv_zmin -= 1.*0.5*dz_min_; }
+          if (expand[dir::f_00p]) { fv_size_z += 1; fv_zmax += 1.*0.5*dz_min_; }
 #endif
         }
 
@@ -2859,7 +2858,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                 if (setup_matrix && ratio >= theta)
                 {
                   mask_p[n] = MAX(mask_p[n], -0.1);
-                  std::cout << "Fallback fluxes\n";
+//                  std::cout << "Fallback fluxes\n";
                 }
               }
             }
@@ -2914,7 +2913,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                 if (ratio > theta && setup_matrix)
                 {
                   mask_p[n] = MAX(mask_p[n], -0.1);
-                  std::cout << "Fallback fluxes\n";
+//                  std::cout << "Fallback fluxes\n";
                 }
               }
             }
@@ -2969,7 +2968,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                 if (ratio > theta && setup_matrix)
                 {
                   mask_p[n] = MAX(mask_p[n], -0.1);
-                  std::cout << "Fallback fluxes\n";
+//                  std::cout << "Fallback fluxes\n";
                 }
               }
             }
@@ -3024,7 +3023,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                 if (ratio > theta && setup_matrix)
                 {
                   mask_p[n] = MAX(mask_p[n], -0.1);
-                  std::cout << "Fallback fluxes\n";
+//                  std::cout << "Fallback fluxes\n";
                 }
               }
             }
@@ -4072,7 +4071,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
   ierr = VecRestoreArray(diag_add_,    &diag_add_p   ); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(exact_, &exact_ptr); CHKERRXX(ierr);
+  if (exact_ != NULL) { ierr = VecRestoreArray(exact_, &exact_ptr); CHKERRXX(ierr); }
 
   if (setup_rhs)
   {

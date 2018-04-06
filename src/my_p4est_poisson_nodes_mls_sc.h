@@ -20,7 +20,7 @@
 
 class my_p4est_poisson_nodes_mls_sc_t
 {
-  static const int cube_refinement_ = 0;
+  static const int cube_refinement_ = 1;
   static const int num_neighbors_max_ = pow(3, P4EST_DIM);
 
   const double phi_perturbation_ = 1.e-10;
@@ -742,15 +742,15 @@ class my_p4est_poisson_nodes_mls_sc_t
   bool neumann_wall_first_order_;
 
 #ifdef P4_TO_P8
-  WallBC3D *bc_wall_type_;
-  CF_3     *bc_wall_value_;
+  const WallBC3D *bc_wall_type_;
+  const CF_3     *bc_wall_value_;
 
   std::vector< BoundaryConditionType > *bc_interface_type_;
   std::vector< CF_3 *> *bc_interface_value_;
   std::vector< CF_3 *> *bc_interface_coeff_;
 #else
-  WallBC2D *bc_wall_type_;
-  CF_2     *bc_wall_value_;
+  const WallBC2D *bc_wall_type_;
+  const CF_2     *bc_wall_value_;
 
   std::vector< BoundaryConditionType > *bc_interface_type_;
   std::vector< CF_2 *> *bc_interface_value_;
@@ -886,8 +886,8 @@ public:
   inline void set_bc_interface_value(std::vector< CF_3 *> &bc_interface_value)               { bc_interface_value_ = &bc_interface_value; is_matrix_computed_ = false; }
   inline void set_bc_interface_coeff(std::vector< CF_3 *> &bc_interface_coeff)               { bc_interface_coeff_ = &bc_interface_coeff; is_matrix_computed_ = false; }
 #else
-  inline void set_bc_wall_type(WallBC2D &wall_type) { bc_wall_type_ = &wall_type;}
-  inline void set_bc_wall_value(CF_2 &wall_value)   { bc_wall_value_ = &wall_value; }
+  inline void set_bc_wall_type(const WallBC2D &wall_type) { bc_wall_type_ = &wall_type;}
+  inline void set_bc_wall_value(const CF_2 &wall_value)   { bc_wall_value_ = &wall_value; }
   inline void set_bc_interface_type (std::vector<BoundaryConditionType> &bc_interface_type)  { bc_interface_type_  = &bc_interface_type;  is_matrix_computed_ = false; }
   inline void set_bc_interface_value(std::vector< CF_2 *> &bc_interface_value)               { bc_interface_value_ = &bc_interface_value; is_matrix_computed_ = false; }
   inline void set_bc_interface_coeff(std::vector< CF_2 *> &bc_interface_coeff)               { bc_interface_coeff_ = &bc_interface_coeff; is_matrix_computed_ = false; }
@@ -950,7 +950,7 @@ public:
   inline void set_keep_scalling           (bool value) { keep_scalling_             = value; }
   inline void set_kink_treatment          (bool value) { kink_special_treatment_    = value; }
   inline void set_use_sc_scheme           (bool value) { use_sc_scheme_             = value; }
-  inline void set_integration_order       (int  value)  { integration_order_         = value; }
+  inline void set_integration_order       (int  value) { integration_order_         = value; }
 
   void inv_mat2_(double *in, double *out);
   void inv_mat3_(double *in, double *out);

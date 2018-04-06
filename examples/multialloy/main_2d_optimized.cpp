@@ -49,8 +49,8 @@
 #undef MIN
 #undef MAX
 
-int lmin = 4;
-int lmax = 6;
+int lmin = 5;
+int lmax = 10;
 int save_every_n_iteration = 1;
 
 double bc_tolerance = 1.e-5;
@@ -66,10 +66,10 @@ double init_perturb = 0.01;
 bool use_continuous_stencil    = false;
 bool use_one_sided_derivatives = false;
 bool use_points_on_interface   = true;
-bool update_c0_robin           = true;
+bool update_c0_robin           = 1;
 
 // not implemented yet
-bool use_superconvergent_robin = false;
+bool use_superconvergent_robin = 0;
 bool use_superconvergent_jump  = false;
 
 double lip = 2;

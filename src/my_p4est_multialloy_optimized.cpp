@@ -713,6 +713,7 @@ void my_p4est_multialloy_t::one_step()
   solver_all_in_one.set_use_one_sided_derivatives(use_one_sided_derivatives_);
   solver_all_in_one.set_use_points_on_interface  (use_points_on_interface_  );
   solver_all_in_one.set_update_c0_robin          (update_c0_robin_          );
+  solver_all_in_one.set_use_superconvergent_robin(use_superconvergent_robin_);
 
   solver_all_in_one.set_jump_t(zero_);
   solver_all_in_one.set_flux_c(zero_, zero_);

@@ -81,7 +81,7 @@ class CF_2
 {
 public:
   double lip, t;
-  double value(double *xyz) {return this->operator ()(xyz[0], xyz[1]);}
+  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
   virtual double operator()(double x, double y) const=0 ;
   virtual ~CF_2() {}
 };
@@ -90,7 +90,7 @@ class CF_3
 {
 public:
   double lip, t;
-  double value(double *xyz) {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
+  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
   virtual double operator()(double x, double y, double z) const=0 ;
   virtual ~CF_3() {}
 };

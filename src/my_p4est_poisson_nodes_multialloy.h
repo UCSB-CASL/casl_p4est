@@ -12,6 +12,7 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_poisson_nodes.h>
+#include <src/my_p8est_poisson_nodes_mls_sc.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #else
 #include <src/my_p4est_tools.h>
@@ -20,7 +21,7 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_poisson_nodes.h>
-#include <src/my_p4est_poisson_nodes_voronoi.h>
+#include <src/my_p4est_poisson_nodes_mls_sc.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #endif
 
@@ -41,6 +42,15 @@ class my_p4est_poisson_nodes_multialloy_t
   // level-set function
   vec_and_ptr_t phi_;
   vec_and_ptr_dim_t phi_dd_;
+
+  std::vector<Vec> phi_vector_;
+  std::vector<Vec> phi_xx_vector_;
+  std::vector<Vec> phi_yy_vector_;
+#ifdef P4_TO_P8
+  std::vector<Vec> phi_zz_vector_;
+#endif
+  std::vector<action_t> action_;
+  std::vector<int> color_;
 
   vec_and_ptr_t theta_xz_;
 #ifdef P4_TO_P8
@@ -115,6 +125,8 @@ class my_p4est_poisson_nodes_multialloy_t
   my_p4est_poisson_nodes_t *solver_c0;
   my_p4est_poisson_nodes_t *solver_c1;
   my_p4est_poisson_nodes_t *solver_psi_c0;
+
+  my_p4est_poisson_nodes_mls_sc_t *solver_c1_sc;
 
   bool is_t_matrix_computed_;
   bool is_c1_matrix_computed_;
@@ -342,7 +354,10 @@ private:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double, double, double) const
     {
-      return -ptr_->ml1_/ptr_->ml0_/ptr_->Dl1_;
+      if (ptr_->use_superconvergent_robin_)
+        return -ptr_->ml1_/ptr_->ml0_*ptr_->dt_;
+      else
+        return -ptr_->ml1_/ptr_->ml0_/ptr_->Dl1_;
     }
   } psi_c1_interface_value_;
 #else
@@ -353,7 +368,10 @@ private:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double, double) const
     {
-      return -ptr_->ml1_/ptr_->ml0_/ptr_->Dl1_;
+      if (ptr_->use_superconvergent_robin_)
+        return -ptr_->ml1_/ptr_->ml0_*ptr_->dt_;
+      else
+        return -ptr_->ml1_/ptr_->ml0_/ptr_->Dl1_;
     }
   } psi_c1_interface_value_;
 #endif
@@ -367,14 +385,14 @@ private:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double x, double y, double z) const
     {
-//      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], ptr_->c0_dd_.vec[2], quadratic_non_oscillatory_continuous_v1);
+      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], ptr_->c0_dd_.vec[2], quadratic_non_oscillatory_continuous_v1);
 //      ptr_->interp_.set_input(ptr_->c0_.vec, linear);
-      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
+//      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
       double c0 = ptr_->interp_(x, y, z);
 
-//      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], ptr_->c0n_dd_.vec[2], quadratic_non_oscillatory_continuous_v1);
+      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], ptr_->c0n_dd_.vec[2], quadratic_non_oscillatory_continuous_v1);
 //      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
-      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
+//      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
       double c0n = ptr_->interp_(x, y, z);
 
       return ptr_->Dl0_/(1.-ptr_->kp0_)*(c0n - (*ptr_->c0_flux_)(x,y,z))/c0;
@@ -388,14 +406,14 @@ private:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double x, double y) const
     {
-//      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
+      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
 //      ptr_->interp_.set_input(ptr_->c0_.vec, linear);
-      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
+//      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
       double c0 = ptr_->interp_(x, y);
 
-//      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
+      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
 //      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
-      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
+//      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
       double c0n = ptr_->interp_(x, y);
 
       return ptr_->Dl0_/(1.-ptr_->kp0_)*(c0n - (*ptr_->c0_flux_)(x,y))/c0;
@@ -413,7 +431,10 @@ private:
     double operator()(double x, double y, double z) const
     {
 //      return -(1.-ptr_->kp1_)/ptr_->Dl1_*(*ptr_->vn_exact_)(x,y,z);
-      return -(1.-ptr_->kp1_)/ptr_->Dl1_*ptr_->vn_from_c0_(x,y,z);
+      if (ptr_->use_superconvergent_robin_)
+        return -ptr_->dt_*(1.-ptr_->kp1_)*ptr_->vn_from_c0_(x,y,z);
+      else
+        return -(1.-ptr_->kp1_)/ptr_->Dl1_*ptr_->vn_from_c0_(x,y,z);
     }
   } c1_robin_coef_;
 #else
@@ -424,7 +445,11 @@ private:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double x, double y) const
     {
-      return -(1.-ptr_->kp1_)/ptr_->Dl1_*ptr_->vn_from_c0_(x,y);
+//      return -((1.-ptr_->kp1_)/ptr_->Dl1_)*(*ptr_->vn_exact_)(x,y);
+      if (ptr_->use_superconvergent_robin_)
+        return -ptr_->dt_*(1.-ptr_->kp1_)*ptr_->vn_from_c0_(x,y);
+      else
+        return -(1.-ptr_->kp1_)/ptr_->Dl1_*ptr_->vn_from_c0_(x,y);
     }
   } c1_robin_coef_;
 #endif
@@ -437,7 +462,10 @@ private:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double x, double y, double z) const
     {
-      return -(1.-ptr_->kp0_)/ptr_->Dl0_*ptr_->vn_from_c0_(x,y,z);
+      if (ptr_->use_superconvergent_robin_)
+        return -ptr_->dt_*(1.-ptr_->kp0_)*ptr_->vn_from_c0_(x,y,z);
+      else
+        return -(1.-ptr_->kp0_)/ptr_->Dl0_*ptr_->vn_from_c0_(x,y,z);
     }
   } c0_robin_coef_;
 #else
@@ -448,7 +476,10 @@ private:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double x, double y) const
     {
-      return -(1.-ptr_->kp0_)/ptr_->Dl0_*ptr_->vn_from_c0_(x,y);
+      if (ptr_->use_superconvergent_robin_)
+        return -ptr_->dt_*(1.-ptr_->kp0_)*ptr_->vn_from_c0_(x,y);
+      else
+        return -(1.-ptr_->kp0_)/ptr_->Dl0_*ptr_->vn_from_c0_(x,y);
     }
   } c0_robin_coef_;
 #endif
@@ -476,6 +507,7 @@ private:
     double operator()(double x, double y) const
     {
       // from now on liquid phase is in \phi < 0 and solid phase is in \phi > 0
+//      return ptr_->latent_heat_/ptr_->t_cond_*(*ptr_->vn_exact_)(x,y);
       return ptr_->latent_heat_/ptr_->t_cond_*ptr_->vn_from_c0_(x,y);
     }
   } tn_jump_;

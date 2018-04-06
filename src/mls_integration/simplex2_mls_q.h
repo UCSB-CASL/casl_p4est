@@ -78,7 +78,7 @@ private:
   const double snap_limit_ = 0.2;
   const bool check_for_curvature_          = 0;
   const bool check_for_edge_intersections_ = 1;
-  const bool check_for_overlapping_        = 1;
+  const bool check_for_overlapping_        = 0;
   const bool refine_in_normal_dir_         = 1;
   const bool adjust_auxiliary_midpoint_    = false;
 

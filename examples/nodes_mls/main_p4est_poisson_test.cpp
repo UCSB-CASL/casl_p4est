@@ -135,7 +135,7 @@ bool plot_convergence = 1;
 bool save_domain_reconstruction = save_vtk;
 bool do_extension = 0;
 
-bool sc_scheme = 0;
+bool sc_scheme = 1;
 int integration_order = 2;
 
 double mask_thresh = 0;
@@ -817,11 +817,11 @@ int main (int argc, char* argv[])
             solver.set_use_sc_scheme(sc_scheme);
             solver.set_integration_order(integration_order);
 
-            solver.set_phi_cf(phi_cf);
+//            solver.set_phi_cf(phi_cf);
             solver.set_geometry(num_surfaces, &action, &color, &phi);
             solver.set_mu(mu);
             solver.set_rhs(rhs);
-            solver.set_rhs(rhs_cf);
+//            solver.set_rhs(rhs_cf);
 
             solver.set_bc_wall_value(u_cf);
             solver.set_bc_wall_type(bc_wall_type);
@@ -836,7 +836,7 @@ int main (int argc, char* argv[])
             solver.set_kink_treatment(1);
             solver.set_try_remove_hanging_cells(try_remove_hanging_cells);
 
-            solver.set_exact(u_exact_vec);
+//            solver.set_exact(u_exact_vec);
 
             solver.solve(sol);
 

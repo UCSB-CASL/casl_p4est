@@ -54,11 +54,13 @@ int nb_splits = 5;
 bool use_continuous_stencil = false;
 bool use_one_sided_derivatives = false;
 bool use_points_on_interface = true;
-bool update_c0_robin = true;
+bool update_c0_robin = 0;
+
+bool use_superconvergent_robin = 1;
 
 int pin_every_n_steps = 3000;
 double bc_tolerance = 1.e-9;
-int max_iterations = 1000;
+int max_iterations = 100;
 
 double lip = 1.5;
 
@@ -68,7 +70,7 @@ using namespace std;
  */
 int alloy_type = 0;
 
-double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 1.0e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
 
 double xmin = 0;
@@ -104,7 +106,7 @@ double eps_v;                /* kinetic undercooling coefficient           - s.K
 double eps_anisotropy;       /* anisotropy coefficient                                    */
 
 double cfl_number = 0.1;
-double dt;
+double   dt = 0.333;
 
 void set_alloy_parameters()
 {
@@ -119,25 +121,32 @@ void set_alloy_parameters()
     V                    = 0.01;           /* cm.s-1      */
     latent_heat          = 2350;           /* J.cm-3      */
     thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
+//    latent_heat          = 1;           /* J.cm-3      */
+//    thermal_conductivity = 1;        /* W.cm-1.K-1  */
 //    thermal_conductivity = 100;        /* W.cm-1.K-1  */
     lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+//    lambda = 1;
 //    eps_c                = 2.7207e-5;
 //    eps_v                = 2.27e-2;
 //    eps_v                = 1;
 //    eps_c                = 1;
-    eps_c                = 1;
-    eps_v                = 1;
+    eps_c                = 0;
+    eps_v                = 0;
     eps_anisotropy       = 0.05;
 
     Dl[0] = 1e-5;
 //    Dl[0] = 1;
+//    Dl[0] = 1;
     ml[0] =-357;
+//    ml[0] =-1;
     c0[0] = 0.4;
     kp[0] = 0.86;
 
     Dl[1] = 1e-5;
+//    Dl[1] = 1e-1;
 //    Dl[1] = 1;
     ml[1] =-357;
+//    ml[1] =-1;
     c0[1] = 0.4;
     kp[1] = 0.86;
 
@@ -1254,7 +1263,10 @@ class rhs_c1_cf_t : public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    return diag_add*c1_exact(x,y,z) - dt*Dl[1]*c1_dd_exact(x,y,z);
+//    if (use_superconvergent_robin)
+//      return diag_add*c1_exact(x,y,z)/dt - Dl[1]*c1_dd_exact(x,y,z);
+//    else
+      return diag_add*c1_exact(x,y,z) - dt*Dl[1]*c1_dd_exact(x,y,z);
   }
 } rhs_c1_cf;
 
@@ -1290,7 +1302,10 @@ class rhs_c1_cf_t : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return diag_add*c1_exact(x,y) - dt*Dl[1]*c1_dd_exact(x,y);
+//    if (use_superconvergent_robin)
+//      return diag_add*c1_exact(x,y)/dt - Dl[1]*c1_dd_exact(x,y);
+//    else
+      return diag_add*c1_exact(x,y) - dt*Dl[1]*c1_dd_exact(x,y);
   }
 } rhs_c1_cf;
 
@@ -1431,7 +1446,10 @@ public:
     double nz = phi_z_cf(x,y,z);
     double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
     nx /= norm; ny /= norm; nz /= norm;
-    return c1_x_exact(x,y,z)*nx + c1_y_exact(x,y,z)*ny + c1_z_exact(x,y,z)*nz + c1_robin_coef_cf(x,y,z)*c1_exact(x,y,z);
+    if (use_superconvergent_robin)
+      return dt*Dl[1]*(c1_x_exact(x,y,z)*nx + c1_y_exact(x,y,z)*ny + c1_z_exact(x,y,z)*nz + c1_robin_coef_cf(x,y,z)*c1_exact(x,y,z));
+    else
+      return c1_x_exact(x,y,z)*nx + c1_y_exact(x,y,z)*ny + c1_z_exact(x,y,z)*nz + c1_robin_coef_cf(x,y,z)*c1_exact(x,y,z);
   }
 } c1_interface_val_cf;
 #else
@@ -1454,7 +1472,10 @@ public:
     double ny = phi_y_cf(x,y);
     double norm = sqrt(nx*nx+ny*ny)+EPS;
     nx /= norm; ny /= norm;
-    return c1_x_exact(x,y)*nx + c1_y_exact(x,y)*ny + c1_robin_coef_cf(x,y)*c1_exact(x,y);
+    if (use_superconvergent_robin)
+      return dt*Dl[1]*(c1_x_exact(x,y)*nx + c1_y_exact(x,y)*ny + c1_robin_coef_cf(x,y)*c1_exact(x,y));
+    else
+      return c1_x_exact(x,y)*nx + c1_y_exact(x,y)*ny + c1_robin_coef_cf(x,y)*c1_exact(x,y);
   }
 } c1_interface_val_cf;
 #endif
@@ -1691,10 +1712,6 @@ int main (int argc, char* argv[])
 
   for (short i = 0; i < num_comps; ++i)
     Dl[i]              *= (scaling*scaling);
-
-
-  dt = 1;
-
 
   parStopWatch w;
   w.start("total time");
@@ -1963,6 +1980,8 @@ int main (int argc, char* argv[])
     solver_all_in_one.set_use_one_sided_derivatives(use_one_sided_derivatives);
     solver_all_in_one.set_use_points_on_interface(use_points_on_interface);
     solver_all_in_one.set_update_c0_robin(update_c0_robin);
+
+    solver_all_in_one.set_use_superconvergent_robin(use_superconvergent_robin);
 
     solver_all_in_one.set_jump_t(jump_t_cf);
     solver_all_in_one.set_flux_c(c0_interface_val_cf, c1_interface_val_cf);
