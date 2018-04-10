@@ -8,13 +8,13 @@
  */
 
 // Simplex #0
-#define t0p0 0
-#define t0p1 1
-#define t0p2 3
+#define l_t0p0 0
+#define l_t0p1 1
+#define l_t0p2 3
 // Simplex #1
-#define t1p0 0
-#define t1p1 2
-#define t1p2 3
+#define l_t1p0 0
+#define l_t1p1 2
+#define l_t1p2 3
 
 #include "vector"
 #include "simplex2_mls_l.h"

@@ -148,6 +148,9 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
 
   domain_rel_thresh_ = 1.e-20;
   interface_rel_thresh_ = 1.e-20;
+
+  cube_refinement_ = 1;
+  phi_perturbation_ = 1.e-6;
 }
 
 my_p4est_poisson_nodes_mls_sc_t::~my_p4est_poisson_nodes_mls_sc_t()

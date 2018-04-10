@@ -157,19 +157,19 @@ void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
     simplex.clear();
     simplex.reserve(2);
 
-    simplex.push_back(simplex2_mls_q_t(x[t0p0], y[t0p0],
-                                       x[t0p1], y[t0p1],
-                                       x[t0p2], y[t0p2],
-                                       x[t0p3], y[t0p3],
-                                       x[t0p4], y[t0p4],
-                                       x[t0p5], y[t0p5]));
+    simplex.push_back(simplex2_mls_q_t(x[q_t0p0], y[q_t0p0],
+                                       x[q_t0p1], y[q_t0p1],
+                                       x[q_t0p2], y[q_t0p2],
+                                       x[q_t0p3], y[q_t0p3],
+                                       x[q_t0p4], y[q_t0p4],
+                                       x[q_t0p5], y[q_t0p5]));
 
-    simplex.push_back(simplex2_mls_q_t(x[t1p0], y[t1p0],
-                                       x[t1p1], y[t1p1],
-                                       x[t1p2], y[t1p2],
-                                       x[t1p3], y[t1p3],
-                                       x[t1p4], y[t1p4],
-                                       x[t1p5], y[t1p5]));
+    simplex.push_back(simplex2_mls_q_t(x[q_t1p0], y[q_t1p0],
+                                       x[q_t1p1], y[q_t1p1],
+                                       x[q_t1p2], y[q_t1p2],
+                                       x[q_t1p3], y[q_t1p3],
+                                       x[q_t1p4], y[q_t1p4],
+                                       x[q_t1p5], y[q_t1p5]));
 
     // mark appropriate edges for integrate_in_dir
 //    simplex[0].edgs_[0].dir = 1; simplex[0].edgs_[2].dir = 2;
@@ -183,12 +183,12 @@ void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
     for (int i = 0; i < num_of_lsfs; ++i)
     {
       int phi_idx = nt_idx[i];
-      phi_s0[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+t0p0]; phi_s1[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+t1p0];
-      phi_s0[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+t0p1]; phi_s1[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+t1p1];
-      phi_s0[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+t0p2]; phi_s1[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+t1p2];
-      phi_s0[n_nodes_simplex*i+3] = phi_all[n_nodes*phi_idx+t0p3]; phi_s1[n_nodes_simplex*i+3] = phi_all[n_nodes*phi_idx+t1p3];
-      phi_s0[n_nodes_simplex*i+4] = phi_all[n_nodes*phi_idx+t0p4]; phi_s1[n_nodes_simplex*i+4] = phi_all[n_nodes*phi_idx+t1p4];
-      phi_s0[n_nodes_simplex*i+5] = phi_all[n_nodes*phi_idx+t0p5]; phi_s1[n_nodes_simplex*i+5] = phi_all[n_nodes*phi_idx+t1p5];
+      phi_s0[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+q_t0p0]; phi_s1[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+q_t1p0];
+      phi_s0[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+q_t0p1]; phi_s1[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+q_t1p1];
+      phi_s0[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+q_t0p2]; phi_s1[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+q_t1p2];
+      phi_s0[n_nodes_simplex*i+3] = phi_all[n_nodes*phi_idx+q_t0p3]; phi_s1[n_nodes_simplex*i+3] = phi_all[n_nodes*phi_idx+q_t1p3];
+      phi_s0[n_nodes_simplex*i+4] = phi_all[n_nodes*phi_idx+q_t0p4]; phi_s1[n_nodes_simplex*i+4] = phi_all[n_nodes*phi_idx+q_t1p4];
+      phi_s0[n_nodes_simplex*i+5] = phi_all[n_nodes*phi_idx+q_t0p5]; phi_s1[n_nodes_simplex*i+5] = phi_all[n_nodes*phi_idx+q_t1p5];
     }
     simplex[0].construct_domain(phi_s0, nt_acn, nt_clr);
     simplex[1].construct_domain(phi_s1, nt_acn, nt_clr);

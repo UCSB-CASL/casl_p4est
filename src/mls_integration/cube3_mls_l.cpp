@@ -100,13 +100,13 @@ void cube3_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
      /* Split a cube into 6 simplices */
      simplex.clear();
      simplex.reserve(NTETS);
-     simplex.push_back(simplex3_mls_l_t(x[t0p0],y[t0p0],z[t0p0], x[t0p1],y[t0p1],z[t0p1], x[t0p2],y[t0p2],z[t0p2], x[t0p3],y[t0p3],z[t0p3])); //simplex.back().set_use_linear(use_linear);
-     simplex.push_back(simplex3_mls_l_t(x[t1p0],y[t1p0],z[t1p0], x[t1p1],y[t1p1],z[t1p1], x[t1p2],y[t1p2],z[t1p2], x[t1p3],y[t1p3],z[t1p3])); //simplex.back().set_use_linear(use_linear);
-     simplex.push_back(simplex3_mls_l_t(x[t2p0],y[t2p0],z[t2p0], x[t2p1],y[t2p1],z[t2p1], x[t2p2],y[t2p2],z[t2p2], x[t2p3],y[t2p3],z[t2p3])); //simplex.back().set_use_linear(use_linear);
-     simplex.push_back(simplex3_mls_l_t(x[t3p0],y[t3p0],z[t3p0], x[t3p1],y[t3p1],z[t3p1], x[t3p2],y[t3p2],z[t3p2], x[t3p3],y[t3p3],z[t3p3])); //simplex.back().set_use_linear(use_linear);
-     simplex.push_back(simplex3_mls_l_t(x[t4p0],y[t4p0],z[t4p0], x[t4p1],y[t4p1],z[t4p1], x[t4p2],y[t4p2],z[t4p2], x[t4p3],y[t4p3],z[t4p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l_t0p0],y[l_t0p0],z[l_t0p0], x[l_t0p1],y[l_t0p1],z[l_t0p1], x[l_t0p2],y[l_t0p2],z[l_t0p2], x[l_t0p3],y[l_t0p3],z[l_t0p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l_t1p0],y[l_t1p0],z[l_t1p0], x[l_t1p1],y[l_t1p1],z[l_t1p1], x[l_t1p2],y[l_t1p2],z[l_t1p2], x[l_t1p3],y[l_t1p3],z[l_t1p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l_t2p0],y[l_t2p0],z[l_t2p0], x[l_t2p1],y[l_t2p1],z[l_t2p1], x[l_t2p2],y[l_t2p2],z[l_t2p2], x[l_t2p3],y[l_t2p3],z[l_t2p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l_t3p0],y[l_t3p0],z[l_t3p0], x[l_t3p1],y[l_t3p1],z[l_t3p1], x[l_t3p2],y[l_t3p2],z[l_t3p2], x[l_t3p3],y[l_t3p3],z[l_t3p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l_t4p0],y[l_t4p0],z[l_t4p0], x[l_t4p1],y[l_t4p1],z[l_t4p1], x[l_t4p2],y[l_t4p2],z[l_t4p2], x[l_t4p3],y[l_t4p3],z[l_t4p3])); //simplex.back().set_use_linear(use_linear);
 #ifdef cube3_mls_l_KUHN
-     simplex.push_back(simplex3_mls_l_t(x[t5p0],y[t5p0],z[t5p0], x[t5p1],y[t5p1],z[t5p1], x[t5p2],y[t5p2],z[t5p2], x[t5p3],y[t5p3],z[t5p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l_t5p0],y[l_t5p0],z[l_t5p0], x[l_t5p1],y[l_t5p1],z[l_t5p1], x[l_t5p2],y[l_t5p2],z[l_t5p2], x[l_t5p3],y[l_t5p3],z[l_t5p3])); //simplex.back().set_use_linear(use_linear);
 #endif
 
      // TODO: mark appropriate edges for integrate_in_dir

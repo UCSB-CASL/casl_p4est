@@ -55,8 +55,8 @@ void cube2_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
     simplex.clear();
     simplex.reserve(2);
-    simplex.push_back(simplex2_mls_l_t(x[t0p0], y[t0p0], x[t0p1], y[t0p1], x[t0p2], y[t0p2])); // simplex.back().set_use_linear(use_linear);
-    simplex.push_back(simplex2_mls_l_t(x[t1p0], y[t1p0], x[t1p1], y[t1p1], x[t1p2], y[t1p2])); // simplex.back().set_use_linear(use_linear);
+    simplex.push_back(simplex2_mls_l_t(x[l_t0p0], y[l_t0p0], x[l_t0p1], y[l_t0p1], x[l_t0p2], y[l_t0p2])); // simplex.back().set_use_linear(use_linear);
+    simplex.push_back(simplex2_mls_l_t(x[l_t1p0], y[l_t1p0], x[l_t1p1], y[l_t1p1], x[l_t1p2], y[l_t1p2])); // simplex.back().set_use_linear(use_linear);
 
     // TODO: mark appropriate edges for integrate_in_dir
 //    simplex[0].edgs_[0].dir = 1; simplex[0].edgs_[2].dir = 2;
@@ -70,9 +70,9 @@ void cube2_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
     {
 //      int phi_idx = nt_idx[i];
       int phi_idx = i;
-      phi_s0[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+t0p0]; phi_s1[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+t1p0];
-      phi_s0[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+t0p1]; phi_s1[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+t1p1];
-      phi_s0[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+t0p2]; phi_s1[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+t1p2];
+      phi_s0[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+l_t0p0]; phi_s1[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+l_t1p0];
+      phi_s0[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+l_t0p1]; phi_s1[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+l_t1p1];
+      phi_s0[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+l_t0p2]; phi_s1[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+l_t1p2];
     }
 
     simplex[0].construct_domain(phi_s0, acn, clr);

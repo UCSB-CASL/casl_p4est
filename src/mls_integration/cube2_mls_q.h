@@ -19,12 +19,12 @@
  * 0-1-2
  *
  */
-#define t0p0 0
-#define t0p1 2
-#define t0p2 8
-#define t0p3 1
-#define t0p4 5
-#define t0p5 4
+#define q_t0p0 0
+#define q_t0p1 2
+#define q_t0p2 8
+#define q_t0p3 1
+#define q_t0p4 5
+#define q_t0p5 4
 
 /* Simplex 1
  *
@@ -41,12 +41,12 @@
 //#define t1p3 4
 //#define t1p4 7
 //#define t1p5 3
-#define t1p0 0
-#define t1p1 6
-#define t1p2 8
-#define t1p3 3
-#define t1p4 7
-#define t1p5 4
+#define q_t1p0 0
+#define q_t1p1 6
+#define q_t1p2 8
+#define q_t1p3 3
+#define q_t1p4 7
+#define q_t1p5 4
 
 #include "vector"
 #include "simplex2_mls_q.h"

@@ -20,12 +20,17 @@
 
 #define DO_NOT_PREALLOCATE
 
+#ifdef P4_TO_P8
+const int num_neighbors_max_ = 27;
+#else
+const int num_neighbors_max_ = 9;
+#endif
+
 class my_p4est_poisson_nodes_mls_sc_t
 {
-  static const int cube_refinement_ = 1;
-  static const int num_neighbors_max_ = pow(3, P4EST_DIM);
+  int cube_refinement_;
 
-  const double phi_perturbation_ = 1.e-6;
+  double phi_perturbation_;
 
   typedef struct
   {
