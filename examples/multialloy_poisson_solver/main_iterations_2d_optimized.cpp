@@ -49,7 +49,7 @@
 #undef MAX
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 5;
+int nb_splits = 4;
 
 bool use_continuous_stencil = false;
 bool use_one_sided_derivatives = false;
@@ -60,7 +60,7 @@ bool use_superconvergent_robin = 1;
 
 int pin_every_n_steps = 3000;
 double bc_tolerance = 1.e-9;
-int max_iterations = 100;
+int max_iterations = 1000;
 
 double lip = 1.5;
 

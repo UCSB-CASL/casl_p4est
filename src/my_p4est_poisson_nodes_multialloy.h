@@ -43,6 +43,8 @@ class my_p4est_poisson_nodes_multialloy_t
   vec_and_ptr_t phi_;
   vec_and_ptr_dim_t phi_dd_;
 
+  vec_and_ptr_t volumes_;
+
   std::vector<Vec> phi_vector_;
   std::vector<Vec> phi_xx_vector_;
   std::vector<Vec> phi_yy_vector_;
@@ -164,6 +166,8 @@ class my_p4est_poisson_nodes_multialloy_t
   bool update_c0_robin_;
   bool use_points_on_interface_;
 
+  bool use_non_zero_guess_;
+
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_multialloy_t(const my_p4est_poisson_nodes_t& other);
   my_p4est_poisson_nodes_multialloy_t& operator=(const my_p4est_poisson_nodes_t& other);
@@ -259,7 +263,7 @@ public:
 
   void initialize_solvers();
 
-  void solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl);
+  void solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess = false);
 
   void solve_t();
   void solve_psi_t();

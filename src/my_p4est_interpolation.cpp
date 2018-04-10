@@ -188,8 +188,8 @@ void my_p4est_interpolation_t::interpolate(double *Fo_p) {
   while (!done) {
     // interpolate local points
     if (it < end) {
-      ierr = PetscLogEventBegin(log_my_p4est_interpolation_process_local, 0, 0, 0, 0); CHKERRXX(ierr);
-      IPMLogRegionBegin("process_local");
+//      ierr = PetscLogEventBegin(log_my_p4est_interpolation_process_local, 0, 0, 0, 0); CHKERRXX(ierr);
+//      IPMLogRegionBegin("process_local");
 
       const double* xyz  = &(input->p_xyz[P4EST_DIM*it]);
       const p4est_quadrant_t &quad = local_buffer[it];
@@ -198,34 +198,34 @@ void my_p4est_interpolation_t::interpolate(double *Fo_p) {
       Fo_p[node_idx] = interpolate(quad, xyz);
       it++;
 
-      IPMLogRegionEnd("process_local");
-      ierr = PetscLogEventEnd(log_my_p4est_interpolation_process_local, 0, 0, 0, 0); CHKERRXX(ierr);
+//      IPMLogRegionEnd("process_local");
+//      ierr = PetscLogEventEnd(log_my_p4est_interpolation_process_local, 0, 0, 0, 0); CHKERRXX(ierr);
     }
     
     // probe for incoming queries
     if (num_remaining_queries > 0) {
-      ierr = PetscLogEventBegin(log_my_p4est_interpolation_process_queries, 0, 0, 0, 0); CHKERRXX(ierr);
-      IPMLogRegionBegin("process_queries");
+//      ierr = PetscLogEventBegin(log_my_p4est_interpolation_process_queries, 0, 0, 0, 0); CHKERRXX(ierr);
+//      IPMLogRegionBegin("process_queries");
       
       int is_msg_pending;
       mpiret = MPI_Iprobe(MPI_ANY_SOURCE, query_tag, p4est->mpicomm, &is_msg_pending, &status); SC_CHECK_MPI(mpiret);
       if (is_msg_pending) { process_incoming_query(status, log_entry); num_remaining_queries--; }
       
-      IPMLogRegionEnd("process_queries");
-      ierr = PetscLogEventEnd(log_my_p4est_interpolation_process_queries, 0, 0, 0, 0); CHKERRXX(ierr);
+//      IPMLogRegionEnd("process_queries");
+//      ierr = PetscLogEventEnd(log_my_p4est_interpolation_process_queries, 0, 0, 0, 0); CHKERRXX(ierr);
     }
 
     // probe for incoming replies
     if (num_remaining_replies > 0) {
-      ierr = PetscLogEventBegin(log_my_p4est_interpolation_process_replies, 0, 0, 0, 0); CHKERRXX(ierr);
-      IPMLogRegionBegin("process_replies");
+//      ierr = PetscLogEventBegin(log_my_p4est_interpolation_process_replies, 0, 0, 0, 0); CHKERRXX(ierr);
+//      IPMLogRegionBegin("process_replies");
 
       int is_msg_pending;
       mpiret = MPI_Iprobe(MPI_ANY_SOURCE, reply_tag, p4est->mpicomm, &is_msg_pending, &status); SC_CHECK_MPI(mpiret);
       if (is_msg_pending) { process_incoming_reply(status, Fo_p); num_remaining_replies--; }
       
-      IPMLogRegionEnd("process_replies");
-      ierr = PetscLogEventEnd(log_my_p4est_interpolation_process_replies, 0, 0, 0, 0); CHKERRXX(ierr);
+//      IPMLogRegionEnd("process_replies");
+//      ierr = PetscLogEventEnd(log_my_p4est_interpolation_process_replies, 0, 0, 0, 0); CHKERRXX(ierr);
     }
 
     done = num_remaining_queries == 0 && num_remaining_replies == 0 && it == end;

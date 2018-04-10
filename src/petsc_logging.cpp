@@ -33,6 +33,7 @@ PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_solve;
 PetscLogEvent log_my_p4est_poisson_nodes_matrix_preallocation;
 PetscLogEvent log_my_p4est_poisson_nodes_matrix_setup;
 PetscLogEvent log_my_p4est_poisson_nodes_rhsvec_setup;
+PetscLogEvent log_my_p4est_poisson_nodes_jump_rhsvec_setup;
 PetscLogEvent log_my_p4est_poisson_nodes_solve;
 PetscLogEvent log_my_p4est_poisson_nodes_KSPSolve;
 
@@ -158,12 +159,27 @@ PetscLogEvent log_my_p4est_balance;
 PetscLogEvent log_my_sc_notify;
 PetscLogEvent log_my_sc_notify_allgather;
 
+// poisson multialloy
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_initialize_solvers;
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve;
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_c0;
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_c1;
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_t;
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_psi_c0;
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_psi_c1;
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_psi_t;
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_compute_c0n;
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_compute_psi_c0n;
+PetscLogEvent log_my_p4est_poisson_nodes_multialloy_adjust_c0;
+
 // multialloy
-PetscLogEvent log_my_p4est_multialloy_temperature_matrix_setup;
-PetscLogEvent log_my_p4est_multialloy_temperature_solve;
-PetscLogEvent log_my_p4est_multialloy_concentration_matrix_setup;
-PetscLogEvent log_my_p4est_multialloy_concentration_solve;
+PetscLogEvent log_my_p4est_multialloy_one_step;
+PetscLogEvent log_my_p4est_multialloy_compute_dt;
+PetscLogEvent log_my_p4est_multialloy_compute_geometric_properties;
+PetscLogEvent log_my_p4est_multialloy_compute_velocity;
 PetscLogEvent log_my_p4est_multialloy_update_grid;
+PetscLogEvent log_my_p4est_multialloy_save_vtk;
+
 
 void register_petsc_logs()
 {
@@ -188,6 +204,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::matrix_preallocation            ", 0, &log_my_p4est_poisson_nodes_matrix_preallocation); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::matrix_setup                    ", 0, &log_my_p4est_poisson_nodes_matrix_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::rhsvec_setup                    ", 0, &log_my_p4est_poisson_nodes_rhsvec_setup); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes::jump_rhsvec_setup               ", 0, &log_my_p4est_poisson_nodes_jump_rhsvec_setup); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::solve                           ", 0, &log_my_p4est_poisson_nodes_solve); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes::KSPSolve                        ", 0, &log_my_p4est_poisson_nodes_KSPSolve); CHKERRXX(ierr);
 
@@ -256,6 +273,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_level_set::extend_over_interface_TVD           ", 0, &log_my_p4est_level_set_extend_over_interface_TVD); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::extend_from_interface               ", 0, &log_my_p4est_level_set_extend_from_interface); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::extend_from_interface_TVD           ", 0, &log_my_p4est_level_set_extend_from_interface_TVD); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_level_set::compute_derivatives                 ", 0, &log_my_p4est_level_set_compute_derivatives); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_1_iter   ", 0, &log_my_p4est_level_set_advect_in_normal_direction_1_iter); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_CF2      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_Vec      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_Vec); CHKERRXX(ierr);
@@ -318,9 +336,23 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_sc_notify_allgather                                  ", 0, &log_my_sc_notify_allgather); CHKERRXX(ierr);
 
   // multialloy
-  ierr = PetscLogEventRegister("my_p4est_multialloy_temperature_matrix_setup            ", 0, &log_my_p4est_multialloy_temperature_matrix_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_multialloy_temperature_solve                   ", 0, &log_my_p4est_multialloy_temperature_solve); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_multialloy_concentration_matrix_setup          ", 0, &log_my_p4est_multialloy_concentration_matrix_setup); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_multialloy_concentration_solve                 ", 0, &log_my_p4est_multialloy_concentration_solve); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_multialloy_update_grid                         ", 0, &log_my_p4est_multialloy_update_grid); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::one_step                    ", 0, &log_my_p4est_multialloy_one_step                    ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::compute_dt                  ", 0, &log_my_p4est_multialloy_compute_dt                  ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::compute_geometric_properties", 0, &log_my_p4est_multialloy_compute_geometric_properties); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::compute_velocity            ", 0, &log_my_p4est_multialloy_compute_velocity            ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::update_grid                 ", 0, &log_my_p4est_multialloy_update_grid                 ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::save_vtk                    ", 0, &log_my_p4est_multialloy_save_vtk                    ); CHKERRXX(ierr);
+
+  // poisson multialloy
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::initialize_solvers", 0, &log_my_p4est_poisson_nodes_multialloy_initialize_solvers); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::solve             ", 0, &log_my_p4est_poisson_nodes_multialloy_solve             ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::solve_c0          ", 0, &log_my_p4est_poisson_nodes_multialloy_solve_c0          ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::solve_c1          ", 0, &log_my_p4est_poisson_nodes_multialloy_solve_c1          ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::solve_t           ", 0, &log_my_p4est_poisson_nodes_multialloy_solve_t           ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::solve_psi_c0      ", 0, &log_my_p4est_poisson_nodes_multialloy_solve_psi_c0      ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::solve_psi_c1      ", 0, &log_my_p4est_poisson_nodes_multialloy_solve_psi_c1      ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::solve_psi_t       ", 0, &log_my_p4est_poisson_nodes_multialloy_solve_psi_t       ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::compute_c0n       ", 0, &log_my_p4est_poisson_nodes_multialloy_compute_c0n       ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::compute_psi_c0n   ", 0, &log_my_p4est_poisson_nodes_multialloy_compute_psi_c0n   ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::adjust_c0         ", 0, &log_my_p4est_poisson_nodes_multialloy_adjust_c0         ); CHKERRXX(ierr);
 }

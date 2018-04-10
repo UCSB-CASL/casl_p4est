@@ -85,13 +85,13 @@ using namespace std;
 bool save_vtk = 0;
 
 #ifdef P4_TO_P8
-int lmin = 4;
-int lmax = 4;
+int lmin = 5;
+int lmax = 5;
 int nb_splits = 1;
 int nb_splits_per_split = 1;
-int nx_shifts = 5;
-int ny_shifts = 5;
-int nz_shifts = 5;
+int nx_shifts = 3;
+int ny_shifts = 3;
+int nz_shifts = 3;
 int num_shifts = nx_shifts*ny_shifts*nz_shifts;
 #else
 int lmin = 4;

@@ -18,12 +18,20 @@
 #include <src/mls_integration/cube3_mls.h>
 #include <src/mls_integration/cube2_mls.h>
 
+#define DO_NOT_PREALLOCATE
+
 class my_p4est_poisson_nodes_mls_sc_t
 {
   static const int cube_refinement_ = 1;
   static const int num_neighbors_max_ = pow(3, P4EST_DIM);
 
-  const double phi_perturbation_ = 1.e-10;
+  const double phi_perturbation_ = 1.e-6;
+
+  typedef struct
+  {
+    double val;
+    PetscInt n;
+  } mat_entry_t;
 
   enum node_neighbor_t
   {
@@ -49,616 +57,6 @@ class my_p4est_poisson_nodes_mls_sc_t
     nn_mp0, nn_0p0, nn_pp0
   #endif
   };
-
-#ifdef P4_TO_P8
-  class cf_const_t: public CF_3
-  {
-    double val_;
-  public:
-    cf_const_t(double val = 0) : val_(val) {}
-    double operator()(double x, double y, double z) const
-    {
-      return val_;
-    }
-  };
-#else
-  class cf_const_t: public CF_2
-  {
-    double val_;
-  public:
-    cf_const_t(double val = 0) : val_(val) {}
-    double operator()(double x, double y) const
-    {
-      return val_;
-    }
-  };
-#endif
-
-#ifdef P4_TO_P8
-  class unity_cf_t: public CF_3
-  {
-  public:
-    double operator()(double x, double y, double z) const
-    {
-      return 1.;
-    }
-  } unity_cf_;
-#else
-  class unity_cf_t: public CF_2
-  {
-  public:
-    double operator()(double x, double y) const
-    {
-      return 1.;
-    }
-  } unity_cf_;
-#endif
-
-#ifdef P4_TO_P8
-  class taylor_expansion_const_term_t: public CF_3
-  {
-    double *b_;
-    CF_3 *alpha_;
-    double *xyz_;
-  public:
-    inline void set(CF_3 &alpha, double *b, double *xyz)
-    {
-      alpha_ = &alpha; b_ = b; xyz_ = xyz;
-    }
-    double operator()(double x, double y, double z) const
-    {
-      return (*alpha_)(x,y,z)*(b_[0]*(x-xyz_[0]) + b_[1]*(y-xyz_[1]) + b_[2]*(z-xyz_[2]));
-    }
-  } taylor_expansion_const_term_;
-#else
-  class taylor_expansion_const_term_t: public CF_2
-  {
-    double *b_;
-    CF_2 *alpha_;
-    double *xyz_;
-  public:
-    inline void set(CF_2 &alpha, double *b, double *xyz)
-    {
-      alpha_ = &alpha; b_ = b; xyz_ = xyz;
-    }
-    double operator()(double x, double y) const
-    {
-      return (*alpha_)(x,y)*(b_[0]*(x-xyz_[0]) + b_[1]*(y-xyz_[1]));
-    }
-  } taylor_expansion_const_term_;
-#endif
-
-#ifdef P4_TO_P8
-  class taylor_expansion_coeff_term_t: public CF_3
-  {
-    double *a_;
-    CF_3 *alpha_;
-    double *xyz_;
-  public:
-    inline void set(CF_3 &alpha, double *a, double *xyz)
-    {
-      alpha_ = &alpha; a_ = a; xyz_ = xyz;
-    }
-    double operator()(double x, double y, double z) const
-    {
-      return (*alpha_)(x,y,z)*(1. - a_[0]*(x-xyz_[0]) - a_[1]*(y-xyz_[1]) - a_[2]*(z-xyz_[2]));
-    }
-  } taylor_expansion_coeff_term_;
-#else
-  class taylor_expansion_coeff_term_t: public CF_2
-  {
-    double *a_;
-    CF_2 *alpha_;
-    double *xyz_;
-  public:
-    inline void set(CF_2 &alpha, double *a, double *xyz)
-    {
-      alpha_ = &alpha; a_ = a; xyz_ = xyz;
-    }
-    double operator()(double x, double y) const
-    {
-      return (*alpha_)(x,y)*(1. - a_[0]*(x-xyz_[0]) - a_[1]*(y-xyz_[1]));
-    }
-  } taylor_expansion_coeff_term_;
-#endif
-
-#ifdef P4_TO_P8
-  class delta_x_cf_t: public CF_3
-  {
-    double *xyz_;
-  public:
-    inline void set(double *xyz) { xyz_ = xyz; }
-    double operator()(double x, double y, double z) const
-    {
-      return x - xyz_[0];
-    }
-  } delta_x_cf_;
-#else
-  class delta_x_cf_t: public CF_2
-  {
-    double *xyz_;
-  public:
-    inline void set(double *xyz) { xyz_ = xyz; }
-    double operator()(double x, double y) const
-    {
-      return x - xyz_[0];
-    }
-  } delta_x_cf_;
-#endif
-
-#ifdef P4_TO_P8
-  class delta_y_cf_t: public CF_3
-  {
-    double *xyz_;
-  public:
-    inline void set(double *xyz) { xyz_ = xyz; }
-    double operator()(double x, double y, double z) const
-    {
-      return y - xyz_[1];
-    }
-  } delta_y_cf_;
-#else
-  class delta_y_cf_t: public CF_2
-  {
-    double *xyz_;
-  public:
-    inline void set(double *xyz) { xyz_ = xyz; }
-    double operator()(double x, double y) const
-    {
-      return y - xyz_[1];
-    }
-  } delta_y_cf_;
-#endif
-
-#ifdef P4_TO_P8
-  class delta_z_cf_t: public CF_3
-  {
-    double *xyz_;
-  public:
-    inline void set(double *xyz) { xyz_ = xyz; }
-    double operator()(double x, double y, double z) const
-    {
-      return z - xyz_[2];
-    }
-  } delta_z_cf_;
-#endif
-
-
-
-#ifdef P4_TO_P8
-  class bc_coeff_times_delta_x_t: public CF_3
-  {
-    CF_3 *alpha_;
-    double *xyz_;
-  public:
-    inline void set(CF_3 &alpha, double *xyz)
-    {
-      alpha_ = &alpha; xyz_ = xyz;
-    }
-    double operator()(double x, double y, double z) const
-    {
-      return (*alpha_)(x,y,z)*(x-xyz_[0]);
-    }
-  } bc_coeff_times_delta_x_;
-#else
-  class bc_coeff_times_delta_x_t: public CF_2
-  {
-    CF_2 *alpha_;
-    double *xyz_;
-  public:
-    inline void set(CF_2 &alpha, double *xyz)
-    {
-      alpha_ = &alpha; xyz_ = xyz;
-    }
-    double operator()(double x, double y) const
-    {
-      return (*alpha_)(x,y)*(x-xyz_[0]);
-    }
-  } bc_coeff_times_delta_x_;
-#endif
-
-
-
-#ifdef P4_TO_P8
-  class bc_coeff_times_delta_y_t: public CF_3
-  {
-    CF_3 *alpha_;
-    double *xyz_;
-  public:
-    inline void set(CF_3 &alpha, double *xyz)
-    {
-      alpha_ = &alpha; xyz_ = xyz;
-    }
-    double operator()(double x, double y, double z) const
-    {
-      return (*alpha_)(x,y,z)*(y-xyz_[1]);
-    }
-  } bc_coeff_times_delta_y_;
-#else
-  class bc_coeff_times_delta_y_t: public CF_2
-  {
-    CF_2 *alpha_;
-    double *xyz_;
-  public:
-    inline void set(CF_2 &alpha, double *xyz)
-    {
-      alpha_ = &alpha; xyz_ = xyz;
-    }
-    double operator()(double x, double y) const
-    {
-      return (*alpha_)(x,y)*(y-xyz_[1]);
-    }
-  } bc_coeff_times_delta_y_;
-#endif
-
-
-
-#ifdef P4_TO_P8
-  class bc_coeff_times_delta_z_t: public CF_3
-  {
-    CF_3 *alpha_;
-    double *xyz_;
-  public:
-    inline void set(CF_3 &alpha, double *xyz)
-    {
-      alpha_ = &alpha; xyz_ = xyz;
-    }
-    double operator()(double x, double y, double z) const
-    {
-      return (*alpha_)(x,y,z)*(z-xyz_[2]);
-    }
-  } bc_coeff_times_delta_z_;
-#endif
-
-#ifdef P4_TO_P8
-#else
-  class bc_coeff_times_delta_xy_t: public CF_2
-  {
-    CF_2 *alpha_;
-    double *xyz_;
-  public:
-    inline void set(CF_2 &alpha, double *xyz)
-    {
-      alpha_ = &alpha; xyz_ = xyz;
-    }
-    double operator()(double x, double y) const
-    {
-      return (*alpha_)(x,y)*(x-xyz_[0])*(y-xyz_[1]);
-    }
-  } bc_coeff_times_delta_xy_;
-#endif
-
-#ifdef P4_TO_P8
-  class const_coeff_integrand_t: public CF_3
-  {
-    double *xyz_;
-    CF_3 *alpha_;
-    CF_3 *mu_;
-    CF_3 *nx_, *ny_, *nz_;
-  public:
-    inline void set(CF_3 &alpha, double *xyz, CF_3 &mu, CF_3 &nx, CF_3 &ny, CF_3 &nz)
-    {
-      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; nz_ = &nz;
-    }
-    double operator()(double x, double y, double z) const
-    {
-      double a  = (*alpha_)(x,y,z);
-      double mu = (*mu_)(x,y,z);
-      double nx = (*nx_)(x,y,z);
-      double ny = (*ny_)(x,y,z);
-      double nz = (*nz_)(x,y,z);
-      double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
-      nx /= norm; ny /= norm; nz /= norm;
-      return a/(1.+a/mu*(nx*(x-xyz_[0])+ny*(y-xyz_[1])+nz*(z-xyz_[2])));
-    }
-  } const_coeff_integrand_;
-#else
-  class const_coeff_integrand_t: public CF_2
-  {
-    double *xyz_;
-    CF_2 *alpha_;
-    CF_2 *mu_;
-    CF_2 *nx_, *ny_;
-  public:
-    inline void set(CF_2 &alpha, double *xyz, CF_2 &mu, CF_2 &nx, CF_2 &ny)
-    {
-      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny;
-    }
-    double operator()(double x, double y) const
-    {
-      double a  = (*alpha_)(x,y);
-      double mu = (*mu_)(x,y);
-      double nx = (*nx_)(x,y);
-      double ny = (*ny_)(x,y);
-      double norm = sqrt(nx*nx+ny*ny);
-      nx /= norm; ny /= norm;
-      return a/(1.+a/mu*(nx*(x-xyz_[0])+ny*(y-xyz_[1])));
-    }
-  } const_coeff_integrand_;
-#endif
-
-#ifdef P4_TO_P8
-  class x_coeff_integrand_t: public CF_3
-  {
-    double *xyz_;
-    CF_3 *alpha_;
-    CF_3 *mu_;
-    CF_3 *nx_, *ny_, *nz_;
-  public:
-    inline void set(CF_3 &alpha, double *xyz, CF_3 &mu, CF_3 &nx, CF_3 &ny, CF_3 &nz)
-    {
-      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; nz_ = &nz;
-    }
-    double operator()(double x, double y, double z) const
-    {
-      double a  = (*alpha_)(x,y,z);
-      double mu = (*mu_)(x,y,z);
-
-      double nx = (*nx_)(x,y,z);
-      double ny = (*ny_)(x,y,z);
-      double nz = (*nz_)(x,y,z);
-      double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
-      nx /= norm; ny /= norm; nz /= norm;
-
-      double nR = nx*(x-xyz_[0]) + ny*(y-xyz_[1]) + nz*(z-xyz_[2]);
-
-      double tx = (x-xyz_[0]) - nx*nR;
-      double ty = (y-xyz_[1]) - ny*nR;
-      double tz = (z-xyz_[2]) - nz*nR;
-
-      norm = sqrt(SQR(tx)+SQR(ty)+SQR(tz));
-      if (norm > EPS) { tx /= norm; ty /= norm; tz /= norm; }
-
-      return a*tx*(tx*(x-xyz_[0])+ty*(y-xyz_[1])+tz*(z-xyz_[2]))/(1.+a/mu*nR);
-    }
-  } x_coeff_integrand_;
-#else
-  class x_coeff_integrand_t: public CF_2
-  {
-    double *xyz_;
-    CF_2 *alpha_;
-    CF_2 *mu_;
-    CF_2 *nx_, *ny_;
-  public:
-    inline void set(CF_2 &alpha, double *xyz, CF_2 &mu, CF_2 &nx, CF_2 &ny)
-    {
-      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny;
-    }
-    double operator()(double x, double y) const
-    {
-      double a  = (*alpha_)(x,y);
-      double mu = (*mu_)(x,y);
-      double nx = (*nx_)(x,y);
-      double ny = (*ny_)(x,y);
-      double norm = sqrt(nx*nx+ny*ny);
-      nx /= norm; ny /= norm;
-      double tx = -ny;
-      double ty = nx;
-      return a*tx*(tx*(x-xyz_[0])+ty*(y-xyz_[1]))/(1.+a/mu*(nx*(x-xyz_[0])+ny*(y-xyz_[1])));
-    }
-  } x_coeff_integrand_;
-#endif
-
-#ifdef P4_TO_P8
-  class y_coeff_integrand_t: public CF_3
-  {
-    double *xyz_;
-    CF_3 *alpha_;
-    CF_3 *mu_;
-    CF_3 *nx_, *ny_, *nz_;
-  public:
-    inline void set(CF_3 &alpha, double *xyz, CF_3 &mu, CF_3 &nx, CF_3 &ny, CF_3 &nz)
-    {
-      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; nz_ = &nz;
-    }
-    double operator()(double x, double y, double z) const
-    {
-      double a  = (*alpha_)(x,y,z);
-      double mu = (*mu_)(x,y,z);
-
-      double nx = (*nx_)(x,y,z);
-      double ny = (*ny_)(x,y,z);
-      double nz = (*nz_)(x,y,z);
-      double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
-      nx /= norm; ny /= norm; nz /= norm;
-
-      double nR = nx*(x-xyz_[0]) + ny*(y-xyz_[1]) + nz*(z-xyz_[2]);
-
-      double tx = (x-xyz_[0]) - nx*nR;
-      double ty = (y-xyz_[1]) - ny*nR;
-      double tz = (z-xyz_[2]) - nz*nR;
-
-      norm = sqrt(SQR(tx)+SQR(ty)+SQR(tz));
-      if (norm > EPS) { tx /= norm; ty /= norm; tz /= norm; }
-
-      return a*ty*(tx*(x-xyz_[0])+ty*(y-xyz_[1])+tz*(z-xyz_[2]))/(1.+a/mu*nR);
-    }
-  } y_coeff_integrand_;
-#else
-  class y_coeff_integrand_t: public CF_2
-  {
-    double *xyz_;
-    CF_2 *alpha_;
-    CF_2 *mu_;
-    CF_2 *nx_, *ny_;
-  public:
-    inline void set(CF_2 &alpha, double *xyz, CF_2 &mu, CF_2 &nx, CF_2 &ny)
-    {
-      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny;
-    }
-    double operator()(double x, double y) const
-    {
-      double a  = (*alpha_)(x,y);
-      double mu = (*mu_)(x,y);
-      double nx = (*nx_)(x,y);
-      double ny = (*ny_)(x,y);
-      double norm = sqrt(nx*nx+ny*ny);
-      nx /= norm; ny /= norm;
-      double tx = -ny;
-      double ty = nx;
-      return a*ty*(tx*(x-xyz_[0])+ty*(y-xyz_[1]))/(1.+a/mu*(nx*(x-xyz_[0])+ny*(y-xyz_[1])));
-    }
-  } y_coeff_integrand_;
-#endif
-
-#ifdef P4_TO_P8
-  class z_coeff_integrand_t: public CF_3
-  {
-    double *xyz_;
-    CF_3 *alpha_;
-    CF_3 *mu_;
-    CF_3 *nx_, *ny_, *nz_;
-  public:
-    inline void set(CF_3 &alpha, double *xyz, CF_3 &mu, CF_3 &nx, CF_3 &ny, CF_3 &nz)
-    {
-      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; nz_ = &nz;
-    }
-    double operator()(double x, double y, double z) const
-    {
-      double a  = (*alpha_)(x,y,z);
-      double mu = (*mu_)(x,y,z);
-
-      double nx = (*nx_)(x,y,z);
-      double ny = (*ny_)(x,y,z);
-      double nz = (*nz_)(x,y,z);
-      double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
-      nx /= norm; ny /= norm; nz /= norm;
-
-      double nR = nx*(x-xyz_[0]) + ny*(y-xyz_[1]) + nz*(z-xyz_[2]);
-
-      double tx = (x-xyz_[0]) - nx*nR;
-      double ty = (y-xyz_[1]) - ny*nR;
-      double tz = (z-xyz_[2]) - nz*nR;
-
-      norm = sqrt(SQR(tx)+SQR(ty)+SQR(tz));
-      if (norm > EPS) { tx /= norm; ty /= norm; tz /= norm; }
-
-      return a*tz*(tx*(x-xyz_[0])+ty*(y-xyz_[1])+tz*(z-xyz_[2]))/(1.+a/mu*nR);
-    }
-  } z_coeff_integrand_;
-#endif
-
-#ifdef P4_TO_P8
-  class rhs_term_integrand_t: public CF_3
-  {
-    double *xyz_;
-    CF_3 *alpha_;
-    CF_3 *mu_;
-    CF_3 *nx_, *ny_, *nz_;
-    CF_3 *g_;
-  public:
-    inline void set(CF_3 &alpha, double *xyz, CF_3 &mu, CF_3 &nx, CF_3 &ny, CF_3 &nz, CF_3 &g)
-    {
-      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; nz_ = &nz; g_ = &g;
-    }
-    double operator()(double x, double y, double z) const
-    {
-      double a  = (*alpha_)(x,y,z);
-      double mu = (*mu_)(x,y,z);
-
-      double nx = (*nx_)(x,y,z);
-      double ny = (*ny_)(x,y,z);
-      double nz = (*nz_)(x,y,z);
-      double norm = sqrt(SQR(nx)+SQR(ny)+SQR(nz));
-      nx /= norm; ny /= norm; nz /= norm;
-
-      double nR = nx*(x-xyz_[0]) + ny*(y-xyz_[1]) + nz*(z-xyz_[2]);
-
-      return a/mu*nR*(*g_)(x,y,z)/(1.+a/mu*nR);
-    }
-  } rhs_term_integrand_;
-#else
-  class rhs_term_integrand_t: public CF_2
-  {
-    double *xyz_;
-    CF_2 *alpha_;
-    CF_2 *mu_;
-    CF_2 *nx_, *ny_;
-    CF_2 *g_;
-  public:
-    inline void set(CF_2 &alpha, double *xyz, CF_2 &mu, CF_2 &nx, CF_2 &ny, CF_2 &g)
-    {
-      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; nx_ = &nx; ny_ = &ny; g_ = &g;
-    }
-    double operator()(double x, double y) const
-    {
-      double a  = (*alpha_)(x,y);
-      double mu = (*mu_)(x,y);
-      double nx = (*nx_)(x,y);
-      double ny = (*ny_)(x,y);
-      double norm = sqrt(nx*nx+ny*ny);
-      nx /= norm; ny /= norm;
-
-      double nR = nx*(x-xyz_[0])+ny*(y-xyz_[1]);
-
-      return a/mu*nR*(*g_)(x,y)/(1.+a/mu*nR);
-    }
-  } rhs_term_integrand_;
-#endif
-
-//#ifdef P4_TO_P8
-//#else
-//  class rhs_term_integrand_t: public CF_2
-//  {
-//    CF_2 *alpha_;
-//    double *xyz_;
-//    CF_2 *mu_;
-//    double *norm_;
-//    CF_2 *g_;
-//  public:
-//    inline void set(CF_2 &alpha, double *xyz, CF_2 &mu, double *norm, CF_2 &g)
-//    {
-//      alpha_ = &alpha; xyz_ = xyz; mu_ = &mu; norm_ = norm; g_ = &g;
-//    }
-//    double operator()(double x, double y) const
-//    {
-//      double a  = (*alpha_)(x,y);
-//      double mu = (*mu_)(x,y);
-//      return a/mu*(norm_[0]*(x-xyz_[0])+norm_[1]*(y-xyz_[1]))*(*g_)(x,y)/(1.+a/mu*(norm_[0]*(x-xyz_[0])+norm_[1]*(y-xyz_[1])));
-//    }
-//  } rhs_term_integrand_;
-//#endif
-
-#ifdef P4_TO_P8
-  class restriction_to_yz_t : public CF_2
-  {
-    CF_3 *f_;
-    double x_;
-  public:
-    restriction_to_yz_t(CF_3 *f, double x) : x_(x), f_(f) {}
-
-    inline double operator()(double y, double z) const
-    {
-      return f_->operator ()(x_, y, z);
-    }
-  };
-
-  class restriction_to_zx_t : public CF_2
-  {
-    CF_3 *f_;
-    double y_;
-  public:
-    restriction_to_zx_t(CF_3 *f, double y) : y_(y), f_(f) {}
-
-    inline double operator()(double z, double x) const
-    {
-      return f_->operator ()(x, y_, z);
-    }
-  };
-
-  class restriction_to_xy_t : public CF_2
-  {
-    CF_3 *f_;
-    double z_;
-  public:
-    restriction_to_xy_t(CF_3 *f, double z) : z_(z), f_(f) {}
-
-    inline double operator()(double x, double y) const
-    {
-      return f_->operator ()(x, y, z_);
-    }
-  };
-#endif
 
   const my_p4est_node_neighbors_t *node_neighbors_;
 
@@ -692,7 +90,6 @@ class my_p4est_poisson_nodes_mls_sc_t
   Vec phi_eff_;
   int num_interfaces_;
   bool is_phi_eff_owned_, is_phi_dd_owned_;
-  Vec node_vol_;
 
   int integration_order_;
 
@@ -725,6 +122,9 @@ class my_p4est_poisson_nodes_mls_sc_t
 
   bool variable_mu_;
   bool is_mue_dd_owned_;
+
+  bool volumes_computed_;
+  bool volumes_owned_;
 
   // Some flags
   bool is_matrix_computed_;
@@ -823,7 +223,8 @@ public:
                          #ifdef P4_TO_P8
                            std::vector<Vec> *phi_zz = NULL,
                          #endif
-                           Vec phi_eff = NULL)
+                           Vec phi_eff = NULL,
+                           Vec volumes = NULL)
   {
     num_interfaces_ = num_interfaces;
     action_  = action;
@@ -855,6 +256,14 @@ public:
     else
       compute_phi_eff_();
 
+    if (volumes == NULL)
+      volumes_computed_ = false;
+    else
+    {
+      volumes_computed_ = true;
+      volumes_ = volumes;
+    }
+    volumes_owned_ = false;
 //    compute_volumes_();
 
 #ifdef CASL_THROWS

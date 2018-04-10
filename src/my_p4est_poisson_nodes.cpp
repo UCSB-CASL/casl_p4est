@@ -26,6 +26,7 @@ extern PetscLogEvent log_my_p4est_poisson_nodes_matrix_setup;
 extern PetscLogEvent log_my_p4est_poisson_nodes_rhsvec_setup;
 extern PetscLogEvent log_my_p4est_poisson_nodes_KSPSolve;
 extern PetscLogEvent log_my_p4est_poisson_nodes_solve;
+extern PetscLogEvent log_my_p4est_poisson_nodes_jump_rhsvec_setup;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -3409,6 +3410,8 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_3& jump_u
 void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u, CF_2& jump_un, Vec rhs_m_in, Vec rhs_p_in)
 #endif
 {
+  // register for logging purpose
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_jump_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   // set local add if none was given
   bool local_add = false;
@@ -3889,4 +3892,5 @@ void my_p4est_poisson_nodes_t::assemble_jump_rhs(Vec rhs_out, const CF_2& jump_u
   ierr = VecGhostUpdateBegin(rhs_out, ADD_VALUES, SCATTER_REVERSE); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(rhs_out, ADD_VALUES, SCATTER_REVERSE); CHKERRXX(ierr);
 
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_jump_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
 }

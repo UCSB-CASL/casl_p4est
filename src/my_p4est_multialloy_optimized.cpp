@@ -14,6 +14,24 @@
 #include <src/my_p4est_macros.h>
 #endif
 
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_multialloy_one_step;
+extern PetscLogEvent log_my_p4est_multialloy_compute_dt;
+extern PetscLogEvent log_my_p4est_multialloy_compute_geometric_properties;
+extern PetscLogEvent log_my_p4est_multialloy_compute_velocity;
+extern PetscLogEvent log_my_p4est_multialloy_update_grid;
+extern PetscLogEvent log_my_p4est_multialloy_save_vtk;
+#endif
+#ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops
+#define PetscLogFlops(n) 0
+#endif
+
 
 
 
@@ -169,6 +187,8 @@ void my_p4est_multialloy_t::set_normal_velocity(Vec v)
 
 void my_p4est_multialloy_t::compute_geometric_properties()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_compute_geometric_properties, 0, 0, 0, 0); CHKERRXX(ierr);
+
   /* second order derivatives */
   foreach_dimension(dim)
   {
@@ -189,64 +209,66 @@ void my_p4est_multialloy_t::compute_geometric_properties()
 
   compute_normals_and_mean_curvature(*ngbd_, phi_, normal_, kappa_);
 
-  /* angle between normal and direction of growth */
-#ifdef P4_TO_P8
-  if (theta_xz_ != NULL) { ierr = VecDestroy(theta_xz_); CHKERRXX(ierr); }
-  if (theta_yz_ != NULL) { ierr = VecDestroy(theta_yz_); CHKERRXX(ierr); }
+//  /* angle between normal and direction of growth */
+//#ifdef P4_TO_P8
+//  if (theta_xz_ != NULL) { ierr = VecDestroy(theta_xz_); CHKERRXX(ierr); }
+//  if (theta_yz_ != NULL) { ierr = VecDestroy(theta_yz_); CHKERRXX(ierr); }
 
-  ierr = VecDuplicate(phi_, &theta_xz_); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi_, &theta_yz_); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi_, &theta_xz_); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi_, &theta_yz_); CHKERRXX(ierr);
 
-  Vec theta_xz_tmp; double *theta_xz_tmp_p;
-  Vec theta_yz_tmp; double *theta_yz_tmp_p;
+//  Vec theta_xz_tmp; double *theta_xz_tmp_p;
+//  Vec theta_yz_tmp; double *theta_yz_tmp_p;
 
-  ierr = VecDuplicate(phi_, &theta_xz_tmp); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi_, &theta_yz_tmp); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi_, &theta_xz_tmp); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi_, &theta_yz_tmp); CHKERRXX(ierr);
 
-  ierr = VecGetArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
-  ierr = VecGetArray(theta_yz_tmp, &theta_yz_tmp_p); CHKERRXX(ierr);
-#else
-  if (theta_ != NULL) { ierr = VecDestroy(theta_); CHKERRXX(ierr); }
-  ierr = VecDuplicate(phi_, &theta_); CHKERRXX(ierr);
+//  ierr = VecGetArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(theta_yz_tmp, &theta_yz_tmp_p); CHKERRXX(ierr);
+//#else
+//  if (theta_ != NULL) { ierr = VecDestroy(theta_); CHKERRXX(ierr); }
+//  ierr = VecDuplicate(phi_, &theta_); CHKERRXX(ierr);
 
-  Vec theta_tmp; double *theta_tmp_p;
-  ierr = VecDuplicate(phi_, &theta_tmp); CHKERRXX(ierr);
-  ierr = VecGetArray(theta_tmp, &theta_tmp_p); CHKERRXX(ierr);
-#endif
+//  Vec theta_tmp; double *theta_tmp_p;
+//  ierr = VecDuplicate(phi_, &theta_tmp); CHKERRXX(ierr);
+//  ierr = VecGetArray(theta_tmp, &theta_tmp_p); CHKERRXX(ierr);
+//#endif
 
-  double *normal_p[P4EST_DIM];
-  foreach_dimension(dim) { ierr = VecGetArray(normal_[dim], &normal_p[dim]); CHKERRXX(ierr); }
+//  double *normal_p[P4EST_DIM];
+//  foreach_dimension(dim) { ierr = VecGetArray(normal_[dim], &normal_p[dim]); CHKERRXX(ierr); }
 
-  foreach_node(n, nodes_)
-  {
-#ifdef P4_TO_P8
-    theta_xz_tmp_p[n] = atan2(normal_p[2][n], normal_p[0][n]);
-    theta_yz_tmp_p[n] = atan2(normal_p[2][n], normal_p[1][n]);
-#else
-    theta_tmp_p[n] = atan2(-normal_p[1][n], -normal_p[0][n]);
-#endif
-  }
+//  foreach_node(n, nodes_)
+//  {
+//#ifdef P4_TO_P8
+//    theta_xz_tmp_p[n] = atan2(normal_p[2][n], normal_p[0][n]);
+//    theta_yz_tmp_p[n] = atan2(normal_p[2][n], normal_p[1][n]);
+//#else
+//    theta_tmp_p[n] = atan2(-normal_p[1][n], -normal_p[0][n]);
+//#endif
+//  }
 
-  foreach_dimension(dim) { ierr = VecRestoreArray(normal_[dim], &normal_p[dim]); CHKERRXX(ierr); }
+//  foreach_dimension(dim) { ierr = VecRestoreArray(normal_[dim], &normal_p[dim]); CHKERRXX(ierr); }
 
-#ifdef P4_TO_P8
-//  ierr = VecRestoreArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(theta_yz_tmp, &theta_yz_tmp_p); CHKERRXX(ierr);
-//  ls.extend_from_interface_to_whole_domain_TVD(phi_, theta_xz_tmp, theta_xz_);
-//  ls.extend_from_interface_to_whole_domain_TVD(phi_, theta_yz_tmp, theta_yz_);
-//  ierr = VecDestroy(theta_xz_tmp); CHKERRXX(ierr);
-//  ierr = VecDestroy(theta_yz_tmp); CHKERRXX(ierr);
-  ierr = VecDestroy(theta_xz_); CHKERRXX(ierr);
-  ierr = VecDestroy(theta_yz_); CHKERRXX(ierr);
-  theta_xz_ = theta_xz_tmp;
-  theta_yz_ = theta_yz_tmp;
-#else
-//  ierr = VecRestoreArray(theta_tmp, &theta_tmp_p); CHKERRXX(ierr);
-//  ls.extend_from_interface_to_whole_domain_TVD(phi_, theta_tmp, theta_);
-//  ierr = VecDestroy(theta_tmp); CHKERRXX(ierr);
-  ierr = VecDestroy(theta_); CHKERRXX(ierr);
-  theta_ = theta_tmp;
-#endif
+//#ifdef P4_TO_P8
+////  ierr = VecRestoreArray(theta_xz_tmp, &theta_xz_tmp_p); CHKERRXX(ierr);
+////  ierr = VecRestoreArray(theta_yz_tmp, &theta_yz_tmp_p); CHKERRXX(ierr);
+////  ls.extend_from_interface_to_whole_domain_TVD(phi_, theta_xz_tmp, theta_xz_);
+////  ls.extend_from_interface_to_whole_domain_TVD(phi_, theta_yz_tmp, theta_yz_);
+////  ierr = VecDestroy(theta_xz_tmp); CHKERRXX(ierr);
+////  ierr = VecDestroy(theta_yz_tmp); CHKERRXX(ierr);
+//  ierr = VecDestroy(theta_xz_); CHKERRXX(ierr);
+//  ierr = VecDestroy(theta_yz_); CHKERRXX(ierr);
+//  theta_xz_ = theta_xz_tmp;
+//  theta_yz_ = theta_yz_tmp;
+//#else
+////  ierr = VecRestoreArray(theta_tmp, &theta_tmp_p); CHKERRXX(ierr);
+////  ls.extend_from_interface_to_whole_domain_TVD(phi_, theta_tmp, theta_);
+////  ierr = VecDestroy(theta_tmp); CHKERRXX(ierr);
+//  ierr = VecDestroy(theta_); CHKERRXX(ierr);
+//  theta_ = theta_tmp;
+//#endif
+
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_geometric_properties, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -255,6 +277,8 @@ void my_p4est_multialloy_t::compute_geometric_properties()
 
 void my_p4est_multialloy_t::compute_velocity()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_compute_velocity, 0, 0, 0, 0); CHKERRXX(ierr);
+
   Vec c_interface; ierr = VecDuplicate(phi_, &c_interface); CHKERRXX(ierr);
   my_p4est_level_set_t ls(ngbd_);
 
@@ -299,13 +323,15 @@ void my_p4est_multialloy_t::compute_velocity()
     vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
 #endif
 
-
-//    if (vn_p[n] < 0)
-//    {
-//      vn_p[n] = 0;
-//      v_gamma_p[0][n] = 0;
-//      v_gamma_p[1][n] = 0;
-//    }
+    if (vn_p[n] > 0)
+    {
+      vn_p[n] = 0;
+      v_gamma_p[0][n] = 0;
+      v_gamma_p[1][n] = 0;
+#ifdef P4_TO_P8
+      v_gamma_p[2][n] = 0;
+#endif
+    }
   }
 
   ierr = VecGhostUpdateBegin(vn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -328,12 +354,16 @@ void my_p4est_multialloy_t::compute_velocity()
     vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
 #endif
 
-//    if (vn_p[n] < 0)
-//    {
-//      vn_p[n] = 0;
-//      v_gamma_p[0][n] = 0;
-//      v_gamma_p[1][n] = 0;
-//    }
+    if (vn_p[n] > 0)
+    {
+//      std::cout << "Happened\n";
+      vn_p[n] = 0;
+      v_gamma_p[0][n] = 0;
+      v_gamma_p[1][n] = 0;
+#ifdef P4_TO_P8
+      v_gamma_p[2][n] = 0;
+#endif
+    }
   }
 
   ierr = VecGhostUpdateEnd(vn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -371,6 +401,8 @@ void my_p4est_multialloy_t::compute_velocity()
   ls.extend_from_interface_to_whole_domain_TVD(phi_, vn, normal_velocity_np1_);
 //  ls.extend_from_interface_to_whole_domain_TVD(phi_, phi_smooth_, vn, normal_velocity_np1_);
   ierr = VecDestroy(vn); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_velocity, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -380,6 +412,8 @@ void my_p4est_multialloy_t::compute_velocity()
 
 void my_p4est_multialloy_t::compute_dt()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_compute_dt, 0, 0, 0, 0); CHKERRXX(ierr);
+
   /* compute the size of smallest detail, i.e. maximum curvature */
   const double *kappa_p;
   ierr = VecGetArrayRead(kappa_, &kappa_p); CHKERRXX(ierr);
@@ -444,12 +478,16 @@ void my_p4est_multialloy_t::compute_dt()
 
   PetscPrintf(p4est_->mpicomm, "VMAX = %e, VGAMMAMAX = %e, COOLING_VELO = %e, %e, %e\n", u_max, vgamma_max_, cooling_velocity_, dxyz_min_/vgamma_max_, 1./kv_max);
   PetscPrintf(p4est_->mpicomm, "dt = %e\n", dt_n_);
+
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_dt, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
 
 void my_p4est_multialloy_t::update_grid()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
+
   PetscPrintf(p4est_->mpicomm, "Updating grid... ");
 
   p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
@@ -694,10 +732,14 @@ void my_p4est_multialloy_t::update_grid()
   compute_geometric_properties();
 
   PetscPrintf(p4est_->mpicomm, "Done \n");
+
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_multialloy_t::one_step()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
+
   // solve coupled system of equations
   my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_);
   solver_all_in_one.set_phi(phi_, phi_dd_, normal_, kappa_);
@@ -727,14 +769,24 @@ void my_p4est_multialloy_t::one_step()
 
   ierr = VecDuplicate(phi_, &bc_error_); CHKERRXX(ierr);
 
+  copy_ghosted_vec(t_n_, t_np1_);
+  copy_ghosted_vec(c0_n_, c0_np1_);
+  copy_ghosted_vec(c1_n_, c1_np1_);
+
   solver_all_in_one.solve(t_np1_, c0_np1_, c1_np1_, bc_error_, bc_error_max_, dt_n_, cfl_number_);
+
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
 
   // compute velocity
   compute_velocity();
+
+  if (update_c0_robin_) solver_all_in_one.solve_c0_robin();
 }
 
 void my_p4est_multialloy_t::save_VTK(int iter)
 {
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
+
   const char* out_dir = getenv("OUT_DIR");
   if (!out_dir)
   {
@@ -825,6 +877,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   ierr = VecRestoreArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
 
   PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_multialloy_t::compute_smoothed_phi()

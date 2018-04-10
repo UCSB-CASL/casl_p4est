@@ -13,6 +13,29 @@
 #include <src/my_p4est_interpolation_nodes_local.h>
 #include <src/my_p4est_macros.h>
 #endif
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_initialize_solvers;
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve;
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_c0;
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_c1;
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_t;
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_psi_c0;
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_psi_c1;
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve_psi_t;
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_compute_c0n;
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_compute_psi_c0n;
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_adjust_c0;
+#endif
+#ifndef CASL_LOG_FLOPS
+#undef PetscLogFlops
+#define PetscLogFlops(n) 0
+#endif
+
 
 #include <src/petsc_compatibility.h>
 #include <src/casl_math.h>
@@ -83,14 +106,16 @@ my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
     if (psi_c0n_dd_.vec[dim] != NULL) { ierr = VecDestroy(psi_c0n_dd_.vec[dim]); CHKERRXX(ierr); }
   }
 
-  if (solver_t != NULL) delete solver_t;
-  if (solver_c0 != NULL) delete solver_c0;
-  if (solver_c1 != NULL) delete solver_c1;
+  if (solver_t      != NULL) delete solver_t;
+  if (solver_c0     != NULL) delete solver_c0;
+  if (solver_c1     != NULL) delete solver_c1;
   if (solver_psi_c0 != NULL) delete solver_psi_c0;
-  if (solver_c1_sc != NULL) delete solver_c1_sc;
+  if (solver_c1_sc  != NULL) delete solver_c1_sc;
 
   if (c0_gamma_.vec != NULL) { ierr = VecDestroy(c0_gamma_.vec); CHKERRXX(ierr); }
   if (c0n_gamma_.vec != NULL) { ierr = VecDestroy(c0n_gamma_.vec); CHKERRXX(ierr); }
+
+  if (volumes_.vec != NULL) { ierr = VecDestroy(volumes_.vec); CHKERRXX(ierr); }
 
 //  if (is_normal_owned_)
 //    for (short dir = 0; dir < P4EST_DIM; ++dir)
@@ -148,8 +173,12 @@ void my_p4est_poisson_nodes_multialloy_t::set_phi(Vec phi, Vec* phi_dd, Vec* nor
 //#endif
 }
 
-void my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl)
+void my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess)
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  use_non_zero_guess_ = use_non_zero_guess;
+
   t_.vec = t;
   c0_.vec = c0;
   c1_.vec = c1;
@@ -259,7 +288,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_er
   solve_t();
   solve_c1();
 
-  if (update_c0_robin_) solve_c0_robin();
+//  if (update_c0_robin_) solve_c0_robin();
 
   // return time-step back
   dt = dt_;
@@ -279,12 +308,16 @@ void my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_er
   }
 
   bc_error_max = bc_error_max_;
+
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
 
 void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_initialize_solvers, 0, 0, 0, 0); CHKERRXX(ierr);
+
   phi_vector_.clear();    phi_vector_.push_back(phi_.vec);
   phi_xx_vector_.clear(); phi_xx_vector_.push_back(phi_dd_.vec[0]);
   phi_yy_vector_.clear(); phi_yy_vector_.push_back(phi_dd_.vec[1]);
@@ -297,6 +330,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   if (solver_t      != NULL) { delete solver_t      ; }
   if (solver_c0     != NULL) { delete solver_c0     ; }
   if (solver_c1     != NULL) { delete solver_c1     ; }
+  if (solver_c1_sc  != NULL) { delete solver_c1_sc  ; }
   if (solver_psi_c0 != NULL) { delete solver_psi_c0 ; }
 
   solver_t      = new my_p4est_poisson_nodes_t(node_neighbors_);
@@ -316,7 +350,6 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_t->      set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1]);
   solver_c0->     set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1]);
   solver_psi_c0-> set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1]);
-//  if (use_superconvergent_robin_) solver_c1_sc->  set_geometry(1, &action_, &color_, &phi_vector_);
   if (use_superconvergent_robin_) solver_c1_sc->  set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_);
   else                            solver_c1->     set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1]);
 #endif
@@ -383,6 +416,8 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
       solver_c0->set_interface_point_value(n, i, c0_gamma);
     }
   }
+
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_initialize_solvers, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -390,6 +425,8 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
 
 void my_p4est_poisson_nodes_multialloy_t::solve_t()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_t, 0, 0, 0, 0); CHKERRXX(ierr);
+
   Vec rhs_tmp;
   ierr = VecDuplicate(t_.vec, &rhs_tmp); CHKERRXX(ierr);
 
@@ -407,7 +444,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
   solver_t->set_is_matrix_computed(is_t_matrix_computed_);
   solver_t->assemble_jump_rhs(rhs_tmp, *jump_t_, tn_jump_, rhs_tl_.vec, rhs_ts_.vec);
   solver_t->set_rhs(rhs_tmp);
-  solver_t->solve(t_.vec);
+  solver_t->solve(t_.vec, use_non_zero_guess_);
 
   t_.get_array();
   tm_.get_array();
@@ -425,10 +462,14 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
   node_neighbors_->second_derivatives_central(tm_.vec, tm_dd_.vec);
 
   ierr = VecDestroy(rhs_tmp); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_multialloy_t::solve_psi_t()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_psi_t, 0, 0, 0, 0); CHKERRXX(ierr);
+
   Vec rhs_tmp;
   ierr = VecDuplicate(psi_t_.vec, &rhs_tmp); CHKERRXX(ierr);
 
@@ -456,6 +497,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_t()
   node_neighbors_->second_derivatives_central(psi_t_.vec, psi_t_dd_.vec);
 
   ierr = VecDestroy(rhs_tmp); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve_psi_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -463,6 +505,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_t()
 
 void my_p4est_poisson_nodes_multialloy_t::solve_c0()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_c0, 0, 0, 0, 0); CHKERRXX(ierr);
+
   vec_and_ptr_t rhs_tmp;
   ierr = VecDuplicate(rhs_c0_.vec, &rhs_tmp.vec); CHKERRXX(ierr);
 
@@ -489,28 +533,31 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
   solver_c0->set_is_matrix_computed(true);
   solver_c0->set_rhs(rhs_tmp.vec);
 
-  solver_c0->solve(c0_.vec);
+  solver_c0->solve(c0_.vec, use_non_zero_guess_);
 
   my_p4est_level_set_t ls(node_neighbors_);
   ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-  if (use_points_on_interface_) ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, solver_c0, 100, 2, normal_.vec);
-  else                          ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, 100, 2, normal_.vec);
+  if (use_points_on_interface_) ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, solver_c0, 50, 2, normal_.vec);
+  else                          ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, 50, 2, normal_.vec);
 
-  if (c0_gamma_.vec != NULL) { ierr = VecDestroy(c0_gamma_.vec); CHKERRXX(ierr); }
+//  if (c0_gamma_.vec != NULL) { ierr = VecDestroy(c0_gamma_.vec); CHKERRXX(ierr); }
 
-  ierr = VecDuplicate(phi_.vec, &c0_gamma_.vec); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi_.vec, &c0_gamma_.vec); CHKERRXX(ierr);
 
-  ls.extend_from_interface_to_whole_domain_TVD(phi_.vec, c0_.vec, c0_gamma_.vec);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi_.vec, c0_.vec, c0_gamma_.vec);
 
   node_neighbors_->second_derivatives_central(c0_.vec, c0_dd_.vec);
 
   ierr = VecDestroy(rhs_tmp.vec); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve_c0, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_psi_c0, 0, 0, 0, 0); CHKERRXX(ierr);
+
   // compute bondary conditions
   psi_t_.get_array();
   psi_t_dd_.get_array();
@@ -606,6 +653,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
   node_neighbors_->second_derivatives_central(psi_c0_.vec, psi_c0_dd_.vec);
 
   ierr = VecDestroy(rhs_tmp.vec); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve_psi_c0, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -613,6 +661,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
 
 void my_p4est_poisson_nodes_multialloy_t::solve_c1()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_c1, 0, 0, 0, 0); CHKERRXX(ierr);
+
   vec_and_ptr_t rhs_tmp;
   ierr = VecDuplicate(rhs_c1_.vec, &rhs_tmp.vec); CHKERRXX(ierr);
 
@@ -637,6 +687,12 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
     std::vector<CF_2 *>                interface_coeff(1, &c1_robin_coef_);
 #endif
 
+//#ifdef P4_TO_P8
+//    solver_c1_sc->set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, &phi_zz_vector_, NULL, volumes_.vec);
+//#else
+//    solver_c1_sc->set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, NULL, volumes_.vec);
+//#endif
+
     solver_c1_sc->set_bc_wall_type(bc_c1_.getWallType());
     solver_c1_sc->set_bc_wall_value(bc_c1_.getWallValue());
     solver_c1_sc->set_bc_interface_type(interface_type);
@@ -644,7 +700,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
     solver_c1_sc->set_bc_interface_coeff(interface_coeff);
     solver_c1_sc->set_is_matrix_computed(is_c1_matrix_computed_);
     solver_c1_sc->set_rhs(rhs_tmp.vec);
-    solver_c1_sc->solve(c1_.vec);
+    solver_c1_sc->solve(c1_.vec, use_non_zero_guess_);
 
     mask.vec = solver_c1_sc->get_mask();
 
@@ -653,6 +709,13 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
     foreach_node(n, nodes_) mask.ptr[n] += 0.31;
 
     mask.restore_array();
+
+//    if (volumes_.vec == NULL)
+//    {
+//      Vec volumes_tmp = solver_c1_sc->get_volumes();
+//      ierr = VecDuplicate(phi_.vec, &volumes_.vec); CHKERRXX(ierr);
+//      copy_ghosted_vec(volumes_tmp, volumes_.vec);
+//    }
 
   } else {
 #ifdef P4_TO_P8
@@ -670,7 +733,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
     solver_c1->set_bc(bc_tmp);
     solver_c1->set_is_matrix_computed(is_c1_matrix_computed_);
     solver_c1->set_rhs(rhs_tmp.vec);
-    solver_c1->solve(c1_.vec);
+    solver_c1->solve(c1_.vec, use_non_zero_guess_);
 
     mask.vec = solver_c1->get_mask();
   }
@@ -688,10 +751,13 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
   node_neighbors_->second_derivatives_central(c1_.vec, c1_dd_.vec);
 
   ierr = VecDestroy(rhs_tmp.vec); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve_c1, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_multialloy_t::solve_psi_c1()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_psi_c1, 0, 0, 0, 0); CHKERRXX(ierr);
+
   vec_and_ptr_t rhs_tmp;
   ierr = VecDuplicate(rhs_c1_.vec, &rhs_tmp.vec); CHKERRXX(ierr);
 
@@ -763,6 +829,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c1()
   node_neighbors_->second_derivatives_central(psi_c1_.vec, psi_c1_dd_.vec);
 
   ierr = VecDestroy(rhs_tmp.vec); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve_psi_c1, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
@@ -786,9 +853,9 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0_robin()
     my_p4est_poisson_nodes_mls_sc_t solver_c0_sc(node_neighbors_);
 
 #ifdef P4_TO_P8
-    solver_c0_sc.set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, &phi_zz_vector_);
+    solver_c0_sc.set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, &phi_zz_vector_, NULL, volumes_.vec);
 #else
-    solver_c0_sc.set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_);
+    solver_c0_sc.set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, NULL, volumes_.vec);
 #endif
 
     solver_c0_sc.set_diag_add(1.);
@@ -877,6 +944,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0_robin()
 
 void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_compute_c0n, 0, 0, 0, 0); CHKERRXX(ierr);
+
   if (c0n_.vec != NULL) { ierr = VecDestroy(c0n_.vec); CHKERRXX(ierr); }
   ierr = VecDuplicate(phi_.vec, &c0n_.vec); CHKERRXX(ierr);
 
@@ -896,6 +965,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
 #else
     c0n_.ptr[n] = qnnn.dx_central(c0_.ptr)*normal_.ptr[0][n] + qnnn.dy_central(c0_.ptr)*normal_.ptr[1][n];
 #endif
+
+    c0n_.ptr[n] = MAX(c0n_.ptr[n], 0.);
   }
 
   ierr = VecGhostUpdateBegin(c0n_.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -910,6 +981,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
 #else
     c0n_.ptr[n] = qnnn.dx_central(c0_.ptr)*normal_.ptr[0][n] + qnnn.dy_central(c0_.ptr)*normal_.ptr[1][n];
 #endif
+
+    c0n_.ptr[n] = MAX(c0n_.ptr[n], 0.);
   }
 
   ierr = VecGhostUpdateEnd(c0n_.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -931,18 +1004,21 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
     ierr = VecDuplicate(phi_dd_.vec[dim], &c0n_dd_.vec[dim]); CHKERRXX(ierr);
   }
 
-  if (c0n_gamma_.vec != NULL) { ierr = VecDestroy(c0n_gamma_.vec); CHKERRXX(ierr); }
+//  if (c0n_gamma_.vec != NULL) { ierr = VecDestroy(c0n_gamma_.vec); CHKERRXX(ierr); }
 
-  ierr = VecDuplicate(phi_.vec, &c0n_gamma_.vec); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi_.vec, &c0n_gamma_.vec); CHKERRXX(ierr);
 
-  ls.extend_from_interface_to_whole_domain_TVD(phi_.vec, c0n_.vec, c0n_gamma_.vec);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi_.vec, c0n_.vec, c0n_gamma_.vec);
 
   node_neighbors_->second_derivatives_central(c0n_.vec, c0n_dd_.vec);
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_compute_c0n, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
 void my_p4est_poisson_nodes_multialloy_t::compute_psi_c0n()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_compute_psi_c0n, 0, 0, 0, 0); CHKERRXX(ierr);
+
   if (psi_c0n_.vec != NULL) { ierr = VecDestroy(psi_c0n_.vec); CHKERRXX(ierr); }
   ierr = VecDuplicate(phi_.vec, &psi_c0n_.vec); CHKERRXX(ierr);
 
@@ -992,10 +1068,13 @@ void my_p4est_poisson_nodes_multialloy_t::compute_psi_c0n()
   }
 
   node_neighbors_->second_derivatives_central(psi_c0n_.vec, psi_c0n_dd_.vec);
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_compute_psi_c0n, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_adjust_c0, 0, 0, 0, 0); CHKERRXX(ierr);
+
   /* get pointers */
 
   tm_.get_array();
@@ -1065,14 +1144,14 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 
         double nx = solver_psi_c0->interpolate_at_interface_point(n,i,normal_.ptr[0]);
         double ny = solver_psi_c0->interpolate_at_interface_point(n,i,normal_.ptr[1]);
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
         double nz = solver_psi_c0->interpolate_at_interface_point(n,i,normal_.ptr[2]);
         double eps_v = (*eps_v_)(nx, ny, nz);
         double eps_c = (*eps_c_)(nx, ny, nz);
-  #else
+#else
         double eps_v = (*eps_v_)(nx, ny);
         double eps_c = (*eps_c_)(nx, ny);
-  #endif
+#endif
 
 
         double error = (conc_term + Tm_ - ther_term - eps_v*( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma ) + eps_c*kappa + GT_->value(xyz));
@@ -1128,4 +1207,6 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 
   bc_error_.restore_array();
   kappa_.restore_array();
+
+  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_adjust_c0, 0, 0, 0, 0); CHKERRXX(ierr);
 }

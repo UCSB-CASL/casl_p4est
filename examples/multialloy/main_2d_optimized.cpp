@@ -58,8 +58,10 @@ double bc_tolerance = 1.e-5;
 double cfl_number = 0.1;
 double phi_thresh = 1e-3;
 double zero_negative_velocity = true;
-int max_iterations = 100;
-int pin_every_n_steps = 1000;
+int max_iterations = 50;
+int pin_every_n_steps = 100;
+
+int max_total_iterations = INT_MAX;
 
 double init_perturb = 0.01;
 
@@ -69,7 +71,7 @@ bool use_points_on_interface   = true;
 bool update_c0_robin           = 1;
 
 // not implemented yet
-bool use_superconvergent_robin = 0;
+bool use_superconvergent_robin = 1;
 bool use_superconvergent_jump  = false;
 
 double lip = 2;
@@ -881,6 +883,8 @@ int main (int argc, char* argv[])
       int mpiret = MPI_Allreduce(MPI_IN_PLACE, &end_of_run, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
       keep_going = (end_of_run == 0);
     }
+
+    keep_going = keep_going && (iteration < max_total_iterations);
 
     bas.update_grid();
 //    bas.update_grid_eno();
