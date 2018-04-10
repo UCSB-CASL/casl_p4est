@@ -168,6 +168,9 @@ class my_p4est_poisson_nodes_multialloy_t
 
   bool use_non_zero_guess_;
 
+  double min_volume_;
+  double volume_thresh_;
+
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_multialloy_t(const my_p4est_poisson_nodes_t& other);
   my_p4est_poisson_nodes_multialloy_t& operator=(const my_p4est_poisson_nodes_t& other);

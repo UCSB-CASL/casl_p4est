@@ -88,6 +88,18 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   use_superconvergent_jump_  = false;
   update_c0_robin_           = false;
   use_points_on_interface_   = true;
+
+  volume_thresh_ = 1.e-2;
+
+  double dxyz[P4EST_DIM];
+
+  dxyz_min(p4est_, dxyz);
+
+#ifdef P4_TO_P8
+  min_volume_ = dxyz[0]*dxyz[1]*dxyz[2];
+#else
+  min_volume_ = dxyz[0]*dxyz[1];
+#endif
 }
 
 my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
@@ -704,11 +716,17 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
 
     mask.vec = solver_c1_sc->get_mask();
 
+    vec_and_ptr_t volumes;
+
+    volumes.vec = solver_c1_sc->get_volumes();
+
+    volumes.get_array();
     mask.get_array();
 
-    foreach_node(n, nodes_) mask.ptr[n] += 0.31;
+    foreach_node(n, nodes_) if (mask.ptr[n] >= -0.3 || volumes.ptr[n] < volume_thresh_*min_volume_) mask.ptr[n] = 1.;
 
     mask.restore_array();
+    volumes.restore_array();
 
 //    if (volumes_.vec == NULL)
 //    {
@@ -791,11 +809,18 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c1()
 
     mask.vec = solver_c1_sc->get_mask();
 
+    vec_and_ptr_t volumes;
+
+    volumes.vec = solver_c1_sc->get_volumes();
+
+    volumes.get_array();
     mask.get_array();
 
-    foreach_node(n, nodes_) mask.ptr[n] += 0.31;
+    foreach_node(n, nodes_) if (mask.ptr[n] >= -0.3 || volumes.ptr[n] < volume_thresh_*min_volume_) mask.ptr[n] = 1.;
 
     mask.restore_array();
+    volumes.restore_array();
+
   } else {
 #ifdef P4_TO_P8
     BoundaryConditions3D bc_tmp;
@@ -887,11 +912,17 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0_robin()
     vec_and_ptr_t mask;
     mask.vec = solver_c0_sc.get_mask();
 
+    vec_and_ptr_t volumes;
+
+    volumes.vec = solver_c0_sc.get_volumes();
+
+    volumes.get_array();
     mask.get_array();
 
-    foreach_node(n, nodes_) mask.ptr[n] += 0.31;
+    foreach_node(n, nodes_) if (mask.ptr[n] >= -0.3 || volumes.ptr[n] < volume_thresh_*min_volume_) mask.ptr[n] = 1.;
 
     mask.restore_array();
+    volumes.restore_array();
 
     my_p4est_level_set_t ls(node_neighbors_);
     ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);

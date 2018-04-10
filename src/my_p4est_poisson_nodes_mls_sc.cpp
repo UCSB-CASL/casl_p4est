@@ -146,11 +146,11 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   eps_ifc_ = eps;
 #endif
 
-  domain_rel_thresh_ = 1.e-20;
+  domain_rel_thresh_ = 1.e-10;
   interface_rel_thresh_ = 1.e-20;
 
   cube_refinement_ = 1;
-  phi_perturbation_ = 1.e-6;
+  phi_perturbation_ = 1.e-8;
 }
 
 my_p4est_poisson_nodes_mls_sc_t::~my_p4est_poisson_nodes_mls_sc_t()
@@ -2958,12 +2958,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         {
           if (!neighbors_exist[nn_m00])
           {
-            std::cout << "Warning: neighbor doesn't exist in the xm-direction."
-                      << " Own number: " << n
-                      << " Nei number: " << neighbors[nn_m00]
-                         << " Own volume: " << volumes_p[neighbors[nn_000]]
-                         << " Nei volume: " << volumes_p[neighbors[nn_m00]]
-                         << " Face Area:" << s_m00/full_sx << "\n";
+//            std::cout << "Warning: neighbor doesn't exist in the xm-direction."
+//                      << " Own number: " << n
+//                      << " Nei number: " << neighbors[nn_m00]
+//                         << " Own volume: " << volumes_p[neighbors[nn_000]]
+//                         << " Nei volume: " << volumes_p[neighbors[nn_m00]]
+//                         << " Face Area:" << s_m00/full_sx << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(fv_xmin, y_C + y_m00) : mu_;
@@ -3013,12 +3013,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
           if (!neighbors_exist[nn_p00])
           {
-            std::cout << "Warning: neighbor doesn't exist in the xm-direction."
-                      << " Own number: " << n
-                      << " Nei number: " << neighbors[nn_p00]
-                         << " Own volume: " << volumes_p[neighbors[nn_000]]
-                         << " Nei volume: " << volumes_p[neighbors[nn_p00]]
-                         << " Face Area:" << s_p00/full_sx << "\n";
+//            std::cout << "Warning: neighbor doesn't exist in the xp-direction."
+//                      << " Own number: " << n
+//                      << " Nei number: " << neighbors[nn_p00]
+//                         << " Own volume: " << volumes_p[neighbors[nn_000]]
+//                         << " Nei volume: " << volumes_p[neighbors[nn_p00]]
+//                         << " Face Area:" << s_p00/full_sx << "\n";
           } else {
 
             double mu_val = variable_mu_ ? mu_val = interp_local.interpolate(fv_xmax, y_C + y_p00) : mu_;
@@ -3068,12 +3068,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
           if (!neighbors_exist[nn_0m0])
           {
-            std::cout << "Warning: neighbor doesn't exist in the xm-direction."
-                      << " Own number: " << n
-                      << " Nei number: " << neighbors[nn_0m0]
-                         << " Own volume: " << volumes_p[neighbors[nn_000]]
-                         << " Nei volume: " << volumes_p[neighbors[nn_0m0]]
-                         << " Face Area:" << s_0m0/full_sy << "\n";
+//            std::cout << "Warning: neighbor doesn't exist in the ym-direction."
+//                      << " Own number: " << n
+//                      << " Nei number: " << neighbors[nn_0m0]
+//                         << " Own volume: " << volumes_p[neighbors[nn_000]]
+//                         << " Nei volume: " << volumes_p[neighbors[nn_0m0]]
+//                         << " Face Area:" << s_0m0/full_sy << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(x_C + x_0m0, fv_ymin) : mu_;
@@ -3123,12 +3123,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
           if (!neighbors_exist[nn_0p0])
           {
-            std::cout << "Warning: neighbor doesn't exist in the xm-direction."
-                      << " Own number: " << n
-                      << " Nei number: " << neighbors[nn_0p0]
-                         << " Own volume: " << volumes_p[neighbors[nn_000]]
-                         << " Nei volume: " << volumes_p[neighbors[nn_0p0]]
-                         << " Face Area:" << s_0p0/full_sy << "\n";
+//            std::cout << "Warning: neighbor doesn't exist in the yp-direction."
+//                      << " Own number: " << n
+//                      << " Nei number: " << neighbors[nn_0p0]
+//                         << " Own volume: " << volumes_p[neighbors[nn_000]]
+//                         << " Nei volume: " << volumes_p[neighbors[nn_0p0]]
+//                         << " Face Area:" << s_0p0/full_sy << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(x_C + x_0p0, fv_ymax) : mu_;
