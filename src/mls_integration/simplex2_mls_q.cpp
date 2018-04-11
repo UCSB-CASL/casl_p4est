@@ -60,7 +60,17 @@ simplex2_mls_q_t::simplex2_mls_q_t(double x0, double y0,
   lmin_ = lmin_ < l02 ? lmin_ : l02;
   lmin_ = lmin_ < l12 ? lmin_ : l12;
 
+  eps_rel_ = 1.e-12;
+
   eps_ = eps_rel_*lmin_;
+
+  max_refinement_ = 10;
+  snap_limit_ = 0.2;
+  check_for_curvature_          = 0;
+  check_for_edge_intersections_ = 1;
+  check_for_overlapping_        = 0;
+  refine_in_normal_dir_         = 1;
+  adjust_auxiliary_midpoint_    = false;
 }
 
 

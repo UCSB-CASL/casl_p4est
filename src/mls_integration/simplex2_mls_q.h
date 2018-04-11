@@ -53,16 +53,12 @@ private:
   const static int nodes_per_tri_ = 6;
 
   // resolution limit (eps_ = eps_rel*lmin)
-  const double eps_rel_ = 1.e-12;
+  double eps_rel_;
   double eps_;
   double lmin_;
 
   double phi_max_;
   double phi_eps_;
-
-  // for close to interface vertices
-  const double phi_perturbance_ = 10.*DBL_MIN;
-  const double phi_tolerance_   = 12.*DBL_MIN;
 
   // inverse mapping for interpolation purposes
   double map_parent_to_ref_[4];
@@ -74,13 +70,13 @@ private:
   bool invalid_reconstruction_;
 
   // parameters
-  const static int max_refinement_ = 10;
-  const double snap_limit_ = 0.2;
-  const bool check_for_curvature_          = 0;
-  const bool check_for_edge_intersections_ = 1;
-  const bool check_for_overlapping_        = 0;
-  const bool refine_in_normal_dir_         = 1;
-  const bool adjust_auxiliary_midpoint_    = false;
+  int max_refinement_;
+  double snap_limit_;
+  bool check_for_curvature_         ;
+  bool check_for_edge_intersections_;
+  bool check_for_overlapping_       ;
+  bool refine_in_normal_dir_        ;
+  bool adjust_auxiliary_midpoint_   ;
 
   //--------------------------------------------------
   // Elementary Geometric Elements

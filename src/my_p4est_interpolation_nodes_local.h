@@ -153,6 +153,18 @@ public:
   double quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const;
 #endif
 
+#ifdef P4_TO_P8
+  double quadratic_non_oscillatory_continuous_v1_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const;
+#else
+  double quadratic_non_oscillatory_continuous_v1_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const;
+#endif
+
+#ifdef P4_TO_P8
+  double quadratic_non_oscillatory_continuous_v2_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const;
+#else
+  double quadratic_non_oscillatory_continuous_v2_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const;
+#endif
+
   double linear_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *xyz_global) const;
 
   // interpolation method

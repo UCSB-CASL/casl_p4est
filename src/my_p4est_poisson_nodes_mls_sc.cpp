@@ -146,11 +146,13 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   eps_ifc_ = eps;
 #endif
 
-  domain_rel_thresh_ = 1.e-10;
-  interface_rel_thresh_ = 1.e-20;
+  domain_rel_thresh_ = 1.e-11;
+  interface_rel_thresh_ = 1.e-11;
 
   cube_refinement_ = 1;
-  phi_perturbation_ = 1.e-8;
+  phi_perturbation_ = 1.e-9;
+
+  interp_method_ = quadratic_non_oscillatory_continuous_v1;
 }
 
 my_p4est_poisson_nodes_mls_sc_t::~my_p4est_poisson_nodes_mls_sc_t()
@@ -867,9 +869,9 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
   if (variable_mu_)
 #ifdef P4_TO_P8
-    interp_local.set_input(mue_p, mue_xx_p, mue_yy_p, mue_zz_p, quadratic);
+    interp_local.set_input(mue_p, mue_xx_p, mue_yy_p, mue_zz_p, interp_method_);
 #else
-    interp_local.set_input(mue_p, mue_xx_p, mue_yy_p, quadratic);
+    interp_local.set_input(mue_p, mue_xx_p, mue_yy_p, interp_method_);
 #endif
 
   my_p4est_interpolation_nodes_local_t phi_x_local(node_neighbors_);
@@ -1332,10 +1334,10 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     }
 
     if (is_ngbd_crossed_neumann && is_ngbd_crossed_dirichlet) { throw std::domain_error("[CASL_ERROR]: No crossing Dirichlet and Neumann at the moment"); }
-    else if (is_ngbd_crossed_neumann)                         { discretization_scheme_ = discretization_scheme_t::FVM; }
-    else                                                      { discretization_scheme_ = discretization_scheme_t::FDM; }
+    else if (is_ngbd_crossed_neumann)                         { discretization_scheme_ = FVM; }
+    else                                                      { discretization_scheme_ = FDM; }
 
-    if (discretization_scheme_ == discretization_scheme_t::FDM)
+    if (discretization_scheme_ == FDM)
     {
       //---------------------------------------------------------------------
       // interface boundary
@@ -2192,7 +2194,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       }
 
     }
-    else if (discretization_scheme_ == discretization_scheme_t::FVM)
+    else if (discretization_scheme_ == FVM)
     {
       if (use_sc_scheme_)
         for (char idx = 0; idx < num_neighbors_max_; ++idx)
@@ -2329,9 +2331,9 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           if (phi_cf_ == NULL)
           {
 #ifdef P4_TO_P8
-            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], quadratic);
+            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], interp_method_);
 #else
-            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], quadratic);
+            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], interp_method_);
 #endif
           }
           for (int i = 0; i < points_total; ++i)
@@ -2487,7 +2489,9 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
       std::vector<double> interface_centroid_x(num_interfaces_, 0);
       std::vector<double> interface_centroid_y(num_interfaces_, 0);
+#ifdef P4_TO_P8
       std::vector<double> interface_centroid_z(num_interfaces_, 0);
+#endif
       std::vector<double> interface_area(num_interfaces_, 0);
 
       for (int phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
@@ -3298,9 +3302,9 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
             if (cube_ifc_w[phi_idx].size() > 0)
             {
 #ifdef P4_TO_P8
-              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], quadratic);
+              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], interp_method_);
 #else
-              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], quadratic);
+              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], interp_method_);
 #endif
               phi_x_local.set_input(phi_x_ptr[phi_idx], linear);
               phi_y_local.set_input(phi_y_ptr[phi_idx], linear);
@@ -3356,6 +3360,11 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
               xyz_pr[1] = xyz0[1] - dist0*ny;
 #ifdef P4_TO_P8
               xyz_pr[2] = xyz0[2] - dist0*nz;
+#endif
+              xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
+              xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
+#ifdef P4_TO_P8
+              xyz_pr[2] = MIN(xyz_pr[2], fv_zmax); xyz_pr[2] = MAX(xyz_pr[2], fv_zmin);
 #endif
 
               double mu_proj       = variable_mu_ ? interp_local.value(xyz_pr) : mu_;
@@ -3668,9 +3677,9 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
               char phi_idx = present_interfaces[i];
 
 #ifdef P4_TO_P8
-              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], quadratic);
+              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], interp_method_);
 #else
-              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], quadratic);
+              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], interp_method_);
 #endif
               phi_x_local.set_input(phi_x_ptr[phi_idx], linear);
               phi_y_local.set_input(phi_y_ptr[phi_idx], linear);
@@ -3730,6 +3739,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
               xyz_pr[1] = xyz0[1] - dist0*ny;
 #ifdef P4_TO_P8
               xyz_pr[2] = xyz0[2] - dist0*nz;
+#endif
+
+              xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
+              xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
+#ifdef P4_TO_P8
+              xyz_pr[2] = MIN(xyz_pr[2], fv_zmax); xyz_pr[2] = MAX(xyz_pr[2], fv_zmin);
 #endif
 
               double mu_proj       = variable_mu_ ? interp_local.value(xyz_pr) : mu_;
@@ -3820,6 +3835,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
                 for (short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
                   xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
+
+                xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
+                xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
+#ifdef P4_TO_P8
+                xyz_pr[2] = MIN(xyz_pr[2], fv_zmax); xyz_pr[2] = MAX(xyz_pr[2], fv_zmin);
+#endif
 
                 // sample values at the projection point
                 double mu_proj       = variable_mu_ ? interp_local.value(xyz_pr) : mu_;
@@ -4224,11 +4245,11 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
       if (is_ngbd_crossed_neumann && is_ngbd_crossed_dirichlet)
         throw std::domain_error("[CASL_ERROR]: No crossing Dirichlet and Neumann at the moment");
       else if (is_ngbd_crossed_neumann)
-        discretization_scheme_ = discretization_scheme_t::FVM;
+        discretization_scheme_ = FVM;
       else
-        discretization_scheme_ = discretization_scheme_t::FDM;
+        discretization_scheme_ = FDM;
 
-      if (discretization_scheme_ == discretization_scheme_t::FDM)
+      if (discretization_scheme_ == FDM)
       {
         //---------------------------------------------------------------------
         // interface boundary
@@ -4257,7 +4278,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
           continue;
         }
 
-      } else if (discretization_scheme_ == discretization_scheme_t::FVM) {
+      } else if (discretization_scheme_ == FVM) {
 
         // Reconstruct geometry
 #ifdef P4_TO_P8
@@ -4539,13 +4560,13 @@ void my_p4est_poisson_nodes_mls_sc_t::reconstruct_domain(std::vector<cube2_mls_t
       if (is_ngbd_crossed_neumann && is_ngbd_crossed_dirichlet)
         throw std::domain_error("[CASL_ERROR]: No crossing Dirichlet and Neumann at the moment");
       else if (is_ngbd_crossed_neumann)
-        discretization_scheme_ = discretization_scheme_t::FVM;
+        discretization_scheme_ = FVM;
       else
-        discretization_scheme_ = discretization_scheme_t::FDM;
+        discretization_scheme_ = FDM;
 
 
 
-      if (discretization_scheme_ == discretization_scheme_t::FVM)
+      if (discretization_scheme_ == FVM)
       {
         for (char idx = 0; idx < num_neighbors_max_; ++idx)
           if (neighbors_exist[idx])

@@ -32,6 +32,8 @@ class my_p4est_poisson_nodes_mls_sc_t
 
   double phi_perturbation_;
 
+  interpolation_method interp_method_;
+
   typedef struct
   {
     double val;

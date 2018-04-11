@@ -452,7 +452,7 @@ private:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double x, double y) const
     {
-//      return -((1.-ptr_->kp1_)/ptr_->Dl1_)*(*ptr_->vn_exact_)(x,y);
+//      return -ptr_->dt_*(1.-ptr_->kp1_)*(*ptr_->vn_exact_)(x,y);
       if (ptr_->use_superconvergent_robin_)
         return -ptr_->dt_*(1.-ptr_->kp1_)*ptr_->vn_from_c0_(x,y);
       else

@@ -60,16 +60,12 @@ private:
   const static int nodes_per_tet_  = 10;
 
   // resolution limit (eps_ = eps_rel*lmin)
-  const double eps_rel_ = 1.e-12;
+  double eps_rel_;
   double eps_;
   double lmin_;
 
   double phi_max_;
   double phi_eps_;
-
-  // for close to interface vertices
-  const double phi_perturbance_ = 1.e10*DBL_MIN;
-  const double phi_tolerance_   = 2.e10*DBL_MIN;
 
   // inverse mapping for interpolation purposes
   double map_parent_to_ref_[9];
@@ -84,16 +80,16 @@ private:
   bool invalid_reconstruction_;
 
   // some parameters of reconstructions
-  const static int max_refinement_ = 8;
-  const double snap_limit_ = 0.2;
-  const double kappa_scale_ = 2;
-  const double kappa_eps_ = 1.e-5;
-  const bool check_for_edge_intersections_ = 1;
-  const bool try_to_fix_outside_vertices_  = 1;
-  const bool check_for_overlapping_        = 1;
-  const bool check_for_valid_data_         = 1;
-  const bool refine_in_normal_dir_         = 1;
-  const bool adjust_auxiliary_midpoint_    = 0;
+  int max_refinement_;
+  double snap_limit_;
+  double kappa_scale_;
+  double kappa_eps_;
+  bool check_for_edge_intersections_;
+  bool try_to_fix_outside_vertices_ ;
+  bool check_for_overlapping_       ;
+  bool check_for_valid_data_        ;
+  bool refine_in_normal_dir_        ;
+  bool adjust_auxiliary_midpoint_   ;
 
   bool check_for_curvature_;
 

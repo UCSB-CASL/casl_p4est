@@ -103,9 +103,22 @@ simplex3_mls_q_t::simplex3_mls_q_t(double x0, double y0, double z0,
   lmin_ = lmin_ < l13 ? lmin_ : l13;
   lmin_ = lmin_ < l23 ? lmin_ : l23;
 
+  eps_rel_ = 1.e-12;
+
   eps_ = eps_rel_*lmin_;
 
   check_for_curvature_ = true;
+
+  max_refinement_ = 8;
+  snap_limit_ = 0.2;
+  kappa_scale_ = 2;
+  kappa_eps_ = 1.e-5;
+  check_for_edge_intersections_ = 1;
+  try_to_fix_outside_vertices_  = 1;
+  check_for_overlapping_        = 1;
+  check_for_valid_data_         = 1;
+  refine_in_normal_dir_         = 1;
+  adjust_auxiliary_midpoint_    = 0;
 }
 
 

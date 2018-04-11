@@ -64,10 +64,6 @@ private:
   double phi_max_;
   double phi_eps_;
 
-  // for close to interface vertices
-  const double phi_perturbance_ = 10.*DBL_MIN;
-  const double phi_tolerance_   = 12.*DBL_MIN;
-
   // number of interfaces
   int num_phi_;
 

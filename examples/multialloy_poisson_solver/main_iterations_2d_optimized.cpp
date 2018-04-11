@@ -49,11 +49,11 @@
 #undef MAX
 int lmin = 4;
 int lmax = 4;
-int nb_splits = 4;
+int nb_splits = 5;
 
 bool use_continuous_stencil = false;
 bool use_one_sided_derivatives = false;
-bool use_points_on_interface = true;
+bool use_points_on_interface = 1;
 bool update_c0_robin = 0;
 
 bool use_superconvergent_robin = 1;
@@ -2010,7 +2010,7 @@ int main (int argc, char* argv[])
 
     double bc_error_max = 0;
 //    solver_all_in_one.solve(sol_t, sol_t_dd, sol_c0, sol_c0_dd, sol_c1, sol_c1_dd, bc_error_max, bc_error);
-    solver_all_in_one.solve(sol_t, sol_c0, sol_c1, bc_error, bc_error_max, dt, 1.e10);
+    solver_all_in_one.solve(sol_t, sol_c0, sol_c1, bc_error, bc_error_max, dt, 1.e10, false);
 
 
     /* check the error */

@@ -125,7 +125,7 @@ const double p_xyz_max[3] = { 1.,  1.,  1.};
  * 7412
  */
 
-int n_geometry = 0;
+int n_geometry = 1;
 int n_test = 0;
 int n_mu = 0;
 int n_diag_add = 0;

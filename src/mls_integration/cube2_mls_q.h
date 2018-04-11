@@ -58,7 +58,7 @@ public:
   const static int n_nodes_simplex = 6;
   const static int n_nodes_dir = 3;
 
-  const double eps_rel_ = 1.e-12;
+  double eps_rel_;
 
   double  x0, x1, y0, y1;
   loc_t   loc;
@@ -67,7 +67,7 @@ public:
   std::vector<simplex2_mls_q_t> simplex;
 
   cube2_mls_q_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1.)
-    : x0(x0), x1(x1), y0(y0), y1(y1) {}
+    : x0(x0), x1(x1), y0(y0), y1(y1), eps_rel_(1.e-12) {}
 
   void construct_domain(std::vector<double> &phi_all, std::vector<action_t> &acn, std::vector<int> &clr);
 
