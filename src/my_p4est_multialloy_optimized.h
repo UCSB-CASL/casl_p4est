@@ -185,6 +185,7 @@ private:
   bool use_superconvergent_jump_;
   bool use_points_on_interface_;
   bool update_c0_robin_;
+  bool zero_negative_velocity_;
 
   interpolation_method interpolation_between_grids_;
 
@@ -284,6 +285,8 @@ public:
   inline void set_use_superconvergent_jump (bool value) { use_superconvergent_jump_  = value;}
   inline void set_use_points_on_interface  (bool value) { use_points_on_interface_   = value;}
   inline void set_update_c0_robin          (bool value) { update_c0_robin_           = value;}
+  inline void set_zero_negative_velocity   (bool value) { zero_negative_velocity_    = value;}
+
 
   inline void set_phi(Vec phi)
   {

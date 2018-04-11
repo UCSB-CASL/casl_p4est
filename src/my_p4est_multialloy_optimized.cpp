@@ -113,6 +113,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   use_superconvergent_jump_  = false;
   use_points_on_interface_   = true;
   update_c0_robin_           = false;
+  zero_negative_velocity_    = false;
 
   interpolation_between_grids_ = quadratic_non_oscillatory_continuous_v1;
 }
@@ -323,6 +324,7 @@ void my_p4est_multialloy_t::compute_velocity()
     vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
 #endif
 
+    if (zero_negative_velocity_)
     if (vn_p[n] > 0)
     {
       vn_p[n] = 0;
@@ -354,6 +356,7 @@ void my_p4est_multialloy_t::compute_velocity()
     vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
 #endif
 
+    if (zero_negative_velocity_)
     if (vn_p[n] > 0)
     {
 //      std::cout << "Happened\n";
@@ -756,6 +759,7 @@ void my_p4est_multialloy_t::one_step()
   solver_all_in_one.set_use_points_on_interface  (use_points_on_interface_  );
   solver_all_in_one.set_update_c0_robin          (update_c0_robin_          );
   solver_all_in_one.set_use_superconvergent_robin(use_superconvergent_robin_);
+  solver_all_in_one.set_zero_negative_velocity   (zero_negative_velocity_);
 
   solver_all_in_one.set_jump_t(zero_);
   solver_all_in_one.set_flux_c(zero_, zero_);

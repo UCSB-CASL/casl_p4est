@@ -88,6 +88,7 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   use_superconvergent_jump_  = false;
   update_c0_robin_           = false;
   use_points_on_interface_   = true;
+  zero_negative_velocity_    = false;
 
   volume_thresh_ = 1.e-2;
 
@@ -296,6 +297,13 @@ void my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_er
   solve_c0();
   compute_c0n();
   is_c1_matrix_computed_ = false;
+
+  if (zero_negative_velocity_)
+  {
+    c0n_gamma_.get_array();
+    foreach_node(n, nodes_) { if (c0n_gamma_.ptr[n] < 0) c0n_gamma_.ptr[n] = 0; }
+    c0n_gamma_.restore_array();
+  }
 
   solve_t();
   solve_c1();
@@ -997,7 +1005,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
     c0n_.ptr[n] = qnnn.dx_central(c0_.ptr)*normal_.ptr[0][n] + qnnn.dy_central(c0_.ptr)*normal_.ptr[1][n];
 #endif
 
-    c0n_.ptr[n] = MAX(c0n_.ptr[n], 0.);
+//    c0n_.ptr[n] = MAX(c0n_.ptr[n], 0.);
   }
 
   ierr = VecGhostUpdateBegin(c0n_.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1013,7 +1021,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
     c0n_.ptr[n] = qnnn.dx_central(c0_.ptr)*normal_.ptr[0][n] + qnnn.dy_central(c0_.ptr)*normal_.ptr[1][n];
 #endif
 
-    c0n_.ptr[n] = MAX(c0n_.ptr[n], 0.);
+//    c0n_.ptr[n] = MAX(c0n_.ptr[n], 0.);
   }
 
   ierr = VecGhostUpdateEnd(c0n_.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

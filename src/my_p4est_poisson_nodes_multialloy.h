@@ -165,6 +165,7 @@ class my_p4est_poisson_nodes_multialloy_t
   bool use_superconvergent_jump_;
   bool update_c0_robin_;
   bool use_points_on_interface_;
+  bool zero_negative_velocity_;
 
   bool use_non_zero_guess_;
 
@@ -263,6 +264,7 @@ public:
   inline void set_use_superconvergent_jump (bool value) { use_superconvergent_jump_  = value;}
   inline void set_use_points_on_interface  (bool value) { use_points_on_interface_   = value;}
   inline void set_update_c0_robin          (bool value) { update_c0_robin_           = value;}
+  inline void set_zero_negative_velocity   (bool value) { zero_negative_velocity_    = value;}
 
   void initialize_solvers();
 
@@ -392,14 +394,14 @@ private:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double x, double y, double z) const
     {
-      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], ptr_->c0_dd_.vec[2], quadratic_non_oscillatory_continuous_v1);
+//      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], ptr_->c0_dd_.vec[2], quadratic_non_oscillatory_continuous_v1);
 //      ptr_->interp_.set_input(ptr_->c0_.vec, linear);
-//      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
+      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
       double c0 = ptr_->interp_(x, y, z);
 
-      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], ptr_->c0n_dd_.vec[2], quadratic_non_oscillatory_continuous_v1);
+//      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], ptr_->c0n_dd_.vec[2], quadratic_non_oscillatory_continuous_v1);
 //      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
-//      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
+      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
       double c0n = ptr_->interp_(x, y, z);
 
       return ptr_->Dl0_/(1.-ptr_->kp0_)*(c0n - (*ptr_->c0_flux_)(x,y,z))/c0;
@@ -413,14 +415,14 @@ private:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double x, double y) const
     {
-      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
+//      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
 //      ptr_->interp_.set_input(ptr_->c0_.vec, linear);
-//      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
+      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
       double c0 = ptr_->interp_(x, y);
 
-      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
+//      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
 //      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
-//      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
+      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
       double c0n = ptr_->interp_(x, y);
 
       return ptr_->Dl0_/(1.-ptr_->kp0_)*(c0n - (*ptr_->c0_flux_)(x,y))/c0;

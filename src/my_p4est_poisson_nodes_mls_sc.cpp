@@ -150,9 +150,9 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   interface_rel_thresh_ = 1.e-11;
 
   cube_refinement_ = 1;
-  phi_perturbation_ = 1.e-9;
+  phi_perturbation_ = 1.e-12;
 
-  interp_method_ = quadratic_non_oscillatory_continuous_v1;
+  interp_method_ = quadratic_non_oscillatory_continuous_v2;
 }
 
 my_p4est_poisson_nodes_mls_sc_t::~my_p4est_poisson_nodes_mls_sc_t()
@@ -3880,7 +3880,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
           double w_000 = w[nn_000];
 
-          if (w_000 != w_000) throw;
+          if (w_000 != w_000) throw std::domain_error("Diag is nan\n");
 
           for (int i = 0; i < num_neighbors_max_; ++i)
             w[i] /= w_000;
@@ -3896,7 +3896,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           for (int i = 0; i < num_neighbors_max_; ++i)
             if (neighbors_exist[i] && fabs(w[i]) > EPS && i != nn_000)
             {
-              if (w[i] != w[i]) throw;
+              if (w[i] != w[i]) throw std::domain_error("Diag is nan\n");
               PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
 #ifdef DO_NOT_PREALLOCATE
               ent.n = node_nei_g; ent.val = w[i]; row->push_back(ent); ( neighbors[i] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++;

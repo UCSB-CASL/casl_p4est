@@ -199,7 +199,7 @@ void set_alloy_parameters()
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
       G              = 500;         /* K.cm-1      */
-      V              = 0.05;        /* cm.s-1      */
+      V              = 0.005;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
@@ -217,7 +217,7 @@ void set_alloy_parameters()
       c01 = 0.094;
       kp1 = 0.848;
 
-      box_size = 1.0e-2;
+      box_size = 1.0e-1;
 
       break;
 
@@ -613,22 +613,22 @@ int main (int argc, char* argv[])
   eps_c = cmd.get("eps_c", eps_c);
   eps_v = cmd.get("eps_v", eps_v);
 
-  termination_length = cmd.get("termination_length", termination_length);
-  cfl_number = cmd.get("cfl_number", cfl_number);
-  phi_thresh = cmd.get("phi_thresh", phi_thresh);
-  zero_negative_velocity = cmd.get("zero_negative_velocity", zero_negative_velocity);
-  max_iterations = cmd.get("max_iterations", max_iterations);
-  pin_every_n_steps = cmd.get("pin_every_n_steps", pin_every_n_steps);
-  bc_tolerance = cmd.get("bc_tolerance", bc_tolerance);
+  termination_length        = cmd.get("termination_length", termination_length    );
+  cfl_number                = cmd.get("cfl_number", cfl_number            );
+  phi_thresh                = cmd.get("phi_thresh", phi_thresh            );
+  zero_negative_velocity    = cmd.get("zero_negative_velocity", zero_negative_velocity);
+  max_iterations            = cmd.get("max_iterations", max_iterations        );
+  pin_every_n_steps         = cmd.get("pin_every_n_steps", pin_every_n_steps     );
+  bc_tolerance              = cmd.get("bc_tolerance", bc_tolerance          );
 
-  use_continuous_stencil    = cmd.get("use_continuous_stencil"   , use_continuous_stencil   );
+  use_continuous_stencil    = cmd.get("use_continuous_stencil", use_continuous_stencil   );
   use_one_sided_derivatives = cmd.get("use_one_sided_derivatives", use_one_sided_derivatives);
-  use_points_on_interface   = cmd.get("use_points_on_interface"  , use_points_on_interface  );
-  update_c0_robin           = cmd.get("update_c0_robin"          , update_c0_robin          );
+  use_points_on_interface   = cmd.get("use_points_on_interface", use_points_on_interface  );
+  update_c0_robin           = cmd.get("update_c0_robin", update_c0_robin          );
   use_superconvergent_robin = cmd.get("use_superconvergent_robin", use_superconvergent_robin);
-  use_superconvergent_jump  = cmd.get("use_superconvergent_jump" , use_superconvergent_jump );
+  use_superconvergent_jump  = cmd.get("use_superconvergent_jump", use_superconvergent_jump );
 
-  init_perturb = cmd.get("init_perturb", init_perturb);
+  init_perturb              = cmd.get("init_perturb", init_perturb);
 
   double latent_heat_orig = latent_heat;
   double G_orig = G;
@@ -772,6 +772,7 @@ int main (int argc, char* argv[])
   bas.set_use_superconvergent_jump (use_superconvergent_jump );
   bas.set_use_points_on_interface  (use_points_on_interface  );
   bas.set_update_c0_robin          (update_c0_robin          );
+  bas.set_zero_negative_velocity   (zero_negative_velocity   );
 
 
 //  bas.set_zero_negative_velocity(zero_negative_velocity);
