@@ -410,7 +410,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   {
     solver_c1_sc->set_diag_add(1.);
     solver_c1_sc->set_mu(Dl1_*dt_);
-    solver_c1_sc->set_use_sc_scheme(true);
+    solver_c1_sc->set_use_sc_scheme(false);
     solver_c1_sc->set_integration_order(2);
 
     solver_c1_sc->set_use_taylor_correction(1);
@@ -893,7 +893,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0_robin()
 
     solver_c0_sc.set_diag_add(1.);
     solver_c0_sc.set_mu(Dl0_*dt_);
-    solver_c0_sc.set_use_sc_scheme(true);
+    solver_c0_sc.set_use_sc_scheme(false);
     solver_c0_sc.set_integration_order(2);
     solver_c0_sc.set_use_taylor_correction(1);
     solver_c0_sc.set_keep_scalling(true);

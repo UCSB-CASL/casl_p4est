@@ -146,11 +146,11 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   eps_ifc_ = eps;
 #endif
 
-  domain_rel_thresh_ = 1.e-11;
-  interface_rel_thresh_ = 1.e-11;
+  domain_rel_thresh_ = 1.e-20;
+  interface_rel_thresh_ = 1.e-20;
 
   cube_refinement_ = 1;
-  phi_perturbation_ = 1.e-12;
+  phi_perturbation_ = 1.e-8;
 
   interp_method_ = quadratic_non_oscillatory_continuous_v2;
 }
@@ -801,7 +801,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   double *mask_p;
   if (setup_matrix)
   {
-    if (!volumes_computed_ && use_sc_scheme_) compute_volumes_();
+    if (!volumes_computed_) compute_volumes_();
     if (mask_ != NULL) { ierr = VecDestroy(mask_); CHKERRXX(ierr); }
     ierr = VecDuplicate(phi_->at(0), &mask_); CHKERRXX(ierr);
   }
@@ -814,11 +814,11 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   double *volumes_p;
   double *node_type_p;
 
-  if (use_sc_scheme_)
-  {
+//  if (use_sc_scheme_)
+//  {
     ierr = VecGetArray(volumes_, &volumes_p); CHKERRXX(ierr);
     ierr = VecGetArray(node_type_, &node_type_p); CHKERRXX(ierr);
-  }
+//  }
 
   double mue_000 = mu_;
   double mue_p00 = mu_;
@@ -3434,7 +3434,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                 }
               }
 
-              if (num_constraints_present <= P4EST_DIM)
+              if (num_constraints_present <= P4EST_DIM+1)
               {
                 sc_scheme_successful = false;
                 continue;
@@ -3486,7 +3486,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #ifdef P4_TO_P8
               if (!inv_mat4_(A, A_inv)) throw;
 #else
-              inv_mat3_(A, A_inv);
+              if (!inv_mat3_(A, A_inv)) throw;
 #endif
 
               // compute Taylor expansion coefficients
@@ -3896,7 +3896,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           for (int i = 0; i < num_neighbors_max_; ++i)
             if (neighbors_exist[i] && fabs(w[i]) > EPS && i != nn_000)
             {
-              if (w[i] != w[i]) throw std::domain_error("Diag is nan\n");
+              if (w[i] != w[i]) throw std::domain_error("Non-diag is nan\n");
               PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
 #ifdef DO_NOT_PREALLOCATE
               ent.n = node_nei_g; ent.val = w[i]; row->push_back(ent); ( neighbors[i] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++;
@@ -3975,7 +3975,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   }
 
 
-  if (use_sc_scheme_)
+//  if (use_sc_scheme_)
   {
     ierr = VecRestoreArray(volumes_, &volumes_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(node_type_, &node_type_p); CHKERRXX(ierr);
@@ -4309,9 +4309,9 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
           if (phi_cf_ == NULL)
           {
 #ifdef P4_TO_P8
-            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], quadratic);
+            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], interp_method_);
 #else
-            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], quadratic);
+            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], interp_method_);
 #endif
           }
           for (int i = 0; i < points_total; ++i)
@@ -4691,9 +4691,9 @@ void my_p4est_poisson_nodes_mls_sc_t::reconstruct_domain(std::vector<cube2_mls_t
           for (int phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
           {
   #ifdef P4_TO_P8
-            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], quadratic);
+            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], interp_method_);
   #else
-            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], quadratic);
+            phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], interp_method_);
   #endif
             for (int i = 0; i < points_total; ++i)
             {
@@ -4888,11 +4888,13 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_normal_(const double *phi_p, const
 
 
 
-void my_p4est_poisson_nodes_mls_sc_t::inv_mat3_(double *in, double *out)
+bool my_p4est_poisson_nodes_mls_sc_t::inv_mat3_(double *in, double *out)
 {
   double det = in[3*0+0]*(in[3*1+1]*in[3*2+2] - in[3*2+1]*in[3*1+2]) -
                in[3*0+1]*(in[3*1+0]*in[3*2+2] - in[3*1+2]*in[3*2+0]) +
                in[3*0+2]*(in[3*1+0]*in[3*2+1] - in[3*2+0]*in[3*1+1]);
+
+  if (det == 0) return false;
 
   out[3*0+0] = (in[3*1+1]*in[3*2+2] - in[3*2+1]*in[3*1+2])/det;
   out[3*0+1] = (in[3*0+2]*in[3*2+1] - in[3*2+2]*in[3*0+1])/det;
@@ -4905,15 +4907,22 @@ void my_p4est_poisson_nodes_mls_sc_t::inv_mat3_(double *in, double *out)
   out[3*2+0] = (in[3*1+0]*in[3*2+1] - in[3*2+0]*in[3*1+1])/det;
   out[3*2+1] = (in[3*0+1]*in[3*2+0] - in[3*2+1]*in[3*0+0])/det;
   out[3*2+2] = (in[3*0+0]*in[3*1+1] - in[3*1+0]*in[3*0+1])/det;
+
+  return true;
 }
 
-void my_p4est_poisson_nodes_mls_sc_t::inv_mat2_(double *in, double *out)
+bool my_p4est_poisson_nodes_mls_sc_t::inv_mat2_(double *in, double *out)
 {
   double det = in[0]*in[3]-in[1]*in[2];
+
+  if (det == 0) return false;
+
   out[0] =  in[3]/det;
   out[1] = -in[1]/det;
   out[2] = -in[2]/det;
   out[3] =  in[0]/det;
+
+  return true;
 }
 
 bool my_p4est_poisson_nodes_mls_sc_t::inv_mat4_(const double m[16], double invOut[16])

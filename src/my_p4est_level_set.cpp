@@ -6019,7 +6019,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
   double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
 #endif
 
-  double rel_thresh = 1.e-3;
+  double rel_thresh = 1.e-2;
 
   /* init the neighborhood information if needed */
   /* NOTE: from now on the neighbors will be initialized ... do we want to clear them

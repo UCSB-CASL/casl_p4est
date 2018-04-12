@@ -368,8 +368,8 @@ public:
   inline void set_use_sc_scheme           (bool value) { use_sc_scheme_             = value; }
   inline void set_integration_order       (int  value) { integration_order_         = value; }
 
-  void inv_mat2_(double *in, double *out);
-  void inv_mat3_(double *in, double *out);
+  bool inv_mat2_(double *in, double *out);
+  bool inv_mat3_(double *in, double *out);
   bool inv_mat4_(const double m[16], double invOut[16]);
 
 //  void find_projection_(double *phi_p, p4est_locidx_t *neighbors, bool *neighbor_exists, double dxyz_pr[], double &dist_pr);

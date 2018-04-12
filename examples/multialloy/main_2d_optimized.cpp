@@ -67,7 +67,7 @@ double init_perturb = 0.01;
 
 bool use_continuous_stencil    = false;
 bool use_one_sided_derivatives = false;
-bool use_points_on_interface   = true;
+bool use_points_on_interface   = 0;
 bool update_c0_robin           = 1;
 
 // not implemented yet
@@ -87,7 +87,7 @@ char direction = 'z';
 char direction = 'y';
 #endif
 
-double termination_length = 0.95;
+double termination_length = 0.9;
 
 /* 0 - NiCu
  * 1 - AlCu

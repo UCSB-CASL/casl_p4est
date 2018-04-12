@@ -210,6 +210,32 @@ void my_p4est_multialloy_t::compute_geometric_properties()
 
   compute_normals_and_mean_curvature(*ngbd_, phi_, normal_, kappa_);
 
+  vec_and_ptr_t kappa_tmp;
+
+  ierr = VecDuplicate(kappa_, &kappa_tmp.vec); CHKERRXX(ierr);
+
+  my_p4est_level_set_t ls(ngbd_);
+  ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
+  ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
+
+  ls.extend_from_interface_to_whole_domain_TVD(phi_, kappa_, kappa_tmp.vec);
+
+  kappa_tmp.get_array();
+
+  double kappa_max = 1./dxyz_min_;
+
+  foreach_node(n, nodes_)
+  {
+    if      (kappa_tmp.ptr[n] > kappa_max) kappa_tmp.ptr[n] = kappa_max;
+    else if (kappa_tmp.ptr[n] <-kappa_max) kappa_tmp.ptr[n] =-kappa_max;
+  }
+
+  kappa_tmp.restore_array();
+
+  ierr = VecDestroy(kappa_); CHKERRXX(ierr);
+
+  kappa_ = kappa_tmp.vec;
+
 //  /* angle between normal and direction of growth */
 //#ifdef P4_TO_P8
 //  if (theta_xz_ != NULL) { ierr = VecDestroy(theta_xz_); CHKERRXX(ierr); }
@@ -282,6 +308,8 @@ void my_p4est_multialloy_t::compute_velocity()
 
   Vec c_interface; ierr = VecDuplicate(phi_, &c_interface); CHKERRXX(ierr);
   my_p4est_level_set_t ls(ngbd_);
+  ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
+  ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
   ls.extend_from_interface_to_whole_domain_TVD(phi_, c0_np1_, c_interface);
 
