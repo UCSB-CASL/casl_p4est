@@ -57,7 +57,7 @@ double bc_tolerance = 1.e-5;
 
 double cfl_number = 0.1;
 double phi_thresh = 1e-3;
-double zero_negative_velocity = true;
+double zero_negative_velocity = 0;
 int max_iterations = 50;
 int pin_every_n_steps = 100;
 
@@ -65,10 +65,12 @@ int max_total_iterations = INT_MAX;
 
 double init_perturb = 0.01;
 
-bool use_continuous_stencil    = false;
+bool use_continuous_stencil    = 1;
 bool use_one_sided_derivatives = false;
-bool use_points_on_interface   = 0;
+bool use_points_on_interface   = 1;
 bool update_c0_robin           = 1;
+
+bool concentration_neumann = true;
 
 // not implemented yet
 bool use_superconvergent_robin = 1;
@@ -194,11 +196,11 @@ void set_alloy_parameters()
       break;
 
     case 2:
-      /* Co - 9.4at%Al - 10.7at%W  */
+      /* Co - 10.7at%W - 9.4at%Al  */
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 500;         /* K.cm-1      */
+      G              = 5000;         /* K.cm-1      */
       V              = 0.005;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
@@ -217,7 +219,7 @@ void set_alloy_parameters()
       c01 = 0.094;
       kp1 = 0.848;
 
-      box_size = 1.0e-1;
+      box_size = 0.5e-1;
 
       break;
 
@@ -245,7 +247,7 @@ void set_alloy_parameters()
       c01 = 0.107;     /* at frac.    */
       kp1 = 0.848;     /* partition coefficient */
 
-      box_size = 1e-1;
+      box_size = 0.5e-1;
       break;
   }
 }
@@ -310,6 +312,9 @@ class WallBCTypeConcentration : public WallBC3D
 public:
   BoundaryConditionType operator()( double x, double y, double z ) const
   {
+    if (concentration_neumann)
+      return NEUMANN;
+
     if(direction=='x')
     {
       if (ABS(x-xmin)<EPS || ABS(x-xmax)<EPS)
@@ -437,6 +442,9 @@ class WallBCTypeConcentration : public WallBC2D
 public:
   BoundaryConditionType operator()( double x, double y ) const
   {
+    if (concentration_neumann)
+      return NEUMANN;
+
     if(direction=='x')
     {
       if (ABS(x-xmin)<EPS || ABS(x-xmax)<EPS)
@@ -517,13 +525,25 @@ int main (int argc, char* argv[])
   mpi.init(argc, argv);
 
   cmdParser cmd;
+
+  cmd.add_option("xmin", "xmin");
+  cmd.add_option("xmax", "xmax");
+  cmd.add_option("ymin", "ymin");
+  cmd.add_option("ymax", "ymax");
+#ifdef P4_TO_P8
+  cmd.add_option("zmin", "zmin");
+  cmd.add_option("zmax", "zmax");
+#endif
+
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
+
   cmd.add_option("nx", "number of blox in x-dimension");
   cmd.add_option("ny", "number of blox in y-dimension");
 #ifdef P4_TO_P8
   cmd.add_option("nz", "number of blox in z-dimension");
 #endif
+
   cmd.add_option("px", "periodicity in x-dimension 0/1");
   cmd.add_option("py", "periodicity in y-dimension 0/1");
 #ifdef P4_TO_P8
@@ -563,10 +583,21 @@ int main (int argc, char* argv[])
 
   cmd.add_option("init_perturb", "init_perturb");
 
+  cmd.add_option("concentration_neumann", "concentration_neumann");
+
   cmd.parse(argc, argv);
 
   alloy_type = cmd.get("alloy", alloy_type);
   set_alloy_parameters();
+
+  xmin = cmd.get("xmin", xmin);
+  xmax = cmd.get("xmax", xmax);
+  ymin = cmd.get("ymin", ymin);
+  ymax = cmd.get("ymax", ymax);
+#ifdef P4_TO_P8
+  zmin = cmd.get("zmin", zmin);
+  zmax = cmd.get("zmax", zmax);
+#endif
 
   save_vtk = cmd.get("save_vtk", save_vtk);
   save_velocity = cmd.get("save_velo", save_velocity);
@@ -628,6 +659,7 @@ int main (int argc, char* argv[])
   use_superconvergent_robin = cmd.get("use_superconvergent_robin", use_superconvergent_robin);
   use_superconvergent_jump  = cmd.get("use_superconvergent_jump", use_superconvergent_jump );
 
+  concentration_neumann     = cmd.get("concentration_neumann", concentration_neumann);
   init_perturb              = cmd.get("init_perturb", init_perturb);
 
   double latent_heat_orig = latent_heat;

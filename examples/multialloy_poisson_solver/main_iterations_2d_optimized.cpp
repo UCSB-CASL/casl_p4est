@@ -47,11 +47,11 @@
 
 #undef MIN
 #undef MAX
-int lmin = 4;
-int lmax = 4;
-int nb_splits = 5;
+int lmin = 6;
+int lmax = 11;
+int nb_splits = 1;
 
-bool use_continuous_stencil = false;
+bool use_continuous_stencil = 0;
 bool use_one_sided_derivatives = false;
 bool use_points_on_interface = 1;
 bool update_c0_robin = 0;

@@ -146,8 +146,8 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   eps_ifc_ = eps;
 #endif
 
-  domain_rel_thresh_ = 1.e-20;
-  interface_rel_thresh_ = 1.e-20;
+  domain_rel_thresh_ = 1.e-12;
+  interface_rel_thresh_ = 1.e-12;
 
   cube_refinement_ = 1;
   phi_perturbation_ = 1.e-8;

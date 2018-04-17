@@ -271,12 +271,12 @@ void my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_er
 
     need_one = false;
     // check if max velocity violates CFL condition
-    if (iteration > 3 && dt_ > cfl*d_min/velo_max_)
+    if (iteration > 3 && dt_ > 1.5*cfl*d_min/velo_max_)
     {
       need_one = true;
 
       // adjust time-step
-      dt_ = 0.8*cfl*d_min/velo_max_;
+      dt_ = cfl*d_min/velo_max_;
 
       ierr = PetscPrintf(p4est_->mpicomm, "Adjusting time-step. New dt = %g\n", dt_); CHKERRXX(ierr);
 
