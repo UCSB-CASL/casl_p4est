@@ -186,7 +186,7 @@ void my_p4est_poisson_nodes_multialloy_t::set_phi(Vec phi, Vec* phi_dd, Vec* nor
 //#endif
 }
 
-void my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess)
+int my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess)
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -330,6 +330,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_er
   bc_error_max = bc_error_max_;
 
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return iteration;
 }
 
 
@@ -856,8 +858,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c1()
   ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-  ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, psi_c1_.vec, 20, 2);
-//  ls.extend_Over_Interface_TVD(phi_.vec, psi_c1_.vec, 20, 2, normal_.vec);
+//  ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, psi_c1_.vec, 20, 2);
+  ls.extend_Over_Interface_TVD(phi_.vec, psi_c1_.vec, 20, 2, normal_.vec);
 
   node_neighbors_->second_derivatives_central(psi_c1_.vec, psi_c1_dd_.vec);
 
@@ -1156,16 +1158,16 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
         double c0_gamma = solver_c0->get_interface_point_value(n, i);
 
         // interpolate concentration
-        double conc_term = ml0_*c0_gamma + ml1_*solver_c0->interpolate_at_interface_point(n, i, c1_.ptr, c1_dd_.ptr);
-//        double conc_term = ml0_*c0_gamma + ml1_*solver_c0->interpolate_at_interface_point(n, i, c1_.ptr);
+//        double conc_term = ml0_*c0_gamma + ml1_*solver_c0->interpolate_at_interface_point(n, i, c1_.ptr, c1_dd_.ptr);
+        double conc_term = ml0_*c0_gamma + ml1_*solver_c0->interpolate_at_interface_point(n, i, c1_.ptr);
 
         // interpolate temperature
-        double ther_term = solver_c0->interpolate_at_interface_point(n, i, tm_.ptr, tm_dd_.ptr);
-//        double ther_term = solver_c0->interpolate_at_interface_point(n, i, tm_.ptr);
+//        double ther_term = solver_c0->interpolate_at_interface_point(n, i, tm_.ptr, tm_dd_.ptr);
+        double ther_term = solver_c0->interpolate_at_interface_point(n, i, tm_.ptr);
 
         // interpolate velocity
-        double c0n = solver_c0->interpolate_at_interface_point(n, i, c0n_.ptr, c0n_dd_.ptr);
-//        double c0n = solver_c0->interpolate_at_interface_point(n, i, c0n_.ptr);
+//        double c0n = solver_c0->interpolate_at_interface_point(n, i, c0n_.ptr, c0n_dd_.ptr);
+        double c0n = solver_c0->interpolate_at_interface_point(n, i, c0n_.ptr);
 
 //        double theta_xz = solver_c0->interpolate_at_interface_point(n, i, theta_xz_.ptr);
 //#ifdef P4_TO_P8
@@ -1193,7 +1195,10 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 #endif
 
 
-        double error = (conc_term + Tm_ - ther_term - eps_v*( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma ) + eps_c*kappa + GT_->value(xyz));
+//        double velo = vn_from_c0_.value(xyz);
+        double velo = ( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma );
+//        double error = (conc_term + Tm_ - ther_term - eps_v*( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma ) + eps_c*kappa + GT_->value(xyz));
+        double error = (conc_term + Tm_ - ther_term - eps_v*velo + eps_c*kappa + GT_->value(xyz));
 
         bc_error_.ptr[n] = MAX(bc_error_.ptr[n], fabs(error));
         bc_error_max_ = MAX(bc_error_max_, fabs(error));
@@ -1203,19 +1208,20 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
         if (iteration%pin_every_n_steps_ != 0)
         {
           double psi_c0_gamma = solver_psi_c0->get_interface_point_value(n, i);
-          double psi_c0n  = solver_c0->interpolate_at_interface_point(n, i, psi_c0n_.ptr, psi_c0n_dd_.ptr);
-//          double psi_c0n  = solver_c0->interpolate_at_interface_point(n, i, psi_c0n_.ptr);
+//          double psi_c0n  = solver_c0->interpolate_at_interface_point(n, i, psi_c0n_.ptr, psi_c0n_dd_.ptr);
+          double psi_c0n  = solver_c0->interpolate_at_interface_point(n, i, psi_c0n_.ptr);
 //          double psi_c0n  = solver_c0->interpolate_at_interface_point(n, i, psi_c0n_.ptr);
 //          double vn = vn_from_c0_.value(xyz);
 //          double dem = (1. + Dl0_*psi_c0n - (1.-kp0_)*vn*psi_c0_gamma);
 //          double psi_c0n  = solver_c0->interpolate_at_interface_point(n, i, psi_c0n_.ptr);
-//          change /= (1. + Dl0_*psi_c0n - (1.-kp0_)*vn*psi_c0_gamma);
-          change /= (1. + Dl0_*psi_c0n - Dl0_*(c0n-c0_flux_->value(xyz))*psi_c0_gamma/c0_gamma);
+          change /= (1. + Dl0_*psi_c0n - (1.-kp0_)*velo*psi_c0_gamma);
+//          change /= (1. + Dl0_*psi_c0n - Dl0_*(c0n-c0_flux_->value(xyz))*psi_c0_gamma/c0_gamma);
         }
 
         solver_c0->set_interface_point_value(n, i, c0_gamma-change);
 
-        velo_max_ = MAX(velo_max_, fabs(Dl0_/(1.-kp0_)*c0n/c0_gamma));
+//        velo_max_ = MAX(velo_max_, fabs(Dl0_/(1.-kp0_)*c0n/c0_gamma));
+        velo_max_ = MAX(velo_max_, fabs(velo));
       }
     }
   }

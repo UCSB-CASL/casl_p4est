@@ -390,7 +390,7 @@ public:
   void compute_dt();
   void update_grid();
   void update_grid_eno();
-  void one_step();
+  int  one_step();
   void save_VTK(int iter);
 
   void compute_smoothed_phi();

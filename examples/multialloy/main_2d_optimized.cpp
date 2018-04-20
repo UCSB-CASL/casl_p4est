@@ -49,7 +49,7 @@
 #undef MIN
 #undef MAX
 
-int lmin = 5;
+int lmin = 6;
 int lmax = 10;
 int save_every_n_iteration = 1;
 
@@ -65,7 +65,7 @@ int max_total_iterations = INT_MAX;
 
 double init_perturb = 0.01;
 
-bool use_continuous_stencil    = 1;
+bool use_continuous_stencil    = 0;
 bool use_one_sided_derivatives = false;
 bool use_points_on_interface   = 1;
 bool update_c0_robin           = 1;
@@ -831,15 +831,17 @@ int main (int argc, char* argv[])
   if(save_velocity)
   {
     ierr = PetscFOpen(mpi.comm(), name, "w", &fich); CHKERRXX(ierr);
-    ierr = PetscFPrintf(mpi.comm(), fich, "time average_interface_velocity max_interface_velocity interface_length solid_phase_area\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fich, "time average_interface_velocity max_interface_velocity interface_length solid_phase_area time_elapsed iteration local_nodes ghost_nodes sub_iterations\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
   }
 
   bool keep_going = true;
+  int sub_iterations = 0;
+
   while(keep_going)
 //  while (iteration < 20)
   {
-    bas.one_step();
+    sub_iterations += bas.one_step();
 
     tn += bas.get_dt();
 
@@ -866,9 +868,18 @@ int main (int argc, char* argv[])
       ierr = VecDestroy(ones); CHKERRXX(ierr);
 
       ierr = PetscFOpen(mpi.comm(), name, "a", &fich); CHKERRXX(ierr);
-      PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling, interface_length, solid_phase_area);
+      double time_elapsed = w1.read_duration_current();
+
+      int num_local_nodes = nodes->num_owned_indeps;
+      int num_ghost_nodes = nodes->indep_nodes.elem_count - num_local_nodes;
+
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &num_local_nodes, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+          mpiret = MPI_Allreduce(MPI_IN_PLACE, &num_ghost_nodes, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+      PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e %e %d %d %d %d\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling, interface_length, solid_phase_area, time_elapsed, iteration, num_local_nodes, num_ghost_nodes, sub_iterations);
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi.comm(), "saved velocity in %s\n", name); CHKERRXX(ierr);
+      sub_iterations = 0;
     }
 
     // save field data

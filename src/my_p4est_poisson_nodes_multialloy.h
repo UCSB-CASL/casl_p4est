@@ -268,7 +268,7 @@ public:
 
   void initialize_solvers();
 
-  void solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess = false);
+  int solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess = false);
 
   void solve_t();
   void solve_psi_t();
