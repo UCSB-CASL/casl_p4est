@@ -151,7 +151,7 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   interface_rel_thresh_ = 1.e-11;
 
   cube_refinement_ = 1;
-  phi_perturbation_ = 1.e-8;
+  phi_perturbation_ = 1.e-12;
 
   interp_method_ = quadratic_non_oscillatory_continuous_v2;
 }
@@ -2203,7 +2203,8 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       if (use_sc_scheme_)
         for (char idx = 0; idx < num_neighbors_max_; ++idx)
           if (neighbors_exist[idx])
-            neighbors_exist[idx] = neighbors_exist[idx] && (volumes_p[neighbors[idx]] > domain_rel_thresh_) && (areas_p[neighbors[idx]] > interface_rel_thresh_);
+            neighbors_exist[idx] = neighbors_exist[idx] && (areas_p[neighbors[idx]] > interface_rel_thresh_);
+//            neighbors_exist[idx] = neighbors_exist[idx] && (volumes_p[neighbors[idx]] > domain_rel_thresh_) && (areas_p[neighbors[idx]] > interface_rel_thresh_);
 
       // check for hanging neighbors
       int network[num_neighbors_max_];
@@ -2533,13 +2534,20 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       double volume_tmp = use_sc_scheme_ ? volumes_p[n] : volume_cut_cell;
 
 //      if (volume_cut_cell/full_cell_volume > domain_rel_thresh_)
-      if (volume_tmp >= domain_rel_thresh_ || areas_p[n] >= interface_rel_thresh_)
+//      if (volume_tmp >= domain_rel_thresh_ || areas_p[n] >= interface_rel_thresh_)
+      if (areas_p[n] > interface_rel_thresh_)
       {
         if (setup_rhs)
         {
           rhs_p[n] = rhs_p[n]*volume_cut_cell + integral_bc;
 //          rhs_p[n] = rhs_cf_->value(xyz_c_cut_cell)*volume_cut_cell + integral_bc;
         }
+
+#ifdef P4_TO_P8
+        double face_area_scalling = dx_min_*dx_min_;
+#else
+        double face_area_scalling = dx_min_;
+#endif
 
         // get quadrature points
         std::vector<double> cube_dir_w;
@@ -2635,7 +2643,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         double theta = EPS;
 
         // face m00
-        if (s_m00/full_sx > interface_rel_thresh_)
+        if (s_m00/face_area_scalling > interface_rel_thresh_)
         {
           if (!neighbors_exist[nn_m00])
           {
@@ -2644,7 +2652,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                       << " Nei number: " << neighbors[nn_m00]
                          << " Own volume: " << volumes_p[neighbors[nn_000]]
                          << " Nei volume: " << volumes_p[neighbors[nn_m00]]
-                         << " Face Area:" << s_m00/full_sx << "\n";
+                         << " Face Area:" << s_m00/face_area_scalling << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(fv_xmin, y_C + y_m00, z_C + z_m00) : mu_;
@@ -2688,7 +2696,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         }
 
         // face p00
-        if (s_p00/full_sx > interface_rel_thresh_)
+        if (s_p00/face_area_scalling > interface_rel_thresh_)
         {
           if (!neighbors_exist[nn_p00])
           {
@@ -2697,7 +2705,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                       << " Nei number: " << neighbors[nn_p00]
                          << " Own volume: " << volumes_p[neighbors[nn_000]]
                          << " Nei volume: " << volumes_p[neighbors[nn_p00]]
-                         << " Face Area:" << s_p00/full_sx << "\n";
+                         << " Face Area:" << s_p00/face_area_scalling << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(fv_xmax, y_C + y_p00, z_C + z_p00) : mu_;
@@ -2742,7 +2750,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
 
         // face 0m0
-        if (s_0m0/full_sy > interface_rel_thresh_)
+        if (s_0m0/face_area_scalling > interface_rel_thresh_)
         {
 
           if (!neighbors_exist[nn_0m0])
@@ -2752,7 +2760,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                       << " Nei number: " << neighbors[nn_0m0]
                          << " Own volume: " << volumes_p[neighbors[nn_000]]
                          << " Nei volume: " << volumes_p[neighbors[nn_0m0]]
-                         << " Face Area:" << s_0m0/full_sy << "\n";
+                         << " Face Area:" << s_0m0/face_area_scalling << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(x_C + x_0m0, fv_ymin, z_C + z_0m0) : mu_;
@@ -2795,7 +2803,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         }
 
         // face 0p0
-        if (s_0p0/full_sy > interface_rel_thresh_)
+        if (s_0p0/face_area_scalling > interface_rel_thresh_)
         {
           if (!neighbors_exist[nn_0p0])
           {
@@ -2804,7 +2812,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                       << " Nei number: " << neighbors[nn_0p0]
                          << " Own volume: " << volumes_p[neighbors[nn_000]]
                          << " Nei volume: " << volumes_p[neighbors[nn_0p0]]
-                         << " Face Area:" << s_0p0/full_sy << "\n";
+                         << " Face Area:" << s_0p0/face_area_scalling << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(x_C + x_0p0, fv_ymax, z_C + z_0p0) : mu_;
@@ -2849,7 +2857,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
 
         // face 00m
-        if (s_00m/full_sz > interface_rel_thresh_)
+        if (s_00m/face_area_scalling > interface_rel_thresh_)
         {
           if (!neighbors_exist[nn_00m])
           {
@@ -2858,7 +2866,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                       << " Nei number: " << neighbors[nn_00m]
                          << " Own volume: " << volumes_p[neighbors[nn_000]]
                          << " Nei volume: " << volumes_p[neighbors[nn_00m]]
-                         << " Face Area:" << s_00m/full_sz << "\n";
+                         << " Face Area:" << s_00m/face_area_scalling << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(x_C + x_00m, y_C + y_00m, fv_zmin) : mu_;
@@ -2902,7 +2910,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         }
 
         // face 00p
-        if (s_00p/full_sz > interface_rel_thresh_)
+        if (s_00p/face_area_scalling > interface_rel_thresh_)
         {
           if (!neighbors_exist[nn_00p])
           {
@@ -2911,7 +2919,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                       << " Nei number: " << neighbors[nn_00p]
                          << " Own volume: " << volumes_p[neighbors[nn_000]]
                          << " Nei volume: " << volumes_p[neighbors[nn_00p]]
-                         << " Face Area:" << s_00p/full_sz << "\n";
+                         << " Face Area:" << s_00p/face_area_scalling << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(x_C + x_00p, y_C + y_00p, fv_zmax) : mu_;
@@ -2962,16 +2970,16 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         //*
 
         // face m00
-        if (s_m00/full_sx > interface_rel_thresh_)
+        if (s_m00/face_area_scalling > interface_rel_thresh_)
         {
           if (!neighbors_exist[nn_m00])
           {
-//            std::cout << "Warning: neighbor doesn't exist in the xm-direction."
-//                      << " Own number: " << n
-//                      << " Nei number: " << neighbors[nn_m00]
-//                         << " Own volume: " << volumes_p[neighbors[nn_000]]
-//                         << " Nei volume: " << volumes_p[neighbors[nn_m00]]
-//                         << " Face Area:" << s_m00/full_sx << "\n";
+            std::cout << "Warning: neighbor doesn't exist in the xm-direction."
+                      << " Own number: " << n
+                      << " Nei number: " << neighbors[nn_m00]
+                         << " Own volume: " << volumes_p[neighbors[nn_000]]
+                         << " Nei volume: " << volumes_p[neighbors[nn_m00]]
+                         << " Face Area:" << s_m00/face_area_scalling << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(fv_xmin, y_C + y_m00) : mu_;
@@ -3016,17 +3024,17 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         }
 
         // face p00
-        if (s_p00/full_sx > interface_rel_thresh_)
+        if (s_p00/face_area_scalling > interface_rel_thresh_)
         {
 
           if (!neighbors_exist[nn_p00])
           {
-//            std::cout << "Warning: neighbor doesn't exist in the xp-direction."
-//                      << " Own number: " << n
-//                      << " Nei number: " << neighbors[nn_p00]
-//                         << " Own volume: " << volumes_p[neighbors[nn_000]]
-//                         << " Nei volume: " << volumes_p[neighbors[nn_p00]]
-//                         << " Face Area:" << s_p00/full_sx << "\n";
+            std::cout << "Warning: neighbor doesn't exist in the xp-direction."
+                      << " Own number: " << n
+                      << " Nei number: " << neighbors[nn_p00]
+                         << " Own volume: " << volumes_p[neighbors[nn_000]]
+                         << " Nei volume: " << volumes_p[neighbors[nn_p00]]
+                         << " Face Area:" << s_p00/face_area_scalling << "\n";
           } else {
 
             double mu_val = variable_mu_ ? mu_val = interp_local.interpolate(fv_xmax, y_C + y_p00) : mu_;
@@ -3071,17 +3079,17 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         }
 
         // face_0m0
-        if (s_0m0/full_sy > interface_rel_thresh_)
+        if (s_0m0/face_area_scalling > interface_rel_thresh_)
         {
 
           if (!neighbors_exist[nn_0m0])
           {
-//            std::cout << "Warning: neighbor doesn't exist in the ym-direction."
-//                      << " Own number: " << n
-//                      << " Nei number: " << neighbors[nn_0m0]
-//                         << " Own volume: " << volumes_p[neighbors[nn_000]]
-//                         << " Nei volume: " << volumes_p[neighbors[nn_0m0]]
-//                         << " Face Area:" << s_0m0/full_sy << "\n";
+            std::cout << "Warning: neighbor doesn't exist in the ym-direction."
+                      << " Own number: " << n
+                      << " Nei number: " << neighbors[nn_0m0]
+                         << " Own volume: " << volumes_p[neighbors[nn_000]]
+                         << " Nei volume: " << volumes_p[neighbors[nn_0m0]]
+                         << " Face Area:" << s_0m0/face_area_scalling << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(x_C + x_0m0, fv_ymin) : mu_;
@@ -3126,17 +3134,17 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         }
 
         // face_0p0
-        if (s_0p0/full_sy > interface_rel_thresh_)
+        if (s_0p0/face_area_scalling > interface_rel_thresh_)
         {
 
           if (!neighbors_exist[nn_0p0])
           {
-//            std::cout << "Warning: neighbor doesn't exist in the yp-direction."
-//                      << " Own number: " << n
-//                      << " Nei number: " << neighbors[nn_0p0]
-//                         << " Own volume: " << volumes_p[neighbors[nn_000]]
-//                         << " Nei volume: " << volumes_p[neighbors[nn_0p0]]
-//                         << " Face Area:" << s_0p0/full_sy << "\n";
+            std::cout << "Warning: neighbor doesn't exist in the yp-direction."
+                      << " Own number: " << n
+                      << " Nei number: " << neighbors[nn_0p0]
+                         << " Own volume: " << volumes_p[neighbors[nn_000]]
+                         << " Nei volume: " << volumes_p[neighbors[nn_0p0]]
+                         << " Face Area:" << s_0p0/face_area_scalling << "\n";
           } else {
 
             double mu_val = variable_mu_ ? interp_local.interpolate(x_C + x_0p0, fv_ymax) : mu_;
@@ -4159,7 +4167,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
 #endif
       {
         volumes_p[n] = 1;
-        areas_p[n]   = 0;
+        areas_p[n]   = 1;
         continue;
       }
 
@@ -4175,7 +4183,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
         if (phi_eff_000 < diag_min_ || num_interfaces_ == 0)
         {
           volumes_p[n] = 1;
-          areas_p[n]   = 0;
+          areas_p[n]   = 1;
         }
         continue;
       }
@@ -4270,7 +4278,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
         if (ABS(phi_eff_000) < EPS)
         {
           volumes_p[n] = 1;
-          areas_p[n]   = 0;
+          areas_p[n]   = 1;
           node_type_p[n] = 0;
           continue;
         }
@@ -4289,12 +4297,14 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
         if (phi_eff_000 < 0.)
         {
           volumes_p[n] = 1;
-          areas_p[n]   = 0;
+          areas_p[n]   = 1;
           node_type_p[n] = 63.;
           continue;
         }
 
       } else if (discretization_scheme_ == FVM) {
+
+        areas_p[n] = 0;
 
         // Reconstruct geometry
 #ifdef P4_TO_P8
@@ -4398,34 +4408,44 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
 #endif
           if (cube_dom_w.size() > 0)
             type += pow(2,dir);
+
+          double cut_area = 0;
+          for (int i = 0; i < cube_dom_w.size(); ++i) cut_area += cube_dom_w[i];
+
+#ifdef P4_TO_P8
+          cut_area /= dx_min_/dx_min_;
+#else
+          cut_area /= dx_min_;
+#endif
+          areas_p[n] = MAX(areas_p[n], cut_area);
         }
 
         node_type_p[n] = type;
 
-        double area_cut_cell = 0;
+//        double area_cut_cell = 0;
 
-        for (char phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
-        {
-          cube_dom_w.clear();
-          cube_dom_x.clear();
-          cube_dom_y.clear();
-#ifdef P4_TO_P8
-          cube_dom_z.clear();
-          cube.quadrature_over_interface(color_->at(phi_idx), cube_dom_w, cube_dom_x, cube_dom_y, cube_dom_z);
-#else
-          cube.quadrature_over_interface(color_->at(phi_idx), cube_dom_w, cube_dom_x, cube_dom_y);
-#endif
-          for (int i = 0; i < cube_dom_w.size(); ++i)
-          {
-            area_cut_cell += cube_dom_w[i];
-          }
-        }
+//        for (char phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
+//        {
+//          cube_dom_w.clear();
+//          cube_dom_x.clear();
+//          cube_dom_y.clear();
+//#ifdef P4_TO_P8
+//          cube_dom_z.clear();
+//          cube.quadrature_over_interface(color_->at(phi_idx), cube_dom_w, cube_dom_x, cube_dom_y, cube_dom_z);
+//#else
+//          cube.quadrature_over_interface(color_->at(phi_idx), cube_dom_w, cube_dom_x, cube_dom_y);
+//#endif
+//          for (int i = 0; i < cube_dom_w.size(); ++i)
+//          {
+//            area_cut_cell += cube_dom_w[i];
+//          }
+//        }
 
-#ifdef P4_TO_P8
-        areas_p[n] = area_cut_cell/dx_min_/dx_min_;
-#else
-        areas_p[n] = area_cut_cell/dx_min_;
-#endif
+//#ifdef P4_TO_P8
+//        areas_p[n] = area_cut_cell/dx_min_/dx_min_;
+//#else
+//        areas_p[n] = area_cut_cell/dx_min_;
+//#endif
       }
     }
   }

@@ -65,7 +65,7 @@ int max_total_iterations = INT_MAX;
 
 double init_perturb = 0.01;
 
-bool use_continuous_stencil    = 0;
+bool use_continuous_stencil    = 1;
 bool use_one_sided_derivatives = false;
 bool use_points_on_interface   = 1;
 bool update_c0_robin           = 1;
@@ -200,7 +200,7 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 5000;         /* K.cm-1      */
+      G              = 1000;         /* K.cm-1      */
       V              = 0.005;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
@@ -214,7 +214,7 @@ void set_alloy_parameters()
       c00 = 0.107;     /* at frac.    */
       kp0 = 0.848;     /* partition coefficient */
 
-      Dl1 = 1e-5;
+      Dl1 = 5e-5;
       ml1 =-1378;
       c01 = 0.094;
       kp1 = 0.848;
