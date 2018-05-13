@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <vector>
+#include <fstream>
 
 // forward declaration
 class my_p4est_node_neighbors_t;
@@ -1609,5 +1610,7 @@ struct vec_and_ptr_dim_t
 };
 
 void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa);
+
+void save_vector(const char *filename, const std::vector<double> &data, std::ios_base::openmode mode = std::ios_base::out, char delim = ',');
 
 #endif // UTILS_H

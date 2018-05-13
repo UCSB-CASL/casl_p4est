@@ -52,17 +52,6 @@ private:
 #endif
 
 #ifdef P4_TO_P8
-  class c00_cf_t : public CF_3
-  {
-    my_p4est_multialloy_t *ptr_;
-  public:
-    c00_cf_t(my_p4est_multialloy_t *ptr) { ptr_ = ptr; }
-    double operator()(double, double, double) const
-    {
-      return ptr_->c00_;
-    }
-  } c00_cf_;
-
   class wall_bc_smoothing_t : public WallBC3D
   {
   public:
@@ -72,17 +61,6 @@ private:
     }
   } wall_bc_smoothing_;
 #else
-  class c00_cf_t : public CF_2
-  {
-    my_p4est_multialloy_t *ptr_;
-  public:
-    c00_cf_t(my_p4est_multialloy_t *ptr) { ptr_ = ptr; }
-    double operator()(double, double) const
-    {
-      return ptr_->c00_;
-    }
-  } c00_cf_;
-
   class wall_bc_smoothing_t : public WallBC2D
   {
   public:
@@ -118,11 +96,18 @@ private:
   double diag_;
 
   /* temperature */
-  Vec t_n_, t_np1_;
+//  Vec t_n_, t_np1_;
+  Vec tl_n_, tl_np1_;
+  Vec ts_n_, ts_np1_;
+
+  Vec tf_; // temperature at which alloy solidified
 
   /* concentration */
   Vec c0_n_, c0_np1_;
   Vec c1_n_, c1_np1_;
+
+  Vec c0s_;
+  Vec c1s_;
 
   Vec c0n_np1_, c0n_n_;
 
@@ -151,15 +136,13 @@ private:
   double bc_error_max_;
 
   /* physical parameters */
+  double time_, time_limit_;
   double dt_nm1_, dt_n_;
   double cooling_velocity_;     /* V */
   double latent_heat_;          /* L */
   double thermal_conductivity_; /* k */
   double thermal_diffusivity_;  /* lambda, dT/dt = lambda Laplace(T) */
   double Tm_;                   /* melting temperature */
-  double epsilon_anisotropy_;   /* anisotropy coefficient */
-  double epsilon_c_;            /* curvature undercooling coefficient */
-  double epsilon_v_;            /* kinetic undercooling coefficient */
 
   double Dl0_;                  /* Dl, dCl/dt = Dl Laplace(Cl) */
   double kp0_;                  /* partition coefficient */
@@ -187,58 +170,41 @@ private:
   bool update_c0_robin_;
   bool zero_negative_velocity_;
 
-  interpolation_method interpolation_between_grids_;
-
 #ifdef P4_TO_P8
-  class eps_c_cf_t : public CF_3
-  {
-    my_p4est_multialloy_t *ptr_;
-  public:
-    eps_c_cf_t(my_p4est_multialloy_t *ptr) : ptr_(ptr) {}
-    double operator()(double nx, double ny, double nz) const
-    {
-      double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
-      return ptr_->epsilon_c_*(1.0-4.0*ptr_->epsilon_anisotropy_*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
-    }
-  } eps_c_cf_;
-
-  class eps_v_cf_t : public CF_3
-  {
-    my_p4est_multialloy_t *ptr_;
-  public:
-    eps_v_cf_t(my_p4est_multialloy_t *ptr) : ptr_(ptr) {}
-    double operator()(double nx, double ny, double nz) const
-    {
-      double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
-      return ptr_->epsilon_v_*(1.0-4.0*ptr_->epsilon_anisotropy_*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
-    }
-  } eps_v_cf_;
+  CF_3 *rhs_tl_;
+  CF_3 *rhs_ts_;
+  CF_3 *rhs_c0_;
+  CF_3 *rhs_c1_;
 #else
-  class eps_c_cf_t : public CF_2
-  {
-    my_p4est_multialloy_t *ptr_;
-  public:
-    eps_c_cf_t(my_p4est_multialloy_t *ptr) : ptr_(ptr) {}
-    double operator()(double nx, double ny) const
-    {
-      double theta = atan2(ny, nx);
-      return ptr_->epsilon_c_*(1.-15.*ptr_->epsilon_anisotropy_*cos(4.*theta));
-    }
-  } eps_c_cf_;
-
-  class eps_v_cf_t : public CF_2
-  {
-    my_p4est_multialloy_t *ptr_;
-  public:
-    eps_v_cf_t(my_p4est_multialloy_t *ptr) : ptr_(ptr) {}
-    double operator()(double nx, double ny) const
-    {
-      double theta = atan2(ny, nx);
-      return ptr_->epsilon_v_*(1.-15.*ptr_->epsilon_anisotropy_*cos(4.*theta));
-    }
-  } eps_v_cf_;
+  CF_2 *rhs_tl_;
+  CF_2 *rhs_ts_;
+  CF_2 *rhs_c0_;
+  CF_2 *rhs_c1_;
 #endif
 
+#ifdef P4_TO_P8
+  CF_3 *eps_c_;
+  CF_3 *eps_v_;
+#else
+  CF_2 *eps_c_;
+  CF_2 *eps_v_;
+#endif
+
+#ifdef P4_TO_P8
+  CF_3 *GT_;
+  CF_3 *jump_t_;
+  CF_3 *jump_tn_;
+  CF_3 *c0_flux_;
+  CF_3 *c1_flux_;
+#else
+  CF_2 *GT_;
+  CF_2 *jump_t_;
+  CF_2 *jump_tn_;
+  CF_2 *c0_flux_;
+  CF_2 *c1_flux_;
+#endif
+
+  interpolation_method interpolation_between_grids_;
 
 public:
 
@@ -251,9 +217,6 @@ public:
                       double thermal_diffusivity,
                       double cooling_velocity,
                       double Tm,
-                      double epsilon_anisotropy,
-                      double epsilon_c,
-                      double epsilon_v,
                       double scaling,
                       double Dl0, double kp0, double c00, double ml0,
                       double Dl1, double kp1, double c01, double ml1)
@@ -263,9 +226,6 @@ public:
     this->thermal_diffusivity_  = thermal_diffusivity;
     this->cooling_velocity_     = cooling_velocity;
     this->Tm_                   = Tm;
-    this->epsilon_anisotropy_   = epsilon_anisotropy;
-    this->epsilon_c_            = epsilon_c;
-    this->epsilon_v_            = epsilon_v;
     this->scaling_              = scaling;
 
     this->Dl0_ = Dl0;
@@ -291,8 +251,8 @@ public:
   inline void set_phi(Vec phi)
   {
     this->phi_ = phi;
-    compute_smoothed_phi();
-    copy_ghosted_vec(phi_smooth_, phi_);
+//    compute_smoothed_phi();
+//    copy_ghosted_vec(phi_smooth_, phi_);
     compute_geometric_properties();
   }
 
@@ -327,16 +287,23 @@ public:
 
   }
 
-  inline void set_temperature(Vec temperature)
+  inline void set_temperature(Vec tl, Vec ts)
   {
-    t_n_ = temperature;
+    tl_n_ = tl;
+    ts_n_ = ts;
 
-    ierr = VecDuplicate(t_n_, &t_np1_); CHKERRXX(ierr);
+    ierr = VecDuplicate(tl_n_, &tl_np1_); CHKERRXX(ierr);
+    ierr = VecDuplicate(ts_n_, &ts_np1_); CHKERRXX(ierr);
 
-    copy_ghosted_vec(t_n_, t_np1_);
+    copy_ghosted_vec(tl_n_, tl_np1_);
+    copy_ghosted_vec(ts_n_, ts_np1_);
+
+    ierr = VecDuplicate(ts_n_, &tf_); CHKERRXX(ierr);
+
+    copy_ghosted_vec(ts_n_, tf_);
   }
 
-  inline void set_concentration(Vec c0, Vec c1)
+  inline void set_concentration(Vec c0, Vec c1, Vec c0s, Vec c1s)
   {
     c0_n_ = c0;
     c1_n_ = c1;
@@ -346,6 +313,9 @@ public:
 
     copy_ghosted_vec(c0_n_, c0_np1_);
     copy_ghosted_vec(c1_n_, c1_np1_);
+
+    c0s_ = c0s;
+    c1s_ = c1s;
 
 //    ierr = VecDuplicate(c0_n_, &c0n_n_); CHKERRXX(ierr);
 //    ierr = VecDuplicate(c0_n_, &c0n_np1_); CHKERRXX(ierr);
@@ -359,11 +329,14 @@ public:
 
   void set_normal_velocity(Vec v);
 
-  inline p4est_t* get_p4est() { return p4est_; }
-
+  inline p4est_t*       get_p4est() { return p4est_; }
   inline p4est_nodes_t* get_nodes() { return nodes_; }
+  inline p4est_ghost_t* get_ghost() { return ghost_; }
+  inline my_p4est_node_neighbors_t* get_ngbd()  { return ngbd_; }
 
   inline Vec get_phi() { return phi_; }
+  inline Vec* get_phi_dd() { return phi_dd_; }
+
 
   inline Vec get_normal_velocity() { return normal_velocity_np1_; }
 
@@ -394,6 +367,53 @@ public:
   void save_VTK(int iter);
 
   void compute_smoothed_phi();
+
+#ifdef P4_TO_P8
+  inline void set_rhs(CF_3& rhs_tl, CF_3& rhs_ts, CF_3& rhs_c0, CF_3& rhs_c1)
+#else
+  inline void set_rhs(CF_2& rhs_tl, CF_2& rhs_ts, CF_2& rhs_c0, CF_2& rhs_c1)
+#endif
+  {
+    rhs_tl_ = &rhs_tl;
+    rhs_ts_ = &rhs_ts;
+    rhs_c0_ = &rhs_c0;
+    rhs_c1_ = &rhs_c1;
+  }
+
+#ifdef P4_TO_P8
+  inline void set_GT(CF_3& GT_cf) {GT_ = &GT_cf;}
+#else
+  inline void set_GT(CF_2& GT_cf) {GT_ = &GT_cf;}
+#endif
+
+#ifdef P4_TO_P8
+  inline void set_undercoolings(CF_3& eps_v, CF_3& eps_c) {eps_v_ = &eps_v; eps_c_ = &eps_c;}
+#else
+  inline void set_undercoolings(CF_2& eps_v, CF_2& eps_c) {eps_v_ = &eps_v; eps_c_ = &eps_c;}
+#endif
+
+#ifdef P4_TO_P8
+  inline void set_jump_t (CF_3& jump_t)  { jump_t_  = &jump_t;  }
+  inline void set_jump_tn(CF_3& jump_tn) { jump_tn_ = &jump_tn; }
+  inline void set_flux_c (CF_3& c0_flux,
+                          CF_3& c1_flux)
+#else
+  inline void set_jump_t (CF_2& jump_t)  { jump_t_  = &jump_t;  }
+  inline void set_jump_tn(CF_2& jump_tn) { jump_tn_ = &jump_tn; }
+  inline void set_flux_c (CF_2& c0_flux,
+                          CF_2& c1_flux)
+#endif
+  {
+    c0_flux_ = &c0_flux;
+    c1_flux_ = &c1_flux;
+  }
+
+  inline void set_time_limit (double time_limit) { time_limit_ = time_limit; }
+
+  inline Vec get_tl() { return tl_n_; }
+  inline Vec get_ts() { return ts_n_; }
+  inline Vec get_c0() { return c0_np1_; }
+  inline Vec get_c1() { return c1_np1_; }
 };
 
 

@@ -142,7 +142,8 @@ my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
   {
     foreach_dimension(dim)
     {
-      if (t_dd_.vec[dim]  != NULL) { ierr = VecDestroy(t_dd_.vec[dim]); CHKERRXX(ierr); }
+      if (tm_dd_.vec[dim] != NULL) { ierr = VecDestroy(tm_dd_.vec[dim]); CHKERRXX(ierr); }
+      if (tp_dd_.vec[dim] != NULL) { ierr = VecDestroy(tp_dd_.vec[dim]); CHKERRXX(ierr); }
       if (c0_dd_.vec[dim] != NULL) { ierr = VecDestroy(c0_dd_.vec[dim]); CHKERRXX(ierr); }
       if (c1_dd_.vec[dim] != NULL) { ierr = VecDestroy(c1_dd_.vec[dim]); CHKERRXX(ierr); }
     }
@@ -186,43 +187,44 @@ void my_p4est_poisson_nodes_multialloy_t::set_phi(Vec phi, Vec* phi_dd, Vec* nor
 //#endif
 }
 
-int my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess)
+int my_p4est_poisson_nodes_multialloy_t::solve(Vec tm, Vec tp, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess, std::vector<double> *num_pdes, std::vector<double> *error)
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve, 0, 0, 0, 0); CHKERRXX(ierr);
 
   use_non_zero_guess_ = use_non_zero_guess;
 
-  t_.vec = t;
+  tm_.vec = tm;
+  tp_.vec = tp;
   c0_.vec = c0;
   c1_.vec = c1;
 
   second_derivatives_owned_ = true;
 
-  if (tm_.vec != NULL) { ierr = VecDestroy(tm_.vec); CHKERRXX(ierr); }
-  ierr = VecDuplicate(t_.vec, &tm_.vec); CHKERRXX(ierr);
+//  if (tm_.vec != NULL) { ierr = VecDestroy(tm_.vec); CHKERRXX(ierr); }
+//  ierr = VecDuplicate(t_.vec, &tm_.vec); CHKERRXX(ierr);
 
   foreach_dimension(dim)
   {
-    if (t_dd_.vec[dim]  != NULL) { ierr = VecDestroy(t_dd_.vec[dim]); CHKERRXX(ierr); }
+//    if (tp_dd_.vec[dim] != NULL) { ierr = VecDestroy(tp_dd_.vec[dim]); CHKERRXX(ierr); }
     if (tm_dd_.vec[dim] != NULL) { ierr = VecDestroy(tm_dd_.vec[dim]); CHKERRXX(ierr); }
     if (c0_dd_.vec[dim] != NULL) { ierr = VecDestroy(c0_dd_.vec[dim]); CHKERRXX(ierr); }
     if (c1_dd_.vec[dim] != NULL) { ierr = VecDestroy(c1_dd_.vec[dim]); CHKERRXX(ierr); }
-    ierr = VecCreateGhostNodes(p4est_, nodes_, &t_dd_.vec[dim]); CHKERRXX(ierr);
-    ierr = VecDuplicate(t_dd_.vec[dim], &tm_dd_.vec[dim]); CHKERRXX(ierr);
-    ierr = VecDuplicate(t_dd_.vec[dim], &c0_dd_.vec[dim]); CHKERRXX(ierr);
-    ierr = VecDuplicate(t_dd_.vec[dim], &c1_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &tm_dd_.vec[dim]); CHKERRXX(ierr);
+//    ierr = VecDuplicate(tm_dd_.vec[dim], &tp_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDuplicate(tm_dd_.vec[dim], &c0_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDuplicate(tm_dd_.vec[dim], &c1_dd_.vec[dim]); CHKERRXX(ierr);
   }
 
   bc_error_.vec = bc_error;
 
   // allocate memory for lagrangian multipliers
-  ierr = VecDuplicate(t_.vec, &psi_t_.vec); CHKERRXX(ierr);
+  ierr = VecDuplicate(tm_.vec, &psi_t_.vec); CHKERRXX(ierr);
   ierr = VecDuplicate(c0_.vec, &psi_c0_.vec); CHKERRXX(ierr);
   ierr = VecDuplicate(c1_.vec, &psi_c1_.vec); CHKERRXX(ierr);
 
   foreach_dimension(dim)
   {
-    ierr = VecDuplicate(t_dd_.vec[dim], &psi_t_dd_.vec[dim]); CHKERRXX(ierr);
+    ierr = VecDuplicate(tm_dd_.vec[dim], &psi_t_dd_.vec[dim]); CHKERRXX(ierr);
     ierr = VecDuplicate(c0_dd_.vec[dim], &psi_c0_dd_.vec[dim]); CHKERRXX(ierr);
     ierr = VecDuplicate(c1_dd_.vec[dim], &psi_c1_dd_.vec[dim]); CHKERRXX(ierr);
   }
@@ -237,32 +239,39 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_err
   double d_min = MIN(dxyz[0], dxyz[1]);
 #endif
 
+  if (num_pdes != NULL) num_pdes->clear();
+  if (error != NULL) error->clear();
+
   dt_ = dt;
   initialize_solvers();
 
   int iteration = 0;
   bc_error_max_ = 1.;
 
-  solve_psi_t();
+  int num_pdes_solved = 0;
 
+  solve_psi_t(); ++num_pdes_solved;
+
+  if (num_pdes != NULL) num_pdes->clear();
+  if (error != NULL) error->clear();
   bool need_one = true;
   while(bc_error_max_ > bc_tolerance_ && iteration < max_iterations_ || need_one)
   {
     ++iteration;
 
     // solve for physical quantities
-    solve_c0();
+    solve_c0(); ++num_pdes_solved;
     compute_c0n();
     is_c1_matrix_computed_ = false;
 
-    solve_t();
-    solve_c1();
+    solve_t(); ++num_pdes_solved;
+    solve_c1(); ++num_pdes_solved;
 
     // solve for lagrangian multipliers
     if (iteration%pin_every_n_steps_ != 0)
     {
-      solve_psi_c1();
-      solve_psi_c0();
+      solve_psi_c1(); ++num_pdes_solved;
+      solve_psi_c0(); ++num_pdes_solved;
       compute_psi_c0n();
     }
 
@@ -288,8 +297,11 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_err
 
       solver_c0->pointwise_bc = pointwise_bc_tmp;
 
-      solve_psi_t();
+      solve_psi_t(); ++num_pdes_solved;
     }
+
+    if (num_pdes != NULL) { num_pdes->push_back(num_pdes_solved); }
+    if (error != NULL) { error->push_back(bc_error_max_); }
 
     ierr = PetscPrintf(p4est_->mpicomm, "Iteration %d: bc error = %g, time step = %g, max velo = %g\n", iteration, bc_error_max_, dt_, velo_max_); CHKERRXX(ierr);
   }
@@ -314,14 +326,14 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec t, Vec c0, Vec c1, Vec bc_err
   dt = dt_;
 
   // clean everything
-  ierr = VecDestroy(tm_.vec); CHKERRXX(ierr);
+//  ierr = VecDestroy(tm_.vec); CHKERRXX(ierr);
   ierr = VecDestroy(psi_t_.vec); CHKERRXX(ierr);
   ierr = VecDestroy(psi_c0_.vec); CHKERRXX(ierr);
   ierr = VecDestroy(psi_c1_.vec); CHKERRXX(ierr);
 
   foreach_dimension(dim)
   {
-    ierr = VecDestroy(tm_dd_.vec[dim]); CHKERRXX(ierr);
+//    ierr = VecDestroy(tm_dd_.vec[dim]); CHKERRXX(ierr);
     ierr = VecDestroy(psi_t_dd_.vec[dim]); CHKERRXX(ierr);
     ierr = VecDestroy(psi_c0_dd_.vec[dim]); CHKERRXX(ierr);
     ierr = VecDestroy(psi_c1_dd_.vec[dim]); CHKERRXX(ierr);
@@ -412,7 +424,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   {
     solver_c1_sc->set_diag_add(1.);
     solver_c1_sc->set_mu(Dl1_*dt_);
-    solver_c1_sc->set_use_sc_scheme(false);
+    solver_c1_sc->set_use_sc_scheme(true);
     solver_c1_sc->set_integration_order(2);
 
     solver_c1_sc->set_use_taylor_correction(1);
@@ -450,7 +462,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
   Vec rhs_tmp;
-  ierr = VecDuplicate(t_.vec, &rhs_tmp); CHKERRXX(ierr);
+  ierr = VecDuplicate(tm_.vec, &rhs_tmp); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
   BoundaryConditions3D bc_tmp;
@@ -462,28 +474,43 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
   bc_tmp.setWallTypes(bc_t_.getWallType());
   bc_tmp.setWallValues(bc_t_.getWallValue());
 
+  vec_and_ptr_t sol;
+  ierr = VecDuplicate(tm_.vec, &sol.vec); CHKERRXX(ierr);
+
+  phi_.get_array();
+  sol .get_array();
+  tm_ .get_array();
+  tp_ .get_array();
+
+  foreach_node(n, nodes_) sol.ptr[n] = phi_.ptr[n] < 0 ? tm_.ptr[n] : tp_.ptr[n];
+
+  phi_.restore_array();
+  sol .restore_array();
+  tm_ .restore_array();
+  tp_ .restore_array();
+
   solver_t->set_bc(bc_tmp);
   solver_t->set_is_matrix_computed(is_t_matrix_computed_);
   solver_t->assemble_jump_rhs(rhs_tmp, *jump_t_, tn_jump_, rhs_tl_.vec, rhs_ts_.vec);
   solver_t->set_rhs(rhs_tmp);
-  solver_t->solve(t_.vec, use_non_zero_guess_);
+  solver_t->solve(sol.vec, use_non_zero_guess_);
 
-  t_.get_array();
-  tm_.get_array();
-
-  foreach_node(n, nodes_) tm_.ptr[n] = t_.ptr[n];
-
-  t_.restore_array();
-  tm_.restore_array();
+  copy_ghosted_vec(sol.vec, tm_.vec);
+  copy_ghosted_vec(sol.vec, tp_.vec);
 
   is_t_matrix_computed_ = true;
 
   my_p4est_level_set_t ls(node_neighbors_);
   ls.extend_Over_Interface_TVD(phi_.vec, tm_.vec, 20, 2, normal_.vec);
 
+  invert_phi(nodes_, phi_.vec);
+  ls.extend_Over_Interface_TVD(phi_.vec, tp_.vec, 20, 2, normal_.vec);
+  invert_phi(nodes_, phi_.vec);
+
   node_neighbors_->second_derivatives_central(tm_.vec, tm_dd_.vec);
 
   ierr = VecDestroy(rhs_tmp); CHKERRXX(ierr);
+  ierr = VecDestroy(sol.vec); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -669,8 +696,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
   ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-  if (use_points_on_interface_) ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, solver_psi_c0, 50, 2, normal_.vec);
-  else                          ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, 50, 2, normal_.vec);
+  if (use_points_on_interface_) ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, solver_psi_c0, 50, 1, normal_.vec);
+  else                          ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, 50, 1, normal_.vec);
 
   node_neighbors_->second_derivatives_central(psi_c0_.vec, psi_c0_dd_.vec);
 
@@ -895,7 +922,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0_robin()
 
     solver_c0_sc.set_diag_add(1.);
     solver_c0_sc.set_mu(Dl0_*dt_);
-    solver_c0_sc.set_use_sc_scheme(false);
+    solver_c0_sc.set_use_sc_scheme(true);
     solver_c0_sc.set_integration_order(2);
     solver_c0_sc.set_use_taylor_correction(1);
     solver_c0_sc.set_keep_scalling(true);
@@ -1196,9 +1223,9 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 
 
 //        double velo = vn_from_c0_.value(xyz);
-        double velo = ( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma );
+        double velo = -( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma );
 //        double error = (conc_term + Tm_ - ther_term - eps_v*( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma ) + eps_c*kappa + GT_->value(xyz));
-        double error = (conc_term + Tm_ - ther_term - eps_v*velo + eps_c*kappa + GT_->value(xyz));
+        double error = (conc_term + Tm_ - ther_term + eps_v*velo + eps_c*kappa + GT_->value(xyz));
 
         bc_error_.ptr[n] = MAX(bc_error_.ptr[n], fabs(error));
         bc_error_max_ = MAX(bc_error_max_, fabs(error));
@@ -1214,7 +1241,7 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 //          double vn = vn_from_c0_.value(xyz);
 //          double dem = (1. + Dl0_*psi_c0n - (1.-kp0_)*vn*psi_c0_gamma);
 //          double psi_c0n  = solver_c0->interpolate_at_interface_point(n, i, psi_c0n_.ptr);
-          change /= (1. + Dl0_*psi_c0n - (1.-kp0_)*velo*psi_c0_gamma);
+          change /= (1. + Dl0_*psi_c0n + (1.-kp0_)*velo*psi_c0_gamma);
 //          change /= (1. + Dl0_*psi_c0n - Dl0_*(c0n-c0_flux_->value(xyz))*psi_c0_gamma/c0_gamma);
         }
 

@@ -6240,7 +6240,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
                 + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_p00
                 + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_P00];
 
-//            qx = -3.*q_000 + 4.*q_p00 - q_p[node_P00];
+            qx = -3.*q_000 + 4.*q_p00 - q_p[node_P00];
 
             qx /= 2.*dxyz[0];
           } else {
@@ -6271,7 +6271,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
                 + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_m00
                 + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_M00];
 
-//            qx = -3.*q_000 + 4.*q_m00 - q_p[node_M00];
+            qx = -3.*q_000 + 4.*q_m00 - q_p[node_M00];
 
             qx /= 2.*dxyz[0];
 
@@ -6304,7 +6304,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
                 + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_0p0
                 + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_0P0];
 
-//            qy = -3.*q_000 + 4.*q_0p0 - q_p[node_0P0];
+            qy = -3.*q_000 + 4.*q_0p0 - q_p[node_0P0];
 
             qy /= 2.*dxyz[1];
           } else {
@@ -6335,7 +6335,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
                 + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_0m0
                 + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_0M0];
 
-//            qy = -3.*q_000 + 4.*q_0m0 - q_p[node_0M0];
+            qy = -3.*q_000 + 4.*q_0m0 - q_p[node_0M0];
 
             qy /= 2.*dxyz[1];
 
@@ -6564,7 +6564,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
                 + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_p00
                 + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_P00];
 
-//            qx = -3.*q_000 + 4.*q_p00 - q_p[node_P00];
+            qx = -3.*q_000 + 4.*q_p00 - q_p[node_P00];
 
             qx /= 2.*dxyz[0];
           } else {
@@ -6595,7 +6595,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
                 + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_m00
                 + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_M00];
 
-//            qx = -3.*q_000 + 4.*q_m00 - q_p[node_M00];
+            qx = -3.*q_000 + 4.*q_m00 - q_p[node_M00];
 
             qx /= 2.*dxyz[0];
 
@@ -6628,7 +6628,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
                 + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_0p0
                 + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_0P0];
 
-//            qy = -3.*q_000 + 4.*q_0p0 - q_p[node_0P0];
+            qy = -3.*q_000 + 4.*q_0p0 - q_p[node_0P0];
 
             qy /= 2.*dxyz[1];
           } else {
@@ -6659,7 +6659,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
                 + ( 4. - 6.0*d + 2.00*pow(d,2.) + 1.5*pow(d,3.) - 0.50*pow(d,4.))*q_0m0
                 + (-1. + 1.5*d + 0.25*pow(d,2.) - 1.0*pow(d,3.) + 0.25*pow(d,4.))*q_p[node_0M0];
 
-//            qy = -3.*q_000 + 4.*q_0m0 - q_p[node_0M0];
+            qy = -3.*q_000 + 4.*q_0m0 - q_p[node_0M0];
 
             qy /= 2.*dxyz[1];
 

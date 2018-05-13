@@ -50,7 +50,7 @@
 #undef MAX
 
 int lmin = 6;
-int lmax = 10;
+int lmax = 9;
 int save_every_n_iteration = 1;
 
 double bc_tolerance = 1.e-5;
@@ -59,15 +59,17 @@ double cfl_number = 0.1;
 double phi_thresh = 1e-3;
 double zero_negative_velocity = 0;
 int max_iterations = 50;
-int pin_every_n_steps = 100;
+int pin_every_n_steps = 1000;
 
 int max_total_iterations = INT_MAX;
+
+double time_limit = DBL_MAX;
 
 double init_perturb = 0.01;
 
 bool use_continuous_stencil    = 1;
-bool use_one_sided_derivatives = false;
-bool use_points_on_interface   = 1;
+bool use_one_sided_derivatives = 0;
+bool use_points_on_interface   = 0;
 bool update_c0_robin           = 1;
 
 bool concentration_neumann = true;
@@ -200,26 +202,26 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 1000;         /* K.cm-1      */
+      G              = 100;         /* K.cm-1      */
       V              = 0.005;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
       eps_c          = 2.7207e-5;
       eps_v          = 2.27e-2;
-      eps_anisotropy = 0.05;
+      eps_anisotropy = 0.025;
 
       Dl0 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
       ml0 =-874;       /* K / wt frac. - liquidous slope */
       c00 = 0.107;     /* at frac.    */
       kp0 = 0.848;     /* partition coefficient */
 
-      Dl1 = 5e-5;
+      Dl1 = 10e-5;
       ml1 =-1378;
       c01 = 0.094;
       kp1 = 0.848;
 
-      box_size = 0.5e-1;
+      box_size = 1.0e-1;
 
       break;
 
@@ -483,6 +485,15 @@ public:
   }
 } initial_concentration_0;
 
+class InitialConcentration0_solid : public CF_2
+{
+public:
+  double operator()(double , double ) const
+  {
+    return kp0*c00;
+  }
+} initial_concentration_0_solid;
+
 class WallBCValueConcentration1 : public CF_2
 {
 public:
@@ -504,6 +515,15 @@ public:
   }
 } initial_concentration_1;
 
+class InitialConcentration1_solid : public CF_2
+{
+public:
+  double operator()(double , double ) const
+  {
+    return kp1*c01;
+  }
+} initial_concentration_1_solid;
+
 class InitialTemperature : public CF_2
 {
 public:
@@ -517,6 +537,67 @@ public:
 
 #endif
 
+#ifdef P4_TO_P8
+class eps_c_cf_t : public CF_3
+{
+public:
+  double operator()(double nx, double ny, double nz) const
+  {
+    double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
+    return eps_c*(1.0-4.0*eps_anisotropy*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
+  }
+} eps_c_cf;
+
+class eps_v_cf_t : public CF_3
+{
+public:
+  double operator()(double nx, double ny, double nz) const
+  {
+    double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
+    return eps_v*(1.0-4.0*eps_anisotropy*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
+  }
+} eps_v_cf;
+#else
+class eps_c_cf_t : public CF_2
+{
+public:
+  double operator()(double nx, double ny) const
+  {
+    double theta = atan2(ny, nx);
+    return eps_c*(1.-15.*eps_anisotropy*cos(4.*theta));
+  }
+} eps_c_cf;
+
+class eps_v_cf_t : public CF_2
+{
+public:
+  double operator()(double nx, double ny) const
+  {
+    double theta = atan2(ny, nx);
+    return eps_v*(1.-15.*eps_anisotropy*cos(4.*theta));
+  }
+} eps_v_cf;
+#endif
+
+#ifdef P4_TO_P8
+  class ZERO : public CF_3
+  {
+  public:
+    double operator()(double, double, double) const
+    {
+      return 0;
+    }
+  } zero_cf;
+#else
+  class ZERO : public CF_2
+  {
+  public:
+    double operator()(double, double) const
+    {
+      return 0;
+    }
+  } zero_cf;
+#endif
 
 
 int main (int argc, char* argv[])
@@ -714,17 +795,23 @@ int main (int argc, char* argv[])
   ngbd->init_neighbors();
 
   /* initialize the variables */
-  Vec phi, temperature, c0, c1, normal_velocity;
+  Vec phi, tl, ts, c0, c1, normal_velocity, c0s, c1s;
   ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &temperature    ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &tl             ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &ts             ); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &c0             ); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &c1             ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &c0s            ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &c1s            ); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &normal_velocity); CHKERRXX(ierr);
 
   sample_cf_on_nodes(p4est, nodes, LS, phi);
-  sample_cf_on_nodes(p4est, nodes, initial_temperature, temperature);
+  sample_cf_on_nodes(p4est, nodes, initial_temperature, tl);
+  sample_cf_on_nodes(p4est, nodes, initial_temperature, ts);
   sample_cf_on_nodes(p4est, nodes, initial_concentration_0, c0);
   sample_cf_on_nodes(p4est, nodes, initial_concentration_1, c1);
+  sample_cf_on_nodes(p4est, nodes, initial_concentration_0_solid, c0s);
+  sample_cf_on_nodes(p4est, nodes, initial_concentration_1_solid, c1s);
 
   Vec tmp;
   ierr = VecGhostGetLocalForm(normal_velocity, &tmp); CHKERRXX(ierr);
@@ -777,7 +864,7 @@ int main (int argc, char* argv[])
   my_p4est_multialloy_t bas(ngbd);
 
   bas.set_parameters(latent_heat, thermal_conductivity, lambda,
-                     V, Tm, eps_anisotropy, eps_c, eps_v, scaling,
+                     V, Tm, scaling,
                      Dl0, kp0, c00, ml0,
                      Dl1, kp1, c01, ml1);
   bas.set_phi(phi);
@@ -786,12 +873,19 @@ int main (int argc, char* argv[])
              wall_bc_value_temperature,
              wall_bc_value_concentration_0,
              wall_bc_value_concentration_1);
-  bas.set_temperature(temperature);
-  bas.set_concentration(c0, c1);
+  bas.set_temperature(tl, ts);
+  bas.set_concentration(c0, c1, c0s, c1s);
   bas.set_normal_velocity(normal_velocity);
   bas.set_dt(dt);
 
-//  bas.set_dt_method(dt_method);
+  bas.set_GT(zero_cf);
+  bas.set_jump_t(zero_cf);
+  bas.set_jump_tn(zero_cf);
+  bas.set_flux_c(zero_cf, zero_cf);
+  bas.set_undercoolings(eps_v_cf, eps_c_cf);
+
+  bas.set_rhs(zero_cf, zero_cf, zero_cf, zero_cf);
+
   bas.set_bc_tolerance(bc_tolerance);
   bas.set_max_iterations(max_iterations);
   bas.set_pin_every_n_steps(pin_every_n_steps);
@@ -841,9 +935,11 @@ int main (int argc, char* argv[])
   while(keep_going)
 //  while (iteration < 20)
   {
-    sub_iterations += bas.one_step();
+    if (tn + bas.get_dt() > time_limit) { bas.set_dt(time_limit-tn); keep_going = false; }
 
     tn += bas.get_dt();
+
+    sub_iterations += bas.one_step();
 
     // save velocity, lenght of interface and area of solid phase in time
     if(save_velocity && iteration%save_every_n_iteration == 0)
@@ -925,7 +1021,7 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
       int mpiret = MPI_Allreduce(MPI_IN_PLACE, &end_of_run, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-      keep_going = (end_of_run == 0);
+      keep_going = keep_going && (end_of_run == 0);
     }
 
     keep_going = keep_going && (iteration < max_total_iterations);
@@ -933,6 +1029,7 @@ int main (int argc, char* argv[])
     bas.update_grid();
 //    bas.update_grid_eno();
     bas.compute_dt();
+
     iteration++;
   }
 

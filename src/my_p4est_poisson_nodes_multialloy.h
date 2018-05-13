@@ -87,12 +87,14 @@ class my_p4est_poisson_nodes_multialloy_t
 #ifdef P4_TO_P8
   CF_3 *GT_;
   CF_3 *jump_t_;
+  CF_3 *jump_tn_;
   CF_3 *c0_flux_;
   CF_3 *c1_flux_;
   CF_3 *c0_guess_;
 #else
   CF_2 *GT_;
   CF_2 *jump_t_;
+  CF_2 *jump_tn_;
   CF_2 *c0_flux_;
   CF_2 *c1_flux_;
   CF_2 *c0_guess_;
@@ -135,7 +137,7 @@ class my_p4est_poisson_nodes_multialloy_t
 
   // solution
   bool second_derivatives_owned_;
-  vec_and_ptr_t t_;  vec_and_ptr_dim_t t_dd_;
+//  vec_and_ptr_t t_;  vec_and_ptr_dim_t t_dd_;
   vec_and_ptr_t c0_; vec_and_ptr_dim_t c0_dd_;
   vec_and_ptr_t c1_; vec_and_ptr_dim_t c1_dd_;
 
@@ -143,6 +145,7 @@ class my_p4est_poisson_nodes_multialloy_t
   vec_and_ptr_t c0n_gamma_;
 
   vec_and_ptr_t tm_; vec_and_ptr_dim_t tm_dd_;
+  vec_and_ptr_t tp_; vec_and_ptr_dim_t tp_dd_;
 
   // lagrangian multipliers
   vec_and_ptr_t psi_t_;  vec_and_ptr_dim_t psi_t_dd_;
@@ -236,9 +239,11 @@ public:
 
 #ifdef P4_TO_P8
   inline void set_jump_t(CF_3& jump_t) { jump_t_ = &jump_t; }
+  inline void set_jump_tn(CF_3& jump_tn) { jump_tn_ = &jump_tn; }
   inline void set_flux_c(CF_3& c0_flux, CF_3& c1_flux)
 #else
   inline void set_jump_t(CF_2& jump_t) { jump_t_ = &jump_t; }
+  inline void set_jump_tn(CF_2& jump_tn) { jump_tn_ = &jump_tn; }
   inline void set_flux_c(CF_2& c0_flux, CF_2& c1_flux)
 #endif
   {
@@ -268,7 +273,7 @@ public:
 
   void initialize_solvers();
 
-  int solve(Vec t, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess = false);
+  int solve(Vec tm, Vec tp, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess = false, std::vector<double> *num_pdes = NULL, std::vector<double> *error = NULL);
 
   void solve_t();
   void solve_psi_t();
@@ -404,7 +409,7 @@ private:
       ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
       double c0n = ptr_->interp_(x, y, z);
 
-      return ptr_->Dl0_/(1.-ptr_->kp0_)*(c0n - (*ptr_->c0_flux_)(x,y,z))/c0;
+      return ptr_->Dl0_/(1.-ptr_->kp0_)*(*ptr_->c0_flux_)(x,y,z)-c0n)/c0;
     }
   } vn_from_c0_;
 #else
@@ -425,7 +430,7 @@ private:
       ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
       double c0n = ptr_->interp_(x, y);
 
-      return ptr_->Dl0_/(1.-ptr_->kp0_)*(c0n - (*ptr_->c0_flux_)(x,y))/c0;
+      return ptr_->Dl0_/(1.-ptr_->kp0_)*((*ptr_->c0_flux_)(x,y) - c0n)/c0;
     }
   } vn_from_c0_;
 #endif
@@ -441,9 +446,9 @@ private:
     {
 //      return -(1.-ptr_->kp1_)/ptr_->Dl1_*(*ptr_->vn_exact_)(x,y,z);
       if (ptr_->use_superconvergent_robin_)
-        return -ptr_->dt_*(1.-ptr_->kp1_)*ptr_->vn_from_c0_(x,y,z);
+        return ptr_->dt_*(1.-ptr_->kp1_)*ptr_->vn_from_c0_(x,y,z);
       else
-        return -(1.-ptr_->kp1_)/ptr_->Dl1_*ptr_->vn_from_c0_(x,y,z);
+        return (1.-ptr_->kp1_)/ptr_->Dl1_*ptr_->vn_from_c0_(x,y,z);
     }
   } c1_robin_coef_;
 #else
@@ -456,9 +461,9 @@ private:
     {
 //      return -ptr_->dt_*(1.-ptr_->kp1_)*(*ptr_->vn_exact_)(x,y);
       if (ptr_->use_superconvergent_robin_)
-        return -ptr_->dt_*(1.-ptr_->kp1_)*ptr_->vn_from_c0_(x,y);
+        return ptr_->dt_*(1.-ptr_->kp1_)*ptr_->vn_from_c0_(x,y);
       else
-        return -(1.-ptr_->kp1_)/ptr_->Dl1_*ptr_->vn_from_c0_(x,y);
+        return (1.-ptr_->kp1_)/ptr_->Dl1_*ptr_->vn_from_c0_(x,y);
     }
   } c1_robin_coef_;
 #endif
@@ -472,9 +477,9 @@ private:
     double operator()(double x, double y, double z) const
     {
       if (ptr_->use_superconvergent_robin_)
-        return -ptr_->dt_*(1.-ptr_->kp0_)*ptr_->vn_from_c0_(x,y,z);
+        return ptr_->dt_*(1.-ptr_->kp0_)*ptr_->vn_from_c0_(x,y,z);
       else
-        return -(1.-ptr_->kp0_)/ptr_->Dl0_*ptr_->vn_from_c0_(x,y,z);
+        return (1.-ptr_->kp0_)/ptr_->Dl0_*ptr_->vn_from_c0_(x,y,z);
     }
   } c0_robin_coef_;
 #else
@@ -486,9 +491,9 @@ private:
     double operator()(double x, double y) const
     {
       if (ptr_->use_superconvergent_robin_)
-        return -ptr_->dt_*(1.-ptr_->kp0_)*ptr_->vn_from_c0_(x,y);
+        return ptr_->dt_*(1.-ptr_->kp0_)*ptr_->vn_from_c0_(x,y);
       else
-        return -(1.-ptr_->kp0_)/ptr_->Dl0_*ptr_->vn_from_c0_(x,y);
+        return (1.-ptr_->kp0_)/ptr_->Dl0_*ptr_->vn_from_c0_(x,y);
     }
   } c0_robin_coef_;
 #endif
@@ -504,7 +509,7 @@ private:
     {
       // from now on liquid phase is in \phi < 0 and solid phase is in \phi > 0
 //      return ptr_->latent_heat_/ptr_->t_cond_*(*ptr_->vn_exact_)(x,y,z);
-      return ptr_->latent_heat_/ptr_->t_cond_*ptr_->vn_from_c0_(x,y,z);
+      return -ptr_->latent_heat_/ptr_->t_cond_*ptr_->vn_from_c0_(x,y,z) + (*ptr_->jump_tn_)(x,y,z);
     }
   } tn_jump_;
 #else
@@ -517,7 +522,7 @@ private:
     {
       // from now on liquid phase is in \phi < 0 and solid phase is in \phi > 0
 //      return ptr_->latent_heat_/ptr_->t_cond_*(*ptr_->vn_exact_)(x,y);
-      return ptr_->latent_heat_/ptr_->t_cond_*ptr_->vn_from_c0_(x,y);
+      return -ptr_->latent_heat_/ptr_->t_cond_*ptr_->vn_from_c0_(x,y) + (*ptr_->jump_tn_)(x,y);
     }
   } tn_jump_;
 #endif

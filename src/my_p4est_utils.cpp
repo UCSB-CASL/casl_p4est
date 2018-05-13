@@ -2083,3 +2083,17 @@ void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbo
 
   foreach_dimension(dim) { ierr = VecRestoreArray(normals[dim], &normal_p[dim]); CHKERRXX(ierr); }
 }
+
+void save_vector(const char *filename, const std::vector<double> &data, std::ios_base::openmode mode, char delim)
+{
+  std::ofstream ofs;
+  ofs.open(filename, mode);
+
+  for (int i = 0; i < data.size(); ++i)
+  {
+    if (i != 0) ofs << delim;
+    ofs << data[i];
+  }
+
+  ofs << "\n";
+}

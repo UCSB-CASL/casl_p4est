@@ -47,9 +47,9 @@
 
 #undef MIN
 #undef MAX
-int lmin = 4;
-int lmax = 4;
-int nb_splits = 5;
+int lmin = 6;
+int lmax = 11;
+int nb_splits = 1;
 
 bool use_continuous_stencil = 0;
 bool use_one_sided_derivatives = false;
@@ -58,8 +58,8 @@ bool update_c0_robin = 0;
 
 bool use_superconvergent_robin = 1;
 
-int pin_every_n_steps = 3000;
-double bc_tolerance = 1.e-9;
+int pin_every_n_steps = 1000;
+double bc_tolerance = 1.e-11;
 int max_iterations = 1000;
 
 double lip = 1.5;
@@ -70,7 +70,7 @@ using namespace std;
  */
 int alloy_type = 0;
 
-double box_size = 1.0e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 10.0e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
 
 double xmin = 0;
@@ -134,7 +134,7 @@ void set_alloy_parameters()
     eps_v                = 0;
     eps_anisotropy       = 0.05;
 
-    Dl[0] = 1e-5;
+    Dl[0] = 1e-4;
 //    Dl[0] = 1;
 //    Dl[0] = 1;
     ml[0] =-357;
@@ -142,7 +142,7 @@ void set_alloy_parameters()
     c0[0] = 0.4;
     kp[0] = 0.86;
 
-    Dl[1] = 1e-5;
+    Dl[1] = 2e-4;
 //    Dl[1] = 1e-1;
 //    Dl[1] = 1;
     ml[1] =-357;
@@ -1328,6 +1328,39 @@ public:
 } rhs_tp_cf;
 #endif
 
+#ifdef P4_TO_P8
+class vn_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    double nx = phi_x_cf(x,y,z);
+    double ny = phi_y_cf(x,y,z);
+    double nz = phi_z_cf(x,y,z);
+    double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
+    nx /= norm; ny /= norm; nz /= norm;
+    return (thermal_conductivity/latent_heat*((tm_x_exact(x,y,z) - tp_x_exact(x,y,z))*nx +
+                                              (tm_y_exact(x,y,z) - tp_y_exact(x,y,z))*ny +
+                                              (tm_z_exact(x,y,z) - tp_z_exact(x,y,z))*nz));
+  }
+} vn_cf;
+#else
+class vn_cf_t : public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    return -0.01*cos(x)*sin(y);
+    double nx = phi_x_cf(x,y);
+    double ny = phi_y_cf(x,y);
+    double norm = sqrt(nx*nx+ny*ny)+EPS;
+    nx /= norm; ny /= norm;
+    return (thermal_conductivity/latent_heat*((tm_x_exact(x,y) - tp_x_exact(x,y))*nx +
+                                              (tm_y_exact(x,y) - tp_y_exact(x,y))*ny));
+  }
+} vn_cf;
+#endif
+
 //------------------------------------------------------------
 // jumps in t
 //------------------------------------------------------------
@@ -1375,7 +1408,7 @@ public:
     double ny = phi_y_cf(x,y);
     double norm = sqrt(nx*nx+ny*ny)+EPS;
     nx /= norm; ny /= norm;
-    return (tm_x_exact(x,y) - tp_x_exact(x,y))*nx + (tm_y_exact(x,y) - tp_y_exact(x,y))*ny;
+    return (tm_x_exact(x,y) - tp_x_exact(x,y))*nx + (tm_y_exact(x,y) - tp_y_exact(x,y))*ny + latent_heat/thermal_conductivity*vn_cf(x,y);
   }
 } jump_tn_cf;
 #endif
@@ -1390,37 +1423,6 @@ public:
 //  }
 //} jump_psi_tn_cf;
 
-#ifdef P4_TO_P8
-class vn_cf_t : public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    double nx = phi_x_cf(x,y,z);
-    double ny = phi_y_cf(x,y,z);
-    double nz = phi_z_cf(x,y,z);
-    double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
-    nx /= norm; ny /= norm; nz /= norm;
-    return (thermal_conductivity/latent_heat*((tm_x_exact(x,y,z) - tp_x_exact(x,y,z))*nx +
-                                              (tm_y_exact(x,y,z) - tp_y_exact(x,y,z))*ny +
-                                              (tm_z_exact(x,y,z) - tp_z_exact(x,y,z))*nz));
-  }
-} vn_cf;
-#else
-class vn_cf_t : public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    double nx = phi_x_cf(x,y);
-    double ny = phi_y_cf(x,y);
-    double norm = sqrt(nx*nx+ny*ny)+EPS;
-    nx /= norm; ny /= norm;
-    return (thermal_conductivity/latent_heat*((tm_x_exact(x,y) - tp_x_exact(x,y))*nx +
-                                              (tm_y_exact(x,y) - tp_y_exact(x,y))*ny));
-  }
-} vn_cf;
-#endif
 
 //------------------------------------------------------------
 // bc for c1
@@ -1432,7 +1434,7 @@ public:
   double operator()(double x, double y, double z) const
   {
 //    return 1.0;
-    return -(1.-kp[1])/Dl[1]*vn_cf(x,y,z);
+    return (1.-kp[1])/Dl[1]*vn_cf(x,y,z);
   }
 } c1_robin_coef_cf;
 
@@ -1459,7 +1461,7 @@ public:
   double operator()(double x, double y) const
   {
 //    return 1.0;
-    return -(1.-kp[1])/Dl[1]*vn_cf(x,y);
+    return (1.-kp[1])/Dl[1]*vn_cf(x,y);
   }
 } c1_robin_coef_cf;
 
@@ -1561,7 +1563,7 @@ public:
     double nz = phi_z_cf(x,y,z);
     double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
     nx /= norm; ny /= norm; nz /= norm;
-    return c0_x_exact(x,y,z)*nx + c0_y_exact(x,y,z)*ny + c0_z_exact(x,y,z)*nz - (1.-kp[0])/Dl[0]*vn_cf(x,y,z)*c0_exact(x,y,z);
+    return c0_x_exact(x,y,z)*nx + c0_y_exact(x,y,z)*ny + c0_z_exact(x,y,z)*nz + (1.-kp[0])/Dl[0]*vn_cf(x,y,z)*c0_exact(x,y,z);
   }
 } c0_interface_val_cf;
 #else
@@ -1574,7 +1576,7 @@ public:
     double ny = phi_y_cf(x,y);
     double norm = sqrt(nx*nx+ny*ny)+EPS;
     nx /= norm; ny /= norm;
-    return c0_x_exact(x,y)*nx + c0_y_exact(x,y)*ny - (1.-kp[0])/Dl[0]*vn_cf(x,y)*c0_exact(x,y);
+    return c0_x_exact(x,y)*nx + c0_y_exact(x,y)*ny + (1.-kp[0])/Dl[0]*vn_cf(x,y)*c0_exact(x,y);
   }
 } c0_interface_val_cf;
 #endif
@@ -1628,7 +1630,7 @@ class c0_guess_t : public CF_2
 public:
   double operator()(double x, double y) const
   {
-//    return 1.;
+    return 1.;
     return c0_exact(x,y);
 //    return c0_exact(x,y) + 0.1;
   }
@@ -1749,10 +1751,12 @@ int main (int argc, char* argv[])
 //  double err_ex_n;
 //  double err_ex_nm1;
 
-  vector<double> h, e_v, e_t, e_c0, e_c1;
+  vector<double> h, e_v, e_t, e_c0, e_c1, e_g, error_it, pdes_it;
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
+    e_g.clear();
+
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
     p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
@@ -1984,6 +1988,7 @@ int main (int argc, char* argv[])
     solver_all_in_one.set_use_superconvergent_robin(use_superconvergent_robin);
 
     solver_all_in_one.set_jump_t(jump_t_cf);
+    solver_all_in_one.set_jump_tn(jump_tn_cf);
     solver_all_in_one.set_flux_c(c0_interface_val_cf, c1_interface_val_cf);
     solver_all_in_one.set_c0_guess(c0_guess);
 
@@ -2010,7 +2015,7 @@ int main (int argc, char* argv[])
 
     double bc_error_max = 0;
 //    solver_all_in_one.solve(sol_t, sol_t_dd, sol_c0, sol_c0_dd, sol_c1, sol_c1_dd, bc_error_max, bc_error);
-    solver_all_in_one.solve(sol_t, sol_c0, sol_c1, bc_error, bc_error_max, dt, 1.e10, false);
+    solver_all_in_one.solve(sol_t, sol_c0, sol_c1, bc_error, bc_error_max, dt, 1.e10, false, &pdes_it, &error_it);
 
 
     /* check the error */
@@ -2321,6 +2326,29 @@ int main (int argc, char* argv[])
 
   if (mpi.rank() == 0)
   {
+    const char* out_dir = getenv("OUT_DIR");
+    if (!out_dir)
+    {
+      ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save convergence results\n");
+      return -1;
+    }
+    std::ostringstream command;
+    command << "mkdir -p " << out_dir << "/convergence";
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys<0)
+      throw std::invalid_argument("could not create directory");
+
+    std::string filename;
+
+    // save level and resolution
+    filename = out_dir; filename += "/convergence/h.txt";        save_vector(filename.c_str(), h);
+    filename = out_dir; filename += "/convergence/error_v.txt";  save_vector(filename.c_str(), e_v);
+    filename = out_dir; filename += "/convergence/error_t.txt";  save_vector(filename.c_str(), e_t);
+    filename = out_dir; filename += "/convergence/error_c0.txt";  save_vector(filename.c_str(), e_c0);
+    filename = out_dir; filename += "/convergence/error_c1.txt";  save_vector(filename.c_str(), e_c1);
+    filename = out_dir; filename += "/convergence/error_pdes.txt";  save_vector(filename.c_str(), pdes_it);
+    filename = out_dir; filename += "/convergence/error_error_it.txt";  save_vector(filename.c_str(), error_it);
+
     for (int i = 0; i < h.size(); ++i)
       std::cout << h[i] << " " << e_v[i] << " " << e_t[i] << " " << e_c0[i] << " " << e_c1[i] << "\n";
   }
