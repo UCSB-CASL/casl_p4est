@@ -3424,6 +3424,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
                     if (neighbors_exist[idx])
                     {
+//                      weight[idx] = 1.e-5/(pow(SQR(x_C+dx-x0[phi_idx]) +
+//                         #ifdef P4_TO_P8
+//                                               SQR(z_C+dz-z0[phi_idx]) +
+//                         #endif
+//                                               SQR(y_C+dy-y0[phi_idx]), 2.5)+1.e-5);
+
                       weight[idx] = exp(-gamma*(SQR((x_C+dx-x0[phi_idx])/dx_min_) +
                           #ifdef P4_TO_P8
                                                 SQR((z_C+dz-z0[phi_idx])/dz_min_) +
@@ -3437,6 +3443,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
               {
                 if (cube_ifc_w[phi_jdx].size() > 0)
                 {
+//                  weight[num_neighbors_max_ + phi_jdx] = 1.e-5/(pow(SQR(x0[phi_jdx]-x0[phi_idx]) +
+//                                                  #ifdef P4_TO_P8
+//                                                                    SQR(z0[phi_jdx]-z0[phi_idx]) +
+//                                                  #endif
+//                                                                    SQR(y0[phi_jdx]-y0[phi_idx]), 2.5)+1.e-5);
+
                   weight[num_neighbors_max_ + phi_jdx] = exp(-gamma*(SQR((x0[phi_jdx]-x0[phi_idx])/dx_min_) +
                                                    #ifdef P4_TO_P8
                                                                      SQR((z0[phi_jdx]-z0[phi_idx])/dz_min_) +

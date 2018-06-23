@@ -527,7 +527,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
               int compt);
 
 double compute_convergence_order(std::vector<double> &x, std::vector<double> &y);
-void save_vector(const char *filename, const std::vector<double> &data, ios_base::openmode mode = ios_base::out, char delim = ',');
+//void save_vector(const char *filename, const std::vector<double> &data, ios_base::openmode mode = ios_base::out, char delim = ',');
 void print_convergence_table(MPI_Comm mpi_comm,
                              std::vector<double> &level, std::vector<double> &h,
                              std::vector<double> &L_one, std::vector<double> &L_avg, std::vector<double> &L_dev, std::vector<double> &L_max,
@@ -1916,17 +1916,17 @@ double compute_convergence_order(std::vector<double> &x, std::vector<double> &y)
   return (sum_xy - sum_x*sum_y/n)/(sum_xx - sum_x*sum_x/n);
 }
 
-void save_vector(const char *filename, const std::vector<double> &data, ios_base::openmode mode, char delim)
-{
-  ofstream ofs;
-  ofs.open(filename, mode);
+//void save_vector(const char *filename, const std::vector<double> &data, ios_base::openmode mode, char delim)
+//{
+//  ofstream ofs;
+//  ofs.open(filename, mode);
 
-  for (int i = 0; i < data.size(); ++i)
-  {
-    if (i != 0) ofs << delim;
-    ofs << data[i];
-  }
+//  for (int i = 0; i < data.size(); ++i)
+//  {
+//    if (i != 0) ofs << delim;
+//    ofs << data[i];
+//  }
 
-  ofs << "\n";
-}
+//  ofs << "\n";
+//}
 
