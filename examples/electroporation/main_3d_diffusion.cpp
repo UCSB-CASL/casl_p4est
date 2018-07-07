@@ -1423,15 +1423,15 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
         double dMy = qnnn.dy_central(M_p);
         double dMz = qnnn.dz_central(M_p);
 
-        double flux = (dux*dMx + duy*dMy + duz*dMz);
+        double force = (dux*dMx + duy*dMy + duz*dMz); //electrophoretic force.
 
         if(phi_p[n]>0)
-            rhs_p_p[n] = M_p[n] + dt_n*motility_p(x,y,z)*flux;
+            rhs_p_p[n] = M_p[n] + dt_n*motility_p(x,y,z)*force;
         else
             rhs_p_p[n] = 0;
 
         if(phi_p[n]<0)
-            rhs_m_p[n] = M_p[n] + dt_n*motility_m(x,y,z)*flux;
+            rhs_m_p[n] = M_p[n] + dt_n*motility_m(x,y,z)*force;
         else
             rhs_m_p[n]=0;
 
@@ -1462,8 +1462,23 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
         double dMz = qnnn.dz_central(M_p);
 
 
-       rhs_p_p[n] = M_p[n] + dt_n*motility_p(x,y,z)*(dux*dMx + duy*dMy + duz*dMz);
-       rhs_m_p[n] = M_p[n] + dt_n*motility_m(x,y,z)*(dux*dMx + duy*dMy + duz*dMz);
+        double force = (dux*dMx + duy*dMy + duz*dMz); //electrophoretic force.
+
+        if(phi_p[n]>0)
+            rhs_p_p[n] = M_p[n] + dt_n*motility_p(x,y,z)*force;
+        else
+            rhs_p_p[n] = 0;
+
+        if(phi_p[n]<0)
+            rhs_m_p[n] = M_p[n] + dt_n*motility_m(x,y,z)*force;
+        else
+            rhs_m_p[n]=0;
+
+        //enforce non-negative concentrations.
+        if(rhs_m_p[n]<0)
+            rhs_m_p[n]=0;
+        if(rhs_p_p[n]<0)
+            rhs_p_p[n]=0;
 
     }
 
@@ -1543,7 +1558,7 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
     solver.set_mu_grad_u_jump(grad_M_jump);
     solver.solve(M);
 
-    PetscPrintf(p4est->mpicomm, "Maximum error in concentration is %g\n", maxerr);
+    //PetscPrintf(p4est->mpicomm, "Maximum error in concentration is %g\n", maxerr);
     }while(0);//maxerr>1e-8);
 
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
