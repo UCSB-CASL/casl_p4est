@@ -557,8 +557,8 @@ struct MBCWALLVALUE : CF_3
 {
     double operator()(double x, double y, double z) const
     {
-        if(ABS(z-zminn)<EPS) return M_boundary;
-        else if(ABS(z-zmaxx)<EPS) return 0;
+        if(ABS(z-zminn)<EPS) return 0;
+        else if(ABS(z-zmaxx)<EPS) return M_boundary;
         else if(ABS(x-xmin)<EPS || ABS(x-xmax)<EPS) return 0;
         else if(ABS(y-ymin)<EPS || ABS(y-ymax)<EPS) return 0;
     }
@@ -958,10 +958,10 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
         {
             p4est_locidx_t n = ngbd_n->get_layer_node(i);
             const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
-            //dup_p[n] = qnnn.dx_central(up_p)*grad_phi_p[0][n] + qnnn.dy_central(up_p)*grad_phi_p[1][n] + qnnn.dz_central(up_p)*grad_phi_p[2][n];
-            //dum_p[n] = qnnn.dx_central(um_p)*grad_phi_p[0][n] + qnnn.dy_central(um_p)*grad_phi_p[1][n] + qnnn.dz_central(um_p)*grad_phi_p[2][n];
-            dup_p[n] = qnnn.dx_forward_linear(up_p)*grad_phi_p[0][n] + qnnn.dy_forward_linear(up_p)*grad_phi_p[1][n] + qnnn.dz_forward_linear(up_p)*grad_phi_p[2][n];
-            dum_p[n] = qnnn.dx_backward_linear(um_p)*grad_phi_p[0][n] + qnnn.dy_backward_linear(um_p)*grad_phi_p[1][n] + qnnn.dz_backward_linear(um_p)*grad_phi_p[2][n];
+            dup_p[n] = qnnn.dx_central(up_p)*grad_phi_p[0][n] + qnnn.dy_central(up_p)*grad_phi_p[1][n] + qnnn.dz_central(up_p)*grad_phi_p[2][n];
+            dum_p[n] = qnnn.dx_central(um_p)*grad_phi_p[0][n] + qnnn.dy_central(um_p)*grad_phi_p[1][n] + qnnn.dz_central(um_p)*grad_phi_p[2][n];
+            //dup_p[n] = qnnn.dx_forward_linear(up_p)*grad_phi_p[0][n] + qnnn.dy_forward_linear(up_p)*grad_phi_p[1][n] + qnnn.dz_forward_linear(up_p)*grad_phi_p[2][n];
+            //dum_p[n] = qnnn.dx_backward_linear(um_p)*grad_phi_p[0][n] + qnnn.dy_backward_linear(um_p)*grad_phi_p[1][n] + qnnn.dz_backward_linear(um_p)*grad_phi_p[2][n];
 
             dMp_p[n] = qnnn.dx_central(Mp_p)*grad_phi_p[0][n] + qnnn.dy_central(Mp_p)*grad_phi_p[1][n] + qnnn.dz_central(Mp_p)*grad_phi_p[2][n];
             dMm_p[n] = qnnn.dx_central(Mm_p)*grad_phi_p[0][n] + qnnn.dy_central(Mm_p)*grad_phi_p[1][n] + qnnn.dz_central(Mm_p)*grad_phi_p[2][n];
@@ -975,10 +975,10 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
         {
             p4est_locidx_t n = ngbd_n->get_local_node(i);
             const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
-            //dup_p[n] = qnnn.dx_central(up_p)*grad_phi_p[0][n] + qnnn.dy_central(up_p)*grad_phi_p[1][n] + qnnn.dz_central(up_p)*grad_phi_p[2][n];
-            //dum_p[n] = qnnn.dx_central(um_p)*grad_phi_p[0][n] + qnnn.dy_central(um_p)*grad_phi_p[1][n] + qnnn.dz_central(um_p)*grad_phi_p[2][n];
-            dup_p[n] = qnnn.dx_forward_linear(up_p)*grad_phi_p[0][n] + qnnn.dy_forward_linear(up_p)*grad_phi_p[1][n] + qnnn.dz_forward_linear(up_p)*grad_phi_p[2][n];
-            dum_p[n] = qnnn.dx_backward_linear(um_p)*grad_phi_p[0][n] + qnnn.dy_backward_linear(um_p)*grad_phi_p[1][n] + qnnn.dz_backward_linear(um_p)*grad_phi_p[2][n];
+            dup_p[n] = qnnn.dx_central(up_p)*grad_phi_p[0][n] + qnnn.dy_central(up_p)*grad_phi_p[1][n] + qnnn.dz_central(up_p)*grad_phi_p[2][n];
+            dum_p[n] = qnnn.dx_central(um_p)*grad_phi_p[0][n] + qnnn.dy_central(um_p)*grad_phi_p[1][n] + qnnn.dz_central(um_p)*grad_phi_p[2][n];
+            //dup_p[n] = qnnn.dx_forward_linear(up_p)*grad_phi_p[0][n] + qnnn.dy_forward_linear(up_p)*grad_phi_p[1][n] + qnnn.dz_forward_linear(up_p)*grad_phi_p[2][n];
+            //dum_p[n] = qnnn.dx_backward_linear(um_p)*grad_phi_p[0][n] + qnnn.dy_backward_linear(um_p)*grad_phi_p[1][n] + qnnn.dz_backward_linear(um_p)*grad_phi_p[2][n];
 
             dMp_p[n] = qnnn.dx_central(Mp_p)*grad_phi_p[0][n] + qnnn.dy_central(Mp_p)*grad_phi_p[1][n] + qnnn.dz_central(Mp_p)*grad_phi_p[2][n];
             dMm_p[n] = qnnn.dx_central(Mm_p)*grad_phi_p[0][n] + qnnn.dy_central(Mm_p)*grad_phi_p[1][n] + qnnn.dz_central(Mm_p)*grad_phi_p[2][n];
@@ -995,6 +995,7 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
 
         Vec du_plus_cte, du_minus_cte;
         ierr = VecDuplicate(sol,&du_plus_cte); CHKERRXX(ierr);
+        ls.perturb_level_set_function(phi, EPS);
         ls.extend_from_interface_to_whole_domain_TVD(phi, grad_up, du_plus_cte);
         ierr = VecDuplicate(sol,&du_minus_cte); CHKERRXX(ierr);
         ls.extend_from_interface_to_whole_domain_TVD(phi, grad_um, du_minus_cte);
