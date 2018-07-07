@@ -1425,15 +1425,21 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
 
         double flux = (dux*dMx + duy*dMy + duz*dMz);
 
-        rhs_p_p[n] = M_p[n] + dt_n*motility_p(x,y,z)*flux;
-        rhs_m_p[n] = M_p[n] + dt_n*motility_m(x,y,z)*flux;
+        if(phi_p[n]>0)
+            rhs_p_p[n] = M_p[n] + dt_n*motility_p(x,y,z)*flux;
+        else
+            rhs_p_p[n] = 0;
+
+        if(phi_p[n]<0)
+            rhs_m_p[n] = M_p[n] + dt_n*motility_m(x,y,z)*flux;
+        else
+            rhs_m_p[n]=0;
 
         //enforce non-negative concentrations.
         if(rhs_m_p[n]<0)
             rhs_m_p[n]=0;
         if(rhs_p_p[n]<0)
             rhs_p_p[n]=0;
-
     }
 
     ierr = VecGhostUpdateBegin(rhs_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
