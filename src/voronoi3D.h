@@ -11,15 +11,15 @@
 
 #include <voro++.hh>
 
-#include "libqhullcpp/Qhull.h"
-#include "libqhullcpp/QhullError.h"
-#include "libqhullcpp/RboxPoints.h"
-#include "libqhullcpp/QhullFacetList.h"
+//#include "libqhullcpp/Qhull.h"
+//#include "libqhullcpp/QhullError.h"
+//#include "libqhullcpp/RboxPoints.h"
+//#include "libqhullcpp/QhullFacetList.h"
 
 
-#include "libqhullcpp/QhullQh.h"
-#include "libqhullcpp/QhullFacet.h"
-#include "libqhull_r/libqhull_r.h"
+//#include "libqhullcpp/QhullQh.h"
+//#include "libqhullcpp/QhullFacet.h"
+//#include "libqhull_r/libqhull_r.h"
 
 
 

@@ -18,8 +18,8 @@ CONFIG(stampede, linux|macx|stampede): {
 # --------------------------------------------------------------
 CONFIG(2d, 2d|3d): {
 SOURCES += \
-  $$PARCASL/src/my_p4est_electroporation_solve.cpp \
   $$PARCASL/src/my_p4est_bialloy.cpp \
+  $$PARCASL/src/my_p4est_epidemics.cpp \
   $$PARCASL/src/my_p4est_cell_neighbors.cpp \
   $$PARCASL/src/my_p4est_faces.cpp \
   $$PARCASL/src/my_p4est_hierarchy.cpp \
@@ -45,7 +45,6 @@ SOURCES += \
   $$PARCASL/src/my_p4est_solve_lsqr.cpp \
   $$PARCASL/src/my_p4est_trajectory_of_point.cpp \
   $$PARCASL/src/my_p4est_utils.cpp \
-  $$PARCASL/src/my_p4est_epitaxy.cpp \
   $$PARCASL/src/my_p4est_log_wrappers.c \
   $$PARCASL/src/my_p4est_nodes.c \
   $$PARCASL/src/my_p4est_tools.c \
@@ -64,6 +63,7 @@ CONFIG(3d, 2d|3d): {
 SOURCES += \
   $$PARCASL/src/my_p8est_electroporation_solve.cpp \
   $$PARCASL/src/my_p8est_bialloy.cpp \
+#  $$PARCASL/src/my_p8est_epidemics.cpp \
   $$PARCASL/src/my_p8est_cell_neighbors.cpp \
   $$PARCASL/src/my_p8est_faces.cpp \
   $$PARCASL/src/my_p8est_hierarchy.cpp \

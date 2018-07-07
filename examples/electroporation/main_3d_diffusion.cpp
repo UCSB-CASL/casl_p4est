@@ -123,7 +123,7 @@ double tn;
 double tf = 100*PI/omega;
 double dt;
 
-double E_unscaled = 40; /* applied electric field on the top electrode: kv/m */
+double E_unscaled = 1;//40; /* applied electric field on the top electrode: kv/m */
 double E = E_unscaled * 1e3 * ((zmaxx-zminn)*alpha)*alpha;  // this is the potential difference in SI units!
 
 double sigma_c = 1;
@@ -145,7 +145,7 @@ double tau_res  = 60;
 
 
 /* diffusion constants */
-double P0 = 1e-7;     // initial permeability of membrane to nonpermeable molecule M, can't be 0!
+double P0 = 0;     // initial permeability of membrane to nonpermeable molecule M.
 double P1 = 1e-6;
 double P2 = 1e-7;
 
@@ -154,7 +154,7 @@ double M_boundary= 1e-6; // concentration on the boundary of the box
 
 double d_c = 1e-9;  // molecule diffusion in intracellular
 double d_e = 1e-8;  // molecule diffusion in extracellular
-double mu_e = 1e-6; // Molecule motility in outer medium
+double mu_e = 1e-7; // Molecule motility in outer medium
 double mu_c = 0;    // Molecule motility in inner medium
 /* end of diffusion modeling */
 
@@ -547,9 +547,8 @@ struct MBCWALLTYPE : WallBC3D
 {
     BoundaryConditionType operator()(double x, double y, double z) const
     {
-        if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return DIRICHLET;
-        else                                   return NEUMANN;
-
+        if(ABS(z-zmaxx)<EPS) return DIRICHLET;
+        else                 return NEUMANN;
     }
 } M_bc_wall_type_p;
 
@@ -557,6 +556,7 @@ struct MBCWALLVALUE : CF_3
 {
     double operator()(double x, double y, double z) const
     {
+
         if(ABS(z-zminn)<EPS) return 0;
         else if(ABS(z-zmaxx)<EPS) return M_boundary;
         else if(ABS(x-xmin)<EPS || ABS(x-xmax)<EPS) return 0;
@@ -1375,7 +1375,7 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
     for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
     {
         grad_M_jump_p[n] = d_e*dM_plus_cte_p[n] - d_c*dM_minus_cte_p[n];
-        M_jump_p[n] = Mp_p[n] - Mm_p[n];
+        M_jump_p[n] = (Mp_p[n] - Mm_p[n]);  //PAM?
     }
     ierr = VecRestoreArray(M_jump, &M_jump_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
@@ -1425,10 +1425,10 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
             rhs_m_p[n]=0;
 
         //enforce non-negative concentrations.
-        if(rhs_m_p[n]<0)
-            rhs_m_p[n]=0;
-        if(rhs_p_p[n]<0)
-            rhs_p_p[n]=0;
+//        if(rhs_m_p[n]<0)
+//            rhs_m_p[n]=0;
+//        if(rhs_p_p[n]<0)
+//            rhs_p_p[n]=0;
     }
 
     ierr = VecGhostUpdateBegin(rhs_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1464,10 +1464,10 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
             rhs_m_p[n]=0;
 
         //enforce non-negative concentrations.
-        if(rhs_m_p[n]<0)
-            rhs_m_p[n]=0;
-        if(rhs_p_p[n]<0)
-            rhs_p_p[n]=0;
+//        if(rhs_m_p[n]<0)
+//            rhs_m_p[n]=0;
+//        if(rhs_p_p[n]<0)
+//            rhs_p_p[n]=0;
 
     }
 
@@ -1518,7 +1518,8 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
         if(phi_p[n]>0)
             tmp = M_p[n];
 
-        tgMj_p[n] = -(d_e/(d_e-d_c))*mu_e*tmp*ABS(du_p_p[n]) - Pm_p[n]*M_jump_p[n];
+        if(ABS(phi_p[n])<diag)
+            tgMj_p[n] = -mu_e*tmp*ABS(du_p_p[n]);
         double tmp2;
         tmp2 = tgMj_p[n];
         if(ABS(tmp2)>0)
@@ -1535,9 +1536,16 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
     ierr = VecRestoreArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(M_jump, &M_jump_p); CHKERRXX(ierr);
     VecRestoreArray(target_grad_M_jump, &tgMj_p);
-    MPI_Reduce(&err_jump, &maxerr, 1, MPI_DOUBLE,MPI_MAX, 0, p4est->mpicomm);
-    MPI_Bcast(&maxerr, 1, MPI_DOUBLE, 0, p4est->mpicomm);
+   // MPI_Reduce(&err_jump, &maxerr, 1, MPI_DOUBLE,MPI_MAX, 0, p4est->mpicomm);
+    //MPI_Bcast(&maxerr, 1, MPI_DOUBLE, 0, p4est->mpicomm);
 
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+        phi_p[i] = -phi_p[i];
+    ls.extend_Over_Interface_TVD(phi, target_grad_M_jump,100);
+    for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+        phi_p[i] = -phi_p[i];
+
+    //ls.extend_Over_Interface_TVD(phi, target_grad_M_jump,100);
     //solve!
     solver.set_mu(mu_m_, mu_p_);
     solver.set_rhs(rhs_m,rhs_p);

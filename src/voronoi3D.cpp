@@ -438,8 +438,8 @@ void Voronoi3D::construct_Partition(const double *xyz_min1, const double *xyz_ma
   double eps = EPS;
 
 
-  double xyz_max[3] = {0.1, 0.1, 0.1};
-  double xyz_min[3] = {-0.1,-0.1, -0.1};
+  double xyz_max[3] = {0.2, 0.2, 0.2};//{0.2, 0.2, 0.2};
+  double xyz_min[3] = {-0.2,-0.2, -0.2};
 
   voro::container voronoi(xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], xyz_min[2], xyz_max[2],
                           1, 1, 1, periodic[0], periodic[1], periodic[2], 8);

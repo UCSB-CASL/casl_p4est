@@ -28,12 +28,14 @@ CONFIG(debug, debug|release): {
     INCLUDEPATH += \
         $$P4EST_INCLUDES_DEBUG \
         $$PETSC_INCLUDES_DEBUG \
-        $$VORO_INCLUDES_DEBUG
+        $$VORO_INCLUDES_DEBUG \
+        $$QHULL_INCLUDES
 
     LIBS += \
         $$P4EST_LIBS_DEBUG \
         $$PETSC_LIBS_DEBUG \
-        $$VORO_LIBS_DEBUG
+        $$VORO_LIBS_DEBUG \
+        $$QHULL_LIBS
 
     DEFINES += DEBUG CASL_THROWS P4EST_DEBUG
 }
@@ -42,12 +44,18 @@ CONFIG(release, debug|release): {
     INCLUDEPATH += \
         $$P4EST_INCLUDES_RELEASE \
         $$PETSC_INCLUDES_RELEASE \
-        $$VORO_INCLUDES_RELEASE
+        $$VORO_INCLUDES_RELEASE \
+        $$BOOST_INCLUDES_RELEASE \
+        $$QHULL_INCLUDES \
+        $$ANN_INCLUDE
 
     LIBS += \
         $$P4EST_LIBS_RELEASE \
         $$PETSC_LIBS_RELEASE \
-        $$VORO_LIBS_RELEASE
+        $$VORO_LIBS_RELEASE \
+        $$BOOST_LIBS_RELEASE \
+        $$QHULL_LIBS \
+        $$ANN_LIBS
 }
 
 INCLUDEPATH += $$PARCASL
