@@ -145,7 +145,7 @@ double tau_res  = 60;
 
 
 /* diffusion constants */
-double P0 = 1;//e-7;     // initial permeability of membrane to nonpermeable molecule M, can't be 0!
+double P0 = 1e-7;     // initial permeability of membrane to nonpermeable molecule M, can't be 0!
 double P1 = 1e-6;
 double P2 = 1e-7;
 
@@ -557,7 +557,8 @@ struct MBCWALLVALUE : CF_3
 {
     double operator()(double x, double y, double z) const
     {
-        if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return M_boundary;
+        if(ABS(z-zminn)<EPS) return M_boundary;
+        else if(ABS(z-zmaxx)<EPS) return 0;
         else if(ABS(x-xmin)<EPS || ABS(x-xmax)<EPS) return 0;
         else if(ABS(y-ymin)<EPS || ABS(y-ymax)<EPS) return 0;
     }
@@ -1422,8 +1423,17 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
         double dMy = qnnn.dy_central(M_p);
         double dMz = qnnn.dz_central(M_p);
 
-        rhs_p_p[n] = M_p[n] + dt_n*motility_p(x,y,z)*(dux*dMx + duy*dMy + duz*dMz);
-        rhs_m_p[n] = M_p[n] + dt_n*motility_m(x,y,z)*(dux*dMx + duy*dMy + duz*dMz);
+        double flux = (dux*dMx + duy*dMy + duz*dMz);
+
+        rhs_p_p[n] = M_p[n] + dt_n*motility_p(x,y,z)*flux;
+        rhs_m_p[n] = M_p[n] + dt_n*motility_m(x,y,z)*flux;
+
+        //enforce non-negative concentrations.
+        if(rhs_m_p[n]<0)
+            rhs_m_p[n]=0;
+        if(rhs_p_p[n]<0)
+            rhs_p_p[n]=0;
+
     }
 
     ierr = VecGhostUpdateBegin(rhs_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
