@@ -734,7 +734,7 @@ public:
         if(level_set(x,y,z)>0)
             return M_0;
         else
-            return M_0;
+            return 0;
     }
 }initial_M;
 
@@ -896,24 +896,6 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
         solver.set_Sm(Sm);
         solver.solve(sol);
 
-        //        solver.set_X0(X0);
-        //        solver.set_X1(X1);
-        //        solver.compute_electroporation();
-        //        solver.interpolate_electroporation_to_tree(X0, X1, Sm, vn);
-        //        Vec vn_tmp;
-        //        double *vn_p;
-        //        VecDuplicate(vn,&vn_tmp);
-        //        ls.extend_from_interface_to_whole_domain_TVD(phi, vn, vn_tmp);
-        //        double *vn_tmp_p;
-        //        VecGetArray(vn_tmp, &vn_tmp_p);
-        //        VecGetArray(vn, &vn_p);
-        //        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
-        //        {
-        //            vn_p[n] = vn_tmp_p[n];
-        //        }
-        //        VecRestoreArray(vn_tmp, &vn_tmp_p);
-        //        VecRestoreArray(vn, &vn_p);
-
 
         // PAM BEGIN
         Vec M_plus, M_minus, M_plus_l, M_minus_l, M_l;
@@ -976,8 +958,10 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
         {
             p4est_locidx_t n = ngbd_n->get_layer_node(i);
             const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
-            dup_p[n] = qnnn.dx_central(up_p)*grad_phi_p[0][n] + qnnn.dy_central(up_p)*grad_phi_p[1][n] + qnnn.dz_central(up_p)*grad_phi_p[2][n];
-            dum_p[n] = qnnn.dx_central(um_p)*grad_phi_p[0][n] + qnnn.dy_central(um_p)*grad_phi_p[1][n] + qnnn.dz_central(um_p)*grad_phi_p[2][n];
+            //dup_p[n] = qnnn.dx_central(up_p)*grad_phi_p[0][n] + qnnn.dy_central(up_p)*grad_phi_p[1][n] + qnnn.dz_central(up_p)*grad_phi_p[2][n];
+            //dum_p[n] = qnnn.dx_central(um_p)*grad_phi_p[0][n] + qnnn.dy_central(um_p)*grad_phi_p[1][n] + qnnn.dz_central(um_p)*grad_phi_p[2][n];
+            dup_p[n] = qnnn.dx_forward_linear(up_p)*grad_phi_p[0][n] + qnnn.dy_forward_linear(up_p)*grad_phi_p[1][n] + qnnn.dz_forward_linear(up_p)*grad_phi_p[2][n];
+            dum_p[n] = qnnn.dx_backward_linear(um_p)*grad_phi_p[0][n] + qnnn.dy_backward_linear(um_p)*grad_phi_p[1][n] + qnnn.dz_backward_linear(um_p)*grad_phi_p[2][n];
 
             dMp_p[n] = qnnn.dx_central(Mp_p)*grad_phi_p[0][n] + qnnn.dy_central(Mp_p)*grad_phi_p[1][n] + qnnn.dz_central(Mp_p)*grad_phi_p[2][n];
             dMm_p[n] = qnnn.dx_central(Mm_p)*grad_phi_p[0][n] + qnnn.dy_central(Mm_p)*grad_phi_p[1][n] + qnnn.dz_central(Mm_p)*grad_phi_p[2][n];
@@ -991,12 +975,14 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
         {
             p4est_locidx_t n = ngbd_n->get_local_node(i);
             const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
-            dup_p[n] = qnnn.dx_central(up_p)*grad_phi_p[0][n] + qnnn.dy_central(up_p)*grad_phi_p[1][n] + qnnn.dz_central(up_p)*grad_phi_p[2][n];
-            dum_p[n] = qnnn.dx_central(um_p)*grad_phi_p[0][n] + qnnn.dy_central(um_p)*grad_phi_p[1][n] + qnnn.dz_central(um_p)*grad_phi_p[2][n];
+            //dup_p[n] = qnnn.dx_central(up_p)*grad_phi_p[0][n] + qnnn.dy_central(up_p)*grad_phi_p[1][n] + qnnn.dz_central(up_p)*grad_phi_p[2][n];
+            //dum_p[n] = qnnn.dx_central(um_p)*grad_phi_p[0][n] + qnnn.dy_central(um_p)*grad_phi_p[1][n] + qnnn.dz_central(um_p)*grad_phi_p[2][n];
+            dup_p[n] = qnnn.dx_forward_linear(up_p)*grad_phi_p[0][n] + qnnn.dy_forward_linear(up_p)*grad_phi_p[1][n] + qnnn.dz_forward_linear(up_p)*grad_phi_p[2][n];
+            dum_p[n] = qnnn.dx_backward_linear(um_p)*grad_phi_p[0][n] + qnnn.dy_backward_linear(um_p)*grad_phi_p[1][n] + qnnn.dz_backward_linear(um_p)*grad_phi_p[2][n];
 
             dMp_p[n] = qnnn.dx_central(Mp_p)*grad_phi_p[0][n] + qnnn.dy_central(Mp_p)*grad_phi_p[1][n] + qnnn.dz_central(Mp_p)*grad_phi_p[2][n];
             dMm_p[n] = qnnn.dx_central(Mm_p)*grad_phi_p[0][n] + qnnn.dy_central(Mm_p)*grad_phi_p[1][n] + qnnn.dz_central(Mm_p)*grad_phi_p[2][n];
-        }
+        } //PAM?
         ierr = VecGhostUpdateEnd(grad_up, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(grad_um, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(grad_Mp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
