@@ -1488,7 +1488,7 @@ int main(int argc, char** argv) {
 #else
         dt = MIN(dx,dy)/dt_scale;
 #endif
-        dt=MIN(dt,0.1/omega);
+        dt=MIN(dt,0.2/omega);
         PetscPrintf(p4est->mpicomm, "Proceed with dt=%g, dx=%g, scaling %g \n", dt, dz,MIN(dx,dy,dz)/dt);
         while (tn<tf)
         {
@@ -1576,7 +1576,7 @@ int main(int argc, char** argv) {
             {
                 p4est_locidx_t n = ngbd_n.get_layer_node(i);
                 quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
-                double normal_drv_potential = qnnn.dz_central(sol_p);
+                double normal_drv_potential = qnnn.dz_backward_linear(sol_p);//dz_central(sol_p);
                 intensity_p[n] = sigma_e*normal_drv_potential;
             }
             ierr = VecGhostUpdateBegin(intensity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1584,7 +1584,7 @@ int main(int argc, char** argv) {
             {
                 p4est_locidx_t n = ngbd_n.get_local_node(i);
                 quad_neighbor_nodes_of_node_t qnnn = ngbd_n[n];
-                double normal_drv_potential = qnnn.dz_central(sol_p);
+                double normal_drv_potential = qnnn.dz_backward_linear(sol_p); //dz_central(sol_p);
                 intensity_p[n] = sigma_e*normal_drv_potential;
             }
             ierr = VecGhostUpdateEnd(intensity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
