@@ -734,7 +734,7 @@ public:
         if(level_set(x,y,z)>0)
             return M_0;
         else
-            return 0;
+            return M_0;
     }
 }initial_M;
 
@@ -1364,6 +1364,8 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
     ierr = VecGhostUpdateEnd(grad_Mm, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecRestoreArray(grad_Mp, &dMp_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(grad_Mm, &dMm_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(M_plus, &Mp_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(M_minus, &Mm_p); CHKERRXX(ierr);
 
     Vec dM_plus_cte, dM_minus_cte;
     ierr = VecDuplicate(M,&dM_plus_cte); CHKERRXX(ierr);
@@ -1393,8 +1395,8 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
 
     VecRestoreArray(dM_plus_cte, &dM_plus_cte_p);
     VecRestoreArray(dM_minus_cte, &dM_minus_cte_p);
-    ierr = VecGetArray(M_plus, &Mp_p); CHKERRXX(ierr);
-    ierr = VecGetArray(M_minus, &Mm_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(M_plus, &Mp_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(M_minus, &Mm_p); CHKERRXX(ierr);
 
     // End of measuring jump in concentration and gradient of concentration.
 
@@ -1529,7 +1531,7 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
         if(phi_p[n]>0)
             tmp = M_p[n];
 
-        tgMj_p[n] = -(d_e/(d_e-d_c))*mu_e*tmp*du_p_p[n] - Pm_p[n]*M_jump_p[n];
+        tgMj_p[n] = -(d_e/(d_e-d_c))*mu_e*tmp*ABS(du_p_p[n]) - Pm_p[n]*M_jump_p[n];
         double tmp2;
         tmp2 = tgMj_p[n];
         if(ABS(tmp2)>0)
@@ -1555,7 +1557,7 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes,
     solver.set_diagonal(1);
     solver.set_bc(bc);
     solver.set_u_jump(M_jump);
-    solver.set_mu_grad_u_jump(grad_M_jump);
+    solver.set_mu_grad_u_jump(target_grad_M_jump);//grad_M_jump);
     solver.solve(M);
 
     //PetscPrintf(p4est->mpicomm, "Maximum error in concentration is %g\n", maxerr);
