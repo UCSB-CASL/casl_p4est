@@ -390,7 +390,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 
       /* Way inside omega_plus and we dont care! */
       if((bc->interfaceType()==DIRICHLET && phi_q>0) ||
-         (bc->interfaceType()==NEUMANN && (all_pos || volume_cut_cell<EPS)))
+         (bc->interfaceType()==NEUMANN && (all_pos || volume_cut_cell<_CASL_EPS_)))
       {
         ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 1, ADD_VALUES); CHKERRXX(ierr);
         if(!nullspace_use_fixed_point) null_space_p[quad_idx] = 0;
@@ -629,7 +629,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             }
 
             double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_tmp, dtmp, dtmp);
-            if(theta<EPS) theta = EPS;
+            if(theta<_CASL_EPS_) theta = _CASL_EPS_;
             if(theta>1  ) theta = 1;
             switch(dir)
             {
@@ -659,7 +659,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             }
           }
           /* NEUMANN Boundary Condition */
-          else if(bc->interfaceType()==NEUMANN && is_pos && is_neg && volume_cut_cell_tmp>EPS)
+          else if(bc->interfaceType()==NEUMANN && is_pos && is_neg && volume_cut_cell_tmp>_CASL_EPS_)
           {
             double d;
             switch(dir)
@@ -703,14 +703,14 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 #endif
             }
 
-            if(s>EPS)
+            if(s>_CASL_EPS_)
             {
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx                       ,  mu*s/d, ADD_VALUES); CHKERRXX(ierr);
               ierr = MatSetValue(A, quad_gloidx, compute_global_index(quad_tmp_idx), -mu*s/d, ADD_VALUES); CHKERRXX(ierr);
             }
           }
           /* no interface - regular discretization */
-          else if(is_neg && !(bc->interfaceType()==NEUMANN && volume_cut_cell_tmp<EPS))
+          else if(is_neg && !(bc->interfaceType()==NEUMANN && volume_cut_cell_tmp<_CASL_EPS_))
           {
             double s_tmp = pow((double)P4EST_QUADRANT_LEN(ngbd[0].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
 
@@ -953,7 +953,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 
       /* Way inside omega_plus and we dont care! */
       if((bc->interfaceType()==DIRICHLET && phi_q>0) ||
-         (bc->interfaceType()==NEUMANN && (all_pos || volume_cut_cell<EPS)))
+         (bc->interfaceType()==NEUMANN && (all_pos || volume_cut_cell<_CASL_EPS_)))
       {
         rhs_p[quad_idx] = 0;
         continue;
@@ -1012,7 +1012,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
               }
 
               double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_tmp, dtmp, dtmp);
-              if (theta < EPS) theta = EPS;
+              if (theta < _CASL_EPS_) theta = _CASL_EPS_;
               if (theta > 1  ) theta = 1;
 
               switch(dir)

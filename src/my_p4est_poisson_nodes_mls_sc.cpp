@@ -150,7 +150,7 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   domain_rel_thresh_ = 1.e-11;
   interface_rel_thresh_ = 1.e-11;
 
-  cube_refinement_ = 1;
+  cube_refinement_ = 0;
   phi_perturbation_ = 1.e-12;
 
   interp_method_ = quadratic_non_oscillatory_continuous_v2;
@@ -596,7 +596,7 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
      * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
     */
 //    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0."); CHKERRXX(ierr);
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.91"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.92"); CHKERRXX(ierr);
 
     /* 2- Coarsening type
      * Available Options:
@@ -940,6 +940,8 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   double val_interface_00m = 0.;
   double val_interface_00p = 0.;
 #endif
+
+  double cell_expansion = (phi_cf_ == NULL ? .5 : 1.);
 
 #ifdef DO_NOT_PREALLOCATE
   mat_entry_t ent;
@@ -1346,7 +1348,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       //---------------------------------------------------------------------
       // interface boundary
       //---------------------------------------------------------------------
-      if (ABS(phi_eff_000) < EPS*diag_min_)
+      if (ABS(phi_eff_000) < _CASL_EPS_*diag_min_)
       {
         if (setup_matrix)
         {
@@ -1357,7 +1359,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #endif
 
           if (use_pointwise_dirichlet_)
-            pointwise_bc_[n].push_back(interface_point_t(0, EPS*diag_min_));
+            pointwise_bc_[n].push_back(interface_point_t(0, _CASL_EPS_*diag_min_));
 
           matrix_has_nullspace_ = false;
         }
@@ -1368,7 +1370,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
             rhs_p[n] = pointwise_bc_[n][0].value;
           else
             for (int i = 0; i < num_interfaces_; ++i)
-              if (fabs(phi_p[i][n]) < EPS*diag_min_ && bc_interface_type_->at(i) == DIRICHLET)
+              if (fabs(phi_p[i][n]) < _CASL_EPS_*diag_min_ && bc_interface_type_->at(i) == DIRICHLET)
                 rhs_p[n] = bc_interface_value_->at(i)->value(xyz_C);
         }
 
@@ -2035,105 +2037,105 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           ent.n = node_000_g; ent.val = 1.; row->push_back(ent);
 
           if(!is_interface_m00 && !is_node_xmWall(p4est_, ni)) {
-            if (ABS(w_m00_mm) > EPS) { ent.n = petsc_gloidx_[node_m00_mm]; ent.val = w_m00_mm/w_000; row->push_back(ent); ( node_m00_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_m00_pm) > EPS) { ent.n = petsc_gloidx_[node_m00_pm]; ent.val = w_m00_pm/w_000; row->push_back(ent); ( node_m00_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_m00_mm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_m00_mm]; ent.val = w_m00_mm/w_000; row->push_back(ent); ( node_m00_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_m00_pm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_m00_pm]; ent.val = w_m00_pm/w_000; row->push_back(ent); ( node_m00_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
 #ifdef P4_TO_P8
-            if (ABS(w_m00_mp) > EPS) { ent.n = petsc_gloidx_[node_m00_mp]; ent.val = w_m00_mp/w_000; row->push_back(ent); ( node_m00_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_m00_pp) > EPS) { ent.n = petsc_gloidx_[node_m00_pp]; ent.val = w_m00_pp/w_000; row->push_back(ent); ( node_m00_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_m00_mp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_m00_mp]; ent.val = w_m00_mp/w_000; row->push_back(ent); ( node_m00_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_m00_pp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_m00_pp]; ent.val = w_m00_pp/w_000; row->push_back(ent); ( node_m00_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
 #endif
           }
 
           if(!is_interface_p00 && !is_node_xpWall(p4est_, ni)) {
-            if (ABS(w_p00_mm) > EPS) { ent.n = petsc_gloidx_[node_p00_mm]; ent.val = w_p00_mm/w_000; row->push_back(ent); ( node_p00_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_p00_pm) > EPS) { ent.n = petsc_gloidx_[node_p00_pm]; ent.val = w_p00_pm/w_000; row->push_back(ent); ( node_p00_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_p00_mm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_p00_mm]; ent.val = w_p00_mm/w_000; row->push_back(ent); ( node_p00_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_p00_pm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_p00_pm]; ent.val = w_p00_pm/w_000; row->push_back(ent); ( node_p00_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
 #ifdef P4_TO_P8
-            if (ABS(w_p00_mp) > EPS) { ent.n = petsc_gloidx_[node_p00_mp]; ent.val = w_p00_mp/w_000; row->push_back(ent); ( node_p00_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_p00_pp) > EPS) { ent.n = petsc_gloidx_[node_p00_pp]; ent.val = w_p00_pp/w_000; row->push_back(ent); ( node_p00_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_p00_mp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_p00_mp]; ent.val = w_p00_mp/w_000; row->push_back(ent); ( node_p00_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_p00_pp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_p00_pp]; ent.val = w_p00_pp/w_000; row->push_back(ent); ( node_p00_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
 #endif
           }
 
           if(!is_interface_0m0 && !is_node_ymWall(p4est_, ni)) {
-            if (ABS(w_0m0_mm) > EPS) { ent.n = petsc_gloidx_[node_0m0_mm]; ent.val = w_0m0_mm/w_000; row->push_back(ent); ( node_0m0_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_0m0_pm) > EPS) { ent.n = petsc_gloidx_[node_0m0_pm]; ent.val = w_0m0_pm/w_000; row->push_back(ent); ( node_0m0_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_0m0_mm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_0m0_mm]; ent.val = w_0m0_mm/w_000; row->push_back(ent); ( node_0m0_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_0m0_pm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_0m0_pm]; ent.val = w_0m0_pm/w_000; row->push_back(ent); ( node_0m0_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
 #ifdef P4_TO_P8
-            if (ABS(w_0m0_mp) > EPS) { ent.n = petsc_gloidx_[node_0m0_mp]; ent.val = w_0m0_mp/w_000; row->push_back(ent); ( node_0m0_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_0m0_pp) > EPS) { ent.n = petsc_gloidx_[node_0m0_pp]; ent.val = w_0m0_pp/w_000; row->push_back(ent); ( node_0m0_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_0m0_mp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_0m0_mp]; ent.val = w_0m0_mp/w_000; row->push_back(ent); ( node_0m0_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_0m0_pp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_0m0_pp]; ent.val = w_0m0_pp/w_000; row->push_back(ent); ( node_0m0_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
 #endif
           }
 
           if(!is_interface_0p0 && !is_node_ypWall(p4est_, ni)) {
-            if (ABS(w_0p0_mm) > EPS) { ent.n = petsc_gloidx_[node_0p0_mm]; ent.val = w_0p0_mm/w_000; row->push_back(ent); ( node_0p0_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_0p0_pm) > EPS) { ent.n = petsc_gloidx_[node_0p0_pm]; ent.val = w_0p0_pm/w_000; row->push_back(ent); ( node_0p0_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_0p0_mm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_0p0_mm]; ent.val = w_0p0_mm/w_000; row->push_back(ent); ( node_0p0_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_0p0_pm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_0p0_pm]; ent.val = w_0p0_pm/w_000; row->push_back(ent); ( node_0p0_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
 #ifdef P4_TO_P8
-            if (ABS(w_0p0_mp) > EPS) { ent.n = petsc_gloidx_[node_0p0_mp]; ent.val = w_0p0_mp/w_000; row->push_back(ent); ( node_0p0_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_0p0_pp) > EPS) { ent.n = petsc_gloidx_[node_0p0_pp]; ent.val = w_0p0_pp/w_000; row->push_back(ent); ( node_0p0_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_0p0_mp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_0p0_mp]; ent.val = w_0p0_mp/w_000; row->push_back(ent); ( node_0p0_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_0p0_pp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_0p0_pp]; ent.val = w_0p0_pp/w_000; row->push_back(ent); ( node_0p0_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
 #endif
           }
 #ifdef P4_TO_P8
           if(!is_interface_00m && !is_node_zmWall(p4est_, ni)) {
-            if (ABS(w_00m_mm) > EPS) { ent.n = petsc_gloidx_[node_00m_mm]; ent.val = w_00m_mm/w_000; row->push_back(ent); ( node_00m_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_00m_pm) > EPS) { ent.n = petsc_gloidx_[node_00m_pm]; ent.val = w_00m_pm/w_000; row->push_back(ent); ( node_00m_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_00m_mp) > EPS) { ent.n = petsc_gloidx_[node_00m_mp]; ent.val = w_00m_mp/w_000; row->push_back(ent); ( node_00m_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_00m_pp) > EPS) { ent.n = petsc_gloidx_[node_00m_pp]; ent.val = w_00m_pp/w_000; row->push_back(ent); ( node_00m_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_00m_mm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_00m_mm]; ent.val = w_00m_mm/w_000; row->push_back(ent); ( node_00m_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_00m_pm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_00m_pm]; ent.val = w_00m_pm/w_000; row->push_back(ent); ( node_00m_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_00m_mp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_00m_mp]; ent.val = w_00m_mp/w_000; row->push_back(ent); ( node_00m_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_00m_pp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_00m_pp]; ent.val = w_00m_pp/w_000; row->push_back(ent); ( node_00m_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
           }
 
           if(!is_interface_00p && !is_node_zpWall(p4est_, ni)) {
-            if (ABS(w_00p_mm) > EPS) { ent.n = petsc_gloidx_[node_00p_mm]; ent.val = w_00p_mm/w_000; row->push_back(ent); ( node_00p_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_00p_pm) > EPS) { ent.n = petsc_gloidx_[node_00p_pm]; ent.val = w_00p_pm/w_000; row->push_back(ent); ( node_00p_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_00p_mp) > EPS) { ent.n = petsc_gloidx_[node_00p_mp]; ent.val = w_00p_mp/w_000; row->push_back(ent); ( node_00p_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
-            if (ABS(w_00p_pp) > EPS) { ent.n = petsc_gloidx_[node_00p_pp]; ent.val = w_00p_pp/w_000; row->push_back(ent); ( node_00p_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_00p_mm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_00p_mm]; ent.val = w_00p_mm/w_000; row->push_back(ent); ( node_00p_mm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_00p_pm) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_00p_pm]; ent.val = w_00p_pm/w_000; row->push_back(ent); ( node_00p_pm < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_00p_mp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_00p_mp]; ent.val = w_00p_mp/w_000; row->push_back(ent); ( node_00p_mp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
+            if (ABS(w_00p_pp) > _CASL_EPS_) { ent.n = petsc_gloidx_[node_00p_pp]; ent.val = w_00p_pp/w_000; row->push_back(ent); ( node_00p_pp < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; }
           }
 #endif
 #else
           ierr = MatSetValue(A_, node_000_g, node_000_g, 1.0, ADD_VALUES); CHKERRXX(ierr);
           if(!is_interface_m00 && !is_node_xmWall(p4est_, ni)) {
-            if (ABS(w_m00_mm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_m00_mm], w_m00_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_m00_pm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_m00_pm], w_m00_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_m00_mm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_m00_mm], w_m00_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_m00_pm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_m00_pm], w_m00_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #ifdef P4_TO_P8
-            if (ABS(w_m00_mp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_m00_mp], w_m00_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_m00_pp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_m00_pp], w_m00_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_m00_mp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_m00_mp], w_m00_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_m00_pp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_m00_pp], w_m00_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #endif
           }
 
           if(!is_interface_p00 && !is_node_xpWall(p4est_, ni)) {
-            if (ABS(w_p00_mm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_p00_mm], w_p00_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_p00_pm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_p00_pm], w_p00_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_p00_mm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_p00_mm], w_p00_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_p00_pm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_p00_pm], w_p00_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #ifdef P4_TO_P8
-            if (ABS(w_p00_mp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_p00_mp], w_p00_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_p00_pp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_p00_pp], w_p00_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_p00_mp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_p00_mp], w_p00_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_p00_pp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_p00_pp], w_p00_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #endif
           }
 
           if(!is_interface_0m0 && !is_node_ymWall(p4est_, ni)) {
-            if (ABS(w_0m0_mm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0m0_mm], w_0m0_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_0m0_pm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0m0_pm], w_0m0_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_0m0_mm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0m0_mm], w_0m0_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_0m0_pm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0m0_pm], w_0m0_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #ifdef P4_TO_P8
-            if (ABS(w_0m0_mp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0m0_mp], w_0m0_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_0m0_pp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0m0_pp], w_0m0_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_0m0_mp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0m0_mp], w_0m0_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_0m0_pp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0m0_pp], w_0m0_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #endif
           }
 
           if(!is_interface_0p0 && !is_node_ypWall(p4est_, ni)) {
-            if (ABS(w_0p0_mm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0p0_mm], w_0p0_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_0p0_pm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0p0_pm], w_0p0_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_0p0_mm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0p0_mm], w_0p0_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_0p0_pm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0p0_pm], w_0p0_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #ifdef P4_TO_P8
-            if (ABS(w_0p0_mp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0p0_mp], w_0p0_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_0p0_pp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0p0_pp], w_0p0_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_0p0_mp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0p0_mp], w_0p0_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_0p0_pp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_0p0_pp], w_0p0_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
 #endif
           }
 #ifdef P4_TO_P8
           if(!is_interface_00m && !is_node_zmWall(p4est_, ni)) {
-            if (ABS(w_00m_mm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00m_mm], w_00m_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_00m_pm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00m_pm], w_00m_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_00m_mp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00m_mp], w_00m_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_00m_pp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00m_pp], w_00m_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_00m_mm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00m_mm], w_00m_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_00m_pm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00m_pm], w_00m_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_00m_mp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00m_mp], w_00m_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_00m_pp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00m_pp], w_00m_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
           }
 
           if(!is_interface_00p && !is_node_zpWall(p4est_, ni)) {
-            if (ABS(w_00p_mm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00p_mm], w_00p_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_00p_pm) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00p_pm], w_00p_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_00p_mp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00p_mp], w_00p_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
-            if (ABS(w_00p_pp) > EPS) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00p_pp], w_00p_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_00p_mm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00p_mm], w_00p_mm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_00p_pm) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00p_pm], w_00p_pm/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_00p_mp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00p_mp], w_00p_mp/w_000, ADD_VALUES); CHKERRXX(ierr);}
+            if (ABS(w_00p_pp) > _CASL_EPS_) {ierr = MatSetValue(A_, node_000_g, petsc_gloidx_[node_00p_pp], w_00p_pp/w_000, ADD_VALUES); CHKERRXX(ierr);}
           }
 #endif
 #endif
@@ -2152,9 +2154,9 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           // FIX this for variable mu
 //          if (variable_mu_) throw std::domain_error("This part doesn't work for variable mu yet\n");
 #ifdef P4_TO_P8
-          double eps_x = is_node_xmWall(p4est_, ni) ? 2.*EPS*diag_min_ : (is_node_xpWall(p4est_, ni) ? -2.*EPS*diag_min_ : 0);
-          double eps_y = is_node_ymWall(p4est_, ni) ? 2.*EPS*diag_min_ : (is_node_ypWall(p4est_, ni) ? -2.*EPS*diag_min_ : 0);
-          double eps_z = is_node_zmWall(p4est_, ni) ? 2.*EPS*diag_min_ : (is_node_zpWall(p4est_, ni) ? -2.*EPS*diag_min_ : 0);
+          double eps_x = is_node_xmWall(p4est_, ni) ? 2.*_CASL_EPS_*diag_min_ : (is_node_xpWall(p4est_, ni) ? -2.*_CASL_EPS_*diag_min_ : 0);
+          double eps_y = is_node_ymWall(p4est_, ni) ? 2.*_CASL_EPS_*diag_min_ : (is_node_ypWall(p4est_, ni) ? -2.*_CASL_EPS_*diag_min_ : 0);
+          double eps_z = is_node_zmWall(p4est_, ni) ? 2.*_CASL_EPS_*diag_min_ : (is_node_zpWall(p4est_, ni) ? -2.*_CASL_EPS_*diag_min_ : 0);
 
           if(is_node_xmWall(p4est_, ni)) rhs_p[n] += 2.*mue_000*(*bc_wall_value_)(x_C, y_C+eps_y, z_C+eps_z) / d_p00;
           else if(is_interface_m00)      rhs_p[n] -= w_m00 * val_interface_m00;
@@ -2175,8 +2177,8 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           else if(is_interface_00p)      rhs_p[n] -= w_00p * val_interface_00p;
 #else
 
-          double eps_x = is_node_xmWall(p4est_, ni) ? 2.*EPS*diag_min_ : (is_node_xpWall(p4est_, ni) ? -2.*EPS*diag_min_ : 0);
-          double eps_y = is_node_ymWall(p4est_, ni) ? 2.*EPS*diag_min_ : (is_node_ypWall(p4est_, ni) ? -2.*EPS*diag_min_ : 0);
+          double eps_x = is_node_xmWall(p4est_, ni) ? 2.*_CASL_EPS_*diag_min_ : (is_node_xpWall(p4est_, ni) ? -2.*_CASL_EPS_*diag_min_ : 0);
+          double eps_y = is_node_ymWall(p4est_, ni) ? 2.*_CASL_EPS_*diag_min_ : (is_node_ypWall(p4est_, ni) ? -2.*_CASL_EPS_*diag_min_ : 0);
 
           if(is_node_xmWall(p4est_, ni)) rhs_p[n] += 2.*mue_000*(*bc_wall_value_)(x_C, y_C+eps_y) / d_p00;
           else if(is_interface_m00)      rhs_p[n] -= w_m00*val_interface_m00;
@@ -2275,25 +2277,25 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         if (!is_node_zpWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmax = z_C + .5*dz_min_; } else { fv_zmax = z_C; }
 #endif
 
+        if (attempt_to_expand)
+        {
+          ierr = PetscPrintf(p4est_->mpicomm, "Attempting hanging neighbors attachment...\n");
+          if (expand[dir::f_m00]) { fv_size_x += cube_refinement_; fv_xmin -= cell_expansion*dx_min_; }
+          if (expand[dir::f_p00]) { fv_size_x += cube_refinement_; fv_xmax += cell_expansion*dx_min_; }
+          if (expand[dir::f_0m0]) { fv_size_y += cube_refinement_; fv_ymin -= cell_expansion*dy_min_; }
+          if (expand[dir::f_0p0]) { fv_size_y += cube_refinement_; fv_ymax += cell_expansion*dy_min_; }
+#ifdef P4_TO_P8
+          if (expand[dir::f_00m]) { fv_size_z += cube_refinement_; fv_zmin -= cell_expansion*dz_min_; }
+          if (expand[dir::f_00p]) { fv_size_z += cube_refinement_; fv_zmax += cell_expansion*dz_min_; }
+#endif
+        }
+
         if (cube_refinement_ == 0)
         {
           fv_size_x = 1;
           fv_size_y = 1;
 #ifdef P4_TO_P8
           fv_size_z = 1;
-#endif
-        }
-
-        if (attempt_to_expand)
-        {
-          ierr = PetscPrintf(p4est_->mpicomm, "Attempting hanging neighbors attachment...\n");
-          if (expand[dir::f_m00]) { fv_size_x += 1; fv_xmin -= 1.*0.5*dx_min_; }
-          if (expand[dir::f_p00]) { fv_size_x += 1; fv_xmax += 1.*0.5*dx_min_; }
-          if (expand[dir::f_0m0]) { fv_size_y += 1; fv_ymin -= 1.*0.5*dy_min_; }
-          if (expand[dir::f_0p0]) { fv_size_y += 1; fv_ymax += 1.*0.5*dy_min_; }
-#ifdef P4_TO_P8
-          if (expand[dir::f_00m]) { fv_size_z += 1; fv_zmin -= 1.*0.5*dz_min_; }
-          if (expand[dir::f_00p]) { fv_size_z += 1; fv_zmax += 1.*0.5*dz_min_; }
 #endif
         }
 
@@ -2640,7 +2642,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         double weights_2d[9];
         bool map_2d[9];
 
-        double theta = EPS;
+        double theta = _CASL_EPS_;
 
         // face m00
         if (s_m00/face_area_scalling > interface_rel_thresh_)
@@ -2965,7 +2967,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #else
         double w[num_neighbors_max_] = { 0,0,0, 0,0,0, 0,0,0 };
 
-        double theta = EPS;
+        double theta = _CASL_EPS_;
 
         //*
 
@@ -3918,7 +3920,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #endif
 
           for (int i = 0; i < num_neighbors_max_; ++i)
-            if (neighbors_exist[i] && fabs(w[i]) > EPS && i != nn_000)
+            if (neighbors_exist[i] && fabs(w[i]) > _CASL_EPS_ && i != nn_000)
             {
               if (w[i] != w[i]) throw std::domain_error("Non-diag is nan\n");
               PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
@@ -4287,7 +4289,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
         //---------------------------------------------------------------------
         // interface boundary
         //---------------------------------------------------------------------
-        if (ABS(phi_eff_000) < EPS)
+        if (ABS(phi_eff_000) < _CASL_EPS_)
         {
           volumes_p[n] = 1;
           areas_p[n]   = 1;
@@ -6748,8 +6750,8 @@ void my_p4est_poisson_nodes_mls_sc_t::find_hanging_cells(int *network, bool *han
 //        {
 //          xyz_p[dir] = xyz_C[dir] - phi_p[n]*normal[dir]/norm;
 
-//          if      (xyz_p[dir] < xyz_C[dir]-dxyz_m[dir]) xyz_p[dir] = xyz_C[dir]-dxyz_m[dir]+EPS;
-//          else if (xyz_p[dir] > xyz_C[dir]+dxyz_m[dir]) xyz_p[dir] = xyz_C[dir]+dxyz_m[dir]+EPS;
+//          if      (xyz_p[dir] < xyz_C[dir]-dxyz_m[dir]) xyz_p[dir] = xyz_C[dir]-dxyz_m[dir]+_CASL_EPS_;
+//          else if (xyz_p[dir] > xyz_C[dir]+dxyz_m[dir]) xyz_p[dir] = xyz_C[dir]+dxyz_m[dir]+_CASL_EPS_;
 //        }
 
 //        double alpha_proj = jump_u(xyz_p[0],xyz_p[1]);
@@ -6910,10 +6912,10 @@ void my_p4est_poisson_nodes_mls_sc_t::find_hanging_cells(int *network, bool *han
 //              z_p00 += cubes_p00[idx]->integrate_over_domain(delta_z_p00);
 //            }
 
-//          if (s_m00/full_sx > 0*EPS) y_m00 /= s_m00; else y_m00 = 0;
-//          if (s_p00/full_sx > 0*EPS) y_p00 /= s_p00; else y_p00 = 0;
-//          if (s_m00/full_sx > 0*EPS) z_m00 /= s_m00; else z_m00 = 0;
-//          if (s_p00/full_sx > 0*EPS) z_p00 /= s_p00; else z_p00 = 0;
+//          if (s_m00/full_sx > 0*_CASL_EPS_) y_m00 /= s_m00; else y_m00 = 0;
+//          if (s_p00/full_sx > 0*_CASL_EPS_) y_p00 /= s_p00; else y_p00 = 0;
+//          if (s_m00/full_sx > 0*_CASL_EPS_) z_m00 /= s_m00; else z_m00 = 0;
+//          if (s_p00/full_sx > 0*_CASL_EPS_) z_p00 /= s_p00; else z_p00 = 0;
 
 //          double s_0m0 = 0, s_0p0 = 0;
 //          double x_0m0 = 0, x_0p0 = 0;
@@ -6939,10 +6941,10 @@ void my_p4est_poisson_nodes_mls_sc_t::find_hanging_cells(int *network, bool *han
 //              z_0p0 += cubes_0p0[idx]->integrate_over_domain(delta_z_0p0);
 //            }
 
-//          if (s_0m0/full_sy > 0*EPS) x_0m0 /= s_0m0; else x_0m0 = 0;
-//          if (s_0p0/full_sy > 0*EPS) x_0p0 /= s_0p0; else x_0p0 = 0;
-//          if (s_0m0/full_sy > 0*EPS) z_0m0 /= s_0m0; else z_0m0 = 0;
-//          if (s_0p0/full_sy > 0*EPS) z_0p0 /= s_0p0; else z_0p0 = 0;
+//          if (s_0m0/full_sy > 0*_CASL_EPS_) x_0m0 /= s_0m0; else x_0m0 = 0;
+//          if (s_0p0/full_sy > 0*_CASL_EPS_) x_0p0 /= s_0p0; else x_0p0 = 0;
+//          if (s_0m0/full_sy > 0*_CASL_EPS_) z_0m0 /= s_0m0; else z_0m0 = 0;
+//          if (s_0p0/full_sy > 0*_CASL_EPS_) z_0p0 /= s_0p0; else z_0p0 = 0;
 
 //          double s_00m = 0, s_00p = 0;
 //          double x_00m = 0, x_00p = 0;
@@ -6968,10 +6970,10 @@ void my_p4est_poisson_nodes_mls_sc_t::find_hanging_cells(int *network, bool *han
 //              y_00p += cubes_00p[idx]->integrate_over_domain(delta_y_00p);
 //            }
 
-//          if (s_00m/full_sz > 0*EPS) x_00m /= s_00m; else x_00m = 0;
-//          if (s_00p/full_sz > 0*EPS) x_00p /= s_00p; else x_00p = 0;
-//          if (s_00m/full_sz > 0*EPS) y_00m /= s_00m; else y_00m = 0;
-//          if (s_00p/full_sz > 0*EPS) y_00p /= s_00p; else y_00p = 0;
+//          if (s_00m/full_sz > 0*_CASL_EPS_) x_00m /= s_00m; else x_00m = 0;
+//          if (s_00p/full_sz > 0*_CASL_EPS_) x_00p /= s_00p; else x_00p = 0;
+//          if (s_00m/full_sz > 0*_CASL_EPS_) y_00m /= s_00m; else y_00m = 0;
+//          if (s_00p/full_sz > 0*_CASL_EPS_) y_00p /= s_00p; else y_00p = 0;
 
 //          for (int i = 0; i < fv_size_y*fv_size_z; ++i)
 //          {
@@ -7008,8 +7010,8 @@ void my_p4est_poisson_nodes_mls_sc_t::find_hanging_cells(int *network, bool *han
 //              y_p00 += cubes[idx_p]->integrate_in_dir(delta_y_cf_, 1);
 //            }
 
-//          if (s_m00/full_sx > 0*EPS) y_m00 /= s_m00; else y_m00 = 0;
-//          if (s_p00/full_sx > 0*EPS) y_p00 /= s_p00; else y_p00 = 0;
+//          if (s_m00/full_sx > 0*_CASL_EPS_) y_m00 /= s_m00; else y_m00 = 0;
+//          if (s_p00/full_sx > 0*_CASL_EPS_) y_p00 /= s_p00; else y_p00 = 0;
 
 //          double s_0m0 = 0, s_0p0 = 0;
 //          double x_0m0 = 0, x_0p0 = 0;
@@ -7028,6 +7030,6 @@ void my_p4est_poisson_nodes_mls_sc_t::find_hanging_cells(int *network, bool *han
 //              x_0p0 += cubes[idx_p]->integrate_in_dir(delta_x_cf_, 3);
 //            }
 
-//          if (s_0m0/full_sy > 0*EPS) x_0m0 /= s_0m0; else x_0m0 = 0;
-//          if (s_0p0/full_sy > 0*EPS) x_0p0 /= s_0p0; else x_0p0 = 0;
+//          if (s_0m0/full_sy > 0*_CASL_EPS_) x_0m0 /= s_0m0; else x_0m0 = 0;
+//          if (s_0p0/full_sy > 0*_CASL_EPS_) x_0p0 /= s_0p0; else x_0p0 = 0;
 //#endif

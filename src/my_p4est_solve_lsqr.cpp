@@ -30,7 +30,7 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
       Lf[j][j] -= SQR(Lf[j][k]);
 
     Lf[j][j] = sqrt(Lf[j][j]);
-    if(Lf[j][j]<EPS || std::isnan(Lf[j][j]) || std::isinf(Lf[j][j]))
+    if(Lf[j][j]<_CASL_EPS_ || std::isnan(Lf[j][j]) || std::isinf(Lf[j][j]))
       return false;
 
     for(int i=j+1; i<n; ++i)

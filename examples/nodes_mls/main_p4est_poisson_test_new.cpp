@@ -78,7 +78,6 @@
 #include "problem_case_8.h" // half-space
 #include "problem_case_9.h" // angle
 #include "problem_case_10.h" // angle 3d
-#include "problem_case_11.h" // circular sector
 
 
 #undef MIN
@@ -89,21 +88,21 @@ using namespace std;
 bool save_vtk = 0;
 
 #ifdef P4_TO_P8
-int lmin = 6;
-int lmax = 6;
-int nb_splits = 1;
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 4;
 int nb_splits_per_split = 1;
 int nx_shifts = 1;
 int ny_shifts = 1;
 int nz_shifts = 1;
 int num_shifts = nx_shifts*ny_shifts*nz_shifts;
 #else
-int lmin = 9;
-int lmax = 9;
-int nb_splits = 1;
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 4;
 int nb_splits_per_split = 1;
-int nx_shifts = 1;
-int ny_shifts = 1;
+int nx_shifts = 10;
+int ny_shifts = 10;
 int num_shifts = nx_shifts*ny_shifts;
 #endif
 
@@ -129,7 +128,7 @@ const double p_xyz_max[3] = { 1.,  1.,  1.};
  * 7412
  */
 
-int n_geometry = 1;
+int n_geometry = 0;
 int n_test = 0;
 int n_mu = 0;
 int n_diag_add = 0;
@@ -143,44 +142,11 @@ bool sc_scheme = 1;
 int integration_order = 2;
 
 double mask_thresh = 0;
-bool try_remove_hanging_cells = 0;
-
-bool perturb_domain = 0;
-int  n_perturb = 1; // 0 - smooth, 1 - random
-double perturb_magnitude = 1.0;
-double perturb_order = 1.0;
+bool try_remove_hanging_cells = 1;
 
 bool compute_eigenvalues = 0;
-int compute_cond_num_slepc = 0;
-int compute_cond_num_matlab = 1;
+bool compute_cond_num = 1;
 
-bool use_phi_cf = 1;
-
-#ifdef P4_TO_P8
-class perturb_cf_t: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    switch (n_perturb) {
-      case 0: return sin(2.*x-z)*cos(2.*y+z);
-      case 1: return 2.*((double) rand() / (double) RAND_MAX - 0.5);
-    }
-  }
-} perturb_cf;
-#else
-class perturb_cf_t: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    switch (n_perturb) {
-      case 0: return sin(10.*x)*cos(10.*y);
-      case 1: return 2.*((double) rand() / (double) RAND_MAX - 0.5);
-    }
-  }
-} perturb_cf;
-#endif
 
 // EXACT SOLUTION
 #include "exact_solutions.h"
@@ -348,156 +314,143 @@ problem_case_7_t problem_case_7;
 problem_case_8_t problem_case_8;
 problem_case_9_t problem_case_9;
 problem_case_10_t problem_case_10;
-problem_case_11_t problem_case_11;
 
 void set_parameters()
 {
   switch (n_geometry)
   {
     case 0:
-    {
-      phi_cf        = problem_case_0.phi_cf;
-      phi_x_cf      = problem_case_0.phi_x_cf;
-      phi_y_cf      = problem_case_0.phi_y_cf;
+      {
+        phi_cf        = problem_case_0.phi_cf;
+        phi_x_cf      = problem_case_0.phi_x_cf;
+        phi_y_cf      = problem_case_0.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_0.phi_z_cf;
+        phi_z_cf      = problem_case_0.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_0.bc_coeffs_cf;
-      action        = problem_case_0.action;
-      color         = problem_case_0.color;
-    } break;
+        bc_coeffs_cf  = problem_case_0.bc_coeffs_cf;
+        action        = problem_case_0.action;
+        color         = problem_case_0.color;
+      } break;
     case 1:
-    {
-      phi_cf        = problem_case_1.phi_cf;
-      phi_x_cf      = problem_case_1.phi_x_cf;
-      phi_y_cf      = problem_case_1.phi_y_cf;
+      {
+        phi_cf        = problem_case_1.phi_cf;
+        phi_x_cf      = problem_case_1.phi_x_cf;
+        phi_y_cf      = problem_case_1.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_1.phi_z_cf;
+        phi_z_cf      = problem_case_1.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_1.bc_coeffs_cf;
-      action        = problem_case_1.action;
-      color         = problem_case_1.color;
-    } break;
+        bc_coeffs_cf  = problem_case_1.bc_coeffs_cf;
+        action        = problem_case_1.action;
+        color         = problem_case_1.color;
+      } break;
     case 2:
-    {
-      phi_cf        = problem_case_2.phi_cf;
-      phi_x_cf      = problem_case_2.phi_x_cf;
-      phi_y_cf      = problem_case_2.phi_y_cf;
+      {
+        phi_cf        = problem_case_2.phi_cf;
+        phi_x_cf      = problem_case_2.phi_x_cf;
+        phi_y_cf      = problem_case_2.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_2.phi_z_cf;
+        phi_z_cf      = problem_case_2.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_2.bc_coeffs_cf;
-      action        = problem_case_2.action;
-      color         = problem_case_2.color;
-    } break;
+        bc_coeffs_cf  = problem_case_2.bc_coeffs_cf;
+        action        = problem_case_2.action;
+        color         = problem_case_2.color;
+      } break;
     case 3:
-    {
-      phi_cf        = problem_case_3.phi_cf;
-      phi_x_cf      = problem_case_3.phi_x_cf;
-      phi_y_cf      = problem_case_3.phi_y_cf;
+      {
+        phi_cf        = problem_case_3.phi_cf;
+        phi_x_cf      = problem_case_3.phi_x_cf;
+        phi_y_cf      = problem_case_3.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_3.phi_z_cf;
+        phi_z_cf      = problem_case_3.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_3.bc_coeffs_cf;
-      action        = problem_case_3.action;
-      color         = problem_case_3.color;
-    } break;
+        bc_coeffs_cf  = problem_case_3.bc_coeffs_cf;
+        action        = problem_case_3.action;
+        color         = problem_case_3.color;
+      } break;
     case 4:
-    {
-      phi_cf        = problem_case_4.phi_cf;
-      phi_x_cf      = problem_case_4.phi_x_cf;
-      phi_y_cf      = problem_case_4.phi_y_cf;
+      {
+        phi_cf        = problem_case_4.phi_cf;
+        phi_x_cf      = problem_case_4.phi_x_cf;
+        phi_y_cf      = problem_case_4.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_4.phi_z_cf;
+        phi_z_cf      = problem_case_4.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_4.bc_coeffs_cf;
-      action        = problem_case_4.action;
-      color         = problem_case_4.color;
-    } break;
+        bc_coeffs_cf  = problem_case_4.bc_coeffs_cf;
+        action        = problem_case_4.action;
+        color         = problem_case_4.color;
+      } break;
     case 5:
-    {
-      phi_cf        = problem_case_5.phi_cf;
-      phi_x_cf      = problem_case_5.phi_x_cf;
-      phi_y_cf      = problem_case_5.phi_y_cf;
+      {
+        phi_cf        = problem_case_5.phi_cf;
+        phi_x_cf      = problem_case_5.phi_x_cf;
+        phi_y_cf      = problem_case_5.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_5.phi_z_cf;
+        phi_z_cf      = problem_case_5.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_5.bc_coeffs_cf;
-      action        = problem_case_5.action;
-      color         = problem_case_5.color;
-    } break;
+        bc_coeffs_cf  = problem_case_5.bc_coeffs_cf;
+        action        = problem_case_5.action;
+        color         = problem_case_5.color;
+      } break;
     case 6:
-    {
-      phi_cf        = problem_case_6.phi_cf;
-      phi_x_cf      = problem_case_6.phi_x_cf;
-      phi_y_cf      = problem_case_6.phi_y_cf;
+      {
+        phi_cf        = problem_case_6.phi_cf;
+        phi_x_cf      = problem_case_6.phi_x_cf;
+        phi_y_cf      = problem_case_6.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_6.phi_z_cf;
+        phi_z_cf      = problem_case_6.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_6.bc_coeffs_cf;
-      action        = problem_case_6.action;
-      color         = problem_case_6.color;
-    } break;
+        bc_coeffs_cf  = problem_case_6.bc_coeffs_cf;
+        action        = problem_case_6.action;
+        color         = problem_case_6.color;
+      } break;
     case 7:
-    {
-      phi_cf        = problem_case_7.phi_cf;
-      phi_x_cf      = problem_case_7.phi_x_cf;
-      phi_y_cf      = problem_case_7.phi_y_cf;
+      {
+        phi_cf        = problem_case_7.phi_cf;
+        phi_x_cf      = problem_case_7.phi_x_cf;
+        phi_y_cf      = problem_case_7.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_7.phi_z_cf;
+        phi_z_cf      = problem_case_7.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_7.bc_coeffs_cf;
-      action        = problem_case_7.action;
-      color         = problem_case_7.color;
-    } break;
+        bc_coeffs_cf  = problem_case_7.bc_coeffs_cf;
+        action        = problem_case_7.action;
+        color         = problem_case_7.color;
+      } break;
     case 8:
-    {
-      phi_cf        = problem_case_8.phi_cf;
-      phi_x_cf      = problem_case_8.phi_x_cf;
-      phi_y_cf      = problem_case_8.phi_y_cf;
+      {
+        phi_cf        = problem_case_8.phi_cf;
+        phi_x_cf      = problem_case_8.phi_x_cf;
+        phi_y_cf      = problem_case_8.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_8.phi_z_cf;
+        phi_z_cf      = problem_case_8.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_8.bc_coeffs_cf;
-      action        = problem_case_8.action;
-      color         = problem_case_8.color;
-    } break;
+        bc_coeffs_cf  = problem_case_8.bc_coeffs_cf;
+        action        = problem_case_8.action;
+        color         = problem_case_8.color;
+      } break;
     case 9:
-    {
-      phi_cf        = problem_case_9.phi_cf;
-      phi_x_cf      = problem_case_9.phi_x_cf;
-      phi_y_cf      = problem_case_9.phi_y_cf;
+      {
+        phi_cf        = problem_case_9.phi_cf;
+        phi_x_cf      = problem_case_9.phi_x_cf;
+        phi_y_cf      = problem_case_9.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_9.phi_z_cf;
+        phi_z_cf      = problem_case_9.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_9.bc_coeffs_cf;
-      action        = problem_case_9.action;
-      color         = problem_case_9.color;
-    } break;
+        bc_coeffs_cf  = problem_case_9.bc_coeffs_cf;
+        action        = problem_case_9.action;
+        color         = problem_case_9.color;
+      } break;
     case 10:
-    {
-      phi_cf        = problem_case_10.phi_cf;
-      phi_x_cf      = problem_case_10.phi_x_cf;
-      phi_y_cf      = problem_case_10.phi_y_cf;
+      {
+        phi_cf        = problem_case_10.phi_cf;
+        phi_x_cf      = problem_case_10.phi_x_cf;
+        phi_y_cf      = problem_case_10.phi_y_cf;
 #ifdef P4_TO_P8
-      phi_z_cf      = problem_case_10.phi_z_cf;
+        phi_z_cf      = problem_case_10.phi_z_cf;
 #endif
-      bc_coeffs_cf  = problem_case_10.bc_coeffs_cf;
-      action        = problem_case_10.action;
-      color         = problem_case_10.color;
-    } break;
-    case 11:
-    {
-      phi_cf        = problem_case_11.phi_cf;
-      phi_x_cf      = problem_case_11.phi_x_cf;
-      phi_y_cf      = problem_case_11.phi_y_cf;
-#ifdef P4_TO_P8
-      phi_z_cf      = problem_case_11.phi_z_cf;
-#endif
-      bc_coeffs_cf  = problem_case_11.bc_coeffs_cf;
-      action        = problem_case_11.action;
-      color         = problem_case_11.color;
-    } break;
+        bc_coeffs_cf  = problem_case_10.bc_coeffs_cf;
+        action        = problem_case_10.action;
+        color         = problem_case_10.color;
+      } break;
   }
 }
 
@@ -565,26 +518,6 @@ public:
 #endif
 
 
-#ifdef P4_TO_P8
-class ZERO_CF: public CF_3
-{
-public:
-  double operator()(double, double, double) const
-  {
-    return 0;
-  }
-} zero_cf;
-#else
-class ZERO_CF: public CF_2
-{
-public:
-  double operator()(double, double) const
-  {
-    return 0;
-  }
-} zero_cf;
-#endif
-
 vector<double> level, h;
 
 vector<double> error_sl_arr, error_sl_l1_arr;
@@ -615,12 +548,6 @@ int main (int argc, char* argv[])
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
-  PetscMatlabEngine matlab_engine;
-  ierr = PetscMatlabEngineCreate(mpi.comm(), NULL, &matlab_engine); CHKERRXX(ierr);
-  ierr = PetscMatlabEngineEvaluate(matlab_engine, "setenv('PETSC_DIR', '/home/dbochkov/Software/PETSc/petsc-3.9.2/');"      );
-  ierr = PetscMatlabEngineEvaluate(matlab_engine, "setenv('PETSC_ARCH', 'build-release-matlab');"                                  );
-  ierr = PetscMatlabEngineEvaluate(matlab_engine, "addpath('/home/dbochkov/Software/PETSc/petsc-3.9.2/share/petsc/matlab');");
-
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
@@ -648,13 +575,6 @@ int main (int argc, char* argv[])
   cmd.add_option("mask_thresh", "mask_thresh");
   cmd.add_option("try_remove_hanging_cells", "try_remove_hanging_cells");
   cmd.add_option("save_domain_reconstruction", "save_domain_reconstruction");
-  cmd.add_option("compute_cond_num", "compute_cond_num");
-  cmd.add_option("perturb_domain", "perturb_domain");
-  cmd.add_option("n_perturb", "n_perturb");
-  cmd.add_option("perturb_magnitude", "perturb_magnitude");
-  cmd.add_option("perturb_order", "perturb_order");
-  cmd.add_option("use_phi_cf", "use_phi_cf");
-
   cmd.parse(argc, argv);
 
   cmd.print();
@@ -683,13 +603,6 @@ int main (int argc, char* argv[])
   mask_thresh = cmd.get("mask_thresh", mask_thresh);
   try_remove_hanging_cells = cmd.get("try_remove_hanging_cells", try_remove_hanging_cells);
   save_domain_reconstruction = cmd.get("save_domain_reconstruction", save_domain_reconstruction);
-
-  compute_cond_num_matlab = cmd.get("compute_cond_num", compute_cond_num_matlab);
-  perturb_domain = cmd.get("perturb_domain", perturb_domain);
-  n_perturb = cmd.get("n_perturb", n_perturb);
-  perturb_magnitude = cmd.get("perturb_magnitude", perturb_magnitude);
-  perturb_order = cmd.get("perturb_order", perturb_order);
-  use_phi_cf = cmd.get("use_phi_cf", use_phi_cf);
 
 #ifdef P4_TO_P8
   num_shifts = nx_shifts*ny_shifts*nz_shifts;
@@ -761,14 +674,12 @@ int main (int argc, char* argv[])
       double p_xyz_max_shift[3];
 
 #ifdef P4_TO_P8
-      double dxyz_m = MIN(dxyz[0],dxyz[1],dxyz[2]);
+      h.push_back(MIN(dxyz[0],dxyz[1],dxyz[2]));
 #else
-      double dxyz_m = MIN(dxyz[0],dxyz[1]);
+      h.push_back(MIN(dxyz[0],dxyz[1]));
 #endif
 
-      h.push_back(dxyz_m);
       level.push_back(lmax+iter-scale);
-
       ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f).\n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
@@ -847,25 +758,6 @@ int main (int argc, char* argv[])
               phi.push_back(Vec());
               ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
               sample_cf_on_nodes(p4est, nodes, *phi_cf[i], phi.back());
-
-              if (perturb_domain)
-              {
-                double *phi_ptr;
-                ierr = VecGetArray(phi.back(), &phi_ptr); CHKERRXX(ierr);
-
-                for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-                {
-                  double xyz[P4EST_DIM];
-                  node_xyz_fr_n(n, p4est, nodes, xyz);
-                  phi_ptr[n] += perturb_magnitude*perturb_cf.value(xyz)*pow(dxyz_m, perturb_order);
-                }
-
-                ierr = VecRestoreArray(phi.back(), &phi_ptr); CHKERRXX(ierr);
-
-                ierr = VecGhostUpdateBegin(phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-                ierr = VecGhostUpdateEnd  (phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              }
-
               if (reinitialize_lsfs)
                 ls.reinitialize_1st_order_time_2nd_order_space(phi.back(),20);
             }
@@ -884,12 +776,6 @@ int main (int argc, char* argv[])
 #endif
             for (int i = 0; i < num_surfaces; i++)
             {
-                if ((n_test == 11 || n_test == 12 || n_test == 13) && n_geometry == 11 && i < 2)
-                  {
-                    bc_interface_value[i] = &zero_cf;
-                  }
-                else
-                  {
               if (bc_interface_type[i] == ROBIN || bc_interface_type[i] == NEUMANN)
               {
 #ifdef P4_TO_P8
@@ -901,15 +787,11 @@ int main (int argc, char* argv[])
               } else {
                 bc_interface_value[i] = &u_cf;
               }
-                  }
             }
 
             Vec rhs;
             ierr = VecCreateGhostNodes(p4est, nodes, &rhs); CHKERRXX(ierr);
             sample_cf_on_nodes(p4est, nodes, rhs_cf, rhs);
-
-            if ((n_test == 11 || n_test == 12 || n_test == 13) && n_geometry == 11)
-              sample_cf_on_nodes(p4est, nodes, zero_cf, rhs);
 
             Vec u_exact_vec;
             ierr = VecCreateGhostNodes(p4est, nodes, &u_exact_vec); CHKERRXX(ierr);
@@ -943,12 +825,11 @@ int main (int argc, char* argv[])
             solver.set_use_sc_scheme(sc_scheme);
             solver.set_integration_order(integration_order);
 
-            if (use_phi_cf) solver.set_phi_cf(phi_cf);
-
+            solver.set_phi_cf(phi_cf);
             solver.set_geometry(num_surfaces, &action, &color, &phi);
             solver.set_mu(mu);
             solver.set_rhs(rhs);
-//            solver.set_rhs(rhs_cf);
+            solver.set_rhs(rhs_cf);
 
             solver.set_bc_wall_value(u_cf);
             solver.set_bc_wall_type(bc_wall_type);
@@ -963,9 +844,11 @@ int main (int argc, char* argv[])
             solver.set_kink_treatment(1);
             solver.set_try_remove_hanging_cells(try_remove_hanging_cells);
 
-//            solver.set_exact(u_exact_vec);
+            solver.set_exact(u_exact_vec);
 
-            solver.solve(sol);
+//            solver.solve(sol, false);
+//            solver.set_tolerances(1.e-14, 1000, 1.e-14);
+            solver.solve(sol, false, KSPGMRES, PCNONE);
 
             solver.get_phi_dd(phi_dd);
 
@@ -1060,79 +943,7 @@ int main (int argc, char* argv[])
               ierr = SlepcFinalize();
             }
 
-            if (iter < compute_cond_num_matlab)
-            {
-
-//              PetscViewer viewer;
-//              ierr = PetscViewerBinaryOpen(mpi.comm(), "mat.output", FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
-//              ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_BINARY_MATLAB); CHKERRXX(ierr);
-//              ierr = MatView(A, viewer); CHKERRXX(ierr);
-//              ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
-
-              std::vector<double> aij;
-
-              for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-              {
-                int num_elem;
-                const int *icol;
-                const double *vals;
-
-                PetscInt N = solver.get_global_idx(n);
-                MatGetRow(A, N, &num_elem, &icol, &vals);
-                for (int i = 0; i < num_elem; ++i)
-                {
-                  aij.push_back((double) (N+1));
-                  aij.push_back((double) (icol[i]+1));
-                  aij.push_back(vals[i]);
-                }
-                MatRestoreRow(A, N, &num_elem, &icol, &vals);
-              }
-
-              int num_local_entries = aij.size();
-
-              std::vector<int> local_sizes(mpi.size(), 0);
-              std::vector<int> displs(mpi.size(), 0);
-
-              MPI_Gather(&num_local_entries, 1, MPI_INT, local_sizes.data(), 1, MPI_INT, 0, mpi.comm());
-
-              int num_total_entries = local_sizes[0];
-
-              for (int i = 1; i < mpi.size(); ++i)
-              {
-                displs[i] = displs[i-1] + local_sizes[i-1];
-                num_total_entries += local_sizes[i];
-              }
-
-              std::vector<double> global_aij(mpi.rank() == 0 ? num_total_entries : 0);
-
-              MPI_Gatherv(aij.data(), aij.size(), MPI_DOUBLE, global_aij.data(), local_sizes.data(), displs.data(), MPI_DOUBLE, 0, mpi.comm());
-
-              aij.clear();
-
-              if (mpi.rank() == 0)
-              {
-//                char *buffer;
-                PetscScalar cn;
-//                ierr = PetscMatlabEngineEvaluate(matlab_engine, "mat");
-//                ierr = PetscMatlabEngineEvaluate(matlab_engine, "condest(petsc_mat)");
-//                ierr = PetscMatlabEngineEvaluate(matlab_engine, "M = PetscBinaryRead('mat.output');");
-                ierr = PetscMatlabEngineEvaluate(matlab_engine, "N = 0;");
-                cn = (double) num_total_entries / 3;
-                ierr = PetscMatlabEnginePutArray(matlab_engine, 1, 1, &cn, "N");
-                ierr = PetscMatlabEngineEvaluate(matlab_engine, "AIJ(3,N) = 0;");
-                ierr = PetscMatlabEnginePutArray(matlab_engine, 3, num_total_entries/3, global_aij.data(), "AIJ");
-//                global_aij.clear();
-//                ierr = PetscMatlabEngineEvaluate(matlab_engine, "cn = condest(spconvert(AIJ'));");
-//                ierr = PetscMatlabEngineGetOutput(matlab_engine, &buffer); std::cout << mpi.rank() << " " << buffer;
-//                ierr = PetscMatlabEngineGetArray(matlab_engine, 1, 1, &cn, "cn");
-//                ierr = PetscPrintf(mpi.comm(), "Cond num = %e\n", cn);
-//                ierr = PetscMatlabEngineEvaluate(matlab_engine, "clear AIJ");
-                cond_num_arr.push_back(cn);
-              } else {
-                cond_num_arr.push_back(NAN);
-              }
-            } else
-            if (iter < compute_cond_num_slepc)
+            if (compute_cond_num)
             {
               SVD            svd;             /* singular value solver context */
               PetscInt       nconv1,nconv2;
@@ -1154,7 +965,7 @@ int main (int argc, char* argv[])
               /*
                  Set solver parameters at runtime
               */
-              SVDSetTolerances(svd, 1.e-10, INT_MAX);
+              SVDSetTolerances(svd, 1.e-8, 100000);
               SVDSetType(svd,SVDPRIMME);
               ierr = SVDSetFromOptions(svd);CHKERRQ(ierr);
               ierr = SVDSetDimensions(svd,1,PETSC_DEFAULT,PETSC_DEFAULT);CHKERRQ(ierr);
@@ -1218,8 +1029,10 @@ int main (int argc, char* argv[])
               ierr = SVDDestroy(&svd);CHKERRQ(ierr);
               ierr = SlepcFinalize();
             } else {
-              cond_num_arr.push_back(NAN);
+              cond_num_arr.push_back(1);
             }
+
+
 
             my_p4est_integration_mls_t integrator(p4est, nodes);
 #ifdef P4_TO_P8
@@ -1227,6 +1040,68 @@ int main (int argc, char* argv[])
 #else
             integrator.set_phi(phi, action, color);
 #endif
+//            if (save_vtk && save_domain_reconstruction)
+//            {
+//              const char* out_dir = getenv("OUT_DIR");
+//              if (!out_dir)
+//              {
+//                ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
+//                return -1;
+//              }
+//              std::ostringstream command;
+//              command << "mkdir -p " << out_dir;
+//              int ret_sys = system(command.str().c_str());
+//              if (ret_sys<0)
+//                throw std::invalid_argument("could not create directory");
+
+//              integrator.initialize();
+//#ifdef P4_TO_P8
+//              vector<simplex3_mls_t *> simplices;
+//              int n_sps = NTETS;
+//#else
+//              vector<simplex2_mls_t *> simplices;
+//              int n_sps = 2;
+//#endif
+
+//              for (int k = 0; k < integrator.cubes_linear.size(); k++)
+//                if (integrator.cubes_linear[k].loc == FCE)
+//                  for (int l = 0; l < n_sps; l++)
+//                    simplices.push_back(&integrator.cubes_linear[k].simplex[l]);
+
+//#ifdef P4_TO_P8
+//              simplex3_mls_vtk::write_simplex_geometry(simplices, to_string(out_dir), to_string(iter));
+//#else
+//              simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(out_dir), to_string(iter));
+//#endif
+//            }
+
+//#ifdef P4_TO_P8
+//            integrator.set_phi(phi, *phi_dd[0], *phi_dd[1], *phi_dd[2], action, color);
+//#else
+//            integrator.set_phi(phi, *phi_dd[0], *phi_dd[1], action, color);
+//#endif
+//            if (save_vtk)
+//            {
+//              integrator.initialize();
+//#ifdef P4_TO_P8
+//              vector<simplex3_mls_quadratic_t *> simplices;
+//              int n_sps = NTETS;
+//#else
+//              vector<simplex2_mls_t *> simplices;
+//              int n_sps = 2;
+//#endif
+
+//              for (int k = 0; k < integrator.cubes_quadratic.size(); k++)
+//                if (integrator.cubes_quadratic[k].loc == FCE)
+//                  for (int l = 0; l < n_sps; l++)
+//                    simplices.push_back(&integrator.cubes_quadratic[k].simplex[l]);
+
+//#ifdef P4_TO_P8
+//              simplex3_mls_quadratic_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+//#else
+//              simplex2_mls_vtk::write_simplex_geometry(simplices, to_string(OUTPUT_DIR), to_string(iter));
+//#endif
+//            }
 
             if (save_vtk && save_domain_reconstruction)
             {
@@ -1496,8 +1371,6 @@ int main (int argc, char* argv[])
               ls.extend_Over_Interface_TVD(phi_smooth, mask, sol_ex, 20, 2); CHKERRXX(ierr);
 //                ls.extend_Over_Interface_TVD(phi_eff, mask, sol_ex, 100); CHKERRXX(ierr);
 
-//            sample_cf_on_nodes(p4est, nodes, *bc_interface_value[0], sol_ex);
-            sample_cf_on_nodes(p4est, nodes, u_cf, sol_ex);
             // calculate error
             ierr = VecGetArray(sol_ex, &sol_ex_ptr); CHKERRXX(ierr);
             ierr = VecGetArray(vec_error_ex, &vec_error_ex_ptr); CHKERRXX(ierr);
@@ -1998,11 +1871,6 @@ int main (int argc, char* argv[])
     }
   }
 
-
-  ierr = PetscMatlabEngineDestroy(&matlab_engine); CHKERRXX(ierr);
-
-  MPI_Barrier(p4est->mpicomm);
-
   std::vector<double> error_sl_one(num_resolutions, 0), error_sl_avg(num_resolutions, 0), error_sl_max(num_resolutions, 0);
   std::vector<double> error_gr_one(num_resolutions, 0), error_gr_avg(num_resolutions, 0), error_gr_max(num_resolutions, 0);
   std::vector<double> error_dd_one(num_resolutions, 0), error_dd_avg(num_resolutions, 0), error_dd_max(num_resolutions, 0);
@@ -2102,6 +1970,7 @@ int main (int argc, char* argv[])
     filename = out_dir; filename += "/convergence/cond_num_max.txt"; save_vector(filename.c_str(), cond_num_max);
 
   }
+
 
   w.stop(); w.read_duration();
 

@@ -211,6 +211,7 @@ public:
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_node_neighbors_t *node_neighbors);
   ~my_p4est_poisson_nodes_mls_sc_t();
 
+  inline PetscInt get_global_idx(p4est_locidx_t n) { return petsc_gloidx_[n]; }
   inline void set_fallback(int value) { fallback_ = value; }
   inline void set_try_remove_hanging_cells(bool value) { try_remove_hanging_cells_ = value; }
 

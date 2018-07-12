@@ -187,7 +187,7 @@ void Voronoi2D::construct_Partition()
     double denom = dir[m].cross(dir[k]);
 
     // if the points are aligned, keep the point that is the closest to pc
-    if(denom < EPS)
+    if(denom < _CASL_EPS_)
     {
       if( (points[m].p-pc).norm_L2() > (points[k].p-pc).norm_L2() )
         k = m;
@@ -220,7 +220,7 @@ void Voronoi2D::construct_Partition()
 
       // if the new vertex is before the previous one, in trigonometric order
       // or check for a double vertex, which means the new point [m] leads to an edge of length zero
-      if( (partition[k]-pc).cross((partition[m]-pc)) < 0 || ABS(fmod(theta_vertices[m],2.*PI)-fmod(theta_vertices[k],2.*PI)) < EPS )
+      if( (partition[k]-pc).cross((partition[m]-pc)) < 0 || ABS(fmod(theta_vertices[m],2.*PI)-fmod(theta_vertices[k],2.*PI)) < _CASL_EPS_ )
       {
         points.erase(points.begin() + m);
         partition.erase(partition.begin() + m);
@@ -255,7 +255,7 @@ void Voronoi2D::clip_Interface()
    * note that using epsilon instead of zero eliminate the problem of cells
    * with very small areas
    */
-  double thresh = -EPS/2;
+  double thresh = -_CASL_EPS_/2;
 
   /* find a vertex that is in the negative domain */
   unsigned int m0 = 0;
@@ -327,7 +327,7 @@ void Voronoi2D::clip_Interface()
       Point2 u = plr - pmk;
 
       /* the new points are on top of each other ... which can only mean that the value at point k=l is exactly 0 */
-      if(u.norm_L2()<EPS)
+      if(u.norm_L2()<_CASL_EPS_)
       {
         m = r;
         continue;

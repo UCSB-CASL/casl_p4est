@@ -157,10 +157,10 @@ void my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f, double
     double norm = sqrt(nxyz_p[0][n]*nxyz_p[0][n] + nxyz_p[1][n]*nxyz_p[1][n]);
 #endif
 
-    nxyz_p[0][n] = norm>EPS ? nxyz_p[0][n]/norm : 0;
-    nxyz_p[1][n] = norm>EPS ? nxyz_p[1][n]/norm : 0;
+    nxyz_p[0][n] = norm>_CASL_EPS_ ? nxyz_p[0][n]/norm : 0;
+    nxyz_p[1][n] = norm>_CASL_EPS_ ? nxyz_p[1][n]/norm : 0;
 #ifdef P4_TO_P8
-    nxyz_p[2][n] = norm>EPS ? nxyz_p[2][n]/norm : 0;
+    nxyz_p[2][n] = norm>_CASL_EPS_ ? nxyz_p[2][n]/norm : 0;
 #endif
   }
 
@@ -182,10 +182,10 @@ void my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f, double
     double norm = sqrt(nxyz_p[0][n]*nxyz_p[0][n] + nxyz_p[1][n]*nxyz_p[1][n]);
 #endif
 
-    nxyz_p[0][n] = norm>EPS ? nxyz_p[0][n]/norm : 0;
-    nxyz_p[1][n] = norm>EPS ? nxyz_p[1][n]/norm : 0;
+    nxyz_p[0][n] = norm>_CASL_EPS_ ? nxyz_p[0][n]/norm : 0;
+    nxyz_p[1][n] = norm>_CASL_EPS_ ? nxyz_p[1][n]/norm : 0;
 #ifdef P4_TO_P8
-    nxyz_p[2][n] = norm>EPS ? nxyz_p[2][n]/norm : 0;
+    nxyz_p[2][n] = norm>_CASL_EPS_ ? nxyz_p[2][n]/norm : 0;
 #endif
   }
 
@@ -559,7 +559,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
         Point2 grad_phi(interp_phi_x(x,y), interp_phi_y(x,y));
 #endif
 
-        if(phi_q<band_to_extend*diag && grad_phi.norm_L2()>EPS)
+        if(phi_q<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
         {
           grad_phi /= grad_phi.norm_L2();
 
@@ -640,7 +640,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
         Point2 grad_phi(interp_phi_x(x,y), interp_phi_y(x,y));
 #endif
 
-        if(phi_q<band_to_extend*diag && grad_phi.norm_L2()>EPS)
+        if(phi_q<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
         {
           grad_phi /= grad_phi.norm_L2();
 

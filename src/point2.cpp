@@ -33,7 +33,7 @@ void Point2::operator=(Point2 pt)
 
 bool Point2::operator ==(const Point2& pt)const
 {
-  return (fabs(pt.x-x)<EPS && fabs(pt.y-y)<1E-15);
+  return (fabs(pt.x-x)<_CASL_EPS_ && fabs(pt.y-y)<1E-15);
 }
 
 Point2 Point2::operator-() const

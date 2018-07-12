@@ -2,6 +2,14 @@
 double phase_x =  0.13;
 double phase_y =  1.55;
 double phase_z =  0.7;
+
+// parameters for singular solutions
+double x11 = -.08+.00000;
+double y11 = -.07-.00000;
+double alpha11 = 1.25;
+double phase11 = -0.1*PI;
+double T_disc = -.5*(2.-alpha11)*PI;
+
 #ifdef P4_TO_P8
 class u_cf_t: public CF_3
 {
@@ -32,6 +40,54 @@ public:
       case 4: return sin(x+0.3*y)*cos(x-0.7*y) + 3.*log(sqrt(x*x+y*y+0.5));
       case 10: return (sin(PI*x+phase_x)*sin(PI*y+phase_y));
       case 5: return sin(y)*cos(x);
+      case 11:
+        {
+          double X = x-x11;
+          double Y = y-y11;
+
+          double R = sqrt(X*X+Y*Y);
+          double T = atan2(Y,X);
+
+          double l = 1./alpha11;
+
+          T += phase11;
+
+          if (T < T_disc) T += 2*PI;
+
+          return pow(R,l)*cos(l*T);
+        }
+      case 12:
+        {
+          double X = x-x11;
+          double Y = y-y11;
+
+          double R = sqrt(X*X+Y*Y);
+          double T = atan2(Y,X);
+
+          double l = 2./alpha11;
+
+          T += phase11;
+
+          if (T < T_disc) T += 2*PI;
+
+          return pow(R,l)*cos(l*T);
+        }
+      case 13:
+        {
+          double X = x-x11;
+          double Y = y-y11;
+
+          double R = sqrt(X*X+Y*Y);
+          double T = atan2(Y,X);
+
+          double l = 3./alpha11;
+
+          T += phase11;
+
+          if (T < T_disc) T += 2*PI;
+
+          return pow(R,l)*cos(l*T);
+        }
     }
   }
 } u_cf;
@@ -117,6 +173,57 @@ public:
             + 3.*x/(x*x+y*y+0.5);
       case 10: return PI*cos(PI*x+phase_x)*sin(PI*y+phase_y);
       case 5: return -sin(y)*sin(x);
+      case 11:
+        {
+          double X = x-x11;
+          double Y = y-y11;
+
+          double R = sqrt(X*X+Y*Y);
+          double T = atan2(Y,X);
+
+          double l = 1./alpha11;
+
+          T += phase11;
+
+          if (T < T_disc) T += 2*PI;
+
+          return cos(T-phase11)*l*pow(R,l-1.)*cos(l*T)
+              -  sin(T-phase11)*l*pow(R,l-1.)*(-sin(l*T));
+        }
+      case 12:
+        {
+          double X = x-x11;
+          double Y = y-y11;
+
+          double R = sqrt(X*X+Y*Y);
+          double T = atan2(Y,X);
+
+          double l = 2./alpha11;
+
+          T += phase11;
+
+          if (T < T_disc) T += 2*PI;
+
+          return cos(T-phase11)*l*pow(R,l-1.)*(cos(l*T))
+              -  sin(T-phase11)*l*pow(R,l-1.)*(-sin(l*T));
+        }
+      case 13:
+        {
+          double X = x-x11;
+          double Y = y-y11;
+
+          double R = sqrt(X*X+Y*Y);
+          double T = atan2(Y,X);
+
+          double l = 3./alpha11;
+
+          T += phase11;
+
+          if (T < T_disc) T += 2*PI;
+
+          return cos(T-phase11)*l*pow(R,l-1.)*(cos(l*T))
+              -  sin(T-phase11)*l*pow(R,l-1.)*(-sin(l*T));
+        }
     }
   }
 } ux_cf;
@@ -135,6 +242,57 @@ public:
         + 3.*y/(x*x+y*y+0.5);
       case 10: return PI*sin(PI*x+phase_x)*cos(PI*y+phase_y);
       case 5: return cos(x)*cos(y);
+      case 11:
+        {
+          double X = x-x11;
+          double Y = y-y11;
+
+          double R = sqrt(X*X+Y*Y);
+          double T = atan2(Y,X);
+
+          double l = 1./alpha11;
+
+          T += phase11;
+
+          if (T < T_disc) T += 2*PI;
+
+          return sin(T-phase11)*l*pow(R,l-1.)*(cos(l*T))
+              +  cos(T-phase11)*l*pow(R,l-1.)*(-sin(l*T));
+        }
+      case 12:
+        {
+          double X = x-x11;
+          double Y = y-y11;
+
+          double R = sqrt(X*X+Y*Y);
+          double T = atan2(Y,X);
+
+          double l = 2./alpha11;
+
+          T += phase11;
+
+          if (T < T_disc) T += 2*PI;
+
+          return sin(T-phase11)*l*pow(R,l-1.)*(cos(l*T))
+              +  cos(T-phase11)*l*pow(R,l-1.)*(-sin(l*T));
+        }
+      case 13:
+        {
+          double X = x-x11;
+          double Y = y-y11;
+
+          double R = sqrt(X*X+Y*Y);
+          double T = atan2(Y,X);
+
+          double l = 3./alpha11;
+
+          T += phase11;
+
+          if (T < T_disc) T += 2*PI;
+
+          return sin(T-phase11)*l*pow(R,l-1.)*(cos(l*T))
+              +  cos(T-phase11)*l*pow(R,l-1.)*(-sin(l*T));
+        }
     }
   }
 } uy_cf;
@@ -157,6 +315,9 @@ public:
         + 3./pow(x*x+y*y+0.5, 2.);
       case 10: return -2.0*PI*PI*sin(PI*x+phase_x)*sin(PI*y+phase_y);
       case 5: return -2.0*sin(y)*cos(x);
+      case 11: return 0;
+      case 12: return 0;
+      case 13: return 0;
     }
   }
 } lap_u_cf;
