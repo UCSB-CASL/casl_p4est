@@ -61,6 +61,8 @@
 #include <slepceps.h>
 #include <slepcsvd.h>
 
+#include <engine.h>
+
 #include <src/point3.h>
 #include <tools/plotting.h>
 
@@ -86,11 +88,11 @@
 
 using namespace std;
 
-bool save_vtk = 0;
+bool save_vtk = 1;
 
 #ifdef P4_TO_P8
-int lmin = 6;
-int lmax = 6;
+int lmin = 7;
+int lmax = 7;
 int nb_splits = 1;
 int nb_splits_per_split = 1;
 int nx_shifts = 1;
@@ -98,9 +100,9 @@ int ny_shifts = 1;
 int nz_shifts = 1;
 int num_shifts = nx_shifts*ny_shifts*nz_shifts;
 #else
-int lmin = 9;
-int lmax = 9;
-int nb_splits = 1;
+int lmin = 4;
+int lmax = 4;
+int nb_splits = 6;
 int nb_splits_per_split = 1;
 int nx_shifts = 1;
 int ny_shifts = 1;
@@ -129,8 +131,8 @@ const double p_xyz_max[3] = { 1.,  1.,  1.};
  * 7412
  */
 
-int n_geometry = 1;
-int n_test = 0;
+int n_geometry = 11;
+int n_test = 11;
 int n_mu = 0;
 int n_diag_add = 0;
 
@@ -153,6 +155,9 @@ double perturb_order = 1.0;
 bool compute_eigenvalues = 0;
 int compute_cond_num_slepc = 0;
 int compute_cond_num_matlab = 1;
+
+bool save_matrix_ascii = 0;
+bool save_matrix_binary = 0;
 
 bool use_phi_cf = 1;
 
@@ -585,6 +590,65 @@ public:
 } zero_cf;
 #endif
 
+namespace p11 {
+#ifdef P4_TO_P8
+class bc_val_0_t: public CF_3
+{
+public:
+  double operator()(double, double, double) const
+  {
+    return 0;
+  }
+} bc_val_0;
+#else
+class bc_val_0_t: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    double X = x-p11::x0;
+    double Y = y-p11::y0;
+
+    double R = X*cos(p11::phase) + Y*sin(p11::phase);
+
+    double l = p11::k/p11::alpha;
+    return (*problem_case_11.bc_coeffs_cf[0])(x,y)*pow(R < 0 ? -1: 1, (int)p11::k)*pow(fabs(R),l);
+//    return (*problem_case_11.bc_coeffs_cf[0])(x,y)*pow(fabs(R),l);
+//    return (*problem_case_11.bc_coeffs_cf[0])(x,y)*u_cf(x,y);
+  }
+} bc_val_0;
+#endif
+
+#ifdef P4_TO_P8
+class bc_val_1_t: public CF_3
+{
+public:
+  double operator()(double, double, double) const
+  {
+    return 0;
+  }
+} bc_val_1;
+#else
+class bc_val_1_t: public CF_2
+{
+public:
+  double operator()(double x, double y) const
+  {
+    double X = x-p11::x0;
+    double Y = y-p11::y0;
+
+    double R = X*cos(p11::alpha*PI+p11::phase) + Y*sin(p11::alpha*PI+p11::phase);
+
+    double l = p11::k/p11::alpha;
+    return pow(-1, (int)k)*(*problem_case_11.bc_coeffs_cf[1])(x,y)*pow(R < 0 ? -1: 1, (int)p11::k)*pow(fabs(R),l);
+//    return -(*problem_case_11.bc_coeffs_cf[1])(x,y)*pow(fabs(R),l);
+//    return (*problem_case_11.bc_coeffs_cf[1])(x,y)*u_cf(x,y);
+  }
+} bc_val_1;
+#endif
+
+}
+
 vector<double> level, h;
 
 vector<double> error_sl_arr, error_sl_l1_arr;
@@ -615,11 +679,19 @@ int main (int argc, char* argv[])
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
-  PetscMatlabEngine matlab_engine;
-  ierr = PetscMatlabEngineCreate(mpi.comm(), NULL, &matlab_engine); CHKERRXX(ierr);
-  ierr = PetscMatlabEngineEvaluate(matlab_engine, "setenv('PETSC_DIR', '/home/dbochkov/Software/PETSc/petsc-3.9.2/');"      );
-  ierr = PetscMatlabEngineEvaluate(matlab_engine, "setenv('PETSC_ARCH', 'build-release-matlab');"                                  );
-  ierr = PetscMatlabEngineEvaluate(matlab_engine, "addpath('/home/dbochkov/Software/PETSc/petsc-3.9.2/share/petsc/matlab');");
+//  PetscMatlabEngine matlab_engine;
+//  ierr = PetscMatlabEngineCreate(mpi.comm(), NULL, &matlab_engine); CHKERRXX(ierr);
+//  ierr = PetscMatlabEngineEvaluate(matlab_engine, "setenv('PETSC_DIR', '/home/dbochkov/Software/PETSc/petsc-3.9.2/');"      );
+//  ierr = PetscMatlabEngineEvaluate(matlab_engine, "setenv('PETSC_ARCH', 'build-release-matlab');"                                  );
+//  ierr = PetscMatlabEngineEvaluate(matlab_engine, "addpath('/home/dbochkov/Software/PETSc/petsc-3.9.2/share/petsc/matlab');");
+
+  Engine *mengine;
+
+  if (mpi.rank() == 0)
+  {
+    mengine = engOpen("matlab -nodisplay -nojvm");
+    if (mengine == NULL) throw;
+  }
 
   cmdParser cmd;
   cmd.add_option("lmin", "min level of the tree");
@@ -654,6 +726,7 @@ int main (int argc, char* argv[])
   cmd.add_option("perturb_magnitude", "perturb_magnitude");
   cmd.add_option("perturb_order", "perturb_order");
   cmd.add_option("use_phi_cf", "use_phi_cf");
+  cmd.add_option("singular_k", "singular_k");
 
   cmd.parse(argc, argv);
 
@@ -690,6 +763,7 @@ int main (int argc, char* argv[])
   perturb_magnitude = cmd.get("perturb_magnitude", perturb_magnitude);
   perturb_order = cmd.get("perturb_order", perturb_order);
   use_phi_cf = cmd.get("use_phi_cf", use_phi_cf);
+  p11::k = cmd.get("singular_k", p11::k);
 
 #ifdef P4_TO_P8
   num_shifts = nx_shifts*ny_shifts*nz_shifts;
@@ -884,24 +958,30 @@ int main (int argc, char* argv[])
 #endif
             for (int i = 0; i < num_surfaces; i++)
             {
-                if ((n_test == 11 || n_test == 12 || n_test == 13) && n_geometry == 11 && i < 2)
-                  {
-                    bc_interface_value[i] = &zero_cf;
-                  }
-                else
-                  {
-              if (bc_interface_type[i] == ROBIN || bc_interface_type[i] == NEUMANN)
+              if (n_test == 11 && n_geometry == 11 && i == 0)
               {
-#ifdef P4_TO_P8
-                bc_interface_value_[i] = new bc_value_robin_t(&u_cf, &ux_cf, &uy_cf, &uz_cf, &mu_cf, phi_x_cf[i], phi_y_cf[i], phi_z_cf[i], bc_coeffs_cf[i]);
-#else
-                bc_interface_value_[i] = new bc_value_robin_t(&u_cf, &ux_cf, &uy_cf, &mu_cf, phi_x_cf[i], phi_y_cf[i], bc_coeffs_cf[i]);
-#endif
-                bc_interface_value[i] = bc_interface_value_[i];
-              } else {
-                bc_interface_value[i] = &u_cf;
+                bc_interface_value[i] = &p11::bc_val_0;
+//                bc_interface_value[i] = &zero_cf;
               }
-                  }
+              else if (n_test == 11 && n_geometry == 11 && i == 1)
+              {
+                bc_interface_value[i] = &p11::bc_val_1;
+//                bc_interface_value[i] = &zero_cf;
+              }
+              else
+              {
+                if (bc_interface_type[i] == ROBIN || bc_interface_type[i] == NEUMANN)
+                {
+#ifdef P4_TO_P8
+                  bc_interface_value_[i] = new bc_value_robin_t(&u_cf, &ux_cf, &uy_cf, &uz_cf, &mu_cf, phi_x_cf[i], phi_y_cf[i], phi_z_cf[i], bc_coeffs_cf[i]);
+#else
+                  bc_interface_value_[i] = new bc_value_robin_t(&u_cf, &ux_cf, &uy_cf, &mu_cf, phi_x_cf[i], phi_y_cf[i], bc_coeffs_cf[i]);
+#endif
+                  bc_interface_value[i] = bc_interface_value_[i];
+                } else {
+                  bc_interface_value[i] = &u_cf;
+                }
+              }
             }
 
             Vec rhs;
@@ -1060,15 +1140,27 @@ int main (int argc, char* argv[])
               ierr = SlepcFinalize();
             }
 
+            if (save_matrix_ascii)
+            {
+              PetscViewer viewer;
+              ierr = PetscViewerASCIIOpen(mpi.comm(), "mat.output", &viewer); CHKERRXX(ierr);
+              ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+              ierr = MatView(A, viewer); CHKERRXX(ierr);
+              ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
+            }
+
+            if (save_matrix_binary)
+            {
+              PetscViewer viewer;
+              ierr = PetscViewerBinaryOpen(mpi.comm(), "mat.output", FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
+              ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_BINARY_MATLAB); CHKERRXX(ierr);
+              ierr = MatView(A, viewer); CHKERRXX(ierr);
+              ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
+            }
+
             if (iter < compute_cond_num_matlab)
             {
-
-//              PetscViewer viewer;
-//              ierr = PetscViewerBinaryOpen(mpi.comm(), "mat.output", FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
-//              ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_BINARY_MATLAB); CHKERRXX(ierr);
-//              ierr = MatView(A, viewer); CHKERRXX(ierr);
-//              ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
-
+              // Get the local AIJ representation of the matrix
               std::vector<double> aij;
 
               for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
@@ -1090,6 +1182,7 @@ int main (int argc, char* argv[])
 
               int num_local_entries = aij.size();
 
+              // Collect all chucks of the matrix into global_aij on the 0-rank process
               std::vector<int> local_sizes(mpi.size(), 0);
               std::vector<int> displs(mpi.size(), 0);
 
@@ -1103,30 +1196,36 @@ int main (int argc, char* argv[])
                 num_total_entries += local_sizes[i];
               }
 
-              std::vector<double> global_aij(mpi.rank() == 0 ? num_total_entries : 0);
-
-              MPI_Gatherv(aij.data(), aij.size(), MPI_DOUBLE, global_aij.data(), local_sizes.data(), displs.data(), MPI_DOUBLE, 0, mpi.comm());
-
-              aij.clear();
+              mxArray *mat;
+              mxDouble *mat_data;
 
               if (mpi.rank() == 0)
               {
-//                char *buffer;
-                PetscScalar cn;
-//                ierr = PetscMatlabEngineEvaluate(matlab_engine, "mat");
-//                ierr = PetscMatlabEngineEvaluate(matlab_engine, "condest(petsc_mat)");
-//                ierr = PetscMatlabEngineEvaluate(matlab_engine, "M = PetscBinaryRead('mat.output');");
-                ierr = PetscMatlabEngineEvaluate(matlab_engine, "N = 0;");
-                cn = (double) num_total_entries / 3;
-                ierr = PetscMatlabEnginePutArray(matlab_engine, 1, 1, &cn, "N");
-                ierr = PetscMatlabEngineEvaluate(matlab_engine, "AIJ(3,N) = 0;");
-                ierr = PetscMatlabEnginePutArray(matlab_engine, 3, num_total_entries/3, global_aij.data(), "AIJ");
-//                global_aij.clear();
-//                ierr = PetscMatlabEngineEvaluate(matlab_engine, "cn = condest(spconvert(AIJ'));");
-//                ierr = PetscMatlabEngineGetOutput(matlab_engine, &buffer); std::cout << mpi.rank() << " " << buffer;
-//                ierr = PetscMatlabEngineGetArray(matlab_engine, 1, 1, &cn, "cn");
-//                ierr = PetscPrintf(mpi.comm(), "Cond num = %e\n", cn);
-//                ierr = PetscMatlabEngineEvaluate(matlab_engine, "clear AIJ");
+                mat = mxCreateDoubleMatrix(3, num_total_entries/3, mxREAL);
+                mat_data = mxGetDoubles(mat);
+              }
+
+              MPI_Gatherv(aij.data(), aij.size(), MPI_DOUBLE, mat_data, local_sizes.data(), displs.data(), MPI_DOUBLE, 0, mpi.comm());
+
+              aij.clear();
+
+              // pass the matrix to MATLAB and ask to compute condition number
+              if (mpi.rank() == 0)
+              {
+                // send the matrix to MATLAB
+                engPutVariable(mengine, "AIJ", mat);
+                mxDestroyArray(mat);
+
+                // ask to compute condition number
+                engEvalString(mengine, "cn = condest(spconvert(AIJ'));");
+
+                // get the result
+                mxArray *value = engGetVariable(mengine, "cn");
+                double cn = *mxGetDoubles(value);
+                mxDestroyArray(value);
+
+                // print and store
+                ierr = PetscPrintf(mpi.comm(), "Cond num = %e\n", cn);
                 cond_num_arr.push_back(cn);
               } else {
                 cond_num_arr.push_back(NAN);
@@ -1300,6 +1399,27 @@ int main (int argc, char* argv[])
             Vec vec_error_dd; double *vec_error_dd_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_dd); CHKERRXX(ierr);
             Vec vec_error_ge; double *vec_error_ge_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_ge); CHKERRXX(ierr);
 
+            {
+              double *mask_ptr;
+              ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
+
+              double xyz[P4EST_DIM];
+              for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+              {
+                if (mask_ptr[n] < mask_thresh)
+                {
+                  node_xyz_fr_n(n, p4est, nodes, xyz);
+#ifdef P4_TO_P8
+                  if (sqrt(SQR(xyz[0] - p11::x0) + SQR(xyz[1] - p11::y0) + SQR(xyz[2] - p11::y0)) < 2.*dxyz_m)
+#else
+                  if (sqrt(SQR(xyz[0] - p11::x0) + SQR(xyz[1] - p11::y0)) < .1)
+#endif
+                    mask_ptr[n] = MAX(1., mask_ptr[n]);
+                }
+              }
+
+              ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
+            }
             //----------------------------------------------------------------------------------------------
             // calculate error of solution
             //----------------------------------------------------------------------------------------------
@@ -1999,7 +2119,8 @@ int main (int argc, char* argv[])
   }
 
 
-  ierr = PetscMatlabEngineDestroy(&matlab_engine); CHKERRXX(ierr);
+  engClose(mengine);
+//  ierr = PetscMatlabEngineDestroy(&matlab_engine); CHKERRXX(ierr);
 
   MPI_Barrier(p4est->mpicomm);
 

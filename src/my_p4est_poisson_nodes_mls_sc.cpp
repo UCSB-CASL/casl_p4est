@@ -3961,10 +3961,15 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
   }
 
+  // restore pointers
+  ierr = VecRestoreArray(mask_, &mask_p); CHKERRXX(ierr);
+
   if (setup_matrix)
   {
     ierr = VecGhostUpdateBegin(mask_, MAX_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (mask_, MAX_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(mask_, MAX_VALUES, SCATTER_REVERSE); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (mask_, MAX_VALUES, SCATTER_REVERSE); CHKERRXX(ierr);
   }
 
   if (setup_matrix)
@@ -4007,9 +4012,6 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     ierr = VecRestoreArray(areas_, &areas_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(node_type_, &node_type_p); CHKERRXX(ierr);
   }
-
-  // restore pointers
-  ierr = VecRestoreArray(mask_, &mask_p); CHKERRXX(ierr);
 
   for (int i = 0; i < num_interfaces_; i++)
   {

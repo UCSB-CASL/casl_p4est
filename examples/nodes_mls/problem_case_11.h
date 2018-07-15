@@ -12,6 +12,22 @@
 #include <src/my_p4est_shapes.h>
 #endif
 
+// corner point
+namespace p11
+{
+double x0 = .03, y0 = -.04;
+// sector angle
+double alpha = 1.25;
+// rotation
+double phase = 0.1*PI;
+// radius
+double R0 = 0.85;
+
+double T_disc = -.5*(2.-alpha)*PI;
+
+double k = 2.;
+}
+
 class problem_case_11_t
 {
 public:
@@ -70,7 +86,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
-          return 0.;
+          return 1.;
       }
   } bc_coeff_0;
 
@@ -78,7 +94,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
-          return 0.;
+          return 1.;
       }
   } bc_coeff_1;
 
@@ -95,18 +111,9 @@ public:
   {
 #ifdef P4_TO_P8
 #else
-    // corner point
-    double x0 = -.08, y0 = -.07;
-    // sector angle
-    double alpha = 1.25*PI;
-    // rotation
-    double phase = 0.1*PI;
-    // radius
-    double R = 0.7;
-
-    domain0.set_params_points(x0+R*cos(phase), y0+R*sin(phase), x0, y0);
-    domain1.set_params_points(x0, y0, x0+R*cos(alpha+phase), y0+R*sin(alpha+phase));
-    domain2.set_params(R, x0, y0, 0, 1, 0);
+    domain0.set_params_points(p11::x0 + p11::R0*cos(p11::phase), p11::y0 + p11::R0*sin(p11::phase), p11::x0, p11::y0);
+    domain1.set_params_points(p11::x0, p11::y0, p11::x0+p11::R0*cos(p11::alpha*PI+p11::phase), p11::y0+p11::R0*sin(p11::alpha*PI+p11::phase));
+    domain2.set_params(p11::R0, p11::x0, p11::y0, 0, 1, 0);
 #endif
 
     phi_cf.push_back(&domain0.phi); action.push_back(INTERSECTION); color.push_back(0);
